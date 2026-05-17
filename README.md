@@ -16,6 +16,17 @@ Gereksinimler:
 - `gnome-terminal` (sadece visible mode)
 - `wmctrl` (sadece `layout` komutu için)
 - `gsettings` (sadece `desktops` komutu için)
+- `xdotool` (Mutter snap workaround + initial prompt auto-submit için)
+
+Kurulum (Ubuntu):
+```
+sudo apt install -y wmctrl xdotool
+```
+
+**Neden xdotool gerekli?**
+- Mutter X11 `wmctrl -t` ve `xprop _NET_WM_DESKTOP` ClientMessage'larını bazen yoksayıyor → pencere taşıma flakey
+- Interactive `claude --remote-control NAME prompt` positional prompt'u input box'a pre-fill ediyor ama submit ETMİYOR → Enter manuel gerek
+- xdotool ile `windowactivate + type + key Return` ile bu iki sorun da çözülür
 
 ## Hızlı başlangıç
 
