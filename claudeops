@@ -500,57 +500,67 @@ cmd_new() {
 #   3. Yerine <name><to> FRESH session aç (RC + visible gnome-terminal)
 # Açık session sayısı dinamik — runtime'da discover edilir.
 # ─────────────────────────────────────────────
-HANDOVER_MSG_DEFAULT='kaldigimiz yeri kaydedelim. yeni session da devam ederiz.
-konusup ve bulup ve arastirip da not almadigimiz kaldi mi?
-her sey commit ve push lu mu?
-todo.md, changelog.md ve claude.md guncel mi?
-Yeni sessiona hazir miyiz?
-Bulduklarimizdan kayit altina almadigimiz kaldi mi?'
+HANDOVER_MSG_DEFAULT='Bu konuşmayı bitiriyoruz, yeni session a geçeceğiz. KAYIT KRİTİK — yeni Claude sıfır bilgi kaybıyla devam edebilmeli. AMAN her şeyi al, gerekirse derin tara.
+
+KALDIĞIMIZ YERİ KAYDEDELİM, YENİ SESSION DA DEVAM EDERİZ.
+
+Lütfen şunları kontrol et ve eksikse tamamla:
+- Konuşup ve bulup ve araştırıp da not almadığımız bir şey kaldı mı?
+- Her şey commit ve push lu mu? (tüm remote lara)
+- TODO.md, CHANGELOG.md, CLAUDE.md, DONE.md, TOBEDECIDED.md güncel mi? (yoksa oluştur, eksikse genişlet)
+- Yeni session a hazır mıyız?
+- Bulduklarımızdan kayıt altına almadığımız kaldı mı?
+
+Derin tara: kaynak dosyalar, /tmp logları, eski commit ler, .jsonl backup ları — hiçbir bilgi unutulmasın.
+
+Sonunda CLAUDE.md nin sonuna "## READY FOR HANDOVER ($(date))" başlığıyla 5-10 satırlık özet ekle:
+- Nerede kaldık (current state)
+- Yeni session ın yapması gerekenler (next steps)
+- Açık kararlar (varsa)
+
+Bitince "READY FOR HANDOVER" özetiyle dön.'
 
 cmd_handover() {
-  local from_suffix="13" to_suffix="14"
+  local from_suffix="13"
   local dry=0
   local message="$HANDOVER_MSG_DEFAULT"
-  local timeout_each=1800   # 30 dk per session (commit/push çok dosyalıysa)
-  local skip_msg=0
+  local mode="visible"   # visible (default) | headless (-p, no approval prompts visible)
   for a in "$@"; do
     case "$a" in
       --from-suffix=*)        from_suffix="${a#--from-suffix=}";;
-      --to-suffix=*)          to_suffix="${a#--to-suffix=}";;
       --message=*)            message="${a#--message=}";;
       --message-file=*)       message="$(cat "${a#--message-file=}")";;
-      --skip-msg)             skip_msg=1;;
+      --headless)             mode="headless";;
+      --visible)              mode="visible";;
       --dry-run)              dry=1;;
-      --timeout=*)            timeout_each="${a#--timeout=}";;
     esac
   done
 
   local rows
   rows=$(all_sessions_tsv | filter_not_self | awk -F'\t' -v s="$from_suffix" '$2 ~ s"$"')
   local total; total=$(echo "$rows" | grep -c '.')
-  echo "=== handover: $from_suffix → $to_suffix; $total session bulundu ==="
+  echo "=== handover ($mode): suffix=$from_suffix; $total session bulundu ==="
   [ "$total" -eq 0 ] && { echo "(eşleşen session yok)"; return 0; }
 
   if [ "$dry" = "1" ]; then
     while IFS=$'\t' read pid name status sid cwd bridge; do
-      local newname
-      newname=$(echo "$name" | sed -E "s/${from_suffix}\$/${to_suffix}/")
-      echo "  WOULD handover $name (pid=$pid) → kill + msg + NEW '$newname' in $cwd"
+      echo "  WOULD handover $name (pid=$pid, $mode) — kill old TUI + open visible gnome-terminal with claude --resume $sid --remote-control $name (wrap-up prompt prefilled), RC active"
     done <<<"$rows"
     echo "(dry-run — uygulamak için --dry-run'sız çalıştır)"
+    echo ""
+    echo "Sonraki adım (manuel, sen hazır olduğunda):"
+    echo "  claudeops rc all-but-self --suffix=14 --new --kill-first"
     return 0
   fi
 
   local log="$LOG_DIR/handover.log"; : > "$log"
-  local ok=0 fail=0 skipped=0
+  local opened=0 failed=0
 
   while IFS=$'\t' read pid name status sid cwd bridge; do
     [ -z "$pid" ] && continue
-    local newname
-    newname=$(echo "$name" | sed -E "s/${from_suffix}\$/${to_suffix}/")
     echo ""
     echo "═════════════════════════════════════════════════"
-    echo "  HANDOVER $name (pid=$pid, sid=$sid)  →  $newname"
+    echo "  HANDOVER $name (pid=$pid, sid=$sid) — $mode"
     echo "═════════════════════════════════════════════════"
 
     # 0) BUSY mu? IDLE olana kadar bekle (max 60dk)
@@ -562,7 +572,7 @@ try: print(json.load(open('$SESS_DIR/$pid.json'))['status'])
 except: print('gone')
 " 2>/dev/null)
       [ "$cur_status" = "busy" ] || break
-      if [ $wait_rounds -ge 120 ]; then  # 120 × 30s = 60dk timeout
+      if [ $wait_rounds -ge 120 ]; then
         echo "  WARN: $name 60dk'dır busy; atlanıyor"
         echo "$name|busy-timeout" >> "$log"
         continue 2
@@ -572,83 +582,79 @@ except: print('gone')
       wait_rounds=$((wait_rounds+1))
     done
 
-    # 1) Wrap-up mesajı gönder (TUI hâlâ ayakta — paralel mode)
-    if [ "$skip_msg" = "1" ]; then
-      echo "[1/3] msg gönderme: --skip-msg ile atlandı"
-    else
-      echo "[1/3] wrap-up mesajı gönderiliyor (timeout ${timeout_each}s)..."
-      cd "$cwd" || { echo "  ERROR cd $cwd"; fail=$((fail+1)); continue; }
-      local mlog="$LOG_DIR/handover-${name}.msg.log"
-      local mstart; mstart=$(date +%s)
-      local out rc
-      out=$(timeout "$timeout_each" claude --resume "$sid" -p "$message" < /dev/null 2>&1)
-      rc=$?
-      local mdur=$(($(date +%s)-mstart))
-      echo "$out" > "$mlog"
-      if echo "$out" | grep -qiE "you.?ve hit your limit|usage.?limit|resets [0-9]"; then
-        echo "  → USAGE-LIMIT (rc=$rc dur=${mdur}s); handover bekleyenlerde durduruluyor"
-        echo "$name|limit" >> "$log"
-        fail=$((fail+1))
-        break
-      fi
-      echo "  → done (rc=$rc dur=${mdur}s, log: $mlog)"
-    fi
-
-    # 2) Eski <name><from> session'ı kapat
-    echo "[2/3] kill $name (pid=$pid)..."
-    if kill -0 "$pid" 2>/dev/null; then
-      kill -TERM "$pid" 2>/dev/null
-      for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-        kill -0 "$pid" 2>/dev/null || break
-        sleep 0.5
-      done
+    if [ "$mode" = "visible" ]; then
+      # VISIBLE: kill old TUI, open new gnome-terminal with claude --resume <sid>
+      # --remote-control <name> "wrap-up message" — UI görünür + RC aktif (telefondan onay)
+      echo "[1/2] kill old TUI (pid=$pid)..."
       if kill -0 "$pid" 2>/dev/null; then
-        echo "  WARN: $pid SIGTERM'e cevap vermedi, SIGKILL"
-        kill -KILL "$pid" 2>/dev/null
-      else
-        echo "  → killed"
+        kill -TERM "$pid" 2>/dev/null
+        for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+        kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
       fi
-    else
-      echo "  (zaten ölü)"
-    fi
-
-    # 3) Yeni <name><to> FRESH session başlat (RC + visible)
-    echo "[3/3] new session '$newname' başlatılıyor (RC + gnome-terminal)..."
-    gnome-terminal --window --title="$newname" --working-directory="$cwd" \
-      -- bash -c "claude --remote-control '$newname'; exec bash" &
-    sleep 2
-    # quick bridge verify
-    local bridge_new=""
-    for try in 1 2 3 4 5 6; do
-      sleep 1
-      bridge_new=$(python3 -c "
+      echo "  → killed"
+      echo "[2/2] visible gnome-terminal + RC + prefilled wrap-up..."
+      # Mesajı bash-c için escape: tek tırnak içine al, içindeki tek tırnakları kaç
+      local msg_esc; msg_esc=$(printf '%s' "$message" | sed "s/'/'\\\\''/g")
+      gnome-terminal --window --title="handover:$name" --working-directory="$cwd" \
+        -- bash -c "claude --resume '$sid' --remote-control '$name' '$msg_esc'; exec bash" &
+      sleep 3
+      # bridge verify
+      local bridge_new=""
+      for try in $(seq 1 6); do
+        sleep 1
+        bridge_new=$(python3 -c "
 import json,glob
 for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
     d = json.load(open(f))
-    if d.get('name')=='$newname':
+    if d.get('name')=='$name' and str(d.get('sessionId','')) == '$sid':
         print(d.get('bridgeSessionId',''))
         break
 " 2>/dev/null)
-      [ -n "$bridge_new" ] && break
-    done
-    if [ -n "$bridge_new" ]; then
-      echo "  → bridge: https://claude.ai/code/$bridge_new"
-      echo "$name|→|$newname|bridge=$bridge_new" >> "$log"
-      ok=$((ok+1))
+        [ -n "$bridge_new" ] && break
+      done
+      if [ -n "$bridge_new" ]; then
+        echo "  → opened, bridge: https://claude.ai/code/$bridge_new"
+        echo "$name|opened|$bridge_new" >> "$log"
+        opened=$((opened+1))
+      else
+        echo "  WARN: bridge bulunamadı"
+        echo "$name|nobridge" >> "$log"
+        failed=$((failed+1))
+      fi
     else
-      echo "  WARN: $newname için bridge bulunamadı (workspace trust prompt olabilir)"
-      echo "$name|→|$newname|nobridge" >> "$log"
-      fail=$((fail+1))
+      # HEADLESS (eski mode): -p ile sessiz (tool onayı verilemez!)
+      echo "[1/1] headless wrap-up (timeout 1800s)..."
+      cd "$cwd" || { failed=$((failed+1)); continue; }
+      local out rc
+      out=$(timeout 1800 claude --resume "$sid" -p "$message" < /dev/null 2>&1)
+      rc=$?
+      if echo "$out" | grep -qiE "you.?ve hit your limit|usage.?limit|resets [0-9]"; then
+        echo "  USAGE-LIMIT; durduruluyor"; break
+      fi
+      echo "$out" > "$LOG_DIR/handover-${name}.msg.log"
+      echo "  rc=$rc"
+      opened=$((opened+1))
     fi
 
-    sleep 2  # diğer session'a geçmeden önce kısa pause
+    sleep 2
   done <<<"$rows"
 
   echo ""
   echo "═════════════════════════════════════════════════"
-  echo "  handover summary: ok=$ok fail=$fail of $total"
+  echo "  handover summary: opened=$opened failed=$failed of $total ($mode mode)"
   echo "  log: $log"
   echo "═════════════════════════════════════════════════"
+  if [ "$mode" = "visible" ]; then
+    echo ""
+    echo "ŞİMDİ:"
+    echo "  - Her gnome-terminal penceresinde Claude wrap-up sorusunu işliyor"
+    echo "  - Tool onayları için pencereye gel veya telefondan RC URL'sini aç"
+    echo "  - Hepsi 'READY FOR HANDOVER' özeti verince → sıradaki adım:"
+    echo ""
+    echo "  claudeops rc all-but-self --suffix=14 --new --kill-first"
+    echo ""
+    echo "  Bu komut <name>13'leri kapatır, yerlerine <name>14 FRESH session açar."
+  fi
 }
 
 # ─────────────────────────────────────────────
