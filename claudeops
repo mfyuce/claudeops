@@ -345,6 +345,35 @@ EOF
   local rows; rows=$(resolve_targets "$target" "$@")
   local sp; sp=$(self_pid 2>/dev/null || echo "")
   local gtp_rc; gtp_rc=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
+
+  # SAFETY: --kill-first ile busy hedef varsa idle olana kadar bekle (handover/work koruma)
+  if [ "$kill_first" = "1" ]; then
+    local pre_round=0
+    while true; do
+      local busy_list=""
+      while IFS=$'\t' read p2 n2 s2 _ _ _; do
+        [ -z "$p2" ] && continue
+        [ "$p2" = "$sp" ] && continue
+        local cur; cur=$(python3 -c "
+import json
+try: print(json.load(open('$SESS_DIR/$p2.json'))['status'])
+except: print('gone')
+" 2>/dev/null)
+        [ "$cur" = "busy" ] && busy_list="$busy_list $n2"
+      done <<<"$rows"
+      [ -z "$busy_list" ] && break
+      if [ $pre_round -eq 0 ]; then
+        echo "WARN: --kill-first ile busy hedef var:$busy_list — idle olana kadar bekleniyor (max 60dk)"
+      fi
+      if [ $pre_round -ge 120 ]; then
+        echo "WARN: 60dk geçti, hâlâ busy:$busy_list — yine de devam"
+        break
+      fi
+      sleep 30
+      pre_round=$((pre_round+1))
+    done
+  fi
+
   while IFS=$'\t' read pid name status sid cwd bridge; do
     [ -z "$pid" ] && continue
     [ "$pid" = "$sp" ] && { echo "SKIP SELF $name"; continue; }
