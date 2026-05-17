@@ -493,23 +493,187 @@ cmd_new() {
 }
 
 # ─────────────────────────────────────────────
+# CMD: handover [--from-suffix=13 --to-suffix=14] [--dry-run] [--message=...]
+# Her <name><from> session için:
+#   1. Wrap-up mesajı gönder (Claude commit/push + MD update yapsın)
+#   2. <name><from> kill
+#   3. Yerine <name><to> FRESH session aç (RC + visible gnome-terminal)
+# Açık session sayısı dinamik — runtime'da discover edilir.
+# ─────────────────────────────────────────────
+HANDOVER_MSG_DEFAULT='kaldigimiz yeri kaydedelim. yeni session da devam ederiz.
+konusup ve bulup ve arastirip da not almadigimiz kaldi mi?
+her sey commit ve push lu mu?
+todo.md, changelog.md ve claude.md guncel mi?
+Yeni sessiona hazir miyiz?
+Bulduklarimizdan kayit altina almadigimiz kaldi mi?'
+
+cmd_handover() {
+  local from_suffix="13" to_suffix="14"
+  local dry=0
+  local message="$HANDOVER_MSG_DEFAULT"
+  local timeout_each=1800   # 30 dk per session (commit/push çok dosyalıysa)
+  local skip_msg=0
+  for a in "$@"; do
+    case "$a" in
+      --from-suffix=*)        from_suffix="${a#--from-suffix=}";;
+      --to-suffix=*)          to_suffix="${a#--to-suffix=}";;
+      --message=*)            message="${a#--message=}";;
+      --message-file=*)       message="$(cat "${a#--message-file=}")";;
+      --skip-msg)             skip_msg=1;;
+      --dry-run)              dry=1;;
+      --timeout=*)            timeout_each="${a#--timeout=}";;
+    esac
+  done
+
+  local rows
+  rows=$(all_sessions_tsv | filter_not_self | awk -F'\t' -v s="$from_suffix" '$2 ~ s"$"')
+  local total; total=$(echo "$rows" | grep -c '.')
+  echo "=== handover: $from_suffix → $to_suffix; $total session bulundu ==="
+  [ "$total" -eq 0 ] && { echo "(eşleşen session yok)"; return 0; }
+
+  if [ "$dry" = "1" ]; then
+    while IFS=$'\t' read pid name status sid cwd bridge; do
+      local newname
+      newname=$(echo "$name" | sed -E "s/${from_suffix}\$/${to_suffix}/")
+      echo "  WOULD handover $name (pid=$pid) → kill + msg + NEW '$newname' in $cwd"
+    done <<<"$rows"
+    echo "(dry-run — uygulamak için --dry-run'sız çalıştır)"
+    return 0
+  fi
+
+  local log="$LOG_DIR/handover.log"; : > "$log"
+  local ok=0 fail=0 skipped=0
+
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    local newname
+    newname=$(echo "$name" | sed -E "s/${from_suffix}\$/${to_suffix}/")
+    echo ""
+    echo "═════════════════════════════════════════════════"
+    echo "  HANDOVER $name (pid=$pid, sid=$sid)  →  $newname"
+    echo "═════════════════════════════════════════════════"
+
+    # 0) BUSY mu? IDLE olana kadar bekle (max 60dk)
+    local wait_rounds=0
+    while true; do
+      local cur_status; cur_status=$(python3 -c "
+import json
+try: print(json.load(open('$SESS_DIR/$pid.json'))['status'])
+except: print('gone')
+" 2>/dev/null)
+      [ "$cur_status" = "busy" ] || break
+      if [ $wait_rounds -ge 120 ]; then  # 120 × 30s = 60dk timeout
+        echo "  WARN: $name 60dk'dır busy; atlanıyor"
+        echo "$name|busy-timeout" >> "$log"
+        continue 2
+      fi
+      [ $((wait_rounds % 4)) -eq 0 ] && echo "  [busy-wait] $name hâlâ busy, $((wait_rounds*30 / 60))dk geçti..."
+      sleep 30
+      wait_rounds=$((wait_rounds+1))
+    done
+
+    # 1) Wrap-up mesajı gönder (TUI hâlâ ayakta — paralel mode)
+    if [ "$skip_msg" = "1" ]; then
+      echo "[1/3] msg gönderme: --skip-msg ile atlandı"
+    else
+      echo "[1/3] wrap-up mesajı gönderiliyor (timeout ${timeout_each}s)..."
+      cd "$cwd" || { echo "  ERROR cd $cwd"; fail=$((fail+1)); continue; }
+      local mlog="$LOG_DIR/handover-${name}.msg.log"
+      local mstart; mstart=$(date +%s)
+      local out rc
+      out=$(timeout "$timeout_each" claude --resume "$sid" -p "$message" < /dev/null 2>&1)
+      rc=$?
+      local mdur=$(($(date +%s)-mstart))
+      echo "$out" > "$mlog"
+      if echo "$out" | grep -qiE "you.?ve hit your limit|usage.?limit|resets [0-9]"; then
+        echo "  → USAGE-LIMIT (rc=$rc dur=${mdur}s); handover bekleyenlerde durduruluyor"
+        echo "$name|limit" >> "$log"
+        fail=$((fail+1))
+        break
+      fi
+      echo "  → done (rc=$rc dur=${mdur}s, log: $mlog)"
+    fi
+
+    # 2) Eski <name><from> session'ı kapat
+    echo "[2/3] kill $name (pid=$pid)..."
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -TERM "$pid" 2>/dev/null
+      for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.5
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        echo "  WARN: $pid SIGTERM'e cevap vermedi, SIGKILL"
+        kill -KILL "$pid" 2>/dev/null
+      else
+        echo "  → killed"
+      fi
+    else
+      echo "  (zaten ölü)"
+    fi
+
+    # 3) Yeni <name><to> FRESH session başlat (RC + visible)
+    echo "[3/3] new session '$newname' başlatılıyor (RC + gnome-terminal)..."
+    gnome-terminal --window --title="$newname" --working-directory="$cwd" \
+      -- bash -c "claude --remote-control '$newname'; exec bash" &
+    sleep 2
+    # quick bridge verify
+    local bridge_new=""
+    for try in 1 2 3 4 5 6; do
+      sleep 1
+      bridge_new=$(python3 -c "
+import json,glob
+for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
+    d = json.load(open(f))
+    if d.get('name')=='$newname':
+        print(d.get('bridgeSessionId',''))
+        break
+" 2>/dev/null)
+      [ -n "$bridge_new" ] && break
+    done
+    if [ -n "$bridge_new" ]; then
+      echo "  → bridge: https://claude.ai/code/$bridge_new"
+      echo "$name|→|$newname|bridge=$bridge_new" >> "$log"
+      ok=$((ok+1))
+    else
+      echo "  WARN: $newname için bridge bulunamadı (workspace trust prompt olabilir)"
+      echo "$name|→|$newname|nobridge" >> "$log"
+      fail=$((fail+1))
+    fi
+
+    sleep 2  # diğer session'a geçmeden önce kısa pause
+  done <<<"$rows"
+
+  echo ""
+  echo "═════════════════════════════════════════════════"
+  echo "  handover summary: ok=$ok fail=$fail of $total"
+  echo "  log: $log"
+  echo "═════════════════════════════════════════════════"
+}
+
+# ─────────────────────────────────────────────
 # CMD: send
 # Her hedefe -p "metin" gönderir; konuşmaya bir user/assistant turu ekler
 # ─────────────────────────────────────────────
 cmd_send() {
-  local target="${1:-}"; shift || true
-  local text="${*:-}"
-  [ -z "$target" ] || [ -z "$text" ] && {
-    echo "kullanım: claudeops send <all-but-self|name...> -- \"prompt metni\""; return 2
-  }
-  # Allow "<targets> -- text" syntax: split at --
-  local targets=() msg=""
-  if [[ " $text " == *" -- "* ]]; then
-    local before_dd after_dd
-    before_dd="${text%% -- *}"; after_dd="${text#* -- }"
-    targets=("$target" $before_dd); msg="$after_dd"
-  else
-    targets=("$target"); msg="$text"
+  # parse: önce `--` görene kadar target args, sonrası prompt metni
+  local targets=() msg_parts=()
+  local seen_dd=0
+  for a in "$@"; do
+    if [ "$seen_dd" = "0" ] && [ "$a" = "--" ]; then seen_dd=1; continue; fi
+    if [ "$seen_dd" = "0" ]; then targets+=("$a"); else msg_parts+=("$a"); fi
+  done
+  local msg="${msg_parts[*]}"
+  if [ "${#targets[@]}" -eq 0 ] || [ -z "$msg" ]; then
+    cat <<EOF
+kullanım:
+  claudeops send <target...> -- "prompt metni"
+  örn:
+    claudeops send hms13 -- "merhaba"
+    claudeops send all-but-self -- "/context"
+    claudeops send carla13 hcr13 -- "test mesajı"
+EOF
+    return 2
   fi
   local rows; rows=$(resolve_targets "${targets[@]}")
   while IFS=$'\t' read pid name status sid cwd bridge; do
@@ -626,6 +790,22 @@ KULLANIM:
       Compact'i gnome-terminal penceresinde aç (canlı output görünür).
       Pencere işlem bittikten 3s sonra kapanır.
 
+  claudeops handover [--from-suffix=13] [--to-suffix=14] [--dry-run]
+                     [--skip-msg] [--message=...] [--message-file=path]
+                     [--timeout=1800]
+      Her <name><from> session için:
+        0) BUSY ise idle olana kadar bekler (max 60dk)
+        1) Wrap-up mesajı gönderir (Claude commit/push + MD update yapsın diye)
+           Default mesaj:
+             "kaldigimiz yeri kaydedelim. yeni session da devam ederiz.
+              konusup ve bulup ve arastirip da not almadigimiz kaldi mi?
+              her sey commit ve push lu mu? todo/changelog/claude.md guncel mi?
+              Yeni sessiona hazir miyiz? Bulduklarimizdan kayit altina almadigimiz kaldi mi?"
+        2) <name><from> session'ı kill
+        3) Yerine <name><to> FRESH session (RC + gnome-terminal visible) açar
+      Rate-limit'te otomatik durur. Açık session sayısı runtime'da discover edilir.
+      Token-pahalı: 14 session × ~5-30dk = ~1-7 saat + büyük token harcaması.
+
   claudeops help
       Bu metni göster.
 
@@ -659,5 +839,6 @@ case "${1:-help}" in
   layout) shift; cmd_layout "$@" ;;
   new) shift; cmd_new "$@" ;;
   cleanup) shift; cmd_cleanup "$@" ;;
+  handover) shift; cmd_handover "$@" ;;
   *) echo "Bilinmeyen komut: $1"; cmd_help; exit 2 ;;
 esac
