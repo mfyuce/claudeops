@@ -460,31 +460,31 @@ EOF
     for n in "${parr[@]}"; do pinned["$n"]=1; done
     echo "pinned to desktop 0: ${parr[*]}"
   fi
-  # gnome-terminal-server pid
-  local gtp; gtp=$(pgrep -x gnome-terminal-server | head -1)
+  # gnome-terminal-server pid (comm 15 char truncate → "gnome-terminal-")
+  local gtp; gtp=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
   # Self gnome-terminal window title belirleyici: WM_NAME genelde değişken; en sağlam yöntem
   # self_pid → ata zincirinden bash → tty → window mapping; hızlı yol: title regex
   local self_pid; self_pid=$(self_pid 2>/dev/null || echo "")
   # Collect windows in two passes: pinned first, then others
   declare -a pin_wins=() oth_wins=()
   while IFS= read -r line; do
-    local win=$(echo "$line" | awk '{print $1}')
-    local desk=$(echo "$line" | awk '{print $2}')
-    local rest=$(echo "$line" | cut -d' ' -f5- | sed 's/^ *//')
+    local win desk
+    win=$(echo "$line" | awk '{print $1}')
+    desk=$(echo "$line" | awk '{print $2}')
+    # wmctrl format: WID DESK PID HOST TITLE...
+    # 5+ fields = title. Awk skips first 4 fields:
+    local rest; rest=$(echo "$line" | awk '{for(i=5;i<=NF;i++) printf "%s ", $i; print ""}')
     # title: remove leading spinner char + space
-    local title=$(echo "$rest" | sed -E 's/^[^A-Za-z0-9~/]+ ?//' | head -c 40)
-    # skip self window
+    local title; title=$(echo "$rest" | sed -E 's/^[^A-Za-z0-9~/]+ ?//' | head -c 40)
     if [ "$skip_self" = "1" ] && echo "$rest" | grep -qi "machine cleaning required"; then
       echo "SKIP self window: $rest"
       continue
     fi
-    # skip sticky (desk=-1 in wmctrl output = on all desktops)
     if [ "$skip_sticky" = "1" ] && [ "$desk" = "-1" ]; then
       echo "SKIP sticky: $title (--include-sticky ile dahil edilebilir)"
       continue
     fi
-    # name = ilk kelime (örn "carla13 ..." → carla13)
-    local nm=$(echo "$title" | awk '{print $1}')
+    local nm; nm=$(echo "$title" | awk '{print $1}')
     if [ -n "${pinned[$nm]:-}" ]; then
       pin_wins+=("$win|$nm")
     else
@@ -710,22 +710,30 @@ except: print('gone')
     done
 
     if [ "$mode" = "visible" ]; then
-      # VISIBLE: kill old TUI + parent bash (pencere kapanır, orphan yok), sonra yeni gnome-terminal
-      echo "[1/2] kill old TUI (pid=$pid) + parent bash..."
+      # VISIBLE: kill old TUI + parent bash + reopen ON SAME DESKTOP (preserve placement)
+      # 0a) eski pencerenin desktop'unu kaydet (wmctrl -l)
+      local cur_gtp; cur_gtp=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
+      local old_desk; old_desk=$(wmctrl -l -p | awk -v g="$cur_gtp" -v n="$name" '$3==g && $0 ~ n"$" {print $2; exit}')
+      [ -z "$old_desk" ] && old_desk=0
+      echo "[1/2] kill old TUI (pid=$pid) + parent bash (eski desk=$old_desk korunacak)..."
       local parent_bash; parent_bash=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
       if kill -0 "$pid" 2>/dev/null; then
         kill -TERM "$pid" 2>/dev/null
         for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
         kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
       fi
-      # Parent bash öldür → gnome-terminal penceresi kapanır → orphan yok
       if [ -n "$parent_bash" ] && [ "$parent_bash" != "1" ]; then
         local pbcmd; pbcmd=$(ps -o comm= -p "$parent_bash" 2>/dev/null | tr -d ' ')
         if [ "$pbcmd" = "bash" ]; then
           kill -KILL "$parent_bash" 2>/dev/null && echo "  → killed parent bash $parent_bash (window closes)"
         fi
       fi
-      echo "  → done"
+      # 0b) hedef desk'e switch (yeni pencere oraya doğar)
+      if [ "$old_desk" != "-1" ] && [ "$old_desk" -ge 0 ] 2>/dev/null; then
+        wmctrl -s "$old_desk" 2>/dev/null
+        sleep 0.5
+      fi
+      echo "  → done (current desktop = $old_desk)"
       echo "[2/2] visible gnome-terminal + RC + prefilled wrap-up..."
       # Mesajı bash-c için escape: tek tırnak içine al, içindeki tek tırnakları kaç
       local msg_esc; msg_esc=$(printf '%s' "$message" | sed "s/'/'\\\\''/g")
