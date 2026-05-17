@@ -387,11 +387,13 @@ cmd_layout() {
   local per=4
   local pin_csv=""
   local skip_self=1
+  local skip_sticky=1   # sticky (all-desktops) pencerelere DOKUNMA (default)
   for a in "$@"; do
     case "$a" in
       --per=*) per="${a#--per=}";;
       --pin=*) pin_csv="${a#--pin=}";;
       --include-self) skip_self=0;;
+      --include-sticky) skip_sticky=0;;
       [0-9]*) per="$a";;
     esac
   done
@@ -432,12 +434,18 @@ EOF
   declare -a pin_wins=() oth_wins=()
   while IFS= read -r line; do
     local win=$(echo "$line" | awk '{print $1}')
+    local desk=$(echo "$line" | awk '{print $2}')
     local rest=$(echo "$line" | cut -d' ' -f5- | sed 's/^ *//')
     # title: remove leading spinner char + space
     local title=$(echo "$rest" | sed -E 's/^[^A-Za-z0-9~/]+ ?//' | head -c 40)
-    # skip our own conversation window (heuristic)
+    # skip self window
     if [ "$skip_self" = "1" ] && echo "$rest" | grep -qi "machine cleaning required"; then
       echo "SKIP self window: $rest"
+      continue
+    fi
+    # skip sticky (desk=-1 in wmctrl output = on all desktops)
+    if [ "$skip_sticky" = "1" ] && [ "$desk" = "-1" ]; then
+      echo "SKIP sticky: $title (--include-sticky ile dahil edilebilir)"
       continue
     fi
     # name = ilk kelime (örn "carla13 ..." → carla13)
