@@ -40,4 +40,7 @@
 
 ## Kapatılmış (karar verildi)
 
-_(buraya taşınacaklar geldikçe)_
+### Opus + auto mode
+- **Karar (2026-05-17):** Opus model kullanan session'lar `--permission-mode=auto` ile başlatılacak. Sonnet'lar default mode kalır.
+- **Sebep:** Opus daha pahalı + daha karmaşık iş yapıyor; permission prompt'larıyla beklemek istemiyoruz. Auto mode'da otomatik onay.
+- **Uygulama:** `claudeops rc <opus-names> --model=opus --permission-mode=auto ...`
