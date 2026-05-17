@@ -1,0 +1,663 @@
+#!/bin/bash
+# claudeops — açık Claude CLI session'ları toplu yönet
+# Bu konuşmayı (current session) HER ZAMAN korur, dokunmaz.
+#
+# Kullanım: bkz `claudeops help`
+# Yazılım dependency: bash, python3, gnome-terminal (sadece visible mode), claude (CLI)
+#
+# Anahtar öğrendiklerimiz:
+#   - Slash command'lar `-p` mode'da çalışır AMA stdin /dev/null'a yönlendirilmeli
+#     (yoksa loop'un stdin'i prompt'a sızar)
+#   - Compact başarısı isCompactSummary marker'ının jsonl'a +1 eklenmesiyle anlaşılır
+#   - Rate limit: "You've hit your limit · resets X" mesajı assistant yanıtı olarak gelir
+#   - Detached pty: `nohup setsid script -qfc 'cmd' /tmp/log </dev/null >/dev/null 2>&1 &`
+#   - Visible window: `gnome-terminal --window --title=X --working-directory=Y -- bash -c "cmd; exec bash"`
+
+set -u
+SESS_DIR="$HOME/.claude/sessions"
+PROJ_DIR="$HOME/.claude/projects"
+LOG_DIR="/tmp/claudeops"
+mkdir -p "$LOG_DIR"
+
+# ─────────────────────────────────────────────
+# Self detection
+# ─────────────────────────────────────────────
+find_self_claude_pid() {
+  # $$ → ata zincirini yürü → ilk claude binary'sini bul
+  local p=$$
+  while [ -n "$p" ] && [ "$p" != "1" ]; do
+    local cmd
+    cmd=$(ps -o comm= -p "$p" 2>/dev/null | tr -d ' ')
+    [ "$cmd" = "claude" ] && { echo "$p"; return; }
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+  done
+}
+
+self_pid() {
+  local p
+  p=$(find_self_claude_pid)
+  [ -z "$p" ] && { echo "WARN: kendini bulamadım (claude alt-süreci değil misin?)" >&2; return 1; }
+  echo "$p"
+}
+
+self_sid() {
+  local p
+  p=$(self_pid 2>/dev/null) || return 1
+  [ -f "$SESS_DIR/$p.json" ] || return 1
+  python3 -c "import json;print(json.load(open('$SESS_DIR/$p.json'))['sessionId'])"
+}
+
+# ─────────────────────────────────────────────
+# Session metadata listing
+# ─────────────────────────────────────────────
+# Format: pid \t name \t status \t sessionId \t cwd \t bridge
+all_sessions_tsv() {
+  for f in "$SESS_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    python3 -c "
+import json
+d = json.load(open('$f'))
+parts = [str(d.get('pid','')), (d.get('name') or '-'), d.get('status',''), d.get('sessionId',''), d.get('cwd',''), (d.get('bridgeSessionId') or '-')]
+print('\t'.join(parts))
+" 2>/dev/null
+  done
+}
+
+# Filter helpers
+filter_not_self() {
+  local sp
+  sp=$(self_pid 2>/dev/null || echo "")
+  if [ -z "$sp" ]; then cat; return; fi
+  awk -F'\t' -v sp="$sp" '$1 != sp'
+}
+
+filter_named_only() {
+  awk -F'\t' '$2 != "-" && $2 != ""'
+}
+
+filter_by_names() {
+  local names=("$@")
+  local pattern
+  pattern=$(printf '|^%s\t' "${names[@]}" | cut -c2-)
+  # match pattern is on "<name>\t..." but our TSV has pid first. Re-arrange:
+  awk -F'\t' -v want="$(printf '%s\n' "${names[@]}")" '
+    BEGIN { while ((getline n < "/dev/stdin") > 0) ok[n]=1 }
+    { if ($2 in ok) print }
+  ' <<<"$(printf '%s\n' "${names[@]}")"
+}
+
+# JSONL path discovery
+find_jsonl() {
+  local sid="$1"
+  find "$PROJ_DIR" -name "${sid}.jsonl" 2>/dev/null | head -1
+}
+
+# ─────────────────────────────────────────────
+# Target resolver: "all-but-self" | "all" | "<name> <name>..."
+# ─────────────────────────────────────────────
+resolve_targets() {
+  local first="${1:-}"; shift || true
+  case "$first" in
+    all-but-self|notself|not-self|--not-self)
+      all_sessions_tsv | filter_not_self
+      ;;
+    all)
+      all_sessions_tsv
+      ;;
+    "")
+      echo "ERROR: hedef belirt (örn 'all-but-self' veya '<name1> <name2>...')" >&2
+      return 2
+      ;;
+    *)
+      local names=("$first" "$@")
+      local all
+      all=$(all_sessions_tsv | filter_not_self)
+      printf '%s\n' "$all" | awk -F'\t' -v want="$(printf '%s|' "${names[@]}")" '
+        BEGIN { n=split(want,a,"|"); for(i=1;i<=n;i++) if(a[i]!="") ok[a[i]]=1 }
+        { if ($2 in ok) print }
+      '
+      ;;
+  esac
+}
+
+# ─────────────────────────────────────────────
+# Backup all target jsonls (called by destructive ops)
+# ─────────────────────────────────────────────
+backup_jsonl() {
+  local sid="$1" ; local jsonl ; jsonl=$(find_jsonl "$sid")
+  [ -z "$jsonl" ] && return 1
+  local stamp; stamp=$(date +%Y%m%d-%H%M%S)
+  cp -n "$jsonl" "$jsonl.bak.$stamp" 2>/dev/null || true
+}
+
+# ─────────────────────────────────────────────
+# CMD: list
+# ─────────────────────────────────────────────
+cmd_list() {
+  local target="${1:-all}"
+  local rows; rows=$(resolve_targets "$target")
+  local sp; sp=$(self_pid 2>/dev/null || echo "")
+  printf "%7s %-15s %-7s %-12s %s\n" "PID" "NAME" "STATUS" "BRIDGE" "CWD"
+  printf "%7s %-15s %-7s %-12s %s\n" "-------" "---------------" "-------" "------------" "---"
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    local mark="" ; [ "$pid" = "$sp" ] && mark="(self)"
+    local b="${bridge:0:12}"; [ "$b" = "-" ] && b="-"
+    printf "%7s %-15s %-7s %-12s %s %s\n" "$pid" "$name" "$status" "$b" "$cwd" "$mark"
+  done <<<"$rows"
+}
+
+# ─────────────────────────────────────────────
+# CMD: kill
+# ─────────────────────────────────────────────
+cmd_kill() {
+  local target="${1:-}"
+  [ -z "$target" ] && { echo "kullanım: claudeops kill <all-but-self|name...>"; return 2; }
+  local rows; rows=$(resolve_targets "$@")
+  local sp; sp=$(self_pid 2>/dev/null || echo "")
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    if [ "$pid" = "$sp" ]; then echo "SKIP SELF $name ($pid)"; continue; fi
+    if kill -TERM "$pid" 2>/dev/null; then
+      echo "TERM $name ($pid)"
+    else
+      echo "GONE $name ($pid)"
+    fi
+  done <<<"$rows"
+  # wait for graceful exit
+  local round=0
+  while [ $round -lt 20 ]; do
+    local alive=0
+    while IFS=$'\t' read pid _ _ _ _ _; do
+      [ -z "$pid" ] && continue
+      [ "$pid" = "$sp" ] && continue
+      kill -0 "$pid" 2>/dev/null && alive=$((alive+1))
+    done <<<"$rows"
+    [ "$alive" -eq 0 ] && break
+    sleep 0.5; round=$((round+1))
+  done
+  echo "done"
+}
+
+# ─────────────────────────────────────────────
+# CMD: compact
+# Her hedef için claude --resume <sid> -p "/compact" <-dev/null
+# isCompactSummary marker artarsa OK
+# ─────────────────────────────────────────────
+cmd_compact() {
+  local target="${1:-}"; shift || true
+  local backup=0 visible=0
+  for a in "$@"; do
+    case "$a" in
+      --backup) backup=1;;
+      --visible) visible=1;;
+    esac
+  done
+  [ -z "$target" ] && { echo "kullanım: claudeops compact <all-but-self|name...> [--backup] [--visible]"; return 2; }
+  local rows; rows=$(resolve_targets "$target" "$@")
+  local log="$LOG_DIR/compact.log"; : > "$log"
+  local ok=0 fail=0
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    local jsonl; jsonl=$(find_jsonl "$sid")
+    [ -z "$jsonl" ] && { echo "SKIP $name (jsonl yok)"; continue; }
+    [ "$backup" = "1" ] && backup_jsonl "$sid"
+    local before; before=$(grep -c '"isCompactSummary":true' "$jsonl" 2>/dev/null || true)
+    before=${before:-0}
+    echo "=== $name (before=$before) ==="
+    local start; start=$(date +%s)
+    if [ "$visible" = "1" ]; then
+      # Görünür mod: gnome-terminal penceresi açar; compact bittikten sonra "[done]" yazar
+      # Pencere kapanır. Pencere log dosyasına da yazar ki sonradan inceleyebilelim.
+      local vlog="$LOG_DIR/compact-${name}.live.log"
+      gnome-terminal --window --title="compact:$name" --working-directory="$cwd" \
+        -- bash -c "echo '[compact START $name]'; timeout 300 claude --resume '$sid' -p '/compact' < /dev/null 2>&1 | tee '$vlog'; echo; echo '[compact END $name rc=$?]'; sleep 3" &
+      # arkaplanda fakat sequential — sonraki başlamadan bittiğini bekle (penceredeki bash ile asenkron)
+      sleep 4   # pencerenin açılması + claude startup için kısa pencere
+      # Pencere kapanana kadar bekle (compact bittikten 3s sonra kapanır)
+      local term_pid=$!
+      wait $term_pid 2>/dev/null
+    else
+      cd "$cwd" || continue
+      local out rc
+      out=$(timeout 300 claude --resume "$sid" -p "/compact" < /dev/null 2>&1)
+      rc=$?
+      if echo "$out" | grep -qiE "you.?ve hit your limit|usage.?limit|resets [0-9]"; then
+        echo "  → USAGE-LIMIT (output: $(echo "$out" | head -2 | tr '\n' ' '))"
+        echo "$name|limit" >> "$log"
+        fail=$((fail+1)); break
+      fi
+    fi
+    local dur=$(($(date +%s)-start))
+    local after; after=$(grep -c '"isCompactSummary":true' "$jsonl" 2>/dev/null || true); after=${after:-0}
+    if [ "$after" -gt "$before" ]; then
+      echo "  → OK ($before→$after) dur=${dur}s"
+      echo "$name|ok|$before→$after|${dur}s" >> "$log"
+      ok=$((ok+1))
+    else
+      echo "  → NO-MARKER dur=${dur}s"
+      echo "$name|nomarker|${dur}s" >> "$log"
+      fail=$((fail+1))
+    fi
+    sleep 3
+  done <<<"$rows"
+  echo "=== compact summary: ok=$ok fail=$fail ==="
+  echo "log: $log"
+}
+
+# ─────────────────────────────────────────────
+# CMD: cleanup — orphan gnome-terminal pencerelerini (Claude koşmayan, bash-only) kapat
+# ─────────────────────────────────────────────
+cmd_cleanup() {
+  local dry=0
+  for a in "$@"; do case "$a" in --dry-run) dry=1;; esac; done
+  local gtp; gtp=$(pgrep -x gnome-terminal-server | head -1)
+  [ -z "$gtp" ] && { echo "gnome-terminal-server koşmuyor"; return 1; }
+  local sp; sp=$(self_pid 2>/dev/null || echo "")
+  echo "=== orphan bash-only gnome-terminal pencereleri ==="
+  local count=0
+  for p in $(pgrep -P "$gtp"); do
+    # Bu bash'in claude child'ı var mı?
+    local child; child=$(pgrep -P "$p" claude 2>/dev/null | head -1)
+    if [ -z "$child" ]; then
+      local cwd; cwd=$(readlink "/proc/$p/cwd" 2>/dev/null)
+      # Self bash'ı atla (rare, ama emniyet için)
+      if [ "$p" = "$(ps -o ppid= -p "$sp" 2>/dev/null | tr -d ' ')" ]; then
+        echo "  SKIP self-bash pid=$p cwd=$cwd"
+        continue
+      fi
+      count=$((count+1))
+      if [ "$dry" = "1" ]; then
+        echo "  WOULD KILL bash-pid=$p cwd=$cwd"
+      else
+        kill -KILL "$p" 2>/dev/null && echo "  KILLED bash-pid=$p cwd=$cwd"
+      fi
+    fi
+  done
+  if [ "$count" -eq 0 ]; then
+    echo "  (yok — temiz)"
+  fi
+  [ "$dry" = "1" ] && echo "(dry-run; uygulamak için --dry-run'sız çalıştır)"
+}
+
+# ─────────────────────────────────────────────
+# CMD: rc
+# Visible (gnome-terminal pencere) veya detached (script -qfc) modda RC ile aç
+# ─────────────────────────────────────────────
+cmd_rc() {
+  local target="${1:-}"; shift || true
+  local mode="visible"        # visible (default) | detached
+  local kill_first=0
+  local rename=""             # yeni isim (aynı sessionId)
+  local new_session=0         # yeni sessionId (resume yok)
+  local rename_pattern=""     # otomatik suffix değişimi: 13→14
+  for a in "$@"; do
+    case "$a" in
+      --detached|--headless) mode="detached";;
+      --visible)             mode="visible";;
+      --kill-first)          kill_first=1;;
+      --new)                 new_session=1;;
+      --rename=*)            rename="${a#--rename=}";;
+      --suffix=*)            rename_pattern="${a#--suffix=}";;
+    esac
+  done
+  [ -z "$target" ] && {
+    cat <<EOF
+kullanım: claudeops rc <all-but-self|name...> [seçenekler]
+seçenekler:
+  --visible          (default) gnome-terminal penceresi
+  --detached         arkaplan pty, görünmez
+  --kill-first       açmadan önce eski pid'i SIGTERM
+  --new              YENİ session başlat (resume yok, konuşma boş)
+  --rename=<yeni>    aynı sessionId resume ama yeni name (tek hedef için)
+  --suffix=<n>       toplu rename: name'in son rakam-grubunu <n> ile değiştirir
+                     (örn --suffix=14 → carla13→carla14, rve13→rve14)
+EOF
+    return 2
+  }
+  local rows; rows=$(resolve_targets "$target" "$@")
+  local sp; sp=$(self_pid 2>/dev/null || echo "")
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    [ "$pid" = "$sp" ] && { echo "SKIP SELF $name"; continue; }
+    if [ "$kill_first" = "1" ] && kill -0 "$pid" 2>/dev/null; then
+      kill -TERM "$pid" 2>/dev/null
+      for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+    fi
+    # Effective name + resume flag
+    local effective_name="$name"
+    [ -n "$rename" ] && effective_name="$rename"
+    if [ -n "$rename_pattern" ]; then
+      # son rakam grubunu değiştir: oa13 → oa<pattern>
+      effective_name=$(echo "$name" | sed -E "s/[0-9]+$/${rename_pattern}/")
+    fi
+    local resume_arg="--resume $sid"
+    [ "$new_session" = "1" ] && resume_arg=""
+    if [ "$mode" = "visible" ]; then
+      gnome-terminal --window --title="$effective_name" --working-directory="$cwd" \
+        -- bash -c "claude $resume_arg --remote-control '$effective_name'; exec bash" &
+      echo "VISIBLE $effective_name window ($([ "$new_session" = "1" ] && echo NEW || echo "resume $sid"))"
+    else
+      ( cd "$cwd" && nohup setsid script -qfc \
+          "claude $resume_arg --remote-control $effective_name" \
+          "$LOG_DIR/${effective_name}-rc.log" </dev/null >/dev/null 2>&1 & )
+      echo "DETACHED $effective_name"
+    fi
+    sleep 1.5
+  done <<<"$rows"
+  sleep 6
+  echo "=== bridge check ==="
+  for f in "$SESS_DIR"/*.json; do
+    python3 -c "
+import json
+d = json.load(open('$f'))
+print('  %-15s %s %s' % (d.get('name','-') or '-', d.get('status',''), (d.get('bridgeSessionId') or '-')[:32]))
+" 2>/dev/null
+  done | sort
+}
+
+# ─────────────────────────────────────────────
+# CMD: desktops <N> — GNOME workspace sayısını sabitle
+# install gerektirmez; gsettings native
+# ─────────────────────────────────────────────
+cmd_desktops() {
+  local n="${1:-}"
+  [ -z "$n" ] && {
+    local cur dyn
+    cur=$(gsettings get org.gnome.desktop.wm.preferences num-workspaces 2>/dev/null)
+    dyn=$(gsettings get org.gnome.mutter dynamic-workspaces 2>/dev/null)
+    echo "current num-workspaces: $cur (dynamic=$dyn)"
+    echo "kullanım: claudeops desktops <N>"
+    return
+  }
+  gsettings set org.gnome.mutter dynamic-workspaces false
+  gsettings set org.gnome.desktop.wm.preferences num-workspaces "$n"
+  echo "set: num-workspaces=$n (dynamic=false)"
+}
+
+# ─────────────────────────────────────────────
+# CMD: layout grid [4]
+# Mevcut gnome-terminal pencerelerini ekran[primary]'da 2×2 grid'lerle
+# her workspace'e <grid-size> tane dağıt.
+# wmctrl gerekli — yoksa açıklayıcı hata.
+# ─────────────────────────────────────────────
+cmd_layout() {
+  local kind="${1:-grid}"; shift || true
+  local per=4
+  local pin_csv=""
+  local skip_self=1
+  for a in "$@"; do
+    case "$a" in
+      --per=*) per="${a#--per=}";;
+      --pin=*) pin_csv="${a#--pin=}";;
+      --include-self) skip_self=0;;
+      [0-9]*) per="$a";;
+    esac
+  done
+  if ! command -v wmctrl >/dev/null 2>&1; then
+    cat <<EOF
+HATA: wmctrl kurulu değil. Layout için tek pratik yol bu paket.
+Kur: sudo apt install -y wmctrl
+
+(Aynı zamanda desktop sayısı arttırmak için: claudeops desktops <N>)
+EOF
+    return 1
+  fi
+  # Primary monitor geometry
+  local geom sw sh screen_x screen_y W H
+  geom=$(xrandr 2>/dev/null | awk '/ primary /{match($0,/[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/); print substr($0,RSTART,RLENGTH); exit}')
+  [ -z "$geom" ] && geom=$(xrandr 2>/dev/null | awk '/ connected /{match($0,/[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/); print substr($0,RSTART,RLENGTH); exit}')
+  IFS='x+' read -r sw sh screen_x screen_y <<<"$geom"
+  W=$((sw/2)); H=$((sh/2))
+  local TL="$screen_x,$screen_y,$W,$H"
+  local TR="$((screen_x+W)),$screen_y,$W,$H"
+  local BL="$screen_x,$((screen_y+H)),$W,$H"
+  local BR="$((screen_x+W)),$((screen_y+H)),$W,$H"
+  local quads=("$TL" "$TR" "$BL" "$BR")
+  echo "screen: ${sw}×${sh} @ (${screen_x},${screen_y}); quadrant: ${W}×${H}; per/desktop: $per"
+  # Pinned list
+  declare -A pinned=()
+  if [ -n "$pin_csv" ]; then
+    IFS=',' read -ra parr <<<"$pin_csv"
+    for n in "${parr[@]}"; do pinned["$n"]=1; done
+    echo "pinned to desktop 0: ${parr[*]}"
+  fi
+  # gnome-terminal-server pid
+  local gtp; gtp=$(pgrep -x gnome-terminal-server | head -1)
+  # Self gnome-terminal window title belirleyici: WM_NAME genelde değişken; en sağlam yöntem
+  # self_pid → ata zincirinden bash → tty → window mapping; hızlı yol: title regex
+  local self_pid; self_pid=$(self_pid 2>/dev/null || echo "")
+  # Collect windows in two passes: pinned first, then others
+  declare -a pin_wins=() oth_wins=()
+  while IFS= read -r line; do
+    local win=$(echo "$line" | awk '{print $1}')
+    local rest=$(echo "$line" | cut -d' ' -f5- | sed 's/^ *//')
+    # title: remove leading spinner char + space
+    local title=$(echo "$rest" | sed -E 's/^[^A-Za-z0-9~/]+ ?//' | head -c 40)
+    # skip our own conversation window (heuristic)
+    if [ "$skip_self" = "1" ] && echo "$rest" | grep -qi "machine cleaning required"; then
+      echo "SKIP self window: $rest"
+      continue
+    fi
+    # name = ilk kelime (örn "carla13 ..." → carla13)
+    local nm=$(echo "$title" | awk '{print $1}')
+    if [ -n "${pinned[$nm]:-}" ]; then
+      pin_wins+=("$win|$nm")
+    else
+      oth_wins+=("$win|$nm")
+    fi
+  done < <(wmctrl -l -p | awk -v g="$gtp" '$3 == g')
+
+  echo "pinned-count: ${#pin_wins[@]}  others-count: ${#oth_wins[@]}"
+
+  # Desktop 0: pinned'leri yerleştir
+  local idx=0
+  for item in "${pin_wins[@]}"; do
+    local win="${item%|*}"; local nm="${item#*|}"
+    local quad="${quads[$((idx % per))]}"
+    wmctrl -i -r "$win" -b remove,maximized_vert,maximized_horz 2>/dev/null
+    wmctrl -i -r "$win" -t 0 2>/dev/null
+    wmctrl -i -r "$win" -e "0,$quad" 2>/dev/null
+    echo "  pinned $nm → ws=0 quad=$quad"
+    idx=$((idx+1))
+    [ $idx -ge $per ] && break  # desktop 0 dolduysa kalan pinned'lar es geçilir (uyarı yok)
+  done
+
+  # Diğerleri desktop 1..N'e dağıt
+  local idx2=0 ws=1
+  for item in "${oth_wins[@]}"; do
+    local win="${item%|*}"; local nm="${item#*|}"
+    local quad="${quads[$((idx2 % per))]}"
+    wmctrl -i -r "$win" -b remove,maximized_vert,maximized_horz 2>/dev/null
+    wmctrl -i -r "$win" -t "$ws" 2>/dev/null
+    wmctrl -i -r "$win" -e "0,$quad" 2>/dev/null
+    echo "  $nm → ws=$ws quad=$quad"
+    idx2=$((idx2+1))
+    if [ $((idx2 % per)) -eq 0 ]; then ws=$((ws+1)); fi
+  done
+
+  local needed_ws=$((ws + 1))
+  echo "→ workspace count en az: $needed_ws  (mevcut: $(gsettings get org.gnome.desktop.wm.preferences num-workspaces 2>/dev/null))"
+  echo "Yetersiz ise: claudeops desktops $needed_ws"
+}
+
+# ─────────────────────────────────────────────
+# CMD: new <name> <cwd>  — fresh session
+# ─────────────────────────────────────────────
+cmd_new() {
+  local name="${1:-}"; local cwd="${2:-$PWD}"
+  [ -z "$name" ] && { echo "kullanım: claudeops new <name> [cwd]"; return 2; }
+  gnome-terminal --window --title="$name" --working-directory="$cwd" \
+    -- bash -c "claude --remote-control '$name'; exec bash" &
+  echo "NEW $name in $cwd"
+}
+
+# ─────────────────────────────────────────────
+# CMD: send
+# Her hedefe -p "metin" gönderir; konuşmaya bir user/assistant turu ekler
+# ─────────────────────────────────────────────
+cmd_send() {
+  local target="${1:-}"; shift || true
+  local text="${*:-}"
+  [ -z "$target" ] || [ -z "$text" ] && {
+    echo "kullanım: claudeops send <all-but-self|name...> -- \"prompt metni\""; return 2
+  }
+  # Allow "<targets> -- text" syntax: split at --
+  local targets=() msg=""
+  if [[ " $text " == *" -- "* ]]; then
+    local before_dd after_dd
+    before_dd="${text%% -- *}"; after_dd="${text#* -- }"
+    targets=("$target" $before_dd); msg="$after_dd"
+  else
+    targets=("$target"); msg="$text"
+  fi
+  local rows; rows=$(resolve_targets "${targets[@]}")
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    echo "=== sending to $name ==="
+    cd "$cwd" || continue
+    local start; start=$(date +%s)
+    local out rc
+    out=$(timeout 600 claude --resume "$sid" -p "$msg" < /dev/null 2>&1)
+    rc=$?
+    local dur=$(($(date +%s)-start))
+    echo "  rc=$rc dur=${dur}s"
+    echo "$out" | head -5 | sed 's/^/  | /'
+    sleep 2
+  done <<<"$rows"
+}
+
+# ─────────────────────────────────────────────
+# CMD: batch — full pipeline: backup → kill → compact → rc (visible)
+# ─────────────────────────────────────────────
+cmd_batch() {
+  local target="${1:-all-but-self}"
+  echo "Pipeline: backup → kill → compact → rc (visible) on $target"
+  echo ""
+  echo "--- 1) backup ---"
+  local rows; rows=$(resolve_targets "$target")
+  while IFS=$'\t' read pid name _ sid _ _; do
+    [ -z "$sid" ] && continue
+    backup_jsonl "$sid" && echo "backup $name"
+  done <<<"$rows"
+  echo "--- 2) kill ---"
+  cmd_kill "$target"
+  echo "--- 3) compact ---"
+  cmd_compact "$target"
+  echo "--- 4) rc (visible) ---"
+  cmd_rc "$target" --visible
+}
+
+# ─────────────────────────────────────────────
+# CMD: self
+# ─────────────────────────────────────────────
+cmd_self() {
+  local p; p=$(find_self_claude_pid)
+  if [ -z "$p" ]; then echo "(claude alt-süreci değilim — self yok)"; return 1; fi
+  python3 -c "
+import json
+d = json.load(open('$SESS_DIR/$p.json'))
+print('pid:        ', d['pid'])
+print('sessionId:  ', d['sessionId'])
+print('name:       ', d.get('name','-') or '-')
+print('cwd:        ', d['cwd'])
+print('status:     ', d.get('status',''))
+print('bridge:     ', d.get('bridgeSessionId','-'))
+print('bridge-url: ', 'https://claude.ai/code/' + d.get('bridgeSessionId','') if d.get('bridgeSessionId') else '(no RC)')
+"
+}
+
+# ─────────────────────────────────────────────
+# help
+# ─────────────────────────────────────────────
+cmd_help() {
+  cat <<'HELP'
+claudeops — açık Claude CLI session'ları toplu yönet
+   (Bu konuşma her zaman korunur — find_self_claude_pid via $$ ata zinciri)
+
+KULLANIM:
+  claudeops self
+      Bu konuşmanın pid, sessionId, bridge URL'ini göster.
+
+  claudeops list [all|all-but-self|<name>...]
+      Açık session'ları tablo olarak listele.
+
+  claudeops kill <all-but-self|<name>...>
+      Hedef(ler)e SIGTERM. 10s grace, sonra ölmüş mü kontrol.
+
+  claudeops compact <all-but-self|<name>...> [--backup]
+      Her hedefe `claude --resume <sid> -p "/compact" < /dev/null`.
+      Başarı: jsonl'da isCompactSummary marker'ı +1 artarsa.
+      Rate-limit'te otomatik durur. --backup ile önce jsonl yedeği.
+
+  claudeops rc <all-but-self|<name>...> [--detached|--visible] [--kill-first]
+      RC ile yeniden aç.
+        --visible (default): gnome-terminal penceresinde, görünür
+        --detached: script -qfc ile arkaplan pty, görünmez
+        --kill-first: önce mevcut pid'i SIGTERM, sonra aç
+
+  claudeops send <name1[,nameN]> -- "prompt metni"
+      Hedef(ler)e -p ile prompt gönder. user/assistant turu eklenir.
+      Slash command da olabilir: `claudeops send all-but-self -- "/clear"`
+
+  claudeops batch <all-but-self>
+      Tam pipeline: backup → kill → compact → rc (visible). 14 session için
+      ~30-50dk + token harcaması. Rate-limit'te compact aşamasında durur.
+
+  claudeops desktops [N]
+      GNOME workspace sayısını sabit N olarak ayarla (dynamic-workspaces=off).
+      N verilmezse mevcut değeri gösterir. gsettings ile, install gerektirmez.
+
+  claudeops layout [grid] [N] [--per=4] [--pin=<name1,name2,...>]
+      Pencereleri 2×2 grid yerleştir, her workspace'e <per> tane (default 4).
+      --pin=carla13,hcr13,...  bu isimler desktop 0'a; geri kalanı ws 1..N'e.
+      İhtiyaç: wmctrl. Yetersiz workspace varsa ekrana mesaj yazar (claudeops
+      desktops <N> ile arttır).
+
+  claudeops new <name> [cwd]
+      Yeni (boş) Claude session başlat. RC aktif, görünür gnome-terminal.
+      cwd verilmezse mevcut PWD.
+
+  claudeops cleanup [--dry-run]
+      Orphan gnome-terminal pencerelerini (bash-prompt'a düşmüş, claude yok)
+      kapat. Self bash hariç tutulur. --dry-run ile sadece listele.
+
+  claudeops compact ... --visible
+      Compact'i gnome-terminal penceresinde aç (canlı output görünür).
+      Pencere işlem bittikten 3s sonra kapanır.
+
+  claudeops help
+      Bu metni göster.
+
+HEDEF SYNTAX:
+  all              — tüm session'lar (self DAHİL — dikkat!)
+  all-but-self     — self hariç hepsi (TAVSİYE EDİLEN)
+  <name1> <name2>  — TSV name alanına göre eşleş (self otomatik hariç)
+
+NOTLAR:
+  - Compact başarı kanıtı: ~/.claude/projects/<dir>/<sid>.jsonl içinde
+    `"isCompactSummary":true` marker'ı +1 artmalı.
+  - Bridge URL: https://claude.ai/code/<bridgeSessionId>
+  - Backup: <sid>.jsonl.bak.YYYYMMDD-HHMMSS yan-yana yazılır.
+  - Log: /tmp/claudeops/compact.log
+HELP
+}
+
+# ─────────────────────────────────────────────
+# Dispatcher
+# ─────────────────────────────────────────────
+case "${1:-help}" in
+  help|--help|-h) cmd_help ;;
+  self) cmd_self ;;
+  list) shift; cmd_list "$@" ;;
+  kill) shift; cmd_kill "$@" ;;
+  compact) shift; cmd_compact "$@" ;;
+  rc) shift; cmd_rc "$@" ;;
+  send) shift; cmd_send "$@" ;;
+  batch) shift; cmd_batch "$@" ;;
+  desktops|workspaces) shift; cmd_desktops "$@" ;;
+  layout) shift; cmd_layout "$@" ;;
+  new) shift; cmd_new "$@" ;;
+  cleanup) shift; cmd_cleanup "$@" ;;
+  *) echo "Bilinmeyen komut: $1"; cmd_help; exit 2 ;;
+esac
