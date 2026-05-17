@@ -1,0 +1,9 @@
+# claudeops .gitignore
+*.bak.*
+/tmp/
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
+*.log
