@@ -251,7 +251,8 @@ cmd_compact() {
 cmd_cleanup() {
   local dry=0
   for a in "$@"; do case "$a" in --dry-run) dry=1;; esac; done
-  local gtp; gtp=$(pgrep -x gnome-terminal-server | head -1)
+  # Linux'ta comm 15 char'a truncate edilir → "gnome-terminal-" görünür
+  local gtp; gtp=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
   [ -z "$gtp" ] && { echo "gnome-terminal-server koşmuyor"; return 1; }
   local sp; sp=$(self_pid 2>/dev/null || echo "")
   echo "=== orphan bash-only gnome-terminal pencereleri ==="
@@ -556,6 +557,31 @@ cmd_handover() {
   local log="$LOG_DIR/handover.log"; : > "$log"
   local opened=0 failed=0
 
+  # PRE-CHECK: HEPSİ idle olana kadar bekle (her şey "beklerken" başla)
+  echo ""
+  echo "[pre-check] tüm hedefler idle mi? (busy olan varsa bekler)"
+  local pre_round=0
+  while true; do
+    local busy_list=""
+    while IFS=$'\t' read p2 n2 s2 _ _ _; do
+      [ -z "$p2" ] && continue
+      local cur; cur=$(python3 -c "
+import json
+try: print(json.load(open('$SESS_DIR/$p2.json'))['status'])
+except: print('gone')
+" 2>/dev/null)
+      [ "$cur" = "busy" ] && busy_list="$busy_list $n2"
+    done <<<"$rows"
+    [ -z "$busy_list" ] && { echo "  → tüm hedefler idle, başlıyoruz"; break; }
+    if [ $pre_round -ge 120 ]; then
+      echo "  WARN: 60dk geçti, hâlâ busy olanlar:$busy_list — yine de devam"
+      break
+    fi
+    [ $((pre_round % 4)) -eq 0 ] && echo "  [pre-busy-wait] busy:$busy_list (geçen: $((pre_round*30/60))dk)"
+    sleep 30
+    pre_round=$((pre_round+1))
+  done
+
   while IFS=$'\t' read pid name status sid cwd bridge; do
     [ -z "$pid" ] && continue
     echo ""
@@ -583,15 +609,22 @@ except: print('gone')
     done
 
     if [ "$mode" = "visible" ]; then
-      # VISIBLE: kill old TUI, open new gnome-terminal with claude --resume <sid>
-      # --remote-control <name> "wrap-up message" — UI görünür + RC aktif (telefondan onay)
-      echo "[1/2] kill old TUI (pid=$pid)..."
+      # VISIBLE: kill old TUI + parent bash (pencere kapanır, orphan yok), sonra yeni gnome-terminal
+      echo "[1/2] kill old TUI (pid=$pid) + parent bash..."
+      local parent_bash; parent_bash=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
       if kill -0 "$pid" 2>/dev/null; then
         kill -TERM "$pid" 2>/dev/null
         for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
         kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
       fi
-      echo "  → killed"
+      # Parent bash öldür → gnome-terminal penceresi kapanır → orphan yok
+      if [ -n "$parent_bash" ] && [ "$parent_bash" != "1" ]; then
+        local pbcmd; pbcmd=$(ps -o comm= -p "$parent_bash" 2>/dev/null | tr -d ' ')
+        if [ "$pbcmd" = "bash" ]; then
+          kill -KILL "$parent_bash" 2>/dev/null && echo "  → killed parent bash $parent_bash (window closes)"
+        fi
+      fi
+      echo "  → done"
       echo "[2/2] visible gnome-terminal + RC + prefilled wrap-up..."
       # Mesajı bash-c için escape: tek tırnak içine al, içindeki tek tırnakları kaç
       local msg_esc; msg_esc=$(printf '%s' "$message" | sed "s/'/'\\\\''/g")
