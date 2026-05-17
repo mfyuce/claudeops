@@ -492,17 +492,26 @@ EOF
 
   echo "pinned-count: ${#pin_wins[@]}  others-count: ${#oth_wins[@]}"
 
+  # Yardımcı: bir pencereyi (ws, geom) konumuna yerleştir
+  # Mutter wmctrl -t ClientMessage'ı bazen yoksayıyor; xprop set + sleep + wmctrl -e güvenli
+  _place_win() {
+    local win="$1" ws="$2" quad="$3"
+    xprop -id "$win" -f _NET_WM_DESKTOP 32c -set _NET_WM_DESKTOP "$ws" 2>/dev/null
+    sleep 0.2
+    wmctrl -i -r "$win" -b remove,maximized_vert,maximized_horz 2>/dev/null
+    wmctrl -i -r "$win" -e "0,$quad" 2>/dev/null
+    sleep 0.2
+  }
+
   # Desktop 0: pinned'leri yerleştir
   local idx=0
   for item in "${pin_wins[@]}"; do
     local win="${item%|*}"; local nm="${item#*|}"
     local quad="${quads[$((idx % per))]}"
-    wmctrl -i -r "$win" -b remove,maximized_vert,maximized_horz 2>/dev/null
-    wmctrl -i -r "$win" -t 0 2>/dev/null
-    wmctrl -i -r "$win" -e "0,$quad" 2>/dev/null
+    _place_win "$win" 0 "$quad"
     echo "  pinned $nm → ws=0 quad=$quad"
     idx=$((idx+1))
-    [ $idx -ge $per ] && break  # desktop 0 dolduysa kalan pinned'lar es geçilir (uyarı yok)
+    [ $idx -ge $per ] && break
   done
 
   # Diğerleri desktop 1..N'e dağıt
@@ -510,9 +519,7 @@ EOF
   for item in "${oth_wins[@]}"; do
     local win="${item%|*}"; local nm="${item#*|}"
     local quad="${quads[$((idx2 % per))]}"
-    wmctrl -i -r "$win" -b remove,maximized_vert,maximized_horz 2>/dev/null
-    wmctrl -i -r "$win" -t "$ws" 2>/dev/null
-    wmctrl -i -r "$win" -e "0,$quad" 2>/dev/null
+    _place_win "$win" "$ws" "$quad"
     echo "  $nm → ws=$ws quad=$quad"
     idx2=$((idx2+1))
     if [ $((idx2 % per)) -eq 0 ]; then ws=$((ws+1)); fi
