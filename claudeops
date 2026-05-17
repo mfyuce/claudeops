@@ -308,9 +308,10 @@ cmd_rc() {
   local rename_pattern=""
   local sticky_csv=""
   local pin_desk_csv=""
-  local prompt_text=""        # her session'a initial prompt (örn 'devam')
-  local model=""              # --model sonnet/opus/haiku
-  local preserve_desktop=1    # --kill-first ile birlikte: eski pencerenin desktop'unu kullan
+  local prompt_text=""
+  local model=""
+  local permission_mode=""    # --permission-mode auto/acceptEdits/bypassPermissions/default/dontAsk/plan
+  local preserve_desktop=1
   for a in "$@"; do
     case "$a" in
       --detached|--headless) mode="detached";;
@@ -323,6 +324,7 @@ cmd_rc() {
       --desktop=*)           pin_desk_csv="${a#--desktop=}";;
       --prompt=*)            prompt_text="${a#--prompt=}";;
       --model=*)             model="${a#--model=}";;
+      --permission-mode=*|--perm=*) permission_mode="${a#*=}";;
       --no-preserve-desktop) preserve_desktop=0;;
     esac
   done
@@ -377,6 +379,9 @@ EOF
     [ "$new_session" = "1" ] && resume_arg=""
     local model_arg=""
     [ -n "$model" ] && model_arg="--model $model"
+    local perm_arg=""
+    [ -n "$permission_mode" ] && perm_arg="--permission-mode $permission_mode"
+    model_arg="$model_arg $perm_arg"
     # Initial prompt: escape single quotes for bash -c
     local prompt_esc=""
     if [ -n "$prompt_text" ]; then
