@@ -13,6 +13,7 @@
 
 - [ ] **Python UI (büyük)** — claudeops için GUI: session listesini göster, tıkla → compact/RC/kill/send butonları, layout görsel önizleme. `send` ileride eklensin (önce list/compact/kill/layout). Stack önerisi: PySide6 ya da Textual (TUI). Headless çalıştığı için server-side de bir option. _Bu işin ana motivasyonu: CLI yerine UI'den kontrol._
 - [ ] **`claudeops history` + `claudeops launch <name|sid>`** — geçmişte (veya halen) açık olan TÜM session'ları kayıt altına al (`~/.claude/projects/*/sessionId.jsonl` zaten var; bu dosyalardan name+cwd+lastModified+isLive bilgisi ile registry üret). `history` listeler, `launch` belirtilenle yeni gnome-terminal'de RC açar. "Daha önce açık olan CLI'leri kolayca geri getir" amacı.
+- [ ] **`--model=<name>` parametresi** — `rc`, `new`, `handover`, `layout --reopen` komutlarında her session için model seçimi. Örn: `rc rustrino13,anomaly13 --suffix=14 --new --kill-first --model=sonnet` (yeni rustrino14/anomaly14 sonnet ile açılır), diğerleri default opus. Per-name model map (`--models=rustrino14:sonnet,anomaly14:sonnet,*:opus`) ya da CSV.
 - [ ] Wayland desteği için layout fallback (gdbus + Mutter extension veya hint mesajı)
 - [ ] Terminal emülatör parametrize (gnome-terminal yerine kitty/alacritty seçilebilsin) — config dosyası ya da env var
 - [ ] Rate-limit reset zamanını output'tan parse edip auto-resume zamanla (örn. `compact --auto-resume`)
