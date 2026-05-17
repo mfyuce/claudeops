@@ -384,16 +384,20 @@ EOF
       prompt_esc=" '$prompt_esc'"
     fi
     if [ "$mode" = "visible" ]; then
-      # CRITICAL: -n NAME sets session display name (visible in session.json + title bar)
-      # --remote-control alone enables RC. Together: hem name set hem RC active.
+      # CRITICAL: 3 ayrı şey:
+      #   -n NAME            session display name (session.json + title bar)
+      #   --remote-control NAME  RC bridge name (claude.ai mobile/web'de görünür)
+      #   'devam'            positional initial prompt (input box'a pre-fill)
+      # NOT: --remote-control NAME devam → NAME RC adı, devam prompt. Aksi:
+      # --remote-control devam → devam RC adı, prompt yok!
       gnome-terminal --window --title="$effective_name" --working-directory="$cwd" \
-        -- bash -c "claude $resume_arg $model_arg -n '$effective_name' --remote-control$prompt_esc; exec bash" &
+        -- bash -c "claude $resume_arg $model_arg -n '$effective_name' --remote-control '$effective_name'$prompt_esc; exec bash" &
       local desk_info=""
       [ -n "$old_desk" ] && desk_info=" (desk=$old_desk)"
       echo "VISIBLE $effective_name ($([ "$new_session" = "1" ] && echo NEW || echo "resume") model=${model:-default}$desk_info)"
     else
       ( cd "$cwd" && nohup setsid script -qfc \
-          "claude $resume_arg $model_arg -n $effective_name --remote-control${prompt_esc}" \
+          "claude $resume_arg $model_arg -n $effective_name --remote-control $effective_name${prompt_esc}" \
           "$LOG_DIR/${effective_name}-rc.log" </dev/null >/dev/null 2>&1 & )
       echo "DETACHED $effective_name"
     fi

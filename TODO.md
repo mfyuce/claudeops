@@ -20,6 +20,12 @@
     3. Mutter konfig veya gsettings ile snap-disable
     4. wmctrl source patch
   En kolay 1 (xdotool). Şu an --reopen ile çalışıyor, hayat-kalitesi item, blocker değil.
+- [ ] **Auto-respond permission prompts** — `claudeops` waiting state'inde Claude TUI permission dialog gösteriyor (örn "1. Yes, 2. Yes don't ask, 3. No"). Şu an `xdotool windowactivate + key Return` veya `type 1 + Return` çalışmıyor (VTE/Ink synthetic keypress'i yiyiyor olabilir; click+Enter de geçmedi). Kullanıcı telefondan RC URL açıp manuel onaylıyor. Çözüm seçenekleri:
+    1. **OCR + RC API** — screenshot al, prompt'u tesseract'la oku, claude.ai RC backend API'ı ile inject (REST POST). RC API spec'i öğrenilmeli. Kanıtlanmış: OCR çalışıyor (tesseract 4.1, ImageMagick mevcut).
+    2. **ydotool** — Wayland-uyumlu, /dev/uinput kullanır (root gerek veya `input` group). xdotool'un X11-only sınırını aşar.
+    3. **VTE-spesifik keysend** — gnome-terminal extension veya D-Bus üzerinden direkt yazı geç.
+    4. **claude TUI patch** — `--auto-accept` veya benzeri flag (claude tarafında değişiklik).
+  Ayrıca: OCR ile prompt'u oku → 3+ seçenek varsa kullanıcıya bildir, default Yes değilse atma. Şu an proven: ws=waiting filter + OCR ile prompt tespiti ✓, sadece keystroke gönderimi ✗.
 - [ ] Wayland desteği için layout fallback (gdbus + Mutter extension veya hint mesajı)
 - [ ] Terminal emülatör parametrize (gnome-terminal yerine kitty/alacritty seçilebilsin) — config dosyası ya da env var
 - [ ] Rate-limit reset zamanını output'tan parse edip auto-resume zamanla (örn. `compact --auto-resume`)
