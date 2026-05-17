@@ -292,6 +292,8 @@ cmd_rc() {
   local rename=""             # yeni isim (aynı sessionId)
   local new_session=0         # yeni sessionId (resume yok)
   local rename_pattern=""     # otomatik suffix değişimi: 13→14
+  local sticky_csv=""         # belirtilen isimler open sonrası sticky yapılır
+  local pin_desk_csv=""       # <name>:<desktop> formatında, open sonrası o desktop'a taşınır
   for a in "$@"; do
     case "$a" in
       --detached|--headless) mode="detached";;
@@ -300,6 +302,8 @@ cmd_rc() {
       --new)                 new_session=1;;
       --rename=*)            rename="${a#--rename=}";;
       --suffix=*)            rename_pattern="${a#--suffix=}";;
+      --sticky=*)            sticky_csv="${a#--sticky=}";;
+      --desktop=*)           pin_desk_csv="${a#--desktop=}";;
     esac
   done
   [ -z "$target" ] && {
@@ -355,6 +359,35 @@ d = json.load(open('$f'))
 print('  %-15s %s %s' % (d.get('name','-') or '-', d.get('status',''), (d.get('bridgeSessionId') or '-')[:32]))
 " 2>/dev/null
   done | sort
+
+  # --sticky=<csv>: open sonrası bu isimleri sticky yap
+  if [ -n "$sticky_csv" ] && command -v wmctrl >/dev/null 2>&1; then
+    local gtp; gtp=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
+    IFS=',' read -ra sarr <<<"$sticky_csv"
+    for snm in "${sarr[@]}"; do
+      local win; win=$(wmctrl -l -p | awk -v g="$gtp" -v n="$snm" '$3==g && $0 ~ n" *$" {print $1; exit}')
+      [ -z "$win" ] && win=$(wmctrl -l -p | awk -v g="$gtp" -v n="$snm" '$3==g && $0 ~ n {print $1; exit}')
+      if [ -n "$win" ]; then
+        wmctrl -i -r "$win" -b add,sticky 2>/dev/null && echo "  STICKY $snm ($win)"
+      else
+        echo "  WARN sticky için $snm penceresi bulunamadı"
+      fi
+    done
+  fi
+
+  # --desktop=<name>:<n>,<name>:<n>...: open sonrası belirtilen desktop'a taşı
+  if [ -n "$pin_desk_csv" ] && command -v wmctrl >/dev/null 2>&1; then
+    local gtp; gtp=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
+    IFS=',' read -ra darr <<<"$pin_desk_csv"
+    for entry in "${darr[@]}"; do
+      local dnm="${entry%:*}" dws="${entry#*:}"
+      local win; win=$(wmctrl -l -p | awk -v g="$gtp" -v n="$dnm" '$3==g && $0 ~ n" *$" {print $1; exit}')
+      [ -z "$win" ] && win=$(wmctrl -l -p | awk -v g="$gtp" -v n="$dnm" '$3==g && $0 ~ n {print $1; exit}')
+      if [ -n "$win" ]; then
+        wmctrl -i -r "$win" -t "$dws" 2>/dev/null && echo "  DESKTOP $dnm → ws=$dws ($win)"
+      fi
+    done
+  fi
 }
 
 # ─────────────────────────────────────────────
