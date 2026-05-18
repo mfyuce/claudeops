@@ -20,6 +20,7 @@
     3. Mutter konfig veya gsettings ile snap-disable
     4. wmctrl source patch
   En kolay 1 (xdotool). Şu an --reopen ile çalışıyor, hayat-kalitesi item, blocker değil.
+- [ ] **Spawn geometry: windows on HDMI instead of eDP, rows instead of 2×2 grid** — 2026-05-17 son 15 spawn'da pencereler doğru desktoplara dağıldı ama hepsi HDMI ekranında iki satır (rows) olarak yerleşti, eDP 2×2 grid değil. Sebep: wmctrl -e geom application timing veya Mutter snap multi-monitor handling. Spawn-time'da geom uygulama daha güvenilir hale gelmeli (poll until placement matches, or post-spawn correction loop).
 - [ ] **Auto-respond permission prompts** — `claudeops` waiting state'inde Claude TUI permission dialog gösteriyor (örn "1. Yes, 2. Yes don't ask, 3. No"). Şu an `xdotool windowactivate + key Return` veya `type 1 + Return` çalışmıyor (VTE/Ink synthetic keypress'i yiyiyor olabilir; click+Enter de geçmedi). Kullanıcı telefondan RC URL açıp manuel onaylıyor. Çözüm seçenekleri:
     1. **OCR + RC API** — screenshot al, prompt'u tesseract'la oku, claude.ai RC backend API'ı ile inject (REST POST). RC API spec'i öğrenilmeli. Kanıtlanmış: OCR çalışıyor (tesseract 4.1, ImageMagick mevcut).
     2. **ydotool** — Wayland-uyumlu, /dev/uinput kullanır (root gerek veya `input` group). xdotool'un X11-only sınırını aşar.
