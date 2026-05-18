@@ -6,7 +6,11 @@ Açık Claude CLI session'larını toplu yönetmek için tek-dosya bash CLI. 202
 
 ## Self Protection Mekanizması
 
-`find_self_claude_pid` fonksiyonu bash'in `$$` değerinden ata zincirini yürüyüp ilk `claude` binary'sini tespit eder. **Bu pid'i ve karşılık gelen sessionId'yi hiçbir kill/kompakt/RC işleminden geçmez.** Hardcoded pid kullanılmaz; her session/cron çalıştırmasında dinamik bulunur.
+`find_self_claude_pid` iki mekanizma kullanır (sırayla):
+1. **`$CLAUDE_CODE_SESSION_ID` env var** — Claude TUI'nin çocuk process'lere geçirdiği env var. SessionId match ile pid bulunur. **Nohup-detached script'lerde tek güvenilir yöntem** (ata zinciri kopuk olur).
+2. **Fallback: `$$` ata zinciri** — interactive shell'lerde, env yoksa.
+
+**Yaşanan incident (2026-05-17):** ilk versiyon sadece ata zinciri kullanıyordu. nohup ile launch edilen script'te ata zinciri claude bulamıyor → filter_not_self no-op → SELF KILL. pid 78492 öldü, harness yeni claude (1506400) ile rebirth oldu. Fix sonrası env-based protection çalışıyor.
 
 `all-but-self` hedef syntax'ı bu protection'a bağlıdır.
 
@@ -19,6 +23,12 @@ Açık Claude CLI session'larını toplu yönetmek için tek-dosya bash CLI. 202
 - **Visible window'lar bash exec ile**: `gnome-terminal -- bash -c "claude ...; exec bash"` claude exit etse bile pencereyi bash prompt olarak açık bırakır. Olası `--remote-control` bağlantı hatası kaybolmaz.
 - **Workspace count gsettings**: `gsettings set org.gnome.mutter dynamic-workspaces false` + `num-workspaces N`. Install gerektirmez.
 - **Workspace placement wmctrl**: layout sadece wmctrl varsa çalışır. Yoksa açıklayıcı hata.
+- **wmctrl -s vs xprop _NET_CURRENT_DESKTOP**: Sadece `wmctrl -s N` Mutter'da görsel desktop switch tetikler (ClientMessage). `xprop -root -set _NET_CURRENT_DESKTOP N` sadece property set eder, Mutter görsel uygulamaz. Layout için wmctrl -s gerekli.
+- **Mutter multi-monitor snap bug**: in-place `wmctrl -e` koordinatları çoklu-monitor'da yanlış snap'liyor (örn eDP'de y=1080 → root y=2160 off-screen). Çözüm: `--reopen` modu (kill + wmctrl -s switch + gnome-terminal spawn on current → window doğru desktop'a doğar).
+- **VTE keystroke rejection**: gnome-terminal VTE/Ink synthetic XSendEvent key'leri reddediyor. xdotool `type` çoğunlukla geçiyor, `key Return` permission dialog'lara intermittent. windowactivate --sync + delay genelde yardım eder.
+- **`-n NAME` ≠ `--remote-control NAME`**: `-n` session display name (session.json + title), `--remote-control` RC bridge name (claude.ai mobil). İkisi ayrı; doğru kullanım `claude -n NAME --remote-control NAME 'prompt'`. `--remote-control devam` "devam"ı RC name yapar — yaygın hata.
+- **Bridge cache (server-side)**: aynı sessionId resume edilince claude.ai server-side aynı bridge'i kullanır, ilk açılışta verilen RC name'i save eder, sonraki `--remote-control NEW_NAME` server'ı değiştirmez. RC name'i değiştirmek için `--new` (fresh sessionId) gerekli.
+- **claude path encoding**: ~/.claude/projects/ altında cwd encoding'i hem `/` hem `_` → `-` yapıyor. tr '/_' '-'.
 
 ## Önemli komut kalıpları
 
@@ -35,13 +45,26 @@ claudeops compact all-but-self --backup
 # RC + visible: her session kendi gnome-terminal penceresinde
 claudeops rc all-but-self                            # default visible
 claudeops rc all-but-self --detached                 # arkaplan headless
-claudeops rc all-but-self --kill-first               # mevcut pid'i önce kapat
-claudeops rc all-but-self --suffix=14                # toplu rename: <name>13→<name>14
+claudeops rc all-but-self --kill-first               # mevcut pid'i önce kapat (busy ise idle bekler)
+claudeops rc all-but-self --suffix=14 --new          # toplu rename + fresh sessionId
+claudeops rc rustrino15,anomaly15 --model=opus --permission-mode=auto --prompt=devam
+claudeops rc carla15 --model=sonnet --permission-mode=acceptEdits --kill-first
 
-# Layout (wmctrl gerekli)
+# Handover (visible wrap-up + auto-Enter, sonra manuel transition)
+claudeops handover                                    # --from-suffix=13 (default), 14 üret
+claudeops handover --headless                         # -p ile sessiz (tool onay verilemez!)
+
+# Layout (wmctrl + xdotool gerekli)
 claudeops desktops 5                                  # 5 workspace fixe
-claudeops layout grid 4 --pin=rustrino13              # ws=0'a pin, geri kalan 4'erli
+claudeops layout grid 4 --pin=rustrino15,anomaly15   # ws=0'a pin, kalan 4'erli
+claudeops layout grid 4 --reopen --pin=...           # multi-monitor snap bug için kill+reopen mod
 ```
+
+## Model-permission mode kuralı (otomatik default planlanıyor, TODO)
+
+- **Opus → `--permission-mode=auto`**: classifier-based, esnek karar
+- **Sonnet → `--permission-mode=acceptEdits`**: Edit/Write otomatik, Bash hâlâ onay ister
+- Şu an manuel verilmesi gerekiyor; gelecek versiyonda `--model=X` verince otomatik permission-mode default'u eklenecek
 
 ## Mevcut session konvensiyon (2026-05-17)
 
@@ -60,3 +83,25 @@ claudeops layout grid 4 --pin=rustrino13              # ws=0'a pin, geri kalan 4
 - Workspace placement Wayland'da çalışmaz (wmctrl X11-only). GNOME on Wayland kullanıcısı için layout komutu işe yaramaz.
 - gnome-terminal yerine başka terminal emülatör (kitty, alacritty) kullanılırsa visible mode kırılır. Switch için `cmd_rc` içindeki `gnome-terminal` çağrısı parametrize edilmeli (TODO).
 - Rate-limit reset zamanı parse edilmiyor; sadece pattern tespit edip durdurma yapıyor (TODO: parse + auto-resume).
+- Permission prompt'lara xdotool keystroke landing'i intermittent (VTE/Ink synthetic event reject). Mobile RC URL üzerinden manuel onay fallback.
+- Multi-monitor'da `wmctrl -e` snap-bug; in-place layout off-screen yapabiliyor. `--reopen` mod ile çözülüyor (kill+spawn-on-target).
+- Ekran kilidi sırasında spawn yapılınca windows HDMI'da yan yana (eDP 2×2 grid değil) — hipotez (TODO).
+
+## READY FOR HANDOVER (2026-05-18)
+
+**Nerede kaldık:**
+- claudeops repo `tmp/claudeops/` altında, git'te 2 private remote ile (origin=github, gitlab=gitlab.com), tamamen sync. Son commit: `16a40aa TODO: model atama doğrulaması`. Working tree clean.
+- 15 named CLI session açık (rustrino15, anomaly15, carla15, ..., vrk15) + bu konuşma (pid 1506400). Hepsi RC active.
+- 2 repo'da uncommitted (rustrino, mbd_cp_carla) — 15-session'ların aktif çalışması, claudeops handover işi DEĞİL.
+
+**Yeni session'ın yapması gerekenler:**
+1. `MEMORY.md` oku, özellikle `feedback_opus_auto_mode.md` (yeni adı: `model-permission-mode-kural`) — opus→auto, sonnet→acceptEdits.
+2. `feedback_busy_kill_protection.md` — busy session kill etme, idle bekle.
+3. `TODO.md`'de açık kritik işler: (a) **model-spesifik default permission-mode** otomatik mapping eklenmeli; (b) **OCR + auto-respond** permission prompts; (c) **layout geometry** ekran kilidi/Mutter snap fix; (d) **history/launch** komutları; (e) Python UI; (f) `--models=name:model,...` config.
+
+**Açık kararlar:**
+- 15-session'lar şu an opus auto / sonnet (acceptEdits olmadan) çalışıyor — sonnet'lara `--permission-mode=acceptEdits` retroaktif uygulanmadı; mevcut session'lar yaşadığı sürece eski mode'da. Yeni round'da claudeops otomatik uygulayacak.
+- Multi-monitor snap bug için ekran kilidi hipotezi henüz test edilmedi.
+- Anomaly13 64 uncommitted incident dahil olmak üzere geçmiş bug'lar hep TODO'ya kaydedildi.
+
+READY FOR HANDOVER
