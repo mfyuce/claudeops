@@ -40,7 +40,8 @@
 
 ## Kapatılmış (karar verildi)
 
-### Opus + auto mode
-- **Karar (2026-05-17):** Opus model kullanan session'lar `--permission-mode=auto` ile başlatılacak. Sonnet'lar default mode kalır.
-- **Sebep:** Opus daha pahalı + daha karmaşık iş yapıyor; permission prompt'larıyla beklemek istemiyoruz. Auto mode'da otomatik onay.
-- **Uygulama:** `claudeops rc <opus-names> --model=opus --permission-mode=auto ...`
+### Model-spesifik permission mode
+- **Karar (2026-05-17):** Opus → `--permission-mode=auto` (classifier).
+- **Karar (2026-05-18):** Sonnet → `--permission-mode=acceptEdits` (Edit/Write otomatik, Bash hâlâ onay ister).
+- **Sebep:** Opus karmaşık iş için classifier esnekliği gerek; sonnet edit-yoğun çalışmada kesintisiz edit/write + Bash güvenliği dengesi.
+- **Uygulama:** `claudeops rc <names> --model=opus --permission-mode=auto ...` veya `--model=sonnet --permission-mode=acceptEdits ...`. claudeops'a otomatik default mapping TODO.
