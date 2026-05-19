@@ -4,6 +4,8 @@
 
 ## Şu anda (2026-05-17)
 
+- [ ] **BUG: `rc <a,b,c>` virgül-separated isim listesi parse edilmiyor** — 2026-05-19'da 15→16 transition'da fark edildi. `cmd_rc`/`resolve_targets` SPACE-separated bekliyor (`names=("$first" "$@")`). CLAUDE.md'deki örnekler de yanıltıcı (`rc rustrino15,anomaly15 --model=opus` gibi virgüllü kullanım çalışmaz; resolve_targets boş döner, kill+respawn olmaz). Fix: cmd_rc başında `target` ve `"$@"` içindeki virgüllü string'leri split et (IFS=','). Aynı bug `cmd_kill`, `cmd_compact`, `cmd_send` (send'in `<name1[,nameN]>` help syntax'ı da yanıltıcı) için de var. CLAUDE.md'deki virgüllü örnekleri space-separated'a güncelle.
+- [ ] **`claudeops layout` orphan terminal kaldırmıyor** — 2026-05-19 16 transition'ında bir `fatihyuce@483-LNX` orphan gnome-terminal layout'a katıldı, ws=1 slotu harcadı. Fix: layout iterasyonunda window-name'in geçerli session.json'da olup olmadığını kontrol etmek + yoksa skip (cleanup'a yönlendir).
 - [ ] **Test: `claudeops layout grid 4 --pin=rustrino13,sqli13,hcr13,vrk13`** — wmctrl şimdi kurulu, ilk gerçek çalıştırma
 - [ ] **Test: `claudeops desktops 5`** — workspace sayısı sabitleme (henüz mevcut konfig kontrol edilmedi)
 - [ ] **Test: `claudeops rc <name> --rename=<new>`** — kullanıcının istediği `<...>13 → <...>14` pattern'i
