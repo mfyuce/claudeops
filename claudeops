@@ -691,7 +691,16 @@ cmd_new() {
 #   3. Yerine <name><to> FRESH session aç (RC + visible gnome-terminal)
 # Açık session sayısı dinamik — runtime'da discover edilir.
 # ─────────────────────────────────────────────
-HANDOVER_MSG_DEFAULT='Bu konuşmayı bitiriyoruz, yeni session a geçeceğiz. KAYIT KRİTİK — yeni Claude sıfır bilgi kaybıyla devam edebilmeli. AMAN her şeyi al, gerekirse derin tara.
+HANDOVER_MSG_DEFAULT='ÖNCE: CLAUDE.md BÜYÜKLÜK OPTİMİZASYONU. Dosya her session başında context e yüklendiği için kısa ve öz olmalı.
+- Eskimiş veya artık geçerli olmayan bilgileri (eski READY FOR HANDOVER blokları, çözülmüş sorunlar, tarihli aşılan kararlar) ayıkla; gerekiyorsa DONE.md ye taşı.
+- Tekrar eden / kod-okunarak öğrenilebilir bilgileri çıkar.
+- Bölümleri sıkılaştır, gerçekten "yeni Claude bunu bilmezse hata yapar" düzeyinde özet tut.
+- Hedef: bir önceki halinden belirgin şekilde küçük + daha güncel.
+SONRA aşağıdaki handover akışına devam et.
+
+═══════════════════════════════════════════════
+
+Bu konuşmayı bitiriyoruz, yeni session a geçeceğiz. KAYIT KRİTİK — yeni Claude sıfır bilgi kaybıyla devam edebilmeli. AMAN her şeyi al, gerekirse derin tara.
 
 KALDIĞIMIZ YERİ KAYDEDELİM, YENİ SESSION DA DEVAM EDERİZ.
 
