@@ -87,21 +87,26 @@ claudeops layout grid 4 --reopen --pin=...           # multi-monitor snap bug i�
 - Multi-monitor'da `wmctrl -e` snap-bug; in-place layout off-screen yapabiliyor. `--reopen` mod ile çözülüyor (kill+spawn-on-target).
 - Ekran kilidi sırasında spawn yapılınca windows HDMI'da yan yana (eDP 2×2 grid değil) — hipotez (TODO).
 
-## READY FOR HANDOVER (2026-05-18)
+## READY FOR HANDOVER (2026-05-20)
 
 **Nerede kaldık:**
-- claudeops repo `tmp/claudeops/` altında, git'te 2 private remote ile (origin=github, gitlab=gitlab.com), tamamen sync. Son commit: `16a40aa TODO: model atama doğrulaması`. Working tree clean.
-- 15 named CLI session açık (rustrino15, anomaly15, carla15, ..., vrk15) + bu konuşma (pid 1506400). Hepsi RC active.
-- 2 repo'da uncommitted (rustrino, mbd_cp_carla) — 15-session'ların aktif çalışması, claudeops handover işi DEĞİL.
+- claudeops repo `tmp/claudeops/` altında, git'te 2 private remote ile (origin=github, gitlab=gitlab.com), tamamen sync. Son commit: `48442ee TODO: rc virgül-separated isim parse bug + layout orphan terminal bug`. Working tree clean.
+- **15→16 transition tamamlandı (2026-05-19)**. 15 named 16-session aktif (anomaly16, carla16, emrgence16, hc16, hcr16, hms16, hve16, mecdtfl16, oa16, qve16, rustrino16, rve16, sqli16, trroot16, vrk16) + bu konuşma (self pid 1525711). Hepsi RC active, idle.
+- **Model dağılımı (9 opus auto / 6 sonnet acceptEdits):**
+  - opus auto: hms16, emrgence16, oa16, hve16, rve16, qve16, carla16, sqli16, trroot16
+  - sonnet acceptEdits: anomaly16, hc16, hcr16, mecdtfl16, vrk16, rustrino16
+- **Layout:** anomaly16 + rustrino16 ws0 (pin değil, sadece ilk desktop yerleşimi); diğerleri ws1-4'e 2×2 grid olarak dağıtıldı.
+- **AnyDesk DNS sistem-tarafı fix (2026-05-19):** wifi değişimi sonrası `/etc/resolv.conf` bozuktu (typo "name server", >3 nameserver, foreign mode). Temizlik: sadece `8.8.8.8 + 1.1.1.1`. Relay bağlantısı `ESTABLISHED 169.150.215.50:443`. "Client offline" mesajları **karşı taraf** (1812750856) içindi; kendi makine (235187453) online. `crl.anydesk.com` resolve fail kalıcı ama kozmetik.
 
 **Yeni session'ın yapması gerekenler:**
-1. `MEMORY.md` oku, özellikle `feedback_opus_auto_mode.md` (yeni adı: `model-permission-mode-kural`) — opus→auto, sonnet→acceptEdits.
-2. `feedback_busy_kill_protection.md` — busy session kill etme, idle bekle.
-3. `TODO.md`'de açık kritik işler: (a) **model-spesifik default permission-mode** otomatik mapping eklenmeli; (b) **OCR + auto-respond** permission prompts; (c) **layout geometry** ekran kilidi/Mutter snap fix; (d) **history/launch** komutları; (e) Python UI; (f) `--models=name:model,...` config.
+1. `MEMORY.md` oku — özellikle [[opus-auto-mode]] (opus→auto, sonnet→acceptEdits) ve [[busy-kill-protection]] (busy session kill etme, idle bekle).
+2. `TODO.md`'de yeni eklenen 2 kritik bug (en üst): **`rc <a,b,c>` virgül-separated parse'lanmıyor** (resolve_targets SPACE-only; CLAUDE.md örnekleri yanıltıcı, kill+respawn sessizce no-op olur) + **`layout` orphan terminal'i ws slotuna alıyor** (window-name session.json validation eksik). Bu ikisi de bu transition'da real-world fark edildi.
+3. Diğer açık kritik işler: (a) **model-spesifik default permission-mode** otomatik mapping (`--model=opus` → `auto`, `--model=sonnet` → `acceptEdits`); (b) **OCR + auto-respond** permission prompts (OCR çalışıyor, keystroke landing intermittent); (c) **layout geometry** ekran kilidi hipotezi; (d) **history/launch** komutları; (e) Python UI; (f) `--models=name:model,...` config.
 
-**Açık kararlar:**
-- 15-session'lar şu an opus auto / sonnet (acceptEdits olmadan) çalışıyor — sonnet'lara `--permission-mode=acceptEdits` retroaktif uygulanmadı; mevcut session'lar yaşadığı sürece eski mode'da. Yeni round'da claudeops otomatik uygulayacak.
+**Açık kararlar / pending:**
+- Hızlı disk temizlik (2026-05-20): ~5G güvenli aday belirlendi (stanza, JetBrains, puppeteer, ms-playwright-go, BraveSoftware, /tmp/ray, /tmp/tr_root_weights tar, /tmp/orkhon_models). Kullanıcı "bugün dokunulanlara karışma" dedi — aktif olanlar (pip/chrome/ms-playwright/cargo-target) skip. Onay bekliyor, henüz silinmedi. `~/.cache/huggingface` 29G memory kuralı gereği KORU.
+- Sonnet acceptEdits retroaktif uygulanmadı; mevcut 6 sonnet session yaşadığı sürece eski mode'da. Yeni round'da claudeops otomatik default ekleyecek (TODO).
 - Multi-monitor snap bug için ekran kilidi hipotezi henüz test edilmedi.
-- Anomaly13 64 uncommitted incident dahil olmak üzere geçmiş bug'lar hep TODO'ya kaydedildi.
+- `rc` comma-parse bug fix'i hâlâ yapılmadı; mevcut workaround = SPACE-separated kullan.
 
 READY FOR HANDOVER
