@@ -959,6 +959,217 @@ cmd_batch() {
 }
 
 # ─────────────────────────────────────────────
+# CMD: migrate <session> --to <new-cwd> [--files=p1,p2,...] [--gh] [--glab]
+#                                       [--no-respawn] [--no-trust-patch] [--dry-run]
+# Bir session'ın cwd'sini başka konuma taşır.
+#   1) old_cwd/CLAUDE.md ve referansları (~/X.md, ./X.md) auto-discover; --files ile ekstra
+#   2) Dosyaları new_cwd/'e mv; CLAUDE project dir (memory + jsonl) yeni encoded path'e mv
+#   3) Taşınan md + memory md'lerinde "~/<moved>" → "./<moved>" path rewrite
+#   4) .claude.json trust patch (new_cwd hasTrustDialogAccepted=True)
+#   5) Opsiyonel --gh/--glab: git init + repo create + add remote + first commit + push
+#   6) Eski pid'i SIGTERM, new_cwd'de aynı model/perm/RC name ile fresh spawn
+# Self üzerinde ÇALIŞMAZ (kendi cwd'sini taşımaz).
+# ─────────────────────────────────────────────
+cmd_migrate() {
+  local sess_name="" new_cwd="" extra_files=""
+  local do_gh=0 do_glab=0 no_respawn=0 no_trust=0 dry=0
+  local model="" perm=""
+  for a in "$@"; do
+    case "$a" in
+      --to=*)              new_cwd="${a#--to=}";;
+      --files=*)           extra_files="${a#--files=}";;
+      --model=*)           model="${a#--model=}";;
+      --permission-mode=*) perm="${a#--permission-mode=}";;
+      --gh)                do_gh=1;;
+      --glab)              do_glab=1;;
+      --no-respawn)        no_respawn=1;;
+      --no-trust-patch)    no_trust=1;;
+      --dry-run)           dry=1;;
+      --*)                 echo "unknown flag: $a"; return 2;;
+      *)                   [ -z "$sess_name" ] && sess_name="$a" || { echo "unexpected arg: $a"; return 2; };;
+    esac
+  done
+  [ -z "$sess_name" ] && { echo "kullanım: claudeops migrate <session> --to <new-cwd> [--files=p1,p2,...] [--gh] [--glab] [--no-respawn] [--dry-run]"; return 2; }
+  [ -z "$new_cwd" ]   && { echo "ERROR: --to=<new-cwd> gerekli"; return 2; }
+
+  local row pid old_cwd sid
+  row=$(all_sessions_tsv | awk -F'\t' -v n="$sess_name" '$2==n')
+  [ -z "$row" ] && { echo "ERROR: '$sess_name' bulunamadı"; return 1; }
+  pid=$(echo "$row"  | cut -f1)
+  old_cwd=$(echo "$row" | cut -f5)
+  sid=$(echo "$row" | cut -f4)
+
+  local self_p; self_p=$(self_pid 2>/dev/null || echo "")
+  [ "$pid" = "$self_p" ] && { echo "ERROR: SELF migrate edilemez"; return 1; }
+  [ "$old_cwd" = "$new_cwd" ] && { echo "ERROR: new_cwd zaten old_cwd"; return 1; }
+
+  local enc_old enc_new proj_old proj_new
+  enc_old=$(echo "$old_cwd" | tr '/_' '-')
+  enc_new=$(echo "$new_cwd" | tr '/_' '-')
+  proj_old="$PROJ_DIR/$enc_old"
+  proj_new="$PROJ_DIR/$enc_new"
+
+  # Discover files: CLAUDE.md + refs to ~/X.md or ./X.md that exist in old_cwd
+  local files=() seen_str=""
+  add_file() {
+    local f="$1"
+    case " $seen_str " in *" $f "*) return;; esac
+    [ -f "$old_cwd/$f" ] || return
+    files+=("$f")
+    seen_str="$seen_str $f"
+  }
+  if [ -f "$old_cwd/CLAUDE.md" ]; then
+    add_file "CLAUDE.md"
+    while IFS= read -r m; do
+      [ -n "$m" ] && add_file "$m"
+    done < <(grep -oE '~/[A-Za-z0-9_.-]+\.md|\./[A-Za-z0-9_.-]+\.md' "$old_cwd/CLAUDE.md" | sed -E 's#^(~|\.)/##' | sort -u)
+  fi
+  if [ -n "$extra_files" ]; then
+    local IFS=','
+    for f in $extra_files; do
+      [ -z "$f" ] && continue
+      case "$f" in /*) f="${f#$old_cwd/}";; esac
+      add_file "$f"
+    done
+    IFS=$' \t\n'
+  fi
+
+  echo "=== migrate $sess_name (pid=$pid) ==="
+  echo "  old_cwd:  $old_cwd"
+  echo "  new_cwd:  $new_cwd"
+  echo "  files (${#files[@]}):"
+  for f in "${files[@]}"; do echo "    - $f"; done
+  echo "  project dir: $proj_old → $proj_new"
+  [ "$do_gh" = "1" ]   && echo "  + gh remote (origin)"
+  [ "$do_glab" = "1" ] && echo "  + glab remote (gitlab)"
+  [ "$no_respawn" = "0" ] && echo "  + respawn $sess_name at new_cwd"
+  if [ "$dry" = "1" ]; then echo "(dry-run; çıkıyorum)"; return 0; fi
+
+  read -r -p "Devam? (y/N) " ans
+  [ "$ans" = "y" ] || { echo "iptal"; return 1; }
+
+  mkdir -p "$new_cwd"
+
+  # Move files
+  for f in "${files[@]}"; do
+    if [ -e "$new_cwd/$f" ]; then echo "  SKIP $f (exists)"; continue; fi
+    mv "$old_cwd/$f" "$new_cwd/$f"
+    echo "  moved $f"
+  done
+
+  # Move claude project dir
+  if [ -d "$proj_old" ]; then
+    if [ -d "$proj_new" ]; then
+      echo "  WARN: $proj_new exists — manuel merge gerekli; skip"
+    else
+      mv "$proj_old" "$proj_new"
+      echo "  moved project dir"
+    fi
+  fi
+
+  # Rewrite refs in moved md files (project-local: ~/X.md → ./X.md)
+  for f in "${files[@]}"; do
+    case "$f" in *.md) ;; *) continue;; esac
+    [ -f "$new_cwd/$f" ] || continue
+    for moved in "${files[@]}"; do
+      sed -i -e "s|~/$moved|./$moved|g" -e "s|$old_cwd/$moved|./$moved|g" "$new_cwd/$f"
+    done
+  done
+  # Rewrite refs in memory md files (absolute: full new path for stability)
+  if [ -d "$proj_new/memory" ]; then
+    for mf in "$proj_new"/memory/*.md; do
+      [ -f "$mf" ] || continue
+      for moved in "${files[@]}"; do
+        sed -i -e "s|~/$moved|$new_cwd/$moved|g" -e "s|$old_cwd/$moved|$new_cwd/$moved|g" "$mf"
+      done
+    done
+  fi
+  echo "  rewrote path refs"
+
+  # Trust patch
+  if [ "$no_trust" = "0" ]; then
+    python3 - "$new_cwd" <<'PY'
+import json, shutil, sys, time, os
+key = sys.argv[1]
+p = os.path.expanduser('~/.claude.json')
+shutil.copy(p, f'{p}.bak.{int(time.time())}')
+d = json.load(open(p))
+d.setdefault('projects', {}).setdefault(key, {})
+d['projects'][key]['hasTrustDialogAccepted'] = True
+json.dump(d, open(p, 'w'), indent=2)
+PY
+    echo "  trust patched"
+  fi
+
+  # Git + remotes
+  if [ "$do_gh" = "1" ] || [ "$do_glab" = "1" ]; then
+    local repo_name; repo_name=$(basename "$new_cwd")
+    (
+      cd "$new_cwd" || exit 1
+      [ -d .git ] || git init -b main >/dev/null
+      if [ "$do_gh" = "1" ]; then
+        gh repo create "mfyuce/$repo_name" --private 2>&1 | sed 's/^/    /'
+        git remote get-url origin >/dev/null 2>&1 || git remote add origin "git@github.com:mfyuce/$repo_name.git"
+      fi
+      if [ "$do_glab" = "1" ]; then
+        glab repo create --name "$repo_name" --private 2>&1 | sed 's/^/    /'
+        # glab auto-adds 'origin' — rename to 'gitlab' if gh also wants origin
+        if [ "$do_gh" = "1" ]; then
+          git remote get-url gitlab >/dev/null 2>&1 || \
+            git remote add gitlab "git@gitlab.com:mfyuce/$repo_name.git"
+          # Drop any stray origin pointing to gitlab (from glab auto-add)
+          if git remote get-url origin 2>/dev/null | grep -q gitlab.com; then
+            git remote remove origin
+            git remote add origin "git@github.com:mfyuce/$repo_name.git"
+          fi
+        else
+          # only --glab → rename auto-added origin to gitlab
+          if git remote get-url origin 2>/dev/null | grep -q gitlab.com; then
+            git remote rename origin gitlab
+          fi
+        fi
+      fi
+      # First commit + push
+      [ -f .gitignore ] || cat > .gitignore <<'GI'
+*.bak.*
+*.local.md
+*.local.txt
+*.log
+.venv/
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+GI
+      git add -A
+      if ! git rev-parse HEAD >/dev/null 2>&1; then
+        git commit -m "initial: migrated from $old_cwd" >/dev/null
+      fi
+      [ "$do_gh" = "1" ]   && git push -u origin main 2>&1 | sed 's/^/    /'
+      [ "$do_glab" = "1" ] && git push -u gitlab main 2>&1 | sed 's/^/    /'
+    )
+    echo "  git + remotes done"
+  fi
+
+  # Respawn
+  if [ "$no_respawn" = "0" ]; then
+    if [ -z "$model" ] || [ -z "$perm" ]; then
+      local cmdline; cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || echo "")
+      [ -z "$model" ] && model=$(echo "$cmdline" | grep -oE -- '--model [^ ]+' | awk '{print $2}')
+      [ -z "$perm" ]  && perm=$(echo  "$cmdline" | grep -oE -- '--permission-mode [^ ]+' | awk '{print $2}')
+    fi
+    [ -z "$model" ] && model="sonnet"
+    [ -z "$perm" ]  && perm="acceptEdits"
+    kill "$pid" 2>/dev/null
+    sleep 2
+    gnome-terminal --window --title="$sess_name" --working-directory="$new_cwd" \
+      -- bash -c "claude --model $model --permission-mode $perm -n '$sess_name' --remote-control '$sess_name'; exec bash" >/dev/null 2>&1 &
+    echo "  respawned $sess_name (model=$model perm=$perm)"
+  fi
+  echo "=== done ==="
+}
+
+# ─────────────────────────────────────────────
 # CMD: self
 # ─────────────────────────────────────────────
 cmd_self() {
@@ -1036,6 +1247,18 @@ KULLANIM:
       Compact'i gnome-terminal penceresinde aç (canlı output görünür).
       Pencere işlem bittikten 3s sonra kapanır.
 
+  claudeops migrate <session> --to=<new-cwd> [--files=p1,p2,...] [--gh] [--glab]
+                                              [--no-respawn] [--no-trust-patch] [--dry-run]
+      Bir session'ın cwd'sini taşı. Auto-discover: old_cwd/CLAUDE.md içindeki
+      ~/X.md ve ./X.md referansları (eski cwd'de var olanlar). Ekstralar --files
+      ile (virgül-ayrılı, absolute veya old_cwd-relative). Yapılan işler:
+        1) Dosyaları new_cwd/'e mv
+        2) ~/.claude/projects/<old-encoded>/ → <new-encoded>/ mv (memory + jsonl)
+        3) Taşınan md + memory md'lerinde "~/X.md" → "./X.md" path rewrite
+        4) .claude.json trust patch (--no-trust-patch ile atla)
+        5) --gh/--glab: git init + repo create + remote + first commit + push
+        6) Eski pid'i kill, new_cwd'de aynı model/perm/RC name ile fresh spawn
+
   claudeops handover [--from-suffix=13] [--to-suffix=14] [--dry-run]
                      [--skip-msg] [--message=...] [--message-file=path]
                      [--timeout=1800]
@@ -1086,5 +1309,6 @@ case "${1:-help}" in
   new) shift; cmd_new "$@" ;;
   cleanup) shift; cmd_cleanup "$@" ;;
   handover) shift; cmd_handover "$@" ;;
+  migrate) shift; cmd_migrate "$@" ;;
   *) echo "Bilinmeyen komut: $1"; cmd_help; exit 2 ;;
 esac
