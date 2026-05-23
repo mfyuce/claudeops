@@ -725,6 +725,7 @@ cmd_handover() {
   local dry=0
   local message="$HANDOVER_MSG_DEFAULT"
   local mode="visible"   # visible (default) | headless (-p, no approval prompts visible)
+  local exclude=""
   for a in "$@"; do
     case "$a" in
       --from-suffix=*)        from_suffix="${a#--from-suffix=}";;
@@ -732,14 +733,20 @@ cmd_handover() {
       --message-file=*)       message="$(cat "${a#--message-file=}")";;
       --headless)             mode="headless";;
       --visible)              mode="visible";;
+      --exclude=*)            exclude="${a#--exclude=}";;
       --dry-run)              dry=1;;
     esac
   done
 
   local rows
   rows=$(all_sessions_tsv | filter_not_self | awk -F'\t' -v s="$from_suffix" '$2 ~ s"$"')
+  if [ -n "$exclude" ]; then
+    local exclude_pat
+    exclude_pat=$(echo "$exclude" | tr ',' '|')
+    rows=$(echo "$rows" | awk -F'\t' -v p="$exclude_pat" '$2 !~ "^("p")$"')
+  fi
   local total; total=$(echo "$rows" | grep -c '.')
-  echo "=== handover ($mode): suffix=$from_suffix; $total session bulundu ==="
+  echo "=== handover ($mode): suffix=$from_suffix${exclude:+ (exclude=$exclude)}; $total session bulundu ==="
   [ "$total" -eq 0 ] && { echo "(eşleşen session yok)"; return 0; }
 
   if [ "$dry" = "1" ]; then
