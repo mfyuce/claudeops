@@ -7,3 +7,6 @@ __pycache__/
 .idea/
 .vscode/
 *.log
+# local-only notes (asla commit etme)
+*.local.md
+*.local.txt

@@ -2,6 +2,24 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-05-23 (20→21 transition + mo migration + migrate komutu)
+
+### Yeni komut / flag
+
+- ✅ **`claudeops migrate <name> --to=<new-cwd>`** — session cwd taşıma + ilgili md/memory dosyalarını taşıma + path rewrite + trust dialog patch + opsiyonel `--gh`/`--glab` ile private remote yaratma + respawn (model/permission-mode /proc/<pid>/cmdline'dan inherit).
+- ✅ **`claudeops handover --exclude=name1,name2`** — handover'dan belirli session'ları skip. 2026-05-23 20→21 transition'ında trroot dahil edilmedi sonra dahil edildi senaryosunda kullanıldı.
+
+### Operasyon
+
+- ✅ **mo session /home/fatihyuce → /home/fatihyuce/work/projects/tmp/machine_ops** — yeni cwd, github + gitlab private remote, CLAUDE.md/howtos.md/sessions-snapshot.md taşındı, memory dosyalarındaki path'ler güncellendi, trust patch + .claude.json backup.
+- ✅ **20→21 transition** — Faz 1: 17 wrap-up (hms20+hve20 manuel önce, sonra 15 handover-komutu, trroot dahil), Faz 2: 16 fresh respawn (sqli SKIP, **--prompt YOK** kullanıcı tercihi → idle açıldılar), Faz 3: layout grid 4 --pin=anomaly21,rustrino21. sqli20 wrap-up sonrası kapatıldı.
+- ✅ **hve20 recovery** — handover sırasında TaskStop ile yarıda kalan hve20 (kill edildi, yeni TUI açılamadan) manuel `gnome-terminal --window ... claude --resume <sid> --remote-control hve20 '<HANDOVER_MSG>'` ile wrap-up'a yeniden alındı.
+
+### Kararlar
+
+- ✅ **Faz 2 respawn'da `--prompt` opsiyonel olabilir** — kullanıcı 2026-05-23'te "devam yazmayalim, sadece acilsin" dedi. Yeni session'lar idle açıldı, kullanıcı manuel prompt verecek.
+- ✅ **sqli21 SKIP** — kullanıcı "sqli simdilik bir daha acilmasin" → Faz 2'ye girmedi, sqli20 wrap-up sonrası kill edildi (`./claudeops kill sqli20`).
+
 ## 2026-05-17/18 (yoğun iterasyon — production tests)
 
 ### Kritik fix'ler
