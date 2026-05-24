@@ -1,56 +1,42 @@
 # claudeops — Claude Context
 
-## Bu Repo
-
-Açık Claude CLI session'larını toplu yönetmek için tek-dosya bash CLI. 2026-05-16/17 gecesi 14 paralel session compact + RC + visible-window operasyonundan doğdu. Yaşanan bug'lar script'te fix'li.
+Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 ## Self Protection
 
 `find_self_claude_pid` sırayla:
-1. **`$CLAUDE_CODE_SESSION_ID` env var** — Claude TUI çocuk process'lere geçirir. Nohup-detached script'lerde tek güvenilir yol.
+1. **`$CLAUDE_CODE_SESSION_ID` env var** — Claude TUI çocuklara geçirir. Nohup-detached'te tek güvenilir yol.
 2. **Fallback: `$$` ata zinciri** — interactive shell'lerde.
 
-`all-but-self` syntax buna bağlı. Self'i ASLA hedef almaz default'ta.
+`all-but-self` buna bağlı. Self'i ASLA hedef almaz default'ta.
 
-## Önemli teknik kararlar
+## Önemli teknik kararlar (kod-okumakla anlaşılmaz)
 
-- **Tek dosya bash**: Python wrapper yok. python3 sadece JSON parse.
-- **stdin redirect** (`< /dev/null`): `claude -p` her çağrıda zorunlu (stdin leak fix).
+- **stdin redirect** `< /dev/null`: `claude -p` her çağrıda zorunlu (stdin leak fix).
 - **`script -qfc` ile detached pty**: `nohup &` yetmez, Claude TUI gerçek terminal ister.
-- **Compact doğrulaması**: `claude -p "/compact"` sessizdir. Başarı kanıtı: jsonl'de `"isCompactSummary":true` count +1.
-- **Visible window**: `gnome-terminal -- bash -c "claude ...; exec bash"` (claude exit etse bile pencere bash'a düşer).
-- **wmctrl -s vs xprop**: Sadece `wmctrl -s N` Mutter'da görsel switch tetikler. xprop sadece property set.
-- **Mutter multi-monitor snap bug**: in-place `wmctrl -e` çoklu-monitor'da yanlış snap'liyor. Çözüm: `--reopen` (kill + switch + spawn-on-current).
-- **VTE keystroke rejection**: gnome-terminal synthetic key'leri reddediyor. xdotool `type` çoğunlukla geçer, permission dialog intermittent.
-- **`-n NAME` ≠ `--remote-control NAME`**: `-n` session display, `--remote-control` RC bridge. Doğru: `claude -n NAME --remote-control NAME 'prompt'`.
-- **Bridge cache (server-side)**: aynı sessionId resume edilince RC name değişmez. Değiştirmek için `--new`.
-- **claude path encoding**: `~/.claude/projects/` altında cwd `tr '/_' '-'`.
+- **Compact doğrulaması**: `claude -p "/compact"` sessiz. Başarı: jsonl `"isCompactSummary":true` count +1.
+- **Visible window**: `gnome-terminal -- bash -c "claude ...; exec bash"` (claude exit etse pencere bash'a düşer).
+- **wmctrl -s vs xprop**: Sadece `wmctrl -s N` Mutter'da görsel switch tetikler.
+- **VTE keystroke rejection**: synthetic key'leri reddediyor. xdotool `type` çoğunlukla geçer, permission dialog intermittent.
+- **`-n NAME` ≠ `--remote-control NAME`**: `-n` display, `--remote-control` RC bridge.
+- **Bridge cache (server-side)**: aynı sid resume → RC name cache'li. Değiştirmek için `--new`.
+- **claude path encoding**: `~/.claude/projects/<cwd>` cwd `tr '/_' '-'`.
 
-## Model-permission mode (manuel — otomatik mapping TODO)
+## Model-permission konvansiyonu (auto-mapping TODO)
 
-- **Opus → `--permission-mode=auto`** (classifier-based)
-- **Sonnet → `--permission-mode=acceptEdits`** (Edit/Write auto, Bash hâlâ onay)
+- **Opus → `auto`**, **Sonnet → `acceptEdits`**
 
-## Komut özeti
+## Komutlar
 
-```bash
-claudeops self | list | kill all-but-self
-claudeops compact all-but-self --backup
-claudeops rc <names> --suffix=N --new --kill-first --model=opus --permission-mode=auto [--prompt=devam]
-claudeops handover --from-suffix=N [--exclude=name1,name2]
-claudeops send <name> -- <prompt>       # /context: send <name> -- "/context"
-claudeops migrate <name> --to=<cwd> --gh --glab
-claudeops layout grid 4 --pin=anomaly,rustrino [--reopen]
-claudeops desktops N
-```
+Detay: `./claudeops help`. Tipik akış aşağıda (Handover).
 
 ## Handover (3-fazlı, "ho" istek)
 
 ```
-# Faz 1 — wrap-up (visible, prefilled, idle pre-check, sıralı)
-./claudeops handover --from-suffix=<FROM> [--exclude=name1,name2,...]
+# Faz 1 — wrap-up (visible, sıralı, idle-only auto-skip)
+./claudeops handover --from-suffix=<FROM> [--exclude=name1,name2]
 
-# Faz 2 — fresh respawn (--prompt opsiyonel; verilmezse idle)
+# Faz 2 — fresh respawn (--prompt opsiyonel; idle açılır)
 ./claudeops rc hms<F> hve<F> oa<F> qve<F> rve<F> carla<F> emrgence<F> rr<F> trroot<F> gedikvm<F> gedikido<F> kulturiot<F> \
   --suffix=<TO> --new --kill-first --model=opus --permission-mode=auto
 
@@ -61,33 +47,34 @@ claudeops desktops N
 ./claudeops layout grid 4 --pin=anomaly<TO>,rustrino<TO>
 ```
 
-⚠ Hedef listesinde **SPACE-separated** (virgül parse bug — TODO).
-Detay/why: `~/.claude/projects/-home-.../memory/handover-procedure.md`.
-
-## Geliştirme notları
-
-- Script bağımsız test edilebilir; kill/compact/rc default'ta self'i ASLA hedef almaz.
-- `cmd_send` `<targets> -- <prompt>` formatında parse eder.
-- Bu repo "CHANGELOG.md" kullanmıyor — `DONE.md` o rolü oynuyor.
+⚠ Target listesi **SPACE-separated** (virgül parse bug — TODO).
+⚠ rc orphan (mevcut olmayan target) → WARN + manuel `claudeops new` (memory: handover-edge-cases case 3).
+Detay/why: memory `handover-procedure.md` + `handover-edge-cases.md`.
 
 ## Bilinen sınırlamalar
 
 - **Wayland**: layout çalışmaz (wmctrl X11-only).
-- **Terminal emülatör**: gnome-terminal hard-coded; kitty/alacritty için parametrize TODO.
-- **Rate-limit reset**: parse edilmiyor, sadece tespit edip durdurur (TODO).
-- **Permission prompt auto-submit**: VTE/Ink synthetic event reject — keystroke landing intermittent.
-- **Multi-monitor snap**: `--reopen` ile workaround (in-place buggy).
-- **`rc <a,b,c>` virgül-separated**: parse edilmiyor; SPACE kullan (TODO).
+- **Terminal**: gnome-terminal hard-coded.
+- **Rate-limit reset**: parse edilmiyor (TODO).
+- **Permission prompt auto-submit**: VTE/Ink reject — keystroke intermittent.
+- **Multi-monitor snap**: `--reopen` ile workaround.
+- **`rc <a,b,c>` virgül**: parse yok; SPACE kullan (TODO).
 - **Layout orphan terminal**: window-name validation eksik (TODO).
+
+## Meta
+
+- `DONE.md` = de facto CHANGELOG.
+- `desktops.local.md` = layout snapshot (gitignored).
+- Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 
 ## READY FOR HANDOVER (2026-05-24)
 
-**Nerede kaldık:** co22 (bu konuşma, opus, claudeops repo). 19 aktif 21-session canlı (sqli SKIP) — 2026-05-24'te gedikvm21/gedikido21/kulturiot21 opus auto convention'a eklendi (handover-procedure memory + bu CLAUDE.md Faz 2 rc örneği). Layout: ws0 pin=anomaly21+rustrino21, ws1=co22(self)+orphan+hms21+hve21, ws2=oa21+qve21+rve21+trroot21, ws3=carla21+emrgence21+rr21+mecdtfl21, ws4=vrk21+hc21+hcr21+mo21+gedikvm21+gedikido21+kulturiot21. Detay: `desktops.local.md`. 20→21 transition tarihçesi: `DONE.md`.
+**Nerede kaldık:** co22 (bu konuşma, opus, claudeops repo). 21→22 transition tamam: 19 22-session + co22 = 20 idle. Faz 1: 18/19 wrap-up'd (emrgence21 idle-only skip — script artık otomatik). Faz 2: 18 rc fresh + emrgence22 manuel (orphan case). Faz 3: layout 6 ws, 20 pencere clean, orphan yok. 2 script fix push'landı bu round'da: idle-only auto-skip (`74a32d7`) + rc orphan WARN (`8976ec3`). HEAD `8976ec3` origin+gitlab sync (commit edilmemiş bu wrap-up dahil).
 
 **Yeni session yapacaklar:**
-1. **MEMORY.md** oku — özellikle [[handover-procedure]] (3-fazlı zincir, `--exclude` flag + `--prompt` opsiyonel notları).
-2. **TODO.md kritik bug'lar hâlâ açık:** (a) `rc` virgül-separated parse, (b) layout orphan terminal. İkisi de 20→21'de tekrar gözlendi.
-3. **Model→permission-mode otomatik mapping** hâlâ TODO.
+1. **MEMORY.md** oku — [[handover-procedure]] + yeni [[handover-edge-cases]] (3 case: idle-only, server bridge cache, orphan target).
+2. **Açık TODO bug'lar:** (a) `rc <a,b,c>` virgül parse, (b) layout orphan terminal validation.
+3. **Model→permission-mode auto-mapping** hâlâ TODO.
 
 **Açık kararlar:** disk-temizlik aday listesi (2026-05-20) onay bekliyor (`~/.cache/huggingface` 29G KORU). Multi-monitor snap için ekran kilidi hipotezi henüz test edilmedi.
 
