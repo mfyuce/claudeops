@@ -51,7 +51,7 @@ claudeops desktops N
 ./claudeops handover --from-suffix=<FROM> [--exclude=name1,name2,...]
 
 # Faz 2 — fresh respawn (--prompt opsiyonel; verilmezse idle)
-./claudeops rc hms<F> hve<F> oa<F> qve<F> rve<F> carla<F> emrgence<F> rr<F> trroot<F> \
+./claudeops rc hms<F> hve<F> oa<F> qve<F> rve<F> carla<F> emrgence<F> rr<F> trroot<F> gedikvm<F> gedikido<F> kulturiot<F> \
   --suffix=<TO> --new --kill-first --model=opus --permission-mode=auto
 
 ./claudeops rc anomaly<F> rustrino<F> mecdtfl<F> vrk<F> hc<F> hcr<F> mo<F> \
@@ -82,7 +82,7 @@ Detay/why: `~/.claude/projects/-home-.../memory/handover-procedure.md`.
 
 ## READY FOR HANDOVER (2026-05-24)
 
-**Nerede kaldık:** co22 (bu konuşma, opus, claudeops repo). Working tree clean, HEAD `476e506` origin+gitlab sync. 16 aktif 21-session canlı (sqli SKIP). Layout state: `desktops.local.md` güncel — ws0 pin=anomaly21+rustrino21, ws1=co22(self)+orphan+hms21+hve21, ws2=oa21+qve21+rve21+trroot21, ws3=carla21+emrgence21+rr21+mecdtfl21, ws4=vrk21+hc21+hcr21+mo21. Bu session'da net iş yok — sadece /rename co21→co22 ve CLAUDE.md slim. 20→21 transition tarihçesi `DONE.md` (2026-05-23 bloğu).
+**Nerede kaldık:** co22 (bu konuşma, opus, claudeops repo). 19 aktif 21-session canlı (sqli SKIP) — 2026-05-24'te gedikvm21/gedikido21/kulturiot21 opus auto convention'a eklendi (handover-procedure memory + bu CLAUDE.md Faz 2 rc örneği). Layout: ws0 pin=anomaly21+rustrino21, ws1=co22(self)+orphan+hms21+hve21, ws2=oa21+qve21+rve21+trroot21, ws3=carla21+emrgence21+rr21+mecdtfl21, ws4=vrk21+hc21+hcr21+mo21+gedikvm21+gedikido21+kulturiot21. Detay: `desktops.local.md`. 20→21 transition tarihçesi: `DONE.md`.
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — özellikle [[handover-procedure]] (3-fazlı zincir, `--exclude` flag + `--prompt` opsiyonel notları).

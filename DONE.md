@@ -2,6 +2,10 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-05-24 (convention genişletme)
+
+- ✅ **gedikvm, gedikido, kulturiot → opus auto convention** — 3 mevcut 21-session (BLM308 veri madenciliği, BLMS431 ileri derin öğrenme, kultur/iot) handover-procedure memory + CLAUDE.md Faz 2 rc örneğine eklendi. Sonraki handover round'undan itibaren dahil. Toplam: opus auto 12 + sonnet acceptEdits 7 + co (self) = 20 (+ sqli SKIP).
+
 ## 2026-05-23 (20→21 transition + mo migration + migrate komutu)
 
 ### Yeni komut / flag
