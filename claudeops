@@ -761,7 +761,7 @@ cmd_handover() {
   fi
 
   local log="$LOG_DIR/handover.log"; : > "$log"
-  local opened=0 failed=0
+  local opened=0 failed=0 skipped=0
 
   # PRE-CHECK: HEPSİ idle olana kadar bekle (her şey "beklerken" başla)
   echo ""
@@ -788,12 +788,37 @@ except: print('gone')
     pre_round=$((pre_round+1))
   done
 
+  # PRE-CHECK 2: idle-only session tespiti (jsonl yoksa resume edilemez)
+  # Vaka: --prompt YOK ile açılan session hiç mesaj almazsa jsonl yazılmaz.
+  # Kill edilince resume edebileceğimiz konuşma yok → nobridge fail.
+  # Çözüm: Faz 1'de SKIP, Faz 2 fresh respawn'da hallolur.
+  local idle_only_names=""
+  while IFS=$'\t' read p3 n3 s3 sid3 cwd3 _; do
+    [ -z "$p3" ] && continue
+    if [ -z "$(find_jsonl "$sid3")" ]; then
+      idle_only_names="$idle_only_names $n3"
+    fi
+  done <<<"$rows"
+  if [ -n "$idle_only_names" ]; then
+    echo ""
+    echo "[pre-check] idle-only session'lar (jsonl yok, Faz 1 atlanacak):$idle_only_names"
+    echo "  → bunlar Faz 2'de fresh respawn'da otomatik hallolur"
+  fi
+
   while IFS=$'\t' read pid name status sid cwd bridge; do
     [ -z "$pid" ] && continue
     echo ""
     echo "═════════════════════════════════════════════════"
     echo "  HANDOVER $name (pid=$pid, sid=$sid) — $mode"
     echo "═════════════════════════════════════════════════"
+
+    # idle-only ise (jsonl yok): SKIP. Kill etme, spawn etme.
+    if [ -z "$(find_jsonl "$sid")" ]; then
+      echo "  SKIP: idle-only (jsonl yok, resume edilemez). Faz 2'de fresh."
+      echo "$name|skipped-idle-only" >> "$log"
+      skipped=$((skipped+1))
+      continue
+    fi
 
     # 0) BUSY mu? IDLE olana kadar bekle (max 60dk)
     local wait_rounds=0
@@ -888,7 +913,7 @@ for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
 
   echo ""
   echo "═════════════════════════════════════════════════"
-  echo "  handover summary: opened=$opened failed=$failed of $total ($mode mode)"
+  echo "  handover summary: opened=$opened failed=$failed skipped=$skipped of $total ($mode mode)"
   echo "  log: $log"
   echo "═════════════════════════════════════════════════"
   if [ "$mode" = "visible" ]; then
