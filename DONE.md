@@ -6,6 +6,7 @@
 
 - ✅ **gedikvm, gedikido, kulturiot → opus auto convention** — 3 mevcut 21-session (BLM308 veri madenciliği, BLMS431 ileri derin öğrenme, kultur/iot) handover-procedure memory + CLAUDE.md Faz 2 rc örneğine eklendi. Sonraki handover round'undan itibaren dahil. Toplam: opus auto 12 + sonnet acceptEdits 7 + co (self) = 20 (+ sqli SKIP).
 - ✅ **Handover Faz 1: idle-only session pre-flight skip** — `--prompt YOK` ile açılan session hiç mesaj almazsa jsonl yazılmaz; kill edilince resume edilemez (`nobridge` fail). Vaka: 21→22 Faz 1'de emrgence21 (20→21'de idle açılmıştı). Fix: cmd_handover pre-check 2 ekledi — `find_jsonl` boşsa session'ı kill etmeden SKIP. Summary'de `skipped=N` ayrı sayılır. Faz 2'deki `rc --new --kill-first` fresh respawn'da otomatik hallolur. Memory: [[handover-edge-cases]].
+- ✅ **rc: orphan target warning** — `claudeops rc <name>` ile verilen isim aktif session'larda yoksa sessizce skip ediliyordu. Vaka: 21→22 Faz 2'de emrgence21 rc'ye verildi ama emrgence21 Faz 1'de zaten kill edilmişti → emrgence22 spawn olmadı. Fix: cmd_rc başına WARN ekledi (eşleşmeyen isimleri liste olarak söyler + `claudeops new` önerir). emrgence22 manuel `gnome-terminal ... claude --model opus --permission-mode auto -n emrgence22 --remote-control emrgence22` ile açıldı (memory: [[handover-edge-cases]] case 3).
 
 ## 2026-05-23 (20→21 transition + mo migration + migrate komutu)
 

@@ -346,6 +346,28 @@ EOF
   local sp; sp=$(self_pid 2>/dev/null || echo "")
   local gtp_rc; gtp_rc=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
 
+  # WARN: name-list mode'da eşleşmeyen hedefleri uyar (orphan case)
+  # Vaka: Faz 1'de session kill edilmiş + Faz 2 rc --new --kill-first <name>21 ...
+  # mevcut <name>21 yoksa sessizce skip ediliyordu → fresh spawn olmuyor.
+  case "$target" in
+    all|all-but-self|notself|not-self|--not-self) ;;
+    *)
+      local requested_names=("$target" "$@")
+      local matched_names; matched_names=$(printf '%s\n' "$rows" | awk -F'\t' '{print $2}')
+      local missing=""
+      for rn in "${requested_names[@]}"; do
+        case "$rn" in --*|"") continue;; esac
+        if ! echo "$matched_names" | grep -qFx "$rn"; then
+          missing="$missing $rn"
+        fi
+      done
+      if [ -n "$missing" ]; then
+        echo "WARN: rc — şu isimler aktif session'larda bulunamadı (skipped):$missing"
+        echo "  → orphan/fresh spawn için: claudeops new <name> [cwd]  (manuel)"
+      fi
+      ;;
+  esac
+
   # SAFETY: --kill-first ile busy hedef varsa idle olana kadar bekle (handover/work koruma)
   if [ "$kill_first" = "1" ]; then
     local pre_round=0
