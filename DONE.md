@@ -10,6 +10,8 @@
 - ✅ **`claudeops cancel <names>`** — RC'yi bloklayan modal'a (permission/model/trust dialog) Esc gönderir (görünür yap+activate+Esc). VTE reject ihtimaline karşı rc --kill-first fallback önerir.
 - ✅ **`handover --force`** — skip kontrollerini (already-done/idle-only/dirty) baypas, hepsine gönder. jsonl yoksa fresh-spawn (model/perm /proc/cmdline'dan). Default'ta skip geçerli (kullanıcı: "bu sefer dirty bakmasın hepsine, dahakine baksın").
 - ✅ **ho mesajına cross-session satırı** — "paralel/diğer session'larda konuşulup kaydedilmemiş bulgu/karar kaldı mı? kaydet."
+- ✅ **`handover --layout [--pin=a,b]`** — tüm wrap-up pencereleri açıldıktan sonra otomatik `layout grid 4` çalıştırır (kullanıcı: "Faz 1 komutları gittikten sonra layout çalışmalı"). Faz 1 + tile tek komutta.
+- ✅ **23 forced-ho sonucu** — 19/19 işlendi (force). dirty-check fix değerini kanıtladı: emergence dışında carla23/anomaly23/vrk23 de "idle-only KİRLİ" (limbo iş) çıktı → fresh-spawn + commit prompt'uyla kendileri commit etti. 15 temiz session RFH baseline aldı.
 
 ## 2026-05-25 (22→23 transition + handover skip kriteri + layout xdotool fix)
 
