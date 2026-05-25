@@ -883,6 +883,8 @@ cmd_handover() {
   local mode="visible"   # visible (default) | headless (-p, no approval prompts visible)
   local exclude=""
   local force=0          # --force: skip/dirty/done/idle-only kontrollerini baypas, HEPSİNE gönder
+  local do_layout=0      # --layout: tüm spawn'lar gittikten sonra layout çalıştır
+  local layout_pin=""    # --pin=a,b: layout'a iletilecek pin listesi
   for a in "$@"; do
     case "$a" in
       --from-suffix=*)        from_suffix="${a#--from-suffix=}";;
@@ -892,6 +894,8 @@ cmd_handover() {
       --visible)              mode="visible";;
       --exclude=*)            exclude="${a#--exclude=}";;
       --force|--no-skip)      force=1;;
+      --layout)               do_layout=1;;
+      --pin=*)                layout_pin="${a#--pin=}"; do_layout=1;;
       --dry-run)              dry=1;;
     esac
   done
@@ -1122,6 +1126,16 @@ for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
   echo "  handover summary: opened=$opened failed=$failed skipped=$skipped of $total ($mode mode)"
   echo "  log: $log"
   echo "═════════════════════════════════════════════════"
+
+  # --layout: tüm wrap-up pencereleri açıldıktan sonra otomatik tile et.
+  # (kullanıcı 2026-05-25: "faz 1 komutları gittikten sonra layout çalışmalı")
+  # Pencereler busy olabilir (wrap-up sürüyor) — window-move işlemi etkilemez.
+  if [ "$do_layout" = "1" ] && [ "$mode" = "visible" ]; then
+    echo ""
+    echo "── otomatik layout (pencereler RC adına dönsün diye 4s bekle) ──"
+    sleep 4
+    cmd_layout grid 4 ${layout_pin:+--pin="$layout_pin"}
+  fi
   if [ "$mode" = "visible" ]; then
     echo ""
     echo "ŞİMDİ:"
@@ -1507,6 +1521,8 @@ KULLANIM:
       --force: skip kontrollerini (already-done / idle-only / dirty) baypas et,
         HEPSİNE wrap-up gönder. jsonl olmayanı fresh-spawn (model/perm cmdline'dan)
         ile açar. Default'ta skip mantığı geçerli (sadece gerekenlere gönderir).
+      --layout [--pin=a,b]: tüm wrap-up pencereleri açıldıktan sonra otomatik
+        'layout grid 4' çalıştır (Faz 1 + tile tek komutta).
       Her <name><from> session için:
         0) BUSY ise idle olana kadar bekler (max 60dk)
         1) Wrap-up mesajı gönderir (Claude commit/push + MD update yapsın diye)
