@@ -114,10 +114,13 @@ repo_dirty() {
   local d="$1"
   [ -n "$d" ] || return 1
   git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || return 1
-  local dirty unpushed
-  dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l)
+  # UNTRACKED (??) sayılmaz — kullanıcı: "data output ise kalsın / ignored ise
+  # sorun yok" (2026-05-25). Çıktı/junk untracked dosyalar session'ı "kirli"
+  # yapmamalı. Dirty = sadece TRACKED-modified/staged + unpushed commit.
+  local tracked unpushed
+  tracked=$(git -C "$d" status --porcelain 2>/dev/null | grep -vc '^??')
   unpushed=$(git -C "$d" log @{u}.. --oneline 2>/dev/null | wc -l)
-  [ "$dirty" -gt 0 ] || [ "$unpushed" -gt 0 ]
+  [ "$tracked" -gt 0 ] || [ "$unpushed" -gt 0 ]
 }
 
 # Session güvenle "wrapped-up" mı? Kriter (kullanıcı, 2026-05-25):
