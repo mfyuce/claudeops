@@ -5,11 +5,12 @@
 ## Kritik bug'lar (devam)
 
 - [ ] **BUG: `rc <a,b,c>` virgül-separated isim listesi parse edilmiyor** — 2026-05-19'da 15→16, 2026-05-23'te 20→21 transition'larında doğrulandı. `cmd_rc`/`resolve_targets` SPACE-separated bekliyor. CLAUDE.md eski örnekler virgüllü idi → güncellendi. Fix: cmd_rc başında target ve "$@" içindeki virgüllü string'leri split et (IFS=','). Aynı bug `cmd_kill`, `cmd_compact`, `cmd_send` için de var.
-- [ ] **`claudeops layout` orphan terminal kaldırmıyor** — 2026-05-19 16 ve 2026-05-23 21 transition'larında doğrulandı. Fix: layout iterasyonunda window-name'in geçerli session.json'da olup olmadığını kontrol et + yoksa skip.
+- [ ] **`claudeops layout` orphan terminal kaldırmıyor** — 2026-05-19/05-23/05-25 transition'larında doğrulandı (ws1'de "fatihyuce@483-LNX: ~" bir quad slot işgal ediyor). Fix: layout iterasyonunda window-name'in geçerli session.json'da olup olmadığını kontrol et + yoksa skip (oth_wins'e ekleme).
+- [ ] **`cancel` Esc güvenilmez (VTE reject)** — 2026-05-25 kulturiot23 "waiting" modal'da Esc inmedi. Garantili iptal = respawn. Fix: cancel Esc dene → 2s sonra hâlâ takılıysa otomatik `rc <name> --kill-first` öner/yap (flag ile).
 
 ## Geliştirme
 
-- [ ] **Model-spesifik default permission mode (otomatik mapping)** — opus → `--permission-mode=auto`, sonnet → `--permission-mode=acceptEdits` otomatik. Şu an manuel veriliyor. `--model=opus` verince claudeops `--permission-mode=auto` ekler, vs. `--permission-mode` explicit verilirse override.
+- [ ] **`--model` verince default `--permission-mode=auto`** — 2026-05-25: artık HEPSİ auto (sonnet de). Yani mapping basitleşti: `--model=opus|sonnet` verilince permission-mode otomatik `auto` olsun (explicit verilirse override). Şu an her çağrıda elle `--permission-mode=auto` yazılıyor.
 - [ ] **Python UI (büyük)** — claudeops için GUI: session listesini göster, tıkla → compact/RC/kill/send butonları, layout görsel önizleme. Stack TBD (PySide6 / Textual / Web). Ana motivasyon: CLI yerine UI.
 - [ ] **`claudeops history` + `claudeops launch <name|sid>`** — geçmişte açık olan TÜM session'ları registry'le, `launch` ile yeni gnome-terminal'de RC açar.
 - [ ] **`--models=name:model,...` per-name config** — manuel name→model map. Şu an model PLAN array'de gömülü, hatalara açık.
