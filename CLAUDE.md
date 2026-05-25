@@ -74,12 +74,7 @@ Detay/why: memory `handover-procedure.md` + `handover-edge-cases.md`.
 
 **Nerede kaldık:** co22 (bu konuşma, opus, claudeops repo). **23→24 transition tamam**: 19 24-session + co22(self) = 20 idle, hepsi `--permission-mode=auto`. Layout temiz (xdotool, ~14s), co22 ws0'a auto-pinli. HEAD `d0e954c` origin+gitlab sync.
 
-**Bu oturumda eklenenler (hepsi push'lu, DONE.md 2026-05-25 blokları):**
-- **Sonnet → auto** (convention "hepsi auto"; model hâlâ opus/sonnet ayrı)
-- **Layout güvenilir+hızlı**: `--sync` hang fix (321s→~14s) + desktop-grouped + read-back verify + **self ws0 auto-pin**
-- **`handover --force`** (skip baypas) + **`--layout`** (oto-tile) + **`claudeops cancel`** (modal Esc)
-- **Skip kriteri**: RFH+sonrası-istek-yok+repo-temiz; **`repo_dirty` untracked saymaz**
-- dirty-check fix limbo iş kurtardı (emergence + carla/anomaly/vrk → iki remote'a push)
+Bu oturumda eklenenler (detay: DONE.md 2026-05-25 blokları): sonnet→auto, layout `--sync`-hang fix + self-pin, `handover --force/--layout`, `cancel`, skip kriteri + `repo_dirty` untracked saymaz. dirty-check fix limbo iş kurtardı (emergence/carla/anomaly/vrk → iki remote).
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] (idle-only, bridge cache, orphan, skip kriteri, layout reçetesi) + [[feedback-calisma-tarzi]] (background bekleme, layout hız).
