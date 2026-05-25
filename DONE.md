@@ -2,6 +2,20 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-05-25 (22→23 transition + handover skip kriteri + layout xdotool fix)
+
+### Handover doğruluk
+
+- ✅ **Skip kriteri yeniden tanımlandı: `handover_done()`** — kullanıcı: "repo temizliği yetmez". Doğru kriter = jsonl'de READY FOR HANDOVER var **VE** son RFH'den sonra yeni user isteği yok **VE** repo temiz+pushed. Üçü birden → güvenle atla. Aksi → wrap-up. jsonl parse (python) ile son-RFH-index vs son-user-istek-index karşılaştırılır.
+- ✅ **`repo_dirty()` helper** — idle-only skip artık jsonl yokluğuna değil repo durumuna da bakıyor. jsonl yok + repo KİRLİ → WARN (limbo iş, emrgence vakası), sessiz skip yok.
+- ✅ **PRE-CHECK 2 sınıflandırma** — handover öncesi: needs-ho / already-done / idle-clean / idle-DIRTY listesi basılır.
+- ✅ **emrgence kurtarma** — 2 gündür commit'lenmemiş 11. tur wrap-up (idle-only döngüsünde limboda). Fresh respawn'da **commit prompt'u CLI argümanı olarak** verilerek (keystroke değil → VTE reject bypass) session kendi commit+push etti (`9be23ae`).
+
+### Layout (kapatmadan in-place)
+
+- ✅ **`_place_win` wmctrl -e → xdotool --sync** — Mutter multi-monitor'da `wmctrl -e` flaky (pencereler ekran dışına/üst üste). Kök neden: xdotool windowmove pencere **görünür (aktif desktop) değilse** yanlış konuma taşıyor. Fix: hedef desktop'a ata + `wmctrl -s` ile SWITCH + `xdotool get_desktop` ile doğrula (Mutter rapid switch coalesce ediyor) + sonra taşı. `_reopen_win` da xdotool'a geçti. Dependency check'e xdotool eklendi.
+- ✅ **wmctrl -G güvenilmez** — koordinatları ~2× raporluyor (scale artifact). Gerçek konum doğrulaması `xdotool getwindowgeometry` ile yapılmalı.
+
 ## 2026-05-24 (convention genişletme + idle-only handover fix)
 
 - ✅ **gedikvm, gedikido, kulturiot → opus auto convention** — 3 mevcut 21-session (BLM308 veri madenciliği, BLMS431 ileri derin öğrenme, kultur/iot) handover-procedure memory + CLAUDE.md Faz 2 rc örneğine eklendi. Sonraki handover round'undan itibaren dahil. Toplam: opus auto 12 + sonnet acceptEdits 7 + co (self) = 20 (+ sqli SKIP).

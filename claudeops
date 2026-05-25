@@ -106,6 +106,58 @@ find_jsonl() {
   find "$PROJ_DIR" -name "${sid}.jsonl" 2>/dev/null | head -1
 }
 
+# Repo kirli mi? (uncommitted veya unpushed). cwd git repo değilse "temiz" sayılır.
+# idle-only skip kararı buna bakmalı: jsonl yokluğu "kaydedilecek iş yok" demek
+# DEĞİL — session hiç kullanılmamış olabilir ama repo'da önceki turdan
+# commit'lenmemiş iş kalmış olabilir (emrgence vakası, 2026-05-25).
+repo_dirty() {
+  local d="$1"
+  [ -n "$d" ] || return 1
+  git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || return 1
+  local dirty unpushed
+  dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l)
+  unpushed=$(git -C "$d" log @{u}.. --oneline 2>/dev/null | wc -l)
+  [ "$dirty" -gt 0 ] || [ "$unpushed" -gt 0 ]
+}
+
+# Session güvenle "wrapped-up" mı? Kriter (kullanıcı, 2026-05-25):
+#   (a) jsonl'de READY FOR HANDOVER geçiyor
+#   (b) son RFH'den SONRA yeni user isteği YOK (yani wrap-up'tan beri iş girmemiş)
+#   (c) repo temiz + pushed
+# Üçü de sağlanırsa 0 (done → handover'da atla); aksi halde 1 (ho gerek).
+# Neden repo+jsonl tek başına yetmez: temiz repo "handover yapıldı" demek değil;
+# RFH demiş ama sonra yeni istek gelmiş session'da yeni iş vardır.
+handover_done() {
+  local sid="$1" cwd="$2"
+  repo_dirty "$cwd" && return 1
+  local jsonl; jsonl=$(find_jsonl "$sid")
+  [ -z "$jsonl" ] && return 1
+  python3 - "$jsonl" <<'PY'
+import json,sys
+last_rfh=-1; last_user=-1; i=0
+for line in open(sys.argv[1]):
+    line=line.strip()
+    if not line: continue
+    try: o=json.loads(line)
+    except: continue
+    i+=1
+    t=o.get("type")
+    msg=o.get("message",{}) if isinstance(o.get("message"),dict) else {}
+    content=msg.get("content")
+    text=""
+    if isinstance(content,str): text=content
+    elif isinstance(content,list):
+        text=" ".join(c.get("text","") for c in content if isinstance(c,dict) and c.get("type")=="text")
+    if "READY FOR HANDOVER" in text: last_rfh=i
+    if t=="user":
+        if isinstance(content,list):
+            is_tool=any(isinstance(c,dict) and c.get("type")=="tool_result" for c in content)
+            if not is_tool and text.strip(): last_user=i
+        elif isinstance(content,str) and content.strip(): last_user=i
+sys.exit(0 if (last_rfh>0 and last_rfh>=last_user) else 1)
+PY
+}
+
 # ─────────────────────────────────────────────
 # Target resolver: "all-but-self" | "all" | "<name> <name>..."
 # ─────────────────────────────────────────────
@@ -552,6 +604,10 @@ Kur: sudo apt install -y wmctrl
 EOF
     return 1
   fi
+  if ! command -v xdotool >/dev/null 2>&1; then
+    echo "HATA: xdotool kurulu değil (pencere yerleştirme için zorunlu). Kur: sudo apt install -y xdotool" >&2
+    return 1
+  fi
   # Primary monitor geometry
   local geom sw sh screen_x screen_y W H
   geom=$(xrandr 2>/dev/null | awk '/ primary /{match($0,/[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/); print substr($0,RSTART,RLENGTH); exit}')
@@ -605,14 +661,32 @@ EOF
 
   echo "pinned-count: ${#pin_wins[@]}  others-count: ${#oth_wins[@]}"
 
-  # Yardımcı: in-place move (yaratılmış pencereler için; Mutter bazen visual'i kabul etmiyor)
+  # Yardımcı: in-place move. wmctrl -e Mutter multi-monitor'da flaky (snap +
+  # bazı pencereler hiç oturmuyordu, 2026-05-25 teşhis). xdotool --sync move'un
+  # bitmesini bekler → güvenilir. quad="x,y,w,h".
   _place_win() {
     local win="$1" ws="$2" quad="$3"
-    xprop -id "$win" -f _NET_WM_DESKTOP 32c -set _NET_WM_DESKTOP "$ws" 2>/dev/null
+    local wd; wd=$(printf '%d' "$win")
+    local x y w h; IFS=',' read -r x y w h <<<"$quad"
+    # KRİTİK: xdotool windowmove pencere GÖRÜNÜR (aktif desktop) değilse yanlış
+    # konuma taşıyor (Mutter hepsini tek noktaya yığıyor, 2026-05-25 teşhis).
+    # Çözüm: pencereyi hedef desktop'a ata + o desktop'a SWITCH et (görünür yap),
+    # sonra xdotool ile taşı.
+    wmctrl -i -r "$win" -t "$ws" 2>/dev/null
+    # aktif desktop GERÇEKTEN ws olana kadar doğrula (Mutter rapid switch'leri
+    # coalesce edip düşürebiliyor → pencere görünmeden taşınır, yanlış konum).
+    local tries=0 cur
+    while [ $tries -lt 25 ]; do
+      wmctrl -s "$ws" 2>/dev/null
+      cur=$(xdotool get_desktop 2>/dev/null)
+      [ "$cur" = "$ws" ] && break
+      sleep 0.1
+      tries=$((tries+1))
+    done
     sleep 0.2
     wmctrl -i -r "$win" -b remove,maximized_vert,maximized_horz 2>/dev/null
-    wmctrl -i -r "$win" -e "0,$quad" 2>/dev/null
-    sleep 0.2
+    xdotool windowmove --sync "$wd" "$x" "$y" 2>/dev/null
+    xdotool windowsize --sync "$wd" "$w" "$h" 2>/dev/null
   }
 
   # --reopen mode: kill the session + switch to target desktop + reopen new gnome-terminal
@@ -647,11 +721,14 @@ if d.get('name')=='$nm': print(d.get('sessionId',''), d.get('cwd',''), d.get('pi
     gnome-terminal --window --title="$nm" --working-directory="$cwd_l" \
       -- bash -c "claude --resume '$sid' --remote-control '$nm'; exec bash" &
     sleep 2.5
-    # 4) geometry
+    # 4) geometry (xdotool --sync; wmctrl -e flaky)
     local newwin; newwin=$(wmctrl -l -p | awk -v g="$gtp" -v n="$nm" '$3==g && $0 ~ n"$" {print $1; exit}')
     if [ -n "$newwin" ]; then
+      local nwd; nwd=$(printf '%d' "$newwin")
+      local x y w h; IFS=',' read -r x y w h <<<"$quad"
       wmctrl -i -r "$newwin" -b remove,maximized_vert,maximized_horz 2>/dev/null
-      wmctrl -i -r "$newwin" -e "0,$quad" 2>/dev/null
+      xdotool windowmove --sync "$nwd" "$x" "$y" 2>/dev/null
+      xdotool windowsize --sync "$nwd" "$w" "$h" 2>/dev/null
     fi
   }
 
@@ -810,22 +887,36 @@ except: print('gone')
     pre_round=$((pre_round+1))
   done
 
-  # PRE-CHECK 2: idle-only session tespiti (jsonl yoksa resume edilemez)
-  # Vaka: --prompt YOK ile açılan session hiç mesaj almazsa jsonl yazılmaz.
-  # Kill edilince resume edebileceğimiz konuşma yok → nobridge fail.
-  # Çözüm: Faz 1'de SKIP, Faz 2 fresh respawn'da hallolur.
-  local idle_only_names=""
+  # PRE-CHECK 2: her hedefin handover-durumunu sınıflandır.
+  # Kriter (kullanıcı 2026-05-25): "safely done" = RFH demiş + sonrasında yeni
+  # istek yok + repo temiz. Repo/jsonl tek başına yetmez.
+  #   done          → zaten wrapped-up, atlanacak
+  #   needs-ho      → jsonl var ama done değil → wrap-up
+  #   idle-clean    → jsonl yok + repo temiz → hiç kullanılmamış, atla
+  #   idle-DIRTY    → jsonl yok + repo kirli → limbo iş, WARN
+  local cls_done="" cls_needs="" cls_idle_clean="" cls_idle_dirty=""
   while IFS=$'\t' read p3 n3 s3 sid3 cwd3 _; do
     [ -z "$p3" ] && continue
-    if [ -z "$(find_jsonl "$sid3")" ]; then
-      idle_only_names="$idle_only_names $n3"
+    if handover_done "$sid3" "$cwd3"; then
+      cls_done="$cls_done $n3"
+    elif [ -n "$(find_jsonl "$sid3")" ]; then
+      cls_needs="$cls_needs $n3"
+    elif repo_dirty "$cwd3"; then
+      cls_idle_dirty="$cls_idle_dirty $n3"
+    else
+      cls_idle_clean="$cls_idle_clean $n3"
     fi
   done <<<"$rows"
-  if [ -n "$idle_only_names" ]; then
-    echo ""
-    echo "[pre-check] idle-only session'lar (jsonl yok, Faz 1 atlanacak):$idle_only_names"
-    echo "  → bunlar Faz 2'de fresh respawn'da otomatik hallolur"
-  fi
+  echo ""
+  echo "[pre-check] handover sınıflandırma:"
+  [ -n "$cls_needs" ]      && echo "  • WRAP-UP gerekli (jsonl var, done değil):$cls_needs"
+  [ -n "$cls_done" ]       && echo "  • zaten DONE (RFH + sonrası istek yok + repo temiz), atlanacak:$cls_done"
+  [ -n "$cls_idle_clean" ] && echo "  • idle-only TEMİZ (hiç kullanılmamış), atlanacak:$cls_idle_clean"
+  [ -n "$cls_idle_dirty" ] && {
+    echo "  ⚠ idle-only KİRLİ (jsonl yok AMA repo'da commit'lenmemiş iş!):$cls_idle_dirty"
+    echo "    → resume edilemez; iş working tree'de güvende ama otomatik commit'lenmez."
+    echo "    → fresh respawn'da commit prompt'uyla aç (kill + 'claude ... -n <ad> ... <commit-prompt>')."
+  }
 
   while IFS=$'\t' read pid name status sid cwd bridge; do
     [ -z "$pid" ] && continue
@@ -834,10 +925,26 @@ except: print('gone')
     echo "  HANDOVER $name (pid=$pid, sid=$sid) — $mode"
     echo "═════════════════════════════════════════════════"
 
-    # idle-only ise (jsonl yok): SKIP. Kill etme, spawn etme.
+    # 1) Zaten wrapped-up mı? (RFH + sonrasında yeni istek yok + repo temiz) → atla
+    if handover_done "$sid" "$cwd"; then
+      echo "  SKIP: zaten DONE (READY FOR HANDOVER var, sonrasında yeni istek yok, repo temiz)."
+      echo "$name|skipped-already-done" >> "$log"
+      skipped=$((skipped+1))
+      continue
+    fi
+
+    # 2) idle-only (jsonl yok): resume edilemez. Repo temizse güvenle SKIP;
+    #    kirliyse WARN (iş limboda kalmasın diye görünür kıl).
     if [ -z "$(find_jsonl "$sid")" ]; then
-      echo "  SKIP: idle-only (jsonl yok, resume edilemez). Faz 2'de fresh."
-      echo "$name|skipped-idle-only" >> "$log"
+      if repo_dirty "$cwd"; then
+        echo "  ⚠ WARN: idle-only AMA repo KİRLİ ($cwd)"
+        echo "     resume edilemez; iş working tree'de güvende ama commit'lenmedi."
+        echo "     Fresh respawn'da commit prompt'uyla açılmalı (yeni session commit'lesin)."
+        echo "$name|idle-only-DIRTY|$cwd" >> "$log"
+      else
+        echo "  SKIP: idle-only (repo temiz, kaydedilecek yok). Faz 2'de fresh."
+        echo "$name|skipped-idle-only-clean" >> "$log"
+      fi
       skipped=$((skipped+1))
       continue
     fi
