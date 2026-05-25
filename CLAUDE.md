@@ -22,9 +22,10 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 - **Bridge cache (server-side)**: aynı sid resume → RC name cache'li. Değiştirmek için `--new`.
 - **claude path encoding**: `~/.claude/projects/<cwd>` cwd `tr '/_' '-'`.
 
-## Model-permission konvansiyonu (auto-mapping TODO)
+## Model-permission konvansiyonu
 
-- **Opus → `auto`**, **Sonnet → `acceptEdits`**
+- **Hepsi → `--permission-mode=auto`** (2026-05-25: sonnet'e de auto geldi; eskiden sonnet=acceptEdits idi).
+- Model hâlâ ayrı: opus grubu `--model=opus`, sonnet grubu `--model=sonnet`. Permission uniform (auto).
 
 ## Komutlar
 
@@ -41,7 +42,7 @@ Detay: `./claudeops help`. Tipik akış aşağıda (Handover).
   --suffix=<TO> --new --kill-first --model=opus --permission-mode=auto
 
 ./claudeops rc anomaly<F> rustrino<F> mecdtfl<F> vrk<F> hc<F> hcr<F> mo<F> \
-  --suffix=<TO> --new --kill-first --model=sonnet --permission-mode=acceptEdits
+  --suffix=<TO> --new --kill-first --model=sonnet --permission-mode=auto
 
 # Faz 3 — layout
 ./claudeops layout grid 4 --pin=anomaly<TO>,rustrino<TO>

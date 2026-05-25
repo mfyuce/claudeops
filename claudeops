@@ -314,6 +314,36 @@ cmd_compact() {
 # ─────────────────────────────────────────────
 # CMD: cleanup — orphan gnome-terminal pencerelerini (Claude koşmayan, bash-only) kapat
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# CMD: cancel <names>  — RC'yi bloklayan modal'ı (permission/model/trust dialog)
+# Esc göndererek kapat. RC bu modal'ları kapatamadığında lokal kurtarma.
+# NOT: Esc de synthetic key → VTE bazen reddediyor (intermittent). İnmezse
+# respawn (rc --kill-first) tek garantili yol.
+# ─────────────────────────────────────────────
+cmd_cancel() {
+  [ -z "${1:-}" ] && { echo "kullanım: claudeops cancel <all-but-self|name...>"; return 2; }
+  local rows; rows=$(resolve_targets "$@")
+  local gtp; gtp=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
+  [ -z "$gtp" ] && { echo "gnome-terminal-server koşmuyor"; return 1; }
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    local w; w=$(wmctrl -l -p | awk -v g="$gtp" -v n="$name" '$3==g && $0 ~ n"$" {print $1; exit}')
+    [ -z "$w" ] && { echo "  ! $name penceresi yok"; continue; }
+    local wd ws; wd=$(printf '%d' "$w")
+    ws=$(wmctrl -l -p | awk -v g="$gtp" -v n="$name" '$3==g && $0 ~ n"$" {print $2; exit}')
+    # görünür yap (Esc görünür pencerede daha iyi iniyor)
+    if [ "$ws" -ge 0 ] 2>/dev/null; then
+      local t=0; while [ $t -lt 15 ]; do wmctrl -s "$ws"; [ "$(xdotool get_desktop 2>/dev/null)" = "$ws" ] && break; sleep 0.1; t=$((t+1)); done
+    fi
+    xdotool windowactivate --sync "$wd" 2>/dev/null
+    sleep 0.3
+    xdotool key --clearmodifiers --window "$wd" Escape 2>/dev/null
+    sleep 1.5
+    local st; st=$(python3 -c "import json;print(json.load(open('$SESS_DIR/$pid.json')).get('status','?'))" 2>/dev/null)
+    echo "  → $name: Esc gönderildi (durum: ${st:-?}). Hâlâ takılıysa: claudeops rc $name --kill-first"
+  done <<<"$rows"
+}
+
 cmd_cleanup() {
   local dry=0
   for a in "$@"; do case "$a" in --dry-run) dry=1;; esac; done
@@ -632,6 +662,13 @@ EOF
   # Self gnome-terminal window title belirleyici: WM_NAME genelde değişken; en sağlam yöntem
   # self_pid → ata zincirinden bash → tty → window mapping; hızlı yol: title regex
   local self_pid; self_pid=$(self_pid 2>/dev/null || echo "")
+  # Self session'ı (co/claudeops) ws0'a PİNLE — kullanıcı: "ilk desktop'ta ol".
+  # Eski "machine cleaning required" başlık kontrolü hiç eşleşmiyordu → self normal
+  # pencere sanılıp ws1'e gidiyordu. Doğrusu: self_pid → session.json → name.
+  if [ -n "$self_pid" ] && [ -f "$SESS_DIR/$self_pid.json" ]; then
+    local self_name; self_name=$(python3 -c "import json;print(json.load(open('$SESS_DIR/$self_pid.json')).get('name',''))" 2>/dev/null)
+    [ -n "$self_name" ] && { pinned["$self_name"]=1; echo "self ($self_name) → ws0 pin"; }
+  fi
   # Collect windows in two passes: pinned first, then others
   declare -a pin_wins=() oth_wins=()
   while IFS= read -r line; do
@@ -664,29 +701,46 @@ EOF
   # Yardımcı: in-place move. wmctrl -e Mutter multi-monitor'da flaky (snap +
   # bazı pencereler hiç oturmuyordu, 2026-05-25 teşhis). xdotool --sync move'un
   # bitmesini bekler → güvenilir. quad="x,y,w,h".
+  # Hedef desktop'a geç + aktif olduğunu doğrula. SADECE gerekiyorsa switch eder
+  # (zaten o desktop'taysak no-op). Desktop-grouped layout'un anahtarı: switch
+  # sayısı = desktop sayısı (pencere sayısı DEĞİL) → hızlı + güvenilir.
+  _ensure_desktop() {
+    local ws="$1"
+    [ "$(xdotool get_desktop 2>/dev/null)" = "$ws" ] && return 0
+    local t=0
+    while [ $t -lt 20 ]; do
+      wmctrl -s "$ws" 2>/dev/null
+      [ "$(xdotool get_desktop 2>/dev/null)" = "$ws" ] && { sleep 0.35; return 0; }
+      sleep 0.1; t=$((t+1))
+    done
+    sleep 0.35; return 1
+  }
+
+  # Move-only: ZATEN doğru desktop'tayız (apply_one önce _ensure_desktop çağırır).
+  # ÖNCE "zaten hedefte mi?" bak → idempotent run anında döner. Sonra taşı.
+  # KRİTİK: `--sync` KULLANMA — pencere zaten hedefteyse hareket olmaz,
+  # ConfigureNotify gelmez, --sync ~15s hang eder (2026-05-25, 20 pencere=321s!).
+  # Yerine: move (sync'siz) + sleep + READ-BACK doğrula + retry.
   _place_win() {
     local win="$1" ws="$2" quad="$3"
     local wd; wd=$(printf '%d' "$win")
     local x y w h; IFS=',' read -r x y w h <<<"$quad"
-    # KRİTİK: xdotool windowmove pencere GÖRÜNÜR (aktif desktop) değilse yanlış
-    # konuma taşıyor (Mutter hepsini tek noktaya yığıyor, 2026-05-25 teşhis).
-    # Çözüm: pencereyi hedef desktop'a ata + o desktop'a SWITCH et (görünür yap),
-    # sonra xdotool ile taşı.
     wmctrl -i -r "$win" -t "$ws" 2>/dev/null
-    # aktif desktop GERÇEKTEN ws olana kadar doğrula (Mutter rapid switch'leri
-    # coalesce edip düşürebiliyor → pencere görünmeden taşınır, yanlış konum).
-    local tries=0 cur
-    while [ $tries -lt 25 ]; do
-      wmctrl -s "$ws" 2>/dev/null
-      cur=$(xdotool get_desktop 2>/dev/null)
-      [ "$cur" = "$ws" ] && break
-      sleep 0.1
-      tries=$((tries+1))
+    local attempt pos px py dx dy
+    for attempt in 1 2 3; do
+      pos=$(xdotool getwindowgeometry "$wd" 2>/dev/null | awk '/Position/{print $2}')
+      px=${pos%,*}; py=${pos#*,}
+      if [ -n "$px" ]; then
+        dx=$((px - x)); dy=$((py - y)); dx=${dx#-}; dy=${dy#-}
+        [ "$dx" -le 80 ] && [ "$dy" -le 80 ] && return 0   # zaten yerinde
+      fi
+      wmctrl -i -r "$win" -b remove,maximized_vert,maximized_horz 2>/dev/null
+      xdotool windowmove "$wd" "$x" "$y" 2>/dev/null
+      xdotool windowsize "$wd" "$w" "$h" 2>/dev/null
+      sleep 0.3
     done
-    sleep 0.2
-    wmctrl -i -r "$win" -b remove,maximized_vert,maximized_horz 2>/dev/null
-    xdotool windowmove --sync "$wd" "$x" "$y" 2>/dev/null
-    xdotool windowsize --sync "$wd" "$w" "$h" 2>/dev/null
+    echo "    ! $win oturmadı (${pos:-?})" >&2
+    return 1
   }
 
   # --reopen mode: kill the session + switch to target desktop + reopen new gnome-terminal
@@ -732,11 +786,13 @@ if d.get('name')=='$nm': print(d.get('sessionId',''), d.get('cwd',''), d.get('pi
     fi
   }
 
-  # Function picker: --reopen ise kill+switch+reopen, değilse in-place move
+  # Function picker: --reopen ise kill+switch+reopen, değilse in-place move.
+  # In-place: önce hedef desktop'a geç (grup başında bir kez), sonra taşı.
   apply_one() {
     if [ "$reopen" = "1" ]; then
       _reopen_win "$2" "$3" "$4"   # name, ws, quad
     else
+      _ensure_desktop "$3"         # ws — sadece değişince switch (desktop-grouped)
       _place_win "$1" "$3" "$4"    # win, ws, quad
     fi
   }
@@ -763,8 +819,8 @@ if d.get('name')=='$nm': print(d.get('sessionId',''), d.get('cwd',''), d.get('pi
     if [ $((idx2 % per)) -eq 0 ]; then ws=$((ws+1)); fi
   done
 
-  # En sona ana desktop'a dön
-  [ "$reopen" = "1" ] && wmctrl -s 0
+  # En sona ana desktop'a (0) dön — kullanıcı orada (co/self ws0'da)
+  wmctrl -s 0 2>/dev/null
 
   local needed_ws=$((ws + 1))
   echo "→ workspace count en az: $needed_ws  (mevcut: $(gsettings get org.gnome.desktop.wm.preferences num-workspaces 2>/dev/null))"
@@ -809,6 +865,7 @@ Lütfen şunları kontrol et ve eksikse tamamla:
 - TODO.md, CHANGELOG.md, CLAUDE.md, DONE.md, TOBEDECIDED.md güncel mi? (yoksa oluştur, eksikse genişlet)
 - Yeni session a hazır mıyız?
 - Bulduklarımızdan kayıt altına almadığımız kaldı mı?
+- Bu session da VEYA paralel/diğer session larda konuşulup ortaya çıkmış ama hiçbir yere (repo, memory, TODO/DONE) kaydedilmemiş bir bulgu/karar/iş kaldı mı? Kaldıysa şimdi kaydet.
 
 Derin tara: kaynak dosyalar, /tmp logları, eski commit ler, .jsonl backup ları — hiçbir bilgi unutulmasın.
 
@@ -825,6 +882,7 @@ cmd_handover() {
   local message="$HANDOVER_MSG_DEFAULT"
   local mode="visible"   # visible (default) | headless (-p, no approval prompts visible)
   local exclude=""
+  local force=0          # --force: skip/dirty/done/idle-only kontrollerini baypas, HEPSİNE gönder
   for a in "$@"; do
     case "$a" in
       --from-suffix=*)        from_suffix="${a#--from-suffix=}";;
@@ -833,6 +891,7 @@ cmd_handover() {
       --headless)             mode="headless";;
       --visible)              mode="visible";;
       --exclude=*)            exclude="${a#--exclude=}";;
+      --force|--no-skip)      force=1;;
       --dry-run)              dry=1;;
     esac
   done
@@ -925,28 +984,39 @@ except: print('gone')
     echo "  HANDOVER $name (pid=$pid, sid=$sid) — $mode"
     echo "═════════════════════════════════════════════════"
 
-    # 1) Zaten wrapped-up mı? (RFH + sonrasında yeni istek yok + repo temiz) → atla
-    if handover_done "$sid" "$cwd"; then
-      echo "  SKIP: zaten DONE (READY FOR HANDOVER var, sonrasında yeni istek yok, repo temiz)."
-      echo "$name|skipped-already-done" >> "$log"
-      skipped=$((skipped+1))
-      continue
+    # --force: skip kontrollerini baypas et, HEPSİNE gönder. jsonl yoksa
+    # fresh-spawn (resume yerine -n) ile mesajı CLI-arg olarak ver.
+    local has_jsonl=1; [ -z "$(find_jsonl "$sid")" ] && has_jsonl=0
+    if [ "$force" != "1" ]; then
+      # 1) Zaten wrapped-up mı? (RFH + sonrasında yeni istek yok + repo temiz) → atla
+      if handover_done "$sid" "$cwd"; then
+        echo "  SKIP: zaten DONE (READY FOR HANDOVER var, sonrasında yeni istek yok, repo temiz)."
+        echo "$name|skipped-already-done" >> "$log"
+        skipped=$((skipped+1)); continue
+      fi
+      # 2) idle-only (jsonl yok): resume edilemez. Repo temizse SKIP; kirliyse WARN.
+      if [ "$has_jsonl" = "0" ]; then
+        if repo_dirty "$cwd"; then
+          echo "  ⚠ WARN: idle-only AMA repo KİRLİ ($cwd) — resume edilemez, iş commit'lenmedi."
+          echo "$name|idle-only-DIRTY|$cwd" >> "$log"
+        else
+          echo "  SKIP: idle-only (repo temiz, kaydedilecek yok)."
+          echo "$name|skipped-idle-only-clean" >> "$log"
+        fi
+        skipped=$((skipped+1)); continue
+      fi
+    else
+      echo "  [--force] skip kontrolleri baypas; $([ "$has_jsonl" = "1" ] && echo resume || echo fresh-spawn)"
     fi
 
-    # 2) idle-only (jsonl yok): resume edilemez. Repo temizse güvenle SKIP;
-    #    kirliyse WARN (iş limboda kalmasın diye görünür kıl).
-    if [ -z "$(find_jsonl "$sid")" ]; then
-      if repo_dirty "$cwd"; then
-        echo "  ⚠ WARN: idle-only AMA repo KİRLİ ($cwd)"
-        echo "     resume edilemez; iş working tree'de güvende ama commit'lenmedi."
-        echo "     Fresh respawn'da commit prompt'uyla açılmalı (yeni session commit'lesin)."
-        echo "$name|idle-only-DIRTY|$cwd" >> "$log"
-      else
-        echo "  SKIP: idle-only (repo temiz, kaydedilecek yok). Faz 2'de fresh."
-        echo "$name|skipped-idle-only-clean" >> "$log"
-      fi
-      skipped=$((skipped+1))
-      continue
+    # fresh-spawn gerekiyorsa (jsonl yok) model/perm'i ÖLMEDEN ÖNCE cmdline'dan al
+    local f_model="" f_perm=""
+    if [ "$has_jsonl" = "0" ]; then
+      local cl; cl=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+      f_model=$(echo "$cl" | grep -oE '\-\-model[ =][a-z]+' | head -1 | grep -oE '[a-z]+$')
+      f_perm=$(echo "$cl" | grep -oE '\-\-permission-mode[ =][a-zA-Z]+' | head -1 | grep -oE '[a-zA-Z]+$')
+      [ -z "$f_model" ] && f_model="opus"
+      [ -z "$f_perm" ] && f_perm="auto"
     fi
 
     # 0) BUSY mu? IDLE olana kadar bekle (max 60dk)
@@ -996,10 +1066,17 @@ except: print('gone')
       echo "[2/2] visible gnome-terminal + RC + prefilled wrap-up..."
       # Mesajı bash-c için escape: tek tırnak içine al, içindeki tek tırnakları kaç
       local msg_esc; msg_esc=$(printf '%s' "$message" | sed "s/'/'\\\\''/g")
+      local launch
+      if [ "$has_jsonl" = "1" ]; then
+        launch="claude --resume '$sid' --remote-control '$name' '$msg_esc'"
+      else
+        # jsonl yok (force fresh-spawn): resume yerine -n + model/perm (cmdline'dan)
+        launch="claude -n '$name' --remote-control '$name' --model '$f_model' --permission-mode '$f_perm' '$msg_esc'"
+      fi
       gnome-terminal --window --title="handover:$name" --working-directory="$cwd" \
-        -- bash -c "claude --resume '$sid' --remote-control '$name' '$msg_esc'; exec bash" &
+        -- bash -c "$launch; exec bash" &
       sleep 3
-      # bridge verify
+      # bridge verify (fresh-spawn'da sid değişir → sadece name eşle)
       local bridge_new=""
       for try in $(seq 1 6); do
         sleep 1
@@ -1007,7 +1084,7 @@ except: print('gone')
 import json,glob
 for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
     d = json.load(open(f))
-    if d.get('name')=='$name' and str(d.get('sessionId','')) == '$sid':
+    if d.get('name')=='$name' and ('$has_jsonl'=='0' or str(d.get('sessionId',''))=='$sid'):
         print(d.get('bridgeSessionId',''))
         break
 " 2>/dev/null)
@@ -1404,6 +1481,10 @@ KULLANIM:
       Orphan gnome-terminal pencerelerini (bash-prompt'a düşmüş, claude yok)
       kapat. Self bash hariç tutulur. --dry-run ile sadece listele.
 
+  claudeops cancel <all-but-self|name...>
+      RC'yi bloklayan modal'a (permission/model/trust dialog) Esc gönderir.
+      Görünür yapıp activate + Esc. İnmezse (VTE reject) rc --kill-first öner.
+
   claudeops compact ... --visible
       Compact'i gnome-terminal penceresinde aç (canlı output görünür).
       Pencere işlem bittikten 3s sonra kapanır.
@@ -1422,7 +1503,10 @@ KULLANIM:
 
   claudeops handover [--from-suffix=13] [--to-suffix=14] [--dry-run]
                      [--skip-msg] [--message=...] [--message-file=path]
-                     [--timeout=1800]
+                     [--force] [--timeout=1800]
+      --force: skip kontrollerini (already-done / idle-only / dirty) baypas et,
+        HEPSİNE wrap-up gönder. jsonl olmayanı fresh-spawn (model/perm cmdline'dan)
+        ile açar. Default'ta skip mantığı geçerli (sadece gerekenlere gönderir).
       Her <name><from> session için:
         0) BUSY ise idle olana kadar bekler (max 60dk)
         1) Wrap-up mesajı gönderir (Claude commit/push + MD update yapsın diye)
@@ -1469,6 +1553,7 @@ case "${1:-help}" in
   layout) shift; cmd_layout "$@" ;;
   new) shift; cmd_new "$@" ;;
   cleanup) shift; cmd_cleanup "$@" ;;
+  cancel) shift; cmd_cancel "$@" ;;
   handover) shift; cmd_handover "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   *) echo "Bilinmeyen komut: $1"; cmd_help; exit 2 ;;

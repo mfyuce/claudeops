@@ -2,6 +2,15 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-05-25 (b) (sonnet→auto + layout hız/self-pin + cancel + handover --force)
+
+- ✅ **Sonnet → auto** — sonnet'e de `--permission-mode=auto` geldi; convention "hepsi auto" oldu (model hâlâ ayrı: opus/sonnet). 7 sonnet session auto ile respawn. CLAUDE.md + memory güncel.
+- ✅ **Layout hız fix (321s→~3-9s)** — `xdotool windowmove --sync` pencere zaten hedefteyse ConfigureNotify gelmeyince ~15s hang ediyordu (20 pencere=321s). Fix: önce "zaten hedefte mi?" read-back kontrol (idempotent anında döner) + `--sync`'siz move + sleep + verify + retry. Ayrıca desktop-grouped (`_ensure_desktop`: switch sadece ws değişince → switch sayısı=desktop sayısı).
+- ✅ **Layout self-pin** — self session (co) artık ws0'a pinleniyor (self_pid→session.json→name). Eski "machine cleaning required" başlık kontrolü hiç eşleşmiyordu → self ws1'e kaçıyordu.
+- ✅ **`claudeops cancel <names>`** — RC'yi bloklayan modal'a (permission/model/trust dialog) Esc gönderir (görünür yap+activate+Esc). VTE reject ihtimaline karşı rc --kill-first fallback önerir.
+- ✅ **`handover --force`** — skip kontrollerini (already-done/idle-only/dirty) baypas, hepsine gönder. jsonl yoksa fresh-spawn (model/perm /proc/cmdline'dan). Default'ta skip geçerli (kullanıcı: "bu sefer dirty bakmasın hepsine, dahakine baksın").
+- ✅ **ho mesajına cross-session satırı** — "paralel/diğer session'larda konuşulup kaydedilmemiş bulgu/karar kaldı mı? kaydet."
+
 ## 2026-05-25 (22→23 transition + handover skip kriteri + layout xdotool fix)
 
 ### Handover doğruluk
