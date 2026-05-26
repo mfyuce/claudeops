@@ -14,7 +14,6 @@
 - [ ] **Python UI (büyük)** — claudeops için GUI: session listesini göster, tıkla → compact/RC/kill/send butonları, layout görsel önizleme. Stack TBD (PySide6 / Textual / Web). Ana motivasyon: CLI yerine UI.
 - [ ] **`claudeops history` + `claudeops launch <name|sid>`** — geçmişte açık olan TÜM session'ları registry'le, `launch` ile yeni gnome-terminal'de RC açar.
 - [ ] **`--models=name:model,...` per-name config** — manuel name→model map. Şu an model PLAN array'de gömülü, hatalara açık.
-- [ ] **Layout in-place (kill'siz)** — `--reopen` kill+spawn yapıyor. xdotool windowmove --sync ile Mutter snap'i bypass etmek deneyenebilir (önerilen seçenek).
 - [ ] **Spawn geometry: ekran kilidi hipotezi** — 2026-05-17 spawn'da pencereler HDMI'da rows olarak yerleşti (eDP 2×2 değil). Hipotez: ekran kilitliyse Mutter farklı davranıyor. Pre-flight lock check + defer placement.
 - [ ] **Auto-respond permission prompts** — OCR çalışıyor (tesseract), keystroke landing intermittent. Seçenekler: OCR + RC API inject, ydotool (Wayland), claude TUI `--auto-accept` flag.
 - [ ] Wayland desteği için layout fallback (gdbus + Mutter extension veya hint)

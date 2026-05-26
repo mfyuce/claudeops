@@ -2,6 +2,16 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-05-26 (repo_dirty çift-remote fix + handover 25→26)
+
+- ✅ **`repo_dirty` çift-remote + fetch + behind** (`418ebf8`) — eski hâl sadece `@{u}` bakıyordu; çift-remote'lu repolarda (github+gitlab) birine push edilip diğerine edilmemiş "clean" yanılması vardı. Yeni: HER remote için ahead (unpushed) **ve** behind (remote ileride) kontrolü. `repo_fetch_once()` eklendi: pre-check'te session başına 1× `git fetch --all` (timeout 20s, dedup) → ref'ler taze.
+- ✅ **idle-only-DIRTY rescue** — Faz 1 skip edilen gedikvm/gedikido/kulturiot'un commitlenmemiş tracked değişiklikleri fetch+ahead/behind ile tespit edildi → fresh respawn + commit prompt CLI-argümanıyla kendi repolarında commitlendi + tüm remote'lara push'landı. Doğrulama: ahead=0 behind=0 her remote'da.
+- ✅ **Handover-prep MD sync kuralı** (CLAUDE.md Meta) — her ho'da: (1) TODO'da done → DONE'a taşı+sil; (2) TOBEDECIDED'da karar verilmiş → TODO'ya taşı+sil.
+- ✅ **TOBEDECIDED #4 + #6 kapatıldı** — layout default=4 ve github+gitlab ikisine push kararları Kapatılmış bölümüne taşındı.
+- ✅ **TODO: Layout in-place** — xdotool no-sync + read-back implement edilmişti (2026-05-25); TODO'dan çıkarıldı.
+- ✅ **Handover 24→25 + 25→26** — 19 session (12 opus + 7 sonnet) iki round'da geçti, hepsi idle+auto. idle-only-DIRTY rescue ile kayıp iş yok.
+- ✅ **TOBEDECIDED #7** — açık-kaynak durumunda kişiye/makineye özel kısımlar (session listeleri, path'ler, geometri, terminal) lokal kalmalı → karar bekliyor.
+
 ## 2026-05-25 (b) (sonnet→auto + layout hız/self-pin + cancel + handover --force)
 
 - ✅ **Sonnet → auto** — sonnet'e de `--permission-mode=auto` geldi; convention "hepsi auto" oldu (model hâlâ ayrı: opus/sonnet). 7 sonnet session auto ile respawn. CLAUDE.md + memory güncel.

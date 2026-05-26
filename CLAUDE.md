@@ -14,23 +14,17 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 - **stdin redirect** `< /dev/null`: `claude -p` her çağrıda zorunlu (stdin leak fix).
 - **`script -qfc` ile detached pty**: `nohup &` yetmez, Claude TUI gerçek terminal ister.
-- **Compact doğrulaması**: `claude -p "/compact"` sessiz. Başarı: jsonl `"isCompactSummary":true` count +1.
 - **Visible window**: `gnome-terminal -- bash -c "claude ...; exec bash"` (claude exit etse pencere bash'a düşer).
 - **wmctrl -s vs xprop**: Sadece `wmctrl -s N` Mutter'da görsel switch tetikler.
 - **VTE keystroke rejection**: synthetic key (`xdotool type`/`key Esc/Return`) çoğu zaman REDDEDİLİYOR. Güvenilir prompt enjeksiyonu: **CLI argümanı** — `claude ... -n NAME --remote-control NAME 'PROMPT'` başlangıçta otomatik çalışır (Enter'sız). Idle/stuck session'a iş yaptırmak → kill + bu şekilde fresh-spawn.
 - **`-n NAME` ≠ `--remote-control NAME`**: `-n` display, `--remote-control` RC bridge.
 - **Bridge cache (server-side)**: aynı sid resume → RC name cache'li. Değiştirmek için `--new`.
-- **claude path encoding**: `~/.claude/projects/<cwd>` cwd `tr '/_' '-'`.
 - **Layout in-place**: `xdotool windowmove` (**`--sync` YOK** — pencere zaten hedefteyse ConfigureNotify gelmez, ~15s hang) + desktop-grouped (`wmctrl -s` + `get_desktop` verify; pencere görünür değilse yanlış taşır) + read-back doğrula. Konum doğrulaması `xdotool getwindowgeometry` ile (wmctrl -G 2× raporluyor, güvenilmez).
 
 ## Model-permission konvansiyonu
 
 - **Hepsi → `--permission-mode=auto`** (2026-05-25: sonnet'e de auto geldi; eskiden sonnet=acceptEdits idi).
 - Model hâlâ ayrı: opus grubu `--model=opus`, sonnet grubu `--model=sonnet`. Permission uniform (auto).
-
-## Komutlar
-
-Detay: `./claudeops help`. Tipik akış aşağıda (Handover).
 
 ## Handover (3-fazlı, "ho" istek)
 
@@ -58,7 +52,6 @@ Detay/why: memory `handover-procedure.md` + `handover-edge-cases.md`.
 
 - **Wayland**: layout çalışmaz (wmctrl X11-only).
 - **Terminal**: gnome-terminal hard-coded.
-- **Rate-limit reset**: parse edilmiyor (TODO).
 - **Permission/modal prompt**: RC'yi bloklar; `cancel` Esc gönderir ama VTE reddedebilir → garantili iptal = `rc --kill-first` (respawn).
 - **Multi-monitor**: in-place layout artık xdotool no-sync ile çalışıyor; `--reopen` (kill+respawn) opsiyonel alternatif.
 - **`rc <a,b,c>` virgül**: parse yok; SPACE kullan (TODO).
@@ -74,16 +67,17 @@ Detay/why: memory `handover-procedure.md` + `handover-edge-cases.md`.
 - **(1) TODO→DONE:** TODO.md'de olup gerçekte tamamlanmış maddeleri DONE.md'ye taşı + TODO.md'den **sil** (tek kaynak, çift kayıt yok).
 - **(2) TOBEDECIDED→TODO:** TOBEDECIDED.md'de olup artık karar verilip TODO'ya geçmiş kalemleri TODO.md'ye taşı + TOBEDECIDED.md'den **sil**.
 
-## READY FOR HANDOVER (2026-05-25)
+## READY FOR HANDOVER (2026-05-26)
 
-**Nerede kaldık:** co22 (bu konuşma, opus, claudeops repo). **23→24 transition tamam**: 19 24-session + co22(self) = 20 idle, hepsi `--permission-mode=auto`. Layout temiz (xdotool, ~14s), co22 ws0'a auto-pinli. HEAD `d0e954c` origin+gitlab sync.
+**Nerede kaldık:** co22 (claudeops repo). **25→26 transition tamam**: 19 26-session + co22(self) = 20 idle, hepsi `--permission-mode=auto`. Layout temiz, co22 ws0'a pinli. HEAD origin+gitlab sync.
 
-Bu oturumda eklenenler (detay: DONE.md 2026-05-25 blokları): sonnet→auto, layout `--sync`-hang fix + self-pin, `handover --force/--layout`, `cancel`, skip kriteri + `repo_dirty` untracked saymaz. dirty-check fix limbo iş kurtardı (emergence/carla/anomaly/vrk → iki remote).
+Bu oturumda (detay: DONE.md 2026-05-26): `repo_dirty` çift-remote+fetch+behind fix + `repo_fetch_once` (`418ebf8`); idle-only-DIRTY rescue (gedikvm/gedikido/kulturiot kendi reposunu commit etti); Handover-prep MD sync kuralı; TOBEDECIDED #7 (açık-kaynak local config).
 
 **Yeni session yapacaklar:**
-1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] (idle-only, bridge cache, orphan, skip kriteri, layout reçetesi) + [[feedback-calisma-tarzi]] (background bekleme, layout hız).
-2. **Açık TODO bug'lar:** (a) `rc <a,b,c>` virgül parse (kill/compact/send'de de), (b) layout orphan terminal validation, (c) `cancel` Esc güvenilmez → respawn fallback.
+1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-calisma-tarzi]].
+2. **Açık TODO bug'lar:** (a) `rc <a,b,c>` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc → respawn fallback.
+3. **TOBEDECIDED #7** karar bekliyor (açık-kaynak local config seçimi).
 
-**Açık kararlar:** disk-temizlik aday listesi (2026-05-20) onay bekliyor (`~/.cache/huggingface` 29G KORU).
+**Açık kararlar:** disk-temizlik (2026-05-20) onay bekliyor (`~/.cache/huggingface` 29G KORU).
 
 READY FOR HANDOVER
