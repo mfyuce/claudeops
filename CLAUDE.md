@@ -50,7 +50,7 @@ Detay: `./claudeops help`. Tipik akış aşağıda (Handover).
 ```
 
 **Flag'ler:** `handover --force` (skip [done/idle/dirty] baypas, hepsine; jsonl yoksa fresh-spawn) · `handover --layout [--pin=a,b]` (spawn'lar bitince oto-tile) · `claudeops cancel <names>` (stuck modal'a Esc; inmezse `rc <name> --kill-first`).
-**Skip kriteri (done):** jsonl'de RFH var + son RFH'den sonra yeni istek yok + repo temiz. `repo_dirty` untracked saymaz (sadece tracked-modified + unpushed).
+**Skip kriteri (done):** jsonl'de RFH var + son RFH'den sonra yeni istek yok + repo temiz. `repo_dirty` untracked saymaz; dirty = tracked-modified **veya** TÜM remote'lardan birine unpushed (sadece `@{u}` değil — çift remote github+gitlab) **veya** behind (remote ileride = başkası push etmiş). Pre-check session başına 1× `git fetch --all` (timeout 20s) → ref'ler taze.
 ⚠ Target listesi **SPACE-separated** (virgül parse bug — TODO). rc orphan → WARN + `claudeops new`.
 Detay/why: memory `handover-procedure.md` + `handover-edge-cases.md`.
 
@@ -69,6 +69,10 @@ Detay/why: memory `handover-procedure.md` + `handover-edge-cases.md`.
 - `DONE.md` = de facto CHANGELOG.
 - `desktops.local.md` = layout snapshot (gitignored).
 - Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
+
+### Handover-prep MD sync (her "yeni session hazirlik"/ho'da yap)
+- **(1) TODO→DONE:** TODO.md'de olup gerçekte tamamlanmış maddeleri DONE.md'ye taşı + TODO.md'den **sil** (tek kaynak, çift kayıt yok).
+- **(2) TOBEDECIDED→TODO:** TOBEDECIDED.md'de olup artık karar verilip TODO'ya geçmiş kalemleri TODO.md'ye taşı + TOBEDECIDED.md'den **sil**.
 
 ## READY FOR HANDOVER (2026-05-25)
 

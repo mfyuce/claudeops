@@ -110,17 +110,46 @@ find_jsonl() {
 # idle-only skip kararı buna bakmalı: jsonl yokluğu "kaydedilecek iş yok" demek
 # DEĞİL — session hiç kullanılmamış olabilir ama repo'da önceki turdan
 # commit'lenmemiş iş kalmış olabilir (emrgence vakası, 2026-05-25).
+#
+# Unpushed kontrolü TÜM remote'lara bakar (eski hâli sadece @{u} = tek upstream'e
+# bakıyordu — repo'lar çift remote'lu: github+gitlab; birine push edilip diğerine
+# edilmemiş olabilir, 2026-05-26). Ayrıca behind de kontrol edilir: remote bizden
+# ileridyse (başkası başka makine/session'dan push etmiş) repo "temiz" sayılmaz —
+# reconcile (pull/merge) gerekir. NOT: güncel sonuç için çağırandan ÖNCE fetch
+# edilmiş olmalı (handover pre-check session başına fetch'liyor); fetch'siz çağrı
+# da doğru çalışır ama local remote-tracking ref'ler stale olabilir.
 repo_dirty() {
   local d="$1"
   [ -n "$d" ] || return 1
   git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || return 1
   # UNTRACKED (??) sayılmaz — kullanıcı: "data output ise kalsın / ignored ise
   # sorun yok" (2026-05-25). Çıktı/junk untracked dosyalar session'ı "kirli"
-  # yapmamalı. Dirty = sadece TRACKED-modified/staged + unpushed commit.
-  local tracked unpushed
+  # yapmamalı. Dirty = TRACKED-modified/staged → hemen kirli.
+  local tracked
   tracked=$(git -C "$d" status --porcelain 2>/dev/null | grep -vc '^??')
-  unpushed=$(git -C "$d" log @{u}.. --oneline 2>/dev/null | wc -l)
-  [ "$tracked" -gt 0 ] || [ "$unpushed" -gt 0 ]
+  [ "$tracked" -gt 0 ] && return 0
+  local br; br=$(git -C "$d" branch --show-current 2>/dev/null)
+  [ -n "$br" ] || return 1   # detached HEAD → working tree temiz say
+  local r ahead behind
+  for r in $(git -C "$d" remote 2>/dev/null); do
+    git -C "$d" rev-parse --verify "$r/$br" >/dev/null 2>&1 || continue
+    ahead=$(git -C "$d" rev-list --count "$r/$br..HEAD" 2>/dev/null)
+    behind=$(git -C "$d" rev-list --count "HEAD..$r/$br" 2>/dev/null)
+    [ "${ahead:-0}" -gt 0 ] && return 0    # bu remote'a unpushed commit var
+    [ "${behind:-0}" -gt 0 ] && return 0   # remote ileride → divergence (başkası push etmiş)
+  done
+  return 1
+}
+
+# Repo başına en fazla 1 kez fetch (handover run boyunca). repo_dirty/handover_done
+# güncel remote ref görsün diye. timeout ile hang-proof; başarısızsa sessizce geç.
+repo_fetch_once() {
+  local d="$1"
+  [ -n "$d" ] || return 0
+  git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  case " ${_FETCHED_REPOS:-} " in *" $d "*) return 0 ;; esac
+  _FETCHED_REPOS="${_FETCHED_REPOS:-} $d"
+  timeout 20 git -C "$d" fetch --all --quiet 2>/dev/null || true
 }
 
 # Session güvenle "wrapped-up" mı? Kriter (kullanıcı, 2026-05-25):
@@ -963,6 +992,7 @@ except: print('gone')
   local cls_done="" cls_needs="" cls_idle_clean="" cls_idle_dirty=""
   while IFS=$'\t' read p3 n3 s3 sid3 cwd3 _; do
     [ -z "$p3" ] && continue
+    repo_fetch_once "$cwd3"   # remote ref tazele → unpushed/behind doğru görülsün
     if handover_done "$sid3" "$cwd3"; then
       cls_done="$cls_done $n3"
     elif [ -n "$(find_jsonl "$sid3")" ]; then
