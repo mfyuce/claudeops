@@ -2,6 +2,14 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-05-28 (handover 26→27→28 + araroot/aggroot eklendi)
+
+- ✅ **Handover 26→27 (TODO-loop)** — 19 session (12 opus + 7 sonnet) 27-suffix'e geçti. Her session'a "TODO.md'deki karar gerektirmeyen tüm iş kalemlerini çöz, 5dk'da bir bak, sadece kullanıcı kararı gerekince dur" prompt'u verildi.
+- ✅ **Handover 27→28 (standard)** — 19 session 28-suffix'e geçti, --prompt yok (idle açıldı). Faz 3 layout grid 4 --pin=anomaly28,rustrino28 tamamlandı.
+- ✅ **araroot28 + aggroot28 yeni session** — opus grubuna eklendi; araroot ws2 (trroot'un eski slotu), aggroot ws5.
+- ✅ **trroot28 kapatıldı** — simdilik; bir sonraki ho'da opus listesinden çıkar.
+- ✅ **desktops.local.md** — 26→27→28 geçişleri + yeni sessionlar güncellendi.
+
 ## 2026-05-26 (repo_dirty çift-remote fix + handover 25→26)
 
 - ✅ **`repo_dirty` çift-remote + fetch + behind** (`418ebf8`) — eski hâl sadece `@{u}` bakıyordu; çift-remote'lu repolarda (github+gitlab) birine push edilip diğerine edilmemiş "clean" yanılması vardı. Yeni: HER remote için ahead (unpushed) **ve** behind (remote ileride) kontrolü. `repo_fetch_once()` eklendi: pre-check'te session başına 1× `git fetch --all` (timeout 20s, dedup) → ref'ler taze.

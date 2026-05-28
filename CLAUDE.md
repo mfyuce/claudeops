@@ -33,7 +33,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 ./claudeops handover --from-suffix=<FROM> [--exclude=name1,name2]
 
 # Faz 2 — fresh respawn (--prompt opsiyonel; idle açılır)
-./claudeops rc hms<F> hve<F> oa<F> qve<F> rve<F> carla<F> emrgence<F> rr<F> trroot<F> gedikvm<F> gedikido<F> kulturiot<F> \
+./claudeops rc hms<F> hve<F> oa<F> qve<F> rve<F> carla<F> emrgence<F> rr<F> araroot<F> aggroot<F> gedikvm<F> gedikido<F> kulturiot<F> \
   --suffix=<TO> --new --kill-first --model=opus --permission-mode=auto
 
 ./claudeops rc anomaly<F> rustrino<F> mecdtfl<F> vrk<F> hc<F> hcr<F> mo<F> \
@@ -67,16 +67,16 @@ Detay/why: memory `handover-procedure.md` + `handover-edge-cases.md`.
 - **(1) TODO→DONE:** TODO.md'de olup gerçekte tamamlanmış maddeleri DONE.md'ye taşı + TODO.md'den **sil** (tek kaynak, çift kayıt yok).
 - **(2) TOBEDECIDED→TODO:** TOBEDECIDED.md'de olup artık karar verilip TODO'ya geçmiş kalemleri TODO.md'ye taşı + TOBEDECIDED.md'den **sil**.
 
-## READY FOR HANDOVER (2026-05-26)
+## READY FOR HANDOVER (2026-05-28)
 
-**Nerede kaldık:** co22 (claudeops repo). **25→26 transition tamam**: 19 26-session + co22(self) = 20 idle, hepsi `--permission-mode=auto`. Layout temiz, co22 ws0'a pinli. HEAD origin+gitlab sync.
+**Nerede kaldık:** co22 (claudeops repo). **27→28 transition tamam**: opus 13 (hms, hve, oa, qve, rve, carla, emrgence, rr, araroot, aggroot, gedikvm, gedikido, kulturiot) + sonnet 7 = 20 28-session + co22(self), hepsi idle `--permission-mode=auto`. trroot28 kapalı. Layout temiz, co22 ws0'a pinli. HEAD origin+gitlab sync.
 
-Bu oturumda (detay: DONE.md 2026-05-26): `repo_dirty` çift-remote+fetch+behind fix + `repo_fetch_once` (`418ebf8`); idle-only-DIRTY rescue (gedikvm/gedikido/kulturiot kendi reposunu commit etti); Handover-prep MD sync kuralı; TOBEDECIDED #7 (açık-kaynak local config).
+Bu oturumda (detay: DONE.md 2026-05-28): 26→27 TODO-loop handover + 27→28 standard handover; araroot28 + aggroot28 opus grubuna eklendi; trroot28 simdilik kapatıldı.
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-calisma-tarzi]].
 2. **Açık TODO bug'lar:** (a) `rc <a,b,c>` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc → respawn fallback.
-3. **TOBEDECIDED #7** karar bekliyor (açık-kaynak local config seçimi).
+3. **TOBEDECIDED #5** karar bekliyor (açık-kaynak local config seçimi).
 
 **Açık kararlar:** disk-temizlik (2026-05-20) onay bekliyor (`~/.cache/huggingface` 29G KORU).
 
