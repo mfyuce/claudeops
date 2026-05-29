@@ -2,6 +2,14 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-05-30 (28→29 transition + tek-model geçişi + 1M context + --effort flag)
+
+- ✅ **`rc --effort` flag** (`4e31b4a`) — `--effort low/medium/high/xhigh/max` pass-through eklendi (`effort_arg` → `model_arg`'a append). `claude --effort` CLI flag'ini destekler.
+- ✅ **Handover 28→29 (standard)** — 20 session 29-suffix'e geçti, --prompt yok (idle). Faz 3 layout grid 4 --pin=anomaly29,rustrino29.
+- ✅ **Tek-model geçişi** — opus/sonnet ayrımı KALDIRILDI. Tüm 20 session tek modelde: `claude-opus-4-8[1m]` (1M context) + `--permission-mode=auto` + `--effort=max`. Faz 2 artık tek `rc` komutu (eski 2 komut: opus grubu + sonnet grubu). CLAUDE.md + handover-procedure memory güncellendi.
+- ✅ **1M context mekanizması keşfedildi** — claude binary (v2.1.157) strings analizi: `function TZ(H){return /\[1m\]/i.test(H)}` → model ID'de `[1m]` varsa `Sg=context-1m-2025-08-07` beta header eklenir + context=1e6. Alternatif: `CLAUDE_CODE_MAX_CONTEXT_TOKENS` env var. Model'in `-p` ile self-report'u güvenilmez (200K diyordu). Memory: [[model-1m-context]]. Menüde "Default (recommended) — Opus 4.8 with 1M context" = `claude-opus-4-8[1m]`.
+- ✅ **CLAUDE.md büyüklük optimizasyonu** — 83→58 satır. Model-permission konvansiyonu tek-modele güncellendi, eski READY bloğu yenilendi, Self Protection + Bilinen sınırlamalar sıkılaştırıldı.
+
 ## 2026-05-28 (handover 26→27→28 + araroot/aggroot eklendi)
 
 - ✅ **Handover 26→27 (TODO-loop)** — 19 session (12 opus + 7 sonnet) 27-suffix'e geçti. Her session'a "TODO.md'deki karar gerektirmeyen tüm iş kalemlerini çöz, 5dk'da bir bak, sadece kullanıcı kararı gerekince dur" prompt'u verildi.
