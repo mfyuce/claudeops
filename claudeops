@@ -425,6 +425,7 @@ cmd_rc() {
   local prompt_text=""
   local model=""
   local permission_mode=""    # --permission-mode auto/acceptEdits/bypassPermissions/default/dontAsk/plan
+  local effort=""             # --effort low/medium/high/xhigh/max
   local preserve_desktop=1
   for a in "$@"; do
     case "$a" in
@@ -439,6 +440,7 @@ cmd_rc() {
       --prompt=*)            prompt_text="${a#--prompt=}";;
       --model=*)             model="${a#--model=}";;
       --permission-mode=*|--perm=*) permission_mode="${a#*=}";;
+      --effort=*)            effort="${a#--effort=}";;
       --no-preserve-desktop) preserve_desktop=0;;
     esac
   done
@@ -546,7 +548,9 @@ except: print('gone')
     [ -n "$model" ] && model_arg="--model $model"
     local perm_arg=""
     [ -n "$permission_mode" ] && perm_arg="--permission-mode $permission_mode"
-    model_arg="$model_arg $perm_arg"
+    local effort_arg=""
+    [ -n "$effort" ] && effort_arg="--effort $effort"
+    model_arg="$model_arg $perm_arg $effort_arg"
     # Initial prompt: escape single quotes for bash -c
     local prompt_esc=""
     if [ -n "$prompt_text" ]; then
