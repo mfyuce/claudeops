@@ -893,6 +893,7 @@ KALDIĞIMIZ YERİ KAYDEDELİM, YENİ SESSION DA DEVAM EDERİZ.
 
 Lütfen şunları kontrol et ve eksikse tamamla:
 - Konuşup ve bulup ve araştırıp da not almadığımız bir şey kaldı mı?
+- Bir işi yaparken başka bir işe geçtiysen eski iş bitmediği için mutlaka TODO ya kaydedilmiş mi? (Bu bir kuraldır: işten işe geçmeden önce eski iş TODO ya, sonra yeni işe geç.)
 - Her şey commit ve push lu mu? (tüm remote lara)
 - TODO.md, CHANGELOG.md, CLAUDE.md, DONE.md, TOBEDECIDED.md güncel mi? (yoksa oluştur, eksikse genişlet)
 - Yeni session a hazır mıyız?
