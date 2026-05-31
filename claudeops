@@ -651,10 +651,12 @@ cmd_layout() {
   local skip_self=1
   local skip_sticky=1   # sticky (all-desktops) pencerelere DOKUNMA (default)
   local reopen=0        # kill+switch-desktop+reopen-on-target (Mutter in-place move flakey)
+  local -a groups=()    # --group=base1,base2,...: bu session'lar tek desktop'ta blok (tekrarlanabilir)
   for a in "$@"; do
     case "$a" in
       --per=*) per="${a#--per=}";;
       --pin=*) pin_csv="${a#--pin=}";;
+      --group=*) groups+=("${a#--group=}");;
       --include-self) skip_self=0;;
       --include-sticky) skip_sticky=0;;
       --reopen|--reflow) reopen=1;;
@@ -833,6 +835,26 @@ if d.get('name')=='$nm': print(d.get('sessionId',''), d.get('cwd',''), d.get('pi
     fi
   }
 
+  # --group: belirli session'ları (base-name eşleşme, suffix stripli → handover'da
+  # 29→30 değişse de tutar) others'tan ayır; her grup KENDİ desktop'una blok yerleşir.
+  # base = window adından sondaki rakamları at: hc29→hc, hcr29→hcr, mecdtfl29→mecdtfl.
+  declare -A grouped_base=()     # base -> 1 (others'tan dışlamak için)
+  for gs in "${groups[@]}"; do
+    IFS=',' read -ra _bn <<<"$gs"
+    for b in "${_bn[@]}"; do grouped_base["$b"]=1; done
+  done
+  declare -a real_oth=()
+  declare -A win_by_base=()      # base -> "win|nm"
+  for item in "${oth_wins[@]}"; do
+    local _nm="${item#*|}"; local _base="${_nm%"${_nm##*[!0-9]}"}"
+    if [ -n "${grouped_base[$_base]:-}" ]; then
+      win_by_base["$_base"]="$item"
+    else
+      real_oth+=("$item")
+    fi
+  done
+  [ ${#groups[@]} -gt 0 ] && echo "groups: ${groups[*]}  (grup-üye: ${#grouped_base[@]}, serbest-others: ${#real_oth[@]})"
+
   # Desktop 0: pinned'leri yerleştir
   local idx=0
   for item in "${pin_wins[@]}"; do
@@ -844,21 +866,44 @@ if d.get('name')=='$nm': print(d.get('sessionId',''), d.get('cwd',''), d.get('pi
     [ $idx -ge $per ] && break
   done
 
-  # Diğerleri desktop 1..N'e dağıt
-  local idx2=0 ws=1
-  for item in "${oth_wins[@]}"; do
+  # Serbest others'ı desktop 1..N'e dağıt (grup üyeleri hariç)
+  local idx2=0 ws=1 max_ws=0
+  for item in "${real_oth[@]}"; do
     local win="${item%|*}"; local nm="${item#*|}"
     local quad="${quads[$((idx2 % per))]}"
     apply_one "$win" "$nm" "$ws" "$quad"
+    [ "$ws" -gt "$max_ws" ] && max_ws="$ws"
     echo "  $nm → ws=$ws quad=$quad"
     idx2=$((idx2+1))
     if [ $((idx2 % per)) -eq 0 ]; then ws=$((ws+1)); fi
   done
 
+  # Gruplar: her grup, others'tan SONRA kendi taze desktop'una blok yerleşir
+  # (spec sırasıyla quad doldurur). 16 serbest-other → ws1-4 dolu → grup ws5'e.
+  if [ ${#groups[@]} -gt 0 ]; then
+    [ $((idx2 % per)) -ne 0 ] && ws=$((ws+1))   # son desktop kısmi dolduysa gruba taze ver
+    for gs in "${groups[@]}"; do
+      IFS=',' read -ra _bn <<<"$gs"
+      local gq=0
+      for b in "${_bn[@]}"; do
+        local it="${win_by_base[$b]:-}"
+        [ -z "$it" ] && { echo "  [group] $b açık değil, atlandı"; continue; }
+        local win="${it%|*}"; local nm="${it#*|}"
+        local quad="${quads[$((gq % per))]}"
+        apply_one "$win" "$nm" "$ws" "$quad"
+        [ "$ws" -gt "$max_ws" ] && max_ws="$ws"
+        echo "  [group] $nm → ws=$ws quad=$quad"
+        gq=$((gq+1))
+        [ $((gq % per)) -eq 0 ] && ws=$((ws+1))
+      done
+      [ $((gq % per)) -ne 0 ] && ws=$((ws+1))   # sonraki grup taze desktop'ta
+    done
+  fi
+
   # En sona ana desktop'a (0) dön — kullanıcı orada (co/self ws0'da)
   wmctrl -s 0 2>/dev/null
 
-  local needed_ws=$((ws + 1))
+  local needed_ws=$((max_ws + 1))
   echo "→ workspace count en az: $needed_ws  (mevcut: $(gsettings get org.gnome.desktop.wm.preferences num-workspaces 2>/dev/null))"
   echo "Yetersiz ise: claudeops desktops $needed_ws"
 }
@@ -1519,9 +1564,12 @@ KULLANIM:
       GNOME workspace sayısını sabit N olarak ayarla (dynamic-workspaces=off).
       N verilmezse mevcut değeri gösterir. gsettings ile, install gerektirmez.
 
-  claudeops layout [grid] [N] [--per=4] [--pin=<name1,name2,...>]
+  claudeops layout [grid] [N] [--per=4] [--pin=<n1,n2,...>] [--group=<b1,b2,...>]
       Pencereleri 2×2 grid yerleştir, her workspace'e <per> tane (default 4).
       --pin=carla13,hcr13,...  bu isimler desktop 0'a; geri kalanı ws 1..N'e.
+      --group=hc,hcr,mecdtfl  bu session'lar (base-name eşleşme, suffix stripli →
+        handover'da 29→30 değişse de tutar) others'tan SONRA kendi taze desktop'una
+        blok halinde yerleşir; asla bölünmez. Tekrarlanabilir (çok grup).
       İhtiyaç: wmctrl. Yetersiz workspace varsa ekrana mesaj yazar (claudeops
       desktops <N> ile arttır).
 

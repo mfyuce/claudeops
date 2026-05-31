@@ -2,8 +2,9 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
-## 2026-05-30 (28→29 transition + tek-model geçişi + 1M context + --effort flag)
+## 2026-05-30 (28→29 transition + tek-model geçişi + 1M context + --effort flag + layout --group)
 
+- ✅ **`layout --group=` flag** — belirli session'ları (base-name eşleşme, suffix stripli → handover'da 29→30 değişse de tutar) tek desktop'ta blok halinde tutar; serbest-others'tan SONRA kendi taze desktop'una yerleşir, asla bölünmez. Tekrarlanabilir (çok grup). `cmd_layout`: arg parse + oth_wins'i grouped/real_oth ayrımı (`win_by_base`, base = `${nm%"${nm##*[!0-9]}"}`) + grup yerleştirme bloğu + max_ws ile needed_ws düzeltmesi. Standart Faz 3 komutu + handover-procedure memory + --help güncellendi. Base-name kullandığı için Faz 3'te `<TO>` bump gerekmez (sabit). 2 grup tanımlandı: **grup1 `hc,hcr,mecdtfl` → ws4** (BR boş), **grup2 `mo,kulturiot,gedikvm,gedikido` → ws5** (tam). 12 serbest-other ws1-3 doldurur. İlk yazılan grup düşük ws alır. Tüm yer-değiştirmeler in-place (kapatmadan, swap = displaced eski slota).
 - ✅ **`rc --effort` flag** (`4e31b4a`) — `--effort low/medium/high/xhigh/max` pass-through eklendi (`effort_arg` → `model_arg`'a append). `claude --effort` CLI flag'ini destekler.
 - ✅ **Handover 28→29 (standard)** — 20 session 29-suffix'e geçti, --prompt yok (idle). Faz 3 layout grid 4 --pin=anomaly29,rustrino29.
 - ✅ **Tek-model geçişi** — opus/sonnet ayrımı KALDIRILDI. Tüm 20 session tek modelde: `claude-opus-4-8[1m]` (1M context) + `--permission-mode=auto` + `--effort=max`. Faz 2 artık tek `rc` komutu (eski 2 komut: opus grubu + sonnet grubu). CLAUDE.md + handover-procedure memory güncellendi.
