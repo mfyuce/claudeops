@@ -30,7 +30,7 @@
 
 ### 5) Açık-kaynak (dünyaya açmak) — kişiye/makineye özel kısımları lokalde tut
 - **Bağlam:** Bu kod public'e açılırsa, **her kullanıcıda farklı olacak / olması gereken** kısımlar repo'ya push'lanmamalı; lokalde kalmalı (gitignore + local config/template).
-- **Kişi-/makine-bağımlı parçalar (aday):** session isim + model-grup listeleri (hms/hve/oa… opus vs sonnet), proje cwd path'leri, handover/respawn name listeleri, `READY FOR HANDOVER` blokları (kişiye özel session durumu), ekran geometrisi (1680×1050 hard-coded), gnome-terminal hard-coding, remote URL'leri (mfyuce github/gitlab), encoded memory path. (`desktops.local.md` zaten gitignored — model.)
+- **Kişi-/makine-bağımlı parçalar (aday):** session isim + model-grup listeleri (hms/hve/oa… opus vs sonnet), proje cwd path'leri, handover/respawn name listeleri, `READY FOR HANDOVER` blokları (kişiye özel session durumu), ekran geometrisi (1680×1050 hard-coded), gnome-terminal hard-coding, remote URL'leri (mfyuce github/gitlab), encoded memory path, **layout `--group` blok config'leri** (hc,hcr,mecdtfl / mo,kulturiot,gedikvm,gedikido — CLAUDE.md Faz 3'te). (`desktops.local.md` zaten gitignored — model.)
 - **Seçenekler:** (a) `claudeops.local.conf` / `~/.config/claudeops/config` gitignored + kod generic; (b) env-var override; (c) `*.example` template commit'le, gerçeği gitignore.
 - **Soru:** Hangi ayrım modeli? Public repo'da ne kalsın, ne lokal olsun?
 - **Karar:** ? (konuşulacak — kullanıcı, 2026-05-26)

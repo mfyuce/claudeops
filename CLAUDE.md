@@ -54,17 +54,17 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 - Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 - **Handover-prep MD sync** (her ho'da): (1) TODO'da tamamlanmış → DONE'a taşı+TODO'dan sil; (2) TOBEDECIDED'da karar verilmiş → TODO'ya taşı+sil.
 
-## READY FOR HANDOVER (2026-05-30)
+## READY FOR HANDOVER (2026-05-31)
 
-**Nerede kaldık:** co22 (claudeops repo). **28→29 transition tamam + tek-model geçişi**: 20 session (eski 13 opus + 7 sonnet, artık ayrım yok) hepsi `claude-opus-4-8[1m]` (1M context) + `--permission-mode=auto` + `--effort=max`, idle. + co22 (self). Layout grid 4 temiz, co22 ws0'a pinli. HEAD origin+gitlab sync.
+**Nerede kaldık:** co29 (claudeops repo, self; bu session başında /rename co22→co29). Fleet 20 session suffix **29**, idle — bu session **RESTART EDİLMEDİ** (kullanıcı: "kendini sync + TODO/TBD update yap ama restart etme"). HEAD origin+gitlab sync (`a9867da`).
 
-Bu oturumda (detay: DONE.md 2026-05-30): (1) `rc --effort` flag eklendi (`4e31b4a`); (2) 28→29 standard handover; (3) tüm session'lar tek modele (`claude-opus-4-8[1m]`, effort=max) geçirildi — opus/sonnet ayrımı kalktı; (4) 1M context mekanizması keşfedildi (model ID `[1m]` suffix → beta header), memory [[model-1m-context]].
+Bu oturumda (detay: DONE.md 2026-05-31): (1) window grouping — hcr/hc/mecdtfl + mo/kulturiot/gedikvm/gedikido in-place swap'larla tek desktop'a (kapatmadan; displaced→mover'ın eski slotu); (2) **`layout --group` feature** (`a9867da`) — base-name eşleşme, tekrarlanabilir, grup serbest-others'tan sonra kendi taze desktop'una blok; (3) 2 grup standart Faz 3'e baked: hc-trio→ws4, mo-quad→ws5.
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-calisma-tarzi]] + [[model-1m-context]].
-2. **Açık TODO bug'lar:** (a) `rc <a,b,c>` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc → respawn fallback, (d) `--model` verince default `--permission-mode=auto`.
-3. **TOBEDECIDED #5** karar bekliyor (açık-kaynak local config seçimi).
+2. **Fleet 29→30 handover bu session YAPILMADI** — gerekirse Faz 1/2/3 çalıştır (Faz 3 artık 2× `--group` içeriyor).
+3. **Açık TODO bug'lar:** (a) `rc <a,b,c>` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc → respawn fallback, (d) `--model` verince default `auto`, (e) handover `--layout` `--group` geçirmiyor (yeni).
 
-**Açık kararlar:** disk-temizlik (2026-05-20) onay bekliyor (`~/.cache/huggingface` 29G KORU).
+**Açık kararlar:** TOBEDECIDED #5 (açık-kaynak local config — artık `--group` blok config'leri de aday). disk-temizlik (2026-05-20) onay bekliyor (`~/.cache/huggingface` 29G KORU).
 
 READY FOR HANDOVER
