@@ -200,20 +200,37 @@ PY
 # ─────────────────────────────────────────────
 STATE_DIR="$HOME/.claude/claudeops"
 HANDOVER_TS_FILE="$STATE_DIR/last-handover.ts"
+BASELINE_DIR="$STATE_DIR/baselines"   # per-repo: ho SONRASI (wrap-up) commit-id
 _baseline_ts() { [ -n "${1:-}" ] && { printf '%s' "$1"; return; }; [ -f "$HANDOVER_TS_FILE" ] && cat "$HANDOVER_TS_FILE"; }
 _handover_stamp() { mkdir -p "$STATE_DIR" 2>/dev/null; date -Iseconds > "$HANDOVER_TS_FILE"; }
+# Per-repo baseline = "ho sonrası commit" (kullanıcı 2026-05-31). Repo toplevel'a göre key'lenir.
+_repo_key() { git -C "$1" rev-parse --show-toplevel 2>/dev/null | sha1sum | cut -d' ' -f1; }
+_repo_baseline_get() { local k; k=$(_repo_key "$1"); [ -n "$k" ] && cat "$BASELINE_DIR/$k" 2>/dev/null || true; }
+_repo_baseline_set() {   # current HEAD'i baseline yap (respawn / wrap-up commit'i SONRASI)
+  local k h; k=$(_repo_key "$1"); h=$(git -C "$1" rev-parse HEAD 2>/dev/null)
+  [ -n "$k" ] && [ -n "$h" ] && { mkdir -p "$BASELINE_DIR" 2>/dev/null; printf '%s' "$h" > "$BASELINE_DIR/$k"; }
+}
 
 repo_untracked_count() {
   local d="$1"; git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || { echo 0; return; }
   git -C "$d" ls-files --others --exclude-standard 2>/dev/null | grep -c . || true
 }
-# HEAD commit'i baseline'dan (ISO) yeni mi? 0=evet (iş yapılmış). Aynı TZ → string compare.
+# Session ho-sonrası baseline'dan beri yeni commit yapmış mı? 0=evet (iş var).
+# PRIMARY: per-repo commit-id (ho sonrası HEAD) ≠ current HEAD — kullanıcı: "commit ids
+#   must be the one after ho". Baseline respawn'da/_repo_baseline_set ile yazılır.
+# FALLBACK (id yoksa = ilk kurulum): son commit zamanı > baseline timestamp.
 repo_committed_since() {
-  local d="$1" base="$2"
-  [ -n "$base" ] || return 1
+  local d="$1" base_ts="$2"
   git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || return 1
-  local ci; ci=$(git -C "$d" log -1 --format=%cI 2>/dev/null)
-  [ -n "$ci" ] && [[ "$ci" > "$base" ]]
+  local bid; bid=$(_repo_baseline_get "$d")
+  if [ -n "$bid" ]; then
+    local head; head=$(git -C "$d" rev-parse HEAD 2>/dev/null)
+    [ -n "$head" ] && [ "$head" != "$bid" ]
+  else
+    [ -n "$base_ts" ] || return 1
+    local ci; ci=$(git -C "$d" log -1 --format=%cI 2>/dev/null)
+    [ -n "$ci" ] && [[ "$ci" > "$base_ts" ]]
+  fi
 }
 # Session ho gerektiriyor mu? 0=ho gerek, 1=güvenle skip. 6 sinyalin BİRİ pozitifse ho.
 #   tracked-modified/staged | unpushed/behind   (repo_dirty)
@@ -618,6 +635,9 @@ except: print('gone')
           "$LOG_DIR/${effective_name}-rc.log" </dev/null >/dev/null 2>&1 & )
       echo "DETACHED $effective_name"
     fi
+    # respawn (--new): repo şu an ho-sonrası (wrap-up) HEAD'inde → baseline olarak yaz.
+    # Sonraki needs-ho: HEAD bundan farklıysa → yeni iş → ho gerek ("commit after ho").
+    [ "$new_session" = "1" ] && _repo_baseline_set "$cwd"
     sleep 2
   done <<<"$rows"
   # son: ana desktop'a dön
@@ -1008,6 +1028,19 @@ Bitince "READY FOR HANDOVER" özetiyle dön.'
 # Verdict needs_ho() ile. READ-ONLY: hiçbir session öldürülmez/açılmaz.
 # Baseline = son handover zamanı (state dosyası) veya --baseline override.
 # ─────────────────────────────────────────────
+cmd_stamp_baseline() {   # <all-but-self|name...> — repo HEAD'i "ho sonrası" baseline yap
+  [ -z "${1:-}" ] && { echo "kullanım: claudeops stamp-baseline <all-but-self|name...>"; return 2; }
+  local rows; rows=$(resolve_targets "$@")
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    if _repo_baseline_set "$cwd"; then
+      echo "  baseline $name = $(git -C "$cwd" rev-parse --short HEAD 2>/dev/null) ($cwd)"
+    else
+      echo "  SKIP $name (git repo değil?)"
+    fi
+  done <<<"$rows"
+}
+
 cmd_needs_ho() {
   local from_suffix="" base_override="" do_fetch=1
   for a in "$@"; do case "$a" in
@@ -1753,6 +1786,7 @@ case "${1:-help}" in
   cancel) shift; cmd_cancel "$@" ;;
   handover) shift; cmd_handover "$@" ;;
   needs-ho|needsho|needs_ho) shift; cmd_needs_ho "$@" ;;
+  stamp-baseline|baseline) shift; cmd_stamp_baseline "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   *) echo "Bilinmeyen komut: $1"; cmd_help; exit 2 ;;
 esac
