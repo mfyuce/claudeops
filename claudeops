@@ -211,6 +211,42 @@ _repo_baseline_set() {   # current HEAD'i baseline yap (respawn / wrap-up commit
   [ -n "$k" ] && [ -n "$h" ] && { mkdir -p "$BASELINE_DIR" 2>/dev/null; printf '%s' "$h" > "$BASELINE_DIR/$k"; }
 }
 
+# ── Roster: cold-boot oto-açılış için name→cwd→model haritası ──────────────
+# Neden gerek: `rc`/handover cwd'leri CANLI session'lardan öğrenir; reboot sonrası
+# canlı yok + session.json'lar silinir → diskte hiçbir name→cwd kaydı kalmaz.
+# Çözüm: her fresh spawn (rc --new / new) bu dosyaya kendi satırını yazsın →
+# roster hep güncel, reboot'tan sağ çıkar. `boot` bunu okuyup fleet'i geri açar.
+# NOT: transcript dizin adlarından cwd ÇÖZÜLMEZ (/ _ . hepsi '-' olur, lossy) —
+# tek güvenilir kaynak canlı yakalama. Format: name<TAB>cwd<TAB>model
+ROSTER_FILE="$STATE_DIR/roster.tsv"
+_roster_set() {   # name cwd [model] — upsert (name key); self/co dahil edilebilir, boot atlar
+  local name="$1" cwd="$2" model="${3:-}"
+  [ -z "$name" ] && return; [ -z "$cwd" ] && return
+  mkdir -p "$STATE_DIR" 2>/dev/null
+  local tmp="$ROSTER_FILE.tmp.$$"
+  { [ -f "$ROSTER_FILE" ] && grep -vP "^${name}\t" "$ROSTER_FILE" 2>/dev/null
+    printf '%s\t%s\t%s\n' "$name" "$cwd" "$model"; } > "$tmp" 2>/dev/null && mv "$tmp" "$ROSTER_FILE"
+}
+
+# ── Suffix state: "son session no" (handover bump'larında ilerler) ──────────
+# boot co/mo'yu base-name + bu suffix ile açar (co30) → fleet'in geri kalanıyla hizalı.
+SUFFIX_FILE="$STATE_DIR/suffix"
+_suffix_get() { [ -f "$SUFFIX_FILE" ] && tr -dc '0-9' < "$SUFFIX_FILE"; }
+_suffix_set() { [ -n "${1:-}" ] && { mkdir -p "$STATE_DIR" 2>/dev/null; printf '%s' "$1" > "$SUFFIX_FILE"; }; }
+
+# ── Recover: bir cwd'nin EN GÜNCEL transcript'inin sid'i (jsonl reboot'tan sağ çıkar) ──
+# Encoding lossy (cwd→dir çözülmez) → ters yön: jsonl içeriğindeki gerçek "cwd" eşleştir.
+# boot bununla --resume eder → geçmiş korunur, sid compaction'da değişse de en taze bulunur.
+_latest_sid_for_cwd() {
+  local cwd="$1"
+  find "$HOME/.claude/projects" -name '*.jsonl' -newermt '21 days ago' -printf '%T@\t%p\n' 2>/dev/null \
+   | sort -rn \
+   | while IFS=$'\t' read -r t p; do
+       local c; c=$(grep -m1 -oE '"cwd":"[^"]*"' "$p" 2>/dev/null | head -1 | sed 's/"cwd":"//;s/"$//')
+       [ "$c" = "$cwd" ] && { basename "$p" .jsonl; break; }
+     done
+}
+
 repo_untracked_count() {
   local d="$1"; git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || { echo 0; return; }
   git -C "$d" ls-files --others --exclude-standard 2>/dev/null | grep -c . || true
@@ -496,7 +532,7 @@ cmd_rc() {
       --kill-first)          kill_first=1;;
       --new)                 new_session=1;;
       --rename=*)            rename="${a#--rename=}";;
-      --suffix=*)            rename_pattern="${a#--suffix=}";;
+      --suffix=*)            rename_pattern="${a#--suffix=}"; _suffix_set "$rename_pattern";;   # boot için "son session no"
       --sticky=*)            sticky_csv="${a#--sticky=}";;
       --desktop=*)           pin_desk_csv="${a#--desktop=}";;
       --prompt=*)            prompt_text="${a#--prompt=}";;
@@ -1650,6 +1686,110 @@ print('bridge-url: ', 'https://claude.ai/code/' + d.get('bridgeSessionId','') if
 }
 
 # ─────────────────────────────────────────────
+# CMD: snapshot — canlı fleet'i roster.tsv'ye dök (referans/boot --from-roster)
+#   self HARİÇ. name<TAB>cwd<TAB>model. Fleet ayaktayken bir kez çalıştır.
+# ─────────────────────────────────────────────
+cmd_snapshot() {
+  local rows n=0; rows=$(all_sessions_tsv | filter_not_self)
+  local tmp="$ROSTER_FILE.tmp.$$"; : > "$tmp"
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$name" ] && continue
+    local model; model=$(python3 -c "import json;print(json.load(open('$SESS_DIR/$pid.json')).get('model') or '')" 2>/dev/null)
+    printf '%s\t%s\t%s\n' "$name" "$cwd" "$model" >> "$tmp"; n=$((n+1))
+  done <<<"$rows"
+  mkdir -p "$STATE_DIR" 2>/dev/null; mv "$tmp" "$ROSTER_FILE"
+  echo "snapshot: $n session → $ROSTER_FILE"; [ "$n" -gt 0 ] && cat "$ROSTER_FILE"
+}
+
+# ─────────────────────────────────────────────
+# CMD: boot [--lock] [--layout] [--from-roster] [--pace=N]
+#   Cold-boot oto-açılış. Default kaynak: $BOOT_LIST (curated, co+mo). Akış:
+#     1) X/WM hazır olana dek bekle (autostart erken tetiklenir, ~90s tolerans)
+#     2) listedeki her session'ı doğru cwd + model/perm/effort ile aç (paced)
+#     3) --layout ise tile;  --lock ise EN SON ekranı kilitle (fleet arkada çalışır)
+#   Autologin + ~/.config/autostart/claudeops.desktop ile reboot'ta otomatik.
+#   --from-roster: tam fleet'i (snapshot çıktısı) aç. Default sadece co+mo.
+# ─────────────────────────────────────────────
+BOOT_LIST="${BOOT_LIST:-$STATE_DIR/boot.list}"   # curated cold-boot set: name<TAB>cwd<TAB>model (env override edilebilir)
+BOOT_MODEL_DEFAULT='claude-opus-4-8[1m]'
+cmd_boot() {
+  local do_lock=0 pace=2 src="$BOOT_LIST" perm="auto" effort="max" do_layout=0 app_id=""
+  for a in "$@"; do case "$a" in
+    --lock) do_lock=1;;
+    --no-lock) do_lock=0;;
+    --layout) do_layout=1;;
+    --from-roster) src="$ROSTER_FILE";;
+    --pace=*) pace="${a#--pace=}";;
+    --permission-mode=*) perm="${a#--permission-mode=}";;
+    --effort=*) effort="${a#--effort=}";;
+    --app-id=*) app_id="${a#--app-id=}";;
+    -h|--help) echo "claudeops boot [--lock] [--layout] [--from-roster] [--pace=N]"; echo "  $BOOT_LIST (default co+mo) içindeki session'ları açar; --lock ile en son kilitler."; return 0;;
+  esac; done
+  [ -f "$src" ] || { echo "boot: liste yok ($src). Satır formatı:  co<TAB>/path<TAB>claude-opus-4-8[1m]"; return 1; }
+
+  # 1) X/WM hazır mı? (autostart session başında, WM tam ayağa kalkmadan tetiklenebilir)
+  local w=0
+  while [ $w -lt 90 ]; do { [ -n "$DISPLAY" ] && wmctrl -m >/dev/null 2>&1; } && break; sleep 1; w=$((w+1)); done
+  { [ -n "$DISPLAY" ] && wmctrl -m >/dev/null 2>&1; } || { echo "boot: X/WM hazır değil (${w}s bekledim) DISPLAY=${DISPLAY:-?}"; return 1; }
+
+  # 2) listedeki session'ları paced aç (rapid burst gnome-terminal-server'ı wedge'ler).
+  #    İsim = base + son-suffix (co30); sid bulunursa --resume → geçmiş korunur ("session bilgisi").
+  local suffix; suffix=$(_suffix_get)
+  local n=0
+  while IFS=$'\t' read name cwd model; do
+    case "$name" in ''|'#'*) continue;; esac
+    [ -d "$cwd" ] || { echo "  SKIP $name: cwd yok ($cwd)"; continue; }
+    local base; base=$(printf '%s' "$name" | sed -E 's/[0-9]+$//')
+    local eff="${base}${suffix}"
+    local m="${model:-$BOOT_MODEL_DEFAULT}"
+    local sid; sid=$(_latest_sid_for_cwd "$cwd")
+    local resume=""; [ -n "$sid" ] && resume="--resume $sid"
+    gnome-terminal ${app_id:+--app-id="$app_id"} --window --title="$eff" --working-directory="$cwd" \
+      -- bash -c "claude $resume --model '$m' --permission-mode '$perm' --effort '$effort' -n '$eff' --remote-control '$eff'; exec bash" &
+    echo "  BOOT $eff ($cwd) $([ -n "$sid" ] && echo "resume=${sid:0:8}" || echo fresh) model=$m"
+    n=$((n+1)); sleep "$pace"
+  done < "$src"
+  echo "boot: $n session açıldı (suffix=${suffix:-yok})"
+
+  [ "$do_layout" = "1" ] && { sleep 5; cmd_layout grid 4 || true; }
+
+  # 3) en son: ekranı kilitle — "autologin olur olmaz lock" (fleet arkada koşar, şifreyle aç)
+  if [ "$do_lock" = "1" ]; then
+    sleep 2
+    loginctl lock-session 2>/dev/null \
+      || dbus-send --session --type=method_call --dest=org.gnome.ScreenSaver \
+           /org/gnome/ScreenSaver org.gnome.ScreenSaver.Lock 2>/dev/null
+    echo "boot: ekran kilitlendi"
+  fi
+}
+
+# ─────────────────────────────────────────────
+# CMD: recover [--since=ISO] — reboot sonrası resume-edilebilir session'ları listele
+#   jsonl transcript'ler reboot'tan sağ çıkar; her repo'nun EN GÜNCEL'i resume adayı.
+#   Çıktı: cwd · sid (resume için) · git-dirty · son-aktif. READ-ONLY.
+#   Resume: cd <cwd> && claude --resume <sid>   (veya boot otomatik yapar)
+# ─────────────────────────────────────────────
+cmd_recover() {
+  local since="2026-01-01 00:00"
+  for a in "$@"; do case "$a" in --since=*) since="${a#--since=}";; esac; done
+  printf "%-46s %-38s %-5s %s\n" "CWD" "SID (resume)" "DIRTY" "son-aktif"
+  find "$HOME/.claude/projects" -name '*.jsonl' -newermt "$since" -printf '%T@\t%p\n' 2>/dev/null \
+   | sort -rn \
+   | awk -F'\t' '{d=$2; if(!seen[$2]++){ c=$2; sub(/.*\/projects\//,"",c); sub(/\/[^/]*$/,"",c); if(!dir[c]++) print $2 }}' \
+   | while read -r jf; do
+       local sid cwd tm dirty
+       sid=$(basename "$jf" .jsonl)
+       cwd=$(grep -m1 -oE '"cwd":"[^"]*"' "$jf" 2>/dev/null | head -1 | sed 's/"cwd":"//;s/"$//')
+       [ -z "$cwd" ] && continue
+       tm=$(stat -c %y "$jf" 2>/dev/null | cut -d. -f1 | cut -d' ' -f2)
+       if [ -d "$cwd" ] && git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
+         dirty=$( [ -n "$(git -C "$cwd" status --porcelain 2>/dev/null)" ] && echo YES || echo no )
+       else dirty="?"; fi
+       printf "%-46s %-38s %-5s %s\n" "$cwd" "$sid" "$dirty" "$tm"
+     done
+}
+
+# ─────────────────────────────────────────────
 # help
 # ─────────────────────────────────────────────
 cmd_help() {
@@ -1727,6 +1867,23 @@ KULLANIM:
         5) --gh/--glab: git init + repo create + remote + first commit + push
         6) Eski pid'i kill, new_cwd'de aynı model/perm/RC name ile fresh spawn
 
+  claudeops boot [--lock] [--layout] [--from-roster] [--pace=N]
+      Cold-boot oto-açılış (autologin + ~/.config/autostart/claudeops.desktop ile
+      reboot'ta otomatik). Default kaynak ~/.claude/claudeops/boot.list (co + mo).
+      Her session'ı base-name + SON SUFFIX ile (co30) ve cwd'sinin EN GÜNCEL
+      transcript'iyle --resume ederek açar (geçmiş korunur). --lock: en son ekranı
+      kilitler (fleet arkada çalışır, şifreyle aç). Suffix: ~/.claude/claudeops/suffix
+      (rc --suffix=N ile oto-güncellenir). --from-roster: snapshot'tan tam fleet.
+
+  claudeops snapshot
+      Canlı fleet'i ~/.claude/claudeops/roster.tsv'ye dök (name⇥cwd⇥model). self hariç.
+      boot --from-roster için referans. Fleet ayaktayken bir kez çalıştır.
+
+  claudeops recover [--since=ISO]
+      READ-ONLY: reboot sonrası resume-edilebilir session'lar. jsonl transcript'ler
+      reboot'tan sağ çıkar → her repo'nun en güncel'i: cwd · sid · git-dirty · son-aktif.
+      Resume: cd <cwd> && claude --resume <sid>  (ya da boot otomatik yapar).
+
   claudeops needs-ho [--from-suffix=N] [--baseline=ISO] [--no-fetch]
       READ-ONLY: hangi session'lar handover (wrap-up) gerektiriyor? 6 sinyal tablosu:
       modified/staged/untracked (working tree) · unpushed (tüm remote'lar) · jsonl ·
@@ -1791,6 +1948,9 @@ case "${1:-help}" in
   cleanup) shift; cmd_cleanup "$@" ;;
   cancel) shift; cmd_cancel "$@" ;;
   handover) shift; cmd_handover "$@" ;;
+  snapshot) shift; cmd_snapshot "$@" ;;
+  boot) shift; cmd_boot "$@" ;;
+  recover) shift; cmd_recover "$@" ;;
   needs-ho|needsho|needs_ho) shift; cmd_needs_ho "$@" ;;
   stamp-baseline|baseline) shift; cmd_stamp_baseline "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
