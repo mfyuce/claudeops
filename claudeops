@@ -191,6 +191,49 @@ PY
 }
 
 # ─────────────────────────────────────────────
+# needs-ho tespiti (GENERIC) — 6 sinyal. Kritik ek: COMMIT-vs-BASELINE.
+# repo_dirty untracked saymaz + handover_done jsonl ister → commit'lenip push'lanmış
+# ama jsonl'siz (compaction → sid değişmiş) session "idle-clean" sanılıp ATLANIYORDU
+# (gedikvm/gedikido/kulturiot vakası, 2026-05-31). Çözüm: son commit baseline'dan
+# (= son handover zamanı) yeniyse → session iş yaptı → ho gerek. Baseline state
+# dosyasında tutulur; her handover sonunda güncellenir.
+# ─────────────────────────────────────────────
+STATE_DIR="$HOME/.claude/claudeops"
+HANDOVER_TS_FILE="$STATE_DIR/last-handover.ts"
+_baseline_ts() { [ -n "${1:-}" ] && { printf '%s' "$1"; return; }; [ -f "$HANDOVER_TS_FILE" ] && cat "$HANDOVER_TS_FILE"; }
+_handover_stamp() { mkdir -p "$STATE_DIR" 2>/dev/null; date -Iseconds > "$HANDOVER_TS_FILE"; }
+
+repo_untracked_count() {
+  local d="$1"; git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || { echo 0; return; }
+  git -C "$d" ls-files --others --exclude-standard 2>/dev/null | grep -c . || true
+}
+# HEAD commit'i baseline'dan (ISO) yeni mi? 0=evet (iş yapılmış). Aynı TZ → string compare.
+repo_committed_since() {
+  local d="$1" base="$2"
+  [ -n "$base" ] || return 1
+  git -C "$d" rev-parse --git-dir >/dev/null 2>&1 || return 1
+  local ci; ci=$(git -C "$d" log -1 --format=%cI 2>/dev/null)
+  [ -n "$ci" ] && [[ "$ci" > "$base" ]]
+}
+# Session ho gerektiriyor mu? 0=ho gerek, 1=güvenle skip. 6 sinyalin BİRİ pozitifse ho.
+#   tracked-modified/staged | unpushed/behind   (repo_dirty)
+#   untracked                                   (repo_untracked_count)
+#   commit-since-baseline                       (repo_committed_since)
+#   jsonl var + RFH-finalize değil              (find_jsonl + !handover_done)
+needs_ho() {
+  local sid="$1" cwd="$2" base="$3"
+  # Kullanıcı kriteri (2026-05-31): sinyallerden BİRİ pozitifse ho gerek. handover_done
+  # (RFH) bunları OVERRIDE ETMEZ — "commit baseline'dan farklı → ho" (committed-since
+  # wrapped sanılıp atlanmasın). Baseline her ho'da ilerler → önceki turun wrap-up
+  # commit'i sonraki turda elenir, yani kalıcı false-positive olmaz.
+  repo_dirty "$cwd" && return 0                            # tracked-mod/staged | unpushed | behind
+  [ "$(repo_untracked_count "$cwd")" -gt 0 ] && return 0   # untracked
+  repo_committed_since "$cwd" "$base" && return 0          # last commit > baseline
+  [ -n "$(find_jsonl "$sid")" ] && ! handover_done "$sid" "$cwd" && return 0   # jsonl var, RFH yok
+  return 1
+}
+
+# ─────────────────────────────────────────────
 # Target resolver: "all-but-self" | "all" | "<name> <name>..."
 # ─────────────────────────────────────────────
 resolve_targets() {
@@ -958,6 +1001,50 @@ Sonunda CLAUDE.md nin sonuna "## READY FOR HANDOVER ($(date))" başlığıyla 5-
 
 Bitince "READY FOR HANDOVER" özetiyle dön.'
 
+# ─────────────────────────────────────────────
+# CMD: needs-ho [--from-suffix=N] [--baseline=ISO] [--no-fetch]
+# Hangi session'lar handover (wrap-up) gerektiriyor? 6 sinyal tablosu:
+#   mod/stg/unt (working tree) · unpush (remote'lar) · jsonl · since? (commit-vs-baseline)
+# Verdict needs_ho() ile. READ-ONLY: hiçbir session öldürülmez/açılmaz.
+# Baseline = son handover zamanı (state dosyası) veya --baseline override.
+# ─────────────────────────────────────────────
+cmd_needs_ho() {
+  local from_suffix="" base_override="" do_fetch=1
+  for a in "$@"; do case "$a" in
+    --from-suffix=*) from_suffix="${a#--from-suffix=}";;
+    --baseline=*)    base_override="${a#--baseline=}";;
+    --no-fetch)      do_fetch=0;;
+  esac; done
+  local base; base=$(_baseline_ts "$base_override")
+  echo "baseline (son handover): ${base:-<yok — 'handover' çalışınca set olur; commit-since atlanır>}"
+  local rows; rows=$(all_sessions_tsv | filter_not_self)
+  [ -n "$from_suffix" ] && rows=$(echo "$rows" | awk -F'\t' -v s="$from_suffix" '$2 ~ s"$"')
+  printf "%-13s %-4s %-4s %-4s %-8s %-6s %-7s %s\n" name mod stg unt unpush jsonl since? VERDICT
+  local ho="" skip=""
+  while IFS=$'\t' read pid name status sid cwd bridge; do
+    [ -z "$pid" ] && continue
+    [ "$do_fetch" = "1" ] && repo_fetch_once "$cwd"
+    local mod stg unt unpush jf cs br r a
+    mod=$(git -C "$cwd" status --porcelain 2>/dev/null | grep -vc '^??')
+    stg=$(git -C "$cwd" diff --cached --name-only 2>/dev/null | grep -c .)
+    unt=$(repo_untracked_count "$cwd")
+    unpush=0; br=$(git -C "$cwd" branch --show-current 2>/dev/null)
+    for r in $(git -C "$cwd" remote 2>/dev/null); do
+      git -C "$cwd" rev-parse --verify "$r/$br" >/dev/null 2>&1 || continue
+      a=$(git -C "$cwd" rev-list --count "$r/$br..HEAD" 2>/dev/null)
+      [ "${a:-0}" -gt "$unpush" ] && unpush="$a"
+    done
+    jf=$([ -n "$(find_jsonl "$sid")" ] && echo yes || echo no)
+    cs=$(repo_committed_since "$cwd" "$base" && echo YES || echo -)
+    local v
+    if needs_ho "$sid" "$cwd" "$base"; then v="*** HO"; ho="$ho $name"; else v="skip"; skip="$skip $name"; fi
+    printf "%-13s %-4s %-4s %-4s %-8s %-6s %-7s %s\n" "$name" "$mod" "$stg" "$unt" "$unpush" "$jf" "$cs" "$v"
+  done <<<"$rows"
+  echo ""
+  echo "HO   ($(echo $ho | wc -w)):$ho"
+  echo "SKIP ($(echo $skip | wc -w)):$skip"
+}
+
 cmd_handover() {
   local from_suffix="13"
   local dry=0
@@ -1039,30 +1126,31 @@ except: print('gone')
   #   needs-ho      → jsonl var ama done değil → wrap-up
   #   idle-clean    → jsonl yok + repo temiz → hiç kullanılmamış, atla
   #   idle-DIRTY    → jsonl yok + repo kirli → limbo iş, WARN
-  local cls_done="" cls_needs="" cls_idle_clean="" cls_idle_dirty=""
+  local base; base=$(_baseline_ts)
+  echo "[pre-check] baseline (son handover): ${base:-<yok — commit-since sinyali atlanır>}"
+  local cls_skip="" cls_needs="" cls_idle_dirty="" cls_didwork=""
   while IFS=$'\t' read p3 n3 s3 sid3 cwd3 _; do
     [ -z "$p3" ] && continue
     repo_fetch_once "$cwd3"   # remote ref tazele → unpushed/behind doğru görülsün
-    if handover_done "$sid3" "$cwd3"; then
-      cls_done="$cls_done $n3"
+    if ! needs_ho "$sid3" "$cwd3" "$base"; then
+      cls_skip="$cls_skip $n3"                         # temiz + RFH-done / baseline'dan beri iş yok
     elif [ -n "$(find_jsonl "$sid3")" ]; then
-      cls_needs="$cls_needs $n3"
-    elif repo_dirty "$cwd3"; then
-      cls_idle_dirty="$cls_idle_dirty $n3"
+      cls_needs="$cls_needs $n3"                       # jsonl var → resume edilebilir
+    elif repo_dirty "$cwd3" || [ "$(repo_untracked_count "$cwd3")" -gt 0 ]; then
+      cls_idle_dirty="$cls_idle_dirty $n3"             # jsonl yok + working-tree kirli
     else
-      cls_idle_clean="$cls_idle_clean $n3"
+      cls_didwork="$cls_didwork $n3"                   # jsonl yok + tree temiz AMA commit-since (gedik/kultur)
     fi
   done <<<"$rows"
   echo ""
-  echo "[pre-check] handover sınıflandırma:"
-  [ -n "$cls_needs" ]      && echo "  • WRAP-UP gerekli (jsonl var, done değil):$cls_needs"
-  [ -n "$cls_done" ]       && echo "  • zaten DONE (RFH + sonrası istek yok + repo temiz), atlanacak:$cls_done"
-  [ -n "$cls_idle_clean" ] && echo "  • idle-only TEMİZ (hiç kullanılmamış), atlanacak:$cls_idle_clean"
+  echo "[pre-check] handover sınıflandırma (needs_ho: dirty/untracked/unpushed/commit-since/jsonl):"
+  [ -n "$cls_needs" ]      && echo "  • WRAP-UP gerekli (jsonl var → resume):$cls_needs"
+  [ -n "$cls_didwork" ]    && echo "  ⚠ İŞ YAPMIŞ ama jsonl yok (commit baseline'dan yeni; resume EDİLEMEZ → fresh respawn gerek):$cls_didwork"
   [ -n "$cls_idle_dirty" ] && {
-    echo "  ⚠ idle-only KİRLİ (jsonl yok AMA repo'da commit'lenmemiş iş!):$cls_idle_dirty"
-    echo "    → resume edilemez; iş working tree'de güvende ama otomatik commit'lenmez."
-    echo "    → fresh respawn'da commit prompt'uyla aç (kill + 'claude ... -n <ad> ... <commit-prompt>')."
+    echo "  ⚠ jsonl yok AMA working-tree KİRLİ (modified/untracked, commit'lenmemiş iş!):$cls_idle_dirty"
+    echo "    → resume edilemez; iş working tree'de güvende ama otomatik commit'lenmez (fresh respawn + commit prompt)."
   }
+  [ -n "$cls_skip" ]       && echo "  • ho gerekmiyor (temiz/RFH-done), atlanacak:$cls_skip"
 
   while IFS=$'\t' read pid name status sid cwd bridge; do
     [ -z "$pid" ] && continue
@@ -1075,21 +1163,19 @@ except: print('gone')
     # fresh-spawn (resume yerine -n) ile mesajı CLI-arg olarak ver.
     local has_jsonl=1; [ -z "$(find_jsonl "$sid")" ] && has_jsonl=0
     if [ "$force" != "1" ]; then
-      # 1) Zaten wrapped-up mı? (RFH + sonrasında yeni istek yok + repo temiz) → atla
-      if handover_done "$sid" "$cwd"; then
-        echo "  SKIP: zaten DONE (READY FOR HANDOVER var, sonrasında yeni istek yok, repo temiz)."
-        echo "$name|skipped-already-done" >> "$log"
+      # needs_ho: 6 sinyal (tracked-dirty/untracked/unpushed/behind/commit-since/jsonl-not-RFH).
+      # Hiçbiri yoksa → güvenle atla. (Eski hâl: handover_done + jsonl bakıyordu, commit-since
+      # KAÇIRIYORDU → gedikvm/gedikido/kulturiot "idle-clean" sanılıp atlandı, 2026-05-31.)
+      if ! needs_ho "$sid" "$cwd" "$base"; then
+        echo "  SKIP: ho gerekmiyor (temiz + RFH-done / baseline'dan beri iş yok)."
+        echo "$name|skipped-no-ho" >> "$log"
         skipped=$((skipped+1)); continue
       fi
-      # 2) idle-only (jsonl yok): resume edilemez. Repo temizse SKIP; kirliyse WARN.
+      # ho GEREKLİ ama jsonl yok → resume EDİLEMEZ (iş repo'da güvende; fresh respawn gerek).
       if [ "$has_jsonl" = "0" ]; then
-        if repo_dirty "$cwd"; then
-          echo "  ⚠ WARN: idle-only AMA repo KİRLİ ($cwd) — resume edilemez, iş commit'lenmedi."
-          echo "$name|idle-only-DIRTY|$cwd" >> "$log"
-        else
-          echo "  SKIP: idle-only (repo temiz, kaydedilecek yok)."
-          echo "$name|skipped-idle-only-clean" >> "$log"
-        fi
+        echo "  ⚠ WARN: ho GEREKLİ (iş yapılmış: commit-since/working-tree) AMA jsonl yok → resume edilemez."
+        echo "    → İş repo'da güvende. Fresh respawn'da commit/RFH prompt'uyla aç: rc <ad> --new --kill-first --prompt=..."
+        echo "$name|needs-ho-but-no-jsonl|$cwd" >> "$log"
         skipped=$((skipped+1)); continue
       fi
     else
@@ -1209,6 +1295,7 @@ for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
   echo "  handover summary: opened=$opened failed=$failed skipped=$skipped of $total ($mode mode)"
   echo "  log: $log"
   echo "═════════════════════════════════════════════════"
+  _handover_stamp   # baseline = şimdi → sonraki ho 'commit-since' bunu referans alır
 
   # --layout: tüm wrap-up pencereleri açıldıktan sonra otomatik tile et.
   # (kullanıcı 2026-05-25: "faz 1 komutları gittikten sonra layout çalışmalı")
@@ -1601,6 +1688,14 @@ KULLANIM:
         5) --gh/--glab: git init + repo create + remote + first commit + push
         6) Eski pid'i kill, new_cwd'de aynı model/perm/RC name ile fresh spawn
 
+  claudeops needs-ho [--from-suffix=N] [--baseline=ISO] [--no-fetch]
+      READ-ONLY: hangi session'lar handover (wrap-up) gerektiriyor? 6 sinyal tablosu:
+      modified/staged/untracked (working tree) · unpushed (tüm remote'lar) · jsonl ·
+      since? (son commit, baseline=son-handover'dan yeni mi). Sinyallerden BİRİ → HO.
+      KRİTİK: commit-since sinyali, commit'lenip push'lanmış ama jsonl'siz (compaction)
+      session'ları yakalar — repo_dirty+jsonl tek başına bunları "idle-clean" sanıp
+      ATLIYORDU. Baseline state: ~/.claude/claudeops/last-handover.ts (her ho'da güncellenir).
+
   claudeops handover [--from-suffix=13] [--to-suffix=14] [--dry-run]
                      [--skip-msg] [--message=...] [--message-file=path]
                      [--force] [--timeout=1800]
@@ -1657,6 +1752,7 @@ case "${1:-help}" in
   cleanup) shift; cmd_cleanup "$@" ;;
   cancel) shift; cmd_cancel "$@" ;;
   handover) shift; cmd_handover "$@" ;;
+  needs-ho|needsho|needs_ho) shift; cmd_needs_ho "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   *) echo "Bilinmeyen komut: $1"; cmd_help; exit 2 ;;
 esac
