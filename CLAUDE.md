@@ -56,16 +56,18 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 
 ## READY FOR HANDOVER (2026-05-31)
 
-**Nerede kaldık:** co29 (claudeops repo, self). **Fleet 29→30 handover TAMAM** — 20 session artık suffix **30**, idle, `claude-opus-4-8[1m]`/auto/max, RC'li. HEAD origin+gitlab sync (`a45b188`).
+**Nerede kaldık:** co29 (claudeops repo, self). **REBOOT OLDU + fleet recover edildi** — 20 *30 session geri ayakta (**9 geçmişiyle resume, 11 fresh**), `claude-opus-4-8[1m]`/auto/max, RC'li, **tek temiz `gnome-terminal-server`** (reboot eski iki-server wedge'ini temizledi — artık `--app-id` derdi YOK), standart layout (ws0 pin co/anomaly/rustrino; grup1 hc/hcr/mecdtfl→ws4; grup2 mo/kulturiot/gedikvm/gedikido→ws5).
 
-⚠ **İKİ-SERVER DURUMU (reboot düzeltir):** default gnome-terminal-server (1436029) Faz 1 rapid-spawn'da **wedged** (canlı ama "Failed to get screen" → yeni terminal AÇAMIYOR; restart=co29 ölür → yasak). 20 *30 ayrı **`fleet30`** app-id server'ında; **co29 tek başına wedged default'ta** (ws0). **co29'dan yeni terminal açan her şey (rc/new/layout-reopen/handover) `--app-id=...` İSTER**, yoksa wedge'e düşer. Reboot tek temiz server'a indirir.
+✅ **Cold-boot oto-açılış kuruldu** (DONE.md 2026-05-31): `claudeops boot [--lock] [--from-roster]` + `snapshot` + `recover` + `~/.config/autostart/claudeops.desktop`. boot.list=co+mo, suffix state=`~/.claude/claudeops/suffix` (`rc --suffix` oto-yazar). boot her session'ı **base+suffix** ile ve cwd'nin **en güncel jsonl'iyle `--resume`** açar (geçmiş korunur), `--lock` ile en son kilitler. **Reboot recovery reçetesi:** `recover` resume-tablosu verir; isim→cwd kesini handover-log *29 sid'lerinden çözülür (jsonl session adını saklamaz). İsim sürprizleri: **hc=videogen, hcr=hoca-reader, vrk=varaka, mo=machine_ops**.
 
-Bu oturumda (DONE.md 2026-05-31): (1) `layout --group` (`a9867da`) 2 grup baked (hc-trio→ws4, mo-quad→ws5); (2) **`needs-ho` generic** (`53d4458`) — 6 sinyal + **commit-vs-baseline** (per-repo ho-sonrası commit-id, `~/.claude/claudeops/baselines/`); yeni komutlar `needs-ho` + `stamp-baseline`; (3) **app-id handover** (`a45b188`) — `rc --app-id/--pace` + `layout --server`; 29→30 bununla (paced=6, 0 wedge). Faz 1 wrap-up'lar tek-tek RC-resend (rate-limit burst kaçınma).
+⚠ **AÇIK: autologin** — `/etc/gdm3/custom.conf` AutomaticLogin henüz AÇIK DEĞİL (sudo gerek; Wayland zaten kapalı=X11 ✓). Açılınca reboot→`boot --lock` co30+mo30'u geçmişiyle açıp kilitler.
+
+Bu oturumda ayrıca (önceki): `layout --group` (`a9867da`), `needs-ho` generic+commit-baseline (`53d4458`), app-id handover (`a45b188`).
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-calisma-tarzi]] + [[model-1m-context]].
-2. **needs-ho artık generic:** `claudeops needs-ho --from-suffix=N` (ad-hoc python yerine). Baseline = ho-sonrası commit-id (respawn'da `rc --new` oto-stamp).
-3. **Açık TODO bug'lar:** (a) `rc` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc fallback, (d) `--model`→default `auto`, (e) handover `--layout` `--group` geçirmiyor, (f) fleet30 sol-kolon ~26px off-screen (cross-server frame-offset).
+2. **needs-ho generic:** `claudeops needs-ho --from-suffix=30`. **recover:** `claudeops recover` reboot sonrası resume adayları.
+3. **Açık TODO bug'lar:** (a) `rc` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc fallback, (d) `--model`→default `auto`, (e) handover `--layout` `--group` geçirmiyor.
 
 **Açık kararlar:** anomaly30 `rumeysa.zip` + mecdtfl30 `main_1_page.pdf` untracked junk (sil/gitignore/bırak?). TOBEDECIDED #5 (açık-kaynak local config). disk-temizlik (2026-05-20, `~/.cache/huggingface` 29G KORU).
 
