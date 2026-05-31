@@ -487,6 +487,8 @@ cmd_rc() {
   local permission_mode=""    # --permission-mode auto/acceptEdits/bypassPermissions/default/dontAsk/plan
   local effort=""             # --effort low/medium/high/xhigh/max
   local preserve_desktop=1
+  local app_id=""            # --app-id=X: gnome-terminal'i ayrı server instance'ında aç (wedged server bypass)
+  local pace=2               # --pace=N: spawn'lar arası bekleme (rapid spawn server'ı wedge'ler → yavaşlat)
   for a in "$@"; do
     case "$a" in
       --detached|--headless) mode="detached";;
@@ -502,6 +504,8 @@ cmd_rc() {
       --permission-mode=*|--perm=*) permission_mode="${a#*=}";;
       --effort=*)            effort="${a#--effort=}";;
       --no-preserve-desktop) preserve_desktop=0;;
+      --app-id=*)            app_id="${a#--app-id=}";;
+      --pace=*)              pace="${a#--pace=}";;
     esac
   done
   [ -z "$target" ] && {
@@ -624,7 +628,7 @@ except: print('gone')
       #   'devam'            positional initial prompt (input box'a pre-fill)
       # NOT: --remote-control NAME devam → NAME RC adı, devam prompt. Aksi:
       # --remote-control devam → devam RC adı, prompt yok!
-      gnome-terminal --window --title="$effective_name" --working-directory="$cwd" \
+      gnome-terminal ${app_id:+--app-id="$app_id"} --window --title="$effective_name" --working-directory="$cwd" \
         -- bash -c "claude $resume_arg $model_arg -n '$effective_name' --remote-control '$effective_name'$prompt_esc; exec bash" &
       local desk_info=""
       [ -n "$old_desk" ] && desk_info=" (desk=$old_desk)"
@@ -638,7 +642,7 @@ except: print('gone')
     # respawn (--new): repo şu an ho-sonrası (wrap-up) HEAD'inde → baseline olarak yaz.
     # Sonraki needs-ho: HEAD bundan farklıysa → yeni iş → ho gerek ("commit after ho").
     [ "$new_session" = "1" ] && _repo_baseline_set "$cwd"
-    sleep 2
+    sleep "$pace"
   done <<<"$rows"
   # son: ana desktop'a dön
   [ "$preserve_desktop" = "1" ] && [ "$kill_first" = "1" ] && wmctrl -s 0 2>/dev/null
@@ -715,11 +719,13 @@ cmd_layout() {
   local skip_sticky=1   # sticky (all-desktops) pencerelere DOKUNMA (default)
   local reopen=0        # kill+switch-desktop+reopen-on-target (Mutter in-place move flakey)
   local -a groups=()    # --group=base1,base2,...: bu session'lar tek desktop'ta blok (tekrarlanabilir)
+  local server_override=""   # --server=PID: gtp'yi bu gnome-terminal-server'a sabitle (çok-server/app-id)
   for a in "$@"; do
     case "$a" in
       --per=*) per="${a#--per=}";;
       --pin=*) pin_csv="${a#--pin=}";;
       --group=*) groups+=("${a#--group=}");;
+      --server=*) server_override="${a#--server=}";;
       --include-self) skip_self=0;;
       --include-sticky) skip_sticky=0;;
       --reopen|--reflow) reopen=1;;
@@ -758,8 +764,8 @@ EOF
     for n in "${parr[@]}"; do pinned["$n"]=1; done
     echo "pinned to desktop 0: ${parr[*]}"
   fi
-  # gnome-terminal-server pid (comm 15 char truncate → "gnome-terminal-")
-  local gtp; gtp=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
+  # gnome-terminal-server pid (comm 15 char truncate → "gnome-terminal-"). --server ile override.
+  local gtp; gtp="${server_override:-$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')}"
   # Self gnome-terminal window title belirleyici: WM_NAME genelde değişken; en sağlam yöntem
   # self_pid → ata zincirinden bash → tty → window mapping; hızlı yol: title regex
   local self_pid; self_pid=$(self_pid 2>/dev/null || echo "")
