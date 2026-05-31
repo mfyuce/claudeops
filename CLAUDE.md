@@ -56,15 +56,17 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 
 ## READY FOR HANDOVER (2026-05-31)
 
-**Nerede kaldık:** co29 (claudeops repo, self; bu session başında /rename co22→co29). Fleet 20 session suffix **29**, idle — bu session **RESTART EDİLMEDİ** (kullanıcı: "kendini sync + TODO/TBD update yap ama restart etme"). HEAD origin+gitlab sync (`a9867da`).
+**Nerede kaldık:** co29 (claudeops repo, self). **Fleet 29→30 handover TAMAM** — 20 session artık suffix **30**, idle, `claude-opus-4-8[1m]`/auto/max, RC'li. HEAD origin+gitlab sync (`a45b188`).
 
-Bu oturumda (detay: DONE.md 2026-05-31): (1) window grouping — hcr/hc/mecdtfl + mo/kulturiot/gedikvm/gedikido in-place swap'larla tek desktop'a (kapatmadan; displaced→mover'ın eski slotu); (2) **`layout --group` feature** (`a9867da`) — base-name eşleşme, tekrarlanabilir, grup serbest-others'tan sonra kendi taze desktop'una blok; (3) 2 grup standart Faz 3'e baked: hc-trio→ws4, mo-quad→ws5.
+⚠ **İKİ-SERVER DURUMU (reboot düzeltir):** default gnome-terminal-server (1436029) Faz 1 rapid-spawn'da **wedged** (canlı ama "Failed to get screen" → yeni terminal AÇAMIYOR; restart=co29 ölür → yasak). 20 *30 ayrı **`fleet30`** app-id server'ında; **co29 tek başına wedged default'ta** (ws0). **co29'dan yeni terminal açan her şey (rc/new/layout-reopen/handover) `--app-id=...` İSTER**, yoksa wedge'e düşer. Reboot tek temiz server'a indirir.
+
+Bu oturumda (DONE.md 2026-05-31): (1) `layout --group` (`a9867da`) 2 grup baked (hc-trio→ws4, mo-quad→ws5); (2) **`needs-ho` generic** (`53d4458`) — 6 sinyal + **commit-vs-baseline** (per-repo ho-sonrası commit-id, `~/.claude/claudeops/baselines/`); yeni komutlar `needs-ho` + `stamp-baseline`; (3) **app-id handover** (`a45b188`) — `rc --app-id/--pace` + `layout --server`; 29→30 bununla (paced=6, 0 wedge). Faz 1 wrap-up'lar tek-tek RC-resend (rate-limit burst kaçınma).
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-calisma-tarzi]] + [[model-1m-context]].
-2. **Fleet 29→30 handover bu session YAPILMADI** — gerekirse Faz 1/2/3 çalıştır (Faz 3 artık 2× `--group` içeriyor).
-3. **Açık TODO bug'lar:** (a) `rc <a,b,c>` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc → respawn fallback, (d) `--model` verince default `auto`, (e) handover `--layout` `--group` geçirmiyor (yeni).
+2. **needs-ho artık generic:** `claudeops needs-ho --from-suffix=N` (ad-hoc python yerine). Baseline = ho-sonrası commit-id (respawn'da `rc --new` oto-stamp).
+3. **Açık TODO bug'lar:** (a) `rc` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc fallback, (d) `--model`→default `auto`, (e) handover `--layout` `--group` geçirmiyor, (f) fleet30 sol-kolon ~26px off-screen (cross-server frame-offset).
 
-**Açık kararlar:** TOBEDECIDED #5 (açık-kaynak local config — artık `--group` blok config'leri de aday). disk-temizlik (2026-05-20) onay bekliyor (`~/.cache/huggingface` 29G KORU).
+**Açık kararlar:** anomaly30 `rumeysa.zip` + mecdtfl30 `main_1_page.pdf` untracked junk (sil/gitignore/bırak?). TOBEDECIDED #5 (açık-kaynak local config). disk-temizlik (2026-05-20, `~/.cache/huggingface` 29G KORU).
 
 READY FOR HANDOVER
