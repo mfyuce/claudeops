@@ -19,7 +19,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 ## Model konvansiyonu
 
-- **Hepsi tek model**: `claude-opus-4-8[1m]` (1M context) + `--permission-mode=auto` + `--effort=max`. (2026-05-30: opus/sonnet ayrımı kaldırıldı; eskiden 13 opus + 7 sonnet idi.)
+- **İki-grup model** (2026-06-01 revize): **coding→sonnet, paper→opus**, hepsi `[1m]` (1M ctx) + `--permission-mode=auto` + `--effort=max` + RC. Harita: **`~/.claude/claudeops/models.tsv`** (name→model). **Sonnet (coding, 9):** hc hcr mo vrk rustrino anomaly kulturiot gedikvm gedikido (+co). **Opus (paper, 11):** rr aggroot oa hms hve qve rve emrgence araroot mecdtfl carla. (Tarihçe: 2026-05-30 tek-model'e indirilmişti → 2026-06-01 tekrar split'e dönüldü; eskiden 13 opus + 7 sonnet idi.)
 - `rc` flag'leri model-agnostic pass-through: `--model`, `--permission-mode`, `--effort` (low/medium/high/xhigh/max).
 
 ## Handover (3-fazlı, "ho" istek)
@@ -28,9 +28,14 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 # Faz 1 — wrap-up (visible, sıralı, idle-only auto-skip)
 ./claudeops handover --from-suffix=<FROM> [--exclude=name1,name2]
 
-# Faz 2 — fresh respawn (tek komut, hepsi aynı model; --prompt opsiyonel → idle açılır)
-./claudeops rc hms<F> hve<F> oa<F> qve<F> rve<F> carla<F> emrgence<F> rr<F> araroot<F> aggroot<F> gedikvm<F> gedikido<F> kulturiot<F> anomaly<F> rustrino<F> mecdtfl<F> vrk<F> hc<F> hcr<F> mo<F> \
+# Faz 2 — fresh respawn (model-split: 2 grup; models.tsv'e bak; --prompt opsiyonel → idle açılır)
+#   SONNET (coding):
+./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> kulturiot<F> gedikvm<F> gedikido<F> \
+  --suffix=<TO> --new --kill-first --model='claude-sonnet-4-6[1m]' --permission-mode=auto --effort=max
+#   OPUS (paper):
+./claudeops rc rr<F> aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> mecdtfl<F> carla<F> \
   --suffix=<TO> --new --kill-first --model='claude-opus-4-8[1m]' --permission-mode=auto --effort=max
+#   (Straggler — unpushed/uncommitted iş olan'lara ekle: --prompt='...commit + TÜM remote'lara push...')
 
 # Faz 3 — layout (self/co ws0 pin; 2 grup: hc+hcr+mecdtfl→ws4, mo+kulturiot+gedikvm+gedikido→ws5)
 ./claudeops layout grid 4 --pin=anomaly<TO>,rustrino<TO> --group=hc,hcr,mecdtfl --group=mo,kulturiot,gedikvm,gedikido
@@ -54,21 +59,23 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 - Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 - **Handover-prep MD sync** (her ho'da): (1) TODO'da tamamlanmış → DONE'a taşı+TODO'dan sil; (2) TOBEDECIDED'da karar verilmiş → TODO'ya taşı+sil.
 
-## READY FOR HANDOVER (2026-05-31)
+## READY FOR HANDOVER (2026-06-01)
 
-**Nerede kaldık:** co29 (claudeops repo, self). **REBOOT OLDU + fleet recover edildi** — 20 *30 session geri ayakta (**9 geçmişiyle resume, 11 fresh**), `claude-opus-4-8[1m]`/auto/max, RC'li, **tek temiz `gnome-terminal-server`** (reboot eski iki-server wedge'ini temizledi — artık `--app-id` derdi YOK), standart layout (ws0 pin co/anomaly/rustrino; grup1 hc/hcr/mecdtfl→ws4; grup2 mo/kulturiot/gedikvm/gedikido→ws5).
+**Nerede kaldık:** co29 (claudeops repo, self). **HANDOVER *30→*31 TAMAM + MODEL-SPLIT'e dönüldü.** 20 *31 session ayakta, suffix state=31. **İki-grup model** (yeni karar 2026-06-01): coding→sonnet (9), paper→opus (11), harita `~/.claude/claudeops/models.tsv`. Hepsi `[1m]`/auto/max/RC. Standart layout (ws0 pin co/anomaly31/rustrino31; grup1 hc/hcr/mecdtfl→ws4; grup2 mo/kulturiot/gedikvm/gedikido→ws5). Tek temiz `gnome-terminal-server` (reboot wedge'i temizledi, `--app-id` derdi yok).
 
-✅ **Cold-boot oto-açılış kuruldu** (DONE.md 2026-05-31): `claudeops boot [--lock] [--from-roster]` + `snapshot` + `recover` + `~/.config/autostart/claudeops.desktop`. boot.list=co+mo, suffix state=`~/.claude/claudeops/suffix` (`rc --suffix` oto-yazar). boot her session'ı **base+suffix** ile ve cwd'nin **en güncel jsonl'iyle `--resume`** açar (geçmiş korunur), `--lock` ile en son kilitler. **Reboot recovery reçetesi:** `recover` resume-tablosu verir; isim→cwd kesini handover-log *29 sid'lerinden çözülür (jsonl session adını saklamaz). İsim sürprizleri: **hc=videogen, hcr=hoca-reader, vrk=varaka, mo=machine_ops**.
+**Bu ho'da:** Faz1 wrap-up (mecdtfl + rr dahil tek tek tamamlandı) → **straggler yakalandı** (`anomaly` skip'lenmişti ama mod=4/unpush=5 vardı; kendi wrap-up'ı "tam" deyip commit ATLAMIŞTI → Faz3'te commit+push prompt'uyla fresh açıldı, çözüldü; `gedikido`/`kulturiot` unpush=1 jsonl'siz, aynı prompt'la push'landı) → Faz3 2-grup respawn (3 rc çağrısı: sonnet-idle 6, sonnet+prompt 3, opus-idle 11) → layout. `models.tsv` yeni eklendi.
 
-⚠ **AÇIK: autologin** — `/etc/gdm3/custom.conf` AutomaticLogin henüz AÇIK DEĞİL (sudo gerek; Wayland zaten kapalı=X11 ✓). Açılınca reboot→`boot --lock` co30+mo30'u geçmişiyle açıp kilitler.
+✅ **Cold-boot oto-açılış** (DONE.md 2026-05-31): `claudeops boot [--lock] [--from-roster]` + `snapshot` + `recover` + `~/.config/autostart/claudeops.desktop`. boot.list=co+mo, suffix state=`~/.claude/claudeops/suffix` (`rc --suffix` oto-yazar). boot her session'ı **base+suffix** ile, cwd'nin **en güncel jsonl'iyle `--resume`** açar, `--lock` ile kilitler. İsim sürprizleri: **hc=videogen, hcr=hoca-reader, vrk=varaka, mo=machine_ops**.
 
-Bu oturumda ayrıca (önceki): `layout --group` (`a9867da`), `needs-ho` generic+commit-baseline (`53d4458`), app-id handover (`a45b188`).
+⚠ **AÇIK: autologin** — `/etc/gdm3/custom.conf` AutomaticLogin henüz AÇIK DEĞİL (sudo gerek; Wayland kapalı=X11 ✓). Açılınca reboot→`boot --lock` co31+mo31'i geçmişiyle açıp kilitler.
+
+⚠ **boot/respawn model:** `boot`/`recover` `models.tsv`'i HENÜZ okumuyor (BOOT_MODEL_DEFAULT tek opus). Split kalıcıysa boot'a `models.tsv` lookup eklenmeli (TODO).
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-calisma-tarzi]] + [[model-1m-context]].
-2. **needs-ho generic:** `claudeops needs-ho --from-suffix=30`. **recover:** `claudeops recover` reboot sonrası resume adayları.
-3. **Açık TODO bug'lar:** (a) `rc` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc fallback, (d) `--model`→default `auto`, (e) handover `--layout` `--group` geçirmiyor.
+2. **needs-ho generic:** `claudeops needs-ho --from-suffix=31`. **recover:** `claudeops recover`.
+3. **Açık TODO bug'lar:** (a) `rc` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc fallback, (d) `--model`→default `auto`, (e) handover `--layout` `--group` geçirmiyor, (f) **`deep-ho` yeni cmd** (tüm jsonl oku → kaçırılan iş), (g) boot models.tsv lookup.
 
-**Açık kararlar:** anomaly30 `rumeysa.zip` + mecdtfl30 `main_1_page.pdf` untracked junk (sil/gitignore/bırak?). TOBEDECIDED #5 (açık-kaynak local config). disk-temizlik (2026-05-20, `~/.cache/huggingface` 29G KORU).
+**Açık kararlar:** anomaly31 `rumeysa.zip` + mecdtfl31 `main_1_page.pdf` untracked junk (sil/gitignore/bırak?). TOBEDECIDED #5 (açık-kaynak local config). disk-temizlik (2026-05-20, `~/.cache/huggingface` 29G KORU).
 
 READY FOR HANDOVER

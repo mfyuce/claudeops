@@ -10,6 +10,8 @@
 
 ## Geliştirme
 
+- [ ] **`deep-ho` komutu (yeni, ayrı cmd)** — 2026-06-01 istek. Normal `ho` sadece wrap-up (commit/push + MD güncel mi) sorar. `deep-ho` ek olarak: her CLI/session'ın TÜM jsonl geçmişini okuyup "kaçırdığımız bir şey var mı?" analizini yaptırır (yarım kalan iş, kaydedilmemiş karar, eksik test/doküman, TODO'ya yazılmamış fikir). Tek komut hem `ho` hem `deep-ho` fazını çalıştırabilmeli (`ho --deep` veya `deep-ho` ayrı dispatch). Her session'a daha uzun/derin bir wrap-up prompt'u gider; çıktı per-session özet + co'ya toplanır.
+- [ ] **`boot`/`recover` `models.tsv` lookup** — 2026-06-01 model-split'e dönüldü (`~/.claude/claudeops/models.tsv` name→model), AMA `cmd_boot` hâlâ `BOOT_MODEL_DEFAULT` tek opus kullanıyor. Split kalıcıysa boot her session'ı models.tsv'deki modeliyle açmalı (yoksa default). Aynı şekilde handover Faz-2 elle 2-grup'a bölünüyor → ileride `rc --from-models-tsv` ile tek komut respawn (her isme kendi modeli) düşünülebilir.
 - [ ] **`--model` verince default `--permission-mode=auto`** — 2026-05-25: artık HEPSİ auto (sonnet de). Yani mapping basitleşti: `--model=opus|sonnet` verilince permission-mode otomatik `auto` olsun (explicit verilirse override). Şu an her çağrıda elle `--permission-mode=auto` yazılıyor.
 - [ ] **Python UI (büyük)** — claudeops için GUI: session listesini göster, tıkla → compact/RC/kill/send butonları, layout görsel önizleme. Stack TBD (PySide6 / Textual / Web). Ana motivasyon: CLI yerine UI.
 - [ ] **`claudeops history` + `claudeops launch <name|sid>`** — geçmişte açık olan TÜM session'ları registry'le, `launch` ile yeni gnome-terminal'de RC açar.
