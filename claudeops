@@ -1790,6 +1790,90 @@ cmd_recover() {
 }
 
 # ─────────────────────────────────────────────
+# CMD: guard [--boot] [--lock] [--dry-run] [--pace=N]
+#   Watchdog: models.tsv fleet'ini tara, kapananları yeniden aç.
+#   Kaynak: models.tsv (name→model) + roster.tsv (name→cwd)
+#   --boot: X/WM hazır olana kadar bekle (autostart .desktop için)
+#   --lock: spawn sonrası ekranı kilitle
+#   --dry-run: ne açılacağını göster, açma
+#   Cron örneği: */2 * * * * DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus claudeops guard
+# ─────────────────────────────────────────────
+cmd_guard() {
+  local dry=0 pace=2 perm="auto" effort="max" do_lock=0 boot_mode=0
+  for a in "$@"; do case "$a" in
+    --dry-run) dry=1;;
+    --boot) boot_mode=1;;
+    --lock) do_lock=1;;
+    --pace=*) pace="${a#--pace=}";;
+    -h|--help) echo "claudeops guard [--boot] [--lock] [--dry-run] [--pace=N]"; return 0;;
+  esac; done
+
+  local models_tsv="$STATE_DIR/models.tsv"
+  [ -f "$models_tsv" ] || { echo "guard: models.tsv yok ($models_tsv)"; return 1; }
+  [ -f "$ROSTER_FILE" ] || { echo "guard: roster.tsv yok ($ROSTER_FILE). 'claudeops snapshot' çalıştır."; return 1; }
+
+  local suffix; suffix=$(_suffix_get)
+  [ -z "$suffix" ] && { echo "guard: suffix state yok ($SUFFIX_FILE)"; return 1; }
+
+  # X/WM kontrolü
+  if [ "$boot_mode" = "1" ]; then
+    local w=0
+    while [ $w -lt 90 ]; do { [ -n "${DISPLAY:-}" ] && wmctrl -m >/dev/null 2>&1; } && break; sleep 1; w=$((w+1)); done
+    { [ -n "${DISPLAY:-}" ] && wmctrl -m >/dev/null 2>&1; } || { echo "guard: X/WM hazır değil (${w}s beklendi)"; return 1; }
+  else
+    { [ -n "${DISPLAY:-}" ] && wmctrl -m >/dev/null 2>&1; } || { echo "guard: DISPLAY/WM yok, atlanıyor"; return 0; }
+  fi
+
+  # Şu an çalışan session isimleri
+  local running; running=$(all_sessions_tsv 2>/dev/null | awk -F'\t' '{print $2}')
+
+  local reopened=0 skipped=0 no_cwd=0
+  mkdir -p /tmp/claudeops 2>/dev/null
+  local ts; ts=$(date '+%H:%M:%S')
+
+  while IFS=$'\t' read base model; do
+    case "$base" in ''|'#'*) continue;; esac
+    local expected="${base}${suffix}"
+
+    # Zaten çalışıyor?
+    if echo "$running" | grep -qxF "$expected"; then
+      skipped=$((skipped+1)); continue
+    fi
+
+    # cwd — roster.tsv'den
+    local cwd; cwd=$(grep -P "^${base}\t" "$ROSTER_FILE" 2>/dev/null | cut -f2 | head -1)
+    if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
+      echo "  SKIP $expected: cwd yok (roster'da eksik: ${cwd:-?})"
+      no_cwd=$((no_cwd+1)); continue
+    fi
+
+    # En güncel sid
+    local sid; sid=$(_latest_sid_for_cwd "$cwd")
+    local resume_arg=""; [ -n "$sid" ] && resume_arg="--resume $sid"
+
+    if [ "$dry" = "1" ]; then
+      echo "  DRY  $expected ← $cwd $([ -n "$sid" ] && echo "resume=${sid:0:8}" || echo fresh) model=$model"
+    else
+      gnome-terminal --window --title="$expected" --working-directory="$cwd" \
+        -- bash -c "claude $resume_arg --model '$model' --permission-mode '$perm' --effort '$effort' -n '$expected' --remote-control '$expected'; exec bash" &
+      echo "[$ts] REOPEN $expected ← $([ -n "$sid" ] && echo "resume=${sid:0:8}" || echo fresh) ($cwd)"
+      reopened=$((reopened+1))
+      sleep "$pace"
+    fi
+  done < "$models_tsv"
+
+  echo "[$ts] guard done: reopened=$reopened skipped=$skipped no_cwd=$no_cwd (suffix=$suffix)"
+
+  if [ "$do_lock" = "1" ] && [ "$reopened" -gt 0 ]; then
+    sleep 3
+    loginctl lock-session 2>/dev/null \
+      || dbus-send --session --type=method_call --dest=org.gnome.ScreenSaver \
+           /org/gnome/ScreenSaver org.gnome.ScreenSaver.Lock 2>/dev/null
+    echo "guard: ekran kilitlendi"
+  fi
+}
+
+# ─────────────────────────────────────────────
 # help
 # ─────────────────────────────────────────────
 cmd_help() {
@@ -1875,9 +1959,17 @@ KULLANIM:
       kilitler (fleet arkada çalışır, şifreyle aç). Suffix: ~/.claude/claudeops/suffix
       (rc --suffix=N ile oto-güncellenir). --from-roster: snapshot'tan tam fleet.
 
+  claudeops guard [--boot] [--lock] [--dry-run] [--pace=N]
+      Watchdog: models.tsv fleet'ini tara, kapananları yeniden aç (models.tsv→model,
+      roster.tsv→cwd, suffix state). Zaten çalışan session'ları atlar; kapananları
+      --resume <en-güncel-sid> ile gnome-terminal'de yeniden açar.
+      --boot: X/WM hazır olana dek 90s bekle (autostart/reboot için).
+      --lock: spawn sonrası ekranı kilitle. --dry-run: ne açılacağını göster.
+      Cron: */2 * * * * DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus claudeops guard
+
   claudeops snapshot
       Canlı fleet'i ~/.claude/claudeops/roster.tsv'ye dök (name⇥cwd⇥model). self hariç.
-      boot --from-roster için referans. Fleet ayaktayken bir kez çalıştır.
+      guard/boot --from-roster için referans. Fleet ayaktayken bir kez çalıştır.
 
   claudeops recover [--since=ISO]
       READ-ONLY: reboot sonrası resume-edilebilir session'lar. jsonl transcript'ler
@@ -1950,6 +2042,7 @@ case "${1:-help}" in
   handover) shift; cmd_handover "$@" ;;
   snapshot) shift; cmd_snapshot "$@" ;;
   boot) shift; cmd_boot "$@" ;;
+  guard) shift; cmd_guard "$@" ;;
   recover) shift; cmd_recover "$@" ;;
   needs-ho|needsho|needs_ho) shift; cmd_needs_ho "$@" ;;
   stamp-baseline|baseline) shift; cmd_stamp_baseline "$@" ;;
