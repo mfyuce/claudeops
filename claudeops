@@ -1847,16 +1847,36 @@ cmd_guard() {
       no_cwd=$((no_cwd+1)); continue
     fi
 
-    # En güncel sid
+    # En güncel sid — SADECE suffix set'lendiğinden (son ho) SONRA aktivite varsa resume et.
+    # Son mesaj timestamp'i kullanılır: suffix öncesiyse fresh aç (eski session, *32 iş yok).
     local sid; sid=$(_latest_sid_for_cwd "$cwd")
-    local resume_arg=""; [ -n "$sid" ] && resume_arg="--resume $sid"
+    local resume_arg="" resume_label="fresh"
+    if [ -n "$sid" ] && [ -f "$SUFFIX_FILE" ]; then
+      local jf; jf=$(find "$HOME/.claude/projects" -name "${sid}*.jsonl" 2>/dev/null | head -1)
+      if [ -n "$jf" ]; then
+        local suffix_ts; suffix_ts=$(date -r "$SUFFIX_FILE" -Iseconds 2>/dev/null)
+        local last_ts; last_ts=$(python3 -c "
+import json
+last=''
+for l in open('$jf'):
+    try:
+        ts=json.loads(l).get('timestamp','')
+        if ts: last=ts
+    except: pass
+print(last)
+" 2>/dev/null)
+        if [ -n "$last_ts" ] && [[ "$last_ts" > "$suffix_ts" ]]; then
+          resume_arg="--resume $sid"; resume_label="resume=${sid:0:8}"
+        fi
+      fi
+    fi
 
     if [ "$dry" = "1" ]; then
-      echo "  DRY  $expected ← $cwd $([ -n "$sid" ] && echo "resume=${sid:0:8}" || echo fresh) model=$model"
+      echo "  DRY  $expected ← $cwd $resume_label model=$model"
     else
       gnome-terminal --window --title="$expected" --working-directory="$cwd" \
         -- bash -c "claude $resume_arg --model '$model' --permission-mode '$perm' --effort '$effort' -n '$expected' --remote-control '$expected'; exec bash" &
-      echo "[$ts] REOPEN $expected ← $([ -n "$sid" ] && echo "resume=${sid:0:8}" || echo fresh) ($cwd)"
+      echo "[$ts] REOPEN $expected ← $resume_label ($cwd)"
       reopened=$((reopened+1))
       sleep "$pace"
     fi
