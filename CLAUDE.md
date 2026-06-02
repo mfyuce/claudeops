@@ -59,23 +59,23 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 - Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 - **Handover-prep MD sync** (her ho'da): (1) TODO'da tamamlanmış → DONE'a taşı+TODO'dan sil; (2) TOBEDECIDED'da karar verilmiş → TODO'ya taşı+sil.
 
-## READY FOR HANDOVER (2026-06-01)
+## READY FOR HANDOVER (2026-06-02)
 
-**Nerede kaldık:** co29 (claudeops repo, self). **HANDOVER *30→*31 TAMAM + MODEL-SPLIT'e dönüldü.** 20 *31 session ayakta, suffix state=31. **İki-grup model** (yeni karar 2026-06-01): coding→sonnet (9), paper→opus (11), harita `~/.claude/claudeops/models.tsv`. Hepsi `[1m]`/auto/max/RC. Standart layout (ws0 pin co/anomaly31/rustrino31; grup1 hc/hcr/mecdtfl→ws4; grup2 mo/kulturiot/gedikvm/gedikido→ws5). Tek temiz `gnome-terminal-server` (reboot wedge'i temizledi, `--app-id` derdi yok).
+**Nerede kaldık:** co29 (claudeops repo, self). **HANDOVER *31→*32 TAMAM (model-split korundu).** 20 *32 session ayakta, suffix state=32. **İki-grup model** (2026-06-01 karar): coding→sonnet (9), paper→opus (11), harita `~/.claude/claudeops/models.tsv`. Hepsi `[1m]`/auto/max/RC. Standart layout (ws0 pin co/anomaly32/rustrino32; grup1 hc/hcr/mecdtfl→ws4; grup2 mo/kulturiot/gedikvm/gedikido→ws5). Tek temiz `gnome-terminal-server`.
 
-**Bu ho'da:** Faz1 wrap-up (mecdtfl + rr dahil tek tek tamamlandı) → **straggler yakalandı** (`anomaly` skip'lenmişti ama mod=4/unpush=5 vardı; kendi wrap-up'ı "tam" deyip commit ATLAMIŞTI → Faz3'te commit+push prompt'uyla fresh açıldı, çözüldü; `gedikido`/`kulturiot` unpush=1 jsonl'siz, aynı prompt'la push'landı) → Faz3 2-grup respawn (3 rc çağrısı: sonnet-idle 6, sonnet+prompt 3, opus-idle 11) → layout. `models.tsv` yeni eklendi.
+**Bu ho'da (*31→*32):** Faz1 wrap-up (opened=9/skip=11; coding grubu respawn'dan beri iş yapmış) → **straggler yakalandı** (`vrk31`: 8 commit github'a push'luydu ama **gitlab 8-behind** + `gazetteer_adaylari.yaml` commit'lenmemişti → Faz2'de commit+push prompt'uyla fresh, çözüldü: gazetteer commit + her iki remote 0/0). Diğer "HO"lar false-positive (since-YES ama her iki remote'a pushed / junk untracked). → Faz2 2-grup respawn (3 rc çağrısı: sonnet-idle 8, sonnet+prompt 1=vrk, opus-idle 11) → layout. **Tekrarlayan pattern:** wrap-up session sık sık tek-remote'a push edip diğerini (gitlab) atlıyor VEYA 1 dosya bırakıyor → needs-ho `unpush>0` yakalar, straggler'ı commit-prompt'la fresh aç. [[handover-edge-cases]] edge case 4.
 
 ✅ **Cold-boot oto-açılış** (DONE.md 2026-05-31): `claudeops boot [--lock] [--from-roster]` + `snapshot` + `recover` + `~/.config/autostart/claudeops.desktop`. boot.list=co+mo, suffix state=`~/.claude/claudeops/suffix` (`rc --suffix` oto-yazar). boot her session'ı **base+suffix** ile, cwd'nin **en güncel jsonl'iyle `--resume`** açar, `--lock` ile kilitler. İsim sürprizleri: **hc=videogen, hcr=hoca-reader, vrk=varaka, mo=machine_ops**.
 
-⚠ **AÇIK: autologin** — `/etc/gdm3/custom.conf` AutomaticLogin henüz AÇIK DEĞİL (sudo gerek; Wayland kapalı=X11 ✓). Açılınca reboot→`boot --lock` co31+mo31'i geçmişiyle açıp kilitler.
+⚠ **AÇIK: autologin** — `/etc/gdm3/custom.conf` AutomaticLogin henüz AÇIK DEĞİL (sudo gerek; Wayland kapalı=X11 ✓). Açılınca reboot→`boot --lock` co32+mo32'yi geçmişiyle açıp kilitler.
 
 ⚠ **boot/respawn model:** `boot`/`recover` `models.tsv`'i HENÜZ okumuyor (BOOT_MODEL_DEFAULT tek opus). Split kalıcıysa boot'a `models.tsv` lookup eklenmeli (TODO).
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-calisma-tarzi]] + [[model-1m-context]].
-2. **needs-ho generic:** `claudeops needs-ho --from-suffix=31`. **recover:** `claudeops recover`.
+2. **needs-ho generic:** `claudeops needs-ho --from-suffix=32`. **recover:** `claudeops recover`.
 3. **Açık TODO bug'lar:** (a) `rc` virgül parse, (b) layout orphan terminal, (c) `cancel` Esc fallback, (d) `--model`→default `auto`, (e) handover `--layout` `--group` geçirmiyor, (f) **`deep-ho` yeni cmd** (tüm jsonl oku → kaçırılan iş), (g) boot models.tsv lookup.
 
-**Açık kararlar:** anomaly31 `rumeysa.zip` + mecdtfl31 `main_1_page.pdf` untracked junk (sil/gitignore/bırak?). TOBEDECIDED #5 (açık-kaynak local config). disk-temizlik (2026-05-20, `~/.cache/huggingface` 29G KORU).
+**Açık kararlar:** anomaly32 `rumeysa.zip` + mecdtfl32 `main_1_page.pdf` untracked junk (sil/gitignore/bırak?). TOBEDECIDED #5 (açık-kaynak local config). disk-temizlik (2026-05-20, `~/.cache/huggingface` 29G KORU).
 
 READY FOR HANDOVER
