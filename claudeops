@@ -1824,8 +1824,10 @@ cmd_guard() {
     { [ -n "${DISPLAY:-}" ] && wmctrl -m >/dev/null 2>&1; } || { echo "guard: DISPLAY/WM yok, atlanıyor"; return 0; }
   fi
 
-  # Şu an çalışan session isimleri
-  local running; running=$(all_sessions_tsv 2>/dev/null | awk -F'\t' '{print $2}')
+  # Şu an çalışan session isimleri + cwd'leri (isim eşleşmese bile aynı cwd varsa atla)
+  local running_tsv; running_tsv=$(all_sessions_tsv 2>/dev/null)
+  local running; running=$(echo "$running_tsv" | awk -F'\t' '{print $2}')
+  local running_cwds; running_cwds=$(echo "$running_tsv" | awk -F'\t' '{print $5}')
 
   local reopened=0 skipped=0 no_cwd=0
   mkdir -p /tmp/claudeops 2>/dev/null
@@ -1835,13 +1837,16 @@ cmd_guard() {
     case "$base" in ''|'#'*) continue;; esac
     local expected="${base}${suffix}"
 
-    # Zaten çalışıyor?
+    # cwd — roster.tsv'den (isim kontrolünden önce lazım)
+    local cwd; cwd=$(grep -P "^${base}\t" "$ROSTER_FILE" 2>/dev/null | cut -f2 | head -1)
+
+    # Zaten çalışıyor? (isim VEYA aynı cwd — isim değişse de, ör. co29 vs co32)
     if echo "$running" | grep -qxF "$expected"; then
       skipped=$((skipped+1)); continue
     fi
-
-    # cwd — roster.tsv'den
-    local cwd; cwd=$(grep -P "^${base}\t" "$ROSTER_FILE" 2>/dev/null | cut -f2 | head -1)
+    if [ -n "$cwd" ] && echo "$running_cwds" | grep -qxF "$cwd"; then
+      skipped=$((skipped+1)); continue
+    fi
     if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
       echo "  SKIP $expected: cwd yok (roster'da eksik: ${cwd:-?})"
       no_cwd=$((no_cwd+1)); continue
