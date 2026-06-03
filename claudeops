@@ -1790,6 +1790,32 @@ cmd_recover() {
 }
 
 # ─────────────────────────────────────────────
+# _detect_display: cron/autostart'ta DISPLAY/XAUTHORITY/DBUS env'i yoksa
+#   çalışan GNOME oturum process'inden (gnome-shell > gnome-session > nautilus)
+#   runtime'da çek + export. Display numarası reboot'ta değişse de tutar.
+#   (cron'da DISPLAY=:0 hardcode kırılgandı; gerçek :1 olabiliyor.)
+# ─────────────────────────────────────────────
+_detect_display() {
+  # Zaten çalışan WM varsa dokunma
+  { [ -n "${DISPLAY:-}" ] && wmctrl -m >/dev/null 2>&1; } && return 0
+  local p
+  for comm in gnome-shell gnome-session-binary nautilus gnome-terminal-server; do
+    p=$(pgrep -x "$comm" -U "$(id -u)" 2>/dev/null | head -1)
+    [ -n "$p" ] && [ -r "/proc/$p/environ" ] || continue
+    local d x b
+    d=$(tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -m1 '^DISPLAY=' | cut -d= -f2-)
+    x=$(tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -m1 '^XAUTHORITY=' | cut -d= -f2-)
+    b=$(tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -m1 '^DBUS_SESSION_BUS_ADDRESS=' | cut -d= -f2-)
+    [ -n "$d" ] || continue
+    export DISPLAY="$d"
+    [ -n "$x" ] && export XAUTHORITY="$x"
+    [ -n "$b" ] && export DBUS_SESSION_BUS_ADDRESS="$b"
+    wmctrl -m >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
+
+# ─────────────────────────────────────────────
 # CMD: guard [--boot] [--lock] [--dry-run] [--pace=N]
 #   Watchdog: models.tsv fleet'ini tara, kapananları yeniden aç.
 #   Kaynak: models.tsv (name→model) + roster.tsv (name→cwd)
@@ -1815,13 +1841,13 @@ cmd_guard() {
   local suffix; suffix=$(_suffix_get)
   [ -z "$suffix" ] && { echo "guard: suffix state yok ($SUFFIX_FILE)"; return 1; }
 
-  # X/WM kontrolü
+  # X/WM kontrolü — env yoksa çalışan GNOME oturumundan DISPLAY/XAUTH/DBUS çek
   if [ "$boot_mode" = "1" ]; then
     local w=0
-    while [ $w -lt 90 ]; do { [ -n "${DISPLAY:-}" ] && wmctrl -m >/dev/null 2>&1; } && break; sleep 1; w=$((w+1)); done
-    { [ -n "${DISPLAY:-}" ] && wmctrl -m >/dev/null 2>&1; } || { echo "guard: X/WM hazır değil (${w}s beklendi)"; return 1; }
+    while [ $w -lt 90 ]; do _detect_display && break; sleep 1; w=$((w+1)); done
+    _detect_display || { echo "guard: X/WM hazır değil (${w}s beklendi)"; return 1; }
   else
-    { [ -n "${DISPLAY:-}" ] && wmctrl -m >/dev/null 2>&1; } || { echo "guard: DISPLAY/WM yok, atlanıyor"; return 0; }
+    _detect_display || { echo "guard: DISPLAY/WM yok, atlanıyor"; return 0; }
   fi
 
   # Şu an çalışan session isimleri + cwd'leri (isim eşleşmese bile aynı cwd varsa atla)
