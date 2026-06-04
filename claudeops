@@ -19,6 +19,16 @@ PROJ_DIR="$HOME/.claude/projects"
 LOG_DIR="/tmp/claudeops"
 mkdir -p "$LOG_DIR"
 
+# claude binary ~/.local/bin'de yaşar — cron/autostart minimal PATH'inde YOKTUR.
+# (1) claudeops'un KENDİ PATH'i: command -v claude / python3 / node cron'da da bulunsun.
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH"; export PATH ;; esac
+# (2) gnome-terminal ÇOCUKLARI, spawner'ın değil çalışan gnome-terminal-SERVER'ın env'ini
+#     miras alır. OOM eski server'ı öldürür; cron guard yeni server'ı minimal PATH'le başlatınca
+#     TÜM pencereler "claude: command not found" olur (server ölene dek kalıcı). Çözüm: her
+#     `bash -c` spawn'ına command-prefix PATH ekle. `\$PATH` child'da expand olur (var expand
+#     recursive değil → claudeops bu $PATH'i yeniden açmaz). Detay: [[oomd-cgroup-kill]].
+SPAWN_ENV="PATH=$HOME/.local/bin:\$PATH"
+
 # ─────────────────────────────────────────────
 # Self detection
 # ─────────────────────────────────────────────
@@ -69,8 +79,27 @@ all_sessions_tsv() {
   for f in "$SESS_DIR"/*.json; do
     [ -f "$f" ] || continue
     python3 -c "
-import json
+import json, os
 d = json.load(open('$f'))
+# Liveness: pid YAŞIYOR mu + procStart (/proc/pid/stat field22) EŞLEŞİYOR mu?
+# OOM SIGKILL'de json dosyaları silinmez (cleanup handler çalışmaz) → guard ölü
+# session'ı 'çalışıyor' sanıp atlardı, hiç recover etmezdi. Ayrıca pid-reuse koruması:
+# OOM 274 process öldürür, pid'ler hızla geri dönüşür → sadece kill -0 yetmez.
+pid = d.get('pid')
+try:
+    pid = int(pid)
+    os.kill(pid, 0)  # ölüyse ProcessLookupError → satırı yazma
+    want = str(d.get('procStart','')).strip()
+    if want:
+        with open('/proc/%d/stat' % pid) as sf:
+            # comm parantez içinde boşluk içerebilir → son ')' sonrasını al
+            rest = sf.read().rsplit(')', 1)[1].split()
+        if rest[19] != want:  # field22 = starttime (')'sonrası 0-index 19)
+            raise SystemExit
+except SystemExit:
+    raise
+except Exception:
+    raise SystemExit  # ölü/stale/pid-reuse → atla
 parts = [str(d.get('pid','')), (d.get('name') or '-'), d.get('status',''), d.get('sessionId',''), d.get('cwd',''), (d.get('bridgeSessionId') or '-')]
 print('\t'.join(parts))
 " 2>/dev/null
@@ -239,11 +268,17 @@ _suffix_set() { [ -n "${1:-}" ] && { mkdir -p "$STATE_DIR" 2>/dev/null; printf '
 # boot bununla --resume eder → geçmiş korunur, sid compaction'da değişse de en taze bulunur.
 _latest_sid_for_cwd() {
   local cwd="$1"
-  find "$HOME/.claude/projects" -name '*.jsonl' -newermt '21 days ago' -printf '%T@\t%p\n' 2>/dev/null \
+  # Sadece ESAS interaktif session'lar resume edilebilir. Subagent/sidechain transcript'leri
+  # (agent-*.jsonl) resume edilemez — bunlar en güncel mtime'a sahip olunca guard çöp sid
+  # ('agent-a2...') resume etmeye çalışıyordu. UUID-isimli + agent- olmayan dosyalara kısıtla.
+  find "$HOME/.claude/projects" -name '*.jsonl' ! -name 'agent-*' -newermt '21 days ago' -printf '%T@\t%p\n' 2>/dev/null \
    | sort -rn \
    | while IFS=$'\t' read -r t p; do
+       local b; b=$(basename "$p" .jsonl)
+       # UUID değilse (subagent/diğer) atla
+       case "$b" in [0-9a-f]*-*-*-*-*) ;; *) continue;; esac
        local c; c=$(grep -m1 -oE '"cwd":"[^"]*"' "$p" 2>/dev/null | head -1 | sed 's/"cwd":"//;s/"$//')
-       [ "$c" = "$cwd" ] && { basename "$p" .jsonl; break; }
+       [ "$c" = "$cwd" ] && { echo "$b"; break; }
      done
 }
 
@@ -665,7 +700,7 @@ except: print('gone')
       # NOT: --remote-control NAME devam → NAME RC adı, devam prompt. Aksi:
       # --remote-control devam → devam RC adı, prompt yok!
       gnome-terminal ${app_id:+--app-id="$app_id"} --window --title="$effective_name" --working-directory="$cwd" \
-        -- bash -c "claude $resume_arg $model_arg -n '$effective_name' --remote-control '$effective_name'$prompt_esc; exec bash" &
+        -- bash -c "$SPAWN_ENV claude $resume_arg $model_arg -n '$effective_name' --remote-control '$effective_name'$prompt_esc; exec bash" &
       local desk_info=""
       [ -n "$old_desk" ] && desk_info=" (desk=$old_desk)"
       echo "VISIBLE $effective_name ($([ "$new_session" = "1" ] && echo NEW || echo "resume") model=${model:-default}$desk_info)"
@@ -916,7 +951,7 @@ if d.get('name')=='$nm': print(d.get('sessionId',''), d.get('cwd',''), d.get('pi
     sleep 0.5
     # 3) gnome-terminal aç (current desktop = ws, pencere orada doğar)
     gnome-terminal --window --title="$nm" --working-directory="$cwd_l" \
-      -- bash -c "claude --resume '$sid' --remote-control '$nm'; exec bash" &
+      -- bash -c "$SPAWN_ENV claude --resume '$sid' --remote-control '$nm'; exec bash" &
     sleep 2.5
     # 4) geometry (xdotool --sync; wmctrl -e flaky)
     local newwin; newwin=$(wmctrl -l -p | awk -v g="$gtp" -v n="$nm" '$3==g && $0 ~ n"$" {print $1; exit}')
@@ -1020,7 +1055,7 @@ cmd_new() {
   local name="${1:-}"; local cwd="${2:-$PWD}"
   [ -z "$name" ] && { echo "kullanım: claudeops new <name> [cwd]"; return 2; }
   gnome-terminal --window --title="$name" --working-directory="$cwd" \
-    -- bash -c "claude --remote-control '$name'; exec bash" &
+    -- bash -c "$SPAWN_ENV claude --remote-control '$name'; exec bash" &
   echo "NEW $name in $cwd"
 }
 
@@ -1322,7 +1357,7 @@ except: print('gone')
         launch="claude -n '$name' --remote-control '$name' --model '$f_model' --permission-mode '$f_perm' '$msg_esc'"
       fi
       gnome-terminal --window --title="handover:$name" --working-directory="$cwd" \
-        -- bash -c "$launch; exec bash" &
+        -- bash -c "$SPAWN_ENV $launch; exec bash" &
       sleep 3
       # bridge verify (fresh-spawn'da sid değişir → sadece name eşle)
       local bridge_new=""
@@ -1660,7 +1695,7 @@ GI
     kill "$pid" 2>/dev/null
     sleep 2
     gnome-terminal --window --title="$sess_name" --working-directory="$new_cwd" \
-      -- bash -c "claude --model $model --permission-mode $perm -n '$sess_name' --remote-control '$sess_name'; exec bash" >/dev/null 2>&1 &
+      -- bash -c "$SPAWN_ENV claude --model $model --permission-mode $perm -n '$sess_name' --remote-control '$sess_name'; exec bash" >/dev/null 2>&1 &
     echo "  respawned $sess_name (model=$model perm=$perm)"
   fi
   echo "=== done ==="
@@ -1745,7 +1780,7 @@ cmd_boot() {
     local sid; sid=$(_latest_sid_for_cwd "$cwd")
     local resume=""; [ -n "$sid" ] && resume="--resume $sid"
     gnome-terminal ${app_id:+--app-id="$app_id"} --window --title="$eff" --working-directory="$cwd" \
-      -- bash -c "claude $resume --model '$m' --permission-mode '$perm' --effort '$effort' -n '$eff' --remote-control '$eff'; exec bash" &
+      -- bash -c "$SPAWN_ENV claude $resume --model '$m' --permission-mode '$perm' --effort '$effort' -n '$eff' --remote-control '$eff'; exec bash" &
     echo "  BOOT $eff ($cwd) $([ -n "$sid" ] && echo "resume=${sid:0:8}" || echo fresh) model=$m"
     n=$((n+1)); sleep "$pace"
   done < "$src"
@@ -1834,6 +1869,14 @@ cmd_guard() {
     -h|--help) echo "claudeops guard [--boot] [--lock] [--dry-run] [--pace=N]"; return 0;;
   esac; done
 
+  # SERİLEŞTİR — flock: aynı anda iki guard (cron+manuel ya da yavaş-cron overlap) çalışırsa
+  # ikisi de fleet'i 'down' görüp HEPSİNİ açar → her cwd'de duplicate session. Non-blocking:
+  # kilit başka guard'daysa sessizce çık. fd 9 process exit'te kapanır → kilit serbest kalır.
+  if [ "$dry" != "1" ]; then
+    exec 9>"$LOG_DIR/guard.lock"
+    if ! flock -n 9; then echo "[$(date '+%H:%M:%S')] guard: başka instance çalışıyor, atlandı"; return 0; fi
+  fi
+
   local models_tsv="$STATE_DIR/models.tsv"
   [ -f "$models_tsv" ] || { echo "guard: models.tsv yok ($models_tsv)"; return 1; }
   [ -f "$ROSTER_FILE" ] || { echo "guard: roster.tsv yok ($ROSTER_FILE). 'claudeops snapshot' çalıştır."; return 1; }
@@ -1878,35 +1921,20 @@ cmd_guard() {
       no_cwd=$((no_cwd+1)); continue
     fi
 
-    # En güncel sid — SADECE suffix set'lendiğinden (son ho) SONRA aktivite varsa resume et.
-    # Son mesaj timestamp'i kullanılır: suffix öncesiyse fresh aç (eski session, *32 iş yok).
+    # Crash-recovery semantiği (kullanıcı 2026-06-04): "önceki/son session'dan devam etmeli."
+    # cwd'nin EN GÜNCEL jsonl'i = kullanıcının kaldığı konuşma → HER ZAMAN --resume et
+    # (cmd_boot ile aynı davranış). Eski suffix-gate ('son ho sonrası iş varsa resume')
+    # idle *33 + crash recovery'de fresh açıp çalışan context'i kaybettiriyordu — kaldırıldı.
+    # Handover'ın 'fresh aç' niyeti ayrı komut (rc --new); guard sadece kurtarır.
     local sid; sid=$(_latest_sid_for_cwd "$cwd")
     local resume_arg="" resume_label="fresh"
-    if [ -n "$sid" ] && [ -f "$SUFFIX_FILE" ]; then
-      local jf; jf=$(find "$HOME/.claude/projects" -name "${sid}*.jsonl" 2>/dev/null | head -1)
-      if [ -n "$jf" ]; then
-        local suffix_ts; suffix_ts=$(date -r "$SUFFIX_FILE" -Iseconds 2>/dev/null)
-        local last_ts; last_ts=$(python3 -c "
-import json
-last=''
-for l in open('$jf'):
-    try:
-        ts=json.loads(l).get('timestamp','')
-        if ts: last=ts
-    except: pass
-print(last)
-" 2>/dev/null)
-        if [ -n "$last_ts" ] && [[ "$last_ts" > "$suffix_ts" ]]; then
-          resume_arg="--resume $sid"; resume_label="resume=${sid:0:8}"
-        fi
-      fi
-    fi
+    [ -n "$sid" ] && { resume_arg="--resume $sid"; resume_label="resume=${sid:0:8}"; }
 
     if [ "$dry" = "1" ]; then
       echo "  DRY  $expected ← $cwd $resume_label model=$model"
     else
       gnome-terminal --window --title="$expected" --working-directory="$cwd" \
-        -- bash -c "claude $resume_arg --model '$model' --permission-mode '$perm' --effort '$effort' -n '$expected' --remote-control '$expected'; exec bash" &
+        -- bash -c "$SPAWN_ENV claude $resume_arg --model '$model' --permission-mode '$perm' --effort '$effort' -n '$expected' --remote-control '$expected'; exec bash" &
       echo "[$ts] REOPEN $expected ← $resume_label ($cwd)"
       reopened=$((reopened+1))
       sleep "$pace"
