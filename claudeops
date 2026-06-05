@@ -1164,6 +1164,7 @@ cmd_handover() {
   local force=0          # --force: skip/dirty/done/idle-only kontrollerini baypas, HEPSİNE gönder
   local do_layout=0      # --layout: tüm spawn'lar gittikten sonra layout çalıştır
   local layout_pin=""    # --pin=a,b: layout'a iletilecek pin listesi
+  local ho_model=""      # --model=X: wrap-up resume'unu bu modelde aç (sonnet rate-limit bypass için opus)
   for a in "$@"; do
     case "$a" in
       --from-suffix=*)        from_suffix="${a#--from-suffix=}";;
@@ -1175,6 +1176,7 @@ cmd_handover() {
       --force|--no-skip)      force=1;;
       --layout)               do_layout=1;;
       --pin=*)                layout_pin="${a#--pin=}"; do_layout=1;;
+      --model=*)              ho_model="${a#--model=}";;
       --dry-run)              dry=1;;
     esac
   done
@@ -1351,10 +1353,10 @@ except: print('gone')
       local msg_esc; msg_esc=$(printf '%s' "$message" | sed "s/'/'\\\\''/g")
       local launch
       if [ "$has_jsonl" = "1" ]; then
-        launch="claude --resume '$sid' --remote-control '$name' '$msg_esc'"
+        launch="claude --resume '$sid'${ho_model:+ --model '$ho_model'} --remote-control '$name' '$msg_esc'"
       else
-        # jsonl yok (force fresh-spawn): resume yerine -n + model/perm (cmdline'dan)
-        launch="claude -n '$name' --remote-control '$name' --model '$f_model' --permission-mode '$f_perm' '$msg_esc'"
+        # jsonl yok (force fresh-spawn): resume yerine -n + model/perm (cmdline'dan; --model override varsa o kazanır)
+        launch="claude -n '$name' --remote-control '$name' --model '${ho_model:-$f_model}' --permission-mode '$f_perm' '$msg_esc'"
       fi
       gnome-terminal --window --title="handover:$name" --working-directory="$cwd" \
         -- bash -c "$SPAWN_ENV $launch; exec bash" &
