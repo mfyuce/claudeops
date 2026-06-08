@@ -7,6 +7,7 @@
 - [ ] **BUG: `rc <a,b,c>` virgül-separated isim listesi parse edilmiyor** — 2026-05-19'da 15→16, 2026-05-23'te 20→21 transition'larında doğrulandı. `cmd_rc`/`resolve_targets` SPACE-separated bekliyor. CLAUDE.md eski örnekler virgüllü idi → güncellendi. Fix: cmd_rc başında target ve "$@" içindeki virgüllü string'leri split et (IFS=','). Aynı bug `cmd_kill`, `cmd_compact`, `cmd_send` için de var.
 - [ ] **`claudeops layout` orphan terminal kaldırmıyor** — 2026-05-19/05-23/05-25 transition'larında doğrulandı (ws1'de "fatihyuce@483-LNX: ~" bir quad slot işgal ediyor). Fix: layout iterasyonunda window-name'in geçerli session.json'da olup olmadığını kontrol et + yoksa skip (oth_wins'e ekleme).
 - [ ] **`cancel` Esc güvenilmez (VTE reject)** — 2026-05-25 kulturiot23 "waiting" modal'da Esc inmedi. Garantili iptal = respawn. Fix: cancel Esc dene → 2s sonra hâlâ takılıysa otomatik `rc <name> --kill-first` öner/yap (flag ile).
+- [ ] **`handover --exclude=<name>` filtrelemiyor** — 2026-06-08 (*36→*37) `--exclude=anomaly` (base-name) verildi ama anomaly36 yine wrap-up edildi (pre-check sınıflandırmasında HO listesinde kaldı). Muhtemelen exclude suffix'li tam isim (`anomaly36`) bekliyor ya da parse hiç çalışmıyor. Fix: `cmd_handover` exclude eşleşmesini base-name + suffix'li ikisini de kabul edecek şekilde düzelt (handover hedef döngüsünde isim normalize).
 
 ## Geliştirme
 
