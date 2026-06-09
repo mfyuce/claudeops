@@ -76,6 +76,7 @@ self_sid() {
 # ─────────────────────────────────────────────
 # Format: pid \t name \t status \t sessionId \t cwd \t bridge
 all_sessions_tsv() {
+  {
   for f in "$SESS_DIR"/*.json; do
     [ -f "$f" ] || continue
     python3 -c "
@@ -104,6 +105,19 @@ parts = [str(d.get('pid','')), (d.get('name') or '-'), d.get('status',''), d.get
 print('\t'.join(parts))
 " 2>/dev/null
   done
+  # 2026-06-09: claude 2.1.169 fresh --new session'lar ~/.claude/sessions/<pid>.json YAZMIYOR
+  # (yalnız resume/içerikli session'lar yazıyor). Sonuç: list/guard/layout fresh'leri göremiyor;
+  # guard onları 'down' sanıp DUPLICATE pencere açıyordu. Çözüm: canlı 'claude --remote-control
+  # NAME' process'lerinden DE keşfet. Dedup (awk seen[name]) session.json satırını önceler
+  # (bridge'li/status'lu). Fresh-only session'lar proc'tan gelir (bridge '-', status 'idle').
+  ps -eo pid,args 2>/dev/null | grep '[c]laude ' | while read -r _pid _pargs; do
+    _nm=$(printf '%s' "$_pargs" | grep -oP -- '--remote-control \K[a-z0-9]+')
+    [ -n "$_nm" ] || continue
+    _cwd=$(readlink "/proc/$_pid/cwd" 2>/dev/null)
+    [ -n "$_cwd" ] || continue
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$_pid" "$_nm" "idle" "-" "$_cwd" "-"
+  done
+  } | awk -F'\t' '$2!="" && !seen[$2]++'
 }
 
 # Filter helpers
