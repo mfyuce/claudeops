@@ -20,7 +20,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 ## Model konvansiyonu
 
-- **İki-grup model:** **coding→sonnet, paper→opus** + `--permission-mode=auto` + `--effort=max` + RC. **[1m] YOK** (2026-06-09: 1M context kaldırıldı — kullanıcı istemiyor). Harita: **`~/.claude/claudeops/models.tsv`** (name→model). **Sonnet (coding, 12):** hc hcr mo vrk rustrino anomaly kulturiot gedikvm gedikido evolvi done mamut (+co) → `claude-sonnet-4-6`. **Opus (paper, 10 canlı):** rr aggroot oa hms hve qve rve emrgence araroot carla → `claude-opus-4-8` (mecdtfl KAPALI). (Tarihçe: 05-30 tek-model → 06-01 split → 06-05 geçici all-opus`[1m]` [sonnet limit] → **06-09 split geri + `[1m]` kaldırıldı**.)
+- **İki-grup model:** **coding→sonnet, paper→opus** + `--permission-mode=auto` + `--effort=max` + RC. **[1m] YOK** (2026-06-09: 1M context kaldırıldı — kullanıcı istemiyor). Harita: **`~/.claude/claudeops/models.tsv`** (name→model). **Sonnet (coding, 12):** hc hcr mo vrk rustrino anomaly kulturiot gedikvm gedikido evolvi done mamut (+co) → `claude-sonnet-4-6`. **Opus (paper, 11 canlı):** rr aggroot oa hms hve qve rve emrgence araroot carla → `claude-opus-4-8` + **gencmuh → `claude-opus-4-8[1m]`** (2026-06-09 eklendi; **TEK `[1m]` session**, kullanıcı istedi; cwd `.../backups/genc_muh`). (mecdtfl KAPALI.) (Tarihçe: 05-30 tek-model → 06-01 split → 06-05 geçici all-opus`[1m]` [sonnet limit] → **06-09 split geri + `[1m]` kaldırıldı**.)
 - `rc` flag'leri model-agnostic pass-through: `--model`, `--permission-mode`, `--effort` (low/medium/high/xhigh/max).
 
 ## Handover (3-fazlı, "ho" istek)
@@ -39,6 +39,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
   --suffix=<TO> --new --kill-first --model='claude-sonnet-4-6' --permission-mode=auto --effort=max
 ./claudeops rc rr<F> aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> carla<F> \
   --suffix=<TO> --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max
+#   gencmuh AYRI (tek 1m): ./claudeops rc gencmuh<F> --suffix=<TO> --new --kill-first --model='claude-opus-4-8[1m]' --permission-mode=auto --effort=max
 #   (self skip; mecdtfl kapalı→dahil değil; --suffix→suffix-dosyası→guard *<TO>; straggler'a --prompt='commit+TÜM remote push')
 #   ⚠ guard-race: fix b8bad9e (2.1.169 proc-keşfi) SONRASI guard fresh proc'ları görür → dup riski büyük ölçüde azaldı; yine de kill→spawn boşluğu için Faz1+Faz2'de background lock-holder güvenli ([[handover-edge-cases]] edge-9). ⚠ Lock-holder'ı öldürürken parent bash DEĞİL `sleep` çocuğu da `fuser guard.lock` ile öldür (fd çocukta).
 
