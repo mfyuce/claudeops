@@ -115,7 +115,18 @@ print('\t'.join(parts))
     [ -n "$_nm" ] || continue
     _cwd=$(readlink "/proc/$_pid/cwd" 2>/dev/null)
     [ -n "$_cwd" ] || continue
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$_pid" "$_nm" "idle" "-" "$_cwd" "-"
+    # 2026-06-10: sid de doldur (resume/handover için). 2.1.169 fresh session'lar session.json
+    # yazmıyor ama jsonl yazıyor → cwd'nin proje dizinindeki (encoding: / ve _ → -) en yeni
+    # non-agent jsonl = sid. İç-cwd grep ile doğrula (lossy-encoding collision koruması). Ucuz.
+    _sid="-"; _jf=$(ls -t "$PROJ_DIR/$(printf '%s' "$_cwd" | sed 's#[/_]#-#g')"/*.jsonl 2>/dev/null | grep -vE '/agent-' | head -1)
+    if [ -n "$_jf" ]; then
+      _ic=$(grep -m1 -oE '"cwd":"[^"]*"' "$_jf" 2>/dev/null | sed 's/.*"cwd":"//;s/"$//')
+      [ "$_ic" = "$_cwd" ] && _sid=$(basename "$_jf" .jsonl)
+    fi
+    # dir-based başarısız (Türkçe/özel-karakter encoding: claude tüm non-alnum'u '-' yapar,
+    # çok-bayt locale'e bağımlı) → content-grep fallback (iç-cwd eşler, encoding-bağımsız; pahalı ama nadir)
+    [ "$_sid" = "-" ] && { _sid=$(_latest_sid_for_cwd "$_cwd" 2>/dev/null); [ -z "$_sid" ] && _sid="-"; }
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$_pid" "$_nm" "idle" "$_sid" "$_cwd" "-"
   done
   } | awk -F'\t' '$2!="" && !seen[$2]++'
 }
