@@ -65,9 +65,11 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 - Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 - **Handover-prep MD sync** (her ho'da): (1) TODO'da tamamlanmış → DONE'a taşı+TODO'dan sil; (2) TOBEDECIDED'da karar verilmiş → TODO'ya taşı+sil.
 
-## READY FOR HANDOVER (2026-06-09 akşam)
+## READY FOR HANDOVER (2026-06-12)
 
-**Nerede kaldık:** co39 (claudeops repo, self). Fleet **22 \*40** = **split: sonnet (coding) / opus (paper), `[1m] YOK`** (kullanıcı bugün ikisini de değiştirdi). suffix=40, dup yok, mecdtfl KAPALI. Layout 7 ws (pin co39/anomaly40/rustrino40; grup1 hc/hcr/evolvi ws5; grup2 mo/kulturiot/gedikvm/gedikido ws6). **monitoring_temp** (pid 24636, name `-`) kullanıcının ayrı CLI'ı → fleet dışı, KORU.
+**Nerede kaldık (2026-06-12):** co39 (claudeops repo, self). Fleet **23 \*42 çalışıyor** ama **4'ü EMEKLİ-pending** (↓ blok). Model: **sonnet (coding) `claude-sonnet-4-6[1m]` / opus (paper) GEÇİCİ normal `claude-opus-4-8` (`[1m]` YOK)** — 2026-06-12 kullanıcı "geçici olarak opusları normal opus"; **gencmuh dahil tüm opus non-1m**; models.tsv güncel; **geri-al:** opus satırları→`[1m]`+respawn. suffix=42, dup yok (`guard --dry-run reopened=0`), mecdtfl KAPALI. Layout 7 ws (pin co39/anomaly42/rustrino42/ulaksec40; grup1 hc/hcr/evolvi; grup2 mo/kulturiot/gedikvm/gedikido). **ulaksec40** (pid 735921, work/sec — "dokunma/KORU") + **monitoring_temp** (pid 24636, `-`) → fleet dışı, KORU.
+
+**⏳ EMEKLİ-pending (2026-06-12):** **rr42, gedikvm42, gedikido42, kulturiot42** (kullanıcı: "şimdilik emekli edelim; önce ho faz1, açmayalım, şimdilik kaydet, sonraki ho'da hallet"). **ho-faz1 (iş kaydı) YAPILDI:** kulturiot idle-dirty puanlama işi → co-side commit `d8b0167` (github+gitlab); rr42/gedikvm42/gedikido42 zaten temizdi. models.tsv'de 4'ü `# EMEKLİ 2026-06-12` yorumlu → guard reopen ETMEZ ("açmayalım"); modeller korundu. **4 session HÂLÂ ÇALIŞIYOR — kill EDİLMEDİ.** **SONRAKİ HO'DA HALLET:** (1) Faz2 rc listelerinden 4'ü çıkar, (2) layout grup2'yi `mo` only yap (kulturiot/gedikvm/gedikido sil), (3) Model-konvansiyon roster + roster.tsv'den çıkar, (4) sonra kill. **Kalan aktif: 19 \*42** (10 opus + 9 sonnet) + ulaksec40 + co39.
 
 **⚠⚠ BUGÜNÜN BÜYÜK DERSİ — claude 2.1.169 + dup felaketi:** claude 2.1.169'a güncellendi; **fresh `--new` session'lar `sessions/<pid>.json` yazmıyor** → claudeops kör → **guard fresh'leri 'down' sanıp sürekli DUPLICATE açtı** (gün boyu). **FIX `b8bad9e`** (`all_sessions_tsv` canlı `--remote-control` proc'larından da keşfeder) → list/guard/layout artık fresh'leri görür, **dup bitti** (`guard --dry-run reopened=0`). Detay: [[claude-2169-session-detection]]. Ayrıca sabah **API outage** (503/529) vardı → reboot ile geçti (resume'lu session'lar eski `session_` bridge'i yeniden kullanır; fresh `--new` yeni bridge kurar — outage'da takılırdı). Tüm gün için [[handover-edge-cases]] + [[feedback-ho-stop-on-error]].
 
@@ -77,9 +79,9 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 
 **Yeni session yapacaklar:**
 1. **MEMORY.md** oku — [[claude-2169-session-detection]] + [[feedback-ho-stop-on-error]] + [[handover-procedure]] + [[handover-edge-cases]] + [[add-session-to-fleet]] + [[model-1m-context]] + [[oomd-cgroup-kill]].
-2. **needs-ho:** `claudeops needs-ho --from-suffix=40`. **fleet kapalıysa:** `claudeops guard` (fix sayesinde fresh'leri görür, dup açmaz). **ho'da:** Faz2 = 2 ayrı rc (sonnet/opus, no-1m); API hatası varsa DUR; Faz 2 öncesi kullanıcı onayı al.
+2. **needs-ho:** `claudeops needs-ho --from-suffix=42`. **fleet kapalıysa:** `claudeops guard` (fix sayesinde fresh'leri görür, dup açmaz). **ho'da:** Faz2 = 2 ayrı rc (sonnet `[1m]` / opus **GEÇİCİ non-1m** — kullanıcı [1m]'e döndürmediyse); **EMEKLİ 4'ünü (rr/gedikvm/gedikido/kulturiot) DAHİL ETME**; API hatası varsa DUR; Faz 2 öncesi kullanıcı onayı al.
 3. **Açık TODO bug'lar:** (a) rc virgül, (b) layout orphan, (c) cancel Esc, (d) --model→auto, (e) handover --layout --group, (f) deep-ho, (g) boot models.tsv, **(h+j) rc/handover lock'u kendi al + kayıt bitene tut**, (i) --exclude base-name, (k) Faz1 bridge-verify NAME, (l) spawn-sonrası kayıt-doğrula.
 
-**Açık kararlar:** (1) **Model: split + [1m] YOK** (sonnet coding / opus paper; models.tsv güncel). (2) **mamut** coding varsayımı. (3) **mecdtfl KAPALI** — review gelince aç (`#` kaldır + guard). (4) anomaly `rumeysa.zip` + rustrino `bench/results/` junk. (5) TOBEDECIDED #5. `~/.cache/huggingface` 29G KORU.
+**Açık kararlar:** (1) **Model: split; sonnet `[1m]` / opus GEÇİCİ non-1m** (2026-06-12; models.tsv güncel; geri-al: opus→`[1m]`+respawn). (2) **mamut** coding varsayımı. (3) **mecdtfl KAPALI** — review gelince aç (`#` kaldır + guard). (4) anomaly `rumeysa.zip` + rustrino `bench/results/` junk. (5) TOBEDECIDED #5. `~/.cache/huggingface` 29G KORU.
 
 READY FOR HANDOVER
