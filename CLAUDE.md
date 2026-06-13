@@ -65,7 +65,9 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 - Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 - **Handover-prep MD sync** (her ho'da): (1) TODO'da tamamlanmış → DONE'a taşı+TODO'dan sil; (2) TOBEDECIDED'da karar verilmiş → TODO'ya taşı+sil.
 
-## READY FOR HANDOVER (2026-06-12)
+## READY FOR HANDOVER (2026-06-13)
+
+**⚠ 2026-06-13 (resume çilesi — ÇÖZÜLDÜ):** "ho faz1 1m yok" (suffix42, 4 emekli exclude, wrap-up opus-non-1m): 11 temiz skip + 8 cls_needs reopen. **8 resume BLANK-TUI hang etti** (5 saat) → kök sebep: **`~/.claude.json` BOZUK** (toplu-ho eşzamanlı yazma → truncated JSON) → `~/.claude/backups/`'tan restore + 8'i **TEK TEK resume** (config sağlam kaldı) → **sohbetler kurtarıldı** (kullanıcı "yazı var" doğruladı), 8 non-1m (7 `sonnet-4-6` + gencmuh `opus-4-8`). Stragglerlar co-side commit+push (mo/rustrino/vrk/gencmuh + kulturiot). DERS: **[[config-corruption-resume-hang]]** (teşhis `headless -p --debug`; import-screenshot YANILTICI; ps/pkill SELF-MATCH) + **tek-tek ho** (TODO m). ⚠ skipped done/evolvi hâlâ `[1m]` → model karışık (istenirse non-1m'e resume).
 
 **Nerede kaldık (2026-06-12):** co39 (claudeops repo, self). Fleet **23 \*42 çalışıyor** ama **4'ü EMEKLİ-pending** (↓ blok). Model: **sonnet (coding) `claude-sonnet-4-6[1m]` / opus (paper) GEÇİCİ normal `claude-opus-4-8` (`[1m]` YOK)** — 2026-06-12 kullanıcı "geçici olarak opusları normal opus"; **gencmuh dahil tüm opus non-1m**; models.tsv güncel; **geri-al:** opus satırları→`[1m]`+respawn. suffix=42, dup yok (`guard --dry-run reopened=0`), mecdtfl KAPALI. Layout 7 ws (pin co39/anomaly42/rustrino42/ulaksec40; grup1 hc/hcr/evolvi; grup2 mo/kulturiot/gedikvm/gedikido). **ulaksec40** (pid 735921, work/sec — "dokunma/KORU") + **monitoring_temp** (pid 24636, `-`) → fleet dışı, KORU.
 
@@ -78,9 +80,9 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 **Kalıcı altyapı (✅ DONE.md):** Cold-boot (`boot`/`snapshot`/`recover`+autostart; boot.list=co+mo; isim: **hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops**). guard watchdog (OOM→`claudeops guard`, cron */2; **oomd'ye dokunma**). ⚠ autologin kapalı (sudo); boot models.tsv lookup eksik.
 
 **Yeni session yapacaklar:**
-1. **MEMORY.md** oku — [[claude-2169-session-detection]] + [[feedback-ho-stop-on-error]] + [[handover-procedure]] + [[handover-edge-cases]] + [[add-session-to-fleet]] + [[model-1m-context]] + [[oomd-cgroup-kill]].
+1. **MEMORY.md** oku — [[claude-2169-session-detection]] + [[feedback-ho-stop-on-error]] + **[[config-corruption-resume-hang]]** + [[handover-procedure]] + [[handover-edge-cases]] + [[add-session-to-fleet]] + [[model-1m-context]] + [[oomd-cgroup-kill]].
 2. **needs-ho:** `claudeops needs-ho --from-suffix=42`. **fleet kapalıysa:** `claudeops guard` (fix sayesinde fresh'leri görür, dup açmaz). **ho'da:** Faz2 = 2 ayrı rc (sonnet `[1m]` / opus **GEÇİCİ non-1m** — kullanıcı [1m]'e döndürmediyse); **EMEKLİ 4'ünü (rr/gedikvm/gedikido/kulturiot) DAHİL ETME**; API hatası varsa DUR; Faz 2 öncesi kullanıcı onayı al.
-3. **Açık TODO bug'lar:** (a) rc virgül, (b) layout orphan, (c) cancel Esc, (d) --model→auto, (e) handover --layout --group, (f) deep-ho, (g) boot models.tsv, **(h+j) rc/handover lock'u kendi al + kayıt bitene tut**, (i) --exclude base-name, (k) Faz1 bridge-verify NAME, (l) spawn-sonrası kayıt-doğrula.
+3. **Açık TODO bug'lar:** (a) rc virgül, (b) layout orphan, (c) cancel Esc, (d) --model→auto, (e) handover --layout --group, (f) deep-ho, (g) boot models.tsv, **(h+j) rc/handover lock'u kendi al + kayıt bitene tut**, (i) --exclude base-name, (k) Faz1 bridge-verify NAME, (l) spawn-sonrası kayıt-doğrula, **(m) handover'ı TEK TEK yap (sıralı) — toplu/eşzamanlı işlem `~/.claude.json`'u bozdu (2026-06-13, [[config-corruption-resume-hang]]); resume sonrası `python3 json.load(~/.claude.json)` ile config'i doğrula, bozulursa DUR**.
 
 **Açık kararlar:** (1) **Model: split; sonnet `[1m]` / opus GEÇİCİ non-1m** (2026-06-12; models.tsv güncel; geri-al: opus→`[1m]`+respawn). (2) **mamut** coding varsayımı. (3) **mecdtfl KAPALI** — review gelince aç (`#` kaldır + guard). (4) anomaly `rumeysa.zip` + rustrino `bench/results/` junk. (5) TOBEDECIDED #5. `~/.cache/huggingface` 29G KORU.
 
