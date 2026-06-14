@@ -2,6 +2,11 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-06-14 (handover \*43→\*44 BİTTİ + register/done-detection lag dersi)
+
+- ✅ **Tam handover \*43→\*44** (kullanıcı "44'e geçelim"): **Faz1** wrap-up tek-tek (10 HO: hc hcr mo vrk rustrino anomaly evolvi mamut aggroot gencmuh; 9 skip; **mamut `24d7ba2` + evolvi `4fe5f9b` (deney scriptleri) co-side**; hc'de 1.5-ay-eski stale `backup/today-changes` bırakıldı) → **Faz2** 19 \*44 tek-tek fresh `claude-opus-4-8[1m]` (config korundu) → **Faz3** layout 6-7 ws (pin co43/anomaly44/rustrino44/ulaksec43; grup1 hc/hcr/evolvi). co43 (self) + ulaksec43 (korunan; guard 40→43 bumplamış, konuşma OK) hariç. **Fable hâlâ "currently unavailable" → opus-1m.** dup yok, config VALID, suffix=44.
+- ⚠ **DERS — register/done-detection YANILTICI (aynı tuzağa 3 kez düştüm):** ÇALIŞAN süreçleri boşuna durdurdum — (1) wrap-up'ta "uniform 140s jsonl-stale → işlemiyor" sandım (git-commit'ler işlediğini kanıtladı), (2-3) Faz2'de "session.json bridge-field 60s boş → register yok" sandım (RC + kullanıcı "çalışıyor/remote ok" dedi). **session.json (bridge/status) + jsonl-stale GECİKMELİ yazılıyor → bunlara dayanıp çalışan süreci DURDURMA.** Güvenilir: **proc-varlığı + git-commit + kullanıcı-gözü**. Tek gerçek STOP sinyali: config BOZUK (json.load fail). [[config-corruption-resume-hang]] güncellendi.
+
 ## 2026-06-13 (ho faz1 → resume BLANK-hang çilesi → kök sebep bozuk ~/.claude.json → fix + TEK-TEK resume)
 
 - ⚠→✅ **"ho faz1 1m yok" → ~5 saatlik resume çilesi → ÇÖZÜLDÜ.** İstek: suffix42 wrap-up, 4 emekli (rr/gedikvm/gedikido/kulturiot) exclude, wrap-up resume opus-non-1m. **Faz1:** 11 temiz skip; 8 cls_needs (mo rustrino anomaly mamut hc hcr vrk gencmuh) reopen edildi AMA **hepsi BLANK-TUI'da asıldı** (session.json/bridge/socket/transcript-fd YOK, ep_poll, cursor home). Stragglerlar (mo/rustrino/vrk tracked-dirty + gencmuh translations + kulturiot önceden) **co-side commit+push** ile kurtarıldı (iş güvende).
