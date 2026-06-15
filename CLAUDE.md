@@ -20,7 +20,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 ## Model konvansiyonu
 
-- **Model (2026-06-13): TÜM aktif fleet `claude-opus-4-8[1m]`** (opus + 1M) + `--permission-mode=auto` + `--effort=max` + RC. **Split YOK** (06-13'te birleşti). Harita: **`~/.claude/claudeops/models.tsv`** (name→model). **19 aktif → opus-1m:** hc hcr mo vrk rustrino anomaly evolvi done mamut (coding 9) + aggroot oa hms hve qve rve emrgence araroot carla gencmuh (paper 10). **co** (self, claudeops) + **ulaksec** (korunan, work/sec — "dokunma") AYRI/dokunulmaz. **EMEKLİ (06-13 fleet'ten çıktı, kill'lendi):** rr, gedikvm, gedikido, kulturiot. (mecdtfl KAPALI.) **Fable denendi 06-13 ama "Claude Fable 5 currently unavailable" (Anthropic erişim) → opus-1m'e geçildi.** (Tarihçe: 05-30 tek → 06-01 split → 06-09 no-1m → 06-12 opus-non-1m → **06-13 all-opus-1m + 4 emekli**.)
+- **Model (2026-06-13): TÜM aktif fleet `claude-opus-4-8[1m]`** (opus + 1M) + `--permission-mode=auto` + `--effort=max` + RC. **Split YOK** (06-13'te birleşti). Harita: **`~/.claude/claudeops/models.tsv`** (name→model). **20 aktif → opus-1m:** hc hcr mo vrk rustrino anomaly evolvi done mamut (coding 9) + aggroot oa hms hve qve rve emrgence araroot carla gencmuh marwan (paper 11). **co** (self, claudeops) + **ulaksec** (korunan, work/sec — "dokunma") AYRI/dokunulmaz. **EMEKLİ (06-13 fleet'ten çıktı, kill'lendi):** rr, gedikvm, gedikido, kulturiot. (mecdtfl KAPALI.) **Fable denendi 06-13 ama "Claude Fable 5 currently unavailable" (Anthropic erişim) → opus-1m'e geçildi.** (Tarihçe: 05-30 tek → 06-01 split → 06-09 no-1m → 06-12 opus-non-1m → **06-13 all-opus-1m + 4 emekli**.)
 - `rc` flag'leri model-agnostic pass-through: `--model`, `--permission-mode`, `--effort` (low/medium/high/xhigh/max).
 
 ## Handover (3-fazlı, "ho" istek)
@@ -34,8 +34,8 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 # Faz 2 — respawn (suffix bump). ⚠⚠ ÖNCE: Faz1 sonrası session'lar SAĞLIKLI mı? (API hatası 503/529 YOK + RFH var)
 #   Hata/eksik varsa → DUR, kullanıcıya söyle, GEÇME. Faz 2 yıkıcı (KILL eder); kullanıcı onayı olmadan geçme. [[feedback-ho-stop-on-error]]
-#   ŞU AN (06-13): TÜM fleet opus-1m, split YOK → TEK rc (19 isim). ⚠ ama TEK-TEK aç (aşağı):
-./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> carla<F> gencmuh<F> \
+#   ŞU AN (06-13): TÜM fleet opus-1m, split YOK → TEK rc (20 isim). ⚠ ama TEK-TEK aç (aşağı):
+./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> carla<F> gencmuh<F> marwan<F> \
   --suffix=<TO> --new --kill-first --model='claude-opus-4-8[1m]' --permission-mode=auto --effort=max
 #   (self/co skip; mecdtfl + 4 EMEKLİ [rr/gedikvm/gedikido/kulturiot] DAHİL DEĞİL; --suffix→suffix-dosyası→guard *<TO>)
 #   ⚠⚠ TEK-TEK YAP (2026-06-13 dersi): toplu/eşzamanlı respawn ~/.claude.json'u BOZAR (truncated JSON → resume BLANK-hang).
@@ -67,7 +67,7 @@ Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
 
 ## READY FOR HANDOVER (2026-06-15)
 
-**✅ DURUM (2026-06-15 — handover \*44→\*45 BİTTİ):** co43 (self). Fleet **19 \*45, HEPSİ `claude-opus-4-8[1m]`** (opus+1M, split YOK), auto/max. suffix=45, **dup yok, config VALID** (TEK-TEK korundu), layout 6-7 ws (pin co43/anomaly45/rustrino45/ulaksec43; grup1 hc/hcr/evolvi). **co43** self + **ulaksec43** (work/sec, korunan; istenirse 40'a alınır). **4 EMEKLİ** (rr/gedikvm/gedikido/kulturiot) fleet dışı (models.tsv `# EMEKLİ`). Bu tur: Faz1 wrap-up tek-tek → Faz2 \*45 tek-tek → Faz3 layout. **Fable hâlâ "currently unavailable" → opus-1m.** ✅ **DERS UYGULANDI: bu sefer detection-lag'e KAPILMADIM** — register/done'u proc-varlığı + git-commit + kullanıcı-gözü ile doğruladım, bridge-field/jsonl-stale'e dayanıp çalışan süreci durdurmadım (06-14'te 3 kez boşuna durmuştum). [[config-corruption-resume-hang]]. (token bütçe bol.)
+**✅ DURUM (2026-06-15 — handover \*44→\*45 BİTTİ):** co43 (self). Fleet **20 \*45, HEPSİ `claude-opus-4-8[1m]`** (opus+1M, split YOK), auto/max. suffix=45, **dup yok, config VALID** (TEK-TEK korundu), layout 6-7 ws (pin co43/anomaly45/rustrino45/ulaksec43; grup1 hc/hcr/evolvi). **co43** self + **ulaksec43** (work/sec, korunan; istenirse 40'a alınır). **4 EMEKLİ** (rr/gedikvm/gedikido/kulturiot) fleet dışı (models.tsv `# EMEKLİ`). Bu tur: Faz1 wrap-up tek-tek → Faz2 \*45 tek-tek → Faz3 layout. **Fable hâlâ "currently unavailable" → opus-1m.** ✅ **DERS UYGULANDI: bu sefer detection-lag'e KAPILMADIM** — register/done'u proc-varlığı + git-commit + kullanıcı-gözü ile doğruladım, bridge-field/jsonl-stale'e dayanıp çalışan süreci durdurmadım (06-14'te 3 kez boşuna durmuştum). [[config-corruption-resume-hang]]. **+marwan45 sonradan eklendi (2026-06-15)** — Marwan kitabı son versiyon, paper/opus-1m, cwd `belge/backups/Marwan/marwan` (canlı çalışma kopyası; numaralı marwan_NNN snapshot'lar); roster+models+Faz2+layout senkron → fleet **20**. [[add-session-to-fleet]] (token bütçe bol.)
 
 **Kalıcı altyapı (✅ DONE.md):** Cold-boot (`boot`/`snapshot`/`recover`+autostart; boot.list=co+mo; isim: **hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops**). guard watchdog (OOM→`claudeops guard`, cron */2; **oomd'ye dokunma**). ⚠ autologin kapalı (sudo); boot models.tsv lookup eksik.
 

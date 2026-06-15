@@ -2,10 +2,11 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
-## 2026-06-15 (handover \*44→\*45 BİTTİ + detection-lag dersi UYGULANDI, panik yok)
+## 2026-06-15 (handover \*44→\*45 BİTTİ + detection-lag dersi UYGULANDI + marwan fleet'e eklendi)
 
 - ✅ **Tam handover \*44→\*45** (kullanıcı "45?"): **Faz1** wrap-up tek-tek → **Faz2** 19 \*45 tek-tek fresh `claude-opus-4-8[1m]` (her birinde proc-var + config `json.load` doğrulandı, **config VALID korundu**) → **Faz3** layout 6-7 ws (pin co43/anomaly45/rustrino45/ulaksec43; grup1 hc/hcr/evolvi). co43 (self) + ulaksec43 (korunan) hariç; 4 EMEKLİ fleet dışı. **Fable hâlâ "currently unavailable" → opus-1m.** dup yok, suffix=45.
 - ✅ **DERS UYGULANDI (06-14 tuzağının tersi):** bu tur register/done'u **proc-varlığı + git-commit + kullanıcı-gözü** ile doğruladım; bridge-field/jsonl-stale'e dayanıp çalışan süreci **bir kez bile boşuna durdurmadım** (06-14'te 3 kez düşmüştüm). Tek STOP sinyali config-BOZUK olarak kaldı — hiç tetiklenmedi. [[config-corruption-resume-hang]] kuralı işe yaradı.
+- ✅ **marwan fleet'e eklendi** (kullanıcı: "paperlar folder'ındaki merwan kitabımın son versiyonunu opus auto max ile aç + listene ekle"). Son ver. = canlı çalışma kopyası `belge/backups/Marwan/marwan` (mtime en yeni, kendi CLAUDE.md/todo.md/main.tex 598KB; numaralı `marwan_300…381` + tarihli dirler snapshot). [[add-session-to-fleet]] prosedürü: convention visible-spawn (`marwan45`, fresh, `claude-opus-4-8[1m]` auto/max) → RC proc UP doğrula → roster.tsv+models.tsv upsert (paper/opus-1m) → layout → `guard --dry-run reopened=0 skipped=22 no_cwd=0`. dup yok, cwd çözüldü (OOM-recoverable). CLAUDE.md fleet 19→**20** + Faz2 rc'ye `marwan<F>` eklendi. ⚠ Layout sırasında kullanıcının work/sec'teki 2. (manuel, stale "ulaksec43" başlıklı bare `claude`) penceresi pin'i çiftliyordu → kullanıcı kapattı (korunan RC ulaksec43 29023 sağ); ayrıca 2 kullanıcı-terminali (ssh maya@master3 + yerel shell) layout-orphan olarak sayıldı, DOKUNULMADI.
 
 ## 2026-06-14 (handover \*43→\*44 BİTTİ + register/done-detection lag dersi)
 
