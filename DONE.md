@@ -2,6 +2,11 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-06-15 (handover \*44→\*45 BİTTİ + detection-lag dersi UYGULANDI, panik yok)
+
+- ✅ **Tam handover \*44→\*45** (kullanıcı "45?"): **Faz1** wrap-up tek-tek → **Faz2** 19 \*45 tek-tek fresh `claude-opus-4-8[1m]` (her birinde proc-var + config `json.load` doğrulandı, **config VALID korundu**) → **Faz3** layout 6-7 ws (pin co43/anomaly45/rustrino45/ulaksec43; grup1 hc/hcr/evolvi). co43 (self) + ulaksec43 (korunan) hariç; 4 EMEKLİ fleet dışı. **Fable hâlâ "currently unavailable" → opus-1m.** dup yok, suffix=45.
+- ✅ **DERS UYGULANDI (06-14 tuzağının tersi):** bu tur register/done'u **proc-varlığı + git-commit + kullanıcı-gözü** ile doğruladım; bridge-field/jsonl-stale'e dayanıp çalışan süreci **bir kez bile boşuna durdurmadım** (06-14'te 3 kez düşmüştüm). Tek STOP sinyali config-BOZUK olarak kaldı — hiç tetiklenmedi. [[config-corruption-resume-hang]] kuralı işe yaradı.
+
 ## 2026-06-14 (handover \*43→\*44 BİTTİ + register/done-detection lag dersi)
 
 - ✅ **Tam handover \*43→\*44** (kullanıcı "44'e geçelim"): **Faz1** wrap-up tek-tek (10 HO: hc hcr mo vrk rustrino anomaly evolvi mamut aggroot gencmuh; 9 skip; **mamut `24d7ba2` + evolvi `4fe5f9b` (deney scriptleri) co-side**; hc'de 1.5-ay-eski stale `backup/today-changes` bırakıldı) → **Faz2** 19 \*44 tek-tek fresh `claude-opus-4-8[1m]` (config korundu) → **Faz3** layout 6-7 ws (pin co43/anomaly44/rustrino44/ulaksec43; grup1 hc/hcr/evolvi). co43 (self) + ulaksec43 (korunan; guard 40→43 bumplamış, konuşma OK) hariç. **Fable hâlâ "currently unavailable" → opus-1m.** dup yok, config VALID, suffix=44.
