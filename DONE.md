@@ -2,6 +2,11 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-06-16 (handover Faz1 -n bug fix + no-jsonl no-message fix)
+
+- ✅ **Faz1 `-n '$name'` eksikliği düzeltildi** (`claudeops:1394`): resume launch'ta `-n` yoktu → `sessions/<pid>.json` yazılmıyordu → bridge kaydı oluşmuyordu → remote'da görünmüyordu. Fix: `--resume '$sid' -n '$name' ...` olarak güncellendi.
+- ✅ **No-jsonl fresh-spawn'da mesaj kaldırıldı** (`claudeops:1397`): `--force` ile fresh session açılınca wrap-up mesajı gönderiliyordu (anlamsız). Fix: `has_jsonl=0` durumunda `$msg_esc` kaldırıldı; session sadece `-n + --remote-control` ile açılır.
+
 ## 2026-06-15/16 (ho *45→*46→*47 + split geri + opus-1m drop + hof47 + --claude-only)
 
 - ✅ **Handover \*45→\*46 (tam):** Faz1 wrap-up (8/11 HO; vrk co-side `ad2db5a`, evolvi origin-only/gitlab-diverge kaldı) → Faz2 20 × all-opus-1m TEK-TEK → Faz3 layout. Config VALID korundu.

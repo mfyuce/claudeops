@@ -46,7 +46,6 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 - **Wayland**: layout çalışmaz. **Terminal**: gnome-terminal hard-coded. **Permission modal**: `rc --kill-first`.
 - **Virgül-hedef**: parse yok, SPACE kullan (TODO). **Layout orphan terminal**: slot işgal (TODO).
-- **Faz1 `-n` eksik** (`claudeops:1381`): wrap-up SONRASI TUI başlığı eski suffix (KOZMETİK; Faz2 düzeltir; TODO-n).
 
 ## Meta
 
@@ -63,7 +62,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 2. `claudeops needs-ho --from-suffix=47` → kapalıysa `claudeops guard`.
 3. ho Faz 1 → kullanıcı onayı → **Faz 2** (2 rc, <F>=47 <TO>=48, TEK-TEK, config doğrula) → **Faz 3** layout.
 
-**Açık TODO bug'lar (kritik):** **(h+j) guard.lock kendi al + kayıt bitene tut; (m) TEK-TEK ho** ([[config-corruption-resume-hang]]); **(n) Faz1 `-n '$name'`** (`claudeops:1381`); (a) rc virgül; (b) orphan terminal. Tam: TODO.md.
+**Açık TODO bug'lar (kritik):** **(h+j) guard.lock kendi al + kayıt bitene tut; (m) TEK-TEK ho** ([[config-corruption-resume-hang]]); (a) rc virgül; (b) orphan terminal. Tam: TODO.md.
 **Açık kararlar:** (1) sonnet [1m] tutuldu. (2) mamut coding varsayımı. (3) mecdtfl KAPALI. (4) anomaly/rustrino junk. (5) TOBEDECIDED #5 açık-kaynak.
 
 READY FOR HANDOVER
