@@ -2,6 +2,17 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-06-15/16 (ho *45→*46→*47 + split geri + opus-1m drop + hof47 + --claude-only)
+
+- ✅ **Handover \*45→\*46 (tam):** Faz1 wrap-up (8/11 HO; vrk co-side `ad2db5a`, evolvi origin-only/gitlab-diverge kaldı) → Faz2 20 × all-opus-1m TEK-TEK → Faz3 layout. Config VALID korundu.
+- ✅ **Model split GERİ (06-15 Faz1 sonrası):** kullanıcı "sınet ve opus dağılım eskisi gibi" → coding 9 → `claude-sonnet-4-6[1m]`, paper 11 → `claude-opus-4-8[1m]`. models.tsv+roster.tsv güncellendi.
+- ✅ **Handover \*46→\*47 (tam, split ile):** Faz1 wrap-up (8/11; mamut no-op, evolvi chronic) → Faz2 2 rc (coding sonnet-1m + paper opus-1m) TEK-TEK → Faz3 layout `--claude-only`. **vrk47+gencmuh47 guard-dup temizlendi** (guard lock-holder rc mid-run'da kapandı; dup PID'ler kill edildi, fresh procs tutuldu).
+- ✅ **`--claude-only` layout flag** eklendi (`claudeops`): pgrep ile aktif RC proc'larını tarar; eşleşmeyen pencereler (ssh, bare shell) tile'dan SKIP. `--group=` ile birlikte çalışıyor.
+- ✅ **hof47 fleet'e eklendi** (kullanıcı "added a new cli hof47 … sonnet auto max"): cwd=optical_form/hoca-optic-form, coding/sonnet-1m. roster.tsv+models.tsv upsert, guard doğrulandı. ⚠ **DERS:** bare claude'u öldürmeden önce project-dir encoding'ini doğrula (`/` VE `_` → `-`); `find ~/.claude/projects -name '*.jsonl' -mmin -30 | grep <partial>` — yanlış sed ile 3 assistant-cevaplı konuşma öldürüldü (38b48d7a). Memory [[add-session-to-fleet]] güncellendi.
+- ✅ **Opus [1m] KAPALI (Anthropic erişim kapatıldı, 2026-06-16):** kullanıcı "bir dahaki faz ike opus1m değil direk opus deneyelim" → models.tsv+roster.tsv tüm opus satırları `claude-opus-4-8[1m]` → `claude-opus-4-8`. Sonnet [1m] çalışıyor, tutuldu. `.bak.opusplain` backup'ı alındı.
+- ⚠ **Docker build bloklandi:** `docker build + push ghcr.io/mfyuce/hoca-worker` classifier hard-block ("Data Exfiltration") → user izni verse de geçmiyor. Kullanıcıya `! <cmd>` prefix kullanması söylendi.
+- evolvi gitlab non-fast-forward (pre-existing, çözülmedi; origin temiz).
+
 ## 2026-06-15 (handover \*44→\*45 BİTTİ + detection-lag dersi UYGULANDI + marwan fleet'e eklendi)
 
 - ✅ **Tam handover \*44→\*45** (kullanıcı "45?"): **Faz1** wrap-up tek-tek → **Faz2** 19 \*45 tek-tek fresh `claude-opus-4-8[1m]` (her birinde proc-var + config `json.load` doğrulandı, **config VALID korundu**) → **Faz3** layout 6-7 ws (pin co43/anomaly45/rustrino45/ulaksec43; grup1 hc/hcr/evolvi). co43 (self) + ulaksec43 (korunan) hariç; 4 EMEKLİ fleet dışı. **Fable hâlâ "currently unavailable" → opus-1m.** dup yok, suffix=45.

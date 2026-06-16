@@ -2,80 +2,68 @@
 
 Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
-## Self Protection
+## Teknik kararlar ve Self Protection
 
-`find_self_claude_pid`: (1) `$CLAUDE_CODE_SESSION_ID` env var (Claude TUI çocuklara geçirir — nohup-detached'te tek güvenilir yol), (2) fallback `$$` ata zinciri. `all-but-self` buna bağlı; self'i ASLA hedef almaz.
-
-## Önemli teknik kararlar (kod-okumakla anlaşılmaz)
-
-- **stdin redirect** `< /dev/null`: `claude -p` her çağrıda zorunlu (stdin leak fix).
-- **`script -qfc` detached pty**: `nohup &` yetmez, Claude TUI gerçek terminal ister.
-- **Visible window**: `gnome-terminal -- bash -c "claude ...; exec bash"` (claude exit etse pencere bash'a düşer).
-- **wmctrl -s vs xprop**: sadece `wmctrl -s N` Mutter'da görsel switch tetikler.
-- **VTE keystroke rejection**: synthetic key (`xdotool type`/`key`) çoğu zaman REDDEDİLİR. Güvenilir prompt enjeksiyonu = **CLI argümanı**: `claude ... -n NAME --remote-control NAME 'PROMPT'` (Enter'sız otomatik). Idle/stuck session'a iş → kill + fresh-spawn böyle.
-- **`-n NAME` ≠ `--remote-control NAME`**: `-n` display, `--remote-control` RC bridge. Server-side bridge cache: aynı sid resume → RC name cache'li, değiştirmek için `--new`.
-- **claude 2.1.169 session keşfi (KRİTİK, fix `b8bad9e`)**: fresh `--new` session'lar `~/.claude/sessions/<pid>.json` **YAZMIYOR** (yalnız resume/içerikli olanlar yazıyor) → claudeops fresh'leri göremez, **guard onları 'down' sanıp DUPLICATE açar** (2026-06-09 gün boyu dup felaketinin kökü). Fix: `all_sessions_tsv` canlı `claude --remote-control NAME` proc'larından DA keşfeder (dedup session.json'u önceler). Fresh-only session list'te bridge `-` görünür. Detay: [[claude-2169-session-detection]].
-- **Layout in-place**: `xdotool windowmove` (**`--sync` YOK** — pencere hedefteyse hang) + `wmctrl -s` desktop-switch + `get_desktop` verify (pencere görünür değilse yanlış taşır) + read-back. Konum doğrulaması `xdotool getwindowgeometry` (wmctrl -G 2× raporluyor).
-- **1M context**: model ID'ye `[1m]` suffix → CLI `context-1m-2025-08-07` beta header ekler + context=1e6. Örn `claude-opus-4-8[1m]`. ⚠ **ŞU AN KAPALI** (2026-06-09 kullanıcı: "1m olmasın"); flag/mekanizma duruyor, kullanılmıyor. Detay: memory [[model-1m-context]].
+`find_self_claude_pid`: (1) `$CLAUDE_CODE_SESSION_ID` env var (nohup-detached'te tek güvenilir yol), (2) fallback `$$` ata zinciri. `all-but-self` buna bağlı — self'i ASLA hedef alamaz.
+- **stdin/pty**: `< /dev/null` her `-p`'de zorunlu. Spawn: `gnome-terminal -- bash -c "claude ...; exec bash"`. Detached: `script -qfc`. `nohup &` yetmez.
+- **VTE rejection**: synthetic key REDDEDİLİR. Güvenilir prompt = CLI argümanı: `-n NAME --remote-control NAME 'PROMPT'`. `-n` display, `--remote-control` RC bridge (ayrı); aynı sid resume → cache'li, değiştirmek için `--new`.
+- **claude 2.1.169 (KRİTİK, `b8bad9e`)**: fresh `--new` session'lar `sessions/<pid>.json` YAZMIYOR → guard DUP açar. Fix: proc-scan ile keşif. [[claude-2169-session-detection]].
+- **Layout**: `xdotool windowmove` (**`--sync` YOK** — hang) + `wmctrl -s` + `get_desktop` verify. `--claude-only`: sadece aktif RC proc'larını tile'la; ssh/bare terminaller SKIP.
+- **1M context**: model ID'ye `[1m]` suffix → beta header. **Opus [1m] KAPALI** (Anthropic, 2026-06-16); sonnet [1m] çalışıyor. [[model-1m-context]].
 
 ## Model konvansiyonu
 
-- **Model (2026-06-13): TÜM aktif fleet `claude-opus-4-8[1m]`** (opus + 1M) + `--permission-mode=auto` + `--effort=max` + RC. **Split YOK** (06-13'te birleşti). Harita: **`~/.claude/claudeops/models.tsv`** (name→model). **20 aktif → opus-1m:** hc hcr mo vrk rustrino anomaly evolvi done mamut (coding 9) + aggroot oa hms hve qve rve emrgence araroot carla gencmuh marwan (paper 11). **co** (self, claudeops) + **ulaksec** (korunan, work/sec — "dokunma") AYRI/dokunulmaz. **EMEKLİ (06-13 fleet'ten çıktı, kill'lendi):** rr, gedikvm, gedikido, kulturiot. (mecdtfl KAPALI.) **Fable denendi 06-13 ama "Claude Fable 5 currently unavailable" (Anthropic erişim) → opus-1m'e geçildi.** (Tarihçe: 05-30 tek → 06-01 split → 06-09 no-1m → 06-12 opus-non-1m → **06-13 all-opus-1m + 4 emekli**.)
-- `rc` flag'leri model-agnostic pass-through: `--model`, `--permission-mode`, `--effort` (low/medium/high/xhigh/max).
+**Split (2026-06-16)** — `~/.claude/claudeops/models.tsv` (name→model):
+- **Coding 10:** hc hcr mo vrk rustrino anomaly evolvi done mamut hof → `claude-sonnet-4-6[1m]` + auto/max
+- **Paper 11:** aggroot oa hms hve qve rve emrgence araroot carla gencmuh marwan → `claude-opus-4-8` + auto/max
+- **co** (self) → `claude-opus-4-8` AYRI/dokunulmaz. **ulaksec** (work/sec, "dokunma") → `claude-sonnet-4-6[1m]` AYRI.
+- **EMEKLİ (fleet dışı):** rr, gedikvm, gedikido, kulturiot. **mecdtfl KAPALI** (review gelince `#` kaldır + guard).
+- `rc` pass-through flag'leri: `--model`, `--permission-mode`, `--effort`.
 
 ## Handover (3-fazlı, "ho" istek)
 
 ```
 # Faz 1 — wrap-up (visible, sıralı, idle-only auto-skip)
-./claudeops handover --from-suffix=<FROM> [--exclude=name1,name2] [--model='claude-opus-4-8[1m]']
-#   ⚠ --model (2026-06-05): wrap-up resume'unu bu modelde aç. SONNET LİMİT dolunca sonnet
-#   session'larını opus'a resume edip wrap-up yaptır (konuşma geçmişi model-agnostik → limit bypass,
-#   bağlam korunur). vrk35 ho'sunda doğrulandı. ho_model boşsa eski davranış (session'ın kendi modeli).
+./claudeops handover --from-suffix=<FROM> [--model='claude-opus-4-8']
+# ⚠ --model: sonnet limit dolunca opus ile resume et (bağlam korunur)
 
-# Faz 2 — respawn (suffix bump). ⚠⚠ ÖNCE: Faz1 sonrası session'lar SAĞLIKLI mı? (API hatası 503/529 YOK + RFH var)
-#   Hata/eksik varsa → DUR, kullanıcıya söyle, GEÇME. Faz 2 yıkıcı (KILL eder); kullanıcı onayı olmadan geçme. [[feedback-ho-stop-on-error]]
-#   ŞU AN (06-13): TÜM fleet opus-1m, split YOK → TEK rc (20 isim). ⚠ ama TEK-TEK aç (aşağı):
-./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> carla<F> gencmuh<F> marwan<F> \
-  --suffix=<TO> --new --kill-first --model='claude-opus-4-8[1m]' --permission-mode=auto --effort=max
-#   (self/co skip; mecdtfl + 4 EMEKLİ [rr/gedikvm/gedikido/kulturiot] DAHİL DEĞİL; --suffix→suffix-dosyası→guard *<TO>)
-#   ⚠⚠ TEK-TEK YAP (2026-06-13 dersi): toplu/eşzamanlı respawn ~/.claude.json'u BOZAR (truncated JSON → resume BLANK-hang).
-#   Her session'ı tek tek aç → *<TO> kaydını (bridge) bekle → config'i `python3 -c "json.load(open(~/.claude.json))"` ile
-#   doğrula → bozuksa DUR (backups/'tan restore). [[config-corruption-resume-hang]] [[handover-edge-cases]]
-#   ⚠ guard-race: fix b8bad9e (2.1.169 proc-keşfi) SONRASI guard fresh proc'ları görür → dup riski büyük ölçüde azaldı; yine de kill→spawn boşluğu için Faz1+Faz2'de background lock-holder güvenli ([[handover-edge-cases]] edge-9). ⚠ Lock-holder'ı öldürürken parent bash DEĞİL `sleep` çocuğu da `fuser guard.lock` ile öldür (fd çocukta).
+# Faz 2 — respawn. ⚠⚠ Faz1 SAĞLIKLI? (503/529 YOK + RFH var) → değilse DUR; kullanıcı onayı olmadan geçme.
+# TEK-TEK aç; config: python3 -c "import json;json.load(open('$HOME/.claude.json'))" → BOZUK → DUR + backups/.
+# Register: bridge/jsonl YANILTICI (geç yazar) → proc+commit+kullanıcı-gözü. [[config-corruption-resume-hang]] [[feedback-ho-stop-on-error]]
+./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> \
+  --suffix=<TO> --new --kill-first --model='claude-sonnet-4-6[1m]' --permission-mode=auto --effort=max
+./claudeops rc aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> carla<F> gencmuh<F> marwan<F> \
+  --suffix=<TO> --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max
+# self/co skip; mecdtfl + 4 EMEKLİ dahil değil. [[handover-edge-cases]]
 
-# Faz 3 — layout (co+ulaksec ws0 pin; grup1=hc,hcr,evolvi; grup2 KALKTI — kulturiot/gedikvm/gedikido emekli, mo→serbest)
-./claudeops layout grid 4 --pin=co<SELF>,anomaly<TO>,rustrino<TO>,ulaksec40 --group=hc,hcr,evolvi
+# Faz 3 — layout
+./claudeops layout grid 4 --claude-only --pin=co<SELF>,anomaly<TO>,rustrino<TO>,ulaksec43 --group=hc,hcr,evolvi
 ```
-
-⚠ `[1m]` köşeli parantez için **tek tırnak ŞART** (shell glob). Target listesi **SPACE-separated** (virgül parse bug — TODO).
-⚠ `--group=` **base-name** alır (suffix'siz) → handover'da `<TO>` bump GEREKMEZ, sabit kalır. Tekrarlanabilir; her grup serbest-others'tan sonra kendi taze desktop'una blok yerleşir, asla bölünmez. 2 grup → ilk yazılan önce (düşük ws). 12 serbest-other ws1-3 → grup1 ws4, grup2 ws5.
-**Flag'ler:** `handover --force` (skip baypas; jsonl yoksa fresh-spawn) · `--layout [--pin=a,b]` (spawn bitince oto-tile) · `cancel <names>` (stuck modal'a Esc; inmezse `rc --kill-first`).
-**Skip kriteri (done):** jsonl'de RFH var + son RFH'den sonra yeni istek yok + repo temiz. `repo_dirty`: untracked saymaz; dirty = tracked-modified **veya** TÜM remote'lara push edilmemiş (çift remote github+gitlab, `@{u}` değil) **veya** behind. Pre-check 1× `git fetch --all` (20s).
-Detay: memory [[handover-procedure]] + [[handover-edge-cases]].
+⚠ `[1m]` **tek tırnak ŞART** (shell glob). Target **SPACE-separated** (virgül parse bug). `--group=` base-name (suffix'siz); grup, serbest-others'tan sonra taze desktop'a blok.
+**Skip kriteri:** RFH var + son RFH'den sonra yeni istek yok + repo temiz+pushed (github+gitlab). Detay: [[handover-procedure]] + [[handover-edge-cases]].
 
 ## Bilinen sınırlamalar / açık bug'lar
 
-- **Wayland**: layout çalışmaz (wmctrl X11-only). **Terminal**: gnome-terminal hard-coded.
-- **Permission modal**: RC'yi bloklar; garantili iptal = `rc --kill-first`.
-- **`rc <a,b,c>` virgül**: parse yok, SPACE kullan (TODO). **Layout orphan terminal**: window-name validation eksik, orphan quad slot işgal eder (TODO).
+- **Wayland**: layout çalışmaz. **Terminal**: gnome-terminal hard-coded. **Permission modal**: `rc --kill-first`.
+- **Virgül-hedef**: parse yok, SPACE kullan (TODO). **Layout orphan terminal**: slot işgal (TODO).
+- **Faz1 `-n` eksik** (`claudeops:1381`): wrap-up SONRASI TUI başlığı eski suffix (KOZMETİK; Faz2 düzeltir; TODO-n).
 
 ## Meta
 
-- `DONE.md` = de facto CHANGELOG. `desktops.local.md` = layout snapshot (gitignored).
-- Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
-- **Handover-prep MD sync** (her ho'da): (1) TODO'da tamamlanmış → DONE'a taşı+TODO'dan sil; (2) TOBEDECIDED'da karar verilmiş → TODO'ya taşı+sil.
+- `DONE.md` = CHANGELOG. Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
+- **Ho-prep sync** (her ho'da): TODO done → DONE'a taşı; TOBEDECIDED karar → TODO'ya taşı.
 
-## READY FOR HANDOVER (2026-06-15)
+## READY FOR HANDOVER (2026-06-16)
 
-**✅ DURUM (2026-06-15 — handover \*44→\*45 BİTTİ):** co43 (self). Fleet **20 \*45, HEPSİ `claude-opus-4-8[1m]`** (opus+1M, split YOK), auto/max. suffix=45, **dup yok, config VALID** (TEK-TEK korundu), layout 6-7 ws (pin co43/anomaly45/rustrino45/ulaksec43; grup1 hc/hcr/evolvi). **co43** self + **ulaksec43** (work/sec, korunan; istenirse 40'a alınır). **4 EMEKLİ** (rr/gedikvm/gedikido/kulturiot) fleet dışı (models.tsv `# EMEKLİ`). Bu tur: Faz1 wrap-up tek-tek → Faz2 \*45 tek-tek → Faz3 layout. **Fable hâlâ "currently unavailable" → opus-1m.** ✅ **DERS UYGULANDI: bu sefer detection-lag'e KAPILMADIM** — register/done'u proc-varlığı + git-commit + kullanıcı-gözü ile doğruladım, bridge-field/jsonl-stale'e dayanıp çalışan süreci durdurmadım (06-14'te 3 kez boşuna durmuştum). [[config-corruption-resume-hang]]. **+marwan45 sonradan eklendi (2026-06-15)** — Marwan kitabı son versiyon, paper/opus-1m, cwd `belge/backups/Marwan/marwan` (canlı çalışma kopyası; numaralı marwan_NNN snapshot'lar); roster+models+Faz2+layout senkron → fleet **20**. [[add-session-to-fleet]] (token bütçe bol.)
-
-**Kalıcı altyapı (✅ DONE.md):** Cold-boot (`boot`/`snapshot`/`recover`+autostart; boot.list=co+mo; isim: **hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops**). guard watchdog (OOM→`claudeops guard`, cron */2; **oomd'ye dokunma**). ⚠ autologin kapalı (sudo); boot models.tsv lookup eksik.
+**✅ DURUM:** co43 (self). Fleet **21 \*47** auto/max — coding 10 × sonnet-1m (hc hcr mo vrk rustrino anomaly evolvi done mamut hof) + paper 11 × opus-plain (aggroot oa hms hve qve rve emrgence araroot carla gencmuh marwan). +**hof47** (optical_form/hoca-optic-form, 2026-06-16). suffix=47, dup yok, config VALID. co43+ulaksec43 fleet-respawn dışı. 4 EMEKLİ fleet dışı. **Opus [1m] KAPALI** (Anthropic 2026-06-16) → models.tsv+roster.tsv plain opus. evolvi gitlab non-fast-forward (pre-existing). `~/.cache/huggingface` 29G KORU.
+**Altyapı ✅:** guard cron `*/2`, cold-boot autostart, boot.list=co+mo. isim: hc=videogen, hcr=hoca-reader, vrk=varaka, mo=machine_ops.
 
 **Yeni session yapacaklar:**
-1. **MEMORY.md** oku — [[claude-2169-session-detection]] + [[feedback-ho-stop-on-error]] + **[[config-corruption-resume-hang]]** + [[handover-procedure]] + [[handover-edge-cases]] + [[add-session-to-fleet]] + [[model-1m-context]] + [[oomd-cgroup-kill]].
-2. **needs-ho:** `claudeops needs-ho --from-suffix=45`. **fleet kapalıysa:** `claudeops guard`. **ho'da:** Faz2 = **TEK rc, hepsi `claude-opus-4-8[1m]`** (split YOK); **TEK-TEK aç + her birinden sonra config doğrula** ([[config-corruption-resume-hang]]); API hatası varsa DUR; Faz 2 öncesi kullanıcı onayı al. ⚠ **register/done'u bridge-field VEYA jsonl-stale ile bekleme — geç/yanıltıcı; proc-var + commit + kullanıcı-gözü kullan** (2026-06-14, boşuna 2 kez durdum). (4 emekli + co/ulaksec fleet-respawn dışı.)
-3. **Açık TODO bug'lar:** (a) rc virgül, (b) layout orphan, (c) cancel Esc, (d) --model→auto, (e) handover --layout --group, (f) deep-ho, (g) boot models.tsv, **(h+j) rc/handover lock'u kendi al + kayıt bitene tut**, (i) --exclude base-name, (k) Faz1 bridge-verify NAME, (l) spawn-sonrası kayıt-doğrula, **(m) handover'ı TEK TEK yap (sıralı) — toplu/eşzamanlı işlem `~/.claude.json`'u bozdu (2026-06-13, [[config-corruption-resume-hang]]); resume sonrası `python3 json.load(~/.claude.json)` ile config'i doğrula, bozulursa DUR**.
+1. MEMORY.md oku — [[config-corruption-resume-hang]] + [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-ho-stop-on-error]] + [[add-session-to-fleet]] + [[claude-2169-session-detection]].
+2. `claudeops needs-ho --from-suffix=47` → kapalıysa `claudeops guard`.
+3. ho Faz 1 → kullanıcı onayı → **Faz 2** (2 rc, <F>=47 <TO>=48, TEK-TEK, config doğrula) → **Faz 3** layout.
 
-**Açık kararlar:** (1) **Model: TÜM aktif `claude-opus-4-8[1m]`** (2026-06-13; split YOK; fable "unavailable" olunca seçildi; models.tsv güncel; fable açılırsa kullanıcı denemek isteyebilir). (2) **mamut** coding varsayımı. (3) **mecdtfl KAPALI** — review gelince aç (`#` kaldır + guard). (4) anomaly `rumeysa.zip` + rustrino `bench/results/` junk. (5) TOBEDECIDED #5. `~/.cache/huggingface` 29G KORU.
+**Açık TODO bug'lar (kritik):** **(h+j) guard.lock kendi al + kayıt bitene tut; (m) TEK-TEK ho** ([[config-corruption-resume-hang]]); **(n) Faz1 `-n '$name'`** (`claudeops:1381`); (a) rc virgül; (b) orphan terminal. Tam: TODO.md.
+**Açık kararlar:** (1) sonnet [1m] tutuldu. (2) mamut coding varsayımı. (3) mecdtfl KAPALI. (4) anomaly/rustrino junk. (5) TOBEDECIDED #5 açık-kaynak.
 
 READY FOR HANDOVER
