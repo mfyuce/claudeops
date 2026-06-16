@@ -814,6 +814,7 @@ cmd_layout() {
   local skip_self=1
   local skip_sticky=1   # sticky (all-desktops) pencerelere DOKUNMA (default)
   local reopen=0        # kill+switch-desktop+reopen-on-target (Mutter in-place move flakey)
+  local claude_only=0   # --claude-only: SADECE canlı claude RC session pencerelerini döşe (shell/ssh/diğer terminallere dokunma)
   local -a groups=()    # --group=base1,base2,...: bu session'lar tek desktop'ta blok (tekrarlanabilir)
   local server_override=""   # --server=PID: gtp'yi bu gnome-terminal-server'a sabitle (çok-server/app-id)
   for a in "$@"; do
@@ -825,6 +826,7 @@ cmd_layout() {
       --include-self) skip_self=0;;
       --include-sticky) skip_sticky=0;;
       --reopen|--reflow) reopen=1;;
+      --claude-only) claude_only=1;;
       [0-9]*) per="$a";;
     esac
   done
@@ -872,6 +874,13 @@ EOF
     local self_name; self_name=$(python3 -c "import json;print(json.load(open('$SESS_DIR/$self_pid.json')).get('name',''))" 2>/dev/null)
     [ -n "$self_name" ] && { pinned["$self_name"]=1; echo "self ($self_name) → ws0 pin"; }
   fi
+  # --claude-only: canlı claude RC session adlarını (proc-scan: --remote-control NAME, tırnaksız claude proc'u) topla.
+  # Pencere döngüsünde bu set'e VEYA pin'e uymayan pencere (shell/ssh/diğer terminal) ATLANIR.
+  declare -A claude_names=()
+  if [ "$claude_only" = "1" ]; then
+    while read -r cn; do [ -n "$cn" ] && claude_names["$cn"]=1; done < <(ps -eo args 2>/dev/null | grep -E '[c]laude ' | grep -oE -- 'remote-control [a-zA-Z][a-zA-Z0-9]*' | sed 's/remote-control //' | sort -u)
+    echo "claude-only: ${#claude_names[@]} canlı claude penceresi döşenecek (diğer terminaller atlanır)"
+  fi
   # Collect windows in two passes: pinned first, then others
   declare -a pin_wins=() oth_wins=()
   while IFS= read -r line; do
@@ -892,6 +901,10 @@ EOF
       continue
     fi
     local nm; nm=$(echo "$title" | awk '{print $1}')
+    if [ "$claude_only" = "1" ] && [ -z "${claude_names[$nm]:-}" ] && [ -z "${pinned[$nm]:-}" ]; then
+      echo "SKIP non-claude: $title"
+      continue
+    fi
     if [ -n "${pinned[$nm]:-}" ]; then
       pin_wins+=("$win|$nm")
     else
