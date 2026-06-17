@@ -14,9 +14,9 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 ## Model konvansiyonu
 
 **Split (2026-06-16)** — `~/.claude/claudeops/models.tsv` (name→model):
-- **Coding 10:** hc hcr mo vrk rustrino anomaly evolvi done mamut hof → `claude-sonnet-4-6[1m]` + auto/max
+- **Coding 10:** hc hcr mo vrk rustrino anomaly evolvi done mamut hof → `claude-sonnet-4-6` + auto/max (⚠ [1m] kapalı bu hafta: token kısıtı)
 - **Paper 11:** aggroot oa hms hve qve rve emrgence araroot carla gencmuh marwan → `claude-opus-4-8` + auto/max
-- **co** (self) → `claude-opus-4-8` AYRI/dokunulmaz. **ulaksec** (work/sec, "dokunma") → `claude-sonnet-4-6[1m]` AYRI.
+- **co** (self) → `claude-opus-4-8` AYRI/dokunulmaz. **ulaksec** (work/sec, "dokunma") → `claude-sonnet-4-6` AYRI.
 - **EMEKLİ (fleet dışı):** rr, gedikvm, gedikido, kulturiot. **mecdtfl KAPALI** (review gelince `#` kaldır + guard).
 - `rc` pass-through flag'leri: `--model`, `--permission-mode`, `--effort`.
 
@@ -31,9 +31,9 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 # TEK-TEK aç; config: python3 -c "import json;json.load(open('$HOME/.claude.json'))" → BOZUK → DUR + backups/.
 # Register: bridge/jsonl YANILTICI (geç yazar) → proc+commit+kullanıcı-gözü. [[config-corruption-resume-hang]] [[feedback-ho-stop-on-error]]
 ./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> \
-  --suffix=<TO> --new --kill-first --model='claude-sonnet-4-6[1m]' --permission-mode=auto --effort=max
+  --suffix=<TO> --new --kill-first --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
 ./claudeops rc aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> carla<F> gencmuh<F> marwan<F> \
-  --suffix=<TO> --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max
+  --suffix=<TO> --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max --one-by-one
 # self/co skip; mecdtfl + 4 EMEKLİ dahil değil. [[handover-edge-cases]]
 
 # Faz 3 — layout
