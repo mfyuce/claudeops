@@ -2,6 +2,16 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-06-17 (ho *47→*48→*49 + --one-by-one + guard.lock + proc-scan sweep + sase49)
+
+- ✅ **Handover \*47→\*48→\*49 (tam):** Faz1 wrap-up → Faz2 TEK-TEK `--one-by-one` → Faz3 layout. Faz1 `hcr47` orphan proc-scan sweep ile öldürüldü; `marwan47` fresh (no-jsonl, mesaj gönderilmedi, kullanıcı elle gönderdi). Config VALID korundu. suffix=49.
+- ✅ **`--one-by-one` flag (`cmd_rc`)** (`cc34928`): serial spawn — her session: spawn → sleep 5s → proc-check → `python3 json.load(~/.claude.json)` config-check → BOZUK ise DUR+return-3. Faz2 tek komutla TEK-TEK respawn artık mümkün (dışarıda script yazmak gerekmiyor).
+- ✅ **guard.lock `cmd_rc`'de alınıyor (TODO-h)** (`93f99df`): `exec 9>"$LOG_DIR/guard.lock"; flock 9` spawn döngüsü başında. Guard cron `flock -n 9` ile yarışırsa pes ediyor. *48 era'da gencmuh dup bu yüzden olmuştu (suffix güncellenip lock bırakılmadan önce guard girdi).
+- ✅ **proc-scan sweep kill-first** (`53fb62c`): `sessions/*.json` PID'e bağlı kill Faz 1 wrap-up sessionlarını gözden kaçırıyordu (`hcr48` gibi). Ek geçiş: `ps -eo pid,ppid,args | awk '$0 ~ "claude" && $0 ~ "remote-control NAME"'` → TERM+KILL. "Hep bir tane unutuyorsun" sistemik bug giderildi.
+- ✅ **sase49 fleet'e eklendi** (`a0b0806`): `yeterlilik2/belge/backups/sase/sase`, paper/opus, auto/max. roster.tsv+models.tsv upsert. Faz2 paper rc'ye `sase<F>` eklendi.
+- ✅ **carla KAPALI (revizyon bekler)** (`2469d44`): `#carla` models.tsv; guard respawn etmiyor. Kullanıcı `carla48`'i bir sonraki ho'da kapatacak.
+- ✅ **Sonnet [1m] bu hafta kapalı** (`2469d44`): token kısıtı; models.tsv `claude-sonnet-4-6[1m]` → `claude-sonnet-4-6` (tüm coding satırları). Kullanıcı söylediğinde geri açılacak.
+
 ## 2026-06-16 (handover Faz1 -n bug fix + no-jsonl no-message fix)
 
 - ✅ **Faz1 `-n '$name'` eksikliği düzeltildi** (`claudeops:1394`): resume launch'ta `-n` yoktu → `sessions/<pid>.json` yazılmıyordu → bridge kaydı oluşmuyordu → remote'da görünmüyordu. Fix: `--resume '$sid' -n '$name' ...` olarak güncellendi.
