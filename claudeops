@@ -701,6 +701,23 @@ except: print('gone')
         [ "$pbc" = "bash" ] && kill -KILL "$pbash" 2>/dev/null
       fi
     fi
+    # Proc-scan sweep: sessions/*.json pid stale/yanlışsa gerçek proc'u öldür.
+    # Faz 1 wrap-up sessionları burada yakalanır (hep bir tane kalma sorunu).
+    if [ "$kill_first" = "1" ]; then
+      while IFS= read -r ep_line; do
+        [ -z "$ep_line" ] && continue
+        local ep_pid ep_ppid
+        ep_pid=$(echo "$ep_line" | awk '{print $1}')
+        ep_ppid=$(echo "$ep_line" | awk '{print $2}')
+        [ "$ep_pid" = "$pid" ] && continue   # zaten kill edildi
+        [ "$ep_pid" = "$sp" ] && continue    # self değil
+        kill -TERM "$ep_pid" 2>/dev/null; sleep 0.3; kill -KILL "$ep_pid" 2>/dev/null
+        local ep_pcom; ep_pcom=$(ps -o comm= -p "$ep_ppid" 2>/dev/null | tr -d ' ')
+        [ "$ep_pcom" = "bash" ] && kill -KILL "$ep_ppid" 2>/dev/null
+        echo "  → proc-scan kill: $name pid=$ep_pid (parent=$ep_ppid)"
+      done < <(ps -eo pid,ppid,args 2>/dev/null | \
+               awk -v n="$name" '$0 ~ "[c]laude" && $0 ~ "remote-control " n "( |'\''|\")" {print $1, $2}')
+    fi
     # Switch to old desktop before spawning new window
     if [ -n "$old_desk" ] && [ "$old_desk" != "-1" ] && [ "$old_desk" -ge 0 ] 2>/dev/null; then
       wmctrl -s "$old_desk" 2>/dev/null
