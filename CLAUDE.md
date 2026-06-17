@@ -15,9 +15,9 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 **Split (2026-06-16)** — `~/.claude/claudeops/models.tsv` (name→model):
 - **Coding 10:** hc hcr mo vrk rustrino anomaly evolvi done mamut hof → `claude-sonnet-4-6` + auto/max (⚠ [1m] kapalı bu hafta: token kısıtı)
-- **Paper 11:** aggroot oa hms hve qve rve emrgence araroot carla gencmuh marwan → `claude-opus-4-8` + auto/max
+- **Paper 10:** aggroot oa hms hve qve rve emrgence araroot gencmuh marwan → `claude-opus-4-8` + auto/max
 - **co** (self) → `claude-opus-4-8` AYRI/dokunulmaz. **ulaksec** (work/sec, "dokunma") → `claude-sonnet-4-6` AYRI.
-- **EMEKLİ (fleet dışı):** rr, gedikvm, gedikido, kulturiot. **mecdtfl KAPALI** (review gelince `#` kaldır + guard).
+- **EMEKLİ (fleet dışı):** rr, gedikvm, gedikido, kulturiot. **KAPALI (revizyon bekler):** mecdtfl, carla (`#` kaldır + guard).
 - `rc` pass-through flag'leri: `--model`, `--permission-mode`, `--effort`.
 
 ## Handover (3-fazlı, "ho" istek)
