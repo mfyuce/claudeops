@@ -626,6 +626,12 @@ EOF
   local sp; sp=$(self_pid 2>/dev/null || echo "")
   local gtp_rc; gtp_rc=$(ps -eo pid,comm | awk '$2 == "gnome-terminal-" {print $1; exit}')
 
+  # guard.lock: guard cron'u bu rc çalışırken spawn yapmasın (race → duplicate session).
+  # Blocking flock — guard flock -n ile non-blocking alıyor, buradayken sessizce çıkar.
+  # fd 9 fonksiyon bitince (return veya exit) kapanır → kilit otomatik serbest kalır.
+  exec 9>"$LOG_DIR/guard.lock"
+  flock 9
+
   # WARN: name-list mode'da eşleşmeyen hedefleri uyar (orphan case)
   # Vaka: Faz 1'de session kill edilmiş + Faz 2 rc --new --kill-first <name>21 ...
   # mevcut <name>21 yoksa sessizce skip ediliyordu → fresh spawn olmuyor.
@@ -751,11 +757,13 @@ except: print('gone')
       echo "  → $effective_name proc=$oo_p config=$oo_cfg"
       if [ "$oo_cfg" != "VALID" ]; then
         echo "!!! CONFIG BOZUK at $effective_name — STOP (restore: ls ~/.claude/backups/)"
+        flock -u 9 2>/dev/null
         return 3
       fi
       [ "$oo_p" -ge 1 ] && oo_ok=$((oo_ok+1)) || oo_fail="$oo_fail $effective_name"
     fi
   done <<<"$rows"
+  flock -u 9 2>/dev/null  # guard.lock serbest — artık guard çalışabilir
   if [ "$one_by_one" = "1" ]; then
     echo "=== rc --one-by-one: ok=$oo_ok fail:${oo_fail:-none} config=VALID ==="
   fi
