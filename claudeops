@@ -585,6 +585,8 @@ cmd_rc() {
   local preserve_desktop=1
   local app_id=""            # --app-id=X: gnome-terminal'i ayrı server instance'ında aç (wedged server bypass)
   local pace=2               # --pace=N: spawn'lar arası bekleme (rapid spawn server'ı wedge'ler → yavaşlat)
+  local one_by_one=0         # --one-by-one: serial spawn — her session sonrası proc+config doğrula, BOZUK'ta dur
+  local oo_ok=0 oo_fail=""
   for a in "$@"; do
     case "$a" in
       --detached|--headless) mode="detached";;
@@ -602,6 +604,7 @@ cmd_rc() {
       --no-preserve-desktop) preserve_desktop=0;;
       --app-id=*)            app_id="${a#--app-id=}";;
       --pace=*)              pace="${a#--pace=}";;
+      --one-by-one)          one_by_one=1;;
     esac
   done
   [ -z "$target" ] && {
@@ -615,6 +618,7 @@ seçenekler:
   --rename=<yeni>    aynı sessionId resume ama yeni name (tek hedef için)
   --suffix=<n>       toplu rename: name'in son rakam-grubunu <n> ile değiştirir
                      (örn --suffix=14 → carla13→carla14, rve13→rve14)
+  --one-by-one       serial spawn: her session sonrası proc+config doğrula, BOZUK'ta dur
 EOF
     return 2
   }
@@ -739,7 +743,22 @@ except: print('gone')
     # Sonraki needs-ho: HEAD bundan farklıysa → yeni iş → ho gerek ("commit after ho").
     [ "$new_session" = "1" ] && _repo_baseline_set "$cwd"
     sleep "$pace"
+    if [ "$one_by_one" = "1" ]; then
+      sleep 5  # toplam ~7s: proc kayıt + config write tamamlansın
+      local oo_p oo_cfg
+      oo_p=$(ps -eo args 2>/dev/null | grep -E '[c]laude ' | grep -c -- "remote-control $effective_name\\b" || echo 0)
+      oo_cfg=$(python3 -c "import json;json.load(open('$HOME/.claude.json'))" 2>/dev/null && echo VALID || echo BOZUK)
+      echo "  → $effective_name proc=$oo_p config=$oo_cfg"
+      if [ "$oo_cfg" != "VALID" ]; then
+        echo "!!! CONFIG BOZUK at $effective_name — STOP (restore: ls ~/.claude/backups/)"
+        return 3
+      fi
+      [ "$oo_p" -ge 1 ] && oo_ok=$((oo_ok+1)) || oo_fail="$oo_fail $effective_name"
+    fi
   done <<<"$rows"
+  if [ "$one_by_one" = "1" ]; then
+    echo "=== rc --one-by-one: ok=$oo_ok fail:${oo_fail:-none} config=VALID ==="
+  fi
   # son: ana desktop'a dön
   [ "$preserve_desktop" = "1" ] && [ "$kill_first" = "1" ] && wmctrl -s 0 2>/dev/null
   sleep 6
