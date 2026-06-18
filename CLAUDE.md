@@ -15,7 +15,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 - **Coding 10** (hc hcr mo vrk rustrino anomaly evolvi done mamut hof) → `claude-sonnet-4-6` plain
 - **Paper 11** (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase) → `claude-opus-4-8` plain
-- **co** (self) + **ulaksec** → AYRI, dokunulmaz. **EMEKLİ:** rr gedikvm gedikido kulturiot. **KAPALI:** mecdtfl, carla (`#` kaldır açmak için).
+- **co** (self) + **ulaksec** → models.tsv'de AKTİF (guard crash-recovery'de ayakta tutsun — istenen). AMA **handover YAPMAZ**: co self (filter_not_self), ulaksec base-name exclude. ⚠ guard die olunca onları fleet suffix'ine bumplar (co43→co50) → ho `--from-suffix=N` artık eşleşir → ho co+ulaksec'i base-name ile atlamalı (TODO-n). **EMEKLİ:** rr gedikvm gedikido kulturiot. **KAPALI:** mecdtfl, carla (`#` kaldır açmak için).
 
 ## Handover (3-fazlı)
 

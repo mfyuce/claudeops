@@ -35,6 +35,11 @@
 - **Soru:** Hangi ayrım modeli? Public repo'da ne kalsın, ne lokal olsun?
 - **Karar:** ? (konuşulacak — kullanıcı, 2026-05-26)
 
+### 6) Web server üzerinden claudeops yönetimi
+- **Bağlam:** claudeops şu an yerel bash CLI + gnome-terminal. Soru: fleet yönetimi (list, rc, handover, layout) bir web sunucusu üzerinden yapılabilir mi? Olası yaklaşımlar: (a) claudeops komutlarını wrap eden minimal HTTP API (FastAPI/Flask); (b) Claude.ai web arayüzü üzerinden RC bridge ile uzaktan kontrol; (c) tamamen web tabanlı UI (TODO'daki Python UI maddesinin web versiyonu). Ana engeller: layout (xdotool/Wayland), gnome-terminal spawn, display ortamı — bunlar yerel masaüstü gerektiriyor; uzaktan sadece RC/send/list/kill mantıklı.
+- **Soru:** Hangi komutlar web'den anlamlı? Sadece RC/send/status mu, yoksa tam fleet yönetimi mi?
+- **Karar:** ? (2026-06-18)
+
 ## Kapatılmış (karar verildi)
 
 ### Layout default per-desktop sayısı
