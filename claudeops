@@ -291,20 +291,49 @@ _suffix_set() { [ -n "${1:-}" ] && { mkdir -p "$STATE_DIR" 2>/dev/null; printf '
 # ── Recover: bir cwd'nin EN GÜNCEL transcript'inin sid'i (jsonl reboot'tan sağ çıkar) ──
 # Encoding lossy (cwd→dir çözülmez) → ters yön: jsonl içeriğindeki gerçek "cwd" eşleştir.
 # boot bununla --resume eder → geçmiş korunur, sid compaction'da değişse de en taze bulunur.
+# Bir jsonl "artefakt" mı? = içinde HİÇ gerçek user turn'ü yok.
+# Reboot sonrası boş spawn jsonl'leri (ilk-user="session", system-reminder, wrap-up promptu)
+# en yeni mtime'a sahip olunca gerçek konuşmanın önüne geçiyordu → recovery boş açıyordu (TODO-o).
+# exit 0 = artefakt (gerçek yok) ; exit 1 = gerçek konuşma. python yoksa → non-zero → güvenli
+# (çağıran "gerçek" sayar = eski davranış).
+_is_artifact_jsonl() {
+  python3 - "$1" <<'PY' 2>/dev/null
+import json,sys
+p=sys.argv[1]; real=0
+try:
+    for l in open(p):
+        try: d=json.loads(l)
+        except: continue
+        if d.get('type')!='user': continue
+        m=d.get('message',{}); c=m.get('content','') if isinstance(m,dict) else ''
+        if isinstance(c,list): c=' '.join(str(x.get('text','')) for x in c if isinstance(x,dict))
+        c=str(c).strip()
+        if not c or c.startswith('<') or c=='session': continue
+        if 'READY FOR HANDOVER' in c or 'KALDIĞIMIZ YER' in c or 'wrap-up' in c.lower(): continue
+        real+=1; break
+except: pass
+sys.exit(0 if real==0 else 1)
+PY
+}
+
 _latest_sid_for_cwd() {
-  local cwd="$1"
+  local cwd="$1" fallback=""
   # Sadece ESAS interaktif session'lar resume edilebilir. Subagent/sidechain transcript'leri
   # (agent-*.jsonl) resume edilemez — bunlar en güncel mtime'a sahip olunca guard çöp sid
   # ('agent-a2...') resume etmeye çalışıyordu. UUID-isimli + agent- olmayan dosyalara kısıtla.
-  find "$HOME/.claude/projects" -name '*.jsonl' ! -name 'agent-*' -newermt '21 days ago' -printf '%T@\t%p\n' 2>/dev/null \
-   | sort -rn \
-   | while IFS=$'\t' read -r t p; do
-       local b; b=$(basename "$p" .jsonl)
-       # UUID değilse (subagent/diğer) atla
-       case "$b" in [0-9a-f]*-*-*-*-*) ;; *) continue;; esac
-       local c; c=$(grep -m1 -oE '"cwd":"[^"]*"' "$p" 2>/dev/null | head -1 | sed 's/"cwd":"//;s/"$//')
-       [ "$c" = "$cwd" ] && { echo "$b"; break; }
-     done
+  # ARTEFAKT-SKIP (TODO-o, 2026-06-18): en yeni mtime eşleşen artefakt (boş spawn, reboot
+  # sonrası) ise atla, ilk GERÇEK konuşmayı döndür. Hepsi artefaktsa en yeni eşleşene düş.
+  # Kural (kullanıcı): "restart → cron en son GERÇEK kaldığımız yerden açsın, ho olsun olmasın."
+  while IFS=$'\t' read -r t p; do
+    local b; b=$(basename "$p" .jsonl)
+    # UUID değilse (subagent/diğer) atla
+    case "$b" in [0-9a-f]*-*-*-*-*) ;; *) continue;; esac
+    local c; c=$(grep -m1 -oE '"cwd":"[^"]*"' "$p" 2>/dev/null | head -1 | sed 's/"cwd":"//;s/"$//')
+    [ "$c" = "$cwd" ] || continue
+    [ -z "$fallback" ] && fallback="$b"                       # en yeni eşleşen (fallback)
+    if ! _is_artifact_jsonl "$p"; then echo "$b"; return; fi  # ilk gerçek konuşma → dön
+  done < <(find "$HOME/.claude/projects" -name '*.jsonl' ! -name 'agent-*' -newermt '21 days ago' -printf '%T@\t%p\n' 2>/dev/null | sort -rn)
+  [ -n "$fallback" ] && echo "$fallback"
 }
 
 repo_untracked_count() {
