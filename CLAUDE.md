@@ -48,17 +48,19 @@ Target virgül parse yok (SPACE kullan, TODO-a). Layout orphan terminal slot iş
 `DONE.md` = CHANGELOG. Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
-## READY FOR HANDOVER (2026-06-17)
+## READY FOR HANDOVER (2026-06-19)
 
-**✅ DURUM:** co43 (self). Fleet **21 \*49** auto/max — coding 10 × sonnet-plain (hc hcr mo vrk rustrino anomaly evolvi done mamut hof) + paper 11 × opus-plain (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase). +**sase49** (yeterlilik2/sase, 2026-06-17). suffix=49, dup yok, config VALID. co43+ulaksec43 fleet-respawn dışı. 4 EMEKLİ fleet dışı. **Opus [1m] KAPALI** (Anthropic 2026-06-16); **Sonnet [1m] bu hafta kapalı** (token kısıtı) → models.tsv plain. **carla KAPALI** (revizyon bekler; `#carla` models.tsv). evolvi gitlab non-fast-forward (pre-existing). `~/.cache/huggingface` 29G KORU.
-**Altyapı ✅:** guard cron `*/2`, cold-boot autostart, boot.list=co+mo. isim: hc=videogen, hcr=hoca-reader, vrk=varaka, mo=machine_ops.
+**✅ DURUM:** co50 (self). Fleet **24 \*51** (+co50 +ulaksec50 = 26 guard-takipli) auto/max — coding 12 × sonnet-plain (hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc) + paper 12 × opus-plain (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot). suffix=51, dup yok, config VALID. **co50+ulaksec50 *50'de** (fleet *51) → handover dışı: `--from-suffix=51` doğal atlar; guard *51'e bumplarsa `--exclude=ulaksec51` / TODO-n. 4 EMEKLİ fleet dışı. **Opus [1m] KAPALI**; **Sonnet [1m] kapalı** → models.tsv plain. **carla/mecdtfl KAPALI** (`#`). `~/.cache/huggingface` 29G KORU.
+**Bugün (2026-06-18→19):** makine **16:06 reboot** (ACPI EC donanım, fleet/oomd DEĞİL — [[reboot-no-handover]]) → recovery. **cron artefakt-skip fix** deploy+commit (TODO-o: `_latest_sid_for_cwd` boş post-boot artefaktı atlar, en son GERÇEK konuşmayı açar — `4f0543b`). mo50 gerçek konuşmaya repoint (1e6e54b7). **iggy+vc (coding) + trroot (paper, resume a8dd981b) eklendi** (`35ec745`). ho *50→*51 tam.
+**Altyapı ✅:** guard cron `*/2`, cold-boot autostart, boot.list=co+mo. isim: hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops iggy=ng_sdn/iggy vc=virtual_court trroot=tr_root.
 
 **Yeni session yapacaklar:**
-1. MEMORY.md oku — [[config-corruption-resume-hang]] + [[handover-procedure]] + [[handover-edge-cases]] + [[feedback-ho-stop-on-error]] + [[add-session-to-fleet]] + [[claude-2169-session-detection]].
-2. `claudeops needs-ho --from-suffix=49` → kapalıysa `claudeops guard`.
-3. ho Faz 1 → kullanıcı onayı → **Faz 2** (2 rc, <F>=49 <TO>=50, `--one-by-one`, config doğrula) → **Faz 3** layout.
+1. MEMORY.md oku — [[reboot-no-handover]] + [[co-ulaksec-guard-yes-ho-no]] + [[config-corruption-resume-hang]] + [[handover-procedure]] + [[handover-edge-cases]] + [[add-session-to-fleet]].
+2. **ho isteği gelince İLK `uptime -s`** — reboot yakınsa (≤~30dk) handover ÇALIŞTIRMA, cron toparlar [[reboot-no-handover]].
+3. `claudeops needs-ho --from-suffix=51` → kapalıysa `claudeops guard`.
+4. ho Faz 1 → kullanıcı onayı → **Faz 2** (2 rc, <F>=51 <TO>=52, `--one-by-one`, config doğrula) → **Faz 3** layout (26 session → `claudeops desktops 8`).
 
-**Açık TODO bug'lar (kritik):** (a) rc virgül; (b) orphan terminal; (j) guard.lock kayıt-bitmesini beklesin; (k) bridge-verify name-only. Tam: TODO.md.
-**Açık kararlar:** (1) sonnet [1m] bu hafta kapalı → kullanıcı açacak. (2) mamut coding varsayımı. (3) mecdtfl KAPALI. (4) anomaly/rustrino junk. (5) TOBEDECIDED #5 açık-kaynak.
+**Açık TODO bug'lar (kritik):** (a) rc virgül; (b) orphan terminal; (j) guard.lock kayıt-bekle; (k) bridge-verify name-only; (m) handover sid=- cwd fallback; (n) ho co+ulaksec base-name exclude. Tam: TODO.md.
+**Açık kararlar:** (1) sonnet [1m] kapalı. (2) sase/marwan reboot-öncesi konuşma crash'te kayıp (post-boot yeni konuşmayla devam). (3) TOBEDECIDED #5 açık-kaynak, #6 web server.
 
 READY FOR HANDOVER
