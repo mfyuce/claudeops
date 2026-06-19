@@ -13,8 +13,8 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 ## Model (`~/.claude/claudeops/models.tsv`)
 
-- **Coding 10** (hc hcr mo vrk rustrino anomaly evolvi done mamut hof) → `claude-sonnet-4-6` plain
-- **Paper 11** (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase) → `claude-opus-4-8` plain
+- **Coding 12** (hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc) → `claude-sonnet-4-6` plain
+- **Paper 12** (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot) → `claude-opus-4-8` plain
 - **co** (self) + **ulaksec** → models.tsv'de AKTİF (guard crash-recovery'de ayakta tutsun — istenen). AMA **handover YAPMAZ**: co self (filter_not_self), ulaksec base-name exclude. ⚠ guard die olunca onları fleet suffix'ine bumplar (co43→co50) → ho `--from-suffix=N` artık eşleşir → ho co+ulaksec'i base-name ile atlamalı (TODO-n). **EMEKLİ:** rr gedikvm gedikido kulturiot. **KAPALI:** mecdtfl, carla (`#` kaldır açmak için).
 
 ## Handover (3-fazlı)
@@ -25,13 +25,14 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 # Faz 2 — ⚠ Faz1 SAĞLIKLI? (RFH var, 503/529 yok) → değilse DUR; kullanıcı onayı şart.
 # TEK-TEK; config doğrula: python3 -c "import json;json.load(open('$HOME/.claude.json'))"
-./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> \
+./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> iggy<F> vc<F> \
   --suffix=<TO> --new --kill-first --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
-./claudeops rc aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> gencmuh<F> marwan<F> sase<F> \
+./claudeops rc aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> gencmuh<F> marwan<F> sase<F> trroot<F> \
   --suffix=<TO> --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max --one-by-one
 
-# Faz 3
-./claudeops layout grid 4 --claude-only --pin=co<SELF>,anomaly<TO>,rustrino<TO>,ulaksec43 --group=hc,hcr,evolvi
+# Faz 3 — ws0 pin: co(self)+rustrino+anomaly+iggy (anomaly+iggy yan yana); ulaksec pin'siz → ws1
+# --group tekrarlanabilir. 26 session → önce `claudeops desktops 8` gerekebilir.
+./claudeops layout grid 4 --claude-only --pin=co<SELF>,rustrino<TO>,anomaly<TO>,iggy<TO> --group=hc,hcr,evolvi --group=vc,vrk
 ```
 ⚠ `[1m]` **tek tırnak ŞART** (shell glob). Target **SPACE-separated** (virgül parse bug). `--group=` base-name (suffix'siz).
 **Skip kriteri:** RFH var + son RFH'den sonra yeni istek yok + repo temiz+pushed (github+gitlab).
