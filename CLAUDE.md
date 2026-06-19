@@ -13,7 +13,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 ## Model (`~/.claude/claudeops/models.tsv`)
 
-- **Coding 12** (hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc) → `claude-sonnet-4-6` plain
+- **Coding 13** (hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc asp) → `claude-sonnet-4-6` plain
 - **Paper 12** (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot) → `claude-opus-4-8` plain
 - **co** (self) + **ulaksec** → models.tsv'de AKTİF (guard crash-recovery'de ayakta tutsun — istenen). AMA **handover YAPMAZ**: co self (filter_not_self), ulaksec base-name exclude. ⚠ guard die olunca onları fleet suffix'ine bumplar (co43→co50) → ho `--from-suffix=N` artık eşleşir → ho co+ulaksec'i base-name ile atlamalı (TODO-n). **EMEKLİ:** rr gedikvm gedikido kulturiot. **KAPALI:** mecdtfl, carla (`#` kaldır açmak için).
 
@@ -25,7 +25,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 
 # Faz 2 — ⚠ Faz1 SAĞLIKLI? (RFH var, 503/529 yok) → değilse DUR; kullanıcı onayı şart.
 # TEK-TEK; config doğrula: python3 -c "import json;json.load(open('$HOME/.claude.json'))"
-./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> iggy<F> vc<F> \
+./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> iggy<F> vc<F> asp<F> \
   --suffix=<TO> --new --kill-first --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
 ./claudeops rc aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> gencmuh<F> marwan<F> sase<F> trroot<F> \
   --suffix=<TO> --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max --one-by-one
@@ -50,9 +50,9 @@ Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
 ## READY FOR HANDOVER (2026-06-19)
 
-**✅ DURUM:** co50 (self). Fleet **24 \*51** (+co50 +ulaksec50 = 26 guard-takipli) auto/max — coding 12 × sonnet-plain (hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc) + paper 12 × opus-plain (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot). suffix=51, dup yok, config VALID. **co50+ulaksec50 *50'de** (fleet *51) → handover dışı: `--from-suffix=51` doğal atlar; guard *51'e bumplarsa `--exclude=ulaksec51` / TODO-n. 4 EMEKLİ fleet dışı. **Opus [1m] KAPALI**; **Sonnet [1m] kapalı** → models.tsv plain. **carla/mecdtfl KAPALI** (`#`). `~/.cache/huggingface` 29G KORU.
-**Bugün (2026-06-18→19):** makine **16:06 reboot** (ACPI EC donanım, fleet/oomd DEĞİL — [[reboot-no-handover]]) → recovery. **cron artefakt-skip fix** deploy+commit (TODO-o: `_latest_sid_for_cwd` boş post-boot artefaktı atlar, en son GERÇEK konuşmayı açar — `4f0543b`). mo50 gerçek konuşmaya repoint (1e6e54b7). **iggy+vc (coding) + trroot (paper, resume a8dd981b) eklendi** (`35ec745`). ho *50→*51 tam.
-**Altyapı ✅:** guard cron `*/2`, cold-boot autostart, boot.list=co+mo. isim: hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops iggy=ng_sdn/iggy vc=virtual_court trroot=tr_root.
+**✅ DURUM:** co50 (self). Fleet **25 \*51** (+co50 +ulaksec50 = 27 guard-takipli) auto/max — coding 13 × sonnet-plain (hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc asp) + paper 12 × opus-plain (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot). suffix=51, dup yok, config VALID. **co50+ulaksec50 *50'de** (fleet *51) → handover dışı: `--from-suffix=51` doğal atlar; guard *51'e bumplarsa `--exclude=ulaksec51` / TODO-n. 4 EMEKLİ fleet dışı. **Opus [1m] KAPALI**; **Sonnet [1m] kapalı** → models.tsv plain. **carla/mecdtfl KAPALI** (`#`). `~/.cache/huggingface` 29G KORU.
+**Bugün (2026-06-18→19):** makine **16:06 reboot** (ACPI EC donanım, fleet/oomd DEĞİL — [[reboot-no-handover]]) → recovery. **cron artefakt-skip fix** deploy+commit (TODO-o: `_latest_sid_for_cwd` boş post-boot artefaktı atlar, en son GERÇEK konuşmayı açar — `4f0543b`). mo50 gerçek konuşmaya repoint (1e6e54b7). **iggy+vc+asp (coding) + trroot (paper, resume a8dd981b) eklendi** (`35ec745`). ho *50→*51 tam.
+**Altyapı ✅:** guard cron `*/2`, cold-boot autostart, boot.list=co+mo. isim: hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops iggy=ng_sdn/iggy vc=virtual_court asp=llm/T_ancient_script_pipeline trroot=tr_root.
 
 **Yeni session yapacaklar:**
 1. MEMORY.md oku — [[reboot-no-handover]] + [[co-ulaksec-guard-yes-ho-no]] + [[config-corruption-resume-hang]] + [[handover-procedure]] + [[handover-edge-cases]] + [[add-session-to-fleet]].
