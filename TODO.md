@@ -2,6 +2,11 @@
 
 > Açık iş kalemleri. Tamamlananlar `DONE.md`'ye taşınır.
 
+## Ho-prep sync (bekleyen — 2026-06-19)
+
+- [ ] **DONE.md changelog + TODO-o taşıma** — bugünkü işler henüz DONE.md'ye yazılmadı: 16:06 ACPI EC reboot recovery, **cron artefakt-skip fix (TODO-o DONE → DONE.md'ye taşı, TODO'dan çıkar)**, mo50 repoint (1e6e54b7), **iggy/vc/asp (coding) + trroot (paper) fleet'e eklendi**. Commit zinciri `4f0543b`→`35ec745`→`1443603`→`941347c`. co self wrap-up'ında yapılacak.
+- [x] **Yeni eklenenler (iggy/vc/asp/trroot) handover Faz 1 alır mı? → EVET** (2026-06-19 doğrulandı). Hepsi *51 → `--from-suffix=51` hedefler, needs-ho HO listesinde (jsonl/dirty/commit-since sinyalleriyle). sid=- skip tuzağına düşmüyorlar. (Not: sonraki ho'da onlar da Faz 2'de *52 fresh olur — trroot/iggy/asp gerçek konuşmaları wrap-up'a kapsanır.)
+
 ## Kritik bug'lar (devam)
 
 - [ ] **BUG: `rc <a,b,c>` virgül-separated isim listesi parse edilmiyor** — 2026-05-19'da 15→16, 2026-05-23'te 20→21 transition'larında doğrulandı. `cmd_rc`/`resolve_targets` SPACE-separated bekliyor. CLAUDE.md eski örnekler virgüllü idi → güncellendi. Fix: cmd_rc başında target ve "$@" içindeki virgüllü string'leri split et (IFS=','). Aynı bug `cmd_kill`, `cmd_compact`, `cmd_send` için de var.
