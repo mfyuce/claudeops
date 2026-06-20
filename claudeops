@@ -740,7 +740,14 @@ except: print('gone')
         ep_ppid=$(echo "$ep_line" | awk '{print $2}')
         [ "$ep_pid" = "$pid" ] && continue   # zaten kill edildi
         [ "$ep_pid" = "$sp" ] && continue    # self değil
-        kill -TERM "$ep_pid" 2>/dev/null; sleep 0.3; kill -KILL "$ep_pid" 2>/dev/null
+        # ⚠ TRUNCATE FIX (2026-06-21): SIGTERM sonrası SIGKILL'i HEMEN atma — claude
+        # konuşmayı diske flush etmek için zaman ister (yeni 2.1.183 lazy-checkpoint).
+        # Eski "sleep 0.3" fresh session'ları (session.json yazmayan → sweep'e düşen)
+        # flush'tan ÖNCE öldürüp jsonl'i eski checkpoint'e truncate ediyordu. Ana kill
+        # gibi ~8s grace ver, sadece hâlâ canlıysa SIGKILL.
+        kill -TERM "$ep_pid" 2>/dev/null
+        for i in $(seq 1 16); do kill -0 "$ep_pid" 2>/dev/null || break; sleep 0.5; done
+        kill -0 "$ep_pid" 2>/dev/null && kill -KILL "$ep_pid" 2>/dev/null
         local ep_pcom; ep_pcom=$(ps -o comm= -p "$ep_ppid" 2>/dev/null | tr -d ' ')
         [ "$ep_pcom" = "bash" ] && kill -KILL "$ep_ppid" 2>/dev/null
         echo "  → proc-scan kill: $name pid=$ep_pid (parent=$ep_ppid)"
@@ -1201,6 +1208,13 @@ Lütfen şunları kontrol et ve eksikse tamamla:
 - Bu session da VEYA paralel/diğer session larda konuşulup ortaya çıkmış ama hiçbir yere (repo, memory, TODO/DONE) kaydedilmemiş bir bulgu/karar/iş kaldı mı? Kaldıysa şimdi kaydet.
 
 Derin tara: kaynak dosyalar, /tmp logları, eski commit ler, .jsonl backup ları — hiçbir bilgi unutulmasın.
+
+DEĞİŞEN DOSYALARDAN + GIT HISTORY DEN GERÇEK İŞİ ÇIKAR (kritik):
+- Bu session da son ~1 gün içinde değişen TÜM dosyalara bak (git status, git diff, değişiklik zamanına göre). Ne yapılmış, ne eklenmiş, ne düzeltilmiş net çıkar.
+- Aynı incelemeyi git history için de yap: son ~1 günün commit lerini oku, hangi iş bitmiş hangi karar alınmış gör.
+- Çıkan her şeyi yerine yaz: biten iş -> DONE.md; yarım/açık iş -> TODO.md; kalıcı mimari/akış bilgisi -> CLAUDE.md; karar bekleyen veya eksik gördüğün konu -> TOBEDECIDED.md.
+- Yapılan hiçbir iş ve hiçbir açık konu dokümana geçmeden kalmasın.
+SONRA tüm güncellemeleri commit + push et (tüm remote lara). Commit/push izni önceden verilmiştir; yalnızca gerçek bir engelle karşılaşırsan dur ve sor.
 
 Sonunda CLAUDE.md nin sonuna "## READY FOR HANDOVER ($(date))" başlığıyla 5-10 satırlık özet ekle:
 - Nerede kaldık (current state)
