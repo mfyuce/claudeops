@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# claudeops Python rewrite (TBD#8) çalıştırıcı.
+# Bash 'claudeops' (ROOT) CANLI fleet'i yönetir; bu Python sürümü yanında büyüyor.
+# Kullanım: py/cops list   /   py/cops ls --suffix 54
+cd "$(dirname "$0")" && exec python3 -m claudeops "$@"
