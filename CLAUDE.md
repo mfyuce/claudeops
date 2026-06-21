@@ -21,7 +21,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 ## Handover (3-fazlı)
 
 ```
-# Faz 1
+# Faz 1  (⚠ TÜM fleet'e AYNI ANDA = sunucu rate-limit → blank-TUI hang [3/24 oldu]; gruplara böl/throttle, [[mass-faz1-ratelimit-stuck]])
 ./claudeops handover --from-suffix=<FROM> [--model='claude-opus-4-8']
 
 # Faz 2 — ⚠ Faz1 SAĞLIKLI? (RFH var, 503/529 yok) → değilse DUR; kullanıcı onayı şart.
@@ -49,20 +49,19 @@ Target virgül parse yok (SPACE kullan, TODO-a). Layout orphan terminal slot iş
 `DONE.md` = CHANGELOG. Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
-## READY FOR HANDOVER (2026-06-21)
+## READY FOR HANDOVER (2026-06-21 gece)
 
-**⚠⚠ ASIL OLAY: KONUŞMA TRUNCATION KÖK SEBEBİ BULUNDU + FIX** (`adad34f`, [[claude-2183-conversation-truncation]]): proc-scan sweep `SIGTERM→0.3s→SIGKILL` yapıyordu → claude flush edemeden (2.1.183 lazy-checkpoint ~2s ister) ölüyor → jsonl eski checkpoint'e truncate. **Fix: 8s grace.** anomaly testiyle KANITLANDI (519→528 korundu). **Haftalardır süren veri kaybının (iggy/asp/hc transkript) sebebi buydu** — iş git'te güvende, sadece transkript gitti. **KURAL: kill ederken hep SIGTERM + ~8-10s grace, sadece canlıysa SIGKILL.**
+**✅ DURUM:** co53 (self). Fleet **25 \*53** (+co53 +ulaksec53 = 27 guard-takipli), **GEÇİCİ hepsi opus/auto/max** (models.tsv split KORUNDU: coding 13 sonnet / paper 12 opus). anomaly→**anomaly54**. suffix=53, config VALID, **guard cron AÇIK**. **Opus/Sonnet [1m] KAPALI**. carla/mecdtfl KAPALI. `~/.cache/huggingface` 29G KORU.
 
-**✅ DURUM:** co53 (self; OOM'da co50→co53 bumplandı). Fleet **25 \*53** (+co53 +ulaksec53 = 27 guard-takipli), **şu an GEÇİCİ HEPSİ opus/auto/max** (kullanıcı "şimdilik hepsi opus, döneriz"; models.tsv split KORUNDU — coding 13 sonnet / paper 12 opus). anomaly→**anomaly54** (RC bridge sorunu için yeniden isimlendi, konuşma korundu). suffix=53, dup yok, config VALID, **guard cron AÇIK** (fix devrede → nazik kill). **Opus/Sonnet [1m] KAPALI** → plain. **carla/mecdtfl KAPALI**. `~/.cache/huggingface` 29G KORU.
-**Bugün (2026-06-18→21):** 16:06 ACPI EC **donanım** reboot → recovery. cron artefakt-skip (`4f0543b`). iggy/vc/asp/trroot eklendi (`35ec745`,`941347c`). ho *49→50→51→52→53, Faz2 **`--new --prompt='devam'`** [[faz2-new-session-devam]]. OOM olayı. claude.ai export çekildi (`~/.claude/claudeai-export-recovery/`, AMA Code session'ları yok). Detay: DONE.md.
-**Altyapı:** guard cron `*/2` (açık), cold-boot autostart. isim: hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops iggy=ng_sdn/iggy vc=virtual_court asp=llm/T_ancient_script_pipeline trroot=tr_root.
+**Bu session kazanımları (commit'li):** (1) **truncation kök-sebep+fix** `adad34f` (proc-scan sweep 0.3s→8s grace, anomaly testiyle kanıtlı — haftalarca veri kaybının sebebiydi, iş git'te güvende); (2) **handover başarı=proc-varlığı** `420fc4d` (bridge-field gecikmeli → false-"failed" düzeltildi); (3) full-fleet Faz1: 21/24 wrap-up OK. Kill kuralı: hep SIGTERM + ~8-10s grace. Detay: DONE.md.
+
+**⚠ AÇIK İŞ (kullanıcı ELLE yapıyor — dokunma):** **emrgence53 + anomaly54 STUCK** — full-fleet Faz1'de 24 session aynı anda → **sunucu rate-limit** ("temporarily limiting requests", usage-limit DEĞİL) → blank-TUI hang. qve53 recovery'de dup yaşandı+temizlendi. Kullanıcı "böyle olmaz, elle yaparım" → DURDUM. [[mass-faz1-ratelimit-stuck]]
 
 **Yeni session yapacaklar:**
-1. MEMORY.md oku — özellikle [[claude-2183-conversation-truncation]] + [[handover-hold-guardlock]] + [[reboot-no-handover]] + [[faz2-new-session-devam]] + [[co-ulaksec-guard-yes-ho-no]].
-2. **ho isteğinde İLK `uptime -s`** (reboot yakınsa ho YAPMA). **Handover'ı guard.lock'la sar** (dup önle, [[handover-hold-guardlock]]).
-3. `needs-ho --from-suffix=53`. ho: Faz1 → onay → **Faz2 `--new --prompt='devam'`** (<F>=53 <TO>=54) → Faz3 layout. ⚠ 27 opus = OOM riski.
+1. MEMORY.md oku — özellikle [[claude-2183-conversation-truncation]] + [[mass-faz1-ratelimit-stuck]] + [[handover-hold-guardlock]] + [[faz2-new-session-devam]].
+2. **EN ÖNEMLİ → TOBEDECIDED #8: claudeops'u Python/Rust'a taşı.** >2000 satır bash sürdürülemez; bu gece kırılganlık somut yaşandı (truncation kill-timing, quoting/pattern bug, dup yarışı). Kullanıcı "yeni claudeops'a başlarız" dedi → muhtemel ilk iş. Lean: Python + incremental (canlı 27-session fleet bozulmamalı).
+3. ho gerekirse: İLK `uptime -s` + guard.lock'la sar (kesintisiz) + **Faz 1'i gruplara böl** (rate-limit, TODO-v) + Faz2 `--new --prompt='devam'`.
 
-**Açık kararlar (ÖNEMLİ):** **TOBEDECIDED #7 — fleet ÇOK BÜYÜK** (27 opus = pahalı [20x→5x] + OOM + remote ~10-bağlantı-limiti) → küçült / co→sonnet / split'e dön? + sonnet[1m] kapalı + #5 açık-kaynak #6 web.
-**Açık TODO (kritik):** (j/r) handover guard.lock+cron-disable; (m) sid=- cwd fallback; (n) ho co+ulaksec exclude; (t/u) RC bridge lag + claude.ai stale bridge. Tam: TODO.md.
+**Açık kararlar:** **#8 yeni claudeops (öncelikli)** + **#7 fleet ÇOK BÜYÜK** (27 opus = pahalı [20x→5x] + OOM + remote ~10-limit → küçült/co→sonnet/split). Tam: TOBEDECIDED.md / TODO.md.
 
 READY FOR HANDOVER
