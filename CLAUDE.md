@@ -8,6 +8,7 @@ Tek-dosya bash CLI: açık Claude CLI session'larını toplu yönet.
 - **VTE rejection**: synthetic key REDDEDİLİR. Güvenilir prompt = CLI argümanı: `-n NAME --remote-control NAME 'PROMPT'`. `-n` display, `--remote-control` RC bridge; aynı sid resume → cache'li, değiştirmek için `--new`.
 - **xdotool**: `windowmove` → **`--sync` YOK** (hang). `--claude-only`: sadece aktif RC proc'larını tile'la.
 - **claude 2.1.169** (`b8bad9e`): fresh `--new` session'lar `sessions/<pid>.json` YAZMIYOR → guard DUP. Fix: proc-scan. [[claude-2169-session-detection]]
+- **claude 2.1.183 KILL=TRUNCATE riski**: yeni storage **lazy-checkpoint** (her mesaj değil, ara ara diske yazar). Kill'de claude'a **flush için ~2s** gerekir → `SIGTERM`'den `SIGKILL`'e **<2s = konuşma eski checkpoint'e TRUNCATE**. proc-scan sweep 0.3s'ydi → **8s grace** (`adad34f`). **Kural: kill ederken hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL.** Fresh session.json yazmaz → ana-kill PID'le bulamaz → sweep'e düşer. [[claude-2183-conversation-truncation]] [[handover-hold-guardlock]]
 - **1M context**: `[1m]` suffix → beta header. **Opus [1m] KAPALI** (Anthropic, 2026-06-16). **Sonnet [1m] bu hafta kapalı** (token kısıtı). [[model-1m-context]]
 - **Security**: ulaksec → "dokunma". `~/.cache/huggingface` 29G KORU. Commit öncesi kullanıcı onayı.
 
@@ -48,19 +49,20 @@ Target virgül parse yok (SPACE kullan, TODO-a). Layout orphan terminal slot iş
 `DONE.md` = CHANGELOG. Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
-## READY FOR HANDOVER (2026-06-19)
+## READY FOR HANDOVER (2026-06-21)
 
-**✅ DURUM:** co50 (self). Fleet **25 \*51** (+co50 +ulaksec50 = 27 guard-takipli) auto/max — coding 13 × sonnet-plain (hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc asp) + paper 12 × opus-plain (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot). suffix=51, dup yok, config VALID. **co50+ulaksec50 *50'de** (fleet *51) → handover dışı: `--from-suffix=51` doğal atlar; guard *51'e bumplarsa `--exclude=ulaksec51` / TODO-n. 4 EMEKLİ fleet dışı. **Opus [1m] KAPALI**; **Sonnet [1m] kapalı** → models.tsv plain. **carla/mecdtfl KAPALI** (`#`). `~/.cache/huggingface` 29G KORU.
-**Bugün (2026-06-18→19):** makine **16:06 reboot** (ACPI EC donanım, fleet/oomd DEĞİL — [[reboot-no-handover]]) → recovery. **cron artefakt-skip fix** deploy+commit (TODO-o: `_latest_sid_for_cwd` boş post-boot artefaktı atlar, en son GERÇEK konuşmayı açar — `4f0543b`). mo50 gerçek konuşmaya repoint (1e6e54b7). **iggy+vc+asp (coding) + trroot (paper, resume a8dd981b) eklendi** (`35ec745`). ho *50→*51 tam.
-**Altyapı ✅:** guard cron `*/2`, cold-boot autostart, boot.list=co+mo. isim: hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops iggy=ng_sdn/iggy vc=virtual_court asp=llm/T_ancient_script_pipeline trroot=tr_root.
+**⚠⚠ ASIL OLAY: KONUŞMA TRUNCATION KÖK SEBEBİ BULUNDU + FIX** (`adad34f`, [[claude-2183-conversation-truncation]]): proc-scan sweep `SIGTERM→0.3s→SIGKILL` yapıyordu → claude flush edemeden (2.1.183 lazy-checkpoint ~2s ister) ölüyor → jsonl eski checkpoint'e truncate. **Fix: 8s grace.** anomaly testiyle KANITLANDI (519→528 korundu). **Haftalardır süren veri kaybının (iggy/asp/hc transkript) sebebi buydu** — iş git'te güvende, sadece transkript gitti. **KURAL: kill ederken hep SIGTERM + ~8-10s grace, sadece canlıysa SIGKILL.**
+
+**✅ DURUM:** co53 (self; OOM'da co50→co53 bumplandı). Fleet **25 \*53** (+co53 +ulaksec53 = 27 guard-takipli), **şu an GEÇİCİ HEPSİ opus/auto/max** (kullanıcı "şimdilik hepsi opus, döneriz"; models.tsv split KORUNDU — coding 13 sonnet / paper 12 opus). anomaly→**anomaly54** (RC bridge sorunu için yeniden isimlendi, konuşma korundu). suffix=53, dup yok, config VALID, **guard cron AÇIK** (fix devrede → nazik kill). **Opus/Sonnet [1m] KAPALI** → plain. **carla/mecdtfl KAPALI**. `~/.cache/huggingface` 29G KORU.
+**Bugün (2026-06-18→21):** 16:06 ACPI EC **donanım** reboot → recovery. cron artefakt-skip (`4f0543b`). iggy/vc/asp/trroot eklendi (`35ec745`,`941347c`). ho *49→50→51→52→53, Faz2 **`--new --prompt='devam'`** [[faz2-new-session-devam]]. OOM olayı. claude.ai export çekildi (`~/.claude/claudeai-export-recovery/`, AMA Code session'ları yok). Detay: DONE.md.
+**Altyapı:** guard cron `*/2` (açık), cold-boot autostart. isim: hc=videogen hcr=hoca-reader vrk=varaka mo=machine_ops iggy=ng_sdn/iggy vc=virtual_court asp=llm/T_ancient_script_pipeline trroot=tr_root.
 
 **Yeni session yapacaklar:**
-1. MEMORY.md oku — [[reboot-no-handover]] + [[co-ulaksec-guard-yes-ho-no]] + [[config-corruption-resume-hang]] + [[handover-procedure]] + [[handover-edge-cases]] + [[add-session-to-fleet]].
-2. **ho isteği gelince İLK `uptime -s`** — reboot yakınsa (≤~30dk) handover ÇALIŞTIRMA, cron toparlar [[reboot-no-handover]].
-3. `claudeops needs-ho --from-suffix=51` → kapalıysa `claudeops guard`.
-4. ho Faz 1 → kullanıcı onayı → **Faz 2** (2 rc, <F>=51 <TO>=52, `--one-by-one`, config doğrula) → **Faz 3** layout (26 session → `claudeops desktops 8`).
+1. MEMORY.md oku — özellikle [[claude-2183-conversation-truncation]] + [[handover-hold-guardlock]] + [[reboot-no-handover]] + [[faz2-new-session-devam]] + [[co-ulaksec-guard-yes-ho-no]].
+2. **ho isteğinde İLK `uptime -s`** (reboot yakınsa ho YAPMA). **Handover'ı guard.lock'la sar** (dup önle, [[handover-hold-guardlock]]).
+3. `needs-ho --from-suffix=53`. ho: Faz1 → onay → **Faz2 `--new --prompt='devam'`** (<F>=53 <TO>=54) → Faz3 layout. ⚠ 27 opus = OOM riski.
 
-**Açık TODO bug'lar (kritik):** (a) rc virgül; (b) orphan terminal; (j) guard.lock kayıt-bekle; (k) bridge-verify name-only; (m) handover sid=- cwd fallback; (n) ho co+ulaksec base-name exclude. Tam: TODO.md.
-**Açık kararlar:** (1) sonnet [1m] kapalı. (2) sase/marwan reboot-öncesi konuşma crash'te kayıp (post-boot yeni konuşmayla devam). (3) TOBEDECIDED #5 açık-kaynak, #6 web server.
+**Açık kararlar (ÖNEMLİ):** **TOBEDECIDED #7 — fleet ÇOK BÜYÜK** (27 opus = pahalı [20x→5x] + OOM + remote ~10-bağlantı-limiti) → küçült / co→sonnet / split'e dön? + sonnet[1m] kapalı + #5 açık-kaynak #6 web.
+**Açık TODO (kritik):** (j/r) handover guard.lock+cron-disable; (m) sid=- cwd fallback; (n) ho co+ulaksec exclude; (t/u) RC bridge lag + claude.ai stale bridge. Tam: TODO.md.
 
 READY FOR HANDOVER

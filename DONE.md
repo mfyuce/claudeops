@@ -2,6 +2,19 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-06-18→21 (KÖK SEBEP: konuşma truncation bulundu+fix + reboot/OOM recovery + iggy/vc/asp/trroot + ho *49→*53)
+
+- ✅✅ **KÖK SEBEP BULUNDU + FIX: proc-scan sweep 0.3s SIGKILL → konuşma TRUNCATE** (`adad34f`, TODO-s). **Haftalardır süren veri kaybının asıl tetiği BİZİM KOD.** `cmd_rc` proc-scan sweep (`claudeops:~743`) `SIGTERM → sleep 0.3 → SIGKILL` yapıyordu. claude konuşmayı diske flush için ~2s ister (yeni **2.1.183 lazy-checkpoint** storage; eski 2.1.169 her mesajı anında yazıyordu). 0.3s yetmez → jsonl eski checkpoint'e truncate. **Fresh session'lar `session.json` yazmadığı için** ana-kill (5-10s grace) onları PID'le bulamıyor → sweep'e düşüp 0.3s'de ölüyorlar → **iggy/asp/hc transkripti kayboldu, gencmuh/sase (yerleşik, düzgün session.json) 5-10s grace alıp kurtuldu** = pattern tam bu. **FIX:** sweep'e de ~8s grace (16×0.5s SIGTERM-bekle, sonra SIGKILL). **KANITLANDI:** anomaly53 testi 519→**528** satır (kill'de flush başarılı, reopen'da korundu). Handover (cmd_handover) zaten 10s grace veriyordu → hiç truncation kaynağı değildi. [[claude-2183-conversation-truncation]] [[handover-hold-guardlock]]
+- ✅ **cron/boot recovery artefakt-skip** (`4f0543b`, TODO-o): `_latest_sid_for_cwd` artık boş/thin spawn-artefaktı (0 gerçek user turn) atlayıp en son GERÇEK konuşmayı açar + `_is_artifact_jsonl` helper. Reboot sonrası boş açma giderildi (mo50: 1e6e54b7=808 orphan kalmıştı).
+- ✅ **2026-06-18 16:06 makine reboot** (ACPI EC **donanım** timeout — fleet/oomd DEĞİL, journal teyit) → recovery. ho isteğinde İLK `uptime -s` kuralı [[reboot-no-handover]]. mo50 gerçek konuşmaya (1e6e54b7) repoint.
+- ✅ **Fleet'e eklendi:** iggy (ng_sdn/iggy) + vc (virtual_court) + asp (llm/T_ancient_script_pipeline) → coding/sonnet; trroot (tr_root, resume a8dd981b) → paper/opus. (`35ec745`,`941347c`) [[add-session-to-fleet]]
+- ✅ **Handover'lar:** ho *49→*50→*51 tam (Faz1/2/3). Sonra *51→*52, *52→*53 — Faz 2 **`--new --prompt='devam'`** (fresh session + "devam", resume DEĞİL — kullanıcı düzeltmesi) [[faz2-new-session-devam]]. *53 geçici **HEPSİ opus** (kullanıcı: "şimdilik hepsi opus, döneriz"; models.tsv split korundu).
+- ✅ **handover dup workaround:** `cmd_handover` guard.lock TUTMUYOR → guard Faz1 reopen'da yarışıp dup açıyordu. Dıştan `exec 9>guard.lock; flock 9; handover; flock -u 9` ile sardık → dup sıfırlandı [[handover-hold-guardlock]]. Kalıcı: TODO-j/r.
+- ⚠ **OOM olayı** (25 opus session bellek baskısı → oomd) → guard recovery bazılarını eski konuşmaya açtı; guard geçici disable, sonra fix devredeyken tekrar açıldı (dry-run reopened=0 güvenli).
+- ⚠ **VERİ KAYBI (transkript):** iggy/asp/hc'nin sohbet jsonl'i truncate oldu. **İş git'te + file-history'de GÜVENDE** (kod/commit/PR). Sadece transkript kayıp. claude.ai data export çekildi (`~/.claude/claudeai-export-recovery/`, 319 web sohbeti) AMA **Claude Code session'larını İÇERMİYOR** → fleet transkriptleri export'tan kurtarılamadı (claude.ai/code ayrı yüzey, Cloudflare/auth otomatik çekmeyi engelliyor).
+- ⚠ **Remote bridge kaosu (teşhis):** claude.ai'de yüzlerce stale "connected" ghost bridge (her handover yeni isimli bridge + SIGKILL temiz kapatmıyor). **anomaly mobilde flicker AMA desktop browser'da NORMAL** = mobil-app sorunu, lokal/bridge değil. Muhtemel **~10 eşzamanlı RC bağlantı limiti** (25 session hepsi remote-erişilebilir olamaz). TODO-t/u.
+- ✅ **6 yeni memory:** reboot-no-handover, co-ulaksec-guard-yes-ho-no, usage-limits-5h-vs-weekly, claude-2183-conversation-truncation, faz2-new-session-devam, handover-hold-guardlock.
+
 ## 2026-06-17 (ho *47→*48→*49 + --one-by-one + guard.lock + proc-scan sweep + sase49)
 
 - ✅ **Handover \*47→\*48→\*49 (tam):** Faz1 wrap-up → Faz2 TEK-TEK `--one-by-one` → Faz3 layout. Faz1 `hcr47` orphan proc-scan sweep ile öldürüldü; `marwan47` fresh (no-jsonl, mesaj gönderilmedi, kullanıcı elle gönderdi). Config VALID korundu. suffix=49.

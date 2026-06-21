@@ -4,6 +4,11 @@
 
 ## Açık
 
+### 7) Fleet ÇOK BÜYÜK → küçült/hafiflet? (2026-06-21, gecenin ana çıkarımı)
+- **Bağlam:** 27 session (çoğu opus) üç sorunu birden doğuruyor: (1) **pahalı** — büyük opus konuşmalar her turn tüm bağlamı yeniden işliyor, **Max 20x efektif 5x gibi** davranıyor [[usage-limits-5h-vs-weekly]]; (2) **kırılgan** — 25 opus bellek baskısı → **OOM** (bugün oldu) → recovery kaosu; (3) **remote-limit** — claude.ai/code muhtemelen **~10 eşzamanlı RC bağlantı** limiti → 27 session hepsi remote-erişilebilir OLAMAZ (anomaly mobilde flicker = slot yarışı).
+- **Seçenekler:** (a) session sayısını azalt (≤~10-15); (b) **co → sonnet** (orkestrasyon opus gerektirmez, opus drain'i keser); (c) geçici "hepsi opus"tan **models.tsv split'e dön** (coding sonnet / paper opus); (d) sık handover'ı bırak (churn = bridge kaosu + truncation riski + kota).
+- **Karar:** ? (kullanıcı "şimdilik hepsi opus, döneriz" dedi — dönülecek. Gece geç bırakıldı, taze kafayla.)
+
 ### 1) Python UI framework seçimi
 - **Bağlam:** TODO'da "Python UI" eklendi. CLI yerine GUI'den session yönetmek.
 - **Seçenekler:**
