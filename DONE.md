@@ -2,8 +2,9 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
-## 2026-06-21 gece (handover proc-fix + full-fleet Faz1 + sunucu rate-limit + TBD#8 yeni claudeops)
+## 2026-06-21 gece (handover proc-fix + full-fleet Faz1 + sunucu rate-limit + Faz2 *53→*54 throttle'lı + TBD#8 yeni claudeops)
 
+- ✅ **Faz 2 *53→*54 BAŞARILI (throttle'lı, rate-limit YOK):** mass-Faz1 dersinden ([[mass-faz1-ratelimit-stuck]]) sonra Faz 2'yi **gruplara böldük**: guard cron DISABLE (yarım-suffix yarışı önle) → coding 13 (sonnet) `--one-by-one` → **45s ara throttle** → paper 12 (opus) `--one-by-one` → guard RE-ENABLE. Sonuç: **25/25 \*54 spawn, config VALID, DUP yok, 0 stuck** (Faz 1'de 3 stuck'tı; throttle ile sıfır). **Split'e dönüldü** (geçici opus-all → coding sonnet / paper opus, opus drain durdu). emrgence/anomaly Faz1-stuck'ı fresh respawn ile **çözüldü**. Eski *53 konuşmaları nazik kill + Faz1'de dokümante → güvende. co53+ulaksec53 *53'te (ho dışı). suffix=54.
 - ✅ **handover başarı kriteri: bridge → PROC-varlığı** (`420fc4d`, TODO-k DONE): hc53 testi ortaya çıkardı — Faz 1 reopen'da session AÇIK (proc canlı, wrap-up yapıyor, remote'da görünür) ama bridge geç kaydolduğu için `WARN: bridge bulunamadı → failed=1` = false negative. Fix: başarı = `ps|grep -P '^claude' --remote-control NAME(\s|$)` (DONE.md dersi: bridge-field gecikmeli). bridge sadece URL için ("bridge-pending"). Pattern `(\s|$)` anchor: 26/27 proc trailing-arg'sız (guard-respawn) + substring tuzağı yok (hc53≠hcr53).
 - ✅ **hc53 tek-session Faz 1 testi:** truncation fix + proc-fix kanıtı — 3301→**3309** satır (truncate yok), reopen+wrap-up çalıştı, kullanıcı remote'dan doğruladı.
 - ⚠ **FULL-FLEET Faz 1 (24 session, guard.lock-sarılı, `--force`):** 21 düzgün wrap-up yaptı (dup yok, config valid, truncation yok); **3'ü (qve/emrgence/anomaly54) ASILI** kaldı → **sunucu rate-limit** ("API Error: Server is temporarily limiting requests · Rate limited" — **usage-limit DEĞİL**; 24 session aynı anda API'ye yüklenince). Stuck = blank-TUI hang (jsonl son entry=`user`, terminal boş, jsonl'e error yazılmaz → tarama göremez). [[mass-faz1-ratelimit-stuck]]

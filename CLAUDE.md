@@ -51,17 +51,17 @@ Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
 ## READY FOR HANDOVER (2026-06-21 gece)
 
-**✅ DURUM:** co53 (self). Fleet **25 \*53** (+co53 +ulaksec53 = 27 guard-takipli), **GEÇİCİ hepsi opus/auto/max** (models.tsv split KORUNDU: coding 13 sonnet / paper 12 opus). anomaly→**anomaly54**. suffix=53, config VALID, **guard cron AÇIK**. **Opus/Sonnet [1m] KAPALI**. carla/mecdtfl KAPALI. `~/.cache/huggingface` 29G KORU.
+**✅ DURUM:** co53 (self). Fleet **25 \*54** (+co53 +ulaksec53 = 27 guard-takipli), **SPLIT** (coding 13 sonnet / paper 12 opus — geçici opus-all'dan KONVANSİYONA dönüldü). suffix=54, config VALID, **guard cron AÇIK**, **DUP yok, 0 stuck**. **Opus/Sonnet [1m] KAPALI**. carla/mecdtfl KAPALI. `~/.cache/huggingface` 29G KORU.
 
-**Bu session kazanımları (commit'li):** (1) **truncation kök-sebep+fix** `adad34f` (proc-scan sweep 0.3s→8s grace, anomaly testiyle kanıtlı — haftalarca veri kaybının sebebiydi, iş git'te güvende); (2) **handover başarı=proc-varlığı** `420fc4d` (bridge-field gecikmeli → false-"failed" düzeltildi); (3) full-fleet Faz1: 21/24 wrap-up OK. Kill kuralı: hep SIGTERM + ~8-10s grace. Detay: DONE.md.
+**Bu session kazanımları (commit'li):** (1) **truncation kök-sebep+fix** `adad34f` (proc-scan sweep 0.3s→8s grace, kanıtlı — haftalarca veri kaybının sebebiydi, iş git'te güvende); (2) **handover başarı=proc-varlığı** `420fc4d` (bridge-field gecikmeli → false-"failed" düzeltildi); (3) **tam handover *53→*54**: Faz1 (21/24) + **Faz2 THROTTLE'lı 25/25, 0-stuck** (mass-Faz1 rate-limit dersi uygulandı: guard-disable + gruplara böl + ara bekleme [[mass-faz1-ratelimit-stuck]]). Kill kuralı: hep SIGTERM + ~8-10s grace. Detay: DONE.md.
 
-**⚠ AÇIK İŞ (kullanıcı ELLE yapıyor — dokunma):** **emrgence53 + anomaly54 STUCK** — full-fleet Faz1'de 24 session aynı anda → **sunucu rate-limit** ("temporarily limiting requests", usage-limit DEĞİL) → blank-TUI hang. qve53 recovery'de dup yaşandı+temizlendi. Kullanıcı "böyle olmaz, elle yaparım" → DURDUM. [[mass-faz1-ratelimit-stuck]]
+**🔨 DEVAM EDEN İŞ → TOBEDECIDED #8: claudeops Python rewrite BAŞLADI** (`py/` dizini). >2000 satır bash sürdürülemez (bu gece kırılganlık somut: dup yarışı, cwd-türetme bug, quoting/pattern). Strateji: **bash `claudeops` CANLI fleet için ROOT'ta kalır**; Python `py/`'de yanında yazılır, komut-komut devralır (incremental). İlk hedef: proc-discovery (psutil → ps|grep cımbızını bitir) + `list` (read-only, canlıya karşı test).
 
 **Yeni session yapacaklar:**
-1. MEMORY.md oku — özellikle [[claude-2183-conversation-truncation]] + [[mass-faz1-ratelimit-stuck]] + [[handover-hold-guardlock]] + [[faz2-new-session-devam]].
-2. **EN ÖNEMLİ → TOBEDECIDED #8: claudeops'u Python/Rust'a taşı.** >2000 satır bash sürdürülemez; bu gece kırılganlık somut yaşandı (truncation kill-timing, quoting/pattern bug, dup yarışı). Kullanıcı "yeni claudeops'a başlarız" dedi → muhtemel ilk iş. Lean: Python + incremental (canlı 27-session fleet bozulmamalı).
-3. ho gerekirse: İLK `uptime -s` + guard.lock'la sar (kesintisiz) + **Faz 1'i gruplara böl** (rate-limit, TODO-v) + Faz2 `--new --prompt='devam'`.
+1. MEMORY.md oku — [[claude-2183-conversation-truncation]] + [[mass-faz1-ratelimit-stuck]] + [[handover-hold-guardlock]] + [[faz2-new-session-devam]].
+2. **Python rewrite'a DEVAM** (TBD#8) — `py/` dizini, durum: aşağıda README/TODO.
+3. ho gerekirse: İLK `uptime -s` + guard.lock kesintisiz + **Faz1/Faz2'yi gruplara böl/throttle** (rate-limit, TODO-v) + Faz2 `--new --prompt='devam'`.
 
-**Açık kararlar:** **#8 yeni claudeops (öncelikli)** + **#7 fleet ÇOK BÜYÜK** (27 opus = pahalı [20x→5x] + OOM + remote ~10-limit → küçült/co→sonnet/split). Tam: TOBEDECIDED.md / TODO.md.
+**Açık kararlar:** **#8 Python rewrite (DEVAM EDİYOR)** + **#7 fleet hâlâ büyük** (split'e döndük ama 27 session = OOM + remote ~10-limit; küçült?). Tam: TOBEDECIDED.md / TODO.md.
 
 READY FOR HANDOVER
