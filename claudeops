@@ -1486,11 +1486,15 @@ except: print('gone')
       gnome-terminal --window --title="handover:$name" --working-directory="$cwd" \
         -- bash -c "$SPAWN_ENV $launch; exec bash" &
       sleep 3
-      # bridge verify (fresh-spawn'da sid değişir → sadece name eşle)
-      local bridge_new=""
-      for try in $(seq 1 6); do
+      # BAŞARI KRİTERİ = PROC-varlığı (güvenilir; DONE.md dersi: session.json bridge-field
+      # GECİKMELİ yazılır → bridge'e bakıp çalışan session'ı "failed" sayma, TODO-k/l).
+      # bridge sadece URL için bilgilendirici (fresh-spawn'da sid değişir → name eşle).
+      local proc_up=0 bridge_new=""
+      for try in $(seq 1 8); do
         sleep 1
-        bridge_new=$(python3 -c "
+        [ "$proc_up" = "0" ] && ps -eo args 2>/dev/null | grep -P '^claude\b' | grep -qP -- "--remote-control $name(\s|\$)" && proc_up=1
+        if [ -z "$bridge_new" ]; then
+          bridge_new=$(python3 -c "
 import json,glob
 for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
     d = json.load(open(f))
@@ -1498,15 +1502,21 @@ for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
         print(d.get('bridgeSessionId',''))
         break
 " 2>/dev/null)
-        [ -n "$bridge_new" ] && break
+        fi
+        [ "$proc_up" = "1" ] && [ -n "$bridge_new" ] && break
       done
-      if [ -n "$bridge_new" ]; then
-        echo "  → opened, bridge: https://claude.ai/code/$bridge_new"
-        echo "$name|opened|$bridge_new" >> "$log"
+      if [ "$proc_up" = "1" ]; then
+        if [ -n "$bridge_new" ]; then
+          echo "  → opened, bridge: https://claude.ai/code/$bridge_new"
+          echo "$name|opened|$bridge_new" >> "$log"
+        else
+          echo "  → opened (proc canlı; bridge kaydı gecikmeli — normal, TODO-k)"
+          echo "$name|opened|bridge-pending" >> "$log"
+        fi
         opened=$((opened+1))
       else
-        echo "  WARN: bridge bulunamadı"
-        echo "$name|nobridge" >> "$log"
+        echo "  WARN: proc bulunamadı — gerçek fail (spawn olmadı)"
+        echo "$name|failed-noproc" >> "$log"
         failed=$((failed+1))
       fi
     else
