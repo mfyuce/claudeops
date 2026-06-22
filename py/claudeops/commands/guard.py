@@ -35,7 +35,7 @@ def run(args) -> int:
             print(f"✓ tüm session'lar çalışıyor (suffix={result.suffix})")
             return 0
 
-        for entry, (name, kind) in zip(result.missing, result.spawned):
+        for name, kind in result.spawned:
             print(f"  {name} → {kind}")
 
         verb = "gösterildi (dry-run)" if args.dry_run else "spawn edildi"

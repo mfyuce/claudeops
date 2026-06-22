@@ -9,6 +9,7 @@ Kullanım:
 """
 from __future__ import annotations
 import os
+from ..discovery import find_sessions
 from ..layout import (
     _get_screen, _list_windows, build_layout_plan, apply_layout, _detect_screen_y,
 )
@@ -48,12 +49,15 @@ def run(args) -> int:
 
     windows = _list_windows(display)
     screen = _get_screen(display, screen_y=args.screen_y)
+    # known_names: gerçek claude proc'lar → sahte window eşlemesi önler
+    known_names = {s.name for s in find_sessions(measure_cpu=False)} if claude_only else None
     plan, name_to_wid = build_layout_plan(
         windows=windows,
         screen=screen,
         pinned_names=pinned,
         groups=groups,
         claude_only=claude_only,
+        known_names=known_names,
     )
 
     print(f"  {plan.total} pencere yerleştirilecek, {plan.skipped} atlandı")

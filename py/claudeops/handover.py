@@ -22,7 +22,7 @@ from typing import List, Optional
 import psutil
 
 from .discovery import find_sessions, find_by_name
-from .kill import kill_session
+from .kill import kill_session, KILL_GRACE_SECONDS
 from .session import Session
 from .spawn import find_latest_jsonl, detect_display
 
@@ -79,7 +79,7 @@ class Faz1Summary:
         return sum(1 for r in self.results if r.status.startswith("skipped"))
 
 
-def _kill_session_and_parent(pid: int, grace: float = 10.0) -> str:
+def _kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS) -> str:
     """Proc + parent bash'i öldür. Parent bash SIGKILL (terminal kapansın).
 
     Parent bash SIGTERM'den ÖNCE resolve edilmeli — kill sonrası pid kaybolur
@@ -162,7 +162,7 @@ def handover_faz1(
     batch_size: int = 5,
     batch_delay: float = 30.0,
     proc_wait: float = 15.0,
-    grace: float = 10.0,
+    grace: float = KILL_GRACE_SECONDS,
 ) -> Faz1Summary:
     """Faz 1: tüm fleet'e wrap-up mesajı gönder (eski proc kapat, yeni aç).
 

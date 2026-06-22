@@ -20,6 +20,14 @@ def _encode_cwd(cwd: str) -> str:
     return cwd.replace("/", "-").replace("_", "-")
 
 
+def _safe_mtime(p: Path) -> float:
+    """stat().st_mtime — concurrent deletion'a karşı fallback 0.0."""
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def find_latest_jsonl(cwd: str) -> Optional[Path]:
     """CWD için en son değiştirilen jsonl dosyasını döndür (resume sid için)."""
     encoded = _encode_cwd(cwd)
@@ -27,7 +35,7 @@ def find_latest_jsonl(cwd: str) -> Optional[Path]:
     if not proj_dir.exists():
         return None
     jsonls = [p for p in proj_dir.iterdir() if p.suffix == ".jsonl" and p.is_file()]
-    return max(jsonls, key=lambda p: p.stat().st_mtime) if jsonls else None
+    return max(jsonls, key=_safe_mtime) if jsonls else None
 
 
 def detect_display() -> str:
@@ -70,7 +78,7 @@ def spawn_session(
         jsonl = find_latest_jsonl(cwd)
         if jsonl:
             sid = jsonl.stem
-            resume_arg = f"--resume {sid}"
+            resume_arg = f"--resume {shlex.quote(sid)}"
             kind = f"resume:{sid[:8]}"
         else:
             resume_arg = "--new"

@@ -40,6 +40,9 @@ def guard_lock(timeout: float = 10.0):
     finally:
         try:
             fcntl.flock(fd, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
             fd.close()
         except Exception:
             pass
@@ -88,15 +91,20 @@ def guard_once(
     for entry in missing:
         name = f"{entry.name}{suffix}"
         model = models.get(entry.name) or entry.model or "claude-sonnet-4-6"
-        kind = spawn_session(
-            name=name,
-            cwd=entry.cwd,
-            model=model,
-            display=display,
-            dry_run=dry_run,
-        )
+        if not model:
+            model = "claude-sonnet-4-6"
+        try:
+            kind = spawn_session(
+                name=name,
+                cwd=entry.cwd,
+                model=model,
+                display=display,
+                dry_run=dry_run,
+            )
+        except Exception as e:
+            kind = f"error:{e}"
         spawned.append((name, kind))
-        if not dry_run and spawn_delay > 0 and entry != missing[-1]:
+        if not dry_run and spawn_delay > 0 and entry is not missing[-1]:
             time.sleep(spawn_delay)
 
     return GuardResult(missing=missing, spawned=spawned, dups=dups, suffix=suffix)

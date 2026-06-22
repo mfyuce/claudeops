@@ -57,11 +57,16 @@ def _run(cmd: List[str], display: str = ":1") -> str:
 
 
 def _detect_screen_y(display: str) -> int:
-    """xrandr ile monitor Y offset'ini tespit et (multi-monitor). Tek monitor = 0."""
+    """xrandr ile dikey-ikincil monitor Y offset'ini tespit et.
+
+    Yatay dual-monitor (her ikisi Y=0): unique Y değeri tek → 0 döner (doğru).
+    Dikey dual-monitor (top=0, bottom=1080): unique [0,1080] → max=1080 (ikincil monitor).
+    Tek monitor: [0] → 0.
+    """
     out = _run(["xrandr", "--query"], display)
-    offsets = re.findall(r"\d+x\d+\+\d+\+(\d+)", out)
-    if offsets:
-        return max(int(v) for v in offsets)
+    unique_y = list(set(re.findall(r"\d+x\d+\+\d+\+(\d+)", out)))
+    if len(unique_y) > 1:
+        return max(int(v) for v in unique_y)
     return 0
 
 
@@ -106,9 +111,18 @@ def _list_windows(display: str) -> Dict[str, str]:
     return result
 
 
-def _is_claude_window(title: str) -> bool:
-    """Pencere başlığı bir claude session'ı mı?"""
-    return bool(re.search(r"[a-z]+\d+$", title))
+def _is_claude_window(title: str, known_names: Optional[Set[str]] = None) -> bool:
+    """Pencere başlığı bir claude session'ı mı?
+
+    known_names verilirse title'dan çıkarılan ismin GERÇEK session olduğu doğrulanır
+    → ssh/vim gibi yanlış pozitif eşleşmeler elenir.
+    """
+    m = re.search(r"([a-z]+\d+)$", title)
+    if not m:
+        return False
+    if known_names is not None:
+        return m.group(1) in known_names
+    return True
 
 
 def _session_name_from_title(title: str) -> Optional[str]:
@@ -131,6 +145,7 @@ def build_layout_plan(
     pinned_names: Optional[List[str]] = None,
     groups: Optional[List[List[str]]] = None,
     claude_only: bool = True,
+    known_names: Optional[Set[str]] = None,
 ) -> Tuple[LayoutPlan, Dict[str, str]]:
     """Pencere yerleşim planı hesapla.
 
@@ -143,7 +158,7 @@ def build_layout_plan(
     name_to_wid: Dict[str, str] = {}
     skipped = 0
     for wid, title in windows.items():
-        if claude_only and not _is_claude_window(title):
+        if claude_only and not _is_claude_window(title, known_names=known_names):
             skipped += 1
             continue
         name = _session_name_from_title(title)

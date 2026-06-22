@@ -16,7 +16,7 @@ def _parse_tsv(path: str) -> List[List[str]]:
     """TSV dosyasını satır listesi olarak döndür (boş + # satırları atla)."""
     rows = []
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
@@ -50,7 +50,7 @@ def read_roster() -> List[RosterEntry]:
 def read_suffix() -> Optional[int]:
     """suffix dosyasından mevcut nesil numarasını döndür (ör. 54)."""
     try:
-        with open(SUFFIX_FILE) as f:
+        with open(SUFFIX_FILE, encoding="utf-8") as f:
             val = f.read().strip()
             return int(val) if val.isdigit() else None
     except FileNotFoundError:
