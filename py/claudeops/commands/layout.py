@@ -10,7 +10,7 @@ Kullanım:
 from __future__ import annotations
 import os
 from ..layout import (
-    _get_screen, _list_windows, build_layout_plan, apply_layout,
+    _get_screen, _list_windows, build_layout_plan, apply_layout, _detect_screen_y,
 )
 from ..spawn import detect_display
 
@@ -26,6 +26,8 @@ def register(sub):
     p.add_argument("--all-windows", action="store_true",
                    help="tüm pencereleri tile'la (claude-only'yi kapat)")
     p.add_argument("--display", default=None)
+    p.add_argument("--screen-y", type=int, default=None, metavar="Y",
+                   help="monitor Y offset (None=xrandr auto-detect; dual-monitor=1080)")
     p.add_argument("--dry-run", action="store_true",
                    help="sadece planı göster, uygulama")
     p.set_defaults(func=run)
@@ -45,7 +47,7 @@ def run(args) -> int:
     print(f"display={display}, pin={pinned or '(yok)'}, groups={groups or '(yok)'}")
 
     windows = _list_windows(display)
-    screen = _get_screen(display)
+    screen = _get_screen(display, screen_y=args.screen_y)
     plan, name_to_wid = build_layout_plan(
         windows=windows,
         screen=screen,

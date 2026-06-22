@@ -11,10 +11,13 @@ Throttle: --one-by-one proc görünene kadar bekler → rate-limit olmaz
 """
 from __future__ import annotations
 import re
+import sys
 import time
 from typing import Optional
 
-from ..discovery import find_by_name
+from ..discovery import find_by_name, find_sessions
+from ..guard import guard_lock
+from ..handover import HO_EXCLUDE_BASES
 from ..kill import kill_session
 from ..roster import read_models, roster_by_name
 from ..spawn import spawn_session, detect_display
@@ -58,10 +61,7 @@ def _wait_proc(name: str, timeout: float) -> bool:
     return False
 
 
-def run(args) -> int:
-    display = args.display or detect_display()
-    models = read_models()
-    roster = roster_by_name()
+def _run_inner(args, display, models, roster) -> int:
     errors = 0
 
     for full_name in args.names:
@@ -76,6 +76,12 @@ def run(args) -> int:
             errors += 1
             continue
 
+        # co + ulaksec'e asla dokunma
+        if base in HO_EXCLUDE_BASES:
+            print(f"  {base}: ho-exclude (co/ulaksec'e dokunma)")
+            errors += 1
+            continue
+
         new_name = f"{base}{args.suffix}"
         model = args.model or models.get(base, "claude-sonnet-4-6")
 
@@ -86,15 +92,16 @@ def run(args) -> int:
             continue
         cwd = entry.cwd
 
-        # 1. Kill
+        # 1. Kill — tam isim VEYA base ile eşleşenleri öldür (suffix verilmeden çağrıda DUP önlemi)
         if args.kill_first:
-            procs = find_by_name(full_name, measure_cpu=False)
+            all_sessions = find_sessions(measure_cpu=False)
+            procs = [s for s in all_sessions if s.name == full_name or s.base == base]
             if procs:
                 for s in procs:
                     if args.dry_run:
-                        print(f"  [dry-run] kill {full_name} pid={s.pid}")
+                        print(f"  [dry-run] kill {s.name} pid={s.pid}")
                     else:
-                        print(f"  kill {full_name} pid={s.pid}...", end="", flush=True)
+                        print(f"  kill {s.name} pid={s.pid}...", end="", flush=True)
                         result = kill_session(s.pid, grace=args.grace)
                         print(f" {result}")
             else:
@@ -122,3 +129,17 @@ def run(args) -> int:
                 errors += 1
 
     return errors
+
+
+def run(args) -> int:
+    display = args.display or detect_display()
+    models = read_models()
+    roster = roster_by_name()
+
+    # guard.lock: kill-first sırasında guard cron ile DUP spawn önle
+    try:
+        with guard_lock(timeout=5.0):
+            return _run_inner(args, display, models, roster)
+    except TimeoutError as e:
+        print(f"✗ guard.lock alınamadı: {e}", file=sys.stderr)
+        return 1

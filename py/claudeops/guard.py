@@ -40,9 +40,9 @@ def guard_lock(timeout: float = 10.0):
     finally:
         try:
             fcntl.flock(fd, fcntl.LOCK_UN)
+            fd.close()
         except Exception:
             pass
-        fd.close()
 
 
 @dataclass

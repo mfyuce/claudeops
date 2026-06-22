@@ -56,16 +56,31 @@ def _run(cmd: List[str], display: str = ":1") -> str:
         return ""
 
 
-def _get_screen(display: str) -> ScreenGeometry:
-    """xdotool getdisplaygeometry ile ekran boyutunu al. Fallback: 1680x1050@(0,1080)."""
+def _detect_screen_y(display: str) -> int:
+    """xrandr ile monitor Y offset'ini tespit et (multi-monitor). Tek monitor = 0."""
+    out = _run(["xrandr", "--query"], display)
+    offsets = re.findall(r"\d+x\d+\+\d+\+(\d+)", out)
+    if offsets:
+        return max(int(v) for v in offsets)
+    return 0
+
+
+def _get_screen(display: str, screen_y: Optional[int] = None) -> ScreenGeometry:
+    """xdotool getdisplaygeometry + xrandr offset ile ekran boyutunu al.
+
+    screen_y: override (None = xrandr auto-detect).
+    """
     out = _run(["xdotool", "getdisplaygeometry"], display)
     parts = out.split()
+    w, h = 1680, 1050
     if len(parts) == 2:
         try:
-            return ScreenGeometry(0, 1080, int(parts[0]), int(parts[1]))
+            w, h = int(parts[0]), int(parts[1])
         except ValueError:
             pass
-    return ScreenGeometry(0, 1080, 1680, 1050)
+
+    y = screen_y if screen_y is not None else _detect_screen_y(display)
+    return ScreenGeometry(0, y, w, h)
 
 
 def _base_from_name(name: str) -> str:
@@ -78,8 +93,7 @@ def _list_windows(display: str) -> Dict[str, str]:
     """gnome-terminal pencerelerini bul → {win_id: title}."""
     # --class ile doğrudan gnome-terminal pencerelerini al (boş --name araması güvenilmez)
     ids_out = _run(["xdotool", "search", "--class", "gnome-terminal-server"], display)
-    if not ids_out:
-        ids_out = _run(["xdotool", "search", "--name", "Terminal"], display)
+    # Fallback kaldırıldı: "Terminal" araması xterm/kitty gibi yabancı proc'ları dahil eder
 
     result = {}
     for wid in ids_out.splitlines():
@@ -149,13 +163,15 @@ def build_layout_plan(
     placed: Set[str] = set(ws0_names)
     ordered: List[str] = []
 
-    # Group'lar — base eşleşmesi (startswith değil: hc ≠ hcr54)
+    # Group'lar — base eşleşmesi (startswith değil: hc ≠ hcr54); dedup ile çakışan grp atla
     group_flat: List[str] = []
+    group_seen: Set[str] = set()
     for grp in groups:
         grp_set = set(grp)
-        members = [n for n in name_to_wid
-                   if _base_from_name(n) in grp_set and n not in placed]
-        group_flat.extend(members)
+        for n in name_to_wid:
+            if _base_from_name(n) in grp_set and n not in placed and n not in group_seen:
+                group_flat.append(n)
+                group_seen.add(n)
     ordered.extend(group_flat)
 
     # Tekler (ne pinned ne group)

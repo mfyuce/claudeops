@@ -85,21 +85,25 @@ def _kill_session_and_parent(pid: int, grace: float = 10.0) -> str:
     Parent bash SIGTERM'den ÖNCE resolve edilmeli — kill sonrası pid kaybolur
     (ya NoSuchProcess ya da pid reuse riski). ([[review: parent-bash race]])
     """
-    # Parent'ı KILL'den ÖNCE al
-    parent_to_kill = None
+    # Parent'ı KILL'den ÖNCE al — kill sonrası pid reuse riski var
+    parent_pid: Optional[int] = None
+    parent_create_time: Optional[float] = None
     try:
         proc = psutil.Process(pid)
         parent = proc.parent()
         if parent and parent.name() == "bash":
-            parent_to_kill = parent
+            parent_pid = parent.pid
+            parent_create_time = parent.create_time()
     except psutil.NoSuchProcess:
         pass
 
     result = kill_session(pid, grace=grace)
 
-    if parent_to_kill is not None:
+    if parent_pid is not None:
         try:
-            parent_to_kill.kill()
+            p = psutil.Process(parent_pid)
+            if p.create_time() == parent_create_time:
+                p.kill()
         except psutil.NoSuchProcess:
             pass
 
@@ -122,13 +126,13 @@ def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> 
         return "skipped-no-jsonl"
 
     sid = jsonl.stem
-    model_parts = f"--model {shlex.quote(session.model)}" if session.model else ""
+    model_parts = f"--model {shlex.quote(session.model)} " if session.model else ""
 
     inner = (
         f"cd {shlex.quote(session.cwd)} && "
         f"claude --resume {shlex.quote(sid)} "
         f"-n {shlex.quote(session.name)} "
-        f"{model_parts} "
+        f"{model_parts}"
         f"--remote-control {shlex.quote(session.name)} "
         f"{shlex.quote(message)} "
         f"< /dev/null"
