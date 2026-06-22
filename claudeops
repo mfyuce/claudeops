@@ -722,7 +722,7 @@ except: print('gone')
     if [ "$kill_first" = "1" ] && kill -0 "$pid" 2>/dev/null; then
       local pbash; pbash=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
       kill -TERM "$pid" 2>/dev/null
-      for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+      for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done  # 10s grace
       kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
       # parent bash de öldür → window kapanır (orphan yok)
       if [ -n "$pbash" ] && [ "$pbash" != "1" ]; then

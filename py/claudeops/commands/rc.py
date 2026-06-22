@@ -18,7 +18,7 @@ from typing import Optional
 from ..discovery import find_by_name, find_sessions
 from ..guard import guard_lock
 from ..handover import HO_EXCLUDE_BASES
-from ..kill import kill_session
+from ..kill import kill_session, KILL_GRACE_SECONDS
 from ..roster import read_models, roster_by_name
 from ..spawn import spawn_session, detect_display
 
@@ -45,8 +45,8 @@ def register(sub):
                    help="proc görünene kadar bekle, sonra sonraki (rate-limit önlemi)")
     p.add_argument("--proc-wait", type=float, default=15.0, metavar="SEC",
                    help="--one-by-one proc bekleme süresi (varsayılan: 15s)")
-    p.add_argument("--grace", type=float, default=8.0, metavar="SEC",
-                   help="SIGKILL grace süresi (varsayılan: 8s)")
+    p.add_argument("--grace", type=float, default=KILL_GRACE_SECONDS, metavar="SEC",
+                   help=f"SIGKILL grace süresi (varsayılan: {KILL_GRACE_SECONDS:.0f}s)")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--display", default=None)
     p.set_defaults(func=run)
