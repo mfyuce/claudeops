@@ -1,0 +1,189 @@
+"""Layout — claude session pencerelerini xdotool ile desktop'lara dağıt.
+
+Bash `claudeops layout grid 4 --claude-only --pin=... --group=...` karşılığı.
+Wayland'da xdotool çalışmaz → X11 (DISPLAY) gerekli.
+
+Algoritma:
+  1. Tüm gnome-terminal pencerelerini bul (xdotool search)
+  2. Her pencereyi session ismine eşle (window title → session name)
+  3. Pinned session'lar → ws0 sabit
+  4. Group session'lar → aynı desktop'a yan yana
+  5. Kalanlar → ws1, ws2, ... artan sırayla (4'er pencere)
+  6. Her pencere: set_desktop_for_window + windowmove + windowsize
+"""
+from __future__ import annotations
+import re
+import subprocess
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set, Tuple
+
+
+# Varsayılan grid: 4 pencere/desktop, 2x2 quad
+GRID = 4
+_QUAD_COLS = 2   # sabit 2 sütun
+
+
+@dataclass
+class ScreenGeometry:
+    x: int
+    y: int
+    w: int
+    h: int
+
+    @property
+    def quad_w(self) -> int:
+        return self.w // _QUAD_COLS
+
+    @property
+    def quad_h(self) -> int:
+        return self.h // (GRID // _QUAD_COLS)
+
+    def quad_pos(self, idx: int) -> Tuple[int, int]:
+        """idx (0-3) → (x, y) başlangıç koordinatı."""
+        col = idx % _QUAD_COLS
+        row = idx // _QUAD_COLS
+        return self.x + col * self.quad_w, self.y + row * self.quad_h
+
+
+def _run(cmd: List[str], display: str = ":1") -> str:
+    """xdotool/wmctrl komutunu çalıştır, stdout döndür."""
+    import os
+    env = {"DISPLAY": display, "HOME": os.environ.get("HOME", ""), "PATH": os.environ.get("PATH", "")}
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=10)
+        return r.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return ""
+
+
+def _get_screen(display: str) -> ScreenGeometry:
+    """xdotool getdisplaygeometry ile ekran boyutunu al. Fallback: 1680x1050@(0,1080)."""
+    out = _run(["xdotool", "getdisplaygeometry"], display)
+    parts = out.split()
+    if len(parts) == 2:
+        try:
+            return ScreenGeometry(0, 1080, int(parts[0]), int(parts[1]))
+        except ValueError:
+            pass
+    return ScreenGeometry(0, 1080, 1680, 1050)
+
+
+def _base_from_name(name: str) -> str:
+    """Session adından base'i çıkar: hc54 → hc, anomaly54 → anomaly."""
+    m = re.match(r"^([a-z]+)\d+$", name)
+    return m.group(1) if m else name
+
+
+def _list_windows(display: str) -> Dict[str, str]:
+    """gnome-terminal pencerelerini bul → {win_id: title}."""
+    # --class ile doğrudan gnome-terminal pencerelerini al (boş --name araması güvenilmez)
+    ids_out = _run(["xdotool", "search", "--class", "gnome-terminal-server"], display)
+    if not ids_out:
+        ids_out = _run(["xdotool", "search", "--name", "Terminal"], display)
+
+    result = {}
+    for wid in ids_out.splitlines():
+        wid = wid.strip()
+        if not wid:
+            continue
+        title = _run(["xdotool", "getwindowname", wid], display)
+        if title:
+            result[wid] = title
+    return result
+
+
+def _is_claude_window(title: str) -> bool:
+    """Pencere başlığı bir claude session'ı mı?"""
+    return bool(re.search(r"[a-z]+\d+$", title))
+
+
+def _session_name_from_title(title: str) -> Optional[str]:
+    """Pencere başlığından session adını çıkar (ör. '✳ hc54' → 'hc54')."""
+    m = re.search(r"([a-z]+\d+)$", title)
+    return m.group(1) if m else None
+
+
+@dataclass
+class LayoutPlan:
+    assignments: List[Tuple[str, int, int, int]]  # (win_id, desktop, x, y)
+    screen: ScreenGeometry
+    total: int = 0
+    skipped: int = 0
+
+
+def build_layout_plan(
+    windows: Dict[str, str],
+    screen: ScreenGeometry,
+    pinned_names: Optional[List[str]] = None,
+    groups: Optional[List[List[str]]] = None,
+    claude_only: bool = True,
+) -> Tuple[LayoutPlan, Dict[str, str]]:
+    """Pencere yerleşim planı hesapla.
+
+    Returns: (plan, name_to_winid)
+    """
+    pinned_names = pinned_names or []
+    groups = groups or []
+
+    # 1. Session ismine göre window'ları eşle
+    name_to_wid: Dict[str, str] = {}
+    skipped = 0
+    for wid, title in windows.items():
+        if claude_only and not _is_claude_window(title):
+            skipped += 1
+            continue
+        name = _session_name_from_title(title)
+        if name:
+            name_to_wid[name] = wid
+
+    plan = LayoutPlan(assignments=[], screen=screen, total=len(name_to_wid), skipped=skipped)
+
+    # 2. Pinned → ws0
+    ws0_names = [n for n in pinned_names if n in name_to_wid]
+    for idx, name in enumerate(ws0_names[:GRID]):
+        wid = name_to_wid[name]
+        x, y = screen.quad_pos(idx)
+        plan.assignments.append((wid, 0, x, y))
+
+    # 3. Kalanları sıraya al: önce group'lar, sonra tekler
+    placed: Set[str] = set(ws0_names)
+    ordered: List[str] = []
+
+    # Group'lar — base eşleşmesi (startswith değil: hc ≠ hcr54)
+    group_flat: List[str] = []
+    for grp in groups:
+        grp_set = set(grp)
+        members = [n for n in name_to_wid
+                   if _base_from_name(n) in grp_set and n not in placed]
+        group_flat.extend(members)
+    ordered.extend(group_flat)
+
+    # Tekler (ne pinned ne group)
+    placed_in_ordered = set(placed) | set(group_flat)
+    singles = sorted(n for n in name_to_wid if n not in placed_in_ordered)
+    ordered.extend(singles)
+
+    # 4. ws1, ws2, ... artan sırayla (GRID adet/desktop)
+    ws = 1
+    slot = 0
+    for name in ordered:
+        if name in placed:
+            continue
+        wid = name_to_wid[name]
+        x, y = screen.quad_pos(slot)
+        plan.assignments.append((wid, ws, x, y))
+        slot += 1
+        if slot >= GRID:
+            slot = 0
+            ws += 1
+
+    return plan, name_to_wid
+
+
+def apply_layout(plan: LayoutPlan, display: str = ":1") -> None:
+    """Planı xdotool ile uygula."""
+    for wid, ws, x, y in plan.assignments:
+        _run(["xdotool", "set_desktop_for_window", wid, str(ws)], display)
+        _run(["xdotool", "windowmove", wid, str(x), str(y)], display)
+        _run(["xdotool", "windowsize", wid,
+              str(plan.screen.quad_w), str(plan.screen.quad_h)], display)
