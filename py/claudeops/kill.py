@@ -13,8 +13,12 @@ import psutil
 
 KillResult = Literal["clean", "forced", "already_dead"]
 
+# Minimum güvenli grace süresi — lazy-checkpoint flush için gerekli
+# ([[claude-2183-conversation-truncation]]: 0.3s = truncation, 8s = güvenli kanıtlandı)
+KILL_GRACE_SECONDS: float = 10.0
 
-def kill_session(pid: int, grace: float = 8.0) -> KillResult:
+
+def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS) -> KillResult:
     """SIGTERM → grace saniye bekle → hâlâ canlıysa SIGKILL.
 
     Returns:
@@ -44,4 +48,6 @@ def kill_session(pid: int, grace: float = 8.0) -> KillResult:
         proc.wait(timeout=2.0)
     except psutil.NoSuchProcess:
         pass
+    except psutil.TimeoutExpired:
+        pass  # zombie — kernel reap'i bekliyor, kill tamamlandı
     return "forced"

@@ -11,7 +11,7 @@ from .paths import CONFIG_JSON
 def validate_config() -> tuple[bool, str]:
     """(ok, mesaj) döndür. ok=False → bozuk veya eksik config."""
     try:
-        with open(CONFIG_JSON) as f:
+        with open(CONFIG_JSON, encoding="utf-8") as f:
             json.load(f)
         return True, "~/.claude.json geçerli"
     except FileNotFoundError:
