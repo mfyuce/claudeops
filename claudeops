@@ -1478,7 +1478,7 @@ except: print('gone')
       local msg_esc; msg_esc=$(printf '%s' "$message" | sed "s/'/'\\\\''/g")
       local launch
       if [ "$has_jsonl" = "1" ]; then
-        launch="claude --resume '$sid' -n '$name'${ho_model:+ --model '$ho_model'} --remote-control '$name' '$msg_esc'"
+        launch="claude --resume '$sid' -n '$name'${ho_model:+ --model '$ho_model'} --permission-mode auto --effort max --remote-control '$name' '$msg_esc'"
       else
         # jsonl yok (force fresh-spawn): resume yerine -n + model/perm; mesaj YOK (fresh session'da wrap-up anlamsız)
         launch="claude -n '$name' --remote-control '$name' --model '${ho_model:-$f_model}' --permission-mode '$f_perm'"
