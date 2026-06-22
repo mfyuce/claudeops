@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from .discovery import find_sessions
-from .kill import kill_session
+from .kill import kill_session, KILL_GRACE_SECONDS
 from .session import Session
 from .spawn import find_latest_jsonl, spawn_session, detect_display
 
@@ -79,7 +79,7 @@ def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
 def recover_stuck(
     info: StuckInfo,
     display: Optional[str] = None,
-    grace: float = 8.0,
+    grace: float = KILL_GRACE_SECONDS,
     dry_run: bool = False,
 ) -> str:
     """Stuck session'ı kapat ve resume ile yeniden aç.
