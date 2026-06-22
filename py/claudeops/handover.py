@@ -133,6 +133,7 @@ def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> 
         f"claude --resume {shlex.quote(sid)} "
         f"-n {shlex.quote(session.name)} "
         f"{model_parts}"
+        f"--permission-mode auto --effort max "
         f"--remote-control {shlex.quote(session.name)} "
         f"{shlex.quote(message)} "
         f"< /dev/null"
