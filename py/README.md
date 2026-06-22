@@ -32,14 +32,14 @@ cops              # bash wrapper → python3 -m claudeops
 
 ## Porting yol haritası (öncelik sırası)
 - [x] **proc-discovery + `list`** (read-only, en sık + en kırılgan parça)
-- [ ] **config doğrulama** (`~/.claude.json` json.load — bozuksa resume-hang; bash'in tek gerçek STOP sinyali)
-- [ ] **roster/models/suffix okuma** (paths.py'den TSV parse)
-- [ ] **kill (nazik)** — SIGTERM + ~8-10s grace + sadece canlıysa SIGKILL ([[claude-2183-conversation-truncation]] truncation fix'i; psutil `wait(timeout)` ile temiz)
-- [ ] **guard** (eksik session'ları tespit + nazik respawn; guard.lock; dup-safe)
-- [ ] **rc / spawn** (gnome-terminal subprocess; --new/--resume; **throttle/batch** built-in [[mass-faz1-ratelimit-stuck]], TODO-v)
-- [ ] **handover** (Faz1 proc-presence başarı kriteri; guard.lock KESİNTİSİZ; gruplara böl)
-- [ ] **stuck-detect + recovery** (jsonl son=user + düşük CPU; otomatik tek-tek retry)
-- [ ] **layout** (xdotool; en son — Wayland'da çalışmaz zaten)
+- [x] **config doğrulama** (`~/.claude.json` json.load — bozuksa resume-hang; `py/cops config`)
+- [x] **roster/models/suffix okuma** (paths.py'den TSV parse — `roster.py`)
+- [x] **kill (nazik)** — SIGTERM + ~8-10s grace + sadece canlıysa SIGKILL (`kill.py` + `py/cops kill --dry-run`)
+- [x] **guard** — eksik session tespit + spawn (base-name bazlı, models.tsv aktif filtre, guard.lock, dry-run)
+- [x] **rc / spawn** — kill-first + respawn (--new/--resume, --one-by-one throttle, --prompt, dry-run)
+- [x] **handover** — Faz 1 (kill+reopen+msg, batch throttle, proc-presence başarı kriteri, co+ulaksec exclude)
+- [x] **stuck-detect + recovery** — jsonl son=user + CPU<2% tespiti; --recover ile kill+resume
+- [x] **layout** — xdotool tile (pin/group/desktop dağıtımı; X11 only, Wayland çalışmaz)
 
-## Durum (2026-06-21)
-İlk iskelet + `list` çalışıyor, canlı 27-session fleet'e karşı test edildi. Sonraki: config doğrulama + kill (nazik) → guard. Bash'e DOKUNMA.
+## Durum (2026-06-22)
+**TÜM komutlar implement edildi**: `list`, `config`, `kill`, `guard`, `rc`, `handover`, `stuck`, `layout`. Roadmap tamamlandı. Bash'e DOKUNMA — canlı fleet hâlâ bash kullanıyor; Python testi dry-run ile yapılacak.
