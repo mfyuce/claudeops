@@ -68,8 +68,13 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
                 cwd = p.cwd()  # bash'teki readlink /proc/PID/cwd + encoding'in yerine
             except (psutil.Error, FileNotFoundError):
                 cwd = ""
+            name = _arg(cmd, "--remote-control")
+            if not name:
+                continue  # --remote-control son arg veya değer yok → atla
+            if not cwd:
+                continue  # proc TOCTOU ölümü — cwd alınamadı
             sessions.append(Session(
-                name=_arg(cmd, "--remote-control"),
+                name=name,
                 pid=p.pid,
                 cwd=cwd,
                 sid=_arg(cmd, "--resume"),

@@ -12,6 +12,7 @@ Faz 3 için: claudeops layout grid 4 --claude-only --pin=...
 from __future__ import annotations
 import os
 import sys
+from ..guard import guard_lock
 from ..handover import handover_faz1, HANDOVER_MSG_DEFAULT
 from ..spawn import detect_display
 
@@ -60,16 +61,23 @@ def run(args) -> int:
           f"display={display}")
     print()
 
-    summary = handover_faz1(
-        from_suffix=args.from_suffix,
-        message=message,
-        display=display,
-        dry_run=args.dry_run,
-        batch_size=args.batch_size,
-        batch_delay=args.batch_delay,
-        proc_wait=args.proc_wait,
-        grace=args.grace,
-    )
+    # guard.lock: guard cron'u dışarıda tut (Faz1 kill sırasında dup spawn önle, TODO-j/r)
+    try:
+        with guard_lock(timeout=5.0):
+            summary = handover_faz1(
+                from_suffix=args.from_suffix,
+                message=message,
+                display=display,
+                dry_run=args.dry_run,
+                batch_size=args.batch_size,
+                batch_delay=args.batch_delay,
+                proc_wait=args.proc_wait,
+                grace=args.grace,
+            )
+    except TimeoutError as e:
+        print(f"✗ guard.lock alınamadı: {e}", file=sys.stderr)
+        print("  guard cron çalışıyor olabilir. 10s bekleyip tekrar dene.", file=sys.stderr)
+        return 1
 
     print()
     print("═" * 50)

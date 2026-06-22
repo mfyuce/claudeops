@@ -28,12 +28,16 @@ class Session:
     @property
     def base(self) -> str:
         """Suffix'siz taban isim (hc54 -> hc)."""
+        if not self.name:
+            return ""
         m = _NAME_RE.match(self.name)
         return m.group(1) if m else self.name
 
     @property
     def suffix(self) -> Optional[int]:
         """Nesil suffix'i (hc54 -> 54)."""
+        if not self.name:
+            return None
         m = _NAME_RE.match(self.name)
         return int(m.group(2)) if m else None
 

@@ -97,8 +97,7 @@ def recover_stuck(
         return "dry-run"
 
     result = kill_session(s.pid, grace=grace)
-    if result == "already_dead":
-        return "kill-failed"
+    # already_dead olsa bile respawn et — proc ölmüş ama resume yine gerekli
 
     # Resume — prompt yok, jsonl'deki son user mesajı tetikleyecek
     kind = spawn_session(
