@@ -19,6 +19,7 @@ from ..discovery import find_by_name, find_sessions
 from ..guard import guard_lock
 from ..handover import HO_EXCLUDE_BASES
 from ..kill import kill_session, KILL_GRACE_SECONDS
+from ..needs_ho import repo_baseline_set
 from ..roster import read_models, roster_by_name
 from ..spawn import spawn_session, detect_display
 
@@ -121,6 +122,13 @@ def _run_inner(args, display, models, roster) -> int:
         )
         print(f"  {new_name} → {kind}")
 
+        # Baseline: respawn sonrası HEAD'i kaydet → needs_ho doğru çalışsın (bash _repo_baseline_set)
+        if not args.dry_run:
+            try:
+                repo_baseline_set(cwd)
+            except Exception:
+                pass
+
         # 3. One-by-one: proc görünene dek bekle
         if args.one_by_one and not args.dry_run:
             found = _wait_proc(new_name, timeout=args.proc_wait)
@@ -139,7 +147,18 @@ def run(args) -> int:
     # guard.lock: kill-first sırasında guard cron ile DUP spawn önle
     try:
         with guard_lock(timeout=5.0):
-            return _run_inner(args, display, models, roster)
+            errors = _run_inner(args, display, models, roster)
     except TimeoutError as e:
         print(f"✗ guard.lock alınamadı: {e}", file=sys.stderr)
         return 1
+
+    # Suffix dosyasını güncelle — guard yeni nesli bilsin
+    if not args.dry_run:
+        from ..paths import SUFFIX_FILE
+        import os
+        os.makedirs(os.path.dirname(SUFFIX_FILE), exist_ok=True)
+        with open(SUFFIX_FILE, "w") as f:
+            f.write(str(args.suffix))
+        print(f"  suffix → {args.suffix}")
+
+    return errors

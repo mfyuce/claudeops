@@ -23,6 +23,7 @@ import psutil
 
 from .discovery import find_sessions, find_by_name
 from .kill import kill_session, KILL_GRACE_SECONDS
+from .needs_ho import needs_ho
 from .session import Session
 from .spawn import find_latest_jsonl, detect_display
 
@@ -135,8 +136,7 @@ def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> 
         f"{model_parts}"
         f"--permission-mode auto --effort max "
         f"--remote-control {shlex.quote(session.name)} "
-        f"{shlex.quote(message)} "
-        f"< /dev/null"
+        f"{shlex.quote(message)}"
     )
 
     if dry_run:
@@ -145,7 +145,7 @@ def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> 
     env = os.environ.copy()
     env["DISPLAY"] = display
     subprocess.Popen(
-        ["gnome-terminal", "--window", f"--title=handover:{session.name}",
+        ["gnome-terminal", "--window", f"--title={session.name}",
          f"--working-directory={session.cwd}",
          "--", "bash", "-c", f"{inner}; exec bash"],
         env=env,
@@ -172,6 +172,16 @@ def handover_faz1(
     if display is None:
         display = detect_display()
 
+    # Ho başında timestamp yaz — needs_ho baseline karşılaştırması için (bash _handover_stamp)
+    from .paths import STATE_DIR
+    import datetime
+    try:
+        ts_file = STATE_DIR / "last-handover.ts"
+        ts_file.parent.mkdir(parents=True, exist_ok=True)
+        ts_file.write_text(datetime.datetime.now().astimezone().isoformat())
+    except Exception:
+        pass
+
     sessions = find_sessions(measure_cpu=False)
     targets = [
         s for s in sessions
@@ -188,6 +198,14 @@ def handover_faz1(
             time.sleep(batch_delay)
 
         print(f"  {session.name} (pid={session.pid})...", end="", flush=True)
+
+        # needs_ho kontrolü — skip kriteri: RFH var + repo temiz + yeni commit yok
+        jsonl = find_latest_jsonl(session.cwd)
+        jsonl_path = str(jsonl) if jsonl else None
+        if not dry_run and not needs_ho(session.pid_str if hasattr(session, 'pid_str') else str(session.pid), session.cwd, jsonl_path):
+            print(" skip (needs_ho=False: RFH var, repo temiz, yeni commit yok)")
+            summary.results.append(Faz1Result(session.name, "skipped-no-ho"))
+            continue
 
         # 1. Kill eski proc (dry-run'da atla)
         if not dry_run:

@@ -72,7 +72,7 @@ def spawn_session(
         display = detect_display()
 
     if force_new:
-        resume_arg = "--new"
+        resume_arg = ""   # bash: resume_arg="" for --new; claude has no --new flag
         kind = "new"
     else:
         jsonl = find_latest_jsonl(cwd)
@@ -81,22 +81,24 @@ def spawn_session(
             resume_arg = f"--resume {shlex.quote(sid)}"
             kind = f"resume:{sid[:8]}"
         else:
-            resume_arg = "--new"
+            resume_arg = ""
             kind = "new"
 
     # shlex.quote: boşluk/özel karakter içeren prompt'u bash -c içinde güvenle geçir
     prompt_arg = f" {shlex.quote(prompt)}" if prompt else ""
 
+    # < /dev/null sadece headless (-p) spawn'da gerekli; gnome-terminal görsel spawn'da KULLANMA
+    # --new ile < /dev/null → claude stdin'i okuyamaz → başlamadan çıkıyor
+    resume_prefix = f"{resume_arg} " if resume_arg else ""
     inner = (
         f"cd {shlex.quote(cwd)} && "
-        f"claude {resume_arg} "
+        f"claude {resume_prefix}"
         f"--model {shlex.quote(model)} "
         f"--permission-mode {shlex.quote(permission_mode)} "
         f"--effort {shlex.quote(effort)} "
         f"-n {shlex.quote(name)} "
         f"--remote-control {shlex.quote(name)}"
-        f"{prompt_arg} "
-        f"< /dev/null"
+        f"{prompt_arg}"
     )
 
     if dry_run:
@@ -105,7 +107,9 @@ def spawn_session(
     env = os.environ.copy()
     env["DISPLAY"] = display
     subprocess.Popen(
-        ["gnome-terminal", "--", "bash", "-c", f"{inner}; exec bash"],
+        ["gnome-terminal", "--window", f"--title={name}",
+         f"--working-directory={cwd}",
+         "--", "bash", "-c", f"{inner}; exec bash"],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
