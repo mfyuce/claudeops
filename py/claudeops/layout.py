@@ -94,20 +94,43 @@ def _base_from_name(name: str) -> str:
     return m.group(1) if m else name
 
 
-def _list_windows(display: str) -> Dict[str, str]:
-    """gnome-terminal pencerelerini bul → {win_id: title}."""
-    # --class ile doğrudan gnome-terminal pencerelerini al (boş --name araması güvenilmez)
-    ids_out = _run(["xdotool", "search", "--class", "gnome-terminal-server"], display)
-    # Fallback kaldırıldı: "Terminal" araması xterm/kitty gibi yabancı proc'ları dahil eder
+def _gnome_terminal_server_pid() -> str:
+    """Bash'ten alındı: ps comm 15-char truncate → 'gnome-terminal-'."""
+    import subprocess as _sp
+    try:
+        r = _sp.run(["ps", "-eo", "pid,comm"], capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            parts = line.split(None, 1)
+            if len(parts) == 2 and parts[1].strip() == "gnome-terminal-":
+                return parts[0].strip()
+    except Exception:
+        pass
+    return ""
 
+
+def _list_windows(display: str) -> Dict[str, str]:
+    """gnome-terminal pencerelerini bul → {win_id: title}.
+
+    Bash gibi: wmctrl -l -p | gnome-terminal-server PID filtresi.
+    Title: spinner/özel char sıyrılır, ilk kelime session adı.
+    """
+    gtp = _gnome_terminal_server_pid()
+    if not gtp:
+        return {}
+
+    out = _run(["wmctrl", "-l", "-p"], display)
     result = {}
-    for wid in ids_out.splitlines():
-        wid = wid.strip()
-        if not wid:
+    for line in out.splitlines():
+        parts = line.split(None, 4)  # WID DESK PID HOST TITLE
+        if len(parts) < 5:
             continue
-        title = _run(["xdotool", "getwindowname", wid], display)
-        if title:
-            result[wid] = title
+        wid, _desk, pid, _host, title = parts
+        if pid != gtp:
+            continue
+        # Bash: title'ın başındaki spinner/özel char'ı sıyır
+        import re as _re
+        title_clean = _re.sub(r"^[^A-Za-z0-9~/]+ ?", "", title)
+        result[wid] = title_clean
     return result
 
 
@@ -212,9 +235,27 @@ def build_layout_plan(
 
 
 def apply_layout(plan: LayoutPlan, display: str = ":1") -> None:
-    """Planı xdotool ile uygula."""
+    """Planı xdotool ile uygula.
+
+    Bash gibi: her desktop'a switch et, sonra o desktop'taki pencereleri taşı.
+    windowmove aktif desktop dışındaki pencerelerde çalışmıyor (Mutter).
+    """
+    import time
+    from collections import defaultdict
+
+    by_ws: Dict[int, list] = defaultdict(list)
     for wid, ws, x, y in plan.assignments:
-        _run(["xdotool", "set_desktop_for_window", wid, str(ws)], display)
-        _run(["xdotool", "windowmove", wid, str(x), str(y)], display)
-        _run(["xdotool", "windowsize", wid,
-              str(plan.screen.quad_w), str(plan.screen.quad_h)], display)
+        by_ws[ws].append((wid, x, y))
+
+    for ws in sorted(by_ws):
+        # Bash _ensure_desktop: desktop'a geç, yerleştikten sonra 0.35s bekle
+        _run(["wmctrl", "-s", str(ws)], display)
+        time.sleep(0.35)
+
+        for wid, x, y in by_ws[ws]:
+            _run(["xdotool", "set_desktop_for_window", wid, str(ws)], display)
+            _run(["xdotool", "windowmove", wid, str(x), str(y)], display)
+            _run(["xdotool", "windowsize", wid,
+                  str(plan.screen.quad_w), str(plan.screen.quad_h)], display)
+
+    _run(["wmctrl", "-s", "0"], display)
