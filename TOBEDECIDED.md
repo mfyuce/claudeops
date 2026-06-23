@@ -4,20 +4,10 @@
 
 ## Açık
 
-### ~~8) claudeops'u Python/Rust'a taşı~~ — KARAR VERİLDİ → DONE (2026-06-22)
-- **Bağlam:** Tek-dosya bash CLI **>2000 satır**. Bu gece bash'in kırılganlığı canlı yaşandı: (1) **truncation** kill-timing inceliği (SIGTERM→SIGKILL grace); (2) **quoting/pattern bug'ları** runtime'da (proc-match `(\s|$)` anchor, trailing-space tuzağı); (3) **virgül-parse** bug (target SPACE şart, TODO-a); (4) her yere serpilmiş kırılgan `python3 -c "..."` inline (json/proc/sid parse) — zaten Python'a yarı-bağımlı. Tip yok, test yok → her değişiklik canlı 27-session fleet'te risk.
-- **Seçenekler:**
-  - **Python (pragmatik):** en kolay port yolu (zaten her yerde `python3 -c`); `psutil` (proc/kill — `ps|grep` cımbızını bitirir), `subprocess`, `argparse`, `json` native. Hızlı iterasyon. Runtime dep zaten var. Eksi: dinamik tip (yine de bash'ten kat kat sağlam).
-  - **Rust (sağlamlık):** tek statik binary, **tip-güvenliği quoting/parse bug sınıfını öldürür**, `sysinfo`/`nix` ile robust proc, hızlı. Eksi: büyük port eforu, yavaş iterasyon, glue-tool için overkill; gnome-terminal/xdotool/cron yine shell-out.
-  - **Bash kal + modülerleştir:** source'lu dosyalara böl + test ekle. En ucuz ama temel kırılganlığı çözmez.
-- **Yaklaşım:** **Incremental** (komut-komut port, bash entry shim korunur, davranış birebir, canlıya karşı test) >> big-bang rewrite — çünkü **CANLI** araç (27 session + guard cron `*/2` bağımlı), göçerken fleet'i bozmamalı.
-- **Lean:** Python (port eforu düşük + en büyük acıyı — json/proc/quoting — çözer). Rust ancak uzun-vade dağıtım/sağlamlık iterasyondan önemliyse.
-- **Karar:** ? (dil + incremental mı rewrite mi + ne zaman)
-
 ### 7) Fleet ÇOK BÜYÜK → küçült/hafiflet? (2026-06-21, gecenin ana çıkarımı)
 - **Bağlam:** 27 session (çoğu opus) üç sorunu birden doğuruyor: (1) **pahalı** — büyük opus konuşmalar her turn tüm bağlamı yeniden işliyor, **Max 20x efektif 5x gibi** davranıyor [[usage-limits-5h-vs-weekly]]; (2) **kırılgan** — 25 opus bellek baskısı → **OOM** (bugün oldu) → recovery kaosu; (3) **remote-limit** — claude.ai/code muhtemelen **~10 eşzamanlı RC bağlantı** limiti → 27 session hepsi remote-erişilebilir OLAMAZ (anomaly mobilde flicker = slot yarışı).
 - **Seçenekler:** (a) session sayısını azalt (≤~10-15); (b) **co → sonnet** (orkestrasyon opus gerektirmez, opus drain'i keser); (c) geçici "hepsi opus"tan **models.tsv split'e dön** (coding sonnet / paper opus); (d) sık handover'ı bırak (churn = bridge kaosu + truncation riski + kota).
-- **Karar:** ? (kullanıcı "şimdilik hepsi opus, döneriz" dedi — dönülecek. Gece geç bırakıldı, taze kafayla.)
+- **Karar:** ? **SPLIT'e dönüldü** (coding sonnet / paper opus, *54+). AMA boyut hâlâ açık: **OOM 2026-06-23'te 2× tekrar etti** (27 ağır resume = bellek spike). Masadakiler: küçült (≤~15) / co→sonnet / sık-ho bırak. Gecenin ana açık kararı.
 
 ### 9) needs_ho: git-dışı dosya değişimi takibi
 - **Bağlam:** `needs_ho` şu an tüm sinyaller git-bazlı (dirty/untracked/committed_since/RFH). Git repo olmayan ya da `.gitignore`'lı dizinlerdeki dosya değişimleri yakalanmıyor. Ayrıca "en son değişen dosya + tarih" hiçbir yerde saklanmıyor — her kontrol anlık git sorgusu.
