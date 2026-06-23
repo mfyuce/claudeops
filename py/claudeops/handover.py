@@ -164,10 +164,15 @@ def handover_faz1(
     batch_delay: float = 30.0,
     proc_wait: float = 15.0,
     grace: float = KILL_GRACE_SECONDS,
+    kill_settle: float = 3.0,
 ) -> Faz1Summary:
     """Faz 1: tüm fleet'e wrap-up mesajı gönder (eski proc kapat, yeni aç).
 
     batch_size + batch_delay: rate-limit önlemi ([[mass-faz1-ratelimit-stuck]]).
+    kill_settle: kill onaylandıktan SONRA, respawn'dan ÖNCE bekleme. Faz1 AYNI
+      --remote-control ismini reuse eder; proc ölse de server-side bridge deregister
+      gecikir → settle olmadan isim çakışması (remote'da inactive flicker). Faz2 yeni
+      suffix=yeni isim kullandığı için bu sorunu yaşamaz. ([[handover-edge-cases]] bridge trap)
     """
     if display is None:
         display = detect_display()
@@ -209,7 +214,12 @@ def handover_faz1(
 
         # 1. Kill eski proc (dry-run'da atla)
         if not dry_run:
-            _kill_session_and_parent(session.pid, grace=grace)
+            kill_result = _kill_session_and_parent(session.pid, grace=grace)
+            # Server-side RC bridge'in AYNI ismi bırakması için settle.
+            # proc.wait ölümü onaylar AMA bridge deregister async gecikir → aynı
+            # isimle hemen respawn = çakışma. already_dead'de bridge zaten yok, atla.
+            if kill_settle > 0 and kill_result != "already_dead":
+                time.sleep(kill_settle)
 
         # 2. Yeni terminal aç
         kind = _spawn_faz1(session, message, display, dry_run)

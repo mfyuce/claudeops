@@ -33,6 +33,10 @@ def register(sub):
                    help="proc görünme bekleme sn (varsayılan: 15)")
     p.add_argument("--grace", type=float, default=10.0, metavar="SEC",
                    help="kill grace süresi (varsayılan: 10)")
+    p.add_argument("--kill-settle", type=float, default=3.0, metavar="SEC",
+                   help="kill SONRASI respawn ÖNCESİ bekleme — server eski RC ismini "
+                        "bıraksın (aynı-isim bridge çakışması/inactive flicker önlemi, "
+                        "varsayılan: 3)")
     p.add_argument("--display", default=None)
     p.add_argument("--dry-run", action="store_true",
                    help="sadece göster, gerçek kill/spawn yapma")
@@ -73,6 +77,7 @@ def run(args) -> int:
                 batch_delay=args.batch_delay,
                 proc_wait=args.proc_wait,
                 grace=args.grace,
+                kill_settle=args.kill_settle,
             )
     except TimeoutError as e:
         print(f"✗ guard.lock alınamadı: {e}", file=sys.stderr)
