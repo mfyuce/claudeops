@@ -4,7 +4,7 @@
 
 ## Açık
 
-### 8) claudeops'u Python/Rust'a taşı — >2000 satır bash sürdürülemez (2026-06-21, kullanıcı: "bence olmaz")
+### ~~8) claudeops'u Python/Rust'a taşı~~ — KARAR VERİLDİ → DONE (2026-06-22)
 - **Bağlam:** Tek-dosya bash CLI **>2000 satır**. Bu gece bash'in kırılganlığı canlı yaşandı: (1) **truncation** kill-timing inceliği (SIGTERM→SIGKILL grace); (2) **quoting/pattern bug'ları** runtime'da (proc-match `(\s|$)` anchor, trailing-space tuzağı); (3) **virgül-parse** bug (target SPACE şart, TODO-a); (4) her yere serpilmiş kırılgan `python3 -c "..."` inline (json/proc/sid parse) — zaten Python'a yarı-bağımlı. Tip yok, test yok → her değişiklik canlı 27-session fleet'te risk.
 - **Seçenekler:**
   - **Python (pragmatik):** en kolay port yolu (zaten her yerde `python3 -c`); `psutil` (proc/kill — `ps|grep` cımbızını bitirir), `subprocess`, `argparse`, `json` native. Hızlı iterasyon. Runtime dep zaten var. Eksi: dinamik tip (yine de bash'ten kat kat sağlam).
@@ -18,6 +18,12 @@
 - **Bağlam:** 27 session (çoğu opus) üç sorunu birden doğuruyor: (1) **pahalı** — büyük opus konuşmalar her turn tüm bağlamı yeniden işliyor, **Max 20x efektif 5x gibi** davranıyor [[usage-limits-5h-vs-weekly]]; (2) **kırılgan** — 25 opus bellek baskısı → **OOM** (bugün oldu) → recovery kaosu; (3) **remote-limit** — claude.ai/code muhtemelen **~10 eşzamanlı RC bağlantı** limiti → 27 session hepsi remote-erişilebilir OLAMAZ (anomaly mobilde flicker = slot yarışı).
 - **Seçenekler:** (a) session sayısını azalt (≤~10-15); (b) **co → sonnet** (orkestrasyon opus gerektirmez, opus drain'i keser); (c) geçici "hepsi opus"tan **models.tsv split'e dön** (coding sonnet / paper opus); (d) sık handover'ı bırak (churn = bridge kaosu + truncation riski + kota).
 - **Karar:** ? (kullanıcı "şimdilik hepsi opus, döneriz" dedi — dönülecek. Gece geç bırakıldı, taze kafayla.)
+
+### 9) needs_ho: git-dışı dosya değişimi takibi
+- **Bağlam:** `needs_ho` şu an tüm sinyaller git-bazlı (dirty/untracked/committed_since/RFH). Git repo olmayan ya da `.gitignore`'lı dizinlerdeki dosya değişimleri yakalanmıyor. Ayrıca "en son değişen dosya + tarih" hiçbir yerde saklanmıyor — her kontrol anlık git sorgusu.
+- **Soru:** CWD'deki dosyaların son mtime'ını (`mtime > last-handover.ts`) ayrıca takip etmeli miyiz? (git olmayan projeler için fallback)
+- **Seçenekler:** (a) `os.walk` + mtime karşılaştırma (basit, gitignore'u bilmez); (b) `git ls-files + mtime` (git'teki dosyaları izle); (c) şimdilik git yeterli, gerekince ekle.
+- **Karar:** ? (TBD, 2026-06-23)
 
 ### 1) Python UI framework seçimi
 - **Bağlam:** TODO'da "Python UI" eklendi. CLI yerine GUI'den session yönetmek.
@@ -56,6 +62,9 @@
 - **Karar:** ? (2026-06-18)
 
 ## Kapatılmış (karar verildi)
+
+### claudeops Python rewrite — TBD#8
+- **Karar (2026-06-22):** Python, incremental. `py/` dizini. 8 komut tamamlandı: `list`, `config`, `kill`, `guard`, `rc`, `handover`, `stuck`, `layout`. Bash `claudeops` ROOT'ta canlı fleet'i yönetmeye devam eder; Python `py/cops` ile birlikte büyür. Derin review + fix tamam (c8d20c4).
 
 ### Layout default per-desktop sayısı
 - **Karar (2026-05-26):** şimdilik 4 (2×2 grid, laptop primary 1680×1050'de 840×525).
