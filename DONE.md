@@ -2,6 +2,12 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-06-24 (Faz3 layout TAMAM + wmctrl-2× yanlış-teşhis düzeltmesi)
+
+- ✅ **Faz3 layout uygulandı (unlocked):** `py/cops layout --pin=co55,rustrino56,anomaly56,iggy56 --group=hc,hcr,evolvi --group=vc,vrk`. 27 pencere 7 masaüstüne 2×2 grid; ws0-pin co55(sol-üst)/rustrino56(sağ-üst)/anomaly56(sol-alt)/iggy56(sağ-alt) — anomaly+iggy yan yana ✓. Pre-flight `LockedHint=no` doğrulandı (dünkü kilit dersi [[layout-needs-unlocked-screen]]). 1 atlandı = HDMI'deki Outlook (claude-dışı, `--claude-only` doğru).
+- ✅ **wmctrl-2× yanlış-teşhis ÇÖZÜLDÜ (önceki session'ın saatlerce uğraştığı gizem):** `wmctrl -lG` pencereleri **2× offset** rapor ediyor (co55 istendi (0,1080) → wmctrl (88,2160)). Önceki session bunu "200% display scale" / "lock artefaktı" sandı → YANLIŞ. **Gerçek:** `xwininfo` + `xdotool` (X11 otorite) (44,1080) gösteriyor = layout DOĞRU. 2× sadece **wmctrl'nin kalıcı raporlama bug'ı** (çift-monitör/Mutter, unlocked'ta da var, zararsız). **Kural: layout doğrulamasını `xwininfo`/`xdotool` ile yap, `wmctrl -lG` ile asla.** Lock'un TEK gerçek etkisi: `xdotool windowmove` reddi (pencere kıpırdamaz) + screenshot blank. Memory [[layout-needs-unlocked-screen]] düzeltildi.
+- 📌 **Ortam notu:** çift-monitör — HDMI-1 1920×1080 üstte (y=0), eDP-1 1680×1050 **primary** altta (+0+1080). Layout `--screen-y` auto-detect (xrandr) eDP-1'i doğru seçiyor (y=1080 offset). Tek-monitör varsayımı (önceki session notu) yanlıştı.
+
 ## 2026-06-23 (OOM #2 + guard-cron fix + kill-settle + Faz1 *55 + stale-title bulgusu)
 
 - ✅ **Guard cron absolute-path fix** ([[guard-cron-relative-path]]): crontab `py/cops guard` RELATİF idi → cron `$HOME`'dan çalışıp "not found" → OOM'dan sonra fleet HİÇ recover olmadı (log eski satırda donup "çalışıyor" yanılttı). Fix: absolute path `/home/fatihyuce/work/projects/tmp/claudeops/py/cops`. Doğrulandı (`env -i` EXIT=0 + taze tick "✓ tüm session'lar çalışıyor"). **Ayrım:** discovery ölüyü-canlı GÖSTERMEZ (os.kill liveness + procStart); sorun cron'un hiç çalışmamasıydı.

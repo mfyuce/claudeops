@@ -49,9 +49,9 @@ Target virgül parse yok (SPACE kullan, TODO-a). Layout orphan terminal slot iş
 `DONE.md` = CHANGELOG. Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
-## READY FOR HANDOVER (2026-06-23)
+## READY FOR HANDOVER (2026-06-24)
 
-**✅ DURUM:** co55 (self). Fleet **25 \*56** + co55 + ulaksec55 (27 guard-takipli), **SPLIT** (coding 13 sonnet / paper 12 opus). suffix=56, config VALID, **guard cron AÇIK + ABSOLUTE-PATH'li** (fix bu session), **DUP yok, 0 stuck**, uptime 5 gün (reboot yok). **Opus/Sonnet [1m] KAPALI**. carla/mecdtfl KAPALI. `~/.cache/huggingface` 29G KORU. **Faz3 (layout) YAPILMADI — ekran KİLİTLİYDİ** (Mutter locked'ta pencere-move bozuk → sola pile, [[layout-needs-unlocked-screen]]); UNLOCKED yapılacak.
+**✅ DURUM:** co55 (self). Fleet **25 \*56** + co55 + ulaksec55 (27 guard-takipli), **SPLIT** (coding 13 sonnet / paper 12 opus). suffix=56, config VALID, **guard cron AÇIK + ABSOLUTE-PATH'li**, **DUP yok, 0 stuck**. **Opus/Sonnet [1m] KAPALI**. carla/mecdtfl KAPALI. `~/.cache/huggingface` 29G KORU. **Faz3 (layout) TAMAM** (2026-06-24, unlocked — co55+rustrino56+anomaly56+iggy56 ws0-pin, temiz 2×2 eDP-1; `xwininfo` ile birebir doğrulandı). **Ders: `wmctrl -lG` 2× raporu KALICI YALAN (lock değil) → layout doğrulamasını `xwininfo`/`xdotool` ile yap; lock'un tek gerçek etkisi xdotool-move-red.** [[layout-needs-unlocked-screen]]
 
 **Bu session (commit'li):** (1) **guard-cron absolute-path fix** [[guard-cron-relative-path]] — relatif `py/cops` → cron `$HOME`'dan "not found" → OOM'da fleet HİÇ recover etmiyordu, log donup "çalışıyor" yanıltıyordu; (2) **OOM #2 recovery → *55**; (3) **Faz1 `--kill-settle`** `8fd620a` (kill→settle→respawn = aynı-isim RC bridge çakışma/flicker önlemi) + **Faz1 *55 production: 15 opened / 0 failed / 10 needs_ho-skip** (`--kill-settle=5`, sıfır rate-limit/stuck — ilk gerçek validasyon); (4) **discovery two-source port** (sessions/json + proc-scan merge); (5) **Faz2 *55→*56** throttle'lı cutover (guard-disable + sonnet/opus split + `--one-by-one`) — **25/25 clean kill+respawn, dup yok, config valid, 0 rate-limit**. Detay: DONE.md.
 
@@ -60,9 +60,8 @@ Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 **TBD#8 Python rewrite TAMAM** (2026-06-22, 8 komut): `py/cops` CANLI tool — guard cron + handover bunu kullanıyor. Bash `claudeops` ROOT'ta layout/eski komutlar için duruyor.
 
 **Yeni session yapacaklar:**
-1. **Faz3 layout** (*56 dizilmedi — ekran KİLİTLİYDİ, ÖNCE unlock + `loginctl ... LockedHint`=no doğrula [[layout-needs-unlocked-screen]]): `py/cops layout --pin=co55,rustrino56,anomaly56,iggy56 --group=hc,hcr,evolvi --group=vc,vrk`.
-2. MEMORY.md oku — [[claude-2183-conversation-truncation]] + [[guard-cron-relative-path]] + [[mass-faz1-ratelimit-stuck]] + [[handover-hold-guardlock]].
-3. **#7 fleet ÇOK BÜYÜK** — 27 session → **OOM bugün 2×**; küçült (≤15) / co→sonnet? Gecenin ana açık kararı.
-4. ho gerekirse (Faz1+Faz2 bu session yapıldı): İLK `uptime -s` + Faz1 `--kill-settle=5` + batch-throttle + Faz2 `--new --prompt='devam'`.
+1. MEMORY.md oku — [[claude-2183-conversation-truncation]] + [[guard-cron-relative-path]] + [[mass-faz1-ratelimit-stuck]] + [[handover-hold-guardlock]] + [[layout-needs-unlocked-screen]].
+2. **#7 fleet ÇOK BÜYÜK** — 27 session → **OOM 2× (2026-06-23)**; küçült (≤15) / co→sonnet? Ana açık karar.
+3. ho gerekirse: İLK `uptime -s` + Faz1 `--kill-settle=5` + batch-throttle + Faz2 `--new --prompt='devam'`. Faz3 layout ÖNCESİ `loginctl ... LockedHint`=no + doğrulamayı `xwininfo` ile (wmctrl 2× yalan).
 
 READY FOR HANDOVER
