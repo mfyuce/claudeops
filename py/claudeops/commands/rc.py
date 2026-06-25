@@ -2,8 +2,8 @@
 
 Kullanım:
   py/cops rc hc53 hcr53 mo53 --suffix=54 --new --kill-first \\
-    --model='claude-sonnet-4-6' --permission-mode=auto --effort=max \\
-    --prompt='devam' --one-by-one
+    --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
+  (--prompt verilmez → session'lar boş/idle başlar)
 
 Bash claudeops'taki `rc` komutunun doğrudan karşılığı.
 Throttle: --one-by-one proc görünene kadar bekler → rate-limit olmaz
@@ -41,7 +41,7 @@ def register(sub):
     p.add_argument("--permission-mode", default="auto")
     p.add_argument("--effort", default="max")
     p.add_argument("--prompt", default=None, metavar="MSG",
-                   help="ilk mesaj --new ile (ör. 'devam')")
+                   help="opsiyonel ilk mesaj --new ile (varsayılan YOK → boş/idle başlar)")
     p.add_argument("--one-by-one", action="store_true",
                    help="proc görünene kadar bekle, sonra sonraki (rate-limit önlemi)")
     p.add_argument("--proc-wait", type=float, default=15.0, metavar="SEC",
