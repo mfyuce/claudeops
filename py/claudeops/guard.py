@@ -12,7 +12,7 @@ import os
 import time
 from contextlib import contextmanager
 from typing import List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .discovery import find_sessions, duplicates
 from .roster import read_roster, read_models, read_suffix, RosterEntry
@@ -55,6 +55,7 @@ class GuardResult:
     dups: List[str]
     suffix: Optional[int]
     error: Optional[str] = None
+    closed: List[str] = field(default_factory=list)   # roster'da ama models.tsv'de yorumlu → guard AÇMAZ
 
 
 def guard_once(
@@ -84,6 +85,8 @@ def guard_once(
 
     # Sadece models.tsv'de aktif (# ile başlamayanlar) olanları dikkate al
     active_bases = set(models.keys())
+    # Kapalı: roster'da olup models.tsv'de yorumlu (close/EMEKLİ) → guard AÇMAZ, görünür kıl
+    closed = sorted(e.name for e in roster if e.name not in active_bases)
     missing = [e for e in roster if e.name in active_bases and e.name not in running_bases]
     dups = duplicates(running)
     spawned = []
@@ -107,4 +110,4 @@ def guard_once(
         if not dry_run and spawn_delay > 0 and entry is not missing[-1]:
             time.sleep(spawn_delay)
 
-    return GuardResult(missing=missing, spawned=spawned, dups=dups, suffix=suffix)
+    return GuardResult(missing=missing, spawned=spawned, dups=dups, suffix=suffix, closed=closed)

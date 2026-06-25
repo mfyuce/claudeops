@@ -31,6 +31,9 @@ def run(args) -> int:
         if result.dups:
             print(f"⚠ DUP: {', '.join(result.dups)}")
 
+        if result.closed:
+            print(f"⊘ kapalı (guard açmaz): {', '.join(result.closed)}")
+
         if not result.missing:
             print(f"✓ tüm session'lar çalışıyor (suffix={result.suffix})")
             return 0

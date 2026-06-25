@@ -99,7 +99,7 @@ def run(args) -> int:
         print()
         print("  Sonraki adım (Faz 2):")
         print(f"  py/cops rc <isimler>{args.from_suffix} \\")
-        print(f"    --suffix=<YENİ> --new --kill-first --one-by-one \\")
-        print(f"    --prompt='devam'")
+        print(f"    --suffix=<YENİ> --new --kill-first --one-by-one")
+        print(f"  (--prompt verme → session'lar boş/idle başlar)")
 
     return 1 if summary.failed else 0

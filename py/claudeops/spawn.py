@@ -64,7 +64,7 @@ def spawn_session(
 
     force_new=True → --new (konuşma sıfırdan).
     force_new=False → en son jsonl'i resume et, yoksa --new.
-    prompt → --new ile birlikte ilk mesaj (ör. 'devam').
+    prompt → --new ile opsiyonel ilk mesaj (verilmezse boş/idle başlar).
 
     Returns: "resume:<sid[:8]>", "new", veya "[dry-run] ..." dry_run modunda.
     """
