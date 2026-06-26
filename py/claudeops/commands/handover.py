@@ -98,8 +98,10 @@ def run(args) -> int:
     if summary.failed == 0 and not args.dry_run:
         print()
         print("  Sonraki adım (Faz 2):")
+        print(f"  # SABİT İSİM (önerilen — isim kaymaz, remote'da aynı kalır):")
         print(f"  py/cops rc <isimler>{args.from_suffix} \\")
-        print(f"    --suffix=<YENİ> --new --kill-first --one-by-one")
+        print(f"    --new --kill-first --one-by-one")
+        print(f"  # veya SUFFIX-BUMP (isim bumplanır): --suffix=<YENİ> ekle")
         print(f"  (--prompt verme → session'lar boş/idle başlar)")
 
     return 1 if summary.failed else 0

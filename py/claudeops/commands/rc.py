@@ -1,8 +1,14 @@
 """`rc` — session'ları öldür ve yeniden başlat (Faz 2 handover için).
 
 Kullanım:
+  # SABİT İSİM (varsayılan — --suffix verme): girdideki isim aynen (hc58→hc58)
+  py/cops rc hc58 hcr58 mo58 --new --kill-first \\
+    --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
+
+  # SUFFIX-BUMP (isim bumplanır hc53→hc54): --suffix=YENİ ekle
   py/cops rc hc53 hcr53 mo53 --suffix=54 --new --kill-first \\
     --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
+
   (--prompt verilmez → session'lar boş/idle başlar)
 
 Bash claudeops'taki `rc` komutunun doğrudan karşılığı.
@@ -20,7 +26,7 @@ from ..guard import guard_lock
 from ..handover import HO_EXCLUDE_BASES
 from ..kill import kill_session, KILL_GRACE_SECONDS
 from ..needs_ho import repo_baseline_set
-from ..roster import read_models, roster_by_name
+from ..roster import read_models, roster_by_name, read_suffix
 from ..spawn import spawn_session, detect_display
 
 _NAME_RE = re.compile(r"^([a-z]+)(\d+)$")
@@ -30,8 +36,9 @@ def register(sub):
     p = sub.add_parser("rc", help="session'ları öldür ve yeniden aç (Faz 2 handover)")
     p.add_argument("names", nargs="+", metavar="NAME",
                    help="eski suffix'li isimler (ör. hc53 hcr53) veya base (ör. hc hcr)")
-    p.add_argument("--suffix", type=int, required=True, metavar="N",
-                   help="yeni suffix (ör. 54)")
+    p.add_argument("--suffix", type=int, default=None, metavar="N",
+                   help="yeni suffix (ör. 54) → isim bumplanır (hc58→hc54). "
+                        "VERİLMEZSE: girdideki isim AYNEN kullanılır (hc58→hc58, suffix bump yok).")
     p.add_argument("--new", dest="fresh", action="store_true",
                    help="--new ile başlat (resume değil)")
     p.add_argument("--kill-first", action="store_true",
@@ -48,6 +55,8 @@ def register(sub):
                    help="--one-by-one proc bekleme süresi (varsayılan: 15s)")
     p.add_argument("--grace", type=float, default=KILL_GRACE_SECONDS, metavar="SEC",
                    help=f"SIGKILL grace süresi (varsayılan: {KILL_GRACE_SECONDS:.0f}s)")
+    p.add_argument("--kill-settle", type=float, default=3.0, metavar="SEC",
+                   help="kill sonrası bridge deregister için bekleme (varsayılan: 3.0s)")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--display", default=None)
     p.set_defaults(func=run)
@@ -62,16 +71,16 @@ def _wait_proc(name: str, timeout: float) -> bool:
     return False
 
 
-def _run_inner(args, display, models, roster) -> int:
+def _run_inner(args, display, models, roster, cur_suffix) -> int:
     errors = 0
 
     for full_name in args.names:
         # base + optional old suffix
         m = _NAME_RE.match(full_name)
         if m:
-            base, _old_sfx = m.group(1), m.group(2)
+            base, old_sfx = m.group(1), m.group(2)
         elif re.match(r"^[a-z]+$", full_name):
-            base = full_name
+            base, old_sfx = full_name, None
         else:
             print(f"  {full_name}: isim parse edilemedi")
             errors += 1
@@ -83,7 +92,19 @@ def _run_inner(args, display, models, roster) -> int:
             errors += 1
             continue
 
-        new_name = f"{base}{args.suffix}"
+        # İsim hesabı:
+        #   --suffix verilmiş → bump (hc58 → hc{suffix})
+        #   --suffix yok + girdide suffix var → girdiyi AYNEN kullan (hc58 → hc58)
+        #   --suffix yok + base-only (hc) → mevcut suffix dosyasından tamamla (hc → hc58)
+        if args.suffix is not None:
+            new_name = f"{base}{args.suffix}"
+        elif old_sfx is not None:
+            new_name = full_name
+        elif cur_suffix is not None:
+            new_name = f"{base}{cur_suffix}"
+        else:
+            new_name = base
+
         model = args.model or models.get(base, "claude-sonnet-4-6")
 
         entry = roster.get(base)
@@ -105,6 +126,8 @@ def _run_inner(args, display, models, roster) -> int:
                         print(f"  kill {s.name} pid={s.pid}...", end="", flush=True)
                         result = kill_session(s.pid, grace=args.grace)
                         print(f" {result}")
+                        if result != "already_dead" and args.kill_settle > 0:
+                            time.sleep(args.kill_settle)
             else:
                 print(f"  {full_name}: zaten çalışmıyor")
 
@@ -144,16 +167,22 @@ def run(args) -> int:
     models = read_models()
     roster = roster_by_name()
 
+    # --suffix yoksa (sabit-isim modu): base-only girdileri tamamlamak için mevcut suffix
+    # (guard ile aynı kaynak). --suffix varsa bump → mevcut değere gerek yok.
+    cur_suffix = read_suffix() if args.suffix is None else None
+
     # guard.lock: kill-first sırasında guard cron ile DUP spawn önle
     try:
         with guard_lock(timeout=5.0):
-            errors = _run_inner(args, display, models, roster)
+            errors = _run_inner(args, display, models, roster, cur_suffix)
     except TimeoutError as e:
         print(f"✗ guard.lock alınamadı: {e}", file=sys.stderr)
         return 1
 
-    # Suffix dosyasını güncelle — guard yeni nesli bilsin
-    if not args.dry_run:
+    # Suffix dosyasını güncelle — guard yeni nesli bilsin.
+    # --suffix yoksa (sabit isim): isim/suffix değişmedi → dosyaya DOKUNMA, guard mevcut
+    # değerle devam etsin (bump yok = bu modun amacı).
+    if not args.dry_run and args.suffix is not None:
         from ..paths import SUFFIX_FILE
         import os
         os.makedirs(os.path.dirname(SUFFIX_FILE), exist_ok=True)

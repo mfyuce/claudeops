@@ -26,11 +26,14 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 ./claudeops handover --from-suffix=<FROM> [--model='claude-opus-4-8']
 
 # Faz 2 — ⚠ Faz1 SAĞLIKLI? (RFH var, 503/529 yok) → değilse DUR, kullanıcı onayı şart.
+# ⚠ py/cops rc KULLAN (bash ./claudeops rc cwd'yi CANLI session'dan alır → yanlış cwd; py roster'dan alır [[bridge-batch-spawn-ratelimit]]).
 # TEK-TEK; config doğrula: python3 -c "import json;json.load(open('$HOME/.claude.json'))"
-./claudeops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> iggy<F> vc<F> asp<F> \
-  --suffix=<TO> --new --kill-first --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
-./claudeops rc aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> gencmuh<F> marwan<F> sase<F> trroot<F> \
-  --suffix=<TO> --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max --one-by-one
+# SABİT İSİM (önerilen — --suffix VERME → girdideki isim aynen, remote'da kaymaz; <F>=mevcut suffix):
+py/cops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> iggy<F> vc<F> asp<F> \
+  --new --kill-first --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
+py/cops rc aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> gencmuh<F> marwan<F> sase<F> trroot<F> \
+  --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max --one-by-one
+# veya SUFFIX-BUMP (isim bumplanır <F>→<TO>): yukarıdakilere --suffix=<TO> ekle
 
 # Faz 3 — 27 session → önce `claudeops desktops 8`. Faz1-respawn sonrası 2× çalıştır (1. pass settle olmaz). Doğrula `xwininfo` (wmctrl 2× YALAN).
 ./claudeops layout grid 4 --claude-only --pin=co<SELF>,rustrino<TO>,anomaly<TO>,iggy<TO> --group=hc,hcr,evolvi --group=vc,vrk
