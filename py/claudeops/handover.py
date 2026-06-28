@@ -156,7 +156,6 @@ def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> 
 
 
 def handover_faz1(
-    from_suffix: int,
     message: str = HANDOVER_MSG_DEFAULT,
     display: Optional[str] = None,
     dry_run: bool = False,
@@ -166,13 +165,14 @@ def handover_faz1(
     grace: float = KILL_GRACE_SECONDS,
     kill_settle: float = 3.0,
 ) -> Faz1Summary:
-    """Faz 1: tüm fleet'e wrap-up mesajı gönder (eski proc kapat, yeni aç).
+    """Faz 1: tüm aktif fleet'e wrap-up mesajı gönder (eski proc kapat, yeni aç).
 
+    İsimler base-name (suffix yok) → tüm canlı session'lar (co/ulaksec hariç) hedef.
     batch_size + batch_delay: rate-limit önlemi ([[mass-faz1-ratelimit-stuck]]).
     kill_settle: kill onaylandıktan SONRA, respawn'dan ÖNCE bekleme. Faz1 AYNI
       --remote-control ismini reuse eder; proc ölse de server-side bridge deregister
-      gecikir → settle olmadan isim çakışması (remote'da inactive flicker). Faz2 yeni
-      suffix=yeni isim kullandığı için bu sorunu yaşamaz. ([[handover-edge-cases]] bridge trap)
+      gecikir → settle olmadan isim çakışması (remote'da inactive flicker).
+      ([[handover-edge-cases]] bridge trap)
     """
     if display is None:
         display = detect_display()
@@ -190,7 +190,7 @@ def handover_faz1(
     sessions = find_sessions(measure_cpu=False)
     targets = [
         s for s in sessions
-        if s.suffix == from_suffix and s.base not in HO_EXCLUDE_BASES
+        if s.base not in HO_EXCLUDE_BASES
     ]
     targets.sort(key=lambda s: s.base)
 

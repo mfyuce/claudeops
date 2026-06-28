@@ -1,8 +1,9 @@
 """Guard — eksik session'ları tespit ve respawn (crash-recovery).
 
 Tasarım kararları:
-- Base-name bazlı kontrol (suffix değil): co53 çalışıyorsa co "mevcut" sayılır
-  → handover geçişinde yanlış co54 spawn edilmez.
+- Base-name bazlı isimler (suffix YOK): session adı = base (hc, co, mo...).
+  Çalışan session adı base'e indirgenir (hc58→hc, geçiş savunması) → hc varsa
+  guard yeni hc açmaz.
 - guard.lock (flock) → cron + manuel çakışmasını önler.
 - Tek-tek spawn + delay → rate-limit riski düşük ([[mass-faz1-ratelimit-stuck]]).
 """
@@ -15,7 +16,7 @@ from typing import List, Optional
 from dataclasses import dataclass, field
 
 from .discovery import find_sessions, duplicates
-from .roster import read_roster, read_models, read_suffix, RosterEntry
+from .roster import read_roster, read_models, RosterEntry
 from .spawn import spawn_session, detect_display
 from .paths import GUARD_LOCK
 
@@ -53,7 +54,6 @@ class GuardResult:
     missing: List[RosterEntry]
     spawned: List[tuple]   # [(name, kind), ...]
     dups: List[str]
-    suffix: Optional[int]
     error: Optional[str] = None
     closed: List[str] = field(default_factory=list)   # roster'da ama models.tsv'de yorumlu → guard AÇMAZ
 
@@ -65,22 +65,18 @@ def guard_once(
 ) -> GuardResult:
     """Bir guard pass'ı: eksik session'ları bul ve aç.
 
-    Base-name bazlı eşleme: hc53 veya hc54 çalışıyorsa hc "mevcut" sayılır.
-    Bu sayede handover geçişinde suffix bump'ı sırasında yanlış spawn olmaz.
+    Base-name bazlı eşleme: çalışan session adı base'e indirgenir (hc58→hc,
+    geçiş savunması) → hc çalışıyorsa guard yeni hc açmaz. İsimler artık
+    suffix'siz (base-name); spawn adı = roster entry.name.
     """
     if display is None:
         display = detect_display()
 
     running = find_sessions(measure_cpu=False)
-    suffix = read_suffix()
     roster = read_roster()
     models = read_models()
 
-    if suffix is None:
-        return GuardResult(missing=[], spawned=[], dups=[], suffix=None,
-                           error="suffix dosyası okunamadı")
-
-    # Base-name bazlı çalışan session seti
+    # Base-name bazlı çalışan session seti (s.base: hc58→hc, hc→hc)
     running_bases = {s.base for s in running}
 
     # Sadece models.tsv'de aktif (# ile başlamayanlar) olanları dikkate al
@@ -92,7 +88,7 @@ def guard_once(
     spawned = []
 
     for entry in missing:
-        name = f"{entry.name}{suffix}"
+        name = entry.name
         model = models.get(entry.name) or entry.model or "claude-sonnet-4-6"
         if not model:
             model = "claude-sonnet-4-6"
@@ -110,4 +106,4 @@ def guard_once(
         if not dry_run and spawn_delay > 0 and entry is not missing[-1]:
             time.sleep(spawn_delay)
 
-    return GuardResult(missing=missing, spawned=spawned, dups=dups, suffix=suffix, closed=closed)
+    return GuardResult(missing=missing, spawned=spawned, dups=dups, closed=closed)

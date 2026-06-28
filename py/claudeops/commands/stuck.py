@@ -6,7 +6,7 @@ Kullanım:
   py/cops stuck               # stuck olanları listele
   py/cops stuck --recover     # stuck olanları kill + resume ile kurtar
   py/cops stuck --recover --dry-run
-  py/cops stuck --suffix=54   # sadece *54 session'larını kontrol et
+  py/cops stuck --base=hc     # sadece hc session'ını kontrol et
 """
 from __future__ import annotations
 from ..discovery import find_sessions
@@ -20,8 +20,8 @@ def register(sub):
                    help="stuck olanları kill+resume ile kurtar")
     p.add_argument("--dry-run", action="store_true",
                    help="--recover ile: sadece göster, yapma")
-    p.add_argument("--suffix", type=int, default=None, metavar="N",
-                   help="sadece bu suffix'i kontrol et (ör. 54)")
+    p.add_argument("--base", default=None, metavar="NAME",
+                   help="sadece bu taban ismi kontrol et (ör. hc)")
     p.add_argument("--no-cpu", action="store_true",
                    help="CPU ölçmeden hızlı kontrol (daha az güvenilir)")
     p.add_argument("--display", default=None)
@@ -31,8 +31,8 @@ def register(sub):
 
 def run(args) -> int:
     sessions = find_sessions(measure_cpu=not args.no_cpu)
-    if args.suffix is not None:
-        sessions = [s for s in sessions if s.suffix == args.suffix]
+    if args.base is not None:
+        sessions = [s for s in sessions if s.base == args.base]
 
     stuck_list = find_stuck(sessions)
 

@@ -16,27 +16,29 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 
 - **Coding 13** (hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc asp) → `claude-sonnet-4-6`
 - **Paper 12** (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot) → `claude-opus-4-8`
-- **co**(self) + **ulaksec** models.tsv'de AKTİF (guard ayakta tutsun — istenen) ama **handover YAPMAZ** (co=filter_not_self, ulaksec=base-name exclude, TODO-n). ⚠ guard die → fleet suffix'ine bumplar (co43→co50) → ho `--from-suffix` eşler → base-name ile atlamalı. [[co-ulaksec-guard-yes-ho-no]]
+- **co**(self) + **ulaksec** models.tsv'de AKTİF (guard ayakta tutsun — istenen) ama **handover YAPMAZ** (HO_EXCLUDE_BASES={co,ulaksec}; py+bash handover ikisini base-name ile exclude eder). Suffix kalktığı için eski "guard die → suffix bump" sorunu YOK. [[co-ulaksec-guard-yes-ho-no]]
 - **EMEKLİ:** rr gedikvm gedikido kulturiot. **KAPALI:** mecdtfl carla. **`py/cops close <name>`** = kill (proc+terminal) + models.tsv yorumla → guard AÇMAZ (guard çıktısı `⊘ kapalı: ...`). Açmak: models.tsv'de `#` elle kaldır.
 
 ## Handover (3-fazlı)
 
+**İsimler base-name (suffix YOK, 2026-06-26):** hc, co, mo... Handover = aynı isimle kill+respawn (bump yok).
+
 ```
-# Faz 1  (⚠ TÜM fleet'e AYNI ANDA = sunucu rate-limit → blank-TUI hang; gruplara böl/throttle [[mass-faz1-ratelimit-stuck]])
-./claudeops handover --from-suffix=<FROM> [--model='claude-opus-4-8']
+# Faz 1  (⚠ TÜM fleet'e AYNI ANDA = sunucu rate-limit → blank-TUI hang; py/cops batch'ler [[mass-faz1-ratelimit-stuck]])
+py/cops handover [--dry-run]   # tüm fleet (co/ulaksec otomatik hariç), aynı isimle wrap-up
 
 # Faz 2 — ⚠ Faz1 SAĞLIKLI? (RFH var, 503/529 yok) → değilse DUR, kullanıcı onayı şart.
 # ⚠ py/cops rc KULLAN (bash ./claudeops rc cwd'yi CANLI session'dan alır → yanlış cwd; py roster'dan alır [[bridge-batch-spawn-ratelimit]]).
 # TEK-TEK; config doğrula: python3 -c "import json;json.load(open('$HOME/.claude.json'))"
-# SABİT İSİM (önerilen — --suffix VERME → girdideki isim aynen, remote'da kaymaz; <F>=mevcut suffix):
-py/cops rc hc<F> hcr<F> mo<F> vrk<F> rustrino<F> anomaly<F> evolvi<F> done<F> mamut<F> hof<F> iggy<F> vc<F> asp<F> \
+# İsimler base-name (suffix yok); --new → fresh, aynı isimle açılır (remote'da kaymaz):
+py/cops rc hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc asp \
   --new --kill-first --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
-py/cops rc aggroot<F> oa<F> hms<F> hve<F> qve<F> rve<F> emrgence<F> araroot<F> gencmuh<F> marwan<F> sase<F> trroot<F> \
+py/cops rc aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot \
   --new --kill-first --model='claude-opus-4-8' --permission-mode=auto --effort=max --one-by-one
-# veya SUFFIX-BUMP (isim bumplanır <F>→<TO>): yukarıdakilere --suffix=<TO> ekle
+# ⚠ Bridge rate-limit: 25 session aynı anda → 0 TCP. 4'er batch + 20s ara, TCP doğrula [[bridge-batch-spawn-ratelimit]].
 
 # Faz 3 — 27 session → önce `claudeops desktops 8`. Faz1-respawn sonrası 2× çalıştır (1. pass settle olmaz). Doğrula `xwininfo` (wmctrl 2× YALAN).
-./claudeops layout grid 4 --claude-only --pin=co<SELF>,rustrino<TO>,anomaly<TO>,iggy<TO> --group=hc,hcr,evolvi --group=vc,vrk
+./claudeops layout grid 4 --claude-only --pin=co,rustrino,anomaly,iggy --group=hc,hcr,evolvi --group=vc,vrk
 ```
 ⚠ `[1m]` **tek tırnak ŞART** (shell glob). Target **SPACE-separated** (virgül parse bug). `--group=` base-name.
 ⚠ **Faz2 `--prompt` VERME → session'lar boş/idle başlar** (2026-06-24, [[faz2-new-session-devam]]).

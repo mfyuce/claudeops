@@ -6,7 +6,7 @@ satırları ATLAR (roster.py). Bir base models.tsv'de yorumlanınca active_bases
 girmez → missing listesine düşmez → guard açmaz. carla/mecdtfl/EMEKLİ de böyle.
 
 `open` (ters işlem) için: models.tsv'de `#`'i elle kaldır + guard açar
-(veya `rc <name> --suffix=<N> --new`).
+(veya `rc <name> --new`).
 """
 from __future__ import annotations
 import re

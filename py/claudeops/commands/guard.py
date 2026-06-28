@@ -35,7 +35,7 @@ def run(args) -> int:
             print(f"⊘ kapalı (guard açmaz): {', '.join(result.closed)}")
 
         if not result.missing:
-            print(f"✓ tüm session'lar çalışıyor (suffix={result.suffix})")
+            print("✓ tüm session'lar çalışıyor")
             return 0
 
         for name, kind in result.spawned:

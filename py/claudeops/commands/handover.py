@@ -1,12 +1,13 @@
 """`handover` — Faz 1 wrap-up (eski session kapat, mesajla yeniden aç).
 
 Kullanım:
-  py/cops handover --from-suffix=54 [--dry-run]
-  py/cops handover --from-suffix=54 --batch-size=5 --batch-delay=30
-  py/cops handover --from-suffix=54 --message='özel mesaj'
-  py/cops handover --from-suffix=54 --message-file=/path/to/msg.txt
+  py/cops handover [--dry-run]
+  py/cops handover --batch-size=5 --batch-delay=30
+  py/cops handover --message='özel mesaj'
+  py/cops handover --message-file=/path/to/msg.txt
 
-Faz 2 için: py/cops rc hc54 hcr54 ... --suffix=55 --new --kill-first --one-by-one
+İsimler base-name (suffix yok) → tüm aktif fleet (co/ulaksec hariç) hedef.
+Faz 2 için: py/cops rc hc hcr ... --new --kill-first --one-by-one
 Faz 3 için: claudeops layout grid 4 --claude-only --pin=...
 """
 from __future__ import annotations
@@ -19,8 +20,6 @@ from ..spawn import detect_display
 
 def register(sub):
     p = sub.add_parser("handover", help="Faz 1: wrap-up mesajı gönder (eski kapat, yeni aç)")
-    p.add_argument("--from-suffix", type=int, required=True, metavar="N",
-                   help="hangi suffix'teki session'lar (ör. 54)")
     p.add_argument("--message", default=None, metavar="MSG",
                    help="wrap-up mesajı (varsayılan: HANDOVER_MSG_DEFAULT)")
     p.add_argument("--message-file", default=None, metavar="FILE",
@@ -59,8 +58,7 @@ def run(args) -> int:
 
     display = args.display or detect_display()
 
-    print(f"=== handover faz1: suffix={args.from_suffix}"
-          f"{' (dry-run)' if args.dry_run else ''} ===")
+    print(f"=== handover faz1{' (dry-run)' if args.dry_run else ''} ===")
     print(f"  batch={args.batch_size}, delay={args.batch_delay:.0f}s, "
           f"display={display}")
     print()
@@ -69,7 +67,6 @@ def run(args) -> int:
     try:
         with guard_lock(timeout=5.0):
             summary = handover_faz1(
-                from_suffix=args.from_suffix,
                 message=message,
                 display=display,
                 dry_run=args.dry_run,
@@ -97,11 +94,9 @@ def run(args) -> int:
 
     if summary.failed == 0 and not args.dry_run:
         print()
-        print("  Sonraki adım (Faz 2):")
-        print(f"  # SABİT İSİM (önerilen — isim kaymaz, remote'da aynı kalır):")
-        print(f"  py/cops rc <isimler>{args.from_suffix} \\")
-        print(f"    --new --kill-first --one-by-one")
-        print(f"  # veya SUFFIX-BUMP (isim bumplanır): --suffix=<YENİ> ekle")
+        print("  Sonraki adım (Faz 2 — base-name, suffix yok):")
+        print(f"  py/cops rc hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc asp \\")
+        print(f"    --new --kill-first --one-by-one --model='claude-sonnet-4-6'")
         print(f"  (--prompt verme → session'lar boş/idle başlar)")
 
     return 1 if summary.failed else 0
