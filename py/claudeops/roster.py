@@ -1,8 +1,8 @@
-"""Fleet roster — models.tsv, roster.tsv ve suffix dosyalarını parse et."""
+"""Fleet roster — models.tsv ve roster.tsv parse et."""
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Optional
-from .paths import MODELS_TSV, ROSTER_TSV, SUFFIX_FILE
+from typing import Dict, List
+from .paths import MODELS_TSV, ROSTER_TSV
 
 
 @dataclass
@@ -45,16 +45,6 @@ def read_roster() -> List[RosterEntry]:
         elif len(row) == 2:
             entries.append(RosterEntry(name=row[0], cwd=row[1], model=""))
     return entries
-
-
-def read_suffix() -> Optional[int]:
-    """suffix dosyasından mevcut nesil numarasını döndür (ör. 54)."""
-    try:
-        with open(SUFFIX_FILE, encoding="utf-8") as f:
-            val = f.read().strip()
-            return int(val) if val.isdigit() else None
-    except FileNotFoundError:
-        return None
 
 
 def roster_by_name() -> Dict[str, RosterEntry]:

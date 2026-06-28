@@ -9,7 +9,6 @@ STATE_DIR = Path(CLAUDEOPS_DIR)   # needs_ho / handover timestamp için Path API
 
 ROSTER_TSV = os.path.join(CLAUDEOPS_DIR, "roster.tsv")   # name<TAB>cwd<TAB>model
 MODELS_TSV = os.path.join(CLAUDEOPS_DIR, "models.tsv")   # name<TAB>model
-SUFFIX_FILE = os.path.join(CLAUDEOPS_DIR, "suffix")      # mevcut nesil suffix'i
 
 SESSIONS_DIR = os.path.join(CLAUDE_DIR, "sessions")      # <pid>.json (gecikmeli yazılır!)
 PROJECTS_DIR = os.path.join(CLAUDE_DIR, "projects")      # <encoded-cwd>/<sid>.jsonl

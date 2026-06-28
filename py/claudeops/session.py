@@ -4,8 +4,9 @@ from dataclasses import dataclass
 from typing import Optional
 import re
 
-# isim = harfler + suffix rakamları (hc54, anomaly54, gencmuh54, co53...)
-_NAME_RE = re.compile(r"^([a-z]+)(\d+)$")
+# İsimler base-name (suffix YOK): hc, anomaly, co... Geçiş savunması: eski
+# suffix'li adlar (hc58) da base'e (hc) indirgensin diye sondaki rakamlar opsiyonel.
+_NAME_RE = re.compile(r"^([a-z]+)\d*$")
 
 
 @dataclass
@@ -27,19 +28,13 @@ class Session:
 
     @property
     def base(self) -> str:
-        """Suffix'siz taban isim (hc54 -> hc)."""
+        """Taban isim. Normalde isim = base (hc). Geçiş savunması: suffix'li eski
+        ad gelirse (hc58) sondaki rakamlar atılır → hc. Böylece guard/handover
+        karışık dönemde (hc58 + hc) ikisini de aynı base görür, DUP açmaz."""
         if not self.name:
             return ""
         m = _NAME_RE.match(self.name)
         return m.group(1) if m else self.name
-
-    @property
-    def suffix(self) -> Optional[int]:
-        """Nesil suffix'i (hc54 -> 54)."""
-        if not self.name:
-            return None
-        m = _NAME_RE.match(self.name)
-        return int(m.group(2)) if m else None
 
     @property
     def model_short(self) -> str:

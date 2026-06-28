@@ -282,11 +282,9 @@ _roster_set() {   # name cwd [model] — upsert (name key); self/co dahil edileb
     printf '%s\t%s\t%s\n' "$name" "$cwd" "$model"; } > "$tmp" 2>/dev/null && mv "$tmp" "$ROSTER_FILE"
 }
 
-# ── Suffix state: "son session no" (handover bump'larında ilerler) ──────────
-# boot co/mo'yu base-name + bu suffix ile açar (co30) → fleet'in geri kalanıyla hizalı.
-SUFFIX_FILE="$STATE_DIR/suffix"
-_suffix_get() { [ -f "$SUFFIX_FILE" ] && tr -dc '0-9' < "$SUFFIX_FILE"; }
-_suffix_set() { [ -n "${1:-}" ] && { mkdir -p "$STATE_DIR" 2>/dev/null; printf '%s' "$1" > "$SUFFIX_FILE"; }; }
+# ── Suffix sistemi KALDIRILDI (2026-06-26): isimler base-name (hc, co...).
+# Eski suffix bump (handover'da hc53→hc54) → artık aynı isimle kill+respawn.
+# Geçiş savunması: suffix'li eski adlar (hc58) okuma tarafında base'e indirgenir.
 
 # ── Recover: bir cwd'nin EN GÜNCEL transcript'inin sid'i (jsonl reboot'tan sağ çıkar) ──
 # Encoding lossy (cwd→dir çözülmez) → ters yön: jsonl içeriğindeki gerçek "cwd" eşleştir.
@@ -604,7 +602,6 @@ cmd_rc() {
   local kill_first=0
   local rename=""
   local new_session=0
-  local rename_pattern=""
   local sticky_csv=""
   local pin_desk_csv=""
   local prompt_text=""
@@ -623,7 +620,7 @@ cmd_rc() {
       --kill-first)          kill_first=1;;
       --new)                 new_session=1;;
       --rename=*)            rename="${a#--rename=}";;
-      --suffix=*)            rename_pattern="${a#--suffix=}"; _suffix_set "$rename_pattern";;   # boot için "son session no"
+      --suffix=*)            echo "WARN: --suffix kaldırıldı (suffix sistemi yok) — yok sayılıyor" >&2;;
       --sticky=*)            sticky_csv="${a#--sticky=}";;
       --desktop=*)           pin_desk_csv="${a#--desktop=}";;
       --prompt=*)            prompt_text="${a#--prompt=}";;
@@ -645,8 +642,6 @@ seçenekler:
   --kill-first       açmadan önce eski pid'i SIGTERM
   --new              YENİ session başlat (resume yok, konuşma boş)
   --rename=<yeni>    aynı sessionId resume ama yeni name (tek hedef için)
-  --suffix=<n>       toplu rename: name'in son rakam-grubunu <n> ile değiştirir
-                     (örn --suffix=14 → carla13→carla14, rve13→rve14)
   --one-by-one       serial spawn: her session sonrası proc+config doğrula, BOZUK'ta dur
 EOF
     return 2
@@ -759,12 +754,11 @@ except: print('gone')
       wmctrl -s "$old_desk" 2>/dev/null
       sleep 0.5
     fi
-    # Effective name + resume flag
-    local effective_name="$name"
+    # Effective name + resume flag.
+    # Suffix sistemi kaldırıldı: isim = base-name. $name zaten base (canlı session
+    # eski suffix'liyse sondaki rakamları at → hc58'i hc olarak yeniden aç).
+    local effective_name; effective_name=$(printf '%s' "$name" | sed -E 's/[0-9]+$//')
     [ -n "$rename" ] && effective_name="$rename"
-    if [ -n "$rename_pattern" ]; then
-      effective_name=$(echo "$name" | sed -E "s/[0-9]+$/${rename_pattern}/")
-    fi
     local resume_arg="--resume $sid"
     [ "$new_session" = "1" ] && resume_arg=""
     local model_arg=""
@@ -1178,11 +1172,11 @@ cmd_new() {
 }
 
 # ─────────────────────────────────────────────
-# CMD: handover [--from-suffix=13 --to-suffix=14] [--dry-run] [--message=...]
-# Her <name><from> session için:
+# CMD: handover [--dry-run] [--exclude=co,ulaksec] [--message=...]
+# Her session için (isimler base-name, suffix yok):
 #   1. Wrap-up mesajı gönder (Claude commit/push + MD update yapsın)
-#   2. <name><from> kill
-#   3. Yerine <name><to> FRESH session aç (RC + visible gnome-terminal)
+#   2. Eski proc kill
+#   3. Yerine AYNI isimle FRESH session aç (RC + visible gnome-terminal)
 # Açık session sayısı dinamik — runtime'da discover edilir.
 # ─────────────────────────────────────────────
 HANDOVER_MSG_DEFAULT='ÖNCE: CLAUDE.md BÜYÜKLÜK OPTİMİZASYONU. Dosya her session başında context e yüklendiği için kısa ve öz olmalı.
@@ -1224,7 +1218,7 @@ Sonunda CLAUDE.md nin sonuna "## READY FOR HANDOVER ($(date))" başlığıyla 5-
 Bitince "READY FOR HANDOVER" özetiyle dön.'
 
 # ─────────────────────────────────────────────
-# CMD: needs-ho [--from-suffix=N] [--baseline=ISO] [--no-fetch]
+# CMD: needs-ho [--base=NAME] [--baseline=ISO] [--no-fetch]
 # Hangi session'lar handover (wrap-up) gerektiriyor? 6 sinyal tablosu:
 #   mod/stg/unt (working tree) · unpush (remote'lar) · jsonl · since? (commit-vs-baseline)
 # Verdict needs_ho() ile. READ-ONLY: hiçbir session öldürülmez/açılmaz.
@@ -1244,16 +1238,17 @@ cmd_stamp_baseline() {   # <all-but-self|name...> — repo HEAD'i "ho sonrası" 
 }
 
 cmd_needs_ho() {
-  local from_suffix="" base_override="" do_fetch=1
+  local base_filter="" base_override="" do_fetch=1
   for a in "$@"; do case "$a" in
-    --from-suffix=*) from_suffix="${a#--from-suffix=}";;
+    --base=*)        base_filter="${a#--base=}";;
+    --from-suffix=*) echo "WARN: --from-suffix kaldırıldı (suffix yok); --base=<isim> kullan" >&2;;
     --baseline=*)    base_override="${a#--baseline=}";;
     --no-fetch)      do_fetch=0;;
   esac; done
   local base; base=$(_baseline_ts "$base_override")
   echo "baseline (son handover): ${base:-<yok — 'handover' çalışınca set olur; commit-since atlanır>}"
   local rows; rows=$(all_sessions_tsv | filter_not_self)
-  [ -n "$from_suffix" ] && rows=$(echo "$rows" | awk -F'\t' -v s="$from_suffix" '$2 ~ s"$"')
+  [ -n "$base_filter" ] && rows=$(echo "$rows" | awk -F'\t' -v s="$base_filter" '$2 ~ "^"s"[0-9]*$"')
   printf "%-13s %-4s %-4s %-4s %-8s %-6s %-7s %s\n" name mod stg unt unpush jsonl since? VERDICT
   local ho="" skip=""
   while IFS=$'\t' read pid name status sid cwd bridge; do
@@ -1281,18 +1276,17 @@ cmd_needs_ho() {
 }
 
 cmd_handover() {
-  local from_suffix="13"
   local dry=0
   local message="$HANDOVER_MSG_DEFAULT"
   local mode="visible"   # visible (default) | headless (-p, no approval prompts visible)
-  local exclude=""
+  local exclude="co,ulaksec"   # default: co (self) + ulaksec ASLA handover edilmez [[co-ulaksec-guard-yes-ho-no]]
   local force=0          # --force: skip/dirty/done/idle-only kontrollerini baypas, HEPSİNE gönder
   local do_layout=0      # --layout: tüm spawn'lar gittikten sonra layout çalıştır
   local layout_pin=""    # --pin=a,b: layout'a iletilecek pin listesi
   local ho_model=""      # --model=X: wrap-up resume'unu bu modelde aç (sonnet rate-limit bypass için opus)
   for a in "$@"; do
     case "$a" in
-      --from-suffix=*)        from_suffix="${a#--from-suffix=}";;
+      --from-suffix=*)        echo "WARN: --from-suffix kaldırıldı (suffix yok) — tüm fleet hedef" >&2;;
       --message=*)            message="${a#--message=}";;
       --message-file=*)       message="$(cat "${a#--message-file=}")";;
       --headless)             mode="headless";;
@@ -1306,15 +1300,17 @@ cmd_handover() {
     esac
   done
 
+  # Suffix yok → tüm aktif fleet hedef (co/ulaksec exclude ile çıkar). Exclude base-name
+  # eşleşmesi: co58 gibi eski suffix'li adlar da yakalansın (^(co|ulaksec)[0-9]*$).
   local rows
-  rows=$(all_sessions_tsv | filter_not_self | awk -F'\t' -v s="$from_suffix" '$2 ~ s"$"')
+  rows=$(all_sessions_tsv | filter_not_self)
   if [ -n "$exclude" ]; then
     local exclude_pat
     exclude_pat=$(echo "$exclude" | tr ',' '|')
-    rows=$(echo "$rows" | awk -F'\t' -v p="$exclude_pat" '$2 !~ "^("p")$"')
+    rows=$(echo "$rows" | awk -F'\t' -v p="$exclude_pat" '$2 !~ "^("p")[0-9]*$"')
   fi
   local total; total=$(echo "$rows" | grep -c '.')
-  echo "=== handover ($mode): suffix=$from_suffix${exclude:+ (exclude=$exclude)}; $total session bulundu ==="
+  echo "=== handover ($mode):${exclude:+ exclude=$exclude;} $total session bulundu ==="
   [ "$total" -eq 0 ] && { echo "(eşleşen session yok)"; return 0; }
 
   if [ "$dry" = "1" ]; then
@@ -1324,7 +1320,7 @@ cmd_handover() {
     echo "(dry-run — uygulamak için --dry-run'sız çalıştır)"
     echo ""
     echo "Sonraki adım (manuel, sen hazır olduğunda):"
-    echo "  claudeops rc all-but-self --suffix=14 --new --kill-first"
+    echo "  claudeops rc all-but-self --new --kill-first"
     return 0
   fi
 
@@ -1560,7 +1556,7 @@ for f in glob.glob('/home/fatihyuce/.claude/sessions/*.json'):
     echo "  - Tool onayları için pencereye gel veya telefondan RC URL'sini aç"
     echo "  - Hepsi 'READY FOR HANDOVER' özeti verince → sıradaki adım:"
     echo ""
-    echo "  claudeops rc all-but-self --suffix=14 --new --kill-first"
+    echo "  claudeops rc all-but-self --new --kill-first"
     echo ""
     echo "  Bu komut <name>13'leri kapatır, yerlerine <name>14 FRESH session açar."
   fi
@@ -1905,14 +1901,13 @@ cmd_boot() {
   { [ -n "$DISPLAY" ] && wmctrl -m >/dev/null 2>&1; } || { echo "boot: X/WM hazır değil (${w}s bekledim) DISPLAY=${DISPLAY:-?}"; return 1; }
 
   # 2) listedeki session'ları paced aç (rapid burst gnome-terminal-server'ı wedge'ler).
-  #    İsim = base + son-suffix (co30); sid bulunursa --resume → geçmiş korunur ("session bilgisi").
-  local suffix; suffix=$(_suffix_get)
+  #    İsim = base-name (suffix yok); sid bulunursa --resume → geçmiş korunur ("session bilgisi").
   local n=0
   while IFS=$'\t' read name cwd model; do
     case "$name" in ''|'#'*) continue;; esac
     [ -d "$cwd" ] || { echo "  SKIP $name: cwd yok ($cwd)"; continue; }
-    local base; base=$(printf '%s' "$name" | sed -E 's/[0-9]+$//')
-    local eff="${base}${suffix}"
+    # boot.list zaten base-name; eski suffix'li satır gelirse sondaki rakamları at.
+    local eff; eff=$(printf '%s' "$name" | sed -E 's/[0-9]+$//')
     local m="${model:-$BOOT_MODEL_DEFAULT}"
     local sid; sid=$(_latest_sid_for_cwd "$cwd")
     local resume=""; [ -n "$sid" ] && resume="--resume $sid"
@@ -1921,7 +1916,7 @@ cmd_boot() {
     echo "  BOOT $eff ($cwd) $([ -n "$sid" ] && echo "resume=${sid:0:8}" || echo fresh) model=$m"
     n=$((n+1)); sleep "$pace"
   done < "$src"
-  echo "boot: $n session açıldı (suffix=${suffix:-yok})"
+  echo "boot: $n session açıldı"
 
   [ "$do_layout" = "1" ] && { sleep 5; cmd_layout grid 4 || true; }
 
@@ -2018,9 +2013,6 @@ cmd_guard() {
   [ -f "$models_tsv" ] || { echo "guard: models.tsv yok ($models_tsv)"; return 1; }
   [ -f "$ROSTER_FILE" ] || { echo "guard: roster.tsv yok ($ROSTER_FILE). 'claudeops snapshot' çalıştır."; return 1; }
 
-  local suffix; suffix=$(_suffix_get)
-  [ -z "$suffix" ] && { echo "guard: suffix state yok ($SUFFIX_FILE)"; return 1; }
-
   # X/WM kontrolü — env yoksa çalışan GNOME oturumundan DISPLAY/XAUTH/DBUS çek
   if [ "$boot_mode" = "1" ]; then
     local w=0
@@ -2031,8 +2023,9 @@ cmd_guard() {
   fi
 
   # Şu an çalışan session isimleri + cwd'leri (isim eşleşmese bile aynı cwd varsa atla)
+  # İsimler base'e indirgenir (hc58→hc, geçiş savunması) → çalışan hc58 varken hc açılmaz.
   local running_tsv; running_tsv=$(all_sessions_tsv 2>/dev/null)
-  local running; running=$(echo "$running_tsv" | awk -F'\t' '{print $2}')
+  local running; running=$(echo "$running_tsv" | awk -F'\t' '{print $2}' | sed -E 's/[0-9]+$//')
   local running_cwds; running_cwds=$(echo "$running_tsv" | awk -F'\t' '{print $5}')
 
   local reopened=0 skipped=0 no_cwd=0
@@ -2041,12 +2034,12 @@ cmd_guard() {
 
   while IFS=$'\t' read base model; do
     case "$base" in ''|'#'*) continue;; esac
-    local expected="${base}${suffix}"
+    local expected="$base"
 
     # cwd — roster.tsv'den (isim kontrolünden önce lazım)
     local cwd; cwd=$(grep -P "^${base}\t" "$ROSTER_FILE" 2>/dev/null | cut -f2 | head -1)
 
-    # Zaten çalışıyor? (isim VEYA aynı cwd — isim değişse de, ör. co29 vs co32)
+    # Zaten çalışıyor? (base-name VEYA aynı cwd — eski suffix'li ad da base'e indirgendi)
     if echo "$running" | grep -qxF "$expected"; then
       skipped=$((skipped+1)); continue
     fi
@@ -2078,7 +2071,7 @@ cmd_guard() {
     fi
   done < "$models_tsv"
 
-  echo "[$ts] guard done: reopened=$reopened skipped=$skipped no_cwd=$no_cwd (suffix=$suffix)"
+  echo "[$ts] guard done: reopened=$reopened skipped=$skipped no_cwd=$no_cwd"
 
   if [ "$do_lock" = "1" ] && [ "$reopened" -gt 0 ]; then
     sleep 3
@@ -2170,14 +2163,13 @@ KULLANIM:
   claudeops boot [--lock] [--layout] [--from-roster] [--pace=N]
       Cold-boot oto-açılış (autologin + ~/.config/autostart/claudeops.desktop ile
       reboot'ta otomatik). Default kaynak ~/.claude/claudeops/boot.list (co + mo).
-      Her session'ı base-name + SON SUFFIX ile (co30) ve cwd'sinin EN GÜNCEL
-      transcript'iyle --resume ederek açar (geçmiş korunur). --lock: en son ekranı
-      kilitler (fleet arkada çalışır, şifreyle aç). Suffix: ~/.claude/claudeops/suffix
-      (rc --suffix=N ile oto-güncellenir). --from-roster: snapshot'tan tam fleet.
+      Her session'ı base-name (co, mo) ile ve cwd'sinin EN GÜNCEL transcript'iyle
+      --resume ederek açar (geçmiş korunur). --lock: en son ekranı kilitler
+      (fleet arkada çalışır, şifreyle aç). --from-roster: snapshot'tan tam fleet.
 
   claudeops guard [--boot] [--lock] [--dry-run] [--pace=N]
       Watchdog: models.tsv fleet'ini tara, kapananları yeniden aç (models.tsv→model,
-      roster.tsv→cwd, suffix state). Zaten çalışan session'ları atlar; kapananları
+      roster.tsv→cwd; isimler base-name). Zaten çalışan session'ları atlar; kapananları
       --resume <en-güncel-sid> ile gnome-terminal'de yeniden açar.
       --boot: X/WM hazır olana dek 90s bekle (autostart/reboot için).
       --lock: spawn sonrası ekranı kilitle. --dry-run: ne açılacağını göster.
@@ -2192,7 +2184,7 @@ KULLANIM:
       reboot'tan sağ çıkar → her repo'nun en güncel'i: cwd · sid · git-dirty · son-aktif.
       Resume: cd <cwd> && claude --resume <sid>  (ya da boot otomatik yapar).
 
-  claudeops needs-ho [--from-suffix=N] [--baseline=ISO] [--no-fetch]
+  claudeops needs-ho [--base=NAME] [--baseline=ISO] [--no-fetch]
       READ-ONLY: hangi session'lar handover (wrap-up) gerektiriyor? 6 sinyal tablosu:
       modified/staged/untracked (working tree) · unpushed (tüm remote'lar) · jsonl ·
       since? (son commit, baseline=son-handover'dan yeni mi). Sinyallerden BİRİ → HO.
@@ -2200,7 +2192,7 @@ KULLANIM:
       session'ları yakalar — repo_dirty+jsonl tek başına bunları "idle-clean" sanıp
       ATLIYORDU. Baseline state: ~/.claude/claudeops/last-handover.ts (her ho'da güncellenir).
 
-  claudeops handover [--from-suffix=13] [--to-suffix=14] [--dry-run]
+  claudeops handover [--dry-run] [--exclude=co,ulaksec]
                      [--skip-msg] [--message=...] [--message-file=path]
                      [--force] [--timeout=1800]
       --force: skip kontrollerini (already-done / idle-only / dirty) baypas et,
@@ -2208,7 +2200,7 @@ KULLANIM:
         ile açar. Default'ta skip mantığı geçerli (sadece gerekenlere gönderir).
       --layout [--pin=a,b]: tüm wrap-up pencereleri açıldıktan sonra otomatik
         'layout grid 4' çalıştır (Faz 1 + tile tek komutta).
-      Her <name><from> session için:
+      Her session için (isimler base-name, suffix yok):
         0) BUSY ise idle olana kadar bekler (max 60dk)
         1) Wrap-up mesajı gönderir (Claude commit/push + MD update yapsın diye)
            Default mesaj:
@@ -2216,8 +2208,8 @@ KULLANIM:
               konusup ve bulup ve arastirip da not almadigimiz kaldi mi?
               her sey commit ve push lu mu? todo/changelog/claude.md guncel mi?
               Yeni sessiona hazir miyiz? Bulduklarimizdan kayit altina almadigimiz kaldi mi?"
-        2) <name><from> session'ı kill
-        3) Yerine <name><to> FRESH session (RC + gnome-terminal visible) açar
+        2) Eski proc'u kill
+        3) Yerine AYNI isimle FRESH session (RC + gnome-terminal visible) açar
       Rate-limit'te otomatik durur. Açık session sayısı runtime'da discover edilir.
       Token-pahalı: 14 session × ~5-30dk = ~1-7 saat + büyük token harcaması.
 
