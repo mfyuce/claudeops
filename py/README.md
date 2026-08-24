@@ -38,6 +38,8 @@ En kolay kullanım yolu; her şey tarayıcıdan:
 - **Layout** — pencereleri masaüstlerine dağıtır (`wmctrl`+`xdotool`, X11 only). Kilitli ekranda veya
   Wayland'da bozuk çalıştığı bilindiği için **otomatik pre-flight kontrol** var — kilitliyse reddeder.
   Eksik bağımlılık varsa (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) uyarır, kurmaz (sudo gerektirir).
+- **TR/EN** — tarayıcı diline göre otomatik seçilir (`navigator.language`), sağ üstteki butonlarla elle
+  değiştirilip kalıcı hale getirilebilir (localStorage).
 - **Token korumalı** (`~/.claude/claudeops/web.token`, ilk çalıştırmada rastgele üretilir) — sayfa da
   API de token olmadan 401 döner. `--tunnel` ile `cloudflared` quick-tunnel açılır (PATH'te yoksa
   `~/.local/bin`'e otomatik indirilir, Linux amd64/arm64).
