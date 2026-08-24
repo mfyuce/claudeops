@@ -5,13 +5,22 @@ Bash `claudeops` (ROOT'taki, ~2270 satır) **CANLI fleet'i yönetiyor ve KALIYOR
 ## Neden (2026-06-21 gecesi somut yaşandı)
 Bash >2200 satır kırılgan: proc-match anchor bug (hc53≠hcr53 trailing-space), cwd-türetme bug (yanlış dizinde spawn), dup yarışı, her yere serpili `python3 -c` inline, quoting cehennemi, tip/test yok. → [[mass-faz1-ratelimit-stuck]], DONE.md 2026-06-21.
 
+## Kurulum
+```bash
+pip install -r py/requirements.txt   # sadece psutil
+```
+Python 3.10+. `web --tunnel` için `cloudflared` gerekir — kurulu değilse otomatik indirilir
+(`~/.local/bin/cloudflared`, sadece Linux amd64/arm64; başka platformda elle kurun).
+`layout` için `wmctrl` + `xdotool` gerekir (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) —
+eksikse `web` panelinde uyarı çıkar, komut da hata mesajıyla söyler.
+
 ## Çalıştır
 ```bash
-py/cops list              # tüm session'lar + CPU + dup kontrol
-py/cops ls --suffix 54    # sadece *54
-py/cops ls --base hc      # sadece hc*
+py/cops list                       # tüm session'lar + CPU + dup kontrol
+py/cops ls --base hc               # sadece hc*
+py/cops web                        # yerel kontrol paneli, http://127.0.0.1:8765
+py/cops web --tunnel               # + cloudflared quick-tunnel (uzaktan erişim)
 ```
-Bağımlılık: `psutil` (kurulu, 5.9). Python 3.10+.
 
 ## Yapı
 ```
@@ -40,6 +49,13 @@ cops              # bash wrapper → python3 -m claudeops
 - [x] **handover** — Faz 1 (kill+reopen+msg, batch throttle, proc-presence başarı kriteri, co+ulaksec exclude)
 - [x] **stuck-detect + recovery** — jsonl son=user + CPU<2% tespiti; --recover ile kill+resume
 - [x] **layout** — xdotool tile (pin/group/desktop dağıtımı; X11 only, Wayland çalışmaz)
+- [x] **close** — session'ı kalıcı kapat (kill + models.tsv comment, guard tekrar açmaz)
+- [x] **web** — yerel kontrol paneli (`--tunnel` ile cloudflared quick-tunnel): roster'ın tamamını
+      (aktif/kapalı/emekli) gösterir, tek tek başlat (model/permission-mode/effort/fresh seçenekli)
+      / durdur / emekli et / tekrar işe al / ayrı yeni chat aç / layout uygula — mass-start yok,
+      token-gated. Bkz. `commands/web.py` docstring.
 
-## Durum (2026-06-22)
-**TÜM komutlar implement edildi**: `list`, `config`, `kill`, `guard`, `rc`, `handover`, `stuck`, `layout`. Roadmap tamamlandı. Bash'e DOKUNMA — canlı fleet hâlâ bash kullanıyor; Python testi dry-run ile yapılacak.
+## Durum
+Komutlar: `list`, `config`, `kill`, `close`, `guard`, `rc`, `handover`, `stuck`, `layout`, `web`.
+Bash `claudeops` (ROOT) hâlâ ayakta ama artık sadece `layout` + eski komutlar için; canlı fleet
+yönetimi (`guard` cron, `rc`, `handover`, `web`) tamamen bu Python sürümünde.
