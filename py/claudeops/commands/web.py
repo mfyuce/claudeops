@@ -237,6 +237,31 @@ def _append_tsv_line(path: str, fields: list) -> None:
         f.write(content)
 
 
+_NAME_VALID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _register_project(name: str, cwd: str, model: str = "") -> dict:
+    """UI'den yeni proje kaydı — roster.tsv+models.tsv'ye ekler, SPAWN ETMEZ.
+
+    Sonra normal "+ Ekle" listesinden başlatılır (mevcut trino/oiso/line elle-ekleme
+    akışının UI karşılığı).
+    """
+    name = name.strip()
+    if not _NAME_VALID_RE.match(name):
+        return {"ok": False, "error": "geçersiz isim — küçük harf ile başlamalı, sadece a-z 0-9 _ içerebilir"}
+    if name in _all_known_names():
+        return {"ok": False, "error": f"{name}: zaten kayıtlı (aktif/kapalı/emekli)"}
+    cwd = os.path.expanduser(cwd.strip())
+    if not cwd or not os.path.isdir(cwd):
+        return {"ok": False, "error": f"{cwd or '(boş)'}: dizin bulunamadı"}
+    if "\t" in cwd or "\n" in cwd:
+        return {"ok": False, "error": "cwd geçersiz karakter içeriyor"}
+    chosen_model = model.strip() or MODEL_CHOICES[0]
+    _append_tsv_line(ROSTER_TSV, [name, cwd, chosen_model])
+    _append_tsv_line(MODELS_TSV, [name, chosen_model])
+    return {"ok": True}
+
+
 def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "") -> dict:
     """`base`'in cwd'sinde YENİ, otomatik-isimli (tarih[+_N]) bir chat başlat.
 
@@ -526,6 +551,7 @@ PAGE_HTML = """<!doctype html>
   button.go { border-color: var(--accent); color: var(--accent); }
   button.retire { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
   button.reactivate { border-color: var(--green); color: var(--green); }
+  button.addtoggle { border-color: var(--accent); color: var(--accent); margin: .5rem 0; }
   button:disabled { opacity: .5; cursor: default; }
   .actioncell { display: flex; gap: .35rem; flex-wrap: wrap; }
   .group-title { color: var(--muted); font-size: .75rem; text-transform: uppercase;
@@ -560,6 +586,10 @@ PAGE_HTML = """<!doctype html>
     <tbody id="rows"><tr><td colspan="7">yükleniyor…</td></tr></tbody>
   </table>
   </div>
+
+  <button class="addtoggle" onclick="toggleAddPanel()"><span id="addToggleLabel">+ Ekle</span></button>
+  <div id="addBox"></div>
+
   <div id="closedBox"></div>
   <div id="retiredBox"></div>
 
@@ -586,6 +616,7 @@ function withToken(url) {
 let LAST = null;
 let LAST_JSON = null;
 let optsFor = null;
+let showAddPanel = false;
 
 async function refresh() {
   let r;
@@ -627,27 +658,19 @@ function render(d) {
   if (d.dups.length) banners.push('<div class="banner bad">⚠ DUP: ' + d.dups.join(', ') + '</div>');
   document.getElementById('banners').innerHTML = banners.join('');
 
+  const runningSessions = d.sessions.filter(s => s.running);
+  const stoppedSessions = d.sessions.filter(s => !s.running);
+
   const rows = [];
-  for (const s of d.sessions) {
-    rows.push(`
-    <tr>
-      <td>${s.name}</td>
-      <td>${s.model || ''}</td>
-      <td><span class="dot ${s.running ? 'on' : 'off'}"></span>${s.running ? 'pid ' + s.pid : 'durdu'}</td>
-      <td>${s.running ? s.cpu.toFixed(1) : '—'}</td>
-      <td>${s.kind || '—'}</td>
-      <td class="cwd" title="${s.cwd}">${s.cwd}</td>
-      <td><div class="actioncell">
-        ${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">durdur</button>` : ''}
-        <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? 'seçenekler ▾' : 'başlat ▾'}</button>
-        <button class="retire" onclick="doRetire('${s.name}', this)">emekli et</button>
-      </div></td>
-    </tr>`);
-    if (optsFor === s.name) {
-      rows.push(unifiedOptsRow(s, d));
-    }
+  for (const s of runningSessions) rows.push(...sessionRow(s, d));
+  if (!runningSessions.length) {
+    rows.push('<tr><td colspan="7" style="color:var(--muted)">Hiçbir şey çalışmıyor — aşağıdaki "+ Ekle"den başlatın.</td></tr>');
   }
   document.getElementById('rows').innerHTML = rows.join('');
+
+  document.getElementById('addToggleLabel').textContent =
+    (showAddPanel ? '▾' : '▸') + ' + Ekle (' + stoppedSessions.length + ' kayıtlı, kapalı)';
+  document.getElementById('addBox').innerHTML = showAddPanel ? renderAddBox(stoppedSessions, d) : '';
 
   document.getElementById('closedBox').innerHTML = groupTable('Kapalı', d.closed, 'reactivate');
   document.getElementById('retiredBox').innerHTML = groupTable('Emekli', d.retired, 'reactivate');
@@ -662,6 +685,81 @@ function render(d) {
     layoutWarn.textContent = '';
     document.getElementById('layout-go').disabled = false;
   }
+}
+
+function sessionRow(s, d) {
+  const row = `
+    <tr>
+      <td>${s.name}</td>
+      <td>${s.model || ''}</td>
+      <td><span class="dot ${s.running ? 'on' : 'off'}"></span>${s.running ? 'pid ' + s.pid : 'durdu'}</td>
+      <td>${s.running ? s.cpu.toFixed(1) : '—'}</td>
+      <td>${s.kind || '—'}</td>
+      <td class="cwd" title="${s.cwd}">${s.cwd}</td>
+      <td><div class="actioncell">
+        ${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">durdur</button>` : ''}
+        <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? 'seçenekler ▾' : 'başlat ▾'}</button>
+        <button class="retire" onclick="doRetire('${s.name}', this)">emekli et</button>
+      </div></td>
+    </tr>`;
+  return optsFor === s.name ? [row, unifiedOptsRow(s, d)] : [row];
+}
+
+function toggleAddPanel() {
+  showAddPanel = !showAddPanel;
+  render(LAST);
+}
+
+function renderAddBox(stoppedSessions, d) {
+  const rows = [];
+  for (const s of stoppedSessions) rows.push(...sessionRow(s, d));
+  const table = stoppedSessions.length
+    ? `<div class="tablewrap"><table><tbody>${rows.join('')}</tbody></table></div>`
+    : '<div class="opts-hint">Kayıtlı-ama-kapalı proje yok.</div>';
+  return `<div id="addBoxInner">${table}${newProjectForm(d)}</div>`;
+}
+
+function newProjectForm(d) {
+  const modelOpts = d.model_choices.map(m => `<option>${m}</option>`).join('');
+  return `
+    <div class="opts" style="margin-top:.5rem">
+      <span class="opts-hint"><b>+ Yeni proje kaydet</b> (klasörü roster'a ekler, başlatmaz — sonra "+Ekle" listesinden başlatırsınız)</span>
+      <label>isim (küçük harf, rakam, _)
+        <input type="text" id="reg-name" placeholder="myproject">
+      </label>
+      <label>klasör (tam yol)
+        <input type="text" id="reg-cwd" placeholder="/home/user/work/myproject">
+      </label>
+      <label>model
+        <select id="reg-model">${modelOpts}</select>
+      </label>
+      <button class="go" onclick="doRegister(this)">kaydet</button>
+    </div>`;
+}
+
+async function doRegister(btn) {
+  const name = document.getElementById('reg-name').value.trim();
+  const cwd = document.getElementById('reg-cwd').value.trim();
+  const model = document.getElementById('reg-model').value;
+  btn.disabled = true;
+  btn.textContent = 'kaydediliyor…';
+  try {
+    const r = await fetch(withToken('/api/register'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, cwd, model}),
+    });
+    if (r.status === 401) { alert('401 — token eksik/yanlış'); }
+    else {
+      const d = await safeJson(r);
+      if (!d.ok) alert(name + ': ' + d.error);
+    }
+  } catch (e) {
+    alert('istek başarısız: ' + e.message);
+  }
+  btn.disabled = false;
+  btn.textContent = 'kaydet';
+  refresh();
 }
 
 function groupTable(title, items, action) {
@@ -908,7 +1006,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
-                         "/api/new-chat", "/api/layout"):
+                         "/api/new-chat", "/api/layout", "/api/register"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -941,6 +1039,14 @@ class _Handler(BaseHTTPRequestHandler):
                 model=str(data.get("model", "")),
                 permission_mode=str(data.get("permission_mode", "")),
                 effort=str(data.get("effort", "")),
+            ))
+            return
+
+        if path == "/api/register":
+            self._json(_register_project(
+                name=str(data.get("name", "")),
+                cwd=str(data.get("cwd", "")),
+                model=str(data.get("model", "")),
             ))
             return
 
