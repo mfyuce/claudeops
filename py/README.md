@@ -49,6 +49,37 @@ The easiest way to use this; everything from the browser:
   and the API return 401 without it. `--tunnel` opens a `cloudflared` quick tunnel (auto-downloaded to
   `~/.local/bin` if missing, Linux amd64/arm64).
 
+### Access from your phone
+
+```bash
+py/cops web --tunnel
+```
+
+This prints two URLs:
+
+```
+claudeops web  →  http://127.0.0.1:8765/?token=<token>
+  tunnel  →  https://random-words-here.trycloudflare.com/?token=<token>
+```
+
+The **second one** (`trycloudflare.com`) works from anywhere with internet — no VPN, no need to be on
+the same Wi-Fi as the machine running it. Get that exact URL onto your phone (send it to yourself via
+notes/chat, or print a scannable QR code for it right in your terminal with
+`qrencode -t ansiutf8 "<url>"` (Ubuntu/Debian: `sudo apt install -y qrencode`) — everything stays local,
+nothing sends the URL to a third party) and open it in your phone's browser.
+
+A few things worth knowing:
+- The **token** is stable across restarts (same `~/.claude/claudeops/web.token` file every time), but the
+  **tunnel URL changes** on every `--tunnel` run — it's a Cloudflare "quick tunnel", no account or
+  domain needed, but also no fixed address. Keep the terminal open (or run it detached, e.g. under
+  `tmux`/`nohup`) for the tunnel to stay up.
+- Treat the full URL (with `?token=...`) like a password — anyone who has it can start/stop your
+  sessions. Don't post it publicly, don't leave it visible in a screen share, and don't put it in this
+  screenshot's URL bar if you ever take one for yourself (this README's screenshot is viewport-only, no
+  address bar, on purpose).
+- Want a URL that doesn't change every time? That needs a Cloudflare **named tunnel** on your own domain
+  instead of `--tunnel`'s quick tunnel — not set up by claudeops by default.
+
 ## CLI commands
 
 ```

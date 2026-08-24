@@ -48,6 +48,36 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   API de token olmadan 401 döner. `--tunnel` ile `cloudflared` quick-tunnel açılır (PATH'te yoksa
   `~/.local/bin`'e otomatik indirilir, Linux amd64/arm64).
 
+### Telefondan erişim
+
+```bash
+py/cops web --tunnel
+```
+
+Bu iki URL yazdırır:
+
+```
+claudeops web  →  http://127.0.0.1:8765/?token=<token>
+  tünel  →  https://random-words-here.trycloudflare.com/?token=<token>
+```
+
+**İkinci URL** (`trycloudflare.com`) internet olan her yerden çalışır — VPN gerekmez, telefonun
+bilgisayarla aynı Wi-Fi'de olmasına gerek yok. O URL'i (aynen) telefonunuza ulaştırın (kendinize
+not/mesaj olarak gönderin, ya da [`qrencode`](https://packages.debian.org/search?keywords=qrencode)
+kuruluysa `qrencode -t ansiutf8 "<url>"` ile terminalde taranabilir bir QR kod bastırın — Ubuntu/Debian:
+`sudo apt install -y qrencode`; her şey lokalde kalır, URL üçüncü bir servise gitmez) ve telefonun
+tarayıcısında açın.
+
+Bilinmesi gerekenler:
+- **Token** her yeniden başlatmada aynı kalır (aynı `~/.claude/claudeops/web.token` dosyası), ama
+  **tünel URL'i her `--tunnel` çalıştırmasında değişir** — Cloudflare'in "quick tunnel"ı bu, hesap ya da
+  domain gerektirmez ama sabit adresi de yoktur. Tünelin ayakta kalması için terminali açık tutun (ya da
+  arka planda çalıştırın, ör. `tmux`/`nohup` ile).
+- Token'lı tam URL'i ("?token=..." dahil) şifre gibi düşünün — kimde bu varsa session'larınızı
+  başlatıp durdurabilir. Herkese açık paylaşmayın, ekran paylaşımında görünür bırakmayın.
+- Her seferinde değişmeyen bir URL isterseniz, `--tunnel`'ın quick-tunnel'ı yerine kendi domain'inizde
+  bir Cloudflare **named tunnel** kurmanız gerekir — claudeops bunu varsayılan olarak kurmuyor.
+
 ## CLI komutları
 
 ```
