@@ -1,7 +1,7 @@
 """`kill` — session'ı nazikçe kapat (SIGTERM + 8s grace + sadece canlıysa SIGKILL)."""
 from __future__ import annotations
 from ..discovery import find_by_name
-from ..kill import kill_session
+from ..kill import kill_session_and_parent
 
 
 def register(sub):
@@ -29,6 +29,6 @@ def run(args) -> int:
                 continue
             print(f"  {name} pid={s.pid} → SIGTERM + {args.grace:.0f}s grace...",
                   end="", flush=True)
-            result = kill_session(s.pid, grace=args.grace)
+            result = kill_session_and_parent(s.pid, grace=args.grace)
             print(f" {result}")
     return errors

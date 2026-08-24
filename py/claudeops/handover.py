@@ -19,10 +19,8 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-import psutil
-
 from .discovery import find_sessions, find_by_name
-from .kill import kill_session, KILL_GRACE_SECONDS
+from .kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from .needs_ho import needs_ho
 from .session import Session
 from .spawn import find_latest_jsonl, detect_display
@@ -78,37 +76,6 @@ class Faz1Summary:
     @property
     def skipped(self):
         return sum(1 for r in self.results if r.status.startswith("skipped"))
-
-
-def _kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS) -> str:
-    """Proc + parent bash'i öldür. Parent bash SIGKILL (terminal kapansın).
-
-    Parent bash SIGTERM'den ÖNCE resolve edilmeli — kill sonrası pid kaybolur
-    (ya NoSuchProcess ya da pid reuse riski). ([[review: parent-bash race]])
-    """
-    # Parent'ı KILL'den ÖNCE al — kill sonrası pid reuse riski var
-    parent_pid: Optional[int] = None
-    parent_create_time: Optional[float] = None
-    try:
-        proc = psutil.Process(pid)
-        parent = proc.parent()
-        if parent and parent.name() == "bash":
-            parent_pid = parent.pid
-            parent_create_time = parent.create_time()
-    except psutil.NoSuchProcess:
-        pass
-
-    result = kill_session(pid, grace=grace)
-
-    if parent_pid is not None:
-        try:
-            p = psutil.Process(parent_pid)
-            if p.create_time() == parent_create_time:
-                p.kill()
-        except psutil.NoSuchProcess:
-            pass
-
-    return result
 
 
 def _wait_proc(name: str, timeout: float = 15.0) -> bool:
@@ -214,7 +181,7 @@ def handover_faz1(
 
         # 1. Kill eski proc (dry-run'da atla)
         if not dry_run:
-            kill_result = _kill_session_and_parent(session.pid, grace=grace)
+            kill_result = kill_session_and_parent(session.pid, grace=grace)
             # Server-side RC bridge'in AYNI ismi bırakması için settle.
             # proc.wait ölümü onaylar AMA bridge deregister async gecikir → aynı
             # isimle hemen respawn = çakışma. already_dead'de bridge zaten yok, atla.

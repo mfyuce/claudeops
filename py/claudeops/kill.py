@@ -7,7 +7,7 @@ Kural ([[claude-2183-conversation-truncation]]):
 """
 from __future__ import annotations
 import signal
-from typing import Literal
+from typing import Literal, Optional
 
 import psutil
 
@@ -51,3 +51,35 @@ def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS) -> KillResult:
     except psutil.TimeoutExpired:
         pass  # zombie — kernel reap'i bekliyor, kill tamamlandı
     return "forced"
+
+
+def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS) -> KillResult:
+    """kill_session + parent bash'i de öldür (terminal penceresi kapansın).
+
+    TODO-b kök sebep fix: spawn.py terminali `bash -c "...; exec bash"` ile açıyor,
+    yani claude proc'u öldürmek terminali kapatmaz — parent bash `exec bash`'e düşüp
+    boş prompt'ta orphan kalır. Parent, kill'den ÖNCE resolve edilmeli (sonrasında
+    pid kaybolur/reuse riski) ([[review: parent-bash race]]).
+    """
+    parent_pid: Optional[int] = None
+    parent_create_time: Optional[float] = None
+    try:
+        proc = psutil.Process(pid)
+        parent = proc.parent()
+        if parent and parent.name() == "bash":
+            parent_pid = parent.pid
+            parent_create_time = parent.create_time()
+    except psutil.NoSuchProcess:
+        pass
+
+    result = kill_session(pid, grace=grace)
+
+    if parent_pid is not None:
+        try:
+            p = psutil.Process(parent_pid)
+            if p.create_time() == parent_create_time:
+                p.kill()
+        except psutil.NoSuchProcess:
+            pass
+
+    return result
