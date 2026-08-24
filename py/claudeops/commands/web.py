@@ -569,6 +569,14 @@ PAGE_HTML = """<!doctype html>
   td.cwd { color: var(--muted); font-size: .78rem; overflow: hidden; text-overflow: ellipsis;
            white-space: nowrap; max-width: 1px; }
   .tablewrap { overflow-x: auto; }
+  @media (max-width: 640px) {
+    /* dar ekranda model/tür sütunlarını gizle, cwd'yi kısalt — action butonları
+       kaydırmadan görünsün (telefonda test edildi: bunlar olmadan sağdaki
+       stop/options/close/retire ekran dışına taşıyordu) */
+    th:nth-child(2), td:nth-child(2), th:nth-child(5), td:nth-child(5) { display: none; }
+    td.cwd { max-width: 70px; }
+    h1 { font-size: 1rem; }
+  }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .4rem; }
   .dot.on { background: var(--green); }
   .dot.off { background: var(--muted); opacity: .5; }

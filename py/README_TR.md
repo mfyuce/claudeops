@@ -50,6 +50,11 @@ En kolay kullanım yolu; her şey tarayıcıdan:
 
 ### Telefondan erişim
 
+<img src="../docs/web-panel-mobile.png" alt="claudeops web paneli mobilde" width="320">
+
+Tablo dar ekranlarda uyum sağlıyor (model/tür sütunları gizlenir, action butonları kaydırmadan
+erişilebilir kalır).
+
 ```bash
 py/cops web --tunnel
 ```

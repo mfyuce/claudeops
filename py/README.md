@@ -51,6 +51,11 @@ The easiest way to use this; everything from the browser:
 
 ### Access from your phone
 
+<img src="../docs/web-panel-mobile.png" alt="claudeops web panel on mobile" width="320">
+
+The table adapts on narrow screens (model/kind columns hide, action buttons stay reachable without
+scrolling).
+
 ```bash
 py/cops web --tunnel
 ```
