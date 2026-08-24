@@ -85,6 +85,13 @@ A few things worth knowing:
 - Want a URL that doesn't change every time? That needs a Cloudflare **named tunnel** on your own domain
   instead of `--tunnel`'s quick tunnel — not set up by claudeops by default.
 
+**There's a second, independent way to reach a session from your phone:** every session claudeops opens
+uses `--remote-control`, which is Claude Code's own built-in feature — so it also shows up in the
+official **Claude mobile app**, under the **Code** tab, as a live connection you can tap into and chat
+with directly (no claudeops, no tunnel involved, that's Anthropic's own infrastructure). The claudeops
+web panel is for managing *which sessions exist* (start/stop/register/layout); the Claude app's Code tab
+is for *talking to one that's already running*. Handy to use together.
+
 ## CLI commands
 
 ```

@@ -83,6 +83,13 @@ Bilinmesi gerekenler:
 - Her seferinde değişmeyen bir URL isterseniz, `--tunnel`'ın quick-tunnel'ı yerine kendi domain'inizde
   bir Cloudflare **named tunnel** kurmanız gerekir — claudeops bunu varsayılan olarak kurmuyor.
 
+**Telefondan bir session'a ulaşmanın ikinci, bağımsız bir yolu daha var:** claudeops'un açtığı her
+session `--remote-control` kullanıyor — bu Claude Code'un kendi yerleşik özelliği, dolayısıyla resmi
+**Claude mobil uygulamasında** da **Code** sekmesi altında canlı bir bağlantı olarak görünür, direkt
+dokunup konuşabilirsiniz (claudeops yok, tünel yok — bu tamamen Anthropic'in kendi altyapısı). claudeops
+web paneli *hangi session'ların var olduğunu* yönetmek içindir (başlat/durdur/kaydet/layout); Claude
+uygulamasının Code sekmesi ise *zaten çalışan biriyle konuşmak* içindir. Birlikte kullanmak pratik.
+
 ## CLI komutları
 
 ```
