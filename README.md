@@ -1,9 +1,11 @@
 # claudeops
 
-Birden fazla proje klasöründe açık Claude Code oturumlarını tek yerden yönetir: kimin çalıştığını gör,
-tek tıkla başlat/durdur, isterse telefondan bile.
+*English · [Türkçe](README_TR.md)*
 
-![claudeops web paneli](docs/web-panel.png)
+Manage your open Claude Code sessions across multiple project folders from one place: see what's
+running, start/stop with one click, even from your phone.
+
+![claudeops web panel](docs/web-panel.png)
 
 ```bash
 git clone https://github.com/mfyuce/claudeops.git && cd claudeops
@@ -11,93 +13,104 @@ pip install -r py/requirements.txt
 py/cops web            # → http://127.0.0.1:8765
 ```
 
-Detaylı kurulum, `web` panelinin tüm özellikleri ve komut listesi: **[`py/README.md`](py/README.md)**.
+Full install instructions, all `web` panel features, and the command list: **[`py/README.md`](py/README.md)**.
 
-MIT lisanslı — bkz. [`LICENSE`](LICENSE).
+MIT licensed — see [`LICENSE`](LICENSE).
 
 ---
 
-Repoda ayrıca `claudeops` adında eski bir **bash** script var (aşağıda anlatılıyor) — ilk sürüm buydu,
-artık sadece birkaç legacy komut için tutuluyor. Canlı fleet yönetiminin tamamı (`guard`/`rc`/`handover`/`web`)
-Python sürümünde; yeni başlıyorsanız yukarıdaki `py/cops`'u kullanın.
+The repo also contains an older **bash** script called `claudeops` (described below) — that was the
+original version, now kept only for a handful of legacy commands. All live fleet management
+(`guard`/`rc`/`handover`/`web`) lives in the Python version now; if you're just getting started, use
+`py/cops` above.
 
-## Kurulum (bash `claudeops`, legacy)
+## Install (bash `claudeops`, legacy)
 
 ```bash
 chmod +x ./claudeops
-# opsiyonel: PATH'e ekle
+# optional: add to PATH
 ln -s "$(pwd)/claudeops" ~/.local/bin/claudeops
 ```
 
-Gereksinimler:
-- `bash`, `python3` (her zaman)
-- `claude` (her zaman — `~/.local/bin/claude` veya `npm` global)
-- `gnome-terminal` (sadece visible mode)
-- `wmctrl` (sadece `layout` komutu için)
-- `gsettings` (sadece `desktops` komutu için)
-- `xdotool` (Mutter snap workaround + initial prompt auto-submit için)
+Requirements:
+- `bash`, `python3` (always)
+- `claude` (always — `~/.local/bin/claude` or global npm install)
+- `gnome-terminal` (visible mode only)
+- `wmctrl` (only for the `layout` command)
+- `gsettings` (only for the `desktops` command)
+- `xdotool` (Mutter snap workaround + initial prompt auto-submit)
 
-Kurulum (Ubuntu):
+Install (Ubuntu):
 ```
 sudo apt install -y wmctrl xdotool
 ```
 
-**Neden xdotool gerekli?**
-- Mutter X11 `wmctrl -t` ve `xprop _NET_WM_DESKTOP` ClientMessage'larını bazen yoksayıyor → pencere taşıma flakey
-- Interactive `claude --remote-control NAME prompt` positional prompt'u input box'a pre-fill ediyor ama submit ETMİYOR → Enter manuel gerek
-- xdotool ile `windowactivate + type + key Return` ile bu iki sorun da çözülür
+**Why xdotool?**
+- Mutter's X11 `wmctrl -t` and `xprop _NET_WM_DESKTOP` ClientMessages are sometimes ignored → window
+  placement is flaky
+- The interactive `claude --remote-control NAME prompt` positional prompt pre-fills the input box but
+  does NOT submit it → Enter has to be sent manually
+- `xdotool`'s `windowactivate + type + key Return` fixes both
 
-## Hızlı başlangıç
+## Quick start
 
 ```bash
-claudeops self                       # bu konuşmanın pid, sid, bridge URL'i
-claudeops list                       # tüm session'lar
-claudeops list all-but-self          # self hariç (recommended)
+claudeops self                       # this conversation's pid, sid, bridge URL
+claudeops list                       # all sessions
+claudeops list all-but-self          # everything except self (recommended)
 
-claudeops desktops 5                 # 5 workspace sabit
-claudeops layout grid 4 --pin=rustrino13,sqli13  # pin'liler ws=0'a, 4'erli grid
+claudeops desktops 5                 # fix 5 workspaces
+claudeops layout grid 4 --pin=rustrino13,sqli13  # pinned ones go to ws=0, 4-up grid
 
-claudeops kill all-but-self          # hepsini SIGTERM
+claudeops kill all-but-self          # SIGTERM everything
 claudeops compact all-but-self --backup
-claudeops rc all-but-self            # gnome-terminal'de RC ile aç
-claudeops rc rve13 --rename=rve14    # aynı sessionId ama yeni isim
-claudeops rc all-but-self --suffix=14  # toplu suffix değişimi
-claudeops rc emrgence13 --new        # yeni boş session
+claudeops rc all-but-self            # open in gnome-terminal with RC
+claudeops rc rve13 --rename=rve14    # same sessionId, new name
+claudeops rc all-but-self --suffix=14  # bulk suffix change
+claudeops rc emrgence13 --new        # fresh empty session
 claudeops send all-but-self -- "/clear"   # slash command
-claudeops send hms13 -- "yarın paper'a dönelim mi?"
+claudeops send hms13 -- "should we get back to the paper tomorrow?"
 
 claudeops batch all-but-self         # full pipeline
-claudeops new myname /home/fatihyuce/work/projects/xyz
+claudeops new myname /home/youruser/work/projects/xyz
 ```
 
-## Hedef syntax
+## Target syntax
 
-| Form | Anlamı |
+| Form | Meaning |
 |---|---|
-| `all` | **Tüm** session'lar (self DAHİL — dikkat!) |
-| `all-but-self` / `notself` | Self hariç hepsi (varsayılan & güvenli) |
-| `<name1> <name2> ...` | TSV `name` alanında eşleşenler (self otomatik hariç) |
+| `all` | **All** sessions (self INCLUDED — careful!) |
+| `all-but-self` / `notself` | Everything except self (default & safe) |
+| `<name1> <name2> ...` | Matches in the TSV `name` field (self auto-excluded) |
 
-## Önemli notlar (yaşanmış bug ve fix'ler)
+## Notable lessons (real bugs and their fixes)
 
-1. **stdin leak**: `while read ... do ... done < file` döngüsünde `claude -p` çağrıları stdin'i miras alır ve TSV içeriği prompt'a sızar. Çözüm: `claude ... < /dev/null` (zaten script içinde).
-2. **Slash command'lar `-p` mode'da çalışır**: `claude -p "/compact"` gerçekten compact yapar. Disk boyutu kısalmaz, **token kullanımı azalır** çünkü resume sırasında `"isCompactSummary":true` markerlı entry'den ileri sayılır.
-3. **Self protection**: `find_self_claude_pid` `$$`'tan ata zincirini yürüyüp ilk `claude` binary'sini bulur. Hardcoded pid yok.
-4. **Detached vs Visible**: detached için `nohup setsid script -qfc 'claude ...' /tmp/log </dev/null >/dev/null 2>&1 &`. Görünür için `gnome-terminal --window --title=... -- bash -c "claude ...; exec bash"` (bash exec ile pencere claude exit etse de kapanmaz).
-5. **Rate limit**: 5-saatlik usage limit; assistant yanıtında `"You've hit your limit · resets ..."` görürsün. compact döngüsü bu pattern'de durur.
-6. **Bridge URL session'a sabit**: kill+resume sonrası aynı URL geçerli (bridgeSessionId).
+1. **stdin leak**: inside a `while read ... do ... done < file` loop, `claude -p` calls inherit stdin,
+   and the TSV content leaks into the prompt. Fix: `claude ... < /dev/null` (already in the script).
+2. **Slash commands work in `-p` mode**: `claude -p "/compact"` really does compact. Disk size doesn't
+   shrink, but **token usage drops**, because on resume it counts forward from the
+   `"isCompactSummary":true`-marked entry.
+3. **Self protection**: `find_self_claude_pid` walks the ancestor chain from `$$` and finds the first
+   `claude` binary. No hardcoded pid.
+4. **Detached vs Visible**: detached uses `nohup setsid script -qfc 'claude ...' /tmp/log </dev/null >/dev/null 2>&1 &`.
+   Visible uses `gnome-terminal --window --title=... -- bash -c "claude ...; exec bash"` (the `exec bash`
+   keeps the window open even after claude exits).
+5. **Rate limit**: the 5-hour usage limit shows up as `"You've hit your limit · resets ..."` in the
+   assistant's reply. The compact loop stops on this pattern.
+6. **Bridge URL is fixed per session**: after kill+resume, the same URL (bridgeSessionId) stays valid.
 
-## Klasör içeriği
+## Repo layout
 
-- `py/` — aktif geliştirilen Python sürümü (`py/cops`), bkz. [`py/README.md`](py/README.md)
-- `claudeops` — eski/legacy tek dosya bash script
+- `py/` — the actively developed Python version (`py/cops`), see [`py/README.md`](py/README.md)
+- `claudeops` — old/legacy single-file bash script
 - `LICENSE` — MIT
-- `README.md` — bu dosya
-- `CLAUDE.md` — proje context (gelecek Claude session'ları için)
-- `TODO.md` — açık iş kalemleri
-- `DONE.md` — tamamlananlar log'u
-- `TOBEDECIDED.md` — kullanıcı kararı bekleyen sorular
+- `README.md` / `README_TR.md` — English / Turkish
+- `CLAUDE.md` — project context (for future Claude sessions)
+- `TODO.md` — open work items
+- `DONE.md` — changelog
+- `TOBEDECIDED.md` — questions awaiting a user decision
 
-## Geri dönüş
+## Recovery
 
-Yedek almak için: `claudeops compact ... --backup` veya `claudeops batch ...` (batch zaten backup yapar). Her jsonl yanına `.bak.YYYYMMDD-HHMMSS` yazılır. Geri dönmek: `mv <sid>.jsonl.bak.X <sid>.jsonl`.
+To back up: `claudeops compact ... --backup` or `claudeops batch ...` (batch already backs up). Each
+jsonl gets a `.bak.YYYYMMDD-HHMMSS` sibling. To roll back: `mv <sid>.jsonl.bak.X <sid>.jsonl`.

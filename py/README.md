@@ -1,92 +1,97 @@
 # claudeops — Python (`py/cops`)
 
-Birden fazla proje klasöründe, birden fazla Claude Code oturumunu tek yerden yönetmek için
-küçük bir CLI + yerel web paneli. Her proje bir "roster" satırı (isim → klasör → model);
-`py/cops web` bu roster'ı gösterip tek tek başlatma/durdurma sağlar.
+*English · [Türkçe](README_TR.md)*
 
-Linux + X11 gerekir (`gnome-terminal`'e bağımlı) — WSL/headless/macOS/Windows desteklenmiyor.
+A small CLI + local web panel for managing multiple Claude Code sessions across multiple project
+folders from one place. Each project is a "roster" entry (name → folder → model); `py/cops web` shows
+that roster and lets you start/stop entries one at a time.
 
-## Kurulum
+Requires Linux + X11 (depends on `gnome-terminal`) — WSL/headless/macOS/Windows are not supported.
+
+## Install
 
 ```bash
 git clone https://github.com/mfyuce/claudeops.git
 cd claudeops
-pip install -r py/requirements.txt   # tek bağımlılık: psutil
+pip install -r py/requirements.txt   # single dependency: psutil
 ```
 
-Python 3.10+. `claude` CLI kurulu ve PATH'te olmalı.
+Python 3.10+. The `claude` CLI must be installed and on PATH.
 
-## Hızlı başlangıç
+## Quick start
 
 ```bash
-py/cops list          # şu an çalışan session'ları göster
-py/cops web            # kontrol paneli → http://127.0.0.1:8765
-py/cops web --tunnel   # + telefondan/uzaktan erişim (cloudflared, ilk seferde otomatik kurulur)
+py/cops list          # show currently running sessions
+py/cops web            # control panel → http://127.0.0.1:8765
+py/cops web --tunnel   # + access from your phone/remotely (cloudflared, auto-installed on first run)
 ```
 
-## `py/cops web` — kontrol paneli
+## `py/cops web` — the control panel
 
-En kolay kullanım yolu; her şey tarayıcıdan:
+The easiest way to use this; everything from the browser:
 
-![claudeops web paneli](../docs/web-panel.png)
+![claudeops web panel](../docs/web-panel.png)
 
-- **Ana sayfa** — sadece o an **çalışan** session'lar (gürültüsüz; hiçbir şey otomatik açılmaz).
-- **+ Ekle** — kayıtlı-ama-kapalı projeleri listeler; birini seçip **devam ettir** / **sıfırla (--new)** /
-  **ayrı yeni chat aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız.
-  Aynı panelin altında **yeni proje kaydet** formu (isim + klasör + model) — elle dosya düzenlemeden
-  roster'a ekler.
-- **Kapalı / Emekli** — geçici durdurulmuş / tamamen bırakılmış projeler; "tekrar işe al"la geri gelir.
-  Aktif bir projeyi **kapat**mak (geçici) ya da **emekli et**mek (kalıcı) mümkün.
-- **Layout** — pencereleri masaüstlerine dağıtır (`wmctrl`+`xdotool`, X11 only). Kilitli ekranda veya
-  Wayland'da bozuk çalıştığı bilindiği için **otomatik pre-flight kontrol** var — kilitliyse reddeder.
-  Eksik bağımlılık varsa (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) uyarır, kurmaz (sudo gerektirir).
-- **TR/EN** — tarayıcı diline göre otomatik seçilir (`navigator.language`), sağ üstteki butonlarla elle
-  değiştirilip kalıcı hale getirilebilir (localStorage).
-- **Token korumalı** (`~/.claude/claudeops/web.token`, ilk çalıştırmada rastgele üretilir) — sayfa da
-  API de token olmadan 401 döner. `--tunnel` ile `cloudflared` quick-tunnel açılır (PATH'te yoksa
-  `~/.local/bin`'e otomatik indirilir, Linux amd64/arm64).
+- **Main page** — only **running** sessions (no noise; nothing starts automatically).
+- **+ Add** — lists registered-but-stopped projects; pick one and start it with **resume** /
+  **reset (--new)** / **start a separate new chat** (auto-dated name, with model/permission-mode/effort
+  options). The same panel has a **register new project** form (name + folder + model) at the bottom —
+  adds to the roster without editing files by hand.
+- **Closed / Retired** — temporarily stopped / fully abandoned projects; come back with "reactivate".
+  An active project can be **closed** (temporary) or **retired** (permanent).
+- **Layout** — arranges windows across desktops (`wmctrl`+`xdotool`, X11 only). Known to misbehave on a
+  locked screen or under Wayland, so there's an **automatic pre-flight check** — it refuses if the
+  screen is locked. Warns (doesn't install, since that needs sudo) if a dependency is missing
+  (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`).
+- **TR/EN** — auto-selected from the browser's language (`navigator.language`), can be switched manually
+  with the buttons in the top corner and stays persisted (localStorage).
+- **Token protected** (`~/.claude/claudeops/web.token`, randomly generated on first run) — both the page
+  and the API return 401 without it. `--tunnel` opens a `cloudflared` quick tunnel (auto-downloaded to
+  `~/.local/bin` if missing, Linux amd64/arm64).
 
-## CLI komutları
+## CLI commands
 
 ```
-py/cops list      # çalışan session'ları listele
-py/cops kill      # bir/birkaç session'ı nazikçe kapat (SIGTERM + grace + gerekirse SIGKILL)
-py/cops close     # kalıcı kapat (kill + guard bir daha açmasın diye işaretle)
-py/cops guard     # roster'daki eksik session'ları tespit edip aç (crash-recovery; cron'a konabilir)
-py/cops rc        # kill + yeniden aç (tek tek ya da toplu; handover/respawn için)
-py/cops handover  # eski session'ı wrap-up mesajıyla kapatıp aynı adla yeniden aç
-py/cops stuck     # takılı kalmış (idle ama "busy" görünen) session'ları tespit et
-py/cops layout    # pencereleri masaüstlerine dağıt (X11)
-py/cops web       # kontrol paneli (yukarıda)
+py/cops list      # list running sessions
+py/cops kill      # gently stop one/several sessions (SIGTERM + grace + SIGKILL if needed)
+py/cops close     # close for good (kill + mark so guard won't reopen it)
+py/cops guard     # detect missing sessions from the roster and open them (crash-recovery; cron-able)
+py/cops rc        # kill + reopen (one at a time or in bulk; for handover/respawn)
+py/cops handover  # close an old session with a wrap-up message, reopen under the same name
+py/cops stuck     # detect stuck sessions (idle but showing "busy")
+py/cops layout    # arrange windows across desktops (X11)
+py/cops web       # the control panel (above)
 ```
 
-Her komutun kendi `--help`'i var.
+Every command has its own `--help`.
 
-## Nasıl çalışır
+## How it works
 
-- **Roster** iki TSV dosyası, repo dışında (`~/.claude/claudeops/`, kişiye özel, hiçbir zaman commit
-  edilmez): `roster.tsv` (`isim<TAB>klasör<TAB>model`) ve `models.tsv` (`isim<TAB>model` — satır `#` ile
-  başlıyorsa o isim kapalı/emekli, guard onu açmaz).
-- Session'lar `gnome-terminal` içinde `claude -n İSİM --remote-control İSİM` ile açılır — Claude Code'un
-  kendi Remote Control özelliği (claude.ai/code veya mobil uygulamadan da erişilebilir).
-- Kill her zaman **SIGTERM + ~10 saniye bekleme + hâlâ canlıysa SIGKILL** — Claude Code'un transkript
-  kaydı ara ara diske yazıldığı için (lazy-checkpoint), çok hızlı `SIGKILL` konuşma geçmişini kesebiliyor.
-- `guard` opsiyonel — istemiyorsanız hiç kurmayın, tamamen `py/cops web`'den elle yönetin.
+- The **roster** is two TSV files, outside the repo (`~/.claude/claudeops/`, personal, never
+  committed): `roster.tsv` (`name<TAB>folder<TAB>model`) and `models.tsv` (`name<TAB>model` — a line
+  starting with `#` means that name is closed/retired, guard won't open it).
+- Sessions are opened inside `gnome-terminal` with `claude -n NAME --remote-control NAME` — Claude
+  Code's own Remote Control feature (also reachable from claude.ai/code or the mobile app).
+- Kill is always **SIGTERM + ~10 second wait + SIGKILL if still alive** — since Claude Code's transcript
+  is written to disk lazily (checkpoint by checkpoint), a too-fast `SIGKILL` can cut off conversation
+  history.
+- `guard` is optional — don't set it up if you don't want it, manage everything by hand from
+  `py/cops web` instead.
 
-## Klasör yapısı
+## Folder structure
 
 ```
 py/claudeops/
-  paths.py, session.py, discovery.py   # temel: yollar, veri modeli, proc keşfi (psutil)
+  paths.py, session.py, discovery.py   # foundation: paths, data model, proc discovery (psutil)
   spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py
-  commands/                             # her CLI komutu kendi dosyasında (web.py en büyüğü)
-cops                                    # giriş noktası → python3 -m claudeops
+  commands/                             # one file per CLI command (web.py is the largest)
+cops                                    # entry point → python3 -m claudeops
 ```
 
-## Tasarım notları
+## Design notes
 
-- **psutil, `ps|grep` değil** — cmdline liste olarak geliyor, quoting/anchor tuzağı yok.
-- **CPU birinci sınıf aktiflik sinyali** — Claude Code'un kendi `status`/bridge alanları gecikmeli
-  güncelleniyor, CPU%>2 daha güvenilir "gerçekten çalışıyor" göstergesi.
-- **Bash `claudeops`** (repo kökünde) hâlâ duruyor ama artık sadece eski/legacy komutlar için —
-  canlı fleet yönetiminin (guard, rc, handover, web) tamamı bu Python sürümünde.
+- **psutil, not `ps|grep`** — cmdline comes back as a list, no quoting/anchor/substring traps.
+- **CPU as the primary "is it alive" signal** — Claude Code's own `status`/bridge fields update with a
+  delay, CPU%>2 is a more reliable "actually running" indicator.
+- **Bash `claudeops`** (repo root) is still around but only for old/legacy commands now — all live fleet
+  management (guard, rc, handover, web) is fully in this Python version.
