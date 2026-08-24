@@ -483,6 +483,33 @@ def _retire(name: str) -> dict:
     return {"ok": True}
 
 
+def _close_project(name: str) -> dict:
+    """Hafif kapat: sadece models.tsv yorumla (roster.tsv AKTİF kalır, cwd hatırlanır).
+
+    Emekli'den fark: roster.tsv dokunulmaz — "geçici durduruldu, sonra bakılacak"
+    (carla/mecdtfl'nin haziran'daki "KAPALI, revizyon bekler" kullanımıyla aynı).
+    py/cops close CLI komutuyla aynı mekanizma, web panelinden erişim.
+    """
+    fleet = _fleet_status()
+    info = fleet.get(name)
+    if not info:
+        return {"ok": False, "error": f"{name}: tanımsız"}
+    if info["state"] == "closed":
+        return {"ok": False, "error": f"{name}: zaten kapalı"}
+    if info["state"] == "retired":
+        return {"ok": False, "error": f"{name}: emekli — önce 'tekrar işe al', sonra kapatın"}
+    procs = _find_running(name)
+    if procs:
+        try:
+            with guard_lock(timeout=5.0):
+                for s in procs:
+                    kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS)
+        except TimeoutError as e:
+            return {"ok": False, "error": str(e)}
+    _toggle_comment(MODELS_TSV, name, want_active=False)
+    return {"ok": True}
+
+
 def _reactivate_and_start(name: str) -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
@@ -550,6 +577,7 @@ PAGE_HTML = """<!doctype html>
   button.stop { border-color: var(--red); color: var(--red); }
   button.go { border-color: var(--accent); color: var(--accent); }
   button.retire { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
+  button.closebtn { border-color: var(--muted); color: var(--muted); font-size: .78rem; padding: .3rem .5rem; }
   button.reactivate { border-color: var(--green); color: var(--green); }
   button.addtoggle { border-color: var(--accent); color: var(--accent); margin: .5rem 0; }
   button:disabled { opacity: .5; cursor: default; }
@@ -593,20 +621,8 @@ PAGE_HTML = """<!doctype html>
   <div id="closedBox"></div>
   <div id="retiredBox"></div>
 
-  <div class="group-title">Layout (X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz)</div>
-  <div class="opts" id="layoutPanel">
-    <span class="opts-hint" id="layout-warn"></span>
-    <label>pin (ws0'a sabit, virgülle)
-      <input type="text" id="layout-pin" placeholder="co,rustrino,anomaly,iggy">
-    </label>
-    <label>group'lar ( | ile ayrılmış birden fazla grup, her grup virgüllü)
-      <input type="text" id="layout-groups" placeholder="hc,hcr,evolvi | vc,vrk">
-    </label>
-    <label class="fresh-toggle"><input type="checkbox" id="layout-claude-only" checked> sadece claude pencereleri</label>
-    <label class="fresh-toggle"><input type="checkbox" id="layout-dry"> sadece planı göster (uygulama)</label>
-    <button class="go" id="layout-go" onclick="doLayout(this)">layout uygula</button>
-  </div>
-  <pre id="layout-result" class="layout-result"></pre>
+  <button class="addtoggle" onclick="toggleLayoutPanel()"><span id="layoutToggleLabel">▸ Layout</span> (X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz)</button>
+  <div id="layoutBox"></div>
 </div>
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
@@ -617,6 +633,7 @@ let LAST = null;
 let LAST_JSON = null;
 let optsFor = null;
 let showAddPanel = false;
+let showLayoutPanel = false;
 
 async function refresh() {
   let r;
@@ -675,16 +692,8 @@ function render(d) {
   document.getElementById('closedBox').innerHTML = groupTable('Kapalı', d.closed, 'reactivate');
   document.getElementById('retiredBox').innerHTML = groupTable('Emekli', d.retired, 'reactivate');
 
-  const layoutWarn = document.getElementById('layout-warn');
-  const missing = d.layout_missing_deps || [];
-  if (missing.length) {
-    layoutWarn.textContent = '⚠ eksik: ' + missing.join(', ') + ' — kurmak için: sudo apt install -y ' + missing.join(' ');
-    layoutWarn.style.color = 'var(--red)';
-    document.getElementById('layout-go').disabled = true;
-  } else {
-    layoutWarn.textContent = '';
-    document.getElementById('layout-go').disabled = false;
-  }
+  document.getElementById('layoutToggleLabel').textContent = showLayoutPanel ? '▾ Layout' : '▸ Layout';
+  document.getElementById('layoutBox').innerHTML = showLayoutPanel ? renderLayoutBox(d) : '';
 }
 
 function sessionRow(s, d) {
@@ -699,6 +708,7 @@ function sessionRow(s, d) {
       <td><div class="actioncell">
         ${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">durdur</button>` : ''}
         <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? 'seçenekler ▾' : 'başlat ▾'}</button>
+        <button class="closebtn" onclick="doClose('${s.name}', this)">kapat</button>
         <button class="retire" onclick="doRetire('${s.name}', this)">emekli et</button>
       </div></td>
     </tr>`;
@@ -708,6 +718,32 @@ function sessionRow(s, d) {
 function toggleAddPanel() {
   showAddPanel = !showAddPanel;
   render(LAST);
+}
+
+function toggleLayoutPanel() {
+  showLayoutPanel = !showLayoutPanel;
+  render(LAST);
+}
+
+function renderLayoutBox(d) {
+  const missing = d.layout_missing_deps || [];
+  const warn = missing.length
+    ? `<span class="opts-hint" style="color:var(--red)">⚠ eksik: ${missing.join(', ')} — kurmak için: sudo apt install -y ${missing.join(' ')}</span>`
+    : '<span class="opts-hint"></span>';
+  return `
+    <div class="opts" id="layoutPanel">
+      ${warn}
+      <label>pin (ws0'a sabit, virgülle)
+        <input type="text" id="layout-pin" placeholder="co,rustrino,anomaly,iggy">
+      </label>
+      <label>group'lar ( | ile ayrılmış birden fazla grup, her grup virgüllü)
+        <input type="text" id="layout-groups" placeholder="hc,hcr,evolvi | vc,vrk">
+      </label>
+      <label class="fresh-toggle"><input type="checkbox" id="layout-claude-only" checked> sadece claude pencereleri</label>
+      <label class="fresh-toggle"><input type="checkbox" id="layout-dry"> sadece planı göster (uygulama)</label>
+      <button class="go" id="layout-go" ${missing.length ? 'disabled' : ''} onclick="doLayout(this)">layout uygula</button>
+    </div>
+    <pre id="layout-result" class="layout-result"></pre>`;
 }
 
 function renderAddBox(stoppedSessions, d) {
@@ -883,6 +919,14 @@ async function doRetire(name, btn) {
   refresh();
 }
 
+async function doClose(name, btn) {
+  if (!confirm(name + ': kapatılsın mı? (çalışıyorsa önce durdurulur, sadece models.tsv yorumlanır — cwd hatırlanır, "tekrar işe al" ile kolayca geri gelir)')) return;
+  btn.disabled = true;
+  btn.textContent = 'kapatılıyor…';
+  await call('close', {name});
+  refresh();
+}
+
 async function doReactivate(name, btn) {
   btn.disabled = true;
   btn.textContent = 'başlıyor…';
@@ -1006,7 +1050,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
-                         "/api/new-chat", "/api/layout", "/api/register"):
+                         "/api/new-chat", "/api/layout", "/api/register", "/api/close"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -1066,6 +1110,8 @@ class _Handler(BaseHTTPRequestHandler):
             result = _stop(name)
         elif path == "/api/retire":
             result = _retire(name)
+        elif path == "/api/close":
+            result = _close_project(name)
         else:
             result = _reactivate_and_start(name)
         self._json(result)
