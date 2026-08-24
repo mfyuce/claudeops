@@ -3,6 +3,8 @@
 Birden fazla proje klasöründe açık Claude Code oturumlarını tek yerden yönetir: kimin çalıştığını gör,
 tek tıkla başlat/durdur, isterse telefondan bile.
 
+![claudeops web paneli](docs/web-panel.png)
+
 ```bash
 git clone https://github.com/mfyuce/claudeops.git && cd claudeops
 pip install -r py/requirements.txt
