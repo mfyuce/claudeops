@@ -104,7 +104,13 @@ def spawn_session(
     if dry_run:
         return f"[dry-run] {kind}  cmd: {inner[:80]}..."
 
-    env = os.environ.copy()
+    # CLAUDE*-prefixed env (CLAUDECODE, CLAUDE_CODE_SESSION_ID, CLAUDE_CODE_CHILD_SESSION,
+    # messaging socket/token, pinned EXECPATH, CLAUDE_EFFORT/PID...) is THIS process's own
+    # session identity. Spawned fleet sessions are independent top-level sessions, not
+    # children — inheriting it makes claude think it's a child session and DISABLE
+    # TRANSCRIPT SAVING ("Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION
+    # marker", found 2026-08-24 spawning from within a claude-run Bash tool/py-cops-web).
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
     env["DISPLAY"] = display
     subprocess.Popen(
         ["gnome-terminal", "--window", f"--title={name}",

@@ -21,7 +21,7 @@ from typing import Optional
 from ..discovery import find_by_name, find_sessions
 from ..guard import guard_lock
 from ..handover import HO_EXCLUDE_BASES
-from ..kill import kill_session, KILL_GRACE_SECONDS
+from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import repo_baseline_set
 from ..roster import read_models, roster_by_name
 from ..spawn import spawn_session, detect_display
@@ -105,7 +105,7 @@ def _run_inner(args, display, models, roster) -> int:
                         print(f"  [dry-run] kill {s.name} pid={s.pid}")
                     else:
                         print(f"  kill {s.name} pid={s.pid}...", end="", flush=True)
-                        result = kill_session(s.pid, grace=args.grace)
+                        result = kill_session_and_parent(s.pid, grace=args.grace)
                         print(f" {result}")
                         if result != "already_dead" and args.kill_settle > 0:
                             time.sleep(args.kill_settle)
