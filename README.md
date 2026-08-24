@@ -2,7 +2,15 @@
 
 Açık Claude CLI session'larını toplu yönetir. Bu konuşmayı (`$$` ata zincirinden bulduğu kendi claude pid'i) **her zaman korur, dokunmaz**.
 
-## Kurulum
+İki parça:
+- **`py/cops`** (Python, aktif geliştirilen) — canlı fleet yönetimi: `list`/`kill`/`close`/`guard`/`rc`/`handover`/`stuck`/`layout`/**`web`** (yerel kontrol paneli + opsiyonel cloudflared tünel ile uzaktan erişim). Kurulum ve komutlar: [`py/README.md`](py/README.md).
+- **`claudeops`** (bash, bu dosyada anlatılan) — eski/legacy komutlar, `py/cops`'un henüz kapsamadığı kısımlar için.
+
+Hızlı başlangıç istiyorsanız `py/README.md`'den başlayın — `py/cops web` en kolay yol.
+
+MIT lisanslı — bkz. [`LICENSE`](LICENSE).
+
+## Kurulum (bash `claudeops`)
 
 ```bash
 chmod +x ./claudeops

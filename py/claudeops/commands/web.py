@@ -17,13 +17,17 @@ truncation-safe kural ([[claude-2183-conversation-truncation]]) + parent bash'i
 de öldürür (orphan terminal bırakmaz, TODO-b kök sebep fix).
 """
 from __future__ import annotations
+import datetime
 import json
 import os
+import platform
 import re
 import secrets
 import shutil
 import subprocess
 import time
+import urllib.request
+from typing import Optional
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -66,7 +70,39 @@ def _load_or_create_token() -> str:
     return tok
 
 
-def _start_tunnel(port: int, timeout: float = 20.0):
+def _ensure_cloudflared() -> Optional[str]:
+    """cloudflared'ı PATH'te bul; yoksa ~/.local/bin'e resmi binary'yi indir (Linux only —
+    claudeops zaten gnome-terminal'e bağımlı, Mac/Windows kapsam dışı).
+
+    Returns: çözümlenmiş binary yolu, ya da indirilemezse None.
+    """
+    found = shutil.which("cloudflared")
+    if found:
+        return found
+
+    machine = platform.machine().lower()
+    arch = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine)
+    if platform.system() != "Linux" or not arch:
+        print(f"✗ cloudflared otomatik kurulamıyor ({platform.system()}/{machine}) — elle kurun: "
+              "https://github.com/cloudflare/cloudflared/releases")
+        return None
+
+    url = f"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-{arch}"
+    dest_dir = os.path.expanduser("~/.local/bin")
+    dest = os.path.join(dest_dir, "cloudflared")
+    print(f"cloudflared bulunamadı — indiriliyor: {url}")
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+        urllib.request.urlretrieve(url, dest)
+        os.chmod(dest, 0o755)
+        print(f"✓ cloudflared kuruldu: {dest}")
+        return dest
+    except Exception as e:
+        print(f"✗ cloudflared indirilemedi ({e}) — elle kurun: https://github.com/cloudflare/cloudflared/releases")
+        return None
+
+
+def _start_tunnel(port: int, cloudflared_path: str = "cloudflared", timeout: float = 20.0):
     """cloudflared quick tunnel başlat (login gerekmez, URL her seferinde random).
 
     Returns (proc, url_or_None). Süreç kalıcıdır — çağıran server_close/finally'de
@@ -75,7 +111,7 @@ def _start_tunnel(port: int, timeout: float = 20.0):
     os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
     log_f = open(TUNNEL_LOG, "w")
     proc = subprocess.Popen(
-        ["cloudflared", "tunnel", "--url", f"http://127.0.0.1:{port}"],
+        [cloudflared_path, "tunnel", "--url", f"http://127.0.0.1:{port}"],
         stdout=log_f, stderr=subprocess.STDOUT,
     )
     deadline = time.monotonic() + timeout
@@ -159,6 +195,78 @@ def _fleet_status() -> dict:
     return result
 
 
+def _all_known_names() -> set:
+    """roster.tsv'deki (aktif/kapalı/emekli FARK ETMEZ) TÜM isimler + şu an çalışan
+    TÜM proc isimleri/base'leri — yeni chat ismi üretirken çakışma kontrolü için."""
+    names = {r["name"] for r in _read_tsv_raw(ROSTER_TSV) if r["name"] != "name"}
+    for s in find_sessions(measure_cpu=False):
+        names.add(s.name)
+        names.add(s.base)
+    return names
+
+
+def _generate_new_chat_name(base: str) -> str:
+    """`<base><bugünün tarihi>`, çakışırsa `_1`, `_2`... ekler.
+
+    Kullanıcının kendi elle-açma alışkanlığıyla aynı desen (trino20260823,
+    mo20260813_1 gibi — ListAgents'ta görülen). Fark: burada OTOMATİK üretilip
+    roster.tsv'ye de kaydediliyor → artık invisible/unmanaged kalmıyor.
+    """
+    date_suffix = datetime.date.today().strftime("%Y%m%d")
+    known = _all_known_names()
+    candidate = f"{base}{date_suffix}"
+    if candidate not in known:
+        return candidate
+    i = 1
+    while f"{candidate}_{i}" in known:
+        i += 1
+    return f"{candidate}_{i}"
+
+
+def _append_tsv_line(path: str, fields: list) -> None:
+    """path'e yeni bir satır ekle (trailing-newline güvenli)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        content = ""
+    if content and not content.endswith("\n"):
+        content += "\n"
+    content += "\t".join(fields) + "\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "") -> dict:
+    """`base`'in cwd'sinde YENİ, otomatik-isimli (tarih[+_N]) bir chat başlat.
+
+    Var olan `base` session'ına DOKUNMAZ (çalışıyorsa bile) — ayrı, ek bir kayıt.
+    Roster/models.tsv'ye hemen upsert edilir (görünür/yönetilebilir kalsın).
+    """
+    fleet = _fleet_status()
+    info = fleet.get(base)
+    if not info:
+        return {"ok": False, "error": f"{base}: roster'da yok — önce ana ismi ekleyin"}
+    new_name = _generate_new_chat_name(base)
+    chosen_model = model.strip() or info["model"]
+    _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model])
+    _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
+    try:
+        with guard_lock(timeout=5.0):
+            kind = spawn_session(
+                name=new_name,
+                cwd=info["cwd"],
+                model=chosen_model,
+                display=detect_display(),
+                permission_mode=permission_mode.strip() or "auto",
+                effort=effort.strip() or "max",
+                force_new=True,
+            )
+    except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "name": new_name, "kind": kind}
+
+
 def _toggle_comment(path: str, name: str, want_active: bool) -> bool:
     """path'te `name` girdisinin satırını bul, want_active'e göre baştaki '#' ekle/kaldır.
 
@@ -183,6 +291,76 @@ def _toggle_comment(path: str, name: str, want_active: bool) -> bool:
         with open(path, "w", encoding="utf-8") as f:
             f.writelines(lines)
     return found
+
+
+LAYOUT_DEPS = ["wmctrl", "xdotool"]
+
+
+def _missing_layout_deps() -> list:
+    return [d for d in LAYOUT_DEPS if shutil.which(d) is None]
+
+
+def _screen_locked() -> Optional[bool]:
+    """loginctl LockedHint kontrolü. True=kilitli, False=unlocked, None=belirlenemedi.
+
+    [[layout-needs-unlocked-screen]] — kilitli ekranda Mutter pencere-move BOZUK
+    (sola yığılma, xdotool red, wmctrl 2×-offset) — SAATLERCE kaybettirilmiş bir ders.
+    Web'den (telefondan tünelle) layout tetiklenebildiği için bu artık otomatik kontrol
+    ŞART (TODO'da elle-doğrula notuydu, web bunu code'a taşıyor).
+    """
+    try:
+        out = subprocess.run(
+            ["bash", "-c",
+             "loginctl show-session $(loginctl --no-legend list-sessions | awk '{print $1; exit}') -p LockedHint"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if "LockedHint=yes" in out.stdout:
+            return True
+        if "LockedHint=no" in out.stdout:
+            return False
+    except Exception:
+        pass
+    return None
+
+
+def _run_layout(pin: str, groups: list, claude_only: bool = True,
+                 screen_y: Optional[int] = None, dry_run: bool = False) -> dict:
+    missing = _missing_layout_deps()
+    if missing:
+        return {"ok": False, "error": f"eksik bağımlılık: {', '.join(missing)} — "
+                                       f"Ubuntu/Debian'da kurmak için: sudo apt install -y {' '.join(missing)}"}
+    if _screen_locked():
+        return {"ok": False, "error": "ekran KİLİTLİ — layout kilitli ekranda bozuk çalışır (Mutter). "
+                                       "Önce ekranın kilidini açın, sonra tekrar deneyin."}
+
+    display = detect_display()
+    if not os.environ.get("DISPLAY") and not display:
+        return {"ok": False, "error": "X11 display bulunamadı (Wayland'da çalışmaz)"}
+
+    from ..layout import _get_screen, _list_windows, build_layout_plan, apply_layout
+
+    pinned = [n.strip() for n in pin.split(",") if n.strip()] if pin else []
+    group_lists = [[b.strip() for b in g.split(",") if b.strip()] for g in groups if g.strip()]
+
+    windows = _list_windows(display)
+    screen = _get_screen(display, screen_y=screen_y)
+    known_names = {s.name for s in find_sessions(measure_cpu=False)} if claude_only else None
+    plan, name_to_wid = build_layout_plan(
+        windows=windows, screen=screen, pinned_names=pinned,
+        groups=group_lists, claude_only=claude_only, known_names=known_names,
+    )
+
+    assignments = []
+    for wid, ws, x, y in plan.assignments:
+        title = windows.get(wid, wid)
+        name = next((n for n, w in name_to_wid.items() if w == wid), title)
+        assignments.append({"name": name, "ws": ws, "x": x, "y": y})
+
+    if not dry_run:
+        apply_layout(plan, display=display)
+
+    return {"ok": True, "total": plan.total, "skipped": plan.skipped,
+            "assignments": assignments, "applied": not dry_run}
 
 
 def _status_payload() -> dict:
@@ -221,6 +399,7 @@ def _status_payload() -> dict:
         "model_choices": MODEL_CHOICES,
         "permission_modes": PERMISSION_MODES,
         "effort_levels": EFFORT_LEVELS,
+        "layout_missing_deps": _missing_layout_deps(),
     }
 
 
@@ -353,8 +532,13 @@ PAGE_HTML = """<!doctype html>
                  letter-spacing: .04em; margin: 1.75rem 0 .4rem; }
   .opts-row td { background: var(--panel2); padding: .6rem .5rem; }
   .opts { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .modes { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: .25rem 1.2rem; margin-bottom: .3rem; }
+  .mode-radio { display: flex; align-items: center; gap: .3rem; font-size: .82rem; color: var(--text); }
+  .opts-hint { flex-basis: 100%; font-size: .78rem; color: var(--muted); min-height: 1em; }
   .opts label { color: var(--muted); font-size: .75rem; display: flex; flex-direction: column; gap: .15rem; }
-  .fresh-toggle { flex-direction: row !important; align-items: center; gap: .35rem !important; }
+  #layoutPanel { background: var(--panel2); border-radius: 6px; padding: .7rem; margin-bottom: .5rem; }
+  #layoutPanel input[type=text] { min-width: 220px; }
+  .layout-result { font-size: .78rem; color: var(--muted); white-space: pre-wrap; margin: 0; }
 </style>
 </head>
 <body>
@@ -378,6 +562,21 @@ PAGE_HTML = """<!doctype html>
   </div>
   <div id="closedBox"></div>
   <div id="retiredBox"></div>
+
+  <div class="group-title">Layout (X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz)</div>
+  <div class="opts" id="layoutPanel">
+    <span class="opts-hint" id="layout-warn"></span>
+    <label>pin (ws0'a sabit, virgülle)
+      <input type="text" id="layout-pin" placeholder="co,rustrino,anomaly,iggy">
+    </label>
+    <label>group'lar ( | ile ayrılmış birden fazla grup, her grup virgüllü)
+      <input type="text" id="layout-groups" placeholder="hc,hcr,evolvi | vc,vrk">
+    </label>
+    <label class="fresh-toggle"><input type="checkbox" id="layout-claude-only" checked> sadece claude pencereleri</label>
+    <label class="fresh-toggle"><input type="checkbox" id="layout-dry"> sadece planı göster (uygulama)</label>
+    <button class="go" id="layout-go" onclick="doLayout(this)">layout uygula</button>
+  </div>
+  <pre id="layout-result" class="layout-result"></pre>
 </div>
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
@@ -385,7 +584,8 @@ function withToken(url) {
   return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
 }
 let LAST = null;
-let openOptionsFor = null;
+let LAST_JSON = null;
+let optsFor = null;
 
 async function refresh() {
   let r;
@@ -405,8 +605,16 @@ async function refresh() {
     return;
   }
   const d = await r.json();
+  const dJson = comparableKey(d);
+  if (dJson === LAST_JSON) return;  // veri değişmedi (cpu hariç) — DOM'a dokunma, açık panel/form korunur
+  LAST_JSON = dJson;
   LAST = d;
   render(d);
+}
+
+function comparableKey(d) {
+  // cpu sürekli kıpırdar (round(1) olsa da) — onu hariç tutmazsak "değişmedi" hemen hiç tetiklenmez.
+  return JSON.stringify({...d, sessions: d.sessions.map(({cpu, ...rest}) => rest)});
 }
 
 function render(d) {
@@ -421,9 +629,6 @@ function render(d) {
 
   const rows = [];
   for (const s of d.sessions) {
-    const actionBtn = s.running
-      ? `<button class="stop" onclick="act('${s.name}','stop',this)">durdur</button>`
-      : `<button class="start" onclick="toggleOpts('${s.name}')">başlat ▾</button>`;
     rows.push(`
     <tr>
       <td>${s.name}</td>
@@ -432,18 +637,31 @@ function render(d) {
       <td>${s.running ? s.cpu.toFixed(1) : '—'}</td>
       <td>${s.kind || '—'}</td>
       <td class="cwd" title="${s.cwd}">${s.cwd}</td>
-      <td><div class="actioncell">${actionBtn}
+      <td><div class="actioncell">
+        ${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">durdur</button>` : ''}
+        <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? 'seçenekler ▾' : 'başlat ▾'}</button>
         <button class="retire" onclick="doRetire('${s.name}', this)">emekli et</button>
       </div></td>
     </tr>`);
-    if (!s.running && openOptionsFor === s.name) {
-      rows.push(optsRow(s, d));
+    if (optsFor === s.name) {
+      rows.push(unifiedOptsRow(s, d));
     }
   }
   document.getElementById('rows').innerHTML = rows.join('');
 
   document.getElementById('closedBox').innerHTML = groupTable('Kapalı', d.closed, 'reactivate');
   document.getElementById('retiredBox').innerHTML = groupTable('Emekli', d.retired, 'reactivate');
+
+  const layoutWarn = document.getElementById('layout-warn');
+  const missing = d.layout_missing_deps || [];
+  if (missing.length) {
+    layoutWarn.textContent = '⚠ eksik: ' + missing.join(', ') + ' — kurmak için: sudo apt install -y ' + missing.join(' ');
+    layoutWarn.style.color = 'var(--red)';
+    document.getElementById('layout-go').disabled = true;
+  } else {
+    layoutWarn.textContent = '';
+    document.getElementById('layout-go').disabled = false;
+  }
 }
 
 function groupTable(title, items, action) {
@@ -459,13 +677,30 @@ function groupTable(title, items, action) {
     <div class="tablewrap"><table><tbody>${rows}</tbody></table></div>`;
 }
 
-function optsRow(s, d) {
+const MODE_LABELS = {resume: 'devam ettir', reset: 'sıfırla ve başlat', newchat: 'yeni chat aç'};
+
+function unifiedOptsRow(s, d) {
   const modelOpts = ['(varsayılan: ' + s.model + ')', ...d.model_choices, 'diğer…']
     .map(m => `<option value="${m.startsWith('(') ? '' : m}">${m}</option>`).join('');
   const pmOpts = d.permission_modes.map(m => `<option ${m==='auto'?'selected':''}>${m}</option>`).join('');
   const efOpts = d.effort_levels.map(m => `<option ${m==='max'?'selected':''}>${m}</option>`).join('');
+  const modeChoices = s.running
+    ? [['newchat', 'Ayrı yeni chat aç (mevcuduna dokunmaz)']]
+    : [
+        ['resume', 'Devam ettir (kaldığı yerden)'],
+        ['reset', 'Bu ismi SIFIRLA (--new, geçmiş bir daha görünmez)'],
+        ['newchat', 'Ayrı yeni chat aç (yeni isimle, mevcuduna dokunmaz)'],
+      ];
+  const radios = modeChoices.map(([val, label], i) => `
+      <label class="mode-radio"><input type="radio" name="mode-${s.name}" value="${val}" ${i===0?'checked':''} onchange="updateGoLabel('${s.name}')"> ${label}</label>`).join('');
+  const runningNote = s.running
+    ? `<span class="opts-hint">⚠ ${s.name} şu an ÇALIŞIYOR — devam ettirmek/sıfırlamak için önce "durdur"a basın. Buradaki tek seçenek AYRI, ek bir chat açar, mevcut ${s.name}'a dokunmaz.</span>`
+    : '';
   return `
     <tr class="opts-row"><td colspan="7"><div class="opts">
+      ${runningNote}
+      <div class="modes">${radios}</div>
+      <span class="opts-hint" id="opt-hint-${s.name}"></span>
       <label>model
         <select id="opt-model-${s.name}" onchange="this.nextElementSibling.style.display = this.value==='__other__' ? '' : 'none'">
           ${modelOpts.replace('value="diğer…"', 'value="__other__"')}
@@ -478,28 +713,60 @@ function optsRow(s, d) {
       <label>effort
         <select id="opt-effort-${s.name}">${efOpts}</select>
       </label>
-      <label class="fresh-toggle"><input type="checkbox" id="opt-fresh-${s.name}"> yeni başlat (--new, geçmişi sıfırla)</label>
-      <button class="go" onclick="doStart('${s.name}', this)">başlat</button>
-      <button onclick="openOptionsFor=null; render(LAST)">vazgeç</button>
+      <button class="go" id="opt-go-${s.name}" onclick="doAction('${s.name}', this)">${MODE_LABELS[modeChoices[0][0]]}</button>
+      <button onclick="optsFor=null; render(LAST)">vazgeç</button>
     </div></td></tr>`;
 }
 
 function toggleOpts(name) {
-  openOptionsFor = (openOptionsFor === name) ? null : name;
+  optsFor = (optsFor === name) ? null : name;
   render(LAST);
+  if (optsFor === name) updateGoLabel(name);
 }
 
-async function doStart(name, btn) {
+function updateGoLabel(name) {
+  const checked = document.querySelector(`input[name="mode-${name}"]:checked`);
+  const mode = checked ? checked.value : 'resume';
+  document.getElementById('opt-go-' + name).textContent = MODE_LABELS[mode];
+  const hint = document.getElementById('opt-hint-' + name);
+  hint.textContent = mode === 'newchat' ? ('isim otomatik: ' + name + todayStr() + ' (çakışırsa _1, _2…)') : '';
+}
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+}
+
+async function doAction(name, btn) {
+  const checked = document.querySelector(`input[name="mode-${name}"]:checked`);
+  const mode = checked ? checked.value : 'resume';
   const modelSel = document.getElementById('opt-model-' + name).value;
   const modelOther = document.getElementById('opt-model-other-' + name).value;
   const model = modelSel === '__other__' ? modelOther : modelSel;
   const permission_mode = document.getElementById('opt-pm-' + name).value;
   const effort = document.getElementById('opt-effort-' + name).value;
-  const fresh = document.getElementById('opt-fresh-' + name).checked;
   btn.disabled = true;
   btn.textContent = 'başlıyor…';
-  await call('start', {name, model, permission_mode, effort, fresh});
-  openOptionsFor = null;
+  if (mode === 'newchat') {
+    try {
+      const r = await fetch(withToken('/api/new-chat'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({base: name, model, permission_mode, effort}),
+      });
+      if (r.status === 401) { alert('401 — token eksik/yanlış'); }
+      else {
+        const d = await safeJson(r);
+        if (d.ok) alert('yeni chat başlatıldı: ' + d.name);
+        else alert(name + ': ' + d.error);
+      }
+    } catch (e) {
+      alert('istek başarısız: ' + e.message);
+    }
+  } else {
+    await call('start', {name, model, permission_mode, effort, fresh: mode === 'reset'});
+  }
+  optsFor = null;
   refresh();
 }
 
@@ -525,6 +792,13 @@ async function doReactivate(name, btn) {
   refresh();
 }
 
+async function safeJson(r) {
+  if (!r.ok || !(r.headers.get('content-type') || '').includes('application/json')) {
+    throw new Error('beklenmeyen yanıt (http ' + r.status + ') — tünel/URL artık geçerli olmayabilir, güncel linki kontrol edin');
+  }
+  return r.json();
+}
+
 async function call(action, payload) {
   try {
     const r = await fetch(withToken('/api/' + action), {
@@ -533,11 +807,45 @@ async function call(action, payload) {
       body: JSON.stringify(payload),
     });
     if (r.status === 401) { alert('401 — token eksik/yanlış'); return; }
-    const d = await r.json();
+    const d = await safeJson(r);
     if (!d.ok) alert(payload.name + ': ' + d.error);
   } catch (e) {
-    alert('istek başarısız: ' + e);
+    alert('istek başarısız: ' + e.message);
   }
+}
+
+async function doLayout(btn) {
+  const pin = document.getElementById('layout-pin').value.trim();
+  const groups = document.getElementById('layout-groups').value
+    .split('|').map(g => g.trim()).filter(g => g);
+  const claude_only = document.getElementById('layout-claude-only').checked;
+  const dry_run = document.getElementById('layout-dry').checked;
+  const resultBox = document.getElementById('layout-result');
+  btn.disabled = true;
+  btn.textContent = 'uygulanıyor…';
+  resultBox.textContent = '';
+  try {
+    const r = await fetch(withToken('/api/layout'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pin, groups, claude_only, dry_run}),
+    });
+    if (r.status === 401) { alert('401 — token eksik/yanlış'); }
+    else {
+      const d = await safeJson(r);
+      if (d.ok) {
+        const lines = [(dry_run ? '[dry-run] ' : '') + d.total + ' pencere, ' + d.skipped + ' atlandı'];
+        for (const a of d.assignments) lines.push('  ' + a.name + ' → ws' + a.ws + ' (' + a.x + ',' + a.y + ')');
+        resultBox.textContent = lines.join('\\n');
+      } else {
+        resultBox.textContent = '✗ ' + d.error;
+      }
+    }
+  } catch (e) {
+    resultBox.textContent = '✗ istek başarısız: ' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = 'layout uygula';
 }
 
 refresh();
@@ -599,7 +907,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._unauthorized()
             return
         path = urlparse(self.path).path
-        if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate"):
+        if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
+                         "/api/new-chat", "/api/layout"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -609,6 +918,32 @@ class _Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._json({"ok": False, "error": "geçersiz JSON"}, status=400)
             return
+
+        if path == "/api/layout":
+            groups = data.get("groups", [])
+            if not isinstance(groups, list):
+                groups = [str(groups)]
+            self._json(_run_layout(
+                pin=str(data.get("pin", "")),
+                groups=[str(g) for g in groups],
+                claude_only=bool(data.get("claude_only", True)),
+                dry_run=bool(data.get("dry_run", False)),
+            ))
+            return
+
+        if path == "/api/new-chat":
+            base = str(data.get("base", "")).strip()
+            if not base:
+                self._json({"ok": False, "error": "base gerekli"}, status=400)
+                return
+            self._json(_new_chat(
+                base,
+                model=str(data.get("model", "")),
+                permission_mode=str(data.get("permission_mode", "")),
+                effort=str(data.get("effort", "")),
+            ))
+            return
+
         name = str(data.get("name", "")).strip()
         if not name:
             self._json({"ok": False, "error": "name gerekli"}, status=400)
@@ -650,11 +985,11 @@ def run(args) -> int:
 
     tunnel_proc = None
     if args.tunnel:
-        if shutil.which("cloudflared") is None:
-            print("✗ cloudflared PATH'te yok — --tunnel için kurulu olmalı.")
+        cloudflared_path = _ensure_cloudflared()
+        if not cloudflared_path:
             return 1
         print("cloudflared tünel başlatılıyor…")
-        tunnel_proc, tunnel_url = _start_tunnel(args.port)
+        tunnel_proc, tunnel_url = _start_tunnel(args.port, cloudflared_path)
         if tunnel_url:
             print(f"  tünel  →  {tunnel_url}/?token={token}")
         else:

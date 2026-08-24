@@ -10,11 +10,6 @@
 - **Seçenekler:** (a) `os.walk` + mtime karşılaştırma (basit, gitignore'u bilmez); (b) `git ls-files + mtime` (git'teki dosyaları izle); (c) şimdilik git yeterli, gerekince ekle.
 - **Karar:** ? (TBD, 2026-06-23)
 
-### 2) `home13` / pid 23814 statüsü
-- **Bağlam:** Eski yetim session (no name, no bridge, idle 30+h, cwd `/home/fatihyuce`). Kullanıcıya göre "kendisi" sayıldı, killed/skip.
-- **Soru:** jsonl backup'ı duruyor (~6MB). Sil mi, arşivle mi?
-- **Karar:** ?
-
 ### 3) Compact frequency politikası
 - **Bağlam:** Compact token kullanımını azaltır ama API çağrısı yapar. Çok sık → token harcaması; çok seyrek → resume yavaş.
 - **Soru:** Otomatik trigger eklensin mi? (örn. jsonl > X MB veya turn count > Y)
@@ -25,14 +20,10 @@
 - **Soru:** `claudeops cleanup-backups --older-than=30d` gerekli mi?
 - **Karar:** ?
 
-### 5) Açık-kaynak (dünyaya açmak) — kişiye/makineye özel kısımları lokalde tut
-- **Bağlam:** Bu kod public'e açılırsa, **her kullanıcıda farklı olacak / olması gereken** kısımlar repo'ya push'lanmamalı; lokalde kalmalı (gitignore + local config/template).
-- **Kişi-/makine-bağımlı parçalar (aday):** session isim + model-grup listeleri (hms/hve/oa… opus vs sonnet), proje cwd path'leri, handover/respawn name listeleri, `READY FOR HANDOVER` blokları (kişiye özel session durumu), ekran geometrisi (1680×1050 hard-coded), gnome-terminal hard-coding, remote URL'leri (mfyuce github/gitlab), encoded memory path, **layout `--group` blok config'leri** (hc,hcr,mecdtfl / mo,kulturiot,gedikvm,gedikido — CLAUDE.md Faz 3'te). (`desktops.local.md` zaten gitignored — model.)
-- **Seçenekler:** (a) `claudeops.local.conf` / `~/.config/claudeops/config` gitignored + kod generic; (b) env-var override; (c) `*.example` template commit'le, gerçeği gitignore.
-- **Soru:** Hangi ayrım modeli? Public repo'da ne kalsın, ne lokal olsun?
-- **Karar:** ? (konuşulacak — kullanıcı, 2026-05-26)
-
 ## Kapatılmış (karar verildi)
+
+### 5) Açık-kaynak (dünyaya açmak) — kişiye/makineye özel kısımları lokalde tut
+- **Karar (2026-08-24):** Repo'yu gerçekten public'e açmadan önce içerik taraması yapıldı — endişe zaten büyük ölçüde **kendiliğinden çözülmüştü**: Python rewrite'ın `paths.py` tasarımı gereği roster.tsv/models.tsv/web.token (isim+cwd+model, kişiye özel her şey) zaten repo'nun DIŞINDA (`~/.claude/claudeops/`) yaşıyor, hiç commit edilmiyor. Tracked dosyalarda (CLAUDE.md/TODO/DONE/TOBEDECIDED) gerçek path/IP/secret YOK, sadece birkaç yerde `/home/fatihyuce` ve proje kod-adı geçiyor (machine_ops, hoca-worker) — düşük risk, historical changelog'un doğal parçası, silinmedi. `*.local.md`/`*.local.txt` zaten gitignored. Ekstra ayrım şeması (a/b/c seçenekleri) GEREKMEDİ. MIT LICENSE eklendi, README/py/README güncellendi (`py/cops web` öne çıkarıldı), repo public'e çevrildi.
 
 ### 6) Web server üzerinden claudeops yönetimi — TBD#1 (Python UI) ile birleşti
 - **Karar (2026-08-24):** `py/cops web [--tunnel]` — stdlib `http.server` (Flask/PySide/Textual/Tkinter'ın hiçbiri, TBD#1'i de kapatır: dependency sıfır). Web'den anlamlı olan: **roster'ın tamamını göster (çalışan/duran/kapalı/emekli) + tek tek başlat (model/permission-mode/effort/fresh seçenekleriyle) / durdur / emekli et / tekrar işe al**. Layout/xdotool web'e TAŞINMADI (haklı çıktı: Wayland/display bağımlılığı yerel kalmalı). Token-gated (`~/.claude/claudeops/web.token`) + `--tunnel` ile `cloudflared` quick-tunnel (kurulu: `~/.local/bin/cloudflared`) — kullanıcı: "cf tunnel ile web'e ulaşırım, istediğim yerden başlatırım."
