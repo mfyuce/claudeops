@@ -579,11 +579,9 @@ PAGE_HTML = """<!doctype html>
   button.retire { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
   button.closebtn { border-color: var(--muted); color: var(--muted); font-size: .78rem; padding: .3rem .5rem; }
   button.reactivate { border-color: var(--green); color: var(--green); }
-  button.addtoggle { border-color: var(--accent); color: var(--accent); margin: .5rem 0; }
+  button.addtoggle { display: block; width: 100%; text-align: left; border-color: var(--accent); color: var(--accent); margin: .5rem 0; }
   button:disabled { opacity: .5; cursor: default; }
   .actioncell { display: flex; gap: .35rem; flex-wrap: wrap; }
-  .group-title { color: var(--muted); font-size: .75rem; text-transform: uppercase;
-                 letter-spacing: .04em; margin: 1.75rem 0 .4rem; }
   .opts-row td { background: var(--panel2); padding: .6rem .5rem; }
   .opts { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
   .modes { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: .25rem 1.2rem; margin-bottom: .3rem; }
@@ -618,7 +616,10 @@ PAGE_HTML = """<!doctype html>
   <button class="addtoggle" onclick="toggleAddPanel()"><span id="addToggleLabel">+ Ekle</span></button>
   <div id="addBox"></div>
 
+  <button class="addtoggle" onclick="toggleClosedPanel()"><span id="closedToggleLabel">▸ Kapalı</span></button>
   <div id="closedBox"></div>
+
+  <button class="addtoggle" onclick="toggleRetiredPanel()"><span id="retiredToggleLabel">▸ Emekli</span></button>
   <div id="retiredBox"></div>
 
   <button class="addtoggle" onclick="toggleLayoutPanel()"><span id="layoutToggleLabel">▸ Layout</span> (X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz)</button>
@@ -634,6 +635,8 @@ let LAST_JSON = null;
 let optsFor = null;
 let showAddPanel = false;
 let showLayoutPanel = false;
+let showClosedPanel = false;
+let showRetiredPanel = false;
 
 async function refresh() {
   let r;
@@ -689,8 +692,13 @@ function render(d) {
     (showAddPanel ? '▾' : '▸') + ' + Ekle (' + stoppedSessions.length + ' kayıtlı, kapalı)';
   document.getElementById('addBox').innerHTML = showAddPanel ? renderAddBox(stoppedSessions, d) : '';
 
-  document.getElementById('closedBox').innerHTML = groupTable('Kapalı', d.closed, 'reactivate');
-  document.getElementById('retiredBox').innerHTML = groupTable('Emekli', d.retired, 'reactivate');
+  document.getElementById('closedToggleLabel').textContent =
+    (showClosedPanel ? '▾' : '▸') + ' Kapalı (' + d.closed.length + ')';
+  document.getElementById('closedBox').innerHTML = showClosedPanel ? groupTable(d.closed) : '';
+
+  document.getElementById('retiredToggleLabel').textContent =
+    (showRetiredPanel ? '▾' : '▸') + ' Emekli (' + d.retired.length + ')';
+  document.getElementById('retiredBox').innerHTML = showRetiredPanel ? groupTable(d.retired) : '';
 
   document.getElementById('layoutToggleLabel').textContent = showLayoutPanel ? '▾ Layout' : '▸ Layout';
   document.getElementById('layoutBox').innerHTML = showLayoutPanel ? renderLayoutBox(d) : '';
@@ -722,6 +730,16 @@ function toggleAddPanel() {
 
 function toggleLayoutPanel() {
   showLayoutPanel = !showLayoutPanel;
+  render(LAST);
+}
+
+function toggleClosedPanel() {
+  showClosedPanel = !showClosedPanel;
+  render(LAST);
+}
+
+function toggleRetiredPanel() {
+  showRetiredPanel = !showRetiredPanel;
   render(LAST);
 }
 
@@ -798,8 +816,8 @@ async function doRegister(btn) {
   refresh();
 }
 
-function groupTable(title, items, action) {
-  if (!items.length) return '';
+function groupTable(items) {
+  if (!items.length) return '<div class="opts-hint">Boş.</div>';
   const rows = items.map(it => `
     <tr>
       <td style="width:14%">${it.name}</td>
@@ -807,8 +825,7 @@ function groupTable(title, items, action) {
       <td class="cwd" title="${it.cwd}">${it.cwd}</td>
       <td style="width:16%"><button class="reactivate" onclick="doReactivate('${it.name}', this)">tekrar işe al + başlat</button></td>
     </tr>`).join('');
-  return `<div class="group-title">${title}</div>
-    <div class="tablewrap"><table><tbody>${rows}</tbody></table></div>`;
+  return `<div class="tablewrap"><table><tbody>${rows}</tbody></table></div>`;
 }
 
 const MODE_LABELS = {resume: 'devam ettir', reset: 'sıfırla ve başlat', newchat: 'yeni chat aç'};
