@@ -550,7 +550,11 @@ PAGE_HTML = """<!doctype html>
     font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   .wrap { max-width: 960px; margin: 0 auto; }
-  h1 { font-size: 1.1rem; margin: 0 0 .25rem; letter-spacing: .02em; }
+  h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
+  .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .25rem; }
+  .langsw { display: flex; gap: .3rem; flex-shrink: 0; }
+  .langsw button { padding: .15rem .5rem; font-size: .72rem; border-color: var(--border); color: var(--muted); }
+  .langsw button.active { border-color: var(--accent); color: var(--accent); }
   .sub { color: var(--muted); margin-bottom: 1.25rem; }
   .banner {
     padding: .5rem .75rem; border-radius: 6px; margin-bottom: .6rem;
@@ -595,37 +599,160 @@ PAGE_HTML = """<!doctype html>
 </head>
 <body>
 <div class="wrap">
-  <h1>claudeops — fleet control</h1>
-  <div class="sub" id="summary">yükleniyor…</div>
+  <div class="topbar">
+    <h1 id="pageTitle">claudeops</h1>
+    <div class="langsw">
+      <button id="langTr" onclick="setLang('tr')">TR</button>
+      <button id="langEn" onclick="setLang('en')">EN</button>
+    </div>
+  </div>
+  <div class="sub" id="summary">…</div>
   <div id="banners"></div>
   <div class="tablewrap">
   <table>
     <thead><tr>
-      <th style="width:11%">isim</th>
+      <th style="width:11%" id="thName">–</th>
       <th style="width:15%">model</th>
-      <th style="width:9%">durum</th>
+      <th style="width:9%" id="thStatus">–</th>
       <th style="width:6%">cpu%</th>
-      <th style="width:8%">tür</th>
+      <th style="width:8%" id="thKind">–</th>
       <th>cwd</th>
       <th style="width:9%"></th>
     </tr></thead>
-    <tbody id="rows"><tr><td colspan="7">yükleniyor…</td></tr></tbody>
+    <tbody id="rows"><tr><td colspan="7">…</td></tr></tbody>
   </table>
   </div>
 
-  <button class="addtoggle" onclick="toggleAddPanel()"><span id="addToggleLabel">+ Ekle</span></button>
+  <button class="addtoggle" onclick="toggleAddPanel()"><span id="addToggleLabel">…</span></button>
   <div id="addBox"></div>
 
-  <button class="addtoggle" onclick="toggleClosedPanel()"><span id="closedToggleLabel">▸ Kapalı</span></button>
+  <button class="addtoggle" onclick="toggleClosedPanel()"><span id="closedToggleLabel">…</span></button>
   <div id="closedBox"></div>
 
-  <button class="addtoggle" onclick="toggleRetiredPanel()"><span id="retiredToggleLabel">▸ Emekli</span></button>
+  <button class="addtoggle" onclick="toggleRetiredPanel()"><span id="retiredToggleLabel">…</span></button>
   <div id="retiredBox"></div>
 
-  <button class="addtoggle" onclick="toggleLayoutPanel()"><span id="layoutToggleLabel">▸ Layout</span> (X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz)</button>
+  <button class="addtoggle" onclick="toggleLayoutPanel()"><span id="layoutToggleLabel">…</span> <span id="layoutDesc"></span></button>
   <div id="layoutBox"></div>
 </div>
 <script>
+const T = {
+  tr: {
+    title: 'claudeops — filo kontrolü',
+    loading: 'yükleniyor…',
+    colName: 'isim', colStatus: 'durum', colKind: 'tür',
+    serverUnreachable: 'sunucuya ulaşılamadı: ',
+    authError: `401 — token eksik/yanlış (URL'ye doğru ?token=... ekleyin)`,
+    authErrorShort: '401 — token eksik/yanlış',
+    unexpectedResponse: (code) => `beklenmeyen yanıt (http ${code}) — bu tünel/URL artık geçerli olmayabilir, güncel linki kontrol edin`,
+    runningWord: 'çalışıyor', configWord: 'config',
+    dupWarn: '⚠ DUP: ',
+    pidWord: 'pid ', stoppedWord: 'durdu',
+    optionsBtn: 'seçenekler ▾', startBtn: 'başlat ▾', stopBtn: 'durdur',
+    closeBtn: 'kapat', retireBtn: 'emekli et',
+    nothingRunning: `Hiçbir şey çalışmıyor — aşağıdaki "+ Ekle"den başlatın.`,
+    addToggle: '+ Ekle', registeredClosed: 'kayıtlı, kapalı',
+    closedToggle: 'Kapalı', retiredToggle: 'Emekli', layoutToggle: 'Layout',
+    layoutDesc: `X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz`,
+    layoutMissingPrefix: '⚠ eksik: ', layoutMissingSuffix: ' — kurmak için: sudo apt install -y ',
+    layoutPinLabel: `pin (ws0'a sabit, virgülle)`,
+    layoutGroupsLabel: `group'lar ( | ile ayrılmış birden fazla grup, her grup virgüllü)`,
+    layoutClaudeOnly: 'sadece claude pencereleri',
+    layoutDryRun: 'sadece planı göster (uygulama)',
+    layoutApply: 'layout uygula', layoutApplying: 'uygulanıyor…',
+    windowsWord: 'pencere', skippedWord: 'atlandı',
+    requestFailed: 'istek başarısız: ',
+    noneRegisteredClosed: `Kayıtlı-ama-kapalı proje yok.`,
+    registerTitle: '+ Yeni proje kaydet',
+    registerDesc: `(klasörü roster'a ekler, başlatmaz — sonra "+Ekle" listesinden başlatırsınız)`,
+    registerNameLabel: 'isim (küçük harf, rakam, _)',
+    registerCwdLabel: 'klasör (tam yol)',
+    registerSave: 'kaydet', registerSaving: 'kaydediliyor…',
+    empty: 'Boş.', reactivateBtn: 'tekrar işe al + başlat',
+    modeResume: 'devam ettir', modeReset: 'sıfırla ve başlat', modeNewchat: 'yeni chat aç',
+    modeChoiceNewchatOnly: 'Ayrı yeni chat aç (mevcuduna dokunmaz)',
+    modeChoiceResume: 'Devam ettir (kaldığı yerden)',
+    modeChoiceReset: `Bu ismi SIFIRLA (--new, geçmiş bir daha görünmez)`,
+    modeChoiceNewchat: 'Ayrı yeni chat aç (yeni isimle, mevcuduna dokunmaz)',
+    runningNote: (name) => `⚠ ${name} şu an ÇALIŞIYOR — devam ettirmek/sıfırlamak için önce "durdur"a basın. Buradaki tek seçenek AYRI, ek bir chat açar, mevcut ${name}'a dokunmaz.`,
+    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model',
+    cancelBtn: 'vazgeç',
+    autoNameHint: (name, date) => `isim otomatik: ${name}${date} (çakışırsa _1, _2…)`,
+    starting: 'başlıyor…', newChatStarted: 'yeni chat başlatıldı: ',
+    stopping: 'durduruluyor… (~10s)',
+    retireConfirm: (name) => `${name}: emekli edilsin mi? (çalışıyorsa önce durdurulur, models.tsv+roster.tsv'de yorumlanır — geri almak için "tekrar işe al" ile mümkün)`,
+    retiring: 'emekli ediliyor…',
+    closeConfirm: (name) => `${name}: kapatılsın mı? (çalışıyorsa önce durdurulur, sadece models.tsv yorumlanır — cwd hatırlanır, "tekrar işe al" ile kolayca geri gelir)`,
+    closing: 'kapatılıyor…',
+  },
+  en: {
+    title: 'claudeops — fleet control',
+    loading: 'loading…',
+    colName: 'name', colStatus: 'status', colKind: 'kind',
+    serverUnreachable: 'server unreachable: ',
+    authError: `401 — token missing/invalid (add ?token=... to the URL)`,
+    authErrorShort: '401 — token missing/invalid',
+    unexpectedResponse: (code) => `unexpected response (http ${code}) — this tunnel/URL may no longer be valid, check the current link`,
+    runningWord: 'running', configWord: 'config',
+    dupWarn: '⚠ DUP: ',
+    pidWord: 'pid ', stoppedWord: 'stopped',
+    optionsBtn: 'options ▾', startBtn: 'start ▾', stopBtn: 'stop',
+    closeBtn: 'close', retireBtn: 'retire',
+    nothingRunning: `Nothing running — start something from "+ Add" below.`,
+    addToggle: '+ Add', registeredClosed: 'registered, stopped',
+    closedToggle: 'Closed', retiredToggle: 'Retired', layoutToggle: 'Layout',
+    layoutDesc: `X11 desktop — does not work on Wayland/locked screen`,
+    layoutMissingPrefix: '⚠ missing: ', layoutMissingSuffix: ' — install with: sudo apt install -y ',
+    layoutPinLabel: 'pin (fixed to ws0, comma-separated)',
+    layoutGroupsLabel: 'groups ( | -separated, each group comma-separated)',
+    layoutClaudeOnly: 'claude windows only',
+    layoutDryRun: 'show plan only (no changes)',
+    layoutApply: 'apply layout', layoutApplying: 'applying…',
+    windowsWord: 'windows', skippedWord: 'skipped',
+    requestFailed: 'request failed: ',
+    noneRegisteredClosed: 'No registered-but-closed projects.',
+    registerTitle: '+ Register new project',
+    registerDesc: `(adds the folder to the roster, does not start it — start it later from the "+ Add" list)`,
+    registerNameLabel: 'name (lowercase, digits, _)',
+    registerCwdLabel: 'folder (full path)',
+    registerSave: 'save', registerSaving: 'saving…',
+    empty: 'Empty.', reactivateBtn: 'reactivate + start',
+    modeResume: 'resume', modeReset: 'reset and start', modeNewchat: 'start new chat',
+    modeChoiceNewchatOnly: 'Start a separate new chat (does not touch the existing one)',
+    modeChoiceResume: 'Resume (from where it left off)',
+    modeChoiceReset: 'RESET this name (--new, previous history no longer shown)',
+    modeChoiceNewchat: 'Start a separate new chat (new name, does not touch the existing one)',
+    runningNote: (name) => `⚠ ${name} is currently RUNNING — click "stop" first to resume/reset. The only option here starts a SEPARATE extra chat, it does not touch the existing ${name}.`,
+    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model',
+    cancelBtn: 'cancel',
+    autoNameHint: (name, date) => `name auto-generated: ${name}${date} (adds _1, _2… on conflict)`,
+    starting: 'starting…', newChatStarted: 'new chat started: ',
+    stopping: 'stopping… (~10s)',
+    retireConfirm: (name) => `${name}: retire it? (stopped first if running, comments out models.tsv+roster.tsv — reversible via "reactivate")`,
+    retiring: 'retiring…',
+    closeConfirm: (name) => `${name}: close it? (stopped first if running, only comments out models.tsv — cwd is remembered, easy to bring back with "reactivate")`,
+    closing: 'closing…',
+  },
+};
+let LANG = localStorage.getItem('cops_lang') || (navigator.language.toLowerCase().startsWith('tr') ? 'tr' : 'en');
+function t(key) { return T[LANG][key]; }
+function setLang(lang) {
+  LANG = lang;
+  try { localStorage.setItem('cops_lang', lang); } catch (e) {}
+  applyStaticText();
+  render(LAST);
+}
+function applyStaticText() {
+  document.title = t('title');
+  document.getElementById('pageTitle').textContent = t('title');
+  document.getElementById('thName').textContent = t('colName');
+  document.getElementById('thStatus').textContent = t('colStatus');
+  document.getElementById('thKind').textContent = t('colKind');
+  document.getElementById('layoutDesc').textContent = '(' + t('layoutDesc') + ')';
+  document.getElementById('langTr').classList.toggle('active', LANG === 'tr');
+  document.getElementById('langEn').classList.toggle('active', LANG === 'en');
+}
+
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
 function withToken(url) {
   return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
@@ -643,16 +770,15 @@ async function refresh() {
   try {
     r = await fetch(withToken('/api/status'));
   } catch (e) {
-    document.getElementById('summary').textContent = 'sunucuya ulaşılamadı: ' + e;
+    document.getElementById('summary').textContent = t('serverUnreachable') + e;
     return;
   }
   if (r.status === 401) {
-    document.getElementById('summary').textContent = '401 — token eksik/yanlış (URL\\'ye doğru ?token=... ekleyin)';
+    document.getElementById('summary').textContent = t('authError');
     return;
   }
   if (!r.ok || !(r.headers.get('content-type') || '').includes('application/json')) {
-    document.getElementById('summary').textContent =
-      'beklenmeyen yanıt (http ' + r.status + ') — bu tünel/URL artık geçerli olmayabilir, güncel linki kontrol edin';
+    document.getElementById('summary').textContent = t('unexpectedResponse')(r.status);
     return;
   }
   const d = await r.json();
@@ -671,11 +797,11 @@ function comparableKey(d) {
 function render(d) {
   const running = d.sessions.filter(s => s.running).length;
   document.getElementById('summary').textContent =
-    running + '/' + d.sessions.length + ' çalışıyor  ·  config: ' + d.config_msg;
+    running + '/' + d.sessions.length + ' ' + t('runningWord') + '  ·  ' + t('configWord') + ': ' + d.config_msg;
 
   const banners = [];
   if (!d.config_ok) banners.push('<div class="banner bad">⚠ ' + d.config_msg + '</div>');
-  if (d.dups.length) banners.push('<div class="banner bad">⚠ DUP: ' + d.dups.join(', ') + '</div>');
+  if (d.dups.length) banners.push('<div class="banner bad">' + t('dupWarn') + d.dups.join(', ') + '</div>');
   document.getElementById('banners').innerHTML = banners.join('');
 
   const runningSessions = d.sessions.filter(s => s.running);
@@ -684,23 +810,23 @@ function render(d) {
   const rows = [];
   for (const s of runningSessions) rows.push(...sessionRow(s, d));
   if (!runningSessions.length) {
-    rows.push('<tr><td colspan="7" style="color:var(--muted)">Hiçbir şey çalışmıyor — aşağıdaki "+ Ekle"den başlatın.</td></tr>');
+    rows.push('<tr><td colspan="7" style="color:var(--muted)">' + t('nothingRunning') + '</td></tr>');
   }
   document.getElementById('rows').innerHTML = rows.join('');
 
   document.getElementById('addToggleLabel').textContent =
-    (showAddPanel ? '▾' : '▸') + ' + Ekle (' + stoppedSessions.length + ' kayıtlı, kapalı)';
+    (showAddPanel ? '▾' : '▸') + ' ' + t('addToggle') + ' (' + stoppedSessions.length + ' ' + t('registeredClosed') + ')';
   document.getElementById('addBox').innerHTML = showAddPanel ? renderAddBox(stoppedSessions, d) : '';
 
   document.getElementById('closedToggleLabel').textContent =
-    (showClosedPanel ? '▾' : '▸') + ' Kapalı (' + d.closed.length + ')';
+    (showClosedPanel ? '▾' : '▸') + ' ' + t('closedToggle') + ' (' + d.closed.length + ')';
   document.getElementById('closedBox').innerHTML = showClosedPanel ? groupTable(d.closed) : '';
 
   document.getElementById('retiredToggleLabel').textContent =
-    (showRetiredPanel ? '▾' : '▸') + ' Emekli (' + d.retired.length + ')';
+    (showRetiredPanel ? '▾' : '▸') + ' ' + t('retiredToggle') + ' (' + d.retired.length + ')';
   document.getElementById('retiredBox').innerHTML = showRetiredPanel ? groupTable(d.retired) : '';
 
-  document.getElementById('layoutToggleLabel').textContent = showLayoutPanel ? '▾ Layout' : '▸ Layout';
+  document.getElementById('layoutToggleLabel').textContent = (showLayoutPanel ? '▾ ' : '▸ ') + t('layoutToggle');
   document.getElementById('layoutBox').innerHTML = showLayoutPanel ? renderLayoutBox(d) : '';
 }
 
@@ -709,15 +835,15 @@ function sessionRow(s, d) {
     <tr>
       <td>${s.name}</td>
       <td>${s.model || ''}</td>
-      <td><span class="dot ${s.running ? 'on' : 'off'}"></span>${s.running ? 'pid ' + s.pid : 'durdu'}</td>
+      <td><span class="dot ${s.running ? 'on' : 'off'}"></span>${s.running ? t('pidWord') + s.pid : t('stoppedWord')}</td>
       <td>${s.running ? s.cpu.toFixed(1) : '—'}</td>
       <td>${s.kind || '—'}</td>
       <td class="cwd" title="${s.cwd}">${s.cwd}</td>
       <td><div class="actioncell">
-        ${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">durdur</button>` : ''}
-        <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? 'seçenekler ▾' : 'başlat ▾'}</button>
-        <button class="closebtn" onclick="doClose('${s.name}', this)">kapat</button>
-        <button class="retire" onclick="doRetire('${s.name}', this)">emekli et</button>
+        ${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>` : ''}
+        <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? t('optionsBtn') : t('startBtn')}</button>
+        <button class="closebtn" onclick="doClose('${s.name}', this)">${t('closeBtn')}</button>
+        <button class="retire" onclick="doRetire('${s.name}', this)">${t('retireBtn')}</button>
       </div></td>
     </tr>`;
   return optsFor === s.name ? [row, unifiedOptsRow(s, d)] : [row];
@@ -746,20 +872,20 @@ function toggleRetiredPanel() {
 function renderLayoutBox(d) {
   const missing = d.layout_missing_deps || [];
   const warn = missing.length
-    ? `<span class="opts-hint" style="color:var(--red)">⚠ eksik: ${missing.join(', ')} — kurmak için: sudo apt install -y ${missing.join(' ')}</span>`
+    ? `<span class="opts-hint" style="color:var(--red)">${t('layoutMissingPrefix')}${missing.join(', ')}${t('layoutMissingSuffix')}${missing.join(' ')}</span>`
     : '<span class="opts-hint"></span>';
   return `
     <div class="opts" id="layoutPanel">
       ${warn}
-      <label>pin (ws0'a sabit, virgülle)
+      <label>${t('layoutPinLabel')}
         <input type="text" id="layout-pin" placeholder="co,rustrino,anomaly,iggy">
       </label>
-      <label>group'lar ( | ile ayrılmış birden fazla grup, her grup virgüllü)
+      <label>${t('layoutGroupsLabel')}
         <input type="text" id="layout-groups" placeholder="hc,hcr,evolvi | vc,vrk">
       </label>
-      <label class="fresh-toggle"><input type="checkbox" id="layout-claude-only" checked> sadece claude pencereleri</label>
-      <label class="fresh-toggle"><input type="checkbox" id="layout-dry"> sadece planı göster (uygulama)</label>
-      <button class="go" id="layout-go" ${missing.length ? 'disabled' : ''} onclick="doLayout(this)">layout uygula</button>
+      <label class="fresh-toggle"><input type="checkbox" id="layout-claude-only" checked> ${t('layoutClaudeOnly')}</label>
+      <label class="fresh-toggle"><input type="checkbox" id="layout-dry"> ${t('layoutDryRun')}</label>
+      <button class="go" id="layout-go" ${missing.length ? 'disabled' : ''} onclick="doLayout(this)">${t('layoutApply')}</button>
     </div>
     <pre id="layout-result" class="layout-result"></pre>`;
 }
@@ -769,7 +895,7 @@ function renderAddBox(stoppedSessions, d) {
   for (const s of stoppedSessions) rows.push(...sessionRow(s, d));
   const table = stoppedSessions.length
     ? `<div class="tablewrap"><table><tbody>${rows.join('')}</tbody></table></div>`
-    : '<div class="opts-hint">Kayıtlı-ama-kapalı proje yok.</div>';
+    : `<div class="opts-hint">${t('noneRegisteredClosed')}</div>`;
   return `<div id="addBoxInner">${table}${newProjectForm(d)}</div>`;
 }
 
@@ -777,17 +903,17 @@ function newProjectForm(d) {
   const modelOpts = d.model_choices.map(m => `<option>${m}</option>`).join('');
   return `
     <div class="opts" style="margin-top:.5rem">
-      <span class="opts-hint"><b>+ Yeni proje kaydet</b> (klasörü roster'a ekler, başlatmaz — sonra "+Ekle" listesinden başlatırsınız)</span>
-      <label>isim (küçük harf, rakam, _)
+      <span class="opts-hint"><b>${t('registerTitle')}</b> ${t('registerDesc')}</span>
+      <label>${t('registerNameLabel')}
         <input type="text" id="reg-name" placeholder="myproject">
       </label>
-      <label>klasör (tam yol)
+      <label>${t('registerCwdLabel')}
         <input type="text" id="reg-cwd" placeholder="/home/user/work/myproject">
       </label>
-      <label>model
+      <label>${t('modelLabel')}
         <select id="reg-model">${modelOpts}</select>
       </label>
-      <button class="go" onclick="doRegister(this)">kaydet</button>
+      <button class="go" onclick="doRegister(this)">${t('registerSave')}</button>
     </div>`;
 }
 
@@ -796,76 +922,76 @@ async function doRegister(btn) {
   const cwd = document.getElementById('reg-cwd').value.trim();
   const model = document.getElementById('reg-model').value;
   btn.disabled = true;
-  btn.textContent = 'kaydediliyor…';
+  btn.textContent = t('registerSaving');
   try {
     const r = await fetch(withToken('/api/register'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({name, cwd, model}),
     });
-    if (r.status === 401) { alert('401 — token eksik/yanlış'); }
+    if (r.status === 401) { alert(t('authErrorShort')); }
     else {
       const d = await safeJson(r);
       if (!d.ok) alert(name + ': ' + d.error);
     }
   } catch (e) {
-    alert('istek başarısız: ' + e.message);
+    alert(t('requestFailed') + e.message);
   }
   btn.disabled = false;
-  btn.textContent = 'kaydet';
+  btn.textContent = t('registerSave');
   refresh();
 }
 
 function groupTable(items) {
-  if (!items.length) return '<div class="opts-hint">Boş.</div>';
+  if (!items.length) return `<div class="opts-hint">${t('empty')}</div>`;
   const rows = items.map(it => `
     <tr>
       <td style="width:14%">${it.name}</td>
       <td style="width:20%">${it.model || ''}</td>
       <td class="cwd" title="${it.cwd}">${it.cwd}</td>
-      <td style="width:16%"><button class="reactivate" onclick="doReactivate('${it.name}', this)">tekrar işe al + başlat</button></td>
+      <td style="width:16%"><button class="reactivate" onclick="doReactivate('${it.name}', this)">${t('reactivateBtn')}</button></td>
     </tr>`).join('');
   return `<div class="tablewrap"><table><tbody>${rows}</tbody></table></div>`;
 }
 
-const MODE_LABELS = {resume: 'devam ettir', reset: 'sıfırla ve başlat', newchat: 'yeni chat aç'};
+function modeLabels() { return {resume: t('modeResume'), reset: t('modeReset'), newchat: t('modeNewchat')}; }
 
 function unifiedOptsRow(s, d) {
-  const modelOpts = ['(varsayılan: ' + s.model + ')', ...d.model_choices, 'diğer…']
+  const modelOpts = ['(' + s.model + ')', ...d.model_choices, '…']
     .map(m => `<option value="${m.startsWith('(') ? '' : m}">${m}</option>`).join('');
   const pmOpts = d.permission_modes.map(m => `<option ${m==='auto'?'selected':''}>${m}</option>`).join('');
   const efOpts = d.effort_levels.map(m => `<option ${m==='max'?'selected':''}>${m}</option>`).join('');
   const modeChoices = s.running
-    ? [['newchat', 'Ayrı yeni chat aç (mevcuduna dokunmaz)']]
+    ? [['newchat', t('modeChoiceNewchatOnly')]]
     : [
-        ['resume', 'Devam ettir (kaldığı yerden)'],
-        ['reset', 'Bu ismi SIFIRLA (--new, geçmiş bir daha görünmez)'],
-        ['newchat', 'Ayrı yeni chat aç (yeni isimle, mevcuduna dokunmaz)'],
+        ['resume', t('modeChoiceResume')],
+        ['reset', t('modeChoiceReset')],
+        ['newchat', t('modeChoiceNewchat')],
       ];
   const radios = modeChoices.map(([val, label], i) => `
       <label class="mode-radio"><input type="radio" name="mode-${s.name}" value="${val}" ${i===0?'checked':''} onchange="updateGoLabel('${s.name}')"> ${label}</label>`).join('');
   const runningNote = s.running
-    ? `<span class="opts-hint">⚠ ${s.name} şu an ÇALIŞIYOR — devam ettirmek/sıfırlamak için önce "durdur"a basın. Buradaki tek seçenek AYRI, ek bir chat açar, mevcut ${s.name}'a dokunmaz.</span>`
+    ? `<span class="opts-hint">${t('runningNote')(s.name)}</span>`
     : '';
   return `
     <tr class="opts-row"><td colspan="7"><div class="opts">
       ${runningNote}
       <div class="modes">${radios}</div>
       <span class="opts-hint" id="opt-hint-${s.name}"></span>
-      <label>model
+      <label>${t('modelLabel')}
         <select id="opt-model-${s.name}" onchange="this.nextElementSibling.style.display = this.value==='__other__' ? '' : 'none'">
-          ${modelOpts.replace('value="diğer…"', 'value="__other__"')}
+          ${modelOpts.replace('value="…"', 'value="__other__"')}
         </select>
       </label>
       <input type="text" id="opt-model-other-${s.name}" placeholder="model id" style="display:none">
-      <label>permission-mode
+      <label>${t('pmLabel')}
         <select id="opt-pm-${s.name}">${pmOpts}</select>
       </label>
-      <label>effort
+      <label>${t('effortLabel')}
         <select id="opt-effort-${s.name}">${efOpts}</select>
       </label>
-      <button class="go" id="opt-go-${s.name}" onclick="doAction('${s.name}', this)">${MODE_LABELS[modeChoices[0][0]]}</button>
-      <button onclick="optsFor=null; render(LAST)">vazgeç</button>
+      <button class="go" id="opt-go-${s.name}" onclick="doAction('${s.name}', this)">${modeLabels()[modeChoices[0][0]]}</button>
+      <button onclick="optsFor=null; render(LAST)">${t('cancelBtn')}</button>
     </div></td></tr>`;
 }
 
@@ -878,9 +1004,9 @@ function toggleOpts(name) {
 function updateGoLabel(name) {
   const checked = document.querySelector(`input[name="mode-${name}"]:checked`);
   const mode = checked ? checked.value : 'resume';
-  document.getElementById('opt-go-' + name).textContent = MODE_LABELS[mode];
+  document.getElementById('opt-go-' + name).textContent = modeLabels()[mode];
   const hint = document.getElementById('opt-hint-' + name);
-  hint.textContent = mode === 'newchat' ? ('isim otomatik: ' + name + todayStr() + ' (çakışırsa _1, _2…)') : '';
+  hint.textContent = mode === 'newchat' ? t('autoNameHint')(name, todayStr()) : '';
 }
 
 function todayStr() {
@@ -897,7 +1023,7 @@ async function doAction(name, btn) {
   const permission_mode = document.getElementById('opt-pm-' + name).value;
   const effort = document.getElementById('opt-effort-' + name).value;
   btn.disabled = true;
-  btn.textContent = 'başlıyor…';
+  btn.textContent = t('starting');
   if (mode === 'newchat') {
     try {
       const r = await fetch(withToken('/api/new-chat'), {
@@ -905,14 +1031,14 @@ async function doAction(name, btn) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({base: name, model, permission_mode, effort}),
       });
-      if (r.status === 401) { alert('401 — token eksik/yanlış'); }
+      if (r.status === 401) { alert(t('authErrorShort')); }
       else {
         const d = await safeJson(r);
-        if (d.ok) alert('yeni chat başlatıldı: ' + d.name);
+        if (d.ok) alert(t('newChatStarted') + d.name);
         else alert(name + ': ' + d.error);
       }
     } catch (e) {
-      alert('istek başarısız: ' + e.message);
+      alert(t('requestFailed') + e.message);
     }
   } else {
     await call('start', {name, model, permission_mode, effort, fresh: mode === 'reset'});
@@ -923,37 +1049,37 @@ async function doAction(name, btn) {
 
 async function act(name, action, btn) {
   btn.disabled = true;
-  btn.textContent = action === 'start' ? 'başlıyor…' : 'durduruluyor… (~10s)';
+  btn.textContent = action === 'start' ? t('starting') : t('stopping');
   await call(action, {name});
   refresh();
 }
 
 async function doRetire(name, btn) {
-  if (!confirm(name + ': emekli edilsin mi? (çalışıyorsa önce durdurulur, models.tsv+roster.tsv\\'de yorumlanır — geri almak için "tekrar işe al" ile mümkün)')) return;
+  if (!confirm(t('retireConfirm')(name))) return;
   btn.disabled = true;
-  btn.textContent = 'emekli ediliyor…';
+  btn.textContent = t('retiring');
   await call('retire', {name});
   refresh();
 }
 
 async function doClose(name, btn) {
-  if (!confirm(name + ': kapatılsın mı? (çalışıyorsa önce durdurulur, sadece models.tsv yorumlanır — cwd hatırlanır, "tekrar işe al" ile kolayca geri gelir)')) return;
+  if (!confirm(t('closeConfirm')(name))) return;
   btn.disabled = true;
-  btn.textContent = 'kapatılıyor…';
+  btn.textContent = t('closing');
   await call('close', {name});
   refresh();
 }
 
 async function doReactivate(name, btn) {
   btn.disabled = true;
-  btn.textContent = 'başlıyor…';
+  btn.textContent = t('starting');
   await call('reactivate', {name});
   refresh();
 }
 
 async function safeJson(r) {
   if (!r.ok || !(r.headers.get('content-type') || '').includes('application/json')) {
-    throw new Error('beklenmeyen yanıt (http ' + r.status + ') — tünel/URL artık geçerli olmayabilir, güncel linki kontrol edin');
+    throw new Error(t('unexpectedResponse')(r.status));
   }
   return r.json();
 }
@@ -965,11 +1091,11 @@ async function call(action, payload) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
     });
-    if (r.status === 401) { alert('401 — token eksik/yanlış'); return; }
+    if (r.status === 401) { alert(t('authErrorShort')); return; }
     const d = await safeJson(r);
     if (!d.ok) alert(payload.name + ': ' + d.error);
   } catch (e) {
-    alert('istek başarısız: ' + e.message);
+    alert(t('requestFailed') + e.message);
   }
 }
 
@@ -981,7 +1107,7 @@ async function doLayout(btn) {
   const dry_run = document.getElementById('layout-dry').checked;
   const resultBox = document.getElementById('layout-result');
   btn.disabled = true;
-  btn.textContent = 'uygulanıyor…';
+  btn.textContent = t('layoutApplying');
   resultBox.textContent = '';
   try {
     const r = await fetch(withToken('/api/layout'), {
@@ -989,11 +1115,11 @@ async function doLayout(btn) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({pin, groups, claude_only, dry_run}),
     });
-    if (r.status === 401) { alert('401 — token eksik/yanlış'); }
+    if (r.status === 401) { alert(t('authErrorShort')); }
     else {
       const d = await safeJson(r);
       if (d.ok) {
-        const lines = [(dry_run ? '[dry-run] ' : '') + d.total + ' pencere, ' + d.skipped + ' atlandı'];
+        const lines = [(dry_run ? '[dry-run] ' : '') + d.total + ' ' + t('windowsWord') + ', ' + d.skipped + ' ' + t('skippedWord')];
         for (const a of d.assignments) lines.push('  ' + a.name + ' → ws' + a.ws + ' (' + a.x + ',' + a.y + ')');
         resultBox.textContent = lines.join('\\n');
       } else {
@@ -1001,12 +1127,13 @@ async function doLayout(btn) {
       }
     }
   } catch (e) {
-    resultBox.textContent = '✗ istek başarısız: ' + e.message;
+    resultBox.textContent = '✗ ' + t('requestFailed') + e.message;
   }
   btn.disabled = false;
-  btn.textContent = 'layout uygula';
+  btn.textContent = t('layoutApply');
 }
 
+applyStaticText();
 refresh();
 setInterval(refresh, 4000);
 </script>
@@ -1014,7 +1141,11 @@ setInterval(refresh, 4000);
 </html>
 """
 
-UNAUTHORIZED_HTML = b"<!doctype html><meta charset=utf-8><body style='font:14px monospace;padding:2rem'>401 &mdash; token eksik/yanlis. URL'ye <code>?token=...</code> ekleyin.</body>"
+UNAUTHORIZED_HTML = (
+    b"<!doctype html><meta charset=utf-8><body style='font:14px monospace;padding:2rem'>"
+    b"401 &mdash; token eksik/yanlis. URL'ye <code>?token=...</code> ekleyin.<br>"
+    b"401 &mdash; token missing/invalid. Add <code>?token=...</code> to the URL.</body>"
+)
 
 
 class _Handler(BaseHTTPRequestHandler):
