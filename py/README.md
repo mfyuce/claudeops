@@ -1,61 +1,88 @@
-# claudeops — Python rewrite (TBD#8)
+# claudeops — Python (`py/cops`)
 
-Bash `claudeops` (ROOT'taki, ~2270 satır) **CANLI fleet'i yönetiyor ve KALIYOR** (guard cron, handover hepsi ona bağlı). Bu Python sürümü **yanında** büyüyor ve komut-komut devralıyor — bitince root'a terfi eder.
+Birden fazla proje klasöründe, birden fazla Claude Code oturumunu tek yerden yönetmek için
+küçük bir CLI + yerel web paneli. Her proje bir "roster" satırı (isim → klasör → model);
+`py/cops web` bu roster'ı gösterip tek tek başlatma/durdurma sağlar.
 
-## Neden (2026-06-21 gecesi somut yaşandı)
-Bash >2200 satır kırılgan: proc-match anchor bug (hc53≠hcr53 trailing-space), cwd-türetme bug (yanlış dizinde spawn), dup yarışı, her yere serpili `python3 -c` inline, quoting cehennemi, tip/test yok. → [[mass-faz1-ratelimit-stuck]], DONE.md 2026-06-21.
+Linux + X11 gerekir (`gnome-terminal`'e bağımlı) — WSL/headless/macOS/Windows desteklenmiyor.
 
 ## Kurulum
-```bash
-pip install -r py/requirements.txt   # sadece psutil
-```
-Python 3.10+. `web --tunnel` için `cloudflared` gerekir — kurulu değilse otomatik indirilir
-(`~/.local/bin/cloudflared`, sadece Linux amd64/arm64; başka platformda elle kurun).
-`layout` için `wmctrl` + `xdotool` gerekir (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) —
-eksikse `web` panelinde uyarı çıkar, komut da hata mesajıyla söyler.
 
-## Çalıştır
 ```bash
-py/cops list                       # tüm session'lar + CPU + dup kontrol
-py/cops ls --base hc               # sadece hc*
-py/cops web                        # yerel kontrol paneli, http://127.0.0.1:8765
-py/cops web --tunnel               # + cloudflared quick-tunnel (uzaktan erişim)
+git clone https://github.com/mfyuce/claudeops.git
+cd claudeops
+pip install -r py/requirements.txt   # tek bağımlılık: psutil
 ```
 
-## Yapı
+Python 3.10+. `claude` CLI kurulu ve PATH'te olmalı.
+
+## Hızlı başlangıç
+
+```bash
+py/cops list          # şu an çalışan session'ları göster
+py/cops web            # kontrol paneli → http://127.0.0.1:8765
+py/cops web --tunnel   # + telefondan/uzaktan erişim (cloudflared, ilk seferde otomatik kurulur)
+```
+
+## `py/cops web` — kontrol paneli
+
+En kolay kullanım yolu; her şey tarayıcıdan:
+
+- **Ana sayfa** — sadece o an **çalışan** session'lar (gürültüsüz; hiçbir şey otomatik açılmaz).
+- **+ Ekle** — kayıtlı-ama-kapalı projeleri listeler; birini seçip **devam ettir** / **sıfırla (--new)** /
+  **ayrı yeni chat aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız.
+  Aynı panelin altında **yeni proje kaydet** formu (isim + klasör + model) — elle dosya düzenlemeden
+  roster'a ekler.
+- **Kapalı / Emekli** — geçici durdurulmuş / tamamen bırakılmış projeler; "tekrar işe al"la geri gelir.
+  Aktif bir projeyi **kapat**mak (geçici) ya da **emekli et**mek (kalıcı) mümkün.
+- **Layout** — pencereleri masaüstlerine dağıtır (`wmctrl`+`xdotool`, X11 only). Kilitli ekranda veya
+  Wayland'da bozuk çalıştığı bilindiği için **otomatik pre-flight kontrol** var — kilitliyse reddeder.
+  Eksik bağımlılık varsa (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) uyarır, kurmaz (sudo gerektirir).
+- **Token korumalı** (`~/.claude/claudeops/web.token`, ilk çalıştırmada rastgele üretilir) — sayfa da
+  API de token olmadan 401 döner. `--tunnel` ile `cloudflared` quick-tunnel açılır (PATH'te yoksa
+  `~/.local/bin`'e otomatik indirilir, Linux amd64/arm64).
+
+## CLI komutları
+
+```
+py/cops list      # çalışan session'ları listele
+py/cops kill      # bir/birkaç session'ı nazikçe kapat (SIGTERM + grace + gerekirse SIGKILL)
+py/cops close     # kalıcı kapat (kill + guard bir daha açmasın diye işaretle)
+py/cops guard     # roster'daki eksik session'ları tespit edip aç (crash-recovery; cron'a konabilir)
+py/cops rc        # kill + yeniden aç (tek tek ya da toplu; handover/respawn için)
+py/cops handover  # eski session'ı wrap-up mesajıyla kapatıp aynı adla yeniden aç
+py/cops stuck     # takılı kalmış (idle ama "busy" görünen) session'ları tespit et
+py/cops layout    # pencereleri masaüstlerine dağıt (X11)
+py/cops web       # kontrol paneli (yukarıda)
+```
+
+Her komutun kendi `--help`'i var.
+
+## Nasıl çalışır
+
+- **Roster** iki TSV dosyası, repo dışında (`~/.claude/claudeops/`, kişiye özel, hiçbir zaman commit
+  edilmez): `roster.tsv` (`isim<TAB>klasör<TAB>model`) ve `models.tsv` (`isim<TAB>model` — satır `#` ile
+  başlıyorsa o isim kapalı/emekli, guard onu açmaz).
+- Session'lar `gnome-terminal` içinde `claude -n İSİM --remote-control İSİM` ile açılır — Claude Code'un
+  kendi Remote Control özelliği (claude.ai/code veya mobil uygulamadan da erişilebilir).
+- Kill her zaman **SIGTERM + ~10 saniye bekleme + hâlâ canlıysa SIGKILL** — Claude Code'un transkript
+  kaydı ara ara diske yazıldığı için (lazy-checkpoint), çok hızlı `SIGKILL` konuşma geçmişini kesebiliyor.
+- `guard` opsiyonel — istemiyorsanız hiç kurmayın, tamamen `py/cops web`'den elle yönetin.
+
+## Klasör yapısı
+
 ```
 py/claudeops/
-  paths.py        # tüm sabit yollar (tek kaynak)
-  session.py      # Session dataclass (name/base/suffix/cpu/active...)
-  discovery.py    # find_sessions() — psutil ile proc keşfi (ps|grep'in yerine)
-  cli.py          # argparse + komut dağıtımı (COMMANDS listesi)
-  commands/ls.py  # ilk komut: list (read-only)
-cops              # bash wrapper → python3 -m claudeops
+  paths.py, session.py, discovery.py   # temel: yollar, veri modeli, proc keşfi (psutil)
+  spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py
+  commands/                             # her CLI komutu kendi dosyasında (web.py en büyüğü)
+cops                                    # giriş noktası → python3 -m claudeops
 ```
 
-## Tasarım ilkeleri (bash'in derslerinden)
-- **psutil cmdline = LİSTE** → quoting/anchor/substring tuzağı yok (bash'in baş belası).
-- **CPU birinci sınıf** → session.json status/bridge GECİKMELİ, ona güvenme; CPU gerçek.
-- **cwd = `psutil.Process.cwd()`** → /proc readlink + encoding türetmesi yok.
-- **incremental** → her komut bash'le aynı davranışı vermeli, canlıya karşı test edilmeli.
+## Tasarım notları
 
-## Porting yol haritası (öncelik sırası)
-- [x] **proc-discovery + `list`** (read-only, en sık + en kırılgan parça)
-- [x] **config doğrulama** (`~/.claude.json` json.load — bozuksa resume-hang; `py/cops config`)
-- [x] **roster/models/suffix okuma** (paths.py'den TSV parse — `roster.py`)
-- [x] **kill (nazik)** — SIGTERM + ~8-10s grace + sadece canlıysa SIGKILL (`kill.py` + `py/cops kill --dry-run`)
-- [x] **guard** — eksik session tespit + spawn (base-name bazlı, models.tsv aktif filtre, guard.lock, dry-run)
-- [x] **rc / spawn** — kill-first + respawn (--new/--resume, --one-by-one throttle, --prompt, dry-run)
-- [x] **handover** — Faz 1 (kill+reopen+msg, batch throttle, proc-presence başarı kriteri, co+ulaksec exclude)
-- [x] **stuck-detect + recovery** — jsonl son=user + CPU<2% tespiti; --recover ile kill+resume
-- [x] **layout** — xdotool tile (pin/group/desktop dağıtımı; X11 only, Wayland çalışmaz)
-- [x] **close** — session'ı kalıcı kapat (kill + models.tsv comment, guard tekrar açmaz)
-- [x] **web** — yerel kontrol paneli (`--tunnel` ile cloudflared quick-tunnel): roster'ın tamamını
-      (aktif/kapalı/emekli) gösterir, tek tek başlat (model/permission-mode/effort/fresh seçenekli)
-      / durdur / emekli et / tekrar işe al / ayrı yeni chat aç / layout uygula — mass-start yok,
-      token-gated. Bkz. `commands/web.py` docstring.
-
-## Durum
-Komutlar: `list`, `config`, `kill`, `close`, `guard`, `rc`, `handover`, `stuck`, `layout`, `web`.
-Bash `claudeops` (ROOT) hâlâ ayakta ama artık sadece `layout` + eski komutlar için; canlı fleet
-yönetimi (`guard` cron, `rc`, `handover`, `web`) tamamen bu Python sürümünde.
+- **psutil, `ps|grep` değil** — cmdline liste olarak geliyor, quoting/anchor tuzağı yok.
+- **CPU birinci sınıf aktiflik sinyali** — Claude Code'un kendi `status`/bridge alanları gecikmeli
+  güncelleniyor, CPU%>2 daha güvenilir "gerçekten çalışıyor" göstergesi.
+- **Bash `claudeops`** (repo kökünde) hâlâ duruyor ama artık sadece eski/legacy komutlar için —
+  canlı fleet yönetiminin (guard, rc, handover, web) tamamı bu Python sürümünde.
