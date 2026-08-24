@@ -1,16 +1,25 @@
 # claudeops
 
-Açık Claude CLI session'larını toplu yönetir. Bu konuşmayı (`$$` ata zincirinden bulduğu kendi claude pid'i) **her zaman korur, dokunmaz**.
+Birden fazla proje klasöründe açık Claude Code oturumlarını tek yerden yönetir: kimin çalıştığını gör,
+tek tıkla başlat/durdur, isterse telefondan bile.
 
-İki parça:
-- **`py/cops`** (Python, aktif geliştirilen) — canlı fleet yönetimi: `list`/`kill`/`close`/`guard`/`rc`/`handover`/`stuck`/`layout`/**`web`** (yerel kontrol paneli + opsiyonel cloudflared tünel ile uzaktan erişim). Kurulum ve komutlar: [`py/README.md`](py/README.md).
-- **`claudeops`** (bash, bu dosyada anlatılan) — eski/legacy komutlar, `py/cops`'un henüz kapsamadığı kısımlar için.
+```bash
+git clone https://github.com/mfyuce/claudeops.git && cd claudeops
+pip install -r py/requirements.txt
+py/cops web            # → http://127.0.0.1:8765
+```
 
-Hızlı başlangıç istiyorsanız `py/README.md`'den başlayın — `py/cops web` en kolay yol.
+Detaylı kurulum, `web` panelinin tüm özellikleri ve komut listesi: **[`py/README.md`](py/README.md)**.
 
 MIT lisanslı — bkz. [`LICENSE`](LICENSE).
 
-## Kurulum (bash `claudeops`)
+---
+
+Repoda ayrıca `claudeops` adında eski bir **bash** script var (aşağıda anlatılıyor) — ilk sürüm buydu,
+artık sadece birkaç legacy komut için tutuluyor. Canlı fleet yönetiminin tamamı (`guard`/`rc`/`handover`/`web`)
+Python sürümünde; yeni başlıyorsanız yukarıdaki `py/cops`'u kullanın.
+
+## Kurulum (bash `claudeops`, legacy)
 
 ```bash
 chmod +x ./claudeops
@@ -78,7 +87,9 @@ claudeops new myname /home/fatihyuce/work/projects/xyz
 
 ## Klasör içeriği
 
-- `claudeops` — tek dosya bash script
+- `py/` — aktif geliştirilen Python sürümü (`py/cops`), bkz. [`py/README.md`](py/README.md)
+- `claudeops` — eski/legacy tek dosya bash script
+- `LICENSE` — MIT
 - `README.md` — bu dosya
 - `CLAUDE.md` — proje context (gelecek Claude session'ları için)
 - `TODO.md` — açık iş kalemleri
