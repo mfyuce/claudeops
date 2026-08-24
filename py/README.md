@@ -28,6 +28,8 @@ py/cops web --tunnel   # + telefondan/uzaktan erişim (cloudflared, ilk seferde 
 
 En kolay kullanım yolu; her şey tarayıcıdan:
 
+![claudeops web paneli](../docs/web-panel.png)
+
 - **Ana sayfa** — sadece o an **çalışan** session'lar (gürültüsüz; hiçbir şey otomatik açılmaz).
 - **+ Ekle** — kayıtlı-ama-kapalı projeleri listeler; birini seçip **devam ettir** / **sıfırla (--new)** /
   **ayrı yeni chat aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız.
