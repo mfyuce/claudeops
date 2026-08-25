@@ -70,18 +70,26 @@ Target virgül parse yok (SPACE kullan). Layout orphan terminal slot işgal. Tam
 `DONE.md` = CHANGELOG. Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
-## READY FOR HANDOVER (2026-08-25)
+## READY FOR HANDOVER (2026-08-25, güncellenmiş — aynı gün ikinci tur)
 
-**DURUM:** Fleet küçük ve manuel kontrol altında (kasıtlı, guard cron hâlâ devre dışı). Şu an çalışanlar: `line`, `sase`, `trino`, `rustrino20260825_1`, ve bu session (`cops20260824`, roster dışı/kayıtsız). Config VALID, DUP yok. **Roster'da rustrino için 4 satır birikti** (`rustrino`, `#rustrino20260824` emekli, `rustrino20260825` durmuş, `rustrino20260825_1` çalışıyor) — bu session'daki test döngülerinden kalma çöp, işlevsel sorun değil ama temizlenebilir (hangisi "gerçek" rustrino, kullanıcıya sor).
+**DURUM:** Fleet küçük, manuel kontrol altında (guard cron kasıtlı devre dışı). Şu an çalışanlar: `line`, `sase`, `trino`, `rustrino20260825_1`, `cops20260824` (bu session, roster dışı/kayıtsız). Config VALID, DUP yok. Web paneli (`py/cops web`, port 8765) + cloudflared tüneli ayakta ve doğrulandı. **Roster'da rustrino için 4 satır birikti** (`rustrino`, `#rustrino20260824` emekli, `rustrino20260825` durmuş, `rustrino20260825_1` çalışıyor) — bu session'daki test döngülerinden çöp, kullanıcıya sorup temizlenebilir.
 
-**Bu session'da olan (uzun, yoğun bir debug turu):** Kullanıcı web panelden handover/start/adopt denedi, sessizce/tuhaf şekilde başarısız oluyordu ("sase gelmedi", "rustrino handover kapattı ama açmadı", "cops adopte olmadı"). Önce **yanlış teori** (kilitli ekran) kovalandı ve geri alındı — ekran açıkken de aynı şekilde başarısız oluyordu. **Gerçek kök sebep bulundu:** `spawn_session()` açtığı gnome-terminal client'ını hiç `.wait()` etmiyordu → zombie birikiyordu → saatlerce ayakta kalan `py/cops web` process'inde bu, yeni pencere açma güvenilirliğini SESSİZCE düşürüyordu (taze restart hep düzeltiyordu — A/B testiyle kanıtlandı). Fix: spawn sonrası proc'u arka plan thread'inde reap et. Ayrıca `_start`/`_new_chat`/`_handover` artık spawn sonrası proc gerçekten göründü mü diye doğruluyor (önceden sessizce "başarılı" yalanı söylüyordu). Yeni "devral" (adopt) özelliği eklendi: claudeops'un açmadığı (bare/kayıtsız) session'ları kill+`--remote-control`-respawn+kaydet ile devralmak için — kullanıcı isteğiyle ("açmadığı pencereleri de yönetme özelliği ekleyelim"). Detay: DONE.md'nin en üst girişi (2026-08-25).
+**Bu session'da olan (çok uzun, yoğun bir debug + özellik turu — hepsi commit+push'lu, DONE.md'de detay):**
+1. **KÖK SEBEP bulundu+düzeltildi:** `spawn_session()` açtığı gnome-terminal client'ını hiç reap etmiyordu → uzun yaşayan `py/cops web` process'inde zombie birikip yeni pencere açmayı SESSİZCE bozuyordu (kilitli-ekran teorisi kovalandı, YANLIŞ çıktı, geri alındı). Fix: arka plan thread'de `.wait()`.
+2. `_start`/`_new_chat`/`_handover`/`_adopt` artık spawn sonrası proc gerçekten göründü mü diye doğruluyor (önceden sessizce "başarılı" yalanı söylüyordu).
+3. Yeni **"devral" (adopt)** özelliği: claudeops'un açmadığı (bare/kayıtsız) session'ları remote-control ekleyip kaydetme.
+4. **"cops" bulmacası çözüldü:** uzun-yaşayan daemon'dan spawn ara sıra tutmuyordu, ama BU Bash tool'dan (kısa-ömürlü CLI çağrısı) yapılan spawn HEP güvenilirdi — kullanıcı önerisiyle ("başka bir CLI başka bir CLI açabiliyor") pratik desen: güvenilmez uzun-yaşayan daemon yerine kısa-ömürlü CLI'dan tetikle. Bu arada kilit-ekran teorisi bir kez daha (kesin olarak) yanlışlandı: kilitliyken yapılan bir CLI-spawn sorunsuz çalıştı.
+5. Kilit-ekran ön-kontrolü `_start`/`_new_chat`/`_handover`/`_adopt`'tan kaldırıldı (sadece `_run_layout`'ta kaldı, orada hâlâ geçerli — Mutter pencere-TAŞIMA sorunu, pencere-AÇMA değil).
+6. **`layout.py`'de gerçek, muhtemelen aylardır var olan bir bug bulundu+düzeltildi:** pencere-eşleme regex'i (`[a-z]+\d+$`) çıplak isimleri (trino, co, hc...) ve alt-çizgili isimleri (`rustrino20260825_1`) HİÇ yakalamıyordu (suffix sistemi 2026-06-28'de kaldırıldığından beri roster'ın ÇOĞU böyle) — artık `known_names` ile TAM eşleşme yapıyor.
+7. **Backend API hata mesajları artık gerçekten iki dilli:** 37 hata mesajı hardcoded Türkçe idi, panel EN'e çevrilse bile hep TR dönüyordu — `ERR` sözlüğü + `lang` parametresi ile düzeltildi.
+8. README'ler (EN+TR, root+py/) güncellendi: devral/adopt, cwd tıkla-genişlet, kilit-ekranın ARTIK engel olmadığı bilgisi.
 
-**AÇIK/ÇÖZÜLEMEDİ:** zombie-fix genel sorunu çözdü (rustrino kanıtladı) ama **"cops" (bu session'ın kendisi) özelinde hâlâ zombie-fix'ten SONRA da respawn başarısız oluyor** — sebep bulunamadı (dev jsonl boyutu / bare-session otomatik bridge kaydı şüpheli, doğrulanmadı). Kullanıcı elle aynı komutu ayrı terminalde çalıştırınca sorunsuz çalışıyor — yani pratik/manuel çözüm var, otomasyon güvenilmez kaldı. Bu session'ın (cops) kendisi handover EDİLMEDİ (kill riskli — bu konuşmanın kendisi) — bunun yerine wrap-up işi BURADA, kill'e gerek kalmadan yapıldı; kullanıcı isterse elle pencereyi kapatıp `claude --resume 662fdefa-714b-4bc9-93eb-4d1ac8c2debb -n cops20260824 --remote-control cops20260824 --model claude-sonnet-5 --permission-mode auto --effort max` ile devam edecek.
+**AÇIK (küçük, acil değil):** TODO.md'de not edildi — uzun-yaşayan web daemon zombie-fix'ten sonra bile teorik olarak zamanla tekrar güvenilmezleşebilir (garantisi yok, sadece azaltıldı); kalıcı çözüm (periyodik oto-restart ya da fork-per-spawn) düşünülebilir ama acil değil, pratik fallback (kısa-ömürlü CLI'dan spawn) yeterli.
 
 **Yeni session yapacaklar:**
-1. MEMORY.md oku — özellikle yeni [[spawn-zombie-child-degrades-web-server]] (bu session'ın en önemli bulgusu) + [[layout-needs-unlocked-screen]] (hâlâ geçerli ama spawn-başarısızlığının SEBEBİ değildi, karıştırma).
-2. TODO.md'deki "cops özelinde handover/devral çalışmıyor" maddesini gör — önerilen sonraki adım orada (stderr'i geçici loglayıp cops'ta gerçek hatayı yakala).
-3. Roster'daki rustrino çöp satırlarını kullanıcıya sorup temizle (hangisi kalıcı isim olsun).
-4. Guard cron'u hâlâ sen açma — kullanıcı açıkça istemedikçe.
+1. MEMORY.md oku — özellikle [[spawn-zombie-child-degrades-web-server]] + [[layout-needs-unlocked-screen]] (hâlâ geçerli ama SADECE `layout` için, genel spawn için değil — karıştırma).
+2. Roster'daki rustrino çöp satırlarını kullanıcıya sorup temizle (hangisi kalıcı isim olsun).
+3. Guard cron'u hâlâ sen açma — kullanıcı açıkça istemedikçe.
+4. Bu session (`cops20260824`) kullanıcı tarafından kapatılıp yeni bir session'la devam edilecek — bu normal, panik yok, kill'i BEN tetiklemedim (self-kill riski, kullanıcı elle yapacak).
 
 READY FOR HANDOVER
