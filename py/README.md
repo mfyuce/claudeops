@@ -41,14 +41,19 @@ The easiest way to use this; everything from the browser:
   An active project can be **closed** (temporary) or **retired** (permanent).
 - **Handover** — on a running session, sends it a wrap-up prompt (update its docs, commit, push),
   restarting it with `--resume` (same history) plus that message as the first turn. Uses the message in
-  whichever language the panel is currently set to.
-- **Sessions outside the roster show up too** — anything with `--remote-control` that's running but
-  never registered (e.g. one you opened by hand) appears tagged "unregistered", with a reduced action
-  set (stop / handover / one-click register) instead of the full one.
+  whichever language the panel is currently set to, and whichever model is set for that project in the
+  roster (not necessarily whatever model the live session happened to be switched to interactively).
+- **Sessions outside the roster show up too** — anything running that claudeops didn't open (e.g. a
+  plain `claude` you started by hand in a project folder) appears tagged "unregistered", with a reduced
+  action set: stop / handover / **adopt** (attach `--remote-control` under a name of your choice and
+  register it — closes that window and reopens a new one with the same history, since claudeops didn't
+  own it to begin with).
 - **Layout** — arranges windows across desktops (`wmctrl`+`xdotool`, X11 only). Known to misbehave on a
   locked screen or under Wayland, so there's an **automatic pre-flight check** — it refuses if the
   screen is locked. Warns (doesn't install, since that needs sudo) if a dependency is missing
-  (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`).
+  (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`). This is the *only* action that needs an
+  unlocked screen — start/stop/handover/adopt/new-chat all work fine on a locked screen too (handy if
+  you're driving the panel from your phone while your desktop is locked).
 - **TR/EN** — auto-selected from the browser's language (`navigator.language`), can be switched manually
   with the buttons in the top corner and stays persisted (localStorage).
 - **Token protected** (`~/.claude/claudeops/web.token`, randomly generated on first run) — both the page
