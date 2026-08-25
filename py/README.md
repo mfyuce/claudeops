@@ -42,6 +42,9 @@ The easiest way to use this; everything from the browser:
 - **Handover** — on a running session, sends it a wrap-up prompt (update its docs, commit, push),
   restarting it with `--resume` (same history) plus that message as the first turn. Uses the message in
   whichever language the panel is currently set to.
+- **Sessions outside the roster show up too** — anything with `--remote-control` that's running but
+  never registered (e.g. one you opened by hand) appears tagged "unregistered", with a reduced action
+  set (stop / handover / one-click register) instead of the full one.
 - **Layout** — arranges windows across desktops (`wmctrl`+`xdotool`, X11 only). Known to misbehave on a
   locked screen or under Wayland, so there's an **automatic pre-flight check** — it refuses if the
   screen is locked. Warns (doesn't install, since that needs sudo) if a dependency is missing

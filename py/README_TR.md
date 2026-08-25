@@ -42,6 +42,9 @@ En kolay kullanım yolu; her şey tarayıcıdan:
 - **Handover** — çalışan bir session'a wrap-up mesajı gönderir (dokümanları güncelle, commit+push et),
   aynı geçmişle (`--resume`) + bu mesaj ilk mesaj olarak yeniden başlatır. Panel o an hangi dildeyse
   mesaj da o dilde gider.
+- **Roster dışındaki session'lar da görünür** — `--remote-control` ile açılmış ama hiç kayıt edilmemiş
+  (ör. elle açtığınız) her şey "kayıtsız" etiketiyle listede belirir, kısıtlı aksiyon setiyle
+  (durdur / handover / tek-tık kaydet — tam set değil).
 - **Layout** — pencereleri masaüstlerine dağıtır (`wmctrl`+`xdotool`, X11 only). Kilitli ekranda veya
   Wayland'da bozuk çalıştığı bilindiği için **otomatik pre-flight kontrol** var — kilitliyse reddeder.
   Eksik bağımlılık varsa (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) uyarır, kurmaz (sudo gerektirir).
