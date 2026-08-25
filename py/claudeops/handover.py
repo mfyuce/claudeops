@@ -12,18 +12,15 @@ batch_delay arası bekleme.
 Handover DOKUNMASIN: co + ulaksec ([[co-ulaksec-guard-yes-ho-no]]).
 """
 from __future__ import annotations
-import os
-import shlex
-import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 from .discovery import find_sessions, find_by_name
-from .kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
+from .kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from .needs_ho import needs_ho
 from .session import Session
-from .spawn import find_latest_jsonl, detect_display
+from .spawn import find_latest_jsonl, detect_display, spawn_session
 
 # Base name'ler: handover hiçbir zaman bunlara dokunmaz
 HO_EXCLUDE_BASES = {"co", "ulaksec"}
@@ -51,6 +48,31 @@ HANDOVER_MSG_DEFAULT = (
     "Sonunda CLAUDE.md nin sonuna "
     "\"## READY FOR HANDOVER ($(date))\" başlığıyla 5-10 satırlık özet ekle.\n"
     "Bitince \"READY FOR HANDOVER\" özetiyle dön."
+)
+
+HANDOVER_MSG_DEFAULT_EN = (
+    "FIRST: CLAUDE.md SIZE OPTIMIZATION. This file gets loaded into context at the start of "
+    "every session, so it should stay short and to the point.\n"
+    "- Prune stale or no-longer-relevant info; move it to DONE.md if it's still worth keeping.\n"
+    "- Remove anything repetitive or easily re-derived by reading the code.\n"
+    "- Goal: noticeably smaller than before + more up to date.\n"
+    "THEN continue with the handover flow below.\n\n"
+    "═══════════════════════════════════════════════\n\n"
+    "We're wrapping up this conversation and moving to a new session. RECORDING THIS IS CRITICAL.\n\n"
+    "Please check the following and fill in anything missing:\n"
+    "- Is there anything we discussed but never wrote down?\n"
+    "- If you switched between tasks, was the earlier one recorded in TODO?\n"
+    "- Is everything committed and pushed? (to all remotes)\n"
+    "- Are TODO.md, CLAUDE.md, DONE.md, TOBEDECIDED.md up to date?\n"
+    "- Are we ready for a new session?\n\n"
+    "DERIVE THE REAL WORK FROM CHANGED FILES + GIT HISTORY:\n"
+    "- Look at every file changed in roughly the last day. What was done, added, fixed.\n"
+    "- Write each finding to the right place: finished work → DONE.md; open work → TODO.md; "
+    "architectural info → CLAUDE.md.\n"
+    "THEN commit + push all updates (to all remotes).\n\n"
+    "Finally, append a 5-10 line summary to the end of CLAUDE.md under the heading "
+    "\"## READY FOR HANDOVER ($(date))\".\n"
+    "When done, reply with the \"READY FOR HANDOVER\" summary."
 )
 
 
@@ -88,38 +110,25 @@ def _wait_proc(name: str, timeout: float = 15.0) -> bool:
 
 
 def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> str:
-    """Eski session'ı kapat, wrap-up mesajıyla yeniden aç. Returns kind string."""
-    jsonl = find_latest_jsonl(session.cwd)
-    if not jsonl:
+    """Eski session'ı kapat, wrap-up mesajıyla yeniden aç. Returns kind string.
+
+    spawn_session()'a delege eder (eskiden kendi gnome-terminal Popen'ı vardı —
+    CLAUDE* env filtresi olmadan, [[spawn-env-leak-disables-transcript]] bug'ına
+    açıktı; artık web.py ile aynı ortak, güvenli yoldan geçiyor).
+    """
+    if not find_latest_jsonl(session.cwd):
         return "skipped-no-jsonl"
-
-    sid = jsonl.stem
-    model_parts = f"--model {shlex.quote(session.model)} " if session.model else ""
-
-    inner = (
-        f"cd {shlex.quote(session.cwd)} && "
-        f"claude --resume {shlex.quote(sid)} "
-        f"-n {shlex.quote(session.name)} "
-        f"{model_parts}"
-        f"--permission-mode auto --effort max "
-        f"--remote-control {shlex.quote(session.name)} "
-        f"{shlex.quote(message)}"
+    return spawn_session(
+        name=session.name,
+        cwd=session.cwd,
+        model=session.model or "claude-sonnet-5",
+        display=display,
+        permission_mode="auto",
+        effort="max",
+        force_new=False,
+        prompt=message,
+        dry_run=dry_run,
     )
-
-    if dry_run:
-        return f"dry-run:{sid[:8]}"
-
-    env = os.environ.copy()
-    env["DISPLAY"] = display
-    subprocess.Popen(
-        ["gnome-terminal", "--window", f"--title={session.name}",
-         f"--working-directory={session.cwd}",
-         "--", "bash", "-c", f"{inner}; exec bash"],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    return f"resume:{sid[:8]}"
 
 
 def handover_faz1(

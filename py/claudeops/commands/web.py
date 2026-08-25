@@ -34,6 +34,7 @@ from urllib.parse import urlparse, parse_qs
 from ..config import validate_config
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, ROSTER_TSV
 from ..spawn import spawn_session, detect_display
@@ -510,6 +511,39 @@ def _close_project(name: str) -> dict:
     return {"ok": True}
 
 
+def _handover(name: str, lang: str = "tr") -> dict:
+    """Wrap-up mesajıyla kill+resume — py/cops handover'ın TEK-session web karşılığı.
+
+    needs_ho/batch YOK (kullanıcı elle, bilerek tetikliyor) — sadece kill+resume+prompt,
+    handover.py'deki _spawn_faz1 ile AYNI spawn_session() çağrısı (env-leak fix dahil).
+    """
+    procs = _find_running(name)
+    if not procs:
+        return {"ok": False, "error": f"{name}: çalışmıyor"}
+    fleet = _fleet_status()
+    info = fleet.get(name)
+    if not info:
+        return {"ok": False, "error": f"{name}: tanımsız"}
+    message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
+    try:
+        with guard_lock(timeout=5.0):
+            for s in procs:
+                kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS)
+            kind = spawn_session(
+                name=name,
+                cwd=info["cwd"],
+                model=info["model"],
+                display=detect_display(),
+                permission_mode="auto",
+                effort="max",
+                force_new=False,
+                prompt=message,
+            )
+    except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "kind": kind}
+
+
 def _reactivate_and_start(name: str) -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
@@ -590,6 +624,7 @@ PAGE_HTML = """<!doctype html>
   button.go { border-color: var(--accent); color: var(--accent); }
   button.retire { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
   button.closebtn { border-color: var(--muted); color: var(--muted); font-size: .78rem; padding: .3rem .5rem; }
+  button.handover { border-color: var(--accent); color: var(--accent); font-size: .78rem; padding: .3rem .5rem; }
   button.reactivate { border-color: var(--green); color: var(--green); }
   button.addtoggle { display: block; width: 100%; text-align: left; border-color: var(--accent); color: var(--accent); margin: .5rem 0; }
   button:disabled { opacity: .5; cursor: default; }
@@ -657,7 +692,9 @@ const T = {
     dupWarn: '⚠ DUP: ',
     pidWord: 'pid ', stoppedWord: 'durdu',
     optionsBtn: 'seçenekler ▾', startBtn: 'başlat ▾', stopBtn: 'durdur',
-    closeBtn: 'kapat', retireBtn: 'emekli et',
+    closeBtn: 'kapat', retireBtn: 'emekli et', handoverBtn: 'handover',
+    handoverConfirm: (name) => `${name}: handover yapılsın mı? Session'a wrap-up mesajı gönderilir (CLAUDE.md/TODO.md/DONE.md güncellensin, commit+push edilsin diye), önce durdurulur sonra AYNI geçmişle (--resume) bu mesajla yeniden açılır. Yanıtı bekleyin, TAMAMLANMADAN tekrar durdurmayın.`,
+    handingOver: 'handover gönderiliyor…',
     nothingRunning: `Hiçbir şey çalışmıyor — aşağıdaki "+ Ekle"den başlatın.`,
     addToggle: '+ Ekle', registeredClosed: 'kayıtlı, kapalı',
     closedToggle: 'Kapalı', retiredToggle: 'Emekli', layoutToggle: 'Layout',
@@ -705,7 +742,9 @@ const T = {
     dupWarn: '⚠ DUP: ',
     pidWord: 'pid ', stoppedWord: 'stopped',
     optionsBtn: 'options ▾', startBtn: 'start ▾', stopBtn: 'stop',
-    closeBtn: 'close', retireBtn: 'retire',
+    closeBtn: 'close', retireBtn: 'retire', handoverBtn: 'handover',
+    handoverConfirm: (name) => `${name}: run handover? Sends the session a wrap-up prompt (to update CLAUDE.md/TODO.md/DONE.md and commit+push), stopping it first and reopening it with the SAME history (--resume) plus this message. Wait for its reply — don't stop it again before it finishes.`,
+    handingOver: 'sending handover…',
     nothingRunning: `Nothing running — start something from "+ Add" below.`,
     addToggle: '+ Add', registeredClosed: 'registered, stopped',
     closedToggle: 'Closed', retiredToggle: 'Retired', layoutToggle: 'Layout',
@@ -850,6 +889,7 @@ function sessionRow(s, d) {
       <td><div class="actioncell">
         ${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>` : ''}
         <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? t('optionsBtn') : t('startBtn')}</button>
+        ${s.running ? `<button class="handover" onclick="doHandover('${s.name}', this)">${t('handoverBtn')}</button>` : ''}
         <button class="closebtn" onclick="doClose('${s.name}', this)">${t('closeBtn')}</button>
         <button class="retire" onclick="doRetire('${s.name}', this)">${t('retireBtn')}</button>
       </div></td>
@@ -1078,6 +1118,14 @@ async function doClose(name, btn) {
   refresh();
 }
 
+async function doHandover(name, btn) {
+  if (!confirm(t('handoverConfirm')(name))) return;
+  btn.disabled = true;
+  btn.textContent = t('handingOver');
+  await call('handover', {name, lang: LANG});
+  refresh();
+}
+
 async function doReactivate(name, btn) {
   btn.disabled = true;
   btn.textContent = t('starting');
@@ -1206,7 +1254,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
-                         "/api/new-chat", "/api/layout", "/api/register", "/api/close"):
+                         "/api/new-chat", "/api/layout", "/api/register", "/api/close", "/api/handover"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -1268,6 +1316,8 @@ class _Handler(BaseHTTPRequestHandler):
             result = _retire(name)
         elif path == "/api/close":
             result = _close_project(name)
+        elif path == "/api/handover":
+            result = _handover(name, lang=str(data.get("lang", "tr")))
         else:
             result = _reactivate_and_start(name)
         self._json(result)
