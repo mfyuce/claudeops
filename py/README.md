@@ -39,6 +39,9 @@ The easiest way to use this; everything from the browser:
   adds to the roster without editing files by hand.
 - **Closed / Retired** — temporarily stopped / fully abandoned projects; come back with "reactivate".
   An active project can be **closed** (temporary) or **retired** (permanent).
+- **Handover** — on a running session, sends it a wrap-up prompt (update its docs, commit, push),
+  restarting it with `--resume` (same history) plus that message as the first turn. Uses the message in
+  whichever language the panel is currently set to.
 - **Layout** — arranges windows across desktops (`wmctrl`+`xdotool`, X11 only). Known to misbehave on a
   locked screen or under Wayland, so there's an **automatic pre-flight check** — it refuses if the
   screen is locked. Warns (doesn't install, since that needs sudo) if a dependency is missing
