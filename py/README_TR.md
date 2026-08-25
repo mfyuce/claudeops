@@ -39,6 +39,9 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   roster'a ekler.
 - **Kapalı / Emekli** — geçici durdurulmuş / tamamen bırakılmış projeler; "tekrar işe al"la geri gelir.
   Aktif bir projeyi **kapat**mak (geçici) ya da **emekli et**mek (kalıcı) mümkün.
+- **Handover** — çalışan bir session'a wrap-up mesajı gönderir (dokümanları güncelle, commit+push et),
+  aynı geçmişle (`--resume`) + bu mesaj ilk mesaj olarak yeniden başlatır. Panel o an hangi dildeyse
+  mesaj da o dilde gider.
 - **Layout** — pencereleri masaüstlerine dağıtır (`wmctrl`+`xdotool`, X11 only). Kilitli ekranda veya
   Wayland'da bozuk çalıştığı bilindiği için **otomatik pre-flight kontrol** var — kilitliyse reddeder.
   Eksik bağımlılık varsa (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) uyarır, kurmaz (sudo gerektirir).
