@@ -273,6 +273,8 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     info = fleet.get(base)
     if not info:
         return {"ok": False, "error": f"{base}: roster'da yok — önce ana ismi ekleyin"}
+    if _screen_locked():
+        return {"ok": False, "error": SCREEN_LOCKED_ERROR}
     new_name = _generate_new_chat_name(base)
     chosen_model = model.strip() or info["model"]
     _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model])
@@ -288,8 +290,18 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
                 effort=effort.strip() or "max",
                 force_new=True,
             )
+            deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
+            opened = False
+            while time.monotonic() < deadline:
+                if _find_running(new_name):
+                    opened = True
+                    break
+                time.sleep(1.0)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
+    if not opened:
+        return {"ok": False, "error": f"{new_name}: roster'a kaydedildi ama başlatılamadı "
+                                        f"(gnome-terminal/DISPLAY sorunu olabilir) — '+ Ekle'den tekrar deneyin — kind={kind}"}
     return {"ok": True, "name": new_name, "kind": kind}
 
 
@@ -324,6 +336,14 @@ LAYOUT_DEPS = ["wmctrl", "xdotool"]
 
 def _missing_layout_deps() -> list:
     return [d for d in LAYOUT_DEPS if shutil.which(d) is None]
+
+
+SCREEN_LOCKED_ERROR = (
+    "ekran KİLİTLİ — kilitliyken gnome-terminal yeni pencere açamıyor (sessizce hiçbir "
+    "şey olmuyor: proc kill edilse bile respawn boşa gider, [[layout-needs-unlocked-screen]] "
+    "ile aynı Mutter kısıtı ama pencere-taşımada değil pencere AÇMA'da — 2026-08-25 "
+    "cops handover'da bulundu). Önce ekranın kilidini açın, sonra tekrar deneyin."
+)
 
 
 def _screen_locked() -> Optional[bool]:
@@ -457,6 +477,8 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
         return {"ok": False, "error": f"{name}: roster/models.tsv'de aktif değil"}
     if _find_running(name):
         return {"ok": False, "error": f"{name}: zaten çalışıyor"}
+    if _screen_locked():
+        return {"ok": False, "error": SCREEN_LOCKED_ERROR}
     try:
         with guard_lock(timeout=5.0):
             kind = spawn_session(
@@ -468,8 +490,18 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
                 effort=effort.strip() or "max",
                 force_new=bool(fresh),
             )
+            deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
+            opened = False
+            while time.monotonic() < deadline:
+                if _find_running(name):
+                    opened = True
+                    break
+                time.sleep(1.0)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
+    if not opened:
+        return {"ok": False, "error": f"{name}: başlatma denendi ama proc görünmedi "
+                                        f"(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir, tekrar deneyin) — kind={kind}"}
     return {"ok": True, "kind": kind}
 
 
@@ -532,6 +564,10 @@ def _close_project(name: str) -> dict:
     return {"ok": True}
 
 
+HANDOVER_KILL_SETTLE_SECONDS = 6.0
+HANDOVER_PROC_WAIT_SECONDS = 25.0
+
+
 def _handover(name: str, lang: str = "tr") -> dict:
     """Wrap-up mesajıyla kill+resume — py/cops handover'ın TEK-session web karşılığı.
 
@@ -539,10 +575,21 @@ def _handover(name: str, lang: str = "tr") -> dict:
     handover.py'deki _spawn_faz1 ile AYNI spawn_session() çağrısı (env-leak fix dahil).
     Roster GEREKMEZ (CLI'nin isimli-hedefleme mantığıyla aynı, [[handover]] 2026-08-25) —
     kayıtlı değilse cwd/model canlı proc'tan (_find_running) alınır.
+
+    handover.py'deki handover_faz1() ile AYNI iki güvenlik adımı burada da şart, yoksa
+    "kapattı, bir daha açmadı" olur (2026-08-25 bulundu, cops20260824 üzerinde canlı test):
+    1. kill_settle: kill sonrası respawn'dan ÖNCE bekleme — server-side RC bridge eski
+       ismi hemen bırakmıyor, settle olmadan aynı isimle respawn çakışabilir
+       ([[handover-edge-cases]] bridge trap).
+    2. proc-presence doğrulama: spawn_session() gnome-terminal'i Popen ile FIRE-AND-FORGET
+       açıyor (dönüş değeri başarı garantisi DEĞİL) — respawn gerçekten proc üretti mi
+       kontrol etmeden ok:True dönmek, sessiz başarısızlığı UI'da "başarılı" gibi gösterir.
     """
     procs = _find_running(name)
     if not procs:
         return {"ok": False, "error": f"{name}: çalışmıyor"}
+    if _screen_locked():
+        return {"ok": False, "error": SCREEN_LOCKED_ERROR}
     fleet = _fleet_status()
     info = fleet.get(name)
     if info:
@@ -552,8 +599,9 @@ def _handover(name: str, lang: str = "tr") -> dict:
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     try:
         with guard_lock(timeout=5.0):
-            for s in procs:
-                kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS)
+            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS) for s in procs]
+            if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
+                time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
             kind = spawn_session(
                 name=name,
                 cwd=cwd,
@@ -564,9 +612,79 @@ def _handover(name: str, lang: str = "tr") -> dict:
                 force_new=False,
                 prompt=message,
             )
+            deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
+            reopened = False
+            while time.monotonic() < deadline:
+                if _find_running(name):
+                    reopened = True
+                    break
+                time.sleep(1.0)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
+    if not reopened:
+        return {"ok": False, "error": f"{name}: kapatıldı ama yeniden açılamadı "
+                                        f"(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir) — kind={kind}"}
     return {"ok": True, "kind": kind}
+
+
+def _adopt(old_name: str, new_name: str = "", model: str = "",
+           permission_mode: str = "", effort: str = "") -> dict:
+    """claudeops'un AÇMADIĞI (kayıtsız/foreign) canlı bir session'ı devral.
+
+    2026-08-25, kullanıcı: "açmadığı pencereleri de yönetme özelliği ekleyelim, istediğine
+    remote eklesin istediğini rename etsin". Örnek: "cops" (bu chat'in kendisi) — bare
+    `claude` proc'u, --remote-control HİÇ almamış ama claude 2.1.245 yine de kendi
+    ~/.claude/sessions/<pid>.json'ına bridgeSessionId yazıyor (name/bridge kaydı flag'den
+    bağımsız). claudeops'un normal kill+respawn'ı (handover/start) TAM OLARAK bu iş için
+    var, tek fark: burada respawn AYRI, YENİ bir pencerede olur — "bu pencere geri geldi"
+    DEĞİL, "bu pencere kapandı, başka bir pencere seçtiğiniz isimle açıldı" (UI bunu net
+    uyarıyor, adoptWarn). new_name boşsa/old_name ile aynıysa sadece --remote-control
+    EKLENMİŞ olur (isim değişmez). Başarılı respawn'dan sonra roster'a da upsert edilir
+    (aksi halde bir sonraki oturumda yine "kayıtsız" görünür).
+    """
+    old_name = old_name.strip()
+    new_name = (new_name or old_name).strip()
+    if not _NAME_VALID_RE.match(new_name):
+        return {"ok": False, "error": "geçersiz isim — küçük harf ile başlamalı, sadece a-z 0-9 _ içerebilir"}
+    procs = _find_running(old_name)
+    if not procs:
+        return {"ok": False, "error": f"{old_name}: çalışmıyor"}
+    if new_name != old_name and new_name in _all_known_names():
+        return {"ok": False, "error": f"{new_name}: zaten kullanılıyor (roster'da ya da çalışıyor)"}
+    if _screen_locked():
+        return {"ok": False, "error": SCREEN_LOCKED_ERROR}
+    cwd = procs[0].cwd
+    chosen_model = model.strip() or procs[0].model or "claude-sonnet-5"
+    try:
+        with guard_lock(timeout=5.0):
+            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS) for s in procs]
+            if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
+                time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
+            kind = spawn_session(
+                name=new_name,
+                cwd=cwd,
+                model=chosen_model,
+                display=detect_display(),
+                permission_mode=permission_mode.strip() or "auto",
+                effort=effort.strip() or "max",
+                force_new=False,
+            )
+            deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
+            reopened = False
+            while time.monotonic() < deadline:
+                if _find_running(new_name):
+                    reopened = True
+                    break
+                time.sleep(1.0)
+    except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    if not reopened:
+        return {"ok": False, "error": f"{old_name}: kapatıldı ama '{new_name}' olarak yeniden açılamadı "
+                                        f"(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir) — kind={kind}"}
+    if new_name not in _fleet_status():
+        _append_tsv_line(ROSTER_TSV, [new_name, cwd, chosen_model])
+        _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
+    return {"ok": True, "kind": kind, "new_name": new_name}
 
 
 def _reactivate_and_start(name: str) -> dict:
@@ -626,7 +744,8 @@ PAGE_HTML = """<!doctype html>
        border-bottom: 1px solid var(--border); }
   td { padding: .4rem .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
   td.cwd { color: var(--muted); font-size: .78rem; overflow: hidden; text-overflow: ellipsis;
-           white-space: nowrap; max-width: 1px; }
+           white-space: nowrap; max-width: 1px; cursor: pointer; }
+  td.cwd.expanded { white-space: normal; word-break: break-all; max-width: none; overflow: visible; }
   .tablewrap { overflow-x: auto; }
   @media (max-width: 640px) {
     /* dar ekranda model/tür sütunlarını gizle, cwd'yi kısalt — action butonları
@@ -723,7 +842,13 @@ const T = {
     handoverConfirm: (name) => `${name}: handover yapılsın mı? Session'a wrap-up mesajı gönderilir (CLAUDE.md/TODO.md/DONE.md güncellensin, commit+push edilsin diye), önce durdurulur sonra AYNI geçmişle (--resume) bu mesajla yeniden açılır. Yanıtı bekleyin, TAMAMLANMADAN tekrar durdurmayın.`,
     handingOver: 'handover gönderiliyor…',
     registerBtn: 'kaydet', unregBadge: 'kayıtsız',
-    unregHint: 'roster.tsv\\'de kayıtlı değil (proc-scan\\'den bulundu) — kaydet\\'e basarsanız görünür/yönetilebilir kalıcı hale gelir',
+    unregHint: 'roster.tsv\\'de kayıtlı değil (proc-scan\\'den bulundu) — claudeops\\'un açmadığı bir pencere; "devral"a basarsanız remote-control eklenip roster\\'a kalıcı kaydedilir',
+    cwdHint: 'tıkla: tam yolu göster/gizle',
+    adoptBtn: 'devral (remote ekle)',
+    adoptWarn: (name) => `⚠ ${name} claudeops'un açmadığı bir pencere (elle/başka yerden açılmış). "devral" bu pencereyi KAPATIR ve seçtiğiniz isimle AYRI, YENİ bir pencerede --remote-control ile açar (aynı geçmişle, --resume) — şu an baktığınız pencerenin kendisi değil, yeni bir pencere.`,
+    adoptNameLabel: 'yeni isim (remote-control adı)',
+    adopting: 'devralınıyor… (~10-20s)',
+    adopted: 'devralındı, yeni isim: ',
     nothingRunning: `Hiçbir şey çalışmıyor — aşağıdaki "+ Ekle"den başlatın.`,
     addToggle: '+ Ekle', registeredClosed: 'kayıtlı, kapalı',
     closedToggle: 'Kapalı', retiredToggle: 'Emekli', layoutToggle: 'Layout',
@@ -775,7 +900,13 @@ const T = {
     handoverConfirm: (name) => `${name}: run handover? Sends the session a wrap-up prompt (to update CLAUDE.md/TODO.md/DONE.md and commit+push), stopping it first and reopening it with the SAME history (--resume) plus this message. Wait for its reply — don't stop it again before it finishes.`,
     handingOver: 'sending handover…',
     registerBtn: 'register', unregBadge: 'unregistered',
-    unregHint: 'not in roster.tsv (found via proc-scan) — click register to make it permanently visible/manageable',
+    unregHint: 'not in roster.tsv (found via proc-scan) — a window claudeops didn\\'t open; click "adopt" to attach remote-control and register it permanently',
+    cwdHint: 'click: show/hide full path',
+    adoptBtn: 'adopt (attach remote)',
+    adoptWarn: (name) => `⚠ ${name} is a window claudeops didn't open (started by hand/elsewhere). "adopt" will CLOSE this window and open a SEPARATE, NEW window under the name you choose, with --remote-control (same history, --resume) — not this exact window, a new one.`,
+    adoptNameLabel: 'new name (remote-control name)',
+    adopting: 'adopting… (~10-20s)',
+    adopted: 'adopted, new name: ',
     nothingRunning: `Nothing running — start something from "+ Add" below.`,
     addToggle: '+ Add', registeredClosed: 'registered, stopped',
     closedToggle: 'Closed', retiredToggle: 'Retired', layoutToggle: 'Layout',
@@ -838,6 +969,7 @@ function withToken(url) {
 let LAST = null;
 let LAST_JSON = null;
 let optsFor = null;
+let adoptFor = null;
 let showAddPanel = false;
 let showLayoutPanel = false;
 let showClosedPanel = false;
@@ -912,7 +1044,7 @@ function sessionRow(s, d) {
   const actions = s.registered === false
     ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>
        <button class="handover" onclick="doHandover('${s.name}', this)">${t('handoverBtn')}</button>
-       <button class="go" onclick="doQuickRegister('${s.name}','${s.cwd.replace(/'/g, "\\'")}','${s.model}', this)">${t('registerBtn')}</button>`
+       <button class="start" onclick="toggleAdopt('${s.name}')">${t('adoptBtn')}</button>`
     : `${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>` : ''}
        <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? t('optionsBtn') : t('startBtn')}</button>
        ${s.running ? `<button class="handover" onclick="doHandover('${s.name}', this)">${t('handoverBtn')}</button>` : ''}
@@ -928,29 +1060,72 @@ function sessionRow(s, d) {
       <td><span class="dot ${s.running ? 'on' : 'off'}"></span>${s.running ? t('pidWord') + s.pid : t('stoppedWord')}</td>
       <td>${s.running ? s.cpu.toFixed(1) : '—'}</td>
       <td>${s.kind || '—'}</td>
-      <td class="cwd" title="${s.cwd}">${s.cwd}</td>
+      <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${s.cwd}</td>
       <td><div class="actioncell">${actions}</div></td>
     </tr>`;
+  if (s.registered === false && adoptFor === s.name) return [row, adoptOptsRow(s, d)];
   return (s.registered !== false && optsFor === s.name) ? [row, unifiedOptsRow(s, d)] : [row];
 }
 
-async function doQuickRegister(name, cwd, model, btn) {
+function toggleAdopt(name) {
+  adoptFor = (adoptFor === name) ? null : name;
+  render(LAST);
+}
+
+function adoptOptsRow(s, d) {
+  const modelOpts = ['(' + (s.model || 'claude-sonnet-5') + ')', ...d.model_choices, '…']
+    .map(m => `<option value="${m.startsWith('(') ? '' : m}">${m}</option>`).join('');
+  const pmOpts = d.permission_modes.map(m => `<option ${m==='auto'?'selected':''}>${m}</option>`).join('');
+  const efOpts = d.effort_levels.map(m => `<option ${m==='max'?'selected':''}>${m}</option>`).join('');
+  return `
+    <tr class="opts-row"><td colspan="7"><div class="opts">
+      <span class="opts-hint">${t('adoptWarn')(s.name)}</span>
+      <label>${t('adoptNameLabel')}
+        <input type="text" id="adopt-name-${s.name}" value="${s.name}">
+      </label>
+      <label>${t('modelLabel')}
+        <select id="adopt-model-${s.name}" onchange="this.nextElementSibling.style.display = this.value==='__other__' ? '' : 'none'">
+          ${modelOpts.replace('value="…"', 'value="__other__"')}
+        </select>
+      </label>
+      <input type="text" id="adopt-model-other-${s.name}" placeholder="model id" style="display:none">
+      <label>${t('pmLabel')}
+        <select id="adopt-pm-${s.name}">${pmOpts}</select>
+      </label>
+      <label>${t('effortLabel')}
+        <select id="adopt-effort-${s.name}">${efOpts}</select>
+      </label>
+      <button class="go" onclick="doAdopt('${s.name}', this)">${t('adoptBtn')}</button>
+      <button onclick="adoptFor=null; render(LAST)">${t('cancelBtn')}</button>
+    </div></td></tr>`;
+}
+
+async function doAdopt(oldName, btn) {
+  const newName = document.getElementById('adopt-name-' + oldName).value.trim();
+  const modelSel = document.getElementById('adopt-model-' + oldName).value;
+  const modelOther = document.getElementById('adopt-model-other-' + oldName).value;
+  const model = modelSel === '__other__' ? modelOther : modelSel;
+  const permission_mode = document.getElementById('adopt-pm-' + oldName).value;
+  const effort = document.getElementById('adopt-effort-' + oldName).value;
+  if (!confirm(t('adoptWarn')(oldName))) return;
   btn.disabled = true;
-  btn.textContent = t('registerSaving');
+  btn.textContent = t('adopting');
   try {
-    const r = await fetch(withToken('/api/register'), {
+    const r = await fetch(withToken('/api/adopt'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name, cwd, model}),
+      body: JSON.stringify({name: oldName, new_name: newName, model, permission_mode, effort}),
     });
     if (r.status === 401) { alert(t('authErrorShort')); }
     else {
       const d = await safeJson(r);
-      if (!d.ok) alert(name + ': ' + d.error);
+      if (!d.ok) alert(oldName + ': ' + d.error);
+      else alert(t('adopted') + d.new_name);
     }
   } catch (e) {
     alert(t('requestFailed') + e.message);
   }
+  adoptFor = null;
   refresh();
 }
 
@@ -1053,7 +1228,7 @@ function groupTable(items) {
     <tr>
       <td style="width:14%">${it.name}</td>
       <td style="width:20%">${it.model || ''}</td>
-      <td class="cwd" title="${it.cwd}">${it.cwd}</td>
+      <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${it.cwd}</td>
       <td style="width:16%"><button class="reactivate" onclick="doReactivate('${it.name}', this)">${t('reactivateBtn')}</button></td>
     </tr>`).join('');
   return `<div class="tablewrap"><table><tbody>${rows}</tbody></table></div>`;
@@ -1311,7 +1486,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
-                         "/api/new-chat", "/api/layout", "/api/register", "/api/close", "/api/handover"):
+                         "/api/new-chat", "/api/layout", "/api/register", "/api/close",
+                         "/api/handover", "/api/adopt"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -1352,6 +1528,20 @@ class _Handler(BaseHTTPRequestHandler):
                 name=str(data.get("name", "")),
                 cwd=str(data.get("cwd", "")),
                 model=str(data.get("model", "")),
+            ))
+            return
+
+        if path == "/api/adopt":
+            old_name = str(data.get("name", "")).strip()
+            if not old_name:
+                self._json({"ok": False, "error": "name gerekli"}, status=400)
+                return
+            self._json(_adopt(
+                old_name,
+                new_name=str(data.get("new_name", "")),
+                model=str(data.get("model", "")),
+                permission_mode=str(data.get("permission_mode", "")),
+                effort=str(data.get("effort", "")),
             ))
             return
 
