@@ -273,8 +273,6 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     info = fleet.get(base)
     if not info:
         return {"ok": False, "error": f"{base}: roster'da yok — önce ana ismi ekleyin"}
-    if _screen_locked():
-        return {"ok": False, "error": SCREEN_LOCKED_ERROR}
     new_name = _generate_new_chat_name(base)
     chosen_model = model.strip() or info["model"]
     _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model])
@@ -336,14 +334,6 @@ LAYOUT_DEPS = ["wmctrl", "xdotool"]
 
 def _missing_layout_deps() -> list:
     return [d for d in LAYOUT_DEPS if shutil.which(d) is None]
-
-
-SCREEN_LOCKED_ERROR = (
-    "ekran KİLİTLİ — kilitliyken gnome-terminal yeni pencere açamıyor (sessizce hiçbir "
-    "şey olmuyor: proc kill edilse bile respawn boşa gider, [[layout-needs-unlocked-screen]] "
-    "ile aynı Mutter kısıtı ama pencere-taşımada değil pencere AÇMA'da — 2026-08-25 "
-    "cops handover'da bulundu). Önce ekranın kilidini açın, sonra tekrar deneyin."
-)
 
 
 def _screen_locked() -> Optional[bool]:
@@ -477,8 +467,6 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
         return {"ok": False, "error": f"{name}: roster/models.tsv'de aktif değil"}
     if _find_running(name):
         return {"ok": False, "error": f"{name}: zaten çalışıyor"}
-    if _screen_locked():
-        return {"ok": False, "error": SCREEN_LOCKED_ERROR}
     try:
         with guard_lock(timeout=5.0):
             kind = spawn_session(
@@ -588,8 +576,6 @@ def _handover(name: str, lang: str = "tr") -> dict:
     procs = _find_running(name)
     if not procs:
         return {"ok": False, "error": f"{name}: çalışmıyor"}
-    if _screen_locked():
-        return {"ok": False, "error": SCREEN_LOCKED_ERROR}
     fleet = _fleet_status()
     info = fleet.get(name)
     if info:
@@ -651,8 +637,6 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
         return {"ok": False, "error": f"{old_name}: çalışmıyor"}
     if new_name != old_name and new_name in _all_known_names():
         return {"ok": False, "error": f"{new_name}: zaten kullanılıyor (roster'da ya da çalışıyor)"}
-    if _screen_locked():
-        return {"ok": False, "error": SCREEN_LOCKED_ERROR}
     cwd = procs[0].cwd
     chosen_model = model.strip() or procs[0].model or "claude-sonnet-5"
     try:
