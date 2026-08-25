@@ -9,9 +9,12 @@ Bash akışı (visible mode):
 Throttle ([[mass-faz1-ratelimit-stuck]]): rate-limit önlemek için batch_size'lı gruplar +
 batch_delay arası bekleme.
 
-Handover DOKUNMASIN: co + ulaksec ([[co-ulaksec-guard-yes-ho-no]]).
+Self-koruma: handover kendi atası olan claude session'ını asla öldürmez
+(process-bazlı; isim-bazlı hariç-tutma 2026-08-25'te kaldırıldı — seçim artık
+web panelindeki checkbox'larla).
 """
 from __future__ import annotations
+import os
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -22,8 +25,29 @@ from .needs_ho import needs_ho
 from .session import Session
 from .spawn import find_latest_jsonl, detect_display, spawn_session
 
-# Base name'ler: handover hiçbir zaman bunlara dokunmaz
-HO_EXCLUDE_BASES = {"co", "ulaksec"}
+# 2026-08-25: isim-bazlı hariç-tutma (HO_EXCLUDE_BASES={co,cops,ulaksec}) KALDIRILDI
+# (kullanıcı kararı: "hariç tutulma kısımlarını silelim, UI'ye checkbox ekleyelim") —
+# artık neyin işlem göreceğini web panelindeki seçim belirliyor. Tek kalan koruma
+# İSİM değil PROCESS bazlı: handover kendi atası olan claude session'ını (içinden
+# çalıştırıldığı CLI'ı) asla öldürmez — self-kill komutu yarıda öldürür + transcript
+# truncation riski ([[claude-2183-conversation-truncation]]).
+
+
+def ancestor_pids() -> set:
+    """Bu process'in /proc üzerinden ata-pid zinciri (parent, grandparent, ...)."""
+    pids = set()
+    pid = os.getpid()
+    for _ in range(64):
+        try:
+            with open(f"/proc/{pid}/stat") as f:
+                ppid = int(f.read().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+        if ppid <= 1:
+            break
+        pids.add(ppid)
+        pid = ppid
+    return pids
 
 HANDOVER_MSG_DEFAULT = (
     "ÖNCE: CLAUDE.md BÜYÜKLÜK OPTİMİZASYONU. Dosya her session başında context e "
@@ -144,12 +168,12 @@ def handover_faz1(
 ) -> Faz1Summary:
     """Faz 1: wrap-up mesajı gönder (eski proc kapat, yeni aç).
 
-    `names` YOKSA (varsayılan, batch): tüm canlı session'lar hedef, co/ulaksec HARİÇ
-    ([[co-ulaksec-guard-yes-ho-no]]), needs_ho=False olanlar atlanır.
-    `names` VARSA (tek/birkaç hedef, kullanıcı elle+bilerek seçmiş): co/ulaksec DAHİL
-    (isim açıkça verilmişse hariç-tutma listesini BİLEREK bypass eder — kullanıcı
-    "co'yu da yapabilmeliyim" dedi), needs_ho kontrolü DE bypass edilir (tek-hedef
-    seçimi zaten "bunu şimdi yap" demektir, batch-güvenlik atlaması gerekmez).
+    `names` YOKSA (varsayılan, batch): tüm canlı session'lar hedef,
+    needs_ho=False olanlar atlanır.
+    `names` VARSA (tek/birkaç hedef, kullanıcı elle+bilerek seçmiş): needs_ho
+    kontrolü bypass edilir (tek-hedef seçimi zaten "bunu şimdi yap" demektir).
+    Her iki modda da self-koruma geçerli: bu komutun içinden çalıştığı claude
+    session'ı (ata-proc) isimle bile hedeflense atlanır.
     Roster GEREKMEZ — hedef canlı proc-scan'den bulunur (kayıtlı olmayan ad-hoc
     session'lar da çalışır, ör. web panelin kendi ismi).
 
@@ -186,12 +210,18 @@ def handover_faz1(
             if w not in found_keys:
                 print(f"  {w}: proc bulunamadı (çalışmıyor mu?)")
                 summary.results.append(Faz1Result(w, "failed-noproc", "proc bulunamadı"))
-        excluded_named = [s for s in targets if s.base in HO_EXCLUDE_BASES]
-        if excluded_named:
-            print(f"  ⚠ isimle hedeflendiği için hariç-tutma listesini bypass ediyor: "
-                  f"{', '.join(s.name for s in excluded_named)}")
     else:
-        targets = [s for s in sessions if s.base not in HO_EXCLUDE_BASES]
+        targets = list(sessions)
+
+    # Self-koruma (isim-bazlı değil, process-bazlı): içinden çalıştığımız claude
+    # session'ı (atamız) hedeflerdeyse atla — isimle bile hedeflense.
+    protected = ancestor_pids()
+    self_hits = [s for s in targets if s.pid in protected]
+    if self_hits:
+        for s in self_hits:
+            print(f"  ⊘ self: {s.name} (pid={s.pid}) — bu komut onun içinden çalışıyor, atlandı")
+            summary.results.append(Faz1Result(s.name, "skipped-self", "komutun atası"))
+        targets = [s for s in targets if s.pid not in protected]
     targets.sort(key=lambda s: s.base)
 
     for i, session in enumerate(targets):

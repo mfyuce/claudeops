@@ -6,7 +6,10 @@ import re
 
 # İsimler base-name (suffix YOK): hc, anomaly, co... Geçiş savunması: eski
 # suffix'li adlar (hc58) da base'e (hc) indirgensin diye sondaki rakamlar opsiyonel.
-_NAME_RE = re.compile(r"^([a-z]+)\d*$")
+# 2026-08-25: tarih+çakışma suffix'leri de (cops20260824_1, mo20260813_1) base'e
+# indirgenir — aksi halde `_1`li adlar roster'daki base kaydına eşleşmiyor,
+# panel onları "kayıtsız" sanıyordu.
+_NAME_RE = re.compile(r"^([a-z]+)\d*(?:_\d+)*$")
 
 
 @dataclass

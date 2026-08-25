@@ -20,14 +20,14 @@ from typing import Optional
 
 from ..discovery import find_by_name, find_sessions
 from ..guard import guard_lock
-from ..handover import HO_EXCLUDE_BASES
+from ..handover import ancestor_pids
 from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import repo_baseline_set
 from ..roster import read_models, roster_by_name
 from ..spawn import spawn_session, detect_display
 
 # Geçiş savunması: suffix'li girdiyi (hc58) base'e (hc) indirger. Saf base de eşleşir.
-_NAME_RE = re.compile(r"^([a-z]+)\d*$")
+_NAME_RE = re.compile(r"^([a-z]+)\d*(?:_\d+)*$")
 
 
 def register(sub):
@@ -78,12 +78,6 @@ def _run_inner(args, display, models, roster) -> int:
             continue
         base = m.group(1)
 
-        # co + ulaksec'e asla dokunma
-        if base in HO_EXCLUDE_BASES:
-            print(f"  {base}: ho-exclude (co/ulaksec'e dokunma)")
-            errors += 1
-            continue
-
         new_name = base   # suffix yok: session adı = base
 
         model = args.model or models.get(base, "claude-sonnet-4-6")
@@ -95,10 +89,17 @@ def _run_inner(args, display, models, roster) -> int:
             continue
         cwd = entry.cwd
 
-        # 1. Kill — tam isim VEYA base ile eşleşenleri öldür (suffix verilmeden çağrıda DUP önlemi)
+        # 1. Kill — tam isim VEYA base ile eşleşenleri öldür (suffix verilmeden çağrıda DUP önlemi).
+        # Self-koruma: bu komutun içinden çalıştığı claude session'ı (ata-proc) asla öldürülmez.
         if args.kill_first:
             all_sessions = find_sessions(measure_cpu=False)
             procs = [s for s in all_sessions if s.name == full_name or s.base == base]
+            protected = ancestor_pids()
+            self_hits = [s for s in procs if s.pid in protected]
+            if self_hits:
+                for s in self_hits:
+                    print(f"  ⊘ self: {s.name} (pid={s.pid}) — bu komut onun içinden çalışıyor, kill atlandı")
+                procs = [s for s in procs if s.pid not in protected]
             if procs:
                 for s in procs:
                     if args.dry_run:

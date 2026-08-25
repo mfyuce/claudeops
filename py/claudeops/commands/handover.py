@@ -1,16 +1,16 @@
 """`handover` — Faz 1 wrap-up (eski session kapat, mesajla yeniden aç).
 
 Kullanım:
-  py/cops handover [--dry-run]                    # batch: tüm fleet, co/ulaksec hariç
+  py/cops handover [--dry-run]                    # batch: tüm fleet (self hariç)
   py/cops handover --batch-size=5 --batch-delay=30
   py/cops handover --message='özel mesaj'
   py/cops handover --message-file=/path/to/msg.txt
   py/cops handover cops20260824                    # TEK isim: roster gerekmez (proc-scan),
-                                                     # co/ulaksec hariç-tutma + needs_ho BYPASS
+                                                     # needs_ho BYPASS (self yine korunur)
   py/cops handover co --lang=en                     # isimle hedeflenince co dahi mümkün
 
-İsimler base-name (suffix yok). İsim VERİLMEZSE tüm aktif fleet (co/ulaksec hariç) hedef.
-İsim VERİLİRSE roster'da olmasa da (proc-scan'den bulunur) + co/ulaksec dahil çalışır.
+İsimler base-name (suffix yok). İsim VERİLMEZSE tüm aktif fleet hedef (self hariç).
+İsim VERİLİRSE roster'da olmasa da (proc-scan'den bulunur) çalışır; self yine atlanır.
 Faz 2 için: py/cops rc hc hcr ... --new --kill-first --one-by-one
 Faz 3 için: claudeops layout grid 4 --claude-only --pin=...
 """
@@ -26,7 +26,7 @@ def register(sub):
     p = sub.add_parser("handover", help="Faz 1: wrap-up mesajı gönder (eski kapat, yeni aç)")
     p.add_argument("names", nargs="*", metavar="NAME",
                    help="opsiyonel: belirli isim(ler) — verilmezse tüm fleet (batch). "
-                        "Verilirse roster gerekmez, co/ulaksec dahil, needs_ho bypass.")
+                        "Verilirse roster gerekmez, needs_ho bypass (self yine korunur).")
     p.add_argument("--lang", choices=["tr", "en"], default="tr",
                    help="varsayılan mesaj dili (--message/--message-file verilmemişse, varsayılan: tr)")
     p.add_argument("--message", default=None, metavar="MSG",
@@ -69,7 +69,7 @@ def run(args) -> int:
 
     print(f"=== handover faz1{' (dry-run)' if args.dry_run else ''} ===")
     if args.names:
-        print(f"  hedef: {', '.join(args.names)}  (isimle seçildi — co/ulaksec dahil, needs_ho bypass)")
+        print(f"  hedef: {', '.join(args.names)}  (isimle seçildi — needs_ho bypass, self korunur)")
     else:
         print(f"  batch={args.batch_size}, delay={args.batch_delay:.0f}s, "
               f"display={display}")
