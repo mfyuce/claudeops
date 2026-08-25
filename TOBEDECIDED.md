@@ -4,6 +4,18 @@
 
 ## Açık
 
+### 10) agy (Google Antigravity CLI) entegrasyonu — çoklu-CLI fleet
+- **Bağlam (2026-08-25):** Kullanıcı claudeops'un claude yanında `agy`'yi (Antigravity CLI, kurulu: 1.1.2, `~/.local/bin/agy`) de yönetmesini istiyor. Keşif yapıldı, flag yüzeyi claude'a neredeyse birebir paralel: resume=`--conversation <id>` / `-c`; cwd→konuşma eşlemesi hazır (`~/.gemini/antigravity-cli/cache/last_conversations.json`, cwd→id sözlüğü — kullanıcının 7 projesi kayıtlı, videogen/oiso/evolvi dahil); ilk-prompt=`-i/--prompt-interactive` (handover Faz-1 birebir); permission=`--dangerously-skip-permissions` (ılımlısı `--mode accept-edits`); model=`--model` (`agy models`). **Tek gerçek boşluk: isim/keşif** — `--remote-control NAME` muadili yok.
+- **Tasarım taslağı:** İsim için spawn'da `COPS_NAME=<isim>` env + discovery `/proc/<pid>/environ` okur (claude'a da uygulanırsa isimlendirme tek tipleşir). roster/models.tsv'ye `cli` kolonu (claude|agy) → `Session.cli` → ps-pattern'e `agy` → spawn'da CLI'a göre komut (env filtresi `CLAUDE*`'a ek `GEMINI*`/`ANTIGRAVITY*` — aynı child-detection sızıntı risk sınıfı) → panelde CLI rozeti. `needs_ho` git sinyalleri değişiklik gerektirmeden çalışır; RFH muadili `history.jsonl` + `conversations/<id>.db`'den (SQLite) çıkarılabilir (faz-2). RC bridge agy'de yok → o satırlarda remote linki olmaz.
+- **Fazlama önerisi:** (1) keşif+roster+görünürlük → (2) panelden start/stop/register/adopt → (3) handover + git-sinyalli needs_ho → (4) ops. RFH/transcript sinyali.
+- **Karar:** ? (TBD, 2026-08-25 — kullanıcı: "şimdilik design olarak TBD'ye alalım, biraz daha konuşalım düşünelim")
+
+### 11) tmux-backed session'lar → web tabanlı CLI (panelden girdi/çıktı)
+- **Bağlam (2026-08-25):** Kullanıcı web UI'den CLI girdi/çıktısı istiyor ("web based cli"). VTE synthetic-key reddi yüzünden MEVCUT gnome-terminal pencerelerine dışarıdan yazı yazılamıyor — gerçek girdi ancak yeni session'lar tmux içinde açılırsa mümkün (`tmux send-keys` PTY'ye doğrudan yazar, `capture-pane -e` çıktıyı verir; panelde ~1s poll + ANSI→HTML, ya da ileri seviye ttyd/xterm.js). ⚠ tmux ŞU AN KURULU DEĞİL (`sudo apt install tmux`).
+- **Neyi bozar (analiz yapıldı, önem sırasıyla):** (1) **EN KRİTİK:** `kill_session_and_parent` — tmux'ta parent = tmux SERVER (tüm oturumların tek proc'u); mevcut kod dokunulmazsa ilk kill TÜM tmux-backed fleet'i öldürür → parent tmux ise `tmux kill-session -t <isim>` kullanılmalı. (2) Layout başlık eşleşmesi kırılır — `set-titles on` + format şart. (3) Env-leak yeni yüzey: tmux server ilk başlatanın env'ini TÜM panelere dağıtır (CLAUDE_CODE_CHILD_SESSION sızarsa transcript sessiz kapanır) → ayrı socket (`tmux -L cops`) + temiz env'le server başlatma. (4) "Pencere kapat ≠ session öldü" olur (detach) — panele "attach penceresi aç" butonu gerekir; aynı zamanda en büyük kazanç (kazara kapatma/X çökmesi/kilitli ekran işi öldürmez). (5) Bozulmayanlar: kill grace/truncation semantiği, ps-discovery, zombie-reap, guard, RC bridge. Küçük: çift attach'ta görüntü küçük cliente sıkışır.
+- **Geçiş modeli:** eski/bare session'lar tmux'a taşınmaz; handover/devral ile yeniden açıldıkça kademeli kazanırlar.
+- **Karar:** ? (TBD, 2026-08-25 — kullanıcı: "şimdilik design olarak TBD'ye alalım, biraz daha konuşalım düşünelim")
+
 ### 9) needs_ho: git-dışı dosya değişimi takibi
 - **Bağlam:** `needs_ho` şu an tüm sinyaller git-bazlı (dirty/untracked/committed_since/RFH). Git repo olmayan ya da `.gitignore`'lı dizinlerdeki dosya değişimleri yakalanmıyor. Ayrıca "en son değişen dosya + tarih" hiçbir yerde saklanmıyor — her kontrol anlık git sorgusu.
 - **Soru:** CWD'deki dosyaların son mtime'ını (`mtime > last-handover.ts`) ayrıca takip etmeli miyiz? (git olmayan projeler için fallback)
