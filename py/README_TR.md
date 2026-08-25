@@ -101,7 +101,9 @@ py/cops kill      # bir/birkaç session'ı nazikçe kapat (SIGTERM + grace + ger
 py/cops close     # kalıcı kapat (kill + guard bir daha açmasın diye işaretle)
 py/cops guard     # roster'daki eksik session'ları tespit edip aç (crash-recovery; cron'a konabilir)
 py/cops rc        # kill + yeniden aç (tek tek ya da toplu; handover/respawn için)
-py/cops handover  # eski session'ı wrap-up mesajıyla kapatıp aynı adla yeniden aç
+py/cops handover  # session'ı wrap-up mesajıyla kapatıp aynı adla yeniden aç
+                   #   isimsiz = tüm fleet (batch, co/ulaksec hariç); İSİM verilirse
+                   #   tek session, roster gerekmez, co/ulaksec dahil; --lang=en
 py/cops stuck     # takılı kalmış (idle ama "busy" görünen) session'ları tespit et
 py/cops layout    # pencereleri masaüstlerine dağıt (X11)
 py/cops web       # kontrol paneli (yukarıda)

@@ -1,12 +1,16 @@
 """`handover` — Faz 1 wrap-up (eski session kapat, mesajla yeniden aç).
 
 Kullanım:
-  py/cops handover [--dry-run]
+  py/cops handover [--dry-run]                    # batch: tüm fleet, co/ulaksec hariç
   py/cops handover --batch-size=5 --batch-delay=30
   py/cops handover --message='özel mesaj'
   py/cops handover --message-file=/path/to/msg.txt
+  py/cops handover cops20260824                    # TEK isim: roster gerekmez (proc-scan),
+                                                     # co/ulaksec hariç-tutma + needs_ho BYPASS
+  py/cops handover co --lang=en                     # isimle hedeflenince co dahi mümkün
 
-İsimler base-name (suffix yok) → tüm aktif fleet (co/ulaksec hariç) hedef.
+İsimler base-name (suffix yok). İsim VERİLMEZSE tüm aktif fleet (co/ulaksec hariç) hedef.
+İsim VERİLİRSE roster'da olmasa da (proc-scan'den bulunur) + co/ulaksec dahil çalışır.
 Faz 2 için: py/cops rc hc hcr ... --new --kill-first --one-by-one
 Faz 3 için: claudeops layout grid 4 --claude-only --pin=...
 """
@@ -14,14 +18,19 @@ from __future__ import annotations
 import os
 import sys
 from ..guard import guard_lock
-from ..handover import handover_faz1, HANDOVER_MSG_DEFAULT
+from ..handover import handover_faz1, HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..spawn import detect_display
 
 
 def register(sub):
     p = sub.add_parser("handover", help="Faz 1: wrap-up mesajı gönder (eski kapat, yeni aç)")
+    p.add_argument("names", nargs="*", metavar="NAME",
+                   help="opsiyonel: belirli isim(ler) — verilmezse tüm fleet (batch). "
+                        "Verilirse roster gerekmez, co/ulaksec dahil, needs_ho bypass.")
+    p.add_argument("--lang", choices=["tr", "en"], default="tr",
+                   help="varsayılan mesaj dili (--message/--message-file verilmemişse, varsayılan: tr)")
     p.add_argument("--message", default=None, metavar="MSG",
-                   help="wrap-up mesajı (varsayılan: HANDOVER_MSG_DEFAULT)")
+                   help="wrap-up mesajı (varsayılan: HANDOVER_MSG_DEFAULT, --lang=en ile İngilizce)")
     p.add_argument("--message-file", default=None, metavar="FILE",
                    help="mesajı dosyadan oku")
     p.add_argument("--batch-size", type=int, default=5, metavar="N",
@@ -54,13 +63,16 @@ def run(args) -> int:
     elif args.message:
         message = args.message
     else:
-        message = HANDOVER_MSG_DEFAULT
+        message = HANDOVER_MSG_DEFAULT_EN if args.lang == "en" else HANDOVER_MSG_DEFAULT
 
     display = args.display or detect_display()
 
     print(f"=== handover faz1{' (dry-run)' if args.dry_run else ''} ===")
-    print(f"  batch={args.batch_size}, delay={args.batch_delay:.0f}s, "
-          f"display={display}")
+    if args.names:
+        print(f"  hedef: {', '.join(args.names)}  (isimle seçildi — co/ulaksec dahil, needs_ho bypass)")
+    else:
+        print(f"  batch={args.batch_size}, delay={args.batch_delay:.0f}s, "
+              f"display={display}")
     print()
 
     # guard.lock: guard cron'u dışarıda tut (Faz1 kill sırasında dup spawn önle, TODO-j/r)
@@ -75,6 +87,7 @@ def run(args) -> int:
                 proc_wait=args.proc_wait,
                 grace=args.grace,
                 kill_settle=args.kill_settle,
+                names=args.names or None,
             )
     except TimeoutError as e:
         print(f"✗ guard.lock alınamadı: {e}", file=sys.stderr)
@@ -92,7 +105,7 @@ def run(args) -> int:
             if r.status.startswith("failed"):
                 print(f"    {r.name}: {r.status} {r.detail}")
 
-    if summary.failed == 0 and not args.dry_run:
+    if summary.failed == 0 and not args.dry_run and not args.names:
         print()
         print("  Sonraki adım (Faz 2 — base-name, suffix yok):")
         print(f"  py/cops rc hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc asp \\")

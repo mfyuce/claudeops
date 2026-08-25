@@ -140,11 +140,21 @@ def handover_faz1(
     proc_wait: float = 15.0,
     grace: float = KILL_GRACE_SECONDS,
     kill_settle: float = 3.0,
+    names: Optional[List[str]] = None,
 ) -> Faz1Summary:
-    """Faz 1: tüm aktif fleet'e wrap-up mesajı gönder (eski proc kapat, yeni aç).
+    """Faz 1: wrap-up mesajı gönder (eski proc kapat, yeni aç).
 
-    İsimler base-name (suffix yok) → tüm canlı session'lar (co/ulaksec hariç) hedef.
-    batch_size + batch_delay: rate-limit önlemi ([[mass-faz1-ratelimit-stuck]]).
+    `names` YOKSA (varsayılan, batch): tüm canlı session'lar hedef, co/ulaksec HARİÇ
+    ([[co-ulaksec-guard-yes-ho-no]]), needs_ho=False olanlar atlanır.
+    `names` VARSA (tek/birkaç hedef, kullanıcı elle+bilerek seçmiş): co/ulaksec DAHİL
+    (isim açıkça verilmişse hariç-tutma listesini BİLEREK bypass eder — kullanıcı
+    "co'yu da yapabilmeliyim" dedi), needs_ho kontrolü DE bypass edilir (tek-hedef
+    seçimi zaten "bunu şimdi yap" demektir, batch-güvenlik atlaması gerekmez).
+    Roster GEREKMEZ — hedef canlı proc-scan'den bulunur (kayıtlı olmayan ad-hoc
+    session'lar da çalışır, ör. web panelin kendi ismi).
+
+    batch_size + batch_delay: rate-limit önlemi ([[mass-faz1-ratelimit-stuck]]) — sadece
+    batch modda anlamlı (tek/birkaç isimli çağrıda batch_size'a nadiren ulaşılır).
     kill_settle: kill onaylandıktan SONRA, respawn'dan ÖNCE bekleme. Faz1 AYNI
       --remote-control ismini reuse eder; proc ölse de server-side bridge deregister
       gecikir → settle olmadan isim çakışması (remote'da inactive flicker).
@@ -164,13 +174,25 @@ def handover_faz1(
         pass
 
     sessions = find_sessions(measure_cpu=False)
-    targets = [
-        s for s in sessions
-        if s.base not in HO_EXCLUDE_BASES
-    ]
-    targets.sort(key=lambda s: s.base)
-
     summary = Faz1Summary()
+
+    if names:
+        # Tek/birkaç isimli hedefleme: tam isim VEYA base eşleşir (rc.py deseniyle aynı,
+        # trino20260823 gibi tarih-suffix'li ad-hoc isimleri de yakalar).
+        wanted = set(names)
+        targets = [s for s in sessions if s.name in wanted or s.base in wanted]
+        found_keys = {s.name for s in targets} | {s.base for s in targets}
+        for w in wanted:
+            if w not in found_keys:
+                print(f"  {w}: proc bulunamadı (çalışmıyor mu?)")
+                summary.results.append(Faz1Result(w, "failed-noproc", "proc bulunamadı"))
+        excluded_named = [s for s in targets if s.base in HO_EXCLUDE_BASES]
+        if excluded_named:
+            print(f"  ⚠ isimle hedeflendiği için hariç-tutma listesini bypass ediyor: "
+                  f"{', '.join(s.name for s in excluded_named)}")
+    else:
+        targets = [s for s in sessions if s.base not in HO_EXCLUDE_BASES]
+    targets.sort(key=lambda s: s.base)
 
     for i, session in enumerate(targets):
         # Batch delay
@@ -180,13 +202,15 @@ def handover_faz1(
 
         print(f"  {session.name} (pid={session.pid})...", end="", flush=True)
 
-        # needs_ho kontrolü — skip kriteri: RFH var + repo temiz + yeni commit yok
-        jsonl = find_latest_jsonl(session.cwd)
-        jsonl_path = str(jsonl) if jsonl else None
-        if not dry_run and not needs_ho(session.pid_str if hasattr(session, 'pid_str') else str(session.pid), session.cwd, jsonl_path):
-            print(" skip (needs_ho=False: RFH var, repo temiz, yeni commit yok)")
-            summary.results.append(Faz1Result(session.name, "skipped-no-ho"))
-            continue
+        # needs_ho kontrolü — SADECE batch modda (names verilmemişse). Tek-hedef seçimi
+        # zaten "bunu şimdi yap" demektir.
+        if not names:
+            jsonl = find_latest_jsonl(session.cwd)
+            jsonl_path = str(jsonl) if jsonl else None
+            if not dry_run and not needs_ho(session.pid_str if hasattr(session, 'pid_str') else str(session.pid), session.cwd, jsonl_path):
+                print(" skip (needs_ho=False: RFH var, repo temiz, yeni commit yok)")
+                summary.results.append(Faz1Result(session.name, "skipped-no-ho"))
+                continue
 
         # 1. Kill eski proc (dry-run'da atla)
         if not dry_run:

@@ -103,7 +103,9 @@ py/cops kill      # gently stop one/several sessions (SIGTERM + grace + SIGKILL 
 py/cops close     # close for good (kill + mark so guard won't reopen it)
 py/cops guard     # detect missing sessions from the roster and open them (crash-recovery; cron-able)
 py/cops rc        # kill + reopen (one at a time or in bulk; for handover/respawn)
-py/cops handover  # close an old session with a wrap-up message, reopen under the same name
+py/cops handover  # close a session with a wrap-up message, reopen under the same name
+                   #   no args = whole fleet (batch, skips co/ulaksec); NAME = single
+                   #   session, roster not required, co/ulaksec included; --lang=en
 py/cops stuck     # detect stuck sessions (idle but showing "busy")
 py/cops layout    # arrange windows across desktops (X11)
 py/cops web       # the control panel (above)
