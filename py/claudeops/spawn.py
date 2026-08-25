@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -112,7 +113,7 @@ def spawn_session(
     # marker", found 2026-08-24 spawning from within a claude-run Bash tool/py-cops-web).
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
     env["DISPLAY"] = display
-    subprocess.Popen(
+    proc = subprocess.Popen(
         ["gnome-terminal", "--window", f"--title={name}",
          f"--working-directory={cwd}",
          "--", "bash", "-c", f"{inner}; exec bash"],
@@ -120,4 +121,12 @@ def spawn_session(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    # gnome-terminal client proc'u pencereyi server'a bildirip hemen çıkar (fire-and-forget).
+    # .wait() hiç çağrılmazsa zombie olarak kalır — uzun yaşayan web server'da (py/cops web)
+    # her spawn'da bir tane birikir; 2026-08-25'te saatlerce ayakta kalmış bir web server'da
+    # bu birikim yeni pencere açma güvenilirliğini SESSİZCE düşürdüğü canlı olarak doğrulandı
+    # (taze restart edilen AYNI process anında düzeliyordu). Global SIGCHLD=SIG_IGN YAPMA —
+    # layout.py'nin subprocess.run(wmctrl/xdotool) çağrılarının exit code/output'unu bozar;
+    # bunun yerine sadece BU child'ı arka planda reap et.
+    threading.Thread(target=proc.wait, daemon=True).start()
     return kind
