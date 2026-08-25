@@ -36,8 +36,9 @@ from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
+from ..needs_ho import needs_ho
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, ROSTER_TSV
-from ..spawn import spawn_session, detect_display
+from ..spawn import spawn_session, detect_display, find_latest_jsonl
 
 DEFAULT_PORT = 8765
 DEFAULT_HOST = "127.0.0.1"
@@ -63,6 +64,12 @@ ERR = {
                       "en": "invalid name — must start with a lowercase letter, only a-z 0-9 _ allowed"},
     "already_registered": {"tr": "{name}: zaten kayıtlı (aktif/kapalı/emekli)",
                             "en": "{name}: already registered (active/closed/retired)"},
+    "conflicts_running": {"tr": "{name}: çalışan '{other}' session'ıyla çakışıyor "
+                                 "(tarih-suffix'li isimler taban isme indirgenir: {other} → {name}) — "
+                                 "farklı bir isim seçin ya da önce o session'ı devral/yeniden adlandırın",
+                           "en": "{name}: conflicts with running session '{other}' "
+                                 "(date-suffixed names reduce to their base: {other} → {name}) — "
+                                 "pick a different name, or adopt/rename that session first"},
     "dir_not_found": {"tr": "{cwd}: dizin bulunamadı", "en": "{cwd}: directory not found"},
     "cwd_bad_chars": {"tr": "cwd geçersiz karakter içeriyor", "en": "cwd contains invalid characters"},
     "base_not_in_roster": {"tr": "{base}: roster'da yok — önce ana ismi ekleyin",
@@ -89,7 +96,7 @@ ERR = {
     "not_running": {"tr": "{name}: çalışmıyor", "en": "{name}: not running"},
     "undefined": {"tr": "{name}: tanımsız", "en": "{name}: undefined"},
     "already_retired": {"tr": "{name}: zaten emekli", "en": "{name}: already retired"},
-    "already_closed": {"tr": "{name}: zaten kapalı", "en": "{name}: already closed"},
+    "already_closed": {"tr": "{name}: zaten devre dışı", "en": "{name}: already disabled"},
     "retired_needs_reactivate": {"tr": "{name}: emekli — önce 'tekrar işe al', sonra kapatın",
                                   "en": "{name}: retired — reactivate first, then close"},
     "handover_reopen_failed": {"tr": "{name}: kapatıldı ama yeniden açılamadı "
@@ -309,8 +316,17 @@ def _register_project(name: str, cwd: str, model: str = "", lang: str = "tr") ->
     name = name.strip()
     if not _NAME_VALID_RE.match(name):
         return _err(lang, "invalid_name")
-    if name in _all_known_names():
+    # Çakışma kaynağını AYIRT ET (2026-08-25): "cops" kaydı, o an çalışan
+    # "cops20260824" yüzünden reddedilmişti (Session.base tarih-suffix'i indirger)
+    # ama genel "zaten kayıtlı (aktif/kapalı/emekli)" mesajı kullanıcıyı roster'da
+    # olmayan bir kaydı aramaya yolladı. Roster-çakışması ile çalışan-proc
+    # çakışması artık ayrı mesajlar.
+    roster_names = {r["name"] for r in _read_tsv_raw(ROSTER_TSV) if r["name"] != "name"}
+    if name in roster_names:
         return _err(lang, "already_registered", name=name)
+    for s in find_sessions(measure_cpu=False):
+        if name in (s.name, s.base):
+            return _err(lang, "conflicts_running", name=name, other=s.name)
     cwd = os.path.expanduser(cwd.strip())
     if not cwd or not os.path.isdir(cwd):
         return _err(lang, "dir_not_found", cwd=cwd or ("(boş)" if lang != "en" else "(empty)"))
@@ -455,6 +471,28 @@ def _run_layout(pin: str, groups: list, claude_only: bool = True,
             "assignments": assignments, "applied": not dry_run}
 
 
+_NEEDSHO_CACHE: dict = {}  # name -> (expires_monotonic, bool)
+_NEEDSHO_TTL = 30.0
+
+
+def _needs_ho_cached(s) -> Optional[bool]:
+    """Çalışan session için needs_ho — git-subprocess maliyetli, 30s cache'li.
+
+    Kullanıcı isteği (2026-08-25): 'needs ho kontrolü tabloda olsun'. Hata
+    durumunda None (UI '?' gösterir), False'la karıştırma.
+    """
+    now = time.monotonic()
+    hit = _NEEDSHO_CACHE.get(s.name)
+    if hit and hit[0] > now:
+        return hit[1]
+    try:
+        val = needs_ho(s.sid or "", s.cwd, find_latest_jsonl(s.cwd))
+    except Exception:
+        val = None
+    _NEEDSHO_CACHE[s.name] = (now + _NEEDSHO_TTL, val)
+    return val
+
+
 def _status_payload() -> dict:
     fleet = _fleet_status()
     all_live = find_sessions(measure_cpu=True)
@@ -480,6 +518,7 @@ def _status_payload() -> dict:
             "pid": s.pid if s else None,
             "cpu": round(s.cpu, 1) if s else None,
             "kind": ("fresh" if s.is_fresh else "resume") if s else None,
+            "needs_ho": _needs_ho_cached(s) if s else None,
             "registered": True,
         })
 
@@ -499,6 +538,7 @@ def _status_payload() -> dict:
             "pid": s.pid,
             "cpu": round(s.cpu, 1),
             "kind": "fresh" if s.is_fresh else "resume",
+            "needs_ho": _needs_ho_cached(s),
             "registered": False,
         })
 
@@ -770,26 +810,39 @@ PAGE_HTML = """<!doctype html>
   .langsw { display: flex; gap: .3rem; flex-shrink: 0; }
   .langsw button { padding: .15rem .5rem; font-size: .72rem; border-color: var(--border); color: var(--muted); }
   .langsw button.active { border-color: var(--accent); color: var(--accent); }
-  .sub { color: var(--muted); margin-bottom: 1.25rem; }
+  .sub { color: var(--muted); margin-bottom: 1rem; }
   .banner {
     padding: .5rem .75rem; border-radius: 6px; margin-bottom: .6rem;
     font-size: .85rem; border: 1px solid transparent;
   }
   .banner.bad { background: rgba(248,81,73,.12); border-color: var(--red); color: var(--red); }
+  .tabs { display: flex; gap: .25rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: .6rem; }
+  .tabs button { border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+                 background: transparent; color: var(--muted); padding: .35rem .7rem; font-size: .82rem; }
+  .tabs button.active { border-color: var(--border); background: var(--panel); color: var(--text); }
+  .bulkbar { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; margin: .4rem 0 .2rem; }
+  .bulkbar .selcount { font-size: .78rem; color: var(--muted); }
+  .bulkmsg { font-size: .78rem; color: var(--muted); flex-basis: 100%; white-space: pre-wrap; }
+  .legend { font-size: .72rem; color: var(--muted); margin: .2rem 0 .6rem; line-height: 1.6; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--muted); font-weight: 500; font-size: .75rem;
        text-transform: uppercase; letter-spacing: .04em; padding: .4rem .5rem;
        border-bottom: 1px solid var(--border); }
   td { padding: .4rem .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th.selcell, td.selcell { width: 1.6rem; text-align: center; padding-left: .2rem; padding-right: .2rem; }
   td.cwd { color: var(--muted); font-size: .78rem; overflow: hidden; text-overflow: ellipsis;
            white-space: nowrap; max-width: 1px; cursor: pointer; }
   td.cwd.expanded { white-space: normal; word-break: break-all; max-width: none; overflow: visible; }
+  td.hocell { font-size: .78rem; }
+  .ho-yes { color: var(--amber); font-weight: 600; cursor: help; }
+  .ho-no { color: var(--muted); opacity: .6; cursor: help; }
   .tablewrap { overflow-x: auto; }
   @media (max-width: 640px) {
     /* dar ekranda model/tür sütunlarını gizle, cwd'yi kısalt — action butonları
-       kaydırmadan görünsün (telefonda test edildi: bunlar olmadan sağdaki
-       stop/options/close/retire ekran dışına taşıyordu) */
-    th:nth-child(2), td:nth-child(2), th:nth-child(5), td:nth-child(5) { display: none; }
+       kaydırmadan görünsün (telefonda test edildi) */
+    .runtab th:nth-child(3), .runtab td:nth-child(3),
+    .runtab th:nth-child(7), .runtab td:nth-child(7),
+    .regtab th:nth-child(3), .regtab td:nth-child(3) { display: none; }
     td.cwd { max-width: 70px; }
     h1 { font-size: 1rem; }
   }
@@ -807,10 +860,10 @@ PAGE_HTML = """<!doctype html>
   button.retire { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
   button.closebtn { border-color: var(--muted); color: var(--muted); font-size: .78rem; padding: .3rem .5rem; }
   button.handover { border-color: var(--accent); color: var(--accent); font-size: .78rem; padding: .3rem .5rem; }
+  button.selho { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
   .unreg-badge { font-size: .65rem; color: var(--amber); border: 1px solid var(--amber);
                  border-radius: 4px; padding: 1px 4px; margin-left: .3rem; cursor: help; }
   button.reactivate { border-color: var(--green); color: var(--green); }
-  button.addtoggle { display: block; width: 100%; text-align: left; border-color: var(--accent); color: var(--accent); margin: .5rem 0; }
   button:disabled { opacity: .5; cursor: default; }
   .actioncell { display: flex; gap: .35rem; flex-wrap: wrap; }
   .opts-row td { background: var(--panel2); padding: .6rem .5rem; }
@@ -835,38 +888,13 @@ PAGE_HTML = """<!doctype html>
   </div>
   <div class="sub" id="summary">…</div>
   <div id="banners"></div>
-  <div class="tablewrap">
-  <table>
-    <thead><tr>
-      <th style="width:11%" id="thName">–</th>
-      <th style="width:15%">model</th>
-      <th style="width:9%" id="thStatus">–</th>
-      <th style="width:6%">cpu%</th>
-      <th style="width:8%" id="thKind">–</th>
-      <th>cwd</th>
-      <th style="width:9%"></th>
-    </tr></thead>
-    <tbody id="rows"><tr><td colspan="7">…</td></tr></tbody>
-  </table>
-  </div>
-
-  <button class="addtoggle" onclick="toggleAddPanel()"><span id="addToggleLabel">…</span></button>
-  <div id="addBox"></div>
-
-  <button class="addtoggle" onclick="toggleClosedPanel()"><span id="closedToggleLabel">…</span></button>
-  <div id="closedBox"></div>
-
-  <button class="addtoggle" onclick="toggleRetiredPanel()"><span id="retiredToggleLabel">…</span></button>
-  <div id="retiredBox"></div>
-
-  <button class="addtoggle" onclick="toggleLayoutPanel()"><span id="layoutToggleLabel">…</span> <span id="layoutDesc"></span></button>
-  <div id="layoutBox"></div>
+  <div class="tabs" id="tabbar"></div>
+  <div id="tabContent"></div>
 </div>
 <script>
 const T = {
   tr: {
     title: 'claudeops — filo kontrolü',
-    loading: 'yükleniyor…',
     colName: 'isim', colStatus: 'durum', colKind: 'tür',
     serverUnreachable: 'sunucuya ulaşılamadı: ',
     authError: `401 — token eksik/yanlış (URL'ye doğru ?token=... ekleyin)`,
@@ -875,21 +903,49 @@ const T = {
     runningWord: 'çalışıyor', configWord: 'config',
     dupWarn: '⚠ DUP: ',
     pidWord: 'pid ', stoppedWord: 'durdu',
-    optionsBtn: 'seçenekler ▾', startBtn: 'başlat ▾', stopBtn: 'durdur',
-    closeBtn: 'kapat', retireBtn: 'emekli et', handoverBtn: 'handover',
-    handoverConfirm: (name) => `${name}: handover yapılsın mı? Session'a wrap-up mesajı gönderilir (CLAUDE.md/TODO.md/DONE.md güncellensin, commit+push edilsin diye), önce durdurulur sonra AYNI geçmişle (--resume) bu mesajla yeniden açılır. Yanıtı bekleyin, TAMAMLANMADAN tekrar durdurmayın.`,
-    handingOver: 'handover gönderiliyor…',
-    registerBtn: 'kaydet', unregBadge: 'kayıtsız',
-    unregHint: 'roster.tsv\\'de kayıtlı değil (proc-scan\\'den bulundu) — claudeops\\'un açmadığı bir pencere; "devral"a basarsanız remote-control eklenip roster\\'a kalıcı kaydedilir',
     cwdHint: 'tıkla: tam yolu göster/gizle',
+    requestFailed: 'istek başarısız: ',
+    empty: 'Boş.', cancelBtn: 'vazgeç',
+    tabRunning: 'Çalışanlar', tabRegistered: 'Kayıtlı', tabDisabled: 'Devre dışı',
+    tabRetired: 'Emekli', tabLayout: 'Layout',
+    selWord: 'seçili',
+    selectNeedsHo: 'needs-ho seç',
+    hoCol: 'ho?',
+    hoHint: `handover gerekli mi? (repo kirli / untracked / baseline'dan beri commit / RFH yok — sinyallerden biri)`,
+    hoUnknown: '?',
+    stopBtn: 'durdur', disableBtn: 'devre dışı bırak', retireBtn: 'emekli et', handoverBtn: 'handover',
+    legendStop: `sadece process/pencereyi kapatır — kayıt AKTİF kalır, "Kayıtlı" sekmesinden devam ettirilir`,
+    legendDisable: `durdurur + otomasyon (guard) bir daha AÇMAZ — "Devre dışı" sekmesine taşınır, oradan geri alınır`,
+    legendRetire: `durdurur + arşive kaldırır — "Emekli" sekmesine taşınır, "tekrar işe al" ile döner`,
+    legendHandover: `wrap-up mesajı gönderip AYNI geçmişle yeniden açar (kapat+devam) — commit/push + not düşme için`,
+    bulkConfirm: (label, expl, names) => `${label} — ${expl}\\n\\nseçili (${names.length}): ${names.join(', ')}\\n\\nDevam edilsin mi?`,
+    bulkSkippedUnreg: 'kayıtsız olduğu için atlanacak: ',
+    bulkDone: (ok, fail) => `bitti — ${ok} tamam` + (fail ? `, ${fail} hata` : ''),
+    optionsBtn: 'seçenekler ▾', startBtn: 'başlat ▾',
+    nothingRunning: `Hiçbir şey çalışmıyor — "Kayıtlı" sekmesinden başlatın.`,
+    unregBadge: 'kayıtsız',
+    unregHint: `roster.tsv'de kayıtlı değil (proc-scan'den bulundu) — claudeops'un açmadığı bir pencere; "devral"a basarsanız remote-control eklenip roster'a kalıcı kaydedilir`,
     adoptBtn: 'devral (remote ekle)',
     adoptWarn: (name) => `⚠ ${name} claudeops'un açmadığı bir pencere (elle/başka yerden açılmış). "devral" bu pencereyi KAPATIR ve seçtiğiniz isimle AYRI, YENİ bir pencerede --remote-control ile açar (aynı geçmişle, --resume) — şu an baktığınız pencerenin kendisi değil, yeni bir pencere.`,
     adoptNameLabel: 'yeni isim (remote-control adı)',
     adopting: 'devralınıyor… (~10-20s)',
     adopted: 'devralındı, yeni isim: ',
-    nothingRunning: `Hiçbir şey çalışmıyor — aşağıdaki "+ Ekle"den başlatın.`,
-    addToggle: '+ Ekle', registeredClosed: 'kayıtlı, kapalı',
-    closedToggle: 'Kapalı', retiredToggle: 'Emekli', layoutToggle: 'Layout',
+    noneRegistered: 'Durdurulmuş kayıtlı proje yok — hepsi çalışıyor ya da liste boş.',
+    registerTitle: '+ Yeni proje kaydet',
+    registerDesc: `(klasörü roster'a ekler, başlatmaz — sonra yukarıdaki listeden başlatırsınız)`,
+    registerNameLabel: 'isim (küçük harf, rakam, _)',
+    registerCwdLabel: 'klasör (tam yol)',
+    registerSave: 'kaydet', registerSaving: 'kaydediliyor…',
+    reactivateBtn: 'tekrar işe al + başlat',
+    modeResume: 'devam ettir', modeReset: 'sıfırla ve başlat', modeNewchat: 'yeni chat aç',
+    modeChoiceNewchatOnly: 'Ayrı yeni chat aç (mevcuduna dokunmaz)',
+    modeChoiceResume: 'Devam ettir (kaldığı yerden)',
+    modeChoiceReset: `Bu ismi SIFIRLA (--new, geçmiş bir daha görünmez)`,
+    modeChoiceNewchat: 'Ayrı yeni chat aç (yeni isimle, mevcuduna dokunmaz)',
+    runningNote: (name) => `⚠ ${name} şu an ÇALIŞIYOR — devam ettirmek/sıfırlamak için önce "durdur"a basın. Buradaki tek seçenek AYRI, ek bir chat açar, mevcut ${name}'a dokunmaz.`,
+    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model',
+    autoNameHint: (name, date) => `isim otomatik: ${name}${date} (çakışırsa _1, _2…)`,
+    starting: 'başlıyor…', newChatStarted: 'yeni chat başlatıldı: ',
     layoutDesc: `X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz`,
     layoutMissingPrefix: '⚠ eksik: ', layoutMissingSuffix: ' — kurmak için: sudo apt install -y ',
     layoutPinLabel: `pin (ws0'a sabit, virgülle)`,
@@ -898,33 +954,9 @@ const T = {
     layoutDryRun: 'sadece planı göster (uygulama)',
     layoutApply: 'layout uygula', layoutApplying: 'uygulanıyor…',
     windowsWord: 'pencere', skippedWord: 'atlandı',
-    requestFailed: 'istek başarısız: ',
-    noneRegisteredClosed: `Kayıtlı-ama-kapalı proje yok.`,
-    registerTitle: '+ Yeni proje kaydet',
-    registerDesc: `(klasörü roster'a ekler, başlatmaz — sonra "+Ekle" listesinden başlatırsınız)`,
-    registerNameLabel: 'isim (küçük harf, rakam, _)',
-    registerCwdLabel: 'klasör (tam yol)',
-    registerSave: 'kaydet', registerSaving: 'kaydediliyor…',
-    empty: 'Boş.', reactivateBtn: 'tekrar işe al + başlat',
-    modeResume: 'devam ettir', modeReset: 'sıfırla ve başlat', modeNewchat: 'yeni chat aç',
-    modeChoiceNewchatOnly: 'Ayrı yeni chat aç (mevcuduna dokunmaz)',
-    modeChoiceResume: 'Devam ettir (kaldığı yerden)',
-    modeChoiceReset: `Bu ismi SIFIRLA (--new, geçmiş bir daha görünmez)`,
-    modeChoiceNewchat: 'Ayrı yeni chat aç (yeni isimle, mevcuduna dokunmaz)',
-    runningNote: (name) => `⚠ ${name} şu an ÇALIŞIYOR — devam ettirmek/sıfırlamak için önce "durdur"a basın. Buradaki tek seçenek AYRI, ek bir chat açar, mevcut ${name}'a dokunmaz.`,
-    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model',
-    cancelBtn: 'vazgeç',
-    autoNameHint: (name, date) => `isim otomatik: ${name}${date} (çakışırsa _1, _2…)`,
-    starting: 'başlıyor…', newChatStarted: 'yeni chat başlatıldı: ',
-    stopping: 'durduruluyor… (~10s)',
-    retireConfirm: (name) => `${name}: emekli edilsin mi? (çalışıyorsa önce durdurulur, models.tsv+roster.tsv'de yorumlanır — geri almak için "tekrar işe al" ile mümkün)`,
-    retiring: 'emekli ediliyor…',
-    closeConfirm: (name) => `${name}: kapatılsın mı? (çalışıyorsa önce durdurulur, sadece models.tsv yorumlanır — cwd hatırlanır, "tekrar işe al" ile kolayca geri gelir)`,
-    closing: 'kapatılıyor…',
   },
   en: {
     title: 'claudeops — fleet control',
-    loading: 'loading…',
     colName: 'name', colStatus: 'status', colKind: 'kind',
     serverUnreachable: 'server unreachable: ',
     authError: `401 — token missing/invalid (add ?token=... to the URL)`,
@@ -933,21 +965,49 @@ const T = {
     runningWord: 'running', configWord: 'config',
     dupWarn: '⚠ DUP: ',
     pidWord: 'pid ', stoppedWord: 'stopped',
-    optionsBtn: 'options ▾', startBtn: 'start ▾', stopBtn: 'stop',
-    closeBtn: 'close', retireBtn: 'retire', handoverBtn: 'handover',
-    handoverConfirm: (name) => `${name}: run handover? Sends the session a wrap-up prompt (to update CLAUDE.md/TODO.md/DONE.md and commit+push), stopping it first and reopening it with the SAME history (--resume) plus this message. Wait for its reply — don't stop it again before it finishes.`,
-    handingOver: 'sending handover…',
-    registerBtn: 'register', unregBadge: 'unregistered',
-    unregHint: 'not in roster.tsv (found via proc-scan) — a window claudeops didn\\'t open; click "adopt" to attach remote-control and register it permanently',
     cwdHint: 'click: show/hide full path',
+    requestFailed: 'request failed: ',
+    empty: 'Empty.', cancelBtn: 'cancel',
+    tabRunning: 'Running', tabRegistered: 'Registered', tabDisabled: 'Disabled',
+    tabRetired: 'Retired', tabLayout: 'Layout',
+    selWord: 'selected',
+    selectNeedsHo: 'select needs-ho',
+    hoCol: 'ho?',
+    hoHint: 'needs handover? (dirty repo / untracked / commits since baseline / no RFH — any one signal)',
+    hoUnknown: '?',
+    stopBtn: 'stop', disableBtn: 'disable', retireBtn: 'retire', handoverBtn: 'handover',
+    legendStop: 'kills only the process/window — stays REGISTERED, resume it from the "Registered" tab',
+    legendDisable: 'stop + automation (guard) will NOT reopen it — moves to the "Disabled" tab, reversible there',
+    legendRetire: 'stop + archive — moves to the "Retired" tab, comes back via "reactivate"',
+    legendHandover: 'sends a wrap-up prompt and reopens with the SAME history (close+continue) — for commit/push + notes',
+    bulkConfirm: (label, expl, names) => `${label} — ${expl}\\n\\nselected (${names.length}): ${names.join(', ')}\\n\\nProceed?`,
+    bulkSkippedUnreg: 'skipped (unregistered): ',
+    bulkDone: (ok, fail) => `done — ${ok} ok` + (fail ? `, ${fail} failed` : ''),
+    optionsBtn: 'options ▾', startBtn: 'start ▾',
+    nothingRunning: 'Nothing running — start from the "Registered" tab.',
+    unregBadge: 'unregistered',
+    unregHint: `not in roster.tsv (found via proc-scan) — a window claudeops didn't open; click "adopt" to attach remote-control and register it permanently`,
     adoptBtn: 'adopt (attach remote)',
     adoptWarn: (name) => `⚠ ${name} is a window claudeops didn't open (started by hand/elsewhere). "adopt" will CLOSE this window and open a SEPARATE, NEW window under the name you choose, with --remote-control (same history, --resume) — not this exact window, a new one.`,
     adoptNameLabel: 'new name (remote-control name)',
     adopting: 'adopting… (~10-20s)',
     adopted: 'adopted, new name: ',
-    nothingRunning: `Nothing running — start something from "+ Add" below.`,
-    addToggle: '+ Add', registeredClosed: 'registered, stopped',
-    closedToggle: 'Closed', retiredToggle: 'Retired', layoutToggle: 'Layout',
+    noneRegistered: 'No stopped registered projects — everything is running, or the list is empty.',
+    registerTitle: '+ Register new project',
+    registerDesc: '(adds the folder to the roster, does not start it — start it from the list above)',
+    registerNameLabel: 'name (lowercase, digits, _)',
+    registerCwdLabel: 'folder (full path)',
+    registerSave: 'save', registerSaving: 'saving…',
+    reactivateBtn: 'reactivate + start',
+    modeResume: 'resume', modeReset: 'reset and start', modeNewchat: 'start new chat',
+    modeChoiceNewchatOnly: 'Start a separate new chat (does not touch the existing one)',
+    modeChoiceResume: 'Resume (from where it left off)',
+    modeChoiceReset: 'RESET this name (--new, previous history no longer shown)',
+    modeChoiceNewchat: 'Start a separate new chat (new name, does not touch the existing one)',
+    runningNote: (name) => `⚠ ${name} is currently RUNNING — click "stop" first to resume/reset. The only option here starts a SEPARATE extra chat, it does not touch the existing ${name}.`,
+    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model',
+    autoNameHint: (name, date) => `name auto-generated: ${name}${date} (adds _1, _2… on conflict)`,
+    starting: 'starting…', newChatStarted: 'new chat started: ',
     layoutDesc: `X11 desktop — does not work on Wayland/locked screen`,
     layoutMissingPrefix: '⚠ missing: ', layoutMissingSuffix: ' — install with: sudo apt install -y ',
     layoutPinLabel: 'pin (fixed to ws0, comma-separated)',
@@ -956,29 +1016,6 @@ const T = {
     layoutDryRun: 'show plan only (no changes)',
     layoutApply: 'apply layout', layoutApplying: 'applying…',
     windowsWord: 'windows', skippedWord: 'skipped',
-    requestFailed: 'request failed: ',
-    noneRegisteredClosed: 'No registered-but-closed projects.',
-    registerTitle: '+ Register new project',
-    registerDesc: `(adds the folder to the roster, does not start it — start it later from the "+ Add" list)`,
-    registerNameLabel: 'name (lowercase, digits, _)',
-    registerCwdLabel: 'folder (full path)',
-    registerSave: 'save', registerSaving: 'saving…',
-    empty: 'Empty.', reactivateBtn: 'reactivate + start',
-    modeResume: 'resume', modeReset: 'reset and start', modeNewchat: 'start new chat',
-    modeChoiceNewchatOnly: 'Start a separate new chat (does not touch the existing one)',
-    modeChoiceResume: 'Resume (from where it left off)',
-    modeChoiceReset: 'RESET this name (--new, previous history no longer shown)',
-    modeChoiceNewchat: 'Start a separate new chat (new name, does not touch the existing one)',
-    runningNote: (name) => `⚠ ${name} is currently RUNNING — click "stop" first to resume/reset. The only option here starts a SEPARATE extra chat, it does not touch the existing ${name}.`,
-    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model',
-    cancelBtn: 'cancel',
-    autoNameHint: (name, date) => `name auto-generated: ${name}${date} (adds _1, _2… on conflict)`,
-    starting: 'starting…', newChatStarted: 'new chat started: ',
-    stopping: 'stopping… (~10s)',
-    retireConfirm: (name) => `${name}: retire it? (stopped first if running, comments out models.tsv+roster.tsv — reversible via "reactivate")`,
-    retiring: 'retiring…',
-    closeConfirm: (name) => `${name}: close it? (stopped first if running, only comments out models.tsv — cwd is remembered, easy to bring back with "reactivate")`,
-    closing: 'closing…',
   },
 };
 let LANG = localStorage.getItem('cops_lang') || (navigator.language.toLowerCase().startsWith('tr') ? 'tr' : 'en');
@@ -992,10 +1029,6 @@ function setLang(lang) {
 function applyStaticText() {
   document.title = t('title');
   document.getElementById('pageTitle').textContent = t('title');
-  document.getElementById('thName').textContent = t('colName');
-  document.getElementById('thStatus').textContent = t('colStatus');
-  document.getElementById('thKind').textContent = t('colKind');
-  document.getElementById('layoutDesc').textContent = '(' + t('layoutDesc') + ')';
   document.getElementById('langTr').classList.toggle('active', LANG === 'tr');
   document.getElementById('langEn').classList.toggle('active', LANG === 'en');
 }
@@ -1008,10 +1041,17 @@ let LAST = null;
 let LAST_JSON = null;
 let optsFor = null;
 let adoptFor = null;
-let showAddPanel = false;
-let showLayoutPanel = false;
-let showClosedPanel = false;
-let showRetiredPanel = false;
+let TAB = localStorage.getItem('cops_tab') || 'running';
+const SEL = new Set();
+let BULK_MSG = '';
+let BULK_BUSY = false;
+let CUR_TAB_NAMES = [];
+
+function setTab(tab) {
+  TAB = tab;
+  try { localStorage.setItem('cops_tab', tab); } catch (e) {}
+  render(LAST);
+}
 
 async function refresh() {
   let r;
@@ -1043,80 +1083,241 @@ function comparableKey(d) {
 }
 
 function render(d) {
-  const running = d.sessions.filter(s => s.running).length;
+  if (!d) return;
+  const running = d.sessions.filter(s => s.running);
+  const stopped = d.sessions.filter(s => !s.running);
   document.getElementById('summary').textContent =
-    running + '/' + d.sessions.length + ' ' + t('runningWord') + '  ·  ' + t('configWord') + ': ' + d.config_msg;
+    running.length + '/' + d.sessions.length + ' ' + t('runningWord') + '  ·  ' + t('configWord') + ': ' + d.config_msg;
 
   const banners = [];
   if (!d.config_ok) banners.push('<div class="banner bad">⚠ ' + d.config_msg + '</div>');
   if (d.dups.length) banners.push('<div class="banner bad">' + t('dupWarn') + d.dups.join(', ') + '</div>');
   document.getElementById('banners').innerHTML = banners.join('');
 
-  const runningSessions = d.sessions.filter(s => s.running);
-  const stoppedSessions = d.sessions.filter(s => !s.running);
+  const tabs = [
+    ['running', t('tabRunning') + ' (' + running.length + ')'],
+    ['registered', t('tabRegistered') + ' (' + stopped.length + ')'],
+    ['disabled', t('tabDisabled') + ' (' + d.closed.length + ')'],
+    ['retired', t('tabRetired') + ' (' + d.retired.length + ')'],
+    ['layout', t('tabLayout')],
+  ];
+  document.getElementById('tabbar').innerHTML = tabs.map(([k, lbl]) =>
+    `<button class="${TAB === k ? 'active' : ''}" onclick="setTab('${k}')">${lbl}</button>`).join('');
 
-  const rows = [];
-  for (const s of runningSessions) rows.push(...sessionRow(s, d));
-  if (!runningSessions.length) {
-    rows.push('<tr><td colspan="7" style="color:var(--muted)">' + t('nothingRunning') + '</td></tr>');
-  }
-  document.getElementById('rows').innerHTML = rows.join('');
-
-  document.getElementById('addToggleLabel').textContent =
-    (showAddPanel ? '▾' : '▸') + ' ' + t('addToggle') + ' (' + stoppedSessions.length + ' ' + t('registeredClosed') + ')';
-  document.getElementById('addBox').innerHTML = showAddPanel ? renderAddBox(stoppedSessions, d) : '';
-
-  document.getElementById('closedToggleLabel').textContent =
-    (showClosedPanel ? '▾' : '▸') + ' ' + t('closedToggle') + ' (' + d.closed.length + ')';
-  document.getElementById('closedBox').innerHTML = showClosedPanel ? groupTable(d.closed) : '';
-
-  document.getElementById('retiredToggleLabel').textContent =
-    (showRetiredPanel ? '▾' : '▸') + ' ' + t('retiredToggle') + ' (' + d.retired.length + ')';
-  document.getElementById('retiredBox').innerHTML = showRetiredPanel ? groupTable(d.retired) : '';
-
-  document.getElementById('layoutToggleLabel').textContent = (showLayoutPanel ? '▾ ' : '▸ ') + t('layoutToggle');
-  document.getElementById('layoutBox').innerHTML = showLayoutPanel ? renderLayoutBox(d) : '';
+  let html = '';
+  if (TAB === 'running') html = bulkBar('running', running) + runningTable(running, d);
+  else if (TAB === 'registered') html = bulkBar('registered', stopped) + registeredTable(stopped, d) + newProjectForm(d);
+  else if (TAB === 'disabled') html = groupTable(d.closed);
+  else if (TAB === 'retired') html = groupTable(d.retired);
+  else html = renderLayoutBox(d);
+  document.getElementById('tabContent').innerHTML = html;
 }
 
-function sessionRow(s, d) {
+// ── seçim + toplu işlemler ──────────────────────────────────────────────────
+
+function toggleSel(name, on) {
+  if (on) SEL.add(name); else SEL.delete(name);
+  render(LAST);
+}
+function toggleSelAll(on) {
+  for (const n of CUR_TAB_NAMES) { if (on) SEL.add(n); else SEL.delete(n); }
+  render(LAST);
+}
+function selectNeedsHo() {
+  if (!LAST) return;
+  SEL.clear();
+  for (const s of LAST.sessions) if (s.running && s.needs_ho === true) SEL.add(s.name);
+  render(LAST);
+}
+
+function bulkBar(tab, rows) {
+  const sel = rows.filter(r => SEL.has(r.name));
+  const dis = (sel.length && !BULK_BUSY) ? '' : 'disabled';
+  const btn = (action, cls, label, title) =>
+    `<button class="${cls}" ${dis} title="${title}" onclick="bulkAct('${action}')">${label}</button>`;
+  const buttons = tab === 'running'
+    ? btn('handover', 'handover', t('handoverBtn'), t('legendHandover'))
+      + btn('stop', 'stop', t('stopBtn'), t('legendStop'))
+      + btn('close', 'closebtn', t('disableBtn'), t('legendDisable'))
+      + btn('retire', 'retire', t('retireBtn'), t('legendRetire'))
+      + `<button class="selho" ${BULK_BUSY ? 'disabled' : ''} title="${t('hoHint')}" onclick="selectNeedsHo()">${t('selectNeedsHo')}</button>`
+    : btn('close', 'closebtn', t('disableBtn'), t('legendDisable'))
+      + btn('retire', 'retire', t('retireBtn'), t('legendRetire'));
+  const legendRows = tab === 'running'
+    ? [[t('handoverBtn'), t('legendHandover')], [t('stopBtn'), t('legendStop')],
+       [t('disableBtn'), t('legendDisable')], [t('retireBtn'), t('legendRetire')]]
+    : [[t('disableBtn'), t('legendDisable')], [t('retireBtn'), t('legendRetire')]];
+  return `<div class="bulkbar">
+      <span class="selcount">${t('selWord')}: ${sel.length}</span>${buttons}
+      <span class="bulkmsg" id="bulkMsg">${BULK_MSG}</span>
+    </div>
+    <div class="legend">${legendRows.map(([k, v]) => `<b>${k}</b> — ${v}`).join('<br>')}</div>`;
+}
+
+function setBulkMsg(msg) {
+  BULK_MSG = msg;
+  const el = document.getElementById('bulkMsg');
+  if (el) el.textContent = msg;
+}
+
+async function bulkAct(action) {
+  if (!LAST || BULK_BUSY) return;
+  const rows = TAB === 'running'
+    ? LAST.sessions.filter(s => s.running)
+    : LAST.sessions.filter(s => !s.running);
+  let picked = rows.filter(s => SEL.has(s.name));
+  let note = '';
+  if (action === 'close' || action === 'retire') {
+    // kayıtsız (roster'da olmayan) satırlara close/retire uygulanamaz — atla + söyle
+    const unreg = picked.filter(s => s.registered === false).map(s => s.name);
+    if (unreg.length) {
+      picked = picked.filter(s => s.registered !== false);
+      note = '\\n\\n' + t('bulkSkippedUnreg') + unreg.join(', ');
+    }
+  }
+  const names = picked.map(s => s.name);
+  if (!names.length) { if (note) alert(note.trim()); return; }
+  const expl = {handover: t('legendHandover'), stop: t('legendStop'), close: t('legendDisable'), retire: t('legendRetire')}[action];
+  const label = {handover: t('handoverBtn'), stop: t('stopBtn'), close: t('disableBtn'), retire: t('retireBtn')}[action];
+  if (!confirm(t('bulkConfirm')(label, expl, names) + note)) return;
+  BULK_BUSY = true;
+  const errs = [];
+  let done = 0;
+  for (const name of names) {
+    setBulkMsg(label + ': ' + (done + 1) + '/' + names.length + ' — ' + name + '…');
+    try {
+      const r = await fetch(withToken('/api/' + action), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, lang: LANG}),
+      });
+      if (r.status === 401) { errs.push(name + ': 401'); }
+      else {
+        const res = await safeJson(r);
+        if (!res.ok) errs.push(name + ': ' + res.error);
+      }
+    } catch (e) {
+      errs.push(name + ': ' + e.message);
+    }
+    done++;
+  }
+  BULK_BUSY = false;
+  BULK_MSG = t('bulkDone')(names.length - errs.length, errs.length)
+    + (errs.length ? '\\n' + errs.join('\\n') : '');
+  SEL.clear();
+  LAST_JSON = null;  // sonucu ve yeni durumu kesin yeniden çiz
+  refresh();
+}
+
+// ── tablolar ────────────────────────────────────────────────────────────────
+
+function selCell(s) {
+  return `<td class="selcell"><input type="checkbox" ${SEL.has(s.name) ? 'checked' : ''} onchange="toggleSel('${s.name}', this.checked)"></td>`;
+}
+
+function hoCell(s) {
+  if (s.needs_ho === true) return `<td class="hocell"><span class="ho-yes" title="${t('hoHint')}">ho!</span></td>`;
+  if (s.needs_ho === false) return `<td class="hocell"><span class="ho-no" title="${t('hoHint')}">—</span></td>`;
+  return `<td class="hocell"><span class="ho-no" title="${t('hoHint')}">${t('hoUnknown')}</span></td>`;
+}
+
+function runningTable(rows, d) {
+  CUR_TAB_NAMES = rows.map(s => s.name);
+  const allOn = rows.length && rows.every(s => SEL.has(s.name));
+  const body = [];
+  for (const s of rows) body.push(...runningRow(s, d));
+  if (!rows.length) body.push(`<tr><td colspan="9" style="color:var(--muted)">${t('nothingRunning')}</td></tr>`);
+  return `<div class="tablewrap"><table class="runtab">
+    <thead><tr>
+      <th class="selcell"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="toggleSelAll(this.checked)"></th>
+      <th style="width:12%">${t('colName')}</th>
+      <th style="width:14%">model</th>
+      <th style="width:9%">${t('colStatus')}</th>
+      <th style="width:6%">cpu%</th>
+      <th style="width:5%" title="${t('hoHint')}">${t('hoCol')}</th>
+      <th style="width:8%">${t('colKind')}</th>
+      <th>cwd</th>
+      <th style="width:10%"></th>
+    </tr></thead><tbody>${body.join('')}</tbody></table></div>`;
+}
+
+function runningRow(s, d) {
   const actions = s.registered === false
-    ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>
-       <button class="handover" onclick="doHandover('${s.name}', this)">${t('handoverBtn')}</button>
-       <button class="start" onclick="toggleAdopt('${s.name}')">${t('adoptBtn')}</button>`
-    : `${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>` : ''}
-       <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? t('optionsBtn') : t('startBtn')}</button>
-       ${s.running ? `<button class="handover" onclick="doHandover('${s.name}', this)">${t('handoverBtn')}</button>` : ''}
-       <button class="closebtn" onclick="doClose('${s.name}', this)">${t('closeBtn')}</button>
-       <button class="retire" onclick="doRetire('${s.name}', this)">${t('retireBtn')}</button>`;
+    ? `<button class="start" onclick="toggleAdopt('${s.name}')">${t('adoptBtn')}</button>`
+    : `<button class="start" onclick="toggleOpts('${s.name}')">${t('optionsBtn')}</button>`;
   const nameCell = s.registered === false
     ? `${s.name} <span class="unreg-badge" title="${t('unregHint')}">${t('unregBadge')}</span>`
     : s.name;
   const row = `
     <tr>
+      ${selCell(s)}
       <td>${nameCell}</td>
       <td>${s.model || ''}</td>
-      <td><span class="dot ${s.running ? 'on' : 'off'}"></span>${s.running ? t('pidWord') + s.pid : t('stoppedWord')}</td>
-      <td>${s.running ? s.cpu.toFixed(1) : '—'}</td>
+      <td><span class="dot on"></span>${t('pidWord')}${s.pid}</td>
+      <td>${s.cpu != null ? s.cpu.toFixed(1) : '—'}</td>
+      ${hoCell(s)}
       <td>${s.kind || '—'}</td>
       <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${s.cwd}</td>
       <td><div class="actioncell">${actions}</div></td>
     </tr>`;
-  if (s.registered === false && adoptFor === s.name) return [row, adoptOptsRow(s, d)];
-  return (s.registered !== false && optsFor === s.name) ? [row, unifiedOptsRow(s, d)] : [row];
+  if (s.registered === false && adoptFor === s.name) return [row, adoptOptsRow(s, d, 9)];
+  return (s.registered !== false && optsFor === s.name) ? [row, unifiedOptsRow(s, d, 9)] : [row];
 }
+
+function registeredTable(rows, d) {
+  CUR_TAB_NAMES = rows.map(s => s.name);
+  const allOn = rows.length && rows.every(s => SEL.has(s.name));
+  const body = [];
+  for (const s of rows) body.push(...registeredRow(s, d));
+  if (!rows.length) body.push(`<tr><td colspan="5" style="color:var(--muted)">${t('noneRegistered')}</td></tr>`);
+  return `<div class="tablewrap"><table class="regtab">
+    <thead><tr>
+      <th class="selcell"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="toggleSelAll(this.checked)"></th>
+      <th style="width:14%">${t('colName')}</th>
+      <th style="width:18%">model</th>
+      <th>cwd</th>
+      <th style="width:12%"></th>
+    </tr></thead><tbody>${body.join('')}</tbody></table></div>`;
+}
+
+function registeredRow(s, d) {
+  const row = `
+    <tr>
+      ${selCell(s)}
+      <td>${s.name}</td>
+      <td>${s.model || ''}</td>
+      <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${s.cwd}</td>
+      <td><div class="actioncell"><button class="start" onclick="toggleOpts('${s.name}')">${t('startBtn')}</button></div></td>
+    </tr>`;
+  return (optsFor === s.name) ? [row, unifiedOptsRow(s, d, 5)] : [row];
+}
+
+function groupTable(items) {
+  if (!items.length) return `<div class="opts-hint">${t('empty')}</div>`;
+  const rows = items.map(it => `
+    <tr>
+      <td style="width:14%">${it.name}</td>
+      <td style="width:20%">${it.model || ''}</td>
+      <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${it.cwd}</td>
+      <td style="width:16%"><button class="reactivate" onclick="doReactivate('${it.name}', this)">${t('reactivateBtn')}</button></td>
+    </tr>`).join('');
+  return `<div class="tablewrap"><table><tbody>${rows}</tbody></table></div>`;
+}
+
+// ── devral (adopt) ──────────────────────────────────────────────────────────
 
 function toggleAdopt(name) {
   adoptFor = (adoptFor === name) ? null : name;
   render(LAST);
 }
 
-function adoptOptsRow(s, d) {
+function adoptOptsRow(s, d, colspan) {
   const modelOpts = ['(' + (s.model || 'claude-sonnet-5') + ')', ...d.model_choices, '…']
     .map(m => `<option value="${m.startsWith('(') ? '' : m}">${m}</option>`).join('');
   const pmOpts = d.permission_modes.map(m => `<option ${m==='auto'?'selected':''}>${m}</option>`).join('');
   const efOpts = d.effort_levels.map(m => `<option ${m==='max'?'selected':''}>${m}</option>`).join('');
   return `
-    <tr class="opts-row"><td colspan="7"><div class="opts">
+    <tr class="opts-row"><td colspan="${colspan}"><div class="opts">
       <span class="opts-hint">${t('adoptWarn')(s.name)}</span>
       <label>${t('adoptNameLabel')}
         <input type="text" id="adopt-name-${s.name}" value="${s.name}">
@@ -1167,60 +1368,12 @@ async function doAdopt(oldName, btn) {
   refresh();
 }
 
-function toggleAddPanel() {
-  showAddPanel = !showAddPanel;
-  render(LAST);
-}
-
-function toggleLayoutPanel() {
-  showLayoutPanel = !showLayoutPanel;
-  render(LAST);
-}
-
-function toggleClosedPanel() {
-  showClosedPanel = !showClosedPanel;
-  render(LAST);
-}
-
-function toggleRetiredPanel() {
-  showRetiredPanel = !showRetiredPanel;
-  render(LAST);
-}
-
-function renderLayoutBox(d) {
-  const missing = d.layout_missing_deps || [];
-  const warn = missing.length
-    ? `<span class="opts-hint" style="color:var(--red)">${t('layoutMissingPrefix')}${missing.join(', ')}${t('layoutMissingSuffix')}${missing.join(' ')}</span>`
-    : '<span class="opts-hint"></span>';
-  return `
-    <div class="opts" id="layoutPanel">
-      ${warn}
-      <label>${t('layoutPinLabel')}
-        <input type="text" id="layout-pin" placeholder="co,rustrino,anomaly,iggy">
-      </label>
-      <label>${t('layoutGroupsLabel')}
-        <input type="text" id="layout-groups" placeholder="hc,hcr,evolvi | vc,vrk">
-      </label>
-      <label class="fresh-toggle"><input type="checkbox" id="layout-claude-only" checked> ${t('layoutClaudeOnly')}</label>
-      <label class="fresh-toggle"><input type="checkbox" id="layout-dry"> ${t('layoutDryRun')}</label>
-      <button class="go" id="layout-go" ${missing.length ? 'disabled' : ''} onclick="doLayout(this)">${t('layoutApply')}</button>
-    </div>
-    <pre id="layout-result" class="layout-result"></pre>`;
-}
-
-function renderAddBox(stoppedSessions, d) {
-  const rows = [];
-  for (const s of stoppedSessions) rows.push(...sessionRow(s, d));
-  const table = stoppedSessions.length
-    ? `<div class="tablewrap"><table><tbody>${rows.join('')}</tbody></table></div>`
-    : `<div class="opts-hint">${t('noneRegisteredClosed')}</div>`;
-  return `<div id="addBoxInner">${table}${newProjectForm(d)}</div>`;
-}
+// ── kayıt formu ─────────────────────────────────────────────────────────────
 
 function newProjectForm(d) {
   const modelOpts = d.model_choices.map(m => `<option>${m}</option>`).join('');
   return `
-    <div class="opts" style="margin-top:.5rem">
+    <div class="opts" style="margin-top:.7rem">
       <span class="opts-hint"><b>${t('registerTitle')}</b> ${t('registerDesc')}</span>
       <label>${t('registerNameLabel')}
         <input type="text" id="reg-name" placeholder="myproject">
@@ -1260,21 +1413,11 @@ async function doRegister(btn) {
   refresh();
 }
 
-function groupTable(items) {
-  if (!items.length) return `<div class="opts-hint">${t('empty')}</div>`;
-  const rows = items.map(it => `
-    <tr>
-      <td style="width:14%">${it.name}</td>
-      <td style="width:20%">${it.model || ''}</td>
-      <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${it.cwd}</td>
-      <td style="width:16%"><button class="reactivate" onclick="doReactivate('${it.name}', this)">${t('reactivateBtn')}</button></td>
-    </tr>`).join('');
-  return `<div class="tablewrap"><table><tbody>${rows}</tbody></table></div>`;
-}
+// ── başlat/seçenekler ───────────────────────────────────────────────────────
 
 function modeLabels() { return {resume: t('modeResume'), reset: t('modeReset'), newchat: t('modeNewchat')}; }
 
-function unifiedOptsRow(s, d) {
+function unifiedOptsRow(s, d, colspan) {
   const modelOpts = ['(' + s.model + ')', ...d.model_choices, '…']
     .map(m => `<option value="${m.startsWith('(') ? '' : m}">${m}</option>`).join('');
   const pmOpts = d.permission_modes.map(m => `<option ${m==='auto'?'selected':''}>${m}</option>`).join('');
@@ -1292,7 +1435,7 @@ function unifiedOptsRow(s, d) {
     ? `<span class="opts-hint">${t('runningNote')(s.name)}</span>`
     : '';
   return `
-    <tr class="opts-row"><td colspan="7"><div class="opts">
+    <tr class="opts-row"><td colspan="${colspan}"><div class="opts">
       ${runningNote}
       <div class="modes">${radios}</div>
       <span class="opts-hint" id="opt-hint-${s.name}"></span>
@@ -1365,37 +1508,6 @@ async function doAction(name, btn) {
   refresh();
 }
 
-async function act(name, action, btn) {
-  btn.disabled = true;
-  btn.textContent = action === 'start' ? t('starting') : t('stopping');
-  await call(action, {name});
-  refresh();
-}
-
-async function doRetire(name, btn) {
-  if (!confirm(t('retireConfirm')(name))) return;
-  btn.disabled = true;
-  btn.textContent = t('retiring');
-  await call('retire', {name});
-  refresh();
-}
-
-async function doClose(name, btn) {
-  if (!confirm(t('closeConfirm')(name))) return;
-  btn.disabled = true;
-  btn.textContent = t('closing');
-  await call('close', {name});
-  refresh();
-}
-
-async function doHandover(name, btn) {
-  if (!confirm(t('handoverConfirm')(name))) return;
-  btn.disabled = true;
-  btn.textContent = t('handingOver');
-  await call('handover', {name, lang: LANG});
-  refresh();
-}
-
 async function doReactivate(name, btn) {
   btn.disabled = true;
   btn.textContent = t('starting');
@@ -1423,6 +1535,29 @@ async function call(action, payload) {
   } catch (e) {
     alert(t('requestFailed') + e.message);
   }
+}
+
+// ── layout ──────────────────────────────────────────────────────────────────
+
+function renderLayoutBox(d) {
+  const missing = d.layout_missing_deps || [];
+  const warn = missing.length
+    ? `<span class="opts-hint" style="color:var(--red)">${t('layoutMissingPrefix')}${missing.join(', ')}${t('layoutMissingSuffix')}${missing.join(' ')}</span>`
+    : `<span class="opts-hint">(${t('layoutDesc')})</span>`;
+  return `
+    <div class="opts" id="layoutPanel">
+      ${warn}
+      <label>${t('layoutPinLabel')}
+        <input type="text" id="layout-pin" placeholder="co,rustrino,anomaly,iggy">
+      </label>
+      <label>${t('layoutGroupsLabel')}
+        <input type="text" id="layout-groups" placeholder="hc,hcr,evolvi | vc,vrk">
+      </label>
+      <label class="fresh-toggle"><input type="checkbox" id="layout-claude-only" checked> ${t('layoutClaudeOnly')}</label>
+      <label class="fresh-toggle"><input type="checkbox" id="layout-dry"> ${t('layoutDryRun')}</label>
+      <button class="go" id="layout-go" ${missing.length ? 'disabled' : ''} onclick="doLayout(this)">${t('layoutApply')}</button>
+    </div>
+    <pre id="layout-result" class="layout-result"></pre>`;
 }
 
 async function doLayout(btn) {
