@@ -32,26 +32,39 @@ En kolay kullanım yolu; her şey tarayıcıdan:
 
 ![claudeops web paneli](../docs/web-panel.png)
 
-- **Ana sayfa** — sadece o an **çalışan** session'lar (gürültüsüz; hiçbir şey otomatik açılmaz).
-- **+ Ekle** — kayıtlı-ama-kapalı projeleri listeler; birini seçip **devam ettir** / **sıfırla (--new)** /
-  **ayrı yeni chat aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız.
-  Aynı panelin altında **yeni proje kaydet** formu (isim + klasör + model) — elle dosya düzenlemeden
-  roster'a ekler.
-- **Kapalı / Emekli** — geçici durdurulmuş / tamamen bırakılmış projeler; "tekrar işe al"la geri gelir.
-  Aktif bir projeyi **kapat**mak (geçici) ya da **emekli et**mek (kalıcı) mümkün.
-- **Handover** — çalışan bir session'a wrap-up mesajı gönderir (dokümanları güncelle, commit+push et),
-  aynı geçmişle (`--resume`) + bu mesaj ilk mesaj olarak yeniden başlatır. Panel o an hangi dildeyse
-  mesaj da o dilde gider, model de o proje için roster'da tanımlı model (session'ın o an interaktif
-  olarak `/model` ile geçmiş olabileceği model değil).
+- **Sekmeler** — **Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout** (aktif sekme sayfa
+  yenilense de hatırlanır). Hiçbir şey otomatik açılmaz.
+- **Çalışanlar** — tüm canlı session'lar, her satırda **checkbox**, tablonun üstünde **toplu işlem
+  butonları**: *handover* / *durdur* / *devre dışı bırak* / *emekli et* seçili satırlara sırayla
+  uygulanır — onay diyaloğu isimleri listeler, ilerleme ve hatalar satır satır raporlanır. Butonların
+  altındaki kısa açıklama (legend) her işlemin ne yaptığını söyler. **ho? kolonu** session'ın
+  *handover'a ihtiyacı var mı* gösterir (repo kirli / untracked dosya / baseline'dan beri commit /
+  wrap-up yok), **needs-ho seç** butonu hepsini tek tıkla seçer.
+- **durdur vs devre dışı vs emekli** — *durdur* sadece process/pencereyi kapatır (proje kayıtlı kalır —
+  Kayıtlı sekmesinden devam ettirilir); *devre dışı bırak* ek olarak otomasyonun (guard) yeniden
+  açmasını engeller (Devre dışı sekmesine taşınır, geri alınabilir); *emekli et* arşive kaldırır
+  (Emekli sekmesi, "tekrar işe al" ile döner).
+- **Kayıtlı** — kayıtlı-ama-durmuş projeler; **devam ettir** / **sıfırla (--new)** / **ayrı yeni chat
+  aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız. **Yeni proje
+  kaydet** formu (isim + klasör + model) bu sekmenin altında — elle dosya düzenlemeden roster'a ekler.
+- **Devre dışı / Emekli** — geçici durdurulmuş / tamamen bırakılmış projeler; "tekrar işe al"la geri gelir.
+- **Handover** — seçili çalışan session'lara wrap-up mesajı gönderir (dokümanları güncelle, commit+push
+  et), her birini aynı geçmişle (`--resume`) + bu mesaj ilk mesaj olarak yeniden başlatır. Panel o an
+  hangi dildeyse mesaj da o dilde gider, model de o proje için roster'da tanımlı model (session'ın o an
+  interaktif olarak `/model` ile geçmiş olabileceği model değil). Kodda gömülü bir hariç-tutma listesi
+  YOK — ne seçtiyseniz o çalışır; tek yerleşik koruma, bir session'ın kendisini yöneten CLI'ı asla
+  öldürememesi.
 - **Roster dışındaki session'lar da görünür** — claudeops'un AÇMADIĞI ama çalışan her şey (ör. bir
-  proje klasöründe elle açtığınız çıplak `claude`) "kayıtsız" etiketiyle listede belirir, kısıtlı
-  aksiyon setiyle: durdur / handover / **devral** (seçtiğiniz isimle `--remote-control` ekleyip kaydet —
-  bu pencereyi kapatıp aynı geçmişle yenisini açar, çünkü claudeops zaten bu pencereyi kendisi açmamıştı).
-- **Layout** — pencereleri masaüstlerine dağıtır (`wmctrl`+`xdotool`, X11 only). Kilitli ekranda veya
-  Wayland'da bozuk çalıştığı bilindiği için **otomatik pre-flight kontrol** var — kilitliyse reddeder.
-  Eksik bağımlılık varsa (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) uyarır, kurmaz (sudo gerektirir).
-  Kilitli ekran gerektiren TEK işlem bu — başlat/durdur/handover/devral/yeni-chat kilitli ekranda da
-  sorunsuz çalışır (telefondan panele bağlanırken masaüstün kilitli olması sorun değil).
+  proje klasöründe elle açtığınız çıplak `claude`) "kayıtsız" etiketiyle listede belirir, **devral**
+  aksiyonuyla (seçtiğiniz isimle `--remote-control` ekleyip kaydet — bu pencereyi kapatıp aynı geçmişle
+  yenisini açar, çünkü claudeops zaten bu pencereyi kendisi açmamıştı). Durdur/handover checkbox'larla
+  diğer satırlar gibi çalışır.
+- **Layout** — kendi sekmesinde; pencereleri masaüstlerine dağıtır (`wmctrl`+`xdotool`, X11 only).
+  Kilitli ekranda veya Wayland'da bozuk çalıştığı bilindiği için **otomatik pre-flight kontrol** var —
+  kilitliyse reddeder. Eksik bağımlılık varsa (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`)
+  uyarır, kurmaz (sudo gerektirir). Kilitli ekran gerektiren TEK işlem bu — başlat/durdur/handover/
+  devral/yeni-chat kilitli ekranda da sorunsuz çalışır (telefondan panele bağlanırken masaüstün kilitli
+  olması sorun değil).
 - **TR/EN** — tarayıcı diline göre otomatik seçilir (`navigator.language`), sağ üstteki butonlarla elle
   değiştirilip kalıcı hale getirilebilir (localStorage).
 - **Token korumalı** (`~/.claude/claudeops/web.token`, ilk çalıştırmada rastgele üretilir) — sayfa da

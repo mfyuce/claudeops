@@ -32,28 +32,39 @@ The easiest way to use this; everything from the browser:
 
 ![claudeops web panel](../docs/web-panel.png)
 
-- **Main page** — only **running** sessions (no noise; nothing starts automatically).
-- **+ Add** — lists registered-but-stopped projects; pick one and start it with **resume** /
-  **reset (--new)** / **start a separate new chat** (auto-dated name, with model/permission-mode/effort
-  options). The same panel has a **register new project** form (name + folder + model) at the bottom —
-  adds to the roster without editing files by hand.
-- **Closed / Retired** — temporarily stopped / fully abandoned projects; come back with "reactivate".
-  An active project can be **closed** (temporary) or **retired** (permanent).
-- **Handover** — on a running session, sends it a wrap-up prompt (update its docs, commit, push),
-  restarting it with `--resume` (same history) plus that message as the first turn. Uses the message in
-  whichever language the panel is currently set to, and whichever model is set for that project in the
-  roster (not necessarily whatever model the live session happened to be switched to interactively).
+- **Tabs** — **Running / Registered / Disabled / Retired / Layout** (the active tab persists across
+  reloads). Nothing ever starts automatically.
+- **Running** — every live session, one **checkbox** per row, and **bulk action buttons above the
+  table**: *handover* / *stop* / *disable* / *retire* run on the selected rows one by one, with a
+  confirm dialog (listing the names) and per-name progress + error reporting. A short legend under the
+  buttons explains each verb. A **ho? column** shows whether a session *needs a handover* (dirty repo /
+  untracked files / commits since baseline / no wrap-up yet), and **select needs-ho** picks all of
+  those in one click.
+- **stop vs disable vs retire** — *stop* kills only the process/window (the project stays registered —
+  resume it from the Registered tab); *disable* also keeps automation (guard) from reopening it (moves
+  to the Disabled tab, reversible); *retire* archives it (Retired tab, comes back via "reactivate").
+- **Registered** — registered-but-stopped projects; start one with **resume** / **reset (--new)** /
+  **start a separate new chat** (auto-dated name, with model/permission-mode/effort options). The
+  **register new project** form (name + folder + model) lives at the bottom of this tab — adds to the
+  roster without editing files by hand.
+- **Disabled / Retired** — temporarily stopped / fully abandoned projects; come back with "reactivate".
+- **Handover** — sends the selected running sessions a wrap-up prompt (update their docs, commit, push),
+  restarting each with `--resume` (same history) plus that message as the first turn. Uses the message
+  in whichever language the panel is currently set to, and whichever model is set for that project in
+  the roster (not necessarily whatever model the live session happened to be switched to interactively).
+  There is no hardcoded exclude list — what you select is what runs; the only built-in protection is
+  that a session can never kill the CLI it itself is being driven from.
 - **Sessions outside the roster show up too** — anything running that claudeops didn't open (e.g. a
-  plain `claude` you started by hand in a project folder) appears tagged "unregistered", with a reduced
-  action set: stop / handover / **adopt** (attach `--remote-control` under a name of your choice and
-  register it — closes that window and reopens a new one with the same history, since claudeops didn't
-  own it to begin with).
-- **Layout** — arranges windows across desktops (`wmctrl`+`xdotool`, X11 only). Known to misbehave on a
-  locked screen or under Wayland, so there's an **automatic pre-flight check** — it refuses if the
-  screen is locked. Warns (doesn't install, since that needs sudo) if a dependency is missing
-  (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`). This is the *only* action that needs an
-  unlocked screen — start/stop/handover/adopt/new-chat all work fine on a locked screen too (handy if
-  you're driving the panel from your phone while your desktop is locked).
+  plain `claude` you started by hand in a project folder) appears tagged "unregistered", with an
+  **adopt** action (attach `--remote-control` under a name of your choice and register it — closes that
+  window and reopens a new one with the same history, since claudeops didn't own it to begin with).
+  Stop/handover work on them through the checkboxes like any other row.
+- **Layout** — its own tab; arranges windows across desktops (`wmctrl`+`xdotool`, X11 only). Known to
+  misbehave on a locked screen or under Wayland, so there's an **automatic pre-flight check** — it
+  refuses if the screen is locked. Warns (doesn't install, since that needs sudo) if a dependency is
+  missing (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`). This is the *only* action that needs
+  an unlocked screen — start/stop/handover/adopt/new-chat all work fine on a locked screen too (handy
+  if you're driving the panel from your phone while your desktop is locked).
 - **TR/EN** — auto-selected from the browser's language (`navigator.language`), can be switched manually
   with the buttons in the top corner and stays persisted (localStorage).
 - **Token protected** (`~/.claude/claudeops/web.token`, randomly generated on first run) — both the page
