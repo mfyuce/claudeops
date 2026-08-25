@@ -54,6 +54,65 @@ MODEL_CHOICES = [
 PERMISSION_MODES = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 
+# API hata mesajları TR/EN — panel dili EN'de olsa da backend hataları hep TR geliyordu
+# (2026-08-25, kullanıcı: "uyarılar tr geliyor hep, ing seçilsin seçilmesin gibi"). do_POST
+# artık `lang` alanını her isteğin body'sinden okuyup ilgili fonksiyona geçiyor; frontend her
+# fetch çağrısına `lang: LANG` ekliyor.
+ERR = {
+    "invalid_name": {"tr": "geçersiz isim — küçük harf ile başlamalı, sadece a-z 0-9 _ içerebilir",
+                      "en": "invalid name — must start with a lowercase letter, only a-z 0-9 _ allowed"},
+    "already_registered": {"tr": "{name}: zaten kayıtlı (aktif/kapalı/emekli)",
+                            "en": "{name}: already registered (active/closed/retired)"},
+    "dir_not_found": {"tr": "{cwd}: dizin bulunamadı", "en": "{cwd}: directory not found"},
+    "cwd_bad_chars": {"tr": "cwd geçersiz karakter içeriyor", "en": "cwd contains invalid characters"},
+    "base_not_in_roster": {"tr": "{base}: roster'da yok — önce ana ismi ekleyin",
+                            "en": "{base}: not in roster — register the base name first"},
+    "newchat_start_failed": {"tr": "{new_name}: roster'a kaydedildi ama başlatılamadı "
+                                    "(gnome-terminal/DISPLAY sorunu olabilir) — '+ Ekle'den tekrar deneyin — kind={kind}",
+                              "en": "{new_name}: registered but failed to start "
+                                    "(could be a gnome-terminal/DISPLAY issue) — retry from '+ Add' — kind={kind}"},
+    "missing_deps": {"tr": "eksik bağımlılık: {missing} — Ubuntu/Debian'da kurmak için: sudo apt install -y {missing}",
+                      "en": "missing dependency: {missing} — install on Ubuntu/Debian with: sudo apt install -y {missing}"},
+    "screen_locked_layout": {"tr": "ekran KİLİTLİ — layout kilitli ekranda bozuk çalışır (Mutter). "
+                                    "Önce ekranın kilidini açın, sonra tekrar deneyin.",
+                              "en": "screen is LOCKED — layout misbehaves on a locked screen (Mutter). "
+                                    "Unlock the screen first, then retry."},
+    "no_x11": {"tr": "X11 display bulunamadı (Wayland'da çalışmaz)",
+               "en": "X11 display not found (doesn't work on Wayland)"},
+    "not_active": {"tr": "{name}: roster/models.tsv'de aktif değil",
+                    "en": "{name}: not active in roster/models.tsv"},
+    "already_running": {"tr": "{name}: zaten çalışıyor", "en": "{name}: already running"},
+    "start_no_proc": {"tr": "{name}: başlatma denendi ama proc görünmedi "
+                             "(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir, tekrar deneyin) — kind={kind}",
+                       "en": "{name}: start attempted but no process appeared "
+                             "(could be gnome-terminal/DISPLAY, retry) — kind={kind}"},
+    "not_running": {"tr": "{name}: çalışmıyor", "en": "{name}: not running"},
+    "undefined": {"tr": "{name}: tanımsız", "en": "{name}: undefined"},
+    "already_retired": {"tr": "{name}: zaten emekli", "en": "{name}: already retired"},
+    "already_closed": {"tr": "{name}: zaten kapalı", "en": "{name}: already closed"},
+    "retired_needs_reactivate": {"tr": "{name}: emekli — önce 'tekrar işe al', sonra kapatın",
+                                  "en": "{name}: retired — reactivate first, then close"},
+    "handover_reopen_failed": {"tr": "{name}: kapatıldı ama yeniden açılamadı "
+                                      "(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir) — kind={kind}",
+                                "en": "{name}: closed but couldn't reopen "
+                                      "(could be a gnome-terminal/DISPLAY issue) — kind={kind}"},
+    "name_in_use": {"tr": "{new_name}: zaten kullanılıyor (roster'da ya da çalışıyor)",
+                     "en": "{new_name}: already in use (in roster or currently running)"},
+    "adopt_reopen_failed": {"tr": "{old_name}: kapatıldı ama '{new_name}' olarak yeniden açılamadı "
+                                   "(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir) — kind={kind}",
+                             "en": "{old_name}: closed but couldn't reopen as '{new_name}' "
+                                   "(could be a gnome-terminal/DISPLAY issue) — kind={kind}"},
+    "already_active": {"tr": "{name}: zaten aktif", "en": "{name}: already active"},
+    "invalid_json": {"tr": "geçersiz JSON", "en": "invalid JSON"},
+    "base_required": {"tr": "base gerekli", "en": "base is required"},
+    "name_required": {"tr": "name gerekli", "en": "name is required"},
+}
+
+
+def _err(lang: str, key: str, **kwargs) -> dict:
+    tpl = ERR[key]["en" if lang == "en" else "tr"]
+    return {"ok": False, "error": tpl.format(**kwargs)}
+
 
 def _load_or_create_token() -> str:
     try:
@@ -241,7 +300,7 @@ def _append_tsv_line(path: str, fields: list) -> None:
 _NAME_VALID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
-def _register_project(name: str, cwd: str, model: str = "") -> dict:
+def _register_project(name: str, cwd: str, model: str = "", lang: str = "tr") -> dict:
     """UI'den yeni proje kaydı — roster.tsv+models.tsv'ye ekler, SPAWN ETMEZ.
 
     Sonra normal "+ Ekle" listesinden başlatılır (mevcut trino/oiso/line elle-ekleme
@@ -249,21 +308,21 @@ def _register_project(name: str, cwd: str, model: str = "") -> dict:
     """
     name = name.strip()
     if not _NAME_VALID_RE.match(name):
-        return {"ok": False, "error": "geçersiz isim — küçük harf ile başlamalı, sadece a-z 0-9 _ içerebilir"}
+        return _err(lang, "invalid_name")
     if name in _all_known_names():
-        return {"ok": False, "error": f"{name}: zaten kayıtlı (aktif/kapalı/emekli)"}
+        return _err(lang, "already_registered", name=name)
     cwd = os.path.expanduser(cwd.strip())
     if not cwd or not os.path.isdir(cwd):
-        return {"ok": False, "error": f"{cwd or '(boş)'}: dizin bulunamadı"}
+        return _err(lang, "dir_not_found", cwd=cwd or ("(boş)" if lang != "en" else "(empty)"))
     if "\t" in cwd or "\n" in cwd:
-        return {"ok": False, "error": "cwd geçersiz karakter içeriyor"}
+        return _err(lang, "cwd_bad_chars")
     chosen_model = model.strip() or MODEL_CHOICES[0]
     _append_tsv_line(ROSTER_TSV, [name, cwd, chosen_model])
     _append_tsv_line(MODELS_TSV, [name, chosen_model])
     return {"ok": True}
 
 
-def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "") -> dict:
+def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "", lang: str = "tr") -> dict:
     """`base`'in cwd'sinde YENİ, otomatik-isimli (tarih[+_N]) bir chat başlat.
 
     Var olan `base` session'ına DOKUNMAZ (çalışıyorsa bile) — ayrı, ek bir kayıt.
@@ -272,7 +331,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     fleet = _fleet_status()
     info = fleet.get(base)
     if not info:
-        return {"ok": False, "error": f"{base}: roster'da yok — önce ana ismi ekleyin"}
+        return _err(lang, "base_not_in_roster", base=base)
     new_name = _generate_new_chat_name(base)
     chosen_model = model.strip() or info["model"]
     _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model])
@@ -298,8 +357,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     if not opened:
-        return {"ok": False, "error": f"{new_name}: roster'a kaydedildi ama başlatılamadı "
-                                        f"(gnome-terminal/DISPLAY sorunu olabilir) — '+ Ekle'den tekrar deneyin — kind={kind}"}
+        return _err(lang, "newchat_start_failed", new_name=new_name, kind=kind)
     return {"ok": True, "name": new_name, "kind": kind}
 
 
@@ -360,18 +418,16 @@ def _screen_locked() -> Optional[bool]:
 
 
 def _run_layout(pin: str, groups: list, claude_only: bool = True,
-                 screen_y: Optional[int] = None, dry_run: bool = False) -> dict:
+                 screen_y: Optional[int] = None, dry_run: bool = False, lang: str = "tr") -> dict:
     missing = _missing_layout_deps()
     if missing:
-        return {"ok": False, "error": f"eksik bağımlılık: {', '.join(missing)} — "
-                                       f"Ubuntu/Debian'da kurmak için: sudo apt install -y {' '.join(missing)}"}
+        return _err(lang, "missing_deps", missing=", ".join(missing))
     if _screen_locked():
-        return {"ok": False, "error": "ekran KİLİTLİ — layout kilitli ekranda bozuk çalışır (Mutter). "
-                                       "Önce ekranın kilidini açın, sonra tekrar deneyin."}
+        return _err(lang, "screen_locked_layout")
 
     display = detect_display()
     if not os.environ.get("DISPLAY") and not display:
-        return {"ok": False, "error": "X11 display bulunamadı (Wayland'da çalışmaz)"}
+        return _err(lang, "no_x11")
 
     from ..layout import _get_screen, _list_windows, build_layout_plan, apply_layout
 
@@ -460,13 +516,14 @@ def _status_payload() -> dict:
     }
 
 
-def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False) -> dict:
+def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
+           lang: str = "tr") -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
     if not info or info["state"] != "active":
-        return {"ok": False, "error": f"{name}: roster/models.tsv'de aktif değil"}
+        return _err(lang, "not_active", name=name)
     if _find_running(name):
-        return {"ok": False, "error": f"{name}: zaten çalışıyor"}
+        return _err(lang, "already_running", name=name)
     try:
         with guard_lock(timeout=5.0):
             kind = spawn_session(
@@ -488,15 +545,14 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     if not opened:
-        return {"ok": False, "error": f"{name}: başlatma denendi ama proc görünmedi "
-                                        f"(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir, tekrar deneyin) — kind={kind}"}
+        return _err(lang, "start_no_proc", name=name, kind=kind)
     return {"ok": True, "kind": kind}
 
 
-def _stop(name: str) -> dict:
+def _stop(name: str, lang: str = "tr") -> dict:
     procs = _find_running(name)
     if not procs:
-        return {"ok": False, "error": f"{name}: çalışmıyor"}
+        return _err(lang, "not_running", name=name)
     try:
         with guard_lock(timeout=5.0):
             results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS) for s in procs]
@@ -505,13 +561,13 @@ def _stop(name: str) -> dict:
     return {"ok": True, "result": results}
 
 
-def _retire(name: str) -> dict:
+def _retire(name: str, lang: str = "tr") -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
     if not info:
-        return {"ok": False, "error": f"{name}: tanımsız"}
+        return _err(lang, "undefined", name=name)
     if info["state"] == "retired":
-        return {"ok": False, "error": f"{name}: zaten emekli"}
+        return _err(lang, "already_retired", name=name)
     procs = _find_running(name)
     if procs:
         try:
@@ -525,7 +581,7 @@ def _retire(name: str) -> dict:
     return {"ok": True}
 
 
-def _close_project(name: str) -> dict:
+def _close_project(name: str, lang: str = "tr") -> dict:
     """Hafif kapat: sadece models.tsv yorumla (roster.tsv AKTİF kalır, cwd hatırlanır).
 
     Emekli'den fark: roster.tsv dokunulmaz — "geçici durduruldu, sonra bakılacak"
@@ -535,11 +591,11 @@ def _close_project(name: str) -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
     if not info:
-        return {"ok": False, "error": f"{name}: tanımsız"}
+        return _err(lang, "undefined", name=name)
     if info["state"] == "closed":
-        return {"ok": False, "error": f"{name}: zaten kapalı"}
+        return _err(lang, "already_closed", name=name)
     if info["state"] == "retired":
-        return {"ok": False, "error": f"{name}: emekli — önce 'tekrar işe al', sonra kapatın"}
+        return _err(lang, "retired_needs_reactivate", name=name)
     procs = _find_running(name)
     if procs:
         try:
@@ -575,7 +631,7 @@ def _handover(name: str, lang: str = "tr") -> dict:
     """
     procs = _find_running(name)
     if not procs:
-        return {"ok": False, "error": f"{name}: çalışmıyor"}
+        return _err(lang, "not_running", name=name)
     fleet = _fleet_status()
     info = fleet.get(name)
     if info:
@@ -608,13 +664,12 @@ def _handover(name: str, lang: str = "tr") -> dict:
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     if not reopened:
-        return {"ok": False, "error": f"{name}: kapatıldı ama yeniden açılamadı "
-                                        f"(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir) — kind={kind}"}
+        return _err(lang, "handover_reopen_failed", name=name, kind=kind)
     return {"ok": True, "kind": kind}
 
 
 def _adopt(old_name: str, new_name: str = "", model: str = "",
-           permission_mode: str = "", effort: str = "") -> dict:
+           permission_mode: str = "", effort: str = "", lang: str = "tr") -> dict:
     """claudeops'un AÇMADIĞI (kayıtsız/foreign) canlı bir session'ı devral.
 
     2026-08-25, kullanıcı: "açmadığı pencereleri de yönetme özelliği ekleyelim, istediğine
@@ -631,12 +686,12 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     old_name = old_name.strip()
     new_name = (new_name or old_name).strip()
     if not _NAME_VALID_RE.match(new_name):
-        return {"ok": False, "error": "geçersiz isim — küçük harf ile başlamalı, sadece a-z 0-9 _ içerebilir"}
+        return _err(lang, "invalid_name")
     procs = _find_running(old_name)
     if not procs:
-        return {"ok": False, "error": f"{old_name}: çalışmıyor"}
+        return _err(lang, "not_running", name=old_name)
     if new_name != old_name and new_name in _all_known_names():
-        return {"ok": False, "error": f"{new_name}: zaten kullanılıyor (roster'da ya da çalışıyor)"}
+        return _err(lang, "name_in_use", new_name=new_name)
     cwd = procs[0].cwd
     chosen_model = model.strip() or procs[0].model or "claude-sonnet-5"
     try:
@@ -663,24 +718,23 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     if not reopened:
-        return {"ok": False, "error": f"{old_name}: kapatıldı ama '{new_name}' olarak yeniden açılamadı "
-                                        f"(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir) — kind={kind}"}
+        return _err(lang, "adopt_reopen_failed", old_name=old_name, new_name=new_name, kind=kind)
     if new_name not in _fleet_status():
         _append_tsv_line(ROSTER_TSV, [new_name, cwd, chosen_model])
         _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
     return {"ok": True, "kind": kind, "new_name": new_name}
 
 
-def _reactivate_and_start(name: str) -> dict:
+def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
     if not info:
-        return {"ok": False, "error": f"{name}: tanımsız"}
+        return _err(lang, "undefined", name=name)
     if info["state"] == "active":
-        return {"ok": False, "error": f"{name}: zaten aktif"}
+        return _err(lang, "already_active", name=name)
     _toggle_comment(MODELS_TSV, name, want_active=True)
     _toggle_comment(ROSTER_TSV, name, want_active=True)
-    return _start(name)
+    return _start(name, lang=lang)
 
 
 PAGE_HTML = """<!doctype html>
@@ -1098,7 +1152,7 @@ async function doAdopt(oldName, btn) {
     const r = await fetch(withToken('/api/adopt'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name: oldName, new_name: newName, model, permission_mode, effort}),
+      body: JSON.stringify({name: oldName, new_name: newName, model, permission_mode, effort, lang: LANG}),
     });
     if (r.status === 401) { alert(t('authErrorShort')); }
     else {
@@ -1191,7 +1245,7 @@ async function doRegister(btn) {
     const r = await fetch(withToken('/api/register'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name, cwd, model}),
+      body: JSON.stringify({name, cwd, model, lang: LANG}),
     });
     if (r.status === 401) { alert(t('authErrorShort')); }
     else {
@@ -1293,7 +1347,7 @@ async function doAction(name, btn) {
       const r = await fetch(withToken('/api/new-chat'), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({base: name, model, permission_mode, effort}),
+        body: JSON.stringify({base: name, model, permission_mode, effort, lang: LANG}),
       });
       if (r.status === 401) { alert(t('authErrorShort')); }
       else {
@@ -1361,7 +1415,7 @@ async function call(action, payload) {
     const r = await fetch(withToken('/api/' + action), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload),
+      body: JSON.stringify({...payload, lang: LANG}),
     });
     if (r.status === 401) { alert(t('authErrorShort')); return; }
     const d = await safeJson(r);
@@ -1385,7 +1439,7 @@ async function doLayout(btn) {
     const r = await fetch(withToken('/api/layout'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({pin, groups, claude_only, dry_run}),
+      body: JSON.stringify({pin, groups, claude_only, dry_run, lang: LANG}),
     });
     if (r.status === 401) { alert(t('authErrorShort')); }
     else {
@@ -1479,8 +1533,11 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             data = json.loads(raw or b"{}")
         except json.JSONDecodeError:
-            self._json({"ok": False, "error": "geçersiz JSON"}, status=400)
+            # lang bilinemiyor (body hiç parse edilemedi) — iki dilde birden göster
+            self._json({"ok": False, "error": "geçersiz JSON / invalid JSON"}, status=400)
             return
+
+        lang = "en" if data.get("lang") == "en" else "tr"
 
         if path == "/api/layout":
             groups = data.get("groups", [])
@@ -1491,19 +1548,21 @@ class _Handler(BaseHTTPRequestHandler):
                 groups=[str(g) for g in groups],
                 claude_only=bool(data.get("claude_only", True)),
                 dry_run=bool(data.get("dry_run", False)),
+                lang=lang,
             ))
             return
 
         if path == "/api/new-chat":
             base = str(data.get("base", "")).strip()
             if not base:
-                self._json({"ok": False, "error": "base gerekli"}, status=400)
+                self._json(_err(lang, "base_required"), status=400)
                 return
             self._json(_new_chat(
                 base,
                 model=str(data.get("model", "")),
                 permission_mode=str(data.get("permission_mode", "")),
                 effort=str(data.get("effort", "")),
+                lang=lang,
             ))
             return
 
@@ -1512,13 +1571,14 @@ class _Handler(BaseHTTPRequestHandler):
                 name=str(data.get("name", "")),
                 cwd=str(data.get("cwd", "")),
                 model=str(data.get("model", "")),
+                lang=lang,
             ))
             return
 
         if path == "/api/adopt":
             old_name = str(data.get("name", "")).strip()
             if not old_name:
-                self._json({"ok": False, "error": "name gerekli"}, status=400)
+                self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_adopt(
                 old_name,
@@ -1526,12 +1586,13 @@ class _Handler(BaseHTTPRequestHandler):
                 model=str(data.get("model", "")),
                 permission_mode=str(data.get("permission_mode", "")),
                 effort=str(data.get("effort", "")),
+                lang=lang,
             ))
             return
 
         name = str(data.get("name", "")).strip()
         if not name:
-            self._json({"ok": False, "error": "name gerekli"}, status=400)
+            self._json(_err(lang, "name_required"), status=400)
             return
         if path == "/api/start":
             result = _start(
@@ -1540,17 +1601,18 @@ class _Handler(BaseHTTPRequestHandler):
                 permission_mode=str(data.get("permission_mode", "")),
                 effort=str(data.get("effort", "")),
                 fresh=bool(data.get("fresh", False)),
+                lang=lang,
             )
         elif path == "/api/stop":
-            result = _stop(name)
+            result = _stop(name, lang=lang)
         elif path == "/api/retire":
-            result = _retire(name)
+            result = _retire(name, lang=lang)
         elif path == "/api/close":
-            result = _close_project(name)
+            result = _close_project(name, lang=lang)
         elif path == "/api/handover":
-            result = _handover(name, lang=str(data.get("lang", "tr")))
+            result = _handover(name, lang=lang)
         else:
-            result = _reactivate_and_start(name)
+            result = _reactivate_and_start(name, lang=lang)
         self._json(result)
 
 

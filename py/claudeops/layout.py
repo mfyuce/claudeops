@@ -137,19 +137,27 @@ def _list_windows(display: str) -> Dict[str, str]:
 def _is_claude_window(title: str, known_names: Optional[Set[str]] = None) -> bool:
     """Pencere başlığı bir claude session'ı mı?
 
-    known_names verilirse title'dan çıkarılan ismin GERÇEK session olduğu doğrulanır
-    → ssh/vim gibi yanlış pozitif eşleşmeler elenir.
+    known_names verilirse title TAM OLARAK bir known_name'e eşit mi diye bakılır (regex
+    DEĞİL) → ssh/vim gibi yanlış pozitif eşleşmeler elenir. 2026-08-25'e kadar burada
+    `[a-z]+\\d+$` regex'i vardı (isim rakamla bitmek ZORUNDA) — ama 2026-06-28'de suffix
+    sistemi kaldırıldığından beri roster isimleri çıplak (`trino`, `co`, `hc`...) VEYA
+    çakışma-suffix'li (`rustrino20260825_1`, alt çizgi+rakamla biten) olabiliyor; eski
+    regex bunların HİÇBİRİNİ yakalamıyordu → layout bu pencereleri sessizce atlıyordu
+    (bulundu: trino handover sonrası çıplak "trino" adıyla açılınca layout'a hiç girmedi).
+    known_names verilmezse (nadir, geriye dönük uyum) eski regex-sezgisiyle karar verilir.
     """
-    m = re.search(r"([a-z]+\d+)$", title)
-    if not m:
-        return False
     if known_names is not None:
-        return m.group(1) in known_names
-    return True
+        return title in known_names
+    return bool(re.search(r"([a-z]+\d+)$", title))
 
 
-def _session_name_from_title(title: str) -> Optional[str]:
-    """Pencere başlığından session adını çıkar (ör. '✳ hc54' → 'hc54')."""
+def _session_name_from_title(title: str, known_names: Optional[Set[str]] = None) -> Optional[str]:
+    """Pencere başlığından session adını çıkar (ör. '✳ hc54' → 'hc54', ya da çıplak 'trino').
+
+    known_names verilirse title TAM eşleşme ile aranır (bkz. `_is_claude_window` notu).
+    """
+    if known_names is not None:
+        return title if title in known_names else None
     m = re.search(r"([a-z]+\d+)$", title)
     return m.group(1) if m else None
 
@@ -184,7 +192,7 @@ def build_layout_plan(
         if claude_only and not _is_claude_window(title, known_names=known_names):
             skipped += 1
             continue
-        name = _session_name_from_title(title)
+        name = _session_name_from_title(title, known_names=known_names)
         if name:
             name_to_wid[name] = wid
 

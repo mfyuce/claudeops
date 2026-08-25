@@ -41,13 +41,17 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   Aktif bir projeyi **kapat**mak (geçici) ya da **emekli et**mek (kalıcı) mümkün.
 - **Handover** — çalışan bir session'a wrap-up mesajı gönderir (dokümanları güncelle, commit+push et),
   aynı geçmişle (`--resume`) + bu mesaj ilk mesaj olarak yeniden başlatır. Panel o an hangi dildeyse
-  mesaj da o dilde gider.
-- **Roster dışındaki session'lar da görünür** — `--remote-control` ile açılmış ama hiç kayıt edilmemiş
-  (ör. elle açtığınız) her şey "kayıtsız" etiketiyle listede belirir, kısıtlı aksiyon setiyle
-  (durdur / handover / tek-tık kaydet — tam set değil).
+  mesaj da o dilde gider, model de o proje için roster'da tanımlı model (session'ın o an interaktif
+  olarak `/model` ile geçmiş olabileceği model değil).
+- **Roster dışındaki session'lar da görünür** — claudeops'un AÇMADIĞI ama çalışan her şey (ör. bir
+  proje klasöründe elle açtığınız çıplak `claude`) "kayıtsız" etiketiyle listede belirir, kısıtlı
+  aksiyon setiyle: durdur / handover / **devral** (seçtiğiniz isimle `--remote-control` ekleyip kaydet —
+  bu pencereyi kapatıp aynı geçmişle yenisini açar, çünkü claudeops zaten bu pencereyi kendisi açmamıştı).
 - **Layout** — pencereleri masaüstlerine dağıtır (`wmctrl`+`xdotool`, X11 only). Kilitli ekranda veya
   Wayland'da bozuk çalıştığı bilindiği için **otomatik pre-flight kontrol** var — kilitliyse reddeder.
   Eksik bağımlılık varsa (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`) uyarır, kurmaz (sudo gerektirir).
+  Kilitli ekran gerektiren TEK işlem bu — başlat/durdur/handover/devral/yeni-chat kilitli ekranda da
+  sorunsuz çalışır (telefondan panele bağlanırken masaüstün kilitli olması sorun değil).
 - **TR/EN** — tarayıcı diline göre otomatik seçilir (`navigator.language`), sağ üstteki butonlarla elle
   değiştirilip kalıcı hale getirilebilir (localStorage).
 - **Token korumalı** (`~/.claude/claudeops/web.token`, ilk çalıştırmada rastgele üretilir) — sayfa da
