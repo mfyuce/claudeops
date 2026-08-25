@@ -1172,7 +1172,7 @@ cmd_new() {
 }
 
 # ─────────────────────────────────────────────
-# CMD: handover [--dry-run] [--exclude=co,ulaksec] [--message=...]
+# CMD: handover [--dry-run] [--exclude=isim1,isim2] [--message=...]
 # Her session için (isimler base-name, suffix yok):
 #   1. Wrap-up mesajı gönder (Claude commit/push + MD update yapsın)
 #   2. Eski proc kill
@@ -1279,7 +1279,7 @@ cmd_handover() {
   local dry=0
   local message="$HANDOVER_MSG_DEFAULT"
   local mode="visible"   # visible (default) | headless (-p, no approval prompts visible)
-  local exclude="co,ulaksec"   # default: co (self) + ulaksec ASLA handover edilmez [[co-ulaksec-guard-yes-ho-no]]
+  local exclude=""   # 2026-08-25: isim-bazlı default hariç-tutma KALDIRILDI (seçim web panelinden/checkbox); self-koruma filter_not_self'te
   local force=0          # --force: skip/dirty/done/idle-only kontrollerini baypas, HEPSİNE gönder
   local do_layout=0      # --layout: tüm spawn'lar gittikten sonra layout çalıştır
   local layout_pin=""    # --pin=a,b: layout'a iletilecek pin listesi
@@ -1300,14 +1300,15 @@ cmd_handover() {
     esac
   done
 
-  # Suffix yok → tüm aktif fleet hedef (co/ulaksec exclude ile çıkar). Exclude base-name
-  # eşleşmesi: co58 gibi eski suffix'li adlar da yakalansın (^(co|ulaksec)[0-9]*$).
+  # Suffix yok → tüm aktif fleet hedef; --exclude verilirse isim+suffix
+  # varyantları da çıkar (^(isim)[0-9]*(_[0-9]+)*$). Self her zaman korunur
+  # (filter_not_self).
   local rows
   rows=$(all_sessions_tsv | filter_not_self)
   if [ -n "$exclude" ]; then
     local exclude_pat
     exclude_pat=$(echo "$exclude" | tr ',' '|')
-    rows=$(echo "$rows" | awk -F'\t' -v p="$exclude_pat" '$2 !~ "^("p")[0-9]*$"')
+    rows=$(echo "$rows" | awk -F'\t' -v p="$exclude_pat" '$2 !~ "^("p")[0-9]*(_[0-9]+)*$"')
   fi
   local total; total=$(echo "$rows" | grep -c '.')
   echo "=== handover ($mode):${exclude:+ exclude=$exclude;} $total session bulundu ==="
@@ -2192,7 +2193,7 @@ KULLANIM:
       session'ları yakalar — repo_dirty+jsonl tek başına bunları "idle-clean" sanıp
       ATLIYORDU. Baseline state: ~/.claude/claudeops/last-handover.ts (her ho'da güncellenir).
 
-  claudeops handover [--dry-run] [--exclude=co,ulaksec]
+  claudeops handover [--dry-run] [--exclude=isim1,isim2]
                      [--skip-msg] [--message=...] [--message-file=path]
                      [--force] [--timeout=1800]
       --force: skip kontrollerini (already-done / idle-only / dirty) baypas et,
