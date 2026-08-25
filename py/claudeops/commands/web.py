@@ -391,7 +391,8 @@ def _run_layout(pin: str, groups: list, claude_only: bool = True,
 
 def _status_payload() -> dict:
     fleet = _fleet_status()
-    running = {s.base: s for s in find_sessions(measure_cpu=True)}
+    all_live = find_sessions(measure_cpu=True)
+    running = {s.base: s for s in all_live}
     dups = duplicates(list(running.values()))
     ok, msg = validate_config()
 
@@ -413,6 +414,26 @@ def _status_payload() -> dict:
             "pid": s.pid if s else None,
             "cpu": round(s.cpu, 1) if s else None,
             "kind": ("fresh" if s.is_fresh else "resume") if s else None,
+            "registered": True,
+        })
+
+    # Canlı ama roster'da HİÇ olmayan session'lar (ör. bu panelin kendisi, ya da
+    # elle `--remote-control X` ile açılmış ad-hoc bir şey) — "kayıtsız" olarak
+    # göster, register edilene kadar sadece durdur/handover mümkün (start/close/
+    # retire roster satırı gerektirir). Kullanıcı: "cops... (bu session) web'den
+    # de yapabilmeliyim" isteğiyle eklendi.
+    for s in all_live:
+        if s.name in fleet or s.base in fleet:
+            continue
+        sessions.append({
+            "name": s.name,
+            "model": s.model or "?",
+            "cwd": s.cwd,
+            "running": True,
+            "pid": s.pid,
+            "cpu": round(s.cpu, 1),
+            "kind": "fresh" if s.is_fresh else "resume",
+            "registered": False,
         })
 
     return {
@@ -516,14 +537,18 @@ def _handover(name: str, lang: str = "tr") -> dict:
 
     needs_ho/batch YOK (kullanıcı elle, bilerek tetikliyor) — sadece kill+resume+prompt,
     handover.py'deki _spawn_faz1 ile AYNI spawn_session() çağrısı (env-leak fix dahil).
+    Roster GEREKMEZ (CLI'nin isimli-hedefleme mantığıyla aynı, [[handover]] 2026-08-25) —
+    kayıtlı değilse cwd/model canlı proc'tan (_find_running) alınır.
     """
     procs = _find_running(name)
     if not procs:
         return {"ok": False, "error": f"{name}: çalışmıyor"}
     fleet = _fleet_status()
     info = fleet.get(name)
-    if not info:
-        return {"ok": False, "error": f"{name}: tanımsız"}
+    if info:
+        cwd, model = info["cwd"], info["model"]
+    else:
+        cwd, model = procs[0].cwd, (procs[0].model or "claude-sonnet-5")
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     try:
         with guard_lock(timeout=5.0):
@@ -531,8 +556,8 @@ def _handover(name: str, lang: str = "tr") -> dict:
                 kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS)
             kind = spawn_session(
                 name=name,
-                cwd=info["cwd"],
-                model=info["model"],
+                cwd=cwd,
+                model=model,
                 display=detect_display(),
                 permission_mode="auto",
                 effort="max",
@@ -625,6 +650,8 @@ PAGE_HTML = """<!doctype html>
   button.retire { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
   button.closebtn { border-color: var(--muted); color: var(--muted); font-size: .78rem; padding: .3rem .5rem; }
   button.handover { border-color: var(--accent); color: var(--accent); font-size: .78rem; padding: .3rem .5rem; }
+  .unreg-badge { font-size: .65rem; color: var(--amber); border: 1px solid var(--amber);
+                 border-radius: 4px; padding: 1px 4px; margin-left: .3rem; cursor: help; }
   button.reactivate { border-color: var(--green); color: var(--green); }
   button.addtoggle { display: block; width: 100%; text-align: left; border-color: var(--accent); color: var(--accent); margin: .5rem 0; }
   button:disabled { opacity: .5; cursor: default; }
@@ -695,6 +722,8 @@ const T = {
     closeBtn: 'kapat', retireBtn: 'emekli et', handoverBtn: 'handover',
     handoverConfirm: (name) => `${name}: handover yapılsın mı? Session'a wrap-up mesajı gönderilir (CLAUDE.md/TODO.md/DONE.md güncellensin, commit+push edilsin diye), önce durdurulur sonra AYNI geçmişle (--resume) bu mesajla yeniden açılır. Yanıtı bekleyin, TAMAMLANMADAN tekrar durdurmayın.`,
     handingOver: 'handover gönderiliyor…',
+    registerBtn: 'kaydet', unregBadge: 'kayıtsız',
+    unregHint: 'roster.tsv\\'de kayıtlı değil (proc-scan\\'den bulundu) — kaydet\\'e basarsanız görünür/yönetilebilir kalıcı hale gelir',
     nothingRunning: `Hiçbir şey çalışmıyor — aşağıdaki "+ Ekle"den başlatın.`,
     addToggle: '+ Ekle', registeredClosed: 'kayıtlı, kapalı',
     closedToggle: 'Kapalı', retiredToggle: 'Emekli', layoutToggle: 'Layout',
@@ -745,6 +774,8 @@ const T = {
     closeBtn: 'close', retireBtn: 'retire', handoverBtn: 'handover',
     handoverConfirm: (name) => `${name}: run handover? Sends the session a wrap-up prompt (to update CLAUDE.md/TODO.md/DONE.md and commit+push), stopping it first and reopening it with the SAME history (--resume) plus this message. Wait for its reply — don't stop it again before it finishes.`,
     handingOver: 'sending handover…',
+    registerBtn: 'register', unregBadge: 'unregistered',
+    unregHint: 'not in roster.tsv (found via proc-scan) — click register to make it permanently visible/manageable',
     nothingRunning: `Nothing running — start something from "+ Add" below.`,
     addToggle: '+ Add', registeredClosed: 'registered, stopped',
     closedToggle: 'Closed', retiredToggle: 'Retired', layoutToggle: 'Layout',
@@ -878,23 +909,49 @@ function render(d) {
 }
 
 function sessionRow(s, d) {
+  const actions = s.registered === false
+    ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>
+       <button class="handover" onclick="doHandover('${s.name}', this)">${t('handoverBtn')}</button>
+       <button class="go" onclick="doQuickRegister('${s.name}','${s.cwd.replace(/'/g, "\\'")}','${s.model}', this)">${t('registerBtn')}</button>`
+    : `${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>` : ''}
+       <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? t('optionsBtn') : t('startBtn')}</button>
+       ${s.running ? `<button class="handover" onclick="doHandover('${s.name}', this)">${t('handoverBtn')}</button>` : ''}
+       <button class="closebtn" onclick="doClose('${s.name}', this)">${t('closeBtn')}</button>
+       <button class="retire" onclick="doRetire('${s.name}', this)">${t('retireBtn')}</button>`;
+  const nameCell = s.registered === false
+    ? `${s.name} <span class="unreg-badge" title="${t('unregHint')}">${t('unregBadge')}</span>`
+    : s.name;
   const row = `
     <tr>
-      <td>${s.name}</td>
+      <td>${nameCell}</td>
       <td>${s.model || ''}</td>
       <td><span class="dot ${s.running ? 'on' : 'off'}"></span>${s.running ? t('pidWord') + s.pid : t('stoppedWord')}</td>
       <td>${s.running ? s.cpu.toFixed(1) : '—'}</td>
       <td>${s.kind || '—'}</td>
       <td class="cwd" title="${s.cwd}">${s.cwd}</td>
-      <td><div class="actioncell">
-        ${s.running ? `<button class="stop" onclick="act('${s.name}','stop',this)">${t('stopBtn')}</button>` : ''}
-        <button class="start" onclick="toggleOpts('${s.name}')">${s.running ? t('optionsBtn') : t('startBtn')}</button>
-        ${s.running ? `<button class="handover" onclick="doHandover('${s.name}', this)">${t('handoverBtn')}</button>` : ''}
-        <button class="closebtn" onclick="doClose('${s.name}', this)">${t('closeBtn')}</button>
-        <button class="retire" onclick="doRetire('${s.name}', this)">${t('retireBtn')}</button>
-      </div></td>
+      <td><div class="actioncell">${actions}</div></td>
     </tr>`;
-  return optsFor === s.name ? [row, unifiedOptsRow(s, d)] : [row];
+  return (s.registered !== false && optsFor === s.name) ? [row, unifiedOptsRow(s, d)] : [row];
+}
+
+async function doQuickRegister(name, cwd, model, btn) {
+  btn.disabled = true;
+  btn.textContent = t('registerSaving');
+  try {
+    const r = await fetch(withToken('/api/register'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, cwd, model}),
+    });
+    if (r.status === 401) { alert(t('authErrorShort')); }
+    else {
+      const d = await safeJson(r);
+      if (!d.ok) alert(name + ': ' + d.error);
+    }
+  } catch (e) {
+    alert(t('requestFailed') + e.message);
+  }
+  refresh();
 }
 
 function toggleAddPanel() {
