@@ -496,9 +496,25 @@ def _needs_ho_cached(s) -> Optional[bool]:
 def _status_payload() -> dict:
     fleet = _fleet_status()
     all_live = find_sessions(measure_cpu=True)
-    running = {s.base: s for s in all_live}
-    dups = duplicates(list(running.values()))
+    dups = duplicates(all_live)
     ok, msg = validate_config()
+
+    # Canlı proc → roster satırı eşleme: önce TAM isim, sonra base (2026-08-26).
+    # Eski hali sadece base-keyed dict'ti; iki sorunu vardı: (1) tam-isim satırı
+    # olan proc (sase20260826) base satırını (sase) "running" gösteriyordu, kendi
+    # satırı "durmuş" görünüyordu; (2) base satırı yeniden adlandırılınca
+    # (sase→saseppr) canlı proc panelde tamamen GÖRÜNMEZ kalıyordu. Ayrıca
+    # base-dict aynı base'in ikinci proc'unu yuttuğu için duplicates() hiç
+    # tetiklenemiyordu — artık tüm canlı liste üzerinden sayılıyor.
+    active_names = {n for n, i in fleet.items() if i["state"] == "active"}
+    assigned = {}
+    for s in all_live:
+        if s.name in active_names:
+            assigned[s.name] = s
+    for s in all_live:
+        if s.name not in active_names and s.base in active_names and s.base not in assigned:
+            assigned[s.base] = s
+    assigned_pids = {s.pid for s in assigned.values()}
 
     sessions, closed, retired = [], [], []
     for name in sorted(fleet):
@@ -509,7 +525,7 @@ def _status_payload() -> dict:
         if info["state"] == "closed":
             closed.append({"name": name, "cwd": info["cwd"], "model": info["model"]})
             continue
-        s = running.get(name)
+        s = assigned.get(name)
         sessions.append({
             "name": name,
             "model": info["model"],
@@ -522,13 +538,11 @@ def _status_payload() -> dict:
             "registered": True,
         })
 
-    # Canlı ama roster'da HİÇ olmayan session'lar (ör. bu panelin kendisi, ya da
-    # elle `--remote-control X` ile açılmış ad-hoc bir şey) — "kayıtsız" olarak
-    # göster, register edilene kadar sadece durdur/handover mümkün (start/close/
-    # retire roster satırı gerektirir). Kullanıcı: "cops... (bu session) web'den
-    # de yapabilmeliyim" isteğiyle eklendi.
+    # Hiçbir AKTİF roster satırına bağlanamayan canlı session'lar (elle açılmış
+    # ad-hoc bir şey, ya da adı sadece kapalı/emekli bir satıra denk gelen proc) —
+    # "kayıtsız" olarak göster; hiçbir canlı proc panelde görünmez kalmasın.
     for s in all_live:
-        if s.name in fleet or s.base in fleet:
+        if s.pid in assigned_pids:
             continue
         sessions.append({
             "name": s.name,
