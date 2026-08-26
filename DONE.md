@@ -4,7 +4,7 @@
 
 ## 2026-08-26 (sase yeniden adlandırma + panel canlı-proc eşleme düzeltmesi)
 
-- ✅ **Registry: `sase` → `saseppr` yeniden adlandırıldı + `saseimpl` kaydedildi** (kullanıcı isteği; saseimpl = `.../backups/sase/sase_imp_paper`, paper'ın implementasyon klasörü). Rename elle TSV düzenlemeyle yapıldı (UI'de rename yok — TODO'ya eklendi); kayıt gerçek `_register_project` ile.
+- ✅ **Registry: `sase` → `saseppr` yeniden adlandırıldı + `saseimpl` kaydedildi** (kullanıcı isteği; saseimpl = `.../maya3/ng_sdn/sase/sdwan/ng_sdwan`, sase'nin implementasyon reposu — önce yanlışlıkla `sase_imp_paper`'a bağlanmıştı (o AYRI, henüz sırası gelmemiş bir proje), kullanıcı düzeltti). Rename elle TSV düzenlemeyle yapıldı (UI'de rename yok — TODO'ya eklendi); kayıt gerçek `_register_project` ile.
 - ✅ **Panel canlı-proc → roster-satırı eşlemesi düzeltildi (rename'in ortaya çıkardığı gerçek boşluk):** eski eşleme sadece base-keyed dict'ti — (1) tam-isim satırı olan canlı proc (`sase20260826`) base satırını (`sase`) "çalışıyor" gösteriyor, kendi satırı "durmuş" görünüyordu; (2) base satırı yeniden adlandırılınca canlı proc panelde TAMAMEN görünmez kalacaktı; (3) base-dict aynı base'in ikinci proc'unu yuttuğu için `duplicates()` banner'ı hiç tetiklenemiyordu. Yeni eşleme: önce TAM isim, sonra base; hiçbir aktif satıra bağlanamayan canlı proc her durumda "kayıtsız" olarak görünür (görünmez proc imkansız); dup sayımı tüm canlı liste üzerinden.
 
 ## 2026-08-25 (üçüncü tur: web panel TAB+checkbox revizyonu + HO_EXCLUDE kaldırıldı + base regex `_N`)
