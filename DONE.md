@@ -2,6 +2,11 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-08-26 (sase yeniden adlandırma + panel canlı-proc eşleme düzeltmesi)
+
+- ✅ **Registry: `sase` → `saseppr` yeniden adlandırıldı + `saseimpl` kaydedildi** (kullanıcı isteği; saseimpl = `.../backups/sase/sase_imp_paper`, paper'ın implementasyon klasörü). Rename elle TSV düzenlemeyle yapıldı (UI'de rename yok — TODO'ya eklendi); kayıt gerçek `_register_project` ile.
+- ✅ **Panel canlı-proc → roster-satırı eşlemesi düzeltildi (rename'in ortaya çıkardığı gerçek boşluk):** eski eşleme sadece base-keyed dict'ti — (1) tam-isim satırı olan canlı proc (`sase20260826`) base satırını (`sase`) "çalışıyor" gösteriyor, kendi satırı "durmuş" görünüyordu; (2) base satırı yeniden adlandırılınca canlı proc panelde TAMAMEN görünmez kalacaktı; (3) base-dict aynı base'in ikinci proc'unu yuttuğu için `duplicates()` banner'ı hiç tetiklenemiyordu. Yeni eşleme: önce TAM isim, sonra base; hiçbir aktif satıra bağlanamayan canlı proc her durumda "kayıtsız" olarak görünür (görünmez proc imkansız); dup sayımı tüm canlı liste üzerinden.
+
 ## 2026-08-25 (üçüncü tur: web panel TAB+checkbox revizyonu + HO_EXCLUDE kaldırıldı + base regex `_N`)
 
 - ✅ **Web panel UI revizyonu (kullanıcı isteği):** düz tek-sayfa yapı yerine **TAB sistemi** — Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout (aktif tab localStorage'da). Satırlarda **checkbox**, tablo üstünde **toplu işlem** butonları: handover / durdur / devre dışı bırak / emekli et — seçili isimlere SIRAYLA uygulanır (rate-limit dostu), onay diyaloğu isim listesi + işlem açıklamasıyla, ilerleme+hata satır satır raporlanır. Kayıtsız satırlar close/retire'dan otomatik atlanır (not düşülür). Kayıtlı sekmesinde de checkbox + devre dışı/emekli toplu butonları var; "+ yeni proje kaydet" formu bu sekmede.
