@@ -1,95 +1,62 @@
 # claudeops — Claude Context
 
-Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python tool (guard cron + handover bunu kullanır); **`./claudeops`** (bash) = layout + eski komutlar.
+Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python tool; **`./claudeops`** (bash) = layout + eski komutlar.
 
 ## Kritik kısıtlar
 
 - **stdin/pty**: `< /dev/null` her `-p`'de zorunlu. Spawn: `gnome-terminal -- bash -c "claude ...; exec bash"`. Detached: `script -qfc`. `nohup &` yetmez.
-- **VTE rejection**: synthetic key REDDEDİLİR. Güvenilir prompt = CLI argümanı: `-n NAME --remote-control NAME 'PROMPT'`. `-n` display, `--remote-control` RC bridge; aynı sid resume → cache'li, değiştirmek için `--new`.
-- **xdotool**: `windowmove` → **`--sync` YOK** (hang). `--claude-only`: sadece aktif RC proc'larını tile'la.
-- **claude 2.1.169**: fresh `--new` session'lar `sessions/<pid>.json` YAZMIYOR → guard DUP. Fix: proc-scan. [[claude-2169-session-detection]]
-- **claude 2.1.183 KILL=TRUNCATE**: yeni storage **lazy-checkpoint** (ara ara yazar). Kill'de flush için ~2s gerek → `SIGTERM`→`SIGKILL` **<2s = konuşma TRUNCATE**. **Kural: hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL** (sweep 8s grace). Temiz reboot/shutdown 90s grace verir → flush eder (güvenli); **ani kapanma/sert-OOM = son mesajlar gider** (iş git'te güvende, sadece transkript). [[claude-2183-conversation-truncation]] [[reboot-recovery]]
-- **1M context**: `[1m]` suffix → beta header. **Opus + Sonnet [1m] KAPALI** (token kısıtı). [[model-1m-context]]
-- **spawn env-leak → transcript kapanır**: `co` (ya da herhangi bir claude session) kendi Bash tool'undan `rc`/`guard`/`handover`/`web` çalıştırırsa, spawn edilen YENİ session `CLAUDE_CODE_CHILD_SESSION` vb. miras alır → kendini "child" sanıp **transcript kaydını sessizce kapatır** (TUI uyarısı: "Transcript saving is off"). `spawn.py` artık `CLAUDE*` env'i filtreliyor (2026-08-24 fix, tüm spawn-yolları kapsar). [[spawn-env-leak-disables-transcript]]
-- **spawn zombie-child → uzun yaşayan `py/cops web`'de spawn sessizce başarısız olmaya başlar**: `spawn_session()`'ın açtığı `gnome-terminal` client'ı `.wait()` edilmezse zombie kalır; saatlerce ayakta kalan web server process'inde biriktikçe yeni pencere açma güvenilirliği düşer (taze restart hep düzeltir — 2026-08-25'te "sase gelmedi"/"rustrino handover kapattı ama açmadı" gibi tuhaflıkların KÖK SEBEBİ buydu, kilitli-ekran DEĞİLDİ). Fix: spawn sonrası proc'u ayrı bir daemon thread'de `.wait()` ile reap et (global SIGCHLD=SIG_IGN YAPMA — `layout`'un `subprocess.run` çağrılarını bozar). [[spawn-zombie-child-degrades-web-server]]
+- **VTE rejection**: synthetic key REDDEDİLİR. Güvenilir prompt = CLI argümanı: `-n NAME --remote-control NAME 'PROMPT'`. Aynı sid resume → cache'li, değiştirmek için `--new`.
+- **xdotool**: `windowmove` → **`--sync` YOK** (hang).
+- **claude 2.1.169**: fresh `--new` session'lar `sessions/<pid>.json` yazmıyor → keşif proc-scan'le. [[claude-2169-session-detection]]
+- **claude 2.1.183 KILL=TRUNCATE**: lazy-checkpoint storage; kill'de flush için zaman gerek → **hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL**. Ani kapanma/sert-OOM = son mesajlar gider (iş git'te güvende, sadece transkript). [[claude-2183-conversation-truncation]] [[reboot-recovery]]
+- **1M context**: `[1m]` suffix → beta header; şu an KAPALI (token kısıtı). [[model-1m-context]]
+- **spawn env-leak**: claude session'ı kendi Bash tool'undan spawn tetiklerse `CLAUDE_CODE_CHILD_SESSION` sızar → yeni session transcript kaydını sessizce kapatır. `spawn.py` `CLAUDE*` env'i filtreliyor (2026-08-24). [[spawn-env-leak-disables-transcript]]
+- **spawn zombie-child**: gnome-terminal client'ı reap edilmezse uzun yaşayan `py/cops web`'de zombie birikir → spawn sessizce güvenilmezleşir. Fix: daemon thread'de `.wait()` (global SIGCHLD=SIG_IGN YAPMA — layout'un subprocess.run'ını bozar). Fallback: kısa-ömürlü CLI'dan spawn hep güvenilir. [[spawn-zombie-child-degrades-web-server]]
 - **Security**: ulaksec → "dokunma". `~/.cache/huggingface` 29G KORU. Commit öncesi kullanıcı onayı.
 
-## Model (`~/.claude/claudeops/models.tsv`)
+## Roster / model (`~/.claude/claudeops/{roster,models}.tsv` — repo DIŞI, kaynak-of-truth)
 
-- **2026-08-24: Claude 5 ailesine geçildi + split GERİ alındı (kullanıcı kararı).** Tüm 27 aktif isim şu an **`claude-sonnet-5`** (opus-5 migration anında 529/Overloaded veriyordu + kullanıcı "şimdilik sonnet olsun" dedi — basit+ucuz tutuldu). Coding/Paper ayrımı isim-gruplaması olarak hâlâ anlamlı (ne iş yaptığını gösterir), model kolonunda artık FARK YOK:
-  - **Coding 15** (hc hcr mo vrk oiso rustrino trino anomaly evolvi done mamut hof iggy vc asp) — **trino+oiso** 2026-08-24'te eklendi. trino: cwd `.../monitoring/ulak-presto-connectors` (Presto/Trino Quickwit connector — rustrino'dan AYRI proje, isim benzerliği tesadüf); kullanıcı elle açmıştı (`trino20260823`), roster'a temiz base-isimle kaydedildi, proc canlıyken kill/respawn EDİLMEDİ (Session.base regex tarih-suffix'i otomatik indirger, hc58→hc gibi). oiso: cwd `tmp/offlinek8siso` (offline k8s ISO tool), o an çalışmıyordu → sadece register edildi, spawn edilmedi.
-  - **Paper 13** (aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot line) — **line** 2026-08-24 eklendi: cwd `.../backups/llm/NN_lineart_cuneiform_vlm` (asp'la aynı `llm/` klasörü altında), o an çalışmıyordu → sadece register edildi.
-  - İstenirse tekrar split (paper→opus-5): `sed -i 's/claude-sonnet-5/claude-opus-5/' ~/.claude/claudeops/{models,roster}.tsv` ile paper isimlerini elle geri çevir (opus-5 tekrar dolu/overloaded olabilir — önce tek isimle test et).
-- **co**(self) + **cops**(self, 2026-08-25 roster'a kaydedildi) + **ulaksec** models.tsv'de AKTİF (guard ayakta tutsun — istenen). **HO_EXCLUDE isim-listesi 2026-08-25'te KALDIRILDI** (kullanıcı kararı: "hariç tutulma kısımlarını silelim, UI'ye checkbox") — toplu handover/rc'de hedef seçimi artık web panel checkbox'larıyla; tek kalan koruma **process-bazlı self-koruma** (`ancestor_pids()`: komutun içinden çalıştığı claude session'ı isimle bile hedeflense atlanır, py handover+rc; bash'te `filter_not_self`). ulaksec'e yine elle dokunma (güvenlik kuralı) — artık kod değil, dikkat koruyor. [[co-ulaksec-guard-yes-ho-no]]
-- **EMEKLİ:** rr gedikvm gedikido kulturiot. **KAPALI:** mecdtfl carla. **`py/cops close <name>`** = kill (proc+terminal) + models.tsv yorumla → guard AÇMAZ (guard çıktısı `⊘ kapalı: ...`). Açmak: models.tsv'de `#` elle kaldır.
+- Tüm isimler **`claude-sonnet-5`** (2026-08-24 Claude 5 geçişi; opus split geri alındı — istenirse `sed -i 's/claude-sonnet-5/claude-opus-5/'` ile grup bazında geri, önce tek isimle test; TOBEDECIDED Kapatılmış #7).
+- **İsimler base-name** (suffix yok, 2026-06-26). `Session.base` tarih+`_N` suffix'lerini indirger: `cops20260824_1`→`cops` (2026-08-25). Panel eşlemesi önce TAM isim, sonra base (2026-08-26) — tarih-isimli satırlar kendi satırında görünür, görünmez canlı proc imkansız.
+- **co + cops** (self) + **ulaksec** aktif (guard ayakta tutsun). **HO_EXCLUDE isim-listesi KALDIRILDI (2026-08-25)** — toplu işlem hedefi panel checkbox'larıyla; tek koruma process-bazlı self-koruma (`ancestor_pids()` py handover+rc; bash `filter_not_self`). ulaksec'i artık sadece dikkat koruyor. [[co-ulaksec-guard-yes-ho-no]]
+- Kapalı/emekli satırlar `#`'lı. `py/cops close <name>` = kill + models.tsv yorumla; geri: panel "tekrar işe al". **Temizlik bekliyor:** tarih-isimli çöp satırlar (rustrino*/line*/trino*/sase* tarihli) — kullanıcıya sorup birleştir/sil.
 
-## Fleet kontrolü — artık MANUEL (2026-08-24 karar)
+## Fleet kontrolü — MANUEL (2026-08-24 karar)
 
-**Guard cron ŞU AN DEVRE DIŞI** (crontab'da 3 satır da `#`'lı — bilerek, OOM'dan değil, kullanıcı tercihinden: "hepsini açmam, gerektiğinde web'den başlatırım"). Cron açık olsaydı her dakika TÜM roster'ı (27 isim) eksik görüp hepsini spawn ederdi — bu artık istenmiyor. **Tekrar açma:** `crontab -e`, ilgili 3 satırın başındaki `#`'ları kaldır (yorum satırları hariç, sadece komut satırı: `* * * * * .../py/cops guard ...`).
-
-**`py/cops web [--port 8765] [--tunnel]`** — yerel kontrol paneli. **2026-08-25 UI revizyonu:** TAB'lı yapı (Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout) + satır **checkbox'ları** + tablo üstünde **toplu işlem** butonları (handover / durdur / devre dışı bırak / emekli et — seçililere sırayla uygulanır, legend'la açıklamalı; "close" adı kafa karıştırdığı için UI'de "devre dışı bırak" oldu, API/CLI adı `close` kaldı). Çalışanlar tablosunda **ho? kolonu** (needs_ho, 30s cache) + "needs-ho seç" butonu. Başlat seçenekleri (devam/sıfırla/yeni chat, model/permission-mode/effort) satır-içi "seçenekler ▾"de; "devral" kayıtsız satırlarda. Ayrıca **layout** (`/api/layout`, pin/group/claude-only/dry-run) panelde — kilitli-ekran pre-flight OTOMATİK (`_screen_locked`, TODO kapandı), wmctrl/xdotool eksikse apt komutu önerir (sudo istediği için oto kurulmaz). Token-gated (`~/.claude/claudeops/web.token`) — `--tunnel` ile `cloudflared` quick-tunnel (eksikse `~/.local/bin`'e OTO indirilir, Linux only). Foreground — Ctrl-C ile server+tünel kapanır; arka planda: `nohup ... & disown`.
-**2026-08-24: repo PUBLIC (MIT LICENSE) — `github.com/mfyuce/claudeops`.** Açık-kaynak öncesi içerik taraması yapıldı (TOBEDECIDED Kapatılmış #5): secret/IP yok, roster/models/token zaten repo dışında (`~/.claude/claudeops/`).
-⚠ Web'in Stop'u ve `py/cops kill`/`rc --kill-first` artık **parent bash'i de öldürür** (`kill_session_and_parent`, TODO-b kök-sebep fix, 2026-08-24) — eskiden sadece claude proc'u ölür, `exec bash`'e düşen terminal orphan kalırdı.
+- **Guard cron KASITLI kapalı** (crontab'da 3 satır `#`'lı). Kullanıcı web'den tek tek yönetiyor — **sen açma**, sormadan toplu spawn YAPMA. [[feedback-manual-fleet-control]]
+- **`py/cops web [--port 8765] [--tunnel]`** — TAB'lı panel (Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout, 2026-08-25 revizyonu): satır checkbox'ları + toplu işlemler (handover/durdur/devre dışı bırak/emekli et), **ho?** kolonu + "needs-ho seç", satır-içi başlat seçenekleri, kayıtsızlara "devral", "+ yeni proje kaydet" formu Kayıtlı sekmesinde. UI "devre dışı bırak" = API/CLI `close`. Layout sekmesi kilitli-ekran pre-flight'lı. Token-gated; `--tunnel` = cloudflared. Detay: `py/README*.md`.
+- **Repo PUBLIC** (MIT, github + gitlab mirror) — roster/models/token repo dışında. Kullanıcı: "dünyaya açığız, DONE/TODO/changelog önemli" → kayıtları özenli tut.
+- Web Stop / `py/cops kill` / `rc --kill-first` parent bash'i de öldürür (`kill_session_and_parent`).
 
 ## Handover (3-fazlı)
 
-**İsimler base-name (suffix YOK, 2026-06-26):** hc, co, mo... Handover = aynı isimle kill+respawn (bump yok).
-
-```
-# Faz 1  (⚠ TÜM fleet'e AYNI ANDA = sunucu rate-limit → blank-TUI hang; py/cops batch'ler [[mass-faz1-ratelimit-stuck]])
-py/cops handover [--dry-run]   # tüm fleet (self otomatik korunur; isim-bazlı hariç-tutma kalktı), aynı isimle wrap-up
-
-# Faz 2 — ⚠ Faz1 SAĞLIKLI? (RFH var, 503/529 yok) → değilse DUR, kullanıcı onayı şart.
-# ⚠ py/cops rc KULLAN (bash ./claudeops rc cwd'yi CANLI session'dan alır → yanlış cwd; py roster'dan alır [[bridge-batch-spawn-ratelimit]]).
-# TEK-TEK; config doğrula: python3 -c "import json;json.load(open('$HOME/.claude.json'))"
-# İsimler base-name (suffix yok); --new → fresh, aynı isimle açılır (remote'da kaymaz):
-py/cops rc hc hcr mo vrk oiso rustrino trino anomaly evolvi done mamut hof iggy vc asp \
-  --new --kill-first --model='claude-sonnet-5' --permission-mode=auto --effort=max --one-by-one
-py/cops rc aggroot oa hms hve qve rve emrgence araroot gencmuh marwan sase trroot line \
-  --new --kill-first --model='claude-sonnet-5' --permission-mode=auto --effort=max --one-by-one
-# ⚠ 2026-08-24: split kalktı, ikisi de sonnet-5 (opus-5 o an overloaded'dı) — opus'a dönmek
-# istersen ikinci komutta --model='claude-opus-5' yaz (önce tek isimle test et, TOBEDECIDED Kapatılmış #7).
-# ⚠ Bridge rate-limit: 25 session aynı anda → 0 TCP. 4'er batch + 20s ara, TCP doğrula [[bridge-batch-spawn-ratelimit]].
-
-# Faz 3 — 27 session → önce `claudeops desktops 8`. Faz1-respawn sonrası 2× çalıştır (1. pass settle olmaz). Doğrula `xwininfo` (wmctrl 2× YALAN).
-./claudeops layout grid 4 --claude-only --pin=co,rustrino,anomaly,iggy --group=hc,hcr,evolvi --group=vc,vrk
-```
-⚠ `[1m]` **tek tırnak ŞART** (shell glob). Target **SPACE-separated** (virgül parse bug). `--group=` base-name.
-⚠ **Faz2 `--prompt` VERME → session'lar boş/idle başlar** (2026-06-24, [[faz2-new-session-devam]]).
-⚠ **Faz3 ÖNCESİ** `loginctl show-session <id> -p LockedHint`=no doğrula — kilitliyse layout BOZUK, DUR [[layout-needs-unlocked-screen]].
-**Skip kriteri:** RFH var + son RFH'den sonra yeni istek yok + repo temiz+pushed (github+gitlab).
-Detay: [[handover-procedure]] [[handover-edge-cases]] [[feedback-ho-stop-on-error]] [[config-corruption-resume-hang]]
+- **Faz 1:** `py/cops handover [--dry-run]` — batch'li (mass aynı anda = rate-limit → blank-TUI [[mass-faz1-ratelimit-stuck]]); self (komutun atası) otomatik atlanır.
+- **Faz 2:** Faz1 sağlıksızsa (503/529) DUR, kullanıcı onayı şart. `py/cops rc <isimler SPACE'li> --new --kill-first --model='claude-sonnet-5' --permission-mode=auto --effort=max --one-by-one` (bash rc DEĞİL — py cwd'yi roster'dan alır). `--prompt` VERME (boş başlasınlar [[faz2-new-session-devam]]). Config doğrula: `python3 -c "import json;json.load(open('$HOME/.claude.json'))"`. Bridge rate-limit: 4'er batch + 20s [[bridge-batch-spawn-ratelimit]].
+- **Faz 3:** ÖNCE `loginctl show-session <id> -p LockedHint`=no doğrula [[layout-needs-unlocked-screen]]. `./claudeops layout grid 4 --claude-only --pin=... --group=...` — 2× çalıştır, `xwininfo` ile doğrula (wmctrl 2× yalan). `[1m]` tek tırnak; target SPACE-separated.
+- **Skip kriteri:** RFH var + sonrasında yeni istek yok + repo temiz+pushed (github+gitlab).
+- Detay: [[handover-procedure]] [[handover-edge-cases]] [[feedback-ho-stop-on-error]] [[config-corruption-resume-hang]]
 
 ## Sınırlamalar / açık bug'lar
 
-Wayland: layout çalışmaz. Terminal: gnome-terminal hard-coded. `rc --kill-first` permission modal keser.
-Target virgül parse yok (SPACE kullan). Layout orphan terminal slot işgal. Tam liste: TODO.md.
+Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE). Tam liste: TODO.md. Açık tasarımlar (karar bekliyor, implement ETME): TOBEDECIDED **#10 agy/Antigravity-CLI entegrasyonu**, **#11 tmux-backed web-CLI**.
 
 ## Meta
 
 `DONE.md` = CHANGELOG. Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
-## READY FOR HANDOVER (2026-08-25, güncellenmiş — aynı gün ikinci tur)
+## READY FOR HANDOVER (2026-08-27)
 
-**DURUM:** Fleet küçük, manuel kontrol altında (guard cron kasıtlı devre dışı). Şu an çalışanlar: `line`, `sase`, `trino`, `rustrino20260825_1`, `cops20260824` (bu session, roster dışı/kayıtsız). Config VALID, DUP yok. Web paneli (`py/cops web`, port 8765) + cloudflared tüneli ayakta ve doğrulandı. **Roster'da rustrino için 4 satır birikti** (`rustrino`, `#rustrino20260824` emekli, `rustrino20260825` durmuş, `rustrino20260825_1` çalışıyor) — bu session'daki test döngülerinden çöp, kullanıcıya sorup temizlenebilir.
+**DURUM:** Fleet manuel kontrolde (guard cron kasıtlı kapalı). Çalışanlar: `cops` (bu session, `cops20260824_1` proc'u), `line20260825`, `rustrino20260826`, `sase20260826`, `saseimpl`, `trino20260826_1`. Roster: 21 aktif / 21 devre dışı / 7 emekli; config VALID, DUP yok. Panel (8765) + cloudflared tüneli ayakta; kullanıcı paneli aktif kullanıyor (toplu devre-dışı, handover, saseimpl start hep panelden yapıldı).
 
-**Bu session'da olan (çok uzun, yoğun bir debug + özellik turu — hepsi commit+push'lu, DONE.md'de detay):**
-1. **KÖK SEBEP bulundu+düzeltildi:** `spawn_session()` açtığı gnome-terminal client'ını hiç reap etmiyordu → uzun yaşayan `py/cops web` process'inde zombie birikip yeni pencere açmayı SESSİZCE bozuyordu (kilitli-ekran teorisi kovalandı, YANLIŞ çıktı, geri alındı). Fix: arka plan thread'de `.wait()`.
-2. `_start`/`_new_chat`/`_handover`/`_adopt` artık spawn sonrası proc gerçekten göründü mü diye doğruluyor (önceden sessizce "başarılı" yalanı söylüyordu).
-3. Yeni **"devral" (adopt)** özelliği: claudeops'un açmadığı (bare/kayıtsız) session'ları remote-control ekleyip kaydetme.
-4. **"cops" bulmacası çözüldü:** uzun-yaşayan daemon'dan spawn ara sıra tutmuyordu, ama BU Bash tool'dan (kısa-ömürlü CLI çağrısı) yapılan spawn HEP güvenilirdi — kullanıcı önerisiyle ("başka bir CLI başka bir CLI açabiliyor") pratik desen: güvenilmez uzun-yaşayan daemon yerine kısa-ömürlü CLI'dan tetikle. Bu arada kilit-ekran teorisi bir kez daha (kesin olarak) yanlışlandı: kilitliyken yapılan bir CLI-spawn sorunsuz çalıştı.
-5. Kilit-ekran ön-kontrolü `_start`/`_new_chat`/`_handover`/`_adopt`'tan kaldırıldı (sadece `_run_layout`'ta kaldı, orada hâlâ geçerli — Mutter pencere-TAŞIMA sorunu, pencere-AÇMA değil).
-6. **`layout.py`'de gerçek, muhtemelen aylardır var olan bir bug bulundu+düzeltildi:** pencere-eşleme regex'i (`[a-z]+\d+$`) çıplak isimleri (trino, co, hc...) ve alt-çizgili isimleri (`rustrino20260825_1`) HİÇ yakalamıyordu (suffix sistemi 2026-06-28'de kaldırıldığından beri roster'ın ÇOĞU böyle) — artık `known_names` ile TAM eşleşme yapıyor.
-7. **Backend API hata mesajları artık gerçekten iki dilli:** 37 hata mesajı hardcoded Türkçe idi, panel EN'e çevrilse bile hep TR dönüyordu — `ERR` sözlüğü + `lang` parametresi ile düzeltildi.
-8. README'ler (EN+TR, root+py/) güncellendi: devral/adopt, cwd tıkla-genişlet, kilit-ekranın ARTIK engel olmadığı bilgisi.
+**Bu session'da (25-27 Ağu, hepsi commit+push'lu, DONE.md'de detay):**
+1. **cops roster'a kaydedildi**; register hata mesajı artık çakışma kaynağını ayırt ediyor (`conflicts_running` — "retired'da var" yanılgısı bitti).
+2. **Panel UI revizyonu:** TAB + checkbox + toplu işlemler + ho? kolonu + "needs-ho seç"; "close" UI'de "devre dışı bırak" oldu (API adı değişmedi). README'ler (EN+TR) + ekran görüntüleri yenilendi.
+3. **HO_EXCLUDE isim-listesi kaldırıldı** (kullanıcı kararı) → process-bazlı self-koruma (`ancestor_pids()`); ulaksec artık sadece dikkatle korunuyor.
+4. **`Session.base` `_N` suffix indirgeme** + **panel canlı-proc eşlemesi tam-isim öncelikli** (rename sonrası görünmez-proc riski kapandı; duplicates() artık gerçekten çalışıyor).
+5. **sase → saseppr** rename (elle TSV — UI'de rename yok, TODO'da tasarımıyla kayıtlı); **saseimpl** = `.../maya3/ng_sdn/sase/sdwan/ng_sdwan` kaydedildi (`sase_imp_paper` AYRI, sırası gelmemiş bir proje — karıştırma).
+6. **TBD #10 (agy/Antigravity CLI) + #11 (tmux web-CLI)** tasarım taslakları yazıldı — kullanıcı "biraz daha konuşalım" dedi, KARAR YOK, implement etme.
 
-**AÇIK (küçük, acil değil):** TODO.md'de not edildi — uzun-yaşayan web daemon zombie-fix'ten sonra bile teorik olarak zamanla tekrar güvenilmezleşebilir (garantisi yok, sadece azaltıldı); kalıcı çözüm (periyodik oto-restart ya da fork-per-spawn) düşünülebilir ama acil değil, pratik fallback (kısa-ömürlü CLI'dan spawn) yeterli.
-
-**Yeni session yapacaklar:**
-1. MEMORY.md oku — özellikle [[spawn-zombie-child-degrades-web-server]] + [[layout-needs-unlocked-screen]] (hâlâ geçerli ama SADECE `layout` için, genel spawn için değil — karıştırma).
-2. Roster'daki rustrino çöp satırlarını kullanıcıya sorup temizle (hangisi kalıcı isim olsun).
-3. Guard cron'u hâlâ sen açma — kullanıcı açıkça istemedikçe.
-4. Bu session (`cops20260824`) kullanıcı tarafından kapatılıp yeni bir session'la devam edilecek — bu normal, panik yok, kill'i BEN tetiklemedim (self-kill riski, kullanıcı elle yapacak).
+**Yeni session yapacaklar:** (1) MEMORY.md oku. (2) Guard cron'u açma. (3) Tarih-isimli çöp roster satırlarını kullanıcıya sorup temizle. (4) TBD #10/#11 tartışması sürüyor — kullanıcı karar verince başla. (5) Bu session'ı kullanıcı kapatacak (self-kill yapma).
 
 READY FOR HANDOVER
