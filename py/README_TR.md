@@ -49,6 +49,11 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   butonları). `tmux` gerekir (`sudo apt install tmux`) — kurulu değilse session'lar yine sorunsuz açılır,
   sadece buton görünmez. Sadece tmux desteği eklendikten SONRA (yeniden) açılan session'lar bu butonu
   kazanır; hâlâ çalışan düz bir session bir sonraki respawn'da (handover/devral/durdur+başlat) kazanır.
+  Gördüğünüz tmux'un kendi scrollback'i, CLI'ın kendi ekran çizimi değil — gerçek bir terminal
+  penceresinde kaydırmaya göre biraz kayma normal (bilinen ince kusur, iyileştiriliyor), ama session her
+  iki durumda da tamamen ulaşılabilir ve yönlendirilebilir kalır. Bu aynı zamanda bu butonu **her**
+  CLI backend için çalıştıran şey — kendi uzaktan-erişim özelliği olmayan biri (agy'de yok) için bile —
+  session'ı ulaşılabilir kılan claudeops'un kendi tmux katmanı, alttaki CLI'nın bunu desteklemesi gerekmiyor.
 - **Kayıtlı** — kayıtlı-ama-durmuş projeler; **devam ettir** / **sıfırla (--new)** / **ayrı yeni chat
   aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız. **Yeni proje
   kaydet** formu (isim + klasör + model) bu sekmenin altında — elle dosya düzenlemeden roster'a ekler.
@@ -59,6 +64,9 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   SABİTTİR — küçük bir rozet olarak gösterilir, değiştirilemez (yabancı bir proc'u devralmak onun
   zaten hangi CLI olduğunu korur — "bir claude proc'unu agy olarak devral" diye bir şey yok). claudeops'un
   isim vermediği bare `agy` proc'u `agy-<pid>` olarak görünür, diğer kayıtsız session'lar gibi devralınabilir.
+  Şu anki seçenekler `claude` ve `agy`; arkasındaki provider mimarisi (aşağıda "Nasıl çalışır") gelecekte
+  bir backend daha eklemeyi — mesela GitHub Copilot CLI, ya da başka herhangi bir CLI-tabanlı kodlama
+  ajanı — bir provider dosyası daha yazmak haline getiriyor, yeniden yazım değil.
 - **Devre dışı / Emekli** — geçici durdurulmuş / tamamen bırakılmış projeler; "tekrar işe al"la geri gelir.
 - **Handover** — seçili çalışan session'lara wrap-up mesajı gönderir (dokümanları güncelle, commit+push
   et), her birini aynı geçmişle (`--resume`) + bu mesaj ilk mesaj olarak yeniden başlatır. Panel o an
@@ -117,6 +125,8 @@ Bilinmesi gerekenler:
   başlatıp durdurabilir. Herkese açık paylaşmayın, ekran paylaşımında görünür bırakmayın.
 - Her seferinde değişmeyen bir URL isterseniz, `--tunnel`'ın quick-tunnel'ı yerine kendi domain'inizde
   bir Cloudflare **named tunnel** kurmanız gerekir — claudeops bunu varsayılan olarak kurmuyor.
+- Quick tunnel şu an panele LAN dışından ulaşmanın tek yolu; ileride kendi barındırdığınız/kalıcı bir
+  server seçeneği eklenebilir.
 
 **Telefondan bir session'a ulaşmanın ikinci, bağımsız bir yolu daha var:** claudeops'un açtığı her
 session `--remote-control` kullanıyor — bu Claude Code'un kendi yerleşik özelliği, dolayısıyla resmi

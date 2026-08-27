@@ -48,7 +48,11 @@ The easiest way to use this; everything from the browser:
   poll, plus Ctrl-C/Esc/arrow-key buttons). Requires `tmux` (`sudo apt install tmux`) — without it,
   sessions still start fine, just without the button. Only sessions (re)opened *after* tmux support was
   added get it; a currently-running plain session picks it up the next time it's respawned
-  (handover/adopt/stop+start).
+  (handover/adopt/stop+start). What you see is tmux's own scrollback, not the CLI's native screen redraw
+  — a bit of drift versus scrolling in a real terminal window is expected (rough edge, being improved),
+  but the session stays fully reachable and controllable either way. This is also what makes it work for
+  **any** CLI backend, even one with no remote-access feature of its own (agy has none) — claudeops's own
+  tmux layer is what makes a session reachable, not something the underlying CLI has to support.
 - **Registered** — registered-but-stopped projects; start one with **resume** / **reset (--new)** /
   **start a separate new chat** (auto-dated name, with model/permission-mode/effort options). The
   **register new project** form (name + folder + model) lives at the bottom of this tab — adds to the
@@ -58,7 +62,10 @@ The easiest way to use this; everything from the browser:
   automatically (agy's model list is fetched live from `agy models`, not hardcoded). A session's CLI is
   fixed once running — shown as a small badge, not editable (adopting a foreign process keeps whatever
   CLI it already was; you can't "adopt a claude process as agy"). A bare `agy` process with no name
-  claudeops gave it shows up as `agy-<pid>`, adoptable like any other unregistered session.
+  claudeops gave it shows up as `agy-<pid>`, adoptable like any other unregistered session. Today's
+  choices are `claude` and `agy`; the provider architecture behind this (see "How it works" below) is
+  what makes adding a future backend — say, GitHub Copilot CLI, or any other CLI-based coding agent —
+  a matter of writing one more provider file, not a rewrite.
 - **Disabled / Retired** — temporarily stopped / fully abandoned projects; come back with "reactivate".
 - **Handover** — sends the selected running sessions a wrap-up prompt (update their docs, commit, push),
   restarting each with `--resume` (same history) plus that message as the first turn. Uses the message
@@ -118,6 +125,8 @@ A few things worth knowing:
   address bar, on purpose).
 - Want a URL that doesn't change every time? That needs a Cloudflare **named tunnel** on your own domain
   instead of `--tunnel`'s quick tunnel — not set up by claudeops by default.
+- The quick tunnel is today's only way to reach the panel from outside your LAN; a self-hosted/persistent
+  server option may be added later.
 
 **There's a second, independent way to reach a session from your phone:** every session claudeops opens
 uses `--remote-control`, which is Claude Code's own built-in feature — so it also shows up in the
