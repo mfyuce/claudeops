@@ -37,6 +37,7 @@ from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
+from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, ROSTER_TSV, VENDOR_DIR
 from ..spawn import spawn_session, detect_display, find_latest_jsonl
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
@@ -386,7 +387,12 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     info = fleet.get(base)
     if not info:
         return _err(lang, "base_not_in_roster", base=base)
-    new_name = _generate_new_chat_name(base)
+    # base zaten tarih-suffix'li bir satırdan tıklanmışsa (ör. "saseppr20260827_1"
+    # satırında "yeni sohbet"), tarihi olduğu gibi soneke eklemek KENDİ ÜSTÜNE
+    # katlanır ("saseppr20260827_120260827", tekrarında daha da uzar). Session.base
+    # ile aynı indirgeme (hc58→hc, cops20260824_1→cops) burada da uygulanıp gerçek
+    # kısa base'e dönülür — 2026-08-27 saseppr'da canlı bulundu.
+    new_name = _generate_new_chat_name(Session(name=base, pid=0).base or base)
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
     chosen_model = model.strip() or info["model"]
     _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model, chosen_cli])
