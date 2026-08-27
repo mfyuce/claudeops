@@ -43,10 +43,22 @@ The easiest way to use this; everything from the browser:
 - **stop vs disable vs retire** — *stop* kills only the process/window (the project stays registered —
   resume it from the Registered tab); *disable* also keeps automation (guard) from reopening it (moves
   to the Disabled tab, reversible); *retire* archives it (Retired tab, comes back via "reactivate").
+- **Terminal** — a **Terminal** button appears on rows backed by `tmux` (`-L cops`, a dedicated socket):
+  view the session's live output and send it commands right from the browser (xterm.js render, ~200ms
+  poll, plus Ctrl-C/Esc/arrow-key buttons). Requires `tmux` (`sudo apt install tmux`) — without it,
+  sessions still start fine, just without the button. Only sessions (re)opened *after* tmux support was
+  added get it; a currently-running plain session picks it up the next time it's respawned
+  (handover/adopt/stop+start).
 - **Registered** — registered-but-stopped projects; start one with **resume** / **reset (--new)** /
   **start a separate new chat** (auto-dated name, with model/permission-mode/effort options). The
   **register new project** form (name + folder + model) lives at the bottom of this tab — adds to the
   roster without editing files by hand.
+- **CLI choice (claude / agy)** — every start/register/new-chat option row has a **CLI** selector: pick
+  `claude` or `agy` (Google's Antigravity CLI, if installed at `~/.local/bin/agy`) per session. Model/permission-mode/effort options switch to that CLI's own list
+  automatically (agy's model list is fetched live from `agy models`, not hardcoded). A session's CLI is
+  fixed once running — shown as a small badge, not editable (adopting a foreign process keeps whatever
+  CLI it already was; you can't "adopt a claude process as agy"). A bare `agy` process with no name
+  claudeops gave it shows up as `agy-<pid>`, adoptable like any other unregistered session.
 - **Disabled / Retired** — temporarily stopped / fully abandoned projects; come back with "reactivate".
 - **Handover** — sends the selected running sessions a wrap-up prompt (update their docs, commit, push),
   restarting each with `--resume` (same history) plus that message as the first turn. Uses the message
@@ -135,10 +147,20 @@ Every command has its own `--help`.
 ## How it works
 
 - The **roster** is two TSV files, outside the repo (`~/.claude/claudeops/`, personal, never
-  committed): `roster.tsv` (`name<TAB>folder<TAB>model`) and `models.tsv` (`name<TAB>model` — a line
-  starting with `#` means that name is closed/retired, guard won't open it).
-- Sessions are opened inside `gnome-terminal` with `claude -n NAME --remote-control NAME` — Claude
-  Code's own Remote Control feature (also reachable from claude.ai/code or the mobile app).
+  committed): `roster.tsv` (`name<TAB>folder<TAB>model`, plus an optional 4th column `cli` —
+  `claude` or `agy`, defaults to `claude` if missing/old-format) and `models.tsv` (`name<TAB>model` —
+  a line starting with `#` means that name is closed/retired, guard won't open it).
+- Sessions are opened inside `gnome-terminal`, wrapped in a dedicated `tmux` session when `tmux` is
+  installed (falls back to plain, un-wrapped `gnome-terminal` otherwise — spawning never fails just
+  because `tmux` is missing). A `claude` session runs `claude -n NAME --remote-control NAME` — Claude
+  Code's own Remote Control feature (also reachable from claude.ai/code or the mobile app). An `agy`
+  session has no equivalent naming flag, so its name is carried via a `COPS_NAME` environment variable
+  instead.
+- Support for a second CLI backend (`agy`, Google's Antigravity CLI) is implemented as a **provider**:
+  a small `CliProvider` interface (`py/claudeops/providers/base.py`) that `claude_provider.py` and
+  `agy_provider.py` each implement; the rest of the codebase (spawn/discovery/web panel) only ever
+  calls through that interface and never branches on which CLI is in use — adding a third backend
+  means writing one more provider file, not touching existing code.
 - Kill is always **SIGTERM + ~10 second wait + SIGKILL if still alive** — since Claude Code's transcript
   is written to disk lazily (checkpoint by checkpoint), a too-fast `SIGKILL` can cut off conversation
   history.
@@ -151,6 +173,10 @@ Every command has its own `--help`.
 py/claudeops/
   paths.py, session.py, discovery.py   # foundation: paths, data model, proc discovery (psutil)
   spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py
+  tmux_backend.py                       # tmux helpers (dedicated -L cops socket), fail-soft if no tmux
+  providers/                            # CliProvider ABC + one file per CLI backend + registry
+    base.py, claude_provider.py, agy_provider.py, __init__.py
+  data/                                  # bundled static assets: tmux.conf, vendored xterm.js
   commands/                             # one file per CLI command (web.py is the largest)
 cops                                    # entry point → python3 -m claudeops
 ```

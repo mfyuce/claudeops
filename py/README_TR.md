@@ -44,9 +44,21 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   Kayıtlı sekmesinden devam ettirilir); *devre dışı bırak* ek olarak otomasyonun (guard) yeniden
   açmasını engeller (Devre dışı sekmesine taşınır, geri alınabilir); *emekli et* arşive kaldırır
   (Emekli sekmesi, "tekrar işe al" ile döner).
+- **Terminal** — `tmux` ile açılmış (`-L cops`, ayrı bir socket) satırlarda **Terminal** butonu belirir:
+  tarayıcıdan canlı çıktıyı izle + komut gönder (xterm.js render, ~200ms poll, artı Ctrl-C/Esc/ok tuşu
+  butonları). `tmux` gerekir (`sudo apt install tmux`) — kurulu değilse session'lar yine sorunsuz açılır,
+  sadece buton görünmez. Sadece tmux desteği eklendikten SONRA (yeniden) açılan session'lar bu butonu
+  kazanır; hâlâ çalışan düz bir session bir sonraki respawn'da (handover/devral/durdur+başlat) kazanır.
 - **Kayıtlı** — kayıtlı-ama-durmuş projeler; **devam ettir** / **sıfırla (--new)** / **ayrı yeni chat
   aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız. **Yeni proje
   kaydet** formu (isim + klasör + model) bu sekmenin altında — elle dosya düzenlemeden roster'a ekler.
+- **CLI seçimi (claude / agy)** — her başlat/kaydet/yeni-chat seçenek satırında bir **CLI** seçici var:
+  session başına `claude` ya da `agy` (Google'ın Antigravity CLI'ı, `~/.local/bin/agy`'de kuruluysa)
+  seçilebilir. Model/permission-mode/effort seçenekleri seçili CLI'ya göre otomatik değişir (agy'nin
+  model listesi `agy models`'tan CANLI çekilir, sabit kodlanmaz). Bir session'ın CLI'ı çalışırken
+  SABİTTİR — küçük bir rozet olarak gösterilir, değiştirilemez (yabancı bir proc'u devralmak onun
+  zaten hangi CLI olduğunu korur — "bir claude proc'unu agy olarak devral" diye bir şey yok). claudeops'un
+  isim vermediği bare `agy` proc'u `agy-<pid>` olarak görünür, diğer kayıtsız session'lar gibi devralınabilir.
 - **Devre dışı / Emekli** — geçici durdurulmuş / tamamen bırakılmış projeler; "tekrar işe al"la geri gelir.
 - **Handover** — seçili çalışan session'lara wrap-up mesajı gönderir (dokümanları güncelle, commit+push
   et), her birini aynı geçmişle (`--resume`) + bu mesaj ilk mesaj olarak yeniden başlatır. Panel o an
@@ -134,10 +146,19 @@ Her komutun kendi `--help`'i var.
 ## Nasıl çalışır
 
 - **Roster** iki TSV dosyası, repo dışında (`~/.claude/claudeops/`, kişiye özel, hiçbir zaman commit
-  edilmez): `roster.tsv` (`isim<TAB>klasör<TAB>model`) ve `models.tsv` (`isim<TAB>model` — satır `#` ile
+  edilmez): `roster.tsv` (`isim<TAB>klasör<TAB>model`, artı opsiyonel 4. kolon `cli` — `claude` ya da
+  `agy`, yoksa/eski-formatsa varsayılan `claude`) ve `models.tsv` (`isim<TAB>model` — satır `#` ile
   başlıyorsa o isim kapalı/emekli, guard onu açmaz).
-- Session'lar `gnome-terminal` içinde `claude -n İSİM --remote-control İSİM` ile açılır — Claude Code'un
-  kendi Remote Control özelliği (claude.ai/code veya mobil uygulamadan da erişilebilir).
+- Session'lar `gnome-terminal` içinde açılır, `tmux` kuruluysa ayrı bir `tmux` session'ına sarılır
+  (kurulu değilse düz, sarmalanmamış `gnome-terminal`'e düşer — `tmux` eksikliği spawn'ı hiçbir zaman
+  başarısız kılmaz). Bir `claude` session'ı `claude -n İSİM --remote-control İSİM` çalıştırır — Claude
+  Code'un kendi Remote Control özelliği (claude.ai/code veya mobil uygulamadan da erişilebilir). `agy`
+  session'ının muadil bir isimlendirme flag'i yok, bu yüzden ismi `COPS_NAME` ortam değişkeniyle taşınır.
+- İkinci bir CLI backend'i (`agy`, Google'ın Antigravity CLI'ı) desteği bir **provider** olarak
+  uygulandı: küçük bir `CliProvider` arayüzü (`py/claudeops/providers/base.py`) — `claude_provider.py`
+  ve `agy_provider.py` bunu kendi içinde doldurur; kodun geri kalanı (spawn/discovery/web paneli) sadece
+  bu arayüz üzerinden çağırır, hangi CLI kullanıldığına göre hiç dallanmaz — üçüncü bir backend eklemek
+  bir provider dosyası daha yazmak demektir, mevcut koda dokunmak değil.
 - Kill her zaman **SIGTERM + ~10 saniye bekleme + hâlâ canlıysa SIGKILL** — Claude Code'un transkript
   kaydı ara ara diske yazıldığı için (lazy-checkpoint), çok hızlı `SIGKILL` konuşma geçmişini kesebiliyor.
 - `guard` opsiyonel — istemiyorsanız hiç kurmayın, tamamen `py/cops web`'den elle yönetin.
@@ -148,6 +169,10 @@ Her komutun kendi `--help`'i var.
 py/claudeops/
   paths.py, session.py, discovery.py   # temel: yollar, veri modeli, proc keşfi (psutil)
   spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py
+  tmux_backend.py                       # tmux yardımcıları (ayrı -L cops socket'i), tmux yoksa fail-soft
+  providers/                            # CliProvider ABC + backend başına bir dosya + registry
+    base.py, claude_provider.py, agy_provider.py, __init__.py
+  data/                                  # gömülü statik dosyalar: tmux.conf, vendored xterm.js
   commands/                             # her CLI komutu kendi dosyasında (web.py en büyüğü)
 cops                                    # giriş noktası → python3 -m claudeops
 ```

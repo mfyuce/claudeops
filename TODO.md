@@ -56,6 +56,7 @@
 - [ ] `claudeops layout` için "BR köşede her zaman boş bırak" benzeri kural
 - [ ] **handover `--layout` oto-tile `--group` geçirmiyor** — tek-komut `handover --force --layout` yolunda grup'lar uygulanmaz (ayrı Faz 3 komutu --group içeriyor). Fix: `cmd_handover`'a `--group=` passthrough → `cmd_layout`'a ilet. (2026-05-31, --group eklenince fark edildi.)
 - [ ] **`layout --group` desktop no'su serbest-other sayısına bağlı** — 16 serbest-other → grup ws4/5; sayı değişirse kayar (gruplar yine birlikte ama ws no farklı). Sabit istenirse `--group=names@ws` hedefleme ekle (others o ws'i atlar). (2026-05-31)
+- [ ] UI'ye Handover textini o an hangi dil secili ise o dilde gosterm tabi. ordan copy paste yapariz. Gerektiginde ayri cli acmadan.
 
 ## Dokümantasyon
 

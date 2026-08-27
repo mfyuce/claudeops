@@ -20,13 +20,16 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **İsimler base-name** (suffix yok, 2026-06-26). `Session.base` tarih+`_N` suffix'lerini indirger: `cops20260824_1`→`cops` (2026-08-25). Panel eşlemesi önce TAM isim, sonra base (2026-08-26) — tarih-isimli satırlar kendi satırında görünür, görünmez canlı proc imkansız.
 - **co + cops** (self) + **ulaksec** aktif (guard ayakta tutsun). **HO_EXCLUDE isim-listesi KALDIRILDI (2026-08-25)** — toplu işlem hedefi panel checkbox'larıyla; tek koruma process-bazlı self-koruma (`ancestor_pids()` py handover+rc; bash `filter_not_self`). ulaksec'i artık sadece dikkat koruyor. [[co-ulaksec-guard-yes-ho-no]]
 - Kapalı/emekli satırlar `#`'lı. `py/cops close <name>` = kill + models.tsv yorumla; geri: panel "tekrar işe al". **Temizlik bekliyor:** tarih-isimli çöp satırlar (rustrino*/line*/trino*/sase* tarihli) — kullanıcıya sorup birleştir/sil.
+- roster.tsv'nin opsiyonel **4. kolonu = `cli`** (`claude`|`agy`, yoksa/eskiyse `"claude"`) — hangi provider'ın açtığı (bkz. yukarıdaki çoklu-CLI notu).
 
 ## Fleet kontrolü — MANUEL (2026-08-24 karar)
 
 - **Guard cron KASITLI kapalı** (crontab'da 3 satır `#`'lı). Kullanıcı web'den tek tek yönetiyor — **sen açma**, sormadan toplu spawn YAPMA. [[feedback-manual-fleet-control]]
 - **`py/cops web [--port 8765] [--tunnel]`** — TAB'lı panel (Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout, 2026-08-25 revizyonu): satır checkbox'ları + toplu işlemler (handover/durdur/devre dışı bırak/emekli et), **ho?** kolonu + "needs-ho seç", satır-içi başlat seçenekleri, kayıtsızlara "devral", "+ yeni proje kaydet" formu Kayıtlı sekmesinde. UI "devre dışı bırak" = API/CLI `close`. Layout sekmesi kilitli-ekran pre-flight'lı. Token-gated; `--tunnel` = cloudflared. Detay: `py/README*.md`.
 - **Repo PUBLIC** (MIT, github + gitlab mirror) — roster/models/token repo dışında. Kullanıcı: "dünyaya açığız, DONE/TODO/changelog önemli" → kayıtları özenli tut.
-- Web Stop / `py/cops kill` / `rc --kill-first` parent bash'i de öldürür (`kill_session_and_parent`).
+- Web Stop / `py/cops kill` / `rc --kill-first` parent bash'i de öldürür (`kill_session_and_parent`) — tmux-backed session'da bunun yerine ad-bazlı `tmux kill-session` (aşağıya bkz, parent PID tüm filoyu paylaşan tmux server olabilir).
+- **Web'den canlı terminal (2026-08-27, TBD#11 kapandı):** yeni spawn'lar tmux-backed (`tmux -L cops`, `py/claudeops/tmux_backend.py` + bundled `data/tmux.conf`) — panelde "Terminal" butonu → `/api/term/output` (200ms poll, capture-pane) + `/api/term/input` (send-keys) + `/api/term/key` (Ctrl-C/Esc/oklar) → xterm.js render (ilk kullanımda lazy-indirilir, offline'da düz-metin fallback). Eski/bare session'lar tmux'a taşınmaz, sadece bir sonraki respawn'da geçer. `tmux.conf`'ta `focus-events on` ŞART (yoksa `--remote-control` session'larına girdi ekranda hiç görünmez — Claude'un kendi TUI'si bunu ipucu olarak basar).
+- **Çoklu-CLI (claude + agy) — provider mimarisi (2026-08-27, TBD#10 kapandı):** `py/claudeops/providers/` (`base.py` ABC + `claude_provider.py` + `agy_provider.py` + registry `get_provider(cli)`) — `spawn.py`/`discovery.py`/`commands/web.py` `cli` string'ine göre HİÇ dallanmaz, sadece arayüz üzerinden çağırır (3. bir CLI = yeni provider dosyası + registry satırı). agy'nin `--remote-control` muadili yok → isimlendirme `COPS_NAME` env; **komut satırına `env COPS_NAME=... <binary>` olarak GÖMÜLÜR, Popen'ın env dict'ine DEĞİL** — tmux zaten çalışan bir server'da yeni session açarken kendi `update-environment` listesi (DISPLAY, SSH_AUTH_SOCK, ...) DIŞINDAKİ her şeyi sessizce yok sayıyor, canlı doğrulandı. COPS_NAME'siz bare agy → `agy-<pid>` placeholder, kayıtsız/adopt edilebilir. agy model listesi CANLI çekilir (`agy models`, 300s TTL) — sabit değil, 2 günde bir değişti.
 
 ## Handover (3-fazlı)
 
@@ -38,25 +41,24 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 
 ## Sınırlamalar / açık bug'lar
 
-Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE). Tam liste: TODO.md. Açık tasarımlar (karar bekliyor, implement ETME): TOBEDECIDED **#10 agy/Antigravity-CLI entegrasyonu**, **#11 tmux-backed web-CLI**.
+Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE). Tam liste: TODO.md. TOBEDECIDED #10+#11 UYGULANDI (2026-08-27) — açık kalan tasarım sorusu yok, sadece küçük TODO kalemleri (rename UI, agy Faz-3 handover/RFH, panelde dile-göre handover metni copy-paste).
 
 ## Meta
 
 `DONE.md` = CHANGELOG. Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE; TOBEDECIDED karar → TODO.
 
-## READY FOR HANDOVER (2026-08-27)
+## READY FOR HANDOVER (2026-08-27, güncellendi — TBD#10+#11 uygulandı)
 
-**DURUM:** Fleet manuel kontrolde (guard cron kasıtlı kapalı). Çalışanlar: `cops` (bu session, `cops20260824_1` proc'u), `line20260825`, `rustrino20260826`, `sase20260826`, `saseimpl`, `trino20260826_1`. Roster: 21 aktif / 21 devre dışı / 7 emekli; config VALID, DUP yok. Panel (8765) + cloudflared tüneli ayakta; kullanıcı paneli aktif kullanıyor (toplu devre-dışı, handover, saseimpl start hep panelden yapıldı).
+**DURUM:** Fleet manuel kontrolde (guard cron kasıtlı kapalı). Panel (8765) + cloudflared tüneli ayakta. Roster: 20 aktif (8 çalışıyor / 12 kayıtlı-durmuş) / 30 devre dışı / 8 emekli; config VALID, DUP yok. Çalışanlar: `cops20260827` (bu session), `hc20260827`, `line`, `mo20260827` (**agy**, `gemini-3.1-pro-high`), `rustrino20260827_1`, `saseimpl`, `saseppr`, `trino` — hepsi `ho!` (henüz handover almadı, beklenen: hepsi bu session'ın kendisi tarafından yapılan işi konuşuyor).
 
-**Bu session'da (25-27 Ağu, hepsi commit+push'lu, DONE.md'de detay):**
-1. **cops roster'a kaydedildi**; register hata mesajı artık çakışma kaynağını ayırt ediyor (`conflicts_running` — "retired'da var" yanılgısı bitti).
-2. **Panel UI revizyonu:** TAB + checkbox + toplu işlemler + ho? kolonu + "needs-ho seç"; "close" UI'de "devre dışı bırak" oldu (API adı değişmedi). README'ler (EN+TR) + ekran görüntüleri yenilendi.
-3. **HO_EXCLUDE isim-listesi kaldırıldı** (kullanıcı kararı) → process-bazlı self-koruma (`ancestor_pids()`); ulaksec artık sadece dikkatle korunuyor.
-4. **`Session.base` `_N` suffix indirgeme** + **panel canlı-proc eşlemesi tam-isim öncelikli** (rename sonrası görünmez-proc riski kapandı; duplicates() artık gerçekten çalışıyor).
-5. **sase → saseppr** rename (elle TSV — UI'de rename yok, TODO'da tasarımıyla kayıtlı); **saseimpl** = `.../maya3/ng_sdn/sase/sdwan/ng_sdwan` kaydedildi (`sase_imp_paper` AYRI, sırası gelmemiş bir proje — karıştırma).
-6. **TBD #10 (agy/Antigravity CLI) + #11 (tmux web-CLI)** tasarım taslakları yazıldı — kullanıcı "biraz daha konuşalım" dedi, KARAR YOK, implement etme.
+**Bu session'da yapılanlar (25-27 Ağu, hepsi commit+push'a hazır, DONE.md'de detay):**
+1. **TBD #11 — Web panelden canlı terminal UYGULANDI:** yeni spawn'lar `tmux -L cops` ile sarılıyor (`tmux_backend.py` + bundled `data/tmux.conf`), panelde **Terminal** butonu (xterm.js, ~200ms poll, Ctrl-C/Esc/ok tuşları, mobilde copy butonu + ANSI-strip fallback). Kritik canlı-test bulgusu: `kill_session_and_parent` PID-ancestry'si tmux'ta TÜM filoyu silme riskiydi (parent = paylaşılan tmux server) → ad-bazlı `tmux kill-session`'a geçildi.
+2. **TBD #10 — agy (Google Antigravity CLI) çoklu-CLI desteği UYGULANDI:** kullanıcının istediği **provider mimarisiyle** (`py/claudeops/providers/` — `CliProvider` ABC + `claude_provider.py` + `agy_provider.py` + registry; `spawn.py`/`discovery.py`/`web.py` `cli` string'ine göre HİÇ dallanmıyor). roster.tsv 4. kolon `cli`; agy isimlendirmesi `COPS_NAME` env (komut satırına gömülü, Popen env'ine DEĞİL — tmux'un `update-environment` filtresini atlamak için). agy model listesi canlı çekiliyor (300s TTL).
+3. **README'ler (EN+TR) her iki yeni özellik için güncellendi** (Terminal butonu + CLI seçici bölümleri) + **Klasör yapısı/Nasıl çalışır bölümleri** yeni dosyaları (`providers/`, `tmux_backend.py`, `data/`, roster 4. kolon) yansıtacak şekilde tazelendi + **ekran görüntüleri yenilendi** (canlı panelden, CLI kolonu + Terminal butonu görünür halde — eskisi bu özelliklerden önceydi).
+4. **Ayrı bir bulgu:** `hc20260827` (videogen) projesinin `.claude/settings.local.json`'ında wildcard'ı komutun ORTASINDA olan bir Bash izin kuralı vardı (`pytest test_a*.py ... test_i*.py`) — Claude Code'un kural eşleyicisi ilk `*`'dan sonrasını tamamen wildcard sayıyor, yani prefix'ten sonra HERHANGİ bir ek argüman sessizce onaylanıyordu. Ayrıca dosyalar artık mevcut değildi (bayat kural). Satır silindi — kullanıcı fark edip sordu, kural + repo kontrol edilip düzeltildi (o proje kendi commit sorumluluğunda, claudeops repo'suna dahil değil).
+5. **TOBEDECIDED #10/#11 "Kapatılmış"a taşındı**, CLAUDE.md'deki "açık tasarım" referansı güncellendi — artık gerçekten açık bir TBD tasarım sorusu yok (sadece küçük TODO kalemleri: rename UI, agy Faz-3 handover/RFH, panelde dile-göre handover-metni copy-paste).
 
-**Yeni session yapacaklar:** (1) MEMORY.md oku. (2) Guard cron'u açma. (3) Tarih-isimli çöp roster satırlarını kullanıcıya sorup temizle. (4) TBD #10/#11 tartışması sürüyor — kullanıcı karar verince başla. (5) Bu session'ı kullanıcı kapatacak (self-kill yapma).
+**Yeni session yapacaklar:** (1) MEMORY.md oku. (2) Guard cron'u açma. (3) Tarih-isimli çöp roster satırları hâlâ temizlik bekliyor (rustrino*/line*/trino*/sase* tarihli — kullanıcıya sorup birleştir/sil). (4) agy Faz-3 (kendi handover/RFH/needs_ho sinyali) hâlâ ertelenmiş durumda, istenirse ayrı iş. (5) Bu session'ı kullanıcı kapatacak (self-kill yapma). (6) **Commit+push henüz yapılmadı** (bu RFH yazıldığı an) — bir sonraki adım review edip commit/push.
 
 READY FOR HANDOVER

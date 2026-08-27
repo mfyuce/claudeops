@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List
 from .paths import MODELS_TSV, ROSTER_TSV
+from .providers import PROVIDERS, DEFAULT_CLI
 
 
 @dataclass
@@ -10,6 +11,7 @@ class RosterEntry:
     name: str    # taban isim (suffix'siz, ör. "hc")
     cwd: str
     model: str
+    cli: str = DEFAULT_CLI   # 4. (opsiyonel) kolon — provider registry'sinde yoksa/eskiyse claude
 
 
 def _parse_tsv(path: str) -> List[List[str]]:
@@ -37,11 +39,17 @@ def read_models() -> Dict[str, str]:
 
 
 def read_roster() -> List[RosterEntry]:
-    """roster.tsv → [RosterEntry(name, cwd, model)]."""
+    """roster.tsv → [RosterEntry(name, cwd, model, cli)].
+
+    4. kolon (cli) opsiyonel + registry'ye göre DOĞRULANIR — bazı eski satırların
+    zaten serbest-metin bir 4. kolonu var (ör. "# EMEKLİ ..." yorumu); bunu körü
+    körüne cli sanmak yerine sadece registry'deki gerçek isimlerden biriyse kabul
+    edilir, değilse sessizce "claude"a düşer (bugünkü davranışla birebir aynı)."""
     entries = []
     for row in _parse_tsv(ROSTER_TSV):
         if len(row) >= 3:
-            entries.append(RosterEntry(name=row[0], cwd=row[1], model=row[2]))
+            cli = row[3] if len(row) >= 4 and row[3] in PROVIDERS else DEFAULT_CLI
+            entries.append(RosterEntry(name=row[0], cwd=row[1], model=row[2], cli=cli))
         elif len(row) == 2:
             entries.append(RosterEntry(name=row[0], cwd=row[1], model=""))
     return entries

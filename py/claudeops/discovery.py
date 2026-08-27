@@ -1,15 +1,18 @@
-"""Çalışan claude session'larını psutil ile keşfet.
+"""Çalışan CLI session'larını (claude, agy, ...) psutil ile keşfet.
 
 İki kaynak:
-1. Proc-scan: cmdline'da `--remote-control NAME` olan claude proc'ları (asıl kaynak).
-2. sessions/*.json: TUI içinden isim verilen proc'lar (cmdline'da RC yok ama json'da name var).
+1. Proc-scan: her provider'ın `matches_proc`+`extract_name`'iyle tanınan proc'lar (asıl kaynak).
+2. sessions/*.json: TUI içinden isim verilen claude proc'ları (cmdline'da RC yok ama json'da name var).
    → Bash all_sessions_tsv'nin iki-kaynak mantığı. Dedup: proc-scan öncelikli (daha fazla bilgi).
 
 Not: claude 2.1.169 fresh --new session'lar sessions/<pid>.json YAZMIYOR (proc-scan yeterli).
 claude 2.1.183+ TUI içi /name komutuyla verilen isimler proc cmdline'a yansımaz → json lazım.
+
+Provider-agnostik: hangi CLI'ın hangi flag'lerle tanınacağı burada DEĞİL, her
+provider'ın kendi `matches_proc`/`extract_name`/`extract_info`'sunda (providers/).
 """
 from __future__ import annotations
-from typing import Dict, List, Optional
+from typing import Dict, List
 import glob
 import json
 import os
@@ -17,24 +20,7 @@ import time
 import psutil
 
 from .session import Session
-
-
-def _arg(cmd: List[str], flag: str) -> Optional[str]:
-    """cmdline listesinde `flag`'ten SONRAKİ değeri döndür (yoksa None)."""
-    try:
-        i = cmd.index(flag)
-    except ValueError:
-        return None
-    return cmd[i + 1] if i + 1 < len(cmd) else None
-
-
-def _is_claude_proc(cmd: List[str]) -> bool:
-    """Gerçek claude CLI proc'u mu? (gnome-terminal/bash wrapper'ları DEĞİL).
-
-    Bash `^claude` anchor'ının karşılığı: argv[0]'ın basename'i 'claude'.
-    'bash -c "claude ..."' wrapper'ında argv[0]='bash' → eler.
-    """
-    return bool(cmd) and os.path.basename(cmd[0]) == "claude"
+from .providers import PROVIDERS
 
 
 def _sessions_from_json() -> Dict[str, Session]:
@@ -91,30 +77,31 @@ def _sessions_from_json() -> Dict[str, Session]:
             permission_mode=None,
             effort=None,
             cpu=0.0,
+            cli="claude",     # bu kaynak (~/.claude/sessions/*.json) sadece claude'a özel
         )
     return result
 
 
 def find_sessions(measure_cpu: bool = True) -> List[Session]:
-    """Tüm çalışan RC session'larını döndür (her isim için tek Session — dup varsa hepsi).
+    """Tüm çalışan session'ları döndür (her isim için tek Session — dup varsa hepsi).
 
-    Kaynak 1: sessions/*.json (TUI-named + spawn-named)
-    Kaynak 2: proc-scan cmdline --remote-control (bilgi zengini; json'u override eder)
-    Dedup: proc-scan override → merge sonucunda her isim bir kez.
+    Kaynak 1: sessions/*.json (TUI-named + spawn-named, claude-only)
+    Kaynak 2: proc-scan — her provider kendi `matches_proc`/`extract_name`'iyle
+    tanır (bilgi zengini; json'u override eder). Dedup: proc-scan override →
+    merge sonucunda her isim bir kez.
     """
     # Kaynak 1: sessions json (başlangıç seti)
     by_name: Dict[str, Session] = _sessions_from_json()
 
-    # Kaynak 2: proc-scan → cmdline bilgisi daha zengin, override et
-    raw = []  # (proc, cmdline)
+    # Kaynak 2: proc-scan → hangi provider'ın olduğunu ilk eşleşen belirler
+    raw = []  # (proc, cmdline, provider)
     for p in psutil.process_iter(["pid", "cmdline"]):
         try:
             cmd = p.info["cmdline"] or []
-            if not _is_claude_proc(cmd):
+            provider = next((pr for pr in PROVIDERS.values() if pr.matches_proc(cmd)), None)
+            if provider is None:
                 continue
-            if _arg(cmd, "--remote-control") is None:
-                continue
-            raw.append((p, cmd))
+            raw.append((p, cmd, provider))
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
 
@@ -122,7 +109,7 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
     # (per-proc interval=0.1 yerine tek 0.3s → 27 proc için ~0.3s, 2.7s değil)
     cpu_primed: Dict[int, psutil.Process] = {}
     if measure_cpu:
-        for p, _ in raw:
+        for p, _, _ in raw:
             try:
                 p.cpu_percent(None)
                 cpu_primed[p.pid] = p
@@ -139,7 +126,7 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
                     pass
         time.sleep(0.3)
 
-    for p, cmd in raw:
+    for p, cmd, provider in raw:
         try:
             cpu = 0.0
             if measure_cpu:
@@ -151,20 +138,22 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
                 cwd = p.cwd()
             except (psutil.Error, FileNotFoundError):
                 cwd = ""
-            name = _arg(cmd, "--remote-control")
+            name = provider.extract_name(p, cmd)
             if not name:
                 continue
             if not cwd:
                 continue
+            info = provider.extract_info(cmd)
             by_name[name] = Session(
                 name=name,
                 pid=p.pid,
                 cwd=cwd,
-                sid=_arg(cmd, "--resume"),
-                model=_arg(cmd, "--model"),
-                permission_mode=_arg(cmd, "--permission-mode"),
-                effort=_arg(cmd, "--effort"),
+                sid=info.get("sid"),
+                model=info.get("model"),
+                permission_mode=info.get("permission_mode"),
+                effort=info.get("effort"),
                 cpu=cpu,
+                cli=provider.name,
             )
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue

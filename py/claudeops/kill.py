@@ -53,14 +53,35 @@ def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS) -> KillResult:
     return "forced"
 
 
-def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS) -> KillResult:
+def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
+                             name: Optional[str] = None) -> KillResult:
     """kill_session + parent bash'i de öldür (terminal penceresi kapansın).
 
     TODO-b kök sebep fix: spawn.py terminali `bash -c "...; exec bash"` ile açıyor,
     yani claude proc'u öldürmek terminali kapatmaz — parent bash `exec bash`'e düşüp
     boş prompt'ta orphan kalır. Parent, kill'den ÖNCE resolve edilmeli (sonrasında
     pid kaybolur/reuse riski) ([[review: parent-bash race]]).
+
+    tmux-backed session'larda bu "parent'ı da öldür" tetiği YASAK: pane'in parent'ı
+    paylaşılan tmux SERVER'ı olabilir (bash'in `-c` son-komut exec-optimizasyonuna
+    göre değişken, garantili değil) — parent'ı köre kılıç öldürmek TÜM tmux-backed
+    filoyu tek seferde silebilir. tmux-backed ise ad-bazlı (`tmux kill-session -t
+    NAME`) temizlik yapılır, PID ancestry'sine hiç dokunulmaz.
     """
+    from .tmux_backend import is_tmux_backed, tmux_kill_session
+
+    tmux_backed = False
+    try:
+        tmux_backed = is_tmux_backed(pid)
+    except Exception:
+        tmux_backed = False  # tespit başarısızsa davranışı DEĞİŞTİRME, legacy yol
+
+    if tmux_backed:
+        result = kill_session(pid, grace=grace)
+        if name:
+            tmux_kill_session(name)  # best-effort, idempotent (zaten ölmüşse sorun yok)
+        return result
+
     parent_pid: Optional[int] = None
     parent_create_time: Optional[float] = None
     try:
