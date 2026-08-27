@@ -22,6 +22,7 @@ class Session:
     permission_mode: Optional[str] = None
     effort: Optional[str] = None
     cpu: float = 0.0                       # anlık %CPU (güvenilir aktiflik sinyali)
+    cli: str = "claude"                    # hangi provider açtı (claude|agy)
 
     @property
     def is_fresh(self) -> bool:
@@ -42,6 +43,10 @@ class Session:
     @property
     def model_short(self) -> str:
         m = self.model or ""
+        if self.cli != "claude":
+            # agy model id'leri ("claude-sonnet-4-6" gibi) claude anahtar-kelimeleriyle
+            # yanlış eşleşip claude session'ıymış gibi görünmesin — id'yi olduğu gibi göster.
+            return m or "?"
         for k in ("sonnet", "opus", "haiku", "fable"):
             if k in m:
                 return k

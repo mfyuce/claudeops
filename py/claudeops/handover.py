@@ -22,6 +22,7 @@ from typing import List, Optional
 from .discovery import find_sessions, find_by_name
 from .kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from .needs_ho import needs_ho
+from .providers import get_provider
 from .session import Session
 from .spawn import find_latest_jsonl, detect_display, spawn_session
 
@@ -140,18 +141,23 @@ def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> 
     CLAUDE* env filtresi olmadan, [[spawn-env-leak-disables-transcript]] bug'ına
     açıktı; artık web.py ile aynı ortak, güvenli yoldan geçiyor).
     """
+    # NOT: find_latest_jsonl claude-özel (agy'nin conversations-cache'ini bakmaz) —
+    # bilerek öyle bırakıldı: agy session'ları Faz1'den TEMİZCE atlanır (phase-3,
+    # agy'nin kendi RFH/needs_ho muadili ayrı bir iş, henüz yapılmadı).
     if not find_latest_jsonl(session.cwd):
         return "skipped-no-jsonl"
+    provider = get_provider(session.cli)
     return spawn_session(
         name=session.name,
         cwd=session.cwd,
-        model=session.model or "claude-sonnet-5",
+        model=session.model or provider.model_choices()[0],
         display=display,
-        permission_mode="auto",
-        effort="max",
+        permission_mode=provider.permission_modes()[0],
+        effort=provider.effort_levels()[-1],
         force_new=False,
         prompt=message,
         dry_run=dry_run,
+        cli=session.cli,
     )
 
 
@@ -244,7 +250,7 @@ def handover_faz1(
 
         # 1. Kill eski proc (dry-run'da atla)
         if not dry_run:
-            kill_result = kill_session_and_parent(session.pid, grace=grace)
+            kill_result = kill_session_and_parent(session.pid, grace=grace, name=session.name)
             # Server-side RC bridge'in AYNI ismi bırakması için settle.
             # proc.wait ölümü onaylar AMA bridge deregister async gecikir → aynı
             # isimle hemen respawn = çakışma. already_dead'de bridge zaten yok, atla.

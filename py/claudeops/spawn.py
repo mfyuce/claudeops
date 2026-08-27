@@ -1,9 +1,13 @@
-"""Session spawn — gnome-terminal + claude CLI.
+"""Session spawn — gnome-terminal + bir CLI provider (claude, agy, ...).
 
 Bash spawn pattern'inin yerine:
-  gnome-terminal -- bash -c "cd CWD && claude ... < /dev/null; exec bash"
+  gnome-terminal -- bash -c "cd CWD && <cli> ... < /dev/null; exec bash"
   < /dev/null zorunlu (stdin/pty reject olmaz).
   DISPLAY env değişkeni gerekli (headless cron'da otomatik tespit).
+
+Hangi CLI'ın nasıl başlatılacağı (komut satırı, resume-lookup, isimlendirme env'i)
+TAMAMEN `providers/` paketinde — burada `cli` string'ine göre dallanma YOK, sadece
+`get_provider(cli)` ile arayüz üzerinden çağrı var.
 """
 from __future__ import annotations
 import os
@@ -13,30 +17,9 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from .paths import PROJECTS_DIR
-
-
-def _encode_cwd(cwd: str) -> str:
-    """CWD'yi project-dir encoding'e çevir: / ve _ → - ."""
-    return cwd.replace("/", "-").replace("_", "-")
-
-
-def _safe_mtime(p: Path) -> float:
-    """stat().st_mtime — concurrent deletion'a karşı fallback 0.0."""
-    try:
-        return p.stat().st_mtime
-    except OSError:
-        return 0.0
-
-
-def find_latest_jsonl(cwd: str) -> Optional[Path]:
-    """CWD için en son değiştirilen jsonl dosyasını döndür (resume sid için)."""
-    encoded = _encode_cwd(cwd)
-    proj_dir = Path(PROJECTS_DIR) / encoded
-    if not proj_dir.exists():
-        return None
-    jsonls = [p for p in proj_dir.iterdir() if p.suffix == ".jsonl" and p.is_file()]
-    return max(jsonls, key=_safe_mtime) if jsonls else None
+from .providers import get_provider
+from .providers.claude_provider import find_latest_jsonl  # geriye-uyum: diğer modüller import ediyor
+from .tmux_backend import tmux_available, tmux_new_session_shell_fragment
 
 
 def detect_display() -> str:
@@ -60,63 +43,68 @@ def spawn_session(
     force_new: bool = False,
     prompt: Optional[str] = None,
     dry_run: bool = False,
+    cli: str = "claude",
 ) -> str:
-    """Session'ı gnome-terminal ile aç.
+    """Session'ı gnome-terminal ile aç (hangi CLI: `cli` — provider registry'den çözülür).
 
-    force_new=True → --new (konuşma sıfırdan).
-    force_new=False → en son jsonl'i resume et, yoksa --new.
-    prompt → --new ile opsiyonel ilk mesaj (verilmezse boş/idle başlar).
+    force_new=True → fresh/new (konuşma sıfırdan).
+    force_new=False → provider'ın kendi resume-lookup'ı (claude: jsonl, agy:
+    conversations-cache), yoksa fresh.
+    prompt → fresh açılışta opsiyonel ilk mesaj (verilmezse boş/idle başlar).
 
-    Returns: "resume:<sid[:8]>", "new", veya "[dry-run] ..." dry_run modunda.
+    Returns: "resume:<id[:8]>", "new", veya "[dry-run] ..." dry_run modunda.
     """
+    provider = get_provider(cli)
+
     if display is None:
         display = detect_display()
 
-    if force_new:
-        resume_arg = ""   # bash: resume_arg="" for --new; claude has no --new flag
-        kind = "new"
-    else:
-        jsonl = find_latest_jsonl(cwd)
-        if jsonl:
-            sid = jsonl.stem
-            resume_arg = f"--resume {shlex.quote(sid)}"
-            kind = f"resume:{sid[:8]}"
-        else:
-            resume_arg = ""
-            kind = "new"
+    resume_id = None if force_new else provider.resolve_resume_id(cwd)
+    kind = "new" if resume_id is None else f"resume:{resume_id[:8]}"
 
-    # shlex.quote: boşluk/özel karakter içeren prompt'u bash -c içinde güvenle geçir
-    prompt_arg = f" {shlex.quote(prompt)}" if prompt else ""
+    cli_invocation = provider.build_inner_command(cwd, model, permission_mode, effort,
+                                                   resume_id, prompt, name)
 
-    # < /dev/null sadece headless (-p) spawn'da gerekli; gnome-terminal görsel spawn'da KULLANMA
-    # --new ile < /dev/null → claude stdin'i okuyamaz → başlamadan çıkıyor
-    resume_prefix = f"{resume_arg} " if resume_arg else ""
-    inner = (
-        f"cd {shlex.quote(cwd)} && "
-        f"claude {resume_prefix}"
-        f"--model {shlex.quote(model)} "
-        f"--permission-mode {shlex.quote(permission_mode)} "
-        f"--effort {shlex.quote(effort)} "
-        f"-n {shlex.quote(name)} "
-        f"--remote-control {shlex.quote(name)}"
-        f"{prompt_arg}"
-    )
+    # env_overrides (ör. agy'nin COPS_NAME'i) Popen'ın env dict'ine DEĞİL, komut
+    # satırının kendisine `env KEY=VAL ... <binary>` olarak gömülüyor — tmux zaten
+    # çalışan bir server'da yeni session açarken kendi `update-environment`
+    # varsayılan listesi (DISPLAY, SSH_AUTH_SOCK, ...) DIŞINDAKİ her şeyi
+    # SESSİZCE YOK SAYIYOR (canlı doğrulandı: Popen env'ine COPS_NAME koymak
+    # tmux-backed agy session'ında proc'a hiç ulaşmadı). Komut satırına `env` ile
+    # gömmek bu env-inheritance tuhaflığını tamamen atlar.
+    overrides = provider.env_overrides(name)
+    env_prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in overrides.items())
+    inner = f"cd {shlex.quote(cwd)} && {env_prefix}{cli_invocation}"
 
     if dry_run:
         return f"[dry-run] {kind}  cmd: {inner[:80]}..."
 
-    # CLAUDE*-prefixed env (CLAUDECODE, CLAUDE_CODE_SESSION_ID, CLAUDE_CODE_CHILD_SESSION,
-    # messaging socket/token, pinned EXECPATH, CLAUDE_EFFORT/PID...) is THIS process's own
-    # session identity. Spawned fleet sessions are independent top-level sessions, not
-    # children — inheriting it makes claude think it's a child session and DISABLE
-    # TRANSCRIPT SAVING ("Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION
-    # marker", found 2026-08-24 spawning from within a claude-run Bash tool/py-cops-web).
-    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    # CLAUDE*/GEMINI*/ANTIGRAVITY*-prefixed env (CLAUDECODE, CLAUDE_CODE_SESSION_ID,
+    # CLAUDE_CODE_CHILD_SESSION, messaging socket/token, pinned EXECPATH,
+    # CLAUDE_EFFORT/PID...) is THIS process's own session identity. Spawned fleet
+    # sessions are independent top-level sessions, not children — inheriting it
+    # makes claude/agy think it's a child session and DISABLE TRANSCRIPT SAVING
+    # ("Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker",
+    # found 2026-08-24 spawning from within a claude-run Bash tool/py-cops-web).
+    # Stripped unconditionally (not just for the CLI being launched) since the
+    # contamination source is the CALLING process's env, not the target CLI.
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "GEMINI", "ANTIGRAVITY"))}
     env["DISPLAY"] = display
+
+    # tmux-backed going forward (spawn is the ONLY launch path, so the tmux server —
+    # whenever/wherever first bootstrapped — always inherits this already-scrubbed
+    # env for its whole lifetime; no separate scrubbing needed). If tmux isn't
+    # installed, degrade silently to today's exact plain-bash spawn — a missing
+    # optional binary must never fail the spawn itself.
+    if tmux_available():
+        window_cmd = f"{tmux_new_session_shell_fragment(name, cwd, inner)}; exec bash"
+    else:
+        window_cmd = f"{inner}; exec bash"
+
     proc = subprocess.Popen(
         ["gnome-terminal", "--window", f"--title={name}",
          f"--working-directory={cwd}",
-         "--", "bash", "-c", f"{inner}; exec bash"],
+         "--", "bash", "-c", window_cmd],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

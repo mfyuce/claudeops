@@ -23,6 +23,7 @@ from ..guard import guard_lock
 from ..handover import ancestor_pids
 from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import repo_baseline_set
+from ..providers import get_provider
 from ..roster import read_models, roster_by_name
 from ..spawn import spawn_session, detect_display
 
@@ -40,8 +41,10 @@ def register(sub):
                    help="spawn'dan önce mevcut session'ı öldür")
     p.add_argument("--model", default=None,
                    help="model override (varsayılan: models.tsv)")
-    p.add_argument("--permission-mode", default="auto")
-    p.add_argument("--effort", default="max")
+    p.add_argument("--permission-mode", default=None,
+                   help="permission-mode override (varsayılan: provider'ın ilk seçeneği, ör. 'auto')")
+    p.add_argument("--effort", default=None,
+                   help="effort override (varsayılan: provider'ın en yüksek seviyesi, ör. claude'da 'max')")
     p.add_argument("--prompt", default=None, metavar="MSG",
                    help="opsiyonel ilk mesaj --new ile (varsayılan YOK → boş/idle başlar)")
     p.add_argument("--one-by-one", action="store_true",
@@ -80,14 +83,20 @@ def _run_inner(args, display, models, roster) -> int:
 
         new_name = base   # suffix yok: session adı = base
 
-        model = args.model or models.get(base, "claude-sonnet-4-6")
-
         entry = roster.get(base)
         if not entry:
             print(f"  {base}: roster.tsv'de bulunamadı")
             errors += 1
             continue
         cwd = entry.cwd
+        # entry.cli spawn.py claude'a mı agy'ye mi göre komut kuracağını belirler — model
+        # fallback'i de buna göre seçilmeli (agy'nin "claude-sonnet-4-6" id'si claude'unkiyle
+        # AYNI YAZILIR ama İKİ AYRI CLI'nın kendi model listesindendir, tesadüfen çakışıyor —
+        # bir sabitte birleştirmeye kalkışma).
+        provider = get_provider(entry.cli)
+        model = args.model or models.get(base) or provider.model_choices()[0]
+        permission_mode = args.permission_mode or provider.permission_modes()[0]
+        effort = args.effort or provider.effort_levels()[-1]
 
         # 1. Kill — tam isim VEYA base ile eşleşenleri öldür (suffix verilmeden çağrıda DUP önlemi).
         # Self-koruma: bu komutun içinden çalıştığı claude session'ı (ata-proc) asla öldürülmez.
@@ -106,7 +115,7 @@ def _run_inner(args, display, models, roster) -> int:
                         print(f"  [dry-run] kill {s.name} pid={s.pid}")
                     else:
                         print(f"  kill {s.name} pid={s.pid}...", end="", flush=True)
-                        result = kill_session_and_parent(s.pid, grace=args.grace)
+                        result = kill_session_and_parent(s.pid, grace=args.grace, name=s.name)
                         print(f" {result}")
                         if result != "already_dead" and args.kill_settle > 0:
                             time.sleep(args.kill_settle)
@@ -119,11 +128,12 @@ def _run_inner(args, display, models, roster) -> int:
             cwd=cwd,
             model=model,
             display=display,
-            permission_mode=args.permission_mode,
-            effort=args.effort,
+            permission_mode=permission_mode,
+            effort=effort,
             force_new=args.fresh,
             prompt=args.prompt,
             dry_run=args.dry_run,
+            cli=entry.cli,
         )
         print(f"  {new_name} → {kind}")
 

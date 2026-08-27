@@ -37,8 +37,13 @@ from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
-from ..paths import CLAUDEOPS_DIR, MODELS_TSV, ROSTER_TSV
+from ..paths import CLAUDEOPS_DIR, MODELS_TSV, ROSTER_TSV, VENDOR_DIR
 from ..spawn import spawn_session, detect_display, find_latest_jsonl
+from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
+from ..tmux_backend import (
+    is_tmux_backed, tmux_has_session, tmux_capture, tmux_send_keys,
+    tmux_send_special_key, tmux_pane_size, ALLOWED_SPECIAL_KEYS,
+)
 
 DEFAULT_PORT = 8765
 DEFAULT_HOST = "127.0.0.1"
@@ -46,14 +51,9 @@ TOKEN_FILE = os.path.join(CLAUDEOPS_DIR, "web.token")
 TUNNEL_LOG = os.path.join(CLAUDEOPS_DIR, "tunnel.log")
 _TUNNEL_URL_RE = re.compile(r"https://[a-zA-Z0-9.-]+\.trycloudflare\.com")
 
-MODEL_CHOICES = [
-    "claude-sonnet-5",
-    "claude-opus-5",
-    "claude-fable-5",
-    "claude-haiku-4-5-20251001",
-]
-PERMISSION_MODES = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"]
-EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
+# Model/permission-mode/effort seçenekleri artık HER provider kendi
+# model_choices()/permission_modes()/effort_levels()'ından geliyor — burada
+# sabit bir liste/`if cli==...` YOK, bkz. _status_payload()'daki "cli_options".
 
 # API hata mesajları TR/EN — panel dili EN'de olsa da backend hataları hep TR geliyordu
 # (2026-08-25, kullanıcı: "uyarılar tr geliyor hep, ing seçilsin seçilmesin gibi"). do_POST
@@ -113,6 +113,13 @@ ERR = {
     "invalid_json": {"tr": "geçersiz JSON", "en": "invalid JSON"},
     "base_required": {"tr": "base gerekli", "en": "base is required"},
     "name_required": {"tr": "name gerekli", "en": "name is required"},
+    "not_tmux_backed": {"tr": "{name}: tmux-backed değil (eski/bare session) — "
+                              "terminal görünümü için handover/devral ile yeniden açın",
+                         "en": "{name}: not tmux-backed (old/bare session) — "
+                               "handover/adopt it to get a terminal view"},
+    "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
+                           "en": "{name}: tmux session no longer exists (may have closed)"},
+    "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
 }
 
 
@@ -167,6 +174,34 @@ def _ensure_cloudflared() -> Optional[str]:
     except Exception as e:
         print(f"✗ cloudflared indirilemedi ({e}) — elle kurun: https://github.com/cloudflare/cloudflared/releases")
         return None
+
+
+XTERM_VERSION = "5.3.0"  # jsdelivr'de mevcut en son stabil sürüm (5.5.0 yok — 404) — pinned, "latest" değil
+XTERM_FILES = {
+    "xterm.js": f"https://cdn.jsdelivr.net/npm/xterm@{XTERM_VERSION}/lib/xterm.js",
+    "xterm.css": f"https://cdn.jsdelivr.net/npm/xterm@{XTERM_VERSION}/css/xterm.css",
+}
+
+
+def _ensure_xterm_assets() -> Optional[str]:
+    """xterm.js/css'i VENDOR_DIR'e indir+önbelleğe al (ilk terminal-görünümü isteğinde).
+
+    _ensure_cloudflared() ile aynı desen. Offline/indirilemezse None — çağıran taraf
+    (frontend) düz-<pre> fallback'e düşer, hard error VERMEZ.
+    """
+    os.makedirs(VENDOR_DIR, exist_ok=True)
+    ok = True
+    for fname, url in XTERM_FILES.items():
+        dest = os.path.join(VENDOR_DIR, fname)
+        if os.path.exists(dest):
+            continue
+        try:
+            urllib.request.urlretrieve(url, dest)
+        except Exception as e:
+            print(f"✗ xterm.js asset indirilemedi ({fname}: {e}) — terminal görünümü "
+                  f"düz metne (fallback) düşecek")
+            ok = False
+    return VENDOR_DIR if ok else None
 
 
 def _start_tunnel(port: int, cloudflared_path: str = "cloudflared", timeout: float = 20.0):
@@ -252,13 +287,14 @@ def _fleet_status() -> dict:
             continue  # cwd bilinmiyor — gösterilemez
         cwd = rrow["rest"][0] if rrow["rest"] else ""
         model = mrow["rest"][0] if mrow["rest"] else ""
+        cli = rrow["rest"][2] if len(rrow["rest"]) >= 3 and rrow["rest"][2] in PROVIDERS else DEFAULT_CLI
         if mrow["active"] and rrow["active"]:
             state = "active"
         elif not mrow["active"] and not rrow["active"]:
             state = "retired"
         else:
             state = "closed"
-        result[name] = {"cwd": cwd, "model": model, "state": state}
+        result[name] = {"cwd": cwd, "model": model, "cli": cli, "state": state}
     return result
 
 
@@ -307,7 +343,7 @@ def _append_tsv_line(path: str, fields: list) -> None:
 _NAME_VALID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
-def _register_project(name: str, cwd: str, model: str = "", lang: str = "tr") -> dict:
+def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang: str = "tr") -> dict:
     """UI'den yeni proje kaydı — roster.tsv+models.tsv'ye ekler, SPAWN ETMEZ.
 
     Sonra normal "+ Ekle" listesinden başlatılır (mevcut trino/oiso/line elle-ekleme
@@ -332,13 +368,15 @@ def _register_project(name: str, cwd: str, model: str = "", lang: str = "tr") ->
         return _err(lang, "dir_not_found", cwd=cwd or ("(boş)" if lang != "en" else "(empty)"))
     if "\t" in cwd or "\n" in cwd:
         return _err(lang, "cwd_bad_chars")
-    chosen_model = model.strip() or MODEL_CHOICES[0]
-    _append_tsv_line(ROSTER_TSV, [name, cwd, chosen_model])
+    chosen_cli = cli.strip() if cli.strip() in PROVIDERS else DEFAULT_CLI
+    chosen_model = model.strip() or get_provider(chosen_cli).model_choices()[0]
+    _append_tsv_line(ROSTER_TSV, [name, cwd, chosen_model, chosen_cli])
     _append_tsv_line(MODELS_TSV, [name, chosen_model])
     return {"ok": True}
 
 
-def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "", lang: str = "tr") -> dict:
+def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "",
+              cli: str = "", lang: str = "tr") -> dict:
     """`base`'in cwd'sinde YENİ, otomatik-isimli (tarih[+_N]) bir chat başlat.
 
     Var olan `base` session'ına DOKUNMAZ (çalışıyorsa bile) — ayrı, ek bir kayıt.
@@ -349,8 +387,9 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     if not info:
         return _err(lang, "base_not_in_roster", base=base)
     new_name = _generate_new_chat_name(base)
+    chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
     chosen_model = model.strip() or info["model"]
-    _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model])
+    _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model, chosen_cli])
     _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
     try:
         with guard_lock(timeout=5.0):
@@ -362,6 +401,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
                 permission_mode=permission_mode.strip() or "auto",
                 effort=effort.strip() or "max",
                 force_new=True,
+                cli=chosen_cli,
             )
             deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
             opened = False
@@ -520,22 +560,24 @@ def _status_payload() -> dict:
     for name in sorted(fleet):
         info = fleet[name]
         if info["state"] == "retired":
-            retired.append({"name": name, "cwd": info["cwd"], "model": info["model"]})
+            retired.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"]})
             continue
         if info["state"] == "closed":
-            closed.append({"name": name, "cwd": info["cwd"], "model": info["model"]})
+            closed.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"]})
             continue
         s = assigned.get(name)
         sessions.append({
             "name": name,
             "model": info["model"],
             "cwd": info["cwd"],
+            "cli": info["cli"],
             "running": s is not None,
             "pid": s.pid if s else None,
             "cpu": round(s.cpu, 1) if s else None,
             "kind": ("fresh" if s.is_fresh else "resume") if s else None,
             "needs_ho": _needs_ho_cached(s) if s else None,
             "registered": True,
+            "tmux": is_tmux_backed(s.pid) if s else False,
         })
 
     # Hiçbir AKTİF roster satırına bağlanamayan canlı session'lar (elle açılmış
@@ -548,12 +590,14 @@ def _status_payload() -> dict:
             "name": s.name,
             "model": s.model or "?",
             "cwd": s.cwd,
+            "cli": s.cli,
             "running": True,
             "pid": s.pid,
             "cpu": round(s.cpu, 1),
             "kind": "fresh" if s.is_fresh else "resume",
             "needs_ho": _needs_ho_cached(s),
             "registered": False,
+            "tmux": is_tmux_backed(s.pid),
         })
 
     return {
@@ -563,21 +607,28 @@ def _status_payload() -> dict:
         "sessions": sessions,
         "closed": closed,
         "retired": retired,
-        "model_choices": MODEL_CHOICES,
-        "permission_modes": PERMISSION_MODES,
-        "effort_levels": EFFORT_LEVELS,
+        "cli_list": list(PROVIDERS.keys()),
+        "cli_options": {
+            name: {
+                "models": p.model_choices(),
+                "permission_modes": p.permission_modes(),
+                "effort_levels": p.effort_levels(),
+            }
+            for name, p in PROVIDERS.items()
+        },
         "layout_missing_deps": _missing_layout_deps(),
     }
 
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
-           lang: str = "tr") -> dict:
+           cli: str = "", lang: str = "tr") -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
     if not info or info["state"] != "active":
         return _err(lang, "not_active", name=name)
     if _find_running(name):
         return _err(lang, "already_running", name=name)
+    chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
     try:
         with guard_lock(timeout=5.0):
             kind = spawn_session(
@@ -588,6 +639,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
                 permission_mode=permission_mode.strip() or "auto",
                 effort=effort.strip() or "max",
                 force_new=bool(fresh),
+                cli=chosen_cli,
             )
             deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
             opened = False
@@ -609,10 +661,54 @@ def _stop(name: str, lang: str = "tr") -> dict:
         return _err(lang, "not_running", name=name)
     try:
         with guard_lock(timeout=5.0):
-            results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS) for s in procs]
+            results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     return {"ok": True, "result": results}
+
+
+def _term_resolve(name: str, lang: str = "tr"):
+    """Terminal endpoint'lerinin ortak çözümlemesi: name → tek, canlı, tmux-backed
+    Session, yoksa (None, err-dict) döner."""
+    procs = _find_running(name)
+    if not procs:
+        return None, _err(lang, "not_running", name=name)
+    s = procs[0]
+    if not is_tmux_backed(s.pid):
+        return None, _err(lang, "not_tmux_backed", name=name)
+    if not tmux_has_session(s.name):
+        return None, _err(lang, "term_session_gone", name=name)
+    return s, None
+
+
+def _term_output(name: str, lang: str = "tr") -> dict:
+    s, err = _term_resolve(name, lang)
+    if err:
+        return err
+    text = tmux_capture(s.name, lines=2000)
+    if text is None:
+        return _err(lang, "term_session_gone", name=name)
+    size = tmux_pane_size(s.name)
+    return {"ok": True, "text": text, "cols": size[0] if size else None,
+            "rows": size[1] if size else None}
+
+
+def _term_input(name: str, text: str, lang: str = "tr") -> dict:
+    s, err = _term_resolve(name, lang)
+    if err:
+        return err
+    ok = tmux_send_keys(s.name, text)
+    return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
+
+
+def _term_key(name: str, key: str, lang: str = "tr") -> dict:
+    if key not in ALLOWED_SPECIAL_KEYS:
+        return _err(lang, "invalid_key")
+    s, err = _term_resolve(name, lang)
+    if err:
+        return err
+    ok = tmux_send_special_key(s.name, key)
+    return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
 def _retire(name: str, lang: str = "tr") -> dict:
@@ -627,7 +723,7 @@ def _retire(name: str, lang: str = "tr") -> dict:
         try:
             with guard_lock(timeout=5.0):
                 for s in procs:
-                    kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS)
+                    kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
             return {"ok": False, "error": str(e)}
     _toggle_comment(MODELS_TSV, name, want_active=False)
@@ -655,7 +751,7 @@ def _close_project(name: str, lang: str = "tr") -> dict:
         try:
             with guard_lock(timeout=5.0):
                 for s in procs:
-                    kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS)
+                    kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
             return {"ok": False, "error": str(e)}
     _toggle_comment(MODELS_TSV, name, want_active=False)
@@ -688,14 +784,16 @@ def _handover(name: str, lang: str = "tr") -> dict:
         return _err(lang, "not_running", name=name)
     fleet = _fleet_status()
     info = fleet.get(name)
+    chosen_cli = info["cli"] if info else procs[0].cli
+    provider = get_provider(chosen_cli)
     if info:
         cwd, model = info["cwd"], info["model"]
     else:
-        cwd, model = procs[0].cwd, (procs[0].model or "claude-sonnet-5")
+        cwd, model = procs[0].cwd, (procs[0].model or provider.model_choices()[0])
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     try:
         with guard_lock(timeout=5.0):
-            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS) for s in procs]
+            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
             if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
                 time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
             kind = spawn_session(
@@ -703,10 +801,11 @@ def _handover(name: str, lang: str = "tr") -> dict:
                 cwd=cwd,
                 model=model,
                 display=detect_display(),
-                permission_mode="auto",
-                effort="max",
+                permission_mode=provider.permission_modes()[0],
+                effort=provider.effort_levels()[-1],
                 force_new=False,
                 prompt=message,
+                cli=chosen_cli,
             )
             deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
             reopened = False
@@ -747,10 +846,14 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     if new_name != old_name and new_name in _all_known_names():
         return _err(lang, "name_in_use", new_name=new_name)
     cwd = procs[0].cwd
-    chosen_model = model.strip() or procs[0].model or "claude-sonnet-5"
+    # cli EĞİLMEZ/override edilmez — devralınan proc'un kimliği zaten hangi provider'ın
+    # tanıdığıysa odur (bir claude proc'u "agy olarak devral" diye bir şey yok).
+    chosen_cli = procs[0].cli
+    provider = get_provider(chosen_cli)
+    chosen_model = model.strip() or procs[0].model or provider.model_choices()[0]
     try:
         with guard_lock(timeout=5.0):
-            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS) for s in procs]
+            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
             if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
                 time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
             kind = spawn_session(
@@ -758,9 +861,10 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
                 cwd=cwd,
                 model=chosen_model,
                 display=detect_display(),
-                permission_mode=permission_mode.strip() or "auto",
-                effort=effort.strip() or "max",
+                permission_mode=permission_mode.strip() or provider.permission_modes()[0],
+                effort=effort.strip() or provider.effort_levels()[-1],
                 force_new=False,
+                cli=chosen_cli,
             )
             deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
             reopened = False
@@ -774,7 +878,7 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     if not reopened:
         return _err(lang, "adopt_reopen_failed", old_name=old_name, new_name=new_name, kind=kind)
     if new_name not in _fleet_status():
-        _append_tsv_line(ROSTER_TSV, [new_name, cwd, chosen_model])
+        _append_tsv_line(ROSTER_TSV, [new_name, cwd, chosen_model, chosen_cli])
         _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
     return {"ok": True, "kind": kind, "new_name": new_name}
 
@@ -877,12 +981,14 @@ PAGE_HTML = """<!doctype html>
   button.selho { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
   .unreg-badge { font-size: .65rem; color: var(--amber); border: 1px solid var(--amber);
                  border-radius: 4px; padding: 1px 4px; margin-left: .3rem; cursor: help; }
+  .cli-badge { font-size: .65rem; color: var(--muted); border: 1px solid var(--border);
+               border-radius: 4px; padding: 1px 5px; }
   button.reactivate { border-color: var(--green); color: var(--green); }
   button:disabled { opacity: .5; cursor: default; }
   .actioncell { display: flex; gap: .35rem; flex-wrap: wrap; }
   .opts-row td { background: var(--panel2); padding: .6rem .5rem; }
   .opts { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-  .modes { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: .25rem 1.2rem; margin-bottom: .3rem; }
+  .modes { flex-basis: 100%; display: flex; flex-direction: column; gap: .25rem; margin-bottom: .3rem; }
   .mode-radio { display: flex; align-items: center; gap: .3rem; font-size: .82rem; color: var(--text); }
   .opts-hint { flex-basis: 100%; font-size: .78rem; color: var(--muted); min-height: 1em; }
   .opts label { color: var(--muted); font-size: .75rem; display: flex; flex-direction: column; gap: .15rem; }
@@ -935,7 +1041,12 @@ const T = {
     bulkConfirm: (label, expl, names) => `${label} — ${expl}\\n\\nseçili (${names.length}): ${names.join(', ')}\\n\\nDevam edilsin mi?`,
     bulkSkippedUnreg: 'kayıtsız olduğu için atlanacak: ',
     bulkDone: (ok, fail) => `bitti — ${ok} tamam` + (fail ? `, ${fail} hata` : ''),
-    optionsBtn: 'seçenekler ▾', startBtn: 'başlat ▾',
+    optionsBtn: 'seçenekler ▾', startBtn: 'başlat ▾', terminalBtn: 'terminal',
+    termPlaceholder: 'komut yaz, Enter/Gönder ile yolla…', termSend: 'gönder',
+    termGone: (err) => `✗ ${err}`,
+    termScrolledHint: '⏸ yukarı kaydırdınız — canlı akış duraklatıldı, dibe dönünce devam eder',
+    termCopyBtn: 'kopyala', termCopied: '✓ kopyalandı',
+    termCopyHint: 'görünen çıktıyı panoya kopyala (mobilde dokunarak seçim güvenilir değil)',
     nothingRunning: `Hiçbir şey çalışmıyor — "Kayıtlı" sekmesinden başlatın.`,
     unregBadge: 'kayıtsız',
     unregHint: `roster.tsv'de kayıtlı değil (proc-scan'den bulundu) — claudeops'un açmadığı bir pencere; "devral"a basarsanız remote-control eklenip roster'a kalıcı kaydedilir`,
@@ -957,7 +1068,7 @@ const T = {
     modeChoiceReset: `Bu ismi SIFIRLA (--new, geçmiş bir daha görünmez)`,
     modeChoiceNewchat: 'Ayrı yeni chat aç (yeni isimle, mevcuduna dokunmaz)',
     runningNote: (name) => `⚠ ${name} şu an ÇALIŞIYOR — devam ettirmek/sıfırlamak için önce "durdur"a basın. Buradaki tek seçenek AYRI, ek bir chat açar, mevcut ${name}'a dokunmaz.`,
-    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model',
+    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model', cliLabel: 'CLI',
     autoNameHint: (name, date) => `isim otomatik: ${name}${date} (çakışırsa _1, _2…)`,
     starting: 'başlıyor…', newChatStarted: 'yeni chat başlatıldı: ',
     layoutDesc: `X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz`,
@@ -997,7 +1108,12 @@ const T = {
     bulkConfirm: (label, expl, names) => `${label} — ${expl}\\n\\nselected (${names.length}): ${names.join(', ')}\\n\\nProceed?`,
     bulkSkippedUnreg: 'skipped (unregistered): ',
     bulkDone: (ok, fail) => `done — ${ok} ok` + (fail ? `, ${fail} failed` : ''),
-    optionsBtn: 'options ▾', startBtn: 'start ▾',
+    optionsBtn: 'options ▾', startBtn: 'start ▾', terminalBtn: 'terminal',
+    termPlaceholder: 'type a command, Enter/Send to submit…', termSend: 'send',
+    termGone: (err) => `✗ ${err}`,
+    termScrolledHint: '⏸ scrolled up — live updates paused, resumes when you scroll back to bottom',
+    termCopyBtn: 'copy', termCopied: '✓ copied',
+    termCopyHint: 'copy visible output to clipboard (touch-selection is unreliable on mobile)',
     nothingRunning: 'Nothing running — start from the "Registered" tab.',
     unregBadge: 'unregistered',
     unregHint: `not in roster.tsv (found via proc-scan) — a window claudeops didn't open; click "adopt" to attach remote-control and register it permanently`,
@@ -1019,7 +1135,7 @@ const T = {
     modeChoiceReset: 'RESET this name (--new, previous history no longer shown)',
     modeChoiceNewchat: 'Start a separate new chat (new name, does not touch the existing one)',
     runningNote: (name) => `⚠ ${name} is currently RUNNING — click "stop" first to resume/reset. The only option here starts a SEPARATE extra chat, it does not touch the existing ${name}.`,
-    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model',
+    pmLabel: 'permission-mode', effortLabel: 'effort', modelLabel: 'model', cliLabel: 'CLI',
     autoNameHint: (name, date) => `name auto-generated: ${name}${date} (adds _1, _2… on conflict)`,
     starting: 'starting…', newChatStarted: 'new chat started: ',
     layoutDesc: `X11 desktop — does not work on Wayland/locked screen`,
@@ -1055,6 +1171,8 @@ let LAST = null;
 let LAST_JSON = null;
 let optsFor = null;
 let adoptFor = null;
+let termFor = null;
+let termPollTimer = null;
 let TAB = localStorage.getItem('cops_tab') || 'running';
 const SEL = new Set();
 let BULK_MSG = '';
@@ -1240,12 +1358,13 @@ function runningTable(rows, d) {
   const allOn = rows.length && rows.every(s => SEL.has(s.name));
   const body = [];
   for (const s of rows) body.push(...runningRow(s, d));
-  if (!rows.length) body.push(`<tr><td colspan="9" style="color:var(--muted)">${t('nothingRunning')}</td></tr>`);
+  if (!rows.length) body.push(`<tr><td colspan="10" style="color:var(--muted)">${t('nothingRunning')}</td></tr>`);
   return `<div class="tablewrap"><table class="runtab">
     <thead><tr>
       <th class="selcell"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="toggleSelAll(this.checked)"></th>
       <th style="width:12%">${t('colName')}</th>
       <th style="width:14%">model</th>
+      <th style="width:6%">${t('cliLabel')}</th>
       <th style="width:9%">${t('colStatus')}</th>
       <th style="width:6%">cpu%</th>
       <th style="width:5%" title="${t('hoHint')}">${t('hoCol')}</th>
@@ -1256,9 +1375,10 @@ function runningTable(rows, d) {
 }
 
 function runningRow(s, d) {
-  const actions = s.registered === false
+  const actions = (s.registered === false
     ? `<button class="start" onclick="toggleAdopt('${s.name}')">${t('adoptBtn')}</button>`
-    : `<button class="start" onclick="toggleOpts('${s.name}')">${t('optionsBtn')}</button>`;
+    : `<button class="start" onclick="toggleOpts('${s.name}')">${t('optionsBtn')}</button>`)
+    + (s.tmux ? `<button class="start" onclick="toggleTerm('${s.name}')">${t('terminalBtn')}</button>` : '');
   const nameCell = s.registered === false
     ? `${s.name} <span class="unreg-badge" title="${t('unregHint')}">${t('unregBadge')}</span>`
     : s.name;
@@ -1267,6 +1387,7 @@ function runningRow(s, d) {
       ${selCell(s)}
       <td>${nameCell}</td>
       <td>${s.model || ''}</td>
+      <td><span class="cli-badge">${s.cli}</span></td>
       <td><span class="dot on"></span>${t('pidWord')}${s.pid}</td>
       <td>${s.cpu != null ? s.cpu.toFixed(1) : '—'}</td>
       ${hoCell(s)}
@@ -1274,8 +1395,11 @@ function runningRow(s, d) {
       <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${s.cwd}</td>
       <td><div class="actioncell">${actions}</div></td>
     </tr>`;
-  if (s.registered === false && adoptFor === s.name) return [row, adoptOptsRow(s, d, 9)];
-  return (s.registered !== false && optsFor === s.name) ? [row, unifiedOptsRow(s, d, 9)] : [row];
+  const extra = [];
+  if (s.registered === false && adoptFor === s.name) extra.push(adoptOptsRow(s, d, 10));
+  if (s.registered !== false && optsFor === s.name) extra.push(unifiedOptsRow(s, d, 10));
+  if (s.tmux && termFor === s.name) extra.push(termRow(s, 10));
+  return [row, ...extra];
 }
 
 function registeredTable(rows, d) {
@@ -1283,12 +1407,13 @@ function registeredTable(rows, d) {
   const allOn = rows.length && rows.every(s => SEL.has(s.name));
   const body = [];
   for (const s of rows) body.push(...registeredRow(s, d));
-  if (!rows.length) body.push(`<tr><td colspan="5" style="color:var(--muted)">${t('noneRegistered')}</td></tr>`);
+  if (!rows.length) body.push(`<tr><td colspan="6" style="color:var(--muted)">${t('noneRegistered')}</td></tr>`);
   return `<div class="tablewrap"><table class="regtab">
     <thead><tr>
       <th class="selcell"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="toggleSelAll(this.checked)"></th>
       <th style="width:14%">${t('colName')}</th>
-      <th style="width:18%">model</th>
+      <th style="width:16%">model</th>
+      <th style="width:6%">${t('cliLabel')}</th>
       <th>cwd</th>
       <th style="width:12%"></th>
     </tr></thead><tbody>${body.join('')}</tbody></table></div>`;
@@ -1300,10 +1425,11 @@ function registeredRow(s, d) {
       ${selCell(s)}
       <td>${s.name}</td>
       <td>${s.model || ''}</td>
+      <td><span class="cli-badge">${s.cli}</span></td>
       <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${s.cwd}</td>
       <td><div class="actioncell"><button class="start" onclick="toggleOpts('${s.name}')">${t('startBtn')}</button></div></td>
     </tr>`;
-  return (optsFor === s.name) ? [row, unifiedOptsRow(s, d, 5)] : [row];
+  return (optsFor === s.name) ? [row, unifiedOptsRow(s, d, 6)] : [row];
 }
 
 function groupTable(items) {
@@ -1311,7 +1437,8 @@ function groupTable(items) {
   const rows = items.map(it => `
     <tr>
       <td style="width:14%">${it.name}</td>
-      <td style="width:20%">${it.model || ''}</td>
+      <td style="width:18%">${it.model || ''}</td>
+      <td style="width:6%"><span class="cli-badge">${it.cli}</span></td>
       <td class="cwd" title="${t('cwdHint')}" onclick="this.classList.toggle('expanded')">${it.cwd}</td>
       <td style="width:16%"><button class="reactivate" onclick="doReactivate('${it.name}', this)">${t('reactivateBtn')}</button></td>
     </tr>`).join('');
@@ -1320,36 +1447,29 @@ function groupTable(items) {
 
 // ── devral (adopt) ──────────────────────────────────────────────────────────
 
+let adoptChoice = {};   // aynı "refresh açık formu siliyor" bug'ı — bkz. optsChoice notu
+
 function toggleAdopt(name) {
   adoptFor = (adoptFor === name) ? null : name;
+  if (adoptFor !== name) adoptChoice[name] = null;
   render(LAST);
 }
 
 function adoptOptsRow(s, d, colspan) {
-  const modelOpts = ['(' + (s.model || 'claude-sonnet-5') + ')', ...d.model_choices, '…']
-    .map(m => `<option value="${m.startsWith('(') ? '' : m}">${m}</option>`).join('');
-  const pmOpts = d.permission_modes.map(m => `<option ${m==='auto'?'selected':''}>${m}</option>`).join('');
-  const efOpts = d.effort_levels.map(m => `<option ${m==='max'?'selected':''}>${m}</option>`).join('');
+  // cli devralınan proc'un kimliğidir, DEĞİŞTİRİLEMEZ (rozet olarak gösterilir) —
+  // bir claude proc'u "agy olarak devral" diye bir şey yok, bkz. backend _adopt().
+  const saved = adoptChoice[s.name] || {};
   return `
     <tr class="opts-row"><td colspan="${colspan}"><div class="opts">
       <span class="opts-hint">${t('adoptWarn')(s.name)}</span>
       <label>${t('adoptNameLabel')}
-        <input type="text" id="adopt-name-${s.name}" value="${s.name}">
+        <input type="text" id="adopt-name-${s.name}" value="${saved.newName ?? s.name}"
+          oninput="adoptChoice['${s.name}']={...(adoptChoice['${s.name}']||{}),newName:this.value}">
       </label>
-      <label>${t('modelLabel')}
-        <select id="adopt-model-${s.name}" onchange="this.nextElementSibling.style.display = this.value==='__other__' ? '' : 'none'">
-          ${modelOpts.replace('value="…"', 'value="__other__"')}
-        </select>
-      </label>
-      <input type="text" id="adopt-model-other-${s.name}" placeholder="model id" style="display:none">
-      <label>${t('pmLabel')}
-        <select id="adopt-pm-${s.name}">${pmOpts}</select>
-      </label>
-      <label>${t('effortLabel')}
-        <select id="adopt-effort-${s.name}">${efOpts}</select>
-      </label>
+      <label>${t('cliLabel')}<span class="cli-badge">${s.cli}</span></label>
+      ${renderCliFields('adopt', s.name, s.cli, d, s.model, saved)}
       <button class="go" onclick="doAdopt('${s.name}', this)">${t('adoptBtn')}</button>
-      <button onclick="adoptFor=null; render(LAST)">${t('cancelBtn')}</button>
+      <button onclick="adoptChoice['${s.name}']=null; adoptFor=null; render(LAST)">${t('cancelBtn')}</button>
     </div></td></tr>`;
 }
 
@@ -1379,13 +1499,15 @@ async function doAdopt(oldName, btn) {
     alert(t('requestFailed') + e.message);
   }
   adoptFor = null;
+  adoptChoice[oldName] = null;
   refresh();
 }
 
 // ── kayıt formu ─────────────────────────────────────────────────────────────
 
 function newProjectForm(d) {
-  const modelOpts = d.model_choices.map(m => `<option>${m}</option>`).join('');
+  const cliOpts = d.cli_list.map(c => `<option value="${c}" ${c === 'claude' ? 'selected' : ''}>${c}</option>`).join('');
+  const modelOpts = (d.cli_options['claude'] || {models: []}).models.map(m => `<option>${m}</option>`).join('');
   return `
     <div class="opts" style="margin-top:.7rem">
       <span class="opts-hint"><b>${t('registerTitle')}</b> ${t('registerDesc')}</span>
@@ -1395,6 +1517,9 @@ function newProjectForm(d) {
       <label>${t('registerCwdLabel')}
         <input type="text" id="reg-cwd" placeholder="/home/user/work/myproject">
       </label>
+      <label>${t('cliLabel')}
+        <select id="reg-cli" onchange="onRegCliChange()">${cliOpts}</select>
+      </label>
       <label>${t('modelLabel')}
         <select id="reg-model">${modelOpts}</select>
       </label>
@@ -1402,9 +1527,16 @@ function newProjectForm(d) {
     </div>`;
 }
 
+function onRegCliChange() {
+  const cli = document.getElementById('reg-cli').value;
+  const sel = document.getElementById('reg-model');
+  sel.innerHTML = ((LAST.cli_options || {})[cli] || {models: []}).models.map(m => `<option>${m}</option>`).join('');
+}
+
 async function doRegister(btn) {
   const name = document.getElementById('reg-name').value.trim();
   const cwd = document.getElementById('reg-cwd').value.trim();
+  const cli = document.getElementById('reg-cli').value;
   const model = document.getElementById('reg-model').value;
   btn.disabled = true;
   btn.textContent = t('registerSaving');
@@ -1412,7 +1544,7 @@ async function doRegister(btn) {
     const r = await fetch(withToken('/api/register'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name, cwd, model, lang: LANG}),
+      body: JSON.stringify({name, cwd, model, cli, lang: LANG}),
     });
     if (r.status === 401) { alert(t('authErrorShort')); }
     else {
@@ -1431,11 +1563,58 @@ async function doRegister(btn) {
 
 function modeLabels() { return {resume: t('modeResume'), reset: t('modeReset'), newchat: t('modeNewchat')}; }
 
+// Model/permission-mode/effort seçenekleri hangi CLI seçiliyse ONA göre değişir
+// (agy'nin model listesi/effort seviyeleri claude'unkiyle TAMAMEN farklı) —
+// tek bir yerde üretilip hem başlat-seçenekleri hem devral satırında kullanılır.
+// Panel her ~4s'de (ya da başka bir satırdaki değişiklikte) TÜM tabloyu yeniden
+// çiziyor — açık bir seçenekler satırında kullanıcının henüz GÖNDERMEDİĞİ bir
+// seçim (cli/model/pm/effort) varsa, o satır sunucudaki ESKİ değerlerle yeniden
+// kurulup kullanıcının seçimini SESSİZCE siliyordu ("agy seçince kayboluyor").
+// Fix: kullanıcının her onchange'i burada tutuluyor, render() her çalıştığında
+// bu ÖNCELİKLİ okunuyor — submit/iptal'de temizlenir.
+let optsChoice = {};   // name -> {cli, model, modelOther, pm, effort}
+
+function renderCliFields(idPrefix, name, cli, d, currentModel, saved) {
+  saved = saved || {};
+  const opts = (d.cli_options && d.cli_options[cli]) || {models: [], permission_modes: [], effort_levels: []};
+  const modelOpts = ['(' + (currentModel || opts.models[0] || '') + ')', ...opts.models, '…']
+    .map(m => `<option value="${m.startsWith('(') ? '' : m}" ${m === saved.model ? 'selected' : ''}>${m}</option>`).join('');
+  const pmOpts = opts.permission_modes.map(m =>
+    `<option ${m === (saved.pm || 'auto') ? 'selected' : ''}>${m}</option>`).join('');
+  const defaultEffort = opts.effort_levels[opts.effort_levels.length - 1];
+  const efOpts = opts.effort_levels.map(m =>
+    `<option ${m === (saved.effort || defaultEffort) ? 'selected' : ''}>${m}</option>`).join('');
+  const showOther = saved.model === '__other__';
+  return `
+      <label>${t('modelLabel')}
+        <select id="${idPrefix}-model-${name}"
+          onchange="optsChoice['${name}']={...(optsChoice['${name}']||{}),model:this.value}; this.nextElementSibling.style.display = this.value==='__other__' ? '' : 'none'">
+          ${modelOpts.replace(/value="…"( selected)?/, 'value="__other__"$1')}
+        </select>
+      </label>
+      <input type="text" id="${idPrefix}-model-other-${name}" placeholder="model id"
+        style="display:${showOther ? '' : 'none'}" value="${saved.modelOther || ''}"
+        oninput="optsChoice['${name}']={...(optsChoice['${name}']||{}),modelOther:this.value}">
+      <label>${t('pmLabel')}
+        <select id="${idPrefix}-pm-${name}"
+          onchange="optsChoice['${name}']={...(optsChoice['${name}']||{}),pm:this.value}">${pmOpts}</select>
+      </label>
+      <label>${t('effortLabel')}
+        <select id="${idPrefix}-effort-${name}"
+          onchange="optsChoice['${name}']={...(optsChoice['${name}']||{}),effort:this.value}">${efOpts}</select>
+      </label>`;
+}
+
+function onCliChange(idPrefix, name, cli) {
+  optsChoice[name] = {...(optsChoice[name] || {}), cli};
+  document.getElementById(`${idPrefix}-fields-${name}`).innerHTML =
+    renderCliFields(idPrefix, name, cli, LAST, '', optsChoice[name]);
+}
+
 function unifiedOptsRow(s, d, colspan) {
-  const modelOpts = ['(' + s.model + ')', ...d.model_choices, '…']
-    .map(m => `<option value="${m.startsWith('(') ? '' : m}">${m}</option>`).join('');
-  const pmOpts = d.permission_modes.map(m => `<option ${m==='auto'?'selected':''}>${m}</option>`).join('');
-  const efOpts = d.effort_levels.map(m => `<option ${m==='max'?'selected':''}>${m}</option>`).join('');
+  const saved = optsChoice[s.name] || {};
+  const cli = saved.cli || s.cli;
+  const cliOpts = d.cli_list.map(c => `<option value="${c}" ${c === cli ? 'selected' : ''}>${c}</option>`).join('');
   const modeChoices = s.running
     ? [['newchat', t('modeChoiceNewchatOnly')]]
     : [
@@ -1444,7 +1623,7 @@ function unifiedOptsRow(s, d, colspan) {
         ['newchat', t('modeChoiceNewchat')],
       ];
   const radios = modeChoices.map(([val, label], i) => `
-      <label class="mode-radio"><input type="radio" name="mode-${s.name}" value="${val}" ${i===0?'checked':''} onchange="updateGoLabel('${s.name}')"> ${label}</label>`).join('');
+      <label class="mode-radio"><input type="radio" name="mode-${s.name}" value="${val}" ${(saved.mode || modeChoices[0][0]) === val ? 'checked' : ''} onchange="optsChoice['${s.name}']={...(optsChoice['${s.name}']||{}),mode:this.value}; updateGoLabel('${s.name}')"> ${label}</label>`).join('');
   const runningNote = s.running
     ? `<span class="opts-hint">${t('runningNote')(s.name)}</span>`
     : '';
@@ -1453,27 +1632,270 @@ function unifiedOptsRow(s, d, colspan) {
       ${runningNote}
       <div class="modes">${radios}</div>
       <span class="opts-hint" id="opt-hint-${s.name}"></span>
-      <label>${t('modelLabel')}
-        <select id="opt-model-${s.name}" onchange="this.nextElementSibling.style.display = this.value==='__other__' ? '' : 'none'">
-          ${modelOpts.replace('value="…"', 'value="__other__"')}
-        </select>
+      <label>${t('cliLabel')}
+        <select id="opt-cli-${s.name}" onchange="onCliChange('opt', '${s.name}', this.value)">${cliOpts}</select>
       </label>
-      <input type="text" id="opt-model-other-${s.name}" placeholder="model id" style="display:none">
-      <label>${t('pmLabel')}
-        <select id="opt-pm-${s.name}">${pmOpts}</select>
-      </label>
-      <label>${t('effortLabel')}
-        <select id="opt-effort-${s.name}">${efOpts}</select>
-      </label>
-      <button class="go" id="opt-go-${s.name}" onclick="doAction('${s.name}', this)">${modeLabels()[modeChoices[0][0]]}</button>
-      <button onclick="optsFor=null; render(LAST)">${t('cancelBtn')}</button>
+      <span id="opt-fields-${s.name}">${renderCliFields('opt', s.name, cli, d, s.model, saved)}</span>
+      <button class="go" id="opt-go-${s.name}" onclick="doAction('${s.name}', this)">${modeLabels()[saved.mode || modeChoices[0][0]]}</button>
+      <button onclick="optsChoice['${s.name}']=null; optsFor=null; render(LAST)">${t('cancelBtn')}</button>
     </div></td></tr>`;
 }
 
 function toggleOpts(name) {
   optsFor = (optsFor === name) ? null : name;
+  if (optsFor !== name) optsChoice[name] = null;
   render(LAST);
   if (optsFor === name) updateGoLabel(name);
+}
+
+// ── terminal (tmux-backed sessions) ─────────────────────────────────────────
+// Ayrı, hızlı (200ms) poll döngüsü — mevcut 4s status refresh()'e KATILMAZ.
+
+let xtermLibPromise = null;   // tek-seferlik lazy-load, başarısız olursa RETRY edilebilir (bkz. loadXtermLib)
+const xtermInstances = {};    // name -> {term, cols, rows}
+const XTERM_KEYS = [['ctrl-c','C-c'], ['esc','Escape'], ['↑','Up'], ['↓','Down'], ['←','Left'], ['→','Right'], ['tab','Tab']];
+
+function termRow(s, colspan) {
+  const keyBtns = XTERM_KEYS.map(([label, key]) =>
+    `<button onclick="sendTermKey('${s.name}','${key}')">${label}</button>`).join('');
+  // position:fixed → tablonun içinde olsa da tam ekran overlay olarak render olur
+  // (satır kendisi neredeyse yer kaplamaz, fixed çocuğu viewport'u kaplar).
+  return `
+    <tr class="opts-row"><td colspan="${colspan}" style="padding:0;border:0">
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;
+        display:flex;align-items:center;justify-content:center" onclick="if(event.target===this) toggleTerm('${s.name}')">
+        <div style="max-width:95vw;max-height:92vh;width:fit-content;background:var(--panel);
+          border-radius:8px;display:flex;flex-direction:column;align-items:flex-start;
+          padding:.7rem;box-sizing:border-box">
+          <div style="display:flex;align-items:center;justify-content:space-between;
+            margin-bottom:.4rem;width:100%;box-sizing:border-box">
+            <strong>${s.name}</strong>
+            <span>
+              <button onclick="copyTermText('${s.name}', this)" title="${t('termCopyHint')}">${t('termCopyBtn')}</button>
+              <button onclick="toggleTerm('${s.name}')" style="font-size:1rem;line-height:1;padding:.2rem .55rem">✕</button>
+            </span>
+          </div>
+          <div id="xterm-${s.name}" style="background:#111;padding:.35rem;border-radius:4px;
+            overflow:auto;max-width:calc(95vw - 1.4rem);max-height:calc(92vh - 130px);
+            box-sizing:content-box;font-family:monospace;font-size:.8rem;color:#ddd;
+            white-space:pre-wrap"></div>
+          <div class="opts-hint" id="term-hint-${s.name}" style="width:100%;box-sizing:border-box"></div>
+          <div class="opts" style="margin-top:.4rem;width:100%;box-sizing:border-box">
+            ${keyBtns}
+            <input type="text" id="term-in-${s.name}" placeholder="${t('termPlaceholder')}"
+              style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter') sendTermInput('${s.name}')">
+            <button class="go" onclick="sendTermInput('${s.name}')">${t('termSend')}</button>
+          </div>
+        </div>
+      </div>
+    </td></tr>`;
+}
+
+function loadXtermLib() {
+  if (xtermLibPromise) return xtermLibPromise;
+  xtermLibPromise = (async () => {
+    try {
+      if (!document.getElementById('xterm-css-link')) {
+        const link = document.createElement('link');
+        link.id = 'xterm-css-link'; link.rel = 'stylesheet';
+        link.href = withToken('/static/xterm.css');
+        document.head.appendChild(link);
+      }
+      await new Promise((resolve, reject) => {
+        if (window.Terminal) { resolve(); return; }
+        const s = document.createElement('script');
+        s.src = withToken('/static/xterm.js');
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('xterm.js load failed'));
+        document.head.appendChild(s);
+      });
+      return true;
+    } catch (e) {
+      // Kalıcı bir "xtermFailed=true" bayrağı KOYMA — mobil/hücresel bağlantıda
+      // TEK SEFERLİK bir ağ aksaklığı (canlı gözlemlendi: gerçek telefonda xterm.js
+      // bir kez yüklenemeyince o sekme SONSUZA dek ham-ANSI-kod fallback'ine
+      // kilitleniyordu, sayfa yenilemeden düzelmiyordu). Bunun yerine promise'i
+      // sıfırla — bir sonraki "terminal" aç denemesi (aynı ya da başka session)
+      // fetch'i baştan dener; `window.Terminal` zaten yüklüyse anında no-op döner.
+      xtermLibPromise = null;
+      return false;
+    }
+  })();
+  return xtermLibPromise;
+}
+
+async function ensureXtermFor(name) {
+  if (xtermInstances[name]) return;
+  const ok = await loadXtermLib();
+  if (!ok || !window.Terminal) return;
+  const container = document.getElementById('xterm-' + name);
+  if (!container) return;
+  container.style.whiteSpace = '';  // xterm.js kendi satır sarmalamasını yapar
+  const fontSize = computeFitFontSize(160);
+  const term = new Terminal({cols: 160, rows: 45, scrollback: 5000, convertEol: false, disableStdin: true, fontSize});
+  term.open(container);
+  xtermInstances[name] = {term, cols: 160, rows: 45};
+  fitContainerToTerm(name, 160, 45);
+}
+
+// Gerçek terminal (masaüstündeki gnome-terminal penceresinin GERÇEK boyutuna göre
+// tmux pane'i kaç sütunsa o kadar) DAR bir mobil ekrana asla sabit font-size'la
+// SIĞMAZ — metin kırpılır, yatay scroll keşfedilmesi zor/görünmez kalır ("kaymış"
+// şikayeti). Doğrusu: gerçek terminal istemcilerinin yaptığı gibi, TÜM sütunlar
+// mevcut viewport genişliğine sığacak şekilde font-size'ı KÜÇÜLTMEK — viewport'a
+// göre (DOM'a göre DEĞİL, o zaten circular-measurement tuzağına düşürüyordu, bkz.
+// fitContainerToTerm'in kendi notu).
+function computeFitFontSize(cols) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.font = '100px monospace';
+  const cellWidthAt100 = ctx.measureText('0').width;
+  const available = Math.max(200, window.innerWidth * 0.92 - 40);
+  const fit = (available / cols) / cellWidthAt100 * 100;
+  return Math.max(7, Math.min(fit, 15));
+}
+
+function fitContainerToTerm(name, cols, rows) {
+  // container.style genişlik/yükseklik VERMEDEN önce xterm açılırsa .xterm-viewport
+  // (position:absolute, parent'a stretch) ölçülür — bu kendi kendine referans veren
+  // (circular) bir ölçüm, gerçek karakter-grid boyutunu YANSITMAZ (denendi, işe
+  // yaramadı: kutu hep container'ın o anki — genelde stretch edilmiş — boyutuna
+  // eşit çıkıyordu). Doğrusu: xterm'in KENDİ kullandığı hücre boyutunu (FitAddon'ın
+  // da kullandığı private-ama-stabil `_core._renderService.dimensions`) OKUYUP
+  // cols/rows'a çarparak container'ı ÖNCEDEN, DOM'a bakmadan boyutlandırmak.
+  const inst = xtermInstances[name];
+  const container = document.getElementById('xterm-' + name);
+  if (!inst || !container) return;
+  requestAnimationFrame(() => {
+    try {
+      const dims = inst.term._core._renderService.dimensions.css.cell;
+      if (dims && dims.width > 0 && dims.height > 0) {
+        container.style.width = Math.ceil(cols * dims.width) + 'px';
+        container.style.height = Math.ceil(rows * dims.height) + 'px';
+        return;
+      }
+    } catch (e) { /* internal API değişmiş/erişilemez — canvas fallback'e düş */ }
+    const cw = measureCharWidthPx();
+    container.style.width = Math.ceil(cols * cw) + 'px';
+    container.style.height = Math.ceil(rows * cw * 2) + 'px';  // kaba satır-yüksekliği tahmini
+  });
+}
+
+let _charWidthPx = null;
+function measureCharWidthPx() {
+  if (_charWidthPx == null) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '12.8px monospace';  // 0.8rem @ 16px root
+    _charWidthPx = ctx.measureText('0'.repeat(100)).width / 100;
+  }
+  return _charWidthPx;
+}
+
+function toggleTerm(name) {
+  if (termPollTimer) { clearInterval(termPollTimer); termPollTimer = null; }
+  termFor = (termFor === name) ? null : name;
+  render(LAST);
+  if (termFor) {
+    ensureXtermFor(termFor).then(() => pollTerm(termFor));
+    termPollTimer = setInterval(() => pollTerm(termFor), 200);
+  }
+}
+
+async function pollTerm(name) {
+  const r = await fetch(withToken(`/api/term/output?name=${encodeURIComponent(name)}`));
+  const d = await r.json();
+  const inst = xtermInstances[name];
+  const hint = document.getElementById('term-hint-' + name);
+  if (inst) {
+    // capture-pane her seferinde TÜM panel durumunu döner (delta değil) — reset+rewrite
+    // ŞART, ama kullanıcı yukarı kaydırmışken bunu her 200ms'de yapmak onu hemen dibe
+    // geri fırlatıyordu ("yukarı çıkamıyorum" şikayeti) — dipte DEĞİLSE güncellemeyi
+    // atla, kullanıcı okumasını bitirip dibe dönünce canlı akış otomatik devam eder.
+    const buf = inst.term.buffer.active;
+    const atBottom = buf.viewportY >= buf.baseY;
+    if (!atBottom) {
+      if (hint) hint.textContent = t('termScrolledHint');
+      return;
+    }
+    if (hint) hint.textContent = '';
+    const resized = d.cols && d.rows && (d.cols !== inst.cols || d.rows !== inst.rows);
+    if (resized) {
+      inst.term.options.fontSize = computeFitFontSize(d.cols);
+      inst.term.resize(d.cols, d.rows);
+      inst.cols = d.cols; inst.rows = d.rows;
+      fitContainerToTerm(name, d.cols, d.rows);
+    }
+    // Ekran içerik olarak AYNIYSA reset+write'ı tamamen atla — spinner/token akışı
+    // olmayan sakin anlarda (çoğu 200ms tick) hiçbir görsel titreme/"kayma" olmasın.
+    // Boyut değiştiyse (yukarıda resize edildi) yine de tazele — eski buffer artık
+    // yanlış genişlikte kalmış olabilir.
+    if (d.ok && d.text === inst.lastText && !resized) {
+      // no-op
+    } else if (d.ok) {
+      inst.lastText = d.text;
+      inst.term.reset();
+      inst.term.write(d.text);
+    } else {
+      inst.lastText = null;
+      inst.term.reset();
+      inst.term.write(t('termGone')(d.error));
+    }
+    return;
+  }
+  // xterm.js yüklenemedi (gerçekten offline vb.) — düz metin fallback. capture-pane
+  // ham ANSI escape kodlarıyla gelir (`\x1b[38;5;179m` gibi) — xterm.js olmadan bunlar
+  // YORUMLANMAZ, harfiyen görünür (canlı doğrulandı: gerçek telefonda xterm.js bir kez
+  // yüklenemeyince ekran "[38;5;179m█[38;5;208m..." gibi okunaksız kod çorbasıydı) —
+  // en azından okunaklı kalsın diye kodları temizleyip düz metin gösteriyoruz.
+  const container = document.getElementById('xterm-' + name);
+  if (!container) return;
+  container.textContent = d.ok ? stripAnsi(d.text) : t('termGone')(d.error);
+}
+
+function stripAnsi(text) {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
+}
+
+// xterm.js kendi seçimini mouse'la sürükleyerek yapar (CSS'inde `user-select:none`
+// var, tarayıcının NATİF seçimi bilerek kapatılmış) — mobilde dokunarak seçim
+// tarayıcıdan tarayıcıya güvenilmez/tutarsız çalışıyor (canlı kullanıcı raporu).
+// Dokunma-seçimiyle uğraşmak yerine: görünen tüm çıktıyı (ANSI temizlenmiş) tek
+// dokunuşla panoya kopyalayan bir buton — platformdan bağımsız çalışır.
+async function copyTermText(name, btn) {
+  const orig = btn.textContent;
+  try {
+    const r = await fetch(withToken(`/api/term/output?name=${encodeURIComponent(name)}`));
+    const d = await r.json();
+    if (!d.ok) { alert(name + ': ' + d.error); return; }
+    await navigator.clipboard.writeText(stripAnsi(d.text));
+    btn.textContent = t('termCopied');
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  } catch (e) {
+    alert(t('requestFailed') + e.message);
+  }
+}
+
+async function sendTermKey(name, key) {
+  await fetch(withToken('/api/term/key'), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, key, lang: LANG}),
+  });
+}
+
+async function sendTermInput(name) {
+  const input = document.getElementById('term-in-' + name);
+  if (!input) return;
+  const text = input.value;
+  if (!text) return;
+  input.value = '';
+  await fetch(withToken('/api/term/input'), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, text, lang: LANG}),
+  });
 }
 
 function updateGoLabel(name) {
@@ -1492,6 +1914,7 @@ function todayStr() {
 async function doAction(name, btn) {
   const checked = document.querySelector(`input[name="mode-${name}"]:checked`);
   const mode = checked ? checked.value : 'resume';
+  const cli = document.getElementById('opt-cli-' + name).value;
   const modelSel = document.getElementById('opt-model-' + name).value;
   const modelOther = document.getElementById('opt-model-other-' + name).value;
   const model = modelSel === '__other__' ? modelOther : modelSel;
@@ -1504,7 +1927,7 @@ async function doAction(name, btn) {
       const r = await fetch(withToken('/api/new-chat'), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({base: name, model, permission_mode, effort, lang: LANG}),
+        body: JSON.stringify({base: name, model, permission_mode, effort, cli, lang: LANG}),
       });
       if (r.status === 401) { alert(t('authErrorShort')); }
       else {
@@ -1516,9 +1939,10 @@ async function doAction(name, btn) {
       alert(t('requestFailed') + e.message);
     }
   } else {
-    await call('start', {name, model, permission_mode, effort, fresh: mode === 'reset'});
+    await call('start', {name, model, permission_mode, effort, cli, fresh: mode === 'reset'});
   }
   optsFor = null;
+  optsChoice[name] = null;
   refresh();
 }
 
@@ -1664,6 +2088,32 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif path == "/api/status":
             self._json(_status_payload())
+        elif path == "/api/term/output":
+            qs = parse_qs(urlparse(self.path).query)
+            name = (qs.get("name") or [""])[0].strip()
+            lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_term_output(name, lang=lang))
+        elif path.startswith("/static/"):
+            fname = path[len("/static/"):]
+            if fname not in ("xterm.js", "xterm.css"):
+                self._json({"error": "not found"}, status=404)
+                return
+            vendor_dir = _ensure_xterm_assets()
+            if not vendor_dir:
+                self._json({"error": "unavailable"}, status=503)
+                return
+            fpath = os.path.join(vendor_dir, fname)
+            ctype = "application/javascript" if fname.endswith(".js") else "text/css"
+            with open(fpath, "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", f"{ctype}; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self._json({"error": "not found"}, status=404)
 
@@ -1674,7 +2124,7 @@ class _Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/close",
-                         "/api/handover", "/api/adopt"):
+                         "/api/handover", "/api/adopt", "/api/term/input", "/api/term/key"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -1711,6 +2161,7 @@ class _Handler(BaseHTTPRequestHandler):
                 model=str(data.get("model", "")),
                 permission_mode=str(data.get("permission_mode", "")),
                 effort=str(data.get("effort", "")),
+                cli=str(data.get("cli", "")),
                 lang=lang,
             ))
             return
@@ -1720,6 +2171,7 @@ class _Handler(BaseHTTPRequestHandler):
                 name=str(data.get("name", "")),
                 cwd=str(data.get("cwd", "")),
                 model=str(data.get("model", "")),
+                cli=str(data.get("cli", "")),
                 lang=lang,
             ))
             return
@@ -1739,6 +2191,22 @@ class _Handler(BaseHTTPRequestHandler):
             ))
             return
 
+        if path == "/api/term/input":
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_term_input(name, text=str(data.get("text", "")), lang=lang))
+            return
+
+        if path == "/api/term/key":
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_term_key(name, key=str(data.get("key", "")), lang=lang))
+            return
+
         name = str(data.get("name", "")).strip()
         if not name:
             self._json(_err(lang, "name_required"), status=400)
@@ -1750,6 +2218,7 @@ class _Handler(BaseHTTPRequestHandler):
                 permission_mode=str(data.get("permission_mode", "")),
                 effort=str(data.get("effort", "")),
                 fresh=bool(data.get("fresh", False)),
+                cli=str(data.get("cli", "")),
                 lang=lang,
             )
         elif path == "/api/stop":

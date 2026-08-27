@@ -29,6 +29,6 @@ def run(args) -> int:
                 continue
             print(f"  {name} pid={s.pid} → SIGTERM + {args.grace:.0f}s grace...",
                   end="", flush=True)
-            result = kill_session_and_parent(s.pid, grace=args.grace)
+            result = kill_session_and_parent(s.pid, grace=args.grace, name=s.name)
             print(f" {result}")
     return errors
