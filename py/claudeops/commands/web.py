@@ -34,7 +34,7 @@ from urllib.parse import urlparse, parse_qs
 import psutil
 
 from ..config import validate_config
-from ..diaglog import diag_log, diag_log_tail
+from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
@@ -42,7 +42,7 @@ from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV, VENDOR_DIR
-from ..spawn import spawn_session, detect_display, find_latest_jsonl
+from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_send_keys,
@@ -521,6 +521,16 @@ def _screen_locked() -> Optional[bool]:
 # poll'unda) ve (b) gerçek bir pencere açıp DEVNULL'suz hatayı yakalayan, SADECE
 # tıklanınca çalışan aktif bir test'le ayırt eder.
 
+# 2026-08-28: spawn.py artık gnome-terminal'i FALLBACK_RETRY_COUNT kez tekrar
+# deniyor — tek bir fallback artık "ara sıra" bir flake sayılır (retry çoğunu
+# sessizce yutar). Ama KISA sürede ARKA ARKAYA birden fazla tam-fallback (retry'lar
+# DAHİL hepsi başarısız oldu demek) gnome-terminal-server'ın o an gerçekten
+# sorunlu olduğuna işaret eder — kullanıcıya restart ÖNER (asla otomatik yapma,
+# TÜM açık pencereleri kapatan yıkıcı bir işlem).
+FALLBACK_ALERT_THRESHOLD = 2
+FALLBACK_ALERT_WINDOW_MINUTES = 15.0
+
+
 def _find_gnome_terminal_server() -> Optional[psutil.Process]:
     for p in psutil.process_iter(["cmdline"]):
         try:
@@ -572,11 +582,15 @@ def _diag_status() -> dict:
         except Exception:
             windowless = None
 
+    recent_fallbacks = diag_log_recent_fallback_count(FALLBACK_ALERT_WINDOW_MINUTES)
     return {
         "web_pid": os.getpid(),
         "web_uptime_seconds": round(time.monotonic() - _WEB_PROC_START_MONO),
         "gt": gt_info,
         "windowless": windowless,
+        "recent_fallback_count": recent_fallbacks,
+        "fallback_alert": recent_fallbacks >= FALLBACK_ALERT_THRESHOLD,
+        "fallback_alert_window_minutes": FALLBACK_ALERT_WINDOW_MINUTES,
     }
 
 
@@ -910,6 +924,17 @@ def _term_key(name: str, key: str, lang: str = "tr") -> dict:
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
+def _open_window(name: str, lang: str = "tr") -> dict:
+    """Windowless (tmux-only) kalmış bir session'a YENİ bir gnome-terminal penceresi
+    bağlar — CLI'ı yeniden başlatmadan. `_diag_status()`'un `windowless` listesindeki
+    satırlara panelde tek-tık telafi butonu için (2026-08-28)."""
+    s, err = _term_resolve(name, lang)
+    if err:
+        return err
+    ok = open_window(s.name, s.cwd, display=detect_display())
+    return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
+
+
 def _retire(name: str, lang: str = "tr") -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
@@ -1209,6 +1234,8 @@ const T = {
     unexpectedResponse: (code) => `beklenmeyen yanıt (http ${code}) — bu tünel/URL artık geçerli olmayabilir, güncel linki kontrol edin`,
     runningWord: 'çalışıyor', configWord: 'config',
     dupWarn: '⚠ DUP: ',
+    fallbackAlertMsg: (n, mins) => `⚠ son ${mins} dakikada ${n} kez pencere açma tüm denemelere (retry dahil) rağmen başarısız oldu (CLI'lar yine de çalışıyor, sadece penceresiz) — gnome-terminal-server gerçekten sorunlu olabilir.`,
+    fallbackAlertBtn: 'Tanı sekmesine git',
     pidWord: 'pid ', stoppedWord: 'durdu',
     cwdHint: 'tıkla: tam yolu göster/gizle',
     requestFailed: 'istek başarısız: ',
@@ -1279,6 +1306,8 @@ const T = {
     diagRestartDone: (r) => `✓ kapatıldı (${r}) — bir sonraki spawn'da otomatik yeniden doğacak`,
     diagRefreshHint: 'çalışma süreleri her 4s otomatik güncellenir',
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
+    windowlessBadge: 'penceresiz', windowlessHint: 'gnome-terminal penceresi yok (tmux-only fallback) — CLI çalışıyor, sadece görünür pencere yok. "pencere aç" ile CLI yeniden başlamadan bir pencere bağlayabilirsin.',
+    openWindowBtn: 'pencere aç', openingWindow: 'pencere açılıyor…',
     diagAskCliLabel: 'CLI', diagAskQuestionLabel: 'ek soru (opsiyonel)',
     diagAskQuestionPlaceholder: 'boş bırakılırsa genel teşhis istenir',
     diagAskBtn: 'bu CLI ile sor', diagAsking: 'açılıyor… (~10-20s)',
@@ -1295,6 +1324,8 @@ const T = {
     unexpectedResponse: (code) => `unexpected response (http ${code}) — this tunnel/URL may no longer be valid, check the current link`,
     runningWord: 'running', configWord: 'config',
     dupWarn: '⚠ DUP: ',
+    fallbackAlertMsg: (n, mins) => `⚠ in the last ${mins} minutes, opening a window failed ${n} times despite all retries (the CLIs are still running, just windowless) — gnome-terminal-server may genuinely be having trouble.`,
+    fallbackAlertBtn: 'go to Diagnostics tab',
     pidWord: 'pid ', stoppedWord: 'stopped',
     cwdHint: 'click: show/hide full path',
     requestFailed: 'request failed: ',
@@ -1365,6 +1396,8 @@ const T = {
     diagRestartDone: (r) => `✓ stopped (${r}) — will respawn automatically on the next spawn`,
     diagRefreshHint: 'uptimes auto-refresh every 4s',
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
+    windowlessBadge: 'windowless', windowlessHint: `no gnome-terminal window (tmux-only fallback) — the CLI is running, it just has no visible window. "open window" attaches one without restarting the CLI.`,
+    openWindowBtn: 'open window', openingWindow: 'opening window…',
     diagAskCliLabel: 'CLI', diagAskQuestionLabel: 'extra question (optional)',
     diagAskQuestionPlaceholder: 'leave empty for a general diagnosis',
     diagAskBtn: 'ask with this CLI', diagAsking: 'opening… (~10-20s)',
@@ -1450,6 +1483,11 @@ function render(d) {
   const banners = [];
   if (!d.config_ok) banners.push('<div class="banner bad">⚠ ' + d.config_msg + '</div>');
   if (d.dups.length) banners.push('<div class="banner bad">' + t('dupWarn') + d.dups.join(', ') + '</div>');
+  if (d.diag && d.diag.fallback_alert) {
+    banners.push('<div class="banner bad">' +
+      t('fallbackAlertMsg')(d.diag.recent_fallback_count, d.diag.fallback_alert_window_minutes) +
+      ` <button class="start" onclick="setTab('diag')">${t('fallbackAlertBtn')}</button></div>`);
+  }
   document.getElementById('banners').innerHTML = banners.join('');
 
   const tabs = [
@@ -1618,13 +1656,17 @@ function runningTable(rows, d) {
 }
 
 function runningRow(s, d) {
+  const windowless = s.tmux && ((d.diag && d.diag.windowless) || []).includes(s.name);
   const actions = (s.registered === false
     ? `<button class="start" onclick="toggleAdopt('${s.name}')">${t('adoptBtn')}</button>`
     : `<button class="start" onclick="toggleOpts('${s.name}')">${t('optionsBtn')}</button>`)
-    + (s.tmux ? `<button class="start" onclick="toggleTerm('${s.name}')">${t('terminalBtn')}</button>` : '');
-  const nameCell = s.registered === false
-    ? `${s.name} <span class="unreg-badge" title="${t('unregHint')}">${t('unregBadge')}</span>`
-    : s.name;
+    + (s.tmux ? `<button class="start" onclick="toggleTerm('${s.name}')">${t('terminalBtn')}</button>` : '')
+    + (windowless ? `<button class="start" onclick="doOpenWindow('${s.name}', this)" title="${t('windowlessHint')}">${t('openWindowBtn')}</button>` : '');
+  const unregBadge = s.registered === false
+    ? ` <span class="unreg-badge" title="${t('unregHint')}">${t('unregBadge')}</span>` : '';
+  const windowlessBadge = windowless
+    ? ` <span class="unreg-badge" title="${t('windowlessHint')}">${t('windowlessBadge')}</span>` : '';
+  const nameCell = `${s.name}${unregBadge}${windowlessBadge}`;
   const row = `
     <tr>
       ${selCell(s)}
@@ -2215,6 +2257,13 @@ async function doReactivate(name, btn) {
   refresh();
 }
 
+async function doOpenWindow(name, btn) {
+  btn.disabled = true;
+  btn.textContent = t('openingWindow');
+  await call('term/open-window', {name});
+  refresh();
+}
+
 async function safeJson(r) {
   if (!r.ok || !(r.headers.get('content-type') || '').includes('application/json')) {
     throw new Error(t('unexpectedResponse')(r.status));
@@ -2549,6 +2598,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/close",
                          "/api/handover", "/api/adopt", "/api/term/input", "/api/term/key",
+                         "/api/term/open-window",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask"):
             self._json({"error": "not found"}, status=404)
             return
@@ -2646,6 +2696,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_term_key(name, key=str(data.get("key", "")), lang=lang))
+            return
+
+        if path == "/api/term/open-window":
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_open_window(name, lang=lang))
             return
 
         name = str(data.get("name", "")).strip()

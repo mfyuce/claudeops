@@ -34,3 +34,28 @@ def diag_log_tail(n: int = 20) -> list:
         return [ln.strip() for ln in lines[-n:] if ln.strip()]
     except Exception:
         return []
+
+
+def diag_log_recent_fallback_count(window_minutes: float = 15.0) -> int:
+    """Son `window_minutes` içinde kaç `spawn_fallback_used` oldu (spawn.py'nin
+    gnome-terminal'i TÜM retry'larıyla denedikten SONRA headless'e düştüğü olay).
+
+    2026-08-28 canlı bulundu: TEK bir fallback normal/ara-sıra bir flake sayılır
+    (spawn.py'nin retry'ı çoğunu zaten sessizce yutar) — ama KISA sürede ARKA ARKAYA
+    birden fazlası gnome-terminal-server'ın o an gerçekten sorunlu olduğuna işaret
+    eder. Bu sayı UI'de eşiği aşınca kullanıcıya restart öner (asla OTOMATİK
+    restart etme — [[layout-needs-unlocked-screen]]'deki gibi TÜM açık pencereleri
+    kapatan yıkıcı bir işlem, kullanıcı onayı şart).
+    """
+    cutoff = datetime.datetime.now() - datetime.timedelta(minutes=window_minutes)
+    count = 0
+    for ln in diag_log_tail(500):
+        try:
+            entry = json.loads(ln)
+            if entry.get("event") != "spawn_fallback_used":
+                continue
+            if datetime.datetime.fromisoformat(entry["ts"]) >= cutoff:
+                count += 1
+        except Exception:
+            continue
+    return count
