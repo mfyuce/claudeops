@@ -243,7 +243,7 @@ def _start_tunnel(port: int, cloudflared_path: str = "cloudflared", timeout: flo
     return proc, url
 
 
-def _find_running(name: str) -> list:
+def _find_running(name: str, cli: Optional[str] = None) -> list:
     """Tam isim VEYA base eşleşmesiyle çalışan session'ları bul.
 
     rc.py'nin kill-first mantığıyla aynı desen ([[stale-tui-title-cross-suffix-resume]]
@@ -251,8 +251,22 @@ def _find_running(name: str) -> list:
     temiz base isimle (`trino`) kaydedilse bile Session.base regex'i onu doğru
     eşler — çıplak `find_by_name` (tam isim) bunu KAÇIRIR → yanlışlıkla "duruyor"
     sanılıp ikinci bir proc spawn edilebilir.
+
+    `cli` VERİLİRSE sadece o CLI'daki eşleşmeler sayılır (2026-08-28, kullanıcı:
+    "agy de resume kendi içinde, claude de resume kendi içinde olmalı, ikisi farklı
+    dosyalara bakıyor") — `Session.base` CLI'DAN BAĞIMSIZ regex'le indirgendiği için
+    (`saseppr20260828`+`saseppr20260828_2` ikisi de base="saseppr"), cli-filtresiz hâli
+    farklı CLI'ların aynı proje-base'ini yanlışlıkla ÇAKIŞMA sayar: claude çalışırken
+    aynı base'e agy `resume` denince "zaten çalışıyor" derdi — oysa ikisi bağımsız
+    süreç+geçmiş (claude: jsonl, agy: conversations-cache). Sadece `_start`'ın
+    "zaten çalışıyor" KAPISI cli'ya duyarlı olmalı; stop/retire/handover/adopt gibi
+    "burada ne varsa bul" çağrıları cli-agnostik KALMALI (o proc hangi cli'daysa onu
+    bulmalılar) — bu yüzden `cli` opsiyonel, sadece `_start` geçiyor.
     """
-    return [s for s in find_sessions(measure_cpu=False) if s.name == name or s.base == name]
+    sessions = find_sessions(measure_cpu=False)
+    if cli:
+        sessions = [s for s in sessions if s.cli == cli]
+    return [s for s in sessions if s.name == name or s.base == name]
 
 
 # saniye — bir kere "çalışıyor" görülmek YETMEZ, o kadar süre KESİNTİSİZ ayakta
@@ -845,9 +859,9 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     info = fleet.get(name)
     if not info or info["state"] != "active":
         return _err(lang, "not_active", name=name)
-    if _find_running(name):
-        return _err(lang, "already_running", name=name)
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
+    if _find_running(name, cli=chosen_cli):
+        return _err(lang, "already_running", name=name)
     try:
         with guard_lock(timeout=5.0):
             kind = spawn_session(
