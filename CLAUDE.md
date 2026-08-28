@@ -11,7 +11,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **claude 2.1.183 KILL=TRUNCATE**: lazy-checkpoint storage; kill'de flush için zaman gerek → **hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL**. Ani kapanma/sert-OOM = son mesajlar gider (iş git'te güvende, sadece transkript). [[claude-2183-conversation-truncation]] [[reboot-recovery]]
 - **claude resume "deferred tool marker"**: promptsuz `--resume` bazen ANINDA "No deferred tool marker found" ile çıkar → resume'a mutlaka `--prompt` ver (`py/cops rc <name> --prompt='devam'`, `--new` OLMADAN). [[resume-deferred-tool-marker]]
 - **1M context**: `[1m]` suffix → beta header; şu an KAPALI (token kısıtı). [[model-1m-context]]
-- **spawn güvenilirliği**: CLAUDE*/GEMINI*/ANTIGRAVITY* env her spawn'da filtrelenir (yoksa transcript sessizce kapanır). gnome-terminal başarısız olursa (kendi D-Bus/uzun-yaşam bozulması, ARADA SIRADA olur) spawn.py OTOMATİK tmux-only fallback'e düşer — panelin **Tanı** sekmesinden durum görülür/test edilir/gt-restart tetiklenir. [[spawn-env-leak-disables-transcript]] [[spawn-zombie-child-degrades-web-server]] [[diag-tab-feature]]
+- **spawn güvenilirliği**: CLAUDE*/GEMINI*/ANTIGRAVITY* env her spawn'da filtrelenir (yoksa transcript sessizce kapanır). gnome-terminal ARA SIRA tek seferlik başarısız olur, taze/sağlıklı server'da bile — **"hâlâ bozuk" diye restart ÖNERME, işe yaramaz**; spawn.py artık 2 kez daha dener, yine olmazsa OTOMATİK tmux-only'e düşer → windowless kalanı panelin **"pencere aç"** butonuyla düzelt (Tanı sekmesi son-15dk'da 2+ tam-fallback'te uyarır, ancak O ZAMAN gerçek şüphe var). [[spawn-env-leak-disables-transcript]] [[spawn-zombie-child-degrades-web-server]] [[diag-tab-feature]]
 - **Security**: ulaksec → "dokunma". `~/.cache/huggingface` 29G KORU. Commit öncesi kullanıcı onayı.
 
 ## Roster / model (`~/.claude/claudeops/{roster,models}.tsv` — repo DIŞI, kaynak-of-truth)
@@ -25,7 +25,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 ## Fleet kontrolü — MANUEL (2026-08-24 karar)
 
 - **Guard cron KASITLI kapalı.** Kullanıcı `py/cops web`'den tek tek başlatıyor — **sen açma**, sormadan toplu spawn YAPMA. [[feedback-manual-fleet-control]]
-- **`py/cops web [--port 8765] [--tunnel]`** — panel sekmeleri: Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout / **Tanı**. Satır checkbox'ları + toplu işlemler, **ho?** kolonu, satır-içi başlat seçenekleri (model/permission-mode/effort/CLI), panelden canlı **Terminal** (tmux-capture tabanlı, xterm.js). CLI seçici (claude/agy, `providers/` registry — 3. bir backend eklemek yeni dosya, kod dallanması değil). **Tanı** sekmesi: web/gt çalışma süreleri, windowless-fallback session listesi, spawn sağlık testi, gt-restart, `diag.log`, "LLM'e sor" (seçilen CLI ile gerçek bir fleet session'ı + Terminal — kayıt-dışı chat değil). Detay: `py/README*.md`, [[diag-tab-feature]].
+- **`py/cops web [--port 8765] [--tunnel]`** — panel sekmeleri: Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout / **Tanı**. Satır checkbox'ları + toplu işlemler, **ho?** kolonu, satır-içi başlat seçenekleri (model/permission-mode/effort/CLI), panelden canlı **Terminal** (tmux-capture tabanlı, xterm.js). CLI seçici (claude/agy, `providers/` registry — 3. bir backend eklemek yeni dosya, kod dallanması değil). Detay + Tanı sekmesinin tam özellik listesi: `py/README*.md`, [[diag-tab-feature]].
 - **Repo PUBLIC** (MIT, github + gitlab mirror) — roster/models/token repo dışında. Kullanıcı: "dünyaya açığız, DONE/TODO/changelog önemli" → kayıtları özenli tut.
 - Web Stop / `py/cops kill` / `rc --kill-first`: tmux-backed session'da ad-bazlı `tmux kill-session` (parent bash paylaşımlı server olabilir, PID-ancestry YASAK) — AMA bu, gnome-terminal PENCERESİNİ kapatmıyor (açık TODO, orphan bash kalıyor).
 
@@ -46,12 +46,14 @@ Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permis
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-08-28)
+## READY FOR HANDOVER (2026-08-28 gece)
 
-Repo temiz, HEAD=`a560f65`, github+gitlab senkron. Fleet sakin (guard kapalı) — sadece `cops20260827_3` (bu session) + `diag20260827` (bu gece açılan tanı-session'ı, işi bitince stop edilebilir) çalışıyor, dup yok. **gnome-terminal-server (pid 4693) hâlâ bozuk, restart edilmedi** (kullanıcı bilerek erteledi) — yeni spawn'lar otomatik tmux-fallback'e (penceresiz) düşüyor, bu BEKLENEN davranış, Tanı sekmesinden test/restart edilebilir.
+Repo temiz, HEAD=`eff5dc1`, github+gitlab senkron. Fleet sakin (guard kapalı), 6 session, dup yok.
 
-Bu session'da: saseppr'ın resume-guard hatası düzeltildi ([[resume-deferred-tool-marker]]); yeni Tanı sekmesi + spawn.py'ye otomatik tmux-fallback + 5s stabilite kontrolü + `diag.log` + "LLM'e sor" eklendi ([[diag-tab-feature]]); Terminal view'ın periyodik yenilemede içeriğini kaybetme bug'ı bulunup Playwright'la doğrulanarak düzeltildi ([[terminal-view-refresh-destroys-xterm]]); CLAUDE.md ~12K→~6K küçültüldü.
+Bu session: spawn retry + tek-tık "pencere aç" + fallback-alert banner eklendi (detay DONE.md; "gt-server hâlâ bozuk" notuna güvenip yanılmıştım, ders genelleşti: [[reboot-no-handover]]). `_start` artık CLI-farkında (agy resume'u claude'a takılmıyordu, düzeldi). Kendi eklediğim bir kaçış-hatası paneli kısaca kırmıştı ([[web-embedded-js-escaping-trap]]). CLAUDE.md küçültüldü.
 
-Açık yeni TODO (düzeltilmedi): tmux-backed "stop" gnome-terminal penceresini kapatmıyor, orphan bash kalıyor — kök sebep + fix adayı TODO.md'de. Yeni session: MEMORY.md oku, guard cron'u açma, tarih-isimli çöp roster satırları hâlâ temizlik bekliyor.
+Yeni TODO'lar (TODO.md'de detay): terminal blink/resize/scrollbar sorunları, busy/idle göstergesi yok, Kayıtlı sekmesi tree değil, çoklu-monitor'da layout yanlış ekrana yığıyor.
+
+Yeni session: MEMORY.md oku, guard cron'u açma, roster'daki tarih-isimli çöp satırlar hâlâ temizlik bekliyor.
 
 READY FOR HANDOVER
