@@ -31,14 +31,17 @@ from typing import Optional
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+import psutil
+
 from ..config import validate_config
+from ..diaglog import diag_log, diag_log_tail
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
-from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
+from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from ..session import Session
-from ..paths import CLAUDEOPS_DIR, MODELS_TSV, ROSTER_TSV, VENDOR_DIR
+from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV, VENDOR_DIR
 from ..spawn import spawn_session, detect_display, find_latest_jsonl
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..tmux_backend import (
@@ -51,6 +54,10 @@ DEFAULT_HOST = "127.0.0.1"
 TOKEN_FILE = os.path.join(CLAUDEOPS_DIR, "web.token")
 TUNNEL_LOG = os.path.join(CLAUDEOPS_DIR, "tunnel.log")
 _TUNNEL_URL_RE = re.compile(r"https://[a-zA-Z0-9.-]+\.trycloudflare\.com")
+
+# [[spawn-zombie-child-degrades-web-server]] — bu process'in kendi yaşı ("Tanı"
+# sekmesinde gösterilir) iki bilinen sessiz-spawn-başarısızlığı sebebinden biri.
+_WEB_PROC_START_MONO = time.monotonic()
 
 # Model/permission-mode/effort seçenekleri artık HER provider kendi
 # model_choices()/permission_modes()/effort_levels()'ından geliyor — burada
@@ -121,6 +128,8 @@ ERR = {
     "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
                            "en": "{name}: tmux session no longer exists (may have closed)"},
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
+    "gt_not_found": {"tr": "gnome-terminal-server çalışmıyor (zaten kapalı) — bir sonraki spawn otomatik açacak",
+                      "en": "gnome-terminal-server isn't running (already down) — the next spawn will start it automatically"},
 }
 
 
@@ -244,6 +253,35 @@ def _find_running(name: str) -> list:
     sanılıp ikinci bir proc spawn edilebilir.
     """
     return [s for s in find_sessions(measure_cpu=False) if s.name == name or s.base == name]
+
+
+# saniye — bir kere "çalışıyor" görülmek YETMEZ, o kadar süre KESİNTİSİZ ayakta
+# kalmalı sayılsın. 2026-08-27 saseppr'da canlı bulundu: eski kod tek bir anlık
+# görüşü "opened=True" sayıyordu — resume-guard hatasıyla saniyeler içinde ölen
+# bir proc'u (bkz. [[resume-deferred-tool-marker]]) YANLIŞLIKLA başarı sayabilirdi
+# (poll aralığı 1s'yle tam çakışırsa). Kullanıcı: "açıldı 5sn durmadan gitti ise
+# yine hata desin."
+STABLE_SECONDS = 5.0
+
+
+def _wait_stable(name: str, timeout: float, stable_for: float = STABLE_SECONDS) -> bool:
+    """`name` `timeout` saniye içinde belirip en az `stable_for` saniye KESİNTİSİZ
+    çalışır durumda kalırsa True. Görünüp kaybolmayı (flash-then-die) sıfırlar,
+    hiç kaybolmadan sonuna kadar giderse de True döner (deadline erken kesmesin)."""
+    deadline = time.monotonic() + timeout
+    first_seen = None
+    while True:
+        now = time.monotonic()
+        if _find_running(name):
+            if first_seen is None:
+                first_seen = now
+            elif now - first_seen >= stable_for:
+                return True
+        else:
+            first_seen = None
+        if now >= deadline:
+            return False
+        time.sleep(1.0)
 
 
 def _read_tsv_raw(path: str) -> list:
@@ -409,13 +447,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
                 force_new=True,
                 cli=chosen_cli,
             )
-            deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
-            opened = False
-            while time.monotonic() < deadline:
-                if _find_running(new_name):
-                    opened = True
-                    break
-                time.sleep(1.0)
+            opened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     if not opened:
@@ -477,6 +509,172 @@ def _screen_locked() -> Optional[bool]:
     except Exception:
         pass
     return None
+
+
+# ── Tanı (diagnostics) — [[spawn-zombie-child-degrades-web-server]] ─────────
+# İki BAĞIMSIZ sessiz-spawn-başarısızlığı kaynağı canlı doğrulandı (2026-08-27):
+# (a) bu web process'in kendi yaşı, (b) gnome-terminal-server'ın kendi yaşı
+# (D-Bus-activated, TÜM `gnome-terminal` çağrılarının konuştuğu tek paylaşımlı
+# server — spawn_session()'daki Popen bunu DEVNULL'a gizliyor, panelde sadece
+# sessiz "start_no_proc" görünüyor). Bu sekme ikisini de görünür kılıp ikinci
+# sebebi (a) sistem/hesaplama pahalı OLMAYAN pasif metriklerle (her /api/status
+# poll'unda) ve (b) gerçek bir pencere açıp DEVNULL'suz hatayı yakalayan, SADECE
+# tıklanınca çalışan aktif bir test'le ayırt eder.
+
+def _find_gnome_terminal_server() -> Optional[psutil.Process]:
+    for p in psutil.process_iter(["cmdline"]):
+        try:
+            cmdline = p.info.get("cmdline") or []
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        if any("gnome-terminal-server" in part for part in cmdline):
+            return p
+    return None
+
+
+def _gnome_window_titles() -> set:
+    """tmux.conf `set-titles-string '#S'` → tmux-backed pencere başlığı = session
+    adının AYNISI (bkz. layout.py'nin aynı `wmctrl -l` deseni)."""
+    try:
+        r = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=5)
+        titles = set()
+        for line in r.stdout.splitlines():
+            parts = line.split(None, 3)
+            if len(parts) == 4:
+                titles.add(parts[3])
+        return titles
+    except Exception:
+        return set()
+
+
+def _diag_status() -> dict:
+    """Her /api/status poll'unda (4s) çalışır — subprocess'ler ucuz/hızlı (wmctrl
+    tek çağrı, /proc taramalar), aktif spawn-test/restart gibi pencere AÇMAZ."""
+    gt = _find_gnome_terminal_server()
+    gt_info = None
+    if gt is not None:
+        try:
+            gt_info = {"pid": gt.pid, "uptime_seconds": round(time.time() - gt.create_time())}
+        except psutil.NoSuchProcess:
+            gt_info = None
+
+    # "windowless" = tmux-backed ama görünür gnome-terminal penceresi YOK — ya
+    # spawn.py'nin fallback'ı devrede (gnome-terminal o an bozuktu) ya da
+    # gnome-terminal-server o session'ın penceresini kaybetti/kapattı sonradan.
+    # wmctrl yoksa (LAYOUT_DEPS'te zaten uyarılıyor) None döner — "bilinmiyor",
+    # boş liste (yanlış-pozitif "hepsi windowless") DEĞİL.
+    windowless = None
+    if shutil.which("wmctrl"):
+        try:
+            titles = _gnome_window_titles()
+            windowless = [s.name for s in find_sessions(measure_cpu=False)
+                          if is_tmux_backed(s.pid) and s.name not in titles]
+        except Exception:
+            windowless = None
+
+    return {
+        "web_pid": os.getpid(),
+        "web_uptime_seconds": round(time.monotonic() - _WEB_PROC_START_MONO),
+        "gt": gt_info,
+        "windowless": windowless,
+    }
+
+
+def _diag_spawn_test(lang: str = "tr") -> dict:
+    """gnome-terminal'i ÇIPLAK dene (spawn.py'nin DEVNULL'u YOK) — gerçek hatayı
+    yakala. `bash -c "sleep 2"` kendi kendine kapanır, temizlik gerekmez."""
+    title = f"cops-diag-{secrets.token_hex(4)}"
+    try:
+        proc = subprocess.run(
+            ["gnome-terminal", "--window", f"--title={title}", "--", "bash", "-c", "sleep 2"],
+            capture_output=True, text=True, timeout=6,
+        )
+    except FileNotFoundError:
+        diag_log("spawn_test", ok=False, detail="gnome-terminal not installed")
+        return {"ok": False, "stderr": "", "window_found": False,
+                "detail": {"tr": "gnome-terminal kurulu değil", "en": "gnome-terminal is not installed"}[lang]}
+    except subprocess.TimeoutExpired:
+        diag_log("spawn_test", ok=False, detail="gnome-terminal hung >6s")
+        return {"ok": False, "stderr": "", "window_found": False,
+                "detail": {"tr": "gnome-terminal 6s içinde dönmedi (hang)",
+                            "en": "gnome-terminal didn't return within 6s (hung)"}[lang]}
+
+    stderr = (proc.stderr or "").strip()
+    time.sleep(1.5)  # pencerenin xdotool'a görünmesi için kısa bekleme
+    found = False
+    try:
+        r = subprocess.run(["xdotool", "search", "--name", title],
+                            capture_output=True, text=True, timeout=5)
+        found = bool(r.stdout.strip())
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    ok = found and not stderr
+    diag_log("spawn_test", ok=ok, window_found=found, stderr=stderr[:500])
+    return {"ok": ok, "stderr": stderr, "window_found": found}
+
+
+def _diag_restart_gt(lang: str = "tr") -> dict:
+    """gnome-terminal-server'ı öldür — D-Bus-activated, bir sonraki `gnome-terminal`
+    çağrısında OTOMATİK yeniden doğuyor (elle başlatma gerekmez). Açık TÜM
+    gnome-terminal pencerelerini kapatır (fleet + varsa ilgisiz başkaları) —
+    altındaki tmux session'lar/claude process'leri ETKİLENMEZ (tmux server ayrı,
+    bağımsız yaşıyor)."""
+    gt = _find_gnome_terminal_server()
+    if gt is None:
+        return _err(lang, "gt_not_found")
+    pid = gt.pid
+    result = kill_session(pid, grace=5.0)
+    diag_log("gt_restart", pid=pid, result=result)
+    return {"ok": True, "result": result, "pid": pid}
+
+
+def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
+    """Diag bulgusunu, kullanıcının seçtiği desteklenen CLI ile YENİ bir fleet
+    session'ında sor — roster'a normal bir session gibi kaydedilir, "Terminal"
+    view'ından takip edilir (2026-08-27 kullanıcı isteği: kayıt-dışı bir sohbet
+    kutusu DEĞİL, gerçek bir CLI/terminal)."""
+    chosen_cli = cli.strip() if cli.strip() in PROVIDERS else DEFAULT_CLI
+    provider = get_provider(chosen_cli)
+    new_name = _generate_new_chat_name("diag")
+    model = provider.model_choices()[0]
+
+    status = _diag_status()
+    lines = ["claudeops fleet spawn diagnostic — aşağıdaki canlı durumu incele, "
+             "olası kök sebebi ve varsa somut bir fix öner:", ""]
+    lines.append(f"- web sunucu: pid={status['web_pid']} uptime={status['web_uptime_seconds']}s")
+    if status["gt"]:
+        lines.append(f"- gnome-terminal-server: pid={status['gt']['pid']} uptime={status['gt']['uptime_seconds']}s")
+    else:
+        lines.append("- gnome-terminal-server: çalışmıyor")
+    if status.get("windowless"):
+        lines.append(f"- şu an penceresiz (tmux-fallback) çalışan session'lar: {', '.join(status['windowless'])}")
+    recent = diag_log_tail(10)
+    if recent:
+        lines.append("- son diag-log kayıtları:")
+        lines.extend(f"  {r}" for r in recent)
+    lines.append("")
+    lines.append(("Kullanıcının sorusu: " + extra_question.strip()) if extra_question.strip()
+                  else "Kullanıcı ek bir soru yazmadı — genel bir teşhis/özet yeterli.")
+    prompt = "\n".join(lines)
+
+    _append_tsv_line(ROSTER_TSV, [new_name, REPO_DIR, model, chosen_cli])
+    _append_tsv_line(MODELS_TSV, [new_name, model])
+    try:
+        with guard_lock(timeout=5.0):
+            kind = spawn_session(
+                name=new_name, cwd=REPO_DIR, model=model, display=detect_display(),
+                permission_mode=provider.permission_modes()[0],
+                effort=provider.effort_levels()[-1],
+                force_new=True, prompt=prompt, cli=chosen_cli,
+            )
+            opened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
+    except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    if not opened:
+        return _err(lang, "newchat_start_failed", new_name=new_name, kind=kind)
+    diag_log("ask", name=new_name, cli=chosen_cli)
+    return {"ok": True, "name": new_name, "kind": kind}
 
 
 def _run_layout(pin: str, groups: list, claude_only: bool = True,
@@ -623,6 +821,7 @@ def _status_payload() -> dict:
             for name, p in PROVIDERS.items()
         },
         "layout_missing_deps": _missing_layout_deps(),
+        "diag": _diag_status(),
     }
 
 
@@ -647,13 +846,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
                 force_new=bool(fresh),
                 cli=chosen_cli,
             )
-            deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
-            opened = False
-            while time.monotonic() < deadline:
-                if _find_running(name):
-                    opened = True
-                    break
-                time.sleep(1.0)
+            opened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     if not opened:
@@ -813,13 +1006,7 @@ def _handover(name: str, lang: str = "tr") -> dict:
                 prompt=message,
                 cli=chosen_cli,
             )
-            deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
-            reopened = False
-            while time.monotonic() < deadline:
-                if _find_running(name):
-                    reopened = True
-                    break
-                time.sleep(1.0)
+            reopened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     if not reopened:
@@ -872,13 +1059,7 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
                 force_new=False,
                 cli=chosen_cli,
             )
-            deadline = time.monotonic() + HANDOVER_PROC_WAIT_SECONDS
-            reopened = False
-            while time.monotonic() < deadline:
-                if _find_running(new_name):
-                    reopened = True
-                    break
-                time.sleep(1.0)
+            reopened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     if not reopened:
@@ -1033,7 +1214,7 @@ const T = {
     requestFailed: 'istek başarısız: ',
     empty: 'Boş.', cancelBtn: 'vazgeç',
     tabRunning: 'Çalışanlar', tabRegistered: 'Kayıtlı', tabDisabled: 'Devre dışı',
-    tabRetired: 'Emekli', tabLayout: 'Layout',
+    tabRetired: 'Emekli', tabLayout: 'Layout', tabDiag: 'Tanı',
     selWord: 'seçili',
     selectNeedsHo: 'needs-ho seç',
     hoCol: 'ho?',
@@ -1085,6 +1266,25 @@ const T = {
     layoutDryRun: 'sadece planı göster (uygulama)',
     layoutApply: 'layout uygula', layoutApplying: 'uygulanıyor…',
     windowsWord: 'pencere', skippedWord: 'atlandı',
+    diagDesc: `Fleet'in tüm "start"ları sessizce başarısız olabiliyor — iki bağımsız, birbirinden ayrı sebepten (web sunucu ya da gnome-terminal-server'ın kendi uzun çalışma süresi). Aşağıda ikisinin durumu + tek-tıkla test/fix.`,
+    diagWebUptime: 'web sunucu (bu panel)', diagGtUptime: 'gnome-terminal-server',
+    diagUptimeUnknown: 'bilinmiyor', diagGtNotFound: 'çalışmıyor (henüz hiç pencere açılmamış olabilir — sorun değil)',
+    diagTestBtn: 'spawn sağlık testi', diagTesting: 'test ediliyor… (~2s, kısa bir pencere açılıp kendi kendine kapanacak)',
+    diagTestOk: '✓ gnome-terminal sağlıklı — test penceresi başarıyla açıldı ve doğrulandı',
+    diagTestFailWindow: '✗ pencere açılmadı/doğrulanamadı',
+    diagTestFailStderr: (e) => `✗ gnome-terminal hata verdi:\\n${e}`,
+    diagRestartBtn: `gnome-terminal-server'ı yeniden başlat`,
+    diagRestartConfirm: (n) => `Açık TÜM gnome-terminal pencereleri kapanacak (fleet'in ${n} çalışan penceresi dahil, varsa filoyla ilgisiz başka terminal pencereleri de) — tmux session'lar/claude process'leri ETKİLENMEZ, sadece görünür pencereler kaybolur. Bir sonraki pencere açma isteğinde otomatik yeniden doğar. Devam edilsin mi?`,
+    diagRestarting: 'yeniden başlatılıyor…',
+    diagRestartDone: (r) => `✓ kapatıldı (${r}) — bir sonraki spawn'da otomatik yeniden doğacak`,
+    diagRefreshHint: 'çalışma süreleri her 4s otomatik güncellenir',
+    diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
+    diagAskCliLabel: 'CLI', diagAskQuestionLabel: 'ek soru (opsiyonel)',
+    diagAskQuestionPlaceholder: 'boş bırakılırsa genel teşhis istenir',
+    diagAskBtn: 'bu CLI ile sor', diagAsking: 'açılıyor… (~10-20s)',
+    diagAskStarted: (name) => `✓ açıldı: ${name} — terminal'de canlı yanıt görünecek`,
+    diagLogTitle: 'son diag-log kayıtları', diagLogLoading: 'yükleniyor…',
+    diagRunAfterFail: 'Tanı sekmesine geçip spawn sağlık testi çalıştırılsın mı?',
   },
   en: {
     title: 'claudeops — fleet control',
@@ -1100,7 +1300,7 @@ const T = {
     requestFailed: 'request failed: ',
     empty: 'Empty.', cancelBtn: 'cancel',
     tabRunning: 'Running', tabRegistered: 'Registered', tabDisabled: 'Disabled',
-    tabRetired: 'Retired', tabLayout: 'Layout',
+    tabRetired: 'Retired', tabLayout: 'Layout', tabDiag: 'Diagnostics',
     selWord: 'selected',
     selectNeedsHo: 'select needs-ho',
     hoCol: 'ho?',
@@ -1152,6 +1352,25 @@ const T = {
     layoutDryRun: 'show plan only (no changes)',
     layoutApply: 'apply layout', layoutApplying: 'applying…',
     windowsWord: 'windows', skippedWord: 'skipped',
+    diagDesc: `Any/all of the fleet's "start"s can silently fail — from two independent causes (either the web server's or gnome-terminal-server's own long uptime). Status of both below, plus a one-click test/fix.`,
+    diagWebUptime: 'web server (this panel)', diagGtUptime: 'gnome-terminal-server',
+    diagUptimeUnknown: 'unknown', diagGtNotFound: 'not running (may just be that no window has opened yet — not a problem)',
+    diagTestBtn: 'spawn health test', diagTesting: 'testing… (~2s, a brief window will open and close itself)',
+    diagTestOk: '✓ gnome-terminal is healthy — the test window opened and was verified',
+    diagTestFailWindow: '✗ window did not open / could not be verified',
+    diagTestFailStderr: (e) => `✗ gnome-terminal reported an error:\\n${e}`,
+    diagRestartBtn: 'restart gnome-terminal-server',
+    diagRestartConfirm: (n) => `ALL open gnome-terminal windows will close (including the fleet's ${n} running window(s), plus any unrelated terminal windows you may have open) — tmux sessions/claude processes are NOT affected, only the visible windows disappear. It respawns automatically on the next window-open request. Proceed?`,
+    diagRestarting: 'restarting…',
+    diagRestartDone: (r) => `✓ stopped (${r}) — will respawn automatically on the next spawn`,
+    diagRefreshHint: 'uptimes auto-refresh every 4s',
+    diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
+    diagAskCliLabel: 'CLI', diagAskQuestionLabel: 'extra question (optional)',
+    diagAskQuestionPlaceholder: 'leave empty for a general diagnosis',
+    diagAskBtn: 'ask with this CLI', diagAsking: 'opening… (~10-20s)',
+    diagAskStarted: (name) => `✓ opened: ${name} — the live answer will appear in the terminal`,
+    diagLogTitle: 'recent diag-log entries', diagLogLoading: 'loading…',
+    diagRunAfterFail: 'Switch to the Diagnostics tab and run the spawn health test?',
   },
 };
 let LANG = localStorage.getItem('cops_lang') || (navigator.language.toLowerCase().startsWith('tr') ? 'tr' : 'en');
@@ -1189,6 +1408,7 @@ function setTab(tab) {
   TAB = tab;
   try { localStorage.setItem('cops_tab', tab); } catch (e) {}
   render(LAST);
+  if (tab === 'diag') loadDiagLog();
 }
 
 async function refresh() {
@@ -1238,6 +1458,7 @@ function render(d) {
     ['disabled', t('tabDisabled') + ' (' + d.closed.length + ')'],
     ['retired', t('tabRetired') + ' (' + d.retired.length + ')'],
     ['layout', t('tabLayout')],
+    ['diag', t('tabDiag')],
   ];
   document.getElementById('tabbar').innerHTML = tabs.map(([k, lbl]) =>
     `<button class="${TAB === k ? 'active' : ''}" onclick="setTab('${k}')">${lbl}</button>`).join('');
@@ -1247,8 +1468,24 @@ function render(d) {
   else if (TAB === 'registered') html = bulkBar('registered', stopped) + registeredTable(stopped, d) + newProjectForm(d);
   else if (TAB === 'disabled') html = groupTable(d.closed);
   else if (TAB === 'retired') html = groupTable(d.retired);
-  else html = renderLayoutBox(d);
+  else if (TAB === 'layout') html = renderLayoutBox(d);
+  else html = renderDiagBox(d, running.length);
+  // `refresh()` her 4s'de render(LAST) çağırıyor — bu innerHTML= ataması açık bir
+  // terminal varsa onun DOM'unu (xterm.js'in içine gerçekten yazdığı satırları)
+  // YOK EDİP termRow()'un ürettiği BOŞ bir placeholder div'le değiştiriyordu.
+  // xtermInstances[name] JS tarafında hâlâ "var" göründüğü için ensureXtermFor bir
+  // daha HİÇ çağrılmıyor (guard: `if (xtermInstances[name]) return`) → terminal kalıcı
+  // olarak boş/küçük bir kutuya (childCount 0, ~11x11px) çöküyor — canlı Playwright
+  // testiyle doğrulandı (2026-08-28, diag20260827'de: içerik ~2s sonra tamamen kayboldu,
+  // tam bir sonraki refresh() tetiklemesiyle örtüşüyor). Fix: eski (içerik dolu) node'u
+  // sakla, innerHTML= sonrası taze (boş) placeholder'ın YERİNE eskisini geri koy —
+  // xterm'in kendi DOM'u/state'i hiç bozulmadan, geri kalan tablo normal güncellenir.
+  const openXterm = termFor ? document.getElementById('xterm-' + termFor) : null;
   document.getElementById('tabContent').innerHTML = html;
+  if (openXterm) {
+    const freshPlaceholder = document.getElementById('xterm-' + termFor);
+    if (freshPlaceholder && freshPlaceholder !== openXterm) freshPlaceholder.replaceWith(openXterm);
+  }
 }
 
 // ── seçim + toplu işlemler ──────────────────────────────────────────────────
@@ -1800,7 +2037,17 @@ function measureCharWidthPx() {
 
 function toggleTerm(name) {
   if (termPollTimer) { clearInterval(termPollTimer); termPollTimer = null; }
+  const prev = termFor;
   termFor = (termFor === name) ? null : name;
+  // Kapatılan (ya da başka bir session'a geçilirken bırakılan) eski instance'ı
+  // dispose+sil — yoksa ensureXtermFor'un `if (xtermInstances[name]) return`
+  // guard'ı bir SONRAKİ açılışta "zaten kurulu" sanıp YENİ container'a hiç
+  // bağlanmıyor, terminal kalıcı olarak boş/küçük kalıyor (canlı doğrulandı,
+  // 2026-08-28: kapat→tekrar aç → childCount 0). Taze aç = taze Terminal().
+  if (prev && prev !== termFor && xtermInstances[prev]) {
+    try { xtermInstances[prev].term.dispose(); } catch (e) {}
+    delete xtermInstances[prev];
+  }
   render(LAST);
   if (termFor) {
     ensureXtermFor(termFor).then(() => pollTerm(termFor));
@@ -1841,7 +2088,16 @@ async function pollTerm(name) {
     } else if (d.ok) {
       inst.lastText = d.text;
       inst.term.reset();
-      inst.term.write(d.text);
+      // write()'ın 2. argümanı (callback) yazılan veri GERÇEKTEN işlenip buffer'a
+      // girdikten SONRA çağrılır (write() kendisi async — hemen sonra scrollToBottom
+      // çağırmak veri henüz parse edilmeden çalışıp yarış durumuna düşebilirdi).
+      // ŞART: resize() hemen öncesinde oldu (boyut değiştiyse) ve xterm.js'in kendi
+      // "yeni yazımda dipteyse dipte kal" takibi resize+reset ile aynı tick'te bozulup
+      // görünüşte donmuş/boş bir ekranda kalabiliyordu (canlı bulundu, diag20260827/
+      // windowless-fallback session'da: içerik dolu ama viewport dip DEĞİL) — write
+      // BİTTİKTEN sonra AÇIKÇA dibe kaydırmak bu duruma bakılmaksızın doğru son hâli
+      // garanti ediyor.
+      inst.term.write(d.text, () => inst.term.scrollToBottom());
     } else {
       inst.lastText = null;
       inst.term.reset();
@@ -1939,7 +2195,7 @@ async function doAction(name, btn) {
       else {
         const d = await safeJson(r);
         if (d.ok) alert(t('newChatStarted') + d.name);
-        else alert(name + ': ' + d.error);
+        else runDiagAfterFailure(name + ': ' + d.error);
       }
     } catch (e) {
       alert(t('requestFailed') + e.message);
@@ -1975,7 +2231,10 @@ async function call(action, payload) {
     });
     if (r.status === 401) { alert(t('authErrorShort')); return; }
     const d = await safeJson(r);
-    if (!d.ok) alert(payload.name + ': ' + d.error);
+    if (!d.ok) {
+      if (action === 'start') runDiagAfterFailure(payload.name + ': ' + d.error);
+      else alert(payload.name + ': ' + d.error);
+    }
   } catch (e) {
     alert(t('requestFailed') + e.message);
   }
@@ -2038,6 +2297,163 @@ async function doLayout(btn) {
   btn.textContent = t('layoutApply');
 }
 
+// ── diag (tanı) ───────────────────────────────────────────────────────────
+
+function fmtUptime(sec) {
+  if (sec == null) return t('diagUptimeUnknown');
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+let DIAG_LOG_LINES = [];
+
+async function loadDiagLog() {
+  try {
+    const r = await fetch(withToken('/api/diag/log'));
+    const d = await safeJson(r);
+    DIAG_LOG_LINES = d.lines || [];
+  } catch (e) {
+    DIAG_LOG_LINES = [];
+  }
+  const box = document.getElementById('diag-log-box');
+  if (box) box.textContent = DIAG_LOG_LINES.length ? DIAG_LOG_LINES.join('\\n') : t('empty');
+}
+
+function renderDiagBox(d, runningCount) {
+  const diag = d.diag || {};
+  const gt = diag.gt;
+  const gtLine = gt
+    ? `${t('diagGtUptime')}: pid ${gt.pid} — ${fmtUptime(gt.uptime_seconds)}`
+    : `${t('diagGtUptime')}: ${t('diagGtNotFound')}`;
+  const webLine = `${t('diagWebUptime')}: pid ${diag.web_pid ?? '?'} — ${fmtUptime(diag.web_uptime_seconds)}`;
+  const windowless = diag.windowless || [];
+  const windowlessLine = windowless.length
+    ? `<div class="opts-hint" style="color:var(--amber);flex-basis:100%">${t('diagWindowless')(windowless.join(', '))}</div>`
+    : '';
+  const cliOpts = (d.cli_list || []).map(c => `<option value="${c}">${c}</option>`).join('');
+  return `
+    <div class="opts-hint">${t('diagDesc')}</div>
+    <div class="opts" id="diagPanel">
+      <div style="flex-basis:100%">${webLine}<br>${gtLine}</div>
+      ${windowlessLine}
+      <button class="go" id="diag-test-go" onclick="doDiagTest(this)">${t('diagTestBtn')}</button>
+      <button class="stop" id="diag-restart-go" onclick="doDiagRestartGt(this, ${runningCount})">${t('diagRestartBtn')}</button>
+    </div>
+    <pre id="diag-result" class="layout-result"></pre>
+    <div class="opts" id="diagAskPanel">
+      <label>${t('diagAskCliLabel')}
+        <select id="diag-ask-cli">${cliOpts}</select>
+      </label>
+      <label style="flex-basis:100%">${t('diagAskQuestionLabel')}
+        <input type="text" id="diag-ask-q" placeholder="${t('diagAskQuestionPlaceholder')}">
+      </label>
+      <button class="go" id="diag-ask-go" onclick="doDiagAsk(this, ${runningCount})">${t('diagAskBtn')}</button>
+    </div>
+    <pre id="diag-ask-result" class="layout-result"></pre>
+    <div class="opts-hint">${t('diagLogTitle')}</div>
+    <pre id="diag-log-box" class="layout-result">${t('diagLogLoading')}</pre>
+    <div class="opts-hint">${t('diagRefreshHint')}</div>`;
+}
+
+async function doDiagTest(btn) {
+  const resultBox = document.getElementById('diag-result');
+  btn.disabled = true;
+  btn.textContent = t('diagTesting');
+  resultBox.textContent = '';
+  try {
+    const r = await fetch(withToken('/api/diag/spawn-test'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({lang: LANG}),
+    });
+    if (r.status === 401) { alert(t('authErrorShort')); }
+    else {
+      const d = await safeJson(r);
+      if (d.ok) resultBox.textContent = t('diagTestOk');
+      else if (d.stderr) resultBox.textContent = t('diagTestFailStderr')(d.stderr);
+      else resultBox.textContent = d.detail ? ('✗ ' + d.detail) : t('diagTestFailWindow');
+    }
+  } catch (e) {
+    resultBox.textContent = '✗ ' + t('requestFailed') + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = t('diagTestBtn');
+  loadDiagLog();
+  refresh();
+}
+
+async function doDiagRestartGt(btn, runningCount) {
+  if (!confirm(t('diagRestartConfirm')(runningCount))) return;
+  const resultBox = document.getElementById('diag-result');
+  btn.disabled = true;
+  btn.textContent = t('diagRestarting');
+  resultBox.textContent = '';
+  try {
+    const r = await fetch(withToken('/api/diag/restart-gt'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({lang: LANG}),
+    });
+    if (r.status === 401) { alert(t('authErrorShort')); }
+    else {
+      const d = await safeJson(r);
+      resultBox.textContent = d.ok ? t('diagRestartDone')(d.result) : ('✗ ' + d.error);
+    }
+  } catch (e) {
+    resultBox.textContent = '✗ ' + t('requestFailed') + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = t('diagRestartBtn');
+  loadDiagLog();
+  refresh();
+}
+
+async function doDiagAsk(btn) {
+  const cli = document.getElementById('diag-ask-cli').value;
+  const extra_question = document.getElementById('diag-ask-q').value;
+  const resultBox = document.getElementById('diag-ask-result');
+  btn.disabled = true;
+  btn.textContent = t('diagAsking');
+  resultBox.textContent = '';
+  try {
+    const r = await fetch(withToken('/api/diag/ask'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({cli, extra_question, lang: LANG}),
+    });
+    if (r.status === 401) { alert(t('authErrorShort')); }
+    else {
+      const d = await safeJson(r);
+      if (d.ok) {
+        resultBox.textContent = t('diagAskStarted')(d.name);
+        setTab('running');
+        await refresh();      // termFor render'ının bulacağı satır LAST'e girsin
+        toggleTerm(d.name);
+      } else {
+        resultBox.textContent = '✗ ' + d.error;
+      }
+    }
+  } catch (e) {
+    resultBox.textContent = '✗ ' + t('requestFailed') + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = t('diagAskBtn');
+  loadDiagLog();
+  refresh();
+}
+
+function runDiagAfterFailure(msg) {
+  if (confirm(msg + '\\n\\n' + t('diagRunAfterFail'))) {
+    setTab('diag');
+    loadDiagLog();
+    const btn = document.getElementById('diag-test-go');
+    if (btn) doDiagTest(btn);
+  }
+}
+
 applyStaticText();
 refresh();
 setInterval(refresh, 4000);
@@ -2094,6 +2510,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif path == "/api/status":
             self._json(_status_payload())
+        elif path == "/api/diag/log":
+            self._json({"lines": diag_log_tail(30)})
         elif path == "/api/term/output":
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
@@ -2130,7 +2548,8 @@ class _Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/close",
-                         "/api/handover", "/api/adopt", "/api/term/input", "/api/term/key"):
+                         "/api/handover", "/api/adopt", "/api/term/input", "/api/term/key",
+                         "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -2143,6 +2562,22 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         lang = "en" if data.get("lang") == "en" else "tr"
+
+        if path == "/api/diag/spawn-test":
+            self._json(_diag_spawn_test(lang=lang))
+            return
+
+        if path == "/api/diag/restart-gt":
+            self._json(_diag_restart_gt(lang=lang))
+            return
+
+        if path == "/api/diag/ask":
+            self._json(_diag_ask(
+                cli=str(data.get("cli", "")),
+                extra_question=str(data.get("extra_question", "")),
+                lang=lang,
+            ))
+            return
 
         if path == "/api/layout":
             groups = data.get("groups", [])

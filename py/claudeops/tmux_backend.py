@@ -47,6 +47,29 @@ def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
     )
 
 
+def tmux_spawn_direct(name: str, cwd: str, inner: str, env: dict) -> bool:
+    """gnome-terminal'siz DOĞRUDAN tmux session aç — spawn.py'nin gnome-terminal
+    fallback'ı ([[spawn-zombie-child-degrades-web-server]], gnome-terminal-server
+    kendi D-Bus state'iyle bozulunca hiç pencere açmıyor, sessizce). `-A` sayesinde
+    idempotent: session zaten varsa (gnome-terminal aslında başarmış, biz sadece
+    geç kontrol ettiysek) no-op — ikinci bir claude başlatmaz.
+
+    `inner` TEK bir argv elemanı olarak geçiriliyor (subprocess shell=False) — tmux
+    bunu kendi `$SHELL -c` çağrısına verir, `tmux_new_session_shell_fragment`'ın
+    dolaylı yolunun (outer bash -c → bu fragment) ürettiğiyle AYNI tek-geçişli
+    shell-parse sonucunu verir, çift-quote uyumsuzluğu olmaz."""
+    cmd = _base_argv() + [
+        "-f", tmux_conf_path(), "new-session", "-d", "-A",
+        "-s", name, "-c", cwd, "-x", "100", "-y", "30",
+        f"{inner}; exec bash",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=_TIMEOUT, env=env)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def tmux_has_session(name: str) -> bool:
     try:
         r = subprocess.run(_base_argv() + ["has-session", "-t", name],

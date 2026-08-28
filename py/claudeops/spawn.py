@@ -14,12 +14,21 @@ import os
 import shlex
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
+from .diaglog import diag_log
 from .providers import get_provider
 from .providers.claude_provider import find_latest_jsonl  # geriye-uyum: diğer modüller import ediyor
-from .tmux_backend import tmux_available, tmux_new_session_shell_fragment
+from .tmux_backend import tmux_available, tmux_has_session, tmux_new_session_shell_fragment, tmux_spawn_direct
+
+# gnome-terminal-server sessizce pencere açamadığında ([[spawn-zombie-child-degrades-web-server]],
+# kendi D-Bus/uzun-yaşam state bozulması — spawn'a özel değil, bare `gnome-terminal`
+# CLI'da bile canlı tekrarlandı 2026-08-27) bu kadar bekleyip tmux session hâlâ
+# yoksa gnome-terminal'siz DOĞRUDAN tmux'a düş. Normal (sağlıklı) durumda session
+# çoktan bundan önce görünür — fallback'in gerçekten TETİKLENMESİ nadir olmalı.
+FALLBACK_WAIT_SECONDS = 6.0
 
 
 def detect_display() -> str:
@@ -117,4 +126,31 @@ def spawn_session(
     # layout.py'nin subprocess.run(wmctrl/xdotool) çağrılarının exit code/output'unu bozar;
     # bunun yerine sadece BU child'ı arka planda reap et.
     threading.Thread(target=proc.wait, daemon=True).start()
+
+    if tmux_available():
+        # spawn_session() kendisi hâlâ ANINDA döner (guard_lock hold süresini UZATMAZ,
+        # web.py'de zaten spawn_session sonrası AYRI bir _wait_stable bekleme adımı var).
+        # AMA bu thread daemon=FALSE OLMALI: rc.py/handover.py/stuck.py gibi kısa-ömürlü
+        # CLI çağıranlar spawn_session() döner dönmez döngüdeki sıradaki isme geçip
+        # saniyeler içinde process'i TAMAMEN kapatıyor — daemon=True olsaydı interpreter
+        # çıkışında thread ANINDA öldürülür, fallback HİÇ TETİKLENMEZ (canlı test 2026-08-27:
+        # kısa ömürlü bir python3 -c script'inde tam bunu doğruladım). daemon=False →
+        # Python, ana thread bitse bile TÜM non-daemon thread'ler tamamlanana kadar
+        # process'i canlı tutar — worst-case ek gecikim ~FALLBACK_WAIT_SECONDS + tmux
+        # timeout'u (sınırlı, asla hang etmez), py/cops web gibi zaten uzun-yaşayan
+        # çağıranlarda hiç fark edilmez.
+        threading.Thread(target=_fallback_watchdog, args=(name, cwd, inner, env),
+                          daemon=False).start()
     return kind
+
+
+def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict) -> None:
+    deadline = time.monotonic() + FALLBACK_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if tmux_has_session(name):
+            return  # gnome-terminal (ya da daha önceki bir çağrı) başardı, fallback gereksiz
+        time.sleep(0.5)
+    if tmux_has_session(name):
+        return
+    ok = tmux_spawn_direct(name, cwd, inner, env)
+    diag_log("spawn_fallback_used", name=name, cwd=cwd, ok=ok)
