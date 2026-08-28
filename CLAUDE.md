@@ -45,3 +45,13 @@ Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permis
 
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
+
+## READY FOR HANDOVER (2026-08-28)
+
+Repo temiz, HEAD=`a560f65`, github+gitlab senkron. Fleet sakin (guard kapalı) — sadece `cops20260827_3` (bu session) + `diag20260827` (bu gece açılan tanı-session'ı, işi bitince stop edilebilir) çalışıyor, dup yok. **gnome-terminal-server (pid 4693) hâlâ bozuk, restart edilmedi** (kullanıcı bilerek erteledi) — yeni spawn'lar otomatik tmux-fallback'e (penceresiz) düşüyor, bu BEKLENEN davranış, Tanı sekmesinden test/restart edilebilir.
+
+Bu session'da: saseppr'ın resume-guard hatası düzeltildi ([[resume-deferred-tool-marker]]); yeni Tanı sekmesi + spawn.py'ye otomatik tmux-fallback + 5s stabilite kontrolü + `diag.log` + "LLM'e sor" eklendi ([[diag-tab-feature]]); Terminal view'ın periyodik yenilemede içeriğini kaybetme bug'ı bulunup Playwright'la doğrulanarak düzeltildi ([[terminal-view-refresh-destroys-xterm]]); CLAUDE.md ~12K→~6K küçültüldü.
+
+Açık yeni TODO (düzeltilmedi): tmux-backed "stop" gnome-terminal penceresini kapatmıyor, orphan bash kalıyor — kök sebep + fix adayı TODO.md'de. Yeni session: MEMORY.md oku, guard cron'u açma, tarih-isimli çöp roster satırları hâlâ temizlik bekliyor.
+
+READY FOR HANDOVER
