@@ -99,6 +99,7 @@ def guard_once(
                 model=model,
                 display=display,
                 dry_run=dry_run,
+                cli=entry.cli,
             )
         except Exception as e:
             kind = f"error:{e}"

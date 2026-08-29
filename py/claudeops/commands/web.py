@@ -1532,11 +1532,34 @@ function render(d) {
   // tam bir sonraki refresh() tetiklemesiyle örtüşüyor). Fix: eski (içerik dolu) node'u
   // sakla, innerHTML= sonrası taze (boş) placeholder'ın YERİNE eskisini geri koy —
   // xterm'in kendi DOM'u/state'i hiç bozulmadan, geri kalan tablo normal güncellenir.
+  //
+  // Aynı yok-etme term-in-${name} input'unu da vuruyordu: kullanıcı bir şey yazıp
+  // Enter'a basmadan bu tetiklenirse yeni (boş) input eskisinin yerine geçiyor —
+  // yazdığı metin sessizce kayboluyor, VE input o an odaktaysa DOM'dan sökülmesi
+  // odağı düşürüyor → mobilde ekran klavyesi aniden kapanıyor (canlı kullanıcı
+  // raporu, 2026-08-29: "yazdıklarım kayboluyor" + "sürekli scroll oluyor/kaymış").
+  // Fix: aynı sakla/geri-koy deseni + odak input'taysa açıkça .focus()+imleç konumu
+  // geri yükle (DOM'dan sökülme tarayıcıda senkron blur tetikliyor, reinsert'in
+  // kendisi odağı geri getirmiyor — ama capture→reinsert→focus hepsi AYNI senkron
+  // render() çağrısı içinde olduğu için tarayıcı klavyeyi kapatacak zamanı bulamıyor).
   const openXterm = termFor ? document.getElementById('xterm-' + termFor) : null;
+  const openInput = termFor ? document.getElementById('term-in-' + termFor) : null;
+  const openInputFocused = !!openInput && document.activeElement === openInput;
+  const openInputSel = openInputFocused ? [openInput.selectionStart, openInput.selectionEnd] : null;
   document.getElementById('tabContent').innerHTML = html;
   if (openXterm) {
     const freshPlaceholder = document.getElementById('xterm-' + termFor);
     if (freshPlaceholder && freshPlaceholder !== openXterm) freshPlaceholder.replaceWith(openXterm);
+  }
+  if (openInput) {
+    const freshInput = document.getElementById('term-in-' + termFor);
+    if (freshInput && freshInput !== openInput) {
+      freshInput.replaceWith(openInput);
+      if (openInputFocused) {
+        openInput.focus();
+        openInput.setSelectionRange(openInputSel[0], openInputSel[1]);
+      }
+    }
   }
 }
 
