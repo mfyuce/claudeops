@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from .discovery import find_sessions
 from .kill import kill_session, KILL_GRACE_SECONDS
+from .providers import get_provider
 from .session import Session
 from .spawn import find_latest_jsonl, spawn_session, detect_display
 
@@ -67,6 +68,8 @@ def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
     for s in sessions:
         if s.cpu >= STUCK_CPU_THRESHOLD:
             continue  # işliyor, stuck değil
+        if not get_provider(s.cli).has_conversation():
+            continue  # ör. düz shell: idle CPU normal, "stuck" kavramı yok — kill+resume ETME
         jsonl = find_latest_jsonl(s.cwd)
         if not jsonl:
             continue  # jsonl yok, not stuck
@@ -109,5 +112,6 @@ def recover_stuck(
         effort=s.effort or "max",
         force_new=False,
         dry_run=False,
+        cli=s.cli,
     )
     return f"recovered ({kind})"

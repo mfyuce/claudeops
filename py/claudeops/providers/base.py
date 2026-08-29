@@ -35,6 +35,14 @@ class CliProvider(ABC):
         ÖNEKİNİ YAZMA, onu `spawn_session` ekler (env_overrides'ı doğru yere — cd'den
         SONRA, binary çağrısından HEMEN ÖNCE — enjekte edebilmek için, bkz. aşağı)."""
 
+    def has_conversation(self) -> bool:
+        """True (varsayılan) = provider bir 'konuşma' sürdürüyor → handover Faz1
+        (wrap-up mesajı + kill/resume) ve stuck-recovery bu session'ı hedefler.
+        False → düz bir shell gibi konuşma kavramı olmayan provider'lar için: Faz1/
+        stuck bu session'ı asla öldürmez/yeniden açmaz (isimle bile hedeflense),
+        çünkü kill edecek "konuşma" yok, sadece kullanıcının canlı terminal'i var."""
+        return True
+
     def env_overrides(self, session_name: str) -> Dict[str, str]:
         """Bu CLI çağrısına ÖZEL env değişkenleri (varsayılan: yok).
 

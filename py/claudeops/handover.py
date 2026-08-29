@@ -228,6 +228,17 @@ def handover_faz1(
             print(f"  ⊘ self: {s.name} (pid={s.pid}) — bu komut onun içinden çalışıyor, atlandı")
             summary.results.append(Faz1Result(s.name, "skipped-self", "komutun atası"))
         targets = [s for s in targets if s.pid not in protected]
+
+    # Konuşma sürmeyen provider'lar (ör. düz shell) Faz1'e katılmaz — isimle bile
+    # hedeflense: burada "wrap-up" edilecek bir konuşma yok, sadece kullanıcının
+    # canlı terminal'i var; onu kill+respawn etmek sürpriz veri/iş kaybı demek
+    # (ör. sudo parola beklerken veya uzun bir komut çalışırken).
+    no_conv = [s for s in targets if not get_provider(s.cli).has_conversation()]
+    if no_conv:
+        for s in no_conv:
+            print(f"  ⊘ konuşma yok: {s.name} ({s.cli}) — handover kapsamı dışı, atlandı")
+            summary.results.append(Faz1Result(s.name, "skipped-no-conversation", s.cli))
+        targets = [s for s in targets if get_provider(s.cli).has_conversation()]
     targets.sort(key=lambda s: s.base)
 
     for i, session in enumerate(targets):
