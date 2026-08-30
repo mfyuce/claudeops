@@ -147,6 +147,18 @@ py/cops service notify        # özel bir topic üretir, kurulum adımlarını y
 py/cops service notify --off  # kapat
 ```
 
+Değinilmesi gereken bir başka arıza türü: Linux'ta `systemd-oomd`, bellek baskısı altında (sadece
+claudeops'u değil) **tüm login oturumunuzu** (`user@<uid>.service`) öldürebilir — bu olunca hiçbir
+`Restart=` politikası kurtaramaz, çünkü sizi kurtaracak olan şey zaten ölmüştür. `py/cops service
+watchdog`, birkaç dakikada bir kontrol edip gerekirse oturumu yeniden başlatan küçük, **root-
+seviyeli** bir systemd timer'ı kurar (bilerek kullanıcı oturumunuzun DIŞINDA — böylece bu senaryoya
+hayatta kalır); bir kere sudo şifrenizi soracak:
+
+```bash
+py/cops service watchdog             # kurar (sudo şifresi ister)
+py/cops service watchdog --uninstall # kaldırır
+```
+
 Hiç değişmeyen bir URL mü istiyorsunuz? Bunun için kendi domain'inizde bir Cloudflare **named tunnel**
 gerekir — sadece sizin yapabileceğiniz, tek seferlik, tarayıcı gerektiren bir kurulum:
 
