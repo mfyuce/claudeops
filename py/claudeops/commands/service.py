@@ -218,9 +218,14 @@ def run_status(args) -> int:
             ok = False
         print(f"{mark} {unit}: active={active} enabled={enabled}")
 
+    # `loginctl show-user -p Linger` KİMSE LOGIN DEĞİLKEN (linger'ın tam da var olma
+    # amacı olan durum!) "User ID N is not logged in or lingering" hatasıyla başarısız
+    # oluyor — linger GERÇEKTEN açık olsa bile (canlı bulundu, 2026-08-30: user@.service
+    # 37dk'dır login'siz ayaktaydı ama bu komut "unknown" diyordu). Asıl/kalıcı kaynak
+    # linger marker dosyası — loginctl'in o anki oturum durumuna bağlı değil.
     import getpass
-    linger = _sh("loginctl", "show-user", getpass.getuser(), "-p", "Linger").stdout.strip()
-    print(f"  {linger or 'Linger=unknown'} (logout sonrası da çalışmaya devam eder mi?)")
+    linger_on = (Path("/var/lib/systemd/linger") / getpass.getuser()).exists()
+    print(f"  Linger={'yes' if linger_on else 'no'} (logout sonrası da çalışmaya devam eder mi?)")
 
     if TUNNEL_URL_FILE.exists():
         print(f"\n  tunnel URL: {TUNNEL_URL_FILE.read_text().strip()}")
