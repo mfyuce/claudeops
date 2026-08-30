@@ -4,6 +4,15 @@
 
 ## Açık
 
+### 12) Bash `claudeops` (ROOT) hâlâ gerekli mi — silinsin mi?
+- **Bağlam (kullanıcı sorusu, 2026-08-30):** "eski bash tabanlı kodlara ihtiyaç yok artık onları silelim?" TBD#8'den (2026-06-22) beri Python (`py/cops`) büyüyor — artık web panel + provider mimarisi (claude/agy/shell) + `service` (systemd kalıcılık) dahil çoğu operasyonu kapsıyor.
+- **Bulgular (henüz "evet silelim" demeye yetmiyor):**
+  1. **Somut, canlı bağımlılık VAR:** `~/.config/autostart/claudeops.desktop` cold-boot'ta hâlâ BASH `claudeops guard --boot --lock` çalıştırıyor (cron guard `py/cops guard`'a geçmiş olsa da) — bu ikilik zaten TODO.md'de AÇIK bir madde (2026-06-25: "autostart cold-boot hâlâ bash claudeops, cron py/cops → ikilik"). Bash silinirse cold-boot recovery KIRILIR.
+  2. CLAUDE.md'nin kendi Faz 3 tarifi hâlâ `./claudeops layout ...` (BASH) diyor — `py/claudeops/commands/layout.py` docstring'inde kendini "bash'in karşılığı" tanımlasa da, gerçekten Faz 3'te CANLI denenip CLAUDE.md'nin `py/cops layout`'a çevrildiği DOĞRULANMADI; sadece dokümantasyon gecikmesi mi yoksa gerçek bir eksiklik mi bilinmiyor.
+  3. Bash'te olup py/cops'ta muadili net olmayan komutlar: `desktops` (N masaüstü sabitle), `send` (session'a metin/slash-komut — web panelin terminal input'u kısmen üstleniyor olabilir), `compact`, `batch`, `new`, `self`. Gerçekten hâlâ kullanılıyorlar mı, denetlenmedi.
+- **Öneri (silmeden önce sırayla):** (a) autostart `.desktop`'ı `py/cops guard --boot --lock`'a taşı + doğrula (önce py'de `--boot`/`--lock` flag'leri var mı kontrol et, yoksa ekle) → TODO'daki maddeyi kapatır; (b) Faz 3'ü gerçekten `py/cops layout`'la deneyip CLAUDE.md'yi güncelle; (c) `desktops`/`send`/`compact`/`batch`/`new`/`self`'i tek tek gözden geçir (gerçekten kullanılıyor mu, yoksa web panel+diğer py komutları zaten yerini almış mı) — hepsi kapanınca bash güvenle silinebilir.
+- **Karar:** ? (henüz silme — en az madde (a) açık kaldığı sürece cold-boot kırılır)
+
 ### 9) needs_ho: git-dışı dosya değişimi takibi
 - **Bağlam:** `needs_ho` şu an tüm sinyaller git-bazlı (dirty/untracked/committed_since/RFH). Git repo olmayan ya da `.gitignore`'lı dizinlerdeki dosya değişimleri yakalanmıyor. Ayrıca "en son değişen dosya + tarih" hiçbir yerde saklanmıyor — her kontrol anlık git sorgusu.
 - **Soru:** CWD'deki dosyaların son mtime'ını (`mtime > last-handover.ts`) ayrıca takip etmeli miyiz? (git olmayan projeler için fallback)

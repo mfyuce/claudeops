@@ -117,16 +117,40 @@ nothing sends the URL to a third party) and open it in your phone's browser.
 A few things worth knowing:
 - The **token** is stable across restarts (same `~/.claude/claudeops/web.token` file every time), but the
   **tunnel URL changes** on every `--tunnel` run — it's a Cloudflare "quick tunnel", no account or
-  domain needed, but also no fixed address. Keep the terminal open (or run it detached, e.g. under
-  `tmux`/`nohup`) for the tunnel to stay up.
+  domain needed, but also no fixed address.
 - Treat the full URL (with `?token=...`) like a password — anyone who has it can start/stop your
   sessions. Don't post it publicly, don't leave it visible in a screen share, and don't put it in this
   screenshot's URL bar if you ever take one for yourself (this README's screenshot is viewport-only, no
   address bar, on purpose).
-- Want a URL that doesn't change every time? That needs a Cloudflare **named tunnel** on your own domain
-  instead of `--tunnel`'s quick tunnel — not set up by claudeops by default.
-- The quick tunnel is today's only way to reach the panel from outside your LAN; a self-hosted/persistent
-  server option may be added later.
+
+### Keeping it running (survives logout/reboot) + finding the current URL
+
+```bash
+py/cops service install     # writes systemd --user units, enables linger, starts both now
+py/cops service status      # is it up? + the current tunnel URL, read from one place
+py/cops service uninstall   # stop + disable + remove the units (doesn't touch linger)
+```
+
+This installs two `systemctl --user` units (`claudeops-web.service`, `claudeops-tunnel.service`,
+`Restart=on-failure`) plus `loginctl enable-linger $USER` (so they keep running with nobody logged in —
+required for both "survives logout" and "starts at boot"). Units are generated from `paths.REPO_DIR` and
+`sys.executable`, so `install` works from any checkout/any user, not just the original machine. The
+current URL always lands in `~/.claude/claudeops/tunnel_url.txt` — that's the one stable thing to check
+(or grep) instead of re-reading terminal output every time it restarts.
+
+Want a URL that never changes? That needs a Cloudflare **named tunnel** on your own domain — a one-time,
+interactive setup only you can do (a browser login):
+
+```bash
+cloudflared tunnel login                        # opens a browser, needs a Cloudflare account
+cloudflared tunnel create claudeops             # or whatever name you passed to --tunnel-name
+cloudflared tunnel route dns claudeops panel.yourdomain.com
+echo https://panel.yourdomain.com > ~/.claude/claudeops/tunnel_fixed_hostname.txt
+```
+
+`run-tunnel.sh` (the script the tunnel unit runs) checks for a named tunnel matching `--tunnel-name`
+(`claudeops` by default) on every start and uses it automatically if present — no service/code changes
+needed, before or after you set it up. Until you do, it quietly keeps using the random quick-tunnel URL.
 
 **There's a second, independent way to reach a session from your phone:** every session claudeops opens
 uses `--remote-control`, which is Claude Code's own built-in feature — so it also shows up in the
@@ -149,6 +173,7 @@ py/cops handover  # close a session with a wrap-up message, reopen under the sam
 py/cops stuck     # detect stuck sessions (idle but showing "busy")
 py/cops layout    # arrange windows across desktops (X11)
 py/cops web       # the control panel (above)
+py/cops service   # systemd --user persistence for `web`+tunnel (install/status/uninstall)
 ```
 
 Every command has its own `--help`.
@@ -165,11 +190,13 @@ Every command has its own `--help`.
   Code's own Remote Control feature (also reachable from claude.ai/code or the mobile app). An `agy`
   session has no equivalent naming flag, so its name is carried via a `COPS_NAME` environment variable
   instead.
-- Support for a second CLI backend (`agy`, Google's Antigravity CLI) is implemented as a **provider**:
-  a small `CliProvider` interface (`py/claudeops/providers/base.py`) that `claude_provider.py` and
-  `agy_provider.py` each implement; the rest of the codebase (spawn/discovery/web panel) only ever
-  calls through that interface and never branches on which CLI is in use — adding a third backend
-  means writing one more provider file, not touching existing code.
+- Multiple CLI backends (`agy`, Google's Antigravity CLI; `shell`, a plain interactive bash — for
+  things a chat-shaped CLI can't do, like `sudo` or any other program that needs a real TTY) are each
+  implemented as a **provider**: a small `CliProvider` interface (`py/claudeops/providers/base.py`)
+  that `claude_provider.py`/`agy_provider.py`/`shell_provider.py` each implement; the rest of the
+  codebase (spawn/discovery/web panel) only ever calls through that interface and never branches on
+  which CLI is in use — adding another backend means writing one more provider file, not touching
+  existing code.
 - Kill is always **SIGTERM + ~10 second wait + SIGKILL if still alive** — since Claude Code's transcript
   is written to disk lazily (checkpoint by checkpoint), a too-fast `SIGKILL` can cut off conversation
   history.
@@ -184,8 +211,8 @@ py/claudeops/
   spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py
   tmux_backend.py                       # tmux helpers (dedicated -L cops socket), fail-soft if no tmux
   providers/                            # CliProvider ABC + one file per CLI backend + registry
-    base.py, claude_provider.py, agy_provider.py, __init__.py
-  data/                                  # bundled static assets: tmux.conf, vendored xterm.js
+    base.py, claude_provider.py, agy_provider.py, shell_provider.py, __init__.py
+  data/                                  # bundled static assets: tmux.conf, vendored xterm.js, run-tunnel.sh
   commands/                             # one file per CLI command (web.py is the largest)
 cops                                    # entry point → python3 -m claudeops
 ```

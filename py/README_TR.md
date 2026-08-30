@@ -119,14 +119,39 @@ tarayıcısında açın.
 Bilinmesi gerekenler:
 - **Token** her yeniden başlatmada aynı kalır (aynı `~/.claude/claudeops/web.token` dosyası), ama
   **tünel URL'i her `--tunnel` çalıştırmasında değişir** — Cloudflare'in "quick tunnel"ı bu, hesap ya da
-  domain gerektirmez ama sabit adresi de yoktur. Tünelin ayakta kalması için terminali açık tutun (ya da
-  arka planda çalıştırın, ör. `tmux`/`nohup` ile).
+  domain gerektirmez ama sabit adresi de yoktur.
 - Token'lı tam URL'i ("?token=..." dahil) şifre gibi düşünün — kimde bu varsa session'larınızı
   başlatıp durdurabilir. Herkese açık paylaşmayın, ekran paylaşımında görünür bırakmayın.
-- Her seferinde değişmeyen bir URL isterseniz, `--tunnel`'ın quick-tunnel'ı yerine kendi domain'inizde
-  bir Cloudflare **named tunnel** kurmanız gerekir — claudeops bunu varsayılan olarak kurmuyor.
-- Quick tunnel şu an panele LAN dışından ulaşmanın tek yolu; ileride kendi barındırdığınız/kalıcı bir
-  server seçeneği eklenebilir.
+
+### Kalıcı çalıştırma (logout/reboot'ta hayatta kalır) + güncel URL'i bulma
+
+```bash
+py/cops service install     # systemd --user unit'lerini yazar, linger açar, ikisini de başlatır
+py/cops service status      # ayakta mı? + güncel tunnel URL'i, tek bir yerden
+py/cops service uninstall   # durdur + devre dışı bırak + unit'leri sil (linger'a dokunmaz)
+```
+
+Bu, iki `systemctl --user` unit'i kurar (`claudeops-web.service`, `claudeops-tunnel.service`,
+`Restart=on-failure`) + `loginctl enable-linger $USER` (kimse login olmasa da çalışmaya devam etsinler
+diye — hem "logout'ta durmasın" hem "boot'ta kendiliğinden başlasın" için şart). Unit'ler
+`paths.REPO_DIR` + `sys.executable`'dan üretilir, yani `install` HERHANGİ bir checkout'ta/kullanıcıda
+çalışır, sadece orijinal makinede değil. Güncel URL her zaman `~/.claude/claudeops/tunnel_url.txt`'te —
+her restart'ta terminal çıktısını yeniden okumak yerine bakılacak tek, sabit yer burası.
+
+Hiç değişmeyen bir URL mü istiyorsunuz? Bunun için kendi domain'inizde bir Cloudflare **named tunnel**
+gerekir — sadece sizin yapabileceğiniz, tek seferlik, tarayıcı gerektiren bir kurulum:
+
+```bash
+cloudflared tunnel login                        # tarayıcı açar, bir Cloudflare hesabı gerekir
+cloudflared tunnel create claudeops             # ya da --tunnel-name'e ne verdiyseniz
+cloudflared tunnel route dns claudeops panel.domaininiz.com
+echo https://panel.domaininiz.com > ~/.claude/claudeops/tunnel_fixed_hostname.txt
+```
+
+`run-tunnel.sh` (tunnel unit'inin çalıştırdığı script) her başlangıçta `--tunnel-name` (varsayılan
+`claudeops`) ile eşleşen bir named tunnel olup olmadığına bakar, varsa OTOMATİK kullanır — öncesinde de
+sonrasında da servis/kod değişikliği gerekmez. Kurana kadar sessizce rastgele quick-tunnel URL'ini
+kullanmaya devam eder.
 
 **Telefondan bir session'a ulaşmanın ikinci, bağımsız bir yolu daha var:** claudeops'un açtığı her
 session `--remote-control` kullanıyor — bu Claude Code'un kendi yerleşik özelliği, dolayısıyla resmi
@@ -149,6 +174,7 @@ py/cops handover  # session'ı wrap-up mesajıyla kapatıp aynı adla yeniden a�
 py/cops stuck     # takılı kalmış (idle ama "busy" görünen) session'ları tespit et
 py/cops layout    # pencereleri masaüstlerine dağıt (X11)
 py/cops web       # kontrol paneli (yukarıda)
+py/cops service   # `web`+tunnel için systemd --user kalıcılığı (install/status/uninstall)
 ```
 
 Her komutun kendi `--help`'i var.
@@ -164,11 +190,13 @@ Her komutun kendi `--help`'i var.
   başarısız kılmaz). Bir `claude` session'ı `claude -n İSİM --remote-control İSİM` çalıştırır — Claude
   Code'un kendi Remote Control özelliği (claude.ai/code veya mobil uygulamadan da erişilebilir). `agy`
   session'ının muadil bir isimlendirme flag'i yok, bu yüzden ismi `COPS_NAME` ortam değişkeniyle taşınır.
-- İkinci bir CLI backend'i (`agy`, Google'ın Antigravity CLI'ı) desteği bir **provider** olarak
-  uygulandı: küçük bir `CliProvider` arayüzü (`py/claudeops/providers/base.py`) — `claude_provider.py`
-  ve `agy_provider.py` bunu kendi içinde doldurur; kodun geri kalanı (spawn/discovery/web paneli) sadece
-  bu arayüz üzerinden çağırır, hangi CLI kullanıldığına göre hiç dallanmaz — üçüncü bir backend eklemek
-  bir provider dosyası daha yazmak demektir, mevcut koda dokunmak değil.
+- Birden fazla CLI backend'i (`agy`, Google'ın Antigravity CLI'ı; `shell`, düz interaktif bash — sohbet
+  şeklindeki bir CLI'ın yapamadığı şeyler için, ör. `sudo` ya da gerçek bir TTY isteyen herhangi bir
+  program) her biri bir **provider** olarak uygulandı: küçük bir `CliProvider` arayüzü
+  (`py/claudeops/providers/base.py`) — `claude_provider.py`/`agy_provider.py`/`shell_provider.py` bunu
+  kendi içinde doldurur; kodun geri kalanı (spawn/discovery/web paneli) sadece bu arayüz üzerinden
+  çağırır, hangi CLI kullanıldığına göre hiç dallanmaz — bir backend daha eklemek bir provider dosyası
+  daha yazmak demektir, mevcut koda dokunmak değil.
 - Kill her zaman **SIGTERM + ~10 saniye bekleme + hâlâ canlıysa SIGKILL** — Claude Code'un transkript
   kaydı ara ara diske yazıldığı için (lazy-checkpoint), çok hızlı `SIGKILL` konuşma geçmişini kesebiliyor.
 - `guard` opsiyonel — istemiyorsanız hiç kurmayın, tamamen `py/cops web`'den elle yönetin.
@@ -181,8 +209,8 @@ py/claudeops/
   spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py
   tmux_backend.py                       # tmux yardımcıları (ayrı -L cops socket'i), tmux yoksa fail-soft
   providers/                            # CliProvider ABC + backend başına bir dosya + registry
-    base.py, claude_provider.py, agy_provider.py, __init__.py
-  data/                                  # gömülü statik dosyalar: tmux.conf, vendored xterm.js
+    base.py, claude_provider.py, agy_provider.py, shell_provider.py, __init__.py
+  data/                                  # gömülü statik dosyalar: tmux.conf, vendored xterm.js, run-tunnel.sh
   commands/                             # her CLI komutu kendi dosyasında (web.py en büyüğü)
 cops                                    # giriş noktası → python3 -m claudeops
 ```
