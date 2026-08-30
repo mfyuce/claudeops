@@ -17,6 +17,46 @@ Full install instructions, all `web` panel features, and the command list: **[`p
 
 MIT licensed — see [`LICENSE`](LICENSE).
 
+## What it can do
+
+**Fleet management**
+- Track every open Claude Code session across every project folder, from one place
+- Multiple CLI backends per session — Claude Code, Google's Antigravity/Gemini CLI, or a plain
+  interactive shell (for `sudo` and anything else that needs a real TTY) — pluggable, one file per
+  backend, adding another is a small, contained change
+- Start / stop / kill / permanently disable / retire / re-enable any session
+- Duplicate-session detection
+- Crash recovery: detect sessions missing from the roster and reopen them (optional, off by default —
+  this project defaults to manual, one-by-one control)
+- Stuck-session detection (idle but should be busy) with one-click recovery
+- 3-phase handover: wrap-up message → kill & respawn fresh → rearrange windows across desktops
+- Git-aware "does this need a handover" check (dirty tree, untracked files, unpushed commits, missing
+  summary)
+
+**Web control panel** (`py/cops web`)
+- Runs off the Python standard library only — no extra dependencies to install
+- Token-gated, reachable from your phone via a Cloudflare tunnel (random quick-tunnel, or a fixed
+  URL on your own domain)
+- Running / Registered / Disabled / Retired tabs, bulk actions with checkboxes
+- Start any session with per-session model / permission-mode / effort / resume-vs-fresh options
+- Register new projects straight from the browser
+- **Live embedded terminal** for any session — see real output, type real input, including `sudo`
+  password prompts (**work in progress**: functional, but a few rough edges remain on mobile —
+  resizing/scrolling isn't perfectly smooth yet)
+- Mobile-responsive layout
+- Diagnostics tab: one-click spawn health test, terminal-server restart, "ask an LLM" about recent logs
+
+**Stays up on its own**
+- `py/cops service install` — systemd persistence: the panel and tunnel survive logout and reboot,
+  and restart themselves if they crash
+- `py/cops service notify` — a phone push notification (via [ntfy.sh](https://ntfy.sh), no account
+  needed) whenever the tunnel URL actually changes
+- `py/cops service watchdog` — a root-level timer that recovers your whole login session if the OS's
+  own memory-pressure killer (`oomd`) ever takes the entire thing down, not just claudeops
+
+**Command line** (`py/cops <command>`, every one has its own `--help`)
+`list · kill · close · config · guard · rc · handover · stuck · layout · web · service`
+
 ---
 
 The repo also contains an older **bash** script called `claudeops` (described below) — that was the
