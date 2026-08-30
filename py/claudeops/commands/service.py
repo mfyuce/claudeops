@@ -5,6 +5,8 @@ Kullanım:
   py/cops service install [--tunnel-name NAME]   # unit'leri yaz + linger aç + enable+start
   py/cops service status                          # ikisinin durumu + güncel tunnel URL
   py/cops service uninstall                       # durdur + devre dışı bırak + unit'leri sil
+  py/cops service watchdog [--uninstall]          # oomd user@.service'i öldürürse geri açan
+                                                    # ROOT-seviyeli timer (sudo şifre sorar)
 
 Herkes kendi checkout'unda `install` çalıştırabilir — unit'ler REPO_DIR/`sys.executable`'dan
 DİNAMİK üretilir, hiçbir yol/kullanıcı adı sabit kodlanmaz (bkz. paths.REPO_DIR).
@@ -39,11 +41,26 @@ için yapılan restart, o an windowless olan `saseppr` session'ını tamamen sil
 terminal'e bağlı session'lar hayatta kaldı çünkü onlar AYRI bir cgroup'ta/scope'ta —
 `--remote-control` claude proc'unun SIGHUP'a dayanıklı olması da yardımcı oldu ama
 windowless/tmux-direct session'lar için tek koruma budur).
+
+`watchdog`: `user@<uid>.service`'in KENDİSİ oomd tarafından öldürülürse (bkz. yukarıdaki
+KillMode notu — services ölmeden ÖNCE, onları barındıran yönetici ölürse hiçbir
+Restart= devreye giremez) hiçbir `--user` servisi (linger açık olsa bile) kendi
+kendine geri gelmez, sadece gerçek bir login/unlock user@.service'i yeniden başlatır.
+Kullanıcının kendi tercihiyle uyumlu (2026-06-03: "oomd'ye dokunma, kurtarmayı
+güçlendir") — oomd'nin kill yetkisine dokunmuyoruz, bunun yerine ROOT seviyesinde,
+kullanıcı oturumundan TAMAMEN bağımsız bir systemd timer periyodik olarak
+`systemctl start user@<uid>.service` çağırıyor (zaten çalışıyorsa no-op, ölmüşse birkaç
+dakika içinde geri getiriyor). Root gerektirdiği için `sudo` şifre soracak — elle
+`sudo tee ... <<'UNIT'` yazmaya göre (canlı denendi: mobilde heredoc birkaç
+denemede ancak çalıştı) tek komut + tek şifre istemi.
 """
 from __future__ import annotations
+import getpass
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from ..paths import CLAUDEOPS_DIR, REPO_DIR, HOME
@@ -89,10 +106,34 @@ RestartSec=5
 WantedBy=default.target
 """
 
+# Root-seviyeli (/etc/systemd/system/, ~/.config/systemd/user/ DEĞİL) — user@.service'in
+# kendisini kurtarmak user@.service'in DIŞINDAN, sistem seviyesinden yapılmak zorunda.
+WATCHDOG_SERVICE_PATH = Path("/etc/systemd/system/claudeops-session-watchdog.service")
+WATCHDOG_TIMER_PATH = Path("/etc/systemd/system/claudeops-session-watchdog.timer")
+
+WATCHDOG_SERVICE_TEMPLATE = """[Unit]
+Description=Restart user@{uid}.service if oomd (or anything else) killed it
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl start user@{uid}.service
+"""
+
+WATCHDOG_TIMER_CONTENT = """[Unit]
+Description=Run claudeops-session-watchdog periodically
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=3min
+
+[Install]
+WantedBy=timers.target
+"""
+
 
 def register(sub):
     p = sub.add_parser("service", help="web panel + tunnel'ı systemd --user ile kalıcı yap (logout/reboot'ta otomatik)")
-    s = p.add_subparsers(dest="action", metavar="<install|status|uninstall|notify>")
+    s = p.add_subparsers(dest="action", metavar="<install|status|uninstall|notify|watchdog>")
 
     p_install = s.add_parser("install", help="unit'leri yaz + linger aç + enable+start")
     p_install.add_argument("--tunnel-name", default="claudeops", metavar="NAME",
@@ -111,6 +152,10 @@ def register(sub):
                            help="ntfy.sh topic adı (verilmezse rastgele/tahmin-zor biri üretilir)")
     p_notify.add_argument("--off", action="store_true", help="bildirimi kapat (topic dosyasını sil)")
     p_notify.set_defaults(func=run_notify)
+
+    p_watchdog = s.add_parser("watchdog", help="oomd user@.service'i öldürürse geri açan ROOT-seviyeli timer (sudo şifre sorar)")
+    p_watchdog.add_argument("--uninstall", action="store_true", help="watchdog'u kaldır")
+    p_watchdog.set_defaults(func=run_watchdog)
 
     p.set_defaults(func=lambda args: p.print_help() or 1)
 
@@ -210,6 +255,58 @@ def run_notify(args) -> int:
     print(f"  3. Test etmek için: curl -d 'test' https://ntfy.sh/{topic}")
     print()
     print("  Kapatmak için: py/cops service notify --off")
+    return 0
+
+
+def _sudo(*args: str) -> int:
+    """`_sh()` GİBİ DEĞİL — çıktı capture ETMEZ, stdin/stdout/stderr'i olduğu gibi
+    devralır. sudo'nun kendi şifre sorusu (TTY'ye yazar) capture edilirse hiç
+    görünmez/asılı kalır gibi görünür — bu yüzden watchdog'un TÜM sudo çağrıları
+    bunun üzerinden gider, `_sh()` üzerinden DEĞİL."""
+    return subprocess.run(["sudo", *args]).returncode
+
+
+def run_watchdog(args) -> int:
+    uid = os.getuid()
+
+    if args.uninstall:
+        _sudo("systemctl", "disable", "--now", "claudeops-session-watchdog.timer")
+        _sudo("rm", "-f", str(WATCHDOG_SERVICE_PATH), str(WATCHDOG_TIMER_PATH))
+        _sudo("systemctl", "daemon-reload")
+        print("✓ kaldırıldı (root-seviyeli oomd watchdog'u).")
+        return 0
+
+    if WATCHDOG_SERVICE_PATH.exists() and WATCHDOG_TIMER_PATH.exists():
+        print("zaten kurulu. Durum: systemctl list-timers claudeops-session-watchdog.timer")
+        return 0
+
+    print("Root yetkisi gerekiyor (oomd, user@.service'i BİLEREK sistem seviyesinde")
+    print("öldürüyor — kurtarma da sistem seviyesinde olmak zorunda). Şimdi sudo şifreni soracak.")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="claudeops-watchdog-"))
+    try:
+        svc_tmp = tmp_dir / "claudeops-session-watchdog.service"
+        timer_tmp = tmp_dir / "claudeops-session-watchdog.timer"
+        svc_tmp.write_text(WATCHDOG_SERVICE_TEMPLATE.format(uid=uid))
+        timer_tmp.write_text(WATCHDOG_TIMER_CONTENT)
+
+        steps = [
+            ("cp", str(svc_tmp), str(WATCHDOG_SERVICE_PATH)),
+            ("cp", str(timer_tmp), str(WATCHDOG_TIMER_PATH)),
+            ("systemctl", "daemon-reload"),
+            ("systemctl", "enable", "--now", "claudeops-session-watchdog.timer"),
+        ]
+        for step in steps:
+            if _sudo(*step) != 0:
+                print(f"✗ başarısız: sudo {' '.join(step)}", file=sys.stderr)
+                return 1
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    print()
+    print(f"✓ kuruldu — user@{uid}.service oomd tarafından öldürülürse en geç 3dk içinde geri açılır.")
+    print("  Kontrol: systemctl list-timers claudeops-session-watchdog.timer")
+    print("  Kaldırmak için: py/cops service watchdog --uninstall")
     return 0
 
 

@@ -147,6 +147,18 @@ py/cops service notify        # generates a private topic, prints setup steps (i
 py/cops service notify --off  # turn it back off
 ```
 
+One more failure mode worth covering: on Linux, `systemd-oomd` can kill your *entire* login
+session (`user@<uid>.service`, not just claudeops) under memory pressure — when that happens, no
+`Restart=` policy can save you, since the thing that would restart the services is what died.
+`py/cops service watchdog` installs a small **root-level** systemd timer (outside your user
+session on purpose, so it survives this) that checks every few minutes and restarts the session
+if needed — it'll ask for your sudo password once:
+
+```bash
+py/cops service watchdog             # installs (prompts for sudo)
+py/cops service watchdog --uninstall # removes it
+```
+
 Want a URL that never changes? That needs a Cloudflare **named tunnel** on your own domain — a one-time,
 interactive setup only you can do (a browser login):
 
