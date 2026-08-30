@@ -17,6 +17,46 @@ Detaylı kurulum, `web` panelinin tüm özellikleri ve komut listesi: **[`py/REA
 
 MIT lisanslı — bkz. [`LICENSE`](LICENSE).
 
+## Neler yapabilir
+
+**Fleet yönetimi**
+- Her proje klasöründeki her açık Claude Code session'ını tek yerden takip et
+- Session başına birden fazla CLI backend'i — Claude Code, Google'ın Antigravity/Gemini CLI'ı,
+  ya da düz interaktif bir shell (`sudo` ve gerçek bir TTY isteyen her şey için) — pluggable, backend
+  başına bir dosya, yeni bir tane eklemek küçük/izole bir değişiklik
+- Herhangi bir session'ı başlat / durdur / öldür / kalıcı devre dışı bırak / emekli et / tekrar işe al
+- Duplicate-session tespiti
+- Crash recovery: roster'da olup çalışmayan session'ları tespit edip aç (opsiyonel, varsayılan kapalı —
+  bu proje varsayılan olarak elle, tek tek kontrolü tercih ediyor)
+- Takılı kalmış (idle ama meşgul görünmesi gereken) session tespiti + tek tıkla kurtarma
+- 3 fazlı handover: wrap-up mesajı → kill & taze respawn → pencereleri masaüstlerine dağıt
+- Git-farkında "bu session'ın handover'a ihtiyacı var mı" kontrolü (kirli ağaç, untracked dosyalar,
+  push'lanmamış commit'ler, eksik özet)
+
+**Web kontrol paneli** (`py/cops web`)
+- Sadece Python standart kütüphanesiyle çalışır — ekstra bağımlılık kurmaya gerek yok
+- Token korumalı, Cloudflare tunnel ile telefonundan erişilebilir (rastgele quick-tunnel ya da kendi
+  domain'inde sabit bir URL)
+- Çalışanlar / Kayıtlı / Devre dışı / Emekli sekmeleri, checkbox'larla toplu işlemler
+- Herhangi bir session'ı model / permission-mode / effort / resume-veya-fresh seçenekleriyle başlat
+- Yeni projeleri doğrudan tarayıcıdan kaydet
+- **Herhangi bir session için canlı, gömülü terminal** — gerçek çıktıyı gör, gerçek girdi yaz, `sudo`
+  parola sorması dahil (**work in progress**: çalışıyor ama mobilde birkaç pürüz var — resize/scroll
+  henüz tam pürüzsüz değil)
+- Mobil-uyumlu tasarım
+- Tanı sekmesi: tek-tıkla spawn sağlık testi, terminal-server restart, son loglar hakkında "LLM'e sor"
+
+**Kendi kendine ayakta kalır**
+- `py/cops service install` — systemd kalıcılığı: panel ve tunnel logout/reboot'ta hayatta kalır,
+  çökerse kendini toplar
+- `py/cops service notify` — tunnel URL'i GERÇEKTEN değiştiğinde ([ntfy.sh](https://ntfy.sh) üzerinden,
+  hesap gerekmez) telefonuna push bildirimi
+- `py/cops service watchdog` — işletim sisteminin kendi bellek-baskısı katili (`oomd`) TÜM oturumunu
+  (sadece claudeops'u değil) alaşağı ederse onu geri getiren root-seviyeli bir timer
+
+**Komut satırı** (`py/cops <komut>`, her birinin kendi `--help`'i var)
+`list · kill · close · config · guard · rc · handover · stuck · layout · web · service`
+
 ---
 
 Repoda ayrıca `claudeops` adında eski bir **bash** script var (aşağıda anlatılıyor) — ilk sürüm buydu,
