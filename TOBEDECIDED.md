@@ -4,6 +4,15 @@
 
 ## Açık
 
+### 13) Sabit (hiç değişmeyen) tunnel URL'i — hangi domain?
+- **Bağlam (2026-08-30):** Kullanıcı `hoce.me`'yi (doğrusu **hoca.me**) sabit Cloudflare tunnel domain'i olarak kullanmayı sordu — "videogen için kurulum yaptığımız yer".
+- **Bulgu:** `hoca.me` kullanıcının CANLI production hoca video-gen servisi (gerçek ödeyen müşteriler, iyzico ödeme, Google OAuth — bkz. videogen `DONE.md` "hoca.me deploy (2026-06-05) — ilk production sunucu CANLI"). Canlı DNS'e bakıldı: nameserver'lar `dnsenable.com`, A kaydı doğrudan Hetzner sunucusuna (`49.13.238.226`) gidiyor — **hoca.me şu an Cloudflare'de bile değil** (`docs/hoca_me_deploy.md`'deki Cloudflare DNS tablosu bir plandı, gerçekte uygulanmamış: checklist'i hâlâ tamamen işaretsiz). Domain'in TAMAMINI Cloudflare'e taşımak (nameserver değişikliği) canlı siteyi (OAuth redirect, Caddy/Let's Encrypt, ödeme, mail linkleri) riske atar — bunun için bedeli yok.
+- **Seçenekler:**
+  (a) `hoca.me`'de GÜVENLİ bir alt-domain (ör. `ops.hoca.me`) — sadece o TEK alt-domain'i NS-delegation ile Cloudflare'e bağlamak (dnsenable.com panelinden 2-3 NS kaydı eklemek), canlı sitenin geri kalanına DOKUNMAZ. Elle bir adım gerekir (parent DNS panelinde NS kaydı eklemek), ama güvenli.
+  (b) Ayrı, ufak yeni bir domain (~1-2$/yıl) — canlı hoca.me'ye hiç dokunmadan en basit/en riske-en-uzak yol.
+  (c) Şimdilik vazgeç — quick-tunnel (rastgele URL) + değişince ntfy.sh push bildirimi (`py/cops service notify`, UYGULANDI 2026-08-30) yeterli.
+- **Karar (2026-08-30):** Şimdilik **(c)** — sabit URL peşinde koşulmuyor, bildirim mekanizması yeterli bulundu. (a)/(b) ileride istenirse burası tekrar açılır.
+
 ### 12) Bash `claudeops` (ROOT) hâlâ gerekli mi — silinsin mi?
 - **Bağlam (kullanıcı sorusu, 2026-08-30):** "eski bash tabanlı kodlara ihtiyaç yok artık onları silelim?" TBD#8'den (2026-06-22) beri Python (`py/cops`) büyüyor — artık web panel + provider mimarisi (claude/agy/shell) + `service` (systemd kalıcılık) dahil çoğu operasyonu kapsıyor.
 - **Bulgular:**

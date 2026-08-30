@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import time
 from typing import Dict, List, Optional
@@ -67,7 +68,9 @@ class AgyProvider(CliProvider):
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
                              resume_id, prompt, session_name) -> str:
-        parts = ["agy"]
+        # Mutlak yol — bkz. claude_provider.py'deki aynı fix'in yorumu (pane'in kendi
+        # PATH'i tmux server'ın miras kaldığından farklı/eksik olabilir).
+        parts = [shutil.which("agy") or "agy"]
         if resume_id:
             parts += ["--conversation", shlex.quote(resume_id)]
         parts += ["--model", shlex.quote(model)]

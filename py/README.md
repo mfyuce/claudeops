@@ -138,6 +138,15 @@ required for both "survives logout" and "starts at boot"). Units are generated f
 current URL always lands in `~/.claude/claudeops/tunnel_url.txt` — that's the one stable thing to check
 (or grep) instead of re-reading terminal output every time it restarts.
 
+Since the quick-tunnel URL changes on every restart, `py/cops service notify` can push you a phone
+notification (via [ntfy.sh](https://ntfy.sh), no account needed) whenever it actually changes — silent
+otherwise:
+
+```bash
+py/cops service notify        # generates a private topic, prints setup steps (install the ntfy app once)
+py/cops service notify --off  # turn it back off
+```
+
 Want a URL that never changes? That needs a Cloudflare **named tunnel** on your own domain — a one-time,
 interactive setup only you can do (a browser login):
 

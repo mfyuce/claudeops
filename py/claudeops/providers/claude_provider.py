@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os
 import shlex
+import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -59,10 +60,17 @@ class ClaudeProvider(CliProvider):
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
                              resume_id, prompt, session_name) -> str:
+        # Mutlak yol (çıplak "claude" DEĞİL): bu string bir tmux pane'inin shell komutu
+        # olarak çalışır, o pane'in PATH'i BİZİM PATH'imizden bağımsız — tmux server ilk
+        # kez kuruluyorsa onu kuran her neyse (ör. systemd --user servisi, minimal PATH)
+        # PATH'i miras kalır ve pane'de "claude: command not found" olur (canlı bulundu,
+        # 2026-08-30). shutil.which BURADA (spawn'ı TETİKLEYEN sürecin PATH'inde) çözülüp
+        # sonucu string'e gömülünce pane'in kendi PATH'i ne olursa olsun çalışır.
+        binary = shutil.which("claude") or "claude"
         resume_arg = f"--resume {shlex.quote(resume_id)} " if resume_id else ""
         prompt_arg = f" {shlex.quote(prompt)}" if prompt else ""
         return (
-            f"claude {resume_arg}"
+            f"{shlex.quote(binary)} {resume_arg}"
             f"--model {shlex.quote(model)} "
             f"--permission-mode {shlex.quote(permission_mode)} "
             f"--effort {shlex.quote(effort)} "
