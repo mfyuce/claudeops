@@ -138,6 +138,15 @@ diye — hem "logout'ta durmasın" hem "boot'ta kendiliğinden başlasın" için
 çalışır, sadece orijinal makinede değil. Güncel URL her zaman `~/.claude/claudeops/tunnel_url.txt`'te —
 her restart'ta terminal çıktısını yeniden okumak yerine bakılacak tek, sabit yer burası.
 
+Quick-tunnel URL'i her restart'ta değiştiği için, `py/cops service notify` URL GERÇEKTEN
+değiştiğinde ([ntfy.sh](https://ntfy.sh) üzerinden, hesap gerekmez) telefonuna push bildirimi
+atabilir — değişmediyse sessiz kalır:
+
+```bash
+py/cops service notify        # özel bir topic üretir, kurulum adımlarını yazdırır (ntfy app'i bir kere kur)
+py/cops service notify --off  # kapat
+```
+
 Hiç değişmeyen bir URL mü istiyorsunuz? Bunun için kendi domain'inizde bir Cloudflare **named tunnel**
 gerekir — sadece sizin yapabileceğiniz, tek seferlik, tarayıcı gerektiren bir kurulum:
 
