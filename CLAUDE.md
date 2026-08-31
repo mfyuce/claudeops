@@ -49,12 +49,12 @@ Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permis
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-08-31, 2)
+## READY FOR HANDOVER (2026-08-31, 3)
 
-`main` temiz, github+gitlab senkron (`bba86f2`). Önceki HANDOVER notundan (aynı gün, birkaç saat önce) beri tek ek olay: kullanıcı canlı olarak (masaüstü/lokal) 4 session seçip bulk handover denedi, sadece ilki (`cops`, kendi session'ı) işlendi, diğer 3'üne hiç dokunulmadı. **KÖK SEBEP bulunup düzeltildi ve deploy edildi:** `guard_lock(timeout=5.0)` — kilit ACQUIRE süresi, kilidin kendisinin kill+spawn+stabilize boyunca TUTULMA süresinden (~45-50s worst-case) çok daha kısaydı; item 1 sunucu tarafında başarıyla bitmesine rağmen yanıt istemciye zamanında ulaşmayınca döngü item 2'ye geçiyor, o da sadece 5s bekleyip timeout alıyordu. Fix: paylaşılan `GUARD_LOCK_ACQUIRE_TIMEOUT=60.0`, 8 çağrı noktasının hepsinde. `main`'e deploy + `feature/react-ui`'ye de port edildi (aynı bug, aynı backend kodu), ikisi de commit+push edildi. Detay: DONE.md 2026-08-31 (3).
+`main` temiz, github+gitlab senkron. **DÜZELTME (bir önceki HANDOVER notu YANLIŞ iyimserdi):** `guard_lock` timeout fix'i (`GUARD_LOCK_ACQUIRE_TIMEOUT=60.0`, deploy edildi) bug'ı ÇÖZMEDİ, sadece KISMEN iyileştirdi — `cops` artık güvenilir şekilde handover oluyor (2 kez doğrulandı) ama kullanıcı 3. kez 4 session seçip DAKİKALARCA bekledi, yine sadece 1 tanesi başarılı oldu. **Kullanıcı "todo, yeni session'da başlarız" dedi — canlı tekrar-üretime yeşil ışık VERMEDİ, servisi de KAPATMAMAMI istedi (dokunmadım).** Tam teşhis izi (ekarte edilenler + kanıt + önerilen ilk adım) TODO.md'nin en üstünde, "Bekleyen karar" bölümünde — yeni session doğrudan oradan devam etsin, bu araştırmayı tekrarlamasın.
 
-**Değişmeyenler:** TOBEDECIDED #14 (`feature/react-ui` merge kararı) hâlâ açık — kullanıcı bu session'da onu bizzat canlı test etti (handover fix'i doğrulamak için), henüz merge etmedi. Bash `claudeops` silinebilir mi (TOBEDECIDED #12), yeni CLI backend adayları (gemini, TODO.md) — değişmedi.
+**Değişmeyenler:** TOBEDECIDED #14 (`feature/react-ui` merge kararı) açık. Bash `claudeops` silinebilir mi (TOBEDECIDED #12), yeni CLI backend adayları (gemini, TODO.md) — değişmedi.
 
-**Canlı:** fleet'te 7 session ayakta (`cops` fix sonrası taze resume aldı), config sağlıklı, dup yok; web+tunnel servisleri aktif, reboot yok.
+**Canlı:** fleet'te 7 session ayakta, config sağlıklı, dup yok; web+tunnel servisleri aktif (18:56'dan beri, bu handover'da DOKUNULMADI — kullanıcı isteği), reboot yok.
 
 READY FOR HANDOVER
