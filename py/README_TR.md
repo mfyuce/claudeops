@@ -231,8 +231,10 @@ py/claudeops/
   tmux_backend.py                       # tmux yardımcıları (ayrı -L cops socket'i), tmux yoksa fail-soft
   providers/                            # CliProvider ABC + backend başına bir dosya + registry
     base.py, claude_provider.py, agy_provider.py, shell_provider.py, __init__.py
-  data/                                  # gömülü statik dosyalar: tmux.conf, vendored xterm.js, run-tunnel.sh
-  commands/                             # her CLI komutu kendi dosyasında (web.py en büyüğü)
+  data/                                  # gömülü statik dosyalar: tmux.conf, run-tunnel.sh
+  commands/                             # her CLI komutu kendi dosyasında (web.py/web_ws.py en büyükleri)
+py/webui/                               # panelin tarayıcı istemcisi (React+TS+Vite) — kendi README.md'sine bak
+  src/, dist/                           # dist/ commit'lenir (build çıktısı, sourcemap dahil) — deploy'da build adımı YOK
 cops                                    # giriş noktası → python3 -m claudeops
 ```
 
