@@ -2749,6 +2749,17 @@ UNAUTHORIZED_HTML = (
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = "claudeops-web/1"
+    # HTTP/1.0 (stdlib varsayılanı) her istekte yeni TCP+TLS-yok-ama-yine-de
+    # 3-way-handshake demekti — 200ms'lik terminal poll'u (useTerminalOutput)
+    # için ölçülebilir bir maliyet. 1.1 = keep-alive varsayılan AÇIK; bunun
+    # güvenli olması için HER yanıtın doğru `Content-Length` taşıması ŞART
+    # (aksi halde client "yanıt nerede bitiyor" bilemez, hang eder) — `_json`/
+    # `_serve_static`/`_unauthorized`/`/static/*` şubesi zaten hepsi elle
+    # `Content-Length` set ediyor (doğrulandı, değiştirilmedi). `/ws` şubesi
+    # (web_ws.handle_ws) kendi soketini WS'e yükseltip `close_connection =
+    # True` set ediyor — keep-alive'ın WS handshake'ini bir sonraki "normal"
+    # HTTP isteği sanıp karıştırma riski YOK.
+    protocol_version = "HTTP/1.1"
     token = ""  # run() içinde atanır
 
     def log_message(self, fmt, *a):
@@ -2766,6 +2777,18 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _json_notify(self, result: dict, status=200):
+        """`_json()` + mutasyon `ok: True` dönmüşse `web_ws.notify_status_changed()`.
+        Plan: notify SADECE do_POST'tan (aksiyon fonksiyonlarının İÇİNDEN
+        değil) ve SADECE listelenen route'lardan (start/stop/retire/close/
+        handover/adopt/reactivate/new-chat/register/open-window/
+        diag-restart-gt) — bu route'ların do_POST dispatch'i bu helper'ı
+        kullanır, geri kalanı (layout/term-input/term-key/diag-spawn-test/
+        diag-ask gibi) düz `_json()` kullanmaya devam eder."""
+        self._json(result, status=status)
+        if result.get("ok"):
+            web_ws.notify_status_changed()
 
     def _unauthorized(self):
         self.send_response(401)
@@ -2817,8 +2840,12 @@ class _Handler(BaseHTTPRequestHandler):
             # halde WS handshake baytlarının üstüne normal HTTP baytları
             # biner (bozuk response). Fonksiyon dönene kadar (bağlantı
             # kapanana kadar) bloklar; do_GET bu thread'in kendisi zaten
-            # (ThreadingHTTPServer: connection-başına-thread).
-            web_ws.handle_ws(self)
+            # (ThreadingHTTPServer: connection-başına-thread) — bu thread
+            # aynı zamanda bağlantının WRITER'ı olur (web_ws.py'nin kendi
+            # docstring'inde detay). _status_payload burada geçiliyor ki
+            # web_ws.py web.py'nin business logic'ine geri-import ETMESİN
+            # (plan: "diff additive kalsın").
+            web_ws.handle_ws(self, _status_payload)
             return
         elif path == "/api/status":
             self._json(_status_payload())
@@ -2890,7 +2917,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/diag/restart-gt":
-            self._json(_diag_restart_gt(lang=lang))
+            self._json_notify(_diag_restart_gt(lang=lang))
             return
 
         if path == "/api/diag/ask":
@@ -2919,7 +2946,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not base:
                 self._json(_err(lang, "base_required"), status=400)
                 return
-            self._json(_new_chat(
+            self._json_notify(_new_chat(
                 base,
                 model=str(data.get("model", "")),
                 permission_mode=str(data.get("permission_mode", "")),
@@ -2930,7 +2957,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/register":
-            self._json(_register_project(
+            self._json_notify(_register_project(
                 name=str(data.get("name", "")),
                 cwd=str(data.get("cwd", "")),
                 model=str(data.get("model", "")),
@@ -2944,7 +2971,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not old_name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(_adopt(
+            self._json_notify(_adopt(
                 old_name,
                 new_name=str(data.get("new_name", "")),
                 model=str(data.get("model", "")),
@@ -2975,7 +3002,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(_open_window(name, lang=lang))
+            self._json_notify(_open_window(name, lang=lang))
             return
 
         name = str(data.get("name", "")).strip()
@@ -3002,7 +3029,7 @@ class _Handler(BaseHTTPRequestHandler):
             result = _handover(name, lang=lang)
         else:
             result = _reactivate_and_start(name, lang=lang)
-        self._json(result)
+        self._json_notify(result)
 
 
 def register(sub):
@@ -3036,6 +3063,7 @@ def run(args) -> int:
             print(f"  ⚠ tünel URL'i {TUNNEL_LOG} içinde bulunamadı (20s) — log'a bak, süreç yine de ayakta olabilir.")
 
     _Handler.token = token
+    web_ws.start_broadcaster(_status_payload)  # tek broadcaster daemon thread'i, süreç ömrü boyunca bir kez
     server = ThreadingHTTPServer((args.host, args.port), _Handler)
     url = f"http://{args.host}:{args.port}/?token={token}"
     print(f"claudeops web  →  {url}")

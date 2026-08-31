@@ -33,7 +33,11 @@ import type {
   TermOutputResult,
 } from "./types";
 
-const TOKEN = new URLSearchParams(location.search).get("token") || "";
+// Exported so `hooks/useStatus.ts` can build the `/ws?token=...` URL with the
+// exact same token this page loaded with, without re-reading `location.search`
+// a second time (and without `useStatus.ts` needing to know this reads from
+// the query string at all — same module-load-time-constant shape as before).
+export const TOKEN = new URLSearchParams(location.search).get("token") || "";
 
 /** Same shape as the original PAGE_HTML JS's `withToken()` — append the
  * page's own `?token=` (read once at module load, same as `const TOKEN =
