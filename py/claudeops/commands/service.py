@@ -42,6 +42,18 @@ terminal'e bağlı session'lar hayatta kaldı çünkü onlar AYRI bir cgroup'ta/
 `--remote-control` claude proc'unun SIGHUP'a dayanıklı olması da yardımcı oldu ama
 windowless/tmux-direct session'lar için tek koruma budur).
 
+Tunnel unit'i `After=`+`Wants=` kullanır, `Requires=` DEĞİL (2026-08-31'e kadar
+öyleydi): `Requires=` systemd'de "gerektiren taraf restart edilirse gerekli taraf
+da stop+start edilir" ANLAMINA gelmiyor gibi görünse de PRATİKTE `systemctl
+--user restart claudeops-web.service` her seferinde tunnel'ı da stop+start
+ediyordu (canlı `journalctl` ile doğrulandı: web restart'larıyla BİREBİR aynı
+saniyede tunnel restart'ı) — quick-tunnel modda bu HER web-restart'ında YENİ
+rastgele bir URL demek, kullanıcının o an aktif kullandığı sekme/bookmark'ı
+sessizce kırıyordu. `Wants=` aynı boot-sırası garantisini verir (tunnel web'den
+SONRA başlar) ama web'in normal bir restart'ını tunnel'a PROPAGATE ETMEZ —
+tunnel URL'i artık sadece kendi çöktüğünde ya da elle `restart
+claudeops-tunnel.service` denince değişir.
+
 `watchdog`: `user@<uid>.service`'in KENDİSİ oomd tarafından öldürülürse (bkz. yukarıdaki
 KillMode notu — services ölmeden ÖNCE, onları barındıran yönetici ölürse hiçbir
 Restart= devreye giremez) hiçbir `--user` servisi (linger açık olsa bile) kendi
@@ -92,7 +104,7 @@ WantedBy=default.target
 TUNNEL_UNIT_TEMPLATE = """[Unit]
 Description=claudeops cloudflared tunnel (named tunnel if configured, else quick-tunnel)
 After=claudeops-web.service
-Requires=claudeops-web.service
+Wants=claudeops-web.service
 
 [Service]
 Environment=CLAUDEOPS_TUNNEL_NAME={tunnel_name}

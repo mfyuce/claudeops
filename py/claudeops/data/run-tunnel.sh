@@ -14,8 +14,17 @@ set -u
 TUNNEL_NAME="${CLAUDEOPS_TUNNEL_NAME:-claudeops}"
 PORT="${CLAUDEOPS_PORT:-8765}"
 STATE_DIR="$HOME/.claude/claudeops"
-URL_FILE="$STATE_DIR/tunnel_url.txt"
-NTFY_TOPIC_FILE="$STATE_DIR/ntfy_topic.txt"
+# İkinci (paralel) bir deploy'un (ör. react-ui denemesi) kendi tunnel URL/log
+# dosyasına ihtiyacı var — aynı sabit dosyaları paylaşırsa canlı tünelin
+# URL'ini/log'unu ezer ([[tunnel-flag-shares-live-log-file]] dersi). Varsayılan
+# (env verilmezse) TAM ESKİSİ GİBİ — mevcut tek-instance kurulum davranışı
+# DEĞİŞMEZ, sadece ikinci bir systemd unit'i farklı bir yol geçebiliyor.
+URL_FILE="${CLAUDEOPS_TUNNEL_URL_FILE:-$STATE_DIR/tunnel_url.txt}"
+LOG_FILE="${CLAUDEOPS_TUNNEL_LOG:-$STATE_DIR/tunnel.log}"
+NTFY_TOPIC_FILE="${CLAUDEOPS_NTFY_TOPIC_FILE:-$STATE_DIR/ntfy_topic.txt}"
+# Bildirim metnine eklenen etiket — birden fazla instance aynı ntfy hesabına
+# push atarsa hangi deploy'a ait olduğu telefonda anında görünsün.
+TUNNEL_LABEL="${CLAUDEOPS_TUNNEL_LABEL:-}"
 CLOUDFLARED="$HOME/.local/bin/cloudflared"
 command -v "$CLOUDFLARED" >/dev/null 2>&1 || CLOUDFLARED="cloudflared"
 mkdir -p "$STATE_DIR"
@@ -32,9 +41,11 @@ _write_url_and_notify() {
         return 0
     fi
     if [ -s "$NTFY_TOPIC_FILE" ]; then
-        local topic
+        local topic prefix
         topic=$(cat "$NTFY_TOPIC_FILE")
-        curl -fsS -m 10 -d "claudeops tunnel: $new_url" "https://ntfy.sh/${topic}" >/dev/null 2>&1 \
+        prefix="claudeops tunnel"
+        [ -n "$TUNNEL_LABEL" ] && prefix="claudeops [$TUNNEL_LABEL] tunnel"
+        curl -fsS -m 10 -d "$prefix: $new_url" "https://ntfy.sh/${topic}" >/dev/null 2>&1 \
             && echo "[run-tunnel] bildirim gönderildi (ntfy.sh/${topic})" \
             || echo "[run-tunnel] ⚠ ntfy bildirimi başarısız (ağ/topic sorunu olabilir)"
     fi
@@ -50,17 +61,17 @@ if "$CLOUDFLARED" tunnel list 2>/dev/null | awk '{print $2}' | grep -qx "$TUNNEL
 fi
 
 echo "[run-tunnel] named tunnel yok — quick-tunnel (rastgele URL) başlatılıyor"
-# tunnel.log APPEND modunda (systemd StandardOutput=append:...) — eski çalıştırmalardan
+# LOG_FILE APPEND modunda (systemd StandardOutput=append:...) — eski çalıştırmalardan
 # kalma bir önceki (artık ÖLÜ) URL hâlâ dosyada duruyor olabilir. Bu run'dan ÖNCEKİ satır
 # sayısını kaydedip SADECE ondan SONRA eklenen satırlarda arıyoruz, yoksa `tail -1` stale
 # URL'i "yeni" sanıp URL_FILE'a yazabilirdi (canlı doğrulandı, ilk sürümde tam bunu yaptı).
-STARTLINE=$(wc -l < "$STATE_DIR/tunnel.log" 2>/dev/null || echo 0)
+STARTLINE=$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)
 "$CLOUDFLARED" tunnel --url "http://127.0.0.1:${PORT}" &
 CLOUDFLARED_PID=$!
 trap 'kill "$CLOUDFLARED_PID" 2>/dev/null' TERM INT
 
 for _ in $(seq 1 40); do
-    URL=$(tail -n "+$((STARTLINE + 1))" "$STATE_DIR/tunnel.log" 2>/dev/null \
+    URL=$(tail -n "+$((STARTLINE + 1))" "$LOG_FILE" 2>/dev/null \
           | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1)
     if [ -n "$URL" ]; then
         _write_url_and_notify "$URL"
