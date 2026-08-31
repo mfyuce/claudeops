@@ -11,6 +11,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **claude resume "deferred tool marker"**: promptsuz `--resume` bazen ANINDA hata verir → resume'a mutlaka `--prompt` ver (`--new` OLMADAN). [[resume-deferred-tool-marker]]
 - **spawn güvenilirliği**: CLAUDE*/GEMINI*/ANTIGRAVITY* env filtrelenir (yoksa transcript kapanır). gnome-terminal flake → oto-retry+fallback, windowless'i **"pencere aç"**la düzelt. "restart hâlâ olmuyor" → **gt-restart** (Tanı sekmesi, web'den bağımsız). [[spawn-env-leak-disables-transcript]] [[spawn-zombie-child-degrades-web-server]]
 - **`service.py`'nin `WEB_UNIT_TEMPLATE`'ini düzenlersen `bash -ic '...'` ExecStart'ı ve `KillMode=process`'i BOZMA** — ikisi de canlı yaşanan gerçek hasarların fix'i (sırasıyla: minimal systemd PATH → `claude: command not found`; varsayılan `control-group` → servis restart'ı ALTINDAKİ tmux'u da öldürür), tam gerekçe modülün kendi docstring'inde.
+- **`web.py`'de `guard_lock(timeout=...)` her yerde `GUARD_LOCK_ACQUIRE_TIMEOUT` (60s) KULLANMALI, geri düşürme** — kilit kill+spawn+stabilize boyunca (~45-50s worst-case) tutuluyor; 5s'lik eski değer bulk handover'da sıradaki item'ı erken timeout'a düşürüyordu (2026-08-31, canlı bulundu — DONE.md).
 - **oomd TÜM oturumu öldürebilir** (sadece fleet'in cgroup'unu değil) — kurtarma `py/cops service watchdog` (root-seviyeli, oturumdan bağımsız timer). [[oomd-cgroup-kill]]
 - **Security**: ulaksec → "dokunma". `~/.cache/huggingface` 29G KORU. Commit öncesi kullanıcı onayı.
 
@@ -48,12 +49,12 @@ Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permis
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-08-31)
+## READY FOR HANDOVER (2026-08-31, 2)
 
-`main` temiz, github+gitlab senkron. Bu session: küçük web panel UX düzeltmeleri (agy model-list TTL bug'ı, terminal Enter tuşu, URL-algılama, "Sohbet" alt-sekmesi + o sekmenin refresh'te terminale geri sıçrama bug'ı) + **BÜYÜK: web panelinin tamamı React+TypeScript+WebSocket'e yeniden yazıldı**, ayrı worktree/branch'te (`../claudeops-react-ui`, `feature/react-ui`) TAMAMLANDI ve gerçek testlerle (Playwright + gerçek cloudflared tünel) doğrulandı — `main`/canlı servis hiç etkilenmedi. Detay: DONE.md 2026-08-31 (iki bölüm).
+`main` temiz, github+gitlab senkron (`bba86f2`). Önceki HANDOVER notundan (aynı gün, birkaç saat önce) beri tek ek olay: kullanıcı canlı olarak (masaüstü/lokal) 4 session seçip bulk handover denedi, sadece ilki (`cops`, kendi session'ı) işlendi, diğer 3'üne hiç dokunulmadı. **KÖK SEBEP bulunup düzeltildi ve deploy edildi:** `guard_lock(timeout=5.0)` — kilit ACQUIRE süresi, kilidin kendisinin kill+spawn+stabilize boyunca TUTULMA süresinden (~45-50s worst-case) çok daha kısaydı; item 1 sunucu tarafında başarıyla bitmesine rağmen yanıt istemciye zamanında ulaşmayınca döngü item 2'ye geçiyor, o da sadece 5s bekleyip timeout alıyordu. Fix: paylaşılan `GUARD_LOCK_ACQUIRE_TIMEOUT=60.0`, 8 çağrı noktasının hepsinde. `main`'e deploy + `feature/react-ui`'ye de port edildi (aynı bug, aynı backend kodu), ikisi de commit+push edildi. Detay: DONE.md 2026-08-31 (3).
 
-**Yeni açık karar:** TOBEDECIDED #14 — `feature/react-ui` denenip merge edilsin mi (worktree'de `npm run dev`, risksiz). CLAUDE.md bu session'da hafif küçültüldü + tazelendi (bayat HANDOVER notu kaldırıldı, react-rewrite durumu eklendi).
+**Değişmeyenler:** TOBEDECIDED #14 (`feature/react-ui` merge kararı) hâlâ açık — kullanıcı bu session'da onu bizzat canlı test etti (handover fix'i doğrulamak için), henüz merge etmedi. Bash `claudeops` silinebilir mi (TOBEDECIDED #12), yeni CLI backend adayları (gemini, TODO.md) — değişmedi.
 
-**Canlı:** fleet'te 7 session ayakta, config sağlıklı, dup yok; web+tunnel servisleri aktif, reboot yok. Öne çıkan diğer açık kalemler değişmedi: bash `claudeops` silinebilir mi (TOBEDECIDED #12), yeni CLI backend adayları (gemini en hazır, TODO.md).
+**Canlı:** fleet'te 7 session ayakta (`cops` fix sonrası taze resume aldı), config sağlıklı, dup yok; web+tunnel servisleri aktif, reboot yok.
 
 READY FOR HANDOVER
