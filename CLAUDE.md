@@ -19,7 +19,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - Tüm isimler **`claude-sonnet-5`** (2026-08-24 Claude 5 geçişi; opus split geri alındı — istenirse `sed -i 's/claude-sonnet-5/claude-opus-5/'` ile grup bazında geri, önce tek isimle test).
 - **İsimler base-name** (suffix yok). `Session.base` tarih+`_N` suffix'lerini indirger: `cops20260824_1`→`cops`. Panel eşlemesi önce TAM isim, sonra base — tarih-isimli satırlar kendi satırında görünür, görünmez canlı proc imkansız.
 - **co + cops** (self) + **ulaksec** aktif (guard ayakta tutsun). İsim-bazlı hariç tutma YOK, seçim panel checkbox'larıyla; tek koruma process-bazlı self-koruma (`ancestor_pids()`). [[co-ulaksec-guard-yes-ho-no]]
-- Kapalı/emekli satırlar `#`'lı. `py/cops close <name>` = kill + models.tsv yorumla; geri: panel "tekrar işe al". **Temizlik bekliyor:** tarih-isimli çöp satırlar (rustrino*/line*/trino*/sase* tarihli, TODO.md'de detay) — kullanıcıya sorup birleştir/sil.
+- Kapalı/emekli satırlar `#`'lı. `py/cops close <name>` = kill + models.tsv yorumla; geri: panel "tekrar işe al". Tarih-isimli çöp satır temizliği bekliyor (detay TODO.md).
 - roster.tsv'nin opsiyonel **4. kolonu = `cli`** (`claude`|`agy`|`shell`, yoksa/eskiyse `"claude"`). `shell` = düz interaktif bash (sudo/TTY işleri için — panel terminali gerçek PTY). Provider mimarisi `py/claudeops/providers/`: yeni backend = yeni dosya, dallanma yok (adaylar TODO.md'de).
 
 ## Fleet kontrolü — MANUEL (2026-08-24 karar)
@@ -29,6 +29,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **`py/cops service install|status|uninstall|notify|watchdog`** — web+tunnel artık systemd `--user` ile KALICI (logout/reboot'ta otomatik, `Restart=on-failure`); `notify` = tunnel URL değişince ntfy.sh push'u; `watchdog` = yukarıdaki oomd-tüm-oturum senaryosunu kurtarır (root, `sudo` ister). Detay: `py/README*.md`.
 - **Repo PUBLIC** (MIT, github + gitlab mirror) — roster/models/token repo dışında. Kullanıcı: "dünyaya açığız, DONE/TODO/changelog önemli" → kayıtları özenli tut.
 - Web Stop / `kill` / `rc --kill-first`: tmux-backed'de ad-bazlı `tmux kill-session` (PID-ancestry YASAK — paylaşımlı server riski). Pencere kapatmama açık bug'ı: TODO.md.
+- **Web panel React+TypeScript+WebSocket'e yeniden yazıldı, `feature/react-ui` branch'inde TAMAMLANDI** (ayrı worktree `../claudeops-react-ui`, `main` dokunulmadı) — merge kararı bekliyor, bkz. TOBEDECIDED #14, detay DONE.md 2026-08-31.
 
 ## Handover (3-fazlı)
 
@@ -47,10 +48,12 @@ Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permis
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-08-30)
+## READY FOR HANDOVER (2026-08-31)
 
-Repo temiz, HEAD öncesi=`e208122`, github+gitlab senkron. Bu session: **`py/cops service`** yeni (install/status/uninstall/notify/watchdog, bkz. yukarı) + **3. provider `shell`** + mobil terminal input-kaybı düzeltildi + `claude: command not found` PATH bug'ı bulundu+düzeltildi (deploy sırasında kendi açtığım `KillMode` cgroup-kill hasarını da kurtardım, kalıcı fix uygulandı) + root README'lere kapasite özeti eklendi.
+`main` temiz, github+gitlab senkron. Bu session: küçük web panel UX düzeltmeleri (agy model-list TTL bug'ı, terminal Enter tuşu, URL-algılama, "Sohbet" alt-sekmesi + o sekmenin refresh'te terminale geri sıçrama bug'ı) + **BÜYÜK: web panelinin tamamı React+TypeScript+WebSocket'e yeniden yazıldı**, ayrı worktree/branch'te (`../claudeops-react-ui`, `feature/react-ui`) TAMAMLANDI ve gerçek testlerle (Playwright + gerçek cloudflared tünel) doğrulandı — `main`/canlı servis hiç etkilenmedi. Detay: DONE.md 2026-08-31 (iki bölüm).
 
-**Canlı:** fleet'te ≥3 session ayakta (cops/rustrino/saseppr) sağlıklı; web+tunnel+root-watchdog aktif, linger doğrulandı. Tunnel URL rastgele/quick-tunnel (sabit domain `hoca.me` canlı production çıktı, TOBEDECIDED.md #13'te ertelendi). TODO.md güncel, yeni açık kalem yok — öne çıkanlar: bash `claudeops` silinebilir mi (TOBEDECIDED.md #12: Faz 3 `py/cops layout` doğrulaması + eski komut denetimi açık) ve yeni CLI backend adayları (gemini en hazır).
+**Yeni açık karar:** TOBEDECIDED #14 — `feature/react-ui` denenip merge edilsin mi (worktree'de `npm run dev`, risksiz). CLAUDE.md bu session'da hafif küçültüldü + tazelendi (bayat HANDOVER notu kaldırıldı, react-rewrite durumu eklendi).
+
+**Canlı:** fleet'te 7 session ayakta, config sağlıklı, dup yok; web+tunnel servisleri aktif, reboot yok. Öne çıkan diğer açık kalemler değişmedi: bash `claudeops` silinebilir mi (TOBEDECIDED #12), yeni CLI backend adayları (gemini en hazır, TODO.md).
 
 READY FOR HANDOVER

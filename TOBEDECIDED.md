@@ -4,6 +4,11 @@
 
 ## Açık
 
+### 14) `feature/react-ui` branch'i main'e merge edilsin mi?
+- **Bağlam (2026-08-31):** Web panelinin tam React+TypeScript+WebSocket rewrite'ı tamamlandı (bkz. DONE.md), ayrı worktree/branch'te (`../claudeops-react-ui`, `feature/react-ui`), `main` hiç dokunulmadı. Kapsam tam 1:1 (6 sekme, terminal+sohbet modalı, i18n, WS canlı yayın) — gerçek Playwright testleriyle + gerçek cloudflared tünel üzerinden doğrulandı, `main`/canlı servis süreç boyunca etkilenmedi.
+- **Soru:** Kullanıcı worktree'de `npm run dev` ile deneyip (canlı backend'e proxy, risksiz) beğenirse merge mi etsin, yoksa değişiklik/düzeltme mi istesin?
+- **Karar:** ?
+
 ### 13) Sabit (hiç değişmeyen) tunnel URL'i — hangi domain?
 - **Bağlam (2026-08-30):** Kullanıcı `hoce.me`'yi (doğrusu **hoca.me**) sabit Cloudflare tunnel domain'i olarak kullanmayı sordu — "videogen için kurulum yaptığımız yer".
 - **Bulgu:** `hoca.me` kullanıcının CANLI production hoca video-gen servisi (gerçek ödeyen müşteriler, iyzico ödeme, Google OAuth — bkz. videogen `DONE.md` "hoca.me deploy (2026-06-05) — ilk production sunucu CANLI"). Canlı DNS'e bakıldı: nameserver'lar `dnsenable.com`, A kaydı doğrudan Hetzner sunucusuna (`49.13.238.226`) gidiyor — **hoca.me şu an Cloudflare'de bile değil** (`docs/hoca_me_deploy.md`'deki Cloudflare DNS tablosu bir plandı, gerçekte uygulanmamış: checklist'i hâlâ tamamen işaretsiz). Domain'in TAMAMINI Cloudflare'e taşımak (nameserver değişikliği) canlı siteyi (OAuth redirect, Caddy/Let's Encrypt, ödeme, mail linkleri) riske atar — bunun için bedeli yok.
