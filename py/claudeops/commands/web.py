@@ -2252,7 +2252,19 @@ async function pollTerm(name) {
       // no-op
     } else if (d.ok) {
       inst.lastText = d.text;
-      inst.term.reset();
+      // ESKİ: ayrı bir term.reset() (senkron, ANINDA temizler) sonra ayrı write()
+      // (kendisi async/parça-parça işlenir) — CLI "Computing…" durumundayken içerik
+      // (spinner/süre/token sayacı) hemen her ~200ms tick'te değiştiğinden bu ikili
+      // neredeyse sürekli tetikleniyordu, ve reset()'in ANINDA boşalttığı ekranla
+      // write()'ın içeriği geri doldurması arasındaki boşlukta tarayıcı boş bir
+      // frame render edebiliyordu → "sürekli blink" (kullanıcı raporu, 2026-08-28).
+      // Fix: temizleme escape kodlarını (clear screen + clear scrollback + cursor
+      // home) ayrı bir reset() çağrısı yerine YAZILAN VERİNİN İÇİNE göm — xterm.js'in
+      // kendi parser'ı clear+redraw'ı TEK write() geçişinde işler, ara boş-frame
+      // ortadan kalkar (tam-ekran TUI redraw'ı olan gerçek terminallerin kullandığı
+      // AYNI desen). \x1b[3J şart: capture-pane her tick'te TAM pane'i (delta değil)
+      // döndürüyor, temizlenmezse xterm'in kendi scrollback'i sınırsız birikir.
+      //
       // write()'ın 2. argümanı (callback) yazılan veri GERÇEKTEN işlenip buffer'a
       // girdikten SONRA çağrılır (write() kendisi async — hemen sonra scrollToBottom
       // çağırmak veri henüz parse edilmeden çalışıp yarış durumuna düşebilirdi).
@@ -2262,7 +2274,7 @@ async function pollTerm(name) {
       // windowless-fallback session'da: içerik dolu ama viewport dip DEĞİL) — write
       // BİTTİKTEN sonra AÇIKÇA dibe kaydırmak bu duruma bakılmaksızın doğru son hâli
       // garanti ediyor.
-      inst.term.write(d.text, () => inst.term.scrollToBottom());
+      inst.term.write('\x1b[H\x1b[2J\x1b[3J' + d.text, () => inst.term.scrollToBottom());
     } else {
       inst.lastText = null;
       inst.term.reset();
