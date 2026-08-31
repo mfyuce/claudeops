@@ -1,0 +1,113 @@
+/* Global stylesheet — 1:1 port of the <style> block embedded in the
+ * original web.py's PAGE_HTML (React rewrite plan, dynamic-crunching-lemon.md,
+ * Sequencing step 4). Ported verbatim: no CSS Modules/Tailwind/CSS-in-JS,
+ * per the plan's decision — there are zero documented style-architecture
+ * bugs motivating this rewrite (every incident was DOM-stomping, not CSS),
+ * so changing approach here buys nothing and risks visual regressions.
+ *
+ * Preserved as-is, unmodified:
+ *   - the :root custom-property tokens (dark palette by default)
+ *   - the @media (prefers-color-scheme: light) override (light palette)
+ *   - the @media (max-width: 640px) mobile column-hiding query
+ *
+ * Constraint (flagged here for whoever builds SessionRow / the registered
+ * table row, per the plan): the mobile query's nth-child selectors
+ * (.runtab th/td:nth-child(3), :nth-child(7); .regtab th/td:nth-child(3))
+ * only keep hiding the right columns if that JSX renders <th>/<td> in the
+ * EXACT same column order as today. Get the column order wrong and the
+ * mobile layout silently hides/shows the wrong column instead of erroring.
+ */
+
+:root {
+  --bg: #0d1117; --panel: #161b22; --panel2: #1c2129; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e;
+  --green: #3fb950; --red: #f85149; --amber: #d29922;
+  --accent: #58a6ff;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f8fa; --panel: #ffffff; --panel2: #eef1f4; --border: #d0d7de;
+    --text: #1f2328; --muted: #59636e;
+    --green: #1a7f37; --red: #cf222e; --amber: #9a6700;
+    --accent: #0969da;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 2rem 1.5rem 4rem;
+  background: var(--bg); color: var(--text);
+  font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.wrap { max-width: 960px; margin: 0 auto; }
+h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
+.topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .25rem; }
+.langsw { display: flex; gap: .3rem; flex-shrink: 0; }
+.langsw button { padding: .15rem .5rem; font-size: .72rem; border-color: var(--border); color: var(--muted); }
+.langsw button.active { border-color: var(--accent); color: var(--accent); }
+.sub { color: var(--muted); margin-bottom: 1rem; }
+.banner {
+  padding: .5rem .75rem; border-radius: 6px; margin-bottom: .6rem;
+  font-size: .85rem; border: 1px solid transparent;
+}
+.banner.bad { background: rgba(248,81,73,.12); border-color: var(--red); color: var(--red); }
+.tabs { display: flex; gap: .25rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: .6rem; }
+.tabs button { border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+               background: transparent; color: var(--muted); padding: .35rem .7rem; font-size: .82rem; }
+.tabs button.active { border-color: var(--border); background: var(--panel); color: var(--text); }
+.bulkbar { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; margin: .4rem 0 .2rem; }
+.bulkbar .selcount { font-size: .78rem; color: var(--muted); }
+.bulkmsg { font-size: .78rem; color: var(--muted); flex-basis: 100%; white-space: pre-wrap; }
+.legend { font-size: .72rem; color: var(--muted); margin: .2rem 0 .6rem; line-height: 1.6; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: .75rem;
+     text-transform: uppercase; letter-spacing: .04em; padding: .4rem .5rem;
+     border-bottom: 1px solid var(--border); }
+td { padding: .4rem .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th.selcell, td.selcell { width: 1.6rem; text-align: center; padding-left: .2rem; padding-right: .2rem; }
+td.cwd { color: var(--muted); font-size: .78rem; overflow: hidden; text-overflow: ellipsis;
+         white-space: nowrap; max-width: 1px; cursor: pointer; }
+td.cwd.expanded { white-space: normal; word-break: break-all; max-width: none; overflow: visible; }
+td.hocell { font-size: .78rem; }
+.ho-yes { color: var(--amber); font-weight: 600; cursor: help; }
+.ho-no { color: var(--muted); opacity: .6; cursor: help; }
+.tablewrap { overflow-x: auto; }
+@media (max-width: 640px) {
+  /* dar ekranda model/tür sütunlarını gizle, cwd'yi kısalt — action butonları
+     kaydırmadan görünsün (telefonda test edildi) */
+  .runtab th:nth-child(3), .runtab td:nth-child(3),
+  .runtab th:nth-child(7), .runtab td:nth-child(7),
+  .regtab th:nth-child(3), .regtab td:nth-child(3) { display: none; }
+  td.cwd { max-width: 70px; }
+  h1 { font-size: 1rem; }
+}
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .4rem; }
+.dot.on { background: var(--green); }
+.dot.off { background: var(--muted); opacity: .5; }
+button, select, input[type=text] {
+  font: inherit; padding: .3rem .6rem; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+}
+select, input[type=text] { cursor: default; }
+button.start { border-color: var(--green); color: var(--green); }
+button.stop { border-color: var(--red); color: var(--red); }
+button.go { border-color: var(--accent); color: var(--accent); }
+button.retire { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
+button.closebtn { border-color: var(--muted); color: var(--muted); font-size: .78rem; padding: .3rem .5rem; }
+button.handover { border-color: var(--accent); color: var(--accent); font-size: .78rem; padding: .3rem .5rem; }
+button.selho { border-color: var(--amber); color: var(--amber); font-size: .78rem; padding: .3rem .5rem; }
+.unreg-badge { font-size: .65rem; color: var(--amber); border: 1px solid var(--amber);
+               border-radius: 4px; padding: 1px 4px; margin-left: .3rem; cursor: help; }
+.cli-badge { font-size: .65rem; color: var(--muted); border: 1px solid var(--border);
+             border-radius: 4px; padding: 1px 5px; }
+button.reactivate { border-color: var(--green); color: var(--green); }
+button:disabled { opacity: .5; cursor: default; }
+.actioncell { display: flex; gap: .35rem; flex-wrap: wrap; }
+.opts-row td { background: var(--panel2); padding: .6rem .5rem; }
+.opts { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.modes { flex-basis: 100%; display: flex; flex-direction: column; gap: .25rem; margin-bottom: .3rem; }
+.mode-radio { display: flex; align-items: center; gap: .3rem; font-size: .82rem; color: var(--text); }
+.opts-hint { flex-basis: 100%; font-size: .78rem; color: var(--muted); min-height: 1em; }
+.opts label { color: var(--muted); font-size: .75rem; display: flex; flex-direction: column; gap: .15rem; }
+#layoutPanel { background: var(--panel2); border-radius: 6px; padding: .7rem; margin-bottom: .5rem; }
+#layoutPanel input[type=text] { min-width: 220px; }
+.layout-result { font-size: .78rem; color: var(--muted); white-space: pre-wrap; margin: 0; }
