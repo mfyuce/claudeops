@@ -68,7 +68,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   return handleResponse<T>(res);
 }
 
-export async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
+export async function apiPost<T>(path: string, body: object): Promise<T> {
   const res = await fetch(withToken(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
