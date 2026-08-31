@@ -44,6 +44,13 @@
  * for exactly the cases WS is weakest (e.g. a reconnect in flight right
  * when the action completes) — no concrete reason found to change or drop
  * it, so it stays.
+ *
+ * 2026-08-31 addition: every payload (WS or REST) carries `server_started_at`
+ * (the serving process's start time — see `_status_payload()`). `applyData`
+ * is the single choke point both delivery paths funnel through; it pins the
+ * first value it sees per mount and hard-reloads the page if a later payload
+ * reports a different one — i.e. the backend process restarted (a redeploy),
+ * so any already-open tab picks up the new build without a manual refresh.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -110,20 +117,35 @@ export function useStatus(): UseStatusResult {
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptRef = useRef(0);
   const aliveRef = useRef(true); // false after cleanup — guards every async/timer callback below
+  const serverStartedAtRef = useRef<number | null>(null); // pinned to the first payload's value per mount
+
+  // Single choke point for BOTH delivery paths (REST `doFetch` and WS
+  // `onmessage`) — see header comment. Reload takes priority over updating
+  // state: no point rendering a frame with a payload from the new process
+  // when the page is about to reload anyway.
+  const applyData = useCallback((d: StatusPayload) => {
+    if (serverStartedAtRef.current === null) {
+      serverStartedAtRef.current = d.server_started_at;
+    } else if (d.server_started_at !== serverStartedAtRef.current) {
+      window.location.reload();
+      return;
+    }
+    setData(d);
+    setError(null);
+  }, []);
 
   const doFetch = useCallback(async () => {
     try {
       const d = await getStatus();
       if (!aliveRef.current) return;
-      setData(d);
-      setError(null);
+      applyData(d);
     } catch (e) {
       if (!aliveRef.current) return;
       setError(toStatusError(e));
     } finally {
       if (aliveRef.current) setLoading(false);
     }
-  }, []);
+  }, [applyData]);
 
   const refresh = useCallback(() => {
     void doFetch();
@@ -184,8 +206,7 @@ export function useStatus(): UseStatusResult {
           return; // malformed frame — ignore rather than crash the UI
         }
         if (parsed.type !== "status" || !parsed.data) return;
-        setData(parsed.data);
-        setError(null);
+        applyData(parsed.data);
         setLoading(false);
       };
 
@@ -248,7 +269,7 @@ export function useStatus(): UseStatusResult {
         ws.close();
       }
     };
-  }, [doFetch]);
+  }, [doFetch, applyData]);
 
   return { data, error, loading, refresh };
 }
