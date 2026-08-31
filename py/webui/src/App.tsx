@@ -2,22 +2,24 @@
  * Replaces the original `render()`'s tab dispatch + the static shell
  * around it (topbar/lang-switch/summary line — web.py's `<body>` markup
  * + `applyStaticText()`/`setLang()`). React rewrite plan (dynamic-
- * crunching-lemon.md), Sequencing step 5.
+ * crunching-lemon.md), Sequencing steps 5 (shell) and 6 (Running/
+ * Registered, wired in below).
  *
  * `App` (default export) only sets up the two Contexts; `AppShell` is the
- * component that actually owns `activeTab` (and, once step 6 lands in the
- * next commit, `openTerminalFor`/the shared selection Set — both only
- * make sense once something downstream actually consumes them) and
- * consumes both Contexts — a component can't call `useContext` for a
- * Provider it renders in the very same return, so the split is required,
- * not just style.
+ * component that actually owns `activeTab`/`openTerminalFor`/the shared
+ * `selectedNames` Set and consumes both Contexts — a component can't call
+ * `useContext` for a Provider it renders in the very same return, so the
+ * split is required, not just style.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { Banners } from "./components/Banners";
+import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
+import { RunningTab } from "./components/RunningTab/RunningTab";
 import { TabBar } from "./components/TabBar";
 import { LangProvider, useLang } from "./i18n/LangContext";
 import { StatusProvider, useStatusContext } from "./state/StatusContext";
+import { useSelection } from "./state/selection";
 import { isTabKey, TAB_STORAGE_KEY, type TabKey } from "./state/tabs";
 
 function readStoredTab(): TabKey {
@@ -30,11 +32,10 @@ function readStoredTab(): TabKey {
   return "running";
 }
 
-/** All six tabs are stubbed this commit — Running/Registered get real
- * content in the very next commit (plan Sequencing step 6), Disabled/
- * Retired/Layout/Diagnostics later still (step 7). Stubbing all of them
- * for now proves tab-switching + localStorage persistence + counts all
- * work end-to-end before any tab has real content. */
+/** Disabled/Retired/Layout/Diagnostics are later stages (plan Sequencing
+ * step 7) — stubbed so tab-switching/localStorage-persistence/counts all
+ * work end-to-end even though only Running/Registered have real content
+ * as of this commit. */
 function PlaceholderTab({ label }: { label: string }) {
   return <div className="opts-hint">{label} — not built in this stage yet.</div>;
 }
@@ -43,6 +44,18 @@ function AppShell() {
   const { t, lang, setLang } = useLang();
   const { data, error } = useStatusContext();
   const [activeTab, setActiveTabState] = useState<TabKey>(readStoredTab);
+  // openTerminalFor: the state SLOT for the later terminal-modal stage
+  // (plan: "just the state slot for now, no modal component yet"). Only
+  // the setter is used this stage (SessionRow's terminal button calls
+  // it via onToggleTerminal below) — the value itself is deliberately not
+  // read/threaded past that point, so there's no binding for it here (an
+  // unread `const` would fail `noUnusedLocals`, and rendering anything
+  // from it would be exactly the "fake modal" the plan says not to build
+  // yet — a later stage consumes it for real).
+  const [, setOpenTerminalFor] = useState<string | null>(null);
+  // Shared across Running/Registered per the plan — one Set, not a third
+  // Context (see state/selection.ts's doc comment).
+  const selection = useSelection();
 
   const setActiveTab = useCallback((tab: TabKey) => {
     setActiveTabState(tab);
@@ -51,6 +64,10 @@ function AppShell() {
     } catch {
       // ignore — localStorage can throw (private browsing/storage disabled)
     }
+  }, []);
+
+  const onToggleTerminal = useCallback((name: string) => {
+    setOpenTerminalFor((prev) => (prev === name ? null : name));
   }, []);
 
   useEffect(() => {
@@ -89,8 +106,10 @@ function AppShell() {
       <Banners onGoToDiagnostics={() => setActiveTab("diag")} />
       <TabBar active={activeTab} onSelect={setActiveTab} />
       <div>
-        {data && activeTab === "running" && <PlaceholderTab label={t.tabRunning} />}
-        {data && activeTab === "registered" && <PlaceholderTab label={t.tabRegistered} />}
+        {data && activeTab === "running" && (
+          <RunningTab selection={selection} onToggleTerminal={onToggleTerminal} onSwitchTab={setActiveTab} />
+        )}
+        {data && activeTab === "registered" && <RegisteredTab selection={selection} onSwitchTab={setActiveTab} />}
         {data && activeTab === "disabled" && <PlaceholderTab label={t.tabDisabled} />}
         {data && activeTab === "retired" && <PlaceholderTab label={t.tabRetired} />}
         {data && activeTab === "layout" && <PlaceholderTab label={t.tabLayout} />}
