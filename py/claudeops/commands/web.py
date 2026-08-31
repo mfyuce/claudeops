@@ -19,6 +19,7 @@ de öldürür (orphan terminal bırakmaz, TODO-b kök sebep fix).
 from __future__ import annotations
 import datetime
 import json
+import mimetypes
 import os
 import platform
 import re
@@ -48,6 +49,7 @@ from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_send_keys,
     tmux_send_special_key, tmux_pane_size, ALLOWED_SPECIAL_KEYS,
 )
+from .web_static import resolve_static_path
 
 DEFAULT_PORT = 8765
 DEFAULT_HOST = "127.0.0.1"
@@ -2771,18 +2773,43 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(UNAUTHORIZED_HTML)
 
+    def _serve_static(self, path: str) -> bool:
+        """`resolve_static_path(path)` bulursa dosyayı yollar (True); bulamazsa
+        hiçbir şey yazmaz (caller 404 kararını kendi verir)."""
+        fpath = resolve_static_path(path)
+        if fpath is None:
+            return False
+        ctype, _ = mimetypes.guess_type(str(fpath))
+        ctype = ctype or "application/octet-stream"
+        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json", "image/svg+xml"):
+            ctype += "; charset=utf-8"
+        body = fpath.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return True
+
     def do_GET(self):
+        path = urlparse(self.path).path
+        # /assets/* token KONTROLÜ OLMADAN erişilebilir olmak ZORUNDA: tarayıcı
+        # <script src>/<link> sub-resource isteklerine ?token= ekleyemez (sadece
+        # üst-seviye navigasyon URL'i query string taşır) — bu carve-out yoksa
+        # build edilmiş app "/" token'la yüklenir ama JS/CSS 401 alır → boş sayfa.
+        # Güvenlik regresyonu değil: bundle'da sır yok (public MIT repo), gerçek
+        # fleet verisi sadece /api/* ve /ws'de, ikisi de auth'lu kalıyor.
+        if path.startswith("/assets/"):
+            if not self._serve_static(path):
+                self._json({"error": "not found"}, status=404)
+            return
         if not self._authorized():
             self._unauthorized()
             return
-        path = urlparse(self.path).path
         if path == "/":
-            body = PAGE_HTML.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            if not self._serve_static("/"):
+                self._json({"error": "not found"}, status=404)
+            return
         elif path == "/api/status":
             self._json(_status_payload())
         elif path == "/api/diag/log":
@@ -2822,7 +2849,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         else:
-            self._json({"error": "not found"}, status=404)
+            if not self._serve_static(path):
+                self._json({"error": "not found"}, status=404)
 
     def do_POST(self):
         if not self._authorized():
