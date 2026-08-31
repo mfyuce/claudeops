@@ -10,6 +10,11 @@
  * `selectedNames` Set and consumes both Contexts — a component can't call
  * `useContext` for a Provider it renders in the very same return, so the
  * split is required, not just style.
+ *
+ * Sequencing step 8 additionally wires `<TerminalModal>` here: rendered
+ * once, conditionally on `openTerminalFor`, keyed by it so switching WHICH
+ * session's terminal is open forces a clean remount (see that component's
+ * own header comment).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -20,6 +25,7 @@ import { LayoutTab } from "./components/LayoutTab";
 import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
 import { RunningTab } from "./components/RunningTab/RunningTab";
 import { TabBar } from "./components/TabBar";
+import { TerminalModal } from "./components/TerminalModal/TerminalModal";
 import { LangProvider, useLang } from "./i18n/LangContext";
 import { StatusProvider, useStatusContext } from "./state/StatusContext";
 import { useSelection } from "./state/selection";
@@ -39,13 +45,10 @@ function AppShell() {
   const { t, lang, setLang } = useLang();
   const { data, error } = useStatusContext();
   const [activeTab, setActiveTabState] = useState<TabKey>(readStoredTab);
-  // openTerminalFor: which session's terminal modal (if any) is open.
-  // Step 7 only wires the SETTER (SessionRow's terminal button, and now
-  // DiagnosticsTab's "ask" cross-tab flow below) — the value itself is
-  // still deliberately unread here (an unread `const` would fail
-  // `noUnusedLocals`); the terminal modal that actually consumes it is
-  // step 8, built later in this same task/commit sequence.
-  const [, setOpenTerminalFor] = useState<string | null>(null);
+  // openTerminalFor: which session's terminal modal (if any) is open —
+  // set by SessionRow's terminal button and DiagnosticsTab's "ask"
+  // cross-tab flow, consumed below by <TerminalModal>.
+  const [openTerminalFor, setOpenTerminalFor] = useState<string | null>(null);
   // Shared across Running/Registered per the plan — one Set, not a third
   // Context (see state/selection.ts's doc comment).
   const selection = useSelection();
@@ -124,6 +127,9 @@ function AppShell() {
         {data && activeTab === "layout" && <LayoutTab />}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
       </div>
+      {openTerminalFor && (
+        <TerminalModal key={openTerminalFor} name={openTerminalFor} onClose={() => setOpenTerminalFor(null)} />
+      )}
     </div>
   );
 }
