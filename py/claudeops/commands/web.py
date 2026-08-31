@@ -61,6 +61,12 @@ _TUNNEL_URL_RE = re.compile(r"https://[a-zA-Z0-9.-]+\.trycloudflare\.com")
 # [[spawn-zombie-child-degrades-web-server]] — bu process'in kendi yaşı ("Tanı"
 # sekmesinde gösterilir) iki bilinen sessiz-spawn-başarısızlığı sebebinden biri.
 _WEB_PROC_START_MONO = time.monotonic()
+# Client'ın "sunucu benim yüklediğimden FARKLI bir process mi" (yeni deploy sonrası
+# restart) tespiti için — wall-clock, monotonic'in aksine YENİDEN BAŞLATILAN bir
+# process'in DEĞERİ öncekiyle basitçe karşılaştırılabilir bir sayı olsun diye.
+# 2026-08-31, kullanıcı: "yenilenince de auto refresh" — deploy sonrası açık kalan
+# sekmeler manuel yenilemeye gerek kalmadan yeni sürümü göstersin (useStatus.ts).
+_WEB_PROC_START_EPOCH = time.time()
 
 # Model/permission-mode/effort seçenekleri artık HER provider kendi
 # model_choices()/permission_modes()/effort_levels()'ından geliyor — burada
@@ -825,6 +831,7 @@ def _status_payload() -> dict:
         },
         "layout_missing_deps": _missing_layout_deps(),
         "diag": _diag_status(),
+        "server_started_at": _WEB_PROC_START_EPOCH,
     }
 
 

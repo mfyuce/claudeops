@@ -69,6 +69,10 @@ export interface StatusPayload {
   cli_options: Record<string, CliOptions>;
   layout_missing_deps: string[];
   diag: DiagInfo;
+  /** Unix seconds the serving process started — changes on every server
+   * restart (redeploy). `useStatus.ts` compares this against the value it
+   * first saw and reloads the page when it changes. */
+  server_started_at: number;
 }
 
 // ── POST-route result shapes ────────────────────────────────────────────
