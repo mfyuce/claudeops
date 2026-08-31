@@ -450,7 +450,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model, chosen_cli])
     _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
     try:
-        with guard_lock(timeout=5.0):
+        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
                 name=new_name,
                 cwd=info["cwd"],
@@ -689,7 +689,7 @@ def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
     _append_tsv_line(ROSTER_TSV, [new_name, REPO_DIR, model, chosen_cli])
     _append_tsv_line(MODELS_TSV, [new_name, model])
     try:
-        with guard_lock(timeout=5.0):
+        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
                 name=new_name, cwd=REPO_DIR, model=model, display=detect_display(),
                 permission_mode=provider.permission_modes()[0],
@@ -863,7 +863,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     if _find_running(name, cli=chosen_cli):
         return _err(lang, "already_running", name=name)
     try:
-        with guard_lock(timeout=5.0):
+        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
                 name=name,
                 cwd=info["cwd"],
@@ -887,7 +887,7 @@ def _stop(name: str, lang: str = "tr") -> dict:
     if not procs:
         return _err(lang, "not_running", name=name)
     try:
-        with guard_lock(timeout=5.0):
+        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
@@ -974,7 +974,7 @@ def _retire(name: str, lang: str = "tr") -> dict:
     procs = _find_running(name)
     if procs:
         try:
-            with guard_lock(timeout=5.0):
+            with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
                 for s in procs:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
@@ -1002,7 +1002,7 @@ def _close_project(name: str, lang: str = "tr") -> dict:
     procs = _find_running(name)
     if procs:
         try:
-            with guard_lock(timeout=5.0):
+            with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
                 for s in procs:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
@@ -1013,6 +1013,19 @@ def _close_project(name: str, lang: str = "tr") -> dict:
 
 HANDOVER_KILL_SETTLE_SECONDS = 6.0
 HANDOVER_PROC_WAIT_SECONDS = 25.0
+
+# guard_lock() ACQUIRE etmek için bekleme süresi — spawn+kill yapan HER handler'ın
+# ortak sabiti (aşağıdaki 8 `with guard_lock(timeout=...)` çağrısının hepsi bunu
+# kullanır). Kilidi TUTMA süresi (kill grace ~10s + HANDOVER_KILL_SETTLE_SECONDS 6s
+# + spawn + HANDOVER_PROC_WAIT_SECONDS 25s = worst-case ~45-50s+, bkz. _handover)
+# eskiden 5.0s'lik bir ACQUIRE timeout'uyla KIYASLANAMAYACAK kadar uzundu — bulk
+# handover'da item 1 hâlâ kilidi tutarken item 2 sadece 5s bekleyip TimeoutError
+# alıyordu (item 1 BAŞARIYLA bitmiş olsa bile, sadece HTTP yanıtı istemciye zamanında
+# ulaşmamıştı) → "ilk item yapıldı, diğerleri hiç dokunulmadan hata verdi" (canlı
+# bulundu, 2026-08-31, 4'lü bulk handover). Worst-case'in güvenle üstünde tek bir
+# ortak değer — istemci taraf zaten her item için ayrı ayrı ilerleme/hata gösteriyor,
+# sırada bekleyen bir item için birkaç saniye yerine biraz daha uzun beklemek zararsız.
+GUARD_LOCK_ACQUIRE_TIMEOUT = 60.0
 
 
 def _handover(name: str, lang: str = "tr") -> dict:
@@ -1045,7 +1058,7 @@ def _handover(name: str, lang: str = "tr") -> dict:
         cwd, model = procs[0].cwd, (procs[0].model or provider.model_choices()[0])
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     try:
-        with guard_lock(timeout=5.0):
+        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
             if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
                 time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
@@ -1099,7 +1112,7 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     provider = get_provider(chosen_cli)
     chosen_model = model.strip() or procs[0].model or provider.model_choices()[0]
     try:
-        with guard_lock(timeout=5.0):
+        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
             if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
                 time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
