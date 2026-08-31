@@ -83,7 +83,10 @@ function AppShell() {
   );
 
   useEffect(() => {
-    document.title = t.title;
+    // Suffix (not t.title itself — that stays a faithful 1:1 port of the
+    // original panel's title) so the browser tab is distinguishable at a
+    // glance from the old panel's tab when both are open side by side.
+    document.title = `${t.title} · React`;
   }, [t]);
 
   let summary: string;
@@ -104,7 +107,12 @@ function AppShell() {
   return (
     <div className="wrap">
       <div className="topbar">
-        <h1>{t.title}</h1>
+        <div className="topbar-title">
+          <h1>{t.title}</h1>
+          <span className="build-badge" title="React + TypeScript + WebSocket rewrite — feature/react-ui">
+            React
+          </span>
+        </div>
         <div className="langsw">
           <button type="button" className={lang === "tr" ? "active" : ""} onClick={() => setLang("tr")}>
             TR

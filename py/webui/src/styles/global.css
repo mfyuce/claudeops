@@ -41,6 +41,15 @@ body {
 .wrap { max-width: 960px; margin: 0 auto; }
 h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
 .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .25rem; }
+.topbar-title { display: flex; align-items: baseline; gap: .5rem; }
+/* React rewrite is a deliberate 1:1 visual port of the old panel (same title,
+   same theme tokens) — this badge is the ONLY intentional visual difference,
+   added 2026-08-31 after live confusion ("is this really the react one? looks
+   identical") while running both in parallel on separate tunnels. */
+.build-badge {
+  font-size: .65rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  padding: .1rem .4rem; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent);
+}
 .langsw { display: flex; gap: .3rem; flex-shrink: 0; }
 .langsw button { padding: .15rem .5rem; font-size: .72rem; border-color: var(--border); color: var(--muted); }
 .langsw button.active { border-color: var(--accent); color: var(--accent); }
