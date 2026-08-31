@@ -115,7 +115,7 @@ def tmux_send_keys(name: str, text: str) -> bool:
 
 # Only these key-names may go through non-literal send-keys (never pass arbitrary
 # strings this way — literal text always goes through tmux_send_keys's `-l` path).
-ALLOWED_SPECIAL_KEYS = {"C-c", "C-d", "Escape", "Up", "Down", "Left", "Right", "Tab"}
+ALLOWED_SPECIAL_KEYS = {"C-c", "C-d", "Escape", "Up", "Down", "Left", "Right", "Tab", "Enter"}
 
 
 def tmux_send_special_key(name: str, key: str) -> bool:

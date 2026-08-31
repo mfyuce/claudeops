@@ -43,6 +43,15 @@ class CliProvider(ABC):
         çünkü kill edecek "konuşma" yok, sadece kullanıcının canlı terminal'i var."""
         return True
 
+    def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
+        """Son user mesajı + son assistant yanıtını {'user':..., 'assistant':...} olarak
+        döndür — panelin terminal-popup'ındaki 'Sohbet' sekmesi için (capture-pane/ANSI
+        yerine STRUCTURED veri: xterm.js'in mobilde scroll/render sorunlarını [[terminal
+        canlı yaşanan raporlar]] tamamen bypass eder). None = bu CLI için desteklenmiyor
+        (panel "henüz yok" gösterir, hata değil) — varsayılan budur, sadece jsonl/DB gibi
+        okunabilir bir transcript'i olan provider'lar (claude) override eder."""
+        return None
+
     def env_overrides(self, session_name: str) -> Dict[str, str]:
         """Bu CLI çağrısına ÖZEL env değişkenleri (varsayılan: yok).
 
