@@ -938,6 +938,21 @@ def _term_key(name: str, key: str, lang: str = "tr") -> dict:
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
+def _term_chat(name: str, lang: str = "tr") -> dict:
+    """Terminal popup'ının 'Sohbet' sekmesi: capture-pane/ANSI yerine provider'ın
+    kendi transcript'inden (jsonl vb.) son user+assistant metnini STRUCTURED
+    döndürür — xterm.js'in mobilde scroll/render sorunlarını tamamen bypass eder.
+    Desteklemeyen provider'lar (agy/shell, henüz) için supported:false döner,
+    hata değil — panel bunu "henüz yok" olarak gösterir."""
+    s, err = _term_resolve(name, lang)
+    if err:
+        return err
+    exchange = get_provider(s.cli).last_exchange(s.cwd, s.sid)
+    if exchange is None:
+        return {"ok": True, "supported": False}
+    return {"ok": True, "supported": True, "user": exchange["user"], "assistant": exchange["assistant"]}
+
+
 def _open_window(name: str, lang: str = "tr") -> dict:
     """Windowless (tmux-only) kalmış bir session'a YENİ bir gnome-terminal penceresi
     bağlar — CLI'ı yeniden başlatmadan. `_diag_status()`'un `windowless` listesindeki
@@ -1275,6 +1290,12 @@ const T = {
     termScrolledHint: '⏸ yukarı kaydırdınız — canlı akış duraklatıldı, dibe dönünce devam eder',
     termCopyBtn: 'kopyala', termCopied: '✓ kopyalandı',
     termCopyHint: 'görünen çıktıyı panoya kopyala (mobilde dokunarak seçim güvenilir değil)',
+    termOpen: 'aç',
+    tabTermView: 'terminal', tabChatView: 'sohbet',
+    chatYou: 'Sen', chatAssistant: 'Asistan',
+    chatEmpty: '(boş)',
+    chatUnsupported: 'bu CLI için sohbet görünümü henüz yok — terminal sekmesini kullanın',
+    chatLoadError: 'yüklenemedi: ',
     nothingRunning: `Hiçbir şey çalışmıyor — "Kayıtlı" sekmesinden başlatın.`,
     unregBadge: 'kayıtsız',
     unregHint: `roster.tsv'de kayıtlı değil (proc-scan'den bulundu) — claudeops'un açmadığı bir pencere; "devral"a basarsanız remote-control eklenip roster'a kalıcı kaydedilir`,
@@ -1365,6 +1386,12 @@ const T = {
     termScrolledHint: '⏸ scrolled up — live updates paused, resumes when you scroll back to bottom',
     termCopyBtn: 'copy', termCopied: '✓ copied',
     termCopyHint: 'copy visible output to clipboard (touch-selection is unreliable on mobile)',
+    termOpen: 'open',
+    tabTermView: 'terminal', tabChatView: 'chat',
+    chatYou: 'You', chatAssistant: 'Assistant',
+    chatEmpty: '(empty)',
+    chatUnsupported: "chat view isn't available for this CLI yet — use the terminal tab",
+    chatLoadError: 'failed to load: ',
     nothingRunning: 'Nothing running — start from the "Registered" tab.',
     unregBadge: 'unregistered',
     unregHint: `not in roster.tsv (found via proc-scan) — a window claudeops didn't open; click "adopt" to attach remote-control and register it permanently`,
@@ -1444,6 +1471,9 @@ let LAST_JSON = null;
 let optsFor = null;
 let adoptFor = null;
 let termFor = null;
+let termTab = 'term';  // 'term'|'chat' — hangi sekme açık; render()'ın her 4s'lik tam
+                        // yeniden kuruşunda termRow() hep 'term'e dönüyor, bunu geri
+                        // uygulamak (applyTermTabVisual) render()'ın sonunda gerekiyor.
 let termPollTimer = null;
 let TAB = localStorage.getItem('cops_tab') || 'running';
 const SEL = new Set();
@@ -1561,6 +1591,11 @@ function render(d) {
       }
     }
   }
+  // termRow() her zaman 'term' sekmesi aktif üretir (üstteki xterm/input rescue'unun
+  // yakalamadığı bir state) — kullanıcı 'sohbet'teyse her 4s'lik refresh'te sessizce
+  // 'terminal'e geri döndürüyordu (canlı rapor, 2026-08-31: "sohbete basıyorum, 2sn
+  // sonra tekrar terminale geçiyor"). Aynı innerHTML sonrası geri-uygula deseni.
+  if (termFor) applyTermTabVisual(termFor, termTab);
 }
 
 // ── seçim + toplu işlemler ──────────────────────────────────────────────────
@@ -1975,7 +2010,12 @@ function toggleOpts(name) {
 
 let xtermLibPromise = null;   // tek-seferlik lazy-load, başarısız olursa RETRY edilebilir (bkz. loadXtermLib)
 const xtermInstances = {};    // name -> {term, cols, rows}
-const XTERM_KEYS = [['ctrl-c','C-c'], ['esc','Escape'], ['↑','Up'], ['↓','Down'], ['←','Left'], ['→','Right'], ['tab','Tab']];
+// 'Enter': boş text ile bile göndermek gerekiyor (TUI'lerde "devam için Enter" gibi
+// içerik-yazmadan onaylama) — sendTermInput ise boş input'ta ERKEN ÇIKAR (`if (!text) return`),
+// bu yüzden düz Enter'ın buradan, tmux_send_special_key ile, ayrı bir buton olarak gitmesi şart
+// (canlı rapor: mobilde klavyenin Enter/Git tuşu onkeydown'daki `event.key==='Enter'` kontrolünü
+// hiç tetiklemiyor — IME/predictive-text kaynaklı bilinen bir mobil tarayıcı davranışı).
+const XTERM_KEYS = [['↵','Enter'], ['ctrl-c','C-c'], ['esc','Escape'], ['↑','Up'], ['↓','Down'], ['←','Left'], ['→','Right'], ['tab','Tab']];
 
 function termRow(s, colspan) {
   const keyBtns = XTERM_KEYS.map(([label, key]) =>
@@ -1997,17 +2037,26 @@ function termRow(s, colspan) {
               <button onclick="toggleTerm('${s.name}')" style="font-size:1rem;line-height:1;padding:.2rem .55rem">✕</button>
             </span>
           </div>
-          <div id="xterm-${s.name}" style="background:#111;padding:.35rem;border-radius:4px;
-            overflow:auto;max-width:calc(95vw - 1.4rem);max-height:calc(92vh - 130px);
-            box-sizing:content-box;font-family:monospace;font-size:.8rem;color:#ddd;
-            white-space:pre-wrap"></div>
-          <div class="opts-hint" id="term-hint-${s.name}" style="width:100%;box-sizing:border-box"></div>
-          <div class="opts" style="margin-top:.4rem;width:100%;box-sizing:border-box">
-            ${keyBtns}
-            <input type="text" id="term-in-${s.name}" placeholder="${t('termPlaceholder')}"
-              style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter') sendTermInput('${s.name}')">
-            <button class="go" onclick="sendTermInput('${s.name}')">${t('termSend')}</button>
+          <div class="tabs" style="margin-bottom:.5rem;width:100%;box-sizing:border-box">
+            <button id="tab-termview-${s.name}" class="active" onclick="switchTermTab('${s.name}','term')">${t('tabTermView')}</button>
+            <button id="tab-chatview-${s.name}" onclick="switchTermTab('${s.name}','chat')">${t('tabChatView')}</button>
           </div>
+          <div id="term-view-${s.name}" style="width:100%">
+            <div id="term-urls-${s.name}" hidden style="width:100%;box-sizing:border-box;margin-bottom:.3rem"></div>
+            <div id="xterm-${s.name}" style="background:#111;padding:.35rem;border-radius:4px;
+              overflow:auto;max-width:calc(95vw - 1.4rem);max-height:calc(92vh - 130px);
+              box-sizing:content-box;font-family:monospace;font-size:.8rem;color:#ddd;
+              white-space:pre-wrap"></div>
+            <div class="opts-hint" id="term-hint-${s.name}" style="width:100%;box-sizing:border-box"></div>
+            <div class="opts" style="margin-top:.4rem;width:100%;box-sizing:border-box">
+              ${keyBtns}
+              <input type="text" id="term-in-${s.name}" placeholder="${t('termPlaceholder')}"
+                style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter') sendTermInput('${s.name}')">
+              <button class="go" onclick="sendTermInput('${s.name}')">${t('termSend')}</button>
+            </div>
+          </div>
+          <div id="chat-view-${s.name}" hidden style="width:min(560px,85vw);max-height:calc(92vh - 130px);
+            overflow:auto;box-sizing:border-box"></div>
         </div>
       </div>
     </td></tr>`;
@@ -2127,6 +2176,11 @@ function toggleTerm(name) {
     try { xtermInstances[prev].term.dispose(); } catch (e) {}
     delete xtermInstances[prev];
   }
+  if (prev !== termFor) termTab = 'term';  // taze açılış (ya da kapama) → varsayılana dön
+  if (prev && prev !== termFor && chatPollTimers[prev]) {
+    clearInterval(chatPollTimers[prev]);
+    delete chatPollTimers[prev];
+  }
   render(LAST);
   if (termFor) {
     ensureXtermFor(termFor).then(() => pollTerm(termFor));
@@ -2137,6 +2191,7 @@ function toggleTerm(name) {
 async function pollTerm(name) {
   const r = await fetch(withToken(`/api/term/output?name=${encodeURIComponent(name)}`));
   const d = await r.json();
+  if (d.ok) renderTermUrls(name, d.text);
   const inst = xtermInstances[name];
   const hint = document.getElementById('term-hint-' + name);
   if (inst) {
@@ -2215,6 +2270,140 @@ async function copyTermText(name, btn) {
     setTimeout(() => { btn.textContent = orig; }, 1200);
   } catch (e) {
     alert(t('requestFailed') + e.message);
+  }
+}
+
+// Login akışları (agy device-code, claude OAuth, ileride codex/deepseek...) çıktıya
+// bir URL basıyor — mobilde xterm.js'in içinden dokunarak URL seçmek güvenilmez (bkz.
+// termCopyHint), kullanıcı canlı olarak "URL'i metinden elle çıkardım" dedi. Provider-
+// bazlı ÖZEL bir kanca YOK — capture-pane metninde regex ile URL ara, bulunca kopyala/aç
+// butonlarıyla göster; böylece herhangi bir CLI backend'i için otomatik çalışır.
+const TERM_URL_RE = /https?:\/\/[^\s<>"'\x1b\x07]+/g;
+
+function extractTermUrls(rawText) {
+  const clean = stripAnsi(rawText);
+  const matches = clean.match(TERM_URL_RE) || [];
+  const seen = new Set();
+  const out = [];
+  for (let i = matches.length - 1; i >= 0 && out.length < 3; i--) {
+    const u = matches[i].replace(/[.,;:)\]}>'"]+$/, '');
+    if (!seen.has(u)) { seen.add(u); out.push(u); }
+  }
+  return out;
+}
+
+async function copyTermUrl(url, btn) {
+  const orig = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = t('termCopied');
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  } catch (e) {
+    alert(t('requestFailed') + e.message);
+  }
+}
+
+function renderTermUrls(name, rawText) {
+  const box = document.getElementById('term-urls-' + name);
+  if (!box) return;
+  const urls = extractTermUrls(rawText);
+  box.textContent = '';
+  if (!urls.length) { box.hidden = true; return; }
+  box.hidden = false;
+  urls.forEach(u => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:.35rem;align-items:center;margin:.15rem 0;overflow:hidden';
+    const span = document.createElement('span');
+    span.textContent = u;
+    span.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;'
+      + 'white-space:nowrap;font-family:monospace;font-size:.75rem';
+    const a = document.createElement('a');
+    a.href = u; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = t('termOpen');
+    a.style.whiteSpace = 'nowrap';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = t('termCopyBtn');
+    btn.style.whiteSpace = 'nowrap';
+    btn.onclick = () => copyTermUrl(u, btn);
+    row.appendChild(span); row.appendChild(a); row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
+
+// 'Sohbet' sekmesi: xterm.js/ANSI yerine provider'ın kendi transcript'inden okunan
+// STRUCTURED son-mesaj-çifti — canlı kullanıcı raporu (2026-08-31): terminal sekmesi
+// mobilde scroll ederken/refresh'te sürekli yanlış yere zıplıyor, "en başta olması
+// gereken kaymış" görünüyor. Kök neden xterm.js'in kendi viewport/reset-rewrite
+// mekanizması (pollTerm) — o mekanizmaya dokunmadan, PARALEL bir görünüm: düz
+// HTML metin, tarayıcının NATİF scroll'u, tartışacak bir "viewport" state'i yok.
+const chatPollTimers = {};
+
+async function pollChat(name) {
+  let d;
+  try {
+    const r = await fetch(withToken(`/api/term/chat?name=${encodeURIComponent(name)}`));
+    d = await r.json();
+  } catch (e) {
+    d = {ok: false, error: e.message};
+  }
+  renderChatView(name, d);
+}
+
+function renderChatView(name, d) {
+  const box = document.getElementById('chat-view-' + name);
+  if (!box) return;
+  box.textContent = '';
+  if (!d.ok) {
+    box.textContent = t('chatLoadError') + (d.error || '');
+    return;
+  }
+  if (!d.supported) {
+    box.textContent = t('chatUnsupported');
+    return;
+  }
+  const mk = (label, text) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom:.7rem';
+    const h = document.createElement('div');
+    h.textContent = label;
+    h.style.cssText = 'font-weight:600;font-size:.75rem;opacity:.7;margin-bottom:.2rem';
+    const body = document.createElement('div');
+    body.textContent = text || t('chatEmpty');
+    body.style.cssText = 'white-space:pre-wrap;font-size:.85rem;line-height:1.45;'
+      + 'background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:.5rem';
+    wrap.appendChild(h); wrap.appendChild(body);
+    return wrap;
+  };
+  box.appendChild(mk(t('chatYou'), d.user));
+  box.appendChild(mk(t('chatAssistant'), d.assistant));
+}
+
+// Sadece görünürlük/active-class uygular, timer'a DOKUNMAZ — render()'ın 4s'lik
+// tam-DOM-yeniden-kuruşundan SONRA "hangi sekmedeydik" state'ini geri uygulamak için
+// (chatPollTimers zaten DOM'dan bağımsız arka planda akıyor, ona dokunulursa dup olur).
+function applyTermTabVisual(name, tab) {
+  const termBtn = document.getElementById('tab-termview-' + name);
+  const chatBtn = document.getElementById('tab-chatview-' + name);
+  const termView = document.getElementById('term-view-' + name);
+  const chatView = document.getElementById('chat-view-' + name);
+  if (!termBtn || !chatBtn || !termView || !chatView) return false;
+  const isChat = tab === 'chat';
+  termBtn.classList.toggle('active', !isChat);
+  chatBtn.classList.toggle('active', isChat);
+  termView.hidden = isChat;
+  chatView.hidden = !isChat;
+  return true;
+}
+
+function switchTermTab(name, tab) {
+  if (!applyTermTabVisual(name, tab)) return;
+  termTab = tab;
+  const isChat = tab === 'chat';
+  if (chatPollTimers[name]) { clearInterval(chatPollTimers[name]); delete chatPollTimers[name]; }
+  if (isChat) {
+    pollChat(name);
+    chatPollTimers[name] = setInterval(() => pollChat(name), 2500);
   }
 }
 
@@ -2606,6 +2795,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_term_output(name, lang=lang))
+        elif path == "/api/term/chat":
+            qs = parse_qs(urlparse(self.path).query)
+            name = (qs.get("name") or [""])[0].strip()
+            lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_term_chat(name, lang=lang))
         elif path.startswith("/static/"):
             fname = path[len("/static/"):]
             if fname not in ("xterm.js", "xterm.css"):

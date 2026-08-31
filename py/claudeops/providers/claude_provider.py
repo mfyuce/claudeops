@@ -1,5 +1,6 @@
 """claude CLI provider — bugüne kadarki tek/varsayılan davranış, aynen taşındı."""
 from __future__ import annotations
+import json
 import os
 import shlex
 import shutil
@@ -49,6 +50,29 @@ def _arg(cmd: List[str], flag: str) -> Optional[str]:
     except ValueError:
         return None
     return cmd[i + 1] if i + 1 < len(cmd) else None
+
+
+def _extract_text(content) -> str:
+    """message.content'ten düz metni çıkar — ya bir string ya da [{'type':'text',...},
+    {'type':'tool_use',...}, ...] gibi bloklar listesi (tool_use/tool_result/image
+    blokları YOK sayılır, sadece 'Sohbet' sekmesinde okunabilir metin göstermek için)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+        return "\n\n".join(p for p in parts if p)
+    return ""
+
+
+def _is_real_user_text(content) -> bool:
+    """Bir 'user' jsonl satırı gerçekten kullanıcının yazdığı bir mesaj mı, yoksa
+    tool_result'un (bir önceki assistant tool_use'una otomatik cevap) 'user' rolüyle
+    kodlanmış hali mi? tool_result bloğu varsa insan yazmamıştır, atla."""
+    if isinstance(content, str):
+        return bool(content.strip())
+    if isinstance(content, list):
+        return not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+    return False
 
 
 class ClaudeProvider(CliProvider):
@@ -103,3 +127,57 @@ class ClaudeProvider(CliProvider):
 
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
+
+    def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
+        # sid biliniyorsa (--resume ile başladıysa) TAM o dosya — aynı cwd'de birden
+        # fazla session paylaşıyorsa find_latest_jsonl (mtime) yanlış dosyayı seçebilir.
+        # sid yoksa (--new fresh start, Faz 2'nin varsayılanı) mtime fallback şart.
+        path: Optional[Path] = None
+        if sid:
+            candidate = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{sid}.jsonl"
+            if candidate.is_file():
+                path = candidate
+        if path is None:
+            path = find_latest_jsonl(cwd)
+        # NOT: aşağıdaki "bulamadım" dallarının hepsi None DEĞİL boş dict döner —
+        # None SADECE base.py'nin varsayılanında ("bu provider desteklemiyor") kalsın;
+        # burada (claude provider'da) her zaman {"user":"","assistant":""} dönmek,
+        # panelin "desteklenmiyor" ile "henüz mesaj yok" mesajlarını KARIŞTIRMAMASINI
+        # sağlar (canlı bulundu: taze/boş bir session "bu CLI için sohbet görünümü
+        # henüz yok" diye yanlış mesaj gösteriyordu — claude'un kendisi destekliyor,
+        # sadece bu session'da henüz içerik yok).
+        empty = {"user": "", "assistant": ""}
+        if path is None:
+            return empty
+        try:
+            lines = []
+            with path.open(encoding="utf-8") as f:
+                for raw in f:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        lines.append(json.loads(raw))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            return empty
+        ai = None
+        for i in range(len(lines) - 1, -1, -1):
+            d = lines[i]
+            if d.get("type") == "assistant" and not d.get("isSidechain"):
+                ai = i
+                break
+        if ai is None:
+            return empty
+        assistant_text = _extract_text(lines[ai].get("message", {}).get("content"))
+        user_text = ""
+        for i in range(ai - 1, -1, -1):
+            d = lines[i]
+            if d.get("type") != "user" or d.get("isSidechain") or d.get("isMeta"):
+                continue
+            content = d.get("message", {}).get("content")
+            if _is_real_user_text(content):
+                user_text = _extract_text(content)
+                break
+        return {"user": user_text, "assistant": assistant_text}

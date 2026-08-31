@@ -109,6 +109,12 @@ class AgyProvider(CliProvider):
     def model_choices(self) -> List[str]:
         now = time.monotonic()
         if now - self._cache_ts > _MODELS_TTL:
+            # Denemeyi başarısız/boş olsa BİLE damgala — yoksa (agy sign-out/hata
+            # durumunda) `if models:` hiç tetiklenmez, _cache_ts sabit kalır ve TTL
+            # asla dolmadığı için panel her 4s status poll'unda yeniden subprocess
+            # çalıştırır (canlı yaşandı: agy sign-out olunca her poll'da ~1s'lik
+            # `agy models` çağrısı — TTL'nin var oluş amacını boşa çıkarıyordu).
+            self._cache_ts = now
             try:
                 out = subprocess.run(["agy", "models"], capture_output=True, text=True,
                                       timeout=5).stdout
@@ -119,7 +125,6 @@ class AgyProvider(CliProvider):
                 models = [ln.split("\t", 1)[0].strip() for ln in out.splitlines() if "\t" in ln]
                 if models:
                     self._cache_models = models
-                    self._cache_ts = now
             except Exception:
                 pass  # eski (belki boş) cache kalır — status endpoint'i asla patlamasın
         return self._cache_models
