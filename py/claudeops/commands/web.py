@@ -1057,9 +1057,21 @@ def _handover(name: str, lang: str = "tr") -> dict:
     else:
         cwd, model = procs[0].cwd, (procs[0].model or provider.model_choices()[0])
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
+    # Geçici teşhis instrumentasyonu (TODO.md "Bekleyen karar": bulk handover'da
+    # sadece 1 item başarılı oluyor, kalanı hata veriyor — guard_lock fix'i (60s)
+    # tek başına ÇÖZMEDİ, kanıt (2 BrokenPipeError) bilinen gecikmelerle uyuşmuyor).
+    # Her fazı diag_log'a yaz (best-effort, çağıran akışı etkilemez) — client'ın
+    # bağlantıyı ne zaman/nerede bıraktığından BAĞIMSIZ, sunucu tarafında GERÇEKTEN
+    # ne kadar sürdüğünü/nerede durduğunu görmek için. Kaldırılmadan önce en az bir
+    # canlı bulk-handover'da diag.log'la doğrulanmalı.
+    t0 = time.monotonic()
+    diag_log("handover_begin", name=name)
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            diag_log("handover_lock_acquired", name=name, wait_s=round(time.monotonic() - t0, 1))
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
+            diag_log("handover_killed", name=name, results=kill_results,
+                     elapsed_s=round(time.monotonic() - t0, 1))
             if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
                 time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
             kind = spawn_session(
@@ -1073,11 +1085,17 @@ def _handover(name: str, lang: str = "tr") -> dict:
                 prompt=message,
                 cli=chosen_cli,
             )
+            diag_log("handover_spawned", name=name, kind=kind, elapsed_s=round(time.monotonic() - t0, 1))
             reopened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
+            diag_log("handover_wait_stable", name=name, reopened=reopened,
+                     elapsed_s=round(time.monotonic() - t0, 1))
     except TimeoutError as e:
+        diag_log("handover_lock_timeout", name=name, waited_s=round(time.monotonic() - t0, 1))
         return {"ok": False, "error": str(e)}
     if not reopened:
+        diag_log("handover_failed", name=name, kind=kind, elapsed_s=round(time.monotonic() - t0, 1))
         return _err(lang, "handover_reopen_failed", name=name, kind=kind)
+    diag_log("handover_done", name=name, kind=kind, elapsed_s=round(time.monotonic() - t0, 1))
     return {"ok": True, "kind": kind}
 
 
@@ -2977,7 +2995,14 @@ class _Handler(BaseHTTPRequestHandler):
             result = _handover(name, lang=lang)
         else:
             result = _reactivate_and_start(name, lang=lang)
-        self._json(result)
+        try:
+            self._json(result)
+        except OSError as e:
+            # Client bağlantıyı ZATEN kapatmış (BrokenPipeError/ConnectionResetError,
+            # ikisi de OSError alt sınıfı) — result server-side BAŞARILI olsa bile
+            # istemciye ULAŞMAMIŞ olabilir (bulk handover teşhisi, bkz. _handover).
+            diag_log("response_write_failed", path=path, name=name,
+                     ok=result.get("ok") if isinstance(result, dict) else None, error=str(e))
 
 
 def register(sub):
