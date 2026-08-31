@@ -50,6 +50,7 @@ from ..tmux_backend import (
     tmux_send_special_key, tmux_pane_size, ALLOWED_SPECIAL_KEYS,
 )
 from .web_static import resolve_static_path
+from . import web_ws
 
 DEFAULT_PORT = 8765
 DEFAULT_HOST = "127.0.0.1"
@@ -2809,6 +2810,15 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/":
             if not self._serve_static("/"):
                 self._json({"error": "not found"}, status=404)
+            return
+        elif path == "/ws":
+            # web_ws.handle_ws kendi response'unu (101 ya da red) doğrudan
+            # handler.wfile'a yazar — burada _json/send_response YOK, aksi
+            # halde WS handshake baytlarının üstüne normal HTTP baytları
+            # biner (bozuk response). Fonksiyon dönene kadar (bağlantı
+            # kapanana kadar) bloklar; do_GET bu thread'in kendisi zaten
+            # (ThreadingHTTPServer: connection-başına-thread).
+            web_ws.handle_ws(self)
             return
         elif path == "/api/status":
             self._json(_status_payload())
