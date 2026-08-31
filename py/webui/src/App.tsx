@@ -14,6 +14,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Banners } from "./components/Banners";
+import { DiagnosticsTab } from "./components/DiagnosticsTab";
+import { GroupTable } from "./components/GroupTable";
+import { LayoutTab } from "./components/LayoutTab";
 import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
 import { RunningTab } from "./components/RunningTab/RunningTab";
 import { TabBar } from "./components/TabBar";
@@ -32,26 +35,16 @@ function readStoredTab(): TabKey {
   return "running";
 }
 
-/** Disabled/Retired/Layout/Diagnostics are later stages (plan Sequencing
- * step 7) — stubbed so tab-switching/localStorage-persistence/counts all
- * work end-to-end even though only Running/Registered have real content
- * as of this commit. */
-function PlaceholderTab({ label }: { label: string }) {
-  return <div className="opts-hint">{label} — not built in this stage yet.</div>;
-}
-
 function AppShell() {
   const { t, lang, setLang } = useLang();
   const { data, error } = useStatusContext();
   const [activeTab, setActiveTabState] = useState<TabKey>(readStoredTab);
-  // openTerminalFor: the state SLOT for the later terminal-modal stage
-  // (plan: "just the state slot for now, no modal component yet"). Only
-  // the setter is used this stage (SessionRow's terminal button calls
-  // it via onToggleTerminal below) — the value itself is deliberately not
-  // read/threaded past that point, so there's no binding for it here (an
-  // unread `const` would fail `noUnusedLocals`, and rendering anything
-  // from it would be exactly the "fake modal" the plan says not to build
-  // yet — a later stage consumes it for real).
+  // openTerminalFor: which session's terminal modal (if any) is open.
+  // Step 7 only wires the SETTER (SessionRow's terminal button, and now
+  // DiagnosticsTab's "ask" cross-tab flow below) — the value itself is
+  // still deliberately unread here (an unread `const` would fail
+  // `noUnusedLocals`); the terminal modal that actually consumes it is
+  // step 8, built later in this same task/commit sequence.
   const [, setOpenTerminalFor] = useState<string | null>(null);
   // Shared across Running/Registered per the plan — one Set, not a third
   // Context (see state/selection.ts's doc comment).
@@ -69,6 +62,22 @@ function AppShell() {
   const onToggleTerminal = useCallback((name: string) => {
     setOpenTerminalFor((prev) => (prev === name ? null : name));
   }, []);
+
+  // Original `doDiagAsk()` success: `setTab('running'); await refresh();
+  // toggleTerm(d.name);` — DiagnosticsTab doesn't own either the active
+  // tab or openTerminalFor, so it hands the new session's name up to this
+  // one callback instead. Uses setOpenTerminalFor directly (not
+  // onToggleTerminal) since this must always OPEN the freshly-created
+  // session's terminal, never toggle it closed — onToggleTerminal's
+  // close-if-already-open behavior is for the Running tab's terminal
+  // button, not this cross-tab jump.
+  const handleDiagAskSuccess = useCallback(
+    (name: string) => {
+      setActiveTab("running");
+      setOpenTerminalFor(name);
+    },
+    [setActiveTab],
+  );
 
   useEffect(() => {
     document.title = t.title;
@@ -110,10 +119,10 @@ function AppShell() {
           <RunningTab selection={selection} onToggleTerminal={onToggleTerminal} onSwitchTab={setActiveTab} />
         )}
         {data && activeTab === "registered" && <RegisteredTab selection={selection} onSwitchTab={setActiveTab} />}
-        {data && activeTab === "disabled" && <PlaceholderTab label={t.tabDisabled} />}
-        {data && activeTab === "retired" && <PlaceholderTab label={t.tabRetired} />}
-        {data && activeTab === "layout" && <PlaceholderTab label={t.tabLayout} />}
-        {data && activeTab === "diag" && <PlaceholderTab label={t.tabDiag} />}
+        {data && activeTab === "disabled" && <GroupTable items={data.closed} />}
+        {data && activeTab === "retired" && <GroupTable items={data.retired} />}
+        {data && activeTab === "layout" && <LayoutTab />}
+        {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
       </div>
     </div>
   );
