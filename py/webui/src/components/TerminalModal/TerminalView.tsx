@@ -197,8 +197,16 @@ export function TerminalView({ name, hidden }: TerminalViewProps) {
           // quiet ticks (no new output) never visibly flicker.
         } else if (result.ok) {
           inst.lastText = result.text;
-          inst.term.reset();
-          inst.term.write(result.text, () => inst.term.scrollToBottom());
+          // A separate synchronous term.reset() (blanks immediately) followed
+          // by an async term.write() (parses/paints over one or more later
+          // frames) leaves a gap the browser can paint mid-update — visible
+          // as a flash on every content-changing ~200ms tick during
+          // "Computing…" (2026-08-31, ported fix from the original panel's
+          // pollTerm — same root cause, independently re-discovered here).
+          // Folding the clear into the write() call itself (as data, not an
+          // out-of-band API call) makes clear+redraw a single pass through
+          // xterm's own parser instead of two.
+          inst.term.write(`\x1b[H\x1b[2J\x1b[3J${result.text}`, () => inst.term.scrollToBottom());
         } else {
           inst.lastText = null;
           inst.term.reset();
@@ -275,6 +283,14 @@ export function TerminalView({ name, hidden }: TerminalViewProps) {
           padding: ".35rem",
           borderRadius: "4px",
           overflow: "auto",
+          // xterm.js's own touch handling (selection/drag) can end up
+          // competing with the browser's native touch-scroll on this
+          // container's — and its internal .xterm-viewport's — overflow
+          // (2026-08-31, live mobile report: "terminal doesn't scroll").
+          // touch-action: pan-y is the standard hint for "a vertical drag
+          // here is a scroll, not something else" — cheap/safe to set even
+          // if it turns out not to be the whole story.
+          touchAction: "pan-y",
           maxWidth: "calc(95vw - 1.4rem)",
           maxHeight: "calc(92vh - 130px)",
           boxSizing: "content-box",
