@@ -920,16 +920,27 @@ def _term_key(name: str, key: str, lang: str = "tr") -> dict:
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
-def _term_chat(name: str, lang: str = "tr") -> dict:
+def _term_chat(name: str, lang: str = "tr", mode: str = "last") -> dict:
     """Terminal popup'ının 'Sohbet' sekmesi: capture-pane/ANSI yerine provider'ın
-    kendi transcript'inden (jsonl vb.) son user+assistant metnini STRUCTURED
-    döndürür — xterm.js'in mobilde scroll/render sorunlarını tamamen bypass eder.
-    Desteklemeyen provider'lar (agy/shell, henüz) için supported:false döner,
-    hata değil — panel bunu "henüz yok" olarak gösterir."""
+    kendi transcript'inden (jsonl vb.) STRUCTURED metin döndürür — xterm.js'in
+    mobilde scroll/render sorunlarını tamamen bypass eder. Desteklemeyen
+    provider'lar (agy/shell, henüz) için supported:false döner, hata değil —
+    panel bunu "henüz yok" olarak gösterir.
+
+    `mode="last"` (varsayılan): son user+assistant çifti (eski davranış, aynen).
+    `mode="full"` (2026-09-01, kullanıcı isteği): TÜM konuşma geçmişi, sırayla
+    [{"role":"user"|"assistant","text":...}, ...] — `last_exchange`'le AYNI
+    destekleniyor/desteklenmiyor sözleşmesi (`full_history` None → supported:False)."""
     s, err = _term_resolve(name, lang)
     if err:
         return err
-    exchange = get_provider(s.cli).last_exchange(s.cwd, s.sid)
+    provider = get_provider(s.cli)
+    if mode == "full":
+        messages = provider.full_history(s.cwd, s.sid)
+        if messages is None:
+            return {"ok": True, "supported": False}
+        return {"ok": True, "supported": True, "messages": messages}
+    exchange = provider.last_exchange(s.cwd, s.sid)
     if exchange is None:
         return {"ok": True, "supported": False}
     return {"ok": True, "supported": True, "user": exchange["user"], "assistant": exchange["assistant"]}
@@ -1255,10 +1266,11 @@ class _Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            mode = "full" if (qs.get("mode") or [""])[0] == "full" else "last"
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(_term_chat(name, lang=lang))
+            self._json(_term_chat(name, lang=lang, mode=mode))
         else:
             if not self._serve_static(path):
                 self._json({"error": "not found"}, status=404)

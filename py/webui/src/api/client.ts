@@ -90,8 +90,8 @@ export const getDiagLog = (): Promise<DiagLogResult> => apiGet<DiagLogResult>("/
 export const getTermOutput = (name: string, lang: Lang): Promise<TermOutputResult> =>
   apiGet<TermOutputResult>(`/api/term/output?name=${encodeURIComponent(name)}&lang=${lang}`);
 
-export const getTermChat = (name: string, lang: Lang): Promise<TermChatResult> =>
-  apiGet<TermChatResult>(`/api/term/chat?name=${encodeURIComponent(name)}&lang=${lang}`);
+export const getTermChat = (name: string, lang: Lang, mode: "last" | "full" = "last"): Promise<TermChatResult> =>
+  apiGet<TermChatResult>(`/api/term/chat?name=${encodeURIComponent(name)}&lang=${lang}&mode=${mode}`);
 
 // ── POST routes ──────────────────────────────────────────────────────────
 // Payload interfaces mirror each `do_POST` branch's `data.get(...)` reads
