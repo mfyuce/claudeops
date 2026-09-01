@@ -2152,7 +2152,17 @@ async function ensureXtermFor(name) {
   if (!container) return;
   container.style.whiteSpace = '';  // xterm.js kendi satır sarmalamasını yapar
   const fontSize = computeFitFontSize(160);
-  const term = new Terminal({cols: 160, rows: 45, scrollback: 5000, convertEol: false, disableStdin: true, fontSize});
+  // convertEol:true — tmux capture-pane -p bare \\n kullanıyor (\\r YOK); false'ta
+  // her \\n imleci satır başına DÖNDÜRMEDEN bir alt satıra iniyor → diagonal
+  // "merdiven" (canlı bulundu, react-ui'de shell provider'ı test ederken,
+  // 2026-09-01, ekran görüntüsüyle doğrulandı). scrollSensitivity:20 — varsayılan
+  // (1) ~17px masaüstü satır-yüksekliğine göre kalibre; bu panel mobilde ÇOK
+  // küçük fontla (~8px satır) render ediyor, aynı wheel/touch delta'sı satırın
+  // ufak bir kesri kadar hareket ediyordu (canlı ÖLÇÜLDÜ: Playwright + gerçek CDP
+  // touch dispatch ile ~6500px wheel delta'sı ~1 satır taşıyordu — normal bir
+  // telefon swipe'ı ya da birkaç wheel click'i HİÇBİR ŞEY yapmıyordu; fix sonrası
+  // TEK bir swipe ~40 satır taşıdı, ekran görüntüsüyle doğrulandı).
+  const term = new Terminal({cols: 160, rows: 45, scrollback: 5000, convertEol: true, disableStdin: true, fontSize, scrollSensitivity: 20});
   term.open(container);
   xtermInstances[name] = {term, cols: 160, rows: 45};
   fitContainerToTerm(name, 160, 45);
