@@ -427,7 +427,9 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     # kısa base'e dönülür — 2026-08-27 saseppr'da canlı bulundu.
     new_name = _generate_new_chat_name(Session(name=base, pid=0).base or base)
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
-    chosen_model = model.strip() or info["model"]
+    # bkz. _start()'taki aynı fix'in yorumu — cli değiştiyse eski info["model"]
+    # yanlış provider'ın modeli olur, yeni cli'nin kendi varsayılanına düşülmeli.
+    chosen_model = model.strip() or (info["model"] if chosen_cli == info["cli"] else get_provider(chosen_cli).model_choices()[0])
     _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model, chosen_cli])
     _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
     try:
@@ -844,12 +846,18 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
     if _find_running(name, cli=chosen_cli):
         return _err(lang, "already_running", name=name)
+    # info["model"] eski cli'nin modeli — kullanıcı cli'yi DEĞİŞTİRİP model alanını
+    # boş bırakırsa (react: useState("") "kullan varsayılanı" anlamına gelir) burada
+    # YANLIŞ cli'nin modeliyle spawn oluyordu (ör. codex'e geçip boş bırakınca "codex
+    # --model claude-sonnet-5" gibi geçersiz bir çağrı — canlı kullanıcı raporu,
+    # 2026-09-01). cli değişmediyse eski davranış (info["model"]) aynen korunur.
+    fallback_model = info["model"] if chosen_cli == info["cli"] else get_provider(chosen_cli).model_choices()[0]
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
                 name=name,
                 cwd=info["cwd"],
-                model=model.strip() or info["model"],
+                model=model.strip() or fallback_model,
                 display=detect_display(),
                 permission_mode=permission_mode.strip() or "auto",
                 effort=effort.strip() or "max",
