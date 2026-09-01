@@ -128,10 +128,14 @@ class ClaudeProvider(CliProvider):
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
 
-    def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
-        # sid biliniyorsa (--resume ile başladıysa) TAM o dosya — aynı cwd'de birden
-        # fazla session paylaşıyorsa find_latest_jsonl (mtime) yanlış dosyayı seçebilir.
-        # sid yoksa (--new fresh start, Faz 2'nin varsayılanı) mtime fallback şart.
+    def _transcript_lines(self, cwd: str, sid: Optional[str]) -> List[dict]:
+        """`last_exchange`/`full_history`'nin PAYLAŞTIĞI adım: doğru jsonl'ı bul + parse
+        edilmiş satırları döndür (bulunamazsa/okunamazsa boş liste — 'desteklenmiyor'
+        ile 'henüz mesaj yok' ayrımı ÇAĞIRAN tarafın işi, burada değil).
+
+        sid biliniyorsa (--resume ile başladıysa) TAM o dosya — aynı cwd'de birden fazla
+        session paylaşıyorsa find_latest_jsonl (mtime) yanlış dosyayı seçebilir. sid yoksa
+        (--new fresh start, Faz 2'nin varsayılanı) mtime fallback şart."""
         path: Optional[Path] = None
         if sid:
             candidate = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{sid}.jsonl"
@@ -139,16 +143,8 @@ class ClaudeProvider(CliProvider):
                 path = candidate
         if path is None:
             path = find_latest_jsonl(cwd)
-        # NOT: aşağıdaki "bulamadım" dallarının hepsi None DEĞİL boş dict döner —
-        # None SADECE base.py'nin varsayılanında ("bu provider desteklemiyor") kalsın;
-        # burada (claude provider'da) her zaman {"user":"","assistant":""} dönmek,
-        # panelin "desteklenmiyor" ile "henüz mesaj yok" mesajlarını KARIŞTIRMAMASINI
-        # sağlar (canlı bulundu: taze/boş bir session "bu CLI için sohbet görünümü
-        # henüz yok" diye yanlış mesaj gösteriyordu — claude'un kendisi destekliyor,
-        # sadece bu session'da henüz içerik yok).
-        empty = {"user": "", "assistant": ""}
         if path is None:
-            return empty
+            return []
         try:
             lines = []
             with path.open(encoding="utf-8") as f:
@@ -160,8 +156,20 @@ class ClaudeProvider(CliProvider):
                         lines.append(json.loads(raw))
                     except json.JSONDecodeError:
                         continue
+            return lines
         except OSError:
-            return empty
+            return []
+
+    def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
+        # NOT: aşağıdaki "bulamadım" dallarının hepsi None DEĞİL boş dict döner —
+        # None SADECE base.py'nin varsayılanında ("bu provider desteklemiyor") kalsın;
+        # burada (claude provider'da) her zaman {"user":"","assistant":""} dönmek,
+        # panelin "desteklenmiyor" ile "henüz mesaj yok" mesajlarını KARIŞTIRMAMASINI
+        # sağlar (canlı bulundu: taze/boş bir session "bu CLI için sohbet görünümü
+        # henüz yok" diye yanlış mesaj gösteriyordu — claude'un kendisi destekliyor,
+        # sadece bu session'da henüz içerik yok).
+        empty = {"user": "", "assistant": ""}
+        lines = self._transcript_lines(cwd, sid)
         ai = None
         for i in range(len(lines) - 1, -1, -1):
             d = lines[i]
@@ -181,3 +189,22 @@ class ClaudeProvider(CliProvider):
                 user_text = _extract_text(content)
                 break
         return {"user": user_text, "assistant": assistant_text}
+
+    def full_history(self, cwd: str, sid: Optional[str]) -> Optional[List[Dict[str, str]]]:
+        # `last_exchange`'in tek-son-çift filtreleriyle AYNI kurallar (sidechain/isMeta/
+        # tool_result-only hariç, boş metin hariç) — sadece SADECE SONUNCUYU almak yerine
+        # sırayla HEPSİNİ biriktiriyor.
+        out: List[Dict[str, str]] = []
+        for d in self._transcript_lines(cwd, sid):
+            t = d.get("type")
+            if t == "assistant" and not d.get("isSidechain"):
+                text = _extract_text(d.get("message", {}).get("content"))
+                if text:
+                    out.append({"role": "assistant", "text": text})
+            elif t == "user" and not d.get("isSidechain") and not d.get("isMeta"):
+                content = d.get("message", {}).get("content")
+                if _is_real_user_text(content):
+                    text = _extract_text(content)
+                    if text:
+                        out.append({"role": "user", "text": text})
+        return out
