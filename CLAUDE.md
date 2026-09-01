@@ -10,7 +10,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **claude 2.1.183 KILL=TRUNCATE**: lazy-checkpoint storage → **hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL** (sert kill = son mesajlar gider, iş git'te güvende). [[claude-2183-conversation-truncation]]
 - **claude resume "deferred tool marker"**: promptsuz `--resume` bazen ANINDA hata verir → resume'a mutlaka `--prompt` ver (`--new` OLMADAN). [[resume-deferred-tool-marker]]
 - **spawn güvenilirliği**: CLAUDE*/GEMINI*/ANTIGRAVITY* env filtrelenir (yoksa transcript kapanır). gnome-terminal flake → oto-retry+fallback, windowless'i **"pencere aç"**la düzelt. [[spawn-env-leak-disables-transcript]] [[spawn-zombie-child-degrades-web-server]]
-- **`service.py`'nin `WEB_UNIT_TEMPLATE`'ini düzenlersen `bash -ic '...'` ExecStart'ı ve `KillMode=process`'i BOZMA** — ikisi de canlı yaşanan gerçek hasarların fix'i (minimal systemd PATH → `claude: command not found`; varsayılan `control-group` → servis restart'ı ALTINDAKİ tmux'u da öldürür). **Aynı dosyada tunnel unit'i `Requires=` DEĞİL `Wants=` kullanmalı** — `Requires=` web restart'ını tunnel'a propagate edip quick-tunnel URL'ini HER redeploy'da rastgele değiştiriyordu (2026-08-31 canlı bulundu+düzeltildi — kullanıcının aktif kullandığı bir URL bu yüzden öldü).
+- **`service.py`'nin `WEB_UNIT_TEMPLATE`'ini düzenlersen `bash -ic '...'` ExecStart'ı, `KillMode=process`, ve tunnel unit'inin `Wants=` (`Requires=` DEĞİL) satırını BOZMA** — üçü de canlı yaşanan gerçek hasarların fix'i (minimal PATH → `command not found`; `control-group` → restart altındaki tmux'u da öldürür; `Requires=` → her web-redeploy'da tunnel URL'i rastgele değişir). Detay: DONE.md 2026-08-30/31.
 - **`web.py`'de `guard_lock(timeout=...)` her yerde `GUARD_LOCK_ACQUIRE_TIMEOUT` (60s) KULLANMALI, geri düşürme** — kilit kill+spawn+stabilize boyunca (~45-50s worst-case) tutuluyor.
 - **oomd TÜM oturumu öldürebilir** (sadece fleet'in cgroup'unu değil) — kurtarma `py/cops service watchdog` (root-seviyeli, oturumdan bağımsız timer). [[oomd-cgroup-kill]]
 - **Security**: ulaksec → "dokunma". `~/.cache/huggingface` 29G KORU. Commit öncesi kullanıcı onayı.
@@ -21,7 +21,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **İsimler base-name** (suffix yok). `Session.base` tarih+`_N` suffix'lerini indirger: `cops20260824_1`→`cops`. Panel eşlemesi önce TAM isim, sonra base.
 - **co + cops** (self) + **ulaksec** aktif (guard ayakta tutsun). İsim-bazlı hariç tutma YOK, seçim panel checkbox'larıyla; tek koruma process-bazlı self-koruma (`ancestor_pids()`). [[co-ulaksec-guard-yes-ho-no]]
 - Kapalı/emekli satırlar `#`'lı. `py/cops close <name>` = kill + models.tsv yorumla; geri: panel "tekrar işe al".
-- roster.tsv'nin opsiyonel **4. kolonu = `cli`** (`claude`|`agy`|`shell`, yoksa/eskiyse `"claude"`). Provider mimarisi `py/claudeops/providers/`: yeni backend = yeni dosya, dallanma yok (adaylar TODO.md'de).
+- roster.tsv'nin opsiyonel 4. kolonu = `cli`. Provider mimarisi (`py/claudeops/providers/base.py` + registry, dallanma yok — yeni backend = 1 dosya + registry satırı) kendi docstring'inde belgeli, burada tekrarlanmıyor.
 
 ## Fleet kontrolü — MANUEL (2026-08-24 karar)
 
@@ -29,8 +29,8 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **`py/cops web [--port 8765] [--tunnel]`** — kontrol paneli; tam sekme/özellik listesi `py/README*.md` + [[diag-tab-feature]].
 - **`py/cops service install|status|uninstall|notify|watchdog`** — web+tunnel systemd `--user` ile KALICI (logout/reboot'ta otomatik). Detay: `py/README*.md`.
 - **Repo PUBLIC** (MIT, github + gitlab mirror) — roster/models/token repo dışında. DONE/TODO/changelog özenli tutulmalı.
-- Web Stop / `kill` / `rc --kill-first`: tmux-backed'de ad-bazlı `tmux kill-session` + pencereyi title'dan (`wmctrl`+`xdotool windowkill`) kapatır (2026-08-31 fix, PID-ancestry hâlâ YASAK). Canlı doğrulanmadı (ekran kilitliydi) — bkz. TODO.md.
-- **İki panel PARALEL canlı deploy** — main :8765; `feature/react-ui` (ayrı worktree `../claudeops-react-ui`, merge YOK — TOBEDECIDED #14) :8766. React'in systemd unit'leri (`claudeops-{web,tunnel}-react.service`) **repo'da TAKİP EDİLMİYOR** (`~/.config/systemd/user/`'da elle). Ayrı tunnel URL dosyaları (`tunnel_url{,-react}.txt`), paylaşılan ntfy topic'i (`[main]`/`[react]` etiketli). İkisi de redeploy sonrası açık sekmeleri otomatik yeniliyor (`server_started_at`). **Kullanıcı yönü net: "react'e devam"** — yeni özellik/fix önceliği react-ui'de. Detay/tarih: DONE.md.
+- Web Stop / `kill` / `rc --kill-first`: tmux-backed'de ad-bazlı `tmux kill-session` + pencereyi title'dan (`wmctrl`+`xdotool windowkill`) kapatır. Canlı doğrulanmadı — bkz. TODO.md.
+- **İki panel PARALEL canlı deploy, merge YOK:** main :8765, `feature/react-ui` (worktree `../claudeops-react-ui`) :8766 — ayrı systemd+tunnel her ikisinde. `py/claudeops/**` (backend) HER worktree'de AYRI edit edilmeli (paylaşılmıyor, "identical dosya" güveni yanıltıcı — [[react-ui-rewrite-unmerged-branch]]); **CLAUDE.md/TODO.md/DONE.md/TOBEDECIDED.md de branch-bazlı BAĞIMSIZ** — her worktree kendi handover geçmişini tutar, birbirini güncellemez. **Kullanıcı yönü net: "react'e devam"** — yeni özellik/fix önceliği react-ui'de, main sadece parite alır. Karar geçmişi: TOBEDECIDED #14.
 
 ## Handover (3-fazlı)
 
@@ -51,14 +51,14 @@ Ho-prep sync (her ho'da): TODO done → DONE.
 
 ## READY FOR HANDOVER (2026-09-01)
 
-`main` + `feature/react-ui` (worktree `../claudeops-react-ui`) ikisi de temiz, github+gitlab senkron. Bulk-ho teşhis instrumentasyonu deploy edildi, HENÜZ canlı veri yok — bir sonraki normal bulk-ho'da `diag.log`/`journalctl` kontrol edilmeli (TODO.md üstü).
+`main` + `feature/react-ui` ikisi de temiz, github+gitlab senkron. Docs bu ho'da sadece main'de güncellendi (worktree'ler doc geçmişini bağımsız tutuyor, yukarıya bkz.).
 
-**Büyük gelişme:** react-ui artık main'le PARALEL, kalıcı deploy (:8766, ayrı systemd+tunnel — bkz. "Fleet kontrolü"). Kullanıcı yönü net: "react'e devam" — yeni özellik/fix önceliği orada.
+**4. provider: codex (OpenAI Codex CLI) eklendi** (`claude`/`agy`/`codex`/`shell`), her iki worktree'de. Mimarinin branch-free kaldığını ikinci kez doğruladı — 2 dosya (yeni provider + registry satırı) yetti. **İnteraktif spawn henüz canlı denenmedi** (panel→gnome-terminal→tmux üzerinden gerçek bir codex konuşması) — sadece provider round-trip + `codex exec` API-seviyesi testler yapıldı.
 
-**İlk kez Playwright ile canlı browser testi kuruldu** (Python `playwright` paketi + CDP touch dispatch). react-ui'de 3 gerçek bug bulunup DÜZELTİLDİ, ekran görüntüsüyle KANITLANDI: `scrollSensitivity` (mobil font için yanlış kalibre), `convertEol` (diagonal metin), arka-plan-scroll-lock. main'e parite taşındı. **⚠ Düzeltme:** önceki "touch scroll doğrulandı" iddiası kusurlu test sıralamasından kaynaklanıyordu — gerçek parmak-touch HÂLÂ kanıtlanmadı, kullanıcıdan gerçek cihazda kontrol istendi, yanıt bekleniyor.
+**İki gerçek bug bulunup düzeltildi + deploy edildi, ama kullanıcı teyidi BEKLİYOR:** (1) cli değiştirip model combosuna dokunmadan başlatınca eski cli'nin modeliyle spawn oluyordu (`_start`/`_new_chat`, her iki worktree — kullanıcının kendi teşhisiyle bulundu: "model secimi combosu değistirilmezse claude kalior"). (2) main panelde açık bir `<select>` varken 4s'lik refresh popup'ı kapatıyordu (react'te sorun yok, kullanıcı canlı doğruladı) — fix sadece main'de.
 
-tmux-backed "Stop" pencere kapatma fix'i de bu oturumda (kill.py, canlı doğrulanmadı — ekran kilitliydi). Sohbet "tüm session" toggle'ı SADECE react-ui'de.
+**Sıradaki session'ın ilk işi:** kullanıcıya iki fix'in gerçekten işe yaradığını (codex artık doğru modelle açılıyor mu, combo artık kapanmıyor mu) sor.
 
-**Canlı:** main+react-ui web/tunnel (4 unit) aktif, fleet 5 session dup yok, reboot yok.
+**Canlı:** main+react-ui web/tunnel (4 unit) aktif, bu oturumda restart edildi, dup yok.
 
 READY FOR HANDOVER
