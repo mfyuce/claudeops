@@ -38,7 +38,7 @@ from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
-from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, default_handover_effort
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from ..session import Session
@@ -1070,7 +1070,7 @@ def _handover(name: str, lang: str = "tr") -> dict:
                 model=model,
                 display=detect_display(),
                 permission_mode=provider.permission_modes()[0],
-                effort=provider.effort_levels()[-1],
+                effort=default_handover_effort(provider),
                 force_new=False,
                 prompt=message,
                 cli=chosen_cli,
@@ -1100,7 +1100,15 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     """
     old_name = old_name.strip()
     new_name = (new_name or old_name).strip()
-    if not _NAME_VALID_RE.match(new_name):
+    # Sadece GERÇEK bir rename'de (yeni_ad ≠ eski_ad) formatı zorla — isim
+    # değişmiyorsa bu zaten çalışan bir proc'un VAROLAN kimliği (adopt formu
+    # "yeni ad" alanını old_name ile ön-dolduruyor, kullanıcı dokunmadan
+    # "Devral"a basınca new_name==old_name gelir). O ismi kullanıcı seçmedi —
+    # süreç zaten öyle başlamış (ör. claudeops DIŞINDA elle `-n wireguard-mayaos-61`
+    # ile) — reddetmek "devral" özelliğini tam da var olma amacı olan durumda
+    # (isim claudeops'un kendi kuralına uymuyor) kullanılmaz kılardı. Canlı bulundu
+    # 2026-09-01: "wireguard-mayaos-61" adopt'ta invalid_name ile reddediliyordu.
+    if new_name != old_name and not _NAME_VALID_RE.match(new_name):
         return _err(lang, "invalid_name")
     procs = _find_running(old_name)
     if not procs:

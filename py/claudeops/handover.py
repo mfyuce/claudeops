@@ -22,7 +22,7 @@ from typing import List, Optional
 from .discovery import find_sessions, find_by_name
 from .kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from .needs_ho import needs_ho
-from .providers import get_provider
+from .providers import CliProvider, get_provider
 from .session import Session
 from .spawn import find_latest_jsonl, detect_display, spawn_session
 
@@ -49,6 +49,24 @@ def ancestor_pids() -> set:
         pids.add(ppid)
         pid = ppid
     return pids
+
+
+def default_handover_effort(provider: CliProvider) -> str:
+    """Respawn edilen session'ın handover'daki (Faz 1/Faz 2/web tek-session
+    'Handover' butonu — üçü de bunu kullanır) effort varsayımı.
+
+    Bilerek `provider.effort_levels()[-1]` (en tepe — claude'da 'max') DEĞİL:
+    bu, o TEK handover turunun maliyeti değil, respawn edilen session'ın BİR
+    SONRAKİ handover'a kadarki TÜM ömrü boyunca kalıcı varsayılan effort'u
+    (2026-09-01, kullanıcı kararı — filodaki onlarca session'ın haftalarca
+    biriken token maliyeti, tek bir turdaki uç-seviye kalite farkından daha
+    ağır basıyor). 'high' yoksa (ör. ileride eklenecek bir provider'ın
+    listesinde) en yükseğe düş — hiçbir provider boş liste dönmez (agy'nin
+    kendi tepesi zaten 'high', bu yüzden onun için davranış değişmiyor).
+    """
+    levels = provider.effort_levels()
+    return "high" if "high" in levels else levels[-1]
+
 
 HANDOVER_MSG_DEFAULT = (
     "ÖNCE: CLAUDE.md BÜYÜKLÜK OPTİMİZASYONU. Dosya her session başında context e "
@@ -153,7 +171,7 @@ def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> 
         model=session.model or provider.model_choices()[0],
         display=display,
         permission_mode=provider.permission_modes()[0],
-        effort=provider.effort_levels()[-1],
+        effort=default_handover_effort(provider),
         force_new=False,
         prompt=message,
         dry_run=dry_run,
