@@ -107,11 +107,20 @@ export type HandoverResult = ApiResult<{ kind?: string }>;
 
 /** `_term_output()`. */
 export type TermOutputResult = ApiResult<{ text: string; cols: number | null; rows: number | null }>;
+/** One message in `_term_chat(mode="full")`'s `full_history()`-backed history. */
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
 /** `_term_chat()` — `supported: false` for CLIs without a chat transcript
- * (agy/shell today), `ok: false` is a real backend error (session gone etc). */
+ * (agy/shell today), `ok: false` is a real backend error (session gone etc).
+ * `mode="last"` (default) returns `user`/`assistant`; `mode="full"` returns
+ * `messages` instead — same supported:false contract either way. */
 export type TermChatResult =
   | { ok: true; supported: false }
   | { ok: true; supported: true; user: string; assistant: string }
+  | { ok: true; supported: true; messages: ChatMessage[] }
   | ApiErr;
 
 /** `/api/diag/log` (GET, not a POST route). */

@@ -99,6 +99,8 @@ export interface Strings {
   termOpen: string;
   tabTermView: string;
   tabChatView: string;
+  chatModeLast: string;
+  chatModeFull: string;
   chatYou: string;
   chatAssistant: string;
   chatEmpty: string;
@@ -233,6 +235,8 @@ export const STRINGS: Record<Lang, Strings> = {
     termOpen: "aç",
     tabTermView: "terminal",
     tabChatView: "sohbet",
+    chatModeLast: "son mesaj",
+    chatModeFull: "tüm session",
     chatYou: "Sen",
     chatAssistant: "Asistan",
     chatEmpty: "(boş)",
@@ -365,6 +369,8 @@ export const STRINGS: Record<Lang, Strings> = {
     termOpen: "open",
     tabTermView: "terminal",
     tabChatView: "chat",
+    chatModeLast: "last message",
+    chatModeFull: "full session",
     chatYou: "You",
     chatAssistant: "Assistant",
     chatEmpty: "(empty)",
