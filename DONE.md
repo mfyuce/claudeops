@@ -2,6 +2,15 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-09-01 (2) (Playwright ile canlı teşhis: terminal scroll'un GERÇEK kök nedeni bulundu)
+
+- ✅ **Kullanıcı "hala olmuyor" + "playwright'tan bakabilir misin" dedi — önceki (touch-action/tek-write()) fix'ler semptomu ÇÖZMEMİŞ, haklıydı.** Browser/screenshot aracı yoktu; Python'ın `playwright` paketi (`~/.local/lib/python3.10/site-packages/playwright`, önceden kurulu) + `~/.cache/ms-playwright`'taki chromium ile headless bir test kurulup canlı `:8766`'ya (iPhone 13 emulation, gerçek CDP `Input.dispatchTouchEvent`) karşı ölçüm yapıldı.
+- ✅ **KÖK NEDEN #1: `scrollSensitivity` (varsayılan 1) mobil font boyutuna göre yanlış kalibreliydi.** Ölçüldü: ~6500px wheel delta'sı ~1 satır taşıyordu (masaüstü satırı ~17px varsayıyor, burada gerçek satır ~8px). `scrollSensitivity: 20` sonrası TEK bir gerçekçi swipe ~40 satır taşıdı — ekran görüntüsüyle önce/sonra kanıtlandı.
+- ✅ **KÖK NEDEN #2 (ayrı, dalga geçerken bulunan gerçek bug): `convertEol: false` → tmux `capture-pane -p`'nin bare `\n`'i satırları diagonal "merdiven" haline getiriyordu** (claude/agy TUI'lerinde görünmüyordu çünkü onlar kendi cursor-positioning'ini kullanıyor; shell provider'ı test ederken bulundu, feci okunaksızdı). `convertEol: true` ile düzeltildi, ekran görüntüsüyle kanıtlandı.
+- ✅ **`touch-action` teorisi (önceki oturumun fix'i) ELENDİ** — hem outer container'da hem doğrudan `.xterm-viewport`'ta test edildi, ölçülebilir fark yaratmadı.
+- ✅ **main'e parite için taşındı, AMA main'in xterm'i (vendored 5.3.0) react-ui'nin `@xterm/xterm` 6.x'inden TAMAMEN FARKLI bir scroll mimarisi kullandığı keşfedildi** (v5: gerçek native `.xterm-viewport` DOM scroll — `.xterm-scroll-area` var, `scrollHeight` gerçek bir aralık; v6: `.xterm-scroll-area` yok, internal/canvas state). main'de wheel zaten mükemmel çalışıyordu (varsayılan sensitivity'yle scrollTop binlerce px hareket etti) — `scrollSensitivity` orada muhtemelen gereksiz ama zararsız. **main'de gerçek CDP touch dispatch scrollTop'u hiç hareket ettirmedi** (touch-action nereye konsa konsun) — v5'e özgü gerçek bir bug mu, CDP'nin simüle touch'ının bu eski mimariyle uyumsuzluğu mu ayırt edilemedi; kullanıcının raporu react-ui hakkında olduğu ve main artık ikincil olduğu için daha fazla kovalanmadı.
+- **Ders:** browser tooling olmadan "kod okuyup mantık yürütmek" (önceki oturumun touch-action/tek-write() denemeleri) yanlış teşhise yol açabiliyor — canlı ölçüm (Playwright + gerçek CDP touch dispatch + ekran görüntüsü) kesin kanıt verdi, tahmin vermedi.
+
 ## 2026-09-01 (react-ui odaklı devam: terminal scroll fix + Sohbet "tüm session" toggle + cross-worktree bug)
 
 - ✅ **react-ui görsel olarak main'den ayırt edilsin (kullanıcı: "görüntü aynı", tekrarlayan kafa karışıklığı)** — `h1`'in yanına küçük bir "React" rozeti + browser tab title'ına " · React" eki eklendi. Sayfa tasarımının GERİ KALANI bilerek AYNEN 1:1 port kaldı (aynı `t.title` metni, aynı tema token'ları) — tek kasıtlı görsel fark bu ikisi.
