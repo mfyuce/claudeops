@@ -14,8 +14,6 @@ REPO_DIR = str(Path(__file__).resolve().parents[2])
 ROSTER_TSV = os.path.join(CLAUDEOPS_DIR, "roster.tsv")   # name<TAB>cwd<TAB>model
 MODELS_TSV = os.path.join(CLAUDEOPS_DIR, "models.tsv")   # name<TAB>model
 
-VENDOR_DIR = os.path.join(CLAUDEOPS_DIR, "vendor")       # xterm.js/css cache (ilk kullanımda indirilir)
-
 SESSIONS_DIR = os.path.join(CLAUDE_DIR, "sessions")      # <pid>.json (gecikmeli yazılır!)
 PROJECTS_DIR = os.path.join(CLAUDE_DIR, "projects")      # <encoded-cwd>/<sid>.jsonl
 CONFIG_JSON = os.path.join(HOME, ".claude.json")         # bozulursa resume-hang

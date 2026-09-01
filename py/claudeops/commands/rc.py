@@ -3,7 +3,8 @@
 Kullanım:
   # İsimler base-name (suffix yok): hc → hc (aynen yeniden açılır)
   py/cops rc hc hcr mo --new --kill-first \\
-    --model='claude-sonnet-4-6' --permission-mode=auto --effort=max --one-by-one
+    --model='claude-sonnet-4-6' --permission-mode=auto --one-by-one
+  (--effort verilmezse varsayılan artık 'high' — max/xhigh değil, bkz. handover.default_handover_effort)
 
   (--prompt verilmez → session'lar boş/idle başlar)
   (Geçiş: hc58 gibi suffix'li girdi de kabul edilir → base'e (hc) indirgenir.)
@@ -20,7 +21,7 @@ from typing import Optional
 
 from ..discovery import find_by_name, find_sessions
 from ..guard import guard_lock
-from ..handover import ancestor_pids
+from ..handover import ancestor_pids, default_handover_effort
 from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import repo_baseline_set
 from ..providers import get_provider
@@ -44,7 +45,7 @@ def register(sub):
     p.add_argument("--permission-mode", default=None,
                    help="permission-mode override (varsayılan: provider'ın ilk seçeneği, ör. 'auto')")
     p.add_argument("--effort", default=None,
-                   help="effort override (varsayılan: provider'ın en yüksek seviyesi, ör. claude'da 'max')")
+                   help="effort override (varsayılan: 'high' — provider'ın listesinde yoksa en yüksek seviye)")
     p.add_argument("--prompt", default=None, metavar="MSG",
                    help="opsiyonel ilk mesaj --new ile (varsayılan YOK → boş/idle başlar)")
     p.add_argument("--one-by-one", action="store_true",
@@ -96,7 +97,7 @@ def _run_inner(args, display, models, roster) -> int:
         provider = get_provider(entry.cli)
         model = args.model or models.get(base) or provider.model_choices()[0]
         permission_mode = args.permission_mode or provider.permission_modes()[0]
-        effort = args.effort or provider.effort_levels()[-1]
+        effort = args.effort or default_handover_effort(provider)
 
         # 1. Kill — tam isim VEYA base ile eşleşenleri öldür (suffix verilmeden çağrıda DUP önlemi).
         # Self-koruma: bu komutun içinden çalıştığı claude session'ı (ata-proc) asla öldürülmez.
