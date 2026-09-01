@@ -2074,7 +2074,7 @@ function termRow(s, colspan) {
   return `
     <tr class="opts-row"><td colspan="${colspan}" style="padding:0;border:0">
       <div style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;
-        display:flex;align-items:center;justify-content:center" onclick="if(event.target===this) toggleTerm('${s.name}')">
+        display:flex;align-items:center;justify-content:center;overscroll-behavior:contain" onclick="if(event.target===this) toggleTerm('${s.name}')">
         <div style="max-width:95vw;max-height:92vh;width:fit-content;background:var(--panel);
           border-radius:8px;display:flex;flex-direction:column;align-items:flex-start;
           padding:.7rem;box-sizing:border-box">
@@ -2222,10 +2222,46 @@ function measureCharWidthPx() {
   return _charWidthPx;
 }
 
+// Modal açıkken arka plan sayfası kaydırılmasın diye (2026-09-01, canlı bulundu
+// + Playwright'ta gerçek CDP touch dispatch'iyle doğrulandı: backdrop kenar
+// boşluğuna ya da modal panelinin scroll'suz bölgelerine — başlık satırı, sekme
+// çubuğu, alt tuş satırı — dokunup sürüklemek arka sayfayı kaydırıyordu, kullanıcı
+// raporu: "sanki popup değil de arkadaki sayfa scroll oluyor"). Düz
+// `overflow:hidden` iOS Safari'de güvenilmez olduğu için bilinen `position:fixed`
+// + scroll-offset geri-yükleme tekniği kullanılıyor (react-ui'deki AYNI fix).
+let _bodyScrollLockY = null;
+function lockBodyScroll() {
+  if (_bodyScrollLockY !== null) return;
+  _bodyScrollLockY = window.scrollY;
+  document.body.style.position = 'fixed';
+  document.body.style.top = '-' + _bodyScrollLockY + 'px';
+  document.body.style.width = '100%';
+  document.body.style.overflow = 'hidden';
+  // body:fixed pins body's own box, ama <html> kendi başına hâlâ scroll
+  // "biriktirebiliyor" (görsel etkisi yok — body zaten pinli — ama window.scrollY
+  // değişmeye devam ediyor, kapanışta yanlış yere geri dönme riski) — canlı
+  // Playwright'ta main'e ÖZGÜ bulundu (react-ui'de sadece body'nin yettiği
+  // görüldü, muhtemelen sayfa yapısı farkı) — ikisini de kilitlemek her iki
+  // durumda da güvenli/gereksiz-zararsız.
+  document.documentElement.style.overflow = 'hidden';
+}
+function unlockBodyScroll() {
+  if (_bodyScrollLockY === null) return;
+  const y = _bodyScrollLockY;
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.width = '';
+  document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
+  _bodyScrollLockY = null;
+  window.scrollTo(0, y);
+}
+
 function toggleTerm(name) {
   if (termPollTimer) { clearInterval(termPollTimer); termPollTimer = null; }
   const prev = termFor;
   termFor = (termFor === name) ? null : name;
+  if (termFor) lockBodyScroll(); else unlockBodyScroll();
   // Kapatılan (ya da başka bir session'a geçilirken bırakılan) eski instance'ı
   // dispose+sil — yoksa ensureXtermFor'un `if (xtermInstances[name]) return`
   // guard'ı bir SONRAKİ açılışta "zaten kurulu" sanıp YENİ container'a hiç
