@@ -36,7 +36,7 @@
  * is visually active).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLang } from "../../i18n/LangContext";
 import { ChatView } from "./ChatView";
@@ -49,9 +49,42 @@ interface TerminalModalProps {
   onClose: () => void;
 }
 
+/**
+ * Body scroll lock, live-verified as actually needed (2026-09-01, Playwright
+ * + real CDP touch dispatch): with nothing preventing it, a touch-drag
+ * starting on the backdrop margin OR on any non-scrollable part of the
+ * modal panel itself (the header row, the tab bar, the key-button row below
+ * the terminal — none of which have their own overflow/scroll handling)
+ * scrolled the PAGE BEHIND the modal instead of doing nothing — measured
+ * window.scrollY moving by dozens to hundreds of px per swipe. User report:
+ * "sanki popup değil de arkadaki sayfa scroll oluyor" (feels like the page
+ * behind is scrolling, not the popup). Plain `overflow:hidden` on body is
+ * well known to be unreliable on iOS Safari specifically, hence the
+ * fixed-position + restore-scroll-offset approach instead.
+ */
+function useBodyScrollLock() {
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const prev = { position: body.style.position, top: body.style.top, width: body.style.width, overflow: body.style.overflow };
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
+    return () => {
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      body.style.overflow = prev.overflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+}
+
 export function TerminalModal({ name, onClose }: TerminalModalProps) {
   const { t } = useLang();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("term");
+  useBodyScrollLock();
 
   const overlay = (
     <div
@@ -63,6 +96,7 @@ export function TerminalModal({ name, onClose }: TerminalModalProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        overscrollBehavior: "contain",
       }}
       // Original: onclick="if(event.target===this) toggleTerm(name)" — only
       // close on a direct click on the backdrop itself, not a click that
