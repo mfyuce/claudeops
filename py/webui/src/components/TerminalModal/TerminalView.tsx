@@ -108,9 +108,28 @@ export function TerminalView({ name, hidden }: TerminalViewProps) {
           cols: INITIAL_COLS,
           rows: INITIAL_ROWS,
           scrollback: 5000,
-          convertEol: false,
+          // `tmux capture-pane -p`'s plain-text mode (tmux_backend.py's
+          // tmux_capture) emits bare \n, not \r\n — with convertEol:false
+          // that's a line-feed with NO carriage return, so each new line
+          // keeps the PREVIOUS line's cursor column instead of resetting to
+          // 0, producing a diagonal staircase instead of a left-aligned
+          // list (found live, 2026-09-01, testing the shell provider's
+          // terminal — a real bug, unrelated to the touch-scroll one this
+          // session started investigating). Content that already emits
+          // proper \r\n (claude/agy's own TUI redraws) is unaffected —
+          // \r-then-\n and convertEol's synthesized \r-then-\n land in the
+          // same place, so this is a strict fix, not a trade-off.
+          convertEol: true,
           disableStdin: true,
           fontSize,
+          // Default (1) is calibrated for a ~17px desktop line-height — this
+          // terminal's real font is shrunk to fit a phone screen (~8px rows
+          // here), so the SAME wheel/touch delta maps to a tiny fraction of a
+          // line. Measured live (Playwright + real CDP touch dispatch, no
+          // browser tooling in-conversation so this had to be tested this
+          // way): ~6500px of wheel delta moved ~1 line — a full-height mobile
+          // swipe or a few wheel clicks did nothing perceptible. 2026-09-01.
+          scrollSensitivity: 20,
         });
         term.open(container);
         instRef.current = { term, cols: INITIAL_COLS, rows: INITIAL_ROWS, lastText: null };
