@@ -2093,7 +2093,7 @@ function termRow(s, colspan) {
           <div id="term-view-${s.name}" style="width:100%">
             <div id="term-urls-${s.name}" hidden style="width:100%;box-sizing:border-box;margin-bottom:.3rem"></div>
             <div id="xterm-${s.name}" style="background:#111;padding:.35rem;border-radius:4px;
-              overflow:auto;max-width:calc(95vw - 1.4rem);max-height:calc(92vh - 130px);
+              overflow:auto;touch-action:pan-y;max-width:calc(95vw - 1.4rem);max-height:calc(92vh - 130px);
               box-sizing:content-box;font-family:monospace;font-size:.8rem;color:#ddd;
               white-space:pre-wrap"></div>
             <div class="opts-hint" id="term-hint-${s.name}" style="width:100%;box-sizing:border-box"></div>
