@@ -233,8 +233,10 @@ py/claudeops/
   tmux_backend.py                       # tmux helpers (dedicated -L cops socket), fail-soft if no tmux
   providers/                            # CliProvider ABC + one file per CLI backend + registry
     base.py, claude_provider.py, agy_provider.py, shell_provider.py, __init__.py
-  data/                                  # bundled static assets: tmux.conf, vendored xterm.js, run-tunnel.sh
-  commands/                             # one file per CLI command (web.py is the largest)
+  data/                                  # bundled static assets: tmux.conf, run-tunnel.sh
+  commands/                             # one file per CLI command (web.py/web_ws.py are the largest)
+py/webui/                               # the panel's browser client (React+TS+Vite) — see its own README.md
+  src/, dist/                           # dist/ is committed (built output, sourcemaps included) — no build step on deploy
 cops                                    # entry point → python3 -m claudeops
 ```
 

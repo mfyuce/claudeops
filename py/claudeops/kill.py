@@ -7,8 +7,6 @@ Kural ([[claude-2183-conversation-truncation]]):
 """
 from __future__ import annotations
 import signal
-import subprocess
-import time
 from typing import Literal, Optional
 
 import psutil
@@ -18,32 +16,6 @@ KillResult = Literal["clean", "forced", "already_dead"]
 # Minimum güvenli grace süresi — lazy-checkpoint flush için gerekli
 # ([[claude-2183-conversation-truncation]]: 0.3s = truncation, 8s = güvenli kanıtlandı)
 KILL_GRACE_SECONDS: float = 10.0
-
-
-def _close_windows_by_exact_title(title: str) -> int:
-    """`wmctrl -l` çıktısını parse edip title'ı BİREBİR eşleşen (substring DEĞİL —
-    ör. `co` `cops`'un içinde geçiyor, ikisi de aynı anda canlı roster'da olabilir)
-    pencereleri `xdotool windowkill` ile kapatır. `windowkill` (WM_DELETE_WINDOW
-    DEĞİL, X-seviyesinde XKillClient) bilerek seçildi — gnome-terminal'in "işlem
-    çalışıyor, kapatılsın mı?" onay diyaloğunu tetikleme riskini bypass eder (o an
-    pencerede zaten boş/orphan bir bash prompt'u var, kaybedilecek iş yok).
-
-    Best-effort: wmctrl/xdotool yoksa ya da hiç eşleşme yoksa sessizce 0 döner,
-    çağıran akışı (kill) ASLA etkilemez/kesmez."""
-    try:
-        r = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=5)
-    except Exception:
-        return 0
-    closed = 0
-    for line in r.stdout.splitlines():
-        parts = line.split(None, 3)
-        if len(parts) == 4 and parts[3] == title:
-            try:
-                subprocess.run(["xdotool", "windowkill", parts[0]], capture_output=True, timeout=5)
-                closed += 1
-            except Exception:
-                pass
-    return closed
 
 
 def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS) -> KillResult:
@@ -95,8 +67,18 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
     göre değişken, garantili değil) — parent'ı köre kılıç öldürmek TÜM tmux-backed
     filoyu tek seferde silebilir. tmux-backed ise ad-bazlı (`tmux kill-session -t
     NAME`) temizlik yapılır, PID ancestry'sine hiç dokunulmaz.
+
+    O ad-bazlı temizlik pane'i öldürür ama TODO'da bulunan ayrı bir hasar bırakır:
+    spawn.py'nin penceresi `bash -c "tmux ... new-session -A -s NAME ...; exec
+    bash"`dır (NO `-d` — pencerenin kendisi attached client'tır); session ölünce
+    (pane'in komutu çıkınca zaten `remain-on-exit` kapalıyken session kendiliğinden
+    kapanır, `tmux_kill_session` çağrısını bile beklemez) o client döner, `exec
+    bash` devreye girip pencereyi boş bir prompt'ta ORPHAN bırakır — kapatmaz. O
+    pencerenin gerçek PID'i `kill_session`'dan ÖNCE (session/pane hâlâ NAME'i
+    cmdline'da taşırken) yakalanmalı — sonra `exec bash` argv'yi silip
+    tanınmaz hale getirir.
     """
-    from .tmux_backend import is_tmux_backed, tmux_kill_session
+    from .tmux_backend import find_outer_bash_pids, is_tmux_backed, tmux_kill_session
 
     tmux_backed = False
     try:
@@ -105,21 +87,17 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
         tmux_backed = False  # tespit başarısızsa davranışı DEĞİŞTİRME, legacy yol
 
     if tmux_backed:
+        outer_windows = find_outer_bash_pids(name) if name else []
         result = kill_session(pid, grace=grace)
         if name:
             tmux_kill_session(name)  # best-effort, idempotent (zaten ölmüşse sorun yok)
-            # Session artık silindi → attached client (gnome-terminal'in "tmux
-            # new-session -A ...; exec bash" komutu) döner, `; exec bash`'e düşüp
-            # BOŞ pencerede ORPHAN kalır (TODO.md "tmux-backed stop orphan",
-            # 2026-08-28). PID-ancestry'nin bu fonksiyonda tmux-backed için YASAK
-            # olma sebebiyle AYNI sebepten (claude'un parent'ı paylaşımlı tmux
-            # SERVER'a çıkıyor) outer gnome-terminal penceresiyle bir PID ilişkisi
-            # de YOK — pencereyi ancak title'ından (spawn.py `--title={name}`,
-            # tmux.conf `set-titles-string '#S'` ile teyitli) bulup kapatabiliriz.
-            # Session zaten silindiği için bu artık güvenli (paylaşımlı server'a
-            # dokunmuyor, sadece kendi penceresini) — TBD#11'in riski geçmişte kaldı.
-            time.sleep(0.5)  # client'ın exec bash'e düşüp yerleşmesi için kısa settle
-            _close_windows_by_exact_title(name)
+        for outer_pid, outer_create_time in outer_windows:
+            try:
+                p = psutil.Process(outer_pid)
+                if p.create_time() == outer_create_time:
+                    p.kill()
+            except psutil.NoSuchProcess:
+                pass
         return result
 
     parent_pid: Optional[int] = None
