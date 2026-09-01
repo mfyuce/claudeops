@@ -52,6 +52,15 @@ class CliProvider(ABC):
         okunabilir bir transcript'i olan provider'lar (claude) override eder."""
         return None
 
+    def full_history(self, cwd: str, sid: Optional[str]) -> Optional[List[Dict[str, str]]]:
+        """`last_exchange`'in TEK son çifti yerine TÜM gerçek user/assistant turlarını
+        sırayla [{'role':'user'|'assistant','text':...}, ...] olarak döndür (2026-09-01,
+        kullanıcı: Sohbet sekmesine "son mesaj"/"tüm session" iki seçenek). AYNI
+        destekleniyor/desteklenmiyor sözleşmesi: None = bu CLI için yok, boş liste =
+        destekleniyor ama henüz mesaj yok — sadece `last_exchange`'i override eden
+        provider'ların override etmesi beklenir (varsayılan burada da None)."""
+        return None
+
     def env_overrides(self, session_name: str) -> Dict[str, str]:
         """Bu CLI çağrısına ÖZEL env değişkenleri (varsayılan: yok).
 
