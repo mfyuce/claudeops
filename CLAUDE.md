@@ -7,7 +7,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **stdin/pty**: `< /dev/null` her `-p`'de zorunlu. Spawn: `gnome-terminal -- bash -c "claude ...; exec bash"`. Detached: `script -qfc`. `nohup &` yetmez.
 - **VTE rejection**: synthetic key REDDEDİLİR. Güvenilir prompt = CLI argümanı: `-n NAME --remote-control NAME 'PROMPT'`. Aynı sid resume → cache'li, değiştirmek için `--new`.
 - **xdotool**: `windowmove` → **`--sync` YOK** (hang).
-- **claude 2.1.183 KILL=TRUNCATE**: lazy-checkpoint storage → **hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL** (sert kill = son mesajlar gider, iş git'te güvende). [[claude-2183-conversation-truncation]]
+- **claude KILL=TRUNCATE riski**: lazy-checkpoint storage → **hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL** (sert kill = son mesajlar gider, iş git'te güvende). [[claude-2183-conversation-truncation]]
 - **claude resume "deferred tool marker"**: promptsuz `--resume` bazen ANINDA hata verir → resume'a mutlaka `--prompt` ver (`--new` OLMADAN). [[resume-deferred-tool-marker]]
 - **spawn güvenilirliği**: CLAUDE*/GEMINI*/ANTIGRAVITY* env filtrelenir (yoksa transcript kapanır). gnome-terminal flake → oto-retry+fallback, windowless'i **"pencere aç"**la düzelt. "restart hâlâ olmuyor" → **gt-restart** (Tanı sekmesi, web'den bağımsız). [[spawn-env-leak-disables-transcript]] [[spawn-zombie-child-degrades-web-server]]
 - **`service.py`'nin `WEB_UNIT_TEMPLATE`'ini düzenlersen `bash -ic '...'` ExecStart'ı, `KillMode=process`, ve tunnel unit'inin `Wants=` (`Requires=` DEĞİL) satırını BOZMA** — üçü de canlı yaşanan gerçek hasarların fix'i (sırasıyla: minimal systemd PATH → `claude: command not found`; varsayılan `control-group` → restart altındaki tmux'u da öldürür; `Requires=` → web servisini restart etmek tunnel'ı da stop+start eder, quick-tunnel modda URL her seferinde rastgele değişip kullanıcının bookmark'ını kırar), tam gerekçe modülün kendi docstring'inde. `run-tunnel.sh` `CLAUDEOPS_TUNNEL_URL_FILE`/`_LOG`/`_LABEL`/`CLAUDEOPS_PORT` env override'larını destekler — ikinci bir paralel deploy'un tünel/log dosyasını canlı olanınkiyle EZMEDEN çalışabilmesi için (2026-09-01 merge'de main'den korunan versiyon; [[tunnel-flag-shares-live-log-file]]).
@@ -34,7 +34,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 
 - **Faz 1:** `py/cops handover [--dry-run]` — batch'li (mass aynı anda = rate-limit → blank-TUI [[mass-faz1-ratelimit-stuck]]); self (komutun atası) otomatik atlanır. Konuşması olmayan provider'lar (`shell`) `has_conversation()=False` ile otomatik dışlanır — kill edilmezler.
 - **Faz 2:** Faz1 sağlıksızsa (503/529) DUR, kullanıcı onayı şart. `py/cops rc <isimler SPACE'li> --new --kill-first --model='claude-sonnet-5' --permission-mode=auto --one-by-one` (bash rc DEĞİL). `--effort` VERME — varsayılan artık `high` (2026-09-01 kullanıcı kararı: max/xhigh yerine, respawn edilen session'ın kalıcı varsayımı olduğu için — [[handover-effort-high-not-max]]). `--prompt` VERME (boş başlasınlar [[faz2-new-session-devam]]). Config doğrula: `python3 -c "import json;json.load(open('$HOME/.claude.json'))"`. Bridge rate-limit: 4'er batch + 20s [[bridge-batch-spawn-ratelimit]].
-- **Faz 3:** ÖNCE `loginctl show-session <id> -p LockedHint`=no doğrula [[layout-needs-unlocked-screen]]. `./claudeops layout grid 4 --claude-only --pin=... --group=...` (bash — `py/cops layout` eşdeğerliği CANLI doğrulanıp CLAUDE.md güncellenmedi, TOBEDECIDED.md #12) — 2× çalıştır, `xwininfo` ile doğrula (wmctrl 2× yalan).
+- **Faz 3:** ÖNCE `loginctl show-session <id> -p LockedHint`=no doğrula [[layout-needs-unlocked-screen]]. `./claudeops layout grid 4 --claude-only --pin=... --group=...` (bash, bkz. TOBEDECIDED.md #12) — 2× çalıştır, `xwininfo` ile doğrula (wmctrl 2× yalan).
 - **Skip kriteri:** RFH var + sonrasında yeni istek yok + repo temiz+pushed (github+gitlab).
 - Detay: [[handover-procedure]] [[handover-edge-cases]] [[feedback-ho-stop-on-error]] [[config-corruption-resume-hang]]
 
@@ -49,12 +49,10 @@ Ho-prep sync (her ho'da): TODO done → DONE.
 
 ## READY FOR HANDOVER (2026-09-01)
 
-**BÜYÜK GÜN: `feature/react-ui` main'e merge edildi, React panel artık ASIL panel** (TOBEDECIDED.md #14, kullanıcı kararı — detay DONE.md). Eski PAGE_HTML panel emekli. Merge, main'in 19 kendine-özgü commit'i tek tek incelenerek yapıldı (kör "react kazanır" değil) — main'den korunan tek 2 şey: `service.py`'nin tunnel `Wants=` fix'i + `run-tunnel.sh` parametrizasyonu (ikisi de zaten canlı deploy edilmiş haldeydi, sadece react-ui'nin tracked kaynağı bayattı). Bu ikisi artık yukarıdaki "Kritik kısıtlar"da.
+**BÜYÜK GÜN: `feature/react-ui` main'e merge edildi, React panel ARTIK ASIL panel, eski PAGE_HTML panel emekli** (TOBEDECIDED.md #14 kapalı). Eski "main sadece parity alır" kuralı GEÇERSİZ — tek ağaç var. Mekanik + main'den korunan 2 şey (artık "Kritik kısıtlar"da) + tmux-orphan/adopt/effort fix'leri + kullanıcının "tüm farklar" sorusuyla bulunup düzeltilen tek kayıp (URL banner TODO'su): DONE.md 2026-09-01 (1)-(5).
 
-Aynı session'da ayrıca: tmux-backed "stop" orphan-window bug'ı (PID-bazlı, X11'den bağımsız, canlı doğrulandı), adopt'un tirelenmiş/foreign isimleri reddetmesi, handover'ın varsayılan effort'u max→high (3 fix, detay DONE.md 2026-09-01 (1)-(3)).
+**Canlı, uçtan uca doğrulandı:** main :8765 restart edildi, fleet (7 session) etkilenmedi, tunnel URL DEĞİŞMEDİ (`Wants=`). React-only paralel deploy (:8766) durduruldu+disable (silinmedi, `feature/react-ui` de silinmedi). github+gitlab push edildi.
 
-**Canlı:** main :8765 (`claudeops-web.service`+`claudeops-tunnel.service`) — yeni koda restart edildi, fleet (7 session) etkilenmedi, tunnel URL değişmedi (`Wants=` doğrulandı, `journalctl` restart YOK). React-only paralel deploy (:8766) durduruldu+disable edildi (unit'ler silinmedi). `feature/react-ui` branch+worktree silinmedi (rollback referansı). github+gitlab'a push edildi (main + feature/react-ui).
-
-**Sıradaki session'ın bilmesi gereken:** eski "main sadece parity alır, asıl react-ui'de" kuralı ARTIK GEÇERSİZ — tek ağaç var, react-ui worktree'si sadece tarihsel referans. TODO.md'ye bugün 2 yeni madde eklendi: tablara sayfalama (kullanıcı isteği, kapsam netleşmedi) + main'de kısmen teşhis edilmiş "bulk handover'da sadece ilk item başarılı oluyor" (kök sebep hâlâ açık, taşındı).
+**Açık kalanlar:** TODO.md (öne çıkanlar: tablara sayfalama, bulk-handover kök sebebi, URL banner yeri, kullanıcı-bazlı kalıcı ayarlar).
 
 READY FOR HANDOVER
