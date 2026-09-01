@@ -40,6 +40,11 @@
 
 ## Kapatılmış (karar verildi)
 
+### 14) `feature/react-ui` branch'i main'e merge edilsin mi? — MERGE EDİLDİ, react-ui ASIL
+- **Karar (2026-09-01, kullanıcı):** "artık reacti marge edelim, asıl olsun, yeterince iyi, eskisiyle bir daha uğraşmayalım, son hali deploy edelim." ~5 haftalık paralel-deploy denemesi (2026-08-31'de "merge etme şimdilik, paralel çalıştır, karşılaştır" kararıyla başlamıştı) sonuçlandı: react-ui panel yeterince olgunlaştı, `main` artık react-ui'nin KENDİSİ (2-parent gerçek merge commit, main'in TÜM eski commit'leri git history'de kayıp değil). Eski PAGE_HTML panel emekli. Detay/mekanik: DONE.md 2026-09-01 "feature/react-ui → main merge".
+- **Uygulanan:** react-only paralel deploy (port 8766, `claudeops-web-react.service`/`claudeops-tunnel-react.service`) durduruldu+disable edildi (unit dosyaları SİLİNMEDİ — kolay rollback). `feature/react-ui` branch+worktree de SİLİNMEDİ (rollback referansı). Merge öncesi main'in 19 kendine-özgü commit'i tek tek incelendi — ikisi (service.py'nin tunnel `Wants=` fix'i + `run-tunnel.sh` parametrizasyonu) gerçekten main'de daha ileriydi ve KORUNDU, gerisi ya moot (eski panel'e özel) ya da react-ui'de zaten eşdeğeri vardı.
+- **Not (bash `claudeops`):** bu merge'in kapsamı DIŞINDA bilerek bırakıldı — TBD#12 (aşağıda) hâlâ açık, bağımsız bir soru.
+
 ### 10) agy (Google Antigravity CLI) entegrasyonu — çoklu-CLI fleet — UYGULANDI
 - **Karar (2026-08-27):** Uygulandı (faz 1+2), canlı doğrulandı. Mimari kullanıcı isteğiyle DEĞİŞTİ: ilk taslağım `if cli=="agy"` branch'leriydi, kullanıcı reddetti — "iki ayrı provider, bir base ana operasyonları belirtir, claude ve agy kendi içeriğini doldurur, cops manager olarak o metodları çağırır." Sonuç: yeni `py/claudeops/providers/` paketi (`base.py` ABC + `claude_provider.py` + `agy_provider.py` + registry) — `spawn.py`/`discovery.py`/`commands/web.py` artık HİÇBİR YERDE `cli` string'ine göre dallanmıyor, sadece `get_provider(cli)` üzerinden çağırıyor (bkz. [[feedback-multi-backend-provider-pattern]]).
   - roster.tsv 4. kolon (`cli`, opsiyonel, yoksa "claude" — eski satırlar bozulmadı); isimlendirme `COPS_NAME` env (agy'nin `--remote-control` muadili yok) + discovery `psutil.Process.environ()`; COPS_NAME olmadan (bare agy) `agy-<pid>` placeholder — adoptable.

@@ -47,10 +47,14 @@ Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permis
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-08-30)
+## READY FOR HANDOVER (2026-09-01)
 
-Repo temiz, HEAD öncesi=`e208122`, github+gitlab senkron. Bu session: **`py/cops service`** yeni (install/status/uninstall/notify/watchdog, bkz. yukarı) + **3. provider `shell`** + mobil terminal input-kaybı düzeltildi + `claude: command not found` PATH bug'ı bulundu+düzeltildi (deploy sırasında kendi açtığım `KillMode` cgroup-kill hasarını da kurtardım, kalıcı fix uygulandı) + root README'lere kapasite özeti eklendi.
+**BÜYÜK GÜN: `feature/react-ui` main'e merge edildi, React panel artık ASIL panel** (TOBEDECIDED.md #14, kullanıcı kararı — detay DONE.md). Eski PAGE_HTML panel emekli. Merge, main'in 19 kendine-özgü commit'i tek tek incelenerek yapıldı (kör "react kazanır" değil) — main'den korunan tek 2 şey: `service.py`'nin tunnel `Wants=` fix'i + `run-tunnel.sh` parametrizasyonu (ikisi de zaten canlı deploy edilmiş haldeydi, sadece react-ui'nin tracked kaynağı bayattı). Bu ikisi artık yukarıdaki "Kritik kısıtlar"da.
 
-**Canlı:** fleet'te ≥3 session ayakta (cops/rustrino/saseppr) sağlıklı; web+tunnel+root-watchdog aktif, linger doğrulandı. Tunnel URL rastgele/quick-tunnel (sabit domain `hoca.me` canlı production çıktı, TOBEDECIDED.md #13'te ertelendi). TODO.md güncel, yeni açık kalem yok — öne çıkanlar: bash `claudeops` silinebilir mi (TOBEDECIDED.md #12: Faz 3 `py/cops layout` doğrulaması + eski komut denetimi açık) ve yeni CLI backend adayları (gemini en hazır).
+Aynı session'da ayrıca: tmux-backed "stop" orphan-window bug'ı (PID-bazlı, X11'den bağımsız, canlı doğrulandı), adopt'un tirelenmiş/foreign isimleri reddetmesi, handover'ın varsayılan effort'u max→high (3 fix, detay DONE.md 2026-09-01 (1)-(3)).
+
+**Canlı:** main :8765 (`claudeops-web.service`+`claudeops-tunnel.service`) — yeni koda restart edildi, fleet (7 session) etkilenmedi, tunnel URL değişmedi (`Wants=` doğrulandı, `journalctl` restart YOK). React-only paralel deploy (:8766) durduruldu+disable edildi (unit'ler silinmedi). `feature/react-ui` branch+worktree silinmedi (rollback referansı). github+gitlab'a push edildi (main + feature/react-ui).
+
+**Sıradaki session'ın bilmesi gereken:** eski "main sadece parity alır, asıl react-ui'de" kuralı ARTIK GEÇERSİZ — tek ağaç var, react-ui worktree'si sadece tarihsel referans. TODO.md'ye bugün 2 yeni madde eklendi: tablara sayfalama (kullanıcı isteği, kapsam netleşmedi) + main'de kısmen teşhis edilmiş "bulk handover'da sadece ilk item başarılı oluyor" (kök sebep hâlâ açık, taşındı).
 
 READY FOR HANDOVER
