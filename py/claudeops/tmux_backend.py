@@ -156,6 +156,55 @@ def tmux_kill_session(name: str) -> None:
         pass
 
 
+def find_outer_bash_pids(name: str) -> List[tuple]:
+    """Find gnome-terminal-launched `bash -c "... ; exec bash"` windows attached
+    to tmux session `name`, BEFORE tearing it down (TODO: tmux-backed "stop"
+    leaves an orphan window).
+
+    spawn.py opens a window with `bash -c "tmux -L cops ... new-session -A -s
+    NAME ...; exec bash"` (no `-d` — the window itself IS the attached tmux
+    client); `open_window()`'s one-click "pencere aç" adds more windows the
+    same way via `attach-session -t NAME; exec bash`. Neither is an ancestor
+    of the pane's own claude/agy pid (both reach the pane only through the
+    shared tmux SERVER, never through the OS process tree — see
+    `kill_session_and_parent`'s docstring), so they can't be found by walking
+    up from `pid`; they must be matched by cmdline instead.
+
+    That cmdline is only readable in this window: once the session dies (the
+    pane's command exiting already ends it by default, before an explicit
+    `tmux kill-session` even runs) the attached client returns and `exec
+    bash` REPLACES this process's argv, permanently erasing the `-s NAME`/
+    `-t NAME` text `cmdline()` would otherwise match on. Callers must call
+    this BEFORE killing the pane's process, not just before `tmux_kill_session`.
+
+    Returns a list of (pid, create_time) — create_time lets a caller that
+    kills later re-check it's still the same process, not a reused pid
+    (mirrors kill_session_and_parent's own parent-pid-before-kill pattern).
+    A session can have more than one attached window (original + "pencere
+    aç" extras), so this returns every match rather than just the first.
+    """
+    import psutil
+
+    needles = (
+        f"-s {shlex.quote(name)} -c ",              # spawn.py's initial window
+        f"attach-session -t {shlex.quote(name)};",  # open_window()'s extra window(s)
+    )
+    found: List[tuple] = []
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            if proc.info["name"] != "bash":
+                continue
+            cmdline = proc.cmdline()
+            if len(cmdline) < 3 or cmdline[1] != "-c":
+                continue
+            script = cmdline[2]
+            if any(needle in script for needle in needles):
+                found.append((proc.pid, proc.create_time()))
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return found
+
+
 def is_tmux_backed(pid: int) -> bool:
     """Walk the psutil ancestor chain (bounded) looking for our tmux server.
 

@@ -67,8 +67,18 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
     göre değişken, garantili değil) — parent'ı köre kılıç öldürmek TÜM tmux-backed
     filoyu tek seferde silebilir. tmux-backed ise ad-bazlı (`tmux kill-session -t
     NAME`) temizlik yapılır, PID ancestry'sine hiç dokunulmaz.
+
+    O ad-bazlı temizlik pane'i öldürür ama TODO'da bulunan ayrı bir hasar bırakır:
+    spawn.py'nin penceresi `bash -c "tmux ... new-session -A -s NAME ...; exec
+    bash"`dır (NO `-d` — pencerenin kendisi attached client'tır); session ölünce
+    (pane'in komutu çıkınca zaten `remain-on-exit` kapalıyken session kendiliğinden
+    kapanır, `tmux_kill_session` çağrısını bile beklemez) o client döner, `exec
+    bash` devreye girip pencereyi boş bir prompt'ta ORPHAN bırakır — kapatmaz. O
+    pencerenin gerçek PID'i `kill_session`'dan ÖNCE (session/pane hâlâ NAME'i
+    cmdline'da taşırken) yakalanmalı — sonra `exec bash` argv'yi silip
+    tanınmaz hale getirir.
     """
-    from .tmux_backend import is_tmux_backed, tmux_kill_session
+    from .tmux_backend import find_outer_bash_pids, is_tmux_backed, tmux_kill_session
 
     tmux_backed = False
     try:
@@ -77,9 +87,17 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
         tmux_backed = False  # tespit başarısızsa davranışı DEĞİŞTİRME, legacy yol
 
     if tmux_backed:
+        outer_windows = find_outer_bash_pids(name) if name else []
         result = kill_session(pid, grace=grace)
         if name:
             tmux_kill_session(name)  # best-effort, idempotent (zaten ölmüşse sorun yok)
+        for outer_pid, outer_create_time in outer_windows:
+            try:
+                p = psutil.Process(outer_pid)
+                if p.create_time() == outer_create_time:
+                    p.kill()
+            except psutil.NoSuchProcess:
+                pass
         return result
 
     parent_pid: Optional[int] = None
