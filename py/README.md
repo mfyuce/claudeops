@@ -147,6 +147,15 @@ py/cops service notify        # generates a private topic, prints setup steps (i
 py/cops service notify --off  # turn it back off
 ```
 
+A notification looks like `claudeops tunnel: https://random-words-here.trycloudflare.com` — the topic
+name `notify` prints (something like `claudeops-xxxxxxxx`) is what you search for/add in the ntfy app to
+subscribe. **Known limitation, found the hard way:** delivery to the phone isn't guaranteed — Android's
+own background restrictions (battery optimization, or the ntfy app's "Instant Delivery" setting turned
+off) can silently swallow a push, and ntfy.sh only retains a message for a few hours server-side, so a
+missed one can't be recovered later by reopening the app. Treat the notification as a convenience, not a
+source of truth — `~/.claude/claudeops/tunnel_url.txt` (mentioned above) is what actually has the current
+URL if a push never arrives.
+
 One more failure mode worth covering: on Linux, `systemd-oomd` can kill your *entire* login
 session (`user@<uid>.service`, not just claudeops) under memory pressure — when that happens, no
 `Restart=` policy can save you, since the thing that would restart the services is what died.

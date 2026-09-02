@@ -50,7 +50,9 @@ MIT lisanslı — bkz. [`LICENSE`](LICENSE).
 - `py/cops service install` — systemd kalıcılığı: panel ve tunnel logout/reboot'ta hayatta kalır,
   çökerse kendini toplar
 - `py/cops service notify` — tunnel URL'i GERÇEKTEN değiştiğinde ([ntfy.sh](https://ntfy.sh) üzerinden,
-  hesap gerekmez) telefonuna push bildirimi
+  hesap gerekmez) telefonuna push bildirimi, ör. `claudeops tunnel: https://random-words.trycloudflare.com`
+  — ulaşması garanti değil (Android arka-plan kısıtlamaları, ntfy.sh'nin kısa sunucu-taraflı saklama
+  süresi), detay/kısıtlar için `py/README_TR.md`
 - `py/cops service watchdog` — işletim sisteminin kendi bellek-baskısı katili (`oomd`) TÜM oturumunu
   (sadece claudeops'u değil) alaşağı ederse onu geri getiren root-seviyeli bir timer
 

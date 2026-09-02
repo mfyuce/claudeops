@@ -147,6 +147,15 @@ py/cops service notify        # özel bir topic üretir, kurulum adımlarını y
 py/cops service notify --off  # kapat
 ```
 
+Bir bildirim şöyle görünür: `claudeops tunnel: https://random-words-here.trycloudflare.com` —
+`notify`'ın yazdırdığı topic adı (`claudeops-xxxxxxxx` gibi) ntfy app'inde aratıp ekleyeceğiniz şey.
+**Zor yoldan öğrenilen bilinen kısıt:** telefona ulaşması garanti değil — Android'in kendi arka-plan
+kısıtlamaları (pil optimizasyonu, ya da ntfy app'inin "Instant Delivery" ayarı kapalıysa) bir push'u
+sessizce yutabilir, üstüne ntfy.sh sunucu tarafında mesajı sadece birkaç saat tutuyor — kaçırılan bir
+bildirim app'i sonradan açarak da geri getirilemez. Bildirimi bir kolaylık olarak görün, güvenilir tek
+kaynak olarak değil — bir push hiç ulaşmadıysa gerçek güncel URL yukarıda bahsedilen
+`~/.claude/claudeops/tunnel_url.txt`'te.
+
 Değinilmesi gereken bir başka arıza türü: Linux'ta `systemd-oomd`, bellek baskısı altında (sadece
 claudeops'u değil) **tüm login oturumunuzu** (`user@<uid>.service`) öldürebilir — bu olunca hiçbir
 `Restart=` politikası kurtaramaz, çünkü sizi kurtaracak olan şey zaten ölmüştür. `py/cops service
