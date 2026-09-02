@@ -24,12 +24,14 @@ import { GroupTable } from "./components/GroupTable";
 import { LayoutTab } from "./components/LayoutTab";
 import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
 import { RunningTab } from "./components/RunningTab/RunningTab";
+import { SettingsTab } from "./components/SettingsTab";
 import { TabBar } from "./components/TabBar";
 import { TerminalModal } from "./components/TerminalModal/TerminalModal";
 import { LangProvider, useLang } from "./i18n/LangContext";
 import { StatusProvider, useStatusContext } from "./state/StatusContext";
 import { useSelection } from "./state/selection";
 import { isTabKey, TAB_STORAGE_KEY, type TabKey } from "./state/tabs";
+import { applyTheme } from "./theme";
 
 function readStoredTab(): TabKey {
   try {
@@ -89,6 +91,15 @@ function AppShell() {
     document.title = `${t.title} · React`;
   }, [t]);
 
+  // TODO L73 (2026-09-02): keep <html data-theme> in sync with the server's
+  // settings.json — covers the initial load (main.tsx's applyCachedTheme()
+  // is only a same-instant guess from localStorage) AND a theme change made
+  // from another open tab/device, which arrives here as an ordinary
+  // StatusContext update (WS push, same as everything else in `data`).
+  useEffect(() => {
+    if (data?.settings.theme) applyTheme(data.settings.theme);
+  }, [data?.settings.theme]);
+
   let summary: string;
   if (error) {
     // Matches the original refresh()'s early-return-on-error: only the
@@ -134,6 +145,7 @@ function AppShell() {
         {data && activeTab === "retired" && <GroupTable items={data.retired} />}
         {data && activeTab === "layout" && <LayoutTab />}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
+        {data && activeTab === "settings" && <SettingsTab />}
       </div>
       {openTerminalFor && (
         <TerminalModal key={openTerminalFor} name={openTerminalFor} onClose={() => setOpenTerminalFor(null)} />

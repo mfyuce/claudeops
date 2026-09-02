@@ -24,6 +24,7 @@ from .kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from .needs_ho import needs_ho
 from .providers import CliProvider, get_provider
 from .session import Session
+from .settings import load_settings
 from .spawn import find_latest_jsonl, detect_display, spawn_session
 
 # 2026-08-25: isim-bazlı hariç-tutma (HO_EXCLUDE_BASES={co,cops,ulaksec}) KALDIRILDI
@@ -63,8 +64,18 @@ def default_handover_effort(provider: CliProvider) -> str:
     ağır basıyor). 'high' yoksa (ör. ileride eklenecek bir provider'ın
     listesinde) en yükseğe düş — hiçbir provider boş liste dönmez (agy'nin
     kendi tepesi zaten 'high', bu yüzden onun için davranış değişmiyor).
+
+    2026-09-02: kullanıcı Ayarlar'dan `handover_effort` override'ı ayarladıysa
+    (settings.json) VE bu provider'ın listesinde varsa, o kullanılır — TODO L73
+    ("default effort for ho... must be kept for the user, panelden kalıcı
+    ayarlanabilir olmalı"). Boşsa ya da provider'ın listesinde yoksa (ör. bir
+    sonraki provider'ın effort kelimeleri farklıysa) yukarıdaki sabit kural
+    değişmeden devam eder — hiçbir zaman KeyError/geçersiz effort riski yok.
     """
     levels = provider.effort_levels()
+    override = load_settings().get("handover_effort") or ""
+    if override in levels:
+        return override
     return "high" if "high" in levels else levels[-1]
 
 

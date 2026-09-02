@@ -48,6 +48,18 @@ export interface CliOptions {
 
 export const EMPTY_CLI_OPTIONS: CliOptions = { models: [], permission_modes: [], effort_levels: [] };
 
+export type Theme = "system" | "light" | "dark";
+
+/** Server-side persisted user settings (`~/.claude/claudeops/settings.json`,
+ * TODO L73) — same across every browser/device. "" for `handover_effort` or
+ * a missing `default_model[cli]` entry both mean "no override, use the
+ * built-in default". */
+export interface Settings {
+  theme: Theme;
+  handover_effort: string;
+  default_model: Record<string, string>;
+}
+
 export interface DiagInfo {
   web_pid: number;
   web_uptime_seconds: number;
@@ -77,6 +89,7 @@ export interface StatusPayload {
   /** The wrap-up prompt text `_handover()` sends, in both languages — so it
    * can be shown/copied from the UI without actually running a handover. */
   handover_msg: { tr: string; en: string };
+  settings: Settings;
 }
 
 // ── POST-route result shapes ────────────────────────────────────────────
@@ -108,6 +121,10 @@ export type AdoptResult = ApiResult<{ kind: string; new_name: string }>;
 export type SimpleResult = ApiResult;
 /** `_handover()`. */
 export type HandoverResult = ApiResult<{ kind?: string }>;
+/** `_compact()` — same shape as `_handover()` (kill + resume). */
+export type CompactResult = ApiResult<{ kind?: string }>;
+/** `_save_settings()`. */
+export type SettingsResult = ApiResult<{ settings: Settings }>;
 
 /** `_term_output()`. */
 export type TermOutputResult = ApiResult<{ text: string; cols: number | null; rows: number | null }>;
