@@ -22,7 +22,7 @@ export function Banners({ onGoToDiagnostics }: BannersProps) {
   if (data && !data.config_ok) {
     banners.push(
       <div className="banner bad" key="config">
-        ⚠ {data.config_msg}
+        ⚠ {t.configMsg(data.config_code, data.config_detail)}
       </div>,
     );
   }

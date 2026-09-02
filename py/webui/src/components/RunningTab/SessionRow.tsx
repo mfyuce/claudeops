@@ -19,6 +19,7 @@ import type { SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
 import { CwdCell } from "../shared/CwdCell";
+import { isProtectedName } from "../shared/protectedNames";
 import { AdoptRow } from "./AdoptRow";
 import { HoCell } from "./HoCell";
 import { OptionsRow } from "./OptionsRow";
@@ -77,6 +78,11 @@ export function SessionRow({
         </td>
         <td>
           {session.name}
+          {isProtectedName(session.name) && (
+            <span className="unreg-badge" title={t.protectedHint}>
+              {t.protectedBadge}
+            </span>
+          )}
           {session.registered === false && (
             <span className="unreg-badge" title={t.unregHint}>
               {t.unregBadge}

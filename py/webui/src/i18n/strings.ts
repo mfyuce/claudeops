@@ -55,6 +55,10 @@ export interface Strings {
   unexpectedResponse: (code: number) => string;
   runningWord: string;
   configWord: string;
+  /** Renders `StatusPayload.config_code`/`config_detail` (backend returns a
+   * language-neutral code — same "backend returns raw data, this file
+   * localizes it" pattern as `fallbackAlertMsg` etc). */
+  configMsg: (code: string, detail: string) => string;
   dupWarn: string;
   fallbackAlertMsg: (n: number, mins: number) => string;
   fallbackAlertBtn: string;
@@ -177,6 +181,10 @@ export interface Strings {
   diagLogTitle: string;
   diagLogLoading: string;
   diagRunAfterFail: string;
+  handoverMsgTitle: string;
+  handoverMsgHint: string;
+  protectedBadge: string;
+  protectedHint: string;
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -191,6 +199,7 @@ export const STRINGS: Record<Lang, Strings> = {
     unexpectedResponse: (code) => `beklenmeyen yanıt (http ${code}) — bu tünel/URL artık geçerli olmayabilir, güncel linki kontrol edin`,
     runningWord: "çalışıyor",
     configWord: "config",
+    configMsg: (code, detail) => code === "valid" ? "~/.claude.json geçerli" : code === "not_found" ? "~/.claude.json bulunamadı" : code === "corrupt" ? `~/.claude.json BOZUK (${detail}) — ~/.claude/backups/'tan geri yükle` : `~/.claude.json okunamadı: ${detail}`,
     dupWarn: "⚠ DUP: ",
     fallbackAlertMsg: (n, mins) => `⚠ son ${mins} dakikada ${n} kez pencere açma tüm denemelere (retry dahil) rağmen başarısız oldu (CLI'lar yine de çalışıyor, sadece penceresiz) — gnome-terminal-server gerçekten sorunlu olabilir.`,
     fallbackAlertBtn: "Tanı sekmesine git",
@@ -313,6 +322,10 @@ export const STRINGS: Record<Lang, Strings> = {
     diagLogTitle: "son diag-log kayıtları",
     diagLogLoading: "yükleniyor…",
     diagRunAfterFail: "Tanı sekmesine geçip spawn sağlık testi çalıştırılsın mı?",
+    handoverMsgTitle: "handover metni",
+    handoverMsgHint: "handover butonunun gönderdiği wrap-up mesajı, şu an seçili dilde — ayrı bir CLI açmadan kopyalayıp elle yapıştırabilirsiniz",
+    protectedBadge: "dikkat",
+    protectedHint: "guard'ı ayakta tutuyor — toplu seçimde/işlemde dikkatli olun",
   },
   en: {
     title: "claudeops — fleet control",
@@ -325,6 +338,7 @@ export const STRINGS: Record<Lang, Strings> = {
     unexpectedResponse: (code) => `unexpected response (http ${code}) — this tunnel/URL may no longer be valid, check the current link`,
     runningWord: "running",
     configWord: "config",
+    configMsg: (code, detail) => code === "valid" ? "~/.claude.json is valid" : code === "not_found" ? "~/.claude.json not found" : code === "corrupt" ? `~/.claude.json CORRUPT (${detail}) — restore from ~/.claude/backups/` : `~/.claude.json unreadable: ${detail}`,
     dupWarn: "⚠ DUP: ",
     fallbackAlertMsg: (n, mins) => `⚠ in the last ${mins} minutes, opening a window failed ${n} times despite all retries (the CLIs are still running, just windowless) — gnome-terminal-server may genuinely be having trouble.`,
     fallbackAlertBtn: "go to Diagnostics tab",
@@ -447,5 +461,9 @@ export const STRINGS: Record<Lang, Strings> = {
     diagLogTitle: "recent diag-log entries",
     diagLogLoading: "loading…",
     diagRunAfterFail: "Switch to the Diagnostics tab and run the spawn health test?",
+    handoverMsgTitle: "handover text",
+    handoverMsgHint: "the wrap-up message the handover button sends, in the currently selected language — copy it and paste it by hand without opening a separate CLI",
+    protectedBadge: "caution",
+    protectedHint: "keeps the guard alive — be careful with bulk selection/actions on this row",
   },
 };

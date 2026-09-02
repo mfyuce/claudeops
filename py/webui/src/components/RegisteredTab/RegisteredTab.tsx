@@ -19,6 +19,7 @@ import type { SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
 import { CwdCell } from "../shared/CwdCell";
+import { isProtectedName } from "../shared/protectedNames";
 import { RegisterForm } from "./RegisterForm";
 
 const REGISTERED_ROW_COLSPAN = 6;
@@ -48,7 +49,14 @@ function RegisteredRow({ session, selection, isOptionsOpen, onToggleOptions, onS
             onChange={(e) => selection.toggle(session.name, e.target.checked)}
           />
         </td>
-        <td>{session.name}</td>
+        <td>
+          {session.name}
+          {isProtectedName(session.name) && (
+            <span className="unreg-badge" title={t.protectedHint}>
+              {t.protectedBadge}
+            </span>
+          )}
+        </td>
         <td>{session.model || ""}</td>
         <td>
           <span className="cli-badge">{session.cli}</span>
