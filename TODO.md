@@ -92,7 +92,7 @@
 
 ## Dokümantasyon
 
-- [ ] README'ye actual workflow örnekleri (güncel session isimleri)
+- [ ] README'ye actual workflow örnekleri (güncel session isimleri) — **kısmen ilerledi (2026-09-02):** kullanıcının ntfy app ekran görüntüleri üzerinden `service notify`'ın gerçek bildirim formatı (`claudeops tunnel: https://...`) + güvenilirlik kısıtları (Android arka-plan/ntfy.sh saklama süresi) 4 README'ye de (kök + `py/`, TR+EN) eklendi. Kalan: session isimleriyle diğer workflow'ların (handover, compact, layout vb.) gerçek örnekleri hâlâ yok.
 - [ ] CLAUDE.md'ye "ne zaman compact" rehberi
 - [ ] Demo gif/video — visible mode reopen sırası
 

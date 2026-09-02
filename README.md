@@ -50,7 +50,9 @@ MIT licensed — see [`LICENSE`](LICENSE).
 - `py/cops service install` — systemd persistence: the panel and tunnel survive logout and reboot,
   and restart themselves if they crash
 - `py/cops service notify` — a phone push notification (via [ntfy.sh](https://ntfy.sh), no account
-  needed) whenever the tunnel URL actually changes
+  needed) whenever the tunnel URL actually changes, e.g. `claudeops tunnel: https://random-words.trycloudflare.com`
+  — delivery isn't guaranteed (Android background restrictions, ntfy.sh's short server-side retention),
+  see `py/README.md` for the details/caveats
 - `py/cops service watchdog` — a root-level timer that recovers your whole login session if the OS's
   own memory-pressure killer (`oomd`) ever takes the entire thing down, not just claudeops
 
