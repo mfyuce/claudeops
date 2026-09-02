@@ -53,7 +53,12 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
 
   const [mode, setMode] = useState<Mode>(() => (session.running ? "newchat" : "resume"));
   const [cli, setCli] = useState(session.cli);
-  const [model, setModel] = useState(""); // "" = use current/default, matches the original's value="" placeholder option
+  // "" = use the backend's own default (`provider.model_choices()[0]`, or the
+  // session's current model on resume). TODO L73 (2026-09-02): pre-fill from
+  // the user's persisted per-CLI default if they've set one — still just an
+  // initial suggestion, not a lock-in; changing the dropdown overrides it for
+  // this one invocation same as before.
+  const [model, setModel] = useState(() => data?.settings.default_model[session.cli] ?? "");
   const [modelOther, setModelOther] = useState("");
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
   const [effort, setEffort] = useState(() => defaultEffort(data?.cli_options[session.cli] ?? EMPTY_CLI_OPTIONS));
@@ -83,7 +88,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   // through local state in between.
   function handleCliChange(newCli: string) {
     setCli(newCli);
-    setModel("");
+    setModel(data?.settings.default_model[newCli] ?? "");
     setModelOther("");
     setPermissionMode(DEFAULT_PERMISSION_MODE);
     setEffort(defaultEffort(data?.cli_options[newCli] ?? EMPTY_CLI_OPTIONS));

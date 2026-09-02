@@ -25,6 +25,8 @@ import type {
   HandoverResult,
   LayoutResult,
   NewChatResult,
+  Settings,
+  SettingsResult,
   SimpleResult,
   StartResult,
   StatusPayload,
@@ -183,3 +185,8 @@ export const apiDiagSpawnTest = (lang: Lang): Promise<DiagSpawnTestResult> =>
 export const apiDiagRestartGt = (lang: Lang): Promise<DiagRestartResult> =>
   apiPost<DiagRestartResult>("/api/diag/restart-gt", { lang });
 export const apiDiagAsk = (p: DiagAskPayload): Promise<DiagAskResult> => apiPost<DiagAskResult>("/api/diag/ask", p);
+
+/** Partial patch — omitted keys are left untouched server-side (`settings.save_settings`'s merge). */
+export type SettingsPayload = Partial<Settings> & { lang: Lang };
+export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
+  apiPost<SettingsResult>("/api/settings", p);

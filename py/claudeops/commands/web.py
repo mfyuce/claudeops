@@ -43,13 +43,14 @@ from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
+from ..settings import load_settings, save_settings
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_send_keys,
     tmux_send_special_key, tmux_pane_size, ALLOWED_SPECIAL_KEYS,
 )
-from .web_static import resolve_static_path
+from .web_static import DIST_DIR, resolve_static_path
 from . import web_ws
 
 DEFAULT_PORT = 8765
@@ -139,6 +140,12 @@ ERR = {
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
     "gt_not_found": {"tr": "gnome-terminal-server çalışmıyor (zaten kapalı) — bir sonraki spawn otomatik açacak",
                       "en": "gnome-terminal-server isn't running (already down) — the next spawn will start it automatically"},
+    "compact_unsupported_cli": {"tr": "{name}: compact şu an sadece claude CLI için destekleniyor",
+                                 "en": "{name}: compact is currently only supported for the claude CLI"},
+    "compact_no_jsonl": {"tr": "{name}: sıkıştıracak bir konuşma bulunamadı (jsonl yok)",
+                          "en": "{name}: no conversation found to compact (no jsonl)"},
+    "invalid_theme": {"tr": "geçersiz tema — system/light/dark olmalı",
+                       "en": "invalid theme — must be system/light/dark"},
 }
 
 
@@ -842,7 +849,27 @@ def _status_payload() -> dict:
         # frontend'e bırakıyoruz (payload'ın geri kalanıyla aynı desen:
         # backend ham veri, React yerelleştirir).
         "handover_msg": {"tr": HANDOVER_MSG_DEFAULT, "en": HANDOVER_MSG_DEFAULT_EN},
+        # TODO L73 (2026-09-02, kullanıcı kararı: sunucu-taraflı ~/.claude/claudeops/
+        # settings.json — roster.tsv/models.tsv'yle aynı desen, tüm cihaz/tarayıcılardan
+        # aynı görünür). Her /api/status poll'unda taze okunuyor — /api/settings'e yapılan
+        # bir POST'un notify_status_changed() ile diğer açık tab'lara ANINDA yansıması için.
+        "settings": load_settings(),
     }
+
+
+_VALID_THEMES = ("system", "light", "dark")
+
+
+def _save_settings(patch: dict, lang: str = "tr") -> dict:
+    """`/api/settings` — kısmi patch alır (gönderilmeyen anahtarlar dokunulmadan
+    kalır, bkz. `settings.save_settings`'in merge mantığı). Tek doğrulama: tema
+    3 değerden biri olmalı (geri kalanı — handover_effort/default_model — geçersiz
+    bir değer sadece "otomatiğe düş" anlamına gelir, sert bir hata değil)."""
+    theme = patch.get("theme")
+    if theme is not None and theme not in _VALID_THEMES:
+        return _err(lang, "invalid_theme")
+    new = save_settings(patch)
+    return {"ok": True, "settings": new}
 
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
@@ -1106,6 +1133,108 @@ def _handover(name: str, lang: str = "tr") -> dict:
     return {"ok": True, "kind": kind}
 
 
+# bash cmd_compact'ın 300s'i yerine daha kısa — bu adım guard_lock DIŞINDA
+# çalışıyor olsa da sınırsız uzayıp panelin "bitti" haberini sonsuza kadar
+# geciktirmesin.
+COMPACT_TIMEOUT_SECONDS = 180.0
+
+
+def _compact(name: str, lang: str = "tr") -> dict:
+    """Kill + headless `-p '/compact'` + resume — 2026-09-02, kullanıcı isteği
+    ("terminal de ve listeden seçip onlara compact gonderme iyi olur").
+
+    Bash'in `cmd_compact`'ıyla AYNI mekanizma (headless `-p '/compact'`), YENİDEN
+    İCAT EDİLMEDİ: `_handover()`'daki gibi bir interaktif `--resume ... 'PROMPT'`
+    ile `/compact`'ı İLK MESAJ olarak göndermek DENENMEDİ — TUI'nin CLI argümanı
+    olarak geçirilen bir ilk mesajı slash-command olarak mı yoksa düz metin
+    olarak mı işlediği doğrulanmadı; bash'in headless `-p` yaklaşımı ise KANITLI
+    çalışıyor (canlı, üretimde). Headless adımın LIVE session'la aynı sid üzerinde
+    eşzamanlı çalışmaması için önce kill ŞART ([[claude-2183-conversation-truncation]]
+    sınıfı risk).
+
+    guard_lock kill VE respawn için AYRI AYRI KISA pencerelerde tutuluyor —
+    headless compact (bash'te olduğu gibi) dakikalarca sürebilir; bunu TEK bir
+    guard_lock penceresinin içine almak `GUARD_LOCK_ACQUIRE_TIMEOUT=60.0`
+    varsayımıyla ÇAKIŞIRDI (diğer TÜM panel aksiyonları — start/stop/başka bir
+    compact/handover — o süre boyunca kilitlenirdi). Guard cron zaten KASITLI
+    kapalı (Manuel fleet kontrolü kararı) — iki ayrı pencere arasında guard'ın
+    araya girip dup açması bugün pratikte imkansız; guard cron geri açılırsa bu
+    varsayım yeniden değerlendirilmeli.
+
+    Sadece `claude` provider'ı destekliyor (`/compact` claude-cli'a özgü bir
+    slash-command; `resolve_resume_id`'nin claude-özel `find_latest_jsonl`'a
+    dayanması da zaten aynı sınırlamayı taşıyor, [[handover.py's _spawn_faz1]]
+    ile aynı bilinçli kapsam daraltması).
+    """
+    procs = _find_running(name)
+    if not procs:
+        return _err(lang, "not_running", name=name)
+    fleet = _fleet_status()
+    info = fleet.get(name)
+    chosen_cli = info["cli"] if info else procs[0].cli
+    if chosen_cli != "claude":
+        return _err(lang, "compact_unsupported_cli", name=name)
+    provider = get_provider(chosen_cli)
+    if info:
+        cwd, model = info["cwd"], info["model"]
+    else:
+        cwd, model = procs[0].cwd, (procs[0].model or provider.model_choices()[0])
+
+    diag_log("compact_start", name=name)
+    try:
+        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
+            if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
+                time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
+    except TimeoutError as e:
+        diag_log("compact_lock_timeout", name=name, phase="kill", error=str(e))
+        return {"ok": False, "error": str(e)}
+    diag_log("compact_killed", name=name)
+
+    resume_id = provider.resolve_resume_id(cwd)
+    if resume_id is None:
+        diag_log("compact_no_jsonl", name=name)
+        return _err(lang, "compact_no_jsonl", name=name)
+    binary = shutil.which("claude") or "claude"
+    try:
+        subprocess.run(
+            [binary, "--resume", resume_id, "-p", "/compact"],
+            cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True,
+            timeout=COMPACT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        # devam et — respawn yine de denenir; compact yarıda kalmış olabilir
+        # ama session'ı tamamen kayıp bırakmaktan iyidir.
+        diag_log("compact_headless_timeout", name=name)
+    except Exception as e:
+        diag_log("compact_headless_error", name=name, error=str(e))
+    else:
+        diag_log("compact_headless_done", name=name)
+
+    try:
+        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            kind = spawn_session(
+                name=name,
+                cwd=cwd,
+                model=model,
+                display=detect_display(),
+                permission_mode=provider.permission_modes()[0],
+                effort=default_handover_effort(provider),
+                force_new=False,
+                prompt=None,
+                cli=chosen_cli,
+            )
+            reopened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
+    except TimeoutError as e:
+        diag_log("compact_lock_timeout", name=name, phase="respawn", error=str(e))
+        return {"ok": False, "error": str(e)}
+    if not reopened:
+        diag_log("compact_reopen_failed", name=name, kind=kind)
+        return _err(lang, "handover_reopen_failed", name=name, kind=kind)
+    diag_log("compact_done", name=name, kind=kind)
+    return {"ok": True, "kind": kind}
+
+
 def _adopt(old_name: str, new_name: str = "", model: str = "",
            permission_mode: str = "", effort: str = "", lang: str = "tr") -> dict:
     """claudeops'un AÇMADIĞI (kayıtsız/foreign) canlı bir session'ı devral.
@@ -1240,10 +1369,10 @@ class _Handler(BaseHTTPRequestHandler):
         """`_json()` + mutasyon `ok: True` dönmüşse `web_ws.notify_status_changed()`.
         Plan: notify SADECE do_POST'tan (aksiyon fonksiyonlarının İÇİNDEN
         değil) ve SADECE listelenen route'lardan (start/stop/retire/close/
-        handover/adopt/reactivate/new-chat/register/open-window/
-        diag-restart-gt) — bu route'ların do_POST dispatch'i bu helper'ı
-        kullanır, geri kalanı (layout/term-input/term-key/diag-spawn-test/
-        diag-ask gibi) düz `_json()` kullanmaya devam eder."""
+        handover/compact/adopt/reactivate/new-chat/register/open-window/
+        settings/diag-restart-gt) — bu route'ların do_POST dispatch'i bu
+        helper'ı kullanır, geri kalanı (layout/term-input/term-key/
+        diag-spawn-test/diag-ask gibi) düz `_json()` kullanmaya devam eder."""
         self._json(result, status=status)
         if result.get("ok"):
             web_ws.notify_status_changed()
@@ -1269,6 +1398,21 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        # Vite'ın content-hash'li dosyaları (`/assets/*`) SONSUZA KADAR güvenle
+        # cache'lenebilir (içerik değişirse dosya ADI da değişir) — ama
+        # `index.html` (hash'siz, sabit ad) ASLA cache'lenmemeli: aksi halde bir
+        # redeploy sonrası tarayıcı önbellekteki ESKİ `index.html`'i sunmaya
+        # devam eder, o index.html'in referans verdiği (yeni build'de artık
+        # SİLİNMİŞ, farklı hash'li dosyayla değişmiş) eski JS/CSS 404 döner ve
+        # sayfa hiç açılmaz — önceden HİÇBİR Cache-Control header'ı yoktu, yani
+        # tarayıcının kendi (validator'sız, öngörülemeyen) heuristik cache
+        # davranışına kalmıştı. Canlı bulundu (2026-09-02, kullanıcı: "ana
+        # sayfa açılırken bir hata var, tüm sayfa gizleniyor") — bu oturumdaki
+        # ardışık iki restart arasında yakalanan bir sekmede tam bu senaryo.
+        if fpath.is_relative_to(DIST_DIR / "assets"):
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
         return True
@@ -1337,8 +1481,8 @@ class _Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/close",
-                         "/api/handover", "/api/adopt", "/api/term/input", "/api/term/key",
-                         "/api/term/open-window",
+                         "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
+                         "/api/term/open-window", "/api/settings",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask"):
             self._json({"error": "not found"}, status=404)
             return
@@ -1380,6 +1524,11 @@ class _Handler(BaseHTTPRequestHandler):
                 dry_run=bool(data.get("dry_run", False)),
                 lang=lang,
             ))
+            return
+
+        if path == "/api/settings":
+            patch = {k: v for k, v in data.items() if k != "lang"}
+            self._json_notify(_save_settings(patch, lang=lang))
             return
 
         if path == "/api/new-chat":
@@ -1468,6 +1617,8 @@ class _Handler(BaseHTTPRequestHandler):
             result = _close_project(name, lang=lang)
         elif path == "/api/handover":
             result = _handover(name, lang=lang)
+        elif path == "/api/compact":
+            result = _compact(name, lang=lang)
         else:
             result = _reactivate_and_start(name, lang=lang)
         self._json_notify(result)

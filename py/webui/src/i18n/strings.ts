@@ -74,6 +74,7 @@ export interface Strings {
   tabRetired: string;
   tabLayout: string;
   tabDiag: string;
+  tabSettings: string;
   selWord: string;
   selectNeedsHo: string;
   hoCol: string;
@@ -83,10 +84,12 @@ export interface Strings {
   disableBtn: string;
   retireBtn: string;
   handoverBtn: string;
+  compactBtn: string;
   legendStop: string;
   legendDisable: string;
   legendRetire: string;
   legendHandover: string;
+  legendCompact: string;
   bulkConfirm: (label: string, expl: string, names: string[]) => string;
   bulkSkippedUnreg: string;
   bulkDone: (ok: number, fail: number) => string;
@@ -185,6 +188,19 @@ export interface Strings {
   handoverMsgHint: string;
   protectedBadge: string;
   protectedHint: string;
+  settingsDesc: string;
+  settingsAuto: string;
+  themeLabel: string;
+  themeSystem: string;
+  themeLight: string;
+  themeDark: string;
+  handoverEffortLabel: string;
+  handoverEffortHint: string;
+  defaultModelLabel: string;
+  pagePrev: string;
+  pageNext: string;
+  pageOf: (page: number, total: number) => string;
+  groupRunningBadge: string;
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -215,6 +231,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabRetired: "Emekli",
     tabLayout: "Layout",
     tabDiag: "Tanı",
+    tabSettings: "Ayarlar",
     selWord: "seçili",
     selectNeedsHo: "needs-ho seç",
     hoCol: "ho?",
@@ -224,10 +241,12 @@ export const STRINGS: Record<Lang, Strings> = {
     disableBtn: "devre dışı bırak",
     retireBtn: "emekli et",
     handoverBtn: "handover",
+    compactBtn: "compact",
     legendStop: "sadece process/pencereyi kapatır — kayıt AKTİF kalır, \"Kayıtlı\" sekmesinden devam ettirilir",
     legendDisable: "durdurur + otomasyon (guard) bir daha AÇMAZ — \"Devre dışı\" sekmesine taşınır, oradan geri alınır",
     legendRetire: "durdurur + arşive kaldırır — \"Emekli\" sekmesine taşınır, \"tekrar işe al\" ile döner",
     legendHandover: "wrap-up mesajı gönderip AYNI geçmişle yeniden açar (kapat+devam) — commit/push + not düşme için",
+    legendCompact: "konuşmayı sıkıştırıp (context özetlenir) AYNI geçmişle yeniden açar — sadece claude CLI, birkaç dakika sürebilir",
     bulkConfirm: (label, expl, names) => `${label} — ${expl}\n\nseçili (${names.length}): ${names.join(', ')}\n\nDevam edilsin mi?`,
     bulkSkippedUnreg: "kayıtsız olduğu için atlanacak: ",
     bulkDone: (ok, fail) => `bitti — ${ok} tamam` + (fail ? `, ${fail} hata` : ''),
@@ -326,6 +345,19 @@ export const STRINGS: Record<Lang, Strings> = {
     handoverMsgHint: "handover butonunun gönderdiği wrap-up mesajı, şu an seçili dilde — ayrı bir CLI açmadan kopyalayıp elle yapıştırabilirsiniz",
     protectedBadge: "dikkat",
     protectedHint: "guard'ı ayakta tutuyor — toplu seçimde/işlemde dikkatli olun",
+    settingsDesc: "Bu ayarlar sunucu tarafında saklanır (~/.claude/claudeops/settings.json) — telefon dahil hangi cihaz/tarayıcıdan girerseniz girin aynı görünür. Her seçim anında kaydedilir.",
+    settingsAuto: "(otomatik)",
+    themeLabel: "tema",
+    themeSystem: "sistem",
+    themeLight: "açık",
+    themeDark: "koyu",
+    handoverEffortLabel: "handover varsayılan effort",
+    handoverEffortHint: "handover (Faz 1/Faz 2/panelin tek-session handover butonu) ile yeniden açılan session'ların effort'u — respawn edilen session'ın BİR SONRAKİ handover'a kadarki ömrü boyunca kalıcı varsayılan olur",
+    defaultModelLabel: "yeni/resume için varsayılan model (CLI başına)",
+    pagePrev: "önceki",
+    pageNext: "sonraki",
+    pageOf: (page, total) => `sayfa ${page}/${total}`,
+    groupRunningBadge: "bu grupta çalışan var",
   },
   en: {
     title: "claudeops — fleet control",
@@ -354,6 +386,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabRetired: "Retired",
     tabLayout: "Layout",
     tabDiag: "Diagnostics",
+    tabSettings: "Settings",
     selWord: "selected",
     selectNeedsHo: "select needs-ho",
     hoCol: "ho?",
@@ -363,10 +396,12 @@ export const STRINGS: Record<Lang, Strings> = {
     disableBtn: "disable",
     retireBtn: "retire",
     handoverBtn: "handover",
+    compactBtn: "compact",
     legendStop: "kills only the process/window — stays REGISTERED, resume it from the \"Registered\" tab",
     legendDisable: "stop + automation (guard) will NOT reopen it — moves to the \"Disabled\" tab, reversible there",
     legendRetire: "stop + archive — moves to the \"Retired\" tab, comes back via \"reactivate\"",
     legendHandover: "sends a wrap-up prompt and reopens with the SAME history (close+continue) — for commit/push + notes",
+    legendCompact: "compacts the conversation (summarizes context) and reopens with the SAME history — claude CLI only, can take a few minutes",
     bulkConfirm: (label, expl, names) => `${label} — ${expl}\n\nselected (${names.length}): ${names.join(', ')}\n\nProceed?`,
     bulkSkippedUnreg: "skipped (unregistered): ",
     bulkDone: (ok, fail) => `done — ${ok} ok` + (fail ? `, ${fail} failed` : ''),
@@ -465,5 +500,18 @@ export const STRINGS: Record<Lang, Strings> = {
     handoverMsgHint: "the wrap-up message the handover button sends, in the currently selected language — copy it and paste it by hand without opening a separate CLI",
     protectedBadge: "caution",
     protectedHint: "keeps the guard alive — be careful with bulk selection/actions on this row",
+    settingsDesc: "These settings are stored server-side (~/.claude/claudeops/settings.json) — the same on every device/browser you sign in from, phone included. Each choice saves instantly.",
+    settingsAuto: "(auto)",
+    themeLabel: "theme",
+    themeSystem: "system",
+    themeLight: "light",
+    themeDark: "dark",
+    handoverEffortLabel: "handover default effort",
+    handoverEffortHint: "the effort level sessions reopened by handover (Phase 1/Phase 2/the panel's single-session handover button) get — becomes the respawned session's persistent default for its whole life until the NEXT handover",
+    defaultModelLabel: "default model for new/resume (per CLI)",
+    pagePrev: "prev",
+    pageNext: "next",
+    pageOf: (page, total) => `page ${page}/${total}`,
+    groupRunningBadge: "something in this group is running",
   },
 };

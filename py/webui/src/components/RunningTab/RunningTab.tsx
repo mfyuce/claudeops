@@ -18,8 +18,10 @@
 import { useState } from "react";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
+import { usePagination } from "../../hooks/usePagination";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
+import { Pagination } from "../shared/Pagination";
 import { BulkBar } from "./BulkBar";
 import { SessionRow } from "./SessionRow";
 
@@ -36,10 +38,16 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab }: Running
   const { data } = useStatusContext();
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
   const [openAdoptFor, setOpenAdoptFor] = useState<string | null>(null);
+  // Hooks must run unconditionally (rules-of-hooks) — computed before the
+  // `!data` early return below, with an empty-array fallback while `data`
+  // hasn't loaded yet.
+  const rows = data ? data.sessions.filter((s) => s.running) : [];
+  // Select-all/bulk actions stay scoped to the FULL (unpaginated) `rows` —
+  // only which rows are individually RENDERED is paginated.
+  const { pageItems, page, totalPages, setPage } = usePagination(rows);
 
   if (!data) return null;
 
-  const rows = data.sessions.filter((s) => s.running);
   const allSelected = rows.length > 0 && rows.every((s) => selection.selected.has(s.name));
 
   return (
@@ -77,7 +85,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab }: Running
                 </td>
               </tr>
             )}
-            {rows.map((s) => (
+            {pageItems.map((s) => (
               <SessionRow
                 key={s.name}
                 session={s}
@@ -93,6 +101,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab }: Running
           </tbody>
         </table>
       </div>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </>
   );
 }

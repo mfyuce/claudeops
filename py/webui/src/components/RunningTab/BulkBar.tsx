@@ -22,7 +22,7 @@ import { useStatusContext } from "../../state/StatusContext";
 import type { ApiResult, SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 
-type BulkAction = "handover" | "stop" | "close" | "retire";
+type BulkAction = "handover" | "compact" | "stop" | "close" | "retire";
 
 interface BulkBarProps {
   tab: "running" | "registered";
@@ -45,12 +45,14 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
 
   const labels: Record<BulkAction, string> = {
     handover: t.handoverBtn,
+    compact: t.compactBtn,
     stop: t.stopBtn,
     close: t.disableBtn,
     retire: t.retireBtn,
   };
   const explanations: Record<BulkAction, string> = {
     handover: t.legendHandover,
+    compact: t.legendCompact,
     stop: t.legendStop,
     close: t.legendDisable,
     retire: t.legendRetire,
@@ -114,6 +116,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     tab === "running"
       ? [
           [t.handoverBtn, t.legendHandover],
+          [t.compactBtn, t.legendCompact],
           [t.stopBtn, t.legendStop],
           [t.disableBtn, t.legendDisable],
           [t.retireBtn, t.legendRetire],
@@ -139,6 +142,15 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
               onClick={() => void handleBulk("handover")}
             >
               {t.handoverBtn}
+            </button>
+            <button
+              type="button"
+              className="handover"
+              disabled={!canAct}
+              title={t.legendCompact}
+              onClick={() => void handleBulk("compact")}
+            >
+              {t.compactBtn}
             </button>
             <button
               type="button"

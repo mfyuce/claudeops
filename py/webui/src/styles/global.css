@@ -24,13 +24,27 @@
   --green: #3fb950; --red: #f85149; --amber: #d29922;
   --accent: #58a6ff;
 }
+/* TODO L73 (2026-09-02): an explicit Settings-tab theme choice
+ * (`data-theme="light"|"dark"` on <html>, set by theme.ts) must override
+ * `prefers-color-scheme` in EITHER direction — "system" (no attribute)
+ * keeps today's original behavior unchanged. The light media query is
+ * guarded so an explicit dark choice wins even on a light-preferring OS;
+ * the explicit-light block below wins regardless of OS preference since it
+ * comes after and an attribute selector on :root out-specifies the bare
+ * :root default. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     --bg: #f6f8fa; --panel: #ffffff; --panel2: #eef1f4; --border: #d0d7de;
     --text: #1f2328; --muted: #59636e;
     --green: #1a7f37; --red: #cf222e; --amber: #9a6700;
     --accent: #0969da;
   }
+}
+:root[data-theme="light"] {
+  --bg: #f6f8fa; --panel: #ffffff; --panel2: #eef1f4; --border: #d0d7de;
+  --text: #1f2328; --muted: #59636e;
+  --green: #1a7f37; --red: #cf222e; --amber: #9a6700;
+  --accent: #0969da;
 }
 * { box-sizing: border-box; }
 body {
@@ -67,6 +81,11 @@ h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
 .bulkbar .selcount { font-size: .78rem; color: var(--muted); }
 .bulkmsg { font-size: .78rem; color: var(--muted); flex-basis: 100%; white-space: pre-wrap; }
 .legend { font-size: .72rem; color: var(--muted); margin: .2rem 0 .6rem; line-height: 1.6; }
+.pagination { display: flex; gap: .6rem; align-items: center; justify-content: center;
+              margin: .5rem 0; font-size: .78rem; color: var(--muted); }
+.group-header td { background: var(--panel2); font-size: .78rem; color: var(--muted);
+                    padding: .35rem .5rem; cursor: pointer; user-select: none; }
+.group-header .toggle { display: inline-block; width: 1em; }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; color: var(--muted); font-weight: 500; font-size: .75rem;
      text-transform: uppercase; letter-spacing: .04em; padding: .4rem .5rem;

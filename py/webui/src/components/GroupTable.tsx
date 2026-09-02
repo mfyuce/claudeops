@@ -23,8 +23,10 @@ import { apiReactivate } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
+import { usePagination } from "../hooks/usePagination";
 import type { RosterEntry } from "../api/types";
 import { CwdCell } from "./shared/CwdCell";
+import { Pagination } from "./shared/Pagination";
 
 interface GroupTableProps {
   items: RosterEntry[];
@@ -67,6 +69,7 @@ function ReactivateRow({ item }: { item: RosterEntry }) {
 
 export function GroupTable({ items }: GroupTableProps) {
   const { t } = useLang();
+  const { pageItems, page, totalPages, setPage } = usePagination(items);
 
   if (!items.length) return <div className="opts-hint">{t.empty}</div>;
 
@@ -74,11 +77,12 @@ export function GroupTable({ items }: GroupTableProps) {
     <div className="tablewrap">
       <table>
         <tbody>
-          {items.map((it) => (
+          {pageItems.map((it) => (
             <ReactivateRow key={it.name} item={it} />
           ))}
         </tbody>
       </table>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }

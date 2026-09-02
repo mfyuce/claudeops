@@ -29,6 +29,7 @@ export function TabBar({ active, onSelect }: TabBarProps) {
     ["retired", `${t.tabRetired} (${data.retired.length})`],
     ["layout", t.tabLayout],
     ["diag", t.tabDiag],
+    ["settings", t.tabSettings],
   ];
 
   return (

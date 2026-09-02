@@ -8,18 +8,27 @@
  * Reuses `OptionsRow`/`BulkBar` from `../RunningTab/` exactly like the
  * original reused `unifiedOptsRow()` across both tabs (see the plan's
  * component table).
+ *
+ * TODO L57 (2026-09-02 decision: group by cwd, no new roster field) — rows
+ * are grouped into a header + its sessions; a group collapses/expands (all
+ * start expanded — nothing hidden by default, the header is mainly a label
+ * + cross-tab-running badge) and pagination (TODO L74) paginates the GROUP
+ * list rather than individual rows, so a page break can never split one
+ * project's names across two pages.
  */
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { BulkBar } from "../RunningTab/BulkBar";
 import { OptionsRow } from "../RunningTab/OptionsRow";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
+import { usePagination } from "../../hooks/usePagination";
 import type { SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
 import { CwdCell } from "../shared/CwdCell";
 import { isProtectedName } from "../shared/protectedNames";
+import { Pagination } from "../shared/Pagination";
 import { RegisterForm } from "./RegisterForm";
 
 const REGISTERED_ROW_COLSPAN = 6;
@@ -77,20 +86,91 @@ function RegisteredRow({ session, selection, isOptionsOpen, onToggleOptions, onS
   );
 }
 
+interface RegisteredGroup {
+  cwd: string;
+  sessions: SessionInfo[];
+  /** Whether ANY session (running or not) sharing this cwd is currently
+   * running — cross-tab signal the user asked for ("Registered da bu
+   * grupda acik olan var mi gosterelim"). */
+  hasRunning: boolean;
+}
+
+/** Groups the stopped `rows` by `cwd`, in first-seen order. `allSessions`
+ * (the full running+stopped set) is only used to compute `hasRunning` —
+ * a project can be "registered" here via one name while a DIFFERENT name
+ * sharing the same cwd is actively running (e.g. this repo's own cops+diag). */
+function groupByCwd(rows: SessionInfo[], allSessions: SessionInfo[]): RegisteredGroup[] {
+  const runningCwds = new Set(allSessions.filter((s) => s.running).map((s) => s.cwd));
+  const order: string[] = [];
+  const byCwd = new Map<string, SessionInfo[]>();
+  for (const r of rows) {
+    let list = byCwd.get(r.cwd);
+    if (!list) {
+      list = [];
+      byCwd.set(r.cwd, list);
+      order.push(r.cwd);
+    }
+    list.push(r);
+  }
+  return order.map((cwd) => ({ cwd, sessions: byCwd.get(cwd)!, hasRunning: runningCwds.has(cwd) }));
+}
+
+function GroupHeaderRow({
+  group,
+  collapsed,
+  onToggle,
+}: {
+  group: RegisteredGroup;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useLang();
+  return (
+    <tr className="group-header" onClick={onToggle}>
+      <td colSpan={REGISTERED_ROW_COLSPAN}>
+        <span className="toggle">{collapsed ? "▸" : "▾"}</span>
+        {group.cwd} ({group.sessions.length})
+        {group.hasRunning && (
+          <span className="unreg-badge" title={t.groupRunningBadge}>
+            {t.groupRunningBadge}
+          </span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 export function RegisteredTab({ selection, onSwitchTab }: RegisteredTabProps) {
   const { t } = useLang();
   const { data } = useStatusContext();
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
+  const [collapsedCwds, setCollapsedCwds] = useState<Set<string>>(() => new Set());
 
-  if (!data) return null;
-
+  // Hooks must run unconditionally (rules-of-hooks) — computed before the
+  // `!data` early return below, with empty-array fallbacks while `data`
+  // hasn't loaded yet.
+  //
   // Every `!s.running` session is `registered: true` by construction (see
   // api/types.ts's SessionInfo doc comment / _status_payload()'s
   // proc-scan loop, which only ever appends `running: true` rows) — this
   // tab never needs to filter registered vs. not, unlike Running's adopt
   // path.
-  const rows = data.sessions.filter((s) => !s.running);
+  const rows = data ? data.sessions.filter((s) => !s.running) : [];
+  const groups = data ? groupByCwd(rows, data.sessions) : [];
+  const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
+
+  if (!data) return null;
+
   const allSelected = rows.length > 0 && rows.every((s) => selection.selected.has(s.name));
+
+  function toggleGroup(cwd: string) {
+    setCollapsedCwds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cwd)) next.delete(cwd);
+      else next.add(cwd);
+      return next;
+    });
+  }
 
   return (
     <>
@@ -121,19 +201,26 @@ export function RegisteredTab({ selection, onSwitchTab }: RegisteredTabProps) {
                 </td>
               </tr>
             )}
-            {rows.map((s) => (
-              <RegisteredRow
-                key={s.name}
-                session={s}
-                selection={selection}
-                isOptionsOpen={openOptionsFor === s.name}
-                onToggleOptions={() => setOpenOptionsFor((prev) => (prev === s.name ? null : s.name))}
-                onSwitchTab={onSwitchTab}
-              />
+            {pageGroups.map((g) => (
+              <Fragment key={g.cwd}>
+                <GroupHeaderRow group={g} collapsed={collapsedCwds.has(g.cwd)} onToggle={() => toggleGroup(g.cwd)} />
+                {!collapsedCwds.has(g.cwd) &&
+                  g.sessions.map((s) => (
+                    <RegisteredRow
+                      key={s.name}
+                      session={s}
+                      selection={selection}
+                      isOptionsOpen={openOptionsFor === s.name}
+                      onToggleOptions={() => setOpenOptionsFor((prev) => (prev === s.name ? null : s.name))}
+                      onSwitchTab={onSwitchTab}
+                    />
+                  ))}
+              </Fragment>
             ))}
           </tbody>
         </table>
       </div>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       <RegisterForm />
     </>
   );
