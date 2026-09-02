@@ -10,7 +10,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **claude KILL=TRUNCATE riski**: lazy-checkpoint storage → **hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL** (sert kill = son mesajlar gider, iş git'te güvende). [[claude-2183-conversation-truncation]]
 - **claude resume "deferred tool marker"**: promptsuz `--resume` bazen ANINDA hata verir → resume'a mutlaka `--prompt` ver (`--new` OLMADAN). [[resume-deferred-tool-marker]]
 - **spawn güvenilirliği**: CLAUDE*/GEMINI*/ANTIGRAVITY* env filtrelenir (yoksa transcript kapanır). gnome-terminal flake → oto-retry+fallback, windowless'i **"pencere aç"**la düzelt. "restart hâlâ olmuyor" → **gt-restart** (Tanı sekmesi, web'den bağımsız). [[spawn-env-leak-disables-transcript]] [[spawn-zombie-child-degrades-web-server]]
-- **`service.py`'nin `WEB_UNIT_TEMPLATE`'ini düzenlersen `bash -ic '...'` ExecStart'ı, `KillMode=process`, ve tunnel unit'inin `Wants=` (`Requires=` DEĞİL) satırını BOZMA** — üçü de canlı yaşanan gerçek hasarların fix'i (sırasıyla: minimal systemd PATH → `claude: command not found`; varsayılan `control-group` → restart altındaki tmux'u da öldürür; `Requires=` → web servisini restart etmek tunnel'ı da stop+start eder, quick-tunnel modda URL her seferinde rastgele değişip kullanıcının bookmark'ını kırar), tam gerekçe modülün kendi docstring'inde. `run-tunnel.sh` `CLAUDEOPS_TUNNEL_URL_FILE`/`_LOG`/`_LABEL`/`CLAUDEOPS_PORT` env override'larını destekler — ikinci bir paralel deploy'un tünel/log dosyasını canlı olanınkiyle EZMEDEN çalışabilmesi için (2026-09-01 merge'de main'den korunan versiyon; [[tunnel-flag-shares-live-log-file]]).
+- **`service.py`'nin `WEB_UNIT_TEMPLATE`'ini düzenlersen `bash -ic '...'` ExecStart'ı, `KillMode=process`, ve tunnel unit'inin `Wants=` (`Requires=` DEĞİL) satırını BOZMA** — üçü de canlı hasar fix'i (PATH kaybı / restart altındaki tmux'u öldürme / tunnel URL rotasyonu), tam gerekçe modülün docstring'inde. `run-tunnel.sh` paralel-deploy için `CLAUDEOPS_TUNNEL_URL_FILE`/`_LOG`/`_LABEL`/`_PORT` env override destekler ([[tunnel-flag-shares-live-log-file]]). Tunnel URL rastgele döner (named tunnel kurulu değil) + ntfy push bu telefona ulaşmıyor — biri "ulaşamadım" derse `tunnel_url.txt`'ten güncel URL'i doğrudan ver, ntfy'ye güvenme. [[tunnel-no-named-tunnel-autoupdate-rotates-url]]
 - **oomd TÜM oturumu öldürebilir** (sadece fleet'in cgroup'unu değil) — kurtarma `py/cops service watchdog` (root-seviyeli, oturumdan bağımsız timer). [[oomd-cgroup-kill]]
 - **Security**: ulaksec → "dokunma". `~/.cache/huggingface` 29G KORU. Commit öncesi kullanıcı onayı.
 
@@ -47,12 +47,10 @@ Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permis
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-09-01)
+## READY FOR HANDOVER (2026-09-02)
 
-**BÜYÜK GÜN: `feature/react-ui` main'e merge edildi, React panel ARTIK ASIL panel, eski PAGE_HTML panel emekli** (TOBEDECIDED.md #14 kapalı). Eski "main sadece parity alır" kuralı GEÇERSİZ — tek ağaç var. Mekanik + main'den korunan 2 şey (artık "Kritik kısıtlar"da) + tmux-orphan/adopt/effort fix'leri + kullanıcının "tüm farklar" sorusuyla bulunup düzeltilen tek kayıp (URL banner TODO'su): DONE.md 2026-09-01 (1)-(5).
+**Kod değişikliği yok — canlı-altyapı teşhisi.** "Sunucu neden kapanmış?" + "mobilden ulaşamadım" şikayetlerinin kök sebebi (tunnel URL rotasyonu + ntfy push'un bu telefona ulaşmadığının doğrulanması) bulundu, kullanıcı henüz bir fix'e onay vermedi. Detay: DONE.md 2026-09-02, açık karar: TOBEDECIDED #13 (yeniden gündemde).
 
-**Canlı, uçtan uca doğrulandı:** main :8765 restart edildi, fleet (7 session) etkilenmedi, tunnel URL DEĞİŞMEDİ (`Wants=`). React-only paralel deploy (:8766) durduruldu+disable (silinmedi, `feature/react-ui` de silinmedi). github+gitlab push edildi.
-
-**Açık kalanlar:** TODO.md (öne çıkanlar: tablara sayfalama, bulk-handover kök sebebi, URL banner yeri, kullanıcı-bazlı kalıcı ayarlar).
+**Repo:** clean, github+gitlab senkron. Açık kalanlar değişmedi (TODO.md).
 
 READY FOR HANDOVER
