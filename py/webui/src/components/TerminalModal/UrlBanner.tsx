@@ -91,7 +91,14 @@ export function UrlBanner({ rawText }: { rawText: string }) {
   const urls = extractTermUrls(rawText);
   if (!urls.length) return null;
   return (
-    <div style={{ width: "100%", boxSizing: "border-box", marginBottom: ".3rem" }}>
+    // TODO L42 (2026-08-31, user: "url listesi cmd line'a veya altta scrollu
+    // bir panel olabilir" — the URL list could sit near the command line, or
+    // be a scrollable panel at the bottom): moved from a fixed banner above
+    // the terminal (original placement — shifted the whole terminal down
+    // every time a URL appeared/disappeared) to just above the command-line
+    // row in `TerminalView`, and bounded with its own scroll so it can never
+    // push that row far even if it somehow held more than a couple of URLs.
+    <div style={{ width: "100%", boxSizing: "border-box", marginTop: ".3rem", maxHeight: "4.5rem", overflowY: "auto" }}>
       {urls.map((u) => (
         <UrlRow key={u} url={u} />
       ))}

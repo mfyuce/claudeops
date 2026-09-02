@@ -293,7 +293,6 @@ export function TerminalView({ name, hidden }: TerminalViewProps) {
 
   return (
     <div hidden={hidden} style={{ width: "100%" }}>
-      <UrlBanner rawText={rawText} />
       <div
         ref={containerRef}
         hidden={xtermState === "failed"}
@@ -342,6 +341,7 @@ export function TerminalView({ name, hidden }: TerminalViewProps) {
       <div className="opts-hint" style={{ width: "100%", boxSizing: "border-box" }}>
         {hint}
       </div>
+      <UrlBanner rawText={rawText} />
       <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
         {XTERM_KEYS.map(([label, key]) => (
           <button type="button" key={key} onClick={() => handleSendKey(key)}>

@@ -752,7 +752,7 @@ def _status_payload() -> dict:
     fleet = _fleet_status()
     all_live = find_sessions(measure_cpu=True)
     dups = duplicates(all_live)
-    ok, msg = validate_config()
+    ok, config_code, config_detail = validate_config()
 
     # Canlı proc → roster satırı eşleme: önce TAM isim, sonra base (2026-08-26).
     # Eski hali sadece base-keyed dict'ti; iki sorunu vardı: (1) tam-isim satırı
@@ -817,7 +817,8 @@ def _status_payload() -> dict:
 
     return {
         "config_ok": ok,
-        "config_msg": msg,
+        "config_code": config_code,
+        "config_detail": config_detail,
         "dups": dups,
         "sessions": sessions,
         "closed": closed,
@@ -834,6 +835,13 @@ def _status_payload() -> dict:
         "layout_missing_deps": _missing_layout_deps(),
         "diag": _diag_status(),
         "server_started_at": _WEB_PROC_START_EPOCH,
+        # TODO L85 (2026-09-01, kullanıcı): "Handover textini o an hangi dil
+        # seçili ise o dilde göster, oradan copy paste yaparız, ayrı cli
+        # açmadan." _handover() zaten bu iki sabitten `lang`'a göre birini
+        # seçip gönderiyor (yukarıda) — burada ikisini de dönüp seçimi
+        # frontend'e bırakıyoruz (payload'ın geri kalanıyla aynı desen:
+        # backend ham veri, React yerelleştirir).
+        "handover_msg": {"tr": HANDOVER_MSG_DEFAULT, "en": HANDOVER_MSG_DEFAULT_EN},
     }
 
 
@@ -1059,11 +1067,22 @@ def _handover(name: str, lang: str = "tr") -> dict:
     else:
         cwd, model = procs[0].cwd, (procs[0].model or provider.model_choices()[0])
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
+    # TODO L9 instrumentation (2026-08-31 bulk-handover investigation: the
+    # guard_lock-acquire-timeout fix above was found+applied, but a residual
+    # symptom — two BrokenPipeErrors not explained by that timing — was
+    # never root-caused; main's own diag_log instrumentation for this never
+    # made it into this tree before the PAGE_HTML panel it was written
+    # against was retired). Best-effort (diag_log never raises) — if bulk
+    # handover misbehaves again, `diag.log`/the Tanı tab's log panel should
+    # show exactly which phase a given name got stuck in.
+    diag_log("handover_start", name=name, cli=chosen_cli)
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            diag_log("handover_lock_acquired", name=name)
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
             if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
                 time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
+            diag_log("handover_killed", name=name, kill_results=kill_results)
             kind = spawn_session(
                 name=name,
                 cwd=cwd,
@@ -1075,11 +1094,15 @@ def _handover(name: str, lang: str = "tr") -> dict:
                 prompt=message,
                 cli=chosen_cli,
             )
+            diag_log("handover_spawned", name=name, kind=kind)
             reopened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
+        diag_log("handover_lock_timeout", name=name, error=str(e))
         return {"ok": False, "error": str(e)}
     if not reopened:
+        diag_log("handover_reopen_failed", name=name, kind=kind)
         return _err(lang, "handover_reopen_failed", name=name, kind=kind)
+    diag_log("handover_done", name=name, kind=kind)
     return {"ok": True, "kind": kind}
 
 
@@ -1191,11 +1214,27 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _json(self, obj, status=200):
         body = json.dumps(obj).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            # TODO L9 residual concern (bulk-handover: "sadece ilki başarılı
+            # oluyor, kalanı hataya düşüyor" — two BrokenPipeErrors seen live
+            # 2026-08-31 that the guard_lock-timeout fix alone didn't
+            # explain): if THIS connection died mid-write (tab closed /
+            # navigated away / bulk-loop's fetch already moved on) after the
+            # underlying action already succeeded server-side, this used to
+            # propagate straight out of do_POST — aborting BEFORE
+            # `_json_notify()`'s `notify_status_changed()` call below runs,
+            # so no other open tab got the WS push either even though fleet
+            # state was fine. Swallow + log instead of crashing the request:
+            # the caller that made THIS specific call never sees a response
+            # either way, but every other caller of `_json_notify` still
+            # gets to run its notify. Best-effort (diag_log never raises).
+            diag_log("response_write_failed", path=urlparse(self.path).path, error=str(e))
 
     def _json_notify(self, result: dict, status=200):
         """`_json()` + mutasyon `ok: True` dönmüşse `web_ws.notify_status_changed()`.

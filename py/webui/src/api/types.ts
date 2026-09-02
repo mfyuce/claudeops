@@ -60,7 +60,8 @@ export interface DiagInfo {
 
 export interface StatusPayload {
   config_ok: boolean;
-  config_msg: string;
+  config_code: string;
+  config_detail: string;
   dups: string[];
   sessions: SessionInfo[];
   closed: RosterEntry[];
@@ -73,6 +74,9 @@ export interface StatusPayload {
    * restart (redeploy). `useStatus.ts` compares this against the value it
    * first saw and reloads the page when it changes. */
   server_started_at: number;
+  /** The wrap-up prompt text `_handover()` sends, in both languages — so it
+   * can be shown/copied from the UI without actually running a handover. */
+  handover_msg: { tr: string; en: string };
 }
 
 // ── POST-route result shapes ────────────────────────────────────────────

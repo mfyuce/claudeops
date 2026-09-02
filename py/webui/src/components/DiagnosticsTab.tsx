@@ -60,6 +60,8 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
 
   const [logLines, setLogLines] = useState<string[] | null>(null);
 
+  const [handoverCopyLabel, setHandoverCopyLabel] = useState<string | null>(null);
+
   const loadLog = useCallback(async () => {
     try {
       const d = await getDiagLog();
@@ -119,6 +121,24 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
     refresh();
   }
 
+  // TODO L85 (2026-09-01, user: "UI'ye Handover textini o an hangi dil
+  // seçili ise o dilde göster, oradan copy paste yaparız, ayrı cli
+  // açmadan" — show the handover text in whichever language is currently
+  // selected, so it can be copy-pasted from there without opening a
+  // separate CLI). `data.handover_msg` carries both languages (same text
+  // `_handover()` actually sends) — this just picks the active one and
+  // copies it, same clipboard pattern as `UrlBanner`'s copy button.
+  async function handleCopyHandoverMsg() {
+    if (!data) return; // narrowing from the top-level `if (!data) return null;` guard doesn't carry into this closure
+    try {
+      await navigator.clipboard.writeText(data.handover_msg[lang]);
+      setHandoverCopyLabel(t.termCopied);
+      window.setTimeout(() => setHandoverCopyLabel(null), 1200);
+    } catch (e) {
+      window.alert(t.requestFailed + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
   async function handleAsk() {
     setAskBusy(true);
     setAskResult("");
@@ -142,6 +162,16 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
 
   return (
     <>
+      <div className="opts-hint">{t.handoverMsgTitle}</div>
+      <div className="opts-hint">{t.handoverMsgHint}</div>
+      <pre className="layout-result" style={{ maxHeight: "12rem", overflowY: "auto", border: "1px solid var(--border)", borderRadius: "4px", padding: ".5rem" }}>
+        {data.handover_msg[lang]}
+      </pre>
+      <div className="opts" style={{ marginBottom: ".6rem" }}>
+        <button type="button" onClick={() => void handleCopyHandoverMsg()}>
+          {handoverCopyLabel ?? t.termCopyBtn}
+        </button>
+      </div>
       <div className="opts-hint">{t.diagDesc}</div>
       <div className="opts" id="diagPanel">
         <div style={{ flexBasis: "100%" }}>

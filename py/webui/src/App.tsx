@@ -99,7 +99,7 @@ function AppShell() {
     else summary = t.unexpectedResponse(error.status);
   } else if (data) {
     const running = data.sessions.filter((s) => s.running).length;
-    summary = `${running}/${data.sessions.length} ${t.runningWord}  ·  ${t.configWord}: ${data.config_msg}`;
+    summary = `${running}/${data.sessions.length} ${t.runningWord}  ·  ${t.configWord}: ${t.configMsg(data.config_code, data.config_detail)}`;
   } else {
     summary = "…"; // matches the static placeholder before the first successful load
   }
