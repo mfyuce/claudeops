@@ -10,8 +10,9 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **claude KILL=TRUNCATE riski**: lazy-checkpoint storage → **hep SIGTERM + ~8-10s bekle, sadece canlıysa SIGKILL** (sert kill = son mesajlar gider, iş git'te güvende). [[claude-2183-conversation-truncation]]
 - **claude resume "deferred tool marker"**: promptsuz `--resume` bazen ANINDA hata verir → resume'a mutlaka `--prompt` ver (`--new` OLMADAN). [[resume-deferred-tool-marker]]
 - **spawn güvenilirliği**: CLAUDE*/GEMINI*/ANTIGRAVITY* env filtrelenir (yoksa transcript kapanır). gnome-terminal flake → oto-retry+fallback, windowless'i **"pencere aç"**la düzelt. "restart hâlâ olmuyor" → **gt-restart** (Tanı sekmesi, web'den bağımsız). [[spawn-env-leak-disables-transcript]] [[spawn-zombie-child-degrades-web-server]]
-- **`service.py`'nin `WEB_UNIT_TEMPLATE`'ini düzenlersen `bash -ic '...'` ExecStart'ı, `KillMode=process`, ve tunnel unit'inin `Wants=` (`Requires=` DEĞİL) satırını BOZMA** — üçü de canlı hasar fix'i (PATH kaybı / restart altındaki tmux'u öldürme / tunnel URL rotasyonu), tam gerekçe modülün docstring'inde. `run-tunnel.sh` paralel-deploy için `CLAUDEOPS_TUNNEL_URL_FILE`/`_LOG`/`_LABEL`/`_PORT` env override destekler ([[tunnel-flag-shares-live-log-file]]). Tunnel URL rastgele döner (named tunnel kurulu değil) + ntfy push bu telefona ulaşmıyor — biri "ulaşamadım" derse `tunnel_url.txt`'ten güncel URL'i doğrudan ver, ntfy'ye güvenme. [[tunnel-no-named-tunnel-autoupdate-rotates-url]]
+- **`service.py`'nin `WEB_UNIT_TEMPLATE`'ini düzenlersen `bash -ic '...'` ExecStart'ı, `KillMode=process`, ve tunnel unit'inin `Wants=` (`Requires=` DEĞİL) satırını BOZMA** — üçü de canlı hasar fix'i (PATH kaybı / restart altındaki tmux'u öldürme / tunnel URL rotasyonu), tam gerekçe modülün docstring'inde. `run-tunnel.sh` paralel-deploy env override'ları destekler [[tunnel-flag-shares-live-log-file]]. Tunnel URL rastgele döner (named tunnel kurulu değil) + ntfy push bu telefona ulaşmıyor — biri "ulaşamadım" derse `tunnel_url.txt`'ten güncel URL'i doğrudan ver, ntfy'ye güvenme. [[tunnel-no-named-tunnel-autoupdate-rotates-url]]
 - **oomd TÜM oturumu öldürebilir** (sadece fleet'in cgroup'unu değil) — kurtarma `py/cops service watchdog` (root-seviyeli, oturumdan bağımsız timer). [[oomd-cgroup-kill]]
+- **`web.py`'nin `_serve_static()`'i `index.html`'i HER ZAMAN `Cache-Control: no-cache`, `/assets/*`'i (Vite hash'li) `immutable` göndermeli** — aksi halde bir redeploy sonrası tarayıcıda kalan eski `index.html`, artık silinmiş eski-hash'li JS/CSS'i 404'lar, sayfa hiç açılmaz (canlı bulundu 2026-09-02, kullanıcı: "ana sayfa açılırken hata var, tüm sayfa gizleniyor").
 - **Security**: ulaksec → "dokunma". `~/.cache/huggingface` 29G KORU. Commit öncesi kullanıcı onayı.
 
 ## Roster / model (`~/.claude/claudeops/{roster,models}.tsv` — repo DIŞI, kaynak-of-truth)
@@ -33,24 +34,26 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 ## Handover (3-fazlı)
 
 - **Faz 1:** `py/cops handover [--dry-run]` — batch'li (mass aynı anda = rate-limit → blank-TUI [[mass-faz1-ratelimit-stuck]]); self (komutun atası) otomatik atlanır. Konuşması olmayan provider'lar (`shell`) `has_conversation()=False` ile otomatik dışlanır — kill edilmezler.
-- **Faz 2:** Faz1 sağlıksızsa (503/529) DUR, kullanıcı onayı şart. `py/cops rc <isimler SPACE'li> --new --kill-first --model='claude-sonnet-5' --permission-mode=auto --one-by-one` (bash rc DEĞİL). `--effort` VERME — varsayılan artık `high` (2026-09-01 kullanıcı kararı: max/xhigh yerine, respawn edilen session'ın kalıcı varsayımı olduğu için — [[handover-effort-high-not-max]]). `--prompt` VERME (boş başlasınlar [[faz2-new-session-devam]]). Config doğrula: `python3 -c "import json;json.load(open('$HOME/.claude.json'))"`. Bridge rate-limit: 4'er batch + 20s [[bridge-batch-spawn-ratelimit]].
+- **Faz 2:** Faz1 sağlıksızsa (503/529) DUR, kullanıcı onayı şart. `py/cops rc <isimler SPACE'li> --new --kill-first --model='claude-sonnet-5' --permission-mode=auto --one-by-one` (bash rc DEĞİL). `--effort` VERME — varsayılan `high`, artık kullanıcı Ayarlar sekmesinden de override edebiliyor [[handover-effort-high-not-max]]. `--prompt` VERME (boş başlasınlar [[faz2-new-session-devam]]). Config doğrula: `python3 -c "import json;json.load(open('$HOME/.claude.json'))"`. Bridge rate-limit: 4'er batch + 20s [[bridge-batch-spawn-ratelimit]].
 - **Faz 3:** ÖNCE `loginctl show-session <id> -p LockedHint`=no doğrula [[layout-needs-unlocked-screen]]. `./claudeops layout grid 4 --claude-only --pin=... --group=...` (bash, bkz. TOBEDECIDED.md #12) — 2× çalıştır, `xwininfo` ile doğrula (wmctrl 2× yalan).
 - **Skip kriteri:** RFH var + sonrasında yeni istek yok + repo temiz+pushed (github+gitlab).
 - Detay: [[handover-procedure]] [[handover-edge-cases]] [[feedback-ho-stop-on-error]] [[config-corruption-resume-hang]]
 
 ## Sınırlamalar / açık bug'lar
 
-Wayland: layout çalışmaz. gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE). Tam liste: TODO.md (öne çıkanlar: terminal görünümü mobilde work-in-progress; bulk handover'da bazen sadece ilk item başarılı oluyor — main'de kısmi teşhis edildi, tam kök sebep hâlâ açık).
+Wayland: layout çalışmaz (çoklu-monitor yan-yana kurulumda da ayrı bir bug var, React'ten de doğrulandı). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Bulk handover "sadece ilk item başarılı oluyor": 2026-09-02'de gerçek bir gedik (BrokenPipe → notify atlanması) bulunup düzeltildi + `_handover`'a tam diag_log eklendi, canlı yeniden test edilmedi — tekrarlarsa `diag.log`/Tanı sekmesine bak. Tam liste: TODO.md.
 
 ## Meta
 
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-09-02)
+## READY FOR HANDOVER (2026-09-03 11:03)
 
-**Kod değişikliği yok — canlı-altyapı teşhisi.** "Sunucu neden kapanmış?" + "mobilden ulaşamadım" şikayetlerinin kök sebebi (tunnel URL rotasyonu + ntfy push'un bu telefona ulaşmadığının doğrulanması) bulundu, kullanıcı henüz bir fix'e onay vermedi. Detay: DONE.md 2026-09-02, açık karar: TOBEDECIDED #13 (yeniden gündemde).
+Eski TODO/TBD backlog'u güncel koda karşı triyaj edilip düşük riskli kalemler uygulandı (i18n/rozet/banner-yeri/handover-metni-görünür fix'leri + bulk-handover'a gerçek bir BrokenPipe/notify gedik fix'i+diag_log). Ardından kalan NEEDS-DESIGN-DECISION kalemler kullanıcıya sorulup kararlaştırıldı: yeni "Ayarlar" sekmesi (sunucu-taraflı `settings.json` — tema/handover-effort/CLI-başına model), 4 sekmeye sayfalama, "Kayıtlı" sekmesi cwd-gruplama, yeni "compact" bulk aksiyonu (canlı doğrulandı). Kullanıcının bildirdiği canlı bug ("ana sayfa açılırken hata") kök-nedeniyle düzeltildi: `_serve_static()` `Cache-Control` göndermiyordu, redeploy sonrası eski `index.html` silinmiş JS/CSS'i 404'luyordu. 4 README'ye (TR+EN) ntfy/tunnel bildirim örneği+kısıtları eklendi, aynı zamanda TOBEDECIDED#13'e kanıt oldu (1 Eylül mesajı gerçekten kayıp). Tüm bunlar canlıya alındı, `claudeops-web.service` 2× restart edildi. Ayrıca: "ho+new cli" isteği TODO'ya kaydedildi (uygulanmadı), `postaci` projesi roster'a kaydedildi (kod değişikliği değil).
 
-**Repo:** clean, github+gitlab senkron. Açık kalanlar değişmedi (TODO.md).
+**Açık kalanlar:** TBD#12'nin son parçası (Faz 3'ün `py/cops layout`'la denenmesi — çoklu-monitor bug'ı yüzünden riskli) + birkaç düşük-öncelikli yeni TODO (desktop-hedefleme, komut paleti, "makine durumu" sekmesi).
+
+**Repo:** clean, github+gitlab senkron.
 
 READY FOR HANDOVER
