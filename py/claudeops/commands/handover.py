@@ -109,7 +109,7 @@ def run(args) -> int:
         print()
         print("  Sonraki adım (Faz 2 — base-name, suffix yok):")
         print(f"  py/cops rc hc hcr mo vrk rustrino anomaly evolvi done mamut hof iggy vc asp \\")
-        print(f"    --new --kill-first --one-by-one --model='claude-sonnet-4-6'")
+        print(f"    --new --kill-first --one-by-one")
         print(f"  (--prompt verme → session'lar boş/idle başlar)")
 
     return 1 if summary.failed else 0

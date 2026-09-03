@@ -91,7 +91,7 @@ export function SettingsTab() {
               value={settings.default_model[cli] ?? ""}
               onChange={(e) => void save({ default_model: { [cli]: e.target.value } })}
             >
-              <option value="">{t.settingsAuto}</option>
+              <option value="">{t.settingsAutoModel(data.cli_options[cli]?.models[0] ?? "?")}</option>
               {(data.cli_options[cli]?.models ?? []).map((m) => (
                 <option key={m} value={m}>
                   {m}

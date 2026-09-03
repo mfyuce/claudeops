@@ -24,7 +24,7 @@ from .kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from .needs_ho import needs_ho
 from .providers import CliProvider, get_provider
 from .session import Session
-from .settings import load_settings
+from .settings import default_model_for, load_settings
 from .spawn import find_latest_jsonl, detect_display, spawn_session
 
 # 2026-08-25: isim-bazlı hariç-tutma (HO_EXCLUDE_BASES={co,cops,ulaksec}) KALDIRILDI
@@ -179,7 +179,7 @@ def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> 
     return spawn_session(
         name=session.name,
         cwd=session.cwd,
-        model=session.model or provider.model_choices()[0],
+        model=session.model or default_model_for(provider),
         display=display,
         permission_mode=provider.permission_modes()[0],
         effort=default_handover_effort(provider),

@@ -16,7 +16,9 @@ from typing import List, Optional
 from dataclasses import dataclass, field
 
 from .discovery import find_sessions, duplicates
+from .providers import get_provider
 from .roster import read_roster, read_models, RosterEntry
+from .settings import default_model_for
 from .spawn import spawn_session, detect_display
 from .paths import GUARD_LOCK
 
@@ -89,9 +91,12 @@ def guard_once(
 
     for entry in missing:
         name = entry.name
-        model = models.get(entry.name) or entry.model or "claude-sonnet-4-6"
-        if not model:
-            model = "claude-sonnet-4-6"
+        # Eskiden üçüncü halka sabit "claude-sonnet-4-6"'ydı — HEM stale (fleet
+        # 2026-08-24'te claude-sonnet-5'e geçti) HEM provider'a bakmadan HER
+        # CLI'a claude'un model-id formatını dayatıyordu (agy/codex'in kendi
+        # isimlendirmesi farklı). Artık Ayarlar'daki per-CLI varsayıma, o da
+        # yoksa provider'ın kendi ilk seçeneğine düşer.
+        model = models.get(entry.name) or entry.model or default_model_for(get_provider(entry.cli))
         try:
             kind = spawn_session(
                 name=name,

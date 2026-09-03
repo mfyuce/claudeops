@@ -3,7 +3,9 @@
 Kullanım:
   # İsimler base-name (suffix yok): hc → hc (aynen yeniden açılır)
   py/cops rc hc hcr mo --new --kill-first \\
-    --model='claude-sonnet-4-6' --permission-mode=auto --one-by-one
+    --permission-mode=auto --one-by-one
+  (--model verilmezse models.tsv'deki kayıt, o da yoksa Ayarlar'ın per-CLI
+   varsayımı kullanılır — bkz. settings.default_model_for)
   (--effort verilmezse varsayılan artık 'high' — max/xhigh değil, bkz. handover.default_handover_effort)
 
   (--prompt verilmez → session'lar boş/idle başlar)
@@ -26,6 +28,7 @@ from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import repo_baseline_set
 from ..providers import get_provider
 from ..roster import read_models, roster_by_name
+from ..settings import default_model_for
 from ..spawn import spawn_session, detect_display
 
 # Geçiş savunması: suffix'li girdiyi (hc58) base'e (hc) indirger. Saf base de eşleşir.
@@ -95,7 +98,7 @@ def _run_inner(args, display, models, roster) -> int:
         # AYNI YAZILIR ama İKİ AYRI CLI'nın kendi model listesindendir, tesadüfen çakışıyor —
         # bir sabitte birleştirmeye kalkışma).
         provider = get_provider(entry.cli)
-        model = args.model or models.get(base) or provider.model_choices()[0]
+        model = args.model or models.get(base) or default_model_for(provider)
         permission_mode = args.permission_mode or provider.permission_modes()[0]
         effort = args.effort or default_handover_effort(provider)
 
