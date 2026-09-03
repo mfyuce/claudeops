@@ -190,6 +190,7 @@ export interface Strings {
   protectedHint: string;
   settingsDesc: string;
   settingsAuto: string;
+  settingsAutoModel: (model: string) => string;
   themeLabel: string;
   themeSystem: string;
   themeLight: string;
@@ -347,6 +348,7 @@ export const STRINGS: Record<Lang, Strings> = {
     protectedHint: "guard'ı ayakta tutuyor — toplu seçimde/işlemde dikkatli olun",
     settingsDesc: "Bu ayarlar sunucu tarafında saklanır (~/.claude/claudeops/settings.json) — telefon dahil hangi cihaz/tarayıcıdan girerseniz girin aynı görünür. Her seçim anında kaydedilir.",
     settingsAuto: "(otomatik)",
+    settingsAutoModel: (model) => `(otomatik: ${model})`,
     themeLabel: "tema",
     themeSystem: "sistem",
     themeLight: "açık",
@@ -502,6 +504,7 @@ export const STRINGS: Record<Lang, Strings> = {
     protectedHint: "keeps the guard alive — be careful with bulk selection/actions on this row",
     settingsDesc: "These settings are stored server-side (~/.claude/claudeops/settings.json) — the same on every device/browser you sign in from, phone included. Each choice saves instantly.",
     settingsAuto: "(auto)",
+    settingsAutoModel: (model) => `(auto: ${model})`,
     themeLabel: "theme",
     themeSystem: "system",
     themeLight: "light",

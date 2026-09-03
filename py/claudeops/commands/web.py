@@ -43,7 +43,7 @@ from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
-from ..settings import load_settings, save_settings
+from ..settings import default_model_for, load_settings, save_settings
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..tmux_backend import (
@@ -410,7 +410,7 @@ def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang:
     if "\t" in cwd or "\n" in cwd:
         return _err(lang, "cwd_bad_chars")
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else DEFAULT_CLI
-    chosen_model = model.strip() or get_provider(chosen_cli).model_choices()[0]
+    chosen_model = model.strip() or default_model_for(get_provider(chosen_cli))
     _append_tsv_line(ROSTER_TSV, [name, cwd, chosen_model, chosen_cli])
     _append_tsv_line(MODELS_TSV, [name, chosen_model])
     return {"ok": True}
@@ -436,7 +436,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
     # bkz. _start()'taki aynı fix'in yorumu — cli değiştiyse eski info["model"]
     # yanlış provider'ın modeli olur, yeni cli'nin kendi varsayılanına düşülmeli.
-    chosen_model = model.strip() or (info["model"] if chosen_cli == info["cli"] else get_provider(chosen_cli).model_choices()[0])
+    chosen_model = model.strip() or (info["model"] if chosen_cli == info["cli"] else default_model_for(get_provider(chosen_cli)))
     _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model, chosen_cli])
     _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
     try:
@@ -655,7 +655,7 @@ def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else DEFAULT_CLI
     provider = get_provider(chosen_cli)
     new_name = _generate_new_chat_name("diag")
-    model = provider.model_choices()[0]
+    model = default_model_for(provider)
 
     status = _diag_status()
     lines = ["claudeops fleet spawn diagnostic — aşağıdaki canlı durumu incele, "
@@ -886,7 +886,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     # YANLIŞ cli'nin modeliyle spawn oluyordu (ör. codex'e geçip boş bırakınca "codex
     # --model claude-sonnet-5" gibi geçersiz bir çağrı — canlı kullanıcı raporu,
     # 2026-09-01). cli değişmediyse eski davranış (info["model"]) aynen korunur.
-    fallback_model = info["model"] if chosen_cli == info["cli"] else get_provider(chosen_cli).model_choices()[0]
+    fallback_model = info["model"] if chosen_cli == info["cli"] else default_model_for(get_provider(chosen_cli))
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
@@ -1092,7 +1092,7 @@ def _handover(name: str, lang: str = "tr") -> dict:
     if info:
         cwd, model = info["cwd"], info["model"]
     else:
-        cwd, model = procs[0].cwd, (procs[0].model or provider.model_choices()[0])
+        cwd, model = procs[0].cwd, (procs[0].model or default_model_for(provider))
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     # TODO L9 instrumentation (2026-08-31 bulk-handover investigation: the
     # guard_lock-acquire-timeout fix above was found+applied, but a residual
@@ -1178,7 +1178,7 @@ def _compact(name: str, lang: str = "tr") -> dict:
     if info:
         cwd, model = info["cwd"], info["model"]
     else:
-        cwd, model = procs[0].cwd, (procs[0].model or provider.model_choices()[0])
+        cwd, model = procs[0].cwd, (procs[0].model or default_model_for(provider))
 
     diag_log("compact_start", name=name)
     try:
@@ -1272,7 +1272,7 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     # tanıdığıysa odur (bir claude proc'u "agy olarak devral" diye bir şey yok).
     chosen_cli = procs[0].cli
     provider = get_provider(chosen_cli)
-    chosen_model = model.strip() or procs[0].model or provider.model_choices()[0]
+    chosen_model = model.strip() or procs[0].model or default_model_for(provider)
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]

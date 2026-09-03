@@ -11,16 +11,23 @@ gibi commands/ PAKETİNE bağımlı olmayan modüller de sorunsuz import edebils
 from __future__ import annotations
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
 from .paths import CLAUDEOPS_DIR
+
+if TYPE_CHECKING:
+    from .providers.base import CliProvider
 
 SETTINGS_JSON = os.path.join(CLAUDEOPS_DIR, "settings.json")
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "theme": "system",       # "system" | "light" | "dark"
     "handover_effort": "",   # "" = otomatik (default_handover_effort'un high-tercih mantığı)
-    "default_model": {},     # {cli: model} — yeni/resume dropdown'unun ön-dolu değeri
+    "default_model": {},     # {cli: model} — provider'ın kod-içi varsayımı (model_choices()[0])
+                              # yerine geçen kalıcı tercih; yeni/resume dropdown'unun ön-dolu
+                              # değeri OLDUĞU KADAR, aşağıdaki default_model_for()'un okuduğu
+                              # backend fallback'i de bu (guard/stuck/handover/rc/web — "model
+                              # verilmedi" durumunun HEPSİ artık buraya bakıyor, bkz. fonksiyon).
 }
 
 
@@ -67,3 +74,20 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
         json.dump(current, f, ensure_ascii=False, indent=2)
     os.replace(tmp, SETTINGS_JSON)  # atomic — eşzamanlı okuyan yarım dosya görmez
     return current
+
+
+def default_model_for(provider: "CliProvider") -> str:
+    """Bir provider için etkin varsayılan model — `default_handover_effort`'un
+    (handover.py) model karşılığı, AYNI önceliklendirme: Ayarlar'daki override
+    VARSA ve hâlâ bu provider'ın `model_choices()` listesinde GEÇERLİYSE o
+    kullanılır (liste zamanla değişebilir — ör. bir model emekliye ayrılırsa
+    settings.json'daki eski değer sessizce STALE kalabilir, bu yüzden körü
+    körüne güvenilmez); yoksa provider'ın kendi ilk seçeneğine düşülür.
+
+    Sadece "hiç model yok" (yeni session / bilinmeyen fallback) durumunda
+    çağrılmalı — var olan bir session'ın kendi modelini (session.model,
+    info["model"], models.tsv kaydı, ...) KORUMAK istisnasız önceliklidir,
+    bu fonksiyon o zincirin EN SONUNDAKİ halka."""
+    choices = provider.model_choices()
+    override = (load_settings().get("default_model") or {}).get(provider.name) or ""
+    return override if override in choices else choices[0]

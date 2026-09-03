@@ -15,6 +15,7 @@ from .discovery import find_sessions
 from .kill import kill_session, KILL_GRACE_SECONDS
 from .providers import get_provider
 from .session import Session
+from .settings import default_model_for
 from .spawn import find_latest_jsonl, spawn_session, detect_display
 
 
@@ -106,7 +107,7 @@ def recover_stuck(
     kind = spawn_session(
         name=s.name,
         cwd=s.cwd,
-        model=s.model or "claude-sonnet-4-6",
+        model=s.model or default_model_for(get_provider(s.cli)),
         display=display,
         permission_mode=s.permission_mode or "auto",
         effort=s.effort or "max",
