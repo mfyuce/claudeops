@@ -41,7 +41,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 
 ## Sınırlamalar / açık bug'lar
 
-Wayland: layout çalışmaz (çoklu-monitor yan-yana kurulumda da ayrı bir bug var, React'ten de doğrulandı). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Bulk handover nadir BrokenPipe izi bırakabilir (kök gedik kapatıldı + diag_log var) — tekrarlarsa Tanı sekmesine bak. Tam liste: TODO.md.
+Wayland: layout çalışmaz (X11 gerekli). Çoklu-monitor sol-alta yığılma bug'ı 2026-09-03'te düzeldi (`layout.py` artık xrandr'dan HER monitörün gerçek WxH+X+Y'sini alıyor + apply retry/read-back kazandı; canlı 10 pencereyle doğrulandı). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Bulk handover nadir BrokenPipe izi bırakabilir (kök gedik kapatıldı + diag_log var) — tekrarlarsa Tanı sekmesine bak. Tam liste: TODO.md.
 
 ## Meta
 
