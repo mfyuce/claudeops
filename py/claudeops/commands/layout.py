@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from ..discovery import find_sessions
 from ..layout import (
-    _get_screen, _list_windows, build_layout_plan, apply_layout, _detect_screen_y,
+    _get_screen, _list_windows, build_layout_plan, apply_layout,
 )
 from ..spawn import detect_display
 
@@ -67,7 +67,10 @@ def run(args) -> int:
         print(f"  {name:<15} → ws{ws}  ({x},{y})")
 
     if not args.dry_run:
-        apply_layout(plan, display=display)
-        print("✓ layout uygulandı")
+        failed = apply_layout(plan, display=display)
+        if failed:
+            print(f"⚠ {len(failed)} pencere oturmadı (elle taşı): {', '.join(failed)}")
+        else:
+            print("✓ layout uygulandı")
 
     return 0

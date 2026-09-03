@@ -14,6 +14,7 @@ Algoritma:
 from __future__ import annotations
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -56,25 +57,59 @@ def _run(cmd: List[str], display: str = ":1") -> str:
         return ""
 
 
-def _detect_screen_y(display: str) -> int:
-    """xrandr ile dikey-ikincil monitor Y offset'ini tespit et.
+@dataclass
+class Monitor:
+    name: str
+    x: int
+    y: int
+    w: int
+    h: int
+    primary: bool
 
-    Yatay dual-monitor (her ikisi Y=0): unique Y değeri tek → 0 döner (doğru).
-    Dikey dual-monitor (top=0, bottom=1080): unique [0,1080] → max=1080 (ikincil monitor).
-    Tek monitor: [0] → 0.
+
+def _list_monitors(display: str) -> List[Monitor]:
+    """xrandr --query'den HER connected monitörün gerçek WxH+X+Y'sini parse et.
+
+    Eski kod `xdotool getdisplaygeometry` (TÜM monitörlerin BİRLEŞİK sanal masaüstü
+    boyutu) ile xrandr'dan çekilen bir tek Y offset'ini karıştırıyordu → dikey-istiflenmiş
+    kurulumda (bu makine: HDMI-1 üstte 0,0, eDP-1 altta 0,1080) combined h (2130) + ikincil
+    monitörün y'si (1080) toplanınca ekran sınırının 1080px DIŞINA taşan bir quad üretiyordu;
+    Mutter alt satırı ekrana geri sıkıştırıp üst satırın üstüne bindiriyordu (kullanıcının
+    gördüğü "HDMI sol altta üst üste yığılma", 2026-08-28/09-02/09-03 canlı tekrarlandı).
+    Yatay (yan-yana, ikisi de y=0) kurulumda da aynı kök sebep — combined w tek monitörün
+    genişliğinden büyük. Fix: xdotool'a hiç bakma, monitörü KENDİ dikdörtgeniyle döndür.
     """
     out = _run(["xrandr", "--query"], display)
-    unique_y = list(set(re.findall(r"\d+x\d+\+\d+\+(\d+)", out)))
-    if len(unique_y) > 1:
-        return max(int(v) for v in unique_y)
-    return 0
+    monitors = []
+    for line in out.splitlines():
+        m = re.match(r"^(\S+) connected (primary )?(\d+)x(\d+)\+(\d+)\+(\d+)", line)
+        if not m:
+            continue
+        name, primary, w, h, x, y = m.groups()
+        monitors.append(Monitor(name=name, x=int(x), y=int(y), w=int(w), h=int(h),
+                                 primary=bool(primary)))
+    return monitors
 
 
 def _get_screen(display: str, screen_y: Optional[int] = None) -> ScreenGeometry:
-    """xdotool getdisplaygeometry + xrandr offset ile ekran boyutunu al.
+    """Hedef monitörün gerçek dikdörtgenini xrandr'dan al.
 
-    screen_y: override (None = xrandr auto-detect).
+    Seçim: screen_y verilirse o Y'de başlayan monitör (manuel override, ör. dikey
+    kurulumda ikincil monitörü hedeflemek için); yoksa xrandr'ın "primary" işaretlediği
+    monitör; o da yoksa ilk connected monitör. xrandr hiç okunamazsa (nadir) eski
+    xdotool-combined + tek-monitör varsayımına düşer.
     """
+    monitors = _list_monitors(display)
+    target: Optional[Monitor] = None
+    if screen_y is not None:
+        target = next((m for m in monitors if m.y == screen_y), None)
+    if target is None:
+        target = next((m for m in monitors if m.primary), None)
+    if target is None and monitors:
+        target = monitors[0]
+    if target is not None:
+        return ScreenGeometry(target.x, target.y, target.w, target.h)
+
     out = _run(["xdotool", "getdisplaygeometry"], display)
     parts = out.split()
     w, h = 1680, 1050
@@ -83,9 +118,7 @@ def _get_screen(display: str, screen_y: Optional[int] = None) -> ScreenGeometry:
             w, h = int(parts[0]), int(parts[1])
         except ValueError:
             pass
-
-    y = screen_y if screen_y is not None else _detect_screen_y(display)
-    return ScreenGeometry(0, y, w, h)
+    return ScreenGeometry(0, screen_y or 0, w, h)
 
 
 def _base_from_name(name: str) -> str:
@@ -242,19 +275,41 @@ def build_layout_plan(
     return plan, name_to_wid
 
 
-def apply_layout(plan: LayoutPlan, display: str = ":1") -> None:
-    """Planı xdotool ile uygula.
+def _place_window(wid: str, x: int, y: int, w: int, h: int, display: str) -> bool:
+    """Bash `_place_win` karşılığı: un-maximize + move + resize, read-back ile doğrula, 3 deneme.
+
+    Tek seferlik `xdotool windowmove` bazen sessizce uygulanmıyor (2026-09-03 canlı: 10
+    pencereden 1'i ilk denemede oturmadı, konumu bozuk kaldı) — bash'in retry+read-back'i
+    PORT edilmeden python tarafı bunu hiç yakalamıyordu, sessizce yanlış yerde bırakıyordu.
+    """
+    pos = ""
+    for _attempt in range(3):
+        pos = _run(["xdotool", "getwindowgeometry", wid], display)
+        m = re.search(r"Position: (-?\d+),(-?\d+)", pos)
+        if m:
+            px, py = int(m.group(1)), int(m.group(2))
+            if abs(px - x) <= 80 and abs(py - y) <= 80:
+                return True
+        _run(["wmctrl", "-i", "-r", wid, "-b", "remove,maximized_vert,maximized_horz"], display)
+        _run(["xdotool", "windowmove", wid, str(x), str(y)], display)
+        _run(["xdotool", "windowsize", wid, str(w), str(h)], display)
+        time.sleep(0.3)
+    return False
+
+
+def apply_layout(plan: LayoutPlan, display: str = ":1") -> List[str]:
+    """Planı xdotool ile uygula. Oturmayan pencerelerin id listesini döndürür.
 
     Bash gibi: her desktop'a switch et, sonra o desktop'taki pencereleri taşı.
     windowmove aktif desktop dışındaki pencerelerde çalışmıyor (Mutter).
     """
-    import time
     from collections import defaultdict
 
     by_ws: Dict[int, list] = defaultdict(list)
     for wid, ws, x, y in plan.assignments:
         by_ws[ws].append((wid, x, y))
 
+    failed: List[str] = []
     for ws in sorted(by_ws):
         # Bash _ensure_desktop: desktop'a geç, yerleştikten sonra 0.35s bekle
         _run(["wmctrl", "-s", str(ws)], display)
@@ -262,8 +317,8 @@ def apply_layout(plan: LayoutPlan, display: str = ":1") -> None:
 
         for wid, x, y in by_ws[ws]:
             _run(["xdotool", "set_desktop_for_window", wid, str(ws)], display)
-            _run(["xdotool", "windowmove", wid, str(x), str(y)], display)
-            _run(["xdotool", "windowsize", wid,
-                  str(plan.screen.quad_w), str(plan.screen.quad_h)], display)
+            if not _place_window(wid, x, y, plan.screen.quad_w, plan.screen.quad_h, display):
+                failed.append(wid)
 
     _run(["wmctrl", "-s", "0"], display)
+    return failed

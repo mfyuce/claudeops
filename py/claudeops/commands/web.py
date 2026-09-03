@@ -726,11 +726,13 @@ def _run_layout(pin: str, groups: list, claude_only: bool = True,
         name = next((n for n, w in name_to_wid.items() if w == wid), title)
         assignments.append({"name": name, "ws": ws, "x": x, "y": y})
 
+    failed_wids: list = []
     if not dry_run:
-        apply_layout(plan, display=display)
+        failed_wids = apply_layout(plan, display=display)
 
     return {"ok": True, "total": plan.total, "skipped": plan.skipped,
-            "assignments": assignments, "applied": not dry_run}
+            "assignments": assignments, "applied": not dry_run,
+            "failed": len(failed_wids)}
 
 
 _NEEDSHO_CACHE: dict = {}  # name -> (expires_monotonic, bool)
