@@ -17,42 +17,42 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 
 ## Roster / model (`~/.claude/claudeops/{roster,models}.tsv` — repo DIŞI, kaynak-of-truth)
 
-- Tüm isimler **`claude-sonnet-5`** (2026-08-24 Claude 5 geçişi; opus split geri alındı — istenirse `sed -i 's/claude-sonnet-5/claude-opus-5/'` ile grup bazında geri, önce tek isimle test).
+- Tüm isimler **`claude-sonnet-5`** (2026-08-24 Claude 5 geçişi; opus split geri alınmış durumda).
 - **İsimler base-name** (suffix yok). `Session.base` tarih+`_N` suffix'lerini indirger: `cops20260824_1`→`cops`. Panel eşlemesi önce TAM isim, sonra base — tarih-isimli satırlar kendi satırında görünür, görünmez canlı proc imkansız.
 - **co + cops** (self) + **ulaksec** aktif (guard ayakta tutsun). İsim-bazlı hariç tutma YOK, seçim panel checkbox'larıyla; tek koruma process-bazlı self-koruma (`ancestor_pids()`). [[co-ulaksec-guard-yes-ho-no]]
 - Kapalı/emekli satırlar `#`'lı. `py/cops close <name>` = kill + models.tsv yorumla; geri: panel "tekrar işe al". **Temizlik bekliyor:** tarih-isimli çöp satırlar (rustrino*/line*/trino*/sase* tarihli, TODO.md'de detay) — kullanıcıya sorup birleştir/sil.
-- roster.tsv'nin opsiyonel **4. kolonu = `cli`** (`claude`|`agy`|`shell`, yoksa/eskiyse `"claude"`). `shell` = düz interaktif bash (sudo/TTY işleri için — panel terminali gerçek PTY). Provider mimarisi `py/claudeops/providers/`: yeni backend = yeni dosya, dallanma yok (adaylar TODO.md'de).
+- roster.tsv'nin opsiyonel **4. kolonu = `cli`** (`claude`|`agy`|`codex`|`shell`, yoksa/eskiyse `"claude"`). `shell` = düz interaktif bash (sudo/TTY işleri için — panel terminali gerçek PTY). Provider mimarisi `py/claudeops/providers/`: yeni backend = yeni dosya, dallanma yok (adaylar TODO.md'de).
 
 ## Fleet kontrolü — MANUEL (2026-08-24 karar)
 
 - **Guard cron KASITLI kapalı.** Kullanıcı `py/cops web`'den tek tek başlatıyor — **sen açma**, sormadan toplu spawn YAPMA. [[feedback-manual-fleet-control]]
-- **`py/cops web [--port 8765] [--tunnel]`** — kontrol paneli; tam sekme/özellik listesi `py/README*.md` + [[diag-tab-feature]]. CLI seçici çoklu-backend (claude/agy/shell).
+- **`py/cops web [--port 8765] [--tunnel]`** — kontrol paneli; tam sekme/özellik listesi `py/README*.md` + [[diag-tab-feature]].
 - **`py/cops service install|status|uninstall|notify|watchdog`** — web+tunnel artık systemd `--user` ile KALICI (logout/reboot'ta otomatik, `Restart=on-failure`); `notify` = tunnel URL değişince ntfy.sh push'u; `watchdog` = yukarıdaki oomd-tüm-oturum senaryosunu kurtarır (root, `sudo` ister). Detay: `py/README*.md`.
 - **Repo PUBLIC** (MIT, github + gitlab mirror) — roster/models/token repo dışında. Kullanıcı: "dünyaya açığız, DONE/TODO/changelog önemli" → kayıtları özenli tut.
 - Web Stop / `kill` / `rc --kill-first`: tmux-backed'de ad-bazlı `tmux kill-session` (PID-ancestry YASAK — paylaşımlı server riski) + `find_outer_bash_pids()` ile session ölmeden ÖNCE yakalanan outer-pencere PID'lerini de kapatır (2026-09-01 fix, DONE.md).
 
 ## Handover (3-fazlı)
 
-- **Faz 1:** `py/cops handover [--dry-run]` — batch'li (mass aynı anda = rate-limit → blank-TUI [[mass-faz1-ratelimit-stuck]]); self (komutun atası) otomatik atlanır. Konuşması olmayan provider'lar (`shell`) `has_conversation()=False` ile otomatik dışlanır — kill edilmezler.
-- **Faz 2:** Faz1 sağlıksızsa (503/529) DUR, kullanıcı onayı şart. `py/cops rc <isimler SPACE'li> --new --kill-first --model='claude-sonnet-5' --permission-mode=auto --one-by-one` (bash rc DEĞİL). `--effort` VERME — varsayılan `high`, artık kullanıcı Ayarlar sekmesinden de override edebiliyor [[handover-effort-high-not-max]]. `--prompt` VERME (boş başlasınlar [[faz2-new-session-devam]]). Config doğrula: `python3 -c "import json;json.load(open('$HOME/.claude.json'))"`. Bridge rate-limit: 4'er batch + 20s [[bridge-batch-spawn-ratelimit]].
+- **Faz 1:** `py/cops handover [--dry-run]` — batch'li (mass aynı anda = rate-limit → blank-TUI [[mass-faz1-ratelimit-stuck]]); self (komutun atası) otomatik atlanır. Konuşması olmayan provider'lar (`shell`) `has_conversation()=False` ile otomatik dışlanır — kill edilmezler. Boş/idle (hiç gerçek user turn'ü olmayan) session'lar `needs_ho()` tarafından otomatik skip edilir. **Taze reboot (≤30dk) → DUR + uyar**, `--force` ile baypas (2026-09-03, [[reboot-no-handover]]).
+- **Faz 2:** Faz1 sağlıksızsa (503/529) DUR, kullanıcı onayı şart. `py/cops rc <isimler SPACE'li> --new --kill-first --permission-mode=auto --one-by-one` (bash rc DEĞİL; `--model` VERME — models.tsv → Ayarlar → provider varsayılanı zincirine düşer, [[handover-effort-high-not-max]] ile aynı prensip). `--effort` VERME — varsayılan `high`, Ayarlar sekmesinden de override edilebilir. `--prompt` VERME (boş başlasınlar [[faz2-new-session-devam]]). Config doğrula: `python3 -c "import json;json.load(open('$HOME/.claude.json'))"`. Bridge rate-limit: 4'er batch + 20s [[bridge-batch-spawn-ratelimit]].
 - **Faz 3:** ÖNCE `loginctl show-session <id> -p LockedHint`=no doğrula [[layout-needs-unlocked-screen]]. `./claudeops layout grid 4 --claude-only --pin=... --group=...` (bash, bkz. TOBEDECIDED.md #12) — 2× çalıştır, `xwininfo` ile doğrula (wmctrl 2× yalan).
 - **Skip kriteri:** RFH var + sonrasında yeni istek yok + repo temiz+pushed (github+gitlab).
 - Detay: [[handover-procedure]] [[handover-edge-cases]] [[feedback-ho-stop-on-error]] [[config-corruption-resume-hang]]
 
 ## Sınırlamalar / açık bug'lar
 
-Wayland: layout çalışmaz (çoklu-monitor yan-yana kurulumda da ayrı bir bug var, React'ten de doğrulandı). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Bulk handover "sadece ilk item başarılı oluyor": 2026-09-02'de gerçek bir gedik (BrokenPipe → notify atlanması) bulunup düzeltildi + `_handover`'a tam diag_log eklendi, canlı yeniden test edilmedi — tekrarlarsa `diag.log`/Tanı sekmesine bak. Tam liste: TODO.md.
+Wayland: layout çalışmaz (çoklu-monitor yan-yana kurulumda da ayrı bir bug var, React'ten de doğrulandı). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Bulk handover nadir BrokenPipe izi bırakabilir (kök gedik kapatıldı + diag_log var) — tekrarlarsa Tanı sekmesine bak. Tam liste: TODO.md.
 
 ## Meta
 
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-09-03 11:03)
+## READY FOR HANDOVER (2026-09-03 18:56)
 
-Eski TODO/TBD backlog'u güncel koda karşı triyaj edilip düşük riskli kalemler uygulandı (i18n/rozet/banner-yeri/handover-metni-görünür fix'leri + bulk-handover'a gerçek bir BrokenPipe/notify gedik fix'i+diag_log). Ardından kalan NEEDS-DESIGN-DECISION kalemler kullanıcıya sorulup kararlaştırıldı: yeni "Ayarlar" sekmesi (sunucu-taraflı `settings.json` — tema/handover-effort/CLI-başına model), 4 sekmeye sayfalama, "Kayıtlı" sekmesi cwd-gruplama, yeni "compact" bulk aksiyonu (canlı doğrulandı). Kullanıcının bildirdiği canlı bug ("ana sayfa açılırken hata") kök-nedeniyle düzeltildi: `_serve_static()` `Cache-Control` göndermiyordu, redeploy sonrası eski `index.html` silinmiş JS/CSS'i 404'luyordu. 4 README'ye (TR+EN) ntfy/tunnel bildirim örneği+kısıtları eklendi, aynı zamanda TOBEDECIDED#13'e kanıt oldu (1 Eylül mesajı gerçekten kayıp). Tüm bunlar canlıya alındı, `claudeops-web.service` 2× restart edildi. Ayrıca: "ho+new cli" isteği TODO'ya kaydedildi (uygulanmadı), `postaci` projesi roster'a kaydedildi (kod değişikliği değil).
+`settings.default_model_for(provider)` eklendi — Ayarlar'daki per-CLI model override'ı artık backend'in HER "model bilinmiyor" fallback'inde (9 call-site: guard/stuck/Faz1/Faz2/web) gerçekten kullanılıyor, önceden sadece frontend ön-doluydu; guard.py/stuck.py'nin stale `"claude-sonnet-4-6"` sabiti de gitti. Ardından "todolardan devam": `needs_ho()` boş/idle session'ları artık skip ediyor (yanlış-pozitif "WOULD handover" düzeldi), `py/cops handover`'a reboot-guard eklendi (`--force` ile baypas), 6 eski TODO py tarafında zaten çözülmüş bulunup kapatıldı. Kullanıcının "multiline chat prompt sending" isteği araştırılıp TODO'ya yazıldı (tmux paste-buffer gerektiriyor, canlı doğrulanmadan UYGULANMADI). Hepsi onayla commit+deploy+restart edildi (2 ayrı turda); bir build yanlışlıkla canlı `dist/`'i mutasyona uğrattı, fark edilip geri alındı — [[webui-build-is-live-deploy]]. Detay: DONE.md.
 
-**Açık kalanlar:** TBD#12'nin son parçası (Faz 3'ün `py/cops layout`'la denenmesi — çoklu-monitor bug'ı yüzünden riskli) + birkaç düşük-öncelikli yeni TODO (desktop-hedefleme, komut paleti, "makine durumu" sekmesi).
+**Açık kalanlar:** TBD#12 (Faz 3'ün `py/cops layout`'la denenmesi, çoklu-monitor bug'ı yüzünden riskli); multiline-prompt fix (TODO.md'de tasarım notu var); rename/busy-idle-göstergesi/roster-temizliği gibi düşük-öncelikli TODO'lar.
 
 **Repo:** clean, github+gitlab senkron.
 
