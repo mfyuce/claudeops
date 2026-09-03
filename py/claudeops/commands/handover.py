@@ -17,9 +17,24 @@ Faz 3 için: claudeops layout grid 4 --claude-only --pin=...
 from __future__ import annotations
 import os
 import sys
+from typing import Optional
 from ..guard import guard_lock
 from ..handover import handover_faz1, HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..spawn import detect_display
+
+# TODO-p / [[reboot-no-handover]]: taze reboot üstüne elle handover = boot-recovery
+# zaten toparlarken race + post-boot artefakt + context kaybı (2026-06-18 mo50 olayı).
+REBOOT_GUARD_SECONDS = 1800.0  # 30 dk
+
+
+def _seconds_since_boot() -> Optional[float]:
+    """`/proc/uptime`'ın ilk alanı — `uptime -s`'i parse etmekten daha ucuz/sağlam
+    (locale/tarih-format riski yok, subprocess yok)."""
+    try:
+        with open("/proc/uptime") as f:
+            return float(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def register(sub):
@@ -48,10 +63,21 @@ def register(sub):
     p.add_argument("--display", default=None)
     p.add_argument("--dry-run", action="store_true",
                    help="sadece göster, gerçek kill/spawn yapma")
+    p.add_argument("--force", action="store_true",
+                   help="taze-reboot uyarısını (≤30dk) baypas et")
     p.set_defaults(func=run)
 
 
 def run(args) -> int:
+    uptime = _seconds_since_boot()
+    if uptime is not None and uptime < REBOOT_GUARD_SECONDS and not args.force:
+        mins = uptime / 60.0
+        print(f"⚠ makine ~{mins:.0f} dk önce reboot oldu.", file=sys.stderr)
+        print("  boot-recovery/cron zaten en son hâlden toparlıyor olabilir — taze", file=sys.stderr)
+        print("  reboot üstüne elle handover post-boot artefakt + race + context", file=sys.stderr)
+        print("  kaybı riski taşır ([[reboot-no-handover]]). Baypas: --force", file=sys.stderr)
+        return 1
+
     # Mesajı belirle
     if args.message_file:
         try:
