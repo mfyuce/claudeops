@@ -161,17 +161,64 @@ def handover_done(jsonl_path: str) -> bool:
     return last_rfh > 0 and last_rfh >= last_user
 
 
+def has_real_user_turn(jsonl_path: str) -> bool:
+    """jsonl'de en az bir GERÇEK (insan/otomasyon kaynaklı) user mesajı var mı —
+    tool_result'un 'user' rolüyle kodlanmış hâli, sidechain, isMeta (system-reminder
+    enjeksiyonu) ve boş metin SAYILMAZ. claude_provider.py'nin `_is_real_user_text`
+    filtresiyle AYNI tanım — bilerek burada TEKRARLANDI (needs_ho.py providers'a
+    bağımlı olmayan bir leaf modül, cross-import istemiyoruz).
+
+    False = bu jsonl `--new`/Faz 2'nin boş başlangıcının (bkz.
+    [[faz2-new-session-devam]]) ya da ilk system-reminder enjeksiyonunun ÖTESİNE
+    hiç geçmemiş — `needs_ho()` bu durumda diğer TÜM sinyalleri (RFH dahil) atlayıp
+    False döner, çünkü hiç çalışmamış bir session'ın wrap-up'a ihtiyacı olamaz."""
+    try:
+        with open(jsonl_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = json.loads(line)
+                except Exception:
+                    continue
+                if o.get("type") != "user" or o.get("isSidechain") or o.get("isMeta"):
+                    continue
+                content = o.get("message", {}).get("content")
+                if isinstance(content, str):
+                    if content.strip():
+                        return True
+                elif isinstance(content, list):
+                    is_tool_result = any(
+                        isinstance(b, dict) and b.get("type") == "tool_result" for b in content
+                    )
+                    has_text = any(
+                        isinstance(b, dict) and b.get("type") == "text" and b.get("text", "").strip()
+                        for b in content
+                    )
+                    if not is_tool_result and has_text:
+                        return True
+    except OSError:
+        return False
+    return False
+
+
 # ── Main entry ────────────────────────────────────────────────────────────────
 
 def needs_ho(sid: str, cwd: str, jsonl_path: Optional[str] = None) -> bool:
     """Session ho gerektiriyor mu? True = ho gerek, False = atla.
 
-    4 sinyal (bash needs_ho port):
+    Önce bir erken-çıkış: jsonl VARSA ama hiç gerçek user turn'ü yoksa (bkz.
+    `has_real_user_turn`) — session'ın kendisi hiç çalışmamış demektir, cwd'nin
+    git durumu (başka bir session/insan tarafından kirletilmiş olabilir) bu
+    session'ı ilgilendirmez → doğrudan False. Sonra 4 sinyal (bash needs_ho port):
       1. repo_dirty (tracked-mod/staged/unpushed/behind)
       2. untracked dosya var
       3. baseline'dan beri yeni commit
       4. jsonl var ama RFH yok / RFH sonrası yeni istek
     """
+    if jsonl_path and not has_real_user_turn(jsonl_path):
+        return False
     if repo_dirty(cwd):
         return True
     if repo_untracked_count(cwd) > 0:
