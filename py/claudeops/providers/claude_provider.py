@@ -103,6 +103,9 @@ class ClaudeProvider(CliProvider):
             f"{prompt_arg}"
         )
 
+    def compact_command(self) -> Optional[str]:
+        return "/compact"
+
     def matches_proc(self, cmd: List[str]) -> bool:
         """Bash `^claude` anchor'ının karşılığı: argv[0]'ın basename'i 'claude'.
         'bash -c "claude ..."' wrapper'ında argv[0]='bash' → eler."""

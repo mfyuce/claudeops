@@ -16,6 +16,10 @@
  * `btn.disabled=true; btn.textContent=t('starting')` DOM mutation) — no
  * shadow dict needed here since a closed/retired row has no in-progress
  * form to survive a refresh, unlike `OptionsRow`/`AdoptRow`.
+ *
+ * `search` (2026-09-04): filtered here (not by the caller) so the two
+ * call sites (App.tsx's Disabled/Retired tabs) stay one-liners, same as
+ * every other prop this component already takes.
  */
 
 import { useState } from "react";
@@ -27,9 +31,11 @@ import { usePagination } from "../hooks/usePagination";
 import type { RosterEntry } from "../api/types";
 import { CwdCell } from "./shared/CwdCell";
 import { Pagination } from "./shared/Pagination";
+import { matchesSearch } from "./shared/searchFilter";
 
 interface GroupTableProps {
   items: RosterEntry[];
+  search: string;
 }
 
 function ReactivateRow({ item }: { item: RosterEntry }) {
@@ -67,11 +73,12 @@ function ReactivateRow({ item }: { item: RosterEntry }) {
   );
 }
 
-export function GroupTable({ items }: GroupTableProps) {
+export function GroupTable({ items, search }: GroupTableProps) {
   const { t } = useLang();
-  const { pageItems, page, totalPages, setPage } = usePagination(items);
+  const filtered = items.filter((it) => matchesSearch(it, search));
+  const { pageItems, page, totalPages, setPage } = usePagination(filtered);
 
-  if (!items.length) return <div className="opts-hint">{t.empty}</div>;
+  if (!filtered.length) return <div className="opts-hint">{items.length === 0 ? t.empty : t.noSearchMatches}</div>;
 
   return (
     <div className="tablewrap">

@@ -21,6 +21,7 @@ import { useStatusContext } from "../../state/StatusContext";
 import { usePagination } from "../../hooks/usePagination";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
+import { matchesSearch } from "../shared/searchFilter";
 import { Pagination } from "../shared/Pagination";
 import { BulkBar } from "./BulkBar";
 import { SessionRow } from "./SessionRow";
@@ -31,9 +32,10 @@ interface RunningTabProps {
   selection: SelectionControls;
   onToggleTerminal: (name: string) => void;
   onSwitchTab: (tab: TabKey) => void;
+  search: string;
 }
 
-export function RunningTab({ selection, onToggleTerminal, onSwitchTab }: RunningTabProps) {
+export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }: RunningTabProps) {
   const { t } = useLang();
   const { data } = useStatusContext();
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
@@ -41,7 +43,12 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab }: Running
   // Hooks must run unconditionally (rules-of-hooks) — computed before the
   // `!data` early return below, with an empty-array fallback while `data`
   // hasn't loaded yet.
-  const rows = data ? data.sessions.filter((s) => s.running) : [];
+  const allRows = data ? data.sessions.filter((s) => s.running) : [];
+  // `search` (2026-09-04) narrows `rows` itself, same as the running/!running
+  // split above it — everything below (select-all, BulkBar, pagination)
+  // already treats `rows` as "the current tab's full set", so it needs no
+  // separate search-awareness.
+  const rows = allRows.filter((s) => matchesSearch(s, search));
   // Select-all/bulk actions stay scoped to the FULL (unpaginated) `rows` —
   // only which rows are individually RENDERED is paginated.
   const { pageItems, page, totalPages, setPage } = usePagination(rows);
@@ -81,7 +88,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab }: Running
             {rows.length === 0 && (
               <tr>
                 <td colSpan={RUNNING_ROW_COLSPAN} style={{ color: "var(--muted)" }}>
-                  {t.nothingRunning}
+                  {allRows.length === 0 ? t.nothingRunning : t.noSearchMatches}
                 </td>
               </tr>
             )}

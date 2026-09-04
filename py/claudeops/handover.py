@@ -1,15 +1,28 @@
-"""Handover Faz 1 — eski session'ı kapat, aynı masaya wrap-up mesajıyla yeniden aç.
+"""Handover Faz 1 — CANLI session'a wrap-up mesajı gönder (kill/respawn YOK).
 
-Bash akışı (visible mode):
-  1. Kill eski proc (SIGTERM + 10s grace + SIGKILL)
-  2. Kill parent bash (terminal penceresi kapansın — SIGKILL, anlık)
-  3. gnome-terminal aç: claude --resume SID -n NAME --remote-control NAME 'MSG'
-  4. Proc-presence bekle (başarı kriteri = proc canlı, bridge-field DEĞİL)
+2026-09-04 REWRITE (kullanıcı: "ho için ama fazladan bir ekran açıyorsun.
+kullanıcı karar versin ne zaman kapatması ne zaman açmasına. sadece ho gonder
+yeter"). Eski akış (kill eski proc → gnome-terminal aç → `--resume SID ...
+'MSG'` → proc-presence bekle) TAMAMEN KALDIRILDI. Yeni akış: `tmux_send_keys()`
+ile mesaj CANLI session'a enjekte edilir — session hiç ölmüyor, pencere hiç
+kapanmıyor/açılmıyor. Context'i ne zaman sıfırlayıp yeni bir session açacağı
+(eski Faz 2/3'ün işi) artık kullanıcının KENDİ, ayrı, bilinçli kararı — Faz
+1'in otomatik/örtük bir devamı değil.
+
+Canlı doğrulandı (throwaway session'lar, gerçek fleet'e dokunulmadan):
+`tmux_send_keys`'in `-l`+ayrı-`Enter` mekanizması `HANDOVER_MSG_DEFAULT`'ın
+TAM içeriğiyle (1204 karakter, çok satırlı, Türkçe karakterli, madde
+işaretli, box-drawing unicode satırlı) test edildi — TEK bir kullanıcı
+turu olarak doğru şekilde iletildi, satır satır erken-gönderim YOK (bu, açık
+"multiline paste" TODO'sunun endişe ettiği senaryonun AYNISI — meğer güncel
+CLI sürümünde (v2.1.260) sorun değilmiş, o TODO da bu bulguyla güncellendi).
 
 Throttle ([[mass-faz1-ratelimit-stuck]]): rate-limit önlemek için batch_size'lı gruplar +
-batch_delay arası bekleme.
+batch_delay arası bekleme — HÂLÂ geçerli (mesaj canlıya da gitse, session'ın onu
+işlemesi yine bir API turu = yine rate-limit riski taşır, mekanizma değişse de
+sunucu tarafı aynı).
 
-Self-koruma: handover kendi atası olan claude session'ını asla öldürmez
+Self-koruma: handover kendi atası olan claude session'ını asla hedeflemez
 (process-bazlı; isim-bazlı hariç-tutma 2026-08-25'te kaldırıldı — seçim artık
 web panelindeki checkbox'larla).
 """
@@ -19,13 +32,12 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .discovery import find_sessions, find_by_name
-from .kill import kill_session_and_parent, KILL_GRACE_SECONDS
+from .discovery import find_sessions
 from .needs_ho import needs_ho
 from .providers import CliProvider, get_provider
-from .session import Session
-from .settings import default_model_for, load_settings
-from .spawn import find_latest_jsonl, detect_display, spawn_session
+from .settings import load_settings
+from .spawn import find_latest_jsonl
+from .tmux_backend import is_tmux_backed, tmux_send_keys
 
 # 2026-08-25: isim-bazlı hariç-tutma (HO_EXCLUDE_BASES={co,cops,ulaksec}) KALDIRILDI
 # (kullanıcı kararı: "hariç tutulma kısımlarını silelim, UI'ye checkbox ekleyelim") —
@@ -53,8 +65,15 @@ def ancestor_pids() -> set:
 
 
 def default_handover_effort(provider: CliProvider) -> str:
-    """Respawn edilen session'ın handover'daki (Faz 1/Faz 2/web tek-session
-    'Handover' butonu — üçü de bunu kullanır) effort varsayımı.
+    """Faz 2'nin (`py/cops rc --new` — fresh bir session açan, hâlâ tek gerçek
+    spawn noktası) respawn ettiği session için effort varsayımı.
+
+    2026-09-04: Faz 1 (bu modülün `handover_faz1`'i) ve web'in tek-session
+    "Handover" butonu (`web.py`'nin `_handover()`'ı) ARTIK bunu KULLANMIYOR —
+    ikisi de canlı `tmux_send_keys` enjeksiyonuna geçti, hiçbir şey spawn
+    etmiyor, dolayısıyla bir "yeni session'ın effort'u" seçilecek bir şey
+    yok. Sadece Faz 2/`rc.py` (gerçekten fresh bir process açan tek yer)
+    kullanıyor.
 
     Bilerek `provider.effort_levels()[-1]` (en tepe — claude'da 'max') DEĞİL:
     bu, o TEK handover turunun maliyeti değil, respawn edilen session'ın BİR
@@ -133,7 +152,7 @@ HANDOVER_MSG_DEFAULT_EN = (
 @dataclass
 class Faz1Result:
     name: str
-    status: str        # "opened" | "skipped-no-jsonl" | "failed-noproc" | "dry-run"
+    status: str        # "sent" | "skipped-*" | "failed-send" | "failed-noproc" | "dry-run"
     detail: str = ""
 
 
@@ -142,8 +161,8 @@ class Faz1Summary:
     results: List[Faz1Result] = field(default_factory=list)
 
     @property
-    def opened(self):
-        return sum(1 for r in self.results if r.status == "opened")
+    def sent(self):
+        return sum(1 for r in self.results if r.status == "sent")
 
     @property
     def failed(self):
@@ -154,54 +173,14 @@ class Faz1Summary:
         return sum(1 for r in self.results if r.status.startswith("skipped"))
 
 
-def _wait_proc(name: str, timeout: float = 15.0) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if find_by_name(name, measure_cpu=False):
-            return True
-        time.sleep(1.0)
-    return False
-
-
-def _spawn_faz1(session: Session, message: str, display: str, dry_run: bool) -> str:
-    """Eski session'ı kapat, wrap-up mesajıyla yeniden aç. Returns kind string.
-
-    spawn_session()'a delege eder (eskiden kendi gnome-terminal Popen'ı vardı —
-    CLAUDE* env filtresi olmadan, [[spawn-env-leak-disables-transcript]] bug'ına
-    açıktı; artık web.py ile aynı ortak, güvenli yoldan geçiyor).
-    """
-    # NOT: find_latest_jsonl claude-özel (agy'nin conversations-cache'ini bakmaz) —
-    # bilerek öyle bırakıldı: agy session'ları Faz1'den TEMİZCE atlanır (phase-3,
-    # agy'nin kendi RFH/needs_ho muadili ayrı bir iş, henüz yapılmadı).
-    if not find_latest_jsonl(session.cwd):
-        return "skipped-no-jsonl"
-    provider = get_provider(session.cli)
-    return spawn_session(
-        name=session.name,
-        cwd=session.cwd,
-        model=session.model or default_model_for(provider),
-        display=display,
-        permission_mode=provider.permission_modes()[0],
-        effort=default_handover_effort(provider),
-        force_new=False,
-        prompt=message,
-        dry_run=dry_run,
-        cli=session.cli,
-    )
-
-
 def handover_faz1(
     message: str = HANDOVER_MSG_DEFAULT,
-    display: Optional[str] = None,
     dry_run: bool = False,
     batch_size: int = 5,
     batch_delay: float = 30.0,
-    proc_wait: float = 15.0,
-    grace: float = KILL_GRACE_SECONDS,
-    kill_settle: float = 3.0,
     names: Optional[List[str]] = None,
 ) -> Faz1Summary:
-    """Faz 1: wrap-up mesajı gönder (eski proc kapat, yeni aç).
+    """Faz 1: wrap-up mesajını CANLI session'a gönder (kill/respawn YOK — bkz. modül docstring'i).
 
     `names` YOKSA (varsayılan, batch): tüm canlı session'lar hedef,
     needs_ho=False olanlar atlanır.
@@ -214,14 +193,7 @@ def handover_faz1(
 
     batch_size + batch_delay: rate-limit önlemi ([[mass-faz1-ratelimit-stuck]]) — sadece
     batch modda anlamlı (tek/birkaç isimli çağrıda batch_size'a nadiren ulaşılır).
-    kill_settle: kill onaylandıktan SONRA, respawn'dan ÖNCE bekleme. Faz1 AYNI
-      --remote-control ismini reuse eder; proc ölse de server-side bridge deregister
-      gecikir → settle olmadan isim çakışması (remote'da inactive flicker).
-      ([[handover-edge-cases]] bridge trap)
     """
-    if display is None:
-        display = detect_display()
-
     # Ho başında timestamp yaz — needs_ho baseline karşılaştırması için (bash _handover_stamp)
     from .paths import STATE_DIR
     import datetime
@@ -288,36 +260,24 @@ def handover_faz1(
                 summary.results.append(Faz1Result(session.name, "skipped-no-ho"))
                 continue
 
-        # 1. Kill eski proc (dry-run'da atla)
-        if not dry_run:
-            kill_result = kill_session_and_parent(session.pid, grace=grace, name=session.name)
-            # Server-side RC bridge'in AYNI ismi bırakması için settle.
-            # proc.wait ölümü onaylar AMA bridge deregister async gecikir → aynı
-            # isimle hemen respawn = çakışma. already_dead'de bridge zaten yok, atla.
-            if kill_settle > 0 and kill_result != "already_dead":
-                time.sleep(kill_settle)
-
-        # 2. Yeni terminal aç
-        kind = _spawn_faz1(session, message, display, dry_run)
-
-        if kind.startswith("skipped"):
-            print(f" {kind}")
-            summary.results.append(Faz1Result(session.name, kind))
-            continue
-
         if dry_run:
-            print(f" {kind}")
-            summary.results.append(Faz1Result(session.name, "dry-run", kind))
+            print(" [dry-run] mesaj CANLI session'a gönderilecekti (kill/respawn yok)")
+            summary.results.append(Faz1Result(session.name, "dry-run", "would-send-live"))
             continue
 
-        # 3. Proc-presence bekle
-        time.sleep(3)
-        found = _wait_proc(session.name, timeout=proc_wait)
-        if found:
-            print(f" opened ({kind})")
-            summary.results.append(Faz1Result(session.name, "opened", kind))
+        # tmux-backed olmayan (eski/bare) bir session'a canlı enjeksiyon mümkün değil —
+        # handover kapsamı dışı bırak (kill/resume'a düşmüyoruz, [[stale-tui-title-cross-suffix-resume]]
+        # sınıfı sürprizlere geri dönmemek için).
+        if not is_tmux_backed(session.pid):
+            print(" skip (tmux-backed değil, canlı mesaj gönderilemiyor)")
+            summary.results.append(Faz1Result(session.name, "skipped-not-tmux"))
+            continue
+
+        if tmux_send_keys(session.name, message):
+            print(" sent (live)")
+            summary.results.append(Faz1Result(session.name, "sent"))
         else:
-            print(f" WARN: proc görünmedi ({kind})")
-            summary.results.append(Faz1Result(session.name, "failed-noproc", kind))
+            print(" WARN: mesaj gönderilemedi")
+            summary.results.append(Faz1Result(session.name, "failed-send"))
 
     return summary

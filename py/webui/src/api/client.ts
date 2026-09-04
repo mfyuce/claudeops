@@ -18,6 +18,8 @@
 import type { Lang } from "../i18n/strings";
 import type {
   AdoptResult,
+  DesktopStartResult,
+  DesktopStopResult,
   DiagAskResult,
   DiagLogResult,
   DiagRestartResult,
@@ -185,6 +187,11 @@ export const apiDiagSpawnTest = (lang: Lang): Promise<DiagSpawnTestResult> =>
 export const apiDiagRestartGt = (lang: Lang): Promise<DiagRestartResult> =>
   apiPost<DiagRestartResult>("/api/diag/restart-gt", { lang });
 export const apiDiagAsk = (p: DiagAskPayload): Promise<DiagAskResult> => apiPost<DiagAskResult>("/api/diag/ask", p);
+
+export const apiDesktopStart = (lang: Lang): Promise<DesktopStartResult> =>
+  apiPost<DesktopStartResult>("/api/desktop/start", { lang });
+export const apiDesktopStop = (lang: Lang): Promise<DesktopStopResult> =>
+  apiPost<DesktopStopResult>("/api/desktop/stop", { lang });
 
 /** Partial patch — omitted keys are left untouched server-side (`settings.save_settings`'s merge). */
 export type SettingsPayload = Partial<Settings> & { lang: Lang };

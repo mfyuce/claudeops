@@ -19,11 +19,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Banners } from "./components/Banners";
+import { DesktopTab } from "./components/DesktopTab";
 import { DiagnosticsTab } from "./components/DiagnosticsTab";
 import { GroupTable } from "./components/GroupTable";
 import { LayoutTab } from "./components/LayoutTab";
 import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
 import { RunningTab } from "./components/RunningTab/RunningTab";
+import { SearchBox } from "./components/shared/SearchBox";
 import { SettingsTab } from "./components/SettingsTab";
 import { TabBar } from "./components/TabBar";
 import { TerminalModal } from "./components/TerminalModal/TerminalModal";
@@ -54,6 +56,12 @@ function AppShell() {
   // Shared across Running/Registered per the plan — one Set, not a third
   // Context (see state/selection.ts's doc comment).
   const selection = useSelection();
+  // Search box (2026-09-04): lives above <TabBar>, not inside any one tab,
+  // so it survives tab switches and scopes all 4 list tabs' rows + TabBar's
+  // own counts at once. Plain local state — not persisted (localStorage/
+  // settings.json), unlike activeTab/theme: a stale filter silently
+  // narrowing a fresh page load would be more surprising than useful here.
+  const [search, setSearch] = useState("");
 
   const setActiveTab = useCallback((tab: TabKey) => {
     setActiveTabState(tab);
@@ -135,15 +143,19 @@ function AppShell() {
       </div>
       <div className="sub">{summary}</div>
       <Banners onGoToDiagnostics={() => setActiveTab("diag")} />
-      <TabBar active={activeTab} onSelect={setActiveTab} />
+      <SearchBox value={search} onChange={setSearch} />
+      <TabBar active={activeTab} onSelect={setActiveTab} search={search} />
       <div>
         {data && activeTab === "running" && (
-          <RunningTab selection={selection} onToggleTerminal={onToggleTerminal} onSwitchTab={setActiveTab} />
+          <RunningTab selection={selection} onToggleTerminal={onToggleTerminal} onSwitchTab={setActiveTab} search={search} />
         )}
-        {data && activeTab === "registered" && <RegisteredTab selection={selection} onSwitchTab={setActiveTab} />}
-        {data && activeTab === "disabled" && <GroupTable items={data.closed} />}
-        {data && activeTab === "retired" && <GroupTable items={data.retired} />}
+        {data && activeTab === "registered" && (
+          <RegisteredTab selection={selection} onSwitchTab={setActiveTab} search={search} />
+        )}
+        {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} />}
+        {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} />}
         {data && activeTab === "layout" && <LayoutTab />}
+        {data && activeTab === "desktop" && <DesktopTab />}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
         {data && activeTab === "settings" && <SettingsTab />}
       </div>

@@ -73,8 +73,16 @@ export interface Strings {
   tabDisabled: string;
   tabRetired: string;
   tabLayout: string;
+  tabDesktop: string;
   tabDiag: string;
   tabSettings: string;
+  desktopDesc: string;
+  desktopStartBtn: string;
+  desktopStopBtn: string;
+  desktopStarting: string;
+  desktopStopping: string;
+  desktopConnecting: string;
+  desktopWaitingFrame: string;
   selWord: string;
   selectNeedsHo: string;
   hoCol: string;
@@ -202,6 +210,9 @@ export interface Strings {
   pageNext: string;
   pageOf: (page: number, total: number) => string;
   groupRunningBadge: string;
+  searchPlaceholder: string;
+  searchClear: string;
+  noSearchMatches: string;
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -231,8 +242,16 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDisabled: "Devre dışı",
     tabRetired: "Emekli",
     tabLayout: "Layout",
+    tabDesktop: "Uzak Masaüstü",
     tabDiag: "Tanı",
     tabSettings: "Ayarlar",
+    desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps, salt-izleme — mouse/klavye kontrolü yok). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
+    desktopStartBtn: "Başlat",
+    desktopStopBtn: "Durdur",
+    desktopStarting: "başlatılıyor… (ilk seferde derleme birkaç saniye sürebilir)",
+    desktopStopping: "durduruluyor…",
+    desktopConnecting: "bağlanıyor…",
+    desktopWaitingFrame: "ilk görüntü bekleniyor…",
     selWord: "seçili",
     selectNeedsHo: "needs-ho seç",
     hoCol: "ho?",
@@ -360,6 +379,9 @@ export const STRINGS: Record<Lang, Strings> = {
     pageNext: "sonraki",
     pageOf: (page, total) => `sayfa ${page}/${total}`,
     groupRunningBadge: "bu grupta çalışan var",
+    searchPlaceholder: "isim veya cwd ara…",
+    searchClear: "aramayı temizle",
+    noSearchMatches: "Aramayla eşleşen yok.",
   },
   en: {
     title: "claudeops — fleet control",
@@ -387,8 +409,16 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDisabled: "Disabled",
     tabRetired: "Retired",
     tabLayout: "Layout",
+    tabDesktop: "Remote Desktop",
     tabDiag: "Diagnostics",
     tabSettings: "Settings",
+    desktopDesc: "Watch the machine's screen live (2 fps, view-only — no mouse/keyboard control). Remember to stop it — it captures the screen continuously while running.",
+    desktopStartBtn: "Start",
+    desktopStopBtn: "Stop",
+    desktopStarting: "starting… (first run may take a few seconds to compile)",
+    desktopStopping: "stopping…",
+    desktopConnecting: "connecting…",
+    desktopWaitingFrame: "waiting for first frame…",
     selWord: "selected",
     selectNeedsHo: "select needs-ho",
     hoCol: "ho?",
@@ -516,5 +546,8 @@ export const STRINGS: Record<Lang, Strings> = {
     pageNext: "next",
     pageOf: (page, total) => `page ${page}/${total}`,
     groupRunningBadge: "something in this group is running",
+    searchPlaceholder: "search name or cwd…",
+    searchClear: "clear search",
+    noSearchMatches: "Nothing matches the search.",
   },
 };
