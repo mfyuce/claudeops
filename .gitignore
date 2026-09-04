@@ -10,3 +10,7 @@ __pycache__/
 # local-only notes (asla commit etme)
 *.local.md
 *.local.txt
+# Rust build output (rust/screenshare) — bu makinede global CARGO_TARGET_DIR
+# ile repo dışına yazılıyor ama varsayılan cargo konfigürasyonunda buraya
+# (rust/screenshare/target/) düşer, asla commit edilmemeli.
+target/

@@ -68,6 +68,14 @@ h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
 .langsw button { padding: .15rem .5rem; font-size: .72rem; border-color: var(--border); color: var(--muted); }
 .langsw button.active { border-color: var(--accent); color: var(--accent); }
 .sub { color: var(--muted); margin-bottom: 1rem; }
+.searchbox { position: relative; margin-bottom: .6rem; }
+.searchbox input[type=text] { width: 100%; padding-right: 2rem; }
+.searchbox .search-clear {
+  position: absolute; right: .3rem; top: 50%; transform: translateY(-50%);
+  border: none; background: transparent; color: var(--muted); padding: 0 .3rem;
+  font-size: 1rem; line-height: 1; cursor: pointer;
+}
+.searchbox .search-clear:hover { color: var(--text); }
 .banner {
   padding: .5rem .75rem; border-radius: 6px; margin-bottom: .6rem;
   font-size: .85rem; border: 1px solid transparent;
@@ -139,3 +147,8 @@ button:disabled { opacity: .5; cursor: default; }
 #layoutPanel { background: var(--panel2); border-radius: 6px; padding: .7rem; margin-bottom: .5rem; }
 #layoutPanel input[type=text] { min-width: 220px; }
 .layout-result { font-size: .78rem; color: var(--muted); white-space: pre-wrap; margin: 0; }
+.desktop-viewport {
+  border: 1px solid var(--border); border-radius: 6px; background: var(--panel2);
+  min-height: 200px; display: flex; align-items: center; justify-content: center; overflow: auto;
+}
+.desktop-viewport img { display: block; max-width: 100%; height: auto; }

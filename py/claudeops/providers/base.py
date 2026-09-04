@@ -61,6 +61,21 @@ class CliProvider(ABC):
         provider'ların override etmesi beklenir (varsayılan burada da None)."""
         return None
 
+    def compact_command(self) -> Optional[str]:
+        """Bu CLI'nın konuşma-özetleme slash-command'ı (ör. `/compact`), varsa.
+        None (varsayılan) = bu CLI için böyle bir kavram yok — panelin "compact"
+        aksiyonu bu session'ı desteklenmiyor sayıp reddeder. `last_exchange`/
+        `full_history` ile AYNI sözleşme (None = yok, sadece destekleyen provider
+        override eder) — `_compact()`'in ESKİDEN yaptığı `if cli != "claude"`
+        string-karşılaştırması (2026-09-04, provider-audit) bunun yerine geçti,
+        çünkü o hardcode CliProvider'ın "yeni CLI = yeni provider dosyası,
+        manager kodunda dallanma YOK" kuralını ihlal ediyordu. Sadece GATE'i
+        polimorfik yapar — headless çağrının kendisi (`argv`/binary şekli) hâlâ
+        claude'a özgü kalıyor (`_compact()`), başka bir provider gerçekten
+        compact kazanırsa O ZAMAN genellenir; bugün var olmayan bir ikinci
+        veri noktasına göre spekülatif olarak genellemek yok."""
+        return None
+
     def env_overrides(self, session_name: str) -> Dict[str, str]:
         """Bu CLI çağrısına ÖZEL env değişkenleri (varsayılan: yok).
 

@@ -25,9 +25,12 @@ import platform
 import re
 import secrets
 import shutil
+import socket
 import subprocess
+import threading
 import time
 import urllib.request
+from pathlib import Path
 from typing import Optional
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -38,9 +41,10 @@ from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
-from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, default_handover_effort
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
+from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, save_settings
@@ -144,6 +148,14 @@ ERR = {
                                  "en": "{name}: compact is currently only supported for the claude CLI"},
     "compact_no_jsonl": {"tr": "{name}: sıkıştıracak bir konuşma bulunamadı (jsonl yok)",
                           "en": "{name}: no conversation found to compact (no jsonl)"},
+    "compact_send_failed": {"tr": "{name}: compact komutu gönderilemedi (tmux session gitmiş olabilir)",
+                             "en": "{name}: failed to send the compact command (tmux session may be gone)"},
+    "handover_send_failed": {"tr": "{name}: wrap-up mesajı gönderilemedi (tmux session gitmiş olabilir)",
+                              "en": "{name}: failed to send the wrap-up message (tmux session may be gone)"},
+    "compact_timeout": {"tr": "{name}: compact {timeout:.0f}s içinde tamamlanmadı — session meşgul/kuyrukta "
+                               "kalmış olabilir, birazdan kendiliğinden bitebilir, terminalden kontrol edin",
+                         "en": "{name}: compact didn't finish within {timeout:.0f}s — the session may still be "
+                               "busy/queued and finish on its own shortly, check its terminal"},
     "invalid_theme": {"tr": "geçersiz tema — system/light/dark olmalı",
                        "en": "invalid theme — must be system/light/dark"},
 }
@@ -856,6 +868,10 @@ def _status_payload() -> dict:
         # aynı görünür). Her /api/status poll'unda taze okunuyor — /api/settings'e yapılan
         # bir POST'un notify_status_changed() ile diğer açık tab'lara ANINDA yansıması için.
         "settings": load_settings(),
+        # 2026-09-04, "Uzak Masaüstü" sekmesi: remote_desktop.py'nin daemon
+        # lifecycle durumu — diğer açık tab/cihazlar da (WS push ile) canlı
+        # görsün diye buraya eklendi, ayrı bir polling endpoint'i değil.
+        "remote_desktop": remote_desktop.status(),
     }
 
 
@@ -1068,105 +1084,90 @@ GUARD_LOCK_ACQUIRE_TIMEOUT = 60.0
 
 
 def _handover(name: str, lang: str = "tr") -> dict:
-    """Wrap-up mesajıyla kill+resume — py/cops handover'ın TEK-session web karşılığı.
+    """Wrap-up mesajını CANLI session'a enjekte eder — py/cops handover'ın TEK-session
+    web karşılığı. kill/respawn YOK.
 
-    needs_ho/batch YOK (kullanıcı elle, bilerek tetikliyor) — sadece kill+resume+prompt,
-    handover.py'deki _spawn_faz1 ile AYNI spawn_session() çağrısı (env-leak fix dahil).
-    Roster GEREKMEZ (CLI'nin isimli-hedefleme mantığıyla aynı, [[handover]] 2026-08-25) —
-    kayıtlı değilse cwd/model canlı proc'tan (_find_running) alınır.
-
-    handover.py'deki handover_faz1() ile AYNI iki güvenlik adımı burada da şart, yoksa
-    "kapattı, bir daha açmadı" olur (2026-08-25 bulundu, cops20260824 üzerinde canlı test):
-    1. kill_settle: kill sonrası respawn'dan ÖNCE bekleme — server-side RC bridge eski
-       ismi hemen bırakmıyor, settle olmadan aynı isimle respawn çakışabilir
-       ([[handover-edge-cases]] bridge trap).
-    2. proc-presence doğrulama: spawn_session() gnome-terminal'i Popen ile FIRE-AND-FORGET
-       açıyor (dönüş değeri başarı garantisi DEĞİL) — respawn gerçekten proc üretti mi
-       kontrol etmeden ok:True dönmek, sessiz başarısızlığı UI'da "başarılı" gibi gösterir.
+    2026-09-04 REWRITE (kullanıcı: "ho için ama fazladan bir ekran açıyorsun...
+    sadece ho gonder yeter") — `_compact()`'in AYNI turdaki rewrite'ıyla AYNI
+    mekanizma+gerekçe (bkz. o docstring + `handover.py`'nin modül docstring'i,
+    ikisi de canlı doğrulandı). needs_ho/batch YOK (kullanıcı elle, bilerek
+    tetikliyor) — sadece mesajı gönder. Roster GEREKMEZ — kayıtlı değilse proc
+    `_find_running`'den bulunur (cwd/model'e artık hiç ihtiyaç yok, hiçbir şey
+    spawn edilmiyor). guard_lock/kill_settle/proc-presence-doğrulama'nın HİÇBİRİ
+    kalmadı — hepsi kill-ile-respawn arası bir pencereyi/riski korumak içindi,
+    session hiç ölmediği için o pencere yok.
     """
     procs = _find_running(name)
     if not procs:
         return _err(lang, "not_running", name=name)
-    fleet = _fleet_status()
-    info = fleet.get(name)
-    chosen_cli = info["cli"] if info else procs[0].cli
-    provider = get_provider(chosen_cli)
-    if info:
-        cwd, model = info["cwd"], info["model"]
-    else:
-        cwd, model = procs[0].cwd, (procs[0].model or default_model_for(provider))
+    if not is_tmux_backed(procs[0].pid):
+        return _err(lang, "not_tmux_backed", name=name)
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
-    # TODO L9 instrumentation (2026-08-31 bulk-handover investigation: the
-    # guard_lock-acquire-timeout fix above was found+applied, but a residual
-    # symptom — two BrokenPipeErrors not explained by that timing — was
-    # never root-caused; main's own diag_log instrumentation for this never
-    # made it into this tree before the PAGE_HTML panel it was written
-    # against was retired). Best-effort (diag_log never raises) — if bulk
-    # handover misbehaves again, `diag.log`/the Tanı tab's log panel should
-    # show exactly which phase a given name got stuck in.
-    diag_log("handover_start", name=name, cli=chosen_cli)
-    try:
-        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
-            diag_log("handover_lock_acquired", name=name)
-            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
-            if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
-                time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
-            diag_log("handover_killed", name=name, kill_results=kill_results)
-            kind = spawn_session(
-                name=name,
-                cwd=cwd,
-                model=model,
-                display=detect_display(),
-                permission_mode=provider.permission_modes()[0],
-                effort=default_handover_effort(provider),
-                force_new=False,
-                prompt=message,
-                cli=chosen_cli,
-            )
-            diag_log("handover_spawned", name=name, kind=kind)
-            reopened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
-    except TimeoutError as e:
-        diag_log("handover_lock_timeout", name=name, error=str(e))
-        return {"ok": False, "error": str(e)}
-    if not reopened:
-        diag_log("handover_reopen_failed", name=name, kind=kind)
-        return _err(lang, "handover_reopen_failed", name=name, kind=kind)
-    diag_log("handover_done", name=name, kind=kind)
-    return {"ok": True, "kind": kind}
+    diag_log("handover_start", name=name)
+    if not tmux_send_keys(name, message):
+        diag_log("handover_send_failed", name=name)
+        return _err(lang, "handover_send_failed", name=name)
+    diag_log("handover_done", name=name)
+    return {"ok": True}
 
 
-# bash cmd_compact'ın 300s'i yerine daha kısa — bu adım guard_lock DIŞINDA
-# çalışıyor olsa da sınırsız uzayıp panelin "bitti" haberini sonsuza kadar
-# geciktirmesin.
+# Canlı session'a enjekte edilen compact komutunun tamamlanmasını (jsonl'e yeni
+# bir isCompactSummary düşmesini) en fazla bu kadar bekle — sınırsız uzayıp
+# panelin "bitti" haberini sonsuza kadar geciktirmesin. bash cmd_compact'ın
+# 300s'inden daha kısa (2026-09-02); 2026-09-04 rewrite'ından sonra da aynı
+# değer korundu (busy bir session'daki /compact KUYRUĞA girip mevcut turn
+# bitene kadar bekleyebilir — canlı doğrulandı, bkz. `_compact()` docstring'i).
 COMPACT_TIMEOUT_SECONDS = 180.0
+COMPACT_POLL_INTERVAL_SECONDS = 2.0
+
+
+def _count_compact_summaries(jsonl: Path) -> int:
+    """jsonl'deki `"isCompactSummary":true` girdi sayısı — `_compact()`'in
+    tamamlanma sinyali (TUI'nin dönen/kırılgan spinner metnini parse etmek
+    yerine yapısal bir dosya-içi işaret, bkz. `_compact()` docstring'i)."""
+    try:
+        return jsonl.read_text(encoding="utf-8", errors="ignore").count('"isCompactSummary":true')
+    except OSError:
+        return 0
 
 
 def _compact(name: str, lang: str = "tr") -> dict:
-    """Kill + headless `-p '/compact'` + resume — 2026-09-02, kullanıcı isteği
-    ("terminal de ve listeden seçip onlara compact gonderme iyi olur").
+    """`provider.compact_command()`'ı (bugün sadece claude'un `/compact`'ı) CANLI
+    session'a `tmux_send_keys` ile enjekte eder — kill/respawn YOK.
 
-    Bash'in `cmd_compact`'ıyla AYNI mekanizma (headless `-p '/compact'`), YENİDEN
-    İCAT EDİLMEDİ: `_handover()`'daki gibi bir interaktif `--resume ... 'PROMPT'`
-    ile `/compact`'ı İLK MESAJ olarak göndermek DENENMEDİ — TUI'nin CLI argümanı
-    olarak geçirilen bir ilk mesajı slash-command olarak mı yoksa düz metin
-    olarak mı işlediği doğrulanmadı; bash'in headless `-p` yaklaşımı ise KANITLI
-    çalışıyor (canlı, üretimde). Headless adımın LIVE session'la aynı sid üzerinde
-    eşzamanlı çalışmaması için önce kill ŞART ([[claude-2183-conversation-truncation]]
-    sınıfı risk).
+    2026-09-04 REWRITE (kullanıcı: "artık tmux ile çalışıyoruz, kapatmadan
+    compact olur gibi geliyor" — throwaway test session'larında CANLI
+    doğrulandı, iki senaryo). Eski mekanizmanın (kill + headless `-p
+    '/compact'` + resume, 2026-09-02) iki gerekçesi de artık geçersiz:
+      (a) "aynı jsonl'e eşzamanlı iki process yazmasın diye kill şart"
+          ([[claude-2183-conversation-truncation]] sınıfı risk) — ama
+          `tmux_send_keys` AYRI bir process başlatmıyor, insan gibi AYNI canlı
+          process'in pty'sine tuş basıyor; o risk sınıfı hiç yok.
+      (b) "CLI-argümanı bir ilk mesajın slash-command mi düz metin mi
+          işlendiği doğrulanmamıştı" — ama panelin "mesaj gönder" özelliği
+          (Terminal view) ZATEN aynı `tmux_send_keys` yolunu kullanıyor,
+          insan input'undan ayırt edilemez; slash-command olarak doğru
+          işlendiği canlı doğrulandı.
+    Canlı doğrulanan 2 senaryo (throwaway `compacttest0904`/`busycompact0904`,
+    gerçek fleet'e dokunulmadan, iş bitince kill edildi):
+      1. IDLE session'a enjekte edilince direkt çalışıyor ("⎿ Compacted").
+      2. BUSY (bir turn ortasında) session'a enjekte edilince CLI onu
+         OTOMATİK KUYRUĞA ALIYOR ("Press up to edit queued messages") —
+         mevcut işi kesmiyor/bozmuyor, iş bitince kendiliğinden işleniyor.
+         (Bu yüzden `COMPACT_TIMEOUT_SECONDS` cömert tutuldu — kuyrukta
+         beklerken mevcut turn'ün süresi de bu pencereye dahil.)
 
-    guard_lock kill VE respawn için AYRI AYRI KISA pencerelerde tutuluyor —
-    headless compact (bash'te olduğu gibi) dakikalarca sürebilir; bunu TEK bir
-    guard_lock penceresinin içine almak `GUARD_LOCK_ACQUIRE_TIMEOUT=60.0`
-    varsayımıyla ÇAKIŞIRDI (diğer TÜM panel aksiyonları — start/stop/başka bir
-    compact/handover — o süre boyunca kilitlenirdi). Guard cron zaten KASITLI
-    kapalı (Manuel fleet kontrolü kararı) — iki ayrı pencere arasında guard'ın
-    araya girip dup açması bugün pratikte imkansız; guard cron geri açılırsa bu
-    varsayım yeniden değerlendirilmeli.
+    Kill/respawn gitmesiyle `guard_lock`'a da gerek KALMADI — `guard_lock`'un
+    TEK amacı kill-ile-respawn arası "session hiç yok" penceresinde guard
+    cron'un araya girip dup açmasını önlemekti (bkz. eski implementasyonun
+    docstring'i); artık session hiç ölmüyor, öyle bir pencere yok. Pencere de
+    HİÇ kapanmıyor/açılmıyor (2026-09-04'ün asıl sorusu tam buydu — compact
+    için cevap: artık hayır).
 
-    Sadece `claude` provider'ı destekliyor (`/compact` claude-cli'a özgü bir
-    slash-command; `resolve_resume_id`'nin claude-özel `find_latest_jsonl`'a
-    dayanması da zaten aynı sınırlamayı taşıyor, [[handover.py's _spawn_faz1]]
-    ile aynı bilinçli kapsam daraltması).
+    Sadece `provider.compact_command()` destekleyenler kullanabilir — bugün
+    sadece `claude`. `resolve_resume_id`'nin claude-özel `find_latest_jsonl`'a
+    dayanması da zaten aynı sınırlamayı taşıyor; başka bir provider gerçekten
+    compact kazanırsa (kendi tmux-injection sözdizimiyle) O ZAMAN genellenir.
     """
     procs = _find_running(name)
     if not procs:
@@ -1174,67 +1175,31 @@ def _compact(name: str, lang: str = "tr") -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
     chosen_cli = info["cli"] if info else procs[0].cli
-    if chosen_cli != "claude":
-        return _err(lang, "compact_unsupported_cli", name=name)
     provider = get_provider(chosen_cli)
-    if info:
-        cwd, model = info["cwd"], info["model"]
-    else:
-        cwd, model = procs[0].cwd, (procs[0].model or default_model_for(provider))
+    command = provider.compact_command()
+    if command is None:
+        return _err(lang, "compact_unsupported_cli", name=name)
+    cwd = info["cwd"] if info else procs[0].cwd
 
-    diag_log("compact_start", name=name)
-    try:
-        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
-            kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
-            if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
-                time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
-    except TimeoutError as e:
-        diag_log("compact_lock_timeout", name=name, phase="kill", error=str(e))
-        return {"ok": False, "error": str(e)}
-    diag_log("compact_killed", name=name)
-
-    resume_id = provider.resolve_resume_id(cwd)
-    if resume_id is None:
+    jsonl = find_latest_jsonl(cwd)
+    if jsonl is None:
         diag_log("compact_no_jsonl", name=name)
         return _err(lang, "compact_no_jsonl", name=name)
-    binary = shutil.which("claude") or "claude"
-    try:
-        subprocess.run(
-            [binary, "--resume", resume_id, "-p", "/compact"],
-            cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True,
-            timeout=COMPACT_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired:
-        # devam et — respawn yine de denenir; compact yarıda kalmış olabilir
-        # ama session'ı tamamen kayıp bırakmaktan iyidir.
-        diag_log("compact_headless_timeout", name=name)
-    except Exception as e:
-        diag_log("compact_headless_error", name=name, error=str(e))
-    else:
-        diag_log("compact_headless_done", name=name)
+    baseline = _count_compact_summaries(jsonl)
 
-    try:
-        with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
-            kind = spawn_session(
-                name=name,
-                cwd=cwd,
-                model=model,
-                display=detect_display(),
-                permission_mode=provider.permission_modes()[0],
-                effort=default_handover_effort(provider),
-                force_new=False,
-                prompt=None,
-                cli=chosen_cli,
-            )
-            reopened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
-    except TimeoutError as e:
-        diag_log("compact_lock_timeout", name=name, phase="respawn", error=str(e))
-        return {"ok": False, "error": str(e)}
-    if not reopened:
-        diag_log("compact_reopen_failed", name=name, kind=kind)
-        return _err(lang, "handover_reopen_failed", name=name, kind=kind)
-    diag_log("compact_done", name=name, kind=kind)
-    return {"ok": True, "kind": kind}
+    diag_log("compact_start", name=name)
+    if not tmux_send_keys(name, command):
+        diag_log("compact_send_failed", name=name)
+        return _err(lang, "compact_send_failed", name=name)
+
+    deadline = time.monotonic() + COMPACT_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        time.sleep(COMPACT_POLL_INTERVAL_SECONDS)
+        if _count_compact_summaries(jsonl) > baseline:
+            diag_log("compact_done", name=name)
+            return {"ok": True}
+    diag_log("compact_timeout", name=name)
+    return _err(lang, "compact_timeout", name=name, timeout=COMPACT_TIMEOUT_SECONDS)
 
 
 def _adopt(old_name: str, new_name: str = "", model: str = "",
@@ -1311,6 +1276,93 @@ def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
     _toggle_comment(MODELS_TSV, name, want_active=True)
     _toggle_comment(ROSTER_TSV, name, want_active=True)
     return _start(name, lang=lang)
+
+
+def _proxy_desktop_ws(handler: "_Handler") -> None:
+    """`/ws/desktop` — `remote_desktop`'un Rust daemon'ına RAW BYTE proxy.
+
+    `web_ws.py`'nin JSON-broadcast WS'inden BİLEREK TAMAMEN AYRI bir mekanizma:
+    o modül `websockets.server.ServerProtocol` ile WS FRAMING'İ Python
+    tarafında anlıyor/üretiyor (JSON status diff'lemek için buna ihtiyacı
+    var). Burada buna hiç gerek yok — Rust daemon zaten kendi TAM WebSocket
+    sunucusu (`tungstenite::accept`); Python'un tek işi, tarayıcının ORİJİNAL
+    HTTP upgrade isteğini (method/path/header'lar, zaten `BaseHTTPRequestHandler.
+    parse_request()` tarafından ayrıştırılmış durumda) OLDUĞU GİBİ backend'e
+    ilet, sonra iki soket arasında ham bayt pompalamaya geç. Backend'in 101
+    yanıtı (ve sonrasındaki TÜM WS frame'leri — video + ileride eklenirse
+    input) bu boru üzerinden DEĞİŞTİRİLMEDEN akar; tarayıcı doğrudan
+    bağlanmışçasına davranır.
+
+    Auth burada olur (bu fonksiyon `do_GET`'in `_authorized()` KONTROLÜNDEN
+    GEÇMİŞ bir istek için çağrılır) — backend'in (`remote_desktop`'un Rust
+    daemon'ı) token/header ayrıştırmayı hiç bilmesine gerek yok, sadece
+    127.0.0.1'e bağlı, dışarıdan zaten erişilemez.
+
+    `handler.rfile.read1()` (`handler.connection.recv()` DEĞİL) client
+    tarafını okumak için — `web_ws.py`'nin kendi docstring'indeki AYNI ders:
+    `rfile` handshake sırasında soketten önceden okumuş olabilir, ham
+    `recv()`'e geçmek o buffer'daki baytları (erken gönderilmiş ilk WS
+    frame'i gibi) sessizce kaybedebilirdi.
+    """
+    port = remote_desktop.current_port()
+    if port is None:
+        handler.send_response(503)
+        handler.send_header("Content-Type", "text/plain; charset=utf-8")
+        body = b"remote desktop daemon calismiyor - once /api/desktop/start"
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+        return
+
+    handler.close_connection = True
+    try:
+        backend = socket.create_connection(("127.0.0.1", port), timeout=5.0)
+    except OSError as e:
+        diag_log("desktop_ws_backend_unreachable", error=str(e))
+        handler.send_response(502)
+        handler.end_headers()
+        return
+
+    try:
+        request_lines = [f"{handler.command} {handler.path} HTTP/1.1\r\n"]
+        for k, v in handler.headers.items():
+            request_lines.append(f"{k}: {v}\r\n")
+        request_lines.append("\r\n")
+        backend.sendall("".join(request_lines).encode("iso-8859-1"))
+
+        def pump_backend_to_client() -> None:
+            try:
+                while True:
+                    data = backend.recv(65536)
+                    if not data:
+                        break
+                    handler.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                try:
+                    backend.shutdown(socket.SHUT_RD)
+                except OSError:
+                    pass
+
+        reader = threading.Thread(target=pump_backend_to_client, daemon=True, name="desktop-ws-b2c")
+        reader.start()
+        try:
+            while True:
+                data = handler.rfile.read1(65536)
+                if not data:
+                    break
+                backend.sendall(data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            try:
+                backend.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+        reader.join(timeout=2.0)
+    finally:
+        backend.close()
 
 
 UNAUTHORIZED_HTML = (
@@ -1451,6 +1503,13 @@ class _Handler(BaseHTTPRequestHandler):
             # (plan: "diff additive kalsın").
             web_ws.handle_ws(self, _status_payload)
             return
+        elif path == "/ws/desktop":
+            # `web_ws.py`'nin JSON-broadcast WS'inden TAMAMEN AYRI bir yol —
+            # burada Python WS framing'e hiç dokunmuyor, sadece raw byte
+            # proxy'liyor (bkz. `_proxy_desktop_ws` docstring'i). Aynı sebep:
+            # kendi response'unu (101/hata) doğrudan yazıyor.
+            _proxy_desktop_ws(self)
+            return
         elif path == "/api/status":
             self._json(_status_payload())
         elif path == "/api/diag/log":
@@ -1485,7 +1544,8 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/new-chat", "/api/layout", "/api/register", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/open-window", "/api/settings",
-                         "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask"):
+                         "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
+                         "/api/desktop/start", "/api/desktop/stop"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -1505,6 +1565,14 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/api/diag/restart-gt":
             self._json_notify(_diag_restart_gt(lang=lang))
+            return
+
+        if path == "/api/desktop/start":
+            self._json_notify(remote_desktop.start())
+            return
+
+        if path == "/api/desktop/stop":
+            self._json_notify(remote_desktop.stop())
             return
 
         if path == "/api/diag/ask":

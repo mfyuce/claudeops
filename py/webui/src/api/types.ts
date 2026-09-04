@@ -90,6 +90,11 @@ export interface StatusPayload {
    * can be shown/copied from the UI without actually running a handover. */
   handover_msg: { tr: string; en: string };
   settings: Settings;
+  /** `remote_desktop.status()` — "Uzak Masaüstü" tab's on-demand screen-share
+   * daemon (2026-09-04, `rust/screenshare`). `port` is always the internal
+   * proxy target, never exposed to the browser directly — it connects
+   * through `/ws/desktop` (same token auth as everything else) regardless. */
+  remote_desktop: { running: boolean; port: number | null };
 }
 
 // ── POST-route result shapes ────────────────────────────────────────────
@@ -135,7 +140,9 @@ export interface ChatMessage {
 }
 
 /** `_term_chat()` — `supported: false` for CLIs without a chat transcript
- * (agy/shell today), `ok: false` is a real backend error (session gone etc).
+ * (agy/codex/shell today — only `claude` overrides `last_exchange`/`full_history`,
+ * see TODO.md's 2026-09-04 provider-parity audit), `ok: false` is a real backend
+ * error (session gone etc).
  * `mode="last"` (default) returns `user`/`assistant`; `mode="full"` returns
  * `messages` instead — same supported:false contract either way. */
 export type TermChatResult =
@@ -161,6 +168,12 @@ export type DiagSpawnTestResult =
 export type DiagRestartResult = ApiResult<{ result: string; pid: number }>;
 /** `_diag_ask()`. */
 export type DiagAskResult = ApiResult<{ name: string; kind: string }>;
+
+/** `remote_desktop.start()`/`.stop()` — `already_running`/`already_stopped`
+ * are informational only (still `ok: true`), matching the backend's own
+ * idempotent-no-op shape. */
+export type DesktopStartResult = ApiResult<{ port?: number; already_running?: boolean }>;
+export type DesktopStopResult = ApiResult<{ already_stopped?: boolean }>;
 
 /** `_run_layout()`. */
 export type LayoutResult = ApiResult<{

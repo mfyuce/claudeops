@@ -29,6 +29,7 @@ import type { TabKey } from "../../state/tabs";
 import { CwdCell } from "../shared/CwdCell";
 import { isProtectedName } from "../shared/protectedNames";
 import { Pagination } from "../shared/Pagination";
+import { matchesSearch } from "../shared/searchFilter";
 import { RegisterForm } from "./RegisterForm";
 
 const REGISTERED_ROW_COLSPAN = 6;
@@ -36,6 +37,7 @@ const REGISTERED_ROW_COLSPAN = 6;
 interface RegisteredTabProps {
   selection: SelectionControls;
   onSwitchTab: (tab: TabKey) => void;
+  search: string;
 }
 
 interface RegisteredRowProps {
@@ -140,7 +142,7 @@ function GroupHeaderRow({
   );
 }
 
-export function RegisteredTab({ selection, onSwitchTab }: RegisteredTabProps) {
+export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabProps) {
   const { t } = useLang();
   const { data } = useStatusContext();
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
@@ -155,7 +157,11 @@ export function RegisteredTab({ selection, onSwitchTab }: RegisteredTabProps) {
   // proc-scan loop, which only ever appends `running: true` rows) — this
   // tab never needs to filter registered vs. not, unlike Running's adopt
   // path.
-  const rows = data ? data.sessions.filter((s) => !s.running) : [];
+  const allRows = data ? data.sessions.filter((s) => !s.running) : [];
+  // `search` (2026-09-04) narrows before grouping, so a group with zero
+  // surviving members drops out of `groups` entirely rather than rendering
+  // an empty header.
+  const rows = allRows.filter((s) => matchesSearch(s, search));
   const groups = data ? groupByCwd(rows, data.sessions) : [];
   const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
 
@@ -197,7 +203,7 @@ export function RegisteredTab({ selection, onSwitchTab }: RegisteredTabProps) {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={REGISTERED_ROW_COLSPAN} style={{ color: "var(--muted)" }}>
-                  {t.noneRegistered}
+                  {allRows.length === 0 ? t.noneRegistered : t.noSearchMatches}
                 </td>
               </tr>
             )}
