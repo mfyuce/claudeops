@@ -83,6 +83,9 @@ export interface Strings {
   desktopStopping: string;
   desktopConnecting: string;
   desktopWaitingFrame: string;
+  desktopControlOnBtn: string;
+  desktopControlOffBtn: string;
+  desktopControlHint: string;
   selWord: string;
   selectNeedsHo: string;
   hoCol: string;
@@ -245,13 +248,16 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDesktop: "Uzak Masaüstü",
     tabDiag: "Tanı",
     tabSettings: "Ayarlar",
-    desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps, salt-izleme — mouse/klavye kontrolü yok). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
+    desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
     desktopStartBtn: "Başlat",
     desktopStopBtn: "Durdur",
     desktopStarting: "başlatılıyor… (ilk seferde derleme birkaç saniye sürebilir)",
     desktopStopping: "durduruluyor…",
     desktopConnecting: "bağlanıyor…",
     desktopWaitingFrame: "ilk görüntü bekleniyor…",
+    desktopControlOnBtn: "Kontrolü Al",
+    desktopControlOffBtn: "Kontrolü Bırak",
+    desktopControlHint: "Kontrol açık: tıklama/scroll/yazı makineye gerçek zamanlı gidiyor — GERÇEK fare/klavyeyle aynı, biri fiziksel olarak kullanıyorsa çakışabilir. Kısayol tuşları (Ctrl/Alt/⌘ kombinasyonları) henüz desteklenmiyor.",
     selWord: "seçili",
     selectNeedsHo: "needs-ho seç",
     hoCol: "ho?",
@@ -412,13 +418,16 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDesktop: "Remote Desktop",
     tabDiag: "Diagnostics",
     tabSettings: "Settings",
-    desktopDesc: "Watch the machine's screen live (2 fps, view-only — no mouse/keyboard control). Remember to stop it — it captures the screen continuously while running.",
+    desktopDesc: "Watch the machine's screen live (2 fps). Remember to stop it — it captures the screen continuously while running.",
     desktopStartBtn: "Start",
     desktopStopBtn: "Stop",
     desktopStarting: "starting… (first run may take a few seconds to compile)",
     desktopStopping: "stopping…",
     desktopConnecting: "connecting…",
     desktopWaitingFrame: "waiting for first frame…",
+    desktopControlOnBtn: "Take Control",
+    desktopControlOffBtn: "Release Control",
+    desktopControlHint: "Control is on: clicks/scroll/typing go to the machine in real time — this is the SAME mouse/keyboard as the physical one, it can collide if someone's using it in person. Keyboard shortcuts (Ctrl/Alt/⌘ combos) aren't supported yet.",
     selWord: "selected",
     selectNeedsHo: "select needs-ho",
     hoCol: "ho?",
