@@ -98,6 +98,29 @@ def _session_meta(path: str) -> Optional[dict]:
     return None
 
 
+def _codex_text(content) -> str:
+    """response_item/message'ın content listesinden okunabilir metni çıkar —
+    `input_text` (user/developer turn'leri) VE `output_text` (assistant çıktısı)
+    bloklarını sırayla birleştirir; reasoning/tool-call gibi diğer blok tipleri
+    YOK sayılır (claude_provider.py'nin `_extract_text`'iyle AYNI amaç, farklı
+    şema — codex'in content bloğu da `{'type':..., 'text':...}` ama tip adları
+    farklı: düz "text" değil input_text/output_text)."""
+    if not isinstance(content, list):
+        return ""
+    parts = [b.get("text", "") for b in content
+             if isinstance(b, dict) and b.get("type") in ("input_text", "output_text")]
+    return "\n\n".join(p for p in parts if p)
+
+
+def _is_real_codex_user_text(text: str) -> bool:
+    """Codex her turn dizisinin başına (session_meta'dan hemen sonraki İLK user
+    mesajına) sentetik bir `<environment_context>` sarmalayıcı (cwd/shell/tarih/
+    workspace) enjekte ediyor — insan yazmadı, canlı bir rollout dosyasında
+    doğrulandı (2026-09-04). claude_provider.py'nin tool_result/isMeta filtresiyle
+    AYNI amaç, codex'e özgü tek/bilinen sentetik-mesaj deseni."""
+    return bool(text.strip()) and not text.lstrip().startswith("<environment_context>")
+
+
 class CodexProvider(CliProvider):
     name = "codex"
 
@@ -195,3 +218,90 @@ class CodexProvider(CliProvider):
 
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
+
+    def _rollout_path(self, cwd: str, sid: Optional[str]) -> Optional[str]:
+        """`resolve_resume_id`'nin bulduğu sid'e karşılık gelen TAM dosyayı (ya da
+        sid yoksa/hiç eşleşmezse aynı cwd-taramalı mtime-fallback'i) döndürür — o
+        metod id'yi (dosya adının SONUNDAKİ uuid) döndürüyordu, bu ise dosyanın
+        KENDİSİNİ (chat parse için gerçek yol gerekiyor)."""
+        if sid:
+            matches = glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", f"*{sid}.jsonl"))
+            if matches:
+                return matches[0]
+        target = os.path.normpath(os.path.abspath(cwd))
+        files = glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", "*.jsonl"))
+        files.sort(key=_safe_mtime, reverse=True)
+        for path in files[:_MAX_ROLLOUT_SCAN]:
+            payload = _session_meta(path)
+            raw_cwd = payload.get("cwd") if payload else None
+            if raw_cwd and os.path.normpath(os.path.abspath(str(raw_cwd))) == target:
+                return path
+        return None
+
+    def _transcript_lines(self, cwd: str, sid: Optional[str]) -> List[dict]:
+        """claude_provider.py'nin aynı-isimli metoduyla AYNI sözleşme: bulunamazsa/
+        okunamazsa boş liste — 'desteklenmiyor' ile 'henüz mesaj yok' ayrımı
+        ÇAĞIRAN tarafın işi, burada değil."""
+        path = self._rollout_path(cwd, sid)
+        if path is None:
+            return []
+        out: List[dict] = []
+        try:
+            with open(path, encoding="utf-8") as f:
+                for raw in f:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        out.append(json.loads(raw))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            return []
+        return out
+
+    def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
+        # claude_provider.py'nin last_exchange'iyle AYNI "her zaman dict, None değil"
+        # sözleşmesi — None base.py'nin "desteklenmiyor" varsayılanında kalsın diye.
+        empty = {"user": "", "assistant": ""}
+        lines = self._transcript_lines(cwd, sid)
+        ai_text = ""
+        ai_idx: Optional[int] = None
+        for i in range(len(lines) - 1, -1, -1):
+            p = lines[i].get("payload", {}) if lines[i].get("type") == "response_item" else {}
+            if p.get("type") == "message" and p.get("role") == "assistant":
+                ai_text = _codex_text(p.get("content"))
+                ai_idx = i
+                break
+        if ai_idx is None:
+            return empty
+        user_text = ""
+        for i in range(ai_idx - 1, -1, -1):
+            p = lines[i].get("payload", {}) if lines[i].get("type") == "response_item" else {}
+            if p.get("type") == "message" and p.get("role") == "user":
+                text = _codex_text(p.get("content"))
+                if _is_real_codex_user_text(text):
+                    user_text = text
+                    break
+        return {"user": user_text, "assistant": ai_text}
+
+    def full_history(self, cwd: str, sid: Optional[str]) -> Optional[List[Dict[str, str]]]:
+        # last_exchange'in tek-son-çift filtreleriyle AYNI kurallar (environment_context/
+        # boş-metin hariç) — SADECE SONUNCUYU almak yerine sırayla HEPSİNİ biriktirir.
+        out: List[Dict[str, str]] = []
+        for d in self._transcript_lines(cwd, sid):
+            if d.get("type") != "response_item":
+                continue
+            p = d.get("payload", {})
+            if p.get("type") != "message":
+                continue
+            role = p.get("role")
+            if role == "assistant":
+                text = _codex_text(p.get("content"))
+                if text:
+                    out.append({"role": "assistant", "text": text})
+            elif role == "user":
+                text = _codex_text(p.get("content"))
+                if _is_real_codex_user_text(text):
+                    out.append({"role": "user", "text": text})
+        return out
