@@ -152,3 +152,4 @@ button:disabled { opacity: .5; cursor: default; }
   min-height: 200px; display: flex; align-items: center; justify-content: center; overflow: auto;
 }
 .desktop-viewport img { display: block; max-width: 100%; height: auto; }
+.desktop-viewport.controlling img { cursor: crosshair; touch-action: none; user-select: none; -webkit-user-drag: none; }

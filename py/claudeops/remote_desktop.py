@@ -20,11 +20,15 @@ TEK auth mekanizması, `_authorized()`) yapılıyor, PROXY token'ı doğruladık
 SONRA bu daemon'a bağlanıyor — daemon'ın token/HTTP header ayrıştırmayı hiç
 bilmesine gerek yok.
 
-View-only (v1): sadece ekran GÖRÜNTÜSÜ akıyor, mouse/keyboard enjeksiyonu
-YOK (`x11rb`'nin `xtest` feature'ı ekli ama kullanılmıyor — bilerek, ayrı/
-daha yüksek riskli bir fast-follow: kilitli bir ekranın GÖRÜNTÜSÜNÜ almak
-zararsız olduğu canlı doğrulandı, ama input enjekte etmek fiilen kilit
-ekranını uzaktan açabilmek demek — daha dikkatli bir tasarım ister).
+v1 (ilk sürüm) view-only'ydu. v2 (2026-09-04, aynı gün) `enigo` ile mouse/
+klavye/scroll enjeksiyonunu EKLEDİ (Rust tarafı + frontend `DesktopTab.tsx`
+"Kontrolü Al" anahtarı canlı doğrulandı) — bu modülde (`remote_desktop.py`)
+o yüzden HİÇBİR değişiklik gerekmedi, lifecycle zaten protokol-agnostik.
+Kilitli bir ekranın GÖRÜNTÜSÜNÜ almak zararsızken (canlı doğrulandı), input
+enjekte etmek fiilen kilit ekranını uzaktan açabilmek demektir — bu hâlâ
+geçerli/canlı bir risk, "Kontrolü Al" varsayılan KAPALI olması ve makinenin
+GERÇEK fare/klavyesiyle aynı input yolunu paylaşması (fiziksel kullanıcıyla
+çakışabilir) bu yüzden — bkz. `DesktopTab.tsx`'in dosya başı yorumu.
 
 Binary DOĞRUDAN spawn edilir (`cargo run` ile SARMALANMAZ): `cargo run`'ı
 `Popen.terminate()`'lemek sinyali gerçek `screenshare` child'ına iletir mi
