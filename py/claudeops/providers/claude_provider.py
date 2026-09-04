@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import shutil
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -105,6 +106,70 @@ class ClaudeProvider(CliProvider):
 
     def compact_command(self) -> Optional[str]:
         return "/compact"
+
+    def handover_model_downgrade(self, current_model: str) -> Optional[str]:
+        """2026-09-04, kullanıcı: "handover komutu öncesi model sonnet'e ve
+        sonrası eski modele. seçili model daha düşükse kalsın." Canlı doğrulanan
+        `/model` seçici metni (v2.1.260): Fable ("most capable for your hardest
+        and longest-running tasks") ve Opus ("best for everyday, complex tasks")
+        İKİSİ de Sonnet'ten ("efficient for routine tasks") YUKARIDA; Haiku
+        ("fastest for quick answers") aşağıda. Tanınmayan/boş bir model adı
+        GÜVENLİ VARSAYILANLA (dokunma → None) ele alınır — yanlış yönde bir
+        swap (ör. gerçekte Sonnet'ten ucuz bir modeli yanlışlıkla Sonnet'e
+        YÜKSELTMEK) maliyeti YANLIŞLIKLA artırır, bu asla olmamalı."""
+        if not current_model:
+            return None
+        lowered = current_model.lower()
+        if "opus" in lowered or "fable" in lowered:
+            return "sonnet"
+        return None
+
+    _MODEL_SWITCH_TIMEOUT_SECONDS = 20.0
+    _MODEL_SWITCH_POLL_SECONDS = 0.3
+
+    def apply_live_model_switch(self, tmux_name: str, target_model: str) -> None:
+        """`/model <target_model>` CANLI session'a gönderilir; bazen (ne zaman
+        olduğu ÖNCEDEN KESTİRİLEMEZ, canlı test edildi — aynı 'meşgul' durumda
+        bile TUTARSIZ) bir "Switch model?" onay diyaloğu açılıyor (konuşma
+        cache'i kaybolacağı için). NAİF yaklaşım (gönder + SABİT bir süre
+        bekle + kayıtsız-şartsız Enter) canlı testte GERÇEK bir mesaj kaybına
+        yol açtı: dialog TAM o sabit bekleme penceresinin dışında açılınca,
+        hemen ardından gönderilen bir SONRAKİ mesaj (bu durumda wrap-up mesajı)
+        dialog'un kendisine yazılıp SESSİZCE kayboldu. Bunun yerine pane'i
+        POLL'layıp dialog'un GERÇEKTEN açıldığını (veya hiç açılmadan direkt
+        uygulandığını) DOĞRULUYOR — sadece dialog GÖRÜLÜNCE Enter gönderiyor.
+
+        Bilinen KALAN sınır (canlı doğrulandı, kabul edilebilir bulundu):
+        dialog'un açılması, session'ın O ANKİ turu bitirmesine bağlı — bir
+        wrap-up turu bu timeout'tan (20s) UZUN sürerse (canlı testte 1m42s'e
+        kadar görüldü), dialog bu fonksiyon döndükten SONRA açılabilir ve
+        ONAYSIZ kalır. Bu ZARARSIZ bir kalıntı: dialog SONSUZA kadar geçerli
+        kalıyor (canlı doğrulandı — dakikalar sonra gönderilen tek bir Enter
+        bile temiz şekilde onaylıyor), session'ı BOZMUYOR, sadece o session
+        bir sonraki etkileşime kadar model-değişikliği bekleyen bir dialog
+        gösteriyor olabilir. Ana wrap-up mesajının kendisi bu riski TAŞIMAZ
+        (`handover.py`/`web.py`'nin çağıran kodu ayrı bir yerleşme süresiyle
+        bunu bilerek ayırıyor)."""
+        from ..tmux_backend import tmux_capture, tmux_send_keys, tmux_send_special_key
+
+        if not tmux_send_keys(tmux_name, f"/model {target_model}"):
+            return
+        deadline = time.monotonic() + self._MODEL_SWITCH_TIMEOUT_SECONDS
+        dialog_confirmed = False
+        while time.monotonic() < deadline:
+            time.sleep(self._MODEL_SWITCH_POLL_SECONDS)
+            text = tmux_capture(tmux_name, lines=20) or ""
+            if not dialog_confirmed and "Switch model?" in text:
+                tmux_send_special_key(tmux_name, "Enter")
+                dialog_confirmed = True
+                continue
+            if "Set model to" in text or "Kept model as" in text:
+                return
+        if not dialog_confirmed:
+            # Son bir şans: dialog belki tam bu son anda açıldı, henüz bir
+            # sonraki poll turuna denk gelmedi — kör bir son Enter, dialog
+            # yoksa (idle input kutusu) zaten kanıtlanmış zararsız bir no-op.
+            tmux_send_special_key(tmux_name, "Enter")
 
     def matches_proc(self, cmd: List[str]) -> bool:
         """Bash `^claude` anchor'ının karşılığı: argv[0]'ın basename'i 'claude'.

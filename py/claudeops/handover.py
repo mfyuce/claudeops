@@ -39,6 +39,12 @@ from .settings import load_settings
 from .spawn import find_latest_jsonl
 from .tmux_backend import is_tmux_backed, tmux_send_keys
 
+# tmux_send_keys() DÖNMESİ ≠ hedef CLI'nin mesajı TAM işlediği an (sadece
+# tuşların tmux'a teslim edildiği an) — bir model-restore komutunu hemen
+# ardından göndermek canlıda GERÇEK bir çakışmaya/kayba yol açtı (bkz.
+# handover_faz1()'in ilgili yorumu). Kısa bir yerleşme süresi bunu önler.
+POST_MESSAGE_SETTLE_SECONDS = 2.0
+
 # 2026-08-25: isim-bazlı hariç-tutma (HO_EXCLUDE_BASES={co,cops,ulaksec}) KALDIRILDI
 # (kullanıcı kararı: "hariç tutulma kısımlarını silelim, UI'ye checkbox ekleyelim") —
 # artık neyin işlem göreceğini web panelindeki seçim belirliyor. Tek kalan koruma
@@ -273,7 +279,35 @@ def handover_faz1(
             summary.results.append(Faz1Result(session.name, "skipped-not-tmux"))
             continue
 
-        if tmux_send_keys(session.name, message):
+        # 2026-09-04, kullanıcı: "handover komutu öncesi model sonnet'e ve
+        # sonrası eski modele. seçili model daha düşükse kalsın." — wrap-up
+        # mekanik bir iş, pahalı bir modele gerek yok; provider "gerek yok"
+        # derse (None) hiçbir model-komutu gönderilmez (bkz.
+        # `handover_model_downgrade` — sadece opus/fable'ı sonnet'e indirir).
+        provider = get_provider(session.cli)
+        downgrade = provider.handover_model_downgrade(session.model or "")
+        if downgrade:
+            provider.apply_live_model_switch(session.name, downgrade)
+
+        sent = tmux_send_keys(session.name, message)
+
+        if downgrade:
+            # `tmux_send_keys` DÖNMESİ ≠ hedef CLI'nin o (1000+ karakter
+            # olabilen) mesajı TAM İŞLEDİĞİ/input kutusunu boşalttığı an —
+            # sadece tuş vuruşlarının tmux'a TESLİM edildiği an. Canlı test
+            # bunu GERÇEK bir bozulmayla kanıtladı: bu bekleme OLMADAN hemen
+            # ardından gönderilen `/model <eski>` komutu, hâlâ işlenmekte olan
+            # wrap-up mesajının input kutusuna KARIŞTI — komut ne düzgün
+            # çalıştı ne de mesaja temiz şekilde eklendi, sessizce KAYBOLDU
+            # (session Sonnet'te TAKILI kaldı, restore hiç olmadı). Kısa bir
+            # yerleşme süresi bunu gideriyor; `apply_live_model_switch`'in
+            # kendi poll döngüsü zaten "hâlâ meşgul mü" durumunu (dialog
+            # onayı dahil) ayrıca ele alıyor — bu sadece klavye-seviyesi
+            # çakışmayı önlüyor.
+            time.sleep(POST_MESSAGE_SETTLE_SECONDS)
+            provider.apply_live_model_switch(session.name, session.model or "")
+
+        if sent:
             print(" sent (live)")
             summary.results.append(Faz1Result(session.name, "sent"))
         else:
