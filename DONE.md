@@ -2,6 +2,17 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-09-03 (3) (layout çoklu-monitor pile-up fix — canlı doğrulandı, b2dcfd7)
+
+- ✅ **Kullanıcı: "layout hala hdmi sol alta topluyo herseyi"** — 2026-08-28'de bulunup 2026-09-02'de react'te yeniden doğrulanan ama hiç düzeltilmemiş çoklu-monitor layout bug'ı bu turda GERÇEKTEN düzeltildi + canlı doğrulandı.
+- ✅ **Kök sebep:** `py/claudeops/layout.py`'nin `_get_screen`'i `xdotool getdisplaygeometry`'nin BİRLEŞİK sanal masaüstü boyutunu (bu makinede 1920×2130) `_detect_screen_y`'nin tek bir Y offset'iyle (1080) karıştırıyordu → ekranın 1080px DIŞINA taşan bir dikdörtgen üretiyordu; alt sıra quadrant'lar ekran dışında kaldığından Mutter onları geri sıkıştırıp üst sıranın (HDMI'nin alt kenarı/eDP'nin üst kenarı, y=1080) ÜSTÜNE bindiriyordu — "HDMI sol altta üst üste yığılma" tam olarak buydu.
+- ✅ **Fix 1:** `_get_screen`/yeni `_list_monitors` artık `xrandr --query`'yi parse edip her connected monitörün KENDİ gerçek `WxH+X+Y`'sini döndürüyor (xdotool'a hiç bakmıyor); hedef = `screen_y` verilirse o Y'deki monitör, yoksa "primary", yoksa ilk connected.
+- ✅ **Fix 2 (aynı turda bulunan bağımsız 2. bug):** python'un `apply_layout`'ı bash'in `_place_win`'indeki retry+read-back+un-maximize mantığını hiç port etmemişti — tek seferlik `xdotool windowmove` bazen sessizce uygulanmıyordu (canlı: 10 pencereden 1'i ilk denemede yanlış yerde kaldı). Yeni `_place_window()` 3 deneme + read-back (±80px tolerans) + un-maximize yapıyor; `apply_layout` artık oturmayan pencerelerin id listesini döndürüyor, CLI/web API bunu artık yutmuyor.
+- ✅ **Canlı doğrulandı:** gerçek 10 pencerelik fleet üzerinde `py/cops layout` iki kez çalıştırıldı, her pencerenin konumu `xdotool getwindowgeometry` ile bağımsız cross-check edildi — 10/10 doğru quadrant'ta, overlap yok. `wmctrl -l -G`'nin raporladığı koordinatların GÜVENİLMEZ olduğu ayrıca doğrulandı (xdotool referans alındı — [[layout-needs-unlocked-screen]]'in "wmctrl 2× yalan" notuyla aynı aile).
+- ✅ **Belge güncellemeleri:** CLAUDE.md'nin "Sınırlamalar" listesi ve TOBEDECIDED#12 (bash-silmenin engellerinden biri buydu) güncellendi — TBD#12'nin diğer alt-sorusu (Faz 3'ün gerçekten `py/cops layout`'la canlı denenmesi) hâlâ ayrı/açık.
+- ✅ **Yan iş:** İki yeni açık mimari soru TOBEDECIDED.md'ye eklendi (kullanıcı "TBD:" diye işaretledi) — #15 çoklu-CLI worker/checker/decider + MCP-backed paylaşımlı queue (literatür: blackboard mimarisi, MetaGPT, Anthropic'in evaluator-optimizer'ı, AutoGen/CrewAI — hazır bir ürün YOK, DIY inşa gerekir), #16 aynı web UI'ı birden fazla makinede kullanma (aggregator/push-model seçenekleri, henüz derinlemesine düşünülmedi).
+- ℹ️ **Fleet'e 4 yeni proje eklendi (repo-DIŞI, roster.tsv/models.tsv):** `hittite`/`egyptian`/`luwian`/`egycursive` (`.../belge/backups/llm/OO_hittite_corpus_nlp` vb., `T_ancient_script_pipeline`/`NN_lineart_cuneiform_vlm`/`U_urartian_corpus_nlp` ile aynı aile) — kayıt yapıldı (`guard --dry-run` ile cwd çözümü doğrulandı), kullanıcının onayı olmadan BAŞLATILMADI (manuel fleet kontrolü kuralı, [[feedback-manual-fleet-control]]).
+
 ## 2026-09-03 (2) ("todolardan devam" — needs_ho false-positive fix + reboot-guard + eski TODO triyajı)
 
 - ✅ **Kullanıcı isteği: "todolardan devam"** — TODO.md/TOBEDECIDED.md'deki ~50 açık kalemin tamamı gözden geçirildi (bash-özel/düşük-öncelik/kullanıcı-kararı-bekleyen olanlar bilerek atlandı), py tarafında hâlâ GERÇEKTEN açık olan 2 kalem düzeltildi + triyajda 6 kalemin py tarafında ZATEN çözülmüş olduğu (sadece işaretlenmemiş) ortaya çıktı.

@@ -20,7 +20,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - Tüm isimler **`claude-sonnet-5`** (2026-08-24 Claude 5 geçişi; opus split geri alınmış durumda).
 - **İsimler base-name** (suffix yok). `Session.base` tarih+`_N` suffix'lerini indirger: `cops20260824_1`→`cops`. Panel eşlemesi önce TAM isim, sonra base — tarih-isimli satırlar kendi satırında görünür, görünmez canlı proc imkansız.
 - **co + cops** (self) + **ulaksec** aktif (guard ayakta tutsun). İsim-bazlı hariç tutma YOK, seçim panel checkbox'larıyla; tek koruma process-bazlı self-koruma (`ancestor_pids()`). [[co-ulaksec-guard-yes-ho-no]]
-- Kapalı/emekli satırlar `#`'lı. `py/cops close <name>` = kill + models.tsv yorumla; geri: panel "tekrar işe al". **Temizlik bekliyor:** tarih-isimli çöp satırlar (rustrino*/line*/trino*/sase* tarihli, TODO.md'de detay) — kullanıcıya sorup birleştir/sil.
+- Kapalı/emekli satırlar `#`'lı. `py/cops close <name>` = kill + models.tsv yorumla; geri: panel "tekrar işe al".
 - roster.tsv'nin opsiyonel **4. kolonu = `cli`** (`claude`|`agy`|`codex`|`shell`, yoksa/eskiyse `"claude"`). `shell` = düz interaktif bash (sudo/TTY işleri için — panel terminali gerçek PTY). Provider mimarisi `py/claudeops/providers/`: yeni backend = yeni dosya, dallanma yok (adaylar TODO.md'de).
 
 ## Fleet kontrolü — MANUEL (2026-08-24 karar)
@@ -41,19 +41,21 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 
 ## Sınırlamalar / açık bug'lar
 
-Wayland: layout çalışmaz (X11 gerekli). Çoklu-monitor sol-alta yığılma bug'ı 2026-09-03'te düzeldi (`layout.py` artık xrandr'dan HER monitörün gerçek WxH+X+Y'sini alıyor + apply retry/read-back kazandı; canlı 10 pencereyle doğrulandı). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Bulk handover nadir BrokenPipe izi bırakabilir (kök gedik kapatıldı + diag_log var) — tekrarlarsa Tanı sekmesine bak. Tam liste: TODO.md.
+Wayland: layout çalışmaz (X11 gerekli). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Bulk handover nadir BrokenPipe izi bırakabilir (kök gedik kapatıldı + diag_log var) — tekrarlarsa Tanı sekmesine bak. Tam liste: TODO.md.
 
 ## Meta
 
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE.
 
-## READY FOR HANDOVER (2026-09-03 18:56)
+## READY FOR HANDOVER (2026-09-04)
 
-`settings.default_model_for(provider)` eklendi — Ayarlar'daki per-CLI model override'ı artık backend'in HER "model bilinmiyor" fallback'inde (9 call-site: guard/stuck/Faz1/Faz2/web) gerçekten kullanılıyor, önceden sadece frontend ön-doluydu; guard.py/stuck.py'nin stale `"claude-sonnet-4-6"` sabiti de gitti. Ardından "todolardan devam": `needs_ho()` boş/idle session'ları artık skip ediyor (yanlış-pozitif "WOULD handover" düzeldi), `py/cops handover`'a reboot-guard eklendi (`--force` ile baypas), 6 eski TODO py tarafında zaten çözülmüş bulunup kapatıldı. Kullanıcının "multiline chat prompt sending" isteği araştırılıp TODO'ya yazıldı (tmux paste-buffer gerektiriyor, canlı doğrulanmadan UYGULANMADI). Hepsi onayla commit+deploy+restart edildi (2 ayrı turda); bir build yanlışlıkla canlı `dist/`'i mutasyona uğrattı, fark edilip geri alındı — [[webui-build-is-live-deploy]]. Detay: DONE.md.
+Layout'un çoklu-monitor "HDMI sol alta yığılma" bug'ı (2026-08-28'den beri açık) GERÇEKTEN düzeldi + canlı 10-pencerelik fleet'te doğrulandı (b2dcfd7) — kök sebep `_get_screen`'in birleşik sanal-masaüstü boyutunu tek monitörün Y-offset'iyle karıştırması; ayrıca `apply_layout`'a bash'teki retry/read-back/un-maximize mantığı port edildi. TBD#12'nin bash-silme engellerinden biri buydu, artık kalktı (kalan: gerçek bir Faz 3 pin/group akışıyla canlı deneme). Detay: DONE.md "layout çoklu-monitor pile-up fix".
 
-**Açık kalanlar:** TBD#12 (Faz 3'ün `py/cops layout`'la denenmesi, çoklu-monitor bug'ı yüzünden riskli); multiline-prompt fix (TODO.md'de tasarım notu var); rename/busy-idle-göstergesi/roster-temizliği gibi düşük-öncelikli TODO'lar.
+Kullanıcı iki yeni açık mimari soru sordu, TOBEDECIDED.md'ye #15/#16 olarak kaydedildi (henüz tasarıma geçilmedi): çoklu-CLI worker/checker/decider + MCP-backed paylaşımlı queue (literatür araştırıldı: blackboard mimarisi, MetaGPT, Anthropic evaluator-optimizer, AutoGen/CrewAI — hazır ürün yok), ve aynı web UI'ın birden fazla makinede kullanımı.
 
-**Repo:** clean, github+gitlab senkron.
+Fleet'e 4 yeni proje kaydedildi (repo-dışı roster.tsv/models.tsv): `hittite`/`egyptian`/`luwian`/`egycursive` (ancient-script-pipeline ailesi, `asp`/`line`/`urartian` ile aynı desen) — **BAŞLATILMADI**, kullanıcı onayı bekleniyor (manuel fleet kontrolü kuralı).
+
+**Repo:** clean, github+gitlab senkron (bu commit dahil).
 
 READY FOR HANDOVER
