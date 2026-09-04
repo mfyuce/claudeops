@@ -41,7 +41,7 @@ from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
-from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, POST_MESSAGE_SETTLE_SECONDS
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from .. import remote_desktop
@@ -1092,19 +1092,42 @@ def _handover(name: str, lang: str = "tr") -> dict:
     mekanizma+gerekçe (bkz. o docstring + `handover.py`'nin modül docstring'i,
     ikisi de canlı doğrulandı). needs_ho/batch YOK (kullanıcı elle, bilerek
     tetikliyor) — sadece mesajı gönder. Roster GEREKMEZ — kayıtlı değilse proc
-    `_find_running`'den bulunur (cwd/model'e artık hiç ihtiyaç yok, hiçbir şey
-    spawn edilmiyor). guard_lock/kill_settle/proc-presence-doğrulama'nın HİÇBİRİ
-    kalmadı — hepsi kill-ile-respawn arası bir pencereyi/riski korumak içindi,
-    session hiç ölmediği için o pencere yok.
+    `_find_running`'den bulunur. guard_lock/kill_settle/proc-presence-doğrulama'nın
+    HİÇBİRİ kalmadı — hepsi kill-ile-respawn arası bir pencereyi/riski korumak
+    içindi, session hiç ölmediği için o pencere yok.
+
+    Aynı gün ikinci bir istek eklendi: "handover komutu öncesi model sonnet'e
+    ve sonrası eski modele. seçili model daha düşükse kalsın." — `handover.py`'nin
+    `handover_faz1()`'iyle AYNI mantık/kod yolu (`provider.handover_model_downgrade`/
+    `apply_live_model_switch`, ikisi de canlı doğrulandı — bkz. o fonksiyonun
+    docstring'i, özellikle NAİF bir sabit-bekleme yaklaşımının canlıda GERÇEK
+    bir mesaj kaybına yol açtığı bulgusu).
     """
     procs = _find_running(name)
     if not procs:
         return _err(lang, "not_running", name=name)
     if not is_tmux_backed(procs[0].pid):
         return _err(lang, "not_tmux_backed", name=name)
+    provider = get_provider(procs[0].cli)
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     diag_log("handover_start", name=name)
-    if not tmux_send_keys(name, message):
+
+    downgrade = provider.handover_model_downgrade(procs[0].model or "")
+    if downgrade:
+        provider.apply_live_model_switch(name, downgrade)
+
+    sent = tmux_send_keys(name, message)
+
+    if downgrade:
+        # bkz. handover.py'nin POST_MESSAGE_SETTLE_SECONDS yorumu — bu bekleme
+        # OLMADAN canlı testte restore komutu wrap-up mesajının input
+        # kutusuna karışıp SESSİZCE kayboldu (session yanlış modelde takılı
+        # kaldı). `apply_live_model_switch`'in kendi poll'u "hâlâ meşgul mü"
+        # durumunu zaten ele alıyor — bu sadece klavye-seviyesi çakışmayı önlüyor.
+        time.sleep(POST_MESSAGE_SETTLE_SECONDS)
+        provider.apply_live_model_switch(name, procs[0].model or "")
+
+    if not sent:
         diag_log("handover_send_failed", name=name)
         return _err(lang, "handover_send_failed", name=name)
     diag_log("handover_done", name=name)

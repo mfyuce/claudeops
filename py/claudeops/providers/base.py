@@ -61,6 +61,24 @@ class CliProvider(ABC):
         provider'ların override etmesi beklenir (varsayılan burada da None)."""
         return None
 
+    def handover_model_downgrade(self, current_model: str) -> Optional[str]:
+        """Handover'ın wrap-up mesajı gibi 'mekanik' bir iş için `current_model`
+        yerine GEÇİCİ kullanılacak daha ucuz bir model adı — `current_model`
+        zaten yeterince ucuzsa, tanınmıyorsa, ya da bu CLI için kavram
+        tanımsızsa None (çağıran hiçbir model-değiştirme komutu göndermez).
+        None = varsayılan (last_exchange/full_history/compact_command ile
+        AYNI "yok=None" sözleşmesi) — sadece destekleyen provider override
+        eder (2026-09-04, sadece claude)."""
+        return None
+
+    def apply_live_model_switch(self, tmux_name: str, target_model: str) -> None:
+        """`tmux_name` CANLI session'ına model'i `target_model`'e değiştiren
+        komutu (varsa) güvenli şekilde uygular — bir onay diyaloğu açılırsa
+        onu da halleder. Varsayılan no-op (bu CLI canlı model değişimini
+        desteklemiyor/tanımsız, `handover_model_downgrade()` zaten None
+        döndüğü için pratikte hiç çağrılmaz)."""
+        return
+
     def compact_command(self) -> Optional[str]:
         """Bu CLI'nın konuşma-özetleme slash-command'ı (ör. `/compact`), varsa.
         None (varsayılan) = bu CLI için böyle bir kavram yok — panelin "compact"
