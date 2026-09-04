@@ -2,6 +2,12 @@
 
 > Tamamlanan iş kalemleri. Son tarih yukarıda.
 
+## 2026-09-04 (8) (Uzak Masaüstü v2 — canlı mobil-tarayıcı testi kullanıcı tarafından TEYİT EDİLDİ)
+
+- ✅ **Kullanıcıya (7) numaralı entry'nin açık sorusu soruldu: "Ofis dışından bağlanıp denedin mi, çalıştı mı?"** Cevap: **"evet, elle super. mobilden"** — mobil tarayıcıdan, gerçek dokunmatik/elle kontrolle test edilmiş, sorunsuz çalışmış.
+- ✅ Bununla Uzak Masaüstü v2'nin (mouse/klavye/scroll input, "Kontrolü Al") tek açık ucu (gerçek-tarayıcı/mobil teyidi) kapandı — TODO.md'deki "Uzak Masaüstü v2" maddesi `[x]` DONE'a çevrildi, memory (`remote-desktop-screenshare-v1.md`) ve CLAUDE.md'nin bayat "SONUÇ BİLİNMİYOR" RFH bloğu güncellendi/temizlendi.
+- ℹ️ Yeni iş yapılmadı, sadece (7)'de bilerek açık bırakılan tek soru bu turda kapatıldı.
+
 ## 2026-09-04 (7) (Uzak Masaüstü v2 input — frontend tamamlandı+deploy edildi, canlı-tarayıcı teyidi bekliyor; CLAUDE.md/AGENTS.md handover-bakımı)
 
 - ✅ **Kullanıcı: "remote desktopdan devam ediorduk. en son input kisimlri icin izin istemistin. dört gozle bekliorum."** Önceki oturumda (bkz. TODO.md "Uzak Masaüstü v2") Rust tarafı yazılmış ama HİÇ canlı test edilmemişti; bu oturum tam oradan devam etti.

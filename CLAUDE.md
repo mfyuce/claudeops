@@ -48,15 +48,3 @@ Wayland: layout çalışmaz (X11 gerekli). gnome-terminal hard-coded. `rc --kill
 
 `DONE.md` = CHANGELOG. `TOBEDECIDED.md` = açık mimari sorular (karar verildikçe "Kapatılmış"a taşınır, silinmez). **`AGENTS.md` = bu dosyanın Codex-CLI mirror'ı — biri değişince İKİSİNİ birlikte güncelle** (2026-09-04'te stale + birkaç mekanik-yanlış çeviri bulunup düzeltildi, örn. model id'nin "Codex-sonnet-5" olarak değişmiş olması — Claude'a özgü somut gerçekler AGENTS.md'de de Claude'a özgü kalmalı, sadece çerçeveleme Codex'e uyarlanır). Memory: `~/.claude/projects/-home-fatihyuce-work-projects-tmp-claudeops/memory/`.
 Ho-prep sync (her ho'da): TODO done → DONE; CLAUDE.md + AGENTS.md ikisi de güncel mi kontrol et.
-
-## READY FOR HANDOVER (2026-09-04)
-
-Uzak Masaüstü v2 (mouse/klavye/scroll input, "Kontrolü Al") TAMAMLANDI + CANLIYA DEPLOY EDİLDİ. Rust tarafı izole testte doğrulandı (Türkçe Unicode dahil, prod porta dokunulmadan); frontend (Pointer Events tabanlı capture, koordinat ölçekleme, mobil-klavye tetikleyici, varsayılan-KAPALI güvenlik anahtarı) yazıldı, `tsc`/`oxlint` temiz, `npm run build` ile canlıya alındı (restart gerekmedi, tunnel URL'inden doğrulandı). Test sırasında gerçek bir güvenlik bulgusu çıktı: X11'de scroll/click imleç KONUMUNA göre yönleniyor (klavye focus'una değil) — makine eşzamanlı aktif kullanımdayken bu, fiziksel kullanıcıyla çakışabiliyor; bu yüzden "Kontrolü Al" varsayılan kapalı ve her aksiyondan önce taze `move` gönderiyor.
-
-**Kullanıcı ofisten çıkıp panele uzaktan bağlanıp gerçek bir tarayıcıda deneyecek — bu handover anında SONUÇ BİLİNMİYOR.** Bir sonraki session önce sorup öğrenmeli, "çalışıyor" varsaymamalı; bir hata bildirilirse TODO.md'deki ilgili maddeden devam et.
-
-Ayrıca bu turda: CLAUDE.md boyutu küçültüldü (moot/tarihsel yorumlar budandı, eski RFH bloğu kaldırıldı) + repoda stale/kısmen-yanlış bir `AGENTS.md` (Codex-CLI'nin okuduğu mirror dosya) bulunup düzeltildi — ikisini birlikte güncel tutma kuralı Meta'ya eklendi. TODO.md'de iki staleness düzeltildi: codex provider'ının zaten eklenmiş olduğu (eski madde hâlâ "eklenmedi" diyordu) ve `spawn.py`'nin env-filtresinin `CODEX*` içermediği (doğrulanmamış bir risk, körlemesine eklenmedi).
-
-**Repo:** clean, github+gitlab senkron (bu commit dahil).
-
-READY FOR HANDOVER
