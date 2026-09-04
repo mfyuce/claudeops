@@ -32,8 +32,9 @@ En kolay kullanım yolu; her şey tarayıcıdan:
 
 ![claudeops web paneli](../docs/web-panel.png)
 
-- **Sekmeler** — **Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout** (aktif sekme sayfa
-  yenilense de hatırlanır). Hiçbir şey otomatik açılmaz.
+- **Sekmeler** — **Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout / Tanı / Uzak Masaüstü** (aktif
+  sekme sayfa yenilense de hatırlanır). Hiçbir şey otomatik açılmaz — Uzak Masaüstü sekmesinin daemon'ı
+  da dahil, aşağıya bakın.
 - **Çalışanlar** — tüm canlı session'lar, her satırda **checkbox**, tablonun üstünde **toplu işlem
   butonları**: *handover* / *durdur* / *devre dışı bırak* / *emekli et* seçili satırlara sırayla
   uygulanır — onay diyaloğu isimleri listeler, ilerleme ve hatalar satır satır raporlanır. Butonların
@@ -85,6 +86,26 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   uyarır, kurmaz (sudo gerektirir). Kilitli ekran gerektiren TEK işlem bu — başlat/durdur/handover/
   devral/yeni-chat kilitli ekranda da sorunsuz çalışır (telefondan panele bağlanırken masaüstün kilitli
   olması sorun değil).
+- **Tanı** — web-paneli/terminal-server uptime'ı, *pencereSİZ* açılmış session'ların listesi (yukarıdaki
+  Terminal notundaki spawn-fallback durumu), tek-tıkla spawn sağlık testi, bir **gt-restart** butonu
+  (sadece terminal-server process'ini yeniden başlatır — düz bir panel restart'ı bozuk olanı düzeltmez),
+  bir `diag.log`, ve son loglara bakan gerçek/taze bir session açan (desteklenen herhangi bir CLI
+  backend'i) + Terminal görünümlü bir **"LLM'e sor"** aksiyonu — gerçek bir sohbet, kayıtlı-dışı bir
+  rapor değil.
+- **Uzak Masaüstü** — kendi sekmesinde, talebe bağlı **Başlat**/**Durdur**'lu bir uzak masaüstü görünümü.
+  Arka planda küçük bir Rust daemon'ı var (`rust/screenshare/`, ilk kullanımda derlenir — PATH'te Rust
+  toolchain'i, `cargo`, gerektirir; kurulu değilse panelin geri kalanı sorunsuz çalışır, sadece bu sekme
+  çalışmaz) — X11 ekranını yakalar (~2 fps JPEG) ve panelin geri kalanıyla AYNI token-korumalı bağlantı
+  üzerinden akıtır; Durdur'a basınca arka planda hiçbir şey çalışmaya devam etmez. Bir **"Kontrolü Al"**
+  anahtarı (**varsayılan KAPALI**, panel içi uyarı metniyle) fare/klavye/scroll/dokunmatik'i gerçek
+  makineye yönlendirmeyi açar — telefonun ekran klavyesinin tetiklenmesi + Unicode metnin (Türkçe dahil)
+  doğru gelmesi dahil. **Açmadan önce okuyun:** bu, makinenin GERÇEK fare ve klavyesini o an fiziksel
+  olarak başında olan kişiyle paylaşır — X11 click/scroll'u imleç KONUMUNA göre yönlendirir, focus'a göre
+  değil, yani eşzamanlı fiziksel kullanım uzak kontrolle çakışabilir (her click/scroll'dan önce taze bir
+  `move` göndermek bunu azaltır, ortadan kaldırmaz). Görüntüleme kilitli ekranda bile çalışır; kilitli
+  bir ekranda kontrolü açmak fiilen onu uzaktan açabilmek demektir — bu kasıtlı, bug değil. Modifier
+  tuşları (Ctrl/Alt/Shift/Cmd) henüz iletilmiyor, bilerek (kaçan bir key-up gerçek makinede tuşu
+  "takılı basılı" bırakabilir).
 - **TR/EN** — tarayıcı diline göre otomatik seçilir (`navigator.language`), sağ üstteki butonlarla elle
   değiştirilip kalıcı hale getirilebilir (localStorage).
 - **Token korumalı** (`~/.claude/claudeops/web.token`, ilk çalıştırmada rastgele üretilir) — sayfa da
@@ -236,7 +257,8 @@ Her komutun kendi `--help`'i var.
 ```
 py/claudeops/
   paths.py, session.py, discovery.py   # temel: yollar, veri modeli, proc keşfi (psutil)
-  spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py
+  spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py,
+  remote_desktop.py
   tmux_backend.py                       # tmux yardımcıları (ayrı -L cops socket'i), tmux yoksa fail-soft
   providers/                            # CliProvider ABC + backend başına bir dosya + registry
     base.py, claude_provider.py, agy_provider.py, shell_provider.py, __init__.py

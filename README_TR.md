@@ -45,6 +45,9 @@ MIT lisanslı — bkz. [`LICENSE`](LICENSE).
   henüz tam pürüzsüz değil)
 - Mobil-uyumlu tasarım
 - Tanı sekmesi: tek-tıkla spawn sağlık testi, terminal-server restart, son loglar hakkında "LLM'e sor"
+- Uzak masaüstü sekmesi: talebe bağlı ekran görüntüsü (özel Rust/X11 daemon, ~2fps JPEG) + varsayılan
+  kapalı, isteğe bağlı fare/klavye/dokunmatik kontrol anahtarı (gerçek makinenin input'unu paylaşır —
+  güvenlik detayları için `py/README_TR.md`) — telefondan da çalışır
 
 **Kendi kendine ayakta kalır**
 - `py/cops service install` — systemd kalıcılığı: panel ve tunnel logout/reboot'ta hayatta kalır,
@@ -134,6 +137,8 @@ claudeops new myname /home/fatihyuce/work/projects/xyz
 ## Klasör içeriği
 
 - `py/` — aktif geliştirilen Python sürümü (`py/cops`), bkz. [`py/README_TR.md`](py/README_TR.md)
+- `rust/screenshare/` — web panelinin Uzak Masaüstü sekmesinin arkasındaki Rust daemon'ı (X11 capture +
+  input enjeksiyonu), bkz. `py/README_TR.md`'nin Uzak Masaüstü bölümü
 - `claudeops` — eski/legacy tek dosya bash script
 - `LICENSE` — MIT
 - `README.md` / `README_TR.md` — İngilizce / Türkçe

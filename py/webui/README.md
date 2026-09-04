@@ -77,7 +77,8 @@ source change that caused it.
   tabs), `tabs.ts`.
 - `src/components/` — one subfolder per tab (`RunningTab/`,
   `RegisteredTab/`, `TerminalModal/`) plus shared pieces (`TabBar.tsx`,
-  `Banners.tsx`, `GroupTable.tsx`, `LayoutTab.tsx`, `DiagnosticsTab.tsx`).
+  `Banners.tsx`, `GroupTable.tsx`, `LayoutTab.tsx`, `DiagnosticsTab.tsx`,
+  `DesktopTab.tsx`).
 - `src/styles/global.css` — one global stylesheet, ported 1:1 from the old
   `PAGE_HTML`'s `<style>` block. No CSS Modules/Tailwind/CSS-in-JS.
 

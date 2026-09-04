@@ -45,6 +45,9 @@ MIT licensed — see [`LICENSE`](LICENSE).
   resizing/scrolling isn't perfectly smooth yet)
 - Mobile-responsive layout
 - Diagnostics tab: one-click spawn health test, terminal-server restart, "ask an LLM" about recent logs
+- Remote desktop tab: on-demand screen view (custom Rust/X11 daemon, ~2fps JPEG) with an opt-in
+  mouse/keyboard/touch control toggle (off by default, shares the real machine's input — see
+  `py/README.md` for the safety details) — works from a phone too
 
 **Stays up on its own**
 - `py/cops service install` — systemd persistence: the panel and tunnel survive logout and reboot,
@@ -144,6 +147,8 @@ claudeops new myname /home/youruser/work/projects/xyz
 ## Repo layout
 
 - `py/` — the actively developed Python version (`py/cops`), see [`py/README.md`](py/README.md)
+- `rust/screenshare/` — Rust daemon behind the web panel's Desktop tab (X11 capture + input injection),
+  see `py/README.md`'s Desktop tab section
 - `claudeops` — old/legacy single-file bash script
 - `LICENSE` — MIT
 - `README.md` / `README_TR.md` — English / Turkish

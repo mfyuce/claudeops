@@ -32,8 +32,9 @@ The easiest way to use this; everything from the browser:
 
 ![claudeops web panel](../docs/web-panel.png)
 
-- **Tabs** — **Running / Registered / Disabled / Retired / Layout** (the active tab persists across
-  reloads). Nothing ever starts automatically.
+- **Tabs** — **Running / Registered / Disabled / Retired / Layout / Diagnostics / Desktop** (the active
+  tab persists across reloads). Nothing ever starts automatically — the Desktop tab's daemon included,
+  see below.
 - **Running** — every live session, one **checkbox** per row, and **bulk action buttons above the
   table**: *handover* / *stop* / *disable* / *retire* run on the selected rows one by one, with a
   confirm dialog (listing the names) and per-name progress + error reporting. A short legend under the
@@ -84,6 +85,25 @@ The easiest way to use this; everything from the browser:
   missing (Ubuntu/Debian: `sudo apt install -y wmctrl xdotool`). This is the *only* action that needs
   an unlocked screen — start/stop/handover/adopt/new-chat all work fine on a locked screen too (handy
   if you're driving the panel from your phone while your desktop is locked).
+- **Diagnostics** — web-panel/terminal-server uptime, a list of sessions that opened *windowless* (the
+  spawn-fallback case, see the Terminal note above), a one-click spawn health test, a **gt-restart**
+  button (restarts just the terminal-server process — a plain panel restart doesn't fix a broken one),
+  a `diag.log`, and an **"ask an LLM"** action that opens a real, fresh session (any supported CLI
+  backend) with a Terminal view pointed at recent logs — an actual chat, not a canned report.
+- **Desktop** ("Uzak Masaüstü") — an on-demand remote-desktop view, **Start**/**Stop** on its own tab.
+  Backend is a small Rust daemon (`rust/screenshare/`, built on first use — needs the Rust toolchain,
+  `cargo`, on PATH; the rest of the panel works fine without it, just this tab won't) that captures the
+  X11 screen (~2 fps JPEG) and streams it over the same token-protected connection as everything else —
+  nothing runs in the background once you hit Stop. A **"Kontrolü Al" / Take Control** toggle
+  (**off by default**, with an in-panel warning) turns on mouse/keyboard/scroll/touch forwarding to the
+  real machine, including a hidden-input trick so a phone's on-screen keyboard works and Unicode text
+  (Turkish included) comes through correctly. **Read before enabling:** this shares the machine's *real*
+  pointer and keyboard with whoever is physically at it — X11 routes clicks/scroll by pointer position,
+  not focus, so concurrent physical use can race with remote input (a fresh pointer `move` before every
+  click/scroll reduces but doesn't eliminate this). Viewing works even on a locked screen; turning on
+  control on a locked screen effectively means being able to unlock it remotely — intentional, not a
+  bug. Modifier keys (Ctrl/Alt/Shift/Cmd) aren't forwarded yet, on purpose (a missed key-up could leave
+  one "stuck" on the real machine).
 - **TR/EN** — auto-selected from the browser's language (`navigator.language`), can be switched manually
   with the buttons in the top corner and stays persisted (localStorage).
 - **Token protected** (`~/.claude/claudeops/web.token`, randomly generated on first run) — both the page
@@ -238,7 +258,8 @@ Every command has its own `--help`.
 ```
 py/claudeops/
   paths.py, session.py, discovery.py   # foundation: paths, data model, proc discovery (psutil)
-  spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py
+  spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py,
+  remote_desktop.py
   tmux_backend.py                       # tmux helpers (dedicated -L cops socket), fail-soft if no tmux
   providers/                            # CliProvider ABC + one file per CLI backend + registry
     base.py, claude_provider.py, agy_provider.py, shell_provider.py, __init__.py
