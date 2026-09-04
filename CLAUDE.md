@@ -14,6 +14,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 - **oomd TÜM oturumu öldürebilir** (sadece fleet'in cgroup'unu değil) — kurtarma `py/cops service watchdog` (root-seviyeli, oturumdan bağımsız timer). [[oomd-cgroup-kill]]
 - **`web.py`'nin `_serve_static()`'i `index.html`'i HER ZAMAN `Cache-Control: no-cache`, `/assets/*`'i (Vite hash'li) `immutable` göndermeli** — aksi halde bir redeploy sonrası tarayıcıda kalan eski `index.html`, artık silinmiş eski-hash'li JS/CSS'i 404'lar, sayfa hiç açılmaz (canlı bulundu 2026-09-02, kullanıcı: "ana sayfa açılırken hata var, tüm sayfa gizleniyor").
 - **Security**: ulaksec → "dokunma". `~/.cache/huggingface` 29G KORU. Commit öncesi kullanıcı onayı.
+- **`rust/screenshare` (Uzak Masaüstü daemon'ı) `pkill`/pattern-bazlı öldürme YASAK** — port/isim eşleşmesiyle (`pkill -f "screenshare 8877"` gibi) CANLI, panelde kullanılıyor olabilecek instance'ı öldürebilirsin (2026-09-04 canlı yaşandı, hemen fark edilip `remote_desktop.stop()`/`.start()` GERÇEK API'siyle düzeltildi). Durdurmak/yeniden başlatmak için HER ZAMAN `remote_desktop.stop()`/`start()` (PID-exact) kullan, asla pattern-match kill değil.
 
 ## Roster / model (`~/.claude/claudeops/{roster,models}.tsv` — repo DIŞI, kaynak-of-truth)
 
@@ -33,7 +34,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 
 ## Handover (Faz 1 ARTIK kill/respawn YAPMIYOR — 2026-09-04)
 
-- **Faz 1 = CANLI mesaj gönderimi, pencere/proc'a hiç dokunmaz.** `py/cops handover [--dry-run]` wrap-up mesajını `tmux_send_keys` ile ÇALIŞAN session'a enjekte eder (kill/respawn/pencere kapat-aç YOK — canlı doğrulandı, [[handover-live-injection-no-kill]]). Batch'li throttle hâlâ geçerli (mass aynı anda = rate-limit [[mass-faz1-ratelimit-stuck]]); self otomatik atlanır; konuşması olmayan (`shell`) ve boş/idle (`needs_ho()`) session'lar otomatik skip. **Taze reboot (≤30dk) → DUR + uyar**, `--force` ile baypas ([[reboot-no-handover]]).
+- **Faz 1 = CANLI mesaj gönderimi, pencere/proc'a hiç dokunmaz.** `py/cops handover [--dry-run]` wrap-up mesajını `tmux_send_keys` ile ÇALIŞAN session'a enjekte eder (kill/respawn/pencere kapat-aç YOK — canlı doğrulandı, [[handover-live-injection-no-kill]]). Model opus/fable ise mesajdan ÖNCE geçici olarak sonnet'e düşer, mesajdan SONRA eskiye döner (zaten sonnet/haiku ise dokunmaz) — `CliProvider.handover_model_downgrade`/`apply_live_model_switch`. Batch'li throttle hâlâ geçerli (mass aynı anda = rate-limit [[mass-faz1-ratelimit-stuck]]); self otomatik atlanır; konuşması olmayan (`shell`) ve boş/idle (`needs_ho()`) session'lar otomatik skip. **Taze reboot (≤30dk) → DUR + uyar**, `--force` ile baypas ([[reboot-no-handover]]).
 - **Faz 2/3 artık Faz 1'in otomatik/örtük devamı DEĞİL** — context'i ne zaman sıfırlayıp (fresh session) ne zaman pencere düzenleyeceğine (layout) kullanıcı kendisi, ayrı ayrı karar verir, [[handover-live-injection-no-kill]].
 - **Faz 2 (istenirse, tek bir isim için):** Faz1 sağlıksızsa (503/529) DUR, kullanıcı onayı şart. `py/cops rc <isimler SPACE'li> --new --kill-first --permission-mode=auto --one-by-one` (bash rc DEĞİL; `--model`/`--effort` VERME — models.tsv/Ayarlar zincirine düşer, [[handover-effort-high-not-max]]). `--prompt` VERME (boş başlasınlar [[faz2-new-session-devam]]). Config doğrula: `python3 -c "import json;json.load(open('$HOME/.claude.json'))"`. Bridge rate-limit: 4'er batch + 20s [[bridge-batch-spawn-ratelimit]].
 - **Faz 3 (istenirse):** ÖNCE `loginctl show-session <id> -p LockedHint`=no doğrula [[layout-needs-unlocked-screen]]. `./claudeops layout grid 4 --claude-only --pin=... --group=...` (bash, bkz. TOBEDECIDED.md #12) — 2× çalıştır, `xwininfo` ile doğrula (wmctrl 2× yalan).
@@ -42,7 +43,7 @@ Açık Claude CLI session'larını toplu yönet. **`py/cops`** = canlı Python t
 
 ## Sınırlamalar / açık bug'lar
 
-Wayland: layout çalışmaz (X11 gerekli). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Bulk handover nadir BrokenPipe izi bırakabilir (kök gedik kapatıldı + diag_log var) — tekrarlarsa Tanı sekmesine bak. Tam liste: TODO.md.
+Wayland: layout çalışmaz (X11 gerekli). gnome-terminal hard-coded. `rc --kill-first` permission modal keser. Target virgül parse yok (SPACE, bash'e özel). Eski bulk-handover BrokenPipe notu artık BÜYÜK ÖLÇÜDE MOOT (2026-09-04: Faz 1 kill/respawn yapmıyor, o race'in kaynağı olan pencere gitti) — hâlâ bir şey görülürse yine de diag_log var, Tanı sekmesine bak. Tam liste: TODO.md.
 
 ## Meta
 
@@ -51,12 +52,10 @@ Ho-prep sync (her ho'da): TODO done → DONE.
 
 ## READY FOR HANDOVER (2026-09-04)
 
-Layout'un çoklu-monitor "HDMI sol alta yığılma" bug'ı (2026-08-28'den beri açık) GERÇEKTEN düzeldi + canlı 10-pencerelik fleet'te doğrulandı (b2dcfd7) — kök sebep `_get_screen`'in birleşik sanal-masaüstü boyutunu tek monitörün Y-offset'iyle karıştırması; ayrıca `apply_layout`'a bash'teki retry/read-back/un-maximize mantığı port edildi. TBD#12'nin bash-silme engellerinden biri buydu, artık kalktı (kalan: gerçek bir Faz 3 pin/group akışıyla canlı deneme). Detay: DONE.md "layout çoklu-monitor pile-up fix".
+Yoğun bir gün: arama kutusu (React panel), provider feature-parity audit (`compact_command()` mimari düzeltmesi), handover+compact'ın kill/respawn'dan CANLI tmux-enjeksiyonuna TAM geçişi (ikisi de canlı doğrulandı — mesaj kaybı + klavye-çakışması gibi 2 gerçek race bulunup düzeltildi, [[handover-live-injection-no-kill]]), handover'ın wrap-up öncesi opus/fable'ı geçici sonnet'e düşürüp sonra geri alması, ve YENİ "Uzak Masaüstü" sekmesi v1 (view-only ekran paylaşımı — `rust/screenshare`, x11rb+tungstenite, `remote_desktop.py` lifecycle, `web.py` proxy). **Hepsi build edildi + deploy edildi + canlı doğrulandı** (fleet 18 tmux session'ıyla `KillMode=process` restart'ı sağ salim atlattı).
 
-Kullanıcı iki yeni açık mimari soru sordu, TOBEDECIDED.md'ye #15/#16 olarak kaydedildi (henüz tasarıma geçilmedi): çoklu-CLI worker/checker/decider + MCP-backed paylaşımlı queue (literatür araştırıldı: blackboard mimarisi, MetaGPT, Anthropic evaluator-optimizer, AutoGen/CrewAI — hazır ürün yok), ve aynı web UI'ın birden fazla makinede kullanımı.
+**YARIM kalan:** Uzak Masaüstü v2 (mouse/klavye/mobil kontrol, `enigo` ile) — Rust tarafı yazıldı+derliyor ama HİÇ canlı test edilmedi, frontend'e hiç dokunulmadı; kullanıcı "sonra yapalım" deyince bilerek durduruldu (bu sırada bir `pkill` hatası da yapılıp düzeltildi — bkz. yukarıdaki Kritik kısıtlar). Detay+net sonraki-adımlar: TODO.md.
 
-Fleet'e 4 yeni proje kaydedildi (repo-dışı roster.tsv/models.tsv): `hittite`/`egyptian`/`luwian`/`egycursive` (ancient-script-pipeline ailesi, `asp`/`line`/`urartian` ile aynı desen) — **BAŞLATILMADI**, kullanıcı onayı bekleniyor (manuel fleet kontrolü kuralı).
-
-**Repo:** clean, github+gitlab senkron (bu commit dahil).
+**Repo:** clean, github+gitlab senkron (bu commit dahil). Roster/fleet'e bu turda dokunulmadı.
 
 READY FOR HANDOVER
