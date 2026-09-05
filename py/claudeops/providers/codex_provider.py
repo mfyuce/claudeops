@@ -219,6 +219,17 @@ class CodexProvider(CliProvider):
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
 
+    def input_settle_delay(self) -> float:
+        # Canlı bulundu (2026-09-05, kullanıcı: "codex de terminalde send'deyince
+        # ayrıca enter'a basmak gerekiyor"): `tmux_send_keys`'in literal-metin +
+        # ANINDA ayrı bir Enter kombinasyonu codex'te mesajı input kutusunda
+        # gönderilmemiş BIRAKIYOR (izole tmux-only bir test session'ında, hem
+        # tek-satır "2+2" hem çok-satırlı/Türkçe-karakterli bir mesajla canlı
+        # tekrarlandı) — kullanıcının elle bastığı "ikinci Enter" işte bu eksik
+        # gecikmeyi telafi ediyordu. 150ms AYNI izole session'da her iki mesaj
+        # tipinde de güvenilir şekilde tek-Enter'la gönderimi düzeltti.
+        return 0.15
+
     def _rollout_path(self, cwd: str, sid: Optional[str]) -> Optional[str]:
         """`resolve_resume_id`'nin bulduğu sid'e karşılık gelen TAM dosyayı (ya da
         sid yoksa/hiç eşleşmezse aynı cwd-taramalı mtime-fallback'i) döndürür — o

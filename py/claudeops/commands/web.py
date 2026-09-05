@@ -1052,7 +1052,7 @@ def _term_input(name: str, text: str, lang: str = "tr") -> dict:
     s, err = _term_resolve(name, lang)
     if err:
         return err
-    ok = tmux_send_keys(s.name, text)
+    ok = tmux_send_keys(s.name, text, settle_delay=get_provider(s.cli).input_settle_delay())
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
@@ -1201,7 +1201,7 @@ def _handover(name: str, lang: str = "tr") -> dict:
     if downgrade:
         provider.apply_live_model_switch(name, downgrade)
 
-    sent = tmux_send_keys(name, message)
+    sent = tmux_send_keys(name, message, settle_delay=provider.input_settle_delay())
 
     if downgrade:
         # bkz. handover.py'nin POST_MESSAGE_SETTLE_SECONDS yorumu — bu bekleme
@@ -1296,7 +1296,7 @@ def _compact(name: str, lang: str = "tr") -> dict:
     baseline = _count_compact_summaries(jsonl)
 
     diag_log("compact_start", name=name)
-    if not tmux_send_keys(name, command):
+    if not tmux_send_keys(name, command, settle_delay=provider.input_settle_delay()):
         diag_log("compact_send_failed", name=name)
         return _err(lang, "compact_send_failed", name=name)
 

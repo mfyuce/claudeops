@@ -289,7 +289,7 @@ def handover_faz1(
         if downgrade:
             provider.apply_live_model_switch(session.name, downgrade)
 
-        sent = tmux_send_keys(session.name, message)
+        sent = tmux_send_keys(session.name, message, settle_delay=provider.input_settle_delay())
 
         if downgrade:
             # `tmux_send_keys` DÖNMESİ ≠ hedef CLI'nin o (1000+ karakter
