@@ -14,7 +14,8 @@
  * makes the browser handle the save UI itself.
  */
 import { useEffect, useState } from "react";
-import { filesDownloadUrl, getFilesList } from "../../api/client";
+import { apiVscodeOpen, filesDownloadUrl, getFilesList } from "../../api/client";
+import { callAction } from "../../api/errors";
 import type { FileEntry, FileRoot } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
 import { isViewable } from "./fileViewerKind";
@@ -111,16 +112,26 @@ export function FilesView({ name, onView }: FilesViewProps) {
           ))}
         </div>
       )}
-      <div
-        style={{
-          fontFamily: "monospace",
-          fontSize: ".75rem",
-          opacity: 0.8,
-          marginBottom: ".4rem",
-          overflowWrap: "anywhere",
-        }}
-      >
-        {path}
+      <div style={{ display: "flex", alignItems: "center", gap: ".5rem", marginBottom: ".4rem" }}>
+        <div
+          style={{
+            fontFamily: "monospace",
+            fontSize: ".75rem",
+            opacity: 0.8,
+            overflowWrap: "anywhere",
+            flex: 1,
+          }}
+        >
+          {path}
+        </div>
+        <button
+          type="button"
+          title={t.filesOpenVscodeHint}
+          style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
+          onClick={() => void callAction(() => apiVscodeOpen(name, lang, path), "vscode", t)}
+        >
+          {t.filesOpenVscode}
+        </button>
       </div>
       {!atRoot && (
         <button type="button" style={{ marginBottom: ".4rem" }} onClick={() => setCurrentPath(parentOf(path))}>
@@ -134,8 +145,9 @@ export function FilesView({ name, onView }: FilesViewProps) {
           {entries.map((e) => (
             <FileRow key={e.name} entry={e} onOpenDir={() => setCurrentPath(joinPath(path, e.name))}
                      downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name))}
-                     downloadLabel={t.filesDownload} viewLabel={t.filesView}
-                     onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null} />
+                     downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
+                     onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
+                     onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name)), "vscode", t)} />
           ))}
         </div>
       )}
@@ -144,14 +156,16 @@ export function FilesView({ name, onView }: FilesViewProps) {
 }
 
 function FileRow({
-  entry, onOpenDir, downloadUrl, downloadLabel, viewLabel, onView,
+  entry, onOpenDir, downloadUrl, downloadLabel, viewLabel, vscodeLabel, onView, onOpenVscode,
 }: {
   entry: FileEntry;
   onOpenDir: () => void;
   downloadUrl: string;
   downloadLabel: string;
   viewLabel: string;
+  vscodeLabel: string;
   onView: (() => void) | null;
+  onOpenVscode: () => void;
 }) {
   const rowStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: ".4rem",
@@ -175,6 +189,9 @@ function FileRow({
           👁
         </button>
       )}
+      <button type="button" title={vscodeLabel} style={{ whiteSpace: "nowrap" }} onClick={onOpenVscode}>
+        {"</>"}
+      </button>
       <a href={downloadUrl} download={entry.name} style={{ whiteSpace: "nowrap" }}>
         {downloadLabel}
       </a>

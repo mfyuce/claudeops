@@ -129,6 +129,24 @@ def read_text(s: Session, path: str) -> Tuple[Optional[str], Optional[str]]:
         return None, "not_found"
 
 
+def resolve_path(s: Session, path: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """`path` verilmezse session'ın İLK kökü (proje cwd'si) kullanılır — ör.
+    "VS Code'da aç": tek bir dosya adı verilmemişse tüm projeyi aç. `resolve_
+    download`/`read_text`'ten farkı: dosya YA DA dizin olabilir, boyut sınırı
+    yok (içerik OKUNMUYOR, sadece var olan bir yola işaret etmesi yeterli).
+    (gerçek-yol, None) başarılı; (None, hata-kodu) başarısız."""
+    roots = roots_for_session(s)
+    if not roots:
+        return None, "no_roots"
+    target = path or roots[0][1]
+    real = _resolve_within_roots(target, roots)
+    if real is None:
+        return None, "forbidden"
+    if not os.path.exists(real):
+        return None, "not_found"
+    return real, None
+
+
 def validate_candidates(s: Session, candidates: List[str]) -> List[str]:
     """Terminal çıktısında regex'le yakalanan dosya-yolu ADAYLARINDAN
     GERÇEKTEN var olan + izin verilen dosyalara karşılık gelenleri (sırayı

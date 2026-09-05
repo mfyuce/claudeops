@@ -132,6 +132,8 @@ export interface Strings {
   filesDownload: string;
   filesView: string;
   filesRootLabel: string;
+  filesOpenVscode: string;
+  filesOpenVscodeHint: string;
   nothingRunning: string;
   unregBadge: string;
   unregHint: string;
@@ -312,6 +314,8 @@ export const STRINGS: Record<Lang, Strings> = {
     filesDownload: "indir",
     filesView: "görüntüle",
     filesRootLabel: "kök:",
+    filesOpenVscode: "VS Code'da Aç",
+    filesOpenVscodeHint: "Yeni bir VS Code penceresi açar — sadece fiziksel olarak makinenin başındaysan (veya Uzak Masaüstü'yle görüyorsan) işe yarar, panelden görüntülenemez.",
     nothingRunning: "Hiçbir şey çalışmıyor — \"Kayıtlı\" sekmesinden başlatın.",
     unregBadge: "kayıtsız",
     unregHint: "roster.tsv'de kayıtlı değil (proc-scan'den bulundu) — claudeops'un açmadığı bir pencere; \"devral\"a basarsanız remote-control eklenip roster'a kalıcı kaydedilir",
@@ -490,6 +494,8 @@ export const STRINGS: Record<Lang, Strings> = {
     filesDownload: "download",
     filesView: "view",
     filesRootLabel: "root:",
+    filesOpenVscode: "Open in VS Code",
+    filesOpenVscodeHint: "Opens a new VS Code window — only useful physically at the machine (or viewing it via Uzak Masaüstü), can't be shown in this panel.",
     nothingRunning: "Nothing running — start from the \"Registered\" tab.",
     unregBadge: "unregistered",
     unregHint: "not in roster.tsv (found via proc-scan) — a window claudeops didn't open; click \"adopt\" to attach remote-control and register it permanently",
