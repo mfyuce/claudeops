@@ -26,6 +26,18 @@ import { getFilesRead } from "../../api/client";
 import { useLang } from "../../i18n/LangContext";
 import { viewerKind } from "./fileViewerKind";
 
+// A rendered markdown document can contain its own links (relative paths,
+// external URLs) — without this, clicking one navigates the WHOLE panel
+// away in the same tab (2026-09-05, user: "linkler yeni sayfada açılsın bu
+// viewerda"). Module-level/registered once: DOMPurify hooks are global to
+// the library instance, not per-`sanitize()` call.
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.tagName === "A") {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+});
+
 interface FileViewerModalProps {
   name: string;
   path: string;
