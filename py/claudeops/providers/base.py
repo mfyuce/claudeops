@@ -79,6 +79,18 @@ class CliProvider(ABC):
         döndüğü için pratikte hiç çağrılmaz)."""
         return
 
+    def input_settle_delay(self) -> float:
+        """`tmux_send_keys()`'in literal-metin gönderiminden SONRA, Enter
+        göndermeden ÖNCE beklemesi gereken saniye. Varsayılan 0.0 (gerek yok) —
+        `last_exchange`/`compact_command` ile AYNI "yok=no-op, sadece kanıtlanmış
+        ihtiyacı olan provider override eder" sözleşmesi. claude zaten anlık
+        Enter'ı doğru işliyor (1200+ karakterli çok-satırlı/Türkçe-karakterli
+        handover wrap-up mesajıyla bile canlı doğrulanmıştı, bkz. handover.py'nin
+        modül docstring'i) — yeni bir gecikme ona hiçbir fayda sağlamaz, sadece
+        kanıtlanan ihtiyacı olana uygulanıyor (2026-09-05, codex — bkz.
+        `CodexProvider.input_settle_delay`)."""
+        return 0.0
+
     def compact_command(self) -> Optional[str]:
         """Bu CLI'nın konuşma-özetleme slash-command'ı (ör. `/compact`), varsa.
         None (varsayılan) = bu CLI için böyle bir kavram yok — panelin "compact"

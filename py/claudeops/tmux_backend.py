@@ -12,6 +12,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -100,12 +101,24 @@ def tmux_capture(name: str, lines: int = 2000) -> Optional[str]:
         return None
 
 
-def tmux_send_keys(name: str, text: str) -> bool:
+def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
+    """`settle_delay` — literal metni gönderdikten SONRA, Enter'ı göndermeden
+    ÖNCE bekle (saniye). Varsayılan 0.0: claude/agy/shell zaten anlık Enter'ı
+    doğru işliyor. codex GEREKTİRİYOR (2026-09-05, canlı bulundu: literal metin +
+    AYNI anda ayrı bir Enter kombinasyonu mesajı input kutusunda gönderilmemiş
+    bırakıyor — codex bunu ikinci, gecikmeli bir Enter'la işliyor, muhtemelen
+    kendi input-render döngüsünün metni "görmesi" için bir an gerektirdiği için;
+    150ms hem tek-satır hem çok-satırlı/Türkçe-karakterli mesajlarla izole bir
+    tmux-only test session'ında güvenilir şekilde doğrulandı). Çağıran taraf
+    `CliProvider.input_settle_delay()` ile provider-bazlı değeri geçer — burada
+    `if cli==...` YOK, sadece parametrenin kendisi."""
     try:
         r1 = subprocess.run(_base_argv() + ["send-keys", "-t", name, "-l", text],
                              capture_output=True, timeout=_TIMEOUT)
         if r1.returncode != 0:
             return False
+        if settle_delay > 0:
+            time.sleep(settle_delay)
         r2 = subprocess.run(_base_argv() + ["send-keys", "-t", name, "Enter"],
                              capture_output=True, timeout=_TIMEOUT)
         return r2.returncode == 0
