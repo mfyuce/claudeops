@@ -151,6 +151,25 @@ export type TermChatResult =
   | { ok: true; supported: true; messages: ChatMessage[] }
   | ApiErr;
 
+/** One entry in `_files_list()`'s directory listing (`files.list_dir()`). */
+export interface FileEntry {
+  name: string;
+  is_dir: boolean;
+  size: number;
+  mtime: number; // epoch seconds
+}
+
+/** One allowed root for a session's file browser (`files.roots_for_session()`
+ * — always at least "project"; claude sessions also get "claude-transcripts"). */
+export interface FileRoot {
+  key: string;
+  path: string;
+}
+
+/** `_files_list()` — `path` omitted in the request lists the session's first
+ * (default/project) root. */
+export type FilesListResult = ApiResult<{ roots: FileRoot[]; path: string; entries: FileEntry[] }>;
+
 /** `/api/diag/log` (GET, not a POST route). */
 export interface DiagLogResult {
   lines: string[];

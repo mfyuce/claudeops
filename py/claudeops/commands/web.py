@@ -33,7 +33,7 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 
 import psutil
 
@@ -44,6 +44,7 @@ from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, POST_MESSAGE_SETTLE_SECONDS
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
+from .. import files as files_mod
 from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
@@ -158,6 +159,14 @@ ERR = {
                                "busy/queued and finish on its own shortly, check its terminal"},
     "invalid_theme": {"tr": "geçersiz tema — system/light/dark olmalı",
                        "en": "invalid theme — must be system/light/dark"},
+    "path_required": {"tr": "path gerekli", "en": "path is required"},
+    "files_no_roots": {"tr": "{name}: bu session için erişilebilir bir klasör bulunamadı",
+                        "en": "{name}: no accessible folder found for this session"},
+    "files_forbidden": {"tr": "{name}: bu yol izin verilen klasörlerin dışında",
+                         "en": "{name}: that path is outside the allowed folders"},
+    "files_not_found": {"tr": "{name}: yol bulunamadı", "en": "{name}: path not found"},
+    "files_too_large": {"tr": "{name}: dosya indirme sınırını aşıyor (>{limit_mb:.0f}MB)",
+                         "en": "{name}: file exceeds the download size limit (>{limit_mb:.0f}MB)"},
 }
 
 
@@ -951,6 +960,27 @@ def _term_resolve(name: str, lang: str = "tr"):
     return s, None
 
 
+def _files_resolve(name: str, lang: str = "tr"):
+    """Dosya-gezgini endpoint'lerinin ortak çözümlemesi: name → tek, canlı
+    Session. `_term_resolve`'dan farkı: tmux-backed olması GEREKMEZ — dosya
+    listeleme/indirme bir pty'e değil, sadece proc'un cwd/cli bilgisine
+    ihtiyaç duyar (proc-presence yeterli, [[TODO-k]]'nın aynı kriteri)."""
+    procs = _find_running(name)
+    if not procs:
+        return None, _err(lang, "not_running", name=name)
+    return procs[0], None
+
+
+def _files_list(name: str, path: Optional[str], lang: str = "tr") -> dict:
+    s, err = _files_resolve(name, lang)
+    if err:
+        return err
+    result = files_mod.list_dir(s, path)
+    if result["ok"]:
+        return result
+    return _err(lang, f"files_{result['error']}", name=name)
+
+
 def _term_output(name: str, lang: str = "tr") -> dict:
     s, err = _term_resolve(name, lang)
     if err:
@@ -1494,6 +1524,59 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         return True
 
+    def _handle_files_download(self):
+        """`/api/files/download` — `_json()`/`_serve_static()`'ten AYRI: hem
+        dinamik/kullanıcı-seçtiği bir yolu servis ediyor (public bundle değil,
+        auth zaten `do_GET`'in başında geçildi) hem `Content-Disposition:
+        attachment` taşıyor (tarayıcı sekmede AÇMAK yerine İNDİRSİN diye —
+        `_serve_static`'in webui bundle'ı içindir, burada dosya adı/tipi
+        keyfi). `_serve_static` gibi `read_bytes()` — büyük-dosya reddi
+        `files_mod.resolve_download`'ın `MAX_DOWNLOAD_BYTES` kontrolüyle zaten
+        `read_bytes()`'TEN ÖNCE yapılıyor."""
+        qs = parse_qs(urlparse(self.path).query)
+        name = (qs.get("name") or [""])[0].strip()
+        lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+        fpath = (qs.get("path") or [""])[0].strip()
+        if not name:
+            self._json(_err(lang, "name_required"), status=400)
+            return
+        if not fpath:
+            self._json(_err(lang, "path_required"), status=400)
+            return
+        s, err = _files_resolve(name, lang)
+        if err:
+            self._json(err, status=404)
+            return
+        real, code = files_mod.resolve_download(s, fpath)
+        if code:
+            status = 403 if code == "forbidden" else 404
+            limit_mb = files_mod.MAX_DOWNLOAD_BYTES / (1024 * 1024)
+            self._json(_err(lang, f"files_{code}", name=name, limit_mb=limit_mb), status=status)
+            return
+        try:
+            body = Path(real).read_bytes()
+        except OSError as e:
+            diag_log("files_download_read_failed", path=real, error=str(e))
+            self._json(_err(lang, "files_not_found", name=name), status=404)
+            return
+        ctype, _ = mimetypes.guess_type(real)
+        ctype = ctype or "application/octet-stream"
+        filename = os.path.basename(real)
+        # RFC 6266: ASCII fallback (tırnak/CR/LF temizlenmiş, eski tarayıcılar
+        # için) + UTF-8 filename* (bu ortamda sık olan Türkçe dosya adları için
+        # ŞART — salt ASCII filename= onları ya kırpardı ya bozardı).
+        ascii_name = filename.replace('"', "").replace("\r", "").replace("\n", "")
+        disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Disposition", disposition)
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            diag_log("response_write_failed", path=urlparse(self.path).path, error=str(e))
+
     def do_GET(self):
         path = urlparse(self.path).path
         # /assets/* token KONTROLÜ OLMADAN erişilebilir olmak ZORUNDA: tarayıcı
@@ -1554,6 +1637,17 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_term_chat(name, lang=lang, mode=mode))
+        elif path == "/api/files/list":
+            qs = parse_qs(urlparse(self.path).query)
+            name = (qs.get("name") or [""])[0].strip()
+            lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            fpath = (qs.get("path") or [""])[0].strip() or None
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_files_list(name, fpath, lang=lang))
+        elif path == "/api/files/download":
+            self._handle_files_download()
         else:
             if not self._serve_static(path):
                 self._json({"error": "not found"}, status=404)

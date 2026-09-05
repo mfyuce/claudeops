@@ -24,6 +24,7 @@ import type {
   DiagLogResult,
   DiagRestartResult,
   DiagSpawnTestResult,
+  FilesListResult,
   HandoverResult,
   LayoutResult,
   NewChatResult,
@@ -96,6 +97,18 @@ export const getTermOutput = (name: string, lang: Lang): Promise<TermOutputResul
 
 export const getTermChat = (name: string, lang: Lang, mode: "last" | "full" = "last"): Promise<TermChatResult> =>
   apiGet<TermChatResult>(`/api/term/chat?name=${encodeURIComponent(name)}&lang=${lang}&mode=${mode}`);
+
+export const getFilesList = (name: string, lang: Lang, path?: string): Promise<FilesListResult> =>
+  apiGet<FilesListResult>(
+    `/api/files/list?name=${encodeURIComponent(name)}&lang=${lang}` +
+      (path ? `&path=${encodeURIComponent(path)}` : "")
+  );
+
+/** Not fetched via `apiGet`/JSON — a plain URL for an `<a href>` so the
+ * browser's own download UI drives it (backend sends `Content-Disposition:
+ * attachment`); no JS fetch+blob dance needed. */
+export const filesDownloadUrl = (name: string, lang: Lang, path: string): string =>
+  withToken(`/api/files/download?name=${encodeURIComponent(name)}&lang=${lang}&path=${encodeURIComponent(path)}`);
 
 // ── POST routes ──────────────────────────────────────────────────────────
 // Payload interfaces mirror each `do_POST` branch's `data.get(...)` reads
