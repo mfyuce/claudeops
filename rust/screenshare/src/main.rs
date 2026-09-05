@@ -12,9 +12,13 @@
 // 0.13 (separate from our 0.14, used only for capture) — a little
 // redundant but harmless (two crate-version islands, no actual conflict).
 //
-// Protocol: unchanged for outgoing frames (binary JPEG, one per interval).
-// NEW incoming direction: JSON text messages, one input event each (see
-// `InputEvent`). The connection is now read+written from a SINGLE thread
+// Protocol: outgoing is binary JPEG frames (one per interval) interleaved
+// with small JSON text messages carrying just the cursor position (see
+// `CursorPos` — real cursor *icon* would need the XFixes extension and
+// per-frame bitmap compositing; a bare position is far cheaper and is all
+// the frontend needs to draw its own marker). Incoming: JSON text messages,
+// one input event each (see `InputEvent`). The connection is now read+
+// written from a SINGLE thread
 // using a short read-timeout on the socket (acts as a poll: "any input
 // waiting? handle it; otherwise, is it time for the next frame? send it")
 // — deliberately not two threads + a mutex, which would need the reader
@@ -30,7 +34,7 @@ use std::time::{Duration, Instant};
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use image::codecs::jpeg::JpegEncoder;
 use image::{ExtendedColorType, ImageEncoder};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tungstenite::{Message, WebSocket};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt as _, ImageFormat};
@@ -208,6 +212,28 @@ fn encode_jpeg(width: u32, height: u32, rgb: &[u8]) -> Result<Vec<u8>, Box<dyn s
     Ok(buf)
 }
 
+#[derive(Serialize)]
+struct CursorPos {
+    t: &'static str,
+    x: i32,
+    y: i32,
+}
+
+/// Cursor position only (not the real system cursor icon — that needs the
+/// XFixes extension, a new x11rb Cargo feature, and per-frame bitmap
+/// compositing onto the captured RGB buffer; this uses core-protocol
+/// `QueryPointer` instead, which needs neither). `root_x`/`root_y` are in
+/// the same combined-virtual-screen coordinate space `capture_rgb` captures
+/// and `enigo.move_mouse(.., Coordinate::Abs)` expects, so the frontend can
+/// place a marker using the exact same coords a frame's pixels use — no
+/// separate scaling. Best-effort like `apply_input_event`: a failed query
+/// (e.g. a transient X11 hiccup) just means that tick's frame ships without
+/// a cursor position, never worth dropping the connection over.
+fn query_pointer(x11: &X11Capture) -> Option<(i32, i32)> {
+    let reply = x11.conn.query_pointer(x11.root).ok()?.reply().ok()?;
+    Some((reply.root_x as i32, reply.root_y as i32))
+}
+
 fn is_timeout(err: &tungstenite::Error) -> bool {
     matches!(
         err,
@@ -278,6 +304,14 @@ fn serve_client(stream: TcpStream) {
                 println!("[screenshare] client disconnected ({peer}): {e}");
                 break;
             }
+            if let Some((x, y)) = query_pointer(&x11) {
+                if let Ok(json) = serde_json::to_string(&CursorPos { t: "cursor", x, y }) {
+                    if let Err(e) = ws.send(Message::Text(json.into())) {
+                        println!("[screenshare] client disconnected ({peer}): {e}");
+                        break;
+                    }
+                }
+            }
             last_frame = Instant::now();
         }
     }
@@ -306,6 +340,13 @@ fn serve_view_only(mut ws: WebSocket<TcpStream>, x11: &X11Capture, peer: &str) {
         };
         if ws.send(Message::Binary(frame.into())).is_err() {
             return;
+        }
+        if let Some((x, y)) = query_pointer(x11) {
+            if let Ok(json) = serde_json::to_string(&CursorPos { t: "cursor", x, y }) {
+                if ws.send(Message::Text(json.into())).is_err() {
+                    return;
+                }
+            }
         }
         let elapsed = started.elapsed();
         if elapsed < FRAME_INTERVAL {

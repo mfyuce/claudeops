@@ -36,6 +36,19 @@
  * Turkish ğ/ü/ş/ı/ö/ç included) still works fine: it rides the hidden
  * input's `input` event, so the browser/OS resolves the actual character
  * before we ever see it.
+ *
+ * Cursor marker (2026-09-05): the backend ships a tiny JSON text message
+ * (`{t:"cursor",x,y}`, distinguishable from a frame by `typeof ev.data`
+ * since frames arrive as `Blob`) once per frame with the pointer's position
+ * in the SAME coordinate space frame pixels — and outgoing `move` events —
+ * already use, so no separate scaling logic is needed here. It's drawn as a
+ * plain CSS-percentage-positioned dot inside `.desktop-frame` (a wrapper
+ * sized to the `<img>`'s own rendered box), not measured via
+ * `getBoundingClientRect()` — the percentage is relative to the image's own
+ * box, so the browser handles scaling for free. Independent of "Kontrolü
+ * Al": showing where the (possibly physical, possibly another viewer's)
+ * cursor is is useful even in view-only mode, default on since it's purely
+ * informational and never touches input.
  */
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
@@ -85,9 +98,12 @@ function scrollStep(delta: number): number {
   return Math.sign(delta) * Math.min(3, Math.max(1, Math.round(Math.abs(delta) / 40)));
 }
 
+type CursorPos = { x: number; y: number };
+
 function useDesktopStream(active: boolean) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [cursor, setCursor] = useState<CursorPos | null>(null);
   const urlRef = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -98,6 +114,17 @@ function useDesktopStream(active: boolean) {
     ws.binaryType = "blob";
     ws.onopen = () => setConnected(true);
     ws.onmessage = (ev) => {
+      if (typeof ev.data === "string") {
+        try {
+          const msg = JSON.parse(ev.data) as { t?: string; x?: number; y?: number };
+          if (msg.t === "cursor" && typeof msg.x === "number" && typeof msg.y === "number") {
+            setCursor({ x: msg.x, y: msg.y });
+          }
+        } catch {
+          // Ignore malformed control messages — never worth dropping the stream over.
+        }
+        return;
+      }
       const nextUrl = URL.createObjectURL(ev.data as Blob);
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
       urlRef.current = nextUrl;
@@ -112,6 +139,7 @@ function useDesktopStream(active: boolean) {
       urlRef.current = null;
       setFrameUrl(null);
       setConnected(false);
+      setCursor(null);
     };
   }, [active]);
 
@@ -120,7 +148,7 @@ function useDesktopStream(active: boolean) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event));
   }
 
-  return { frameUrl, connected, sendInput };
+  return { frameUrl, connected, cursor, sendInput };
 }
 
 export function DesktopTab() {
@@ -128,19 +156,43 @@ export function DesktopTab() {
   const { data, refresh } = useStatusContext();
   const [busy, setBusy] = useState<"start" | "stop" | null>(null);
   const [controlWanted, setControlWanted] = useState(false);
+  const [showCursor, setShowCursor] = useState(true);
 
   const running = data?.remote_desktop.running ?? false;
   const control = controlWanted && running; // can't control a stopped/stopping stream
-  const { frameUrl, connected, sendInput } = useDesktopStream(running);
+  const { frameUrl, connected, cursor, sendInput } = useDesktopStream(running);
 
   const imgRef = useRef<HTMLImageElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const lastMoveRef = useRef(0);
+  const [markerStyle, setMarkerStyle] = useState<{ left: string; top: string } | null>(null);
 
   useEffect(() => {
     if (control) hiddenInputRef.current?.focus({ preventScroll: true });
     else hiddenInputRef.current?.blur();
   }, [control]);
+
+  // Recomputed whenever a new cursor position arrives (~2/s while running) —
+  // reads `imgRef.current` here rather than during render (a bare ref read
+  // in render isn't safe: nothing guarantees it reflects the latest commit).
+  // Uses the img's *intrinsic* size, not getBoundingClientRect() — `.desktop-
+  // frame` hugs the img's rendered box exactly, so a plain CSS percentage
+  // lets the browser do the client-size scaling for free.
+  useEffect(() => {
+    if (!showCursor || !cursor) {
+      setMarkerStyle(null);
+      return;
+    }
+    const img = imgRef.current;
+    if (!img || !img.naturalWidth || !img.naturalHeight) {
+      setMarkerStyle(null);
+      return;
+    }
+    setMarkerStyle({
+      left: `${(cursor.x / img.naturalWidth) * 100}%`,
+      top: `${(cursor.y / img.naturalHeight) * 100}%`,
+    });
+  }, [cursor, showCursor]);
 
   async function handleStart() {
     setBusy("start");
@@ -242,6 +294,10 @@ export function DesktopTab() {
             <button type="button" className={control ? "stop" : "start"} onClick={() => setControlWanted((v) => !v)}>
               {control ? t.desktopControlOffBtn : t.desktopControlOnBtn}
             </button>
+            <label className="fresh-toggle">
+              <input type="checkbox" checked={showCursor} onChange={(e) => setShowCursor(e.target.checked)} />{" "}
+              {t.desktopCursorToggle}
+            </label>
           </>
         )}
       </div>
@@ -249,18 +305,21 @@ export function DesktopTab() {
       {running && (
         <div className={`desktop-viewport${control ? " controlling" : ""}`}>
           {frameUrl ? (
-            <img
-              ref={imgRef}
-              src={frameUrl}
-              alt=""
-              draggable={false}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              onWheel={handleWheel}
-              onContextMenu={(e) => control && e.preventDefault()}
-            />
+            <div className="desktop-frame">
+              <img
+                ref={imgRef}
+                src={frameUrl}
+                alt=""
+                draggable={false}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onWheel={handleWheel}
+                onContextMenu={(e) => control && e.preventDefault()}
+              />
+              {markerStyle && <div className="desktop-cursor-marker" style={markerStyle} />}
+            </div>
           ) : (
             <div className="opts-hint">{connected ? t.desktopWaitingFrame : t.desktopConnecting}</div>
           )}
