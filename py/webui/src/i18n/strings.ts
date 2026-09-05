@@ -129,6 +129,7 @@ export interface Strings {
   filesLoadError: string;
   filesUp: string;
   filesDownload: string;
+  filesView: string;
   filesRootLabel: string;
   nothingRunning: string;
   unregBadge: string;
@@ -307,6 +308,7 @@ export const STRINGS: Record<Lang, Strings> = {
     filesLoadError: "yüklenemedi: ",
     filesUp: "⬆ yukarı",
     filesDownload: "indir",
+    filesView: "görüntüle",
     filesRootLabel: "kök:",
     nothingRunning: "Hiçbir şey çalışmıyor — \"Kayıtlı\" sekmesinden başlatın.",
     unregBadge: "kayıtsız",
@@ -483,6 +485,7 @@ export const STRINGS: Record<Lang, Strings> = {
     filesLoadError: "failed to load: ",
     filesUp: "⬆ up",
     filesDownload: "download",
+    filesView: "view",
     filesRootLabel: "root:",
     nothingRunning: "Nothing running — start from the \"Registered\" tab.",
     unregBadge: "unregistered",

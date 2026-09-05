@@ -960,6 +960,9 @@ def _term_resolve(name: str, lang: str = "tr"):
     return s, None
 
 
+_MAX_VALIDATE_CANDIDATES = 20  # bir terminal-metni taramasından gelen aday listesini sınırla — her aday bir stat() çağrısı, sınırsız liste kabul etmeye gerek yok
+
+
 def _files_resolve(name: str, lang: str = "tr"):
     """Dosya-gezgini endpoint'lerinin ortak çözümlemesi: name → tek, canlı
     Session. `_term_resolve`'dan farkı: tmux-backed olması GEREKMEZ — dosya
@@ -979,6 +982,27 @@ def _files_list(name: str, path: Optional[str], lang: str = "tr") -> dict:
     if result["ok"]:
         return result
     return _err(lang, f"files_{result['error']}", name=name)
+
+
+def _files_read(name: str, path: str, lang: str = "tr") -> dict:
+    s, err = _files_resolve(name, lang)
+    if err:
+        return err
+    text, code = files_mod.read_text(s, path)
+    if code:
+        limit_mb = files_mod.MAX_VIEW_BYTES / (1024 * 1024)
+        return _err(lang, f"files_{code}", name=name, limit_mb=limit_mb)
+    return {"ok": True, "text": text}
+
+
+def _files_validate(name: str, paths: list, lang: str = "tr") -> dict:
+    s, err = _files_resolve(name, lang)
+    if err:
+        return err
+    if not isinstance(paths, list):
+        return {"ok": True, "valid": []}
+    candidates = [p for p in paths if isinstance(p, str)][:_MAX_VALIDATE_CANDIDATES]
+    return {"ok": True, "valid": files_mod.validate_candidates(s, candidates)}
 
 
 def _term_output(name: str, lang: str = "tr") -> dict:
@@ -1646,6 +1670,18 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_files_list(name, fpath, lang=lang))
+        elif path == "/api/files/read":
+            qs = parse_qs(urlparse(self.path).query)
+            name = (qs.get("name") or [""])[0].strip()
+            lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            fpath = (qs.get("path") or [""])[0].strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            if not fpath:
+                self._json(_err(lang, "path_required"), status=400)
+                return
+            self._json(_files_read(name, fpath, lang=lang))
         elif path == "/api/files/download":
             self._handle_files_download()
         else:
@@ -1662,7 +1698,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/open-window", "/api/settings",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
-                         "/api/desktop/start", "/api/desktop/stop"):
+                         "/api/desktop/start", "/api/desktop/stop", "/api/files/validate"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -1690,6 +1726,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/api/desktop/stop":
             self._json_notify(remote_desktop.stop())
+            return
+
+        if path == "/api/files/validate":
+            name = (data.get("name") or "").strip()
+            paths = data.get("paths") or []
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_files_validate(name, paths, lang=lang))
             return
 
         if path == "/api/diag/ask":
