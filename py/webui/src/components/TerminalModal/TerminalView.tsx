@@ -240,9 +240,21 @@ export function TerminalView({ name, hidden }: TerminalViewProps) {
 
     void poll();
     const id = setInterval(() => void poll(), POLL_INTERVAL_MS);
+    // Browsers throttle setInterval in backgrounded tabs (2026-09-05, user
+    // report: content "arrives late" after switching away and back to the
+    // panel tab) — without this, a backgrounded tab's poll can fall many
+    // seconds behind and only catches up on the next throttled tick.
+    // useStatus.ts's WS hook already does the equivalent (immediate
+    // reconnect on visibilitychange); this mirrors that for the plain-REST
+    // polling here.
+    function onVisible() {
+      if (document.visibilityState === "visible") void poll();
+    }
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [name, lang, t]);
 

@@ -67,9 +67,17 @@ export function ChatView({ name }: ChatViewProps) {
     };
     void poll();
     const id = setInterval(() => void poll(), CHAT_POLL_INTERVAL_MS);
+    // Same fix as TerminalView.tsx (2026-09-05) — an immediate poll on
+    // foreground so a backgrounded tab's stale chat view doesn't wait for
+    // the next throttled interval tick.
+    function onVisible() {
+      if (document.visibilityState === "visible") void poll();
+    }
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [name, lang, mode]);
 
