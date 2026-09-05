@@ -17,9 +17,11 @@ import { useEffect, useState } from "react";
 import { filesDownloadUrl, getFilesList } from "../../api/client";
 import type { FileEntry, FileRoot } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
+import { isViewable } from "./fileViewerKind";
 
 interface FilesViewProps {
   name: string;
+  onView: (path: string) => void;
 }
 
 type FilesState =
@@ -55,7 +57,7 @@ const BOX_STYLE: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export function FilesView({ name }: FilesViewProps) {
+export function FilesView({ name, onView }: FilesViewProps) {
   const { t, lang } = useLang();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [state, setState] = useState<FilesState>({ kind: "loading" });
@@ -132,7 +134,8 @@ export function FilesView({ name }: FilesViewProps) {
           {entries.map((e) => (
             <FileRow key={e.name} entry={e} onOpenDir={() => setCurrentPath(joinPath(path, e.name))}
                      downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name))}
-                     downloadLabel={t.filesDownload} />
+                     downloadLabel={t.filesDownload} viewLabel={t.filesView}
+                     onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null} />
           ))}
         </div>
       )}
@@ -141,12 +144,14 @@ export function FilesView({ name }: FilesViewProps) {
 }
 
 function FileRow({
-  entry, onOpenDir, downloadUrl, downloadLabel,
+  entry, onOpenDir, downloadUrl, downloadLabel, viewLabel, onView,
 }: {
   entry: FileEntry;
   onOpenDir: () => void;
   downloadUrl: string;
   downloadLabel: string;
+  viewLabel: string;
+  onView: (() => void) | null;
 }) {
   const rowStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: ".4rem",
@@ -165,6 +170,11 @@ function FileRow({
       <span>📄</span>
       <span style={{ flex: 1, overflowWrap: "anywhere" }}>{entry.name}</span>
       <span style={{ opacity: 0.6, whiteSpace: "nowrap" }}>{formatSize(entry.size)}</span>
+      {onView && (
+        <button type="button" title={viewLabel} style={{ whiteSpace: "nowrap" }} onClick={onView}>
+          👁
+        </button>
+      )}
       <a href={downloadUrl} download={entry.name} style={{ whiteSpace: "nowrap" }}>
         {downloadLabel}
       </a>

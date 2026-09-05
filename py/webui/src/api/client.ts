@@ -25,6 +25,8 @@ import type {
   DiagRestartResult,
   DiagSpawnTestResult,
   FilesListResult,
+  FilesReadResult,
+  FilesValidateResult,
   HandoverResult,
   LayoutResult,
   NewChatResult,
@@ -109,6 +111,12 @@ export const getFilesList = (name: string, lang: Lang, path?: string): Promise<F
  * attachment`); no JS fetch+blob dance needed. */
 export const filesDownloadUrl = (name: string, lang: Lang, path: string): string =>
   withToken(`/api/files/download?name=${encodeURIComponent(name)}&lang=${lang}&path=${encodeURIComponent(path)}`);
+
+export const getFilesRead = (name: string, lang: Lang, path: string): Promise<FilesReadResult> =>
+  apiGet<FilesReadResult>(`/api/files/read?name=${encodeURIComponent(name)}&lang=${lang}&path=${encodeURIComponent(path)}`);
+
+export const postFilesValidate = (name: string, lang: Lang, paths: string[]): Promise<FilesValidateResult> =>
+  apiPost<FilesValidateResult>("/api/files/validate", { name, lang, paths });
 
 // ── POST routes ──────────────────────────────────────────────────────────
 // Payload interfaces mirror each `do_POST` branch's `data.get(...)` reads

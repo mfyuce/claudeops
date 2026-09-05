@@ -40,6 +40,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLang } from "../../i18n/LangContext";
 import { ChatView } from "./ChatView";
+import { FileViewerModal } from "./FileViewerModal";
 import { FilesView } from "./FilesView";
 import { TerminalView } from "./TerminalView";
 
@@ -85,6 +86,7 @@ function useBodyScrollLock() {
 export function TerminalModal({ name, onClose }: TerminalModalProps) {
   const { t } = useLang();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("term");
+  const [viewingPath, setViewingPath] = useState<string | null>(null);
   useBodyScrollLock();
 
   const overlay = (
@@ -158,10 +160,11 @@ export function TerminalModal({ name, onClose }: TerminalModalProps) {
             {t.tabFilesView}
           </button>
         </div>
-        <TerminalView name={name} hidden={activeSubTab !== "term"} />
+        <TerminalView name={name} hidden={activeSubTab !== "term"} onView={setViewingPath} />
         {activeSubTab === "chat" && <ChatView name={name} />}
-        {activeSubTab === "files" && <FilesView name={name} />}
+        {activeSubTab === "files" && <FilesView name={name} onView={setViewingPath} />}
       </div>
+      {viewingPath && <FileViewerModal name={name} path={viewingPath} onClose={() => setViewingPath(null)} />}
     </div>
   );
 

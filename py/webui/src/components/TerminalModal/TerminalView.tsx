@@ -73,9 +73,10 @@ type XtermState = "loading" | "ready" | "failed";
 interface TerminalViewProps {
   name: string;
   hidden: boolean;
+  onView: (path: string) => void;
 }
 
-export function TerminalView({ name, hidden }: TerminalViewProps) {
+export function TerminalView({ name, hidden, onView }: TerminalViewProps) {
   const { t, lang } = useLang();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -353,7 +354,7 @@ export function TerminalView({ name, hidden }: TerminalViewProps) {
       <div className="opts-hint" style={{ width: "100%", boxSizing: "border-box" }}>
         {hint}
       </div>
-      <UrlBanner rawText={rawText} />
+      <UrlBanner rawText={rawText} name={name} onView={onView} />
       <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
         {XTERM_KEYS.map(([label, key]) => (
           <button type="button" key={key} onClick={() => handleSendKey(key)}>

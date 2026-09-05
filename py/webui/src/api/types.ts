@@ -170,6 +170,15 @@ export interface FileRoot {
  * (default/project) root. */
 export type FilesListResult = ApiResult<{ roots: FileRoot[]; path: string; entries: FileEntry[] }>;
 
+/** `_files_read()` — inline viewer content (capped at `MAX_VIEW_BYTES`,
+ * much smaller than the download cap). */
+export type FilesReadResult = ApiResult<{ text: string }>;
+
+/** `_files_validate()` — candidate path strings (regex-matched out of raw
+ * terminal text) filtered down to ones that resolve to a real, allowed
+ * file; `valid` is absolute paths, deduplicated, in input order. */
+export type FilesValidateResult = ApiResult<{ valid: string[] }>;
+
 /** `/api/diag/log` (GET, not a POST route). */
 export interface DiagLogResult {
   lines: string[];
