@@ -86,6 +86,7 @@ export interface Strings {
   desktopControlOnBtn: string;
   desktopControlOffBtn: string;
   desktopControlHint: string;
+  desktopCursorToggle: string;
   selWord: string;
   selectNeedsHo: string;
   hoCol: string;
@@ -265,6 +266,7 @@ export const STRINGS: Record<Lang, Strings> = {
     desktopControlOnBtn: "Kontrolü Al",
     desktopControlOffBtn: "Kontrolü Bırak",
     desktopControlHint: "Kontrol açık: tıklama/scroll/yazı makineye gerçek zamanlı gidiyor — GERÇEK fare/klavyeyle aynı, biri fiziksel olarak kullanıyorsa çakışabilir. Kısayol tuşları (Ctrl/Alt/⌘ kombinasyonları) henüz desteklenmiyor.",
+    desktopCursorToggle: "İmleci göster",
     selWord: "seçili",
     selectNeedsHo: "needs-ho seç",
     hoCol: "ho?",
@@ -442,6 +444,7 @@ export const STRINGS: Record<Lang, Strings> = {
     desktopControlOnBtn: "Take Control",
     desktopControlOffBtn: "Release Control",
     desktopControlHint: "Control is on: clicks/scroll/typing go to the machine in real time — this is the SAME mouse/keyboard as the physical one, it can collide if someone's using it in person. Keyboard shortcuts (Ctrl/Alt/⌘ combos) aren't supported yet.",
+    desktopCursorToggle: "Show cursor",
     selWord: "selected",
     selectNeedsHo: "select needs-ho",
     hoCol: "ho?",

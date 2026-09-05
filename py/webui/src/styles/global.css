@@ -153,3 +153,10 @@ button:disabled { opacity: .5; cursor: default; }
 }
 .desktop-viewport img { display: block; max-width: 100%; height: auto; }
 .desktop-viewport.controlling img { cursor: crosshair; touch-action: none; user-select: none; -webkit-user-drag: none; }
+.desktop-frame { position: relative; }
+.desktop-cursor-marker {
+  position: absolute; width: 10px; height: 10px; border-radius: 50%;
+  transform: translate(-50%, -50%); background: #ff3b30;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .9), 0 0 0 3px rgba(0, 0, 0, .4);
+  pointer-events: none;
+}
