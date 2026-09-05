@@ -167,6 +167,8 @@ ERR = {
     "files_not_found": {"tr": "{name}: yol bulunamadı", "en": "{name}: path not found"},
     "files_too_large": {"tr": "{name}: dosya indirme sınırını aşıyor (>{limit_mb:.0f}MB)",
                          "en": "{name}: file exceeds the download size limit (>{limit_mb:.0f}MB)"},
+    "vscode_not_found": {"tr": "VS Code CLI (`code`) bu makinede bulunamadı",
+                          "en": "VS Code CLI (`code`) not found on this machine"},
 }
 
 
@@ -1005,6 +1007,35 @@ def _files_validate(name: str, paths: list, lang: str = "tr") -> dict:
     return {"ok": True, "valid": files_mod.validate_candidates(s, candidates)}
 
 
+def _open_in_vscode(target: str) -> None:
+    """Fire-and-forget, `_launch_gnome_terminal`'daki AYNI desen (`spawn.py`) —
+    `-n`/`--new-window` her zaman AYRI bir pencere açar (kullanıcı: "ayrı
+    pencerede açsa"). `.wait()` senkron çağrılmıyor (VS Code kendi window'unu
+    yönetir, HTTP isteğini bloklamamalı); global SIGCHLD=SIG_IGN YERİNE sadece
+    BU child'ı arka planda reap eden bir daemon thread — aksi halde uzun
+    yaşayan `py/cops web`'de zombie birikir (aynı ders, spawn.py'nin gnome-
+    terminal çağrısıyla)."""
+    proc = subprocess.Popen(["code", "-n", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    threading.Thread(target=proc.wait, daemon=True).start()
+
+
+def _vscode_open(name: str, path: Optional[str], lang: str = "tr") -> dict:
+    """Sadece fiziksel olarak makinenin başındaysan (ya da Uzak Masaüstü'yle o
+    pencereyi görebiliyorsan) işe yarar — VS Code gerçek bir X11 penceresi
+    açar, panelin kendisinden görüntülenemez/kontrol edilemez (bilerek, TODO.md).
+    `path` verilmezse session'ın proje kökü (tüm proje) açılır."""
+    s, err = _files_resolve(name, lang)
+    if err:
+        return err
+    real, code = files_mod.resolve_path(s, path)
+    if code:
+        return _err(lang, f"files_{code}", name=name)
+    if not shutil.which("code"):
+        return _err(lang, "vscode_not_found")
+    _open_in_vscode(real)
+    return {"ok": True}
+
+
 def _term_output(name: str, lang: str = "tr") -> dict:
     s, err = _term_resolve(name, lang)
     if err:
@@ -1698,7 +1729,8 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/open-window", "/api/settings",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
-                         "/api/desktop/start", "/api/desktop/stop", "/api/files/validate"):
+                         "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
+                         "/api/vscode/open"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -1735,6 +1767,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_files_validate(name, paths, lang=lang))
+            return
+
+        if path == "/api/vscode/open":
+            name = (data.get("name") or "").strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_vscode_open(name, data.get("path") or None, lang=lang))
             return
 
         if path == "/api/diag/ask":

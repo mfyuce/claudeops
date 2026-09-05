@@ -118,6 +118,12 @@ export const getFilesRead = (name: string, lang: Lang, path: string): Promise<Fi
 export const postFilesValidate = (name: string, lang: Lang, paths: string[]): Promise<FilesValidateResult> =>
   apiPost<FilesValidateResult>("/api/files/validate", { name, lang, paths });
 
+/** `path` omitted → opens the session's project root (whole project). Only
+ * useful physically at the machine (or viewing it via Uzak Masaüstü) — VS
+ * Code opens a real X11 window, not something this panel can display. */
+export const apiVscodeOpen = (name: string, lang: Lang, path?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/vscode/open", { name, lang, ...(path ? { path } : {}) });
+
 // ── POST routes ──────────────────────────────────────────────────────────
 // Payload interfaces mirror each `do_POST` branch's `data.get(...)` reads
 // in web.py exactly (field names, which ones are required vs. defaulted).
