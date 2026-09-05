@@ -6,7 +6,7 @@ yeni bir CLI eklemek yeni bir provider dosyası + registry'ye bir satır demek.
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import psutil
 
@@ -93,6 +93,21 @@ class CliProvider(ABC):
         compact kazanırsa O ZAMAN genellenir; bugün var olmayan bir ikinci
         veri noktasına göre spekülatif olarak genellemek yok."""
         return None
+
+    def extra_file_roots(self, cwd: str) -> List[Tuple[str, str]]:
+        """Panelin dosya-gezgini için bu CLI'ya özgü EK kök dizin(ler) —
+        [(key, absolute-path), ...]. Varsayılan (boş liste) = sadece proje
+        klasörünün kendisi taranabilir (o zaten `files.py`'de ayrıca ekleniyor,
+        burada YOK). Sadece kendi transkriptini per-cwd bir klasörde tutan
+        provider'lar override eder (2026-09-05, sadece claude — `~/.claude/
+        projects/<encoded-cwd>/`; agy/codex'in claude'unki gibi TEK
+        başına-per-cwd bir meta-dizini yok — agy conversation-id'leri global bir
+        cache'te, codex rollout'ları tarih-bazlı global bir arşivde, ikisi de
+        BU cwd'ye özel bir KLASÖR değil). `last_exchange`/`full_history` ile
+        AYNI "yok=boş/None" mimari deseni. Döndürülen yollar var olmayabilir
+        (caller `os.path.isdir` ile filtreler) — burada dosya sistemine
+        dokunmadan sadece ADAY yol(lar)ı hesapla."""
+        return []
 
     def env_overrides(self, session_name: str) -> Dict[str, str]:
         """Bu CLI çağrısına ÖZEL env değişkenleri (varsayılan: yok).

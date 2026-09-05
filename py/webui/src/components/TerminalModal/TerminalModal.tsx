@@ -40,9 +40,10 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLang } from "../../i18n/LangContext";
 import { ChatView } from "./ChatView";
+import { FilesView } from "./FilesView";
 import { TerminalView } from "./TerminalView";
 
-type SubTab = "term" | "chat";
+type SubTab = "term" | "chat" | "files";
 
 interface TerminalModalProps {
   name: string;
@@ -149,9 +150,17 @@ export function TerminalModal({ name, onClose }: TerminalModalProps) {
           >
             {t.tabChatView}
           </button>
+          <button
+            type="button"
+            className={activeSubTab === "files" ? "active" : ""}
+            onClick={() => setActiveSubTab("files")}
+          >
+            {t.tabFilesView}
+          </button>
         </div>
         <TerminalView name={name} hidden={activeSubTab !== "term"} />
         {activeSubTab === "chat" && <ChatView name={name} />}
+        {activeSubTab === "files" && <FilesView name={name} />}
       </div>
     </div>
   );

@@ -124,6 +124,12 @@ export interface Strings {
   chatEmpty: string;
   chatUnsupported: string;
   chatLoadError: string;
+  tabFilesView: string;
+  filesEmpty: string;
+  filesLoadError: string;
+  filesUp: string;
+  filesDownload: string;
+  filesRootLabel: string;
   nothingRunning: string;
   unregBadge: string;
   unregHint: string;
@@ -296,6 +302,12 @@ export const STRINGS: Record<Lang, Strings> = {
     chatEmpty: "(boş)",
     chatUnsupported: "bu CLI için sohbet görünümü henüz yok — terminal sekmesini kullanın",
     chatLoadError: "yüklenemedi: ",
+    tabFilesView: "dosyalar",
+    filesEmpty: "(boş klasör)",
+    filesLoadError: "yüklenemedi: ",
+    filesUp: "⬆ yukarı",
+    filesDownload: "indir",
+    filesRootLabel: "kök:",
     nothingRunning: "Hiçbir şey çalışmıyor — \"Kayıtlı\" sekmesinden başlatın.",
     unregBadge: "kayıtsız",
     unregHint: "roster.tsv'de kayıtlı değil (proc-scan'den bulundu) — claudeops'un açmadığı bir pencere; \"devral\"a basarsanız remote-control eklenip roster'a kalıcı kaydedilir",
@@ -466,6 +478,12 @@ export const STRINGS: Record<Lang, Strings> = {
     chatEmpty: "(empty)",
     chatUnsupported: "chat view isn't available for this CLI yet — use the terminal tab",
     chatLoadError: "failed to load: ",
+    tabFilesView: "files",
+    filesEmpty: "(empty folder)",
+    filesLoadError: "failed to load: ",
+    filesUp: "⬆ up",
+    filesDownload: "download",
+    filesRootLabel: "root:",
     nothingRunning: "Nothing running — start from the \"Registered\" tab.",
     unregBadge: "unregistered",
     unregHint: "not in roster.tsv (found via proc-scan) — a window claudeops didn't open; click \"adopt\" to attach remote-control and register it permanently",

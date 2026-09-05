@@ -2,11 +2,12 @@
 from __future__ import annotations
 import json
 import os
+import re
 import shlex
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .base import CliProvider
 from ..paths import PROJECTS_DIR
@@ -22,8 +23,22 @@ EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 
 
 def _encode_cwd(cwd: str) -> str:
-    """CWD'yi project-dir encoding'e çevir: / ve _ → - ."""
-    return cwd.replace("/", "-").replace("_", "-")
+    """CWD'yi project-dir encoding'e çevir — claude CLI'nın KENDİSİNİN
+    `~/.claude/projects/` altında kullandığı adlandırma şemasını taklit eder.
+
+    2026-09-05'te bulundu: eski hâli (sadece `/` ve `_` → `-`) ASCII-only
+    cwd'ler için (yanlışlıkla) doğru sonuç veriyordu ama genel kural bu
+    DEĞİLMİŞ — gerçek `~/.claude/projects/` dizin adlarıyla çapraz kontrol
+    edilince (7 canlı örnek, bkz. commit) kuralın "harf/rakam OLMAYAN HER
+    karakter → tek bir `-`" olduğu doğrulandı (Türkçe ğ/ü/ş/ı/ö/ç DAHİL —
+    ör. ".../BLM308_veri_madenciliği" → ".../BLM308-veri-madencili-i", "ğ"
+    de "-"e dönüşüyor). Eski hâli bu tür cwd'lerde (bu ortamda YAYGIN —
+    Türkçe akademik proje klasörleri) YANLIŞ dizin adı üretip jsonl'ı hiç
+    bulamıyordu — `find_latest_jsonl`/`resolve_resume_id`/`last_exchange`/
+    `full_history`/`extra_file_roots`'un HEPSİ bunu kullandığı için sessizce
+    etkileniyordu (resume-tespiti + Sohbet sekmesi + needs_ho + yeni dosya-
+    gezgini kökü)."""
+    return re.sub(r"[^a-zA-Z0-9]", "-", cwd)
 
 
 def _safe_mtime(p: Path) -> float:
@@ -257,6 +272,11 @@ class ClaudeProvider(CliProvider):
                 user_text = _extract_text(content)
                 break
         return {"user": user_text, "assistant": assistant_text}
+
+    def extra_file_roots(self, cwd: str) -> List[Tuple[str, str]]:
+        # find_latest_jsonl'ın AYNI encoding'i — dosya-gezginine bu proje için
+        # claude'un kendi transcript/meta klasörünü (jsonl'lar dahil) ekler.
+        return [("claude-transcripts", os.path.join(PROJECTS_DIR, _encode_cwd(cwd)))]
 
     def full_history(self, cwd: str, sid: Optional[str]) -> Optional[List[Dict[str, str]]]:
         # `last_exchange`'in tek-son-çift filtreleriyle AYNI kurallar (sidechain/isMeta/
