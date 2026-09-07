@@ -31,7 +31,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
 
@@ -145,6 +145,16 @@ ERR = {
     "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
                            "en": "{name}: tmux session no longer exists (may have closed)"},
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
+    "mode_not_cyclable": {"tr": "{mode}: Shift+Tab döngüsüyle hedeflenemez (sadece default/acceptEdits/plan/auto "
+                                 "canlıyken değiştirilebilir — resmi CLI dokümantasyonu, 2026-09-07 doğrulandı) — "
+                                 "diğer modlar için session'ı o modla yeniden başlatın",
+                          "en": "{mode}: not reachable via the Shift+Tab cycle (only default/acceptEdits/plan/auto "
+                                "can be changed live — confirmed against official CLI docs, 2026-09-07) — "
+                                "for other modes, restart the session with that mode"},
+    "mode_cycle_failed": {"tr": "{name}: {mode} moduna ulaşılamadı (şu an: {current}) — CLI'nin döngüsü bu "
+                                 "session için farklı olabilir, terminalden elle Shift+Tab deneyin",
+                           "en": "{name}: couldn't reach {mode} mode (currently: {current}) — this session's "
+                                 "cycle may differ, try Shift+Tab manually from the terminal"},
     "gt_not_found": {"tr": "gnome-terminal-server çalışmıyor (zaten kapalı) — bir sonraki spawn otomatik açacak",
                       "en": "gnome-terminal-server isn't running (already down) — the next spawn will start it automatically"},
     "compact_unsupported_cli": {"tr": "{name}: compact şu an sadece claude CLI için destekleniyor",
@@ -1090,6 +1100,65 @@ def _term_key(name: str, key: str, lang: str = "tr") -> dict:
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
+# Claude Code'un durum çubuğunda gösterdiği metinler (claude-code-guide ajanının
+# resmi dokümantasyondan doğruladığı 3 mod, 2026-09-07) — SADECE bunlar Shift+Tab
+# döngüsüyle GÜVENİLİR şekilde hedeflenebilir. `bypassPermissions` sadece
+# session başlangıcında ayrıca etkinleştirilmişse döngüde belirir (metni
+# doğrulanmadı); `dontAsk` döngüde HİÇ yer almaz (resmi doküman: sadece
+# başlatma flag'iyle set edilebilir) — ikisi de bilerek dışarıda bırakıldı,
+# istenirse net bir hata döner, sonsuz/yanlış döngüye girilmez.
+_MODE_STATUS_PATTERNS: Dict[str, "re.Pattern"] = {
+    "plan": re.compile(r"plan mode on", re.IGNORECASE),
+    "acceptEdits": re.compile(r"accept edits on", re.IGNORECASE),
+    "auto": re.compile(r"auto mode on", re.IGNORECASE),
+}
+_CYCLABLE_MODES = ("default", "acceptEdits", "plan", "auto")
+_MODE_CYCLE_MAX_PRESSES = 8  # döngü uzunluğundan (≤4 bilinen mod) cömert marj
+_MODE_CYCLE_POLL_DELAY = 0.6  # BTab sonrası TUI'nin yeniden çizilmesini bekle
+
+
+def _detect_current_mode(name: str) -> Optional[str]:
+    """Son birkaç satırdaki durum çubuğundan aktif modu okur — TÜM 2000 satırlık
+    capture'da değil (eski, kaydırılmış bir 'plan mode on' metnine yanlışlıkla
+    yakalanmasın diye), sadece en sondaki birkaç DOLU satırda arar. Hiçbiri
+    eşleşmezse 'default' varsayılır (o modun kendine özgü bir durum metni yok)."""
+    text = tmux_capture(name, lines=2000)
+    if text is None:
+        return None
+    tail_lines = [ln for ln in text.splitlines() if ln.strip()][-8:]
+    tail = "\n".join(tail_lines)
+    for mode, pattern in _MODE_STATUS_PATTERNS.items():
+        if pattern.search(tail):
+            return mode
+    return "default"
+
+
+def _term_set_mode(name: str, target_mode: str, lang: str = "tr") -> dict:
+    """Çalışan bir session'ın izin modunu Shift+Tab (`BTab`) döngüsüyle
+    hedeflenen moda getirir — claude CLI'nin izin modunu doğrudan set eden bir
+    slash komutu YOK (claude-code-guide ajanının resmi dokümandan doğrulaması,
+    2026-09-07), TEK resmi/önerilen canlı-değiştirme yolu bu tuş döngüsü.
+    Sabit bir döngü SIRASI/uzunluğu VARSAYMAZ — her basıştan sonra durumu
+    yeniden okuyup hedefe ulaşılıp ulaşılmadığını kontrol eder (uyarlanabilir,
+    session'a göre değişebilecek döngü kompozisyonuna dayanıklı)."""
+    if target_mode not in _CYCLABLE_MODES:
+        return _err(lang, "mode_not_cyclable", name=name, mode=target_mode)
+    s, err = _term_resolve(name, lang)
+    if err:
+        return err
+    current = _detect_current_mode(name)
+    if current == target_mode:
+        return {"ok": True, "mode": current, "presses": 0}
+    for i in range(_MODE_CYCLE_MAX_PRESSES):
+        if not tmux_send_special_key(s.name, "BTab"):
+            return _err(lang, "term_session_gone", name=name)
+        time.sleep(_MODE_CYCLE_POLL_DELAY)
+        current = _detect_current_mode(name)
+        if current == target_mode:
+            return {"ok": True, "mode": current, "presses": i + 1}
+    return _err(lang, "mode_cycle_failed", name=name, mode=target_mode, current=current or "?")
+
+
 def _term_chat(name: str, lang: str = "tr", mode: str = "last") -> dict:
     """Terminal popup'ının 'Sohbet' sekmesi: capture-pane/ANSI yerine provider'ın
     kendi transcript'inden (jsonl vb.) STRUCTURED metin döndürür — xterm.js'in
@@ -1804,6 +1873,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
+                         "/api/term/set-mode",
                          "/api/term/open-window", "/api/settings",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
@@ -1959,6 +2029,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_term_key(name, key=str(data.get("key", "")), lang=lang))
+            return
+
+        if path == "/api/term/set-mode":
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_term_set_mode(name, target_mode=str(data.get("mode", "")), lang=lang))
             return
 
         if path == "/api/term/open-window":

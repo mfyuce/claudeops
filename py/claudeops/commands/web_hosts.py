@@ -38,7 +38,7 @@ from ..hosts import LOCAL_HOST_NAME
 HOST_ROUTED_PATHS = {
     "/api/start", "/api/stop", "/api/retire", "/api/reactivate", "/api/close",
     "/api/handover", "/api/compact", "/api/adopt", "/api/new-chat", "/api/register",
-    "/api/term/input", "/api/term/key", "/api/term/open-window",
+    "/api/term/input", "/api/term/key", "/api/term/open-window", "/api/term/set-mode",
 }
 
 # Terminal/Dosya GÖRÜNTÜLEME (GET, read-only) route'ları — POST'un aksiyon

@@ -18,6 +18,7 @@
 import type { Lang } from "../i18n/strings";
 import type {
   AdoptResult,
+  ApiResult,
   DesktopStartResult,
   DesktopStopResult,
   DiagAskResult,
@@ -234,6 +235,22 @@ export interface TermKeyPayload {
   lang: Lang;
 }
 export const apiTermKey = (p: TermKeyPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/term/key", p);
+
+/** Only "default" | "acceptEdits" | "plan" | "auto" are reachable — the CLI's
+ * Shift+Tab cycle (its only live mode-switch mechanism, no direct slash
+ * command exists) never includes "dontAsk", and "bypassPermissions" only
+ * appears when a session was started with that flag already (not attempted
+ * here, backend rejects it up front). Server does the actual polling/
+ * cycling (may take a few seconds — up to ~8 keypresses), this is one call. */
+export interface TermSetModePayload {
+  name: string;
+  host: string;
+  mode: "default" | "acceptEdits" | "plan" | "auto";
+  lang: Lang;
+}
+export type TermSetModeResult = ApiResult<{ mode?: string; presses?: number }>;
+export const apiTermSetMode = (p: TermSetModePayload): Promise<TermSetModeResult> =>
+  apiPost<TermSetModeResult>("/api/term/set-mode", p);
 
 export interface LayoutPayload {
   pin?: string;

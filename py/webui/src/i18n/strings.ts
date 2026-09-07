@@ -118,6 +118,13 @@ export interface Strings {
   termCopyBtn: string;
   termCopied: string;
   termCopyHint: string;
+  termModeLabel: string;
+  termModeHint: string;
+  termModePick: string;
+  termModeApplying: string;
+  termModelLabel: string;
+  termModelHint: string;
+  termModelPick: string;
   termOpen: string;
   tabTermView: string;
   tabChatView: string;
@@ -328,6 +335,13 @@ export const STRINGS: Record<Lang, Strings> = {
     termCopyBtn: "kopyala",
     termCopied: "✓ kopyalandı",
     termCopyHint: "görünen çıktıyı panoya kopyala (mobilde dokunarak seçim güvenilir değil)",
+    termModeLabel: "mod",
+    termModeHint: "izin modu — CLI'nin Shift+Tab döngüsüyle canlı değiştirilir (birkaç saniye sürebilir); bypassPermissions/dontAsk buradan ulaşılamaz, sadece başlatırken ayarlanabilir",
+    termModePick: "mod seç…",
+    termModeApplying: "uygulanıyor…",
+    termModelLabel: "model",
+    termModelHint: "/model komutunu gönderir — CLI kabul etmezse terminalde açılan seçiciden elle seçin",
+    termModelPick: "model seç…",
     termOpen: "aç",
     tabTermView: "terminal",
     tabChatView: "sohbet",
@@ -539,6 +553,13 @@ export const STRINGS: Record<Lang, Strings> = {
     termCopyBtn: "copy",
     termCopied: "✓ copied",
     termCopyHint: "copy visible output to clipboard (touch-selection is unreliable on mobile)",
+    termModeLabel: "mode",
+    termModeHint: "permission mode — changed live via the CLI's own Shift+Tab cycle (can take a few seconds); bypassPermissions/dontAsk aren't reachable this way, only settable at session start",
+    termModePick: "pick mode…",
+    termModeApplying: "applying…",
+    termModelLabel: "model",
+    termModelHint: "sends the /model command — if the CLI doesn't accept the argument, finish the pick in the picker that opens in the terminal",
+    termModelPick: "pick model…",
     termOpen: "open",
     tabTermView: "terminal",
     tabChatView: "chat",

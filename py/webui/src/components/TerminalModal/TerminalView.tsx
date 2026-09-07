@@ -28,11 +28,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { apiTermInput, apiTermKey, getTermOutput } from "../../api/client";
+import { apiTermInput, apiTermKey, apiTermSetMode, getTermOutput } from "../../api/client";
+import type { TermSetModePayload } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
+import { useStatusContext } from "../../state/StatusContext";
+import { cliOptionsFor, rowKey } from "../../state/hosts";
 import { computeFitFontSize, fitContainerToTerm } from "./xtermSizing";
 import { UrlBanner } from "./UrlBanner";
+
+// Cross-checked against the CLI's official docs (2026-09-07): there is no
+// direct "set permission mode to X" slash command — Shift+Tab (BTab) cycling
+// is the only live way, and the backend (_term_set_mode) polls/re-checks
+// after each press rather than assuming a fixed cycle. Only these 4 are ever
+// reachable that way ("dontAsk" never appears in the cycle at all;
+// "bypassPermissions" only shows up if a session was started with that flag,
+// not attempted here — matches the backend's own rejection of anything else).
+const CYCLABLE_MODES: TermSetModePayload["mode"][] = ["default", "acceptEdits", "plan", "auto"];
 
 const POLL_INTERVAL_MS = 200;
 const INITIAL_COLS = 160;
@@ -79,6 +91,9 @@ interface TerminalViewProps {
 
 export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) {
   const { t, lang } = useLang();
+  const { data } = useStatusContext();
+  const [modeBusy, setModeBusy] = useState(false);
+  const [modeMsg, setModeMsg] = useState("");
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const instRef = useRef<XtermInstance | null>(null);
@@ -281,6 +296,29 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
     void apiTermInput({ name, host, text, lang }).catch(() => {});
   }
 
+  async function handleSetMode(mode: TermSetModePayload["mode"]) {
+    setModeBusy(true);
+    setModeMsg("");
+    try {
+      const res = await apiTermSetMode({ name, host, mode, lang });
+      setModeMsg(res.ok ? "" : res.error);
+    } catch (e) {
+      setModeMsg(describeApiError(e, t));
+    } finally {
+      setModeBusy(false);
+    }
+  }
+
+  // No confirmed direct-argument syntax for /model (only /model with no args,
+  // opening an interactive picker, is documented) — sent optimistically as a
+  // convenience; if the CLI doesn't accept the argument the picker just opens
+  // in the terminal itself and the user finishes the pick there, same as
+  // typing it by hand. Nothing destructive either way.
+  function handleSetModel(model: string) {
+    if (!model) return;
+    void apiTermInput({ name, host, text: `/model ${model}`, lang }).catch(() => {});
+  }
+
   async function handleCopyVisible() {
     try {
       const res = await getTermOutput(name, lang, host);
@@ -357,6 +395,53 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
       </div>
       <UrlBanner rawText={rawText} name={name} onView={onView} />
       <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
+        <label title={t.termModeHint}>
+          {t.termModeLabel}
+          <select
+            disabled={modeBusy}
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) void handleSetMode(e.target.value as TermSetModePayload["mode"]);
+              e.target.value = "";
+            }}
+          >
+            <option value="" disabled>
+              {modeBusy ? t.termModeApplying : t.termModePick}
+            </option>
+            {CYCLABLE_MODES.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+        {(() => {
+          const session = data?.sessions.find((s) => rowKey(s) === rowKey({ host, name }));
+          const models = session ? cliOptionsFor(data ?? null, host, session.cli).models : [];
+          if (!models.length) return null;
+          return (
+            <label title={t.termModelHint}>
+              {t.termModelLabel}
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  handleSetModel(e.target.value);
+                  e.target.value = "";
+                }}
+              >
+                <option value="" disabled>
+                  {t.termModelPick}
+                </option>
+                {models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+          );
+        })()}
+        {modeMsg && <span className="opts-hint">{modeMsg}</span>}
         {XTERM_KEYS.map(([label, key]) => (
           <button type="button" key={key} onClick={() => handleSendKey(key)}>
             {label}
