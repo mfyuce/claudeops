@@ -11,6 +11,7 @@ gibi commands/ PAKETİNE bağımlı olmayan modüller de sorunsuz import edebils
 from __future__ import annotations
 import json
 import os
+import shutil
 from typing import Any, Dict, TYPE_CHECKING
 
 from .paths import CLAUDEOPS_DIR
@@ -28,6 +29,16 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # değeri OLDUĞU KADAR, aşağıdaki default_model_for()'un okuduğu
                               # backend fallback'i de bu (guard/stuck/handover/rc/web — "model
                               # verilmedi" durumunun HEPSİ artık buraya bakıyor, bkz. fonksiyon).
+    "provider_bin": {},      # {cli: mutlak binary yolu} — 2026-09-07, canlı yuhem vakası: claude
+                              # PATH'te DEĞİL, bir projenin kendi node_modules/.bin'inde kurulu
+                              # (npm global değil, proje-yerel). Paylaşımlı bir hesapta (ör. tek
+                              # bir Linux kullanıcısını birden fazla kişi paylaşıyor) `claude`'u
+                              # ~/.local/bin gibi PAYLAŞIMLI bir PATH konumuna symlink'lemek
+                              # kullanıcının kendi credit'lerini/kimliğini o hesabı paylaşan
+                              # HERKESE açardı — settings.json bu makineye ÖZEL kaldığı için
+                              # (her host'un kendi ayrı dosyası, bkz. hosts.py/web_hosts.py'nin
+                              # federasyon tasarımı) burası PATH değiştirmeden aynı sonucu verir,
+                              # hiçbir shared konuma dokunmadan.
 }
 
 
@@ -43,6 +54,8 @@ def load_settings() -> Dict[str, Any]:
             out.update({k: v for k, v in stored.items() if k in DEFAULT_SETTINGS})
             if not isinstance(out.get("default_model"), dict):
                 out["default_model"] = {}
+            if not isinstance(out.get("provider_bin"), dict):
+                out["provider_bin"] = {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return out
@@ -58,14 +71,14 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k == "default_model" and isinstance(v, dict):
-            merged = dict(current.get("default_model") or {})
+        if k in ("default_model", "provider_bin") and isinstance(v, dict):
+            merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if cv:
                     merged[str(ck)] = str(cv)
                 else:
                     merged.pop(str(ck), None)
-            current["default_model"] = merged
+            current[k] = merged
         else:
             current[k] = v
     os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
@@ -74,6 +87,18 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
         json.dump(current, f, ensure_ascii=False, indent=2)
     os.replace(tmp, SETTINGS_JSON)  # atomic — eşzamanlı okuyan yarım dosya görmez
     return current
+
+
+def resolved_binary(cli_name: str) -> str:
+    """Bir provider'ın çalıştırılabilir yolu — sırayla: Ayarlar'daki elle-girilmiş
+    override (`provider_bin[cli_name]`, PATH'e HİÇ dokunmadan tam yol) → `shutil.which`
+    (normal PATH araması) → bare isim (eski davranış, `spawn_session`'ın kendisi
+    zaten `Popen`'ı PATH üzerinden çözecek). Her provider'ın kendi `shutil.which(NAME)
+    or NAME` satırının yerine geçer — DRY + üçünde de aynı override mantığı."""
+    override = (load_settings().get("provider_bin") or {}).get(cli_name, "").strip()
+    if override:
+        return override
+    return shutil.which(cli_name) or cli_name
 
 
 def default_model_for(provider: "CliProvider") -> str:

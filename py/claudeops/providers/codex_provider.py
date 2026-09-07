@@ -32,11 +32,11 @@ import json
 import os
 import re
 import shlex
-import shutil
 import time
 from typing import Dict, List, Optional
 
 from .base import CliProvider
+from ..settings import resolved_binary
 
 CODEX_HOME = os.path.expanduser("~/.codex")
 SESSIONS_DIR = os.path.join(CODEX_HOME, "sessions")
@@ -149,7 +149,7 @@ class CodexProvider(CliProvider):
                              resume_id, prompt, session_name) -> str:
         # Mutlak yol — bkz. claude_provider.py'deki aynı fix'in yorumu (pane'in kendi
         # PATH'i tmux server'ın miras kaldığından farklı/eksik olabilir).
-        binary = shutil.which("codex") or "codex"
+        binary = resolved_binary("codex")
         parts = [shlex.quote(binary)]
         if resume_id:
             parts += ["resume", shlex.quote(resume_id)]

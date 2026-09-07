@@ -20,12 +20,21 @@ import type { Theme } from "../api/types";
 import { applyTheme } from "../theme";
 import { HostsSection } from "./HostsSection";
 
-type SettingsPatch = { theme?: Theme; handover_effort?: string; default_model?: Record<string, string> };
+type SettingsPatch = {
+  theme?: Theme;
+  handover_effort?: string;
+  default_model?: Record<string, string>;
+  provider_bin?: Record<string, string>;
+};
 
 export function SettingsTab() {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
   const [error, setError] = useState("");
+  // Free-text path input — auto-save-on-blur (not on every keystroke like the
+  // <select> controls below, that would save a half-typed path on every char).
+  // Local draft so typing doesn't fight the settings poll's own value.
+  const [binDraft, setBinDraft] = useState<Record<string, string>>({});
 
   if (!data) return null;
   const settings = data.settings;
@@ -99,6 +108,23 @@ export function SettingsTab() {
                 </option>
               ))}
             </select>
+          </label>
+        ))}
+      </div>
+      <div className="opts" id="settingsProviderBinPanel">
+        <span className="opts-hint" style={{ flexBasis: "100%" }}>
+          <b>{t.providerBinLabel}</b> {t.providerBinDesc}
+        </span>
+        {data.cli_list.map((cli) => (
+          <label key={cli}>
+            {cli}
+            <input
+              type="text"
+              placeholder={t.providerBinPlaceholder}
+              value={binDraft[cli] ?? settings.provider_bin[cli] ?? ""}
+              onChange={(e) => setBinDraft((prev) => ({ ...prev, [cli]: e.target.value }))}
+              onBlur={(e) => void save({ provider_bin: { [cli]: e.target.value.trim() } })}
+            />
           </label>
         ))}
       </div>

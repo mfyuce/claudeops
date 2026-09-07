@@ -244,6 +244,9 @@ export interface Strings {
   handoverEffortLabel: string;
   handoverEffortHint: string;
   defaultModelLabel: string;
+  providerBinLabel: string;
+  providerBinDesc: string;
+  providerBinPlaceholder: string;
   pagePrev: string;
   pageNext: string;
   pageOf: (page: number, total: number) => string;
@@ -453,6 +456,10 @@ export const STRINGS: Record<Lang, Strings> = {
     handoverEffortLabel: "handover varsayılan effort",
     handoverEffortHint: "handover (Faz 1/Faz 2/panelin tek-session handover butonu) ile yeniden açılan session'ların effort'u — respawn edilen session'ın BİR SONRAKİ handover'a kadarki ömrü boyunca kalıcı varsayılan olur",
     defaultModelLabel: "yeni/resume için varsayılan model (CLI başına)",
+    providerBinLabel: "CLI binary yolu override (opsiyonel)",
+    providerBinDesc:
+      "Bir CLI normal PATH'te bulunamıyorsa (ör. proje-yerel bir kurulum) buraya tam yolunu yazın — boş bırakılırsa normal PATH araması kullanılır. Bu makineye özeldir, paylaşımlı bir PATH konumuna dokunmaz.",
+    providerBinPlaceholder: "/tam/yol/binary",
     pagePrev: "önceki",
     pageNext: "sonraki",
     pageOf: (page, total) => `sayfa ${page}/${total}`,
@@ -660,6 +667,10 @@ export const STRINGS: Record<Lang, Strings> = {
     handoverEffortLabel: "handover default effort",
     handoverEffortHint: "the effort level sessions reopened by handover (Phase 1/Phase 2/the panel's single-session handover button) get — becomes the respawned session's persistent default for its whole life until the NEXT handover",
     defaultModelLabel: "default model for new/resume (per CLI)",
+    providerBinLabel: "CLI binary path override (optional)",
+    providerBinDesc:
+      "If a CLI isn't found on the normal PATH (e.g. a project-local install), enter its full path here — leave blank to use normal PATH lookup. This is machine-local, it never touches a shared PATH location.",
+    providerBinPlaceholder: "/full/path/to/binary",
     pagePrev: "prev",
     pageNext: "next",
     pageOf: (page, total) => `page ${page}/${total}`,

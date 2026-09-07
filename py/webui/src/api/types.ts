@@ -101,6 +101,10 @@ export interface Settings {
   theme: Theme;
   handover_effort: string;
   default_model: Record<string, string>;
+  /** {cli: mutlak binary yolu} — PATH'te bulunamayan (ör. proje-yerel bir
+   * node_modules/.bin kurulumu) bir CLI için elle override. Boş/eksik = PATH
+   * araması (mevcut davranış, değişmez). `settings.py`'nin `resolved_binary()`. */
+  provider_bin: Record<string, string>;
 }
 
 export interface DiagInfo {

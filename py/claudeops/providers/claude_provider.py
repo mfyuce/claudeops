@@ -4,13 +4,13 @@ import json
 import os
 import re
 import shlex
-import shutil
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .base import CliProvider
 from ..paths import PROJECTS_DIR
+from ..settings import resolved_binary
 
 MODEL_CHOICES = [
     "claude-sonnet-5",
@@ -106,7 +106,12 @@ class ClaudeProvider(CliProvider):
         # PATH'i miras kalır ve pane'de "claude: command not found" olur (canlı bulundu,
         # 2026-08-30). shutil.which BURADA (spawn'ı TETİKLEYEN sürecin PATH'inde) çözülüp
         # sonucu string'e gömülünce pane'in kendi PATH'i ne olursa olsun çalışır.
-        binary = shutil.which("claude") or "claude"
+        # resolved_binary(): önce Ayarlar'daki elle-girilmiş override (claude PATH'te
+        # değilse — ör. proje-yerel bir node_modules/.bin kurulumu, canlı yuhem vakası
+        # 2026-09-07 — ve paylaşımlı bir hesapta ~/.local/bin'e symlink'lemek İSTENMEZ,
+        # o hesabı paylaşan herkesin aynı kimlik/credit'i kullanmasına yol açardı),
+        # yoksa shutil.which, o da yoksa bare isim.
+        binary = resolved_binary("claude")
         resume_arg = f"--resume {shlex.quote(resume_id)} " if resume_id else ""
         prompt_arg = f" {shlex.quote(prompt)}" if prompt else ""
         return (

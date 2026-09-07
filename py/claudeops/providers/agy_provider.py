@@ -65,13 +65,13 @@ from __future__ import annotations
 import json
 import os
 import shlex
-import shutil
 import sqlite3
 import subprocess
 import time
 from typing import Dict, List, Optional, Tuple
 
 from .base import CliProvider
+from ..settings import resolved_binary
 
 CONVERSATIONS_CACHE = os.path.expanduser("~/.gemini/antigravity-cli/cache/last_conversations.json")
 CONVERSATIONS_DIR = os.path.expanduser("~/.gemini/antigravity-cli/conversations")
@@ -199,7 +199,7 @@ class AgyProvider(CliProvider):
                              resume_id, prompt, session_name) -> str:
         # Mutlak yol — bkz. claude_provider.py'deki aynı fix'in yorumu (pane'in kendi
         # PATH'i tmux server'ın miras kaldığından farklı/eksik olabilir).
-        parts = [shutil.which("agy") or "agy"]
+        parts = [resolved_binary("agy")]
         if resume_id:
             parts += ["--conversation", shlex.quote(resume_id)]
         parts += ["--model", shlex.quote(model)]
