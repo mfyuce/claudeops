@@ -19,6 +19,7 @@ import { useState } from "react";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { usePagination } from "../../hooks/usePagination";
+import { rowKey } from "../../state/hosts";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
 import { matchesSearch } from "../shared/searchFilter";
@@ -30,7 +31,7 @@ const RUNNING_ROW_COLSPAN = 10;
 
 interface RunningTabProps {
   selection: SelectionControls;
-  onToggleTerminal: (name: string) => void;
+  onToggleTerminal: (host: string, name: string) => void;
   onSwitchTab: (tab: TabKey) => void;
   search: string;
 }
@@ -38,6 +39,8 @@ interface RunningTabProps {
 export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }: RunningTabProps) {
   const { t } = useLang();
   const { data } = useStatusContext();
+  // Composite `host:name` strings (rowKey) — never a bare session name, two
+  // different hosts can share one (see state/hosts.ts).
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
   const [openAdoptFor, setOpenAdoptFor] = useState<string | null>(null);
   // Hooks must run unconditionally (rules-of-hooks) — computed before the
@@ -55,7 +58,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
 
   if (!data) return null;
 
-  const allSelected = rows.length > 0 && rows.every((s) => selection.selected.has(s.name));
+  const allSelected = rows.length > 0 && rows.every((s) => selection.selected.has(rowKey(s)));
 
   return (
     <>
@@ -68,7 +71,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
                 <input
                   type="checkbox"
                   checked={allSelected}
-                  onChange={(e) => selection.toggleMany(rows.map((s) => s.name), e.target.checked)}
+                  onChange={(e) => selection.toggleMany(rows.map(rowKey), e.target.checked)}
                 />
               </th>
               <th style={{ width: "12%" }}>{t.colName}</th>
@@ -94,13 +97,13 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
             )}
             {pageItems.map((s) => (
               <SessionRow
-                key={s.name}
+                key={rowKey(s)}
                 session={s}
                 selection={selection}
-                isOptionsOpen={openOptionsFor === s.name}
-                onToggleOptions={() => setOpenOptionsFor((prev) => (prev === s.name ? null : s.name))}
-                isAdoptOpen={openAdoptFor === s.name}
-                onToggleAdopt={() => setOpenAdoptFor((prev) => (prev === s.name ? null : s.name))}
+                isOptionsOpen={openOptionsFor === rowKey(s)}
+                onToggleOptions={() => setOpenOptionsFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}
+                isAdoptOpen={openAdoptFor === rowKey(s)}
+                onToggleAdopt={() => setOpenAdoptFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}
                 onToggleTerminal={onToggleTerminal}
                 onSwitchTab={onSwitchTab}
               />

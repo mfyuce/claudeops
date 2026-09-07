@@ -23,6 +23,7 @@ import { OptionsRow } from "../RunningTab/OptionsRow";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { usePagination } from "../../hooks/usePagination";
+import { LOCAL_HOST, rowKey } from "../../state/hosts";
 import type { SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
@@ -56,12 +57,17 @@ function RegisteredRow({ session, selection, isOptionsOpen, onToggleOptions, onS
         <td className="selcell">
           <input
             type="checkbox"
-            checked={selection.selected.has(session.name)}
-            onChange={(e) => selection.toggle(session.name, e.target.checked)}
+            checked={selection.selected.has(rowKey(session))}
+            onChange={(e) => selection.toggle(rowKey(session), e.target.checked)}
           />
         </td>
         <td>
           {session.name}
+          {session.host !== LOCAL_HOST && (
+            <span className="cli-badge" title={t.hostBadgeHint(session.host)}>
+              {session.host}
+            </span>
+          )}
           {isProtectedName(session.name) && (
             <span className="unreg-badge" title={t.protectedHint}>
               {t.protectedBadge}
@@ -89,32 +95,45 @@ function RegisteredRow({ session, selection, isOptionsOpen, onToggleOptions, onS
 }
 
 interface RegisteredGroup {
+  host: string;
   cwd: string;
   sessions: SessionInfo[];
-  /** Whether ANY session (running or not) sharing this cwd is currently
-   * running — cross-tab signal the user asked for ("Registered da bu
-   * grupda acik olan var mi gosterelim"). */
+  /** Whether ANY session (running or not) sharing this (host, cwd) is
+   * currently running — cross-tab signal the user asked for ("Registered da
+   * bu grupda acik olan var mi gosterelim"). */
   hasRunning: boolean;
 }
 
-/** Groups the stopped `rows` by `cwd`, in first-seen order. `allSessions`
- * (the full running+stopped set) is only used to compute `hasRunning` —
- * a project can be "registered" here via one name while a DIFFERENT name
- * sharing the same cwd is actively running (e.g. this repo's own cops+diag). */
+/** Composite group identity — two different hosts can genuinely have a
+ * project checked out at the same absolute path; grouping those together
+ * under one header would misleadingly imply they're the same project. */
+function groupKey(host: string, cwd: string): string {
+  return `${host}:${cwd}`;
+}
+
+/** Groups the stopped `rows` by `(host, cwd)`, in first-seen order.
+ * `allSessions` (the full running+stopped set) is only used to compute
+ * `hasRunning` — a project can be "registered" here via one name while a
+ * DIFFERENT name sharing the same (host, cwd) is actively running (e.g.
+ * this repo's own cops+diag). */
 function groupByCwd(rows: SessionInfo[], allSessions: SessionInfo[]): RegisteredGroup[] {
-  const runningCwds = new Set(allSessions.filter((s) => s.running).map((s) => s.cwd));
+  const runningKeys = new Set(allSessions.filter((s) => s.running).map((s) => groupKey(s.host, s.cwd)));
   const order: string[] = [];
-  const byCwd = new Map<string, SessionInfo[]>();
+  const byKey = new Map<string, SessionInfo[]>();
   for (const r of rows) {
-    let list = byCwd.get(r.cwd);
+    const key = groupKey(r.host, r.cwd);
+    let list = byKey.get(key);
     if (!list) {
       list = [];
-      byCwd.set(r.cwd, list);
-      order.push(r.cwd);
+      byKey.set(key, list);
+      order.push(key);
     }
     list.push(r);
   }
-  return order.map((cwd) => ({ cwd, sessions: byCwd.get(cwd)!, hasRunning: runningCwds.has(cwd) }));
+  return order.map((key) => {
+    const sessions = byKey.get(key)!;
+    return { host: sessions[0].host, cwd: sessions[0].cwd, sessions, hasRunning: runningKeys.has(key) };
+  });
 }
 
 function GroupHeaderRow({
@@ -132,6 +151,11 @@ function GroupHeaderRow({
       <td colSpan={REGISTERED_ROW_COLSPAN}>
         <span className="toggle">{collapsed ? "▸" : "▾"}</span>
         {group.cwd} ({group.sessions.length})
+        {group.host !== LOCAL_HOST && (
+          <span className="cli-badge" title={t.hostBadgeHint(group.host)}>
+            {group.host}
+          </span>
+        )}
         {group.hasRunning && (
           <span className="unreg-badge" title={t.groupRunningBadge}>
             {t.groupRunningBadge}
@@ -146,7 +170,7 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
   const { t } = useLang();
   const { data } = useStatusContext();
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
-  const [collapsedCwds, setCollapsedCwds] = useState<Set<string>>(() => new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
   // Hooks must run unconditionally (rules-of-hooks) — computed before the
   // `!data` early return below, with empty-array fallbacks while `data`
@@ -167,13 +191,13 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
 
   if (!data) return null;
 
-  const allSelected = rows.length > 0 && rows.every((s) => selection.selected.has(s.name));
+  const allSelected = rows.length > 0 && rows.every((s) => selection.selected.has(rowKey(s)));
 
-  function toggleGroup(cwd: string) {
-    setCollapsedCwds((prev) => {
+  function toggleGroup(key: string) {
+    setCollapsedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(cwd)) next.delete(cwd);
-      else next.add(cwd);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -189,7 +213,7 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
                 <input
                   type="checkbox"
                   checked={allSelected}
-                  onChange={(e) => selection.toggleMany(rows.map((s) => s.name), e.target.checked)}
+                  onChange={(e) => selection.toggleMany(rows.map(rowKey), e.target.checked)}
                 />
               </th>
               <th style={{ width: "14%" }}>{t.colName}</th>
@@ -207,22 +231,25 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
                 </td>
               </tr>
             )}
-            {pageGroups.map((g) => (
-              <Fragment key={g.cwd}>
-                <GroupHeaderRow group={g} collapsed={collapsedCwds.has(g.cwd)} onToggle={() => toggleGroup(g.cwd)} />
-                {!collapsedCwds.has(g.cwd) &&
-                  g.sessions.map((s) => (
-                    <RegisteredRow
-                      key={s.name}
-                      session={s}
-                      selection={selection}
-                      isOptionsOpen={openOptionsFor === s.name}
-                      onToggleOptions={() => setOpenOptionsFor((prev) => (prev === s.name ? null : s.name))}
-                      onSwitchTab={onSwitchTab}
-                    />
-                  ))}
-              </Fragment>
-            ))}
+            {pageGroups.map((g) => {
+              const gKey = groupKey(g.host, g.cwd);
+              return (
+                <Fragment key={gKey}>
+                  <GroupHeaderRow group={g} collapsed={collapsedGroups.has(gKey)} onToggle={() => toggleGroup(gKey)} />
+                  {!collapsedGroups.has(gKey) &&
+                    g.sessions.map((s) => (
+                      <RegisteredRow
+                        key={rowKey(s)}
+                        session={s}
+                        selection={selection}
+                        isOptionsOpen={openOptionsFor === rowKey(s)}
+                        onToggleOptions={() => setOpenOptionsFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}
+                        onSwitchTab={onSwitchTab}
+                      />
+                    ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -16,13 +16,15 @@
  */
 
 import { Fragment, useState } from "react";
-import { apiPost, ApiError } from "../../api/client";
+import { apiPost, apiStart, ApiError, type StartPayload } from "../../api/client";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
+import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
 import type { ApiResult, SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
+import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
-type BulkAction = "handover" | "compact" | "stop" | "close" | "retire";
+type BulkAction = "start" | "handover" | "compact" | "stop" | "close" | "retire";
 
 interface BulkBarProps {
   tab: "running" | "registered";
@@ -36,14 +38,15 @@ interface BulkBarProps {
 
 export function BulkBar({ tab, rows, selection }: BulkBarProps) {
   const { t, lang } = useLang();
-  const { refresh } = useStatusContext();
+  const { data, refresh } = useStatusContext();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  const selectedRows = rows.filter((r) => selection.selected.has(r.name));
+  const selectedRows = rows.filter((r) => selection.selected.has(rowKey(r)));
   const canAct = selectedRows.length > 0 && !busy;
 
   const labels: Record<BulkAction, string> = {
+    start: t.bulkStartBtn,
     handover: t.handoverBtn,
     compact: t.compactBtn,
     stop: t.stopBtn,
@@ -51,12 +54,33 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     retire: t.retireBtn,
   };
   const explanations: Record<BulkAction, string> = {
+    start: t.legendBulkStart,
     handover: t.legendHandover,
     compact: t.legendCompact,
     stop: t.legendStop,
     close: t.legendDisable,
     retire: t.legendRetire,
   };
+
+  /** Mirrors `OptionsRow`'s untouched initial state (`../RunningTab/OptionsRow.tsx`)
+   * — "default parameters" means exactly what opening a row and immediately
+   * hitting "Devam Et" without changing anything would send: the session's
+   * own roster/settings default model, `permission=auto`, the CLI's highest
+   * effort level, same `cli`, resume (not fresh). */
+  function startPayloadFor(s: SessionInfo): StartPayload {
+    const cliOptions = cliOptionsFor(data, s.host, s.cli);
+    return {
+      name: s.name,
+      host: s.host,
+      // Settings' default_model is the aggregator's own preference — only
+      // meaningful for a local session, same rule as OptionsRow.tsx.
+      model: s.host === LOCAL_HOST ? (data?.settings.default_model[s.cli] ?? "") : "",
+      permission_mode: DEFAULT_PERMISSION_MODE,
+      effort: defaultEffort(cliOptions),
+      cli: s.cli,
+      lang,
+    };
+  }
 
   async function handleBulk(action: BulkAction) {
     if (busy) return;
@@ -82,10 +106,14 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     setBusy(true);
     const errs: string[] = [];
     let done = 0;
-    for (const name of names) {
+    for (const s of picked) {
+      const name = s.name;
       setMessage(`${labels[action]}: ${done + 1}/${names.length} — ${name}…`);
       try {
-        const res = await apiPost<ApiResult>(`/api/${action}`, { name, lang });
+        const res =
+          action === "start"
+            ? await apiStart(startPayloadFor(s))
+            : await apiPost<ApiResult>(`/api/${action}`, { name, host: s.host, lang });
         if (!res.ok) errs.push(`${name}: ${res.error}`);
       } catch (e) {
         if (e instanceof ApiError) {
@@ -109,7 +137,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     // button only renders for tab === "running", and `rows` there is
     // already exactly `sessions.filter(s => s.running)`, so filtering
     // just `needs_ho === true` over `rows` is equivalent.
-    selection.replace(rows.filter((s) => s.needs_ho === true).map((s) => s.name));
+    selection.replace(rows.filter((s) => s.needs_ho === true).map(rowKey));
   }
 
   const legendRows: [string, string][] =
@@ -122,6 +150,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           [t.retireBtn, t.legendRetire],
         ]
       : [
+          [t.bulkStartBtn, t.legendBulkStart],
           [t.disableBtn, t.legendDisable],
           [t.retireBtn, t.legendRetire],
         ];
@@ -186,6 +215,15 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
         )}
         {tab === "registered" && (
           <>
+            <button
+              type="button"
+              className="start"
+              disabled={!canAct}
+              title={t.legendBulkStart}
+              onClick={() => void handleBulk("start")}
+            >
+              {t.bulkStartBtn}
+            </button>
             <button
               type="button"
               className="closebtn"

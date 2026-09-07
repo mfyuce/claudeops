@@ -27,6 +27,7 @@ import type {
   FilesListResult,
   FilesReadResult,
   FilesValidateResult,
+  GetHostsResult,
   HandoverResult,
   LayoutResult,
   NewChatResult,
@@ -94,6 +95,8 @@ export const getStatus = (): Promise<StatusPayload> => apiGet<StatusPayload>("/a
 
 export const getDiagLog = (): Promise<DiagLogResult> => apiGet<DiagLogResult>("/api/diag/log");
 
+export const getHosts = (): Promise<GetHostsResult> => apiGet<GetHostsResult>("/api/hosts");
+
 export const getTermOutput = (name: string, lang: Lang): Promise<TermOutputResult> =>
   apiGet<TermOutputResult>(`/api/term/output?name=${encodeURIComponent(name)}&lang=${lang}`);
 
@@ -130,6 +133,10 @@ export const apiVscodeOpen = (name: string, lang: Lang, path?: string): Promise<
 
 export interface StartPayload {
   name: string;
+  /** Which registered host owns this session — `web_hosts`'s proxy-guard
+   * routes non-local values to that host's own `/api/start` instead of
+   * running it here. */
+  host: string;
   model?: string;
   permission_mode?: string;
   effort?: string;
@@ -139,8 +146,12 @@ export interface StartPayload {
 }
 export const apiStart = (p: StartPayload): Promise<StartResult> => apiPost<StartResult>("/api/start", p);
 
+/** Shared by every simple session-scoped action (stop/retire/reactivate/
+ * close/handover/term-open-window) — all 6 are in `web_hosts.HOST_ROUTED_PATHS`,
+ * so `host` is required here too, same reasoning as `StartPayload.host`. */
 export interface NamePayload {
   name: string;
+  host: string;
   lang: Lang;
 }
 export const apiStop = (p: NamePayload): Promise<StopResult> => apiPost<StopResult>("/api/stop", p);
@@ -153,6 +164,7 @@ export const apiTermOpenWindow = (p: NamePayload): Promise<SimpleResult> =>
 
 export interface NewChatPayload {
   base: string;
+  host: string;
   model?: string;
   permission_mode?: string;
   effort?: string;
@@ -161,8 +173,17 @@ export interface NewChatPayload {
 }
 export const apiNewChat = (p: NewChatPayload): Promise<NewChatResult> => apiPost<NewChatResult>("/api/new-chat", p);
 
+/** `host`: the TARGET host to register the new project on — `_register_project()`'s
+ * `os.path.isdir(cwd)` check must run on that host's own filesystem, so this
+ * needs host-routing exactly like the session-scoped payloads above even
+ * though there's no pre-existing session yet. Optional (unlike the other
+ * payloads here) purely because `RegisterForm.tsx`'s host `<select>` is a
+ * separate, later phase (Faz 4) — omitted means local, matching the
+ * backend's own "no host field = local" default, so today's form keeps
+ * compiling/working untouched until that phase adds the selector. */
 export interface RegisterPayload {
   name: string;
+  host?: string;
   cwd: string;
   model?: string;
   cli?: string;
@@ -172,6 +193,7 @@ export const apiRegister = (p: RegisterPayload): Promise<SimpleResult> => apiPos
 
 export interface AdoptPayload {
   name: string;
+  host: string;
   new_name?: string;
   model?: string;
   permission_mode?: string;
@@ -182,6 +204,7 @@ export const apiAdopt = (p: AdoptPayload): Promise<AdoptResult> => apiPost<Adopt
 
 export interface TermInputPayload {
   name: string;
+  host: string;
   text: string;
   lang: Lang;
 }
@@ -190,6 +213,7 @@ export const apiTermInput = (p: TermInputPayload): Promise<SimpleResult> =>
 
 export interface TermKeyPayload {
   name: string;
+  host: string;
   key: string;
   lang: Lang;
 }
@@ -224,3 +248,21 @@ export const apiDesktopStop = (lang: Lang): Promise<DesktopStopResult> =>
 export type SettingsPayload = Partial<Settings> & { lang: Lang };
 export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
   apiPost<SettingsResult>("/api/settings", p);
+
+/** Upsert (`hosts.save_host()`): empty `token` on an already-registered
+ * `name` keeps that host's stored token — only send a non-empty token when
+ * actually setting/changing one. */
+export interface SaveHostPayload {
+  name: string;
+  base_url: string;
+  token: string;
+  lang: Lang;
+}
+export const apiSaveHost = (p: SaveHostPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/hosts", p);
+
+export interface RemoveHostPayload {
+  name: string;
+  lang: Lang;
+}
+export const apiRemoveHost = (p: RemoveHostPayload): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/hosts/remove", p);

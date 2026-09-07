@@ -18,7 +18,8 @@ import { apiAdopt } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
-import { EMPTY_CLI_OPTIONS, type SessionInfo } from "../../api/types";
+import { cliOptionsFor } from "../../state/hosts";
+import type { SessionInfo } from "../../api/types";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
@@ -32,7 +33,7 @@ export function AdoptRow({ session, colspan, onClose }: AdoptRowProps) {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
 
-  const cliOptions = data?.cli_options[session.cli] ?? EMPTY_CLI_OPTIONS;
+  const cliOptions = cliOptionsFor(data, session.host, session.cli);
 
   const [newName, setNewName] = useState(session.name);
   const [model, setModel] = useState("");
@@ -48,6 +49,7 @@ export function AdoptRow({ session, colspan, onClose }: AdoptRowProps) {
     try {
       const res = await apiAdopt({
         name: session.name,
+        host: session.host,
         new_name: newName.trim(),
         model: resolvedModel,
         permission_mode: permissionMode,

@@ -24,7 +24,8 @@ import { apiNewChat, apiStart } from "../../api/client";
 import { callAction, describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
-import { EMPTY_CLI_OPTIONS, type SessionInfo } from "../../api/types";
+import { cliListFor, cliOptionsFor, LOCAL_HOST } from "../../state/hosts";
+import type { SessionInfo } from "../../api/types";
 import type { TabKey } from "../../state/tabs";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
@@ -58,14 +59,24 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   // the user's persisted per-CLI default if they've set one — still just an
   // initial suggestion, not a lock-in; changing the dropdown overrides it for
   // this one invocation same as before.
-  const [model, setModel] = useState(() => data?.settings.default_model[session.cli] ?? "");
+  // Settings' `default_model` is the AGGREGATOR's own preference — a remote
+  // host has no visibility into it (and vice versa), so only pre-fill for a
+  // local session; a remote one starts blank and lets that host's own
+  // backend default (`fallback_model` in `_start()`) take over.
+  const [model, setModel] = useState(() =>
+    session.host === LOCAL_HOST ? (data?.settings.default_model[session.cli] ?? "") : "",
+  );
   const [modelOther, setModelOther] = useState("");
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
-  const [effort, setEffort] = useState(() => defaultEffort(data?.cli_options[session.cli] ?? EMPTY_CLI_OPTIONS));
+  const [effort, setEffort] = useState(() => defaultEffort(cliOptionsFor(data, session.host, session.cli)));
   const [busy, setBusy] = useState(false);
 
-  const cliList = data?.cli_list ?? [session.cli];
-  const cliOptions = data?.cli_options[cli] ?? EMPTY_CLI_OPTIONS;
+  // `cliListFor` can come back empty for a not-yet-known/unreachable remote
+  // host — always fall back to at least the session's own current cli, same
+  // as the original single-host `data?.cli_list ?? [session.cli]` fallback.
+  const cliListRaw = cliListFor(data, session.host);
+  const cliList = cliListRaw.length ? cliListRaw : [session.cli];
+  const cliOptions = cliOptionsFor(data, session.host, cli);
   const currentModelLabel =
     cli === session.cli ? session.model || cliOptions.models[0] || "" : cliOptions.models[0] || "";
 
@@ -88,10 +99,10 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   // through local state in between.
   function handleCliChange(newCli: string) {
     setCli(newCli);
-    setModel(data?.settings.default_model[newCli] ?? "");
+    setModel(session.host === LOCAL_HOST ? (data?.settings.default_model[newCli] ?? "") : "");
     setModelOther("");
     setPermissionMode(DEFAULT_PERMISSION_MODE);
-    setEffort(defaultEffort(data?.cli_options[newCli] ?? EMPTY_CLI_OPTIONS));
+    setEffort(defaultEffort(cliOptionsFor(data, session.host, newCli)));
   }
 
   /** Replaces `runDiagAfterFailure(msg)` (web.py ~2723-2730) minus the
@@ -112,6 +123,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
       try {
         const res = await apiNewChat({
           base: session.name,
+          host: session.host,
           model: resolvedModel,
           permission_mode: permissionMode,
           effort,
@@ -128,6 +140,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
         () =>
           apiStart({
             name: session.name,
+            host: session.host,
             model: resolvedModel,
             permission_mode: permissionMode,
             effort,

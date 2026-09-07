@@ -2,8 +2,10 @@
  * Replaces `termRow()`'s shell (web.py ~2020-2063) — portaled to
  * `document.body` (a fixed full-viewport overlay has no business living
  * inside the Running table's DOM it's logically triggered from). `App`
- * renders this as `<TerminalModal key={openTerminalFor} name={openTerminalFor}
- * onClose={...} />` whenever `openTerminalFor` is set — the `key` forces a
+ * renders this as `<TerminalModal key={rowKey(openTerminalFor)}
+ * name={openTerminalFor.name} onClose={...} />` whenever `openTerminalFor`
+ * (now a `{host, name}` composite, multi-host federation plan Faz 3) is set
+ * — the `key` forces a
  * clean remount (fresh `TerminalView`/`ChatView` instances, fresh
  * `activeSubTab`) whenever WHICH session's terminal is open changes, and
  * is the idiomatic replacement for the original's manual

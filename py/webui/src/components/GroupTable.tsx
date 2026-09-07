@@ -28,6 +28,7 @@ import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { usePagination } from "../hooks/usePagination";
+import { LOCAL_HOST, rowKey } from "../state/hosts";
 import type { RosterEntry } from "../api/types";
 import { CwdCell } from "./shared/CwdCell";
 import { Pagination } from "./shared/Pagination";
@@ -46,7 +47,7 @@ function ReactivateRow({ item }: { item: RosterEntry }) {
   async function handleReactivate() {
     setBusy(true);
     try {
-      const res = await apiReactivate({ name: item.name, lang });
+      const res = await apiReactivate({ name: item.name, host: item.host, lang });
       if (!res.ok) window.alert(`${item.name}: ${res.error}`);
     } catch (e) {
       window.alert(describeApiError(e, t));
@@ -58,7 +59,14 @@ function ReactivateRow({ item }: { item: RosterEntry }) {
 
   return (
     <tr>
-      <td style={{ width: "14%" }}>{item.name}</td>
+      <td style={{ width: "14%" }}>
+        {item.name}
+        {item.host !== LOCAL_HOST && (
+          <span className="cli-badge" title={t.hostBadgeHint(item.host)}>
+            {item.host}
+          </span>
+        )}
+      </td>
       <td style={{ width: "18%" }}>{item.model || ""}</td>
       <td style={{ width: "6%" }}>
         <span className="cli-badge">{item.cli}</span>
@@ -85,7 +93,7 @@ export function GroupTable({ items, search }: GroupTableProps) {
       <table>
         <tbody>
           {pageItems.map((it) => (
-            <ReactivateRow key={it.name} item={it} />
+            <ReactivateRow key={rowKey(it)} item={it} />
           ))}
         </tbody>
       </table>

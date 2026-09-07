@@ -33,6 +33,7 @@ import { LangProvider, useLang } from "./i18n/LangContext";
 import { StatusProvider, useStatusContext } from "./state/StatusContext";
 import { useSelection } from "./state/selection";
 import { isTabKey, TAB_STORAGE_KEY, type TabKey } from "./state/tabs";
+import { LOCAL_HOST, rowKey } from "./state/hosts";
 import { applyTheme } from "./theme";
 
 function readStoredTab(): TabKey {
@@ -51,8 +52,12 @@ function AppShell() {
   const [activeTab, setActiveTabState] = useState<TabKey>(readStoredTab);
   // openTerminalFor: which session's terminal modal (if any) is open —
   // set by SessionRow's terminal button and DiagnosticsTab's "ask"
-  // cross-tab flow, consumed below by <TerminalModal>.
-  const [openTerminalFor, setOpenTerminalFor] = useState<string | null>(null);
+  // cross-tab flow, consumed below by <TerminalModal>. `(host, name)`
+  // composite (never a bare name — two hosts can share one), but in
+  // practice always LOCAL_HOST for now: SessionRow disables the terminal
+  // button for non-local rows (remote terminal viewing is a deferred
+  // follow-up, see the multi-host federation plan).
+  const [openTerminalFor, setOpenTerminalFor] = useState<{ host: string; name: string } | null>(null);
   // Shared across Running/Registered per the plan — one Set, not a third
   // Context (see state/selection.ts's doc comment).
   const selection = useSelection();
@@ -72,8 +77,8 @@ function AppShell() {
     }
   }, []);
 
-  const onToggleTerminal = useCallback((name: string) => {
-    setOpenTerminalFor((prev) => (prev === name ? null : name));
+  const onToggleTerminal = useCallback((host: string, name: string) => {
+    setOpenTerminalFor((prev) => (prev && prev.host === host && prev.name === name ? null : { host, name }));
   }, []);
 
   // Original `doDiagAsk()` success: `setTab('running'); await refresh();
@@ -86,8 +91,10 @@ function AppShell() {
   // button, not this cross-tab jump.
   const handleDiagAskSuccess = useCallback(
     (name: string) => {
+      // Diag's "ask" flow always spawns a session on THIS (aggregator)
+      // machine — it has no host selector of its own.
       setActiveTab("running");
-      setOpenTerminalFor(name);
+      setOpenTerminalFor({ host: LOCAL_HOST, name });
     },
     [setActiveTab],
   );
@@ -160,7 +167,7 @@ function AppShell() {
         {data && activeTab === "settings" && <SettingsTab />}
       </div>
       {openTerminalFor && (
-        <TerminalModal key={openTerminalFor} name={openTerminalFor} onClose={() => setOpenTerminalFor(null)} />
+        <TerminalModal key={rowKey(openTerminalFor)} name={openTerminalFor.name} onClose={() => setOpenTerminalFor(null)} />
       )}
     </div>
   );

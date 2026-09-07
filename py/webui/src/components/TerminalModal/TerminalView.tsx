@@ -31,6 +31,7 @@ import type { Terminal } from "@xterm/xterm";
 import { apiTermInput, apiTermKey, getTermOutput } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
+import { LOCAL_HOST } from "../../state/hosts";
 import { computeFitFontSize, fitContainerToTerm } from "./xtermSizing";
 import { UrlBanner } from "./UrlBanner";
 
@@ -270,14 +271,16 @@ export function TerminalView({ name, hidden, onView }: TerminalViewProps) {
     // inline onclick, not awaited) — .catch(()=>{}) here avoids a genuine
     // unhandled-promise-rejection but is otherwise the same silent-on-
     // failure behavior from the user's point of view.
-    void apiTermKey({ name, key, lang }).catch(() => {});
+    // Terminal is local-only for now (Faz 3 — remote term viewing is a
+    // deferred follow-up), so `host` is always LOCAL_HOST here.
+    void apiTermKey({ name, host: LOCAL_HOST, key, lang }).catch(() => {});
   }
 
   function handleSend() {
     if (!inputText) return;
     const text = inputText;
     setInputText("");
-    void apiTermInput({ name, text, lang }).catch(() => {});
+    void apiTermInput({ name, host: LOCAL_HOST, text, lang }).catch(() => {});
   }
 
   async function handleCopyVisible() {

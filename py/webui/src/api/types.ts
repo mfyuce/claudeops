@@ -21,6 +21,12 @@
 
 export interface SessionInfo {
   name: string;
+  /** Which registered host this session lives on — `"local"` (the
+   * aggregator's own machine, `hosts.py`'s `LOCAL_HOST_NAME`) for every
+   * session until a remote host is actually registered in Settings.
+   * Identity across the whole app is the `(host, name)` pair, never bare
+   * `name` alone — two different hosts can have a same-named session. */
+  host: string;
   model: string;
   cwd: string;
   cli: string;
@@ -35,9 +41,46 @@ export interface SessionInfo {
 
 export interface RosterEntry {
   name: string;
+  /** See `SessionInfo.host`. */
+  host: string;
   cwd: string;
   model: string;
   cli: string;
+}
+
+/** One registered remote host's live status, as fanned-out/merged server-side
+ * by `web_hosts.merge_status()` — never fetched or computed in the browser.
+ * `cli_list`/`cli_options`/`dups` are that host's OWN values (never the
+ * aggregator's) — some CLIs (e.g. agy) fetch their model list live per host,
+ * so these must not be assumed identical across hosts. */
+export interface HostStatus {
+  name: string;
+  ok: boolean;
+  error: string | null;
+  cli_list: string[];
+  cli_options: Record<string, CliOptions>;
+  dups: string[];
+}
+
+/** One row in `/api/hosts`'s registry listing (Settings' Hosts section) —
+ * NOT the same object as `HostStatus` above: this is registry metadata
+ * (`base_url`, whether a token is saved) for the add/remove UI, `HostStatus`
+ * is the operational status embedded in `/api/status`'s hot poll path.
+ * `token` itself is NEVER present here or anywhere in a browser-visible
+ * response — `has_token` is the only signal the UI ever gets. */
+export interface HostRecord {
+  name: string;
+  base_url: string;
+  has_token: boolean;
+  ok: boolean;
+  error: string | null;
+}
+
+/** `/api/hosts` (GET) — a bare "just read local state" shape like
+ * `DiagLogResult`, not `ApiResult`-wrapped: listing the registry has no
+ * meaningful failure mode once auth already passed. */
+export interface GetHostsResult {
+  hosts: HostRecord[];
 }
 
 export interface CliOptions {
@@ -95,6 +138,17 @@ export interface StatusPayload {
    * proxy target, never exposed to the browser directly — it connects
    * through `/ws/desktop` (same token auth as everything else) regardless. */
   remote_desktop: { running: boolean; port: number | null };
+  /** Read-only — `py/cops service install`'ın yazdığı `tunnel_url.txt`/
+   * `tunnel_label.txt` (varsa). İkisi de dosya yoksa `null` (quick-tunnel'da
+   * URL cloudflared'ın kendi log'undan gelir, `service install` hiç
+   * çalışmamışsa hiçbiri yoktur) — asla hata değil. */
+  tunnel: { url: string | null; label: string | null };
+  /** Every registered remote host's live status — always present (possibly
+   * `[]`), never optional; `web_hosts.merge_status()` guarantees this key.
+   * `sessions`/`closed`/`retired` above already carry each row's own `host`
+   * tag — this array is metadata ABOUT each host (reachability, its own
+   * `cli_list`/`cli_options`/`dups`), not another copy of its rows. */
+  hosts: HostStatus[];
 }
 
 // ── POST-route result shapes ────────────────────────────────────────────

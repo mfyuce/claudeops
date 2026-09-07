@@ -95,11 +95,13 @@ export interface Strings {
   stopBtn: string;
   disableBtn: string;
   retireBtn: string;
+  bulkStartBtn: string;
   handoverBtn: string;
   compactBtn: string;
   legendStop: string;
   legendDisable: string;
   legendRetire: string;
+  legendBulkStart: string;
   legendHandover: string;
   legendCompact: string;
   bulkConfirm: (label: string, expl: string, names: string[]) => string;
@@ -108,6 +110,7 @@ export interface Strings {
   optionsBtn: string;
   startBtn: string;
   terminalBtn: string;
+  remoteTerminalHint: string;
   termPlaceholder: string;
   termSend: string;
   termGone: (err: string) => string;
@@ -209,6 +212,23 @@ export interface Strings {
   handoverMsgHint: string;
   protectedBadge: string;
   protectedHint: string;
+  hostBadgeHint: (host: string) => string;
+  hostsUnreachableMsg: (names: string[]) => string;
+  hostsTitle: string;
+  hostsDesc: string;
+  hostNameLabel: string;
+  hostBaseUrlLabel: string;
+  hostTokenLabel: string;
+  hostAddBtn: string;
+  hostAdding: string;
+  hostRemoveBtn: string;
+  hostRemoveConfirm: (name: string) => string;
+  hostNone: string;
+  hostConnected: string;
+  hostUnreachable: string;
+  hostLocalLabel: string;
+  tunnelInfoLabel: string;
+  tunnelNoneMsg: string;
   settingsDesc: string;
   settingsAuto: string;
   settingsAutoModel: (model: string) => string;
@@ -277,11 +297,13 @@ export const STRINGS: Record<Lang, Strings> = {
     stopBtn: "durdur",
     disableBtn: "devre dışı bırak",
     retireBtn: "emekli et",
+    bulkStartBtn: "başlat",
     handoverBtn: "handover",
     compactBtn: "compact",
     legendStop: "sadece process/pencereyi kapatır — kayıt AKTİF kalır, \"Kayıtlı\" sekmesinden devam ettirilir",
     legendDisable: "durdurur + otomasyon (guard) bir daha AÇMAZ — \"Devre dışı\" sekmesine taşınır, oradan geri alınır",
     legendRetire: "durdurur + arşive kaldırır — \"Emekli\" sekmesine taşınır, \"tekrar işe al\" ile döner",
+    legendBulkStart: "seçili kayıtlı (durdurulmuş) oturumları varsayılan parametrelerle (kayıtlı/varsayılan model, permission=auto, en yüksek effort, resume — fresh değil) tek tek başlatır",
     legendHandover: "wrap-up mesajı gönderip AYNI geçmişle yeniden açar (kapat+devam) — commit/push + not düşme için",
     legendCompact: "konuşmayı sıkıştırıp (context özetlenir) AYNI geçmişle yeniden açar — sadece claude CLI, birkaç dakika sürebilir",
     bulkConfirm: (label, expl, names) => `${label} — ${expl}\n\nseçili (${names.length}): ${names.join(', ')}\n\nDevam edilsin mi?`,
@@ -290,6 +312,7 @@ export const STRINGS: Record<Lang, Strings> = {
     optionsBtn: "seçenekler ▾",
     startBtn: "başlat ▾",
     terminalBtn: "terminal",
+    remoteTerminalHint: "uzak host terminali henüz desteklenmiyor — bu sürümde sadece local session'lar için çalışır",
     termPlaceholder: "komut yaz, Enter/Gönder ile yolla…",
     termSend: "gönder",
     termGone: (err) => `✗ ${err}`,
@@ -391,6 +414,25 @@ export const STRINGS: Record<Lang, Strings> = {
     handoverMsgHint: "handover butonunun gönderdiği wrap-up mesajı, şu an seçili dilde — ayrı bir CLI açmadan kopyalayıp elle yapıştırabilirsiniz",
     protectedBadge: "dikkat",
     protectedHint: "guard'ı ayakta tutuyor — toplu seçimde/işlemde dikkatli olun",
+    hostBadgeHint: (host) => `"${host}" host'unda çalışıyor (local değil)`,
+    hostsUnreachableMsg: (names) => `⚠ ${names.length} host erişilemez: ${names.join(", ")}`,
+    hostsTitle: "Uzak host'lar",
+    hostsDesc:
+      "Başka bir makinede çalışan claudeops panelini buraya bağlayın — o makinenin oturumları yukarıdaki listelere host rozetiyle eklenir.",
+    hostNameLabel: "isim",
+    hostBaseUrlLabel: "tunnel URL",
+    hostTokenLabel: "token",
+    hostAddBtn: "host ekle",
+    hostAdding: "ekleniyor…",
+    hostRemoveBtn: "kaldır",
+    hostRemoveConfirm: (name) =>
+      `"${name}" host'unu kaldır? (o host'taki session'lar etkilenmez, sadece bu panelden bağlantısı kesilir)`,
+    hostNone: "kayıtlı uzak host yok",
+    hostConnected: "bağlı",
+    hostUnreachable: "erişilemez",
+    hostLocalLabel: "bu makine (local)",
+    tunnelInfoLabel: "bu makinenin tüneli",
+    tunnelNoneMsg: "aktif tünel yok (py/cops service install veya web --tunnel ile başlatın)",
     settingsDesc: "Bu ayarlar sunucu tarafında saklanır (~/.claude/claudeops/settings.json) — telefon dahil hangi cihaz/tarayıcıdan girerseniz girin aynı görünür. Her seçim anında kaydedilir.",
     settingsAuto: "(otomatik)",
     settingsAutoModel: (model) => `(otomatik: ${model})`,
@@ -457,11 +499,13 @@ export const STRINGS: Record<Lang, Strings> = {
     stopBtn: "stop",
     disableBtn: "disable",
     retireBtn: "retire",
+    bulkStartBtn: "start",
     handoverBtn: "handover",
     compactBtn: "compact",
     legendStop: "kills only the process/window — stays REGISTERED, resume it from the \"Registered\" tab",
     legendDisable: "stop + automation (guard) will NOT reopen it — moves to the \"Disabled\" tab, reversible there",
     legendRetire: "stop + archive — moves to the \"Retired\" tab, comes back via \"reactivate\"",
+    legendBulkStart: "starts each selected registered (stopped) session one by one with default parameters (roster/default model, permission=auto, highest effort, resume — not fresh)",
     legendHandover: "sends a wrap-up prompt and reopens with the SAME history (close+continue) — for commit/push + notes",
     legendCompact: "compacts the conversation (summarizes context) and reopens with the SAME history — claude CLI only, can take a few minutes",
     bulkConfirm: (label, expl, names) => `${label} — ${expl}\n\nselected (${names.length}): ${names.join(', ')}\n\nProceed?`,
@@ -470,6 +514,7 @@ export const STRINGS: Record<Lang, Strings> = {
     optionsBtn: "options ▾",
     startBtn: "start ▾",
     terminalBtn: "terminal",
+    remoteTerminalHint: "remote host terminal not supported yet — this build only works for local sessions",
     termPlaceholder: "type a command, Enter/Send to submit…",
     termSend: "send",
     termGone: (err) => `✗ ${err}`,
@@ -571,6 +616,25 @@ export const STRINGS: Record<Lang, Strings> = {
     handoverMsgHint: "the wrap-up message the handover button sends, in the currently selected language — copy it and paste it by hand without opening a separate CLI",
     protectedBadge: "caution",
     protectedHint: "keeps the guard alive — be careful with bulk selection/actions on this row",
+    hostBadgeHint: (host) => `running on host "${host}" (not local)`,
+    hostsUnreachableMsg: (names) => `⚠ ${names.length} host(s) unreachable: ${names.join(", ")}`,
+    hostsTitle: "Remote hosts",
+    hostsDesc:
+      "Connect another machine's claudeops panel here — that machine's sessions get added to the lists above with a host badge.",
+    hostNameLabel: "name",
+    hostBaseUrlLabel: "tunnel URL",
+    hostTokenLabel: "token",
+    hostAddBtn: "add host",
+    hostAdding: "adding…",
+    hostRemoveBtn: "remove",
+    hostRemoveConfirm: (name) =>
+      `Remove host "${name}"? (sessions on that host aren't affected, only this panel's connection to it)`,
+    hostNone: "no remote hosts registered",
+    hostConnected: "connected",
+    hostUnreachable: "unreachable",
+    hostLocalLabel: "this machine (local)",
+    tunnelInfoLabel: "this machine's tunnel",
+    tunnelNoneMsg: "no active tunnel (start with py/cops service install or web --tunnel)",
     settingsDesc: "These settings are stored server-side (~/.claude/claudeops/settings.json) — the same on every device/browser you sign in from, phone included. Each choice saves instantly.",
     settingsAuto: "(auto)",
     settingsAutoModel: (model) => `(auto: ${model})`,

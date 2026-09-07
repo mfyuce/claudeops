@@ -15,6 +15,7 @@ import { apiTermOpenWindow } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
+import { LOCAL_HOST, rowKey } from "../../state/hosts";
 import type { SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
@@ -33,7 +34,7 @@ interface SessionRowProps {
   onToggleOptions: () => void;
   isAdoptOpen: boolean;
   onToggleAdopt: () => void;
-  onToggleTerminal: (name: string) => void;
+  onToggleTerminal: (host: string, name: string) => void;
   onSwitchTab: (tab: TabKey) => void;
 }
 
@@ -51,12 +52,16 @@ export function SessionRow({
   const { data, refresh } = useStatusContext();
   const [openingWindow, setOpeningWindow] = useState(false);
 
-  const windowless = session.tmux && !!data?.diag.windowless?.includes(session.name);
+  // `diag.windowless` is inherently LOCAL-only (the aggregator's own
+  // gnome-terminal-window bookkeeping) — a remote session's host may well
+  // have its own windowless sessions, but this panel has no visibility into
+  // that host's diag state, so never show the badge for a non-local row.
+  const windowless = session.host === LOCAL_HOST && session.tmux && !!data?.diag.windowless?.includes(session.name);
 
   async function handleOpenWindow() {
     setOpeningWindow(true);
     try {
-      const res = await apiTermOpenWindow({ name: session.name, lang });
+      const res = await apiTermOpenWindow({ name: session.name, host: session.host, lang });
       if (!res.ok) window.alert(`${session.name}: ${res.error}`);
     } catch (e) {
       window.alert(describeApiError(e, t));
@@ -72,12 +77,17 @@ export function SessionRow({
         <td className="selcell">
           <input
             type="checkbox"
-            checked={selection.selected.has(session.name)}
-            onChange={(e) => selection.toggle(session.name, e.target.checked)}
+            checked={selection.selected.has(rowKey(session))}
+            onChange={(e) => selection.toggle(rowKey(session), e.target.checked)}
           />
         </td>
         <td>
           {session.name}
+          {session.host !== LOCAL_HOST && (
+            <span className="cli-badge" title={t.hostBadgeHint(session.host)}>
+              {session.host}
+            </span>
+          )}
           {isProtectedName(session.name) && (
             <span className="unreg-badge" title={t.protectedHint}>
               {t.protectedBadge}
@@ -119,7 +129,13 @@ export function SessionRow({
               </button>
             )}
             {session.tmux && (
-              <button type="button" className="start" onClick={() => onToggleTerminal(session.name)}>
+              <button
+                type="button"
+                className="start"
+                disabled={session.host !== LOCAL_HOST}
+                title={session.host !== LOCAL_HOST ? t.remoteTerminalHint : undefined}
+                onClick={() => onToggleTerminal(session.host, session.name)}
+              >
                 {t.terminalBtn}
               </button>
             )}
