@@ -31,6 +31,11 @@ export function RegisterForm() {
   const [cli, setCli] = useState(DEFAULT_CLI);
   const [model, setModel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Success was previously silent (form just stayed as-is, refresh() ran in
+  // the background) — a live user hit this exact confusion (2026-09-07,
+  // registered "shell" on a remote host successfully but had no way to tell
+  // apart from a failure, since neither showed anything). Now explicit.
+  const [message, setMessage] = useState("");
 
   const cliList = cliListFor(data, host);
   const cliModels = cliOptionsFor(data, host, cli).models;
@@ -52,24 +57,29 @@ export function RegisterForm() {
 
   async function handleSave() {
     setBusy(true);
+    setMessage("");
     try {
+      const savedName = name.trim();
       const res = await apiRegister({
-        name: name.trim(),
+        name: savedName,
         cwd: cwd.trim(),
         host,
         model: effectiveModel,
         cli,
         lang,
       });
-      if (!res.ok) window.alert(`${name}: ${res.error}`);
+      if (!res.ok) {
+        window.alert(`${name}: ${res.error}`);
+      } else {
+        setMessage(t.registerSuccess(savedName));
+        setName("");
+        setCwd("");
+      }
     } catch (e) {
       window.alert(describeApiError(e, t));
     } finally {
       setBusy(false);
     }
-    // Original: doesn't clear the name/cwd inputs after a successful
-    // save, just re-enables the button and refresh()es — matched here by
-    // simply not resetting `name`/`cwd` state.
     refresh();
   }
 
@@ -129,6 +139,7 @@ export function RegisterForm() {
       <button type="button" className="go" disabled={busy} onClick={() => void handleSave()}>
         {busy ? t.registerSaving : t.registerSave}
       </button>
+      {message && <span className="opts-hint">{message}</span>}
     </div>
   );
 }

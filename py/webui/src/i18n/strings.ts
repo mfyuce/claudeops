@@ -158,6 +158,7 @@ export interface Strings {
   registerNameLabel: string;
   registerCwdLabel: string;
   registerSave: string;
+  registerSuccess: (name: string) => string;
   registerSaving: string;
   reactivateBtn: string;
   modeResume: string;
@@ -375,6 +376,7 @@ export const STRINGS: Record<Lang, Strings> = {
     registerNameLabel: "isim (küçük harf, rakam, _)",
     registerCwdLabel: "klasör (tam yol)",
     registerSave: "kaydet",
+    registerSuccess: (name) => `✓ "${name}" kaydedildi — Kayıtlı listesinde "Başlat"a basın`,
     registerSaving: "kaydediliyor…",
     reactivateBtn: "tekrar işe al + başlat",
     modeResume: "devam ettir",
@@ -593,6 +595,7 @@ export const STRINGS: Record<Lang, Strings> = {
     registerNameLabel: "name (lowercase, digits, _)",
     registerCwdLabel: "folder (full path)",
     registerSave: "save",
+    registerSuccess: (name) => `✓ "${name}" registered — click "Start" on it in the Registered list`,
     registerSaving: "saving…",
     reactivateBtn: "reactivate + start",
     modeResume: "resume",
