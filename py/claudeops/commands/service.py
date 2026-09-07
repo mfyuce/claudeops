@@ -228,9 +228,21 @@ def run_install(args) -> int:
         print(f"⚠ enable-linger başarısız (sudo/polkit gerekebilir): {r.stderr.strip()}", file=sys.stderr)
         print("  linger olmadan da çalışır AMA sadece siz login olduğunuzda; logout'ta durur.", file=sys.stderr)
 
-    r = _sh("systemctl", "--user", "enable", "--now", *UNIT_NAMES)
+    r = _sh("systemctl", "--user", "enable", *UNIT_NAMES)
     if r.returncode != 0:
-        print(f"✗ enable --now: {r.stderr.strip()}", file=sys.stderr)
+        print(f"✗ enable: {r.stderr.strip()}", file=sys.stderr)
+        return 1
+
+    # `enable --now` KULLANMA — unit ZATEN aktifse (ör. bir bayrak/env değişikliği
+    # için `install`'ı tekrar çalıştırma senaryosu) "start" no-op'tur, unit dosyasındaki
+    # DEĞİŞİKLİK (CLAUDEOPS_TUNNEL_PROTOCOL gibi) systemctl restart edilene kadar hiç
+    # uygulanmaz — canlı bulundu (2026-09-07, yuhem: --cloudflared-protocol eklendi,
+    # daemon-reload oldu ama tünel restart olmadığı için eski (QUIC ile başarısız)
+    # cloudflared süreci sessizce çalışmaya devam etti). `restart` fresh-install'da da
+    # güvenli (unit henüz çalışmıyorsa start ile aynı davranır).
+    r = _sh("systemctl", "--user", "restart", *UNIT_NAMES)
+    if r.returncode != 0:
+        print(f"✗ restart: {r.stderr.strip()}", file=sys.stderr)
         print("  İpucu: port 8765 zaten elle çalışan bir `claudeops web` tarafından kullanılıyor olabilir "
               "— önce onu durdurun (Ctrl-C / kill), sonra tekrar deneyin.", file=sys.stderr)
         return 1
