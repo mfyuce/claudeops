@@ -25,6 +25,14 @@ NTFY_TOPIC_FILE="${CLAUDEOPS_NTFY_TOPIC_FILE:-$STATE_DIR/ntfy_topic.txt}"
 # Bildirim metnine eklenen etiket — birden fazla instance aynı ntfy hesabına
 # push atarsa hangi deploy'a ait olduğu telefonda anında görünsün.
 TUNNEL_LABEL="${CLAUDEOPS_TUNNEL_LABEL:-}"
+# Bazı ağlar (ör. kısıtlı/kurumsal firewall'lar) cloudflared'ın varsayılan QUIC
+# (UDP) taşımasını engelliyor — "failed to dial to edge with quic: timeout"
+# döngüsüyle tünel HİÇ kurulamıyor (canlı bulundu, 2026-09-07, yuhem). Boşsa
+# cloudflared'ın kendi varsayılanı (quic dener, gerekirse düşer) DEĞİŞMEZ;
+# "http2" verilirse TCP/443 üzerinden zorlanır, kısıtlı ağlarda çalışan çözüm.
+TUNNEL_PROTOCOL="${CLAUDEOPS_TUNNEL_PROTOCOL:-}"
+PROTOCOL_ARGS=()
+[ -n "$TUNNEL_PROTOCOL" ] && PROTOCOL_ARGS=(--protocol "$TUNNEL_PROTOCOL")
 CLOUDFLARED="$HOME/.local/bin/cloudflared"
 command -v "$CLOUDFLARED" >/dev/null 2>&1 || CLOUDFLARED="cloudflared"
 mkdir -p "$STATE_DIR"
@@ -57,7 +65,7 @@ if "$CLOUDFLARED" tunnel list 2>/dev/null | awk '{print $2}' | grep -qx "$TUNNEL
     if [ -f "$STATE_DIR/tunnel_fixed_hostname.txt" ]; then
         _write_url_and_notify "$(cat "$STATE_DIR/tunnel_fixed_hostname.txt")"
     fi
-    exec "$CLOUDFLARED" tunnel run "$TUNNEL_NAME"
+    exec "$CLOUDFLARED" tunnel "${PROTOCOL_ARGS[@]}" run "$TUNNEL_NAME"
 fi
 
 echo "[run-tunnel] named tunnel yok — quick-tunnel (rastgele URL) başlatılıyor"
@@ -66,7 +74,7 @@ echo "[run-tunnel] named tunnel yok — quick-tunnel (rastgele URL) başlatılı
 # sayısını kaydedip SADECE ondan SONRA eklenen satırlarda arıyoruz, yoksa `tail -1` stale
 # URL'i "yeni" sanıp URL_FILE'a yazabilirdi (canlı doğrulandı, ilk sürümde tam bunu yaptı).
 STARTLINE=$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)
-"$CLOUDFLARED" tunnel --url "http://127.0.0.1:${PORT}" &
+"$CLOUDFLARED" tunnel "${PROTOCOL_ARGS[@]}" --url "http://127.0.0.1:${PORT}" &
 CLOUDFLARED_PID=$!
 trap 'kill "$CLOUDFLARED_PID" 2>/dev/null' TERM INT
 

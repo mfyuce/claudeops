@@ -112,6 +112,7 @@ Wants=claudeops-web.service
 [Service]
 Environment=CLAUDEOPS_TUNNEL_NAME={tunnel_name}
 Environment=CLAUDEOPS_TUNNEL_LABEL={label}
+Environment=CLAUDEOPS_TUNNEL_PROTOCOL={protocol}
 ExecStart={run_tunnel}
 StandardOutput=append:{tunnel_log}
 StandardError=append:{tunnel_log}
@@ -159,6 +160,12 @@ def register(sub):
                             help="ntfy bildirimlerinde bu tünelin hangi makineye ait olduğunu "
                                  "ayırt etmek için kısa bir etiket (ör. 'main', 'yuhem') — boş "
                                  "bırakılırsa mevcut davranış (etiketsiz) değişmez")
+    p_install.add_argument("--cloudflared-protocol", default="", metavar="PROTO", dest="cloudflared_protocol",
+                            help="cloudflared'a --protocol olarak geçilir (ör. 'http2') — bazı "
+                                 "kısıtlı/kurumsal ağlar varsayılan QUIC (UDP) taşımasını engelliyor "
+                                 "('failed to dial to edge with quic: timeout' döngüsü, canlı "
+                                 "bulundu 2026-09-07); boş bırakılırsa cloudflared'ın kendi "
+                                 "varsayılanı (değişmez)")
     p_install.set_defaults(func=run_install)
 
     p_status = s.add_parser("status", help="servislerin durumu + güncel tunnel URL")
@@ -201,7 +208,8 @@ def run_install(args) -> int:
     print(f"✓ {WEB_UNIT}")
 
     TUNNEL_UNIT.write_text(TUNNEL_UNIT_TEMPLATE.format(
-        tunnel_name=args.tunnel_name, label=args.label, run_tunnel=RUN_TUNNEL_DEST, tunnel_log=TUNNEL_LOG,
+        tunnel_name=args.tunnel_name, label=args.label, protocol=args.cloudflared_protocol,
+        run_tunnel=RUN_TUNNEL_DEST, tunnel_log=TUNNEL_LOG,
     ))
     print(f"✓ {TUNNEL_UNIT}")
 
