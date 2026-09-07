@@ -10,8 +10,11 @@
  * `has_token`, which this registry-management UI needs (`HostRecord`, from
  * a separate, only-fetched-when-this-panel-is-open endpoint).
  *
- * No inline edit — re-add (same name) to change a host's URL/token, mirrors
- * `save_host()`'s upsert semantics (blank token on re-add keeps the old one).
+ * Editing a host reuses the same add-form + `save_host()`'s upsert semantics
+ * (same name replaces base_url; blank token keeps the existing one) — clicking
+ * "düzenle" just pre-fills name/base_url (never the token, it's never sent
+ * back from the server) and scrolls the form into edit mode, it isn't a
+ * separate code path.
  */
 
 import { useEffect, useState } from "react";
@@ -29,6 +32,10 @@ export function HostsSection() {
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
+  // Editing isn't a separate mode/flag — it's just "the name field happens to
+  // match an already-registered host," same as typing an existing name by
+  // hand would do. Derived, not stored, so it can never drift out of sync.
+  const editingExisting = hosts.some((h) => h.name === name.trim());
 
   async function load() {
     try {
@@ -62,6 +69,18 @@ export function HostsSection() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleEdit(h: HostRecord) {
+    setName(h.name);
+    setBaseUrl(h.base_url);
+    setToken("");
+  }
+
+  function handleCancelEdit() {
+    setName("");
+    setBaseUrl("");
+    setToken("");
   }
 
   async function handleRemove(hostName: string) {
@@ -108,9 +127,15 @@ export function HostsSection() {
         {t.hostTokenLabel}
         <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} />
       </label>
+      {editingExisting && <span className="opts-hint">{t.hostTokenKeepHint}</span>}
       <button type="button" className="go" disabled={busy} onClick={() => void handleAdd()}>
-        {busy ? t.hostAdding : t.hostAddBtn}
+        {busy ? (editingExisting ? t.hostSaving : t.hostAdding) : editingExisting ? t.hostSaveBtn : t.hostAddBtn}
       </button>
+      {editingExisting && (
+        <button type="button" onClick={handleCancelEdit}>
+          {t.hostCancelEdit}
+        </button>
+      )}
       <div style={{ flexBasis: "100%", display: "flex", flexDirection: "column", gap: ".35rem", marginTop: ".3rem" }}>
         {hosts.length === 0 ? (
           <span className="opts-hint">{t.hostNone}</span>
@@ -122,6 +147,9 @@ export function HostsSection() {
               <span style={{ color: h.ok ? "var(--green)" : "var(--red)" }} title={h.error ?? undefined}>
                 {h.ok ? t.hostConnected : t.hostUnreachable}
               </span>
+              <button type="button" onClick={() => handleEdit(h)}>
+                {t.hostEditBtn}
+              </button>
               <button type="button" className="closebtn" onClick={() => void handleRemove(h.name)}>
                 {t.hostRemoveBtn}
               </button>

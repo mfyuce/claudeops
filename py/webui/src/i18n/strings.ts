@@ -221,6 +221,11 @@ export interface Strings {
   hostTokenLabel: string;
   hostAddBtn: string;
   hostAdding: string;
+  hostSaveBtn: string;
+  hostSaving: string;
+  hostEditBtn: string;
+  hostCancelEdit: string;
+  hostTokenKeepHint: string;
   hostRemoveBtn: string;
   hostRemoveConfirm: (name: string) => string;
   hostNone: string;
@@ -424,6 +429,11 @@ export const STRINGS: Record<Lang, Strings> = {
     hostTokenLabel: "token",
     hostAddBtn: "host ekle",
     hostAdding: "ekleniyor…",
+    hostSaveBtn: "kaydet",
+    hostSaving: "kaydediliyor…",
+    hostEditBtn: "düzenle",
+    hostCancelEdit: "vazgeç",
+    hostTokenKeepHint: "boş bırakırsan mevcut token korunur",
     hostRemoveBtn: "kaldır",
     hostRemoveConfirm: (name) =>
       `"${name}" host'unu kaldır? (o host'taki session'lar etkilenmez, sadece bu panelden bağlantısı kesilir)`,
@@ -626,6 +636,11 @@ export const STRINGS: Record<Lang, Strings> = {
     hostTokenLabel: "token",
     hostAddBtn: "add host",
     hostAdding: "adding…",
+    hostSaveBtn: "save",
+    hostSaving: "saving…",
+    hostEditBtn: "edit",
+    hostCancelEdit: "cancel",
+    hostTokenKeepHint: "leave blank to keep the current token",
     hostRemoveBtn: "remove",
     hostRemoveConfirm: (name) =>
       `Remove host "${name}"? (sessions on that host aren't affected, only this panel's connection to it)`,
