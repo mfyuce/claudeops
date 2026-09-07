@@ -85,6 +85,9 @@ RUN_TUNNEL_DEST = Path(CLAUDEOPS_DIR) / "run-tunnel.sh"
 TUNNEL_LOG = Path(CLAUDEOPS_DIR) / "tunnel.log"
 TUNNEL_URL_FILE = Path(CLAUDEOPS_DIR) / "tunnel_url.txt"
 NTFY_TOPIC_FILE = Path(CLAUDEOPS_DIR) / "ntfy_topic.txt"
+# Sır DEĞİL (kısa bir makine etiketi, ör. "main"/"yuhem") — hosts.json'ın aksine
+# 0600 gerekmiyor. web.py bu YOLU (CLAUDEOPS_DIR/"tunnel_label.txt") aynen bekliyor.
+TUNNEL_LABEL_FILE = Path(CLAUDEOPS_DIR) / "tunnel_label.txt"
 UNIT_NAMES = ["claudeops-web.service", "claudeops-tunnel.service"]
 
 WEB_UNIT_TEMPLATE = """[Unit]
@@ -108,6 +111,7 @@ Wants=claudeops-web.service
 
 [Service]
 Environment=CLAUDEOPS_TUNNEL_NAME={tunnel_name}
+Environment=CLAUDEOPS_TUNNEL_LABEL={label}
 ExecStart={run_tunnel}
 StandardOutput=append:{tunnel_log}
 StandardError=append:{tunnel_log}
@@ -151,6 +155,10 @@ def register(sub):
     p_install.add_argument("--tunnel-name", default="claudeops", metavar="NAME",
                             help="cloudflared NAMED tunnel adı (varsayılan: claudeops) — "
                                  "kurulu değilse otomatik quick-tunnel'a düşer")
+    p_install.add_argument("--label", default="", metavar="LABEL",
+                            help="ntfy bildirimlerinde bu tünelin hangi makineye ait olduğunu "
+                                 "ayırt etmek için kısa bir etiket (ör. 'main', 'yuhem') — boş "
+                                 "bırakılırsa mevcut davranış (etiketsiz) değişmez")
     p_install.set_defaults(func=run_install)
 
     p_status = s.add_parser("status", help="servislerin durumu + güncel tunnel URL")
@@ -193,9 +201,13 @@ def run_install(args) -> int:
     print(f"✓ {WEB_UNIT}")
 
     TUNNEL_UNIT.write_text(TUNNEL_UNIT_TEMPLATE.format(
-        tunnel_name=args.tunnel_name, run_tunnel=RUN_TUNNEL_DEST, tunnel_log=TUNNEL_LOG,
+        tunnel_name=args.tunnel_name, label=args.label, run_tunnel=RUN_TUNNEL_DEST, tunnel_log=TUNNEL_LOG,
     ))
     print(f"✓ {TUNNEL_UNIT}")
+
+    if args.label:
+        TUNNEL_LABEL_FILE.write_text(args.label)
+        print(f"✓ {TUNNEL_LABEL_FILE} (\"{args.label}\")")
 
     r = _sh("systemctl", "--user", "daemon-reload")
     if r.returncode != 0:
@@ -248,6 +260,10 @@ def run_status(args) -> int:
         print(f"  bildirim: AÇIK (ntfy.sh/{NTFY_TOPIC_FILE.read_text().strip()})")
     else:
         print("  bildirim: kapalı (aç: py/cops service notify)")
+
+    if TUNNEL_LABEL_FILE.exists() and TUNNEL_LABEL_FILE.read_text().strip():
+        print(f"  etiket: {TUNNEL_LABEL_FILE.read_text().strip()}")
+
     return 0 if ok else 1
 
 
