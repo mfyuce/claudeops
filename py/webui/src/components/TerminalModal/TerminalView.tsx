@@ -47,6 +47,15 @@ import { UrlBanner } from "./UrlBanner";
 const CYCLABLE_MODES: TermSetModePayload["mode"][] = ["default", "acceptEdits", "plan", "auto"];
 
 const POLL_INTERVAL_MS = 200;
+// A remote host's connection (VS Code devtunnel, Cloudflare, etc.) can have
+// brief individual-request blips even while the underlying tunnel is fine
+// overall — at a 200ms poll interval, treating every single failed tick as
+// "unreachable" flashes the error over good content almost as fast as it
+// clears (live report, 2026-09-07: "content comes up then quickly reverts").
+// Local sessions go through no extra network hop and essentially never see
+// isolated failures, so this costs them nothing — it only changes how many
+// blips in a row it takes before a REAL outage is reported.
+const CONSECUTIVE_FAILURES_BEFORE_ERROR = 5;
 const INITIAL_COLS = 160;
 const INITIAL_ROWS = 45;
 
@@ -181,6 +190,7 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
   // `hidden`/`xtermState`, matching the original's termPollTimer exactly.
   useEffect(() => {
     let cancelled = false;
+    let consecutiveFailures = 0;
 
     async function poll() {
       let result;
@@ -195,6 +205,18 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
         return;
       }
       if (cancelled) return;
+
+      if (result.ok) {
+        consecutiveFailures = 0;
+      } else {
+        consecutiveFailures += 1;
+        if (consecutiveFailures < CONSECUTIVE_FAILURES_BEFORE_ERROR) {
+          // Isolated blip — keep showing whatever's already on screen rather
+          // than flashing an error that (per the poll cadence) may well
+          // clear itself on the very next tick.
+          return;
+        }
+      }
 
       // Original: renderTermUrls(name, d.text) runs unconditionally
       // whenever d.ok, BEFORE the atBottom/xterm-instance branching below

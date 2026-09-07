@@ -48,8 +48,17 @@ HOST_ROUTED_PATHS = {
 GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/chat", "/api/files/list", "/api/files/read"}
 FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
 
-# Status polling sık (3sn'de bir) ve HAFİF olmalı — kısa timeout.
+# Status polling sık (3sn'de bir) ve HAFİF olmalı — kısa timeout, poller
+# thread'inin bir sonraki host'a hızlı geçebilmesi için de önemli.
 STATUS_TIMEOUT_SECONDS = 4.0
+# Terminal/Dosya GET'leri (yukarıdaki proxy_get/proxy_get_raw) — frontend'in
+# kendisi zaten 200ms'de bir dener, bu yüzden burada 4sn'lik dar pencereden
+# çok daha CÖMERT olmak ucuz: bir devtunnel/VPN'in tipik geçici gecikmesini
+# gereksiz "unreachable"a çevirmez, frontend'in kendi ardışık-hata sayacıyla
+# (CONSECUTIVE_FAILURES_BEFORE_ERROR, TerminalView.tsx) birlikte çalışır —
+# canlı rapor 2026-09-07: yuhem'in devtunnel'ı isolated blip'ler yaşıyor,
+# 4sn bunları gereksiz yere "okunamadı" hatasına çeviriyordu.
+TERM_READ_TIMEOUT_SECONDS = 12.0
 # web.py'nin COMPACT_TIMEOUT_SECONDS=180.0 — proxy edilen bir compact isteği
 # uzak tarafta TAM olarak o kadar sürebilir (busy bir session'da kuyruğa
 # girip mevcut turn bitene kadar bekler); güvenli marjla üstünde.
@@ -258,7 +267,7 @@ def proxy_get(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Dict[st
     q = {k: v for k, v in query.items() if k != "host"}
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
-    status, parsed, err = _http_json("GET", url, None, STATUS_TIMEOUT_SECONDS)
+    status, parsed, err = _http_json("GET", url, None, TERM_READ_TIMEOUT_SECONDS)
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status
