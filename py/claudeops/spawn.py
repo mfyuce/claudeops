@@ -12,6 +12,7 @@ TAMAMEN `providers/` paketinde — burada `cli` string'ine göre dallanma YOK, s
 from __future__ import annotations
 import os
 import shlex
+import shutil
 import subprocess
 import threading
 import time
@@ -111,6 +112,22 @@ def spawn_session(
     env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "GEMINI", "ANTIGRAVITY"))}
     env["DISPLAY"] = display
 
+    # gnome-terminal binary'si HİÇ YOKSA (masaüstü paketleri kurulu olmayan headless
+    # bir sunucu — ör. uzak Ubuntu host) _launch_gnome_terminal'i (ve onun ardından
+    # FALLBACK_RETRY_COUNT kez tekrar denenecek _fallback_watchdog'u) hiç tetikleme:
+    # binary yoksa hiçbir zaman var olmayacak, 3x deneme sadece ~12s'i boşa harcar.
+    # tmux varsa doğrudan headless spawn'a düş; tmux da yoksa hiçbir şey açılmaz ama
+    # bu fonksiyon yine de normal döner — gerçek başarı/başarısızlık her zaman
+    # olduğu gibi web.py._start()'ın _wait_stable() ile yaptığı proc-varlığı
+    # kontrolünden belirlenir, bu fonksiyonun dönüş değeri hiçbir zaman "kesin
+    # başarılı" garantisi vermedi.
+    if shutil.which("gnome-terminal") is None:
+        diag_log("spawn_no_gnome_terminal", name=name, cwd=cwd, tmux=tmux_available())
+        if tmux_available():
+            ok = tmux_spawn_direct(name, cwd, inner, env)
+            diag_log("spawn_direct_headless", name=name, cwd=cwd, ok=ok)
+        return kind
+
     # tmux-backed going forward (spawn is the ONLY launch path, so the tmux server —
     # whenever/wherever first bootstrapped — always inherits this already-scrubbed
     # env for its whole lifetime; no separate scrubbing needed). If tmux isn't
@@ -121,7 +138,8 @@ def spawn_session(
     else:
         window_cmd = f"{inner}; exec bash"
 
-    _launch_gnome_terminal(name, cwd, window_cmd, env)
+    if not _launch_gnome_terminal(name, cwd, window_cmd, env):
+        diag_log("spawn_launch_failed", name=name, cwd=cwd)
 
     if tmux_available():
         # spawn_session() kendisi hâlâ ANINDA döner (guard_lock hold süresini UZATMAZ,
@@ -140,19 +158,29 @@ def spawn_session(
     return kind
 
 
-def _launch_gnome_terminal(name: str, cwd: str, window_cmd: str, env: dict) -> None:
+def _launch_gnome_terminal(name: str, cwd: str, window_cmd: str, env: dict) -> bool:
     """Fire-and-forget bir `gnome-terminal --window` çağrısı — spawn_session'ın ilk
     denemesi VE `_fallback_watchdog`'un retry'ları AYNI fonksiyonu kullanır (tmux
     tarafındaki `-A` idempotency'si sayesinde retry güvenli: session zaten varsa
-    yeni bir CLI proc'u başlatmaz, sadece yeni bir pencere/client bağlar)."""
-    proc = subprocess.Popen(
-        ["gnome-terminal", "--window", f"--title={name}",
-         f"--working-directory={cwd}",
-         "--", "bash", "-c", window_cmd],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    yeni bir CLI proc'u başlatmaz, sadece yeni bir pencere/client bağlar).
+
+    `Popen` başarısız olursa (FileNotFoundError/OSError — binary silinmiş, izin
+    sorunu vb.; normalde spawn_session zaten binary'nin varlığını ÖNCEDEN kontrol
+    ediyor, bu sadece TOCTOU/nadir edge-case içindir) exception YUKARI SIZDIRILMAZ —
+    çağıran (spawn_session/_fallback_watchdog) her durumda gerçek sonucu
+    `tmux_has_session()` pollingiyle belirliyor, burada sadece False dönüp devam
+    etmesi yeterli."""
+    try:
+        proc = subprocess.Popen(
+            ["gnome-terminal", "--window", f"--title={name}",
+             f"--working-directory={cwd}",
+             "--", "bash", "-c", window_cmd],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return False
     # gnome-terminal client proc'u pencereyi server'a bildirip hemen çıkar (fire-and-forget).
     # .wait() hiç çağrılmazsa zombie olarak kalır — uzun yaşayan web server'da (py/cops web)
     # her spawn'da bir tane birikir; 2026-08-25'te saatlerce ayakta kalmış bir web server'da
@@ -161,6 +189,7 @@ def _launch_gnome_terminal(name: str, cwd: str, window_cmd: str, env: dict) -> N
     # layout.py'nin subprocess.run(wmctrl/xdotool) çağrılarının exit code/output'unu bozar;
     # bunun yerine sadece BU child'ı arka planda reap et.
     threading.Thread(target=proc.wait, daemon=True).start()
+    return True
 
 
 def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: str) -> None:
@@ -180,7 +209,8 @@ def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: s
             time.sleep(0.5)
         if attempt < FALLBACK_RETRY_COUNT:
             diag_log("spawn_retry", name=name, cwd=cwd, attempt=attempt + 1)
-            _launch_gnome_terminal(name, cwd, window_cmd, env)
+            if not _launch_gnome_terminal(name, cwd, window_cmd, env):
+                diag_log("spawn_retry_launch_failed", name=name, cwd=cwd, attempt=attempt + 1)
     if tmux_has_session(name):
         return
     ok = tmux_spawn_direct(name, cwd, inner, env)
@@ -200,5 +230,4 @@ def open_window(name: str, cwd: str, display: Optional[str] = None) -> bool:
     env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "GEMINI", "ANTIGRAVITY"))}
     env["DISPLAY"] = display
     window_cmd = f"{tmux_attach_shell_fragment(name)}; exec bash"
-    _launch_gnome_terminal(name, cwd, window_cmd, env)
-    return True
+    return _launch_gnome_terminal(name, cwd, window_cmd, env)
