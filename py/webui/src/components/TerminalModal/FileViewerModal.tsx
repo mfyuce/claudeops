@@ -40,6 +40,7 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
 
 interface FileViewerModalProps {
   name: string;
+  host: string;
   path: string;
   onClose: () => void;
 }
@@ -50,7 +51,7 @@ type ViewState =
   | { kind: "text"; text: string }
   | { kind: "html"; html: string };
 
-export function FileViewerModal({ name, path, onClose }: FileViewerModalProps) {
+export function FileViewerModal({ name, host, path, onClose }: FileViewerModalProps) {
   const { t, lang } = useLang();
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const filename = path.split("/").pop() ?? path;
@@ -60,7 +61,7 @@ export function FileViewerModal({ name, path, onClose }: FileViewerModalProps) {
     setState({ kind: "loading" });
     void (async () => {
       try {
-        const d = await getFilesRead(name, lang, path);
+        const d = await getFilesRead(name, lang, path, host);
         if (cancelled) return;
         if (!d.ok) {
           setState({ kind: "error", message: d.error });
@@ -80,7 +81,7 @@ export function FileViewerModal({ name, path, onClose }: FileViewerModalProps) {
     return () => {
       cancelled = true;
     };
-  }, [name, lang, path, filename]);
+  }, [name, host, lang, path, filename]);
 
   const overlay = (
     <div

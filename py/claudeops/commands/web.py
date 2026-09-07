@@ -1616,11 +1616,29 @@ class _Handler(BaseHTTPRequestHandler):
         name = (qs.get("name") or [""])[0].strip()
         lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
         fpath = (qs.get("path") or [""])[0].strip()
+        host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
         if not name:
             self._json(_err(lang, "name_required"), status=400)
             return
         if not fpath:
             self._json(_err(lang, "path_required"), status=400)
+            return
+        if host != LOCAL_HOST_NAME:
+            body, status, headers, err_msg = web_hosts.proxy_get_raw(
+                web_hosts.FILE_DOWNLOAD_PATH, host, {"name": name, "lang": lang, "path": fpath}
+            )
+            if err_msg is not None:
+                self._json({"ok": False, "error": err_msg}, status=200)
+                return
+            try:
+                self.send_response(status)
+                for hk, hv in (headers or {}).items():
+                    self.send_header(hk, hv)
+                self.send_header("Content-Length", str(len(body or b"")))
+                self.end_headers()
+                self.wfile.write(body or b"")
+            except (BrokenPipeError, ConnectionResetError, OSError) as e:
+                diag_log("response_write_failed", path="/api/files/download", error=str(e))
             return
         s, err = _files_resolve(name, lang)
         if err:
@@ -1715,8 +1733,13 @@ class _Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
+                return
+            if host != LOCAL_HOST_NAME:
+                result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang})
+                self._json(result, status=status)
                 return
             self._json(_term_output(name, lang=lang))
         elif path == "/api/term/chat":
@@ -1724,8 +1747,13 @@ class _Handler(BaseHTTPRequestHandler):
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
             mode = "full" if (qs.get("mode") or [""])[0] == "full" else "last"
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
+                return
+            if host != LOCAL_HOST_NAME:
+                result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang, "mode": mode})
+                self._json(result, status=status)
                 return
             self._json(_term_chat(name, lang=lang, mode=mode))
         elif path == "/api/files/list":
@@ -1733,8 +1761,16 @@ class _Handler(BaseHTTPRequestHandler):
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
             fpath = (qs.get("path") or [""])[0].strip() or None
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
+                return
+            if host != LOCAL_HOST_NAME:
+                q = {"name": name, "lang": lang}
+                if fpath:
+                    q["path"] = fpath
+                result, status = web_hosts.proxy_get(path, host, q)
+                self._json(result, status=status)
                 return
             self._json(_files_list(name, fpath, lang=lang))
         elif path == "/api/files/read":
@@ -1742,11 +1778,16 @@ class _Handler(BaseHTTPRequestHandler):
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
             fpath = (qs.get("path") or [""])[0].strip()
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
             if not fpath:
                 self._json(_err(lang, "path_required"), status=400)
+                return
+            if host != LOCAL_HOST_NAME:
+                result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang, "path": fpath})
+                self._json(result, status=status)
                 return
             self._json(_files_read(name, fpath, lang=lang))
         elif path == "/api/files/download":

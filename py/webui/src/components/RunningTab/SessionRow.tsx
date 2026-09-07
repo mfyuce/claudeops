@@ -129,13 +129,7 @@ export function SessionRow({
               </button>
             )}
             {session.tmux && (
-              <button
-                type="button"
-                className="start"
-                disabled={session.host !== LOCAL_HOST}
-                title={session.host !== LOCAL_HOST ? t.remoteTerminalHint : undefined}
-                onClick={() => onToggleTerminal(session.host, session.name)}
-              >
+              <button type="button" className="start" onClick={() => onToggleTerminal(session.host, session.name)}>
                 {t.terminalBtn}
               </button>
             )}

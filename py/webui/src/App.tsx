@@ -167,7 +167,12 @@ function AppShell() {
         {data && activeTab === "settings" && <SettingsTab />}
       </div>
       {openTerminalFor && (
-        <TerminalModal key={rowKey(openTerminalFor)} name={openTerminalFor.name} onClose={() => setOpenTerminalFor(null)} />
+        <TerminalModal
+          key={rowKey(openTerminalFor)}
+          name={openTerminalFor.name}
+          host={openTerminalFor.host}
+          onClose={() => setOpenTerminalFor(null)}
+        />
       )}
     </div>
   );

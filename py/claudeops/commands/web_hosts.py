@@ -24,6 +24,7 @@ import json
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -39,6 +40,13 @@ HOST_ROUTED_PATHS = {
     "/api/handover", "/api/compact", "/api/adopt", "/api/new-chat", "/api/register",
     "/api/term/input", "/api/term/key", "/api/term/open-window",
 }
+
+# Terminal/Dosya GÖRÜNTÜLEME (GET, read-only) route'ları — POST'un aksiyon
+# proxy'sinden AYRI çünkü query-string tabanlar (JSON body yok) + biri
+# (files/download) JSON değil ham binary dönüyor. TODO.md'nin bilerek
+# ERTELEDİĞİ parça buydu (TOBEDECIDED #16 kapanışı) — artık uygulandı.
+GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/chat", "/api/files/list", "/api/files/read"}
+FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
 
 # Status polling sık (3sn'de bir) ve HAFİF olmalı — kısa timeout.
 STATUS_TIMEOUT_SECONDS = 4.0
@@ -218,3 +226,53 @@ def proxy_action(path: str, host_name: str, body: Dict[str, Any]) -> Tuple[Dict[
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status
+
+
+def _http_raw(url: str, timeout: float) -> Tuple[int, Optional[bytes], Optional[Dict[str, str]], Optional[str]]:
+    """`_http_json()`'ın binary-passthrough kardeşi — `/api/files/download`
+    proxy'si için JSON parse ETMEDEN ham body + seçili header'ları
+    (content-type, content-disposition) döner. Aynı 'hiçbir zaman raise
+    etmez' disiplini."""
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read()
+            headers = {k: v for k, v in resp.getheaders() if k.lower() in ("content-type", "content-disposition")}
+            return resp.status, body, headers, None
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, e.read(), None, None
+        except Exception:
+            return e.code, None, None, f"http {e.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        reason = e.reason if isinstance(e, urllib.error.URLError) else e
+        return 0, None, None, str(reason)
+
+
+def proxy_get(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Dict[str, Any], int]:
+    """4 JSON GET route (`GET_HOST_ROUTED_PATHS`) için — `proxy_action()`'ın
+    query-string kardeşi, aynı hata/status konvansiyonu."""
+    host = hosts_mod.get_host(host_name)
+    if host is None:
+        return {"ok": False, "error": f"unknown host: {host_name}"}, 200
+    q = {k: v for k, v in query.items() if k != "host"}
+    q["token"] = host["token"]
+    url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
+    status, parsed, err = _http_json("GET", url, None, STATUS_TIMEOUT_SECONDS)
+    if err is not None or parsed is None:
+        return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
+    return parsed, status
+
+
+def proxy_get_raw(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Optional[bytes], int, Optional[Dict[str, str]], Optional[str]]:
+    """`/api/files/download` için — `proxy_get()`'in binary kardeşi."""
+    host = hosts_mod.get_host(host_name)
+    if host is None:
+        return None, 200, None, f"unknown host: {host_name}"
+    q = {k: v for k, v in query.items() if k != "host"}
+    q["token"] = host["token"]
+    url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
+    status, body, headers, err = _http_raw(url, ACTION_TIMEOUT_SECONDS)
+    if err is not None:
+        return None, 200, None, f"{host_name} unreachable: {err}"
+    return body, status, headers, None

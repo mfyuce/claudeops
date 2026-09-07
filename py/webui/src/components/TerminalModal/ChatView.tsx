@@ -27,6 +27,7 @@ const CHAT_POLL_INTERVAL_MS = 2500;
 
 interface ChatViewProps {
   name: string;
+  host: string;
 }
 
 type ChatMode = "last" | "full";
@@ -45,7 +46,7 @@ const BOX_STYLE: CSSProperties = {
   boxSizing: "border-box",
 };
 
-export function ChatView({ name }: ChatViewProps) {
+export function ChatView({ name, host }: ChatViewProps) {
   const { t, lang } = useLang();
   const [mode, setMode] = useState<ChatMode>("last");
   const [state, setState] = useState<ChatState>({ kind: "loading" });
@@ -54,7 +55,7 @@ export function ChatView({ name }: ChatViewProps) {
     let cancelled = false;
     const poll = async () => {
       try {
-        const d = await getTermChat(name, lang, mode);
+        const d = await getTermChat(name, lang, mode, host);
         if (cancelled) return;
         if (!d.ok) setState({ kind: "error", message: d.error });
         else if (!d.supported) setState({ kind: "unsupported" });
@@ -79,7 +80,7 @@ export function ChatView({ name }: ChatViewProps) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [name, lang, mode]);
+  }, [name, host, lang, mode]);
 
   // Reset from the event that causes the mode change (not synchronously
   // inside the poll effect) — the effect above re-runs because `mode` is in

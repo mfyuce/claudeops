@@ -97,26 +97,42 @@ export const getDiagLog = (): Promise<DiagLogResult> => apiGet<DiagLogResult>("/
 
 export const getHosts = (): Promise<GetHostsResult> => apiGet<GetHostsResult>("/api/hosts");
 
-export const getTermOutput = (name: string, lang: Lang): Promise<TermOutputResult> =>
-  apiGet<TermOutputResult>(`/api/term/output?name=${encodeURIComponent(name)}&lang=${lang}`);
+/** `host` omitted (or `"local"`) leaves the URL byte-identical to before
+ * remote-terminal proxying existed — only appended when actually remote. */
+function hostQS(host?: string): string {
+  return host && host !== "local" ? `&host=${encodeURIComponent(host)}` : "";
+}
 
-export const getTermChat = (name: string, lang: Lang, mode: "last" | "full" = "last"): Promise<TermChatResult> =>
-  apiGet<TermChatResult>(`/api/term/chat?name=${encodeURIComponent(name)}&lang=${lang}&mode=${mode}`);
+export const getTermOutput = (name: string, lang: Lang, host?: string): Promise<TermOutputResult> =>
+  apiGet<TermOutputResult>(`/api/term/output?name=${encodeURIComponent(name)}&lang=${lang}${hostQS(host)}`);
 
-export const getFilesList = (name: string, lang: Lang, path?: string): Promise<FilesListResult> =>
+export const getTermChat = (
+  name: string,
+  lang: Lang,
+  mode: "last" | "full" = "last",
+  host?: string
+): Promise<TermChatResult> =>
+  apiGet<TermChatResult>(`/api/term/chat?name=${encodeURIComponent(name)}&lang=${lang}&mode=${mode}${hostQS(host)}`);
+
+export const getFilesList = (name: string, lang: Lang, path?: string, host?: string): Promise<FilesListResult> =>
   apiGet<FilesListResult>(
     `/api/files/list?name=${encodeURIComponent(name)}&lang=${lang}` +
-      (path ? `&path=${encodeURIComponent(path)}` : "")
+      (path ? `&path=${encodeURIComponent(path)}` : "") +
+      hostQS(host)
   );
 
 /** Not fetched via `apiGet`/JSON — a plain URL for an `<a href>` so the
  * browser's own download UI drives it (backend sends `Content-Disposition:
  * attachment`); no JS fetch+blob dance needed. */
-export const filesDownloadUrl = (name: string, lang: Lang, path: string): string =>
-  withToken(`/api/files/download?name=${encodeURIComponent(name)}&lang=${lang}&path=${encodeURIComponent(path)}`);
+export const filesDownloadUrl = (name: string, lang: Lang, path: string, host?: string): string =>
+  withToken(
+    `/api/files/download?name=${encodeURIComponent(name)}&lang=${lang}&path=${encodeURIComponent(path)}${hostQS(host)}`
+  );
 
-export const getFilesRead = (name: string, lang: Lang, path: string): Promise<FilesReadResult> =>
-  apiGet<FilesReadResult>(`/api/files/read?name=${encodeURIComponent(name)}&lang=${lang}&path=${encodeURIComponent(path)}`);
+export const getFilesRead = (name: string, lang: Lang, path: string, host?: string): Promise<FilesReadResult> =>
+  apiGet<FilesReadResult>(
+    `/api/files/read?name=${encodeURIComponent(name)}&lang=${lang}&path=${encodeURIComponent(path)}${hostQS(host)}`
+  );
 
 export const postFilesValidate = (name: string, lang: Lang, paths: string[]): Promise<FilesValidateResult> =>
   apiPost<FilesValidateResult>("/api/files/validate", { name, lang, paths });

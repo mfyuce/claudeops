@@ -22,6 +22,7 @@ import { isViewable } from "./fileViewerKind";
 
 interface FilesViewProps {
   name: string;
+  host: string;
   onView: (path: string) => void;
 }
 
@@ -58,7 +59,7 @@ const BOX_STYLE: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export function FilesView({ name, onView }: FilesViewProps) {
+export function FilesView({ name, host, onView }: FilesViewProps) {
   const { t, lang } = useLang();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [state, setState] = useState<FilesState>({ kind: "loading" });
@@ -68,7 +69,7 @@ export function FilesView({ name, onView }: FilesViewProps) {
     setState({ kind: "loading" });
     void (async () => {
       try {
-        const d = await getFilesList(name, lang, currentPath ?? undefined);
+        const d = await getFilesList(name, lang, currentPath ?? undefined, host);
         if (cancelled) return;
         if (!d.ok) {
           setState({ kind: "error", message: d.error });
@@ -85,7 +86,7 @@ export function FilesView({ name, onView }: FilesViewProps) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, lang, currentPath]);
+  }, [name, host, lang, currentPath]);
 
   if (state.kind === "loading") return null;
   if (state.kind === "error") {
@@ -144,7 +145,7 @@ export function FilesView({ name, onView }: FilesViewProps) {
         <div>
           {entries.map((e) => (
             <FileRow key={e.name} entry={e} onOpenDir={() => setCurrentPath(joinPath(path, e.name))}
-                     downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name))}
+                     downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name), host)}
                      downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
                      onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
                      onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name)), "vscode", t)} />

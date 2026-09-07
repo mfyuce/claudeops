@@ -50,6 +50,7 @@ type SubTab = "term" | "chat" | "files";
 
 interface TerminalModalProps {
   name: string;
+  host: string;
   onClose: () => void;
 }
 
@@ -85,7 +86,7 @@ function useBodyScrollLock() {
   }, []);
 }
 
-export function TerminalModal({ name, onClose }: TerminalModalProps) {
+export function TerminalModal({ name, host, onClose }: TerminalModalProps) {
   const { t } = useLang();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("term");
   const [viewingPath, setViewingPath] = useState<string | null>(null);
@@ -162,11 +163,13 @@ export function TerminalModal({ name, onClose }: TerminalModalProps) {
             {t.tabFilesView}
           </button>
         </div>
-        <TerminalView name={name} hidden={activeSubTab !== "term"} onView={setViewingPath} />
-        {activeSubTab === "chat" && <ChatView name={name} />}
-        {activeSubTab === "files" && <FilesView name={name} onView={setViewingPath} />}
+        <TerminalView name={name} host={host} hidden={activeSubTab !== "term"} onView={setViewingPath} />
+        {activeSubTab === "chat" && <ChatView name={name} host={host} />}
+        {activeSubTab === "files" && <FilesView name={name} host={host} onView={setViewingPath} />}
       </div>
-      {viewingPath && <FileViewerModal name={name} path={viewingPath} onClose={() => setViewingPath(null)} />}
+      {viewingPath && (
+        <FileViewerModal name={name} host={host} path={viewingPath} onClose={() => setViewingPath(null)} />
+      )}
     </div>
   );
 

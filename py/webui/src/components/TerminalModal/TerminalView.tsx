@@ -31,7 +31,6 @@ import type { Terminal } from "@xterm/xterm";
 import { apiTermInput, apiTermKey, getTermOutput } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
-import { LOCAL_HOST } from "../../state/hosts";
 import { computeFitFontSize, fitContainerToTerm } from "./xtermSizing";
 import { UrlBanner } from "./UrlBanner";
 
@@ -73,11 +72,12 @@ type XtermState = "loading" | "ready" | "failed";
 
 interface TerminalViewProps {
   name: string;
+  host: string;
   hidden: boolean;
   onView: (path: string) => void;
 }
 
-export function TerminalView({ name, hidden, onView }: TerminalViewProps) {
+export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) {
   const { t, lang } = useLang();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -170,7 +170,7 @@ export function TerminalView({ name, hidden, onView }: TerminalViewProps) {
     async function poll() {
       let result;
       try {
-        result = await getTermOutput(name, lang);
+        result = await getTermOutput(name, lang, host);
       } catch {
         // Original pollTerm() has no try/catch around its own fetch — a
         // network exception there becomes an unhandled rejection inside
@@ -258,7 +258,7 @@ export function TerminalView({ name, hidden, onView }: TerminalViewProps) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [name, lang, t]);
+  }, [name, host, lang, t]);
 
   useEffect(() => {
     return () => {
@@ -271,21 +271,19 @@ export function TerminalView({ name, hidden, onView }: TerminalViewProps) {
     // inline onclick, not awaited) — .catch(()=>{}) here avoids a genuine
     // unhandled-promise-rejection but is otherwise the same silent-on-
     // failure behavior from the user's point of view.
-    // Terminal is local-only for now (Faz 3 — remote term viewing is a
-    // deferred follow-up), so `host` is always LOCAL_HOST here.
-    void apiTermKey({ name, host: LOCAL_HOST, key, lang }).catch(() => {});
+    void apiTermKey({ name, host, key, lang }).catch(() => {});
   }
 
   function handleSend() {
     if (!inputText) return;
     const text = inputText;
     setInputText("");
-    void apiTermInput({ name, host: LOCAL_HOST, text, lang }).catch(() => {});
+    void apiTermInput({ name, host, text, lang }).catch(() => {});
   }
 
   async function handleCopyVisible() {
     try {
-      const res = await getTermOutput(name, lang);
+      const res = await getTermOutput(name, lang, host);
       if (!res.ok) {
         window.alert(`${name}: ${res.error}`);
         return;
