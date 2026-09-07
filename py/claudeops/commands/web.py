@@ -42,6 +42,7 @@ from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, POST_MESSAGE_SETTLE_SECONDS
+from ..hosts import LOCAL_HOST_NAME, save_host, remove_host, list_hosts_public
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from .. import files as files_mod
@@ -56,6 +57,7 @@ from ..tmux_backend import (
     tmux_send_special_key, tmux_pane_size, ALLOWED_SPECIAL_KEYS,
 )
 from .web_static import DIST_DIR, resolve_static_path
+from . import web_hosts
 from . import web_ws
 
 DEFAULT_PORT = 8765
@@ -807,10 +809,12 @@ def _status_payload() -> dict:
     for name in sorted(fleet):
         info = fleet[name]
         if info["state"] == "retired":
-            retired.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"]})
+            retired.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"],
+                             "host": LOCAL_HOST_NAME})
             continue
         if info["state"] == "closed":
-            closed.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"]})
+            closed.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"],
+                            "host": LOCAL_HOST_NAME})
             continue
         s = assigned.get(name)
         sessions.append({
@@ -825,6 +829,7 @@ def _status_payload() -> dict:
             "needs_ho": _needs_ho_cached(s) if s else None,
             "registered": True,
             "tmux": is_tmux_backed(s.pid) if s else False,
+            "host": LOCAL_HOST_NAME,
         })
 
     # Hiçbir AKTİF roster satırına bağlanamayan canlı session'lar (elle açılmış
@@ -845,9 +850,10 @@ def _status_payload() -> dict:
             "needs_ho": _needs_ho_cached(s),
             "registered": False,
             "tmux": is_tmux_backed(s.pid),
+            "host": LOCAL_HOST_NAME,
         })
 
-    return {
+    payload = {
         "config_ok": ok,
         "config_code": config_code,
         "config_detail": config_detail,
@@ -867,6 +873,11 @@ def _status_payload() -> dict:
         "layout_missing_deps": _missing_layout_deps(),
         "diag": _diag_status(),
         "server_started_at": _WEB_PROC_START_EPOCH,
+        # Salt-okunur — `py/cops service install --label` (varsa) tarafından yazılan
+        # tunnel URL/label dosyaları. service.py'yi İMPORT ETMİYORUZ (o modül tunnel.log'u
+        # da web.py'den bağımsız kendi tarafında tanımlıyor, aynı hafif-tekrar deseni) —
+        # sadece dosya yoksa None, hiçbir zaman hata.
+        "tunnel": _tunnel_info(),
         # TODO L85 (2026-09-01, kullanıcı): "Handover textini o an hangi dil
         # seçili ise o dilde göster, oradan copy paste yaparız, ayrı cli
         # açmadan." _handover() zaten bu iki sabitten `lang`'a göre birini
@@ -884,6 +895,19 @@ def _status_payload() -> dict:
         # görsün diye buraya eklendi, ayrı bir polling endpoint'i değil.
         "remote_desktop": remote_desktop.status(),
     }
+    # Uzak host'ların sessions/closed/retired'ini merge eder + "hosts" ekler —
+    # SADECE web_hosts'un arka-plan poller cache'ini okur, asla burada network'e
+    # gitmez (bkz. web_hosts.py modül docstring'i — neden burada fan-out YAPILMADIĞI).
+    return web_hosts.merge_status(payload)
+
+
+def _tunnel_info() -> dict:
+    def _read(fname: str) -> Optional[str]:
+        try:
+            return (Path(CLAUDEOPS_DIR) / fname).read_text(encoding="utf-8").strip() or None
+        except OSError:
+            return None
+    return {"url": _read("tunnel_url.txt"), "label": _read("tunnel_label.txt")}
 
 
 _VALID_THEMES = ("system", "light", "dark")
@@ -1673,6 +1697,18 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif path == "/api/status":
             self._json(_status_payload())
+        elif path == "/api/hosts":
+            # Settings/Hosts UI için — /api/status'un yalın "hosts" alanından
+            # (badge/routing) farklı, base_url/has_token de taşıyan tam liste.
+            rows = []
+            for h in list_hosts_public():
+                cached = web_hosts.get_cached(h["name"])
+                rows.append({
+                    **h,
+                    "ok": cached["ok"] if cached else False,
+                    "error": (cached.get("error") if cached else "not polled yet"),
+                })
+            self._json({"ok": True, "hosts": rows})
         elif path == "/api/diag/log":
             self._json({"lines": diag_log_tail(30)})
         elif path == "/api/term/output":
@@ -1730,7 +1766,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/term/open-window", "/api/settings",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
-                         "/api/vscode/open"):
+                         "/api/vscode/open", "/api/hosts", "/api/hosts/remove"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -1743,6 +1779,18 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         lang = "en" if data.get("lang") == "en" else "tr"
+
+        # Host-routing: 13 session-scoped route (bkz. web_hosts.HOST_ROUTED_PATHS) için
+        # body'de host!=local varsa isteği o host'a proxy'le, aşağıdaki mevcut dispatch
+        # zincirine HİÇ girme. host alanı yoksa/eskiyse (host==local) davranış birebir
+        # aşağıdaki gibi devam eder — bu blok SADECE ek bir erken-çıkış, mevcut hiçbir
+        # dal DEĞİŞMEDİ.
+        if path in web_hosts.HOST_ROUTED_PATHS:
+            host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+            if host != LOCAL_HOST_NAME:
+                result, proxy_status = web_hosts.proxy_action(path, host, data)
+                self._json_notify(result, status=proxy_status)
+                return
 
         if path == "/api/diag/spawn-test":
             self._json(_diag_spawn_test(lang=lang))
@@ -1801,6 +1849,19 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             patch = {k: v for k, v in data.items() if k != "lang"}
             self._json_notify(_save_settings(patch, lang=lang))
+            return
+
+        if path == "/api/hosts":
+            self._json_notify(save_host(
+                name=str(data.get("name", "")),
+                base_url=str(data.get("base_url", "")),
+                token=str(data.get("token", "")),
+                lang=lang,
+            ))
+            return
+
+        if path == "/api/hosts/remove":
+            self._json_notify(remove_host(str(data.get("name", "")), lang=lang))
             return
 
         if path == "/api/new-chat":
@@ -1928,6 +1989,7 @@ def run(args) -> int:
 
     _Handler.token = token
     web_ws.start_broadcaster(_status_payload)  # tek broadcaster daemon thread'i, süreç ömrü boyunca bir kez
+    web_hosts.start_remote_poller()  # aynı desen — uzak host'ları arka planda poll'layan daemon thread
     server = ThreadingHTTPServer((args.host, args.port), _Handler)
     url = f"http://{args.host}:{args.port}/?token={token}"
     print(f"claudeops web  →  {url}")
