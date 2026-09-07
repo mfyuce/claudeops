@@ -10,6 +10,17 @@ __pycache__/
 # local-only notes (asla commit etme)
 *.local.md
 *.local.txt
+.env
+.env.*
+# Kişisel fleet-günlüğü — 2026-09-07'den itibaren public repo'da DEĞİL, ayrı
+# private repo'da (~/.claudeops-docs.git, github+gitlab "claudeops-prv")
+# versiyonlanıyor. Buradan silinmeleri BİLEREK (git rm --cached) — bu satırlar
+# sadece ileride biri yanlışlıkla `git add -A` yapıp tekrar public'e sızdırmasın diye.
+/CLAUDE.md
+/AGENTS.md
+/TODO.md
+/TOBEDECIDED.md
+/DONE.md
 # Rust build output (rust/screenshare) — bu makinede global CARGO_TARGET_DIR
 # ile repo dışına yazılıyor ama varsayılan cargo konfigürasyonunda buraya
 # (rust/screenshare/target/) düşer, asla commit edilmemeli.
