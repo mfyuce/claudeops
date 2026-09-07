@@ -32,7 +32,7 @@ En kolay kullanım yolu; her şey tarayıcıdan:
 
 ![claudeops web paneli](../docs/web-panel.png)
 
-- **Sekmeler** — **Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout / Tanı / Uzak Masaüstü** (aktif
+- **Sekmeler** — **Çalışanlar / Kayıtlı / Devre dışı / Emekli / Layout / Tanı / Uzak Masaüstü / Ayarlar** (aktif
   sekme sayfa yenilense de hatırlanır). Hiçbir şey otomatik açılmaz — Uzak Masaüstü sekmesinin daemon'ı
   da dahil, aşağıya bakın.
 - **Çalışanlar** — tüm canlı session'lar, her satırda **checkbox**, tablonun üstünde **toplu işlem
@@ -106,6 +106,18 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   bir ekranda kontrolü açmak fiilen onu uzaktan açabilmek demektir — bu kasıtlı, bug değil. Modifier
   tuşları (Ctrl/Alt/Shift/Cmd) henüz iletilmiyor, bilerek (kaçan bir key-up gerçek makinede tuşu
   "takılı basılı" bırakabilir).
+- **Ayarlar** — tema (açık/koyu/sistem), varsayılan bir handover effort seviyesi, ve CLI-başına
+  varsayılan model (session başlatırken/kaydederken başlangıç önerisi, katı bir kilit değil).
+- **Host'lar (çoklu-makine)** — bu panel BAŞKA makinelerde çalışan session'ları da gösterip
+  yönetebilir. Ayarlar sekmesinden bir uzak makine ekleyin (bir isim, o makinenin kendi `py/cops web`
+  URL'i — genelde kendi `--tunnel`/`service install` tunnel URL'i — ve o makinenin kendi
+  `~/.claude/claudeops/web.token`'ından okunan token'ı); panel arka planda (~3sn) onu poll'layıp
+  session'larını AYNI Çalışanlar/Kayıtlı tablolarına, küçük bir host rozetiyle etiketleyerek birleştirir.
+  Her session-seviyeli aksiyon (başlat/durdur/handover/kaydet/...) doğru makineye şeffafça proxy'lenir —
+  bu tek sekmeden hiç çıkmazsınız, ve iki farklı makinede aynı isimli bir session çakışmadan bir arada
+  durabilir (satırlar host+isim'e göre anahtarlanır). Uzak token her zaman sunucu tarafında kalır,
+  tarayıcıya asla geri gönderilmez. Uzak bir session için Terminal görüntüleme henüz bağlanmadı (v1
+  eksiği, bkz. TODO.md) — geri kalan her şey çalışır.
 - **TR/EN** — tarayıcı diline göre otomatik seçilir (`navigator.language`), sağ üstteki butonlarla elle
   değiştirilip kalıcı hale getirilebilir (localStorage).
 - **Token korumalı** (`~/.claude/claudeops/web.token`, ilk çalıştırmada rastgele üretilir) — sayfa da
@@ -176,6 +188,11 @@ sessizce yutabilir, üstüne ntfy.sh sunucu tarafında mesajı sadece birkaç sa
 bildirim app'i sonradan açarak da geri getirilemez. Bildirimi bir kolaylık olarak görün, güvenilir tek
 kaynak olarak değil — bir push hiç ulaşmadıysa gerçek güncel URL yukarıda bahsedilen
 `~/.claude/claudeops/tunnel_url.txt`'te.
+
+claudeops'u birden fazla makinede mi çalıştırıyorsunuz (yukarıdaki "Host'lar")? `service install
+--label AD` (ör. `--label yuhem`) o makinenin tunnel-değişti bildirimlerini etiketler, telefonda
+hangisinin hangi makine olduğunu ayırt edebilirsiniz — opsiyonel, sadece `service notify`'ı da
+kurduysanız işe yarar.
 
 Değinilmesi gereken bir başka arıza türü: Linux'ta `systemd-oomd`, bellek baskısı altında (sadece
 claudeops'u değil) **tüm login oturumunuzu** (`user@<uid>.service`) öldürebilir — bu olunca hiçbir

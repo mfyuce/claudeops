@@ -32,7 +32,7 @@ The easiest way to use this; everything from the browser:
 
 ![claudeops web panel](../docs/web-panel.png)
 
-- **Tabs** — **Running / Registered / Disabled / Retired / Layout / Diagnostics / Desktop** (the active
+- **Tabs** — **Running / Registered / Disabled / Retired / Layout / Diagnostics / Desktop / Settings** (the active
   tab persists across reloads). Nothing ever starts automatically — the Desktop tab's daemon included,
   see below.
 - **Running** — every live session, one **checkbox** per row, and **bulk action buttons above the
@@ -104,6 +104,18 @@ The easiest way to use this; everything from the browser:
   control on a locked screen effectively means being able to unlock it remotely — intentional, not a
   bug. Modifier keys (Ctrl/Alt/Shift/Cmd) aren't forwarded yet, on purpose (a missed key-up could leave
   one "stuck" on the real machine).
+- **Settings** — theme (light/dark/system), a default handover effort level, and a per-CLI default
+  model (the starting suggestion when starting/registering a session, not a hard lock).
+- **Hosts (multi-machine)** — this same panel can show and control sessions running on *other*
+  machines too. Register a remote one (a name, that machine's own `py/cops web` URL — typically its
+  `--tunnel`/`service install` tunnel URL — and its token, from that machine's own
+  `~/.claude/claudeops/web.token`) from the Settings tab; the panel polls it in the background (~3s)
+  and merges its sessions into the same Running/Registered tables, each tagged with a small host
+  badge. Every session-level action (start/stop/handover/register/...) is transparently proxied to the
+  right machine — you never leave this one tab, and two different machines can have a session with
+  the same name without conflict (rows are keyed by host+name). Remote token stays server-side, never
+  sent back to the browser. Terminal viewing for a remote session isn't wired up yet (v1 gap, see
+  TODO.md) — everything else works.
 - **TR/EN** — auto-selected from the browser's language (`navigator.language`), can be switched manually
   with the buttons in the top corner and stays persisted (localStorage).
 - **Token protected** (`~/.claude/claudeops/web.token`, randomly generated on first run) — both the page
@@ -175,6 +187,10 @@ off) can silently swallow a push, and ntfy.sh only retains a message for a few h
 missed one can't be recovered later by reopening the app. Treat the notification as a convenience, not a
 source of truth — `~/.claude/claudeops/tunnel_url.txt` (mentioned above) is what actually has the current
 URL if a push never arrives.
+
+Running claudeops on more than one machine (see "Hosts" above)? `service install --label NAME` (e.g.
+`--label yuhem`) tags that machine's tunnel-changed notifications so you can tell them apart on your
+phone — optional, only matters once you've also set up `service notify`.
 
 One more failure mode worth covering: on Linux, `systemd-oomd` can kill your *entire* login
 session (`user@<uid>.service`, not just claudeops) under memory pressure — when that happens, no
