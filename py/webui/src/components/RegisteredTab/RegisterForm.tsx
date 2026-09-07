@@ -17,6 +17,7 @@ import { apiRegister } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
+import { cliListFor, cliOptionsFor, LOCAL_HOST } from "../../state/hosts";
 
 const DEFAULT_CLI = "claude";
 
@@ -26,12 +27,23 @@ export function RegisterForm() {
 
   const [name, setName] = useState("");
   const [cwd, setCwd] = useState("");
+  const [host, setHost] = useState(LOCAL_HOST);
   const [cli, setCli] = useState(DEFAULT_CLI);
   const [model, setModel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const cliModels = data?.cli_options[cli]?.models ?? [];
+  const cliList = cliListFor(data, host);
+  const cliModels = cliOptionsFor(data, host, cli).models;
   const effectiveModel = model ?? cliModels[0] ?? "";
+
+  function handleHostChange(newHost: string) {
+    setHost(newHost);
+    // A different host's CLI list may not even include the currently-chosen
+    // `cli` (or may order models differently) — reset both, same reasoning
+    // as `handleCliChange` below.
+    setCli(DEFAULT_CLI);
+    setModel(null);
+  }
 
   function handleCliChange(newCli: string) {
     setCli(newCli);
@@ -41,7 +53,14 @@ export function RegisterForm() {
   async function handleSave() {
     setBusy(true);
     try {
-      const res = await apiRegister({ name: name.trim(), cwd: cwd.trim(), model: effectiveModel, cli, lang });
+      const res = await apiRegister({
+        name: name.trim(),
+        cwd: cwd.trim(),
+        host,
+        model: effectiveModel,
+        cli,
+        lang,
+      });
       if (!res.ok) window.alert(`${name}: ${res.error}`);
     } catch (e) {
       window.alert(describeApiError(e, t));
@@ -74,10 +93,23 @@ export function RegisterForm() {
           onChange={(e) => setCwd(e.target.value)}
         />
       </label>
+      {data.hosts.length > 0 && (
+        <label>
+          {t.hostNameLabel}
+          <select value={host} onChange={(e) => handleHostChange(e.target.value)}>
+            <option value={LOCAL_HOST}>{t.hostLocalLabel}</option>
+            {data.hosts.map((h) => (
+              <option key={h.name} value={h.name}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         {t.cliLabel}
         <select value={cli} onChange={(e) => handleCliChange(e.target.value)}>
-          {data.cli_list.map((c) => (
+          {cliList.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>

@@ -44,6 +44,29 @@ export function Banners({ onGoToDiagnostics }: BannersProps) {
       </div>,
     );
   }
+  if (data) {
+    const unreachable = data.hosts.filter((h) => !h.ok).map((h) => h.name);
+    if (unreachable.length) {
+      banners.push(
+        <div className="banner bad" key="hosts-unreachable">
+          {t.hostsUnreachableMsg(unreachable)}
+        </div>,
+      );
+    }
+    // `data.dups` above is LOCAL-only (see `web_hosts.merge_status()`) — a
+    // remote host's own duplicate-session warning has nowhere else to
+    // surface, so each one gets its own host-prefixed banner here.
+    for (const h of data.hosts) {
+      if (h.dups.length) {
+        banners.push(
+          <div className="banner bad" key={`dups-${h.name}`}>
+            {h.name}: {t.dupWarn}
+            {h.dups.join(", ")}
+          </div>,
+        );
+      }
+    }
+  }
 
   return <div id="banners">{banners}</div>;
 }

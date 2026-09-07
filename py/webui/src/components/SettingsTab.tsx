@@ -18,6 +18,7 @@ import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import type { Theme } from "../api/types";
 import { applyTheme } from "../theme";
+import { HostsSection } from "./HostsSection";
 
 type SettingsPatch = { theme?: Theme; handover_effort?: string; default_model?: Record<string, string> };
 
@@ -102,6 +103,7 @@ export function SettingsTab() {
         ))}
       </div>
       {error && <pre className="layout-result">✗ {error}</pre>}
+      <HostsSection />
     </>
   );
 }
