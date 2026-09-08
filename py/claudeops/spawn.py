@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from .diaglog import diag_log
+from .discovery import find_sessions
 from .providers import get_provider
 from .providers.claude_provider import find_latest_jsonl  # geriye-uyum: diğer modüller import ediyor
 from .tmux_backend import (
@@ -54,6 +55,32 @@ def detect_display() -> str:
     return ":1"
 
 
+def _ids_held_by_others(name: str) -> frozenset:
+    """ŞU AN çalışan BAŞKA session'ların `--resume` ettiği id'ler. Kendi adımız
+    bilerek DIŞARIDA: bir handover/respawn sırasında eski process daha ölürken
+    (SIGTERM + ~8-10s) yenisi başlarsa, kendi konuşmamızı "başkası tutuyor" sanıp
+    fresh açmak konuşmayı koparırdı — asıl önlenmek istenen, FARKLI isimli iki
+    session'ın aynı konuşmaya yazması (2026-09-07 canlı yuhem vakası).
+
+    İsim eşleşmesi TAM (base değil): `hc` ile `hc20260908` panelin "yeni chat"
+    akışıyla açılmış AYRI session'lar, aynı klasörü paylaşırlar ve birbirlerinin
+    konuşmasını almamaları gerekir — base'e indirgemek tam da bunu kaçırırdı.
+
+    Discovery herhangi bir sebeple patlarsa boş küme: guard/spawn yolu bir
+    iyileştirme yüzünden ASLA çalışmaz hale gelmemeli (eski davranışa düşer)."""
+    try:
+        live = [s for s in find_sessions(measure_cpu=False) if s.name != name]
+    except Exception:
+        return frozenset()
+    ids = {s.sid for s in live if s.sid}
+    # Adlar da kümenin İÇİNDE: `--new` ile açılmış bir session'ın sid'i komut
+    # satırında hiç yok, ama provider transcript'i (claude jsonl'ının
+    # `customTitle`'ı) sahibini ADIYLA yazıyor — o yüzden "kim tutuyor" sorusunun
+    # cevabı bazen id, bazen isim.
+    ids |= {s.name for s in live if s.name}
+    return frozenset(ids)
+
+
 def spawn_session(
     name: str,
     cwd: str,
@@ -80,7 +107,8 @@ def spawn_session(
     if display is None:
         display = detect_display()
 
-    resume_id = None if force_new else provider.resolve_resume_id(cwd)
+    resume_id = None if force_new else provider.resolve_resume_id(
+        cwd, in_use=_ids_held_by_others(name), session_name=name)
     kind = "new" if resume_id is None else f"resume:{resume_id[:8]}"
 
     cli_invocation = provider.build_inner_command(cwd, model, permission_mode, effort,

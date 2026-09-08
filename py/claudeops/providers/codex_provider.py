@@ -33,7 +33,7 @@ import os
 import re
 import shlex
 import time
-from typing import Dict, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
 from .base import CliProvider
 from ..settings import resolved_binary
@@ -128,7 +128,12 @@ class CodexProvider(CliProvider):
         self._cache_ts = 0.0
         self._cache_models: List[str] = []
 
-    def resolve_resume_id(self, cwd: str) -> Optional[str]:
+    def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
+                          session_name: str = "") -> Optional[str]:
+        """cwd eşleştirmesi zaten vardı (rollout dosyasının kendi `cwd`'si) —
+        eklenen tek şey `in_use`: başka bir canlı session'ın tuttuğu bir
+        konuşmaya rastlanırsa atlanıp taramaya devam edilir. codex rollout'ları
+        session adını taşımıyor, o yüzden `session_name` burada kullanılmıyor."""
         target = os.path.normpath(os.path.abspath(cwd))
         files = glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", "*.jsonl"))
         files.sort(key=_safe_mtime, reverse=True)
@@ -140,9 +145,10 @@ class CodexProvider(CliProvider):
             if not raw_cwd or os.path.normpath(os.path.abspath(str(raw_cwd))) != target:
                 continue
             m = _ROLLOUT_UUID_RE.search(os.path.basename(path))
-            if m:
-                return m.group(1)
-            return payload.get("id") or payload.get("session_id")
+            sid = m.group(1) if m else (payload.get("id") or payload.get("session_id"))
+            if sid and sid in in_use:
+                continue
+            return sid
         return None
 
     def build_inner_command(self, cwd, model, permission_mode, effort,

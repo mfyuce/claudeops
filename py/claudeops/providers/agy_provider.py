@@ -68,7 +68,7 @@ import shlex
 import sqlite3
 import subprocess
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from .base import CliProvider
 from ..settings import resolved_binary
@@ -184,7 +184,12 @@ class AgyProvider(CliProvider):
         self._cache_ts = 0.0
         self._cache_models: List[str] = []
 
-    def resolve_resume_id(self, cwd: str) -> Optional[str]:
+    def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
+                          session_name: str = "") -> Optional[str]:
+        """agy'nin cache'i cwd başına TEK bir conversation-id tutuyor (claude'un
+        aynı klasörde onlarca jsonl'ı gibi bir liste yok) — o tek id başka bir
+        canlı session'ın elindeyse alternatif YOK, fresh başlanır (None). Bu,
+        aynı klasörde iki agy session'ının aynı konuşmayı paylaşmasından iyidir."""
         try:
             with open(CONVERSATIONS_CACHE, encoding="utf-8") as f:
                 data = json.load(f)
@@ -193,7 +198,10 @@ class AgyProvider(CliProvider):
         if not isinstance(data, dict):
             return None
         val = data.get(cwd) or data.get(os.path.normpath(os.path.abspath(cwd)))
-        return val.strip() if isinstance(val, str) and val.strip() else None
+        if not (isinstance(val, str) and val.strip()):
+            return None
+        sid = val.strip()
+        return None if sid in in_use else sid
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
                              resume_id, prompt, session_name) -> str:

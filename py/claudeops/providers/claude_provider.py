@@ -6,7 +6,7 @@ import re
 import shlex
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from .base import CliProvider
 from ..paths import PROJECTS_DIR
@@ -83,6 +83,46 @@ def find_latest_jsonl(cwd: str) -> Optional[Path]:
     return max(jsonls, key=_safe_mtime) if jsonls else None
 
 
+# Bir konuşmanın "kimlik" satırları dosyanın EN BAŞINDA: `customTitle` (session'ın
+# `-n NAME` adı) 1. satırda, ilk `cwd` alanı ~6. satırda görülüyor (canlı örneklerde
+# doğrulandı, 2026-09-08) — tüm dosyayı okumaya gerek yok.
+_META_HEAD_LINES = 15
+# Bir proje dizininde taranacak en yeni jsonl sayısı — eski/arşiv konuşmalar için
+# sınırsız dosya açmamak adına.
+_RESUME_SCAN_LIMIT = 25
+
+
+def _jsonl_meta(path: Path) -> Dict[str, Optional[str]]:
+    """{'title': <customTitle|None>, 'cwd': <ilk cwd alanı|None>} — dosyanın sadece
+    ilk birkaç satırını okur, bozuk/okunamayan satırları sessizce atlar (bir arşiv
+    dosyasının biçimi beklenmedik diye resume TAMAMEN başarısız olmamalı)."""
+    title = cwd = None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if i >= _META_HEAD_LINES:
+                    break
+                try:
+                    row = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if not isinstance(row, dict):
+                    continue
+                if title is None and isinstance(row.get("customTitle"), str):
+                    title = row["customTitle"]
+                if cwd is None and isinstance(row.get("cwd"), str):
+                    cwd = row["cwd"]
+                if title and cwd:
+                    break
+    except OSError:
+        pass
+    return {"title": title, "cwd": cwd}
+
+
+def _same_path(a: str, b: str) -> bool:
+    return os.path.normpath(os.path.abspath(a)) == os.path.normpath(os.path.abspath(b))
+
+
 def _arg(cmd: List[str], flag: str) -> Optional[str]:
     """cmdline listesinde `flag`'ten SONRAKİ değeri döndür (yoksa None)."""
     try:
@@ -118,9 +158,49 @@ def _is_real_user_text(content) -> bool:
 class ClaudeProvider(CliProvider):
     name = "claude"
 
-    def resolve_resume_id(self, cwd: str) -> Optional[str]:
-        jsonl = find_latest_jsonl(cwd)
-        return jsonl.stem if jsonl else None
+    def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
+                          session_name: str = "") -> Optional[str]:
+        """Sadece "bu klasörde en son değişen jsonl" DEĞİL (eski hali buydu ve
+        2026-09-07'de canlı ısırdı: aynı cwd'yi paylaşan iki session AYNI sid'i
+        resume etti). Sırasıyla:
+
+        1. Başka bir canlı session'ın tuttuğu sid'ler ELENİR (`in_use`) —
+           tek bir konuşmaya iki process'in yazmasını yapısal olarak engeller.
+        2. Kendi `cwd` alanı hedef cwd ile UYUŞMAYAN dosya elenir — proje-dizini
+           encoding'i `/` ve `_` karakterlerinin İKİSİNİ de `-` yaptığı için
+           `tmp/optical_form/x` ile `tmp/optical-form/x` AYNI dizine düşüyor
+           (canlı örnek), yani dizin tek başına "aynı proje" demek değil.
+        3. Kalanlar arasında adı bu session'ın adı olan konuşma (jsonl'ın
+           `customTitle`'ı = `-n NAME`) TERCİH edilir; yoksa en yenisi. Tercih
+           olması önemli: yeniden adlandırılmış bir session eski adlı konuşmasını
+           yine de sürdürebilsin."""
+        proj_dir = Path(PROJECTS_DIR) / _encode_cwd(cwd)
+        if not proj_dir.exists():
+            return None
+        candidates = sorted(
+            (p for p in proj_dir.iterdir() if p.suffix == ".jsonl" and p.is_file()),
+            key=_safe_mtime, reverse=True,
+        )[:_RESUME_SCAN_LIMIT]
+        fallback = None
+        for path in candidates:
+            if path.stem in in_use:
+                continue
+            meta = _jsonl_meta(path)
+            if meta["cwd"] and not _same_path(meta["cwd"], cwd):
+                continue
+            title = meta["title"]
+            if title and title != session_name and title in in_use:
+                # Bu konuşma ŞU AN çalışan BAŞKA bir session'ın: `--new` ile açılmış
+                # bir session'ın sid'i komut satırında görünmez, ama jsonl'ının ilk
+                # satırındaki `customTitle` onun `-n NAME` adıdır — sahipliği tespit
+                # etmenin tek güvenilir yolu bu (2026-09-07 yuhem vakasında iki
+                # session da AYNI konuşmaya yazıyordu).
+                continue
+            if session_name and title == session_name:
+                return path.stem
+            if fallback is None:
+                fallback = path.stem
+        return fallback
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
                              resume_id, prompt, session_name) -> str:

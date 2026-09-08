@@ -22,7 +22,7 @@ kanıt (env) yoksa göstermeyiz.
 """
 from __future__ import annotations
 import os
-from typing import Dict, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
 from .base import CliProvider
 
@@ -44,7 +44,8 @@ class ShellProvider(CliProvider):
     def has_conversation(self) -> bool:
         return False
 
-    def resolve_resume_id(self, cwd: str) -> Optional[str]:
+    def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
+                          session_name: str = "") -> Optional[str]:
         return None  # düz shell'de "devam edilecek konuşma" kavramı yok, hep fresh
 
     def build_inner_command(self, cwd, model, permission_mode, effort,

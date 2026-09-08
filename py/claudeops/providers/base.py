@@ -6,7 +6,7 @@ yeni bir CLI eklemek yeni bir provider dosyası + registry'ye bir satır demek.
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 import psutil
 
@@ -17,8 +17,26 @@ class CliProvider(ABC):
     # ── spawn tarafı ─────────────────────────────────────────────────────────
 
     @abstractmethod
-    def resolve_resume_id(self, cwd: str) -> Optional[str]:
-        """cwd için devam edilecek konuşma/sid'i bul (yoksa None → fresh/new)."""
+    def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
+                          session_name: str = "") -> Optional[str]:
+        """cwd için devam edilecek konuşma/sid'i bul (yoksa None → fresh/new).
+
+        `in_use`: ŞU AN başka canlı session'ları TANIMLAYAN dizeler — hem
+        resume-id'leri hem ADLARI (ikisi bir arada: bir konuşmanın "sahibi"
+        provider'a göre ya id'siyle ya adıyla belli oluyor — claude'un jsonl'ı
+        `-n NAME`'i `customTitle` olarak yazıyor, bir `--new` session'ın sid'i ise
+        komut satırında HİÇ görünmüyor). Bu kümedeki hiçbir şey ASLA
+        döndürülmemeli. Aynı cwd'yi paylaşan iki session (farklı isim, aynı klasör
+        ya da aynı proje kökü) yoksa bu küme boştur; varsa, ikisinin AYNI konuşmayı
+        resume etmesi = tek bir jsonl'a iki process'in birden yazması = konuşma
+        truncation riski (2026-09-07 canlı yuhem vakası: `yuhem-agent` ile
+        `ancient-script-pipeline-fd` ikisi de `resume:e2692367` döndü).
+
+        `session_name`: hedef session'ın adı — provider'ın transcript'inde bir isim/
+        başlık varsa (claude'un jsonl'ındaki `customTitle`) AYNI isimli konuşma
+        TERCİH edilir. Sadece tercih: isim eşleşmesi bulunamazsa (ör. session yeniden
+        adlandırılmış) en yeni uygun konuşmaya düşülür — yeniden-adlandırma
+        geçmişi koparmasın."""
 
     @abstractmethod
     def build_inner_command(
