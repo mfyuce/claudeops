@@ -247,6 +247,8 @@ export interface Strings {
   hostTokenKeepHint: string;
   hostRemoveBtn: string;
   hostRemoveConfirm: (name: string) => string;
+  hostTestBtn: string;
+  hostTesting: string;
   hostNone: string;
   hostConnected: string;
   hostUnreachable: string;
@@ -478,6 +480,8 @@ export const STRINGS: Record<Lang, Strings> = {
     hostRemoveBtn: "kaldır",
     hostRemoveConfirm: (name) =>
       `"${name}" host'unu kaldır? (o host'taki session'lar etkilenmez, sadece bu panelden bağlantısı kesilir)`,
+    hostTestBtn: "şimdi test et",
+    hostTesting: "test ediliyor…",
     hostNone: "kayıtlı uzak host yok",
     hostConnected: "bağlı",
     hostUnreachable: "erişilemez",
@@ -708,6 +712,8 @@ export const STRINGS: Record<Lang, Strings> = {
     hostRemoveBtn: "remove",
     hostRemoveConfirm: (name) =>
       `Remove host "${name}"? (sessions on that host aren't affected, only this panel's connection to it)`,
+    hostTestBtn: "test now",
+    hostTesting: "testing…",
     hostNone: "no remote hosts registered",
     hostConnected: "connected",
     hostUnreachable: "unreachable",

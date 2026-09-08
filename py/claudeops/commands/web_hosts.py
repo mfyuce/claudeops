@@ -207,6 +207,26 @@ def get_cached(name: str) -> Optional[Dict[str, Any]]:
         return dict(c) if c is not None else None
 
 
+def test_now(name: str) -> Optional[Dict[str, Any]]:
+    """Bir host'u arka plan poller'ının bir sonraki 3sn'lik tur'unu (ya da,
+    az önce eklenmiş bir host için, HİÇ poll edilmemiş olma durumunu — `ok:
+    false, "not polled yet"`) beklemeden HEMEN test eder — Settings/Hosts'un
+    "şimdi test et" düğmesi + host ekleme akışı bunu çağırır. `fetch_remote_status`
+    ile AYNI senkron/never-raise garantisini taşır (ağ çağrısı burada, çağıran
+    thread'i STATUS_TIMEOUT_SECONDS'a kadar bloklar). Sonucu `_cache`'e de yazar
+    ki (a) bu çağrıdan hemen sonraki bir `merge_status()`/`/api/hosts` GET taze
+    veriyi görsün, (b) arka plan poller'ının BİR SONRAKİ tur'u bunun üstüne
+    yazsa bile (aynı sonucu tekrar bulacağı için) kayıp/gerileme olmaz. Host
+    kayıtlı değilse `None` (çağıran "unknown host" hatası üretir)."""
+    host_record = hosts_mod.get_host(name)
+    if host_record is None:
+        return None
+    result = fetch_remote_status(host_record)
+    with _cache_lock:
+        _cache[name] = result
+    return result
+
+
 def merge_status(local_payload: Dict[str, Any]) -> Dict[str, Any]:
     """`local_payload` zaten `_status_payload()`'ın hesapladığı, her
     sessions/closed/retired girdisine `"host": LOCAL_HOST_NAME` etiketlenmiş

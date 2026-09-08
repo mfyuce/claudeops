@@ -119,6 +119,7 @@ ERR = {
                        "en": "{name}: start attempted but no process appeared "
                              "(could be gnome-terminal/DISPLAY, retry) — kind={kind}"},
     "not_running": {"tr": "{name}: çalışmıyor", "en": "{name}: not running"},
+    "unknown_host": {"tr": "{name}: kayıtlı bir uzak host değil", "en": "{name}: not a registered remote host"},
     "undefined": {"tr": "{name}: tanımsız", "en": "{name}: undefined"},
     "already_retired": {"tr": "{name}: zaten emekli", "en": "{name}: already retired"},
     "already_closed": {"tr": "{name}: zaten devre dışı", "en": "{name}: already disabled"},
@@ -2093,7 +2094,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/term/open-window", "/api/settings",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
-                         "/api/vscode/open", "/api/hosts", "/api/hosts/remove"):
+                         "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -2189,6 +2190,28 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/api/hosts/remove":
             self._json_notify(remove_host(str(data.get("name", "")), lang=lang))
+            return
+
+        if path == "/api/hosts/test":
+            # Arka plan poller'ının 3sn'lik turunu (ya da yeni eklenmiş bir
+            # host için hiç poll edilmemiş olmayı) beklemeden HEMEN test eder
+            # — Hosts UI'ının "şimdi test et" düğmesi + host ekleme akışının
+            # ardından çağrılır. `ThreadingHTTPServer` sayesinde bu isteğin
+            # kendi thread'inde (ağ timeout'u kadar, STATUS_TIMEOUT_SECONDS)
+            # bloklanması diğer istekleri/arka plan poller'ı ETKİLEMEZ.
+            name = str(data.get("name", ""))
+            result = web_hosts.test_now(name)
+            if result is None:
+                self._json(_err(lang, "unknown_host", name=name), status=400)
+                return
+            # `ok` burada "istek başarıyla çalıştı mı" demek, "host şu an
+            # erişilebilir mi" DEĞİL (o `host_ok`) — `fetch_remote_status` hiç
+            # raise ETMEDİĞİ için test HER ZAMAN "başarıyla çalışır", host'un
+            # o an offline çıkması bunu başarısız bir istek yapmaz. Bu ayrım
+            # önemli çünkü `_json_notify` broadcaster'ı SADECE `ok:true`
+            # dönünce uyandırıyor — host online→offline geçişini de diğer
+            # sekmelere anında itmek istiyoruz, sadece offline→online'ı değil.
+            self._json_notify({"ok": True, "host_ok": result["ok"], "error": result.get("error")})
             return
 
         if path == "/api/new-chat":

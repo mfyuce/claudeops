@@ -41,6 +41,7 @@ import type {
   StopResult,
   TermChatResult,
   TermOutputResult,
+  TestHostResult,
 } from "./types";
 
 // Exported so `hooks/useStatus.ts` can build the `/ws?token=...` URL with the
@@ -327,3 +328,10 @@ export interface RemoveHostPayload {
 }
 export const apiRemoveHost = (p: RemoveHostPayload): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/hosts/remove", p);
+
+export interface TestHostPayload {
+  name: string;
+  lang: Lang;
+}
+export const apiTestHost = (p: TestHostPayload): Promise<TestHostResult> =>
+  apiPost<TestHostResult>("/api/hosts/test", p);

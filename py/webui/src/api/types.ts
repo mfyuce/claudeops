@@ -91,6 +91,13 @@ export interface GetHostsResult {
   hosts: HostRecord[];
 }
 
+/** `/api/hosts/test` (POST) — on-demand check, bypassing the background
+ * poller's ~3s cadence (`web_hosts.test_now()`). `ok` is "did the check
+ * itself run" (always true once the host name resolves — the underlying
+ * fetch never throws), NOT "is the host reachable" — that's `host_ok`, since
+ * a host being offline is a normal/expected result, not a request failure. */
+export type TestHostResult = ApiResult<{ host_ok: boolean; error: string | null }>;
+
 export interface CliOptions {
   models: string[];
   permission_modes: string[];

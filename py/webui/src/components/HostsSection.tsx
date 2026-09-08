@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { apiRemoveHost, apiSaveHost, getHosts } from "../api/client";
+import { apiRemoveHost, apiSaveHost, apiTestHost, getHosts } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -32,6 +32,9 @@ export function HostsSection() {
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
+  // Per-row, not the single `busy` above — testing one host shouldn't grey
+  // out the add form or every other row's own "test now" button.
+  const [testingNames, setTestingNames] = useState<Set<string>>(new Set());
   // Editing isn't a separate mode/flag — it's just "the name field happens to
   // match an already-registered host," same as typing an existing name by
   // hand would do. Derived, not stored, so it can never drift out of sync.
@@ -54,20 +57,48 @@ export function HostsSection() {
 
   async function handleAdd() {
     setBusy(true);
+    const savedName = name.trim();
     try {
-      const res = await apiSaveHost({ name: name.trim(), base_url: baseUrl.trim(), token: token.trim(), lang });
+      const res = await apiSaveHost({ name: savedName, base_url: baseUrl.trim(), token: token.trim(), lang });
       if (!res.ok) {
         window.alert(res.error);
       } else {
         setName("");
         setBaseUrl("");
         setToken("");
-        await load();
+        // The background poller hasn't reached this host yet (up to ~3s away,
+        // or never if this is a brand-new registration) — a plain `load()`
+        // here would show "not polled yet" right after a successful save.
+        // `handleTest` checks it on the spot and `load()`s the real result.
+        await handleTest(savedName);
       }
     } catch (e) {
       window.alert(describeApiError(e, t));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** On-demand check (`/api/hosts/test`) instead of waiting for the
+   * background poller's own ~3s cadence — used by the add-flow above and by
+   * each row's own "test now" button. Never surfaces `host_ok: false` as an
+   * alert — an unreachable host is an expected, informative result here, not
+   * a request failure; the row's own connected/unreachable badge (driven by
+   * the `load()` below, same cache this test just updated) already shows it. */
+  async function handleTest(hostName: string) {
+    setTestingNames((prev) => new Set(prev).add(hostName));
+    try {
+      const res = await apiTestHost({ name: hostName, lang });
+      if (!res.ok) window.alert(res.error);
+    } catch (e) {
+      window.alert(describeApiError(e, t));
+    } finally {
+      setTestingNames((prev) => {
+        const next = new Set(prev);
+        next.delete(hostName);
+        return next;
+      });
+      await load();
     }
   }
 
@@ -147,6 +178,9 @@ export function HostsSection() {
               <span style={{ color: h.ok ? "var(--green)" : "var(--red)" }} title={h.error ?? undefined}>
                 {h.ok ? t.hostConnected : t.hostUnreachable}
               </span>
+              <button type="button" disabled={testingNames.has(h.name)} onClick={() => void handleTest(h.name)}>
+                {testingNames.has(h.name) ? t.hostTesting : t.hostTestBtn}
+              </button>
               <button type="button" onClick={() => handleEdit(h)}>
                 {t.hostEditBtn}
               </button>
