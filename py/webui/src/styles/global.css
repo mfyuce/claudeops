@@ -144,6 +144,14 @@ button:disabled { opacity: .5; cursor: default; }
 .mode-radio { display: flex; align-items: center; gap: .3rem; font-size: .82rem; color: var(--text); }
 .opts-hint { flex-basis: 100%; font-size: .78rem; color: var(--muted); min-height: 1em; }
 .opts label { color: var(--muted); font-size: .75rem; display: flex; flex-direction: column; gap: .15rem; }
+/* Forces the command-input+send button onto their own full-width line
+   within .opts's wrap flow, same flex-basis:100% trick as .opts-hint/.modes
+   above — otherwise the input's flex:1 only distributes leftover space on
+   whichever line it happens to land on after the mode/model dropdowns and
+   the 8 key buttons wrap, which can strand it on a nearly-full line (tiny
+   input) and push the send button alone onto the next one (big empty gap
+   to its right). */
+.term-input-row { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: .5rem; }
 #layoutPanel { background: var(--panel2); border-radius: 6px; padding: .7rem; margin-bottom: .5rem; }
 #layoutPanel input[type=text] { min-width: 220px; }
 .layout-result { font-size: .78rem; color: var(--muted); white-space: pre-wrap; margin: 0; }

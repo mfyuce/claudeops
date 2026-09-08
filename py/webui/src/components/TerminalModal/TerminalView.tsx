@@ -472,19 +472,21 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
         <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
           {copyLabel ?? t.termCopyBtn}
         </button>
-        <input
-          type="text"
-          placeholder={t.termPlaceholder}
-          style={{ flex: 1, minWidth: "200px" }}
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSend();
-          }}
-        />
-        <button type="button" className="go" onClick={handleSend}>
-          {t.termSend}
-        </button>
+        <div className="term-input-row">
+          <input
+            type="text"
+            placeholder={t.termPlaceholder}
+            style={{ flex: 1, minWidth: "200px" }}
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSend();
+            }}
+          />
+          <button type="button" className="go" onClick={handleSend}>
+            {t.termSend}
+          </button>
+        </div>
       </div>
     </div>
   );
