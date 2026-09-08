@@ -248,6 +248,22 @@ export interface TermKeyPayload {
 }
 export const apiTermKey = (p: TermKeyPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/term/key", p);
 
+/** Live typing (Terminal view's opt-in "type straight into the black area"
+ * mode): xterm's own `onData` stream — single keystrokes, control sequences
+ * (`\x1b[A`, `\x03`), a pasted block — forwarded to the pane VERBATIM.
+ * Unlike `apiTermInput` it appends NO Enter (Enter arrives as `\r` in the
+ * data itself), and unlike `apiTermKey` it isn't limited to a fixed key
+ * list. The backend caps one call at 8192 chars (`MAX_TERM_RAW_CHARS`) —
+ * `TerminalView` slices its own buffer to the same size, so a big paste
+ * goes out as several ordered calls rather than one rejected one. */
+export interface TermRawPayload {
+  name: string;
+  host: string;
+  data: string;
+  lang: Lang;
+}
+export const apiTermRaw = (p: TermRawPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/term/raw", p);
+
 /** Only "default" | "acceptEdits" | "plan" | "auto" are reachable — the CLI's
  * Shift+Tab cycle (its only live mode-switch mechanism, no direct slash
  * command exists) never includes "dontAsk", and "bypassPermissions" only

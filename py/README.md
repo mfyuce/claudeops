@@ -58,6 +58,11 @@ The easiest way to use this; everything from the browser:
   reacting in its own interface (hung, rate-limited, sitting on a permission prompt you never saw), open
   its Terminal here: it shows the pane's actual live state, independent of whatever's wrong with that
   session's own UI, and you can send it input or restart it right from the same view.
+  Two ways to type: the command box at the bottom sends a whole message at once (Enter submits,
+  Shift+Enter adds a newline — multi-line prompts reach the CLI as one turn), or flip on **live typing**
+  and click the terminal itself to type into it key by key (arrows, ctrl-c and Enter included), the way
+  you would in a real terminal window. Live typing is off by default (a stray keypress while reading
+  would otherwise land in the running CLI) and the choice is remembered per browser.
 - **Registered** — registered-but-stopped projects; start one with **resume** / **reset (--new)** /
   **start a separate new chat** (auto-dated name, with model/permission-mode/effort options). The
   **register new project** form (name + folder + model) lives at the bottom of this tab — adds to the

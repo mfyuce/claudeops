@@ -18,6 +18,16 @@
  * nothing to do with the chat sub-tab. Same underlying request/behavior,
  * just relocated.
  *
+ * Two ways to get keystrokes INTO the pane, and they are deliberately
+ * different: the command box at the bottom sends a whole message at once
+ * (`/api/term/input`, backend appends Enter), while "live typing" (opt-in
+ * toggle, remembered per browser) flips xterm's own `disableStdin` off and
+ * forwards its `onData` stream verbatim (`/api/term/raw`, no Enter appended)
+ * — that is the 2026-09-08 request "neden direk terminale yazamiyorum da
+ * text box a yazmaya mecbur kaliorum". Default OFF on purpose: with it on,
+ * a stray keypress while reading (or an arrow key meant for xterm's own
+ * scrollback) lands in the running CLI.
+ *
  * `inputText` (the command-input's typed-but-unsent text) is plain local
  * `useState` here — this is the second core regression check the whole
  * rewrite exists for (`StatusContext`'s 4s poll cannot touch this
@@ -28,7 +38,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { apiTermInput, apiTermKey, apiTermSetMode, getTermOutput } from "../../api/client";
+import { apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
 import type { TermSetModePayload } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
@@ -78,6 +88,28 @@ const XTERM_KEYS: [string, string][] = [
   ["tab", "Tab"],
 ];
 
+// Live typing knobs. Ordering matters more than latency: keystrokes are only
+// correct if they reach the pane in the order they were typed, so there is
+// never more than ONE /api/term/raw request in flight — anything typed while
+// one is out accumulates and goes as the next batch. The timer below only
+// keeps a fast burst (or a paste, which xterm hands over as a single chunk)
+// from firing one HTTP request per character, which matters most on a
+// tunneled/remote host.
+const RAW_FLUSH_MS = 25;
+// Mirrors the backend's MAX_TERM_RAW_CHARS — a paste bigger than this is
+// sliced here into several ordered calls instead of being rejected whole.
+const RAW_MAX_CHARS = 8192;
+const LIVE_INPUT_STORAGE_KEY = "cops_term_live_input";
+
+function readStoredLiveInput(): boolean {
+  try {
+    return localStorage.getItem(LIVE_INPUT_STORAGE_KEY) === "1";
+  } catch {
+    // ignore — same defensiveness as App.tsx's readStoredTab()
+    return false;
+  }
+}
+
 function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
 }
@@ -117,6 +149,18 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
   const [copyLabel, setCopyLabel] = useState<string | null>(null);
   const copyResetTimer = useRef<number | null>(null);
 
+  const [liveInput, setLiveInput] = useState<boolean>(readStoredLiveInput);
+  const [liveMsg, setLiveMsg] = useState("");
+  // Everything the once-registered onData handler needs, held in refs: the
+  // handler is installed in the mount effect below and would otherwise keep
+  // that first render's props/state forever.
+  const liveInputRef = useRef(liveInput);
+  const ctxRef = useRef({ name, host, lang });
+  const queueRawRef = useRef<(data: string) => void>(() => {});
+  const pendingRawRef = useRef("");
+  const rawSendingRef = useRef(false);
+  const rawFlushTimer = useRef<number | null>(null);
+
   // ---- create the xterm.js instance once, dynamically importing the
   // library (and its CSS) so it code-splits and is only ever fetched when
   // a terminal is actually opened (original: loadXtermLib()'s lazy
@@ -147,7 +191,11 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
           // \r-then-\n and convertEol's synthesized \r-then-\n land in the
           // same place, so this is a strict fix, not a trade-off.
           convertEol: true,
-          disableStdin: true,
+          // Read from the ref, not the state variable: this effect runs once,
+          // asynchronously (dynamic import), so by the time it lands the user
+          // may already have toggled live typing — the ref carries the current
+          // value, and the [liveInput] effect below keeps it in sync after that.
+          disableStdin: !liveInputRef.current,
           fontSize,
           // Default (1) is calibrated for a ~17px desktop line-height — this
           // terminal's real font is shrunk to fit a phone screen (~8px rows
@@ -159,6 +207,12 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
           scrollSensitivity: 20,
         });
         term.open(container);
+        // Registered once (the instance is created once); the indirection
+        // through `queueRawRef` keeps it on the CURRENT props rather than this
+        // closure's. xterm already suppresses key events while disableStdin is
+        // true, but paste goes through a different path there, so the handler
+        // re-checks the toggle itself rather than trusting that.
+        term.onData((data) => queueRawRef.current(data));
         instRef.current = { term, cols: INITIAL_COLS, rows: INITIAL_ROWS, lastText: null };
         fitContainerToTerm(term, container, INITIAL_COLS, INITIAL_ROWS);
         setXtermState("ready");
@@ -304,8 +358,66 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
   useEffect(() => {
     return () => {
       if (copyResetTimer.current !== null) window.clearTimeout(copyResetTimer.current);
+      if (rawFlushTimer.current !== null) window.clearTimeout(rawFlushTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    const prev = ctxRef.current;
+    ctxRef.current = { name, host, lang };
+    // Switching the modal to another session mid-type: whatever is still
+    // buffered was meant for the PREVIOUS pane, so it is dropped rather than
+    // delivered to the new one.
+    if (prev.name !== name || prev.host !== host) pendingRawRef.current = "";
+  }, [name, host, lang]);
+
+  useEffect(() => {
+    liveInputRef.current = liveInput;
+    try {
+      localStorage.setItem(LIVE_INPUT_STORAGE_KEY, liveInput ? "1" : "0");
+    } catch {
+      // ignore — localStorage can throw (private browsing/storage disabled)
+    }
+    const inst = instRef.current;
+    // null while the dynamic import is still in flight — that path reads the
+    // ref above when it constructs the Terminal, so nothing is lost here.
+    if (!inst) return;
+    inst.term.options.disableStdin = !liveInput;
+    if (liveInput) inst.term.focus();
+    else inst.term.blur();
+  }, [liveInput]);
+
+  function flushRaw() {
+    if (rawSendingRef.current || !pendingRawRef.current) return;
+    const data = pendingRawRef.current.slice(0, RAW_MAX_CHARS);
+    pendingRawRef.current = pendingRawRef.current.slice(RAW_MAX_CHARS);
+    rawSendingRef.current = true;
+    const { name: n, host: h, lang: l } = ctxRef.current;
+    void apiTermRaw({ name: n, host: h, data, lang: l })
+      .then((res) => setLiveMsg(res.ok ? "" : res.error))
+      .catch((e) => setLiveMsg(describeApiError(e, t)))
+      .finally(() => {
+        rawSendingRef.current = false;
+        // Whatever was typed while that request was out goes now, in order.
+        if (pendingRawRef.current) flushRaw();
+      });
+  }
+
+  function queueRaw(data: string) {
+    if (!liveInputRef.current || !data) return;
+    pendingRawRef.current += data;
+    if (rawFlushTimer.current !== null) return;
+    rawFlushTimer.current = window.setTimeout(() => {
+      rawFlushTimer.current = null;
+      flushRaw();
+    }, RAW_FLUSH_MS);
+  }
+
+  // Deliberately dependency-less: re-pointed on every render so the handler
+  // registered once on the xterm instance always calls the newest closure.
+  useEffect(() => {
+    queueRawRef.current = queueRaw;
+  });
 
   function handleSendKey(key: string) {
     // Original sendTermKey() has no error handling at all (fire-and-forget,
@@ -374,10 +486,14 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
       <div
         ref={containerRef}
         hidden={xtermState === "failed"}
+        // A live-typing terminal swallows keystrokes that would otherwise do
+        // nothing, so it has to LOOK different — otherwise there's no way to
+        // tell whether what you just typed went to the CLI or nowhere.
         style={{
           background: "#111",
           padding: ".35rem",
           borderRadius: "4px",
+          outline: liveInput ? "2px solid var(--accent)" : undefined,
           overflow: "auto",
           // xterm.js's own touch handling (selection/drag) can end up
           // competing with the browser's native touch-scroll on this
@@ -468,6 +584,17 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
           );
         })()}
         {modeMsg && <span className="opts-hint">{modeMsg}</span>}
+        <label title={t.termLiveHint}>
+          <input
+            type="checkbox"
+            checked={liveInput}
+            onChange={(e) => {
+              setLiveInput(e.target.checked);
+              setLiveMsg("");
+            }}
+          />{" "}
+          {t.termLiveLabel}
+        </label>
         {XTERM_KEYS.map(([label, key]) => (
           <button type="button" key={key} onClick={() => handleSendKey(key)}>
             {label}
@@ -477,17 +604,50 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
           {copyLabel ?? t.termCopyBtn}
         </button>
         {masked && <div className="warn-banner">{t.termMaskedHint}</div>}
+        {liveInput && <div className="opts-hint" style={{ flexBasis: "100%" }}>{t.termLiveOn}</div>}
+        {liveMsg && <div className="warn-banner">{liveMsg}</div>}
         <div className="term-input-row">
-          <input
-            type={masked ? "password" : "text"}
-            placeholder={masked ? t.termMaskedPlaceholder : t.termPlaceholder}
-            style={{ flex: 1, minWidth: "200px" }}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSend();
-            }}
-          />
+          {masked ? (
+            // Masked panes keep the plain <input type="password"> — a
+            // <textarea> CANNOT mask its content, and this box is exactly
+            // where the 2026-09-08 password leak happened (DONE.md
+            // "2026-09-08 (2)"). Multi-line is irrelevant for a password
+            // prompt anyway, so the security path stays byte-for-byte what
+            // it was.
+            <input
+              type="password"
+              placeholder={t.termMaskedPlaceholder}
+              style={{ flex: 1, minWidth: "200px" }}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSend();
+              }}
+            />
+          ) : (
+            // Multi-line prompts (TODO #67): Enter still sends — the box's
+            // whole point — and Shift+Enter inserts a newline. The backend
+            // needed NOTHING for this: tmux_send_keys()'s `send-keys -l`
+            // carries embedded newlines to the CLI as ONE turn (verified
+            // live 2026-09-04 with a 1204-char multi-line message, DONE.md
+            // "2026-09-04 (4)"), which is why this is a pure frontend change.
+            <textarea
+              placeholder={t.termPlaceholder}
+              rows={2}
+              style={{ flex: 1, minWidth: "200px", resize: "vertical", fontFamily: "inherit" }}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                // isComposing: an IME (or Android's suggestion bar) uses
+                // Enter to accept a candidate — sending there would cut the
+                // word in half and fire a half-typed message.
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+          )}
           <button type="button" className="go" onClick={handleSend}>
             {t.termSend}
           </button>

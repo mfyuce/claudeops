@@ -143,6 +143,45 @@ def tmux_send_special_key(name: str, key: str) -> bool:
         return False
 
 
+# Tek bir `send-keys -l` çağrısında gönderilen en fazla karakter — `argv`
+# sınırına (yüzlerce KB) göre fazlasıyla muhafazakâr; 5000 karakterlik tek
+# parça izole testte sorunsuz geçti, bu yüzden bölme SADECE bir güvenlik
+# marjı, davranışsal bir gereklilik değil.
+_RAW_CHUNK_CHARS = 2000
+
+
+def tmux_send_raw(name: str, data: str) -> bool:
+    """xterm.js'in `onData`'sından gelen HAM tuş verisini pane'e OLDUĞU GİBİ
+    iletir — Terminal görünümünün "canlı yazma" modu için (kullanıcı siyah
+    terminal alanına doğrudan yazıyor, alttaki komut kutusuna değil).
+
+    `tmux_send_keys`'ten iki farkı var: (1) sonuna Enter EKLEMEZ — Enter'ın
+    kendisi zaten veri içinde `\\r` olarak gelir, (2) tek bir "mesaj" değil,
+    tuş vuruşu/kontrol dizisi/yapıştırma bloğu taşır.
+
+    tmux 3.2a'da izole bir scratch pane'e (raw-mode okuyan bir python) karşı
+    doğrulandı: `send-keys -l` ham baytları (0x03, `ESC [ A`, çok baytlı UTF-8
+    `şğüİ`) HİÇ dokunmadan geçiriyor ve ters-bölü kaçışlarını YORUMLAMIYOR
+    (`a\\nb` literal olarak `a\\nb` gidiyor). İki gerçek tuzak da orada
+    bulundu: `--` ZORUNLU (tire ile başlayan bir parça — kullanıcının yazdığı
+    düz bir `-` bile — aksi halde `tmux: unknown option` ile ölür) ve NUL
+    baytı argv'den geçemez (Ctrl+Space) — sessizce atılır, tuş vuruşunun
+    tamamını başarısız saymaktansa o tek karakteri kaybetmek yeğdir."""
+    data = data.replace("\x00", "")
+    if not data:
+        return True
+    try:
+        for i in range(0, len(data), _RAW_CHUNK_CHARS):
+            chunk = data[i:i + _RAW_CHUNK_CHARS]
+            r = subprocess.run(_base_argv() + ["send-keys", "-t", name, "-l", "--", chunk],
+                                capture_output=True, timeout=_TIMEOUT)
+            if r.returncode != 0:
+                return False
+        return True
+    except Exception:
+        return False
+
+
 def tmux_pane_size(name: str) -> Optional[tuple]:
     """Panelin GERÇEK boyutu — new-session'daki -x/-y sadece istemci hiç bağlanmamışsa
     geçerli; attach eden bir client (bizim gnome-terminal penceremiz) varsa tmux paneli

@@ -60,6 +60,11 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   isteğinde bekliyor), buradan Terminal'i aç: pane'in gerçek canlı halini gösterir (session'ın kendi
   arayüzünde ne bozuksa ondan bağımsız) ve aynı ekrandan ona komut gönderebilir ya da yeniden
   başlatabilirsiniz.
+  İki yazma yolu var: alttaki komut kutusu mesajın tamamını tek seferde gönderir (Enter yollar,
+  Shift+Enter yeni satır — çok satırlı promptlar CLI'a TEK bir tur olarak ulaşır), ya da **canlı
+  yazma**yı açıp terminalin kendisine tıklayarak tuş tuş yazarsınız (ok tuşları, ctrl-c ve Enter dahil)
+  — gerçek bir terminal penceresindeki gibi. Canlı yazma varsayılan olarak kapalıdır (açıkken okurken
+  kazara basılan bir tuş çalışan CLI'a gider) ve tercih tarayıcıda hatırlanır.
 - **Kayıtlı** — kayıtlı-ama-durmuş projeler; **devam ettir** / **sıfırla (--new)** / **ayrı yeni chat
   aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız. **Yeni proje
   kaydet** formu (isim + klasör + model) bu sekmenin altında — elle dosya düzenlemeden roster'a ekler.

@@ -53,7 +53,7 @@ from ..settings import default_model_for, load_settings, save_settings
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..tmux_backend import (
-    is_tmux_backed, tmux_has_session, tmux_capture, tmux_send_keys,
+    is_tmux_backed, tmux_has_session, tmux_capture, tmux_send_keys, tmux_send_raw,
     tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS,
 )
 from .web_static import DIST_DIR, resolve_static_path
@@ -145,6 +145,8 @@ ERR = {
     "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
                            "en": "{name}: tmux session no longer exists (may have closed)"},
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
+    "term_raw_too_long": {"tr": "canlı yazma: tek seferde en fazla {limit} karakter gönderilebilir",
+                           "en": "live typing: at most {limit} characters can be sent at once"},
     "mode_not_cyclable": {"tr": "{mode}: Shift+Tab döngüsüyle hedeflenemez (sadece default/acceptEdits/plan/auto "
                                  "canlıyken değiştirilebilir — resmi CLI dokümantasyonu, 2026-09-07 doğrulandı) — "
                                  "diğer modlar için session'ı o modla yeniden başlatın",
@@ -1204,6 +1206,36 @@ def _term_key(name: str, key: str, lang: str = "tr") -> dict:
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
+# Tek bir canlı-yazma isteğinin taşıyabileceği en fazla karakter. Normal
+# yazımda 1-2 karakter, yapıştırmada bir blok gelir — frontend zaten kendi
+# tamponunu her ~25ms'de boşaltıyor, yani bu sınıra ancak GERÇEKTEN büyük bir
+# yapıştırma çarpar. Amacı pane'i korumak değil (aynı metin komut kutusundan
+# da gönderilebilirdi), kazara/hatalı bir istemcinin megabaytlık bir gövdeyi
+# tmux argv'sine akıtmasını engellemek.
+MAX_TERM_RAW_CHARS = 8192
+
+
+def _term_raw(name: str, data: str, lang: str = "tr") -> dict:
+    """Terminal görünümünün "canlı yazma" modu (2026-09-08, kullanıcı: "neden
+    direk terminale yazamiyorum da text box a yazmaya mecbur kaliorum") —
+    xterm.js'in `onData` callback'inden gelen ham tuş verisini pane'e olduğu
+    gibi iletir.
+
+    `/api/term/key`'in (sabit `ALLOWED_SPECIAL_KEYS` listesi) aksine keyfi
+    kontrol dizilerine izin verir; `/api/term/input`'un aksine sonuna Enter
+    EKLEMEZ. Yeni bir yetki açmıyor — aynı pane'e aynı metni göndermenin
+    zaten iki yolu vardı, bu üçüncüsü sadece "tuş tuş" olanı."""
+    if not data:
+        return {"ok": True}
+    if len(data) > MAX_TERM_RAW_CHARS:
+        return _err(lang, "term_raw_too_long", limit=MAX_TERM_RAW_CHARS)
+    s, err = _term_resolve(name, lang)
+    if err:
+        return err
+    ok = tmux_send_raw(s.name, data)
+    return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
+
+
 # Claude Code'un durum çubuğunda gösterdiği metinler (claude-code-guide ajanının
 # resmi dokümantasyondan doğruladığı 3 mod, 2026-09-07) — SADECE bunlar Shift+Tab
 # döngüsüyle GÜVENİLİR şekilde hedeflenebilir. `bypassPermissions` sadece
@@ -1977,7 +2009,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
-                         "/api/term/set-mode",
+                         "/api/term/raw", "/api/term/set-mode",
                          "/api/term/open-window", "/api/settings",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
@@ -2144,6 +2176,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_term_key(name, key=str(data.get("key", "")), lang=lang))
+            return
+
+        if path == "/api/term/raw":
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_term_raw(name, data=str(data.get("data", "")), lang=lang))
             return
 
         if path == "/api/term/set-mode":
