@@ -31,13 +31,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from .. import hosts as hosts_mod
 from ..hosts import LOCAL_HOST_NAME
 
-# 13 session/host-scoped POST route — do_POST'un geri kalan 9 route'u
+# 14 session/host-scoped POST route — do_POST'un geri kalan 9 route'u
 # (settings, diag/*, desktop/*, layout, files/validate, vscode/open) aggregator-
 # local-only, asla proxy'lenmez (o makinenin GUI/config'ine bağlı, "hangi host"
 # sorusu anlamsız).
 HOST_ROUTED_PATHS = {
     "/api/start", "/api/stop", "/api/retire", "/api/reactivate", "/api/close",
-    "/api/handover", "/api/compact", "/api/adopt", "/api/new-chat", "/api/register",
+    "/api/handover", "/api/compact", "/api/adopt", "/api/new-chat", "/api/register", "/api/edit",
     "/api/term/input", "/api/term/key", "/api/term/open-window", "/api/term/set-mode",
 }
 

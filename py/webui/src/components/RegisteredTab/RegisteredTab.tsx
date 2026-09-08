@@ -31,6 +31,7 @@ import { CwdCell } from "../shared/CwdCell";
 import { isProtectedName } from "../shared/protectedNames";
 import { Pagination } from "../shared/Pagination";
 import { matchesSearch } from "../shared/searchFilter";
+import { EditRow } from "./EditRow";
 import { RegisterForm } from "./RegisterForm";
 
 const REGISTERED_ROW_COLSPAN = 6;
@@ -46,10 +47,20 @@ interface RegisteredRowProps {
   selection: SelectionControls;
   isOptionsOpen: boolean;
   onToggleOptions: () => void;
+  isEditOpen: boolean;
+  onToggleEdit: () => void;
   onSwitchTab: (tab: TabKey) => void;
 }
 
-function RegisteredRow({ session, selection, isOptionsOpen, onToggleOptions, onSwitchTab }: RegisteredRowProps) {
+function RegisteredRow({
+  session,
+  selection,
+  isOptionsOpen,
+  onToggleOptions,
+  isEditOpen,
+  onToggleEdit,
+  onSwitchTab,
+}: RegisteredRowProps) {
   const { t } = useLang();
   return (
     <>
@@ -84,12 +95,16 @@ function RegisteredRow({ session, selection, isOptionsOpen, onToggleOptions, onS
             <button type="button" className="start" onClick={onToggleOptions}>
               {t.startBtn}
             </button>
+            <button type="button" title={t.editTitle} onClick={onToggleEdit}>
+              {t.editBtn}
+            </button>
           </div>
         </td>
       </tr>
       {isOptionsOpen && (
         <OptionsRow session={session} colspan={REGISTERED_ROW_COLSPAN} onClose={onToggleOptions} onSwitchTab={onSwitchTab} />
       )}
+      {isEditOpen && <EditRow session={session} colspan={REGISTERED_ROW_COLSPAN} onClose={onToggleEdit} />}
     </>
   );
 }
@@ -170,6 +185,7 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
   const { t } = useLang();
   const { data } = useStatusContext();
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
+  const [openEditFor, setOpenEditFor] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
   // Hooks must run unconditionally (rules-of-hooks) — computed before the
@@ -243,7 +259,21 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
                         session={s}
                         selection={selection}
                         isOptionsOpen={openOptionsFor === rowKey(s)}
-                        onToggleOptions={() => setOpenOptionsFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}
+                        onToggleOptions={() =>
+                          setOpenOptionsFor((prev) => {
+                            const next = prev === rowKey(s) ? null : rowKey(s);
+                            if (next) setOpenEditFor(null);
+                            return next;
+                          })
+                        }
+                        isEditOpen={openEditFor === rowKey(s)}
+                        onToggleEdit={() =>
+                          setOpenEditFor((prev) => {
+                            const next = prev === rowKey(s) ? null : rowKey(s);
+                            if (next) setOpenOptionsFor(null);
+                            return next;
+                          })
+                        }
                         onSwitchTab={onSwitchTab}
                       />
                     ))}

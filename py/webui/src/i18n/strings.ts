@@ -162,6 +162,10 @@ export interface Strings {
   registerSave: string;
   registerSuccess: (name: string) => string;
   registerSaving: string;
+  editBtn: string;
+  editTitle: string;
+  editSave: string;
+  editCancel: string;
   reactivateBtn: string;
   modeResume: string;
   modeReset: string;
@@ -382,6 +386,10 @@ export const STRINGS: Record<Lang, Strings> = {
     registerSave: "kaydet",
     registerSuccess: (name) => `✓ "${name}" kaydedildi — Kayıtlı listesinde "Başlat"a basın`,
     registerSaving: "kaydediliyor…",
+    editBtn: "✎ düzenle",
+    editTitle: "isim/klasör/model düzenle",
+    editSave: "kaydet",
+    editCancel: "vazgeç",
     reactivateBtn: "tekrar işe al + başlat",
     modeResume: "devam ettir",
     modeReset: "sıfırla ve başlat",
@@ -603,6 +611,10 @@ export const STRINGS: Record<Lang, Strings> = {
     registerSave: "save",
     registerSuccess: (name) => `✓ "${name}" registered — click "Start" on it in the Registered list`,
     registerSaving: "saving…",
+    editBtn: "✎ edit",
+    editTitle: "edit name/folder/model",
+    editSave: "save",
+    editCancel: "cancel",
     reactivateBtn: "reactivate + start",
     modeResume: "resume",
     modeReset: "reset and start",

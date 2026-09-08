@@ -152,7 +152,10 @@ button:disabled { opacity: .5; cursor: default; }
    input) and push the send button alone onto the next one (big empty gap
    to its right). */
 .term-input-row { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: .5rem; }
-.term-masked-hint {
+/* Generic non-blocking warning banner — terminal masked-input notice, edit-form
+   danger callouts (folder missing / orphaning history), any future "informational,
+   doesn't block the action" notice. */
+.warn-banner {
   flex-basis: 100%; font-size: .78rem; color: var(--red);
   background: rgba(248,81,73,.12); border: 1px solid var(--red);
   border-radius: 6px; padding: .3rem .6rem;

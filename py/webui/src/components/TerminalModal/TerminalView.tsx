@@ -476,7 +476,7 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
         <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
           {copyLabel ?? t.termCopyBtn}
         </button>
-        {masked && <div className="term-masked-hint">{t.termMaskedHint}</div>}
+        {masked && <div className="warn-banner">{t.termMaskedHint}</div>}
         <div className="term-input-row">
           <input
             type={masked ? "password" : "text"}

@@ -25,6 +25,7 @@ import type {
   DiagLogResult,
   DiagRestartResult,
   DiagSpawnTestResult,
+  EditResult,
   FilesListResult,
   FilesReadResult,
   FilesValidateResult,
@@ -207,6 +208,17 @@ export interface RegisterPayload {
   lang: Lang;
 }
 export const apiRegister = (p: RegisterPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/register", p);
+
+export interface EditPayload {
+  name: string;
+  host?: string;
+  new_name: string;
+  new_cwd: string;
+  new_model?: string;
+  new_cli?: string;
+  lang: Lang;
+}
+export const apiEditProject = (p: EditPayload): Promise<EditResult> => apiPost<EditResult>("/api/edit", p);
 
 export interface AdoptPayload {
   name: string;

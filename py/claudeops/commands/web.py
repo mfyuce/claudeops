@@ -181,12 +181,29 @@ ERR = {
                          "en": "{name}: file exceeds the download size limit (>{limit_mb:.0f}MB)"},
     "vscode_not_found": {"tr": "VS Code CLI (`code`) bu makinede bulunamadı",
                           "en": "VS Code CLI (`code`) not found on this machine"},
+    "not_registered": {"tr": "{name}: roster'da kayıtlı değil", "en": "{name}: not in the roster"},
+    "edit_while_running": {"tr": "{name}: çalışırken düzenlenemez — önce durdurun, sonra tekrar deneyin",
+                            "en": "{name}: can't edit while running — stop it first, then try again"},
+    "edit_warn_dir_not_found": {"tr": "'{cwd}' şu an mevcut değil — session bu klasörde başlatılmaya çalışıldığında başarısız olur",
+                                 "en": "'{cwd}' doesn't exist yet — starting the session will fail until it does"},
+    "edit_warn_orphans_history": {"tr": "eski klasörde ('{cwd}') gerçek bir konuşma geçmişi var — klasörü değiştirmek onu TAŞIMAZ, "
+                                         "yeni klasörde sıfırdan başlar ve eski geçmiş bu proje adından bir daha erişilemez olur",
+                                   "en": "the old folder ('{cwd}') has real conversation history — changing the folder does NOT move it, "
+                                         "the new folder starts fresh and the old history becomes unreachable from this project name"},
 }
 
 
 def _err(lang: str, key: str, **kwargs) -> dict:
     tpl = ERR[key]["en" if lang == "en" else "tr"]
     return {"ok": False, "error": tpl.format(**kwargs)}
+
+
+def _msg(lang: str, key: str, **kwargs) -> str:
+    """`_err()` ile AYNI şablon katalogunu (ERR) kullanan, ama `ok:False`
+    sarmalamayan düz metin — engellemeyen/bilgilendirici uyarılar için
+    (ör. `_edit_project()`'in `warnings` listesi)."""
+    tpl = ERR[key]["en" if lang == "en" else "tr"]
+    return tpl.format(**kwargs)
 
 
 def _load_or_create_token() -> str:
@@ -451,6 +468,65 @@ def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang:
     return {"ok": True}
 
 
+def _edit_project(name: str, new_name: str, new_cwd: str, new_model: str = "",
+                   new_cli: str = "", lang: str = "tr") -> dict:
+    """Kayıtlı (DURMUŞ) bir projenin isim/klasör/model'ini roster.tsv+models.tsv'de
+    YERİNDE değiştirir (aktif/kapalı/emekli `#` durumu KORUNUR, `_replace_tsv_line`).
+
+    Kullanıcı kararı (2026-09-08): proje ÇALIŞIYORSA reddedilir — canlı process'in
+    cwd/isim'i kill+respawn olmadan değişemez, önce durdursun. İsim için
+    `_register_project` ile AYNI yapısal kontroller (geçerlilik + çakışma —
+    uniqueness sistem genelinde `(host,name)` kimliğinin temeli, esnetilemez).
+    Klasör için YAPISAL bir kısıt YOK — "ne isterse yapsın" — sadece olmayan
+    klasör ya da eski klasördeki artık erişilemez hale gelecek konuşma geçmişi
+    (provider-agnostic `resolve_resume_id()` ile tespit) `warnings` listesinde
+    dönüyor, kaydı ENGELLEMİYOR."""
+    name = name.strip()
+    roster_rows = {r["name"]: r for r in _read_tsv_raw(ROSTER_TSV) if r["name"] != "name"}
+    old = roster_rows.get(name)
+    if old is None:
+        return _err(lang, "not_registered", name=name)
+    for s in find_sessions(measure_cpu=False):
+        if name in (s.name, s.base):
+            return _err(lang, "edit_while_running", name=name)
+
+    new_name = new_name.strip()
+    if not _NAME_VALID_RE.match(new_name):
+        return _err(lang, "invalid_name")
+    if new_name != name:
+        if new_name in roster_rows:
+            return _err(lang, "already_registered", name=new_name)
+        for s in find_sessions(measure_cpu=False):
+            if new_name in (s.name, s.base):
+                return _err(lang, "conflicts_running", name=new_name, other=s.name)
+
+    new_cwd = os.path.expanduser(new_cwd.strip())
+    if not new_cwd:
+        return _err(lang, "dir_not_found", cwd="(boş)" if lang != "en" else "(empty)")
+    if "\t" in new_cwd or "\n" in new_cwd:
+        return _err(lang, "cwd_bad_chars")
+
+    old_cwd = old["rest"][0] if old["rest"] else ""
+    old_cli = old["rest"][2] if len(old["rest"]) >= 3 and old["rest"][2] in PROVIDERS else DEFAULT_CLI
+    chosen_cli = new_cli.strip() if new_cli.strip() in PROVIDERS else old_cli
+    chosen_model = new_model.strip() or default_model_for(get_provider(chosen_cli))
+
+    warnings = []
+    if not os.path.isdir(new_cwd):
+        warnings.append(_msg(lang, "edit_warn_dir_not_found", cwd=new_cwd))
+    if new_cwd != old_cwd:
+        try:
+            has_history = bool(get_provider(old_cli).resolve_resume_id(old_cwd))
+        except Exception:
+            has_history = False
+        if has_history:
+            warnings.append(_msg(lang, "edit_warn_orphans_history", cwd=old_cwd))
+
+    _replace_tsv_line(ROSTER_TSV, name, [new_name, new_cwd, chosen_model, chosen_cli])
+    _replace_tsv_line(MODELS_TSV, name, [new_name, chosen_model])
+    return {"ok": True, "name": new_name, "warnings": warnings}
+
+
 def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "",
               cli: str = "", lang: str = "tr") -> dict:
     """`base`'in cwd'sinde YENİ, otomatik-isimli (tarih[+_N]) bir chat başlat.
@@ -512,6 +588,33 @@ def _toggle_comment(path: str, name: str, want_active: bool) -> bool:
         first_field = bare.strip().split("\t", 1)[0]
         if first_field == name:
             lines[i] = (bare if want_active else "#" + bare) + "\n"
+            found = True
+            break
+    if found:
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+    return found
+
+
+def _replace_tsv_line(path: str, name: str, fields: list) -> bool:
+    """`_toggle_comment()` ile AYNI find-by-first-field deseni, ama `#` durumunu
+    değiştirmek yerine satırın ALANLARINI `fields` ile değiştirir (aktif/kapalı/emekli
+    durumu KORUNUR). `fields[0]` eskisinden FARKLI olabilir — bu, tek bir çağrıda
+    rename'i de kapsar (satır hâlâ ESKİ `name`'e göre bulunur, sadece içeriği değişir)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return False
+    found = False
+    for i, line in enumerate(lines):
+        core = line.rstrip("\n")
+        is_commented = core.startswith("#")
+        bare = core[1:] if is_commented else core
+        first_field = bare.strip().split("\t", 1)[0]
+        if first_field == name:
+            new_core = "\t".join(fields)
+            lines[i] = ("#" + new_core if is_commented else new_core) + "\n"
             found = True
             break
     if found:
@@ -1872,7 +1975,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
-                         "/api/new-chat", "/api/layout", "/api/register", "/api/close",
+                         "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/set-mode",
                          "/api/term/open-window", "/api/settings",
@@ -1997,6 +2100,17 @@ class _Handler(BaseHTTPRequestHandler):
                 cwd=str(data.get("cwd", "")),
                 model=str(data.get("model", "")),
                 cli=str(data.get("cli", "")),
+                lang=lang,
+            ))
+            return
+
+        if path == "/api/edit":
+            self._json_notify(_edit_project(
+                name=str(data.get("name", "")),
+                new_name=str(data.get("new_name", "")),
+                new_cwd=str(data.get("new_cwd", "")),
+                new_model=str(data.get("new_model", "")),
+                new_cli=str(data.get("new_cli", "")),
                 lang=lang,
             ))
             return

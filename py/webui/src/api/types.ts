@@ -179,6 +179,10 @@ export type StopResult = ApiResult<{ result: string[] }>;
 export type NewChatResult = ApiResult<{ name: string; kind: string }>;
 /** `_adopt()`. */
 export type AdoptResult = ApiResult<{ kind: string; new_name: string }>;
+/** `_edit_project()`. `warnings` — non-blocking notices (target folder doesn't
+ * exist yet, or the old folder's conversation history becomes unreachable);
+ * the edit still applies (`ok: true`) even when this is non-empty. */
+export type EditResult = ApiResult<{ name: string; warnings: string[] }>;
 /** `_register_project()` / `_retire()` / `_close_project()` / `_term_input()` /
  * `_term_key()` / `_open_window()` — bare `{ok: true}` on success. */
 export type SimpleResult = ApiResult;
