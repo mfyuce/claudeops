@@ -53,7 +53,7 @@ from ..settings import default_model_for, load_settings, save_settings
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..tmux_backend import (
-    is_tmux_backed, tmux_has_session, tmux_capture, tmux_send_keys, tmux_send_raw,
+    is_tmux_backed, tmux_has_session, tmux_capture, tmux_client_count, tmux_send_keys, tmux_send_raw,
     tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS,
 )
 from .web_static import DIST_DIR, resolve_static_path
@@ -145,6 +145,14 @@ ERR = {
     "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
                            "en": "{name}: tmux session no longer exists (may have closed)"},
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
+    "window_already_attached": {"tr": "{name}: zaten bağlı {count} pencere var — ikincisi yeni bir session AÇMAZ, "
+                                       "aynı ekranı aynalar (tmux pane'i istemcilere göre yeniden boyutlandırır). "
+                                       "Pencereyi bulamıyorsanız önce masaüstlerine bakın; yine de istiyorsanız "
+                                       "istek `force` ile gönderilmeli",
+                                "en": "{name}: {count} window(s) already attached — a second one does NOT open a new "
+                                      "session, it mirrors the same screen (and tmux resizes the pane to fit the "
+                                      "clients). Check your other desktops first; send the request with `force` if "
+                                      "you really want another one"},
     "term_raw_too_long": {"tr": "canlı yazma: tek seferde en fazla {limit} karakter gönderilebilir",
                            "en": "live typing: at most {limit} characters can be sent at once"},
     "mode_cycle_unsupported": {"tr": "{name}: {cli} CLI'ında canlı izin-modu değiştirme yok "
@@ -692,21 +700,6 @@ def _find_gnome_terminal_server() -> Optional[psutil.Process]:
     return None
 
 
-def _gnome_window_titles() -> set:
-    """tmux.conf `set-titles-string '#S'` → tmux-backed pencere başlığı = session
-    adının AYNISI (bkz. layout.py'nin aynı `wmctrl -l` deseni)."""
-    try:
-        r = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=5)
-        titles = set()
-        for line in r.stdout.splitlines():
-            parts = line.split(None, 3)
-            if len(parts) == 4:
-                titles.add(parts[3])
-        return titles
-    except Exception:
-        return set()
-
-
 def _diag_status() -> dict:
     """Her /api/status poll'unda (4s) çalışır — subprocess'ler ucuz/hızlı (wmctrl
     tek çağrı, /proc taramalar), aktif spawn-test/restart gibi pencere AÇMAZ."""
@@ -718,19 +711,27 @@ def _diag_status() -> dict:
         except psutil.NoSuchProcess:
             gt_info = None
 
-    # "windowless" = tmux-backed ama görünür gnome-terminal penceresi YOK — ya
+    # "windowless" = tmux-backed ama hiçbir terminal istemcisi bağlı DEĞİL — ya
     # spawn.py'nin fallback'ı devrede (gnome-terminal o an bozuktu) ya da
-    # gnome-terminal-server o session'ın penceresini kaybetti/kapattı sonradan.
-    # wmctrl yoksa (LAYOUT_DEPS'te zaten uyarılıyor) None döner — "bilinmiyor",
-    # boş liste (yanlış-pozitif "hepsi windowless") DEĞİL.
+    # pencere sonradan kapandı/kayboldu.
+    #
+    # Kaynak tmux'un KENDİ istemci listesi (`list-clients`), pencere BAŞLIKLARI
+    # değil (2026-09-07 kullanıcı raporu: "biraz önce açtığım tüm pencereler
+    # pencereli olduğu halde windowless görüyor" — ve o yanlış uyarıya uyup
+    # "pencere aç"a basınca session'ın zaten bağlı penceresinin YANINA ikinci
+    # bir istemci bağlanıyor, aynı pane iki pencerede aynalanıyor). Başlık
+    # eşleştirmesi doğası gereği kırılgan: pencere yeni açılmışken başlık henüz
+    # gelmemiş olabiliyor, CLI'ın TUI'si başlığı eski bir adda bırakabiliyor
+    # ([[stale-tui-title-cross-suffix-resume]], layout'ta da aynı sorun var,
+    # TODO #46) — ikisi de "penceresi VAR ama başlığı tutmuyor" demek.
+    # None = bilinmiyor (tmux yok/hata), boş liste ile karıştırılmamalı.
     windowless = None
-    if shutil.which("wmctrl"):
-        try:
-            titles = _gnome_window_titles()
-            windowless = [s.name for s in find_sessions(measure_cpu=False)
-                          if is_tmux_backed(s.pid) and s.name not in titles]
-        except Exception:
-            windowless = None
+    try:
+        rows = [(s.name, tmux_client_count(s.name)) for s in find_sessions(measure_cpu=False)
+                if is_tmux_backed(s.pid)]
+        windowless = [n for n, c in rows if c == 0]
+    except Exception:
+        windowless = None
 
     recent_fallbacks = diag_log_recent_fallback_count(FALLBACK_ALERT_WINDOW_MINUTES)
     return {
@@ -1389,13 +1390,24 @@ def _term_chat(name: str, lang: str = "tr", mode: str = "last") -> dict:
     return {"ok": True, "supported": True, "user": exchange["user"], "assistant": exchange["assistant"]}
 
 
-def _open_window(name: str, lang: str = "tr") -> dict:
+def _open_window(name: str, lang: str = "tr", force: bool = False) -> dict:
     """Windowless (tmux-only) kalmış bir session'a YENİ bir gnome-terminal penceresi
     bağlar — CLI'ı yeniden başlatmadan. `_diag_status()`'un `windowless` listesindeki
     satırlara panelde tek-tık telafi butonu için (2026-08-28)."""
     s, err = _term_resolve(name, lang)
     if err:
         return err
+    # Zaten bağlı bir istemci varsa İKİNCİ bir pencere açmak session'ı
+    # "çoğaltmaz", aynı pane'i aynalar — iki pencere aynı ekranı gösterir, tmux
+    # pane boyutunu istemcilere göre yeniden ayarlar ve kullanıcı hangisinin
+    # "gerçek" olduğunu bilemez (2026-09-07 canlı raporun ikinci yarısı tam
+    # buydu). Yanlış bir windowless tespiti düzeltildi ama buton yine de bir
+    # yarışta/eski veriyle basılabilir — asıl koruma burada, `force` ile
+    # bilerek istenirse yine mümkün.
+    if not force:
+        clients = tmux_client_count(s.name)
+        if clients:
+            return _err(lang, "window_already_attached", name=name, count=clients)
     ok = open_window(s.name, s.cwd, display=detect_display())
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
@@ -2267,7 +2279,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json_notify(_open_window(name, lang=lang))
+            self._json_notify(_open_window(name, lang=lang, force=bool(data.get("force", False))))
             return
 
         name = str(data.get("name", "")).strip()

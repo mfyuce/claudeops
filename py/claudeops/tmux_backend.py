@@ -182,6 +182,27 @@ def tmux_send_raw(name: str, data: str) -> bool:
         return False
 
 
+def tmux_client_count(name: str) -> Optional[int]:
+    """`name` session'ına ŞU AN kaç terminal istemcisi bağlı (0 = penceresiz).
+    Hata/tmux yok → None ("bilinmiyor", 0 DEĞİL — 0 "kesinlikle penceresiz"
+    demek ve panelde uyarı üretiyor, tahminle üretilmemeli).
+
+    Pencere var mı sorusunun DOĞRU kaynağı budur; pencere BAŞLIĞINA bakmak
+    değil: başlık `set-titles-string "#S"` ile session adına ayarlanıyor ama
+    pencere yeni açılmışken (VTE başlığı henüz almamışken) ya da CLI'ın kendi
+    TUI'si başlığı eski bir adda bıraktığında ([[stale-tui-title-cross-suffix-
+    resume]]) eşleşme kaçıyor → penceresi OLAN session "penceresiz" görünüyor."""
+    try:
+        r = subprocess.run(_base_argv() + ["list-clients", "-t", name, "-F", "#{client_tty}"],
+                            capture_output=True, text=True, timeout=_TIMEOUT)
+        if r.returncode != 0:
+            # session yoksa tmux da hata döner — "bilinmiyor" demek doğru
+            return None
+        return len([ln for ln in r.stdout.splitlines() if ln.strip()])
+    except Exception:
+        return None
+
+
 def tmux_pane_size(name: str) -> Optional[tuple]:
     """Panelin GERÇEK boyutu — new-session'daki -x/-y sadece istemci hiç bağlanmamışsa
     geçerli; attach eden bir client (bizim gnome-terminal penceremiz) varsa tmux paneli
