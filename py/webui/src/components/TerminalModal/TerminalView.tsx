@@ -47,14 +47,11 @@ import { cliOptionsFor, rowKey } from "../../state/hosts";
 import { computeFitFontSize, fitContainerToTerm } from "./xtermSizing";
 import { UrlBanner } from "./UrlBanner";
 
-// Cross-checked against the CLI's official docs (2026-09-07): there is no
-// direct "set permission mode to X" slash command — Shift+Tab (BTab) cycling
-// is the only live way, and the backend (_term_set_mode) polls/re-checks
-// after each press rather than assuming a fixed cycle. Only these 4 are ever
-// reachable that way ("dontAsk" never appears in the cycle at all;
-// "bypassPermissions" only shows up if a session was started with that flag,
-// not attempted here — matches the backend's own rejection of anything else).
-const CYCLABLE_MODES: TermSetModePayload["mode"][] = ["default", "acceptEdits", "plan", "auto"];
+// The live-changeable mode list is NOT hardcoded here any more: it comes from
+// the backend per CLI (`cli_options[cli].cyclable_modes`, i.e. the provider's
+// own `cyclable_modes()`), because it is a per-CLI fact — codex/agy/shell have
+// no Shift+Tab mode cycle at all and used to be offered claude's modes anyway.
+// An empty list hides the picker entirely.
 
 const POLL_INTERVAL_MS = 200;
 // A remote host's connection (VS Code devtunnel, Cloudflare, etc.) can have
@@ -141,6 +138,18 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
   const [xtermState, setXtermState] = useState<XtermState>("loading");
 
   const [hint, setHint] = useState("");
+  // The pane's ACTUAL current permission mode, re-read on every poll from the
+  // status bar (null = unknown/not applicable) — the mode <select> shows this
+  // rather than a placeholder, which is the whole point of TODO #78: a picker
+  // that doesn't show the session's real state invites switching it by accident.
+  const [paneMode, setPaneMode] = useState<string | null>(null);
+  // Optimistic display for the model picker: claudeops has no way to read a
+  // live /model change back (claude's status bar doesn't show the model), so
+  // once the user picks one we keep showing it — but only for the exact
+  // session+recorded-model it was picked against, so it can never leak onto
+  // another session or survive a respawn with a different model. Derived
+  // during render (no effect, nothing to reset).
+  const [pickedModel, setPickedModel] = useState<{ value: string; forKey: string } | null>(null);
   const [rawText, setRawText] = useState("");
   const [fallbackText, setFallbackText] = useState("");
   const [masked, setMasked] = useState(false);
@@ -280,6 +289,7 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
       if (result.ok) {
         setRawText(result.text);
         setMasked(result.masked);
+        setPaneMode(result.mode);
       }
 
       const inst = instRef.current;
@@ -434,6 +444,18 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
     void apiTermInput({ name, host, text, lang }).catch(() => {});
   }
 
+  // (host, name) is the identity everywhere — never a bare name (two hosts can
+  // have a same-named session).
+  const session = data?.sessions.find((s) => rowKey(s) === rowKey({ host, name }));
+  const cliOpts = cliOptionsFor(data ?? null, host, session?.cli ?? "");
+  // What the session is REALLY on: the running process's own --model, falling
+  // back to what claudeops recorded for the name (a stopped/unknown proc).
+  const knownModel = session?.live_model || session?.model || "";
+  const modelPickKey = `${rowKey({ host, name })}|${knownModel}`;
+  const modelValue = pickedModel?.forKey === modelPickKey ? pickedModel.value : knownModel;
+  const modelOptions =
+    modelValue && !cliOpts.models.includes(modelValue) ? [modelValue, ...cliOpts.models] : cliOpts.models;
+
   async function handleSetMode(mode: TermSetModePayload["mode"]) {
     setModeBusy(true);
     setModeMsg("");
@@ -537,52 +559,59 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
       </div>
       <UrlBanner rawText={rawText} name={name} onView={onView} />
       <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
-        <label title={t.termModeHint}>
-          {t.termModeLabel}
-          <select
-            disabled={modeBusy}
-            defaultValue=""
-            onChange={(e) => {
-              if (e.target.value) void handleSetMode(e.target.value as TermSetModePayload["mode"]);
-              e.target.value = "";
-            }}
-          >
-            <option value="" disabled>
-              {modeBusy ? t.termModeApplying : t.termModePick}
-            </option>
-            {CYCLABLE_MODES.map((m) => (
-              <option key={m} value={m}>
-                {m}
+        {cliOpts.cyclable_modes.length > 0 && (
+          <label title={t.termModeHint}>
+            {t.termModeLabel}
+            <select
+              disabled={modeBusy}
+              // Controlled by what the pane actually shows: after a successful
+              // switch the next poll moves it on its own, and while a switch is
+              // in flight it falls back to the placeholder ("applying…").
+              value={!modeBusy && paneMode && cliOpts.cyclable_modes.includes(paneMode) ? paneMode : ""}
+              onChange={(e) => {
+                if (e.target.value) void handleSetMode(e.target.value as TermSetModePayload["mode"]);
+              }}
+            >
+              <option value="" disabled>
+                {modeBusy ? t.termModeApplying : t.termModePick}
               </option>
-            ))}
-          </select>
-        </label>
-        {(() => {
-          const session = data?.sessions.find((s) => rowKey(s) === rowKey({ host, name }));
-          const models = session ? cliOptionsFor(data ?? null, host, session.cli).models : [];
-          if (!models.length) return null;
-          return (
-            <label title={t.termModelHint}>
-              {t.termModelLabel}
-              <select
-                defaultValue=""
-                onChange={(e) => {
-                  handleSetModel(e.target.value);
-                  e.target.value = "";
-                }}
-              >
+              {cliOpts.cyclable_modes.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {modelOptions.length > 0 && (
+          <label title={t.termModelHint}>
+            {t.termModelLabel}
+            <select
+              value={modelValue}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                setPickedModel({ value: e.target.value, forKey: modelPickKey });
+                handleSetModel(e.target.value);
+              }}
+            >
+              {!modelValue && (
                 <option value="" disabled>
                   {t.termModelPick}
                 </option>
-                {models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </label>
-          );
-        })()}
+              )}
+              {modelOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {session?.live_effort && (
+          <span className="opts-hint" title={t.termEffortHint}>
+            {t.termEffortLabel}: {session.live_effort}
+          </span>
+        )}
         {modeMsg && <span className="opts-hint">{modeMsg}</span>}
         <label title={t.termLiveHint}>
           <input

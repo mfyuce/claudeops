@@ -20,6 +20,30 @@ MODEL_CHOICES = [
 ]
 PERMISSION_MODES = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
+# Claude Code'un durum çubuğunda gösterdiği metinler (claude-code-guide ajanının
+# resmi dokümantasyondan doğruladığı 3 mod, 2026-09-07) — SADECE bunlar Shift+Tab
+# döngüsüyle GÜVENİLİR şekilde hedeflenebilir. `bypassPermissions` sadece session
+# başlangıcında ayrıca etkinleştirilmişse döngüde belirir (metni doğrulanmadı);
+# `dontAsk` döngüde HİÇ yer almaz (resmi doküman: sadece başlatma flag'iyle
+# set edilebilir) — ikisi de bilerek dışarıda, ikisi de PERMISSION_MODES'ta var
+# (başlatırken verilebiliyorlar, canlıyken değiştirilemiyorlar).
+# 2026-09-08'de izole bir scratch session'da CANLI haritalandı (tmux capture,
+# Shift+Tab'a arka arkaya basılarak): her durumun kendi metni VAR, "işaretsiz"
+# bir mod yok — eskiden varsayılan kabul edilen "default" aslında ekranda
+# "manual mode on" olarak görünüyor.
+MODE_STATUS_PATTERNS = {
+    "plan": r"plan mode on",
+    "acceptEdits": r"accept edits on",
+    "auto": r"auto mode on",
+    "manual": r"manual mode on",
+}
+# Döngünün BİLEŞİMİ session'a göre DEĞİŞİYOR (aynı canlı haritalamada:
+# manual'da başlayan bir session manual→acceptEdits→plan üçlüsünü dönüyor,
+# auto'da olan bir session'ın durum çubuğu da "auto mode on (shift+tab to
+# cycle)" diyor) — bu yüzden burası "hedeflenebilir modlar" listesi, sabit bir
+# döngü SIRASI değil; `_term_set_mode` her basıştan sonra durumu yeniden okur ve
+# başlangıç moduna geri dönerse "bu session'ın döngüsünde yok" diye durur.
+CYCLABLE_MODES = ["manual", "acceptEdits", "plan", "auto"]
 
 
 def _encode_cwd(cwd: str) -> str:
@@ -215,6 +239,12 @@ class ClaudeProvider(CliProvider):
 
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
+
+    def mode_status_patterns(self) -> Dict[str, str]:
+        return MODE_STATUS_PATTERNS
+
+    def cyclable_modes(self) -> List[str]:
+        return CYCLABLE_MODES
 
     def _transcript_lines(self, cwd: str, sid: Optional[str]) -> List[dict]:
         """`last_exchange`/`full_history`'nin PAYLAŞTIĞI adım: doğru jsonl'ı bul + parse

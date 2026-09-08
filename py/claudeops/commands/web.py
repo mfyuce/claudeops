@@ -147,12 +147,18 @@ ERR = {
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
     "term_raw_too_long": {"tr": "canlı yazma: tek seferde en fazla {limit} karakter gönderilebilir",
                            "en": "live typing: at most {limit} characters can be sent at once"},
-    "mode_not_cyclable": {"tr": "{mode}: Shift+Tab döngüsüyle hedeflenemez (sadece default/acceptEdits/plan/auto "
-                                 "canlıyken değiştirilebilir — resmi CLI dokümantasyonu, 2026-09-07 doğrulandı) — "
+    "mode_cycle_unsupported": {"tr": "{name}: {cli} CLI'ında canlı izin-modu değiştirme yok "
+                                      "(Shift+Tab döngüsü sadece claude'da tanımlı)",
+                               "en": "{name}: the {cli} CLI has no live permission-mode switching "
+                                     "(the Shift+Tab cycle is only defined for claude)"},
+    "mode_not_cyclable": {"tr": "{mode}: Shift+Tab döngüsüyle hedeflenemez (canlıyken sadece şunlar: {modes}) — "
                                  "diğer modlar için session'ı o modla yeniden başlatın",
-                          "en": "{mode}: not reachable via the Shift+Tab cycle (only default/acceptEdits/plan/auto "
-                                "can be changed live — confirmed against official CLI docs, 2026-09-07) — "
+                          "en": "{mode}: not reachable via the Shift+Tab cycle (live-changeable ones: {modes}) — "
                                 "for other modes, restart the session with that mode"},
+    "mode_cycle_unreachable": {"tr": "{name}: {mode} bu session'ın Shift+Tab döngüsünde yok — tam tur atıldı, "
+                                      "başlangıç moduna ({current}) geri dönüldü, hiçbir şey değişmedi",
+                               "en": "{name}: {mode} isn't in this session's Shift+Tab cycle — went a full loop and "
+                                     "came back to the starting mode ({current}), nothing changed"},
     "mode_cycle_failed": {"tr": "{name}: {mode} moduna ulaşılamadı (şu an: {current}) — CLI'nin döngüsü bu "
                                  "session için farklı olabilir, terminalden elle Shift+Tab deneyin",
                            "en": "{name}: couldn't reach {mode} mode (currently: {current}) — this session's "
@@ -945,6 +951,14 @@ def _status_payload() -> dict:
             "registered": True,
             "tmux": is_tmux_backed(s.pid) if s else False,
             "host": LOCAL_HOST_NAME,
+            # `model` roster/models.tsv'nin KAYITLI değeri (durmuş satırlarda da
+            # dolu, "bir sonraki başlatmada bu kullanılacak" anlamında). Bunlar ise
+            # ÇALIŞAN process'in kendi komut satırından: panelin bir session'ın
+            # GERÇEKTEN hangi modelle/effort'la açıldığını gösterebilmesi için —
+            # ikisi ayrışabiliyor, çünkü panelden tek seferlik bir modelle
+            # başlatmak models.tsv'yi DEĞİŞTİRMİYOR. Çalışmıyorsa/bilinmiyorsa None.
+            "live_model": (s.model if s else None),
+            "live_effort": (s.effort if s else None),
         })
 
     # Hiçbir AKTİF roster satırına bağlanamayan canlı session'lar (elle açılmış
@@ -966,6 +980,8 @@ def _status_payload() -> dict:
             "registered": False,
             "tmux": is_tmux_backed(s.pid),
             "host": LOCAL_HOST_NAME,
+            "live_model": s.model,
+            "live_effort": s.effort,
         })
 
     payload = {
@@ -982,6 +998,10 @@ def _status_payload() -> dict:
                 "models": p.model_choices(),
                 "permission_modes": p.permission_modes(),
                 "effort_levels": p.effort_levels(),
+                # permission_modes()'ın DAR alt kümesi: session çalışırken
+                # (Shift+Tab ile) gerçekten değiştirilebilenler. Boş liste →
+                # panel Terminal'de mod seçicisini hiç göstermez.
+                "cyclable_modes": p.cyclable_modes(),
             }
             for name, p in PROVIDERS.items()
         },
@@ -1184,8 +1204,12 @@ def _term_output(name: str, lang: str = "tr") -> dict:
         return _err(lang, "term_session_gone", name=name)
     size = tmux_pane_size(s.name)
     masked = pane_is_masked_input(s.name)
+    # `mode`/`masked` ikisi de bu ZATEN çekilmiş metne/pane'e biniyor — 200ms'lik
+    # poll'a ek bir tmux çağrısı EKLEMİYORLAR. mode None = bu CLI'da canlı izin
+    # modu diye bir şey yok (panel seçiciyi hiç göstermez).
     return {"ok": True, "text": text, "cols": size[0] if size else None,
-            "rows": size[1] if size else None, "masked": bool(masked)}
+            "rows": size[1] if size else None, "masked": bool(masked),
+            "mode": _detect_mode_in_text(text, get_provider(s.cli))}
 
 
 def _term_input(name: str, text: str, lang: str = "tr") -> dict:
@@ -1236,37 +1260,66 @@ def _term_raw(name: str, data: str, lang: str = "tr") -> dict:
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
-# Claude Code'un durum çubuğunda gösterdiği metinler (claude-code-guide ajanının
-# resmi dokümantasyondan doğruladığı 3 mod, 2026-09-07) — SADECE bunlar Shift+Tab
-# döngüsüyle GÜVENİLİR şekilde hedeflenebilir. `bypassPermissions` sadece
-# session başlangıcında ayrıca etkinleştirilmişse döngüde belirir (metni
-# doğrulanmadı); `dontAsk` döngüde HİÇ yer almaz (resmi doküman: sadece
-# başlatma flag'iyle set edilebilir) — ikisi de bilerek dışarıda bırakıldı,
-# istenirse net bir hata döner, sonsuz/yanlış döngüye girilmez.
-_MODE_STATUS_PATTERNS: Dict[str, "re.Pattern"] = {
-    "plan": re.compile(r"plan mode on", re.IGNORECASE),
-    "acceptEdits": re.compile(r"accept edits on", re.IGNORECASE),
-    "auto": re.compile(r"auto mode on", re.IGNORECASE),
-}
-_CYCLABLE_MODES = ("default", "acceptEdits", "plan", "auto")
 _MODE_CYCLE_MAX_PRESSES = 8  # döngü uzunluğundan (≤4 bilinen mod) cömert marj
 _MODE_CYCLE_POLL_DELAY = 0.6  # BTab sonrası TUI'nin yeniden çizilmesini bekle
+# provider adı → {mod: derlenmiş regex}. Desenlerin KENDİSİ provider'ın
+# (`mode_status_patterns()`), derleme sadece burada — `_term_output` her 200ms'de
+# bir çağrıldığı için her seferinde yeniden derlemeye gerek yok.
+_MODE_PATTERN_CACHE: Dict[str, Dict[str, "re.Pattern"]] = {}
 
 
-def _detect_current_mode(name: str) -> Optional[str]:
-    """Son birkaç satırdaki durum çubuğundan aktif modu okur — TÜM 2000 satırlık
-    capture'da değil (eski, kaydırılmış bir 'plan mode on' metnine yanlışlıkla
-    yakalanmasın diye), sadece en sondaki birkaç DOLU satırda arar. Hiçbiri
-    eşleşmezse 'default' varsayılır (o modun kendine özgü bir durum metni yok)."""
+def _mode_patterns(provider) -> Dict[str, "re.Pattern"]:
+    cached = _MODE_PATTERN_CACHE.get(provider.name)
+    if cached is None:
+        cached = {m: re.compile(pat, re.IGNORECASE) for m, pat in provider.mode_status_patterns().items()}
+        _MODE_PATTERN_CACHE[provider.name] = cached
+    return cached
+
+
+# `tmux capture-pane -e` ANSI'yi KORUR ve claude'un durum çubuğunu kelime kelime
+# renklendirir — ham metinde "auto mode on" aslında
+# `\x1b[38;5;220mauto\x1b[39m \x1b[38;5;220mmode\x1b[39m \x1b[38;5;220mon...`
+# olarak duruyor, yani düz bir regex ASLA eşleşmez. 2026-09-08'de canlı bulundu:
+# 2026-09-07'de eklenen mod tespiti bu yüzden HER ZAMAN "default" dönüyormuş
+# (hedef "default" ise sessiz no-op, değilse 8 × Shift+Tab + "mode_cycle_failed").
+# Eşleştirmeden önce mutlaka ANSI temizlenmeli — frontend'in `stripAnsi`'siyle
+# aynı iki desen (SGR + OSC).
+_ANSI_SGR_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+_ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*\x07")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_OSC_RE.sub("", _ANSI_SGR_RE.sub("", text))
+
+
+def _detect_mode_in_text(text: str, provider) -> Optional[str]:
+    """Durum çubuğundan aktif izin modunu okur — TÜM capture'da değil (eski,
+    kaydırılmış bir 'plan mode on' metnine yanlışlıkla yakalanmasın diye),
+    sadece en sondaki birkaç DOLU satırda arar. None döner ↔ ya bu CLI'da canlı
+    mod kavramı yok (provider hiç desen tanımlamamış) ya da o an ekranda hiçbir
+    mod metni görünmüyor (TUI henüz açılıyor, ekran başka bir şeyle dolu) —
+    HİÇBİRİ "şu modda" diye YORUMLANMAZ; bir mod varsayıp yanlış göstermektense
+    "bilinmiyor" demek doğru (eski kod burada "default" varsayıyordu)."""
+    patterns = _mode_patterns(provider)
+    if not patterns:
+        return None
+    tail_lines = [ln for ln in _strip_ansi(text).splitlines() if ln.strip()][-8:]
+    tail = "\n".join(tail_lines)
+    for mode, pattern in patterns.items():
+        if pattern.search(tail):
+            return mode
+    return None
+
+
+def _detect_current_mode(name: str, provider) -> Optional[str]:
+    """`_detect_mode_in_text`'in kendi capture'ını çeken hâli — `_term_set_mode`'un
+    döngüsü için (orada elde hazır bir metin yok). `_term_output` bu yolu KULLANMAZ,
+    zaten çektiği metni doğrudan `_detect_mode_in_text`'e verir (200ms'lik poll'a
+    ikinci bir `capture-pane` eklememek için)."""
     text = tmux_capture(name, lines=2000)
     if text is None:
         return None
-    tail_lines = [ln for ln in text.splitlines() if ln.strip()][-8:]
-    tail = "\n".join(tail_lines)
-    for mode, pattern in _MODE_STATUS_PATTERNS.items():
-        if pattern.search(tail):
-            return mode
-    return "default"
+    return _detect_mode_in_text(text, provider)
 
 
 def _term_set_mode(name: str, target_mode: str, lang: str = "tr") -> dict:
@@ -1276,22 +1329,37 @@ def _term_set_mode(name: str, target_mode: str, lang: str = "tr") -> dict:
     2026-09-07), TEK resmi/önerilen canlı-değiştirme yolu bu tuş döngüsü.
     Sabit bir döngü SIRASI/uzunluğu VARSAYMAZ — her basıştan sonra durumu
     yeniden okuyup hedefe ulaşılıp ulaşılmadığını kontrol eder (uyarlanabilir,
-    session'a göre değişebilecek döngü kompozisyonuna dayanıklı)."""
-    if target_mode not in _CYCLABLE_MODES:
-        return _err(lang, "mode_not_cyclable", name=name, mode=target_mode)
+    session'a göre değişebilecek döngü kompozisyonuna dayanıklı).
+
+    Döngü listesi provider'dan gelir: boşsa (claude dışındaki CLI'lar) İSTEK
+    BAŞTAN REDDEDİLİR — eskiden bu yol, mod diye bir kavramı olmayan bir TUI'ye
+    de 8 kez Shift+Tab basıp ne olduğu belirsiz bir şey tetikleyebilirdi."""
     s, err = _term_resolve(name, lang)
     if err:
         return err
-    current = _detect_current_mode(name)
-    if current == target_mode:
-        return {"ok": True, "mode": current, "presses": 0}
+    provider = get_provider(s.cli)
+    cyclable = provider.cyclable_modes()
+    if not cyclable:
+        return _err(lang, "mode_cycle_unsupported", name=name, cli=s.cli)
+    if target_mode not in cyclable:
+        return _err(lang, "mode_not_cyclable", name=name, mode=target_mode, modes="/".join(cyclable))
+    start_mode = _detect_current_mode(s.name, provider)
+    if start_mode == target_mode:
+        return {"ok": True, "mode": start_mode, "presses": 0}
+    current = start_mode
     for i in range(_MODE_CYCLE_MAX_PRESSES):
         if not tmux_send_special_key(s.name, "BTab"):
             return _err(lang, "term_session_gone", name=name)
         time.sleep(_MODE_CYCLE_POLL_DELAY)
-        current = _detect_current_mode(name)
+        current = _detect_current_mode(s.name, provider)
         if current == target_mode:
             return {"ok": True, "mode": current, "presses": i + 1}
+        if start_mode is not None and current == start_mode:
+            # Tam tur atıldı: hedef bu session'ın döngüsünde YOK. Kritik olan
+            # şu an BAŞLANGIÇ modunda olmamız — hiçbir şey değişmedi. (Eskiden
+            # burada kör kör 8 kez basılıyordu: 3'lük bir döngüde bu, session'ı
+            # istenmeyen bir moda taşıyıp üstüne "başarısız" demek demekti.)
+            return _err(lang, "mode_cycle_unreachable", name=name, mode=target_mode, current=current)
     return _err(lang, "mode_cycle_failed", name=name, mode=target_mode, current=current or "?")
 
 

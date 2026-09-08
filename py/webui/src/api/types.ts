@@ -37,6 +37,14 @@ export interface SessionInfo {
   needs_ho: boolean | null;
   registered: boolean;
   tmux: boolean;
+  /** `model` is what claudeops has RECORDED for the name (models.tsv — what the
+   * next start would use, filled in even for stopped rows). These two come from
+   * the RUNNING process's own command line instead, so the panel can show what a
+   * session actually started with: the panel can start a session with a one-off
+   * model WITHOUT rewriting models.tsv, so the two legitimately diverge. `null`
+   * when the session isn't running (or the CLI takes no such flag). */
+  live_model: string | null;
+  live_effort: string | null;
 }
 
 export interface RosterEntry {
@@ -87,9 +95,13 @@ export interface CliOptions {
   models: string[];
   permission_modes: string[];
   effort_levels: string[];
+  /** The NARROW subset of `permission_modes` a session can be switched to while
+   * it's running (the CLI's own Shift+Tab cycle). Empty = this CLI has no live
+   * mode switching at all, so the Terminal view shows no mode picker. */
+  cyclable_modes: string[];
 }
 
-export const EMPTY_CLI_OPTIONS: CliOptions = { models: [], permission_modes: [], effort_levels: [] };
+export const EMPTY_CLI_OPTIONS: CliOptions = { models: [], permission_modes: [], effort_levels: [], cyclable_modes: [] };
 
 export type Theme = "system" | "light" | "dark";
 
@@ -194,8 +206,18 @@ export type CompactResult = ApiResult<{ kind?: string }>;
 export type SettingsResult = ApiResult<{ settings: Settings }>;
 
 /** `_term_output()`. `masked` — pane is currently in getpass/sudo-style hidden-input
- * mode (icanon-on + echo-off termios signature), see `pane_is_masked_input()`. */
-export type TermOutputResult = ApiResult<{ text: string; cols: number | null; rows: number | null; masked: boolean }>;
+ * mode (icanon-on + echo-off termios signature), see `pane_is_masked_input()`.
+ * `mode` — the permission mode the pane's status bar is CURRENTLY showing
+ * (`_detect_mode_in_text`), or null when this CLI has no live mode concept or
+ * nothing recognizable is on screen yet. Both ride along on the text this poll
+ * already fetched; neither costs an extra tmux call. */
+export type TermOutputResult = ApiResult<{
+  text: string;
+  cols: number | null;
+  rows: number | null;
+  masked: boolean;
+  mode: string | null;
+}>;
 /** One message in `_term_chat(mode="full")`'s `full_history()`-backed history. */
 export interface ChatMessage {
   role: "user" | "assistant";

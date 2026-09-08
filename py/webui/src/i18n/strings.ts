@@ -130,6 +130,8 @@ export interface Strings {
   termModelLabel: string;
   termModelHint: string;
   termModelPick: string;
+  termEffortLabel: string;
+  termEffortHint: string;
   termOpen: string;
   tabTermView: string;
   tabChatView: string;
@@ -351,12 +353,14 @@ export const STRINGS: Record<Lang, Strings> = {
     termCopied: "✓ kopyalandı",
     termCopyHint: "görünen çıktıyı panoya kopyala (mobilde dokunarak seçim güvenilir değil)",
     termModeLabel: "mod",
-    termModeHint: "izin modu — CLI'nin Shift+Tab döngüsüyle canlı değiştirilir (birkaç saniye sürebilir); bypassPermissions/dontAsk buradan ulaşılamaz, sadece başlatırken ayarlanabilir",
+    termModeHint: "izin modu — seçili görünen, pane'in durum çubuğundan OKUNAN gerçek moddur; değiştirmek CLI'nin Shift+Tab döngüsünü kullanır (birkaç saniye sürebilir). Döngüde olmayan bir mod seçilirse tam tur atılıp başlangıç moduna dönülür, hiçbir şey değişmez; bypassPermissions/dontAsk sadece başlatırken ayarlanabilir",
     termModePick: "mod seç…",
     termModeApplying: "uygulanıyor…",
     termModelLabel: "model",
-    termModelHint: "/model komutunu gönderir — CLI kabul etmezse terminalde açılan seçiciden elle seçin",
+    termModelHint: "/model komutunu gönderir — CLI kabul etmezse terminalde açılan seçiciden elle seçin. Seçili görünen değer session'ın BAŞLATILDIĞI model (canlı /model değişikliği claude'da geri okunamıyor, sadece siz buradan değiştirirseniz güncellenir).",
     termModelPick: "model seç…",
+    termEffortLabel: "effort",
+    termEffortHint: "session'ın başlatıldığı effort değeri (komut satırından okundu) — canlı değiştirilemiyor, değiştirmek için session'ı o effort'la yeniden başlatın",
     termOpen: "aç",
     tabTermView: "terminal",
     tabChatView: "sohbet",
@@ -579,12 +583,14 @@ export const STRINGS: Record<Lang, Strings> = {
     termCopied: "✓ copied",
     termCopyHint: "copy visible output to clipboard (touch-selection is unreliable on mobile)",
     termModeLabel: "mode",
-    termModeHint: "permission mode — changed live via the CLI's own Shift+Tab cycle (can take a few seconds); bypassPermissions/dontAsk aren't reachable this way, only settable at session start",
+    termModeHint: "permission mode — the selected value is the real one, READ from the pane's status bar; changing it drives the CLI's own Shift+Tab cycle (can take a few seconds). A mode that isn't in this session's cycle leaves it untouched (full loop, back to where it started); bypassPermissions/dontAsk are only settable at session start",
     termModePick: "pick mode…",
     termModeApplying: "applying…",
     termModelLabel: "model",
-    termModelHint: "sends the /model command — if the CLI doesn't accept the argument, finish the pick in the picker that opens in the terminal",
+    termModelHint: "sends the /model command — if the CLI doesn't accept the argument, finish the pick in the picker that opens in the terminal. The value shown is the model the session was STARTED with (claude gives no way to read a live /model change back; it only updates when you switch it from here).",
     termModelPick: "pick model…",
+    termEffortLabel: "effort",
+    termEffortHint: "the effort the session was started with (read from its command line) — not live-changeable, restart the session with a different one to change it",
     termOpen: "open",
     tabTermView: "terminal",
     tabChatView: "chat",

@@ -165,3 +165,19 @@ class CliProvider(ABC):
     @abstractmethod
     def effort_levels(self) -> List[str]:
         ...
+
+    def mode_status_patterns(self) -> Dict[str, str]:
+        """{mod: regex} — bu CLI'ın durum çubuğunda AKTİF izin modunu ele veren
+        metinler. Boş dict (VARSAYILAN) = bu CLI'da canlı mod OKUMA yok; panel
+        mod göstermez/seçtirmez. `last_exchange`/`compact_command` ile aynı
+        "yok = boş/None" sözleşmesi — `if cli == ...` dallanması YOK."""
+        return {}
+
+    def cyclable_modes(self) -> List[str]:
+        """Shift+Tab (BTab) döngüsüyle CANLIYKEN ulaşılabilen modlar, döngüde
+        göründükleri sırayla; İLK eleman "durum çubuğunda hiçbir işaret yoksa
+        geçerli olan" moddur. Boş liste (VARSAYILAN) = bu CLI'da canlı mod
+        DEĞİŞTİRME yok → `_term_set_mode` kör kör BTab basmaz, panel de mod
+        seçicisini hiç göstermez. `permission_modes()`'tan AYRI ve daha dar:
+        o, session BAŞLATIRKEN verilebilecek tüm modlar."""
+        return []
