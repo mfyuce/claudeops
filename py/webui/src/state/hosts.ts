@@ -39,6 +39,16 @@ export function cliListFor(data: StatusPayload | null | undefined, host: string)
 
 export function cliOptionsFor(data: StatusPayload | null | undefined, host: string, cli: string): CliOptions {
   if (!data) return EMPTY_CLI_OPTIONS;
-  if (host === LOCAL_HOST) return data.cli_options[cli] ?? EMPTY_CLI_OPTIONS;
-  return data.hosts.find((h) => h.name === host)?.cli_options[cli] ?? EMPTY_CLI_OPTIONS;
+  const raw =
+    host === LOCAL_HOST ? data.cli_options[cli] : data.hosts.find((h) => h.name === host)?.cli_options[cli];
+  // A remote host can be a few commits behind (its own deploy, its own
+  // schedule) and still return a `cli_options[cli]` object missing whatever
+  // field was added most recently — the backend normalizes this at ingestion
+  // (`web_hosts.py`'s `_normalize_cli_options`), but this is the one shared
+  // accessor every caller trusts blindly (e.g. `cliOpts.cyclable_modes.length`
+  // in TerminalView.tsx), so it re-completes the shape too rather than
+  // assuming the backend's guarantee always held (2026-09-08 live crash, a
+  // stale remote host: "Cannot read properties of undefined (reading
+  // 'length')"). Spreading `raw` last so any field it DOES provide wins.
+  return raw ? { ...EMPTY_CLI_OPTIONS, ...raw } : EMPTY_CLI_OPTIONS;
 }

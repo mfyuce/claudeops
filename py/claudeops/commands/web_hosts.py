@@ -102,6 +102,27 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float) -> T
     return status, parsed, None
 
 
+# Frontend'in `CliOptions` tipi (api/types.ts) bu 4 alanın HER cli girdisinde
+# HEP var olduğunu varsayıyor — ör. `TerminalView.tsx`'in mod seçicisi hiç
+# kontrolsüz `cliOpts.cyclable_modes.length` okur. Uzak host bizden eski bir
+# claudeops sürümü çalıştırıyorsa (`cyclable_modes` eb5c258'de eklendi) kendi
+# `/api/status`'unda bu alanı hiç döndürmez → normalize edilmeden geçirilirse
+# frontend'de TypeError ile panel çöküyor (2026-09-08 canlı rapor, yuhem).
+_CLI_OPTIONS_FIELDS = ("models", "permission_modes", "effort_levels", "cyclable_modes")
+
+
+def _normalize_cli_options(raw: Any) -> Dict[str, Dict[str, list]]:
+    """Uzak host'un ham `cli_options`'ını frontend'in her zaman beklediği
+    tam şekle tamamlar — eksik/bozuk alanlar sessizce `[]` olur."""
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Dict[str, list]] = {}
+    for cli, opts in raw.items():
+        opts = opts if isinstance(opts, dict) else {}
+        out[cli] = {field: opts[field] if isinstance(opts.get(field), list) else [] for field in _CLI_OPTIONS_FIELDS}
+    return out
+
+
 def fetch_remote_status(host_record: Dict[str, str]) -> Dict[str, Any]:
     """Bir host'un `/api/status`'unu çek. Başarı/hata HER İKİ durumda da aynı
     anahtar setiyle döner (sadece `ok`/`error` farklılaşır) — çağıran
@@ -129,7 +150,7 @@ def fetch_remote_status(host_record: Dict[str, str]) -> Dict[str, Any]:
         "closed": _tag(parsed.get("closed")),
         "retired": _tag(parsed.get("retired")),
         "cli_list": parsed.get("cli_list") or [],
-        "cli_options": parsed.get("cli_options") or {},
+        "cli_options": _normalize_cli_options(parsed.get("cli_options")),
         "dups": parsed.get("dups") or [],
     }
 
