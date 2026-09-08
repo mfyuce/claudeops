@@ -12,6 +12,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import termios
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -157,6 +158,36 @@ def tmux_pane_size(name: str) -> Optional[tuple]:
             return None
         w, h = r.stdout.strip().splitlines()[0].split()
         return int(w), int(h)
+    except Exception:
+        return None
+
+
+def pane_is_masked_input(name: str) -> Optional[bool]:
+    """Pane şu an gizli-girdi (parola/getpass tarzı) mi bekliyor? Kernel ECHO
+    bayrağı TEK BAŞINA güvenilir değil — interaktif shell/readline zaten
+    ECHO'yu kendi karakter-editörü için sürekli KAPALI tutuyor (izole testte
+    doğrulandı, 2026-09-08), yani "echo kapalı" normal komut satırında da hep
+    true çıkar. Ayırt edici olan ICANON+ECHO KOMBİNASYONU: normal
+    shell/readline `-icanon -echo` (raw, kendi echo'sunu kendi basar), ama
+    sudo/getpass-tarzı parola okuma `icanon -echo` (cooked mode + echo kapalı)
+    — bu kombinasyon hem Python `getpass.getpass()` hem gerçek `sudo`'ya karşı
+    izole bir tmux pane'inde ayrı ayrı doğrulandı."""
+    try:
+        r = subprocess.run(
+            _base_argv() + ["display-message", "-p", "-t", name, "#{pane_tty}"],
+            capture_output=True, text=True, timeout=_TIMEOUT,
+        )
+        if r.returncode != 0:
+            return None
+        pty_path = r.stdout.strip()
+        if not pty_path:
+            return None
+        f = open(pty_path, "r")
+        try:
+            lflag = termios.tcgetattr(f.fileno())[3]
+        finally:
+            f.close()
+        return bool(lflag & termios.ICANON) and not bool(lflag & termios.ECHO)
     except Exception:
         return None
 

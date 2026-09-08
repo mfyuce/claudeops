@@ -152,6 +152,11 @@ button:disabled { opacity: .5; cursor: default; }
    input) and push the send button alone onto the next one (big empty gap
    to its right). */
 .term-input-row { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: .5rem; }
+.term-masked-hint {
+  flex-basis: 100%; font-size: .78rem; color: var(--red);
+  background: rgba(248,81,73,.12); border: 1px solid var(--red);
+  border-radius: 6px; padding: .3rem .6rem;
+}
 #layoutPanel { background: var(--panel2); border-radius: 6px; padding: .7rem; margin-bottom: .5rem; }
 #layoutPanel input[type=text] { min-width: 220px; }
 .layout-result { font-size: .78rem; color: var(--muted); white-space: pre-wrap; margin: 0; }

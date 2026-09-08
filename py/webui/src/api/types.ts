@@ -189,8 +189,9 @@ export type CompactResult = ApiResult<{ kind?: string }>;
 /** `_save_settings()`. */
 export type SettingsResult = ApiResult<{ settings: Settings }>;
 
-/** `_term_output()`. */
-export type TermOutputResult = ApiResult<{ text: string; cols: number | null; rows: number | null }>;
+/** `_term_output()`. `masked` — pane is currently in getpass/sudo-style hidden-input
+ * mode (icanon-on + echo-off termios signature), see `pane_is_masked_input()`. */
+export type TermOutputResult = ApiResult<{ text: string; cols: number | null; rows: number | null; masked: boolean }>;
 /** One message in `_term_chat(mode="full")`'s `full_history()`-backed history. */
 export interface ChatMessage {
   role: "user" | "assistant";

@@ -54,7 +54,7 @@ from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_windo
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_send_keys,
-    tmux_send_special_key, tmux_pane_size, ALLOWED_SPECIAL_KEYS,
+    tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS,
 )
 from .web_static import DIST_DIR, resolve_static_path
 from . import web_hosts
@@ -1078,8 +1078,9 @@ def _term_output(name: str, lang: str = "tr") -> dict:
     if text is None:
         return _err(lang, "term_session_gone", name=name)
     size = tmux_pane_size(s.name)
+    masked = pane_is_masked_input(s.name)
     return {"ok": True, "text": text, "cols": size[0] if size else None,
-            "rows": size[1] if size else None}
+            "rows": size[1] if size else None, "masked": bool(masked)}
 
 
 def _term_input(name: str, text: str, lang: str = "tr") -> dict:

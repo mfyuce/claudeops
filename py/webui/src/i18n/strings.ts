@@ -112,6 +112,8 @@ export interface Strings {
   terminalBtn: string;
   remoteTerminalHint: string;
   termPlaceholder: string;
+  termMaskedPlaceholder: string;
+  termMaskedHint: string;
   termSend: string;
   termGone: (err: string) => string;
   termScrolledHint: string;
@@ -330,6 +332,8 @@ export const STRINGS: Record<Lang, Strings> = {
     terminalBtn: "terminal",
     remoteTerminalHint: "uzak host terminali henüz desteklenmiyor — bu sürümde sadece local session'lar için çalışır",
     termPlaceholder: "komut yaz, Enter/Gönder ile yolla…",
+    termMaskedPlaceholder: "gizli girdi (parola?)…",
+    termMaskedHint: "🔒 bu pane şu an gizli bir girdi bekliyor (ör. parola) — yazdığınız burada gizlenir",
     termSend: "gönder",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ yukarı kaydırdınız — canlı akış duraklatıldı, dibe dönünce devam eder",
@@ -549,6 +553,8 @@ export const STRINGS: Record<Lang, Strings> = {
     terminalBtn: "terminal",
     remoteTerminalHint: "remote host terminal not supported yet — this build only works for local sessions",
     termPlaceholder: "type a command, Enter/Send to submit…",
+    termMaskedPlaceholder: "hidden input (password?)…",
+    termMaskedHint: "🔒 this pane is currently waiting for hidden input (e.g. a password) — what you type here is masked",
     termSend: "send",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ scrolled up — live updates paused, resumes when you scroll back to bottom",

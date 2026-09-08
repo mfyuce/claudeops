@@ -111,6 +111,7 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
   const [hint, setHint] = useState("");
   const [rawText, setRawText] = useState("");
   const [fallbackText, setFallbackText] = useState("");
+  const [masked, setMasked] = useState(false);
 
   const [inputText, setInputText] = useState("");
   const [copyLabel, setCopyLabel] = useState<string | null>(null);
@@ -222,7 +223,10 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
       // whenever d.ok, BEFORE the atBottom/xterm-instance branching below
       // — the URL banner always reflects the latest raw text regardless
       // of scroll-pause state or whether xterm loaded at all.
-      if (result.ok) setRawText(result.text);
+      if (result.ok) {
+        setRawText(result.text);
+        setMasked(result.masked);
+      }
 
       const inst = instRef.current;
       if (inst) {
@@ -472,10 +476,11 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
         <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
           {copyLabel ?? t.termCopyBtn}
         </button>
+        {masked && <div className="term-masked-hint">{t.termMaskedHint}</div>}
         <div className="term-input-row">
           <input
-            type="text"
-            placeholder={t.termPlaceholder}
+            type={masked ? "password" : "text"}
+            placeholder={masked ? t.termMaskedPlaceholder : t.termPlaceholder}
             style={{ flex: 1, minWidth: "200px" }}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
