@@ -54,6 +54,10 @@ The easiest way to use this; everything from the browser:
   but the session stays fully reachable and controllable either way. This is also what makes it work for
   **any** CLI backend, even one with no remote-access feature of its own (agy has none) — claudeops's own
   tmux layer is what makes a session reachable, not something the underlying CLI has to support.
+  **Also your window into a session that seems unresponsive** — if a Claude (or agy/codex) session stops
+  reacting in its own interface (hung, rate-limited, sitting on a permission prompt you never saw), open
+  its Terminal here: it shows the pane's actual live state, independent of whatever's wrong with that
+  session's own UI, and you can send it input or restart it right from the same view.
 - **Registered** — registered-but-stopped projects; start one with **resume** / **reset (--new)** /
   **start a separate new chat** (auto-dated name, with model/permission-mode/effort options). The
   **register new project** form (name + folder + model) lives at the bottom of this tab — adds to the

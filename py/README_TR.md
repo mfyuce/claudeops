@@ -55,6 +55,11 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   iki durumda da tamamen ulaşılabilir ve yönlendirilebilir kalır. Bu aynı zamanda bu butonu **her**
   CLI backend için çalıştıran şey — kendi uzaktan-erişim özelliği olmayan biri (agy'de yok) için bile —
   session'ı ulaşılabilir kılan claudeops'un kendi tmux katmanı, alttaki CLI'nın bunu desteklemesi gerekmiyor.
+  **Aynı zamanda tepki vermeyen bir session'a bakma/müdahale etme yolu** — bir Claude (ya da agy/codex)
+  session'ı kendi arayüzünde tepkisiz kalırsa (takıldı, rate-limit'e girdi, hiç görmediğiniz bir izin
+  isteğinde bekliyor), buradan Terminal'i aç: pane'in gerçek canlı halini gösterir (session'ın kendi
+  arayüzünde ne bozuksa ondan bağımsız) ve aynı ekrandan ona komut gönderebilir ya da yeniden
+  başlatabilirsiniz.
 - **Kayıtlı** — kayıtlı-ama-durmuş projeler; **devam ettir** / **sıfırla (--new)** / **ayrı yeni chat
   aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız. **Yeni proje
   kaydet** formu (isim + klasör + model) bu sekmenin altında — elle dosya düzenlemeden roster'a ekler.
