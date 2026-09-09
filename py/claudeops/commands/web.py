@@ -1715,6 +1715,268 @@ def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
     return _start(name, lang=lang)
 
 
+# ══ OpenAI-uyumlu katman (`/v1/*`) ══════════════════════════════════════════
+# TOBEDECIDED #21 (2026-09-09, kullanıcı: "insanlar bizim apiye değilde open
+# apiye alılıklar. boylece kendi max modelimizi openai ye uyumlu çalıştırma
+# imkanı da") — OpenAI'nin API ŞEKLİNİ konuşan hazır araçlar (LangChain, aider,
+# çeşitli sohbet UI'ları, agent SDK'ları) base_url'lerini buraya çevirip
+# kullanıcının KENDİ çalışan claudeops fleet session'larını backend olarak
+# kullanabilsin. Native `/api/*` yüzeyi HİÇ DEĞİŞMEDİ — bu onun YANINA eklenen,
+# ince bir çeviri katmanı.
+#
+# v1 kapsamı BİLEREK dar: sadece `POST /v1/chat/completions` + `GET /v1/models`.
+# YOK (ve bugün gerekmiyor): `/v1/completions`, embeddings, streaming
+# (aşağıda açıkça REDDEDİLİYOR), uzak-host proxy'si (`web_hosts`), durmuş bir
+# session'ı ilk istekte otomatik başlatma. Hepsi doğal birer devam adımı —
+# ilgili yerlerde tek tek not düşüldü.
+
+# `model` = claudeops session ADI. Ayrı bir eşleme tablosu YOK: çağıran, kendi
+# çalışan session'larından hangisiyle konuşacağını OpenAI'nin `model` alanına
+# adını yazarak seçer ("co", "cops20260909"...), `GET /v1/models` de o an
+# uygun olanları "model" listesi olarak döndürür. Bu, katmanı kullanışlı kılan
+# şeyin ta kendisi: karşıdaki "model" durağan bir ağırlık dosyası değil, saatler/
+# günlerdir çalışan, kendi hafızası olan CANLI bir asistan.
+V1_OWNED_BY = "claudeops"  # `/v1/models` satırlarının `owned_by`'ı (OpenAI'de "openai")
+
+# Enjekte edilen kullanıcı mesajının yanıtlanmasını en fazla bu kadar bekle.
+# `COMPACT_TIMEOUT_SECONDS` (180.0) ile AYNI değer ve AYNI gerekçe: MEŞGUL bir
+# session'a gönderilen input CLI tarafından KUYRUĞA alınır ve mevcut turn
+# bitene kadar bekler (canlı doğrulanmıştı, bkz. `_compact()` docstring'i) —
+# yani bu pencereye "bizim turumuz" kadar "önümüzdeki turun kalanı" da dahil.
+# Cömert ama SINIRLI: HTTP bağlantısı sonsuza kadar asılı kalmamalı, süre
+# dolunca OpenAI-şekilli bir timeout hatası döner.
+V1_CHAT_TIMEOUT_SECONDS = 180.0
+# `_compact`'in 2.0s'inden kısa: orada beklenen sinyal bir dosya-içi sayaç
+# (gecikmesi önemsiz), burada bir HTTP çağıranı bekliyor — turn bittiği anda
+# yanıtı döndürmek istiyoruz. Her poll bir `capture-pane` + bir transcript
+# okuması, 0.5s bunun için fazlasıyla ucuz.
+V1_CHAT_POLL_INTERVAL_SECONDS = 0.5
+
+
+def _v1_error(message: str, err_type: str = "invalid_request_error") -> dict:
+    """OpenAI'nin hata zarfı. Bu katman claudeops'un native `{"ok": False,
+    "error": ...}` şeklini KULLANMAZ: gerçek OpenAI istemcileri (openai-python,
+    LangChain, aider...) gövdeyi ayrıştırırken ÖZELLİKLE `error.message`'a
+    bakar — native şekil onlarda "boş/anlamsız hata" olarak görünürdü."""
+    return {"error": {"message": message, "type": err_type, "code": None}}
+
+
+def _v1_eligible_sessions() -> list:
+    """`/v1/models`'in listelediği session'lar. Uygunluk kriteri `/v1/chat/
+    completions`'ınkiyle AYNI üçlü (o, listeye değil TEK bir ada baktığı için
+    aynı üçlüyü `_term_resolve` + `has_conversation()` ile uygular):
+
+      (a) ŞU AN çalışıyor  (durmuş bir session'ı bu katman BAŞLATMAZ — v1 kapsamı
+          dışı, doğal bir devam adımı: ilk istekte otomatik `_start`),
+      (b) tmux-backed      (`capture-pane`/`send-keys` SADECE orada mümkün —
+          eski/çıplak bir session'a ne mesaj gönderilebilir ne durumu okunabilir),
+      (c) provider'ı bir konuşma sürdürüyor (`has_conversation()`) — düz `shell`
+          session'ında "asistan yanıtı" diye bir şey YOKTUR, elenir.
+
+    `if cli == "shell"` YOK: eleme provider arayüzünden geçiyor (CLAUDE.md'nin
+    provider-registry disiplini)."""
+    out = []
+    for s in find_sessions(measure_cpu=False):
+        if not is_tmux_backed(s.pid):
+            continue
+        if not get_provider(s.cli).has_conversation():
+            continue
+        out.append(s)
+    return out
+
+
+def _v1_models() -> dict:
+    """`GET /v1/models` — uygun her session bir "model" satırı. İsme göre
+    SIRALI (determinizm: aynı fleet aynı listeyi versin; `find_sessions`'ın
+    proc-tarama sırası garantili değil). `created: 0` — OpenAI'de modelin
+    yayın zamanı; burada karşılığı yok, uydurmak yerine sabit 0."""
+    names = sorted({s.name for s in _v1_eligible_sessions()})
+    return {"object": "list",
+            "data": [{"id": n, "object": "model", "created": 0, "owned_by": V1_OWNED_BY} for n in names]}
+
+
+def _v1_message_text(content) -> str:
+    """OpenAI `content` iki şekilde gelebilir: düz string, ya da parça listesi
+    ([{"type": "text", "text": ...}, ...] — çok-parçalı/vision istemciler).
+    İkisi de kabul edilir; metin OLMAYAN parçalar (image_url vb.) atlanır —
+    bir tmux pane'ine yazılabilecek tek şey metindir."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(p["text"] for p in content
+                          if isinstance(p, dict) and isinstance(p.get("text"), str))
+    return ""
+
+
+def _v1_last_user_text(messages: list) -> str:
+    """BİLEREK "son user mesajı" — statelessness uyuşmazlığının kasıtlı çözümü.
+
+    OpenAI'nin API'si STATELESS: istemci HER çağrıda TÜM geçmişi baştan yollar.
+    claudeops session'ları tam TERSİ: pane'in içindeki CLI process'i konuşmayı
+    ZATEN kendisi hatırlıyor (saatler/günlerdir çalışan tek bir konuşma). Bu
+    yüzden gelen `messages` dizisinden SADECE son `"role": "user"` mesajı alınıp
+    session'a yeni input olarak enjekte edilir; dizinin geri kalanı SESSİZCE YOK
+    SAYILIR (o, session'ın zaten sahip olduğu varsayılan geçmiştir).
+
+    Bu bir eksiklik/uyum kusuru DEĞİL, özelliğin ta kendisi: "zaten ısınmış,
+    durum sahibi bir asistanı, stateless şekilli bir API'den adresleme". Spec'e
+    harfiyen uymak (tüm geçmişi her seferinde yeniden oynatmak) hem imkânsız
+    (canlı bir TUI'ye geçmiş "yüklenemez") hem de istenmeyen olurdu — session'ın
+    KENDİ hafızasını her çağrıda çöpe atmak demekti."""
+    for m in reversed(messages):
+        if isinstance(m, dict) and m.get("role") == "user":
+            return _v1_message_text(m.get("content")).strip()
+    return ""
+
+
+def _v1_is_busy_now(name: str, pattern: str) -> bool:
+    """`_is_busy_cached`'in CACHE'SİZ ikizi. Aynı şekil (`capture-pane` son 8
+    satır → `strip_ansi` → desen ara — ANSI temizliği ŞART, claude durum
+    çubuğunu kelime kelime renklendirir), ama `_BUSY_CACHE`'i BİLEREK
+    KULLANMAZ: oradaki 2s'lik TTL panelin durum-poll'u için tasarlandı, sıkı
+    bir bekleme döngüsünde ise 2s'lik BAYAT bir "meşgul" okuması turn bittikten
+    sonra bizi gereksiz yere bekletir (ya da tersi: turn başlamadan önceki
+    "boşta"yı taze sanmamıza yol açar).
+
+    Capture başarısız olursa (session gitti/tmux hatası) False = "meşgul
+    değil" — `_is_busy_cached`'in None'ıyla ayrışıyor çünkü burada üçüncü bir
+    durum taşıyacak yer yok; yanlış bir "boşta" tek başına "bitti" demiyor,
+    çağıran ayrıca transcript'in DEĞİŞMİŞ olmasını da şart koşuyor."""
+    text = tmux_capture(name, lines=8)
+    if text is None:
+        return False
+    return bool(re.search(pattern, strip_ansi(text)))
+
+
+def _v1_wait_for_reply(s, provider, baseline: dict) -> Optional[str]:
+    """Enjekte edilen mesajın turu BİTENE kadar bekle, yeni asistan metnini döndür
+    (timeout → None). `_compact()`'in "canlı tmux session'ına metin enjekte et,
+    sonra turun bittiğini anla" problemiyle AYNI şekil — sadece sinyal farklı
+    (orada jsonl'daki `isCompactSummary` sayacı, burada busy-durumu + transcript).
+
+    İki strateji, ikisi de provider arayüzünden (dallanma YOK):
+
+    1. `busy_status_pattern()` VARSA (bugün claude): desen taze capture'da
+       KAYBOLMUŞ olmalı VE `last_exchange()` baseline'dan FARKLI olmalı. İkinci
+       şart olmadan, gönderimden hemen sonraki minik pencerede (CLI henüz işe
+       başlamamışken) yakalanan "boşta" okuması yanlışlıkla "bitti" sayılırdı.
+    2. Desen YOKSA (bugün codex/agy — bu CLI'lar için henüz doğrulanmış bir
+       meşgul sinyali tanımlanmadı): sadece `last_exchange()` poll'lanır ve
+       (a) baseline'dan farklı olması (b) ARDIŞIK İKİ poll boyunca AYNI kalması
+       istenir. Bu bir debounce — meşgul sinyali olmadan "bitti" ile "hâlâ
+       yazıyor" başka türlü ayrılamaz. DAHA ZAYIF, best-effort bir yol (uzun bir
+       yanıtın ortasındaki bir duraklama erken "bitti" sayılabilir); bug değil,
+       o provider'lar `busy_status_pattern()` kazanınca kendiliğinden 1. yola
+       geçerler.
+
+    Bilinen dar yanlış-negatif: yanıt VE soru bir öncekiyle byte-byte AYNIYSA
+    (aynı prompt iki kez) `last_exchange` değişmiş görünmez → timeout. Daha
+    güçlü bir sinyal (mesaj SAYISI) için provider arayüzüne yeni bir metot
+    gerekirdi; bugünkü tek veri noktası için gereksiz."""
+    pattern = provider.busy_status_pattern()
+    previous: Optional[dict] = None  # 2. strateji: bir önceki poll'un okuması
+    deadline = time.monotonic() + V1_CHAT_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        time.sleep(V1_CHAT_POLL_INTERVAL_SECONDS)
+        exchange = provider.last_exchange(s.cwd, s.sid)
+        if exchange is None:
+            return None  # çağıran bunu gönderimden ÖNCE eliyor; savunma amaçlı
+        changed = exchange != baseline
+        if pattern:
+            if not _v1_is_busy_now(s.name, pattern) and changed:
+                return exchange.get("assistant", "")
+        else:
+            if changed and previous == exchange:
+                return exchange.get("assistant", "")
+            previous = exchange
+    return None
+
+
+def _v1_chat_completion(data) -> tuple:
+    """`POST /v1/chat/completions` → (gövde, HTTP durum kodu).
+
+    SADECE YEREL session'lar: `web_hosts`'un çoklu-makine proxy'sine BİLEREK
+    bağlanmadı (v1 kapsamı) — uzak host desteği doğal bir devam adımı, burada
+    yapılmadı.
+
+    Session başına SERİLEŞTİRME YOK: aynı session'a AYNI ANDA iki istek gelirse
+    (ThreadingHTTPServer istek-başına-thread) ikisi de mesajını gönderir, CLI
+    ikincisini kuyruğa alır ve iki bekleme döngüsü aynı "bitti" sinyalini
+    görüp AYNI metni döndürebilir. Panelin kendi "mesaj gönder" kutusu da hep
+    böyleydi (aynı pane, aynı yarış) — burada da yeni bir sorun değil, sadece
+    tek-çağıran varsayımı. Gerçekten paralel kullanılacaksa session başına bir
+    kilit doğal devam adımı."""
+    if not isinstance(data, dict):
+        return _v1_error("request body must be a JSON object"), 400
+
+    # `stream` EN BAŞTA: v1'de streaming yok ve bunu SESSİZCE yok sayıp
+    # streaming-olmayan bir yanıt döndürmek en kötüsü olurdu — istemci SSE
+    # chunk'ları bekleyip asılı kalır/çöker. Açık, okunabilir bir red daha iyi.
+    if data.get("stream"):
+        return _v1_error("streaming is not supported yet — retry with \"stream\": false "
+                          "(the session's reply is returned as a single, complete message)"), 400
+
+    model = str(data.get("model") or "").strip()
+    if not model:
+        return _v1_error("'model' is required — use the name of a running claudeops "
+                          "session (see GET /v1/models)"), 400
+
+    messages = data.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return _v1_error("'messages' must be a non-empty array"), 400
+    user_text = _v1_last_user_text(messages)
+    if not user_text:
+        return _v1_error("no message with role 'user' (with non-empty text content) in 'messages'"), 400
+
+    # `_term_resolve` AYNEN yeniden kullanılıyor (isim → tek, canlı, tmux-backed
+    # Session) — session arama mantığı burada tekrar YAZILMADI. `lang="en"`:
+    # OpenAI-şekilli isteğin `lang` alanı yok ve bu yüzeyin izleyicisi panelin
+    # Türkçe kullanıcısı değil, İngilizce hata metni bekleyen bir SDK/araç.
+    s, err = _term_resolve(model, lang="en")
+    if err:
+        return _v1_error(f"{err.get('error') or model}. 'model' must name a running, tmux-backed "
+                          "claudeops session (see GET /v1/models)"), 404
+    provider = get_provider(s.cli)
+    if not provider.has_conversation():
+        return _v1_error(f"'{model}' has no conversation to talk to (its CLI is a plain shell) — "
+                          "see GET /v1/models for addressable sessions"), 404
+
+    # Baseline gönderimden ÖNCE: "yeni yanıt geldi mi" sorusunun tek referansı.
+    # None = bu provider'ın okunabilir bir transcript'i yok → yanıtı hiçbir zaman
+    # geri okuyamayız; mesajı GÖNDERMEDEN reddet (aksi halde kullanıcının mesajı
+    # session'a düşer ama çağıran timeout alır).
+    baseline = provider.last_exchange(s.cwd, s.sid)
+    if baseline is None:
+        return _v1_error(f"'{model}' runs a CLI whose transcript can't be read back, so its reply "
+                          "can't be returned over this API"), 404
+
+    diag_log("v1_chat_start", name=s.name, chars=len(user_text))
+    if not tmux_send_keys(s.name, user_text, settle_delay=provider.input_settle_delay()):
+        diag_log("v1_chat_send_failed", name=s.name)
+        return _v1_error(f"failed to deliver the message to session '{s.name}'", "server_error"), 500
+
+    reply = _v1_wait_for_reply(s, provider, baseline)
+    if reply is None:
+        diag_log("v1_chat_timeout", name=s.name)
+        return _v1_error(
+            f"'{model}' did not finish a reply within {V1_CHAT_TIMEOUT_SECONDS:.0f}s. The message WAS "
+            "delivered and may still be processing — check the session, or read the result later.",
+            "timeout_error"), 504
+    diag_log("v1_chat_done", name=s.name, chars=len(reply))
+    return {
+        "id": "chatcmpl-" + secrets.token_hex(12),
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,  # çağıranın YAZDIĞI ad (base-eşleşmede `s.name`den farklı olabilir)
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
+        # Gerçek token sayıları burada UCUZA elde edilemiyor: sayan taraf pane'in
+        # içindeki CLI ve bize o sayıyı veren bir arayüz yok. Sıfır bırakmak,
+        # sahte-hassas bir tahmin uydurmaktan iyidir (istemciler alanın VARLIĞINI
+        # bekler, doğruluğuna genelde bağımlı değildir).
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }, 200
+
+
 def _proxy_desktop_ws(handler: "_Handler") -> None:
     """`/ws/desktop` — `remote_desktop`'un Rust daemon'ına RAW BYTE proxy.
 
@@ -1828,9 +2090,39 @@ class _Handler(BaseHTTPRequestHandler):
         pass  # stdout'u kirletme — sessiz
 
     def _authorized(self) -> bool:
+        """Token İKİ yoldan gelebilir — ikisi de AYNI `self.token`'a, AYNI
+        `secrets.compare_digest` ile (sabit-zamanlı) bakar; ikinci bir auth
+        mekanizması/anahtarı YOK:
+
+          1. `?token=...` query param — panelin ve native `/api/*` yüzeyinin
+             HER ZAMANKİ yolu, aynen korundu. Tarayıcı üst-seviye navigasyonu
+             query taşıyabilir, header taşıyamaz — bu yol vazgeçilmez.
+          2. `Authorization: Bearer <token>` header — OpenAI-uyumlu katman
+             (`/v1/*`, TOBEDECIDED #21) için ŞART: gerçek OpenAI istemcileri
+             (openai-python, LangChain, aider...) API anahtarını HER ZAMAN bu
+             header'la yollar ve anahtarı bir URL query string'ine koyacak
+             şekilde yapılandırılamazlar — bu yol olmadan katman gerçek
+             istemcilerce KULLANILAMAZ olurdu. `/v1/*`'a özel değil (ayrı bir
+             kod yolu açmamak için tüm istekler için geçerli), sadece oradaki
+             ihtiyaçtan doğdu.
+
+        `compare_digest` str yolunda SADECE ASCII kabul eder; ASCII olmayan bir
+        aday (yanlış yapıştırılmış bir anahtar, latin-1 çözülen bir header)
+        TypeError fırlatır. Bizim token'ımız her zaman hex (`secrets.token_hex`)
+        yani böyle bir aday ZATEN eşleşemez — 500 yerine düz "yetkisiz" doğru
+        cevap."""
         qs = parse_qs(urlparse(self.path).query)
-        given = (qs.get("token") or [""])[0]
-        return secrets.compare_digest(given, self.token)
+        candidates = [(qs.get("token") or [""])[0]]
+        auth = self.headers.get("Authorization") or ""
+        if auth.startswith("Bearer "):
+            candidates.append(auth[len("Bearer "):].strip())
+        for given in candidates:
+            try:
+                if secrets.compare_digest(given, self.token):
+                    return True
+            except TypeError:
+                continue
+        return False
 
     def _json(self, obj, status=200):
         body = json.dumps(obj).encode("utf-8")
@@ -1869,6 +2161,16 @@ class _Handler(BaseHTTPRequestHandler):
             web_ws.notify_status_changed()
 
     def _unauthorized(self):
+        # `/v1/*` (OpenAI-uyumlu katman) HTML DEĞİL JSON almalı: bir OpenAI
+        # istemcisi 401 gövdesini de `error.message` diye ayrıştırır, HTML
+        # sayfası orada "boş hata"ya dönüşür. Panelin kendi 401'i (tarayıcıda
+        # AÇILAN bir sayfa) aynen HTML kalıyor — kullanıcıya ne yapacağını
+        # anlatan tek şey o.
+        if urlparse(self.path).path.startswith("/v1/"):
+            self._json(_v1_error("missing or invalid token — send it as "
+                                  "'Authorization: Bearer <token>' (or ?token=...)",
+                                  "invalid_request_error"), status=401)
+            return
         self.send_response(401)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(UNAUTHORIZED_HTML)))
@@ -2020,6 +2322,11 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif path == "/api/status":
             self._json(_status_payload())
+        elif path == "/v1/models":
+            # OpenAI-uyumlu katman (TOBEDECIDED #21) — "model" = adreslenebilir
+            # canlı session adı. Auth yukarıda ZATEN geçildi (query-param ya da
+            # yeni `Authorization: Bearer` yolu, bkz. `_authorized`).
+            self._json(_v1_models())
         elif path == "/api/hosts":
             # Settings/Hosts UI için — /api/status'un yalın "hosts" alanından
             # (badge/routing) farklı, base_url/has_token de taşıyan tam liste.
@@ -2113,7 +2420,8 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/term/open-window", "/api/settings",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
-                         "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test"):
+                         "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
+                         "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -2121,8 +2429,23 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             data = json.loads(raw or b"{}")
         except json.JSONDecodeError:
+            if path.startswith("/v1/"):
+                # OpenAI-uyumlu katman native `ok:False` şeklini KULLANMAZ —
+                # istemciler `error.message`'a bakar (bkz. `_v1_error`).
+                self._json(_v1_error("request body is not valid JSON"), status=400)
+                return
             # lang bilinemiyor (body hiç parse edilemedi) — iki dilde birden göster
             self._json({"ok": False, "error": "geçersiz JSON / invalid JSON"}, status=400)
+            return
+
+        # OpenAI-uyumlu katman (TOBEDECIDED #21) — host-routing bloğundan ÖNCE ve
+        # ondan BAĞIMSIZ: `/v1/*` BİLEREK sadece YEREL session'lara bakar
+        # (`web_hosts.HOST_ROUTED_PATHS`'a eklenmedi). Uzak-host desteği doğal bir
+        # devam adımı, v1'de yapılmadı. `lang` alanı da yok — bu yüzeyin hataları
+        # `_v1_error` üzerinden İngilizce (bkz. `_v1_chat_completion`).
+        if path == "/v1/chat/completions":
+            result, status = _v1_chat_completion(data)
+            self._json(result, status=status)
             return
 
         lang = "en" if data.get("lang") == "en" else "tr"
