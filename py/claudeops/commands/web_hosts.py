@@ -181,19 +181,57 @@ def _apply_stale_while_error(prev: Optional[Dict[str, Any]], result: Dict[str, A
     return result
 
 
+# `TerminalView.tsx`'in kendi `CONSECUTIVE_FAILURES_BEFORE_ERROR` sabiti/deseniyle
+# AYNI eşik+gerekçe (yuhem'in "isolated blip"leri — TOBEDECIDED #19): tek bir
+# başarısız poll'u ANINDA "bağlı değil" saymak, VS Code'un kendi (uzun ömürlü,
+# tekrar-handshake gerektirmeyen) bağlantısıyla hiç kopmayan kullanıcıya karşı
+# panelin rozetini gereksiz/yanıltıcı biçimde kırmızıya çeviriyordu (2026-09-09
+# canlı rapor: "vscode'da hiç kopmuyorum ama UI'de yuhem hep kopmuş görünüyor").
+# 3sn'lik poll periyoduyla 5 ardışık hata ~15sn'lik bir tolerans penceresi
+# demek — gerçek/uzun süren bir kopuşu hâlâ doğru şekilde yakalar, sadece
+# tek-seferlik blip'leri rozete hiç yansıtmaz.
+CONSECUTIVE_FAILURES_BEFORE_ERROR = 5
+_fail_streak: Dict[str, int] = {}  # host adı -> ardışık başarısız poll sayısı
+
+
+def _record_poll_result(name: str, result: Dict[str, Any]) -> None:
+    """`_apply_stale_while_error`'ın ÜSTÜNE, ardışık-hata toleransı ekler:
+    eşiğin ALTINDA bir başarısızlık (önceki cache zaten `ok:true` olduğu
+    sürece) `_cache`'e HİÇ yazılmaz — o tick sanki hiç olmamış gibi, önceki
+    başarılı durum aynen kalır (TerminalView.tsx'in aynı isimli deseninde
+    olduğu gibi, aşağıya "return" ile atlama). Eşik aşılınca (ya da hiç
+    önceki başarılı cache yoksa — YENİ eklenmiş/gerçekten bozuk bir host'un
+    İLK hatası ANINDA görünsün diye, orada tolerans YOK) `_apply_stale_while_
+    error`'a düşer. `test_now()` de BUNU çağırır ama kendi HTTP yanıtı için
+    hep `result`'ın (bu fonksiyonun değil) taze/gerçek `ok`/`error`'ını
+    kullanır — kullanıcının bilerek bastığı "şimdi test et" bir blip'in
+    arkasına gizlenmemeli, sadece PAYLAŞILAN arka-plan sayacını besler."""
+    with _cache_lock:
+        if result["ok"]:
+            _fail_streak[name] = 0
+            _cache[name] = result
+            return
+        streak = _fail_streak.get(name, 0) + 1
+        _fail_streak[name] = streak
+        prev = _cache.get(name)
+        if streak < CONSECUTIVE_FAILURES_BEFORE_ERROR and prev is not None and prev.get("ok"):
+            return
+        _cache[name] = _apply_stale_while_error(prev, result)
+
+
 def _poll_once() -> None:
     current = hosts_mod.load_hosts()
     current_names = {h["name"] for h in current}
     for h in current:
         result = fetch_remote_status(h)
-        with _cache_lock:
-            _cache[h["name"]] = _apply_stale_while_error(_cache.get(h["name"]), result)
+        _record_poll_result(h["name"], result)
     # Silinmiş host'ları cache'ten temizle (merge_status zaten load_hosts()'a
     # göre iterate ediyor, bu sadece belleğin büyümemesi için).
     with _cache_lock:
         for stale in list(_cache):
             if stale not in current_names:
                 del _cache[stale]
+                _fail_streak.pop(stale, None)
 
 
 def _poller_loop() -> None:
@@ -239,20 +277,19 @@ def test_now(name: str) -> Optional[Dict[str, Any]]:
     ki (a) bu çağrıdan hemen sonraki bir `merge_status()`/`/api/hosts` GET taze
     veriyi görsün, (b) arka plan poller'ının BİR SONRAKİ tur'u bunun üstüne
     yazsa bile (aynı sonucu tekrar bulacağı için) kayıp/gerileme olmaz. Host
-    kayıtlı değilse `None` (çağıran "unknown host" hatası üretir)."""
+    kayıtlı değilse `None` (çağıran "unknown host" hatası üretir). Cache
+    yazımı `_record_poll_result()`'a (stale-while-error + ardışık-hata
+    toleransı, arka plan poller'ıyla PAYLAŞILAN aynı state) devredilir, AMA
+    dönüş değeri HER ZAMAN bu çağrının kendi taze `result`'ı — kullanıcının
+    bilerek bastığı "şimdi test et" düğmesi paylaşılan toleransın arkasına
+    gizlenmemeli, gerçek/anlık sonucu görmeli (sadece arka plandaki PAYLAŞILAN
+    sayacı besler, kendi yanıtını yumuşatmaz)."""
     host_record = hosts_mod.get_host(name)
     if host_record is None:
         return None
     result = fetch_remote_status(host_record)
-    with _cache_lock:
-        merged = _apply_stale_while_error(_cache.get(name), result)
-        _cache[name] = merged
-    # `merged`'in `ok`/`error`'ı her zaman `result`'ınkiyle AYNI (stale-while-
-    # error SADECE sessions/cli_options gibi liste alanlarını korur) — yani
-    # çağıran (web.py) burada gerçek/taze reachability'i görmeye devam eder,
-    # sadece cache'e yazılan session listesi bir önceki başarılı sonuçtan
-    # gelmiş olabilir.
-    return merged
+    _record_poll_result(name, result)
+    return result
 
 
 def merge_status(local_payload: Dict[str, Any]) -> Dict[str, Any]:
