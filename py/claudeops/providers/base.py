@@ -191,6 +191,16 @@ class CliProvider(ABC):
         "yok = boş/None" sözleşmesi — `if cli == ...` dallanması YOK."""
         return {}
 
+    def busy_status_pattern(self) -> Optional[str]:
+        """Durum çubuğunda session bir turu İŞLERKEN (thinking/tool-çalışırken)
+        görünen, idle'da KAYBOLAN metin — panelin "gerçekten iş yapıyor mu"
+        göstergesi (`web.py`'nin `_is_busy_cached`'i). None (VARSAYILAN) = bu
+        CLI'da böyle bir sinyal yok/doğrulanmadı → panel busy alanını None
+        (bilinmiyor) bırakır, False'la KARIŞTIRMAZ. Mod metinleri gibi ANSI'yi
+        KORUYAN `-e` capture'a karşı eşleştirilir — çağıran taraf `strip_ansi`
+        uygulamalı (bkz. `tmux_backend.strip_ansi`)."""
+        return None
+
     def cyclable_modes(self) -> List[str]:
         """Shift+Tab (BTab) döngüsüyle CANLIYKEN ulaşılabilen modlar, döngüde
         göründükleri sırayla; İLK eleman "durum çubuğunda hiçbir işaret yoksa

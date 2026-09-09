@@ -63,6 +63,8 @@ export interface Strings {
   fallbackAlertMsg: (n: number, mins: number) => string;
   fallbackAlertBtn: string;
   pidWord: string;
+  busyHint: string;
+  idleHint: string;
   stoppedWord: string;
   cwdHint: string;
   requestFailed: string;
@@ -294,6 +296,8 @@ export const STRINGS: Record<Lang, Strings> = {
     fallbackAlertMsg: (n, mins) => `⚠ son ${mins} dakikada ${n} kez pencere açma tüm denemelere (retry dahil) rağmen başarısız oldu (CLI'lar yine de çalışıyor, sadece penceresiz) — gnome-terminal-server gerçekten sorunlu olabilir.`,
     fallbackAlertBtn: "Tanı sekmesine git",
     pidWord: "pid ",
+    busyHint: "çalışıyor (bir turu işliyor)",
+    idleHint: "boşta (prompt'ta bekliyor)",
     stoppedWord: "durdu",
     cwdHint: "tıkla: tam yolu göster/gizle",
     requestFailed: "istek başarısız: ",
@@ -526,6 +530,8 @@ export const STRINGS: Record<Lang, Strings> = {
     fallbackAlertMsg: (n, mins) => `⚠ in the last ${mins} minutes, opening a window failed ${n} times despite all retries (the CLIs are still running, just windowless) — gnome-terminal-server may genuinely be having trouble.`,
     fallbackAlertBtn: "go to Diagnostics tab",
     pidWord: "pid ",
+    busyHint: "busy (working on a turn)",
+    idleHint: "idle (waiting at the prompt)",
     stoppedWord: "stopped",
     cwdHint: "click: show/hide full path",
     requestFailed: "request failed: ",

@@ -905,6 +905,39 @@ def _needs_ho_cached(s) -> Optional[bool]:
     return val
 
 
+_BUSY_CACHE: dict = {}  # name -> (expires_monotonic, bool | None)
+# needs_ho'nun 30s'inden ÇOK daha kısa: busy/idle SANİYELER içinde değişir,
+# kullanıcı satırın bunu "canlı" yansıtmasını bekler (2026-08-28 istek: "eger
+# cli de is varsa calisior gorunsun yoksa calsmiyor gibi"). Yine de HER
+# poll'da tmux capture-pane koşmasın diye kısa bir TTL var.
+_BUSY_TTL = 2.0
+
+
+def _is_busy_cached(s) -> Optional[bool]:
+    """Çalışan session GERÇEKTEN bir tur işliyor mu (thinking/tool-çalışırken) —
+    `cpu%` güvenilir bir sinyal DEĞİL (API yanıtı beklerken network-bound,
+    CPU düşük kalabilir, bkz. TODO). `provider.busy_status_pattern()` yoksa
+    (bu CLI'da böyle bir sinyal tanımlanmamış) veya session tmux-backed
+    değilse (canlı capture imkânsız) None — needs_ho'daki AYNI "bilinmiyor ≠
+    False" sözleşmesi, UI '?' gösterir."""
+    if not is_tmux_backed(s.pid):
+        return None
+    pattern = get_provider(s.cli).busy_status_pattern()
+    if not pattern:
+        return None
+    now = time.monotonic()
+    hit = _BUSY_CACHE.get(s.name)
+    if hit and hit[0] > now:
+        return hit[1]
+    # `lines=8` (durum çubuğu her zaman ekranın en altında) `_detect_mode_in_text`'in
+    # 2000-satırlık capture'ının aksine zaten dar — eski/kaydırılmış bir eşleşme
+    # riski yok, ekstra tail-filtreleme gerekmiyor.
+    text = tmux_capture(s.name, lines=8)
+    val = bool(re.search(pattern, strip_ansi(text))) if text is not None else None
+    _BUSY_CACHE[s.name] = (now + _BUSY_TTL, val)
+    return val
+
+
 def _status_payload() -> dict:
     fleet = _fleet_status()
     all_live = find_sessions(measure_cpu=True)
@@ -950,6 +983,7 @@ def _status_payload() -> dict:
             "cpu": round(s.cpu, 1) if s else None,
             "kind": ("fresh" if s.is_fresh else "resume") if s else None,
             "needs_ho": _needs_ho_cached(s) if s else None,
+            "busy": _is_busy_cached(s) if s else None,
             "registered": True,
             "tmux": is_tmux_backed(s.pid) if s else False,
             "host": LOCAL_HOST_NAME,
@@ -979,6 +1013,7 @@ def _status_payload() -> dict:
             "cpu": round(s.cpu, 1),
             "kind": "fresh" if s.is_fresh else "resume",
             "needs_ho": _needs_ho_cached(s),
+            "busy": _is_busy_cached(s),
             "registered": False,
             "tmux": is_tmux_backed(s.pid),
             "host": LOCAL_HOST_NAME,

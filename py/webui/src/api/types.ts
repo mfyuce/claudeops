@@ -35,6 +35,11 @@ export interface SessionInfo {
   cpu: number | null;
   kind: "fresh" | "resume" | null;
   needs_ho: boolean | null;
+  /** Session gerçekten bir tur işliyor mu (thinking/tool-çalışırken), yoksa
+   * prompt'ta bekliyor mu — `cpu%`'nun aksine güvenilir (network-bound
+   * beklerken CPU düşük kalabilir). `null` = bu CLI'da/bu durumda bilinmiyor
+   * (`false`'la KARIŞTIRMA — "boşta" değil "bilinmiyor" demek). */
+  busy: boolean | null;
   registered: boolean;
   tmux: boolean;
   /** `model` is what claudeops has RECORDED for the name (models.tsv — what the

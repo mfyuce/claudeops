@@ -118,6 +118,7 @@ td.hocell { font-size: .78rem; }
 }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .4rem; }
 .dot.on { background: var(--green); }
+.dot.busy { background: var(--amber); }
 .dot.off { background: var(--muted); opacity: .5; }
 button, select, input[type=text] {
   font: inherit; padding: .3rem .6rem; border-radius: 6px; cursor: pointer;

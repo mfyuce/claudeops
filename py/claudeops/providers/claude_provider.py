@@ -44,6 +44,13 @@ MODE_STATUS_PATTERNS = {
 # döngü SIRASI değil; `_term_set_mode` her basıştan sonra durumu yeniden okur ve
 # başlangıç moduna geri dönerse "bu session'ın döngüsünde yok" diye durur.
 CYCLABLE_MODES = ["manual", "acceptEdits", "plan", "auto"]
+# Session bir turu işlerken (thinking VEYA bir tool çalışırken) durum çubuğuna
+# eklenen, idle'da kaybolan metin — mod adının/döngü ipucunun tersine bu KISIM
+# hep AYNI (2026-09-09'da canlı doğrulandı: auto VE acceptEdits modlarında,
+# hem "thinking" hem bir Bash tool çalışırken aynı "esc to interrupt" ekleniyor,
+# idle'a dönünce kayboluyor). `web.py`'nin `_is_busy_cached`'i bunu `strip_ansi`
+# uygulanmış tail'de arar (mod tespitiyle AYNI 2026-09-08 ANSI dersi).
+BUSY_STATUS_PATTERN = r"esc to interrupt"
 
 
 def _encode_cwd(cwd: str) -> str:
@@ -337,6 +344,9 @@ class ClaudeProvider(CliProvider):
 
     def mode_status_patterns(self) -> Dict[str, str]:
         return MODE_STATUS_PATTERNS
+
+    def busy_status_pattern(self) -> Optional[str]:
+        return BUSY_STATUS_PATTERN
 
     def cyclable_modes(self) -> List[str]:
         return CYCLABLE_MODES

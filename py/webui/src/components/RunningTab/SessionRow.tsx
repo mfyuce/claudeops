@@ -109,7 +109,10 @@ export function SessionRow({
           <span className="cli-badge">{session.cli}</span>
         </td>
         <td>
-          <span className="dot on" />
+          <span
+            className={`dot ${session.busy ? "busy" : "on"}`}
+            title={session.busy == null ? undefined : session.busy ? t.busyHint : t.idleHint}
+          />
           {t.pidWord}
           {session.pid}
         </td>
