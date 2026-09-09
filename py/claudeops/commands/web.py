@@ -1848,7 +1848,7 @@ def _v1_is_busy_now(name: str, pattern: str) -> bool:
     return bool(re.search(pattern, strip_ansi(text)))
 
 
-def _v1_wait_for_reply(s, provider, baseline: dict) -> Optional[str]:
+def _v1_wait_for_reply(s, provider, baseline: dict, live_snapshot: object = None) -> Optional[str]:
     """Enjekte edilen mesajın turu BİTENE kadar bekle, yeni asistan metnini döndür
     (timeout → None). `_compact()`'in "canlı tmux session'ına metin enjekte et,
     sonra turun bittiğini anla" problemiyle AYNI şekil — sadece sinyal farklı
@@ -1872,13 +1872,30 @@ def _v1_wait_for_reply(s, provider, baseline: dict) -> Optional[str]:
     Bilinen dar yanlış-negatif: yanıt VE soru bir öncekiyle byte-byte AYNIYSA
     (aynı prompt iki kez) `last_exchange` değişmiş görünmez → timeout. Daha
     güçlü bir sinyal (mesaj SAYISI) için provider arayüzüne yeni bir metot
-    gerekirdi; bugünkü tek veri noktası için gereksiz."""
+    gerekirdi; bugünkü tek veri noktası için gereksiz.
+
+    `live_snapshot` — `s.sid` BİLİNMİYORSA (fresh/hiç resume edilmemiş bir session,
+    bkz. `agy` — 2026-09-09 canlı doğrulandı: agy'nin cwd→id cache'i session
+    öldürülene kadar HİÇ güncellenmiyor, `resolve_resume_id`/`last_exchange(cwd,
+    None)` bu yüzden sonsuza kadar boş döner) `live_snapshot` (varsa,
+    `provider.snapshot_for_live_sid()`'den, gönderimden ÖNCE alınmış) her
+    poll'da `discover_live_sid()`'e verilir; bulunduğu anda `last_exchange`'in
+    KENDİ sid'i olarak benimsenir — `resolve_resume_id()`'e/cache'e hiç
+    dokunmadan. `live_snapshot=None` (varsayılan) = provider bunu
+    desteklemiyor (claude/codex zaten çalışıyor) → davranış TAMAMEN eskisiyle
+    AYNI, bu parametreyi hiç geçmeyen `/v1/*` dışı hiçbir çağıran yok zaten."""
     pattern = provider.busy_status_pattern()
     previous: Optional[dict] = None  # 2. strateji: bir önceki poll'un okuması
+    sid = s.sid
     deadline = time.monotonic() + V1_CHAT_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         time.sleep(V1_CHAT_POLL_INTERVAL_SECONDS)
-        exchange = provider.last_exchange(s.cwd, s.sid)
+        if sid is None and live_snapshot is not None:
+            discovered = provider.discover_live_sid(s.cwd, live_snapshot)
+            if discovered:
+                sid = discovered
+                diag_log("v1_live_sid_discovered", name=s.name, sid=discovered)
+        exchange = provider.last_exchange(s.cwd, sid)
         if exchange is None:
             return None  # çağıran bunu gönderimden ÖNCE eliyor; savunma amaçlı
         changed = exchange != baseline
@@ -1950,12 +1967,21 @@ def _v1_chat_completion(data) -> tuple:
         return _v1_error(f"'{model}' runs a CLI whose transcript can't be read back, so its reply "
                           "can't be returned over this API"), 404
 
+    # `s.sid` bilinmiyorsa (fresh/hiç resume edilmemiş session — 2026-09-09
+    # canlı bulundu: agy'nin cwd→id cache'i tam olarak bu durumda session
+    # ölene kadar boş kalıyor, `baseline` yukarıda YİNE de boş bir dict olarak
+    # geldiği için 404 DEĞİL sessiz bir 504'e düşüyordu) mesajı göndermeden
+    # ÖNCE ucuz bir "durum" yakala — provider desteklemiyorsa (claude/codex)
+    # None, davranış değişmez. `discover_live_sid()` ile eşleşen çift, bkz.
+    # `_v1_wait_for_reply` docstring'i.
+    live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
+
     diag_log("v1_chat_start", name=s.name, chars=len(user_text))
     if not tmux_send_keys(s.name, user_text, settle_delay=provider.input_settle_delay()):
         diag_log("v1_chat_send_failed", name=s.name)
         return _v1_error(f"failed to deliver the message to session '{s.name}'", "server_error"), 500
 
-    reply = _v1_wait_for_reply(s, provider, baseline)
+    reply = _v1_wait_for_reply(s, provider, baseline, live_snapshot)
     if reply is None:
         diag_log("v1_chat_timeout", name=s.name)
         return _v1_error(

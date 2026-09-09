@@ -209,3 +209,40 @@ class CliProvider(ABC):
         seçicisini hiç göstermez. `permission_modes()`'tan AYRI ve daha dar:
         o, session BAŞLATIRKEN verilebilecek tüm modlar."""
         return []
+
+    def snapshot_for_live_sid(self, cwd: str) -> object:
+        """`resolve_resume_id()`/`last_exchange(cwd, sid=None)` bir konuşmayı
+        SADECE provider'ın kendi cache/index'i (varsa) onu zaten biliyorsa
+        bulabilir. agy'de bu `~/.gemini/antigravity-cli/cache/
+        last_conversations.json` — ve CANLI DOĞRULANDI (2026-09-09): bu dosya
+        session HENÜZ ÇIKMADAN/ÖLDÜRÜLMEDEN asla güncellenmiyor. Yani ilk kez
+        (hiç `--conversation`'la resume edilmemiş) çalışan bir agy session'ının
+        konuşması, session öldürülene kadar bu yoldan HİÇBİR ZAMAN okunamıyor —
+        `/v1/chat/completions`'ta (TOBEDECIDED#21) bu tam olarak fresh bir agy
+        session'a gönderilen mesajın sessizce 504 timeout'a düşmesine yol açan
+        şey.
+
+        Bu metod, çağırana (o katman gibi) mesajı GÖNDERMEDEN ÖNCE ucuz bir
+        "durum" yakalama imkanı verir — dönen değer OPAQUE, sadece aşağıdaki
+        `discover_live_sid()`'e geri verilmek için. None (VARSAYILAN) = bu
+        provider'da cache-BAĞIMSIZ bir canlı-keşif yolu yok/gerekmiyor
+        (claude/codex kendi sid'lerini zaten cmdline'dan ya da jsonl/rollout
+        dosyasından anında okuyabiliyor — agy'nin bu belirli açığı onlarda
+        yok, `resolve_resume_id`/`last_exchange` zaten çalışıyor)."""
+        return None
+
+    def discover_live_sid(self, cwd: str, snapshot: object) -> Optional[str]:
+        """`snapshot`'ın (yukarıdaki `snapshot_for_live_sid()`'in döndürdüğü)
+        YAKALANDIĞI andan SONRA ortaya çıkan bir konuşma id'si var mı? Varsa
+        onu döndür — çağıran bunu doğrudan `last_exchange`/`full_history`'ye
+        `sid` olarak geçirebilir, `resolve_resume_id()`'e/cache'e HİÇ
+        dokunmadan (2026-09-09 canlı doğrulandı: agy'nin gerçek `.db` dosyası
+        gönderimden ~2s sonra oluşuyor ve `steps` tablosu turn ilerlerken
+        GERÇEK ZAMANLI yazılıyor — assistant satırı ekrandaki yanıt
+        tamamlanmadan ÖNCE bile okunabiliyordu).
+
+        None = ya henüz yok (çağıran tekrar poll'lamalı, timeout'a kadar) ya
+        da provider `snapshot_for_live_sid()`'de zaten None döndürdüğü için
+        hiç desteklenmiyor — ikisi çağıran için AYNI davranışı gerektirir
+        (bekle/timeout), o yüzden tek bir None sözleşmesi yeterli."""
+        return None

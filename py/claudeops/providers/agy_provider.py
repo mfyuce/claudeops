@@ -62,6 +62,7 @@ Farklar (claude'a göre):
       `full_history`'nin çıktısı BOŞ/saçma görünürse önce burası şüphelenilmeli.
 """
 from __future__ import annotations
+import glob
 import json
 import os
 import shlex
@@ -155,6 +156,14 @@ def _step_assistant_text(payload: bytes) -> str:
     yanıt) — alan `3` (iç düşünce) BİLEREK atlanıyor, bkz. modül docstring'i."""
     f20 = _get_bytes_field(payload, 20)
     return _get_text_field(f20, 1) if f20 is not None else ""
+
+
+def _conversation_ids():
+    """Şu an `CONVERSATIONS_DIR` altındaki her konuşmanın base id'si (`.db`/
+    `.db-wal`/`.db-shm`/`.db-journal` uzantıları hariç) — `snapshot_for_live_sid`/
+    `discover_live_sid`'in PAYLAŞTIĞI tek liste-alma adımı."""
+    for path in glob.glob(os.path.join(CONVERSATIONS_DIR, "*.db*")):
+        yield os.path.basename(path).split(".db")[0]
 
 
 PERMISSION_MODES = ["auto", "acceptEdits", "plan"]
@@ -339,3 +348,31 @@ class AgyProvider(CliProvider):
                 if text:
                     out.append({"role": "assistant", "text": text})
         return out
+
+    def snapshot_for_live_sid(self, cwd: str) -> object:
+        # `cwd` bilerek KULLANILMIYOR — CONVERSATIONS_DIR'deki dosyalar kendi
+        # cwd'sini taşımıyor (SADECE last_conversations.json cache'i, bu
+        # metodun tam olarak atlamaya çalıştığı şey, cwd->id eşlemesini
+        # tutuyor); imza sadece base.py'nin arayüz simetrisi için `cwd` alıyor.
+        try:
+            return frozenset(_conversation_ids())
+        except OSError:
+            return None
+
+    def discover_live_sid(self, cwd: str, snapshot: object) -> Optional[str]:
+        if snapshot is None:
+            return None
+        try:
+            current = frozenset(_conversation_ids())
+        except OSError:
+            return None
+        new_ids = current - snapshot
+        if len(new_ids) != 1:
+            # 0 = henüz yok (normal, çağıran tekrar poll'lar). 2+ = AYNI dar
+            # pencerede BAŞKA bir agy session'ı da kendi YENİ konuşmasını
+            # başlattı (nadir — ikisi de kendi İLK turunda olmalı) — hangisi
+            # bizim olduğunu TAHMİN ETMEK yerine "henüz yok" gibi davran;
+            # çağıran zaten poll'layıp timeout'a düşer (fix'in devreye
+            # girmediği, ama YENİ bir regresyon da olmayan dar bir durum).
+            return None
+        return next(iter(new_ids))
