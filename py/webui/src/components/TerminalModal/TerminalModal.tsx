@@ -114,7 +114,13 @@ export function TerminalModal({ name, host, onClose }: TerminalModalProps) {
       <div
         style={{
           maxWidth: "95vw",
-          maxHeight: "92vh",
+          // dvh (not vh): on mobile, focusing the live-input textarea opens the
+          // on-screen keyboard, which shrinks the VISUAL viewport but not the
+          // `vh`-unit (layout) viewport — so a vh-sized modal doesn't shrink
+          // with it and ends up taller than the space actually left above the
+          // keyboard ("popup çok genişliyor", 2026-09-09). dvh tracks the
+          // visual viewport instead.
+          maxHeight: "92dvh",
           width: "fit-content",
           background: "var(--panel)",
           borderRadius: "8px",

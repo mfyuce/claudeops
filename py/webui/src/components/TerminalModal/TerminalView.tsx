@@ -526,7 +526,8 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
           // if it turns out not to be the whole story.
           touchAction: "pan-y",
           maxWidth: "calc(95vw - 1.4rem)",
-          maxHeight: "calc(92vh - 130px)",
+          // dvh, see TerminalModal.tsx's maxHeight comment.
+          maxHeight: "calc(92dvh - 130px)",
           boxSizing: "content-box",
           fontFamily: "monospace",
           fontSize: ".8rem",
@@ -542,7 +543,8 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
             borderRadius: "4px",
             overflow: "auto",
             maxWidth: "calc(95vw - 1.4rem)",
-            maxHeight: "calc(92vh - 130px)",
+            // dvh, see TerminalModal.tsx's maxHeight comment.
+          maxHeight: "calc(92dvh - 130px)",
             boxSizing: "content-box",
             fontFamily: "monospace",
             fontSize: ".8rem",
