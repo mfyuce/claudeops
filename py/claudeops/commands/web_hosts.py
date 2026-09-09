@@ -159,13 +159,35 @@ _cache_lock = threading.Lock()
 _cache: Dict[str, Dict[str, Any]] = {}  # host adı -> fetch_remote_status() sonucu
 
 
+def _apply_stale_while_error(prev: Optional[Dict[str, Any]], result: Dict[str, Any]) -> Dict[str, Any]:
+    """Bir poll/test sonucunu cache'e yazmadan ÖNCE "stale-while-error" uygular:
+    `result` başarısızsa VE öncesinde BAŞARILI bir `prev` varsa, sessions/
+    closed/retired/cli_list/cli_options/dups eskisinden KORUNUR (sadece ok/
+    error güncellenir) — yuhem-tarzı "isolated blip" (TOBEDECIDED #19) tek
+    kötü bir pollda o host'un TÜM session satırlarını/terminal effort-mode-
+    model kutularını sessizce kaybetmesin diye (2026-09-09 canlı rapor:
+    "ancient-script-pipeline-fd" (yuhem) terminalinde effort/perm kutuları
+    gitmişti — kök sebep TAM buydu: host'un normal blip'i sırasında
+    `merge_status()`'un `data.sessions`'a eklediği satır TAMAMEN siliniyordu,
+    sadece cli_options boş kalmıyordu — `TerminalView.tsx`'in `session =
+    data?.sessions.find(...)` bulamayınca hem effort hem mode/perm kutusu
+    BİRLİKTE kayboluyordu). Kalıcı/gerçek bir kopuşta `ok`/`error` yine de HER
+    ZAMAN taze/doğru kalır (Hosts UI'ının bağlı/erişilemez rozeti hiç
+    yanılmaz) — sadece session LİSTESİ bir sonraki başarılı poll'a kadar
+    bayatlar. Hiç önceki başarılı cache yoksa (host hiç bağlanamadı/zaten
+    başarısızdı) korunacak bir şey yok, `result` olduğu gibi kullanılır."""
+    if not result["ok"] and prev is not None and prev.get("ok"):
+        return {**prev, "ok": False, "error": result["error"]}
+    return result
+
+
 def _poll_once() -> None:
     current = hosts_mod.load_hosts()
     current_names = {h["name"] for h in current}
     for h in current:
         result = fetch_remote_status(h)
         with _cache_lock:
-            _cache[h["name"]] = result
+            _cache[h["name"]] = _apply_stale_while_error(_cache.get(h["name"]), result)
     # Silinmiş host'ları cache'ten temizle (merge_status zaten load_hosts()'a
     # göre iterate ediyor, bu sadece belleğin büyümemesi için).
     with _cache_lock:
@@ -223,8 +245,14 @@ def test_now(name: str) -> Optional[Dict[str, Any]]:
         return None
     result = fetch_remote_status(host_record)
     with _cache_lock:
-        _cache[name] = result
-    return result
+        merged = _apply_stale_while_error(_cache.get(name), result)
+        _cache[name] = merged
+    # `merged`'in `ok`/`error`'ı her zaman `result`'ınkiyle AYNI (stale-while-
+    # error SADECE sessions/cli_options gibi liste alanlarını korur) — yani
+    # çağıran (web.py) burada gerçek/taze reachability'i görmeye devam eder,
+    # sadece cache'e yazılan session listesi bir önceki başarılı sonuçtan
+    # gelmiş olabilir.
+    return merged
 
 
 def merge_status(local_payload: Dict[str, Any]) -> Dict[str, Any]:
