@@ -54,7 +54,7 @@ from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_windo
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_client_count, tmux_send_keys, tmux_send_raw,
-    tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS,
+    tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS, strip_ansi,
 )
 from .web_static import DIST_DIR, resolve_static_path
 from . import web_hosts
@@ -1278,22 +1278,6 @@ def _mode_patterns(provider) -> Dict[str, "re.Pattern"]:
     return cached
 
 
-# `tmux capture-pane -e` ANSI'yi KORUR ve claude'un durum çubuğunu kelime kelime
-# renklendirir — ham metinde "auto mode on" aslında
-# `\x1b[38;5;220mauto\x1b[39m \x1b[38;5;220mmode\x1b[39m \x1b[38;5;220mon...`
-# olarak duruyor, yani düz bir regex ASLA eşleşmez. 2026-09-08'de canlı bulundu:
-# 2026-09-07'de eklenen mod tespiti bu yüzden HER ZAMAN "default" dönüyormuş
-# (hedef "default" ise sessiz no-op, değilse 8 × Shift+Tab + "mode_cycle_failed").
-# Eşleştirmeden önce mutlaka ANSI temizlenmeli — frontend'in `stripAnsi`'siyle
-# aynı iki desen (SGR + OSC).
-_ANSI_SGR_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
-_ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*\x07")
-
-
-def _strip_ansi(text: str) -> str:
-    return _ANSI_OSC_RE.sub("", _ANSI_SGR_RE.sub("", text))
-
-
 def _detect_mode_in_text(text: str, provider) -> Optional[str]:
     """Durum çubuğundan aktif izin modunu okur — TÜM capture'da değil (eski,
     kaydırılmış bir 'plan mode on' metnine yanlışlıkla yakalanmasın diye),
@@ -1305,7 +1289,7 @@ def _detect_mode_in_text(text: str, provider) -> Optional[str]:
     patterns = _mode_patterns(provider)
     if not patterns:
         return None
-    tail_lines = [ln for ln in _strip_ansi(text).splitlines() if ln.strip()][-8:]
+    tail_lines = [ln for ln in strip_ansi(text).splitlines() if ln.strip()][-8:]
     tail = "\n".join(tail_lines)
     for mode, pattern in patterns.items():
         if pattern.search(tail):

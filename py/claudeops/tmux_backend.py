@@ -9,6 +9,7 @@ web CLI plan]]).
 """
 from __future__ import annotations
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -100,6 +101,21 @@ def tmux_capture(name: str, lines: int = 2000) -> Optional[str]:
         return r.stdout
     except Exception:
         return None
+
+
+# `tmux capture-pane -e` ANSI'yi KORUR ve claude'un durum çubuğunu/dialoglarını
+# kelime kelime renklendirir — ham metinde "Switch model?" aslında
+# `\x1b[1m\x1b[38;5;220mSwitch\x1b[0m\x1b[39m\x1b[49m \x1b[1m\x1b[38;5;220mmodel?...`
+# olarak duruyor, yani düz bir substring/regex ASLA eşleşmez ([[web.py'nin
+# mode-durumu tespiti 2026-09-08'de AYNI sınıf bug'ı yaşadı ve buraya taşındı]]).
+# Eşleştirmeden önce mutlaka ANSI temizlenmeli — frontend'in `stripAnsi`'siyle
+# aynı iki desen (SGR + OSC).
+ANSI_SGR_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*\x07")
+
+
+def strip_ansi(text: str) -> str:
+    return ANSI_OSC_RE.sub("", ANSI_SGR_RE.sub("", text))
 
 
 def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:

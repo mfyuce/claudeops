@@ -273,8 +273,23 @@ class ClaudeProvider(CliProvider):
         bir sonraki etkileşime kadar model-değişikliği bekleyen bir dialog
         gösteriyor olabilir. Ana wrap-up mesajının kendisi bu riski TAŞIMAZ
         (`handover.py`/`web.py`'nin çağıran kodu ayrı bir yerleşme süresiyle
-        bunu bilerek ayırıyor)."""
-        from ..tmux_backend import tmux_capture, tmux_send_keys, tmux_send_special_key
+        bunu bilerek ayırıyor).
+
+        **2026-09-09'da canlı bulundu+düzeltildi:** yukarıdaki "POLL'layıp
+        GERÇEKTEN doğruluyor" iddiası YANLIŞTI — `tmux_capture(..., "-e")` ANSI
+        kodlarını KORUYOR ve claude "Switch model?" metnini "Switch" ile
+        "model?"yi AYRI renk span'ları olarak basıyor, yani ham metinde
+        `"Switch model?" in text` HİÇBİR ZAMAN eşleşmiyordu (mode-cycling'in
+        2026-09-08'de bulunan AYNI sınıf bug'ı, bkz. `tmux_backend.strip_ansi`).
+        Sonuç: dialog her açıldığında bu döngü onu asla YAKALAMIYOR, sessizce
+        `_MODEL_SWITCH_TIMEOUT_SECONDS` (20s) boyunca bekleyip en sondaki kör
+        Enter'a güveniyordu — session busy'yse (dialog bu fonksiyon `saseimplppr`
+        canlı vakasında olduğu gibi 20s'den SONRA açılırsa) bu kör Enter'ın da
+        hedefi olmuyor, switch tamamen ONAYSIZ kalıyordu. `strip_ansi` eklenince
+        dialog artık ~`_MODEL_SWITCH_POLL_SECONDS` (0.3s) içinde doğru
+        yakalanıyor — izole scratch session'da (gerçek konuşma cache'i
+        oluşturulup) canlı doğrulandı."""
+        from ..tmux_backend import tmux_capture, tmux_send_keys, tmux_send_special_key, strip_ansi
 
         if not tmux_send_keys(tmux_name, f"/model {target_model}"):
             return
@@ -282,7 +297,7 @@ class ClaudeProvider(CliProvider):
         dialog_confirmed = False
         while time.monotonic() < deadline:
             time.sleep(self._MODEL_SWITCH_POLL_SECONDS)
-            text = tmux_capture(tmux_name, lines=20) or ""
+            text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
             if not dialog_confirmed and "Switch model?" in text:
                 tmux_send_special_key(tmux_name, "Enter")
                 dialog_confirmed = True
