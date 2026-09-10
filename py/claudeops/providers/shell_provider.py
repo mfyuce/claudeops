@@ -22,7 +22,7 @@ kanıt (env) yoksa göstermeyiz.
 """
 from __future__ import annotations
 import os
-from typing import Dict, FrozenSet, List, Optional
+from typing import Dict, FrozenSet, List, Optional, Sequence
 
 from .base import CliProvider
 
@@ -49,8 +49,10 @@ class ShellProvider(CliProvider):
         return None  # düz shell'de "devam edilecek konuşma" kavramı yok, hep fresh
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
-                             resume_id, prompt, session_name) -> str:
-        # model/permission_mode/effort/resume_id/prompt düz shell'de anlamsız — yok sayılır.
+                             resume_id, prompt, session_name, extra_args: Sequence[str] = ()) -> str:
+        # model/permission_mode/effort/resume_id/prompt/extra_args düz shell'de
+        # anlamsız — yok sayılır (MCP kavramı yok, `mcp_launch_args()` zaten
+        # base.py'nin boş-liste varsayımında kalıyor, override edilmedi).
         return f"exec -a {PROC_TAG} bash"
 
     def env_overrides(self, session_name: str) -> Dict[str, str]:

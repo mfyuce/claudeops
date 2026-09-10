@@ -6,9 +6,27 @@ yeni bir CLI eklemek yeni bir provider dosyası + registry'ye bir satır demek.
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 import psutil
+
+
+@dataclass
+class McpServerSpec:
+    """Bir MCP server'ı bir CLI'a nasıl bağlayacağını tarif eden, provider-
+    bağımsız istek — `mcp_launch_args`/`mcp_setup_command`'a verilir, HER
+    provider kendi CLI'sının sözdizimine (claude: `--mcp-config` dosyası,
+    codex: `-c mcp_servers...` dotted-TOML, agy: yok) kendisi çevirir.
+
+    `command`/`args`: subprocess olarak nasıl başlatılacağı (ör. `py/cops`
+    wrapper'ının mutlak yolu + `["mcp-queue"]`) — provider bunu KENDİ
+    CLI'sının beklediği şekle (dosya İÇERİĞİ ya da satır-içi bayrak(lar))
+    döker, kendisi hiçbir varsayım YAPMAZ (`command`'ın ne çalıştırdığı
+    provider'ın umurunda değil)."""
+    name: str
+    command: str
+    args: Sequence[str] = field(default_factory=tuple)
 
 
 class CliProvider(ABC):
@@ -48,10 +66,17 @@ class CliProvider(ABC):
         resume_id: Optional[str],
         prompt: Optional[str],
         session_name: str,
+        extra_args: Sequence[str] = (),
     ) -> str:
         """SADECE `<binary> ...` çağrısı (ör. `agy --model ... --effort ...`) — `cd CWD &&`
         ÖNEKİNİ YAZMA, onu `spawn_session` ekler (env_overrides'ı doğru yere — cd'den
-        SONRA, binary çağrısından HEMEN ÖNCE — enjekte edebilmek için, bkz. aşağı)."""
+        SONRA, binary çağrısından HEMEN ÖNCE — enjekte edebilmek için, bkz. aşağı).
+
+        `extra_args` (Phase 3, TOBEDECIDED#15): `mcp_launch_args()`'ın döndürdüğü HAM
+        (quote'lanmamış) argv token'ları — HER provider kendi diğer parçalarıyla AYNI
+        şekilde (`shlex.quote()` her token'a AYRI AYRI) promptTAN HEMEN ÖNCE ekler.
+        Varsayılan boş tuple = bugünkü davranış birebir (mcp_server verilmeyen HER
+        çağrıda `spawn_session` zaten boş liste geçirir)."""
 
     def has_conversation(self) -> bool:
         """True (varsayılan) = provider bir 'konuşma' sürdürüyor → handover Faz1
@@ -154,6 +179,27 @@ class CliProvider(ABC):
         yok. --remote-control muadili olmayan CLI'lar (agy) burada COPS_NAME döndürür.
         """
         return {}
+
+    def mcp_launch_args(self, spec: McpServerSpec) -> List[str]:
+        """Bu CLI'ya `spec`'teki MCP server'ı PER-INVOCATION bağlayacak ham
+        (quote'lanmamış) argv token'ları — `build_inner_command`'ın `extra_args`'ına
+        gider. Boş liste (VARSAYILAN) = bu CLI'da çağrı-başına bir MCP-bağlama yolu
+        YOK (agy — sadece `mcp_setup_command()`'daki global/kalıcı ipucu var).
+        `busy_status_pattern`/`mode_status_patterns` ile AYNI "yok=boş, sadece
+        gerçekten destekleyen override eder" sözleşmesi (2026-09-10, Phase 3 —
+        claude `--mcp-config <dosya>`, codex `-c mcp_servers...` dotted-TOML,
+        gerçek binary'lere karşı doğrulandı, bkz. onaylanmış plan)."""
+        return []
+
+    def mcp_setup_command(self, spec: McpServerSpec) -> Optional[str]:
+        """Bu CLI'nın MCP server'ı KALICI/global olarak kaydetmesi için
+        (varsa) çalıştırılması gereken TEK SEFERLİK komut — panelin
+        GÖSTEREBİLECEĞİ bir ipucu, OTOMATİK ÇALIŞTIRILMAZ (agy'nin global
+        config'ine dokunmak kullanıcı onayı ister, bkz. onaylanmış plan'ın
+        build-order'ı). None (VARSAYILAN) = ne çağrı-başına ne kalıcı bir
+        MCP-bağlama kavramı var (claude/codex — ikisi de `mcp_launch_args()`
+        ile ÇAĞRI-BAŞINA hallediyor, kalıcı kayda ihtiyaçları yok)."""
+        return None
 
     # ── discovery tarafı ─────────────────────────────────────────────────────
 

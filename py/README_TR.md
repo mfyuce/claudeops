@@ -253,6 +253,11 @@ py/cops stuck     # takılı kalmış (idle ama "busy" görünen) session'ları 
 py/cops layout    # pencereleri masaüstlerine dağıt (X11)
 py/cops web       # kontrol paneli (yukarıda)
 py/cops service   # `web`+tunnel için systemd --user kalıcılığı (install/status/uninstall)
+py/cops mcp-queue # MCP stdio server: bir *agent'ın* (insan değil) Ekip/Team orkestrasyon motorunu
+                   #   panelin kullandığı AYNI yerel /api/orch/* üzerinden kendisi sürmesini sağlar.
+                   #   elle çalıştırılmaz — bir provider session'ın CLI'sını buna bağlar (claude:
+                   #   `--mcp-config`, codex: `-c mcp_servers...`; agy'de çağrı-başına MCP bayrağı
+                   #   yok, sadece bir kayıt ipucu gösterilir, otomatik yapılmaz).
 ```
 
 Her komutun kendi `--help`'i var.

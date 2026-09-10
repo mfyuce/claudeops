@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 import threading
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from .diaglog import diag_log
 from .tmux_backend import strip_ansi, tmux_capture
@@ -47,6 +47,7 @@ def wait_for_reply(
     timeout: float = TIMEOUT_SECONDS, poll: float = POLL_INTERVAL_SECONDS,
     stable_polls: int = 2, require_marker: Optional[str] = None,
     cancel: Optional[threading.Event] = None,
+    push_check: Optional[Callable[[], Optional[str]]] = None,
 ) -> Optional[str]:
     """Enjekte edilen mesajın turu BİTENE kadar bekle, yeni asistan metnini
     döndür (timeout/cancel → None).
@@ -79,7 +80,14 @@ def wait_for_reply(
     session — agy, 2026-09-09 commit `1356edc`) her poll'da
     `discover_live_sid()`'e verilir; bulunduğu anda `last_exchange`'in KENDİ
     sid'i olarak benimsenir. `live_snapshot=None` (varsayılan) = provider
-    desteklemiyor (claude/codex) → davranış eskisiyle TAMAMEN AYNI."""
+    desteklemiyor (claude/codex) → davranış eskisiyle TAMAMEN AYNI.
+
+    `push_check` (Phase 3, TOBEDECIDED#15 MCP server) — HER poll turunda,
+    pane/transcript okumadan ÖNCE çağrılır; metin dönerse (bir katılımcının
+    kendi `cops_result_push` MCP tool-call'ı, bkz. `commands/web_orch.py`'nin
+    `_push_result`'ı) O METİN doğrudan döndürülür — normal pane-tail
+    sezgisine hiç bakılmaz. None (VARSAYILAN) = bu yeteneği kullanmayan HER
+    çağıran (`/v1/*` dahil) için no-op, davranış eskisiyle TAMAMEN AYNI."""
     pattern = provider.busy_status_pattern()
     previous: Optional[dict] = None
     stable_count = 0
@@ -91,6 +99,11 @@ def wait_for_reply(
         time.sleep(poll)
         if cancel is not None and cancel.is_set():
             return None
+
+        if push_check is not None:
+            pushed = push_check()
+            if pushed is not None:
+                return pushed
 
         if sid is None and live_snapshot is not None:
             discovered = provider.discover_live_sid(s.cwd, live_snapshot)

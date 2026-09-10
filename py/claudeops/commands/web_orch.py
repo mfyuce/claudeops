@@ -42,6 +42,17 @@ _LOCK = threading.Lock()
 _ACTIVE_RUN_ID: Optional[str] = None
 _CANCEL_EVENTS: Dict[str, threading.Event] = {}
 
+# Phase 3 (TOBEDECIDED#15, MCP server) — `cops_result_push` bir katılımcının
+# kendi yanıtını pane-tail okumaktansa doğrudan bildirmesi için. `_run_turn`
+# turunu BAŞLATIRKEN kendi (run_id,name) anahtarını `_WAITING`'e ekler, turns.
+# wait_for_reply'ın her poll'unda `_push_result`'ın yazdığı bir giriş var mı diye
+# bakar (bkz. `turns.wait_for_reply`'ın `push_check` parametresi). `_WAITING`'de
+# OLMAYAN bir push (yanlış run_id/name, ya da tur zaten bitmiş) REDDEDİLİR —
+# `http_result` bunu düz bir hata olarak yansıtır, sessizce yutulmaz.
+_PUSH_LOCK = threading.Lock()
+_WAITING: set = set()          # {(run_id, name)}
+_PUSHED: Dict[Tuple[str, str], str] = {}  # (run_id, name) -> formatted reply text
+
 
 def _new_run_id() -> str:
     return "r" + time.strftime("%Y%m%d_%H%M%S") + "_" + secrets.token_hex(3)
@@ -163,14 +174,37 @@ def _build_decider_dispatch(run_id: str, task: str, verdict_hint: str, bundle: s
     )
 
 
+def _push_result(run_id: str, name: str, verdict: str, text: str) -> bool:
+    """`http_result()`'tan çağrılır (MCP `cops_result_push`). Sadece o
+    (run_id,name) İÇİN GERÇEKTEN bekleyen bir `_run_turn` varsa kabul eder
+    (True) — aksi halde (yanlış run_id, henüz dispatch edilmemiş, ya da tur
+    zaten bitmiş) False, `http_result` bunu düz bir hataya çevirir. Kabul
+    edilen metin `_with_verdict`'in `parse_verdict()`'inin ZATEN anladığı
+    tail-sözleşmesine (`COPS-VERDICT:`/`COPS-END`) sarılır — bu sayede
+    `_one_worker`/`_run_decider`'ın geri kalanı push'un pane-tail'den mi yoksa
+    bu yoldan mı geldiğini AYIRT ETMEK ZORUNDA KALMAZ, tek bir parse yolu."""
+    envelope = f"{orch.VERDICT_MARKER} {verdict.strip()}\n{orch.END_MARKER}"
+    formatted = f"{text.strip()}\n\n{envelope}" if text.strip() else envelope
+    key = (run_id, name)
+    with _PUSH_LOCK:
+        if key not in _WAITING:
+            return False
+        _PUSHED[key] = formatted
+    return True
+
+
 def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, str], Any],
-              prompt: str, timeout: float, cancel_event: threading.Event, require_marker: str) -> orch.RunResult:
+              prompt: str, timeout: float, cancel_event: threading.Event, require_marker: str,
+              run_id: str) -> orch.RunResult:
     """Tek bir katılımcıya (rolü ne olursa olsun — worker/controller/decider)
     tek bir tur: enjekte et, tur bitene kadar bekle. Verdict PARSE ETMEZ
     (`.text`'i ham bırakır) — `_one_worker`/`_run_decider` kendi
     `parse_verdict()`'lerini `dataclasses.replace` ile üstüne biner, brief
     çağıranı `orch.parse_brief()`'i kendi tarafında çağırır. `kind`/`role`
-    dışında `_one_worker`'ın Phase 1'deki gövdesiyle BİREBİR AYNI mekanizma."""
+    dışında `_one_worker`'ın Phase 1'deki gövdesiyle BİREBİR AYNI mekanizma.
+
+    `run_id` (Phase 3): SADECE `_push_result`'ın (run_id,name) anahtarını
+    kaydetmek/silmek için — turun geri kalanında kullanılmıyor."""
     created_at = time.time()
     s = index.get((p.host, p.name))
     if s is None:
@@ -185,17 +219,34 @@ def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, s
     # ile AYNI fallback (bkz. `turns.wait_for_reply` docstring'i).
     live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
 
-    t0 = time.monotonic()
-    diag_log("orch_turn_dispatch", name=s.name, seq=seq, kind=kind, chars=len(prompt))
-    if not tmux_send_keys(s.name, prompt, settle_delay=provider.input_settle_delay()):
-        return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
-                               cli=p.cli, created_at=created_at, status="send_failed")
+    # `_WAITING`'e send_keys'ten ÖNCE eklenir (send başarısız da olsa `finally`
+    # temizler) — aradaki pencerede (mesaj gitti ama henüz kayıtlı değildik)
+    # bir push'un reddedilme riskini TAMAMEN kapatır (pratikte imkansız kadar
+    # dar bir pencere olsa da, bunu "yapısal olarak" kapatmak bedelsiz).
+    push_key = (run_id, p.name)
+    with _PUSH_LOCK:
+        _WAITING.add(push_key)
+    try:
+        t0 = time.monotonic()
+        diag_log("orch_turn_dispatch", name=s.name, seq=seq, kind=kind, chars=len(prompt))
+        if not tmux_send_keys(s.name, prompt, settle_delay=provider.input_settle_delay()):
+            return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
+                                   cli=p.cli, created_at=created_at, status="send_failed")
 
-    reply = turns.wait_for_reply(
-        s, provider, baseline, live_snapshot,
-        timeout=timeout, poll=1.0, stable_polls=3,
-        require_marker=require_marker, cancel=cancel_event,
-    )
+        def _push_check() -> Optional[str]:
+            with _PUSH_LOCK:
+                return _PUSHED.pop(push_key, None)
+
+        reply = turns.wait_for_reply(
+            s, provider, baseline, live_snapshot,
+            timeout=timeout, poll=1.0, stable_polls=3,
+            require_marker=require_marker, cancel=cancel_event,
+            push_check=_push_check,
+        )
+    finally:
+        with _PUSH_LOCK:
+            _WAITING.discard(push_key)
+            _PUSHED.pop(push_key, None)  # bu tur ASLA tüketmediyse de birikmesin
     elapsed = time.monotonic() - t0
     if reply is None:
         return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
@@ -217,13 +268,15 @@ def _with_verdict(r: orch.RunResult) -> orch.RunResult:
 
 
 def _one_worker(w: orch.Participant, seq: int, index: Dict[Tuple[str, str], Any],
-                 prompt: str, worker_timeout: float, cancel_event: threading.Event) -> orch.RunResult:
-    return _with_verdict(_run_turn(w, seq, "worker_result", index, prompt, worker_timeout, cancel_event, orch.END_MARKER))
+                 prompt: str, worker_timeout: float, cancel_event: threading.Event, run_id: str) -> orch.RunResult:
+    return _with_verdict(_run_turn(w, seq, "worker_result", index, prompt, worker_timeout, cancel_event,
+                                    orch.END_MARKER, run_id))
 
 
 def _run_decider(decider: orch.Participant, seq: int, index: Dict[Tuple[str, str], Any],
-                  prompt: str, timeout: float, cancel_event: threading.Event) -> orch.RunResult:
-    return _with_verdict(_run_turn(decider, seq, "decision", index, prompt, timeout, cancel_event, orch.END_MARKER))
+                  prompt: str, timeout: float, cancel_event: threading.Event, run_id: str) -> orch.RunResult:
+    return _with_verdict(_run_turn(decider, seq, "decision", index, prompt, timeout, cancel_event,
+                                    orch.END_MARKER, run_id))
 
 
 def _set_status(run_id: str, status: str) -> None:
@@ -288,7 +341,7 @@ def _run_thread(run_id: str, workers: List[orch.Participant], controller: Option
             _set_status(run_id, "briefing")
             brief_prompt = _build_brief_dispatch(run_id, task)
             brief_result = _run_turn(controller, next(seq_counter), "brief", index, brief_prompt,
-                                      worker_timeout, cancel_event, orch.BRIEF_END_MARKER)
+                                      worker_timeout, cancel_event, orch.BRIEF_END_MARKER, run_id)
             results.append(brief_result)
             _save_progress(run_id, results)
             if cancel_event.is_set():
@@ -311,7 +364,7 @@ def _run_thread(run_id: str, workers: List[orch.Participant], controller: Option
 
         prompt = _build_dispatch_prompt(run_id, effective_task, verdict_hint)
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_WORKERS, len(workers))) as ex:
-            futures = {ex.submit(_one_worker, w, next(seq_counter), index, prompt, worker_timeout, cancel_event): w
+            futures = {ex.submit(_one_worker, w, next(seq_counter), index, prompt, worker_timeout, cancel_event, run_id): w
                        for w in workers}
             for fut in concurrent.futures.as_completed(futures):
                 results.append(fut.result())
@@ -326,7 +379,8 @@ def _run_thread(run_id: str, workers: List[orch.Participant], controller: Option
             _set_status(run_id, "deciding")
             bundle = orch.format_worker_bundle(worker_results)
             decider_prompt = _build_decider_dispatch(run_id, task, verdict_hint, bundle)
-            decision_result = _run_decider(decider, next(seq_counter), index, decider_prompt, worker_timeout, cancel_event)
+            decision_result = _run_decider(decider, next(seq_counter), index, decider_prompt, worker_timeout,
+                                            cancel_event, run_id)
             results.append(decision_result)
             _save_progress(run_id, results)
             if decision_result.status == "ok" and decision_result.verdict_key:
@@ -518,3 +572,24 @@ def http_run(run_id: str) -> dict:
     if run is None:
         return {"ok": False, "error": "no such run"}
     return {"ok": True, "run": run}
+
+
+def http_result(data: dict) -> dict:
+    """Phase 3 (MCP `cops_result_push`) — bir katılımcının KENDİ turu için
+    yapılan doğrudan/yapılandırılmış bildirim. `run_id`/`name` eşleşen
+    GERÇEKTEN bekleyen bir `_run_turn` yoksa (yanlış run, tur zaten
+    bitmiş/timeout olmuş, ya da `name` hiç bu run'ın katılımcısı değildi)
+    `_push_result` False döner — burada da sessizce yutulmaz, düz bir hata."""
+    run_id = str(data.get("run_id") or "")
+    name = str(data.get("name") or "")
+    verdict = str(data.get("verdict") or "")
+    text = str(data.get("text") or "")
+    if not run_id or not name:
+        return {"ok": False, "error": "run_id and name are required"}
+    if not verdict.strip():
+        return {"ok": False, "error": "verdict is required"}
+    accepted = _push_result(run_id, name, verdict, text)
+    if not accepted:
+        return {"ok": False, "error": f"no active turn is being waited on for run_id={run_id!r} name={name!r} "
+                                       "(already answered, timed out, cancelled, or this run/participant doesn't exist)"}
+    return {"ok": True}

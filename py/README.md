@@ -249,6 +249,11 @@ py/cops stuck     # detect stuck sessions (idle but showing "busy")
 py/cops layout    # arrange windows across desktops (X11)
 py/cops web       # the control panel (above)
 py/cops service   # systemd --user persistence for `web`+tunnel (install/status/uninstall)
+py/cops mcp-queue # MCP stdio server: lets an *agent* (not a human) drive the Ekip/Team orchestration
+                   #   engine itself, over the same local /api/orch/* the panel uses. Not meant to be
+                   #   run by hand — a provider wires a session's CLI up to it (claude: `--mcp-config`,
+                   #   codex: `-c mcp_servers...`; agy has no per-invocation MCP flag, so it's a
+                   #   registration hint only, not automated).
 ```
 
 Every command has its own `--help`.

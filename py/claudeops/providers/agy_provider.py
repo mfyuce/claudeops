@@ -69,9 +69,9 @@ import shlex
 import sqlite3
 import subprocess
 import time
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider
+from .base import CliProvider, McpServerSpec
 from ..settings import resolved_binary
 
 CONVERSATIONS_CACHE = os.path.expanduser("~/.gemini/antigravity-cli/cache/last_conversations.json")
@@ -213,7 +213,7 @@ class AgyProvider(CliProvider):
         return None if sid in in_use else sid
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
-                             resume_id, prompt, session_name) -> str:
+                             resume_id, prompt, session_name, extra_args: Sequence[str] = ()) -> str:
         # Mutlak yol — bkz. claude_provider.py'deki aynı fix'in yorumu (pane'in kendi
         # PATH'i tmux server'ın miras kaldığından farklı/eksik olabilir).
         parts = [resolved_binary("agy")]
@@ -222,12 +222,27 @@ class AgyProvider(CliProvider):
         parts += ["--model", shlex.quote(model)]
         parts += ["--effort", shlex.quote(effort or "medium")]
         parts += _PERMISSION_FLAGS.get(permission_mode or "auto", _PERMISSION_FLAGS["auto"])
+        # `mcp_launch_args()` bugün hep [] döner (agy'de çağrı-başına MCP yolu
+        # yok, bkz. `mcp_setup_command`) — splice yine de burada, diğer 3
+        # provider'la simetrik/mekanik kalsın, ileride bir yol bulunursa TEK
+        # satır (bu splice zaten var) yeter.
+        parts += [shlex.quote(a) for a in extra_args]
         if prompt:
             parts += ["-i", shlex.quote(prompt)]
         return " ".join(parts)
 
     def env_overrides(self, session_name: str) -> Dict[str, str]:
         return {"COPS_NAME": session_name}
+
+    def mcp_setup_command(self, spec: McpServerSpec) -> Optional[str]:
+        # agy'de çağrı-başına bir MCP yolu YOK (Phase 3 doğrulaması, gerçek
+        # binary'ye karşı) — sadece `agy mcp add` ile KALICI/global kayıt var.
+        # Bu string SADECE panelin göstereceği bir İPUCU, hiçbir çağıran bunu
+        # ÇALIŞTIRMAZ (agy'nin global config'ine dokunmak kullanıcı onayı
+        # ister, bkz. onaylanmış plan'ın build-order'ı — bu pass'te hiç
+        # tetiklenmiyor).
+        args_str = " ".join(shlex.quote(a) for a in spec.args)
+        return f"agy mcp add {shlex.quote(spec.name)} {shlex.quote(spec.command)} {args_str}".strip()
 
     def matches_proc(self, cmd: List[str]) -> bool:
         return bool(cmd) and os.path.basename(cmd[0]) == "agy"

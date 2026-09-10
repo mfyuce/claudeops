@@ -6,10 +6,10 @@ import re
 import shlex
 import time
 from pathlib import Path
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider
-from ..paths import PROJECTS_DIR
+from .base import CliProvider, McpServerSpec
+from ..paths import CLAUDEOPS_DIR, PROJECTS_DIR
 from ..settings import resolved_binary
 
 MODEL_CHOICES = [
@@ -130,6 +130,23 @@ def _same_path(a: str, b: str) -> bool:
     return os.path.normpath(os.path.abspath(a)) == os.path.normpath(os.path.abspath(b))
 
 
+# Phase 3 (TOBEDECIDED#15) — `--mcp-config`'in beklediği dosya, roster.tsv/
+# web.token ile AYNI "repo DIŞI, kaynak-of-truth" dizininde. İÇERİK invariant
+# (her zaman `spec`'ten üretilir) olduğu için paylaşımlı/idempotent — birden
+# fazla session aynı anda spawn olsa bile hepsi AYNI içeriği yazar.
+MCP_CONFIG_PATH = os.path.join(CLAUDEOPS_DIR, "orchestration", "mcp_config.json")
+
+
+def _write_mcp_config_file(spec: McpServerSpec) -> str:
+    os.makedirs(os.path.dirname(MCP_CONFIG_PATH), exist_ok=True)
+    payload = {"mcpServers": {spec.name: {"command": spec.command, "args": list(spec.args)}}}
+    tmp = MCP_CONFIG_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+    os.replace(tmp, MCP_CONFIG_PATH)  # atomik — eşzamanlı bir spawn yarım dosya görmesin
+    return MCP_CONFIG_PATH
+
+
 def _arg(cmd: List[str], flag: str) -> Optional[str]:
     """cmdline listesinde `flag`'ten SONRAKİ değeri döndür (yoksa None)."""
     try:
@@ -210,7 +227,7 @@ class ClaudeProvider(CliProvider):
         return fallback
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
-                             resume_id, prompt, session_name) -> str:
+                             resume_id, prompt, session_name, extra_args: Sequence[str] = ()) -> str:
         # Mutlak yol (çıplak "claude" DEĞİL): bu string bir tmux pane'inin shell komutu
         # olarak çalışır, o pane'in PATH'i BİZİM PATH'imizden bağımsız — tmux server ilk
         # kez kuruluyorsa onu kuran her neyse (ör. systemd --user servisi, minimal PATH)
@@ -224,9 +241,20 @@ class ClaudeProvider(CliProvider):
         # yoksa shutil.which, o da yoksa bare isim.
         binary = resolved_binary("claude")
         resume_arg = f"--resume {shlex.quote(resume_id)} " if resume_id else ""
+        # `extra_args` (Phase 3, ör. `--mcp-config <path>`) `--model`'den HEMEN
+        # ÖNCE eklenir, PROMPT'tan hemen önce DEĞİL: canlı doğrulandı (2026-09-10,
+        # mcpv3claude test session'ı) — `--mcp-config` VARIADIC bir bayrak (claude
+        # --help: birden fazla değeri boşlukla ayırıp AÇGÖZLÜ okuyor). Prompt'tan
+        # hemen önce bırakılınca prompt METNİNİ kendi değeri sanıp yuttu
+        # (`ENAMETOOLONG`, session ANINDA çöktü). Hemen ardından BAŞKA bir
+        # `--flag` (`--model`) gelmesi variadic okumayı güvenle bitiriyor — bunu
+        # sağlayan TEK şart extra_args'ın kendi değerlerinin `-` ile
+        # BAŞLAMAMASI (bizim tek kullanımımız — mutlak dosya yolu/`key=value` —
+        # zaten öyle).
+        extra_prefix = "".join(f"{shlex.quote(a)} " for a in extra_args)
         prompt_arg = f" {shlex.quote(prompt)}" if prompt else ""
         return (
-            f"{shlex.quote(binary)} {resume_arg}"
+            f"{shlex.quote(binary)} {resume_arg}{extra_prefix}"
             f"--model {shlex.quote(model)} "
             f"--permission-mode {shlex.quote(permission_mode)} "
             f"--effort {shlex.quote(effort)} "
@@ -234,6 +262,14 @@ class ClaudeProvider(CliProvider):
             f"--remote-control {shlex.quote(session_name)}"
             f"{prompt_arg}"
         )
+
+    def mcp_launch_args(self, spec: McpServerSpec) -> List[str]:
+        # Claude Code'un `--mcp-config` bayrağı bir JSON DOSYA yolu bekliyor
+        # (inline JSON'u tmux'un shell komut satırına gömmek `shlex.quote`'un
+        # tek-token varsayımını zorlardı) — içerik `spec`'ten deterministik
+        # üretildiği için dosya idempotent/paylaşımlı.
+        config_path = _write_mcp_config_file(spec)
+        return ["--mcp-config", config_path]
 
     def compact_command(self) -> Optional[str]:
         return "/compact"

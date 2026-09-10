@@ -22,6 +22,7 @@ from typing import Optional
 from .diaglog import diag_log
 from .discovery import find_sessions
 from .providers import get_provider
+from .providers.base import McpServerSpec
 from .providers.claude_provider import find_latest_jsonl  # geriye-uyum: diğer modüller import ediyor
 from .tmux_backend import (
     tmux_attach_shell_fragment, tmux_available, tmux_has_session,
@@ -92,6 +93,7 @@ def spawn_session(
     prompt: Optional[str] = None,
     dry_run: bool = False,
     cli: str = "claude",
+    mcp_server: Optional[McpServerSpec] = None,
 ) -> str:
     """Session'ı gnome-terminal ile aç (hangi CLI: `cli` — provider registry'den çözülür).
 
@@ -99,6 +101,11 @@ def spawn_session(
     force_new=False → provider'ın kendi resume-lookup'ı (claude: jsonl, agy:
     conversations-cache), yoksa fresh.
     prompt → fresh açılışta opsiyonel ilk mesaj (verilmezse boş/idle başlar).
+    mcp_server (Phase 3, TOBEDECIDED#15) → verilirse `provider.mcp_launch_args()`
+    üzerinden bu CLI'ya bağlanır (claude/codex: çağrı-başına; agy: hiçbir etkisi
+    yok, `mcp_launch_args()` boş döner — bkz. `mcp_setup_command()`). VARSAYILAN
+    None = bugünkü davranış birebir (extra_args boş liste, hiçbir mevcut çağıran
+    dokunmadı).
 
     Returns: "resume:<id[:8]>", "new", veya "[dry-run] ..." dry_run modunda.
     """
@@ -111,8 +118,9 @@ def spawn_session(
         cwd, in_use=_ids_held_by_others(name), session_name=name)
     kind = "new" if resume_id is None else f"resume:{resume_id[:8]}"
 
+    extra_args = provider.mcp_launch_args(mcp_server) if mcp_server is not None else []
     cli_invocation = provider.build_inner_command(cwd, model, permission_mode, effort,
-                                                   resume_id, prompt, name)
+                                                   resume_id, prompt, name, extra_args=extra_args)
 
     # env_overrides (ör. agy'nin COPS_NAME'i) Popen'ın env dict'ine DEĞİL, komut
     # satırının kendisine `env KEY=VAL ... <binary>` olarak gömülüyor — tmux zaten

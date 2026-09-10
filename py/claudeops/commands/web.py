@@ -2390,7 +2390,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
-                         "/api/orch/start", "/api/orch/cancel", "/api/orch/draft",
+                         "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
@@ -2431,6 +2431,15 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/orch/draft":
             self._json_notify(web_orch.http_draft(data))
+            return
+        if path == "/api/orch/result":
+            # Phase 3 (MCP `cops_result_push`) — `/api/orch/*`'in geri kalanıyla
+            # AYNI ilke: host-routing'den ÖNCE/bağımsız, sadece yerel run'lara
+            # bakar. `_json_notify` DEĞİL düz `_json`: bu bir katılımcının
+            # (insan değil) arka-plan bildirimi, WS'e ayrı bir "notify" gerekmiyor
+            # — `_run_turn` zaten tur bitince normal `_save_progress` yoluyla
+            # `notify_status_changed()`'i tetikleyecek.
+            self._json(web_orch.http_result(data))
             return
 
         lang = "en" if data.get("lang") == "en" else "tr"

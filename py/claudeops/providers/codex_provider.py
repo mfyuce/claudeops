@@ -33,9 +33,9 @@ import os
 import re
 import shlex
 import time
-from typing import Dict, FrozenSet, List, Optional
+from typing import Dict, FrozenSet, List, Optional, Sequence
 
-from .base import CliProvider
+from .base import CliProvider, McpServerSpec
 from ..settings import resolved_binary
 
 CODEX_HOME = os.path.expanduser("~/.codex")
@@ -152,7 +152,7 @@ class CodexProvider(CliProvider):
         return None
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
-                             resume_id, prompt, session_name) -> str:
+                             resume_id, prompt, session_name, extra_args: Sequence[str] = ()) -> str:
         # Mutlak yol — bkz. claude_provider.py'deki aynı fix'in yorumu (pane'in kendi
         # PATH'i tmux server'ın miras kaldığından farklı/eksik olabilir).
         binary = resolved_binary("codex")
@@ -162,9 +162,21 @@ class CodexProvider(CliProvider):
         parts += ["--model", shlex.quote(model)]
         parts += ["--config", shlex.quote(f"model_reasoning_effort={effort or 'medium'}")]
         parts += _PERMISSION_FLAGS.get(permission_mode or "auto", _PERMISSION_FLAGS["auto"])
+        parts += [shlex.quote(a) for a in extra_args]
         if prompt:
             parts += [shlex.quote(prompt)]
         return " ".join(parts)
+
+    def mcp_launch_args(self, spec: McpServerSpec) -> List[str]:
+        # codex'in dotted-path TOML override'ı (`-c key=value`, kalıcı `codex mcp
+        # add`'in çağrı-başına muadili) — claude'un aksine dosyaya gerek yok.
+        # `json.dumps` TOML basic-string kaçışıyla (çoğunlukla) örtüşüyor, `spec.command`/
+        # `spec.args`'ın normal dosya-yolu/argv token'ları için yeterli.
+        toml_args = "[" + ", ".join(json.dumps(a) for a in spec.args) + "]"
+        return [
+            "-c", f"mcp_servers.{spec.name}.command={json.dumps(spec.command)}",
+            "-c", f"mcp_servers.{spec.name}.args={toml_args}",
+        ]
 
     def env_overrides(self, session_name: str) -> Dict[str, str]:
         return {"COPS_NAME": session_name}

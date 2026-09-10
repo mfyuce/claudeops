@@ -3,7 +3,7 @@
 from __future__ import annotations
 from typing import Dict
 
-from .base import CliProvider
+from .base import CliProvider, McpServerSpec
 from .claude_provider import ClaudeProvider
 from .agy_provider import AgyProvider
 from .codex_provider import CodexProvider
