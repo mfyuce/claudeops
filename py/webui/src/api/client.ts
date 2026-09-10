@@ -30,9 +30,13 @@ import type {
   FilesReadResult,
   FilesValidateResult,
   GetHostsResult,
+  GetOrchRunResult,
+  GetOrchRunsResult,
   HandoverResult,
   LayoutResult,
   NewChatResult,
+  OrchDraftParticipant,
+  OrchStartResult,
   Settings,
   SettingsResult,
   SimpleResult,
@@ -335,3 +339,35 @@ export interface TestHostPayload {
 }
 export const apiTestHost = (p: TestHostPayload): Promise<TestHostResult> =>
   apiPost<TestHostResult>("/api/hosts/test", p);
+
+// ── TOBEDECIDED#15 Phase 1 — workers-only orchestration ─────────────────
+// Local-only (no `host`-routing, no `lang` — `web_orch.http_{start,cancel,
+// draft}()` never read a `lang` field, unlike every other POST route above;
+// this frontend doesn't send one they'd ignore). Errors these routes return
+// are raw, permanently-English backend text (same principle as `_v1_error`,
+// see `orchestration.py`'s own docstring) — shown via `t.requestFailed`
+// like any other un-processed backend string, never looked up in `Strings`.
+
+export const getOrchRuns = (): Promise<GetOrchRunsResult> => apiGet<GetOrchRunsResult>("/api/orch/runs");
+export const getOrchRun = (runId: string): Promise<GetOrchRunResult> =>
+  apiGet<GetOrchRunResult>(`/api/orch/run?id=${encodeURIComponent(runId)}`);
+
+export interface OrchStartParticipant {
+  role: "worker";
+  host: string;
+  name: string;
+}
+export interface OrchStartPayload {
+  participants: OrchStartParticipant[];
+  task: string;
+  verdict_hint?: string;
+  worker_timeout: number;
+}
+export const apiOrchStart = (p: OrchStartPayload): Promise<OrchStartResult> =>
+  apiPost<OrchStartResult>("/api/orch/start", p);
+
+export const apiOrchCancel = (runId: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/orch/cancel", { run_id: runId });
+
+export const apiOrchSaveDraft = (participants: OrchDraftParticipant[]): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/orch/draft", { participants });

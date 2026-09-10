@@ -277,6 +277,36 @@ export interface Strings {
   searchPlaceholder: string;
   searchClear: string;
   noSearchMatches: string;
+  tabTeam: string;
+  orchDesc: string;
+  orchLineupTitle: string;
+  orchAddSelectedBtn: string;
+  orchAddSelectedHint: string;
+  orchNoSelectionMsg: string;
+  orchSkippedIneligible: (names: string) => string;
+  orchLineupEmpty: string;
+  orchRemoveBtn: string;
+  orchTaskLabel: string;
+  orchTaskPlaceholder: string;
+  orchVerdictHintLabel: string;
+  orchVerdictHintPlaceholder: string;
+  orchTimeoutLabel: string;
+  orchRunBtn: string;
+  orchStarting: string;
+  orchRunConfirm: (names: string[], task: string) => string;
+  orchCancelRunBtn: string;
+  orchCancelRunConfirm: string;
+  orchBackBtn: string;
+  orchStatusLabel: (status: string) => string;
+  orchResultStatusLabel: (status: string) => string;
+  orchOutcomeMethodLabel: (method: string) => string;
+  orchFinalLabel: string;
+  orchTallyLabel: string;
+  orchAbstainedLabel: string;
+  orchHistoryTitle: string;
+  orchHistoryEmpty: string;
+  orchShowMoreBtn: string;
+  orchViewBtn: string;
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -513,6 +543,45 @@ export const STRINGS: Record<Lang, Strings> = {
     searchPlaceholder: "isim veya cwd ara…",
     searchClear: "aramayı temizle",
     noSearchMatches: "Aramayla eşleşen yok.",
+    tabTeam: "Ekip",
+    orchDesc: "Birden fazla session'a aynı görevi verip yanıtları karşılaştırın — decider yoksa sonuç, işçiler arasındaki çoğunluk oyuyla belirlenir (Phase 1: sadece işçi rolü var, controller/decider henüz bağlanmadı).",
+    orchLineupTitle: "Kadro",
+    orchAddSelectedBtn: "Seçilenleri ekle",
+    orchAddSelectedHint: "Çalışanlar sekmesinde işaretlediğiniz session'ları (çalışan + local + konuşması olan) kadroya işçi olarak ekler",
+    orchNoSelectionMsg: "Önce Çalışanlar sekmesinden en az bir session işaretleyin.",
+    orchSkippedIneligible: (names) => `uygun olmadığı için atlandı: ${names}`,
+    orchLineupEmpty: "Kadro boş — Çalışanlar sekmesinden session işaretleyip \"Seçilenleri ekle\"ye basın.",
+    orchRemoveBtn: "kaldır",
+    orchTaskLabel: "Görev",
+    orchTaskPlaceholder: "İşçilere ne sorulacak/ne yaptırılacak…",
+    orchVerdictHintLabel: "verdict format ipucu (opsiyonel)",
+    orchVerdictHintPlaceholder: "ör. sadece evet ya da hayır cevap ver",
+    orchTimeoutLabel: "işçi zaman aşımı (sn)",
+    orchRunBtn: "Takım olarak çalıştır",
+    orchStarting: "başlatılıyor…",
+    orchRunConfirm: (names, task) => `Şu session'lara mesaj gönderilecek: ${names.join(", ")}\n\nGörev: ${task}\n\nDevam edilsin mi?`,
+    orchCancelRunBtn: "run'ı iptal et",
+    orchCancelRunConfirm: "Run iptal edilsin mi? (zaten gönderilmiş mesajlar geri alınamaz, sadece bekleme durur)",
+    orchBackBtn: "◀ geri",
+    orchStatusLabel: (status) => {
+      const m: Record<string, string> = { working: "çalışıyor", done: "tamamlandı", needs_human: "karar gerekiyor", failed: "hata", cancelled: "iptal edildi" };
+      return m[status] ?? status;
+    },
+    orchResultStatusLabel: (status) => {
+      const m: Record<string, string> = { ok: "tamam", timeout: "zaman aşımı", send_failed: "gönderilemedi", no_envelope: "format hatası", unreachable: "erişilemez", pending: "bekleniyor" };
+      return m[status] ?? status;
+    },
+    orchOutcomeMethodLabel: (method) => {
+      const m: Record<string, string> = { decider: "karar verici", unanimous: "oybirliği", majority: "çoğunluk", single_worker: "tek işçi", no_consensus: "uzlaşı yok", none: "sonuç yok" };
+      return m[method] ?? method;
+    },
+    orchFinalLabel: "Sonuç",
+    orchTallyLabel: "Oylar",
+    orchAbstainedLabel: "Çekimser",
+    orchHistoryTitle: "Geçmiş run'lar",
+    orchHistoryEmpty: "Henüz hiç run çalıştırılmadı.",
+    orchShowMoreBtn: "daha fazla göster",
+    orchViewBtn: "görüntüle",
   },
   en: {
     title: "claudeops — fleet control",
@@ -747,5 +816,44 @@ export const STRINGS: Record<Lang, Strings> = {
     searchPlaceholder: "search name or cwd…",
     searchClear: "clear search",
     noSearchMatches: "Nothing matches the search.",
+    tabTeam: "Team",
+    orchDesc: "Send the same task to several sessions and compare the answers — with no decider, the result is decided by majority vote among the workers (Phase 1: workers only, controller/decider aren't wired up yet).",
+    orchLineupTitle: "Lineup",
+    orchAddSelectedBtn: "Add selected",
+    orchAddSelectedHint: "Adds the sessions checked in the Running tab (running + local + holding a conversation) to the lineup as workers",
+    orchNoSelectionMsg: "Check at least one session in the Running tab first.",
+    orchSkippedIneligible: (names) => `skipped (not eligible): ${names}`,
+    orchLineupEmpty: "Lineup is empty — check sessions in the Running tab and click \"Add selected\".",
+    orchRemoveBtn: "remove",
+    orchTaskLabel: "Task",
+    orchTaskPlaceholder: "What should the workers do/answer…",
+    orchVerdictHintLabel: "verdict format hint (optional)",
+    orchVerdictHintPlaceholder: "e.g. answer with only yes or no",
+    orchTimeoutLabel: "worker timeout (s)",
+    orchRunBtn: "Run as team",
+    orchStarting: "starting…",
+    orchRunConfirm: (names, task) => `These sessions will be messaged: ${names.join(", ")}\n\nTask: ${task}\n\nProceed?`,
+    orchCancelRunBtn: "cancel run",
+    orchCancelRunConfirm: "Cancel this run? (messages already sent can't be recalled, this only stops waiting)",
+    orchBackBtn: "◀ back",
+    orchStatusLabel: (status) => {
+      const m: Record<string, string> = { working: "working", done: "done", needs_human: "needs a human", failed: "failed", cancelled: "cancelled" };
+      return m[status] ?? status;
+    },
+    orchResultStatusLabel: (status) => {
+      const m: Record<string, string> = { ok: "ok", timeout: "timed out", send_failed: "send failed", no_envelope: "no verdict format", unreachable: "unreachable", pending: "pending" };
+      return m[status] ?? status;
+    },
+    orchOutcomeMethodLabel: (method) => {
+      const m: Record<string, string> = { decider: "decider", unanimous: "unanimous", majority: "majority", single_worker: "single worker", no_consensus: "no consensus", none: "no result" };
+      return m[method] ?? method;
+    },
+    orchFinalLabel: "Result",
+    orchTallyLabel: "Votes",
+    orchAbstainedLabel: "Abstained",
+    orchHistoryTitle: "Run history",
+    orchHistoryEmpty: "No runs yet.",
+    orchShowMoreBtn: "show more",
+    orchViewBtn: "view",
   },
 };

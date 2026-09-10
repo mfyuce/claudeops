@@ -177,7 +177,120 @@ export interface StatusPayload {
    * tag — this array is metadata ABOUT each host (reachability, its own
    * `cli_list`/`cli_options`/`dups`), not another copy of its rows. */
   hosts: HostStatus[];
+  /** TOBEDECIDED#15 Phase 1 — workers-only orchestration. Local-only (never
+   * merged across hosts, unlike `sessions`/`hosts` above — `commands/
+   * web_orch.py` refuses any `host != "local"` participant). */
+  orch: OrchState;
 }
+
+// ── TOBEDECIDED#15 Phase 1 — workers-only orchestration ─────────────────
+// `orchestration.py`'s dataclasses (`dataclasses.asdict` output). Phase 1
+// only ever produces role:"worker" participants (`web_orch._preflight`
+// rejects controller/decider outright), so the frontend builds no role
+// picker yet — `role` stays a plain `string` (not a union) since the
+// backend's own type is `str`, not an enum, and Phase 2 will add values
+// this build can't see.
+
+export interface OrchParticipant {
+  role: string;
+  host: string;
+  name: string;
+  cli: string;
+}
+
+/** One worker's outcome (`orchestration.RunResult`). A worker with no entry
+ * yet in a `"working"` run simply hasn't finished — the frontend treats
+ * that gap as a synthetic "pending" status, never a value the backend
+ * itself sends. */
+export interface OrchResultItem {
+  seq: number;
+  kind: string;
+  role: string;
+  host: string;
+  name: string;
+  cli: string;
+  created_at: number;
+  status: "ok" | "timeout" | "send_failed" | "no_envelope" | "unreachable";
+  verdict: string;
+  verdict_key: string;
+  text: string;
+  elapsed: number;
+}
+
+export interface OrchTallyEntry {
+  verdict_key: string;
+  votes: number;
+  voters: string[];
+}
+
+export interface OrchAbstainedEntry {
+  name: string;
+  status: string;
+}
+
+/** `note` is emitted by the backend's `resolve_outcome()` as a fixed
+ * Turkish sentence regardless of the run's own `lang` (a pre-existing
+ * backend quirk, not something this frontend patches over) — shown as-is,
+ * same "backend text stays as-is" treatment as `_v1_error`'s messages. */
+export interface OrchOutcome {
+  method: "decider" | "unanimous" | "majority" | "single_worker" | "no_consensus" | "none";
+  final: string;
+  by: { host: string; name: string; cli: string } | null;
+  tally: OrchTallyEntry[];
+  abstained: OrchAbstainedEntry[];
+  note: string;
+}
+
+export interface OrchRun {
+  id: string;
+  created_at: number;
+  updated_at: number;
+  status: "working" | "done" | "needs_human" | "failed" | "cancelled";
+  lang: string;
+  task: string;
+  verdict_hint: string;
+  worker_timeout: number;
+  participants: OrchParticipant[];
+  results: OrchResultItem[];
+  outcome: OrchOutcome | null;
+  error: string | null;
+}
+
+/** `_status_payload()`'s lightweight `orch.active` view (`web_orch.
+ * active_summary()`) — no result text, rides the existing 2s WS/poll
+ * cadence. `OrchTab` fetches the fuller `OrchRun` via `getOrchRun()` only
+ * when this summary signals a change (status/result_count), rather than
+ * polling on its own timer. */
+export interface OrchActiveSummary {
+  id: string;
+  status: string;
+  task_head: string;
+  participants: OrchParticipant[];
+  result_count: number;
+}
+
+/** A saved draft lineup entry — `orch_store.save_draft`/`load_draft` persist
+ * whatever shape the client posts, unvalidated; this frontend always
+ * saves/reads exactly this shape. */
+export interface OrchDraftParticipant {
+  role: string;
+  host: string;
+  name: string;
+  cli: string;
+}
+
+export interface OrchState {
+  draft: OrchDraftParticipant[];
+  active: OrchActiveSummary | null;
+  recent: OrchRun[];
+}
+
+/** `web_orch.http_start()`. */
+export type OrchStartResult = ApiResult<{ run_id: string }>;
+/** `web_orch.http_runs()`. */
+export type GetOrchRunsResult = ApiResult<{ runs: OrchRun[] }>;
+/** `web_orch.http_run()`. */
+export type GetOrchRunResult = ApiResult<{ run: OrchRun }>;
 
 // ── POST-route result shapes ────────────────────────────────────────────
 // Every `_xxx()` backend action returns `{ok: false, error: string}` (via

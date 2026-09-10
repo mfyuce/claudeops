@@ -23,6 +23,7 @@ import { DesktopTab } from "./components/DesktopTab";
 import { DiagnosticsTab } from "./components/DiagnosticsTab";
 import { GroupTable } from "./components/GroupTable";
 import { LayoutTab } from "./components/LayoutTab";
+import { OrchTab } from "./components/OrchTab/OrchTab";
 import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
 import { RunningTab } from "./components/RunningTab/RunningTab";
 import { SearchBox } from "./components/shared/SearchBox";
@@ -161,6 +162,7 @@ function AppShell() {
         )}
         {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} />}
         {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} />}
+        {data && activeTab === "team" && <OrchTab selection={selection} />}
         {data && activeTab === "layout" && <LayoutTab />}
         {data && activeTab === "desktop" && <DesktopTab />}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
