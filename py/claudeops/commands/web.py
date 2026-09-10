@@ -52,12 +52,14 @@ from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, save_settings
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
+from .. import turns
 from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_client_count, tmux_send_keys, tmux_send_raw,
     tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS, strip_ansi,
 )
 from .web_static import DIST_DIR, resolve_static_path
 from . import web_hosts
+from . import web_orch
 from . import web_ws
 
 DEFAULT_PORT = 8765
@@ -1066,6 +1068,11 @@ def _status_payload() -> dict:
         # lifecycle durumu — diğer açık tab/cihazlar da (WS push ile) canlı
         # görsün diye buraya eklendi, ayrı bir polling endpoint'i değil.
         "remote_desktop": remote_desktop.status(),
+        # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine
+        # biniyor, tam sonuç metni YOK): taslak kadro + aktif run özeti +
+        # son birkaç run. Local-only, `web_hosts.merge_status`'a hiç girmez.
+        "orch": {"draft": web_orch.get_draft(), "active": web_orch.active_summary(),
+                 "recent": web_orch.list_runs(5)},
     }
     # Uzak host'ların sessions/closed/retired'ini merge eder + "hosts" ekler —
     # SADECE web_hosts'un arka-plan poller cache'ini okur, asla burada network'e
@@ -1829,84 +1836,12 @@ def _v1_last_user_text(messages: list) -> str:
     return ""
 
 
-def _v1_is_busy_now(name: str, pattern: str) -> bool:
-    """`_is_busy_cached`'in CACHE'SİZ ikizi. Aynı şekil (`capture-pane` son 8
-    satır → `strip_ansi` → desen ara — ANSI temizliği ŞART, claude durum
-    çubuğunu kelime kelime renklendirir), ama `_BUSY_CACHE`'i BİLEREK
-    KULLANMAZ: oradaki 2s'lik TTL panelin durum-poll'u için tasarlandı, sıkı
-    bir bekleme döngüsünde ise 2s'lik BAYAT bir "meşgul" okuması turn bittikten
-    sonra bizi gereksiz yere bekletir (ya da tersi: turn başlamadan önceki
-    "boşta"yı taze sanmamıza yol açar).
-
-    Capture başarısız olursa (session gitti/tmux hatası) False = "meşgul
-    değil" — `_is_busy_cached`'in None'ıyla ayrışıyor çünkü burada üçüncü bir
-    durum taşıyacak yer yok; yanlış bir "boşta" tek başına "bitti" demiyor,
-    çağıran ayrıca transcript'in DEĞİŞMİŞ olmasını da şart koşuyor."""
-    text = tmux_capture(name, lines=8)
-    if text is None:
-        return False
-    return bool(re.search(pattern, strip_ansi(text)))
-
-
-def _v1_wait_for_reply(s, provider, baseline: dict, live_snapshot: object = None) -> Optional[str]:
-    """Enjekte edilen mesajın turu BİTENE kadar bekle, yeni asistan metnini döndür
-    (timeout → None). `_compact()`'in "canlı tmux session'ına metin enjekte et,
-    sonra turun bittiğini anla" problemiyle AYNI şekil — sadece sinyal farklı
-    (orada jsonl'daki `isCompactSummary` sayacı, burada busy-durumu + transcript).
-
-    İki strateji, ikisi de provider arayüzünden (dallanma YOK):
-
-    1. `busy_status_pattern()` VARSA (bugün claude): desen taze capture'da
-       KAYBOLMUŞ olmalı VE `last_exchange()` baseline'dan FARKLI olmalı. İkinci
-       şart olmadan, gönderimden hemen sonraki minik pencerede (CLI henüz işe
-       başlamamışken) yakalanan "boşta" okuması yanlışlıkla "bitti" sayılırdı.
-    2. Desen YOKSA (bugün codex/agy — bu CLI'lar için henüz doğrulanmış bir
-       meşgul sinyali tanımlanmadı): sadece `last_exchange()` poll'lanır ve
-       (a) baseline'dan farklı olması (b) ARDIŞIK İKİ poll boyunca AYNI kalması
-       istenir. Bu bir debounce — meşgul sinyali olmadan "bitti" ile "hâlâ
-       yazıyor" başka türlü ayrılamaz. DAHA ZAYIF, best-effort bir yol (uzun bir
-       yanıtın ortasındaki bir duraklama erken "bitti" sayılabilir); bug değil,
-       o provider'lar `busy_status_pattern()` kazanınca kendiliğinden 1. yola
-       geçerler.
-
-    Bilinen dar yanlış-negatif: yanıt VE soru bir öncekiyle byte-byte AYNIYSA
-    (aynı prompt iki kez) `last_exchange` değişmiş görünmez → timeout. Daha
-    güçlü bir sinyal (mesaj SAYISI) için provider arayüzüne yeni bir metot
-    gerekirdi; bugünkü tek veri noktası için gereksiz.
-
-    `live_snapshot` — `s.sid` BİLİNMİYORSA (fresh/hiç resume edilmemiş bir session,
-    bkz. `agy` — 2026-09-09 canlı doğrulandı: agy'nin cwd→id cache'i session
-    öldürülene kadar HİÇ güncellenmiyor, `resolve_resume_id`/`last_exchange(cwd,
-    None)` bu yüzden sonsuza kadar boş döner) `live_snapshot` (varsa,
-    `provider.snapshot_for_live_sid()`'den, gönderimden ÖNCE alınmış) her
-    poll'da `discover_live_sid()`'e verilir; bulunduğu anda `last_exchange`'in
-    KENDİ sid'i olarak benimsenir — `resolve_resume_id()`'e/cache'e hiç
-    dokunmadan. `live_snapshot=None` (varsayılan) = provider bunu
-    desteklemiyor (claude/codex zaten çalışıyor) → davranış TAMAMEN eskisiyle
-    AYNI, bu parametreyi hiç geçmeyen `/v1/*` dışı hiçbir çağıran yok zaten."""
-    pattern = provider.busy_status_pattern()
-    previous: Optional[dict] = None  # 2. strateji: bir önceki poll'un okuması
-    sid = s.sid
-    deadline = time.monotonic() + V1_CHAT_TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        time.sleep(V1_CHAT_POLL_INTERVAL_SECONDS)
-        if sid is None and live_snapshot is not None:
-            discovered = provider.discover_live_sid(s.cwd, live_snapshot)
-            if discovered:
-                sid = discovered
-                diag_log("v1_live_sid_discovered", name=s.name, sid=discovered)
-        exchange = provider.last_exchange(s.cwd, sid)
-        if exchange is None:
-            return None  # çağıran bunu gönderimden ÖNCE eliyor; savunma amaçlı
-        changed = exchange != baseline
-        if pattern:
-            if not _v1_is_busy_now(s.name, pattern) and changed:
-                return exchange.get("assistant", "")
-        else:
-            if changed and previous == exchange:
-                return exchange.get("assistant", "")
-            previous = exchange
-    return None
+# `_v1_is_busy_now`/`_v1_wait_for_reply`'in gövdeleri 2026-09-09'da
+# `turns.py`'ye TAŞINDI (`turns.is_busy_now`/`turns.wait_for_reply`) —
+# TOBEDECIDED#15'in orkestrasyon motoru AYNI mekanizmaya ihtiyaç duyunca.
+# Bu iki isim artık burada YOK, `_v1_chat_completion` doğrudan `turns.*`
+# çağırıyor; davranış (varsayılan `stable_polls=2`, marker/cancel yok)
+# BİREBİR AYNI kaldı.
 
 
 def _v1_chat_completion(data) -> tuple:
@@ -1981,7 +1916,7 @@ def _v1_chat_completion(data) -> tuple:
         diag_log("v1_chat_send_failed", name=s.name)
         return _v1_error(f"failed to deliver the message to session '{s.name}'", "server_error"), 500
 
-    reply = _v1_wait_for_reply(s, provider, baseline, live_snapshot)
+    reply = turns.wait_for_reply(s, provider, baseline, live_snapshot)
     if reply is None:
         diag_log("v1_chat_timeout", name=s.name)
         return _v1_error(
@@ -2353,6 +2288,14 @@ class _Handler(BaseHTTPRequestHandler):
             # canlı session adı. Auth yukarıda ZATEN geçildi (query-param ya da
             # yeni `Authorization: Bearer` yolu, bkz. `_authorized`).
             self._json(_v1_models())
+        elif path == "/api/orch/runs":
+            # TOBEDECIDED#15 Phase 1 — local-only (host-routed'a eklenmedi,
+            # /v1/* ile AYNI ilke), yeni-eskiye sıralı son 20 run özeti.
+            self._json(web_orch.http_runs())
+        elif path == "/api/orch/run":
+            qs = parse_qs(urlparse(self.path).query)
+            run_id = (qs.get("id") or [""])[0].strip()
+            self._json(web_orch.http_run(run_id))
         elif path == "/api/hosts":
             # Settings/Hosts UI için — /api/status'un yalın "hosts" alanından
             # (badge/routing) farklı, base_url/has_token de taşıyan tam liste.
@@ -2447,6 +2390,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
+                         "/api/orch/start", "/api/orch/cancel", "/api/orch/draft",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
@@ -2472,6 +2416,21 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/v1/chat/completions":
             result, status = _v1_chat_completion(data)
             self._json(result, status=status)
+            return
+
+        # TOBEDECIDED#15 Phase 1 — `/v1/*` ile AYNI ilke: host-routing
+        # bloğundan ÖNCE ve ondan BAĞIMSIZ, BİLEREK sadece YEREL session'lara
+        # bakar (`web_hosts.HOST_ROUTED_PATHS`'a eklenmedi — uzak-host desteği
+        # TOBEDECIDED#20, burada yapılmadı). Henüz TR/EN yerelleştirilmedi
+        # (tüketen bir frontend yok, backend-only geçiş).
+        if path == "/api/orch/start":
+            self._json_notify(web_orch.http_start(data))
+            return
+        if path == "/api/orch/cancel":
+            self._json_notify(web_orch.http_cancel(data))
+            return
+        if path == "/api/orch/draft":
+            self._json_notify(web_orch.http_draft(data))
             return
 
         lang = "en" if data.get("lang") == "en" else "tr"
