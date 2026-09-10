@@ -4,11 +4,13 @@ Sadece dataclass'lar + `resolve_outcome()` + prompt-üretimi — hiç tmux/HTTP/
 thread yok, bu yüzden sıfır canlı CLI'yla unit-test edilebilir. Asıl
 dispatch/wait/persist motoru `commands/web_orch.py`'de.
 
-Phase 1 kapsamı: SADECE worker rolü (controller/decider henüz bağlanmadı —
-Phase 2). Bu yüzden `build_decider_prompt`/`build_brief_prompt`/
-`build_handoff_message` (plan'da adı geçen, controller/decider'a özel prompt
-üreticileri) BİLEREK burada YOK — ihtiyaç controller/decider rolleri
-bağlanınca ortaya çıkacak, şimdiden spekülatif yazılmadı.
+Phase 2 (2026-09-10): controller (briefing/handoff) + decider rolleri
+bağlandı. `resolve_outcome(has_decider=True)` KASITLI OLARAK hâlâ bir
+no-op stub — decider'ın kendi verdict'i kazandığında karar bu fonksiyonda
+DEĞİL `web_orch._run_thread()`'de veriliyor (decider yanıt VERMEZSE/format
+hatası olursa `web_orch` bu fonksiyonu `has_decider=False` ile, Phase 1'le
+BİREBİR AYNI şekilde çağırıp worker-consensus'a düşer) — bu fonksiyonun
+kendisi bu yüzden DOKUNULMADI.
 """
 from __future__ import annotations
 import re
@@ -21,6 +23,9 @@ from typing import Dict, List, Optional
 # İngilizce kalması gibi aynı ilke (bkz. commands/web.py).
 VERDICT_MARKER = "COPS-VERDICT:"
 END_MARKER = "COPS-END"
+# Brief'in kendisi çok-satırlı serbest metin — worker/decider'ın tek-satırlık
+# verdict sözleşmesiyle PARSE EDİLEMEZ, bu yüzden ayrı bir sonlandırıcı.
+BRIEF_END_MARKER = "COPS-BRIEF-END"
 
 _STRIP_PREFIXES = ("the ", "sonuç:", "sonuc:", "answer:", "cevap:", "verdict:")
 _MAX_VERDICT_CHARS = 200
@@ -34,9 +39,74 @@ def verdict_contract() -> str:
     )
 
 
+def brief_contract() -> str:
+    return f"Finish your reply with a line containing exactly: {BRIEF_END_MARKER}"
+
+
 def build_worker_prompt(task: str, verdict_hint: str = "") -> str:
     hint = f"\n\nVerdict format hint: {verdict_hint.strip()}" if verdict_hint.strip() else ""
     return f"{task.strip()}{hint}\n\n{verdict_contract()}"
+
+
+def build_brief_prompt(task: str) -> str:
+    """Controller'a gönderilen prompt (Phase 2, briefing fazı) — worker'ların
+    GÖRECEĞİ metni yazmasını ister, task'ı KENDİSİ çözmesini DEĞİL."""
+    return (
+        f"{task.strip()}\n\n"
+        "You are the controller for a team task (the text above). Write a complete, clear brief "
+        "for the workers who will actually do the task — add any context/clarification they would "
+        "need, keep the original intent, resolve ambiguity if you can. Do not solve the task "
+        "yourself, just write the brief they will receive verbatim.\n\n"
+        f"{brief_contract()}"
+    )
+
+
+def parse_brief(reply_text: str) -> Optional[str]:
+    """`BRIEF_END_MARKER`'dan ÖNCEKİ metni brief olarak al — marker yoksa
+    (ya da öncesi boşsa) None (çağıran bunu timeout'la AYNI şekilde ele alıp
+    ham task metnine düşer, `web_orch._run_thread` docstring'i)."""
+    if not reply_text or BRIEF_END_MARKER not in reply_text:
+        return None
+    brief = reply_text.split(BRIEF_END_MARKER, 1)[0].strip()
+    return brief or None
+
+
+def format_worker_bundle(results: List["RunResult"]) -> str:
+    """Decider'a gösterilecek worker-yanıtları listesi — başarısız olanlar
+    (`status != "ok"`) ham metin yerine kısa durum etiketiyle görünür,
+    decider'ı yanıltacak boş/kesik metin göndermez."""
+    lines = []
+    for r in results:
+        if r.status == "ok":
+            lines.append(f"- {r.name} ({r.cli}): {r.text.strip()}")
+        else:
+            lines.append(f"- {r.name} ({r.cli}): [{r.status}]")
+    return "\n".join(lines)
+
+
+def build_decider_prompt(task: str, verdict_hint: str, worker_bundle: str) -> str:
+    """Decider'a gönderilen prompt (Phase 2, deciding fazı) — worker'ların
+    AYNI verdict sözleşmesini (VERDICT_MARKER/END_MARKER) kullanır, bu
+    yüzden `parse_verdict()`/`normalize_verdict()` decider yanıtını da
+    hiç değişmeden parse edebiliyor (`web_orch._run_decider`)."""
+    hint = f"\n\nVerdict format hint: {verdict_hint.strip()}" if verdict_hint.strip() else ""
+    return (
+        f"You are the decider for a team task. Task given to the workers:\n{task.strip()}{hint}\n\n"
+        f"Worker answers:\n{worker_bundle}\n\n"
+        f"Read them and decide the single best final answer.\n\n{verdict_contract()}"
+    )
+
+
+def build_handoff_message(task: str, outcome: "Outcome") -> str:
+    """Run bitince controller'a enjekte edilen tek-yönlü bilgi mesajı — bir
+    yanıt BEKLEMEZ (handover/compact'ın wrap-up enjeksiyonuyla AYNI ilke,
+    `web_orch._run_thread` sadece `tmux_send_keys` ile gönderip devam eder)."""
+    lines = [f"Team task finished. Task: {task.strip()}", f"Outcome: {outcome.method}"]
+    if outcome.final:
+        lines.append(f"Final answer: {outcome.final}")
+    if outcome.note:
+        lines.append(outcome.note)
+    return "\n".join(lines)
 
 
 _VERDICT_LINE_RE = re.compile(re.escape(VERDICT_MARKER) + r"\s*(.*)")
@@ -73,7 +143,7 @@ def normalize_verdict(raw: str) -> str:
 
 @dataclass
 class Participant:
-    role: str  # "worker" (Phase 1) — "controller"/"decider" değerleri kabul edilir ama web_orch._preflight henüz reddediyor
+    role: str  # "worker" | "controller" | "decider" (Phase 2 — hepsi bağlandı, web_orch._preflight ≤1 controller/≤1 decider zorunlu kılıyor)
     host: str
     name: str
     cli: str = ""
@@ -98,6 +168,12 @@ class RunResult:
 @dataclass
 class Outcome:
     method: str  # "decider" | "unanimous" | "majority" | "single_worker" | "no_consensus" | "none"
+    # Kasıtlı olarak WINNER'IN `.verdict`'i (kısa/temiz) — `.text` (ham yanıt,
+    # COPS-VERDICT/COPS-END satırları dahil) DEĞİL. Ham metin isteyen zaten
+    # ilgili worker'ın kendi `RunResult.text`'ine (frontend'de "görüntüle"
+    # detayına) erişebiliyor; `outcome.final` kullanıcıya/controller'a
+    # handoff mesajında GÖSTERİLEN alan (2026-09-10, Phase 2 live-test'inde
+    # `.text` kullanıldığı bulundu — protokol satırları kullanıcıya sızıyordu).
     final: str = ""
     by: Optional[dict] = None
     tally: List[dict] = field(default_factory=list)
@@ -110,7 +186,7 @@ class Run:
     id: str
     created_at: float
     updated_at: float
-    status: str  # "working" | "done" | "needs_human" | "failed" | "cancelled"
+    status: str  # "briefing" | "working" | "deciding" | "done" | "needs_human" | "failed" | "cancelled"
     lang: str
     task: str
     verdict_hint: str
@@ -119,6 +195,11 @@ class Run:
     results: List[RunResult] = field(default_factory=list)
     outcome: Optional[Outcome] = None
     error: Optional[str] = None
+    # Phase 2 — controller'ın brief fazının SONUCU (worker'lara gönderilen
+    # ETKİN task metni); controller yoksa/brief üretilemediyse "" (ham
+    # `task` kullanılır, bu alan boş kalır — "" ≠ "brief denendi ama boş
+    # döndü", ikisi de aynı ETKİYİ taşır, ayrım UI için önemli değil).
+    brief: str = ""
 
 
 def resolve_outcome(results: List[RunResult], has_decider: bool = False) -> Outcome:
@@ -147,7 +228,7 @@ def resolve_outcome(results: List[RunResult], has_decider: bool = False) -> Outc
     if len(responders) == 1:
         r = responders[0]
         return Outcome(
-            method="single_worker", final=r.text, by={"host": r.host, "name": r.name, "cli": r.cli},
+            method="single_worker", final=r.verdict, by={"host": r.host, "name": r.name, "cli": r.cli},
             tally=[{"verdict_key": r.verdict_key, "votes": 1, "voters": [r.name]}], abstained=abstained,
             note="only one worker responded",
         )
@@ -165,7 +246,7 @@ def resolve_outcome(results: List[RunResult], has_decider: bool = False) -> Outc
         winner = top_group[0]
         abst_note = f", {len(abstained)} abstained" if abstained else ""
         return Outcome(
-            method=method, final=winner.text, tally=tally, abstained=abstained,
+            method=method, final=winner.verdict, tally=tally, abstained=abstained,
             note=f"{len(top_group)}/{len(responders)} worker aynı verdiği verdi{abst_note}",
         )
 

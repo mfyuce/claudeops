@@ -1,7 +1,8 @@
-"""TOBEDECIDED#15 Phase 1 — run engine: bir görevi worker session'lara
-dağıt, yanıtları bekle, consensus'u çöz. Bu geçişte SADECE worker rolü var
-(controller/decider/briefing/handoff/MCP — Phase 2/3, bkz. onaylanmış plan
-`~/.claude/plans/idempotent-riding-key.md`).
+"""TOBEDECIDED#15 Phase 2 — run engine: bir görevi worker session'lara
+dağıt (opsiyonel olarak önce bir controller'a brief yazdırıp), yanıtları
+bekle, consensus'u çöz (opsiyonel olarak bir decider'a bırakarak), bitince
+controller'a handoff mesajı gönder. MCP (Phase 3) hâlâ yok, bkz. onaylanmış
+plan `~/.claude/plans/idempotent-riding-key.md`.
 
 `web.py`'nin `_v1_eligible_sessions()`'ıyla AYNI uygunluk üçlüsünü
 (çalışıyor + tmux-backed + `has_conversation()`) kendi başına tekrar
@@ -11,6 +12,7 @@ import riski). `if cli == ...` YOK: provider arayüzünden geçiyor.
 from __future__ import annotations
 import concurrent.futures
 import dataclasses
+import itertools
 import os
 import secrets
 import threading
@@ -60,24 +62,38 @@ def _eligible_index() -> Dict[Tuple[str, str], Any]:
     return out
 
 
+_ROLES = ("worker", "controller", "decider")
+
+
 def _preflight(participants: List[dict]) -> Optional[str]:
     """None = OK, aksi halde düz-metin hata (henüz TR/EN localize edilmedi —
     bu geçiş backend-only, tüketen bir UI yok; frontend eklenince ERR
     tablosuna taşınabilir, bkz. plan'ın listelediği `orch_*` anahtarları).
-    Hiçbir ihlalde KISMİ başlatma yok — ya hepsi geçer ya hiçbir mesaj gitmez."""
+    Hiçbir ihlalde KISMİ başlatma yok — ya hepsi geçer ya hiçbir mesaj gitmez.
+
+    Phase 2: controller/decider artık kabul ediliyor (≤1'er) — plan'ın
+    aynen istediği kural. Çakışma kontrolü (aynı (host,cli,cwd)) ÜÇ rolün
+    TAMAMINA uygulanıyor, sadece worker'lara değil (2026-09-07
+    `resolve_resume_id` collision incident'ının AYNISI bir controller/
+    decider için de geçerli)."""
     if not participants:
         return "no participants given"
+    for p in participants:
+        if p.get("role") not in _ROLES:
+            return f"unknown role: {p.get('role')!r}"
     workers = [p for p in participants if p.get("role") == "worker"]
     controllers = [p for p in participants if p.get("role") == "controller"]
     deciders = [p for p in participants if p.get("role") == "decider"]
-    if controllers or deciders:
-        return "controller/decider roles aren't wired up yet — Phase 1 supports workers only"
     if not workers:
         return "at least one worker is required"
+    if len(controllers) > 1:
+        return "at most one controller is allowed"
+    if len(deciders) > 1:
+        return "at most one decider is allowed"
 
     index = _eligible_index()
     seen_triples = set()
-    for p in workers:
+    for p in workers + controllers + deciders:
         host = str(p.get("host") or "local")
         name = str(p.get("name") or "").strip()
         if not name:
@@ -94,66 +110,143 @@ def _preflight(participants: List[dict]) -> Optional[str]:
     return None
 
 
+def _inline_or_file(run_id: str, full_prompt: str, head_source: str, contract_tail: str, filename: str) -> str:
+    """`full_prompt` boyu `INLINE_LIMIT_CHARS`'ı aşarsa TAMAMI run dizinine
+    dosya olarak yazılır + `head_source`'un kısaltılmış başı + İŞARETÇİ +
+    `contract_tail` enjekte edilir (contract HER ZAMAN bütün kalır —
+    kesinlikle kısaltılmaz, aksi halde alıcı kendi yanıt biçimini hiç
+    görmez). Worker-dispatch (Phase 1) VE brief-dispatch (Phase 2) AYNI
+    şekle sahip olduğu için paylaşılıyor; decider-dispatch'in "head" anlamı
+    farklı (bkz. `_build_decider_dispatch` — kendi ayrı fallback'i var)."""
+    if len(full_prompt) <= INLINE_LIMIT_CHARS:
+        return full_prompt
+    d = orch_store.run_dir(run_id)
+    os.makedirs(d, exist_ok=True)
+    fpath = os.path.join(d, filename)
+    with open(fpath, "w", encoding="utf-8") as f:
+        f.write(full_prompt)
+    head = head_source.strip()[:INLINE_HEAD_CHARS]
+    return (
+        f"{head}\n\n[... truncated for delivery size (a large paste has been observed to crash "
+        f"one of this fleet's CLIs) — the complete text is at {fpath}, read it if you need the rest "
+        f"before answering ...]\n\n{contract_tail}"
+    )
+
+
 def _build_dispatch_prompt(run_id: str, task: str, verdict_hint: str) -> str:
-    """Tam prompt (task+hint+contract) `INLINE_LIMIT_CHARS`'ı aşarsa TAMAMI
-    run dizinine dosya olarak yazılır + kısa bir baş kısım + İŞARETÇİ +
-    contract enjekte edilir (contract HER ZAMAN bütün kalır — kesinlikle
-    kısaltılmaz, aksi halde worker kendi verdict biçimini hiç görmez)."""
     full = orch.build_worker_prompt(task, verdict_hint)
+    return _inline_or_file(run_id, full, task, orch.verdict_contract(), "task.md")
+
+
+def _build_brief_dispatch(run_id: str, task: str) -> str:
+    full = orch.build_brief_prompt(task)
+    return _inline_or_file(run_id, full, task, orch.brief_contract(), "brief_task.md")
+
+
+def _build_decider_dispatch(run_id: str, task: str, verdict_hint: str, bundle: str) -> str:
+    """Decider'ın kendi fallback'i `_inline_or_file`'ı KULLANMIYOR: burada
+    kısaltılacak/dosyaya taşınacak şey `task` değil `bundle` (worker
+    yanıtlarının toplamı) — task+hint genelde kısa, olduğu gibi kalıyor."""
+    full = orch.build_decider_prompt(task, verdict_hint, bundle)
     if len(full) <= INLINE_LIMIT_CHARS:
         return full
     d = orch_store.run_dir(run_id)
     os.makedirs(d, exist_ok=True)
-    fpath = os.path.join(d, "task.md")
+    fpath = os.path.join(d, "decider_bundle.md")
     with open(fpath, "w", encoding="utf-8") as f:
-        f.write(full)
-    head = task.strip()[:INLINE_HEAD_CHARS]
+        f.write(bundle)
+    hint = f"\n\nVerdict format hint: {verdict_hint.strip()}" if verdict_hint.strip() else ""
     return (
-        f"{head}\n\n[... task truncated for delivery size (a large paste has been observed to crash "
-        f"one of this fleet's CLIs) — the complete text is at {fpath}, read it if you need the rest "
-        f"before answering ...]\n\n{orch.verdict_contract()}"
+        f"You are the decider for a team task. Task:\n{task.strip()}{hint}\n\n"
+        f"[... worker answers too large to inline (a large paste has been observed to crash one of "
+        f"this fleet's CLIs) — read them from {fpath} before answering ...]\n\n{orch.verdict_contract()}"
     )
 
 
-def _one_worker(w: orch.Participant, seq: int, index: Dict[Tuple[str, str], Any],
-                 prompt: str, worker_timeout: float, cancel_event: threading.Event) -> orch.RunResult:
+def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, str], Any],
+              prompt: str, timeout: float, cancel_event: threading.Event, require_marker: str) -> orch.RunResult:
+    """Tek bir katılımcıya (rolü ne olursa olsun — worker/controller/decider)
+    tek bir tur: enjekte et, tur bitene kadar bekle. Verdict PARSE ETMEZ
+    (`.text`'i ham bırakır) — `_one_worker`/`_run_decider` kendi
+    `parse_verdict()`'lerini `dataclasses.replace` ile üstüne biner, brief
+    çağıranı `orch.parse_brief()`'i kendi tarafında çağırır. `kind`/`role`
+    dışında `_one_worker`'ın Phase 1'deki gövdesiyle BİREBİR AYNI mekanizma."""
     created_at = time.time()
-    s = index.get((w.host, w.name))
+    s = index.get((p.host, p.name))
     if s is None:
-        return orch.RunResult(seq=seq, kind="worker_result", role="worker", host=w.host, name=w.name,
-                               cli=w.cli, created_at=created_at, status="unreachable")
+        return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
+                               cli=p.cli, created_at=created_at, status="unreachable")
     provider = get_provider(s.cli)
     baseline = provider.last_exchange(s.cwd, s.sid)
     if baseline is None:
-        return orch.RunResult(seq=seq, kind="worker_result", role="worker", host=w.host, name=w.name,
-                               cli=w.cli, created_at=created_at, status="unreachable")
+        return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
+                               cli=p.cli, created_at=created_at, status="unreachable")
     # Fresh/hiç resume edilmemiş agy session'ı — 2026-09-09 commit `1356edc`
     # ile AYNI fallback (bkz. `turns.wait_for_reply` docstring'i).
     live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
 
     t0 = time.monotonic()
-    diag_log("orch_worker_dispatch", name=s.name, seq=seq, chars=len(prompt))
+    diag_log("orch_turn_dispatch", name=s.name, seq=seq, kind=kind, chars=len(prompt))
     if not tmux_send_keys(s.name, prompt, settle_delay=provider.input_settle_delay()):
-        return orch.RunResult(seq=seq, kind="worker_result", role="worker", host=w.host, name=w.name,
-                               cli=w.cli, created_at=created_at, status="send_failed")
+        return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
+                               cli=p.cli, created_at=created_at, status="send_failed")
 
     reply = turns.wait_for_reply(
         s, provider, baseline, live_snapshot,
-        timeout=worker_timeout, poll=1.0, stable_polls=3,
-        require_marker=orch.END_MARKER, cancel=cancel_event,
+        timeout=timeout, poll=1.0, stable_polls=3,
+        require_marker=require_marker, cancel=cancel_event,
     )
     elapsed = time.monotonic() - t0
     if reply is None:
-        return orch.RunResult(seq=seq, kind="worker_result", role="worker", host=w.host, name=w.name,
-                               cli=w.cli, created_at=created_at, status="timeout", elapsed=elapsed)
+        return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
+                               cli=p.cli, created_at=created_at, status="timeout", elapsed=elapsed)
+    return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
+                           cli=p.cli, created_at=created_at, status="ok", text=reply, elapsed=elapsed)
 
-    verdict_raw = orch.parse_verdict(reply)
+
+def _with_verdict(r: orch.RunResult) -> orch.RunResult:
+    """`_run_turn`'ün ham `.text`'inden verdict çıkar (worker VE decider
+    AYNI sözleşmeyi paylaşıyor, bkz. `orch.build_decider_prompt`'un kendi
+    docstring'i) — `status != "ok"` ise dokunmadan olduğu gibi döner."""
+    if r.status != "ok":
+        return r
+    verdict_raw = orch.parse_verdict(r.text)
     if verdict_raw is None:
-        return orch.RunResult(seq=seq, kind="worker_result", role="worker", host=w.host, name=w.name,
-                               cli=w.cli, created_at=created_at, status="no_envelope", text=reply, elapsed=elapsed)
-    return orch.RunResult(seq=seq, kind="worker_result", role="worker", host=w.host, name=w.name,
-                           cli=w.cli, created_at=created_at, status="ok", text=reply, elapsed=elapsed,
-                           verdict=verdict_raw, verdict_key=orch.normalize_verdict(verdict_raw))
+        return dataclasses.replace(r, status="no_envelope")
+    return dataclasses.replace(r, verdict=verdict_raw, verdict_key=orch.normalize_verdict(verdict_raw))
+
+
+def _one_worker(w: orch.Participant, seq: int, index: Dict[Tuple[str, str], Any],
+                 prompt: str, worker_timeout: float, cancel_event: threading.Event) -> orch.RunResult:
+    return _with_verdict(_run_turn(w, seq, "worker_result", index, prompt, worker_timeout, cancel_event, orch.END_MARKER))
+
+
+def _run_decider(decider: orch.Participant, seq: int, index: Dict[Tuple[str, str], Any],
+                  prompt: str, timeout: float, cancel_event: threading.Event) -> orch.RunResult:
+    return _with_verdict(_run_turn(decider, seq, "decision", index, prompt, timeout, cancel_event, orch.END_MARKER))
+
+
+def _set_status(run_id: str, status: str) -> None:
+    """Sadece faz geçişi (`briefing`→`working`→`deciding`) — `results`/
+    `outcome`'a dokunmaz, `_save_progress`/`_save_final`'dan AYRI çünkü bir
+    fazın BAŞLANGICINDA (henüz bir RunResult yokken) da çağrılıyor."""
+    run = orch_store.load_run(run_id)
+    if run is None:
+        return
+    run["status"] = status
+    run["updated_at"] = time.time()
+    orch_store.save_run(run)
+    web_ws.notify_status_changed()
+
+
+def _set_brief(run_id: str, brief: str) -> None:
+    run = orch_store.load_run(run_id)
+    if run is None:
+        return
+    run["brief"] = brief
+    run["updated_at"] = time.time()
+    orch_store.save_run(run)
+    web_ws.notify_status_changed()
 
 
 def _save_progress(run_id: str, results: List[orch.RunResult]) -> None:
@@ -176,23 +269,96 @@ def _save_final(run_id: str, results: List[orch.RunResult], outcome: orch.Outcom
     web_ws.notify_status_changed()
 
 
-def _run_thread(run_id: str, workers: List[orch.Participant], task: str, verdict_hint: str,
+def _run_thread(run_id: str, workers: List[orch.Participant], controller: Optional[orch.Participant],
+                 decider: Optional[orch.Participant], task: str, verdict_hint: str,
                  worker_timeout: float, cancel_event: threading.Event) -> None:
+    """Phase 2 faz sırası: `briefing` (controller varsa) → `working` → `deciding`
+    (decider varsa) → handoff (controller varsa). Controller/decider YOKSA
+    bu, Phase 1'in davranışıyla BİREBİR AYNI (briefing/deciding/handoff
+    bloklarının HİÇBİRİ çalışmaz, `effective_task` ham `task`, `resolve_outcome`
+    AYNI şekilde `has_decider=False` ile çağrılır) — regresyon riski yok."""
     global _ACTIVE_RUN_ID
     try:
-        prompt = _build_dispatch_prompt(run_id, task, verdict_hint)
         index = _eligible_index()
         results: List[orch.RunResult] = []
+        seq_counter = itertools.count(1)
+        effective_task = task
+
+        if controller is not None:
+            _set_status(run_id, "briefing")
+            brief_prompt = _build_brief_dispatch(run_id, task)
+            brief_result = _run_turn(controller, next(seq_counter), "brief", index, brief_prompt,
+                                      worker_timeout, cancel_event, orch.BRIEF_END_MARKER)
+            results.append(brief_result)
+            _save_progress(run_id, results)
+            if cancel_event.is_set():
+                _save_final(run_id, results, orch.Outcome(method="none", note="cancelled during briefing"), "cancelled")
+                return
+            if brief_result.status == "ok":
+                parsed = orch.parse_brief(brief_result.text)
+                if parsed:
+                    effective_task = parsed
+                    _set_brief(run_id, parsed)
+            # timeout/send_failed/no marker in the reply → effective_task stays
+            # the raw task (plan: "falls back to the raw task text on timeout
+            # rather than failing the run" — treated the same for any brief
+            # that didn't come back parseable, not just a literal timeout).
+            _set_status(run_id, "working")
+            # No controller → status is ALREADY "working" from `start_run`'s
+            # initial write; skipping a redundant re-set here keeps a
+            # no-controller/no-decider run's write pattern byte-identical to
+            # Phase 1's, not just behaviorally equivalent.
+
+        prompt = _build_dispatch_prompt(run_id, effective_task, verdict_hint)
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_WORKERS, len(workers))) as ex:
-            futures = {ex.submit(_one_worker, w, i + 1, index, prompt, worker_timeout, cancel_event): w
-                       for i, w in enumerate(workers)}
+            futures = {ex.submit(_one_worker, w, next(seq_counter), index, prompt, worker_timeout, cancel_event): w
+                       for w in workers}
             for fut in concurrent.futures.as_completed(futures):
                 results.append(fut.result())
                 _save_progress(run_id, results)
-        outcome = orch.resolve_outcome(results, has_decider=False)
+        if cancel_event.is_set():
+            _save_final(run_id, results, orch.Outcome(method="none", note="cancelled"), "cancelled")
+            return
+
+        worker_results = [r for r in results if r.kind == "worker_result"]
+
+        if decider is not None:
+            _set_status(run_id, "deciding")
+            bundle = orch.format_worker_bundle(worker_results)
+            decider_prompt = _build_decider_dispatch(run_id, task, verdict_hint, bundle)
+            decision_result = _run_decider(decider, next(seq_counter), index, decider_prompt, worker_timeout, cancel_event)
+            results.append(decision_result)
+            _save_progress(run_id, results)
+            if decision_result.status == "ok" and decision_result.verdict_key:
+                abstained = [{"name": r.name, "status": r.status} for r in worker_results if r.status != "ok"]
+                outcome = orch.Outcome(
+                    method="decider", final=decision_result.verdict,
+                    by={"host": decider.host, "name": decider.name, "cli": decider.cli},
+                    abstained=abstained, note="decider's own verdict",
+                )
+            else:
+                # Decider yanıt vermedi/format hatası — Phase 1'in TEK yolu
+                # olan worker-consensus'a düş, `has_decider=False` (bkz.
+                # `orchestration.resolve_outcome`'un kendi docstring'i).
+                outcome = orch.resolve_outcome(worker_results, has_decider=False)
+                fallback_note = "decider did not produce a usable verdict — fell back to worker consensus"
+                outcome.note = f"{outcome.note} ({fallback_note})" if outcome.note else fallback_note
+        else:
+            outcome = orch.resolve_outcome(worker_results, has_decider=False)
+
         status = "cancelled" if cancel_event.is_set() else (
-            "done" if outcome.method in ("unanimous", "majority", "single_worker") else "needs_human"
+            "done" if outcome.method in ("decider", "unanimous", "majority", "single_worker") else "needs_human"
         )
+
+        if controller is not None and not cancel_event.is_set():
+            handoff_msg = orch.build_handoff_message(task, outcome)
+            sent = tmux_send_keys(controller.name, handoff_msg, settle_delay=get_provider(controller.cli).input_settle_delay())
+            results.append(orch.RunResult(
+                seq=next(seq_counter), kind="final", role="controller", host=controller.host,
+                name=controller.name, cli=controller.cli, created_at=time.time(),
+                status="ok" if sent else "send_failed", text=handoff_msg,
+            ))
+
         _save_final(run_id, results, outcome, status)
     except Exception as e:
         # Thread'in sessizce ölmesi `_ACTIVE_RUN_ID`'yi SONSUZA kadar meşgul
@@ -232,23 +398,36 @@ def start_run(participants: List[dict], task: str, verdict_hint: str = "",
         _CANCEL_EVENTS[run_id] = cancel_event
 
     index = _eligible_index()
-    workers = []
-    for p in participants:
-        if p.get("role") != "worker":
-            continue
-        host = str(p.get("host") or "local")
-        name = str(p.get("name") or "").strip()
-        s = index.get((host, name))
-        workers.append(orch.Participant(role="worker", host=host, name=name, cli=(s.cli if s else "")))
 
-    run = orch.Run(id=run_id, created_at=time.time(), updated_at=time.time(), status="working",
+    def _build(role: str) -> List[orch.Participant]:
+        out = []
+        for p in participants:
+            if p.get("role") != role:
+                continue
+            host = str(p.get("host") or "local")
+            name = str(p.get("name") or "").strip()
+            s = index.get((host, name))
+            out.append(orch.Participant(role=role, host=host, name=name, cli=(s.cli if s else "")))
+        return out
+
+    workers = _build("worker")
+    controllers = _build("controller")
+    deciders = _build("decider")
+    controller = controllers[0] if controllers else None  # _preflight already caps this at ≤1
+    decider = deciders[0] if deciders else None  # _preflight already caps this at ≤1
+    all_participants = workers + controllers + deciders
+
+    run = orch.Run(id=run_id, created_at=time.time(), updated_at=time.time(),
+                    status="briefing" if controller else "working",
                     lang="tr", task=task, verdict_hint=verdict_hint or "", worker_timeout=worker_timeout,
-                    participants=workers)
+                    participants=all_participants)
     orch_store.save_run(run)
     web_ws.notify_status_changed()
 
-    t = threading.Thread(target=_run_thread, args=(run_id, workers, task, verdict_hint, worker_timeout, cancel_event),
-                          daemon=True, name=f"orch-{run_id}")
+    t = threading.Thread(
+        target=_run_thread, args=(run_id, workers, controller, decider, task, verdict_hint, worker_timeout, cancel_event),
+        daemon=True, name=f"orch-{run_id}",
+    )
     t.start()
     return run_id, None
 
