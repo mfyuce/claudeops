@@ -26,6 +26,22 @@ from typing import Callable, Optional
 from .diaglog import diag_log
 from .tmux_backend import strip_ansi, tmux_capture
 
+# `timeout`/`poll`'un varsayılanları — bugün bunları OVERRIDE ETMEDEN
+# çağıran TEK yer `/v1/chat/completions` (`commands/web.py`); orkestrasyon
+# (`web_orch._run_turn`) kendi `worker_timeout`/`poll=1.0`'ını HER ZAMAN açıkça
+# geçiyor. Önceden `web.py`'nin kendi `V1_CHAT_TIMEOUT_SECONDS`/
+# `V1_CHAT_POLL_INTERVAL_SECONDS` sabitleri AYNI değerleri (180.0/0.5) ikinci
+# bir yerde tutuyordu (biri sadece hata mesajı metni için, öbürü hiç
+# kullanılmıyordu) — 2026-09-10'da TEK kaynağa (burası) indirgendi, `web.py`
+# artık hata mesajında da doğrudan bu modülün `TIMEOUT_SECONDS`'ını okuyor.
+#
+# 180s cömert ama SINIRLI tutuldu: MEŞGUL bir session'a gönderilen input CLI
+# tarafından KUYRUĞA alınır ve mevcut turn bitene kadar bekler (canlı
+# doğrulanmıştı) — yani pencereye "bizim turumuz" kadar "önümüzdeki turun
+# kalanı" da dahil olabilir. Yine de HTTP bağlantısı sonsuza kadar asılı
+# kalmamalı, süre dolunca çağıran OpenAI-şekilli bir timeout hatası alır.
+# 0.5s poll ucuz (bir `capture-pane` + bir transcript okuması) ve turn bittiği
+# anda yanıtı döndürmek istediğimiz için kısa tutuldu.
 TIMEOUT_SECONDS = 180.0
 POLL_INTERVAL_SECONDS = 0.5
 

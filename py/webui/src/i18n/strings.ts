@@ -582,7 +582,7 @@ export const STRINGS: Record<Lang, Strings> = {
       return m[status] ?? status;
     },
     orchResultStatusLabel: (status) => {
-      const m: Record<string, string> = { ok: "tamam", timeout: "zaman aşımı", send_failed: "gönderilemedi", no_envelope: "format hatası", unreachable: "erişilemez", pending: "bekleniyor" };
+      const m: Record<string, string> = { ok: "tamam", timeout: "zaman aşımı", cancelled: "iptal edildi", send_failed: "gönderilemedi", no_envelope: "format hatası", unreachable: "erişilemez", pending: "bekleniyor" };
       return m[status] ?? status;
     },
     orchOutcomeMethodLabel: (method) => {
@@ -865,7 +865,7 @@ export const STRINGS: Record<Lang, Strings> = {
       return m[status] ?? status;
     },
     orchResultStatusLabel: (status) => {
-      const m: Record<string, string> = { ok: "ok", timeout: "timed out", send_failed: "send failed", no_envelope: "no verdict format", unreachable: "unreachable", pending: "pending" };
+      const m: Record<string, string> = { ok: "ok", timeout: "timed out", cancelled: "cancelled", send_failed: "send failed", no_envelope: "no verdict format", unreachable: "unreachable", pending: "pending" };
       return m[status] ?? status;
     },
     orchOutcomeMethodLabel: (method) => {

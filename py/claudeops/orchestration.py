@@ -158,7 +158,7 @@ class RunResult:
     name: str
     cli: str
     created_at: float
-    status: str  # "ok" | "timeout" | "send_failed" | "no_envelope" | "unreachable"
+    status: str  # "ok" | "timeout" | "cancelled" | "send_failed" | "no_envelope" | "unreachable"
     verdict: str = ""
     verdict_key: str = ""
     text: str = ""

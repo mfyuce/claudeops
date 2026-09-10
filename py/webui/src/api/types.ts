@@ -210,7 +210,7 @@ export interface OrchResultItem {
   name: string;
   cli: string;
   created_at: number;
-  status: "ok" | "timeout" | "send_failed" | "no_envelope" | "unreachable";
+  status: "ok" | "timeout" | "cancelled" | "send_failed" | "no_envelope" | "unreachable";
   verdict: string;
   verdict_key: string;
   text: string;

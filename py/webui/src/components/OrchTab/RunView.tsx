@@ -25,6 +25,7 @@ interface RunViewProps {
 const RESULT_COLOR: Record<string, string> = {
   ok: "var(--green)",
   timeout: "var(--red)",
+  cancelled: "var(--muted)",
   send_failed: "var(--red)",
   unreachable: "var(--red)",
   no_envelope: "var(--amber)",

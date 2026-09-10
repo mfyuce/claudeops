@@ -249,8 +249,15 @@ def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, s
             _PUSHED.pop(push_key, None)  # bu tur ASLA tüketmediyse de birikmesin
     elapsed = time.monotonic() - t0
     if reply is None:
+        # `wait_for_reply` returns None for BOTH real timeout and cancel
+        # (bkz. kendi docstring'i, "tek bir 'bitmedi' sonucu yeterli") — ama
+        # burada, run bittikten SONRA turn-seviyesi status'u UI'a göstermek
+        # için ikisini ayırmak ucuz: cancel_event zaten set'liyse sebep
+        # kesin cancel'dır (timeout ayrıca dolmuş olabilir, ama kullanıcı
+        # aksiyonu daha bilgilendirici).
+        status = "cancelled" if cancel_event.is_set() else "timeout"
         return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
-                               cli=p.cli, created_at=created_at, status="timeout", elapsed=elapsed)
+                               cli=p.cli, created_at=created_at, status=status, elapsed=elapsed)
     return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
                            cli=p.cli, created_at=created_at, status="ok", text=reply, elapsed=elapsed)
 

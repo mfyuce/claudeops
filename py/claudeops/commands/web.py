@@ -1745,19 +1745,12 @@ def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
 # günlerdir çalışan, kendi hafızası olan CANLI bir asistan.
 V1_OWNED_BY = "claudeops"  # `/v1/models` satırlarının `owned_by`'ı (OpenAI'de "openai")
 
-# Enjekte edilen kullanıcı mesajının yanıtlanmasını en fazla bu kadar bekle.
-# `COMPACT_TIMEOUT_SECONDS` (180.0) ile AYNI değer ve AYNI gerekçe: MEŞGUL bir
-# session'a gönderilen input CLI tarafından KUYRUĞA alınır ve mevcut turn
-# bitene kadar bekler (canlı doğrulanmıştı, bkz. `_compact()` docstring'i) —
-# yani bu pencereye "bizim turumuz" kadar "önümüzdeki turun kalanı" da dahil.
-# Cömert ama SINIRLI: HTTP bağlantısı sonsuza kadar asılı kalmamalı, süre
-# dolunca OpenAI-şekilli bir timeout hatası döner.
-V1_CHAT_TIMEOUT_SECONDS = 180.0
-# `_compact`'in 2.0s'inden kısa: orada beklenen sinyal bir dosya-içi sayaç
-# (gecikmesi önemsiz), burada bir HTTP çağıranı bekliyor — turn bittiği anda
-# yanıtı döndürmek istiyoruz. Her poll bir `capture-pane` + bir transcript
-# okuması, 0.5s bunun için fazlasıyla ucuz.
-V1_CHAT_POLL_INTERVAL_SECONDS = 0.5
+# Enjekte edilen kullanıcı mesajının yanıtlanmasını en fazla ne kadar bekleyeceği
+# (ve poll aralığı) artık BURADA tutulmuyor — `turns.wait_for_reply()`'nin
+# `timeout`/`poll` varsayılanları hiç override edilmeden kullanılıyor (bkz.
+# `turns.TIMEOUT_SECONDS`/`turns.POLL_INTERVAL_SECONDS`'ın kendi yorumu, tek
+# kaynak orası). `COMPACT_TIMEOUT_SECONDS` (yukarıda) AYRI bir sabit — o
+# `_compact()`'in kendi dosya-içi sayaç beklemesi için, bu ikisiyle karışmaz.
 
 
 def _v1_error(message: str, err_type: str = "invalid_request_error") -> dict:
@@ -1920,7 +1913,7 @@ def _v1_chat_completion(data) -> tuple:
     if reply is None:
         diag_log("v1_chat_timeout", name=s.name)
         return _v1_error(
-            f"'{model}' did not finish a reply within {V1_CHAT_TIMEOUT_SECONDS:.0f}s. The message WAS "
+            f"'{model}' did not finish a reply within {turns.TIMEOUT_SECONDS:.0f}s. The message WAS "
             "delivered and may still be processing — check the session, or read the result later.",
             "timeout_error"), 504
     diag_log("v1_chat_done", name=s.name, chars=len(reply))
