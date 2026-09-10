@@ -14,6 +14,7 @@ import os
 import shutil
 from typing import Any, Dict, TYPE_CHECKING
 
+from .atomic_json import atomic_write_json
 from .paths import CLAUDEOPS_DIR
 
 if TYPE_CHECKING:
@@ -81,11 +82,7 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
             current[k] = merged
         else:
             current[k] = v
-    os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
-    tmp = SETTINGS_JSON + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(current, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, SETTINGS_JSON)  # atomic — eşzamanlı okuyan yarım dosya görmez
+    atomic_write_json(SETTINGS_JSON, current)
     return current
 
 

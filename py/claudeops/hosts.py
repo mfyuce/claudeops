@@ -19,6 +19,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
+from .atomic_json import atomic_write_json
 from .paths import CLAUDEOPS_DIR
 
 HOSTS_JSON = os.path.join(CLAUDEOPS_DIR, "hosts.json")
@@ -75,17 +76,12 @@ def get_host(name: str) -> Optional[Dict[str, str]]:
 
 
 def _write_hosts(hosts: List[Dict[str, str]]) -> None:
-    """Atomik + 0600 yazım — settings.save_settings()'in tmp+os.replace deseni,
-    AMA tmp dosyası baştan 0600 açılır (token içerdiği için — web.py'nin
+    """Atomik + 0600 yazım (`atomic_json.atomic_write_json`) — tmp dosyası
+    baştan 0600 açılır (token içerdiği için — web.py'nin
     _load_or_create_token()'ıyla aynı os.open pattern'i). os.replace (rename)
     hedefi KAYNAĞIN izinleriyle değiştirir, hedefte önceden var olan izinlerle
     değil — yani her yazımda 0600 korunur, tek-seferlik oluşturmaya bağlı değil."""
-    os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
-    tmp = HOSTS_JSON + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(hosts, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, HOSTS_JSON)  # atomic — eşzamanlı okuyan yarım dosya görmez
+    atomic_write_json(HOSTS_JSON, hosts, mode=0o600)
 
 
 def save_host(name: str, base_url: str, token: str, lang: str = "tr") -> Dict[str, Any]:

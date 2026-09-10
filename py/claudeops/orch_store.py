@@ -14,6 +14,7 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
+from .atomic_json import atomic_write_json
 from .paths import CLAUDEOPS_DIR
 
 ORCH_DIR = os.path.join(CLAUDEOPS_DIR, "orchestration")
@@ -22,12 +23,7 @@ DRAFT_JSON = os.path.join(ORCH_DIR, "draft.json")
 
 
 def _atomic_write_json(path: str, obj: Any) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)  # atomik — eşzamanlı okuyan yarım dosya görmez
+    atomic_write_json(path, obj, mode=0o600)
 
 
 def _load_json(path: str, default: Any) -> Any:
