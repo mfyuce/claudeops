@@ -286,6 +286,10 @@ export interface Strings {
   orchSkippedIneligible: (names: string) => string;
   orchLineupEmpty: string;
   orchRemoveBtn: string;
+  orchRoleLabel: (role: string) => string;
+  orchNeedsWorkerMsg: string;
+  orchBriefLabel: string;
+  orchHandoffLabel: string;
   orchTaskLabel: string;
   orchTaskPlaceholder: string;
   orchVerdictHintLabel: string;
@@ -544,7 +548,7 @@ export const STRINGS: Record<Lang, Strings> = {
     searchClear: "aramayı temizle",
     noSearchMatches: "Aramayla eşleşen yok.",
     tabTeam: "Ekip",
-    orchDesc: "Birden fazla session'a aynı görevi verip yanıtları karşılaştırın — decider yoksa sonuç, işçiler arasındaki çoğunluk oyuyla belirlenir (Phase 1: sadece işçi rolü var, controller/decider henüz bağlanmadı).",
+    orchDesc: "Birden fazla session'a aynı görevi verip yanıtları karşılaştırın. Opsiyonel bir kontrolcü göreve önce kendi brief'ini yazabilir; opsiyonel bir karar verici işçilerin yanıtlarını görüp son kararı verebilir — hiçbiri atanmazsa sonuç işçiler arasındaki çoğunluk oyuyla belirlenir. Bitince kontrolcüye sonuç mesajı gönderilir.",
     orchLineupTitle: "Kadro",
     orchAddSelectedBtn: "Seçilenleri ekle",
     orchAddSelectedHint: "Çalışanlar sekmesinde işaretlediğiniz session'ları (çalışan + local + konuşması olan) kadroya işçi olarak ekler",
@@ -552,6 +556,13 @@ export const STRINGS: Record<Lang, Strings> = {
     orchSkippedIneligible: (names) => `uygun olmadığı için atlandı: ${names}`,
     orchLineupEmpty: "Kadro boş — Çalışanlar sekmesinden session işaretleyip \"Seçilenleri ekle\"ye basın.",
     orchRemoveBtn: "kaldır",
+    orchRoleLabel: (role) => {
+      const m: Record<string, string> = { worker: "işçi", controller: "kontrolcü", decider: "karar verici" };
+      return m[role] ?? role;
+    },
+    orchNeedsWorkerMsg: "en az bir \"işçi\" rolünde katılımcı gerekli",
+    orchBriefLabel: "Brief (kontrolcü tarafından yazıldı, işçilere bu gönderildi)",
+    orchHandoffLabel: "kontrolcüye gönderilen sonuç mesajı",
     orchTaskLabel: "Görev",
     orchTaskPlaceholder: "İşçilere ne sorulacak/ne yaptırılacak…",
     orchVerdictHintLabel: "verdict format ipucu (opsiyonel)",
@@ -564,7 +575,10 @@ export const STRINGS: Record<Lang, Strings> = {
     orchCancelRunConfirm: "Run iptal edilsin mi? (zaten gönderilmiş mesajlar geri alınamaz, sadece bekleme durur)",
     orchBackBtn: "◀ geri",
     orchStatusLabel: (status) => {
-      const m: Record<string, string> = { working: "çalışıyor", done: "tamamlandı", needs_human: "karar gerekiyor", failed: "hata", cancelled: "iptal edildi" };
+      const m: Record<string, string> = {
+        briefing: "brief yazılıyor", working: "çalışıyor", deciding: "karar veriliyor",
+        done: "tamamlandı", needs_human: "karar gerekiyor", failed: "hata", cancelled: "iptal edildi",
+      };
       return m[status] ?? status;
     },
     orchResultStatusLabel: (status) => {
@@ -817,7 +831,7 @@ export const STRINGS: Record<Lang, Strings> = {
     searchClear: "clear search",
     noSearchMatches: "Nothing matches the search.",
     tabTeam: "Team",
-    orchDesc: "Send the same task to several sessions and compare the answers — with no decider, the result is decided by majority vote among the workers (Phase 1: workers only, controller/decider aren't wired up yet).",
+    orchDesc: "Send the same task to several sessions and compare the answers. An optional controller can write its own brief for the task first; an optional decider can see the workers' answers and make the final call — with neither assigned, the result is decided by majority vote among the workers. The controller (if any) gets a result message once the run finishes.",
     orchLineupTitle: "Lineup",
     orchAddSelectedBtn: "Add selected",
     orchAddSelectedHint: "Adds the sessions checked in the Running tab (running + local + holding a conversation) to the lineup as workers",
@@ -825,6 +839,13 @@ export const STRINGS: Record<Lang, Strings> = {
     orchSkippedIneligible: (names) => `skipped (not eligible): ${names}`,
     orchLineupEmpty: "Lineup is empty — check sessions in the Running tab and click \"Add selected\".",
     orchRemoveBtn: "remove",
+    orchRoleLabel: (role) => {
+      const m: Record<string, string> = { worker: "worker", controller: "controller", decider: "decider" };
+      return m[role] ?? role;
+    },
+    orchNeedsWorkerMsg: "at least one participant with the \"worker\" role is required",
+    orchBriefLabel: "Brief (written by the controller, sent to the workers)",
+    orchHandoffLabel: "result message sent to the controller",
     orchTaskLabel: "Task",
     orchTaskPlaceholder: "What should the workers do/answer…",
     orchVerdictHintLabel: "verdict format hint (optional)",
@@ -837,7 +858,10 @@ export const STRINGS: Record<Lang, Strings> = {
     orchCancelRunConfirm: "Cancel this run? (messages already sent can't be recalled, this only stops waiting)",
     orchBackBtn: "◀ back",
     orchStatusLabel: (status) => {
-      const m: Record<string, string> = { working: "working", done: "done", needs_human: "needs a human", failed: "failed", cancelled: "cancelled" };
+      const m: Record<string, string> = {
+        briefing: "writing brief", working: "working", deciding: "deciding",
+        done: "done", needs_human: "needs a human", failed: "failed", cancelled: "cancelled",
+      };
       return m[status] ?? status;
     },
     orchResultStatusLabel: (status) => {

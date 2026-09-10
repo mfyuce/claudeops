@@ -1,17 +1,19 @@
 /**
- * TOBEDECIDED#15 Phase 1 — "Ekip"/Team tab: workers-only orchestration.
- * Self-contained (own local state, own `getOrchRun`/`getOrchRuns` fetches
- * only while relevant), following the `HostsSection.tsx` precedent of not
- * stuffing heavier per-tab data into `StatusContext`. The lightweight
- * `data.orch` slice (draft/active summary/last 5 runs) already rides the
- * existing WS push — this component reacts to THAT to know when to fetch
- * the fuller `OrchRun` detail, rather than polling on its own timer (plan:
- * "no new polling").
+ * TOBEDECIDED#15 Phase 2 — "Ekip"/Team tab: controller/worker/decider
+ * orchestration. Self-contained (own local state, own `getOrchRun`/
+ * `getOrchRuns` fetches only while relevant), following the
+ * `HostsSection.tsx` precedent of not stuffing heavier per-tab data into
+ * `StatusContext`. The lightweight `data.orch` slice (draft/active
+ * summary/last 5 runs) already rides the existing WS push — this
+ * component reacts to THAT to know when to fetch the fuller `OrchRun`
+ * detail, rather than polling on its own timer (plan: "no new polling").
  *
- * Only one role exists in Phase 1 (worker) — no role picker, no changes to
- * `BulkBar`/`SessionRow`. Lineup entries come from whatever the user has
- * already checked in the Running tab (the SAME shared `selection` Set),
- * turned into worker rows by one button in `LineupEditor`.
+ * Lineup entries come from whatever the user has already checked in the
+ * Running tab (the SAME shared `selection` Set), added as "worker" by
+ * default — promoting one to controller/decider is a per-row pick in
+ * `LineupEditor`, enforced here as ≤1-each (picking a role that's already
+ * taken demotes the previous holder back to "worker"). No `BulkBar`/
+ * `SessionRow` changes needed.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -102,10 +104,20 @@ export function OrchTab({ selection }: OrchTabProps) {
     }
   }
 
-  function persistLineup(next: OrchDraftParticipant[]) {
-    setLineup(next);
-    void apiOrchSaveDraft(next);
-  }
+  // Persists to the server whenever the lineup changes locally, decoupled
+  // from the state update itself so every mutator below can use React's
+  // functional `setLineup(prev => ...)` form safely — same reasoning as
+  // `state/selection.ts`'s own Set mutations, which never compute the next
+  // value from a closed-over variable either (a mutator that instead reads
+  // the outer `lineup` directly can silently lose an update if two calls
+  // fire before React re-renders between them, e.g. rapid consecutive
+  // clicks). Fires once redundantly right after the initial server-seed
+  // effect below (re-POSTs what it just loaded) — harmless, not worth
+  // guarding against for one extra small write per mount.
+  useEffect(() => {
+    if (seededRef.current) void apiOrchSaveDraft(lineup);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineup]);
 
   function handleAddSelected() {
     if (!data) return;
@@ -116,29 +128,47 @@ export function OrchTab({ selection }: OrchTabProps) {
     }
     const eligible = selectedRows.filter(isOrchEligible);
     const skipped = selectedRows.filter((s) => !isOrchEligible(s)).map((s) => s.name);
-    const merged = [...lineup];
-    for (const s of eligible) {
-      if (!merged.some((p) => p.host === s.host && p.name === s.name)) {
-        merged.push({ role: "worker", host: s.host, name: s.name, cli: s.cli });
+    setLineup((prev) => {
+      const merged = [...prev];
+      for (const s of eligible) {
+        if (!merged.some((p) => p.host === s.host && p.name === s.name)) {
+          merged.push({ role: "worker", host: s.host, name: s.name, cli: s.cli });
+        }
       }
-    }
-    persistLineup(merged);
+      return merged;
+    });
     selection.replace([]);
     if (skipped.length) window.alert(t.orchSkippedIneligible(skipped.join(", ")));
   }
 
   function handleRemove(host: string, name: string) {
-    persistLineup(lineup.filter((p) => !(p.host === host && p.name === name)));
+    setLineup((prev) => prev.filter((p) => !(p.host === host && p.name === name)));
   }
 
+  /** ≤1 controller/≤1 decider — picking one of those roles demotes whoever
+   * held it before back to "worker" (mirrors the backend's own `_preflight`
+   * cap, checked proactively here so the confirm dialog never shows two). */
+  function handleRoleChange(host: string, name: string, role: string) {
+    setLineup((prev) =>
+      prev.map((p) => {
+        if (p.host === host && p.name === name) return { ...p, role };
+        if ((role === "controller" || role === "decider") && p.role === role) return { ...p, role: "worker" };
+        return p;
+      }),
+    );
+  }
+
+  const hasWorker = lineup.some((p) => p.role === "worker");
+
   async function handleStart() {
-    if (!lineup.length || !task.trim() || starting) return;
-    if (!window.confirm(t.orchRunConfirm(lineup.map((p) => p.name), task.trim()))) return;
+    if (!hasWorker || !task.trim() || starting) return;
+    const labeled = lineup.map((p) => `${p.name} (${t.orchRoleLabel(p.role)})`);
+    if (!window.confirm(t.orchRunConfirm(labeled, task.trim()))) return;
     setStarting(true);
     setStartError("");
     try {
       const res = await apiOrchStart({
-        participants: lineup.map((p) => ({ role: "worker" as const, host: p.host, name: p.name })),
+        participants: lineup.map((p) => ({ role: p.role, host: p.host, name: p.name })),
         task: task.trim(),
         verdict_hint: verdictHint.trim() || undefined,
         worker_timeout: workerTimeout,
@@ -183,7 +213,14 @@ export function OrchTab({ selection }: OrchTabProps) {
         </>
       ) : (
         <>
-          <LineupEditor lineup={lineup} selection={selection} onAddSelected={handleAddSelected} onRemove={handleRemove} />
+          <LineupEditor
+            lineup={lineup}
+            selection={selection}
+            onAddSelected={handleAddSelected}
+            onRemove={handleRemove}
+            onRoleChange={handleRoleChange}
+          />
+          {lineup.length > 0 && !hasWorker && <div className="warn-banner">{t.orchNeedsWorkerMsg}</div>}
           <div className="opts">
             <label style={{ flexBasis: "100%" }}>
               {t.orchTaskLabel}
@@ -221,7 +258,7 @@ export function OrchTab({ selection }: OrchTabProps) {
             <button
               type="button"
               className="start"
-              disabled={!lineup.length || !task.trim() || starting}
+              disabled={!hasWorker || !task.trim() || starting}
               onClick={() => void handleStart()}
             >
               {starting ? t.orchStarting : t.orchRunBtn}

@@ -245,7 +245,7 @@ export interface OrchRun {
   id: string;
   created_at: number;
   updated_at: number;
-  status: "working" | "done" | "needs_human" | "failed" | "cancelled";
+  status: "briefing" | "working" | "deciding" | "done" | "needs_human" | "failed" | "cancelled";
   lang: string;
   task: string;
   verdict_hint: string;
@@ -254,6 +254,11 @@ export interface OrchRun {
   results: OrchResultItem[];
   outcome: OrchOutcome | null;
   error: string | null;
+  /** Controller's briefing-phase output, once parsed — the ACTUAL text sent
+   * to workers when a controller is assigned and cooperates; "" if no
+   * controller, or the controller didn't produce a usable brief (raw `task`
+   * was used instead, same as when no controller exists at all). */
+  brief: string;
 }
 
 /** `_status_payload()`'s lightweight `orch.active` view (`web_orch.

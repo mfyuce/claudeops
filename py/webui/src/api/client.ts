@@ -353,7 +353,7 @@ export const getOrchRun = (runId: string): Promise<GetOrchRunResult> =>
   apiGet<GetOrchRunResult>(`/api/orch/run?id=${encodeURIComponent(runId)}`);
 
 export interface OrchStartParticipant {
-  role: "worker";
+  role: string;
   host: string;
   name: string;
 }
