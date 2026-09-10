@@ -258,6 +258,7 @@ export interface Strings {
   tunnelInfoLabel: string;
   tunnelNoneMsg: string;
   settingsDesc: string;
+  settingsSingleUserWarning: string;
   settingsAuto: string;
   settingsAutoModel: (model: string) => string;
   themeLabel: string;
@@ -527,6 +528,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tunnelInfoLabel: "bu makinenin tüneli",
     tunnelNoneMsg: "aktif tünel yok (py/cops service install veya web --tunnel ile başlatın)",
     settingsDesc: "Bu ayarlar sunucu tarafında saklanır (~/.claude/claudeops/settings.json) — telefon dahil hangi cihaz/tarayıcıdan girerseniz girin aynı görünür. Her seçim anında kaydedilir.",
+    settingsSingleUserWarning: "⚠ Bu tek-kullanıcılık bir araç: token'ını/tünel URL'ini kimseyle paylaşma — erişen herkes senin CLI session'larını (ve arkalarındaki provider hesabını) sürebilir, çoğu provider'ın kullanım şartları buna izin vermeyebilir.",
     settingsAuto: "(otomatik)",
     settingsAutoModel: (model) => `(otomatik: ${model})`,
     themeLabel: "tema",
@@ -810,6 +812,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tunnelInfoLabel: "this machine's tunnel",
     tunnelNoneMsg: "no active tunnel (start with py/cops service install or web --tunnel)",
     settingsDesc: "These settings are stored server-side (~/.claude/claudeops/settings.json) — the same on every device/browser you sign in from, phone included. Each choice saves instantly.",
+    settingsSingleUserWarning: "⚠ This is a single-user tool: never share your token or tunnel URL — anyone with access can drive your CLI sessions (and whichever provider account is behind them), which most providers' terms of service may not allow.",
     settingsAuto: "(auto)",
     settingsAutoModel: (model) => `(auto: ${model})`,
     themeLabel: "theme",

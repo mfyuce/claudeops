@@ -66,6 +66,7 @@ export function SettingsTab() {
 
   return (
     <>
+      <div className="warn-banner">{t.settingsSingleUserWarning}</div>
       <div className="opts" id="settingsPanel">
         <span className="opts-hint" style={{ flexBasis: "100%" }}>
           {t.settingsDesc}

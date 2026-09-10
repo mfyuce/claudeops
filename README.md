@@ -17,6 +17,12 @@ Full install instructions, all `web` panel features, and the command list: **[`p
 
 MIT licensed — see [`LICENSE`](LICENSE).
 
+> **This is a single-user tool.** The web panel and its OpenAI-compatible API (`/v1/*`) let anyone
+> who has the token fully drive your live CLI sessions — including whichever AI account is behind
+> them. Letting someone else use your instance can turn a single-user account into a de-facto
+> shared one, which most providers' terms of service don't allow. Never share the token or publicly
+> announce the tunnel URL; treat both like a password.
+
 ## What it can do
 
 **Fleet management**

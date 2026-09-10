@@ -11,6 +11,14 @@ Sebep: localhost-only için önemsizdi, ama tünelle internete açılabildiği i
 fleet'i başlatıp durdurabilir. Token ~/.claude/claudeops/web.token'da persist
 edilir (ilk çalıştırmada random üretilir, chmod 600).
 
+TEK-KULLANICI ARAÇ (TOBEDECIDED#23, 2026-09-10 karar: kapsam GENEL — sadece
+claude değil, hangi provider olursa olsun): token bir "paylaşım" mekanizması
+DEĞİL — onu bilen HERKES panele/`/v1/*`'e girip session'larını (dolayısıyla
+arkalarındaki provider hesabını) tam sürebilir. Çoğu provider'ın kullanım
+şartları tek-kullanıcı hesabın fiilen çok-kullanıcılı bir servise
+dönüşmesine izin vermeyebilir — token'ı KİMSEYLE paylaşma, tünel URL'ini
+public duyurma (bkz. `run()`'ın startup uyarısı + README'nin tepesindeki not).
+
 Start = spawn_session(force_new=<UI seçimi>) — varsayılan resume (--new değil).
 Stop = kill_session_and_parent(grace=KILL_GRACE_SECONDS) — aynı 10s
 truncation-safe kural ([[claude-2183-conversation-truncation]]) + parent bash'i
@@ -1736,6 +1744,13 @@ def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
 # (aşağıda açıkça REDDEDİLİYOR), uzak-host proxy'si (`web_hosts`), durmuş bir
 # session'ı ilk istekte otomatik başlatma. Hepsi doğal birer devam adımı —
 # ilgili yerlerde tek tek not düşüldü.
+#
+# ⚠ TEK-KULLANICI (TOBEDECIDED#23, bkz. Kapatılmış #23): bu katman panele
+# erişen HERKESİN senin çalışan session'larını (dolayısıyla altındaki
+# provider hesabını) sürmesini teknik olarak KOLAYLAŞTIRIR — Anthropic dahil
+# çoğu provider'ın ToS'u tek-kullanıcı hesap paylaşımını yasaklıyor olabilir.
+# #21'in ship kararı bu riski BİLEREK kabul etti; token-gate zaten var olan
+# tek korumadır (üstte tarif edildi) — paylaşma.
 
 # `model` = claudeops session ADI. Ayrı bir eşleme tablosu YOK: çağıran, kendi
 # çalışan session'larından hangisiyle konuşacağını OpenAI'nin `model` alanına
@@ -2700,6 +2715,9 @@ def run(args) -> int:
     url = f"http://{args.host}:{args.port}/?token={token}"
     print(f"claudeops web  →  {url}")
     print(f"  token dosyası: {TOKEN_FILE} (chmod 600)")
+    print("  ⚠ Bu token'ı KİMSEYLE paylaşma — panele/API'ye erişen herkes senin CLI")
+    print("    session'larını (ve arkalarındaki provider hesabını) sürebilir; çoğu")
+    print("    provider'ın ToS'u tek-kullanıcı hesap paylaşımına izin vermeyebilir.")
     print("  Ctrl-C ile durdur.")
     if args.host not in ("127.0.0.1", "localhost"):
         print(f"  ⚠ {args.host}: localhost dışına bind — token olsa bile gereksiz risk, gerekmedikçe kullanma.")

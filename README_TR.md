@@ -17,6 +17,13 @@ Detaylı kurulum, `web` panelinin tüm özellikleri ve komut listesi: **[`py/REA
 
 MIT lisanslı — bkz. [`LICENSE`](LICENSE).
 
+> **Bu tek-kullanıcılık bir araç.** Web paneli ve OpenAI-uyumlu API'si (`/v1/*`), token'a sahip
+> HERKESİN senin çalışan CLI session'larını — dolayısıyla arkalarındaki hangi AI hesabıysa onu —
+> tam olarak sürmesine izin verir. Instance'ını başkasıyla paylaşmak, tek-kullanıcılık bir hesabı
+> fiilen çok-kullanıcılı bir servise dönüştürebilir; bu çoğu provider'ın kullanım şartlarının izin
+> vermediği bir şeydir. Token'ı kimseyle paylaşma, tünel URL'ini public duyurma — ikisine de parola
+> gibi davran.
+
 ## Neler yapabilir
 
 **Fleet yönetimi**
