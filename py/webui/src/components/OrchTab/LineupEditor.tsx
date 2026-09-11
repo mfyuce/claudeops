@@ -17,6 +17,7 @@
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { eligibleSelectedSessions } from "../../state/orch";
+import { LOCAL_HOST } from "../../state/hosts";
 import type { OrchDraftParticipant } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 
@@ -52,6 +53,11 @@ export function LineupEditor({ lineup, selection, onAddSelected, onRemove, onRol
           {lineup.map((p) => (
             <div key={`${p.host}:${p.name}`} style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
               <span>{p.name}</span>
+              {p.host !== LOCAL_HOST && (
+                <span className="cli-badge" title={t.hostBadgeHint(p.host)}>
+                  {p.host}
+                </span>
+              )}
               <span className="cli-badge">{p.cli}</span>
               <select value={p.role} onChange={(e) => onRoleChange(p.host, p.name, e.target.value)}>
                 {ROLE_OPTIONS.map((r) => (

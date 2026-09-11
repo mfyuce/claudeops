@@ -14,18 +14,21 @@ import concurrent.futures
 import dataclasses
 import itertools
 import os
+import re
 import secrets
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from .. import hosts as hosts_mod
 from .. import orchestration as orch
 from .. import orch_store
 from .. import turns
 from ..diaglog import diag_log
 from ..discovery import find_sessions
 from ..providers import get_provider
-from ..tmux_backend import is_tmux_backed, tmux_send_keys
+from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_send_keys
+from . import web_hosts
 from . import web_ws
 
 MAX_PARALLEL_WORKERS = 4
@@ -58,11 +61,35 @@ def _new_run_id() -> str:
     return "r" + time.strftime("%Y%m%d_%H%M%S") + "_" + secrets.token_hex(3)
 
 
+@dataclasses.dataclass
+class _RemoteRef:
+    """Uzak-host session'ları için `discovery.Session`'ın yerine geçen minimal
+    stand-in. `_run_turn`'ün ihtiyaç duyduğu TEK ŞEY host/name/cli/cwd — uzak
+    session'ın turn-mekaniğinin TAMAMI (`_send_prompt`/`_fetch_exchange`)
+    `web_hosts` proxy'sinden HTTP ile geçtiği için lokal bir dosya yolu/pid
+    hiç gerekmiyor. `sid` her zaman None (agy'nin fresh-session/live_snapshot
+    kavramı tamamen local, uzak katılımcılara hiç uygulanmıyor)."""
+    host: str
+    name: str
+    cli: str
+    cwd: str
+    sid: Optional[str] = None
+
+
 def _eligible_index() -> Dict[Tuple[str, str], Any]:
-    """(host, name) → canlı Session. `_v1_eligible_sessions()` (web.py) ile
-    AYNI üçlü, sadece SÖZLÜK olarak (participant çözümlemesi isim-bazlı) —
-    v1 kapsamı: SADECE local (uzak host session'ları burada asla görünmez,
-    `_preflight` ayrıca host!=local'ı erken/net bir mesajla reddeder)."""
+    """(host, name) → canlı Session (local) ya da _RemoteRef (uzak host).
+
+    Local: `_v1_eligible_sessions()` (web.py) ile AYNI üçlü şart (çalışıyor +
+    tmux-backed + has_conversation()).
+
+    Uzak (TOBEDECIDED#20, 2026-09-11): `web_hosts`'un arka-plan poller
+    cache'i (`get_cached()`, asla network'e gitmez) — host `ok:true`
+    DEĞİLSE ya da bir satır `tmux:false` İSE tamamen atlanır.
+    `has_conversation()`'ın uzak eşdeğeri BURADA AYRICA kontrol EDİLMİYOR
+    (ekstra bir proxy round-trip'i gerektirirdi, preflight'ı N-katlı ağ
+    çağrısına çevirirdi) — o kontrol `_run_turn`'ün baseline-fetch adımına
+    ERTELENMİŞ (`_fetch_exchange` None dönerse zaten "unreachable" statüsüne
+    düşer, aynı sonuç, sadece preflight yerine dispatch anında fark edilir)."""
     out: Dict[Tuple[str, str], Any] = {}
     for s in find_sessions(measure_cpu=False):
         if not is_tmux_backed(s.pid):
@@ -70,6 +97,18 @@ def _eligible_index() -> Dict[Tuple[str, str], Any]:
         if not get_provider(s.cli).has_conversation():
             continue
         out[("local", s.name)] = s
+    for host_record in hosts_mod.load_hosts():
+        host_name = host_record["name"]
+        cached = web_hosts.get_cached(host_name)
+        if cached is None or not cached.get("ok"):
+            continue
+        for row in cached.get("sessions", []):
+            name = row.get("name")
+            if not name or not row.get("tmux"):
+                continue
+            out[(host_name, name)] = _RemoteRef(
+                host=host_name, name=name, cli=row.get("cli") or "", cwd=row.get("cwd") or "",
+            )
     return out
 
 
@@ -86,7 +125,12 @@ def _preflight(participants: List[dict]) -> Optional[str]:
     aynen istediği kural. Çakışma kontrolü (aynı (host,cli,cwd)) ÜÇ rolün
     TAMAMINA uygulanıyor, sadece worker'lara değil (2026-09-07
     `resolve_resume_id` collision incident'ının AYNISI bir controller/
-    decider için de geçerli)."""
+    decider için de geçerli).
+
+    Uzak-host katılımcılar (TOBEDECIDED#20, 2026-09-11) artık kabul
+    ediliyor — eskiden burada host!=local kategorik olarak reddediliyordu,
+    şimdi `_eligible_index()` zaten uzak session'ları da taşıdığı için tek
+    kontrol aşağıdaki "eligible mi" lookup'u, host'a göre AYRI bir dal yok."""
     if not participants:
         return "no participants given"
     for p in participants:
@@ -109,8 +153,6 @@ def _preflight(participants: List[dict]) -> Optional[str]:
         name = str(p.get("name") or "").strip()
         if not name:
             return "a participant is missing a name"
-        if host != "local":
-            return f"'{name}': remote-host participants aren't supported yet (TOBEDECIDED#20)"
         s = index.get((host, name))
         if s is None:
             return f"'{name}': not an eligible running session (must be running, tmux-backed, and hold a conversation)"
@@ -193,6 +235,96 @@ def _push_result(run_id: str, name: str, verdict: str, text: str) -> bool:
     return True
 
 
+def _send_prompt(host: str, name: str, cli: str, prompt: str) -> bool:
+    """Bir katılımcıya (worker/controller/decider fark etmez) tek bir mesaj
+    gönder — local ise doğrudan tmux, uzak ise `web_hosts` proxy'si
+    (`/api/term/input`, Terminal view'ın zaten kullandığı AYNI yol, TODO.md
+    2026-09-07 "DONE"). `_run_turn`'ün dispatch adımı VE `_run_thread`'in
+    controller-handoff'u bu TEK fonksiyonu paylaşır — ikisi de aynı işlem
+    (birine bir metin yolla), host dalı tekrarlanmasın diye."""
+    if host == "local":
+        return tmux_send_keys(name, prompt, settle_delay=get_provider(cli).input_settle_delay())
+    result, _status = web_hosts.proxy_action("/api/term/input", host, {"name": name, "text": prompt})
+    return bool(result.get("ok"))
+
+
+def _fetch_exchange(host: str, name: str, cwd: str, sid: Optional[str], provider) -> Optional[dict]:
+    """Bir katılımcının GÜNCEL son user/assistant çiftini oku — `_run_turn`'ün
+    hem BAŞLANGIÇ baseline'ı hem `_wait_for_reply_remote`'un her poll'undaki
+    "şimdiki durum" için AYNI fonksiyon (tıpkı local yolun `provider.
+    last_exchange()`'i ikisi için de kullanması gibi). Local: doğrudan
+    `provider.last_exchange(cwd, sid)`. Uzak: `/api/term/chat` (mode=last) —
+    `_term_chat`'in döndürdüğü `{"user","assistant"}` şekli local'inkiyle
+    BİREBİR AYNI olduğu için çağıranın karşılaştırma mantığı (değişti mi/
+    marker var mı) host'a göre hiç dallanmıyor, sadece BU fonksiyon dallanıyor."""
+    if host == "local":
+        return provider.last_exchange(cwd, sid)
+    result, _status = web_hosts.proxy_get("/api/term/chat", host, {"name": name, "mode": "last"})
+    if not result.get("ok") or not result.get("supported"):
+        return None
+    return {"user": result.get("user", ""), "assistant": result.get("assistant", "")}
+
+
+def _remote_busy_now(host: str, name: str, pattern: str) -> bool:
+    """`turns.is_busy_now`'ın uzak eşdeğeri — `/api/term/output`'un ham
+    (ANSI'li) pane metni üstünde AYNI `strip_ansi`+regex disiplini."""
+    result, _status = web_hosts.proxy_get("/api/term/output", host, {"name": name})
+    if not result.get("ok"):
+        return False
+    return bool(re.search(pattern, strip_ansi(result.get("text") or "")))
+
+
+def _wait_for_reply_remote(host: str, name: str, provider, baseline: dict, *, timeout: float, poll: float,
+                            stable_polls: int, require_marker: Optional[str], cancel: threading.Event,
+                            push_check) -> Optional[str]:
+    """`turns.wait_for_reply`'nin uzak-host eşdeğeri — AYNI iki strateji
+    (busy-pattern varsa onu, yoksa stable-debounce'u kullan), sadece pane/
+    transcript okuması local yerine `web_hosts` proxy'sinden geliyor.
+
+    `turns.py`'ye TAŞINMADI/BİRLEŞTİRİLMEDİ (bilerek): o modül host/proxy
+    kavramını hiç bilmeyen paylaşımlı bir primitif — `/v1/chat/completions`
+    (TOBEDECIDED#21) de kullanıyor ve o ASLA remote olmayacak (kendi "açık
+    kalan" listesinin #1 maddesi). Uzak-host mantığını sadece ona ihtiyaç
+    duyan TEK çağıran (orkestrasyon) taşısın diye burada, ayrı tutuldu.
+    `live_snapshot`/sid-discovery YOK — agy'nin fresh-session tespiti
+    tamamen local bir kavram, uzak katılımcılara hiç uygulanmıyor."""
+    pattern = provider.busy_status_pattern()
+    previous: Optional[dict] = None
+    stable_count = 0
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if cancel is not None and cancel.is_set():
+            return None
+        time.sleep(poll)
+        if cancel is not None and cancel.is_set():
+            return None
+
+        if push_check is not None:
+            pushed = push_check()
+            if pushed is not None:
+                return pushed
+
+        exchange = _fetch_exchange(host, name, "", None, provider)
+        if exchange is None:
+            return None
+        changed = exchange != baseline
+        assistant_text = exchange.get("assistant", "")
+        marker_ok = (require_marker is None) or (require_marker in assistant_text)
+
+        if pattern:
+            if not _remote_busy_now(host, name, pattern) and changed and marker_ok:
+                return assistant_text
+        else:
+            if changed and exchange == previous:
+                stable_count += 1
+            else:
+                stable_count = 1 if changed else 0
+            previous = exchange
+            if changed and marker_ok and stable_count >= stable_polls:
+                return assistant_text
+    return None
+
+
 def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, str], Any],
               prompt: str, timeout: float, cancel_event: threading.Event, require_marker: str,
               run_id: str) -> orch.RunResult:
@@ -204,20 +336,26 @@ def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, s
     dışında `_one_worker`'ın Phase 1'deki gövdesiyle BİREBİR AYNI mekanizma.
 
     `run_id` (Phase 3): SADECE `_push_result`'ın (run_id,name) anahtarını
-    kaydetmek/silmek için — turun geri kalanında kullanılmıyor."""
+    kaydetmek/silmek için — turun geri kalanında kullanılmıyor.
+
+    `p.host` (TOBEDECIDED#20, 2026-09-11): local ile uzak arasındaki TEK
+    fark `_send_prompt`/`_fetch_exchange`/wait-fonksiyonu seçimi — geri
+    kalan gövde (push-key/finally/elapsed/RunResult inşası) host'a göre
+    hiç dallanmıyor."""
     created_at = time.time()
     s = index.get((p.host, p.name))
     if s is None:
         return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
                                cli=p.cli, created_at=created_at, status="unreachable")
     provider = get_provider(s.cli)
-    baseline = provider.last_exchange(s.cwd, s.sid)
+    baseline = _fetch_exchange(p.host, s.name, s.cwd, s.sid, provider)
     if baseline is None:
         return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
                                cli=p.cli, created_at=created_at, status="unreachable")
     # Fresh/hiç resume edilmemiş agy session'ı — 2026-09-09 commit `1356edc`
-    # ile AYNI fallback (bkz. `turns.wait_for_reply` docstring'i).
-    live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
+    # ile AYNI fallback (bkz. `turns.wait_for_reply` docstring'i). Uzak
+    # katılımcılar için ASLA (yukarıdaki `_RemoteRef.sid` hep None).
+    live_snapshot = provider.snapshot_for_live_sid(s.cwd) if (p.host == "local" and s.sid is None) else None
 
     # `_WAITING`'e send_keys'ten ÖNCE eklenir (send başarısız da olsa `finally`
     # temizler) — aradaki pencerede (mesaj gitti ama henüz kayıtlı değildik)
@@ -228,8 +366,8 @@ def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, s
         _WAITING.add(push_key)
     try:
         t0 = time.monotonic()
-        diag_log("orch_turn_dispatch", name=s.name, seq=seq, kind=kind, chars=len(prompt))
-        if not tmux_send_keys(s.name, prompt, settle_delay=provider.input_settle_delay()):
+        diag_log("orch_turn_dispatch", name=s.name, host=p.host, seq=seq, kind=kind, chars=len(prompt))
+        if not _send_prompt(p.host, s.name, s.cli, prompt):
             return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
                                    cli=p.cli, created_at=created_at, status="send_failed")
 
@@ -237,12 +375,20 @@ def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, s
             with _PUSH_LOCK:
                 return _PUSHED.pop(push_key, None)
 
-        reply = turns.wait_for_reply(
-            s, provider, baseline, live_snapshot,
-            timeout=timeout, poll=1.0, stable_polls=3,
-            require_marker=require_marker, cancel=cancel_event,
-            push_check=_push_check,
-        )
+        if p.host == "local":
+            reply = turns.wait_for_reply(
+                s, provider, baseline, live_snapshot,
+                timeout=timeout, poll=1.0, stable_polls=3,
+                require_marker=require_marker, cancel=cancel_event,
+                push_check=_push_check,
+            )
+        else:
+            reply = _wait_for_reply_remote(
+                p.host, s.name, provider, baseline,
+                timeout=timeout, poll=1.0, stable_polls=3,
+                require_marker=require_marker, cancel=cancel_event,
+                push_check=_push_check,
+            )
     finally:
         with _PUSH_LOCK:
             _WAITING.discard(push_key)
@@ -413,7 +559,7 @@ def _run_thread(run_id: str, workers: List[orch.Participant], controller: Option
 
         if controller is not None and not cancel_event.is_set():
             handoff_msg = orch.build_handoff_message(task, outcome)
-            sent = tmux_send_keys(controller.name, handoff_msg, settle_delay=get_provider(controller.cli).input_settle_delay())
+            sent = _send_prompt(controller.host, controller.name, controller.cli, handoff_msg)
             results.append(orch.RunResult(
                 seq=next(seq_counter), kind="final", role="controller", host=controller.host,
                 name=controller.name, cli=controller.cli, created_at=time.time(),

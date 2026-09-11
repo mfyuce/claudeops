@@ -14,6 +14,7 @@
 
 import type { ReactNode } from "react";
 import { useLang } from "../../i18n/LangContext";
+import { LOCAL_HOST } from "../../state/hosts";
 import type { Strings } from "../../i18n/strings";
 import type { OrchResultItem, OrchRun } from "../../api/types";
 
@@ -106,7 +107,14 @@ export function RunView({ run, onCancel }: RunViewProps) {
         {controller && (
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: ".4rem" }}>
-              <b>{controller.name}</b>
+              <span>
+                <b>{controller.name}</b>
+                {controller.host !== LOCAL_HOST && (
+                  <span className="cli-badge" title={t.hostBadgeHint(controller.host)}>
+                    {controller.host}
+                  </span>
+                )}
+              </span>
               <span className="cli-badge">{t.orchRoleLabel("controller")}</span>
             </div>
             <StatusLine status={briefResult?.status ?? (isLive && run.status === "briefing" ? "pending" : null)} elapsed={briefResult?.elapsed} t={t} />
@@ -124,7 +132,14 @@ export function RunView({ run, onCancel }: RunViewProps) {
           return (
             <Card key={`${p.host}:${p.name}`}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: ".4rem" }}>
-                <b>{p.name}</b>
+                <span>
+                  <b>{p.name}</b>
+                  {p.host !== LOCAL_HOST && (
+                    <span className="cli-badge" title={t.hostBadgeHint(p.host)}>
+                      {p.host}
+                    </span>
+                  )}
+                </span>
                 <span className="cli-badge">{p.cli}</span>
               </div>
               <StatusLine status={status} elapsed={r?.elapsed} t={t} />
@@ -136,7 +151,14 @@ export function RunView({ run, onCancel }: RunViewProps) {
         {decider && (
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: ".4rem" }}>
-              <b>{decider.name}</b>
+              <span>
+                <b>{decider.name}</b>
+                {decider.host !== LOCAL_HOST && (
+                  <span className="cli-badge" title={t.hostBadgeHint(decider.host)}>
+                    {decider.host}
+                  </span>
+                )}
+              </span>
               <span className="cli-badge">{t.orchRoleLabel("decider")}</span>
             </div>
             <StatusLine status={decisionResult?.status ?? (isLive && run.status === "deciding" ? "pending" : null)} elapsed={decisionResult?.elapsed} t={t} />
