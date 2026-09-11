@@ -49,7 +49,7 @@ from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
-from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, POST_MESSAGE_SETTLE_SECONDS
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..hosts import LOCAL_HOST_NAME, save_host, remove_host, list_hosts_public
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
@@ -1526,11 +1526,17 @@ def _handover(name: str, lang: str = "tr") -> dict:
     içindi, session hiç ölmediği için o pencere yok.
 
     Aynı gün ikinci bir istek eklendi: "handover komutu öncesi model sonnet'e
-    ve sonrası eski modele. seçili model daha düşükse kalsın." — `handover.py`'nin
-    `handover_faz1()`'iyle AYNI mantık/kod yolu (`provider.handover_model_downgrade`/
-    `apply_live_model_switch`, ikisi de canlı doğrulandı — bkz. o fonksiyonun
-    docstring'i, özellikle NAİF bir sabit-bekleme yaklaşımının canlıda GERÇEK
-    bir mesaj kaybına yol açtığı bulgusu).
+    ve sonrası eski modele" — `handover.py`'nin `handover_faz1()`'iyle AYNI
+    mantık/kod yolu (`provider.handover_model_downgrade`/`apply_live_model_switch`).
+
+    2026-09-11 GÜNCELLEME: restore ("sonrası eski modele") adımı KALDIRILDI —
+    bkz. `handover.py`'nin `handover_faz1()` içindeki 2026-09-11 yorumu. Kök
+    sebep: `/model <ad>` session-scope değil, claude CLI'nin GLOBAL varsayılan
+    modelini de değiştiriyor ("saved as your default for new sessions") — bir
+    fable/opus session'ı restore etmek fleet'in varsayılanını (sonnet olması
+    gerekirken) sessizce o modele kaydırıyordu. Artık sadece downgrade (ucuz
+    modele geçiş) yapılıyor; session bir sonraki restart'ta `--model` (global'i
+    kirletmeyen spawn-time yol) ile kendi gerçek modeline dönüyor.
     """
     procs = _find_running(name)
     if not procs:
@@ -1546,15 +1552,6 @@ def _handover(name: str, lang: str = "tr") -> dict:
         provider.apply_live_model_switch(name, downgrade)
 
     sent = tmux_send_keys(name, message, settle_delay=provider.input_settle_delay())
-
-    if downgrade:
-        # bkz. handover.py'nin POST_MESSAGE_SETTLE_SECONDS yorumu — bu bekleme
-        # OLMADAN canlı testte restore komutu wrap-up mesajının input
-        # kutusuna karışıp SESSİZCE kayboldu (session yanlış modelde takılı
-        # kaldı). `apply_live_model_switch`'in kendi poll'u "hâlâ meşgul mü"
-        # durumunu zaten ele alıyor — bu sadece klavye-seviyesi çakışmayı önlüyor.
-        time.sleep(POST_MESSAGE_SETTLE_SECONDS)
-        provider.apply_live_model_switch(name, procs[0].model or "")
 
     if not sent:
         diag_log("handover_send_failed", name=name)
