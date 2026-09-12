@@ -40,6 +40,17 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # (her host'un kendi ayrı dosyası, bkz. hosts.py/web_hosts.py'nin
                               # federasyon tasarımı) burası PATH değiştirmeden aynı sonucu verir,
                               # hiçbir shared konuma dokunmadan.
+    "byok": {},              # {cli: {ENV_VAR: value}} — 2026-09-13, TODO.md'nin "BYOK" maddesi:
+                              # bir provider'ın KENDİ bring-your-own-key mekanizmasına (ör. copilot'un
+                              # COPILOT_PROVIDER_BASE_URL/_API_KEY/COPILOT_MODEL — `copilot help
+                              # providers`, DeepSeek/Ollama/Azure gibi GitHub-dışı bir backend'e
+                              # yönlendirir) enjekte edilecek ham env değişkenleri. Ayarlar sekmesinde
+                              # BİLEREK bir UI alanı YOK (API-key bir SIR, bu dosyanın geri kalanı gibi
+                              # düz tercih değil — maskeleme/izin tasarımı ayrı bir karar) — bugün için
+                              # sadece dosyanın kendisini elle düzenleyerek ya da save_settings()'in
+                              # (herhangi bir DEFAULT_SETTINGS anahtarını genel kabul eden) mevcut
+                              # `/api/settings` yoluyla set edilir. Boş (varsayılan) = provider kendi
+                              # normal routing'ine/login'ine göre spawn olur, hiçbir şey enjekte edilmez.
 }
 
 
@@ -57,6 +68,8 @@ def load_settings() -> Dict[str, Any]:
                 out["default_model"] = {}
             if not isinstance(out.get("provider_bin"), dict):
                 out["provider_bin"] = {}
+            if not isinstance(out.get("byok"), dict):
+                out["byok"] = {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return out
@@ -113,3 +126,27 @@ def default_model_for(provider: "CliProvider") -> str:
     choices = provider.model_choices()
     override = (load_settings().get("default_model") or {}).get(provider.name) or ""
     return override if override in choices else choices[0]
+
+
+def byok_env_for(cli_name: str) -> Dict[str, str]:
+    """`settings.json`'ın `byok[cli_name]` alanı — bkz. DEFAULT_SETTINGS'teki
+    `byok` yorumu. Provider'ların `env_overrides()`'ı bunu kendi COPS_NAME'ine
+    EK olarak döndürür (`spawn.py` ikisini de aynı şekilde, sırayla `env
+    KEY=VAL ...` olarak komut satırına gömer — bkz. o dosyanın yorumu, tek bir
+    anahtara özel bir varsayım YOK).
+
+    Bozuk/eksik veri asla fırlatmaz: `cli_name` altında ne varsa (dict değilse
+    dahi) `{}`'e düşer, iç değerler `str()`'e zorlanır (settings.json elle
+    düzenlenebiliyor — bir sayı/bool/liste yazılmışsa `env KEY=VAL` gömme adımı
+    yine de bir `str` bekler).
+
+    `save_settings()`'in `default_model`/`provider_bin` için yaptığı ALAN-BAZLI
+    merge BURADA YOK (`byok`'un şekli `{cli: {env: val}}` — o ikisinin düz
+    `{cli: str}`'inden farklı, aynı merge mantığı doğrudan uygulanamaz) — bugün
+    hiçbir yazıcı (Ayarlar UI'ı, `/api/settings`) bu alana yazmadığı için pratik
+    bir fark yaratmıyor; ileride bir yazıcı eklenirse ya kendi merge'ini yapmalı
+    ya da her seferinde TÜM `byok` dict'ini göndermeli."""
+    raw = (load_settings().get("byok") or {}).get(cli_name)
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items() if v}

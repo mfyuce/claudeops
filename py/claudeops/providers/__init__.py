@@ -7,6 +7,7 @@ from .base import CliProvider, McpServerSpec
 from .claude_provider import ClaudeProvider
 from .agy_provider import AgyProvider
 from .codex_provider import CodexProvider
+from .copilot_provider import CopilotProvider
 from .shell_provider import ShellProvider
 
 DEFAULT_CLI = "claude"
@@ -15,6 +16,7 @@ PROVIDERS: Dict[str, CliProvider] = {
     "claude": ClaudeProvider(),
     "agy": AgyProvider(),
     "codex": CodexProvider(),
+    "copilot": CopilotProvider(),
     "shell": ShellProvider(),
 }
 
