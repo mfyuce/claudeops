@@ -9,18 +9,31 @@ Farklar (agy/codex'e göre, ikisi de en yakın emsal):
   user_message, assistant_response, ...)`. Bu yüzden `last_exchange`/`full_history`
   agy'nin reverse-engineering'ini GEREKTİRMEDİ, düz SQL yeterli — ilk planın "SQLite
   şeması bilinmiyor, ertelensin" varsayımı yanlış çıktı, şema kendi kendini anlatıyordu.
-- Model listesi CANLI çekilecek bir komut YOK (`agy models`/codex'in `models_cache.json`
-  dosyasının muadili bulunamadı — `~/.copilot/data.db`'nin `provider_models` tablosu BOŞ,
-  sadece BYOK kullanılınca dolabilir gibi duruyor). Sabit, KÜÇÜK bir liste kullanılıyor
-  (bu hesapta canlı doğrulanan TEK model: "gpt-5.4" — `gpt-5.2`/`gpt-5`/`gpt-4.1`/`o3`/
-  `claude-sonnet-4.5` hepsi bu hesapta reddedildi, canlı test edildi). CLI geçersiz bir
-  `--model` değerine karşı İKİ FARKLI davranış gösteriyor (canlı doğrulandı): interaktif
-  modda SESSİZCE en yakın geçerli modele düşüyor + bir uyarı basıyor ("Model \"X\" ...
-  not available. Using \"gpt-5.4\" instead."), ama `-p` (headless) modda SERT hata verip
-  hiç başlamıyor. claudeops HER ZAMAN interaktif spawn ettiği için (tmux pane, `-p` değil)
-  bu liste zamanla STALE olsa bile spawn ÇÖKMÜYOR — sadece kullanıcı beklemediği bir model
-  görebilir. Codex provider'ın "küçük/özel hesap roster'ı" durumuyla AYNI kabul edilebilir
-  risk sınıfı.
+- Model listesi CANLI çekilecek bir KOMUT yok (`agy models`/codex'in `models_cache.json`
+  dosyasının muadili bulunamadı — `~/.copilot/data.db`'nin `provider_models` tablosu BOŞ)
+  ama ⚠ **2026-09-13 düzeltme: ilk sürümün "sadece 1 model" varsayımı YANLIŞTI** — canlı
+  komut yok ama interaktif `/model` bir SEÇİCİ açıyor ve o seçici hesabın GERÇEK ~19
+  modelini listeliyor (canlı doğrulandı, izole scratch session, `/model` + capture-pane).
+  `MODEL_CHOICES` şimdi bu seçiciden görülen isimlerden türetildi — ama 4'ü DIŞINDA HİÇBİRİ
+  (17 model, 13'ü doğrulanmadı) tek tek seçilip config.json/status çubuğuyla doğrulanmadı
+  (4'ü: `gpt-5.4` orijinal `--model gpt-5.4` spawn'ıyla, `gpt-5.6-terra`/`claude-sonnet-5`
+  seçiciden seçilip config.json'a yazıldığı GÖRÜLEREK, `gemini-3.8-flash` ise doğrudan
+  `--model gemini-3.8-flash` spawn'ıyla — status çubuğu "Gemini 3.8 Flash" gösterdi,
+  fallback YOKTU). Geri kalanlar
+  seçicinin GÖRÜNEN İSİMLERİNDEN aynı desenle (küçük harf, boşluk→tire, NOKTALAR
+  KORUNUYOR — "GPT-5.6 Terra"→`gpt-5.6-terra`, nokta tireye ÇEVRİLMİYOR, doğrulanan 2
+  örnekte de böyle) türetildi, TEK TEK doğrulanmadı. "Unavailable models" başlığı altında
+  görülen 2 model (`gpt-5.6-sol`, `gpt-5.5`) BİLEREK listeye EKLENMEDİ (seçicinin kendisi
+  bunları kullanılamaz işaretliyor). CLI geçersiz bir `--model` değerine karşı İKİ FARKLI
+  davranış gösteriyor (canlı doğrulandı): interaktif modda SESSİZCE en yakın geçerli
+  modele düşüyor + bir uyarı basıyor ("Model \"X\" ... not available. Using \"gpt-5.4\"
+  instead."), ama `-p` (headless) modda SERT hata verip hiç başlamıyor. claudeops HER
+  ZAMAN interaktif spawn ettiği için (tmux pane, `-p` değil) buradaki 13 doğrulanmamış
+  tahminden biri yanlış çıksa bile spawn ÇÖKMÜYOR — sadece kullanıcı beklemediği bir
+  modele düşebilir, bu yüzden hepsini tek tek doğrulamadan eklemek (agy/codex'in
+  "küçük/özel hesap roster'ı" ile AYNI kabul edilebilir risk sınıfı) "sadece 1 model
+  var" göstermekten kesinlikle daha iyi (canlı kullanıcı raporu: "model listesinde
+  sadece iki tane var 10 parca olmalı idi").
 - effort `--effort`/`--reasoning-effort <low|medium|high|xhigh>` (agy/codex'in ayrı
   flag'ine benzer, ikisi AYNI bayrağın takma adı).
 - permission_mode `--mode interactive|plan|autopilot` (BAŞLANGIÇ modu) + `--allow-all-tools
@@ -91,10 +104,30 @@ from ..settings import byok_env_for, resolved_binary
 
 SESSION_STORE_DB = os.path.expanduser("~/.copilot/session-store.db")
 
-# Bu hesapta canlı doğrulanan TEK model — modül docstring'ine bkz. (dinamik bir
-# "listele" komutu yok, sabit kodlanmış; stale olsa bile interaktif spawn'ı
-# çökertmez, sadece CLI kendi seçtiği bir modele sessizce düşer).
-MODEL_CHOICES = ["gpt-5.4"]
+# Modül docstring'indeki 2026-09-13 düzeltmesine bkz.: `/model` seçicisinden
+# görülen ~19 modelden "Unavailable" iki tanesi çıkarılmış hali — sadece
+# gpt-5.4/gpt-5.6-terra/claude-sonnet-5 tek tek doğrulandı, gerisi görünen
+# isimden aynı desenle türetildi (yanlış çıksa bile interaktif spawn'da
+# sessizce en yakın modele düşer, çökmez).
+MODEL_CHOICES = [
+    "gpt-5.6-terra",       # doğrulandı (config.json recentModelIds)
+    "claude-sonnet-5",     # doğrulandı (config.json recentModelIds)
+    "gemini-3.8-flash",
+    "grok-4.6",
+    "gpt-5.6-luna",
+    "gpt-5.4",             # doğrulandı (orijinal --model gpt-5.4 spawn)
+    "gpt-5.4-mini",
+    "gpt-5.3-codex",
+    "gpt-5-mini",
+    "claude-haiku-4.5",
+    "mai-code-1.1-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "grok-4.5",
+    "kimi-k3",
+    "kimi-k2.7-code",
+]
 PERMISSION_MODES = ["auto", "manual", "plan", "autopilot"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh"]
 
