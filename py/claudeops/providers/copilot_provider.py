@@ -81,6 +81,7 @@ Farklar (agy/codex'e göre, ikisi de en yakın emsal):
 """
 from __future__ import annotations
 import os
+import re
 import shlex
 import sqlite3
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
@@ -115,6 +116,16 @@ _PERMISSION_FLAGS = {
 }
 
 _RESUME_SCAN_LIMIT = 500  # session-store.db tek dosya/hafif ama sınırsız taramaya gerek yok
+
+# `/usage`'ın çıktısı (canlı doğrulandı, 2026-09-13, izole scratch session):
+#    Plan       ■■■■■■■■■■■■■■■■■■■■ 0% used
+#               11 / 1,500 AIC
+# claude'un "Current session"/"Current week (...)" gibi BİRDEN FAZLA satırının
+# aksine tek bir "Plan" satırı var (hesap tek bir AI-Credit havuzu kullanıyor
+# gibi duruyor) — o yüzden claude'un çok-satır-tarama döngüsüne gerek yok,
+# tek geçişte iki regex yeterli.
+_USAGE_PLAN_RE = re.compile(r"Plan\s+\S*\s*(\d+)%\s*used")
+_USAGE_FRACTION_RE = re.compile(r"([\d,]+\s*/\s*[\d,]+\s*AIC)")
 
 
 def _arg(cmd: List[str], flag: str) -> Optional[str]:
@@ -224,6 +235,22 @@ class CopilotProvider(CliProvider):
 
     def busy_status_pattern(self) -> Optional[str]:
         return BUSY_STATUS_PATTERN
+
+    def usage_command(self) -> Optional[str]:
+        return "/usage"
+
+    # usage_needs_dismiss(): base.py'nin varsayılanı (False) KORUNUYOR —
+    # copilot'un `/usage`'ı MODAL değil, kalıcı bir yan-panel (canlı
+    # doğrulandı, 2026-09-13: Escape gönderiminin ekranda GÖZLE GÖRÜLÜR
+    # hiçbir etkisi olmadı, panel açık kaldı) — claude'un aksine kapatma
+    # GEREKMİYOR.
+
+    def parse_usage_text(self, text: str) -> Optional[List[Dict[str, str]]]:
+        m = _USAGE_PLAN_RE.search(text)
+        if not m:
+            return None
+        fm = _USAGE_FRACTION_RE.search(text, m.end())
+        return [{"label": "Plan (AI Credits)", "percent": m.group(1), "detail": fm.group(1) if fm else ""}]
 
     def _turns(self, cwd: str, sid: Optional[str]) -> List[Tuple[str, str]]:
         """`last_exchange`/`full_history`'nin PAYLAŞTIĞI adım — claude/codex'in

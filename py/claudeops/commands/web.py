@@ -1651,6 +1651,73 @@ def _compact(name: str, lang: str = "tr") -> dict:
     return _err(lang, "compact_timeout", name=name, timeout=COMPACT_TIMEOUT_SECONDS)
 
 
+# `/usage`'ın çıktısı jsonl'e YAZILMIYOR (account/billing meta-verisi, bir
+# konuşma turu DEĞİL) — `_compact()`'in yapısal "isCompactSummary" imzasının
+# muadili yok, o yüzden burada sabit bir bekleme + pane-capture yeterli
+# (`TerminalView`'in kendi 200ms poll'undan çok daha seyrek çağrılan, kullanıcı
+# Ayarlar>Kullanım sekmesini AÇTIĞINDA tetiklenen bir aksiyon, sürekli poll
+# EDİLMİYOR — bkz. `_usage_all()`'ın çağrıldığı yer).
+USAGE_SETTLE_SECONDS = 3.0
+
+
+def _usage_for_session(s, provider) -> dict:
+    """Tek bir CANLI session'a `usage_command()`'ı enjekte edip sonucu
+    parse eder. `provider.usage_command()`'ın None DÖNMEDİĞİ (çağıran taraf
+    zaten kontrol etmiş) durumda çağrılır."""
+    command = provider.usage_command()
+    if not tmux_send_keys(s.name, command, settle_delay=provider.input_settle_delay()):
+        return {"available": False, "reason": "send_failed"}
+    time.sleep(USAGE_SETTLE_SECONDS)
+    text = strip_ansi(tmux_capture(s.name, lines=100) or "")
+    entries = provider.parse_usage_text(text)
+    if provider.usage_needs_dismiss():
+        tmux_send_special_key(s.name, "Escape")
+    if not entries:
+        return {"available": False, "reason": "parse_failed", "checked_via": s.name}
+    return {"available": True, "checked_via": s.name, "entries": entries}
+
+
+def _usage_all() -> dict:
+    """Ayarlar>Kullanım sekmesi için — HER provider'ı sırayla kontrol eder.
+
+    Kapsam bilerek "hesap" seviyesinde: session-BAZLI bir aksiyon değil (bir
+    `name` almıyor), bir provider için ŞU AN çalışan İLK tmux-backed session
+    üzerinden sorar (kullanım/kota o CLI'nın hesabına ait, hangi session
+    olduğu önemsiz). O provider'ın hiç çalışan session'ı yoksa şu an
+    kontrol EDİLEMEZ (yeni bir session açmak sırf kontrol için gereksiz/
+    müdahaleci olurdu) — `available:false, reason:"no_running_session"`.
+
+    `usage_command()` None dönen provider'lar (2026-09-13 canlı doğrulandı:
+    agy, codex — ikisinde de gerçek bir mekanizma BULUNAMADI, icat
+    edilmedi) `supported:false` ile döner, `shell` zaten `PROVIDERS`'ta var
+    ama `has_conversation()==False` olduğundan burada da anlamsız — yine de
+    listelenir (`supported:false`, tutarlılık için, "gizlice atlanan" bir
+    provider olmasın diye) `if cli=="shell"` YOK, sadece `usage_command()`
+    None dönüyor olması yeterli ayrım."""
+    running = find_sessions(measure_cpu=False)
+    out: Dict[str, dict] = {}
+    for cli_name, provider in PROVIDERS.items():
+        command = provider.usage_command()
+        if command is None:
+            out[cli_name] = {"supported": False}
+            continue
+        candidates = [s for s in running if s.cli == cli_name and is_tmux_backed(s.pid)]
+        if not candidates:
+            out[cli_name] = {"supported": True, "available": False, "reason": "no_running_session"}
+            continue
+        # Birden fazla aday varsa, kimsenin İZLEMEDİĞİ birini TERCİH et
+        # (`tmux_client_count()==0`) — canlı doğrulandı (2026-09-13, bu
+        # fonksiyonun İLK sürümü rastgele bir aday seçiyordu ve GERÇEKTEN
+        # ATTACHED bir fleet session'ına `/usage` enjekte edip ekranını anlık
+        # değiştirdi, sonra Escape'le geri döndü — veri kaybı YOK ama görünür
+        # bir kesinti oldu). Ölçülemeyen (`None`) "izleniyor olabilir" gibi
+        # TEDBİRLİ ele alınır, "kesin boş" (0) DEĞİLDİR — sadece kesin-boş
+        # bilinenler öne alınır.
+        candidates.sort(key=lambda s: 0 if tmux_client_count(s.name) == 0 else 1)
+        out[cli_name] = {"supported": True, **_usage_for_session(candidates[0], provider)}
+    return {"ok": True, "providers": out}
+
+
 def _adopt(old_name: str, new_name: str = "", model: str = "",
            permission_mode: str = "", effort: str = "", lang: str = "tr") -> dict:
     """claudeops'un AÇMADIĞI (kayıtsız/foreign) canlı bir session'ı devral.
@@ -2391,7 +2458,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/set-mode",
-                         "/api/term/open-window", "/api/settings",
+                         "/api/term/open-window", "/api/settings", "/api/usage",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
@@ -2518,6 +2585,15 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             patch = {k: v for k, v in data.items() if k != "lang"}
             self._json_notify(_save_settings(patch, lang=lang))
+            return
+
+        if path == "/api/usage":
+            # İsim/host GEREKMEZ — hesap-seviyesinde, provider başına ilk uygun
+            # çalışan session'ı kendisi bulur (bkz. `_usage_all()`'ın docstring'i).
+            # Çoklu-host federasyonuna henüz BAĞLANMADI (`web_hosts.proxy_action`'ın
+            # HOST_ROUTED_PATHS'ine eklenmedi) — bugün sadece LOKAL fleet'in
+            # kullanımını gösterir, TODO.md'ye not düşüldü.
+            self._json(_usage_all())
             return
 
         if path == "/api/hosts":

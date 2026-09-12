@@ -131,6 +131,32 @@ export interface Settings {
   provider_bin: Record<string, string>;
 }
 
+/** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in
+ * çıktısı, aynen ("label"/"percent"/"detail" hepsi zaten insan-okunur metin). */
+export interface UsageEntry {
+  label: string;
+  percent: string;
+  detail: string;
+}
+
+/** `supported:false` = bu CLI için `usage_command()` yok (bugün: agy/codex/shell,
+ * canlı doğrulanıp icat edilmedi, [[TODO#usage]]) — `available`/`reason`/`entries`
+ * hiç yok, ayrım burada biter. `supported:true` iken `available:false` ise
+ * `reason` ("no_running_session"|"send_failed"|"parse_failed") neden çekilemediğini
+ * söyler; `available:true` iken `entries` doludur. */
+export interface UsageProviderResult {
+  supported: boolean;
+  available?: boolean;
+  reason?: string;
+  checked_via?: string;
+  entries?: UsageEntry[];
+}
+
+export interface UsageResult {
+  ok: boolean;
+  providers: Record<string, UsageProviderResult>;
+}
+
 export interface DiagInfo {
   web_pid: number;
   web_uptime_seconds: number;

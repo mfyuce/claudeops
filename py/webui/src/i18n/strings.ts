@@ -272,6 +272,16 @@ export interface Strings {
   providerBinLabel: string;
   providerBinDesc: string;
   providerBinPlaceholder: string;
+  tabSettingsGeneral: string;
+  tabSettingsUsage: string;
+  usageWarning: string;
+  usageCheckBtn: string;
+  usageChecking: string;
+  usageNotSupported: string;
+  usageNoSession: string;
+  usageSendFailed: string;
+  usageParseFailed: string;
+  usageCheckedVia: (name: string) => string;
   pagePrev: string;
   pageNext: string;
   pageOf: (page: number, total: number) => string;
@@ -544,6 +554,17 @@ export const STRINGS: Record<Lang, Strings> = {
     providerBinDesc:
       "Bir CLI normal PATH'te bulunamıyorsa (ör. proje-yerel bir kurulum) buraya tam yolunu yazın — boş bırakılırsa normal PATH araması kullanılır. Bu makineye özeldir, paylaşımlı bir PATH konumuna dokunmaz.",
     providerBinPlaceholder: "/tam/yol/binary",
+    tabSettingsGeneral: "genel",
+    tabSettingsUsage: "kullanım",
+    usageWarning:
+      "⚠ Kontrol, o CLI'nin ÇALIŞAN bir session'ına gerçekten `/usage` yazıp ekranını anlık değiştirir (kimse izlemiyorsa öncelik verilir) — otomatik/sürekli çalışmaz, sadece bastığında.",
+    usageCheckBtn: "Kullanımı kontrol et",
+    usageChecking: "kontrol ediliyor…",
+    usageNotSupported: "desteklenmiyor",
+    usageNoSession: "çalışan session yok",
+    usageSendFailed: "komut gönderilemedi",
+    usageParseFailed: "yanıt okunamadı",
+    usageCheckedVia: (name) => `${name} üzerinden`,
     pagePrev: "önceki",
     pageNext: "sonraki",
     pageOf: (page, total) => `sayfa ${page}/${total}`,
@@ -829,6 +850,17 @@ export const STRINGS: Record<Lang, Strings> = {
     providerBinDesc:
       "If a CLI isn't found on the normal PATH (e.g. a project-local install), enter its full path here — leave blank to use normal PATH lookup. This is machine-local, it never touches a shared PATH location.",
     providerBinPlaceholder: "/full/path/to/binary",
+    tabSettingsGeneral: "general",
+    tabSettingsUsage: "usage",
+    usageWarning:
+      "⚠ Checking actually sends `/usage` to a RUNNING session of that CLI, briefly changing its screen (one nobody's watching is preferred) — not automatic/continuous, only when you press it.",
+    usageCheckBtn: "Check usage",
+    usageChecking: "checking…",
+    usageNotSupported: "not supported",
+    usageNoSession: "no running session",
+    usageSendFailed: "could not send command",
+    usageParseFailed: "could not read the response",
+    usageCheckedVia: (name) => `via ${name}`,
     pagePrev: "prev",
     pageNext: "next",
     pageOf: (page, total) => `page ${page}/${total}`,

@@ -149,6 +149,42 @@ class CliProvider(ABC):
         veri noktasına göre spekülatif olarak genellemek yok."""
         return None
 
+    def usage_command(self) -> Optional[str]:
+        """Bu CLI'nın hesap kullanım/kota bilgisini gösteren slash-command'ı
+        (ör. claude/copilot'un ikisinin de AYNI ada sahip `/usage`'ı), varsa.
+        None (varsayılan) = bu CLI için böyle bir kavram YOK — 2026-09-13'te
+        canlı denendi: agy (`agy usage`/`status`/`account`/`quota` — hepsi
+        "unexpected argument") ve codex (`--help` + `codex login status` —
+        sadece auth durumu, kota yok) için GERÇEKTEN bulunamadı, icat
+        edilmedi. `compact_command()` ile AYNI sözleşme (None=yok, sadece
+        canlı doğrulayan provider override eder) — orkestrasyon (send+wait+
+        capture) `commands/web.py`'de TEK yerde, `_compact()`'in deseniyle
+        aynı, provider'lar sadece KOMUTU ve PARSE'ı sağlar."""
+        return None
+
+    def parse_usage_text(self, text: str) -> Optional[List[Dict[str, str]]]:
+        """`usage_command()`'ın ANSI'siz (bkz. `strip_ansi`) pane çıktısını
+        `[{"label": ..., "percent": "NN", "detail": ...}, ...]` listesine
+        çevirir — hiçbir satır tanınmazsa `None` (`usage_command()` None
+        DEĞİLKEN bu da None dönerse çağıran taraf "parse başarısız" sayar,
+        "desteklenmiyor" ile karıştırmaz, bkz. `web.py`'nin `_usage()`'ı).
+        Varsayılan None — `usage_command()`'ı override eden HER provider bunu
+        da override ETMELİDİR (aksi halde komut gönderilir ama sonuç hiç
+        okunamaz)."""
+        return None
+
+    def usage_needs_dismiss(self) -> bool:
+        """`usage_command()`'ın açtığı görünüm bir MODAL/overlay mi (kapatmak
+        için `Escape` GEREKİR, claude'un `/usage`'ı böyle — canlı doğrulandı,
+        Escape olmadan session "Ayarlar" ekranında TAKILI kalır) yoksa
+        kalıcı/yan-panel mi (copilot'un `/usage`'ı böyle — Escape'in GÖZLE
+        GÖRÜLÜR hiçbir etkisi yok, canlı doğrulandı, dismiss GEREKMİYOR).
+        Varsayılan False (dismiss YOK) — gereksiz bir Escape'in olası yan
+        etkisi (kullanıcının o an yarım yazdığı bir prompt'u silmesi, bkz.
+        `_compact()`'in tmux_send_keys'in KENDİSİ için zaten kabul ettiği
+        AYNI risk sınıfı) sadece GERÇEKTEN gerekliyse göze alınsın."""
+        return False
+
     def extra_file_roots(self, cwd: str) -> List[Tuple[str, str]]:
         """Panelin dosya-gezgini için bu CLI'ya özgü EK kök dizin(ler) —
         [(key, absolute-path), ...]. Varsayılan (boş liste) = sadece proje

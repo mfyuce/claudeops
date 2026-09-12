@@ -45,6 +45,7 @@ import type {
   StopResult,
   TermChatResult,
   TermOutputResult,
+  UsageResult,
   TestHostResult,
 } from "./types";
 
@@ -314,6 +315,12 @@ export const apiDesktopStop = (lang: Lang): Promise<DesktopStopResult> =>
 export type SettingsPayload = Partial<Settings> & { lang: Lang };
 export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
   apiPost<SettingsResult>("/api/settings", p);
+
+/** Her çağrı, provider başına GERÇEKTEN ÇALIŞAN bir session'a `/usage`
+ * enjekte eder (bkz. `web.py`'nin `_usage_all()` docstring'i) — bu yüzden
+ * SettingsTab'ın Kullanım sekmesi bunu bir poll DEĞİL, kullanıcının bastığı
+ * bir "Kontrol et" butonuyla çağırır (`onDemand`, otomatik interval YOK). */
+export const apiUsage = (lang: Lang): Promise<UsageResult> => apiPost<UsageResult>("/api/usage", { lang });
 
 /** Upsert (`hosts.save_host()`): empty `token` on an already-registered
  * `name` keeps that host's stored token — only send a non-empty token when

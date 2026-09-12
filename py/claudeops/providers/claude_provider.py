@@ -20,6 +20,11 @@ MODEL_CHOICES = [
 ]
 PERMISSION_MODES = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
+# `/usage`'ın çıktısını `parse_usage_text()`'in ayrıştırdığı desen — o metodun
+# kendi docstring'ine bkz. gerçek örnek metin için.
+_USAGE_HEADER_RE = re.compile(r"^(Current (?:session|week(?:\s*\([^)]+\))?))$")
+_USAGE_PERCENT_RE = re.compile(r"(\d+)%\s*used")
+_USAGE_RESETS_RE = re.compile(r"^(Resets\s.+)$")
 # Claude Code'un durum çubuğunda gösterdiği metinler (claude-code-guide ajanının
 # resmi dokümantasyondan doğruladığı 3 mod, 2026-09-07) — SADECE bunlar Shift+Tab
 # döngüsüyle GÜVENİLİR şekilde hedeflenebilir. `bypassPermissions` sadece session
@@ -273,6 +278,59 @@ class ClaudeProvider(CliProvider):
 
     def compact_command(self) -> Optional[str]:
         return "/compact"
+
+    def usage_command(self) -> Optional[str]:
+        return "/usage"
+
+    def usage_needs_dismiss(self) -> bool:
+        # `/usage` opens a MODAL settings/usage screen (canlı doğrulandı,
+        # 2026-09-13, izole scratch session) — Escape olmadan session o
+        # ekranda takılı kalır, sonraki poll'ların mode/busy regex'leri
+        # normal prompt'u hiç görmez. Escape sonrası "⎿ Settings dialog
+        # dismissed" ile normal `❯ ` prompt'a dönüyor, canlı doğrulandı.
+        return True
+
+    def parse_usage_text(self, text: str) -> Optional[List[Dict[str, str]]]:
+        """`/usage`'ın gerçek çıktısı (canlı doğrulandı, 2026-09-13):
+        ```
+        Current session
+        █  2% used
+        Resets 12am (Europe/Istanbul)
+
+        Current week (all models)
+        ██████  92% used
+        Resets Sep 14, 6pm (Europe/Istanbul)
+        +50% weekly limits promo through Sep 13 · clau.de/cc-50-promo
+
+        Current week (Fable)
+        █████  75% used
+        Resets Sep 14, 6pm (Europe/Istanbul)
+        ```
+        Hesaba göre "Current week (...)" satırı BİRDEN FAZLA kez tekrarlanabilir
+        (her biri farklı bir model-grubu için, ör. "all models" + "Fable") — bu
+        yüzden TEK bir sabit satır sayısı varsaymak yerine her "Current ..."
+        başlığından SONRAKİ ilk "NN% used" + ilk "Resets ..." satırı eşleştirilir
+        (aradaki promo/blank satırlar atlanır, en fazla 3 satır ileri bakılır)."""
+        lines = [ln.strip() for ln in text.splitlines()]
+        entries: List[Dict[str, str]] = []
+        for i, line in enumerate(lines):
+            if not _USAGE_HEADER_RE.match(line):
+                continue
+            percent: Optional[str] = None
+            resets = ""
+            for j in range(i + 1, min(i + 4, len(lines))):
+                if percent is None:
+                    pm = _USAGE_PERCENT_RE.search(lines[j])
+                    if pm:
+                        percent = pm.group(1)
+                        continue
+                rm = _USAGE_RESETS_RE.match(lines[j])
+                if rm:
+                    resets = rm.group(1)
+                    break
+            if percent is not None:
+                entries.append({"label": line, "percent": percent, "detail": resets})
+        return entries or None
 
     def handover_model_downgrade(self, current_model: str) -> Optional[str]:
         """2026-09-04, kullanıcı: "handover komutu öncesi model sonnet'e ve
