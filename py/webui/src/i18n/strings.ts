@@ -145,6 +145,7 @@ export interface Strings {
   chatUnsupported: string;
   chatLoadError: string;
   tabFilesView: string;
+  tabInfoView: string;
   filesEmpty: string;
   filesLoadError: string;
   filesUp: string;
@@ -413,6 +414,7 @@ export const STRINGS: Record<Lang, Strings> = {
     chatUnsupported: "bu CLI için sohbet görünümü henüz yok — terminal sekmesini kullanın",
     chatLoadError: "yüklenemedi: ",
     tabFilesView: "dosyalar",
+    tabInfoView: "bilgi",
     filesEmpty: "(boş klasör)",
     filesLoadError: "yüklenemedi: ",
     filesUp: "⬆ yukarı",
@@ -697,6 +699,7 @@ export const STRINGS: Record<Lang, Strings> = {
     chatUnsupported: "chat view isn't available for this CLI yet — use the terminal tab",
     chatLoadError: "failed to load: ",
     tabFilesView: "files",
+    tabInfoView: "info",
     filesEmpty: "(empty folder)",
     filesLoadError: "failed to load: ",
     filesUp: "⬆ up",

@@ -120,14 +120,20 @@ interface XtermInstance {
 
 type XtermState = "loading" | "ready" | "failed";
 
+// Owned here (rather than in TerminalModal, which only stores the current
+// value) because TerminalView is the thing that actually interprets it —
+// which of its two internal blocks (canvas+controls vs. the info block
+// below) that "info" state hides is TerminalView's own concern.
+export type SubTab = "term" | "chat" | "files" | "info";
+
 interface TerminalViewProps {
   name: string;
   host: string;
-  hidden: boolean;
+  activeSubTab: SubTab;
   onView: (path: string) => void;
 }
 
-export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) {
+export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewProps) {
   const { t, lang } = useLang();
   const { data } = useStatusContext();
   const [modeBusy, setModeBusy] = useState(false);
@@ -224,6 +230,14 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
         term.onData((data) => queueRawRef.current(data));
         instRef.current = { term, cols: INITIAL_COLS, rows: INITIAL_ROWS, lastText: null };
         fitContainerToTerm(term, container, INITIAL_COLS, INITIAL_ROWS);
+        // The [liveInput] effect below already does this on every TOGGLE, but
+        // if live typing was remembered on from a previous session
+        // (readStoredLiveInput()) that effect's first run lands before this
+        // async import resolves — instRef.current is still null then, so its
+        // own `if (!inst) return` skips the focus() call and it never fires
+        // again on its own (liveInput itself didn't change). Catch that one
+        // case here, once, right when the instance actually starts existing.
+        if (liveInputRef.current) term.focus();
         setXtermState("ready");
       } catch {
         // Original deliberately does NOT latch a permanent "failed" flag
@@ -246,6 +260,41 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
         }
         instRef.current = null;
       }
+    };
+  }, []);
+
+  // ---- re-fit the container to the CURRENT viewport whenever it changes.
+  // `fitContainerToTerm` sets the container's width/height as fixed pixel
+  // values (see xtermSizing.ts's header comment for why — cols/rows are the
+  // real pty size, not something to shrink-to-fit), and the only two places
+  // that ever call it are this component's mount (with the placeholder
+  // INITIAL_COLS/ROWS) and the poll loop's `resized` branch below, which
+  // fires only when the BACKEND's reported cols/rows change. A live pane's
+  // real terminal size is usually stable for the session's whole lifetime,
+  // so once those pixel dimensions are set they otherwise never get
+  // recomputed — unlike the modal's own dvh-based outer bounds, this inner
+  // container does not track the viewport on its own. A phone's on-screen
+  // keyboard opening (toggled by "live typing", see the [liveInput] effect's
+  // focus()/blur()) or closing, or a rotation, changes how much space is
+  // actually available without ever touching cols/rows — left unhandled,
+  // the terminal stays pinned at whatever size fit the viewport the LAST
+  // time cols/rows happened to change, which reads as "stuck small" exactly
+  // when there's now more room to use (2026-09-11 user report).
+  useEffect(() => {
+    function refit() {
+      const inst = instRef.current;
+      const container = containerRef.current;
+      if (!inst || !container) return;
+      inst.term.options.fontSize = computeFitFontSize(inst.cols);
+      fitContainerToTerm(inst.term, container, inst.cols, inst.rows);
+    }
+    window.addEventListener("resize", refit);
+    window.addEventListener("orientationchange", refit);
+    window.visualViewport?.addEventListener("resize", refit);
+    return () => {
+      window.removeEventListener("resize", refit);
+      window.removeEventListener("orientationchange", refit);
+      window.visualViewport?.removeEventListener("resize", refit);
     };
   }, []);
 
@@ -503,187 +552,201 @@ export function TerminalView({ name, host, hidden, onView }: TerminalViewProps) 
     }
   }
 
+  // Split rather than a single `hidden` flag: URL/mode/model/effort moved to
+  // their own "info" sub-tab (2026-09-11, user: mobilde bu şerit terminali
+  // sıkıştırıyordu — TODO.md "web panel Terminal: mobilde çok sıkışık") so
+  // they're only shown/hidden together as their own group now, separate from
+  // the canvas+live-typing+key-buttons+input-row group that stays on "term".
+  const termHidden = activeSubTab !== "term";
+  const infoHidden = activeSubTab !== "info";
+
   return (
-    <div hidden={hidden} style={{ width: "100%" }}>
-      <div
-        ref={containerRef}
-        hidden={xtermState === "failed"}
-        // A live-typing terminal swallows keystrokes that would otherwise do
-        // nothing, so it has to LOOK different — otherwise there's no way to
-        // tell whether what you just typed went to the CLI or nowhere.
-        style={{
-          background: "#111",
-          padding: ".35rem",
-          borderRadius: "4px",
-          outline: liveInput ? "2px solid var(--accent)" : undefined,
-          overflow: "auto",
-          // xterm.js's own touch handling (selection/drag) can end up
-          // competing with the browser's native touch-scroll on this
-          // container's — and its internal .xterm-viewport's — overflow
-          // (2026-08-31, live mobile report: "terminal doesn't scroll").
-          // touch-action: pan-y is the standard hint for "a vertical drag
-          // here is a scroll, not something else" — cheap/safe to set even
-          // if it turns out not to be the whole story.
-          touchAction: "pan-y",
-          maxWidth: "calc(95vw - 1.4rem)",
-          // dvh, see TerminalModal.tsx's maxHeight comment.
-          maxHeight: "calc(92dvh - 130px)",
-          boxSizing: "content-box",
-          fontFamily: "monospace",
-          fontSize: ".8rem",
-          color: "#ddd",
-          whiteSpace: xtermState === "ready" ? undefined : "pre-wrap",
-        }}
-      />
-      {xtermState === "failed" && (
-        <pre
+    <>
+      <div hidden={termHidden} style={{ width: "100%" }}>
+        <div
+          ref={containerRef}
+          hidden={xtermState === "failed"}
+          // A live-typing terminal swallows keystrokes that would otherwise do
+          // nothing, so it has to LOOK different — otherwise there's no way to
+          // tell whether what you just typed went to the CLI or nowhere.
           style={{
             background: "#111",
             padding: ".35rem",
             borderRadius: "4px",
+            outline: liveInput ? "2px solid var(--accent)" : undefined,
             overflow: "auto",
+            // xterm.js's own touch handling (selection/drag) can end up
+            // competing with the browser's native touch-scroll on this
+            // container's — and its internal .xterm-viewport's — overflow
+            // (2026-08-31, live mobile report: "terminal doesn't scroll").
+            // touch-action: pan-y is the standard hint for "a vertical drag
+            // here is a scroll, not something else" — cheap/safe to set even
+            // if it turns out not to be the whole story.
+            touchAction: "pan-y",
             maxWidth: "calc(95vw - 1.4rem)",
             // dvh, see TerminalModal.tsx's maxHeight comment.
-          maxHeight: "calc(92dvh - 130px)",
+            maxHeight: "calc(92dvh - 130px)",
             boxSizing: "content-box",
             fontFamily: "monospace",
             fontSize: ".8rem",
             color: "#ddd",
-            whiteSpace: "pre-wrap",
-            margin: 0,
+            whiteSpace: xtermState === "ready" ? undefined : "pre-wrap",
           }}
-        >
-          {fallbackText}
-        </pre>
-      )}
-      <div className="opts-hint" style={{ width: "100%", boxSizing: "border-box" }}>
-        {hint}
-      </div>
-      <UrlBanner rawText={rawText} name={name} onView={onView} />
-      <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
-        {cliOpts.cyclable_modes.length > 0 && (
-          <label title={t.termModeHint}>
-            {t.termModeLabel}
-            <select
-              disabled={modeBusy}
-              // Controlled by what the pane actually shows: after a successful
-              // switch the next poll moves it on its own, and while a switch is
-              // in flight it falls back to the placeholder ("applying…").
-              value={!modeBusy && paneMode && cliOpts.cyclable_modes.includes(paneMode) ? paneMode : ""}
-              onChange={(e) => {
-                if (e.target.value) void handleSetMode(e.target.value as TermSetModePayload["mode"]);
-              }}
-            >
-              <option value="" disabled>
-                {modeBusy ? t.termModeApplying : t.termModePick}
-              </option>
-              {cliOpts.cyclable_modes.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {modelOptions.length > 0 && (
-          <label title={t.termModelHint}>
-            {t.termModelLabel}
-            <select
-              value={modelValue}
-              onChange={(e) => {
-                if (!e.target.value) return;
-                setPickedModel({ value: e.target.value, forKey: modelPickKey });
-                handleSetModel(e.target.value);
-              }}
-            >
-              {!modelValue && (
-                <option value="" disabled>
-                  {t.termModelPick}
-                </option>
-              )}
-              {modelOptions.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {session?.live_effort && (
-          <span className="opts-hint" title={t.termEffortHint}>
-            {t.termEffortLabel}: {session.live_effort}
-          </span>
-        )}
-        {modeMsg && <span className="opts-hint">{modeMsg}</span>}
-        <label title={t.termLiveHint}>
-          <input
-            type="checkbox"
-            checked={liveInput}
-            onChange={(e) => {
-              setLiveInput(e.target.checked);
-              setLiveMsg("");
+        />
+        {xtermState === "failed" && (
+          <pre
+            style={{
+              background: "#111",
+              padding: ".35rem",
+              borderRadius: "4px",
+              overflow: "auto",
+              maxWidth: "calc(95vw - 1.4rem)",
+              // dvh, see TerminalModal.tsx's maxHeight comment.
+              maxHeight: "calc(92dvh - 130px)",
+              boxSizing: "content-box",
+              fontFamily: "monospace",
+              fontSize: ".8rem",
+              color: "#ddd",
+              whiteSpace: "pre-wrap",
+              margin: 0,
             }}
-          />{" "}
-          {t.termLiveLabel}
-        </label>
-        {XTERM_KEYS.map(([label, key]) => (
-          <button type="button" key={key} onClick={() => handleSendKey(key)}>
-            {label}
-          </button>
-        ))}
-        <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
-          {copyLabel ?? t.termCopyBtn}
-        </button>
-        {masked && <div className="warn-banner">{t.termMaskedHint}</div>}
-        {liveInput && <div className="opts-hint" style={{ flexBasis: "100%" }}>{t.termLiveOn}</div>}
-        {liveMsg && <div className="warn-banner">{liveMsg}</div>}
-        <div className="term-input-row">
-          {masked ? (
-            // Masked panes keep the plain <input type="password"> — a
-            // <textarea> CANNOT mask its content, and this box is exactly
-            // where the 2026-09-08 password leak happened (DONE.md
-            // "2026-09-08 (2)"). Multi-line is irrelevant for a password
-            // prompt anyway, so the security path stays byte-for-byte what
-            // it was.
+          >
+            {fallbackText}
+          </pre>
+        )}
+        <div className="opts-hint" style={{ width: "100%", boxSizing: "border-box" }}>
+          {hint}
+        </div>
+        <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
+          <label title={t.termLiveHint}>
             <input
-              type="password"
-              placeholder={t.termMaskedPlaceholder}
-              style={{ flex: 1, minWidth: "200px" }}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSend();
+              type="checkbox"
+              checked={liveInput}
+              onChange={(e) => {
+                setLiveInput(e.target.checked);
+                setLiveMsg("");
               }}
-            />
-          ) : (
-            // Multi-line prompts (TODO #67): Enter still sends — the box's
-            // whole point — and Shift+Enter inserts a newline. The backend
-            // needed NOTHING for this: tmux_send_keys()'s `send-keys -l`
-            // carries embedded newlines to the CLI as ONE turn (verified
-            // live 2026-09-04 with a 1204-char multi-line message, DONE.md
-            // "2026-09-04 (4)"), which is why this is a pure frontend change.
-            <textarea
-              placeholder={t.termPlaceholder}
-              rows={2}
-              style={{ flex: 1, minWidth: "200px", resize: "vertical", fontFamily: "inherit" }}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => {
-                // isComposing: an IME (or Android's suggestion bar) uses
-                // Enter to accept a candidate — sending there would cut the
-                // word in half and fire a half-typed message.
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-            />
-          )}
-          <button type="button" className="go" onClick={handleSend}>
-            {t.termSend}
+            />{" "}
+            {t.termLiveLabel}
+          </label>
+          {XTERM_KEYS.map(([label, key]) => (
+            <button type="button" key={key} onClick={() => handleSendKey(key)}>
+              {label}
+            </button>
+          ))}
+          <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
+            {copyLabel ?? t.termCopyBtn}
           </button>
+          {masked && <div className="warn-banner">{t.termMaskedHint}</div>}
+          {liveInput && <div className="opts-hint" style={{ flexBasis: "100%" }}>{t.termLiveOn}</div>}
+          {liveMsg && <div className="warn-banner">{liveMsg}</div>}
+          <div className="term-input-row">
+            {masked ? (
+              // Masked panes keep the plain <input type="password"> — a
+              // <textarea> CANNOT mask its content, and this box is exactly
+              // where the 2026-09-08 password leak happened (DONE.md
+              // "2026-09-08 (2)"). Multi-line is irrelevant for a password
+              // prompt anyway, so the security path stays byte-for-byte what
+              // it was.
+              <input
+                type="password"
+                placeholder={t.termMaskedPlaceholder}
+                style={{ flex: 1, minWidth: "200px" }}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSend();
+                }}
+              />
+            ) : (
+              // Multi-line prompts (TODO #67): Enter still sends — the box's
+              // whole point — and Shift+Enter inserts a newline. The backend
+              // needed NOTHING for this: tmux_send_keys()'s `send-keys -l`
+              // carries embedded newlines to the CLI as ONE turn (verified
+              // live 2026-09-04 with a 1204-char multi-line message, DONE.md
+              // "2026-09-04 (4)"), which is why this is a pure frontend change.
+              <textarea
+                placeholder={t.termPlaceholder}
+                rows={2}
+                style={{ flex: 1, minWidth: "200px", resize: "vertical", fontFamily: "inherit" }}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  // isComposing: an IME (or Android's suggestion bar) uses
+                  // Enter to accept a candidate — sending there would cut the
+                  // word in half and fire a half-typed message.
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+              />
+            )}
+            <button type="button" className="go" onClick={handleSend}>
+              {t.termSend}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+      <div hidden={infoHidden} style={{ width: "100%" }}>
+        <UrlBanner rawText={rawText} name={name} onView={onView} />
+        <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
+          {cliOpts.cyclable_modes.length > 0 && (
+            <label title={t.termModeHint}>
+              {t.termModeLabel}
+              <select
+                disabled={modeBusy}
+                // Controlled by what the pane actually shows: after a successful
+                // switch the next poll moves it on its own, and while a switch is
+                // in flight it falls back to the placeholder ("applying…").
+                value={!modeBusy && paneMode && cliOpts.cyclable_modes.includes(paneMode) ? paneMode : ""}
+                onChange={(e) => {
+                  if (e.target.value) void handleSetMode(e.target.value as TermSetModePayload["mode"]);
+                }}
+              >
+                <option value="" disabled>
+                  {modeBusy ? t.termModeApplying : t.termModePick}
+                </option>
+                {cliOpts.cyclable_modes.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {modelOptions.length > 0 && (
+            <label title={t.termModelHint}>
+              {t.termModelLabel}
+              <select
+                value={modelValue}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  setPickedModel({ value: e.target.value, forKey: modelPickKey });
+                  handleSetModel(e.target.value);
+                }}
+              >
+                {!modelValue && (
+                  <option value="" disabled>
+                    {t.termModelPick}
+                  </option>
+                )}
+                {modelOptions.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {session?.live_effort && (
+            <span className="opts-hint" title={t.termEffortHint}>
+              {t.termEffortLabel}: {session.live_effort}
+            </span>
+          )}
+          {modeMsg && <span className="opts-hint">{modeMsg}</span>}
+        </div>
+      </div>
+    </>
   );
 }

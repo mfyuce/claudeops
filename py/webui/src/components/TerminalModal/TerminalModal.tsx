@@ -44,9 +44,7 @@ import { useLang } from "../../i18n/LangContext";
 import { ChatView } from "./ChatView";
 import { FileViewerModal } from "./FileViewerModal";
 import { FilesView } from "./FilesView";
-import { TerminalView } from "./TerminalView";
-
-type SubTab = "term" | "chat" | "files";
+import { TerminalView, type SubTab } from "./TerminalView";
 
 interface TerminalModalProps {
   name: string;
@@ -168,8 +166,15 @@ export function TerminalModal({ name, host, onClose }: TerminalModalProps) {
           >
             {t.tabFilesView}
           </button>
+          <button
+            type="button"
+            className={activeSubTab === "info" ? "active" : ""}
+            onClick={() => setActiveSubTab("info")}
+          >
+            {t.tabInfoView}
+          </button>
         </div>
-        <TerminalView name={name} host={host} hidden={activeSubTab !== "term"} onView={setViewingPath} />
+        <TerminalView name={name} host={host} activeSubTab={activeSubTab} onView={setViewingPath} />
         {activeSubTab === "chat" && <ChatView name={name} host={host} />}
         {activeSubTab === "files" && <FilesView name={name} host={host} onView={setViewingPath} />}
       </div>
