@@ -987,7 +987,23 @@ def _status_payload() -> dict:
             "name": name,
             "model": info["model"],
             "cwd": info["cwd"],
-            "cli": info["cli"],
+            # `info["cli"]` (roster.tsv'nin KAYITLI değeri) DEĞİL, çalışıyorsa
+            # `s.cli` (proc-scan'in canlı tespiti) — 2026-09-13 canlı bug:
+            # "Start"tan roster'dakinden FARKLI bir cli seçilip başlatılınca
+            # (`_start()`'ın `chosen_cli` override'ı) roster.tsv'nin 4. kolonu
+            # GÜNCELLENMİYOR, bu satır hep info["cli"]'ye bakınca panel session
+            # GERÇEKTEN codex çalışırken "claude" gösteriyordu (canlı örnek:
+            # rustagentppr — roster "claude" diyor, proc `codex --model
+            # gpt-6-astra` çalıştırıyor, `find_sessions()` doğru "codex"
+            # döndürüyor ama bu satır onu hiç kullanmıyordu). `model`/`live_model`
+            # ayrımıyla KARIŞTIRILMAMALI: model kasıtlı olarak roster'ın "bir
+            # sonraki başlatmada kullanılacak" değerini gösteriyor (ayrı bir
+            # `live_model` alanı var), ama `cli` provider-spesifik TÜM UI'ın
+            # (mode/model seçenekleri, terminal parse'ı) dayandığı tek alan —
+            # yanlış olması kozmetik değil, session'a YANLIŞ provider'ın
+            # arayüzünü gösterir. Çalışmıyorsa (s=None) roster'ın kaydı zaten
+            # TEK kaynak (bir sonraki başlatmada kullanılacak olan).
+            "cli": s.cli if s else info["cli"],
             "running": s is not None,
             "pid": s.pid if s else None,
             "cpu": round(s.cpu, 1) if s else None,
