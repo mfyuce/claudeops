@@ -411,6 +411,50 @@ class ClaudeProvider(CliProvider):
             # yoksa (idle input kutusu) zaten kanıtlanmış zararsız bir no-op.
             tmux_send_special_key(tmux_name, "Enter")
 
+    _STRAY_DIALOG_TIMEOUT_SECONDS = 6.0
+    _STRAY_DIALOG_POLL_SECONDS = 0.5
+
+    def dismiss_stray_dialog(self, tmux_name: str) -> None:
+        """`base.py`'nin dismiss_stray_dialog docstring'ine bkz. — canlı
+        bulgunun tam bağlamı orada. `apply_live_model_switch()`'le AYNI
+        strip_ansi disiplinini kullanır (o metodun 2026-09-09'da bulduğu
+        AYNI ders — ANSI renk kodları "Switch model?" metnini "Switch"/
+        "model?" diye ayrı span'lara bölüyor, ham substring arama HİÇBİR
+        ZAMAN eşleşmiyor).
+
+        `apply_live_model_switch()`'ten (Enter = ONAYLA, "Yes, switch")
+        KASITLI TERSİ: burada cursor'ı `Down`'la 2. seçeneğe ("No, go
+        back") indirip Enter — bu fonksiyonun GÖREVİ deliberate bir
+        switch'i tamamlamak değil, İSTENMEYEN/kaynağı belirsiz bir
+        dialog'u zararsızca kapatmak. Sabit `Down` (her zaman TEK bir
+        adım) ekran görüntüsünde doğrulanan 2-seçenekli düzene dayanıyor
+        ("1. Yes, switch..." / "2. No, go back") — canlı bir üçüncü
+        seçenekle karşılaşılırsa bu varsayım YANLIŞ olur, henüz o durum
+        gözlenmedi.
+
+        6sn'lik kısa/sınırlı bekleme BİLEREK `apply_live_model_switch()`'in
+        20sn'sinden KISA — bu, handover_faz1()'in TÜM bir batch'i işlerken
+        her session için ek bir gecikme, çok sayıda session'da toplamda
+        anlamlı bir yavaşlama olur; dialog'un GEÇ (20s+) açılması zaten
+        `apply_live_model_switch()`'in kendi "kabul edilebilir kalıntı"
+        sınırı, burası SADECE hızlı/yakın-zamanlı bir dialog'u yakalamayı
+        hedefliyor. ⚠ Canlı UÇTAN UCA doğrulanmadı (bu oturumda gerçek bir
+        stuck dialog'u yeniden üretecek bir izole test yapılmadı) — sadece
+        `apply_live_model_switch()`'ten ödünç alınan strip_ansi+poll
+        deseni kanıtlanmış, "Down+Enter'ın 2. seçeneği doğru seçtiği"
+        varsayımı ekran görüntüsünden çıkarıldı, ayrıca test edilmedi."""
+        from ..tmux_backend import tmux_capture, tmux_send_special_key, strip_ansi
+
+        deadline = time.monotonic() + self._STRAY_DIALOG_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
+            if "Switch model?" in text:
+                tmux_send_special_key(tmux_name, "Down")
+                time.sleep(0.2)
+                tmux_send_special_key(tmux_name, "Enter")
+                return
+            time.sleep(self._STRAY_DIALOG_POLL_SECONDS)
+
     def matches_proc(self, cmd: List[str]) -> bool:
         """Bash `^claude` anchor'ının karşılığı: argv[0]'ın basename'i 'claude'.
         'bash -c "claude ..."' wrapper'ında argv[0]='bash' → eler."""

@@ -122,6 +122,25 @@ class CliProvider(ABC):
         döndüğü için pratikte hiç çağrılmaz)."""
         return
 
+    def dismiss_stray_dialog(self, tmux_name: str) -> None:
+        """2026-09-14 canlı bulgu: `apply_live_model_switch()`'in kendi
+        docstring'i "dialog bu fonksiyon döndükten SONRA açılabilir, bu
+        ZARARSIZ bir kalıntı" diyordu — canlı ekran görüntüsü bunun pratikte
+        ZARARSIZ OLMADIĞINI gösterdi (yuhem'deki `hittite20260909`, Faz 1
+        wrap-up mesajı gönderildikten SONRA "Switch model?" (claude-opus-5'e)
+        dialog'unda TAKILI kaldı — mesaj OKUNMUYOR, session yanıt vermiyor).
+        Bu, `handover_faz1()`'in wrap-up mesajını gönderdikten HEMEN SONRA
+        çağrılan, KISA/sınırlı bir "beklenmeyen bir dialog açıldı mı, açıldıysa
+        REDDET" güvenlik ağı — `handover_model_downgrade()`'in GEÇ AÇILAN bir
+        yankısı olabilir (turn 20s'lik bütçeden uzun sürdüyse) YA DA claude'un
+        kendi (claudeops'tan bağımsız) "bu iş karmaşık görünüyor, daha güçlü
+        bir modele geçmek ister misin" önerisi olabilir — ikisi de aynı
+        şekilde ele alınır: ONAYLAMA (belirsiz bir model değişikliğini kabul
+        etmek yerine reddetmek daha güvenli, ayrıca onay konuşma geçmişini
+        yeniden okutuyor). Varsayılan no-op — sadece bilinen bir dialog şekli
+        olan provider override eder (şimdilik sadece claude)."""
+        return None
+
     def input_settle_delay(self) -> float:
         """`tmux_send_keys()`'in literal-metin gönderiminden SONRA, Enter
         göndermeden ÖNCE beklemesi gereken saniye. Varsayılan 0.0 (gerek yok) —

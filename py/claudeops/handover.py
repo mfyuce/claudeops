@@ -303,6 +303,14 @@ def handover_faz1(
         if sent:
             print(" sent (live)")
             summary.results.append(Faz1Result(session.name, "sent"))
+            # 2026-09-14 canlı bulgu: wrap-up mesajı ("READY FOR HANDOVER"
+            # görevi) gönderildikten SONRA beklenmeyen bir "Switch model?"
+            # dialog'u açılıp session'ı TIKANDIRABILIYOR (`downgrade`'in geç
+            # açılan bir yankısı, ya da claude'un kendi bağımsız önerisi —
+            # bkz. `dismiss_stray_dialog()`'un docstring'i). Kısa/sınırlı bir
+            # güvenlik-ağı taraması — varsayılan no-op, sadece claude override
+            # eder, batch'i yavaşlatmaması için kasıtlı KISA (6sn).
+            provider.dismiss_stray_dialog(session.name)
         else:
             print(" WARN: mesaj gönderilemedi")
             summary.results.append(Faz1Result(session.name, "failed-send"))
