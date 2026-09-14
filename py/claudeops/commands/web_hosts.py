@@ -135,8 +135,19 @@ _conn_pool: Dict[str, List[http.client.HTTPConnection]] = {}
 # önler. Dedup key = TAM url (host+path+query) — `proxy_get`'in query'sinde
 # `name` (session) zaten var, yani farklı session'lar birbirini ASLA
 # bloklamaz, sadece AYNI endpoint'e üst üste binen tekrarlar bloklanır.
+#
+# `_last_good` — bounce'un KENDİSİ kullanıcıya HİÇ görünmemesi için: canlı
+# ekran görüntüsüyle yakalandı (2026-09-14, aynı gün DÖRDÜNCÜ tur) —
+# `TerminalView.tsx` bir `ok:false` aldığında pane'in İÇERİĞİNİ o hata
+# metniyle EZİYOR ("✗ yuhem unreachable: busy: ..." pane'de gerçek terminal
+# çıktısı gibi göründü). Bounce olunca hata DEĞİL, o URL'in son BAŞARILI
+# sonucu döner — frontend hiçbir şeyin olmadığını, sadece bir tick'in
+# atlandığını hiç fark etmez. `_http_raw`'a (files/download, tek-seferlik
+# kullanıcı aksiyonu, sürekli poll'lanmıyor) BİLEREK eklenmedi — büyük
+# binary body'leri belleğe süresiz cachelemek gereksiz risk.
 _inflight_lock = threading.Lock()
 _inflight_urls: set = set()
+_last_good: Dict[str, Tuple[int, dict]] = {}
 
 
 def _split_url(url: str) -> Tuple[Any, str]:
@@ -230,11 +241,18 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
     `dedup=True` (bkz. `_inflight_urls` üstündeki not) — SADECE poll/okuma
     çağrıları (`fetch_remote_status`, `proxy_get`) verir, `proxy_action`
     HİÇBİR ZAMAN vermez: aynı URL'e zaten uçuşta bir istek varsa YENİ bağlantı
-    hiç açılmadan anında `busy` hatası dönülür — host yavaşken üst üste binen
-    onlarca eşzamanlı deneme yerine TEK bir deneme bekleniyor olur."""
+    hiç açılmadan anında dönülür — host yavaşken üst üste binen onlarca
+    eşzamanlı deneme yerine TEK bir deneme bekleniyor olur. Bounce'ta hata
+    DEĞİL o URL'in son BAŞARILI sonucu (`_last_good`) döner (varsa) — bkz.
+    `_last_good` üstündeki not, çağıran/frontend bir tick'in atlandığını
+    hiç fark etmemeli. Hiç önceki başarı yoksa (host'a eklendiği ANDA
+    eşzamanlı ilk iki istek gibi) yine de busy hatası döner."""
     if dedup:
         with _inflight_lock:
             if url in _inflight_urls:
+                cached = _last_good.get(url)
+                if cached is not None:
+                    return cached[0], cached[1], None
                 return 0, None, "busy: an earlier request to this same endpoint is still in flight"
             _inflight_urls.add(url)
     try:
@@ -264,6 +282,9 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
                 return status, None, "bad response (not JSON)"
             if not isinstance(parsed, dict):
                 return status, None, "bad response (not an object)"
+            if dedup:
+                with _inflight_lock:
+                    _last_good[url] = (status, parsed)
             return status, parsed, None
         return 0, None, last_err
     finally:
