@@ -664,11 +664,25 @@ def _screen_locked() -> Optional[bool]:
     (sola yığılma, xdotool red, wmctrl 2×-offset) — SAATLERCE kaybettirilmiş bir ders.
     Web'den (telefondan tünelle) layout tetiklenebildiği için bu artık otomatik kontrol
     ŞART (TODO'da elle-doğrula notuydu, web bunu code'a taşıyor).
-    """
+
+    2026-09-14 canlı bug: `awk '{print $1; exit}'` `loginctl list-sessions`'ın
+    İLK SATIRINI (herhangi bir kullanıcı/seat filtresi olmadan) alıyordu — bu
+    makine ÇOK-KULLANICILI (ikinci bir hesap, `ahmet`, ayrı bir X11 seat'te
+    login olmuş durumda) ve `list-sessions`'ın sırası bu ikinci kullanıcının
+    KİLİTLİ session'ını fatihyuce'nin kendi AÇIK/aktif session'ından ÖNCE
+    listeliyordu — layout, fatihyuce'nin ekranı hiç kilitli olmamasına rağmen
+    "kilitli" sanıp reddediyordu (canlı doğrulandı: `loginctl show-session`
+    ile session 4 (`fatihyuce`, tty2) `LockedHint=no`/`Active=yes` iken,
+    session 1445 (`ahmet`, tty3) `LockedHint=yes` — eski kod ikincisini
+    yakalıyordu). Fix: satırı KULLANICI ADINA göre süz (`whoami` — bu süreç
+    HER ZAMAN hesap sahibi olarak çalışıyor, [[co-ulaksec-guard-yes-ho-no]]'nun
+    tek-kullanıcı varsayımıyla AYNI), pozisyonel "ilk satır" varsayımı YOK."""
     try:
         out = subprocess.run(
             ["bash", "-c",
-             "loginctl show-session $(loginctl --no-legend list-sessions | awk '{print $1; exit}') -p LockedHint"],
+             "loginctl show-session "
+             "$(loginctl --no-legend list-sessions | awk -v u=\"$(whoami)\" '$3==u {print $1; exit}') "
+             "-p LockedHint"],
             capture_output=True, text=True, timeout=5,
         )
         if "LockedHint=yes" in out.stdout:
