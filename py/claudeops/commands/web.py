@@ -1207,14 +1207,25 @@ _MAX_VALIDATE_CANDIDATES = 20  # bir terminal-metni taramasından gelen aday lis
 
 
 def _files_resolve(name: str, lang: str = "tr"):
-    """Dosya-gezgini endpoint'lerinin ortak çözümlemesi: name → tek, canlı
-    Session. `_term_resolve`'dan farkı: tmux-backed olması GEREKMEZ — dosya
-    listeleme/indirme bir pty'e değil, sadece proc'un cwd/cli bilgisine
-    ihtiyaç duyar (proc-presence yeterli, [[TODO-k]]'nın aynı kriteri)."""
+    """Dosya-gezgini endpoint'lerinin ortak çözümlemesi: name → Session (canlı
+    ise gerçek proc, değilse roster'dan sentetik). `_term_resolve`'dan farkı:
+    tmux-backed olması GEREKMEZ — dosya listeleme/indirme bir pty'e değil,
+    sadece cwd/cli bilgisine ihtiyaç duyar (proc-presence yeterli,
+    [[TODO-k]]'nın aynı kriteri).
+
+    2026-09-14: durmuş (Devre Dışı/Emekli dahil) bir roster kaydı için de
+    çalışır — `pid=0` sentetik `Session` (bu dosyada zaten `Session(name=base,
+    pid=0)` deseni var, ör. `_generate_new_chat_name`'in kullandığı). Aşağıdaki
+    `files_mod.list_dir`/`read_text`/`validate_candidates` SADECE `s.cwd`/
+    `s.cli`'ye bakıyor, `s.pid`'e hiç dokunmuyor — canlı doğrulandı (kod
+    okuması + gerçek bir kapalı roster girdisine karşı test)."""
     procs = _find_running(name)
-    if not procs:
-        return None, _err(lang, "not_running", name=name)
-    return procs[0], None
+    if procs:
+        return procs[0], None
+    info = _fleet_status().get(name)
+    if info:
+        return Session(name=name, pid=0, cwd=info["cwd"], cli=info["cli"]), None
+    return None, _err(lang, "not_running", name=name)
 
 
 def _files_list(name: str, path: Optional[str], lang: str = "tr") -> dict:
@@ -1439,8 +1450,15 @@ def _term_chat(name: str, lang: str = "tr", mode: str = "last") -> dict:
     `mode="last"` (varsayılan): son user+assistant çifti (eski davranış, aynen).
     `mode="full"` (2026-09-01, kullanıcı isteği): TÜM konuşma geçmişi, sırayla
     [{"role":"user"|"assistant","text":...}, ...] — `last_exchange`'le AYNI
-    destekleniyor/desteklenmiyor sözleşmesi (`full_history` None → supported:False)."""
-    s, err = _term_resolve(name, lang)
+    destekleniyor/desteklenmiyor sözleşmesi (`full_history` None → supported:False).
+
+    2026-09-14: `_term_resolve` (canlı+tmux-backed ŞART) DEĞİL, `_files_resolve`
+    kullanıyor — sohbet geçmişi `provider.last_exchange`/`full_history` üzerinden
+    DİSKTEKİ transcript'ten okunuyor (bkz. o metodların kendi sözleşmesi), pty'e
+    hiç ihtiyaç yok. Bu, durmuş/Devre Dışı/Emekli bir session'ın "son mesajları"
+    salt-okunur görüntülemeyi (terminal olmadan) mümkün kılıyor — `_files_resolve`
+    zaten roster-fallback'ini yapıyor, burada tekrar yazmaya gerek yok."""
+    s, err = _files_resolve(name, lang)
     if err:
         return err
     provider = get_provider(s.cli)

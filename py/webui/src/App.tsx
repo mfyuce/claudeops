@@ -29,6 +29,7 @@ import { RunningTab } from "./components/RunningTab/RunningTab";
 import { SearchBox } from "./components/shared/SearchBox";
 import { SettingsTab } from "./components/SettingsTab";
 import { TabBar } from "./components/TabBar";
+import { ReadOnlySessionModal } from "./components/TerminalModal/ReadOnlySessionModal";
 import { TerminalModal } from "./components/TerminalModal/TerminalModal";
 import { LangProvider, useLang } from "./i18n/LangContext";
 import { StatusProvider, useStatusContext } from "./state/StatusContext";
@@ -59,6 +60,12 @@ function AppShell() {
   // button for non-local rows (remote terminal viewing is a deferred
   // follow-up, see the multi-host federation plan).
   const [openTerminalFor, setOpenTerminalFor] = useState<{ host: string; name: string } | null>(null);
+  // viewSessionFor: which STOPPED session's read-only Chat+Files popup (if
+  // any) is open — separate state from openTerminalFor on purpose, since
+  // this is a materially different kind of popup (no live pty, opened from
+  // Disabled/Retired rows that have no terminal button at all) rather than
+  // another mode of the live one. Set by GroupTable's new "View" button.
+  const [viewSessionFor, setViewSessionFor] = useState<{ host: string; name: string } | null>(null);
   // Shared across Running/Registered per the plan — one Set, not a third
   // Context (see state/selection.ts's doc comment).
   const selection = useSelection();
@@ -80,6 +87,10 @@ function AppShell() {
 
   const onToggleTerminal = useCallback((host: string, name: string) => {
     setOpenTerminalFor((prev) => (prev && prev.host === host && prev.name === name ? null : { host, name }));
+  }, []);
+
+  const onViewSession = useCallback((host: string, name: string) => {
+    setViewSessionFor({ host, name });
   }, []);
 
   // Original `doDiagAsk()` success: `setTab('running'); await refresh();
@@ -160,8 +171,8 @@ function AppShell() {
         {data && activeTab === "registered" && (
           <RegisteredTab selection={selection} onSwitchTab={setActiveTab} search={search} />
         )}
-        {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} />}
-        {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} />}
+        {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} onView={onViewSession} />}
+        {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} onView={onViewSession} />}
         {data && activeTab === "team" && <OrchTab selection={selection} />}
         {data && activeTab === "layout" && <LayoutTab />}
         {data && activeTab === "desktop" && <DesktopTab />}
@@ -174,6 +185,14 @@ function AppShell() {
           name={openTerminalFor.name}
           host={openTerminalFor.host}
           onClose={() => setOpenTerminalFor(null)}
+        />
+      )}
+      {viewSessionFor && (
+        <ReadOnlySessionModal
+          key={rowKey(viewSessionFor)}
+          name={viewSessionFor.name}
+          host={viewSessionFor.host}
+          onClose={() => setViewSessionFor(null)}
         />
       )}
     </div>

@@ -28,6 +28,15 @@
  * there's no RegisteredTab-style "hasRunning" badge to compute here.
  * Pagination switched from per-row to per-group, same reasoning as the
  * other two tabs.
+ *
+ * 2026-09-14 (2): `ReactivateRow` gains a "View" button (`onView`, threaded
+ * from `App.tsx` same as `RunningTab`'s `onToggleTerminal`) opening
+ * `ReadOnlySessionModal` — TODO.md's "terminal olmayan, salt-okunur
+ * sohbet+dosyalar popup'ı". Enabled for BOTH tabs this component serves
+ * (Disabled AND Retired) — a retired session's history is just as worth
+ * reviewing as a disabled one's, and `GroupTable` has no way to tell the two
+ * apart from within `items: RosterEntry[]` alone (no per-tab prop existed
+ * before this), so there was no reason to single one out.
  */
 
 import { Fragment, useState } from "react";
@@ -51,9 +60,10 @@ const GROUP_TABLE_COLSPAN = 5;
 interface GroupTableProps {
   items: RosterEntry[];
   search: string;
+  onView: (host: string, name: string) => void;
 }
 
-function ReactivateRow({ item }: { item: RosterEntry }) {
+function ReactivateRow({ item, onView }: { item: RosterEntry; onView: (host: string, name: string) => void }) {
   const { t, lang } = useLang();
   const { refresh } = useStatusContext();
   const [busy, setBusy] = useState(false);
@@ -90,12 +100,15 @@ function ReactivateRow({ item }: { item: RosterEntry }) {
         <button type="button" className="reactivate" disabled={busy} onClick={() => void handleReactivate()}>
           {busy ? t.starting : t.reactivateBtn}
         </button>
+        <button type="button" className="start" onClick={() => onView(item.host, item.name)}>
+          {t.viewBtn}
+        </button>
       </td>
     </tr>
   );
 }
 
-export function GroupTable({ items, search }: GroupTableProps) {
+export function GroupTable({ items, search, onView }: GroupTableProps) {
   const { t } = useLang();
   const collapse = useGroupCollapse();
   const filtered = items.filter((it) => matchesSearch(it, search));
@@ -123,7 +136,7 @@ export function GroupTable({ items, search }: GroupTableProps) {
                   collapsed={!expanded}
                   onToggle={() => collapse.toggle(gKey)}
                 />
-                {expanded && g.items.map((it) => <ReactivateRow key={rowKey(it)} item={it} />)}
+                {expanded && g.items.map((it) => <ReactivateRow key={rowKey(it)} item={it} onView={onView} />)}
               </Fragment>
             );
           })}

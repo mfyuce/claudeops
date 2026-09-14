@@ -146,6 +146,8 @@ export interface Strings {
   chatLoadError: string;
   tabFilesView: string;
   tabInfoView: string;
+  viewBtn: string;
+  readOnlySessionHint: string;
   filesEmpty: string;
   filesLoadError: string;
   filesUp: string;
@@ -427,6 +429,8 @@ export const STRINGS: Record<Lang, Strings> = {
     chatLoadError: "yüklenemedi: ",
     tabFilesView: "dosyalar",
     tabInfoView: "bilgi",
+    viewBtn: "görüntüle",
+    readOnlySessionHint: "Bu session çalışmıyor — burada son sohbet ve dosyalar salt-okunur gösteriliyor, terminal yok.",
     filesEmpty: "(boş klasör)",
     filesLoadError: "yüklenemedi: ",
     filesUp: "⬆ yukarı",
@@ -725,6 +729,8 @@ export const STRINGS: Record<Lang, Strings> = {
     chatLoadError: "failed to load: ",
     tabFilesView: "files",
     tabInfoView: "info",
+    viewBtn: "view",
+    readOnlySessionHint: "This session isn't running — showing its last chat and files read-only, no terminal.",
     filesEmpty: "(empty folder)",
     filesLoadError: "failed to load: ",
     filesUp: "⬆ up",
