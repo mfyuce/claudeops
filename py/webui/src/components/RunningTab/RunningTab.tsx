@@ -81,7 +81,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   return (
     <>
       <BulkBar tab="running" rows={rows} selection={selection} />
-      <CollapseControls groupKeys={groupKeys} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
+      <CollapseControls groupKeys={groupKeys} isExpanded={collapse.isExpanded} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
       <div className="tablewrap">
         <table className="runtab">
           <thead>

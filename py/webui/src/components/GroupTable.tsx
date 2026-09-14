@@ -120,7 +120,7 @@ export function GroupTable({ items, search, onView }: GroupTableProps) {
 
   return (
     <div className="tablewrap">
-      <CollapseControls groupKeys={groupKeys} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
+      <CollapseControls groupKeys={groupKeys} isExpanded={collapse.isExpanded} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
       <table>
         <tbody>
           {pageGroups.map((g) => {

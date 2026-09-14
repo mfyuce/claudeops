@@ -162,7 +162,7 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
   return (
     <>
       <BulkBar tab="registered" rows={rows} selection={selection} />
-      <CollapseControls groupKeys={groupKeys} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
+      <CollapseControls groupKeys={groupKeys} isExpanded={collapse.isExpanded} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
       <div className="tablewrap">
         <table className="regtab">
           <thead>
