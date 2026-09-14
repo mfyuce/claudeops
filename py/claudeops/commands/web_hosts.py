@@ -114,6 +114,30 @@ _CONN_POOL_MAX_IDLE = 4
 _conn_pool_lock = threading.Lock()
 _conn_pool: Dict[str, List[http.client.HTTPConnection]] = {}
 
+# Tek-uçuş (single-flight) dedup — havuzun KAPSAMADIĞI ayrı bir sorun için:
+# host YAVAŞ/ÇÖKMÜŞken her deneme BAŞARISIZ olur, başarısız bir bağlantı asla
+# havuza dönmez (`reusable=False`), yani her retry/poll kendi taze bağlantısını
+# açmak ZORUNDA kalır — pooling bu durumda hiç yardım etmez. Canlı kanıt
+# (2026-09-14, aynı gün üçüncü tur): yuhem'in devtunnel'ı gerçekten yavaşken
+# (status poll "The read operation timed out" aldı) fd sayısı yine 69'a çıktı
+# + `/api/term/output`'ta ~14 saniyede ~30 "Broken pipe" (frontend'in kendi
+# ~200ms'lik poll'u, ÖNCEKİ istek hâlâ yuhem'den yanıt beklerken YENİ bir istek
+# daha açıyor — üst üste binen onlarca eşzamanlı deneme).
+#
+# Bu YÜZDEN scope'u DAR tutulmalı: SADECE poll/okuma çağrıları (`fetch_remote_
+# status`, `proxy_get`/`proxy_get_raw`) dedup'lanır — `proxy_action` KESİNLİKLE
+# DEDUP'LANMAZ, çünkü her aksiyon çağrısı (özellikle `/api/term/input` —
+# kullanıcının bastığı HER tuş) kendi başına anlamlı/tekrar-edilemez bir
+# yan etki taşır; "zaten aynı URL'e bir istek uçuşta" diye onu sessizce
+# atlamak bir tuş vuruşunu SESSİZCE KAYBETMEK olurdu. Poll/okuma çağrıları
+# ise ZATEN idempotent (aynı endpoint'i bir sonraki tick'te tekrar soracağız)
+# — bouncing hiçbir bilgi kaybettirmez, sadece gereksiz eşzamanlı denemeyi
+# önler. Dedup key = TAM url (host+path+query) — `proxy_get`'in query'sinde
+# `name` (session) zaten var, yani farklı session'lar birbirini ASLA
+# bloklamaz, sadece AYNI endpoint'e üst üste binen tekrarlar bloklanır.
+_inflight_lock = threading.Lock()
+_inflight_urls: set = set()
+
 
 def _split_url(url: str) -> Tuple[Any, str]:
     """`_http_json()`/`_http_raw()` ortak URL ayrıştırma: `conn.request()`'in
@@ -170,7 +194,7 @@ def _pool_checkin(key: str, conn: http.client.HTTPConnection, reusable: bool) ->
         pass
 
 
-def _http_json(method: str, url: str, body: Optional[dict], timeout: float) -> Tuple[int, Optional[dict], Optional[str]]:
+def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedup: bool = False) -> Tuple[int, Optional[dict], Optional[str]]:
     """Küçük stdlib-only HTTP+JSON yardımcısı — hiçbir zaman raise ETMEZ, her
     hata (status, None, kısa okunur mesaj) olarak döner; çağıranın exception
     yakalamasına gerek kalmaz.
@@ -201,35 +225,51 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float) -> T
     (`from_pool=True` iken patlarsa) TEK SEFER taze bir bağlantıyla retry
     edilir — taze açılmış bir bağlantının patlaması (`from_pool=False`)
     gerçek bir sorun demektir, onu tekrar denemek SADECE zaten-dolmuş bir
-    timeout'u ikiye katlardı, o yüzden orada anında hata dönülür."""
-    url_parts, path = _split_url(url)
-    key = _pool_key(url_parts)
-    conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    headers = {"Content-Type": "application/json"} if data is not None else {}
-    last_err = ""
-    for _ in (1, 2):
-        conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
-        try:
-            conn.request(method, path, body=data, headers=headers)
-            resp = conn.getresponse()
-            status = resp.status
-            raw = resp.read()
-        except (OSError, http.client.HTTPException) as e:
-            _pool_checkin(key, conn, reusable=False)
-            if from_pool:
-                last_err = str(e)
-                continue
-            return 0, None, str(e)
-        _pool_checkin(key, conn, reusable=True)
-        try:
-            parsed = json.loads(raw)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return status, None, "bad response (not JSON)"
-        if not isinstance(parsed, dict):
-            return status, None, "bad response (not an object)"
-        return status, parsed, None
-    return 0, None, last_err
+    timeout'u ikiye katlardı, o yüzden orada anında hata dönülür.
+
+    `dedup=True` (bkz. `_inflight_urls` üstündeki not) — SADECE poll/okuma
+    çağrıları (`fetch_remote_status`, `proxy_get`) verir, `proxy_action`
+    HİÇBİR ZAMAN vermez: aynı URL'e zaten uçuşta bir istek varsa YENİ bağlantı
+    hiç açılmadan anında `busy` hatası dönülür — host yavaşken üst üste binen
+    onlarca eşzamanlı deneme yerine TEK bir deneme bekleniyor olur."""
+    if dedup:
+        with _inflight_lock:
+            if url in _inflight_urls:
+                return 0, None, "busy: an earlier request to this same endpoint is still in flight"
+            _inflight_urls.add(url)
+    try:
+        url_parts, path = _split_url(url)
+        key = _pool_key(url_parts)
+        conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {"Content-Type": "application/json"} if data is not None else {}
+        last_err = ""
+        for _ in (1, 2):
+            conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
+            try:
+                conn.request(method, path, body=data, headers=headers)
+                resp = conn.getresponse()
+                status = resp.status
+                raw = resp.read()
+            except (OSError, http.client.HTTPException) as e:
+                _pool_checkin(key, conn, reusable=False)
+                if from_pool:
+                    last_err = str(e)
+                    continue
+                return 0, None, str(e)
+            _pool_checkin(key, conn, reusable=True)
+            try:
+                parsed = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return status, None, "bad response (not JSON)"
+            if not isinstance(parsed, dict):
+                return status, None, "bad response (not an object)"
+            return status, parsed, None
+        return 0, None, last_err
+    finally:
+        if dedup:
+            with _inflight_lock:
+                _inflight_urls.discard(url)
 
 
 # Frontend'in `CliOptions` tipi (api/types.ts) bu 4 alanın HER cli girdisinde
@@ -259,7 +299,7 @@ def fetch_remote_status(host_record: Dict[str, str]) -> Dict[str, Any]:
     (`merge_status`/poller) iki dalı ayrım yapmadan aynı şekilde işleyebilir."""
     name = host_record["name"]
     url = f"{host_record['base_url']}/api/status?token={host_record['token']}"
-    status, parsed, err = _http_json("GET", url, None, STATUS_TIMEOUT_SECONDS)
+    status, parsed, err = _http_json("GET", url, None, STATUS_TIMEOUT_SECONDS, dedup=True)
     if err is not None or parsed is None:
         return {"ok": False, "error": err or f"http {status}", **_EMPTY_REMOTE}
     if "sessions" not in parsed:
@@ -473,34 +513,44 @@ def proxy_action(path: str, host_name: str, body: Dict[str, Any]) -> Tuple[Dict[
     return parsed, status
 
 
-def _http_raw(url: str, timeout: float) -> Tuple[int, Optional[bytes], Optional[Dict[str, str]], Optional[str]]:
+def _http_raw(url: str, timeout: float, dedup: bool = False) -> Tuple[int, Optional[bytes], Optional[Dict[str, str]], Optional[str]]:
     """`_http_json()`'ın binary-passthrough kardeşi — `/api/files/download`
     proxy'si için JSON parse ETMEDEN ham body + seçili header'ları
     (content-type, content-disposition) döner. Aynı 'hiçbir zaman raise
     etmez' disiplini + aynı garantili-kapatma fix'i + aynı keep-alive havuzu
-    (bkz. `_http_json` docstring'i, 2026-09-14 bağlantı sızıntısı + pooling
-    fix'leri)."""
-    url_parts, path = _split_url(url)
-    key = _pool_key(url_parts)
-    conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
-    last_err = ""
-    for _ in (1, 2):
-        conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
-        try:
-            conn.request("GET", path)
-            resp = conn.getresponse()
-            status = resp.status
-            body = resp.read()
-            headers = {k: v for k, v in resp.getheaders() if k.lower() in ("content-type", "content-disposition")}
-        except (OSError, http.client.HTTPException) as e:
-            _pool_checkin(key, conn, reusable=False)
-            if from_pool:
-                last_err = str(e)
-                continue
-            return 0, None, None, str(e)
-        _pool_checkin(key, conn, reusable=True)
-        return status, body, headers, None
-    return 0, None, None, last_err
+    + aynı tek-uçuş dedup'ı (bkz. `_http_json` docstring'i, 2026-09-14
+    bağlantı sızıntısı + pooling + dedup fix'leri)."""
+    if dedup:
+        with _inflight_lock:
+            if url in _inflight_urls:
+                return 0, None, None, "busy: an earlier request to this same endpoint is still in flight"
+            _inflight_urls.add(url)
+    try:
+        url_parts, path = _split_url(url)
+        key = _pool_key(url_parts)
+        conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
+        last_err = ""
+        for _ in (1, 2):
+            conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
+            try:
+                conn.request("GET", path)
+                resp = conn.getresponse()
+                status = resp.status
+                body = resp.read()
+                headers = {k: v for k, v in resp.getheaders() if k.lower() in ("content-type", "content-disposition")}
+            except (OSError, http.client.HTTPException) as e:
+                _pool_checkin(key, conn, reusable=False)
+                if from_pool:
+                    last_err = str(e)
+                    continue
+                return 0, None, None, str(e)
+            _pool_checkin(key, conn, reusable=True)
+            return status, body, headers, None
+        return 0, None, None, last_err
+    finally:
+        if dedup:
+            with _inflight_lock:
+                _inflight_urls.discard(url)
 
 
 def proxy_get(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Dict[str, Any], int]:
@@ -512,7 +562,7 @@ def proxy_get(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Dict[st
     q = {k: v for k, v in query.items() if k != "host"}
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
-    status, parsed, err = _http_json("GET", url, None, TERM_READ_TIMEOUT_SECONDS)
+    status, parsed, err = _http_json("GET", url, None, TERM_READ_TIMEOUT_SECONDS, dedup=True)
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status
@@ -526,7 +576,7 @@ def proxy_get_raw(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Opt
     q = {k: v for k, v in query.items() if k != "host"}
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
-    status, body, headers, err = _http_raw(url, ACTION_TIMEOUT_SECONDS)
+    status, body, headers, err = _http_raw(url, ACTION_TIMEOUT_SECONDS, dedup=True)
     if err is not None:
         return None, 200, None, f"{host_name} unreachable: {err}"
     return body, status, headers, None
