@@ -10,11 +10,18 @@
  * component table).
  *
  * TODO L57 (2026-09-02 decision: group by cwd, no new roster field) — rows
- * are grouped into a header + its sessions; a group collapses/expands (all
- * start expanded — nothing hidden by default, the header is mainly a label
- * + cross-tab-running badge) and pagination (TODO L74) paginates the GROUP
- * list rather than individual rows, so a page break can never split one
- * project's names across two pages.
+ * are grouped into a header + its sessions, and pagination (TODO L74)
+ * paginates the GROUP list rather than individual rows, so a page break
+ * can never split one project's names across two pages.
+ *
+ * 2026-09-14: `groupByCwd`/`GroupHeaderRow` moved to `../shared/` so
+ * RunningTab/GroupTable can group the same way (user: "tree gorunumu her
+ * tabda olsun") — this file now only adds its own `hasRunning` cross-tab
+ * badge on top of the shared grouping. Default flipped from "all start
+ * expanded" (2026-09-02) to "all start collapsed" (user: "tablarda all
+ * collapsed gelsin") via `useGroupCollapse`'s empty-set-= collapsed
+ * convention, and a Collapse/Expand-all control was added
+ * (`CollapseControls`, user: "tablara collapse all expand all getirelim").
  */
 
 import { Fragment, useState } from "react";
@@ -23,11 +30,15 @@ import { OptionsRow } from "../RunningTab/OptionsRow";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { usePagination } from "../../hooks/usePagination";
+import { useGroupCollapse } from "../../hooks/useGroupCollapse";
 import { LOCAL_HOST, rowKey } from "../../state/hosts";
 import type { SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
+import { CollapseControls } from "../shared/CollapseControls";
 import { CwdCell } from "../shared/CwdCell";
+import { GroupHeaderRow } from "../shared/GroupHeaderRow";
+import { groupByCwd, groupKey, type CwdGroup } from "../shared/groupByCwd";
 import { isProtectedName } from "../shared/protectedNames";
 import { Pagination } from "../shared/Pagination";
 import { matchesSearch } from "../shared/searchFilter";
@@ -109,76 +120,14 @@ function RegisteredRow({
   );
 }
 
-interface RegisteredGroup {
-  host: string;
-  cwd: string;
-  sessions: SessionInfo[];
-  /** Whether ANY session (running or not) sharing this (host, cwd) is
-   * currently running — cross-tab signal the user asked for ("Registered da
-   * bu grupda acik olan var mi gosterelim"). */
-  hasRunning: boolean;
-}
-
-/** Composite group identity — two different hosts can genuinely have a
- * project checked out at the same absolute path; grouping those together
- * under one header would misleadingly imply they're the same project. */
-function groupKey(host: string, cwd: string): string {
-  return `${host}:${cwd}`;
-}
-
-/** Groups the stopped `rows` by `(host, cwd)`, in first-seen order.
- * `allSessions` (the full running+stopped set) is only used to compute
- * `hasRunning` — a project can be "registered" here via one name while a
- * DIFFERENT name sharing the same (host, cwd) is actively running (e.g.
- * this repo's own cops+diag). */
-function groupByCwd(rows: SessionInfo[], allSessions: SessionInfo[]): RegisteredGroup[] {
-  const runningKeys = new Set(allSessions.filter((s) => s.running).map((s) => groupKey(s.host, s.cwd)));
-  const order: string[] = [];
-  const byKey = new Map<string, SessionInfo[]>();
-  for (const r of rows) {
-    const key = groupKey(r.host, r.cwd);
-    let list = byKey.get(key);
-    if (!list) {
-      list = [];
-      byKey.set(key, list);
-      order.push(key);
-    }
-    list.push(r);
-  }
-  return order.map((key) => {
-    const sessions = byKey.get(key)!;
-    return { host: sessions[0].host, cwd: sessions[0].cwd, sessions, hasRunning: runningKeys.has(key) };
-  });
-}
-
-function GroupHeaderRow({
-  group,
-  collapsed,
-  onToggle,
-}: {
-  group: RegisteredGroup;
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
-  const { t } = useLang();
-  return (
-    <tr className="group-header" onClick={onToggle}>
-      <td colSpan={REGISTERED_ROW_COLSPAN}>
-        <span className="toggle">{collapsed ? "▸" : "▾"}</span>
-        {group.cwd} ({group.sessions.length})
-        {group.host !== LOCAL_HOST && (
-          <span className="cli-badge" title={t.hostBadgeHint(group.host)}>
-            {group.host}
-          </span>
-        )}
-        {group.hasRunning && (
-          <span className="unreg-badge" title={t.groupRunningBadge}>
-            {t.groupRunningBadge}
-          </span>
-        )}
-      </td>
-    </tr>
-  );
+/** Whether ANY session (running or not) sharing this group's (host, cwd)
+ * is currently running — cross-tab signal the user asked for ("Registered
+ * da bu grupda acik olan var mi gosterelim"). Kept local to this file
+ * (unlike the grouping itself) since it needs the full running+stopped
+ * session set, which only RegisteredTab has reason to compute. */
+function hasRunningFor(group: CwdGroup<SessionInfo>, allSessions: SessionInfo[]): boolean {
+  const key = groupKey(group.host, group.cwd);
+  return allSessions.some((s) => s.running && groupKey(s.host, s.cwd) === key);
 }
 
 export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabProps) {
@@ -186,7 +135,7 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
   const { data } = useStatusContext();
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
   const [openEditFor, setOpenEditFor] = useState<string | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const collapse = useGroupCollapse();
 
   // Hooks must run unconditionally (rules-of-hooks) — computed before the
   // `!data` early return below, with empty-array fallbacks while `data`
@@ -202,25 +151,18 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
   // surviving members drops out of `groups` entirely rather than rendering
   // an empty header.
   const rows = allRows.filter((s) => matchesSearch(s, search));
-  const groups = data ? groupByCwd(rows, data.sessions) : [];
+  const groups = groupByCwd(rows);
+  const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
   const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
 
   if (!data) return null;
 
   const allSelected = rows.length > 0 && rows.every((s) => selection.selected.has(rowKey(s)));
 
-  function toggleGroup(key: string) {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
   return (
     <>
       <BulkBar tab="registered" rows={rows} selection={selection} />
+      <CollapseControls groupKeys={groupKeys} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
       <div className="tablewrap">
         <table className="regtab">
           <thead>
@@ -249,11 +191,26 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
             )}
             {pageGroups.map((g) => {
               const gKey = groupKey(g.host, g.cwd);
+              const expanded = collapse.isExpanded(gKey);
               return (
                 <Fragment key={gKey}>
-                  <GroupHeaderRow group={g} collapsed={collapsedGroups.has(gKey)} onToggle={() => toggleGroup(gKey)} />
-                  {!collapsedGroups.has(gKey) &&
-                    g.sessions.map((s) => (
+                  <GroupHeaderRow
+                    host={g.host}
+                    cwd={g.cwd}
+                    count={g.items.length}
+                    colSpan={REGISTERED_ROW_COLSPAN}
+                    collapsed={!expanded}
+                    onToggle={() => collapse.toggle(gKey)}
+                    extra={
+                      hasRunningFor(g, data.sessions) && (
+                        <span className="unreg-badge" title={t.groupRunningBadge}>
+                          {t.groupRunningBadge}
+                        </span>
+                      )
+                    }
+                  />
+                  {expanded &&
+                    g.items.map((s) => (
                       <RegisteredRow
                         key={rowKey(s)}
                         session={s}

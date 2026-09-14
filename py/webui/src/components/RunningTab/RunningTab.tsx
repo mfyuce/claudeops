@@ -13,15 +13,28 @@
  * inconsequential); here each tab owns its own pointer instead of
  * threading one more piece of shared state down from `App`. No observable
  * difference to a user, since only one tab is ever visible at a time.
+ *
+ * 2026-09-14: grouped by (host, cwd) like RegisteredTab, using the same
+ * `../shared/groupByCwd`/`GroupHeaderRow`/`useGroupCollapse` (user: "tree
+ * gorunumu her tabda olsun") — starts all-collapsed, with a Collapse/
+ * Expand-all control (`CollapseControls`). Pagination switched from
+ * per-row to per-GROUP for the same "never split a project across pages"
+ * reason RegisteredTab already had. No cross-tab "hasRunning" badge here
+ * (unlike RegisteredTab) — every row in THIS tab is already running, the
+ * badge would be true for every group and say nothing.
  */
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { usePagination } from "../../hooks/usePagination";
+import { useGroupCollapse } from "../../hooks/useGroupCollapse";
 import { rowKey } from "../../state/hosts";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
+import { CollapseControls } from "../shared/CollapseControls";
+import { GroupHeaderRow } from "../shared/GroupHeaderRow";
+import { groupByCwd, groupKey } from "../shared/groupByCwd";
 import { matchesSearch } from "../shared/searchFilter";
 import { Pagination } from "../shared/Pagination";
 import { BulkBar } from "./BulkBar";
@@ -43,6 +56,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   // different hosts can share one (see state/hosts.ts).
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
   const [openAdoptFor, setOpenAdoptFor] = useState<string | null>(null);
+  const collapse = useGroupCollapse();
   // Hooks must run unconditionally (rules-of-hooks) — computed before the
   // `!data` early return below, with an empty-array fallback while `data`
   // hasn't loaded yet.
@@ -52,9 +66,13 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   // already treats `rows` as "the current tab's full set", so it needs no
   // separate search-awareness.
   const rows = allRows.filter((s) => matchesSearch(s, search));
+  const groups = groupByCwd(rows);
+  const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
   // Select-all/bulk actions stay scoped to the FULL (unpaginated) `rows` —
-  // only which rows are individually RENDERED is paginated.
-  const { pageItems, page, totalPages, setPage } = usePagination(rows);
+  // only which GROUPS are RENDERED on the current page is paginated (same
+  // "never split a project's rows across pages" reasoning as
+  // RegisteredTab).
+  const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
 
   if (!data) return null;
 
@@ -63,6 +81,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   return (
     <>
       <BulkBar tab="running" rows={rows} selection={selection} />
+      <CollapseControls groupKeys={groupKeys} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
       <div className="tablewrap">
         <table className="runtab">
           <thead>
@@ -95,19 +114,36 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
                 </td>
               </tr>
             )}
-            {pageItems.map((s) => (
-              <SessionRow
-                key={rowKey(s)}
-                session={s}
-                selection={selection}
-                isOptionsOpen={openOptionsFor === rowKey(s)}
-                onToggleOptions={() => setOpenOptionsFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}
-                isAdoptOpen={openAdoptFor === rowKey(s)}
-                onToggleAdopt={() => setOpenAdoptFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}
-                onToggleTerminal={onToggleTerminal}
-                onSwitchTab={onSwitchTab}
-              />
-            ))}
+            {pageGroups.map((g) => {
+              const gKey = groupKey(g.host, g.cwd);
+              const expanded = collapse.isExpanded(gKey);
+              return (
+                <Fragment key={gKey}>
+                  <GroupHeaderRow
+                    host={g.host}
+                    cwd={g.cwd}
+                    count={g.items.length}
+                    colSpan={RUNNING_ROW_COLSPAN}
+                    collapsed={!expanded}
+                    onToggle={() => collapse.toggle(gKey)}
+                  />
+                  {expanded &&
+                    g.items.map((s) => (
+                      <SessionRow
+                        key={rowKey(s)}
+                        session={s}
+                        selection={selection}
+                        isOptionsOpen={openOptionsFor === rowKey(s)}
+                        onToggleOptions={() => setOpenOptionsFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}
+                        isAdoptOpen={openAdoptFor === rowKey(s)}
+                        onToggleAdopt={() => setOpenAdoptFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}
+                        onToggleTerminal={onToggleTerminal}
+                        onSwitchTab={onSwitchTab}
+                      />
+                    ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

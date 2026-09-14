@@ -20,19 +20,33 @@
  * `search` (2026-09-04): filtered here (not by the caller) so the two
  * call sites (App.tsx's Disabled/Retired tabs) stay one-liners, same as
  * every other prop this component already takes.
+ *
+ * 2026-09-14: grouped by (host, cwd) like RegisteredTab/RunningTab, same
+ * `../shared/groupByCwd`/`GroupHeaderRow`/`useGroupCollapse` (user: "tree
+ * gorunumu her tabda olsun") — starts all-collapsed, `CollapseControls`
+ * added. `RosterEntry` (unlike `SessionInfo`) has no `running` field, so
+ * there's no RegisteredTab-style "hasRunning" badge to compute here.
+ * Pagination switched from per-row to per-group, same reasoning as the
+ * other two tabs.
  */
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { apiReactivate } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { usePagination } from "../hooks/usePagination";
+import { useGroupCollapse } from "../hooks/useGroupCollapse";
 import { LOCAL_HOST, rowKey } from "../state/hosts";
 import type { RosterEntry } from "../api/types";
+import { CollapseControls } from "./shared/CollapseControls";
 import { CwdCell } from "./shared/CwdCell";
+import { GroupHeaderRow } from "./shared/GroupHeaderRow";
+import { groupByCwd, groupKey } from "./shared/groupByCwd";
 import { Pagination } from "./shared/Pagination";
 import { matchesSearch } from "./shared/searchFilter";
+
+const GROUP_TABLE_COLSPAN = 5;
 
 interface GroupTableProps {
   items: RosterEntry[];
@@ -83,18 +97,36 @@ function ReactivateRow({ item }: { item: RosterEntry }) {
 
 export function GroupTable({ items, search }: GroupTableProps) {
   const { t } = useLang();
+  const collapse = useGroupCollapse();
   const filtered = items.filter((it) => matchesSearch(it, search));
-  const { pageItems, page, totalPages, setPage } = usePagination(filtered);
+  const groups = groupByCwd(filtered);
+  const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
+  const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
 
   if (!filtered.length) return <div className="opts-hint">{items.length === 0 ? t.empty : t.noSearchMatches}</div>;
 
   return (
     <div className="tablewrap">
+      <CollapseControls groupKeys={groupKeys} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
       <table>
         <tbody>
-          {pageItems.map((it) => (
-            <ReactivateRow key={rowKey(it)} item={it} />
-          ))}
+          {pageGroups.map((g) => {
+            const gKey = groupKey(g.host, g.cwd);
+            const expanded = collapse.isExpanded(gKey);
+            return (
+              <Fragment key={gKey}>
+                <GroupHeaderRow
+                  host={g.host}
+                  cwd={g.cwd}
+                  count={g.items.length}
+                  colSpan={GROUP_TABLE_COLSPAN}
+                  collapsed={!expanded}
+                  onToggle={() => collapse.toggle(gKey)}
+                />
+                {expanded && g.items.map((it) => <ReactivateRow key={rowKey(it)} item={it} />)}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />

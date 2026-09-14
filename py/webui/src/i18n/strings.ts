@@ -286,6 +286,8 @@ export interface Strings {
   pageNext: string;
   pageOf: (page: number, total: number) => string;
   groupRunningBadge: string;
+  collapseAllBtn: string;
+  expandAllBtn: string;
   searchPlaceholder: string;
   searchClear: string;
   noSearchMatches: string;
@@ -569,6 +571,8 @@ export const STRINGS: Record<Lang, Strings> = {
     pageNext: "sonraki",
     pageOf: (page, total) => `sayfa ${page}/${total}`,
     groupRunningBadge: "bu grupta çalışan var",
+    collapseAllBtn: "hepsini kapat",
+    expandAllBtn: "hepsini aç",
     searchPlaceholder: "isim veya cwd ara…",
     searchClear: "aramayı temizle",
     noSearchMatches: "Aramayla eşleşen yok.",
@@ -865,6 +869,8 @@ export const STRINGS: Record<Lang, Strings> = {
     pageNext: "next",
     pageOf: (page, total) => `page ${page}/${total}`,
     groupRunningBadge: "something in this group is running",
+    collapseAllBtn: "collapse all",
+    expandAllBtn: "expand all",
     searchPlaceholder: "search name or cwd…",
     searchClear: "clear search",
     noSearchMatches: "Nothing matches the search.",
