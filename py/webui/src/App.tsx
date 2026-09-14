@@ -169,7 +169,7 @@ function AppShell() {
           <RunningTab selection={selection} onToggleTerminal={onToggleTerminal} onSwitchTab={setActiveTab} search={search} />
         )}
         {data && activeTab === "registered" && (
-          <RegisteredTab selection={selection} onSwitchTab={setActiveTab} search={search} />
+          <RegisteredTab selection={selection} onSwitchTab={setActiveTab} search={search} onView={onViewSession} />
         )}
         {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} onView={onViewSession} />}
         {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} onView={onViewSession} />}

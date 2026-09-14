@@ -51,6 +51,7 @@ interface RegisteredTabProps {
   selection: SelectionControls;
   onSwitchTab: (tab: TabKey) => void;
   search: string;
+  onView: (host: string, name: string) => void;
 }
 
 interface RegisteredRowProps {
@@ -61,6 +62,7 @@ interface RegisteredRowProps {
   isEditOpen: boolean;
   onToggleEdit: () => void;
   onSwitchTab: (tab: TabKey) => void;
+  onView: (host: string, name: string) => void;
 }
 
 function RegisteredRow({
@@ -71,6 +73,7 @@ function RegisteredRow({
   isEditOpen,
   onToggleEdit,
   onSwitchTab,
+  onView,
 }: RegisteredRowProps) {
   const { t } = useLang();
   return (
@@ -109,6 +112,9 @@ function RegisteredRow({
             <button type="button" title={t.editTitle} onClick={onToggleEdit}>
               {t.editBtn}
             </button>
+            <button type="button" className="start" onClick={() => onView(session.host, session.name)}>
+              {t.viewBtn}
+            </button>
           </div>
         </td>
       </tr>
@@ -130,7 +136,7 @@ function hasRunningFor(group: CwdGroup<SessionInfo>, allSessions: SessionInfo[])
   return allSessions.some((s) => s.running && groupKey(s.host, s.cwd) === key);
 }
 
-export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabProps) {
+export function RegisteredTab({ selection, onSwitchTab, search, onView }: RegisteredTabProps) {
   const { t } = useLang();
   const { data } = useStatusContext();
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
@@ -232,6 +238,7 @@ export function RegisteredTab({ selection, onSwitchTab, search }: RegisteredTabP
                           })
                         }
                         onSwitchTab={onSwitchTab}
+                        onView={onView}
                       />
                     ))}
                 </Fragment>
