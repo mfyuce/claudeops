@@ -18,7 +18,11 @@ ZORLAMAYI KALDIRMA — 2. hop'u yapısal olarak imkansız kılan tek şey bu.
 
 Bu repo'da requests/httpx YOK — buradaki proxy HTTP çağrıları (`_http_json`/
 `_http_raw`) 2026-09-14'ten beri `http.client`'ı DOĞRUDAN kullanıyor (garantili
-bağlantı-kapatma için, bkz. `_http_json` docstring'i); `_ensure_cloudflared()`
+bağlantı-kapatma için, bkz. `_http_json` docstring'i) VE (aynı gün, ikinci bir
+fix turu) host başına küçük bir keep-alive HAVUZU tutuyor (bkz. `_pool_checkout`/
+`_pool_checkin`) — VS Code'un aynı devtunnel relay'ine açtığı TEK kalıcı
+bağlantıyı sonsuza kadar yeniden kullanmasıyla AYNI ilke, "her poll/proxy
+çağrısı kendi taze TCP+TLS handshake'ini açsın" yerine; `_ensure_cloudflared()`
 ise ayrıca `urllib.request` kullanıyor (binary indirme) — aynı stdlib-only
 disiplin, iki farklı stdlib HTTP arayüzü.
 """
@@ -90,18 +94,80 @@ _EMPTY_REMOTE: Dict[str, Any] = {
 }
 
 
-def _http_connect(url: str, timeout: float) -> Tuple[http.client.HTTPConnection, str]:
-    """`_http_json()`/`_http_raw()` ortak açılış: URL'i böler, http/https'e
-    göre doğru bağlantı sınıfını seçer, `conn.request()`'in beklediği
-    path(+query)'i üretir. Bağlantıyı KAPATMAK çağıranın işi (`finally:
-    conn.close()`) — burada sadece açılıyor, bkz. `_http_json` docstring'i."""
+# Host başına küçük bir keep-alive HAVUZU — VS Code'un aynı devtunnel relay'ine
+# AÇTIĞI TEK kalıcı bağlantıyı sonsuza kadar yeniden kullanmasıyla AYNI ilke.
+# Yukarıdaki (2026-09-14) fix SADECE "bazen hiç kapanmıyor" bug'ını düzeltti —
+# "her çağrı (poller'ın HER 3sn'lik turu + panel açıkken her terminal/action
+# proxy'si) kendi taze TCP+TLS handshake'ini açıp TEK istekte kullanıp atıyor"
+# hiç ele alınmamıştı (pooling YOK: requests/httpx kullanılmıyor, stdlib
+# http.client'ın kendi persistent-connection desteği de kullanılmamıştı — bu
+# BİLİNÇLİ bir tercih değildi, sadece hiç düşünülmemişti). Canlı kanıt
+# (2026-09-14): yuhem'in "yavaş handshake"le bilinen devtunnel relay'ine karşı
+# her 3 saniyede taze bir handshake açmak muhtemelen "yuhem koptu" döngüsünü
+# besliyordu — VS Code aynı relay'e TEK bağlantıyla (asla yeniden handshake
+# yapmadan) kesintisiz çalışabiliyorken.
+#
+# Havuz host+port+scheme bazlı (registry adı DEĞİL) — bir host'un base_url'i
+# değişirse/host silinirse eski bucket sadece kullanılmaz kalır, temizlik
+# YAPILMIYOR (birkaç idle soket, bounded by `_CONN_POOL_MAX_IDLE`, önemsiz).
+_CONN_POOL_MAX_IDLE = 4
+_conn_pool_lock = threading.Lock()
+_conn_pool: Dict[str, List[http.client.HTTPConnection]] = {}
+
+
+def _split_url(url: str) -> Tuple[Any, str]:
+    """`_http_json()`/`_http_raw()` ortak URL ayrıştırma: `conn.request()`'in
+    beklediği path(+query)'i üretir, `urlsplit` sonucunu (host/port/scheme)
+    olduğu gibi döner."""
     parsed = urllib.parse.urlsplit(url)
-    conn_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
-    conn = conn_cls(parsed.hostname, parsed.port, timeout=timeout)
     path = parsed.path or "/"
     if parsed.query:
         path += "?" + parsed.query
-    return conn, path
+    return parsed, path
+
+
+def _pool_key(parsed: Any) -> str:
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return f"{parsed.scheme}://{parsed.hostname}:{port}"
+
+
+def _pool_checkout(key: str, conn_cls: type, hostname: Optional[str], port: Optional[int],
+                    timeout: float) -> Tuple[http.client.HTTPConnection, bool]:
+    """Havuzda boşta bir bağlantı varsa onu (soket zaten açıksa timeout'unu BU
+    çağrıya göre güncelleyerek — her çağrı STATUS/TERM_READ/ACTION'ın farklı
+    bir timeout'unu taşıyabilir) döner, yoksa taze açar. İkinci dönüş değeri
+    `from_pool` — havuzdaki bağlantı relay tarafından sessizce kapatılmış
+    olabilir (idle timeout), bunu burada KONTROL ETMEYİZ; çağıran taraf
+    `conn.request()`/`getresponse()` patlarsa SADECE `from_pool=True` iken
+    taze bir bağlantıyla tek sefer retry eder (bkz. `_http_json` docstring'i)
+    — taze açılmış bir bağlantının patlaması gerçek bir sorun demektir (host
+    çökmüş), onu tekrar denemek sadece zaten-dolmuş bir timeout'u ikiye katlar."""
+    with _conn_pool_lock:
+        bucket = _conn_pool.get(key)
+        conn = bucket.pop() if bucket else None
+    if conn is not None:
+        conn.timeout = timeout
+        if conn.sock is not None:
+            conn.sock.settimeout(timeout)
+        return conn, True
+    return conn_cls(hostname, port, timeout=timeout), False
+
+
+def _pool_checkin(key: str, conn: http.client.HTTPConnection, reusable: bool) -> None:
+    """`reusable=False` (istek/yanıt sırasında hata oldu) ise bağlantı ASLA
+    havuza dönmez, direkt kapanır — bozuk bir soketi bir sonraki çağırana
+    miras bırakmamak için. Havuz zaten `_CONN_POOL_MAX_IDLE` kadar doluysa
+    fazlası da kapatılır (sınırsız idle-soket birikmesin)."""
+    if reusable:
+        with _conn_pool_lock:
+            bucket = _conn_pool.setdefault(key, [])
+            if len(bucket) < _CONN_POOL_MAX_IDLE:
+                bucket.append(conn)
+                return
+    try:
+        conn.close()
+    except Exception:
+        pass
 
 
 def _http_json(method: str, url: str, body: Optional[dict], timeout: float) -> Tuple[int, Optional[dict], Optional[str]]:
@@ -125,27 +191,45 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float) -> T
     (connect/send/read) `conn.close()` çağırıyoruz. Yan etki: `http.client`
     (urlopen'ın aksine) 4xx/5xx için exception FIRLATMAZ — `getresponse()`
     her zaman normal döner, bu da eski HTTPError-özel-durumunu gereksiz
-    kılıyor (body zaten aynı şekilde okunuyor)."""
-    conn, path = _http_connect(url, timeout)
+    kılıyor (body zaten aynı şekilde okunuyor).
+
+    2026-09-14 (aynı gün, ikinci tur): yukarıdaki fix bağlantıyı GÜVENLE
+    kapatmayı garantiledi ama HER çağrı hâlâ kendi taze TCP+TLS handshake'ini
+    açıyordu — VS Code'un AYNI relay'e TEK kalıcı bağlantıyla çalışmasının tam
+    tersi. Artık `_pool_checkout`/`_pool_checkin` ile host başına küçük bir
+    keep-alive havuzu kullanılıyor; havuzdaki bağlantı bayatlamışsa
+    (`from_pool=True` iken patlarsa) TEK SEFER taze bir bağlantıyla retry
+    edilir — taze açılmış bir bağlantının patlaması (`from_pool=False`)
+    gerçek bir sorun demektir, onu tekrar denemek SADECE zaten-dolmuş bir
+    timeout'u ikiye katlardı, o yüzden orada anında hata dönülür."""
+    url_parts, path = _split_url(url)
+    key = _pool_key(url_parts)
+    conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
     data = json.dumps(body).encode("utf-8") if body is not None else None
     headers = {"Content-Type": "application/json"} if data is not None else {}
-    try:
+    last_err = ""
+    for _ in (1, 2):
+        conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
         try:
             conn.request(method, path, body=data, headers=headers)
             resp = conn.getresponse()
             status = resp.status
             raw = resp.read()
         except (OSError, http.client.HTTPException) as e:
+            _pool_checkin(key, conn, reusable=False)
+            if from_pool:
+                last_err = str(e)
+                continue
             return 0, None, str(e)
-    finally:
-        conn.close()
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return status, None, "bad response (not JSON)"
-    if not isinstance(parsed, dict):
-        return status, None, "bad response (not an object)"
-    return status, parsed, None
+        _pool_checkin(key, conn, reusable=True)
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return status, None, "bad response (not JSON)"
+        if not isinstance(parsed, dict):
+            return status, None, "bad response (not an object)"
+        return status, parsed, None
+    return 0, None, last_err
 
 
 # Frontend'in `CliOptions` tipi (api/types.ts) bu 4 alanın HER cli girdisinde
@@ -393,21 +477,30 @@ def _http_raw(url: str, timeout: float) -> Tuple[int, Optional[bytes], Optional[
     """`_http_json()`'ın binary-passthrough kardeşi — `/api/files/download`
     proxy'si için JSON parse ETMEDEN ham body + seçili header'ları
     (content-type, content-disposition) döner. Aynı 'hiçbir zaman raise
-    etmez' disiplini + aynı garantili-kapatma fix'i (bkz. `_http_json`
-    docstring'i, 2026-09-14 bağlantı sızıntısı fix'i)."""
-    conn, path = _http_connect(url, timeout)
-    try:
+    etmez' disiplini + aynı garantili-kapatma fix'i + aynı keep-alive havuzu
+    (bkz. `_http_json` docstring'i, 2026-09-14 bağlantı sızıntısı + pooling
+    fix'leri)."""
+    url_parts, path = _split_url(url)
+    key = _pool_key(url_parts)
+    conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
+    last_err = ""
+    for _ in (1, 2):
+        conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
         try:
             conn.request("GET", path)
             resp = conn.getresponse()
             status = resp.status
             body = resp.read()
             headers = {k: v for k, v in resp.getheaders() if k.lower() in ("content-type", "content-disposition")}
-            return status, body, headers, None
         except (OSError, http.client.HTTPException) as e:
+            _pool_checkin(key, conn, reusable=False)
+            if from_pool:
+                last_err = str(e)
+                continue
             return 0, None, None, str(e)
-    finally:
-        conn.close()
+        _pool_checkin(key, conn, reusable=True)
+        return status, body, headers, None
+    return 0, None, None, last_err
 
 
 def proxy_get(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Dict[str, Any], int]:
