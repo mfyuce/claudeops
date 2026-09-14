@@ -229,7 +229,23 @@ class CopilotProvider(CliProvider):
         return env
 
     def matches_proc(self, cmd: List[str]) -> bool:
-        return bool(cmd) and os.path.basename(cmd[0]) == "copilot"
+        # `--server`/`--stdio` = başka bir programın kendi backend'i olarak
+        # (JSON-RPC-over-stdio, ACP'ye benzer) başlattığı bir HEADLESS örnek,
+        # interaktif claudeops session'ı DEĞİL — 2026-09-14 canlı bulundu:
+        # ayrı bir masaüstü uygulaması ("GitHub Copilot" AppImage, `ps -ef`de
+        # `.../github-copilot-sdk/cli/<sürüm>/copilot --server --stdio
+        # --no-auto-update`, ebeveyni claudeops'un hiç açmadığı bir proc)
+        # her iç işleminde YENİ bir `copilot` alt-süreci başlatıyor, her biri
+        # `matches_proc`'a basename eşleşiyor diye Çalışanlar sekmesinde
+        # sürekli yeni "copilot-<pid>" (kayıtsız, `COPS_NAME` yok çünkü
+        # claudeops hiç spawn etmedi) satırları olarak çıkıyordu — canlı bir
+        # session değil, gürültü. `tmux`'a hiç bağlı olmadığından zaten
+        # `is_tmux_backed()` onu ayıklardı ama panelde "kayıtsız" olarak
+        # GÖRÜNMESİ engellenmemişti; kaynağında (bu fonksiyonda) elemek
+        # `find_sessions()`'ın onu hiç görmemesini sağlıyor.
+        if not cmd or os.path.basename(cmd[0]) != "copilot":
+            return False
+        return "--server" not in cmd and "--stdio" not in cmd
 
     def extract_name(self, proc, cmd: List[str]) -> Optional[str]:
         try:
