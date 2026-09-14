@@ -50,7 +50,25 @@ FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukar�
 
 # Status polling sık (3sn'de bir) ve HAFİF olmalı — kısa timeout, poller
 # thread'inin bir sonraki host'a hızlı geçebilmesi için de önemli.
-STATUS_TIMEOUT_SECONDS = 4.0
+#
+# 2026-09-14 güncelleme: 4.0 → 8.0. Canlı bulgu — TAM OLARAK
+# TERM_READ_TIMEOUT_SECONDS'ın altındaki 2026-09-07 notuyla AYNI sınıf sorun,
+# ama BU sabit o zaman atlanmış: yuhem "gitti" göründüğü anda kullanıcının
+# AYNI makineye VS Code'un KENDİ remote tunnel'ı (kalıcı/zaten-kurulu bir
+# kanal, her istekte yeniden TLS handshake YAPMIYOR) üzerinden kesintisiz
+# eriştiği doğrulandı — buna karşılık bu poll'un `_http_json` çağrısı HER
+# 3 saniyede bir TAZE bir bağlantı/TLS handshake açıyor. Sonuç: devtunnel
+# relay'inin SÜRDÜRÜLEN/zaten-açık bağlantılarda sorunu yok, YENİ bağlantı
+# kurma gecikmesi ARA SIRA 4sn'yi aşıyor — servisin kendisi (claudeops-web)
+# sağlıklı, sadece bu poll'un penceresi dar. Aynı anda elle yapılan bir
+# `curl` (8sn'lik varsayılan timeout'la) BAŞARILI oldu, gerçek 401 + gerçek
+# Microsoft devtunnel header'larıyla (`x-served-by: tunnels-prod-...`) —
+# bağlantı çöktü değil, sadece bu poll'un 4sn'si bazen yetmiyordu.
+# 12.0 (TERM_READ_TIMEOUT_SECONDS) kadar cömert YAPILMADI — bu poll sürekli/
+# sonsuz döngüde ve (şimdilik) tek host'lu bile olsa "tek thread/sıralı"
+# tasarımı gereği gerçekten ÇÖKMÜŞ bir host'ta HER turda tam timeout kadar
+# beklenmesi demek; 8.0 iki ucu da dengelemeye çalışan bir orta nokta.
+STATUS_TIMEOUT_SECONDS = 8.0
 # Terminal/Dosya GET'leri (yukarıdaki proxy_get/proxy_get_raw) — frontend'in
 # kendisi zaten 200ms'de bir dener, bu yüzden burada 4sn'lik dar pencereden
 # çok daha CÖMERT olmak ucuz: bir devtunnel/VPN'in tipik geçici gecikmesini
