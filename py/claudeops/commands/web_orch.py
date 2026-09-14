@@ -41,6 +41,15 @@ DEFAULT_WORKER_TIMEOUT_SECONDS = 900.0
 INLINE_LIMIT_CHARS = 4000
 INLINE_HEAD_CHARS = 2000
 
+# TODO.md (2026-09-12) — `web_hosts.py`'nin `CONSECUTIVE_FAILURES_BEFORE_ERROR`
+# ile AYNI tolerans deseni/gerekçesi: `_wait_for_reply_remote`'un 1sn'lik
+# poll'unda tek bir geçici devtunnel hatası, 900sn'lik bir worker turunu
+# ANINDA iptal ediyordu (`_fetch_exchange` None dönünce direkt `return None`).
+# Canlı rapor (2026-09-14): "iki buddy session [claudeops API üstünden]
+# konuşunca yuhem bağlantısı kesiliyor" — tam bu hat. 5 ardışık hataya kadar
+# sessizce bir sonraki tick'i bekle, SADECE eşik aşılırsa vazgeç.
+REMOTE_FETCH_FAILURES_BEFORE_GIVEUP = 5
+
 _LOCK = threading.Lock()
 _ACTIVE_RUN_ID: Optional[str] = None
 _CANCEL_EVENTS: Dict[str, threading.Event] = {}
@@ -267,10 +276,15 @@ def _fetch_exchange(host: str, name: str, cwd: str, sid: Optional[str], provider
 
 def _remote_busy_now(host: str, name: str, pattern: str) -> bool:
     """`turns.is_busy_now`'ın uzak eşdeğeri — `/api/term/output`'un ham
-    (ANSI'li) pane metni üstünde AYNI `strip_ansi`+regex disiplini."""
+    (ANSI'li) pane metni üstünde AYNI `strip_ansi`+regex disiplini.
+
+    Proxy çağrısı BAŞARISIZ olursa `True` (meşgul SAY) döner, `False` DEĞİL
+    (TODO.md 2026-09-12 fix) — geçici bir ağ hatasını "artık boş, yanıt
+    tamamlandı" diye yanlış okumak, `_wait_for_reply_remote`'un henüz
+    bitmemiş bir turu erken/hatalı "tamamlandı" saymasına yol açardı."""
     result, _status = web_hosts.proxy_get("/api/term/output", host, {"name": name})
     if not result.get("ok"):
-        return False
+        return True
     return bool(re.search(pattern, strip_ansi(result.get("text") or "")))
 
 
@@ -287,10 +301,17 @@ def _wait_for_reply_remote(host: str, name: str, provider, baseline: dict, *, ti
     kalan" listesinin #1 maddesi). Uzak-host mantığını sadece ona ihtiyaç
     duyan TEK çağıran (orkestrasyon) taşısın diye burada, ayrı tutuldu.
     `live_snapshot`/sid-discovery YOK — agy'nin fresh-session tespiti
-    tamamen local bir kavram, uzak katılımcılara hiç uygulanmıyor."""
+    tamamen local bir kavram, uzak katılımcılara hiç uygulanmıyor.
+
+    2026-09-12/14 fix (TODO.md, bkz. `REMOTE_FETCH_FAILURES_BEFORE_GIVEUP`):
+    `_fetch_exchange` başarısız olduğunda (`None`) ANINDA `return None`
+    YAPMAZ artık — ardışık `REMOTE_FETCH_FAILURES_BEFORE_GIVEUP` hataya
+    kadar sessizce bir sonraki tick'i bekler, SADECE eşik aşılırsa (ya da
+    genel `timeout` dolarsa) gerçekten vazgeçer."""
     pattern = provider.busy_status_pattern()
     previous: Optional[dict] = None
     stable_count = 0
+    fetch_fail_streak = 0
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if cancel is not None and cancel.is_set():
@@ -306,7 +327,11 @@ def _wait_for_reply_remote(host: str, name: str, provider, baseline: dict, *, ti
 
         exchange = _fetch_exchange(host, name, "", None, provider)
         if exchange is None:
-            return None
+            fetch_fail_streak += 1
+            if fetch_fail_streak >= REMOTE_FETCH_FAILURES_BEFORE_GIVEUP:
+                return None
+            continue
+        fetch_fail_streak = 0
         changed = exchange != baseline
         assistant_text = exchange.get("assistant", "")
         marker_ok = (require_marker is None) or (require_marker in assistant_text)
