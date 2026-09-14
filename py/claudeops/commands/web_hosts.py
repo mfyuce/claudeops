@@ -16,16 +16,18 @@ host'un KENDİ do_POST'u asla non-local bir host görmez, dolayısıyla kendi
 hosts.json'ında ne olursa olsun ikinci bir proxy hop'u asla oluşamaz. BU
 ZORLAMAYI KALDIRMA — 2. hop'u yapısal olarak imkansız kılan tek şey bu.
 
-Bu repo'da requests/httpx YOK (tek yerde zaten `urllib.request` kullanılıyor,
-_ensure_cloudflared()'ın binary indirmesi) — aynı stdlib-only disiplin.
+Bu repo'da requests/httpx YOK — buradaki proxy HTTP çağrıları (`_http_json`/
+`_http_raw`) 2026-09-14'ten beri `http.client`'ı DOĞRUDAN kullanıyor (garantili
+bağlantı-kapatma için, bkz. `_http_json` docstring'i); `_ensure_cloudflared()`
+ise ayrıca `urllib.request` kullanıyor (binary indirme) — aynı stdlib-only
+disiplin, iki farklı stdlib HTTP arayüzü.
 """
 from __future__ import annotations
+import http.client
 import json
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import hosts as hosts_mod
@@ -88,29 +90,55 @@ _EMPTY_REMOTE: Dict[str, Any] = {
 }
 
 
+def _http_connect(url: str, timeout: float) -> Tuple[http.client.HTTPConnection, str]:
+    """`_http_json()`/`_http_raw()` ortak açılış: URL'i böler, http/https'e
+    göre doğru bağlantı sınıfını seçer, `conn.request()`'in beklediği
+    path(+query)'i üretir. Bağlantıyı KAPATMAK çağıranın işi (`finally:
+    conn.close()`) — burada sadece açılıyor, bkz. `_http_json` docstring'i."""
+    parsed = urllib.parse.urlsplit(url)
+    conn_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    conn = conn_cls(parsed.hostname, parsed.port, timeout=timeout)
+    path = parsed.path or "/"
+    if parsed.query:
+        path += "?" + parsed.query
+    return conn, path
+
+
 def _http_json(method: str, url: str, body: Optional[dict], timeout: float) -> Tuple[int, Optional[dict], Optional[str]]:
     """Küçük stdlib-only HTTP+JSON yardımcısı — hiçbir zaman raise ETMEZ, her
     hata (status, None, kısa okunur mesaj) olarak döner; çağıranın exception
-    yakalamasına gerek kalmaz."""
+    yakalamasına gerek kalmaz.
+
+    2026-09-14: `urllib.request.urlopen()` YERİNE `http.client` DOĞRUDAN
+    kullanılıyor — CANLI BAĞLANTI SIZINTISI fix'i. Eski `with urlopen(...)
+    as resp:` deseni SADECE `urlopen()` başarıyla dönüp `resp`'i bağladığında
+    bağlantıyı kapatma garantisi verir; bağlantı KURULURKEN (TCP connect/TLS
+    handshake) timeout olursa `resp` hiç var olmaz, `with`in `__exit__`'i hiç
+    çalışmaz, ve altındaki `except` bloğu soketi kapatmadan sadece hata
+    tuple'ı döner — temizlik tamamen GC'ye kalır. Canlı kanıt: yuhem'in
+    devtunnel relay IP'sine `ss -tanpo` ile 65 ESTABLISHED + 322 TIME-WAIT
+    bağlantı bulundu, TÜMÜ claudeops-web'in kendi PID'inden (aynı hosta VS
+    Code'un AÇIK kalan bağlantısı sadece 6) — STATUS_TIMEOUT_SECONDS'ı
+    büyütmek (yukarıdaki not) belirtiyi seyreltti ama kaynağı düzeltmedi: her
+    poll turunda tekrarlayan timeout'lar soket sızdırmaya devam ediyordu.
+    Fix: bağlantıyı biz açıp `finally` içinde HANGİ aşama patlarsa patlasın
+    (connect/send/read) `conn.close()` çağırıyoruz. Yan etki: `http.client`
+    (urlopen'ın aksine) 4xx/5xx için exception FIRLATMAZ — `getresponse()`
+    her zaman normal döner, bu da eski HTTPError-özel-durumunu gereksiz
+    kılıyor (body zaten aynı şekilde okunuyor)."""
+    conn, path = _http_connect(url, timeout)
     data = json.dumps(body).encode("utf-8") if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method)
-    if data is not None:
-        req.add_header("Content-Type", "application/json")
-    status = 0
-    raw = b""
+    headers = {"Content-Type": "application/json"} if data is not None else {}
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        try:
+            conn.request(method, path, body=data, headers=headers)
+            resp = conn.getresponse()
             status = resp.status
             raw = resp.read()
-    except urllib.error.HTTPError as e:
-        try:
-            raw = e.read()
-            status = e.code
-        except Exception:
-            return e.code, None, f"http {e.code}"
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        reason = e.reason if isinstance(e, urllib.error.URLError) else e
-        return 0, None, str(reason)
+        except (OSError, http.client.HTTPException) as e:
+            return 0, None, str(e)
+    finally:
+        conn.close()
     try:
         parsed = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -365,21 +393,21 @@ def _http_raw(url: str, timeout: float) -> Tuple[int, Optional[bytes], Optional[
     """`_http_json()`'ın binary-passthrough kardeşi — `/api/files/download`
     proxy'si için JSON parse ETMEDEN ham body + seçili header'ları
     (content-type, content-disposition) döner. Aynı 'hiçbir zaman raise
-    etmez' disiplini."""
-    req = urllib.request.Request(url, method="GET")
+    etmez' disiplini + aynı garantili-kapatma fix'i (bkz. `_http_json`
+    docstring'i, 2026-09-14 bağlantı sızıntısı fix'i)."""
+    conn, path = _http_connect(url, timeout)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        try:
+            conn.request("GET", path)
+            resp = conn.getresponse()
+            status = resp.status
             body = resp.read()
             headers = {k: v for k, v in resp.getheaders() if k.lower() in ("content-type", "content-disposition")}
-            return resp.status, body, headers, None
-    except urllib.error.HTTPError as e:
-        try:
-            return e.code, e.read(), None, None
-        except Exception:
-            return e.code, None, None, f"http {e.code}"
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        reason = e.reason if isinstance(e, urllib.error.URLError) else e
-        return 0, None, None, str(reason)
+            return status, body, headers, None
+        except (OSError, http.client.HTTPException) as e:
+            return 0, None, None, str(e)
+    finally:
+        conn.close()
 
 
 def proxy_get(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Dict[str, Any], int]:
