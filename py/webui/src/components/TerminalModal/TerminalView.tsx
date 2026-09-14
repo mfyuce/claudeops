@@ -637,9 +637,40 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
             {copyLabel ?? t.termCopyBtn}
           </button>
-          {masked && <div className="warn-banner">{t.termMaskedHint}</div>}
-          {liveInput && <div className="opts-hint" style={{ flexBasis: "100%" }}>{t.termLiveOn}</div>}
-          {liveMsg && <div className="warn-banner">{liveMsg}</div>}
+        </div>
+        {/* `masked`/`termLiveOn`/`liveMsg` live OUTSIDE `.opts` on purpose
+            (2026-09-14 fix, live screenshot evidence): `.opts-hint`/
+            `.warn-banner` are both `flex-basis:100%` (the "take a full row
+            inside a flex-wrap container" idiom) — fine when the flex
+            container has an unambiguous width, but `.opts`'s own width
+            bottoms out in `TerminalModal.tsx`'s `width:"fit-content"` panel,
+            several `width:"100%"` layers up. A flex-basis percentage
+            resolved against an ancestor that's ITSELF sized by its
+            children's content is circular, and this browser resolved that
+            circularity by blowing the whole modal out to (apparently)
+            viewport width the instant `termLiveOn`'s div started rendering
+            — confirmed via two screenshots (live typing off vs on): the
+            dark terminal box barely changed size, but the white modal panel
+            around it more than doubled in width, all empty space to the
+            right. `hint` (the scrolled-up notice, just above `.opts`) was
+            already a plain sibling block for the same reason — these three
+            get the same treatment instead of being flex children. */}
+        {masked && (
+          <div className="warn-banner" style={{ width: "100%", boxSizing: "border-box" }}>
+            {t.termMaskedHint}
+          </div>
+        )}
+        {liveInput && (
+          <div className="opts-hint" style={{ width: "100%", boxSizing: "border-box" }}>
+            {t.termLiveOn}
+          </div>
+        )}
+        {liveMsg && (
+          <div className="warn-banner" style={{ width: "100%", boxSizing: "border-box" }}>
+            {liveMsg}
+          </div>
+        )}
+        <div className="opts" style={{ width: "100%", boxSizing: "border-box" }}>
           <div className="term-input-row">
             {masked ? (
               // Masked panes keep the plain <input type="password"> — a
