@@ -20,7 +20,7 @@
  */
 
 import { useState } from "react";
-import { apiNewChat, apiStart } from "../../api/client";
+import { apiNewChat, apiStart, apiStop } from "../../api/client";
 import { callAction, describeApiError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -52,7 +52,17 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
 
-  const [mode, setMode] = useState<Mode>(() => (session.running ? "newchat" : "resume"));
+  // 2026-09-15 fix: a RUNNING session used to offer only "newchat" here — the
+  // only way to get the BulkBar-equivalent of "reset" (stop + restart fresh,
+  // same name) on a single row was the separate bulk button. A user reaching
+  // for "restart this" via Options (the natural place to look, e.g. right
+  // after a session hits READY FOR HANDOVER) had no such option and picked
+  // "newchat" instead, leaving the old conversation dangling AND creating a
+  // needless "<name>_1" sibling — the mechanism behind years of accumulated
+  // "_1.._N" roster clutter on the SAME base (live user report, not a guess:
+  // "stop and start da cli ismi eski cli ismi artı _1 şeklinde geliyor").
+  // "resume" still makes no sense while running (nothing to resume into).
+  const [mode, setMode] = useState<Mode>(() => (session.running ? "reset" : "resume"));
   const [cli, setCli] = useState(session.cli);
   // "" = use the backend's own default (`provider.model_choices()[0]`, or the
   // session's current model on resume). TODO L73 (2026-09-02): pre-fill from
@@ -81,7 +91,10 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
     cli === session.cli ? session.model || cliOptions.models[0] || "" : cliOptions.models[0] || "";
 
   const modeChoices: [Mode, string][] = session.running
-    ? [["newchat", t.modeChoiceNewchatOnly]]
+    ? [
+        ["reset", t.modeChoiceReset],
+        ["newchat", t.modeChoiceNewchatOnly],
+      ]
     : [
         ["resume", t.modeChoiceResume],
         ["reset", t.modeChoiceReset],
@@ -136,9 +149,16 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
         window.alert(describeApiError(e, t));
       }
     } else {
+      // "reset" while still running (modeChoices above) needs the same
+      // stop-then-fresh-start sequence BulkBar's bulk "reset" already does —
+      // `/api/start` alone would just fail with "already_running".
       await callAction(
-        () =>
-          apiStart({
+        async () => {
+          if (session.running) {
+            const stopRes = await apiStop({ name: session.name, host: session.host, lang });
+            if (!stopRes.ok) return stopRes;
+          }
+          return apiStart({
             name: session.name,
             host: session.host,
             model: resolvedModel,
@@ -147,7 +167,8 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             cli,
             fresh: mode === "reset",
             lang,
-          }),
+          });
+        },
         session.name,
         t,
         confirmDiagFollowup,
