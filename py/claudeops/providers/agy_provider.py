@@ -168,6 +168,13 @@ def _conversation_ids():
 
 PERMISSION_MODES = ["auto", "acceptEdits", "plan"]
 EFFORT_LEVELS = ["low", "medium", "high"]
+# claude/codex'in "esc to interrupt"iyle AYNI amaç, FARKLI metin — 2026-09-15,
+# %23 CPU'da gerçekten çalışan canlı bir agy session'ının pane'i capture edildi:
+# durum çubuğu "esc to cancel" yazıyor ("Running command..." + spinner'la birlikte).
+# AYNI anda idle olan 2 başka agy session'ında (ikisi de "? for shortcuts" gösteriyor)
+# bu metin YOKTU — busy/idle ayrımı canlı doğrulandı, copilot_provider.py'nin
+# "Esc to cancel"ıyla (büyük E) KARIŞTIRMA, `re.search` case-sensitive.
+BUSY_STATUS_PATTERN = r"esc to cancel"
 
 _PERMISSION_FLAGS = {
     "auto": ["--dangerously-skip-permissions"],
@@ -295,6 +302,9 @@ class AgyProvider(CliProvider):
 
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
+
+    def busy_status_pattern(self) -> Optional[str]:
+        return BUSY_STATUS_PATTERN
 
     def _transcript_steps(self, cwd: str, sid: Optional[str]) -> List[Tuple[int, bytes]]:
         """claude/codex provider'larının `_transcript_lines`'ıyla AYNI sözleşme:
