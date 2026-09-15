@@ -118,7 +118,22 @@ td.hocell { font-size: .78rem; }
 }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .4rem; }
 .dot.on { background: var(--green); }
-.dot.busy { background: var(--amber); }
+/* Spinning wheel instead of a static fill while a session is actually busy
+   (2026-09-15, "hala çalışıyor olanları donen çark daire ile göster") — a
+   two-tone ring (box-sizing:border-box keeps it the same 8px footprint as
+   the solid .on/.off dots, no layout jump on busy<->idle transitions). */
+.dot.busy {
+  box-sizing: border-box;
+  background: transparent;
+  border: 2px solid var(--muted);
+  border-top-color: var(--amber);
+  border-right-color: var(--amber);
+  animation: dot-spin .6s linear infinite;
+}
+@keyframes dot-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .dot.busy { animation: none; background: var(--amber); border-color: var(--amber); }
+}
 .dot.off { background: var(--muted); opacity: .5; }
 button, select, input[type=text], textarea {
   font: inherit; padding: .3rem .6rem; border-radius: 6px; cursor: pointer;

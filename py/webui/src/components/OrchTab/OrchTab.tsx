@@ -114,8 +114,11 @@ export function OrchTab({ selection }: OrchTabProps) {
   // clicks). Fires once redundantly right after the initial server-seed
   // effect below (re-POSTs what it just loaded) — harmless, not worth
   // guarding against for one extra small write per mount.
+  const [draftError, setDraftError] = useState("");
   useEffect(() => {
-    if (seededRef.current) void apiOrchSaveDraft(lineup);
+    if (!seededRef.current) return;
+    setDraftError("");
+    void apiOrchSaveDraft(lineup).catch((e) => setDraftError(describeApiError(e, t)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineup]);
 
@@ -221,6 +224,12 @@ export function OrchTab({ selection }: OrchTabProps) {
             onRoleChange={handleRoleChange}
           />
           {lineup.length > 0 && !hasWorker && <div className="warn-banner">{t.orchNeedsWorkerMsg}</div>}
+          {draftError && (
+            <div className="warn-banner">
+              {t.requestFailed}
+              {draftError}
+            </div>
+          )}
           <div className="opts">
             <label style={{ flexBasis: "100%" }}>
               {t.orchTaskLabel}

@@ -40,6 +40,11 @@ export interface SessionInfo {
    * beklerken CPU düşük kalabilir). `null` = bu CLI'da/bu durumda bilinmiyor
    * (`false`'la KARIŞTIRMA — "boşta" değil "bilinmiyor" demek). */
   busy: boolean | null;
+  /** Pane'in gerçek tmux scrollback satır sayısı (`tmux_backend.HISTORY_LIMIT`=2000'de
+   * tavan yapar, tmux o noktadan sonra en eski satırları siler) — `_history_size_cached`,
+   * 30s cache. tmux-backed değilse/ölçülemiyorsa `null`. 2026-09-15, "1900-2000
+   * olanları... seç" bulk-butonu için eklendi. */
+  history_size: number | null;
   registered: boolean;
   tmux: boolean;
   /** `model` is what claudeops has RECORDED for the name (models.tsv — what the
@@ -129,6 +134,11 @@ export interface Settings {
    * node_modules/.bin kurulumu) bir CLI için elle override. Boş/eksik = PATH
    * araması (mevcut davranış, değişmez). `settings.py`'nin `resolved_binary()`. */
   provider_bin: Record<string, string>;
+  /** tmux scrollback (sabit `HISTORY_LIMIT`=2000) bu sayıya yaklaşınca Terminal
+   * görünümünün sayaç rengi + ana tablonun "dikkat gerekenleri seç" butonu bunu
+   * eşik alır — varsayılan 1900. `HISTORY_LIMIT`'in KENDİSİ burada YOK, o tmux'un
+   * sabit yapılandırması, kullanıcı-tercihi değil. */
+  history_warn_at: number;
 }
 
 /** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in
@@ -142,8 +152,11 @@ export interface UsageEntry {
 /** `supported:false` = bu CLI için `usage_command()` yok (bugün: agy/codex/shell,
  * canlı doğrulanıp icat edilmedi, [[TODO#usage]]) — `available`/`reason`/`entries`
  * hiç yok, ayrım burada biter. `supported:true` iken `available:false` ise
- * `reason` ("no_running_session"|"send_failed"|"parse_failed") neden çekilemediğini
- * söyler; `available:true` iken `entries` doludur. */
+ * `reason` ("no_running_session"|"all_sessions_busy"|"send_failed"|"parse_failed")
+ * neden çekilemediğini söyler — `all_sessions_busy` (2026-09-14 eklendi): bu CLI'nın
+ * çalışan session'ları var ama hepsi ya bir turn işliyor ya da parola bekliyor,
+ * kontrol için hiçbiri güvenle kullanılamadı (bkz. web.py `_usage_all`); `available:true`
+ * iken `entries` doludur. */
 export interface UsageProviderResult {
   supported: boolean;
   available?: boolean;
@@ -366,11 +379,16 @@ export type SettingsResult = ApiResult<{ settings: Settings }>;
  * `mode` — the permission mode the pane's status bar is CURRENTLY showing
  * (`_detect_mode_in_text`), or null when this CLI has no live mode concept or
  * nothing recognizable is on screen yet. Both ride along on the text this poll
- * already fetched; neither costs an extra tmux call. */
+ * already fetched; neither costs an extra tmux call. `history_size` (2026-09-14) —
+ * the pane's real tmux scrollback line count, riding along on the SAME
+ * `list-panes` call as `cols`/`rows` — caps at `HISTORY_LIMIT` (2000, see
+ * tmux_backend.py) since tmux evicts the oldest lines once its own
+ * `history-limit` is reached; null only when the pane size itself couldn't be read. */
 export type TermOutputResult = ApiResult<{
   text: string;
   cols: number | null;
   rows: number | null;
+  history_size: number | null;
   masked: boolean;
   mode: string | null;
 }>;

@@ -24,7 +24,7 @@ import type { ApiResult, SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
-type BulkAction = "start" | "handover" | "compact" | "stop" | "close" | "retire";
+type BulkAction = "start" | "handover" | "compact" | "stop" | "close" | "retire" | "reset";
 
 interface BulkBarProps {
   tab: "running" | "registered";
@@ -52,6 +52,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     stop: t.stopBtn,
     close: t.disableBtn,
     retire: t.retireBtn,
+    reset: t.resetBtn,
   };
   const explanations: Record<BulkAction, string> = {
     start: t.legendBulkStart,
@@ -60,6 +61,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     stop: t.legendStop,
     close: t.legendDisable,
     retire: t.legendRetire,
+    reset: t.legendReset,
   };
 
   /** Mirrors `OptionsRow`'s untouched initial state (`../RunningTab/OptionsRow.tsx`)
@@ -86,10 +88,12 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     if (busy) return;
     let picked = selectedRows;
     let note = "";
-    if (action === "close" || action === "retire") {
-      // close/retire can't apply to an unregistered (proc-scan-only) row —
-      // skip those, tell the user which ones (original: bulkAct()'s
-      // `unreg` filter).
+    if (action === "close" || action === "retire" || action === "reset") {
+      // close/retire/reset can't apply to an unregistered (proc-scan-only)
+      // row — skip those, tell the user which ones (original: bulkAct()'s
+      // `unreg` filter). `reset` needs this too: its fresh-start half calls
+      // `/api/start`, which requires an ACTIVE roster entry — an unregistered
+      // row has none.
       const unreg = picked.filter((s) => s.registered === false).map((s) => s.name);
       if (unreg.length) {
         picked = picked.filter((s) => s.registered !== false);
@@ -110,11 +114,26 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
       const name = s.name;
       setMessage(`${labels[action]}: ${done + 1}/${names.length} — ${name}…`);
       try {
-        const res =
-          action === "start"
-            ? await apiStart(startPayloadFor(s))
-            : await apiPost<ApiResult>(`/api/${action}`, { name, host: s.host, lang });
-        if (!res.ok) errs.push(`${name}: ${res.error}`);
+        if (action === "reset") {
+          // Deliberately `/api/stop` (kill only), NOT `/api/close`: close
+          // also deactivates the roster entry (`want_active=False`), which
+          // would make the immediately-following `/api/start` fail with
+          // "not active" — stop leaves the roster entry alone, so the fresh
+          // start right after it actually works.
+          const stopRes = await apiPost<ApiResult>("/api/stop", { name, host: s.host, lang });
+          if (!stopRes.ok) {
+            errs.push(`${name}: ${stopRes.error}`);
+          } else {
+            const startRes = await apiStart({ ...startPayloadFor(s), fresh: true });
+            if (!startRes.ok) errs.push(`${name}: ${startRes.error}`);
+          }
+        } else {
+          const res =
+            action === "start"
+              ? await apiStart(startPayloadFor(s))
+              : await apiPost<ApiResult>(`/api/${action}`, { name, host: s.host, lang });
+          if (!res.ok) errs.push(`${name}: ${res.error}`);
+        }
       } catch (e) {
         if (e instanceof ApiError) {
           if (e.status === 401) errs.push(`${name}: 401`);
@@ -140,9 +159,25 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     selection.replace(rows.filter((s) => s.needs_ho === true).map(rowKey));
   }
 
+  // "Dikkat gerekenleri seç" (2026-09-15): idle (busy===false, EXPLICITLY
+  // not-busy — `null`/unknown is left alone, same "unknown ≠ known-safe"
+  // stance as needs_ho/client_count elsewhere) OR close enough to tmux's
+  // scrollback cap to start losing history (`history_warn_at`, Settings —
+  // default 1900, `HISTORY_LIMIT` itself is 2000 and fixed). Either
+  // condition alone is a reasonable "this session could use a `reset`".
+  function handleSelectAttention() {
+    const historyWarnAt = data?.settings.history_warn_at ?? 1900;
+    selection.replace(
+      rows
+        .filter((s) => s.busy === false || (s.history_size != null && s.history_size >= historyWarnAt))
+        .map(rowKey),
+    );
+  }
+
   const legendRows: [string, string][] =
     tab === "running"
       ? [
+          [t.resetBtn, t.legendReset],
           [t.handoverBtn, t.legendHandover],
           [t.compactBtn, t.legendCompact],
           [t.stopBtn, t.legendStop],
@@ -163,6 +198,15 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
         </span>
         {tab === "running" && (
           <>
+            <button
+              type="button"
+              className="handover"
+              disabled={!canAct}
+              title={t.legendReset}
+              onClick={() => void handleBulk("reset")}
+            >
+              {t.resetBtn}
+            </button>
             <button
               type="button"
               className="handover"
@@ -210,6 +254,9 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
             </button>
             <button type="button" className="selho" disabled={busy} title={t.hoHint} onClick={handleSelectNeedsHo}>
               {t.selectNeedsHo}
+            </button>
+            <button type="button" className="selho" disabled={busy} title={t.attentionHint} onClick={handleSelectAttention}>
+              {t.selectAttention}
             </button>
           </>
         )}

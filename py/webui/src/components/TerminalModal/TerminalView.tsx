@@ -66,6 +66,16 @@ const CONSECUTIVE_FAILURES_BEFORE_ERROR = 5;
 const INITIAL_COLS = 160;
 const INITIAL_ROWS = 45;
 
+// Mirrors `tmux_backend.HISTORY_LIMIT`/tmux.conf's pinned `history-limit` —
+// not fetched from the backend for the same reason INITIAL_COLS/ROWS above
+// aren't: it's a static config value, not per-session state. history_size
+// can never exceed this (tmux evicts the oldest lines once it's hit).
+// The WARN threshold, unlike the limit itself, IS a user preference
+// (2026-09-15, Settings' `history_warn_at`, default 1900) — read from
+// `data.settings` below rather than hardcoded, so the same number drives
+// both this highlight and the main table's "select needs attention" button.
+const HISTORY_LIMIT = 2000;
+
 // Same list/order as the original's XTERM_KEYS (web.py ~2018) — 'Enter' is
 // a SEPARATE special key from the input's own Enter-to-send behavior: it
 // sends a bare Enter keypress straight to the tmux pane (e.g. to dismiss a
@@ -136,6 +146,10 @@ interface TerminalViewProps {
 export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewProps) {
   const { t, lang } = useLang();
   const { data } = useStatusContext();
+  // Falls back to the backend's own DEFAULT_SETTINGS value (1900) before the
+  // first status load lands, so there's never a flash of an unhighlighted
+  // state that then jumps once `data` arrives.
+  const historyWarnAt = data?.settings.history_warn_at ?? 1900;
   const [modeBusy, setModeBusy] = useState(false);
   const [modeMsg, setModeMsg] = useState("");
 
@@ -159,6 +173,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   const [rawText, setRawText] = useState("");
   const [fallbackText, setFallbackText] = useState("");
   const [masked, setMasked] = useState(false);
+  const [historySize, setHistorySize] = useState<number | null>(null);
 
   const [inputText, setInputText] = useState("");
   const [copyLabel, setCopyLabel] = useState<string | null>(null);
@@ -212,16 +227,49 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           // value, and the [liveInput] effect below keeps it in sync after that.
           disableStdin: !liveInputRef.current,
           fontSize,
-          // Default (1) is calibrated for a ~17px desktop line-height — this
-          // terminal's real font is shrunk to fit a phone screen (~8px rows
-          // here), so the SAME wheel/touch delta maps to a tiny fraction of a
-          // line. Measured live (Playwright + real CDP touch dispatch, no
-          // browser tooling in-conversation so this had to be tested this
-          // way): ~6500px of wheel delta moved ~1 line — a full-height mobile
-          // swipe or a few wheel clicks did nothing perceptible. 2026-09-01.
-          scrollSensitivity: 20,
         });
         term.open(container);
+        // Wheel scroll, replacing the old flat `scrollSensitivity: 20`
+        // (removed 2026-09-14): that constant was xterm/VS Code's own
+        // ScrollableElement applying ONE multiplier to the browser's raw
+        // wheel deltaY, calibrated 2026-09-01 against Playwright's synthetic
+        // CDP touch-scroll dispatch on this shrunk mobile font — which
+        // reports much smaller deltaY than a real desktop mouse wheel or
+        // trackpad. Applied uniformly, the same multiplier that made that
+        // weak synthetic touch-scroll barely visible on mobile turned a real
+        // wheel click on desktop into scrolling several screens at once
+        // (live complaint: "wheel çok fazla kaydırıyor... nerede olduğunu
+        // göremiyorsun"). Rather than guess a replacement constant (the same
+        // class of problem, just moved), this uses xterm's own documented
+        // escape hatch (`attachCustomWheelEventHandler`, returning false
+        // fully replaces its default handling — no fighting the DOM event
+        // system blind) to convert deltaY to rows using THIS pane's actual
+        // rendered cell height (real container height ÷ real row count, not
+        // an assumed pixel constant) — correct at any font size without
+        // retuning — and hard-caps the result just under one screen height,
+        // so a single wheel tick can never skip past content that was never
+        // shown (user: "yukarı çıkarken en son satırlar bir önceki sayfadan
+        // olsa" — consecutive views should always overlap, never gap).
+        term.attachCustomWheelEventHandler((ev) => {
+          if (ev.deltaY === 0) return true;
+          const rows = term.rows || INITIAL_ROWS;
+          let rowsDelta: number;
+          if (ev.deltaMode === 1) {
+            // DOM_DELTA_LINE — already line-granular; rare, but cheap to honor exactly.
+            rowsDelta = ev.deltaY;
+          } else if (ev.deltaMode === 2) {
+            // DOM_DELTA_PAGE — essentially never fired by real devices, but defined.
+            rowsDelta = ev.deltaY * rows;
+          } else {
+            // DOM_DELTA_PIXEL, the common case on every real mouse/trackpad.
+            const cellHeightPx = container.clientHeight / rows || 17;
+            rowsDelta = ev.deltaY / cellHeightPx;
+          }
+          const maxRows = Math.max(1, rows - 2);
+          const rounded = Math.round(Math.abs(rowsDelta)) || 1;
+          term.scrollLines(Math.sign(rowsDelta) * Math.min(rounded, maxRows));
+          return false;
+        });
         // Registered once (the instance is created once); the indirection
         // through `queueRawRef` keeps it on the CURRENT props rather than this
         // closure's. xterm already suppresses key events while disableStdin is
@@ -339,6 +387,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         setRawText(result.text);
         setMasked(result.masked);
         setPaneMode(result.mode);
+        setHistorySize(result.history_size);
       }
 
       const inst = instRef.current;
@@ -637,6 +686,19 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
             {copyLabel ?? t.termCopyBtn}
           </button>
+          {historySize !== null && (
+            <span
+              title={t.termHistorySizeHint}
+              style={{
+                fontSize: ".75rem",
+                color: historySize >= historyWarnAt ? "var(--amber)" : "var(--muted)",
+                fontWeight: historySize >= historyWarnAt ? 600 : undefined,
+                cursor: "help",
+              }}
+            >
+              {t.termHistorySize(historySize, HISTORY_LIMIT)}
+            </span>
+          )}
         </div>
         {/* `masked`/`termLiveOn`/`liveMsg` live OUTSIDE `.opts` on purpose
             (2026-09-14 fix, live screenshot evidence): `.opts-hint`/

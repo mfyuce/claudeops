@@ -32,6 +32,7 @@ type SettingsPatch = {
   handover_effort?: string;
   default_model?: Record<string, string>;
   provider_bin?: Record<string, string>;
+  history_warn_at?: number;
 };
 
 type SettingsSubTab = "general" | "usage";
@@ -55,9 +56,11 @@ function UsageProviderRow({ cli, result, t }: { cli: string; result: UsageResult
     const reasonText =
       result.reason === "no_running_session"
         ? t.usageNoSession
-        : result.reason === "send_failed"
-          ? t.usageSendFailed
-          : t.usageParseFailed;
+        : result.reason === "all_sessions_busy"
+          ? t.usageAllBusy
+          : result.reason === "send_failed"
+            ? t.usageSendFailed
+            : t.usageParseFailed;
     return (
       <div className="opts" style={{ width: "100%", boxSizing: "border-box" }}>
         <b>{cli}</b> <span className="opts-hint">{reasonText}</span>
@@ -128,6 +131,9 @@ export function SettingsTab() {
   // <select> controls below, that would save a half-typed path on every char).
   // Local draft so typing doesn't fight the settings poll's own value.
   const [binDraft, setBinDraft] = useState<Record<string, string>>({});
+  // Same draft-until-blur reasoning as `binDraft` — typing "1900" digit by
+  // digit shouldn't fire 4 separate saves.
+  const [historyWarnDraft, setHistoryWarnDraft] = useState<string | null>(null);
 
   if (!data) return null;
   const settings = data.settings;
@@ -197,6 +203,20 @@ export function SettingsTab() {
                   </option>
                 ))}
               </select>
+            </label>
+            <label title={t.historyWarnHint}>
+              {t.historyWarnLabel}
+              <input
+                type="number"
+                min={1}
+                value={historyWarnDraft ?? String(settings.history_warn_at)}
+                onChange={(e) => setHistoryWarnDraft(e.target.value)}
+                onBlur={(e) => {
+                  const n = Number.parseInt(e.target.value, 10);
+                  setHistoryWarnDraft(null);
+                  if (Number.isFinite(n) && n > 0) void save({ history_warn_at: n });
+                }}
+              />
             </label>
           </div>
           <div className="opts" id="settingsModelPanel">

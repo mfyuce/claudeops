@@ -91,18 +91,22 @@ export interface Strings {
   desktopCursorToggle: string;
   selWord: string;
   selectNeedsHo: string;
+  selectAttention: string;
+  attentionHint: string;
   hoCol: string;
   hoHint: string;
   hoUnknown: string;
   stopBtn: string;
   disableBtn: string;
   retireBtn: string;
+  resetBtn: string;
   bulkStartBtn: string;
   handoverBtn: string;
   compactBtn: string;
   legendStop: string;
   legendDisable: string;
   legendRetire: string;
+  legendReset: string;
   legendBulkStart: string;
   legendHandover: string;
   legendCompact: string;
@@ -122,6 +126,8 @@ export interface Strings {
   termLiveOn: string;
   termGone: (err: string) => string;
   termScrolledHint: string;
+  termHistorySize: (size: number, limit: number) => string;
+  termHistorySizeHint: string;
   termCopyBtn: string;
   termCopied: string;
   termCopyHint: string;
@@ -270,6 +276,8 @@ export interface Strings {
   themeDark: string;
   handoverEffortLabel: string;
   handoverEffortHint: string;
+  historyWarnLabel: string;
+  historyWarnHint: string;
   defaultModelLabel: string;
   providerBinLabel: string;
   providerBinDesc: string;
@@ -281,6 +289,7 @@ export interface Strings {
   usageChecking: string;
   usageNotSupported: string;
   usageNoSession: string;
+  usageAllBusy: string;
   usageSendFailed: string;
   usageParseFailed: string;
   usageCheckedVia: (name: string) => string;
@@ -374,18 +383,22 @@ export const STRINGS: Record<Lang, Strings> = {
     desktopCursorToggle: "İmleci göster",
     selWord: "seçili",
     selectNeedsHo: "needs-ho seç",
+    selectAttention: "dikkat gerekenleri seç",
+    attentionHint: "boşta olanları (meşgul değil) VEYA satır uyarı eşiğine (Ayarlar) ulaşmış olanları seçer",
     hoCol: "ho?",
     hoHint: "handover gerekli mi? (repo kirli / untracked / baseline'dan beri commit / RFH yok — sinyallerden biri)",
     hoUnknown: "?",
     stopBtn: "durdur",
     disableBtn: "devre dışı bırak",
     retireBtn: "emekli et",
+    resetBtn: "durdur + sıfırdan başlat",
     bulkStartBtn: "başlat",
     handoverBtn: "handover",
     compactBtn: "compact",
     legendStop: "sadece process/pencereyi kapatır — kayıt AKTİF kalır, \"Kayıtlı\" sekmesinden devam ettirilir",
     legendDisable: "durdurur + otomasyon (guard) bir daha AÇMAZ — \"Devre dışı\" sekmesine taşınır, oradan geri alınır",
     legendRetire: "durdurur + arşive kaldırır — \"Emekli\" sekmesine taşınır, \"tekrar işe al\" ile döner",
+    legendReset: "durdurur + roster/varsayılan ayarlarla sıfırdan (--new) yeniden başlatır (elle seçilmiş tek-seferlik bir model/effort korunmaz) — eski konuşma/context atılır, kayıt aktif kalır",
     legendBulkStart: "seçili kayıtlı (durdurulmuş) oturumları varsayılan parametrelerle (kayıtlı/varsayılan model, permission=auto, en yüksek effort, resume — fresh değil) tek tek başlatır",
     legendHandover: "wrap-up mesajı gönderip AYNI geçmişle yeniden açar (kapat+devam) — commit/push + not düşme için",
     legendCompact: "konuşmayı sıkıştırıp (context özetlenir) AYNI geçmişle yeniden açar — sadece claude CLI, birkaç dakika sürebilir",
@@ -405,6 +418,8 @@ export const STRINGS: Record<Lang, Strings> = {
     termLiveOn: "⌨ canlı yazma açık — terminale tıklayıp yazın; tuşlar doğrudan CLI'a gider (yazdıklarınız ~200ms'lik ekran yenilemesinde görünür)",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ yukarı kaydırdınız — canlı akış duraklatıldı, dibe dönünce devam eder",
+    termHistorySize: (size, limit) => `${size}/${limit} satır`,
+    termHistorySizeHint: "bu pane'in tmux scrollback'i — limite ulaşınca tmux en eski satırları siler; buraya yaklaşması genelde bir handover için iyi bir işarettir",
     termCopyBtn: "kopyala",
     termCopied: "✓ kopyalandı",
     termCopyHint: "görünen çıktıyı panoya kopyala (mobilde dokunarak seçim güvenilir değil)",
@@ -555,6 +570,8 @@ export const STRINGS: Record<Lang, Strings> = {
     themeDark: "koyu",
     handoverEffortLabel: "handover varsayılan effort",
     handoverEffortHint: "handover (Faz 1/Faz 2/panelin tek-session handover butonu) ile yeniden açılan session'ların effort'u — respawn edilen session'ın BİR SONRAKİ handover'a kadarki ömrü boyunca kalıcı varsayılan olur",
+    historyWarnLabel: "satır uyarı eşiği",
+    historyWarnHint: "terminal scrollback bu satıra ulaşınca Terminal görünümündeki sayaç vurgulanır ve ana tablonun 'dikkat gerekenleri seç' butonu bu session'ı da seçer — tmux'un sabit 2000 satır limitine yaklaştığını gösterir (o limiti aşınca en eski satırlar silinir)",
     defaultModelLabel: "yeni/resume için varsayılan model (CLI başına)",
     providerBinLabel: "CLI binary yolu override (opsiyonel)",
     providerBinDesc:
@@ -568,6 +585,7 @@ export const STRINGS: Record<Lang, Strings> = {
     usageChecking: "kontrol ediliyor…",
     usageNotSupported: "desteklenmiyor",
     usageNoSession: "çalışan session yok",
+    usageAllBusy: "çalışan session'ların hepsi meşgul/parola bekliyor, şu an kontrol edilemedi",
     usageSendFailed: "komut gönderilemedi",
     usageParseFailed: "yanıt okunamadı",
     usageCheckedVia: (name) => `${name} üzerinden`,
@@ -674,18 +692,22 @@ export const STRINGS: Record<Lang, Strings> = {
     desktopCursorToggle: "Show cursor",
     selWord: "selected",
     selectNeedsHo: "select needs-ho",
+    selectAttention: "select needs attention",
+    attentionHint: "selects sessions that are idle (not busy) OR have reached the line warn threshold (Settings)",
     hoCol: "ho?",
     hoHint: "needs handover? (dirty repo / untracked / commits since baseline / no RFH — any one signal)",
     hoUnknown: "?",
     stopBtn: "stop",
     disableBtn: "disable",
     retireBtn: "retire",
+    resetBtn: "stop + restart fresh",
     bulkStartBtn: "start",
     handoverBtn: "handover",
     compactBtn: "compact",
     legendStop: "kills only the process/window — stays REGISTERED, resume it from the \"Registered\" tab",
     legendDisable: "stop + automation (guard) will NOT reopen it — moves to the \"Disabled\" tab, reversible there",
     legendRetire: "stop + archive — moves to the \"Retired\" tab, comes back via \"reactivate\"",
+    legendReset: "stops it, then restarts it fresh (--new) with the roster/default settings (a one-off manually-picked model/effort is NOT preserved) — drops the old conversation/context, keeps the registration active",
     legendBulkStart: "starts each selected registered (stopped) session one by one with default parameters (roster/default model, permission=auto, highest effort, resume — not fresh)",
     legendHandover: "sends a wrap-up prompt and reopens with the SAME history (close+continue) — for commit/push + notes",
     legendCompact: "compacts the conversation (summarizes context) and reopens with the SAME history — claude CLI only, can take a few minutes",
@@ -705,6 +727,8 @@ export const STRINGS: Record<Lang, Strings> = {
     termLiveOn: "⌨ live typing on — click the terminal and type; keys go straight to the CLI (what you type shows up on the next ~200ms screen refresh)",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ scrolled up — live updates paused, resumes when you scroll back to bottom",
+    termHistorySize: (size, limit) => `${size}/${limit} lines`,
+    termHistorySizeHint: "this pane's tmux scrollback — once it hits the limit, tmux drops the oldest lines; getting close is usually a good sign it's time for a handover",
     termCopyBtn: "copy",
     termCopied: "✓ copied",
     termCopyHint: "copy visible output to clipboard (touch-selection is unreliable on mobile)",
@@ -855,6 +879,8 @@ export const STRINGS: Record<Lang, Strings> = {
     themeDark: "dark",
     handoverEffortLabel: "handover default effort",
     handoverEffortHint: "the effort level sessions reopened by handover (Phase 1/Phase 2/the panel's single-session handover button) get — becomes the respawned session's persistent default for its whole life until the NEXT handover",
+    historyWarnLabel: "line warn threshold",
+    historyWarnHint: "once terminal scrollback reaches this many lines, the Terminal view's counter is highlighted and the 'select needs attention' bulk button also picks up this session — flags it as approaching tmux's fixed 2000-line cap (past which the oldest lines get dropped)",
     defaultModelLabel: "default model for new/resume (per CLI)",
     providerBinLabel: "CLI binary path override (optional)",
     providerBinDesc:
@@ -868,6 +894,7 @@ export const STRINGS: Record<Lang, Strings> = {
     usageChecking: "checking…",
     usageNotSupported: "not supported",
     usageNoSession: "no running session",
+    usageAllBusy: "all running sessions are busy or awaiting a password, could not check right now",
     usageSendFailed: "could not send command",
     usageParseFailed: "could not read the response",
     usageCheckedVia: (name) => `via ${name}`,
