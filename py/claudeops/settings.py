@@ -32,6 +32,11 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # HISTORY_LIMIT'in kendisi (2000) sabit kalır, o tmux'un GERÇEK
                               # yapılandırması (bkz. tmux.conf); burada kullanıcı-tercihi olan
                               # SADECE "ne kadar erken uyarılmak istiyorum" eşiği.
+    "layout_grid": 4,        # `py/cops layout`/web "Yerleşim" sekmesi: desktop başına pencere
+                              # sayısı (2026-09-15, kullanıcı: "settings de alani 4 e 8 e 2 ye
+                              # bol gibi ayar da olmali") — `layout.py`'nin `_GRID_LAYOUTS`'una
+                              # göre (cols,rows)'a çevrilir (2→2x1, 4→2x2, 8→4x2); tanınmayan bir
+                              # değer sessizce 4'e (2x2) düşer.
     "default_model": {},     # {cli: model} — provider'ın kod-içi varsayımı (model_choices()[0])
                               # yerine geçen kalıcı tercih; yeni/resume dropdown'unun ön-dolu
                               # değeri OLDUĞU KADAR, aşağıdaki default_model_for()'un okuduğu

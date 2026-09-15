@@ -11,8 +11,9 @@ from __future__ import annotations
 import os
 from ..discovery import find_sessions
 from ..layout import (
-    _get_screen, _list_windows, build_layout_plan, apply_layout,
+    GRID, _get_screen, _list_windows, build_layout_plan, apply_layout,
 )
+from ..settings import load_settings
 from ..spawn import detect_display
 
 
@@ -29,6 +30,8 @@ def register(sub):
     p.add_argument("--display", default=None)
     p.add_argument("--screen-y", type=int, default=None, metavar="Y",
                    help="monitor Y offset (None=xrandr auto-detect; dual-monitor=1080)")
+    p.add_argument("--grid", type=int, default=None, choices=(2, 4, 8), metavar="N",
+                   help="desktop başına pencere sayısı (varsayılan: Ayarlar'ın layout_grid'i, o da yoksa 4)")
     p.add_argument("--dry-run", action="store_true",
                    help="sadece planı göster, uygulama")
     p.set_defaults(func=run)
@@ -47,8 +50,10 @@ def run(args) -> int:
 
     print(f"display={display}, pin={pinned or '(yok)'}, groups={groups or '(yok)'}")
 
+    grid = args.grid or load_settings().get("layout_grid") or GRID
+
     windows = _list_windows(display)
-    screen = _get_screen(display, screen_y=args.screen_y)
+    screen = _get_screen(display, screen_y=args.screen_y, grid=grid)
     # known_names: gerçek claude proc'lar → sahte window eşlemesi önler
     known_names = {s.name for s in find_sessions(measure_cpu=False)} if claude_only else None
     plan, name_to_wid = build_layout_plan(

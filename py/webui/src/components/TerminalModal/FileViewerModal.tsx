@@ -24,6 +24,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { getFilesRead } from "../../api/client";
 import { useLang } from "../../i18n/LangContext";
+import { useEscapeKey } from "../shared/useEscapeKey";
 import { viewerKind } from "./fileViewerKind";
 
 // A rendered markdown document can contain its own links (relative paths,
@@ -55,6 +56,7 @@ export function FileViewerModal({ name, host, path, onClose }: FileViewerModalPr
   const { t, lang } = useLang();
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const filename = path.split("/").pop() ?? path;
+  useEscapeKey(onClose);
 
   useEffect(() => {
     let cancelled = false;

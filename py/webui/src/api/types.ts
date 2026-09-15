@@ -139,6 +139,10 @@ export interface Settings {
    * eşik alır — varsayılan 1900. `HISTORY_LIMIT`'in KENDİSİ burada YOK, o tmux'un
    * sabit yapılandırması, kullanıcı-tercihi değil. */
   history_warn_at: number;
+  /** `py/cops layout`/"Yerleşim" sekmesinin desktop başına pencere sayısı —
+   * `layout.py`'nin `_GRID_LAYOUTS`'una göre (cols,rows)'a çevrilir (2→2x1,
+   * 4→2x2 [varsayılan], 8→4x2). */
+  layout_grid: number;
 }
 
 /** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in

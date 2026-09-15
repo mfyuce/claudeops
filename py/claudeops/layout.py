@@ -19,9 +19,19 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 
-# Varsayılan grid: 4 pencere/desktop, 2x2 quad
+# Varsayılan grid: 4 pencere/desktop, 2x2. Diğer desteklenen yoğunluklar (Ayarlar'ın
+# `layout_grid`'i, 2026-09-15 — kullanıcı: "settings de alani 4 e 8 e 2 ye bol gibi
+# ayar da olmali") — (cols, rows) eşlemesi: 2 → yan yana iki yarı (2x1, büyük
+# pencereler), 8 → yoğun 4x2. Bilinmeyen bir sayı (elle uydurulmuş) sessizce 4'ün
+# (2x2) düzenine düşer.
 GRID = 4
-_QUAD_COLS = 2   # sabit 2 sütun
+_QUAD_COLS = 2   # geriye-uyum: GRID/_QUAD_COLS'a bakan eski çağıran kalmadı ama sabit adı korunuyor
+_GRID_LAYOUTS = {2: (2, 1), 4: (2, 2), 8: (4, 2)}
+
+
+def grid_dims(grid: int) -> Tuple[int, int]:
+    """windows-per-desktop sayısından (cols, rows) — bilinmeyen değer 4'e (2x2) düşer."""
+    return _GRID_LAYOUTS.get(grid, _GRID_LAYOUTS[GRID])
 
 
 @dataclass
@@ -30,19 +40,25 @@ class ScreenGeometry:
     y: int
     w: int
     h: int
+    cols: int = _QUAD_COLS
+    rows: int = GRID // _QUAD_COLS
 
     @property
     def quad_w(self) -> int:
-        return self.w // _QUAD_COLS
+        return self.w // self.cols
 
     @property
     def quad_h(self) -> int:
-        return self.h // (GRID // _QUAD_COLS)
+        return self.h // self.rows
+
+    @property
+    def per_desktop(self) -> int:
+        return self.cols * self.rows
 
     def quad_pos(self, idx: int) -> Tuple[int, int]:
-        """idx (0-3) → (x, y) başlangıç koordinatı."""
-        col = idx % _QUAD_COLS
-        row = idx // _QUAD_COLS
+        """idx (0..per_desktop-1) → (x, y) başlangıç koordinatı."""
+        col = idx % self.cols
+        row = idx // self.cols
         return self.x + col * self.quad_w, self.y + row * self.quad_h
 
 
@@ -91,14 +107,18 @@ def _list_monitors(display: str) -> List[Monitor]:
     return monitors
 
 
-def _get_screen(display: str, screen_y: Optional[int] = None) -> ScreenGeometry:
+def _get_screen(display: str, screen_y: Optional[int] = None, grid: int = GRID) -> ScreenGeometry:
     """Hedef monitörün gerçek dikdörtgenini xrandr'dan al.
 
     Seçim: screen_y verilirse o Y'de başlayan monitör (manuel override, ör. dikey
     kurulumda ikincil monitörü hedeflemek için); yoksa xrandr'ın "primary" işaretlediği
     monitör; o da yoksa ilk connected monitör. xrandr hiç okunamazsa (nadir) eski
     xdotool-combined + tek-monitör varsayımına düşer.
+
+    `grid` → `grid_dims()` ile (cols, rows)'a çevrilip döndürülen `ScreenGeometry`'ye
+    gömülür (Ayarlar'ın `layout_grid`'i, varsayılan hâlâ 4/2x2).
     """
+    cols, rows = grid_dims(grid)
     monitors = _list_monitors(display)
     target: Optional[Monitor] = None
     if screen_y is not None:
@@ -108,7 +128,7 @@ def _get_screen(display: str, screen_y: Optional[int] = None) -> ScreenGeometry:
     if target is None and monitors:
         target = monitors[0]
     if target is not None:
-        return ScreenGeometry(target.x, target.y, target.w, target.h)
+        return ScreenGeometry(target.x, target.y, target.w, target.h, cols=cols, rows=rows)
 
     out = _run(["xdotool", "getdisplaygeometry"], display)
     parts = out.split()
@@ -118,7 +138,7 @@ def _get_screen(display: str, screen_y: Optional[int] = None) -> ScreenGeometry:
             w, h = int(parts[0]), int(parts[1])
         except ValueError:
             pass
-    return ScreenGeometry(0, screen_y or 0, w, h)
+    return ScreenGeometry(0, screen_y or 0, w, h, cols=cols, rows=rows)
 
 
 def _base_from_name(name: str) -> str:
@@ -233,7 +253,7 @@ def build_layout_plan(
 
     # 2. Pinned → ws0
     ws0_names = [n for n in pinned_names if n in name_to_wid]
-    for idx, name in enumerate(ws0_names[:GRID]):
+    for idx, name in enumerate(ws0_names[:screen.per_desktop]):
         wid = name_to_wid[name]
         x, y = screen.quad_pos(idx)
         plan.assignments.append((wid, 0, x, y))
@@ -258,7 +278,7 @@ def build_layout_plan(
     singles = sorted(n for n in name_to_wid if n not in placed_in_ordered)
     ordered.extend(singles)
 
-    # 4. ws1, ws2, ... artan sırayla (GRID adet/desktop)
+    # 4. ws1, ws2, ... artan sırayla (screen.per_desktop adet/desktop)
     ws = 1
     slot = 0
     for name in ordered:
@@ -268,7 +288,7 @@ def build_layout_plan(
         x, y = screen.quad_pos(slot)
         plan.assignments.append((wid, ws, x, y))
         slot += 1
-        if slot >= GRID:
+        if slot >= screen.per_desktop:
             slot = 0
             ws += 1
 
@@ -281,14 +301,26 @@ def _place_window(wid: str, x: int, y: int, w: int, h: int, display: str) -> boo
     Tek seferlik `xdotool windowmove` bazen sessizce uygulanmıyor (2026-09-03 canlı: 10
     pencereden 1'i ilk denemede oturmadı, konumu bozuk kaldı) — bash'in retry+read-back'i
     PORT edilmeden python tarafı bunu hiç yakalamıyordu, sessizce yanlış yerde bırakıyordu.
+
+    Read-back POZİSYON KADAR BOYUTU da doğrular (2026-09-15 fix — kullanıcı: "üst
+    sollar full üst yarım bölgeye yayılıyor, alttakiler çeyrek kalıyor"): idx=0'ın
+    hedef konumu her zaman ekranın (x,y) köşesi — TAM DA gnome-terminal'in
+    maximize/varsayılan açılış konumu. Eski kontrol SADECE Position'a bakıyordu, o
+    yüzden o slottaki pencere zaten (kazara) doğru köşedeyken hiç un-maximize/resize
+    denemeden "başarılı" sayılıyordu — hâlâ maximize/varsayılan BOYUTUYLA (tam genişlik)
+    kalıyordu. Diğer 3 slotun hedef konumu maximize/varsayılan yerleşimle hiç
+    ÇAKIŞMADIĞI için onlarda bu erken-çıkış hiç tetiklenmiyor, resize normal
+    çalışıyordu — asimetrinin sebebi buydu.
     """
     pos = ""
     for _attempt in range(3):
         pos = _run(["xdotool", "getwindowgeometry", wid], display)
-        m = re.search(r"Position: (-?\d+),(-?\d+)", pos)
-        if m:
-            px, py = int(m.group(1)), int(m.group(2))
-            if abs(px - x) <= 80 and abs(py - y) <= 80:
+        m_pos = re.search(r"Position: (-?\d+),(-?\d+)", pos)
+        m_size = re.search(r"Geometry: (\d+)x(\d+)", pos)
+        if m_pos and m_size:
+            px, py = int(m_pos.group(1)), int(m_pos.group(2))
+            pw, ph = int(m_size.group(1)), int(m_size.group(2))
+            if abs(px - x) <= 80 and abs(py - y) <= 80 and abs(pw - w) <= 80 and abs(ph - h) <= 80:
                 return True
         _run(["wmctrl", "-i", "-r", wid, "-b", "remove,maximized_vert,maximized_horz"], display)
         _run(["xdotool", "windowmove", wid, str(x), str(y)], display)

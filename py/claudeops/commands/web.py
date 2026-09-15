@@ -941,13 +941,14 @@ def _run_layout(pin: str, groups: list, claude_only: bool = True,
     if not os.environ.get("DISPLAY") and not display:
         return _err(lang, "no_x11")
 
-    from ..layout import _get_screen, _list_windows, build_layout_plan, apply_layout
+    from ..layout import GRID, _get_screen, _list_windows, build_layout_plan, apply_layout
 
     pinned = [n.strip() for n in pin.split(",") if n.strip()] if pin else []
     group_lists = [[b.strip() for b in g.split(",") if b.strip()] for g in groups if g.strip()]
+    grid = load_settings().get("layout_grid") or GRID
 
     windows = _list_windows(display)
-    screen = _get_screen(display, screen_y=screen_y)
+    screen = _get_screen(display, screen_y=screen_y, grid=grid)
     known_names = {s.name for s in find_sessions(measure_cpu=False)} if claude_only else None
     plan, name_to_wid = build_layout_plan(
         windows=windows, screen=screen, pinned_names=pinned,

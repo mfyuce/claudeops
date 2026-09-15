@@ -278,6 +278,8 @@ export interface Strings {
   handoverEffortHint: string;
   historyWarnLabel: string;
   historyWarnHint: string;
+  layoutGridLabel: string;
+  layoutGridHint: string;
   defaultModelLabel: string;
   providerBinLabel: string;
   providerBinDesc: string;
@@ -572,6 +574,8 @@ export const STRINGS: Record<Lang, Strings> = {
     handoverEffortHint: "handover (Faz 1/Faz 2/panelin tek-session handover butonu) ile yeniden açılan session'ların effort'u — respawn edilen session'ın BİR SONRAKİ handover'a kadarki ömrü boyunca kalıcı varsayılan olur",
     historyWarnLabel: "satır uyarı eşiği",
     historyWarnHint: "terminal scrollback bu satıra ulaşınca Terminal görünümündeki sayaç vurgulanır ve ana tablonun 'dikkat gerekenleri seç' butonu bu session'ı da seçer — tmux'un sabit 2000 satır limitine yaklaştığını gösterir (o limiti aşınca en eski satırlar silinir)",
+    layoutGridLabel: "yerleşim yoğunluğu",
+    layoutGridHint: "Yerleşim sekmesinin desktop başına açacağı pencere sayısı: 2 (yan yana iki yarı), 4 (2×2, varsayılan), 8 (4×2, yoğun)",
     defaultModelLabel: "yeni/resume için varsayılan model (CLI başına)",
     providerBinLabel: "CLI binary yolu override (opsiyonel)",
     providerBinDesc:
@@ -881,6 +885,8 @@ export const STRINGS: Record<Lang, Strings> = {
     handoverEffortHint: "the effort level sessions reopened by handover (Phase 1/Phase 2/the panel's single-session handover button) get — becomes the respawned session's persistent default for its whole life until the NEXT handover",
     historyWarnLabel: "line warn threshold",
     historyWarnHint: "once terminal scrollback reaches this many lines, the Terminal view's counter is highlighted and the 'select needs attention' bulk button also picks up this session — flags it as approaching tmux's fixed 2000-line cap (past which the oldest lines get dropped)",
+    layoutGridLabel: "layout density",
+    layoutGridHint: "how many windows the Layout tab opens per desktop: 2 (side-by-side halves), 4 (2×2, default), 8 (4×2, dense)",
     defaultModelLabel: "default model for new/resume (per CLI)",
     providerBinLabel: "CLI binary path override (optional)",
     providerBinDesc:

@@ -33,6 +33,7 @@ type SettingsPatch = {
   default_model?: Record<string, string>;
   provider_bin?: Record<string, string>;
   history_warn_at?: number;
+  layout_grid?: number;
 };
 
 type SettingsSubTab = "general" | "usage";
@@ -217,6 +218,17 @@ export function SettingsTab() {
                   if (Number.isFinite(n) && n > 0) void save({ history_warn_at: n });
                 }}
               />
+            </label>
+            <label title={t.layoutGridHint}>
+              {t.layoutGridLabel}
+              <select
+                value={settings.layout_grid}
+                onChange={(e) => void save({ layout_grid: Number(e.target.value) })}
+              >
+                <option value={2}>2 (2×1)</option>
+                <option value={4}>4 (2×2)</option>
+                <option value={8}>8 (4×2)</option>
+              </select>
             </label>
           </div>
           <div className="opts" id="settingsModelPanel">

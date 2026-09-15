@@ -42,6 +42,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useLang } from "../../i18n/LangContext";
 import { useBodyScrollLock } from "../shared/useBodyScrollLock";
+import { useEscapeKey } from "../shared/useEscapeKey";
 import { ChatView } from "./ChatView";
 import { FileViewerModal } from "./FileViewerModal";
 import { FilesView } from "./FilesView";
@@ -62,6 +63,8 @@ export function TerminalModal({ name, host, onClose }: TerminalModalProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("term");
   const [viewingPath, setViewingPath] = useState<string | null>(null);
   useBodyScrollLock();
+  // Nested FileViewerModal (below) owns Escape while it's open — see useEscapeKey's docstring.
+  useEscapeKey(viewingPath ? undefined : onClose);
 
   const overlay = (
     <div
