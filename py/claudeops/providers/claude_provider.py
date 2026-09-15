@@ -85,6 +85,21 @@ def _safe_mtime(p: Path) -> float:
         return 0.0
 
 
+def jsonl_path_for(cwd: str, sid: Optional[str]) -> Optional[Path]:
+    """`sid` biliniyorsa (--resume ile başladıysa) TAM o dosyanın yolu —
+    `_transcript_lines`'ın "aynı cwd'yi paylaşan session'lar mtime tahminiyle
+    karışabilir" düzeltmesini (bkz. o docstring) dışarıya da açar. `web.py`'nin
+    `_compact()`'i 2026-09-14'e kadar bunun yerine düz `find_latest_jsonl(cwd)`
+    kullanıyordu — aynı cwd'de birden fazla session çalışırken (COMPACT HATASI,
+    bkz. TODO.md) yanlış session'ın jsonl'ını izleyip 180s timeout'a düşüyordu.
+    `sid` yoksa (fresh --new, henüz atanmamış) mtime fallback'e düşer."""
+    if sid:
+        candidate = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{sid}.jsonl"
+        if candidate.is_file():
+            return candidate
+    return find_latest_jsonl(cwd)
+
+
 def find_latest_jsonl(cwd: str) -> Optional[Path]:
     """CWD için en son değiştirilen jsonl dosyasını döndür (resume sid için)."""
     encoded = _encode_cwd(cwd)
@@ -497,13 +512,7 @@ class ClaudeProvider(CliProvider):
         sid biliniyorsa (--resume ile başladıysa) TAM o dosya — aynı cwd'de birden fazla
         session paylaşıyorsa find_latest_jsonl (mtime) yanlış dosyayı seçebilir. sid yoksa
         (--new fresh start, Faz 2'nin varsayılanı) mtime fallback şart."""
-        path: Optional[Path] = None
-        if sid:
-            candidate = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{sid}.jsonl"
-            if candidate.is_file():
-                path = candidate
-        if path is None:
-            path = find_latest_jsonl(cwd)
+        path = jsonl_path_for(cwd, sid)
         if path is None:
             return []
         try:

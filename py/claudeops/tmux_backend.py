@@ -130,7 +130,12 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
     `CliProvider.input_settle_delay()` ile provider-bazlı değeri geçer — burada
     `if cli==...` YOK, sadece parametrenin kendisi."""
     try:
-        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", name, "-l", text],
+        # `--` ZORUNLU (`tmux_send_raw`'daki AYNI tuzak, burada 2026-09-14'e
+        # kadar eksikti — bilinen açık bug, bkz. TODO.md): `--` olmadan tire
+        # ile başlayan literal metin ("-help", "--foo", markdown "- item",
+        # unified diff "--- a/file") tmux'un KENDİ `send-keys` bayrağı sanılıp
+        # `unknown option` ile reddediliyordu, girdi pane'e HİÇ ulaşmıyordu.
+        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", name, "-l", "--", text],
                              capture_output=True, timeout=_TIMEOUT)
         if r1.returncode != 0:
             return False
@@ -219,21 +224,35 @@ def tmux_client_count(name: str) -> Optional[int]:
         return None
 
 
+# tmux.conf'un `history-limit`'iyle AYNI değer, KASITLI pinlenmiş (bkz. o
+# dosyadaki yorum) — pane'in scrollback'i bu sayıya ulaşınca tmux eski
+# satırları SESSİZCE eviction'a uğratır, ring buffer bunun üstüne asla
+# çıkmaz. Terminal view'ın satır-sayısı göstergesi (2026-09-14) bu sabiti
+# `#{history_size}`'a karşı oranlamak için kullanır.
+HISTORY_LIMIT = 2000
+
+
 def tmux_pane_size(name: str) -> Optional[tuple]:
     """Panelin GERÇEK boyutu — new-session'daki -x/-y sadece istemci hiç bağlanmamışsa
     geçerli; attach eden bir client (bizim gnome-terminal penceremiz) varsa tmux paneli
     o client'ın gerçek boyutuna göre yeniden boyutlandırır (örn. -x 100 -y 30 istense
     bile pencere gerçekte 211x23 olabilir) — xterm.js'in doğru sarmalama/hizalama
-    göstermesi için gerçek boyutu döndürüp frontend'in `term.resize()` çağırması gerekir."""
+    göstermesi için gerçek boyutu döndürüp frontend'in `term.resize()` çağırması gerekir.
+
+    Üçüncü değer `history_size` (`#{history_size}`) — pane'in ŞU ANKİ gerçek
+    scrollback satır sayısı (tmux'un kendi ring buffer'ı, `HISTORY_LIMIT`'te
+    tavan yapar). AYNI `list-panes` çağrısına eklendi (2026-09-14) — ayrı bir
+    subprocess GEREKMEDİ, tek çağıran (`_term_output`, zaten 200ms'de bir
+    poll'lanıyor) ikisini birden bedavaya alır."""
     try:
         r = subprocess.run(
-            _base_argv() + ["list-panes", "-t", name, "-F", "#{pane_width} #{pane_height}"],
+            _base_argv() + ["list-panes", "-t", name, "-F", "#{pane_width} #{pane_height} #{history_size}"],
             capture_output=True, text=True, timeout=_TIMEOUT,
         )
         if r.returncode != 0 or not r.stdout.strip():
             return None
-        w, h = r.stdout.strip().splitlines()[0].split()
-        return int(w), int(h)
+        w, h, hist = r.stdout.strip().splitlines()[0].split()
+        return int(w), int(h), int(hist)
     except Exception:
         return None
 

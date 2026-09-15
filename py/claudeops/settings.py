@@ -25,6 +25,13 @@ SETTINGS_JSON = os.path.join(CLAUDEOPS_DIR, "settings.json")
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "theme": "system",       # "system" | "light" | "dark"
     "handover_effort": "",   # "" = otomatik (default_handover_effort'un high-tercih mantığı)
+    "history_warn_at": 1900, # tmux scrollback (`tmux_backend.HISTORY_LIMIT`=2000) bu sayıya
+                              # yaklaşınca Terminal görünümünün sayaç rengi + ana tablonun
+                              # "dikkat gerekenleri seç" butonu bunu eşik alır (2026-09-15,
+                              # kullanıcı: "1900-2000 (settingden) olanları... seç butonu") —
+                              # HISTORY_LIMIT'in kendisi (2000) sabit kalır, o tmux'un GERÇEK
+                              # yapılandırması (bkz. tmux.conf); burada kullanıcı-tercihi olan
+                              # SADECE "ne kadar erken uyarılmak istiyorum" eşiği.
     "default_model": {},     # {cli: model} — provider'ın kod-içi varsayımı (model_choices()[0])
                               # yerine geçen kalıcı tercih; yeni/resume dropdown'unun ön-dolu
                               # değeri OLDUĞU KADAR, aşağıdaki default_model_for()'un okuduğu

@@ -77,13 +77,22 @@ def _run_inner(args, display, models, roster) -> int:
     errors = 0
 
     for full_name in args.names:
-        # Girdiyi base'e indirge (hc58→hc, hc→hc). Suffix yok → isim = base.
-        m = _NAME_RE.match(full_name)
-        if not m:
-            print(f"  {full_name}: isim parse edilemedi")
-            errors += 1
-            continue
-        base = m.group(1)
+        # Tam eşleşme regex'ten ÖNCE denenir (2026-09-14 fix — CLI REGRESYON,
+        # bkz. TODO.md): `_NAME_RE` tireli (`ancient-script-pipeline-fd`),
+        # karmaşık altçizgili (`mtsyn20260910_concensusonmethod`) veya rakam
+        # içeren kök (`agy2`) roster kayıtlarını yanlış parçalıyor/hiç
+        # eşleştiremiyordu. roster zaten birebir o anahtarla kayıtlıysa
+        # regex heuristiğine hiç gerek yok.
+        if full_name in roster:
+            base = full_name
+        else:
+            # Girdiyi base'e indirge (hc58→hc, hc→hc). Suffix yok → isim = base.
+            m = _NAME_RE.match(full_name)
+            if not m:
+                print(f"  {full_name}: isim parse edilemedi")
+                errors += 1
+                continue
+            base = m.group(1)
 
         new_name = base   # suffix yok: session adı = base
 

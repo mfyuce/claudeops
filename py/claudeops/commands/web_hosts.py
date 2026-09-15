@@ -348,6 +348,14 @@ def fetch_remote_status(host_record: Dict[str, str]) -> Dict[str, Any]:
 
 _cache_lock = threading.Lock()
 _cache: Dict[str, Dict[str, Any]] = {}  # host adı -> fetch_remote_status() sonucu
+# host adı -> son GERÇEKTEN başarılı (ok:true) sonuç. `_cache`'in aksine hiçbir
+# zaman ok:false'a düşmez — `_record_poll_result` stale-while-error'ı HER
+# ardışık hatada BUNA karşı uygular (2026-09-14 fix, bkz. TODO.md "6. poll
+# denemesinde siliyor" maddesi: eskiden `_cache.get(name)` kullanılıyordu, o
+# da 5. hatada BİR KERE ok:false'a düşünce 6. hata artık "prev ok değildi"
+# sayıp session listesini TAMAMEN siliyordu — CONSECUTIVE_FAILURES_BEFORE_ERROR
+# toleransı sadece silinmeyi 5.'ten 6. hataya erteliyordu, önlemiyordu).
+_last_good: Dict[str, Dict[str, Any]] = {}
 
 
 def _apply_stale_while_error(prev: Optional[Dict[str, Any]], result: Dict[str, Any]) -> Dict[str, Any]:
@@ -401,13 +409,14 @@ def _record_poll_result(name: str, result: Dict[str, Any]) -> None:
         if result["ok"]:
             _fail_streak[name] = 0
             _cache[name] = result
+            _last_good[name] = result
             return
         streak = _fail_streak.get(name, 0) + 1
         _fail_streak[name] = streak
-        prev = _cache.get(name)
-        if streak < CONSECUTIVE_FAILURES_BEFORE_ERROR and prev is not None and prev.get("ok"):
+        prev_good = _last_good.get(name)
+        if streak < CONSECUTIVE_FAILURES_BEFORE_ERROR and prev_good is not None:
             return
-        _cache[name] = _apply_stale_while_error(prev, result)
+        _cache[name] = _apply_stale_while_error(prev_good, result)
 
 
 def _poll_once() -> None:
@@ -423,6 +432,7 @@ def _poll_once() -> None:
             if stale not in current_names:
                 del _cache[stale]
                 _fail_streak.pop(stale, None)
+                _last_good.pop(stale, None)
 
 
 def _poller_loop() -> None:

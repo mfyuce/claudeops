@@ -107,7 +107,26 @@ def run(args) -> int:
     errors = 0
     for name in args.names:
         base = _base(name)
-        matched = [s for s in sessions if s.name == name or s.base == base]
+        # 2026-09-14 KRİTİK FIX: `s.name == name or s.base == base` base
+        # eşleşmesi TEK BAŞINA aynı base'e indirgenen BAMBAŞKA canlı bir
+        # session'ı da (ör. tarih+çakışma suffix'li bir YENİ session) yakalayıp
+        # öldürüyordu (canlı olay: "cops" kapatılırken "cops20260914_1" de
+        # gitti — web.py'nin `_find_running`'inin AYNI köklü bug'ı, bkz.
+        # `_find_running_for_action`). Önce tam-isim denenir; yoksa base'e
+        # düşülür AMA birden fazla canlı proc AYNI base'e düşüyorsa
+        # (belirsizlik) HİÇBİRİ öldürülmez, kullanıcıdan tam isim istenir.
+        exact = [s for s in sessions if s.name == name]
+        if exact:
+            matched = exact
+        else:
+            base_matches = [s for s in sessions if s.base == base]
+            if len(base_matches) > 1:
+                names = ", ".join(s.name for s in base_matches)
+                print(f"  {name}: birden fazla çalışan session bu base'e ({base}) indirgeniyor "
+                      f"({names}) — hangisi hedeflenecek belirsiz, tam isim kullanın, ATLANDI")
+                errors += 1
+                continue
+            matched = base_matches
 
         if args.dry_run:
             st = comment_out_models(base, dry_run=True)

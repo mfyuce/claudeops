@@ -35,6 +35,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.request
@@ -59,6 +60,7 @@ from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, save_settings
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
+from ..providers.claude_provider import jsonl_path_for
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
 from ..tmux_backend import (
@@ -129,6 +131,10 @@ ERR = {
                        "en": "{name}: start attempted but no process appeared "
                              "(could be gnome-terminal/DISPLAY, retry) — kind={kind}"},
     "not_running": {"tr": "{name}: çalışmıyor", "en": "{name}: not running"},
+    "ambiguous_name": {"tr": "{name}: birden fazla çalışan session bu isme indirgeniyor ({candidates}) — "
+                              "hangisi hedeflenecek belirsiz, tam ismini kullanın",
+                        "en": "{name}: more than one running session reduces to this name ({candidates}) — "
+                              "ambiguous which one to target, use the exact name"},
     "unknown_host": {"tr": "{name}: kayıtlı bir uzak host değil", "en": "{name}: not a registered remote host"},
     "undefined": {"tr": "{name}: tanımsız", "en": "{name}: undefined"},
     "already_retired": {"tr": "{name}: zaten emekli", "en": "{name}: already retired"},
@@ -336,6 +342,42 @@ def _find_running(name: str, cli: Optional[str] = None) -> list:
     return [s for s in sessions if s.name == name or s.base == name]
 
 
+def _find_running_for_action(name: str, cli: Optional[str] = None) -> tuple:
+    """`_find_running`'in TEKİL-HEDEFLİ/yıkıcı çağrılar (stop/retire/close/
+    handover/compact/adopt/terminal-routing) için güvenli hâli.
+
+    KRİTİK CANLI OLAY (2026-09-14): `_find_running`'in base-fallback'i
+    (yukarıdaki docstring — `hc58`+`hc` gibi geçiş durumlarında BİLEREK var)
+    bu çağırıcılarda YANLIŞ araç oldu — bir session'ı ("cops") kapatmak, base'i
+    AYNI "cops"a indirgenen BAMBAŞKA canlı bir session'ı ("cops20260914_1",
+    tarih+çakışma suffix'i, o an açık bir konuşmanın kendisi) da öldürdü.
+    Coexistence-suffix (aynı base'i BİLEREK aynı anda YAŞATMAK için var) ile
+    base-collapsing (aynı base'i AYNI proje SAYMAK için var) burada doğrudan
+    çelişiyordu — ikisi birlikte yaşarken birini hedeflemek ikisini de hedef
+    seçiyordu.
+
+    Fark: ÖNCE tam-isim eşleşmesi denenir (varsa TEK doğru cevap budur, base'e
+    hiç bakılmaz). Tam eşleşme yoksa base'e düşülür — AMA birden fazla canlı
+    proc AYNI base'e düşüyorsa (asıl belirsizlik) sessizce hepsini/birini
+    seçmek yerine "ambiguous" döner, çağıran kullanıcıya tam isim sorar.
+
+    Returns: (kind, sessions) — kind: "exact" | "unique_base" | "ambiguous" | "none".
+    "ambiguous" hariç HER zaman `sessions` güvenle hedeflenebilir (tam liste,
+    tek bir proje/başka bir session'ı KARIŞTIRMADAN)."""
+    sessions = find_sessions(measure_cpu=False)
+    if cli:
+        sessions = [s for s in sessions if s.cli == cli]
+    exact = [s for s in sessions if s.name == name]
+    if exact:
+        return "exact", exact
+    base_matches = [s for s in sessions if s.base == name]
+    if len(base_matches) > 1:
+        return "ambiguous", base_matches
+    if base_matches:
+        return "unique_base", base_matches
+    return "none", []
+
+
 # saniye — bir kere "çalışıyor" görülmek YETMEZ, o kadar süre KESİNTİSİZ ayakta
 # kalmalı sayılsın. 2026-08-27 saseppr'da canlı bulundu: eski kod tek bir anlık
 # görüşü "opened=True" sayıyordu — resume-guard hatasıyla saniyeler içinde ölen
@@ -446,6 +488,29 @@ def _generate_new_chat_name(base: str) -> str:
     return f"{candidate}_{i}"
 
 
+def _atomic_write_text(path: str, content: str) -> None:
+    """`roster.tsv`/`models.tsv` gibi kritik config dosyalarını YARIM/bozuk
+    yazımdan korur (VERİ KAYBI RİSKİ, 2026-09-14 fix — bkz. TODO.md): eskiden
+    her çağıran kendi `open(path, "w")`'unu doğrudan yapıyordu, bu TRUNCATE-
+    ÖNCE-YAZ deseni `ThreadingHTTPServer` altında eşzamanlı iki istek ya da
+    yazma ortasında kesilen bir process karşısında dosyayı bozuk/yarım
+    bırakabilirdi. Geçici dosyaya aynı dizinde yazıp `os.replace` ile atomik
+    taşır (POSIX'te `rename(2)` — ya eski içerik ya yeni içerik görülür,
+    ARADA hiçbir okuyucu yarım dosya görmez)."""
+    d = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=d, prefix=".tmp-", suffix=".tsv")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def _append_tsv_line(path: str, fields: list) -> None:
     """path'e yeni bir satır ekle (trailing-newline güvenli)."""
     try:
@@ -456,8 +521,7 @@ def _append_tsv_line(path: str, fields: list) -> None:
     if content and not content.endswith("\n"):
         content += "\n"
     content += "\t".join(fields) + "\n"
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+    _atomic_write_text(path, content)
 
 
 _NAME_VALID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -618,8 +682,7 @@ def _toggle_comment(path: str, name: str, want_active: bool) -> bool:
             found = True
             break
     if found:
-        with open(path, "w", encoding="utf-8") as f:
-            f.writelines(lines)
+        _atomic_write_text(path, "".join(lines))
     return found
 
 
@@ -645,8 +708,7 @@ def _replace_tsv_line(path: str, name: str, fields: list) -> bool:
             found = True
             break
     if found:
-        with open(path, "w", encoding="utf-8") as f:
-            f.writelines(lines)
+        _atomic_write_text(path, "".join(lines))
     return found
 
 
@@ -962,6 +1024,32 @@ def _is_busy_cached(s) -> Optional[bool]:
     return val
 
 
+_HISTORY_CACHE: dict = {}  # name -> (expires_monotonic, int | None)
+# `_needs_ho_cached`'in 30s'iyle AYNI (busy'nin 2s'inden ÇOK daha uzun kalabilir) —
+# tmux scrollback boyutu saniyeler içinde önemli ölçüde değişmez, ana tabloda HER
+# session için ekstra bir `list-panes` çağrısı gerektirdiğinden (2026-09-15,
+# "1900-2000 olanları seç" butonu için eklendi) kısa bir TTL'e gerek yok.
+_HISTORY_TTL = 30.0
+
+
+def _history_size_cached(s) -> Optional[int]:
+    """Ana tablodaki her satır için pane'in gerçek tmux scrollback boyutu —
+    `TerminalView.tsx`'in Terminal modal'ı içindeki AYNI `tmux_pane_size()`'ın
+    (`#{history_size}`) 30s-cache'li hâli, bulk-select butonunun (2026-09-15,
+    kullanıcı: "1900-2000 olanları... seç butonu") tüm satırlara karşı
+    çalışabilmesi için. tmux-backed değilse (capture imkânsız) None."""
+    if not is_tmux_backed(s.pid):
+        return None
+    now = time.monotonic()
+    hit = _HISTORY_CACHE.get(s.name)
+    if hit and hit[0] > now:
+        return hit[1]
+    size = tmux_pane_size(s.name)
+    val = size[2] if size else None
+    _HISTORY_CACHE[s.name] = (now + _HISTORY_TTL, val)
+    return val
+
+
 def _status_payload() -> dict:
     fleet = _fleet_status()
     all_live = find_sessions(measure_cpu=True)
@@ -1024,6 +1112,7 @@ def _status_payload() -> dict:
             "kind": ("fresh" if s.is_fresh else "resume") if s else None,
             "needs_ho": _needs_ho_cached(s) if s else None,
             "busy": _is_busy_cached(s) if s else None,
+            "history_size": _history_size_cached(s) if s else None,
             "registered": True,
             "tmux": is_tmux_backed(s.pid) if s else False,
             "host": LOCAL_HOST_NAME,
@@ -1054,6 +1143,7 @@ def _status_payload() -> dict:
             "kind": "fresh" if s.is_fresh else "resume",
             "needs_ho": _needs_ho_cached(s),
             "busy": _is_busy_cached(s),
+            "history_size": _history_size_cached(s),
             "registered": False,
             "tmux": is_tmux_backed(s.pid),
             "host": LOCAL_HOST_NAME,
@@ -1178,9 +1268,11 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
 
 
 def _stop(name: str, lang: str = "tr") -> dict:
-    procs = _find_running(name)
-    if not procs:
+    kind, procs = _find_running_for_action(name)
+    if kind == "none":
         return _err(lang, "not_running", name=name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
@@ -1191,10 +1283,18 @@ def _stop(name: str, lang: str = "tr") -> dict:
 
 def _term_resolve(name: str, lang: str = "tr"):
     """Terminal endpoint'lerinin ortak çözümlemesi: name → tek, canlı, tmux-backed
-    Session, yoksa (None, err-dict) döner."""
-    procs = _find_running(name)
-    if not procs:
+    Session, yoksa (None, err-dict) döner.
+
+    2026-09-14 fix: eskiden `_find_running` kullanıyordu ve birden fazla aynı-
+    base eşleşme varsa SESSİZCE `procs[0]`'ı (sıralamaya bağlı, rastgele
+    hangisi) seçiyordu — input/output YANLIŞ session'a gidebilirdi (kill değil
+    ama fark edilmesi zor bir yanlış-yönlendirme). `_find_running_for_action`
+    artık bu belirsizliği açıkça reddediyor."""
+    kind, procs = _find_running_for_action(name)
+    if kind == "none":
         return None, _err(lang, "not_running", name=name)
+    if kind == "ambiguous":
+        return None, _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     s = procs[0]
     if not is_tmux_backed(s.pid):
         return None, _err(lang, "not_tmux_backed", name=name)
@@ -1299,10 +1399,13 @@ def _term_output(name: str, lang: str = "tr") -> dict:
     masked = pane_is_masked_input(s.name)
     # `mode`/`masked` ikisi de bu ZATEN çekilmiş metne/pane'e biniyor — 200ms'lik
     # poll'a ek bir tmux çağrısı EKLEMİYORLAR. mode None = bu CLI'da canlı izin
-    # modu diye bir şey yok (panel seçiciyi hiç göstermez).
+    # modu diye bir şey yok (panel seçiciyi hiç göstermez). `history_size` de
+    # AYNI `tmux_pane_size` çağrısına biniyor (2026-09-14, TODO.md'nin "terminalde
+    # kaç satır olduğu gösterilsin" maddesi) — pane'in gerçek scrollback boyutu,
+    # `HISTORY_LIMIT`'e (2000) yaklaşınca frontend'in vurgulaması için.
     return {"ok": True, "text": text, "cols": size[0] if size else None,
-            "rows": size[1] if size else None, "masked": bool(masked),
-            "mode": _detect_mode_in_text(text, get_provider(s.cli))}
+            "rows": size[1] if size else None, "history_size": size[2] if size else None,
+            "masked": bool(masked), "mode": _detect_mode_in_text(text, get_provider(s.cli))}
 
 
 def _term_input(name: str, text: str, lang: str = "tr") -> dict:
@@ -1502,7 +1605,9 @@ def _retire(name: str, lang: str = "tr") -> dict:
         return _err(lang, "undefined", name=name)
     if info["state"] == "retired":
         return _err(lang, "already_retired", name=name)
-    procs = _find_running(name)
+    kind, procs = _find_running_for_action(name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     if procs:
         try:
             with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
@@ -1530,7 +1635,13 @@ def _close_project(name: str, lang: str = "tr") -> dict:
         return _err(lang, "already_closed", name=name)
     if info["state"] == "retired":
         return _err(lang, "retired_needs_reactivate", name=name)
-    procs = _find_running(name)
+    # 2026-09-14 KRİTİK FIX: eskiden `_find_running` (base-fallback) kullanıyordu
+    # — bu isim base'i AYNI olan BAMBAŞKA canlı bir session'ı da (ör. tarih+
+    # çakışma suffix'li bir "aynı isimde YENİ session") yakalayıp onu da
+    # öldürüyordu (canlı olay: "cops" kapatılırken "cops20260914_1" da gitti).
+    kind, procs = _find_running_for_action(name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     if procs:
         try:
             with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
@@ -1586,9 +1697,11 @@ def _handover(name: str, lang: str = "tr") -> dict:
     modele geçiş) yapılıyor; session bir sonraki restart'ta `--model` (global'i
     kirletmeyen spawn-time yol) ile kendi gerçek modeline dönüyor.
     """
-    procs = _find_running(name)
-    if not procs:
+    kind, procs = _find_running_for_action(name)
+    if kind == "none":
         return _err(lang, "not_running", name=name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     if not is_tmux_backed(procs[0].pid):
         return _err(lang, "not_tmux_backed", name=name)
     provider = get_provider(procs[0].cli)
@@ -1666,9 +1779,11 @@ def _compact(name: str, lang: str = "tr") -> dict:
     dayanması da zaten aynı sınırlamayı taşıyor; başka bir provider gerçekten
     compact kazanırsa (kendi tmux-injection sözdizimiyle) O ZAMAN genellenir.
     """
-    procs = _find_running(name)
-    if not procs:
+    kind, procs = _find_running_for_action(name)
+    if kind == "none":
         return _err(lang, "not_running", name=name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     fleet = _fleet_status()
     info = fleet.get(name)
     chosen_cli = info["cli"] if info else procs[0].cli
@@ -1678,7 +1793,12 @@ def _compact(name: str, lang: str = "tr") -> dict:
         return _err(lang, "compact_unsupported_cli", name=name)
     cwd = info["cwd"] if info else procs[0].cwd
 
-    jsonl = find_latest_jsonl(cwd)
+    # `find_latest_jsonl(cwd)` (mtime tahmini) DEĞİL: aynı cwd'yi paylaşan
+    # başka bir session varken yanlış dosyayı izlemeye başlayıp 180s timeout'a
+    # düşen COMPACT HATASI buradaydı (2026-09-14 fix, bkz. TODO.md). Bilinen
+    # sid varsa `jsonl_path_for` TAM o dosyayı hedefler, yoksa aynı mtime
+    # fallback'e düşer (davranış fresh/--new session'lar için değişmedi).
+    jsonl = jsonl_path_for(cwd, procs[0].sid)
     if jsonl is None:
         diag_log("compact_no_jsonl", name=name)
         return _err(lang, "compact_no_jsonl", name=name)
@@ -1749,9 +1869,21 @@ def _usage_all() -> dict:
         if command is None:
             out[cli_name] = {"supported": False}
             continue
-        candidates = [s for s in running if s.cli == cli_name and is_tmux_backed(s.pid)]
+        raw_candidates = [s for s in running if s.cli == cli_name and is_tmux_backed(s.pid)]
+        # busy/masked adaylar KESİNLİKLE elenir (2026-09-14 fix — KRİTİK
+        # OPERASYONEL RİSK, bkz. TODO.md): eskiden bu filtre yoktu, bir turn
+        # işleyen (`_is_busy_cached`==True) ya da sudo/parola bekleyen
+        # (`pane_is_masked_input`==True) session'a `/usage` enjekte edilip 3sn
+        # sonra Escape gönderilebiliyordu — Escape çalışan bir görevi ANINDA
+        # kesip iptal ediyor, masked'a enjekte edilen `/usage` metni de parola
+        # prompt'una karışıyordu. `_is_busy_cached`'in `None` (bilinmiyor)
+        # dönüşü BİLEREK eleme kapsamı DIŞINDA — needs_ho/client_count'un aynı
+        # "bilinmiyor ≠ kesin risk" sözleşmesi, tamamen ölçülemeyen bir CLI'da
+        # (busy_status_pattern tanımsız) hiçbir aday kalmamasını önler.
+        candidates = [s for s in raw_candidates if not _is_busy_cached(s) and not pane_is_masked_input(s.name)]
         if not candidates:
-            out[cli_name] = {"supported": True, "available": False, "reason": "no_running_session"}
+            reason = "all_sessions_busy" if raw_candidates else "no_running_session"
+            out[cli_name] = {"supported": True, "available": False, "reason": reason}
             continue
         # Birden fazla aday varsa, kimsenin İZLEMEDİĞİ birini TERCİH et
         # (`tmux_client_count()==0`) — canlı doğrulandı (2026-09-13, bu
@@ -1793,9 +1925,11 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     # 2026-09-01: "wireguard-mayaos-61" adopt'ta invalid_name ile reddediliyordu.
     if new_name != old_name and not _NAME_VALID_RE.match(new_name):
         return _err(lang, "invalid_name")
-    procs = _find_running(old_name)
-    if not procs:
+    kind, procs = _find_running_for_action(old_name)
+    if kind == "none":
         return _err(lang, "not_running", name=old_name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=old_name, candidates=", ".join(s.name for s in procs))
     if new_name != old_name and new_name in _all_known_names():
         return _err(lang, "name_in_use", new_name=new_name)
     cwd = procs[0].cwd
