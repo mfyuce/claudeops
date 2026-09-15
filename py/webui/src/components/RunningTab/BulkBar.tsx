@@ -159,17 +159,18 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     selection.replace(rows.filter((s) => s.needs_ho === true).map(rowKey));
   }
 
-  // "Dikkat gerekenleri seç" (2026-09-15): idle (busy===false, EXPLICITLY
-  // not-busy — `null`/unknown is left alone, same "unknown ≠ known-safe"
-  // stance as needs_ho/client_count elsewhere) OR close enough to tmux's
-  // scrollback cap to start losing history (`history_warn_at`, Settings —
-  // default 1900, `HISTORY_LIMIT` itself is 2000 and fixed). Either
-  // condition alone is a reasonable "this session could use a `reset`".
+  // "Dikkat gerekenleri seç" (2026-09-15, AND'e çevrildi — kullanıcı: "or
+  // degil and"): idle (busy===false, EXPLICITLY not-busy — `null`/unknown
+  // atlanır, needs_ho/client_count'taki AYNI "bilinmeyen ≠ güvenli-bilinen"
+  // duruşu) VE AYRICA tmux'un scrollback tavanına yaklaşmış olması
+  // (`history_warn_at`, Settings — varsayılan 1900, `HISTORY_LIMIT`in
+  // kendisi 2000 ve sabit) — İKİSİ BİRDEN gerekir, ne salt idle ne salt
+  // uzun-scrollback tek başına yeterli değil.
   function handleSelectAttention() {
     const historyWarnAt = data?.settings.history_warn_at ?? 1900;
     selection.replace(
       rows
-        .filter((s) => s.busy === false || (s.history_size != null && s.history_size >= historyWarnAt))
+        .filter((s) => s.busy === false && s.history_size != null && s.history_size >= historyWarnAt)
         .map(rowKey),
     );
   }
