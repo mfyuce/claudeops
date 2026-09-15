@@ -208,15 +208,38 @@ def handover_faz1(
     summary = Faz1Summary()
 
     if names:
-        # Tek/birkaç isimli hedefleme: tam isim VEYA base eşleşir (rc.py deseniyle aynı,
-        # trino20260823 gibi tarih-suffix'li ad-hoc isimleri de yakalar).
+        # Tek/birkaç isimli hedefleme: ÖNCE tam isim denenir, yoksa base'e düşülür
+        # (trino20260823 gibi tarih-suffix'li ad-hoc isimleri de yakalar) — AMA birden
+        # fazla canlı proc AYNI base'e düşüyorsa (coexistence-suffix) o isim için
+        # HİÇBİRİNE mesaj enjekte edilmez. rc.py/web.py `_find_running_for_action`'ın
+        # 2026-09-14 fix'iyle AYNI desen; buradaki eski flat `s.name in wanted or
+        # s.base in wanted` union'ı ambiguous bir base'in TÜM eşleşmelerine (ör. hem
+        # "cops" hem de tamamen ilgisiz canlı bir "cops20260914_1" konuşmasına)
+        # wrap-up mesajını sessizce enjekte edebilirdi.
         wanted = set(names)
-        targets = [s for s in sessions if s.name in wanted or s.base in wanted]
-        found_keys = {s.name for s in targets} | {s.base for s in targets}
+        targets = []
+        seen_pids = set()
         for w in wanted:
-            if w not in found_keys:
+            exact = [s for s in sessions if s.name == w]
+            if exact:
+                matched = exact
+            else:
+                base_matches = [s for s in sessions if s.base == w]
+                if len(base_matches) > 1:
+                    names_str = ", ".join(s.name for s in base_matches)
+                    print(f"  {w}: birden fazla çalışan session bu base'e indirgeniyor ({names_str}) "
+                          f"— hangisi hedeflenecek belirsiz, tam isim kullanın, ATLANDI")
+                    summary.results.append(Faz1Result(w, "failed-ambiguous", names_str))
+                    continue
+                matched = base_matches
+            if not matched:
                 print(f"  {w}: proc bulunamadı (çalışmıyor mu?)")
                 summary.results.append(Faz1Result(w, "failed-noproc", "proc bulunamadı"))
+                continue
+            for s in matched:
+                if s.pid not in seen_pids:
+                    seen_pids.add(s.pid)
+                    targets.append(s)
     else:
         targets = list(sessions)
 

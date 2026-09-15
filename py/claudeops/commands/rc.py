@@ -111,11 +111,26 @@ def _run_inner(args, display, models, roster) -> int:
         permission_mode = args.permission_mode or provider.permission_modes()[0]
         effort = args.effort or default_handover_effort(provider)
 
-        # 1. Kill — tam isim VEYA base ile eşleşenleri öldür (suffix verilmeden çağrıda DUP önlemi).
-        # Self-koruma: bu komutun içinden çalıştığı claude session'ı (ata-proc) asla öldürülmez.
+        # 1. Kill — ÖNCE tam isim denenir (tek doğru hedef budur, base'e hiç bakılmaz);
+        # yoksa base'e düşülür AMA birden fazla canlı proc AYNI base'e düşüyorsa
+        # (coexistence-suffix) HİÇBİRİ öldürülmez/spawn edilmez, tam isim istenir —
+        # web.py `_find_running_for_action`/close.py'nin 2026-09-14 fix'iyle AYNI desen;
+        # buradaki eski flat `s.name==full_name or s.base==base` union'ı o fix'i hiç
+        # görmemişti (rc --kill-first, en sık kullanılan Faz 2 respawn yolu).
         if args.kill_first:
             all_sessions = find_sessions(measure_cpu=False)
-            procs = [s for s in all_sessions if s.name == full_name or s.base == base]
+            exact = [s for s in all_sessions if s.name == full_name]
+            if exact:
+                procs = exact
+            else:
+                base_matches = [s for s in all_sessions if s.base == base]
+                if len(base_matches) > 1:
+                    names_str = ", ".join(s.name for s in base_matches)
+                    print(f"  {full_name}: birden fazla çalışan session bu base'e ({base}) indirgeniyor "
+                          f"({names_str}) — hangisi hedeflenecek belirsiz, tam isim kullanın, ATLANDI")
+                    errors += 1
+                    continue
+                procs = base_matches
             protected = ancestor_pids()
             self_hits = [s for s in procs if s.pid in protected]
             if self_hits:
