@@ -44,6 +44,17 @@ MODELS_CACHE = os.path.join(CODEX_HOME, "models_cache.json")
 
 PERMISSION_MODES = ["auto", "acceptEdits", "manual", "plan"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh"]
+# claude_provider.py'nin AYNI sabiti (`r"esc to interrupt"`) — 2026-09-15, kullanıcı
+# canlı bir codex session'ın "çalışıyor ama boşta görünüyor" şikayeti üzerine capture
+# edilen gerçek pane çıktısıyla doğrulandı: codex'in kendi durum çubuğu da BİREBİR
+# "Working (14m 34s • esc to interrupt)" yazıyor — `busy_status_pattern()` hiç
+# override edilmemişti (base.py'nin `None` varsayılanına düşüyordu), bu yüzden HER
+# codex session'ı busy alanı hep None (bilinmiyor) kalıyor, UI'da idle'la ayırt
+# edilemiyordu (SessionRow.tsx'in dot'u null/false ikisinde de aynı "on" sınıfını
+# kullanıyor). İdle'da bu metnin gerçekten kaybolduğu ayrıca doğrulanmadı ama UI
+# mantığı (bir işi "interrupt" edebilmek sadece o iş sürerken anlamlı) claude'daki
+# AYNI garantiyi taşıyor.
+BUSY_STATUS_PATTERN = r"esc to interrupt"
 # models_cache.json okunamazsa/boşsa son çare (2026-09-01 bu makinede canlı doğrulandı:
 # gpt-5.6-terra + gpt-5.5 gerçek bir turn tamamladı; config.toml'ın kendi varsayılanı
 # "gpt-5-codex" ise bu ChatGPT hesabında 400 ile reddedildi — o yüzden BURADA tekrarlanmıyor).
@@ -236,6 +247,9 @@ class CodexProvider(CliProvider):
 
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
+
+    def busy_status_pattern(self) -> Optional[str]:
+        return BUSY_STATUS_PATTERN
 
     def input_settle_delay(self) -> float:
         # Canlı bulundu (2026-09-05, kullanıcı: "codex de terminalde send'deyince
