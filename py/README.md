@@ -118,13 +118,22 @@ The easiest way to use this; everything from the browser:
 - **Hosts (multi-machine)** — this same panel can show and control sessions running on *other*
   machines too. Register a remote one (a name, that machine's own `py/cops web` URL — typically its
   `--tunnel`/`service install` tunnel URL — and its token, from that machine's own
-  `~/.claude/claudeops/web.token`) from the Settings tab; the panel polls it in the background (~3s)
-  and merges its sessions into the same Running/Registered tables, each tagged with a small host
-  badge. Every session-level action (start/stop/handover/register/...) is transparently proxied to the
-  right machine — you never leave this one tab, and two different machines can have a session with
-  the same name without conflict (rows are keyed by host+name). Remote token stays server-side, never
-  sent back to the browser. Terminal viewing for a remote session isn't wired up yet (v1 gap, see
-  TODO.md) — everything else works.
+  `~/.claude/claudeops/web.token`; optionally a second, HTTP/2-capable URL as `grpc_url` if you have
+  one, see below) from the Settings tab; the panel polls it in the background (~3s) and merges its
+  sessions into the same Running/Registered tables, each tagged with a small host badge. Every
+  session-level action (start/stop/handover/register/...) is transparently proxied to the right
+  machine — you never leave this one tab, and two different machines can have a session with the same
+  name without conflict (rows are keyed by host+name). Remote token stays server-side, never sent back
+  to the browser. Terminal viewing for a remote session works too (either transport below).
+- **Local↔remote transport is tiered** (gRPC → WebSocket → REST poll, whichever actually works for that
+  host, probed in the background and cached) rather than REST-only: a host with no `grpc_url` simply
+  skips the gRPC attempt (no extra network call) and tries a plain WebSocket handshake against its
+  `/ws` next — this is enough to turn the status poll and a remote terminal's output into a push
+  instead of a repeated round trip for most tunnels (plain HTTP/1.1 Upgrade travels through far more
+  proxies/tunnels than real HTTP/2 does). REST keeps working unchanged as the permanent floor if
+  neither is reachable. `cops web` also opens a small gRPC server (`--grpc-port`, default `--port + 1`,
+  loopback-only) purely for this host-to-host link — it's unrelated to the browser, which only ever
+  talks to `/ws`; if that port can't bind, this layer is silently skipped and REST/WS still work.
 - **TR/EN** — auto-selected from the browser's language (`navigator.language`), can be switched manually
   with the buttons in the top corner and stays persisted (localStorage).
 - **Token protected** (`~/.claude/claudeops/web.token`, randomly generated on first run) — both the page

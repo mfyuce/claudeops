@@ -43,6 +43,10 @@ ERR: Dict[str, Dict[str, str]] = {
         "tr": "geçersiz base URL — http:// veya https:// ile başlamalı",
         "en": "invalid base URL — must start with http:// or https://",
     },
+    "invalid_grpc_url": {
+        "tr": "geçersiz gRPC URL — http:// veya https:// ile başlamalı (boş bırakılabilir)",
+        "en": "invalid gRPC URL — must start with http:// or https:// (may be left empty)",
+    },
     "token_required": {
         "tr": "yeni bir host için token zorunlu",
         "en": "token is required for a new host",
@@ -84,12 +88,20 @@ def _write_hosts(hosts: List[Dict[str, str]]) -> None:
     atomic_write_json(HOSTS_JSON, hosts, mode=0o600)
 
 
-def save_host(name: str, base_url: str, token: str, lang: str = "tr") -> Dict[str, Any]:
+def save_host(name: str, base_url: str, token: str, grpc_url: str = "", lang: str = "tr") -> Dict[str, Any]:
     """Upsert. Var olan bir isimde token boş bırakılırsa mevcut token KORUNUR
-    (sadece base_url güncellenir) — yeni bir isimde token zorunlu."""
+    (sadece base_url/grpc_url güncellenir) — yeni bir isimde token zorunlu.
+
+    `grpc_url` — opsiyonel, `token`'ın aksine SIR DEĞİL (gRPC endpoint'i,
+    base_url gibi zaten aşikar bir adres) — bu yüzden `token`'ın "boş = mevcudu
+    koru" upsert kuralı BİLEREK buraya taşınmadı: boş gönderilirse gRPC
+    yapılandırması SİLİNİR (mevcut base_url/token gibi "dokunma" değil, "kaldır"
+    anlamına gelir). Boş/eksik `grpc_url` = bu host için gRPC hiç DENENMEZ
+    (network probe'u bile atlanır, bkz. web_hosts.py'nin capability prober'ı)."""
     name = name.strip()
     base_url = base_url.strip().rstrip("/")
     token = token.strip()
+    grpc_url = grpc_url.strip().rstrip("/")
 
     if not _NAME_RE.match(name):
         return _err(lang, "invalid_name")
@@ -97,6 +109,8 @@ def save_host(name: str, base_url: str, token: str, lang: str = "tr") -> Dict[st
         return _err(lang, "reserved_name")
     if not (base_url.startswith("http://") or base_url.startswith("https://")):
         return _err(lang, "invalid_url")
+    if grpc_url and not (grpc_url.startswith("http://") or grpc_url.startswith("https://")):
+        return _err(lang, "invalid_grpc_url")
 
     hosts = load_hosts()
     existing = next((h for h in hosts if h.get("name") == name), None)
@@ -106,6 +120,8 @@ def save_host(name: str, base_url: str, token: str, lang: str = "tr") -> Dict[st
         token = existing.get("token", "")
 
     record = {"name": name, "base_url": base_url, "token": token}
+    if grpc_url:
+        record["grpc_url"] = grpc_url
     if existing is None:
         hosts.append(record)
     else:
@@ -126,8 +142,14 @@ def remove_host(name: str, lang: str = "tr") -> Dict[str, Any]:
 
 def list_hosts_public() -> List[Dict[str, Any]]:
     """Token ASLA dönmez — browser'a giden TEK yol budur. `has_token` sadece bir
-    kayıtlı token OLUP OLMADIĞINI belirtir, değerini asla açığa çıkarmaz."""
+    kayıtlı token OLUP OLMADIĞINI belirtir, değerini asla açığa çıkarmaz.
+    `grpc_url` (token'ın aksine sır değil) olduğu gibi döner — yoksa `None`."""
     return [
-        {"name": h.get("name", ""), "base_url": h.get("base_url", ""), "has_token": bool(h.get("token"))}
+        {
+            "name": h.get("name", ""),
+            "base_url": h.get("base_url", ""),
+            "grpc_url": h.get("grpc_url") or None,
+            "has_token": bool(h.get("token")),
+        }
         for h in load_hosts()
     ]

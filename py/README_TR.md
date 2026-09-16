@@ -120,14 +120,24 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   varsayılan model (session başlatırken/kaydederken başlangıç önerisi, katı bir kilit değil).
 - **Host'lar (çoklu-makine)** — bu panel BAŞKA makinelerde çalışan session'ları da gösterip
   yönetebilir. Ayarlar sekmesinden bir uzak makine ekleyin (bir isim, o makinenin kendi `py/cops web`
-  URL'i — genelde kendi `--tunnel`/`service install` tunnel URL'i — ve o makinenin kendi
-  `~/.claude/claudeops/web.token`'ından okunan token'ı); panel arka planda (~3sn) onu poll'layıp
-  session'larını AYNI Çalışanlar/Kayıtlı tablolarına, küçük bir host rozetiyle etiketleyerek birleştirir.
-  Her session-seviyeli aksiyon (başlat/durdur/handover/kaydet/...) doğru makineye şeffafça proxy'lenir —
+  URL'i — genelde kendi `--tunnel`/`service install` tunnel URL'i — o makinenin kendi
+  `~/.claude/claudeops/web.token`'ından okunan token'ı; varsa opsiyonel olarak HTTP/2-destekli ikinci
+  bir URL, `grpc_url`, aşağıya bkz.); panel arka planda (~3sn) onu poll'layıp session'larını AYNI
+  Çalışanlar/Kayıtlı tablolarına, küçük bir host rozetiyle etiketleyerek birleştirir. Her
+  session-seviyeli aksiyon (başlat/durdur/handover/kaydet/...) doğru makineye şeffafça proxy'lenir —
   bu tek sekmeden hiç çıkmazsınız, ve iki farklı makinede aynı isimli bir session çakışmadan bir arada
   durabilir (satırlar host+isim'e göre anahtarlanır). Uzak token her zaman sunucu tarafında kalır,
-  tarayıcıya asla geri gönderilmez. Uzak bir session için Terminal görüntüleme henüz bağlanmadı (v1
-  eksiği, bkz. TODO.md) — geri kalan her şey çalışır.
+  tarayıcıya asla geri gönderilmez. Uzak bir session için Terminal görüntüleme de çalışır (aşağıdaki
+  taşıyıcılardan hangisi geçerliyse onunla).
+- **Local↔remote taşıyıcı katmanlı** (gRPC → WebSocket → REST poll, o host için hangisi GERÇEKTEN
+  çalışıyorsa o, arka planda denenip cache'lenir) — sadece REST değil: `grpc_url`'i olmayan bir host
+  gRPC denemesini hiç yapmaz (ekstra ağ çağrısı yok), sıradaki düz WebSocket handshake'ini (`/ws`'e)
+  dener — çoğu tünel için bu bile status poll'unu ve uzak bir terminalin çıktısını tekrarlanan bir
+  round-trip yerine push'a çevirmeye yeter (düz HTTP/1.1 Upgrade, gerçek HTTP/2'den ÇOK daha fazla
+  proxy/tünelden geçer). İkisi de ulaşılamazsa REST değişmeden kalıcı zemin olmaya devam eder. `cops
+  web` bu host-to-host link'i İÇİN küçük bir gRPC server da açar (`--grpc-port`, varsayılan `--port +
+  1`, sadece loopback) — tarayıcıyla ilgisi yok, o hep `/ws`'e konuşur; bu port bağlanamazsa bu katman
+  sessizce atlanır, REST/WS etkilenmez.
 - **TR/EN** — tarayıcı diline göre otomatik seçilir (`navigator.language`), sağ üstteki butonlarla elle
   değiştirilip kalıcı hale getirilebilir (localStorage).
 - **Token korumalı** (`~/.claude/claudeops/web.token`, ilk çalıştırmada rastgele üretilir) — sayfa da

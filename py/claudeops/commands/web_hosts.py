@@ -33,8 +33,11 @@ import select
 import threading
 import time
 import urllib.parse
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from websockets.sync.client import connect as ws_connect
+
+from . import web_grpc
 from .. import hosts as hosts_mod
 from ..hosts import LOCAL_HOST_NAME
 
@@ -347,6 +350,37 @@ def _normalize_cli_options(raw: Any) -> Dict[str, Dict[str, list]]:
     return out
 
 
+def _tag_rows(rows: Optional[list], host_name: str) -> list:
+    """Uzak tarafın kendi "local" etiketini BİZİM bildiğimiz host adıyla EZ —
+    hem REST (`fetch_remote_status`) hem WS/gRPC push-consumer'ları (aşağıda,
+    capability-tier bölümü) kullanıyor, tek yerden."""
+    tagged = []
+    for r in (rows or []):
+        r2 = dict(r)
+        r2["host"] = host_name
+        tagged.append(r2)
+    return tagged
+
+
+def _finalize_remote_result(host_name: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    """REST/WS/gRPC'nin ORTAK son adımı: host-etiketleme + cli_options
+    normalizasyonu (uzak eski bir claudeops sürümü çalıştırıyor olabilir —
+    bkz. `_normalize_cli_options`'ın kendi docstring'i, transport'tan
+    BAĞIMSIZ bir endişe, sadece REST'e özel değil)."""
+    if not result.get("ok"):
+        return {"ok": False, "error": result.get("error"), **_EMPTY_REMOTE}
+    return {
+        "ok": True,
+        "error": None,
+        "sessions": _tag_rows(result.get("sessions"), host_name),
+        "closed": _tag_rows(result.get("closed"), host_name),
+        "retired": _tag_rows(result.get("retired"), host_name),
+        "cli_list": result.get("cli_list") or [],
+        "cli_options": _normalize_cli_options(result.get("cli_options")),
+        "dups": result.get("dups") or [],
+    }
+
+
 def fetch_remote_status(host_record: Dict[str, str]) -> Dict[str, Any]:
     """Bir host'un `/api/status`'unu çek. Başarı/hata HER İKİ durumda da aynı
     anahtar setiyle döner (sadece `ok`/`error` farklılaşır) — çağıran
@@ -358,25 +392,7 @@ def fetch_remote_status(host_record: Dict[str, str]) -> Dict[str, Any]:
         return {"ok": False, "error": err or f"http {status}", **_EMPTY_REMOTE}
     if "sessions" not in parsed:
         return {"ok": False, "error": "unexpected response shape", **_EMPTY_REMOTE}
-
-    def _tag(rows: Optional[list]) -> list:
-        tagged = []
-        for r in (rows or []):
-            r2 = dict(r)
-            r2["host"] = name  # uzak tarafın kendi "local" etiketini BİZİM tarafımızdan bilinen isimle EZ
-            tagged.append(r2)
-        return tagged
-
-    return {
-        "ok": True,
-        "error": None,
-        "sessions": _tag(parsed.get("sessions")),
-        "closed": _tag(parsed.get("closed")),
-        "retired": _tag(parsed.get("retired")),
-        "cli_list": parsed.get("cli_list") or [],
-        "cli_options": _normalize_cli_options(parsed.get("cli_options")),
-        "dups": parsed.get("dups") or [],
-    }
+    return _finalize_remote_result(name, parsed)
 
 
 _cache_lock = threading.Lock()
@@ -456,6 +472,14 @@ def _poll_once() -> None:
     current = hosts_mod.load_hosts()
     current_names = {h["name"] for h in current}
     for h in current:
+        # Tier "rest" değilse VE canlı bir push-consumer varsa/başlatılabildiyse
+        # bu tick REST'e HİÇ gitmiyor (asıl kazanç) — consumer'ın kendisi her
+        # mesajda `_record_poll_result`'ı zaten çağırıyor. Consumer yoksa/
+        # başlatılamadıysa (ya da tier zaten "rest") bugünkü gibi REST fetch —
+        # bir push tier'in bozulması SESSİZCE REST'e düşer, asla "gitti" gibi
+        # görünmez (bkz. _ensure_status_consumer'ın kendi docstring'i).
+        if _ensure_status_consumer(h):
+            continue
         result = fetch_remote_status(h)
         _record_poll_result(h["name"], result)
     # Silinmiş host'ları cache'ten temizle (merge_status zaten load_hosts()'a
@@ -466,6 +490,7 @@ def _poll_once() -> None:
                 del _cache[stale]
                 _fail_streak.pop(stale, None)
                 _last_good.pop(stale, None)
+    _reap_status_consumers(current_names)
 
 
 def _poller_loop() -> None:
@@ -523,7 +548,14 @@ def test_now(name: str) -> Optional[Dict[str, Any]]:
         return None
     result = fetch_remote_status(host_record)
     _record_poll_result(name, result)
-    return result
+    # Hysteresis'i BYPASS eden taze bir probe — paylaşılan tier state'i
+    # besler (arka plan prober'ıyla AYNI ilke `ok`/`error` için zaten
+    # uygulanıyordu) ama dönüş değeri HER ZAMAN bu çağrının kendi taze
+    # sonucu, kullanıcının bilerek bastığı "şimdi test et" smoothing'in
+    # arkasına gizlenmemeli.
+    fresh_tier = _probe_tier(host_record)
+    _update_tier(name, fresh_tier)
+    return {**result, "tier": fresh_tier}
 
 
 def merge_status(local_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -644,3 +676,354 @@ def proxy_get_raw(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Opt
     if err is not None:
         return None, 200, None, f"{host_name} unreachable: {err}"
     return body, status, headers, None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Capability tier'leri: her host için REST'in yanına (üstüne) gRPC/WS denenir.
+# TODO.md'nin gRPC maddesi + kullanıcı: "destekleyenlere grpc, desteklenmezse
+# websocket, desteklenmezse poll seklinde gidelim" — sıra ÖNEM: grpc > ws >
+# rest. `yuhem` gibi HTTP/2 desteklemeyen bir devtunnel'ın arkasındaki bir
+# host için gRPC probe'u BAŞARISIZ olması BEKLENEN bir durum (Microsoft'un
+# kendisi devtunnels.ms'de HTTP/2'yi "not planned" diye kapattı,
+# github.com/microsoft/dev-tunnels/issues/263) — WS'e düşmek bug değil,
+# tasarımın ta kendisi.
+#
+# ÖNEMLİ: tier ile "host erişilebilir mi" (`ok`/`error`, yukarıdaki
+# `_record_poll_result` state'i) ORTOGONAL iki eksen — REST her zaman "tier
+# olarak" başarılı sınıflandırılır (koşulsuz zemin), host'un o an gerçekten
+# ayakta olup olmaması AYRI bir soru.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_TIER_RANK = {"rest": 0, "ws": 1, "grpc": 2}
+CAPABILITY_PROBE_INTERVAL_SECONDS = 60.0  # 3sn'lik status poll'undan 20x yavaş — capability tick'ten tick'e neredeyse hiç değişmez
+_GRPC_PROBE_TIMEOUT_SECONDS = 3.0
+_WS_PROBE_TIMEOUT_SECONDS = 3.0
+
+_tier_lock = threading.Lock()
+_tier: Dict[str, str] = {}  # host adı -> hysteresis-yumuşatılmış EFEKTİF tier
+_tier_downgrade_streak: Dict[str, int] = {}  # host adı -> ardışık DAHA-DÜŞÜK probe sayısı
+
+
+def _ws_url(base_url: str, path: str, token: str, **extra_qs: str) -> str:
+    parsed = urllib.parse.urlsplit(base_url)
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    qs = {"token": token, **extra_qs}
+    return f"{scheme}://{parsed.netloc}{path}?{urllib.parse.urlencode(qs)}"
+
+
+def _probe_ws(host: Dict[str, str]) -> bool:
+    """`/ws`'e (host-to-host için AYNI, tarayıcının kullandığı endpoint —
+    `host` param'ı hiç gönderilmiyor, bu remote'un kendi local session'larını
+    serve etmesi anlamına gelir — bkz. modülün tepesindeki tek-hop notu)
+    handshake dener, `101`'e ulaşırsa yeterli (içeriğe hiç bakmadan hemen
+    kapatılır — bu SADECE bir probe)."""
+    url = _ws_url(host["base_url"], "/ws", host["token"])
+    try:
+        with ws_connect(url, open_timeout=_WS_PROBE_TIMEOUT_SECONDS, close_timeout=1.0):
+            return True
+    except Exception:
+        return False
+
+
+def _probe_tier(host: Dict[str, str]) -> str:
+    """Hiçbir zaman raise etmez. `grpc_url` yoksa gRPC'nin network probe'u
+    BİLE atlanır (bu, grpc_url'siz bir host için gRPC'nin "asla denenmeyecek"
+    olmasının mekanizması — TODO.md'nin `hosts.json` şema notuna bkz.)."""
+    grpc_url = host.get("grpc_url")
+    if grpc_url and web_grpc.probe(grpc_url, host["token"], timeout=_GRPC_PROBE_TIMEOUT_SECONDS):
+        return "grpc"
+    if _probe_ws(host):
+        return "ws"
+    return "rest"
+
+
+def _update_tier(name: str, probed: str) -> None:
+    """`_record_poll_result()`'un AYNI asimetrisi (anında iyileşme, tolere
+    edilen kötüleşme) — burada erişilebilirlik yerine tier'e uygulanıyor.
+    Probed tier mevcut EFEKTİF tier'den aynı/yüksekse ANINDA benimsenir;
+    düşükse `CONSECUTIVE_FAILURES_BEFORE_ERROR` (aynı sabit/gerekçe, sadece
+    daha yavaş bir kadansta) ardışık düşük probe'dan SONRA düşürülür — bir
+    çırpınan gRPC linki panelde görünür biçimde sallanmasın diye."""
+    with _tier_lock:
+        current = _tier.get(name, "rest")
+        if _TIER_RANK[probed] >= _TIER_RANK[current]:
+            _tier[name] = probed
+            _tier_downgrade_streak[name] = 0
+            return
+        streak = _tier_downgrade_streak.get(name, 0) + 1
+        _tier_downgrade_streak[name] = streak
+        if streak >= CONSECUTIVE_FAILURES_BEFORE_ERROR:
+            _tier[name] = probed
+
+
+def get_tier(name: str) -> str:
+    with _tier_lock:
+        return _tier.get(name, "rest")
+
+
+def _capability_prober_loop() -> None:
+    while True:
+        try:
+            for h in hosts_mod.load_hosts():
+                _update_tier(h["name"], _probe_tier(h))
+            _reap_idle_term_relays()
+        except Exception:
+            # web_ws._broadcaster_loop/_poller_loop ile AYNI disiplin — tek
+            # kötü bir tur daemon'ı sonsuza kadar öldürmesin.
+            pass
+        time.sleep(CAPABILITY_PROBE_INTERVAL_SECONDS)
+
+
+_prober_lock = threading.Lock()
+_prober_started = False
+
+
+def start_capability_prober() -> None:
+    """`run()`'dan BİR KEZ çağrılır (`start_broadcaster`/`start_remote_poller`
+    ile AYNI desen). İkinci çağrı no-op."""
+    global _prober_started
+    with _prober_lock:
+        if _prober_started:
+            return
+        _prober_started = True
+    threading.Thread(target=_capability_prober_loop, daemon=True, name="host-capability-prober").start()
+
+
+# ── Push-consumer: tier "rest" değilken status/term-output'u sürekli-açık bir
+# bağlantı üzerinden dinleyip cache'i besleyen ortak thread makinesi ────────
+
+
+class _PushConsumer:
+    """Bir (host, tier) bağlantısını KENDİ thread'inde dinler, her ham
+    mesajı `parse_item`'a verip `on_item`'a iletir; `parse_item` `None`
+    dönerse (ilgisiz/bozuk frame) o mesaj sessizce atlanır. `stop()`
+    BAŞKA bir thread'den çağrılabilir — ham çağrı/bağlantı nesnesini
+    (`.cancel()`/`.close()`'u olan) SAKLAYIP onu kapatarak bloklu bir
+    okumayı ANINDA keser (bir generator'ın `.close()`'unun YAPAMAYACAĞI
+    şey — bkz. `web_grpc.open_status_stream`'in docstring'i)."""
+
+    def __init__(self, tier: str, make_call: Callable[[], Any],
+                 parse_item: Callable[[Any], Optional[dict]], on_item: Callable[[dict], None]):
+        self.tier = tier
+        self._parse_item = parse_item
+        self._on_item = on_item
+        self._alive = threading.Event()
+        self._alive.set()
+        self._call: Any = None
+        self._call_lock = threading.Lock()
+        self._thread = threading.Thread(
+            target=self._run, args=(make_call,), daemon=True, name=f"push-consumer-{tier}-{id(self):x}"
+        )
+        self._thread.start()
+
+    def _run(self, make_call: Callable[[], Any]) -> None:
+        try:
+            call = make_call()
+            with self._call_lock:
+                self._call = call
+            for raw in call:
+                item = self._parse_item(raw)
+                if item is not None:
+                    self._on_item(item)
+        except Exception:
+            pass  # bağlantı koptu/hata verdi — çağıran bir sonraki tick'te REST'e düşer
+        finally:
+            self._alive.clear()
+
+    def is_alive(self) -> bool:
+        return self._alive.is_set()
+
+    def stop(self) -> None:
+        with self._call_lock:
+            call = self._call
+        if call is not None:
+            try:
+                if hasattr(call, "cancel"):
+                    call.cancel()  # grpc streaming-call
+                else:
+                    call.close()  # websockets bağlantısı
+            except Exception:
+                pass
+
+
+# ── Status push-consumer'ları (host adına göre) ─────────────────────────────
+
+_status_consumer_lock = threading.Lock()
+_status_consumers: Dict[str, _PushConsumer] = {}
+
+
+def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
+    """`/ws`'in `{"type":"status","data":{...}}` zarfını (`web_ws._encode()`)
+    `_finalize_remote_result()`'un beklediği ham şekle indirger — tag/
+    normalize BURADA YAPILMIYOR, `_finalize_remote_result` (tüm tier'ler için
+    ortak) yapıyor. `type != "status"` ya da bozuk JSON → sessizce `None`
+    (bu frame atlanır, `_PushConsumer` devam eder)."""
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if parsed.get("type") != "status" or not isinstance(parsed.get("data"), dict):
+        return None
+    data = parsed["data"]
+    return {
+        "ok": True,
+        "sessions": data.get("sessions"), "closed": data.get("closed"), "retired": data.get("retired"),
+        "cli_list": data.get("cli_list"), "cli_options": data.get("cli_options"), "dups": data.get("dups"),
+    }
+
+
+def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
+    name = host["name"]
+    token = host["token"]
+    if tier == "grpc":
+        make_call: Callable[[], Any] = lambda: web_grpc.open_status_stream(host["grpc_url"], token)
+        parse_item: Callable[[Any], Optional[dict]] = web_grpc._status_proto_to_dict
+    else:  # "ws"
+        url = _ws_url(host["base_url"], "/ws", token)
+        make_call = lambda: ws_connect(url, open_timeout=10.0)
+        parse_item = _parse_ws_status_frame
+
+    def on_item(parsed: dict) -> None:
+        _record_poll_result(name, _finalize_remote_result(name, parsed))
+
+    return _PushConsumer(tier, make_call, parse_item, on_item)
+
+
+def _ensure_status_consumer(host: Dict[str, str]) -> bool:
+    """Bu host'un EFEKTİF tier'i "rest" değilse canlı bir push-consumer
+    olduğundan emin olur (yoksa/koptuysa/tier değiştiyse yeniden başlatır) ve
+    `True` döner — `_poll_once()` bu tick REST'e HİÇ gitmesin diye. Tier
+    "rest"'se ya da consumer başlatmak BAŞARISIZ olursa `False` döner:
+    çağıran bugünkü gibi `fetch_remote_status()`'a düşer — bir push tier'in
+    bozulması SESSİZCE (bir sonraki poll tick'i REST'le) kendiliğinden
+    iyileşir, host ASLA "gitti" gibi görünmez, sadece bir tick'lik ek
+    gecikme olur."""
+    name = host["name"]
+    tier = get_tier(name)
+    if tier == "rest":
+        with _status_consumer_lock:
+            old = _status_consumers.pop(name, None)
+        if old is not None:
+            old.stop()
+        return False
+    with _status_consumer_lock:
+        existing = _status_consumers.get(name)
+        if existing is not None and existing.is_alive() and existing.tier == tier:
+            return True
+        try:
+            consumer = _start_status_consumer(host, tier)
+        except Exception:
+            # Yeni consumer başlatılamadı — eski girdiye (varsa) HİÇ dokunma,
+            # olduğu gibi kalsın (hâlâ alive'sa eski tier'de servis etmeye
+            # devam eder, ölüyse bir sonraki çağrı zaten yeniden dener).
+            return False
+        _status_consumers[name] = consumer
+    if existing is not None:
+        existing.stop()  # ESKİ (tier değişmiş/ölmüş) consumer'ı kilidin DIŞINDA durdur — stop() ağ I/O yapabilir
+    return True
+
+
+def _reap_status_consumers(current_names: set) -> None:
+    """`_poll_once()`'un HALİHAZIRDA yaptığı stale-cache temizliğiyle AYNI
+    tetik (host `hosts.json`'dan silindi) — o temizliğin yanına eklendi,
+    ayrı bir tick beklemesine gerek yok."""
+    with _status_consumer_lock:
+        stale = [name for name in _status_consumers if name not in current_names]
+        consumers = [_status_consumers.pop(name) for name in stale]
+    for c in consumers:
+        c.stop()
+
+
+# ── Term-output relay (host, name, lang) başına ─────────────────────────────
+
+_TERM_RELAY_IDLE_TTL_SECONDS = 10.0  # local /ws/term'ün 200ms poll'undan çok daha büyük — sadece gerçekten terk edilmiş bir tab'ı reap eder
+
+
+class _TermRelay:
+    def __init__(self, tier: str, make_call: Callable[[], Any], parse_item: Callable[[Any], Optional[dict]]):
+        self.latest: Optional[dict] = None
+        self.last_read_mono = time.monotonic()
+        self._lock = threading.Lock()
+
+        def on_item(item: dict) -> None:
+            with self._lock:
+                self.latest = item
+
+        self._consumer = _PushConsumer(tier, make_call, parse_item, on_item)
+
+    def read(self) -> Optional[dict]:
+        self.last_read_mono = time.monotonic()
+        with self._lock:
+            return self.latest
+
+    def idle_seconds(self) -> float:
+        return time.monotonic() - self.last_read_mono
+
+    def stop(self) -> None:
+        self._consumer.stop()
+
+
+_term_relay_lock = threading.Lock()
+_term_relays: Dict[Tuple[str, str, str], _TermRelay] = {}
+
+
+def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
+    """`/ws/term`'ün `{"type":"term","data":{...}}` zarfını çözer — `data`
+    zaten `_term_output()`'un TAM şekli (tag/normalize gerekmiyor, term-output
+    host-etiketleme kavramı taşımıyor status'un aksine)."""
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if parsed.get("type") != "term" or not isinstance(parsed.get("data"), dict):
+        return None
+    return parsed["data"]
+
+
+def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict]:
+    """`web.py`'nin `/ws/term` dalına geçirilecek `fetch_fn` closure'ını
+    üretir — `_term_poll_loop`'un HER 200ms'de bir çağırdığı şey artık bir
+    ağ isteği DEĞİL, bu ucuz in-process cache okuması (`_TermRelay.read()`).
+    `proxy_get`/`proxy_action` ile AYNI desen: host adı alır, kaydı KENDİSİ
+    çözer (host silinmiş/hiç yoksa `fetch_fn` her çağrıda "unknown host"
+    hatası döner — `web.py`'nin bunu ayrıca kontrol etmesine gerek yok).
+    Consumer ilk okumada TEMBEL başlar (bkz. `_term_relays`'in tepesindeki
+    reap notu), henüz hiç veri gelmediyse `{"ok": False, "error": "..."}`
+    döner (`_term_poll_loop`'un dedup'ı bunu normal bir tick gibi işler,
+    ÖZEL bir durum değil)."""
+    key = (host_name, name, lang)
+
+    def fetch_fn() -> dict:
+        host = hosts_mod.get_host(host_name)
+        if host is None:
+            return {"ok": False, "error": f"unknown host: {host_name}"}
+        with _term_relay_lock:
+            relay = _term_relays.get(key)
+            if relay is None:
+                tier = get_tier(host_name)
+                token = host["token"]
+                if tier == "grpc":
+                    make_call: Callable[[], Any] = lambda: web_grpc.open_term_stream(host["grpc_url"], token, name, lang)
+                    parse_item: Callable[[Any], Optional[dict]] = web_grpc._term_proto_to_dict
+                else:
+                    url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang)
+                    make_call = lambda: ws_connect(url, open_timeout=10.0)
+                    parse_item = _parse_ws_term_frame
+                relay = _TermRelay(tier, make_call, parse_item)
+                _term_relays[key] = relay
+        result = relay.read()
+        return result if result is not None else {"ok": False, "error": "relay: henüz veri gelmedi"}
+
+    return fetch_fn
+
+
+def _reap_idle_term_relays() -> None:
+    """Capability prober'ın yavaş tick'ine BİNDİRİLMİŞ (ayrı bir 5. thread
+    açmaya gerek yok) — `_TERM_RELAY_IDLE_TTL_SECONDS` boyunca hiç
+    okunmamış (yani modal'ı kapatılmış/tab'ı terk edilmiş) relay'leri
+    durdurup temizler."""
+    with _term_relay_lock:
+        stale_keys = [k for k, r in _term_relays.items() if r.idle_seconds() >= _TERM_RELAY_IDLE_TTL_SECONDS]
+        relays = [_term_relays.pop(k) for k in stale_keys]
+    for r in relays:
+        r.stop()

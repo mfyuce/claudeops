@@ -68,6 +68,7 @@ from ..tmux_backend import (
     tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS, strip_ansi,
 )
 from .web_static import DIST_DIR, resolve_static_path
+from . import web_grpc
 from . import web_hosts
 from . import web_orch
 from . import web_ws
@@ -2538,16 +2539,16 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif path == "/ws/term":
             # `/api/term/output`'un AYNI name/lang/host çözümlemesi (satır
-            # ~2568) — tek fark local/remote seçimine göre `_term_output`'u mu
-            # `web_hosts.proxy_get`'i mi çağıracağını bir closure'a kapatıp
-            # `web_ws.handle_ws_term`'e vermemiz: `web_ws.py` local/remote
-            # ayrımını hiç bilmiyor (business-logic'e geri-import ETMEME
-            # ilkesi, `handle_ws`'in `status_payload_fn` enjeksiyonuyla aynı
-            # desen). Remote taraf REST proxy olarak KALIYOR (`web_hosts.py`nin
-            # WS-upgrade proxy'lemesi yok) — kazanan taraf browser↔local hop'u,
-            # local↔remote hop'u değil; ama bugün zaten HER tick tünelden tam
-            # round-trip yapan browser↔local↔remote zincirinin browser↔local
-            # yarısı artık push, o da tünel/mobil senaryoda asıl acıyan yarı.
+            # ~2568) — tek fark local/remote seçimine göre hangi `fetch_fn`'in
+            # `web_ws.handle_ws_term`'e geçirileceği: `web_ws.py` local/remote
+            # (ya da tier) ayrımını hiç bilmiyor (business-logic'e geri-import
+            # ETMEME ilkesi, `handle_ws`'in `status_payload_fn` enjeksiyonuyla
+            # aynı desen). Remote için 3 tier (2026-09-16, kullanıcı: "grpc,
+            # desteklenmezse websocket, desteklenmezse poll"): `web_hosts.
+            # get_tier()` "rest"se BUGÜNKÜ REST-proxy closure'ı DEĞİŞMEDEN
+            # kalıyor; "ws"/"grpc"se `web_hosts.term_output_relay()` — local↔
+            # remote hop'u o zaman da REST/WS/gRPC'den hangisiyse odur, burada
+            # DEĞİŞEN tek şey browser↔local hop'unun HER ZAMAN push olması.
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
@@ -2555,7 +2556,9 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            if host != LOCAL_HOST_NAME:
+            if host != LOCAL_HOST_NAME and web_hosts.get_tier(host) != "rest":
+                fetch_fn = web_hosts.term_output_relay(host, name, lang)
+            elif host != LOCAL_HOST_NAME:
                 fetch_fn = lambda: web_hosts.proxy_get("/api/term/output", host, {"name": name, "lang": lang})[0]
             else:
                 fetch_fn = lambda: _term_output(name, lang=lang)
@@ -2586,6 +2589,7 @@ class _Handler(BaseHTTPRequestHandler):
                     **h,
                     "ok": cached["ok"] if cached else False,
                     "error": (cached.get("error") if cached else "not polled yet"),
+                    "tier": web_hosts.get_tier(h["name"]),  # capability prober'ın son bildiği "rest"|"ws"|"grpc"
                 })
             self._json({"ok": True, "hosts": rows})
         elif path == "/api/diag/log":
@@ -2809,6 +2813,7 @@ class _Handler(BaseHTTPRequestHandler):
                 name=str(data.get("name", "")),
                 base_url=str(data.get("base_url", "")),
                 token=str(data.get("token", "")),
+                grpc_url=str(data.get("grpc_url", "")),
                 lang=lang,
             ))
             return
@@ -2836,7 +2841,10 @@ class _Handler(BaseHTTPRequestHandler):
             # önemli çünkü `_json_notify` broadcaster'ı SADECE `ok:true`
             # dönünce uyandırıyor — host online→offline geçişini de diğer
             # sekmelere anında itmek istiyoruz, sadece offline→online'ı değil.
-            self._json_notify({"ok": True, "host_ok": result["ok"], "error": result.get("error")})
+            self._json_notify({
+                "ok": True, "host_ok": result["ok"], "error": result.get("error"),
+                "tier": result.get("tier"),  # test_now()'un hysteresis-BYPASS eden taze probe'u
+            })
             return
 
         if path == "/api/new-chat":
@@ -2968,6 +2976,10 @@ def register(sub):
     p.add_argument("--print-token", action="store_true", help="sadece token'ı yazdır ve çık")
     p.add_argument("--tunnel", action="store_true",
                    help="cloudflared quick tunnel ile de dışarı aç (login gerekmez, URL her başlatmada değişir)")
+    p.add_argument("--grpc-port", type=int, default=None,
+                   help="local<->remote host köprüsü için gRPC server portu (varsayılan: --port + 1). "
+                        "Bağlanamazsa (port çakışması vb.) sadece bu katman devre dışı kalır, "
+                        "REST/WebSocket etkilenmez.")
     p.set_defaults(func=run)
 
 
@@ -2992,6 +3004,15 @@ def run(args) -> int:
     _Handler.token = token
     web_ws.start_broadcaster(_status_payload)  # tek broadcaster daemon thread'i, süreç ömrü boyunca bir kez
     web_hosts.start_remote_poller()  # aynı desen — uzak host'ları arka planda poll'layan daemon thread
+    web_hosts.start_capability_prober()  # aynı desen — her host için grpc/ws/rest tier'ini arka planda dener
+    grpc_port = args.grpc_port if args.grpc_port is not None else args.port + 1
+    grpc_server = web_grpc.start_grpc_server(grpc_port, token, _status_payload, _term_output)
+    if grpc_server is not None:
+        print(f"  gRPC köprüsü  →  127.0.0.1:{grpc_port} (sadece local↔remote host bağlantısı için — "
+              "tarayıcı buna DEĞİL, /ws'e bağlanıyor)")
+    # start_grpc_server() zaten bind hatasını KENDİSİ yutup None döner (yukarıda
+    # kendi uyarısını basar) — burada AYRICA bir hata/çıkış YOK, bu katman
+    # opsiyonel, `cops web`'in kendisi asla bundan etkilenmemeli.
     server = ThreadingHTTPServer((args.host, args.port), _Handler)
     url = f"http://{args.host}:{args.port}/?token={token}"
     print(f"claudeops web  →  {url}")

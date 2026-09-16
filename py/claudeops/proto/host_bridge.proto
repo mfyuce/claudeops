@@ -1,0 +1,103 @@
+// `web_hosts.py`'nin local<->remote federasyon linki için gRPC katmanı —
+// SADECE gerçekten streaming'in kazancını olduğu 2 operasyon (+ bir probe
+// RPC'si). 14 aksiyon route'u (start/stop/close/handover/...) BİLEREK burada
+// YOK: tek-seferlik/kullanıcı-tetiklemeli çağrıların streaming'den kazanacağı
+// bir şey yok, REST'te kalıyorlar (aynı kapsam kararı `/ws/term`'ün kendisi
+// için de zaten verilmişti).
+//
+// Auth: HİÇBİR mesaj alanında değil — `authorization: Bearer <token>` call
+// metadata'sında (REST'in `Authorization: Bearer` header yolunun gRPC-native
+// eşdeğeri, `_authorized()`'ın zaten desteklediği ikinci yol).
+//
+// Mesaj şekilleri `fetch_remote_status()`'un ZATEN indirgenmiş alanlarını
+// yansıtıyor (sessions/closed/retired/cli_list/cli_options/dups) —
+// `_status_payload()`'ın TAMAMINI değil (diag/settings/orch/tunnel local-only
+// kalıyor, gRPC'nin kolaylığı host'lar arası taşınan yüzeyi genişletmek için
+// bir sebep değil).
+syntax = "proto3";
+
+package claudeops.hostbridge.v1;
+
+service HostBridge {
+  // Capability-probe — sadece transport+auth+servicer'ın GERÇEKTEN çalıştığını
+  // kanıtlar (bkz. web_hosts.py'nin capability prober'ı — grpc.channel_ready_
+  // future() TEK BAŞINA sadece HTTP/2 handshake'ini kanıtlar, auth/servicer'ı
+  // değil; grpc_health.v1 standart protokolü de üçüncü bir bağımlılık olurdu,
+  // bu tek RPC'nin verdiğini zaten bedava veriyor).
+  rpc Ping(PingRequest) returns (PingResponse);
+
+  // web_hosts.py'nin arka plan poller'ının tekrar tekrar fetch_remote_status()
+  // çağırmasının yerini alır.
+  rpc StreamStatus(StreamStatusRequest) returns (stream StatusUpdate);
+
+  // web_ws.py'nin _term_poll_loop'unun REMOTE dalının (bugün web_hosts.
+  // proxy_get() tekrar tekrar çağırıyor) yerini alır.
+  rpc StreamTermOutput(StreamTermOutputRequest) returns (stream TermUpdate);
+}
+
+message PingRequest {}
+
+message PingResponse {
+  string claudeops_version = 1;  // bugün okunmuyor, ileride sürüm-uyumu için yer
+}
+
+message StreamStatusRequest {}  // metadata-auth dışında bir şey taşımıyor
+
+// "CliOptions", NOT "CliOptionsEntry" — protoc synthesizes its OWN internal
+// `StatusUpdate.CliOptionsEntry` map-entry wrapper type for the `cli_options`
+// field below; naming this hand-written message `CliOptionsEntry` too (even
+// though it's a DIFFERENT/top-level type) collides with that and protoc
+// refuses to compile ("map_entry should not be set explicitly") — hit this
+// for real, not a hypothetical.
+message CliOptions {
+  repeated string models = 1;
+  repeated string permission_modes = 2;
+  repeated string effort_levels = 3;
+  repeated string cyclable_modes = 4;
+}
+
+message SessionRow {
+  string name = 1;
+  string host = 2;
+  string model = 3;
+  string cwd = 4;
+  string cli = 5;
+  bool running = 6;
+  optional int32 pid = 7;
+  optional double cpu = 8;
+  string kind = 9;               // "" == Python None (fresh/resume/unset)
+  optional bool needs_ho = 10;   // tri-state: null (bilinmiyor) != false — bkz. types.ts
+  optional bool busy = 11;       // aynı tri-state uyarısı
+  optional int32 history_size = 12;
+  bool registered = 13;
+  bool tmux = 14;
+  optional string live_model = 15;
+  optional string live_effort = 16;
+}
+
+message StatusUpdate {
+  bool ok = 1;
+  string error = 2;   // "" == null
+  repeated SessionRow sessions = 3;
+  repeated SessionRow closed = 4;
+  repeated SessionRow retired = 5;
+  repeated string cli_list = 6;
+  map<string, CliOptions> cli_options = 7;
+  repeated string dups = 8;
+}
+
+message StreamTermOutputRequest {
+  string name = 1;
+  string lang = 2;
+}
+
+message TermUpdate {
+  bool ok = 1;
+  string error = 2;
+  string text = 3;
+  optional int32 cols = 4;
+  optional int32 rows = 5;
+  optional int32 history_size = 6;
+  bool masked = 7;
+  string mode = 8;   // "" == null
+}
