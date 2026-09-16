@@ -15,7 +15,7 @@ from ..settings import resolved_binary
 MODEL_CHOICES = [
     "claude-sonnet-5",
     "claude-opus-5",
-    "claude-fable-5",
+    "claude-fable-5-1",
     "claude-haiku-4-5-20251001",
 ]
 PERMISSION_MODES = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"]

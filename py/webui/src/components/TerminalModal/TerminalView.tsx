@@ -686,7 +686,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
             {copyLabel ?? t.termCopyBtn}
           </button>
-          {historySize !== null && (
+          {historySize != null && (
             <span
               title={t.termHistorySizeHint}
               style={{

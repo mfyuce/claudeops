@@ -171,12 +171,15 @@ class CliProvider(ABC):
     def usage_command(self) -> Optional[str]:
         """Bu CLI'nın hesap kullanım/kota bilgisini gösteren slash-command'ı
         (ör. claude/copilot'un ikisinin de AYNI ada sahip `/usage`'ı), varsa.
-        None (varsayılan) = bu CLI için böyle bir kavram YOK — 2026-09-13'te
-        canlı denendi: agy (`agy usage`/`status`/`account`/`quota` — hepsi
-        "unexpected argument") ve codex (`--help` + `codex login status` —
-        sadece auth durumu, kota yok) için GERÇEKTEN bulunamadı, icat
-        edilmedi. `compact_command()` ile AYNI sözleşme (None=yok, sadece
-        canlı doğrulayan provider override eder) — orkestrasyon (send+wait+
+        None (varsayılan) = bu CLI için böyle bir kavram YOK. 2026-09-13'te
+        codex için gerçekten bulunamadı (`--help` + `codex login status` —
+        sadece auth durumu, kota yok). agy için de o gün "yok" sanılmıştı
+        (`agy usage`/`status`/`account`/`quota` CLI-argümanı olarak denenip
+        "unexpected argument" alınmıştı) ama bu YANLIŞ yere bakıyordu — agy'nin
+        `/usage`'ı claude'unki gibi bir İÇERİDEKİ slash-command, CLI-argümanı
+        DEĞİL; 2026-09-16'da düzeltildi (bkz. `AgyProvider.usage_command`).
+        `compact_command()` ile AYNI sözleşme (None=yok, sadece canlı
+        doğrulayan provider override eder) — orkestrasyon (send+wait+
         capture) `commands/web.py`'de TEK yerde, `_compact()`'in deseniyle
         aynı, provider'lar sadece KOMUTU ve PARSE'ı sağlar."""
         return None

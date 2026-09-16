@@ -306,6 +306,58 @@ class AgyProvider(CliProvider):
     def busy_status_pattern(self) -> Optional[str]:
         return BUSY_STATUS_PATTERN
 
+    def usage_command(self) -> Optional[str]:
+        # 2026-09-13'teki "agy'de usage kavramı yok" bulgusu YANLIŞ yere
+        # bakıyordu — `agy usage`/`status`/`account`/`quota` CLI SEVİYESİNDE
+        # (launch-argümanı olarak) denenmişti ("unexpected argument"), ama
+        # claude/copilot'un `/usage`'ı gibi bunlar da bir CLI subcommand değil,
+        # İÇERİDE (chat mesajı olarak) çalışan bir slash-command. 2026-09-16'da
+        # kullanıcı işaret edince izole `agy --print='/usage'` ile (CANLI bir
+        # session'a hiç dokunmadan) doğrulandı — gerçekten çalışıyor, bkz.
+        # `parse_usage_text` docstring'i.
+        return "/usage"
+
+    def usage_needs_dismiss(self) -> bool:
+        # Kullanıcı canlı doğruladı (2026-09-16, "it opens"): interaktif modda
+        # `/usage` claude'unki gibi bir overlay/ekran AÇIYOR — izole `--print`
+        # çıktısının düz satır olması (yukarıdaki eski not) YANILTICI çıktı,
+        # print-mode'un kendisi zaten hiçbir TUI overlay'i göstermez. Dismiss
+        # mekanizması (`web.py:1843`) TÜM provider'lar için sabit "Escape" —
+        # claude/copilot'la AYNI tuş, agy için ayrıca doğrulanmadı ama TUI
+        # konvansiyonu ve mevcut tek mekanizma bu.
+        return True
+
+    def parse_usage_text(self, text: str) -> Optional[List[Dict[str, str]]]:
+        """`/usage`'ın gerçek çıktısı (canlı doğrulandı, 2026-09-16, izole
+        `agy --print='/usage'` — CANLI bir session'a dokunmadan):
+        ```
+        Gemini Models	Weekly Limit Remaining	99%	2026-09-23T08:47:27Z
+        Gemini Models	Five Hour Limit Remaining	93%	2026-09-16T13:47:27Z
+        Claude and GPT models	Weekly Limit Remaining	1%	2026-09-16T11:55:41Z
+        Claude and GPT models	Five Hour Limit Remaining	100%	2026-09-16T15:50:44Z
+        ```
+        TAB-ayrılmış `<model-grubu>\\t<metrik-adı>\\t<NN%>\\t<ISO-reset-zamanı>`.
+        Claude'un "% used"unun TERSİNE agy "% Remaining" veriyor — burada 100'e
+        TAMAMLANMIYOR (`100 - remaining` gibi bir dönüşüm YAPILMIYOR): label
+        ZATEN "Remaining" diyor, ve frontend (`SettingsTab.tsx`) percent'e
+        hiçbir renk/eşik mantığı uygulamıyor ("provider-shaped free text...
+        NOT a fixed set of fields") — dönüştürme okunabilirlik kazandırmadan
+        sadece yanlış-hesaplama riski ekler."""
+        rows: List[Dict[str, str]] = []
+        for line in text.splitlines():
+            parts = [p.strip() for p in line.split("\t")]
+            if len(parts) != 4:
+                continue
+            group, metric, percent, reset_at = parts
+            if not percent.rstrip("%").isdigit():
+                continue
+            rows.append({
+                "label": f"{group} — {metric}",
+                "percent": percent.rstrip("%"),
+                "detail": f"Resets {reset_at}",
+            })
+        return rows or None
+
     def _transcript_steps(self, cwd: str, sid: Optional[str]) -> List[Tuple[int, bytes]]:
         """claude/codex provider'larının `_transcript_lines`'ıyla AYNI sözleşme:
         bulunamazsa/okunamazsa boş liste — 'desteklenmiyor' ile 'henüz mesaj yok'
