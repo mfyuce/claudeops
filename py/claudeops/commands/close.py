@@ -10,11 +10,10 @@ girmez → missing listesine düşmez → guard açmaz. carla/mecdtfl/EMEKLİ de
 """
 from __future__ import annotations
 import re
-
-import psutil
+from typing import Optional
 
 from ..discovery import find_sessions
-from ..kill import kill_session
+from ..kill import kill_session, kill_session_and_parent
 from ..paths import MODELS_TSV
 
 _BASE_RE = re.compile(r"^([a-z]+)\d*$")
@@ -76,30 +75,20 @@ def comment_out_models(base: str, dry_run: bool) -> str:
     return status
 
 
-def _kill_with_parent(pid: int, grace: float, keep_terminal: bool) -> str:
-    """claude proc'u öldür; keep_terminal=False ise parent bash/sh'i de
-    (create_time + name guard ile pid-reuse'a karşı güvenli)."""
-    parent_pid = None
-    parent_ct = None
-    if not keep_terminal:
-        try:
-            par = psutil.Process(pid).parent()
-            if par is not None and par.name() in ("bash", "sh"):
-                parent_pid = par.pid
-                parent_ct = par.create_time()
-        except psutil.NoSuchProcess:
-            pass
+def _kill_with_parent(pid: int, grace: float, keep_terminal: bool, name: Optional[str] = None) -> str:
+    """claude proc'u öldür; keep_terminal=False ise parent terminali de.
 
-    result = kill_session(pid, grace=grace)
-
-    if parent_pid is not None:
-        try:
-            par = psutil.Process(parent_pid)
-            if par.create_time() == parent_ct:
-                par.kill()
-        except psutil.NoSuchProcess:
-            pass
-    return result
+    `kill.py`'nin `kill_session_and_parent()`'ına delege eder — eskiden burada
+    bağımsız bir PID-ancestry kill'i vardı (`psutil` ile parent'ı bulup köre
+    kılıç `.kill()`), `is_tmux_backed` kontrolü YOKTU. tmux-backed session'larda
+    pane'in parent'ı paylaşılan tmux SERVER'ı olabilir — o zaman bu, TEK bir
+    session'ı kapatmaya çalışırken TÜM tmux-backed filoyu öldürüyordu (CLAUDE.md
+    kural-#1 ihlali, TODO.md'nin "MİMARİ İHLAL" maddesi). `kill_session_and_parent`
+    zaten bu ayrımı yapıyor (tmux-backed ise ad-bazlı `tmux kill-session`,
+    değilse eski PID-ancestry yolu)."""
+    if keep_terminal:
+        return kill_session(pid, grace=grace)
+    return kill_session_and_parent(pid, grace=grace, name=name)
 
 
 def run(args) -> int:
@@ -138,7 +127,7 @@ def run(args) -> int:
             print(f"  {s.name} pid={s.pid} → kapatılıyor "
                   f"({'proc+terminal' if not args.keep_terminal else 'sadece proc'})...",
                   end="", flush=True)
-            r = _kill_with_parent(s.pid, args.grace, args.keep_terminal)
+            r = _kill_with_parent(s.pid, args.grace, args.keep_terminal, name=s.name)
             print(f" {r}")
         if not matched:
             print(f"  {name}: çalışan proc yok (yine de models.tsv'de kapatılıyor)")
