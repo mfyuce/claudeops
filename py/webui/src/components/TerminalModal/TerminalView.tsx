@@ -41,6 +41,7 @@ import type { Terminal } from "@xterm/xterm";
 import { apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
 import type { TermSetModePayload } from "../../api/client";
 import { describeApiError } from "../../api/errors";
+import { useTermOutput } from "../../hooks/useTermOutput";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, rowKey } from "../../state/hosts";
@@ -53,7 +54,6 @@ import { UrlBanner } from "./UrlBanner";
 // no Shift+Tab mode cycle at all and used to be offered claude's modes anyway.
 // An empty list hides the picker entirely.
 
-const POLL_INTERVAL_MS = 200;
 // A remote host's connection (VS Code devtunnel, Cloudflare, etc.) can have
 // brief individual-request blips even while the underlying tunnel is fine
 // overall — at a 200ms poll interval, treating every single failed tick as
@@ -190,6 +190,10 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   const pendingRawRef = useRef("");
   const rawSendingRef = useRef(false);
   const rawFlushTimer = useRef<number | null>(null);
+  // How many consecutive ok:false term-output results (WS or backstop poll)
+  // have arrived in a row — same tolerance concept as before the WS
+  // migration, just counted here instead of inside the poll callback.
+  const consecutiveFailuresRef = useRef(0);
 
   // ---- create the xterm.js instance once, dynamically importing the
   // library (and its CSS) so it code-splits and is only ever fetched when
@@ -346,122 +350,95 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     };
   }, []);
 
-  // ---- poll /api/term/output every 200ms, for as long as this component
-  // is mounted (i.e. for as long as the modal is open) — independent of
-  // `hidden`/`xtermState`, matching the original's termPollTimer exactly.
+  // ---- terminal output, for as long as this component is mounted (i.e.
+  // for as long as the modal is open) — independent of `hidden`/`xtermState`,
+  // matching the original's termPollTimer exactly. Delivery is now
+  // `useTermOutput`'s job (WS-primary, REST-backstop, see that hook's
+  // header comment); this effect keeps the exact same "what do I do with a
+  // tick's result" logic the old inline poll() callback had, just applied
+  // to whatever the hook's latest return value is instead of a fetch
+  // resolution.
+  const termResult = useTermOutput(name, host, lang);
+
   useEffect(() => {
-    let cancelled = false;
-    let consecutiveFailures = 0;
+    const result = termResult;
+    if (!result) return; // nothing delivered yet this mount
 
-    async function poll() {
-      let result;
-      try {
-        result = await getTermOutput(name, lang, host);
-      } catch {
-        // Original pollTerm() has no try/catch around its own fetch — a
-        // network exception there becomes an unhandled rejection inside
-        // the setInterval callback (nothing awaits/catches it). Matched
-        // here by just skipping this tick silently; the next 200ms tick
-        // retries on its own.
+    if (result.ok) {
+      consecutiveFailuresRef.current = 0;
+    } else {
+      consecutiveFailuresRef.current += 1;
+      if (consecutiveFailuresRef.current < CONSECUTIVE_FAILURES_BEFORE_ERROR) {
+        // Isolated blip — keep showing whatever's already on screen rather
+        // than flashing an error that may well clear itself on the very
+        // next tick.
         return;
       }
-      if (cancelled) return;
+    }
 
-      if (result.ok) {
-        consecutiveFailures = 0;
+    // Original: renderTermUrls(name, d.text) runs unconditionally
+    // whenever d.ok, BEFORE the atBottom/xterm-instance branching below
+    // — the URL banner always reflects the latest raw text regardless
+    // of scroll-pause state or whether xterm loaded at all.
+    if (result.ok) {
+      setRawText(result.text);
+      setMasked(result.masked);
+      setPaneMode(result.mode);
+      setHistorySize(result.history_size);
+    }
+
+    const inst = instRef.current;
+    if (inst) {
+      const buf = inst.term.buffer.active;
+      const atBottom = buf.viewportY >= buf.baseY;
+      if (!atBottom) {
+        setHint(t.termScrolledHint);
+        return;
+      }
+      setHint("");
+
+      // Original reads d.cols/d.rows unconditionally (harmless in
+      // untyped JS: undefined on a failed response, short-circuiting
+      // `resized` to false) — ApiErr has no cols/rows field at all, so
+      // the null-when-not-ok fallback below reproduces the same
+      // falsy-short-circuit behavior in a type-safe way.
+      const cols = result.ok ? result.cols : null;
+      const rows = result.ok ? result.rows : null;
+      const resized = !!(cols && rows && (cols !== inst.cols || rows !== inst.rows));
+      if (resized && cols && rows) {
+        inst.term.options.fontSize = computeFitFontSize(cols);
+        inst.term.resize(cols, rows);
+        inst.cols = cols;
+        inst.rows = rows;
+        if (containerRef.current) fitContainerToTerm(inst.term, containerRef.current, cols, rows);
+      }
+
+      if (result.ok && result.text === inst.lastText && !resized) {
+        // identical content, not resized — skip reset+write entirely so
+        // quiet ticks (no new output) never visibly flicker.
+      } else if (result.ok) {
+        inst.lastText = result.text;
+        // A separate synchronous term.reset() (blanks immediately) followed
+        // by an async term.write() (parses/paints over one or more later
+        // frames) leaves a gap the browser can paint mid-update — visible
+        // as a flash on every content-changing tick during "Computing…"
+        // (2026-08-31, ported fix from the original panel's pollTerm — same
+        // root cause, independently re-discovered here). Folding the clear
+        // into the write() call itself (as data, not an out-of-band API
+        // call) makes clear+redraw a single pass through xterm's own parser
+        // instead of two.
+        inst.term.write(`\x1b[H\x1b[2J\x1b[3J${result.text}`, () => inst.term.scrollToBottom());
       } else {
-        consecutiveFailures += 1;
-        if (consecutiveFailures < CONSECUTIVE_FAILURES_BEFORE_ERROR) {
-          // Isolated blip — keep showing whatever's already on screen rather
-          // than flashing an error that (per the poll cadence) may well
-          // clear itself on the very next tick.
-          return;
-        }
+        inst.lastText = null;
+        inst.term.reset();
+        inst.term.write(t.termGone(result.error));
       }
-
-      // Original: renderTermUrls(name, d.text) runs unconditionally
-      // whenever d.ok, BEFORE the atBottom/xterm-instance branching below
-      // — the URL banner always reflects the latest raw text regardless
-      // of scroll-pause state or whether xterm loaded at all.
-      if (result.ok) {
-        setRawText(result.text);
-        setMasked(result.masked);
-        setPaneMode(result.mode);
-        setHistorySize(result.history_size);
-      }
-
-      const inst = instRef.current;
-      if (inst) {
-        const buf = inst.term.buffer.active;
-        const atBottom = buf.viewportY >= buf.baseY;
-        if (!atBottom) {
-          setHint(t.termScrolledHint);
-          return;
-        }
-        setHint("");
-
-        // Original reads d.cols/d.rows unconditionally (harmless in
-        // untyped JS: undefined on a failed response, short-circuiting
-        // `resized` to false) — ApiErr has no cols/rows field at all, so
-        // the null-when-not-ok fallback below reproduces the same
-        // falsy-short-circuit behavior in a type-safe way.
-        const cols = result.ok ? result.cols : null;
-        const rows = result.ok ? result.rows : null;
-        const resized = !!(cols && rows && (cols !== inst.cols || rows !== inst.rows));
-        if (resized && cols && rows) {
-          inst.term.options.fontSize = computeFitFontSize(cols);
-          inst.term.resize(cols, rows);
-          inst.cols = cols;
-          inst.rows = rows;
-          if (containerRef.current) fitContainerToTerm(inst.term, containerRef.current, cols, rows);
-        }
-
-        if (result.ok && result.text === inst.lastText && !resized) {
-          // identical content, not resized — skip reset+write entirely so
-          // quiet ticks (no new output) never visibly flicker.
-        } else if (result.ok) {
-          inst.lastText = result.text;
-          // A separate synchronous term.reset() (blanks immediately) followed
-          // by an async term.write() (parses/paints over one or more later
-          // frames) leaves a gap the browser can paint mid-update — visible
-          // as a flash on every content-changing ~200ms tick during
-          // "Computing…" (2026-08-31, ported fix from the original panel's
-          // pollTerm — same root cause, independently re-discovered here).
-          // Folding the clear into the write() call itself (as data, not an
-          // out-of-band API call) makes clear+redraw a single pass through
-          // xterm's own parser instead of two.
-          inst.term.write(`\x1b[H\x1b[2J\x1b[3J${result.text}`, () => inst.term.scrollToBottom());
-        } else {
-          inst.lastText = null;
-          inst.term.reset();
-          inst.term.write(t.termGone(result.error));
-        }
-        return;
-      }
-
-      // xterm not ready/failed to load — plain ANSI-stripped fallback.
-      setFallbackText(result.ok ? stripAnsi(result.text) : t.termGone(result.error));
+      return;
     }
 
-    void poll();
-    const id = setInterval(() => void poll(), POLL_INTERVAL_MS);
-    // Browsers throttle setInterval in backgrounded tabs (2026-09-05, user
-    // report: content "arrives late" after switching away and back to the
-    // panel tab) — without this, a backgrounded tab's poll can fall many
-    // seconds behind and only catches up on the next throttled tick.
-    // useStatus.ts's WS hook already does the equivalent (immediate
-    // reconnect on visibilitychange); this mirrors that for the plain-REST
-    // polling here.
-    function onVisible() {
-      if (document.visibilityState === "visible") void poll();
-    }
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [name, host, lang, t]);
+    // xterm not ready/failed to load — plain ANSI-stripped fallback.
+    setFallbackText(result.ok ? stripAnsi(result.text) : t.termGone(result.error));
+  }, [termResult, t]);
 
   useEffect(() => {
     return () => {

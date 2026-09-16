@@ -257,19 +257,19 @@ def _reader_loop(client: _WSClient) -> None:
         client.closed.set()
 
 
-def handle_ws(handler: Any, status_payload_fn: Callable[[], dict]) -> None:
-    """`/ws` isteğini WebSocket'e yükselt. `handler` bir `_Handler`
-    (`http.server.BaseHTTPRequestHandler`) instance'ı — `do_GET` bunu
-    `_authorized()` kontrolünden GEÇMİŞ bir `/ws` isteği için çağırır
-    (döngüsel import'tan kaçınmak için tip burada elle yazılmadı).
-    `status_payload_fn` — genelde `web.py._status_payload` — connect anında
-    tek seferlik anlık push için (aynı fonksiyon `run()`'dan
-    `start_broadcaster()`'a da geçiriliyor, modül burada state TUTMUYOR).
+def _ws_accept(handler: Any) -> Optional[ServerProtocol]:
+    """`/ws`/`/ws/term` ORTAK sans-I/O handshake preamble'ı (modül
+    docstring'indeki "Neden protocol.receive_data ile el-parse DEĞİL"
+    bölümünün uyguladığı yer). Response'u `handler.wfile`'a doğrudan yazar;
+    kabul edildiyse (`state is OPEN`) `protocol`'ü döner, reddedildiyse
+    (red yanıtı zaten yazıldı) `None` döner — çağıran ek bir şey yapmadan
+    dönmeli.
 
-    Handshake'i kurar, registry'ye kaydolur, bağlantı canlıyken bir reader
-    thread + bu thread'in kendisi writer olarak çalışır; bağlantı kapanınca
-    (registry temizliği dahil) döner.
-    """
+    Bilerek TEK bir yerde: iki çağıranın da (`handle_ws`/`handle_ws_term`)
+    aynı ~14 satırı bağımsız birer kopya olarak tutması, bu oturumda ayrı
+    bir yerde (`close.py`'nin `kill.py`'den bağımsızlaşıp drift eden kill
+    mekanizması) gerçek bir bug'a çıkan sınıfın aynısı — mekanik/tekrar
+    kullanılan bir doğrulama adımı iki kopyaya bölünmemeli."""
     protocol = ServerProtocol()
     request = WSRequest(path=handler.path, headers=WSHeaders(handler.headers.items()))
     response = protocol.accept(request)
@@ -288,6 +288,25 @@ def handle_ws(handler: Any, status_payload_fn: Callable[[], dict]) -> None:
     if protocol.state is not OPEN:
         # accept() reddetti (ör. tarayıcıdan doğrudan GET /ws — Upgrade
         # header'ı yok). Red yanıtı yukarıda zaten yazıldı, çıkıyoruz.
+        return None
+    return protocol
+
+
+def handle_ws(handler: Any, status_payload_fn: Callable[[], dict]) -> None:
+    """`/ws` isteğini WebSocket'e yükselt. `handler` bir `_Handler`
+    (`http.server.BaseHTTPRequestHandler`) instance'ı — `do_GET` bunu
+    `_authorized()` kontrolünden GEÇMİŞ bir `/ws` isteği için çağırır
+    (döngüsel import'tan kaçınmak için tip burada elle yazılmadı).
+    `status_payload_fn` — genelde `web.py._status_payload` — connect anında
+    tek seferlik anlık push için (aynı fonksiyon `run()`'dan
+    `start_broadcaster()`'a da geçiriliyor, modül burada state TUTMUYOR).
+
+    Handshake'i kurar, registry'ye kaydolur, bağlantı canlıyken bir reader
+    thread + bu thread'in kendisi writer olarak çalışır; bağlantı kapanınca
+    (registry temizliği dahil) döner.
+    """
+    protocol = _ws_accept(handler)
+    if protocol is None:
         return
 
     client = _WSClient(protocol=protocol, handler=handler)
@@ -383,3 +402,89 @@ def start_broadcaster(status_payload_fn: Callable[[], dict]) -> None:
     threading.Thread(
         target=_broadcaster_loop, args=(status_payload_fn,), daemon=True, name="ws-broadcaster"
     ).start()
+
+
+## ── `/ws/term` — tek-pane push, `/ws`'in broadcaster/registry'sinden AYRI ──
+#
+# Fleet-status'ün aksine burada "değişti" diye haber veren bir mutasyon-event
+# YOK (tmux pane'i `notify_status_changed()`'i hiç tetiklemiyor) — tek yol
+# tekrar tekrar `tmux capture-pane`. Yani buradaki "push" da içeride hâlâ bir
+# poll döngüsü — kazanç poll SIKLIĞINI azaltmak değil (bugünkü 200ms client
+# cadence'i AYNEN korunuyor), client'ın HER tick'te ödediği ağ round-trip'ini
+# (özellikle tünel/mobil üzerinden) ortadan kaldırmak. Bu yüzden `/ws`'in
+# paylaşılan tek-broadcaster'ı/registry'si BİLEREK yok — her `/ws/term`
+# bağlantısı kendi başına bağımsız bir poll+push thread'i (bugün de N açık
+# tab zaten N bağımsız server-side `_term_output()` çağrısı demek, REST
+# poll'la; burada da aynı maliyet, sadece taşıyıcı WS).
+#
+# local/remote ayrımı bu modülün KONUSU DEĞİL: `web.py`'nin `/ws/term` dalı
+# `host`'a bakıp `fetch_fn`'i ya `_term_output`'a ya da
+# `web_hosts.proxy_get()`'i saran bir closure'a bağlıyor — `web_ws.py` ikisi
+# arasındaki farkı hiç bilmiyor (modülün "business logic'e geri-import
+# ETMEME" ilkesiyle aynı, `handle_ws`'in `status_payload_fn` enjeksiyonuyla
+# birebir aynı desen).
+
+_TERM_POLL_SECONDS = 0.2  # bugünkü client POLL_INTERVAL_MS'le AYNI — bkz. yukarıdaki not
+
+
+def _encode_term(payload: dict) -> bytes:
+    return json.dumps({"type": "term", "data": payload}).encode("utf-8")
+
+
+def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict]) -> None:
+    """Bu bağlantının HEM poll'cusu HEM writer'ı (ayrı bir producer thread'i
+    yok — broadcaster'ın `queue`/`_push()`'ü burada YOK, tek thread hem
+    `fetch_fn()`'i çağırıp hem `_send()` ediyor, `_send()`'in kendi
+    `client.lock`'ı reader'a karşı senkronizasyon için yeterli).
+
+    `fetch_fn` (`_term_output` veya `proxy_get`'i saran closure) HİÇBİR
+    beklenen hata için raise ETMEZ — "session gitti" de "uzak host'a bu
+    tick'te ulaşılamadı" da AYNI `{"ok": False, "error": ...}` şeklinde
+    döner (bkz. `web_hosts.py`'nin `proxy_get`'i, network hatasını bile
+    dict'e çeviriyor). Bu ikisi arasında BİLEREK ayrım YAPMIYORUZ — bir isim
+    "gitti" kalıcı değil (rc/handover aynı isimle respawn edebilir), o
+    yüzden loop kendiliğinden asla durmuyor, sadece bağlantı kapanınca
+    biter. `TerminalView.tsx`'in halihazırdaki `consecutiveFailures`
+    toleransı bu ayrımı zaten CLIENT tarafında (kaç ardışık `ok:false`
+    tick'inden sonra gerçekten hata gösterilir) yapıyor, burada
+    TEKRARLANMIYOR."""
+    last_key: Any = None
+    last_sent = 0.0
+    while not client.closed.is_set():
+        try:
+            payload = fetch_fn()
+        except Exception:
+            payload = None  # beklenmeyen bug — bu tick'i atla, thread'i öldürme (_broadcaster_loop'un aynı toleransı)
+        if payload is not None:
+            key = (payload.get("ok"), payload.get("text"), payload.get("cols"),
+                   payload.get("rows"), payload.get("error"))
+            now = time.monotonic()
+            if key != last_key or (now - last_sent) >= _HEARTBEAT_SECONDS:
+                if not _send(client, _encode_term(payload)):
+                    return
+                last_key = key
+                last_sent = now
+        if client.closed.wait(timeout=_TERM_POLL_SECONDS):
+            return
+
+
+def handle_ws_term(handler: Any, fetch_fn: Callable[[], dict]) -> None:
+    """`/ws/term` isteğini WebSocket'e yükselt. `handler` — `do_GET`'in
+    `_authorized()`'dan GEÇMİŞ, `name`/`host`'u çözüp `fetch_fn`'e
+    kapattığı bir `/ws/term` isteği için çağırdığı `_Handler` instance'ı
+    (bkz. `web.py`'nin `/ws/term` dalı). `handle_ws`'in aksine registry'ye
+    KAYDOLMAZ — `_WS_REGISTRY`/broadcaster fleet-status'e özel, bu bağlantı
+    ondan tamamen bağımsız (yukarıdaki modül-bölümü notuna bkz.)."""
+    protocol = _ws_accept(handler)
+    if protocol is None:
+        return
+
+    client = _WSClient(protocol=protocol, handler=handler)
+    reader = threading.Thread(
+        target=_reader_loop, args=(client,), daemon=True, name=f"ws-term-reader-{id(client):x}"
+    )
+    reader.start()
+    try:
+        _term_poll_loop(client, fetch_fn)
+    finally:
+        client.closed.set()

@@ -56,14 +56,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getStatus, TOKEN } from "../api/client";
 import type { StatusPayload } from "../api/types";
+import { reconnectDelayMs } from "./wsReconnect";
 
 /** Backstop REST poll — deliberately much slower than the old 4s poller,
  * since WS is primary now; this only needs to catch what WS misses. Plan:
  * "independent slow (10-15s) background fetch(...) poll". */
 const POLL_BACKSTOP_MS = 12_000;
-
-const WS_RECONNECT_BASE_MS = 1_000;
-const WS_RECONNECT_CAP_MS = 20_000;
 
 export type StatusError =
   | { kind: "network"; message: string }
@@ -81,20 +79,6 @@ function toStatusError(err: unknown): StatusError {
 function wsUrl(): string {
   const scheme = location.protocol === "https:" ? "wss://" : "ws://";
   return `${scheme}${location.host}/ws?token=${encodeURIComponent(TOKEN)}`;
-}
-
-/** "Equal jitter" around an exponential-backoff delay: half fixed, half
- * random — `attempt` 0 → 0.5-1s, doubling each retry up to a 10-20s spread
- * once the exponential part saturates the cap (plan: "~1s → cap ~20s,
- * jittered"). Never near-zero (unlike "full jitter", `random(0, cap)`),
- * which matters here since the far more common case than a real outage is
- * a normal server-restart during a `npm run dev` / redeploy — a fixed
- * floor avoids every open tab hammering the not-yet-listening port in a
- * tight loop, while the random half still avoids every tab retrying in
- * lockstep once it does come back. */
-function reconnectDelayMs(attempt: number): number {
-  const exp = Math.min(WS_RECONNECT_CAP_MS, WS_RECONNECT_BASE_MS * 2 ** attempt);
-  return exp / 2 + Math.random() * (exp / 2);
 }
 
 export interface UseStatusResult {

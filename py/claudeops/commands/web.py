@@ -2536,6 +2536,31 @@ class _Handler(BaseHTTPRequestHandler):
             # kendi response'unu (101/hata) doğrudan yazıyor.
             _proxy_desktop_ws(self)
             return
+        elif path == "/ws/term":
+            # `/api/term/output`'un AYNI name/lang/host çözümlemesi (satır
+            # ~2568) — tek fark local/remote seçimine göre `_term_output`'u mu
+            # `web_hosts.proxy_get`'i mi çağıracağını bir closure'a kapatıp
+            # `web_ws.handle_ws_term`'e vermemiz: `web_ws.py` local/remote
+            # ayrımını hiç bilmiyor (business-logic'e geri-import ETMEME
+            # ilkesi, `handle_ws`'in `status_payload_fn` enjeksiyonuyla aynı
+            # desen). Remote taraf REST proxy olarak KALIYOR (`web_hosts.py`nin
+            # WS-upgrade proxy'lemesi yok) — kazanan taraf browser↔local hop'u,
+            # local↔remote hop'u değil; ama bugün zaten HER tick tünelden tam
+            # round-trip yapan browser↔local↔remote zincirinin browser↔local
+            # yarısı artık push, o da tünel/mobil senaryoda asıl acıyan yarı.
+            qs = parse_qs(urlparse(self.path).query)
+            name = (qs.get("name") or [""])[0].strip()
+            lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            if host != LOCAL_HOST_NAME:
+                fetch_fn = lambda: web_hosts.proxy_get("/api/term/output", host, {"name": name, "lang": lang})[0]
+            else:
+                fetch_fn = lambda: _term_output(name, lang=lang)
+            web_ws.handle_ws_term(self, fetch_fn)
+            return
         elif path == "/api/status":
             self._json(_status_payload())
         elif path == "/v1/models":
