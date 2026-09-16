@@ -1305,6 +1305,39 @@ def _term_resolve(name: str, lang: str = "tr"):
     return s, None
 
 
+# `_term_output`'a ÖZEL, ucuz çözümleme yolu (2026-09-16, kullanıcı: "hala
+# bizden kaynaklı gecikmeler var... lokalde bile hissedilebiliyor" —
+# terminal popup'ın xterm-preload'dan SONRA da hâlâ yavaş hissettirmesi
+# üzerine ölçüldü). `_term_resolve`'un `find_sessions()`'ı — bu makinede
+# ~35ms, 700+ proc'u TÜM sistem genelinde tarayan bir psutil taraması —
+# `/ws/term`'ün poll döngüsünde HER tick'te (200ms'de bir, açık her
+# terminal için ayrı ayrı) tekrar çalışıyordu. Gereksizdi: `tmux_capture`/
+# `tmux_pane_size`/`pane_is_masked_input` (hemen altta, `_term_output`)
+# ZATEN isim-bazlı — tmux session'ı yaşadığı sürece İÇİNDE HANGİ PID
+# çalışıyor olursa olsun doğru cevabı verirler, dolayısıyla PID-seviyesi
+# kimliği her tick'te tazelemenin gerçek bir karşılığı yok. Kısa bir TTL'le
+# son çözümleme cache'leniyor; tam `_term_resolve` (ambiguous/
+# is_tmux_backed dahil) sadece cache boşken/süresi geçmişken çalışır.
+# Mutasyon uç noktaları (`_term_input` vb.) bu cache'i KULLANMIYOR — onlar
+# tek-atım kullanıcı aksiyonu, her seferinde tam/taze doğrulama ucuz
+# olmasa da daha değerli.
+_TERM_OUTPUT_RESOLVE_TTL = 2.0  # saniye
+_term_output_resolve_cache: Dict[str, tuple] = {}  # name -> (Session, resolved_at)
+
+
+def _term_resolve_for_output(name: str, lang: str = "tr"):
+    cached = _term_output_resolve_cache.get(name)
+    now = time.monotonic()
+    if cached is not None and (now - cached[1]) < _TERM_OUTPUT_RESOLVE_TTL:
+        return cached[0], None
+    s, err = _term_resolve(name, lang)
+    if err:
+        _term_output_resolve_cache.pop(name, None)
+        return None, err
+    _term_output_resolve_cache[name] = (s, now)
+    return s, None
+
+
 _MAX_VALIDATE_CANDIDATES = 20  # bir terminal-metni taramasından gelen aday listesini sınırla — her aday bir stat() çağrısı, sınırsız liste kabul etmeye gerek yok
 
 
@@ -1391,11 +1424,12 @@ def _vscode_open(name: str, path: Optional[str], lang: str = "tr") -> dict:
 
 
 def _term_output(name: str, lang: str = "tr") -> dict:
-    s, err = _term_resolve(name, lang)
+    s, err = _term_resolve_for_output(name, lang)
     if err:
         return err
     text = tmux_capture(s.name, lines=2000)
     if text is None:
+        _term_output_resolve_cache.pop(name, None)  # respawn/gone — sıradaki tick taze çözümlesin
         return _err(lang, "term_session_gone", name=name)
     size = tmux_pane_size(s.name)
     masked = pane_is_masked_input(s.name)
