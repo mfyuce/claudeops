@@ -451,6 +451,7 @@ def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict]) -> None:
     last_key: Any = None
     last_sent = 0.0
     while not client.closed.is_set():
+        fetch_started = time.monotonic()
         try:
             payload = fetch_fn()
         except Exception:
@@ -464,7 +465,17 @@ def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict]) -> None:
                     return
                 last_key = key
                 last_sent = now
-        if client.closed.wait(timeout=_TERM_POLL_SECONDS):
+        # `fetch_fn()` lokal için ~0ms ama uzak host proxy'sinde yüzlerce ms
+        # sürebilir (yuhem'de ölçüldü: ~450-600ms) — sabit `_TERM_POLL_SECONDS`
+        # bekleme bunun ÜSTÜNE eklenirse döngü fetch-süresi+200ms'ye çıkar,
+        # eski client-side `setInterval` (önceki fetch'i beklemeden yenisini
+        # atan, bu yüzden örtüşen isteklerle daha sık güncelleyen) davranışından
+        # daha yavaş olur (2026-09-16, kullanıcı canlı fark etti — DONE.md).
+        # Sadece KALAN süreyi bekleyerek yavaş fetch'lerde ekstra gecikme
+        # eklenmez; hızlı (lokal) fetch'lerde davranış değişmez.
+        elapsed = time.monotonic() - fetch_started
+        remaining = max(0.0, _TERM_POLL_SECONDS - elapsed)
+        if client.closed.wait(timeout=remaining):
             return
 
 
