@@ -29,6 +29,7 @@ disiplin, iki farklı stdlib HTTP arayüzü.
 from __future__ import annotations
 import http.client
 import json
+import select
 import threading
 import time
 import urllib.parse
@@ -166,25 +167,57 @@ def _pool_key(parsed: Any) -> str:
     return f"{parsed.scheme}://{parsed.hostname}:{port}"
 
 
+def _conn_is_alive(conn: http.client.HTTPConnection) -> bool:
+    """Idle havuzdaki bir bağlantının peer tarafından (restart/idle-timeout ile)
+    sessizce kapatılmış olup olmadığını, ONU KULLANMADAN ÖNCE tespit eder —
+    TODO.md'nin kaydettiği boşluk: eskiden bu HİÇ kontrol edilmiyordu, bir ölü
+    bağlantı sadece gerçek bir istek onu kullanmaya çalışıp patlayınca (ve
+    LIFO havuzda yığının dibinde kalırsa bu HİÇ olmadan) fark ediliyordu — az
+    eşzamanlılıklı trafikte (ör. sıralı tek-thread poller) süresiz gömülü
+    kalıp rastgele bir anda "yuhem gitti" gibi görünebiliyordu.
+
+    `MSG_PEEK` KULLANILMAZ: `ssl.SSLSocket.recv()` (buradaki TÜM bağlantılar
+    https) `flags != 0` ile `ValueError` fırlatır, peek desteklemez. Bunun
+    yerine `urllib3.util.connection.is_connection_dropped`'ın AYNI deseni:
+    SADECE `select()`'in okunabilirlik sinyaline bakılır, hiç veri OKUNMAZ.
+    İdle bir HTTP/1.1 keep-alive bağlantı için (sunucu isteksiz asla veri
+    itmez) "okunabilir" olmanın TEK meşru açıklaması peer'in FIN göndermiş
+    olmasıdır — bu yüzden okunabilirse ÖLÜ, değilse CANLI sayılır."""
+    sock = conn.sock
+    if sock is None:
+        return False
+    try:
+        return not select.select([sock], [], [], 0)[0]
+    except Exception:
+        return False
+
+
 def _pool_checkout(key: str, conn_cls: type, hostname: Optional[str], port: Optional[int],
                     timeout: float) -> Tuple[http.client.HTTPConnection, bool]:
     """Havuzda boşta bir bağlantı varsa onu (soket zaten açıksa timeout'unu BU
     çağrıya göre güncelleyerek — her çağrı STATUS/TERM_READ/ACTION'ın farklı
-    bir timeout'unu taşıyabilir) döner, yoksa taze açar. İkinci dönüş değeri
-    `from_pool` — havuzdaki bağlantı relay tarafından sessizce kapatılmış
-    olabilir (idle timeout), bunu burada KONTROL ETMEYİZ; çağıran taraf
-    `conn.request()`/`getresponse()` patlarsa SADECE `from_pool=True` iken
-    taze bir bağlantıyla tek sefer retry eder (bkz. `_http_json` docstring'i)
-    — taze açılmış bir bağlantının patlaması gerçek bir sorun demektir (host
-    çökmüş), onu tekrar denemek sadece zaten-dolmuş bir timeout'u ikiye katlar."""
+    bir timeout'unu taşıyabilir) döner, yoksa taze açar. Havuzdaki bağlantılar
+    `_conn_is_alive()` ile SIRAYLA elenir (bkz. o fonksiyonun docstring'i) —
+    ölü olanlar burada kapatılıp atılır, ilk canlı bulunan döner. İkinci dönüş
+    değeri `from_pool` — bu kontrol SADECE "peer sessizce kapattı" durumunu
+    yakalar, taze bir bağlantı GERÇEKTEN sorunluysa (host çökmüş) hâlâ
+    `conn.request()`/`getresponse()` patlar; çağıran taraf bunu `from_pool=True`
+    iken tek sefer taze bağlantıyla retry eder (bkz. `_http_json` docstring'i)
+    — taze açılmış bir bağlantının patlaması gerçek bir sorun demektir, onu
+    tekrar denemek sadece zaten-dolmuş bir timeout'u ikiye katlar."""
     with _conn_pool_lock:
         bucket = _conn_pool.get(key)
-        conn = bucket.pop() if bucket else None
-    if conn is not None:
-        conn.timeout = timeout
-        if conn.sock is not None:
-            conn.sock.settimeout(timeout)
-        return conn, True
+        while bucket:
+            conn = bucket.pop()
+            if _conn_is_alive(conn):
+                conn.timeout = timeout
+                if conn.sock is not None:
+                    conn.sock.settimeout(timeout)
+                return conn, True
+            try:
+                conn.close()
+            except Exception:
+                pass
     return conn_cls(hostname, port, timeout=timeout), False
 
 
