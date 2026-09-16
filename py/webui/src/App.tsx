@@ -127,6 +127,28 @@ function AppShell() {
     if (data?.settings.theme) applyTheme(data.settings.theme);
   }, [data?.settings.theme]);
 
+  // Speculatively preload xterm.js (code-split, ~331KB/83KB gzip — see
+  // TerminalView.tsx's own dynamic import of the same two specifiers) once
+  // the browser is idle, so the FIRST terminal a user opens in a page load
+  // doesn't pay a network-fetch-then-parse delay on top of the WS handshake
+  // (2026-09-16, user: "terminal popup ilk açılış çok yavaş"). Fire-and-
+  // forget — nothing here awaits the result, the payoff is purely the
+  // browser's module cache being warm by the time TerminalView's own
+  // import() runs. requestIdleCallback keeps it off the critical rendering
+  // path; Safari lacks it, hence the setTimeout fallback.
+  useEffect(() => {
+    const preload = () => {
+      void import("@xterm/xterm");
+      void import("@xterm/xterm/css/xterm.css");
+    };
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(preload);
+      return () => cancelIdleCallback(id);
+    }
+    const id = setTimeout(preload, 1000);
+    return () => clearTimeout(id);
+  }, []);
+
   let summary: string;
   if (error) {
     // Matches the original refresh()'s early-return-on-error: only the
