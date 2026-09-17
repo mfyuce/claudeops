@@ -95,7 +95,7 @@ function ReactivateRow({ item, onView }: { item: RosterEntry; onView: (host: str
       <td style={{ width: "6%" }}>
         <span className="cli-badge">{item.cli}</span>
       </td>
-      <CwdCell cwd={item.cwd} />
+      <CwdCell cwd={item.cwd} name={item.name} />
       <td style={{ width: "16%" }}>
         <button type="button" className="reactivate" disabled={busy} onClick={() => void handleReactivate()}>
           {busy ? t.starting : t.reactivateBtn}

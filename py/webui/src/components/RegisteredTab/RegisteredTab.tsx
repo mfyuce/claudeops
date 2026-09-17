@@ -103,7 +103,7 @@ function RegisteredRow({
         <td>
           <span className="cli-badge">{session.cli}</span>
         </td>
-        <CwdCell cwd={session.cwd} />
+        <CwdCell cwd={session.cwd} name={session.name} />
         <td>
           <div className="actioncell">
             <button type="button" className="start" onClick={onToggleOptions}>

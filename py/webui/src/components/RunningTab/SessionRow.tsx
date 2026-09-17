@@ -119,7 +119,7 @@ export function SessionRow({
         <td>{session.cpu != null ? session.cpu.toFixed(1) : "—"}</td>
         <HoCell session={session} />
         <td>{session.kind || "—"}</td>
-        <CwdCell cwd={session.cwd} />
+        <CwdCell cwd={session.cwd} name={session.name} />
         <td>
           <div className="actioncell">
             {session.registered === false ? (
