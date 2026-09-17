@@ -53,14 +53,28 @@ export function ChatView({ name, host }: ChatViewProps) {
 
   useEffect(() => {
     let cancelled = false;
+    // Accumulates across polls in "full" mode (2026-09-17, user: "chat
+    // bilgisini alirken full almama lazim... sadece kalanlari almalisin") —
+    // sending `known.length` as `since` lets the server return just the new
+    // tail instead of the whole transcript every ~2.5s poll. Effect-local so
+    // it resets on every re-run (name/host/lang/mode change) along with
+    // `state`, matching this effect's existing "re-mounted logically on
+    // toggle" shape rather than adding a second piece of state to keep in
+    // sync.
+    let known: ChatMessage[] = [];
     const poll = async () => {
       try {
-        const d = await getTermChat(name, lang, mode, host);
+        const d = await getTermChat(name, lang, mode, host, known.length);
         if (cancelled) return;
         if (!d.ok) setState({ kind: "error", message: d.error });
         else if (!d.supported) setState({ kind: "unsupported" });
-        else if ("messages" in d) setState({ kind: "ok-full", messages: d.messages });
-        else setState({ kind: "ok-last", user: d.user, assistant: d.assistant });
+        else if ("messages" in d) {
+          // messages.length === total means the server sent the full list
+          // (since=0, or it resynced after a reset/handover) - replace.
+          // Otherwise it's just the tail after `known.length` - append.
+          known = d.messages.length === d.total ? d.messages : [...known, ...d.messages];
+          setState({ kind: "ok-full", messages: known });
+        } else setState({ kind: "ok-last", user: d.user, assistant: d.assistant });
       } catch (e) {
         if (cancelled) return;
         setState({ kind: "error", message: e instanceof Error ? e.message : String(e) });

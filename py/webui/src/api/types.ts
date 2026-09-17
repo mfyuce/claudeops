@@ -413,11 +413,17 @@ export interface ChatMessage {
  * see TODO.md's 2026-09-04 provider-parity audit), `ok: false` is a real backend
  * error (session gone etc).
  * `mode="last"` (default) returns `user`/`assistant`; `mode="full"` returns
- * `messages` instead — same supported:false contract either way. */
+ * `messages` instead — same supported:false contract either way.
+ * `total` (2026-09-17, incremental fetch): the FULL transcript's message
+ * count. When a request sent `since`, `messages` is only the tail after that
+ * cursor — `messages.length === total` is the signal that the server sent
+ * everything (either `since` was 0, or it clamped a stale/too-large `since`
+ * back to 0 after a reset), telling the caller to replace its local list
+ * instead of appending to it. See `ChatView.tsx`. */
 export type TermChatResult =
   | { ok: true; supported: false }
   | { ok: true; supported: true; user: string; assistant: string }
-  | { ok: true; supported: true; messages: ChatMessage[] }
+  | { ok: true; supported: true; messages: ChatMessage[]; total: number }
   | ApiErr;
 
 /** One entry in `_files_list()`'s directory listing (`files.list_dir()`). */

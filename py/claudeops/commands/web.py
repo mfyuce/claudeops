@@ -1596,7 +1596,7 @@ def _term_set_mode(name: str, target_mode: str, lang: str = "tr") -> dict:
     return _err(lang, "mode_cycle_failed", name=name, mode=target_mode, current=current or "?")
 
 
-def _term_chat(name: str, lang: str = "tr", mode: str = "last") -> dict:
+def _term_chat(name: str, lang: str = "tr", mode: str = "last", since: int = 0) -> dict:
     """Terminal popup'ının 'Sohbet' sekmesi: capture-pane/ANSI yerine provider'ın
     kendi transcript'inden (jsonl vb.) STRUCTURED metin döndürür — xterm.js'in
     mobilde scroll/render sorunlarını tamamen bypass eder. Desteklemeyen
@@ -1607,6 +1607,20 @@ def _term_chat(name: str, lang: str = "tr", mode: str = "last") -> dict:
     `mode="full"` (2026-09-01, kullanıcı isteği): TÜM konuşma geçmişi, sırayla
     [{"role":"user"|"assistant","text":...}, ...] — `last_exchange`'le AYNI
     destekleniyor/desteklenmiyor sözleşmesi (`full_history` None → supported:False).
+
+    `since` (2026-09-17, kullanıcı: "chat bilgisini alirken full almama lazim...
+    once ust alindi ise bir daha ustu almamalisin sadece kalanlari almalisin") —
+    `mode="full"`'da: client'ın ZATEN sahip olduğu mesaj sayısı. `ChatView.tsx`
+    her ~2.5s'de bir poll ediyor (`CHAT_POLL_INTERVAL_MS`) — `since` olmadan her
+    poll TÜM geçmişi (uzun bir konuşmada potansiyel binlerce mesaj) yeniden
+    ağdan gönderiyordu, halbuki jsonl append-only olduğu için ÇOĞU poll'da HİÇBİR
+    ŞEY değişmiyor. Artık sadece `since`'ten SONRAKİ mesajlar dönüyor + her zaman
+    `total` (client'ın bir SONRAKİ `since`'i hesaplaması için). `since`, mevcut
+    `total`'dan BÜYÜKSE (konuşma resetlenmiş/handover ile yeni sid'e geçilmiş —
+    jsonl KÜÇÜLMÜŞ demektir) 0'a clamp edilip TAM liste dönülür; client bunu ayrı
+    bir bayrağa gerek KALMADAN `messages.length === total` kontrolüyle ayırt edip
+    (eşitse tam liste geldi demektir → replace, değilse → append) kendini
+    yeniden-eşitliyor (bkz. `ChatView.tsx`).
 
     2026-09-14: `_term_resolve` (canlı+tmux-backed ŞART) DEĞİL, `_files_resolve`
     kullanıyor — sohbet geçmişi `provider.last_exchange`/`full_history` üzerinden
@@ -1622,7 +1636,9 @@ def _term_chat(name: str, lang: str = "tr", mode: str = "last") -> dict:
         messages = provider.full_history(s.cwd, s.sid)
         if messages is None:
             return {"ok": True, "supported": False}
-        return {"ok": True, "supported": True, "messages": messages}
+        total = len(messages)
+        start = since if 0 <= since <= total else 0
+        return {"ok": True, "supported": True, "messages": messages[start:], "total": total}
     exchange = provider.last_exchange(s.cwd, s.sid)
     if exchange is None:
         return {"ok": True, "supported": False}
@@ -2754,14 +2770,19 @@ class _Handler(BaseHTTPRequestHandler):
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
             mode = "full" if (qs.get("mode") or [""])[0] == "full" else "last"
             host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            try:
+                since = int((qs.get("since") or ["0"])[0])
+            except ValueError:
+                since = 0
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
             if host != LOCAL_HOST_NAME:
-                result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang, "mode": mode})
+                result, status = web_hosts.proxy_get(
+                    path, host, {"name": name, "lang": lang, "mode": mode, "since": str(since)})
                 self._json(result, status=status)
                 return
-            self._json(_term_chat(name, lang=lang, mode=mode))
+            self._json(_term_chat(name, lang=lang, mode=mode, since=since))
         elif path == "/api/files/list":
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()

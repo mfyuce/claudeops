@@ -116,13 +116,19 @@ function hostQS(host?: string): string {
 export const getTermOutput = (name: string, lang: Lang, host?: string): Promise<TermOutputResult> =>
   apiGet<TermOutputResult>(`/api/term/output?name=${encodeURIComponent(name)}&lang=${lang}${hostQS(host)}`);
 
+/** `since` (2026-09-17): how many messages the caller already has, for
+ * `mode="full"`'s incremental fetch — see `_term_chat()`'s own comment.
+ * Omitted (or 0) for `mode="last"`, which has nothing to accumulate. */
 export const getTermChat = (
   name: string,
   lang: Lang,
   mode: "last" | "full" = "last",
-  host?: string
+  host?: string,
+  since?: number
 ): Promise<TermChatResult> =>
-  apiGet<TermChatResult>(`/api/term/chat?name=${encodeURIComponent(name)}&lang=${lang}&mode=${mode}${hostQS(host)}`);
+  apiGet<TermChatResult>(
+    `/api/term/chat?name=${encodeURIComponent(name)}&lang=${lang}&mode=${mode}${hostQS(host)}${since ? `&since=${since}` : ""}`
+  );
 
 export const getFilesList = (name: string, lang: Lang, path?: string, host?: string): Promise<FilesListResult> =>
   apiGet<FilesListResult>(
