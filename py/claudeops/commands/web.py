@@ -59,6 +59,7 @@ from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, save_settings
+from ..snapshot import save_snapshot, load_snapshot
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers.claude_provider import jsonl_path_for
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
@@ -224,6 +225,8 @@ ERR = {
                                          "yeni klasörde sıfırdan başlar ve eski geçmiş bu proje adından bir daha erişilemez olur",
                                    "en": "the old folder ('{cwd}') has real conversation history — changing the folder does NOT move it, "
                                          "the new folder starts fresh and the old history becomes unreachable from this project name"},
+    "no_snapshot": {"tr": "kaydedilmiş bir snapshot yok — önce 'Snapshot kaydet'e basın",
+                     "en": "no saved snapshot yet — click 'Save snapshot' first"},
 }
 
 
@@ -1203,6 +1206,11 @@ def _status_payload() -> dict:
         # son birkaç run. Local-only, `web_hosts.merge_status`'a hiç girmez.
         "orch": {"draft": web_orch.get_draft(), "active": web_orch.active_summary(),
                  "recent": web_orch.list_runs(5)},
+        # 2026-09-17, "son snapshot" — bkz. aşağıdaki "Fleet snapshot" bölümü.
+        # `orch` gibi local-only, `web_hosts.merge_status`'a hiç girmez (bu
+        # makinenin KENDİ fleet'inin anlık görüntüsü, uzak host'unkiyle
+        # karışmamalı).
+        "snapshot": _snapshot_info(),
     }
     # Uzak host'ların sessions/closed/retired'ini merge eder + "hosts" ekler —
     # SADECE web_hosts'un arka-plan poller cache'ini okur, asla burada network'e
@@ -1217,6 +1225,14 @@ def _tunnel_info() -> dict:
         except OSError:
             return None
     return {"url": _read("tunnel_url.txt"), "label": _read("tunnel_label.txt")}
+
+
+def _snapshot_info() -> dict:
+    """`/api/status` payload'ının "snapshot" alanı — sadece meta (ne zaman,
+    kaç session), tam liste `results`/resume akışının işine yarar ama Settings
+    panelinin "Son snapshot: X, N session" gösterimi için gereksiz büyük."""
+    snap = load_snapshot()
+    return {"saved_at": snap.get("saved_at"), "count": len(snap.get("sessions") or [])}
 
 
 _VALID_THEMES = ("system", "light", "dark")
@@ -1235,7 +1251,7 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
 
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
-           cli: str = "", lang: str = "tr") -> dict:
+           cli: str = "", hidden: bool = False, lang: str = "tr") -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
     if not info or info["state"] != "active":
@@ -1260,6 +1276,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
                 effort=effort.strip() or "max",
                 force_new=bool(fresh),
                 cli=chosen_cli,
+                hidden=hidden,
             )
             opened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
@@ -2012,6 +2029,95 @@ def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
     return _start(name, lang=lang)
 
 
+# ══ Fleet snapshot (TODO.md 2026-09-16) ═════════════════════════════════════
+# Kullanıcı: "last running snapshot gibi bisi olmali... once save snapshot
+# olur... makine baslayinca resume snapshot denir hepsini resume eder" —
+# guard kasıtlı kapalı ([[feedback-manual-fleet-control]]) olduğu için reboot
+# sonrası fleet'i geri açmak TAMAMEN kullanıcı-tetiklemeli 3 adım (kaydet →
+# görüntüle → geri-yükle), [[reboot-recovery]]'nin otomatik jsonl-resume
+# mekanizmasından AYRI. 2026-09-17 netleştirmeleri (kullanıcı): (1) her session
+# kaydedildiği ANDAKİ GERÇEK model/permission-mode/effort/cli ile geri
+# açılmalı — roster.tsv'nin "bir sonraki başlatmada kullanılacak" varsayılanı
+# DEĞİL, `find_sessions()`'ın canlı proc cmdline'ından çıkardığı GERÇEK değer
+# (`Session.model`/`.permission_mode`/`.effort` zaten bunu okur, bkz.
+# discovery.py/providers/*.extract_info) — bu yüzden snapshot roster'a hiç
+# bakmadan doğrudan bu alanları saklıyor. (2) pencereler varsayılan AÇIK,
+# `hidden=True` istenirse tmux-arkaplanda (spawn_session'ın `hidden` param'ı,
+# 2026-09-17) — sonradan normal "pencere aç" (`_open_window`) ile telafi
+# edilebilir.
+
+
+def _snapshot_save(lang: str = "tr") -> dict:
+    """Şu an çalışan TÜM session'ları (registered olsun olmasın — "çalışanları
+    kaydet" literal) last_snapshot.json'a yaz. Hiç canlı session yoksa da boş
+    bir snapshot kaydedilir (kullanıcı bilerek "her şeyi kapattım" durumunu da
+    kaydedebilmeli — burada bir hata/engel yok)."""
+    live = find_sessions(measure_cpu=False)
+    entries = [
+        {"name": s.name, "cwd": s.cwd, "model": s.model, "permission_mode": s.permission_mode,
+         "effort": s.effort, "cli": s.cli}
+        for s in live
+    ]
+    data = save_snapshot(entries)
+    return {"ok": True, "saved_at": data["saved_at"], "count": len(entries)}
+
+
+def _snapshot_resume(hidden: bool = False, lang: str = "tr") -> dict:
+    """Kaydedilmiş snapshot'taki her isim için: zaten çalışıyorsa atla, roster'da
+    yoksa `_register_project` ile ekle, kapalı/emekliyse aktive et, sonra
+    snapshot'ın kendi (kayıt anındaki GERÇEK) model/permission_mode/effort/cli
+    alanlarıyla `_start` eder — [[add-session-to-fleet]]'in kanıtlanmış
+    deseni. `_run_layout` gibi (aynı "N session için tek POST'ta sırayla
+    işle" deseni) senkron — her `_start` zaten kendi `_wait_stable`'ıyla
+    doğal olarak aralanır, ayrı bir throttle eklemeye gerek yok."""
+    snap = load_snapshot()
+    entries = snap.get("sessions") or []
+    if not entries:
+        return _err(lang, "no_snapshot")
+    fleet = _fleet_status()
+    live_names = {s.name for s in find_sessions(measure_cpu=False)}
+    results = []
+    for entry in entries:
+        name = str(entry.get("name") or "").strip()
+        if not name:
+            continue
+        if name in live_names:
+            results.append({"name": name, "status": "already_running"})
+            continue
+        cwd = str(entry.get("cwd") or "")
+        cli = str(entry.get("cli") or "")
+        model = str(entry.get("model") or "")
+        info = fleet.get(name)
+        if info is None:
+            reg = _register_project(name, cwd=cwd, model=model, cli=cli, lang=lang)
+            if not reg.get("ok"):
+                results.append({"name": name, "status": "failed", "error": reg.get("error")})
+                continue
+        elif info["state"] != "active":
+            _toggle_comment(MODELS_TSV, name, want_active=True)
+            _toggle_comment(ROSTER_TSV, name, want_active=True)
+        r = _start(
+            name,
+            model=model,
+            permission_mode=str(entry.get("permission_mode") or ""),
+            effort=str(entry.get("effort") or ""),
+            cli=cli,
+            hidden=hidden,
+            lang=lang,
+        )
+        if r.get("ok"):
+            results.append({"name": name, "status": "started"})
+        else:
+            results.append({"name": name, "status": "failed", "error": r.get("error")})
+    return {
+        "ok": True,
+        "results": results,
+        "started": sum(1 for r in results if r["status"] == "started"),
+        "already_running": sum(1 for r in results if r["status"] == "already_running"),
+        "failed": sum(1 for r in results if r["status"] == "failed"),
+    }
+
+
 # ══ OpenAI-uyumlu katman (`/v1/*`) ══════════════════════════════════════════
 # TOBEDECIDED #21 (2026-09-09, kullanıcı: "insanlar bizim apiye değilde open
 # apiye alılıklar. boylece kendi max modelimizi openai ye uyumlu çalıştırma
@@ -2404,9 +2510,10 @@ class _Handler(BaseHTTPRequestHandler):
         Plan: notify SADECE do_POST'tan (aksiyon fonksiyonlarının İÇİNDEN
         değil) ve SADECE listelenen route'lardan (start/stop/retire/close/
         handover/compact/adopt/reactivate/new-chat/register/open-window/
-        settings/diag-restart-gt) — bu route'ların do_POST dispatch'i bu
-        helper'ı kullanır, geri kalanı (layout/term-input/term-key/
-        diag-spawn-test/diag-ask gibi) düz `_json()` kullanmaya devam eder."""
+        settings/diag-restart-gt/snapshot-save/snapshot-resume) — bu
+        route'ların do_POST dispatch'i bu helper'ı kullanır, geri kalanı
+        (layout/term-input/term-key/diag-spawn-test/diag-ask gibi) düz
+        `_json()` kullanmaya devam eder."""
         self._json(result, status=status)
         if result.get("ok"):
             web_ws.notify_status_changed()
@@ -2709,6 +2816,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
+                         "/api/snapshot/save", "/api/snapshot/resume",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
@@ -2879,6 +2987,14 @@ class _Handler(BaseHTTPRequestHandler):
                 "ok": True, "host_ok": result["ok"], "error": result.get("error"),
                 "tier": result.get("tier"),  # test_now()'un hysteresis-BYPASS eden taze probe'u
             })
+            return
+
+        if path == "/api/snapshot/save":
+            self._json_notify(_snapshot_save(lang=lang))
+            return
+
+        if path == "/api/snapshot/resume":
+            self._json_notify(_snapshot_resume(hidden=bool(data.get("hidden", False)), lang=lang))
             return
 
         if path == "/api/new-chat":

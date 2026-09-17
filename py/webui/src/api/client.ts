@@ -40,6 +40,8 @@ import type {
   Settings,
   SettingsResult,
   SimpleResult,
+  SnapshotResumeResult,
+  SnapshotSaveResult,
   StartResult,
   StatusPayload,
   StopResult,
@@ -378,3 +380,19 @@ export const apiOrchCancel = (runId: string): Promise<SimpleResult> =>
 
 export const apiOrchSaveDraft = (participants: OrchDraftParticipant[]): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/orch/draft", { participants });
+
+/** `_snapshot_save()` — o an çalışan TÜM session'ları (`name`/`cwd`/GERÇEK
+ * canlı `model`/`permission_mode`/`effort`/`cli`) `last_snapshot.json`'a
+ * yazar. Sonucun `count`/`saved_at`'i ANINDA gelir — güncel `snapshot` alanı
+ * ayrıca `_json_notify`'ın tetiklediği bir sonraki `/api/status` push'uyla
+ * da yenilenir. */
+export const apiSnapshotSave = (lang: Lang): Promise<SnapshotSaveResult> =>
+  apiPost<SnapshotSaveResult>("/api/snapshot/save", { lang });
+
+/** `_snapshot_resume()` — kaydedilmiş snapshot'taki her ismi (zaten
+ * çalışmıyorsa) kayıt ANINDAKİ gerçek parametreleriyle geri açar.
+ * `hidden=true` → pencere AÇMADAN tmux-arkaplanda başlatır (sonradan normal
+ * "pencere aç" ile telafi edilebilir); varsayılan `false` = pencereler açık
+ * (kullanıcı: "pencereler açılsın default ama istenirse gizli açılsın"). */
+export const apiSnapshotResume = (hidden: boolean, lang: Lang): Promise<SnapshotResumeResult> =>
+  apiPost<SnapshotResumeResult>("/api/snapshot/resume", { hidden, lang });

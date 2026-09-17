@@ -280,6 +280,16 @@ export interface Strings {
   historyWarnHint: string;
   layoutGridLabel: string;
   layoutGridHint: string;
+  snapshotLabel: string;
+  snapshotDesc: string;
+  snapshotNone: string;
+  snapshotInfo: (count: number, when: string) => string;
+  snapshotSaveBtn: string;
+  snapshotSaving: string;
+  snapshotResumeBtn: string;
+  snapshotResuming: string;
+  snapshotHiddenLabel: string;
+  snapshotResultSummary: (started: number, alreadyRunning: number, failed: number) => string;
   defaultModelLabel: string;
   providerBinLabel: string;
   providerBinDesc: string;
@@ -576,6 +586,17 @@ export const STRINGS: Record<Lang, Strings> = {
     historyWarnHint: "terminal scrollback bu satıra ulaşınca Terminal görünümündeki sayaç vurgulanır ve ana tablonun 'dikkat gerekenleri seç' butonu bu session'ı da seçer — tmux'un sabit 2000 satır limitine yaklaştığını gösterir (o limiti aşınca en eski satırlar silinir)",
     layoutGridLabel: "yerleşim yoğunluğu",
     layoutGridHint: "Yerleşim sekmesinin desktop başına açacağı pencere sayısı: 2 (yan yana iki yarı), 4 (2×2, varsayılan), 8 (4×2, yoğun)",
+    snapshotLabel: "Fleet snapshot",
+    snapshotDesc: "çalışan session'ları kaydet, sonra (ör. reboot sonrası) hepsini kayıt anındaki GERÇEK model/effort/izin-modu ile geri aç",
+    snapshotNone: "henüz kaydedilmiş bir snapshot yok",
+    snapshotInfo: (count, when) => `Son snapshot: ${when}, ${count} session`,
+    snapshotSaveBtn: "Snapshot kaydet",
+    snapshotSaving: "Kaydediliyor…",
+    snapshotResumeBtn: "Snapshot'ı geri yükle",
+    snapshotResuming: "Geri yükleniyor…",
+    snapshotHiddenLabel: "Pencere açmadan (gizli) başlat",
+    snapshotResultSummary: (started, alreadyRunning, failed) =>
+      `${started} başlatıldı, ${alreadyRunning} zaten çalışıyordu, ${failed} başarısız`,
     defaultModelLabel: "yeni/resume için varsayılan model (CLI başına)",
     providerBinLabel: "CLI binary yolu override (opsiyonel)",
     providerBinDesc:
@@ -887,6 +908,17 @@ export const STRINGS: Record<Lang, Strings> = {
     historyWarnHint: "once terminal scrollback reaches this many lines, the Terminal view's counter is highlighted and the 'select needs attention' bulk button also picks up this session — flags it as approaching tmux's fixed 2000-line cap (past which the oldest lines get dropped)",
     layoutGridLabel: "layout density",
     layoutGridHint: "how many windows the Layout tab opens per desktop: 2 (side-by-side halves), 4 (2×2, default), 8 (4×2, dense)",
+    snapshotLabel: "Fleet snapshot",
+    snapshotDesc: "save the running sessions, then (e.g. after a reboot) reopen all of them with the EXACT model/effort/permission-mode they were running with",
+    snapshotNone: "no snapshot saved yet",
+    snapshotInfo: (count, when) => `Last snapshot: ${when}, ${count} session(s)`,
+    snapshotSaveBtn: "Save snapshot",
+    snapshotSaving: "Saving…",
+    snapshotResumeBtn: "Resume snapshot",
+    snapshotResuming: "Resuming…",
+    snapshotHiddenLabel: "Start hidden (no window)",
+    snapshotResultSummary: (started, alreadyRunning, failed) =>
+      `${started} started, ${alreadyRunning} already running, ${failed} failed`,
     defaultModelLabel: "default model for new/resume (per CLI)",
     providerBinLabel: "CLI binary path override (optional)",
     providerBinDesc:

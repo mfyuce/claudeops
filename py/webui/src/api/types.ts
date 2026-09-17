@@ -224,6 +224,12 @@ export interface StatusPayload {
    * merged across hosts, unlike `sessions`/`hosts` above — `commands/
    * web_orch.py` refuses any `host != "local"` participant). */
   orch: OrchState;
+  /** 2026-09-17, "son snapshot" — `last_snapshot.json`'ın meta özeti (tam
+   * session listesi DEĞİL, sadece ne-zaman/kaç-session — Settings panelinin
+   * "Son snapshot: X, N session" gösterimi için). `orch` gibi local-only,
+   * `web_hosts.merge_status`'a hiç girmez (bu makinenin KENDİ fleet'inin
+   * anlık görüntüsü, uzak host'unkiyle karışmaz). */
+  snapshot: { saved_at: number | null; count: number };
 }
 
 // ── TOBEDECIDED#15 Phase 1 — workers-only orchestration ─────────────────
@@ -472,4 +478,16 @@ export type LayoutResult = ApiResult<{
   skipped: number;
   assignments: { name: string; ws: number; x: number; y: number }[];
   applied: boolean;
+}>;
+
+/** `_snapshot_save()`. */
+export type SnapshotSaveResult = ApiResult<{ saved_at: number; count: number }>;
+/** `_snapshot_resume()` — one row per snapshot entry; `error` only present
+ * when `status === "failed"` (register or start failed for that name — the
+ * rest of the batch still ran, this is NOT an all-or-nothing operation). */
+export type SnapshotResumeResult = ApiResult<{
+  results: { name: string; status: "started" | "already_running" | "failed"; error?: string }[];
+  started: number;
+  already_running: number;
+  failed: number;
 }>;

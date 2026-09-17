@@ -26,6 +26,7 @@ import { useStatusContext } from "../state/StatusContext";
 import type { Theme, UsageResult } from "../api/types";
 import { applyTheme } from "../theme";
 import { HostsSection } from "./HostsSection";
+import { SnapshotSection } from "./SnapshotSection";
 
 type SettingsPatch = {
   theme?: Theme;
@@ -270,6 +271,7 @@ export function SettingsTab() {
             ))}
           </div>
           {error && <pre className="layout-result">✗ {error}</pre>}
+          <SnapshotSection />
           <HostsSection />
         </>
       )}

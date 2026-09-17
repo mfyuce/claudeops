@@ -94,6 +94,7 @@ def spawn_session(
     dry_run: bool = False,
     cli: str = "claude",
     mcp_server: Optional[McpServerSpec] = None,
+    hidden: bool = False,
 ) -> str:
     """Session'ı gnome-terminal ile aç (hangi CLI: `cli` — provider registry'den çözülür).
 
@@ -106,6 +107,11 @@ def spawn_session(
     yok, `mcp_launch_args()` boş döner — bkz. `mcp_setup_command()`). VARSAYILAN
     None = bugünkü davranış birebir (extra_args boş liste, hiçbir mevcut çağıran
     dokunmadı).
+    hidden=True → gnome-terminal HİÇ denenmez, `gnome-terminal binary yok`
+    dalıyla AYNI zaten-canlı-doğrulanmış headless yola (`tmux_spawn_direct`)
+    düşer (2026-09-17, "resume snapshot" için — pencere açmadan tmux-arkaplanda
+    başlat). Sonradan `open_window()` ile normal şekilde pencere bağlanabilir.
+    VARSAYILAN False = bugünkü davranış birebir, hiçbir mevcut çağıran etkilenmez.
 
     Returns: "resume:<id[:8]>", "new", veya "[dry-run] ..." dry_run modunda.
     """
@@ -157,11 +163,14 @@ def spawn_session(
     # olduğu gibi web.py._start()'ın _wait_stable() ile yaptığı proc-varlığı
     # kontrolünden belirlenir, bu fonksiyonun dönüş değeri hiçbir zaman "kesin
     # başarılı" garantisi vermedi.
-    if shutil.which("gnome-terminal") is None:
-        diag_log("spawn_no_gnome_terminal", name=name, cwd=cwd, tmux=tmux_available())
+    no_gt = shutil.which("gnome-terminal") is None
+    if hidden or no_gt:
+        if no_gt:
+            diag_log("spawn_no_gnome_terminal", name=name, cwd=cwd, tmux=tmux_available())
         if tmux_available():
             ok = tmux_spawn_direct(name, cwd, inner, env)
-            diag_log("spawn_direct_headless", name=name, cwd=cwd, ok=ok)
+            diag_log("spawn_hidden" if hidden and not no_gt else "spawn_direct_headless",
+                      name=name, cwd=cwd, ok=ok)
         return kind
 
     # tmux-backed going forward (spawn is the ONLY launch path, so the tmux server —
