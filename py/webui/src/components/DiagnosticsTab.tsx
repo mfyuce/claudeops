@@ -17,6 +17,16 @@
  * tracks its OWN busy/disabled state independently (matches
  * `btn.disabled`/`btn.textContent` being per-button in the original).
  * `#diag-ask-result` and the log tail are genuinely separate state.
+ *
+ * 2026-09-17: split into 3 sub-tabs (user: "settingsve diagnostics i
+ * tablara veya parcalara bolelim") - "status" (handover-msg copy + web/gt
+ * uptime + test/restart, i.e. "check/fix the panel's own health"), "ask"
+ * (start a diagnostic CLI session), "log" (the raw diag.log tail). Each
+ * was already visually separate; this just stops them all sharing one
+ * long scroll. `logLines`/`loadLog` stay mount-effect-driven regardless of
+ * which sub-tab is active (matches this file's existing "runs once per
+ * tab-entry" reasoning above) rather than only fetching once "log" is
+ * selected, so the log is already warm if the user switches to it.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -24,6 +34,9 @@ import { apiDiagAsk, apiDiagRestartGt, apiDiagSpawnTest, ApiError, getDiagLog } 
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
+import { TabHint } from "./shared/TabHint";
+
+type DiagSubTab = "status" | "ask" | "log";
 
 /** Original: `fmtUptime(sec)` (web.py ~2577-2584). */
 function fmtUptime(sec: number | null | undefined, unknownLabel: string): string {
@@ -49,6 +62,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
 
+  const [subTab, setSubTab] = useState<DiagSubTab>("status");
   const [testBusy, setTestBusy] = useState(false);
   const [restartBusy, setRestartBusy] = useState(false);
   const [diagResult, setDiagResult] = useState("");
@@ -162,64 +176,87 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
 
   return (
     <>
-      <div className="opts-hint">{t.handoverMsgTitle}</div>
-      <div className="opts-hint">{t.handoverMsgHint}</div>
-      <pre className="layout-result" style={{ maxHeight: "12rem", overflowY: "auto", border: "1px solid var(--border)", borderRadius: "4px", padding: ".5rem" }}>
-        {data.handover_msg[lang]}
-      </pre>
-      <div className="opts" style={{ marginBottom: ".6rem" }}>
-        <button type="button" onClick={() => void handleCopyHandoverMsg()}>
-          {handoverCopyLabel ?? t.termCopyBtn}
+      <div className="tabs">
+        <button type="button" className={subTab === "status" ? "active" : ""} onClick={() => setSubTab("status")}>
+          {t.tabDiagStatus}
+        </button>
+        <button type="button" className={subTab === "ask" ? "active" : ""} onClick={() => setSubTab("ask")}>
+          {t.tabDiagAsk}
+        </button>
+        <button type="button" className={subTab === "log" ? "active" : ""} onClick={() => setSubTab("log")}>
+          {t.tabDiagLog}
         </button>
       </div>
-      <div className="opts-hint">{t.diagDesc}</div>
-      <div className="opts" id="diagPanel">
-        <div style={{ flexBasis: "100%" }}>
-          {webLine}
-          <br />
-          {gtLine}
-        </div>
-        {windowless.length > 0 && (
-          <div className="opts-hint" style={{ color: "var(--amber)", flexBasis: "100%" }}>
-            {t.diagWindowless(windowless.join(", "))}
+      {subTab === "status" && (
+        <>
+          <div className="opts-hint">{t.handoverMsgTitle}</div>
+          <TabHint>{t.handoverMsgHint}</TabHint>
+          <pre className="layout-result" style={{ maxHeight: "12rem", overflowY: "auto", border: "1px solid var(--border)", borderRadius: "4px", padding: ".5rem" }}>
+            {data.handover_msg[lang]}
+          </pre>
+          <div className="opts" style={{ marginBottom: ".6rem" }}>
+            <button type="button" onClick={() => void handleCopyHandoverMsg()}>
+              {handoverCopyLabel ?? t.termCopyBtn}
+            </button>
           </div>
-        )}
-        <button type="button" className="go" disabled={testBusy} onClick={() => void handleTest()}>
-          {testBusy ? t.diagTesting : t.diagTestBtn}
-        </button>
-        <button type="button" className="stop" disabled={restartBusy} onClick={() => void handleRestartGt()}>
-          {restartBusy ? t.diagRestarting : t.diagRestartBtn}
-        </button>
-      </div>
-      <pre className="layout-result">{diagResult}</pre>
-      <div className="opts" id="diagAskPanel">
-        <label>
-          {t.diagAskCliLabel}
-          <select value={effectiveAskCli} onChange={(e) => setAskCli(e.target.value)}>
-            {cliList.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={{ flexBasis: "100%" }}>
-          {t.diagAskQuestionLabel}
-          <input
-            type="text"
-            placeholder={t.diagAskQuestionPlaceholder}
-            value={askQuestion}
-            onChange={(e) => setAskQuestion(e.target.value)}
-          />
-        </label>
-        <button type="button" className="go" disabled={askBusy} onClick={() => void handleAsk()}>
-          {askBusy ? t.diagAsking : t.diagAskBtn}
-        </button>
-      </div>
-      <pre className="layout-result">{askResult}</pre>
-      <div className="opts-hint">{t.diagLogTitle}</div>
-      <pre className="layout-result">{logLines === null ? t.diagLogLoading : logLines.length ? logLines.join("\n") : t.empty}</pre>
-      <div className="opts-hint">{t.diagRefreshHint}</div>
+          <div className="opts" id="diagPanel">
+            <TabHint>{t.diagDesc}</TabHint>
+            <div style={{ flexBasis: "100%" }}>
+              {webLine}
+              <br />
+              {gtLine}
+            </div>
+            {windowless.length > 0 && (
+              <div className="opts-hint" style={{ color: "var(--amber)", flexBasis: "100%" }}>
+                {t.diagWindowless(windowless.join(", "))}
+              </div>
+            )}
+            <button type="button" className="go" disabled={testBusy} onClick={() => void handleTest()}>
+              {testBusy ? t.diagTesting : t.diagTestBtn}
+            </button>
+            <button type="button" className="stop" disabled={restartBusy} onClick={() => void handleRestartGt()}>
+              {restartBusy ? t.diagRestarting : t.diagRestartBtn}
+            </button>
+          </div>
+          <pre className="layout-result">{diagResult}</pre>
+        </>
+      )}
+      {subTab === "ask" && (
+        <>
+          <div className="opts" id="diagAskPanel">
+            <label>
+              {t.diagAskCliLabel}
+              <select value={effectiveAskCli} onChange={(e) => setAskCli(e.target.value)}>
+                {cliList.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ flexBasis: "100%" }}>
+              {t.diagAskQuestionLabel}
+              <input
+                type="text"
+                placeholder={t.diagAskQuestionPlaceholder}
+                value={askQuestion}
+                onChange={(e) => setAskQuestion(e.target.value)}
+              />
+            </label>
+            <button type="button" className="go" disabled={askBusy} onClick={() => void handleAsk()}>
+              {askBusy ? t.diagAsking : t.diagAskBtn}
+            </button>
+          </div>
+          <pre className="layout-result">{askResult}</pre>
+        </>
+      )}
+      {subTab === "log" && (
+        <>
+          <div className="opts-hint">{t.diagLogTitle}</div>
+          <pre className="layout-result">{logLines === null ? t.diagLogLoading : logLines.length ? logLines.join("\n") : t.empty}</pre>
+          <div className="opts-hint">{t.diagRefreshHint}</div>
+        </>
+      )}
     </>
   );
 }

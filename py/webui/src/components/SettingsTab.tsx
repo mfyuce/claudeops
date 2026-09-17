@@ -16,6 +16,15 @@
  * checking usage has a real side effect (see `UsagePanel`'s own comment) —
  * mixing it into the always-visible general controls would make that easy
  * to trigger by accident while just glancing at theme/model settings.
+ *
+ * 2026-09-17: "general" split further into "general"/"models"/"fleet" (user:
+ * "settingsve diagnostics i tablara veya parcalara bolelim" — one panel had
+ * grown to 7 unrelated topics: theme/handover-effort/history-warn/layout-
+ * grid, default-model/provider-bin (per CLI), and Fleet Snapshot/Hosts).
+ * `error` moved above the sub-tab switch (was inline right before
+ * `<SnapshotSection />`) since `save()` is shared by controls now split
+ * across "general" and "models" - a failure needs to stay visible
+ * regardless of which of those two is active when it happens.
  */
 
 import { useState } from "react";
@@ -27,6 +36,7 @@ import type { Theme, UsageResult } from "../api/types";
 import { applyTheme } from "../theme";
 import { HostsSection } from "./HostsSection";
 import { SnapshotSection } from "./SnapshotSection";
+import { TabHint } from "./shared/TabHint";
 
 type SettingsPatch = {
   theme?: Theme;
@@ -37,7 +47,7 @@ type SettingsPatch = {
   layout_grid?: number;
 };
 
-type SettingsSubTab = "general" | "usage";
+type SettingsSubTab = "general" | "models" | "fleet" | "usage";
 
 /** Renders one provider's row for the Usage sub-tab — `entries` (when
  * `available`) is provider-shaped free text (`UsageEntry.label`/`percent`/
@@ -109,9 +119,7 @@ function UsagePanel() {
 
   return (
     <div className="opts" id="settingsUsagePanel">
-      <div className="warn-banner" style={{ flexBasis: "100%" }}>
-        {t.usageWarning}
-      </div>
+      <TabHint warn>{t.usageWarning}</TabHint>
       <button type="button" disabled={state.kind === "loading"} onClick={() => void check()}>
         {state.kind === "loading" ? t.usageChecking : t.usageCheckBtn}
       </button>
@@ -167,71 +175,77 @@ export function SettingsTab() {
 
   return (
     <>
-      <div className="warn-banner">{t.settingsSingleUserWarning}</div>
+      <TabHint warn>{t.settingsSingleUserWarning}</TabHint>
       <div className="tabs">
         <button type="button" className={subTab === "general" ? "active" : ""} onClick={() => setSubTab("general")}>
           {t.tabSettingsGeneral}
+        </button>
+        <button type="button" className={subTab === "models" ? "active" : ""} onClick={() => setSubTab("models")}>
+          {t.tabSettingsModels}
+        </button>
+        <button type="button" className={subTab === "fleet" ? "active" : ""} onClick={() => setSubTab("fleet")}>
+          {t.tabSettingsFleet}
         </button>
         <button type="button" className={subTab === "usage" ? "active" : ""} onClick={() => setSubTab("usage")}>
           {t.tabSettingsUsage}
         </button>
       </div>
-      {subTab === "usage" ? (
-        <UsagePanel />
-      ) : (
+      {error && <pre className="layout-result">✗ {error}</pre>}
+      {subTab === "usage" && <UsagePanel />}
+      {subTab === "general" && (
+        <div className="opts" id="settingsPanel">
+          <TabHint>{t.settingsDesc}</TabHint>
+          <label>
+            {t.themeLabel}
+            <select value={settings.theme} onChange={(e) => void save({ theme: e.target.value as Theme })}>
+              <option value="system">{t.themeSystem}</option>
+              <option value="light">{t.themeLight}</option>
+              <option value="dark">{t.themeDark}</option>
+            </select>
+          </label>
+          <label title={t.handoverEffortHint}>
+            {t.handoverEffortLabel}
+            <select
+              value={settings.handover_effort}
+              onChange={(e) => void save({ handover_effort: e.target.value })}
+            >
+              <option value="">{t.settingsAuto}</option>
+              {effortOptions.map((lvl) => (
+                <option key={lvl} value={lvl}>
+                  {lvl}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label title={t.historyWarnHint}>
+            {t.historyWarnLabel}
+            <input
+              type="number"
+              min={1}
+              value={historyWarnDraft ?? String(settings.history_warn_at)}
+              onChange={(e) => setHistoryWarnDraft(e.target.value)}
+              onBlur={(e) => {
+                const n = Number.parseInt(e.target.value, 10);
+                setHistoryWarnDraft(null);
+                if (Number.isFinite(n) && n > 0) void save({ history_warn_at: n });
+              }}
+            />
+          </label>
+          <label title={t.layoutGridHint}>
+            {t.layoutGridLabel}
+            <select
+              value={settings.layout_grid}
+              onChange={(e) => void save({ layout_grid: Number(e.target.value) })}
+            >
+              <option value={2}>2 (2×1)</option>
+              <option value={4}>4 (2×2)</option>
+              <option value={8}>8 (4×2)</option>
+            </select>
+          </label>
+        </div>
+      )}
+      {subTab === "models" && (
         <>
-          <div className="opts" id="settingsPanel">
-            <span className="opts-hint" style={{ flexBasis: "100%" }}>
-              {t.settingsDesc}
-            </span>
-            <label>
-              {t.themeLabel}
-              <select value={settings.theme} onChange={(e) => void save({ theme: e.target.value as Theme })}>
-                <option value="system">{t.themeSystem}</option>
-                <option value="light">{t.themeLight}</option>
-                <option value="dark">{t.themeDark}</option>
-              </select>
-            </label>
-            <label title={t.handoverEffortHint}>
-              {t.handoverEffortLabel}
-              <select
-                value={settings.handover_effort}
-                onChange={(e) => void save({ handover_effort: e.target.value })}
-              >
-                <option value="">{t.settingsAuto}</option>
-                {effortOptions.map((lvl) => (
-                  <option key={lvl} value={lvl}>
-                    {lvl}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label title={t.historyWarnHint}>
-              {t.historyWarnLabel}
-              <input
-                type="number"
-                min={1}
-                value={historyWarnDraft ?? String(settings.history_warn_at)}
-                onChange={(e) => setHistoryWarnDraft(e.target.value)}
-                onBlur={(e) => {
-                  const n = Number.parseInt(e.target.value, 10);
-                  setHistoryWarnDraft(null);
-                  if (Number.isFinite(n) && n > 0) void save({ history_warn_at: n });
-                }}
-              />
-            </label>
-            <label title={t.layoutGridHint}>
-              {t.layoutGridLabel}
-              <select
-                value={settings.layout_grid}
-                onChange={(e) => void save({ layout_grid: Number(e.target.value) })}
-              >
-                <option value={2}>2 (2×1)</option>
-                <option value={4}>4 (2×2)</option>
-                <option value={8}>8 (4×2)</option>
-              </select>
-            </label>
-          </div>
           <div className="opts" id="settingsModelPanel">
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               {t.defaultModelLabel}
@@ -270,7 +284,10 @@ export function SettingsTab() {
               </label>
             ))}
           </div>
-          {error && <pre className="layout-result">✗ {error}</pre>}
+        </>
+      )}
+      {subTab === "fleet" && (
+        <>
           <SnapshotSection />
           <HostsSection />
         </>

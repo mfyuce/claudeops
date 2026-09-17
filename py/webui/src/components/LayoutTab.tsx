@@ -24,6 +24,7 @@ import { apiLayout, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
+import { TabHint } from "./shared/TabHint";
 
 export function LayoutTab() {
   const { t, lang } = useLang();
@@ -73,7 +74,7 @@ export function LayoutTab() {
             {missing.join(" ")}
           </span>
         ) : (
-          <span className="opts-hint">({t.layoutDesc})</span>
+          <TabHint>{t.layoutDesc}</TabHint>
         )}
         <label>
           {t.layoutPinLabel}

@@ -294,8 +294,14 @@ export interface Strings {
   providerBinLabel: string;
   providerBinDesc: string;
   providerBinPlaceholder: string;
+  tabHintToggle: string;
   tabSettingsGeneral: string;
+  tabSettingsModels: string;
+  tabSettingsFleet: string;
   tabSettingsUsage: string;
+  tabDiagStatus: string;
+  tabDiagAsk: string;
+  tabDiagLog: string;
   usageWarning: string;
   usageCheckBtn: string;
   usageChecking: string;
@@ -602,8 +608,14 @@ export const STRINGS: Record<Lang, Strings> = {
     providerBinDesc:
       "Bir CLI normal PATH'te bulunamıyorsa (ör. proje-yerel bir kurulum) buraya tam yolunu yazın — boş bırakılırsa normal PATH araması kullanılır. Bu makineye özeldir, paylaşımlı bir PATH konumuna dokunmaz.",
     providerBinPlaceholder: "/tam/yol/binary",
+    tabHintToggle: "Açıklamayı göster/gizle",
     tabSettingsGeneral: "genel",
+    tabSettingsModels: "model",
+    tabSettingsFleet: "fleet",
     tabSettingsUsage: "kullanım",
+    tabDiagStatus: "durum",
+    tabDiagAsk: "sor",
+    tabDiagLog: "log",
     usageWarning:
       "⚠ Kontrol, o CLI'nin ÇALIŞAN bir session'ına gerçekten `/usage` yazıp ekranını anlık değiştirir (kimse izlemiyorsa öncelik verilir) — otomatik/sürekli çalışmaz, sadece bastığında.",
     usageCheckBtn: "Kullanımı kontrol et",
@@ -924,8 +936,14 @@ export const STRINGS: Record<Lang, Strings> = {
     providerBinDesc:
       "If a CLI isn't found on the normal PATH (e.g. a project-local install), enter its full path here — leave blank to use normal PATH lookup. This is machine-local, it never touches a shared PATH location.",
     providerBinPlaceholder: "/full/path/to/binary",
+    tabHintToggle: "Show/hide description",
     tabSettingsGeneral: "general",
+    tabSettingsModels: "models",
+    tabSettingsFleet: "fleet",
     tabSettingsUsage: "usage",
+    tabDiagStatus: "status",
+    tabDiagAsk: "ask",
+    tabDiagLog: "log",
     usageWarning:
       "⚠ Checking actually sends `/usage` to a RUNNING session of that CLI, briefly changing its screen (one nobody's watching is preferred) — not automatic/continuous, only when you press it.",
     usageCheckBtn: "Check usage",
