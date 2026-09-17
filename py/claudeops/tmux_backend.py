@@ -35,6 +35,25 @@ def _base_argv() -> List[str]:
     return ["tmux", "-L", TMUX_SOCKET]
 
 
+def _exact(name: str) -> str:
+    """Force tmux's `-t` target to EXACT-match `name`, never its unique-prefix
+    fallback. Without this, a bare name that no longer has a live session
+    (e.g. the pane's process was just killed and remain-on-exit=off already
+    tore the session down) makes tmux fall back to matching any session whose
+    name STARTS WITH it — exactly what `_generate_new_chat_name`'s `_1`/`_2`
+    collision suffixes produce (`dccl20260917` + `dccl20260917_1`). 2026-09-17
+    live incident: stopping the shorter-named session also killed the longer
+    one via this fallback in `kill-session -t <name>`.
+
+    `=name` alone is enough for session-target commands (`has-session`,
+    `kill-session`) but pane-target commands (`capture-pane`, `send-keys`,
+    `list-panes`, `list-clients`, `display-message`) parse `-t` as
+    `session:window.pane` and fail outright on a bare `=name` ("can't find
+    pane") — a trailing `:` (session, default window/pane) resolves on both,
+    confirmed against disposable tmux sessions for every call site below."""
+    return f"={name}:"
+
+
 def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
     """Bash-fragment (NOT executed here) spawn.py splices into its gnome-terminal
     command: `tmux -L cops -f <conf> new-session -A -s NAME -c CWD -x 100 -y 30 INNER`.
@@ -83,7 +102,7 @@ def tmux_spawn_direct(name: str, cwd: str, inner: str, env: dict) -> bool:
 
 def tmux_has_session(name: str) -> bool:
     try:
-        r = subprocess.run(_base_argv() + ["has-session", "-t", name],
+        r = subprocess.run(_base_argv() + ["has-session", "-t", _exact(name)],
                             capture_output=True, timeout=_TIMEOUT)
         return r.returncode == 0
     except Exception:
@@ -93,7 +112,7 @@ def tmux_has_session(name: str) -> bool:
 def tmux_capture(name: str, lines: int = 2000) -> Optional[str]:
     try:
         r = subprocess.run(
-            _base_argv() + ["capture-pane", "-t", name, "-e", "-p", "-S", f"-{lines}"],
+            _base_argv() + ["capture-pane", "-t", _exact(name), "-e", "-p", "-S", f"-{lines}"],
             capture_output=True, text=True, timeout=_TIMEOUT,
         )
         if r.returncode != 0:
@@ -135,13 +154,13 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
         # ile başlayan literal metin ("-help", "--foo", markdown "- item",
         # unified diff "--- a/file") tmux'un KENDİ `send-keys` bayrağı sanılıp
         # `unknown option` ile reddediliyordu, girdi pane'e HİÇ ulaşmıyordu.
-        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", name, "-l", "--", text],
+        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "-l", "--", text],
                              capture_output=True, timeout=_TIMEOUT)
         if r1.returncode != 0:
             return False
         if settle_delay > 0:
             time.sleep(settle_delay)
-        r2 = subprocess.run(_base_argv() + ["send-keys", "-t", name, "Enter"],
+        r2 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "Enter"],
                              capture_output=True, timeout=_TIMEOUT)
         return r2.returncode == 0
     except Exception:
@@ -157,7 +176,7 @@ def tmux_send_special_key(name: str, key: str) -> bool:
     if key not in ALLOWED_SPECIAL_KEYS:
         return False
     try:
-        r = subprocess.run(_base_argv() + ["send-keys", "-t", name, key],
+        r = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), key],
                             capture_output=True, timeout=_TIMEOUT)
         return r.returncode == 0
     except Exception:
@@ -194,7 +213,7 @@ def tmux_send_raw(name: str, data: str) -> bool:
     try:
         for i in range(0, len(data), _RAW_CHUNK_CHARS):
             chunk = data[i:i + _RAW_CHUNK_CHARS]
-            r = subprocess.run(_base_argv() + ["send-keys", "-t", name, "-l", "--", chunk],
+            r = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "-l", "--", chunk],
                                 capture_output=True, timeout=_TIMEOUT)
             if r.returncode != 0:
                 return False
@@ -214,7 +233,7 @@ def tmux_client_count(name: str) -> Optional[int]:
     TUI'si başlığı eski bir adda bıraktığında ([[stale-tui-title-cross-suffix-
     resume]]) eşleşme kaçıyor → penceresi OLAN session "penceresiz" görünüyor."""
     try:
-        r = subprocess.run(_base_argv() + ["list-clients", "-t", name, "-F", "#{client_tty}"],
+        r = subprocess.run(_base_argv() + ["list-clients", "-t", _exact(name), "-F", "#{client_tty}"],
                             capture_output=True, text=True, timeout=_TIMEOUT)
         if r.returncode != 0:
             # session yoksa tmux da hata döner — "bilinmiyor" demek doğru
@@ -246,7 +265,7 @@ def tmux_pane_size(name: str) -> Optional[tuple]:
     poll'lanıyor) ikisini birden bedavaya alır."""
     try:
         r = subprocess.run(
-            _base_argv() + ["list-panes", "-t", name, "-F", "#{pane_width} #{pane_height} #{history_size}"],
+            _base_argv() + ["list-panes", "-t", _exact(name), "-F", "#{pane_width} #{pane_height} #{history_size}"],
             capture_output=True, text=True, timeout=_TIMEOUT,
         )
         if r.returncode != 0 or not r.stdout.strip():
@@ -269,7 +288,7 @@ def pane_is_masked_input(name: str) -> Optional[bool]:
     izole bir tmux pane'inde ayrı ayrı doğrulandı."""
     try:
         r = subprocess.run(
-            _base_argv() + ["display-message", "-p", "-t", name, "#{pane_tty}"],
+            _base_argv() + ["display-message", "-p", "-t", _exact(name), "#{pane_tty}"],
             capture_output=True, text=True, timeout=_TIMEOUT,
         )
         if r.returncode != 0:
@@ -289,7 +308,7 @@ def pane_is_masked_input(name: str) -> Optional[bool]:
 
 def tmux_kill_session(name: str) -> None:
     try:
-        subprocess.run(_base_argv() + ["kill-session", "-t", name],
+        subprocess.run(_base_argv() + ["kill-session", "-t", _exact(name)],
                         capture_output=True, timeout=_TIMEOUT)
     except Exception:
         pass
