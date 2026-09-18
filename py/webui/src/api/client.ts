@@ -33,6 +33,7 @@ import type {
   GetOrchRunResult,
   GetOrchRunsResult,
   HandoverResult,
+  InstancesResult,
   LayoutResult,
   NewChatResult,
   OrchDraftParticipant,
@@ -112,6 +113,9 @@ export const getHosts = (): Promise<GetHostsResult> => apiGet<GetHostsResult>("/
 function hostQS(host?: string): string {
   return host && host !== "local" ? `&host=${encodeURIComponent(host)}` : "";
 }
+
+export const getInstances = (lang: Lang, host?: string): Promise<InstancesResult> =>
+  apiGet<InstancesResult>(`/api/instances?lang=${lang}${hostQS(host)}`);
 
 export const getTermOutput = (name: string, lang: Lang, host?: string): Promise<TermOutputResult> =>
   apiGet<TermOutputResult>(`/api/term/output?name=${encodeURIComponent(name)}&lang=${lang}${hostQS(host)}`);
@@ -193,6 +197,9 @@ export const apiClose = (p: NamePayload): Promise<SimpleResult> => apiPost<Simpl
 export const apiHandover = (p: NamePayload): Promise<HandoverResult> => apiPost<HandoverResult>("/api/handover", p);
 export const apiTermOpenWindow = (p: NamePayload): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/term/open-window", p);
+/** Hides the instance from History (its name stays reserved); conversation files are untouched. */
+export const apiForgetInstance = (p: NamePayload): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/instances/forget", p);
 
 export interface NewChatPayload {
   base: string;

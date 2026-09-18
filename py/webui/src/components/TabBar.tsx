@@ -35,6 +35,8 @@ export function TabBar({ active, onSelect, search }: TabBarProps) {
     ["registered", `${t.tabRegistered} (${registered})`],
     ["disabled", `${t.tabDisabled} (${disabled})`],
     ["retired", `${t.tabRetired} (${retired})`],
+    // No count: history comes from its own endpoint, not the status payload.
+    ["history", t.tabHistory],
     // Running indicator (not a count), same convention as "desktop" below —
     // TOBEDECIDED#15 Phase 1 allows only one active run fleet-wide.
     ["team", data.orch.active ? `${t.tabTeam} ●` : t.tabTeam],

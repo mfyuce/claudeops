@@ -55,6 +55,28 @@ export interface SessionInfo {
    * when the session isn't running (or the CLI takes no such flag). */
   live_model: string | null;
   live_effort: string | null;
+  /** An instances.json instance (a dated chat spawned from a blueprint), not a
+   * roster row. Optional: a remote host on older code doesn't send it. */
+  instance?: boolean;
+  /** Blueprint this row belongs to — its own name for a blueprint row, the
+   * parent for an instance, `null` for diag/foreign sessions. */
+  blueprint?: string | null;
+}
+
+/** One `GET /api/instances` row (History tab). */
+export interface InstanceRecord {
+  name: string;
+  host: string;
+  blueprint: string | null;
+  cwd: string;
+  cli: string;
+  model: string;
+  permission_mode: string;
+  effort: string;
+  created_at: number | null;
+  last_started_at: number | null;
+  origin: string;
+  running: boolean;
 }
 
 export interface RosterEntry {
@@ -377,6 +399,8 @@ export type EditResult = ApiResult<{ name: string; warnings: string[] }>;
 /** `_register_project()` / `_retire()` / `_close_project()` / `_term_input()` /
  * `_term_key()` / `_open_window()` — bare `{ok: true}` on success. */
 export type SimpleResult = ApiResult;
+/** `_instances_list()`. */
+export type InstancesResult = ApiResult<{ instances: InstanceRecord[] }>;
 /** `_handover()`. */
 export type HandoverResult = ApiResult<{ kind?: string }>;
 /** `_compact()` — same shape as `_handover()` (kill + resume). */

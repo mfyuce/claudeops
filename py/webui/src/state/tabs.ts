@@ -10,6 +10,7 @@ export type TabKey =
   | "registered"
   | "disabled"
   | "retired"
+  | "history"
   | "team"
   | "layout"
   | "desktop"
@@ -24,6 +25,7 @@ const ALL_TABS: readonly TabKey[] = [
   "registered",
   "disabled",
   "retired",
+  "history",
   "team",
   "layout",
   "desktop",

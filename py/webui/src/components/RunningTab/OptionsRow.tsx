@@ -200,7 +200,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
               </label>
             ))}
           </div>
-          <span className="opts-hint">{mode === "newchat" ? t.autoNameHint(session.name, todayStr()) : ""}</span>
+          <span className="opts-hint">{mode === "newchat" ? t.autoNameHint((session.instance && session.blueprint) || session.name, todayStr()) : ""}</span>
           <label>
             {t.cliLabel}
             <select value={cli} onChange={(e) => handleCliChange(e.target.value)}>

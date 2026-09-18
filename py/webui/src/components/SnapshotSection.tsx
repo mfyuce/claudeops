@@ -27,7 +27,7 @@ export function SnapshotSection() {
   const [saving, setSaving] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [hidden, setHidden] = useState(false);
-  const [result, setResult] = useState<SnapshotResumeResult | null>(null);
+  const [result, setResult] = useState<Extract<SnapshotResumeResult, { ok: true }> | null>(null);
   const [error, setError] = useState("");
 
   if (!data) return null;

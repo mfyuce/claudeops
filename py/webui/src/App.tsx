@@ -22,6 +22,7 @@ import { Banners } from "./components/Banners";
 import { DesktopTab } from "./components/DesktopTab";
 import { DiagnosticsTab } from "./components/DiagnosticsTab";
 import { GroupTable } from "./components/GroupTable";
+import { HistoryTab } from "./components/HistoryTab";
 import { LayoutTab } from "./components/LayoutTab";
 import { OrchTab } from "./components/OrchTab/OrchTab";
 import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
@@ -195,6 +196,7 @@ function AppShell() {
         )}
         {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} onView={onViewSession} />}
         {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} onView={onViewSession} />}
+        {data && activeTab === "history" && <HistoryTab search={search} onView={onViewSession} />}
         {data && activeTab === "team" && <OrchTab selection={selection} />}
         {data && activeTab === "layout" && <LayoutTab />}
         {data && activeTab === "desktop" && <DesktopTab />}

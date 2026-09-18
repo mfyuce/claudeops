@@ -83,6 +83,11 @@ export function SessionRow({
         </td>
         <td>
           {session.name}
+          {session.instance && session.blueprint && (
+            <span className="cli-badge" style={{ whiteSpace: "nowrap" }} title={t.instanceBadgeHint(session.blueprint)}>
+              ↳ {session.blueprint}
+            </span>
+          )}
           {session.host !== LOCAL_HOST && (
             <span className="cli-badge" title={t.hostBadgeHint(session.host)}>
               {session.host}

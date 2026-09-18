@@ -74,6 +74,7 @@ export interface Strings {
   tabRegistered: string;
   tabDisabled: string;
   tabRetired: string;
+  tabHistory: string;
   tabLayout: string;
   tabDesktop: string;
   tabDiag: string;
@@ -183,6 +184,13 @@ export interface Strings {
   editSave: string;
   editCancel: string;
   reactivateBtn: string;
+  historyDesc: string;
+  historyResumeBtn: string;
+  historyForgetBtn: string;
+  historyForgetConfirm: (name: string) => string;
+  historyNoBlueprint: string;
+  historyHostError: (host: string, msg: string) => string;
+  instanceBadgeHint: (blueprint: string) => string;
   modeResume: string;
   modeReset: string;
   modeNewchat: string;
@@ -384,6 +392,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabRegistered: "Kayıtlı",
     tabDisabled: "Devre dışı",
     tabRetired: "Emekli",
+    tabHistory: "Geçmiş",
     tabLayout: "Layout",
     tabDesktop: "Uzak Masaüstü",
     tabDiag: "Tanı",
@@ -413,9 +422,9 @@ export const STRINGS: Record<Lang, Strings> = {
     bulkStartBtn: "başlat",
     handoverBtn: "handover",
     compactBtn: "compact",
-    legendStop: "sadece process/pencereyi kapatır — kayıt AKTİF kalır, \"Kayıtlı\" sekmesinden devam ettirilir",
-    legendDisable: "durdurur + otomasyon (guard) bir daha AÇMAZ — \"Devre dışı\" sekmesine taşınır, oradan geri alınır",
-    legendRetire: "durdurur + arşive kaldırır — \"Emekli\" sekmesine taşınır, \"tekrar işe al\" ile döner",
+    legendStop: "sadece process/pencereyi kapatır — kayıt AKTİF kalır, \"Kayıtlı\" sekmesinden devam ettirilir; instance (↳) ise \"Geçmiş\" sekmesine düşer",
+    legendDisable: "durdurur + otomasyon (guard) bir daha AÇMAZ — \"Devre dışı\" sekmesine taşınır, oradan geri alınır; instance'ta (↳) sadece durdurur",
+    legendRetire: "durdurur + arşive kaldırır — \"Emekli\" sekmesine taşınır, \"tekrar işe al\" ile döner; instance'ta (↳) sadece durdurur",
     legendReset: "durdurur + roster/varsayılan ayarlarla sıfırdan (--new) yeniden başlatır (elle seçilmiş tek-seferlik bir model/effort korunmaz) — eski konuşma/context atılır, kayıt aktif kalır",
     legendBulkStart: "seçili kayıtlı (durdurulmuş) oturumları varsayılan parametrelerle (kayıtlı/varsayılan model, permission=auto, en yüksek effort, resume — fresh değil) tek tek başlatır",
     legendHandover: "wrap-up mesajı gönderip AYNI geçmişle yeniden açar (kapat+devam) — commit/push + not düşme için",
@@ -493,6 +502,15 @@ export const STRINGS: Record<Lang, Strings> = {
     editSave: "kaydet",
     editCancel: "vazgeç",
     reactivateBtn: "tekrar işe al + başlat",
+    historyDesc:
+      "Durdurulmuş instance'lar: bir blueprint'ten 'yeni sohbet' ile açılıp sonra durdurulan tarihli session'lar. " +
+      "'Devam ettir' aynı isimle, kaldığı konuşmadan açar; 'Unut' kaydı sadece bu listeden siler, konuşma dosyalarına dokunmaz.",
+    historyResumeBtn: "devam ettir",
+    historyForgetBtn: "unut",
+    historyForgetConfirm: (name) => `${name} geçmişten silinsin mi? Konuşma dosyalarına dokunulmaz.`,
+    historyNoBlueprint: "(blueprint yok)",
+    historyHostError: (host, msg) => `${host}: geçmiş alınamadı (${msg})`,
+    instanceBadgeHint: (bp) => `instance: "${bp}" blueprint'inden açıldı`,
     modeResume: "devam ettir",
     modeReset: "sıfırla ve başlat",
     modeNewchat: "yeni chat aç",
@@ -712,6 +730,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabRegistered: "Registered",
     tabDisabled: "Disabled",
     tabRetired: "Retired",
+    tabHistory: "History",
     tabLayout: "Layout",
     tabDesktop: "Remote Desktop",
     tabDiag: "Diagnostics",
@@ -741,9 +760,9 @@ export const STRINGS: Record<Lang, Strings> = {
     bulkStartBtn: "start",
     handoverBtn: "handover",
     compactBtn: "compact",
-    legendStop: "kills only the process/window — stays REGISTERED, resume it from the \"Registered\" tab",
-    legendDisable: "stop + automation (guard) will NOT reopen it — moves to the \"Disabled\" tab, reversible there",
-    legendRetire: "stop + archive — moves to the \"Retired\" tab, comes back via \"reactivate\"",
+    legendStop: "kills only the process/window — stays REGISTERED, resume it from the \"Registered\" tab; an instance (↳) goes to the \"History\" tab",
+    legendDisable: "stop + automation (guard) will NOT reopen it — moves to the \"Disabled\" tab, reversible there; on an instance (↳) it just stops it",
+    legendRetire: "stop + archive — moves to the \"Retired\" tab, comes back via \"reactivate\"; on an instance (↳) it just stops it",
     legendReset: "stops it, then restarts it fresh (--new) with the roster/default settings (a one-off manually-picked model/effort is NOT preserved) — drops the old conversation/context, keeps the registration active",
     legendBulkStart: "starts each selected registered (stopped) session one by one with default parameters (roster/default model, permission=auto, highest effort, resume — not fresh)",
     legendHandover: "sends a wrap-up prompt and reopens with the SAME history (close+continue) — for commit/push + notes",
@@ -821,6 +840,15 @@ export const STRINGS: Record<Lang, Strings> = {
     editSave: "save",
     editCancel: "cancel",
     reactivateBtn: "reactivate + start",
+    historyDesc:
+      "Stopped instances: dated sessions opened from a blueprint via 'new chat' and later stopped. " +
+      "'Resume' reopens one under the same name, continuing its conversation; 'Forget' only removes it from this list and never touches the conversation files.",
+    historyResumeBtn: "resume",
+    historyForgetBtn: "forget",
+    historyForgetConfirm: (name) => `Remove ${name} from history? Conversation files are not touched.`,
+    historyNoBlueprint: "(no blueprint)",
+    historyHostError: (host, msg) => `${host}: couldn't load history (${msg})`,
+    instanceBadgeHint: (bp) => `instance: opened from blueprint "${bp}"`,
     modeResume: "resume",
     modeReset: "reset and start",
     modeNewchat: "start new chat",
