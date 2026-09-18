@@ -4,7 +4,8 @@ from pathlib import Path
 
 HOME = os.path.expanduser("~")
 CLAUDE_DIR = os.path.join(HOME, ".claude")
-CLAUDEOPS_DIR = os.path.join(CLAUDE_DIR, "claudeops")
+# Env override sadece izole test için (canlı roster yerine bir config kopyası); normalde set edilmez.
+CLAUDEOPS_DIR = os.environ.get("CLAUDEOPS_DIR") or os.path.join(CLAUDE_DIR, "claudeops")
 STATE_DIR = Path(CLAUDEOPS_DIR)   # needs_ho / handover timestamp için Path API
 
 # claudeops repo'nun kendi kökü (bu dosyadan: claudeops/py/claudeops/paths.py → 2 parent yukarı).

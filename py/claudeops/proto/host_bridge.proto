@@ -73,6 +73,8 @@ message SessionRow {
   bool tmux = 14;
   optional string live_model = 15;
   optional string live_effort = 16;
+  bool instance = 17;             // instances.json'daki bir instance (roster satırı değil)
+  optional string blueprint = 18; // bağlı olduğu blueprint; null = yok (diag/yabancı)
 }
 
 message StatusUpdate {

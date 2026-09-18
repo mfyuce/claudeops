@@ -24,6 +24,7 @@ from typing import Optional
 from ..discovery import find_by_name, find_sessions
 from ..guard import guard_lock
 from ..handover import ancestor_pids, default_handover_effort
+from ..instances import AUTO_NAME_RE, get_instance, mark_started
 from ..kill import kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import repo_baseline_set
 from ..providers import get_provider
@@ -83,8 +84,14 @@ def _run_inner(args, display, models, roster) -> int:
         # içeren kök (`agy2`) roster kayıtlarını yanlış parçalıyor/hiç
         # eşleştiremiyordu. roster zaten birebir o anahtarla kayıtlıysa
         # regex heuristiğine hiç gerek yok.
-        if full_name in roster:
+        rec = None if full_name in roster else get_instance(full_name)
+        if full_name in roster or rec is not None:
             base = full_name
+        elif AUTO_NAME_RE.match(full_name):
+            # Base'e indirgemek instance'ı blueprint adıyla (cops20260918 → cops) yeniden doğururdu.
+            print(f"  {full_name}: ne roster.tsv'de ne instance kaydında (instances.json) var")
+            errors += 1
+            continue
         else:
             # Girdiyi base'e indirge (hc58→hc, hc→hc). Suffix yok → isim = base.
             m = _NAME_RE.match(full_name)
@@ -97,17 +104,19 @@ def _run_inner(args, display, models, roster) -> int:
         new_name = base   # suffix yok: session adı = base
 
         entry = roster.get(base)
-        if not entry:
+        if not entry and rec is None:
             print(f"  {base}: roster.tsv'de bulunamadı")
             errors += 1
             continue
-        cwd = entry.cwd
-        # entry.cli spawn.py claude'a mı agy'ye mi göre komut kuracağını belirler — model
+        cwd = entry.cwd if entry else rec["cwd"]
+        cli = entry.cli if entry else rec["cli"]
+        # cli spawn.py claude'a mı agy'ye mi göre komut kuracağını belirler — model
         # fallback'i de buna göre seçilmeli (agy'nin "claude-sonnet-4-6" id'si claude'unkiyle
         # AYNI YAZILIR ama İKİ AYRI CLI'nın kendi model listesindendir, tesadüfen çakışıyor —
         # bir sabitte birleştirmeye kalkışma).
-        provider = get_provider(entry.cli)
-        model = args.model or models.get(base) or default_model_for(provider)
+        provider = get_provider(cli)
+        stored_model = models.get(base) if entry else rec.get("model")
+        model = args.model or stored_model or default_model_for(provider)
         permission_mode = args.permission_mode or provider.permission_modes()[0]
         effort = args.effort or default_handover_effort(provider)
 
@@ -161,9 +170,11 @@ def _run_inner(args, display, models, roster) -> int:
             force_new=args.fresh,
             prompt=args.prompt,
             dry_run=args.dry_run,
-            cli=entry.cli,
+            cli=cli,
         )
         print(f"  {new_name} → {kind}")
+        if rec is not None and not args.dry_run:
+            mark_started(new_name, cli=cli, model=model, permission_mode=permission_mode, effort=effort)
 
         # Baseline: respawn sonrası HEAD'i kaydet → needs_ho doğru çalışsın (bash _repo_baseline_set)
         if not args.dry_run:

@@ -55,6 +55,7 @@ from ..hosts import LOCAL_HOST_NAME, save_host, remove_host, list_hosts_public
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from .. import files as files_mod
+from .. import instances as inst_mod
 from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
@@ -113,10 +114,15 @@ ERR = {
     "cwd_bad_chars": {"tr": "cwd geçersiz karakter içeriyor", "en": "cwd contains invalid characters"},
     "base_not_in_roster": {"tr": "{base}: roster'da yok — önce ana ismi ekleyin",
                             "en": "{base}: not in roster — register the base name first"},
-    "newchat_start_failed": {"tr": "{new_name}: roster'a kaydedildi ama başlatılamadı "
-                                    "(gnome-terminal/DISPLAY sorunu olabilir) — '+ Ekle'den tekrar deneyin — kind={kind}",
-                              "en": "{new_name}: registered but failed to start "
-                                    "(could be a gnome-terminal/DISPLAY issue) — retry from '+ Add' — kind={kind}"},
+    "newchat_start_failed": {"tr": "{new_name}: instance olarak kaydedildi ama başlatılamadı "
+                                    "(gnome-terminal/DISPLAY sorunu olabilir) — Geçmiş sekmesinden 'Devam ettir' ile "
+                                    "tekrar deneyin — kind={kind}",
+                              "en": "{new_name}: recorded as an instance but failed to start "
+                                    "(could be a gnome-terminal/DISPLAY issue) — retry with 'Resume' in the History "
+                                    "tab — kind={kind}"},
+    "unknown_instance": {"tr": "{name}: instance kaydında yok", "en": "{name}: not in the instance registry"},
+    "forget_running": {"tr": "{name}: çalışıyor — önce durdurun, sonra unutun",
+                        "en": "{name}: running — stop it first, then forget it"},
     "missing_deps": {"tr": "eksik bağımlılık: {missing} — Ubuntu/Debian'da kurmak için: sudo apt install -y {missing}",
                       "en": "missing dependency: {missing} — install on Ubuntu/Debian with: sudo apt install -y {missing}"},
     "screen_locked_layout": {"tr": "ekran KİLİTLİ — layout kilitli ekranda bozuk çalışır (Mutter). "
@@ -147,8 +153,8 @@ ERR = {
                                       "(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir) — kind={kind}",
                                 "en": "{name}: closed but couldn't reopen "
                                       "(could be a gnome-terminal/DISPLAY issue) — kind={kind}"},
-    "name_in_use": {"tr": "{new_name}: zaten kullanılıyor (roster'da ya da çalışıyor)",
-                     "en": "{new_name}: already in use (in roster or currently running)"},
+    "name_in_use": {"tr": "{new_name}: zaten kullanılıyor (roster'da, instance kaydında ya da çalışıyor)",
+                     "en": "{new_name}: already in use (in roster, in the instance registry, or currently running)"},
     "adopt_reopen_failed": {"tr": "{old_name}: kapatıldı ama '{new_name}' olarak yeniden açılamadı "
                                    "(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir) — kind={kind}",
                              "en": "{old_name}: closed but couldn't reopen as '{new_name}' "
@@ -320,30 +326,13 @@ def _start_tunnel(port: int, cloudflared_path: str = "cloudflared", timeout: flo
     return proc, url
 
 
-def _find_running(name: str, cli: Optional[str] = None) -> list:
-    """Tam isim VEYA base eşleşmesiyle çalışan session'ları bul.
-
-    rc.py'nin kill-first mantığıyla aynı desen ([[stale-tui-title-cross-suffix-resume]]
-    tarzı): elle/eski tarih-suffix'li açılmış bir proc (`trino20260823`) roster'a
-    temiz base isimle (`trino`) kaydedilse bile Session.base regex'i onu doğru
-    eşler — çıplak `find_by_name` (tam isim) bunu KAÇIRIR → yanlışlıkla "duruyor"
-    sanılıp ikinci bir proc spawn edilebilir.
-
-    `cli` VERİLİRSE sadece o CLI'daki eşleşmeler sayılır (2026-08-28, kullanıcı:
-    "agy de resume kendi içinde, claude de resume kendi içinde olmalı, ikisi farklı
-    dosyalara bakıyor") — `Session.base` CLI'DAN BAĞIMSIZ regex'le indirgendiği için
-    (`saseppr20260828`+`saseppr20260828_2` ikisi de base="saseppr"), cli-filtresiz hâli
-    farklı CLI'ların aynı proje-base'ini yanlışlıkla ÇAKIŞMA sayar: claude çalışırken
-    aynı base'e agy `resume` denince "zaten çalışıyor" derdi — oysa ikisi bağımsız
-    süreç+geçmiş (claude: jsonl, agy: conversations-cache). Sadece `_start`'ın
-    "zaten çalışıyor" KAPISI cli'ya duyarlı olmalı; stop/retire/handover/adopt gibi
-    "burada ne varsa bul" çağrıları cli-agnostik KALMALI (o proc hangi cli'daysa onu
-    bulmalılar) — bu yüzden `cli` opsiyonel, sadece `_start` geçiyor.
+def _find_running(name: str) -> list:
+    """Tam isim VEYA base eşleşmesiyle çalışan session'ları bul — sadece salt-okunur
+    metadata çözümlemesi için (`_files_resolve`: aynı base'i paylaşanların cwd/cli'si
+    aynı). Yıkıcı/tekil-hedefli çağrılar `_find_running_for_action` kullanmalı;
+    "zaten çalışıyor"/"açıldı mı" soruları ise TAM isme bakar (`_start`, `_wait_stable`).
     """
-    sessions = find_sessions(measure_cpu=False)
-    if cli:
-        sessions = [s for s in sessions if s.cli == cli]
-    return [s for s in sessions if s.name == name or s.base == name]
+    return [s for s in find_sessions(measure_cpu=False) if s.name == name or s.base == name]
 
 
 def _find_running_for_action(name: str, cli: Optional[str] = None) -> tuple:
@@ -399,7 +388,9 @@ def _wait_stable(name: str, timeout: float, stable_for: float = STABLE_SECONDS) 
     first_seen = None
     while True:
         now = time.monotonic()
-        if _find_running(name):
+        # Tam isim: base'e bakılsaydı blueprint açılırken çalışan kendi instance'ı
+        # (cops20260918) "cops açıldı" sayılırdı.
+        if any(s.name == name for s in find_sessions(measure_cpu=False)):
             if first_seen is None:
                 first_seen = now
             elif now - first_seen >= stable_for:
@@ -468,6 +459,7 @@ def _all_known_names() -> set:
     """roster.tsv'deki (aktif/kapalı/emekli FARK ETMEZ) TÜM isimler + şu an çalışan
     TÜM proc isimleri/base'leri — yeni chat ismi üretirken çakışma kontrolü için."""
     names = {r["name"] for r in _read_tsv_raw(ROSTER_TSV) if r["name"] != "name"}
+    names |= set(inst_mod.load_instances())
     for s in find_sessions(measure_cpu=False):
         names.add(s.name)
         names.add(s.base)
@@ -548,6 +540,8 @@ def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang:
     roster_names = {r["name"] for r in _read_tsv_raw(ROSTER_TSV) if r["name"] != "name"}
     if name in roster_names:
         return _err(lang, "already_registered", name=name)
+    if inst_mod.get_instance(name) is not None:
+        return _err(lang, "name_in_use", new_name=name)
     for s in find_sessions(measure_cpu=False):
         if name in (s.name, s.base):
             return _err(lang, "conflicts_running", name=name, other=s.name)
@@ -591,6 +585,8 @@ def _edit_project(name: str, new_name: str, new_cwd: str, new_model: str = "",
     if new_name != name:
         if new_name in roster_rows:
             return _err(lang, "already_registered", name=new_name)
+        if inst_mod.get_instance(new_name) is not None:
+            return _err(lang, "name_in_use", new_name=new_name)
         for s in find_sessions(measure_cpu=False):
             if new_name in (s.name, s.base):
                 return _err(lang, "conflicts_running", name=new_name, other=s.name)
@@ -619,41 +615,68 @@ def _edit_project(name: str, new_name: str, new_cwd: str, new_model: str = "",
 
     _replace_tsv_line(ROSTER_TSV, name, [new_name, new_cwd, chosen_model, chosen_cli])
     _replace_tsv_line(MODELS_TSV, name, [new_name, chosen_model])
+    if new_name != name:
+        inst_mod.rename_blueprint(name, new_name)
     return {"ok": True, "name": new_name, "warnings": warnings}
+
+
+def _blueprint_cwds(fleet: dict) -> Dict[str, str]:
+    """Blueprint adayı roster satırları (tarihli/türev isimli eski instance satırları hariç)."""
+    return {n: i["cwd"] for n, i in fleet.items() if not inst_mod.DERIVED_NAME_RE.match(n)}
+
+
+def _new_chat_source(name: str, fleet: dict) -> Optional[tuple]:
+    """(blueprint|None, önek, cwd, cli, model) — yeni sohbetin neyden türeyeceği.
+
+    Bir instance satırından tıklanırsa onun blueprint'inden türer; tarihi olduğu gibi
+    soneke eklemek kendi üstüne katlanırdı ("saseppr20260827_120260827", 2026-08-27)."""
+    rec = None if name in fleet else inst_mod.get_instance(name)
+    if rec is not None:
+        bp = rec.get("blueprint")
+        info = fleet.get(bp) if bp else None
+        if info:
+            return bp, bp, info["cwd"], info["cli"], info["model"]
+        return bp, Session(name=name, pid=0).base or name, rec["cwd"], rec["cli"], rec["model"]
+    info = fleet.get(name)
+    if info is None:
+        return None
+    if inst_mod.DERIVED_NAME_RE.match(name):
+        bp = inst_mod.infer_blueprint(name, info["cwd"], _blueprint_cwds(fleet))
+        if bp:
+            b = fleet[bp]
+            return bp, bp, b["cwd"], b["cli"], b["model"]
+        return None, Session(name=name, pid=0).base or name, info["cwd"], info["cli"], info["model"]
+    return name, name, info["cwd"], info["cli"], info["model"]
 
 
 def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "",
               cli: str = "", lang: str = "tr") -> dict:
-    """`base`'in cwd'sinde YENİ, otomatik-isimli (tarih[+_N]) bir chat başlat.
+    """`base`'in blueprint'inden YENİ, otomatik-isimli (tarih[+_N]) bir instance başlat.
 
-    Var olan `base` session'ına DOKUNMAZ (çalışıyorsa bile) — ayrı, ek bir kayıt.
-    Roster/models.tsv'ye hemen upsert edilir (görünür/yönetilebilir kalsın).
-    """
-    fleet = _fleet_status()
-    info = fleet.get(base)
-    if not info:
+    Var olan session'lara DOKUNMAZ. Roster'a satır YAZMAZ — instance kaydına girer,
+    durdurulunca Kayıtlı'ya değil Geçmiş'e düşer."""
+    src = _new_chat_source(base, _fleet_status())
+    if src is None:
         return _err(lang, "base_not_in_roster", base=base)
-    # base zaten tarih-suffix'li bir satırdan tıklanmışsa (ör. "saseppr20260827_1"
-    # satırında "yeni sohbet"), tarihi olduğu gibi soneke eklemek KENDİ ÜSTÜNE
-    # katlanır ("saseppr20260827_120260827", tekrarında daha da uzar). Session.base
-    # ile aynı indirgeme (hc58→hc, cops20260824_1→cops) burada da uygulanıp gerçek
-    # kısa base'e dönülür — 2026-08-27 saseppr'da canlı bulundu.
-    new_name = _generate_new_chat_name(Session(name=base, pid=0).base or base)
-    chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
-    # bkz. _start()'taki aynı fix'in yorumu — cli değiştiyse eski info["model"]
+    blueprint, prefix, cwd, src_cli, src_model = src
+    new_name = _generate_new_chat_name(prefix)
+    chosen_cli = cli.strip() if cli.strip() in PROVIDERS else src_cli
+    # bkz. _start()'taki aynı fix'in yorumu — cli değiştiyse eski model
     # yanlış provider'ın modeli olur, yeni cli'nin kendi varsayılanına düşülmeli.
-    chosen_model = model.strip() or (info["model"] if chosen_cli == info["cli"] else default_model_for(get_provider(chosen_cli)))
-    _append_tsv_line(ROSTER_TSV, [new_name, info["cwd"], chosen_model, chosen_cli])
-    _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
+    chosen_model = model.strip() or (src_model if chosen_cli == src_cli else default_model_for(get_provider(chosen_cli)))
+    chosen_mode = permission_mode.strip() or "auto"
+    chosen_effort = effort.strip() or "max"
+    inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
+                             permission_mode=chosen_mode, effort=chosen_effort, origin="new_chat")
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
                 name=new_name,
-                cwd=info["cwd"],
+                cwd=cwd,
                 model=chosen_model,
                 display=detect_display(),
-                permission_mode=permission_mode.strip() or "auto",
-                effort=effort.strip() or "max",
+                permission_mode=chosen_mode,
+                effort=chosen_effort,
                 force_new=True,
                 cli=chosen_cli,
             )
@@ -887,7 +910,7 @@ def _diag_restart_gt(lang: str = "tr") -> dict:
 
 def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
     """Diag bulgusunu, kullanıcının seçtiği desteklenen CLI ile YENİ bir fleet
-    session'ında sor — roster'a normal bir session gibi kaydedilir, "Terminal"
+    session'ında sor — blueprint'siz bir instance olarak kaydedilir, "Terminal"
     view'ından takip edilir (2026-08-27 kullanıcı isteği: kayıt-dışı bir sohbet
     kutusu DEĞİL, gerçek bir CLI/terminal)."""
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else DEFAULT_CLI
@@ -914,14 +937,15 @@ def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
                   else "Kullanıcı ek bir soru yazmadı — genel bir teşhis/özet yeterli.")
     prompt = "\n".join(lines)
 
-    _append_tsv_line(ROSTER_TSV, [new_name, REPO_DIR, model, chosen_cli])
-    _append_tsv_line(MODELS_TSV, [new_name, model])
+    mode, effort = provider.permission_modes()[0], provider.effort_levels()[-1]
+    inst_mod.record_instance(new_name, blueprint=None, cwd=REPO_DIR, cli=chosen_cli, model=model,
+                             permission_mode=mode, effort=effort, origin="diag")
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
                 name=new_name, cwd=REPO_DIR, model=model, display=detect_display(),
-                permission_mode=provider.permission_modes()[0],
-                effort=provider.effort_levels()[-1],
+                permission_mode=mode,
+                effort=effort,
                 force_new=True, prompt=prompt, cli=chosen_cli,
             )
             opened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
@@ -1069,12 +1093,15 @@ def _status_payload() -> dict:
     # base-dict aynı base'in ikinci proc'unu yuttuğu için duplicates() hiç
     # tetiklenemiyordu — artık tüm canlı liste üzerinden sayılıyor.
     active_names = {n for n, i in fleet.items() if i["state"] == "active"}
+    registry = inst_mod.load_instances()
     assigned = {}
     for s in all_live:
         if s.name in active_names:
             assigned[s.name] = s
+    # Base-fallback sadece kayıtsız eski proc'lar için; kayıtlı instance kendi satırında görünür.
     for s in all_live:
-        if s.name not in active_names and s.base in active_names and s.base not in assigned:
+        if (s.name not in active_names and s.name not in registry
+                and s.base in active_names and s.base not in assigned):
             assigned[s.base] = s
     assigned_pids = {s.pid for s in assigned.values()}
 
@@ -1119,6 +1146,8 @@ def _status_payload() -> dict:
             "busy": _is_busy_cached(s) if s else None,
             "history_size": _history_size_cached(s) if s else None,
             "registered": True,
+            "instance": False,
+            "blueprint": name,
             "tmux": is_tmux_backed(s.pid) if s else False,
             "host": LOCAL_HOST_NAME,
             # `model` roster/models.tsv'nin KAYITLI değeri (durmuş satırlarda da
@@ -1134,12 +1163,14 @@ def _status_payload() -> dict:
     # Hiçbir AKTİF roster satırına bağlanamayan canlı session'lar (elle açılmış
     # ad-hoc bir şey, ya da adı sadece kapalı/emekli bir satıra denk gelen proc) —
     # "kayıtsız" olarak göster; hiçbir canlı proc panelde görünmez kalmasın.
+    # instances.json'daki instance'lar da buradan, kayıtlı (registered+instance) olarak gelir.
     for s in all_live:
         if s.pid in assigned_pids:
             continue
+        rec = registry.get(s.name)
         sessions.append({
             "name": s.name,
-            "model": s.model or "?",
+            "model": (rec.get("model") if rec else None) or s.model or "?",
             "cwd": s.cwd,
             "cli": s.cli,
             "running": True,
@@ -1149,7 +1180,9 @@ def _status_payload() -> dict:
             "needs_ho": _needs_ho_cached(s),
             "busy": _is_busy_cached(s),
             "history_size": _history_size_cached(s),
-            "registered": False,
+            "registered": rec is not None,
+            "instance": rec is not None,
+            "blueprint": rec.get("blueprint") if rec else None,
             "tmux": is_tmux_backed(s.pid),
             "host": LOCAL_HOST_NAME,
             "live_model": s.model,
@@ -1252,28 +1285,37 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
            cli: str = "", hidden: bool = False, lang: str = "tr") -> dict:
+    """Aktif bir blueprint'i ya da (Geçmiş'ten) durmuş bir instance'ı başlat/devam ettir."""
     fleet = _fleet_status()
     info = fleet.get(name)
-    if not info or info["state"] != "active":
+    rec = None if info else inst_mod.get_instance(name)
+    if rec is None and (not info or info["state"] != "active"):
         return _err(lang, "not_active", name=name)
-    chosen_cli = cli.strip() if cli.strip() in PROVIDERS else info["cli"]
-    if _find_running(name, cli=chosen_cli):
+    src = info or rec
+    chosen_cli = cli.strip() if cli.strip() in PROVIDERS else src["cli"]
+    # Tam isim, cli'dan bağımsız: blueprint'in kendi instance'larıyla yan yana açılabilmesi
+    # için base'e bakılmaz; aynı isimli ikinci spawn ise `tmux new-session -A` yüzünden
+    # yeni session açmaz, var olana bağlanırdı.
+    if any(s.name == name for s in find_sessions(measure_cpu=False)):
         return _err(lang, "already_running", name=name)
-    # info["model"] eski cli'nin modeli — kullanıcı cli'yi DEĞİŞTİRİP model alanını
+    # src["model"] eski cli'nin modeli — kullanıcı cli'yi DEĞİŞTİRİP model alanını
     # boş bırakırsa (react: useState("") "kullan varsayılanı" anlamına gelir) burada
     # YANLIŞ cli'nin modeliyle spawn oluyordu (ör. codex'e geçip boş bırakınca "codex
     # --model claude-sonnet-5" gibi geçersiz bir çağrı — canlı kullanıcı raporu,
-    # 2026-09-01). cli değişmediyse eski davranış (info["model"]) aynen korunur.
-    fallback_model = info["model"] if chosen_cli == info["cli"] else default_model_for(get_provider(chosen_cli))
+    # 2026-09-01). cli değişmediyse eski davranış (src["model"]) aynen korunur.
+    fallback_model = src["model"] if chosen_cli == src["cli"] else default_model_for(get_provider(chosen_cli))
+    chosen_model = model.strip() or fallback_model
+    chosen_mode = permission_mode.strip() or (rec or {}).get("permission_mode") or "auto"
+    chosen_effort = effort.strip() or (rec or {}).get("effort") or "max"
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
                 name=name,
-                cwd=info["cwd"],
-                model=model.strip() or fallback_model,
+                cwd=src["cwd"],
+                model=chosen_model,
                 display=detect_display(),
-                permission_mode=permission_mode.strip() or "auto",
-                effort=effort.strip() or "max",
+                permission_mode=chosen_mode,
+                effort=chosen_effort,
                 force_new=bool(fresh),
                 cli=chosen_cli,
                 hidden=hidden,
@@ -1283,6 +1325,9 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
         return {"ok": False, "error": str(e)}
     if not opened:
         return _err(lang, "start_no_proc", name=name, kind=kind)
+    if rec is not None:
+        inst_mod.mark_started(name, cli=chosen_cli, model=chosen_model,
+                              permission_mode=chosen_mode, effort=chosen_effort)
     return {"ok": True, "kind": kind}
 
 
@@ -1374,7 +1419,7 @@ def _files_resolve(name: str, lang: str = "tr"):
     procs = _find_running(name)
     if procs:
         return procs[0], None
-    info = _fleet_status().get(name)
+    info = _fleet_status().get(name) or inst_mod.get_instance(name)
     if info:
         return Session(name=name, pid=0, cwd=info["cwd"], cli=info["cli"]), None
     return None, _err(lang, "not_running", name=name)
@@ -1667,9 +1712,26 @@ def _open_window(name: str, lang: str = "tr", force: bool = False) -> dict:
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
+def _stop_instance(name: str, lang: str = "tr") -> dict:
+    """Instance'ın kapalı/emekli hâli yok: Kapat/Emekli = durdur (durmuşsa no-op)."""
+    kind, procs = _find_running_for_action(name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+    if procs:
+        try:
+            with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+                for s in procs:
+                    kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
+        except TimeoutError as e:
+            return {"ok": False, "error": str(e)}
+    return {"ok": True, "instance": True}
+
+
 def _retire(name: str, lang: str = "tr") -> dict:
     fleet = _fleet_status()
     info = fleet.get(name)
+    if not info and inst_mod.get_instance(name) is not None:
+        return _stop_instance(name, lang)
     if not info:
         return _err(lang, "undefined", name=name)
     if info["state"] == "retired":
@@ -1698,6 +1760,8 @@ def _close_project(name: str, lang: str = "tr") -> dict:
     """
     fleet = _fleet_status()
     info = fleet.get(name)
+    if not info and inst_mod.get_instance(name) is not None:
+        return _stop_instance(name, lang)
     if not info:
         return _err(lang, "undefined", name=name)
     if info["state"] == "closed":
@@ -2007,6 +2071,8 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     chosen_cli = procs[0].cli
     provider = get_provider(chosen_cli)
     chosen_model = model.strip() or procs[0].model or default_model_for(provider)
+    chosen_mode = permission_mode.strip() or provider.permission_modes()[0]
+    chosen_effort = effort.strip() or provider.effort_levels()[-1]
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
@@ -2017,8 +2083,8 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
                 cwd=cwd,
                 model=chosen_model,
                 display=detect_display(),
-                permission_mode=permission_mode.strip() or provider.permission_modes()[0],
-                effort=effort.strip() or provider.effort_levels()[-1],
+                permission_mode=chosen_mode,
+                effort=chosen_effort,
                 force_new=False,
                 cli=chosen_cli,
             )
@@ -2027,9 +2093,16 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
         return {"ok": False, "error": str(e)}
     if not reopened:
         return _err(lang, "adopt_reopen_failed", old_name=old_name, new_name=new_name, kind=kind)
-    if new_name not in _fleet_status():
-        _append_tsv_line(ROSTER_TSV, [new_name, cwd, chosen_model, chosen_cli])
-        _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
+    fleet = _fleet_status()
+    if new_name not in fleet and inst_mod.get_instance(new_name) is None:
+        bp_cwds = _blueprint_cwds(fleet)
+        bp = inst_mod.infer_blueprint(new_name, cwd, bp_cwds) if inst_mod.AUTO_NAME_RE.match(new_name) else None
+        if bp and os.path.normpath(bp_cwds[bp]) == os.path.normpath(cwd):
+            inst_mod.record_instance(new_name, blueprint=bp, cwd=cwd, cli=chosen_cli, model=chosen_model,
+                                     permission_mode=chosen_mode, effort=chosen_effort, origin="adopt")
+        else:
+            _append_tsv_line(ROSTER_TSV, [new_name, cwd, chosen_model, chosen_cli])
+            _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
     return {"ok": True, "kind": kind, "new_name": new_name}
 
 
@@ -2079,13 +2152,15 @@ def _snapshot_save(lang: str = "tr") -> dict:
 
 
 def _snapshot_resume(hidden: bool = False, lang: str = "tr") -> dict:
-    """Kaydedilmiş snapshot'taki her isim için: zaten çalışıyorsa atla, roster'da
-    yoksa `_register_project` ile ekle, kapalı/emekliyse aktive et, sonra
-    snapshot'ın kendi (kayıt anındaki GERÇEK) model/permission_mode/effort/cli
-    alanlarıyla `_start` eder — [[add-session-to-fleet]]'in kanıtlanmış
-    deseni. `_run_layout` gibi (aynı "N session için tek POST'ta sırayla
-    işle" deseni) senkron — her `_start` zaten kendi `_wait_stable`'ıyla
-    doğal olarak aralanır, ayrı bir throttle eklemeye gerek yok."""
+    """Kaydedilmiş snapshot'taki her isim için: zaten çalışıyorsa atla; blueprint
+    değilse ve instance kaydında da yoksa tarihli/türev isimleri instance olarak
+    kaydet (roster'a YAZMA), diğerlerini `_register_project` ile blueprint olarak
+    ekle; kapalı/emekli blueprint'i aktive et; sonra snapshot'ın kendi (kayıt
+    anındaki GERÇEK) model/permission_mode/effort/cli alanlarıyla `_start` eder —
+    [[add-session-to-fleet]]'in kanıtlanmış deseni. `_run_layout` gibi (aynı "N
+    session için tek POST'ta sırayla işle" deseni) senkron — her `_start` zaten
+    kendi `_wait_stable`'ıyla doğal olarak aralanır, ayrı bir throttle eklemeye
+    gerek yok."""
     snap = load_snapshot()
     entries = snap.get("sessions") or []
     if not entries:
@@ -2104,12 +2179,21 @@ def _snapshot_resume(hidden: bool = False, lang: str = "tr") -> dict:
         cli = str(entry.get("cli") or "")
         model = str(entry.get("model") or "")
         info = fleet.get(name)
-        if info is None:
-            reg = _register_project(name, cwd=cwd, model=model, cli=cli, lang=lang)
-            if not reg.get("ok"):
-                results.append({"name": name, "status": "failed", "error": reg.get("error")})
-                continue
-        elif info["state"] != "active":
+        if info is None and inst_mod.get_instance(name) is None:
+            derived = inst_mod.DERIVED_NAME_RE.match(name)
+            if derived:
+                bp = None if derived.group(1) == inst_mod.DIAG_PREFIX else \
+                    inst_mod.infer_blueprint(name, cwd, _blueprint_cwds(fleet))
+                inst_mod.record_instance(
+                    name, blueprint=bp, cwd=cwd, cli=cli if cli in PROVIDERS else DEFAULT_CLI,
+                    model=model, permission_mode=str(entry.get("permission_mode") or ""),
+                    effort=str(entry.get("effort") or ""), origin="snapshot")
+            else:
+                reg = _register_project(name, cwd=cwd, model=model, cli=cli, lang=lang)
+                if not reg.get("ok"):
+                    results.append({"name": name, "status": "failed", "error": reg.get("error")})
+                    continue
+        elif info is not None and info["state"] != "active":
             _toggle_comment(MODELS_TSV, name, want_active=True)
             _toggle_comment(ROSTER_TSV, name, want_active=True)
         r = _start(
@@ -2132,6 +2216,26 @@ def _snapshot_resume(hidden: bool = False, lang: str = "tr") -> dict:
         "already_running": sum(1 for r in results if r["status"] == "already_running"),
         "failed": sum(1 for r in results if r["status"] == "failed"),
     }
+
+
+def _instances_list() -> dict:
+    """Geçmiş sekmesi: tüm instance kayıtları + şu an çalışıp çalışmadığı, en yeni önce."""
+    live = {s.name for s in find_sessions(measure_cpu=False)}
+    items = [dict(rec, name=name, running=name in live, host=LOCAL_HOST_NAME)
+             for name, rec in inst_mod.load_instances().items() if not rec.get("forgotten")]
+    items.sort(key=lambda r: r.get("last_started_at") or r.get("created_at") or 0, reverse=True)
+    return {"ok": True, "instances": items}
+
+
+def _instance_forget(name: str, lang: str = "tr") -> dict:
+    """Geçmiş'ten gizler (isim rezerve kalır); konuşma geçmişine (jsonl vb.) DOKUNMAZ."""
+    rec = inst_mod.get_instance(name)
+    if rec is None or rec.get("forgotten"):
+        return _err(lang, "unknown_instance", name=name)
+    if any(s.name == name for s in find_sessions(measure_cpu=False)):
+        return _err(lang, "forget_running", name=name)
+    inst_mod.forget_instance(name)
+    return {"ok": True}
 
 
 # ══ OpenAI-uyumlu katman (`/v1/*`) ══════════════════════════════════════════
@@ -2751,6 +2855,19 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "hosts": rows})
         elif path == "/api/diag/log":
             self._json({"lines": diag_log_tail(30)})
+        elif path == "/api/instances":
+            qs = parse_qs(urlparse(self.path).query)
+            lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            if host != LOCAL_HOST_NAME:
+                result, status = web_hosts.proxy_get(path, host, {"lang": lang})
+                # Uzak host kendi kayıtlarını "local" etiketler; aksiyonlar doğru host'a gitsin.
+                for item in result.get("instances") or []:
+                    if isinstance(item, dict):
+                        item["host"] = host
+                self._json(result, status=status)
+                return
+            self._json(_instances_list())
         elif path == "/api/term/output":
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
@@ -2837,7 +2954,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
-                         "/api/snapshot/save", "/api/snapshot/resume",
+                         "/api/snapshot/save", "/api/snapshot/resume", "/api/instances/forget",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
@@ -3107,6 +3224,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json_notify(_open_window(name, lang=lang, force=bool(data.get("force", False))))
+            return
+
+        if path == "/api/instances/forget":
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json_notify(_instance_forget(name, lang=lang))
             return
 
         name = str(data.get("name", "")).strip()

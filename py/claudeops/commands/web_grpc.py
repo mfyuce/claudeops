@@ -60,7 +60,8 @@ _STATUS_TICK_SECONDS = web_ws._BROADCAST_TICK_SECONDS  # yerel broadcaster'la ay
 
 # ── proto <-> dict dönüşümleri ──────────────────────────────────────────────
 
-_OPTIONAL_SESSION_FIELDS = ("pid", "cpu", "needs_ho", "busy", "history_size", "live_model", "live_effort")
+_OPTIONAL_SESSION_FIELDS = ("pid", "cpu", "needs_ho", "busy", "history_size", "live_model", "live_effort",
+                            "blueprint")
 _OPTIONAL_TERM_FIELDS = ("cols", "rows", "history_size")
 
 # fetch_remote_status()'un ZATEN indirgediği alan seti (web_hosts.py'nin
@@ -93,6 +94,7 @@ def _dict_to_session_row(d: Dict[str, Any]) -> pb2.SessionRow:
         "kind": d.get("kind") or "",
         "registered": bool(d.get("registered")),
         "tmux": bool(d.get("tmux")),
+        "instance": bool(d.get("instance")),
     }
     for f in _OPTIONAL_SESSION_FIELDS:
         v = d.get(f)
@@ -105,7 +107,7 @@ def _session_row_to_dict(row: pb2.SessionRow) -> Dict[str, Any]:
     d: Dict[str, Any] = {
         "name": row.name, "host": row.host, "model": row.model, "cwd": row.cwd,
         "cli": row.cli, "running": row.running, "kind": row.kind or None,
-        "registered": row.registered, "tmux": row.tmux,
+        "registered": row.registered, "tmux": row.tmux, "instance": row.instance,
     }
     for f in _OPTIONAL_SESSION_FIELDS:
         d[f] = getattr(row, f) if row.HasField(f) else None

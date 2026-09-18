@@ -13,6 +13,7 @@ import re
 from typing import Optional
 
 from ..discovery import find_sessions
+from ..instances import DERIVED_NAME_RE, get_instance
 from ..kill import kill_session, kill_session_and_parent
 from ..paths import MODELS_TSV
 
@@ -91,21 +92,37 @@ def _kill_with_parent(pid: int, grace: float, keep_terminal: bool, name: Optiona
     return kill_session_and_parent(pid, grace=grace, name=name)
 
 
+def _models_names() -> set:
+    try:
+        lines = open(MODELS_TSV, encoding="utf-8").read().splitlines()
+    except OSError:
+        return set()
+    return {_first_field(line.lstrip()[1:] if line.lstrip().startswith("#") else line) for line in lines}
+
+
 def run(args) -> int:
     sessions = find_sessions(measure_cpu=False)
+    models_names = _models_names()
     errors = 0
     for name in args.names:
-        base = _base(name)
+        is_instance = name not in models_names and (
+            get_instance(name) is not None or bool(DERIVED_NAME_RE.match(name)))
+        known = is_instance or name in models_names
+        # models.tsv hedefi: tam isim; base'e (hc58→hc) sadece bilinmeyen eski tarz isimde düş.
+        # Instance'ın kapalı hâli yok — hiçbir zaman blueprint satırını kapatmaz.
+        base = None if is_instance else (name if name in models_names else _base(name))
         # 2026-09-14 KRİTİK FIX: `s.name == name or s.base == base` base
         # eşleşmesi TEK BAŞINA aynı base'e indirgenen BAMBAŞKA canlı bir
         # session'ı da (ör. tarih+çakışma suffix'li bir YENİ session) yakalayıp
         # öldürüyordu (canlı olay: "cops" kapatılırken "cops20260914_1" de
         # gitti — web.py'nin `_find_running`'inin AYNI köklü bug'ı, bkz.
-        # `_find_running_for_action`). Önce tam-isim denenir; yoksa base'e
-        # düşülür AMA birden fazla canlı proc AYNI base'e düşüyorsa
-        # (belirsizlik) HİÇBİRİ öldürülmez, kullanıcıdan tam isim istenir.
+        # `_find_running_for_action`). Önce tam-isim denenir; bilinen bir satır
+        # ya da instance ise base'e HİÇ düşülmez (çalışmayan `cops20260918`
+        # kapatılırken canlı `cops` blueprint'i öldürülmesin); bilinmeyen eski
+        # tarz isimde base'e düşülür AMA birden fazla canlı proc AYNI base'e
+        # düşüyorsa (belirsizlik) HİÇBİRİ öldürülmez, kullanıcıdan tam isim istenir.
         exact = [s for s in sessions if s.name == name]
-        if exact:
+        if exact or known:
             matched = exact
         else:
             base_matches = [s for s in sessions if s.base == base]
@@ -118,8 +135,8 @@ def run(args) -> int:
             matched = base_matches
 
         if args.dry_run:
-            st = comment_out_models(base, dry_run=True)
-            print(f"  [dry-run] {name} (base={base}): {len(matched)} proc öldürülecek; "
+            st = comment_out_models(base, dry_run=True) if base else "instance (dokunulmaz)"
+            print(f"  [dry-run] {name} (models.tsv hedefi={base or '-'}): {len(matched)} proc öldürülecek; "
                   f"models.tsv → {st}")
             continue
 
@@ -129,6 +146,10 @@ def run(args) -> int:
                   end="", flush=True)
             r = _kill_with_parent(s.pid, args.grace, args.keep_terminal, name=s.name)
             print(f" {r}")
+        if is_instance:
+            print(f"  {name}: instance — {'durduruldu' if matched else 'zaten çalışmıyor'}; "
+                  f"models.tsv'ye dokunulmadı (instance'ın kapalı hâli yok)")
+            continue
         if not matched:
             print(f"  {name}: çalışan proc yok (yine de models.tsv'de kapatılıyor)")
 
