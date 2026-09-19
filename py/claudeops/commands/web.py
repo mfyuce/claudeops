@@ -443,6 +443,18 @@ def _fleet_status() -> dict:
         if rrow is None:
             continue  # cwd bilinmiyor — gösterilemez
         cwd = rrow["rest"][0] if rrow["rest"] else ""
+        # roster.tsv'ye elle/register edilirken trailing slash'lı girilmiş olabilir
+        # (`.../XX_rust_unified_cli_design/`); canlı bir instance'ın cwd'si ise
+        # `find_sessions()`'ın `os.readlink(/proc/pid/cwd)`'inden gelir ve trailing
+        # slash HİÇBİR ZAMAN taşımaz. Aynı gerçek dizin iki FARKLI string olarak
+        # panele gidiyordu — Running tab'ın `groupByCwd`'i (webui, saf string eşitliği)
+        # blueprint'in kendi satırını instance'larından AYRI bir "klasör" grubuna
+        # düşürüyordu (canlı bulundu, 2026-09-19: "rustagentppr" ve
+        # "rustagentppr20260919"/"_1" aynı dizinde ama Running'de iki ayrı grup
+        # gibi görünüyordu). Tek kaynakta normalize etmek (`os.path.normpath`,
+        # dosyaya DOKUNMUYOR, sadece string) bu fonksiyonun HER çağıranını düzeltir.
+        if cwd:
+            cwd = os.path.normpath(cwd)
         model = mrow["rest"][0] if mrow["rest"] else ""
         cli = rrow["rest"][2] if len(rrow["rest"]) >= 3 and rrow["rest"][2] in PROVIDERS else DEFAULT_CLI
         if mrow["active"] and rrow["active"]:
