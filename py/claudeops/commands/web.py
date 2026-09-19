@@ -2773,13 +2773,14 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
-        # /assets/* token KONTROLÜ OLMADAN erişilebilir olmak ZORUNDA: tarayıcı
-        # <script src>/<link> sub-resource isteklerine ?token= ekleyemez (sadece
-        # üst-seviye navigasyon URL'i query string taşır) — bu carve-out yoksa
-        # build edilmiş app "/" token'la yüklenir ama JS/CSS 401 alır → boş sayfa.
+        # /assets/* (ve /favicon.svg) token KONTROLÜ OLMADAN erişilebilir olmak
+        # ZORUNDA: tarayıcı <script src>/<link> sub-resource isteklerine ?token=
+        # ekleyemez (sadece üst-seviye navigasyon URL'i query string taşır) — bu
+        # carve-out yoksa build edilmiş app "/" token'la yüklenir ama JS/CSS/favicon
+        # 401 alır (favicon: sayfa yüklemesi başına konsolda kozmetik hata).
         # Güvenlik regresyonu değil: bundle'da sır yok (public MIT repo), gerçek
         # fleet verisi sadece /api/* ve /ws'de, ikisi de auth'lu kalıyor.
-        if path.startswith("/assets/"):
+        if path.startswith("/assets/") or path == "/favicon.svg":
             if not self._serve_static(path):
                 self._json({"error": "not found"}, status=404)
             return

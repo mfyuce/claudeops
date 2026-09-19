@@ -2,4 +2,10 @@
 # claudeops Python rewrite (TBD#8) çalıştırıcı.
 # Bash 'claudeops' (ROOT) CANLI fleet'i yönetir; bu Python sürümü yanında büyüyor.
 # Kullanım: py/cops list   /   py/cops ls --suffix 54
-cd "$(dirname "$0")" && exec python3 -m claudeops "$@"
+cd "$(dirname "$0")" || exit 1
+# yuhem'de PATH'teki python3 miniconda'nınki, grpc YOK (servis .venv ile çalışır,
+# CLI çıplak python3'e düşüyordu → ModuleNotFoundError). .venv varsa onu tercih et;
+# lokalde .venv yok, davranış aynı kalır.
+py=python3
+[ -x .venv/bin/python3 ] && py=.venv/bin/python3
+exec "$py" -m claudeops "$@"
