@@ -22,6 +22,7 @@ import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
 import type { ApiResult, SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
+import { TabHint } from "../shared/TabHint";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
 type BulkAction = "start" | "handover" | "compact" | "stop" | "close" | "retire" | "reset";
@@ -294,14 +295,16 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
         )}
         <span className="bulkmsg">{message}</span>
       </div>
-      <div className="legend">
-        {legendRows.map(([k, v], i) => (
-          <Fragment key={k}>
-            {i > 0 && <br />}
-            <b>{k}</b> — {v}
-          </Fragment>
-        ))}
-      </div>
+      <TabHint>
+        <div className="legend">
+          {legendRows.map(([k, v], i) => (
+            <Fragment key={k}>
+              {i > 0 && <br />}
+              <b>{k}</b> — {v}
+            </Fragment>
+          ))}
+        </div>
+      </TabHint>
     </>
   );
 }
