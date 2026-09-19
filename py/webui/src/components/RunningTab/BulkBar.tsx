@@ -16,7 +16,7 @@
  */
 
 import { Fragment, useState } from "react";
-import { apiPost, apiStart, ApiError, type StartPayload } from "../../api/client";
+import { apiPost, apiStart, apiNewChat, ApiError, type StartPayload, type NewChatPayload } from "../../api/client";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
@@ -25,7 +25,7 @@ import type { SelectionControls } from "../../state/selection";
 import { TabHint } from "../shared/TabHint";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
-type BulkAction = "start" | "handover" | "compact" | "stop" | "close" | "retire" | "reset";
+type BulkAction = "start" | "handover" | "compact" | "stop" | "close" | "retire" | "reset" | "restart" | "newchat";
 
 interface BulkBarProps {
   tab: "running" | "registered";
@@ -54,6 +54,8 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     close: t.disableBtn,
     retire: t.retireBtn,
     reset: t.resetBtn,
+    restart: t.modeRestart,
+    newchat: t.modeNewchat,
   };
   const explanations: Record<BulkAction, string> = {
     start: t.legendBulkStart,
@@ -63,6 +65,8 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     close: t.legendDisable,
     retire: t.legendRetire,
     reset: t.legendReset,
+    restart: t.legendRestart,
+    newchat: t.legendNewchatBulk,
   };
 
   /** Mirrors `OptionsRow`'s untouched initial state (`../RunningTab/OptionsRow.tsx`)
@@ -85,16 +89,34 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     };
   }
 
+  /** Same shape/defaults as `startPayloadFor`, for the `restart`/`newchat`
+   * actions' `/api/new-chat` call — `base` instead of `name`, no `fresh`
+   * (a new chat is always a fresh spawn by construction). */
+  function newChatPayloadFor(s: SessionInfo): NewChatPayload {
+    const cliOptions = cliOptionsFor(data, s.host, s.cli);
+    return {
+      base: s.name,
+      host: s.host,
+      model: s.host === LOCAL_HOST ? (data?.settings.default_model[s.cli] ?? "") : "",
+      permission_mode: DEFAULT_PERMISSION_MODE,
+      effort: defaultEffort(cliOptions),
+      cli: s.cli,
+      lang,
+    };
+  }
+
   async function handleBulk(action: BulkAction) {
     if (busy) return;
     let picked = selectedRows;
     let note = "";
-    if (action === "close" || action === "retire" || action === "reset") {
-      // close/retire/reset can't apply to an unregistered (proc-scan-only)
-      // row — skip those, tell the user which ones (original: bulkAct()'s
-      // `unreg` filter). `reset` needs this too: its fresh-start half calls
-      // `/api/start`, which requires an ACTIVE roster entry — an unregistered
-      // row has none.
+    if (action === "close" || action === "retire" || action === "reset" || action === "restart" || action === "newchat") {
+      // close/retire/reset/restart/newchat can't apply to an unregistered
+      // (proc-scan-only) row — skip those, tell the user which ones
+      // (original: bulkAct()'s `unreg` filter). `reset` needs this because
+      // its fresh-start half calls `/api/start` (requires an ACTIVE roster
+      // entry); `restart`/`newchat` need it because `/api/new-chat` resolves
+      // `base` via `_new_chat_source()`, which fails ("base_not_in_roster")
+      // for anything not in the roster or instances.json.
       const unreg = picked.filter((s) => s.registered === false).map((s) => s.name);
       if (unreg.length) {
         picked = picked.filter((s) => s.registered !== false);
@@ -127,6 +149,24 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           } else {
             const startRes = await apiStart({ ...startPayloadFor(s), fresh: true });
             if (!startRes.ok) errs.push(`${name}: ${startRes.error}`);
+          }
+        } else if (action === "restart" || action === "newchat") {
+          // Same split as OptionsRow's "restart"/"newchat" modes: `restart`
+          // stops the running session first (only when still running — a row
+          // could already be stopped by an earlier action in this same bulk
+          // pass), `newchat` never stops it, leaving old and new running side
+          // by side. `_new_chat` itself never touches the source session
+          // either way (see its docstring) — the stop here is entirely this
+          // action's own doing, same reasoning as OptionsRow's `handleGo`.
+          let stopOk = true;
+          if (action === "restart" && s.running) {
+            const stopRes = await apiPost<ApiResult>("/api/stop", { name, host: s.host, lang });
+            stopOk = stopRes.ok;
+            if (!stopOk) errs.push(`${name}: ${stopRes.error}`);
+          }
+          if (stopOk) {
+            const newChatRes = await apiNewChat(newChatPayloadFor(s));
+            if (!newChatRes.ok) errs.push(`${name}: ${newChatRes.error}`);
           }
         } else {
           const res =
@@ -179,6 +219,8 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
   const legendRows: [string, string][] =
     tab === "running"
       ? [
+          [t.modeRestart, t.legendRestart],
+          [t.modeNewchat, t.legendNewchatBulk],
           [t.resetBtn, t.legendReset],
           [t.handoverBtn, t.legendHandover],
           [t.compactBtn, t.legendCompact],
@@ -200,6 +242,24 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
         </span>
         {tab === "running" && (
           <>
+            <button
+              type="button"
+              className="handover"
+              disabled={!canAct}
+              title={t.legendRestart}
+              onClick={() => void handleBulk("restart")}
+            >
+              {t.modeRestart}
+            </button>
+            <button
+              type="button"
+              className="handover"
+              disabled={!canAct}
+              title={t.legendNewchatBulk}
+              onClick={() => void handleBulk("newchat")}
+            >
+              {t.modeNewchat}
+            </button>
             <button
               type="button"
               className="handover"

@@ -108,6 +108,8 @@ export interface Strings {
   legendDisable: string;
   legendRetire: string;
   legendReset: string;
+  legendRestart: string;
+  legendNewchatBulk: string;
   legendBulkStart: string;
   legendHandover: string;
   legendCompact: string;
@@ -429,6 +431,8 @@ export const STRINGS: Record<Lang, Strings> = {
     legendDisable: "durdurur + otomasyon (guard) bir daha AÇMAZ — \"Devre dışı\" sekmesine taşınır, oradan geri alınır; instance'ta (↳) sadece durdurur",
     legendRetire: "durdurur + arşive kaldırır — \"Emekli\" sekmesine taşınır, \"tekrar işe al\" ile döner; instance'ta (↳) sadece durdurur",
     legendReset: "durdurur + roster/varsayılan ayarlarla sıfırdan (--new) yeniden başlatır (elle seçilmiş tek-seferlik bir model/effort korunmaz) — eski konuşma/context atılır, kayıt aktif kalır",
+    legendRestart: "çalışıyorsa durdurur, sonra AYNI blueprint'ten YENİ isimle taze bir kayıt başlatır — eski kayıt durur ama konuşması kaybolmaz (Kayıtlı/Geçmiş'te kalır); en sık ihtiyaç duyulan, varsayılan aksiyon",
+    legendNewchatBulk: "mevcut kaydı hiç durdurmadan AYNI blueprint'ten AYRI, ek bir yeni chat açar — ikisi birden aynı anda çalışmaya devam eder",
     legendBulkStart: "seçili kayıtlı (durdurulmuş) oturumları varsayılan parametrelerle (kayıtlı/varsayılan model, permission=auto, en yüksek effort, resume — fresh değil) tek tek başlatır",
     legendHandover: "wrap-up mesajı gönderip AYNI geçmişle yeniden açar (kapat+devam) — commit/push + not düşme için",
     legendCompact: "konuşmayı sıkıştırıp (context özetlenir) AYNI geçmişle yeniden açar — sadece claude CLI, birkaç dakika sürebilir",
@@ -770,6 +774,8 @@ export const STRINGS: Record<Lang, Strings> = {
     legendDisable: "stop + automation (guard) will NOT reopen it — moves to the \"Disabled\" tab, reversible there; on an instance (↳) it just stops it",
     legendRetire: "stop + archive — moves to the \"Retired\" tab, comes back via \"reactivate\"; on an instance (↳) it just stops it",
     legendReset: "stops it, then restarts it fresh (--new) with the roster/default settings (a one-off manually-picked model/effort is NOT preserved) — drops the old conversation/context, keeps the registration active",
+    legendRestart: "stops it if running, then starts a fresh record under a NEW name from the same blueprint — the old record stops but its conversation isn't lost (stays in Registered/History); the most commonly needed, default action",
+    legendNewchatBulk: "opens a separate, additional new chat from the same blueprint WITHOUT stopping the existing record — both keep running at once",
     legendBulkStart: "starts each selected registered (stopped) session one by one with default parameters (roster/default model, permission=auto, highest effort, resume — not fresh)",
     legendHandover: "sends a wrap-up prompt and reopens with the SAME history (close+continue) — for commit/push + notes",
     legendCompact: "compacts the conversation (summarizes context) and reopens with the SAME history — claude CLI only, can take a few minutes",
