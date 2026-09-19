@@ -30,7 +30,7 @@ import type { TabKey } from "../../state/tabs";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
-type Mode = "resume" | "reset" | "newchat";
+type Mode = "resume" | "reset" | "newchat" | "restart";
 
 interface OptionsRowProps {
   session: SessionInfo;
@@ -62,7 +62,27 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   // "_1.._N" roster clutter on the SAME base (live user report, not a guess:
   // "stop and start da cli ismi eski cli ismi artı _1 şeklinde geliyor").
   // "resume" still makes no sense while running (nothing to resume into).
-  const [mode, setMode] = useState<Mode>(() => (session.running ? "reset" : "resume"));
+  //
+  // 2026-09-18 follow-up (live user report on an instance, "qve20260915"):
+  // "reset" reusing the SAME name was itself a footgun once the running
+  // session was an instance rather than a blueprint — its whole point (per
+  // the 2026-09-15 note above) was dodging permanent roster.tsv clutter,
+  // but that clutter risk is gone now that instances live in instances.json
+  // (cheap, browsable via History, individually "unut"-able). Reusing the
+  // same name still silently drops the old conversation's reachability
+  // (`resume` for that name now resumes the NEW one), which the user does
+  // NOT want as the default gesture even though they don't reach for
+  // "reset" often. New default is "restart": stop, THEN `/api/new-chat`
+  // off the same blueprint (never touches the old record otherwise, see
+  // `_new_chat`'s docstring) — old name stops and stays fully resumable
+  // (Registered for a blueprint, History for an instance), new one gets
+  // its own dated identity. Deliberately not plain "newchat": that leaves
+  // the old one running, which left unchecked accumulates duplicate live
+  // sessions on the same blueprint every time you "restart" — still
+  // offered as its own choice for when running both at once is the point.
+  // "reset" (same name, old conversation unreachable) stays available,
+  // just no longer the default.
+  const [mode, setMode] = useState<Mode>(() => (session.running ? "restart" : "resume"));
   const [cli, setCli] = useState(session.cli);
   // "" = use the backend's own default (`provider.model_choices()[0]`, or the
   // session's current model on resume). TODO L73 (2026-09-02): pre-fill from
@@ -92,15 +112,21 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
 
   const modeChoices: [Mode, string][] = session.running
     ? [
-        ["reset", t.modeChoiceReset],
+        ["restart", t.modeChoiceRestart],
         ["newchat", t.modeChoiceNewchatOnly],
+        ["reset", t.modeChoiceReset],
       ]
     : [
         ["resume", t.modeChoiceResume],
         ["reset", t.modeChoiceReset],
         ["newchat", t.modeChoiceNewchat],
       ];
-  const modeLabels: Record<Mode, string> = { resume: t.modeResume, reset: t.modeReset, newchat: t.modeNewchat };
+  const modeLabels: Record<Mode, string> = {
+    resume: t.modeResume,
+    reset: t.modeReset,
+    newchat: t.modeNewchat,
+    restart: t.modeRestart,
+  };
 
   // Deliberate, minor improvement over the original's onCliChange(): that
   // one kept whatever model/pm/effort had been chosen for the PREVIOUS
@@ -132,19 +158,33 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   async function handleGo() {
     setBusy(true);
     const resolvedModel = model === OTHER_MODEL_VALUE ? modelOther : model;
-    if (mode === "newchat") {
+    if (mode === "newchat" || mode === "restart") {
+      // "restart" is "newchat" plus a stop first (only when still running) —
+      // `_new_chat` never touches the source session itself (see its
+      // docstring), so without the stop the old name would keep running
+      // alongside the new one, same as plain "newchat". A failed stop aborts
+      // before spawning the new one rather than leaving two live sessions
+      // sharing state on the same cwd.
       try {
-        const res = await apiNewChat({
-          base: session.name,
-          host: session.host,
-          model: resolvedModel,
-          permission_mode: permissionMode,
-          effort,
-          cli,
-          lang,
-        });
-        if (res.ok) window.alert(t.newChatStarted + res.name);
-        else confirmDiagFollowup(`${session.name}: ${res.error}`);
+        let stopOk = true;
+        if (mode === "restart" && session.running) {
+          const stopRes = await apiStop({ name: session.name, host: session.host, lang });
+          stopOk = stopRes.ok;
+          if (!stopOk) window.alert(`${session.name}: ${stopRes.error}`);
+        }
+        if (stopOk) {
+          const res = await apiNewChat({
+            base: session.name,
+            host: session.host,
+            model: resolvedModel,
+            permission_mode: permissionMode,
+            effort,
+            cli,
+            lang,
+          });
+          if (res.ok) window.alert(t.newChatStarted + res.name);
+          else confirmDiagFollowup(`${session.name}: ${res.error}`);
+        }
       } catch (e) {
         window.alert(describeApiError(e, t));
       }
@@ -200,7 +240,11 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
               </label>
             ))}
           </div>
-          <span className="opts-hint">{mode === "newchat" ? t.autoNameHint((session.instance && session.blueprint) || session.name, todayStr()) : ""}</span>
+          <span className="opts-hint">
+            {mode === "newchat" || mode === "restart"
+              ? t.autoNameHint((session.instance && session.blueprint) || session.name, todayStr())
+              : ""}
+          </span>
           <label>
             {t.cliLabel}
             <select value={cli} onChange={(e) => handleCliChange(e.target.value)}>

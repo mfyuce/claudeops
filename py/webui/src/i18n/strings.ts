@@ -185,6 +185,7 @@ export interface Strings {
   editCancel: string;
   reactivateBtn: string;
   historyDesc: string;
+  historyCount: (count: number) => string;
   historyResumeBtn: string;
   historyForgetBtn: string;
   historyForgetConfirm: (name: string) => string;
@@ -194,10 +195,12 @@ export interface Strings {
   modeResume: string;
   modeReset: string;
   modeNewchat: string;
+  modeRestart: string;
   modeChoiceNewchatOnly: string;
   modeChoiceResume: string;
   modeChoiceReset: string;
   modeChoiceNewchat: string;
+  modeChoiceRestart: string;
   runningNote: (name: string) => string;
   pmLabel: string;
   effortLabel: string;
@@ -505,6 +508,7 @@ export const STRINGS: Record<Lang, Strings> = {
     historyDesc:
       "Durdurulmuş instance'lar: bir blueprint'ten 'yeni sohbet' ile açılıp sonra durdurulan tarihli session'lar. " +
       "'Devam ettir' aynı isimle, kaldığı konuşmadan açar; 'Unut' kaydı sadece bu listeden siler, konuşma dosyalarına dokunmaz.",
+    historyCount: (count) => `${count} durdurulmuş instance`,
     historyResumeBtn: "devam ettir",
     historyForgetBtn: "unut",
     historyForgetConfirm: (name) => `${name} geçmişten silinsin mi? Konuşma dosyalarına dokunulmaz.`,
@@ -514,11 +518,13 @@ export const STRINGS: Record<Lang, Strings> = {
     modeResume: "devam ettir",
     modeReset: "sıfırla ve başlat",
     modeNewchat: "yeni chat aç",
+    modeRestart: "durdur + yeni isimle başlat",
     modeChoiceNewchatOnly: "Ayrı yeni chat aç (mevcuduna dokunmaz)",
     modeChoiceResume: "Devam ettir (kaldığı yerden)",
-    modeChoiceReset: "Bu ismi SIFIRLA (--new, geçmiş bir daha görünmez)",
+    modeChoiceReset: "Bu ismi SIFIRLA (--new, geçmiş bir daha görünmez — nadiren gereken bir seçenek)",
     modeChoiceNewchat: "Ayrı yeni chat aç (yeni isimle, mevcuduna dokunmaz)",
-    runningNote: (name) => `⚠ ${name} şu an ÇALIŞIYOR — "Sıfırla" onu durdurup AYNI isimle sıfırdan başlatır (mevcut konuşma bir daha görünmez); "Yeni chat aç" ise ${name}'a hiç dokunmadan AYRI, ek bir chat açar.`,
+    modeChoiceRestart: "Durdur + YENİ isimle taze başlat (bu kayıt durur ama konuşması kaybolmaz)",
+    runningNote: (name) => `⚠ ${name} şu an ÇALIŞIYOR — "Durdur + yeni isimle başlat" onu durdurup YENİ isimle taze bir kayıt açar (bu kayıt durur, konuşması kaybolmaz); "Yeni chat aç" ${name}'a hiç dokunmadan AYRI, ek bir chat açar; "Sıfırla" ise onu durdurup AYNI isimle sıfırdan başlatır (mevcut konuşma bir daha görünmez — nadiren gerekir).`,
     pmLabel: "permission-mode",
     effortLabel: "effort",
     modelLabel: "model",
@@ -843,6 +849,7 @@ export const STRINGS: Record<Lang, Strings> = {
     historyDesc:
       "Stopped instances: dated sessions opened from a blueprint via 'new chat' and later stopped. " +
       "'Resume' reopens one under the same name, continuing its conversation; 'Forget' only removes it from this list and never touches the conversation files.",
+    historyCount: (count) => `${count} stopped instance${count === 1 ? "" : "s"}`,
     historyResumeBtn: "resume",
     historyForgetBtn: "forget",
     historyForgetConfirm: (name) => `Remove ${name} from history? Conversation files are not touched.`,
@@ -852,11 +859,13 @@ export const STRINGS: Record<Lang, Strings> = {
     modeResume: "resume",
     modeReset: "reset and start",
     modeNewchat: "start new chat",
+    modeRestart: "stop + start under new name",
     modeChoiceNewchatOnly: "Start a separate new chat (does not touch the existing one)",
     modeChoiceResume: "Resume (from where it left off)",
-    modeChoiceReset: "RESET this name (--new, previous history no longer shown)",
+    modeChoiceReset: "RESET this name (--new, previous history no longer shown — rarely what you want)",
     modeChoiceNewchat: "Start a separate new chat (new name, does not touch the existing one)",
-    runningNote: (name) => `⚠ ${name} is currently RUNNING — "Reset" stops it and restarts it fresh under the SAME name (its conversation won't be shown again); "Start new chat" opens a SEPARATE extra chat without touching ${name}.`,
+    modeChoiceRestart: "Stop + start fresh under a NEW name (old record stops but its conversation isn't lost)",
+    runningNote: (name) => `⚠ ${name} is currently RUNNING — "Stop + start under new name" stops it and opens a fresh record under a NEW name (the old record stops but its conversation isn't lost); "Start new chat" opens a SEPARATE extra chat without touching ${name}; "Reset" stops it and restarts fresh under the SAME name (its conversation won't be shown again — rarely what you want).`,
     pmLabel: "permission-mode",
     effortLabel: "effort",
     modelLabel: "model",
