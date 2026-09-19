@@ -154,6 +154,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
         <div className="opts-hint">{stopped.length === 0 ? t.empty : t.noSearchMatches}</div>
       ) : (
         <div className="tablewrap">
+          <div className="opts-hint">{t.historyCount(filtered.length)}</div>
           <CollapseControls
             groupKeys={groupKeys}
             isExpanded={collapse.isExpanded}
@@ -170,6 +171,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
                     <GroupHeaderRow
                       host={g.host}
                       cwd={g.cwd}
+                      name={g.items[0]?.blueprint ?? g.items[0]?.name}
                       count={g.items.length}
                       colSpan={HISTORY_COLSPAN}
                       collapsed={!expanded}
