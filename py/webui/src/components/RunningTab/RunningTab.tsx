@@ -122,6 +122,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
                   <GroupHeaderRow
                     host={g.host}
                     cwd={g.cwd}
+                    name={g.items[0]?.blueprint || g.items[0]?.name}
                     count={g.items.length}
                     colSpan={RUNNING_ROW_COLSPAN}
                     collapsed={!expanded}

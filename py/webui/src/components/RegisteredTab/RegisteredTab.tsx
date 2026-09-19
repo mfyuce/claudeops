@@ -203,6 +203,7 @@ export function RegisteredTab({ selection, onSwitchTab, search, onView }: Regist
                   <GroupHeaderRow
                     host={g.host}
                     cwd={g.cwd}
+                    name={g.items[0]?.blueprint || g.items[0]?.name}
                     count={g.items.length}
                     colSpan={REGISTERED_ROW_COLSPAN}
                     collapsed={!expanded}

@@ -92,17 +92,57 @@ h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
 .pagination { display: flex; gap: .6rem; align-items: center; justify-content: center;
               margin: .5rem 0; font-size: .78rem; color: var(--muted); }
 .group-header td { background: var(--panel2); font-size: .78rem; color: var(--muted);
-                    padding: .35rem .5rem; cursor: pointer; user-select: none; }
-.group-header .toggle { display: inline-block; width: 1em; }
+                    padding: .35rem .5rem; cursor: pointer; user-select: none;
+                    display: flex; align-items: center; gap: .3em;
+                    /* colSpan cell has no sibling columns in its OWN row to compete
+                     * against, so table auto-layout sizes it off whatever the table's
+                     * OTHER (data) rows make the table overall — often much wider than
+                     * the viewport — and the flex child below just fills that, never
+                     * shrinking enough to ellipsis. An explicit cap here is what
+                     * actually forces it to (live-confirmed, headless Chrome: without
+                     * this the group-cwd span measured 705px/never truncated even with
+                     * min-width:0 + flex:1 1 auto set). */
+                    max-width: 60vw; }
+.group-header .toggle { display: inline-block; width: 1em; flex: none; }
+/* Same left-truncation as td.cwd (2026-09-19, "cops (sayı) - full path sağa
+   doğru açık solda sığmayınca nokta nokta") — group headers show the raw cwd
+   as plain text with no width limit of its own, so on a narrow column it just
+   overflows/wraps instead of truncating. flex + min-width:0 lets this span
+   shrink below its content size (required for text-overflow to ever trigger
+   inside a flex item); count/host-badge/extra sit in their own flex:none
+   siblings so they never get squeezed by the ellipsis. */
+.group-header .group-cwd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                            direction: rtl; text-align: left; min-width: 0; flex: 1 1 auto; }
+.group-header .group-name { flex: none; font-weight: 600; }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; color: var(--muted); font-weight: 500; font-size: .75rem;
      text-transform: uppercase; letter-spacing: .04em; padding: .4rem .5rem;
      border-bottom: 1px solid var(--border); }
 td { padding: .4rem .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
 th.selcell, td.selcell { width: 1.6rem; text-align: center; padding-left: .2rem; padding-right: .2rem; }
+/* Collapsed cwd is almost always a long shared prefix (/home/user/work/...)
+   with the only DISTINGUISHING part — the leaf project folder — at the very
+   end; a normal left-anchored ellipsis hides exactly that part and leaves
+   every row showing the same useless prefix (2026-09-19, user: "full path
+   sağda kısaltma solda olsun"). `direction: rtl` moves text-overflow's
+   ellipsis to the visual left instead of the right, so the tail (the part
+   that actually differs row to row) stays visible on the right.
+   `unicode-bidi` deliberately left at its default (`normal`/embed) — live-
+   tested (headless Chrome) both other options and each breaks it a
+   different way: `plaintext` derives the paragraph direction from the
+   text's OWN first-strong character, which for a path is a Latin letter
+   (LTR) — that silently CANCELS the `direction: rtl` we just set, right
+   back to truncating the useless prefix; `bidi-override` visually reverses
+   the Latin runs' own character order ("/home" rendered as "emoh/", live-
+   confirmed) — the exact "harf order bozulması" risk flagged when this was
+   asked for. Plain `rtl` (no unicode-bidi override) keeps each LTR run's
+   internal character order correct while still moving the ellipsis/overflow
+   side, confirmed against the live panel. */
 td.cwd { color: var(--muted); font-size: .78rem; overflow: hidden; text-overflow: ellipsis;
-         white-space: nowrap; max-width: 1px; cursor: pointer; }
-td.cwd.expanded { white-space: normal; word-break: break-all; max-width: none; overflow: visible; }
+         white-space: nowrap; max-width: 1px; cursor: pointer;
+         direction: rtl; text-align: left; }
+td.cwd.expanded { white-space: normal; word-break: break-all; max-width: none; overflow: visible;
+                  direction: ltr; }
 td.hocell { font-size: .78rem; }
 .ho-yes { color: var(--amber); font-weight: 600; cursor: help; }
 .ho-no { color: var(--muted); opacity: .6; cursor: help; }

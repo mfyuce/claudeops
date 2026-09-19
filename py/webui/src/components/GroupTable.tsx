@@ -131,6 +131,7 @@ export function GroupTable({ items, search, onView }: GroupTableProps) {
                 <GroupHeaderRow
                   host={g.host}
                   cwd={g.cwd}
+                  name={g.items[0]?.name}
                   count={g.items.length}
                   colSpan={GROUP_TABLE_COLSPAN}
                   collapsed={!expanded}

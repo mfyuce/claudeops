@@ -13,6 +13,12 @@ import { LOCAL_HOST } from "../../state/hosts";
 interface GroupHeaderRowProps {
   host: string;
   cwd: string;
+  /** The group's registered/blueprint name (callers derive it from their
+   * own item shape — instance rows carry it as `blueprint`, a roster row's
+   * own `name` already IS it — see the 4 call sites). Optional/falsy is
+   * handled gracefully (just the count, no name prefix) since a future
+   * caller may genuinely have no such concept. */
+  name?: string | null;
   count: number;
   colSpan: number;
   collapsed: boolean;
@@ -20,13 +26,16 @@ interface GroupHeaderRowProps {
   extra?: ReactNode;
 }
 
-export function GroupHeaderRow({ host, cwd, count, colSpan, collapsed, onToggle, extra }: GroupHeaderRowProps) {
+export function GroupHeaderRow({ host, cwd, name, count, colSpan, collapsed, onToggle, extra }: GroupHeaderRowProps) {
   const { t } = useLang();
   return (
     <tr className="group-header" onClick={onToggle}>
       <td colSpan={colSpan}>
         <span className="toggle">{collapsed ? "▸" : "▾"}</span>
-        {cwd} ({count})
+        <span className="group-name">{name ? `${name} (${count}):` : `(${count})`}</span>
+        <span className="group-cwd" title={cwd}>
+          {cwd}
+        </span>
         {host !== LOCAL_HOST && (
           <span className="cli-badge" title={t.hostBadgeHint(host)}>
             {host}
