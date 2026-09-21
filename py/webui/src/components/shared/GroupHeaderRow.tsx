@@ -31,17 +31,19 @@ export function GroupHeaderRow({ host, cwd, name, count, colSpan, collapsed, onT
   return (
     <tr className="group-header" onClick={onToggle}>
       <td colSpan={colSpan}>
-        <span className="toggle">{collapsed ? "▸" : "▾"}</span>
-        <span className="group-name">{name ? `${name} (${count}):` : `(${count})`}</span>
-        <span className="group-cwd" title={cwd}>
-          {cwd}
-        </span>
-        {host !== LOCAL_HOST && (
-          <span className="cli-badge" title={t.hostBadgeHint(host)}>
-            {host}
+        <div className="group-header-inner">
+          <span className="toggle">{collapsed ? "▸" : "▾"}</span>
+          <span className="group-name">{name ? `${name} (${count}):` : `(${count})`}</span>
+          <span className="group-cwd" title={cwd}>
+            {cwd}
           </span>
-        )}
-        {extra}
+          {host !== LOCAL_HOST && (
+            <span className="cli-badge" title={t.hostBadgeHint(host)}>
+              {host}
+            </span>
+          )}
+          {extra}
+        </div>
       </td>
     </tr>
   );

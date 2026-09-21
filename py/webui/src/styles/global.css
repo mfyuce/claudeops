@@ -91,18 +91,24 @@ h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
 .legend { font-size: .72rem; color: var(--muted); margin: .2rem 0 .6rem; line-height: 1.6; }
 .pagination { display: flex; gap: .6rem; align-items: center; justify-content: center;
               margin: .5rem 0; font-size: .78rem; color: var(--muted); }
-.group-header td { background: var(--panel2); font-size: .78rem; color: var(--muted);
-                    padding: .35rem .5rem; cursor: pointer; user-select: none;
-                    display: flex; align-items: center; gap: .3em;
-                    /* colSpan cell has no sibling columns in its OWN row to compete
-                     * against, so table auto-layout sizes it off whatever the table's
-                     * OTHER (data) rows make the table overall — often much wider than
-                     * the viewport — and the flex child below just fills that, never
-                     * shrinking enough to ellipsis. An explicit cap here is what
-                     * actually forces it to (live-confirmed, headless Chrome: without
-                     * this the group-cwd span measured 705px/never truncated even with
-                     * min-width:0 + flex:1 1 auto set). */
-                    max-width: 60vw; }
+/* 2026-09-21: the flex/max-width truncation rig below USED to live directly on
+ * `.group-header td` — but giving a colspanned `<td>` a non-table `display`
+ * makes IT shrink-to-fit its own content instead of stretching across its
+ * full colspan (live-measured: a 404px cell inside a 960px-wide table, the
+ * rest of the row left blank — `width:100%` on the `<td>` itself did NOT fix
+ * this, its containing block resolves oddly once `display` stops being
+ * `table-cell`). Fix: leave the `<td>` a plain table-cell (so normal table
+ * auto-layout gives it the full colspanned width, which is what actually
+ * makes the row's background/click-area span the whole table — user: "tüm
+ * tabloya yayarsak daha iyi kullanım olur") and move the flex/truncation
+ * styling to an inner wrapper `<div>` instead. */
+.group-header td { background: var(--panel2); padding: 0; cursor: pointer; user-select: none; }
+.group-header-inner { font-size: .78rem; color: var(--muted); padding: .35rem .5rem;
+                       display: flex; align-items: center; gap: .3em;
+                       /* Same reasoning as before, just relocated: without a cap the
+                        * group-cwd span can measure wider than the viewport and never
+                        * trigger its own ellipsis (live-confirmed, headless Chrome). */
+                       max-width: 60vw; box-sizing: border-box; }
 .group-header .toggle { display: inline-block; width: 1em; flex: none; }
 /* Same left-truncation as td.cwd (2026-09-19, "cops (sayı) - full path sağa
    doğru açık solda sığmayınca nokta nokta") — group headers show the raw cwd
