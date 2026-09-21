@@ -1121,7 +1121,11 @@ def _status_payload() -> dict:
     assigned_pids = {s.pid for s in assigned.values()}
 
     sessions, closed, retired = [], [], []
-    for name in sorted(fleet):
+    # 2026-09-21 kullanıcı kararı: ana sıralama isme göre değil, cwd/path'e göre
+    # (TODO.md #1) — cwd birincil anahtar, aynı cwd'deki satırlar kendi
+    # aralarında isme göre (tiebreak). Bu tek döngü sessions/closed/retired
+    # ÜÇÜNÜN de sırasını belirliyor (yorum satır 1113'te zaten not düşülmüştü).
+    for name in sorted(fleet, key=lambda n: (fleet[n]["cwd"], n)):
         info = fleet[name]
         if info["state"] == "retired":
             retired.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"],

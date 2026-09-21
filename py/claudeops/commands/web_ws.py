@@ -117,15 +117,16 @@ _HEARTBEAT_SECONDS = 30.0
 # hesaplarım", öbürü "kendi reader'ım kapandı mı diye ne zaman bakarım").
 _WRITER_POLL_SECONDS = 2.0
 
-# Reader'ın bloklayan `read1()`'i bu kadar sürede bir timeout'la geri döner
+# Reader'ın bloklayan okumaları bu kadar sürede bir timeout'la geri döner
 # (client sessizce hiçbir şey göndermiyorsa NORMAL — tarayıcı WS client'ı
-# pratikte kendiliğinden bir şey yollamaz). Salt bir timeout KAPANIŞ
-# SAYILMAZ (aksi halde tamamen sağlıklı ama sessiz bağlantıları gereksiz
-# yere reconnect'e zorlardık) — sadece döngünün `client.closed`'ı tekrar
-# kontrol etmesi için bir uyanma noktası. Gerçek "sessiz yarı-açık TCP"
-# tespiti bilinçli olarak burada YOK — plan bunu client'ın kendi 10-15s
-# arka-plan poll backstop'una bırakıyor (`useStatus.ts`), sunucu tarafında
-# aktif ping/TCP-keepalive taraması eklemek bu aşamanın kapsamı dışında.
+# pratikte kendiliğinden bir şey yollamaz). Salt bir timeout tek başına
+# KAPANIŞ SAYILMAZ (aksi halde tamamen sağlıklı ama sessiz bağlantıları
+# gereksiz yere reconnect'e zorlardık) — TODO.md'nin 2026-09-21 maddesi:
+# artık ilk timeout'ta bir Ping gönderilir, bir SONRAKİ timeout'a kadar
+# (Pong dahil) hiçbir bayt gelmezse "sessiz yarı-açık TCP" sayılıp bağlantı
+# kapatılır/registry'den temizlenir (en kötü tespit süresi ~2×bu değer).
+# Tam mekanizma VE ayrıca bulunan `io.BufferedReader` zehirlenme bug'ı için
+# aşağıdaki `_reader_loop`'un docstring'ine bkz.
 _READER_IDLE_TIMEOUT_SECONDS = 30.0
 
 _QUEUE_MAXSIZE = 2
@@ -226,28 +227,76 @@ def _writer_loop(client: _WSClient) -> None:
 
 
 def _reader_loop(client: _WSClient) -> None:
-    """Bağımsız thread — TEK görevi client kapanışını/EOF'unu tespit edip
+    """Bağımsız thread — TEK görevi client kapanışını/EOF'unu (VEYA artık:
+    sessiz yarı-açık bir TCP'yi, aşağıdaki `pinged` mantığıyla) tespit edip
     `client.closed`'ı set etmek (registry temizliği `handle_ws()`'in
     `finally`'inde, tek yerden). Yol boyunca gelen frame'leri protokole
     besleyip (`receive_data`/`receive_eof`) otomatik üretilen pong/close-ack
     yanıtlarını da akıtır (`_pump_locked`) — ki bir tarayıcının close-
-    handshake'i sunucu tarafında hiç yanıtsız kalmasın."""
+    handshake'i sunucu tarafında hiç yanıtsız kalmasın.
+
+    **2026-09-21 (TODO.md), İKİ ayrı düzeltme, ikincisi birincisi olmadan
+    hiç işlemezdi:**
+
+    1. **Asıl kök neden, bu turda ayrıca bulundu:** `handler.rfile` bir
+       `io.BufferedReader`. CPython'da bir kez `read1()` `socket.timeout`
+       attıktan SONRA, AYNI `rfile` üzerindeki HER SONRAKİ çağrı temiz bir
+       `socket.timeout` DEĞİL, kalıcı `OSError("cannot read from timed out
+       object")` fırlatır (ham `socket.recv()` ile yan yana izole test
+       edilip doğrulandı — `recv()` aynı senaryoda HER SEFERİNDE temiz
+       timeout veriyor, hiç "zehirlenmiyor"). Sonuç: ESKİ kod (`except
+       OSError: break`) bu zehirlenmiş hatayı yakalayıp SESSİZCE ÖLÜ
+       sayıyordu — yani sağlıklı ama sessiz HER `/ws` bağlantısı bile
+       ~1×`_READER_IDLE_TIMEOUT_SECONDS` sonra sunucu tarafından kapatılıyor,
+       modülün kendi "sağlıklı sessiz bağlantıyı gereksiz reconnect'e
+       zorlamayalım" niyetiyle DOĞRUDAN çelişiyordu — fark edilmemiş, ayrı
+       bir bug. Fix: SADECE İLK okuma `rfile.read1()` (yukarıdaki "Neden ham
+       recv() DEĞİL" notundaki gerekçe — handshake sırasında buffer'a erken
+       çekilmiş bir WS frame'i kaçırmamak — SADECE ilk okuma için geçerli;
+       `read1()` iç buffer'ı önce boşalttığı için ilk çağrıdan sonra iç
+       buffer garanti boş kalır), SONRAKİ TÜM okumalar ham
+       `handler.connection.recv()` (zehirlenmeye bağışık, izole test edildi).
+    2. **Asıl istenen düzeltme:** artık zehirlenmeyen döngüde, ilk
+       idle-timeout'ta bir WS Ping gönderilir (`pinged=True`); bir SONRAKİ
+       idle-timeout'a kadar (Pong dahil, HERHANGİ bir bayt) hiçbir şey
+       gelmezse bağlantı GERÇEKTEN ölü sayılıp döngüden çıkılır. Bir şey
+       gelirse `pinged` sıfırlanır. Sağlıklı-sessiz vs. gerçekten-yarı-açık
+       ayrımı böylece ~2×`_READER_IDLE_TIMEOUT_SECONDS` içinde netleşir.
+       `/ws/term` aynı fonksiyonu paylaştığı için (`handle_ws_term`) o
+       yoldaki sessiz-ölü bağlantıların arka-plan poll thread'i de artık
+       kendiliğinden sonlanıyor."""
     handler = client.handler
+    pinged = False  # bir önceki idle-timeout'ta ping attık mı — henüz cevap (Pong ya da başka bir şey) gelmedi
+    first_read = True  # SADECE bu çağrı için rfile.read1() (handshake buffer'ı boşalt); sonrası ham recv()
     try:
         handler.connection.settimeout(_READER_IDLE_TIMEOUT_SECONDS)
         while client.protocol.state in (OPEN, CLOSING) and not client.closed.is_set():
             try:
-                data = handler.rfile.read1(65536)
+                data = handler.rfile.read1(65536) if first_read else handler.connection.recv(65536)
             except socket.timeout:
-                continue  # normal — client sessiz, kapanış DEĞİL
+                first_read = False  # rfile zehirlenmiş olabilir — bundan sonra hep ham recv() kullan
+                if pinged:
+                    break  # bir tam idle-timeout önce ping attık, hâlâ (Pong dahil) hiçbir şey yok — sessiz yarı-açık
+                with client.lock:
+                    if client.protocol.state in (OPEN, CLOSING):
+                        client.protocol.send_ping(b"")
+                        ok = _pump_locked(client, None)
+                    else:
+                        ok = False
+                if not ok:
+                    break
+                pinged = True
+                continue
             except OSError:
                 break
+            first_read = False
+            pinged = False  # gerçek bayt geldi (data VEYA EOF) — bağlantı kanıtlı canlı, prob'u unut
             with client.lock:
                 if data:
                     client.protocol.receive_data(data)
                 else:
                     client.protocol.receive_eof()
-                client.protocol.events_received()  # içerik işlenmiyor, sadece tüket (leak önleme)
+                client.protocol.events_received()  # içerik işlenmiyor, sadece tüket (leak önleme) — Pong dahil
                 ok = _pump_locked(client, None)
             if not ok or not data:
                 break
