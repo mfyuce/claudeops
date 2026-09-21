@@ -246,12 +246,15 @@ export interface StatusPayload {
    * merged across hosts, unlike `sessions`/`hosts` above — `commands/
    * web_orch.py` refuses any `host != "local"` participant). */
   orch: OrchState;
-  /** 2026-09-17, "son snapshot" — `last_snapshot.json`'ın meta özeti (tam
-   * session listesi DEĞİL, sadece ne-zaman/kaç-session — Settings panelinin
-   * "Son snapshot: X, N session" gösterimi için). `orch` gibi local-only,
-   * `web_hosts.merge_status`'a hiç girmez (bu makinenin KENDİ fleet'inin
-   * anlık görüntüsü, uzak host'unkiyle karışmaz). */
-  snapshot: { saved_at: number | null; count: number };
+  /** 2026-09-17, "son snapshot" — snapshot GEÇMİŞİNİN (bkz. `SnapshotListResult`)
+   * en son kaydının meta özeti (tam session listesi DEĞİL, sadece ne-zaman/
+   * kaç-session/hangi-tür — Settings panelinin "Son snapshot: X, N session"
+   * gösterimi için). `orch` gibi local-only, `web_hosts.merge_status`'a hiç
+   * girmez (bu makinenin KENDİ fleet'inin anlık görüntüsü, uzak host'unkiyle
+   * karışmaz). `kind`, 2026-09-21: panel süreci SIGTERM alınca (servis
+   * stop/restart/gerçek shutdown) OTOMATİK eklenen "closing" kaydı, kullanıcının
+   * elle bastığı "manual"dan ayırt edilsin diye — `null` hiç kayıt yokken. */
+  snapshot: { saved_at: number | null; kind: "manual" | "closing" | null; count: number };
 }
 
 // ── TOBEDECIDED#15 Phase 1 — workers-only orchestration ─────────────────
@@ -510,7 +513,7 @@ export type LayoutResult = ApiResult<{
   applied: boolean;
 }>;
 
-/** `_snapshot_save()`. */
+/** `_snapshot_save()` — always appends a NEW "manual" entry to the history. */
 export type SnapshotSaveResult = ApiResult<{ saved_at: number; count: number }>;
 /** `_snapshot_resume()` — one row per snapshot entry; `error` only present
  * when `status === "failed"` (register or start failed for that name — the
@@ -520,4 +523,12 @@ export type SnapshotResumeResult = ApiResult<{
   started: number;
   already_running: number;
   failed: number;
+}>;
+/** `_snapshot_list()` — metadata-only history, newest first (2026-09-21, see
+ * `snapshot.py`'s module docstring for why this replaced the old single-record
+ * `last_snapshot.json`). Each row's `saved_at` is what `apiSnapshotResume`'s
+ * optional `savedAt` param targets to resume THAT specific past snapshot
+ * instead of the newest one. */
+export type SnapshotListResult = ApiResult<{
+  snapshots: { saved_at: number; kind: "manual" | "closing"; count: number }[];
 }>;

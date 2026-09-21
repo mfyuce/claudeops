@@ -33,6 +33,7 @@ import platform
 import re
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
@@ -60,7 +61,7 @@ from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, save_settings
-from ..snapshot import save_snapshot, load_snapshot
+from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers.claude_provider import jsonl_path_for
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
@@ -233,6 +234,8 @@ ERR = {
                                          "the new folder starts fresh and the old history becomes unreachable from this project name"},
     "no_snapshot": {"tr": "kaydedilmiş bir snapshot yok — önce 'Snapshot kaydet'e basın",
                      "en": "no saved snapshot yet — click 'Save snapshot' first"},
+    "snapshot_not_found": {"tr": "bu snapshot artık geçmişte yok (silinmiş/budanmış olabilir)",
+                            "en": "that snapshot is no longer in history (may have been pruned)"},
 }
 
 
@@ -1273,11 +1276,13 @@ def _tunnel_info() -> dict:
 
 
 def _snapshot_info() -> dict:
-    """`/api/status` payload'ının "snapshot" alanı — sadece meta (ne zaman,
-    kaç session), tam liste `results`/resume akışının işine yarar ama Settings
-    panelinin "Son snapshot: X, N session" gösterimi için gereksiz büyük."""
-    snap = load_snapshot()
-    return {"saved_at": snap.get("saved_at"), "count": len(snap.get("sessions") or [])}
+    """`/api/status` payload'ının "snapshot" alanı — sadece EN SON kaydın
+    meta'sı (ne zaman, kaç session, elle mi kapanışta mı), tam geçmiş listesi
+    `/api/snapshot/list`'in işi (bkz. aşağıdaki "Fleet snapshot" bölümü) —
+    Settings panelinin özet satırı için o kadarı gereksiz büyük."""
+    snap = load_latest_snapshot()
+    return {"saved_at": snap.get("saved_at"), "kind": snap.get("kind"),
+            "count": len(snap.get("sessions") or [])}
 
 
 _VALID_THEMES = ("system", "light", "dark")
@@ -2130,7 +2135,7 @@ def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
     return _start(name, lang=lang)
 
 
-# ══ Fleet snapshot (TODO.md 2026-09-16) ═════════════════════════════════════
+# ══ Fleet snapshot (TODO.md 2026-09-16, genişletildi 2026-09-21) ═══════════
 # Kullanıcı: "last running snapshot gibi bisi olmali... once save snapshot
 # olur... makine baslayinca resume snapshot denir hepsini resume eder" —
 # guard kasıtlı kapalı ([[feedback-manual-fleet-control]]) olduğu için reboot
@@ -2146,34 +2151,81 @@ def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
 # `hidden=True` istenirse tmux-arkaplanda (spawn_session'ın `hidden` param'ı,
 # 2026-09-17) — sonradan normal "pencere aç" (`_open_window`) ile telafi
 # edilebilir.
+#
+# 2026-09-21: kullanıcı elle snapshot almayı unutup bir sonraki bakışta son
+# kaydın gerçek kapanış anını yansıtmadığını fark etti ("son snapshot farkli
+# bir conf gosteriyor"). İki genişletme: (1) tek-kayıt modelinden GEÇMİŞE
+# (`snapshot.py`'nin `snapshots.json` listesi, bkz. o dosyanın docstring'i)
+# geçildi; (2) `run()`'a SIGTERM handler'ı eklendi — panel süreci HERHANGİ
+# sebeple durunca (systemd stop/restart, gerçek shutdown, hepsi aynı sinyal)
+# `_save_closing_snapshot()` fleet'i en son kayıtla karşılaştırıp SADECE
+# farklıysa yeni bir "closing" girdisi ekliyor (aynıysa kullanıcının kuralı —
+# "sorun yok" — uyarınca kopya yaratılmıyor). Bu, systemd unit dosyasına HİÇ
+# dokunmadan çalışıyor: `KillMode=process` zaten SADECE bu ana PID'e SIGTERM
+# gönderiyor (`commands/service.py`'nin docstring'i), fleet'in geri kalanı
+# (tmux/gnome-terminal) handler çalıştığı anda hâlâ ayakta oluyor —
+# `find_sessions()` gerçek/doğru anlık görüntüyü görebiliyor.
+
+
+def _live_snapshot_entries() -> list:
+    """Şu an çalışan TÜM session'ların (registered olsun olmasın — "çalışanları
+    kaydet" literal) snapshot şekli — `_snapshot_save()` (elle) VE
+    `_save_closing_snapshot()` (otomatik) AYNI listeyi üretsin diye ortak
+    yardımcı."""
+    return [
+        {"name": s.name, "cwd": s.cwd, "model": s.model, "permission_mode": s.permission_mode,
+         "effort": s.effort, "cli": s.cli}
+        for s in find_sessions(measure_cpu=False)
+    ]
 
 
 def _snapshot_save(lang: str = "tr") -> dict:
-    """Şu an çalışan TÜM session'ları (registered olsun olmasın — "çalışanları
-    kaydet" literal) last_snapshot.json'a yaz. Hiç canlı session yoksa da boş
-    bir snapshot kaydedilir (kullanıcı bilerek "her şeyi kapattım" durumunu da
-    kaydedebilmeli — burada bir hata/engel yok)."""
-    live = find_sessions(measure_cpu=False)
-    entries = [
-        {"name": s.name, "cwd": s.cwd, "model": s.model, "permission_mode": s.permission_mode,
-         "effort": s.effort, "cli": s.cli}
-        for s in live
-    ]
-    data = save_snapshot(entries)
+    """"Snapshot kaydet" düğmesi — HER ZAMAN yeni bir "manual" girdi ekler.
+    Hiç canlı session yoksa da boş bir snapshot kaydedilir (kullanıcı bilerek
+    "her şeyi kapattım" durumunu da kaydedebilmeli — burada bir hata/engel
+    yok)."""
+    entries = _live_snapshot_entries()
+    data = save_snapshot(entries, kind="manual")
     return {"ok": True, "saved_at": data["saved_at"], "count": len(entries)}
 
 
-def _snapshot_resume(hidden: bool = False, lang: str = "tr") -> dict:
-    """Kaydedilmiş snapshot'taki her isim için: zaten çalışıyorsa atla; blueprint
-    değilse ve instance kaydında da yoksa tarihli/türev isimleri instance olarak
-    kaydet (roster'a YAZMA), diğerlerini `_register_project` ile blueprint olarak
-    ekle; kapalı/emekli blueprint'i aktive et; sonra snapshot'ın kendi (kayıt
-    anındaki GERÇEK) model/permission_mode/effort/cli alanlarıyla `_start` eder —
+def _save_closing_snapshot() -> None:
+    """`run()`'ın SIGTERM handler'ından (ve Ctrl-C/`KeyboardInterrupt`
+    dalından) çağrılır — panel şu an kapanıyorken fleet'in GERÇEK son hâlini
+    yakalar. BEST-EFFORT: ps-tarama/disk-yazma her ne şekilde patlarsa
+    patlasın sürecin kapanışını GECİKTİRMEMELİ/ENGELLEMEMELİ, o yüzden her şey
+    yutulur. `kind="closing"` olduğu için `save_snapshot()` zaten son kayıtla
+    aynıysa kendiliğinden no-op — burada AYRICA bir karşılaştırma gerekmiyor."""
+    try:
+        save_snapshot(_live_snapshot_entries(), kind="closing")
+    except Exception:
+        pass
+
+
+def _snapshot_list() -> dict:
+    """`/api/snapshot/list` — geçmişteki TÜM kayıtların meta'sı (ne zaman, kaç
+    session, elle mi kapanış mı), en yeni önce. Tam session gövdesi YOK
+    (`_snapshot_info()`'nun "gereksiz büyük" gerekçesiyle aynı) — bir satır
+    seçilip "geri yükle" denince asıl gövde `_snapshot_resume`'a `saved_at`
+    anahtarıyla gidiyor."""
+    return {"ok": True, "snapshots": list_snapshots()}
+
+
+def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lang: str = "tr") -> dict:
+    """Kaydedilmiş bir snapshot'taki (varsayılan: EN SON kayıt, `saved_at`
+    verilirse geçmişten O belirli kayıt) her isim için: zaten çalışıyorsa
+    atla; blueprint değilse ve instance kaydında da yoksa tarihli/türev
+    isimleri instance olarak kaydet (roster'a YAZMA), diğerlerini
+    `_register_project` ile blueprint olarak ekle; kapalı/emekli blueprint'i
+    aktive et; sonra snapshot'ın kendi (kayıt anındaki GERÇEK)
+    model/permission_mode/effort/cli alanlarıyla `_start` eder —
     [[add-session-to-fleet]]'in kanıtlanmış deseni. `_run_layout` gibi (aynı "N
     session için tek POST'ta sırayla işle" deseni) senkron — her `_start` zaten
     kendi `_wait_stable`'ıyla doğal olarak aralanır, ayrı bir throttle eklemeye
     gerek yok."""
-    snap = load_snapshot()
+    snap = get_snapshot(saved_at) if saved_at is not None else load_latest_snapshot()
+    if snap is None:
+        return _err(lang, "snapshot_not_found")
     entries = snap.get("sessions") or []
     if not entries:
         return _err(lang, "no_snapshot")
@@ -2967,7 +3019,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
-                         "/api/snapshot/save", "/api/snapshot/resume", "/api/instances/forget",
+                         "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
@@ -3144,8 +3196,15 @@ class _Handler(BaseHTTPRequestHandler):
             self._json_notify(_snapshot_save(lang=lang))
             return
 
+        if path == "/api/snapshot/list":
+            self._json(_snapshot_list())
+            return
+
         if path == "/api/snapshot/resume":
-            self._json_notify(_snapshot_resume(hidden=bool(data.get("hidden", False)), lang=lang))
+            saved_at = data.get("saved_at")
+            self._json_notify(_snapshot_resume(
+                saved_at=float(saved_at) if saved_at is not None else None,
+                hidden=bool(data.get("hidden", False)), lang=lang))
             return
 
         if path == "/api/new-chat":
@@ -3276,6 +3335,21 @@ class _Handler(BaseHTTPRequestHandler):
         self._json_notify(result)
 
 
+def _sigterm_handler(signum, frame) -> None:
+    """`run()`'a `signal.signal(signal.SIGTERM, ...)` ile bağlanır (systemd
+    `stop`/`restart` VE gerçek makine shutdown'ı hep bunu gönderir — hepsi
+    aynı yoldan geçer). Python'ın SIGTERM'e varsayılan tepkisi (anında sessiz
+    çıkış) YERİNE geçtiği için işini bitirince kendisi `os._exit()` ETMEK
+    ZORUNDA — aksi halde süreç hiç kapanmamış gibi görünüp `systemctl stop`
+    `TimeoutStopSec` sonunda SIGKILL'e düşer. `os._exit` (düz `sys.exit`
+    DEĞİL) BİLEREK: `server.shutdown()`'ı ya da normal Python temizliğini
+    (atexit vb.) burada tetiklemeye çalışmak, KENDİ `serve_forever()`
+    döngüsünü aynı thread'de kesintiye uğratan bir handler'dan çağrıldığında
+    kilitlenme riski taşır — en güvenlisi hızlı iş + ham çıkış."""
+    _save_closing_snapshot()
+    os._exit(0)
+
+
 def register(sub):
     p = sub.add_parser("web", help="yerel kontrol paneli (fleet'i tarayıcıdan/tünelden başlat-durdur)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -3332,10 +3406,12 @@ def run(args) -> int:
     print("  Ctrl-C ile durdur.")
     if args.host not in ("127.0.0.1", "localhost"):
         print(f"  ⚠ {args.host}: localhost dışına bind — token olsa bile gereksiz risk, gerekmedikçe kullanma.")
+    signal.signal(signal.SIGTERM, _sigterm_handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nkapatılıyor…")
+        _save_closing_snapshot()
     finally:
         server.server_close()
         if tunnel_proc is not None:

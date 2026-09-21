@@ -296,13 +296,19 @@ export interface Strings {
   snapshotLabel: string;
   snapshotDesc: string;
   snapshotNone: string;
-  snapshotInfo: (count: number, when: string) => string;
+  snapshotInfo: (count: number, when: string, kind: "manual" | "closing") => string;
   snapshotSaveBtn: string;
   snapshotSaving: string;
   snapshotResumeBtn: string;
   snapshotResuming: string;
   snapshotHiddenLabel: string;
   snapshotResultSummary: (started: number, alreadyRunning: number, failed: number) => string;
+  snapshotKindManual: string;
+  snapshotKindClosing: string;
+  snapshotHistoryLabel: string;
+  snapshotHistoryEmpty: string;
+  snapshotHistoryRow: (count: number, when: string) => string;
+  snapshotHistoryResumeBtn: string;
   defaultModelLabel: string;
   providerBinLabel: string;
   providerBinDesc: string;
@@ -623,14 +629,21 @@ export const STRINGS: Record<Lang, Strings> = {
     snapshotLabel: "Fleet snapshot",
     snapshotDesc: "çalışan session'ları kaydet, sonra (ör. reboot sonrası) hepsini kayıt anındaki GERÇEK model/effort/izin-modu ile geri aç",
     snapshotNone: "henüz kaydedilmiş bir snapshot yok",
-    snapshotInfo: (count, when) => `Son snapshot: ${when}, ${count} session`,
+    snapshotInfo: (count, when, kind) =>
+      `Son snapshot (${kind === "closing" ? "kapanış" : "elle"}): ${when}, ${count} session`,
     snapshotSaveBtn: "Snapshot kaydet",
     snapshotSaving: "Kaydediliyor…",
-    snapshotResumeBtn: "Snapshot'ı geri yükle",
+    snapshotResumeBtn: "Son snapshot'ı geri yükle",
     snapshotResuming: "Geri yükleniyor…",
     snapshotHiddenLabel: "Pencere açmadan (gizli) başlat",
     snapshotResultSummary: (started, alreadyRunning, failed) =>
       `${started} başlatıldı, ${alreadyRunning} zaten çalışıyordu, ${failed} başarısız`,
+    snapshotKindManual: "elle",
+    snapshotKindClosing: "kapanış",
+    snapshotHistoryLabel: "Geçmiş",
+    snapshotHistoryEmpty: "geçmişte başka kayıt yok",
+    snapshotHistoryRow: (count, when) => `${when} — ${count} session`,
+    snapshotHistoryResumeBtn: "Geri yükle",
     defaultModelLabel: "yeni/resume için varsayılan model (CLI başına)",
     providerBinLabel: "CLI binary yolu override (opsiyonel)",
     providerBinDesc:
@@ -966,14 +979,21 @@ export const STRINGS: Record<Lang, Strings> = {
     snapshotLabel: "Fleet snapshot",
     snapshotDesc: "save the running sessions, then (e.g. after a reboot) reopen all of them with the EXACT model/effort/permission-mode they were running with",
     snapshotNone: "no snapshot saved yet",
-    snapshotInfo: (count, when) => `Last snapshot: ${when}, ${count} session(s)`,
+    snapshotInfo: (count, when, kind) =>
+      `Last snapshot (${kind === "closing" ? "closing" : "manual"}): ${when}, ${count} session(s)`,
     snapshotSaveBtn: "Save snapshot",
     snapshotSaving: "Saving…",
-    snapshotResumeBtn: "Resume snapshot",
+    snapshotResumeBtn: "Resume latest snapshot",
     snapshotResuming: "Resuming…",
     snapshotHiddenLabel: "Start hidden (no window)",
     snapshotResultSummary: (started, alreadyRunning, failed) =>
       `${started} started, ${alreadyRunning} already running, ${failed} failed`,
+    snapshotKindManual: "manual",
+    snapshotKindClosing: "closing",
+    snapshotHistoryLabel: "History",
+    snapshotHistoryEmpty: "no other snapshots in history",
+    snapshotHistoryRow: (count, when) => `${when} — ${count} session(s)`,
+    snapshotHistoryResumeBtn: "Resume",
     defaultModelLabel: "default model for new/resume (per CLI)",
     providerBinLabel: "CLI binary path override (optional)",
     providerBinDesc:
