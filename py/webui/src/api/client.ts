@@ -19,6 +19,7 @@ import type { Lang } from "../i18n/strings";
 import type {
   AdoptResult,
   ApiResult,
+  ContextResult,
   DesktopStartResult,
   DesktopStopResult,
   DiagAskResult,
@@ -337,6 +338,16 @@ export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
  * SettingsTab'ın Kullanım sekmesi bunu bir poll DEĞİL, kullanıcının bastığı
  * bir "Kontrol et" butonuyla çağırır (`onDemand`, otomatik interval YOK). */
 export const apiUsage = (lang: Lang): Promise<UsageResult> => apiPost<UsageResult>("/api/usage", { lang });
+
+/** `/api/usage`'ın aksine İSİM gerekir — TEK, o an Terminal'de açık olan
+ * session'ın kendi context-window'u (`_context()`, `/context` enjekte eder).
+ * Aynı "poll değil, buton" gerekçesi: her çağrı gerçekten o session'a
+ * yazıyor. `host` bugün YOK SAYILIYOR (`/api/usage` gibi `/api/context` da
+ * henüz `web_hosts.proxy_action`'ın host-routed path'lerine eklenmedi,
+ * uzak bir host'un Terminal'inde bugün sessizce `not_running` döner) —
+ * `NamePayload`'ı yine de kullanmak diğer tüm Terminal çağrılarıyla aynı
+ * şekli koruyor, federasyon eklendiğinde tek satır değişir. */
+export const apiContext = (p: NamePayload): Promise<ContextResult> => apiPost<ContextResult>("/api/context", p);
 
 /** Upsert (`hosts.save_host()`): empty `token` on an already-registered
  * `name` keeps that host's stored token — only send a non-empty token when

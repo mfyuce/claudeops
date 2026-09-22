@@ -38,8 +38,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
+import { apiContext, apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
 import type { TermSetModePayload } from "../../api/client";
+import type { UsageEntry } from "../../api/types";
 import { describeApiError } from "../../api/errors";
 import { useTermOutput } from "../../hooks/useTermOutput";
 import { useLang } from "../../i18n/LangContext";
@@ -174,6 +175,18 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   const [fallbackText, setFallbackText] = useState("");
   const [masked, setMasked] = useState(false);
   const [historySize, setHistorySize] = useState<number | null>(null);
+  // On-demand only, same reasoning as `UsagePanel`'s own check button
+  // (SettingsTab.tsx): a check really does inject `/context` into this live
+  // session, so it's never auto-polled — reset to "idle" per Terminal open
+  // isn't needed either, `name`/`host` changing remounts this component
+  // fresh (TerminalModal.tsx keys it by session).
+  const [contextState, setContextState] = useState<
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "ok"; entries: UsageEntry[] }
+    | { kind: "unavailable"; reason?: string }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
 
   const [inputText, setInputText] = useState("");
   const [copyLabel, setCopyLabel] = useState<string | null>(null);
@@ -554,6 +567,24 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     void apiTermInput({ name, host, text: `/model ${model}`, lang }).catch(() => {});
   }
 
+  async function handleCheckContext() {
+    setContextState({ kind: "loading" });
+    try {
+      const res = await apiContext({ name, host, lang });
+      if (!res.ok) {
+        setContextState({ kind: "error", message: res.error ?? "" });
+        return;
+      }
+      if (res.available && res.entries) {
+        setContextState({ kind: "ok", entries: res.entries });
+      } else {
+        setContextState({ kind: "unavailable", reason: res.reason });
+      }
+    } catch (e) {
+      setContextState({ kind: "error", message: describeApiError(e, t) });
+    }
+  }
+
   async function handleCopyVisible() {
     try {
       const res = await getTermOutput(name, lang, host);
@@ -815,6 +846,39 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
             </span>
           )}
           {modeMsg && <span className="opts-hint">{modeMsg}</span>}
+        </div>
+        <div
+          className="opts"
+          style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box", flexDirection: "column", alignItems: "flex-start" }}
+        >
+          <span>
+            <button type="button" title={t.contextHint} disabled={contextState.kind === "loading"} onClick={() => void handleCheckContext()}>
+              {contextState.kind === "loading" ? t.contextChecking : t.contextBtn}
+            </button>
+          </span>
+          {contextState.kind === "ok" &&
+            contextState.entries.map((e, i) => (
+              <div key={i} style={{ width: "100%" }}>
+                {e.label}: <b>{e.percent}%</b>
+                {e.detail && <span className="opts-hint"> · {e.detail}</span>}
+              </div>
+            ))}
+          {contextState.kind === "unavailable" && (
+            <span className="opts-hint">
+              {contextState.reason === "busy"
+                ? t.contextBusy
+                : contextState.reason === "masked"
+                  ? t.contextMasked
+                  : contextState.reason === "no_tmux"
+                    ? t.contextNoTmux
+                    : contextState.reason === "send_failed"
+                      ? t.contextSendFailed
+                      : contextState.reason === "unsupported"
+                        ? t.contextUnsupported
+                        : t.contextParseFailed}
+            </span>
+          )}
+          {contextState.kind === "error" && <span className="opts-hint">{contextState.message}</span>}
         </div>
       </div>
     </>

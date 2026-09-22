@@ -1123,8 +1123,13 @@ def _status_payload() -> dict:
     sessions, closed, retired = [], [], []
     # 2026-09-21 kullanıcı kararı: ana sıralama isme göre değil, cwd/path'e göre
     # (TODO.md #1) — cwd birincil anahtar, aynı cwd'deki satırlar kendi
-    # aralarında isme göre (tiebreak). Bu tek döngü sessions/closed/retired
-    # ÜÇÜNÜN de sırasını belirliyor (yorum satır 1113'te zaten not düşülmüştü).
+    # aralarında isme göre (tiebreak). Bu döngü closed/retired'ın TEK kaynağı,
+    # ikisi de burada zaten sıralı çıkıyor. `sessions` ise İKİNCİ bir kaynaktan
+    # daha besleniyor (aşağıda `all_live` üzerinden eklenen kayıtsız/instance
+    # proc'lar — 2026-09-22 canlı bulundu: registered instance'lar (luwian20260917
+    # vb.) bu döngüden hiç geçmiyor, `find_sessions()`'ın ham tarama sırasıyla
+    # panelin en altına DEĞİL, ARAYA sırasız düşüyordu), o yüzden `sessions`
+    # aşağıda ikinci döngüden sonra AYRICA sort ediliyor.
     for name in sorted(fleet, key=lambda n: (fleet[n]["cwd"], n)):
         info = fleet[name]
         if info["state"] == "retired":
@@ -1207,6 +1212,8 @@ def _status_payload() -> dict:
             "live_model": s.model,
             "live_effort": s.effort,
         })
+
+    sessions.sort(key=lambda s: (s["cwd"], s["name"]))
 
     payload = {
         "config_ok": ok,
@@ -2050,6 +2057,61 @@ def _usage_all() -> dict:
         candidates.sort(key=lambda s: 0 if tmux_client_count(s.name) == 0 else 1)
         out[cli_name] = {"supported": True, **_usage_for_session(candidates[0], provider)}
     return {"ok": True, "providers": out}
+
+
+# `/context`'in çıktısı da (`/usage` gibi) jsonl'e yazılmıyor — sabit bekleme +
+# pane-capture yeterli. `/usage`'ın 3.0s'inden biraz daha kısa: `/context`
+# hesaplaması yerel/anlık görünüyor (canlı doğrulandı, 2026-09-22 — komut
+# gönderildikten 2s sonra alınan capture'da tüm çıktı, uzun MCP-tool
+# dökümü dahil, zaten tamdı), ağ round-trip'i gerektiren `/usage`'ın aksine.
+CONTEXT_SETTLE_SECONDS = 2.0
+
+
+def _context(name: str, lang: str = "tr") -> dict:
+    """`provider.context_command()`'ı (bugün sadece claude'un `/context`'i)
+    Terminal penceresi AÇIK olan O TEK, İSİMLE hedeflenen session'a enjekte
+    edip context-window doluluğunu döndürür — `_usage_all()`'ın (hesap-
+    seviyesi, provider başına RASTGELE bir çalışan session seçer) DEĞİL,
+    `_compact()`'in (tek, isimle hedeflenen session) deseni. 2026-09-22,
+    kullanıcı: "terminal window info'ya context window ekleyelim" — `/usage`
+    (hesabın 5h/haftalık kota/rate-limit'i) ile KARIŞTIRILMASIN, bu SADECE bu
+    session'ın kendi konuşmasının token doluluğu.
+
+    Busy/masked bir session KESİNLİKLE elenir — `_usage_all()`'ın 2026-09-14
+    fix'iyle AYNI gerekçe (TODO.md): `context_needs_dismiss()` bugün False
+    dönüyor (Escape gerekmiyor, canlı doğrulandı) ama busy bir session'a
+    HERHANGİ bir metin enjekte etmek (`tmux_send_keys`'in kendisi) o an
+    işlenen/kuyruktaki işe karışabilir — `_compact()`'in aksine "kuyruğa
+    alınıp sorunsuz işlenir" burada canlı doğrulanmadı, o yüzden tedbirli
+    davranılıyor."""
+    kind, procs = _find_running_for_action(name)
+    if kind == "none":
+        return _err(lang, "not_running", name=name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+    s = procs[0]
+    fleet = _fleet_status()
+    info = fleet.get(name)
+    provider = get_provider(info["cli"] if info else s.cli)
+    command = provider.context_command()
+    if command is None:
+        return {"ok": True, "available": False, "reason": "unsupported"}
+    if not is_tmux_backed(s.pid):
+        return {"ok": True, "available": False, "reason": "no_tmux"}
+    if _is_busy_cached(s):
+        return {"ok": True, "available": False, "reason": "busy"}
+    if pane_is_masked_input(s.name):
+        return {"ok": True, "available": False, "reason": "masked"}
+    if not tmux_send_keys(s.name, command, settle_delay=provider.input_settle_delay()):
+        return {"ok": True, "available": False, "reason": "send_failed"}
+    time.sleep(CONTEXT_SETTLE_SECONDS)
+    text = strip_ansi(tmux_capture(s.name) or "")
+    if provider.context_needs_dismiss():
+        tmux_send_special_key(s.name, "Escape")
+    entries = provider.parse_context_text(text)
+    if not entries:
+        return {"ok": True, "available": False, "reason": "parse_failed"}
+    return {"ok": True, "available": True, "entries": entries}
 
 
 def _adopt(old_name: str, new_name: str = "", model: str = "",
@@ -3018,7 +3080,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/set-mode",
-                         "/api/term/open-window", "/api/settings", "/api/usage",
+                         "/api/term/open-window", "/api/settings", "/api/usage", "/api/context",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
@@ -3155,6 +3217,18 @@ class _Handler(BaseHTTPRequestHandler):
             # HOST_ROUTED_PATHS'ine eklenmedi) — bugün sadece LOKAL fleet'in
             # kullanımını gösterir, TODO.md'ye not düşüldü.
             self._json(_usage_all())
+            return
+
+        if path == "/api/context":
+            # `/api/usage`'ın aksine İSİM GEREKİR — bu, Terminal penceresi
+            # açık olan O TEK session'ın kendi context'i (bkz. `_context()`'in
+            # docstring'i). Fleet state'i DEĞİŞTİRMEDİĞİ için (compact/start/
+            # stop gibi) `_json_notify` DEĞİL, `/api/usage` ile aynı düz `_json`.
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_context(name, lang=lang))
             return
 
         if path == "/api/hosts":

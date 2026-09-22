@@ -25,6 +25,12 @@ EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 _USAGE_HEADER_RE = re.compile(r"^(Current (?:session|week(?:\s*\([^)]+\))?))$")
 _USAGE_PERCENT_RE = re.compile(r"(\d+)%\s*used")
 _USAGE_RESETS_RE = re.compile(r"^(Resets\s.+)$")
+# `/context`'in çıktısını `parse_context_text()`'in ayrıştırdığı desen — o
+# metodun docstring'inde gerçek örnek metin var. `re.search` ile satır
+# İÇİNDE aranır (`match` DEĞİL): soldaki blok-glif bar-chart pane genişliğine
+# göre farklı yerde sarabilir, sabit bir kolon pozisyonuna güvenilemez.
+_CONTEXT_TOTAL_RE = re.compile(r"([\d.]+[kKmM]?)\s*/\s*([\d.]+[kKmM]?)\s*tokens\s*\((\d+(?:\.\d+)?)%\)")
+_CONTEXT_CATEGORY_RE = re.compile(r"([A-Za-z][A-Za-z ]*?):\s*([\d.]+[kKmM]?)\s*(?:tokens?)?\s*\((\d+(?:\.\d+)?)%\)")
 # Claude Code'un durum çubuğunda gösterdiği metinler (claude-code-guide ajanının
 # resmi dokümantasyondan doğruladığı 3 mod, 2026-09-07) — SADECE bunlar Shift+Tab
 # döngüsüyle GÜVENİLİR şekilde hedeflenebilir. `bypassPermissions` sadece session
@@ -345,6 +351,72 @@ class ClaudeProvider(CliProvider):
                     break
             if percent is not None:
                 entries.append({"label": line, "percent": percent, "detail": resets})
+        return entries or None
+
+    def context_command(self) -> Optional[str]:
+        return "/context"
+
+    def context_needs_dismiss(self) -> bool:
+        # `/context` normal scrollback'e yazıp doğrudan `❯` prompt'a dönüyor,
+        # `/usage`'ın aksine modal AÇMIYOR (canlı doğrulandı, 2026-09-22,
+        # throwaway scratch session, v2.1.278) — Escape gerekmiyor.
+        return False
+
+    def parse_context_text(self, text: str) -> Optional[List[Dict[str, str]]]:
+        """`/context`'in gerçek çıktısı (canlı doğrulandı, 2026-09-22, throwaway
+        scratch session, `claude` v2.1.278) — sol taraf blok-glif bar-chart,
+        sağ taraf asıl metin:
+        ```
+          ⎿  Context Usage
+             ⛁ ⛁ ⛁ ⛁ ⛁ ⛀ ⛁ ⛁ ⛁ ⛁ ⛀ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Fable 5.1
+             ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   claude-fable-5-1
+             ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   42.9k/1m tokens (4%)
+             ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶
+             ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Estimated usage by category
+             ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System prompt: 4.3k tokens (0.4%)
+             ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System tools: 19.2k tokens (1.9%)
+                                                        ⛁ MCP tools: 645 tokens (0.1%)
+                                                        ⛁ Memory files: 14.4k tokens (1.4%)
+                                                        ⛁ Skills: 4.3k tokens (0.4%)
+                                                        ⛁ Messages: 10 tokens (0.0%)
+                                                        ⛶ Free space: 924.1k (92.4%)
+                                                        ⛝ Autocompact buffer: 33k tokens (3.3%)
+        ```
+        Ardından `MCP tools · /mcp (loaded on-demand)` başlığıyla loaded/
+        available tool'ların uzun bir dökümü gelir (bazı fleet session'larında
+        100+ satır) — hiçbiri `_CONTEXT_CATEGORY_RE`'nin zorunlu kıldığı
+        `(NN%)` kuyruğunu taşımadığı için (o dökümdeki satırlar en fazla
+        "isim: N tokens" — yüzdesiz) kendiliğinden elenir, ayrıca kesme/limit
+        gerekmez. "Free space" satırında "tokens" kelimesi YOK (`924.1k
+        (92.4%)`), o yüzden regex'te opsiyonel. İlk eşleşen "X/Y tokens (Z%)"
+        toplam satırı sabit "Context" etiketiyle İLK eleman olur, model
+        adı/ID'si (bar-chart'ın üstünde ayrı satırlarda) BİLEREK parse
+        EDİLMİYOR — `live_model` zaten panelde var, tekrar etmeye gerek yok.
+
+        `tmux_capture()`'ın varsayılan 2000 satırlık penceresi (uzun MCP-tool
+        dökümü tek bir `/context` çıktısını 200+ satıra taşıyabildiği için
+        BİLEREK geniş — bkz. `_context()`'in çağırdığı yer) aynı pane'de
+        DAHA ÖNCEKİ bir `/context` çalıştırmasının çıktısını da yakalayabilir
+        (canlı bulundu, 2026-09-22: aynı throwaway session'da iki kez
+        `/context` çalıştırılınca kategoriler İKİŞER kez, eskisi BAYAT
+        yüzdelerle döndü). Fix: toplam-satır eşleşmesi `entries`'i DURDURMAK
+        yerine SIFIRLAR — metin boyunca en son görülen "X/Y tokens (Z%)"
+        satırından SONRAKİ kategoriler kazanır, ondan ÖNCEKİ (eski) blok
+        tamamen atılır."""
+        lines = [ln.strip() for ln in text.splitlines()]
+        entries: List[Dict[str, str]] = []
+        for line in lines:
+            tm = _CONTEXT_TOTAL_RE.search(line)
+            if tm:
+                used, limit, percent = tm.groups()
+                entries = [{"label": "Context", "percent": percent, "detail": f"{used}/{limit} tokens"}]
+                continue
+            cm = _CONTEXT_CATEGORY_RE.search(line)
+            if cm:
+                label, amount, percent = cm.groups()
+                label = label.strip()
+                if label:
+                    entries.append({"label": label, "percent": percent, "detail": f"{amount} tokens"})
         return entries or None
 
     def handover_model_downgrade(self, current_model: str) -> Optional[str]:

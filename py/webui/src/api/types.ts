@@ -196,6 +196,22 @@ export interface UsageResult {
   providers: Record<string, UsageProviderResult>;
 }
 
+/** `web.py`'nin `_context()`'i — `UsageProviderResult` ile AYNI şekil ama
+ * hesap değil TEK, isimle hedeflenen session (`/api/context`, name gerekir).
+ * `reason` ("unsupported"|"no_tmux"|"busy"|"masked"|"send_failed"|
+ * "parse_failed") `ok:true, available:false` iken dolu; `checked_via`/
+ * `supported` yok, o kavramlar "provider başına rastgele seç" hesap-modeline
+ * özgü. `ok:false` (name yok/session yok/isim belirsiz — `_err()`'in HER
+ * ZAMANKİ şekli, `ApiResult` ile aynı) iken `error` zaten seçili dilde
+ * hazır metin, `reason` YOK — ikisi karıştırılmasın. */
+export interface ContextResult {
+  ok: boolean;
+  error?: string;
+  available?: boolean;
+  reason?: string;
+  entries?: UsageEntry[];
+}
+
 export interface DiagInfo {
   web_pid: number;
   web_uptime_seconds: number;

@@ -330,6 +330,15 @@ export interface Strings {
   usageSendFailed: string;
   usageParseFailed: string;
   usageCheckedVia: (name: string) => string;
+  contextBtn: string;
+  contextChecking: string;
+  contextHint: string;
+  contextUnsupported: string;
+  contextNoTmux: string;
+  contextBusy: string;
+  contextMasked: string;
+  contextSendFailed: string;
+  contextParseFailed: string;
   pagePrev: string;
   pageNext: string;
   pageOf: (page: number, total: number) => string;
@@ -667,6 +676,15 @@ export const STRINGS: Record<Lang, Strings> = {
     usageSendFailed: "komut gönderilemedi",
     usageParseFailed: "yanıt okunamadı",
     usageCheckedVia: (name) => `${name} üzerinden`,
+    contextBtn: "Bağlamı kontrol et",
+    contextChecking: "kontrol ediliyor…",
+    contextHint: "bu session'ın context-window doluluğunu görmek için /context enjekte eder (session meşgulse/parola bekliyorsa çalışmaz)",
+    contextUnsupported: "bu CLI için desteklenmiyor",
+    contextNoTmux: "bu session tmux üzerinde çalışmıyor",
+    contextBusy: "session şu an meşgul, kontrol edilemedi",
+    contextMasked: "session parola/gizli girdi bekliyor, kontrol edilemedi",
+    contextSendFailed: "komut gönderilemedi",
+    contextParseFailed: "yanıt okunamadı",
     pagePrev: "önceki",
     pageNext: "sonraki",
     pageOf: (page, total) => `sayfa ${page}/${total}`,
@@ -1017,6 +1035,15 @@ export const STRINGS: Record<Lang, Strings> = {
     usageSendFailed: "could not send command",
     usageParseFailed: "could not read the response",
     usageCheckedVia: (name) => `via ${name}`,
+    contextBtn: "Check context",
+    contextChecking: "checking…",
+    contextHint: "injects /context into this session to show its context-window usage (won't run if the session is busy or awaiting a password)",
+    contextUnsupported: "not supported for this CLI",
+    contextNoTmux: "this session isn't tmux-backed",
+    contextBusy: "session is busy right now, could not check",
+    contextMasked: "session is awaiting masked input (e.g. a password), could not check",
+    contextSendFailed: "could not send command",
+    contextParseFailed: "could not read the response",
     pagePrev: "prev",
     pageNext: "next",
     pageOf: (page, total) => `page ${page}/${total}`,

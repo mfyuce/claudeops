@@ -195,6 +195,43 @@ class CliProvider(ABC):
         okunamaz)."""
         return None
 
+    def context_command(self) -> Optional[str]:
+        """Bu CLI'nın TEK bir session'ın kendi context-window doluluğunu
+        gösteren slash-command'ı (ör. claude'un `/context`'i), varsa. None
+        (varsayılan) = bu CLI için böyle bir kavram YOK/canlı doğrulanmadı.
+        `usage_command()` ile KARIŞTIRILMAMALI: `/usage` HESAP-seviyesinde
+        kota/rate-limit gösterir (provider başına HERHANGİ bir çalışan
+        session'dan sorulabilir, `_usage_all()`), `/context` ise SADECE
+        SORULDUĞU o tek session'ın kendi konuşmasının token doluluğu —
+        2026-09-22, kullanıcı: "terminal window info'ya context window
+        ekleyelim" (Terminal penceresi zaten AÇIK olan o session'a özel).
+        Aynı sözleşme: None = yok, sadece canlı doğrulayan provider override
+        eder."""
+        return None
+
+    def parse_context_text(self, text: str) -> Optional[List[Dict[str, str]]]:
+        """`context_command()`'ın ANSI'siz pane çıktısını `parse_usage_text()`
+        ile AYNI `[{"label", "percent", "detail"}, ...]` şekline çevirir —
+        ilk eleman TOPLAM doluluk (ör. `{"label": "Context", "percent": "4",
+        "detail": "42.9k/1m tokens"}`), gerisi kategori kırılımı (System
+        prompt/System tools/MCP tools/Memory files/Skills/Messages/Free
+        space/Autocompact buffer gibi — claude'un gerçek `/context` çıktısı,
+        2026-09-22 canlı doğrulandı, throwaway scratch session). Hiçbir satır
+        tanınmazsa None. Varsayılan None — `context_command()`'ı override eden
+        HER provider bunu da override ETMELİDİR."""
+        return None
+
+    def context_needs_dismiss(self) -> bool:
+        """`context_command()`'ın açtığı görünüm bir MODAL/overlay mi (Escape
+        gerekir) yoksa normal scrollback'e mi yazıyor (gerekmez) —
+        `usage_needs_dismiss()` ile AYNI sözleşme, AYRI metod: claude'un
+        `/context`'i `/usage`'ın aksine modal AÇMIYOR, doğrudan `❯` prompt'a
+        dönüyor (2026-09-22 canlı doğrulandı) — ama bu genel bir kural
+        değil, başka bir provider'ın kendi `/context`-muadili modal olabilir,
+        o yüzden `/usage`'ınkiyle aynı metodu PAYLAŞMAK yerine ayrı tutuldu.
+        Varsayılan False."""
+        return False
+
     def usage_needs_dismiss(self) -> bool:
         """`usage_command()`'ın açtığı görünüm bir MODAL/overlay mi (kapatmak
         için `Escape` GEREKİR, claude'un `/usage`'ı böyle — canlı doğrulandı,
