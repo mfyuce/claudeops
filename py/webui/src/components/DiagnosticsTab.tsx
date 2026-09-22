@@ -30,13 +30,13 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { apiDiagAsk, apiDiagRestartGt, apiDiagSpawnTest, ApiError, getDiagLog } from "../api/client";
+import { apiDiagAsk, apiDiagRestartGt, apiDiagSpawnTest, apiUcliAsk, ApiError, getDiagLog } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { TabHint } from "./shared/TabHint";
 
-type DiagSubTab = "status" | "ask" | "log";
+type DiagSubTab = "status" | "ask" | "ucli" | "log";
 
 /** Original: `fmtUptime(sec)` (web.py ~2577-2584). */
 function fmtUptime(sec: number | null | undefined, unknownLabel: string): string {
@@ -71,6 +71,14 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
   const [askQuestion, setAskQuestion] = useState("");
   const [askBusy, setAskBusy] = useState(false);
   const [askResult, setAskResult] = useState("");
+
+  const [ucliPrompt, setUcliPrompt] = useState("");
+  const [ucliModel, setUcliModel] = useState("");
+  const [ucliEndpoint, setUcliEndpoint] = useState("");
+  const [ucliApiKey, setUcliApiKey] = useState("");
+  const [ucliSession, setUcliSession] = useState("");
+  const [ucliBusy, setUcliBusy] = useState(false);
+  const [ucliResult, setUcliResult] = useState("");
 
   const [logLines, setLogLines] = useState<string[] | null>(null);
 
@@ -174,6 +182,25 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
     refresh();
   }
 
+  async function handleUcliAsk() {
+    setUcliBusy(true);
+    setUcliResult("");
+    try {
+      const res = await apiUcliAsk({
+        prompt: ucliPrompt,
+        model: ucliModel,
+        endpoint: ucliEndpoint,
+        api_key: ucliApiKey,
+        session: ucliSession,
+      });
+      setUcliResult(res.ok ? t.diagUcliResult(res.answer, res.model_rounds, res.tool_calls) : `✗ ${res.error}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) window.alert(t.authErrorShort);
+      else setUcliResult(`✗ ${describeApiError(e, t)}`);
+    }
+    setUcliBusy(false);
+  }
+
   return (
     <>
       <div className="tabs">
@@ -182,6 +209,9 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
         </button>
         <button type="button" className={subTab === "ask" ? "active" : ""} onClick={() => setSubTab("ask")}>
           {t.tabDiagAsk}
+        </button>
+        <button type="button" className={subTab === "ucli" ? "active" : ""} onClick={() => setSubTab("ucli")}>
+          {t.tabDiagUcli}
         </button>
         <button type="button" className={subTab === "log" ? "active" : ""} onClick={() => setSubTab("log")}>
           {t.tabDiagLog}
@@ -248,6 +278,62 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
             </button>
           </div>
           <pre className="layout-result">{askResult}</pre>
+        </>
+      )}
+      {subTab === "ucli" && (
+        <>
+          <div className="opts" id="ucliAskPanel">
+            <TabHint>{t.diagUcliHint}</TabHint>
+            <label style={{ flexBasis: "100%" }}>
+              {t.diagUcliPromptLabel}
+              <input
+                type="text"
+                placeholder={t.diagUcliPromptPlaceholder}
+                value={ucliPrompt}
+                onChange={(e) => setUcliPrompt(e.target.value)}
+              />
+            </label>
+            <label>
+              {t.diagUcliModelLabel}
+              <input
+                type="text"
+                placeholder="deepseek-v4-flash"
+                value={ucliModel}
+                onChange={(e) => setUcliModel(e.target.value)}
+              />
+            </label>
+            <label>
+              {t.diagUcliEndpointLabel}
+              <input
+                type="text"
+                placeholder={t.diagUcliEndpointPlaceholder}
+                value={ucliEndpoint}
+                onChange={(e) => setUcliEndpoint(e.target.value)}
+              />
+            </label>
+            <label>
+              {t.diagUcliApiKeyLabel}
+              <input
+                type="password"
+                autoComplete="off"
+                value={ucliApiKey}
+                onChange={(e) => setUcliApiKey(e.target.value)}
+              />
+            </label>
+            <label>
+              {t.diagUcliSessionLabel}
+              <input
+                type="text"
+                placeholder={t.diagUcliSessionPlaceholder}
+                value={ucliSession}
+                onChange={(e) => setUcliSession(e.target.value)}
+              />
+            </label>
+            <button type="button" className="go" disabled={ucliBusy || !ucliPrompt.trim()} onClick={() => void handleUcliAsk()}>
+              {ucliBusy ? t.diagUcliAsking : t.diagUcliBtn}
+            </button>
+          </div>
+          <pre className="layout-result">{ucliResult}</pre>
         </>
       )}
       {subTab === "log" && (

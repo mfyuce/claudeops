@@ -50,6 +50,7 @@ import type {
   StopResult,
   TermChatResult,
   TermOutputResult,
+  UcliAskResult,
   UsageResult,
   TestHostResult,
 } from "./types";
@@ -322,6 +323,16 @@ export const apiDiagSpawnTest = (lang: Lang): Promise<DiagSpawnTestResult> =>
 export const apiDiagRestartGt = (lang: Lang): Promise<DiagRestartResult> =>
   apiPost<DiagRestartResult>("/api/diag/restart-gt", { lang });
 export const apiDiagAsk = (p: DiagAskPayload): Promise<DiagAskResult> => apiPost<DiagAskResult>("/api/diag/ask", p);
+
+export interface UcliAskPayload {
+  prompt: string;
+  model: string;
+  endpoint: string;
+  api_key: string;
+  api_key_env?: string;
+  session?: string;
+}
+export const apiUcliAsk = (p: UcliAskPayload): Promise<UcliAskResult> => apiPost<UcliAskResult>("/api/ucli/ask", p);
 
 export const apiDesktopStart = (lang: Lang): Promise<DesktopStartResult> =>
   apiPost<DesktopStartResult>("/api/desktop/start", { lang });

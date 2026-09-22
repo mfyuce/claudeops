@@ -55,6 +55,7 @@ from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..hosts import LOCAL_HOST_NAME, save_host, remove_host, list_hosts_public
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
+from ..ucli_client import UcliError, ucli_chat_once
 from .. import files as files_mod
 from .. import instances as inst_mod
 from .. import remote_desktop
@@ -970,6 +971,33 @@ def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
         return _err(lang, "newchat_start_failed", new_name=new_name, kind=kind)
     diag_log("ask", name=new_name, cli=chosen_cli)
     return {"ok": True, "name": new_name, "kind": kind}
+
+
+def _ucli_ask(prompt: str, model: str, endpoint: str, api_key: str,
+              api_key_env: str = "", session: str = "") -> dict:
+    """ucli'ye (unified-cli, TOBEDECIDED#44(b)) tek bir soru sor —
+    `_diag_ask`'ın aksine yeni bir fleet session AÇMAZ: ucli bir
+    `CliProvider` değil (bkz. providers/base.py + `ucli_client.py`'nin kendi
+    docstring'i), tmux'a hiç dokunmadan `ucli_client.ucli_chat_once()`'i
+    çağıran senkron bir HTTP sarmalayıcı — cevap doğrudan response body'de
+    döner. `api_key` formdan düz metin gelir, hiçbir yere yazılmaz/loglanmaz,
+    sadece bu tek subprocess çağrısının env'ine enjekte edilir."""
+    prompt = prompt.strip()
+    if not prompt:
+        return {"ok": False, "error": "prompt boş olamaz"}
+    try:
+        answer = ucli_chat_once(
+            REPO_DIR, prompt,
+            model=model.strip() or None,
+            endpoint=endpoint.strip() or None,
+            api_key_env=(api_key_env.strip() or "UCLI_API_KEY"),
+            api_key=(api_key.strip() or None),
+            session=(session.strip() or None),
+            timeout=90.0,
+        )
+    except UcliError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, **answer}
 
 
 def _run_layout(pin: str, groups: list, claude_only: bool = True,
@@ -3081,7 +3109,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/set-mode",
                          "/api/term/open-window", "/api/settings", "/api/usage", "/api/context",
-                         "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask",
+                         "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/ucli/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
@@ -3189,6 +3217,17 @@ class _Handler(BaseHTTPRequestHandler):
                 cli=str(data.get("cli", "")),
                 extra_question=str(data.get("extra_question", "")),
                 lang=lang,
+            ))
+            return
+
+        if path == "/api/ucli/ask":
+            self._json(_ucli_ask(
+                prompt=str(data.get("prompt", "")),
+                model=str(data.get("model", "")),
+                endpoint=str(data.get("endpoint", "")),
+                api_key=str(data.get("api_key", "")),
+                api_key_env=str(data.get("api_key_env", "")),
+                session=str(data.get("session", "")),
             ))
             return
 

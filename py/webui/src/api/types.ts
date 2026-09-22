@@ -514,6 +514,9 @@ export type DiagSpawnTestResult =
 export type DiagRestartResult = ApiResult<{ result: string; pid: number }>;
 /** `_diag_ask()`. */
 export type DiagAskResult = ApiResult<{ name: string; kind: string }>;
+/** `_ucli_ask()` — synchronous, no fleet session (ucli is not a CliProvider,
+ * see TOBEDECIDED#44(b)); the answer comes back directly, not via Terminal. */
+export type UcliAskResult = ApiResult<{ answer: string; model_rounds: number; tool_calls: number }>;
 
 /** `remote_desktop.start()`/`.stop()` — `already_running`/`already_stopped`
  * are informational only (still `ok: true`), matching the backend's own

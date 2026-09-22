@@ -248,6 +248,18 @@ export interface Strings {
   diagAskBtn: string;
   diagAsking: string;
   diagAskStarted: (name: string) => string;
+  diagUcliHint: string;
+  diagUcliPromptLabel: string;
+  diagUcliPromptPlaceholder: string;
+  diagUcliModelLabel: string;
+  diagUcliEndpointLabel: string;
+  diagUcliEndpointPlaceholder: string;
+  diagUcliApiKeyLabel: string;
+  diagUcliSessionLabel: string;
+  diagUcliSessionPlaceholder: string;
+  diagUcliBtn: string;
+  diagUcliAsking: string;
+  diagUcliResult: (answer: string, rounds: number, calls: number) => string;
   diagLogTitle: string;
   diagLogLoading: string;
   diagRunAfterFail: string;
@@ -320,6 +332,7 @@ export interface Strings {
   tabSettingsUsage: string;
   tabDiagStatus: string;
   tabDiagAsk: string;
+  tabDiagUcli: string;
   tabDiagLog: string;
   usageWarning: string;
   usageCheckBtn: string;
@@ -588,6 +601,18 @@ export const STRINGS: Record<Lang, Strings> = {
     diagAskBtn: "bu CLI ile sor",
     diagAsking: "açılıyor… (~10-20s)",
     diagAskStarted: (name) => `✓ açıldı: ${name} — terminal'de canlı yanıt görünecek`,
+    diagUcliHint: "ucli (unified-cli) rust agent'ına doğrudan soru sor — fleet session AÇMAZ, tmux/Terminal yok, cevap burada görünür. TOBEDECIDED#44(b).",
+    diagUcliPromptLabel: "prompt",
+    diagUcliPromptPlaceholder: "ucli'ye ne sormak istiyorsun?",
+    diagUcliModelLabel: "model",
+    diagUcliEndpointLabel: "endpoint (opsiyonel)",
+    diagUcliEndpointPlaceholder: "boşsa yerel Ollama (http://localhost:11434/v1)",
+    diagUcliApiKeyLabel: "API anahtarı (opsiyonel, hiçbir yere kaydedilmez)",
+    diagUcliSessionLabel: "session adı (opsiyonel)",
+    diagUcliSessionPlaceholder: "verilirse turlar arası hatırlar (.ucli/chat/İSİM.jsonl)",
+    diagUcliBtn: "ucli'ye sor",
+    diagUcliAsking: "soruluyor…",
+    diagUcliResult: (answer, rounds, calls) => `${answer}\n\n(${rounds} model turu, ${calls} araç çağrısı)`,
     diagLogTitle: "son diag-log kayıtları",
     diagLogLoading: "yükleniyor…",
     diagRunAfterFail: "Tanı sekmesine geçip spawn sağlık testi çalıştırılsın mı?",
@@ -665,6 +690,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabSettingsUsage: "kullanım",
     tabDiagStatus: "durum",
     tabDiagAsk: "sor",
+    tabDiagUcli: "ucli",
     tabDiagLog: "log",
     usageWarning:
       "⚠ Kontrol, o CLI'nin ÇALIŞAN bir session'ına gerçekten `/usage` yazıp ekranını anlık değiştirir (kimse izlemiyorsa öncelik verilir) — otomatik/sürekli çalışmaz, sadece bastığında.",
@@ -947,6 +973,18 @@ export const STRINGS: Record<Lang, Strings> = {
     diagAskBtn: "ask with this CLI",
     diagAsking: "opening… (~10-20s)",
     diagAskStarted: (name) => `✓ opened: ${name} — the live answer will appear in the terminal`,
+    diagUcliHint: "Ask the ucli (unified-cli) rust agent directly — no fleet session, no tmux/Terminal, the answer appears right here. TOBEDECIDED#44(b).",
+    diagUcliPromptLabel: "prompt",
+    diagUcliPromptPlaceholder: "what do you want to ask ucli?",
+    diagUcliModelLabel: "model",
+    diagUcliEndpointLabel: "endpoint (optional)",
+    diagUcliEndpointPlaceholder: "leave empty for local Ollama (http://localhost:11434/v1)",
+    diagUcliApiKeyLabel: "API key (optional, never stored)",
+    diagUcliSessionLabel: "session name (optional)",
+    diagUcliSessionPlaceholder: "if set, remembers turns across calls (.ucli/chat/NAME.jsonl)",
+    diagUcliBtn: "ask ucli",
+    diagUcliAsking: "asking…",
+    diagUcliResult: (answer, rounds, calls) => `${answer}\n\n(${rounds} model round${rounds === 1 ? "" : "s"}, ${calls} tool call${calls === 1 ? "" : "s"})`,
     diagLogTitle: "recent diag-log entries",
     diagLogLoading: "loading…",
     diagRunAfterFail: "Switch to the Diagnostics tab and run the spawn health test?",
@@ -1024,6 +1062,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabSettingsUsage: "usage",
     tabDiagStatus: "status",
     tabDiagAsk: "ask",
+    tabDiagUcli: "ucli",
     tabDiagLog: "log",
     usageWarning:
       "⚠ Checking actually sends `/usage` to a RUNNING session of that CLI, briefly changing its screen (one nobody's watching is preferred) — not automatic/continuous, only when you press it.",
