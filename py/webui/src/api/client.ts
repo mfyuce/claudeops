@@ -48,9 +48,12 @@ import type {
   StartResult,
   StatusPayload,
   StopResult,
+  IoAskResult,
+  IoHistoryResult,
+  IoProvidersResult,
+  IoSessionsResult,
   TermChatResult,
   TermOutputResult,
-  UcliAskResult,
   UsageResult,
   TestHostResult,
 } from "./types";
@@ -324,15 +327,24 @@ export const apiDiagRestartGt = (lang: Lang): Promise<DiagRestartResult> =>
   apiPost<DiagRestartResult>("/api/diag/restart-gt", { lang });
 export const apiDiagAsk = (p: DiagAskPayload): Promise<DiagAskResult> => apiPost<DiagAskResult>("/api/diag/ask", p);
 
-export interface UcliAskPayload {
+export const getIoProviders = (): Promise<IoProvidersResult> => apiGet<IoProvidersResult>("/api/io/providers");
+
+export const getIoSessions = (provider: string, cwd: string): Promise<IoSessionsResult> =>
+  apiGet<IoSessionsResult>(`/api/io/sessions?provider=${encodeURIComponent(provider)}&cwd=${encodeURIComponent(cwd)}`);
+
+export const getIoHistory = (provider: string, cwd: string, session: string): Promise<IoHistoryResult> =>
+  apiGet<IoHistoryResult>(
+    `/api/io/history?provider=${encodeURIComponent(provider)}&cwd=${encodeURIComponent(cwd)}&session=${encodeURIComponent(session)}`,
+  );
+
+export interface IoAskPayload {
+  provider: string;
+  cwd: string;
+  session: string;
   prompt: string;
-  model: string;
-  endpoint: string;
-  api_key: string;
-  api_key_env?: string;
-  session?: string;
+  fields: Record<string, string>;
 }
-export const apiUcliAsk = (p: UcliAskPayload): Promise<UcliAskResult> => apiPost<UcliAskResult>("/api/ucli/ask", p);
+export const apiIoAsk = (p: IoAskPayload): Promise<IoAskResult> => apiPost<IoAskResult>("/api/io/ask", p);
 
 export const apiDesktopStart = (lang: Lang): Promise<DesktopStartResult> =>
   apiPost<DesktopStartResult>("/api/desktop/start", { lang });

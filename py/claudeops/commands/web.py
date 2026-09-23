@@ -53,9 +53,9 @@ from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
 from ..hosts import LOCAL_HOST_NAME, save_host, remove_host, list_hosts_public
+from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
-from ..ucli_client import UcliError, ucli_chat_once
 from .. import files as files_mod
 from .. import instances as inst_mod
 from .. import remote_desktop
@@ -973,31 +973,65 @@ def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
     return {"ok": True, "name": new_name, "kind": kind}
 
 
-def _ucli_ask(prompt: str, model: str, endpoint: str, api_key: str,
-              api_key_env: str = "", session: str = "") -> dict:
-    """ucli'ye (unified-cli, TOBEDECIDED#44(b)) tek bir soru sor —
-    `_diag_ask`'ın aksine yeni bir fleet session AÇMAZ: ucli bir
-    `CliProvider` değil (bkz. providers/base.py + `ucli_client.py`'nin kendi
-    docstring'i), tmux'a hiç dokunmadan `ucli_client.ucli_chat_once()`'i
-    çağıran senkron bir HTTP sarmalayıcı — cevap doğrudan response body'de
-    döner. `api_key` formdan düz metin gelir, hiçbir yere yazılmaz/loglanmaz,
-    sadece bu tek subprocess çağrısının env'ine enjekte edilir."""
+def _io_providers_meta() -> dict:
+    """`IO_PROVIDERS` registry'sinin form-alanlarını UI'nin OTOMATİK form
+    çizmesi için düzleştir — yeni bir tmux'suz provider eklendiğinde
+    frontend'e HİÇ dokunmadan panelde belirir (bkz. io_providers/base.py)."""
+    return {"ok": True, "providers": {
+        name: {"fields": [vars(f) for f in p.form_fields()]}
+        for name, p in IO_PROVIDERS.items()
+    }}
+
+
+def _io_ask(provider: str, cwd: str, session: str, prompt: str, fields: dict) -> dict:
+    """Genel tmux'suz-provider soru-cevap — `_diag_ask`'ın aksine fleet
+    session AÇMAZ (bkz. io_providers/base.py). `cwd` ZORUNLU ve çağıranın
+    verdiği GERÇEK proje dizini — sabit bir varsayılan (ör. REPO_DIR) YOK,
+    2026-09-23: kullanıcı "birden çok projede session açabilecek miyim"
+    dedi, tek-proje kısıtlaması kaldırıldı."""
+    io_provider = get_io_provider(provider)
+    if io_provider is None:
+        return {"ok": False, "error": f"bilinmeyen provider: {provider!r}"}
+    cwd = cwd.strip()
+    if not cwd or not os.path.isdir(cwd):
+        return {"ok": False, "error": f"geçersiz dizin: {cwd!r}"}
     prompt = prompt.strip()
     if not prompt:
         return {"ok": False, "error": "prompt boş olamaz"}
     try:
-        answer = ucli_chat_once(
-            REPO_DIR, prompt,
-            model=model.strip() or None,
-            endpoint=endpoint.strip() or None,
-            api_key_env=(api_key_env.strip() or "UCLI_API_KEY"),
-            api_key=(api_key.strip() or None),
-            session=(session.strip() or None),
-            timeout=90.0,
-        )
-    except UcliError as e:
+        answer = io_provider.ask(cwd, session.strip(), prompt,
+                                  {k: str(v) for k, v in fields.items()})
+    except IoProviderError as e:
         return {"ok": False, "error": str(e)}
     return {"ok": True, **answer}
+
+
+def _io_sessions(provider: str, cwd: str) -> dict:
+    """`cwd`de bu provider için var olan session isimleri — UI'nin "buradan
+    devam et" listesi için (en son kullanılan ilk, bkz. `list_sessions`)."""
+    io_provider = get_io_provider(provider)
+    if io_provider is None:
+        return {"ok": False, "error": f"bilinmeyen provider: {provider!r}"}
+    cwd = cwd.strip()
+    if not cwd or not os.path.isdir(cwd):
+        return {"ok": False, "error": f"geçersiz dizin: {cwd!r}"}
+    return {"ok": True, "sessions": io_provider.list_sessions(cwd)}
+
+
+def _io_history(provider: str, cwd: str, session: str) -> dict:
+    """Var olan bir session'ın geçmiş turları — kullanıcı "devam et" derken
+    yeni prompt kutusunun ÜSTÜNDE göstermek için (`CliProvider.full_history`
+    ile aynı `{"role","text"}` sözleşmesi)."""
+    io_provider = get_io_provider(provider)
+    if io_provider is None:
+        return {"ok": False, "error": f"bilinmeyen provider: {provider!r}"}
+    cwd = cwd.strip()
+    if not cwd or not os.path.isdir(cwd):
+        return {"ok": False, "error": f"geçersiz dizin: {cwd!r}"}
+    turns = io_provider.history(cwd, session.strip())
+    if turns is None:
+        return {"ok": False, "error": "geçmiş okunamadı (bozuk dosya)"}
+    return {"ok": True, "turns": turns}
 
 
 def _run_layout(pin: str, groups: list, claude_only: bool = True,
@@ -3014,6 +3048,21 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "hosts": rows})
         elif path == "/api/diag/log":
             self._json({"lines": diag_log_tail(30)})
+        elif path == "/api/io/providers":
+            self._json(_io_providers_meta())
+        elif path == "/api/io/sessions":
+            qs = parse_qs(urlparse(self.path).query)
+            self._json(_io_sessions(
+                provider=(qs.get("provider") or [""])[0],
+                cwd=(qs.get("cwd") or [""])[0],
+            ))
+        elif path == "/api/io/history":
+            qs = parse_qs(urlparse(self.path).query)
+            self._json(_io_history(
+                provider=(qs.get("provider") or [""])[0],
+                cwd=(qs.get("cwd") or [""])[0],
+                session=(qs.get("session") or [""])[0],
+            ))
         elif path == "/api/instances":
             qs = parse_qs(urlparse(self.path).query)
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
@@ -3109,7 +3158,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/set-mode",
                          "/api/term/open-window", "/api/settings", "/api/usage", "/api/context",
-                         "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/ucli/ask",
+                         "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
@@ -3220,14 +3269,14 @@ class _Handler(BaseHTTPRequestHandler):
             ))
             return
 
-        if path == "/api/ucli/ask":
-            self._json(_ucli_ask(
-                prompt=str(data.get("prompt", "")),
-                model=str(data.get("model", "")),
-                endpoint=str(data.get("endpoint", "")),
-                api_key=str(data.get("api_key", "")),
-                api_key_env=str(data.get("api_key_env", "")),
+        if path == "/api/io/ask":
+            fields = data.get("fields") or {}
+            self._json(_io_ask(
+                provider=str(data.get("provider", "")),
+                cwd=str(data.get("cwd", "")),
                 session=str(data.get("session", "")),
+                prompt=str(data.get("prompt", "")),
+                fields=fields if isinstance(fields, dict) else {},
             ))
             return
 

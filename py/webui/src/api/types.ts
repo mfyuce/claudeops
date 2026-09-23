@@ -514,9 +514,26 @@ export type DiagSpawnTestResult =
 export type DiagRestartResult = ApiResult<{ result: string; pid: number }>;
 /** `_diag_ask()`. */
 export type DiagAskResult = ApiResult<{ name: string; kind: string }>;
-/** `_ucli_ask()` — synchronous, no fleet session (ucli is not a CliProvider,
- * see TOBEDECIDED#44(b)); the answer comes back directly, not via Terminal. */
-export type UcliAskResult = ApiResult<{ answer: string; model_rounds: number; tool_calls: number }>;
+
+/** `io_providers/base.py::FormField`, flattened by `_io_providers_meta()` —
+ * lets the UI draw a form for ANY tmux-less provider without knowing its
+ * name ahead of time (TOBEDECIDED#44, "shell/tmux olmadan provider ekleme
+ * yöntemi"). `type` is `"text"` or `"password"`. */
+export interface IoFormField {
+  key: string;
+  label: string;
+  type: string;
+  placeholder: string;
+  required: boolean;
+}
+/** `_io_providers_meta()`. */
+export type IoProvidersResult = ApiResult<{ providers: Record<string, { fields: IoFormField[] }> }>;
+/** `_io_ask()` — synchronous, no fleet session (not a CliProvider). */
+export type IoAskResult = ApiResult<{ answer: string; model_rounds: number; tool_calls: number }>;
+/** `_io_sessions()` — existing session names for a provider+cwd, most-recently-used first. */
+export type IoSessionsResult = ApiResult<{ sessions: string[] }>;
+/** `_io_history()` — same `{role, text}` shape as `CliProvider.full_history`. */
+export type IoHistoryResult = ApiResult<{ turns: { role: string; text: string }[] }>;
 
 /** `remote_desktop.start()`/`.stop()` — `already_running`/`already_stopped`
  * are informational only (still `ok: true`), matching the backend's own

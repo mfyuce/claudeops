@@ -248,7 +248,16 @@ export interface Strings {
   diagAskBtn: string;
   diagAsking: string;
   diagAskStarted: (name: string) => string;
+  /** `IoAskPanel`'in "backend ham veri döner, React yerelleştirir" katmanı —
+   * `io_providers/base.py::FormField.key`'e göre gerçek TR/EN label/
+   * placeholder. Tanımadığı bir key (ileride başka bir provider'dan)
+   * backend'in kendi (İngilizce/teknik) `label`/`placeholder`'ına düşer. */
+  ioFieldMeta: Record<string, { label: string; placeholder?: string }>;
   diagUcliHint: string;
+  diagUcliCwdLabel: string;
+  diagUcliCwdPlaceholder: string;
+  diagUcliNewSession: string;
+  diagUcliNewSessionNameLabel: string;
   diagUcliPromptLabel: string;
   diagUcliPromptPlaceholder: string;
   diagUcliModelLabel: string;
@@ -601,7 +610,17 @@ export const STRINGS: Record<Lang, Strings> = {
     diagAskBtn: "bu CLI ile sor",
     diagAsking: "açılıyor… (~10-20s)",
     diagAskStarted: (name) => `✓ açıldı: ${name} — terminal'de canlı yanıt görünecek`,
+    ioFieldMeta: {
+      model: { label: "model", placeholder: "deepseek-v4-flash" },
+      endpoint: { label: "endpoint (opsiyonel)", placeholder: "boşsa yerel Ollama" },
+      api_key: { label: "API anahtarı (opsiyonel, hiçbir yere kaydedilmez)" },
+      api_key_env: { label: "API key env adı (opsiyonel)", placeholder: "UCLI_API_KEY" },
+    },
     diagUcliHint: "ucli (unified-cli) rust agent'ına doğrudan soru sor — fleet session AÇMAZ, tmux/Terminal yok, cevap burada görünür. TOBEDECIDED#44(b).",
+    diagUcliCwdLabel: "proje dizini",
+    diagUcliCwdPlaceholder: "ör. /home/fatihyuce/work/projects/...",
+    diagUcliNewSession: "— yeni —",
+    diagUcliNewSessionNameLabel: "yeni session adı",
     diagUcliPromptLabel: "prompt",
     diagUcliPromptPlaceholder: "ucli'ye ne sormak istiyorsun?",
     diagUcliModelLabel: "model",
@@ -973,7 +992,17 @@ export const STRINGS: Record<Lang, Strings> = {
     diagAskBtn: "ask with this CLI",
     diagAsking: "opening… (~10-20s)",
     diagAskStarted: (name) => `✓ opened: ${name} — the live answer will appear in the terminal`,
+    ioFieldMeta: {
+      model: { label: "model", placeholder: "deepseek-v4-flash" },
+      endpoint: { label: "endpoint (optional)", placeholder: "empty = local Ollama" },
+      api_key: { label: "API key (optional, never stored)" },
+      api_key_env: { label: "API key env name (optional)", placeholder: "UCLI_API_KEY" },
+    },
     diagUcliHint: "Ask the ucli (unified-cli) rust agent directly — no fleet session, no tmux/Terminal, the answer appears right here. TOBEDECIDED#44(b).",
+    diagUcliCwdLabel: "project directory",
+    diagUcliCwdPlaceholder: "e.g. /home/fatihyuce/work/projects/...",
+    diagUcliNewSession: "— new —",
+    diagUcliNewSessionNameLabel: "new session name",
     diagUcliPromptLabel: "prompt",
     diagUcliPromptPlaceholder: "what do you want to ask ucli?",
     diagUcliModelLabel: "model",
