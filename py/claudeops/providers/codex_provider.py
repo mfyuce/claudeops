@@ -59,6 +59,26 @@ BUSY_STATUS_PATTERN = r"esc to interrupt"
 # gpt-5.6-terra + gpt-5.5 gerçek bir turn tamamladı; config.toml'ın kendi varsayılanı
 # "gpt-5-codex" ise bu ChatGPT hesabında 400 ile reddedildi — o yüzden BURADA tekrarlanmıyor).
 FALLBACK_MODELS = ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4-mini"]
+# `codex --help`'in KENDİ subcommand listesi (2026-09-23'te canlı çekildi) EKSİ
+# `resume` — claudeops'un `build_inner_command()`'ı sadece bayraksız (yeni) ya da
+# `codex resume <id> ...` (devam) üretir, ikisi de gerçek interaktif bir session.
+# Bunların HEPSİ, `matches_proc()`'un neden onları ELEMESİ gerektiği: canlı bir
+# "hc" session'ının (COPS_NAME=hc20260922_4, PID 1883904) kendi İÇ süreç ağacı
+# `node_repl` → `codex app-server --listen stdio://` (PID 1901513) şeklinde bir
+# yardımcı alt-süreç spawn ediyor — SADECE `os.path.basename(cmd[0]) == "codex"`
+# kontrolü bunu da "ayrı, bağımsız bir codex session'ı" sanıp `codex-1901513`
+# diye hayalet/kayıtsız bir fleet satırı olarak gösteriyordu (gerçek tmux pane'i
+# olmadığı için Terminal'i açınca "tmux session artık yok" hatası veriyordu).
+# Denylist (allowlist değil) BİLEREK: gelecekte codex'e eklenecek TANIMADIĞIMIZ
+# bir subcommand'ı yanlışlıkla GİZLEMEK, bilinen-kötü birini göstermekten daha
+# kötü bir hata modu — bu liste eksik kalsa bile en kötü ihtimalle birkaç
+# zararsız fazladan satır görünür, gerçek bir session asla kaybolmaz.
+_NON_SESSION_SUBCOMMANDS: FrozenSet[str] = frozenset({
+    "agents", "exec", "review", "login", "logout", "mcp", "plugin", "app-server",
+    "remote-control", "completion", "update", "doctor", "sandbox", "debug", "apply",
+    "queue", "archive", "delete", "migrate-rollouts", "unarchive", "fork", "cloud",
+    "exec-server", "features", "help",
+})
 
 _PERMISSION_FLAGS = {
     "auto": ["--dangerously-bypass-approvals-and-sandbox"],
@@ -193,7 +213,12 @@ class CodexProvider(CliProvider):
         return {"COPS_NAME": session_name}
 
     def matches_proc(self, cmd: List[str]) -> bool:
-        return bool(cmd) and os.path.basename(cmd[0]) == "codex"
+        if not cmd or os.path.basename(cmd[0]) != "codex":
+            return False
+        # bkz. `_NON_SESSION_SUBCOMMANDS` yorumu — `cmd[1]` bir subcommand'sa
+        # (ör. "app-server") ve bilinen listede varsa bu bağımsız bir session
+        # DEĞİL, başka bir codex session'ının kendi iç yardımcı süreci.
+        return len(cmd) < 2 or cmd[1] not in _NON_SESSION_SUBCOMMANDS
 
     def extract_name(self, proc, cmd: List[str]) -> Optional[str]:
         try:
