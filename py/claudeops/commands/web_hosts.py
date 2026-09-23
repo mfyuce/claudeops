@@ -589,6 +589,19 @@ def merge_status(local_payload: Dict[str, Any]) -> Dict[str, Any]:
             "dups": cached["dups"],
         })
     local_payload["hosts"] = hosts_status
+    # `local_payload["sessions"]/["closed"]/["retired"]` geldiğinde zaten
+    # (cwd, name) sıralı (web.py._status_payload) — ama yukarıdaki extend()
+    # her host'un kendi bloğunu SONA ekliyor, tek bir global sıraya
+    # KARIŞTIRMIYOR. Aynı `(cwd.lower(), name.lower())` key'iyle yeniden
+    # sort edince uzak host'ların grupları kendi cwd'lerine göre doğru yere
+    # düşer (host farklı olsa bile groupByCwd zaten host'u da anahtara
+    # katıyor, bkz. groupByCwd.ts groupKey — burada tek host içeriden
+    # karışmaz, sadece host BLOKLARI birbirine düzgün serpiştirilir).
+    def _row_key(r: Dict[str, Any]) -> Any:
+        return (r["cwd"].lower(), r["name"].lower())
+    local_payload["sessions"].sort(key=_row_key)
+    local_payload["closed"].sort(key=_row_key)
+    local_payload["retired"].sort(key=_row_key)
     return local_payload
 
 

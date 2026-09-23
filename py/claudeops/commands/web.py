@@ -1192,7 +1192,12 @@ def _status_payload() -> dict:
     # vb.) bu döngüden hiç geçmiyor, `find_sessions()`'ın ham tarama sırasıyla
     # panelin en altına DEĞİL, ARAYA sırasız düşüyordu), o yüzden `sessions`
     # aşağıda ikinci döngüden sonra AYRICA sort ediliyor.
-    for name in sorted(fleet, key=lambda n: (fleet[n]["cwd"], n)):
+    # .lower(): plain string sort is case-sensitive (ASCII puts ALL
+    # uppercase before ALL lowercase), so a single capitalized folder name
+    # (e.g. "Marwan/") jumps ahead of every lowercase sibling regardless of
+    # its actual letter — looks broken to a human reading it as alphabetical
+    # (2026-09-23 canlı gözlem, TODO.md).
+    for name in sorted(fleet, key=lambda n: (fleet[n]["cwd"].lower(), n.lower())):
         info = fleet[name]
         if info["state"] == "retired":
             retired.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"],
@@ -1275,7 +1280,7 @@ def _status_payload() -> dict:
             "live_effort": s.effort,
         })
 
-    sessions.sort(key=lambda s: (s["cwd"], s["name"]))
+    sessions.sort(key=lambda s: (s["cwd"].lower(), s["name"].lower()))
 
     payload = {
         "config_ok": ok,
