@@ -97,12 +97,14 @@ function ReactivateRow({ item, onView }: { item: RosterEntry; onView: (host: str
       </td>
       <CwdCell cwd={item.cwd} name={item.name} />
       <td style={{ width: "16%" }}>
-        <button type="button" className="reactivate" disabled={busy} onClick={() => void handleReactivate()}>
-          {busy ? t.starting : t.reactivateBtn}
-        </button>
-        <button type="button" className="start" onClick={() => onView(item.host, item.name)}>
-          {t.viewBtn}
-        </button>
+        <div className="actioncell">
+          <button type="button" className="reactivate" disabled={busy} onClick={() => void handleReactivate()}>
+            {busy ? t.starting : t.reactivateBtn}
+          </button>
+          <button type="button" className="start" onClick={() => onView(item.host, item.name)}>
+            {t.viewBtn}
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -121,7 +123,7 @@ export function GroupTable({ items, search, onView }: GroupTableProps) {
   return (
     <div className="tablewrap">
       <CollapseControls groupKeys={groupKeys} isExpanded={collapse.isExpanded} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
-      <table>
+      <table className="grouptab">
         <tbody>
           {pageGroups.map((g) => {
             const gKey = groupKey(g.host, g.cwd);

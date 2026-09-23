@@ -77,20 +77,22 @@ function HistoryRow({ item, onView, onChanged }: HistoryRowProps) {
       <td style={{ width: "8%", whiteSpace: "nowrap" }}>{fmtDate(item.last_started_at ?? item.created_at)}</td>
       <CwdCell cwd={item.cwd} name={item.name} />
       <td style={{ width: "20%" }}>
-        <button
-          type="button"
-          className="reactivate"
-          disabled={busy}
-          onClick={() => void run(() => apiStart({ name: item.name, host: item.host, lang }))}
-        >
-          {busy ? t.starting : t.historyResumeBtn}
-        </button>
-        <button type="button" className="start" onClick={() => onView(item.host, item.name)}>
-          {t.viewBtn}
-        </button>
-        <button type="button" className="stop" disabled={busy} onClick={handleForget}>
-          {t.historyForgetBtn}
-        </button>
+        <div className="actioncell">
+          <button
+            type="button"
+            className="reactivate"
+            disabled={busy}
+            onClick={() => void run(() => apiStart({ name: item.name, host: item.host, lang }))}
+          >
+            {busy ? t.starting : t.historyResumeBtn}
+          </button>
+          <button type="button" className="start" onClick={() => onView(item.host, item.name)}>
+            {t.viewBtn}
+          </button>
+          <button type="button" className="stop" disabled={busy} onClick={handleForget}>
+            {t.historyForgetBtn}
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -161,7 +163,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
             onCollapseAll={collapse.collapseAll}
             onExpandAll={collapse.expandAll}
           />
-          <table>
+          <table className="historytab">
             <tbody>
               {pageGroups.map((g) => {
                 const gKey = groupKey(g.host, g.cwd);

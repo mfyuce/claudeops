@@ -8,14 +8,15 @@
  * Preserved as-is, unmodified:
  *   - the :root custom-property tokens (dark palette by default)
  *   - the @media (prefers-color-scheme: light) override (light palette)
- *   - the @media (max-width: 640px) mobile column-hiding query
  *
- * Constraint (flagged here for whoever builds SessionRow / the registered
- * table row, per the plan): the mobile query's nth-child selectors
- * (.runtab th/td:nth-child(3), :nth-child(7); .regtab th/td:nth-child(3))
- * only keep hiding the right columns if that JSX renders <th>/<td> in the
- * EXACT same column order as today. Get the column order wrong and the
- * mobile layout silently hides/shows the wrong column instead of erroring.
+ * The @media (max-width: 640px) mobile column-hiding query (extended
+ * 2026-09-23, see its own comment below): its nth-child selectors
+ * (`.runtab`/`.regtab`/`.grouptab`/`.historytab` th/td:nth-child(N)) only
+ * keep hiding the right columns if that table's JSX renders <th>/<td> in the
+ * EXACT same column order as today — `.grouptab` is GroupTable.tsx's
+ * `<table>`, `.historytab` is HistoryTab.tsx's. Get a column order wrong (or
+ * rename/drop a class) and the mobile layout silently hides/shows the wrong
+ * column, or stops applying at all, instead of erroring.
  */
 
 :root {
@@ -154,12 +155,103 @@ td.hocell { font-size: .78rem; }
 .ho-no { color: var(--muted); opacity: .6; cursor: help; }
 .tablewrap { overflow-x: auto; }
 @media (max-width: 640px) {
-  /* dar ekranda model/tür sütunlarını gizle, cwd'yi kısalt — action butonları
-     kaydırmadan görünsün (telefonda test edildi) */
-  .runtab th:nth-child(3), .runtab td:nth-child(3),
-  .runtab th:nth-child(7), .runtab td:nth-child(7),
-  .regtab th:nth-child(3), .regtab td:nth-child(3) { display: none; }
-  td.cwd { max-width: 70px; }
+  /* dar ekranda ikincil sütunları gizle, cwd'yi kısalt — action butonları
+     kaydırmadan görünsün. 2026-09-23: önceki hali (sadece runtab'ta
+     model+ho, regtab'ta model) yetersizdi — actioncell'e ulaşmak hâlâ yatay
+     scroll gerektiriyordu (mobil canlı şikayet; 360-500px arası, hem
+     headless hem gerçek pencereli Chrome'da doğrulandı). Genişletildi: her
+     tabloda isim/durum/cwd/actions dışındaki her şey gizleniyor.
+     `.grouptab`/`.historytab` da eklendi — GroupTable.tsx (Disabled/Retired)
+     ve HistoryTab.tsx'in `<table>`'ı öncesinde class'sızdı, yani bu query
+     onları hiç kapsamıyordu. */
+  .runtab th:nth-child(3), .runtab td:nth-child(3),     /* model */
+  .runtab th:nth-child(4), .runtab td:nth-child(4),     /* cli */
+  .runtab th:nth-child(6), .runtab td:nth-child(6),     /* cpu% */
+  .runtab th:nth-child(7), .runtab td:nth-child(7),     /* ho */
+  .runtab th:nth-child(8), .runtab td:nth-child(8),     /* kind */
+  .regtab th:nth-child(3), .regtab td:nth-child(3),     /* model */
+  .regtab th:nth-child(4), .regtab td:nth-child(4),     /* cli */
+  .grouptab th:nth-child(2), .grouptab td:nth-child(2), /* model */
+  .grouptab th:nth-child(3), .grouptab td:nth-child(3), /* cli */
+  .historytab th:nth-child(2), .historytab td:nth-child(2), /* blueprint */
+  .historytab th:nth-child(3), .historytab td:nth-child(3), /* model */
+  .historytab th:nth-child(4), .historytab td:nth-child(4), /* cli */
+  .historytab th:nth-child(5), .historytab td:nth-child(5) {
+    /* `display:none` alone left a `fixed`-layout ghost: Chrome still
+       reserves each hidden `<th>`'s inline `width:N%` (live-measured —
+       without this, cwd/name/status were squeezed to single digits of
+       percent, as if every hidden column were still claiming its desktop
+       share). Zeroing it out here releases that share to the visible
+       `width:auto` columns above. */
+    display: none; width: 0 !important;
+  } /* tarih */
+  /* `table-layout:auto` (the default) sizes every column to its content's
+     min-width and only THEN applies `width:100%` — with 2-3 action buttons
+     in the last column that min-width alone exceeds a phone's viewport, so
+     the table overflowed its wrapper and `.tablewrap`'s scrollbar was what
+     forced the horizontal drag in the first place (confirmed with a mock,
+     both headless and in a real windowed Chrome). `fixed` pins every
+     column to its width hint (or the override below)
+     regardless of content, so the table can never grow past 100% — but
+     content that no longer fits gets drawn with `overflow:visible` (the
+     default) ON TOP of the next cell instead of respecting that boundary,
+     which is worse than the scroll it replaces. The `:not(:last-child)`
+     rule clips it with an ellipsis instead; it skips the actions column
+     (restored below to its own wider `!important` width) and — for free,
+     since a colspanned single-`<td>` row is simultaneously its own
+     first-and-last child — `.group-header`'s `<td>`, which already owns its
+     own ellipsis on `.group-header-inner` (see that rule above). */
+  .runtab, .regtab, .grouptab, .historytab { table-layout: fixed; }
+  /* Desktop's `width` hints (name 12%, status 9%, …) were tuned for the
+     FULL 10/6/5/7-column table — with most columns hidden on mobile they'd
+     leave name/status/cwd a sliver too narrow even to fit their own header
+     text (live-measured). Every visible non-action column gets an explicit
+     mobile `!important` width instead (percentages sum to 100, minus the
+     checkbox's fixed 1.6rem where present) — tried `width: auto` first to
+     let `fixed` layout's own "split the leftover space" fallback handle
+     this, but that fallback turned out to size each auto column by its own
+     min-content instead (confirmed by measuring actual cell widths: the
+     table was still wider than its wrapper, by roughly the same margin as
+     before), so it bought nothing over pinning numbers directly. */
+  .runtab th:not(:last-child), .runtab td:not(:last-child),
+  .regtab th:not(:last-child), .regtab td:not(:last-child),
+  .grouptab th:not(:last-child), .grouptab td:not(:last-child),
+  .historytab th:not(:last-child), .historytab td:not(:last-child) {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* `td.cwd`'s own (non-mobile) rule below caps it at `max-width:1px` — an
+     auto-layout trick (content can't force the column wider than its
+     th-driven share) that's redundant under `fixed` and, worse, WINS over
+     any `width` set here (`max-width` overrides `width` in the box model),
+     collapsing cwd to a sliver. Lift the cap so it actually gets its pinned
+     share below. */
+  td.cwd { max-width: none !important; }
+  .runtab th:nth-child(2), .runtab td:nth-child(2) { width: 20% !important; }  /* isim */
+  .runtab th:nth-child(5), .runtab td:nth-child(5) { width: 18% !important; }  /* durum */
+  .runtab th:nth-child(9), .runtab td:nth-child(9) { width: 28% !important; }  /* cwd */
+  .regtab th:nth-child(2), .regtab td:nth-child(2) { width: 30% !important; }  /* isim */
+  .regtab th:nth-child(5), .regtab td:nth-child(5) { width: 36% !important; }  /* cwd */
+  .grouptab th:nth-child(1), .grouptab td:nth-child(1) { width: 30% !important; } /* isim */
+  .grouptab th:nth-child(4), .grouptab td:nth-child(4) { width: 36% !important; } /* cwd */
+  .historytab th:nth-child(1), .historytab td:nth-child(1) { width: 30% !important; } /* isim */
+  .historytab th:nth-child(6), .historytab td:nth-child(6) { width: 36% !important; } /* cwd */
+  .runtab th:last-child, .runtab td:last-child,
+  .regtab th:last-child, .regtab td:last-child,
+  .grouptab th:last-child, .grouptab td:last-child,
+  .historytab th:last-child, .historytab td:last-child { width: 34% !important; }
+  /* Column, not row, of buttons — at this width even the trimmed labels
+     below don't all fit on one line without wrapping mid-button. */
+  .actioncell { flex-direction: column; align-items: stretch; gap: .25rem; min-width: 0; }
+  /* A flex item's default `min-width:auto` floors it at its own min-content
+     (unwrapped-label) width, which was winning over EVERYTHING above —
+     table-layout:fixed's whole point is that no cell content can force the
+     table wider, but this flex default did exactly that (live-measured: the
+     table was still wider than its wrapper, i.e. still the original bug).
+     The fix is this one property, straight out of the classic
+     flexbox-overflow playbook: let the button shrink below its label's
+     natural width so `white-space: normal` (set on the button below) can
+     actually wrap it. */
+  .actioncell button { padding: .25rem .45rem; font-size: .72rem; min-width: 0; white-space: normal; }
   h1 { font-size: 1rem; }
 }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .4rem; }
