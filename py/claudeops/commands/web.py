@@ -1183,21 +1183,37 @@ def _status_payload() -> dict:
     assigned_pids = {s.pid for s in assigned.values()}
 
     sessions, closed, retired = [], [], []
-    # 2026-09-21 kullanıcı kararı: ana sıralama isme göre değil, cwd/path'e göre
-    # (TODO.md #1) — cwd birincil anahtar, aynı cwd'deki satırlar kendi
-    # aralarında isme göre (tiebreak). Bu döngü closed/retired'ın TEK kaynağı,
-    # ikisi de burada zaten sıralı çıkıyor. `sessions` ise İKİNCİ bir kaynaktan
-    # daha besleniyor (aşağıda `all_live` üzerinden eklenen kayıtsız/instance
-    # proc'lar — 2026-09-22 canlı bulundu: registered instance'lar (luwian20260917
-    # vb.) bu döngüden hiç geçmiyor, `find_sessions()`'ın ham tarama sırasıyla
-    # panelin en altına DEĞİL, ARAYA sırasız düşüyordu), o yüzden `sessions`
-    # aşağıda ikinci döngüden sonra AYRICA sort ediliyor.
-    # .lower(): plain string sort is case-sensitive (ASCII puts ALL
-    # uppercase before ALL lowercase), so a single capitalized folder name
-    # (e.g. "Marwan/") jumps ahead of every lowercase sibling regardless of
-    # its actual letter — looks broken to a human reading it as alphabetical
-    # (2026-09-23 canlı gözlem, TODO.md).
-    for name in sorted(fleet, key=lambda n: (fleet[n]["cwd"].lower(), n.lower())):
+    # Sıralama anahtarı: `settings.fleet_sort` — "name" (varsayılan) ya da
+    # "cwd". 2026-09-21'de "ana sıralama cwd'ye göre" karara bağlanmıştı
+    # (TODO.md #1), AMA 2026-09-23'te aynı gün İKİ ayrı canlı şikayet geldi:
+    # önce case-sensitivity bug'ı (Marwan/UU_ örnekleri — .lower() ile
+    # düzeldi), sonra kullanıcı ekranda gördüğü KISA İSİMLERİN (path DEĞİL)
+    # alfabetik olmasını istediğini netleştirdi ("sıralama hala böyle" —
+    # case-insensitive path-sort teknik olarak doğruydu ama isimle path
+    # örtüşmediği için (ör. "line" klasörü "NN_lineart...", "urartian"
+    # "U_urartian...") göze hâlâ karışık görünüyordu). Karar tersine
+    # çevrilmedi, KONFİGÜRE EDİLEBİLİR yapıldı — varsayılan artık "name",
+    # "cwd" Ayarlar > Genel'den seçilebiliyor (aynı cwd'deki session'ları
+    # yan yana tutmak isteyenler için). `.lower()`: case-sensitive string
+    # sort ASCII'de TÜM büyük harfleri küçük harflerden önce sıralar (tek
+    # bir "Marwan/" gibi büyük-harfli klasör adı gerçek harfi ne olursa
+    # olsun tüm küçük-harfli kardeşlerinin önüne atlar) — bu her iki mod
+    # için de geçerli bir düzeltme, sadece hangi alanın ÖNCE geldiğini
+    # değiştiriyoruz. Bu döngü closed/retired'ın TEK kaynağı, ikisi de
+    # burada zaten sıralı çıkıyor. `sessions` ise İKİNCİ bir kaynaktan daha
+    # besleniyor (aşağıda `all_live` üzerinden eklenen kayıtsız/instance
+    # proc'lar — 2026-09-22 canlı bulundu: registered instance'lar
+    # (luwian20260917 vb.) bu döngüden hiç geçmiyor, `find_sessions()`'ın
+    # ham tarama sırasıyla panelin en altına DEĞİL, ARAYA sırasız
+    # düşüyordu), o yüzden `sessions` aşağıda ikinci döngüden sonra AYRICA
+    # sort ediliyor.
+    fleet_sort = load_settings().get("fleet_sort") or "name"
+
+    def _fleet_row_key(n: str) -> tuple:
+        cwd, nm = fleet[n]["cwd"].lower(), n.lower()
+        return (cwd, nm) if fleet_sort == "cwd" else (nm, cwd)
+
+    for name in sorted(fleet, key=_fleet_row_key):
         info = fleet[name]
         if info["state"] == "retired":
             retired.append({"name": name, "cwd": info["cwd"], "model": info["model"], "cli": info["cli"],
@@ -1280,7 +1296,11 @@ def _status_payload() -> dict:
             "live_effort": s.effort,
         })
 
-    sessions.sort(key=lambda s: (s["cwd"].lower(), s["name"].lower()))
+    def _session_key(s: dict) -> tuple:
+        cwd, nm = s["cwd"].lower(), s["name"].lower()
+        return (cwd, nm) if fleet_sort == "cwd" else (nm, cwd)
+
+    sessions.sort(key=_session_key)
 
     payload = {
         "config_ok": ok,

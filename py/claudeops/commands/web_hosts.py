@@ -40,6 +40,7 @@ from websockets.sync.client import connect as ws_connect
 from . import web_grpc
 from .. import hosts as hosts_mod
 from ..hosts import LOCAL_HOST_NAME
+from ..settings import load_settings
 
 # 14 session/host-scoped POST route — do_POST'un geri kalan 9 route'u
 # (settings, diag/*, desktop/*, layout, files/validate, vscode/open) aggregator-
@@ -590,15 +591,20 @@ def merge_status(local_payload: Dict[str, Any]) -> Dict[str, Any]:
         })
     local_payload["hosts"] = hosts_status
     # `local_payload["sessions"]/["closed"]/["retired"]` geldiğinde zaten
-    # (cwd, name) sıralı (web.py._status_payload) — ama yukarıdaki extend()
-    # her host'un kendi bloğunu SONA ekliyor, tek bir global sıraya
-    # KARIŞTIRMIYOR. Aynı `(cwd.lower(), name.lower())` key'iyle yeniden
-    # sort edince uzak host'ların grupları kendi cwd'lerine göre doğru yere
-    # düşer (host farklı olsa bile groupByCwd zaten host'u da anahtara
-    # katıyor, bkz. groupByCwd.ts groupKey — burada tek host içeriden
-    # karışmaz, sadece host BLOKLARI birbirine düzgün serpiştirilir).
+    # `settings.fleet_sort`'a göre sıralı (web.py._status_payload) — ama
+    # yukarıdaki extend() her host'un kendi bloğunu SONA ekliyor, tek bir
+    # global sıraya KARIŞTIRMIYOR. AYNI mod+key ile yeniden sort edince uzak
+    # host'ların grupları doğru yere düşer (host farklı olsa bile groupByCwd
+    # zaten host'u da anahtara katıyor, bkz. groupByCwd.ts groupKey — burada
+    # tek host içeriden karışmaz, sadece host BLOKLARI birbirine düzgün
+    # serpiştirilir). `_status_payload()`'la AYNI kural: sadece "cwd" cwd-
+    # first, başka her değer (boş dahil) name-first varsayılanına düşer
+    # (bkz. o fonksiyondaki 2026-09-23 notu).
+    fleet_sort = load_settings().get("fleet_sort") or "name"
+
     def _row_key(r: Dict[str, Any]) -> Any:
-        return (r["cwd"].lower(), r["name"].lower())
+        cwd, nm = r["cwd"].lower(), r["name"].lower()
+        return (cwd, nm) if fleet_sort == "cwd" else (nm, cwd)
     local_payload["sessions"].sort(key=_row_key)
     local_payload["closed"].sort(key=_row_key)
     local_payload["retired"].sort(key=_row_key)

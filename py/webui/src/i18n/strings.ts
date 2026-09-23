@@ -314,6 +314,10 @@ export interface Strings {
   historyWarnHint: string;
   layoutGridLabel: string;
   layoutGridHint: string;
+  fleetSortLabel: string;
+  fleetSortHint: string;
+  fleetSortByName: string;
+  fleetSortByCwd: string;
   snapshotLabel: string;
   snapshotDesc: string;
   snapshotNone: string;
@@ -679,6 +683,10 @@ export const STRINGS: Record<Lang, Strings> = {
     historyWarnHint: "terminal scrollback bu satıra ulaşınca Terminal görünümündeki sayaç vurgulanır ve ana tablonun 'dikkat gerekenleri seç' butonu bu session'ı da seçer — tmux'un sabit 2000 satır limitine yaklaştığını gösterir (o limiti aşınca en eski satırlar silinir)",
     layoutGridLabel: "yerleşim yoğunluğu",
     layoutGridHint: "Yerleşim sekmesinin desktop başına açacağı pencere sayısı: 2 (yan yana iki yarı), 4 (2×2, varsayılan), 8 (4×2, yoğun)",
+    fleetSortLabel: "fleet sıralaması",
+    fleetSortHint: "Running/Registered/Disabled/Retired tablolarındaki grupların birincil sıralama anahtarı — isme göre (varsayılan, ekranda gördüğün kısa isim) ya da klasör yoluna göre (projenin tam cwd'si — aynı klasördeki session'lar yan yana durur, ama isim klasör adıyla her zaman örtüşmeyebilir)",
+    fleetSortByName: "isme göre",
+    fleetSortByCwd: "klasör yoluna göre",
     snapshotLabel: "Fleet snapshot",
     snapshotDesc: "çalışan session'ları kaydet, sonra (ör. reboot sonrası) hepsini kayıt anındaki GERÇEK model/effort/izin-modu ile geri aç",
     snapshotNone: "henüz kaydedilmiş bir snapshot yok",
@@ -1061,6 +1069,10 @@ export const STRINGS: Record<Lang, Strings> = {
     historyWarnHint: "once terminal scrollback reaches this many lines, the Terminal view's counter is highlighted and the 'select needs attention' bulk button also picks up this session — flags it as approaching tmux's fixed 2000-line cap (past which the oldest lines get dropped)",
     layoutGridLabel: "layout density",
     layoutGridHint: "how many windows the Layout tab opens per desktop: 2 (side-by-side halves), 4 (2×2, default), 8 (4×2, dense)",
+    fleetSortLabel: "fleet sort",
+    fleetSortHint: "primary sort key for groups in the Running/Registered/Disabled/Retired tables — by name (default, the short name shown on screen) or by folder path (the project's full cwd — keeps sessions in the same folder next to each other, but the name doesn't always track the folder)",
+    fleetSortByName: "by name",
+    fleetSortByCwd: "by folder path",
     snapshotLabel: "Fleet snapshot",
     snapshotDesc: "save the running sessions, then (e.g. after a reboot) reopen all of them with the EXACT model/effort/permission-mode they were running with",
     snapshotNone: "no snapshot saved yet",

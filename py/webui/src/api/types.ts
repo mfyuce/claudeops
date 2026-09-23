@@ -144,6 +144,15 @@ export const EMPTY_CLI_OPTIONS: CliOptions = { models: [], permission_modes: [],
 
 export type Theme = "system" | "light" | "dark";
 
+/** Primary sort key for groups in the Running/Registered/Disabled/Retired
+ * tables. "name" (default, 2026-09-23) sorts by the short display name;
+ * "cwd" sorts by the project's full folder path (keeps sessions in the same
+ * folder next to each other) — the 2026-09-21 default until a same-day
+ * follow-up complaint showed cwd-order doesn't track the visible name (e.g.
+ * the "urartian" folder is `U_urartian_corpus_nlp`), so it became a
+ * preference instead of staying hardcoded. */
+export type FleetSort = "name" | "cwd";
+
 /** Server-side persisted user settings (`~/.claude/claudeops/settings.json`,
  * TODO L73) — same across every browser/device. "" for `handover_effort` or
  * a missing `default_model[cli]` entry both mean "no override, use the
@@ -151,6 +160,7 @@ export type Theme = "system" | "light" | "dark";
 export interface Settings {
   theme: Theme;
   handover_effort: string;
+  fleet_sort: FleetSort;
   default_model: Record<string, string>;
   /** {cli: mutlak binary yolu} — PATH'te bulunamayan (ör. proje-yerel bir
    * node_modules/.bin kurulumu) bir CLI için elle override. Boş/eksik = PATH

@@ -32,6 +32,16 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # HISTORY_LIMIT'in kendisi (2000) sabit kalır, o tmux'un GERÇEK
                               # yapılandırması (bkz. tmux.conf); burada kullanıcı-tercihi olan
                               # SADECE "ne kadar erken uyarılmak istiyorum" eşiği.
+    "fleet_sort": "name",    # "name" | "cwd" — Running/Registered/Disabled/Retired tablolarındaki
+                              # grupların birincil sıralama anahtarı (2026-09-23, iki ayrı canlı
+                              # şikayet sonrası eklendi: önce case-sensitivity bug'ı — bkz. web.py
+                              # _status_payload — sonra kullanıcı ekranda gördüğü KISA İSMİN
+                              # alfabetik olmasını istediğini netleştirdi; cwd bazen isimle hiç
+                              # örtüşmüyor, ör. "urartian" klasörü "U_urartian_corpus_nlp"). 21
+                              # Eylül'ün "ana sıralama cwd'ye göre" kararı (TODO.md #1) tersine
+                              # ÇEVRİLMEDİ, konfigüre edilebilir yapıldı — varsayılan "name",
+                              # "cwd" isteyen (aynı klasördeki session'ları yan yana tutmak
+                              # isteyenler için) Ayarlar > Genel'den seçer.
     "layout_grid": 4,        # `py/cops layout`/web "Yerleşim" sekmesi: desktop başına pencere
                               # sayısı (2026-09-15, kullanıcı: "settings de alani 4 e 8 e 2 ye
                               # bol gibi ayar da olmali") — `layout.py`'nin `_GRID_LAYOUTS`'una

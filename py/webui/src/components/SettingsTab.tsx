@@ -32,7 +32,7 @@ import { apiSaveSettings, apiUsage, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
-import type { Theme, UsageResult } from "../api/types";
+import type { FleetSort, Theme, UsageResult } from "../api/types";
 import { applyTheme } from "../theme";
 import { HostsSection } from "./HostsSection";
 import { SnapshotSection } from "./SnapshotSection";
@@ -41,6 +41,7 @@ import { TabHint } from "./shared/TabHint";
 type SettingsPatch = {
   theme?: Theme;
   handover_effort?: string;
+  fleet_sort?: FleetSort;
   default_model?: Record<string, string>;
   provider_bin?: Record<string, string>;
   history_warn_at?: number;
@@ -240,6 +241,16 @@ export function SettingsTab() {
               <option value={2}>2 (2×1)</option>
               <option value={4}>4 (2×2)</option>
               <option value={8}>8 (4×2)</option>
+            </select>
+          </label>
+          <label title={t.fleetSortHint}>
+            {t.fleetSortLabel}
+            <select
+              value={settings.fleet_sort}
+              onChange={(e) => void save({ fleet_sort: e.target.value as FleetSort })}
+            >
+              <option value="name">{t.fleetSortByName}</option>
+              <option value="cwd">{t.fleetSortByCwd}</option>
             </select>
           </label>
         </div>
