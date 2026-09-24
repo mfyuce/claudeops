@@ -66,13 +66,17 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # bir provider'ın KENDİ bring-your-own-key mekanizmasına (ör. copilot'un
                               # COPILOT_PROVIDER_BASE_URL/_API_KEY/COPILOT_MODEL — `copilot help
                               # providers`, DeepSeek/Ollama/Azure gibi GitHub-dışı bir backend'e
-                              # yönlendirir) enjekte edilecek ham env değişkenleri. Ayarlar sekmesinde
-                              # BİLEREK bir UI alanı YOK (API-key bir SIR, bu dosyanın geri kalanı gibi
-                              # düz tercih değil — maskeleme/izin tasarımı ayrı bir karar) — bugün için
-                              # sadece dosyanın kendisini elle düzenleyerek ya da save_settings()'in
-                              # (herhangi bir DEFAULT_SETTINGS anahtarını genel kabul eden) mevcut
-                              # `/api/settings` yoluyla set edilir. Boş (varsayılan) = provider kendi
-                              # normal routing'ine/login'ine göre spawn olur, hiçbir şey enjekte edilmez.
+                              # yönlendirir; ucli'nin UCLI_API_KEY'i) enjekte edilecek ham env
+                              # değişkenleri. 2026-09-24: Ayarlar > model sekmesinde masked
+                              # (type=password) bir alan var (SettingsTab.tsx) — dosya artık
+                              # world-readable DEĞİL (mode=0o600, aynı gün fix edildi) ve
+                              # save_settings() bu alan için ayrı bir iç-içe merge yapıyor (bkz.
+                              # o fonksiyonun içindeki "byok" dalı). Boş (varsayılan) = provider
+                              # kendi normal routing'ine/login'ine göre spawn olur, hiçbir şey
+                              # enjekte edilmez. copilot'un env_overrides()'ı bunu KOMUT SATIRINA
+                              # gömüyor (`ps aux`'a açık, çok-kullanıcılı makinede risk) — ucli
+                              # KASITLI OLARAK bunu kullanmıyor, bkz. providers/ucli_provider.py'nin
+                              # dosya+`sh -c` dolaylaması.
 }
 
 
@@ -115,9 +119,37 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
                 else:
                     merged.pop(str(ck), None)
             current[k] = merged
+        elif k == "byok" and isinstance(v, dict):
+            # {cli: {ENV_VAR: value}} — bir seviye daha derin merge, YUKARIDAKİ
+            # düz {cli: value} deseninden farklı (byok_env_for()'un docstring'i
+            # bu boşluğu zaten işaret ediyordu: çağıran ya TÜM byok'u göndermeli
+            # ya da provider-bazlı merge'i kendisi yapmalıydı — artık burada).
+            # Bir provider'a boş string verilen bir ENV_VAR o provider'ın
+            # sözlüğünden kaldırılır; sözlük boşalırsa provider'ın kendisi de
+            # kaldırılır (default_model/provider_bin'in "boş=otomatiğe dön"
+            # semantiğiyle aynı).
+            merged_byok = {ck: dict(cv) for ck, cv in (current.get("byok") or {}).items()}
+            for cli_name, envs in v.items():
+                if not isinstance(envs, dict):
+                    continue
+                target = dict(merged_byok.get(cli_name) or {})
+                for env_name, env_val in envs.items():
+                    if env_val:
+                        target[str(env_name)] = str(env_val)
+                    else:
+                        target.pop(str(env_name), None)
+                if target:
+                    merged_byok[str(cli_name)] = target
+                else:
+                    merged_byok.pop(str(cli_name), None)
+            current["byok"] = merged_byok
         else:
             current[k] = v
-    atomic_write_json(SETTINGS_JSON, current)
+    # mode=0o600: `byok` sırlar taşıyabiliyor (2026-09-24'e kadar bu satır
+    # mode=None'dı — settings.json 664/world-readable kalmıştı, çok-kullanıcılı
+    # bu makinede gerçek bir açık; sonraki YAZIMDA `os.replace` hedefi kaynağın
+    # izniyle değiştirdiği için elle chmod GEREKMEDİ, tek satır yeterli).
+    atomic_write_json(SETTINGS_JSON, current, mode=0o600)
     return current
 
 
@@ -162,12 +194,11 @@ def byok_env_for(cli_name: str) -> Dict[str, str]:
     düzenlenebiliyor — bir sayı/bool/liste yazılmışsa `env KEY=VAL` gömme adımı
     yine de bir `str` bekler).
 
-    `save_settings()`'in `default_model`/`provider_bin` için yaptığı ALAN-BAZLI
-    merge BURADA YOK (`byok`'un şekli `{cli: {env: val}}` — o ikisinin düz
-    `{cli: str}`'inden farklı, aynı merge mantığı doğrudan uygulanamaz) — bugün
-    hiçbir yazıcı (Ayarlar UI'ı, `/api/settings`) bu alana yazmadığı için pratik
-    bir fark yaratmıyor; ileride bir yazıcı eklenirse ya kendi merge'ini yapmalı
-    ya da her seferinde TÜM `byok` dict'ini göndermeli."""
+    `save_settings()` artık `byok` için de alan-bazlı merge yapıyor (2026-09-24,
+    `default_model`/`provider_bin`'in düz `{cli: str}`'inden FARKLI, bir seviye
+    daha derin `{cli: {env: val}}` merge'i — Ayarlar UI'ının bir provider'ın TEK
+    bir ENV_VAR'ını, diğerlerine/diğer provider'lara dokunmadan güncelleyebilmesi
+    için) — bu fonksiyon SADECE okuma tarafı, o merge'den bağımsız."""
     raw = (load_settings().get("byok") or {}).get(cli_name)
     if not isinstance(raw, dict):
         return {}

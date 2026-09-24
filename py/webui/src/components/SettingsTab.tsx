@@ -46,7 +46,17 @@ type SettingsPatch = {
   provider_bin?: Record<string, string>;
   history_warn_at?: number;
   layout_grid?: number;
+  /** Write-only — `Settings.byok`'un (okuma tarafı) aksine burada GERÇEK
+   * değer gönderilir; backend bunu asla aynen geri yansıtmaz (bkz. o alanın
+   * yorumu). Boş string bir provider'ın o ENV_VAR'ını temizler. */
+  byok?: Record<string, Record<string, string>>;
 };
+
+/** cli → bugün bilinen TEK en-önemli BYOK env değişkeni. copilot'un aslında
+ * 3'ü var (COPILOT_PROVIDER_BASE_URL/_API_KEY/_MODEL, bkz. copilot_provider.py)
+ * ama henüz hiçbiri UI'da yok — bu liste sadece şu an gerçekten kullanılan
+ * (ucli) için, genelleştirmek ayrı bir iş. */
+const BYOK_PRIMARY_ENV: Record<string, string> = { ucli: "UCLI_API_KEY" };
 
 type SettingsSubTab = "general" | "models" | "fleet" | "usage";
 
@@ -145,6 +155,10 @@ export function SettingsTab() {
   // Same draft-until-blur reasoning as `binDraft` — typing "1900" digit by
   // digit shouldn't fire 4 separate saves.
   const [historyWarnDraft, setHistoryWarnDraft] = useState<string | null>(null);
+  // BYOK alanları hep BOŞ başlar (`Settings.byok` zaten değeri değil sadece
+  // "ayarlı mı" bool'unu taşıyor, geri-doldurulacak bir şey yok) — draft
+  // SADECE bu oturumda yazılanı tutar, blur'da gönderilip hemen temizlenir.
+  const [byokDraft, setByokDraft] = useState<Record<string, string>>({});
 
   if (!data) return null;
   const settings = data.settings;
@@ -294,6 +308,48 @@ export function SettingsTab() {
                 />
               </label>
             ))}
+          </div>
+          <div className="opts" id="settingsByokPanel">
+            <span className="opts-hint" style={{ flexBasis: "100%" }}>
+              <b>{t.byokLabel}</b> {t.byokDesc}
+            </span>
+            {data.cli_list
+              .filter((cli) => BYOK_PRIMARY_ENV[cli])
+              .map((cli) => {
+                const envName = BYOK_PRIMARY_ENV[cli];
+                const isSet = settings.byok[cli]?.[envName] === true;
+                return (
+                  <label key={cli}>
+                    {cli} ({envName})
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      placeholder={isSet ? t.byokSetPlaceholder : t.byokEmptyPlaceholder}
+                      value={byokDraft[cli] ?? ""}
+                      onChange={(e) => setByokDraft((prev) => ({ ...prev, [cli]: e.target.value }))}
+                      onBlur={(e) => {
+                        const v = e.target.value;
+                        // Boş bırakıp başka yere tıklamak "temizle" DEĞİL —
+                        // hiç yazılmadıysa dokunma (yanlışlıkla var olan bir
+                        // anahtarı silmemek için); temizlemek isteyen "temizle"
+                        // butonunu kullanır (aşağıda).
+                        if (!v) return;
+                        void save({ byok: { [cli]: { [envName]: v } } });
+                        setByokDraft((prev) => ({ ...prev, [cli]: "" }));
+                      }}
+                    />
+                    {isSet && (
+                      <button
+                        type="button"
+                        className="stop"
+                        onClick={() => void save({ byok: { [cli]: { [envName]: "" } } })}
+                      >
+                        {t.byokClearBtn}
+                      </button>
+                    )}
+                  </label>
+                );
+              })}
           </div>
         </>
       )}

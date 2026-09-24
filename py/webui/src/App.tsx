@@ -23,6 +23,7 @@ import { DesktopTab } from "./components/DesktopTab";
 import { DiagnosticsTab } from "./components/DiagnosticsTab";
 import { GroupTable } from "./components/GroupTable";
 import { HistoryTab } from "./components/HistoryTab";
+import { IoAskPanel } from "./components/IoAskPanel";
 import { LayoutTab } from "./components/LayoutTab";
 import { OrchTab } from "./components/OrchTab/OrchTab";
 import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
@@ -194,6 +195,7 @@ function AppShell() {
         {data && activeTab === "registered" && (
           <RegisteredTab selection={selection} onSwitchTab={setActiveTab} search={search} onView={onViewSession} />
         )}
+        {data && activeTab === "ucli" && <IoAskPanel />}
         {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} onView={onViewSession} />}
         {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} onView={onViewSession} />}
         {data && activeTab === "history" && <HistoryTab search={search} onView={onViewSession} />}

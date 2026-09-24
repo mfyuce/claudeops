@@ -60,6 +60,14 @@ interface TerminalModalProps {
 
 export function TerminalModal({ name, host, onClose }: TerminalModalProps) {
   const { t } = useLang();
+  // "Sohbet" sekmesi denendi (2026-09-24) ama .jsonl'ı SADECE tur bitince
+  // okuyor — ucli'nin bir tur sırasında bastığı `UnifiedCLI tool: X` canlı
+  // ilerleme satırları orada hiç görünmüyor (kullanıcı: "akış canlı değil
+  // sanki"). Ham "Terminal" sekmesi (capture-pane poll) bunları GERÇEKTEN
+  // canlı gösteriyor, `--pretty` (aynı gün eklendi) final cevabı da orada
+  // artık düzgün render ediyor — yani Terminal, Sohbet'in kaybettiği
+  // canlılığı KORUYARAK aynı okunabilirliği veriyor. Varsayılan geri "term",
+  // diğer TÜM provider'larla aynı (ucli'ye özel dal kaldırıldı).
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("term");
   const [viewingPath, setViewingPath] = useState<string | null>(null);
   useBodyScrollLock();

@@ -33,6 +33,9 @@ export function TabBar({ active, onSelect, search }: TabBarProps) {
   const tabs: [TabKey, string][] = [
     ["running", `${t.tabRunning} (${running})`],
     ["registered", `${t.tabRegistered} (${registered})`],
+    // No count: tmux'suz IoProvider sessions live in per-project `.ucli/chat/*.jsonl`
+    // files, not the status payload's session list (bkz. IoAskPanel.tsx).
+    ["ucli", t.tabUcli],
     ["disabled", `${t.tabDisabled} (${disabled})`],
     ["retired", `${t.tabRetired} (${retired})`],
     // No count: history comes from its own endpoint, not the status payload.

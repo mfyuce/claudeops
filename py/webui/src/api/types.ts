@@ -175,6 +175,12 @@ export interface Settings {
    * `layout.py`'nin `_GRID_LAYOUTS`'una göre (cols,rows)'a çevrilir (2→2x1,
    * 4→2x2 [varsayılan], 8→4x2). */
   layout_grid: number;
+  /** {cli: {ENV_VAR: set?}} — bir provider'ın BYOK env değişkenlerinin
+   * (ör. ucli'nin `UCLI_API_KEY`'i) SADECE "ayarlı mı" durumu, `true`/eksik.
+   * GERÇEK DEĞER asla buraya gelmez (`web.py`'nin `_redact_settings_for_wire`'ı
+   * `/api/settings` POST'una giden ham `Record<string,string>`'i BOOLEAN'a
+   * çevirir) — write-only alan, `has_token` (`HostRecord`) ile aynı desen. */
+  byok: Record<string, Record<string, boolean>>;
 }
 
 /** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in

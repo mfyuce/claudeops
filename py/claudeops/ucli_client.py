@@ -42,14 +42,14 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 class UcliError(RuntimeError):
     """ucli'nin kendi `{"error": "..."}` turu ya da process/parse hatası."""
 
 
-def _resolve_binary(binary: Optional[str] = None) -> str:
+def resolve_binary(binary: Optional[str] = None) -> str:
     """`binary` verilmezse sırayla: `UCLI_BIN` env, PATH'te `ucli`, kardeş
     proje `~/work/projects/tmp/unified-cli`'nin debug/release build'i. Hiçbiri
     yoksa net bir hata — sessizce `FileNotFoundError: [Errno 2]` gibi
@@ -81,7 +81,7 @@ def _resolve_binary(binary: Optional[str] = None) -> str:
     )
 
 
-def _build_chat_argv(
+def build_chat_argv(
     binary: str,
     root: str,
     *,
@@ -123,6 +123,36 @@ def _subprocess_env(api_key_env: str, api_key: Optional[str]) -> Optional[Dict[s
     return {**os.environ, api_key_env: api_key}
 
 
+def chat_session_dir(cwd: str) -> str:
+    """`.ucli/chat/*.jsonl`'ın yaşadığı proje-başına dizin — `io_providers/
+    ucli_provider.py` (tmux'suz `IoProvider`) ve `providers/ucli_provider.py`
+    (tmux-backed `CliProvider`) AYNI klasörü/dosya biçimini okur: ikisi de aynı
+    `--session NAME` kavramını paylaşıyor, sadece süreç yönetimi (Python'ın
+    kendi pipe'ı vs. tmux pane) farklı."""
+    return os.path.join(cwd, ".ucli", "chat")
+
+
+def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
+    """`{session}.jsonl`'ı `[{"role":..., "text":...}, ...]`'a çevirir.
+    Dosya yoksa boş liste (henüz mesaj yok, hata değil) — okunamaz/bozuksa
+    `None` (çağıran "desteklenmiyor" ile "henüz mesaj yok"u ayırabilsin)."""
+    path = os.path.join(chat_session_dir(cwd), f"{session}.jsonl")
+    if not os.path.isfile(path):
+        return []
+    turns: List[Dict[str, str]] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                turn = json.loads(line)
+                turns.append({"role": turn["role"], "text": turn["content"]})
+    except (OSError, json.JSONDecodeError, KeyError):
+        return None
+    return turns
+
+
 def _parse_turn(line: str) -> Dict[str, Any]:
     line = line.strip()
     if not line:
@@ -155,8 +185,8 @@ def ucli_chat_once(
     printed JSON yazar ama `json.loads` boşluğa bakmaz, framing derdi yok
     (process ömrü boyunca TEK değer). `api_key` verilirse (çağıranın kendi
     ortamına güvenmek yerine, ör. bir web formundan) bkz. `_subprocess_env`."""
-    argv = _build_chat_argv(
-        _resolve_binary(binary), root, repl=False, session=session, model=model,
+    argv = build_chat_argv(
+        resolve_binary(binary), root, repl=False, session=session, model=model,
         endpoint=endpoint, api_key_env=api_key_env, with_mcp=with_mcp,
         max_steps=max_steps,
     )
@@ -208,8 +238,8 @@ class UcliReplSession:
         max_steps: Optional[int] = None,
         binary: Optional[str] = None,
     ) -> None:
-        argv = _build_chat_argv(
-            _resolve_binary(binary), root, repl=True, session=session, model=model,
+        argv = build_chat_argv(
+            resolve_binary(binary), root, repl=True, session=session, model=model,
             endpoint=endpoint, api_key_env=api_key_env, with_mcp=with_mcp,
             max_steps=max_steps,
         )

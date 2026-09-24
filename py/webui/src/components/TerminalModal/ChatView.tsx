@@ -22,6 +22,7 @@ import { getTermChat } from "../../api/client";
 import type { ChatMessage } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
 import type { Strings } from "../../i18n/strings";
+import { renderMarkdownSafe } from "../shared/markdown";
 
 const CHAT_POLL_INTERVAL_MS = 2500;
 
@@ -144,23 +145,44 @@ function ChatBody({ state, t }: { state: ChatState; t: Strings }) {
   );
 }
 
+const CHAT_BLOCK_BOX_STYLE: CSSProperties = {
+  fontSize: ".85rem",
+  lineHeight: 1.45,
+  background: "var(--panel2)",
+  border: "1px solid var(--border)",
+  borderRadius: "6px",
+  padding: ".5rem",
+};
+
+/** Provider answers (claude/ucli/...) are markdown prose — 2026-09-24, user:
+ * "ui cok kotu cevaplar direk json" (ucli's `**bold**`/`## heading`-heavy
+ * answers were showing as literal markup, `whiteSpace: pre-wrap` on raw
+ * text is not markdown rendering). Renders via the shared `renderMarkdownSafe`
+ * (same `marked`+DOMPurify pattern as `FileViewerModal`'s file preview) —
+ * async, so this starts in a plain-text fallback (still correct, just
+ * unstyled) until the render resolves, same one-tick flash `FileViewerModal`
+ * already accepts for its own markdown files. */
 function ChatBlock({ label, text, emptyLabel }: { label: string; text: string; emptyLabel: string }) {
+  const [html, setHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHtml(null);
+    if (text) void renderMarkdownSafe(text).then((h) => { if (!cancelled) setHtml(h); });
+    return () => {
+      cancelled = true;
+    };
+  }, [text]);
+
   return (
     <div style={{ marginBottom: ".7rem" }}>
       <div style={{ fontWeight: 600, fontSize: ".75rem", opacity: 0.7, marginBottom: ".2rem" }}>{label}</div>
-      <div
-        style={{
-          whiteSpace: "pre-wrap",
-          fontSize: ".85rem",
-          lineHeight: 1.45,
-          background: "var(--panel2)",
-          border: "1px solid var(--border)",
-          borderRadius: "6px",
-          padding: ".5rem",
-        }}
-      >
-        {text || emptyLabel}
-      </div>
+      {html === null ? (
+        <div style={{ ...CHAT_BLOCK_BOX_STYLE, whiteSpace: "pre-wrap" }}>{text || emptyLabel}</div>
+      ) : (
+        // eslint-disable-next-line react/no-danger -- sanitized via DOMPurify in renderMarkdownSafe
+        <div style={CHAT_BLOCK_BOX_STYLE} dangerouslySetInnerHTML={{ __html: html }} />
+      )}
     </div>
   );
 }

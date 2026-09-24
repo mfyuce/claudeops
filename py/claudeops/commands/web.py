@@ -1342,7 +1342,7 @@ def _status_payload() -> dict:
         # settings.json — roster.tsv/models.tsv'yle aynı desen, tüm cihaz/tarayıcılardan
         # aynı görünür). Her /api/status poll'unda taze okunuyor — /api/settings'e yapılan
         # bir POST'un notify_status_changed() ile diğer açık tab'lara ANINDA yansıması için.
-        "settings": load_settings(),
+        "settings": _redact_settings_for_wire(load_settings()),
         # 2026-09-04, "Uzak Masaüstü" sekmesi: remote_desktop.py'nin daemon
         # lifecycle durumu — diğer açık tab/cihazlar da (WS push ile) canlı
         # görsün diye buraya eklendi, ayrı bir polling endpoint'i değil.
@@ -1386,6 +1386,24 @@ def _snapshot_info() -> dict:
 _VALID_THEMES = ("system", "light", "dark")
 
 
+def _redact_settings_for_wire(settings: dict) -> dict:
+    """`load_settings()`'in ham çıktısı hem `_status_payload()`'a (her ~2-3sn
+    poll/WS push) hem `_save_settings()`'in cevabına gidiyor — `byok` alanı
+    (2026-09-24, Ayarlar'a BYOK alanı eklenince) GERÇEK SIR değerleri taşıyor,
+    bunları tarayıcıya (devtools/network sekmesi, WS trafiği) hiç göndermiyoruz,
+    sadece "bu ENV_VAR ayarlı mı" (bool) — `/api/hosts`'un `has_token` alanıyla
+    AYNI desen. Diğer TÜM ayarlar (theme/default_model/provider_bin/...) sır
+    değil, olduğu gibi geçer — burada SADECE `byok`'a dokunuluyor."""
+    out = dict(settings)
+    byok = out.get("byok")
+    if isinstance(byok, dict):
+        out["byok"] = {
+            str(cli): {str(env): bool(val) for env, val in envs.items()}
+            for cli, envs in byok.items() if isinstance(envs, dict)
+        }
+    return out
+
+
 def _save_settings(patch: dict, lang: str = "tr") -> dict:
     """`/api/settings` — kısmi patch alır (gönderilmeyen anahtarlar dokunulmadan
     kalır, bkz. `settings.save_settings`'in merge mantığı). Tek doğrulama: tema
@@ -1395,7 +1413,7 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
     if theme is not None and theme not in _VALID_THEMES:
         return _err(lang, "invalid_theme")
     new = save_settings(patch)
-    return {"ok": True, "settings": new}
+    return {"ok": True, "settings": _redact_settings_for_wire(new)}
 
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,

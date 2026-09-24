@@ -34,10 +34,9 @@ import { apiDiagAsk, apiDiagRestartGt, apiDiagSpawnTest, ApiError, getDiagLog } 
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
-import { IoAskPanel } from "./IoAskPanel";
 import { TabHint } from "./shared/TabHint";
 
-type DiagSubTab = "status" | "ask" | "ucli" | "log";
+type DiagSubTab = "status" | "ask" | "log";
 
 /** Original: `fmtUptime(sec)` (web.py ~2577-2584). */
 function fmtUptime(sec: number | null | undefined, unknownLabel: string): string {
@@ -184,9 +183,6 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
         <button type="button" className={subTab === "ask" ? "active" : ""} onClick={() => setSubTab("ask")}>
           {t.tabDiagAsk}
         </button>
-        <button type="button" className={subTab === "ucli" ? "active" : ""} onClick={() => setSubTab("ucli")}>
-          {t.tabDiagUcli}
-        </button>
         <button type="button" className={subTab === "log" ? "active" : ""} onClick={() => setSubTab("log")}>
           {t.tabDiagLog}
         </button>
@@ -254,7 +250,6 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
           <pre className="layout-result">{askResult}</pre>
         </>
       )}
-      {subTab === "ucli" && <IoAskPanel />}
       {subTab === "log" && (
         <>
           <div className="opts-hint">{t.diagLogTitle}</div>

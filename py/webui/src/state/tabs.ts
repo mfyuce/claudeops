@@ -8,6 +8,7 @@
 export type TabKey =
   | "running"
   | "registered"
+  | "ucli"
   | "disabled"
   | "retired"
   | "history"
@@ -23,6 +24,7 @@ export const TAB_STORAGE_KEY = "cops_tab";
 const ALL_TABS: readonly TabKey[] = [
   "running",
   "registered",
+  "ucli",
   "disabled",
   "retired",
   "history",

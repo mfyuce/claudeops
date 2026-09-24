@@ -9,6 +9,7 @@ from .agy_provider import AgyProvider
 from .codex_provider import CodexProvider
 from .copilot_provider import CopilotProvider
 from .shell_provider import ShellProvider
+from .ucli_provider import UcliProvider
 
 DEFAULT_CLI = "claude"
 
@@ -18,6 +19,7 @@ PROVIDERS: Dict[str, CliProvider] = {
     "codex": CodexProvider(),
     "copilot": CopilotProvider(),
     "shell": ShellProvider(),
+    "ucli": UcliProvider(),
 }
 
 

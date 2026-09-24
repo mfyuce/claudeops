@@ -4,11 +4,10 @@ orada, burada sadece proje+session kimliği (`.ucli/chat/*.jsonl`) ile
 `IoProvider` arayüzü arasındaki çeviri var."""
 from __future__ import annotations
 import glob
-import json
 import os
 from typing import Dict, List, Optional
 
-from ..ucli_client import UcliError, ucli_chat_once
+from ..ucli_client import UcliError, chat_session_dir, read_chat_history, ucli_chat_once
 from .base import FormField, IoProvider, IoProviderError
 
 
@@ -29,30 +28,13 @@ class UcliIoProvider(IoProvider):
         except UcliError as e:
             raise IoProviderError(str(e)) from e
 
-    def _session_dir(self, cwd: str) -> str:
-        return os.path.join(cwd, ".ucli", "chat")
-
     def list_sessions(self, cwd: str) -> List[str]:
-        paths = glob.glob(os.path.join(self._session_dir(cwd), "*.jsonl"))
+        paths = glob.glob(os.path.join(chat_session_dir(cwd), "*.jsonl"))
         paths.sort(key=os.path.getmtime, reverse=True)
         return [os.path.splitext(os.path.basename(p))[0] for p in paths]
 
     def history(self, cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
-        path = os.path.join(self._session_dir(cwd), f"{session}.jsonl")
-        if not os.path.isfile(path):
-            return []
-        turns: List[Dict[str, str]] = []
-        try:
-            with open(path, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    turn = json.loads(line)
-                    turns.append({"role": turn["role"], "text": turn["content"]})
-        except (OSError, json.JSONDecodeError, KeyError):
-            return None
-        return turns
+        return read_chat_history(cwd, session)
 
     def form_fields(self) -> List[FormField]:
         """`label`/`placeholder` BİLEREK İngilizce/teknik, düzyazı DEĞİL —

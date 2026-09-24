@@ -351,8 +351,15 @@ export const apiDesktopStart = (lang: Lang): Promise<DesktopStartResult> =>
 export const apiDesktopStop = (lang: Lang): Promise<DesktopStopResult> =>
   apiPost<DesktopStopResult>("/api/desktop/stop", { lang });
 
-/** Partial patch — omitted keys are left untouched server-side (`settings.save_settings`'s merge). */
-export type SettingsPayload = Partial<Settings> & { lang: Lang };
+/** Partial patch — omitted keys are left untouched server-side (`settings.save_settings`'s merge).
+ * `byok` is Omit+re-added rather than inherited from `Settings`: that type's `byok` is the
+ * READ shape (redacted to booleans, `has_token`-style, never the real value — see `Settings.byok`'s
+ * own comment) while a save sends the REAL string value to set. Same field name, deliberately
+ * different shape for write vs. read, like `HostRecord.token` (write) vs. `has_token` (read). */
+export type SettingsPayload = Omit<Partial<Settings>, "byok"> & {
+  lang: Lang;
+  byok?: Record<string, Record<string, string>>;
+};
 export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
   apiPost<SettingsResult>("/api/settings", p);
 
