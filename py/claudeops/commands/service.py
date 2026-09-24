@@ -1,5 +1,7 @@
 """`service` — web panel + cloudflared tunnel'ı systemd --user ile KALICI hale getir:
-logout/reboot'ta otomatik başlar, çökerse kendini toplar (Restart=on-failure).
+logout/reboot'ta otomatik başlar, çökerse VEYA beklenmedik bir sinyalle ölürse
+kendini toplar (`Restart=always` — 2026-09-24'e kadar `on-failure`'dı, bkz.
+WEB_UNIT_TEMPLATE'in üstündeki yorum).
 
 Kullanım:
   py/cops service install [--tunnel-name NAME]   # unit'leri yaz + linger aç + enable+start
@@ -90,13 +92,23 @@ NTFY_TOPIC_FILE = Path(CLAUDEOPS_DIR) / "ntfy_topic.txt"
 TUNNEL_LABEL_FILE = Path(CLAUDEOPS_DIR) / "tunnel_label.txt"
 UNIT_NAMES = ["claudeops-web.service", "claudeops-tunnel.service"]
 
+# `Restart=always`, NOT `on-failure` (2026-09-24 canlı bulgu): bu servisin ana
+# process'i beklenmedik bir SIGHUP alıp öldüğünde (kaynağı hâlâ netleşmedi — ne
+# oomd ne kernel OOM'du, `systemctl stop/restart` da değildi, o zaman "Stopping
+# claudeops web panel..." log satırı olurdu) systemd bunu `Result=success` olarak
+# kaydetti (`NRestarts=0`) — SIGHUP/SIGINT/SIGTERM/SIGPIPE systemd'nin varsayılan
+# sınıflandırmasında "temiz/istekli durdurma" sayılıyor, `on-failure` bunlarda HİÇ
+# tetiklenmiyor, servis saatlerce ölü kaldı. `always` bunu kapatır: sadece gerçek
+# bir `systemctl stop/restart` (kendi stop-job'u, Restart= mantığının hiç
+# uğramadığı ayrı bir kod yolu) servisi kalıcı durdurur, HERHANGİ beklenmedik
+# çıkış/sinyal (hangi türden olursa olsun) yine geri gelir.
 WEB_UNIT_TEMPLATE = """[Unit]
 Description=claudeops web panel
 
 [Service]
 WorkingDirectory={repo_py}
 ExecStart=/bin/bash -ic '{python} -m claudeops web'
-Restart=on-failure
+Restart=always
 RestartSec=5
 KillMode=process
 
@@ -116,7 +128,7 @@ Environment=CLAUDEOPS_TUNNEL_PROTOCOL={protocol}
 ExecStart={run_tunnel}
 StandardOutput=append:{tunnel_log}
 StandardError=append:{tunnel_log}
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]
