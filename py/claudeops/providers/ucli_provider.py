@@ -82,7 +82,7 @@ from typing import Dict, FrozenSet, List, Optional, Sequence
 
 import psutil
 
-from ..settings import byok_env_for
+from ..settings import byok_env_for, ucli_limit_overrides
 from ..ucli_client import read_chat_history, resolve_binary
 from .base import CliProvider
 
@@ -219,8 +219,12 @@ class UcliProvider(CliProvider):
         # kavramı bu yüzeyde yok, mcp_launch_args() base.py'nin boş-liste
         # varsayımında kalıyor). effort → --max-steps + --max-context-kib +
         # --max-tool-calls, bkz. _EFFORT_LIMITS'in yorumu; tanınmayan/boş bir
-        # değer sessizce "medium"a düşer.
-        limits = _EFFORT_LIMITS.get(effort, _EFFORT_LIMITS["medium"])
+        # değer sessizce "medium"a düşer. Ayarlar > model'deki `ucli_limits`
+        # override'ı (settings.ucli_limit_overrides(), TODO.md'nin ucli effort
+        # maddesi, 2026-09-24) dolu olduğu alanlarda preset'in sayısının
+        # YERİNE geçer — artık kullanıcı Python'a dokunmadan/servis restart
+        # etmeden bu 3 sayıyı kendi ayarlayabiliyor.
+        limits = {**_EFFORT_LIMITS.get(effort, _EFFORT_LIMITS["medium"]), **ucli_limit_overrides()}
         argv = [
             resolve_binary(), "--root", cwd, "chat", "--repl", "--endpoint", _ENDPOINT,
             "--max-steps", str(limits["max_steps"]),

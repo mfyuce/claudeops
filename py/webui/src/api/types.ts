@@ -181,6 +181,13 @@ export interface Settings {
    * `/api/settings` POST'una giden ham `Record<string,string>`'i BOOLEAN'a
    * çevirir) — write-only alan, `has_token` (`HostRecord`) ile aynı desen. */
   byok: Record<string, Record<string, boolean>>;
+  /** {max_steps, max_context_kib, max_tool_calls: string} — ucli'nin effort
+   * preset'lerinin (`_EFFORT_LIMITS`, provider tarafında, medium/high) üstüne
+   * binen alan-bazlı override. Boş/eksik alan = preset'in kendi varsayılanı
+   * (`provider_bin` ile aynı "boş=otomatik" dili). `default_model`/
+   * `provider_bin` gibi {cli: ...} DEĞİL — bu numerik "effort" kavramı bugün
+   * SADECE ucli'de var, `settings.py`'nin `ucli_limit_overrides()`'ı okur. */
+  ucli_limits: Record<string, string>;
 }
 
 /** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in

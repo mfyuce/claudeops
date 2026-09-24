@@ -44,16 +44,29 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .settings import load_settings
+
 
 class UcliError(RuntimeError):
     """ucli'nin kendi `{"error": "..."}` turu ya da process/parse hatası."""
 
 
 def resolve_binary(binary: Optional[str] = None) -> str:
-    """`binary` verilmezse sırayla: `UCLI_BIN` env, PATH'te `ucli`, kardeş
-    proje `~/work/projects/tmp/unified-cli`'nin debug/release build'i. Hiçbiri
+    """`binary` verilmezse sırayla: Ayarlar > model'deki `provider_bin.ucli`
+    override'ı, `UCLI_BIN` env, PATH'te `ucli`, kardeş proje
+    `~/work/projects/tmp/unified-cli`'nin debug/release build'i. Hiçbiri
     yoksa net bir hata — sessizce `FileNotFoundError: [Errno 2]` gibi
     anlaşılmaz bir subprocess istisnasına düşmek yerine.
+
+    `provider_bin` override'ı 2026-09-24'te eklendi (TODO.md'nin federasyon
+    maddesi) — `settings.resolved_binary()`'nin claude/codex/agy/copilot'ta
+    ZATEN yaptığının aynısı, UI'da (Ayarlar > model, "CLI binary yolu
+    override") `data.cli_list`'i döngüleyen satır zaten `ucli`'yi de
+    kapsıyordu, sadece BU fonksiyon hiç okumuyordu. Alttaki iki adım (PATH'te
+    arama + kardeş proje build'i) BU MAKİNEYE özel kalmaya devam ediyor —
+    federasyonda (ör. yuhem) `ucli` PATH'te değilse ve unified-cli AYNI dizin
+    yapısında yoksa hâlâ patlar, ama artık o host'un KENDİ (host-başına-ayrı)
+    settings.json'ına `provider_bin.ucli` yazılarak atlanabiliyor.
 
     debug ÖNCE denenir: unified-cli'nin kendi README'si HER örnekte
     `target/debug/ucli`'yi çalıştırıyor (`cargo build --locked`, `--release`
@@ -64,6 +77,9 @@ def resolve_binary(binary: Optional[str] = None) -> str:
     `--release` build edip debug'ı silerse diye) ama SADECE debug yoksa."""
     if binary:
         return binary
+    override = (load_settings().get("provider_bin") or {}).get("ucli", "").strip()
+    if override:
+        return override
     env_bin = os.environ.get("UCLI_BIN")
     if env_bin:
         return env_bin
@@ -76,8 +92,9 @@ def resolve_binary(binary: Optional[str] = None) -> str:
         if candidate.is_file():
             return str(candidate)
     raise UcliError(
-        "ucli binary bulunamadı — UCLI_BIN ortam değişkenini ver, PATH'e ekle, "
-        "ya da ~/work/projects/tmp/unified-cli'de `cargo build --locked` çalıştır."
+        "ucli binary bulunamadı — Ayarlar > model'de provider_bin.ucli'yi "
+        "ayarla, UCLI_BIN ortam değişkenini ver, PATH'e ekle, ya da "
+        "~/work/projects/tmp/unified-cli'de `cargo build --locked` çalıştır."
     )
 
 

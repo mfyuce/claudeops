@@ -77,6 +77,18 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # gömüyor (`ps aux`'a açık, çok-kullanıcılı makinede risk) — ucli
                               # KASITLI OLARAK bunu kullanmıyor, bkz. providers/ucli_provider.py'nin
                               # dosya+`sh -c` dolaylaması.
+    "ucli_limits": {},       # {max_steps, max_context_kib, max_tool_calls: str} — 2026-09-24,
+                              # TODO.md'nin ucli effort maddesi: bu 3 sayı `providers/ucli_provider.py`
+                              # içindeki `_EFFORT_LIMITS`'te (medium/high preset'leri) gömülüydü,
+                              # kullanıcı her ayar isteğinde bana bir sayı söylüyor, ben Python'da
+                              # elle değiştirip servisi restart ediyordum. Burada TEK, flat bir
+                              # override seti — `provider_bin` gibi cli-bazlı {cli: ...} DEĞİL,
+                              # çünkü bu numerik "effort" kavramı bugün SADECE ucli'de var, bir
+                              # {cli: {...}} haritası şimdiden erken bir genelleme olurdu. Dolu olan
+                              # her alan, SEÇİLİ effort seviyesi (medium/high) ne olursa olsun o
+                              # preset'in karşılık gelen sayısının YERİNE geçer; boş/eksik alan
+                              # preset'in kendi varsayılanında kalır ("boş=otomatiğe dön",
+                              # provider_bin/byok'la AYNI dil). Okuma tarafı: `ucli_limit_overrides()`.
 }
 
 
@@ -96,6 +108,8 @@ def load_settings() -> Dict[str, Any]:
                 out["provider_bin"] = {}
             if not isinstance(out.get("byok"), dict):
                 out["byok"] = {}
+            if not isinstance(out.get("ucli_limits"), dict):
+                out["ucli_limits"] = {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return out
@@ -104,14 +118,16 @@ def load_settings() -> Dict[str, Any]:
 def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     """`patch`'i mevcut ayarların ÜSTÜNE merge edip diske yaz, YENİ TAM ayarları
     döndür. Bilinmeyen anahtarlar sessizce atlanır (DEFAULT_SETTINGS şemasının
-    dışına taşmaz). `default_model` alan-bazlı merge edilir (tek bir provider'ı
-    güncellemek diğerlerini silmez); bir provider'a boş string verilmesi o
-    provider'ı "otomatiğe dön" anlamında sözlükten TAMAMEN kaldırır."""
+    dışına taşmaz). `default_model`/`provider_bin`/`ucli_limits` alan-bazlı
+    merge edilir (tek bir anahtarı güncellemek diğerlerini silmez); boş string
+    verilmesi o anahtarı "otomatiğe dön" anlamında sözlükten TAMAMEN kaldırır
+    (`default_model`/`provider_bin`'de anahtar=cli adı, `ucli_limits`'te
+    anahtar=alan adı — mekanik aynı, ne temsil ettiği farklı)."""
     current = load_settings()
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "provider_bin") and isinstance(v, dict):
+        if k in ("default_model", "provider_bin", "ucli_limits") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if cv:
@@ -203,3 +219,25 @@ def byok_env_for(cli_name: str) -> Dict[str, str]:
     if not isinstance(raw, dict):
         return {}
     return {str(k): str(v) for k, v in raw.items() if v}
+
+
+def ucli_limit_overrides() -> Dict[str, int]:
+    """`settings.json`'ın `ucli_limits` alanı — bkz. DEFAULT_SETTINGS'teki yorum.
+    `providers/ucli_provider.py`'nin `_EFFORT_LIMITS[effort]`'inin (medium/high
+    preset'i) ÜSTÜNE merge edilecek, SADECE geçerli (pozitif tam sayıya
+    çevrilebilen) alanları içeren bir dict döner. Eksik/boş/negatif/sayısal-
+    olmayan bir değer sessizce ATLANIR (asla fırlatmaz, `byok_env_for` ile aynı
+    tolerans — settings.json elle düzenlenebiliyor); atlanan alan preset'in
+    kendi varsayılanında kalır."""
+    raw = load_settings().get("ucli_limits") or {}
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, int] = {}
+    for key in ("max_steps", "max_context_kib", "max_tool_calls"):
+        try:
+            n = int(str(raw.get(key)).strip())
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            out[key] = n
+    return out

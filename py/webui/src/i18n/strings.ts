@@ -344,6 +344,12 @@ export interface Strings {
   byokSetPlaceholder: string;
   byokEmptyPlaceholder: string;
   byokClearBtn: string;
+  ucliLimitsLabel: string;
+  ucliLimitsDesc: string;
+  ucliLimitsMaxStepsLabel: string;
+  ucliLimitsMaxContextKibLabel: string;
+  ucliLimitsMaxToolCallsLabel: string;
+  ucliLimitsPlaceholderAuto: string;
   tabHintToggle: string;
   tabSettingsGeneral: string;
   tabSettingsModels: string;
@@ -722,6 +728,13 @@ export const STRINGS: Record<Lang, Strings> = {
     byokSetPlaceholder: "•••• (ayarlı, değiştirmek için yaz)",
     byokEmptyPlaceholder: "henüz ayarlanmadı",
     byokClearBtn: "temizle",
+    ucliLimitsLabel: "ucli effort limitleri (max-steps / max-context-kib / max-tool-calls)",
+    ucliLimitsDesc:
+      "ucli'nin medium/high effort preset'lerindeki sayıların üstüne binen override. Boş = preset'in kendi varsayılanı. Birim max-context-kib için KiB'dir, token DEĞİL.",
+    ucliLimitsMaxStepsLabel: "max-steps",
+    ucliLimitsMaxContextKibLabel: "max-context-kib (KiB)",
+    ucliLimitsMaxToolCallsLabel: "max-tool-calls",
+    ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
     tabHintToggle: "Açıklamayı göster/gizle",
     tabSettingsGeneral: "genel",
     tabSettingsModels: "model",
@@ -1114,6 +1127,13 @@ export const STRINGS: Record<Lang, Strings> = {
     byokSetPlaceholder: "•••• (set, type to replace)",
     byokEmptyPlaceholder: "not set yet",
     byokClearBtn: "clear",
+    ucliLimitsLabel: "ucli effort limits (max-steps / max-context-kib / max-tool-calls)",
+    ucliLimitsDesc:
+      "Override on top of ucli's medium/high effort preset numbers. Empty = the preset's own default. max-context-kib's unit is KiB, not tokens.",
+    ucliLimitsMaxStepsLabel: "max-steps",
+    ucliLimitsMaxContextKibLabel: "max-context-kib (KiB)",
+    ucliLimitsMaxToolCallsLabel: "max-tool-calls",
+    ucliLimitsPlaceholderAuto: "empty = preset default",
     tabHintToggle: "Show/hide description",
     tabSettingsGeneral: "general",
     tabSettingsModels: "models",

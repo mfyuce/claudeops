@@ -50,6 +50,9 @@ type SettingsPatch = {
    * değer gönderilir; backend bunu asla aynen geri yansıtmaz (bkz. o alanın
    * yorumu). Boş string bir provider'ın o ENV_VAR'ını temizler. */
   byok?: Record<string, Record<string, string>>;
+  /** {max_steps, max_context_kib, max_tool_calls: string} — bkz. `Settings.ucli_limits`.
+   * Boş string bir alanı preset varsayılanına döndürür. */
+  ucli_limits?: Record<string, string>;
 };
 
 /** cli → bugün bilinen TEK en-önemli BYOK env değişkeni. copilot'un aslında
@@ -159,6 +162,10 @@ export function SettingsTab() {
   // "ayarlı mı" bool'unu taşıyor, geri-doldurulacak bir şey yok) — draft
   // SADECE bu oturumda yazılanı tutar, blur'da gönderilip hemen temizlenir.
   const [byokDraft, setByokDraft] = useState<Record<string, string>>({});
+  // Same draft-until-blur reasoning as `binDraft` — `provider_bin`'in aksine
+  // (`isSet`/mask yok) mevcut değer doğrudan gösterilir, BYOK'un "boşsa
+  // dokunma" korumasına gerek yok (sır değil).
+  const [ucliLimitsDraft, setUcliLimitsDraft] = useState<Record<string, string>>({});
 
   if (!data) return null;
   const settings = data.settings;
@@ -351,6 +358,32 @@ export function SettingsTab() {
                 );
               })}
           </div>
+          {data.cli_list.includes("ucli") && (
+            <div className="opts" id="settingsUcliLimitsPanel">
+              <span className="opts-hint" style={{ flexBasis: "100%" }}>
+                <b>{t.ucliLimitsLabel}</b> {t.ucliLimitsDesc}
+              </span>
+              {(
+                [
+                  ["max_steps", t.ucliLimitsMaxStepsLabel],
+                  ["max_context_kib", t.ucliLimitsMaxContextKibLabel],
+                  ["max_tool_calls", t.ucliLimitsMaxToolCallsLabel],
+                ] as const
+              ).map(([field, label]) => (
+                <label key={field}>
+                  {label}
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder={t.ucliLimitsPlaceholderAuto}
+                    value={ucliLimitsDraft[field] ?? settings.ucli_limits[field] ?? ""}
+                    onChange={(e) => setUcliLimitsDraft((prev) => ({ ...prev, [field]: e.target.value }))}
+                    onBlur={(e) => void save({ ucli_limits: { [field]: e.target.value.trim() } })}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
         </>
       )}
       {subTab === "fleet" && (
