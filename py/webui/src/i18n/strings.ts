@@ -694,7 +694,7 @@ export const STRINGS: Record<Lang, Strings> = {
     hostNone: "kayıtlı uzak host yok",
     cliInstallLabel: "CLI kurulumu",
     cliInstallDesc:
-      "claude/codex/copilot zaten sistemde yoksa claudeops'un kendi bin dizinine kurar (~/.claude/claudeops/bin, npm --prefix ile — gerçek global/sistem kurulumu DEĞİL, sadece bu kullanıcı). agy (Antigravity) için scriptlenebilir bir Linux kurulumu yok, sadece tespit ediliyor.",
+      "hiçbiri zaten sistemde yoksa claudeops'un kendi bin dizinine kurar (~/.claude/claudeops/bin — claude/codex/copilot npm --prefix ile, agy resmi antigravity.google kurulum script'iyle --dir bayrağı vererek — hiçbiri gerçek global/sistem kurulumu DEĞİL, sadece bu kullanıcı).",
     cliInstallBtn: "kur",
     cliInstalling: "kuruluyor…",
     cliUpdateBtn: "güncelle",
@@ -1108,7 +1108,7 @@ export const STRINGS: Record<Lang, Strings> = {
     hostNone: "no remote hosts registered",
     cliInstallLabel: "CLI install",
     cliInstallDesc:
-      "if claude/codex/copilot aren't already on this machine, installs into claudeops's own bin dir (~/.claude/claudeops/bin, via npm --prefix — not a real global/system install, just this user). agy (Antigravity) has no scriptable Linux install, detection only.",
+      "if any of these aren't already on this machine, installs into claudeops's own bin dir (~/.claude/claudeops/bin — claude/codex/copilot via npm --prefix, agy via the official antigravity.google install script's --dir flag — none of these are a real global/system install, just this user).",
     cliInstallBtn: "install",
     cliInstalling: "installing…",
     cliUpdateBtn: "update",
