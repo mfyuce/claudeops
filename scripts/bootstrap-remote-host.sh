@@ -11,11 +11,13 @@
 #
 # Ne yapar: git/python3/pip kontrolü (kurmaz, sadece uyarır) -> py/requirements.txt
 # kurulumu -> `py/cops service install` (systemd --user: web paneli + cloudflared
-# quick-tunnel, sudo GEREKMEZ) -> tünel URL'ini + bu makinenin bearer token'ını
-# ekrana basar. Kurumsal ağlarda cloudflared'ın port 7844'ü (QUIC+HTTP2) engellenmiş
-# olabilir (claudeops'un TOBEDECIDED#19'unda yuhem'de canlı doğrulandı) -- bu
-# durumda script bunu tespit edip VS Code Remote Tunnel'a geçiş talimatı basar,
-# çünkü o kanal aynı sınıf ağlarda kanıtlanmış şekilde çalışıyor (port 443/HTTPS).
+# quick-tunnel, sudo GEREKMEZ) -> ntfy.sh bildirimi kurar (tünel URL'i sonradan
+# DEĞİŞİRSE haber verir, quick-tunnel'lar kalıcı değil) -> tünel URL'ini + bu
+# makinenin bearer token'ını ekrana basar. Kurumsal ağlarda cloudflared'ın port
+# 7844'ü (QUIC+HTTP2) engellenmiş olabilir (claudeops'un TOBEDECIDED#19'unda
+# yuhem'de canlı doğrulandı) -- bu durumda script bunu tespit edip VS Code
+# Remote Tunnel'a geçiş talimatı basar, çünkü o kanal aynı sınıf ağlarda
+# kanıtlanmış şekilde çalışıyor (port 443/HTTPS).
 #
 # Bu script sudo'yu SADECE açıkça onay alarak çalıştırır (aşağıda "kurayım mı?"
 # sorusu) -- hiçbir zaman sessiz/unattended sudo yok, ve tam çalıştırılacak komut
@@ -119,6 +121,24 @@ fi
 echo
 echo "--- servis kurulumu (web paneli + tünel, sudo YOK) ---"
 py/cops service install
+
+echo
+echo "--- telefon bildirimi (ntfy.sh, hesap gerekmez) ---"
+# Quick-tunnel URL'leri kalıcı değil -- cloudflared herhangi bir sebeple
+# yeniden bağlanırsa (ağ blip'i, restart) YENİ bir URL üretir ve eski URL
+# Cloudflare'in "Error 1033"üyle kalıcı olarak ölür (canlı yaşandı, ulak/
+# 10.20.40.31, 2026-09-25). Bunu elle fark etmek yerine ntfy.sh'e (ücretsiz,
+# hesap yok) URL DEĞİŞTİĞİNDE otomatik bildirim kurulur. Zaten kuruluysa
+# (script tekrar çalıştırıldıysa) topic DEĞİŞTİRİLMEZ -- yeniden abone olmaya
+# gerek kalmasın diye.
+if [ -s "$STATE_DIR/ntfy_topic.txt" ]; then
+    echo "zaten kurulu: ntfy.sh/$(cat "$STATE_DIR/ntfy_topic.txt")"
+else
+    NTFY_TOPIC="${CLAUDEOPS_NTFY_TOPIC:-claudeops-$(tr -dc 'a-z0-9' < /dev/urandom | head -c 10)}"
+    py/cops service notify "$NTFY_TOPIC"
+    echo "abone olun: https://ntfy.sh/${NTFY_TOPIC} (ntfy mobil app'te de aynı topic adı)"
+    echo "tünel URL'i BUNDAN SONRA değişirse oraya bildirim gelir (şu anki URL retroaktif bildirilmez)"
+fi
 
 echo
 echo "--- tünel URL'i bekleniyor (en fazla ~${TUNNEL_WAIT_SECS} sn) ---"
