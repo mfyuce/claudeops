@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # claudeops — yeni bir uzak makineyi fleet'e bağlamak için tek-seferlik kurulum.
 #
-# Kullanım (bu makinede, "friend" hesabında):
+# Kullanım (bu makinede, hangi kullanıcı çalıştırırsa o kullanıcının home'una kurulur):
 #   git clone https://github.com/mfyuce/claudeops.git
 #   bash claudeops/scripts/bootstrap-remote-host.sh
+#
+# İzole bir kurulum isterseniz (ör. arkadaşınızın kişisel hesabı yerine ayrı bir
+# kullanıcı) önce scripts/provision-user.sh'e bakın — o script sistem paketlerini
+# kurup ayrı bir kullanıcı açar, SONRA bu script o kullanıcı olarak çalıştırılır.
 #
 # Ne yapar: git/python3/pip kontrolü (kurmaz, sadece uyarır) -> py/requirements.txt
 # kurulumu -> `py/cops service install` (systemd --user: web paneli + cloudflared
@@ -13,9 +17,13 @@
 # durumda script bunu tespit edip VS Code Remote Tunnel'a geçiş talimatı basar,
 # çünkü o kanal aynı sınıf ağlarda kanıtlanmış şekilde çalışıyor (port 443/HTTPS).
 #
-# Bu script sudo ÇALIŞTIRMAZ. Eksik bir paket varsa (git/python3/pip/tmux) kurup
-# tekrar çalıştırmanızı ister, kendisi kurmaya çalışmaz -- şirket makinesinde
-# yetkisiz bir kullanıcı için de güvenli, ve neyin değiştiğini önceden görebilirsiniz.
+# Bu script sudo'yu SADECE açıkça onay alarak çalıştırır (aşağıda "kurayım mı?"
+# sorusu) -- hiçbir zaman sessiz/unattended sudo yok, ve tam çalıştırılacak komut
+# önceden ekrana basılır. Gerçek bir terminalde (SSH/konsol) çalıştığınız için
+# sudo'nun kendi parola sorması normal şekilde çalışır (bunun aksine, claudeops'un
+# KENDİ web-terminal panelinden sudo çalıştırmak farklı/riskli bir durum --
+# TOBEDECIDED#19'da parola maskesiz pane'e düz metin yazmıştı; bu script o
+# senaryonun DIŞINDA, gerçek bir TTY'de çalışır).
 set -euo pipefail
 
 PORT="${CLAUDEOPS_PORT:-8765}"
@@ -26,21 +34,34 @@ echo "=== claudeops remote-host bootstrap ==="
 echo "repo: $SCRIPT_DIR"
 echo
 
-missing=()
+apt_missing=()
 for bin in git python3; do
-    command -v "$bin" >/dev/null 2>&1 || missing+=("$bin")
+    command -v "$bin" >/dev/null 2>&1 || apt_missing+=("$bin")
 done
 if ! command -v pip3 >/dev/null 2>&1 && ! command -v pip >/dev/null 2>&1; then
-    missing+=("pip3")
-fi
-if [ "${#missing[@]}" -gt 0 ]; then
-    echo "Eksik: ${missing[*]} -- kurup tekrar çalıştırın, ör:"
-    echo "  sudo apt install -y ${missing[*]}"
-    exit 1
+    apt_missing+=("python3-pip")
 fi
 if ! command -v tmux >/dev/null 2>&1; then
-    echo "UYARI: tmux bulunamadı. Bu makine masaüstsüz (headless) ise oturumlar"
-    echo "tmux gerektirir -- önerilir: sudo apt install -y tmux (devam ediliyor)"
+    apt_missing+=("tmux")
+fi
+
+if [ "${#apt_missing[@]}" -gt 0 ]; then
+    echo "Eksik paket(ler): ${apt_missing[*]}"
+    if [ -t 0 ] && command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+        echo "Şu komut çalıştırılacak:"
+        echo "  sudo apt-get install -y ${apt_missing[*]}"
+        read -r -p "Şimdi kurulsun mu? [y/N] " reply
+        if [[ "$reply" =~ ^[Yy]$ ]]; then
+            sudo apt-get install -y "${apt_missing[@]}"
+        else
+            echo "Geçildi -- elle kurup script'i tekrar çalıştırın."
+            exit 1
+        fi
+    else
+        echo "Otomatik kuramıyorum (interaktif TTY yok veya apt-get/sudo yok)."
+        echo "Kurup tekrar çalıştırın: sudo apt-get install -y ${apt_missing[*]}"
+        exit 1
+    fi
 fi
 
 cd "$SCRIPT_DIR"
