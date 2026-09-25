@@ -3216,6 +3216,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
+                         "/api/cli/install",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
