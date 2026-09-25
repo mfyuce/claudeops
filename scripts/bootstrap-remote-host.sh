@@ -26,9 +26,21 @@
 # senaryonun DIŞINDA, gerçek bir TTY'de çalışır).
 set -euo pipefail
 
-PORT="${CLAUDEOPS_PORT:-8765}"
+# NOT gerçek bir parametre: `py/cops service install`'in ürettiği systemd unit'i
+# (service.py: WEB_UNIT_TEMPLATE) portu hiç parametrize etmiyor, her zaman
+# web.py'nin DEFAULT_PORT'unu (8765) kullanır -- burada CLAUDEOPS_PORT gibi bir
+# env var'la "override edilebilir" görünümü vermek yanıltıcı olurdu, o yüzden
+# sabit. Gerçekten farklı bir port gerekiyorsa önce service.py'ye --port desteği
+# eklenmeli.
+PORT=8765
+# paths.py'deki CLAUDEOPS_DIR ile AYNI override -- claudeops'un kendisi bu env
+# var'ı destekliyor (izole test kurulumlarında kullanılıyor), bu script de aynı
+# yeri okumazsa CLAUDEOPS_DIR özelleştirilmiş bir kurulumda yanlış dizine bakar.
+STATE_DIR="${CLAUDEOPS_DIR:-$HOME/.claude/claudeops}"
+# Sadece bu script'in kendi bekleme döngüsü -- gerçek bir claudeops ayarı değil,
+# yavaş/kısıtlı bir ağda tünelin kurulması daha uzun sürebiliyorsa yükseltin.
+TUNNEL_WAIT_SECS="${CLAUDEOPS_TUNNEL_WAIT_SECS:-25}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STATE_DIR="$HOME/.claude/claudeops"
 
 echo "=== claudeops remote-host bootstrap ==="
 echo "repo: $SCRIPT_DIR"
@@ -85,8 +97,8 @@ echo "--- servis kurulumu (web paneli + tünel, sudo YOK) ---"
 py/cops service install
 
 echo
-echo "--- tünel URL'i bekleniyor (en fazla ~25 sn) ---"
-for _ in $(seq 1 25); do
+echo "--- tünel URL'i bekleniyor (en fazla ~${TUNNEL_WAIT_SECS} sn) ---"
+for _ in $(seq 1 "$TUNNEL_WAIT_SECS"); do
     [ -s "$STATE_DIR/tunnel_url.txt" ] && break
     sleep 1
 done
