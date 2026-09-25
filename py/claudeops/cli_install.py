@@ -14,18 +14,30 @@ claudeops'un kendi bin dizinine kurar.
 İkisi de native/curl installer'ların "hep ~/.local/bin'e kurar, hedef dizin
 seçilemiyor" kısıtından BAĞIMSIZ, claudeops'un kendi dizinine yönlendirilebiliyor.
 
+npm/Node.js kendisi de yoksa (2026-09-25, ulak_31'de canlı yaşandı --
+`provision-user.sh`/`bootstrap-remote-host.sh` Node.js'i hiç kurmuyor) resmi
+nvm script'iyle (https://github.com/nvm-sh/nvm) TAMAMEN kullanıcı-yerel
+(~/.nvm, sudo/sistem geneli hiçbir şey değişmez) bootstrap edilir, npm
+paketlerinin kendisiyle AYNI "sadece bu kullanıcı" ilkesi.
+
 Leaf modül (sadece paths/settings'e bağımlı, settings.py'yle aynı disiplin).
 """
 from __future__ import annotations
 import os
+import shlex
 import shutil
 import subprocess
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from .paths import CLAUDEOPS_DIR
 from .settings import load_settings, save_settings
 
 INSTALL_DIR = os.path.join(CLAUDEOPS_DIR, "bin")
+NVM_DIR = os.path.join(os.path.expanduser("~"), ".nvm")
+NVM_SH = os.path.join(NVM_DIR, "nvm.sh")
+# 2026-09-25'te doğrulandı (nvm-sh/nvm GitHub reposu) -- sürüm numarası
+# zamanla eskiyebilir, gerekirse burada güncellenmeli.
+NVM_INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh"
 
 # cli adı -> (PATH'teki/kurulacak binary adı, resmi npm paket adı) -- üçü de
 # 2026-09-25'te doğrulandı: docs (claude), GitHub repo (codex, copilot).
@@ -66,16 +78,57 @@ def all_cli_status() -> Dict[str, Dict[str, Any]]:
     return {name: cli_status(name) for name in ALL_CLIS}
 
 
+def _ensure_node(lang: str) -> Optional[Dict[str, Any]]:
+    """npm zaten PATH'teyse hiçbir şey yapmaz. Değilse -- nvm KURULU değilse
+    önce resmi script'iyle kurar (TAMAMEN ~/.nvm altında, sudo yok, sistemin
+    başka hiçbir yerine dokunmaz), sonra `nvm install --lts` ile bir Node
+    sürümü kurar. Hata varsa `{"ok": False, "error": ...}` döner, her şey
+    yolundaysa `None` (çağıran devam eder)."""
+    if shutil.which("npm"):
+        return None
+    if not os.path.isfile(NVM_SH):
+        if not shutil.which("curl"):
+            return {"ok": False, "error": "curl bulunamadı -- nvm kurulamıyor" if lang == "tr"
+                    else "curl not found -- can't install nvm"}
+        try:
+            r = subprocess.run(["bash", "-c", f"curl -o- {NVM_INSTALL_SCRIPT_URL} | bash"],
+                                capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "nvm kurulumu zaman aşımına uğradı (120sn)" if lang == "tr"
+                    else "nvm install timed out (120s)"}
+        if r.returncode != 0 or not os.path.isfile(NVM_SH):
+            return {"ok": False, "error": (r.stderr or "nvm kurulumu başarısız").strip()[-2000:]}
+    try:
+        r = subprocess.run(["bash", "-c", f'source "{NVM_SH}" --no-use && nvm install --lts'],
+                            capture_output=True, text=True, timeout=180)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "Node.js kurulumu zaman aşımına uğradı (180sn)" if lang == "tr"
+                else "Node.js install timed out (180s)"}
+    if r.returncode != 0:
+        return {"ok": False, "error": (r.stderr or "nvm install --lts başarısız").strip()[-2000:]}
+    return None
+
+
+def _run_npm(args: List[str], timeout: float) -> subprocess.CompletedProcess:
+    """npm PATH'teyse doğrudan, değilse `_ensure_node()`'un kurduğu nvm/node'u
+    nvm.sh source ederek kullanır -- ikisi de AYNI şekli (`CompletedProcess`)
+    döner, çağıran hangi yoldan geldiğini bilmek zorunda kalmaz."""
+    if shutil.which("npm"):
+        return subprocess.run(["npm", *args], capture_output=True, text=True, timeout=timeout)
+    quoted = " ".join(shlex.quote(a) for a in args)
+    return subprocess.run(
+        ["bash", "-c", f'source "{NVM_SH}" --no-use && nvm use --lts >/dev/null && npm {quoted}'],
+        capture_output=True, text=True, timeout=timeout,
+    )
+
+
 def _install_via_npm(binary_name: str, package: str, lang: str) -> Dict[str, Any]:
-    if not shutil.which("npm"):
-        return {"ok": False, "error": ("npm bulunamadı -- Node.js/npm kurulu olmalı" if lang == "tr"
-                                        else "npm not found -- Node.js/npm must be installed")}
+    node_err = _ensure_node(lang)
+    if node_err is not None:
+        return node_err
     os.makedirs(INSTALL_DIR, exist_ok=True)
     try:
-        r = subprocess.run(
-            ["npm", "install", "-g", "--prefix", INSTALL_DIR, package],
-            capture_output=True, text=True, timeout=300,
-        )
+        r = _run_npm(["install", "-g", "--prefix", INSTALL_DIR, package], timeout=300)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "npm install zaman aşımına uğradı (300sn)" if lang == "tr"
                 else "npm install timed out (300s)"}

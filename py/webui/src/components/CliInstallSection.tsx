@@ -68,7 +68,11 @@ export function CliInstallSection() {
       const res = await apiInstallCli({ cli, host: selectedHost, lang });
       if (!res.ok) window.alert(res.error);
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      // Same 404-vs-generic distinction as load() -- a stale/outdated remote
+      // host 404s on this route too, and the generic ApiError text ("...this
+      // tunnel/URL may no longer be valid...") reads as a connectivity bug
+      // when the real cause is just "needs a git pull" (2026-09-25 live case).
+      window.alert(e instanceof ApiError && e.status === 404 ? t.cliInstallHostOutdated : describeApiError(e, t));
     } finally {
       setBusy(null);
       await load(selectedHost);
