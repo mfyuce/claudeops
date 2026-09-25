@@ -93,6 +93,30 @@ fi
 rm -f /tmp/claudeops-bootstrap-pip.err
 
 echo
+echo "--- systemd --user bus kontrolü ---"
+# `sudo -iu`/`su -` ile girilen, hiç `loginctl enable-linger` almamış bir
+# hesapta XDG_RUNTIME_DIR/DBUS_SESSION_BUS_ADDRESS boş kalabiliyor -- bu durumda
+# `systemctl --user` "Failed to connect to bus" ile patlıyor (canlı doğrulandı,
+# 2026-09-25). `/run/user/<uid>/bus` zaten çalışıyorsa (ör. linger scripts/
+# provision-user.sh tarafından önceden açıldıysa) sessizce onu kullan; hiç
+# yoksa net bir hata + tam düzeltme komutu ver, kriptik systemd hatasında bırakma.
+if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]; then
+    RUNTIME_GUESS="/run/user/$(id -u)"
+    if [ -S "$RUNTIME_GUESS/bus" ]; then
+        export XDG_RUNTIME_DIR="$RUNTIME_GUESS"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=$RUNTIME_GUESS/bus"
+        echo "XDG_RUNTIME_DIR/DBUS_SESSION_BUS_ADDRESS otomatik ayarlandı ($RUNTIME_GUESS)"
+    else
+        echo "systemd --user bus'ı hazır değil ($RUNTIME_GUESS/bus yok)." >&2
+        echo "Muhtemel sebep: bu kullanıcı için 'loginctl enable-linger' hiç çalıştırılmadı." >&2
+        echo "Sudo yetkiniz olan BAŞKA bir hesapta/terminalde şunu çalıştırıp bu script'i" >&2
+        echo "tekrar deneyin (logout/login GEREKMEZ, linger etkinleşince hemen çalışır):" >&2
+        echo "  sudo loginctl enable-linger $(whoami)" >&2
+        exit 1
+    fi
+fi
+
+echo
 echo "--- servis kurulumu (web paneli + tünel, sudo YOK) ---"
 py/cops service install
 

@@ -65,6 +65,23 @@ else
     printf '%s:%s\n' "$NEW_USER" "$NEW_PASSWORD" | $SUDO chpasswd
 fi
 
+# `loginctl enable-linger` burada, kullanıcı oluşturulur oluşturulmaz (sizin
+# sudo'nuzla) çalıştırılıyor -- yoksa `sudo -iu` ile o kullanıcıya geçildiğinde
+# systemd --user'ın bus'ı (XDG_RUNTIME_DIR/DBUS_SESSION_BUS_ADDRESS) hiç kurulu
+# olmuyor ve `py/cops service install` "Failed to connect to bus" ile patlıyor
+# (canlı doğrulandı, 2026-09-25). Linger etkinse logind bu kullanıcı için
+# --user instance'ını HEMEN başlatıyor, bir login/logout beklemeye gerek yok.
+if command -v loginctl >/dev/null 2>&1; then
+    if $SUDO loginctl enable-linger "$NEW_USER" 2>/tmp/claudeops-provision-linger.err; then
+        echo "✓ loginctl enable-linger $NEW_USER"
+    else
+        echo "⚠ loginctl enable-linger başarısız: $(cat /tmp/claudeops-provision-linger.err 2>/dev/null)" >&2
+        echo "  (devam ediliyor -- sonraki adımda 'Failed to connect to bus' görürseniz" >&2
+        echo "  bunu elle çalıştırıp tekrar deneyin: sudo loginctl enable-linger $NEW_USER)" >&2
+    fi
+    rm -f /tmp/claudeops-provision-linger.err
+fi
+
 echo
 echo "=========================================================="
 if [ -n "$NEW_PASSWORD" ]; then
