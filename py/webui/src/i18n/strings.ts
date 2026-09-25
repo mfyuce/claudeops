@@ -306,6 +306,8 @@ export interface Strings {
   cliManagedByUs: string;
   cliFoundElsewhere: string;
   cliManualOnly: string;
+  cliInstallHostLabel: string;
+  cliInstallHostUnreachable: string;
   hostConnected: string;
   hostUnreachable: string;
   hostLocalLabel: string;
@@ -698,6 +700,8 @@ export const STRINGS: Record<Lang, Strings> = {
     cliManagedByUs: "claudeops tarafından kuruldu",
     cliFoundElsewhere: "sistemde zaten var (dokunulmuyor)",
     cliManualOnly: "otomatik kurulum yok, elle:",
+    cliInstallHostLabel: "makine",
+    cliInstallHostUnreachable: "bu host'a şu an ulaşılamıyor",
     hostConnected: "bağlı",
     hostUnreachable: "erişilemez",
     hostLocalLabel: "bu makine (local)",
@@ -1109,6 +1113,8 @@ export const STRINGS: Record<Lang, Strings> = {
     cliManagedByUs: "installed by claudeops",
     cliFoundElsewhere: "already present on this system (left alone)",
     cliManualOnly: "no automated install, manually:",
+    cliInstallHostLabel: "machine",
+    cliInstallHostUnreachable: "can't reach this host right now",
     hostConnected: "connected",
     hostUnreachable: "unreachable",
     hostLocalLabel: "this machine (local)",

@@ -4,47 +4,70 @@
  * (`cli_install.py`, `~/.claude/claudeops/bin` via `npm install -g --prefix`,
  * never a true global/system install — see that module's docstring).
  *
+ * Works against any registered remote host too, not just this machine — a
+ * host picker re-runs the same status/install calls with `host` set
+ * (`web_hosts.HOST_ROUTED_PATHS`/`GET_HOST_ROUTED_PATHS`): the remote
+ * claudeops-web instance runs its own `cli_install.py` locally, no
+ * shell/SSH involved, same mechanism `/api/start` etc. already use.
+ *
  * Same self-contained fetch-on-mount pattern as HostsSection.tsx: this needs
  * `CliInstallStatus[]` (path/managed_by_claudeops), which `StatusContext`'s
- * hot poll payload has no reason to carry.
+ * hot poll payload has no reason to carry. Reuses `getHosts()` (the same
+ * call HostsSection makes) just for the list of host *names* to pick from.
  */
 
 import { useEffect, useState } from "react";
-import { apiInstallCli, getCliStatus } from "../api/client";
+import { apiInstallCli, getCliStatus, getHosts } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import type { CliInstallStatus } from "../api/types";
 
 const ORDER = ["claude", "codex", "copilot", "agy"];
+const LOCAL_HOST = "local";
 
 export function CliInstallSection() {
   const { t, lang } = useLang();
+  const [hostNames, setHostNames] = useState<string[]>([]);
+  const [selectedHost, setSelectedHost] = useState(LOCAL_HOST);
   const [clis, setClis] = useState<Record<string, CliInstallStatus>>({});
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
-  async function load() {
+  useEffect(() => {
+    void getHosts()
+      .then((res) => setHostNames(res.hosts.map((h) => h.name)))
+      .catch(() => {
+        // Host picker just stays local-only — same tolerant style as HostsSection's load().
+      });
+  }, []);
+
+  async function load(host: string) {
     try {
-      const res = await getCliStatus();
+      const res = await getCliStatus(host, lang);
       setClis(res.clis);
+      setLoadError(false);
     } catch {
-      // Secondary panel, same tolerant style as HostsSection's load().
+      // A remote host can be unreachable — show that inline instead of a stale/empty list.
+      setClis({});
+      setLoadError(true);
     }
   }
 
   useEffect(() => {
-    void load();
-  }, []);
+    void load(selectedHost);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lang change re-fetches too, load() itself is stable per call
+  }, [selectedHost]);
 
   async function handleInstall(cli: string) {
     setBusy(cli);
     try {
-      const res = await apiInstallCli({ cli, lang });
+      const res = await apiInstallCli({ cli, host: selectedHost, lang });
       if (!res.ok) window.alert(res.error);
     } catch (e) {
       window.alert(describeApiError(e, t));
     } finally {
       setBusy(null);
-      await load();
+      await load(selectedHost);
     }
   }
 
@@ -53,37 +76,56 @@ export function CliInstallSection() {
       <span className="opts-hint" style={{ flexBasis: "100%" }}>
         <b>{t.cliInstallLabel}</b> {t.cliInstallDesc}
       </span>
-      {ORDER.filter((cli) => clis[cli]).map((cli) => {
-        const s = clis[cli];
-        return (
-          <div key={cli} style={{ display: "flex", alignItems: "center", gap: ".5rem", flexBasis: "100%" }}>
-            <b style={{ minWidth: "5rem" }}>{cli}</b>
-            {s.found ? (
-              <span className="opts-hint" title={s.path ?? undefined}>
-                {s.managed_by_claudeops ? t.cliManagedByUs : t.cliFoundElsewhere}
-              </span>
-            ) : s.installable ? (
-              <button type="button" className="go" disabled={busy === cli} onClick={() => void handleInstall(cli)}>
-                {busy === cli ? t.cliInstalling : t.cliInstallBtn}
-              </button>
-            ) : (
-              <span className="opts-hint">
-                {t.cliManualOnly}{" "}
-                {s.manual_url && (
-                  <a href={s.manual_url} target="_blank" rel="noreferrer">
-                    {s.manual_url}
-                  </a>
-                )}
-              </span>
-            )}
-            {s.found && s.managed_by_claudeops && (
-              <button type="button" disabled={busy === cli} onClick={() => void handleInstall(cli)}>
-                {busy === cli ? t.cliInstalling : t.cliUpdateBtn}
-              </button>
-            )}
-          </div>
-        );
-      })}
+      {hostNames.length > 0 && (
+        <label>
+          {t.cliInstallHostLabel}
+          <select value={selectedHost} onChange={(e) => setSelectedHost(e.target.value)}>
+            <option value={LOCAL_HOST}>{LOCAL_HOST}</option>
+            {hostNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {loadError ? (
+        <span className="opts-hint" style={{ color: "var(--red)" }}>
+          {t.cliInstallHostUnreachable}
+        </span>
+      ) : (
+        ORDER.filter((cli) => clis[cli]).map((cli) => {
+          const s = clis[cli];
+          return (
+            <div key={cli} style={{ display: "flex", alignItems: "center", gap: ".5rem", flexBasis: "100%" }}>
+              <b style={{ minWidth: "5rem" }}>{cli}</b>
+              {s.found ? (
+                <span className="opts-hint" title={s.path ?? undefined}>
+                  {s.managed_by_claudeops ? t.cliManagedByUs : t.cliFoundElsewhere}
+                </span>
+              ) : s.installable ? (
+                <button type="button" className="go" disabled={busy === cli} onClick={() => void handleInstall(cli)}>
+                  {busy === cli ? t.cliInstalling : t.cliInstallBtn}
+                </button>
+              ) : (
+                <span className="opts-hint">
+                  {t.cliManualOnly}{" "}
+                  {s.manual_url && (
+                    <a href={s.manual_url} target="_blank" rel="noreferrer">
+                      {s.manual_url}
+                    </a>
+                  )}
+                </span>
+              )}
+              {s.found && s.managed_by_claudeops && (
+                <button type="button" disabled={busy === cli} onClick={() => void handleInstall(cli)}>
+                  {busy === cli ? t.cliInstalling : t.cliUpdateBtn}
+                </button>
+              )}
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

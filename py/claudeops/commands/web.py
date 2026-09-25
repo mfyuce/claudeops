@@ -3091,6 +3091,13 @@ class _Handler(BaseHTTPRequestHandler):
                 })
             self._json({"ok": True, "hosts": rows})
         elif path == "/api/cli/status":
+            qs = parse_qs(urlparse(self.path).query)
+            lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            if host != LOCAL_HOST_NAME:
+                result, status = web_hosts.proxy_get(path, host, {"lang": lang})
+                self._json(result, status=status)
+                return
             self._json({"ok": True, "clis": cli_install.all_cli_status()})
         elif path == "/api/diag/log":
             self._json({"lines": diag_log_tail(30)})

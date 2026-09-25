@@ -50,7 +50,7 @@ HOST_ROUTED_PATHS = {
     "/api/start", "/api/stop", "/api/retire", "/api/reactivate", "/api/close",
     "/api/handover", "/api/compact", "/api/adopt", "/api/new-chat", "/api/register", "/api/edit",
     "/api/term/input", "/api/term/key", "/api/term/raw", "/api/term/open-window", "/api/term/set-mode",
-    "/api/instances/forget",
+    "/api/instances/forget", "/api/cli/install",
 }
 
 # Terminal/Dosya GÖRÜNTÜLEME (GET, read-only) route'ları — POST'un aksiyon
@@ -58,7 +58,7 @@ HOST_ROUTED_PATHS = {
 # (files/download) JSON değil ham binary dönüyor. TODO.md'nin bilerek
 # ERTELEDİĞİ parça buydu (TOBEDECIDED #16 kapanışı) — artık uygulandı.
 GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/chat", "/api/files/list", "/api/files/read",
-                         "/api/instances"}
+                         "/api/instances", "/api/cli/status"}
 FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
 
 # Status polling sık (3sn'de bir) ve HAFİF olmalı — kısa timeout, poller

@@ -396,10 +396,16 @@ export const apiSaveHost = (p: SaveHostPayload): Promise<SimpleResult> => apiPos
 
 /** `cli_install.py` — per-backend (claude/codex/copilot/agy) install status +
  * one-shot install action. Synchronous like `/api/hosts/test`: `npm install`
- * usually takes a few seconds, no job/polling layer for this. */
-export const getCliStatus = (): Promise<GetCliStatusResult> => apiGet<GetCliStatusResult>("/api/cli/status");
+ * usually takes a few seconds, no job/polling layer for this. Host-routed
+ * (`web_hosts.GET_HOST_ROUTED_PATHS`/`HOST_ROUTED_PATHS`) — omit `host` (or
+ * pass "local") for this machine, or a registered host name to install
+ * there instead; the remote host runs the exact same `cli_install.py`
+ * locally, no shell/SSH involved. */
+export const getCliStatus = (host: string, lang: Lang): Promise<GetCliStatusResult> =>
+  apiGet<GetCliStatusResult>(`/api/cli/status?host=${encodeURIComponent(host)}&lang=${lang}`);
 export interface InstallCliPayload {
   cli: string;
+  host: string;
   lang: Lang;
 }
 export const apiInstallCli = (p: InstallCliPayload): Promise<SimpleResult> =>
