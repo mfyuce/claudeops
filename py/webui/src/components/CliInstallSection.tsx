@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { apiInstallCli, getCliStatus, getHosts } from "../api/client";
+import { ApiError, apiInstallCli, getCliStatus, getHosts } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import type { CliInstallStatus } from "../api/types";
@@ -30,7 +30,12 @@ export function CliInstallSection() {
   const [hostNames, setHostNames] = useState<string[]>([]);
   const [selectedHost, setSelectedHost] = useState(LOCAL_HOST);
   const [clis, setClis] = useState<Record<string, CliInstallStatus>>({});
-  const [loadError, setLoadError] = useState(false);
+  // `null` = ok, "unreachable" = network/host down, "outdated" = host answered
+  // but doesn't know this route yet (404 — needs `git pull`). Distinguishing
+  // these matters: 2026-09-25 live case, a 404 from an old-code remote host
+  // first showed as a generic "can't reach" message, which read as a
+  // connectivity bug when the host was actually fine — just not updated yet.
+  const [loadError, setLoadError] = useState<"unreachable" | "outdated" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,11 +50,10 @@ export function CliInstallSection() {
     try {
       const res = await getCliStatus(host, lang);
       setClis(res.clis);
-      setLoadError(false);
-    } catch {
-      // A remote host can be unreachable — show that inline instead of a stale/empty list.
+      setLoadError(null);
+    } catch (e) {
       setClis({});
-      setLoadError(true);
+      setLoadError(e instanceof ApiError && e.status === 404 ? "outdated" : "unreachable");
     }
   }
 
@@ -91,7 +95,7 @@ export function CliInstallSection() {
       )}
       {loadError ? (
         <span className="opts-hint" style={{ color: "var(--red)" }}>
-          {t.cliInstallHostUnreachable}
+          {loadError === "outdated" ? t.cliInstallHostOutdated : t.cliInstallHostUnreachable}
         </span>
       ) : (
         ORDER.filter((cli) => clis[cli]).map((cli) => {

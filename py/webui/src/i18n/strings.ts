@@ -308,6 +308,7 @@ export interface Strings {
   cliManualOnly: string;
   cliInstallHostLabel: string;
   cliInstallHostUnreachable: string;
+  cliInstallHostOutdated: string;
   hostConnected: string;
   hostUnreachable: string;
   hostLocalLabel: string;
@@ -702,6 +703,7 @@ export const STRINGS: Record<Lang, Strings> = {
     cliManualOnly: "otomatik kurulum yok, elle:",
     cliInstallHostLabel: "makine",
     cliInstallHostUnreachable: "bu host'a şu an ulaşılamıyor",
+    cliInstallHostOutdated: "bu host'un claudeops'u henüz bu özelliği desteklemiyor — orada 'git pull' + servis restart gerekiyor",
     hostConnected: "bağlı",
     hostUnreachable: "erişilemez",
     hostLocalLabel: "bu makine (local)",
@@ -1115,6 +1117,7 @@ export const STRINGS: Record<Lang, Strings> = {
     cliManualOnly: "no automated install, manually:",
     cliInstallHostLabel: "machine",
     cliInstallHostUnreachable: "can't reach this host right now",
+    cliInstallHostOutdated: "this host's claudeops doesn't support this feature yet — needs a git pull + service restart there",
     hostConnected: "connected",
     hostUnreachable: "unreachable",
     hostLocalLabel: "this machine (local)",
