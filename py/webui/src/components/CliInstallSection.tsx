@@ -1,0 +1,89 @@
+/**
+ * "Ayarlar" tab's CLI Install section — per-backend (claude/codex/copilot/agy)
+ * install status + one-click install into claudeops's own bin dir
+ * (`cli_install.py`, `~/.claude/claudeops/bin` via `npm install -g --prefix`,
+ * never a true global/system install — see that module's docstring).
+ *
+ * Same self-contained fetch-on-mount pattern as HostsSection.tsx: this needs
+ * `CliInstallStatus[]` (path/managed_by_claudeops), which `StatusContext`'s
+ * hot poll payload has no reason to carry.
+ */
+
+import { useEffect, useState } from "react";
+import { apiInstallCli, getCliStatus } from "../api/client";
+import { describeApiError } from "../api/errors";
+import { useLang } from "../i18n/LangContext";
+import type { CliInstallStatus } from "../api/types";
+
+const ORDER = ["claude", "codex", "copilot", "agy"];
+
+export function CliInstallSection() {
+  const { t, lang } = useLang();
+  const [clis, setClis] = useState<Record<string, CliInstallStatus>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const res = await getCliStatus();
+      setClis(res.clis);
+    } catch {
+      // Secondary panel, same tolerant style as HostsSection's load().
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function handleInstall(cli: string) {
+    setBusy(cli);
+    try {
+      const res = await apiInstallCli({ cli, lang });
+      if (!res.ok) window.alert(res.error);
+    } catch (e) {
+      window.alert(describeApiError(e, t));
+    } finally {
+      setBusy(null);
+      await load();
+    }
+  }
+
+  return (
+    <div className="opts" id="settingsCliInstallPanel">
+      <span className="opts-hint" style={{ flexBasis: "100%" }}>
+        <b>{t.cliInstallLabel}</b> {t.cliInstallDesc}
+      </span>
+      {ORDER.filter((cli) => clis[cli]).map((cli) => {
+        const s = clis[cli];
+        return (
+          <div key={cli} style={{ display: "flex", alignItems: "center", gap: ".5rem", flexBasis: "100%" }}>
+            <b style={{ minWidth: "5rem" }}>{cli}</b>
+            {s.found ? (
+              <span className="opts-hint" title={s.path ?? undefined}>
+                {s.managed_by_claudeops ? t.cliManagedByUs : t.cliFoundElsewhere}
+              </span>
+            ) : s.installable ? (
+              <button type="button" className="go" disabled={busy === cli} onClick={() => void handleInstall(cli)}>
+                {busy === cli ? t.cliInstalling : t.cliInstallBtn}
+              </button>
+            ) : (
+              <span className="opts-hint">
+                {t.cliManualOnly}{" "}
+                {s.manual_url && (
+                  <a href={s.manual_url} target="_blank" rel="noreferrer">
+                    {s.manual_url}
+                  </a>
+                )}
+              </span>
+            )}
+            {s.found && s.managed_by_claudeops && (
+              <button type="button" disabled={busy === cli} onClick={() => void handleInstall(cli)}>
+                {busy === cli ? t.cliInstalling : t.cliUpdateBtn}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

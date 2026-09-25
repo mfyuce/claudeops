@@ -34,6 +34,7 @@ import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import type { FleetSort, Theme, UsageResult } from "../api/types";
 import { applyTheme } from "../theme";
+import { CliInstallSection } from "./CliInstallSection";
 import { HostsSection } from "./HostsSection";
 import { SnapshotSection } from "./SnapshotSection";
 import { TabHint } from "./shared/TabHint";
@@ -316,6 +317,7 @@ export function SettingsTab() {
               </label>
             ))}
           </div>
+          <CliInstallSection />
           <div className="opts" id="settingsByokPanel">
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               <b>{t.byokLabel}</b> {t.byokDesc}

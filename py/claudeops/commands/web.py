@@ -56,6 +56,7 @@ from ..hosts import LOCAL_HOST_NAME, save_host, remove_host, list_hosts_public
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
+from .. import cli_install
 from .. import files as files_mod
 from .. import instances as inst_mod
 from .. import remote_desktop
@@ -3089,6 +3090,8 @@ class _Handler(BaseHTTPRequestHandler):
                     "tier": web_hosts.get_tier(h["name"]),  # capability prober'ın son bildiği "rest"|"ws"|"grpc"
                 })
             self._json({"ok": True, "hosts": rows})
+        elif path == "/api/cli/status":
+            self._json({"ok": True, "clis": cli_install.all_cli_status()})
         elif path == "/api/diag/log":
             self._json({"lines": diag_log_tail(30)})
         elif path == "/api/io/providers":
@@ -3375,6 +3378,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/api/hosts/remove":
             self._json_notify(remove_host(str(data.get("name", "")), lang=lang))
+            return
+
+        if path == "/api/cli/install":
+            # Senkron -- npm install tipik olarak birkaç saniye sürer, 300sn'lik
+            # üst sınır sadece kopuk bir ağ/npm registry sorununa karşı güvenlik
+            # supabı (cli_install.py). Ayrı bir arka-plan job/polling sistemi
+            # BİLEREK eklenmedi -- bu boyuttaki bir aksiyon için erken bir
+            # karmaşıklık olurdu.
+            self._json_notify(cli_install.install_cli(str(data.get("cli", "")), lang=lang))
             return
 
         if path == "/api/hosts/test":

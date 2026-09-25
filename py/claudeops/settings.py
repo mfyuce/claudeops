@@ -77,6 +77,13 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # gömüyor (`ps aux`'a açık, çok-kullanıcılı makinede risk) — ucli
                               # KASITLI OLARAK bunu kullanmıyor, bkz. providers/ucli_provider.py'nin
                               # dosya+`sh -c` dolaylaması.
+    "cli_managed": {},       # {cli: "1"} — 2026-09-25, cli_install.py: bu CLI'yi claudeops'un
+                              # kendisi mi kurdu (npm --prefix ile kendi bin/'ine) yoksa kullanıcı
+                              # zaten kendi başına mı kurmuştu. `provider_bin`'le AYNI alan-bazlı
+                              # merge/"boş=kaldır" dili ama farklı anlam: SADECE bu true olan bir
+                              # CLI için tekrar kurulum/update denemesi güvenli — claudeops kendi
+                              # kurmadığı bir binary'nin üzerine ASLA yazmaz (cli_install.py'nin
+                              # kendi install_cli() reddi buna dayanır).
     "ucli_limits": {},       # {max_steps, max_context_kib, max_tool_calls: str} — 2026-09-24,
                               # TODO.md'nin ucli effort maddesi: bu 3 sayı `providers/ucli_provider.py`
                               # içindeki `_EFFORT_LIMITS`'te (medium/high preset'leri) gömülüydü,
@@ -110,6 +117,8 @@ def load_settings() -> Dict[str, Any]:
                 out["byok"] = {}
             if not isinstance(out.get("ucli_limits"), dict):
                 out["ucli_limits"] = {}
+            if not isinstance(out.get("cli_managed"), dict):
+                out["cli_managed"] = {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return out
@@ -127,7 +136,7 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "provider_bin", "ucli_limits") and isinstance(v, dict):
+        if k in ("default_model", "provider_bin", "ucli_limits", "cli_managed") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if cv:

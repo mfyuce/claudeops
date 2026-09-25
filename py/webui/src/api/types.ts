@@ -120,6 +120,23 @@ export interface HostRecord {
   extra_urls?: string[];
 }
 
+/** `/api/cli/status` (GET) entry — `cli_install.py`'s `cli_status()` shape,
+ * one per backend (claude/codex/copilot/agy). */
+export interface CliInstallStatus {
+  cli: string;
+  found: boolean;
+  path: string | null;
+  managed_by_claudeops: boolean;
+  installable: boolean;
+  manual_url: string | null;
+}
+
+/** `/api/cli/status` (GET) — keyed by cli name, matching `cli_install.all_cli_status()`. */
+export interface GetCliStatusResult {
+  ok: true;
+  clis: Record<string, CliInstallStatus>;
+}
+
 /** `/api/hosts` (GET) — a bare "just read local state" shape like
  * `DiagLogResult`, not `ApiResult`-wrapped: listing the registry has no
  * meaningful failure mode once auth already passed. */

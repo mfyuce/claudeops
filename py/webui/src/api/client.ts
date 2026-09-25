@@ -20,6 +20,7 @@ import type {
   AdoptResult,
   ApiResult,
   ContextResult,
+  GetCliStatusResult,
   DesktopStartResult,
   DesktopStopResult,
   DiagAskResult,
@@ -392,6 +393,17 @@ export interface SaveHostPayload {
   lang: Lang;
 }
 export const apiSaveHost = (p: SaveHostPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/hosts", p);
+
+/** `cli_install.py` — per-backend (claude/codex/copilot/agy) install status +
+ * one-shot install action. Synchronous like `/api/hosts/test`: `npm install`
+ * usually takes a few seconds, no job/polling layer for this. */
+export const getCliStatus = (): Promise<GetCliStatusResult> => apiGet<GetCliStatusResult>("/api/cli/status");
+export interface InstallCliPayload {
+  cli: string;
+  lang: Lang;
+}
+export const apiInstallCli = (p: InstallCliPayload): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/cli/install", p);
 
 export interface RemoveHostPayload {
   name: string;

@@ -298,6 +298,14 @@ export interface Strings {
   hostTestBtn: string;
   hostTesting: string;
   hostNone: string;
+  cliInstallLabel: string;
+  cliInstallDesc: string;
+  cliInstallBtn: string;
+  cliInstalling: string;
+  cliUpdateBtn: string;
+  cliManagedByUs: string;
+  cliFoundElsewhere: string;
+  cliManualOnly: string;
   hostConnected: string;
   hostUnreachable: string;
   hostLocalLabel: string;
@@ -681,6 +689,15 @@ export const STRINGS: Record<Lang, Strings> = {
     hostTestBtn: "şimdi test et",
     hostTesting: "test ediliyor…",
     hostNone: "kayıtlı uzak host yok",
+    cliInstallLabel: "CLI kurulumu",
+    cliInstallDesc:
+      "claude/codex/copilot zaten sistemde yoksa claudeops'un kendi bin dizinine kurar (~/.claude/claudeops/bin, npm --prefix ile — gerçek global/sistem kurulumu DEĞİL, sadece bu kullanıcı). agy (Antigravity) için scriptlenebilir bir Linux kurulumu yok, sadece tespit ediliyor.",
+    cliInstallBtn: "kur",
+    cliInstalling: "kuruluyor…",
+    cliUpdateBtn: "güncelle",
+    cliManagedByUs: "claudeops tarafından kuruldu",
+    cliFoundElsewhere: "sistemde zaten var (dokunulmuyor)",
+    cliManualOnly: "otomatik kurulum yok, elle:",
     hostConnected: "bağlı",
     hostUnreachable: "erişilemez",
     hostLocalLabel: "bu makine (local)",
@@ -1083,6 +1100,15 @@ export const STRINGS: Record<Lang, Strings> = {
     hostTestBtn: "test now",
     hostTesting: "testing…",
     hostNone: "no remote hosts registered",
+    cliInstallLabel: "CLI install",
+    cliInstallDesc:
+      "if claude/codex/copilot aren't already on this machine, installs into claudeops's own bin dir (~/.claude/claudeops/bin, via npm --prefix — not a real global/system install, just this user). agy (Antigravity) has no scriptable Linux install, detection only.",
+    cliInstallBtn: "install",
+    cliInstalling: "installing…",
+    cliUpdateBtn: "update",
+    cliManagedByUs: "installed by claudeops",
+    cliFoundElsewhere: "already present on this system (left alone)",
+    cliManualOnly: "no automated install, manually:",
     hostConnected: "connected",
     hostUnreachable: "unreachable",
     hostLocalLabel: "this machine (local)",
