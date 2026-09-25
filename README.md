@@ -2,8 +2,10 @@
 
 *English · [Türkçe](README_TR.md)*
 
-Manage your open Claude Code sessions across multiple project folders from one place: see what's
-running, start/stop with one click, even from your phone.
+Manage your open Claude Code / Codex / Copilot CLI / agy sessions — plus a plain shell for anything
+that needs a real TTY — across multiple project folders from one place: see what's running, start/stop
+with one click, even from your phone. Pluggable: adding another CLI backend is a small, contained
+change, not a rewrite.
 
 ![claudeops web panel](docs/web-panel.png)
 
@@ -26,10 +28,10 @@ MIT licensed — see [`LICENSE`](LICENSE).
 ## What it can do
 
 **Fleet management**
-- Track every open Claude Code session across every project folder, from one place
-- Multiple CLI backends per session — Claude Code, Google's Antigravity/Gemini CLI, or a plain
-  interactive shell (for `sudo` and anything else that needs a real TTY) — pluggable, one file per
-  backend, adding another is a small, contained change
+- Track every open session — any supported CLI backend — across every project folder, from one place
+- Multiple CLI backends per session — Claude Code, OpenAI's Codex CLI, GitHub Copilot CLI, Google's
+  Antigravity/Gemini CLI (agy), or a plain interactive shell (for `sudo` and anything else that needs
+  a real TTY) — pluggable, one file per backend, adding another is a small, contained change
 - Start / stop / kill / permanently disable / retire / re-enable any session
 - Duplicate-session detection
 - Crash recovery: detect sessions missing from the roster and reopen them (optional, off by default —

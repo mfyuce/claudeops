@@ -2,9 +2,11 @@
 
 *[English](README.md) · Türkçe*
 
-Birden fazla proje klasöründe, birden fazla Claude Code oturumunu tek yerden yönetmek için
-küçük bir CLI + yerel web paneli. Her proje bir "roster" satırı (isim → klasör → model);
-`py/cops web` bu roster'ı gösterip tek tek başlatma/durdurma sağlar.
+Birden fazla proje klasöründe, birden fazla AI kodlama-ajanı CLI oturumunu — Claude Code, Codex,
+Copilot CLI, agy (Antigravity), ya da düz bir shell — tek yerden yönetmek için küçük bir CLI + yerel
+web paneli. Her proje bir "roster" satırı (isim → klasör → model); `py/cops web` bu roster'ı gösterip
+tek tek başlatma/durdurma sağlar. Pluggable: başka bir CLI backend'i eklemek bir provider dosyası
+daha yazmak demek, yeniden yazım değil (bkz. aşağıdaki "Nasıl çalışır").
 
 Linux + X11 gerekir (`gnome-terminal`'e bağımlı) — WSL/headless/macOS/Windows desteklenmiyor.
 
@@ -16,7 +18,9 @@ cd claudeops
 pip install -r py/requirements.txt   # tek bağımlılık: psutil
 ```
 
-Python 3.10+. `claude` CLI kurulu ve PATH'te olmalı.
+Python 3.10+. `claude` CLI kurulu ve PATH'te olmalı (varsayılan backend budur). Diğer backend'ler —
+`agy`, `codex`, `copilot`, ya da düz bir `shell` — tamamen opsiyonel, session başına seçilir (bkz.
+aşağıdaki "CLI seçimi").
 
 ## Hızlı başlangıç
 
@@ -68,16 +72,15 @@ En kolay kullanım yolu; her şey tarayıcıdan:
 - **Kayıtlı** — kayıtlı-ama-durmuş projeler; **devam ettir** / **sıfırla (--new)** / **ayrı yeni chat
   aç** (otomatik tarih-isimli, model/permission-mode/effort seçenekli) ile başlatırsınız. **Yeni proje
   kaydet** formu (isim + klasör + model) bu sekmenin altında — elle dosya düzenlemeden roster'a ekler.
-- **CLI seçimi (claude / agy)** — her başlat/kaydet/yeni-chat seçenek satırında bir **CLI** seçici var:
-  session başına `claude` ya da `agy` (Google'ın Antigravity CLI'ı, `~/.local/bin/agy`'de kuruluysa)
-  seçilebilir. Model/permission-mode/effort seçenekleri seçili CLI'ya göre otomatik değişir (agy'nin
-  model listesi `agy models`'tan CANLI çekilir, sabit kodlanmaz). Bir session'ın CLI'ı çalışırken
-  SABİTTİR — küçük bir rozet olarak gösterilir, değiştirilemez (yabancı bir proc'u devralmak onun
-  zaten hangi CLI olduğunu korur — "bir claude proc'unu agy olarak devral" diye bir şey yok). claudeops'un
-  isim vermediği bare `agy` proc'u `agy-<pid>` olarak görünür, diğer kayıtsız session'lar gibi devralınabilir.
-  Şu anki seçenekler `claude` ve `agy`; arkasındaki provider mimarisi (aşağıda "Nasıl çalışır") gelecekte
-  bir backend daha eklemeyi — mesela GitHub Copilot CLI, ya da başka herhangi bir CLI-tabanlı kodlama
-  ajanı — bir provider dosyası daha yazmak haline getiriyor, yeniden yazım değil.
+- **CLI seçimi (claude / agy / codex / copilot / shell)** — her başlat/kaydet/yeni-chat seçenek
+  satırında bir **CLI** seçici var: session başına backend seçilir. Model/permission-mode/effort
+  seçenekleri seçili CLI'ya göre otomatik değişir (ör. agy'nin model listesi `agy models`'tan CANLI
+  çekilir, sabit kodlanmaz). Bir session'ın CLI'ı çalışırken SABİTTİR — küçük bir rozet olarak
+  gösterilir, değiştirilemez (yabancı bir proc'u devralmak onun zaten hangi CLI olduğunu korur —
+  "bir claude proc'unu agy olarak devral" diye bir şey yok). claudeops'un isim vermediği bare bir proc
+  `<cli>-<pid>` olarak görünür (ör. `agy-<pid>`), diğer kayıtsız session'lar gibi devralınabilir. Bugün
+  bu beşi hazır; arkasındaki provider mimarisi (aşağıda "Nasıl çalışır") başka bir CLI-tabanlı kodlama
+  ajanı eklemeyi bir provider dosyası daha yazmak haline getiriyor, yeniden yazım değil.
 - **Devre dışı / Emekli** — geçici durdurulmuş / tamamen bırakılmış projeler; "tekrar işe al"la geri gelir.
 - **Handover** — seçili çalışan session'lara wrap-up mesajı gönderir (dokümanları güncelle, commit+push
   et), her birini aynı geçmişle (`--resume`) + bu mesaj ilk mesaj olarak yeniden başlatır. Panel o an
@@ -275,21 +278,24 @@ Her komutun kendi `--help`'i var.
 ## Nasıl çalışır
 
 - **Roster** iki TSV dosyası, repo dışında (`~/.claude/claudeops/`, kişiye özel, hiçbir zaman commit
-  edilmez): `roster.tsv` (`isim<TAB>klasör<TAB>model`, artı opsiyonel 4. kolon `cli` — `claude` ya da
-  `agy`, yoksa/eski-formatsa varsayılan `claude`) ve `models.tsv` (`isim<TAB>model` — satır `#` ile
-  başlıyorsa o isim kapalı/emekli, guard onu açmaz).
+  edilmez): `roster.tsv` (`isim<TAB>klasör<TAB>model`, artı opsiyonel 4. kolon `cli` — `claude`, `agy`,
+  `codex`, `copilot` ya da `shell`, yoksa/eski-formatsa varsayılan `claude`) ve `models.tsv`
+  (`isim<TAB>model` — satır `#` ile başlıyorsa o isim kapalı/emekli, guard onu açmaz).
 - Session'lar `gnome-terminal` içinde açılır, `tmux` kuruluysa ayrı bir `tmux` session'ına sarılır
   (kurulu değilse düz, sarmalanmamış `gnome-terminal`'e düşer — `tmux` eksikliği spawn'ı hiçbir zaman
   başarısız kılmaz). Bir `claude` session'ı `claude -n İSİM --remote-control İSİM` çalıştırır — Claude
-  Code'un kendi Remote Control özelliği (claude.ai/code veya mobil uygulamadan da erişilebilir). `agy`
-  session'ının muadil bir isimlendirme flag'i yok, bu yüzden ismi `COPS_NAME` ortam değişkeniyle taşınır.
-- Birden fazla CLI backend'i (`agy`, Google'ın Antigravity CLI'ı; `shell`, düz interaktif bash — sohbet
+  Code'un kendi Remote Control özelliği (claude.ai/code veya mobil uygulamadan da erişilebilir). Diğer
+  dört backend'in (`agy`/`codex`/`copilot`/`shell`) muadil bir isimlendirme flag'i yok, bu yüzden
+  isimleri `COPS_NAME` ortam değişkeniyle taşınır.
+- Bugün 5 CLI backend'i hazır — `claude` (Claude Code), `agy` (Google'ın Antigravity CLI'ı), `codex`
+  (OpenAI'ın Codex CLI'ı), `copilot` (GitHub Copilot CLI) ve `shell` (düz interaktif bash — sohbet
   şeklindeki bir CLI'ın yapamadığı şeyler için, ör. `sudo` ya da gerçek bir TTY isteyen herhangi bir
-  program) her biri bir **provider** olarak uygulandı: küçük bir `CliProvider` arayüzü
-  (`py/claudeops/providers/base.py`) — `claude_provider.py`/`agy_provider.py`/`shell_provider.py` bunu
-  kendi içinde doldurur; kodun geri kalanı (spawn/discovery/web paneli) sadece bu arayüz üzerinden
-  çağırır, hangi CLI kullanıldığına göre hiç dallanmaz — bir backend daha eklemek bir provider dosyası
-  daha yazmak demektir, mevcut koda dokunmak değil.
+  program) — her biri bir **provider** olarak uygulandı: küçük bir `CliProvider` arayüzü
+  (`py/claudeops/providers/base.py`) — `claude_provider.py`/`agy_provider.py`/`codex_provider.py`/
+  `copilot_provider.py`/`shell_provider.py` bunu kendi içinde doldurur; kodun geri kalanı
+  (spawn/discovery/web paneli) sadece bu arayüz üzerinden çağırır, hangi CLI kullanıldığına göre hiç
+  dallanmaz — bir backend daha eklemek bir provider dosyası daha yazmak demektir, mevcut koda
+  dokunmak değil.
 - Kill her zaman **SIGTERM + ~10 saniye bekleme + hâlâ canlıysa SIGKILL** — Claude Code'un transkript
   kaydı ara ara diske yazıldığı için (lazy-checkpoint), çok hızlı `SIGKILL` konuşma geçmişini kesebiliyor.
 - `guard` opsiyonel — istemiyorsanız hiç kurmayın, tamamen `py/cops web`'den elle yönetin.
@@ -303,7 +309,8 @@ py/claudeops/
   remote_desktop.py
   tmux_backend.py                       # tmux yardımcıları (ayrı -L cops socket'i), tmux yoksa fail-soft
   providers/                            # CliProvider ABC + backend başına bir dosya + registry
-    base.py, claude_provider.py, agy_provider.py, shell_provider.py, __init__.py
+    base.py, claude_provider.py, agy_provider.py, codex_provider.py, copilot_provider.py,
+    shell_provider.py, __init__.py
   data/                                  # gömülü statik dosyalar: tmux.conf, run-tunnel.sh
   commands/                             # her CLI komutu kendi dosyasında (web.py/web_ws.py en büyükleri)
 py/webui/                               # panelin tarayıcı istemcisi (React+TS+Vite) — kendi README.md'sine bak

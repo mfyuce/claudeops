@@ -2,9 +2,11 @@
 
 *English · [Türkçe](README_TR.md)*
 
-A small CLI + local web panel for managing multiple Claude Code sessions across multiple project
-folders from one place. Each project is a "roster" entry (name → folder → model); `py/cops web` shows
-that roster and lets you start/stop entries one at a time.
+A small CLI + local web panel for managing multiple AI coding-agent CLI sessions — Claude Code, Codex,
+Copilot CLI, agy (Antigravity), or a plain shell — across multiple project folders from one place. Each
+project is a "roster" entry (name → folder → model); `py/cops web` shows that roster and lets you
+start/stop entries one at a time. Pluggable: adding another CLI backend is one more provider file, not
+a rewrite (see "How it works" below).
 
 Requires Linux + X11 (depends on `gnome-terminal`) — WSL/headless/macOS/Windows are not supported.
 
@@ -16,7 +18,9 @@ cd claudeops
 pip install -r py/requirements.txt   # single dependency: psutil
 ```
 
-Python 3.10+. The `claude` CLI must be installed and on PATH.
+Python 3.10+. The `claude` CLI must be installed and on PATH (it's the default backend). Other
+backends — `agy`, `codex`, `copilot`, or a plain `shell` — are entirely optional, picked per session
+(see "CLI choice" below).
 
 ## Quick start
 
@@ -67,15 +71,15 @@ The easiest way to use this; everything from the browser:
   **start a separate new chat** (auto-dated name, with model/permission-mode/effort options). The
   **register new project** form (name + folder + model) lives at the bottom of this tab — adds to the
   roster without editing files by hand.
-- **CLI choice (claude / agy)** — every start/register/new-chat option row has a **CLI** selector: pick
-  `claude` or `agy` (Google's Antigravity CLI, if installed at `~/.local/bin/agy`) per session. Model/permission-mode/effort options switch to that CLI's own list
-  automatically (agy's model list is fetched live from `agy models`, not hardcoded). A session's CLI is
-  fixed once running — shown as a small badge, not editable (adopting a foreign process keeps whatever
-  CLI it already was; you can't "adopt a claude process as agy"). A bare `agy` process with no name
-  claudeops gave it shows up as `agy-<pid>`, adoptable like any other unregistered session. Today's
-  choices are `claude` and `agy`; the provider architecture behind this (see "How it works" below) is
-  what makes adding a future backend — say, GitHub Copilot CLI, or any other CLI-based coding agent —
-  a matter of writing one more provider file, not a rewrite.
+- **CLI choice (claude / agy / codex / copilot / shell)** — every start/register/new-chat option row has
+  a **CLI** selector: pick the backend per session. Model/permission-mode/effort options switch to that
+  CLI's own list automatically (e.g. agy's model list is fetched live from `agy models`, not
+  hardcoded). A session's CLI is fixed once running — shown as a small badge, not editable (adopting a
+  foreign process keeps whatever CLI it already was; you can't "adopt a claude process as agy"). A bare
+  process with no name claudeops gave it shows up as `<cli>-<pid>` (e.g. `agy-<pid>`), adoptable like
+  any other unregistered session. These five ship today; the provider architecture behind this (see
+  "How it works" below) is what makes adding another CLI-based coding agent a matter of writing one
+  more provider file, not a rewrite.
 - **Disabled / Retired** — temporarily stopped / fully abandoned projects; come back with "reactivate".
 - **Handover** — sends the selected running sessions a wrap-up prompt (update their docs, commit, push),
   restarting each with `--resume` (same history) plus that message as the first turn. Uses the message
@@ -271,21 +275,23 @@ Every command has its own `--help`.
 
 - The **roster** is two TSV files, outside the repo (`~/.claude/claudeops/`, personal, never
   committed): `roster.tsv` (`name<TAB>folder<TAB>model`, plus an optional 4th column `cli` —
-  `claude` or `agy`, defaults to `claude` if missing/old-format) and `models.tsv` (`name<TAB>model` —
-  a line starting with `#` means that name is closed/retired, guard won't open it).
+  `claude`, `agy`, `codex`, `copilot`, or `shell`, defaults to `claude` if missing/old-format) and
+  `models.tsv` (`name<TAB>model` — a line starting with `#` means that name is closed/retired, guard
+  won't open it).
 - Sessions are opened inside `gnome-terminal`, wrapped in a dedicated `tmux` session when `tmux` is
   installed (falls back to plain, un-wrapped `gnome-terminal` otherwise — spawning never fails just
   because `tmux` is missing). A `claude` session runs `claude -n NAME --remote-control NAME` — Claude
-  Code's own Remote Control feature (also reachable from claude.ai/code or the mobile app). An `agy`
-  session has no equivalent naming flag, so its name is carried via a `COPS_NAME` environment variable
-  instead.
-- Multiple CLI backends (`agy`, Google's Antigravity CLI; `shell`, a plain interactive bash — for
-  things a chat-shaped CLI can't do, like `sudo` or any other program that needs a real TTY) are each
+  Code's own Remote Control feature (also reachable from claude.ai/code or the mobile app). The other
+  four backends (`agy`/`codex`/`copilot`/`shell`) have no equivalent naming flag, so their name is
+  carried via a `COPS_NAME` environment variable instead.
+- Five CLI backends ship today — `claude` (Claude Code), `agy` (Google's Antigravity CLI), `codex`
+  (OpenAI's Codex CLI), `copilot` (GitHub Copilot CLI), and `shell` (a plain interactive bash, for
+  things a chat-shaped CLI can't do, like `sudo` or any other program that needs a real TTY) — each
   implemented as a **provider**: a small `CliProvider` interface (`py/claudeops/providers/base.py`)
-  that `claude_provider.py`/`agy_provider.py`/`shell_provider.py` each implement; the rest of the
-  codebase (spawn/discovery/web panel) only ever calls through that interface and never branches on
-  which CLI is in use — adding another backend means writing one more provider file, not touching
-  existing code.
+  that `claude_provider.py`/`agy_provider.py`/`codex_provider.py`/`copilot_provider.py`/
+  `shell_provider.py` each implement; the rest of the codebase (spawn/discovery/web panel) only ever
+  calls through that interface and never branches on which CLI is in use — adding another backend
+  means writing one more provider file, not touching existing code.
 - Kill is always **SIGTERM + ~10 second wait + SIGKILL if still alive** — since Claude Code's transcript
   is written to disk lazily (checkpoint by checkpoint), a too-fast `SIGKILL` can cut off conversation
   history.
@@ -301,7 +307,8 @@ py/claudeops/
   remote_desktop.py
   tmux_backend.py                       # tmux helpers (dedicated -L cops socket), fail-soft if no tmux
   providers/                            # CliProvider ABC + one file per CLI backend + registry
-    base.py, claude_provider.py, agy_provider.py, shell_provider.py, __init__.py
+    base.py, claude_provider.py, agy_provider.py, codex_provider.py, copilot_provider.py,
+    shell_provider.py, __init__.py
   data/                                  # bundled static assets: tmux.conf, run-tunnel.sh
   commands/                             # one file per CLI command (web.py/web_ws.py are the largest)
 py/webui/                               # the panel's browser client (React+TS+Vite) — see its own README.md

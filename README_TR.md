@@ -2,8 +2,10 @@
 
 *[English](README.md) · Türkçe*
 
-Birden fazla proje klasöründe açık Claude Code oturumlarını tek yerden yönetir: kimin çalıştığını gör,
-tek tıkla başlat/durdur, isterse telefondan bile.
+Birden fazla proje klasöründe açık Claude Code / Codex / Copilot CLI / agy oturumlarını — artı gerçek
+bir TTY isteyen işler için düz bir shell'i — tek yerden yönetir: kimin çalıştığını gör, tek tıkla
+başlat/durdur, isterse telefondan bile. Pluggable: başka bir CLI backend'i eklemek küçük/izole bir
+değişiklik, yeniden yazım değil.
 
 ![claudeops web paneli](docs/web-panel.png)
 
@@ -27,10 +29,11 @@ MIT lisanslı — bkz. [`LICENSE`](LICENSE).
 ## Neler yapabilir
 
 **Fleet yönetimi**
-- Her proje klasöründeki her açık Claude Code session'ını tek yerden takip et
-- Session başına birden fazla CLI backend'i — Claude Code, Google'ın Antigravity/Gemini CLI'ı,
-  ya da düz interaktif bir shell (`sudo` ve gerçek bir TTY isteyen her şey için) — pluggable, backend
-  başına bir dosya, yeni bir tane eklemek küçük/izole bir değişiklik
+- Her proje klasöründeki her açık session'ı — desteklenen HERHANGİ bir CLI backend'i — tek yerden takip et
+- Session başına birden fazla CLI backend'i — Claude Code, OpenAI'ın Codex CLI'ı, GitHub Copilot CLI,
+  Google'ın Antigravity/Gemini CLI'ı (agy), ya da düz interaktif bir shell (`sudo` ve gerçek bir TTY
+  isteyen her şey için) — pluggable, backend başına bir dosya, yeni bir tane eklemek küçük/izole bir
+  değişiklik
 - Herhangi bir session'ı başlat / durdur / öldür / kalıcı devre dışı bırak / emekli et / tekrar işe al
 - Duplicate-session tespiti
 - Crash recovery: roster'da olup çalışmayan session'ları tespit edip aç (opsiyonel, varsayılan kapalı —
