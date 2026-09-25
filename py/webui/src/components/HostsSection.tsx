@@ -31,6 +31,7 @@ export function HostsSection() {
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
+  const [extraUrls, setExtraUrls] = useState("");
   const [busy, setBusy] = useState(false);
   // Per-row, not the single `busy` above — testing one host shouldn't grey
   // out the add form or every other row's own "test now" button.
@@ -59,13 +60,20 @@ export function HostsSection() {
     setBusy(true);
     const savedName = name.trim();
     try {
-      const res = await apiSaveHost({ name: savedName, base_url: baseUrl.trim(), token: token.trim(), lang });
+      const res = await apiSaveHost({
+        name: savedName,
+        base_url: baseUrl.trim(),
+        token: token.trim(),
+        extra_urls: extraUrls.trim(),
+        lang,
+      });
       if (!res.ok) {
         window.alert(res.error);
       } else {
         setName("");
         setBaseUrl("");
         setToken("");
+        setExtraUrls("");
         // The background poller hasn't reached this host yet (up to ~3s away,
         // or never if this is a brand-new registration) — a plain `load()`
         // here would show "not polled yet" right after a successful save.
@@ -106,12 +114,14 @@ export function HostsSection() {
     setName(h.name);
     setBaseUrl(h.base_url);
     setToken("");
+    setExtraUrls((h.extra_urls ?? []).join("\n"));
   }
 
   function handleCancelEdit() {
     setName("");
     setBaseUrl("");
     setToken("");
+    setExtraUrls("");
   }
 
   async function handleRemove(hostName: string) {
@@ -159,6 +169,18 @@ export function HostsSection() {
         <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} />
       </label>
       {editingExisting && <span className="opts-hint">{t.hostTokenKeepHint}</span>}
+      <label style={{ flexBasis: "100%" }}>
+        {t.hostExtraUrlsLabel}
+        <textarea
+          rows={2}
+          placeholder={"http://10.20.4.31:8765\nhttps://hfn7bs65-8765.euw.devtunnels.ms"}
+          value={extraUrls}
+          onChange={(e) => setExtraUrls(e.target.value)}
+        />
+      </label>
+      <span className="opts-hint" style={{ flexBasis: "100%" }}>
+        {t.hostExtraUrlsHint}
+      </span>
       <button type="button" className="go" disabled={busy} onClick={() => void handleAdd()}>
         {busy ? (editingExisting ? t.hostSaving : t.hostAdding) : editingExisting ? t.hostSaveBtn : t.hostAddBtn}
       </button>
@@ -175,6 +197,11 @@ export function HostsSection() {
             <div key={h.name} className="opts-hint" style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
               <b>{h.name}</b>
               <span style={{ color: "var(--muted)" }}>{h.base_url}</span>
+              {!!h.extra_urls?.length && (
+                <span className="cli-badge" title={h.extra_urls.join("\n")}>
+                  +{h.extra_urls.length}
+                </span>
+              )}
               <span style={{ color: h.ok ? "var(--green)" : "var(--red)" }} title={h.error ?? undefined}>
                 {h.ok ? t.hostConnected : t.hostUnreachable}
               </span>

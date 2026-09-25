@@ -284,6 +284,8 @@ export interface Strings {
   hostNameLabel: string;
   hostBaseUrlLabel: string;
   hostTokenLabel: string;
+  hostExtraUrlsLabel: string;
+  hostExtraUrlsHint: string;
   hostAddBtn: string;
   hostAdding: string;
   hostSaveBtn: string;
@@ -663,6 +665,9 @@ export const STRINGS: Record<Lang, Strings> = {
     hostNameLabel: "isim",
     hostBaseUrlLabel: "tunnel URL",
     hostTokenLabel: "token",
+    hostExtraUrlsLabel: "yedek URL'ler (opsiyonel)",
+    hostExtraUrlsHint:
+      "virgül/satırla ayrılmış — birincisi (yukarıdaki) çalışmazsa sırayla denenir, çalışan otomatik öne geçer",
     hostAddBtn: "host ekle",
     hostAdding: "ekleniyor…",
     hostSaveBtn: "kaydet",
@@ -1062,6 +1067,9 @@ export const STRINGS: Record<Lang, Strings> = {
     hostNameLabel: "name",
     hostBaseUrlLabel: "tunnel URL",
     hostTokenLabel: "token",
+    hostExtraUrlsLabel: "backup URLs (optional)",
+    hostExtraUrlsHint:
+      "comma/newline-separated — tried in order if the one above fails, a working one gets promoted automatically",
     hostAddBtn: "add host",
     hostAdding: "adding…",
     hostSaveBtn: "save",

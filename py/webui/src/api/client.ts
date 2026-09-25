@@ -386,6 +386,9 @@ export interface SaveHostPayload {
   name: string;
   base_url: string;
   token: string;
+  /** Comma/newline-separated fallback URLs (`hosts.save_host()`'s `extra_urls`
+   * param) — like `grpc_url`, empty clears it rather than preserving. */
+  extra_urls?: string;
   lang: Lang;
 }
 export const apiSaveHost = (p: SaveHostPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/hosts", p);

@@ -3368,6 +3368,7 @@ class _Handler(BaseHTTPRequestHandler):
                 base_url=str(data.get("base_url", "")),
                 token=str(data.get("token", "")),
                 grpc_url=str(data.get("grpc_url", "")),
+                extra_urls=str(data.get("extra_urls", "")),
                 lang=lang,
             ))
             return

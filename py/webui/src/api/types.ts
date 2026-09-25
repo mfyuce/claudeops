@@ -114,6 +114,10 @@ export interface HostRecord {
   has_token: boolean;
   ok: boolean;
   error: string | null;
+  /** Fallback candidates, tried in order by the poller when `base_url` fails;
+   * a working one gets silently promoted to `base_url` (see hosts.py's
+   * `promote_base_url`). Not a secret, unlike `token`. */
+  extra_urls?: string[];
 }
 
 /** `/api/hosts` (GET) — a bare "just read local state" shape like

@@ -384,18 +384,57 @@ def _finalize_remote_result(host_name: str, result: Dict[str, Any]) -> Dict[str,
     }
 
 
+def _fetch_status_from(base_url: str, token: str, timeout: float) -> Tuple[Optional[dict], Optional[str]]:
+    """Tek bir aday URL'e `/api/status` denemesi — `fetch_remote_status`/
+    `_try_fallback_urls` arasında paylaşılan tek istek mantığı."""
+    url = f"{base_url}/api/status?token={token}"
+    status, parsed, err = _http_json("GET", url, None, timeout, dedup=True)
+    if err is not None or parsed is None:
+        return None, err or f"http {status}"
+    if "sessions" not in parsed:
+        return None, "unexpected response shape"
+    return parsed, None
+
+
 def fetch_remote_status(host_record: Dict[str, str]) -> Dict[str, Any]:
     """Bir host'un `/api/status`'unu çek. Başarı/hata HER İKİ durumda da aynı
     anahtar setiyle döner (sadece `ok`/`error` farklılaşır) — çağıran
-    (`merge_status`/poller) iki dalı ayrım yapmadan aynı şekilde işleyebilir."""
+    (`merge_status`/poller) iki dalı ayrım yapmadan aynı şekilde işleyebilir.
+    Sadece `base_url`'i dener — `extra_urls` fallback'i BİLEREK burada değil,
+    `_try_fallback_urls`'te (poller'ın kendisinde, nadiren tetiklenir); bu
+    fonksiyon her 3sn'lik tick'te çağrıldığı için sağlıklı yoldaki maliyeti
+    ASLA artırmamalı."""
     name = host_record["name"]
-    url = f"{host_record['base_url']}/api/status?token={host_record['token']}"
-    status, parsed, err = _http_json("GET", url, None, STATUS_TIMEOUT_SECONDS, dedup=True)
-    if err is not None or parsed is None:
-        return {"ok": False, "error": err or f"http {status}", **_EMPTY_REMOTE}
-    if "sessions" not in parsed:
-        return {"ok": False, "error": "unexpected response shape", **_EMPTY_REMOTE}
+    parsed, err = _fetch_status_from(host_record["base_url"], host_record["token"], STATUS_TIMEOUT_SECONDS)
+    if err is not None:
+        return {"ok": False, "error": err, **_EMPTY_REMOTE}
     return _finalize_remote_result(name, parsed)
+
+
+# Fallback denemeleri nadiren (sadece sürdürülen bir arızada) tetiklendiği için
+# STATUS_TIMEOUT_SECONDS'tan daha kısa tutuluyor -- bir aday ölüyse hızlı
+# vazgeç, tek poll tick'ini (ve o tick'te AYNI thread'de sıradaki diğer
+# host'ları) N aday × 8sn'lik bir zincirle bloklama.
+FALLBACK_TIMEOUT_SECONDS = 3.0
+
+
+def _try_fallback_urls(host_record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """`base_url` başarısız olduğunda `extra_urls`'i sırayla dener; biri
+    çalışırsa `hosts_mod.promote_base_url()` ile onu kalıcı hale getirir ve
+    başarılı sonucu döner. Hiçbiri çalışmazsa `None` (çağıran normal hata
+    yoluna devam eder) -- extra_urls hiç yoksa hemen `None`, hiçbir istek
+    atılmaz."""
+    extras = host_record.get("extra_urls") or []
+    if not extras:
+        return None
+    name = host_record["name"]
+    token = host_record["token"]
+    for candidate in extras:
+        parsed, err = _fetch_status_from(candidate, token, FALLBACK_TIMEOUT_SECONDS)
+        if err is None:
+            hosts_mod.promote_base_url(name, candidate)
+            return _finalize_remote_result(name, parsed)
+    return None
 
 
 _cache_lock = threading.Lock()
@@ -484,6 +523,17 @@ def _poll_once() -> None:
         if _ensure_status_consumer(h):
             continue
         result = fetch_remote_status(h)
+        if not result["ok"] and h.get("extra_urls"):
+            # Sağlıklı host bu bloğa hiç girmiyor (result["ok"] zaten True) --
+            # tam CONSECUTIVE_FAILURES_BEFORE_ERROR eşiğini geçerken (yuhem-tarzı
+            # kısa blip'lerde ASLA, ilk kez "gerçek" arıza sayılan tick'te) bir
+            # kez dene, sonra host gerçekten sürdürülen bir arızadaysa her 3sn'de
+            # bir TÜM extra_urls'i yoklamak yerine ~20 tick'te (~60sn) bir.
+            streak_next = _fail_streak.get(h["name"], 0) + 1
+            if streak_next == CONSECUTIVE_FAILURES_BEFORE_ERROR or streak_next % 20 == 0:
+                fallback = _try_fallback_urls(h)
+                if fallback is not None:
+                    result = fallback
         _record_poll_result(h["name"], result)
     # Silinmiş host'ları cache'ten temizle (merge_status zaten load_hosts()'a
     # göre iterate ediyor, bu sadece belleğin büyümemesi için).
