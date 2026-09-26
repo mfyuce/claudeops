@@ -60,6 +60,7 @@ HOST_ROUTED_PATHS = {
 GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/chat", "/api/files/list", "/api/files/read",
                          "/api/instances", "/api/cli/status"}
 FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
+FILE_UPLOAD_PATH = "/api/files/upload"  # download'ın YAZMA kardeşi — POST + ham binary REQUEST body (ne JSON-body proxy_action'a ne query-only GET proxy'lerine uyar), kendi proxy_post_raw()'ı var
 
 # Status polling sık (3sn'de bir) ve HAFİF olmalı — kısa timeout, poller
 # thread'inin bir sonraki host'a hızlı geçebilmesi için de önemli.
@@ -747,6 +748,71 @@ def proxy_get_raw(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Opt
     if err is not None:
         return None, 200, None, f"{host_name} unreachable: {err}"
     return body, status, headers, None
+
+
+class _BoundedReader:
+    """`conn.request(body=...)`'a doğrudan geçirilebilir ince bir sarmalayıcı
+    — bir soket-destekli `rfile`'ı (kalıcı bağlantı, doğal bir EOF'u yok)
+    `content_length` baytıyla sınırlar. `http.client`'ın body=file-like
+    desteği `.read(n)`'i KENDİSİ `blocksize` (8192) parçalar halinde çağırıp
+    `sendall` eder — yani bu sarmalayıcı sayesinde bir upload'ın TAMAMI
+    hiçbir noktada (ne burada ne karşı taraftaki soket buffer'ında) tek bir
+    `bytes` nesnesi olarak belleğe alınmaz, uçtan uca stream'lenir."""
+    __slots__ = ("_f", "_remaining")
+
+    def __init__(self, f: Any, length: int) -> None:
+        self._f = f
+        self._remaining = length
+
+    def read(self, n: int = -1) -> bytes:
+        if self._remaining <= 0:
+            return b""
+        n = self._remaining if n is None or n < 0 else min(n, self._remaining)
+        chunk = self._f.read(n)
+        self._remaining -= len(chunk)
+        return chunk
+
+
+def proxy_post_raw(path: str, host_name: str, query: Dict[str, str], body_stream: Any,
+                    content_length: int, content_type: str) -> Tuple[Dict[str, Any], int]:
+    """`/api/files/upload` için — `proxy_action()`'ın (JSON body) VE
+    `proxy_get_raw()`'ın (binary YANIT) ikisinden de farklı: binary REQUEST
+    body'yi `body_stream`'den (`web.py`'nin `self.rfile`'ı) `content_length`
+    kadar `_BoundedReader` ile STREAM'leyerek host'a gönderir, JSON yanıt
+    döner.
+
+    BİLEREK havuzsuz (diğer proxy fonksiyonlarının `_pool_checkout`/`_pool_
+    checkin`'inin AKSİNE): havuzdaki bir bağlantı ölü çıkarsa normal yol tek
+    sefer taze bağlantıyla RETRY eder, ama `body_stream` bu noktada zaten
+    kısmen tüketilmiş olabilir (bir HTTP request gövdesi geri sarılamaz) —
+    güvenli bir retry'ı imkansız kılan bu durumu yaşamamak için her upload
+    kendi taze bağlantısını açıp kapatır. Upload'lar zaten poll gibi sık
+    tekrarlanan bir yol değil (kullanıcı eylemi), bir TCP+TLS handshake'in
+    ek maliyeti gerçek dosya transferi yanında ihmal edilebilir."""
+    host = hosts_mod.get_host(host_name)
+    if host is None:
+        return {"ok": False, "error": f"unknown host: {host_name}"}, 200
+    q = {k: v for k, v in query.items() if k != "host"}
+    q["token"] = host["token"]
+    url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
+    url_parts, req_path = _split_url(url)
+    conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
+    conn = conn_cls(url_parts.hostname, url_parts.port, timeout=ACTION_TIMEOUT_SECONDS)
+    try:
+        conn.request("POST", req_path, body=_BoundedReader(body_stream, content_length),
+                      headers={"Content-Type": content_type, "Content-Length": str(content_length)})
+        resp = conn.getresponse()
+        status = resp.status
+        raw = resp.read()
+    except (OSError, http.client.HTTPException) as e:
+        return {"ok": False, "error": f"{host_name} unreachable: {e}"}, 200
+    finally:
+        conn.close()
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return {"ok": False, "error": f"{host_name}: bad response"}, 200
+    return parsed, status
 
 
 # ═══════════════════════════════════════════════════════════════════════════

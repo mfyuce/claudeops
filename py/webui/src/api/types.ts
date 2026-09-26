@@ -536,6 +536,9 @@ export type FilesListResult = ApiResult<{ roots: FileRoot[]; path: string; entri
  * much smaller than the download cap). */
 export type FilesReadResult = ApiResult<{ text: string }>;
 
+/** `_handle_files_upload()` — the destination path actually written. */
+export type FilesUploadResult = ApiResult<{ path: string }>;
+
 /** `_files_validate()` — candidate path strings (regex-matched out of raw
  * terminal text) filtered down to ones that resolve to a real, allowed
  * file; `valid` is absolute paths, deduplicated, in input order. */

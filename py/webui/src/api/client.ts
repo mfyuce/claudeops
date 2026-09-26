@@ -30,6 +30,7 @@ import type {
   EditResult,
   FilesListResult,
   FilesReadResult,
+  FilesUploadResult,
   FilesValidateResult,
   GetHostsResult,
   GetOrchRunResult,
@@ -163,6 +164,50 @@ export const getFilesRead = (name: string, lang: Lang, path: string, host?: stri
 
 export const postFilesValidate = (name: string, lang: Lang, paths: string[]): Promise<FilesValidateResult> =>
   apiPost<FilesValidateResult>("/api/files/validate", { name, lang, paths });
+
+/** `/api/files/upload` — unlike every other write route, the body is the
+ * raw file bytes, not JSON (no multipart/base64 wrapper either — cheapest
+ * possible transfer, see `files.py`/`_handle_files_upload`'s docstrings for
+ * why), so this bypasses `apiPost` entirely and uses `XMLHttpRequest`
+ * (not `fetch`) purely for `upload.onprogress` — the one write path where a
+ * caller actually wants live progress for a potentially large/slow
+ * transfer. `dirPath` omitted uploads into the session's first root. */
+export function apiFilesUpload(
+  name: string,
+  lang: Lang,
+  dirPath: string | undefined,
+  file: File,
+  opts: { host?: string; overwrite?: boolean; onProgress?: (fraction: number) => void } = {}
+): Promise<FilesUploadResult> {
+  const qs =
+    `name=${encodeURIComponent(name)}&lang=${lang}&filename=${encodeURIComponent(file.name)}` +
+    (dirPath ? `&path=${encodeURIComponent(dirPath)}` : "") +
+    (opts.overwrite ? "&overwrite=1" : "") +
+    hostQS(opts.host);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", withToken(`/api/files/upload?${qs}`));
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    if (opts.onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) opts.onProgress!(e.loaded / e.total);
+      };
+    }
+    xhr.onerror = () => reject(new ApiError(0));
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        reject(new ApiError(401));
+        return;
+      }
+      try {
+        resolve(JSON.parse(xhr.responseText) as FilesUploadResult);
+      } catch {
+        reject(new ApiError(xhr.status));
+      }
+    };
+    xhr.send(file);
+  });
+}
 
 /** `path` omitted → opens the session's project root (whole project). Only
  * useful physically at the machine (or viewing it via Uzak Masaüstü) — VS

@@ -12,9 +12,16 @@
  * Downloads are plain `<a href>` navigations to `filesDownloadUrl()`, not a
  * JS fetch+blob — the backend's `Content-Disposition: attachment` header
  * makes the browser handle the save UI itself.
+ *
+ * Upload (2026-09-26) is the reverse direction — this DOES need a JS call
+ * (`apiFilesUpload`, XHR-based for progress) since there's no way to point
+ * an `<a>`/`<form>` at an arbitrary local `File` otherwise. An existing-name
+ * collision is checked client-side against the entries already in `state`
+ * (no wasted round-trip to discover what a `_files_list` call just told us)
+ * with a `window.confirm` before resending with `overwrite`.
  */
-import { useEffect, useState } from "react";
-import { apiVscodeOpen, filesDownloadUrl, getFilesList } from "../../api/client";
+import { useEffect, useRef, useState } from "react";
+import { apiFilesUpload, apiVscodeOpen, filesDownloadUrl, getFilesList } from "../../api/client";
 import { callAction } from "../../api/errors";
 import type { FileEntry, FileRoot } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
@@ -63,6 +70,10 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
   const { t, lang } = useLang();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [state, setState] = useState<FilesState>({ kind: "loading" });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [uploading, setUploading] = useState<{ file: string; fraction: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,7 +97,7 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, host, lang, currentPath]);
+  }, [name, host, lang, currentPath, refreshKey]);
 
   if (state.kind === "loading") return null;
   if (state.kind === "error") {
@@ -100,6 +111,33 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
 
   const { roots, path, entries } = state;
   const atRoot = roots.some((r) => r.path === path);
+
+  // Sequential (not parallel) on purpose: one XHR at a time keeps the
+  // progress readout meaningful and avoids saturating the connection for
+  // what's already a single-user/single-machine tool.
+  async function handleFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const existing = new Set(entries.map((e) => e.name));
+    for (const file of Array.from(fileList)) {
+      const overwrite = existing.has(file.name);
+      if (overwrite && !window.confirm(t.filesUploadConfirmOverwrite.replace("{name}", file.name))) {
+        continue;
+      }
+      setUploading({ file: file.name, fraction: 0 });
+      try {
+        const res = await apiFilesUpload(name, lang, path, file, {
+          host,
+          overwrite,
+          onProgress: (fraction) => setUploading({ file: file.name, fraction }),
+        });
+        if (!res.ok) alert(t.filesUploadError + res.error);
+      } catch (e) {
+        alert(t.filesUploadError + (e instanceof Error ? e.message : String(e)));
+      }
+    }
+    setUploading(null);
+    setRefreshKey((k) => k + 1);
+  }
 
   return (
     <div style={BOX_STYLE}>
@@ -133,25 +171,69 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
         >
           {t.filesOpenVscode}
         </button>
+        <button
+          type="button"
+          style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
+          disabled={uploading !== null}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {t.filesUpload}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            void handleFiles(e.target.files);
+            e.target.value = ""; // aynı dosyayı arka arkaya seçince onChange yine tetiklensin
+          }}
+        />
       </div>
+      {uploading && (
+        <div style={{ fontSize: ".75rem", opacity: 0.8, marginBottom: ".4rem" }}>
+          ⬆ {uploading.file} — {Math.round(uploading.fraction * 100)}%
+        </div>
+      )}
       {!atRoot && (
         <button type="button" style={{ marginBottom: ".4rem" }} onClick={() => setCurrentPath(parentOf(path))}>
           {t.filesUp}
         </button>
       )}
-      {entries.length === 0 ? (
-        <div>{t.filesEmpty}</div>
-      ) : (
-        <div>
-          {entries.map((e) => (
-            <FileRow key={e.name} entry={e} onOpenDir={() => setCurrentPath(joinPath(path, e.name))}
-                     downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name), host)}
-                     downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
-                     onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
-                     onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name)), "vscode", t)} />
-          ))}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          void handleFiles(e.dataTransfer.files);
+        }}
+        style={{
+          border: dragOver ? "1px dashed var(--accent, currentColor)" : "1px dashed transparent",
+          borderRadius: "4px",
+          transition: "border-color .1s",
+        }}
+      >
+        {entries.length === 0 ? (
+          <div>{t.filesEmpty}</div>
+        ) : (
+          <div>
+            {entries.map((e) => (
+              <FileRow key={e.name} entry={e} onOpenDir={() => setCurrentPath(joinPath(path, e.name))}
+                       downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name), host)}
+                       downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
+                       onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
+                       onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name)), "vscode", t)} />
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: ".7rem", opacity: 0.5, marginTop: ".3rem", textAlign: "center" }}>
+          {t.filesUploadHint}
         </div>
-      )}
+      </div>
     </div>
   );
 }

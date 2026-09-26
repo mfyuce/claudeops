@@ -23,6 +23,7 @@ from .session import Session
 
 MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024  # kişisel/tek-kullanıcı araç ama kazara dev bir dosyayı tam belleğe yüklemeden önce reddet — `_serve_static` gibi read_bytes() kullanıyoruz, streaming yok
 MAX_VIEW_BYTES = 5 * 1024 * 1024  # inline "görüntüle" indirmeden çok daha küçük bir sınır olmalı — md/txt/html kaynak dosyaları, büyük veri dökümü değil
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # MAX_DOWNLOAD_BYTES ile simetrik — yükleme TARAFI (web.py'nin _handle_files_upload'ı) chunk'lar halinde diske yazıyor, streaming var; sınır yine de kazara dev bir dosyayı reddetmek için
 
 
 def roots_for_session(s: Session) -> List[Tuple[str, str]]:
@@ -110,6 +111,34 @@ def _resolve_file(s: Session, path: str, max_bytes: int) -> Tuple[Optional[str],
 def resolve_download(s: Session, path: str) -> Tuple[Optional[str], Optional[str]]:
     """(gerçek-yol, None) başarılı; (None, hata-kodu) başarısız."""
     return _resolve_file(s, path, MAX_DOWNLOAD_BYTES)
+
+
+def resolve_upload_target(s: Session, dir_path: Optional[str], filename: str,
+                           overwrite: bool = False) -> Tuple[Optional[str], Optional[str]]:
+    """`list_dir`'in YAZMA kardeşi — yükleme hedefini çözer. `dir_path`
+    (verilmezse ilk kök) önce `_resolve_within_roots`'tan geçer (aynı tek
+    kapı), SONRA `filename` `os.path.basename()`'le soyulur — `/`/`..`
+    hiçbir şekilde hayatta kalamaz, bu yüzden birleşik hedefin AYRICA kök-içi
+    doğrulamaya ihtiyacı yok (real_dir zaten kök-içi, safe_name'in kendisi
+    dizin değiştiremez). (gerçek-yol, None) başarılı; (None, hata-kodu)
+    başarısız — kodlar no_roots/forbidden/not_found (hedef dizin yok)/
+    bad_filename/exists (overwrite=False iken zaten var)."""
+    roots = roots_for_session(s)
+    if not roots:
+        return None, "no_roots"
+    target_dir = dir_path or roots[0][1]
+    real_dir = _resolve_within_roots(target_dir, roots)
+    if real_dir is None:
+        return None, "forbidden"
+    if not os.path.isdir(real_dir):
+        return None, "not_found"
+    safe_name = os.path.basename((filename or "").strip())
+    if not safe_name or safe_name in (".", ".."):
+        return None, "bad_filename"
+    dest = os.path.join(real_dir, safe_name)
+    if not overwrite and os.path.exists(dest):
+        return None, "exists"
+    return dest, None
 
 
 def read_text(s: Session, path: str) -> Tuple[Optional[str], Optional[str]]:

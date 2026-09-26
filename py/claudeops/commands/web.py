@@ -223,6 +223,13 @@ ERR = {
     "files_not_found": {"tr": "{name}: yol bulunamadı", "en": "{name}: path not found"},
     "files_too_large": {"tr": "{name}: dosya indirme sınırını aşıyor (>{limit_mb:.0f}MB)",
                          "en": "{name}: file exceeds the download size limit (>{limit_mb:.0f}MB)"},
+    "filename_required": {"tr": "filename gerekli", "en": "filename is required"},
+    "files_empty_upload": {"tr": "gönderilen dosya boş", "en": "uploaded file is empty"},
+    "files_upload_too_large": {"tr": "{name}: dosya yükleme sınırını aşıyor (>{limit_mb:.0f}MB)",
+                                "en": "{name}: file exceeds the upload size limit (>{limit_mb:.0f}MB)"},
+    "files_bad_filename": {"tr": "{name}: geçersiz dosya adı", "en": "{name}: invalid filename"},
+    "files_exists": {"tr": "{name}: '{filename}' zaten var (üzerine yazmak için overwrite gönderin)",
+                      "en": "{name}: '{filename}' already exists (send overwrite to replace it)"},
     "vscode_not_found": {"tr": "VS Code CLI (`code`) bu makinede bulunamadı",
                           "en": "VS Code CLI (`code`) not found on this machine"},
     "not_registered": {"tr": "{name}: roster'da kayıtlı değil", "en": "{name}: not in the roster"},
@@ -1535,6 +1542,7 @@ def _term_resolve_for_output(name: str, lang: str = "tr"):
 
 
 _MAX_VALIDATE_CANDIDATES = 20  # bir terminal-metni taramasından gelen aday listesini sınırla — her aday bir stat() çağrısı, sınırsız liste kabul etmeye gerek yok
+_UPLOAD_CHUNK = 1024 * 1024  # _handle_files_upload'ın yerel yazma döngüsü bunun katları halinde okur/yazar — tüm dosya tek seferde belleğe alınmasın diye
 
 
 def _files_resolve(name: str, lang: str = "tr"):
@@ -2995,6 +3003,89 @@ class _Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             diag_log("response_write_failed", path=urlparse(self.path).path, error=str(e))
 
+    def _handle_files_upload(self):
+        """`/api/files/upload` (POST) — `_handle_files_download`'ın YAZMA
+        kardeşi. `do_POST`'un genel JSON-body okuma/dispatch zincirine HİÇ
+        girmez (`do_POST`'un en başında özel-durum olarak yakalanır) çünkü
+        gövde JSON değil ham dosya baytları — `name`/`path` (hedef dizin)/
+        `filename`/`host`/`overwrite` query-string'te, `_files_list`/
+        `_files_download` ile AYNI desen. Yerelde `_UPLOAD_CHUNK`'lık
+        parçalar halinde DOĞRUDAN diske yazılır (tüm dosya tek seferde
+        belleğe alınmaz); host uzaksa `web_hosts.proxy_post_raw()`
+        `self.rfile`'ı UÇTAN UCA stream'ler — hiçbir aşamada tüm dosya bir
+        bytes nesnesi olarak belleğe alınmıyor.
+
+        Bağlantı her durumda kapatılır (`close_connection = True`): erken-ret
+        yollarında (name/filename eksik, dosya çok büyük) gövde hiç
+        okunmadığı için keep-alive'da bırakmak sıradaki isteğin çerçevesini
+        bozar — upload zaten poll gibi sık tekrarlanan bir yol değil, ekstra
+        bir TCP handshake'in maliyeti ihmal edilebilir."""
+        self.close_connection = True
+        qs = parse_qs(urlparse(self.path).query)
+        name = (qs.get("name") or [""])[0].strip()
+        lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+        dir_path = (qs.get("path") or [""])[0].strip() or None
+        filename = (qs.get("filename") or [""])[0].strip()
+        overwrite = (qs.get("overwrite") or [""])[0] == "1"
+        host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+
+        if not name:
+            self._json(_err(lang, "name_required"), status=400)
+            return
+        if not filename:
+            self._json(_err(lang, "filename_required"), status=400)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            self._json(_err(lang, "files_empty_upload"), status=400)
+            return
+        if length > files_mod.MAX_UPLOAD_BYTES:
+            limit_mb = files_mod.MAX_UPLOAD_BYTES / (1024 * 1024)
+            self._json(_err(lang, "files_upload_too_large", name=name, limit_mb=limit_mb), status=413)
+            return
+
+        if host != LOCAL_HOST_NAME:
+            content_type = self.headers.get("Content-Type") or "application/octet-stream"
+            query = {"name": name, "lang": lang, "filename": filename,
+                      "overwrite": "1" if overwrite else "0"}
+            if dir_path:
+                query["path"] = dir_path
+            result, status = web_hosts.proxy_post_raw(
+                web_hosts.FILE_UPLOAD_PATH, host, query, self.rfile, length, content_type,
+            )
+            self._json(result, status=status)
+            return
+
+        s, err = _files_resolve(name, lang)
+        if err:
+            self._json(err, status=404)
+            return
+        dest, code = files_mod.resolve_upload_target(s, dir_path, filename, overwrite=overwrite)
+        if code:
+            status = 409 if code == "exists" else 400
+            self._json(_err(lang, f"files_{code}", name=name, filename=filename), status=status)
+            return
+        try:
+            remaining = length
+            with open(dest, "wb") as f:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(_UPLOAD_CHUNK, remaining))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    remaining -= len(chunk)
+        except OSError as e:
+            try:
+                os.unlink(dest)
+            except OSError:
+                pass
+            self._json({"ok": False, "error": str(e)}, status=200)
+            return
+        self._json({"ok": True, "path": dest}, status=200)
+
     def do_GET(self):
         path = urlparse(self.path).path
         # /assets/* (ve /favicon.svg) token KONTROLÜ OLMADAN erişilebilir olmak
@@ -3206,6 +3297,15 @@ class _Handler(BaseHTTPRequestHandler):
             self._unauthorized()
             return
         path = urlparse(self.path).path
+        if path == "/api/files/upload":
+            # `_handle_files_download`'ın (do_GET'te) AYNI istisnası: gövde
+            # JSON değil ham dosya baytları, aşağıdaki genel allowlist +
+            # `self.rfile.read(length)` + `json.loads(...)` zincirine HİÇ
+            # girmemeli (hem yanlış-negatif JSON-parse hatası verir hem de
+            # streaming'in tüm amacını — dosyayı tek seferde belleğe almamak
+            # — baştan geçersiz kılardı).
+            self._handle_files_upload()
+            return
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
