@@ -21,7 +21,15 @@
  * with a `window.confirm` before resending with `overwrite`.
  */
 import { useEffect, useRef, useState } from "react";
-import { apiFilesUpload, apiVscodeOpen, filesDownloadUrl, getFilesList } from "../../api/client";
+import {
+  apiFilesDelete,
+  apiFilesMkdir,
+  apiFilesRename,
+  apiFilesUpload,
+  apiVscodeOpen,
+  filesDownloadUrl,
+  getFilesList,
+} from "../../api/client";
 import { callAction } from "../../api/errors";
 import type { FileEntry, FileRoot } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
@@ -139,6 +147,42 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
     setRefreshKey((k) => k + 1);
   }
 
+  async function handleNewFolder() {
+    const folderName = window.prompt(t.filesNewFolderPrompt);
+    if (!folderName || !folderName.trim()) return;
+    try {
+      const res = await apiFilesMkdir(name, lang, path, folderName.trim(), host);
+      if (!res.ok) alert(t.filesActionError + res.error);
+      else setRefreshKey((k) => k + 1);
+    } catch (e) {
+      alert(t.filesActionError + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function handleDelete(entry: FileEntry) {
+    const template = entry.is_dir ? t.filesDeleteConfirmFolder : t.filesDeleteConfirm;
+    if (!window.confirm(template.replace("{name}", entry.name))) return;
+    try {
+      const res = await apiFilesDelete(name, lang, joinPath(path, entry.name), host);
+      if (!res.ok) alert(t.filesActionError + res.error);
+      else setRefreshKey((k) => k + 1);
+    } catch (e) {
+      alert(t.filesActionError + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function handleRename(entry: FileEntry) {
+    const newName = window.prompt(t.filesRenamePrompt, entry.name);
+    if (!newName || !newName.trim() || newName.trim() === entry.name) return;
+    try {
+      const res = await apiFilesRename(name, lang, joinPath(path, entry.name), newName.trim(), host);
+      if (!res.ok) alert(t.filesActionError + res.error);
+      else setRefreshKey((k) => k + 1);
+    } catch (e) {
+      alert(t.filesActionError + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
   return (
     <div style={BOX_STYLE}>
       {roots.length > 1 && (
@@ -178,6 +222,13 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
           onClick={() => fileInputRef.current?.click()}
         >
           {t.filesUpload}
+        </button>
+        <button
+          type="button"
+          style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
+          onClick={() => void handleNewFolder()}
+        >
+          {t.filesNewFolder}
         </button>
         <input
           ref={fileInputRef}
@@ -225,8 +276,10 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
               <FileRow key={e.name} entry={e} onOpenDir={() => setCurrentPath(joinPath(path, e.name))}
                        downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name), host)}
                        downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
+                       deleteLabel={t.filesDelete} renameLabel={t.filesRename}
                        onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
-                       onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name)), "vscode", t)} />
+                       onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name)), "vscode", t)}
+                       onDelete={() => void handleDelete(e)} onRename={() => void handleRename(e)} />
             ))}
           </div>
         )}
@@ -239,7 +292,8 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
 }
 
 function FileRow({
-  entry, onOpenDir, downloadUrl, downloadLabel, viewLabel, vscodeLabel, onView, onOpenVscode,
+  entry, onOpenDir, downloadUrl, downloadLabel, viewLabel, vscodeLabel, deleteLabel, renameLabel,
+  onView, onOpenVscode, onDelete, onRename,
 }: {
   entry: FileEntry;
   onOpenDir: () => void;
@@ -247,19 +301,38 @@ function FileRow({
   downloadLabel: string;
   viewLabel: string;
   vscodeLabel: string;
+  deleteLabel: string;
+  renameLabel: string;
   onView: (() => void) | null;
   onOpenVscode: () => void;
+  onDelete: () => void;
+  onRename: () => void;
 }) {
   const rowStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: ".4rem",
     padding: ".25rem 0", borderBottom: "1px solid var(--border)", fontSize: ".85rem",
   };
+  // Rename/delete apply equally to files and directories — rendered once,
+  // shared by both branches below (only the leading icon/name area differs).
+  const mutationButtons = (
+    <>
+      <button type="button" title={renameLabel} style={{ whiteSpace: "nowrap" }} onClick={onRename}>
+        {renameLabel}
+      </button>
+      <button type="button" title={deleteLabel} style={{ whiteSpace: "nowrap" }} onClick={onDelete}>
+        {deleteLabel}
+      </button>
+    </>
+  );
   if (entry.is_dir) {
     return (
-      <button type="button" onClick={onOpenDir} style={{ ...rowStyle, width: "100%", textAlign: "left", background: "none" }}>
-        <span>📁</span>
-        <span style={{ flex: 1, overflowWrap: "anywhere" }}>{entry.name}</span>
-      </button>
+      <div style={rowStyle}>
+        <button type="button" onClick={onOpenDir} style={{ flex: 1, textAlign: "left", background: "none", display: "flex", gap: ".4rem" }}>
+          <span>📁</span>
+          <span style={{ overflowWrap: "anywhere" }}>{entry.name}</span>
+        </button>
+        {mutationButtons}
+      </div>
     );
   }
   return (
@@ -278,6 +351,7 @@ function FileRow({
       <a href={downloadUrl} download={entry.name} style={{ whiteSpace: "nowrap" }}>
         {downloadLabel}
       </a>
+      {mutationButtons}
     </div>
   );
 }

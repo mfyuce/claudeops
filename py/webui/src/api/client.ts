@@ -28,8 +28,11 @@ import type {
   DiagRestartResult,
   DiagSpawnTestResult,
   EditResult,
+  FilesDeleteResult,
   FilesListResult,
+  FilesMkdirResult,
   FilesReadResult,
+  FilesRenameResult,
   FilesUploadResult,
   FilesValidateResult,
   GetHostsResult,
@@ -208,6 +211,35 @@ export function apiFilesUpload(
     xhr.send(file);
   });
 }
+
+/** `/api/files/delete` — files AND directories (recursive). No undo/trash;
+ * `FilesView.tsx` gets a `window.confirm` before calling this. */
+export const apiFilesDelete = (name: string, lang: Lang, path: string, host?: string): Promise<FilesDeleteResult> =>
+  apiPost<FilesDeleteResult>("/api/files/delete", { name, lang, path, host: host || "local" });
+
+/** `/api/files/rename` — same-directory rename only (not a cross-directory
+ * move), `newName` is stripped to its basename server-side regardless. */
+export const apiFilesRename = (
+  name: string,
+  lang: Lang,
+  path: string,
+  newName: string,
+  host?: string
+): Promise<FilesRenameResult> =>
+  apiPost<FilesRenameResult>("/api/files/rename", { name, lang, path, new_name: newName, host: host || "local" });
+
+/** `/api/files/mkdir` — `dirPath` omitted creates inside the session's
+ * first root. */
+export const apiFilesMkdir = (
+  name: string,
+  lang: Lang,
+  dirPath: string | undefined,
+  folderName: string,
+  host?: string
+): Promise<FilesMkdirResult> =>
+  apiPost<FilesMkdirResult>("/api/files/mkdir", {
+    name, lang, folder_name: folderName, host: host || "local", ...(dirPath ? { path: dirPath } : {}),
+  });
 
 /** `path` omitted → opens the session's project root (whole project). Only
  * useful physically at the machine (or viewing it via Uzak Masaüstü) — VS

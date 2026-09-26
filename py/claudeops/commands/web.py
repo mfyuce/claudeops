@@ -41,7 +41,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
 
@@ -227,9 +227,15 @@ ERR = {
     "files_empty_upload": {"tr": "gönderilen dosya boş", "en": "uploaded file is empty"},
     "files_upload_too_large": {"tr": "{name}: dosya yükleme sınırını aşıyor (>{limit_mb:.0f}MB)",
                                 "en": "{name}: file exceeds the upload size limit (>{limit_mb:.0f}MB)"},
-    "files_bad_filename": {"tr": "{name}: geçersiz dosya adı", "en": "{name}: invalid filename"},
+    "files_bad_filename": {"tr": "{name}: geçersiz ad", "en": "{name}: invalid name"},
     "files_exists": {"tr": "{name}: '{filename}' zaten var (üzerine yazmak için overwrite gönderin)",
                       "en": "{name}: '{filename}' already exists (send overwrite to replace it)"},
+    "files_is_root": {"tr": "{name}: kök klasörün kendisi silinemez/adı değiştirilemez",
+                       "en": "{name}: the root folder itself can't be deleted or renamed"},
+    "files_target_exists": {"tr": "{name}: '{filename}' zaten var", "en": "{name}: '{filename}' already exists"},
+    "files_io_error": {"tr": "{name}: {detail}", "en": "{name}: {detail}"},
+    "new_name_required": {"tr": "new_name gerekli", "en": "new_name is required"},
+    "folder_name_required": {"tr": "folder_name gerekli", "en": "folder_name is required"},
     "vscode_not_found": {"tr": "VS Code CLI (`code`) bu makinede bulunamadı",
                           "en": "VS Code CLI (`code`) not found on this machine"},
     "not_registered": {"tr": "{name}: roster'da kayıtlı değil", "en": "{name}: not in the roster"},
@@ -1596,6 +1602,53 @@ def _files_validate(name: str, paths: list, lang: str = "tr") -> dict:
         return {"ok": True, "valid": []}
     candidates = [p for p in paths if isinstance(p, str)][:_MAX_VALIDATE_CANDIDATES]
     return {"ok": True, "valid": files_mod.validate_candidates(s, candidates)}
+
+
+def _files_mutation_err(lang: str, name: str, target: str, result: dict) -> dict:
+    """`delete_path`/`rename_path`/`make_folder`'ın dict-hata kodlarını
+    (`files.py` katmanı) `files_<kod>` ERR şablonlarına çeviren TEK yer —
+    üç `_files_*` wrapper'ının da tekrarlamaması için. `target`, hata
+    mesajındaki `{filename}` yer tutucusuna geçen isim (silinen/yeniden
+    adlandırılan/oluşturulan şeyin adı)."""
+    code = result["error"]
+    status = {"forbidden": 403, "is_root": 400, "not_found": 404,
+              "bad_filename": 400, "exists": 409, "io_error": 500}.get(code, 400)
+    # "exists" için upload'ın files_exists'i DEĞİL — o "overwrite gönderin"
+    # ipucu taşıyor, ama delete/rename/mkdir'de overwrite diye bir kavram
+    # yok (mkdir'de anlamsız, rename'de ayrı bir isim seçmek gerekiyor).
+    key = "files_target_exists" if code == "exists" else f"files_{code}"
+    err = _err(lang, key, name=name, filename=target, detail=result.get("detail", ""))
+    return err, status
+
+
+def _files_delete(name: str, path: str, lang: str = "tr") -> Tuple[dict, int]:
+    s, err = _files_resolve(name, lang)
+    if err:
+        return err, 404
+    result = files_mod.delete_path(s, path)
+    if not result["ok"]:
+        return _files_mutation_err(lang, name, os.path.basename(path.rstrip("/")), result)
+    return result, 200
+
+
+def _files_rename(name: str, path: str, new_name: str, lang: str = "tr") -> Tuple[dict, int]:
+    s, err = _files_resolve(name, lang)
+    if err:
+        return err, 404
+    result = files_mod.rename_path(s, path, new_name)
+    if not result["ok"]:
+        return _files_mutation_err(lang, name, new_name, result)
+    return result, 200
+
+
+def _files_mkdir(name: str, dir_path: Optional[str], folder_name: str, lang: str = "tr") -> Tuple[dict, int]:
+    s, err = _files_resolve(name, lang)
+    if err:
+        return err, 404
+    result = files_mod.make_folder(s, dir_path, folder_name)
+    if not result["ok"]:
+        return _files_mutation_err(lang, name, folder_name, result)
+    return result, 200
 
 
 def _open_in_vscode(target: str) -> None:
@@ -3313,6 +3366,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/term/open-window", "/api/settings", "/api/usage", "/api/context",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
+                         "/api/files/delete", "/api/files/rename", "/api/files/mkdir",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
@@ -3405,6 +3459,50 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_files_validate(name, paths, lang=lang))
+            return
+
+        if path == "/api/files/delete":
+            name = (data.get("name") or "").strip()
+            fpath = (data.get("path") or "").strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            if not fpath:
+                self._json(_err(lang, "path_required"), status=400)
+                return
+            result, status = _files_delete(name, fpath, lang=lang)
+            self._json(result, status=status)
+            return
+
+        if path == "/api/files/rename":
+            name = (data.get("name") or "").strip()
+            fpath = (data.get("path") or "").strip()
+            new_name = (data.get("new_name") or "").strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            if not fpath:
+                self._json(_err(lang, "path_required"), status=400)
+                return
+            if not new_name:
+                self._json(_err(lang, "new_name_required"), status=400)
+                return
+            result, status = _files_rename(name, fpath, new_name, lang=lang)
+            self._json(result, status=status)
+            return
+
+        if path == "/api/files/mkdir":
+            name = (data.get("name") or "").strip()
+            dir_path = (data.get("path") or "").strip() or None
+            folder_name = (data.get("folder_name") or "").strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            if not folder_name:
+                self._json(_err(lang, "folder_name_required"), status=400)
+                return
+            result, status = _files_mkdir(name, dir_path, folder_name, lang=lang)
+            self._json(result, status=status)
             return
 
         if path == "/api/vscode/open":

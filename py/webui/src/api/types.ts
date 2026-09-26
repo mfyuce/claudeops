@@ -539,6 +539,14 @@ export type FilesReadResult = ApiResult<{ text: string }>;
 /** `_handle_files_upload()` — the destination path actually written. */
 export type FilesUploadResult = ApiResult<{ path: string }>;
 
+/** `_files_delete()` — no extra data, just ok/error. */
+export type FilesDeleteResult = SimpleResult;
+
+/** `_files_rename()`/`_files_mkdir()` — the resulting real path (renamed-to
+ * or newly-created), so the caller could jump straight to it if it wanted. */
+export type FilesRenameResult = ApiResult<{ path: string }>;
+export type FilesMkdirResult = ApiResult<{ path: string }>;
+
 /** `_files_validate()` — candidate path strings (regex-matched out of raw
  * terminal text) filtered down to ones that resolve to a real, allowed
  * file; `valid` is absolute paths, deduplicated, in input order. */

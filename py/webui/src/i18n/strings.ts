@@ -170,6 +170,14 @@ export interface Strings {
   filesUploadHint: string;
   filesUploadError: string;
   filesUploadConfirmOverwrite: string;
+  filesNewFolder: string;
+  filesNewFolderPrompt: string;
+  filesDelete: string;
+  filesDeleteConfirm: string;
+  filesDeleteConfirmFolder: string;
+  filesRename: string;
+  filesRenamePrompt: string;
+  filesActionError: string;
   nothingRunning: string;
   unregBadge: string;
   unregHint: string;
@@ -562,6 +570,14 @@ export const STRINGS: Record<Lang, Strings> = {
     filesUploadHint: "veya dosyaları buraya sürükleyin",
     filesUploadError: "yükleme başarısız: ",
     filesUploadConfirmOverwrite: "'{name}' zaten var, üzerine yazılsın mı?",
+    filesNewFolder: "+ 📁 yeni klasör",
+    filesNewFolderPrompt: "yeni klasör adı:",
+    filesDelete: "🗑",
+    filesDeleteConfirm: "'{name}' silinsin mi? Bu geri alınamaz.",
+    filesDeleteConfirmFolder: "'{name}' klasörü İÇİNDEKİ HER ŞEYLE birlikte silinsin mi? Bu geri alınamaz.",
+    filesRename: "✏️",
+    filesRenamePrompt: "yeni ad:",
+    filesActionError: "işlem başarısız: ",
     nothingRunning: "Hiçbir şey çalışmıyor — \"Kayıtlı\" sekmesinden başlatın.",
     unregBadge: "kayıtsız",
     unregHint: "roster.tsv'de kayıtlı değil (proc-scan'den bulundu) — claudeops'un açmadığı bir pencere; \"devral\"a basarsanız remote-control eklenip roster'a kalıcı kaydedilir",
@@ -980,6 +996,14 @@ export const STRINGS: Record<Lang, Strings> = {
     filesUploadHint: "or drag files here",
     filesUploadError: "upload failed: ",
     filesUploadConfirmOverwrite: "'{name}' already exists, overwrite?",
+    filesNewFolder: "+ 📁 new folder",
+    filesNewFolderPrompt: "new folder name:",
+    filesDelete: "🗑",
+    filesDeleteConfirm: "Delete '{name}'? This can't be undone.",
+    filesDeleteConfirmFolder: "Delete the folder '{name}' AND EVERYTHING IN IT? This can't be undone.",
+    filesRename: "✏️",
+    filesRenamePrompt: "new name:",
+    filesActionError: "action failed: ",
     nothingRunning: "Nothing running — start from the \"Registered\" tab.",
     unregBadge: "unregistered",
     unregHint: "not in roster.tsv (found via proc-scan) — a window claudeops didn't open; click \"adopt\" to attach remote-control and register it permanently",
