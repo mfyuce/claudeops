@@ -91,13 +91,25 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
 
   /** Same shape/defaults as `startPayloadFor`, for the `restart`/`newchat`
    * actions' `/api/new-chat` call — `base` instead of `name`, no `fresh`
-   * (a new chat is always a fresh spawn by construction). */
+   * (a new chat is always a fresh spawn by construction).
+   *
+   * 2026-09-28 fix (same root cause + same fix as OptionsRow.tsx's `model`
+   * useState): while `s` is running, prefer its own current model over the
+   * aggregator's configured default — a bulk "restart" on a session running
+   * a model claudeops has no live channel for (e.g. ucli's own in-REPL
+   * `/model`) used to silently revert to the configured default instead of
+   * staying put. */
   function newChatPayloadFor(s: SessionInfo): NewChatPayload {
     const cliOptions = cliOptionsFor(data, s.host, s.cli);
     return {
       base: s.name,
       host: s.host,
-      model: s.host === LOCAL_HOST ? (data?.settings.default_model[s.cli] ?? "") : "",
+      model:
+        s.host !== LOCAL_HOST
+          ? ""
+          : s.running && s.model
+            ? s.model
+            : (data?.settings.default_model[s.cli] ?? ""),
       permission_mode: DEFAULT_PERMISSION_MODE,
       effort: defaultEffort(cliOptions),
       cli: s.cli,
