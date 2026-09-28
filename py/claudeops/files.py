@@ -137,7 +137,12 @@ def resolve_upload_target(s: Session, dir_path: Optional[str], filename: str,
     if not safe_name or safe_name in (".", ".."):
         return None, "bad_filename"
     dest = os.path.join(real_dir, safe_name)
-    if not overwrite and os.path.exists(dest):
+    # lexists (not exists): a DANGLING symlink at dest has exists()==False (its
+    # target doesn't exist) but IS a real directory entry — overwrite=False must
+    # still refuse it, otherwise the actual write (web.py's upload handler)
+    # would silently create the file at wherever the dangling link points,
+    # possibly outside every root (Codex F04, live-confirmed).
+    if not overwrite and os.path.lexists(dest):
         return None, "exists"
     return dest, None
 
@@ -164,13 +169,23 @@ def delete_path(s: Session, path: str) -> dict:
         return {"ok": False, "error": "forbidden"}
     if _is_a_root(real, roots):
         return {"ok": False, "error": "is_root"}
-    if not os.path.exists(real):
+    # lexists+islink on `path` (the UNRESOLVED argument), never on `real`: `real`
+    # is already fully symlink-resolved (`_resolve_within_roots`'s realpath()),
+    # so `os.path.islink(real)` can never be true and this check was previously
+    # a no-op — a symlink leaf silently fell through to the isdir(real) branch
+    # and `shutil.rmtree(real)` deleted the RESOLVED TARGET, not the symlink
+    # (Codex F06, live-confirmed: `shortcut -> data/`, deleting "shortcut"
+    # deleted data/ and left the now-dangling "shortcut" link behind). `path`'s
+    # own final component is never resolved by the kernel on remove/rename, so
+    # checking/operating on `path` is the correct fix; `real` stays only for the
+    # roots-boundary check above.
+    if not os.path.lexists(path):
         return {"ok": False, "error": "not_found"}
     try:
-        if os.path.isdir(real) and not os.path.islink(real):
-            shutil.rmtree(real)
+        if os.path.isdir(real) and not os.path.islink(path):
+            shutil.rmtree(path)
         else:
-            os.remove(real)
+            os.remove(path)
     except OSError as e:
         return {"ok": False, "error": "io_error", "detail": str(e)}
     return {"ok": True}
@@ -187,21 +202,25 @@ def rename_path(s: Session, path: str, new_name: str) -> dict:
         return {"ok": False, "error": "forbidden"}
     if _is_a_root(real, roots):
         return {"ok": False, "error": "is_root"}
-    if not os.path.exists(real):
+    # Same class of bug as delete_path (see its comment): operate on the
+    # UNRESOLVED `path`, not `real` — `os.rename(real, ...)` on a symlink leaf
+    # would rename the RESOLVED TARGET in place, leaving the original symlink
+    # dangling/unchanged instead of renaming the link itself.
+    if not os.path.lexists(path):
         return {"ok": False, "error": "not_found"}
     safe_name = os.path.basename((new_name or "").strip())
     if not safe_name or safe_name in (".", ".."):
         return {"ok": False, "error": "bad_filename"}
-    new_real = os.path.join(os.path.dirname(real), safe_name)
-    if new_real == real:
+    new_path = os.path.join(os.path.dirname(path), safe_name)
+    if new_path == path:
         return {"ok": True, "path": real}
-    if os.path.exists(new_real):
+    if os.path.lexists(new_path):
         return {"ok": False, "error": "exists"}
     try:
-        os.rename(real, new_real)
+        os.rename(path, new_path)
     except OSError as e:
         return {"ok": False, "error": "io_error", "detail": str(e)}
-    return {"ok": True, "path": new_real}
+    return {"ok": True, "path": new_path}
 
 
 def make_folder(s: Session, dir_path: Optional[str], folder_name: str) -> dict:

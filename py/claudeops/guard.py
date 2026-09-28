@@ -20,15 +20,25 @@ from .providers import get_provider
 from .roster import read_roster, read_models, RosterEntry
 from .settings import default_model_for
 from .spawn import spawn_session, detect_display
-from .paths import GUARD_LOCK
+from .paths import GUARD_LOCK, ensure_private_state_dir
 
 
 @contextmanager
 def guard_lock(timeout: float = 10.0):
-    """guard.lock'u exclusive flock ile tut."""
+    """guard.lock'u exclusive flock ile tut.
+
+    `GUARD_LOCK` artık `~/.claude/claudeops/` altında (bkz. paths.py) — eskiden
+    `/tmp/claudeops/guard.lock` idi: dünya-yazılabilir `/tmp` altında paylaşılan
+    bir dosya, kullanıcı-ayrımı yok + `open(..., "w")` hem flock'tan ÖNCE
+    truncate ediyordu hem de bir symlink'i sessizce takip ederdi (Codex F03,
+    canlı symlink+flock-contention deneyiyle doğrulandı — `/tmp/claudeops` 0775
+    ölçüldü). `os.open(..., O_NOFOLLOW)` + append-mode (asla O_TRUNC) + hedef
+    artık bu kullanıcıya özel (0700, `ensure_private_state_dir`) bu sınıfı
+    kapatıyor."""
+    ensure_private_state_dir()
     lock_dir = os.path.dirname(GUARD_LOCK)
     os.makedirs(lock_dir, exist_ok=True)
-    fd = open(GUARD_LOCK, "w")
+    fd = os.fdopen(os.open(GUARD_LOCK, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600), "w")
     try:
         start = time.monotonic()
         while True:

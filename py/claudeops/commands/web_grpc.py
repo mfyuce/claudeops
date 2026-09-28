@@ -264,7 +264,7 @@ class _HostBridgeServicer(pb2_grpc.HostBridgeServicer):
             except Exception:
                 payload = None
             if payload is not None:
-                key = (payload.get("ok"), payload.get("text"), payload.get("cols"),
+                key = (payload.get("ok"), payload.get("text"), payload.get("masked"), payload.get("cols"),
                        payload.get("rows"), payload.get("error"))
                 now = time.monotonic()
                 if key != last_key or (now - last_sent) >= web_ws._HEARTBEAT_SECONDS:

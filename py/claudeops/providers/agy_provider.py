@@ -223,7 +223,7 @@ class AgyProvider(CliProvider):
                              resume_id, prompt, session_name, extra_args: Sequence[str] = ()) -> str:
         # Mutlak yol — bkz. claude_provider.py'deki aynı fix'in yorumu (pane'in kendi
         # PATH'i tmux server'ın miras kaldığından farklı/eksik olabilir).
-        parts = [resolved_binary("agy")]
+        parts = [shlex.quote(resolved_binary("agy"))]
         if resume_id:
             parts += ["--conversation", shlex.quote(resume_id)]
         parts += ["--model", shlex.quote(model)]

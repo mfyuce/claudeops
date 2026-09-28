@@ -38,6 +38,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -45,6 +46,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .settings import load_settings
+
+# `/api/io/ask`'ın `api_key_env` alanı (bkz. io_providers/ucli_provider.py)
+# doğrulanmadan `_subprocess_env`'de `os.environ`'a anahtar-ADI olarak
+# yazılıyordu — `LD_PRELOAD`/`PYTHONPATH`/`BASH_ENV`/`NODE_OPTIONS` gibi bir
+# İSİM göndermek (değeri her ne olursa olsun) subprocess'e kod enjeksiyonu
+# demekti (Antigravity SEC-06). settings.py'nin BYOK maddesiyle "aynı bug
+# sınıfı" olsa da BİLEREK DAHA SIKI bir desen kullanılıyor: burada meşru tek
+# bir şekil var ("API anahtarımı tutan env-var'ın adı"), `COPILOT_PROVIDER_
+# BASE_URL`/`_MODEL` gibi API-key-DIŞI meşru BYOK alanları (settings.py'nin
+# izin verdiği) bu yüzeyde hiç yok — TODO.md'nin kendi önerisi
+# (`^[A-Z0-9_]+_API_KEY$`) izlendi, genel `^[A-Z_][A-Z0-9_]*$` DEĞİL (o,
+# "LD_PRELOAD" gibi sözdizimsel-geçerli ama anlamsal-tehlikeli bir ismi
+# BURADA geçirirdi — canlı test bunu doğruladı, settings.py'nin daha gevşek
+# deseni bilerek BAŞKA bir yüzey için, bkz. o dosyanın yorumu)."
+_SAFE_ENV_NAME_RE = re.compile(r"^[A-Z0-9_]+_API_KEY$")
 
 
 class UcliError(RuntimeError):
@@ -137,6 +153,8 @@ def _subprocess_env(api_key_env: str, api_key: Optional[str]) -> Optional[Dict[s
     (ör. web formu) açıkça bir anahtar geçtiğinde devreye girer."""
     if api_key is None:
         return None
+    if not _SAFE_ENV_NAME_RE.match(api_key_env or ""):
+        raise UcliError(f"invalid api_key_env name: {api_key_env!r}")
     return {**os.environ, api_key_env: api_key}
 
 

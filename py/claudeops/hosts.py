@@ -14,10 +14,13 @@ değil) yeniden uygulanır, çünkü bu dosya (token rotasyonu/host ekleme-çık
 ile) sık sık yeniden yazılıyor.
 """
 from __future__ import annotations
+import ipaddress
 import json
 import os
 import re
+import socket
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from .atomic_json import atomic_write_json
 from .paths import CLAUDEOPS_DIR
@@ -51,6 +54,12 @@ ERR: Dict[str, Dict[str, str]] = {
         "tr": "ek URL listesindeki bir adres http:// veya https:// ile başlamıyor",
         "en": "one of the extra URLs doesn't start with http:// or https://",
     },
+    "blocked_host": {
+        "tr": "bu adres loopback veya link-local bir IP'ye işaret ediyor (ör. bulut metadata "
+              "servisi) — uzak host olarak kaydedilemez",
+        "en": "this address points at a loopback or link-local IP (e.g. a cloud metadata "
+              "service) — it cannot be registered as a remote host",
+    },
     "token_required": {
         "tr": "yeni bir host için token zorunlu",
         "en": "token is required for a new host",
@@ -60,6 +69,51 @@ ERR: Dict[str, Dict[str, str]] = {
 
 def _err(lang: str, key: str) -> Dict[str, Any]:
     return {"ok": False, "error": ERR[key]["en" if lang == "en" else "tr"]}
+
+
+def _host_is_blocked(url: str) -> bool:
+    """True if `url`'s hostname resolves to an IP in a range that should never
+    be a legitimate remote-host registration target: loopback (a "remote" host
+    pointing at this same machine serves no documented use here) or link-local
+    (169.254.0.0/16 — this is how AWS/GCP/Azure/DigitalOcean all expose their
+    cloud-metadata endpoint at 169.254.169.254; registering it would make the
+    background poller/prober fetch it automatically on save, an SSRF
+    primitive). RFC1918 private ranges (10/8, 172.16/12, 192.168/16) are
+    deliberately NOT blocked: this module's whole point is registering LAN
+    hosts (see module docstring).
+
+    Resolves via `socket.getaddrinfo()` rather than `ipaddress.ip_address()`
+    alone (2026-09-28 code-review finding, confirmed live): the strict-parse
+    version let `::ffff:169.254.169.254` (an IPv4-mapped IPv6 literal —
+    `ipaddress.ip_address(...).is_link_local` is False for this form even
+    though the plain-v4 form is True) and legacy IPv4 notations like
+    `2130706433`/`0x7f000001`/`017700000001`/`127.1` (all of which
+    `ipaddress.ip_address()` rejects as invalid, yet this machine's own
+    `getaddrinfo()` resolves every one of them straight to `127.0.0.1`) slip
+    through as "not a literal IP, must be a DNS name" — `getaddrinfo` resolves
+    a literal IP purely locally (no network call), so this costs nothing for
+    the common case; for an ACTUAL DNS hostname it now also performs the same
+    resolution the real connection would anyway, at registration time (a
+    resolution failure is treated as "can't tell, don't block" — the same
+    fail-open posture as the rest of this codebase's validation helpers)."""
+    host = urlparse(url).hostname or ""
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    for info in infos:
+        raw_ip = info[4][0]
+        try:
+            ip = ipaddress.ip_address(raw_ip)
+        except ValueError:
+            continue
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        if ip.is_loopback or ip.is_link_local:
+            return True
+    return False
 
 
 def load_hosts() -> List[Dict[str, str]]:
@@ -129,6 +183,9 @@ def save_host(
     for u in extra_list:
         if not (u.startswith("http://") or u.startswith("https://")):
             return _err(lang, "invalid_extra_url")
+    if _host_is_blocked(base_url) or (grpc_url and _host_is_blocked(grpc_url)) \
+            or any(_host_is_blocked(u) for u in extra_list):
+        return _err(lang, "blocked_host")
 
     hosts = load_hosts()
     existing = next((h for h in hosts if h.get("name") == name), None)

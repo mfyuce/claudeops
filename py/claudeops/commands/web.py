@@ -61,7 +61,7 @@ from .. import files as files_mod
 from .. import instances as inst_mod
 from .. import remote_desktop
 from ..session import Session
-from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
+from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV, ensure_private_state_dir
 from ..settings import default_model_for, load_settings, save_settings
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
@@ -268,16 +268,29 @@ def _msg(lang: str, key: str, **kwargs) -> str:
 
 
 def _load_or_create_token() -> str:
+    # Var olan dosyayı GÜVENMEDEN önce doğrula: `os.open(..., O_NOFOLLOW)` bir
+    # symlink'i takip etmeyi reddeder (biri /tmp tarzı paylaşılan bir yere
+    # `web.token`'ı kendi bildiği bir dosyaya symlink'lemiş olabilir — bu
+    # dosyayı OKURKEN o riski taşımayız, ama YİNE DE mode'u retroaktif
+    # 0600'e sabitliyoruz: `os.open` ilk oluşturmadan SONRA bir mode
+    # DEĞİŞTİRMEZ, önceden (bu fix'ten önce) gevşek izinle kalmış bir dosya
+    # sonsuza dek öyle kalırdı (Codex'in "Ek bulgular" tablosu + deepseek L2,
+    # bağımsız ikinci kaynak).
     try:
-        with open(TOKEN_FILE, encoding="utf-8") as f:
+        fd = os.open(TOKEN_FILE, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        fd = None
+    except OSError as e:
+        raise RuntimeError(f"{TOKEN_FILE} is a symlink or unreadable — refusing to trust it: {e}") from e
+    if fd is not None:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, encoding="utf-8") as f:
             tok = f.read().strip()
             if tok:
                 return tok
-    except FileNotFoundError:
-        pass
     tok = secrets.token_hex(24)
     os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
-    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(tok)
     return tok
@@ -1549,6 +1562,7 @@ def _term_resolve_for_output(name: str, lang: str = "tr"):
 
 _MAX_VALIDATE_CANDIDATES = 20  # bir terminal-metni taramasından gelen aday listesini sınırla — her aday bir stat() çağrısı, sınırsız liste kabul etmeye gerek yok
 _UPLOAD_CHUNK = 1024 * 1024  # _handle_files_upload'ın yerel yazma döngüsü bunun katları halinde okur/yazar — tüm dosya tek seferde belleğe alınmasın diye
+_MAX_JSON_BODY_BYTES = 16 * 1024 * 1024  # do_POST'un genel JSON gövdesi tavanı — dosya upload'ı ayrı/çok daha büyük bir yoldan geçiyor (MAX_UPLOAD_BYTES), bu sadece kontrol-düzlemi istekleri için
 
 
 def _files_resolve(name: str, lang: str = "tr"):
@@ -2656,6 +2670,25 @@ def _v1_last_user_text(messages: list) -> str:
 # çağırıyor; davranış (varsayılan `stable_polls=2`, marker/cancel yok)
 # BİREBİR AYNI kaldı.
 
+# Session-adı → kilit — `_v1_chat_completion`'ın "aynı session'a AYNI ANDA iki
+# istek gelirse ikisi de mesajını gönderir, iki bekleme döngüsü aynı 'bitti'
+# sinyalini görüp AYNI metni döndürebilir" (kendi docstring'inin uzun süre
+# kabul ettiği açık) burada kapatılıyor (Codex'in "Ek bulgular" tablosu +
+# deepseek M6, bağımsız 2. kaynak). Kayıt asla temizlenmiyor — `guard_lock`/
+# `atomic_json`'ın thread-id'li tmp-dosya deseniyle AYNI ruh: sınırlı, sabit
+# sayıda session-adı için tutulan küçük bir sözlük, pratikte sızıntı değil.
+_V1_SESSION_LOCKS: Dict[str, threading.Lock] = {}
+_V1_SESSION_LOCKS_GUARD = threading.Lock()
+
+
+def _v1_lock_for(name: str) -> threading.Lock:
+    with _V1_SESSION_LOCKS_GUARD:
+        lock = _V1_SESSION_LOCKS.get(name)
+        if lock is None:
+            lock = threading.Lock()
+            _V1_SESSION_LOCKS[name] = lock
+        return lock
+
 
 def _v1_chat_completion(data) -> tuple:
     """`POST /v1/chat/completions` → (gövde, HTTP durum kodu).
@@ -2664,13 +2697,12 @@ def _v1_chat_completion(data) -> tuple:
     bağlanmadı (v1 kapsamı) — uzak host desteği doğal bir devam adımı, burada
     yapılmadı.
 
-    Session başına SERİLEŞTİRME YOK: aynı session'a AYNI ANDA iki istek gelirse
-    (ThreadingHTTPServer istek-başına-thread) ikisi de mesajını gönderir, CLI
-    ikincisini kuyruğa alır ve iki bekleme döngüsü aynı "bitti" sinyalini
-    görüp AYNI metni döndürebilir. Panelin kendi "mesaj gönder" kutusu da hep
-    böyleydi (aynı pane, aynı yarış) — burada da yeni bir sorun değil, sadece
-    tek-çağıran varsayımı. Gerçekten paralel kullanılacaksa session başına bir
-    kilit doğal devam adımı."""
+    Session başına SERİLEŞTİRME: `_v1_lock_for(s.name)` ile aynı session'a
+    AYNI ANDA gelen ikinci bir istek, birincinin tüm turu (baseline→gönder→
+    bekle→dön) bitene kadar bekler — aksi halde ikisi de mesajını gönderir,
+    iki bekleme döngüsü aynı "bitti" sinyalini görüp AYNI metni döndürebilirdi
+    (2026-09-27 review, Codex + deepseek M6 bağımsız buldu). FARKLI
+    session'lara giden istekler birbirini hiç beklemez (kilit isim-bazlı)."""
     if not isinstance(data, dict):
         return _v1_error("request body must be a JSON object"), 400
 
@@ -2706,49 +2738,58 @@ def _v1_chat_completion(data) -> tuple:
         return _v1_error(f"'{model}' has no conversation to talk to (its CLI is a plain shell) — "
                           "see GET /v1/models for addressable sessions"), 404
 
-    # Baseline gönderimden ÖNCE: "yeni yanıt geldi mi" sorusunun tek referansı.
-    # None = bu provider'ın okunabilir bir transcript'i yok → yanıtı hiçbir zaman
-    # geri okuyamayız; mesajı GÖNDERMEDEN reddet (aksi halde kullanıcının mesajı
-    # session'a düşer ama çağıran timeout alır).
-    baseline = provider.last_exchange(s.cwd, s.sid)
-    if baseline is None:
-        return _v1_error(f"'{model}' runs a CLI whose transcript can't be read back, so its reply "
-                          "can't be returned over this API"), 404
+    # Baseline'dan yanıtın dönüşüne kadar TÜM turu bu session'ın kendi kilidiyle
+    # seriyorluyoruz: aksi halde aynı session'a AYNI ANDA iki istek gelirse
+    # (ThreadingHTTPServer istek-başına-thread) ikisi de kendi mesajını
+    # gönderir, iki bekleme döngüsü aynı "bitti" sinyalini görüp AYNI metni
+    # döndürebilirdi (Codex'in "Ek bulgular" tablosu + deepseek M6, bağımsız
+    # 2. kaynak — fonksiyonun kendi eski docstring'i bunu bilinen bir sınırlama
+    # olarak kabul ediyordu). Kilit SADECE bu session-adına özel — başka bir
+    # session'a giden eşzamanlı bir istek hiç beklemez.
+    with _v1_lock_for(s.name):
+        # Baseline gönderimden ÖNCE: "yeni yanıt geldi mi" sorusunun tek referansı.
+        # None = bu provider'ın okunabilir bir transcript'i yok → yanıtı hiçbir zaman
+        # geri okuyamayız; mesajı GÖNDERMEDEN reddet (aksi halde kullanıcının mesajı
+        # session'a düşer ama çağıran timeout alır).
+        baseline = provider.last_exchange(s.cwd, s.sid)
+        if baseline is None:
+            return _v1_error(f"'{model}' runs a CLI whose transcript can't be read back, so its reply "
+                              "can't be returned over this API"), 404
 
-    # `s.sid` bilinmiyorsa (fresh/hiç resume edilmemiş session — 2026-09-09
-    # canlı bulundu: agy'nin cwd→id cache'i tam olarak bu durumda session
-    # ölene kadar boş kalıyor, `baseline` yukarıda YİNE de boş bir dict olarak
-    # geldiği için 404 DEĞİL sessiz bir 504'e düşüyordu) mesajı göndermeden
-    # ÖNCE ucuz bir "durum" yakala — provider desteklemiyorsa (claude/codex)
-    # None, davranış değişmez. `discover_live_sid()` ile eşleşen çift, bkz.
-    # `_v1_wait_for_reply` docstring'i.
-    live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
+        # `s.sid` bilinmiyorsa (fresh/hiç resume edilmemiş session — 2026-09-09
+        # canlı bulundu: agy'nin cwd→id cache'i tam olarak bu durumda session
+        # ölene kadar boş kalıyor, `baseline` yukarıda YİNE de boş bir dict olarak
+        # geldiği için 404 DEĞİL sessiz bir 504'e düşüyordu) mesajı göndermeden
+        # ÖNCE ucuz bir "durum" yakala — provider desteklemiyorsa (claude/codex)
+        # None, davranış değişmez. `discover_live_sid()` ile eşleşen çift, bkz.
+        # `_v1_wait_for_reply` docstring'i.
+        live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
 
-    diag_log("v1_chat_start", name=s.name, chars=len(user_text))
-    if not tmux_send_keys(s.name, user_text, settle_delay=provider.input_settle_delay()):
-        diag_log("v1_chat_send_failed", name=s.name)
-        return _v1_error(f"failed to deliver the message to session '{s.name}'", "server_error"), 500
+        diag_log("v1_chat_start", name=s.name, chars=len(user_text))
+        if not tmux_send_keys(s.name, user_text, settle_delay=provider.input_settle_delay()):
+            diag_log("v1_chat_send_failed", name=s.name)
+            return _v1_error(f"failed to deliver the message to session '{s.name}'", "server_error"), 500
 
-    reply = turns.wait_for_reply(s, provider, baseline, live_snapshot)
-    if reply is None:
-        diag_log("v1_chat_timeout", name=s.name)
-        return _v1_error(
-            f"'{model}' did not finish a reply within {turns.TIMEOUT_SECONDS:.0f}s. The message WAS "
-            "delivered and may still be processing — check the session, or read the result later.",
-            "timeout_error"), 504
-    diag_log("v1_chat_done", name=s.name, chars=len(reply))
-    return {
-        "id": "chatcmpl-" + secrets.token_hex(12),
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": model,  # çağıranın YAZDIĞI ad (base-eşleşmede `s.name`den farklı olabilir)
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
-        # Gerçek token sayıları burada UCUZA elde edilemiyor: sayan taraf pane'in
-        # içindeki CLI ve bize o sayıyı veren bir arayüz yok. Sıfır bırakmak,
-        # sahte-hassas bir tahmin uydurmaktan iyidir (istemciler alanın VARLIĞINI
-        # bekler, doğruluğuna genelde bağımlı değildir).
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-    }, 200
+        reply = turns.wait_for_reply(s, provider, baseline, live_snapshot)
+        if reply is None:
+            diag_log("v1_chat_timeout", name=s.name)
+            return _v1_error(
+                f"'{model}' did not finish a reply within {turns.TIMEOUT_SECONDS:.0f}s. The message WAS "
+                "delivered and may still be processing — check the session, or read the result later.",
+                "timeout_error"), 504
+        diag_log("v1_chat_done", name=s.name, chars=len(reply))
+        return {
+            "id": "chatcmpl-" + secrets.token_hex(12),
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,  # çağıranın YAZDIĞI ad (base-eşleşmede `s.name`den farklı olabilir)
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
+            # Gerçek token sayıları burada UCUZA elde edilemiyor: sayan taraf pane'in
+            # içindeki CLI ve bize o sayıyı veren bir arayüz yok. Sıfır bırakmak,
+            # sahte-hassas bir tahmin uydurmaktan iyidir (istemciler alanın VARLIĞINI
+            # bekler, doğruluğuna genelde bağımlı değildir).
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }, 200
 
 
 def _proxy_desktop_ws(handler: "_Handler") -> None:
@@ -2862,6 +2903,49 @@ class _Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *a):
         pass  # stdout'u kirletme — sessiz
+
+    def end_headers(self):
+        # Standart sertleştirme header'ları — HİÇBİR yanıtta yoktu (Antigravity
+        # SEC-10). Tek noktadan (her `send_response(...)...end_headers()` zaten
+        # buradan geçiyor) TÜM yollara uygulanır — `_json`/`_serve_static`/
+        # `_unauthorized`/upload/download hepsi dahil.
+        #
+        # CSP: `py/webui/dist/index.html` TEK bir kendi-origin'inden `<script
+        # type=module>` + TEK bir kendi-origin'inden `<link rel=stylesheet>`
+        # içeriyor (Vite build'i doğrulandı) — harici script/font/CDN referansı
+        # YOK, css-in-js kütüphanesi (styled-components/emotion) YOK. React'in
+        # kendi `style={{...}}` prop'u DOM'a CSSOM property-atamasıyla uygulanır
+        # (`el.style.x = ...`), bir `style="..."` HTML attribute'u YAZMAZ — CSP
+        # `style-src` bunu kısıtlamaz. Yine de `style-src`e `'unsafe-inline'`
+        # BİLEREK eklendi (savunma-derinliği tarafında en ucuz taviz): asıl
+        # değerli sınır `script-src 'self'` (inline `<script>` enjeksiyonunu VE
+        # harici script yüklemeyi engeller) — bunu gevşetmedik. `img-src`e
+        # `blob:` ŞART: Uzak Masaüstü (`DesktopTab.tsx`) her video karesini
+        # WS'ten `Blob` olarak alıp `URL.createObjectURL()`'le bir `blob:`
+        # URL'e çeviriyor, `img-src`den `blob:` eksik kalsaydı bu CANLI/
+        # doğrulanmış özelliği sessizce kırardı — CSP eklemeden önce
+        # frontend'de `createObjectURL`/`new Worker`/`eval` taraması yapılıp
+        # bulundu. `connect-src` SADECE `'self'` — `ws:`/`wss:` şema-joker'leri
+        # İLK sürümde vardı ama 2026-09-28 code-review'ı bunun gereksiz geniş
+        # olduğunu buldu: bir CSP kaynağında sadece şema verilip host
+        # verilmezse O ŞEMADAKİ HERHANGİ bir host'a izin verilmiş olur —
+        # frontend'deki `new WebSocket(...)` çağrılarının ÜÇÜ DE (`useStatus.ts`/
+        # `useTermOutput.ts`/`DesktopTab.tsx`) `location.host`'tan URL kuruyor
+        # (uzak-host federasyonu TARAYICI DEĞİL, sunucu tarafında proxy'leniyor
+        # — `host=` query param'ıyla), yani `'self'` tek başına zaten tüm meşru
+        # kullanımı kapsıyor; şema-joker'leri sadece gelecekteki bir XSS'in
+        # keyfi bir `wss://` adresine veri sızdırmasını `script-src 'self'`in
+        # engellemeye çalıştığı SINIFTAN bir delik olarak açık bırakıyordu.
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; "
+            "frame-ancestors 'none'",
+        )
+        super().end_headers()
 
     def _authorized(self) -> bool:
         """Token İKİ yoldan gelebilir — ikisi de AYNI `self.token`'a, AYNI
@@ -3121,22 +3205,46 @@ class _Handler(BaseHTTPRequestHandler):
             status = 409 if code == "exists" else 400
             self._json(_err(lang, f"files_{code}", name=name, filename=filename), status=status)
             return
+        # `dest`'e DOĞRUDAN yazmıyoruz — aynı dizinde bir tmp dosyasına stream
+        # edip SADECE tam `length` bayt geldiyse `os.replace()` ile atomik
+        # takas ediyoruz. Bu tek değişiklik iki bağımsız bulguyu birden kapatır:
+        # (1) Codex F07 (GERÇEK deneyle doğrulandı): istemci `Content-Length`'ten
+        #     AZ bayt gönderip bağlantıyı keserse, eski `open(dest,"wb")` YAZMAYA
+        #     BAŞLADIĞI ANDA (open'ın kendisi truncate eder) önceki sağlam
+        #     dosyayı siler; döngü sessizce `break` edip `ok:true` dönerdi —
+        #     `dest` hiç açılmadığı için artık pre-existing içerik YARIM
+        #     upload'ta bozulamaz.
+        # (2) Codex F04 (GERÇEK symlink deneyiyle doğrulandı): `open(dest,"wb")`
+        #     `dest`'te duran bir symlink'i (var olan YA DA dangling) takip
+        #     ederdi, kök dışında bir dosyayı yazar/oluştururdu. `os.replace()`
+        #     rename(2) semantiğiyle çalışır — hedefte ne olursa olsun (symlink
+        #     dahil) sembolik bağlantıyı TAKİP ETMEDEN doğrudan o dizin
+        #     girdisinin kendisini değiştirir, hiçbir zaman onun hedefine yazmaz.
+        tmp = f"{dest}.upload-{os.getpid()}-{threading.get_ident()}.tmp"
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except OSError as e:
+            self._json({"ok": False, "error": str(e)}, status=200)
+            return
         try:
             remaining = length
-            with open(dest, "wb") as f:
+            with os.fdopen(fd, "wb") as f:
                 while remaining > 0:
                     chunk = self.rfile.read(min(_UPLOAD_CHUNK, remaining))
                     if not chunk:
                         break
                     f.write(chunk)
                     remaining -= len(chunk)
+            if remaining > 0:
+                raise OSError(f"upload incomplete — {remaining} of {length} bytes never arrived")
         except OSError as e:
             try:
-                os.unlink(dest)
+                os.unlink(tmp)
             except OSError:
                 pass
             self._json({"ok": False, "error": str(e)}, status=200)
             return
+        os.replace(tmp, dest)
         self._json({"ok": True, "path": dest}, status=200)
 
     def do_GET(self):
@@ -3374,7 +3482,20 @@ class _Handler(BaseHTTPRequestHandler):
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
-        length = int(self.headers.get("Content-Length", 0) or 0)
+        # Bir negatif (ör. "-1") Content-Length, doğrulanmadan `rfile.read(length)`'e
+        # geçilirse Python'da `read(-1)` = "EOF'a kadar sınırsız oku" anlamına
+        # gelir — bağlantı kapanana kadar bloklar/belleğe sınırsız veri alır
+        # (Codex F09, GERÇEK `Content-Length: -1` deneyiyle doğrulandı). Üst
+        # sınır da JSON kontrol-düzlemi gövdeleri için makul bir tavan (dosya
+        # upload'ı zaten ayrı, çok daha büyük bir limitle — `_UPLOAD_CHUNK`'ın
+        # yanındaki `files_mod.MAX_UPLOAD_BYTES` — bu yoldan hiç geçmiyor).
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            length = -1
+        if length < 0 or length > _MAX_JSON_BODY_BYTES:
+            self._json({"ok": False, "error": "invalid or too-large Content-Length"}, status=400)
+            return
         raw = self.rfile.read(length) if length else b"{}"
         try:
             data = json.loads(raw or b"{}")
@@ -3795,6 +3916,13 @@ def register(sub):
 
 
 def run(args) -> int:
+    # guard cron KASITLI KAPALI (bkz. proje CLAUDE.md) — `guard_lock()`'un aynı
+    # çağrısı pratikte nadiren tetikleniyor. `cops web` TEK her zaman çalışan
+    # süreç olduğu için gerçek/kapsayıcı uygulama noktası burası: roster.tsv/
+    # models.tsv/settings.json/hosts.json/web.token/instances.json/guard.lock/
+    # *_api_key — bu dizindeki HER dosyayı tek seferde 0700'e alır (Antigravity
+    # SEC-11 + Codex'in "Ek bulgular" tablosu).
+    ensure_private_state_dir()
     token = _load_or_create_token()
     if args.print_token:
         print(token)

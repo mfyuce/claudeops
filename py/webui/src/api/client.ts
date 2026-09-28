@@ -63,11 +63,54 @@ import type {
   TestHostResult,
 } from "./types";
 
+// sessionStorage key the URL's `?token=` is persisted under — see
+// `resolveToken()` below.
+const TOKEN_STORAGE_KEY = "claudeops_token";
+
+/** 2026-09-27 security review (Antigravity SEC-04 + related notes on the
+ * token's lifetime in the URL): the page used to just keep `?token=...`
+ * sitting in `location.search` for its whole session — visible in browser
+ * history, easy to shoulder-surf/screen-share, and copy-pastable by anyone
+ * sharing the URL. Resolution order is now: the URL's own `?token=` if
+ * present (the browser's top-level page load and a fresh tab/window link
+ * both carry one) — copied into `sessionStorage` and then stripped from the
+ * visible URL via `history.replaceState` (path/hash/every other query param
+ * preserved) so it doesn't linger there — else whatever this tab previously
+ * stashed in `sessionStorage` (a reload after the strip above has nothing
+ * left in the URL to read). Doesn't change how the token is SENT to the
+ * backend at all (still `?token=` on every fetch/`ws://` URL, see
+ * `withToken()` below) — only where the frontend itself sources the value. */
+function resolveToken(): string {
+  const fromUrl = new URLSearchParams(location.search).get("token");
+  if (fromUrl) {
+    try {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, fromUrl);
+    } catch {
+      // ignore — sessionStorage can throw (private browsing/storage disabled);
+      // worst case the token just isn't recoverable after a later reload
+    }
+    try {
+      const url = new URL(location.href);
+      url.searchParams.delete("token");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    } catch {
+      // ignore — best effort only, the token above is already returned either way
+    }
+    return fromUrl;
+  }
+  try {
+    return sessionStorage.getItem(TOKEN_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
 // Exported so `hooks/useStatus.ts` can build the `/ws?token=...` URL with the
-// exact same token this page loaded with, without re-reading `location.search`
-// a second time (and without `useStatus.ts` needing to know this reads from
-// the query string at all — same module-load-time-constant shape as before).
-export const TOKEN = new URLSearchParams(location.search).get("token") || "";
+// exact same token this page resolved, without re-reading `location.search`/
+// `sessionStorage` a second time (and without `useStatus.ts` needing to know
+// this reads from the query string or storage at all — same module-load-time-
+// constant shape as before).
+export const TOKEN = resolveToken();
 
 /** Same shape as the original PAGE_HTML JS's `withToken()` — append the
  * page's own `?token=` (read once at module load, same as `const TOKEN =

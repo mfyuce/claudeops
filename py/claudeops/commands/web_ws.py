@@ -506,7 +506,7 @@ def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict]) -> None:
         except Exception:
             payload = None  # beklenmeyen bug — bu tick'i atla, thread'i öldürme (_broadcaster_loop'un aynı toleransı)
         if payload is not None:
-            key = (payload.get("ok"), payload.get("text"), payload.get("cols"),
+            key = (payload.get("ok"), payload.get("text"), payload.get("masked"), payload.get("cols"),
                    payload.get("rows"), payload.get("error"))
             now = time.monotonic()
             if key != last_key or (now - last_sent) >= _HEARTBEAT_SECONDS:

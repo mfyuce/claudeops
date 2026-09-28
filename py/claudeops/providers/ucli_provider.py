@@ -198,20 +198,40 @@ def _fetch_live_models() -> Optional[List[str]]:
 # desende (chmod 600, tek-kullanıcı) ayrı bir dosyadan okunuyor; asıl kaynak
 # Ayarlar'daki BYOK alanı (`_sync_api_key_file()` her spawn'da tazeler).
 _API_KEY_FILE = os.path.expanduser("~/.claude/claudeops/ucli_api_key")
+# Yazıldığında `_API_KEY_FILE`'IN YANINA dokunulan boş bir "biz yazdık" damgası
+# — Settings'ten anahtar SİLİNİNCE (aşağıdaki `_sync_api_key_file`) dosyayı
+# silip silmeme kararı buna bakıyor: marker VARSA bu dosyayı BİZ yönetiyoruz
+# demektir, güvenle silinebilir; YOKSA elle bırakılmış bir dosya olabilir,
+# dokunulmaz (Codex F12'den ÖNCEKİ davranışla aynı temkin).
+_API_KEY_MANAGED_MARKER = _API_KEY_FILE + ".managed"
 
 
 def _sync_api_key_file() -> bool:
     """Settings'te (`byok.ucli.UCLI_API_KEY`) bir değer varsa `_API_KEY_FILE`'a
-    (chmod 600) yazar/tazeler, `True` döner. Settings'te değer YOKSA dosyaya
-    DOKUNMAZ — elle (ör. eski `read -s` deneme sürecinden) oluşturulmuş bir
-    dosya varsa onu KORUR, sessizce silmez; sadece o dosyanın var olup
-    olmadığını döner."""
+    (chmod 600, `O_NOFOLLOW` — bir symlink'i asla takip etmez) yazar/tazeler,
+    `True` döner + `_API_KEY_MANAGED_MARKER`'ı damgalar.
+
+    Settings'te değer YOKSA: marker VARSA (bu dosyayı daha önce BİZ yazdıysak)
+    hem anahtar dosyasını hem marker'ı SİLER — aksi halde Settings'ten anahtarı
+    kaldırmak hiçbir şeyi değiştirmiyordu, yeni ucli session'ları eski anahtarla
+    kimlik doğrulamaya devam ediyordu (Codex F12, canlı doğrulandı). Marker
+    YOKSA dosyaya DOKUNMAZ — elle (ör. eski `read -s` deneme sürecinden)
+    oluşturulmuş bir dosya varsa onu KORUR, sessizce silmez."""
     key = byok_env_for("ucli").get("UCLI_API_KEY", "").strip()
     if not key:
+        if os.path.isfile(_API_KEY_MANAGED_MARKER):
+            for p in (_API_KEY_FILE, _API_KEY_MANAGED_MARKER):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+            return False
         return os.path.isfile(_API_KEY_FILE)
-    fd = os.open(_API_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(_API_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    os.fchmod(fd, 0o600)  # retroactive: O_CREAT's mode arg only applies on FIRST creation
     with os.fdopen(fd, "w") as f:
         f.write(key)
+    os.close(os.open(_API_KEY_MANAGED_MARKER, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600))
     return True
 
 

@@ -184,8 +184,10 @@ def _inline_or_file(run_id: str, full_prompt: str, head_source: str, contract_ta
         return full_prompt
     d = orch_store.run_dir(run_id)
     os.makedirs(d, exist_ok=True)
+    os.chmod(d, 0o700)  # run dizini private task/brief metni taşıyor — .json kardeşleriyle (orch_store, 0600) aynı disiplin
     fpath = os.path.join(d, filename)
-    with open(fpath, "w", encoding="utf-8") as f:
+    fd = os.open(fpath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # baştan 0600 — umask'e (world-readable 0644) bırakma
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(full_prompt)
     head = head_source.strip()[:INLINE_HEAD_CHARS]
     return (
@@ -214,8 +216,10 @@ def _build_decider_dispatch(run_id: str, task: str, verdict_hint: str, bundle: s
         return full
     d = orch_store.run_dir(run_id)
     os.makedirs(d, exist_ok=True)
+    os.chmod(d, 0o700)  # run dizini private worker-bundle metni taşıyor — .json kardeşleriyle (orch_store, 0600) aynı disiplin
     fpath = os.path.join(d, "decider_bundle.md")
-    with open(fpath, "w", encoding="utf-8") as f:
+    fd = os.open(fpath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # baştan 0600 — umask'e (world-readable 0644) bırakma
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(bundle)
     hint = f"\n\nVerdict format hint: {verdict_hint.strip()}" if verdict_hint.strip() else ""
     return (
