@@ -93,9 +93,22 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   // host has no visibility into it (and vice versa), so only pre-fill for a
   // local session; a remote one starts blank and lets that host's own
   // backend default (`fallback_model` in `_start()`) take over.
-  const [model, setModel] = useState(() =>
-    session.host === LOCAL_HOST ? (data?.settings.default_model[session.cli] ?? "") : "",
-  );
+  //
+  // 2026-09-28 fix (live user report: a "restart" on a session whose model
+  // had been switched live, e.g. ucli's own `/model`, silently landed back
+  // on the aggregator's configured default instead of what was actually
+  // running — claudeops has no way to learn a live in-process model switch,
+  // so the session's OWN last-known model is the best available signal of
+  // "what the user is currently running"). While the session is running —
+  // default mode is "restart" (see above), which stops it and respawns off
+  // the same blueprint — prefer that over the aggregator default; a genuinely
+  // fresh "newchat" off a stopped/never-run session still gets the aggregator
+  // default as before.
+  const [model, setModel] = useState(() => {
+    if (session.host !== LOCAL_HOST) return "";
+    if (session.running && session.model) return session.model;
+    return data?.settings.default_model[session.cli] ?? "";
+  });
   const [modelOther, setModelOther] = useState("");
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
   const [effort, setEffort] = useState(() => defaultEffort(cliOptionsFor(data, session.host, session.cli)));
