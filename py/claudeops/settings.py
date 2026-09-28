@@ -84,8 +84,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # CLI için tekrar kurulum/update denemesi güvenli — claudeops kendi
                               # kurmadığı bir binary'nin üzerine ASLA yazmaz (cli_install.py'nin
                               # kendi install_cli() reddi buna dayanır).
-    "ucli_limits": {},       # {max_steps, max_context_kib, max_tool_calls: str} — 2026-09-24,
-                              # TODO.md'nin ucli effort maddesi: bu 3 sayı `providers/ucli_provider.py`
+    "ucli_limits": {},       # {max_steps, max_context_kib, max_tool_calls, max_output_tokens: str}
+                              # (4. alan max_output_tokens 2026-09-28'de eklendi) — 2026-09-24,
+                              # TODO.md'nin ucli effort maddesi: bu sayılar `providers/ucli_provider.py`
                               # içindeki `_EFFORT_LIMITS`'te (medium/high preset'leri) gömülüydü,
                               # kullanıcı her ayar isteğinde bana bir sayı söylüyor, ben Python'da
                               # elle değiştirip servisi restart ediyordum. Burada TEK, flat bir
@@ -242,7 +243,7 @@ def ucli_limit_overrides() -> Dict[str, int]:
     if not isinstance(raw, dict):
         return {}
     out: Dict[str, int] = {}
-    for key in ("max_steps", "max_context_kib", "max_tool_calls"):
+    for key in ("max_steps", "max_context_kib", "max_tool_calls", "max_output_tokens"):
         try:
             n = int(str(raw.get(key)).strip())
         except (TypeError, ValueError):

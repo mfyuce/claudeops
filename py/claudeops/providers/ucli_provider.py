@@ -118,9 +118,21 @@ from .base import CliProvider
 # var. Yine de MODELE ÖZGÜ bir hesap DEĞİL (EVREN'in /v1/models'ı context-length
 # hiç döndürmüyor, kontrol edildi) — düz, cömert bir sabit güvenlik tavanı,
 # 2.5M token'a (kabaca 10 MB ham metin) hâlâ bilerek MESAFELİ.
+#
+# max_output_tokens (2026-09-28 eklendi) + "high"in max_steps'i 100→200:
+# unified-cli'nin yeni --max-output-tokens'ı (agent.rs'in truncation-recovery
+# fix'inden ÖNCE bu proje ChatCompletions'a hiçbir değer göndermiyordu, endpoint
+# kendi bilinmeyen varsayılanını sessizce kullanıyordu) canlıda 9 paralel deep-
+# review session'ından biri (cops20260927_11, qwen3.8-flash-next) 100/100 adımda
+# hâlâ kesikken pes etti — "derin güvenlik review yaz" gibi uzun-final-cevap
+# gerektiren görevler eski (4096 zımni) çıktı bütçesiyle çok fazla "kesildi,
+# devam et" turu istiyor, 100 adım (aynı sayaç hem tool-call hem continuation
+# için PAYLAŞIMLI) yetmiyordu. "medium" 4096'da (ucli'nin kendi varsayılanı,
+# davranış DEĞİŞMİYOR, sadece açıkça yazıldı) bırakıldı, "high" 16000'e
+# çıkarıldı + max_steps 200'e — ikisi birlikte gerçek canlı arızayı hedefliyor.
 _EFFORT_LIMITS = {
-    "medium": {"max_steps": 25, "max_context_kib": 256, "max_tool_calls": 64},
-    "high": {"max_steps": 100, "max_context_kib": 16384, "max_tool_calls": 256},
+    "medium": {"max_steps": 25, "max_context_kib": 256, "max_tool_calls": 64, "max_output_tokens": 4096},
+    "high": {"max_steps": 200, "max_context_kib": 16384, "max_tool_calls": 256, "max_output_tokens": 16000},
 }
 _EFFORT_LEVELS = list(_EFFORT_LIMITS.keys())
 
@@ -230,6 +242,7 @@ class UcliProvider(CliProvider):
             "--max-steps", str(limits["max_steps"]),
             "--max-context-kib", str(limits["max_context_kib"]),
             "--max-tool-calls", str(limits["max_tool_calls"]),
+            "--max-output-tokens", str(limits["max_output_tokens"]),
             "--pretty",
         ]
         if session_name:

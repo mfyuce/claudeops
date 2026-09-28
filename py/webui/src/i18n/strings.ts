@@ -374,6 +374,7 @@ export interface Strings {
   ucliLimitsMaxStepsLabel: string;
   ucliLimitsMaxContextKibLabel: string;
   ucliLimitsMaxToolCallsLabel: string;
+  ucliLimitsMaxOutputTokensLabel: string;
   ucliLimitsPlaceholderAuto: string;
   tabHintToggle: string;
   tabSettingsGeneral: string;
@@ -780,12 +781,13 @@ export const STRINGS: Record<Lang, Strings> = {
     byokSetPlaceholder: "•••• (ayarlı, değiştirmek için yaz)",
     byokEmptyPlaceholder: "henüz ayarlanmadı",
     byokClearBtn: "temizle",
-    ucliLimitsLabel: "ucli effort limitleri (max-steps / max-context-kib / max-tool-calls)",
+    ucliLimitsLabel: "ucli effort limitleri (max-steps / max-context-kib / max-tool-calls / max-output-tokens)",
     ucliLimitsDesc:
-      "ucli'nin medium/high effort preset'lerindeki sayıların üstüne binen override. Boş = preset'in kendi varsayılanı. Birim max-context-kib için KiB'dir, token DEĞİL.",
+      "ucli'nin medium/high effort preset'lerindeki sayıların üstüne binen override. Boş = preset'in kendi varsayılanı. Birim max-context-kib için KiB'dir, token DEĞİL. max-output-tokens her modele tek bir cevapta izin verilen çıktı uzunluğu — düşükse uzun görevler (ör. derin review) 'kesildi, devam et' turlarıyla adım bütçesini tüketip yarım kalabilir.",
     ucliLimitsMaxStepsLabel: "max-steps",
     ucliLimitsMaxContextKibLabel: "max-context-kib (KiB)",
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
+    ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
     tabHintToggle: "Açıklamayı göster/gizle",
     tabSettingsGeneral: "genel",
@@ -1206,12 +1208,13 @@ export const STRINGS: Record<Lang, Strings> = {
     byokSetPlaceholder: "•••• (set, type to replace)",
     byokEmptyPlaceholder: "not set yet",
     byokClearBtn: "clear",
-    ucliLimitsLabel: "ucli effort limits (max-steps / max-context-kib / max-tool-calls)",
+    ucliLimitsLabel: "ucli effort limits (max-steps / max-context-kib / max-tool-calls / max-output-tokens)",
     ucliLimitsDesc:
-      "Override on top of ucli's medium/high effort preset numbers. Empty = the preset's own default. max-context-kib's unit is KiB, not tokens.",
+      "Override on top of ucli's medium/high effort preset numbers. Empty = the preset's own default. max-context-kib's unit is KiB, not tokens. max-output-tokens is the per-response output length cap — too low and a long task (e.g. a deep review) can burn its whole step budget on 'cut off, continue' rounds without ever finishing.",
     ucliLimitsMaxStepsLabel: "max-steps",
     ucliLimitsMaxContextKibLabel: "max-context-kib (KiB)",
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
+    ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsPlaceholderAuto: "empty = preset default",
     tabHintToggle: "Show/hide description",
     tabSettingsGeneral: "general",

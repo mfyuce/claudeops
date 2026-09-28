@@ -21,6 +21,17 @@ __pycache__/
 /TODO.md
 /TOBEDECIDED.md
 /DONE.md
+# Model review çıktıları (2026-09-27'den itibaren) — aynı gerekçe: iç
+# çalışma notu, public repo'da değil.
+/reviews/
+# ucli sohbet geçmişi (.ucli/chat/*.jsonl) — aynı gerekçe, ayrıca büyüyebilir.
+/.ucli/
+# CANLI SIR içeriyor (parola/bearer token/tunnel URL'leri) — asla git'e girmemeli,
+# private -prv repo'ya bile. 2026-09-27: glm-5.3 review turu bu dosyayı okuyup
+# içeriğini özetledi (git'te HİÇ İZLENMEMİŞ/commit'lenmemiş olduğu ayrıca
+# doğrulandı — ama dosyanın kendisi review-agent'lara okunabilir durumdaydı,
+# bkz. TODO.md).
+/remote-hosts.md
 # Rust build output (rust/screenshare) — bu makinede global CARGO_TARGET_DIR
 # ile repo dışına yazılıyor ama varsayılan cargo konfigürasyonunda buraya
 # (rust/screenshare/target/) düşer, asla commit edilmemeli.

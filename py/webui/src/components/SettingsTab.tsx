@@ -370,6 +370,7 @@ export function SettingsTab() {
                   ["max_steps", t.ucliLimitsMaxStepsLabel],
                   ["max_context_kib", t.ucliLimitsMaxContextKibLabel],
                   ["max_tool_calls", t.ucliLimitsMaxToolCallsLabel],
+                  ["max_output_tokens", t.ucliLimitsMaxOutputTokensLabel],
                 ] as const
               ).map(([field, label]) => (
                 <label key={field}>
