@@ -227,7 +227,22 @@ class AgyProvider(CliProvider):
         if resume_id:
             parts += ["--conversation", shlex.quote(resume_id)]
         parts += ["--model", shlex.quote(model)]
-        parts += ["--effort", shlex.quote(effort or "medium")]
+        # 2026-09-28 canlı bulgu: `--effort` artık HER model için geçerli değil —
+        # `agy models`'ın kendi çıktısı bunu zaten ele veriyor: gemini-*
+        # id'lerinin İÇİNDE zaten bir effort suffix'i var (gemini-3.8-flash-high/
+        # -medium/-low — yani Gemini'de effort MODEL SEÇİMİYLE yapılıyor), ama
+        # claude-opus-4-6-thinking/claude-sonnet-4-6/gpt-oss-120b-medium gibi
+        # tek-varyantlı non-Gemini modellerde YOK. `--effort` bu ikincisine
+        # geçilince agy sessizce HATA VERMİYOR, "--effort is not supported for
+        # model X" uyarısıyla İSTENEN MODELİ TERK EDİP kendi ilk listelenen
+        # varsayılanına (bir Gemini modeli) düşüyor — kullanıcı opus/gpt istedi,
+        # sessizce gemini aldı (canlı yaşandı, iki ayrı model ailesinde de).
+        # `gemini` ÖNEKİ dışındaki hiçbir model için bayrağı hiç göndermemek
+        # bu düşüşü baştan engelliyor; agy'nin kendi model listesinde bu bilgiyi
+        # taşıyan yapılandırılmış bir alan yok (sadece `id\tLabel`), o yüzden
+        # isim deseni dışında güvenilir bir sinyal yok.
+        if model.startswith("gemini"):
+            parts += ["--effort", shlex.quote(effort or "medium")]
         parts += _PERMISSION_FLAGS.get(permission_mode or "auto", _PERMISSION_FLAGS["auto"])
         # `mcp_launch_args()` bugün hep [] döner (agy'de çağrı-başına MCP yolu
         # yok, bkz. `mcp_setup_command`) — splice yine de burada, diğer 3
