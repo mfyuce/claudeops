@@ -1018,7 +1018,7 @@ def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
         parse_item: Callable[[Any], Optional[dict]] = web_grpc._status_proto_to_dict
     else:  # "ws"
         url = _ws_url(host["base_url"], "/ws", token)
-        make_call = lambda: ws_connect(url, open_timeout=10.0)
+        make_call = lambda: ws_connect(url, open_timeout=10.0, ping_interval=None)
         parse_item = _parse_ws_status_frame
 
     def on_item(parsed: dict) -> None:
@@ -1145,7 +1145,7 @@ def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict
                     parse_item: Callable[[Any], Optional[dict]] = web_grpc._term_proto_to_dict
                 else:
                     url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang)
-                    make_call = lambda: ws_connect(url, open_timeout=10.0)
+                    make_call = lambda: ws_connect(url, open_timeout=10.0, ping_interval=None)
                     parse_item = _parse_ws_term_frame
                 relay = _TermRelay(tier, make_call, parse_item)
                 _term_relays[key] = relay
