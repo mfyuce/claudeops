@@ -1,13 +1,16 @@
 """Stuck session tespiti ve recovery.
 
-Stuck = jsonl'deki son 'role' değeri 'user' + CPU < 2%
+Stuck = transkriptteki son mesaj 'user' + CPU < 2%
 (session mesajı aldı ama işlemedi — rate-limit/hang sinyali).
 
-Referans: [[mass-faz1-ratelimit-stuck]] — jsonl son=user + terminal boş = stuck.
-Recovery: kill + resume (son user mesajı jsonl'de zaten var → claude kaldığı yerden devam eder).
+Referans: [[mass-faz1-ratelimit-stuck]] — son=user + terminal boş = stuck.
+Recovery: kill + resume (son user mesajı transkriptte zaten var → CLI kaldığı yerden devam eder).
+
+Tespit provider.last_message_role() üzerinden gider (CliProvider arayüzü) —
+DOĞRUDAN claude'un jsonl'ına bakmaz, böylece agy/codex/copilot/ucli
+session'ları için de çalışır (claude-özel bir dosya formatına hardcode değil).
 """
 from __future__ import annotations
-import json
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -16,48 +19,17 @@ from .kill import kill_session, KILL_GRACE_SECONDS
 from .providers import get_provider
 from .session import Session
 from .settings import default_model_for
-from .spawn import find_latest_jsonl, spawn_session, detect_display
+from .spawn import spawn_session, detect_display
 
 
 # CPU eşiği: bunun altındaysa ve son mesaj user'sa → stuck
 STUCK_CPU_THRESHOLD = 2.0
-
-# Tail için okunacak byte miktarı — 32KB: büyük handover mesajları ~2KB,
-# 32KB yeterli tampon; 8KB'de son mesaj büyükse stuck tespiti kaçabilirdi.
-_TAIL_BYTES = 32768
-
-
-def _last_role(jsonl_path: str) -> Optional[str]:
-    """jsonl'deki son role değerini döndür (user / assistant / None)."""
-    try:
-        with open(jsonl_path, "rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            f.seek(max(0, size - _TAIL_BYTES))
-            tail = f.read().decode("utf-8", errors="replace")
-
-        last_role = None
-        for line in tail.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                d = json.loads(line)
-                role = d.get("role")
-                if role in ("user", "assistant"):
-                    last_role = role
-            except json.JSONDecodeError:
-                continue
-        return last_role
-    except Exception:
-        return None
 
 
 @dataclass
 class StuckInfo:
     session: Session
     last_role: str
-    jsonl_path: str
 
 
 def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
@@ -69,14 +41,14 @@ def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
     for s in sessions:
         if s.cpu >= STUCK_CPU_THRESHOLD:
             continue  # işliyor, stuck değil
-        if not get_provider(s.cli).has_conversation():
+        provider = get_provider(s.cli)
+        if not provider.has_conversation():
             continue  # ör. düz shell: idle CPU normal, "stuck" kavramı yok — kill+resume ETME
-        jsonl = find_latest_jsonl(s.cwd)
-        if not jsonl:
-            continue  # jsonl yok, not stuck
-        role = _last_role(str(jsonl))
+        role = provider.last_message_role(s.cwd, s.sid)
+        if role is None:
+            continue  # transkript yok/desteklenmiyor → bilinmiyor, stuck sayma
         if role == "user":
-            stuck.append(StuckInfo(session=s, last_role=role, jsonl_path=str(jsonl)))
+            stuck.append(StuckInfo(session=s, last_role=role))
     return stuck
 
 

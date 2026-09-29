@@ -104,6 +104,19 @@ class CliProvider(ABC):
         provider'ların override etmesi beklenir (varsayılan burada da None)."""
         return None
 
+    def last_message_role(self, cwd: str, sid: Optional[str]) -> Optional[str]:
+        """Transkriptteki KRONOLOJİK olarak son mesajın rolü ('user'|'assistant') —
+        stuck tespiti için: son mesaj cevapsız bir 'user'sa oturum muhtemelen takılı.
+        None = bilinmiyor (transkript yok/desteklenmiyor) → çağıran stuck SAYMAMALI.
+        Varsayılan: `full_history()`'nin son elemanı (onu override eden HER provider
+        için ek iş olmadan çalışır). `last_exchange()` KULLANILMAZ — o en son
+        assistant'ı bulup ONDAN ÖNCEKİ user'ı eşler, cevapsız bir son user mesajını
+        (asıl stuck sinyali) sessizce atlar."""
+        turns = self.full_history(cwd, sid)
+        if not turns:
+            return None
+        return turns[-1].get("role")
+
     def handover_model_downgrade(self, current_model: str) -> Optional[str]:
         """Handover'ın wrap-up mesajı gibi 'mekanik' bir iş için `current_model`
         yerine GEÇİCİ kullanılacak daha ucuz bir model adı — `current_model`

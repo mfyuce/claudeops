@@ -1,6 +1,6 @@
 """`stuck` — stuck session'ları tespit et, opsiyonel olarak kurtar.
 
-Stuck = son jsonl girişi user mesajı + CPU < 2%.
+Stuck = son transkript girişi user mesajı + CPU < 2%.
 
 Kullanım:
   py/cops stuck               # stuck olanları listele
@@ -42,12 +42,11 @@ def run(args) -> int:
         return 0
 
     print(f"⚠ {len(stuck_list)} stuck session (son=user, CPU<{STUCK_CPU_THRESHOLD}%):")
-    print(f"{'NAME':<13}{'PID':>8}  {'CPU%':>6}  {'JSONL':>10}")
+    print(f"{'NAME':<13}{'PID':>8}  {'CPU%':>6}  {'CLI':>10}")
     print("-" * 55)
     for info in stuck_list:
         s = info.session
-        jsonl_short = info.jsonl_path.split("/")[-1][:20]
-        print(f"{s.name:<13}{s.pid:>8}  {s.cpu:>6.1f}  {jsonl_short}")
+        print(f"{s.name:<13}{s.pid:>8}  {s.cpu:>6.1f}  {s.cli:>10}")
 
     if not args.recover:
         print()
