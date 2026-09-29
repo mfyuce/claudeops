@@ -466,7 +466,20 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     const inst = instRef.current;
     if (inst) {
       const buf = inst.term.buffer.active;
-      const atBottom = buf.viewportY >= buf.baseY;
+      // Alternate-screen panes (Claude/agy/codex's own TUI) never carry real
+      // scrollback — the `\x1b[3J`+rewrite above resets to a fresh
+      // single-screen buffer every tick — but a stray sub-row viewportY/
+      // baseY drift from that rewrite's trailing newline was still enough
+      // to flip `atBottom` false with NOTHING actually different on
+      // screen, silently freezing live updates behind a "scrolled up" hint
+      // that had nothing to show for it (live-verified 2026-09-29: CDP
+      // touch-drag on `oiso`/ulak_31 produced a pixel-identical before/
+      // after screenshot, yet the hint fired anyway). `result.ok` is
+      // checked because ApiErr has no `alternate_screen` field; falling
+      // back to the last-known state value covers the rare
+      // over-threshold-failure tick where `inst` still runs.
+      const isAltScreen = result.ok ? !!result.alternate_screen : alternateScreen;
+      const atBottom = isAltScreen || buf.viewportY >= buf.baseY;
       if (!atBottom) {
         setHint(t.termScrolledHint);
         return;
