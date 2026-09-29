@@ -76,6 +76,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import time
 import urllib.error
 import urllib.request
 from typing import Dict, FrozenSet, List, Optional, Sequence
@@ -152,11 +153,20 @@ _PERMISSION_MODES = [_READ_ONLY, _ALLOW_EDIT]
 _MODEL_CHOICES = ["deepseek-v4-flash"]
 _ENDPOINT = "https://evren-llmapi.ssyz.org.tr/v1"
 
-# Süreç ömrü boyunca en fazla BİR ağ isteği — `model_choices()` `/api/status`'un
-# her poll'unda çağrılıyor, canlı fetch orada YAPILAMAZ (yavaşlatır/bloklar).
-# None = "henüz denenmedi", boş liste DEĞİL (aksi halde her çağrı yeniden
-# denerdi, key kalıcı yoksa sürekli başarısız ağ isteği atardı).
+# 2026-09-29 canlı bulgu: eskiden süreç ömrü boyunca EN FAZLA BİR ağ isteği
+# vardı (TTL yok) — ilk çağrı reboot'tan hemen sonra ağ/Evren henüz hazır
+# değilken başarısız olursa (canlı yaşandı: servis bu sabahki reboot'tan
+# sonra ucli için sürekli tek elemanlı statik yedeği (`_MODEL_CHOICES`)
+# sunmaya devam etti, oysa Evren o sırada zaten erişilebilirdi — servis
+# yeniden başlamadan KENDİLİĞİNDEN düzelmiyordu) o başarısızlık BİR DAHA HİÇ
+# denenmeden kalıcılaşıyordu. `agy_provider.py`'nin `_MODELS_TTL` deseniyle
+# AYNI periyodik-yeniden-deneme'ye geçildi — `/api/status`'un her poll'unda
+# HÂLÂ ağ isteği atılmıyor (`_LIVE_MODEL_CACHE_TS` bunu engelliyor), sadece
+# artık süresiz değil, 5 dakikada bir tekrar denendiği için Evren/key
+# durumu düzelince PANEL DE kendiliğinden düzeliyor.
+_MODELS_TTL = 300.0
 _LIVE_MODEL_CACHE: Optional[List[str]] = None
+_LIVE_MODEL_CACHE_TS = 0.0
 
 
 def _fetch_live_models() -> Optional[List[str]]:
@@ -303,9 +313,17 @@ class UcliProvider(CliProvider):
         return {"sid": self._parse_session(cmd), "model": model, "permission_mode": permission_mode, "effort": effort}
 
     def model_choices(self) -> List[str]:
-        global _LIVE_MODEL_CACHE
-        if _LIVE_MODEL_CACHE is None:
-            _LIVE_MODEL_CACHE = _fetch_live_models() or list(_MODEL_CHOICES)
+        global _LIVE_MODEL_CACHE, _LIVE_MODEL_CACHE_TS
+        now = time.monotonic()
+        if _LIVE_MODEL_CACHE is None or now - _LIVE_MODEL_CACHE_TS > _MODELS_TTL:
+            _LIVE_MODEL_CACHE_TS = now
+            fetched = _fetch_live_models()
+            if fetched:
+                _LIVE_MODEL_CACHE = fetched
+            elif _LIVE_MODEL_CACHE is None:
+                _LIVE_MODEL_CACHE = list(_MODEL_CHOICES)
+            # fetched boşsa ama zaten bir cache VARSA (önceki başarılı liste ya
+            # da statik yedek) dokunulmaz — geçici bir hata onu geriletmesin.
         return _LIVE_MODEL_CACHE
 
     def permission_modes(self) -> List[str]:
