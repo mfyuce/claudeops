@@ -2674,12 +2674,14 @@ def _v1_chat_completion(data) -> tuple:
     if not isinstance(data, dict):
         return _v1_error("request body must be a JSON object"), 400
 
-    # `stream` EN BAŞTA: v1'de streaming yok ve bunu SESSİZCE yok sayıp
-    # streaming-olmayan bir yanıt döndürmek en kötüsü olurdu — istemci SSE
-    # chunk'ları bekleyip asılı kalır/çöker. Açık, okunabilir bir red daha iyi.
-    if data.get("stream"):
-        return _v1_error("streaming is not supported yet — retry with \"stream\": false "
-                          "(the session's reply is returned as a single, complete message)"), 400
+    # `stream:true` KABUL EDİLİR ama gerçek token-token akış YOK (TOBEDECIDED#42:
+    # yanıt CLI'ın transkriptinden BİTMİŞ haliyle okunuyor, delta yok, pane'i
+    # canlı kazımak kırılgan). Bunun yerine: aynen stream:false'daki gibi TAM
+    # yanıt hazır olana kadar beklenir, sonra TEK delta chunk'ında + `[DONE]`
+    # ile, ama DOĞRU SSE çerçevesiyle gönderilir (bkz. `_v1_stream_chunks`) —
+    # sessizce düz JSON dönmek istemciyi SSE bekleyip asılı bırakırdı, bu daha
+    # kötüsüydü; şimdi çerçeve doğru, sadece "daktilo etkisi" yok.
+    want_stream = bool(data.get("stream"))
 
     model = str(data.get("model") or "").strip()
     if not model:
@@ -2737,6 +2739,11 @@ def _v1_chat_completion(data) -> tuple:
             "delivered and may still be processing — check the session, or read the result later.",
             "timeout_error"), 504
     diag_log("v1_chat_done", name=s.name, chars=len(reply))
+    if want_stream:
+        # `result`'ın LİSTE olması dispatcher için "bunu `_sse_chunks` ile yaz"
+        # sinyali (dict = tek JSON gövde, liste = SSE chunk dizisi) — bkz.
+        # `do_POST`'taki `/v1/chat/completions` dalı.
+        return _v1_stream_chunks(model, reply), 200
     return {
         "id": "chatcmpl-" + secrets.token_hex(12),
         "object": "chat.completion",
@@ -2749,6 +2756,22 @@ def _v1_chat_completion(data) -> tuple:
         # bekler, doğruluğuna genelde bağımlı değildir).
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }, 200
+
+
+def _v1_stream_chunks(model: str, reply: str) -> list:
+    """`stream:true` için TAM cevabı `chat.completion.chunk` çerçevesinde TEK
+    delta'da paketler (+ kapatan boş-delta/`finish_reason:"stop"` chunk'ı) —
+    istemci AYNI toplam süre kadar bekler (gerçek token-token akış YOK,
+    `_v1_chat_completion`'ın stream-kabul yorumuna bkz.), sadece protokol
+    çerçevesi (SSE `data: ...` + `[DONE]`) doğru olur."""
+    chat_id = "chatcmpl-" + secrets.token_hex(12)
+    created = int(time.time())
+    return [
+        {"id": chat_id, "object": "chat.completion.chunk", "created": created, "model": model,
+         "choices": [{"index": 0, "delta": {"role": "assistant", "content": reply}, "finish_reason": None}]},
+        {"id": chat_id, "object": "chat.completion.chunk", "created": created, "model": model,
+         "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+    ]
 
 
 def _proxy_desktop_ws(handler: "_Handler") -> None:
@@ -2897,6 +2920,26 @@ class _Handler(BaseHTTPRequestHandler):
             except TypeError:
                 continue
         return False
+
+    def _sse_chunks(self, chunks: list, status=200):
+        """`/v1/chat/completions`'ın `stream:true` yanıtı — `chat.completion.chunk`
+        dizisini OpenAI'nin SSE çerçevesiyle (`data: ...\\n\\n`, kapanışta
+        `data: [DONE]\\n\\n`) yaz. Chunk'ların HEPSİ `_v1_stream_chunks`'tan
+        ÖNCEDEN hazır geliyor (gerçek zamanlı parça-parça yazım YOK) — bu
+        yüzden `_json` gibi TEK `wfile.write()` + tam `Content-Length` yeterli,
+        chunked transfer-encoding'e gerek yok."""
+        body = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks)
+        body += "data: [DONE]\n\n"
+        body = body.encode("utf-8")
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            diag_log("response_write_failed", path=urlparse(self.path).path, error=str(e))
 
     def _json(self, obj, status=200):
         body = json.dumps(obj).encode("utf-8")
@@ -3395,7 +3438,14 @@ class _Handler(BaseHTTPRequestHandler):
         # `_v1_error` üzerinden İngilizce (bkz. `_v1_chat_completion`).
         if path == "/v1/chat/completions":
             result, status = _v1_chat_completion(data)
-            self._json(result, status=status)
+            # liste = `_v1_stream_chunks`'ın SSE chunk dizisi (stream:true başarı
+            # yolu); dict = tek JSON gövde (stream:false VEYA her hata yolu —
+            # `_v1_error` her zaman dict döner, akış hiç başlamadan biten bir
+            # istek OpenAI'de de düz JSON hata alır).
+            if isinstance(result, list):
+                self._sse_chunks(result, status=status)
+            else:
+                self._json(result, status=status)
             return
 
         # TOBEDECIDED#15 Phase 1 — `/v1/*` ile AYNI ilke: host-routing
