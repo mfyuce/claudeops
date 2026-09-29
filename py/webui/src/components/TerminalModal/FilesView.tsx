@@ -195,51 +195,60 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
           ))}
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: ".5rem", marginBottom: ".4rem" }}>
+      <div style={{ marginBottom: ".4rem" }}>
+        {/* Path used to share a nowrap flex row with the 3 buttons below, `flex: 1`
+            leaving it whatever sliver they didn't need — on a narrow phone that's a
+            few px, and `overflowWrap: anywhere` then wraps it one character per line
+            (live mobile report, 2026-09-29, same root cause as FileRow's name column).
+            Its own full-width block: still wraps (a deep path legitimately can span
+            multiple lines), but only because the path itself is long, not because
+            three buttons are competing with it for the same line. */}
         <div
           style={{
             fontFamily: "monospace",
             fontSize: ".75rem",
             opacity: 0.8,
             overflowWrap: "anywhere",
-            flex: 1,
+            marginBottom: ".3rem",
           }}
         >
           {path}
         </div>
-        <button
-          type="button"
-          title={t.filesOpenVscodeHint}
-          style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
-          onClick={() => void callAction(() => apiVscodeOpen(name, lang, path), "vscode", t)}
-        >
-          {t.filesOpenVscode}
-        </button>
-        <button
-          type="button"
-          style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
-          disabled={uploading !== null}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {t.filesUpload}
-        </button>
-        <button
-          type="button"
-          style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
-          onClick={() => void handleNewFolder()}
-        >
-          {t.filesNewFolder}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          style={{ display: "none" }}
-          onChange={(e) => {
-            void handleFiles(e.target.files);
-            e.target.value = ""; // aynı dosyayı arka arkaya seçince onChange yine tetiklensin
-          }}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: ".5rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            title={t.filesOpenVscodeHint}
+            style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
+            onClick={() => void callAction(() => apiVscodeOpen(name, lang, path), "vscode", t)}
+          >
+            {t.filesOpenVscode}
+          </button>
+          <button
+            type="button"
+            style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
+            disabled={uploading !== null}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {t.filesUpload}
+          </button>
+          <button
+            type="button"
+            style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
+            onClick={() => void handleNewFolder()}
+          >
+            {t.filesNewFolder}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => {
+              void handleFiles(e.target.files);
+              e.target.value = ""; // aynı dosyayı arka arkaya seçince onChange yine tetiklensin
+            }}
+          />
+        </div>
       </div>
       {uploading && (
         <div style={{ fontSize: ".75rem", opacity: 0.8, marginBottom: ".4rem" }}>
@@ -324,12 +333,25 @@ function FileRow({
       </button>
     </>
   );
+  // Name truncates with an ellipsis instead of wrapping: the row packs an icon,
+  // size, and up to 5 nowrap action buttons/links alongside it, so on a narrow
+  // mobile viewport the name's flex share can shrink to just a few px — with
+  // the old `overflowWrap: "anywhere"` that meant wrapping one character (or
+  // two) per line instead of overflowing (live mobile report, 2026-09-29,
+  // screenshot of a .docx name rendered as a single-letter-per-line ladder).
+  // `minWidth: 0` is required on every flex ancestor down to the name span
+  // itself — flex items don't shrink below their content's min-content width
+  // by default, ellipsis-on-overflow needs that override to ever kick in.
+  const nameStyle: React.CSSProperties = {
+    minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+  };
   if (entry.is_dir) {
     return (
       <div style={rowStyle}>
-        <button type="button" onClick={onOpenDir} style={{ flex: 1, textAlign: "left", background: "none", display: "flex", gap: ".4rem" }}>
+        <button type="button" onClick={onOpenDir} title={entry.name}
+                style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", display: "flex", gap: ".4rem" }}>
           <span>📁</span>
-          <span style={{ overflowWrap: "anywhere" }}>{entry.name}</span>
+          <span style={nameStyle}>{entry.name}</span>
         </button>
         {mutationButtons}
       </div>
@@ -338,7 +360,7 @@ function FileRow({
   return (
     <div style={rowStyle}>
       <span>📄</span>
-      <span style={{ flex: 1, overflowWrap: "anywhere" }}>{entry.name}</span>
+      <span style={{ ...nameStyle, flex: 1 }} title={entry.name}>{entry.name}</span>
       <span style={{ opacity: 0.6, whiteSpace: "nowrap" }}>{formatSize(entry.size)}</span>
       {onView && (
         <button type="button" title={viewLabel} style={{ whiteSpace: "nowrap" }} onClick={onView}>
