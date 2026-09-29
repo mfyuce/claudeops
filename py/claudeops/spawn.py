@@ -217,8 +217,15 @@ def _launch_gnome_terminal(name: str, cwd: str, window_cmd: str, env: dict) -> b
     etmesi yeterli."""
     try:
         proc = subprocess.Popen(
+            # --geometry: GNOME Terminal'in profil varsayılanı bu makinede 500
+            # sütun × 24 satır'a değişmiş (ne zaman/nasıl bilinmiyor) — verilmezse
+            # HER yeni pencere onu miras alıyordu, tmux'un history_size'ı (satır
+            # sayacı) bu yüzden neredeyse hiç artmıyordu (az satıra çok metin
+            # sığıyor) → mobil panelde "0/2000 satır" yanılgısı (TODO.md 2026-09-27/
+            # 2026-09-29). Profilden BAĞIMSIZ garanti eden kalıcı fix budur; eski
+            # ~99×24 normuna yakın, biraz daha ferah bir değer.
             ["gnome-terminal", "--window", f"--title={name}",
-             f"--working-directory={cwd}",
+             f"--working-directory={cwd}", "--geometry=100x30",
              "--", "bash", "-c", window_cmd],
             env=env,
             stdout=subprocess.DEVNULL,
