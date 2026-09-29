@@ -262,16 +262,27 @@ def tmux_pane_size(name: str) -> Optional[tuple]:
     scrollback satır sayısı (tmux'un kendi ring buffer'ı, `HISTORY_LIMIT`'te
     tavan yapar). AYNI `list-panes` çağrısına eklendi (2026-09-14) — ayrı bir
     subprocess GEREKMEDİ, tek çağıran (`_term_output`, zaten 200ms'de bir
-    poll'lanıyor) ikisini birden bedavaya alır."""
+    poll'lanıyor) ikisini birden bedavaya alır.
+
+    Dördüncü değer `alternate_on` (`#{alternate_on}`, 0/1 → bool) — pane ALTERNATE
+    SCREEN BUFFER'da mı (vim/htop/less gibi tam-ekran programların, VE Claude/agy/
+    codex'in normal interaktif TUI modunun kullandığı mod). tmux (evrensel terminal
+    davranışı) alternate-screen'e yazılanı normal scrollback'e HİÇ eklemez — yani bu
+    moddayken `history_size` YAPISAL olarak ~0'da donar, gerçek konuşma/iş hacminden
+    tamamen bağımsız (TODO.md 2026-09-29, oiso/ulak_31 canlı doğrulaması: 100×30 gibi
+    tamamen normal bir pane'de bile `hist=0`). AYNI `list-panes` çağrısına eklendi,
+    yine ekstra subprocess YOK — çağıranın `history_size`'ı alternate-screen'deyken
+    yanıltıcı (sürekli "0/2000") göstermek yerine gizlemesi/farklı yorumlaması için."""
     try:
         r = subprocess.run(
-            _base_argv() + ["list-panes", "-t", _exact(name), "-F", "#{pane_width} #{pane_height} #{history_size}"],
+            _base_argv() + ["list-panes", "-t", _exact(name),
+                             "-F", "#{pane_width} #{pane_height} #{history_size} #{alternate_on}"],
             capture_output=True, text=True, timeout=_TIMEOUT,
         )
         if r.returncode != 0 or not r.stdout.strip():
             return None
-        w, h, hist = r.stdout.strip().splitlines()[0].split()
-        return int(w), int(h), int(hist)
+        w, h, hist, alt = r.stdout.strip().splitlines()[0].split()
+        return int(w), int(h), int(hist), bool(int(alt))
     except Exception:
         return None
 

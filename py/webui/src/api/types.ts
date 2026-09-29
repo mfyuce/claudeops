@@ -481,12 +481,19 @@ export type SettingsResult = ApiResult<{ settings: Settings }>;
  * the pane's real tmux scrollback line count, riding along on the SAME
  * `list-panes` call as `cols`/`rows` — caps at `HISTORY_LIMIT` (2000, see
  * tmux_backend.py) since tmux evicts the oldest lines once its own
- * `history-limit` is reached; null only when the pane size itself couldn't be read. */
+ * `history-limit` is reached; null only when the pane size itself couldn't be read.
+ * `alternate_screen` (2026-09-29) — same `list-panes` call's `#{alternate_on}`: true
+ * while the pane is in the alternate screen buffer (vim/htop/less, and Claude/agy/
+ * codex's normal interactive TUI). tmux never adds alternate-screen output to
+ * scrollback, so `history_size` is structurally frozen near 0 whenever this is true,
+ * independent of real conversation/work volume — the UI should hide or reinterpret
+ * the counter rather than show a permanently-misleading "0/2000". */
 export type TermOutputResult = ApiResult<{
   text: string;
   cols: number | null;
   rows: number | null;
   history_size: number | null;
+  alternate_screen: boolean | null;
   masked: boolean;
   mode: string | null;
 }>;

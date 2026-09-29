@@ -175,6 +175,13 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   const [fallbackText, setFallbackText] = useState("");
   const [masked, setMasked] = useState(false);
   const [historySize, setHistorySize] = useState<number | null>(null);
+  // True while the pane is in the alternate screen buffer (Claude/agy/codex's
+  // normal interactive TUI, also vim/htop/less) — tmux never accrues scrollback
+  // there, so `historySize` is structurally frozen near 0 regardless of real
+  // conversation volume (TODO.md 2026-09-29, live-verified on ulak_31's "oiso").
+  // The counter below is misleading in this state, so it's hidden rather than
+  // shown as a permanent "0/2000".
+  const [alternateScreen, setAlternateScreen] = useState(false);
   // On-demand only, same reasoning as `UsagePanel`'s own check button
   // (SettingsTab.tsx): a check really does inject `/context` into this live
   // session, so it's never auto-polled — reset to "idle" per Terminal open
@@ -398,6 +405,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
       setMasked(result.masked);
       setPaneMode(result.mode);
       setHistorySize(result.history_size);
+      setAlternateScreen(!!result.alternate_screen);
     }
 
     const inst = instRef.current;
@@ -694,7 +702,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
             {copyLabel ?? t.termCopyBtn}
           </button>
-          {historySize != null && (
+          {historySize != null && !alternateScreen && (
             <span
               title={t.termHistorySizeHint}
               style={{

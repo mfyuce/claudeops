@@ -1695,9 +1695,13 @@ def _term_output(name: str, lang: str = "tr") -> dict:
     # modu diye bir şey yok (panel seçiciyi hiç göstermez). `history_size` de
     # AYNI `tmux_pane_size` çağrısına biniyor (2026-09-14, TODO.md'nin "terminalde
     # kaç satır olduğu gösterilsin" maddesi) — pane'in gerçek scrollback boyutu,
-    # `HISTORY_LIMIT`'e (2000) yaklaşınca frontend'in vurgulaması için.
+    # `HISTORY_LIMIT`'e (2000) yaklaşınca frontend'in vurgulaması için. `alternate_screen`
+    # (2026-09-29) AYNI biniş: pane alternate-screen'deyken (Claude/agy/codex'in normal
+    # interaktif TUI modu) `history_size` YAPISAL olarak ~0'da donar — frontend bunu
+    # görüp sayaç yerine nötr bir gösterim kullanabilsin diye ayrıca taşınıyor.
     return {"ok": True, "text": text, "cols": size[0] if size else None,
             "rows": size[1] if size else None, "history_size": size[2] if size else None,
+            "alternate_screen": size[3] if size else None,
             "masked": bool(masked), "mode": _detect_mode_in_text(text, get_provider(s.cli))}
 
 
