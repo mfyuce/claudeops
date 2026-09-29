@@ -30,6 +30,7 @@
 import { useState } from "react";
 import { apiSaveSettings, apiUsage, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import type { FleetSort, Theme, UsageResult } from "../api/types";
@@ -183,7 +184,7 @@ export function SettingsTab() {
       // push from this same save, or the next poll) arrives a beat later.
       if (patch.theme) applyTheme(patch.theme);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) window.alert(t.authErrorShort);
+      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
       else setError(describeApiError(e, t));
     }
     refresh();

@@ -31,6 +31,7 @@ import {
   getFilesList,
 } from "../../api/client";
 import { callAction } from "../../api/errors";
+import { showToast } from "../../state/toast";
 import type { FileEntry, FileRoot } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
 import { isViewable } from "./fileViewerKind";
@@ -138,9 +139,9 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
           overwrite,
           onProgress: (fraction) => setUploading({ file: file.name, fraction }),
         });
-        if (!res.ok) alert(t.filesUploadError + res.error);
+        if (!res.ok) showToast(t.filesUploadError + res.error);
       } catch (e) {
-        alert(t.filesUploadError + (e instanceof Error ? e.message : String(e)));
+        showToast(t.filesUploadError + (e instanceof Error ? e.message : String(e)));
       }
     }
     setUploading(null);
@@ -152,10 +153,10 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
     if (!folderName || !folderName.trim()) return;
     try {
       const res = await apiFilesMkdir(name, lang, path, folderName.trim(), host);
-      if (!res.ok) alert(t.filesActionError + res.error);
+      if (!res.ok) showToast(t.filesActionError + res.error);
       else setRefreshKey((k) => k + 1);
     } catch (e) {
-      alert(t.filesActionError + (e instanceof Error ? e.message : String(e)));
+      showToast(t.filesActionError + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -164,10 +165,10 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
     if (!window.confirm(template.replace("{name}", entry.name))) return;
     try {
       const res = await apiFilesDelete(name, lang, joinPath(path, entry.name), host);
-      if (!res.ok) alert(t.filesActionError + res.error);
+      if (!res.ok) showToast(t.filesActionError + res.error);
       else setRefreshKey((k) => k + 1);
     } catch (e) {
-      alert(t.filesActionError + (e instanceof Error ? e.message : String(e)));
+      showToast(t.filesActionError + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -176,10 +177,10 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
     if (!newName || !newName.trim() || newName.trim() === entry.name) return;
     try {
       const res = await apiFilesRename(name, lang, joinPath(path, entry.name), newName.trim(), host);
-      if (!res.ok) alert(t.filesActionError + res.error);
+      if (!res.ok) showToast(t.filesActionError + res.error);
       else setRefreshKey((k) => k + 1);
     } catch (e) {
-      alert(t.filesActionError + (e instanceof Error ? e.message : String(e)));
+      showToast(t.filesActionError + (e instanceof Error ? e.message : String(e)));
     }
   }
 

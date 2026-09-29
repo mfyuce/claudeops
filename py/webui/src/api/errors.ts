@@ -22,6 +22,7 @@
 
 import { ApiError } from "./client";
 import type { Strings } from "../i18n/strings";
+import { showToast } from "../state/toast";
 
 export function describeApiError(err: unknown, t: Strings): string {
   if (err instanceof ApiError) {
@@ -37,8 +38,10 @@ export function describeApiError(err: unknown, t: Strings): string {
  * result with `ok: false` either hands the message to `onFailure` (used
  * for the `/api/start` route only, whose failure path offers to switch to
  * the Diagnostics tab — see `runDiagAfterFailure` in web.py) or falls back
- * to a plain `alert()` (every other action). A thrown exception always
- * alerts via `describeApiError`, matching the original's shared `catch`.
+ * to a non-blocking toast (every other action) — the original's plain
+ * `alert()`, replaced 2026-09-29 (TODO.md: native alert() froze the whole
+ * UI, especially bad on mobile). A thrown exception always toasts via
+ * `describeApiError`, matching the original's shared `catch`.
  */
 export async function callAction<T extends { ok: boolean; error?: string }>(
   fn: () => Promise<T>,
@@ -51,9 +54,9 @@ export async function callAction<T extends { ok: boolean; error?: string }>(
     if (!res.ok) {
       const msg = `${name}: ${res.error ?? ""}`;
       if (onFailure) onFailure(msg);
-      else window.alert(msg);
+      else showToast(msg);
     }
   } catch (e) {
-    window.alert(describeApiError(e, t));
+    showToast(describeApiError(e, t));
   }
 }

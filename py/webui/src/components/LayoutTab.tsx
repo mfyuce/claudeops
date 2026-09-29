@@ -22,6 +22,7 @@
 import { useState } from "react";
 import { apiLayout, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { TabHint } from "./shared/TabHint";
@@ -57,7 +58,7 @@ export function LayoutTab() {
         setResult(`✗ ${res.error}`);
       }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) window.alert(t.authErrorShort);
+      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
       else setResult(`✗ ${describeApiError(e, t)}`);
     }
     setBusy(false);

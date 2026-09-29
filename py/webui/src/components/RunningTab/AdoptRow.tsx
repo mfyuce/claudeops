@@ -16,6 +16,7 @@
 import { useState } from "react";
 import { apiAdopt } from "../../api/client";
 import { describeApiError } from "../../api/errors";
+import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor } from "../../state/hosts";
@@ -56,10 +57,10 @@ export function AdoptRow({ session, colspan, onClose }: AdoptRowProps) {
         effort,
         lang,
       });
-      if (res.ok) window.alert(t.adopted + res.new_name);
-      else window.alert(`${session.name}: ${res.error}`);
+      if (res.ok) showToast(t.adopted + res.new_name, "success");
+      else showToast(`${session.name}: ${res.error}`);
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     }
     // Original: unconditionally closes + refreshes after the request
     // settles (`adoptFor = null; adoptChoice[oldName] = null; refresh();`).

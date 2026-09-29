@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Banners } from "./components/Banners";
+import { ToastContainer } from "./components/shared/Toast";
 import { DesktopTab } from "./components/DesktopTab";
 import { DiagnosticsTab } from "./components/DiagnosticsTab";
 import { GroupTable } from "./components/GroupTable";
@@ -186,6 +187,7 @@ function AppShell() {
       </div>
       <div className="sub">{summary}</div>
       <Banners onGoToDiagnostics={() => setActiveTab("diag")} />
+      <ToastContainer />
       <SearchBox value={search} onChange={setSearch} />
       <TabBar active={activeTab} onSelect={setActiveTab} search={search} />
       <div>

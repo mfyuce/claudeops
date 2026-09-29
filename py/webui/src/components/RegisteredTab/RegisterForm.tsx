@@ -15,6 +15,7 @@
 import { useState } from "react";
 import { apiRegister } from "../../api/client";
 import { describeApiError } from "../../api/errors";
+import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliListFor, cliOptionsFor, LOCAL_HOST } from "../../state/hosts";
@@ -69,14 +70,14 @@ export function RegisterForm() {
         lang,
       });
       if (!res.ok) {
-        window.alert(`${name}: ${res.error}`);
+        showToast(`${name}: ${res.error}`);
       } else {
         setMessage(t.registerSuccess(savedName));
         setName("");
         setCwd("");
       }
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     } finally {
       setBusy(false);
     }

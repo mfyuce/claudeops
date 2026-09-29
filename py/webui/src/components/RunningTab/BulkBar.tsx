@@ -20,6 +20,7 @@ import { apiPost, apiStart, apiNewChat, ApiError, type StartPayload, type NewCha
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
+import { showToast } from "../../state/toast";
 import type { ApiResult, SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import { TabHint } from "../shared/TabHint";
@@ -137,7 +138,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     }
     const names = picked.map((s) => s.name);
     if (!names.length) {
-      if (note) window.alert(note.trim());
+      if (note) showToast(note.trim(), "info");
       return;
     }
     if (!window.confirm(t.bulkConfirm(labels[action], explanations[action], names) + note)) return;

@@ -32,6 +32,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiDiagAsk, apiDiagRestartGt, apiDiagSpawnTest, ApiError, getDiagLog } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { TabHint } from "./shared/TabHint";
@@ -111,7 +112,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
       else if ("detail" in res && res.detail) setDiagResult(`✗ ${res.detail}`);
       else setDiagResult(t.diagTestFailWindow);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) window.alert(t.authErrorShort);
+      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
       else setDiagResult(`✗ ${describeApiError(e, t)}`);
     }
     setTestBusy(false);
@@ -127,7 +128,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
       const res = await apiDiagRestartGt(lang);
       setDiagResult(res.ok ? t.diagRestartDone(res.result) : `✗ ${res.error}`);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) window.alert(t.authErrorShort);
+      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
       else setDiagResult(`✗ ${describeApiError(e, t)}`);
     }
     setRestartBusy(false);
@@ -149,7 +150,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
       setHandoverCopyLabel(t.termCopied);
       window.setTimeout(() => setHandoverCopyLabel(null), 1200);
     } catch (e) {
-      window.alert(t.requestFailed + (e instanceof Error ? e.message : String(e)));
+      showToast(t.requestFailed + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -166,7 +167,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
         setAskResult(`✗ ${res.error}`);
       }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) window.alert(t.authErrorShort);
+      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
       else setAskResult(`✗ ${describeApiError(e, t)}`);
     }
     setAskBusy(false);

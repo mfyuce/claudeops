@@ -22,6 +22,7 @@
 import { useState } from "react";
 import { apiNewChat, apiStart, apiStop } from "../../api/client";
 import { callAction, describeApiError } from "../../api/errors";
+import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliListFor, cliOptionsFor, LOCAL_HOST } from "../../state/hosts";
@@ -183,7 +184,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
         if (mode === "restart" && session.running) {
           const stopRes = await apiStop({ name: session.name, host: session.host, lang });
           stopOk = stopRes.ok;
-          if (!stopOk) window.alert(`${session.name}: ${stopRes.error}`);
+          if (!stopOk) showToast(`${session.name}: ${stopRes.error}`);
         }
         if (stopOk) {
           const res = await apiNewChat({
@@ -195,11 +196,11 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             cli,
             lang,
           });
-          if (res.ok) window.alert(t.newChatStarted + res.name);
+          if (res.ok) showToast(t.newChatStarted + res.name, "success");
           else confirmDiagFollowup(`${session.name}: ${res.error}`);
         }
       } catch (e) {
-        window.alert(describeApiError(e, t));
+        showToast(describeApiError(e, t));
       }
     } else {
       // "reset" while still running (modeChoices above) needs the same

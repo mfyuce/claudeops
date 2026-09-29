@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiSnapshotList, apiSnapshotResume, apiSnapshotSave, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import type { SnapshotListResult, SnapshotResumeResult } from "../api/types";
@@ -57,7 +58,7 @@ export function SnapshotSection() {
   const snap = data.snapshot;
 
   function handleAuthOrError(e: unknown) {
-    if (e instanceof ApiError && e.status === 401) window.alert(t.authErrorShort);
+    if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
     else setError(describeApiError(e, t));
   }
 

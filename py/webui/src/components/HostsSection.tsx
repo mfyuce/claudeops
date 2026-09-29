@@ -20,6 +20,7 @@
 import { useEffect, useState } from "react";
 import { apiRemoveHost, apiSaveHost, apiTestHost, getHosts } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import type { HostRecord } from "../api/types";
@@ -68,7 +69,7 @@ export function HostsSection() {
         lang,
       });
       if (!res.ok) {
-        window.alert(res.error);
+        showToast(res.error);
       } else {
         setName("");
         setBaseUrl("");
@@ -81,7 +82,7 @@ export function HostsSection() {
         await handleTest(savedName);
       }
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     } finally {
       setBusy(false);
     }
@@ -97,9 +98,9 @@ export function HostsSection() {
     setTestingNames((prev) => new Set(prev).add(hostName));
     try {
       const res = await apiTestHost({ name: hostName, lang });
-      if (!res.ok) window.alert(res.error);
+      if (!res.ok) showToast(res.error);
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     } finally {
       setTestingNames((prev) => {
         const next = new Set(prev);
@@ -128,9 +129,9 @@ export function HostsSection() {
     if (!window.confirm(t.hostRemoveConfirm(hostName))) return;
     try {
       const res = await apiRemoveHost({ name: hostName, lang });
-      if (!res.ok) window.alert(res.error);
+      if (!res.ok) showToast(res.error);
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     }
     await load();
   }

@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiOrchCancel, apiOrchSaveDraft, apiOrchStart, getOrchRun, getOrchRuns } from "../../api/client";
 import { describeApiError } from "../../api/errors";
+import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { isOrchEligible } from "../../state/orch";
@@ -126,7 +127,7 @@ export function OrchTab({ selection }: OrchTabProps) {
     if (!data) return;
     const selectedRows = data.sessions.filter((s) => selection.selected.has(rowKey(s)));
     if (!selectedRows.length) {
-      window.alert(t.orchNoSelectionMsg);
+      showToast(t.orchNoSelectionMsg, "info");
       return;
     }
     const eligible = selectedRows.filter(isOrchEligible);
@@ -141,7 +142,7 @@ export function OrchTab({ selection }: OrchTabProps) {
       return merged;
     });
     selection.replace([]);
-    if (skipped.length) window.alert(t.orchSkippedIneligible(skipped.join(", ")));
+    if (skipped.length) showToast(t.orchSkippedIneligible(skipped.join(", ")), "info");
   }
 
   function handleRemove(host: string, name: string) {
@@ -190,9 +191,9 @@ export function OrchTab({ selection }: OrchTabProps) {
     if (!activeId || !window.confirm(t.orchCancelRunConfirm)) return;
     try {
       const res = await apiOrchCancel(activeId);
-      if (!res.ok) window.alert(res.error);
+      if (!res.ok) showToast(res.error);
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     }
     refresh();
   }

@@ -9,6 +9,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { apiForgetInstance, apiStart, getInstances } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { showToast } from "../state/toast";
 import type { InstanceRecord } from "../api/types";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -45,9 +46,9 @@ function HistoryRow({ item, onView, onChanged }: HistoryRowProps) {
     setBusy(true);
     try {
       const res = await action();
-      if (!res.ok) window.alert(`${item.name}: ${res.error}`);
+      if (!res.ok) showToast(`${item.name}: ${res.error}`);
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     } finally {
       setBusy(false);
     }

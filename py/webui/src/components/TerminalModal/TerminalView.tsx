@@ -42,6 +42,7 @@ import { apiContext, apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTe
 import type { TermSetModePayload } from "../../api/client";
 import type { UsageEntry } from "../../api/types";
 import { describeApiError } from "../../api/errors";
+import { showToast } from "../../state/toast";
 import { useTermOutput } from "../../hooks/useTermOutput";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -597,7 +598,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     try {
       const res = await getTermOutput(name, lang, host);
       if (!res.ok) {
-        window.alert(`${name}: ${res.error}`);
+        showToast(`${name}: ${res.error}`);
         return;
       }
       await navigator.clipboard.writeText(stripAnsi(res.text));
@@ -613,7 +614,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
       // app) correctly detect a 401 first — a strict improvement that
       // falls out of reusing the shared client rather than a hand-rolled
       // fetch, not a deliberate behavior change.
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     }
   }
 

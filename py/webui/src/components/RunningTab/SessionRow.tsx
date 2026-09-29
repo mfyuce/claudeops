@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { apiTermOpenWindow } from "../../api/client";
 import { describeApiError } from "../../api/errors";
+import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { LOCAL_HOST, rowKey } from "../../state/hosts";
@@ -62,9 +63,9 @@ export function SessionRow({
     setOpeningWindow(true);
     try {
       const res = await apiTermOpenWindow({ name: session.name, host: session.host, lang });
-      if (!res.ok) window.alert(`${session.name}: ${res.error}`);
+      if (!res.ok) showToast(`${session.name}: ${res.error}`);
     } catch (e) {
-      window.alert(describeApiError(e, t));
+      showToast(describeApiError(e, t));
     } finally {
       setOpeningWindow(false);
     }
