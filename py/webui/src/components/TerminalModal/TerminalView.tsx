@@ -223,6 +223,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // CDN-vendored, so there's no runtime network dependency once built).
   useEffect(() => {
     let cancelled = false;
+    let touchCleanup: (() => void) | null = null;
     void (async () => {
       try {
         const [{ Terminal }] = await Promise.all([import("@xterm/xterm"), import("@xterm/xterm/css/xterm.css")]);
@@ -295,6 +296,58 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           term.scrollLines(Math.sign(rowsDelta) * Math.min(rounded, maxRows));
           return false;
         });
+        // Touch-drag scroll (2026-09-29 TODO: "can't scroll at all on
+        // mobile", live-verified — `attachCustomWheelEventHandler` above
+        // only ever sees `wheel` events, which a touchscreen never fires; a
+        // touch drag fell through to `.xterm-viewport`'s native DOM scroll
+        // instead, which never has real overflow to scroll into (xterm's
+        // internal buffer growth isn't reflected in its DOM scrollHeight in
+        // this app's setup — confirmed via `buffer.active.baseY` growing
+        // steadily while `.xterm-viewport.scrollHeight` stayed pinned to
+        // `clientHeight`), so touch scrolling did nothing at all. Same shape
+        // as the wheel fix: skip native scroll, convert the drag distance to
+        // rows with the identical real-cell-height math, and drive the same
+        // already-proven `scrollLines()` call directly — this is a native
+        // DOM `TouchEvent` listener (xterm has no `attachCustomTouch...`
+        // equivalent API), so `{ passive: false }` + `preventDefault()` on
+        // move is required to actually stop the browser's own touch-scroll/
+        // pull-to-refresh from fighting it.
+        let touchLastY: number | null = null;
+        function handleTouchStart(ev: TouchEvent) {
+          if (ev.touches.length !== 1) return;
+          touchLastY = ev.touches[0].clientY;
+        }
+        function handleTouchMove(ev: TouchEvent) {
+          if (touchLastY === null || ev.touches.length !== 1) return;
+          const y = ev.touches[0].clientY;
+          // Finger moving DOWN the screen (y increasing) is the "pull down
+          // to reveal earlier content" gesture — same convention as any
+          // native scrollable list — so a falling touchLastY-minus-y (i.e.
+          // negative) must scroll UP, matching scrollLines' own sign.
+          const dy = touchLastY - y;
+          touchLastY = y;
+          if (dy === 0) return;
+          ev.preventDefault();
+          const rows = term.rows || INITIAL_ROWS;
+          const cellHeightPx = container.clientHeight / rows || 17;
+          const rowsDelta = dy / cellHeightPx;
+          const maxRows = Math.max(1, rows - 2);
+          const rounded = Math.round(Math.abs(rowsDelta)) || 1;
+          term.scrollLines(Math.sign(rowsDelta) * Math.min(rounded, maxRows));
+        }
+        function handleTouchEnd() {
+          touchLastY = null;
+        }
+        container.addEventListener("touchstart", handleTouchStart, { passive: true });
+        container.addEventListener("touchmove", handleTouchMove, { passive: false });
+        container.addEventListener("touchend", handleTouchEnd, { passive: true });
+        container.addEventListener("touchcancel", handleTouchEnd, { passive: true });
+        touchCleanup = () => {
+          container.removeEventListener("touchstart", handleTouchStart);
+          container.removeEventListener("touchmove", handleTouchMove);
+          container.removeEventListener("touchend", handleTouchEnd);
+          container.removeEventListener("touchcancel", handleTouchEnd);
+        };
         // Registered once (the instance is created once); the indirection
         // through `queueRawRef` keeps it on the CURRENT props rather than this
         // closure's. xterm already suppresses key events while disableStdin is
@@ -325,6 +378,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     })();
     return () => {
       cancelled = true;
+      touchCleanup?.();
       if (instRef.current) {
         try {
           instRef.current.term.dispose();
