@@ -62,6 +62,9 @@ def register(sub):
                    help="kill sonrası bridge deregister için bekleme (varsayılan: 3.0s)")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--display", default=None)
+    p.add_argument("--force", action="store_true",
+                   help="konuşma kavramı olmayan (ör. shell) session'ları da kill+respawn et "
+                        "(varsayılan: atlanır — bkz. handover.py Faz1'deki has_conversation() koruması)")
     p.set_defaults(func=run)
 
 
@@ -115,6 +118,19 @@ def _run_inner(args, display, models, roster) -> int:
         # AYNI YAZILIR ama İKİ AYRI CLI'nın kendi model listesindendir, tesadüfen çakışıyor —
         # bir sabitte birleştirmeye kalkışma).
         provider = get_provider(cli)
+
+        # Faz1'in (handover.py) has_conversation() korumasının AYNISI: konuşma
+        # kavramı olmayan provider'lar (ör. shell) için kill+respawn = mevcut
+        # interaktif durumun (cwd, elle su/sudo girişi, çalışmakta olan uzun bir
+        # komut) sessizce kaybı. rc bu kontrolü hiç yapmıyordu (TODO.md 2026-09-29,
+        # kullanıcı: "do not handover shells", canlı `shell_ulak` kaybı riskiyle
+        # gündeme geldi) — Faz1'den FARKLI olarak rc tek-tek elle çağrılan bir komut,
+        # bilerek override edilebilmesi anlamlı: --force.
+        if not provider.has_conversation() and not args.force:
+            print(f"  ⊘ konuşma yok: {base} ({cli}) — kill+respawn atlandı (mevcut interaktif "
+                  f"durum sessizce kaybolurdu), bilerek yeniden başlatmak için --force ekleyin")
+            continue
+
         stored_model = models.get(base) if entry else rec.get("model")
         model = args.model or stored_model or default_model_for(provider)
         permission_mode = args.permission_mode or provider.permission_modes()[0]
