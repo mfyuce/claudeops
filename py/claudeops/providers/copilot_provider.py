@@ -254,7 +254,7 @@ class CopilotProvider(CliProvider):
             name = None
         return name or f"copilot-{proc.pid}"
 
-    def extract_info(self, cmd: List[str]) -> Dict[str, Optional[str]]:
+    def extract_info(self, cmd: List[str], cwd: str = "", session_name: str = "") -> Dict[str, Optional[str]]:
         if "--autopilot" in cmd or _arg(cmd, "--mode") == "autopilot":
             permission_mode = "autopilot"
         elif _arg(cmd, "--mode") == "plan":

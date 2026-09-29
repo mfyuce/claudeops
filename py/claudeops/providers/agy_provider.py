@@ -72,10 +72,21 @@ import time
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec
+from ..atomic_json import atomic_write_json
+from ..paths import CLAUDEOPS_DIR
 from ..settings import resolved_binary
 
 CONVERSATIONS_CACHE = os.path.expanduser("~/.gemini/antigravity-cli/cache/last_conversations.json")
 CONVERSATIONS_DIR = os.path.expanduser("~/.gemini/antigravity-cli/conversations")
+# 2026-09-29 canlı bulgu: CONVERSATIONS_CACHE cwd BAŞINA TEK bir id tutuyor —
+# aynı cwd'de birden fazla agy session'ı (kullanıcının model-bake-off deseni,
+# bkz. wg_zk_pqs20260928_1/_2/_3) varsa, reboot sonrası resume'da sadece EN SON
+# o cwd'ye dokunan kazanır, diğerleri fresh başlar (canlı yaşandı: 3 session'ın
+# ÜÇÜ DE `--conversation` alamadan boş açıldı, tek ortak neden buydu). Bu dosya
+# agy'nin cache'inden BAĞIMSIZ, session ADI başına kendi id'imizi tutar —
+# `resolve_resume_id()` önce buna bakar, agy'nin paylaşımlı cache'ine sadece hiç
+# öğrenilmemiş (session'ın kendi ilk turu hiç gözlemlenmemiş) durumda düşer.
+AGY_SIDS_JSON = os.path.join(CLAUDEOPS_DIR, "agy_sids.json")
 
 # step_type'ın bilinen anlamları (yukarıdaki modül docstring'inin veri kaynağı) —
 # sadece bu ikisi kullanıcı-görünür user/assistant turn'lerini taşıyor.
@@ -193,6 +204,33 @@ def _arg(cmd: List[str], flag: str) -> Optional[str]:
     return cmd[i + 1] if i + 1 < len(cmd) else None
 
 
+def _load_agy_sids() -> Dict[str, str]:
+    try:
+        with open(AGY_SIDS_JSON, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def _remember_agy_sid(session_name: str, sid: str) -> None:
+    """`extract_info()`'nun her discovery tick'inde çağırdığı öğrenme adımı —
+    zaten aynı değer kayıtlıysa diske hiç yazmaz (4s'lik poll döngüsünde
+    gereksiz I/O yapmamak için)."""
+    known = _load_agy_sids()
+    if known.get(session_name) == sid:
+        return
+    known[session_name] = sid
+    atomic_write_json(AGY_SIDS_JSON, known)
+
+
+def _sid_claimed_by_other(known: Dict[str, str], sid: str, session_name: str) -> bool:
+    """`sid`, `session_name`'İN KENDİSİ DIŞINDA bir isme zaten kayıtlıysa True —
+    aynı cwd'deki bir kardeş session'ın id'sini yanlışlıkla "öğrenmeyi" önler
+    (bkz. AGY_SIDS_JSON'ın yukarıdaki yorumu)."""
+    return any(other_sid == sid and other_name != session_name for other_name, other_sid in known.items())
+
+
 class AgyProvider(CliProvider):
     name = "agy"
 
@@ -202,10 +240,18 @@ class AgyProvider(CliProvider):
 
     def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
                           session_name: str = "") -> Optional[str]:
-        """agy'nin cache'i cwd başına TEK bir conversation-id tutuyor (claude'un
-        aynı klasörde onlarca jsonl'ı gibi bir liste yok) — o tek id başka bir
-        canlı session'ın elindeyse alternatif YOK, fresh başlanır (None). Bu,
-        aynı klasörde iki agy session'ının aynı konuşmayı paylaşmasından iyidir."""
+        """ÖNCE `AGY_SIDS_JSON`'daki KENDİ öğrendiğimiz session-adı→id eşlemesine
+        bakar (2026-09-29 fix — bkz. AGY_SIDS_JSON'ın tanım yorumu) — aynı cwd'de
+        birden fazla agy session'ı olsa bile HER BİRİ kendi id'sini bulur. Bu
+        session için hiç öğrenilmiş bir şey yoksa (ör. henüz hiç turu gözlemlenmemiş
+        gerçekten yeni bir session), agy'nin KENDİ cwd-keyed cache'ine düşer —
+        o cache cwd başına TEK bir id tutuyor (claude'un aynı klasörde onlarca
+        jsonl'ı gibi bir liste yok), o tek id başka bir canlı session'ın elindeyse
+        alternatif YOK, fresh başlanır (None)."""
+        known = _load_agy_sids()
+        own = known.get(session_name) if session_name else None
+        if own and own not in in_use:
+            return own
         try:
             with open(CONVERSATIONS_CACHE, encoding="utf-8") as f:
                 data = json.load(f)
@@ -276,14 +322,38 @@ class AgyProvider(CliProvider):
             name = None
         return name or f"agy-{proc.pid}"
 
-    def extract_info(self, cmd: List[str]) -> Dict[str, Optional[str]]:
+    def extract_info(self, cmd: List[str], cwd: str = "", session_name: str = "") -> Dict[str, Optional[str]]:
         if "--dangerously-skip-permissions" in cmd:
             permission_mode = "auto"
         else:
             mode = _arg(cmd, "--mode")
             permission_mode = {"accept-edits": "acceptEdits", "plan": "plan"}.get(mode)
+        sid = _arg(cmd, "--conversation")
+        if sid and session_name:
+            # Argv zaten kesin — her discovery tick'inde ucuzca tazele/doğrula
+            # (self-healing: elle --conversation ile başlatılmış bir session'ı da kapsar).
+            _remember_agy_sid(session_name, sid)
+        elif cwd and session_name:
+            # Fresh başlamıştı (argv'de --conversation yok) — agy o zamandan beri
+            # KENDİ cwd-cache'ine bu session'ın konuşmasını yazmış olabilir
+            # (bkz. AGY_SIDS_JSON'ın tanım yorumu: sadece ilk tur GERÇEKLEŞTİKTEN
+            # sonra, canlı ölçüldü). Cache'teki değer BAŞKA bir bilinen session'a
+            # aitse çalma — o zaten kendi turunu yapmış, bu session'ın hâlâ hiç
+            # turu olmamış demektir.
+            try:
+                with open(CONVERSATIONS_CACHE, encoding="utf-8") as f:
+                    cache = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                cache = {}
+            cached = cache.get(cwd) if isinstance(cache, dict) else None
+            if isinstance(cached, str) and cached.strip():
+                cached = cached.strip()
+                known = _load_agy_sids()
+                if not _sid_claimed_by_other(known, cached, session_name):
+                    _remember_agy_sid(session_name, cached)
+                    sid = cached
         return {
-            "sid": _arg(cmd, "--conversation"),
+            "sid": sid,
             "model": _arg(cmd, "--model"),
             "permission_mode": permission_mode,
             "effort": _arg(cmd, "--effort"),

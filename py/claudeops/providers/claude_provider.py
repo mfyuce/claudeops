@@ -550,7 +550,7 @@ class ClaudeProvider(CliProvider):
     def extract_name(self, proc, cmd: List[str]) -> Optional[str]:
         return _arg(cmd, "--remote-control")
 
-    def extract_info(self, cmd: List[str]) -> Dict[str, Optional[str]]:
+    def extract_info(self, cmd: List[str], cwd: str = "", session_name: str = "") -> Dict[str, Optional[str]]:
         return {
             "sid": _arg(cmd, "--resume"),
             "model": _arg(cmd, "--model"),

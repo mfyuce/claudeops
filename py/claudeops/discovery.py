@@ -143,7 +143,7 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
                 continue
             if not cwd:
                 continue
-            info = provider.extract_info(cmd)
+            info = provider.extract_info(cmd, cwd=cwd, session_name=name)
             by_name[name] = Session(
                 name=name,
                 pid=p.pid,

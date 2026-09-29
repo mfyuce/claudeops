@@ -308,8 +308,14 @@ class CliProvider(ABC):
         demektir — çağıran proc'u tamamen atlar (claude'da --remote-control yoksa)."""
 
     @abstractmethod
-    def extract_info(self, cmd: List[str]) -> Dict[str, Optional[str]]:
-        """{"sid":..., "model":..., "permission_mode":..., "effort":...} döndür."""
+    def extract_info(self, cmd: List[str], cwd: str = "", session_name: str = "") -> Dict[str, Optional[str]]:
+        """{"sid":..., "model":..., "permission_mode":..., "effort":...} döndür.
+
+        `cwd`/`session_name` çoğu provider için gereksiz (sid zaten argv'den
+        çıkıyor) — sadece argv'nin KENDİSİ sid taşımayan provider'lar (agy'nin
+        cwd-keyed paylaşımlı resume cache'i, bkz. agy_provider.py) için var,
+        onlar discovery.py'nin zaten elinde olan bu iki değeri kullanıp
+        kendi başlarına ek bir öğrenme/kalıcılaştırma yapabilsin diye."""
 
     # ── panel seçenekleri ────────────────────────────────────────────────────
 

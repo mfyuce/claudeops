@@ -67,7 +67,7 @@ class ShellProvider(CliProvider):
         except Exception:
             return None
 
-    def extract_info(self, cmd: List[str]) -> Dict[str, Optional[str]]:
+    def extract_info(self, cmd: List[str], cwd: str = "", session_name: str = "") -> Dict[str, Optional[str]]:
         return {"sid": None, "model": None, "permission_mode": None, "effort": None}
 
     def model_choices(self) -> List[str]:

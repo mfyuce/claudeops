@@ -227,7 +227,7 @@ class CodexProvider(CliProvider):
             name = None
         return name or f"codex-{proc.pid}"
 
-    def extract_info(self, cmd: List[str]) -> Dict[str, Optional[str]]:
+    def extract_info(self, cmd: List[str], cwd: str = "", session_name: str = "") -> Dict[str, Optional[str]]:
         sid = cmd[2] if len(cmd) >= 3 and cmd[1] == "resume" else None
         permission_mode = None
         if "--dangerously-bypass-approvals-and-sandbox" in cmd:

@@ -275,7 +275,7 @@ class UcliProvider(CliProvider):
     def extract_name(self, proc: "psutil.Process", cmd: List[str]) -> Optional[str]:
         return self._parse_session(cmd)
 
-    def extract_info(self, cmd: List[str]) -> Dict[str, Optional[str]]:
+    def extract_info(self, cmd: List[str], cwd: str = "", session_name: str = "") -> Dict[str, Optional[str]]:
         model = None
         parsed_limits: Dict[str, str] = {}
         flag_to_key = {
