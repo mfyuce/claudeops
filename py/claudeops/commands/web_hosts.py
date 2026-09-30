@@ -39,6 +39,7 @@ from websockets.sync.client import connect as ws_connect
 
 from . import web_grpc
 from .. import hosts as hosts_mod
+from ..diaglog import diag_log
 from ..hosts import LOCAL_HOST_NAME
 from ..settings import load_settings
 
@@ -425,13 +426,33 @@ def _try_fallback_urls(host_record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     çalışırsa `hosts_mod.promote_base_url()` ile onu kalıcı hale getirir ve
     başarılı sonucu döner. Hiçbiri çalışmazsa `None` (çağıran normal hata
     yoluna devam eder) -- extra_urls hiç yoksa hemen `None`, hiçbir istek
-    atılmaz."""
+    atılmaz.
+
+    TOBEDECIDED#53 (2026-09-27 güvenlik turu, Codex F13 + Antigravity SEC-12
+    + deepseek Y3, üçü de bağımsız buldu) — 2026-09-30 karar (b) UYGULANDI:
+    kayıtlı `base_url` https:// ise, http:// bir aday DENENMEZ BİLE (skip,
+    `continue`) — deneme = `_fetch_status_from`'un token'ı o adaya GÖNDERMESİ
+    demek, "önce dene sonra promote etme/etme" ayrımı token'ı şifresiz
+    göndermeyi ZATEN engellemiyordu. Eskiden: HTTPS düşünce sessizce (kullanıcı
+    hiç fark etmeden) bir http:// adaya geçilip KALICI hale getiriliyordu —
+    artık böyle bir aday tamamen atlanıyor; TÜM adaylar bu şekilde elenirse
+    fonksiyon `None` döner, host normal "bağlı değil" hata yoluna düşer (ARTIK
+    otomatik toparlanma YOK — bilinçli trade-off, kullanıcı onayladı: HTTPS
+    kalıcı arızalanırsa host'a erişim için base_url'i elle http:// yapmak ya
+    da HTTPS'i onarmak gerekir). `base_url`'in KENDİSİ zaten http:// ise bu
+    kısıtlama uygulanmaz — kullanıcı o host için şifresiz bağlantıyı ZATEN
+    bilerek kaydetmiş, başka bir http:// adaya geçmek YENİ bir geriletme
+    değil."""
     extras = host_record.get("extra_urls") or []
     if not extras:
         return None
     name = host_record["name"]
     token = host_record["token"]
+    base_is_https = host_record.get("base_url", "").startswith("https://")
     for candidate in extras:
+        if base_is_https and candidate.startswith("http://"):
+            diag_log("host_fallback_http_skipped", name=name, candidate=candidate)
+            continue
         parsed, err = _fetch_status_from(candidate, token, FALLBACK_TIMEOUT_SECONDS)
         if err is None:
             hosts_mod.promote_base_url(name, candidate)
