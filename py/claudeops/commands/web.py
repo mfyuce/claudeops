@@ -66,7 +66,7 @@ from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, save_settings
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
-from ..providers.claude_provider import jsonl_path_for
+from ..providers.claude_provider import jsonl_path_for, last_assistant_model
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
 from ..tmux_backend import (
@@ -2297,6 +2297,44 @@ def _context(name: str, lang: str = "tr") -> dict:
     return {"ok": True, "available": True, "entries": entries}
 
 
+def _live_model(name: str, lang: str = "tr") -> dict:
+    """TODO.md 2026-09-17: Terminal→Bilgi sekmesindeki `live_model` spawn anındaki
+    `--model` cmdline argümanından okunuyor, terminale DOĞRUDAN yazılan bir
+    `/model` (claudeops'un kendi dropdown'ı kullanılmadan) hiçbir yerde
+    yansımıyordu. jsonl'ın kendi `message.model`'i (her assistant turn'de
+    GERÇEK kullanılan modeli taşır) doğrulanmış non-destructive kaynak.
+
+    `_context()`'in aksine session'a HİÇBİR ŞEY enjekte etmez (salt dosya
+    okuma) — bu yüzden busy/masked ayrımı yapmaya gerek yok, her durumda
+    güvenle çağrılabilir. `_status_payload()`'ın her ~2-3sn'lik poll
+    döngüsüne BİLEREK eklenmedi (20MB+ jsonl'da tail-read yine de bir I/O
+    maliyeti taşır, bkz. `last_assistant_model`) — `_context()` gibi ayrı,
+    istemcinin kendi kararıyla (Terminal→Bilgi açılınca) çağırdığı bir uç.
+
+    Bugün sadece `claude` (jsonl formatı provider-özel, `_compact()`'in aynı
+    `provider.compact_command() is None` deseniyle tutarlı bir "unsupported"
+    dalı var)."""
+    kind, procs = _find_running_for_action(name)
+    if kind == "none":
+        return _err(lang, "not_running", name=name)
+    if kind == "ambiguous":
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+    s = procs[0]
+    fleet = _fleet_status()
+    info = fleet.get(name)
+    chosen_cli = info["cli"] if info else s.cli
+    if chosen_cli != "claude":
+        return {"ok": True, "available": False, "reason": "unsupported"}
+    cwd = info["cwd"] if info else s.cwd
+    jsonl = jsonl_path_for(cwd, s.sid)
+    if jsonl is None:
+        return {"ok": True, "available": False, "reason": "no_jsonl"}
+    model = last_assistant_model(jsonl)
+    if not model:
+        return {"ok": True, "available": False, "reason": "no_assistant_turn"}
+    return {"ok": True, "available": True, "model": model}
+
+
 def _adopt(old_name: str, new_name: str = "", model: str = "",
            permission_mode: str = "", effort: str = "", lang: str = "tr") -> dict:
     """claudeops'un AÇMADIĞI (kayıtsız/foreign) canlı bir session'ı devral.
@@ -3422,7 +3460,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/set-mode",
-                         "/api/term/open-window", "/api/settings", "/api/usage", "/api/context",
+                         "/api/term/open-window", "/api/settings", "/api/usage", "/api/context", "/api/live-model",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/files/delete", "/api/files/rename", "/api/files/mkdir",
@@ -3635,6 +3673,16 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_context(name, lang=lang))
+            return
+
+        if path == "/api/live-model":
+            # `/api/context`'in AYNI deseni: isim gerekir, fleet state'i
+            # değiştirmez → düz `_json`, `_json_notify` değil.
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_live_model(name, lang=lang))
             return
 
         if path == "/api/hosts":

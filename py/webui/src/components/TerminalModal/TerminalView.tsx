@@ -38,7 +38,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { apiContext, apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
+import { apiContext, apiLiveModel, apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
 import type { TermSetModePayload } from "../../api/client";
 import type { UsageEntry } from "../../api/types";
 import { describeApiError } from "../../api/errors";
@@ -195,6 +195,33 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     | { kind: "unavailable"; reason?: string }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
+
+  // TODO.md 2026-09-17: `session.live_model` freezes at the spawn-time --model
+  // argument, so a live `/model` typed directly in the terminal (not through
+  // claudeops' own dropdown) never showed up here. Unlike the context check
+  // above, `_live_model()` only reads the session's jsonl (no injection, no
+  // busy/masked concern) — so, unlike `contextState`, this is fetched
+  // automatically rather than behind a button. Silently falls back to the old
+  // frozen value on any failure/unavailability (`liveModel` just stays null);
+  // no dedicated error UI, this is a quiet correction to an existing display,
+  // not a user-initiated action of its own.
+  const [liveModel, setLiveModel] = useState<string | null>(null);
+  useEffect(() => {
+    // No reset-to-null here: `name`/`host` changing remounts this whole
+    // component fresh (`TerminalModal` keys by session, see its own comment),
+    // and `lang` doesn't affect the fetched value — so there's nothing stale
+    // to clear, and this keeps the effect lint-clean (no synchronous setState
+    // at the top, only inside the async result below).
+    let cancelled = false;
+    void apiLiveModel({ name, host, lang })
+      .then((res) => {
+        if (!cancelled && res.ok && res.available && res.model) setLiveModel(res.model);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [name, host, lang]);
 
   const [inputText, setInputText] = useState("");
   const [copyLabel, setCopyLabel] = useState<string | null>(null);
@@ -612,9 +639,10 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // have a same-named session).
   const session = data?.sessions.find((s) => rowKey(s) === rowKey({ host, name }));
   const cliOpts = cliOptionsFor(data ?? null, host, session?.cli ?? "");
-  // What the session is REALLY on: the running process's own --model, falling
-  // back to what claudeops recorded for the name (a stopped/unknown proc).
-  const knownModel = session?.live_model || session?.model || "";
+  // What the session is REALLY on: the jsonl-verified current model (see
+  // `liveModel` above) first, then the running process's own spawn-time
+  // --model, then what claudeops recorded for the name (a stopped/unknown proc).
+  const knownModel = liveModel || session?.live_model || session?.model || "";
   const modelPickKey = `${rowKey({ host, name })}|${knownModel}`;
   const modelValue = pickedModel?.forKey === modelPickKey ? pickedModel.value : knownModel;
   const modelOptions =

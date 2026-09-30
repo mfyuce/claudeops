@@ -116,6 +116,54 @@ def find_latest_jsonl(cwd: str) -> Optional[Path]:
     return max(jsonls, key=_safe_mtime) if jsonls else None
 
 
+# TODO.md 2026-09-17: web.py'nin `live_model`i spawn anındaki cmdline'dan
+# (`--model X`) okunuyor, terminale doğrudan yazılan bir `/model` hiçbir yerde
+# yansımıyordu. jsonl'ın kendi `message.model`'i (her assistant turn'de
+# GERÇEK kullanılan modeli taşır) tek non-destructive kaynak — ama bazı
+# jsonl'lar 20MB+ olabiliyor (needs_ho.py'nin `for line in f` deseni burada
+# uygun değil). Kuyruktan büyüyen bir pencereyle okur: çoğu dosyada ilk
+# (en küçük) pencerede bulunur, sadece çok uzun tool-only turn dizilerinde
+# genişler.
+_LAST_MODEL_CHUNK_BYTES = 65_536
+_LAST_MODEL_MAX_BYTES = 4_194_304
+
+
+def last_assistant_model(jsonl_path: Path) -> Optional[str]:
+    """Dosyanın SONUNDAN geriye okuyarak en son `type:"assistant"` satırının
+    `message.model`'ini döndürür, bulamazsa None. Asla tüm dosyayı baştan
+    okumaz (kuyruktan büyüyen pencere, `_LAST_MODEL_MAX_BYTES`'ta durur)."""
+    try:
+        size = os.path.getsize(jsonl_path)
+    except OSError:
+        return None
+    read_size = _LAST_MODEL_CHUNK_BYTES
+    try:
+        with open(jsonl_path, "rb") as f:
+            while True:
+                start = max(0, size - read_size)
+                f.seek(start)
+                chunk = f.read(size - start)
+                text = chunk.decode("utf-8", errors="replace")
+                for line in reversed(text.split("\n")):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if obj.get("type") != "assistant":
+                        continue
+                    model = obj.get("message", {}).get("model")
+                    if model:
+                        return model
+                if start == 0 or read_size >= _LAST_MODEL_MAX_BYTES:
+                    return None
+                read_size *= 4
+    except OSError:
+        return None
+
+
 # Bir konuşmanın "kimlik" satırları dosyanın EN BAŞINDA: `customTitle` (session'ın
 # `-n NAME` adı) 1. satırda, ilk `cwd` alanı ~6. satırda görülüyor (canlı örneklerde
 # doğrulandı, 2026-09-08) — tüm dosyayı okumaya gerek yok.

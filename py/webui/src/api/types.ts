@@ -257,6 +257,20 @@ export interface ContextResult {
   entries?: UsageEntry[];
 }
 
+/** `web.py`'nin `_live_model()`'i — `ContextResult` ile AYNI `ok`/`available`/
+ * `reason` iskeleti ama `entries` yerine `model` (tek string). Salt dosya
+ * okuma (jsonl'ın son `message.model`'i), session'a hiçbir şey enjekte
+ * etmez — `reason` bugün ("unsupported"|"no_jsonl"|"no_assistant_turn"),
+ * `busy`/`masked`/`send_failed` YOK (o kısıtlar sadece enjeksiyon yapan
+ * `_context()`'e özgü). */
+export interface LiveModelResult {
+  ok: boolean;
+  error?: string;
+  available?: boolean;
+  reason?: string;
+  model?: string;
+}
+
 export interface DiagInfo {
   web_pid: number;
   web_uptime_seconds: number;
