@@ -21,10 +21,13 @@
  * "settingsve diagnostics i tablara veya parcalara bolelim" — one panel had
  * grown to 7 unrelated topics: theme/handover-effort/history-warn/layout-
  * grid, default-model/provider-bin (per CLI), and Fleet Snapshot/Hosts).
- * `error` moved above the sub-tab switch (was inline right before
- * `<SnapshotSection />`) since `save()` is shared by controls now split
- * across "general" and "models" - a failure needs to stay visible
- * regardless of which of those two is active when it happens.
+ * `error` moved above the sub-tab switch since `save()` is shared by
+ * controls now split across "general" and "models" - a failure needs to
+ * stay visible regardless of which of those two is active when it happens.
+ *
+ * 2026-09-30: Fleet Snapshot moved OUT of "fleet" into its own top-level
+ * "Snapshots" tab (TODO.md 2026-09-27 — "saved snapshots shouldn't live in
+ * a Settings sub-tab") — "fleet" now holds only `<HostsSection />`.
  */
 
 import { useState } from "react";
@@ -37,7 +40,6 @@ import type { FleetSort, Theme, UsageResult } from "../api/types";
 import { applyTheme } from "../theme";
 import { CliInstallSection } from "./CliInstallSection";
 import { HostsSection } from "./HostsSection";
-import { SnapshotSection } from "./SnapshotSection";
 import { TabHint } from "./shared/TabHint";
 
 type SettingsPatch = {
@@ -390,12 +392,7 @@ export function SettingsTab() {
           )}
         </>
       )}
-      {subTab === "fleet" && (
-        <>
-          <SnapshotSection />
-          <HostsSection />
-        </>
-      )}
+      {subTab === "fleet" && <HostsSection />}
     </>
   );
 }

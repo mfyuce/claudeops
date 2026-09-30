@@ -78,6 +78,7 @@ export interface Strings {
   tabHistory: string;
   tabLayout: string;
   tabDesktop: string;
+  tabSnapshots: string;
   tabDiag: string;
   tabSettings: string;
   desktopDesc: string;
@@ -479,6 +480,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabHistory: "Geçmiş",
     tabLayout: "Layout",
     tabDesktop: "Uzak Masaüstü",
+    tabSnapshots: "Snapshotlar",
     tabDiag: "Tanı",
     tabSettings: "Ayarlar",
     desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
@@ -906,6 +908,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabHistory: "History",
     tabLayout: "Layout",
     tabDesktop: "Remote Desktop",
+    tabSnapshots: "Snapshots",
     tabDiag: "Diagnostics",
     tabSettings: "Settings",
     desktopDesc: "Watch the machine's screen live (2 fps). Remember to stop it — it captures the screen continuously while running.",

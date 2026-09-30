@@ -47,6 +47,7 @@ export function TabBar({ active, onSelect, search }: TabBarProps) {
     // Running indicator (not a count) — this daemon captures the screen
     // continuously while active, worth a glance even from other tabs.
     ["desktop", data.remote_desktop.running ? `${t.tabDesktop} ●` : t.tabDesktop],
+    ["snapshots", t.tabSnapshots],
     ["diag", t.tabDiag],
     ["settings", t.tabSettings],
   ];

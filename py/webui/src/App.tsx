@@ -31,6 +31,7 @@ import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
 import { RunningTab } from "./components/RunningTab/RunningTab";
 import { SearchBox } from "./components/shared/SearchBox";
 import { SettingsTab } from "./components/SettingsTab";
+import { SnapshotSection } from "./components/SnapshotSection";
 import { TabBar } from "./components/TabBar";
 import { ReadOnlySessionModal } from "./components/TerminalModal/ReadOnlySessionModal";
 import { TerminalModal } from "./components/TerminalModal/TerminalModal";
@@ -204,6 +205,7 @@ function AppShell() {
         {data && activeTab === "team" && <OrchTab selection={selection} />}
         {data && activeTab === "layout" && <LayoutTab />}
         {data && activeTab === "desktop" && <DesktopTab />}
+        {data && activeTab === "snapshots" && <SnapshotSection />}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
         {data && activeTab === "settings" && <SettingsTab />}
       </div>
