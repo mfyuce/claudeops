@@ -23,6 +23,7 @@ paketlerinin kendisiyle AYNI "sadece bu kullanıcı" ilkesi.
 Leaf modül (sadece paths/settings'e bağımlı, settings.py'yle aynı disiplin).
 """
 from __future__ import annotations
+import json
 import os
 import shlex
 import shutil
@@ -162,6 +163,47 @@ def _install_via_script(binary_name: str, script_url: str, lang: str) -> Dict[st
     return {"ok": True, "path": os.path.join(INSTALL_DIR, binary_name)}
 
 
+def _seed_claude_tui_default(lang: str = "tr") -> None:
+    """claude CLI'nin KENDİ `~/.claude/settings.json`'u -- claudeops'un
+    `load_settings/save_settings`'inin yazdığı `CLAUDEOPS_DIR` altındaki
+    ayrı dosyayla KARIŞTIRILMASIN, bambaşka bir dosya/amaç.
+
+    `"tui"` anahtarı hiç yoksa `"default"` yazar. Nedeni (2026-09-30, ulak_31'de
+    canlı bulundu+doğrulandı, bkz. DONE.md): claude'un "fullscreen" (=tmux
+    alternate-screen) kararı, hiçbir ayar yoksa, kurulum-bazlı rastgele
+    cache'lenen bir GrowthBook feature-gate'ine (`tengu_pewter_brook`)
+    düşüyor -- bazı kurulumlar (ör. ulak_31) şansa bağlı olarak "true" bucket'ına
+    düşüp tmux'ta gerçek scrollback'i kalıcı olarak kırıyor (TUI her tick'te
+    kendi ekranını temizleyip yeniden çiziyor). `tui:"default"` bu gate'i hiç
+    sormadan devre dışı bırakıyor -- izole testte hem TUI sağlam kaldı hem
+    gerçek scrollback doğru birikti, hiçbir regresyon gözlenmedi. Kullanıcı
+    zaten AÇIKÇA bir `tui` tercihi yazmışsa (ör. bilerek "fullscreen" seçmişse)
+    dokunulmaz -- sadece anahtar YOKSA eklenir."""
+    path = os.path.join(os.path.expanduser("~"), ".claude", "settings.json")
+    try:
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {}
+    except (OSError, json.JSONDecodeError):
+        return  # bozuk/okunamıyor -- kurulumu bu yüzden başarısız ETME, sessizce atla
+    if "tui" in data:
+        return
+    data["tui"] = "default"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, path)
+    except OSError:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
 def install_cli(cli_name: str, lang: str = "tr") -> Dict[str, Any]:
     """Zaten (BAŞKA bir yoldan) bulunmuşsa VE claudeops tarafından
     kurulmamışsa REDDEDER -- kullanıcının kendi kurduğu bir binary'nin
@@ -189,6 +231,9 @@ def install_cli(cli_name: str, lang: str = "tr") -> Dict[str, Any]:
     if not os.path.isfile(installed_path):
         return {"ok": False, "error": (f"kurulum bitti ama {installed_path} bulunamadı" if lang == "tr"
                                         else f"install finished but {installed_path} not found")}
+
+    if cli_name == "claude":
+        _seed_claude_tui_default(lang)
 
     settings = load_settings()
     save_settings({
