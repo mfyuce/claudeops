@@ -2915,6 +2915,28 @@ def _proxy_desktop_ws(handler: "_Handler") -> None:
         backend.close()
 
 
+# TOBEDECIDED#54 (2026-09-27 security review, Codex F09): `do_POST`'un genel
+# JSON-body okuma satırı `Content-Length`'i hiç doğrulamadan `self.rfile.read(length)`'e
+# veriyordu — negatif bir değer (`Content-Length: -1`) `int()`'ten sağ çıkıp
+# `read(-1)`'e düşüyor, bu da soket EOF'a kadar SINIRSIZ okumaya denk geliyor
+# (GERÇEK deneyle doğrulandı) — bağlantıyı açık bırakan bir istemci o thread'i
+# sonsuza dek bloke eder. Ayrı bir upload yolu (`_handle_files_upload`) zaten
+# `length<=0`/`>MAX_UPLOAD_BYTES` kontrolü yapıyordu, bu genel yol yapmıyordu.
+# Bu API'nin JSON gövdeleri (settings patch, orkestrasyon taslağı metni vb.)
+# hepsi küçük — 200MB'lık dosya-yükleme sınırıyla (`files.MAX_UPLOAD_BYTES`,
+# AYRI/binary bir yol) KARIŞTIRILMASIN, çok daha küçük bir üst sınır yeterli.
+#
+# BİLEREK yapılmayan (aynı TBD maddesinin diğer yarısı): genel bir bağlantı-
+# başına soket `timeout`'u EKLEMEDİM — `_proxy_desktop_ws`'in `handler.rfile.
+# read1()` kullanan uzun-ömürlü ekran-paylaşım pompası TAM [[web-ws-dirty-
+# connection-leak-fix]]'in bulduğu tuzağa (bir kez timeout yiyen bir
+# `io.BufferedReader`'ın KALICI olarak bozulması) açık — o path önce
+# `web_ws.py`'nin fix'indeki gibi `read1()`'den raw `connection.recv()`'e
+# geçirilmeden bir soket timeout'u eklemek ekran paylaşımını sessizce
+# kırabilirdi. Ayrı bir iş olarak TODO.md'ye not düşüldü.
+MAX_JSON_BODY_BYTES = 2 * 1024 * 1024  # 2MB — bu API'nin JSON gövdeleri için cömert
+
+
 UNAUTHORIZED_HTML = (
     b"<!doctype html><meta charset=utf-8><body style='font:14px monospace;padding:2rem'>"
     b"401 &mdash; token eksik/yanlis. URL'ye <code>?token=...</code> ekleyin.<br>"
@@ -3471,7 +3493,18 @@ class _Handler(BaseHTTPRequestHandler):
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
-        length = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            length = -1
+        if length < 0 or length > MAX_JSON_BODY_BYTES:
+            if path.startswith("/v1/"):
+                self._json(_v1_error("missing/invalid/oversized Content-Length"), status=400)
+                return
+            # lang bilinemiyor (body hiç okunmadı) — iki dilde birden göster,
+            # üstteki JSONDecodeError dalıyla AYNI gerekçe/desen.
+            self._json({"ok": False, "error": "geçersiz/aşırı büyük istek gövdesi / invalid or oversized request body"}, status=400)
+            return
         raw = self.rfile.read(length) if length else b"{}"
         try:
             data = json.loads(raw or b"{}")
