@@ -26,6 +26,7 @@ de öldürür (orphan terminal bırakmaz, TODO-b kök sebep fix).
 """
 from __future__ import annotations
 import datetime
+import faulthandler
 import json
 import mimetypes
 import os
@@ -1454,6 +1455,13 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     chosen_model = model.strip() or fallback_model
     chosen_mode = permission_mode.strip() or (rec or {}).get("permission_mode") or "auto"
     chosen_effort = effort.strip() or (rec or {}).get("effort") or "max"
+    # TODO.md 2026-09-30: "restart fresh" servis'i bazen traceback'siz çökertiyor —
+    # bugün temiz bir start hiçbir diag_log bırakmıyordu (diag_log sadece fallback/hata
+    # olaylarını yazar), yani çökme TAM bu sırada olursa hangi isimdeki hangi işlemin
+    # yarıda kaldığına dair İZ yoktu. begin/end çifti best-effort (diag_log kendi
+    # exception'ını yutar) — normal akışı hiç etkilemez, sadece bir sonraki olayda
+    # "son görülen: start_begin, eşleşen start_end yok" gibi bir kanıt bırakır.
+    diag_log("start_begin", name=name, fresh=bool(fresh), cli=chosen_cli, model=chosen_model)
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
@@ -1470,6 +1478,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
             opened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
+    diag_log("start_end", name=name, kind=kind, opened=opened)
     if not opened:
         return _err(lang, "start_no_proc", name=name, kind=kind)
     if rec is not None:
@@ -1484,11 +1493,14 @@ def _stop(name: str, lang: str = "tr") -> dict:
         return _err(lang, "not_running", name=name)
     if kind == "ambiguous":
         return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+    # bkz. _start()'daki aynı desenin yorumu — TODO.md 2026-09-30 crash izleme
+    diag_log("stop_begin", name=name, pids=[s.pid for s in procs])
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
+    diag_log("stop_end", name=name, results=results)
     return {"ok": True, "result": results}
 
 
@@ -3817,6 +3829,31 @@ class _Handler(BaseHTTPRequestHandler):
         self._json_notify(result)
 
 
+_FAULTLOG_PATH = os.path.join(CLAUDEOPS_DIR, "faulthandler.log")
+_faultlog_fh = None  # faulthandler.enable(file=...) süreç ömrü boyunca açık kalmalı — GC'ye kurban gitmesin diye modül-seviyesinde referans
+
+
+def _enable_faulthandler() -> None:
+    """TODO.md 2026-09-30: "restart fresh" servisi bazen HİÇBİR Python traceback'i
+    BASMADAN çökertiyor (journalctl'de sadece systemd'nin "Scheduled restart job"ı
+    var — OOM değil, systemd-oomd de değil, manuel restart da değil, ikisi de
+    2026-09-30'da canlı loglarla TEK TEK elenip doğrulandı). Kalan en olası açıklama
+    bir SİNYAL (SIGSEGV/SIGABRT/SIGBUS — muhtemelen grpc'nin C-core'u gibi bir native
+    extension'dan, `spawn_session`'ın gnome-terminal için attığı fork() ile bir arada
+    düşünülünce). `faulthandler` tam bunun için var: SIGSEGV/SIGABRT/SIGBUS/SIGILL/
+    SIGFPE'yi yakalar, hangi thread'in Python seviyesinde tam ne yaptığını (call stack)
+    ayrı bir dosyaya basar. SIGKILL'i YAKALAYAMAZ (hiçbir user-space kod yakalayamaz) —
+    bir sonraki olayda bu dosya yine BOŞ kalırsa bu da kendi başına bir veri noktası
+    (native crash değil, dışarıdan/çekirdekten gelen SIGKILL'e işaret eder). Normal
+    (crash'siz) çalışmayı sıfır etkiler."""
+    global _faultlog_fh
+    try:
+        _faultlog_fh = open(_FAULTLOG_PATH, "a", encoding="utf-8")
+        faulthandler.enable(file=_faultlog_fh, all_threads=True)
+    except Exception:
+        pass
+
+
 def _sigterm_handler(signum, frame) -> None:
     """`run()`'a `signal.signal(signal.SIGTERM, ...)` ile bağlanır (systemd
     `stop`/`restart` VE gerçek makine shutdown'ı hep bunu gönderir — hepsi
@@ -3827,7 +3864,14 @@ def _sigterm_handler(signum, frame) -> None:
     DEĞİL) BİLEREK: `server.shutdown()`'ı ya da normal Python temizliğini
     (atexit vb.) burada tetiklemeye çalışmak, KENDİ `serve_forever()`
     döngüsünü aynı thread'de kesintiye uğratan bir handler'dan çağrıldığında
-    kilitlenme riski taşır — en güvenlisi hızlı iş + ham çıkış."""
+    kilitlenme riski taşır — en güvenlisi hızlı iş + ham çıkış.
+
+    `diag_log` çağrısı 2026-09-30'da eklendi (TODO.md crash izleme): bir sonraki
+    "servis gitti" olayında bunun GERÇEKTEN bir SIGTERM'den mi (bu handler'dan
+    geçti, "sigterm_received" diag.log'da görünür) yoksa yakalanamayan bir
+    sinyalden mi (SIGKILL/SIGSEGV — handler HİÇ çalışmaz, diag.log'da iz kalmaz)
+    geldiğini ayırt etmek için."""
+    diag_log("sigterm_received")
     _save_closing_snapshot()
     os._exit(0)
 
@@ -3853,6 +3897,8 @@ def run(args) -> int:
     if args.print_token:
         print(token)
         return 0
+
+    _enable_faulthandler()
 
     tunnel_proc = None
     if args.tunnel:
