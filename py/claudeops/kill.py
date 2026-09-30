@@ -11,6 +11,8 @@ from typing import Literal, Optional
 
 import psutil
 
+from .diaglog import diag_log
+
 KillResult = Literal["clean", "forced", "already_dead"]
 
 # Minimum güvenli grace süresi — lazy-checkpoint flush için gerekli
@@ -87,10 +89,22 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
         tmux_backed = False  # tespit başarısızsa davranışı DEĞİŞTİRME, legacy yol
 
     if tmux_backed:
+        # TODO.md 2026-09-30 crash izleme — 2026-09-30 21:01 olayı web servisinin
+        # kendisini TAM _stop()/kill_session_and_parent() sırasında (10s grace
+        # dolmadan, ~2s içinde) kaybettiğini gösterdi ama HANGİ alt-adımda
+        # olduğunu ayırt edemedi. Her alt-adımdan ÖNCE bir işaret bırakılıyor
+        # (best-effort/davranış-değiştirmez, diag_log zaten tüm exception'ları
+        # yutuyor) — bir dahaki sefere diag.log'daki SON "kill_step" hangi step'se
+        # ölüm o adımla bir sonraki arasında olmuş demektir.
+        diag_log("kill_step", name=name, pid=pid, step="find_outer_bash_pids")
         outer_windows = find_outer_bash_pids(name) if name else []
+        diag_log("kill_step", name=name, pid=pid, step="kill_session")
         result = kill_session(pid, grace=grace)
+        diag_log("kill_step", name=name, pid=pid, step="kill_session_done", result=result)
         if name:
+            diag_log("kill_step", name=name, pid=pid, step="tmux_kill_session")
             tmux_kill_session(name)  # best-effort, idempotent (zaten ölmüşse sorun yok)
+        diag_log("kill_step", name=name, pid=pid, step="outer_windows_loop", count=len(outer_windows))
         for outer_pid, outer_create_time in outer_windows:
             try:
                 p = psutil.Process(outer_pid)
@@ -98,6 +112,7 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
                     p.kill()
             except psutil.NoSuchProcess:
                 pass
+        diag_log("kill_step", name=name, pid=pid, step="done", result=result)
         return result
 
     parent_pid: Optional[int] = None
