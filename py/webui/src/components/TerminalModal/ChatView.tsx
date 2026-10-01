@@ -17,12 +17,13 @@
  * different response shapes inside one running loop.
  */
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { getTermChat } from "../../api/client";
 import type { ChatMessage } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
 import type { Strings } from "../../i18n/strings";
 import { renderMarkdownSafe } from "../shared/markdown";
+import { hasActiveSelectionWithin } from "../shared/selectionGuard";
 
 const CHAT_POLL_INTERVAL_MS = 2500;
 
@@ -164,21 +165,50 @@ const CHAT_BLOCK_BOX_STYLE: CSSProperties = {
  * already accepts for its own markdown files. */
 function ChatBlock({ label, text, emptyLabel }: { label: string; text: string; emptyLabel: string }) {
   const [html, setHtml] = useState<string | null>(null);
+  // Lags behind `text` while the user has an active selection inside this
+  // block — re-rendering (setHtml(null) → plain-text fallback → async
+  // markdown HTML, below) tears down the DOM and silently collapses any
+  // selection, which during active generation can happen every poll tick,
+  // well under the time it takes to select+copy (2026-10-01 user report:
+  // "chat history de seçiorum copy diyemeden kopy kayboluyor"). See
+  // TerminalView.tsx's analogous fix + selectionGuard.ts's header comment.
+  const [shownText, setShownText] = useState(text);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const pendingTextRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (text === shownText) return;
+    if (hasActiveSelectionWithin(containerRef.current)) {
+      pendingTextRef.current = text;
+      return;
+    }
+    setShownText(text);
+  }, [text, shownText]);
+
+  useEffect(() => {
+    function onSelectionChange() {
+      if (pendingTextRef.current === null || hasActiveSelectionWithin(containerRef.current)) return;
+      setShownText(pendingTextRef.current);
+      pendingTextRef.current = null;
+    }
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setHtml(null);
-    if (text) void renderMarkdownSafe(text).then((h) => { if (!cancelled) setHtml(h); });
+    if (shownText) void renderMarkdownSafe(shownText).then((h) => { if (!cancelled) setHtml(h); });
     return () => {
       cancelled = true;
     };
-  }, [text]);
+  }, [shownText]);
 
   return (
-    <div style={{ marginBottom: ".7rem" }}>
+    <div ref={containerRef} style={{ marginBottom: ".7rem" }}>
       <div style={{ fontWeight: 600, fontSize: ".75rem", opacity: 0.7, marginBottom: ".2rem" }}>{label}</div>
       {html === null ? (
-        <div style={{ ...CHAT_BLOCK_BOX_STYLE, whiteSpace: "pre-wrap" }}>{text || emptyLabel}</div>
+        <div style={{ ...CHAT_BLOCK_BOX_STYLE, whiteSpace: "pre-wrap" }}>{shownText || emptyLabel}</div>
       ) : (
         // eslint-disable-next-line react/no-danger -- sanitized via DOMPurify in renderMarkdownSafe
         <div style={CHAT_BLOCK_BOX_STYLE} dangerouslySetInnerHTML={{ __html: html }} />

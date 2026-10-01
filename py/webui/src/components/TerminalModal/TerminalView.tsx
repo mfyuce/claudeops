@@ -40,13 +40,14 @@ import { useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { apiContext, apiLiveModel, apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
 import type { TermSetModePayload } from "../../api/client";
-import type { UsageEntry } from "../../api/types";
+import type { TermOutputResult, UsageEntry } from "../../api/types";
 import { describeApiError } from "../../api/errors";
 import { showToast } from "../../state/toast";
 import { useTermOutput } from "../../hooks/useTermOutput";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, rowKey } from "../../state/hosts";
+import { hasActiveSelectionWithin } from "../shared/selectionGuard";
 import { computeFitFontSize, fitContainerToTerm } from "./xtermSizing";
 import { UrlBanner } from "./UrlBanner";
 
@@ -242,6 +243,10 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // have arrived in a row — same tolerance concept as before the WS
   // migration, just counted here instead of inside the poll callback.
   const consecutiveFailuresRef = useRef(0);
+  // Holds the latest result that arrived while the user had an active text
+  // selection inside the terminal — see the selectionchange effect below
+  // and selectionGuard.ts's header comment for why (2026-10-01 user report).
+  const pendingResultRef = useRef<TermOutputResult | null>(null);
 
   // ---- create the xterm.js instance once, dynamically importing the
   // library (and its CSS) so it code-splits and is only ever fetched when
@@ -532,6 +537,13 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
       if (result.ok && result.text === inst.lastText && !resized) {
         // identical content, not resized — skip reset+write entirely so
         // quiet ticks (no new output) never visibly flicker.
+      } else if (hasActiveSelectionWithin(containerRef.current)) {
+        // The clear+rewrite (or reset) below would collapse the user's
+        // active selection before they can copy it — hold this result back
+        // instead of applying it; the selectionchange effect further down
+        // replays the LATEST pending one once the selection clears or moves
+        // elsewhere (2026-10-01 user report, see selectionGuard.ts).
+        pendingResultRef.current = result;
       } else if (result.ok) {
         inst.lastText = result.text;
         // A separate synchronous term.reset() (blanks immediately) followed
@@ -555,6 +567,32 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     // xterm not ready/failed to load — plain ANSI-stripped fallback.
     setFallbackText(result.ok ? stripAnsi(result.text) : t.termGone(result.error));
   }, [termResult, t]);
+
+  // Replays a result the effect above held back because the user had an
+  // active selection (see `pendingResultRef`/`hasActiveSelectionWithin`
+  // above) — fires once the selection clears or moves outside the
+  // terminal. Deliberately minimal (just the write/reset, no resize or
+  // banner-state replay): the common case is "selected, read, released a
+  // moment later", not a long-held selection across a live resize.
+  useEffect(() => {
+    function onSelectionChange() {
+      const pending = pendingResultRef.current;
+      if (!pending || hasActiveSelectionWithin(containerRef.current)) return;
+      pendingResultRef.current = null;
+      const inst = instRef.current;
+      if (!inst) return;
+      if (pending.ok) {
+        inst.lastText = pending.text;
+        inst.term.write(`\x1b[H\x1b[2J\x1b[3J${pending.text}`, () => inst.term.scrollToBottom());
+      } else {
+        inst.lastText = null;
+        inst.term.reset();
+        inst.term.write(t.termGone(pending.error));
+      }
+    }
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, [t]);
 
   useEffect(() => {
     return () => {
