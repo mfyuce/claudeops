@@ -140,6 +140,14 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
   const stopped = (items ?? []).filter((it) => !it.running);
   const filtered = stopped.filter((it) => matchesSearch(it, search));
   const groups = groupByCwd(filtered);
+  // Rows stay recency-sorted (API order) within each group; only the group
+  // (root) order itself is alphabetized here, by the same name GroupHeaderRow
+  // displays — groupByCwd() only guarantees first-seen order otherwise.
+  groups.sort((a, b) => {
+    const nameA = a.items[0]?.blueprint ?? a.items[0]?.name ?? "";
+    const nameB = b.items[0]?.blueprint ?? b.items[0]?.name ?? "";
+    return nameA.localeCompare(nameB, lang) || a.cwd.localeCompare(b.cwd, lang);
+  });
   const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
   const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
 
