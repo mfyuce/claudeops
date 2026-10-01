@@ -60,6 +60,7 @@ from ..needs_ho import needs_ho
 from .. import cli_install
 from .. import files as files_mod
 from .. import instances as inst_mod
+from .. import model_freshness
 from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
@@ -3997,6 +3998,7 @@ def run(args) -> int:
     web_ws.start_broadcaster(_status_payload)  # tek broadcaster daemon thread'i, süreç ömrü boyunca bir kez
     web_hosts.start_remote_poller()  # aynı desen — uzak host'ları arka planda poll'layan daemon thread
     web_hosts.start_capability_prober()  # aynı desen — her host için grpc/ws/rest tier'ini arka planda dener
+    model_freshness.start_daily_check()  # aynı desen — claude model listesini günde-bir/başlarken tazeler (koda dokunmaz, bkz. modülün kendi docstring'i)
     grpc_port = args.grpc_port if args.grpc_port is not None else args.port + 1
     grpc_server = web_grpc.start_grpc_server(grpc_port, token, _status_payload, _term_output)
     if grpc_server is not None:

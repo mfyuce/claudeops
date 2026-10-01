@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec
-from ..paths import CLAUDEOPS_DIR, PROJECTS_DIR
+from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR
 from ..settings import resolved_binary
 
 MODEL_CHOICES = [
@@ -607,6 +607,18 @@ class ClaudeProvider(CliProvider):
         }
 
     def model_choices(self) -> List[str]:
+        """`model_freshness.py`'nin günlük taze listesini okur (`enabled`
+        olanlar) — dosya yoksa/boşsa/bozuksa sessizce hardcoded
+        `MODEL_CHOICES`'a düşer (agy/ucli'nin live-fetch-with-fallback
+        deseniyle AYNI, sadece "canlı" kaynak bir subprocess-cache dosyası)."""
+        try:
+            with open(CLAUDE_MODELS_JSON, encoding="utf-8") as f:
+                state = json.load(f)
+            enabled = sorted(m for m, s in state.get("models", {}).items() if s == "enabled")
+            if enabled:
+                return enabled
+        except Exception:
+            pass
         return MODEL_CHOICES
 
     def permission_modes(self) -> List[str]:
