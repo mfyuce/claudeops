@@ -20,8 +20,15 @@ KillResult = Literal["clean", "forced", "already_dead"]
 KILL_GRACE_SECONDS: float = 10.0
 
 
-def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS) -> KillResult:
+def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS, name: Optional[str] = None) -> KillResult:
     """SIGTERM → grace saniye bekle → hâlâ canlıysa SIGKILL.
+
+    `name` verilirse (TODO.md 2026-10-01 EK #3 — kill_step bracket'ı ölümü bu
+    fonksiyonun İÇİNE indirdi ama satır belirleyemedi) `psutil.Process(pid)` ve
+    `send_signal(SIGTERM)`'den HEMEN SONRA birer diag_log("kill_step", ...)
+    checkpoint'i bırakılır — best-effort/davranış-değiştirmez, diag_log zaten
+    tüm exception'ları yutuyor. `name` verilmezse (legacy/non-tmux çağıran)
+    davranış birebir eskisiyle aynı.
 
     Returns:
         "clean"       — SIGTERM yeterliydi, process temiz kapandı
@@ -32,11 +39,15 @@ def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS) -> KillResult:
         proc = psutil.Process(pid)
     except psutil.NoSuchProcess:
         return "already_dead"
+    if name:
+        diag_log("kill_step", name=name, pid=pid, step="got_proc")
 
     try:
         proc.send_signal(signal.SIGTERM)
     except psutil.NoSuchProcess:
         return "already_dead"
+    if name:
+        diag_log("kill_step", name=name, pid=pid, step="sigterm_sent")
 
     try:
         proc.wait(timeout=grace)
@@ -99,7 +110,7 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
         diag_log("kill_step", name=name, pid=pid, step="find_outer_bash_pids")
         outer_windows = find_outer_bash_pids(name) if name else []
         diag_log("kill_step", name=name, pid=pid, step="kill_session")
-        result = kill_session(pid, grace=grace)
+        result = kill_session(pid, grace=grace, name=name)
         diag_log("kill_step", name=name, pid=pid, step="kill_session_done", result=result)
         if name:
             diag_log("kill_step", name=name, pid=pid, step="tmux_kill_session")
