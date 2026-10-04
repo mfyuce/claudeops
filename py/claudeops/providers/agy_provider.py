@@ -8,8 +8,8 @@ Farklar (claude'a göre):
   muadili.
 - Model listesi CANLI çekilir (`agy models`, TTL'li cache) — sabit kodlanmaz,
   liste zaten 2 günde bir kez değişti.
-- effort için ayrı bir `--effort low|medium|high` flag'i var (model id'sinden
-  bağımsız) — permission ise TEK bir `--permission-mode`-benzeri flag değil,
+- effort için ayrı bir `--effort low|medium|high|xhigh|max` flag'i var (model
+  id'sinden bağımsız) — permission ise TEK bir `--permission-mode`-benzeri flag değil,
   ya `--dangerously-skip-permissions` ya da `--mode accept-edits|plan`.
 - COPS_NAME yoksa (elle başlatılmış bare `agy`) isim `agy-<pid>` placeholder'ı
   olur — claude'daki bare-session/"kayıtsız" davranışıyla paralel; ASLA None
@@ -178,7 +178,7 @@ def _conversation_ids():
 
 
 PERMISSION_MODES = ["auto", "acceptEdits", "plan"]
-EFFORT_LEVELS = ["low", "medium", "high"]
+EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 # claude/codex'in "esc to interrupt"iyle AYNI amaç, FARKLI metin — 2026-09-15,
 # %23 CPU'da gerçekten çalışan canlı bir agy session'ının pane'i capture edildi:
 # durum çubuğu "esc to cancel" yazıyor ("Running command..." + spinner'la birlikte).
