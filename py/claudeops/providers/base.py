@@ -361,6 +361,19 @@ class CliProvider(ABC):
         uygulamalı (bkz. `tmux_backend.strip_ansi`)."""
         return None
 
+    def live_busy(self, cwd: str, sid: Optional[str]) -> Optional[bool]:
+        """CLI'nin KENDİ yapılandırılmış canlı-durum mekanizması varsa (pane
+        metnine regex uygulamak YERİNE — ör. ucli'nin `--status-file`'ı) True/
+        False döner; `_is_busy_cached` bunu `busy_status_pattern()`'ın
+        pane-capture yolundan ÖNCE dener ve tmux-backed olmayan session'larda
+        (ör. `io_providers`) bile çalışabilir. None (VARSAYILAN) = böyle bir
+        mekanizma yok/okunamadı → panel her zamanki pane-capture yoluna düşer.
+        `busy_status_pattern()`'dan AYRI tutuldu çünkü biri regex (pane
+        metni), diğeri yapılandırılmış veri (dosya/IPC) — ikisini TEK bir
+        sözleşmeye sıkıştırmak ileride üçüncü bir CLI'ın hangi yolu
+        kullanacağını belirsizleştirirdi."""
+        return None
+
     def cyclable_modes(self) -> List[str]:
         """Shift+Tab (BTab) döngüsüyle CANLIYKEN ulaşılabilen modlar, döngüde
         göründükleri sırayla; İLK eleman "durum çubuğunda hiçbir işaret yoksa

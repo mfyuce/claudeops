@@ -1127,10 +1127,18 @@ def _is_busy_cached(s) -> Optional[bool]:
     CPU düşük kalabilir, bkz. TODO). `provider.busy_status_pattern()` yoksa
     (bu CLI'da böyle bir sinyal tanımlanmamış) veya session tmux-backed
     değilse (canlı capture imkânsız) None — needs_ho'daki AYNI "bilinmiyor ≠
-    False" sözleşmesi, UI '?' gösterir."""
+    False" sözleşmesi, UI '?' gösterir.
+
+    ÖNCE `provider.live_busy()` denenir (2026-10-04, ucli'nin `--status-file`'ı
+    için eklendi) — yapılandırılmış bir kaynaktan (dosya/IPC) geliyorsa
+    pane-capture/regex hiç gerekmez, tmux-backed şartı da bu yolda YOK."""
+    provider = get_provider(s.cli)
+    live = provider.live_busy(s.cwd, s.sid)
+    if live is not None:
+        return live
     if not is_tmux_backed(s.pid):
         return None
-    pattern = get_provider(s.cli).busy_status_pattern()
+    pattern = provider.busy_status_pattern()
     if not pattern:
         return None
     now = time.monotonic()

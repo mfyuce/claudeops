@@ -149,6 +149,28 @@ def chat_session_dir(cwd: str) -> str:
     return os.path.join(cwd, ".ucli", "chat")
 
 
+def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
+    """`{session}.status.json`'ı ayrıştırır (unified-cli'nin `--status-file`'ı,
+    2026-10-04'te `ucli chat --help`'te fark edildi — `chat --repl --session
+    NAME --status-file`, kendi docstring'i "e.g. claudeops" diyor, TAM BU
+    OKUMA için eklenmiş). Şekil: `{"schema_version":1,"pid":...,
+    "activity":"waiting_for_stdin"|"waiting_for_model"|"running_tool"|
+    "waiting_for_user","tool":...,"model":...,"provider":...,"endpoint":...,
+    "turns":...,"context_bytes":...,"io_bytes_used":...,"external_tools":[...],
+    "last_activity_unix":...}` (unified-cli `crates/ucli/src/status.rs`).
+    Dosya YOK/bozuk/eski bir crash'ten kalmış olabilir (ucli bunu normal
+    `/exit`'te siler ama crash/kill'de BİLEREK silmez — kendisi de bir sinyal,
+    bkz. status.rs) — hiçbiri hata sayılmaz, hepsinde `None` (çağıran
+    pane-capture'a düşsün)."""
+    path = os.path.join(chat_session_dir(cwd), f"{session}.status.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
     """`{session}.jsonl`'ı `[{"role":..., "text":...}, ...]`'a çevirir.
     Dosya yoksa boş liste (henüz mesaj yok, hata değil) — okunamaz/bozuksa

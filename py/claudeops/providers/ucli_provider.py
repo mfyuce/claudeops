@@ -84,7 +84,7 @@ from typing import Dict, FrozenSet, List, Optional, Sequence
 import psutil
 
 from ..settings import byok_env_for, ucli_limit_overrides
-from ..ucli_client import read_chat_history, resolve_binary
+from ..ucli_client import read_chat_history, read_status_file, resolve_binary
 from .base import CliProvider
 
 # effort: "ne kadar düşünsün" anlamında GERÇEK bir karşılığı yok (unified-cli
@@ -256,7 +256,12 @@ class UcliProvider(CliProvider):
             "--pretty",
         ]
         if session_name:
-            argv += ["--session", session_name]
+            # --status-file: 2026-10-04'te ucli --help'te fark edildi, "e.g.
+            # claudeops" diyen kendi docstring'i TAM BU okuma için eklenmiş
+            # (.ucli/chat/{session}.status.json, bkz. live_busy()). --session
+            # olmadan anlamsız (ucli kendi --help'i "meaningful only with
+            # --repl and --session NAME" diyor) — bu yüzden onunla aynı dalda.
+            argv += ["--session", session_name, "--status-file"]
         if model:
             argv += ["--model", model]
         if permission_mode == _ALLOW_EDIT:
@@ -336,6 +341,21 @@ class UcliProvider(CliProvider):
         if not sid:
             return None
         return read_chat_history(cwd, sid)
+
+    def live_busy(self, cwd: str, sid: Optional[str]) -> Optional[bool]:
+        # waiting_for_stdin = idle (sıradaki prompt'u bekliyor); diğer üçü
+        # (waiting_for_model/running_tool/waiting_for_user) "şu an bir turu
+        # işliyor, yeni bir prompt enjekte etme" anlamında hepsi busy=True —
+        # waiting_for_user (modelin kendi ask_user tool-call'ı, bkz. ucli'nin
+        # status.rs'i) teknik olarak "insan girdisi bekliyor" olsa da
+        # BEKLEDİĞİ şey sıradan bir chat mesajı değil o tool-call'ın cevabı,
+        # panelin düz "mesaj gönder" kutusuyla karıştırılmamalı.
+        if not sid:
+            return None
+        status = read_status_file(cwd, sid)
+        if status is None:
+            return None
+        return status.get("activity") != "waiting_for_stdin"
 
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         turns = self.full_history(cwd, sid)
