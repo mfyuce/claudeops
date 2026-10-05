@@ -94,9 +94,19 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
     by_name: Dict[str, Session] = _sessions_from_json()
 
     # Kaynak 2: proc-scan → hangi provider'ın olduğunu ilk eşleşen belirler
+    # UID filtresi (gemini SEC-07, 2026-10-03 review): çok-kullanıcılı makinede
+    # process_iter TÜM kullanıcıların süreçlerini görür — PROC-15'in "üç yerde
+    # yok" dediği aynı disiplinin (find_outer_bash_pids/_gnome_terminal_server_pid/
+    # guard.lock) DÖRDÜNCÜ eksik yeriydi burası. Başka kullanıcının `claude`/
+    # `codex`/`agy` süreci artık fleet'e hiç girmiyor (AccessDenied gürültüsü de
+    # düşer: cwd()/cmdline gibi sonraki çağrılar zaten başka kullanıcıda patlardı).
+    my_uid = os.getuid()
     raw = []  # (proc, cmdline, provider)
-    for p in psutil.process_iter(["pid", "cmdline"]):
+    for p in psutil.process_iter(["pid", "cmdline", "uids"]):
         try:
+            uids = p.info["uids"]
+            if uids is None or uids.real != my_uid:
+                continue
             cmd = p.info["cmdline"] or []
             provider = next((pr for pr in PROVIDERS.values() if pr.matches_proc(cmd)), None)
             if provider is None:
