@@ -1,5 +1,13 @@
 /**
- * Replaces `renderLayoutBox()` + `doLayout()` (web.py ~2520-2573).
+ * Replaces `renderLayoutBox()` + `doLayout()` (web.py ~2520-2573). Originally
+ * its own top-level "Layout" tab; moved into Settings 2026-10-05 (user: fits
+ * better here, reads as one coherent settings UI rather than a lone action
+ * tab) — same component, just mounted as a Settings sub-tab now (see
+ * `SettingsTab.tsx`'s header comment). `layout_grid` moved in with it: it
+ * used to live in Settings' "general" panel even though it's the exact same
+ * feature as the pin/groups/apply controls below, just split across two
+ * places — this component now owns the save for it directly via
+ * `apiSaveSettings`, the same pattern `SettingsTab.tsx`'s own `save()` uses.
  *
  * `doLayout()`'s error handling is more layered than a first read
  * suggests, and reproduced exactly here rather than just calling
@@ -20,16 +28,16 @@
  */
 
 import { useState } from "react";
-import { apiLayout, ApiError } from "../api/client";
+import { apiLayout, apiSaveSettings, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { TabHint } from "./shared/TabHint";
 
-export function LayoutTab() {
+export function LayoutSection() {
   const { t, lang } = useLang();
-  const { data } = useStatusContext();
+  const { data, refresh } = useStatusContext();
 
   const [pin, setPin] = useState("");
   const [groups, setGroups] = useState("");
@@ -40,6 +48,17 @@ export function LayoutTab() {
 
   if (!data) return null;
   const missing = data.layout_missing_deps;
+
+  async function handleGridChange(grid: number) {
+    try {
+      const res = await apiSaveSettings({ layout_grid: grid, lang });
+      if (!res.ok) setResult(`✗ ${res.error}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
+      else setResult(`✗ ${describeApiError(e, t)}`);
+    }
+    refresh();
+  }
 
   async function handleApply() {
     setBusy(true);
@@ -77,6 +96,14 @@ export function LayoutTab() {
         ) : (
           <TabHint>{t.layoutDesc}</TabHint>
         )}
+        <label title={t.layoutGridHint}>
+          {t.layoutGridLabel}
+          <select value={data.settings.layout_grid} onChange={(e) => void handleGridChange(Number(e.target.value))}>
+            <option value={2}>2 (2×1)</option>
+            <option value={4}>4 (2×2)</option>
+            <option value={8}>8 (4×2)</option>
+          </select>
+        </label>
         <label>
           {t.layoutPinLabel}
           <input type="text" placeholder="co,rustrino,anomaly,iggy" value={pin} onChange={(e) => setPin(e.target.value)} />

@@ -28,6 +28,13 @@
  * 2026-09-30: Fleet Snapshot moved OUT of "fleet" into its own top-level
  * "Snapshots" tab (TODO.md 2026-09-27 — "saved snapshots shouldn't live in
  * a Settings sub-tab") — "fleet" now holds only `<HostsSection />`.
+ *
+ * 2026-10-05: opposite direction for Layout — moved IN from its own
+ * top-level tab (user: fits better here, reads as one coherent settings
+ * UI instead of a lone action tab). `layout_grid` (previously a "general"
+ * control, same feature as the tab's pin/groups/apply) moved with it into
+ * `<LayoutSection />` rather than staying split across two places — it's
+ * now that component's own `apiSaveSettings` call, not `save()` here.
  */
 
 import { useState } from "react";
@@ -40,6 +47,7 @@ import type { FleetSort, Theme, UsageResult } from "../api/types";
 import { applyTheme } from "../theme";
 import { CliInstallSection } from "./CliInstallSection";
 import { HostsSection } from "./HostsSection";
+import { LayoutSection } from "./LayoutSection";
 import { TabHint } from "./shared/TabHint";
 
 type SettingsPatch = {
@@ -49,7 +57,6 @@ type SettingsPatch = {
   default_model?: Record<string, string>;
   provider_bin?: Record<string, string>;
   history_warn_at?: number;
-  layout_grid?: number;
   /** Write-only — `Settings.byok`'un (okuma tarafı) aksine burada GERÇEK
    * değer gönderilir; backend bunu asla aynen geri yansıtmaz (bkz. o alanın
    * yorumu). Boş string bir provider'ın o ENV_VAR'ını temizler. */
@@ -65,7 +72,7 @@ type SettingsPatch = {
  * (ucli) için, genelleştirmek ayrı bir iş. */
 const BYOK_PRIMARY_ENV: Record<string, string> = { ucli: "UCLI_API_KEY" };
 
-type SettingsSubTab = "general" | "models" | "fleet" | "usage";
+type SettingsSubTab = "general" | "models" | "fleet" | "layout" | "usage";
 
 /** Renders one provider's row for the Usage sub-tab — `entries` (when
  * `available`) is provider-shaped free text (`UsageEntry.label`/`percent`/
@@ -212,6 +219,9 @@ export function SettingsTab() {
         <button type="button" className={subTab === "fleet" ? "active" : ""} onClick={() => setSubTab("fleet")}>
           {t.tabSettingsFleet}
         </button>
+        <button type="button" className={subTab === "layout" ? "active" : ""} onClick={() => setSubTab("layout")}>
+          {t.tabSettingsLayout}
+        </button>
         <button type="button" className={subTab === "usage" ? "active" : ""} onClick={() => setSubTab("usage")}>
           {t.tabSettingsUsage}
         </button>
@@ -256,17 +266,6 @@ export function SettingsTab() {
                 if (Number.isFinite(n) && n > 0) void save({ history_warn_at: n });
               }}
             />
-          </label>
-          <label title={t.layoutGridHint}>
-            {t.layoutGridLabel}
-            <select
-              value={settings.layout_grid}
-              onChange={(e) => void save({ layout_grid: Number(e.target.value) })}
-            >
-              <option value={2}>2 (2×1)</option>
-              <option value={4}>4 (2×2)</option>
-              <option value={8}>8 (4×2)</option>
-            </select>
           </label>
           <label title={t.fleetSortHint}>
             {t.fleetSortLabel}
@@ -393,6 +392,7 @@ export function SettingsTab() {
         </>
       )}
       {subTab === "fleet" && <HostsSection />}
+      {subTab === "layout" && <LayoutSection />}
     </>
   );
 }

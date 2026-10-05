@@ -76,7 +76,6 @@ export interface Strings {
   tabDisabled: string;
   tabRetired: string;
   tabHistory: string;
-  tabLayout: string;
   tabDesktop: string;
   tabSnapshots: string;
   tabDiag: string;
@@ -381,6 +380,7 @@ export interface Strings {
   tabSettingsGeneral: string;
   tabSettingsModels: string;
   tabSettingsFleet: string;
+  tabSettingsLayout: string;
   tabSettingsUsage: string;
   tabDiagStatus: string;
   tabDiagAsk: string;
@@ -478,7 +478,6 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDisabled: "Devre dışı",
     tabRetired: "Emekli",
     tabHistory: "Geçmiş",
-    tabLayout: "Layout",
     tabDesktop: "Uzak Masaüstü",
     tabSnapshots: "Snapshotlar",
     tabDiag: "Tanı",
@@ -795,6 +794,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabSettingsGeneral: "genel",
     tabSettingsModels: "model",
     tabSettingsFleet: "fleet",
+    tabSettingsLayout: "layout",
     tabSettingsUsage: "kullanım",
     tabDiagStatus: "durum",
     tabDiagAsk: "sor",
@@ -906,7 +906,6 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDisabled: "Disabled",
     tabRetired: "Retired",
     tabHistory: "History",
-    tabLayout: "Layout",
     tabDesktop: "Remote Desktop",
     tabSnapshots: "Snapshots",
     tabDiag: "Diagnostics",
@@ -1223,6 +1222,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabSettingsGeneral: "general",
     tabSettingsModels: "models",
     tabSettingsFleet: "fleet",
+    tabSettingsLayout: "layout",
     tabSettingsUsage: "usage",
     tabDiagStatus: "status",
     tabDiagAsk: "ask",
