@@ -32,6 +32,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiDiagAsk, apiDiagRestartGt, apiDiagSpawnTest, ApiError, getDiagLog } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { copyToClipboard } from "./shared/clipboard";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -146,7 +147,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
   async function handleCopyHandoverMsg() {
     if (!data) return; // narrowing from the top-level `if (!data) return null;` guard doesn't carry into this closure
     try {
-      await navigator.clipboard.writeText(data.handover_msg[lang]);
+      await copyToClipboard(data.handover_msg[lang]);
       setHandoverCopyLabel(t.termCopied);
       window.setTimeout(() => setHandoverCopyLabel(null), 1200);
     } catch (e) {

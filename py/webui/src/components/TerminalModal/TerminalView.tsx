@@ -47,6 +47,7 @@ import { useTermOutput } from "../../hooks/useTermOutput";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, rowKey } from "../../state/hosts";
+import { copyToClipboard } from "../shared/clipboard";
 import { hasActiveSelectionWithin } from "../shared/selectionGuard";
 import { computeFitFontSize, fitContainerToTerm } from "./xtermSizing";
 import { UrlBanner } from "./UrlBanner";
@@ -759,7 +760,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         showToast(`${name}: ${res.error}`);
         return;
       }
-      await navigator.clipboard.writeText(stripAnsi(res.text));
+      await copyToClipboard(stripAnsi(res.text));
       setCopyLabel(t.termCopied);
       if (copyResetTimer.current !== null) window.clearTimeout(copyResetTimer.current);
       copyResetTimer.current = window.setTimeout(() => setCopyLabel(null), 1200);
