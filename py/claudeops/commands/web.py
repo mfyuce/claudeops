@@ -172,6 +172,9 @@ ERR = {
                               "terminal görünümü için handover/devral ile yeniden açın",
                          "en": "{name}: not tmux-backed (old/bare session) — "
                                "handover/adopt it to get a terminal view"},
+    "no_conversation": {"tr": "{name}: bu CLI'nin (ör. düz shell) sürdürdüğü bir konuşma yok — "
+                              "enjekte edilecek bir yanıt beklenmiyor",
+                         "en": "{name}: this CLI (e.g. a plain shell) has no conversation to inject into"},
     "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
                            "en": "{name}: tmux session no longer exists (may have closed)"},
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
@@ -2058,6 +2061,14 @@ def _handover(name: str, lang: str = "tr") -> dict:
     if not is_tmux_backed(procs[0].pid):
         return _err(lang, "not_tmux_backed", name=name)
     provider = get_provider(procs[0].cli)
+    # gpt-6 R09 (2026-10-03 review): `handover.py`'nin CLI yolu (Faz 1/2)
+    # has_conversation()==False session'ları (örn. shell) ZATEN koruyor —
+    # bu web ucu AYNI korumayı paylaşmıyordu, panelin toplu-handover butonu
+    # bir shell pane'ine düz metin enjekte edebiliyordu (`_v1_eligible_sessions`/
+    # `_v1_chat_completions`'ın AYNI üçlüden `has_conversation()` bacağıyla
+    # tutarlı hale getirildi).
+    if not provider.has_conversation():
+        return _err(lang, "no_conversation", name=name)
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     diag_log("handover_start", name=name)
 
