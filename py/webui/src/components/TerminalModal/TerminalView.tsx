@@ -248,6 +248,19 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // and selectionGuard.ts's header comment for why (2026-10-01 user report).
   const pendingResultRef = useRef<TermOutputResult | null>(null);
 
+  // `hasActiveSelectionWithin` alone (selectionGuard.ts) only sees a real
+  // browser `window.getSelection()` Range — xterm's own CSS sets
+  // `user-select:none` on most of its DOM, so a normal drag-select over
+  // terminal text never produces one; xterm tracks its OWN selection
+  // instead (`term.hasSelection()`). Checking both means this gate actually
+  // holds back a rewrite during a real xterm selection, not just the rare
+  // case a native Range exists here (e.g. over xterm's hidden accessibility
+  // mirror). ChatView's selection (plain markdown DOM) doesn't need this —
+  // `hasActiveSelectionWithin` alone is correct there.
+  function hasActiveSelection(): boolean {
+    return hasActiveSelectionWithin(containerRef.current) || !!instRef.current?.term.hasSelection();
+  }
+
   // ---- create the xterm.js instance once, dynamically importing the
   // library (and its CSS) so it code-splits and is only ever fetched when
   // a terminal is actually opened (original: loadXtermLib()'s lazy
@@ -386,6 +399,18 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         // true, but paste goes through a different path there, so the handler
         // re-checks the toggle itself rather than trusting that.
         term.onData((data) => queueRawRef.current(data));
+        // xterm's own CSS (`.xterm{user-select:none}`) means a drag-select
+        // over terminal text does NOT produce a real `window.getSelection()`
+        // Range the way it does in ChatView's plain markdown DOM — xterm
+        // tracks selection itself (`hasSelection()`/`getSelection()`/this
+        // event) and paints the highlight on its own. `hasActiveSelection()`
+        // below already checks `term.hasSelection()` for the write-gate; this
+        // just feeds xterm-internal selection changes into the SAME replay
+        // trigger the selectionchange effect further down already listens
+        // for, so a selection made/cleared entirely inside xterm (no native
+        // Selection involved at all) still unblocks a held-back write. No
+        // closure captured, so nothing here can go stale across renders.
+        term.onSelectionChange(() => document.dispatchEvent(new Event("selectionchange")));
         instRef.current = { term, cols: INITIAL_COLS, rows: INITIAL_ROWS, lastText: null };
         fitContainerToTerm(term, container, INITIAL_COLS, INITIAL_ROWS);
         // The [liveInput] effect below already does this on every TOGGLE, but
@@ -537,7 +562,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
       if (result.ok && result.text === inst.lastText && !resized) {
         // identical content, not resized — skip reset+write entirely so
         // quiet ticks (no new output) never visibly flicker.
-      } else if (hasActiveSelectionWithin(containerRef.current)) {
+      } else if (hasActiveSelection()) {
         // The clear+rewrite (or reset) below would collapse the user's
         // active selection before they can copy it — hold this result back
         // instead of applying it; the selectionchange effect further down
@@ -577,7 +602,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   useEffect(() => {
     function onSelectionChange() {
       const pending = pendingResultRef.current;
-      if (!pending || hasActiveSelectionWithin(containerRef.current)) return;
+      if (!pending || hasActiveSelection()) return;
       pendingResultRef.current = null;
       const inst = instRef.current;
       if (!inst) return;
