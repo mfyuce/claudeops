@@ -3966,6 +3966,25 @@ def _sigterm_handler(signum, frame) -> None:
     os._exit(0)
 
 
+def _sighup_handler(signum, frame) -> None:
+    """TODO.md K-02: bu süreç systemd --user altında ctty'siz bir session
+    leader — `tmux_backend.pane_is_masked_input()` bir pane'in pty slave'ini
+    `O_NOCTTY`'siz açtığında bu süreç onu controlling terminal olarak
+    edinebiliyordu; o tmux session'ı sonradan kapanınca kernel buraya SIGHUP
+    gönderiyordu — "Scheduled restart job" gizeminin eşleştiği belirtiler
+    (Python'ın SIGHUP'a varsayılan tepkisi sessiz çıkış, hiçbir traceback/
+    journalctl izi bırakmıyor). `O_NOCTTY` fix'i edinimi baştan kapatıyor; bu
+    handler BAŞKA bir yoldan (gerçek bir terminal hangup'ı, gözden kaçan
+    başka bir open()) gelebilecek bir SIGHUP'a karşı savunma katmanı —
+    sadece hayatta kaldığını logluyor, ölmüyor. Aşağıdaki
+    `faulthandler.register(..., chain=True)` bundan ÖNCE devreye girer
+    (`signal.signal`'den SONRA register edildiği için beni "önceki handler"
+    olarak zincirliyor) — gerçekten tetiklenirse sandbox repro'nun
+    veremediği tek parçayı (sinyal geldiği an hangi thread ne yapıyordu)
+    faulthandler.log'a basar."""
+    diag_log("sighup_received")
+
+
 def register(sub):
     p = sub.add_parser("web", help="yerel kontrol paneli (fleet'i tarayıcıdan/tünelden başlat-durdur)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -4026,6 +4045,14 @@ def run(args) -> int:
     if args.host not in ("127.0.0.1", "localhost"):
         print(f"  ⚠ {args.host}: localhost dışına bind — token olsa bile gereksiz risk, gerekmedikçe kullanma.")
     signal.signal(signal.SIGTERM, _sigterm_handler)
+    # Sıra ÖNEMLİ: önce kendi handler'ımız (ignore+log), SONRA faulthandler.register
+    # — chain=True onu "önceki handler" olarak görüp stack dump'tan SONRA çağırır.
+    signal.signal(signal.SIGHUP, _sighup_handler)
+    if _faultlog_fh is not None:
+        try:
+            faulthandler.register(signal.SIGHUP, file=_faultlog_fh, all_threads=True, chain=True)
+        except Exception:
+            pass
     try:
         server.serve_forever()
     except KeyboardInterrupt:

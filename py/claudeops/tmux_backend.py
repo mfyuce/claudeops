@@ -307,11 +307,20 @@ def pane_is_masked_input(name: str) -> Optional[bool]:
         pty_path = r.stdout.strip()
         if not pty_path:
             return None
-        f = open(pty_path, "r")
+        # O_NOCTTY — TODO.md K-02: açık `open(pty_path,"r")` bu slave pty'yi
+        # (pane_tty, tmux SERVER'ın tuttuğu master'a karşılık gelir) bu
+        # sürecin controlling terminal'i edinmesine yol açabiliyordu (bu süreç
+        # systemd --user altında ctty'siz bir session leader — `ps -o sid`
+        # ile pid==sid doğrulandı). Edinilince, O ÖZEL tmux session'ı
+        # kapandığında kernel bu sürece SIGHUP gönderiyor — sandbox'ta 2 kez +
+        # bağımsız bir review turunda 3. kez tekrar üretildi (fable
+        # 2026100321270920.md). O_NOCTTY bu edinimi baştan engeller; fonksiyon
+        # zaten salt-okunur bir tcgetattr çağrısı, davranış değişmiyor.
+        fd = os.open(pty_path, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
         try:
-            lflag = termios.tcgetattr(f.fileno())[3]
+            lflag = termios.tcgetattr(fd)[3]
         finally:
-            f.close()
+            os.close(fd)
         return bool(lflag & termios.ICANON) and not bool(lflag & termios.ECHO)
     except Exception:
         return None
