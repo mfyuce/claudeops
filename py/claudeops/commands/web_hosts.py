@@ -53,6 +53,7 @@ HOST_ROUTED_PATHS = {
     "/api/term/input", "/api/term/key", "/api/term/raw", "/api/term/open-window", "/api/term/set-mode",
     "/api/instances/forget", "/api/cli/install",
     "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write",
+    "/api/context",
 }
 
 # Terminal/Dosya GÖRÜNTÜLEME (GET, read-only) route'ları — POST'un aksiyon
