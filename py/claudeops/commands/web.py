@@ -380,14 +380,29 @@ def _find_running_for_action(name: str, cli: Optional[str] = None) -> tuple:
 
     Returns: (kind, sessions) — kind: "exact" | "unique_base" | "ambiguous" | "none".
     "ambiguous" hariç HER zaman `sessions` güvenle hedeflenebilir (tam liste,
-    tek bir proje/başka bir session'ı KARIŞTIRMADAN)."""
+    tek bir proje/başka bir session'ı KARIŞTIRMADAN).
+
+    2026-10-06 (K-03, TODO.md): "unique_base" dalının KENDİSİ hâlâ eksikti —
+    tam isim eşleşmesi yoksa VE base'e TEK bir proc düşüyorsa, o proc exact
+    ile AYNI şekilde hedeflenebiliyordu, 2026-09-15 fix'i sadece 2+ eşleşmeyi
+    ("ambiguous") kapatmıştı. Canlı olay (2026-09-14): blueprint `cops`
+    durmuş/Registered'ken, KAYITLI bir instance olan `cops20260914_1` (açık
+    bir konuşma) tek canlı proc olduğu için "cops"u hedefleyen bir aksiyon
+    (Kapat/Emekli/Stop/Handover/Compact) ONU kill'e taşıdı. Fix: base-adayı
+    `s`'nin KENDİ (tam) adı `instances.json`'da KAYITLIYSA (kendi ayrı
+    coexistence-suffix'li kimliği varsa) base-fallback'ten ÇIKAR — sadece
+    hiç kayıtlı olmayan/legacy proc'lar (ör. `hc58`, suffix sistemi
+    2026-06-28'de kaldırılmadan kalma) base-fallback'ten bulunabilsin."""
     sessions = find_sessions(measure_cpu=False)
     if cli:
         sessions = [s for s in sessions if s.cli == cli]
     exact = [s for s in sessions if s.name == name]
     if exact:
         return "exact", exact
-    base_matches = [s for s in sessions if s.base == name]
+    base_matches = [
+        s for s in sessions
+        if s.base == name and inst_mod.get_instance(s.name) is None
+    ]
     if len(base_matches) > 1:
         return "ambiguous", base_matches
     if base_matches:

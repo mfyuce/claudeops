@@ -12,7 +12,7 @@ Provider-agnostik: hangi CLI'ın hangi flag'lerle tanınacağı burada DEĞİL, 
 provider'ın kendi `matches_proc`/`extract_name`/`extract_info`'sunda (providers/).
 """
 from __future__ import annotations
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import glob
 import json
 import os
@@ -23,13 +23,17 @@ from .session import Session
 from .providers import PROVIDERS
 
 
-def _sessions_from_json() -> Dict[str, Session]:
-    """~/.claude/sessions/*.json → canlı session'ları döndür. {name: Session}
+def _sessions_from_json() -> Dict[Tuple[str, int], Session]:
+    """~/.claude/sessions/*.json → canlı session'ları döndür. {(name, pid): Session}
 
     Bash all_sessions_tsv birinci döngüsünün karşılığı: pid liveness + procStart doğrulaması.
-    """
+
+    2026-10-06: anahtar `name` yerine `(name, pid)` — sadece `name` ile aynı isimli
+    İKİ ayrı canlı pid'in json dosyası varsa (gpt-6 R05'in `find_sessions()`'ın
+    proc-scan katmanında bulduğu AYNI sınıf bug, burada da vardı) ikincisi
+    sessizce ilkinin üzerine yazardı, `duplicates()` hiç göremezdi."""
     sess_dir = os.path.expanduser("~/.claude/sessions")
-    result: Dict[str, Session] = {}
+    result: Dict[Tuple[str, int], Session] = {}
     for f in glob.glob(os.path.join(sess_dir, "*.json")):
         try:
             with open(f) as fh:
@@ -68,7 +72,7 @@ def _sessions_from_json() -> Dict[str, Session]:
             continue
         # SID: sessionId alanından
         sid = d.get("sessionId") or None
-        result[name] = Session(
+        result[(name, pid)] = Session(
             name=name,
             pid=pid,
             cwd=cwd,
@@ -83,15 +87,28 @@ def _sessions_from_json() -> Dict[str, Session]:
 
 
 def find_sessions(measure_cpu: bool = True) -> List[Session]:
-    """Tüm çalışan session'ları döndür (her isim için tek Session — dup varsa hepsi).
+    """Tüm çalışan session'ları döndür (her isim için tek Session — AMA aynı isimde
+    birden fazla CANLI pid varsa hepsi, bkz. 2026-10-06 notu).
 
     Kaynak 1: sessions/*.json (TUI-named + spawn-named, claude-only)
     Kaynak 2: proc-scan — her provider kendi `matches_proc`/`extract_name`'iyle
     tanır (bilgi zengini; json'u override eder). Dedup: proc-scan override →
-    merge sonucunda her isim bir kez.
-    """
+    merge sonucunda her (isim, pid) çifti bir kez.
+
+    2026-10-06 (gpt-6 R05, K-03'le BİRLİKTE ele alınan bulgu): anahtar `name`
+    İKEN iki ayrı canlı pid aynı `name`'i çıkarırsa (guard-race/dup-spawn gibi
+    anomali durumlarında olabilir) ikincisi sessizce ilkinin üzerine yazardı —
+    `duplicates()` bunu hiç göremezdi, VE `_find_running_for_action`'ın
+    "unique_base" kararı (web.py) gerçekte 2 proc varken 1 sanabilirdi. Anahtar
+    artık `(name, pid)` — AYNI pid'in proc-scan'da json-source'u REFINE etmesi
+    (asıl amaçlanan override) hâlâ çalışıyor (aynı anahtar = aynı dict girdisi),
+    ama FARKLI bir pid aynı `name`'i çıkarırsa artık KAYBOLMUYOR, ayrı bir girdi
+    olarak kalıyor — `list(by_key.values())` ikisini de döndürür, çağıranların
+    HİÇBİRİ değişmedi (hepsi zaten `s.name == X` ile filtreleyip liste
+    döndürüyordu, kardinalite varsayımı hiçbir yerde `by_key`'in kendisine
+    bağlı değildi)."""
     # Kaynak 1: sessions json (başlangıç seti)
-    by_name: Dict[str, Session] = _sessions_from_json()
+    by_key: Dict[Tuple[str, int], Session] = _sessions_from_json()
 
     # Kaynak 2: proc-scan → hangi provider'ın olduğunu ilk eşleşen belirler
     # UID filtresi (gemini SEC-07, 2026-10-03 review): çok-kullanıcılı makinede
@@ -126,7 +143,7 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
             except psutil.Error:
                 pass
         # json-kaynaklı proc'ları da prime et
-        for s in by_name.values():
+        for s in by_key.values():
             if s.pid not in cpu_primed:
                 try:
                     pr = psutil.Process(s.pid)
@@ -154,7 +171,7 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
             if not cwd:
                 continue
             info = provider.extract_info(cmd, cwd=cwd, session_name=name)
-            by_name[name] = Session(
+            by_key[(name, p.pid)] = Session(
                 name=name,
                 pid=p.pid,
                 cwd=cwd,
@@ -170,14 +187,14 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
 
     # JSON-only session'lar için CPU ölç
     if measure_cpu:
-        for name, s in by_name.items():
+        for _key, s in by_key.items():
             if s.cpu == 0.0 and s.pid in cpu_primed:
                 try:
                     s.cpu = cpu_primed[s.pid].cpu_percent(None)
                 except psutil.Error:
                     pass
 
-    return list(by_name.values())
+    return list(by_key.values())
 
 
 def find_by_name(name: str, measure_cpu: bool = False) -> List[Session]:
