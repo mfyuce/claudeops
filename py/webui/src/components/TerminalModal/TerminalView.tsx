@@ -919,6 +919,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
               // it was.
               <input
                 type="password"
+                autoFocus
                 placeholder={t.termMaskedPlaceholder}
                 style={{ flex: 1, minWidth: "200px" }}
                 value={inputText}
