@@ -35,6 +35,7 @@ import type {
   FilesRenameResult,
   FilesUploadResult,
   FilesValidateResult,
+  FilesWriteResult,
   GetHostsResult,
   GetOrchRunResult,
   GetOrchRunsResult,
@@ -241,6 +242,18 @@ export const apiFilesMkdir = (
   apiPost<FilesMkdirResult>("/api/files/mkdir", {
     name, lang, folder_name: folderName, host: host || "local", ...(dirPath ? { path: dirPath } : {}),
   });
+
+/** `/api/files/write` — overwrites an EXISTING file's content (no create,
+ * that's `apiFilesUpload`'s job); same-size cap as `getFilesRead`
+ * (`MAX_VIEW_BYTES`, server-enforced either way). */
+export const apiFilesWrite = (
+  name: string,
+  lang: Lang,
+  path: string,
+  content: string,
+  host?: string
+): Promise<FilesWriteResult> =>
+  apiPost<FilesWriteResult>("/api/files/write", { name, lang, path, content, host: host || "local" });
 
 /** `path` omitted → opens the session's project root (whole project). Only
  * useful physically at the machine (or viewing it via Uzak Masaüstü) — VS

@@ -177,6 +177,9 @@ export interface Strings {
   filesDeleteConfirmFolder: string;
   filesRename: string;
   filesRenamePrompt: string;
+  filesEdit: string;
+  filesSave: string;
+  filesSaveError: string;
   filesActionError: string;
   nothingRunning: string;
   unregBadge: string;
@@ -579,6 +582,9 @@ export const STRINGS: Record<Lang, Strings> = {
     filesDeleteConfirmFolder: "'{name}' klasörü İÇİNDEKİ HER ŞEYLE birlikte silinsin mi? Bu geri alınamaz.",
     filesRename: "✏️",
     filesRenamePrompt: "yeni ad:",
+    filesEdit: "📝",
+    filesSave: "kaydet",
+    filesSaveError: "kaydedilemedi: ",
     filesActionError: "işlem başarısız: ",
     nothingRunning: "Hiçbir şey çalışmıyor — \"Kayıtlı\" sekmesinden başlatın.",
     unregBadge: "kayıtsız",
@@ -1007,6 +1013,9 @@ export const STRINGS: Record<Lang, Strings> = {
     filesDeleteConfirmFolder: "Delete the folder '{name}' AND EVERYTHING IN IT? This can't be undone.",
     filesRename: "✏️",
     filesRenamePrompt: "new name:",
+    filesEdit: "📝",
+    filesSave: "save",
+    filesSaveError: "failed to save: ",
     filesActionError: "action failed: ",
     nothingRunning: "Nothing running — start from the \"Registered\" tab.",
     unregBadge: "unregistered",

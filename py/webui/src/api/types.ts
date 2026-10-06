@@ -564,6 +564,9 @@ export type FilesUploadResult = ApiResult<{ path: string }>;
 /** `_files_delete()` — no extra data, just ok/error. */
 export type FilesDeleteResult = SimpleResult;
 
+/** `_files_write()` — no extra data, just ok/error (same shape as delete). */
+export type FilesWriteResult = SimpleResult;
+
 /** `_files_rename()`/`_files_mkdir()` — the resulting real path (renamed-to
  * or newly-created), so the caller could jump straight to it if it wanted. */
 export type FilesRenameResult = ApiResult<{ path: string }>;

@@ -241,6 +241,7 @@ ERR = {
     "files_io_error": {"tr": "{name}: {detail}", "en": "{name}: {detail}"},
     "new_name_required": {"tr": "new_name gerekli", "en": "new_name is required"},
     "folder_name_required": {"tr": "folder_name gerekli", "en": "folder_name is required"},
+    "content_required": {"tr": "content gerekli", "en": "content is required"},
     "vscode_not_found": {"tr": "VS Code CLI (`code`) bu makinede bulunamadı",
                           "en": "VS Code CLI (`code`) not found on this machine"},
     "not_registered": {"tr": "{name}: roster'da kayıtlı değil", "en": "{name}: not in the roster"},
@@ -1673,6 +1674,24 @@ def _files_mkdir(name: str, dir_path: Optional[str], folder_name: str, lang: str
     if not result["ok"]:
         return _files_mutation_err(lang, name, folder_name, result)
     return result, 200
+
+
+def _files_write(name: str, path: str, content: str, lang: str = "tr") -> Tuple[dict, int]:
+    """`read_text`/`_files_read`'in yazma karşılığı. `too_large`, diğer
+    mutasyonların ("exists"/"bad_filename" vb.) hiçbirinde olmayan bir
+    `limit_mb` yer tutucusu taşıyor — `_files_mutation_err`'ün paylaşılan
+    tablosundan GEÇMİYOR (o `limit_mb` vermiyor), `_files_read`'in zaten
+    kullandığı aynı özel-durumla burada da ele alınıyor."""
+    s, err = _files_resolve(name, lang)
+    if err:
+        return err, 404
+    result = files_mod.write_text(s, path, content)
+    if result["ok"]:
+        return result, 200
+    if result["error"] == "too_large":
+        limit_mb = files_mod.MAX_VIEW_BYTES / (1024 * 1024)
+        return _err(lang, "files_too_large", name=name, limit_mb=limit_mb), 413
+    return _files_mutation_err(lang, name, os.path.basename(path.rstrip("/")), result)
 
 
 def _open_in_vscode(target: str) -> None:
@@ -3505,7 +3524,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/term/open-window", "/api/settings", "/api/usage", "/api/context", "/api/live-model",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
-                         "/api/files/delete", "/api/files/rename", "/api/files/mkdir",
+                         "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write",
                          "/api/vscode/open", "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
@@ -3659,6 +3678,23 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "folder_name_required"), status=400)
                 return
             result, status = _files_mkdir(name, dir_path, folder_name, lang=lang)
+            self._json(result, status=status)
+            return
+
+        if path == "/api/files/write":
+            name = (data.get("name") or "").strip()
+            fpath = (data.get("path") or "").strip()
+            content = data.get("content")
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            if not fpath:
+                self._json(_err(lang, "path_required"), status=400)
+                return
+            if not isinstance(content, str):
+                self._json(_err(lang, "content_required"), status=400)
+                return
+            result, status = _files_write(name, fpath, content, lang=lang)
             self._json(result, status=status)
             return
 

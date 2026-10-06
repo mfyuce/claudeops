@@ -17,6 +17,7 @@ atlayamaz/unutamaz (fonksiyonların KENDİSİ doğruluyor)."""
 from __future__ import annotations
 import os
 import shutil
+import threading
 from typing import List, Optional, Tuple
 
 from .providers import get_provider
@@ -246,6 +247,43 @@ def read_text(s: Session, path: str) -> Tuple[Optional[str], Optional[str]]:
             return f.read(), None
     except OSError:
         return None, "not_found"
+
+
+def write_text(s: Session, path: str, content: str) -> dict:
+    """İnline "düzenle"nin KAYDETME tarafı — `read_text`'in yazma karşılığı,
+    sadece VAR OLAN bir dosyanın içeriğini değiştirir (yeni dosya oluşturmaz,
+    o upload'un işi). `MAX_VIEW_BYTES` ile aynı sınır (görüntüleyemediğin
+    kadar büyük bir şeyi düzenleyemezsin de).
+
+    `atomic_json.py`'nin dersini burada da uyguluyor (bkz. o dosyanın
+    docstring'i, 2026-09-10 canlı race): tmp dosya adına pid+thread-id
+    eklenmezse aynı dosyaya eşzamanlı iki kaydetme isteği birbirinin tmp'ını
+    yiyip `os.replace`'i `FileNotFoundError`'a düşürebilir. Hedef zaten
+    realpath ile çözüldüğü (`_resolve_within_roots`) için `real` üzerinde
+    doğrudan yazmak WEB-02'nin upload/son-bileşen symlink riskini taşımıyor
+    (delete_path/rename_path'in `real` üzerinde çalışmasıyla aynı gerekçe) —
+    `os.replace` ayrıca hedefte bir symlink olsa bile onun HEDEFİNE değil
+    KENDİSİNE yazar, ekstra bir güvenlik katmanı."""
+    roots = roots_for_session(s)
+    real = _resolve_within_roots(path, roots)
+    if real is None:
+        return {"ok": False, "error": "forbidden"}
+    if not os.path.isfile(real):
+        return {"ok": False, "error": "not_found"}
+    if len(content.encode("utf-8")) > MAX_VIEW_BYTES:
+        return {"ok": False, "error": "too_large"}
+    tmp = f"{real}.{os.getpid()}-{threading.get_ident()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, real)
+    except OSError as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return {"ok": False, "error": "io_error", "detail": str(e)}
+    return {"ok": True}
 
 
 def resolve_path(s: Session, path: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
