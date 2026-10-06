@@ -21,11 +21,24 @@
  *
  * Unlike `useStatus.ts`, this hook does its own blip-tolerance-free
  * delivery: it just hands `TerminalView.tsx` whatever the latest result is
- * (WS message or backstop tick, whichever landed last) and lets the view
- * decide how many consecutive `ok:false` results to tolerate before
- * treating it as a real error (`CONSECUTIVE_FAILURES_BEFORE_ERROR`,
- * unchanged from the pre-WS version) — same separation as before, just
- * fed by a different transport.
+ * and lets the view decide how many consecutive `ok:false` results to
+ * tolerate before treating it as a real error
+ * (`CONSECUTIVE_FAILURES_BEFORE_ERROR`, unchanged from the pre-WS version)
+ * — same separation as before, just fed by a different transport.
+ *
+ * 2026-10-06 fix: "whichever landed last" used to mean exactly that —
+ * `setResult` ran unconditionally from both the WS handler and the
+ * backstop poll's `.then()`, with no check on which one was actually
+ * fresher. `useStatus.ts` gets away with that (see its header comment —
+ * mostly-idempotent payloads, server-side diffing) but a terminal pane is
+ * rewritten wholesale on every tick and is being actively typed into, so a
+ * backstop request that was issued before — but resolves after — a WS
+ * push lands as a visible flash back to up-to-`POLL_BACKSTOP_MS`-old
+ * content, immediately followed by the next WS/poll tick correcting it
+ * again (live user report: pane flickering old/new while typing, worst
+ * right after a command like `pwd`). `lastAppliedAtRef` now timestamps
+ * every applied result; a backstop response is dropped if something
+ * newer was already applied after that particular request was issued.
  */
 import { useEffect, useRef, useState } from "react";
 import { getTermOutput, TOKEN } from "../api/client";
@@ -48,6 +61,11 @@ export function useTermOutput(name: string, host: string | undefined, lang: Lang
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptRef = useRef(0);
   const aliveRef = useRef(true);
+  // Timestamp (`Date.now()`) of the most recently *applied* result, from
+  // either source — lets the backstop poll detect that a WS push already
+  // delivered something newer while its own request was in flight (see
+  // header comment, 2026-10-06 fix).
+  const lastAppliedAtRef = useRef(0);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -97,6 +115,7 @@ export function useTermOutput(name: string, host: string | undefined, lang: Lang
           return; // malformed frame — ignore rather than crash the UI
         }
         if (parsed.type !== "term" || !parsed.data) return;
+        lastAppliedAtRef.current = Date.now();
         setResult(parsed.data);
       };
 
@@ -117,9 +136,16 @@ export function useTermOutput(name: string, host: string | undefined, lang: Lang
     // Independent backstop poll — runs for the lifetime of this mount
     // regardless of WS state, same rationale as useStatus.ts's.
     const pollId = window.setInterval(() => {
+      const requestedAt = Date.now();
       getTermOutput(name, lang, host).then(
         (r) => {
-          if (aliveRef.current) setResult(r);
+          if (!aliveRef.current) return;
+          // A WS push already delivered something newer while this request
+          // was in flight — this response is provably stale, drop it rather
+          // than flash the pane backward (see header comment).
+          if (lastAppliedAtRef.current > requestedAt) return;
+          lastAppliedAtRef.current = Date.now();
+          setResult(r);
         },
         () => {
           // isolated blip — the next backstop tick or a WS message will recover
