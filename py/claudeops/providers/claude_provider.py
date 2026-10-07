@@ -128,10 +128,11 @@ _LAST_MODEL_CHUNK_BYTES = 65_536
 _LAST_MODEL_MAX_BYTES = 4_194_304
 
 
-def last_assistant_model(jsonl_path: Path) -> Optional[str]:
-    """Dosyanın SONUNDAN geriye okuyarak en son `type:"assistant"` satırının
-    `message.model`'ini döndürür, bulamazsa None. Asla tüm dosyayı baştan
-    okumaz (kuyruktan büyüyen pencere, `_LAST_MODEL_MAX_BYTES`'ta durur)."""
+def _last_assistant_value(jsonl_path: Path, extract) -> Optional[str]:
+    """Dosyanın SONUNDAN geriye okuyarak `extract(obj)`'in doğru (truthy)
+    döndürdüğü en son `type:"assistant"` satırının değerini verir, bulamazsa
+    None. Asla tüm dosyayı baştan okumaz (kuyruktan büyüyen pencere,
+    `_LAST_MODEL_MAX_BYTES`'ta durur)."""
     try:
         size = os.path.getsize(jsonl_path)
     except OSError:
@@ -154,14 +155,29 @@ def last_assistant_model(jsonl_path: Path) -> Optional[str]:
                         continue
                     if obj.get("type") != "assistant":
                         continue
-                    model = obj.get("message", {}).get("model")
-                    if model:
-                        return model
+                    value = extract(obj)
+                    if value:
+                        return value
                 if start == 0 or read_size >= _LAST_MODEL_MAX_BYTES:
                     return None
                 read_size *= 4
     except OSError:
         return None
+
+
+def last_assistant_model(jsonl_path: Path) -> Optional[str]:
+    """En son `type:"assistant"` satırının `message.model`'i, yoksa None."""
+    return _last_assistant_value(jsonl_path, lambda obj: obj.get("message", {}).get("model"))
+
+
+def last_assistant_effort(jsonl_path: Path) -> Optional[str]:
+    """En son `type:"assistant"` satırının TOP-LEVEL `effort`'u (her assistant
+    satırı o API çağrısının effort seviyesini taşıyor — 2.1.293'te canlı
+    doğrulandı, ör. `"effort":"max"`), yoksa None. Sadece string kabul edilir:
+    CLI sayısal/özel effort da tanıyor, onlar "bilinmiyor" sayılıp çağırana
+    düşer."""
+    return _last_assistant_value(
+        jsonl_path, lambda obj: obj.get("effort") if isinstance(obj.get("effort"), str) else None)
 
 
 def live_or_spawn_model(cli: str, cwd: str, sid: Optional[str], fallback: str) -> str:
@@ -181,6 +197,19 @@ def live_or_spawn_model(cli: str, cwd: str, sid: Optional[str], fallback: str) -
     if jsonl is None:
         return fallback
     return last_assistant_model(jsonl) or fallback
+
+
+def live_or_spawn_effort(cli: str, cwd: str, sid: Optional[str], fallback: str) -> str:
+    """`live_or_spawn_model`'in effort karşılığı: cmdline'daki `--effort` spawn
+    anında donuyor, terminale yazılan bir `/effort` onu hiç yansıtmıyor — jsonl'ın
+    son assistant satırındaki `effort` canlı kaynak. Canlı değer belirlenemezse
+    (claude değil, jsonl yok, assistant turu yok) spawn-time değere düşer."""
+    if cli != "claude":
+        return fallback
+    jsonl = jsonl_path_for(cwd, sid)
+    if jsonl is None:
+        return fallback
+    return last_assistant_effort(jsonl) or fallback
 
 
 # Bir konuşmanın "kimlik" satırları dosyanın EN BAŞINDA: `customTitle` (session'ın
@@ -564,6 +593,47 @@ class ClaudeProvider(CliProvider):
             # sonraki poll turuna denk gelmedi — kör bir son Enter, dialog
             # yoksa (idle input kutusu) zaten kanıtlanmış zararsız bir no-op.
             tmux_send_special_key(tmux_name, "Enter")
+
+    def handover_effort_downgrade(self, current_effort: str, target_effort: str) -> Optional[str]:
+        """Handover wrap-up turu için `current_effort`, `target_effort`'un
+        (Ayarlar'daki `handover_effort`, varsayılan 'high') ÜSTÜNDEYSE
+        `target_effort`; eşit/düşükse ya da tanınmıyorsa None (kullanıcı,
+        2026-10-07: "high değilse eğer daha düşükse karışma" — yanlış yönde
+        bir swap effort'u YÜKSELTİP maliyeti artırırdı, bu asla olmamalı)."""
+        levels = self.effort_levels()
+        if current_effort not in levels or target_effort not in levels:
+            return None
+        if levels.index(current_effort) <= levels.index(target_effort):
+            return None
+        return target_effort
+
+    _EFFORT_SWITCH_TIMEOUT_SECONDS = 8.0
+    _EFFORT_SWITCH_POLL_SECONDS = 0.3
+    _EFFORT_SWITCH_DONE_MARKERS = ("Set effort level to", "Not applied:", "exceeds the cap",
+                                   "Failed to set effort level")
+
+    def apply_live_effort_switch(self, tmux_name: str, target_effort: str) -> None:
+        """`/effort <target_effort>` CANLI session'a gönderilir. `/model`'in
+        aksine `immediate` bir komut (2.1.293 binary'sinde `immediate:!0`):
+        meşgul session'da kuyruğa girmeden hemen çalışıyor ve onay diyaloğu
+        açmıyor — sadece sonuç satırını ("Set effort level to High ...") basmasını
+        bekleyip dönüyor ki ardından gelen wrap-up mesajı onunla çakışmasın.
+        ⚠ Etkileşimli CLI'da `max` DIŞINDAKİ bir seviye (low/medium/high/xhigh)
+        `/model` gibi GLOBAL varsayılana da yazılıyor (`~/.claude/settings.json`
+        `effortLevel`, "saved as your default for new sessions" — binary'den
+        okundu) — claudeops spawn'ları `--effort`'u açıkça verdiği için fleet
+        etkilenmez, sadece kullanıcının elle açtığı `--effort`'suz bir `claude`
+        varsayılan olarak o seviyeyle açılır."""
+        from ..tmux_backend import tmux_capture, tmux_send_keys, strip_ansi
+
+        if not tmux_send_keys(tmux_name, f"/effort {target_effort}"):
+            return
+        deadline = time.monotonic() + self._EFFORT_SWITCH_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            time.sleep(self._EFFORT_SWITCH_POLL_SECONDS)
+            text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
+            if any(m in text for m in self._EFFORT_SWITCH_DONE_MARKERS):
+                return
 
     _STRAY_DIALOG_TIMEOUT_SECONDS = 6.0
     _STRAY_DIALOG_POLL_SECONDS = 0.5

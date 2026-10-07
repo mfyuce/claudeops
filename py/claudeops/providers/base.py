@@ -135,6 +135,19 @@ class CliProvider(ABC):
         döndüğü için pratikte hiç çağrılmaz)."""
         return
 
+    def handover_effort_downgrade(self, current_effort: str, target_effort: str) -> Optional[str]:
+        """`handover_model_downgrade()`'in effort karşılığı: `current_effort`
+        `target_effort`'un ÜSTÜNDEYSE `target_effort`, değilse/tanımsızsa None
+        (çağıran hiçbir effort komutu göndermez). Varsayılan None — sadece
+        canlı effort değiştirmeyi destekleyen provider override eder."""
+        return None
+
+    def apply_live_effort_switch(self, tmux_name: str, target_effort: str) -> None:
+        """`tmux_name` CANLI session'ının effort'unu `target_effort`'a değiştirir.
+        Varsayılan no-op (`handover_effort_downgrade()` None döndüğü için
+        pratikte hiç çağrılmaz)."""
+        return
+
     def dismiss_stray_dialog(self, tmux_name: str) -> None:
         """2026-09-14 canlı bulgu: `apply_live_model_switch()`'in kendi
         docstring'i "dialog bu fonksiyon döndükten SONRA açılabilir, bu

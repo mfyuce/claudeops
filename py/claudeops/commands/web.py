@@ -52,7 +52,7 @@ from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
-from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, downgrade_effort_for_handover
 from ..hosts import LOCAL_HOST_NAME, save_host, remove_host, list_hosts_public
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
@@ -2131,6 +2131,9 @@ def _handover(name: str, lang: str = "tr") -> dict:
     downgrade = provider.handover_model_downgrade(effective_model)
     if downgrade:
         provider.apply_live_model_switch(name, downgrade)
+    # 2026-10-07: effort karşılığı (bkz. handover.py::downgrade_effort_for_handover) —
+    # model'den SONRA, çünkü `/model` effort'u yeni modele göre yeniden ayarlayabilir.
+    downgrade_effort_for_handover(provider, name, procs[0].cli, procs[0].cwd, procs[0].sid, procs[0].effort)
 
     sent = tmux_send_keys(name, message, settle_delay=provider.input_settle_delay())
 

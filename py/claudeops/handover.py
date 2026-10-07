@@ -32,10 +32,11 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from .diaglog import diag_log
 from .discovery import find_sessions
 from .needs_ho import needs_ho
 from .providers import CliProvider, get_provider
-from .providers.claude_provider import live_or_spawn_model
+from .providers.claude_provider import live_or_spawn_effort, live_or_spawn_model
 from .settings import load_settings
 from .spawn import find_latest_jsonl
 from .tmux_backend import is_tmux_backed, tmux_send_keys
@@ -97,6 +98,30 @@ def default_handover_effort(provider: CliProvider) -> str:
     if override in levels:
         return override
     return "high" if "high" in levels else levels[-1]
+
+
+def downgrade_effort_for_handover(provider: CliProvider, tmux_name: str, cli: str, cwd: str,
+                                  sid: Optional[str], spawn_effort: Optional[str]) -> Optional[str]:
+    """Handover'ın model-downgrade'inin effort karşılığı (2026-10-07, kullanıcı:
+    "/model koştuğun gibi /effort high de koşamaz mısın? high değilse, daha
+    düşükse karışma"). Canlı effort (jsonl) `default_handover_effort()`'ın ÜSTÜNDE
+    ise (ör. xhigh/max → high) canlı `/effort` gönderir; eşit/düşükse ya da canlı
+    değer bilinmiyorsa HİÇBİR ŞEY yapmaz. Restore YOK (model'deki gibi: wrap-up
+    sonrası session o effort'ta kalır, gerçek değerine bir sonraki restart'ta
+    `--effort` ile döner). Uygulanan hedefi ya da None döner. Çağıranlar bunu
+    model-downgrade'den SONRA çağırmalı: `/model` effort'u yeni modele göre
+    yeniden ayarlayabilir, effort en son set edilen değer olarak kalsın."""
+    try:
+        effective = live_or_spawn_effort(cli, cwd, sid, spawn_effort or "")
+        target = provider.handover_effort_downgrade(effective, default_handover_effort(provider))
+        if target:
+            provider.apply_live_effort_switch(tmux_name, target)
+            diag_log("handover_effort_downgrade", name=tmux_name, frm=effective, to=target)
+        return target
+    except Exception as e:
+        # Best-effort: bir maliyet optimizasyonu, asıl wrap-up mesajını ASLA engellememeli.
+        diag_log("handover_effort_downgrade_failed", name=tmux_name, error=str(e))
+        return None
 
 
 HANDOVER_MSG_DEFAULT = (
@@ -322,6 +347,7 @@ def handover_faz1(
         downgrade = provider.handover_model_downgrade(effective_model)
         if downgrade:
             provider.apply_live_model_switch(session.name, downgrade)
+        downgrade_effort_for_handover(provider, session.name, session.cli, session.cwd, session.sid, session.effort)
 
         sent = tmux_send_keys(session.name, message, settle_delay=provider.input_settle_delay())
 
