@@ -128,6 +128,9 @@ export interface Strings {
   termLiveLabel: string;
   termLiveHint: string;
   termLiveOn: string;
+  termCtrlLabel: string;
+  termCtrlHint: string;
+  termCtrlOn: string;
   termGone: (err: string) => string;
   termScrolledHint: string;
   termHistorySize: (size: number, limit: number) => string;
@@ -533,6 +536,9 @@ export const STRINGS: Record<Lang, Strings> = {
     termLiveLabel: "canlı yazma",
     termLiveHint: "açıkken siyah terminal alanına tıklayıp doğrudan yazabilirsiniz — her tuş (ok tuşları, ctrl-c, Enter dahil) anında CLI'a gider, alttaki kutuya gerek kalmaz. Kapalıyken terminal salt-okunur bir aynadır. Tercih bu tarayıcıda hatırlanır.",
     termLiveOn: "⌨ canlı yazma açık — terminale tıklayıp yazın; tuşlar doğrudan CLI'a gider (yazdıklarınız ~200ms'lik ekran yenilemesinde görünür)",
+    termCtrlLabel: "ctrl",
+    termCtrlHint: "işaretliyken canlı yazmada bastığınız her harf Ctrl+harf olarak gider (ör. x → Ctrl-X) — fiziksel Ctrl tuşu olmayan dokunmatik klavyeler için. Check/uncheck gibi çalışır: siz kaldırana kadar işaretli kalır (tek basışta kendi kendine kapanmaz). Art arda birden fazla Ctrl+harf göndermek için (ör. Ctrl-X sonra Ctrl-S) işaretli bırakıp ikisini de yazın; aralarına düz bir harf (ör. Ctrl-X sonra düz v) sokmak için harften önce işareti kaldırın.",
+    termCtrlOn: "⎈ ctrl işaretli — bastığınız harfler Ctrl+harf olarak gider, siz kaldırana kadar",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ yukarı kaydırdınız — canlı akış duraklatıldı, dibe dönünce devam eder",
     termHistorySize: (size, limit) => `${size}/${limit} satır`,
@@ -964,6 +970,9 @@ export const STRINGS: Record<Lang, Strings> = {
     termLiveLabel: "live typing",
     termLiveHint: "when on, click the black terminal area and type straight into it — every key (arrows, ctrl-c, Enter included) goes to the CLI immediately, no need for the box below. When off, the terminal is a read-only mirror. The choice is remembered in this browser.",
     termLiveOn: "⌨ live typing on — click the terminal and type; keys go straight to the CLI (what you type shows up on the next ~200ms screen refresh)",
+    termCtrlLabel: "ctrl",
+    termCtrlHint: "while checked, every letter key you press in live typing is sent as Ctrl+letter (e.g. x → Ctrl-X) — for touch keyboards with no physical Ctrl key. It works like a check/uncheck toggle: it stays checked until YOU uncheck it (it does not auto-release after one key). To send several Ctrl+letters in a row (e.g. Ctrl-X then Ctrl-S), leave it checked for both; to follow with a plain letter instead (e.g. Ctrl-X then a bare v), uncheck it first.",
+    termCtrlOn: "⎈ ctrl armed — letters you press go out as Ctrl+letter until you uncheck it",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ scrolled up — live updates paused, resumes when you scroll back to bottom",
     termHistorySize: (size, limit) => `${size}/${limit} lines`,

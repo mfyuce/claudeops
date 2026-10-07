@@ -231,6 +231,16 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
 
   const [liveInput, setLiveInput] = useState<boolean>(readStoredLiveInput);
   const [liveMsg, setLiveMsg] = useState("");
+  // "Ctrl" armer for live typing: a check/uncheck toggle (NOT one-shot — it
+  // does not auto-release after a single key), so it stays on for as many
+  // Ctrl+letter keystrokes in a row as the user wants (e.g. emacs's
+  // Ctrl-X Ctrl-S: leave it checked across both). To follow a Ctrl+letter
+  // with a plain letter instead (emacs's Ctrl-X v prefix), the user
+  // unchecks it before that letter. Never persisted (unlike liveInput) —
+  // it's a momentary modifier, not a standing preference, and only means
+  // anything while liveInput is also on (see the [liveInput] effect below,
+  // which forces this off whenever liveInput goes off).
+  const [ctrlArmed, setCtrlArmed] = useState(false);
   // Everything the once-registered onData handler needs, held in refs: the
   // handler is installed in the mount effect below and would otherwise keep
   // that first render's props/state forever.
@@ -643,6 +653,10 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     } catch {
       // ignore — localStorage can throw (private browsing/storage disabled)
     }
+    // Ctrl-arming is meaningless without live typing (queueRaw() below never
+    // runs at all while it's off) — force it off too so it can't stay
+    // silently checked behind a disabled checkbox.
+    if (!liveInput) setCtrlArmed(false);
     const inst = instRef.current;
     // null while the dynamic import is still in flight — that path reads the
     // ref above when it constructs the Terminal, so nothing is lost here.
@@ -670,7 +684,21 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
 
   function queueRaw(data: string) {
     if (!liveInputRef.current || !data) return;
-    pendingRawRef.current += data;
+    // Ctrl-armed: a lone a-z/A-Z keystroke becomes its Ctrl+letter control
+    // byte (x -> 0x18, etc.) before it's queued — tmux_send_raw()/
+    // `send-keys -l` forwards that byte to the pane untouched, same as a
+    // real Ctrl+X on a physical keyboard. Only a SINGLE-character chunk is
+    // converted; a longer chunk (an arrow key's escape sequence, a paste,
+    // IME input) passes through as-is so arming Ctrl can never mangle
+    // anything wider than one keystroke. `ctrlArmed` itself is read
+    // directly (not via a ref) because this closure is re-pointed onto
+    // `queueRawRef` after every render (see the effect below), so it
+    // always sees the latest value already.
+    const toSend =
+      ctrlArmed && data.length === 1 && /[a-zA-Z]/.test(data)
+        ? String.fromCharCode(data.toUpperCase().charCodeAt(0) - 64)
+        : data;
+    pendingRawRef.current += toSend;
     if (rawFlushTimer.current !== null) return;
     rawFlushTimer.current = window.setTimeout(() => {
       rawFlushTimer.current = null;
@@ -854,6 +882,15 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
             />{" "}
             {t.termLiveLabel}
           </label>
+          <label title={t.termCtrlHint}>
+            <input
+              type="checkbox"
+              checked={ctrlArmed}
+              disabled={!liveInput}
+              onChange={(e) => setCtrlArmed(e.target.checked)}
+            />{" "}
+            {t.termCtrlLabel}
+          </label>
           {XTERM_KEYS.map(([label, key]) => (
             <button type="button" key={key} onClick={() => handleSendKey(key)}>
               {label}
@@ -901,6 +938,11 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         {liveInput && (
           <div className="opts-hint" style={{ width: "100%", boxSizing: "border-box" }}>
             {t.termLiveOn}
+          </div>
+        )}
+        {ctrlArmed && (
+          <div className="opts-hint" style={{ width: "100%", boxSizing: "border-box" }}>
+            {t.termCtrlOn}
           </div>
         )}
         {liveMsg && (
