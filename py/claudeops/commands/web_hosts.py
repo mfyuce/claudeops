@@ -157,8 +157,26 @@ _conn_pool: Dict[str, List[http.client.HTTPConnection]] = {}
 # kullanıcı aksiyonu, sürekli poll'lanmıyor) BİLEREK eklenmedi — büyük
 # binary body'leri belleğe süresiz cachelemek gereksiz risk.
 _inflight_lock = threading.Lock()
-_inflight_urls: set = set()
+# url -> `time.monotonic()` değeri, o URL'in in-flight olarak işaretlendiği an.
+_inflight_starts: Dict[str, float] = {}
 _last_good: Dict[str, Tuple[int, dict]] = {}
+
+# 2026-10-07 fix (canlı rapor: hiç `_last_good`'u olmayan taze bir URL —
+# yeni spawn edilmiş bir session'ın modalı — "busy: an earlier request..."
+# hatasını SÜREKLİ gösterdi, kendi kendine hiç düzelmedi). Kök sebep: eski
+# `_inflight_urls` bir `set()`'ti, bookkeeping'in KENDİSİ hiç zaman aşımına
+# uğramıyordu — orijinal isteği taşıyan thread GERÇEKTEN takılırsa (ör. bir
+# tünelin "slow-drip" davranışı: `socket.settimeout()` HER TEK `recv()`
+# çağrısını sınırlar, parça parça gelen ama TOPLAMDA dakikalarca süren bir
+# yanıtı değil — `timeout` parametresi bunu yakalamaz), altındaki `finally`
+# hiç ÇALIŞMAZ ve bu URL o thread kurtulana (belki hiç) kadar sonsuza dek
+# "in flight" kalır. İlk istek olduğu için düşecek bir `_last_good`'u da YOK,
+# yani her sonraki poll çıplak busy hatasını görür. En büyük meşru dedup'lı
+# çağrı `ACTION_TIMEOUT_SECONDS` (200s, dosya indirme) + retry-once payı —
+# bu yüzden cömert bir tavan (10dk) yeterli: gerçekten takılı bir isteği
+# sonsuza dek değil, sonlu bir sürede "bayatlamış" sayıp YENİ bir denemeye
+# izin verir; sağlıklı hiçbir çağrıyı asla etkilemez.
+_INFLIGHT_MAX_SECONDS = 600.0
 
 
 def _split_url(url: str) -> Tuple[Any, str]:
@@ -281,7 +299,7 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
     gerçek bir sorun demektir, onu tekrar denemek SADECE zaten-dolmuş bir
     timeout'u ikiye katlardı, o yüzden orada anında hata dönülür.
 
-    `dedup=True` (bkz. `_inflight_urls` üstündeki not) — SADECE poll/okuma
+    `dedup=True` (bkz. `_inflight_starts` üstündeki not) — SADECE poll/okuma
     çağrıları (`fetch_remote_status`, `proxy_get`) verir, `proxy_action`
     HİÇBİR ZAMAN vermez: aynı URL'e zaten uçuşta bir istek varsa YENİ bağlantı
     hiç açılmadan anında dönülür — host yavaşken üst üste binen onlarca
@@ -292,12 +310,13 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
     eşzamanlı ilk iki istek gibi) yine de busy hatası döner."""
     if dedup:
         with _inflight_lock:
-            if url in _inflight_urls:
+            started = _inflight_starts.get(url)
+            if started is not None and (time.monotonic() - started) < _INFLIGHT_MAX_SECONDS:
                 cached = _last_good.get(url)
                 if cached is not None:
                     return cached[0], cached[1], None
                 return 0, None, "busy: an earlier request to this same endpoint is still in flight"
-            _inflight_urls.add(url)
+            _inflight_starts[url] = time.monotonic()
     try:
         url_parts, path = _split_url(url)
         key = _pool_key(url_parts)
@@ -333,7 +352,7 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
     finally:
         if dedup:
             with _inflight_lock:
-                _inflight_urls.discard(url)
+                _inflight_starts.pop(url, None)
 
 
 # Frontend'in `CliOptions` tipi (api/types.ts) bu 4 alanın HER cli girdisinde
@@ -713,9 +732,10 @@ def _http_raw(url: str, timeout: float, dedup: bool = False) -> Tuple[int, Optio
     bağlantı sızıntısı + pooling + dedup fix'leri)."""
     if dedup:
         with _inflight_lock:
-            if url in _inflight_urls:
+            started = _inflight_starts.get(url)
+            if started is not None and (time.monotonic() - started) < _INFLIGHT_MAX_SECONDS:
                 return 0, None, None, "busy: an earlier request to this same endpoint is still in flight"
-            _inflight_urls.add(url)
+            _inflight_starts[url] = time.monotonic()
     try:
         url_parts, path = _split_url(url)
         key = _pool_key(url_parts)
@@ -741,7 +761,7 @@ def _http_raw(url: str, timeout: float, dedup: bool = False) -> Tuple[int, Optio
     finally:
         if dedup:
             with _inflight_lock:
-                _inflight_urls.discard(url)
+                _inflight_starts.pop(url, None)
 
 
 def proxy_get(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Dict[str, Any], int]:
