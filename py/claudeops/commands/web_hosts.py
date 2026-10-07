@@ -416,7 +416,15 @@ def _fetch_status_from(base_url: str, token: str, timeout: float) -> Tuple[Optio
         return None, err or f"http {status}"
     if "sessions" not in parsed:
         return None, "unexpected response shape"
-    return parsed, None
+    # Uzak `/api/status` yanıtında üst-düzey `ok` YOK (WS/gRPC çerçevelerinin
+    # parse'ı `ok:True`'yu kendisi koyuyor, bkz. `_parse_ws_status_frame`), oysa
+    # `_finalize_remote_result` `ok` bekliyor — `abc11e5`'ten (tier refactor'ü)
+    # beri bu REST yolu sağlıklı bir host'u bile `ok:False, error:None` olarak
+    # bitiriyordu: Ayarlar > Hosts "şimdi test et", REST poll yedeği ve
+    # `_try_fallback_urls` (başarılı bir extra_url'i `base_url` olarak KALICI
+    # promote edip yine de ok:False dönüyordu). Kopya: `_last_good` dedup
+    # cache'i aynı dict'i tutuyor, yerinde değiştirilmemeli.
+    return {**parsed, "ok": True}, None
 
 
 def fetch_remote_status(host_record: Dict[str, str]) -> Dict[str, Any]:
