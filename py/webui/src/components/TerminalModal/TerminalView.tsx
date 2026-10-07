@@ -38,7 +38,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { apiContext, apiLiveModel, apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
+import { apiContext, apiLiveEffort, apiLiveModel, apiTermInput, apiTermKey, apiTermRaw, apiTermSetMode, getTermOutput } from "../../api/client";
 import type { TermSetModePayload } from "../../api/client";
 import type { TermOutputResult, UsageEntry } from "../../api/types";
 import { describeApiError } from "../../api/errors";
@@ -218,6 +218,23 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     void apiLiveModel({ name, host, lang })
       .then((res) => {
         if (!cancelled && res.ok && res.available && res.model) setLiveModel(res.model);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [name, host, lang]);
+
+  // TODO.md 2026-10-07: `session.live_effort`'in effort karşılığı olan AYNI
+  // staleness'ı, `liveModel` ile AYNI mekanizmayla (bkz. yukarıdaki not) —
+  // spawn-time `--effort`, terminale direkt yazılan bir `/effort`'u hiç
+  // görmüyordu.
+  const [liveEffort, setLiveEffort] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void apiLiveEffort({ name, host, lang })
+      .then((res) => {
+        if (!cancelled && res.ok && res.available && res.effort) setLiveEffort(res.effort);
       })
       .catch(() => {});
     return () => {
@@ -1055,9 +1072,9 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
               </select>
             </label>
           )}
-          {session?.live_effort && (
+          {(liveEffort || session?.live_effort) && (
             <span className="opts-hint" title={t.termEffortHint}>
-              {t.termEffortLabel}: {session.live_effort}
+              {t.termEffortLabel}: {liveEffort || session?.live_effort}
             </span>
           )}
           {modeMsg && <span className="opts-hint">{modeMsg}</span>}

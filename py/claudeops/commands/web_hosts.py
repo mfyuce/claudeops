@@ -43,17 +43,31 @@ from ..diaglog import diag_log
 from ..hosts import LOCAL_HOST_NAME
 from ..settings import load_settings
 
-# 14 session/host-scoped POST route — do_POST'un geri kalan 9 route'u
-# (settings, diag/*, desktop/*, layout, files/validate, vscode/open) aggregator-
-# local-only, asla proxy'lenmez (o makinenin GUI/config'ine bağlı, "hangi host"
-# sorusu anlamsız).
+# 25 session/host-scoped POST route — do_POST'un geri kalan route'u (settings,
+# diag/*, desktop/*, layout, files/validate, vscode/open, v1/*, orch/*,
+# hosts/*, snapshot/*) aggregator-local-only, asla proxy'lenmez (o makinenin
+# GUI/config'ine bağlı, "hangi host" sorusu anlamsız) — bu yüzden bu set
+# do_POST'un KENDİ local-tuple'ıyla (satır ~3570 civarı) AYNI boyda olması
+# beklenmemeli, sadece onun bir ALT-kümesi (TOBEDECIDED#65'in "iki allowlist
+# elle senkron" sorununa işaret ettiği tam nokta).
+#
+# `/api/live-model` 2026-10-08'e kadar BURADA YOKTU — `NamePayload`'ın kendi
+# client.ts yorumu "tüm tüketicileri HOST_ROUTED_PATHS'te" diyordu ama
+# `apiLiveModel` da `NamePayload` kullanıyor, bu kuralı SESSİZCE ihlal
+# ediyordu: uzak host'taki (yuhem/ulak_31) bir session için Terminal→Bilgi
+# sekmesi hep yerel fleet'e bakıp "not_running" alıyor, frontend bunu SESSİZCE
+# yutup eski/donuk değeri göstermeye devam ediyordu (`_live_model`'in
+# TerminalView.tsx tarafı "silently falls back" diyor — tam bu senaryo,
+# `/api/context`'in 2026-10-06'daki aynı sınıf eksikliğiyle BİREBİR). `/api/
+# live-effort` (aynı oturum, TODO.md 2026-10-07) bu hatayı TEKRARLAMADAN
+# baştan buraya eklendi.
 HOST_ROUTED_PATHS = {
     "/api/start", "/api/stop", "/api/retire", "/api/reactivate", "/api/close",
     "/api/handover", "/api/compact", "/api/adopt", "/api/new-chat", "/api/register", "/api/edit",
     "/api/term/input", "/api/term/key", "/api/term/raw", "/api/term/open-window", "/api/term/set-mode",
     "/api/instances/forget", "/api/cli/install",
     "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write",
-    "/api/context",
+    "/api/context", "/api/live-model", "/api/live-effort",
 }
 
 # Terminal/Dosya GÖRÜNTÜLEME (GET, read-only) route'ları — POST'un aksiyon
@@ -147,7 +161,7 @@ _conn_pool: Dict[str, List[http.client.HTTPConnection]] = {}
 # `name` (session) zaten var, yani farklı session'lar birbirini ASLA
 # bloklamaz, sadece AYNI endpoint'e üst üste binen tekrarlar bloklanır.
 #
-# `_last_good` — bounce'un KENDİSİ kullanıcıya HİÇ görünmemesi için: canlı
+# `_dedup_last_good` — bounce'un KENDİSİ kullanıcıya HİÇ görünmemesi için: canlı
 # ekran görüntüsüyle yakalandı (2026-09-14, aynı gün DÖRDÜNCÜ tur) —
 # `TerminalView.tsx` bir `ok:false` aldığında pane'in İÇERİĞİNİ o hata
 # metniyle EZİYOR ("✗ yuhem unreachable: busy: ..." pane'de gerçek terminal
@@ -159,9 +173,13 @@ _conn_pool: Dict[str, List[http.client.HTTPConnection]] = {}
 _inflight_lock = threading.Lock()
 # url -> `time.monotonic()` değeri, o URL'in in-flight olarak işaretlendiği an.
 _inflight_starts: Dict[str, float] = {}
-_last_good: Dict[str, Tuple[int, dict]] = {}
+# İsim BİLEREK `_last_good` DEĞİL `_dedup_last_good` — aşağıdaki host-adı
+# anahtarlı `_last_good` (poll-cache, ~500. satır) ile aynı ada sahip iki
+# AYRI modül değişkeniydi (biri URL->tuple, biri host->dict); anahtar
+# uzayları çakışmıyordu ama tür-karışıklığı tuzağıydı (TODO.md 2026-10-07).
+_dedup_last_good: Dict[str, Tuple[int, dict]] = {}
 
-# 2026-10-07 fix (canlı rapor: hiç `_last_good`'u olmayan taze bir URL —
+# 2026-10-07 fix (canlı rapor: hiç `_dedup_last_good`'u olmayan taze bir URL —
 # yeni spawn edilmiş bir session'ın modalı — "busy: an earlier request..."
 # hatasını SÜREKLİ gösterdi, kendi kendine hiç düzelmedi). Kök sebep: eski
 # `_inflight_urls` bir `set()`'ti, bookkeeping'in KENDİSİ hiç zaman aşımına
@@ -170,7 +188,7 @@ _last_good: Dict[str, Tuple[int, dict]] = {}
 # çağrısını sınırlar, parça parça gelen ama TOPLAMDA dakikalarca süren bir
 # yanıtı değil — `timeout` parametresi bunu yakalamaz), altındaki `finally`
 # hiç ÇALIŞMAZ ve bu URL o thread kurtulana (belki hiç) kadar sonsuza dek
-# "in flight" kalır. İlk istek olduğu için düşecek bir `_last_good`'u da YOK,
+# "in flight" kalır. İlk istek olduğu için düşecek bir `_dedup_last_good`'u da YOK,
 # yani her sonraki poll çıplak busy hatasını görür. En büyük meşru dedup'lı
 # çağrı `ACTION_TIMEOUT_SECONDS` (200s, dosya indirme) + retry-once payı —
 # bu yüzden cömert bir tavan (10dk) yeterli: gerçekten takılı bir isteği
@@ -304,15 +322,15 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
     HİÇBİR ZAMAN vermez: aynı URL'e zaten uçuşta bir istek varsa YENİ bağlantı
     hiç açılmadan anında dönülür — host yavaşken üst üste binen onlarca
     eşzamanlı deneme yerine TEK bir deneme bekleniyor olur. Bounce'ta hata
-    DEĞİL o URL'in son BAŞARILI sonucu (`_last_good`) döner (varsa) — bkz.
-    `_last_good` üstündeki not, çağıran/frontend bir tick'in atlandığını
+    DEĞİL o URL'in son BAŞARILI sonucu (`_dedup_last_good`) döner (varsa) — bkz.
+    `_dedup_last_good` üstündeki not, çağıran/frontend bir tick'in atlandığını
     hiç fark etmemeli. Hiç önceki başarı yoksa (host'a eklendiği ANDA
     eşzamanlı ilk iki istek gibi) yine de busy hatası döner."""
     if dedup:
         with _inflight_lock:
             started = _inflight_starts.get(url)
             if started is not None and (time.monotonic() - started) < _INFLIGHT_MAX_SECONDS:
-                cached = _last_good.get(url)
+                cached = _dedup_last_good.get(url)
                 if cached is not None:
                     return cached[0], cached[1], None
                 return 0, None, "busy: an earlier request to this same endpoint is still in flight"
@@ -346,7 +364,7 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
                 return status, None, "bad response (not an object)"
             if dedup:
                 with _inflight_lock:
-                    _last_good[url] = (status, parsed)
+                    _dedup_last_good[url] = (status, parsed)
             return status, parsed, None
         return 0, None, last_err
     finally:
@@ -422,7 +440,7 @@ def _fetch_status_from(base_url: str, token: str, timeout: float) -> Tuple[Optio
     # beri bu REST yolu sağlıklı bir host'u bile `ok:False, error:None` olarak
     # bitiriyordu: Ayarlar > Hosts "şimdi test et", REST poll yedeği ve
     # `_try_fallback_urls` (başarılı bir extra_url'i `base_url` olarak KALICI
-    # promote edip yine de ok:False dönüyordu). Kopya: `_last_good` dedup
+    # promote edip yine de ok:False dönüyordu). Kopya: `_dedup_last_good` dedup
     # cache'i aynı dict'i tutuyor, yerinde değiştirilmemeli.
     return {**parsed, "ok": True}, None
 

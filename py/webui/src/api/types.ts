@@ -271,6 +271,18 @@ export interface LiveModelResult {
   model?: string;
 }
 
+/** `web.py`'nin `_live_effort()`'ü — `LiveModelResult` ile AYNI iskelet,
+ * `model` yerine `effort`. TODO.md 2026-10-07: `session.live_effort` spawn
+ * anındaki `--effort`'ta donuyor, terminale yazılan bir `/effort` hiçbir
+ * yerde yansımıyordu. */
+export interface LiveEffortResult {
+  ok: boolean;
+  error?: string;
+  available?: boolean;
+  reason?: string;
+  effort?: string;
+}
+
 export interface DiagInfo {
   web_pid: number;
   web_uptime_seconds: number;

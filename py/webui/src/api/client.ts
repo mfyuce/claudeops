@@ -42,6 +42,7 @@ import type {
   HandoverResult,
   InstancesResult,
   LayoutResult,
+  LiveEffortResult,
   LiveModelResult,
   NewChatResult,
   OrchDraftParticipant,
@@ -465,17 +466,20 @@ export const apiUsage = (lang: Lang): Promise<UsageResult> => apiPost<UsageResul
  * session'ın kendi context-window'u (`_context()`, `/context` enjekte eder).
  * Aynı "poll değil, buton" gerekçesi: her çağrı gerçekten o session'a
  * yazıyor. `host` bugün YOK SAYILIYOR (`/api/usage` gibi `/api/context` da
- * henüz `web_hosts.proxy_action`'ın host-routed path'lerine eklenmedi,
- * uzak bir host'un Terminal'inde bugün sessizce `not_running` döner) —
- * `NamePayload`'ı yine de kullanmak diğer tüm Terminal çağrılarıyla aynı
- * şekli koruyor, federasyon eklendiğinde tek satır değişir. */
+ * 2026-10-06'da `web_hosts.HOST_ROUTED_PATHS`'e eklendi, `host` artık uzak
+ * bir host'un Terminal'inde de doğru çalışıyor (önceki not bayattı). */
 export const apiContext = (p: NamePayload): Promise<ContextResult> => apiPost<ContextResult>("/api/context", p);
 
 /** `_live_model()`'in aksine (bkz. `LiveModelResult`) enjeksiyon YOK, salt
  * dosya okuma — bu yüzden `apiContext`'in "poll değil buton" gerekçesi
  * burada GEÇERSİZ, `TerminalView` bunu mount'ta (ve session değişince)
- * kendiliğinden çağırır. `host` aynı nedenle bugün yok sayılıyor. */
+ * kendiliğinden çağırır. `host` 2026-10-08'e kadar BURADA DA yok sayılıyordu
+ * (`HOST_ROUTED_PATHS`'te değildi, `/api/context`'in 2026-10-06 öncesi AYNI
+ * boşluğu) — artık host-routed, uzak session'larda da canlı değeri okur. */
 export const apiLiveModel = (p: NamePayload): Promise<LiveModelResult> => apiPost<LiveModelResult>("/api/live-model", p);
+
+/** `apiLiveModel`'in effort karşılığı, bkz. `LiveEffortResult`. */
+export const apiLiveEffort = (p: NamePayload): Promise<LiveEffortResult> => apiPost<LiveEffortResult>("/api/live-effort", p);
 
 /** Upsert (`hosts.save_host()`): empty `token` on an already-registered
  * `name` keeps that host's stored token — only send a non-empty token when
