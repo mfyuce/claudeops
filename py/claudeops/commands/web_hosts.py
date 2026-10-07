@@ -1150,15 +1150,37 @@ def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict
     Consumer ilk okumada TEMBEL başlar (bkz. `_term_relays`'in tepesindeki
     reap notu), henüz hiç veri gelmediyse `{"ok": False, "error": "..."}`
     döner (`_term_poll_loop`'un dedup'ı bunu normal bir tick gibi işler,
-    ÖZEL bir durum değil)."""
+    ÖZEL bir durum değil).
+
+    2026-10-07 fix (canlı rapor, ulak_31: "yazılar bir eskiye bir yeniye
+    gidip geliyor... 30dk önceki text geliyor sonra yenisi"): bu fonksiyon
+    `relay is None` dışında HİÇBİR şeye bakmıyordu — altındaki push-consumer
+    (WS/gRPC bağlantısı) öldükten/sessizce takıldıktan SONRA bile AYNI
+    `_TermRelay` sonsuza dek yeniden kullanılıyordu, `read()` donduğu andaki
+    `.latest`'i hata DÖNDÜRMEDEN tekrar tekrar veriyordu. `_reap_idle_term_relays`
+    bunu KURTARAMAZ: `read()` her çağrıda `last_read_mono`'yu tazeliyor, modal
+    açık kaldığı (200ms'de bir okunduğu) sürece relay hiç "idle" sayılmıyor.
+    Sonuç: WS her tick'te aynı donmuş kareyi "taze geldi" diye işaretliyordu
+    (`useTermOutput.ts`'in `lastAppliedAtRef`'i), 3sn'lik REST backstop'un
+    GERÇEKTEN taze cevabı neredeyse hep bu yüzden eleniyordu — tarayıcı↔yerel
+    WS kendi kısa kopuşlarında ara sıra backstop'u kazandırınca kullanıcı tam
+    "eski, yeni, yine eski" döngüsünü görüyordu. Artık `is_alive()` de
+    kontrol ediliyor; ölüyse eskisi (kilit DIŞINDA, ağ I/O yapabileceği için
+    `_ensure_status_consumer`'la aynı desen) durdurulup yerine taze bir
+    relay kuruluyor."""
     key = (host_name, name, lang)
 
     def fetch_fn() -> dict:
         host = hosts_mod.get_host(host_name)
         if host is None:
             return {"ok": False, "error": f"unknown host: {host_name}"}
+        dead = None
         with _term_relay_lock:
             relay = _term_relays.get(key)
+            if relay is not None and not relay.is_alive():
+                dead = relay
+                del _term_relays[key]
+                relay = None
             if relay is None:
                 tier = get_tier(host_name)
                 token = host["token"]
@@ -1171,6 +1193,8 @@ def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict
                     parse_item = _parse_ws_term_frame
                 relay = _TermRelay(tier, make_call, parse_item)
                 _term_relays[key] = relay
+        if dead is not None:
+            dead.stop()
         result = relay.read()
         return result if result is not None else {"ok": False, "error": "relay: henüz veri gelmedi"}
 
