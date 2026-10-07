@@ -374,7 +374,11 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           touchLastY = ev.touches[0].clientY;
         }
         function handleTouchMove(ev: TouchEvent) {
-          if (touchLastY === null || ev.touches.length !== 1) return;
+          // `!container` is always false here (the outer `if (!container) return`
+          // above already guarantees it) — TS just can't carry that narrowing
+          // into a function used as an addEventListener callback, since it runs
+          // at an arbitrary later time it can't statically connect back.
+          if (touchLastY === null || ev.touches.length !== 1 || !container) return;
           const y = ev.touches[0].clientY;
           // Finger moving DOWN the screen (y increasing) is the "pull down
           // to reveal earlier content" gesture — same convention as any

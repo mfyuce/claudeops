@@ -184,7 +184,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
         if (mode === "restart" && session.running) {
           const stopRes = await apiStop({ name: session.name, host: session.host, lang });
           stopOk = stopRes.ok;
-          if (!stopOk) showToast(`${session.name}: ${stopRes.error}`);
+          if (!stopRes.ok) showToast(`${session.name}: ${stopRes.error}`);
         }
         if (stopOk) {
           const res = await apiNewChat({
