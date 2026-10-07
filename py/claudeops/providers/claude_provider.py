@@ -164,6 +164,25 @@ def last_assistant_model(jsonl_path: Path) -> Optional[str]:
         return None
 
 
+def live_or_spawn_model(cli: str, cwd: str, sid: Optional[str], fallback: str) -> str:
+    """TODO.md 2026-09-17/2026-10-06: handover's model-downgrade decision
+    (`handover_model_downgrade`) used `session.model` — the spawn-time
+    `--model` cmdline argument — which goes stale the moment someone types
+    `/model` directly into the terminal (claudeops' own dropdown isn't the
+    only way to switch). The downgrade then silently never fires for a
+    session that's actually running fable/opus but was spawned as sonnet.
+    Prefers the jsonl-verified live model (`last_assistant_model`, same
+    source `_live_model()`/the Terminal view's "Bilgi" tab already trust);
+    falls back to the spawn-time value whenever live can't be determined
+    (non-claude provider, no jsonl yet, no assistant turn written)."""
+    if cli != "claude":
+        return fallback
+    jsonl = jsonl_path_for(cwd, sid)
+    if jsonl is None:
+        return fallback
+    return last_assistant_model(jsonl) or fallback
+
+
 # Bir konuşmanın "kimlik" satırları dosyanın EN BAŞINDA: `customTitle` (session'ın
 # `-n NAME` adı) 1. satırda, ilk `cwd` alanı ~6. satırda görülüyor (canlı örneklerde
 # doğrulandı, 2026-09-08) — tüm dosyayı okumaya gerek yok.

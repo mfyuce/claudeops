@@ -35,6 +35,7 @@ from typing import List, Optional
 from .discovery import find_sessions
 from .needs_ho import needs_ho
 from .providers import CliProvider, get_provider
+from .providers.claude_provider import live_or_spawn_model
 from .settings import load_settings
 from .spawn import find_latest_jsonl
 from .tmux_backend import is_tmux_backed, tmux_send_keys
@@ -317,7 +318,8 @@ def handover_faz1(
         # o noktada zaten `--model` (spawn-time flag, /model'in aksine
         # global'i KİRLETMEZ) ile kendi gerçek modeline dönüyor.
         provider = get_provider(session.cli)
-        downgrade = provider.handover_model_downgrade(session.model or "")
+        effective_model = live_or_spawn_model(session.cli, session.cwd, session.sid, session.model or "")
+        downgrade = provider.handover_model_downgrade(effective_model)
         if downgrade:
             provider.apply_live_model_switch(session.name, downgrade)
 

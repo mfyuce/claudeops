@@ -312,6 +312,12 @@ def run_notify(args) -> int:
     topic = args.topic or ("claudeops-" + secrets.token_urlsafe(6).translate(str.maketrans("_-", "ab")))
     NTFY_TOPIC_FILE.parent.mkdir(parents=True, exist_ok=True)
     NTFY_TOPIC_FILE.write_text(topic)
+    # 2026-10-07 (ucli review _9#5): the OTHER secret-ish files in this dir
+    # (web.token/hosts.json/settings.json/ucli_api_key) are all 0600 — this one
+    # never was. The topic itself is a second secret (TODO.md, same review's
+    # #20): anyone who knows/guesses it can read every tunnel-URL-rotation
+    # notification ntfy.sh relays for it.
+    os.chmod(NTFY_TOPIC_FILE, 0o600)
     print(f"✓ topic: {topic}")
     print(f"  ({NTFY_TOPIC_FILE} — run-tunnel.sh tunnel URL DEĞİŞTİĞİNDE buraya otomatik POST eder)")
     print()

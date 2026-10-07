@@ -289,7 +289,11 @@ class AgyProvider(CliProvider):
         # isim deseni dışında güvenilir bir sinyal yok.
         if model.startswith("gemini"):
             parts += ["--effort", shlex.quote(effort or "medium")]
-        parts += _PERMISSION_FLAGS.get(permission_mode or "auto", _PERMISSION_FLAGS["auto"])
+        # Fallback is "plan" (most restrictive), not "auto" (full bypass) —
+        # an unrecognized mode used to silently escalate to --dangerously-
+        # skip-permissions instead of failing safe (2026-10-03 review PROC-04,
+        # same fix mirrored in codex_provider.py/copilot_provider.py).
+        parts += _PERMISSION_FLAGS.get(permission_mode or "auto", _PERMISSION_FLAGS["plan"])
         # `mcp_launch_args()` bugün hep [] döner (agy'de çağrı-başına MCP yolu
         # yok, bkz. `mcp_setup_command`) — splice yine de burada, diğer 3
         # provider'la simetrik/mekanik kalsın, ileride bir yol bulunursa TEK

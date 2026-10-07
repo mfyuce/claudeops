@@ -192,7 +192,9 @@ class CodexProvider(CliProvider):
             parts += ["resume", shlex.quote(resume_id)]
         parts += ["--model", shlex.quote(model)]
         parts += ["--config", shlex.quote(f"model_reasoning_effort={effort or 'medium'}")]
-        parts += _PERMISSION_FLAGS.get(permission_mode or "auto", _PERMISSION_FLAGS["auto"])
+        # Fallback is "plan" (most restrictive), not "auto" (full bypass) —
+        # see agy_provider.py's identical fix for why (2026-10-03 review PROC-04).
+        parts += _PERMISSION_FLAGS.get(permission_mode or "auto", _PERMISSION_FLAGS["plan"])
         parts += [shlex.quote(a) for a in extra_args]
         if prompt:
             parts += [shlex.quote(prompt)]

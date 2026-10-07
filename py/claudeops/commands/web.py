@@ -67,7 +67,7 @@ from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, save_settings
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
-from ..providers.claude_provider import jsonl_path_for, last_assistant_model
+from ..providers.claude_provider import jsonl_path_for, last_assistant_model, live_or_spawn_model
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
 from ..tmux_backend import (
@@ -274,6 +274,22 @@ def _msg(lang: str, key: str, **kwargs) -> str:
 
 
 def _load_or_create_token() -> str:
+    # 2026-10-07 (ucli review _7#L2): only the CREATE path below ever applied
+    # 0600 — an EXISTING token file was trusted as-is, so one left
+    # world-readable (a manual copy, an old backup, `tar` extracted with a
+    # permissive umask) or swapped for a symlink would go unnoticed forever.
+    # Checked every load (cheap, one lstat) rather than only once, so a file
+    # that regresses to loose permissions later self-heals on the next read.
+    try:
+        if os.path.islink(TOKEN_FILE):
+            diag_log("token_file_is_symlink", path=str(TOKEN_FILE))
+        else:
+            mode = os.stat(TOKEN_FILE).st_mode & 0o777
+            if mode != 0o600:
+                diag_log("token_file_mode_fixed", path=str(TOKEN_FILE), was=oct(mode))
+                os.chmod(TOKEN_FILE, 0o600)
+    except FileNotFoundError:
+        pass
     try:
         with open(TOKEN_FILE, encoding="utf-8") as f:
             tok = f.read().strip()
@@ -2106,7 +2122,13 @@ def _handover(name: str, lang: str = "tr") -> dict:
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     diag_log("handover_start", name=name)
 
-    downgrade = provider.handover_model_downgrade(procs[0].model or "")
+    # TODO.md 2026-09-17/2026-10-06: `procs[0].model` is the spawn-time
+    # --model argument, stale the moment someone types `/model` straight
+    # into the terminal — prefer the jsonl-verified live model so the
+    # downgrade decision below matches what's actually running (same fix
+    # as handover.py's handover_faz1(), see live_or_spawn_model's docstring).
+    effective_model = live_or_spawn_model(procs[0].cli, procs[0].cwd, procs[0].sid, procs[0].model or "")
+    downgrade = provider.handover_model_downgrade(effective_model)
     if downgrade:
         provider.apply_live_model_switch(name, downgrade)
 
@@ -2115,6 +2137,12 @@ def _handover(name: str, lang: str = "tr") -> dict:
     if not sent:
         diag_log("handover_send_failed", name=name)
         return _err(lang, "handover_send_failed", name=name)
+    # handover.py's handover_faz1() already does this (CLI batch path) — the
+    # web panel's single-session handover never did (TODO.md 2026-10-06), so a
+    # late "Switch model?" dialog from the downgrade above (or claude's own
+    # unrelated suggestion) could sit unresolved after a web-triggered ho.
+    # Short/bounded scan, same as the CLI path — never blocks past ~6s.
+    provider.dismiss_stray_dialog(name)
     diag_log("handover_done", name=name)
     return {"ok": True}
 

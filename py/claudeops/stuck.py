@@ -20,6 +20,8 @@ from .providers import get_provider
 from .session import Session
 from .settings import default_model_for
 from .spawn import spawn_session, detect_display
+from .tmux_backend import is_tmux_backed
+from .turns import is_busy_now
 
 
 # CPU eşiği: bunun altındaysa ve son mesaj user'sa → stuck
@@ -33,7 +35,7 @@ class StuckInfo:
 
 
 def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
-    """Stuck session'ları döndür (CPU düşük + son rol = user)."""
+    """Stuck session'ları döndür (CPU düşük + son rol = user + gerçekten busy değil)."""
     if sessions is None:
         sessions = find_sessions(measure_cpu=True)
 
@@ -44,12 +46,34 @@ def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
         provider = get_provider(s.cli)
         if not provider.has_conversation():
             continue  # ör. düz shell: idle CPU normal, "stuck" kavramı yok — kill+resume ETME
+        if _is_busy(provider, s):
+            continue  # API yanıtı bekliyor (network-bound, CPU düşük) — SAĞLIKLI, stuck değil
         role = provider.last_message_role(s.cwd, s.sid)
         if role is None:
             continue  # transkript yok/desteklenmiyor → bilinmiyor, stuck sayma
         if role == "user":
             stuck.append(StuckInfo(session=s, last_role=role))
     return stuck
+
+
+def _is_busy(provider, s: Session) -> bool:
+    """`web.py::_is_busy_cached`'in önbelleksiz hâli (2026-10-03 review PROC-05)
+    — `find_stuck()` web'in sık poll döngüsü gibi çağrılmıyor, 2sn TTL'e gerek
+    yok. CPU<2%+son-mesaj-user "stuck" imzası, API yanıtı bekleyen (network-
+    bound, CPU doğal olarak düşük) SAĞLIKLI bir turla AYNIYDI — `--recover`
+    öyle bir session'ı turun ortasında öldürebiliyordu. Belirsiz durumda
+    (`live_busy` None, tmux-backed değil, pattern yok) False döner — yani
+    MEVCUT CPU+rol sezgisine geri düşer, davranışı değiştirmez; sadece GERÇEK
+    busy kanıtı varsa stuck sayımından çıkarır."""
+    live = provider.live_busy(s.cwd, s.sid)
+    if live is not None:
+        return live
+    if not is_tmux_backed(s.pid):
+        return False
+    pattern = provider.busy_status_pattern()
+    if not pattern:
+        return False
+    return is_busy_now(s.name, pattern)
 
 
 def recover_stuck(
