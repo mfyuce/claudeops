@@ -613,27 +613,61 @@ class ClaudeProvider(CliProvider):
                                    "Failed to set effort level")
 
     def apply_live_effort_switch(self, tmux_name: str, target_effort: str) -> None:
-        """`/effort <target_effort>` CANLI session'a gönderilir. `/model`'in
-        aksine `immediate` bir komut (2.1.293 binary'sinde `immediate:!0`):
-        meşgul session'da kuyruğa girmeden hemen çalışıyor ve onay diyaloğu
-        açmıyor — sadece sonuç satırını ("Set effort level to High ...") basmasını
-        bekleyip dönüyor ki ardından gelen wrap-up mesajı onunla çakışmasın.
-        ⚠ Etkileşimli CLI'da `max` DIŞINDAKİ bir seviye (low/medium/high/xhigh)
-        `/model` gibi GLOBAL varsayılana da yazılıyor (`~/.claude/settings.json`
-        `effortLevel`, "saved as your default for new sessions" — binary'den
-        okundu) — claudeops spawn'ları `--effort`'u açıkça verdiği için fleet
-        etkilenmez, sadece kullanıcının elle açtığı `--effort`'suz bir `claude`
-        varsayılan olarak o seviyeyle açılır."""
-        from ..tmux_backend import tmux_capture, tmux_send_keys, strip_ansi
+        """`/effort <target_effort>` CANLI session'a gönderilir.
+
+        **2026-10-08 düzeltme (TODO.md, kullanıcının canlı gözlemi: "model ve
+        effort degisimlerinde bazan yes no sorulari gelebiliyor. onu gorup
+        gerekirse enter yapmak gerekbiliyor"):** bu docstring ESKİDEN "`/model`'in
+        aksine immediate bir komut, onay diyaloğu açmıyor" diyordu — bu iddia
+        YANLIŞ çıktı. Doğrulama yöntemi: `strings <claude-binary> | grep` (bu
+        codebase'de `effortLevel`'in settings.json'a yazıldığını kanıtlamak için
+        de kullanılan AYNI teknik, 2.1.294 binary'sinde tekrarlandı) —
+        `apply_live_model_switch()`'in "Switch model?" metniyle AYNI string
+        bloğunda bir "Change effort level?" dialog başlığı + aynı "Yes, switch
+        to " / "No, go back" düğme metinleri bulundu. Yani `/effort` de
+        `/model` gibi gerçek bir onay diyaloğu açabiliyor; eski done-marker
+        listesi (`_EFFORT_SWITCH_DONE_MARKERS`) bu dialog'u hiç TANIMIYORDU —
+        dialog açıldığında ekranda bu 4 metinden hiçbiri yok, döngü sessizce
+        `_EFFORT_SWITCH_TIMEOUT_SECONDS` (8s) boyunca bekleyip dialog'u ONAYSIZ
+        bırakıyordu (tam kullanıcının gözlemi). Fix, `apply_live_model_switch()`'in
+        kanıtlanmış poll+confirm desenini BİREBİR tekrarlıyor: bu switch de
+        BİLEREK istenen bir değişiklik olduğu için (çağıran zaten
+        `handover_effort_downgrade()`'in kararını uyguluyor), varsayılan seçili
+        düğme "Yes, switch to ..." kabul edilerek Enter gönderiliyor — tersi
+        (reddet), kaynağı belirsiz bir dialog'u KAPATMAK isteyen
+        `dismiss_stray_dialog()`'un işi, burada değil.
+
+        ⚠ Hangi effort geçişinin (herhangi bir yükseliş? sadece `max`?) bu
+        dialog'u tetiklediği canlı doğrulanmadı — kanıt sadece binary'nin string
+        tablosu, gerçek bir tetikleme bu oturumda gözlenmedi (`/model`'in
+        `PreModelSwitch` hook'u gibi adlandırılmış bir `PreEffortSwitch` hook'u
+        binary'de YOK, yani hook-bağımlı değil — muhtemelen `/model`'in diğer
+        iki tetikleyicisinden biriyle, "yavaş+pahalı" veya cache-invalidation
+        uyarısıyla, aynı aile). Bu yüzden KOŞULSUZ her çağrıda poll ediliyor,
+        tıpkı eskisi gibi — ek maliyet yok, sadece artık bu beşinci deseni de
+        tanıyor. Son blind-Enter fallback'i `apply_live_model_switch()`'ten
+        ödünç alındı ama BU fonksiyon için canlı doğrulanmadı (mantık aynı:
+        boş input kutusuna Enter no-op olmalı, ama bu varsayım burada henüz
+        test edilmedi)."""
+        from ..tmux_backend import tmux_capture, tmux_send_keys, tmux_send_special_key, strip_ansi
 
         if not tmux_send_keys(tmux_name, f"/effort {target_effort}"):
             return
         deadline = time.monotonic() + self._EFFORT_SWITCH_TIMEOUT_SECONDS
+        dialog_confirmed = False
         while time.monotonic() < deadline:
             time.sleep(self._EFFORT_SWITCH_POLL_SECONDS)
             text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
+            if not dialog_confirmed and "Change effort level?" in text:
+                tmux_send_special_key(tmux_name, "Enter")
+                dialog_confirmed = True
+                continue
             if any(m in text for m in self._EFFORT_SWITCH_DONE_MARKERS):
                 return
+        if not dialog_confirmed:
+            # apply_live_model_switch()'teki AYNI son şans: dialog belki tam bu
+            # son anda açıldı, henüz bir sonraki poll turuna denk gelmedi.
+            tmux_send_special_key(tmux_name, "Enter")
 
     _STRAY_DIALOG_TIMEOUT_SECONDS = 6.0
     _STRAY_DIALOG_POLL_SECONDS = 0.5
