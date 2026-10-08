@@ -20,6 +20,17 @@ MODEL_CHOICES = [
 ]
 PERMISSION_MODES = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
+# Sabitlenmiş (pinned) sonnet id'si: `claude-sonnet-5`, `claude-sonnet-5-5`,
+# opsiyonel `[1m]` benzeri bağlam eki. Takma ad (`sonnet`, `sonnet[1m]`),
+# tarihli id'ler (`...-20250929`) ve diğer aileler BİLEREK eşleşmez.
+_SONNET_PIN_RE = re.compile(r"^(claude-sonnet-)(\d{1,2}(?:-\d{1,2})?)(\[[^\]]*\])?$")
+
+
+def _sonnet_version(model_id: str) -> Tuple[int, ...]:
+    m = _SONNET_PIN_RE.match(model_id)
+    return tuple(int(p) for p in m.group(2).split("-")) if m else ()
+
+
 # `/usage`'ın çıktısını `parse_usage_text()`'in ayrıştırdığı desen — o metodun
 # kendi docstring'ine bkz. gerçek örnek metin için.
 _USAGE_HEADER_RE = re.compile(r"^(Current (?:session|week(?:\s*\([^)]+\))?))$")
@@ -743,6 +754,25 @@ class ClaudeProvider(CliProvider):
         except Exception:
             pass
         return MODEL_CHOICES
+
+    def refresh_stored_model(self, stored: str) -> str:
+        """Sabitlenmiş (pinned) bir sonnet id'sini `model_choices()`'taki EN
+        YENİ sonnet'e taşır (TODO.md 2026-10-08: "restartlar da sonet 5.5
+        gelmiyor"; `models.tsv`'nin yazıcısı yok, `claude-sonnet-5` sonsuza dek
+        donuk kalıyordu). Faz-1'in canlı `/model sonnet` takma adıyla AYNI
+        felsefe, ama restart'ta literal id gerektiği için çözümü burada yapıyoruz.
+        Dokunulmaz: opus/fable/haiku pinleri, `sonnet` gibi takma adlar (zaten
+        hep taze), tanınmayan biçimler; `[1m]` eki korunur; stored zaten
+        güncel ya da daha yeniyse (elle yeni bir pin) geri DÜŞÜRÜLMEZ."""
+        m = _SONNET_PIN_RE.match(stored or "")
+        if not m:
+            return stored
+        fresh = max((c for c in self.model_choices() if _SONNET_PIN_RE.match(c)),
+                    key=_sonnet_version, default=None)
+        if not fresh or _sonnet_version(fresh) <= _sonnet_version(stored):
+            return stored
+        fm = _SONNET_PIN_RE.match(fresh)
+        return fm.group(1) + fm.group(2) + (m.group(3) or "")
 
     def permission_modes(self) -> List[str]:
         return PERMISSION_MODES

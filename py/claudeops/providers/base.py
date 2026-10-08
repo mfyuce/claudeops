@@ -349,6 +349,14 @@ class CliProvider(ABC):
     def model_choices(self) -> List[str]:
         ...
 
+    def refresh_stored_model(self, stored: str) -> str:
+        """Restart/respawn'da elde zaten KAYITLI bir model id'si (`stored`,
+        boş değil) varken onun bayat kalmasını önleyen provider'a-özel kural.
+        Varsayılan: dokunma, `stored` aynen döner — `last_exchange`/
+        `compact_command` ile AYNI "yok = no-op, sadece destekleyen override
+        eder" sözleşmesi. Bkz. `ClaudeProvider.refresh_stored_model`."""
+        return stored
+
     @abstractmethod
     def permission_modes(self) -> List[str]:
         ...
