@@ -64,7 +64,7 @@ from .. import model_freshness
 from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
-from ..settings import default_model_for, load_settings, save_settings
+from ..settings import default_model_for, load_settings, resolved_model_for, save_settings
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
 from ..providers.claude_provider import jsonl_path_for, last_assistant_model, last_assistant_effort, live_or_spawn_model
@@ -730,7 +730,8 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else src_cli
     # bkz. _start()'taki aynı fix'in yorumu — cli değiştiyse eski model
     # yanlış provider'ın modeli olur, yeni cli'nin kendi varsayılanına düşülmeli.
-    chosen_model = model.strip() or (src_model if chosen_cli == src_cli else default_model_for(get_provider(chosen_cli)))
+    chosen_model = model.strip() or (resolved_model_for(get_provider(chosen_cli), src_model) if chosen_cli == src_cli
+                                      else default_model_for(get_provider(chosen_cli)))
     chosen_mode = permission_mode.strip() or "auto"
     chosen_effort = effort.strip() or "max"
     inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
@@ -1495,7 +1496,8 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     # YANLIŞ cli'nin modeliyle spawn oluyordu (ör. codex'e geçip boş bırakınca "codex
     # --model claude-sonnet-5" gibi geçersiz bir çağrı — canlı kullanıcı raporu,
     # 2026-09-01). cli değişmediyse eski davranış (src["model"]) aynen korunur.
-    fallback_model = src["model"] if chosen_cli == src["cli"] else default_model_for(get_provider(chosen_cli))
+    fallback_model = (resolved_model_for(get_provider(chosen_cli), src["model"]) if chosen_cli == src["cli"]
+                      else default_model_for(get_provider(chosen_cli)))
     chosen_model = model.strip() or fallback_model
     chosen_mode = permission_mode.strip() or (rec or {}).get("permission_mode") or "auto"
     chosen_effort = effort.strip() or (rec or {}).get("effort") or "max"
@@ -2491,7 +2493,7 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     # tanıdığıysa odur (bir claude proc'u "agy olarak devral" diye bir şey yok).
     chosen_cli = procs[0].cli
     provider = get_provider(chosen_cli)
-    chosen_model = model.strip() or procs[0].model or default_model_for(provider)
+    chosen_model = model.strip() or resolved_model_for(provider, procs[0].model)
     chosen_mode = permission_mode.strip() or provider.permission_modes()[0]
     chosen_effort = effort.strip() or provider.effort_levels()[-1]
     try:

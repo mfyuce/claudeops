@@ -202,10 +202,56 @@ def default_model_for(provider: "CliProvider") -> str:
     Sadece "hiç model yok" (yeni session / bilinmeyen fallback) durumunda
     çağrılmalı — var olan bir session'ın kendi modelini (session.model,
     info["model"], models.tsv kaydı, ...) KORUMAK istisnasız önceliklidir,
-    bu fonksiyon o zincirin EN SONUNDAKİ halka."""
+    bu fonksiyon o zincirin EN SONUNDAKİ halka. Bir restart/respawn'da
+    STORED bir değer VARKEN de taze tutulması gereken tek aile (Sonnet) için
+    bkz. [[resolved_model_for]]."""
     choices = provider.model_choices()
     override = (load_settings().get("default_model") or {}).get(provider.name) or ""
     return override if override in choices else choices[0]
+
+
+def resolved_model_for(provider: "CliProvider", stored: str) -> str:
+    """`default_model_for`'un "istisnasız koru" politikasına TEK istisna —
+    restart/respawn yollarının (`rc.py`, `web.py::_start`/`_new_chat`/`_adopt`)
+    `stored` (models.tsv kaydı / önceki instance'ın `model` alanı / canlı
+    proc'un kendi argv'si) değerini çözmesi için. TODO.md 2026-10-08, kullanıcı:
+    "restartlar da sonet 5.5 gelmiyor, en son sonet default olmali" — kök neden
+    `models.tsv`'nin elle yazılan, hiçbir yazıcısı olmayan STATİK bir dosya
+    olması: bir kere "claude-sonnet-5-5" yazıldıktan sonra Anthropic daha yeni
+    bir sonnet çıkarsa bu değer SONSUZA dek donuk kalıyordu, çünkü yukarıdaki
+    `default_model_for` zaten "varsa dokunma" diyordu.
+
+    Sonnet'i BİLEREK "güncele taşınan" tek aile seçtik — bu, Faz-1'in canlı
+    `/model sonnet` enjeksiyonunun (`handover_model_downgrade`/
+    `apply_live_model_switch`, claude_provider.py) ZATEN yaptığı şeyle AYNI
+    felsefe: orada da literal bir id değil, Claude Code'un kendi ÇÖZDÜĞÜ
+    "sonnet" takma adı gönderiliyor, hep taze kalıyor. Opus/Fable/Haiku gibi
+    BİLEREK pinlenmiş aileler burada da aynen korunur — kullanıcı sadece
+    sonnet'in güncel kalmasını istedi, var olan bir opus/fable pinini sessizce
+    bozmak İSTENMEYEN bir yan etki olurdu.
+
+    **`default_model_for(provider)`'a DEĞİL `provider.model_choices()`'ın
+    KENDİ sonnet girdisine düşer** (canlı testte bulundu, 2026-10-08): bu
+    makinenin `settings.json`'ında `default_model.claude` elle "fable"a
+    override'lı — `default_model_for` BUNU döndürür (kasıtlı, haklı bir
+    davranış, genel varsayılan budur). Ama o zaman stale bir sonnet'i
+    "taze"lemeye çalışırken onu SESSİZCE fable'a sıçratmak kullanıcının
+    İSTEMEDİĞİ bir yan etki olurdu (sadece sonnet'in güncel sonnet kalmasını
+    istedi, varsayılan modeli fable'a çevirmedi). `model_choices()` içinde
+    "sonnet" geçen girdi yoksa (ör. bu provider'da sonnet kavramı yok/hiç
+    görülmedi) ancak O ZAMAN `default_model_for`'a düşülür.
+
+    `stored` boşsa (hiç kayıt yok) bu TAZELEME mantığına hiç girmeden direkt
+    `default_model_for`'a düşer — "hiç model yok" durumu zaten o fonksiyonun
+    kendi sözleşmesi, burada sonnet'e zorlamak YANLIŞ olurdu (kullanıcının
+    genel varsayılanı başka bir aileyse onu sessizce ezerdi)."""
+    if not stored:
+        return default_model_for(provider)
+    if "sonnet" not in stored.lower():
+        return stored
+    choices = provider.model_choices()
+    fresh_sonnet = next((c for c in choices if "sonnet" in c.lower()), None)
+    return fresh_sonnet or default_model_for(provider)
 
 
 def byok_env_for(cli_name: str) -> Dict[str, str]:
