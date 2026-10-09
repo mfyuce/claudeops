@@ -28,6 +28,7 @@ import { useStatusContext } from "../../state/StatusContext";
 import { cliListFor, cliOptionsFor, LOCAL_HOST } from "../../state/hosts";
 import type { SessionInfo } from "../../api/types";
 import type { TabKey } from "../../state/tabs";
+import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
@@ -105,9 +106,16 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   // the same blueprint — prefer that over the aggregator default; a genuinely
   // fresh "newchat" off a stopped/never-run session still gets the aggregator
   // default as before.
+  //
+  // 2026-10-09: a live channel now exists for claude (and cmdline for the rest):
+  // `live_model` (web.py `_live_model_effort`, jsonl-verified). Prefer it over the
+  // roster/instance record, which holds the model the session was last STARTED with
+  // (vc20261008: record said haiku, the process had run sonnet-5-5 for hours).
+  // `currentModelLabel` below deliberately keeps the REGISTERED model: the "" option
+  // resolves to it on the backend.
   const [model, setModel] = useState(() => {
     if (session.host !== LOCAL_HOST) return "";
-    if (session.running && session.model) return session.model;
+    if (session.running && effectiveModel(session)) return effectiveModel(session);
     return data?.settings.default_model[session.cli] ?? "";
   });
   const [modelOther, setModelOther] = useState("");

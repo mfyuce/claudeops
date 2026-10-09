@@ -21,6 +21,7 @@ import type { SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
 import { CwdCell } from "../shared/CwdCell";
+import { effectiveModel } from "../shared/effectiveModel";
 import { isProtectedName } from "../shared/protectedNames";
 import { AdoptRow } from "./AdoptRow";
 import { HoCell } from "./HoCell";
@@ -58,6 +59,13 @@ export function SessionRow({
   // have its own windowless sessions, but this panel has no visibility into
   // that host's diag state, so never show the badge for a non-local row.
   const windowless = session.host === LOCAL_HOST && session.tmux && !!data?.diag.windowless?.includes(session.name);
+
+  // `session.model` roster/instance KAYDINDAKİ ("sonraki başlatmada kullanılacak") model;
+  // çalışan session'ın GERÇEKTE kullandığı model `live_model` (claude için jsonl'daki canlı
+  // değer, aksi halde cmdline'daki). Tablo çalışanın gerçeğini göstermeli (TODO.md 2026-10-09:
+  // vc20261008 canlıda sonnet-5-5'e geçirilmişti, tablo kayıttaki haiku'yu basıyordu).
+  const shownModel = effectiveModel(session);
+  const modelDiffers = session.running && !!session.live_model && !!session.model && session.live_model !== session.model;
 
   async function handleOpenWindow() {
     setOpeningWindow(true);
@@ -110,7 +118,10 @@ export function SessionRow({
             </span>
           )}
         </td>
-        <td>{session.model || ""}</td>
+        <td title={modelDiffers ? t.modelLiveDiffersHint(session.model) : undefined}>
+          {shownModel}
+          {modelDiffers && <span style={{ opacity: 0.55 }}> *</span>}
+        </td>
         <td>
           <span className="cli-badge">{session.cli}</span>
         </td>

@@ -23,6 +23,7 @@ import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
 import { showToast } from "../../state/toast";
 import type { ApiResult, SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
+import { effectiveModel } from "../shared/effectiveModel";
 import { TabHint } from "../shared/TabHint";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
@@ -108,8 +109,8 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
       model:
         s.host !== LOCAL_HOST
           ? ""
-          : s.running && s.model
-            ? s.model
+          : s.running && effectiveModel(s)
+            ? effectiveModel(s) // 2026-10-09: canlı model (live_model), kayıtlı değil
             : (data?.settings.default_model[s.cli] ?? ""),
       permission_mode: DEFAULT_PERMISSION_MODE,
       effort: defaultEffort(cliOptions),

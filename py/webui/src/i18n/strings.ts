@@ -296,6 +296,7 @@ export interface Strings {
   protectedBadge: string;
   protectedHint: string;
   hostBadgeHint: (host: string) => string;
+  modelLiveDiffersHint: (registered: string) => string;
   hostsUnreachableMsg: (names: string[]) => string;
   hostsTitle: string;
   hostsDesc: string;
@@ -707,6 +708,8 @@ export const STRINGS: Record<Lang, Strings> = {
     protectedBadge: "dikkat",
     protectedHint: "guard'ı ayakta tutuyor — toplu seçimde/işlemde dikkatli olun",
     hostBadgeHint: (host) => `"${host}" host'unda çalışıyor (local değil)`,
+    modelLiveDiffersHint: (registered) =>
+      `Session şu an bu modelle çalışıyor (canlıda değiştirilmiş ya da tek seferlik açılmış). Kayıtlı/başlatma modeli: ${registered}`,
     hostsUnreachableMsg: (names) => `⚠ ${names.length} host erişilemez: ${names.join(", ")}`,
     hostsTitle: "Uzak host'lar",
     hostsDesc:
@@ -1141,6 +1144,8 @@ export const STRINGS: Record<Lang, Strings> = {
     protectedBadge: "caution",
     protectedHint: "keeps the guard alive — be careful with bulk selection/actions on this row",
     hostBadgeHint: (host) => `running on host "${host}" (not local)`,
+    modelLiveDiffersHint: (registered) =>
+      `The session is running on this model right now (switched live, or launched one-off). Registered/launch model: ${registered}`,
     hostsUnreachableMsg: (names) => `⚠ ${names.length} host(s) unreachable: ${names.join(", ")}`,
     hostsTitle: "Remote hosts",
     hostsDesc:

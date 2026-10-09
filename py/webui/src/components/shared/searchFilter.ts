@@ -18,6 +18,8 @@ export interface Searchable {
   name: string;
   cwd: string;
   model: string;
+  /** Çalışan session'ın GERÇEK modeli (Running tablosu bunu gösterir); aramada da bulunsun. */
+  live_model?: string | null;
   cli: string;
   host: string;
   kind?: "fresh" | "resume" | null;
@@ -32,6 +34,7 @@ export function matchesSearch(item: Searchable, query: string): boolean {
     item.name.toLowerCase().includes(q) ||
     item.cwd.toLowerCase().includes(q) ||
     item.model.toLowerCase().includes(q) ||
+    (item.live_model?.toLowerCase().includes(q) ?? false) ||
     item.cli.toLowerCase().includes(q) ||
     item.host.toLowerCase().includes(q) ||
     (item.kind?.toLowerCase().includes(q) ?? false) ||

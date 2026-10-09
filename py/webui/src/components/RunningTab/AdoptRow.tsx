@@ -21,6 +21,7 @@ import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor } from "../../state/hosts";
 import type { SessionInfo } from "../../api/types";
+import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
@@ -37,7 +38,13 @@ export function AdoptRow({ session, colspan, onClose }: AdoptRowProps) {
   const cliOptions = cliOptionsFor(data, session.host, session.cli);
 
   const [newName, setNewName] = useState(session.name);
-  const [model, setModel] = useState("");
+  // "" = "(current)" option, which the backend resolves to the cmdline model. When the live
+  // model differs (switched in-CLI after spawn; 2026-10-09), preselect it explicitly so the
+  // adopted session comes back on what it was actually running.
+  const [model, setModel] = useState(() => {
+    const live = effectiveModel(session);
+    return live && live !== session.model ? live : "";
+  });
   const [modelOther, setModelOther] = useState("");
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
   const [effort, setEffort] = useState(() => defaultEffort(cliOptions));
