@@ -46,6 +46,13 @@ from typing import Any, Dict, List, Optional
 
 from .settings import load_settings
 
+# claudeops'un KENDİ ucli kopyası: `<repo>/bin/ucli` (kullanıcı kararı, 2026-10-09:
+# "claudeops ucli'yi kendi reposunda tutsun, gerektiğinde release'i/debug'ı oraya
+# gönderelim"). git'e GİRMEZ (.gitignore: /bin/ucli*), `scripts/install-ucli.sh`
+# teslim eder. Dosya adı `ucli` KALMALI: providers/ucli_provider.py::matches_proc
+# süreci basename'iyle tanıyor. Testlerde yamalanabilsin diye modül sabiti.
+OWN_UCLI = Path(__file__).resolve().parents[2] / "bin" / "ucli"
+
 
 class UcliError(RuntimeError):
     """ucli'nin kendi `{"error": "..."}` turu ya da process/parse hatası."""
@@ -53,28 +60,45 @@ class UcliError(RuntimeError):
 
 def resolve_binary(binary: Optional[str] = None) -> str:
     """`binary` verilmezse sırayla: Ayarlar > model'deki `provider_bin.ucli`
-    override'ı, `UCLI_BIN` env, PATH'te `ucli`, kardeş proje
-    `~/work/projects/tmp/unified-cli`'nin debug/release build'i. Hiçbiri
-    yoksa net bir hata — sessizce `FileNotFoundError: [Errno 2]` gibi
-    anlaşılmaz bir subprocess istisnasına düşmek yerine.
+    override'ı, `UCLI_BIN` env, claudeops'un KENDİ kopyası (`OWN_UCLI` =
+    `<repo>/bin/ucli`), PATH'te `ucli`, son çare olarak kardeş proje
+    `~/work/projects/tmp/unified-cli`'nin release/debug build'i (release
+    ÖNCE). Hiçbiri yoksa net bir hata — sessizce `FileNotFoundError: [Errno 2]`
+    gibi anlaşılmaz bir subprocess istisnasına düşmek yerine.
 
     `provider_bin` override'ı 2026-09-24'te eklendi (TODO.md'nin federasyon
     maddesi) — `settings.resolved_binary()`'nin claude/codex/agy/copilot'ta
     ZATEN yaptığının aynısı, UI'da (Ayarlar > model, "CLI binary yolu
     override") `data.cli_list`'i döngüleyen satır zaten `ucli`'yi de
-    kapsıyordu, sadece BU fonksiyon hiç okumuyordu. Alttaki iki adım (PATH'te
-    arama + kardeş proje build'i) BU MAKİNEYE özel kalmaya devam ediyor —
-    federasyonda (ör. yuhem) `ucli` PATH'te değilse ve unified-cli AYNI dizin
-    yapısında yoksa hâlâ patlar, ama artık o host'un KENDİ (host-başına-ayrı)
-    settings.json'ına `provider_bin.ucli` yazılarak atlanabiliyor.
+    kapsıyordu, sadece BU fonksiyon hiç okumuyordu. Alttaki adımlar (kendi
+    kopya, PATH'te arama, kardeş proje build'i) BU MAKİNEYE özel kalmaya
+    devam ediyor — federasyonda (ör. yuhem) `ucli` PATH'te değilse, kendi
+    kopya teslim edilmemişse ve unified-cli AYNI dizin yapısında yoksa hâlâ
+    patlar, ama artık o host'un KENDİ (host-başına-ayrı) settings.json'ına
+    `provider_bin.ucli` yazılarak atlanabiliyor.
 
-    debug ÖNCE denenir: unified-cli'nin kendi README'si HER örnekte
-    `target/debug/ucli`'yi çalıştırıyor (`cargo build --locked`, `--release`
-    değil) — release'i önce denemek CANLI OLARAK yanlış çıktı: 2026-09-22'de
-    `target/release/ucli` 5 gün eski bir build'di (`--session`/`--repl`
-    eklenmeden ÖNCE), sessizce seçilip kafa karıştırıcı "unexpected argument
-    '--repl'" hatası verdi. release'i hâlâ deniyoruz (biri gerçekten
-    `--release` build edip debug'ı silerse diye) ama SADECE debug yoksa."""
+    Kendi kopya (kullanıcı kararı, 2026-10-09: "claudeops ucli'yi kendi
+    reposunda tutsun, gerektiğinde release'i/debug'ı oraya gönderelim"):
+    claudeops artık unified-cli'nin geliştirirken sürekli değişen `target/`
+    dizinine BAĞIMLI değil; kullandığı ikili, biz bilerek teslim edene kadar
+    değişmez. Teslim: `scripts/install-ucli.sh [release|debug] [--build]`.
+    TEK aktif kopya vardır: hangi profili gönderdiysek `bin/ucli`'de o durur
+    (hangisi olduğu `bin/ucli.info`'da), yani "debug gönderdim ama release hâlâ
+    kazanıyor" tuzağı yok. git'e GİRMEZ (`.gitignore`: `/bin/ucli*`; public
+    repo, release ~25 MB, debug ~100 MB, GitHub dosya sınırı 100 MB) ve
+    `git pull` ile federasyon host'larına gitmez: oralar PATH ya da
+    `provider_bin.ucli` kullanmaya devam eder. Debug'a zorlamak için ya debug'ı
+    teslim et ya da `UCLI_BIN` / `provider_bin.ucli` ver.
+
+    Kardeş proje build'i yalnız SON ÇARE (kendi kopya yoksa): release ÖNCE,
+    debug yedek. ⚠ Bayat build tuzağı: unified-cli'nin kendi geliştirme
+    döngüsü (README'nin HER örneği) `cargo build --locked` yani DEBUG derler;
+    release'i kimse yenilemezse bu yol sessizce eski bir build'i seçer. CANLI
+    yaşandı: 2026-09-22'de `target/release/ucli` 5 gün eski bir build'di
+    (`--session`/`--repl` eklenmeden ÖNCE), sessizce seçilip kafa karıştırıcı
+    "unexpected argument '--repl'" hatası verdi. Teslim edilen kopya da
+    kendiliğinden yenilenmez; `install-ucli.sh` bayat kaynağı reddeder,
+    otomatik yenileme TODO.md 2026-10-09'da açık."""
     if binary:
         return binary
     override = (load_settings().get("provider_bin") or {}).get("ucli", "").strip()
@@ -83,18 +107,21 @@ def resolve_binary(binary: Optional[str] = None) -> str:
     env_bin = os.environ.get("UCLI_BIN")
     if env_bin:
         return env_bin
+    if OWN_UCLI.is_file():
+        return str(OWN_UCLI)
     found = shutil.which("ucli")
     if found:
         return found
     sibling = Path.home() / "work" / "projects" / "tmp" / "unified-cli" / "target"
-    for profile in ("debug", "release"):
+    for profile in ("release", "debug"):
         candidate = sibling / profile / "ucli"
         if candidate.is_file():
             return str(candidate)
     raise UcliError(
         "ucli binary bulunamadı — Ayarlar > model'de provider_bin.ucli'yi "
         "ayarla, UCLI_BIN ortam değişkenini ver, PATH'e ekle, ya da "
-        "~/work/projects/tmp/unified-cli'de `cargo build --locked` çalıştır."
+        "claudeops'a teslim et: `scripts/install-ucli.sh release --build` "
+        "(unified-cli build'ini bin/ucli'ye kopyalar)."
     )
 
 

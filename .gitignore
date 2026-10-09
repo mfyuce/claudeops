@@ -36,3 +36,7 @@ __pycache__/
 # ile repo dışına yazılıyor ama varsayılan cargo konfigürasyonunda buraya
 # (rust/screenshare/target/) düşer, asla commit edilmemeli.
 target/
+# claudeops'un KENDİ ucli ikilisi (2026-10-09): scripts/install-ucli.sh teslim eder.
+# Build çıktısı: public repo, release ~25 MB, debug ~100 MB (GitHub dosya sınırı
+# 100 MB) ve derleyen makinenin yollarını gömer, asla commit edilmemeli.
+/bin/ucli*
