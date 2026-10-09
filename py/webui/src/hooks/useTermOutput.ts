@@ -48,13 +48,20 @@ import { reconnectDelayMs } from "./wsReconnect";
 
 const POLL_BACKSTOP_MS = 3_000;
 
-function wsTermUrl(name: string, lang: Lang, host?: string): string {
+function wsTermUrl(name: string, lang: Lang, host: string | undefined, lite: boolean): string {
   const scheme = location.protocol === "https:" ? "wss://" : "ws://";
   const hostQS = host && host !== "local" ? `&host=${encodeURIComponent(host)}` : "";
-  return `${scheme}${location.host}/ws/term?name=${encodeURIComponent(name)}&lang=${lang}${hostQS}&token=${encodeURIComponent(TOKEN)}`;
+  const liteQS = lite ? "&lite=1" : "";
+  return `${scheme}${location.host}/ws/term?name=${encodeURIComponent(name)}&lang=${lang}${hostQS}${liteQS}&token=${encodeURIComponent(TOKEN)}`;
 }
 
-export function useTermOutput(name: string, host: string | undefined, lang: Lang): TermOutputResult | null {
+/**
+ * `lite` (2026-10-09): ask for visible-rows-only frames on BOTH transports (WS + backstop poll);
+ * see `TermOutputResult` / `web_term_lite.py`. The caller flips it back to false only if xterm
+ * failed to load (the plain-text fallback pane has no on-demand history path, so it keeps
+ * getting the full scrollback like before); changing it re-runs the effect below, i.e. reconnects.
+ */
+export function useTermOutput(name: string, host: string | undefined, lang: Lang, lite = false): TermOutputResult | null {
   const [result, setResult] = useState<TermOutputResult | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -95,7 +102,7 @@ export function useTermOutput(name: string, host: string | undefined, lang: Lang
       }
       let ws: WebSocket;
       try {
-        ws = new WebSocket(wsTermUrl(name, lang, host));
+        ws = new WebSocket(wsTermUrl(name, lang, host, lite));
       } catch {
         scheduleReconnect();
         return;
@@ -137,7 +144,7 @@ export function useTermOutput(name: string, host: string | undefined, lang: Lang
     // regardless of WS state, same rationale as useStatus.ts's.
     const pollId = window.setInterval(() => {
       const requestedAt = Date.now();
-      getTermOutput(name, lang, host).then(
+      getTermOutput(name, lang, host, lite).then(
         (r) => {
           if (!aliveRef.current) return;
           // A WS push already delivered something newer while this request
@@ -179,7 +186,7 @@ export function useTermOutput(name: string, host: string | undefined, lang: Lang
         ws.close();
       }
     };
-  }, [name, host, lang]);
+  }, [name, host, lang, lite]);
 
   return result;
 }

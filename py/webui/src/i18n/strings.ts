@@ -133,6 +133,11 @@ export interface Strings {
   termCtrlOn: string;
   termGone: (err: string) => string;
   termScrolledHint: string;
+  termHistoryBtn: string;
+  termHistoryBtnHint: string;
+  termHistoryLoading: string;
+  termLiveBtn: string;
+  termLiveBtnHint: string;
   termHistorySize: (size: number, limit: number) => string;
   termHistorySizeHint: string;
   termCopyBtn: string;
@@ -542,6 +547,11 @@ export const STRINGS: Record<Lang, Strings> = {
     termCtrlOn: "⎈ ctrl işaretli — bastığınız harfler Ctrl+harf olarak gider, siz kaldırana kadar",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ yukarı kaydırdınız — canlı akış duraklatıldı, dibe dönünce devam eder",
+    termHistoryBtn: "⇡ geçmiş",
+    termHistoryBtnHint: "Önceki çıktıyı (scrollback) yükler; bu sırada canlı akış duraklar. Yukarı kaydırmak da aynısını yapar.",
+    termHistoryLoading: "⏳ geçmiş yükleniyor…",
+    termLiveBtn: "⇣ canlı",
+    termLiveBtnHint: "Geçmişi kapatıp canlı görünüme dön",
     termHistorySize: (size, limit) => `${size}/${limit} satır`,
     termHistorySizeHint: "bu pane'in tmux scrollback'i — limite ulaşınca tmux en eski satırları siler; buraya yaklaşması genelde bir handover için iyi bir işarettir",
     termCopyBtn: "kopyala",
@@ -978,6 +988,11 @@ export const STRINGS: Record<Lang, Strings> = {
     termCtrlOn: "⎈ ctrl armed — letters you press go out as Ctrl+letter until you uncheck it",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ scrolled up — live updates paused, resumes when you scroll back to bottom",
+    termHistoryBtn: "⇡ history",
+    termHistoryBtnHint: "Loads earlier output (scrollback); live updates pause meanwhile. Scrolling up does the same.",
+    termHistoryLoading: "⏳ loading history…",
+    termLiveBtn: "⇣ live",
+    termLiveBtnHint: "Close the history and go back to the live view",
     termHistorySize: (size, limit) => `${size}/${limit} lines`,
     termHistorySizeHint: "this pane's tmux scrollback — once it hits the limit, tmux drops the oldest lines; getting close is usually a good sign it's time for a handover",
     termCopyBtn: "copy",

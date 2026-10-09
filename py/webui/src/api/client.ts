@@ -131,8 +131,13 @@ function hostQS(host?: string): string {
 export const getInstances = (lang: Lang, host?: string): Promise<InstancesResult> =>
   apiGet<InstancesResult>(`/api/instances?lang=${lang}${hostQS(host)}`);
 
-export const getTermOutput = (name: string, lang: Lang, host?: string): Promise<TermOutputResult> =>
-  apiGet<TermOutputResult>(`/api/term/output?name=${encodeURIComponent(name)}&lang=${lang}${hostQS(host)}`);
+/** `lite` asks for visible rows only (+ server-extracted URL/path lists); without it the
+ * response is the full scrollback capture (used by the terminal's on-demand history load and
+ * "copy"). */
+export const getTermOutput = (name: string, lang: Lang, host?: string, lite = false): Promise<TermOutputResult> =>
+  apiGet<TermOutputResult>(
+    `/api/term/output?name=${encodeURIComponent(name)}&lang=${lang}${hostQS(host)}${lite ? "&lite=1" : ""}`,
+  );
 
 /** `since` (2026-09-17): how many messages the caller already has, for
  * `mode="full"`'s incremental fetch — see `_term_chat()`'s own comment.

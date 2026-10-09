@@ -513,7 +513,13 @@ export type SettingsResult = ApiResult<{ settings: Settings }>;
  * codex's normal interactive TUI). tmux never adds alternate-screen output to
  * scrollback, so `history_size` is structurally frozen near 0 whenever this is true,
  * independent of real conversation/work volume — the UI should hide or reinterpret
- * the counter rather than show a permanently-misleading "0/2000". */
+ * the counter rather than show a permanently-misleading "0/2000".
+ * `lite` / `urls` / `paths` (2026-10-09, TODO.md "Terminal karesi çok büyük"): present only
+ * when the request carried `lite=1` AND the backend knows it (`web_term_lite.py`; an older
+ * backend ignores the flag and sends a full frame, so `lite !== true` always means "legacy
+ * full frame"). A lite frame's `text` is just the visible `rows` lines; the scrollback is
+ * fetched on demand with an ordinary (non-lite) request, and `urls`/`paths` are what
+ * `UrlBanner` used to extract from the full text on the client. */
 export type TermOutputResult = ApiResult<{
   text: string;
   cols: number | null;
@@ -522,6 +528,9 @@ export type TermOutputResult = ApiResult<{
   alternate_screen: boolean | null;
   masked: boolean;
   mode: string | null;
+  lite?: boolean;
+  urls?: string[];
+  paths?: string[];
 }>;
 /** One message in `_term_chat(mode="full")`'s `full_history()`-backed history. */
 export interface ChatMessage {

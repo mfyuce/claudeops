@@ -130,6 +130,23 @@ interface XtermInstance {
   cols: number;
   rows: number;
   lastText: string | null;
+  // True while xterm's scrollback holds an on-demand history snapshot (lite mode only). The next
+  // live write must then also wipe the scrollback (`3J`) so stale history never sits above the
+  // live rows; see `loadHistory` / the write branch of the output effect.
+  historyShown: boolean;
+}
+
+// Lite frames (TODO.md 2026-10-08 "Terminal karesi çok büyük") carry only the visible rows; the
+// scrollback is fetched on demand. "off": xterm holds just the live rows. "loading": the history
+// request is in flight. "on": the snapshot is in xterm's scrollback and live writes pause while
+// the view is scrolled up (the same `!atBottom` rule a native scrollback always had).
+type HistoryMode = "off" | "loading" | "on";
+
+/** `capture-pane -p` ends with "\n"; xterm would scroll one row for it (top row lost, blank row at
+ * the bottom). The backend's lite frames already omit it (`web_term_lite.viewport_text`); the
+ * on-demand history snapshot gets the same treatment so both render the bottom rows identically. */
+function dropFinalNewline(text: string): string {
+  return text.endsWith("\n") ? text.slice(0, -1) : text;
 }
 
 type XtermState = "loading" | "ready" | "failed";
@@ -185,6 +202,21 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // The counter below is misleading in this state, so it's hidden rather than
   // shown as a permanent "0/2000".
   const [alternateScreen, setAlternateScreen] = useState(false);
+  // Lite-frame bookkeeping (see `HistoryMode`). `liteFrames`: the last ok frame was a lite one, i.e.
+  // the backend supports it (an older backend ignores `lite=1` and keeps sending full frames, in
+  // which case xterm already has the scrollback and none of the history UI applies).
+  const [liteFrames, setLiteFrames] = useState(false);
+  const [historyMode, setHistoryMode] = useState<HistoryMode>("off");
+  // A lite frame has no `text` to scan, so the backend's URL/path lists feed the banner instead
+  // (null = legacy frame: the banner scans `rawText` itself, as before).
+  const [bannerLists, setBannerLists] = useState<{ urls: string[]; paths: string[] } | null>(null);
+  // Refs because the wheel/touch handlers are registered once, inside the xterm mount effect.
+  const historyBusyRef = useRef(false);
+  const wantsHistoryRef = useRef<() => boolean>(() => false);
+  const loadHistoryRef = useRef<() => void>(() => {});
+  // The newest ok frame, kept even while writes are paused (scrolled up), so "back to live" can
+  // repaint immediately instead of waiting for the next tick.
+  const latestOkResultRef = useRef<TermOutputResult | null>(null);
   // On-demand only, same reasoning as `UsagePanel`'s own check button
   // (SettingsTab.tsx): a check really does inject `/context` into this live
   // session, so it's never auto-polled — reset to "idle" per Terminal open
@@ -364,6 +396,12 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
             const cellHeightPx = container.clientHeight / rows || 17;
             rowsDelta = ev.deltaY / cellHeightPx;
           }
+          // Lite mode: xterm has no scrollback until the history is fetched, so the first upward
+          // gesture fetches it (and is consumed by that); later gestures scroll natively as before.
+          if (rowsDelta < 0 && term.buffer.active.baseY === 0 && wantsHistoryRef.current()) {
+            loadHistoryRef.current();
+            return false;
+          }
           const maxRows = Math.max(1, rows - 2);
           const rounded = Math.round(Math.abs(rowsDelta)) || 1;
           term.scrollLines(Math.sign(rowsDelta) * Math.min(rounded, maxRows));
@@ -408,6 +446,11 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           const rows = term.rows || INITIAL_ROWS;
           const cellHeightPx = container.clientHeight / rows || 17;
           const rowsDelta = dy / cellHeightPx;
+          // Same lite-mode hook as the wheel handler above (a pull-down gesture = scroll up).
+          if (rowsDelta < 0 && term.buffer.active.baseY === 0 && wantsHistoryRef.current()) {
+            loadHistoryRef.current();
+            return;
+          }
           const maxRows = Math.max(1, rows - 2);
           const rounded = Math.round(Math.abs(rowsDelta)) || 1;
           term.scrollLines(Math.sign(rowsDelta) * Math.min(rounded, maxRows));
@@ -443,7 +486,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         // Selection involved at all) still unblocks a held-back write. No
         // closure captured, so nothing here can go stale across renders.
         term.onSelectionChange(() => document.dispatchEvent(new Event("selectionchange")));
-        instRef.current = { term, cols: INITIAL_COLS, rows: INITIAL_ROWS, lastText: null };
+        instRef.current = { term, cols: INITIAL_COLS, rows: INITIAL_ROWS, lastText: null, historyShown: false };
         fitContainerToTerm(term, container, INITIAL_COLS, INITIAL_ROWS);
         // The [liveInput] effect below already does this on every TOGGLE, but
         // if live typing was remembered on from a previous session
@@ -522,7 +565,9 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // tick's result" logic the old inline poll() callback had, just applied
   // to whatever the hook's latest return value is instead of a fetch
   // resolution.
-  const termResult = useTermOutput(name, host, lang);
+  // `xtermState !== "failed"`: lite frames only make sense with xterm (the plain-text fallback pane
+  // has no on-demand history path), so a failed xterm load flips back to full frames like before.
+  const termResult = useTermOutput(name, host, lang, xtermState !== "failed");
 
   useEffect(() => {
     const result = termResult;
@@ -544,8 +589,15 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     // whenever d.ok, BEFORE the atBottom/xterm-instance branching below
     // — the URL banner always reflects the latest raw text regardless
     // of scroll-pause state or whether xterm loaded at all.
+    // `lite !== true` always means a legacy full frame (older backend, or xterm failed to load).
+    const lite = result.ok && result.lite === true;
     if (result.ok) {
-      setRawText(result.text);
+      latestOkResultRef.current = result;
+      // A lite frame's `text` is only the visible rows, so the banner gets the backend's
+      // URL/path lists (extracted from the full capture) instead of scanning it.
+      setRawText(lite ? "" : result.text);
+      setBannerLists(lite ? { urls: result.urls ?? [], paths: result.paths ?? [] } : null);
+      setLiteFrames(lite);
       setMasked(result.masked);
       setPaneMode(result.mode);
       setHistorySize(result.history_size);
@@ -603,6 +655,14 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         pendingResultRef.current = result;
       } else if (result.ok) {
         inst.lastText = result.text;
+        // Legacy frames carry the whole scrollback and always reset it (`3J`). A lite frame only
+        // repaints the live rows; its scrollback is wiped solely to drop a history snapshot the
+        // user has scrolled away from, so stale history never sits above the live rows.
+        const dropScrollback = !lite || inst.historyShown;
+        if (inst.historyShown) {
+          inst.historyShown = false;
+          setHistoryMode("off");
+        }
         // A separate synchronous term.reset() (blanks immediately) followed
         // by an async term.write() (parses/paints over one or more later
         // frames) leaves a gap the browser can paint mid-update — visible
@@ -612,7 +672,9 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         // into the write() call itself (as data, not an out-of-band API
         // call) makes clear+redraw a single pass through xterm's own parser
         // instead of two.
-        inst.term.write(`\x1b[H\x1b[2J\x1b[3J${result.text}`, () => inst.term.scrollToBottom());
+        inst.term.write(`\x1b[H\x1b[2J${dropScrollback ? "\x1b[3J" : ""}${result.text}`, () =>
+          inst.term.scrollToBottom(),
+        );
       } else {
         inst.lastText = null;
         inst.term.reset();
@@ -640,6 +702,10 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
       if (!inst) return;
       if (pending.ok) {
         inst.lastText = pending.text;
+        // This replay wipes the scrollback (`3J`), so a history snapshot, if one was loaded
+        // meanwhile, is gone too — keep the lite-mode bookkeeping in step.
+        inst.historyShown = false;
+        setHistoryMode("off");
         inst.term.write(`\x1b[H\x1b[2J\x1b[3J${pending.text}`, () => inst.term.scrollToBottom());
       } else {
         inst.lastText = null;
@@ -731,7 +797,62 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // registered once on the xterm instance always calls the newest closure.
   useEffect(() => {
     queueRawRef.current = queueRaw;
+    // Same trick for the wheel/touch handlers' lite-mode hook: only offer history while the
+    // backend really sends lite frames, xterm has no scrollback yet, and there is some to load.
+    wantsHistoryRef.current = () => liteFrames && historyMode === "off" && !alternateScreen && (historySize ?? 0) > 0;
+    loadHistoryRef.current = () => void loadHistory();
   });
+
+  // Lite mode keeps xterm's buffer to the live rows, so scrolling up has nothing to scroll into.
+  // Fetch the full capture once (a plain, non-lite request), swap it in and park the view one page
+  // above the bottom: the existing `!atBottom` rule then pauses live writes exactly like a native
+  // scrollback always did (TODO.md 2026-10-08 "Terminal karesi çok büyük").
+  async function loadHistory() {
+    if (historyBusyRef.current || !instRef.current) return;
+    historyBusyRef.current = true;
+    setHistoryMode("loading");
+    try {
+      const res = await getTermOutput(name, lang, host);
+      const inst = instRef.current;
+      if (!inst) return;
+      if (!res.ok) {
+        setHistoryMode("off");
+        showToast(`${name}: ${res.error}`);
+        return;
+      }
+      inst.lastText = null; // the next live frame must repaint even if its text is unchanged
+      inst.historyShown = true;
+      setHistoryMode("on");
+      setHint(t.termScrolledHint);
+      inst.term.write(`\x1b[H\x1b[2J\x1b[3J${dropFinalNewline(res.text)}`, () => {
+        inst.term.scrollToBottom();
+        inst.term.scrollLines(-Math.max(1, inst.term.rows - 2));
+      });
+    } catch (e) {
+      setHistoryMode("off");
+      showToast(describeApiError(e, t));
+    } finally {
+      historyBusyRef.current = false;
+    }
+  }
+
+  // "⇣ live": drop the history snapshot and repaint the newest frame right away (otherwise it
+  // would wait for the next tick, which on a quiet pane can be seconds).
+  function returnToLive() {
+    const inst = instRef.current;
+    if (!inst) return;
+    const latest = latestOkResultRef.current;
+    inst.historyShown = false;
+    setHistoryMode("off");
+    setHint("");
+    if (latest && latest.ok) {
+      inst.lastText = latest.text;
+      inst.term.write(`\x1b[H\x1b[2J\x1b[3J${latest.text}`, () => inst.term.scrollToBottom());
+    } else {
+      inst.lastText = null;
+      inst.term.scrollToBottom();
+    }
+  }
 
   function handleSendKey(key: string) {
     // Original sendTermKey() has no error handling at all (fire-and-forget,
@@ -889,7 +1010,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           </pre>
         )}
         <div className="opts-hint" style={{ width: "100%", boxSizing: "border-box" }}>
-          {hint}
+          {historyMode === "loading" ? t.termHistoryLoading : hint}
         </div>
         <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
           <label title={t.termLiveHint}>
@@ -920,6 +1041,23 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
           <button type="button" title={t.termCopyHint} onClick={() => void handleCopyVisible()}>
             {copyLabel ?? t.termCopyBtn}
           </button>
+          {liteFrames &&
+            !alternateScreen &&
+            (historySize ?? 0) > 0 &&
+            (historyMode === "on" ? (
+              <button type="button" title={t.termLiveBtnHint} onClick={returnToLive}>
+                {t.termLiveBtn}
+              </button>
+            ) : (
+              <button
+                type="button"
+                title={t.termHistoryBtnHint}
+                disabled={historyMode === "loading"}
+                onClick={() => void loadHistory()}
+              >
+                {t.termHistoryBtn}
+              </button>
+            ))}
           {historySize != null && !alternateScreen && (
             <span
               title={t.termHistorySizeHint}
@@ -1022,7 +1160,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         </div>
       </div>
       <div hidden={infoHidden} style={{ width: "100%" }}>
-        <UrlBanner rawText={rawText} name={name} onView={onView} />
+        <UrlBanner rawText={rawText} urls={bannerLists?.urls} paths={bannerLists?.paths} name={name} onView={onView} />
         <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
           {cliOpts.cyclable_modes.length > 0 && (
             <label title={t.termModeHint}>
