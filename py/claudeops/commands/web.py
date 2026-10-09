@@ -2577,12 +2577,33 @@ def _live_snapshot_entries() -> list:
     """Şu an çalışan TÜM session'ların (registered olsun olmasın — "çalışanları
     kaydet" literal) snapshot şekli — `_snapshot_save()` (elle) VE
     `_save_closing_snapshot()` (otomatik) AYNI listeyi üretsin diye ortak
-    yardımcı."""
-    return [
-        {"name": s.name, "cwd": s.cwd, "model": s.model, "permission_mode": s.permission_mode,
-         "effort": s.effort, "cli": s.cli}
-        for s in find_sessions(measure_cpu=False)
-    ]
+    yardımcı.
+
+    claude için `model`/`effort`, proc cmdline'ındaki SPAWN-ANI değer DEĞİL, session'ın
+    kendi jsonl'ındaki CANLI değer (`last_assistant_model`/`_effort`, `_live_model()`'in
+    aynı kaynağı): terminalde ya da panelin canlı değiştiricisiyle `/model` yapılmış bir
+    session aksi halde resume'da ESKİ modelle başlıyordu (TODO.md 2026-10-09: 5.5'e
+    geçirilenler sonnet 5 ile döndü). `live_or_spawn_*` BİLEREK kullanılmadı: onlar
+    `jsonl_path_for`'un "sid yok/dosya yok → cwd'deki EN SON jsonl" mtime fallback'ine
+    düşüyor, aynı cwd'yi paylaşan BAŞKA bir session'ın değerini yazabilir; kalıcı bir
+    snapshot'a yanlış değer yazmak eski (argv) değerden kötü. Bu yüzden canlı değer
+    yalnız `<sid>.jsonl` TAM eşleşirse alınır. Belirlenemezse (claude değil, sid/jsonl yok,
+    henüz assistant turu yok) ya da okuma patlarsa argv değerine düşer —
+    `_save_closing_snapshot` SIGTERM handler'ında koşuyor, kapanışı geciktirmemeli/bozmamalı."""
+    entries = []
+    for s in find_sessions(measure_cpu=False):
+        model, effort = s.model, s.effort
+        if s.cli == "claude" and s.sid:
+            try:
+                jsonl = jsonl_path_for(s.cwd, s.sid)
+                if jsonl is not None and jsonl.name == f"{s.sid}.jsonl":
+                    model = last_assistant_model(jsonl) or model
+                    effort = last_assistant_effort(jsonl) or effort
+            except Exception:
+                pass  # argv değerine düş (docstring)
+        entries.append({"name": s.name, "cwd": s.cwd, "model": model, "permission_mode": s.permission_mode,
+                        "effort": effort, "cli": s.cli})
+    return entries
 
 
 def _snapshot_save(lang: str = "tr") -> dict:
