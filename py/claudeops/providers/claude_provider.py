@@ -5,8 +5,9 @@ import os
 import re
 import shlex
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec
 from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR
@@ -139,11 +140,31 @@ _LAST_MODEL_CHUNK_BYTES = 65_536
 _LAST_MODEL_MAX_BYTES = 4_194_304
 
 
-def _last_assistant_value(jsonl_path: Path, extract) -> Optional[str]:
+def _row_epoch(ts: Any) -> Optional[float]:
+    """jsonl satırının ISO-8601 `timestamp`'i ("2026-10-09T05:16:41.123Z") → epoch
+    saniye; yoksa/ayrıştırılamazsa None."""
+    if not isinstance(ts, str):
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _last_assistant_value(jsonl_path: Path, extract, since: Optional[float] = None) -> Optional[str]:
     """Dosyanın SONUNDAN geriye okuyarak `extract(obj)`'in doğru (truthy)
     döndürdüğü en son `type:"assistant"` satırının değerini verir, bulamazsa
     None. Asla tüm dosyayı baştan okumaz (kuyruktan büyüyen pencere,
-    `_LAST_MODEL_MAX_BYTES`'ta durur)."""
+    `_LAST_MODEL_MAX_BYTES`'ta durur).
+
+    `since` (epoch saniye, genelde süreç başlangıcı) verilirse yalnız o andan
+    SONRA yazılmış satırlar sayılır ve bundan eski ilk satırda okuma DURUR
+    (geriye doğru okunduğu için ondan öncekilerin hepsi daha da eski). Neden:
+    yeniden başlatılan (resume) bir sürecin jsonl'ında, ilk turuna kadar "son
+    assistant satırı" ÖNCEKİ sürecin satırıdır ve o sürecin modeli/effort'u
+    şimdiki sürecinkiyle aynı olmak zorunda değil (resume `--model`'i yeniden
+    uyguluyor). Zaman damgası olmayan satır eski sayılmaz (kararsız kalınca
+    eskisi gibi davranılır)."""
     try:
         size = os.path.getsize(jsonl_path)
     except OSError:
@@ -166,6 +187,10 @@ def _last_assistant_value(jsonl_path: Path, extract) -> Optional[str]:
                         continue
                     if obj.get("type") != "assistant":
                         continue
+                    if since is not None:
+                        ts = _row_epoch(obj.get("timestamp"))
+                        if ts is not None and ts < since:
+                            return None
                     value = extract(obj)
                     if value:
                         return value
@@ -176,19 +201,20 @@ def _last_assistant_value(jsonl_path: Path, extract) -> Optional[str]:
         return None
 
 
-def last_assistant_model(jsonl_path: Path) -> Optional[str]:
-    """En son `type:"assistant"` satırının `message.model`'i, yoksa None."""
-    return _last_assistant_value(jsonl_path, lambda obj: obj.get("message", {}).get("model"))
+def last_assistant_model(jsonl_path: Path, since: Optional[float] = None) -> Optional[str]:
+    """En son `type:"assistant"` satırının `message.model`'i, yoksa None.
+    `since`: bkz. `_last_assistant_value`."""
+    return _last_assistant_value(jsonl_path, lambda obj: obj.get("message", {}).get("model"), since)
 
 
-def last_assistant_effort(jsonl_path: Path) -> Optional[str]:
+def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Optional[str]:
     """En son `type:"assistant"` satırının TOP-LEVEL `effort`'u (her assistant
     satırı o API çağrısının effort seviyesini taşıyor — 2.1.293'te canlı
     doğrulandı, ör. `"effort":"max"`), yoksa None. Sadece string kabul edilir:
     CLI sayısal/özel effort da tanıyor, onlar "bilinmiyor" sayılıp çağırana
     düşer."""
     return _last_assistant_value(
-        jsonl_path, lambda obj: obj.get("effort") if isinstance(obj.get("effort"), str) else None)
+        jsonl_path, lambda obj: obj.get("effort") if isinstance(obj.get("effort"), str) else None, since)
 
 
 def live_or_spawn_model(cli: str, cwd: str, sid: Optional[str], fallback: str) -> str:

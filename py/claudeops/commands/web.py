@@ -1216,6 +1216,54 @@ def _history_size_cached(s) -> Optional[int]:
     return val
 
 
+# ── Canlı model/effort (tablo) ───────────────────────────────────────────────
+# `live_model`/`live_effort` eskiden session'ın proc cmdline'ındaki SPAWN-ANI değerdi:
+# terminalde ya da canlı değiştiriciyle yapılan `/model` hiç yansımıyor, tablo (ör.
+# vc20261008) haiku gösterirken süreç saatlerdir sonnet-5-5 ile tur atıyordu
+# (TODO.md 2026-10-09). Gerçek kaynak session'ın KENDİ jsonl'ı, ama: (1) YALNIZ bu süreç
+# başladıktan sonra yazılmış satırlar sayılır — resume'da jsonl'ın son turu ÖNCEKİ
+# sürecinki (`last_assistant_*`'in `since`'i); (2) yalnız `<sid>.jsonl` TAM eşleşirse
+# (`jsonl_path_for`'un "cwd'deki en son dosya" fallback'i başka session'ınkini
+# gösterebilir); (3) `_status_payload` ~2 sn'de bir koşuyor, dosya değişmediyse
+# (yol, mtime_ns, boyut) yeniden okunmaz.
+_LIVE_VALUES_CACHE: dict = {}  # pid -> ((jsonl, mtime_ns, size), model | None, effort | None)
+
+
+def _process_started_at(pid: int) -> Optional[float]:
+    try:
+        return psutil.Process(pid).create_time()
+    except Exception:
+        return None
+
+
+def _live_model_effort(s) -> tuple:
+    """Çalışan session'ın (model, effort)'u: claude için jsonl'daki CANLI değer (yukarıdaki
+    üç kural), belirlenemezse (claude değil, sid/jsonl yok, bu süreç henüz assistant turu
+    yazmadı, okuma hatası) cmdline'daki spawn-anı değer. Asla fırlatmaz."""
+    fallback = (s.model, s.effort)
+    if s.cli != "claude" or not s.sid:
+        return fallback
+    try:
+        jsonl = jsonl_path_for(s.cwd, s.sid)
+        if jsonl is None or jsonl.name != f"{s.sid}.jsonl":
+            return fallback
+        st = os.stat(jsonl)
+        key = (str(jsonl), st.st_mtime_ns, st.st_size)
+        hit = _LIVE_VALUES_CACHE.get(s.pid)
+        if hit is not None and hit[0] == key:
+            model, effort = hit[1], hit[2]
+        else:
+            since = _process_started_at(s.pid)
+            if since is None:
+                return fallback  # süreç başlangıcı bilinmeden eski-süreç satırından ayıramayız
+            model = last_assistant_model(jsonl, since=since)
+            effort = last_assistant_effort(jsonl, since=since)
+            _LIVE_VALUES_CACHE[s.pid] = (key, model, effort)
+        return (model or s.model, effort or s.effort)
+    except Exception:
+        return fallback
+
+
 def _status_payload() -> dict:
     fleet = _fleet_status()
     all_live = find_sessions(measure_cpu=True)
@@ -1284,6 +1332,7 @@ def _status_payload() -> dict:
                             "host": LOCAL_HOST_NAME})
             continue
         s = assigned.get(name)
+        live_model, live_effort = _live_model_effort(s) if s else (None, None)
         sessions.append({
             "name": name,
             "model": info["model"],
@@ -1319,12 +1368,13 @@ def _status_payload() -> dict:
             "host": LOCAL_HOST_NAME,
             # `model` roster/models.tsv'nin KAYITLI değeri (durmuş satırlarda da
             # dolu, "bir sonraki başlatmada bu kullanılacak" anlamında). Bunlar ise
-            # ÇALIŞAN process'in kendi komut satırından: panelin bir session'ın
-            # GERÇEKTEN hangi modelle/effort'la açıldığını gösterebilmesi için —
-            # ikisi ayrışabiliyor, çünkü panelden tek seferlik bir modelle
-            # başlatmak models.tsv'yi DEĞİŞTİRMİYOR. Çalışmıyorsa/bilinmiyorsa None.
-            "live_model": (s.model if s else None),
-            "live_effort": (s.effort if s else None),
+            # ÇALIŞAN session'ın GERÇEKTE kullandığı değer (`_live_model_effort`:
+            # claude için jsonl'daki canlı değer, yoksa cmdline'daki spawn-anı değer)
+            # — ikisi ayrışabiliyor: panelden tek seferlik bir modelle başlatmak
+            # models.tsv'yi DEĞİŞTİRMİYOR, terminalde `/model` yazmak cmdline'ı.
+            # Çalışmıyorsa/bilinmiyorsa None.
+            "live_model": live_model,
+            "live_effort": live_effort,
         })
 
     # Hiçbir AKTİF roster satırına bağlanamayan canlı session'lar (elle açılmış
@@ -1335,6 +1385,7 @@ def _status_payload() -> dict:
         if s.pid in assigned_pids:
             continue
         rec = registry.get(s.name)
+        live_model, live_effort = _live_model_effort(s)
         sessions.append({
             "name": s.name,
             "model": (rec.get("model") if rec else None) or s.model or "?",
@@ -1352,9 +1403,13 @@ def _status_payload() -> dict:
             "blueprint": rec.get("blueprint") if rec else None,
             "tmux": is_tmux_backed(s.pid),
             "host": LOCAL_HOST_NAME,
-            "live_model": s.model,
-            "live_effort": s.effort,
+            "live_model": live_model,
+            "live_effort": live_effort,
         })
+
+    live_pids = {s.pid for s in all_live}
+    for dead_pid in [p for p in _LIVE_VALUES_CACHE if p not in live_pids]:
+        _LIVE_VALUES_CACHE.pop(dead_pid, None)
 
     def _session_key(s: dict) -> tuple:
         cwd, nm = s["cwd"].lower(), s["name"].lower()
@@ -2416,7 +2471,7 @@ def _live_model(name: str, lang: str = "tr") -> dict:
     jsonl = jsonl_path_for(cwd, s.sid)
     if jsonl is None:
         return {"ok": True, "available": False, "reason": "no_jsonl"}
-    model = last_assistant_model(jsonl)
+    model = last_assistant_model(jsonl, since=_process_started_at(s.pid))  # tablodaki `_live_model_effort` ile aynı kural: önceki sürecin satırı sayılmaz
     if not model:
         return {"ok": True, "available": False, "reason": "no_assistant_turn"}
     return {"ok": True, "available": True, "model": model}
@@ -2448,7 +2503,7 @@ def _live_effort(name: str, lang: str = "tr") -> dict:
     jsonl = jsonl_path_for(cwd, s.sid)
     if jsonl is None:
         return {"ok": True, "available": False, "reason": "no_jsonl"}
-    effort = last_assistant_effort(jsonl)
+    effort = last_assistant_effort(jsonl, since=_process_started_at(s.pid))  # bkz. `_live_model`
     if not effort:
         return {"ok": True, "available": False, "reason": "no_assistant_turn"}
     return {"ok": True, "available": True, "effort": effort}
@@ -2597,6 +2652,11 @@ def _live_snapshot_entries() -> list:
             try:
                 jsonl = jsonl_path_for(s.cwd, s.sid)
                 if jsonl is not None and jsonl.name == f"{s.sid}.jsonl":
+                    # `since` BİLEREK yok (tablodaki `_live_model_effort`'ten fark): resume
+                    # sonrası ilk tura kadar jsonl'daki "son model" önceki sürecinki; snapshot
+                    # için bu istenen davranış (konuşmanın en son kullandığı model, bayat
+                    # bir kaydı kendiliğinden düzeltir), tablo için yanlış (süreç şu an
+                    # cmdline'daki modelle konuşacak). İkisini "birleştirme".
                     model = last_assistant_model(jsonl) or model
                     effort = last_assistant_effort(jsonl) or effort
             except Exception:
