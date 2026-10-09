@@ -78,6 +78,7 @@ from .web_static import DIST_DIR, resolve_static_path
 from . import web_grpc
 from . import web_hosts
 from . import web_orch
+from . import web_term_lite
 from . import web_ws
 
 DEFAULT_PORT = 8765
@@ -3523,6 +3524,12 @@ class _Handler(BaseHTTPRequestHandler):
                 fetch_fn = lambda: web_hosts.proxy_get("/api/term/output", host, {"name": name, "lang": lang})[0]
             else:
                 fetch_fn = lambda: _term_output(name, lang=lang)
+            if (qs.get("lite") or [""])[0] == "1":
+                # Yerel, REST-proxy ve relay kaynaklı kareler AYNI dönüşümden geçsin diye
+                # kaynak seçiminin DIŞINDA sarıyoruz. Uzak host'a `lite` iletilmiyor: host↔host
+                # hop'u eskisi gibi tam kare taşır (uzak host henüz eski kodda olabilir),
+                # küçülen hop tarayıcıya giden tünel. `memo` bağlantıya özel.
+                fetch_fn = (lambda inner, memo: lambda: web_term_lite.to_lite(inner(), memo))(fetch_fn, {})
             web_ws.handle_ws_term(self, fetch_fn)
             return
         elif path == "/api/status":
@@ -3600,11 +3607,16 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
+            # `lite=1`: yalnız görünür satırlar + sunucuda çıkarılmış URL/yol listesi (bkz.
+            # `web_term_lite`). Parametresiz çağrı TAM kare döner: ön yüz scrollback'i
+            # kaydırınca bu yoldan bir kez çeker, eski istemciler de aynen çalışır.
+            lite = (qs.get("lite") or [""])[0] == "1"
             if host != LOCAL_HOST_NAME:
                 result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang})
-                self._json(result, status=status)
+                self._json(web_term_lite.to_lite(result) if lite else result, status=status)
                 return
-            self._json(_term_output(name, lang=lang))
+            result = _term_output(name, lang=lang)
+            self._json(web_term_lite.to_lite(result) if lite else result)
         elif path == "/api/term/chat":
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()

@@ -506,8 +506,13 @@ def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict]) -> None:
         except Exception:
             payload = None  # beklenmeyen bug — bu tick'i atla, thread'i öldürme (_broadcaster_loop'un aynı toleransı)
         if payload is not None:
+            # Lite karede (`web_term_lite`) `text` yalnız görünür satırlar: scrollback'e
+            # düşen/URL'si değişen ama ekranı aynı kalan bir tick'i yutmamak için metne
+            # bağlı yan alanlar da anahtarda (tam karede bunlar metinle birlikte değişirdi).
             key = (payload.get("ok"), payload.get("text"), payload.get("cols"),
-                   payload.get("rows"), payload.get("error"))
+                   payload.get("rows"), payload.get("error"), payload.get("history_size"),
+                   payload.get("alternate_screen"), payload.get("masked"), payload.get("mode"),
+                   tuple(payload.get("urls") or ()), tuple(payload.get("paths") or ()))
             now = time.monotonic()
             if key != last_key or (now - last_sent) >= _HEARTBEAT_SECONDS:
                 if not _send(client, _encode_term(payload)):
