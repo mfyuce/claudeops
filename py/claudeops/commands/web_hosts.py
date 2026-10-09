@@ -999,6 +999,24 @@ def start_capability_prober() -> None:
 # bağlantı üzerinden dinleyip cache'i besleyen ortak thread makinesi ────────
 
 
+_CONSUMER_DEATH_LOG_MIN_INTERVAL_SECONDS = 60.0
+_consumer_death_log_last: Dict[str, float] = {}  # label -> son log'un monotonic zamanı
+
+
+def _log_consumer_death(label: str, tier: str, reason: str) -> None:
+    """`_PushConsumer` KENDİLİĞİNDEN öldüğünde (bağlantı kurulamadı/koptu/akış bitti)
+    `diag.log`'a bir iz bırakır — `_run` bunu daha önce hiç loglamadan yutuyordu, bu
+    yüzden `_TermRelay.is_alive` eksikliği (4c21cb5) bir gün boyunca görünmez kaldı.
+    Aynı `label` için dakikada en fazla BİR satır: uzak host düştüğünde her yeniden
+    kurulan consumer'ın ölümü diag.log'u doldurmasın."""
+    now = time.monotonic()
+    last = _consumer_death_log_last.get(label)
+    if last is not None and now - last < _CONSUMER_DEATH_LOG_MIN_INTERVAL_SECONDS:
+        return
+    _consumer_death_log_last[label] = now
+    diag_log("push_consumer_died", label=label, tier=tier, reason=reason)
+
+
 class _PushConsumer:
     """Bir (host, tier) bağlantısını KENDİ thread'inde dinler, her ham
     mesajı `parse_item`'a verip `on_item`'a iletir; `parse_item` `None`
@@ -1009,8 +1027,11 @@ class _PushConsumer:
     şey — bkz. `web_grpc.open_status_stream`'in docstring'i)."""
 
     def __init__(self, tier: str, make_call: Callable[[], Any],
-                 parse_item: Callable[[Any], Optional[dict]], on_item: Callable[[dict], None]):
+                 parse_item: Callable[[Any], Optional[dict]], on_item: Callable[[dict], None],
+                 label: str = ""):
         self.tier = tier
+        self.label = label  # sadece diag.log için ("term:host/ad", "status:host")
+        self._stopped = False  # stop() ile KASITLI kapatıldı mı — ölüm log'unu bastırır
         self._parse_item = parse_item
         self._on_item = on_item
         self._alive = threading.Event()
@@ -1023,6 +1044,7 @@ class _PushConsumer:
         self._thread.start()
 
     def _run(self, make_call: Callable[[], Any]) -> None:
+        reason = "stream_ended"
         try:
             call = make_call()
             with self._call_lock:
@@ -1031,15 +1053,19 @@ class _PushConsumer:
                 item = self._parse_item(raw)
                 if item is not None:
                     self._on_item(item)
-        except Exception:
-            pass  # bağlantı koptu/hata verdi — çağıran bir sonraki tick'te REST'e düşer
+        except Exception as e:
+            # bağlantı koptu/hata verdi — çağıran bir sonraki tick'te REST'e düşer / yeniden kurar
+            reason = f"{type(e).__name__}: {e}"[:200]
         finally:
             self._alive.clear()
+            if not self._stopped:
+                _log_consumer_death(self.label, self.tier, reason)
 
     def is_alive(self) -> bool:
         return self._alive.is_set()
 
     def stop(self) -> None:
+        self._stopped = True
         with self._call_lock:
             call = self._call
         if call is not None:
@@ -1092,7 +1118,7 @@ def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
     def on_item(parsed: dict) -> None:
         _record_poll_result(name, _finalize_remote_result(name, parsed))
 
-    return _PushConsumer(tier, make_call, parse_item, on_item)
+    return _PushConsumer(tier, make_call, parse_item, on_item, label=f"status:{name}")
 
 
 def _ensure_status_consumer(host: Dict[str, str]) -> bool:
@@ -1143,19 +1169,33 @@ def _reap_status_consumers(current_names: set) -> None:
 # ── Term-output relay (host, name, lang) başına ─────────────────────────────
 
 _TERM_RELAY_IDLE_TTL_SECONDS = 10.0  # local /ws/term'ün 200ms poll'undan çok daha büyük — sadece gerçekten terk edilmiş bir tab'ı reap eder
+# Ölü bir relay, KURULUŞUNDAN bu kadar süre geçmeden yeniden kurulmaz: consumer anında ölürse
+# (bağlantı reddedildi/DNS/handshake hatası) `_term_poll_loop`'un 200ms'lik tick'i her seferinde
+# yeni bir thread + bağlantı denemesi başlatırdı. Uzun yaşayıp sonra ölen relay için (kuruluşundan
+# beri bu süre çoktan geçti) etkisiz: hemen yeniden kurulur.
+_TERM_RELAY_RESTART_MIN_INTERVAL_SECONDS = 2.0
 
 
 class _TermRelay:
-    def __init__(self, tier: str, make_call: Callable[[], Any], parse_item: Callable[[Any], Optional[dict]]):
+    def __init__(self, tier: str, make_call: Callable[[], Any], parse_item: Callable[[Any], Optional[dict]],
+                 label: str = ""):
         self.latest: Optional[dict] = None
-        self.last_read_mono = time.monotonic()
+        self.created_mono = time.monotonic()
+        self.last_read_mono = self.created_mono
         self._lock = threading.Lock()
 
         def on_item(item: dict) -> None:
             with self._lock:
                 self.latest = item
 
-        self._consumer = _PushConsumer(tier, make_call, parse_item, on_item)
+        self._consumer = _PushConsumer(tier, make_call, parse_item, on_item, label=label)
+
+    def is_alive(self) -> bool:
+        """Altındaki push-consumer hâlâ çalışıyor mu — `term_output_relay.fetch_fn`
+        ölü relay'i bununla ayırt eder (4c21cb5 bu çağrıyı eklemiş ama metodu
+        eklememişti: her tick `AttributeError`, `_term_poll_loop` yutuyor, uzak host
+        için `/ws/term` ilk karede ölüyordu)."""
+        return self._consumer.is_alive()
 
     def read(self) -> Optional[dict]:
         self.last_read_mono = time.monotonic()
@@ -1224,6 +1264,10 @@ def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict
         with _term_relay_lock:
             relay = _term_relays.get(key)
             if relay is not None and not relay.is_alive():
+                if time.monotonic() - relay.created_mono < _TERM_RELAY_RESTART_MIN_INTERVAL_SECONDS:
+                    # Kurulduktan hemen sonra öldü — bu tick'te yeniden kurma (bkz. sabitin notu).
+                    # Eski kareyi de DÖNDÜRME (4c21cb5'in kapattığı "donmuş kare" hatası).
+                    return {"ok": False, "error": "relay: bağlantı koptu, yeniden deneniyor"}
                 dead = relay
                 del _term_relays[key]
                 relay = None
@@ -1237,7 +1281,7 @@ def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict
                     url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang)
                     make_call = lambda: ws_connect(url, open_timeout=10.0, ping_interval=None)
                     parse_item = _parse_ws_term_frame
-                relay = _TermRelay(tier, make_call, parse_item)
+                relay = _TermRelay(tier, make_call, parse_item, label=f"term:{host_name}/{name}")
                 _term_relays[key] = relay
         if dead is not None:
             dead.stop()
