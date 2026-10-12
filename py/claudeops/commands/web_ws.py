@@ -11,16 +11,24 @@ push'u var.
 `_Handler.do_GET`'in KENDİ thread'i + KENDİ soketine (`ThreadingHTTPServer`
 zaten connection-başına-thread) gömüyoruz — plan'ın kararı.
 
-**Neden `protocol.receive_data(ham_baytlar)` ile el-parse DEĞİL**:
+**Ham baytlar yok, ama parser'a isteği YİNE DE göstermek şart**:
 `BaseHTTPRequestHandler` istek satırını ve header'ları `do_GET`'e gelmeden
 ÖNCE kendi `parse_request()`'iyle zaten soketten okuyup tüketmiş oluyor —
-o baytlar bir daha okunamaz. `ServerProtocol.receive_data()` + dahili
-`parse()` bunları YENİDEN parse etmeyi bekler (ham HTTP request line'dan
-başlayarak), ki elimizde o ham baytlar yok. Çözüm: zaten-parse-edilmiş
-`self.headers`'tan bir `websockets.http11.Request` ELLE inşa edip
-`protocol.accept()`'e direkt veriyoruz — bu `websockets`'in sansio howto
-dokümanının ("framework isteği kendisi parse ediyorsa") tam senaryosu
-(websockets.readthedocs.io/en/stable/howto/sansio.html).
+o baytlar bir daha okunamaz. Bu yüzden zaten-parse-edilmiş `self.headers`'tan
+bir `websockets.http11.Request` ELLE inşa edip `protocol.accept()`'e veriyoruz
+(websockets.readthedocs.io/en/stable/howto/sansio.html, "framework isteği
+kendisi parse ediyorsa"). AMA `ServerProtocol.parse()` (server.py) kurulurken
+başlatılır ve İLK iş bir HTTP isteği bekler (`state is CONNECTING` dalı);
+`accept()`/`send_response()` bu parser'ı İLERLETMEZ. Isteği parser'a hiç
+göstermezsek parser sonsuza dek orada kalır: bağlantıdan gelen HİÇBİR frame
+(Ping, Close, mesaj) çözülmez, `recv_frame()` hiç çalışmaz, yani otomatik
+Pong/close-ack ÜRETİLMEZ. 2026-10-12'ye kadar bu fark edilmedi: tarayıcı WS
+client'ı sunucuya ping atmaz, `_reader_loop` yalnız "bayt geldi" diye canlılık
+sayar; ama `websockets` Python client'ı (`cops watch`, varsayılan
+`ping_interval=20`) Pong alamayıp 40. sn'de "keepalive ping timeout" ile bağlantıyı
+kopartıyordu (`web_hosts`'taki `ping_interval=None`, a017451, aynı belirtiyi
+kapatmıştı; kök neden buydu). Çözüm (`_ws_accept`): isteği `Request.serialize()`
+ile yeniden serileştirip `receive_data()`'ya besle, çıkan `Request` olayını at.
 
 **Neden handshake sonrası `self.rfile.read1()`/`self.wfile.write()`,
 `self.connection.recv()`/`.sendall()` DEĞİL**: `self.rfile` zaten soketi
@@ -306,11 +314,26 @@ def _reader_loop(client: _WSClient) -> None:
         client.closed.set()
 
 
+# websockets'in `Request.parse`i satır başına 8 KiB sınırı koyar (stdlib `http.server` 64 KiB'a izin verir);
+# dev bir Cookie/Authorization başlığı yüzünden parser isteği çözemezse el sıkışmaya yetecek bu başlıklarla denenir.
+_HANDSHAKE_HEADERS = frozenset({"host", "upgrade", "connection", "sec-websocket-key", "sec-websocket-version", "origin"})
+
+
+def _protocol_fed_with(request: WSRequest) -> tuple[ServerProtocol, bool]:
+    """Yeni bir `ServerProtocol` + `request`'i parser'ına gösterdik mi (`Request` olayı çıktı mı).
+    Gösterilmeden parser ilk HTTP isteğini beklemeyi bırakmaz ve hiçbir frame çözmez (modül
+    docstring'indeki "Ham baytlar yok, ama parser'a isteği YİNE DE göstermek şart")."""
+    protocol = ServerProtocol()
+    protocol.receive_data(request.serialize())
+    fed = any(isinstance(event, WSRequest) for event in protocol.events_received())
+    return protocol, fed
+
+
 def _ws_accept(handler: Any) -> Optional[ServerProtocol]:
     """`/ws`/`/ws/term` ORTAK sans-I/O handshake preamble'ı (modül
-    docstring'indeki "Neden protocol.receive_data ile el-parse DEĞİL"
-    bölümünün uyguladığı yer). Response'u `handler.wfile`'a doğrudan yazar;
-    kabul edildiyse (`state is OPEN`) `protocol`'ü döner, reddedildiyse
+    docstring'indeki "Ham baytlar yok, ama parser'a isteği YİNE DE göstermek
+    şart" bölümünün uyguladığı yer). Response'u `handler.wfile`'a doğrudan
+    yazar; kabul edildiyse (`state is OPEN`) `protocol`'ü döner, reddedildiyse
     (red yanıtı zaten yazıldı) `None` döner — çağıran ek bir şey yapmadan
     dönmeli.
 
@@ -319,8 +342,14 @@ def _ws_accept(handler: Any) -> Optional[ServerProtocol]:
     bir yerde (`close.py`'nin `kill.py`'den bağımsızlaşıp drift eden kill
     mekanizması) gerçek bir bug'a çıkan sınıfın aynısı — mekanik/tekrar
     kullanılan bir doğrulama adımı iki kopyaya bölünmemeli."""
-    protocol = ServerProtocol()
     request = WSRequest(path=handler.path, headers=WSHeaders(handler.headers.items()))
+    protocol, fed = _protocol_fed_with(request)
+    if not fed:
+        slim = WSRequest(path=request.path, headers=WSHeaders(
+            [(k, v) for k, v in handler.headers.items() if k.lower() in _HANDSHAKE_HEADERS]))
+        slim_protocol, slim_fed = _protocol_fed_with(slim)
+        if slim_fed:  # o da olmazsa eski davranışla (frame çözmeyen parser) devam: bağlantı yine de kurulur
+            protocol, request = slim_protocol, slim
     response = protocol.accept(request)
     protocol.send_response(response)
     for chunk in protocol.data_to_send():
