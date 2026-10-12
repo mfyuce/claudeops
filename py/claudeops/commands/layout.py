@@ -10,6 +10,7 @@ Kullanım:
 from __future__ import annotations
 import os
 from ..discovery import find_sessions
+from ..mirrors import running_mirrors
 from ..layout import (
     GRID, _get_screen, _list_windows, build_layout_plan, apply_layout,
 )
@@ -55,7 +56,9 @@ def run(args) -> int:
     windows = _list_windows(display)
     screen = _get_screen(display, screen_y=args.screen_y, grid=grid)
     # known_names: gerçek claude proc'lar → sahte window eşlemesi önler
-    known_names = {s.name for s in find_sessions(measure_cpu=False)} if claude_only else None
+    # `cops watch` mirror pencereleri başlığı TAM `host:ad` yapar; onlar da tanınsın (TBD#74 Faz 2).
+    known_names = ({s.name for s in find_sessions(measure_cpu=False)} | set(running_mirrors())
+                   if claude_only else None)
     plan, name_to_wid = build_layout_plan(
         windows=windows,
         screen=screen,

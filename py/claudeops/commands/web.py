@@ -53,12 +53,13 @@ from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, downgrade_effort_for_handover
-from ..hosts import LOCAL_HOST_NAME, save_host, remove_host, list_hosts_public
+from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_hosts_public
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from .. import cli_install
 from .. import files as files_mod
+from .. import mirrors
 from .. import instances as inst_mod
 from .. import model_freshness
 from .. import remote_desktop
@@ -66,7 +67,7 @@ from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, resolved_model_for, save_settings
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots
-from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window
+from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window, open_mirror_window
 from ..providers.claude_provider import jsonl_path_for, last_assistant_model, last_assistant_effort, live_or_spawn_model
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
@@ -137,6 +138,14 @@ ERR = {
                                     "Unlock the screen first, then retry."},
     "no_x11": {"tr": "X11 display bulunamadı (Wayland'da çalışmaz)",
                "en": "X11 display not found (doesn't work on Wayland)"},
+    "mirror_local": {"tr": "{name}: yerel session'ın zaten kendi terminal penceresi var (mirror yalnız uzak host "
+                            "session'ları içindir); penceresi yoksa \"pencere aç\" kullanın",
+                      "en": "{name}: a local session already has its own terminal window (mirror is for remote-host "
+                            "sessions only); if it has none, use \"open window\""},
+    "mirror_bad_target": {"tr": "{name}: geçersiz host/ad (harf, rakam, _ . - dışında karakter var)",
+                           "en": "{name}: invalid host/name (characters other than letters, digits, _ . -)"},
+    "mirror_launch_failed": {"tr": "{name}: mirror penceresi açılamadı (gnome-terminal/DISPLAY sorunu olabilir)",
+                              "en": "{name}: couldn't open the mirror window (could be a gnome-terminal/DISPLAY issue)"},
     "not_active": {"tr": "{name}: roster/models.tsv'de aktif değil",
                     "en": "{name}: not active in roster/models.tsv"},
     "already_running": {"tr": "{name}: zaten çalışıyor", "en": "{name}: already running"},
@@ -1107,7 +1116,9 @@ def _run_layout(pin: str, groups: list, claude_only: bool = True,
 
     windows = _list_windows(display)
     screen = _get_screen(display, screen_y=screen_y, grid=grid)
-    known_names = {s.name for s in find_sessions(measure_cpu=False)} if claude_only else None
+    # `cops watch` mirror pencereleri başlığı TAM `host:ad` yapar; onlar da tanınsın (TBD#74 Faz 2).
+    known_names = ({s.name for s in find_sessions(measure_cpu=False)} | set(mirrors.running_mirrors())
+                   if claude_only else None)
     plan, name_to_wid = build_layout_plan(
         windows=windows, screen=screen, pinned_names=pinned,
         groups=group_lists, claude_only=claude_only, known_names=known_names,
@@ -2072,6 +2083,51 @@ def _open_window(name: str, lang: str = "tr", force: bool = False) -> dict:
             return _err(lang, "window_already_attached", name=name, count=clients)
     ok = open_window(s.name, s.cwd, display=detect_display())
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
+
+
+_MIRROR_ARG_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]*$")
+
+
+def _x11_display_ok(display: str) -> bool:
+    """`:N[.S]` biçimli bir display için X soketi var mı; başka biçim (uzak display) sorgulanamaz, geçer."""
+    m = re.fullmatch(r":(\d+)(?:\.\d+)?", display or "")
+    return True if m is None else os.path.exists(f"/tmp/.X11-unix/X{m.group(1)}")
+
+
+def _open_mirror_window(name: str, host: str, port: int, lang: str = "tr", force: bool = False) -> dict:
+    """UZAK bir session'ın terminalini BU makinenin masaüstünde `cops watch` penceresi olarak açar
+    (TBD#74 Faz 2, panelde uzak satırın "masaüstüne aç" düğmesi).
+
+    `_open_window`dan farkı: o, session'ın KENDİ makinesinde (host-routed, `HOST_ROUTED_PATHS`) bir
+    tmux client penceresi açar; uzak bir session için bu uzak makinenin masaüstüne düşerdi. Bu route
+    BİLEREK yerel-only (`HOST_ROUTED_PATHS`'a EKLENMEZ, aksi halde `host` alanı isteği uzak host'a
+    proxy'ler ve pencere orada açılırdı); `host` burada yönlendirme hedefi değil, session'ın host'u.
+
+    Doğrulama: host kayıtlı olmalı ve session o host'un SON bilinen durumunda (poller önbelleği, ağ
+    çağrısı yok) çalışan + tmux-backed görünmeli; isim/host yalnız `[A-Za-z0-9_.-]` (argv'ye girer).
+    Zaten açık bir mirror varsa (süreç taraması) ikincisi AÇILMAZ, mevcut pencere öne getirilir
+    (`force` ile bilerek ikinci açılabilir)."""
+    if not host or host == LOCAL_HOST_NAME:
+        return _err(lang, "mirror_local", name=name)
+    if not (_MIRROR_ARG_RE.match(name) and _MIRROR_ARG_RE.match(host)):
+        return _err(lang, "mirror_bad_target", name=f"{host}:{name}")
+    if get_host(host) is None:
+        return _err(lang, "unknown_host", name=host)
+    rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
+    row = next((r for r in rows if isinstance(r, dict) and r.get("name") == name), None)
+    if row is None or not row.get("running"):
+        return _err(lang, "not_running", name=name)
+    if not row.get("tmux"):
+        return _err(lang, "not_tmux_backed", name=name)
+    display = detect_display()
+    if not _x11_display_ok(display):
+        return _err(lang, "no_x11")
+    spec = f"{host}:{name}"
+    if mirrors.running_mirrors().get(spec) and not force:
+        return {"ok": True, "already_open": True, "focused": mirrors.focus_window(spec, display)}
+    if not open_mirror_window(host, name, port, display=display):
+        return _err(lang, "mirror_launch_failed", name=spec)
+    return {"ok": True, "already_open": False}
 
 
 def _stop_instance(name: str, lang: str = "tr") -> dict:
@@ -3718,7 +3774,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/set-mode",
-                         "/api/term/open-window", "/api/settings", "/api/usage", "/api/context", "/api/live-model",
+                         "/api/term/open-window", "/api/term/mirror-window", "/api/settings", "/api/usage", "/api/context", "/api/live-model",
                          "/api/live-effort",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
@@ -4134,6 +4190,17 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json_notify(_open_window(name, lang=lang, force=bool(data.get("force", False))))
+            return
+
+        if path == "/api/term/mirror-window":
+            # YEREL-only (HOST_ROUTED_PATHS'ta YOK, bkz. `_open_mirror_window`): `host` session'ın host'u.
+            # Filo durumu değişmiyor, bu yüzden `_json_notify` (WS bildirimi) değil düz `_json`.
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_open_mirror_window(name, str(data.get("host", "")).strip(), self.server.server_address[1],
+                                           lang=lang, force=bool(data.get("force", False))))
             return
 
         if path == "/api/instances/forget":

@@ -266,6 +266,8 @@ py/cops watch     # mirror ONE session's terminal (local or on a remote host) li
                    #   Talks only to the local panel (WS push, REST fallback); window title is `host:name`,
                    #   a 1-row status bar shows live/reconnecting/waiting; `q` or Ctrl-C quits.
                    #   `--once` prints a single frame and exits (no TTY needed).
+                   #   From the panel: the Running tab's "open on desktop" button on a remote session row
+                   #   opens this window for you (a second click raises the one already open).
 py/cops service   # systemd --user persistence for `web`+tunnel (install/status/uninstall)
 py/cops mcp-queue # MCP stdio server: lets an *agent* (not a human) drive the Ekip/Team orchestration
                    #   engine itself, over the same local /api/orch/* the panel uses. Not meant to be

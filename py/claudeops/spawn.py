@@ -21,6 +21,7 @@ from typing import Optional
 
 from .diaglog import diag_log
 from .discovery import find_sessions
+from .paths import CLAUDEOPS_DIR, REPO_DIR
 from .providers import get_provider
 from .providers.base import McpServerSpec
 from .providers.claude_provider import find_latest_jsonl  # geriye-uyum: diğer modüller import ediyor
@@ -283,3 +284,24 @@ def open_window(name: str, cwd: str, display: Optional[str] = None) -> bool:
     env["DISPLAY"] = display
     window_cmd = f"{tmux_attach_shell_fragment(name)}; exec bash"
     return _launch_gnome_terminal(name, cwd, window_cmd, env)
+
+
+def open_mirror_window(host: str, name: str, port: int, display: Optional[str] = None) -> bool:
+    """`cops watch <host>:<ad>` çalıştıran YENİ bir gnome-terminal penceresi (TBD#74 Faz 2): bir
+    (uzak) session'ın terminalini bu makinenin masaüstünde canlı, salt-okunur gösterir. `open_window`
+    gibi tmux'a BAĞLANMAZ (mirror bir tmux client değil, pane'i yeniden boyutlandırmaz).
+
+    Pencere, görüntüleyici HATAYLA çıkarsa (python çöktü, `--port` yanlış...) açık kalır ve kodu
+    gösterir; `q` ile normal çıkışta (kod 0) kapanır. Env: `CLAUDE*` süpürmesi `CLAUDEOPS_DIR`'ı da
+    atar, oysa görüntüleyici token'ı AYNI panelin dizininden okumalı (izole test panellerinde canlı
+    token'a düşmesin diye), o yüzden açıkça geri konur. `--port` her zaman bu panelin portu."""
+    if display is None:
+        display = detect_display()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "GEMINI", "ANTIGRAVITY"))}
+    env["DISPLAY"] = display
+    env["CLAUDEOPS_DIR"] = CLAUDEOPS_DIR
+    spec = f"{host}:{name}"
+    cmd = shlex.join([os.path.join(REPO_DIR, "py", "cops"), "watch", spec, "--port", str(port)])
+    window_cmd = (f'{cmd}; rc=$?; if [ "$rc" -ne 0 ]; then echo; echo "cops watch çıkış kodu: $rc"; '
+                  f'read -r -p "Kapatmak için Enter... " _; fi')
+    return _launch_gnome_terminal(spec, str(Path.home()), window_cmd, env)
