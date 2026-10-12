@@ -66,7 +66,7 @@ from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, resolved_model_for, save_settings
-from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots
+from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots, normalize_mirrors
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window, open_mirror_window
 from ..providers.claude_provider import jsonl_path_for, last_assistant_model, last_assistant_effort, live_or_spawn_model
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
@@ -1507,7 +1507,7 @@ def _snapshot_info() -> dict:
     Settings panelinin özet satırı için o kadarı gereksiz büyük."""
     snap = load_latest_snapshot()
     return {"saved_at": snap.get("saved_at"), "kind": snap.get("kind"),
-            "count": len(snap.get("sessions") or [])}
+            "count": len(snap.get("sessions") or []), "mirrors": len(normalize_mirrors(snap.get("mirrors")))}
 
 
 _VALID_THEMES = ("system", "light", "dark")
@@ -2094,7 +2094,8 @@ def _x11_display_ok(display: str) -> bool:
     return True if m is None else os.path.exists(f"/tmp/.X11-unix/X{m.group(1)}")
 
 
-def _open_mirror_window(name: str, host: str, port: int, lang: str = "tr", force: bool = False) -> dict:
+def _open_mirror_window(name: str, host: str, port: int, lang: str = "tr", force: bool = False,
+                        require_running: bool = True, focus: bool = True) -> dict:
     """UZAK bir session'ın terminalini BU makinenin masaüstünde `cops watch` penceresi olarak açar
     (TBD#74 Faz 2, panelde uzak satırın "masaüstüne aç" düğmesi).
 
@@ -2106,25 +2107,31 @@ def _open_mirror_window(name: str, host: str, port: int, lang: str = "tr", force
     Doğrulama: host kayıtlı olmalı ve session o host'un SON bilinen durumunda (poller önbelleği, ağ
     çağrısı yok) çalışan + tmux-backed görünmeli; isim/host yalnız `[A-Za-z0-9_.-]` (argv'ye girer).
     Zaten açık bir mirror varsa (süreç taraması) ikincisi AÇILMAZ, mevcut pencere öne getirilir
-    (`force` ile bilerek ikinci açılabilir)."""
+    (`force` ile bilerek ikinci açılabilir).
+
+    `require_running=False` + `focus=False`: snapshot geri yüklemesi (`_snapshot_resume`). Uzak
+    session henüz çalışmıyor olabilir (yerel snapshot uzak session'ı BAŞLATMAZ); görüntüleyici
+    "bekliyor" durumunda onu bekler, o yüzden varlık kontrolü atlanır (host kayıtlı mı, karakter
+    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur."""
     if not host or host == LOCAL_HOST_NAME:
         return _err(lang, "mirror_local", name=name)
     if not (_MIRROR_ARG_RE.match(name) and _MIRROR_ARG_RE.match(host)):
         return _err(lang, "mirror_bad_target", name=f"{host}:{name}")
     if get_host(host) is None:
         return _err(lang, "unknown_host", name=host)
-    rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
-    row = next((r for r in rows if isinstance(r, dict) and r.get("name") == name), None)
-    if row is None or not row.get("running"):
-        return _err(lang, "not_running", name=name)
-    if not row.get("tmux"):
-        return _err(lang, "not_tmux_backed", name=name)
+    if require_running:
+        rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
+        row = next((r for r in rows if isinstance(r, dict) and r.get("name") == name), None)
+        if row is None or not row.get("running"):
+            return _err(lang, "not_running", name=name)
+        if not row.get("tmux"):
+            return _err(lang, "not_tmux_backed", name=name)
     display = detect_display()
     if not _x11_display_ok(display):
         return _err(lang, "no_x11")
     spec = f"{host}:{name}"
     if mirrors.running_mirrors().get(spec) and not force:
-        return {"ok": True, "already_open": True, "focused": mirrors.focus_window(spec, display)}
+        return {"ok": True, "already_open": True, "focused": mirrors.focus_window(spec, display) if focus else False}
     if not open_mirror_window(host, name, port, display=display):
         return _err(lang, "mirror_launch_failed", name=spec)
     return {"ok": True, "already_open": False}
@@ -2754,14 +2761,32 @@ def _live_snapshot_entries() -> list:
     return entries
 
 
+def _live_mirror_entries() -> list:
+    """Şu an AÇIK `cops watch` mirror pencerelerinin snapshot şekli: `[{"host","name"}]` (TBD#74 Faz 3).
+    Yalnız UZAK host'lar: `local:ad` görüntüleyicisi kullanıcının kendi terminalinde elle koşturduğu
+    bir şeydir (yerel session'ın zaten gerçek penceresi var) ve panelin mirror route'u yerel hedefi
+    reddeder, geri yüklenemezdi. BEST-EFFORT ([] döner): kapanış snapshot'ının SIGTERM handler'ında
+    koşuyor, süreç taraması patlarsa session kaydı da kaybolmasın."""
+    try:
+        out = []
+        for spec in mirrors.running_mirrors():
+            host, _, name = spec.partition(":")
+            if host and name and host != LOCAL_HOST_NAME:
+                out.append({"host": host, "name": name})
+        return sorted(out, key=lambda m: (m["host"], m["name"]))
+    except Exception:
+        return []
+
+
 def _snapshot_save(lang: str = "tr") -> dict:
     """"Snapshot kaydet" düğmesi — HER ZAMAN yeni bir "manual" girdi ekler.
     Hiç canlı session yoksa da boş bir snapshot kaydedilir (kullanıcı bilerek
     "her şeyi kapattım" durumunu da kaydedebilmeli — burada bir hata/engel
     yok)."""
     entries = _live_snapshot_entries()
-    data = save_snapshot(entries, kind="manual")
-    return {"ok": True, "saved_at": data["saved_at"], "count": len(entries)}
+    mirror_entries = _live_mirror_entries()
+    data = save_snapshot(entries, kind="manual", mirrors=mirror_entries)
+    return {"ok": True, "saved_at": data["saved_at"], "count": len(entries), "mirrors": len(mirror_entries)}
 
 
 def _save_closing_snapshot() -> None:
@@ -2772,7 +2797,7 @@ def _save_closing_snapshot() -> None:
     yutulur. `kind="closing"` olduğu için `save_snapshot()` zaten son kayıtla
     aynıysa kendiliğinden no-op — burada AYRICA bir karşılaştırma gerekmiyor."""
     try:
-        save_snapshot(_live_snapshot_entries(), kind="closing")
+        save_snapshot(_live_snapshot_entries(), kind="closing", mirrors=_live_mirror_entries())
     except Exception:
         pass
 
@@ -2786,7 +2811,44 @@ def _snapshot_list() -> dict:
     return {"ok": True, "snapshots": list_snapshots()}
 
 
-def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lang: str = "tr") -> dict:
+# Geri yüklemede AÇILAN pencereler arası bekleme: kullanıcıda ~26 mirror penceresi açıkken hepsini aynı
+# anda `gnome-terminal` istemcisi olarak başlatmak gnome-terminal-server'ı D-Bus üzerinden ani yüke
+# sokar (spawn.py'nin "tek seferlik D-Bus flake'i" notları). Yalnız gerçekten pencere açılan adımlardan
+# SONRA beklenir; açık/başarısız/gizli atlananlar bekletmez.
+MIRROR_RESTORE_SPACING_SECONDS = 0.3
+
+
+def _snapshot_resume_mirrors(entries: list, hidden: bool, port: int, lang: str) -> list:
+    """Snapshot'taki mirror pencerelerini açar (TBD#74 Faz 3), session'lar başladıktan SONRA.
+    Uzak session'ı BAŞLATMAZ (snapshot bu makinenin fleet'inin); yoksa pencere "bekliyor" durumunda
+    bekler. `hidden` (pencere açmadan başlat) mirror'ı da atlar. Zaten açık pencere tekrar açılmaz.
+    Biri başarısız olursa (host artık kayıtlı değil vb.) diğerleri yine açılır."""
+    results = []
+    gap_pending = False
+    for m in entries:
+        host, name = str(m.get("host") or "").strip(), str(m.get("name") or "").strip()
+        if not host or not name:
+            continue
+        row = {"host": host, "name": name}
+        if hidden:
+            results.append({**row, "status": "skipped_hidden"})
+            continue
+        if gap_pending and MIRROR_RESTORE_SPACING_SECONDS > 0:
+            time.sleep(MIRROR_RESTORE_SPACING_SECONDS)
+        gap_pending = False
+        r = _open_mirror_window(name, host, port, lang=lang, require_running=False, focus=False)
+        if not r.get("ok"):
+            results.append({**row, "status": "failed", "error": r.get("error")})
+        elif r.get("already_open"):
+            results.append({**row, "status": "already_open"})
+        else:
+            results.append({**row, "status": "opened"})
+            gap_pending = True
+    return results
+
+
+def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lang: str = "tr",
+                     port: Optional[int] = None) -> dict:
     """Kaydedilmiş bir snapshot'taki (varsayılan: EN SON kayıt, `saved_at`
     verilirse geçmişten O belirli kayıt) her isim için: zaten çalışıyorsa
     atla; blueprint değilse ve instance kaydında da yoksa tarihli/türev
@@ -2797,12 +2859,17 @@ def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lan
     [[add-session-to-fleet]]'in kanıtlanmış deseni. `_run_layout` gibi (aynı "N
     session için tek POST'ta sırayla işle" deseni) senkron — her `_start` zaten
     kendi `_wait_stable`'ıyla doğal olarak aralanır, ayrı bir throttle eklemeye
-    gerek yok."""
+    gerek yok.
+
+    TBD#74 Faz 3: snapshot'ın `mirrors` listesi (açık `cops watch` pencereleri) session'lar
+    BAŞLADIKTAN sonra açılır (`_snapshot_resume_mirrors`); yalnız-mirror bir snapshot "boş"
+    sayılmaz. `port` bu panelin portu (mirror penceresi aynı panele bağlanır), verilmezse varsayılan."""
     snap = get_snapshot(saved_at) if saved_at is not None else load_latest_snapshot()
     if snap is None:
         return _err(lang, "snapshot_not_found")
     entries = snap.get("sessions") or []
-    if not entries:
+    mirror_entries = normalize_mirrors(snap.get("mirrors"))
+    if not entries and not mirror_entries:
         return _err(lang, "no_snapshot")
     fleet = _fleet_status()
     live_names = {s.name for s in find_sessions(measure_cpu=False)}
@@ -2848,12 +2915,18 @@ def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lan
             results.append({"name": name, "status": "started"})
         else:
             results.append({"name": name, "status": "failed", "error": r.get("error")})
+    mirror_results = _snapshot_resume_mirrors(mirror_entries, hidden, port or DEFAULT_PORT, lang)
     return {
         "ok": True,
         "results": results,
         "started": sum(1 for r in results if r["status"] == "started"),
         "already_running": sum(1 for r in results if r["status"] == "already_running"),
         "failed": sum(1 for r in results if r["status"] == "failed"),
+        "mirrors": mirror_results,
+        "mirrors_opened": sum(1 for r in mirror_results if r["status"] == "opened"),
+        "mirrors_already_open": sum(1 for r in mirror_results if r["status"] == "already_open"),
+        "mirrors_failed": sum(1 for r in mirror_results if r["status"] == "failed"),
+        "mirrors_skipped": sum(1 for r in mirror_results if r["status"] == "skipped_hidden"),
     }
 
 
@@ -4098,7 +4171,7 @@ class _Handler(BaseHTTPRequestHandler):
             saved_at = data.get("saved_at")
             self._json_notify(_snapshot_resume(
                 saved_at=float(saved_at) if saved_at is not None else None,
-                hidden=bool(data.get("hidden", False)), lang=lang))
+                hidden=bool(data.get("hidden", False)), lang=lang, port=self.server.server_address[1]))
             return
 
         if path == "/api/new-chat":

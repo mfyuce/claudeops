@@ -22,6 +22,13 @@ Eski `last_snapshot.json` silinmedi — ilk `_load_all()` çağrısında (dosya
 `snapshots.json` henüz yokken) BİR KEZ listeye "manual" girdisi olarak
 göçürülür, kullanıcının o ana kadar elle aldığı gerçek kayıt kaybolmaz.
 
+2026-10-12 (TBD#74 Faz 3): her girdi AYRICA açık `cops watch` mirror pencerelerini taşır:
+`mirrors: [{"host","name"}]` (uzak host'un session'ı, bu makinenin masaüstünde canlı gösteren
+pencereler). `sessions` listesine KONMAZ: geri yükleme oradaki her ismi YEREL `_start` eder, mirror
+yanlışlıkla yerel session olarak başlardı. Eski girdilerde alan yok = boş (geriye uyumlu). Kapanış
+snapshot'ının "fleet aynı mı" karşılaştırması mirror'ı da kapsar, yoksa yalnız pencere değişince
+kayıt atlanırdı.
+
 Leaf modül (sadece atomic_json/paths'e bağımlı) — settings.py ile aynı disiplin,
 commands/ paketine bağımlı olmayan modüller de sorunsuz import edebilsin.
 """
@@ -55,6 +62,24 @@ def _same_sessions(a: List[Dict[str, Any]], b: List[Dict[str, Any]]) -> bool:
     return {_entry_key(x) for x in a} == {_entry_key(x) for x in b}
 
 
+def normalize_mirrors(mirrors: Any) -> List[Dict[str, str]]:
+    """`[{"host","name"}]` → host+ada göre sıralı, tekilleştirilmiş, yalnız dolu str alanlı liste.
+    Bozuk/eksik girdiler (dict değil, boş host/ad) sessizce düşer: kayıt dosyası elle düzenlenmiş
+    ya da başka bir sürümden gelmiş olabilir."""
+    found: Dict[tuple, Dict[str, str]] = {}
+    for m in mirrors or []:
+        if not isinstance(m, dict):
+            continue
+        host, name = str(m.get("host") or "").strip(), str(m.get("name") or "").strip()
+        if host and name:
+            found[(host, name)] = {"host": host, "name": name}
+    return [found[k] for k in sorted(found)]
+
+
+def _same_mirrors(a: Any, b: Any) -> bool:
+    return normalize_mirrors(a) == normalize_mirrors(b)
+
+
 def _migrate_legacy() -> List[Dict[str, Any]]:
     """`snapshots.json` hiç yoksa ama eski tek-kayıt `last_snapshot.json` varsa
     onu listeye "manual" girdisi olarak taşır — bir kereliğine; `snapshots.json`
@@ -81,18 +106,22 @@ def _load_all() -> List[Dict[str, Any]]:
     return _migrate_legacy()
 
 
-def save_snapshot(sessions: List[Dict[str, Any]], kind: str = "manual") -> Dict[str, Any]:
+def save_snapshot(sessions: List[Dict[str, Any]], kind: str = "manual",
+                  mirrors: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
     """`sessions`: [{"name","cwd","model","permission_mode","effort","cli"}] —
     çağıran (web.py) canlı Session listesinden bu şekli üretir; burası sadece
     diske yazar (discovery'ye bağımlı DEĞİL, leaf disiplini).
 
     `kind="manual"` HER ZAMAN yeni bir girdi ekler. `kind="closing"` SADECE
     fleet en son kayıttan FARKLIYSA ekler — aynıysa var olan son girdiyi
-    olduğu gibi döner (kullanıcının kuralı: "aynıysa sorun yok")."""
+olduğu gibi döner (kullanıcının kuralı: "aynıysa sorun yok"); "aynı" session'larla BİRLİKTE
+    açık mirror pencereleri de demektir. `mirrors`: [{"host","name"}], bkz. modül docstring'i."""
+    mirrors = normalize_mirrors(mirrors)
     all_snaps = _load_all()
-    if kind == "closing" and all_snaps and _same_sessions(all_snaps[-1]["sessions"], sessions):
+    if (kind == "closing" and all_snaps and _same_sessions(all_snaps[-1]["sessions"], sessions)
+            and _same_mirrors(all_snaps[-1].get("mirrors"), mirrors)):
         return all_snaps[-1]
-    entry = {"saved_at": time.time(), "kind": kind, "sessions": sessions}
+    entry = {"saved_at": time.time(), "kind": kind, "sessions": sessions, "mirrors": mirrors}
     all_snaps.append(entry)
     del all_snaps[:-MAX_SNAPSHOTS]
     atomic_write_json(SNAPSHOTS_JSON, all_snaps)
@@ -124,5 +153,5 @@ def list_snapshots() -> List[Dict[str, Any]]:
     """Panelin geçmiş listesi için METADATA-only (tam session gövdesi YOK —
     `_snapshot_info()`'nun "gereksiz büyük" gerekçesiyle aynı), en yeni ÖNCE."""
     return [{"saved_at": s.get("saved_at"), "kind": s.get("kind", "manual"),
-             "count": len(s.get("sessions") or [])}
+             "count": len(s.get("sessions") or []), "mirrors": len(normalize_mirrors(s.get("mirrors")))}
             for s in reversed(_load_all())]
