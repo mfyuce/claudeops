@@ -93,6 +93,7 @@ export function SnapshotSection() {
   }
 
   const failedRows = result?.results.filter((r) => r.status === "failed") ?? [];
+  const failedMirrors = result?.mirrors?.filter((m) => m.status === "failed") ?? [];
   const resuming = resumingAt !== null;
   const fmtWhen = (savedAt: number) => new Date(savedAt * 1000).toLocaleString(lang === "tr" ? "tr-TR" : "en-US");
 
@@ -103,7 +104,7 @@ export function SnapshotSection() {
       </span>
       <span>
         {snap.saved_at !== null && snap.kind !== null
-          ? t.snapshotInfo(snap.count, fmtWhen(snap.saved_at), snap.kind)
+          ? t.snapshotInfo(snap.count, fmtWhen(snap.saved_at), snap.kind) + t.snapshotMirrorsSuffix(snap.mirrors ?? 0)
           : t.snapshotNone}
       </span>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -122,6 +123,15 @@ export function SnapshotSection() {
         <pre className="layout-result">
           {t.snapshotResultSummary(result.started, result.already_running, result.failed)}
           {failedRows.map((r) => `\n  ✗ ${r.name}: ${r.error ?? ""}`).join("")}
+          {result.mirrors && result.mirrors.length > 0
+            ? `\n${t.snapshotMirrorResult(
+                result.mirrors_opened ?? 0,
+                result.mirrors_already_open ?? 0,
+                result.mirrors_failed ?? 0,
+                result.mirrors_skipped ?? 0,
+              )}`
+            : ""}
+          {failedMirrors.map((m) => `\n  ✗ ${m.host}:${m.name}: ${m.error ?? ""}`).join("")}
         </pre>
       )}
       {history && history.length > 1 && (
@@ -135,6 +145,7 @@ export function SnapshotSection() {
                 <span>
                   [{h.kind === "closing" ? t.snapshotKindClosing : t.snapshotKindManual}]{" "}
                   {t.snapshotHistoryRow(h.count, fmtWhen(h.saved_at))}
+                  {t.snapshotMirrorsSuffix(h.mirrors ?? 0)}
                 </span>
                 <button type="button" disabled={resuming} onClick={() => void handleResume(h.saved_at)}>
                   {resumingAt === h.saved_at ? t.snapshotResuming : t.snapshotHistoryResumeBtn}

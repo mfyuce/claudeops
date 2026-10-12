@@ -371,6 +371,8 @@ export interface Strings {
   snapshotResuming: string;
   snapshotHiddenLabel: string;
   snapshotResultSummary: (started: number, alreadyRunning: number, failed: number) => string;
+  snapshotMirrorsSuffix: (mirrors: number) => string;
+  snapshotMirrorResult: (opened: number, alreadyOpen: number, failed: number, skipped: number) => string;
   snapshotKindManual: string;
   snapshotKindClosing: string;
   snapshotHistoryLabel: string;
@@ -791,7 +793,7 @@ export const STRINGS: Record<Lang, Strings> = {
     fleetSortByName: "isme göre",
     fleetSortByCwd: "klasör yoluna göre",
     snapshotLabel: "Fleet snapshot",
-    snapshotDesc: "çalışan session'ları kaydet, sonra (ör. reboot sonrası) hepsini kayıt anındaki GERÇEK model/effort/izin-modu ile geri aç",
+    snapshotDesc: "çalışan session'ları kaydet, sonra (ör. reboot sonrası) hepsini kayıt anındaki GERÇEK model/effort/izin-modu ile geri aç (açık mirror pencereleri de kaydedilir ve geri açılır)",
     snapshotNone: "henüz kaydedilmiş bir snapshot yok",
     snapshotInfo: (count, when, kind) =>
       `Son snapshot (${kind === "closing" ? "kapanış" : "elle"}): ${when}, ${count} session`,
@@ -802,6 +804,10 @@ export const STRINGS: Record<Lang, Strings> = {
     snapshotHiddenLabel: "Pencere açmadan (gizli) başlat",
     snapshotResultSummary: (started, alreadyRunning, failed) =>
       `${started} başlatıldı, ${alreadyRunning} zaten çalışıyordu, ${failed} başarısız`,
+    snapshotMirrorsSuffix: (mirrors) => (mirrors > 0 ? `, ${mirrors} mirror penceresi` : ""),
+    snapshotMirrorResult: (opened, alreadyOpen, failed, skipped) =>
+      `mirror pencereleri: ${opened} açıldı, ${alreadyOpen} zaten açıktı, ${failed} başarısız` +
+      (skipped > 0 ? `, ${skipped} atlandı (gizli başlatma)` : ""),
     snapshotKindManual: "elle",
     snapshotKindClosing: "kapanış",
     snapshotHistoryLabel: "Geçmiş",
@@ -1239,7 +1245,7 @@ export const STRINGS: Record<Lang, Strings> = {
     fleetSortByName: "by name",
     fleetSortByCwd: "by folder path",
     snapshotLabel: "Fleet snapshot",
-    snapshotDesc: "save the running sessions, then (e.g. after a reboot) reopen all of them with the EXACT model/effort/permission-mode they were running with",
+    snapshotDesc: "save the running sessions, then (e.g. after a reboot) reopen all of them with the EXACT model/effort/permission-mode they were running with (open mirror windows are saved and reopened too)",
     snapshotNone: "no snapshot saved yet",
     snapshotInfo: (count, when, kind) =>
       `Last snapshot (${kind === "closing" ? "closing" : "manual"}): ${when}, ${count} session(s)`,
@@ -1250,6 +1256,10 @@ export const STRINGS: Record<Lang, Strings> = {
     snapshotHiddenLabel: "Start hidden (no window)",
     snapshotResultSummary: (started, alreadyRunning, failed) =>
       `${started} started, ${alreadyRunning} already running, ${failed} failed`,
+    snapshotMirrorsSuffix: (mirrors) => (mirrors > 0 ? `, ${mirrors} mirror window(s)` : ""),
+    snapshotMirrorResult: (opened, alreadyOpen, failed, skipped) =>
+      `mirror windows: ${opened} opened, ${alreadyOpen} already open, ${failed} failed` +
+      (skipped > 0 ? `, ${skipped} skipped (hidden start)` : ""),
     snapshotKindManual: "manual",
     snapshotKindClosing: "closing",
     snapshotHistoryLabel: "History",

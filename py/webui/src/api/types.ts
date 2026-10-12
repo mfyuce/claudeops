@@ -341,7 +341,7 @@ export interface StatusPayload {
    * karışmaz). `kind`, 2026-09-21: panel süreci SIGTERM alınca (servis
    * stop/restart/gerçek shutdown) OTOMATİK eklenen "closing" kaydı, kullanıcının
    * elle bastığı "manual"dan ayırt edilsin diye — `null` hiç kayıt yokken. */
-  snapshot: { saved_at: number | null; kind: "manual" | "closing" | null; count: number };
+  snapshot: { saved_at: number | null; kind: "manual" | "closing" | null; count: number; mirrors?: number };
 }
 
 // ── TOBEDECIDED#15 Phase 1 — workers-only orchestration ─────────────────
@@ -654,7 +654,7 @@ export type LayoutResult = ApiResult<{
 }>;
 
 /** `_snapshot_save()` — always appends a NEW "manual" entry to the history. */
-export type SnapshotSaveResult = ApiResult<{ saved_at: number; count: number }>;
+export type SnapshotSaveResult = ApiResult<{ saved_at: number; count: number; mirrors?: number }>;
 /** `_snapshot_resume()` — one row per snapshot entry; `error` only present
  * when `status === "failed"` (register or start failed for that name — the
  * rest of the batch still ran, this is NOT an all-or-nothing operation). */
@@ -663,6 +663,15 @@ export type SnapshotResumeResult = ApiResult<{
   started: number;
   already_running: number;
   failed: number;
+  /** Open `cops watch` mirror windows saved with the snapshot (TBD#74 phase 3), reopened AFTER the sessions
+   * started. A remote session that is not running is NOT started (the snapshot is this machine's fleet);
+   * its window opens anyway and waits. `skipped_hidden`: "start hidden" opens no windows. Absent on a
+   * panel that predates mirror snapshots. */
+  mirrors?: { host: string; name: string; status: "opened" | "already_open" | "failed" | "skipped_hidden"; error?: string }[];
+  mirrors_opened?: number;
+  mirrors_already_open?: number;
+  mirrors_failed?: number;
+  mirrors_skipped?: number;
 }>;
 /** `_snapshot_list()` — metadata-only history, newest first (2026-09-21, see
  * `snapshot.py`'s module docstring for why this replaced the old single-record
@@ -670,5 +679,5 @@ export type SnapshotResumeResult = ApiResult<{
  * optional `savedAt` param targets to resume THAT specific past snapshot
  * instead of the newest one. */
 export type SnapshotListResult = ApiResult<{
-  snapshots: { saved_at: number; kind: "manual" | "closing"; count: number }[];
+  snapshots: { saved_at: number; kind: "manual" | "closing"; count: number; mirrors?: number }[];
 }>;
