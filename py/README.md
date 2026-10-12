@@ -265,6 +265,8 @@ py/cops watch     # mirror ONE session's terminal (local or on a remote host) li
                    #   window, read-only: `py/cops watch ulak_31:rustrino20261009` (just a name = local).
                    #   Talks only to the local panel (WS push, REST fallback); window title is `host:name`,
                    #   a 1-row status bar shows live/reconnecting/waiting; `q` or Ctrl-C quits.
+                   #   The last frame always stays on screen; a problem lasting over 3 s also pops up a
+                   #   small `!` box over it (title + error + hint), `x` hides it until the next outage.
                    #   `--once` prints a single frame and exits (no TTY needed).
                    #   From the panel: the Running tab's "open on desktop" button on a remote session row
                    #   opens this window for you (a second click raises the one already open).

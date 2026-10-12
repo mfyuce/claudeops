@@ -9,11 +9,15 @@ beklemez. Gerçek TTY/alt-ekran davranışı ayrıca elle (tmux içinde) doğrul
 import contextlib
 import io
 import json
+import logging
 import os
 import queue
+import re
+import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -454,6 +458,325 @@ class ViewerTests(unittest.TestCase):
         self.assertIn("100×30", text)
         self.assertTrue(text.rstrip().endswith("ws"))
 
+    def test_control_characters_in_the_detail_never_reach_the_terminal(self):
+        # hata metni panelden/uzak host'tan gelir; ESC dizisi (başlık/pano/imleç) çizime sızmamalı
+        self.viewer.apply_failure("bad\x1b]0;pwn\x07 text\x1b[2J")
+        self.viewer.render()
+        data = self.drawn()
+        self.assertNotIn(f"{ESC}]0;pwn", data)
+        self.assertNotIn(f"{ESC}[2J", data)
+        self.assertNotIn("\x07", data.replace(f"{ESC}]0;yuhem:s1\x07", ""))   # tek meşru BEL: başlık dizisi
+        self.assertNotIn(ESC, self.viewer.detail)
+        self.viewer.apply_frame({"ok": False, "error": "x\x1b[31m: not running"})
+        self.assertNotIn(ESC, self.viewer.detail)
+
+
+# ── sorun popup'ı ───────────────────────────────────────────────────────────────────────────
+
+def plain(s):
+    """Kaçış dizilerini atılmış görünür metin."""
+    return watch._SEQ_RE.sub("", s)
+
+
+class CleanTextTests(unittest.TestCase):
+    def test_control_characters_become_spaces(self):
+        self.assertEqual(watch.clean_text("a\x1b[31mb\nc\td\x07e"), "a [31mb c d e")
+
+    def test_plain_text_is_unchanged_apart_from_trimming(self):
+        self.assertEqual(watch.clean_text("  ConnectionRefusedError: [Errno 111]  "),
+                         "ConnectionRefusedError: [Errno 111]")
+
+
+class WrapTextTests(unittest.TestCase):
+    def test_wraps_on_word_boundaries(self):
+        self.assertEqual(watch.wrap_text("aaa bbb ccc ddd", 7, 5), ["aaa bbb", "ccc ddd"])
+
+    def test_a_long_word_is_split_at_the_width(self):
+        self.assertEqual(watch.wrap_text("abcdefghij", 4, 5), ["abcd", "efgh", "ij"])
+
+    def test_text_beyond_max_lines_ends_with_an_ellipsis_within_the_width(self):
+        lines = watch.wrap_text("one two three four five six seven", 9, 2)
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[-1].endswith("…"))
+        self.assertTrue(all(watch.display_width(ln) <= 9 for ln in lines))
+
+    def test_empty_and_degenerate_inputs(self):
+        self.assertEqual(watch.wrap_text("", 10, 2), [])
+        self.assertEqual(watch.wrap_text("abc", 0, 2), [])
+        self.assertEqual(watch.wrap_text("abc", 10, 0), [])
+
+    def test_wide_characters_count_two_columns(self):
+        lines = watch.wrap_text("日本語日本語", 6, 5)
+        self.assertEqual(lines, ["日本語", "日本語"])
+
+
+class DescribeProblemTests(unittest.TestCase):
+    def title(self, state, detail, severe=False):
+        return watch.describe_problem(state, detail, severe)[0]
+
+    def test_the_keepalive_timeout_from_the_bug_report(self):
+        detail = "ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received"
+        self.assertEqual(self.title("reconnecting", detail), "Panelle bağlantı koptu")
+
+    def test_panel_down(self):
+        for detail in ("ConnectionRefusedError: [Errno 111] Connection refused", "<urlopen error timed out>",
+                       "ConnectionResetError: peer reset"):
+            self.assertEqual(self.title("reconnecting", detail), "Panele ulaşılamıyor", detail)
+
+    def test_silence_watchdog(self):
+        self.assertEqual(self.title("reconnecting", "sunucudan 75 sn ses yok"), "Panelden haber gelmiyor")
+
+    def test_host_level_problems_win_over_generic_timeouts(self):
+        self.assertEqual(self.title("reconnecting", "yuhem unreachable: timed out"), "Host'a ulaşılamıyor")
+        self.assertEqual(self.title("reconnecting", "relay: bağlantı koptu, yeniden deneniyor"),
+                         "Uzak host bağlantısı koptu")
+
+    def test_auth_is_its_own_title(self):
+        self.assertEqual(self.title("reconnecting", "http 401: web.token ...", severe=True), "Yetki hatası")
+
+    def test_unknown_errors_fall_back_to_a_generic_title(self):
+        self.assertEqual(self.title("reconnecting", "something odd"), "Bağlantı sorunu")
+        self.assertEqual(self.title("reconnecting", ""), "Bağlantı sorunu")
+
+    def test_waiting_states(self):
+        self.assertEqual(self.title("waiting", "s1: not running"), "Session çalışmıyor")
+        self.assertEqual(self.title("waiting", "unknown host: nope"), "Host tanımsız")
+
+    def test_every_hint_fits_next_to_the_hide_key_in_a_full_width_box(self):
+        room = watch.POPUP_MAX_COLS - 8 - len(" · x: gizle")
+        for state, detail, severe in (("waiting", "s1: not running", False), ("waiting", "unknown host: x", False),
+                                      ("reconnecting", "x", True), ("reconnecting", "refused", False),
+                                      ("reconnecting", "keepalive", False), ("reconnecting", "zzz", False)):
+            hint = watch.describe_problem(state, detail, severe)[1]
+            self.assertLessEqual(watch.display_width(hint), room, hint)
+
+
+class PopupLayoutTests(unittest.TestCase):
+    STYLE = watch.STYLE_RECONNECTING
+
+    def layout(self, title="Panelle bağlantı koptu", detail="ConnectionClosedError: keepalive ping timeout",
+               hint="Otomatik yeniden denenir", cols=100, body_rows=20):
+        return watch.popup_layout(title, detail, hint, self.STYLE, cols, body_rows)
+
+    def test_box_is_centered_and_every_row_has_the_box_width(self):
+        top, left, rows = self.layout(cols=100)
+        self.assertEqual(left, (100 - watch.POPUP_MAX_COLS) // 2 + 1)
+        self.assertEqual({watch.display_width(r) for r in rows}, {watch.POPUP_MAX_COLS})
+
+    def test_starts_on_the_second_row_leaving_the_first_free(self):
+        self.assertEqual(self.layout(body_rows=20)[0], 2)
+
+    def test_content_is_title_with_badge_detail_and_hint(self):
+        _, _, rows = self.layout()
+        text = "\n".join(plain(r) for r in rows)
+        self.assertRegex(text, r"! +Panelle bağlantı koptu")
+        self.assertIn("ConnectionClosedError: keepalive ping timeout", text)
+        self.assertIn("Otomatik yeniden denenir · x: gizle", text)
+        self.assertTrue(plain(rows[0]).startswith("┌") and plain(rows[-1]).startswith("└"))
+        self.assertIn(watch.STYLE_BADGE, rows[1])
+
+    def test_no_detail_means_no_detail_rows(self):
+        _, _, rows = self.layout(detail="")
+        self.assertEqual(len(rows), 4)   # üst, başlık, ipucu, alt
+
+    def test_long_detail_is_cut_to_two_lines_with_an_ellipsis(self):
+        _, _, rows = self.layout(detail="word " * 60)
+        self.assertEqual(len(rows), 6)   # üst, başlık, 2 detay, ipucu, alt
+        self.assertIn("…", plain(rows[3]))
+
+    def test_narrow_terminal_shrinks_the_box_and_keeps_the_hide_key_visible(self):
+        _, left, rows = self.layout(cols=watch.POPUP_MIN_COLS, hint="Panel kapalı ya da yeniden başlıyor olabilir")
+        self.assertEqual(left, 1)
+        self.assertEqual({watch.display_width(r) for r in rows}, {watch.POPUP_MIN_COLS})
+        self.assertIn("x: gizle", plain(rows[-2]))
+
+    def test_too_narrow_terminal_gets_no_box(self):
+        self.assertIsNone(self.layout(cols=watch.POPUP_MIN_COLS - 1))
+
+    def test_short_terminal_moves_up_then_gives_up(self):
+        rows_needed = len(self.layout()[2])
+        self.assertEqual(self.layout(body_rows=rows_needed + 2)[0], 2)
+        self.assertEqual(self.layout(body_rows=rows_needed + 1)[0], 1)
+        self.assertEqual(self.layout(body_rows=rows_needed)[0], 1)
+        self.assertIsNone(self.layout(body_rows=rows_needed - 1))
+
+    def test_a_very_long_title_is_cut_to_the_box(self):
+        _, _, rows = self.layout(title="T" * 200)
+        self.assertEqual({watch.display_width(r) for r in rows}, {watch.POPUP_MAX_COLS})
+
+    def test_build_popup_positions_every_row_absolutely(self):
+        layout = self.layout()
+        out = watch.build_popup(layout)
+        top, left, rows = layout
+        for i, row in enumerate(rows):
+            self.assertIn(f"{ESC}[{top + i};{left}H{row}", out)
+        self.assertNotIn("\n", out)
+
+
+class ViewerPopupTests(unittest.TestCase):
+    def setUp(self):
+        self.clock = Clock()
+        self.screen, self.out, self.dims = make_screen((80, 14))   # 13 gövde satırı + çubuk
+        self.viewer = watch.Viewer("yuhem", "s1", self.screen, clock=self.clock)
+        self.viewer.transport_name = "ws"
+
+    def drawn(self):
+        data = self.out.getvalue()
+        self.out.truncate(0), self.out.seek(0)
+        return data
+
+    def go_down(self, detail="ConnectionRefusedError", **kw):
+        self.viewer.apply_frame(good("v1\nv2\nv3"))
+        self.viewer.render()
+        self.drawn()
+        self.viewer.apply_failure(detail, **kw)
+
+    def test_a_short_outage_shows_the_status_bar_only(self):
+        self.go_down()
+        for _ in range(int(watch.POPUP_GRACE_SECONDS) - 1):
+            self.clock.now += 1
+            self.viewer.render()
+        self.assertNotIn("┌", self.drawn())
+        self.assertFalse(self.viewer.popup_visible())
+
+    def test_the_popup_appears_once_the_grace_period_has_passed_on_top_of_the_repainted_body(self):
+        self.go_down()
+        self.clock.now += watch.POPUP_GRACE_SECONDS
+        self.viewer.render()
+        data = self.drawn()
+        self.assertIn("┌", data)
+        self.assertIn("Panele ulaşılamıyor", data)
+        self.assertIn("ConnectionRefusedError", data)
+        self.assertIn(watch.STYLE_RECONNECTING, data)
+        self.assertLess(data.index("v1"), data.index("┌"))   # önce gövde, popup üstüne
+        self.assertIn("yeniden bağlanıyor", data)            # çubuk de duruyor
+
+    def test_a_steady_popup_is_not_redrawn_on_every_tick(self):
+        self.go_down()
+        self.clock.now += 5
+        self.viewer.render()
+        self.drawn()
+        self.clock.now += 1
+        self.viewer.set_retry_in(3.0)
+        self.viewer.render()
+        data = self.drawn()
+        self.assertNotIn("┌", data)    # geri sayım yalnız çubukta
+        self.assertNotIn("v1", data)
+        self.assertIn("(3 sn)", data)
+
+    def test_a_new_frame_while_the_popup_is_up_repaints_the_popup_on_top(self):
+        self.go_down(detail="x unreachable: boom")
+        self.clock.now += 5
+        self.viewer.render()
+        self.drawn()
+        self.viewer.apply_frame({"ok": False, "error": "relay: henüz veri gelmedi"})   # hâlâ sorun, kare yok
+        self.viewer.render()
+        data = self.drawn()
+        self.assertIn("┌", data)   # metin değişti: kutu yeniden
+        self.assertIn("Uzak host bağlantısı koptu", data)
+
+    def test_recovery_removes_the_popup_by_repainting_the_body(self):
+        self.go_down()
+        self.clock.now += 5
+        self.viewer.render()
+        self.drawn()
+        self.viewer.apply_frame(good("v1\nv2\nv3"))   # aynı içerik, ama yine canlı
+        self.viewer.render()
+        data = self.drawn()
+        self.assertNotIn("┌", data)
+        self.assertIn(f"{ESC}[1;1Hv1", data)          # gövde yeniden çizildi (kutunun üstünü siler)
+        self.assertIn("canlı", data)
+        self.assertIsNone(self.viewer.trouble_since)
+
+    def test_x_hides_the_popup_for_the_rest_of_the_outage_only(self):
+        self.go_down()
+        self.clock.now += 5
+        self.viewer.render()
+        self.drawn()
+        self.viewer.dismiss_popup()
+        self.viewer.render()
+        data = self.drawn()
+        self.assertNotIn("┌", data)
+        self.assertIn(f"{ESC}[1;1Hv1", data)          # kutu kalktı: gövde yeniden
+        self.viewer.apply_failure("ConnectionResetError: another")   # aynı sorun sürüyor
+        self.clock.now += 5
+        self.viewer.render()
+        self.assertNotIn("┌", self.drawn())
+        self.viewer.apply_frame(good("v1\nv2\nv3"))                  # düzeldi
+        self.viewer.render()
+        self.drawn()
+        self.viewer.apply_failure("ConnectionRefusedError")          # yeni sorun: kutu geri gelir
+        self.clock.now += 5
+        self.viewer.render()
+        self.assertIn("┌", self.drawn())
+
+    def test_x_pressed_while_live_does_not_hide_the_popup_of_a_later_outage(self):
+        self.viewer.apply_frame(good("v1\nv2\nv3"))
+        self.viewer.dismiss_popup()
+        self.viewer.apply_failure("ConnectionRefusedError")
+        self.clock.now += 5
+        self.viewer.render()
+        self.assertIn("┌", self.drawn())
+
+    def test_waiting_state_gets_a_blue_notice(self):
+        self.viewer.apply_frame(good("v1\nv2\nv3"))
+        self.viewer.apply_frame({"ok": False, "error": "s1: not running"})
+        self.clock.now += watch.POPUP_GRACE_SECONDS
+        self.viewer.render()
+        data = self.drawn()
+        self.assertIn("Session çalışmıyor", data)
+        self.assertIn("s1: not running", data)
+        self.assertIn(watch.STYLE_WAITING, data)
+
+    def test_auth_failure_gets_the_red_popup(self):
+        self.go_down("http 401: web.token bu panelle eşleşmiyor", severe=True)
+        self.clock.now += 5
+        self.viewer.render()
+        data = self.drawn()
+        self.assertIn("Yetki hatası", data)
+        self.assertIn(watch.STYLE_SEVERE, data)
+
+    def test_no_frame_ever_received_still_gets_a_popup_over_the_blank_body(self):
+        self.viewer.apply_failure("ConnectionRefusedError")
+        self.clock.now += 5
+        self.viewer.render()
+        self.assertIn("┌", self.drawn())
+
+    def test_popup_is_skipped_when_the_terminal_is_too_small_but_the_bar_remains(self):
+        self.dims["size"] = (80, 5)    # 4 gövde satırı: 5 satırlık kutu sığmaz
+        self.go_down()
+        self.clock.now += 5
+        self.viewer.render()
+        data = self.drawn()
+        self.assertNotIn("┌", data)
+        self.assertIn("yeniden bağlanıyor", data)
+
+    def test_resizing_the_terminal_moves_the_popup(self):
+        self.go_down()
+        self.clock.now += 5
+        self.viewer.render()
+        first = self.drawn()
+        self.assertIn(f"{ESC}[2;9H", first)     # 80 sütun: (80-64)//2+1
+        self.dims["size"] = (120, 20)
+        self.viewer.render()
+        second = self.drawn()
+        self.assertIn(f"{ESC}[2;29H", second)   # 120 sütun: (120-64)//2+1
+        self.assertNotIn(f"{ESC}[2;9H", second)
+
+    def test_connecting_state_never_shows_a_popup(self):
+        self.clock.now += 60
+        self.viewer.render()
+        self.assertNotIn("┌", self.drawn())
+
+    def test_the_popup_is_drawn_inside_the_body_never_over_the_status_bar(self):
+        self.go_down()
+        self.clock.now += 5
+        self.viewer.render()
+        data = self.drawn()
+        rows = [int(m.group(1)) for m in re.finditer(r"\x1b\[(\d+);\d+H\x1b\[0;48;5;130;38;5;255m[┌│└]", data)]
+        self.assertTrue(rows)
+        self.assertLessEqual(max(rows), 13)   # ekran 14 satır: 14. satır çubuk
+
 
 # ── taşıyıcılar ──────────────────────────────────────────────────────────────────────────
 
@@ -643,6 +966,8 @@ class WsTransportTests(unittest.TestCase):
         self.assertEqual(kwargs["additional_headers"], {"Authorization": "Bearer tok"})
         self.assertGreaterEqual(kwargs["max_size"], 1024 * 1024)   # `lite`siz tam kare sığmalı
         self.assertLessEqual(kwargs["close_timeout"], 2.0)         # `q` ile çıkış 10 sn takılmasın
+        self.assertIn("ping_interval", kwargs)
+        self.assertIsNone(kwargs["ping_interval"])   # kütüphane keepalive'ı kapalı: canlılığı görüntüleyici izler
         self.assertTrue(ws.closed)
 
     def test_term_messages_are_unwrapped_and_other_messages_become_ticks(self):
@@ -929,6 +1254,27 @@ class WatchLoopTests(unittest.TestCase):
         self.assertTrue(self.stop.is_set())
         self.assertEqual(self.sleeps, [])
 
+    def test_x_during_the_reconnect_wait_hides_the_popup(self):
+        class Keys:
+            def __init__(self):
+                self.polls = 0
+
+            def poll(self):
+                self.polls += 1
+                return "x" if self.polls == 12 else ""   # ~3 sn bekleme, sonra kutu açıkken bas
+
+        ws = Script("ws", [[watch.TransportError("ConnectionRefusedError")]] * 3)
+        self.run_loop(ws, Script("rest", []), mode="ws", keys=Keys())
+        self.assertTrue(self.viewer.popup_hidden)
+        self.assertFalse(self.stop.is_set() and self.sleeps == [])   # çıkmadı, bekleme gerçekten işledi
+
+    def test_popup_shows_up_during_a_long_outage_in_the_loop(self):
+        ws = Script("ws", [[good("last"), watch.TransportError("ConnectionRefusedError")]]
+                    + [[watch.TransportError("ConnectionRefusedError")]] * 3)
+        self.run_loop(ws, Script("rest", []), mode="ws")
+        self.assertIn("┌", self.out.getvalue())
+        self.assertIn("Panele ulaşılamıyor", self.out.getvalue())
+
     def test_dead_screen_ends_the_loop(self):
         self.screen.dead = True
         ws = Script("ws", [[good("a")]])
@@ -953,6 +1299,57 @@ class WantsQuitTests(unittest.TestCase):
 
     def test_q_next_to_an_escape_sequence_still_quits(self):
         self.assertTrue(watch.wants_quit("\x1b[Aq"))
+
+
+class WantsDismissTests(unittest.TestCase):
+    def test_plain_x(self):
+        for chunk in ("x", "X", "ax", "x\n"):
+            self.assertTrue(watch.wants_dismiss(chunk), chunk)
+
+    def test_other_keys_do_not_dismiss(self):
+        for chunk in ("", "a", "q", "\r", "hello"):
+            self.assertFalse(watch.wants_dismiss(chunk), chunk)
+
+    def test_x_inside_an_escape_sequence_does_not_dismiss(self):
+        for chunk in ("\x1b[1;5x", "\x1bOx", "\x1bx"):
+            self.assertFalse(watch.wants_dismiss(chunk), repr(chunk))
+
+
+class QuitRequestedTests(unittest.TestCase):
+    class Keys:
+        def __init__(self, *chunks):
+            self.chunks = list(chunks)
+
+        def poll(self):
+            return self.chunks.pop(0) if self.chunks else ""
+
+    def setUp(self):
+        self.stop = threading.Event()
+        self.screen, _, _ = make_screen()
+        self.viewer = watch.Viewer("yuhem", "s1", self.screen)
+
+    def test_x_hides_the_popup_without_quitting(self):
+        self.viewer.apply_failure("ConnectionRefusedError")
+        self.assertFalse(watch._quit_requested(self.Keys("x"), self.stop, self.viewer))
+        self.assertTrue(self.viewer.popup_hidden)
+        self.assertFalse(self.stop.is_set())
+
+    def test_x_while_everything_is_fine_does_not_suppress_the_next_outage(self):
+        self.viewer.apply_frame(good())
+        watch._quit_requested(self.Keys("x"), self.stop, self.viewer)
+        self.assertFalse(self.viewer.popup_hidden)
+
+    def test_q_quits_and_does_not_hide(self):
+        self.assertTrue(watch._quit_requested(self.Keys("q"), self.stop, self.viewer))
+        self.assertFalse(self.viewer.popup_hidden)
+
+    def test_x_without_a_viewer_is_ignored(self):
+        self.assertFalse(watch._quit_requested(self.Keys("x"), self.stop))
+
+    def test_no_keys_object(self):
+        self.assertFalse(watch._quit_requested(None, self.stop, self.viewer))
+        self.stop.set()
+        self.assertTrue(watch._quit_requested(None, self.stop, self.viewer))
 
 
 # ── --once ────────────────────────────────────────────────────────────────────────────────
@@ -999,6 +1396,150 @@ class RunOnceTests(unittest.TestCase):
         code, out, err = self.run_once()
         self.assertEqual((code, out), (1, ""))
         self.assertIn("cops watch:", err)
+
+
+# ── terminale sızıntı ───────────────────────────────────────────────────────────────────────
+
+def _root_has_handlers():
+    return bool(logging.getLogger().handlers)
+
+
+class QuietTerminalTests(unittest.TestCase):
+    def test_library_logging_goes_to_diag_log_not_to_stderr(self):
+        err = io.StringIO()
+        with mock.patch.object(watch, "diag_log") as log, contextlib.redirect_stderr(err):
+            with watch.quiet_terminal("yuhem:s1"):
+                try:
+                    raise ValueError("boom")
+                except ValueError:
+                    logging.getLogger("websockets.client").error("keepalive ping failed", exc_info=True)
+        self.assertEqual(err.getvalue(), "")
+        self.assertEqual(log.call_args[0][0], "watch_lib_log")
+        fields = log.call_args[1]
+        self.assertEqual((fields["target"], fields["msg"], fields["logger"]),
+                         ("yuhem:s1", "keepalive ping failed", "websockets.client"))
+        self.assertIn("ValueError: boom", fields["error"])
+
+    @unittest.skipIf(_root_has_handlers(), "başka bir test kök logger'a handler koymuş")
+    def test_control_the_same_call_without_it_does_leak_to_stderr(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            logging.getLogger("websockets.client").error("keepalive ping failed")
+        self.assertIn("keepalive ping failed", err.getvalue())
+
+    def test_handler_is_removed_on_exit(self):
+        before = list(logging.getLogger().handlers)
+        with watch.quiet_terminal("t"):
+            self.assertEqual(len(logging.getLogger().handlers), len(before) + 1)
+        self.assertEqual(logging.getLogger().handlers, before)
+
+    def test_thread_exceptions_are_logged_not_printed_and_the_hook_is_restored(self):
+        err = io.StringIO()
+        original = threading.excepthook
+        with mock.patch.object(watch, "diag_log") as log, contextlib.redirect_stderr(err):
+            with watch.quiet_terminal("t"):
+                th = threading.Thread(target=lambda: 1 / 0, name="bad-thread")
+                th.start()
+                th.join()
+        self.assertEqual(err.getvalue(), "")
+        self.assertEqual(log.call_args[0][0], "watch_thread_error")
+        self.assertEqual(log.call_args[1]["thread"], "bad-thread")
+        self.assertIn("ZeroDivisionError", log.call_args[1]["error"])
+        self.assertIs(threading.excepthook, original)
+
+    def test_system_exit_in_a_thread_is_not_logged(self):
+        with mock.patch.object(watch, "diag_log") as log:
+            with watch.quiet_terminal("t"):
+                th = threading.Thread(target=lambda: sys.exit(0))
+                th.start()
+                th.join()
+        log.assert_not_called()
+
+    def test_handler_throttles_a_flapping_connection(self):
+        clock = Clock()
+        with mock.patch.object(watch, "diag_log") as log:
+            h = watch._DiagLogHandler("t", clock=clock)
+            rec = logging.LogRecord("websockets.client", logging.ERROR, __file__, 1, "x", None, None)
+            h.emit(rec)
+            clock.now += watch._DiagLogHandler.MIN_INTERVAL_SECONDS - 1
+            h.emit(rec)
+            self.assertEqual(log.call_count, 1)
+            clock.now += 2
+            h.emit(rec)
+            self.assertEqual(log.call_count, 2)
+
+    def test_handler_ignores_records_below_warning(self):
+        with mock.patch.object(watch, "diag_log") as log, watch.quiet_terminal("t"):
+            logging.getLogger("websockets.client").info("connection open")
+        log.assert_not_called()
+
+
+@unittest.skipUnless(watch.import_ws_connect(), "websockets kurulu değil")
+class KeepaliveFailureTests(unittest.TestCase):
+    """Kullanıcının mirror penceresinde gördüğü hatanın birebir tekrarı: sunucu Ping'e Pong vermiyor (web_ws'in
+    eski hatası), istemci kütüphanesinin keepalive'ı bağlantıyı "1011 keepalive ping timeout" ile keser ve
+    traceback'i `logging` ile terminale basar."""
+
+    def setUp(self):
+        from websockets.server import ServerProtocol
+        self.done = threading.Event()
+        self.listener = socket.socket()
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(1)
+        self.port = self.listener.getsockname()[1]
+        self.addCleanup(self.listener.close)
+        self.addCleanup(self.done.set)
+
+        def serve():
+            conn, _ = self.listener.accept()
+            protocol = ServerProtocol()
+            protocol.receive_data(conn.recv(65536))
+            protocol.send_response(protocol.accept(protocol.events_received()[0]))
+            conn.sendall(b"".join(protocol.data_to_send()))
+            conn.settimeout(0.1)
+            while not self.done.is_set():   # okur ama HİÇBİR ŞEYE yanıt vermez: Pong yok, close-ack yok
+                try:
+                    if not conn.recv(65536):
+                        break
+                except socket.timeout:
+                    pass
+                except OSError:
+                    break
+            conn.close()
+
+        threading.Thread(target=serve, daemon=True).start()
+
+    def run_client(self):
+        connect = watch.import_ws_connect()
+        conn = connect(f"ws://127.0.0.1:{self.port}/", ping_interval=0.1, ping_timeout=0.2, close_timeout=0.2)
+        try:
+            with self.assertRaises(Exception) as cm:
+                conn.recv(timeout=10)
+            time.sleep(0.6)   # keepalive thread'inin hata günlüğünü basmasına izin ver
+            return cm.exception
+        finally:
+            conn.close()
+
+    def test_the_failure_is_the_one_from_the_bug_report(self):
+        with contextlib.redirect_stderr(io.StringIO()):   # kütüphane traceback'i basacak: test çıktısını kirletmesin
+            exc = self.run_client()
+        self.assertIn("keepalive ping timeout", str(exc))
+        self.assertIn("ConnectionClosedError", watch._ws_error(exc).detail)
+
+    @unittest.skipIf(_root_has_handlers(), "başka bir test kök logger'a handler koymuş")
+    def test_control_without_quiet_terminal_the_traceback_leaks_to_stderr(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.run_client()
+        self.assertIn("Traceback", err.getvalue())
+
+    def test_with_quiet_terminal_nothing_reaches_stderr(self):
+        err = io.StringIO()
+        with mock.patch.object(watch, "diag_log") as log, contextlib.redirect_stderr(err):
+            with watch.quiet_terminal("yuhem:s1"):
+                self.run_client()
+        self.assertEqual(err.getvalue(), "")
+        self.assertIn("watch_lib_log", [c[0][0] for c in log.call_args_list])
 
 
 class RegisterTests(unittest.TestCase):

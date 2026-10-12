@@ -9,7 +9,8 @@ kurulamıyorsa `/api/term/output?...&lite=1` REST yoklaması. Yetki `Authorizati
 başlığıyla gider (token URL'ye girmez).
 
 Bu bir tmux client DEĞİL, canlı bir resim:
-  - Yazı yazmaz (yazmak panel popup'ında). Yazılan tuşlar yankılanmaz; `q` ya da Ctrl-C çıkar.
+  - Yazı yazmaz (yazmak panel popup'ında). Yazılan tuşlar yankılanmaz; `q` ya da Ctrl-C çıkar,
+    `x` sorun kutusunu gizler (aşağıda).
   - Yerel kaydırma yok (geçmiş popup'taki `history`'de). Kare yalnız görünür `rows` satırıdır.
   - İmleç konumu karede YOK, imleç gizlenir.
   - Altta 1 satırlık durum çubuğu var; pencere pane'in `cols × (rows+1)` boyutuna istenir
@@ -26,12 +27,24 @@ isimle yeniden başlatabilir). Son kare ekranda kalır, çubukta "son güncellem
 Panel host sorunlarını HTTP 200 + `ok:false` ile döndürdüğü için sınıflama HTTP koduna değil
 gövdedeki hata metnine bakar (`classify_frame`; kalıcı çözüm: yanıta `code` alanı, TODO).
 
+Sorun `POPUP_GRACE_SECONDS`'tan uzun sürerse son karenin ÜSTÜNE sarı "!" rozetli küçük bir kutu
+çizilir (başlık + hata metni + ipucu): çubuk her zaman görünür, ama sorunun ne olduğu ve içeriğin
+bayat olduğu pencereye bakan biri için kutuda daha belirgindir. Kutu üstte durur (en değerli satırlar
+alttadır: istem, durum), `x` kutuyu o sorun bitene dek gizler. Kısa kopuşlar kutu çıkarmaz.
+
+Görüntüleyici çalışırken terminale hiçbir şey SIZMAZ (`quiet_terminal`): `websockets` kütüphanesi
+hatayı kendi thread'inde `logging` ile stderr'e (traceback dahil) basar ve alt-ekrandaki mutlak
+konumlu çizimin üstüne biner; gövde yalnız DEĞİŞİNCE yeniden çizildiği için sessiz bir pane'de o
+çöp, son durumun yerinde kalıyordu. Günlükler `diag.log`'a gider.
+
 `--once`: tek kare basıp çıkar (REST; `cops peek` ihtiyacı, ayrıca TTY'siz doğrulama için).
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import logging
 import math
 import os
 import random
@@ -65,12 +78,18 @@ WS_MAX_MESSAGE_BYTES = 16 * 1024 * 1024  # `lite`'ı yok sayan eski bir panel TA
 WS_CLOSE_TIMEOUT_SECONDS = 1.0
 BACKOFF_BASE_SECONDS = 1.0
 BACKOFF_CAP_SECONDS = 15.0
+# Sorun bu kadar sürmeden popup çıkmaz: yeniden bağlanma ilk denemede (~1 sn) çözülen kısa kopuşlar
+# gövdeyi titretmesin, çubuk yetsin.
+POPUP_GRACE_SECONDS = 3.0
+POPUP_MAX_COLS = 64
+POPUP_MIN_COLS = 30
 
 # Durum çubuğu renkleri (256 renk; gnome-terminal ve tmux'ta ortak).
 STYLE_LIVE = "\x1b[0;48;5;22;38;5;252m"
 STYLE_WAITING = "\x1b[0;48;5;24;38;5;255m"
 STYLE_RECONNECTING = "\x1b[0;48;5;130;38;5;255m"
 STYLE_SEVERE = "\x1b[0;48;5;88;38;5;255m"
+STYLE_BADGE = "\x1b[1;48;5;226;38;5;16m"   # popup'taki "!" rozeti: kalın siyah, sarı zemin
 
 _STATES = {
     "connecting": ("◌", "bağlanıyor", STYLE_WAITING),
@@ -234,6 +253,122 @@ def build_status(text: str, style: str, cols: int, row: int) -> str:
     return f"\x1b[{row};1H{style}{text}{' ' * pad}\x1b[0m"
 
 
+# ── sorun popup'ı ────────────────────────────────────────────────────────────────────────────
+
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]+")
+
+
+def clean_text(s: str) -> str:
+    """Panelden/uzak host'tan gelen hata metnini tek satıra indirir: denetim karakterleri (ESC dahil)
+    boşluğa çevrilir. Durum çubuğu ve popup bu metni olduğu gibi basar; ham kaçış dizisi terminale
+    (başlık, pano, imleç) ulaşmasın."""
+    return _CONTROL_RE.sub(" ", s).strip()
+
+
+def wrap_text(text: str, width: int, max_lines: int) -> List[str]:
+    """Düz metni görünür genişliğe göre satırlara böler (kelime sınırında; tek başına sığmayan kelimeyi
+    genişlikte keser). `max_lines`a sığmayan kısım son satırın sonunda "…" ile işaretlenir."""
+    if width <= 1 or max_lines <= 0:
+        return []
+    lines: List[str] = []
+    cur = ""
+    for word in text.split():
+        while display_width(word) > width:
+            head = truncate_ansi(word, width) or word[:1]
+            if cur:
+                lines.append(cur)
+                cur = ""
+            lines.append(head)
+            word = word[len(head):]
+        if not word:
+            continue
+        if not cur:
+            cur = word
+        elif display_width(cur) + 1 + display_width(word) <= width:
+            cur += " " + word
+        else:
+            lines.append(cur)
+            cur = word
+    if cur:
+        lines.append(cur)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = truncate_ansi(lines[-1], width - 1) + "…"
+    return lines
+
+
+# (küçük harfli alt dizeler, başlık): ilk eşleşen kazanır. Metinler `TransportError.detail`/`classify_frame`
+# çıktısından gelir; tanınmayan her şey "Bağlantı sorunu" olur, ham metin kutuda yine görünür.
+_RECONNECT_TITLES = (
+    (("unreachable",), "Host'a ulaşılamıyor"),
+    (("relay:",), "Uzak host bağlantısı koptu"),
+    (("keepalive", "no close frame", "connectionclosed"), "Panelle bağlantı koptu"),
+    (("sunucudan",), "Panelden haber gelmiyor"),
+    (("refused", "errno 111", "connection reset", "connectionreset", "remote end closed", "timed out"),
+     "Panele ulaşılamıyor"),
+)
+
+
+def describe_problem(state: str, detail: str, severe: bool) -> Tuple[str, str]:
+    """(başlık, ipucu): popup'ın ilk ve son satırı. `state`: reconnecting | waiting."""
+    low = detail.lower()
+    if state == "waiting":
+        if "unknown host" in low:
+            return "Host tanımsız", "Bu host panelde kayıtlı değil"
+        return "Session çalışmıyor", "Aynı isimle başlarsa otomatik bağlanır"
+    if severe:
+        return "Yetki hatası", "web.token bu panelle eşleşmiyor olabilir"
+    for needles, title in _RECONNECT_TITLES:
+        if any(n in low for n in needles):
+            hint = "Panel kapalı ya da yeniden başlıyor olabilir" if title == "Panele ulaşılamıyor" \
+                else "Otomatik yeniden denenir"
+            return title, hint
+    return "Bağlantı sorunu", "Otomatik yeniden denenir"
+
+
+def popup_layout(title: str, detail: str, hint: str, style: str, cols: int, body_rows: int
+                 ) -> Optional[Tuple[int, int, Tuple[str, ...]]]:
+    """Gövdenin üstüne binecek kutu: (ilk satır, ilk sütun, hazır SGR'li satırlar) ya da sığmıyorsa None.
+
+        ┌──────────────────────────────────────┐
+        │ ! Panelle bağlantı koptu             │   rozet + kalın başlık
+        │   hata metni (en çok 2 satır)        │
+        │   Otomatik yeniden denenir · x: gizle│   soluk ipucu
+        └──────────────────────────────────────┘
+
+    Yatayda ortalı, 1. satırın altından (2. satır) başlar: en değerli satırlar gövdenin altındadır
+    (istem, durum), üstü kapatmak "son hali görme" amacına en az zarar verir. Her satırın görünür
+    genişliği `box_w`dir."""
+    box_w = min(cols, POPUP_MAX_COLS)
+    if box_w < POPUP_MIN_COLS:
+        return None
+    tw = box_w - 8   # `│` + boşluk + rozet(3) + boşluk | metin | boşluk + `│`
+    shown_title = truncate_ansi(title, tw)
+    detail_lines = wrap_text(detail, tw, 2)
+    key_hint = " · x: gizle"   # gizleme tuşu ipucun kırpılsa bile görünür kalır
+    shown_hint = truncate_ansi(hint, tw - len(key_hint)) + key_hint
+
+    def pad(text: str) -> str:
+        return " " * max(tw - display_width(text), 0)
+
+    reset = "\x1b[0m"
+    rows = [f"{style}┌{'─' * (box_w - 2)}┐{reset}",
+            f"{style}│ {STYLE_BADGE} ! {style} \x1b[1m{shown_title}\x1b[22m{pad(shown_title)} │{reset}"]
+    rows += [f"{style}│     {ln}{pad(ln)} │{reset}" for ln in detail_lines]
+    rows += [f"{style}│     \x1b[2m{shown_hint}\x1b[22m{pad(shown_hint)} │{reset}",
+             f"{style}└{'─' * (box_w - 2)}┘{reset}"]
+    if body_rows < len(rows):
+        return None
+    top = 2 if body_rows >= len(rows) + 2 else 1
+    return top, (cols - box_w) // 2 + 1, tuple(rows)
+
+
+def build_popup(layout: Tuple[int, int, Tuple[str, ...]]) -> str:
+    """`popup_layout` çıktısını MUTLAK konumla yazar (gövdeden SONRA, üstüne)."""
+    top, left, rows = layout
+    return "".join(f"\x1b[{top + i};{left}H{row}" for i, row in enumerate(rows))
+
+
 # ── yeniden bağlanma gecikmesi ─────────────────────────────────────────────────────────────
 
 class Backoff:
@@ -306,9 +441,13 @@ class WsTransport:
     def frames(self, stop: threading.Event, tick: float) -> Iterator[Optional[dict]]:
         token = (self._read_token or read_token)()
         try:
+            # ping_interval=None: canlılığı görüntüleyici kendisi izler (sunucu en geç 30 sn'de bir kare yollar,
+            # `WS_SILENCE_SECONDS` sessizlikte bağlantı yenilenir). Kütüphanenin keepalive'ı ikinci, gürültülü bir
+            # mekanizma: kendi thread'inde hata verince traceback basar (bkz. `quiet_terminal`) ve web_hosts'taki
+            # panel istemcileri de aynı sebeple kapalı tutuyor.
             conn = self._connect(self.url, additional_headers={"Authorization": f"Bearer {token}"},
                                  open_timeout=HTTP_TIMEOUT_SECONDS, close_timeout=WS_CLOSE_TIMEOUT_SECONDS,
-                                 max_size=WS_MAX_MESSAGE_BYTES)
+                                 max_size=WS_MAX_MESSAGE_BYTES, ping_interval=None)
         except Exception as e:
             raise _ws_error(e) from e
         last_rx = self._clock()
@@ -423,8 +562,8 @@ class Screen:
 
 
 class Viewer:
-    """Son kareyi ve durumu tutar, `render()` yalnız DEĞİŞENİ çizer (gövde: yeni kare ya da
-    boyut değişimi; çubuk: metin değişimi, yani saniyede en çok bir kez)."""
+    """Son kareyi ve durumu tutar, `render()` yalnız DEĞİŞENİ çizer (gövde: yeni kare, boyut değişimi ya da
+    popup'ın çıkması/kalkması/değişmesi; çubuk: metin değişimi, yani saniyede en çok bir kez)."""
 
     def __init__(self, host: str, session: str, screen: Screen, *, resize: bool = True,
                  clock: Callable[[], float] = time.monotonic):
@@ -443,9 +582,14 @@ class Viewer:
         # sessiz bir pane'de "son kare" yaşı yanıltırdı). Bağlantı kopunca ya da session gidince
         # tazelenmeyi bırakır, yani çubuktaki yaş "ne zamandır güncel değil"i verir.
         self.fresh_at: Optional[float] = None
+        # Canlı olmayan durumun BAŞLADIĞI an (popup gecikmesi için); canlıya dönünce sıfırlanır. `popup_hidden`:
+        # kullanıcı `x` ile kutuyu gizledi, bu sorun bitene dek (canlıya dönene dek) geri gelmez.
+        self.trouble_since: Optional[float] = None
+        self.popup_hidden = False
         self._frame_key: Any = None
         self._body_dirty = True
         self._status_key: Any = None
+        self._popup_key: Any = None
         self._last_size: Optional[Tuple[int, int]] = None
         self._resized_for: Optional[Tuple[int, int]] = None
 
@@ -458,7 +602,10 @@ class Viewer:
                 self.frame = frame
                 self._body_dirty = True
             self.fresh_at = self._clock()
-        self.state, self.detail, self.severe, self.retry_in = state, detail, False, None
+            self.trouble_since, self.popup_hidden = None, False
+        else:
+            self._note_trouble()
+        self.state, self.detail, self.severe, self.retry_in = state, clean_text(detail), False, None
 
     def confirm_fresh(self) -> None:
         """Sağlıklı bir bağlantıda yeni kare gelmedi (pane değişmedi): canlıyken bu, içeriğin hâlâ güncel olduğu demek."""
@@ -466,7 +613,28 @@ class Viewer:
             self.fresh_at = self._clock()
 
     def apply_failure(self, detail: str, *, severe: bool = False) -> None:
-        self.state, self.detail, self.severe = "reconnecting", detail, severe
+        self._note_trouble()
+        self.state, self.detail, self.severe = "reconnecting", clean_text(detail), severe
+
+    def _note_trouble(self) -> None:
+        if self.trouble_since is None:
+            self.trouble_since = self._clock()
+
+    def dismiss_popup(self) -> None:
+        if self.trouble_since is not None:   # sorun yokken basılan `x`, sonraki kesintinin kutusunu bastırmasın
+            self.popup_hidden = True
+
+    def popup_visible(self) -> bool:
+        return (self.state in ("reconnecting", "waiting") and not self.popup_hidden
+                and self.trouble_since is not None
+                and self._clock() - self.trouble_since >= POPUP_GRACE_SECONDS)
+
+    def _popup(self, cols: int, body_rows: int) -> Optional[Tuple[int, int, Tuple[str, ...]]]:
+        if not self.popup_visible():
+            return None
+        title, hint = describe_problem(self.state, self.detail, self.severe)
+        style = STYLE_SEVERE if self.severe else _STATES[self.state][2]
+        return popup_layout(title, self.detail, hint, style, cols, body_rows)
 
     def set_retry_in(self, seconds: Optional[float]) -> None:
         self.retry_in = seconds
@@ -511,10 +679,18 @@ class Viewer:
             self._body_dirty = True
             self._status_key = None
             out.append(self.screen.title_seq())
+        popup = self._popup(cols, rows - 1)
+        if (popup, cols, rows) != self._popup_key:
+            # Kutu çıktı/değişti/kalktı: altındaki gövde yeniden çizilir (kalkınca üstü böyle silinir).
+            # Geri sayım gibi saniyelik değişenler çubukta, kutuda değil, yani bu nadiren tetiklenir.
+            self._popup_key = (popup, cols, rows)
+            self._body_dirty = True
         if self._body_dirty:
             lines = (fit_lines(self.frame["text"], cols, rows - 1, lite=bool(self.frame.get("lite")))
                      if self.frame else [])
             out.append(build_body(lines, rows - 1))
+            if popup:
+                out.append(build_popup(popup))
             self._body_dirty = False
         text, style = self.status()
         key = (text, style, cols, rows)
@@ -579,9 +755,19 @@ def wants_quit(chunk: str) -> bool:
     return "q" in _KEY_SEQ_RE.sub("", chunk).lower()
 
 
-def _quit_requested(keys: Optional[Any], stop: threading.Event) -> bool:
-    if keys is not None and wants_quit(keys.poll()):
-        stop.set()
+def wants_dismiss(chunk: str) -> bool:
+    """`x`/`X` basıldı mı (sorun kutusunu gizle). `wants_quit` ile aynı kural: tuş dizilerinin içindeki x sayılmaz."""
+    return "x" in _KEY_SEQ_RE.sub("", chunk).lower()
+
+
+def _quit_requested(keys: Optional[Any], stop: threading.Event, viewer: Optional[Viewer] = None) -> bool:
+    """Tuşları okur: `q` çıkış, `x` (viewer verilmişse) sorun kutusunu gizler. Çıkış istendi mi döner."""
+    if keys is not None:
+        chunk = keys.poll()
+        if wants_quit(chunk):
+            stop.set()
+        elif viewer is not None and wants_dismiss(chunk):
+            viewer.dismiss_popup()
     return stop.is_set()
 
 
@@ -589,7 +775,7 @@ def _wait_with_ticks(viewer: Viewer, seconds: float, *, stop: threading.Event, k
                      clock: Callable[[], float], sleep: Callable[[float], None]) -> None:
     """Yeniden bağlanma beklemesi: bekleme boyunca çubuk geri sayımı ve saat güncellenir, `q` dinlenir."""
     end = clock() + seconds
-    while not _quit_requested(keys, stop) and not viewer.screen.dead:
+    while not _quit_requested(keys, stop, viewer) and not viewer.screen.dead:
         remaining = end - clock()
         if remaining <= 0:
             break
@@ -624,7 +810,7 @@ def watch_loop(viewer: Viewer, ws: Optional[WsTransport], rest: RestTransport, *
         try:
             gen = transport.frames(stop, TICK_SECONDS)
             for frame in gen:
-                if _quit_requested(keys, stop) or viewer.screen.dead:
+                if _quit_requested(keys, stop, viewer) or viewer.screen.dead:
                     break
                 if frame is not None:
                     got_frame = True
@@ -655,6 +841,60 @@ def watch_loop(viewer: Viewer, ws: Optional[WsTransport], rest: RestTransport, *
             continue
         viewer.render()
         _wait_with_ticks(viewer, backoff.next(), stop=stop, keys=keys, clock=clock, sleep=sleep)
+
+
+# ── terminale sızıntıyı kes ─────────────────────────────────────────────────────────────────
+
+class _DiagLogHandler(logging.Handler):
+    """`logging` kayıtlarını (WARNING+) terminale değil `diag.log`'a yazar; titreyen bir bağlantı
+    dosyayı doldurmasın diye `MIN_INTERVAL_SECONDS`te en çok bir satır."""
+
+    MIN_INTERVAL_SECONDS = 5.0
+
+    def __init__(self, target: str, clock: Callable[[], float] = time.monotonic):
+        super().__init__(level=logging.WARNING)
+        self._target = target
+        self._clock = clock
+        self._last: Optional[float] = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            now = self._clock()
+            if self._last is not None and now - self._last < self.MIN_INTERVAL_SECONDS:
+                return
+            self._last = now
+            exc = record.exc_info[1] if record.exc_info else None
+            diag_log("watch_lib_log", target=self._target, logger=record.name, level=record.levelname,
+                     msg=record.getMessage()[:200], error=f"{type(exc).__name__}: {exc}"[:200] if exc else "")
+        except Exception:
+            pass
+
+
+@contextlib.contextmanager
+def quiet_terminal(target: str) -> Iterator[None]:
+    """Blok boyunca terminale (stderr) hiçbir kütüphane çıktısı sızmaz: kök `logging` logger'ına bir
+    handler konur (böylece `logging.lastResort`un stderr çıktısı hiç devreye girmez) ve thread'lerde
+    yakalanmamış istisnalar `threading.excepthook` yerine `diag.log`'a yazılır. Neden: `websockets`'in
+    keepalive thread'i hata verince `logger.error(..., exc_info=True)` ile traceback basar; görüntüleyici
+    alt-ekranda mutlak konumla çizdiği için o satırlar gövdenin üstüne biner ve gövde yalnız DEĞİŞİNCE
+    yeniden çizildiğinden sessiz bir pane'de çöp, son durumun yerinde kalır."""
+    handler = _DiagLogHandler(target)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    old_hook = threading.excepthook
+
+    def hook(args: Any) -> None:
+        if args.exc_type is SystemExit:
+            return
+        diag_log("watch_thread_error", target=target, thread=getattr(args.thread, "name", "?"),
+                 error=f"{getattr(args.exc_type, '__name__', '?')}: {args.exc_value}"[:200])
+
+    threading.excepthook = hook
+    try:
+        yield
+    finally:
+        threading.excepthook = old_hook
+        root.removeHandler(handler)
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────────────────
@@ -720,7 +960,7 @@ def run(args: argparse.Namespace) -> int:
     viewer = Viewer(host, name, screen, resize=not args.no_resize)
     screen.enter()
     try:
-        with Keys() as keys:
+        with Keys() as keys, quiet_terminal(f"{host}:{name}"):
             watch_loop(viewer, ws, rest, mode=args.transport, stop=stop, keys=keys)
     except KeyboardInterrupt:
         pass

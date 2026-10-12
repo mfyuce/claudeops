@@ -269,6 +269,8 @@ py/cops watch     # TEK bir session'ın terminalini (yerel ya da uzak host'ta) b
                    #   salt-okunur aynalar: `py/cops watch ulak_31:rustrino20261009` (yalnız ad = yerel).
                    #   Yalnız yerel panelle konuşur (WS push, REST yedek); pencere başlığı `host:ad`,
                    #   1 satırlık durum çubuğu canlı/yeniden bağlanıyor/bekliyor gösterir; `q` ya da Ctrl-C çıkar.
+                   #   Son kare hep ekranda kalır; sorun 3 sn'den uzun sürerse üstüne küçük bir `!` kutusu
+                   #   (başlık + hata + ipucu) çıkar, `x` kutuyu bir sonraki kesintiye dek gizler.
                    #   `--once` tek kare basıp çıkar (TTY gerekmez).
                    #   Panelden: Çalışanlar sekmesinde uzak session satırındaki "masaüstüne aç" düğmesi bu
                    #   pencereyi senin için açar (ikinci tık açık olanı öne getirir).
