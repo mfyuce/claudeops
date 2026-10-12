@@ -265,6 +265,11 @@ py/cops handover  # session'ı wrap-up mesajıyla kapatıp aynı adla yeniden a�
 py/cops stuck     # takılı kalmış (idle ama "busy" görünen) session'ları tespit et
 py/cops layout    # pencereleri masaüstlerine dağıt (X11)
 py/cops web       # kontrol paneli (yukarıda)
+py/cops watch     # TEK bir session'ın terminalini (yerel ya da uzak host'ta) bu terminal penceresinde canlı,
+                   #   salt-okunur aynalar: `py/cops watch ulak_31:rustrino20261009` (yalnız ad = yerel).
+                   #   Yalnız yerel panelle konuşur (WS push, REST yedek); pencere başlığı `host:ad`,
+                   #   1 satırlık durum çubuğu canlı/yeniden bağlanıyor/bekliyor gösterir; `q` ya da Ctrl-C çıkar.
+                   #   `--once` tek kare basıp çıkar (TTY gerekmez).
 py/cops service   # `web`+tunnel için systemd --user kalıcılığı (install/status/uninstall)
 py/cops mcp-queue # MCP stdio server: bir *agent'ın* (insan değil) Ekip/Team orkestrasyon motorunu
                    #   panelin kullandığı AYNI yerel /api/orch/* üzerinden kendisi sürmesini sağlar.
