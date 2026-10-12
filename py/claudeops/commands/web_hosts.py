@@ -1210,7 +1210,9 @@ class _TermRelay:
 
 
 _term_relay_lock = threading.Lock()
-_term_relays: Dict[Tuple[str, str, str], _TermRelay] = {}
+# Anahtar: (host, name, lang, lite). `lite` anahtarda, çünkü lite isteyen ile tam kare isteyen
+# iki istemci AYNI uzak akışı paylaşamaz: biri uzaktan ~4 KB'lık, öteki ~200 KB'lık kare bekler.
+_term_relays: Dict[Tuple[str, str, str, bool], _TermRelay] = {}
 
 
 def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
@@ -1226,7 +1228,7 @@ def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
     return parsed["data"]
 
 
-def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict]:
+def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False) -> Callable[[], dict]:
     """`web.py`'nin `/ws/term` dalına geçirilecek `fetch_fn` closure'ını
     üretir — `_term_poll_loop`'un HER 200ms'de bir çağırdığı şey artık bir
     ağ isteği DEĞİL, bu ucuz in-process cache okuması (`_TermRelay.read()`).
@@ -1253,8 +1255,16 @@ def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict
     "eski, yeni, yine eski" döngüsünü görüyordu. Artık `is_alive()` de
     kontrol ediliyor; ölüyse eskisi (kilit DIŞINDA, ağ I/O yapabileceği için
     `_ensure_status_consumer`'la aynı desen) durdurulup yerine taze bir
-    relay kuruluyor."""
-    key = (host_name, name, lang)
+    relay kuruluyor.
+
+    `lite` (2026-10-12, TODO.md "Uzak host'a `lite` iletilsin"): ws tier'inde uzak
+    `/ws/term`'e `&lite=1` eklenir, yani host↔host hop da küçük kare taşır (ulak_31'de pane
+    başına ~1,4 MB/sn → ~16 KB/sn). Uyumluluk iki yönlü: `lite`'ı bilmeyen eski bir uzak host
+    parametreyi yok sayıp TAM kare yollar ve `web._term_fetch_fn`'in `to_lite` sarmalayıcısı
+    onu yerelde kırpar; `lite:true` gelen kare ise `to_lite`'tan AYNEN geçer. gRPC tier'inde
+    proto'da `lite` alanı yok (pb2 yeniden üretilmesi gerekir), uzak hop tam kare kalır."""
+    lite = bool(lite)
+    key = (host_name, name, lang, lite)
 
     def fetch_fn() -> dict:
         host = hosts_mod.get_host(host_name)
@@ -1278,10 +1288,12 @@ def term_output_relay(host_name: str, name: str, lang: str) -> Callable[[], dict
                     make_call: Callable[[], Any] = lambda: web_grpc.open_term_stream(host["grpc_url"], token, name, lang)
                     parse_item: Callable[[Any], Optional[dict]] = web_grpc._term_proto_to_dict
                 else:
-                    url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang)
+                    extra = {"lite": "1"} if lite else {}
+                    url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang, **extra)
                     make_call = lambda: ws_connect(url, open_timeout=10.0, ping_interval=None)
                     parse_item = _parse_ws_term_frame
-                relay = _TermRelay(tier, make_call, parse_item, label=f"term:{host_name}/{name}")
+                relay = _TermRelay(tier, make_call, parse_item,
+                                   label=f"term:{host_name}/{name}" + ("?lite" if lite else ""))
                 _term_relays[key] = relay
         if dead is not None:
             dead.stop()

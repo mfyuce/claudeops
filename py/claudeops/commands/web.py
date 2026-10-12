@@ -42,7 +42,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
 
@@ -1837,6 +1837,37 @@ def _term_output(name: str, lang: str = "tr") -> dict:
             "masked": bool(masked), "mode": _detect_mode_in_text(text, get_provider(s.cli))}
 
 
+def _term_remote_query(name: str, lang: str, lite: bool) -> Dict[str, str]:
+    """Uzak host'un `/api/term/output`'una giden sorgu. `lite` yalnız istenirse eklenir:
+    `lite`'ı bilmeyen eski bir host parametreyi yok sayıp tam kare döner, onu `to_lite`
+    yerelde kırpar (bkz. `_term_fetch_fn`)."""
+    query = {"name": name, "lang": lang}
+    if lite:
+        query["lite"] = "1"
+    return query
+
+
+def _term_fetch_fn(host: str, name: str, lang: str, lite: bool) -> Callable[[], dict]:
+    """`/ws/term`'ün her tick'te çağırdığı kare kaynağı: yerel `_term_output`, REST-proxy ya da
+    relay (ws/grpc tier). `lite` ise kaynak ne olursa olsun `to_lite` ile sarılır, böylece
+    yerel, REST-proxy ve relay kaynaklı kareler AYNI dönüşümden geçer.
+
+    `lite` uzak host'a da iletilir (2026-10-12): host↔host hop da küçük kare taşır. Sarmalayıcı
+    yine de durur, çünkü (a) `lite`'ı bilmeyen eski bir host tam kare yollar, (b) gRPC tier'i
+    `lite`'ı taşıyamaz; `lite:true` gelen kare `to_lite`'tan AYNEN geçer, yani çift kırpma
+    olmaz. `memo` bağlantıya özel."""
+    if host != LOCAL_HOST_NAME and web_hosts.get_tier(host) != "rest":
+        fetch_fn = web_hosts.term_output_relay(host, name, lang, lite=lite)
+    elif host != LOCAL_HOST_NAME:
+        query = _term_remote_query(name, lang, lite)
+        fetch_fn = lambda: web_hosts.proxy_get("/api/term/output", host, query)[0]
+    else:
+        fetch_fn = lambda: _term_output(name, lang=lang)
+    if lite:
+        fetch_fn = (lambda inner, memo: lambda: web_term_lite.to_lite(inner(), memo))(fetch_fn, {})
+    return fetch_fn
+
+
 def _term_input(name: str, text: str, lang: str = "tr") -> dict:
     s, err = _term_resolve(name, lang)
     if err:
@@ -3518,19 +3549,10 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            if host != LOCAL_HOST_NAME and web_hosts.get_tier(host) != "rest":
-                fetch_fn = web_hosts.term_output_relay(host, name, lang)
-            elif host != LOCAL_HOST_NAME:
-                fetch_fn = lambda: web_hosts.proxy_get("/api/term/output", host, {"name": name, "lang": lang})[0]
-            else:
-                fetch_fn = lambda: _term_output(name, lang=lang)
-            if (qs.get("lite") or [""])[0] == "1":
-                # Yerel, REST-proxy ve relay kaynaklı kareler AYNI dönüşümden geçsin diye
-                # kaynak seçiminin DIŞINDA sarıyoruz. Uzak host'a `lite` iletilmiyor: host↔host
-                # hop'u eskisi gibi tam kare taşır (uzak host henüz eski kodda olabilir),
-                # küçülen hop tarayıcıya giden tünel. `memo` bağlantıya özel.
-                fetch_fn = (lambda inner, memo: lambda: web_term_lite.to_lite(inner(), memo))(fetch_fn, {})
-            web_ws.handle_ws_term(self, fetch_fn)
+            # Kaynak seçimi + `lite` sarmalayıcısı (ve `lite`'ın uzak host'a iletilmesi)
+            # `_term_fetch_fn`'de, testli.
+            lite = (qs.get("lite") or [""])[0] == "1"
+            web_ws.handle_ws_term(self, _term_fetch_fn(host, name, lang, lite))
             return
         elif path == "/api/status":
             self._json(_status_payload())
@@ -3612,7 +3634,9 @@ class _Handler(BaseHTTPRequestHandler):
             # kaydırınca bu yoldan bir kez çeker, eski istemciler de aynen çalışır.
             lite = (qs.get("lite") or [""])[0] == "1"
             if host != LOCAL_HOST_NAME:
-                result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang})
+                # `lite` uzak host'a da gider (host↔host hop küçülür); eski host yok sayarsa
+                # `to_lite` yerelde kırpar, `lite:true` gelen kare aynen geçer.
+                result, status = web_hosts.proxy_get(path, host, _term_remote_query(name, lang, lite))
                 self._json(web_term_lite.to_lite(result) if lite else result, status=status)
                 return
             result = _term_output(name, lang=lang)
