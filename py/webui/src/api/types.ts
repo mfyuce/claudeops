@@ -489,6 +489,9 @@ export type EditResult = ApiResult<{ name: string; warnings: string[] }>;
 /** `_register_project()` / `_retire()` / `_close_project()` / `_term_input()` /
  * `_term_key()` / `_open_window()` — bare `{ok: true}` on success. */
 export type SimpleResult = ApiResult;
+/** `_open_mirror_window()`. `already_open`: a mirror for this session was already running, so none was
+ * spawned; `focused` (only then): whether the existing window could be raised (`wmctrl`, best-effort). */
+export type MirrorWindowResult = ApiResult<{ already_open: boolean; focused?: boolean }>;
 /** `_instances_list()`. */
 export type InstancesResult = ApiResult<{ instances: InstanceRecord[] }>;
 /** `_handover()`. */

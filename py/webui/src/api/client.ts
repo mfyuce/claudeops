@@ -49,6 +49,7 @@ import type {
   OrchStartResult,
   Settings,
   SettingsResult,
+  MirrorWindowResult,
   SimpleResult,
   SnapshotListResult,
   SnapshotResumeResult,
@@ -301,6 +302,11 @@ export const apiClose = (p: NamePayload): Promise<SimpleResult> => apiPost<Simpl
 export const apiHandover = (p: NamePayload): Promise<HandoverResult> => apiPost<HandoverResult>("/api/handover", p);
 export const apiTermOpenWindow = (p: NamePayload): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/term/open-window", p);
+/** Opens a live read-only `cops watch` window for a REMOTE session on THIS machine's desktop. Unlike
+ * `apiTermOpenWindow` this route is LOCAL-only (NOT in `web_hosts.HOST_ROUTED_PATHS`): `host` here is
+ * the session's host, not a routing target — routing it would open the window on the remote desktop. */
+export const apiTermMirrorWindow = (p: NamePayload): Promise<MirrorWindowResult> =>
+  apiPost<MirrorWindowResult>("/api/term/mirror-window", p);
 /** Hides the instance from History (its name stays reserved); conversation files are untouched. */
 export const apiForgetInstance = (p: NamePayload): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/instances/forget", p);

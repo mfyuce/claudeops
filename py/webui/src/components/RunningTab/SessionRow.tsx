@@ -11,7 +11,7 @@
  */
 
 import { useState } from "react";
-import { apiTermOpenWindow } from "../../api/client";
+import { apiTermMirrorWindow, apiTermOpenWindow } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
@@ -53,6 +53,7 @@ export function SessionRow({
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
   const [openingWindow, setOpeningWindow] = useState(false);
+  const [openingMirror, setOpeningMirror] = useState(false);
 
   // `diag.windowless` is inherently LOCAL-only (the aggregator's own
   // gnome-terminal-window bookkeeping) — a remote session's host may well
@@ -78,6 +79,25 @@ export function SessionRow({
       setOpeningWindow(false);
     }
     refresh();
+  }
+
+  // A remote session has no terminal window on THIS desktop (the existing "open window" acts on the
+  // host where the session runs). The mirror button opens a live read-only `cops watch` window here.
+  const mirrorable = session.host !== LOCAL_HOST && session.tmux;
+
+  async function handleOpenMirror() {
+    setOpeningMirror(true);
+    const label = `${session.host}:${session.name}`;
+    try {
+      const res = await apiTermMirrorWindow({ name: session.name, host: session.host, lang });
+      if (!res.ok) showToast(`${label}: ${res.error}`);
+      else if (res.already_open) showToast(t.mirrorAlreadyOpen(label, !!res.focused), "info");
+      else showToast(t.mirrorOpened(label), "success");
+    } catch (e) {
+      showToast(describeApiError(e, t));
+    } finally {
+      setOpeningMirror(false);
+    }
   }
 
   return (
@@ -151,6 +171,17 @@ export function SessionRow({
             {session.tmux && (
               <button type="button" className="start" onClick={() => onToggleTerminal(session.host, session.name)}>
                 {t.terminalBtn}
+              </button>
+            )}
+            {mirrorable && (
+              <button
+                type="button"
+                className="start"
+                disabled={openingMirror}
+                title={t.mirrorBtnHint(session.host)}
+                onClick={() => void handleOpenMirror()}
+              >
+                {openingMirror ? t.openingMirror : t.mirrorBtn}
               </button>
             )}
             {windowless && (

@@ -266,6 +266,11 @@ export interface Strings {
   windowlessHint: string;
   openWindowBtn: string;
   openingWindow: string;
+  mirrorBtn: string;
+  mirrorBtnHint: (host: string) => string;
+  openingMirror: string;
+  mirrorOpened: (label: string) => string;
+  mirrorAlreadyOpen: (label: string, focused: boolean) => string;
   diagAskCliLabel: string;
   diagAskQuestionLabel: string;
   diagAskQuestionPlaceholder: string;
@@ -682,6 +687,13 @@ export const STRINGS: Record<Lang, Strings> = {
     windowlessHint: "gnome-terminal penceresi yok (tmux-only fallback) — CLI çalışıyor, sadece görünür pencere yok. \"pencere aç\" ile CLI yeniden başlamadan bir pencere bağlayabilirsin.",
     openWindowBtn: "pencere aç",
     openingWindow: "pencere açılıyor…",
+    mirrorBtn: "masaüstüne aç",
+    mirrorBtnHint: (host) =>
+      `Bu makinenin masaüstünde canlı, salt-okunur bir terminal penceresi açar ("cops watch"); session "${host}" host'unda çalışmaya devam eder. Zaten açıksa öne getirir.`,
+    openingMirror: "açılıyor…",
+    mirrorOpened: (label) => `masaüstünde açıldı: ${label}`,
+    mirrorAlreadyOpen: (label, focused) =>
+      focused ? `${label}: zaten açık, öne getirildi` : `${label}: zaten açık (öne getirilemedi, masaüstlerine bak)`,
     diagAskCliLabel: "CLI",
     diagAskQuestionLabel: "ek soru (opsiyonel)",
     diagAskQuestionPlaceholder: "boş bırakılırsa genel teşhis istenir",
@@ -1123,6 +1135,13 @@ export const STRINGS: Record<Lang, Strings> = {
     windowlessHint: "no gnome-terminal window (tmux-only fallback) — the CLI is running, it just has no visible window. \"open window\" attaches one without restarting the CLI.",
     openWindowBtn: "open window",
     openingWindow: "opening window…",
+    mirrorBtn: "open on desktop",
+    mirrorBtnHint: (host) =>
+      `Opens a live, read-only terminal window on this machine's desktop ("cops watch"); the session keeps running on host "${host}". Brings it to the front if it is already open.`,
+    openingMirror: "opening…",
+    mirrorOpened: (label) => `opened on the desktop: ${label}`,
+    mirrorAlreadyOpen: (label, focused) =>
+      focused ? `${label}: already open, brought to the front` : `${label}: already open (could not raise it, check your desktops)`,
     diagAskCliLabel: "CLI",
     diagAskQuestionLabel: "extra question (optional)",
     diagAskQuestionPlaceholder: "leave empty for a general diagnosis",
