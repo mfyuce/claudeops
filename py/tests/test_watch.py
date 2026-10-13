@@ -831,7 +831,7 @@ class RestTransportTests(unittest.TestCase):
         self.assertEqual(frame, good())
         req = self.panel.requests[0]
         self.assertEqual(req["path"], "/api/term/output")
-        self.assertEqual(req["query"], {"name": "s 1", "host": "yuhem", "lang": "en", "lite": "1"})
+        self.assertEqual(req["query"], {"name": "s 1", "host": "yuhem", "lang": "en", "lite": "1", "viewport": "1"})
         self.assertEqual(req["auth"], "Bearer tok")
         self.assertNotIn("token", req["query"])   # token URL'ye girmez
 
@@ -961,7 +961,7 @@ class WsTransportTests(unittest.TestCase):
         parts = urllib.parse.urlsplit(url)
         self.assertEqual((parts.scheme, parts.netloc, parts.path), ("ws", "127.0.0.1:8765", "/ws/term"))
         self.assertEqual(dict(urllib.parse.parse_qsl(parts.query)),
-                         {"name": "s1", "host": "yuhem", "lang": "en", "lite": "1", "interval": "1"})
+                         {"name": "s1", "host": "yuhem", "lang": "en", "lite": "1", "viewport": "1", "interval": "1"})
         self.assertNotIn("tok", url)   # token URL'de değil
         self.assertEqual(kwargs["additional_headers"], {"Authorization": "Bearer tok"})
         self.assertGreaterEqual(kwargs["max_size"], 1024 * 1024)   # `lite`siz tam kare sığmalı

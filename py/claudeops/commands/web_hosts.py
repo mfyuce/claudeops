@@ -1236,7 +1236,7 @@ def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
 
 
 def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
-                      interval: Optional[float] = None) -> Callable[[], dict]:
+                      interval: Optional[float] = None, viewport: bool = False) -> Callable[[], dict]:
     """`web.py`'nin `/ws/term` dalına geçirilecek `fetch_fn` closure'ını
     üretir — `_term_poll_loop`'un HER 200ms'de bir çağırdığı şey artık bir
     ağ isteği DEĞİL, bu ucuz in-process cache okuması (`_TermRelay.read()`).
@@ -1276,9 +1276,16 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
     eklenir, yani uzak panel bu pane'i her 0,2 sn yerine o kadar seyrek yoklar (mirror başına uzak
     CPU ~5× düşer). `interval`'ı bilmeyen eski bir uzak host parametreyi yok sayar (davranış aynı,
     kazanç yok, zarar yok). Anahtara ve etikete girer; yoksa anahtar/URL/etiket eskisi gibi kalır.
-    gRPC tier'inde proto'da alan yok, uzak hop varsayılan sıklıkta kalır."""
+    gRPC tier'inde proto'da alan yok, uzak hop varsayılan sıklıkta kalır.
+
+    `viewport` (2026-10-13, TBD#80 A): ws tier'inde uzak `/ws/term`'e `&viewport=1` eklenir, yani uzak panel bu
+    pane için 3 tmux süreci + 2000 satırlık capture yerine tek süreç + görünür ekran çalıştırır (`web.
+    _term_output_viewport`). `viewport`ı bilmeyen eski bir uzak host parametreyi yok sayar (kare eskisi gibi
+    gelir, kazanç yok, zarar yok). Anahtara ve etikete yalnız True iken girer; gRPC tier'inde proto'da alan yok."""
     lite = bool(lite)
     key = (host_name, name, lang, lite) if interval is None else (host_name, name, lang, lite, interval)
+    if viewport:
+        key = key + ("viewport",)
 
     def fetch_fn() -> dict:
         host = hosts_mod.get_host(host_name)
@@ -1305,12 +1312,15 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                     extra = {"lite": "1"} if lite else {}
                     if interval is not None:
                         extra["interval"] = f"{interval:g}"
+                    if viewport:
+                        extra["viewport"] = "1"
                     url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang, **extra)
                     make_call = lambda: ws_connect(url, open_timeout=10.0, ping_interval=None)
                     parse_item = _parse_ws_term_frame
                 relay = _TermRelay(tier, make_call, parse_item,
                                    label=f"term:{host_name}/{name}" + ("?lite" if lite else "")
-                                   + (f"@{interval:g}s" if interval is not None else ""))
+                                   + (f"@{interval:g}s" if interval is not None else "")
+                                   + ("+viewport" if viewport else ""))
                 _term_relays[key] = relay
         if dead is not None:
             dead.stop()

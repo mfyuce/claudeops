@@ -73,7 +73,8 @@ from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
 from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_capture_range, tmux_client_count, tmux_send_keys, tmux_send_raw,
-    tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS, strip_ansi,
+    tmux_send_special_key, tmux_pane_size, tmux_pane_snapshot, pane_is_masked_input, tty_is_masked,
+    ALLOWED_SPECIAL_KEYS, strip_ansi,
 )
 from .web_static import DIST_DIR, resolve_static_path
 from . import web_grpc
@@ -1834,10 +1835,39 @@ def _vscode_open(name: str, path: Optional[str], lang: str = "tr") -> dict:
     return {"ok": True}
 
 
-def _term_output(name: str, lang: str = "tr") -> dict:
+def _term_output_viewport(s, name: str, lang: str) -> Optional[dict]:
+    """Mirror görüntüleyicinin kare türü (`viewport=1`, TBD#80 A): yalnız GÖRÜNÜR ekran, TEK tmux süreci.
+
+    `_term_output` + `web_term_lite.to_lite` ile aynı alanlar ama 3 tmux süreci ve 2000 satırlık capture yerine
+    1 süreç ve görünür ekran (tick başına ~29 ms → ~5 ms toplam CPU, ölçüm TODO.md 2026-10-13).
+
+    `text` canlı filoda (40 oturum, 2026-10-13) 37'sinde eski lite karesiyle BİREBİR aynı; kalan 3'ünde yalnız
+    İLK satırın başındaki SGR geçişi farklı (başka hiçbir satır değil). Sebep: tam capture'da o geçiş, kırpılan
+    üst satırın bitiş rengine göre üretilir (üst satır gri bitip bu satır gri başlıyorsa SGR hiç basılmaz), görünür
+    capture ise boş durumdan başlar ve ilk hücrenin rengini açıkça yazar. Doğru olan görünür capture'dır (tek
+    satırlık capture ile aynı çıktı), yani eski lite kırpma o ilk hücreyi varsayılan renkte gösterebilirdi.
+    Diğer fark: `urls`/`paths` boş (kayan giriş URL'si şeridi tarayıcı arayüzünün lite yolunda kalır; mirror
+    görüntüleyici bu alanları hiç okumaz) ve `mode` yalnız görünür ekrandan okunur.
+
+    Tek çağrı başarısızsa None: çağıran sıradan yola düşer, yani bu yol saf bir hızlandırmadır, bir tmux sürümünde
+    çalışmazsa kare yine eskisi gibi gelir (oturum gerçekten yoksa hata mesajı da eskisiyle aynıdır)."""
+    snap = tmux_pane_snapshot(s.name)
+    if snap is None:
+        return None
+    (cols, rows, hist, alt, tty), text = snap
+    return {"ok": True, "text": web_term_lite.viewport_text(text, rows), "cols": cols, "rows": rows,
+            "history_size": hist, "alternate_screen": alt, "masked": bool(tty_is_masked(tty)),
+            "mode": _detect_mode_in_text(text, get_provider(s.cli)), "lite": True, "urls": [], "paths": []}
+
+
+def _term_output(name: str, lang: str = "tr", viewport: bool = False) -> dict:
     s, err = _term_resolve_for_output(name, lang)
     if err:
         return err
+    if viewport:
+        frame = _term_output_viewport(s, name, lang)
+        if frame is not None:
+            return frame
     text = tmux_capture(s.name, lines=2000)
     if text is None:
         _term_output_resolve_cache.pop(name, None)  # respawn/gone — sıradaki tick taze çözümlesin
@@ -1896,18 +1926,20 @@ def _term_history(name: str, start: int, end: int, lang: str = "tr") -> dict:
             "history_size": hist, "rows": rows, "cols": cols, "alternate_screen": bool(alt)}
 
 
-def _term_remote_query(name: str, lang: str, lite: bool) -> Dict[str, str]:
+def _term_remote_query(name: str, lang: str, lite: bool, viewport: bool = False) -> Dict[str, str]:
     """Uzak host'un `/api/term/output`'una giden sorgu. `lite` yalnız istenirse eklenir:
     `lite`'ı bilmeyen eski bir host parametreyi yok sayıp tam kare döner, onu `to_lite`
     yerelde kırpar (bkz. `_term_fetch_fn`)."""
     query = {"name": name, "lang": lang}
     if lite:
         query["lite"] = "1"
+    if viewport:
+        query["viewport"] = "1"  # `viewport`ı bilmeyen eski host yok sayar, sıradan lite/tam kare yollar
     return query
 
 
 def _term_fetch_fn(host: str, name: str, lang: str, lite: bool,
-                   interval: Optional[float] = None) -> Callable[[], dict]:
+                   interval: Optional[float] = None, viewport: bool = False) -> Callable[[], dict]:
     """`/ws/term`'ün her tick'te çağırdığı kare kaynağı: yerel `_term_output`, REST-proxy ya da
     relay (ws/grpc tier). `lite` ise kaynak ne olursa olsun `to_lite` ile sarılır, böylece
     yerel, REST-proxy ve relay kaynaklı kareler AYNI dönüşümden geçer.
@@ -1922,10 +1954,14 @@ def _term_fetch_fn(host: str, name: str, lang: str, lite: bool,
     imzayla çağrı ve `interval`'ı bilmeyen eski bir uzak host aynen çalışır."""
     if host != LOCAL_HOST_NAME and web_hosts.get_tier(host) != "rest":
         relay_extra = {"interval": interval} if interval is not None else {}
+        if viewport:
+            relay_extra["viewport"] = True
         fetch_fn = web_hosts.term_output_relay(host, name, lang, lite=lite, **relay_extra)
     elif host != LOCAL_HOST_NAME:
-        query = _term_remote_query(name, lang, lite)
+        query = _term_remote_query(name, lang, lite, viewport)
         fetch_fn = lambda: web_hosts.proxy_get("/api/term/output", host, query)[0]
+    elif viewport:
+        fetch_fn = lambda: _term_output(name, lang=lang, viewport=True)
     else:
         fetch_fn = lambda: _term_output(name, lang=lang)
     if lite:
@@ -3758,7 +3794,9 @@ class _Handler(BaseHTTPRequestHandler):
             # her yoklama uzak host'ta 3 tmux alt süreci + 2000 satırlık capture). Yok/geçersiz/0,2 ve
             # altı → None, yani eski davranış. Oturuma girdi yazılınca döngü uyanır (`name` ile eşleşir).
             interval = web_ws.parse_term_interval((qs.get("interval") or [""])[0])
-            web_ws.handle_ws_term(self, _term_fetch_fn(host, name, lang, lite, interval=interval),
+            # `viewport=1`: mirror görüntüleyici yalnız görünür ekranı ister (tek tmux süreci, `urls`/`paths` boş).
+            viewport = (qs.get("viewport") or [""])[0] == "1"
+            web_ws.handle_ws_term(self, _term_fetch_fn(host, name, lang, lite, interval=interval, viewport=viewport),
                                   poll_seconds=_term_loop_seconds(host, interval), name=name)
             return
         elif path == "/api/status":
@@ -3840,13 +3878,14 @@ class _Handler(BaseHTTPRequestHandler):
             # `web_term_lite`). Parametresiz çağrı TAM kare döner: ön yüz scrollback'i
             # kaydırınca bu yoldan bir kez çeker, eski istemciler de aynen çalışır.
             lite = (qs.get("lite") or [""])[0] == "1"
+            viewport = (qs.get("viewport") or [""])[0] == "1"  # bkz. `_term_output_viewport`
             if host != LOCAL_HOST_NAME:
                 # `lite` uzak host'a da gider (host↔host hop küçülür); eski host yok sayarsa
                 # `to_lite` yerelde kırpar, `lite:true` gelen kare aynen geçer.
-                result, status = web_hosts.proxy_get(path, host, _term_remote_query(name, lang, lite))
+                result, status = web_hosts.proxy_get(path, host, _term_remote_query(name, lang, lite, viewport))
                 self._json(web_term_lite.to_lite(result) if lite else result, status=status)
                 return
-            result = _term_output(name, lang=lang)
+            result = _term_output(name, lang=lang, viewport=viewport)
             self._json(web_term_lite.to_lite(result) if lite else result)
         elif path == "/api/term/history":
             qs = parse_qs(urlparse(self.path).query)

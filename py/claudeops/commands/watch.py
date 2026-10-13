@@ -5,7 +5,7 @@ TBD#79 kararı, 2026-10-13: yazı satırı + kısa tuşlar + ham geçiş).
 
 Yalnız YEREL panelle konuşur (`127.0.0.1:<port>`): host seçimi, tier (rest/ws/grpc), uzak host'un
 token'ı ve fallback zaten panelde; görüntüleyicinin uzak host'a SSH'ı ya da kendi token'ı yok.
-Taşıyıcı: panelin `/ws/term?...&lite=1&interval=1` push'u (kare ~4 KB; `interval`: uzak host'u 1 sn'de bir
+Taşıyıcı: panelin `/ws/term?...&lite=1&viewport=1&interval=1` push'u (kare ~4 KB; `interval`: uzak host'u 1 sn'de bir
 yoklatır, 0,2 sn değil, bkz. `WS_POLL_INTERVAL_SECONDS`); `websockets` yoksa ya da WS
 kurulamıyorsa `/api/term/output?...&lite=1` REST yoklaması. Yetki `Authorization: Bearer`
 başlığıyla gider (token URL'ye girmez).
@@ -437,12 +437,14 @@ def _tick_seconds(tick: Any) -> float:
 
 
 def _query(host: str, name: str) -> str:
-    return urllib.parse.urlencode({"name": name, "host": host, "lang": "en", "lite": "1"})
+    # `viewport=1`: bu pencere yalnız görünür ekranı çizer, `urls`/`paths`/`mode` okumaz; panel tek tmux süreciyle
+    # yalnız görünür ekranı çeker (TBD#80 A: tick başına ~29 ms → ~5 ms toplam CPU). Bilmeyen eski panel yok sayar.
+    return urllib.parse.urlencode({"name": name, "host": host, "lang": "en", "lite": "1", "viewport": "1"})
 
 
 def _ws_query(host: str, name: str) -> str:
     """`_query` + seyrek yoklama isteği; yalnız WS için (REST yedeği kendi 1 sn'lik döngüsünü kullanır)."""
-    return urllib.parse.urlencode({"name": name, "host": host, "lang": "en", "lite": "1",
+    return urllib.parse.urlencode({"name": name, "host": host, "lang": "en", "lite": "1", "viewport": "1",
                                    "interval": f"{WS_POLL_INTERVAL_SECONDS:g}"})
 
 

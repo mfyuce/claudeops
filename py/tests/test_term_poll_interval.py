@@ -416,7 +416,7 @@ class RelayIntervalTests(unittest.TestCase):
 class WatchQueryTests(unittest.TestCase):
     def test_ws_asks_for_the_slow_interval_but_the_rest_fallback_does_not(self):
         ws_qs = dict(urllib.parse.parse_qsl(watch._ws_query("yuhem", "s1")))
-        self.assertEqual(ws_qs, {"name": "s1", "host": "yuhem", "lang": "en", "lite": "1", "interval": "1"})
+        self.assertEqual(ws_qs, {"name": "s1", "host": "yuhem", "lang": "en", "lite": "1", "viewport": "1", "interval": "1"})
         rest = watch.RestTransport(8765, "yuhem", "s1")
         self.assertNotIn("interval", dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(rest.url).query)))
 

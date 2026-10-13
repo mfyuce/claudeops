@@ -323,9 +323,18 @@ def pane_is_masked_input(name: str) -> Optional[bool]:
         )
         if r.returncode != 0:
             return None
-        pty_path = r.stdout.strip()
-        if not pty_path:
-            return None
+        return tty_is_masked(r.stdout.strip())
+    except Exception:
+        return None
+
+
+def tty_is_masked(pty_path: str) -> Optional[bool]:
+    """`pane_is_masked_input`'un ikinci yarısı: pane'in pty'sine bakıp parola istemi mi diye karar verir (ICANON
+    açık + ECHO kapalı). `pty_path` boş/açılamaz → None. Yolu zaten bilen çağıran (`tmux_pane_snapshot` aynı
+    çağrıda `#{pane_tty}` de verir) ek bir tmux süreci başlatmadan kullanır."""
+    if not pty_path:
+        return None
+    try:
         # O_NOCTTY — TODO.md K-02: açık `open(pty_path,"r")` bu slave pty'yi
         # (pane_tty, tmux SERVER'ın tuttuğu master'a karşılık gelir) bu
         # sürecin controlling terminal'i edinmesine yol açabiliyordu (bu süreç
@@ -341,6 +350,42 @@ def pane_is_masked_input(name: str) -> Optional[bool]:
         finally:
             os.close(fd)
         return bool(lflag & termios.ICANON) and not bool(lflag & termios.ECHO)
+    except Exception:
+        return None
+
+
+# `tmux_pane_snapshot`'ın tek çağrıdaki biçimi: boşlukla ayrılmış dört sayı + pty yolu (pty boş olabilir).
+_SNAPSHOT_FORMAT = "#{pane_width} #{pane_height} #{history_size} #{alternate_on} #{pane_tty}"
+
+
+def tmux_pane_snapshot(name: str) -> Optional[tuple]:
+    """Pane'in boyutu + GÖRÜNÜR ekranı TEK tmux sürecinde: `((cols, rows, history_size, alternate_on, pane_tty), text)`.
+
+    `display-message -p -t T FORMAT ; capture-pane -t T -e -p`: argv'deki yalın `;` elemanı tmux'ta komut ayıracıdır;
+    iki komut aynı komut kuyruğunda arka arkaya koşar (boyut ile metin aynı andan, ayrı çağrılardaki gibi
+    aralarına çıktı girmez). `text` yalnız görünür `rows` satırdır (her satır "\\n" ile biter, `-e` renkli), 2000
+    satırlık scrollback DEĞİL: mirror görüntüleyici yalnız ekranı çizer (TBD#80 A, 2026-10-13 ölçümü: tam capture
+    tmux sunucusunda 12,7 ms CPU / 143 KB, görünür capture 1,5 ms / 2 KB; her ek tmux süreci ~3 ms toplam CPU).
+    `-S`/`-E` yoktur, yani çağıranın hiçbir sayısı argv'ye girmez; hedef `=ad:` biçiminde (`_exact`) ve `:` ile
+    biter, `;` ile bitmez.
+
+    Hata (oturum yok, tmux yok, çıktı beklenen biçimde değil) → None; çağıran tek tek çağrılara düşebilir."""
+    target = _exact(name)
+    try:
+        r = subprocess.run(
+            _base_argv() + ["display-message", "-p", "-t", target, _SNAPSHOT_FORMAT, ";",
+                             "capture-pane", "-t", target, "-e", "-p"],
+            capture_output=True, text=True, timeout=_TIMEOUT,
+        )
+        if r.returncode != 0:
+            return None
+        head, sep, text = r.stdout.partition("\n")
+        if not sep:
+            return None
+        fields = head.split(" ", 4)
+        if len(fields) != 5:
+            return None
+        return (int(fields[0]), int(fields[1]), int(fields[2]), bool(int(fields[3])), fields[4].strip()), text
     except Exception:
         return None
 
