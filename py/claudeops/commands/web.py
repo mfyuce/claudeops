@@ -1655,7 +1655,17 @@ def _term_resolve(name: str, lang: str = "tr"):
 # Mutasyon uç noktaları (`_term_input` vb.) bu cache'i KULLANMIYOR — onlar
 # tek-atım kullanıcı aksiyonu, her seferinde tam/taze doğrulama ucuz
 # olmasa da daha değerli.
-_TERM_OUTPUT_RESOLVE_TTL = 2.0  # saniye
+#
+# 2026-10-13: 2 sn ÇOK kısaydı. Önbellek her dolduğunda tam sistem taraması BU oturum için yeniden
+# koşuyor ve maliyeti yoklama sıklığından BAĞIMSIZ: oturum başına 0,5 tarama/sn (yuhem'de 1746 süreç: 69 ms,
+# ulak_31'de 1080 süreç: 106 ms, ölçüldü; tarama GIL'i uzun tutuyor). 17 mirror ulak_31 panelini %148, 7 mirror yuhem
+# panelini %211 CPU'ya çıkardı; tick'ler TTL'den uzun sürmeye başlayınca HER tick tarama yapıp kendini besledi
+# (sürekli değişen pane'de kare aralığı 3,2 sn, `interval=1` bile etkisizdi). İzole yeniden üretimde (17 oturum) yalnız
+# bu sabit 2 → 30: panel CPU %181 → %14, kare aralığı 2,6 → 1,0 sn. 30 sn güvenli: `_term_output` yalnız `s.name`
+# (tmux oturum adı) ve `s.cli` (mod deseni) kullanır, ikisi oturum yaşadıkça sabit; tmux oturumu giderse capture None
+# döner ve önbellek ANINDA düşer (`_term_output`), yani respawn bir sonraki tick'te bulunur. Hatalı çözümleme
+# önbelleğe girmez (yukarıdaki dal) ve cache'i zehirlemez.
+_TERM_OUTPUT_RESOLVE_TTL = 30.0  # saniye
 _term_output_resolve_cache: Dict[str, tuple] = {}  # name -> (Session, resolved_at)
 
 
