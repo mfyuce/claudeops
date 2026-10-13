@@ -95,6 +95,7 @@ kaynağından okunarak, tahmin edilmeden — bkz. `protocol.py`):
 from __future__ import annotations
 
 import json
+import math
 import queue
 import socket
 import threading
@@ -149,6 +150,9 @@ class _WSClient:
     queue: "queue.Queue[bytes]" = field(default_factory=lambda: queue.Queue(maxsize=_QUEUE_MAXSIZE))
     closed: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # `/ws/term` poll döngüsünün bekleme olayı: kapanış (reader / handle_ws_term) da, oturuma yazılan girdi
+    # (`notify_term_activity`) de döngüyü uyandırır. Fleet-status `/ws` bağlantıları kullanmaz.
+    wake: threading.Event = field(default_factory=threading.Event)
 
 
 _REGISTRY_LOCK = threading.Lock()
@@ -312,6 +316,7 @@ def _reader_loop(client: _WSClient) -> None:
         pass
     finally:
         client.closed.set()
+        client.wake.set()  # `/ws/term` poll döngüsü bekleme süresini doldurmadan kapanışı görsün
 
 
 # websockets'in `Request.parse`i satır başına 8 KiB sınırı koyar (stdlib `http.server` 64 KiB'a izin verir);
@@ -495,6 +500,10 @@ def start_broadcaster(status_payload_fn: Callable[[], dict]) -> None:
 # tab zaten N bağımsız server-side `_term_output()` çağrısı demek, REST
 # poll'la; burada da aynı maliyet, sadece taşıyıcı WS).
 #
+# Salt-izleyen mirror pencereleri (`cops watch`) 0,2 sn'lik sıklığa ihtiyaç duymaz ve her
+# yoklama uzak host'ta gerçek CPU demektir: `?interval=` ile seyrek yoklarlar
+# (`parse_term_interval`), oturuma girdi yazılınca `notify_term_activity` döngüyü uyandırır.
+#
 # local/remote ayrımı bu modülün KONUSU DEĞİL: `web.py`'nin `/ws/term` dalı
 # `host`'a bakıp `fetch_fn`'i ya `_term_output`'a ya da
 # `web_hosts.proxy_get()`'i saran bir closure'a bağlıyor — `web_ws.py` ikisi
@@ -504,12 +513,67 @@ def start_broadcaster(status_payload_fn: Callable[[], dict]) -> None:
 
 _TERM_POLL_SECONDS = 0.2  # bugünkü client POLL_INTERVAL_MS'le AYNI — bkz. yukarıdaki not
 
+# `/ws/term?interval=<sn>`: bu bağlantının YOKLAMA aralığı. Her yoklama gerçek iş (3 tmux alt süreci + 2000
+# satırlık capture + regex) olduğundan, ekran değişmese bile 0,2 sn'de bir koşmak salt-izleyen pencerelere (`cops watch`)
+# fazla: 2026-10-13'te 17 mirror ulak_31 panelini %148, 7 mirror yuhem panelini %211 CPU'ya çıkardı (TODO.md
+# 2026-10-13 (2)). 0,2'ye eşit/altı ya da geçersiz değer "parametre yok" sayılır (röle anahtarı/URL'si değişmesin, eski
+# davranış AYNEN kalsın); üst sınır bağlantıyı unutulmuş sayıp bayat kare göstermeyi önler.
+_TERM_MAX_INTERVAL_SECONDS = 5.0
+# Oturuma girdi yazılınca (`notify_term_activity`) döngü HEMEN uyanır ve bu süre boyunca varsayılan sıklıkta (0,2 sn)
+# yoklar: yazılanın yankısı/yanıtı seyrek aralığı beklemeden görünsün.
+_TERM_WAKE_BURST_SECONDS = 3.0
+
+
+def parse_term_interval(raw: Optional[str]) -> Optional[float]:
+    """`interval` sorgu değeri → saniye (0,1'e yuvarlanır ki röle anahtarı sayısı patlamasın) ya da None
+    (parametre yok / geçersiz / varsayılandan hızlı değil)."""
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(value):
+        return None
+    value = min(round(value * 10) / 10, _TERM_MAX_INTERVAL_SECONDS)
+    return value if value > _TERM_POLL_SECONDS else None
+
+
+# Oturum adı → o oturumu izleyen `/ws/term` döngülerinin bekleme olayları. Aynı ad iki hostta da bulunabilir; fazladan
+# uyanma zararsız (bir yoklama daha), kaçan uyanma ise yazılanın yankısını bir aralık geciktirir, o yüzden ad bazlı.
+_TERM_WAKERS_LOCK = threading.Lock()
+_TERM_WAKERS: "dict[str, set[threading.Event]]" = {}
+
+
+def _register_term_waker(name: Optional[str], event: threading.Event) -> None:
+    if name:
+        with _TERM_WAKERS_LOCK:
+            _TERM_WAKERS.setdefault(name, set()).add(event)
+
+
+def _unregister_term_waker(name: Optional[str], event: threading.Event) -> None:
+    if name:
+        with _TERM_WAKERS_LOCK:
+            events = _TERM_WAKERS.get(name)
+            if events is not None:
+                events.discard(event)
+                if not events:
+                    del _TERM_WAKERS[name]
+
+
+def notify_term_activity(name: str) -> None:
+    """`web.py`'nin `/api/term/input|key|raw` işleyicileri girdi pane'e GİDİNCE çağırır: bu oturumu izleyen
+    `/ws/term` döngülerini bekleme süresini doldurmadan uyandırır (hemen bir yoklama, sonra
+    `_TERM_WAKE_BURST_SECONDS` boyunca hızlı yoklama). Hiçbir izleyici yoksa bedava."""
+    with _TERM_WAKERS_LOCK:
+        events = list(_TERM_WAKERS.get(name) or ())
+    for event in events:
+        event.set()
+
 
 def _encode_term(payload: dict) -> bytes:
     return json.dumps({"type": "term", "data": payload}).encode("utf-8")
 
 
-def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict]) -> None:
+def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict], poll_seconds: Optional[float] = None) -> None:
     """Bu bağlantının HEM poll'cusu HEM writer'ı (ayrı bir producer thread'i
     yok — broadcaster'ın `queue`/`_push()`'ü burada YOK, tek thread hem
     `fetch_fn()`'i çağırıp hem `_send()` ediyor, `_send()`'in kendi
@@ -525,9 +589,16 @@ def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict]) -> None:
     biter. `TerminalView.tsx`'in halihazırdaki `consecutiveFailures`
     toleransı bu ayrımı zaten CLIENT tarafında (kaç ardışık `ok:false`
     tick'inden sonra gerçekten hata gösterilir) yapıyor, burada
-    TEKRARLANMIYOR."""
+    TEKRARLANMIYOR.
+
+    `poll_seconds`: None = `_TERM_POLL_SECONDS` (çağrı anında okunur). Daha büyükse (mirror'ın `interval`'ı) döngü
+    o kadar seyrek yoklar; `client.wake` (girdi yazılınca `notify_term_activity`) bekleyişi böler ve
+    `_TERM_WAKE_BURST_SECONDS` boyunca varsayılan sıklığa döner. `wake`i olmayan sade bir istemcide yalnız
+    kapanış bekleyişi böler (eski davranış)."""
     last_key: Any = None
     last_sent = 0.0
+    burst_until = 0.0
+    wake = getattr(client, "wake", None) or client.closed
     while not client.closed.is_set():
         fetch_started = time.monotonic()
         try:
@@ -556,19 +627,27 @@ def _term_poll_loop(client: _WSClient, fetch_fn: Callable[[], dict]) -> None:
         # daha yavaş olur (2026-09-16, kullanıcı canlı fark etti — DONE.md).
         # Sadece KALAN süreyi bekleyerek yavaş fetch'lerde ekstra gecikme
         # eklenmez; hızlı (lokal) fetch'lerde davranış değişmez.
-        elapsed = time.monotonic() - fetch_started
-        remaining = max(0.0, _TERM_POLL_SECONDS - elapsed)
-        if client.closed.wait(timeout=remaining):
-            return
+        now = time.monotonic()
+        period = _TERM_POLL_SECONDS if poll_seconds is None or now < burst_until else poll_seconds
+        remaining = max(0.0, period - (now - fetch_started))
+        if wake.wait(timeout=remaining):
+            if client.closed.is_set():
+                return
+            wake.clear()  # girdi yazıldı: beklemeden yokla, sonra kısa süre hızlı yokla
+            burst_until = time.monotonic() + _TERM_WAKE_BURST_SECONDS
 
 
-def handle_ws_term(handler: Any, fetch_fn: Callable[[], dict]) -> None:
+def handle_ws_term(handler: Any, fetch_fn: Callable[[], dict], poll_seconds: Optional[float] = None,
+                   name: Optional[str] = None) -> None:
     """`/ws/term` isteğini WebSocket'e yükselt. `handler` — `do_GET`'in
     `_authorized()`'dan GEÇMİŞ, `name`/`host`'u çözüp `fetch_fn`'e
     kapattığı bir `/ws/term` isteği için çağırdığı `_Handler` instance'ı
     (bkz. `web.py`'nin `/ws/term` dalı). `handle_ws`'in aksine registry'ye
     KAYDOLMAZ — `_WS_REGISTRY`/broadcaster fleet-status'e özel, bu bağlantı
-    ondan tamamen bağımsız (yukarıdaki modül-bölümü notuna bkz.)."""
+    ondan tamamen bağımsız (yukarıdaki modül-bölümü notuna bkz.).
+
+    `poll_seconds`: bkz. `_term_poll_loop`. `name`: bu bağlantının izlediği oturum adı; verilirse
+    `notify_term_activity(name)` döngüyü uyandırır."""
     protocol = _ws_accept(handler)
     if protocol is None:
         return
@@ -578,7 +657,10 @@ def handle_ws_term(handler: Any, fetch_fn: Callable[[], dict]) -> None:
         target=_reader_loop, args=(client,), daemon=True, name=f"ws-term-reader-{id(client):x}"
     )
     reader.start()
+    _register_term_waker(name, client.wake)
     try:
-        _term_poll_loop(client, fetch_fn)
+        _term_poll_loop(client, fetch_fn, poll_seconds)
     finally:
         client.closed.set()
+        client.wake.set()
+        _unregister_term_waker(name, client.wake)

@@ -4,7 +4,8 @@ masaüstünde", 2026-10-08 tasarım notu; TBD#74 kararı: Faz 0 + Faz 1).
 
 Yalnız YEREL panelle konuşur (`127.0.0.1:<port>`): host seçimi, tier (rest/ws/grpc), uzak host'un
 token'ı ve fallback zaten panelde; görüntüleyicinin uzak host'a SSH'ı ya da kendi token'ı yok.
-Taşıyıcı: panelin `/ws/term?...&lite=1` push'u (kare ~4 KB); `websockets` yoksa ya da WS
+Taşıyıcı: panelin `/ws/term?...&lite=1&interval=1` push'u (kare ~4 KB; `interval`: uzak host'u 1 sn'de bir
+yoklatır, 0,2 sn değil, bkz. `WS_POLL_INTERVAL_SECONDS`); `websockets` yoksa ya da WS
 kurulamıyorsa `/api/term/output?...&lite=1` REST yoklaması. Yetki `Authorization: Bearer`
 başlığıyla gider (token URL'ye girmez).
 
@@ -72,6 +73,11 @@ REST_WAITING_INTERVAL_SECONDS = 5.0     # host tamam, session yok: rc/handover a
 REST_FALLBACK_SECONDS = 60.0            # auto modda WS kurulamayınca bu süre REST, sonra WS tekrar denenir
 WS_SILENCE_SECONDS = 75.0               # sunucu en geç 30 sn'de bir heartbeat kare yollar (web_ws._HEARTBEAT_SECONDS)
 WS_MAX_MESSAGE_BYTES = 16 * 1024 * 1024  # `lite`'ı yok sayan eski bir panel TAM kare (yüzlerce KB) yollar
+# Panelden istenen yoklama aralığı (`/ws/term?interval=`): salt-izleyen pencere 0,2 sn'lik sıklığa ihtiyaç duymaz ve
+# uzak host'ta her yoklama 3 tmux alt süreci + 2000 satırlık capture demektir (25 mirror uzak panelleri %148-211 CPU'ya
+# çıkardı, TODO.md 2026-10-13 (2)). `interval`'ı bilmeyen eski bir panel/host parametreyi yok sayar. Oturuma girdi
+# yazılınca (popup, API) uzak döngü zaten hemen uyanır; ekranda bir değişiklik en geç bu kadar sonra görünür.
+WS_POLL_INTERVAL_SECONDS = 1.0
 # `close()` sunucunun TCP'yi kapatmasını bu kadar bekler. Varsayılan 10 sn; panelin elle yazılmış WS sunucusu
 # (web_ws) kapanış el sıkışmasında istemci EOF'unu beklediği için `q` ile çıkış 10 sn takılıyordu
 # (web_hosts._probe_ws aynı sebeple 1 sn kullanıyor).
@@ -394,6 +400,12 @@ def _query(host: str, name: str) -> str:
     return urllib.parse.urlencode({"name": name, "host": host, "lang": "en", "lite": "1"})
 
 
+def _ws_query(host: str, name: str) -> str:
+    """`_query` + seyrek yoklama isteği; yalnız WS için (REST yedeği kendi 1 sn'lik döngüsünü kullanır)."""
+    return urllib.parse.urlencode({"name": name, "host": host, "lang": "en", "lite": "1",
+                                   "interval": f"{WS_POLL_INTERVAL_SECONDS:g}"})
+
+
 def _parse_term_message(raw: Any) -> Optional[dict]:
     """`/ws/term`'ün `{"type":"term","data":{...}}` zarfı → data; başka her şey None (yok sayılır)."""
     if not isinstance(raw, (str, bytes, bytearray)):
@@ -426,14 +438,14 @@ def import_ws_connect() -> Optional[Callable[..., Any]]:
 
 
 class WsTransport:
-    """Panelin `/ws/term?...&lite=1` push'u. `frames()` bir üreteçtir: kare (dict), sessiz tick'te
+    """Panelin `/ws/term?...&lite=1&interval=1` push'u. `frames()` bir üreteçtir: kare (dict), sessiz tick'te
     None verir; bağlantı kurulamaz/koparsa TransportError fırlatır."""
 
     name = "ws"
 
     def __init__(self, port: int, host: str, session: str, *, connect: Callable[..., Any],
                  read_token: Optional[Callable[[], str]] = None, clock: Callable[[], float] = time.monotonic):
-        self.url = f"ws://127.0.0.1:{port}/ws/term?{_query(host, session)}"
+        self.url = f"ws://127.0.0.1:{port}/ws/term?{_ws_query(host, session)}"
         self._connect = connect
         self._read_token = read_token  # None: modül düzeyindeki `read_token` (çağrı anında çözülür)
         self._clock = clock

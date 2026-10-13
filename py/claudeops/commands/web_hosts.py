@@ -1210,9 +1210,11 @@ class _TermRelay:
 
 
 _term_relay_lock = threading.Lock()
-# Anahtar: (host, name, lang, lite). `lite` anahtarda, çünkü lite isteyen ile tam kare isteyen
-# iki istemci AYNI uzak akışı paylaşamaz: biri uzaktan ~4 KB'lık, öteki ~200 KB'lık kare bekler.
-_term_relays: Dict[Tuple[str, str, str, bool], _TermRelay] = {}
+# Anahtar: (host, name, lang, lite) ya da, seyrek yoklama istenmişse, (host, name, lang, lite, interval).
+# `lite` anahtarda, çünkü lite isteyen ile tam kare isteyen iki istemci AYNI uzak akışı paylaşamaz: biri
+# uzaktan ~4 KB'lık, öteki ~200 KB'lık kare bekler. `interval` de aynı sebeple: 1 sn'de bir yoklayan mirror
+# ile 0,2 sn'de bir yoklayan popup farklı uzak akışlar ister. `interval` yoksa anahtar eski 4'lü kalır.
+_term_relays: Dict[Tuple[Any, ...], _TermRelay] = {}
 
 
 def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
@@ -1228,7 +1230,8 @@ def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
     return parsed["data"]
 
 
-def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False) -> Callable[[], dict]:
+def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
+                      interval: Optional[float] = None) -> Callable[[], dict]:
     """`web.py`'nin `/ws/term` dalına geçirilecek `fetch_fn` closure'ını
     üretir — `_term_poll_loop`'un HER 200ms'de bir çağırdığı şey artık bir
     ağ isteği DEĞİL, bu ucuz in-process cache okuması (`_TermRelay.read()`).
@@ -1262,9 +1265,15 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False) 
     başına ~1,4 MB/sn → ~16 KB/sn). Uyumluluk iki yönlü: `lite`'ı bilmeyen eski bir uzak host
     parametreyi yok sayıp TAM kare yollar ve `web._term_fetch_fn`'in `to_lite` sarmalayıcısı
     onu yerelde kırpar; `lite:true` gelen kare ise `to_lite`'tan AYNEN geçer. gRPC tier'inde
-    proto'da `lite` alanı yok (pb2 yeniden üretilmesi gerekir), uzak hop tam kare kalır."""
+    proto'da `lite` alanı yok (pb2 yeniden üretilmesi gerekir), uzak hop tam kare kalır.
+
+    `interval` (2026-10-13, TODO.md 2026-10-13 (2)): ws tier'inde uzak `/ws/term`'e `&interval=<sn>`
+    eklenir, yani uzak panel bu pane'i her 0,2 sn yerine o kadar seyrek yoklar (mirror başına uzak
+    CPU ~5× düşer). `interval`'ı bilmeyen eski bir uzak host parametreyi yok sayar (davranış aynı,
+    kazanç yok, zarar yok). Anahtara ve etikete girer; yoksa anahtar/URL/etiket eskisi gibi kalır.
+    gRPC tier'inde proto'da alan yok, uzak hop varsayılan sıklıkta kalır."""
     lite = bool(lite)
-    key = (host_name, name, lang, lite)
+    key = (host_name, name, lang, lite) if interval is None else (host_name, name, lang, lite, interval)
 
     def fetch_fn() -> dict:
         host = hosts_mod.get_host(host_name)
@@ -1289,11 +1298,14 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False) 
                     parse_item: Callable[[Any], Optional[dict]] = web_grpc._term_proto_to_dict
                 else:
                     extra = {"lite": "1"} if lite else {}
+                    if interval is not None:
+                        extra["interval"] = f"{interval:g}"
                     url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang, **extra)
                     make_call = lambda: ws_connect(url, open_timeout=10.0, ping_interval=None)
                     parse_item = _parse_ws_term_frame
                 relay = _TermRelay(tier, make_call, parse_item,
-                                   label=f"term:{host_name}/{name}" + ("?lite" if lite else ""))
+                                   label=f"term:{host_name}/{name}" + ("?lite" if lite else "")
+                                   + (f"@{interval:g}s" if interval is not None else ""))
                 _term_relays[key] = relay
         if dead is not None:
             dead.stop()

@@ -1858,7 +1858,8 @@ def _term_remote_query(name: str, lang: str, lite: bool) -> Dict[str, str]:
     return query
 
 
-def _term_fetch_fn(host: str, name: str, lang: str, lite: bool) -> Callable[[], dict]:
+def _term_fetch_fn(host: str, name: str, lang: str, lite: bool,
+                   interval: Optional[float] = None) -> Callable[[], dict]:
     """`/ws/term`'ün her tick'te çağırdığı kare kaynağı: yerel `_term_output`, REST-proxy ya da
     relay (ws/grpc tier). `lite` ise kaynak ne olursa olsun `to_lite` ile sarılır, böylece
     yerel, REST-proxy ve relay kaynaklı kareler AYNI dönüşümden geçer.
@@ -1866,9 +1867,14 @@ def _term_fetch_fn(host: str, name: str, lang: str, lite: bool) -> Callable[[], 
     `lite` uzak host'a da iletilir (2026-10-12): host↔host hop da küçük kare taşır. Sarmalayıcı
     yine de durur, çünkü (a) `lite`'ı bilmeyen eski bir host tam kare yollar, (b) gRPC tier'i
     `lite`'ı taşıyamaz; `lite:true` gelen kare `to_lite`'tan AYNEN geçer, yani çift kırpma
-    olmaz. `memo` bağlantıya özel."""
+    olmaz. `memo` bağlantıya özel.
+
+    `interval` (2026-10-13, `web_ws.parse_term_interval`): yalnız relay'e iletilir, relay onu uzak
+    host'un `/ws/term`'ine taşır (uzak yoklama seyrekleşir). Yalnız verilirse iletilir: eski
+    imzayla çağrı ve `interval`'ı bilmeyen eski bir uzak host aynen çalışır."""
     if host != LOCAL_HOST_NAME and web_hosts.get_tier(host) != "rest":
-        fetch_fn = web_hosts.term_output_relay(host, name, lang, lite=lite)
+        relay_extra = {"interval": interval} if interval is not None else {}
+        fetch_fn = web_hosts.term_output_relay(host, name, lang, lite=lite, **relay_extra)
     elif host != LOCAL_HOST_NAME:
         query = _term_remote_query(name, lang, lite)
         fetch_fn = lambda: web_hosts.proxy_get("/api/term/output", host, query)[0]
@@ -1879,11 +1885,26 @@ def _term_fetch_fn(host: str, name: str, lang: str, lite: bool) -> Callable[[], 
     return fetch_fn
 
 
+def _term_loop_seconds(host: str, interval: Optional[float]) -> Optional[float]:
+    """Bu bağlantının YEREL poll döngüsünün aralığı (`web_ws.handle_ws_term(poll_seconds=...)`).
+    Relay'li (ws/grpc) uzak host'ta döngü yalnız bellekteki son kareyi okur (ucuz); `interval` uzak
+    hop'a gider (`_term_fetch_fn`) ve burada varsayılan kalır ki kare yerelde ek gecikmeyle gelmesin.
+    Yerel session'da ve REST-tier host'ta her tick gerçek iş (tmux / HTTP) olduğundan aralık döngünün
+    kendisine uygulanır."""
+    if interval is None:
+        return None
+    if host != LOCAL_HOST_NAME and web_hosts.get_tier(host) != "rest":
+        return None
+    return interval
+
+
 def _term_input(name: str, text: str, lang: str = "tr") -> dict:
     s, err = _term_resolve(name, lang)
     if err:
         return err
     ok = tmux_send_keys(s.name, text, settle_delay=get_provider(s.cli).input_settle_delay())
+    if ok:
+        web_ws.notify_term_activity(name)
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
@@ -1894,6 +1915,8 @@ def _term_key(name: str, key: str, lang: str = "tr") -> dict:
     if err:
         return err
     ok = tmux_send_special_key(s.name, key)
+    if ok:
+        web_ws.notify_term_activity(name)
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
@@ -1924,6 +1947,8 @@ def _term_raw(name: str, data: str, lang: str = "tr") -> dict:
     if err:
         return err
     ok = tmux_send_raw(s.name, data)
+    if ok:
+        web_ws.notify_term_activity(name)
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
 
 
@@ -3681,7 +3706,12 @@ class _Handler(BaseHTTPRequestHandler):
             # Kaynak seçimi + `lite` sarmalayıcısı (ve `lite`'ın uzak host'a iletilmesi)
             # `_term_fetch_fn`'de, testli.
             lite = (qs.get("lite") or [""])[0] == "1"
-            web_ws.handle_ws_term(self, _term_fetch_fn(host, name, lang, lite))
+            # `interval` (sn, >0,2): salt-izleyen mirror'ın seyrek yoklaması (TODO.md 2026-10-13 (2):
+            # her yoklama uzak host'ta 3 tmux alt süreci + 2000 satırlık capture). Yok/geçersiz/0,2 ve
+            # altı → None, yani eski davranış. Oturuma girdi yazılınca döngü uyanır (`name` ile eşleşir).
+            interval = web_ws.parse_term_interval((qs.get("interval") or [""])[0])
+            web_ws.handle_ws_term(self, _term_fetch_fn(host, name, lang, lite, interval=interval),
+                                  poll_seconds=_term_loop_seconds(host, interval), name=name)
             return
         elif path == "/api/status":
             self._json(_status_payload())

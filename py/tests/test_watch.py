@@ -961,7 +961,7 @@ class WsTransportTests(unittest.TestCase):
         parts = urllib.parse.urlsplit(url)
         self.assertEqual((parts.scheme, parts.netloc, parts.path), ("ws", "127.0.0.1:8765", "/ws/term"))
         self.assertEqual(dict(urllib.parse.parse_qsl(parts.query)),
-                         {"name": "s1", "host": "yuhem", "lang": "en", "lite": "1"})
+                         {"name": "s1", "host": "yuhem", "lang": "en", "lite": "1", "interval": "1"})
         self.assertNotIn("tok", url)   # token URL'de değil
         self.assertEqual(kwargs["additional_headers"], {"Authorization": "Bearer tok"})
         self.assertGreaterEqual(kwargs["max_size"], 1024 * 1024)   # `lite`siz tam kare sığmalı
