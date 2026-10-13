@@ -72,7 +72,7 @@ from ..providers.claude_provider import jsonl_path_for, last_assistant_model, la
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
 from ..tmux_backend import (
-    is_tmux_backed, tmux_has_session, tmux_capture, tmux_client_count, tmux_send_keys, tmux_send_raw,
+    is_tmux_backed, tmux_has_session, tmux_capture, tmux_capture_range, tmux_client_count, tmux_send_keys, tmux_send_raw,
     tmux_send_special_key, tmux_pane_size, pane_is_masked_input, ALLOWED_SPECIAL_KEYS, strip_ansi,
 )
 from .web_static import DIST_DIR, resolve_static_path
@@ -188,6 +188,7 @@ ERR = {
     "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
                            "en": "{name}: tmux session no longer exists (may have closed)"},
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
+    "invalid_range": {"tr": "geçersiz satır aralığı", "en": "invalid line range"},
     "window_already_attached": {"tr": "{name}: zaten bağlı {count} pencere var — ikincisi yeni bir session AÇMAZ, "
                                        "aynı ekranı aynalar (tmux pane'i istemcilere göre yeniden boyutlandırır). "
                                        "Pencereyi bulamıyorsanız önce masaüstlerine bakın; yine de istiyorsanız "
@@ -1856,6 +1857,43 @@ def _term_output(name: str, lang: str = "tr") -> dict:
             "rows": size[1] if size else None, "history_size": size[2] if size else None,
             "alternate_screen": size[3] if size else None,
             "masked": bool(masked), "mode": _detect_mode_in_text(text, get_provider(s.cli))}
+
+
+# Tek bir geçmiş isteğinin döndürebileceği en çok satır. Görüntüleyici sayfayı kendisi parçalar (3 ekran boyu);
+# sınır, kazara/hatalı bir istemcinin tam 2000 satırı (200-350 KB) bu uçtan çekmesini engeller: tam geçmiş için
+# zaten `/api/term/output` var.
+TERM_HISTORY_MAX_LINES = 500
+
+
+def _term_history(name: str, start: int, end: int, lang: str = "tr") -> dict:
+    """Pane'in geçmişinden (scrollback) küçük bir aralık: `cops watch` mirror'ının geçmişte kaydırması (TBD#79).
+
+    `start`/`end` tmux'un satır numaralarıdır (0 = görünür alanın ilk satırı, negatifler scrollback, -1 en yeni
+    geçmiş satırı). Aralık pane'in gerçek sınırlarına (`-history_size` … `rows-1`) kırpılır ve `TERM_HISTORY_MAX_LINES`
+    ile sınırlanır; dönen `start`/`end` GERÇEKTEN yakalanan aralıktır. `history_size` de döner: geçmiş büyüdükçe
+    (yeni çıktı) satır numaraları kayar, istemci bu değerle kendi önbelleğini hizalar. `text` satırları "\n" ile
+    ayırır (sondaki newline yok); alternate-screen'de (`alternate_screen`) geçmiş yoktur, yalnız görünür alan gelir.
+    Çözümleme `_term_output` ile AYNI önbellekli yolu kullanır (tam sistem taraması yok)."""
+    if end < start:
+        return _err(lang, "invalid_range")
+    s, err = _term_resolve_for_output(name, lang)
+    if err:
+        return err
+    size = tmux_pane_size(s.name)
+    if size is None:
+        _term_output_resolve_cache.pop(name, None)
+        return _err(lang, "term_session_gone", name=name)
+    cols, rows, hist, alt = size
+    start, end = max(start, -hist), min(end, rows - 1)
+    if end < start:
+        return _err(lang, "invalid_range")
+    end = min(end, start + TERM_HISTORY_MAX_LINES - 1)
+    text = tmux_capture_range(s.name, start, end)
+    if text is None:
+        _term_output_resolve_cache.pop(name, None)
+        return _err(lang, "term_session_gone", name=name)
+    return {"ok": True, "text": text[:-1] if text.endswith("\n") else text, "start": start, "end": end,
+            "history_size": hist, "rows": rows, "cols": cols, "alternate_screen": bool(alt)}
 
 
 def _term_remote_query(name: str, lang: str, lite: bool) -> Dict[str, str]:
@@ -3810,6 +3848,25 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             result = _term_output(name, lang=lang)
             self._json(web_term_lite.to_lite(result) if lite else result)
+        elif path == "/api/term/history":
+            qs = parse_qs(urlparse(self.path).query)
+            name = (qs.get("name") or [""])[0].strip()
+            lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            try:
+                start, end = int((qs.get("start") or [""])[0]), int((qs.get("end") or [""])[0])
+            except ValueError:
+                self._json(_err(lang, "invalid_range"), status=400)
+                return
+            if host != LOCAL_HOST_NAME:
+                result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang,
+                                                                  "start": str(start), "end": str(end)}, dedup=False)
+                self._json(result, status=status)
+                return
+            self._json(_term_history(name, start, end, lang=lang))
         elif path == "/api/term/chat":
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()

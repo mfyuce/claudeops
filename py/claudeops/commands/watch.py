@@ -23,7 +23,9 @@ Bu bir tmux client DEĞİL, canlı bir resim:
         Ctrl-] çıkar, 60 sn tuşsuz kalınca kendiliğinden kilitlenir.
     Bağlantı canlı değilken ya da pane maskeli girişteyse (parola istemi) hiçbir şey yollanmaz.
     `--read-only` bu kipleri tümden kapatır.
-  - Yerel kaydırma yok (geçmiş popup'taki `history`'de). Kare yalnız görünür `rows` satırıdır.
+  - Geçmişe kaydırma: Yukarı/PgUp/Home (ve alt ekranda ok tuşuna çevrilen fare tekerleği) geçmiş kipini açar; sayfalar
+    panelin `GET /api/term/history` ucundan küçük aralıklarla gelir (tam 2000 satır DEĞİL), PgUp/PgDn/yön tuşları gezer,
+    End/Esc/q canlıya döner (uzak tmux'a dokunulmaz, copy-mode YOK). Kare yalnız görünür `rows` satırıdır.
   - İmleç konumu karede YOK, imleç gizlenir.
   - Altta 1 satırlık durum çubuğu var; pencere pane'in `cols × (rows+1)` boyutuna istenir
     (VTE'nin `CSI 8 ; r ; c t` kaçışı; tiling/maximize ya da başka terminal yok sayarsa görüntü
@@ -113,6 +115,10 @@ RAW_EXIT_KEY = "\x1d"            # Ctrl-]: ham geçişten çıkış (oturumda ku
 FLASH_OK_SECONDS = 2.0           # "gönderildi" bildirimi çubukta bu kadar kalır
 FLASH_ERR_SECONDS = 6.0          # hata bildirimi (gönderilemedi, bağlantı yok, maskeli giriş)
 COMPOSE_MAX_CHARS = 4000         # yazı satırı sınırı; fazlası sessizce yok sayılır
+HISTORY_MAX_REQUEST_LINES = 500  # sunucunun tek istekte verdiği en çok satır (web.TERM_HISTORY_MAX_LINES ile aynı)
+# Canlı karedeki history_size bilinen değerden bu kadar süredir KÜÇÜKSE geçmiş gerçekten temizlenmiştir (clear-history);
+# daha kısa süren düşüş bayat bir karedir (bir sayfa yanıtı canlı kareden daha yeni olabilir) ve yok sayılır.
+HISTORY_SHRINK_GRACE_SECONDS = 3.0
 PASTE_MAX_CHARS = 1 << 20        # bracketed paste tamponu sınırı (aşan yapıştırma atılır)
 
 # Durum çubuğu renkleri (256 renk; gnome-terminal ve tmux'ta ortak).
@@ -123,6 +129,7 @@ STYLE_SEVERE = "\x1b[0;48;5;88;38;5;255m"
 STYLE_BADGE = "\x1b[1;48;5;226;38;5;16m"   # popup'taki "!" rozeti: kalın siyah, sarı zemin
 STYLE_INPUT = "\x1b[0;48;5;54;38;5;255m"   # yazı satırı / kısa tuş: mor zemin (canlı yeşil, bekliyor mavi ile karışmaz)
 STYLE_RAW = "\x1b[1;48;5;160;38;5;255m"    # ham geçiş: kalın beyaz, parlak kırmızı zemin (durum çubuğunun SEVERE'inden belirgin)
+STYLE_HISTORY = "\x1b[0;48;5;94;38;5;255m"  # geçmiş kipi: kahverengi/turuncu zemin (canlı değil, geçmişe bakıyorsun)
 
 _STATES = {
     "connecting": ("◌", "bağlanıyor", STYLE_WAITING),
@@ -647,6 +654,14 @@ class Viewer:
         # Girdi kipleri çubuğu devralır: `overlay(cols)` (metin, stil) döndürürse durum çubuğunun yerine o çizilir
         # (yazı satırı, kısa tuş ipucu, ham geçiş uyarısı, gönderim sonucu); None = normal durum çubuğu.
         self.overlay: Optional[Callable[[int], Optional[Tuple[str, str]]]] = None
+        # Geçmiş kipi canlı kare yerine kendi satırlarını çizdirir (None = canlı kare); canlı kareler gelmeye
+        # devam eder (durum, maskeli bayrağı, history_size için) ama gövdeyi bozmaz.
+        self._body_override: Optional[List[str]] = None
+
+    def set_body_override(self, lines: Optional[List[str]]) -> None:
+        if lines != self._body_override:
+            self._body_override = None if lines is None else list(lines)
+            self._body_dirty = True
 
     def apply_frame(self, frame: Any) -> None:
         state, detail = classify_frame(frame)
@@ -656,6 +671,11 @@ class Viewer:
                 self._frame_key = key
                 self.frame = frame
                 self._body_dirty = True
+            else:
+                # Aynı görünür metin: gövde yeniden çizilmez ama kare sözlüğü yine de tazelenir. `masked` ve
+                # `history_size` gibi alanlar metin değişmeden de değişebilir (aynı satırı basan bir döngüde geçmiş
+                # büyür); girdi kapısı ve geçmiş kipi bu alanlara güvenir, bayat kalmasınlar.
+                self.frame = frame
             self.fresh_at = self._clock()
             self.trouble_since, self.popup_hidden = None, False
         else:
@@ -743,8 +763,11 @@ class Viewer:
             self._popup_key = (popup, cols, rows)
             self._body_dirty = True
         if self._body_dirty:
-            lines = (fit_lines(self.frame["text"], cols, rows - 1, lite=bool(self.frame.get("lite")))
-                     if self.frame else [])
+            if self._body_override is not None:
+                lines = [truncate_ansi(ln, cols) for ln in self._body_override[:max(rows - 1, 0)]]
+            else:
+                lines = (fit_lines(self.frame["text"], cols, rows - 1, lite=bool(self.frame.get("lite")))
+                         if self.frame else [])
             out.append(build_body(lines, rows - 1))
             if popup:
                 out.append(build_popup(popup))
@@ -844,10 +867,18 @@ def wants_dismiss(chunk: str) -> bool:
 
 # ── girdi: tuş ayrıştırma, gönderim, kip makinesi (TBD#79) ───────────────────────────────────
 
+# Kaydırma tuşları (xterm/VTE; tekerlek alt ekranda ok tuşuna çevrilir: VTE "alternate scroll").
+_UP = ("\x1b[A", "\x1bOA")
+_DOWN = ("\x1b[B", "\x1bOB")
+_PGUP = ("\x1b[5~",)
+_PGDN = ("\x1b[6~",)
+_HOME = ("\x1b[H", "\x1bOH", "\x1b[1~", "\x1b[7~")
+_END = ("\x1b[F", "\x1bOF", "\x1b[4~", "\x1b[8~")
+
 _PASTE_START = "\x1b[200~"
 _PASTE_END = "\x1b[201~"
 PASTE_STALE_SECONDS = 3.0   # bitiş işareti gelmeyen yapıştırma bu süre sonra atılır (sonraki tuşları yutmasın)
-INPUT_HINT = "i yaz · k tuş · R ham"   # normal durum çubuğunun sonunda
+INPUT_HINT = "i yaz · k tuş · R ham · ↑ geçmiş"   # normal durum çubuğunun sonunda
 
 
 class Paste(str):
@@ -1040,6 +1071,98 @@ class InputSender:
         return False, str((data.get("error") if isinstance(data, dict) else None) or "panel reddetti")
 
 
+class HistoryClient:
+    """Geçmiş sayfalarını (`GET /api/term/history`, TBD#79) arka plan thread'inde çeker; uzak host'ta bir istek 12 sn'ye
+    kadar sürebilir, çizim ve tuş döngüsü beklemez. En SON istek kazanır: PgUp'a basılı tutarken araya giren eski
+    istekler beklenmez (bekleyen istek yenisiyle değiştirilir; yola çıkmış olan biter ve sonucu atılmaz, önbelleğe
+    girer). Sonuçlar `take_results()` ile alınır: (start, end, yanıt ya da None, hata metni)."""
+
+    def __init__(self, port: int, host: str, session: str, *, read_token: Optional[Callable[[], str]] = None,
+                 urlopen: Callable[..., Any] = urllib.request.urlopen):
+        self.port, self.host, self.session = port, host, session
+        self._read_token = read_token  # None: modül düzeyindeki `read_token` (çağrı anında çözülür)
+        self._urlopen = urlopen
+        self._cv = threading.Condition()
+        self._pending: Optional[Tuple[int, int]] = None
+        self._inflight = False
+        self._results: List[Tuple[int, int, Optional[dict], str]] = []
+        self._thread: Optional[threading.Thread] = None
+        self._closed = False
+
+    def request(self, start: int, end: int) -> None:
+        with self._cv:
+            if self._closed:
+                return
+            self._pending = (start, end)
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, name="watch-history", daemon=True)
+                self._thread.start()
+            self._cv.notify()
+
+    def busy(self) -> bool:
+        with self._cv:
+            return self._pending is not None or self._inflight
+
+    def take_results(self) -> List[Tuple[int, int, Optional[dict], str]]:
+        with self._cv:
+            out, self._results = self._results, []
+        return out
+
+    def close(self) -> None:
+        with self._cv:
+            self._closed = True
+            self._pending = None
+            self._cv.notify()
+
+    def _run(self) -> None:
+        while True:
+            with self._cv:
+                while self._pending is None and not self._closed:
+                    self._cv.wait()
+                if self._closed:
+                    return
+                start, end = self._pending
+                self._pending = None
+                self._inflight = True
+            try:
+                payload, err = self._get(start, end)
+            except Exception as e:   # hiçbir hata thread'i öldürmesin: sonraki sayfa yine çekilebilsin
+                payload, err = None, f"iç hata: {type(e).__name__}"
+            with self._cv:
+                self._inflight = False
+                self._results.append((start, end, payload, err))
+
+    def _get(self, start: int, end: int) -> Tuple[Optional[dict], str]:
+        try:
+            token = (self._read_token or read_token)()
+        except TransportError as e:
+            return None, e.detail
+        query = urllib.parse.urlencode({"name": self.session, "host": self.host, "lang": "en",
+                                        "start": start, "end": end})
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/term/history?{query}",
+                                     headers={"Authorization": f"Bearer {token}"})
+        try:
+            with self._urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as e:
+            e.close()
+            if e.code in (401, 403):
+                return None, f"http {e.code}: web.token {self.port} portundaki panelle eşleşmiyor"
+            if e.code == 404:   # uzak host'un paneli bu uçtan önceki bir sürümde
+                return None, "bu host'un paneli eski, geçmiş ucu yok"
+            return None, f"http {e.code}"
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            return None, str(getattr(e, "reason", None) or e)
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return None, "panel JSON olmayan yanıt verdi"
+        if (isinstance(data, dict) and data.get("ok") and isinstance(data.get("text"), str)
+                and isinstance(data.get("start"), int) and isinstance(data.get("history_size"), int)):
+            return data, ""
+        return None, str((data.get("error") if isinstance(data, dict) else None) or "panel reddetti")
+
+
 class InputController:
     """Mirror'ın klavye kip makinesi (TBD#79): normal / yazı satırı / kısa tuş / ham geçiş onayı / ham geçiş.
 
@@ -1062,10 +1185,11 @@ class InputController:
     _FLASH_STYLES = {"ok": STYLE_LIVE, "err": STYLE_SEVERE, "info": STYLE_INPUT}
     RAW_CHUNK_CHARS = 8000   # `/api/term/raw` tek istekte en çok 8192 karakter alır (web.MAX_TERM_RAW_CHARS)
 
-    def __init__(self, viewer: Viewer, sender: Any, *, keys: Optional[Any] = None,
+    def __init__(self, viewer: Viewer, sender: Any, *, history: Optional[Any] = None, keys: Optional[Any] = None,
                  clock: Callable[[], float] = time.monotonic):
         self.viewer = viewer
         self.sender = sender
+        self._history = history   # HistoryClient; None = geçmişte kaydırma kapalı
         self._keys = keys
         self._clock = clock
         self._parser = KeyParser()
@@ -1076,6 +1200,16 @@ class InputController:
         self._raw_buf: List[str] = []
         self._flash: Optional[Tuple[str, str, float]] = None   # (metin, "ok"|"err"|"info", bitiş anı)
         self._labels: Dict[int, str] = {}   # gönderim no → çubukta görünecek ad
+        # Geçmiş kipi: `_h_top` görünen ilk satırın tmux numarası (0 = pane'in ilk görünür satırı, negatifler scrollback),
+        # `_h_ref` bu numaralamanın dayandığı history_size (yeni çıktı geldikçe büyür, önbellek ve `_h_top` buna göre
+        # kaydırılır, böylece ekrandaki içerik yerinde kalır), `_h_lines` satır no → ANSI'li metin.
+        self._h_top = 0
+        self._h_ref = 0
+        self._h_lines: Dict[int, str] = {}
+        self._h_wanted: Optional[Tuple[int, int]] = None   # son istenen aralık (aynı aralık tekrar istenmesin)
+        self._h_error = ""
+        self._h_loading = False
+        self._h_low_since: Optional[float] = None   # canlı kare bilinen geçmişten küçük history_size bildirmeye ne zaman başladı
 
     # ── dış arayüz ──
 
@@ -1099,16 +1233,24 @@ class InputController:
                 self._on_keys(tok, now)
             elif self.mode == "rawask":
                 self._on_rawask(tok, now)
+            elif self.mode == "history":
+                self._on_history(tok, now)
             elif self._on_normal(tok, now):
                 quit_requested = True
                 break
         self._flush_raw()
+        if self.mode == "history":
+            self._history_tick(now)
         return quit_requested
 
     def shutdown(self) -> None:
         """Çıkışta: ham geçiş açıksa terminal ayarlarını geri alır; bekleyen gönderimleri bitirir."""
         if self.mode == "raw":
             self._leave_raw(None, self._clock())
+        if self.mode == "history":
+            self._leave_history()
+        if self._history is not None:
+            self._history.close()
         self.sender.close()
 
     def bar(self, cols: int) -> Optional[Tuple[str, str]]:
@@ -1117,6 +1259,8 @@ class InputController:
         flash = self._live_flash(now)
         if self.mode == "compose":
             return self._compose_bar(cols, flash)
+        if self.mode == "history":
+            return self._history_bar()
         if self.mode == "keys":
             return (" ⌨ kısa tuş ▸ Enter · Esc · ↑ ↓ ← → · Tab · Shift-Tab    (başka tuş ya da k: iptal)", STYLE_INPUT)
         if self.mode == "rawask":
@@ -1183,6 +1327,15 @@ class InputController:
 
     def _on_normal(self, tok: str, now: float) -> bool:
         if isinstance(tok, Paste):   # yapıştırılan metindeki harfler komut sayılmaz
+            return False
+        if tok in _UP:
+            self._enter_history("up1", now)
+            return False
+        if tok in _PGUP:
+            self._enter_history("pgup", now)
+            return False
+        if tok in _HOME:
+            self._enter_history("home", now)
             return False
         low = tok.lower()
         if low == "q":
@@ -1257,6 +1410,154 @@ class InputController:
             self._error(reason, now)
             return
         self._send("key", name, self.KEY_LABELS[name], now)
+
+    # ── geçmişte kaydırma (TBD#79) ──
+
+    def _geometry(self) -> Optional[Tuple[int, int, int]]:
+        """(görünen satır sayısı, pane satırı, history_size); kare yoksa None. Görünen satır: pencerenin gövdesi
+        (çubuk hariç), pane'den uzun olamaz."""
+        frame = self.viewer.frame
+        if not frame:
+            return None
+        rows, hist = frame.get("rows"), frame.get("history_size")
+        if any(isinstance(v, bool) or not isinstance(v, int) for v in (rows, hist)) or rows < 1:
+            return None
+        return min(max(self.viewer.screen.size()[1] - 1, 1), rows), rows, max(hist, 0)
+
+    def _enter_history(self, how: str, now: float) -> None:
+        if self._history is None:
+            return
+        geo = self._geometry()
+        if self.viewer.state != "live" or geo is None:
+            self._error("✗ bağlantı canlı değil: geçmiş alınamaz", now)
+            return
+        view, rows, hist = geo
+        if hist <= 0 and rows <= view:
+            self._set_flash("kaydırılacak geçmiş yok", "info", now + FLASH_ERR_SECONDS)
+            return
+        self.mode = "history"
+        self._h_ref, self._h_lines, self._h_error, self._h_wanted, self._h_loading = hist, {}, "", None, True
+        self._h_low_since = None
+        self._h_top = rows - view   # canlı konum
+        self._scroll(how)
+
+    def _scroll(self, how: str) -> None:
+        geo = self._geometry()
+        if geo is None:
+            self._leave_history()
+            return
+        view, _rows, _ = geo
+        page = max(view - 1, 1)
+        top = {"up1": self._h_top - 1, "down1": self._h_top + 1, "pgup": self._h_top - page,
+               "pgdn": self._h_top + page, "home": -self._h_ref}[how]
+        self._h_top = max(top, -self._h_ref)   # canlı konuma inildiyse `_history_tick` kipten çıkarır (tek kaynak)
+
+    def _leave_history(self, why: Optional[str] = None) -> None:
+        self.mode, self._h_lines, self._h_wanted, self._h_error, self._h_loading = "normal", {}, None, "", False
+        self.viewer.set_body_override(None)
+        if why:
+            self._set_flash(why, "info", self._clock() + FLASH_ERR_SECONDS)
+
+    def _sync_ref(self, hist: int) -> None:
+        """Geçmiş büyüdüyse (yeni çıktı) numaralamayı hizalar: eski satırlar `-büyüme` kadar kayar, görünen sayfa aynı
+        içerikte kalır. Yalnız BÜYÜME işlenir: bilinenden küçük bir değer ya daha eski bir numaralamadır (sayfa yanıtı
+        büyümeden önce hesaplanmıştı, `_merge` aradaki farkı kendisi telafi eder) ya da bayat bir canlı karedir;
+        gerçekten temizlenmiş geçmiş `_history_tick`te süreyle ayırt edilir. Tavanda (tmux'un `HISTORY_LIMIT`i)
+        satırlar sessizce düşer ve history_size sabit kalır: orada kayma ölçülemez, sayfa kayabilir."""
+        if hist <= self._h_ref:
+            return
+        grew = hist - self._h_ref
+        self._h_lines = {k - grew: v for k, v in self._h_lines.items()}
+        self._h_top -= grew
+        self._h_ref = hist
+        self._h_wanted = None
+
+    def _merge(self, payload: dict) -> None:
+        self._sync_ref(payload["history_size"])
+        if self.mode != "history":
+            return
+        shift = self._h_ref - payload["history_size"]   # yanıt daha eski bir numaralamayla geldiyse
+        start = payload["start"]
+        lines = payload["text"].split("\n")
+        for i, line in enumerate(lines):
+            self._h_lines[start + i - shift] = line
+        end = payload.get("end")
+        if isinstance(end, int):   # sunucu daha az satır verdiyse eksikler boş sayılır (sonsuz yeniden istek olmasın)
+            for k in range(start + len(lines), end + 1):
+                self._h_lines[k - shift] = ""
+
+    def _history_tick(self, now: float) -> None:
+        """Her turda: canlı karedeki history_size ile hizala, gelen sayfaları önbelleğe al, eksik satır varsa tek
+        istek yolla, görünen sayfa tamamsa gövdeye ver."""
+        geo = self._geometry()
+        if geo is None or self._history is None:
+            self._leave_history()
+            return
+        view, rows, hist = geo
+        self._sync_ref(hist)
+        if hist < self._h_ref:
+            if self._h_low_since is None:
+                self._h_low_since = now
+            elif now - self._h_low_since > HISTORY_SHRINK_GRACE_SECONDS:
+                self._leave_history("geçmiş değişti, canlıya dönüldü")
+                return
+        else:
+            self._h_low_since = None
+        for _start, _end, payload, err in self._history.take_results():
+            if payload is None:
+                self._h_error = clean_text(err)
+            else:
+                self._h_error = ""
+                self._merge(payload)
+                if self.mode != "history":
+                    return
+        top = max(self._h_top, -self._h_ref)
+        if top >= rows - view:
+            self._leave_history()
+            return
+        self._h_top = top
+        lo = -self._h_ref
+        near = range(max(lo, top - view // 2), min(rows - 1, top + view - 1 + view // 2) + 1)
+        want = (max(lo, top - view), min(rows - 1, top + 2 * view - 1))
+        if any(k not in self._h_lines for k in near) and want != self._h_wanted:
+            want = (want[0], min(want[1], want[0] + HISTORY_MAX_REQUEST_LINES - 1))
+            self._h_wanted = want
+            self._history.request(*want)
+        self._h_loading = any(top + i not in self._h_lines for i in range(view))
+        if not self._h_loading:
+            self.viewer.set_body_override([self._h_lines[top + i] for i in range(view)])
+
+    def _on_history(self, tok: str, now: float) -> None:
+        if isinstance(tok, Paste):
+            return
+        self._h_wanted = None   # her tuş (örneğin hata sonrası) yeniden deneme hakkıdır
+        if tok in _UP:
+            self._scroll("up1")
+        elif tok in _DOWN:
+            self._scroll("down1")
+        elif tok in _PGUP:
+            self._scroll("pgup")
+        elif tok in _PGDN:
+            self._scroll("pgdn")
+        elif tok in _HOME or tok == "g":
+            self._scroll("home")
+        elif tok in _END or tok in ("G", "\x1b", "q", "Q"):   # q burada çıkış değil, canlıya dönüş
+            self._leave_history()
+        elif tok.lower() in ("i", "k", "x") or tok == "R":    # diğer kipler canlı ekranda açılır
+            self._leave_history()
+            self._on_normal(tok, now)
+
+    def _history_bar(self) -> Tuple[str, str]:
+        geo = self._geometry()
+        view, rows, _ = geo if geo else (1, 1, 0)
+        back, total = (rows - view) - self._h_top, self._h_ref + (rows - view)
+        head = f" ⇡ GEÇMİŞ {back}/{total}"
+        if self._h_error:   # hata varken tuş ipuçları çubuktan çıkar: dar pencerede mesaj kesilmesin
+            return f"{head} · ✗ {self._h_error} · End: canlı", STYLE_HISTORY
+        text = f"{head} satır · PgUp/PgDn ↑↓ gez · Home başa · End/Esc/q canlı"
+        if self._h_loading:
+            text += " · yükleniyor…"
+        return text, STYLE_HISTORY
 
     # ── ham geçiş ──
 
@@ -1520,7 +1821,8 @@ def run(args: argparse.Namespace) -> int:
         with Keys() as keys, quiet_terminal(f"{host}:{name}"):
             controller: Optional[InputController] = None
             if not args.read_only:
-                controller = InputController(viewer, InputSender(args.port, host, name), keys=keys)
+                controller = InputController(viewer, InputSender(args.port, host, name),
+                                             history=HistoryClient(args.port, host, name), keys=keys)
                 viewer.overlay = controller.bar
                 viewer.hint = INPUT_HINT
             try:

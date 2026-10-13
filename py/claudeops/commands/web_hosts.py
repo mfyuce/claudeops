@@ -74,7 +74,7 @@ HOST_ROUTED_PATHS = {
 # proxy'sinden AYRI çünkü query-string tabanlar (JSON body yok) + biri
 # (files/download) JSON değil ham binary dönüyor. TODO.md'nin bilerek
 # ERTELEDİĞİ parça buydu (TOBEDECIDED #16 kapanışı) — artık uygulandı.
-GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/chat", "/api/files/list", "/api/files/read",
+GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/history", "/api/term/chat", "/api/files/list", "/api/files/read",
                          "/api/instances", "/api/cli/status"}
 FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
 FILE_UPLOAD_PATH = "/api/files/upload"  # download'ın YAZMA kardeşi — POST + ham binary REQUEST body (ne JSON-body proxy_action'a ne query-only GET proxy'lerine uyar), kendi proxy_post_raw()'ı var
@@ -790,16 +790,21 @@ def _http_raw(url: str, timeout: float, dedup: bool = False) -> Tuple[int, Optio
                 _inflight_starts.pop(url, None)
 
 
-def proxy_get(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Dict[str, Any], int]:
+def proxy_get(path: str, host_name: str, query: Dict[str, str], dedup: bool = True) -> Tuple[Dict[str, Any], int]:
     """4 JSON GET route (`GET_HOST_ROUTED_PATHS`) için — `proxy_action()`'ın
-    query-string kardeşi, aynı hata/status konvansiyonu."""
+    query-string kardeşi, aynı hata/status konvansiyonu.
+
+    `dedup=False`: üst üste binen aynı-URL isteğini "busy" ile geri çevirme ve sonucu `_dedup_last_good`'da SAKLAMA.
+    Poll edilen az sayıda sabit URL için (terminal çıktısı, durum) yararlı olan bu önbellek URL başına bir kayıt tutar
+    ve hiç temizlenmez; her sayfası ayrı URL olan tek-seferlik istekler (`/api/term/history`: oturum, başlangıç, bitiş)
+    onu sınırsız şişirirdi (sayfa başına ~10-30 KB, panel haftalarca açık)."""
     host = hosts_mod.get_host(host_name)
     if host is None:
         return {"ok": False, "error": f"unknown host: {host_name}"}, 200
     q = {k: v for k, v in query.items() if k != "host"}
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
-    status, parsed, err = _http_json("GET", url, None, TERM_READ_TIMEOUT_SECONDS, dedup=True)
+    status, parsed, err = _http_json("GET", url, None, TERM_READ_TIMEOUT_SECONDS, dedup=dedup)
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status

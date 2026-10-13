@@ -122,6 +122,25 @@ def tmux_capture(name: str, lines: int = 2000) -> Optional[str]:
         return None
 
 
+def tmux_capture_range(name: str, start: int, end: int) -> Optional[str]:
+    """`capture-pane -S start -E end`: pane'in KÜÇÜK bir aralığı (mirror'ın geçmişte kaydırması, TBD#79).
+
+    tmux satır numaraları: 0 = görünür alanın ilk satırı, `rows-1` = son görünür satır; negatifler scrollback
+    (-1 en yeni geçmiş satırı, `-history_size` en eskisi). `tmux_capture`ın aksine 2000 satırın tamamını çekmez:
+    çıktı `end-start+1` satırdır, her satır "\n" ile biter ve `-e` ile renklidir. Hata (oturum yok) → None.
+    `-S`/`-E` değerleri `int()`e zorlanır: argv'ye başka hiçbir şey sızamaz."""
+    try:
+        r = subprocess.run(
+            _base_argv() + ["capture-pane", "-t", _exact(name), "-e", "-p", "-S", str(int(start)), "-E", str(int(end))],
+            capture_output=True, text=True, timeout=_TIMEOUT,
+        )
+        if r.returncode != 0:
+            return None
+        return r.stdout
+    except Exception:
+        return None
+
+
 # `tmux capture-pane -e` ANSI'yi KORUR ve claude'un durum çubuğunu/dialoglarını
 # kelime kelime renklendirir — ham metinde "Switch model?" aslında
 # `\x1b[1m\x1b[38;5;220mSwitch\x1b[0m\x1b[39m\x1b[49m \x1b[1m\x1b[38;5;220mmodel?...`
