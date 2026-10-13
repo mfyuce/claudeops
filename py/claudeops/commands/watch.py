@@ -1,6 +1,7 @@
 """`py/cops watch <host>:<ad>` — bir session'ın terminalini masaüstündeki GERÇEK bir terminal
-penceresinde canlı gösteren ince, SALT-OKUNUR görüntüleyici (TODO.md "Uzak host'lardaki ...
-masaüstünde", 2026-10-08 tasarım notu; TBD#74 kararı: Faz 0 + Faz 1).
+penceresinde canlı gösteren ince görüntüleyici; varsayılan olarak izler, istenirse mesaj/tuş yollar
+(TODO.md "Uzak host'lardaki ... masaüstünde", 2026-10-08 tasarım notu; TBD#74 kararı: Faz 0 + Faz 1;
+TBD#79 kararı, 2026-10-13: yazı satırı + kısa tuşlar + ham geçiş).
 
 Yalnız YEREL panelle konuşur (`127.0.0.1:<port>`): host seçimi, tier (rest/ws/grpc), uzak host'un
 token'ı ve fallback zaten panelde; görüntüleyicinin uzak host'a SSH'ı ya da kendi token'ı yok.
@@ -10,8 +11,18 @@ kurulamıyorsa `/api/term/output?...&lite=1` REST yoklaması. Yetki `Authorizati
 başlığıyla gider (token URL'ye girmez).
 
 Bu bir tmux client DEĞİL, canlı bir resim:
-  - Yazı yazmaz (yazmak panel popup'ında). Yazılan tuşlar yankılanmaz; `q` ya da Ctrl-C çıkar,
-    `x` sorun kutusunu gizler (aşağıda).
+  - Tuşlar oturuma kendiliğinden GİTMEZ; normalde yazılan hiçbir şey yankılanmaz. `q` ya da Ctrl-C çıkar,
+    `x` sorun kutusunu gizler (aşağıda), üç açık kip girdi yollar (hepsi yerel panelin
+    `/api/term/{input,key,raw}` uçlarından, yani uzak host'a da panel yönlendirir; bkz. `InputController`):
+      * `i` yazı satırı: alt çubuk girdi satırına döner (yankı yerelde), Enter `/api/term/input` ile
+        yollar (metin + Enter), Esc iptal. Tek satırdır: yapıştırılan satır sonları boşluğa çevrilir.
+      * `k` kısa tuş: sonraki TEK tuş oturuma gider (Enter, Esc, yön tuşları, Tab, Shift-Tab; onay
+        diyaloglarında gezinmek için), kip kapanır; 8 sn içinde tuş basılmazsa ya da başka tuşa basılırsa
+        yollamadan kapanır.
+      * `R` ham geçiş: Enter ile onaylanırsa her tuş (Ctrl-C dahil) `/api/term/raw` ile gider; kırmızı çubuk,
+        Ctrl-] çıkar, 60 sn tuşsuz kalınca kendiliğinden kilitlenir.
+    Bağlantı canlı değilken ya da pane maskeli girişteyse (parola istemi) hiçbir şey yollanmaz.
+    `--read-only` bu kipleri tümden kapatır.
   - Yerel kaydırma yok (geçmiş popup'taki `history`'de). Kare yalnız görünür `rows` satırıdır.
   - İmleç konumu karede YOK, imleç gizlenir.
   - Altta 1 satırlık durum çubuğu var; pencere pane'in `cols × (rows+1)` boyutuna istenir
@@ -43,11 +54,13 @@ konumlu çizimin üstüne biner; gövde yalnız DEĞİŞİNCE yeniden çizildiğ
 from __future__ import annotations
 
 import argparse
+import codecs
 import contextlib
 import json
 import logging
 import math
 import os
+import queue
 import random
 import re
 import select
@@ -60,7 +73,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from ..diaglog import diag_log
 from ..hosts import LOCAL_HOST_NAME
@@ -89,6 +102,18 @@ BACKOFF_CAP_SECONDS = 15.0
 POPUP_GRACE_SECONDS = 3.0
 POPUP_MAX_COLS = 64
 POPUP_MIN_COLS = 30
+# Girdi kipleri (yazı satırı / kısa tuş / ham geçiş, TBD#79). Normalde döngü 0,25 sn'de bir uyanır; bir girdi kipi
+# açıkken tuş yankısı ve ham geçiş bu kadar sıklıkla işlenir (yoksa yazarken harfler çeyrek saniye geriden gelir).
+INPUT_TICK_SECONDS = 0.05
+KEYS_MODE_SECONDS = 8.0          # `k` sonrası tuş beklemesi; dolunca hiçbir şey yollamadan kapanır
+RAW_CONFIRM_SECONDS = 8.0        # `R` sonrası onay (Enter) beklemesi
+RAW_IDLE_LOCK_SECONDS = 60.0     # ham geçişte bu kadar tuşsuz kalınırsa kip kendiliğinden kapanır
+RAW_COUNTDOWN_SECONDS = 15.0     # kilide bu kadar kala çubukta geri sayım görünür
+RAW_EXIT_KEY = "\x1d"            # Ctrl-]: ham geçişten çıkış (oturumda kullanılan bir tuş değil, telnet geleneği)
+FLASH_OK_SECONDS = 2.0           # "gönderildi" bildirimi çubukta bu kadar kalır
+FLASH_ERR_SECONDS = 6.0          # hata bildirimi (gönderilemedi, bağlantı yok, maskeli giriş)
+COMPOSE_MAX_CHARS = 4000         # yazı satırı sınırı; fazlası sessizce yok sayılır
+PASTE_MAX_CHARS = 1 << 20        # bracketed paste tamponu sınırı (aşan yapıştırma atılır)
 
 # Durum çubuğu renkleri (256 renk; gnome-terminal ve tmux'ta ortak).
 STYLE_LIVE = "\x1b[0;48;5;22;38;5;252m"
@@ -96,6 +121,8 @@ STYLE_WAITING = "\x1b[0;48;5;24;38;5;255m"
 STYLE_RECONNECTING = "\x1b[0;48;5;130;38;5;255m"
 STYLE_SEVERE = "\x1b[0;48;5;88;38;5;255m"
 STYLE_BADGE = "\x1b[1;48;5;226;38;5;16m"   # popup'taki "!" rozeti: kalın siyah, sarı zemin
+STYLE_INPUT = "\x1b[0;48;5;54;38;5;255m"   # yazı satırı / kısa tuş: mor zemin (canlı yeşil, bekliyor mavi ile karışmaz)
+STYLE_RAW = "\x1b[1;48;5;160;38;5;255m"    # ham geçiş: kalın beyaz, parlak kırmızı zemin (durum çubuğunun SEVERE'inden belirgin)
 
 _STATES = {
     "connecting": ("◌", "bağlanıyor", STYLE_WAITING),
@@ -396,6 +423,12 @@ class Backoff:
 
 # ── taşıyıcılar ──────────────────────────────────────────────────────────────────────────
 
+def _tick_seconds(tick: Any) -> float:
+    """Taşıyıcıların uyanma aralığı: sabit bir sayı ya da her çağrıda çözülen bir işlev. İşlev, girdi kipi
+    açılınca döngüyü 0,25 sn yerine `INPUT_TICK_SECONDS`'ta uyandırmak içindir (yazarken yankı gecikmesin)."""
+    return tick() if callable(tick) else tick
+
+
 def _query(host: str, name: str) -> str:
     return urllib.parse.urlencode({"name": name, "host": host, "lang": "en", "lite": "1"})
 
@@ -466,7 +499,7 @@ class WsTransport:
         try:
             while not stop.is_set():
                 try:
-                    raw = conn.recv(timeout=tick)
+                    raw = conn.recv(timeout=_tick_seconds(tick))
                 except TimeoutError:
                     if self._clock() - last_rx > WS_SILENCE_SECONDS:
                         raise TransportError(f"sunucudan {WS_SILENCE_SECONDS:.0f} sn ses yok")
@@ -528,7 +561,7 @@ class RestTransport:
             yield frame
             interval = REST_LIVE_INTERVAL_SECONDS if frame.get("ok") else REST_WAITING_INTERVAL_SECONDS
             while not stop.is_set() and self._clock() - started < interval:
-                self._sleep(tick)
+                self._sleep(_tick_seconds(tick))
                 yield None
 
 
@@ -538,10 +571,15 @@ class Screen:
     """Gerçek terminale yazan ince katman. Alternatif ekran + gizli imleç + otomatik sarma kapalı;
     `leave()` hepsini geri alır. Yazma hatası (pencere kapandı) `dead`i işaretler, raise etmez."""
 
-    def __init__(self, out, title: str, size_fn: Optional[Callable[[], Tuple[int, int]]] = None):
+    def __init__(self, out, title: str, size_fn: Optional[Callable[[], Tuple[int, int]]] = None,
+                 bracketed_paste: bool = False):
         self._out = out
         self._title = "".join(c for c in title if ord(c) >= 32 and ord(c) != 127)
         self._size_fn = size_fn
+        # Bracketed paste (DECSET 2004): terminal yapıştırmayı `ESC[200~ ... ESC[201~` ile sarar, böylece
+        # yapıştırılan metindeki `q`/`i`/`k` komut sayılmaz ve satır sonları Enter'a dönüşmez. Yalnız girdi
+        # kipleri açıksa (salt-okunur modda yapıştırma zaten hiçbir şey yapmıyor) istenir.
+        self._bracketed_paste = bracketed_paste
         self.dead = False
 
     def write(self, data: str) -> None:
@@ -567,10 +605,11 @@ class Screen:
         return f"\x1b]0;{self._title}\x07"
 
     def enter(self) -> None:
-        self.write("\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[2J" + self.title_seq())
+        self.write("\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[2J" + ("\x1b[?2004h" if self._bracketed_paste else "")
+                   + self.title_seq())
 
     def leave(self) -> None:
-        self.write("\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l")
+        self.write(("\x1b[?2004l" if self._bracketed_paste else "") + "\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l")
 
 
 class Viewer:
@@ -588,6 +627,7 @@ class Viewer:
         self.severe = False
         self.retry_in: Optional[float] = None
         self.transport_name = ""
+        self.hint = ""   # durum çubuğunun sonuna eklenen tuş ipucu (girdi kipleri açıksa `INPUT_HINT`)
         self.frame: Optional[dict] = None
         # Ekrandaki içeriğin GÜNCEL olduğunun son doğrulandığı an: canlı kare geldiğinde ve canlıyken
         # sağlıklı bağlantıda geçen her sessiz tick'te tazelenir (WS yalnız DEĞİŞİNCE kare yollar,
@@ -604,6 +644,9 @@ class Viewer:
         self._popup_key: Any = None
         self._last_size: Optional[Tuple[int, int]] = None
         self._resized_for: Optional[Tuple[int, int]] = None
+        # Girdi kipleri çubuğu devralır: `overlay(cols)` (metin, stil) döndürürse durum çubuğunun yerine o çizilir
+        # (yazı satırı, kısa tuş ipucu, ham geçiş uyarısı, gönderim sonucu); None = normal durum çubuğu.
+        self.overlay: Optional[Callable[[int], Optional[Tuple[str, str]]]] = None
 
     def apply_frame(self, frame: Any) -> None:
         state, detail = classify_frame(frame)
@@ -668,6 +711,8 @@ class Viewer:
             parts.append(f"{size[0]}×{size[1]}")
         if self.transport_name:
             parts.append(self.transport_name)
+        if self.hint:
+            parts.append(self.hint)
         return " " + " · ".join(parts), style
 
     def _pane_size(self) -> Optional[Tuple[int, int]]:
@@ -705,6 +750,10 @@ class Viewer:
                 out.append(build_popup(popup))
             self._body_dirty = False
         text, style = self.status()
+        if self.overlay is not None:
+            taken = self.overlay(cols)
+            if taken:
+                text, style = taken
         key = (text, style, cols, rows)
         if key != self._status_key:
             out.append(build_status(text, style, cols, rows))
@@ -714,12 +763,19 @@ class Viewer:
 
 class Keys:
     """stdin'i cbreak'e alır (yazılan tuşlar yankılanıp gövdeyi bozmasın; ISIG açık kalır, Ctrl-C
-    çalışır). TTY değilse hiçbir şey yapmaz."""
+    çalışır). TTY değilse hiçbir şey yapmaz.
+
+    `set_passthrough(True)` ham geçiş kipi içindir: terminal sürücüsünün tuş yorumlarını (Ctrl-C/Z/\\ sinyalleri,
+    Ctrl-V, Ctrl-S/Q akış denetimi, Enter'ın `\\n`e çevrilmesi) kapatır, böylece oturuma gidecek her bayt olduğu gibi
+    okunur. Açıkken Ctrl-C görüntüleyiciyi ÖLDÜRMEZ; çıkış `RAW_EXIT_KEY`."""
 
     def __init__(self, stream=None):
         self._stream = stream if stream is not None else sys.stdin
         self._fd: Optional[int] = None
         self._saved = None
+        self._cbreak = None   # cbreak'teki nitelikler: ham geçişten dönüş buraya
+        # Çok baytlı bir UTF-8 karakter iki okumaya bölünürse yarım bayt atılmasın.
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="ignore")
 
     def __enter__(self) -> "Keys":
         try:
@@ -729,9 +785,23 @@ class Keys:
                 self._fd = self._stream.fileno()
                 self._saved = termios.tcgetattr(self._fd)
                 tty.setcbreak(self._fd)
+                self._cbreak = termios.tcgetattr(self._fd)
         except Exception:
             self._fd = None
         return self
+
+    def set_passthrough(self, on: bool) -> None:
+        if self._fd is None or self._cbreak is None:
+            return
+        try:
+            import termios
+            attrs = list(self._cbreak)
+            if on:
+                attrs[0] &= ~(termios.ICRNL | termios.INLCR | termios.IGNCR | termios.IXON | termios.IXOFF)
+                attrs[3] &= ~(termios.ISIG | termios.IEXTEN)
+            termios.tcsetattr(self._fd, termios.TCSADRAIN, attrs)
+        except Exception:
+            pass
 
     def __exit__(self, *exc) -> None:
         if self._fd is not None and self._saved is not None:
@@ -753,7 +823,7 @@ class Keys:
                 out += chunk
         except OSError:
             pass
-        return out.decode("utf-8", "ignore")
+        return self._decoder.decode(out) if out else ""
 
 
 # ── denetleyici döngü ───────────────────────────────────────────────────────────────────────
@@ -772,11 +842,477 @@ def wants_dismiss(chunk: str) -> bool:
     return "x" in _KEY_SEQ_RE.sub("", chunk).lower()
 
 
-def _quit_requested(keys: Optional[Any], stop: threading.Event, viewer: Optional[Viewer] = None) -> bool:
-    """Tuşları okur: `q` çıkış, `x` (viewer verilmişse) sorun kutusunu gizler. Çıkış istendi mi döner."""
+# ── girdi: tuş ayrıştırma, gönderim, kip makinesi (TBD#79) ───────────────────────────────────
+
+_PASTE_START = "\x1b[200~"
+_PASTE_END = "\x1b[201~"
+PASTE_STALE_SECONDS = 3.0   # bitiş işareti gelmeyen yapıştırma bu süre sonra atılır (sonraki tuşları yutmasın)
+INPUT_HINT = "i yaz · k tuş · R ham"   # normal durum çubuğunun sonunda
+
+
+class Paste(str):
+    """Bracketed paste bloğunun içeriği (işaretler atılmış). Düz `str` tuş jetonlarından `isinstance` ile ayrılır."""
+
+
+class KeyParser:
+    """`Keys.poll()` çıktısını jetonlara böler: tek karakter, kaçış dizisi (`ESC [ A`, `ESC O P`, `ESC x`), tek başına
+    ESC ve `Paste` bloğu. Yapıştırma birden çok okumaya yayılabildiği için durum tutar; bitiş işareti hiç gelmezse
+    `PASTE_STALE_SECONDS` sonra atılır (aksi halde sonraki bütün tuşlar, `q` dahil, yapıştırma içeriği sanılırdı)."""
+
+    def __init__(self) -> None:
+        self._paste: Optional[List[str]] = None
+        self._paste_len = 0
+        self._paste_since = 0.0
+
+    def feed(self, chunk: str, now: float = 0.0) -> List[str]:
+        if self._paste is not None and now - self._paste_since > PASTE_STALE_SECONDS:
+            self._paste, self._paste_len = None, 0
+        out: List[str] = []
+        i, n = 0, len(chunk)
+        while i < n:
+            if self._paste is not None:
+                j = chunk.find(_PASTE_END, i)
+                part = chunk[i:] if j < 0 else chunk[i:j]
+                self._paste_len += len(part)
+                if self._paste_len <= PASTE_MAX_CHARS:
+                    self._paste.append(part)
+                if j < 0:
+                    break
+                if self._paste_len <= PASTE_MAX_CHARS:   # sınırı aşan yapıştırma bütünüyle atılır (kırpılmış gitmez)
+                    out.append(Paste("".join(self._paste)))
+                self._paste, self._paste_len = None, 0
+                i = j + len(_PASTE_END)
+                continue
+            if chunk.startswith(_PASTE_START, i):
+                self._paste, self._paste_len, self._paste_since = [], 0, now
+                i += len(_PASTE_START)
+                continue
+            if chunk[i] == "\x1b":
+                m = _KEY_SEQ_RE.match(chunk, i)
+                if m:
+                    out.append(m.group())
+                    i = m.end()
+                else:   # dizinin başı yok: tek başına Esc tuşu
+                    out.append("\x1b")
+                    i += 1
+                continue
+            out.append(chunk[i])
+            i += 1
+        return out
+
+
+def _printable(ch: str) -> bool:
+    o = ord(ch)
+    return o >= 32 and o != 127 and not 0x80 <= o < 0xA0
+
+
+def one_line(text: str) -> str:
+    """Yazı satırına giren metin tek satırdır: satır sonu ve sekme boşluğa çevrilir, diğer denetim karakterleri atılır
+    (satır sonu `/api/term/input`un otomatik Enter'ından önce mesajı kesip bir sonraki satırı ayrı mesaj yapardı)."""
+    return "".join(" " if c in "\r\n\t" else c for c in text if c in "\r\n\t" or _printable(c))
+
+
+def drop_last_char(s: str) -> str:
+    """Son karakteri (ve ona bağlı birleşik işaretleri) siler."""
+    i = len(s)
+    while i > 0 and char_width(s[i - 1]) == 0:
+        i -= 1
+    return s[:max(i - 1, 0)]
+
+
+def drop_last_word(s: str) -> str:
+    s = s.rstrip()
+    i = len(s)
+    while i > 0 and not s[i - 1].isspace():
+        i -= 1
+    return s[:i]
+
+
+def tail_fit(s: str, width: int) -> str:
+    """`s`in SONUNU görünür genişliği en çok `width` olacak biçimde alır; kesildiyse başa "…" koyar (imleç sonda durur,
+    yazılan son harfler görünür kalsın)."""
+    if width <= 0:
+        return ""
+    if display_width(s) <= width:
+        return s
+    kept: List[str] = []
+    used = 1   # baştaki "…"
+    for ch in reversed(s):
+        cw = char_width(ch)
+        if used + cw > width:
+            break
+        kept.append(ch)
+        used += cw
+    return "…" + "".join(reversed(kept))
+
+
+class InputSender:
+    """Mirror'dan session'a giden girdi: yerel panelin `/api/term/{input,key,raw}` uçlarına (üçü de `HOST_ROUTED_PATHS`'ta,
+    yani uzak host'a panel yönlendirir; görüntüleyicinin uzak host'a kendi yolu yok) SIRALI POST. HTTP bir arka plan
+    thread'inde koşar: uzak host'ta bir istek 12 sn'ye kadar sürebilir, çizim ve tuş döngüsü hiç beklemez. Tek thread
+    olduğundan sıra korunur (ham geçişte iki yığın ters gitmez). Sonuçlar `take_results()` ile alınır."""
+
+    ENDPOINTS = {"text": ("/api/term/input", "text"), "key": ("/api/term/key", "key"), "raw": ("/api/term/raw", "data")}
+
+    def __init__(self, port: int, host: str, session: str, *, read_token: Optional[Callable[[], str]] = None,
+                 urlopen: Callable[..., Any] = urllib.request.urlopen):
+        self.port, self.host, self.session = port, host, session
+        self._read_token = read_token  # None: modül düzeyindeki `read_token` (çağrı anında çözülür)
+        self._urlopen = urlopen
+        self._jobs: "queue.Queue[Optional[Tuple[int, str, str]]]" = queue.Queue()
+        self._results: List[Tuple[int, str, bool, str]] = []
+        self._lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        self._seq = 0
+        self._inflight = 0
+
+    def submit(self, kind: str, payload: str) -> int:
+        """Gönderimi sıraya koyar, hemen döner. Dönen sayı `take_results()` kaydıyla eşleşir."""
+        if kind not in self.ENDPOINTS:
+            raise ValueError(f"bilinmeyen girdi türü: {kind!r}")
+        with self._lock:
+            self._seq += 1
+            seq = self._seq
+            self._inflight += 1
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, name="watch-input", daemon=True)
+                self._thread.start()
+        self._jobs.put((seq, kind, payload))
+        return seq
+
+    def inflight(self) -> int:
+        with self._lock:
+            return self._inflight
+
+    def take_results(self) -> List[Tuple[int, str, bool, str]]:
+        """Biten gönderimler: (seq, tür, başarılı mı, hata metni). Bir kez alınır."""
+        with self._lock:
+            out, self._results = self._results, []
+        return out
+
+    def close(self, wait: float = 2.0) -> None:
+        """Bekleyen gönderimleri bitirir (en çok `wait` sn): `q` ile çıkıştan hemen önce yollanan mesaj kaybolmasın."""
+        thread = self._thread
+        if thread is None:
+            return
+        self._jobs.put(None)
+        thread.join(wait)
+
+    def _run(self) -> None:
+        while True:
+            job = self._jobs.get()
+            if job is None:
+                return
+            seq, kind, payload = job
+            try:
+                ok, err = self._post(kind, payload)
+            except Exception as e:   # hiçbir hata gönderim thread'ini öldürmesin: sonraki tuşlar da gitsin
+                ok, err = False, f"iç hata: {type(e).__name__}"
+            with self._lock:
+                self._inflight -= 1
+                self._results.append((seq, kind, ok, err))
+
+    def _post(self, kind: str, payload: str) -> Tuple[bool, str]:
+        path, field = self.ENDPOINTS[kind]
+        try:
+            token = (self._read_token or read_token)()
+        except TransportError as e:
+            return False, e.detail
+        body = json.dumps({"name": self.session, "host": self.host, field: payload, "lang": "en"}).encode("utf-8")
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=body, method="POST",
+                                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+        try:
+            with self._urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as e:
+            e.close()
+            if e.code in (401, 403):
+                return False, f"http {e.code}: web.token {self.port} portundaki panelle eşleşmiyor"
+            return False, f"http {e.code}"
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            return False, str(getattr(e, "reason", None) or e)
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return False, "panel JSON olmayan yanıt verdi"
+        if isinstance(data, dict) and data.get("ok"):
+            return True, ""
+        return False, str((data.get("error") if isinstance(data, dict) else None) or "panel reddetti")
+
+
+class InputController:
+    """Mirror'ın klavye kip makinesi (TBD#79): normal / yazı satırı / kısa tuş / ham geçiş onayı / ham geçiş.
+
+    `Viewer` yalnız çizer, `watch_loop` yalnız taşıyıcıyı sürer; tuşların ne anlama geldiği ve "şu an oturuma bir şey
+    yollanabilir mi" kararı burada. Çıkış yolu `sender` (arka plan thread'li HTTP); çubuğu `Viewer.overlay = bar` ile
+    devralır. Kurallar (CLAUDE.md tmux kuralı + TBD#79):
+      - bağlantı canlı değilken ya da pane maskeli girişteyse (parola istemi) HİÇBİR şey yollanmaz;
+      - yazı satırı Enter'a kadar yalnız yerelde durur; kısa tuş ve ham geçiş açıkça açılır, kendiliğinden kapanır;
+      - ham geçiş yalnız Enter onayıyla açılır, Ctrl-] ile kapanır, `RAW_IDLE_LOCK_SECONDS` tuşsuz kalınca kilitlenir.
+    """
+
+    # Kısa tuş kipi (Orta set): terminalden okunan jeton → panelin `ALLOWED_SPECIAL_KEYS` adı. Ctrl-C/Ctrl-D yok.
+    SHORT_KEYS = {
+        "\r": "Enter", "\n": "Enter", "\x1b": "Escape", "\t": "Tab", "\x1b[Z": "BTab",
+        "\x1b[A": "Up", "\x1bOA": "Up", "\x1b[B": "Down", "\x1bOB": "Down",
+        "\x1b[C": "Right", "\x1bOC": "Right", "\x1b[D": "Left", "\x1bOD": "Left",
+    }
+    KEY_LABELS = {"Enter": "Enter", "Escape": "Esc", "Tab": "Tab", "BTab": "Shift-Tab",
+                  "Up": "↑", "Down": "↓", "Left": "←", "Right": "→"}
+    _FLASH_STYLES = {"ok": STYLE_LIVE, "err": STYLE_SEVERE, "info": STYLE_INPUT}
+    RAW_CHUNK_CHARS = 8000   # `/api/term/raw` tek istekte en çok 8192 karakter alır (web.MAX_TERM_RAW_CHARS)
+
+    def __init__(self, viewer: Viewer, sender: Any, *, keys: Optional[Any] = None,
+                 clock: Callable[[], float] = time.monotonic):
+        self.viewer = viewer
+        self.sender = sender
+        self._keys = keys
+        self._clock = clock
+        self._parser = KeyParser()
+        self.mode = "normal"          # normal | compose | keys | rawask | raw
+        self.buf = ""                 # yazı satırı
+        self._mode_until: Optional[float] = None   # keys / rawask zaman aşımı
+        self._last_input = 0.0        # ham geçişte son tuşun anı
+        self._raw_buf: List[str] = []
+        self._flash: Optional[Tuple[str, str, float]] = None   # (metin, "ok"|"err"|"info", bitiş anı)
+        self._labels: Dict[int, str] = {}   # gönderim no → çubukta görünecek ad
+
+    # ── dış arayüz ──
+
+    def tick_seconds(self) -> float:
+        """Döngünün uyanma aralığı: bir girdi kipi açıkken sık (yankı gecikmesin), değilken seyrek (boşta CPU)."""
+        return TICK_SECONDS if self.mode == "normal" else INPUT_TICK_SECONDS
+
+    def handle(self, chunk: str) -> bool:
+        """`Keys.poll()` çıktısını işler (boş olabilir: zaman aşımları ve gönderim sonuçları da burada işlenir).
+        True = görüntüleyiciden çık."""
+        now = self._clock()
+        self._collect_results(now)
+        self._expire(now)
+        quit_requested = False
+        for tok in self._parser.feed(chunk, now):
+            if self.mode == "raw":
+                self._on_raw(tok, now)
+            elif self.mode == "compose":
+                self._on_compose(tok, now)
+            elif self.mode == "keys":
+                self._on_keys(tok, now)
+            elif self.mode == "rawask":
+                self._on_rawask(tok, now)
+            elif self._on_normal(tok, now):
+                quit_requested = True
+                break
+        self._flush_raw()
+        return quit_requested
+
+    def shutdown(self) -> None:
+        """Çıkışta: ham geçiş açıksa terminal ayarlarını geri alır; bekleyen gönderimleri bitirir."""
+        if self.mode == "raw":
+            self._leave_raw(None, self._clock())
+        self.sender.close()
+
+    def bar(self, cols: int) -> Optional[Tuple[str, str]]:
+        """Durum çubuğunun yerine geçecek (metin, stil); None = normal durum çubuğu."""
+        now = self._clock()
+        flash = self._live_flash(now)
+        if self.mode == "compose":
+            return self._compose_bar(cols, flash)
+        if self.mode == "keys":
+            return (" ⌨ kısa tuş ▸ Enter · Esc · ↑ ↓ ← → · Tab · Shift-Tab    (başka tuş ya da k: iptal)", STYLE_INPUT)
+        if self.mode == "rawask":
+            return (" ⚠ HAM GEÇİŞ açılsın mı? Her tuş (Ctrl-C dahil) oturuma gider · Enter: onayla · Esc: vazgeç", STYLE_RAW)
+        if self.mode == "raw":
+            text = " ⚠ HAM GEÇİŞ · her tuş oturuma gider · Ctrl-] çıkış"
+            if flash and flash[1] == "err":
+                text += f" · {flash[0]}"
+            remaining = RAW_IDLE_LOCK_SECONDS - (now - self._last_input)
+            if remaining <= RAW_COUNTDOWN_SECONDS:
+                text += f" · {max(math.ceil(remaining), 0)} sn sonra kilitlenir"
+            return (text, STYLE_RAW)
+        if flash:
+            return (" " + flash[0], self._FLASH_STYLES[flash[1]])
+        return None
+
+    # ── bildirim, gönderim sonuçları, zaman aşımları ──
+
+    def _set_flash(self, text: str, kind: str, until: float) -> None:
+        self._flash = (clean_text(text), kind, until)
+
+    def _error(self, text: str, now: float) -> None:
+        self._set_flash(text, "err", now + FLASH_ERR_SECONDS)
+
+    def _live_flash(self, now: float) -> Optional[Tuple[str, str, float]]:
+        if self._flash is not None and now >= self._flash[2]:
+            self._flash = None
+        return self._flash
+
+    def _collect_results(self, now: float) -> None:
+        for seq, _kind, ok, err in self.sender.take_results():
+            label = self._labels.pop(seq, None)
+            if ok:
+                if label:   # ham geçişin yığınları etiketsiz: her tuşta "gönderildi" yanıp sönmesin
+                    self._set_flash(f"✓ {label} gönderildi", "ok", now + FLASH_OK_SECONDS)
+            else:
+                self._error(f"✗ {label or 'tuş'} gönderilemedi: {err}", now)
+
+    def _expire(self, now: float) -> None:
+        if self.mode in ("keys", "rawask") and self._mode_until is not None and now >= self._mode_until:
+            self._to_normal()
+        elif self.mode == "raw" and now - self._last_input >= RAW_IDLE_LOCK_SECONDS:
+            self._leave_raw("ham geçiş boşta kilitlendi", now)
+
+    def _gate(self) -> Optional[str]:
+        """None = şimdi yollanabilir; aksi halde çubukta gösterilecek neden."""
+        v = self.viewer
+        if v.state != "live" or v.frame is None:
+            return "✗ bağlantı canlı değil: gönderilmedi"
+        if v.frame.get("masked"):
+            return "✗ pane maskeli girişte (parola istemi?): buradan gönderilmez, web popup'ını kullanın"
+        return None
+
+    def _send(self, kind: str, payload: str, label: Optional[str], now: float) -> None:
+        seq = self.sender.submit(kind, payload)
+        if label:
+            self._labels[seq] = label
+            self._set_flash(f"… {label} gönderiliyor", "info", now + HTTP_TIMEOUT_SECONDS)
+
+    # ── normal ──
+
+    def _to_normal(self) -> None:
+        self.mode, self.buf, self._mode_until = "normal", "", None
+
+    def _on_normal(self, tok: str, now: float) -> bool:
+        if isinstance(tok, Paste):   # yapıştırılan metindeki harfler komut sayılmaz
+            return False
+        low = tok.lower()
+        if low == "q":
+            return True
+        if low == "x":
+            self.viewer.dismiss_popup()
+        elif low == "i":
+            self.mode, self.buf = "compose", ""
+        elif low == "k":
+            self.mode, self._mode_until = "keys", now + KEYS_MODE_SECONDS
+        elif tok == "R":   # ham geçiş bilerek yalnız büyük harf: kazara `r` yetmesin
+            self.mode, self._mode_until = "rawask", now + RAW_CONFIRM_SECONDS
+        return False
+
+    # ── yazı satırı ──
+
+    def _insert(self, text: str) -> None:
+        self.buf = (self.buf + text)[:COMPOSE_MAX_CHARS]
+
+    def _on_compose(self, tok: str, now: float) -> None:
+        self._flash = None   # düzenlemeye devam eden kişi hata bildirimini görmüş sayılır
+        if isinstance(tok, Paste):
+            self._insert(one_line(tok))
+        elif tok in ("\r", "\n"):
+            self._submit_compose(now)
+        elif tok == "\x1b":
+            self._to_normal()
+        elif tok in ("\x7f", "\x08"):
+            self.buf = drop_last_char(self.buf)
+        elif tok == "\x15":   # Ctrl-U
+            self.buf = ""
+        elif tok == "\x17":   # Ctrl-W
+            self.buf = drop_last_word(self.buf)
+        elif len(tok) == 1 and _printable(tok):
+            self._insert(tok)
+        # diğer denetim karakterleri ve kaçış dizileri (oklar, F tuşları, Alt+x) yok sayılır
+
+    def _submit_compose(self, now: float) -> None:
+        text = self.buf.strip()
+        if not text:
+            return
+        reason = self._gate()
+        if reason:   # satır korunur: bağlantı gelince ya da düzeltilince aynı Enter yollar
+            self._error(reason, now)
+            return
+        self._send("text", text, "mesaj", now)
+        self._to_normal()
+
+    def _compose_bar(self, cols: int, flash: Optional[Tuple[str, str, float]]) -> Tuple[str, str]:
+        if flash and flash[1] == "err":   # neden yollanmadığı satırdan önemli; ilk tuşta kalkar
+            return (" " + flash[0], STYLE_SEVERE)
+        hint = "⏎ gönder · Esc iptal" if self.viewer.state == "live" else "bağlantı canlı değil: gönderilmez"
+        prefix, cursor = " ✎ ▸ ", "█"
+        room = cols - display_width(prefix) - display_width(cursor) - 1
+        hint_w = display_width(hint) + 2
+        if room < hint_w + 12:   # dar pencerede ipucu yazının yerini yemesin
+            hint, hint_w = "", 0
+        body = tail_fit(self.buf, room - hint_w)
+        left = prefix + body + cursor
+        gap = max(cols - display_width(left) - display_width(hint) - 1, 1) if hint else 0
+        return (left + " " * gap + hint, STYLE_INPUT)
+
+    # ── kısa tuş ──
+
+    def _on_keys(self, tok: str, now: float) -> None:
+        name = None if isinstance(tok, Paste) else self.SHORT_KEYS.get(tok)
+        self._to_normal()   # tek tuş: ne basılırsa kip kapanır (`k`, bilinmeyen tuş, Esc dahil)
+        if name is None:
+            return
+        reason = self._gate()
+        if reason:
+            self._error(reason, now)
+            return
+        self._send("key", name, self.KEY_LABELS[name], now)
+
+    # ── ham geçiş ──
+
+    def _on_rawask(self, tok: str, now: float) -> None:
+        if not isinstance(tok, Paste) and tok in ("\r", "\n"):   # yapıştırılan bir satır sonu onay değildir
+            self.mode, self._mode_until, self._last_input, self._raw_buf = "raw", None, now, []
+            if self._keys is not None:
+                self._keys.set_passthrough(True)
+        else:
+            self._to_normal()
+
+    def _leave_raw(self, why: Optional[str], now: float) -> None:
+        self._flush_raw()
+        self._to_normal()
+        if self._keys is not None:
+            self._keys.set_passthrough(False)
+        if why:
+            self._set_flash(why, "info", now + FLASH_ERR_SECONDS)
+
+    def _on_raw(self, tok: str, now: float) -> None:
+        self._last_input = now
+        if not isinstance(tok, Paste) and tok == RAW_EXIT_KEY:   # yapıştırılan Ctrl-] çıkış tuşu değil, veridir
+            self._leave_raw("ham geçiş kapandı", now)
+            return
+        if isinstance(tok, Paste):
+            if "\n" in tok or "\r" in tok:   # çok satırlı yapıştırma satır satır Enter'a dönüşüp hepsini yollardı
+                self._error("✗ çok satırlı yapıştırma ham geçişte gönderilmez: yazı satırını (i) kullanın", now)
+                return
+            data = str(tok)
+        else:
+            data = tok
+        reason = self._gate()
+        if reason:
+            self._error(reason, now)
+            return
+        self._raw_buf.append(data)
+
+    def _flush_raw(self) -> None:
+        """Bu turda biriken ham tuşlar tek istekte (sıra korunur); `/api/term/raw` sınırına göre parçalanır."""
+        if not self._raw_buf:
+            return
+        data, self._raw_buf = "".join(self._raw_buf), []
+        for i in range(0, len(data), self.RAW_CHUNK_CHARS):
+            self._send("raw", data[i:i + self.RAW_CHUNK_CHARS], None, self._clock())
+
+
+def _quit_requested(keys: Optional[Any], stop: threading.Event, viewer: Optional[Viewer] = None,
+                    controller: Optional[InputController] = None) -> bool:
+    """Tuşları okur. `controller` yoksa: `q` çıkış, `x` (viewer verilmişse) sorun kutusunu gizler. `controller` varsa
+    tuşlar ona gider (girdi kipleri dahil). Çıkış istendi mi döner."""
     if keys is not None:
         chunk = keys.poll()
-        if wants_quit(chunk):
+        if controller is not None:
+            if controller.handle(chunk):
+                stop.set()
+        elif wants_quit(chunk):
             stop.set()
         elif viewer is not None and wants_dismiss(chunk):
             viewer.dismiss_popup()
@@ -784,30 +1320,35 @@ def _quit_requested(keys: Optional[Any], stop: threading.Event, viewer: Optional
 
 
 def _wait_with_ticks(viewer: Viewer, seconds: float, *, stop: threading.Event, keys: Optional[Any],
-                     clock: Callable[[], float], sleep: Callable[[float], None]) -> None:
+                     clock: Callable[[], float], sleep: Callable[[float], None],
+                     controller: Optional[InputController] = None) -> None:
     """Yeniden bağlanma beklemesi: bekleme boyunca çubuk geri sayımı ve saat güncellenir, `q` dinlenir."""
     end = clock() + seconds
-    while not _quit_requested(keys, stop, viewer) and not viewer.screen.dead:
+    while not _quit_requested(keys, stop, viewer, controller) and not viewer.screen.dead:
         remaining = end - clock()
         if remaining <= 0:
             break
         viewer.set_retry_in(remaining)
         viewer.render()
-        sleep(min(TICK_SECONDS, remaining))
+        sleep(min(controller.tick_seconds() if controller is not None else TICK_SECONDS, remaining))
     viewer.set_retry_in(None)
 
 
 def watch_loop(viewer: Viewer, ws: Optional[WsTransport], rest: RestTransport, *, mode: str = "auto",
                stop: threading.Event, keys: Optional[Any] = None, backoff: Optional[Backoff] = None,
                clock: Callable[[], float] = time.monotonic,
-               sleep: Callable[[float], None] = time.sleep) -> None:
+               sleep: Callable[[float], None] = time.sleep,
+               controller: Optional[InputController] = None) -> None:
     """Kendiliğinden ASLA çıkmaz: yalnız `stop` (q / sinyal) ya da pencerenin kapanması bitirir.
 
     auto: önce WS. WS hiç kare vermeden kurulamazsa (panel WS'siz/eski ya da WS yolu bozuksa) hemen
     REST denenir ve `REST_FALLBACK_SECONDS` boyunca REST'te kalınır, sonra WS tekrar denenir. Panel
-    gerçekten kapalıysa REST de hata verir ve üstel bekleme (`Backoff`) devreye girer."""
+    gerçekten kapalıysa REST de hata verir ve üstel bekleme (`Backoff`) devreye girer.
+
+    `controller` (girdi kipleri) verilirse tuşlar ona gider ve döngü, bir kip açıkken `INPUT_TICK_SECONDS`'ta uyanır."""
     backoff = backoff or Backoff()
     use_rest_until = 0.0
+    tick: Any = controller.tick_seconds if controller is not None else TICK_SECONDS
     while not stop.is_set() and not viewer.screen.dead:
         if mode == "rest" or ws is None:
             transport: Any = rest
@@ -820,9 +1361,9 @@ def watch_loop(viewer: Viewer, ws: Optional[WsTransport], rest: RestTransport, *
         failure: Optional[TransportError] = None
         gen = None
         try:
-            gen = transport.frames(stop, TICK_SECONDS)
+            gen = transport.frames(stop, tick)
             for frame in gen:
-                if _quit_requested(keys, stop, viewer) or viewer.screen.dead:
+                if _quit_requested(keys, stop, viewer, controller) or viewer.screen.dead:
                     break
                 if frame is not None:
                     got_frame = True
@@ -852,7 +1393,8 @@ def watch_loop(viewer: Viewer, ws: Optional[WsTransport], rest: RestTransport, *
             use_rest_until = clock() + REST_FALLBACK_SECONDS
             continue
         viewer.render()
-        _wait_with_ticks(viewer, backoff.next(), stop=stop, keys=keys, clock=clock, sleep=sleep)
+        _wait_with_ticks(viewer, backoff.next(), stop=stop, keys=keys, clock=clock, sleep=sleep,
+                         controller=controller)
 
 
 # ── terminale sızıntıyı kes ─────────────────────────────────────────────────────────────────
@@ -912,7 +1454,8 @@ def quiet_terminal(target: str) -> Iterator[None]:
 # ── CLI ─────────────────────────────────────────────────────────────────────────────────
 
 def register(sub) -> None:
-    p = sub.add_parser("watch", help="bir session'ın terminalini bu pencerede canlı (salt-okunur) göster: watch [host:]ad")
+    p = sub.add_parser("watch", help="bir session'ın terminalini bu pencerede canlı göster (i: mesaj yaz, k: kısa tuş, "
+                                     "R: ham geçiş; --read-only ile yalnız izle): watch [host:]ad")
     p.add_argument("target", help="host:ad (yerel session için yalnız ad). host, panelde kayıtlı host adı")
     p.add_argument("--port", type=int, default=DEFAULT_PORT,
                    help=f"yerel panelin portu (varsayılan {DEFAULT_PORT}); `py/cops web [--port]` ile aynı olmalı")
@@ -921,6 +1464,8 @@ def register(sub) -> None:
     p.add_argument("--once", action="store_true", help="tek kare bas ve çık (REST; TTY gerekmez)")
     p.add_argument("--plain", action="store_true", help="--once ile: renk kaçışlarını at")
     p.add_argument("--no-resize", action="store_true", help="pencereyi pane boyutuna istemeyi kapat")
+    p.add_argument("--read-only", action="store_true",
+                   help="girdi kiplerini (i yazı satırı, k kısa tuş, R ham geçiş) kapat: oturuma hiçbir tuş gitmez")
     p.set_defaults(func=run)
 
 
@@ -968,12 +1513,21 @@ def run(args: argparse.Namespace) -> int:
     ws = WsTransport(args.port, host, name, connect=connect) if connect is not None else None
     rest = RestTransport(args.port, host, name)
 
-    screen = Screen(sys.stdout, title=f"{host}:{name}")
+    screen = Screen(sys.stdout, title=f"{host}:{name}", bracketed_paste=not args.read_only)
     viewer = Viewer(host, name, screen, resize=not args.no_resize)
     screen.enter()
     try:
         with Keys() as keys, quiet_terminal(f"{host}:{name}"):
-            watch_loop(viewer, ws, rest, mode=args.transport, stop=stop, keys=keys)
+            controller: Optional[InputController] = None
+            if not args.read_only:
+                controller = InputController(viewer, InputSender(args.port, host, name), keys=keys)
+                viewer.overlay = controller.bar
+                viewer.hint = INPUT_HINT
+            try:
+                watch_loop(viewer, ws, rest, mode=args.transport, stop=stop, keys=keys, controller=controller)
+            finally:
+                if controller is not None:
+                    controller.shutdown()   # ham geçiş açıksa terminal ayarlarını geri al, bekleyen gönderimleri bitir
     except KeyboardInterrupt:
         pass
     finally:
