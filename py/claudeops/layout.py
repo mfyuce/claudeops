@@ -147,6 +147,21 @@ def _base_from_name(name: str) -> str:
     return m.group(1) if m else name
 
 
+def _layout_sort_key(name: str) -> Tuple[str, str]:
+    """Pencere sıralama anahtarı: `host:ad` başlığında SIRALAMAYI yalnız `ad` belirler.
+
+    `cops watch` mirror penceresinin başlığı `host:ad` (yerel session'ın mirror'ı `local:ad`,
+    gerçek yerel pencere çıplak `ad`). Başlığın TAMAMINA göre sıralayınca önce host'a göre
+    kümeleniyordu (tüm `ulak_31:*`, sonra tüm `yuhem:*`) ve aynı adlı oturumlar (yerelde
+    `hittite…`, `yuhem:hittite…`) ayrı desktop'lara düşüyordu (kullanıcı, 2026-10-13: iki noktadan
+    sonrası için sıralama olsun, `yuhem` sıralama için kullanılmasın, böylece aynı isimler aynı
+    yere toplanır). Host yalnız İKİNCİ anahtar: eşit adlarda sonuç deterministik kalsın
+    (çıplak/yerel ad önce, sonra host'lar alfabetik).
+    """
+    host, sep, base = name.partition(":")
+    return (base, host) if sep else (name, "")
+
+
 def _gnome_terminal_server_pid() -> str:
     """Bash'ten alındı: ps comm 15-char truncate → 'gnome-terminal-'."""
     import subprocess as _sp
@@ -275,7 +290,7 @@ def build_layout_plan(
 
     # Tekler (ne pinned ne group)
     placed_in_ordered = set(placed) | set(group_flat)
-    singles = sorted(n for n in name_to_wid if n not in placed_in_ordered)
+    singles = sorted((n for n in name_to_wid if n not in placed_in_ordered), key=_layout_sort_key)
     ordered.extend(singles)
 
     # 4. ws1, ws2, ... artan sırayla (screen.per_desktop adet/desktop)
