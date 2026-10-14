@@ -12,13 +12,14 @@ Provider-agnostik: hangi CLI'ın hangi flag'lerle tanınacağı burada DEĞİL, 
 provider'ın kendi `matches_proc`/`extract_name`/`extract_info`'sunda (providers/).
 """
 from __future__ import annotations
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import glob
 import json
 import os
 import time
 import psutil
 
+from .mirrors import note_mirror
 from .session import Session
 from .providers import PROVIDERS
 
@@ -86,9 +87,14 @@ def _sessions_from_json() -> Dict[Tuple[str, int], Session]:
     return result
 
 
-def find_sessions(measure_cpu: bool = True) -> List[Session]:
+def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List[int]]] = None) -> List[Session]:
     """Tüm çalışan session'ları döndür (her isim için tek Session — AMA aynı isimde
     birden fazla CANLI pid varsa hepsi, bkz. 2026-10-06 notu).
+
+    `mirrors_out` (opt-in, varsayılan None = davranış değişmez): verilirse AYNI süreç turunda açık
+    `cops watch host:ad` görüntüleyicileri de `{"host:ad": [pid, ...]}` olarak buraya doldurulur
+    (`mirrors.running_mirrors` ile aynı kural, ek tarama YOK). Panelin "masaüstünde açık mı" işaretçisi
+    bunu kullanır; fleet'in kendisiyle ilgisi yok, yalnız taramayı paylaşır.
 
     Kaynak 1: sessions/*.json (TUI-named + spawn-named, claude-only)
     Kaynak 2: proc-scan — her provider kendi `matches_proc`/`extract_name`'iyle
@@ -125,6 +131,8 @@ def find_sessions(measure_cpu: bool = True) -> List[Session]:
             if uids is None or uids.real != my_uid:
                 continue
             cmd = p.info["cmdline"] or []
+            if mirrors_out is not None:
+                note_mirror(mirrors_out, p.pid, cmd)
             provider = next((pr for pr in PROVIDERS.values() if pr.matches_proc(cmd)), None)
             if provider is None:
                 continue

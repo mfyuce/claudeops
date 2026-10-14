@@ -58,6 +58,17 @@ def spec_from_cmdline(cmdline: Optional[Sequence[str]]) -> Optional[str]:
     return f"{host}:{name}" if host and name else None
 
 
+def note_mirror(found: Dict[str, List[int]], pid: int, cmdline: Optional[Sequence[str]]) -> None:
+    """`cmdline` bir mirror görüntüleyicisininse `found["host:ad"]`e `pid`i ekler, değilse hiçbir şey yapmaz.
+
+    Kural TEK yerde: hem `running_mirrors` hem `discovery.find_sessions(mirrors_out=...)` bunu çağırır. İkincisi
+    paneli ayrı bir süreç taramasından kurtarır (616 süreçte tarama ~34 ms; `_status_payload` tick'inin ~158 ms CPU'suna
+    üçüncü bir tarama eklemek yerine fleet taramasının ZATEN yaptığı turdan toplanır). Çağıran uid süzgecini kendisi yapar."""
+    spec = spec_from_cmdline(cmdline)
+    if spec:
+        found.setdefault(spec, []).append(pid)
+
+
 def running_mirrors(uid: Optional[int] = None) -> Dict[str, List[int]]:
     """Şu an çalışan mirror görüntüleyicileri: `host:ad` → [pid, ...] (yalnız `uid`'in, varsayılan bu kullanıcı)."""
     uid = os.getuid() if uid is None else uid
@@ -68,11 +79,9 @@ def running_mirrors(uid: Optional[int] = None) -> Dict[str, List[int]]:
             uids = info.get("uids")
             if uids is None or uids.real != uid:
                 continue
-            spec = spec_from_cmdline(info.get("cmdline"))
+            note_mirror(found, info["pid"], info.get("cmdline"))
         except (psutil.Error, OSError):
             continue
-        if spec:
-            found.setdefault(spec, []).append(info["pid"])
     return found
 
 

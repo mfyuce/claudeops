@@ -61,6 +61,13 @@ export interface SessionInfo {
   /** Blueprint this row belongs to — its own name for a blueprint row, the
    * parent for an instance, `null` for diag/foreign sessions. */
   blueprint?: string | null;
+  /** REMOTE rows only: is a `cops watch` mirror window for this session open on
+   * THIS machine's desktop right now? Stamped by the aggregating panel from the
+   * process scan fleet discovery already does, i.e. the same check the "open on
+   * desktop" button's own already-open branch uses, so the two cannot disagree.
+   * Absent = unknown (local rows, or a backend older than this field): never
+   * treat it as `false` ("closed"). */
+  mirror_open?: boolean;
 }
 
 /** One `GET /api/instances` row (History tab). */

@@ -42,7 +42,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
 
@@ -1280,7 +1280,10 @@ def _live_model_effort(s) -> tuple:
 
 def _status_payload() -> dict:
     fleet = _fleet_status()
-    all_live = find_sessions(measure_cpu=True)
+    # Açık `cops watch` mirror pencereleri fleet taramasının AYNI turunda toplanır (ayrı bir
+    # `mirrors.running_mirrors()` taraması tick'e ~34 ms eklerdi, bkz. `mirrors.note_mirror`).
+    open_mirrors: Dict[str, List[int]] = {}
+    all_live = find_sessions(measure_cpu=True, mirrors_out=open_mirrors)
     dups = duplicates(all_live)
     ok, config_code, config_detail = validate_config()
 
@@ -1490,7 +1493,8 @@ def _status_payload() -> dict:
     # Uzak host'ların sessions/closed/retired'ini merge eder + "hosts" ekler —
     # SADECE web_hosts'un arka-plan poller cache'ini okur, asla burada network'e
     # gitmez (bkz. web_hosts.py modül docstring'i — neden burada fan-out YAPILMADIĞI).
-    return web_hosts.merge_status(payload)
+    # `open_mirrors`: uzak satırlara `mirror_open` (masaüstünde pencere açık mı) damgası.
+    return web_hosts.merge_status(payload, open_mirrors=open_mirrors)
 
 
 def _tunnel_info() -> dict:

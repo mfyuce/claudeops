@@ -181,6 +181,13 @@ export function SessionRow({
                 title={t.mirrorBtnHint(session.host)}
                 onClick={() => void handleOpenMirror()}
               >
+                {/* Open/closed marker: only when the backend knows (`mirror_open` absent = unknown, never "closed"). */}
+                {typeof session.mirror_open === "boolean" && (
+                  <span
+                    className={`dot ${session.mirror_open ? "on" : "off"}`}
+                    title={session.mirror_open ? t.mirrorStateOpen : t.mirrorStateClosed}
+                  />
+                )}
                 {openingMirror ? t.openingMirror : t.mirrorBtn}
               </button>
             )}

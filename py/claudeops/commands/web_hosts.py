@@ -33,7 +33,7 @@ import select
 import threading
 import time
 import urllib.parse
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Collection, Dict, List, Optional, Tuple
 
 from websockets.sync.client import connect as ws_connect
 
@@ -680,12 +680,19 @@ def test_now(name: str) -> Optional[Dict[str, Any]]:
     return {**result, "tier": fresh_tier}
 
 
-def merge_status(local_payload: Dict[str, Any]) -> Dict[str, Any]:
+def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collection[str]] = None) -> Dict[str, Any]:
     """`local_payload` zaten `_status_payload()`'ın hesapladığı, her
     sessions/closed/retired girdisine `"host": LOCAL_HOST_NAME` etiketlenmiş
     dict — burada SADECE poller cache'i okunur, asla network'e gidilmez.
     Her zaman bir `"hosts"` anahtarı ekler (kayıtlı host yoksa bile boş liste
-    — frontend tipinin hep-var-olan bir alan bekleyebilmesi için)."""
+    — frontend tipinin hep-var-olan bir alan bekleyebilmesi için).
+
+    `open_mirrors`: bu makinenin masaüstünde ŞU AN açık `cops watch` görüntüleyicilerinin `"host:ad"` kümesi
+    (`discovery.find_sessions(mirrors_out=...)` fleet taramasıyla aynı turda toplar). Verilirse uzak `sessions`
+    satırları `mirror_open: bool` ile işaretlenir (panelde "masaüstüne aç" düğmesindeki açık/kapalı noktası; kaynak
+    `_open_mirror_window`un "zaten açık" denetimiyle AYNI, ikisi birbirine ters düşemez). Verilmezse alan HİÇ
+    eklenmez: "bilinmiyor" ile `False` ("kapalı") karıştırılmasın. Satırlar KOPYALANIR: `get_cached` yüzeysel kopya
+    verir, satır dict'leri poller önbelleğiyle paylaşımlı, yerinde değiştirmek onu bozardı."""
     registered = hosts_mod.load_hosts()
     hosts_status: List[Dict[str, Any]] = []
     for h in registered:
@@ -700,7 +707,10 @@ def merge_status(local_payload: Dict[str, Any]) -> Dict[str, Any]:
                 "cli_list": [], "cli_options": {}, "dups": [],
             })
             continue
-        local_payload["sessions"].extend(cached["sessions"])
+        rows = cached["sessions"]
+        if open_mirrors is not None:
+            rows = [{**r, "mirror_open": f"{name}:{r.get('name')}" in open_mirrors} for r in rows]
+        local_payload["sessions"].extend(rows)
         local_payload["closed"].extend(cached["closed"])
         local_payload["retired"].extend(cached["retired"])
         hosts_status.append({
