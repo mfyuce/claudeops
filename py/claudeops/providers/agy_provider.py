@@ -8,9 +8,12 @@ Farklar (claude'a göre):
   muadili.
 - Model listesi CANLI çekilir (`agy models`, TTL'li cache) — sabit kodlanmaz,
   liste zaten 2 günde bir kez değişti.
-- effort için ayrı bir `--effort low|medium|high|xhigh|max` flag'i var (model
-  id'sinden bağımsız) — permission ise TEK bir `--permission-mode`-benzeri flag değil,
-  ya `--dangerously-skip-permissions` ya da `--mode accept-edits|plan`.
+- effort için ayrı bir `--effort low|medium|high|xhigh|max` flag'i var, AMA model
+  id'sinden BAĞIMSIZ DEĞİL (2026-10-14): `gemini-3.8-flash-high` gibi id'lerin sonundaki
+  kademe zaten effort — `--effort` onunla çatışırsa agy modeli sessizce kendi
+  varsayılanına düşürüyor. Bu yüzden effort `model_effort_levels()`/`resolve_effort()`
+  ile id'nin kademesine eşitlenir. Permission ise TEK bir `--permission-mode`-benzeri
+  flag değil, ya `--dangerously-skip-permissions` ya da `--mode accept-edits|plan`.
 - COPS_NAME yoksa (elle başlatılmış bare `agy`) isim `agy-<pid>` placeholder'ı
   olur — claude'daki bare-session/"kayıtsız" davranışıyla paralel; ASLA None
   dönmez (agy'nin claude'un sessions/*.json'ı gibi kendi self-registration'ı yok).
@@ -73,10 +76,11 @@ from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec
 from ..atomic_json import atomic_write_json
+from ..effort import sort_levels, split_tier
 from ..paths import CLAUDEOPS_DIR
 from ..settings import resolved_binary
 
-CONVERSATIONS_CACHE = os.path.expanduser("~/.gemini/antigravity-cli/cache/last_conversations.json")
+CONVERSATIONS_CACHE =os.path.expanduser("~/.gemini/antigravity-cli/cache/last_conversations.json")
 CONVERSATIONS_DIR = os.path.expanduser("~/.gemini/antigravity-cli/conversations")
 # 2026-09-29 canlı bulgu: CONVERSATIONS_CACHE cwd BAŞINA TEK bir id tutuyor —
 # aynı cwd'de birden fazla agy session'ı (kullanıcının model-bake-off deseni,
@@ -287,8 +291,19 @@ class AgyProvider(CliProvider):
         # bu düşüşü baştan engelliyor; agy'nin kendi model listesinde bu bilgiyi
         # taşıyan yapılandırılmış bir alan yok (sadece `id\tLabel`), o yüzden
         # isim deseni dışında güvenilir bir sinyal yok.
+        #
+        # 2026-10-14 (kullanıcı: "effort'ları modele göre ayarlayalım"): gemini id'sinin
+        # sonundaki kademe (`-high`) ZATEN effort'tur; `--effort` onunla ÇATIŞIRSA
+        # ("--model gemini-3.1-pro-high conflicts with --effort=max") agy modeli yine
+        # sessizce kendi varsayılanına düşürüyordu — panelin varsayılanı `max` olduğu
+        # için canlı filoda 13 kayıtta (`gemini-*-high` + `max`) tetiklendi. Artık
+        # `resolve_effort()` istenen effort'u id'nin kendi kademesine eşitliyor, çatışma
+        # yapısal olarak yok. Kademesiz taban ad için canlı `agy models` kardeşlerine
+        # bakar. Not: id hesabın planında HİÇ yoksa (ör. AI Pro'da `gemini-3.1-pro-high`)
+        # agy yine "--effort is not supported for model" diyerek düşer; o ayrı sorun,
+        # bkz. TODO.md 2026-10-14.
         if model.startswith("gemini"):
-            parts += ["--effort", shlex.quote(effort or "medium")]
+            parts += ["--effort", shlex.quote(self.resolve_effort(model, effort) or "medium")]
         # Fallback is "plan" (most restrictive), not "auto" (full bypass) —
         # an unrecognized mode used to silently escalate to --dangerously-
         # skip-permissions instead of failing safe (2026-10-03 review PROC-04,
@@ -391,6 +406,19 @@ class AgyProvider(CliProvider):
 
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
+
+    def model_effort_levels(self, model: Optional[str]) -> Optional[List[str]]:
+        """agy'de effort model KİMLİĞİNİN içine gömülü (`gemini-3.8-flash-high`):
+        kimlik bir kademeyle bitiyorsa o model TEK seviyeli (o kademe). Kademesiz bir
+        taban ad için canlı `agy models` listesindeki kardeş kimliklerin kademeleri;
+        hiçbiri yoksa None (bilgi yok, istenen aynen geçer)."""
+        if not isinstance(model, str) or not model.strip():
+            return None
+        _base, tier = split_tier(model)
+        if tier is not None:
+            return [tier]
+        siblings = [t for mid in self.model_choices() for b, t in [split_tier(mid)] if t and b == model]
+        return sort_levels(siblings) or None
 
     def busy_status_pattern(self) -> Optional[str]:
         return BUSY_STATUS_PATTERN

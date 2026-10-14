@@ -36,9 +36,10 @@ import time
 from typing import Dict, FrozenSet, List, Optional, Sequence
 
 from .base import CliProvider, McpServerSpec
+from ..effort import sort_levels
 from ..settings import resolved_binary
 
-CODEX_HOME = os.path.expanduser("~/.codex")
+CODEX_HOME =os.path.expanduser("~/.codex")
 SESSIONS_DIR = os.path.join(CODEX_HOME, "sessions")
 MODELS_CACHE = os.path.join(CODEX_HOME, "models_cache.json")
 
@@ -274,6 +275,27 @@ class CodexProvider(CliProvider):
 
     def effort_levels(self) -> List[str]:
         return EFFORT_LEVELS
+
+    def model_effort_levels(self, model: Optional[str]) -> Optional[List[str]]:
+        """codex model başına desteklenen seviyeleri kendi `models_cache.json`'ında
+        tutuyor (`supported_reasoning_levels[].effort`, 2026-10-14 canlı: `gpt-5.5`
+        low..xhigh, `gpt-5.6-terra` low..max + ultra). Dosya yok/bozuksa ya da model
+        listede yoksa None (bilgi yok, istenen aynen geçer). Her çağrıda okunur: yalnız
+        spawn'da çağrılıyor, sıcak yol değil."""
+        if not isinstance(model, str) or not model:
+            return None
+        try:
+            with open(MODELS_CACHE, encoding="utf-8") as f:
+                data = json.load(f)
+            for m in data.get("models", []):
+                if m.get("slug") != model:
+                    continue
+                raw = [x.get("effort") if isinstance(x, dict) else x
+                       for x in (m.get("supported_reasoning_levels") or [])]
+                return sort_levels(lv for lv in raw if isinstance(lv, str)) or None
+        except (OSError, json.JSONDecodeError, TypeError, AttributeError):
+            return None
+        return None
 
     def busy_status_pattern(self) -> Optional[str]:
         return BUSY_STATUS_PATTERN

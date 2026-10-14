@@ -11,6 +11,8 @@ from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 import psutil
 
+from ..effort import nearest_effort
+
 
 @dataclass
 class McpServerSpec:
@@ -364,6 +366,34 @@ class CliProvider(ABC):
     @abstractmethod
     def effort_levels(self) -> List[str]:
         ...
+
+    def model_effort_levels(self, model: Optional[str]) -> Optional[List[str]]:
+        """`model` için GERÇEKTEN desteklenen effort seviyeleri (düşükten yükseğe)
+        ya da None = "bu model için KESİN bilgi yok". Varsayılan None: o zaman
+        `resolve_effort()` istenen değeri AYNEN geçirir (bugünkü davranış birebir).
+        Yalnız KANITLANMIŞ bilgisi olan provider override eder (agy: kimliğe gömülü
+        kademe; codex: kendi `models_cache.json`'ı). `if cli == ...` dallanması YOK;
+        claude (CLI uyumsuz seviyeyi kendisi sessizce düşürüyor), copilot ve ucli'de
+        model bazlı kaynak yok, onlar bu varsayılanda kalır."""
+        return None
+
+    def effort_levels_for(self, model: Optional[str]) -> List[str]:
+        """Seçici/panel için: model bazlı bilgi varsa o liste, yoksa provider'ın
+        genel `effort_levels()`'i."""
+        known = self.model_effort_levels(model)
+        return list(known) if known else self.effort_levels()
+
+    def resolve_effort(self, model: Optional[str], requested: Optional[str]) -> Optional[str]:
+        """spawn'da GERÇEKTEN gönderilecek effort (2026-10-14, kullanıcı: "modele göre
+        ayarla; yoksa uygununu set et"). Model bazlı bilgi YOKSA `requested` aynen
+        geçer. Varsa: `requested` modelin listesindeyse aynen, değilse ondan aşağıdaki
+        en yakın desteklenen seviye (`effort.nearest_effort`). Böylece panelin
+        varsayılanı `max` bir kademeli kimlikle (`gemini-3.1-pro-high`) çatışıp
+        CLI'ın modeli sessizce değiştirmesine yol açamaz."""
+        known = self.model_effort_levels(model)
+        if not known:
+            return requested
+        return nearest_effort(requested, known)
 
     def mode_status_patterns(self) -> Dict[str, str]:
         """{mod: regex} — bu CLI'ın durum çubuğunda AKTİF izin modunu ele veren

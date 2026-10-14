@@ -125,6 +125,18 @@ def spawn_session(
         cwd, in_use=_ids_held_by_others(name), session_name=name)
     kind = "new" if resume_id is None else f"resume:{resume_id[:8]}"
 
+    # Tek geçit: TÜM spawn yolları (panel, rc, handover, snapshot, guard) buradan geçer.
+    # Model bazlı bilgisi olan provider'da (agy kimlik kademesi, codex önbelleği) desteklenmeyen
+    # effort modele uygun olana çekilir; bilgi yoksa aynen geçer (bkz. CliProvider.resolve_effort).
+    requested_effort = effort
+    try:
+        effort = provider.resolve_effort(model, effort)
+    except Exception:  # bir çözümleyici hatası ASLA spawn'ı engellemesin: istenen aynen geçer
+        effort = requested_effort
+    if effort != requested_effort:
+        diag_log("spawn_effort_adjusted", name=name, cli=cli, model=model,
+                 requested=requested_effort, used=effort)
+
     extra_args = provider.mcp_launch_args(mcp_server) if mcp_server is not None else []
     cli_invocation = provider.build_inner_command(cwd, model, permission_mode, effort,
                                                    resume_id, prompt, name, extra_args=extra_args)
