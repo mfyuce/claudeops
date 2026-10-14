@@ -289,6 +289,48 @@ def _same_path(a: str, b: str) -> bool:
     return os.path.normpath(os.path.abspath(a)) == os.path.normpath(os.path.abspath(b))
 
 
+# `_jsonl_meta`'nın önbelleği: dosya yolu → ((mtime_ns, boyut), meta). `sid_for_stopped_session`
+# bir proje dizinindeki TÜM jsonl'ların başlığına bakar (claudeops'ta 70+ dosya) ve panelin sohbet
+# görünümü her ~2,5 sn yoklar; imza değişmedikçe dosyayı yeniden açmaya gerek yok. Yazılmakta olan
+# dosyanın imzası değişir ve yeniden okunur (15 satır, ucuz).
+_META_CACHE: Dict[str, Tuple[Tuple[int, int], Dict[str, Optional[str]]]] = {}
+_META_CACHE_MAX = 20_000
+
+
+def _jsonl_meta_cached(path: Path, mtime_ns: int, size: int) -> Dict[str, Optional[str]]:
+    key = str(path)
+    hit = _META_CACHE.get(key)
+    if hit is not None and hit[0] == (mtime_ns, size):
+        return hit[1]
+    meta = _jsonl_meta(path)
+    if len(_META_CACHE) >= _META_CACHE_MAX:
+        _META_CACHE.clear()
+    _META_CACHE[key] = ((mtime_ns, size), meta)
+    return meta
+
+
+# Açılıp hiç mesaj almamış bir oturum yalnız başlık/bridge satırlarından ibaret 1-3 KB'lık bir
+# "stub" jsonl bırakır; bundan küçük dosyalar gerçekten stub mu diye içeriğine bakılır, büyükler
+# doğrudan gerçek sayılır.
+_STUB_MAX_BYTES = 64 * 1024
+
+
+def _has_chat_rows(path: Path) -> bool:
+    """Dosyada en az bir user/assistant satırı var mı (başlık/bridge satırlarından ibaret bir stub değil mi)."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for raw in f:
+                try:
+                    row = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if isinstance(row, dict) and row.get("type") in ("user", "assistant"):
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 # Phase 3 (TOBEDECIDED#15) — `--mcp-config`'in beklediği dosya, roster.tsv/
 # web.token ile AYNI "repo DIŞI, kaynak-of-truth" dizininde. İÇERİK invariant
 # (her zaman `spec`'ten üretilir) olduğu için paylaşımlı/idempotent — birden
@@ -894,3 +936,45 @@ class ClaudeProvider(CliProvider):
                     if text:
                         out.append({"role": "user", "text": text})
         return out
+
+    def sid_for_stopped_session(self, cwd: str, session_name: str) -> Optional[str]:
+        """Durmuş session'ın konuşması = jsonl'ın başındaki `customTitle`'ı bu session'ın adı
+        (`-n NAME`) olan dosya. `resolve_resume_id`'nin "adı bu session'ın adı olan konuşma"
+        tercihiyle AYNI eşleme (aynı cwd uyuşma kuralı dahil), ama (1) TÜM dosyalara bakar:
+        resume en yeni 25'e bakıyor, claudeops cwd'sinde 3 haftalık bir instance'ın dosyası
+        bunun dışında kalır; (2) eşleşme yoksa "en yenisi"ne DÜŞMEZ, None döner (düşmek
+        çağıranın işi). Canlı veride (2026-10-14, 547 claude instance'ı) proje dizini duran
+        her `new_chat` kaydı eşleşiyor; eşleşmeyenler eski `migrated` kayıtları.
+
+        Aynı başlığı taşıyan birden çok dosya olabiliyor (handover/yeniden açılış AYNI adla
+        YENİ konuşma başlatır; bir de hiç mesaj almamış başlık-yalnız stub'lar var, hcr20260908_1
+        örneğinde stub gerçek konuşmadan daha yeni): en yeni GERÇEK konuşma seçilir, hepsi stub
+        ise en yenisi."""
+        if not session_name:
+            return None
+        matches: List[Tuple[int, int, Path]] = []
+        try:
+            with os.scandir(Path(PROJECTS_DIR) / _encode_cwd(cwd)) as entries:
+                for entry in entries:
+                    if not entry.name.endswith(".jsonl"):
+                        continue
+                    try:
+                        if not entry.is_file():
+                            continue
+                        st = entry.stat()
+                    except OSError:  # tarama sırasında silindi
+                        continue
+                    path = Path(entry.path)
+                    meta = _jsonl_meta_cached(path, st.st_mtime_ns, st.st_size)
+                    if meta["title"] != session_name:
+                        continue
+                    if meta["cwd"] and not _same_path(meta["cwd"], cwd):
+                        continue
+                    matches.append((st.st_mtime_ns, st.st_size, path))
+        except OSError:
+            return None
+        matches.sort(key=lambda m: m[0], reverse=True)
+        for _, size, path in matches:
+            if size >= _STUB_MAX_BYTES or _has_chat_rows(path):
+                return path.stem
+        return matches[0][2].stem if matches else None

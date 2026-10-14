@@ -342,6 +342,12 @@ class UcliProvider(CliProvider):
             return None
         return read_chat_history(cwd, sid)
 
+    def sid_for_stopped_session(self, cwd: str, session_name: str) -> Optional[str]:
+        # sid = session adının kendisi (modül docstring'i, `extract_info`): durmuş bir ucli
+        # session'ı sid'siz kalınca `full_history` None döner ve panel, ucli sohbeti
+        # DESTEKLEDİĞİ halde "bu CLI için sohbet görünümü henüz yok" derdi.
+        return session_name or None
+
     def live_busy(self, cwd: str, sid: Optional[str]) -> Optional[bool]:
         # waiting_for_stdin = idle (sıradaki prompt'u bekliyor); diğer üçü
         # (waiting_for_model/running_tool/waiting_for_user) "şu an bir turu

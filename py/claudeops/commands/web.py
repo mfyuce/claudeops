@@ -2158,19 +2158,29 @@ def _term_chat(name: str, lang: str = "tr", mode: str = "last", since: int = 0) 
     DİSKTEKİ transcript'ten okunuyor (bkz. o metodların kendi sözleşmesi), pty'e
     hiç ihtiyaç yok. Bu, durmuş/Devre Dışı/Emekli bir session'ın "son mesajları"
     salt-okunur görüntülemeyi (terminal olmadan) mümkün kılıyor — `_files_resolve`
-    zaten roster-fallback'ini yapıyor, burada tekrar yazmaya gerek yok."""
+    zaten roster-fallback'ini yapıyor, burada tekrar yazmaya gerek yok.
+
+    2026-10-14 (kullanıcı: "history de goruntule de chat gorunmuyor"): o roster/instance
+    fallback'i `pid=0` bir `Session` kurar ve `sid` taşımaz; `sid=None` "cwd'deki EN YENİ
+    konuşma" demek, bir blueprint'in tarihli instance'ları ise AYNI cwd'yi paylaşır → Geçmiş'te
+    "görüntüle" başka bir konuşmayı, çoğu zaman yeni açılmış boş bir stub'ı gösteriyordu
+    ("Sen: (boş) / Asistan: (boş)"). Durmuş session'ın konuşması artık ADINDAN çözülür
+    (`CliProvider.sid_for_stopped_session`); adından bulunamazsa eski davranış."""
     s, err = _files_resolve(name, lang)
     if err:
         return err
     provider = get_provider(s.cli)
+    sid = s.sid
+    if s.pid == 0 and sid is None:
+        sid = provider.sid_for_stopped_session(s.cwd, s.name)
     if mode == "full":
-        messages = provider.full_history(s.cwd, s.sid)
+        messages = provider.full_history(s.cwd, sid)
         if messages is None:
             return {"ok": True, "supported": False}
         total = len(messages)
         start = since if 0 <= since <= total else 0
         return {"ok": True, "supported": True, "messages": messages[start:], "total": total}
-    exchange = provider.last_exchange(s.cwd, s.sid)
+    exchange = provider.last_exchange(s.cwd, sid)
     if exchange is None:
         return {"ok": True, "supported": False}
     return {"ok": True, "supported": True, "user": exchange["user"], "assistant": exchange["assistant"]}

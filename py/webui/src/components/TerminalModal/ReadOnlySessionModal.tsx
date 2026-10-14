@@ -111,7 +111,7 @@ export function ReadOnlySessionModal({ name, host, onClose }: ReadOnlySessionMod
             {t.tabFilesView}
           </button>
         </div>
-        {activeSubTab === "chat" && <ChatView name={name} host={host} />}
+        {activeSubTab === "chat" && <ChatView name={name} host={host} live={false} />}
         {activeSubTab === "files" && <FilesView name={name} host={host} onView={setViewingPath} />}
       </div>
       {viewingPath && (

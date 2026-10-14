@@ -543,6 +543,16 @@ class AgyProvider(CliProvider):
                     out.append({"role": "assistant", "text": text})
         return out
 
+    def sid_for_stopped_session(self, cwd: str, session_name: str) -> Optional[str]:
+        """Yalnız `AGY_SIDS_JSON`'da bu ADA öğrenilmiş bir id varsa VE o konuşmanın dosyası hâlâ
+        duruyorsa. `_transcript_steps`'in `sid` yokken başvurduğu cwd-keyed cache cwd başına TEK
+        id tutuyor, yani aynı klasördeki durmuş instance'ların hepsine aynı (en yeni) konuşmayı
+        gösterir; öğrenme 2026-09-29'da eklendi, öncesinin adı yok → None → eski davranış."""
+        sid = _load_agy_sids().get(session_name) if session_name else None
+        if isinstance(sid, str) and sid and os.path.isfile(os.path.join(CONVERSATIONS_DIR, f"{sid}.db")):
+            return sid
+        return None
+
     def snapshot_for_live_sid(self, cwd: str) -> object:
         # `cwd` bilerek KULLANILMIYOR — CONVERSATIONS_DIR'deki dosyalar kendi
         # cwd'sini taşımıyor (SADECE last_conversations.json cache'i, bu

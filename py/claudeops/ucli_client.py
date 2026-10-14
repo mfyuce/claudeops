@@ -201,7 +201,11 @@ def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
 def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
     """`{session}.jsonl`'ı `[{"role":..., "text":...}, ...]`'a çevirir.
     Dosya yoksa boş liste (henüz mesaj yok, hata değil) — okunamaz/bozuksa
-    `None` (çağıran "desteklenmiyor" ile "henüz mesaj yok"u ayırabilsin)."""
+    `None` (çağıran "desteklenmiyor" ile "henüz mesaj yok"u ayırabilsin).
+
+    Yeni ucli sürümlerinde dosyanın ilk satırı `{"ucli_session_schema_version":1}` başlığı
+    (`role` yok): eskiden `KeyError` → `None` → panel ucli sohbetini "desteklenmiyor" diye
+    gösteriyordu (2026-10-14, Geçmiş'te "chat görünmüyor"); `role`süz satır atlanır."""
     path = os.path.join(chat_session_dir(cwd), f"{session}.jsonl")
     if not os.path.isfile(path):
         return []
@@ -213,6 +217,8 @@ def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
                 if not line:
                     continue
                 turn = json.loads(line)
+                if not isinstance(turn, dict) or "role" not in turn:
+                    continue
                 turns.append({"role": turn["role"], "text": turn["content"]})
     except (OSError, json.JSONDecodeError, KeyError):
         return None

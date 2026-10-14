@@ -30,6 +30,13 @@ const CHAT_POLL_INTERVAL_MS = 2500;
 interface ChatViewProps {
   name: string;
   host: string;
+  /** `false` (stopped session, `ReadOnlySessionModal`): its transcript cannot grow, so the
+   * view loads once per mode and stops polling after the first successful (or "unsupported")
+   * answer; a failed load keeps retrying like a live view does. 2026-10-14: every poll
+   * re-parses the whole transcript server-side (60-105 ms CPU on the biggest local ones, on
+   * the remote host's shared CPU for a remote row), and stopped rows now resolve to their
+   * real, large conversation instead of a tiny stub. Default `true` = unchanged live behavior. */
+  live?: boolean;
 }
 
 type ChatMode = "last" | "full";
@@ -48,13 +55,15 @@ const BOX_STYLE: CSSProperties = {
   boxSizing: "border-box",
 };
 
-export function ChatView({ name, host }: ChatViewProps) {
+export function ChatView({ name, host, live = true }: ChatViewProps) {
   const { t, lang } = useLang();
   const [mode, setMode] = useState<ChatMode>("last");
   const [state, setState] = useState<ChatState>({ kind: "loading" });
 
   useEffect(() => {
     let cancelled = false;
+    // Set once a load succeeded (or answered "unsupported"); only consulted when `!live`.
+    let settled = false;
     // Accumulates across polls in "full" mode (2026-09-17, user: "chat
     // bilgisini alirken full almama lazim... sadece kalanlari almalisin") —
     // sending `known.length` as `since` lets the server return just the new
@@ -69,26 +78,35 @@ export function ChatView({ name, host }: ChatViewProps) {
         const d = await getTermChat(name, lang, mode, host, known.length);
         if (cancelled) return;
         if (!d.ok) setState({ kind: "error", message: d.error });
-        else if (!d.supported) setState({ kind: "unsupported" });
-        else if ("messages" in d) {
+        else if (!d.supported) {
+          setState({ kind: "unsupported" });
+          settled = true;
+        } else if ("messages" in d) {
           // messages.length === total means the server sent the full list
           // (since=0, or it resynced after a reset/handover) - replace.
           // Otherwise it's just the tail after `known.length` - append.
           known = d.messages.length === d.total ? d.messages : [...known, ...d.messages];
           setState({ kind: "ok-full", messages: known });
-        } else setState({ kind: "ok-last", user: d.user, assistant: d.assistant });
+          settled = true;
+        } else {
+          setState({ kind: "ok-last", user: d.user, assistant: d.assistant });
+          settled = true;
+        }
       } catch (e) {
         if (cancelled) return;
         setState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
       }
     };
+    const shouldPoll = () => live || !settled;
     void poll();
-    const id = setInterval(() => void poll(), CHAT_POLL_INTERVAL_MS);
+    const id = setInterval(() => {
+      if (shouldPoll()) void poll();
+    }, CHAT_POLL_INTERVAL_MS);
     // Same fix as TerminalView.tsx (2026-09-05) — an immediate poll on
     // foreground so a backgrounded tab's stale chat view doesn't wait for
     // the next throttled interval tick.
     function onVisible() {
-      if (document.visibilityState === "visible") void poll();
+      if (document.visibilityState === "visible" && shouldPoll()) void poll();
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -96,7 +114,7 @@ export function ChatView({ name, host }: ChatViewProps) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [name, host, lang, mode]);
+  }, [name, host, lang, mode, live]);
 
   // Reset from the event that causes the mode change (not synchronously
   // inside the poll effect) — the effect above re-runs because `mode` is in

@@ -106,6 +106,21 @@ class CliProvider(ABC):
         provider'ların override etmesi beklenir (varsayılan burada da None)."""
         return None
 
+    def sid_for_stopped_session(self, cwd: str, session_name: str) -> Optional[str]:
+        """DURMUŞ (canlı süreci olmayan) bir session'ın konuşma id'sini ADINDAN bul —
+        `last_exchange`/`full_history`'ye verilecek `sid`. Canlı bir session'ın `sid`'i
+        süreçten okunur; durmuşunki yok, ve `sid=None` "bu cwd'deki EN YENİ konuşma"
+        demek: bir blueprint'in tarihli instance'ları AYNI cwd'yi paylaşır, o yüzden
+        Geçmiş/Devre dışı/Emekli'nin "görüntüle"si başka bir konuşmayı (çoğu zaman
+        yeni açılmış boş bir stub'ı) gösteriyordu (2026-10-14, kullanıcı: "history de
+        goruntule de chat gorunmuyor").
+
+        None (varsayılan) = ad bir konuşmaya bağlanamıyor (provider adı transcript'e
+        yazmıyor, ya da eşleşen yok): çağıran eski davranışa (cwd'deki en yeni
+        konuşma) düşer, yani bu metot YALNIZ kesin bilinen bir eşleşmeyi döndürmeli,
+        tahmin yürütmemeli."""
+        return None
+
     def last_message_role(self, cwd: str, sid: Optional[str]) -> Optional[str]:
         """Transkriptteki KRONOLOJİK olarak son mesajın rolü ('user'|'assistant') —
         stuck tespiti için: son mesaj cevapsız bir 'user'sa oturum muhtemelen takılı.
