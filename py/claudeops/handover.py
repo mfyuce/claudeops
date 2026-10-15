@@ -125,11 +125,13 @@ def downgrade_effort_for_handover(provider: CliProvider, tmux_name: str, cli: st
 
 
 HANDOVER_MSG_DEFAULT = (
-    "ÖNCE: CLAUDE.md BÜYÜKLÜK OPTİMİZASYONU. Dosya her session başında context e "
-    "yüklendiği için kısa ve öz olmalı.\n"
-    "- Eskimiş veya artık geçerli olmayan bilgileri ayıkla; gerekiyorsa DONE.md ye taşı.\n"
-    "- Tekrar eden / kod-okunarak öğrenilebilir bilgileri çıkar.\n"
-    "- Hedef: bir önceki halinden belirgin şekilde küçük + daha güncel.\n"
+    "ÖNCE: CLAUDE.md BÜYÜKLÜK KONTROLÜ. Dosya her session başında context e "
+    "yüklendiği için 40 KB (40000 bayt) altında kalmalı.\n"
+    "- Boyutu ölç (wc -c CLAUDE.md). 40000 baytın ALTINDAYSA küçültmeye çalışma; "
+    "yalnız eskiyen veya yanlışlaşan bilgiyi güncelle.\n"
+    "- ÜSTÜNDEYSE: eskimiş veya artık geçerli olmayan bilgileri ayıkla (gerekiyorsa DONE.md ye taşı), "
+    "tekrar eden / kod-okunarak öğrenilebilir bilgileri çıkar, 40 KB altına in.\n"
+    "- Hedef: 40 KB altı + güncel. Her handover da küçültmek hedef DEĞİL.\n"
     "SONRA aşağıdaki handover akışına devam et.\n\n"
     "═══════════════════════════════════════════════\n\n"
     "Bu konuşmayı bitiriyoruz, yeni session a geçeceğiz. KAYIT KRİTİK.\n\n"
@@ -150,11 +152,13 @@ HANDOVER_MSG_DEFAULT = (
 )
 
 HANDOVER_MSG_DEFAULT_EN = (
-    "FIRST: CLAUDE.md SIZE OPTIMIZATION. This file gets loaded into context at the start of "
-    "every session, so it should stay short and to the point.\n"
-    "- Prune stale or no-longer-relevant info; move it to DONE.md if it's still worth keeping.\n"
-    "- Remove anything repetitive or easily re-derived by reading the code.\n"
-    "- Goal: noticeably smaller than before + more up to date.\n"
+    "FIRST: CLAUDE.md SIZE CHECK. This file gets loaded into context at the start of "
+    "every session, so it should stay under 40 KB (40000 bytes).\n"
+    "- Measure it (wc -c CLAUDE.md). If it is UNDER 40000 bytes, do not try to shrink it; "
+    "just fix whatever has gone stale or wrong.\n"
+    "- If it is OVER: prune stale or no-longer-relevant info (move it to DONE.md if it's still worth keeping), "
+    "remove anything repetitive or easily re-derived by reading the code, and get back under 40 KB.\n"
+    "- Goal: under 40 KB + up to date. Shrinking it at every handover is NOT the goal.\n"
     "THEN continue with the handover flow below.\n\n"
     "═══════════════════════════════════════════════\n\n"
     "We're wrapping up this conversation and moving to a new session. RECORDING THIS IS CRITICAL.\n\n"
