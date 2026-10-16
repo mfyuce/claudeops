@@ -338,6 +338,7 @@ class UcliProvider(CliProvider):
             "--max-steps": "max_steps",
             "--max-context-kib": "max_context_kib",
             "--max-tool-calls": "max_tool_calls",
+            "--max-output-tokens": "max_output_tokens",
         }
         for i, tok in enumerate(cmd):
             if tok == "--model" and i + 1 < len(cmd):
@@ -345,10 +346,14 @@ class UcliProvider(CliProvider):
             elif tok in flag_to_key and i + 1 < len(cmd):
                 parsed_limits[flag_to_key[tok]] = cmd[i + 1]
         permission_mode = _ALLOW_EDIT if "--allow-edit" in cmd else _READ_ONLY
-        # Ters eşleme: ÜÇÜNÜN BİRDEN eşleştiği preset'in adına dön — tek bir
-        # bayrak artık yetmez (üç bağımsız bayrak var). Eşleşmezse (elle
+        # Ters eşleme: DÖRDÜNÜN BİRDEN eşleştiği preset'in adına dön — tek bir
+        # bayrak artık yetmez (dört bağımsız bayrak var). Eşleşmezse (elle
         # değiştirilmiş/eski bir preset) None: bilinmeyen bir effort adı
-        # UYDURMAKTANSA "bilinmiyor" göstermek daha doğru.
+        # UYDURMAKTANSA "bilinmiyor" göstermek daha doğru. 2026-10-16: dördüncü
+        # alan (`--max-output-tokens`, 2026-09-28'de presetlere eklendi) burada
+        # ayrıştırılmıyordu, bu yüzden hiçbir preset eşleşmiyor ve effort HEP None
+        # çıkıyordu; `test_ucli_web.BuildInnerCommandTests.test_every_effort_preset_round_trips_
+        # through_the_running_command` preset ile ayrıştırıcı birbirinden koparsa yakalar.
         effort = next(
             (name for name, lim in _EFFORT_LIMITS.items()
              if all(str(v) == parsed_limits.get(k) for k, v in lim.items())),

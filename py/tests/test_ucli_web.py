@@ -431,18 +431,43 @@ class BuildInnerCommandTests(TmpCase):
         self.assertIn("--allow-fetch-domain docs.rs", inner)
 
     def test_running_command_parsing_is_unaffected_by_the_new_flags(self):
-        """Çalışan komut satırı ayrıştırması (model/izin/sid/effort) web bayraklarıyla DEĞİŞMEZ.
-        (`effort` değerinin kendisine bakılmaz: `extract_info`nun `--max-output-tokens`u ayrıştırmaması
-        eski, bu işten bağımsız bir hata; karşılaştırma web'li ve web'siz komutun AYNI sonucu vermesi.)"""
+        """Çalışan komut satırı ayrıştırması (model/izin/sid/effort) web bayraklarıyla DEĞİŞMEZ."""
         with_flags = shlex.split(self.build(ProviderCfg.BOTH))
         without = shlex.split(self.build({}))
         self.assertNotEqual(with_flags, without)
         self.assertEqual(up.UcliProvider().extract_info(with_flags), up.UcliProvider().extract_info(without))
         info = up.UcliProvider().extract_info(with_flags)
-        self.assertEqual((info["model"], info["permission_mode"], info["sid"]),
-                         ("deepseek-v4-flash", "allow-edit", "vc"))
+        self.assertEqual((info["model"], info["permission_mode"], info["sid"], info["effort"]),
+                         ("deepseek-v4-flash", "allow-edit", "vc", "high"))
         self.assertTrue(up.UcliProvider().matches_proc(with_flags))
         self.assertEqual(up.UcliProvider().extract_name(None, with_flags), "vc")
+
+    def test_every_effort_preset_round_trips_through_the_running_command(self):
+        """spawn'ın yazdığı komut satırından `extract_info` AYNI effort adını geri okur (her preset,
+        web bayraklı ve bayraksız). 2026-09-28'de presetlere `max_output_tokens` eklenip ayrıştırıcıya
+        eklenmeyince effort HEP None çıkıyordu: panel ucli effort'unu bilinmiyor gösterdi, kapanış
+        anlık görüntüsüne effort yazılamadı ve stuck-recovery (`s.effort or "max"`) high bir ucli'yi
+        preset dışı "max" ile açıp sessizce medium'a düşürdü. Preset ile ayrıştırıcı koparsa bu düşer."""
+        for name in up._EFFORT_LIMITS:
+            for cfg in ({}, ProviderCfg.BOTH):
+                with self.subTest(effort=name, web=bool(cfg)):
+                    argv = shlex.split(self.build(cfg, effort=name))
+                    self.assertEqual(up.UcliProvider().extract_info(argv)["effort"], name)
+        self.assertGreater(len(up._EFFORT_LIMITS), 1)   # tek preset olsa bile "ayırt eder mi" testi anlamsız kalırdı
+
+    def test_effort_stays_unknown_when_a_limit_was_changed_by_hand_or_is_missing(self):
+        """Tanınmayan sayı kümesine preset adı UYDURULMAZ (None = bilinmiyor), her dört alan da sayılır."""
+        argv = self.baseline_argv("high")
+        self.assertEqual(up.UcliProvider().extract_info(argv)["effort"], "high")
+        for flag in ("--max-steps", "--max-context-kib", "--max-tool-calls", "--max-output-tokens"):
+            with self.subTest(flag=flag):
+                changed = list(argv)
+                changed[changed.index(flag) + 1] = "7"
+                self.assertIsNone(up.UcliProvider().extract_info(changed)["effort"])
+                dropped = list(argv)
+                i = dropped.index(flag)
+                del dropped[i:i + 2]   # 28 Eylül'den ÖNCE başlamış, `--max-output-tokens`suz eski oturum gibi
+                self.assertIsNone(up.UcliProvider().extract_info(dropped)["effort"])
 
 
 class ProviderCfg:
