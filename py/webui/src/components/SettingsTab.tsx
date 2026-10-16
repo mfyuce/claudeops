@@ -35,6 +35,13 @@
  * control, same feature as the tab's pin/groups/apply) moved with it into
  * `<LayoutSection />` rather than staying split across two places — it's
  * now that component's own `apiSaveSettings` call, not `save()` here.
+ *
+ * 2026-10-16: "models" gained the `ucli_web` panel (search address, automatic
+ * local SearXNG on/off, fetch_url domain allowlist) next to `ucli_limits`,
+ * same draft-until-blur + partial-patch pattern. The backend (`save_settings`
+ * field merge, `ucli_web_config()`) was already there. The panel also prints
+ * the EFFECTIVE state in one line, because the server silently leaves search
+ * off when the address is invalid.
  */
 
 import { useState } from "react";
@@ -64,7 +71,29 @@ type SettingsPatch = {
   /** {max_steps, max_context_kib, max_tool_calls: string} — bkz. `Settings.ucli_limits`.
    * Boş string bir alanı preset varsayılanına döndürür. */
   ucli_limits?: Record<string, string>;
+  /** {search_url, search_docker, allow_fetch_domains: string} — bkz. `Settings.ucli_web`.
+   * Boş string bir alanı varsayılana döndürür (backend anahtarı siler). */
+  ucli_web?: Record<string, string>;
 };
+
+/** `settings.py`'nin `_OFF_WORDS`i: `ucli_web.search_docker`ın "kapalı" saydığı değerler (settings.json
+ * elle düzenlenebiliyor, "false" yazılmış olsa da seçici KAPALI göstermeli). */
+const SEARCH_DOCKER_OFF_WORDS = new Set(["off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none"]);
+
+/** settings.json elle düzenlenebildiği için bir alan string yerine liste/boş olabilir. */
+function asText(v: unknown): string {
+  return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v);
+}
+
+/** `settings.py`'nin `_valid_http_url`inin istemci karşılığı: yalnız İPUCU için (karar backend'in). */
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return (u.protocol === "http:" || u.protocol === "https:") && u.hostname !== "";
+  } catch {
+    return false;
+  }
+}
 
 /** cli → bugün bilinen TEK en-önemli BYOK env değişkeni. copilot'un aslında
  * 3'ü var (COPILOT_PROVIDER_BASE_URL/_API_KEY/_MODEL, bkz. copilot_provider.py)
@@ -177,9 +206,15 @@ export function SettingsTab() {
   // (`isSet`/mask yok) mevcut değer doğrudan gösterilir, BYOK'un "boşsa
   // dokunma" korumasına gerek yok (sır değil).
   const [ucliLimitsDraft, setUcliLimitsDraft] = useState<Record<string, string>>({});
+  // Same draft-until-blur reasoning for the two free-text `ucli_web` fields.
+  const [ucliWebDraft, setUcliWebDraft] = useState<Record<string, string>>({});
 
   if (!data) return null;
   const settings = data.settings;
+  const webCfg = settings.ucli_web ?? {};
+  const webSearchUrl = (ucliWebDraft.search_url ?? asText(webCfg.search_url)).trim();
+  const webDockerOff = SEARCH_DOCKER_OFF_WORDS.has(asText(webCfg.search_docker).trim().toLowerCase());
+  const webFetchDomains = (ucliWebDraft.allow_fetch_domains ?? asText(webCfg.allow_fetch_domains)).trim();
 
   async function save(patch: SettingsPatch) {
     setError("");
@@ -387,6 +422,55 @@ export function SettingsTab() {
                   />
                 </label>
               ))}
+            </div>
+          )}
+          {data.cli_list.includes("ucli") && (
+            <div className="opts" id="settingsUcliWebPanel">
+              <span className="opts-hint" style={{ flexBasis: "100%" }}>
+                <b>{t.ucliWebLabel}</b> {t.ucliWebDesc}
+              </span>
+              <label title={t.ucliWebSearchUrlHint}>
+                {t.ucliWebSearchUrlLabel}
+                <input
+                  type="text"
+                  placeholder={t.ucliWebSearchUrlPlaceholder}
+                  value={ucliWebDraft.search_url ?? asText(webCfg.search_url)}
+                  onChange={(e) => setUcliWebDraft((prev) => ({ ...prev, search_url: e.target.value }))}
+                  onBlur={(e) => void save({ ucli_web: { search_url: e.target.value.trim() } })}
+                />
+              </label>
+              <label title={t.ucliWebDockerHint}>
+                {t.ucliWebDockerLabel}
+                <select
+                  value={webDockerOff ? "off" : ""}
+                  disabled={webSearchUrl !== ""}
+                  onChange={(e) => void save({ ucli_web: { search_docker: e.target.value } })}
+                >
+                  <option value="">{t.ucliWebDockerAuto}</option>
+                  <option value="off">{t.ucliWebDockerOff}</option>
+                </select>
+              </label>
+              <label title={t.ucliWebFetchHint}>
+                {t.ucliWebFetchLabel}
+                <input
+                  type="text"
+                  placeholder={t.ucliWebFetchPlaceholder}
+                  value={ucliWebDraft.allow_fetch_domains ?? asText(webCfg.allow_fetch_domains)}
+                  onChange={(e) => setUcliWebDraft((prev) => ({ ...prev, allow_fetch_domains: e.target.value }))}
+                  onBlur={(e) => void save({ ucli_web: { allow_fetch_domains: e.target.value.trim() } })}
+                />
+              </label>
+              <span className="opts-hint" style={{ flexBasis: "100%" }}>
+                {webSearchUrl
+                  ? isValidHttpUrl(webSearchUrl)
+                    ? t.ucliWebStateUrl(webSearchUrl)
+                    : t.ucliWebStateUrlInvalid
+                  : webDockerOff
+                    ? t.ucliWebStateOff
+                    : t.ucliWebStateAuto}
+                {" · "}
+                {webFetchDomains ? t.ucliWebFetchOn : t.ucliWebFetchOff}
+              </span>
             </div>
           )}
         </>

@@ -397,6 +397,24 @@ export interface Strings {
   ucliLimitsMaxToolCallsLabel: string;
   ucliLimitsMaxOutputTokensLabel: string;
   ucliLimitsPlaceholderAuto: string;
+  ucliWebLabel: string;
+  ucliWebDesc: string;
+  ucliWebSearchUrlLabel: string;
+  ucliWebSearchUrlPlaceholder: string;
+  ucliWebSearchUrlHint: string;
+  ucliWebDockerLabel: string;
+  ucliWebDockerHint: string;
+  ucliWebDockerAuto: string;
+  ucliWebDockerOff: string;
+  ucliWebFetchLabel: string;
+  ucliWebFetchPlaceholder: string;
+  ucliWebFetchHint: string;
+  ucliWebStateUrl: (url: string) => string;
+  ucliWebStateUrlInvalid: string;
+  ucliWebStateAuto: string;
+  ucliWebStateOff: string;
+  ucliWebFetchOn: string;
+  ucliWebFetchOff: string;
   tabHintToggle: string;
   tabSettingsGeneral: string;
   tabSettingsModels: string;
@@ -837,6 +855,28 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
+    ucliWebLabel: "ucli web araçları (arama / sayfa getirme)",
+    ucliWebDesc:
+      "Yalnız claudeops'tan YENİ açılan ucli oturumlarına uygulanır; çalışanlar eski ayarla sürer, panel yeniden başlatması gerekmez. Arama varsayılan AÇIK: adres boşsa claudeops'un yönettiği yerel SearXNG kullanılır (docker kapsayıcısı, yalnız bu makineden erişilir; ucli aramayı kendi içine alınca bu geçici köprü kalkacak). Sayfa getirme (fetch_url) varsayılan KAPALI; yalnız aşağıya yazılan alan adlarına açılır.",
+    ucliWebSearchUrlLabel: "arama adresi (SearXNG)",
+    ucliWebSearchUrlPlaceholder: "boş = otomatik yerel SearXNG",
+    ucliWebSearchUrlHint:
+      "SearXNG adresi, örn. http://127.0.0.1:8888/search. Dolu ise o kazanır ve docker'a dokunulmaz. Geçersiz bir adres aramayı KAPALI bırakır, başka yere yönlendirmez.",
+    ucliWebDockerLabel: "otomatik yerel arama (docker)",
+    ucliWebDockerHint:
+      "Arama adresi boşken, ucli oturumu açılırken claudeops'un yönettiği SearXNG kapsayıcısı kurulur ya da başlatılır. Arama adresi doluysa bu seçenek kullanılmaz.",
+    ucliWebDockerAuto: "açık (varsayılan)",
+    ucliWebDockerOff: "kapalı",
+    ucliWebFetchLabel: "sayfa getirme için izinli alan adları",
+    ucliWebFetchPlaceholder: "boş = fetch_url kapalı, örn. en.wikipedia.org, docs.rs",
+    ucliWebFetchHint:
+      "Virgül ya da boşlukla ayrılmış TAM alan adları (joker yok). ucli yalnız bunlara giden HTTP(S) GET isteklerine izin verir.",
+    ucliWebStateUrl: (url) => `Arama: ${url}`,
+    ucliWebStateUrlInvalid: "Arama: adres geçersiz, KAPALI kalır (http:// ya da https:// ile başlamalı)",
+    ucliWebStateAuto: "Arama: otomatik yerel SearXNG (docker)",
+    ucliWebStateOff: "Arama: kapalı",
+    ucliWebFetchOn: "Sayfa getirme: yazılan alan adlarına açık",
+    ucliWebFetchOff: "Sayfa getirme: kapalı",
     tabHintToggle: "Açıklamayı göster/gizle",
     tabSettingsGeneral: "genel",
     tabSettingsModels: "model",
@@ -1291,6 +1331,28 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsPlaceholderAuto: "empty = preset default",
+    ucliWebLabel: "ucli web tools (search / page fetch)",
+    ucliWebDesc:
+      "Applies only to ucli sessions newly opened from claudeops; running ones keep their old settings, and the panel does not need a restart. Search is ON by default: with an empty address the local SearXNG managed by claudeops is used (a docker container reachable from this machine only; this temporary bridge goes away once ucli does search itself). Page fetch (fetch_url) is OFF by default and opens only to the domains listed below.",
+    ucliWebSearchUrlLabel: "search address (SearXNG)",
+    ucliWebSearchUrlPlaceholder: "empty = automatic local SearXNG",
+    ucliWebSearchUrlHint:
+      "SearXNG address, e.g. http://127.0.0.1:8888/search. When set it wins and docker is left alone. An invalid address leaves search OFF; it never redirects elsewhere.",
+    ucliWebDockerLabel: "automatic local search (docker)",
+    ucliWebDockerHint:
+      "While the search address is empty, the SearXNG container managed by claudeops is set up or started when a ucli session opens. Not used when a search address is set.",
+    ucliWebDockerAuto: "on (default)",
+    ucliWebDockerOff: "off",
+    ucliWebFetchLabel: "domains allowed for page fetch",
+    ucliWebFetchPlaceholder: "empty = fetch_url off, e.g. en.wikipedia.org, docs.rs",
+    ucliWebFetchHint:
+      "Exact domain names separated by commas or spaces (no wildcards). ucli only allows HTTP(S) GET requests to these.",
+    ucliWebStateUrl: (url) => `Search: ${url}`,
+    ucliWebStateUrlInvalid: "Search: invalid address, stays OFF (must start with http:// or https://)",
+    ucliWebStateAuto: "Search: automatic local SearXNG (docker)",
+    ucliWebStateOff: "Search: off",
+    ucliWebFetchOn: "Page fetch: open to the listed domains",
+    ucliWebFetchOff: "Page fetch: off",
     tabHintToggle: "Show/hide description",
     tabSettingsGeneral: "general",
     tabSettingsModels: "models",

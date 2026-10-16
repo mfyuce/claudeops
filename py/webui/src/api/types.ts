@@ -217,6 +217,13 @@ export interface Settings {
    * `provider_bin` gibi {cli: ...} DEĞİL — bu numerik "effort" kavramı bugün
    * SADECE ucli'de var, `settings.py`'nin `ucli_limit_overrides()`'ı okur. */
   ucli_limits: Record<string, string>;
+  /** {search_url, search_docker, allow_fetch_domains: string} (+ `search_flavor`,
+   * UI'da yok, yalnız "searxng") — ucli'nin web araçları (TODO.md 2026-10-16,
+   * TBD#88). Hepsi isteğe bağlı ham string, eksik anahtar = varsayılan: arama
+   * claudeops'un yönettiği yerel SearXNG ile AÇIK, `fetch_url` KAPALI. Geçerlilik
+   * kararı backend'in (`settings.py`'nin `ucli_web_config()`'i); settings.json elle
+   * düzenlenebildiği için `allow_fetch_domains` çalışma anında liste de olabilir. */
+  ucli_web: Record<string, string>;
 }
 
 /** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in
