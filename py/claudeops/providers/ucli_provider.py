@@ -83,8 +83,9 @@ from typing import Dict, FrozenSet, List, Optional, Sequence
 
 import psutil
 
-from ..settings import byok_env_for, ucli_limit_overrides
-from ..ucli_client import read_chat_history, read_status_file, resolve_binary
+from ..diaglog import diag_log
+from ..settings import byok_env_for, ucli_limit_overrides, ucli_web_config
+from ..ucli_client import binary_supports_flag, read_chat_history, read_status_file, resolve_binary
 from .base import CliProvider
 
 # effort: "ne kadar düşünsün" anlamında GERÇEK bir karşılığı yok (unified-cli
@@ -225,6 +226,32 @@ def _sync_api_key_file() -> bool:
     return True
 
 
+def _web_args(binary: str, session_name: str = "") -> List[str]:
+    """Ayarlar'daki `ucli_web` (bkz. `settings.ucli_web_config`) → ucli'nin web bayrakları.
+    Varsayılan boş: ucli oturumları webe ÇIKMAZ (unified-cli be4448a'nın kendi ilkesi,
+    yetenek bayrakları kapalı gelir). Her yetenek AYRI ve YALNIZ ikili o bayrağı
+    tanıyorsa eklenir: web bayrakları farklı commit'lerde geldi, eski bir ikili
+    'unexpected argument' ile spawn anında patlardı (yukarıdaki ⚠ notla AYNI risk);
+    tanımıyorsa o yetenek atlanır ve günlüğe yazılır. Anahtar GEREKMİYOR (SearXNG
+    arka ucu operatörün kendi adresi); bu yüzden argv'ye sır girmez."""
+    cfg = ucli_web_config()
+    args: List[str] = []
+    if cfg.get("search_url"):
+        if binary_supports_flag(binary, "--search-url"):
+            args += ["--search-url", cfg["search_url"], "--search-flavor", cfg["search_flavor"]]
+        else:
+            diag_log("ucli_web_flag_unsupported", name=session_name, flag="--search-url", binary=binary)
+    domains = cfg.get("allow_fetch_domains")
+    if domains:
+        if binary_supports_flag(binary, "--allow-fetch"):
+            args.append("--allow-fetch")
+            for d in domains:
+                args += ["--allow-fetch-domain", d]
+        else:
+            diag_log("ucli_web_flag_unsupported", name=session_name, flag="--allow-fetch", binary=binary)
+    return args
+
+
 class UcliProvider(CliProvider):
     name = "ucli"
 
@@ -266,6 +293,7 @@ class UcliProvider(CliProvider):
             argv += ["--model", model]
         if permission_mode == _ALLOW_EDIT:
             argv.append("--allow-edit")
+        argv += _web_args(argv[0], session_name)
         inner = " ".join(shlex.quote(a) for a in argv)
         if _sync_api_key_file():
             # Anahtarı argv'ye GÖMMÜYORUZ — bu makine çok-kullanıcılı, `ps aux`

@@ -11,7 +11,9 @@ gibi commands/ PAKETİNE bağımlı olmayan modüller de sorunsuz import edebils
 from __future__ import annotations
 import json
 import os
+import re
 import shutil
+import urllib.parse
 from typing import Any, Dict, TYPE_CHECKING
 
 from .atomic_json import atomic_write_json
@@ -103,6 +105,18 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # preset'in karşılık gelen sayısının YERİNE geçer; boş/eksik alan
                               # preset'in kendi varsayılanında kalır ("boş=otomatiğe dön",
                               # provider_bin/byok'la AYNI dil). Okuma tarafı: `ucli_limit_overrides()`.
+    "ucli_web": {},          # {search_url, search_flavor, allow_fetch_domains: str} — 2026-10-16
+                              # (TODO.md "ucli web özellikleri"): unified-cli be4448a'nın web araçları
+                              # (`web_search`, gerçek sayfada çalışan `fetch_url`) ucli'de varsayılan
+                              # KAPALI. Boş (varsayılan) = ucli oturumları bugünkü gibi webe ÇIKMAZ.
+                              # `search_url` (SearXNG, ör. http://127.0.0.1:8888/search) dolu ise
+                              # `--search-url/--search-flavor searxng`; `search_flavor` yalnız "searxng"
+                              # (brave şimdilik DESTEKLENMEZ: anahtarı argv'ye koymadan iletmek ayrı iş,
+                              # `ucli_provider.py`nin API-anahtarı dosya+`sh -c` deseni gerekir).
+                              # `allow_fetch_domains` (virgül/boşlukla ayrılmış TAM host adları, joker
+                              # yok; ucli'nin kendi kuralı) dolu ise `--allow-fetch --allow-fetch-domain
+                              # ...`. `provider_bin`/`ucli_limits`'le AYNI alan-bazlı merge ("boş=kaldır").
+                              # Okuma tarafı: `ucli_web_config()`.
 }
 
 
@@ -124,6 +138,8 @@ def load_settings() -> Dict[str, Any]:
                 out["byok"] = {}
             if not isinstance(out.get("ucli_limits"), dict):
                 out["ucli_limits"] = {}
+            if not isinstance(out.get("ucli_web"), dict):
+                out["ucli_web"] = {}
             if not isinstance(out.get("cli_managed"), dict):
                 out["cli_managed"] = {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -143,9 +159,11 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "provider_bin", "ucli_limits", "cli_managed") and isinstance(v, dict):
+        if k in ("default_model", "provider_bin", "ucli_limits", "ucli_web", "cli_managed") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
+                if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
+                    cv = ",".join(str(x) for x in cv if str(x).strip())
                 if cv:
                     merged[str(ck)] = str(cv)
                 else:
@@ -277,4 +295,54 @@ def ucli_limit_overrides() -> Dict[str, int]:
             continue
         if n > 0:
             out[key] = n
+    return out
+
+
+# Tam host adı: etiketler [a-z0-9-], tire uçta olmaz, toplam <= 253. Joker (`*.org`),
+# şema (`https://`), yol, port ve boşluk YOK: ucli `--allow-fetch-domain`i "tam host
+# adı eşleşmesi, büyük/küçük harf duyarsız, joker yok" diye tanımlıyor.
+_HOST_RE = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
+_MAX_FETCH_DOMAINS = 64
+
+
+def _valid_http_url(url: str) -> bool:
+    """http(s) şeması + host adı olan, boşluk/denetim karakteri içermeyen bir adres.
+    (Kimlik bilgisi ya da sorgu parçaları engellenmez: operatör kendi arka ucunu yazıyor.)"""
+    if not url or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+        return False
+    try:
+        parts = urllib.parse.urlsplit(url)
+        parts.port   # geçersiz port burada ValueError fırlatır
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
+
+
+def ucli_web_config() -> Dict[str, Any]:
+    """`settings.json`'ın `ucli_web` alanı — bkz. DEFAULT_SETTINGS'teki yorum. Yalnız
+    GEÇERLİ parçaları içeren bir dict döner; boş dict = web kapalı (varsayılan).
+    Anahtarlar: `search_url` + `search_flavor` ("searxng"; ikisi birlikte ya da hiç),
+    `allow_fetch_domains` (tekrarsız, küçük harfli, geçerli host adları listesi).
+    Geçersiz/eksik bir parça sessizce ATLANIR ve o yetenek KAPALI kalır (asla fırlatmaz,
+    `ucli_limit_overrides`la aynı tolerans; settings.json elle düzenlenebiliyor): bozuk
+    bir adres web'i yanlış yere AÇMAZ, kapalı bırakır."""
+    raw = load_settings().get("ucli_web") or {}
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    url = str(raw.get("search_url") or "").strip()
+    flavor = str(raw.get("search_flavor") or "").strip().lower() or "searxng"
+    if url and flavor == "searxng" and _valid_http_url(url):
+        out["search_url"] = url
+        out["search_flavor"] = "searxng"
+    doms = raw.get("allow_fetch_domains")
+    text = ",".join(str(x) for x in doms) if isinstance(doms, (list, tuple)) else str(doms or "")
+    domains: list = []
+    for tok in re.split(r"[,\s]+", text.lower()):
+        if tok and _HOST_RE.match(tok) and tok not in domains:
+            domains.append(tok)
+            if len(domains) >= _MAX_FETCH_DOMAINS:
+                break
+    if domains:
+        out["allow_fetch_domains"] = domains
     return out

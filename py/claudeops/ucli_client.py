@@ -38,11 +38,12 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .settings import load_settings
 
@@ -123,6 +124,44 @@ def resolve_binary(binary: Optional[str] = None) -> str:
         "claudeops'a teslim et: `scripts/install-ucli.sh release --build` "
         "(unified-cli build'ini bin/ucli'ye kopyalar)."
     )
+
+
+# `ucli chat --help` çıktısı, (yol, mtime_ns, boyut) başına: bayrak yoklaması her spawn'da bir
+# alt süreç açmasın, ama teslim edilen yeni bir ikili (`install-ucli.sh`) mtime/boyutu değiştirip
+# yoklamayı kendiliğinden tazelesin.
+_HELP_CACHE: Dict[Tuple[str, int, int], str] = {}
+_HELP_TIMEOUT_SECONDS = 10.0
+
+
+def chat_help_text(binary: str) -> str:
+    """`<binary> chat --help` çıktısı (stdout + stderr); çalıştırılamazsa "" (ve
+    ÖNBELLEĞE ALINMAZ: geçici bir hata kalıcı 'bayrak yok' kararına dönüşmesin)."""
+    try:
+        st = os.stat(binary)
+    except OSError:
+        return ""
+    key = (binary, st.st_mtime_ns, st.st_size)
+    hit = _HELP_CACHE.get(key)
+    if hit is not None:
+        return hit
+    try:
+        res = subprocess.run([binary, "chat", "--help"], capture_output=True, text=True,
+                             timeout=_HELP_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    text = (res.stdout or "") + (res.stderr or "")
+    if not text.strip():
+        return ""
+    _HELP_CACHE[key] = text
+    return text
+
+
+def binary_supports_flag(binary: str, flag: str) -> bool:
+    """`ucli chat`in `flag`i tanıyıp tanımadığı. TAM bayrak eşleşmesi (`--allow-fetch`
+    yalnız `--allow-fetch-domain` varsa 'var' sayılmaz): ucli'nin web bayrakları
+    farklı commit'lerde geldi, eski bir ikili 'unexpected argument' ile spawn anında
+    patlardı (bkz. `providers/ucli_provider.py` ⚠ notu)."""
+    return re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", chat_help_text(binary)) is not None
 
 
 def build_chat_argv(
