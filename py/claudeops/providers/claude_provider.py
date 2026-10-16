@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec
-from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR
+from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR
 from ..settings import resolved_binary
 
 MODEL_CHOICES = [
@@ -215,6 +215,79 @@ def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Op
     düşer."""
     return _last_assistant_value(
         jsonl_path, lambda obj: obj.get("effort") if isinstance(obj.get("effort"), str) else None, since)
+
+
+# TBD#87 (2026-10-16): Claude Code istem önbelleğini 1 saatlik sınıfta yazıyor
+# (usage.cache_creation.ephemeral_1h_input_tokens). 338 gerçek devir turunda ölçüldü:
+# aynı modelde önceki istek <60 dk önceyse ilk istekte bağlamın %0,2'si, >=60 dk
+# önceyse %91'i yeniden yazılmış; yani ömür 3600 sn ve bir UÇURUM.
+PROMPT_CACHE_TTL_SECONDS = 3600
+
+
+def _real_request_epoch(obj: Dict[str, Any]) -> Optional[float]:
+    """assistant satırı bir API isteğinin GERÇEK yanıtıysa zaman damgası (epoch),
+    değilse None. Önbelleği tazeleyen şey gerçek bir istek: `<synthetic>` yer
+    tutucular (hata/iptal), alt-ajan satırları (`isSidechain`: ayrı bir bağlam)
+    ve kullanım sayısı olmayan/sıfır satırlar sayılmaz."""
+    if obj.get("isSidechain"):
+        return None
+    msg = obj.get("message")
+    if not isinstance(msg, dict) or msg.get("model") in (None, "", "<synthetic>"):
+        return None
+    usage = msg.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    tokens = 0
+    for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
+        val = usage.get(key)
+        if isinstance(val, int) and not isinstance(val, bool):
+            tokens += val
+    if tokens <= 0:
+        return None
+    return _row_epoch(obj.get("timestamp"))
+
+
+def last_real_request_epoch(jsonl_path: Path) -> Optional[float]:
+    """Dosyadaki son GERÇEK model isteğinin zamanı (epoch), yoksa None. Sondan
+    büyüyen pencereyle okur (`_last_assistant_value`), tüm dosyayı taramaz."""
+    return _last_assistant_value(jsonl_path, _real_request_epoch)
+
+
+def session_file_sid(pid: Optional[int]) -> Optional[str]:
+    """`~/.claude/sessions/<pid>.json`ın `sessionId`si. Taze `--new` oturumlar cmdline'da
+    `--resume <sid>` taşımıyor, dosyada var. Pid-reuse koruması `discovery`deki gibi:
+    dosyadaki `pid` alanı eşleşmeli ve `procStart` /proc/<pid>/stat'ın starttime alanıyla
+    (rest[19]) tutmalı. `discovery`den FARKLI olarak doğrulanamayan (okunamayan) kayıt
+    kullanılmaz: yanlış oturumun sid'ini sıcaklık kararına sokmaktansa None."""
+    if not pid:
+        return None
+    try:
+        pid = int(pid)
+        with open(os.path.join(SESSIONS_DIR, f"{pid}.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or int(data.get("pid") or 0) != pid:
+            return None
+        sid = data.get("sessionId")
+        if not isinstance(sid, str) or not sid.strip():
+            return None
+        want = str(data.get("procStart", "")).strip()
+        if not want:
+            return None
+        with open(f"/proc/{pid}/stat") as sf:
+            if sf.read().rsplit(")", 1)[1].split()[19] != want:
+                return None
+        return sid.strip()
+    except (OSError, ValueError, TypeError, IndexError):
+        return None
+
+
+# Effort değişimi önbelleği bozan modeller (ölçüm: claude-sonnet-5'te sıcakken 6/6
+# yeniden yazma, claude-sonnet-5-5'te 0/30; belge: istek-başı effort yalnız
+# Fable 5.1, Mythos 5.1, Opus 5.5, Opus 5, Sonnet 5.5, Haiku 5.5'te var). Sürümsüz
+# takma adlar (`sonnet`, `opus`, `fable`) en yeni nesli gösterir, güvenli sayılır.
+# `-5` sonrası tek haneli küçük sürüm (`-5-5`, `-5-1`) güvenli; tarihli sabitleme
+# (`-5-20260401`) küçük sürüm DEĞİL, ana sürümün kendisi sayılır.
+_EFFORT_BUSTS_CACHE_RE = re.compile(r"claude-(?:(?:sonnet|fable|mythos)-5(?!-\d(?!\d))|(?:opus|sonnet|haiku)-4|3)")
 
 
 def live_or_spawn_model(cli: str, cwd: str, sid: Optional[str], fallback: str) -> str:
@@ -685,6 +758,31 @@ class ClaudeProvider(CliProvider):
         if levels.index(current_effort) <= levels.index(target_effort):
             return None
         return target_effort
+
+    def prompt_cache_ttl_seconds(self) -> Optional[int]:
+        return PROMPT_CACHE_TTL_SECONDS
+
+    def last_request_epoch(self, cwd: str, sid: Optional[str], pid: Optional[int] = None) -> Optional[float]:
+        """YALNIZ tam eşleşen `<sid>.jsonl` dosyaları okunur. `jsonl_path_for`un "sid
+        yoksa cwd'deki en yeni dosya" yedeği burada YOK: aynı cwd'yi paylaşan kardeş bir
+        oturumun yakın zamanlı isteği bu oturumu yanlışlıkla 'sıcak' gösterirdi, ve
+        sıcak sanıp pahalı modelde kalmanın bedeli soğuk bir önbellekte en pahalı
+        yön (TBD#87). Adaylar: cmdline sid'i (`--resume`) ve sürecin kendi
+        `sessions/<pid>.json` sid'i (taze `--new` oturumların sid'i cmdline'da YOK ve
+        keşif katmanı bunları doldurmuyor: canlı filoda 37'nin 9'u, hepsi etkin olanlar).
+        İkisi de varsa en yeni istek kazanır (konuşma `/clear` ile yeni bir dosyaya
+        geçmiş olabilir). Eşleşme yoksa None: çağıran eski davranışa düşer."""
+        epochs = []
+        for cand in dict.fromkeys(s for s in (sid, session_file_sid(pid)) if s):
+            path = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{cand}.jsonl"
+            if path.is_file():
+                epoch = last_real_request_epoch(path)
+                if epoch is not None:
+                    epochs.append(epoch)
+        return max(epochs) if epochs else None
+
+    def effort_switch_keeps_cache(self, model: str) -> bool:
+        return not _EFFORT_BUSTS_CACHE_RE.match((model or "").lower())
 
     _EFFORT_SWITCH_TIMEOUT_SECONDS = 8.0
     _EFFORT_SWITCH_POLL_SECONDS = 0.3

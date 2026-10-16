@@ -52,7 +52,7 @@ from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
-from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, downgrade_effort_for_handover
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
 from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_hosts_public
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
@@ -68,7 +68,7 @@ from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, resolved_model_for, save_settings
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots, normalize_mirrors
 from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window, open_mirror_window
-from ..providers.claude_provider import jsonl_path_for, last_assistant_model, last_assistant_effort, live_or_spawn_model
+from ..providers.claude_provider import jsonl_path_for, last_assistant_model, last_assistant_effort
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
 from ..tmux_backend import (
@@ -2397,18 +2397,13 @@ def _handover(name: str, lang: str = "tr") -> dict:
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     diag_log("handover_start", name=name)
 
-    # TODO.md 2026-09-17/2026-10-06: `procs[0].model` is the spawn-time
-    # --model argument, stale the moment someone types `/model` straight
-    # into the terminal — prefer the jsonl-verified live model so the
-    # downgrade decision below matches what's actually running (same fix
-    # as handover.py's handover_faz1(), see live_or_spawn_model's docstring).
-    effective_model = live_or_spawn_model(procs[0].cli, procs[0].cwd, procs[0].sid, procs[0].model or "")
-    downgrade = provider.handover_model_downgrade(effective_model)
-    if downgrade:
-        provider.apply_live_model_switch(name, downgrade)
-    # 2026-10-07: effort karşılığı (bkz. handover.py::downgrade_effort_for_handover) —
-    # model'den SONRA, çünkü `/model` effort'u yeni modele göre yeniden ayarlayabilir.
-    downgrade_effort_for_handover(provider, name, procs[0].cli, procs[0].cwd, procs[0].sid, procs[0].effort)
+    # Model + effort düşürmesi `handover.apply_handover_downgrades`te, `handover_faz1`
+    # (CLI yolu) ile TEK kopya. Orada: canlı (jsonl-doğrulanmış) model, sonra
+    # ÖNBELLEK durumuna göre karar (TBD#87, 2026-10-16: sıcaksa model bırakılır,
+    # soğuksa Sonnet'e düşülür, effort hep high), model'den SONRA effort (`/model`
+    # effort'u yeni modele göre yeniden ayarlayabilir).
+    apply_handover_downgrades(provider, name, procs[0].cli, procs[0].cwd, procs[0].sid,
+                              procs[0].model, procs[0].effort, pid=procs[0].pid)
 
     sent = tmux_send_keys(name, message, settle_delay=provider.input_settle_delay())
 

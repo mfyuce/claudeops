@@ -25,6 +25,12 @@ SETTINGS_JSON = os.path.join(CLAUDEOPS_DIR, "settings.json")
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "theme": "system",       # "system" | "light" | "dark"
     "handover_effort": "",   # "" = otomatik (default_handover_effort'un high-tercih mantığı)
+    "handover_cache_aware": True,  # TBD#87 (2026-10-16): handover'ın model/effort DÜŞÜRMESİ istem
+                              # önbelleğinin durumuna bakar: sıcaksa (son istek < ~55 dk) oturumun
+                              # modeli bırakılır, soğuksa Sonnet'e düşülür; effort her zaman high
+                              # (önbelleği bozan modellerde yalnız soğukken). 338 gerçek devir turunda
+                              # ölçüldü: sıcakken `/model` bağlamın tamamını yeniden yazdırıyor. False
+                              # = eski davranış (önbelleğe bakmadan hep düşür), KAÇIŞ KAPAĞI.
     "history_warn_at": 1900, # tmux scrollback (`tmux_backend.HISTORY_LIMIT`=2000) bu sayıya
                               # yaklaşınca Terminal görünümünün sayaç rengi + ana tablonun
                               # "dikkat gerekenleri seç" butonu bunu eşik alır (2026-09-15,

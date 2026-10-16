@@ -30,7 +30,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .diaglog import diag_log
 from .discovery import find_sessions
@@ -100,8 +100,57 @@ def default_handover_effort(provider: CliProvider) -> str:
     return "high" if "high" in levels else levels[-1]
 
 
+# TBD#87 (2026-10-16): wrap-up turunun model/effort düşürmesi ÖNBELLEK durumuna bakar.
+# 338 gerçek devir turunda ölçüldü: önbellek modele özgü ve 1 saatlik; canlı `/model`
+# bütün bağlamı (medyan ~430K belirteç) yeniden yazdırıyor (1 saatlik yazma = 2x girdi
+# fiyatı; sıcak okuma Opus 5.5'te 0,05x, Fable 5.1'de 0,025x, Sonnet 5.5'te 0,1x). SICAKKEN
+# düşürmek PAHALIYA gelir (Opus 5.5: olay başı ~+$1), SOĞUKKEN zaten ödenecek yazmayı ucuz
+# modele kaydırır (2-5 kat tasarruf). Kural: sıcaksa modeli bırak, soğuksa Sonnet'e düş;
+# effort her zaman high (önbelleği bozmayan modellerde; bozanlarda yalnız soğukken).
+# Karar bilinmiyorsa (claude değil, transkript eşleşmedi) ESKİ davranış: hep düşür.
+CACHE_WARM_MARGIN_SECONDS = 300.0   # `/model` komutu + kuyruk gecikmesi için pay: ömrün son 5 dk'sı soğuk sayılır
+
+
+def prompt_cache_is_warm(provider: CliProvider, cwd: str, sid: Optional[str],
+                         *, pid: Optional[int] = None, now: Optional[float] = None) -> Optional[bool]:
+    """True: son gerçek istek önbellek ömründen `CACHE_WARM_MARGIN_SECONDS` daha
+    yakın (tazeleyecek kadar yeni); False: daha eski (soğuk); None: bilinmiyor
+    (bu CLI için ömür/transkript yok). Saat geriye sapmışsa (gelecekteki damga)
+    sıcak sayılır."""
+    ttl = provider.prompt_cache_ttl_seconds()
+    if not ttl:
+        return None
+    last = provider.last_request_epoch(cwd, sid, pid)
+    if last is None:
+        return None
+    age = (time.time() if now is None else now) - last
+    return age < ttl - CACHE_WARM_MARGIN_SECONDS
+
+
+def _effort_step(provider: CliProvider, tmux_name: str, cli: str, cwd: str, sid: Optional[str],
+                 spawn_effort: Optional[str], warm: Optional[bool], model: str) -> Tuple[Optional[str], bool]:
+    """Effort düşürmesini uygular: (uygulanan hedef ya da None, önbelleği bozacağı
+    için VAZGEÇİLDİ mi). Asla fırlatmaz (bir maliyet optimizasyonu, wrap-up
+    mesajını engellememeli)."""
+    try:
+        effective = live_or_spawn_effort(cli, cwd, sid, spawn_effort or "")
+        target = provider.handover_effort_downgrade(effective, default_handover_effort(provider))
+        if target and warm and not provider.effort_switch_keeps_cache(model):
+            diag_log("handover_effort_downgrade_skipped", name=tmux_name, reason="cache_would_be_rewritten",
+                     model=model, frm=effective, would_be=target)
+            return None, True
+        if target:
+            provider.apply_live_effort_switch(tmux_name, target)
+            diag_log("handover_effort_downgrade", name=tmux_name, frm=effective, to=target)
+        return target, False
+    except Exception as e:
+        diag_log("handover_effort_downgrade_failed", name=tmux_name, error=str(e))
+        return None, False
+
+
 def downgrade_effort_for_handover(provider: CliProvider, tmux_name: str, cli: str, cwd: str,
-                                  sid: Optional[str], spawn_effort: Optional[str]) -> Optional[str]:
+                                  sid: Optional[str], spawn_effort: Optional[str],
+                                  *, warm: Optional[bool] = None, model: str = "") -> Optional[str]:
     """Handover'ın model-downgrade'inin effort karşılığı (2026-10-07, kullanıcı:
     "/model koştuğun gibi /effort high de koşamaz mısın? high değilse, daha
     düşükse karışma"). Canlı effort (jsonl) `default_handover_effort()`'ın ÜSTÜNDE
@@ -110,18 +159,52 @@ def downgrade_effort_for_handover(provider: CliProvider, tmux_name: str, cli: st
     sonrası session o effort'ta kalır, gerçek değerine bir sonraki restart'ta
     `--effort` ile döner). Uygulanan hedefi ya da None döner. Çağıranlar bunu
     model-downgrade'den SONRA çağırmalı: `/model` effort'u yeni modele göre
-    yeniden ayarlayabilir, effort en son set edilen değer olarak kalsın."""
-    try:
-        effective = live_or_spawn_effort(cli, cwd, sid, spawn_effort or "")
-        target = provider.handover_effort_downgrade(effective, default_handover_effort(provider))
-        if target:
-            provider.apply_live_effort_switch(tmux_name, target)
-            diag_log("handover_effort_downgrade", name=tmux_name, frm=effective, to=target)
-        return target
-    except Exception as e:
-        # Best-effort: bir maliyet optimizasyonu, asıl wrap-up mesajını ASLA engellememeli.
-        diag_log("handover_effort_downgrade_failed", name=tmux_name, error=str(e))
-        return None
+    yeniden ayarlayabilir, effort en son set edilen değer olarak kalsın.
+
+    TBD#87: `warm` True ve `model` effort değişiminde önbelleği yeniden yazdıran
+    bir model ise (claude-sonnet-5) düşürme ATLANIR (yeniden yazma bedeli kazancı
+    aşar). `warm` None/False ise eski davranış."""
+    return _effort_step(provider, tmux_name, cli, cwd, sid, spawn_effort, warm, model)[0]
+
+
+@dataclass
+class HandoverDowngrade:
+    """`apply_handover_downgrades`in ne yaptığı (günlük + test için)."""
+    model: str = ""                  # ho öncesi etkin (canlı) model
+    warm: Optional[bool] = None      # None: bilinmiyor ya da politika kapalı
+    model_to: Optional[str] = None   # gönderilen `/model` hedefi
+    model_kept_warm: bool = False    # düşürülecekti, önbellek sıcak olduğu için bırakıldı
+    effort_to: Optional[str] = None  # gönderilen `/effort` hedefi
+    effort_kept_cache: bool = False  # düşürülecekti, önbelleği bozacağı için bırakıldı
+
+
+def apply_handover_downgrades(provider: CliProvider, name: str, cli: str, cwd: str, sid: Optional[str],
+                              spawn_model: Optional[str], spawn_effort: Optional[str],
+                              *, pid: Optional[int] = None, now: Optional[float] = None) -> HandoverDowngrade:
+    """Wrap-up turu için model + effort düşürmesinin TEK noktası (`handover_faz1` ve
+    web'in tek-session `_handover`ı ikisi de bunu çağırır; ESKİDEN iki kopyaydı).
+    Sıra: model, sonra effort (`/model` effort'u yeniden ayarlayabilir). Ayarlar'daki
+    `handover_cache_aware` False ise (kaçış kapağı) önbellek denetimi YOK, eski
+    davranış. TBD#87 yukarıdaki blok."""
+    res = HandoverDowngrade()
+    res.model = live_or_spawn_model(cli, cwd, sid, spawn_model or "")
+    if load_settings().get("handover_cache_aware") is not False:
+        try:
+            res.warm = prompt_cache_is_warm(provider, cwd, sid, pid=pid, now=now)
+        except Exception as e:
+            diag_log("handover_cache_state_failed", name=name, error=str(e)[:200])
+    target = provider.handover_model_downgrade(res.model)
+    if target and res.warm:
+        res.model_kept_warm = True
+        diag_log("handover_model_downgrade_skipped", name=name, reason="cache_warm", model=res.model, would_be=target)
+    elif target:
+        provider.apply_live_model_switch(name, target)
+        res.model_to = target
+        diag_log("handover_model_downgrade", name=name, frm=res.model, to=target,
+                 cache="cold" if res.warm is False else "unknown")
+    res.effort_to, res.effort_kept_cache = _effort_step(
+        provider, name, cli, cwd, sid, spawn_effort, res.warm, res.model)
+    return res
 
 
 HANDOVER_MSG_DEFAULT = (
@@ -346,12 +429,14 @@ def handover_faz1(
         # sonraki gerçek restart'a (Faz2/manuel) kadar sonnet'te kalıyor —
         # o noktada zaten `--model` (spawn-time flag, /model'in aksine
         # global'i KİRLETMEZ) ile kendi gerçek modeline dönüyor.
+        #
+        # 2026-10-16 (TBD#87): düşürme artık ÖNBELLEK durumuna bakıyor, model +
+        # effort kararı `apply_handover_downgrades`te (web'in `_handover`ıyla TEK
+        # kopya): önbellek sıcaksa model bırakılır (sıcakken `/model` bağlamın
+        # tamamını yeniden yazdırır), soğuksa Sonnet'e düşülür; effort hep high.
         provider = get_provider(session.cli)
-        effective_model = live_or_spawn_model(session.cli, session.cwd, session.sid, session.model or "")
-        downgrade = provider.handover_model_downgrade(effective_model)
-        if downgrade:
-            provider.apply_live_model_switch(session.name, downgrade)
-        downgrade_effort_for_handover(provider, session.name, session.cli, session.cwd, session.sid, session.effort)
+        apply_handover_downgrades(provider, session.name, session.cli, session.cwd, session.sid,
+                                  session.model, session.effort, pid=session.pid)
 
         sent = tmux_send_keys(session.name, message, settle_delay=provider.input_settle_delay())
 

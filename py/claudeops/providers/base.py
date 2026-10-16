@@ -165,6 +165,33 @@ class CliProvider(ABC):
         pratikte hiç çağrılmaz)."""
         return
 
+    def prompt_cache_ttl_seconds(self) -> Optional[int]:
+        """Bu CLI'nın sunucu tarafı istem önbelleğinin ömrü (saniye). Önbellek
+        MODELE özgüdür: canlı bir model değişimi bütün bağlamı yeniden yazdırır
+        (yazma fiyatı okumanın 8-80 katı), ömür dolunca da model değişmese bile
+        soğur. Handover politikası (`handover.apply_handover_downgrades`, TBD#87)
+        "ucuz modele düşme"nin ancak önbellek ZATEN soğukken kazandırdığını bu
+        bilgiyle ayırır. None (varsayılan) = bilinmiyor/ilgisiz: çağıran
+        önbellek-bilinçli politikayı UYGULAMAZ, eski davranışta kalır
+        (`handover_model_downgrade`/`handover_effort_downgrade`'in 'yok=None'
+        sözleşmesi; yalnız ölçülmüş provider override eder, şimdilik claude)."""
+        return None
+
+    def last_request_epoch(self, cwd: str, sid: Optional[str], pid: Optional[int] = None) -> Optional[float]:
+        """Transkriptteki son GERÇEK model isteğinin zamanı (epoch saniye);
+        `prompt_cache_ttl_seconds()` ile birlikte önbelleğin sıcak olup olmadığını
+        belirler. `pid`: canlı sürecin pid'i (taze oturumların sid'i cmdline'da
+        yok; provider sid'i süreçten çözebilir). None = bilinmiyor (transkript yok
+        ya da bu oturumla eşleşmiyor): çağıran 'sıcak' SAYMAZ, eski davranışa düşer."""
+        return None
+
+    def effort_switch_keeps_cache(self, model: str) -> bool:
+        """`model` oturumunda canlı bir effort değişimi sunucu tarafı önbelleği
+        KORUR mu? Ölçüm (TBD#87): claude-sonnet-5-5'te evet (sıcakken 0/30
+        yeniden yazma), claude-sonnet-5'te hayır (6/6). Varsayılan True: kapıya
+        takılmaz, yani eski davranış."""
+        return True
+
     def dismiss_stray_dialog(self, tmux_name: str) -> None:
         """2026-09-14 canlı bulgu: `apply_live_model_switch()`'in kendi
         docstring'i "dialog bu fonksiyon döndükten SONRA açılabilir, bu
