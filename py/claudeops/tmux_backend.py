@@ -262,6 +262,58 @@ def tmux_client_count(name: str) -> Optional[int]:
         return None
 
 
+def tmux_client_session(client: str) -> Optional[str]:
+    """`client` (tmux istemci adı, ör. `/dev/pts/105`; tmux.conf'ta `#{client_name}`) şu an hangi session'a bağlı.
+
+    tmux şerit menüsü (data/tmux-strip.conf) `winact`a oturum adını DEĞİL istemci adını verir: display-menu öğe
+    komutlarındaki biçimleri önce genişletip sonra yeniden ayrıştırır, serbest bir oturum adı (`we'ird name`)
+    tırnakları bozar. İstemci adı `/dev/pts/N` gibi güvenli karakterlerdir; ad buradan tmux'tan VERİ olarak okunur.
+    `list-clients -F` ile tam eşleşme aranır (`display-message -c` 3.2a'da hiç çalışmıyor, aşağıya bkz.).
+    Bulunamazsa / tmux yoksa None."""
+    if not client or client.startswith("-"):
+        return None
+    try:
+        r = subprocess.run(_base_argv() + ["list-clients", "-F", "#{client_name}\t#{client_session}"],
+                           capture_output=True, text=True, timeout=_TIMEOUT)
+        if r.returncode != 0:
+            return None
+        for line in r.stdout.splitlines():
+            name, sep, session = line.partition("\t")
+            if sep and name == client and session:
+                return session
+    except Exception:
+        pass
+    return None
+
+
+def tmux_message(client: str, text: str, ms: int = 4000) -> bool:
+    """`client`ın bağlı olduğu session'ın istemcisinin alt satırında `ms` milisaniye tek satırlık mesaj gösterir
+    (display-message). Ham metin güvenli: `#` ikilenir (tmux biçim genişletmesi: panelden gelen bir hata metnindeki
+    `#(komut)` KABUKTA çalışırdı), satır sonları boşluğa çevrilir, sondaki `;` atılır (`;` ile biten argv elemanı tmux
+    komut ayıracıdır, bkz. CLAUDE.md), baştaki `-` bayrak olmasın diye boşlukla korunur.
+
+    HEDEF `-t =<session>:`, `-c <istemci>` DEĞİL: tmux 3.2a'da `display-message -c` HİÇ çalışmıyor (getopt dizgesinde `c:` yok,
+    usage metni `-c`yi listelese de her kullanımı "usage:" ile reddediliyor; gerçek tmux'a karşı denendi, mock'lu birim test
+    bunu göremezdi). `-t` ile mesaj session'ın en son etkin istemcisinde görünür; menüyü açan kişi odur.
+    `-d` (süre) tmux 3.2+; eskisinde süresiz denenir. Hata/yok/istemci gitmiş → False."""
+    session = tmux_client_session(client)
+    if not session:
+        return False
+    safe = " ".join(text.replace("#", "##").split())
+    safe = safe.rstrip(";").rstrip() or "…"
+    if safe.startswith("-"):
+        safe = " " + safe
+    for extra in (["-d", str(int(ms))], []):
+        try:
+            r = subprocess.run(_base_argv() + ["display-message", *extra, "-t", _exact(session), safe],
+                               capture_output=True, timeout=_TIMEOUT)
+        except Exception:
+            return False
+        if r.returncode == 0:
+            return True
+    return False
+
+
 # tmux.conf'un `history-limit`'iyle AYNI değer, KASITLI pinlenmiş (bkz. o
 # dosyadaki yorum) — pane'in scrollback'i bu sayıya ulaşınca tmux eski
 # satırları SESSİZCE eviction'a uğratır, ring buffer bunun üstüne asla

@@ -21,6 +21,10 @@ Bu bir tmux client DEĞİL, canlı bir resim:
         yollamadan kapanır.
       * `R` ham geçiş: Enter ile onaylanırsa her tuş (Ctrl-C dahil) `/api/term/raw` ile gider; kırmızı çubuk,
         Ctrl-] çıkar, 60 sn tuşsuz kalınca kendiliğinden kilitlenir.
+      * `a` işlem (TODO.md 2026-10-16): sonraki TEK harf bir pencere eylemi seçer: h handover, y durdur + yeni isimle
+        başlat, d durdur, n yeni chat, r sıfırla (panelin Çalışan sekmesindeki eylemlerle aynı; `window_actions.py`).
+        Yıkıcı üçü (y, d, r) ayrıca `y` onayı ister. Eylem arka planda koşar (çubukta ilerleme), sürerken `q` çıkarmaz.
+        Çubukta satır sayısı da görünür ("1542/2000 satır"; Ayarlar'daki `history_warn_at`'i aşınca amber).
     Bağlantı canlı değilken ya da pane maskeli girişteyse (parola istemi) hiçbir şey yollanmaz.
     `--read-only` bu kipleri tümden kapatır.
   - Geçmişe kaydırma: Yukarı/PgUp/Home (ve alt ekranda ok tuşuna çevrilen fare tekerleği) geçmiş kipini açar; sayfalar
@@ -79,6 +83,8 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from ..diaglog import diag_log
 from ..hosts import LOCAL_HOST_NAME
+from ..tmux_backend import HISTORY_LIMIT
+from ..window_actions import ACTIONS, BY_ID, BY_KEY, ActionBusy, ActionLock, PanelClient, Result, run_action
 from .web import DEFAULT_PORT, TOKEN_FILE
 
 TICK_SECONDS = 0.25            # tuş/saat/yeniden-çizim granülü; WS recv ve REST bekleme bu aralıkla uyanır
@@ -108,6 +114,10 @@ POPUP_MIN_COLS = 30
 # açıkken tuş yankısı ve ham geçiş bu kadar sıklıkla işlenir (yoksa yazarken harfler çeyrek saniye geriden gelir).
 INPUT_TICK_SECONDS = 0.05
 KEYS_MODE_SECONDS = 8.0          # `k` sonrası tuş beklemesi; dolunca hiçbir şey yollamadan kapanır
+ACTION_MODE_SECONDS = 10.0       # `a` sonrası eylem harfi beklemesi; dolunca hiçbir şey yapmadan kapanır
+ACTION_CONFIRM_SECONDS = 8.0     # yıkıcı eylemde `y` onayı beklemesi
+ACTION_RESULT_SECONDS = 8.0      # eylem sonucu ("✓ durduruldu · yeni chat: …") çubukta bu kadar kalır (okunması gerekir)
+ACTION_EXIT_WAIT_SECONDS = 60.0  # çıkışta yarım kalmış bileşik eylemi (durdur → yeni chat) bu kadar bekle
 RAW_CONFIRM_SECONDS = 8.0        # `R` sonrası onay (Enter) beklemesi
 RAW_IDLE_LOCK_SECONDS = 60.0     # ham geçişte bu kadar tuşsuz kalınırsa kip kendiliğinden kapanır
 RAW_COUNTDOWN_SECONDS = 15.0     # kilide bu kadar kala çubukta geri sayım görünür
@@ -130,6 +140,8 @@ STYLE_BADGE = "\x1b[1;48;5;226;38;5;16m"   # popup'taki "!" rozeti: kalın siyah
 STYLE_INPUT = "\x1b[0;48;5;54;38;5;255m"   # yazı satırı / kısa tuş: mor zemin (canlı yeşil, bekliyor mavi ile karışmaz)
 STYLE_RAW = "\x1b[1;48;5;160;38;5;255m"    # ham geçiş: kalın beyaz, parlak kırmızı zemin (durum çubuğunun SEVERE'inden belirgin)
 STYLE_HISTORY = "\x1b[0;48;5;94;38;5;255m"  # geçmiş kipi: kahverengi/turuncu zemin (canlı değil, geçmişe bakıyorsun)
+STYLE_WARN_TEXT = "\x1b[1;38;5;214m"   # çubuk İÇİNDE tek parça vurgu (satır sayısı eşiği aştı): kalın amber, zemin değişmez
+DEFAULT_HISTORY_WARN_AT = 1900         # settings.DEFAULT_SETTINGS["history_warn_at"] ile aynı (ayar okunamazsa)
 
 _STATES = {
     "connecting": ("◌", "bağlanıyor", STYLE_WAITING),
@@ -637,6 +649,7 @@ class Viewer:
         self.retry_in: Optional[float] = None
         self.transport_name = ""
         self.hint = ""   # durum çubuğunun sonuna eklenen tuş ipucu (girdi kipleri açıksa `INPUT_HINT`)
+        self.history_warn_at = DEFAULT_HISTORY_WARN_AT   # satır sayısı bu sayıdan sonra amber (Ayarlar: history_warn_at)
         self.frame: Optional[dict] = None
         # Ekrandaki içeriğin GÜNCEL olduğunun son doğrulandığı an: canlı kare geldiğinde ve canlıyken
         # sağlıklı bağlantıda geçen her sessiz tick'te tazelenir (WS yalnız DEĞİŞİNCE kare yollar,
@@ -731,11 +744,28 @@ class Viewer:
         size = self._pane_size()
         if size:
             parts.append(f"{size[0]}×{size[1]}")
+        lines = self._lines_part(style)
+        if lines:
+            parts.append(lines)
         if self.transport_name:
             parts.append(self.transport_name)
         if self.hint:
             parts.append(self.hint)
         return " " + " · ".join(parts), style
+
+    def _lines_part(self, style: str) -> Optional[str]:
+        """Satır sayısı ("1542/2000 satır"): panelin Terminal göstergesiyle AYNI veri (kare `history_size`, tmux
+        history-limit). Alternate-screen'de `history_size` yapısal olarak ~0'da donar ve panel o durumda göstergeyi
+        gizliyor (tmux_backend.tmux_pane_size): burada da yazılmaz. `history_warn_at`'i aşınca kalın amber (panelin amber'ı
+        ile aynı dil); amberin ardından çubuğun kendi stili geri yüklenir ki sonraki parçalar boyanmasın."""
+        frame = self.frame
+        if not frame or frame.get("alternate_screen"):
+            return None
+        hist = frame.get("history_size")
+        if isinstance(hist, bool) or not isinstance(hist, int) or hist < 0:
+            return None
+        text = f"{hist}/{HISTORY_LIMIT} satır"
+        return f"{STYLE_WARN_TEXT}{text}{style}" if hist >= self.history_warn_at else text
 
     def _pane_size(self) -> Optional[Tuple[int, int]]:
         if not self.frame:
@@ -880,7 +910,7 @@ _END = ("\x1b[F", "\x1bOF", "\x1b[4~", "\x1b[8~")
 _PASTE_START = "\x1b[200~"
 _PASTE_END = "\x1b[201~"
 PASTE_STALE_SECONDS = 3.0   # bitiş işareti gelmeyen yapıştırma bu süre sonra atılır (sonraki tuşları yutmasın)
-INPUT_HINT = "i yaz · k tuş · R ham · ↑ geçmiş"   # normal durum çubuğunun sonunda
+INPUT_HINT = "i yaz · k tuş · R ham · a işlem · ↑ geçmiş"   # normal durum çubuğunun sonunda
 
 
 class Paste(str):
@@ -1165,15 +1195,100 @@ class HistoryClient:
         return None, str((data.get("error") if isinstance(data, dict) else None) or "panel reddetti")
 
 
+class ActionRunner:
+    """Pencere eylemini (`window_actions.run_action`: handover / durdur + yeni isim / durdur / yeni chat / sıfırla) arka
+    plan thread'inde koşturur: bileşik eylem ~10 sn, uzak host'ta daha çok sürer; çizim ve tuş döngüsü hiç beklemez.
+    Aynı anda TEK eylem. (host, ad) kilidi (`ActionLock`) başka bir pencereden / tmux şeridinden gelen eşzamanlı eylemi
+    de dışlar. `close()` çıkışta yarım kalmış bileşik eylemi (durdurdu ama yeni chat'i henüz açmadı) bekler: görüntüleyici
+    ölünce eylem de ölürdü."""
+
+    def __init__(self, port: int, host: str, session: str, *, read_token_fn: Optional[Callable[[], str]] = None,
+                 run: Callable[..., Result] = run_action, lock_factory: Callable[[str, str], Any] = ActionLock):
+        self.port, self.host, self.session = port, host, session
+        self._read_token = read_token_fn   # None: modül düzeyindeki `read_token` (çağrı anında çözülür)
+        self._run = run
+        self._lock_factory = lock_factory
+        self._mutex = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        self._active: Optional[Tuple[str, str]] = None   # (eylem no, son adım metni)
+        self._done: Optional[Tuple[str, Result]] = None
+
+    def busy(self) -> bool:
+        with self._mutex:
+            return self._active is not None
+
+    def start(self, action_id: str) -> bool:
+        """Eylemi başlatır; zaten biri sürüyorsa False."""
+        with self._mutex:
+            if self._active is not None:
+                return False
+            self._active, self._done = (action_id, "başlıyor…"), None
+        self._thread = threading.Thread(target=self._work, args=(action_id,), name="watch-action", daemon=True)
+        self._thread.start()
+        return True
+
+    def progress(self) -> Tuple[str, str]:
+        """(eylemin görünen adı, son adım) — sürmüyorsa ("", "")."""
+        with self._mutex:
+            if self._active is None:
+                return "", ""
+            action = BY_ID.get(self._active[0])
+            return (action.label if action else self._active[0]), self._active[1]
+
+    def take_result(self) -> Optional[Tuple[str, Result]]:
+        """Biten eylem (eylem no, sonuç); bir kez alınır."""
+        with self._mutex:
+            done, self._done = self._done, None
+        return done
+
+    def close(self, wait: float = ACTION_EXIT_WAIT_SECONDS) -> None:
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(wait)
+
+    def _set_step(self, text: str) -> None:
+        with self._mutex:
+            if self._active is not None:
+                self._active = (self._active[0], text)
+
+    def _work(self, action_id: str) -> None:
+        target = f"{self.host}:{self.session}"
+        lock = None
+        try:
+            lock = self._lock_factory(self.host, self.session)
+            lock.acquire()
+            diag_log("watch_action_begin", action=action_id, target=target)
+            result = self._run(PanelClient(self.port, self._read_token or read_token), action_id, self.host,
+                               self.session, on_step=self._set_step)
+        except ActionBusy as e:
+            result = Result(False, f"✗ {e}")
+        except Exception as e:   # hiçbir hata thread'i sessizce öldürmesin: çubukta görünsün
+            diag_log("watch_action_error", action=action_id, target=target, error=f"{type(e).__name__}: {e}"[:200])
+            result = Result(False, f"✗ iç hata: {type(e).__name__}")
+        finally:
+            if lock is not None:
+                try:
+                    lock.release()
+                except Exception:
+                    pass
+        diag_log("watch_action_end", action=action_id, target=target, ok=result.ok, message=result.message[:200],
+                 new=result.name)
+        with self._mutex:
+            self._done, self._active = (action_id, result), None
+
+
 class InputController:
-    """Mirror'ın klavye kip makinesi (TBD#79): normal / yazı satırı / kısa tuş / ham geçiş onayı / ham geçiş.
+    """Mirror'ın klavye kip makinesi (TBD#79): normal / yazı satırı / kısa tuş / ham geçiş onayı / ham geçiş / eylem.
 
     `Viewer` yalnız çizer, `watch_loop` yalnız taşıyıcıyı sürer; tuşların ne anlama geldiği ve "şu an oturuma bir şey
     yollanabilir mi" kararı burada. Çıkış yolu `sender` (arka plan thread'li HTTP); çubuğu `Viewer.overlay = bar` ile
     devralır. Kurallar (CLAUDE.md tmux kuralı + TBD#79):
       - bağlantı canlı değilken ya da pane maskeli girişteyse (parola istemi) HİÇBİR şey yollanmaz;
       - yazı satırı Enter'a kadar yalnız yerelde durur; kısa tuş ve ham geçiş açıkça açılır, kendiliğinden kapanır;
-      - ham geçiş yalnız Enter onayıyla açılır, Ctrl-] ile kapanır, `RAW_IDLE_LOCK_SECONDS` tuşsuz kalınca kilitlenir.
+      - ham geçiş yalnız Enter onayıyla açılır, Ctrl-] ile kapanır, `RAW_IDLE_LOCK_SECONDS` tuşsuz kalınca kilitlenir;
+      - eylem (TODO.md 2026-10-16): `a` + harf (handover, durdur + yeni isim, durdur, yeni chat, sıfırla); yıkıcı olanlar
+        (durdur, durdur + yeni isim, sıfırla) ayrıca `y` ister; hepsi yerel panelin API'sinden gider, oturuma tuş
+        göndermez (handover'ın metni hariç: o da maskeli girişte engellenir). Eylem sürerken `q` çıkarmaz.
     """
 
     # Kısa tuş kipi (Orta set): terminalden okunan jeton → panelin `ALLOWED_SPECIAL_KEYS` adı. Ctrl-C/Ctrl-D yok.
@@ -1188,14 +1303,16 @@ class InputController:
     RAW_CHUNK_CHARS = 8000   # `/api/term/raw` tek istekte en çok 8192 karakter alır (web.MAX_TERM_RAW_CHARS)
 
     def __init__(self, viewer: Viewer, sender: Any, *, history: Optional[Any] = None, keys: Optional[Any] = None,
-                 clock: Callable[[], float] = time.monotonic):
+                 actions: Optional[Any] = None, clock: Callable[[], float] = time.monotonic):
         self.viewer = viewer
         self.sender = sender
         self._history = history   # HistoryClient; None = geçmişte kaydırma kapalı
         self._keys = keys
+        self._actions = actions   # ActionRunner; None = eylem kipi (`a`) kapalı
+        self._pending: Optional[Any] = None   # onay bekleyen yıkıcı eylem (window_actions.Action)
         self._clock = clock
         self._parser = KeyParser()
-        self.mode = "normal"          # normal | compose | keys | rawask | raw
+        self.mode = "normal"          # normal | compose | keys | rawask | raw | history | actions | confirm
         self.buf = ""                 # yazı satırı
         self._mode_until: Optional[float] = None   # keys / rawask zaman aşımı
         self._last_input = 0.0        # ham geçişte son tuşun anı
@@ -1224,11 +1341,16 @@ class InputController:
         True = görüntüleyiciden çık."""
         now = self._clock()
         self._collect_results(now)
+        self._collect_action(now)
         self._expire(now)
         quit_requested = False
         for tok in self._parser.feed(chunk, now):
             if self.mode == "raw":
                 self._on_raw(tok, now)
+            elif self.mode == "actions":
+                self._on_actions(tok, now)
+            elif self.mode == "confirm":
+                self._on_confirm(tok, now)
             elif self.mode == "compose":
                 self._on_compose(tok, now)
             elif self.mode == "keys":
@@ -1254,11 +1376,22 @@ class InputController:
         if self._history is not None:
             self._history.close()
         self.sender.close()
+        if self._actions is not None:
+            self._actions.close()   # yarım kalmış bileşik eylem (durdurdu, yeni chat'i açmadı) bitsin
 
     def bar(self, cols: int) -> Optional[Tuple[str, str]]:
         """Durum çubuğunun yerine geçecek (metin, stil); None = normal durum çubuğu."""
         now = self._clock()
         flash = self._live_flash(now)
+        if self.mode == "normal" and self._actions is not None and self._actions.busy():
+            label, step = self._actions.progress()
+            return (f" … {label}: {step}", STYLE_INPUT)
+        if self.mode == "actions":
+            menu = " · ".join(f"{a.key} {a.short}" for a in ACTIONS)
+            return (f" ⚙ işlem ▸ {menu}    (başka tuş: iptal)", STYLE_INPUT)
+        if self.mode == "confirm" and self._pending is not None:
+            return (f" ⚠ {self._pending.label}: {self._target()}? {self._pending.does} · y: onayla · başka tuş: vazgeç",
+                    STYLE_RAW)
         if self.mode == "compose":
             return self._compose_bar(cols, flash)
         if self.mode == "history":
@@ -1302,7 +1435,7 @@ class InputController:
                 self._error(f"✗ {label or 'tuş'} gönderilemedi: {err}", now)
 
     def _expire(self, now: float) -> None:
-        if self.mode in ("keys", "rawask") and self._mode_until is not None and now >= self._mode_until:
+        if self.mode in ("keys", "rawask", "actions", "confirm") and self._mode_until is not None and now >= self._mode_until:
             self._to_normal()
         elif self.mode == "raw" and now - self._last_input >= RAW_IDLE_LOCK_SECONDS:
             self._leave_raw("ham geçiş boşta kilitlendi", now)
@@ -1325,7 +1458,7 @@ class InputController:
     # ── normal ──
 
     def _to_normal(self) -> None:
-        self.mode, self.buf, self._mode_until = "normal", "", None
+        self.mode, self.buf, self._mode_until, self._pending = "normal", "", None, None
 
     def _on_normal(self, tok: str, now: float) -> bool:
         if isinstance(tok, Paste):   # yapıştırılan metindeki harfler komut sayılmaz
@@ -1341,7 +1474,16 @@ class InputController:
             return False
         low = tok.lower()
         if low == "q":
+            if self._actions is not None and self._actions.busy():   # çıkış, bileşik eylemi yarıda keserdi
+                self._error("✗ eylem sürüyor: bitince çıkın", now)
+                return False
             return True
+        if low == "a" and self._actions is not None:
+            if self._actions.busy():
+                self._error("✗ başka bir eylem sürüyor", now)
+            else:
+                self.mode, self._mode_until = "actions", now + ACTION_MODE_SECONDS
+            return False
         if low == "x":
             self.viewer.dismiss_popup()
         elif low == "i":
@@ -1351,6 +1493,51 @@ class InputController:
         elif tok == "R":   # ham geçiş bilerek yalnız büyük harf: kazara `r` yetmesin
             self.mode, self._mode_until = "rawask", now + RAW_CONFIRM_SECONDS
         return False
+
+    # ── eylemler (TODO.md 2026-10-16) ──
+
+    def _target(self) -> str:
+        v = self.viewer
+        return v.session if v.host == LOCAL_HOST_NAME else f"{v.host}:{v.session}"
+
+    def _collect_action(self, now: float) -> None:
+        if self._actions is None:
+            return
+        done = self._actions.take_result()
+        if done is not None:
+            _action_id, result = done
+            self._set_flash(result.message, "ok" if result.ok else "err", now + ACTION_RESULT_SECONDS)
+
+    def _on_actions(self, tok: str, now: float) -> None:
+        """`a` sonrası TEK harf: eylemi seçer (yıkıcıysa önce onay ister); başka her tuş iptaldir."""
+        action = None if isinstance(tok, Paste) else BY_KEY.get(tok.lower())
+        self._to_normal()
+        if action is None:
+            return
+        if action.confirm:
+            self.mode, self._pending, self._mode_until = "confirm", action, now + ACTION_CONFIRM_SECONDS
+            return
+        self._start_action(action, now)
+
+    def _on_confirm(self, tok: str, now: float) -> None:
+        """Yıkıcı eylem: yalnız `y` onaylar, başka her tuş (Enter dahil) vazgeçer."""
+        action = self._pending
+        self._to_normal()
+        if action is not None and not isinstance(tok, Paste) and tok in ("y", "Y"):
+            self._start_action(action, now)
+
+    def _start_action(self, action: Any, now: float) -> None:
+        if self._actions is None:
+            return
+        if action.id == "handover":   # oturuma metin yazar: maskeli girişe (parola istemi) YAZILMAZ, bağlantı canlı olmalı
+            reason = self._gate()
+            if reason:
+                self._error(reason, now)
+                return
+        if not self._actions.start(action.id):
+            self._error("✗ başka bir eylem sürüyor", now)
+            return
+        self._flash = None
 
     # ── yazı satırı ──
 
@@ -1758,7 +1945,7 @@ def quiet_terminal(target: str) -> Iterator[None]:
 
 def register(sub) -> None:
     p = sub.add_parser("watch", help="bir session'ın terminalini bu pencerede canlı göster (i: mesaj yaz, k: kısa tuş, "
-                                     "R: ham geçiş; --read-only ile yalnız izle): watch [host:]ad")
+                                     "R: ham geçiş, a: işlem; --read-only ile yalnız izle): watch [host:]ad")
     p.add_argument("target", help="host:ad (yerel session için yalnız ad). host, panelde kayıtlı host adı")
     p.add_argument("--port", type=int, default=DEFAULT_PORT,
                    help=f"yerel panelin portu (varsayılan {DEFAULT_PORT}); `py/cops web [--port]` ile aynı olmalı")
@@ -1768,8 +1955,21 @@ def register(sub) -> None:
     p.add_argument("--plain", action="store_true", help="--once ile: renk kaçışlarını at")
     p.add_argument("--no-resize", action="store_true", help="pencereyi pane boyutuna istemeyi kapat")
     p.add_argument("--read-only", action="store_true",
-                   help="girdi kiplerini (i yazı satırı, k kısa tuş, R ham geçiş) kapat: oturuma hiçbir tuş gitmez")
+                   help="girdi kiplerini (i yazı satırı, k kısa tuş, R ham geçiş, a işlem) kapat: oturuma hiçbir tuş gitmez")
     p.set_defaults(func=run)
+
+
+def history_warn_at() -> int:
+    """Ayarlar'daki `history_warn_at` (panelin Terminal göstergesi ve "dikkat gerekenleri seç" düğmesiyle AYNI eşik);
+    okunamazsa varsayılan. Görüntüleyici yerel makinede koşar, ayar dosyası aggregator'ın kendisidir."""
+    try:
+        from ..settings import load_settings
+        value = load_settings().get("history_warn_at")
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+    except Exception:
+        pass
+    return DEFAULT_HISTORY_WARN_AT
 
 
 def run_once(host: str, name: str, port: int, plain: bool) -> int:
@@ -1818,13 +2018,15 @@ def run(args: argparse.Namespace) -> int:
 
     screen = Screen(sys.stdout, title=f"{host}:{name}", bracketed_paste=not args.read_only)
     viewer = Viewer(host, name, screen, resize=not args.no_resize)
+    viewer.history_warn_at = history_warn_at()
     screen.enter()
     try:
         with Keys() as keys, quiet_terminal(f"{host}:{name}"):
             controller: Optional[InputController] = None
             if not args.read_only:
                 controller = InputController(viewer, InputSender(args.port, host, name),
-                                             history=HistoryClient(args.port, host, name), keys=keys)
+                                             history=HistoryClient(args.port, host, name), keys=keys,
+                                             actions=ActionRunner(args.port, host, name))
                 viewer.overlay = controller.bar
                 viewer.hint = INPUT_HINT
             try:
