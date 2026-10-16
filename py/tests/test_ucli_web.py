@@ -4,8 +4,11 @@
 
 Kapsadığı iş (TODO.md "ucli web özellikleri", 2026-10-16): `web_search` / `fetch_url` ucli'de varsayılan
 KAPALI bayraklar; claudeops spawn argv'si bunları hiç geçirmiyordu. Artık `settings.json`'ın `ucli_web`
-alanı doluysa ve ikili bayrağı tanıyorsa geçiyor; boşsa argv BİREBİR eskisi. Gerçek settings.json'a,
-gerçek ucli ikilisine, ağa ya da tmux'a DOKUNMAZ (sahte ikili = küçük kabuk betiği).
+alanı doluysa ve ikili bayrağı tanıyorsa geçiyor. ARAMA ayrıca varsayılan AÇIK (kullanıcı kararı, aynı gün:
+"ucli web search yapacaksa docker da oto olsun şimdilik"): `search_url` boşken claudeops'un yönettiği yerel
+SearXNG kapsayıcısı (`searxng.ensure_search_url`) kullanılır; hazır değilse argv BİREBİR eskisi. Gerçek
+settings.json'a, gerçek ucli ikilisine, docker'a, ağa ya da tmux'a DOKUNMAZ (sahte ikili = küçük kabuk
+betiği; docker hep yamalı).
 """
 import os
 import shlex
@@ -18,6 +21,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from claudeops import searxng  # noqa: E402
 from claudeops import settings  # noqa: E402
 from claudeops import ucli_client  # noqa: E402
 from claudeops.providers import ucli_provider as up  # noqa: E402
@@ -55,6 +59,11 @@ class TmpCase(unittest.TestCase):
         self.dir = Path(self._tmp.name)
         ucli_client._HELP_CACHE.clear()
         self.addCleanup(ucli_client._HELP_CACHE.clear)
+        # Otomatik arama kipi (varsayılan) docker'a gider: testler ona ASLA gerçekten dokunmasın. Varsayılan
+        # "hazır bir SearXNG yok"; otomatik kipi sınayan testler bu yamayı kendi değeriyle değiştirir.
+        self.ensure = mock.patch.object(searxng, "ensure_search_url", return_value=None)
+        self.ensure_mock = self.ensure.start()
+        self.addCleanup(self.ensure.stop)
 
 
 def with_web(cfg):
@@ -63,10 +72,34 @@ def with_web(cfg):
 
 
 class UcliWebConfigTests(unittest.TestCase):
-    def test_empty_unset_and_garbage_mean_web_is_off(self):
+    def test_empty_unset_and_garbage_mean_the_defaults_search_via_the_managed_searxng(self):
         for cfg in ({}, None, "oops", [], 7):
             with with_web(cfg):
-                self.assertEqual(settings.ucli_web_config(), {}, cfg)
+                self.assertEqual(settings.ucli_web_config(), {"search_docker": True}, cfg)
+
+    def test_search_docker_can_be_turned_off_in_every_spelling(self):
+        for off in ("off", "OFF", " Off ", "0", 0, "false", False, "no", "n", "hayır", "hayir", "kapalı", "kapali",
+                    "disabled", "none"):
+            with with_web({"search_docker": off}):
+                self.assertEqual(settings.ucli_web_config(), {}, repr(off))
+
+    def test_search_docker_stays_on_for_on_values_and_for_empty_or_null(self):
+        for on in ("on", "auto", "1", 1, "true", True, "yes", "", None, "  ", "whatever"):
+            with with_web({"search_docker": on}):
+                self.assertEqual(settings.ucli_web_config(), {"search_docker": True}, repr(on))
+
+    def test_an_explicit_address_wins_and_switches_the_managed_one_off(self):
+        with with_web({"search_url": "http://10.0.0.5:8080/search", "search_docker": "on"}):
+            self.assertEqual(settings.ucli_web_config(),
+                             {"search_url": "http://10.0.0.5:8080/search", "search_flavor": "searxng"})
+
+    def test_a_filled_but_invalid_address_does_not_fall_back_to_the_managed_searxng(self):
+        """Operatör belirli bir arka uç istemişti; yazım hatası aramayı başka yere SESSİZCE yönlendirmez."""
+        for url in ("ftp://x.org/search", "127.0.0.1:8888/search", "http://"):
+            with with_web({"search_url": url}):
+                self.assertEqual(settings.ucli_web_config(), {}, url)
+        with with_web({"search_url": "https://api.search.brave.com/res/v1/web/search", "search_flavor": "brave"}):
+            self.assertEqual(settings.ucli_web_config(), {})
 
     def test_valid_searxng_address_defaults_the_flavor(self):
         with with_web({"search_url": "  http://127.0.0.1:8888/search  "}):
@@ -122,8 +155,10 @@ class UcliWebConfigTests(unittest.TestCase):
             self.assertEqual(len(settings.ucli_web_config()["allow_fetch_domains"]), 64)
 
     def test_fetch_domains_do_not_need_a_search_address(self):
-        with with_web({"allow_fetch_domains": "docs.rs"}):
+        with with_web({"allow_fetch_domains": "docs.rs", "search_docker": "off"}):
             self.assertEqual(settings.ucli_web_config(), {"allow_fetch_domains": ["docs.rs"]})
+        with with_web({"allow_fetch_domains": "docs.rs"}):
+            self.assertEqual(settings.ucli_web_config(), {"search_docker": True, "allow_fetch_domains": ["docs.rs"]})
 
 
 class SaveSettingsTests(TmpCase):
@@ -146,6 +181,22 @@ class SaveSettingsTests(TmpCase):
                          {"search_url": "http://127.0.0.1:8888/search", "allow_fetch_domains": "docs.rs"})
         settings.save_settings({"ucli_web": {"search_url": ""}})
         self.assertEqual(settings.load_settings()["ucli_web"], {"allow_fetch_domains": "docs.rs"})
+
+    def test_a_boolean_search_docker_round_trips_and_false_does_not_mean_remove(self):
+        settings.save_settings({"ucli_web": {"search_docker": False}})
+        self.assertEqual(settings.load_settings()["ucli_web"], {"search_docker": "off"})
+        self.assertEqual(settings.ucli_web_config(), {})                              # kapalı kaldı
+        settings.save_settings({"ucli_web": {"search_docker": True}})
+        self.assertEqual(settings.load_settings()["ucli_web"], {"search_docker": "on"})
+        self.assertEqual(settings.ucli_web_config(), {"search_docker": True})
+        settings.save_settings({"ucli_web": {"search_docker": ""}})                   # boş = varsayılana dön
+        self.assertEqual(settings.load_settings()["ucli_web"], {})
+        self.assertEqual(settings.ucli_web_config(), {"search_docker": True})
+
+    def test_the_off_switch_does_not_disturb_the_other_fields(self):
+        settings.save_settings({"ucli_web": {"allow_fetch_domains": "docs.rs"}})
+        settings.save_settings({"ucli_web": {"search_docker": False}})
+        self.assertEqual(settings.load_settings()["ucli_web"], {"allow_fetch_domains": "docs.rs", "search_docker": "off"})
 
     def test_a_list_value_is_stored_as_a_comma_separated_string(self):
         settings.save_settings({"ucli_web": {"allow_fetch_domains": ["a.org", "b.org", " "]}})
@@ -238,10 +289,54 @@ class WebArgsTests(TmpCase):
         with with_web(cfg):
             return up._web_args(b, "vc")
 
-    def test_nothing_configured_adds_nothing_and_never_probes(self):
+    def test_everything_switched_off_adds_nothing_and_never_probes(self):
         b = str(self.dir / "never-created")
-        with with_web({}), mock.patch.object(up, "binary_supports_flag", side_effect=AssertionError("yoklandı")):
+        with with_web({"search_docker": "off"}), \
+             mock.patch.object(up, "binary_supports_flag", side_effect=AssertionError("yoklandı")):
             self.assertEqual(up._web_args(b, "vc"), [])
+        self.ensure_mock.assert_not_called()
+
+    # -- otomatik arama (varsayılan): claudeops'un yönettiği SearXNG ---------------------------------
+    def test_auto_search_uses_the_managed_searxng_address_and_names_the_session(self):
+        self.ensure_mock.return_value = "http://127.0.0.1:8891/search"
+        self.assertEqual(self.args(HELP_BOTH, {}),
+                         ["--search-url", "http://127.0.0.1:8891/search", "--search-flavor", "searxng"])
+        self.ensure_mock.assert_called_once_with("vc")
+        self.assertEqual(self.events, [])
+
+    def test_auto_search_not_ready_opens_the_session_without_search_and_without_error(self):
+        self.ensure_mock.return_value = None
+        self.assertEqual(self.args(HELP_BOTH, {}), [])
+        self.ensure_mock.assert_called_once()
+        self.assertEqual(self.events, [])
+
+    def test_auto_search_with_an_old_binary_never_touches_docker(self):
+        for help_text in (HELP_OLD, HELP_FETCH_ONLY):
+            self.ensure_mock.reset_mock()
+            self.assertEqual(self.args(help_text, {}), [])
+            self.ensure_mock.assert_not_called()
+        self.assertEqual([(e, kw["flag"], kw["auto"]) for e, kw in self.events],
+                         [("ucli_web_flag_unsupported", "--search-url", True)] * 2)
+
+    def test_an_explicit_address_never_starts_the_managed_one(self):
+        self.args(HELP_BOTH, {"search_url": "http://127.0.0.1:8888/search"})
+        self.ensure_mock.assert_not_called()
+
+    def test_a_filled_invalid_address_neither_searches_nor_starts_docker(self):
+        self.assertEqual(self.args(HELP_BOTH, {"search_url": "ftp://x/y"}), [])
+        self.ensure_mock.assert_not_called()
+
+    def test_a_crash_in_the_managed_searxng_never_breaks_the_spawn(self):
+        self.ensure_mock.side_effect = RuntimeError("boom")
+        self.assertEqual(self.args(HELP_BOTH, {"allow_fetch_domains": "docs.rs"}),
+                         ["--allow-fetch", "--allow-fetch-domain", "docs.rs"])
+        self.assertEqual([e for e, _ in self.events], ["ucli_web_searxng_error"])
+
+    def test_auto_search_and_fetch_domains_combine(self):
+        self.ensure_mock.return_value = "http://127.0.0.1:8888/search"
+        self.assertEqual(self.args(HELP_BOTH, {"allow_fetch_domains": "docs.rs"}),
+                         ["--search-url", "http://127.0.0.1:8888/search", "--search-flavor", "searxng",
+                          "--allow-fetch", "--allow-fetch-domain", "docs.rs"])
 
     def test_both_capabilities_on_a_new_binary(self):
         self.assertEqual(
@@ -296,8 +391,16 @@ class BuildInnerCommandTests(TmpCase):
                 self.CWD, kw.get("model", "deepseek-v4-flash"), kw.get("permission_mode", "allow-edit"),
                 kw.get("effort", "high"), None, "", "vc")
 
-    def test_default_command_is_byte_identical_to_before(self):
+    def test_default_command_is_byte_identical_to_before_when_no_search_backend_is_ready(self):
         self.assertEqual(self.build({}), " ".join(shlex.quote(a) for a in self.baseline_argv()))
+        self.assertEqual(self.build({"search_docker": "off"}), " ".join(shlex.quote(a) for a in self.baseline_argv()))
+
+    def test_default_command_gets_the_managed_search_flags_when_the_backend_is_ready(self):
+        self.ensure_mock.return_value = "http://127.0.0.1:8888/search"
+        argv = shlex.split(self.build({}))
+        base = self.baseline_argv()
+        self.assertEqual(argv[:len(base)], base)
+        self.assertEqual(argv[len(base):], ["--search-url", "http://127.0.0.1:8888/search", "--search-flavor", "searxng"])
 
     def test_web_flags_are_appended_after_everything_else(self):
         inner = self.build(ProviderCfg.BOTH)

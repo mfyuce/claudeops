@@ -105,18 +105,24 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # preset'in karşılık gelen sayısının YERİNE geçer; boş/eksik alan
                               # preset'in kendi varsayılanında kalır ("boş=otomatiğe dön",
                               # provider_bin/byok'la AYNI dil). Okuma tarafı: `ucli_limit_overrides()`.
-    "ucli_web": {},          # {search_url, search_flavor, allow_fetch_domains: str} — 2026-10-16
+    "ucli_web": {},          # {search_url, search_flavor, search_docker, allow_fetch_domains: str} — 2026-10-16
                               # (TODO.md "ucli web özellikleri"): unified-cli be4448a'nın web araçları
-                              # (`web_search`, gerçek sayfada çalışan `fetch_url`) ucli'de varsayılan
-                              # KAPALI. Boş (varsayılan) = ucli oturumları bugünkü gibi webe ÇIKMAZ.
-                              # `search_url` (SearXNG, ör. http://127.0.0.1:8888/search) dolu ise
-                              # `--search-url/--search-flavor searxng`; `search_flavor` yalnız "searxng"
-                              # (brave şimdilik DESTEKLENMEZ: anahtarı argv'ye koymadan iletmek ayrı iş,
-                              # `ucli_provider.py`nin API-anahtarı dosya+`sh -c` deseni gerekir).
-                              # `allow_fetch_domains` (virgül/boşlukla ayrılmış TAM host adları, joker
-                              # yok; ucli'nin kendi kuralı) dolu ise `--allow-fetch --allow-fetch-domain
-                              # ...`. `provider_bin`/`ucli_limits`'le AYNI alan-bazlı merge ("boş=kaldır").
-                              # Okuma tarafı: `ucli_web_config()`.
+                              # (`web_search`, gerçek sayfada çalışan `fetch_url`) ucli'de varsayılan KAPALI.
+                              # ARAMA claudeops tarafında varsayılan AÇIK (kullanıcı kararı, aynı gün: "ucli
+                              # web search yapacaksa docker da oto olsun şimdilik"): `search_url` boşken yeni
+                              # açılan ucli oturumları claudeops'un KENDİ yönettiği yerel SearXNG kapsayıcısını
+                              # (`searxng.py`: loopback, kendiliğinden kurulur/başlar) `--search-url` olarak alır.
+                              # GEÇİCİ (TOBEDECIDED.md TBD#88): ucli aramayı kendi içine alınca bu otomatik kalkar.
+                              # `search_docker` = "off" (ya da 0/false/no/hayır) bunu KAPATIR; `search_url`
+                              # (SearXNG, ör. http://127.0.0.1:8888/search) dolu ise o kazanır ve docker'a
+                              # dokunulmaz; geçersiz bir `search_url` arama'yı KAPALI bırakır (başka yere
+                              # sessizce yönlendirmez). `search_flavor` yalnız "searxng" (brave şimdilik
+                              # DESTEKLENMEZ: anahtarı argv'ye koymadan iletmek ayrı iş, `ucli_provider.py`nin
+                              # API-anahtarı dosya+`sh -c` deseni gerekir). `allow_fetch_domains` (virgül/
+                              # boşlukla ayrılmış TAM host adları, joker yok; ucli'nin kendi kuralı) dolu ise
+                              # `--allow-fetch --allow-fetch-domain ...`; fetch_url HÂLÂ varsayılan kapalı.
+                              # `provider_bin`/`ucli_limits`'le AYNI alan-bazlı merge ("boş=kaldır" = varsayılana
+                              # dön). Okuma tarafı: `ucli_web_config()`.
 }
 
 
@@ -164,6 +170,8 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
                     cv = ",".join(str(x) for x in cv if str(x).strip())
+                elif isinstance(cv, bool):          # ör. search_docker: false. `False` "boş = kaldır"a (= varsayılan AÇIK) düşmesin
+                    cv = "on" if cv else "off"
                 if cv:
                     merged[str(ck)] = str(cv)
                 else:
@@ -318,23 +326,32 @@ def _valid_http_url(url: str) -> bool:
     return parts.scheme in ("http", "https") and bool(parts.hostname)
 
 
+_OFF_WORDS = frozenset({"off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none"})
+
+
 def ucli_web_config() -> Dict[str, Any]:
     """`settings.json`'ın `ucli_web` alanı — bkz. DEFAULT_SETTINGS'teki yorum. Yalnız
-    GEÇERLİ parçaları içeren bir dict döner; boş dict = web kapalı (varsayılan).
-    Anahtarlar: `search_url` + `search_flavor` ("searxng"; ikisi birlikte ya da hiç),
+    GEÇERLİ parçaları içeren bir dict döner. Anahtarlar: `search_url` + `search_flavor`
+    ("searxng"; ikisi birlikte ya da hiç) YA DA `search_docker: True` (arama adresi boşken ve
+    otomatik kapatılmamışken: claudeops'un yönettiği yerel SearXNG, bkz. `searxng.py`; VARSAYILAN),
     `allow_fetch_domains` (tekrarsız, küçük harfli, geçerli host adları listesi).
     Geçersiz/eksik bir parça sessizce ATLANIR ve o yetenek KAPALI kalır (asla fırlatmaz,
     `ucli_limit_overrides`la aynı tolerans; settings.json elle düzenlenebiliyor): bozuk
-    bir adres web'i yanlış yere AÇMAZ, kapalı bırakır."""
+    bir adres web'i yanlış yere AÇMAZ, kapalı bırakır; dolu ama geçersiz `search_url` otomatik
+    docker'a da DÜŞMEZ (operatör belirli bir arka uç istemişti)."""
     raw = load_settings().get("ucli_web") or {}
     if not isinstance(raw, dict):
-        return {}
+        raw = {}
     out: Dict[str, Any] = {}
     url = str(raw.get("search_url") or "").strip()
     flavor = str(raw.get("search_flavor") or "").strip().lower() or "searxng"
     if url and flavor == "searxng" and _valid_http_url(url):
         out["search_url"] = url
         out["search_flavor"] = "searxng"
+    elif not url:
+        mode = raw.get("search_docker")
+        if str("" if mode is None else mode).strip().lower() not in _OFF_WORDS:
+            out["search_docker"] = True
     doms = raw.get("allow_fetch_domains")
     text = ",".join(str(x) for x in doms) if isinstance(doms, (list, tuple)) else str(doms or "")
     domains: list = []

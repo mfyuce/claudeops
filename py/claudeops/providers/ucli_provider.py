@@ -83,6 +83,7 @@ from typing import Dict, FrozenSet, List, Optional, Sequence
 
 import psutil
 
+from .. import searxng
 from ..diaglog import diag_log
 from ..settings import byok_env_for, ucli_limit_overrides, ucli_web_config
 from ..ucli_client import binary_supports_flag, read_chat_history, read_status_file, resolve_binary
@@ -228,19 +229,31 @@ def _sync_api_key_file() -> bool:
 
 def _web_args(binary: str, session_name: str = "") -> List[str]:
     """Ayarlar'daki `ucli_web` (bkz. `settings.ucli_web_config`) → ucli'nin web bayrakları.
-    Varsayılan boş: ucli oturumları webe ÇIKMAZ (unified-cli be4448a'nın kendi ilkesi,
-    yetenek bayrakları kapalı gelir). Her yetenek AYRI ve YALNIZ ikili o bayrağı
-    tanıyorsa eklenir: web bayrakları farklı commit'lerde geldi, eski bir ikili
-    'unexpected argument' ile spawn anında patlardı (yukarıdaki ⚠ notla AYNI risk);
-    tanımıyorsa o yetenek atlanır ve günlüğe yazılır. Anahtar GEREKMİYOR (SearXNG
-    arka ucu operatörün kendi adresi); bu yüzden argv'ye sır girmez."""
+    ARAMA varsayılan AÇIK (kullanıcı kararı, 2026-10-16): `search_url` boşken claudeops'un yönettiği
+    yerel SearXNG kapsayıcısı (`searxng.ensure_search_url`: kendiliğinden kurulur/başlar) kullanılır;
+    hazır değilse o oturum aramasız açılır, spawn ASLA beklemez/kırılmaz. GEÇİCİ: ucli aramayı
+    Docker'sız kendi içine alınca bu dal kalkar (TOBEDECIDED.md TBD#88). `fetch_url` ise yalnız
+    `allow_fetch_domains` doluysa (unified-cli be4448a'nın kendi ilkesi: yetenek bayrakları kapalı gelir).
+    Her yetenek AYRI ve YALNIZ ikili o bayrağı tanıyorsa eklenir: web bayrakları farklı commit'lerde
+    geldi, eski bir ikili 'unexpected argument' ile spawn anında patlardı (yukarıdaki ⚠ notla AYNI
+    risk); tanımıyorsa o yetenek atlanır ve günlüğe yazılır (eski ikiliyle docker'a da dokunulmaz).
+    Anahtar GEREKMİYOR (SearXNG arka ucu operatörün kendi adresi); bu yüzden argv'ye sır girmez."""
     cfg = ucli_web_config()
     args: List[str] = []
-    if cfg.get("search_url"):
-        if binary_supports_flag(binary, "--search-url"):
-            args += ["--search-url", cfg["search_url"], "--search-flavor", cfg["search_flavor"]]
+    if cfg.get("search_url") or cfg.get("search_docker"):
+        auto = not cfg.get("search_url")
+        if not binary_supports_flag(binary, "--search-url"):
+            diag_log("ucli_web_flag_unsupported", name=session_name, flag="--search-url", binary=binary, auto=auto)
         else:
-            diag_log("ucli_web_flag_unsupported", name=session_name, flag="--search-url", binary=binary)
+            url = cfg.get("search_url")
+            if auto:
+                try:
+                    url = searxng.ensure_search_url(session_name)
+                except Exception as e:   # sözleşme: fırlatmaz; yine de web araması spawn'ı KIRMASIN
+                    diag_log("ucli_web_searxng_error", name=session_name, error=repr(e)[:200])
+                    url = None
+            if url:
+                args += ["--search-url", url, "--search-flavor", "searxng"]
     domains = cfg.get("allow_fetch_domains")
     if domains:
         if binary_supports_flag(binary, "--allow-fetch"):
