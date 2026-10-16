@@ -5,7 +5,10 @@
 2. sessions/*.json: TUI içinden isim verilen claude proc'ları (cmdline'da RC yok ama json'da name var).
    → Bash all_sessions_tsv'nin iki-kaynak mantığı. Dedup: proc-scan öncelikli (daha fazla bilgi).
 
-Not: claude 2.1.169 fresh --new session'lar sessions/<pid>.json YAZMIYOR (proc-scan yeterli).
+Not: claude 2.1.169 fresh --new session'lar sessions/<pid>.json YAZMIYORDU (o sürümde proc-scan yeterliydi).
+2.1.301 yazıyor ve oradaki `sessionId` CANLI konuşma id'si (CLI oturum değişince, `/clear` ya da TUI'den
+resume'da, yeniden yazar); cmdline'daki `--resume` ise yalnız başlangıç değeri, taze `--new`de hiç yok.
+Bu yüzden `find_sessions` sid'i önce json'dan alır, yoksa cmdline'dan (`Session.resumed` "taze mi"yi korur).
 claude 2.1.183+ TUI içi /name komutuyla verilen isimler proc cmdline'a yansımaz → json lazım.
 
 Provider-agnostik: hangi CLI'ın hangi flag'lerle tanınacağı burada DEĞİL, her
@@ -115,6 +118,8 @@ def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List
     bağlı değildi)."""
     # Kaynak 1: sessions json (başlangıç seti)
     by_key: Dict[Tuple[str, int], Session] = _sessions_from_json()
+    # json'daki CANLI sid'ler: proc-scan aşağıda aynı (isim, pid) anahtarını ezmeden ÖNCE alınır.
+    json_by_pid = {s.pid: s for s in by_key.values()}
 
     # Kaynak 2: proc-scan → hangi provider'ın olduğunu ilk eşleşen belirler
     # UID filtresi (gemini SEC-07, 2026-10-03 review): çok-kullanıcılı makinede
@@ -179,16 +184,26 @@ def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List
             if not cwd:
                 continue
             info = provider.extract_info(cmd, cwd=cwd, session_name=name)
+            cmd_sid = info.get("sid")
+            # sid = konuşmanın id'si: CLI'nin kendi pid dosyasındaki CANLI sessionId (taze `--new`de
+            # cmdline'da sid YOK; `--resume`li oturumda da /clear'dan sonra bayatlar), yoksa cmdline.
+            # Eskiden bu girdi json girdisinin sid'ini None ile eziyordu: taze oturumlarda canlı
+            # model/effort, kapanış anlık görüntüsü ve transkript seçimi cwd'deki "en yeni dosya"
+            # tahminine düşüyordu (TODO.md 2026-10-16 (6)). Yalnız AYNI provider'ın json girdisi sayılır
+            # (pid yeniden kullanımı başka bir CLI'nin sürecine claude sid'i yapıştırmasın).
+            prior = json_by_pid.get(p.pid)
+            live_sid = prior.sid if prior is not None and prior.cli == provider.name else None
             by_key[(name, p.pid)] = Session(
                 name=name,
                 pid=p.pid,
                 cwd=cwd,
-                sid=info.get("sid"),
+                sid=live_sid or cmd_sid,
                 model=info.get("model"),
                 permission_mode=info.get("permission_mode"),
                 effort=info.get("effort"),
                 cpu=cpu,
                 cli=provider.name,
+                resumed=bool(cmd_sid),
             )
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue

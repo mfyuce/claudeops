@@ -17,18 +17,21 @@ class Session:
     name: str                              # --remote-control değeri (ör. "hc54")
     pid: int
     cwd: str = ""
-    sid: Optional[str] = None              # --resume değeri (fresh --new'de None)
+    sid: Optional[str] = None              # konuşmanın id'si (canlı sessionId, yoksa --resume; bkz. discovery.find_sessions)
     model: Optional[str] = None            # --model değeri
     permission_mode: Optional[str] = None
     effort: Optional[str] = None
     cpu: float = 0.0                       # anlık %CPU (güvenilir aktiflik sinyali)
     cli: str = "claude"                    # hangi provider açtı (claude|agy)
+    resumed: Optional[bool] = None         # cmdline'da --resume VARDI mı; None = bilinmiyor (sid'den çıkarılır)
 
     @property
     def is_fresh(self) -> bool:
-        """Fresh session = --resume YOK (Faz 2 --new ile açılan). Resumed'da sid var.
-        (claude'a --new geçmiyor; ayırt edici tek şey --resume'un olmaması.)"""
-        return self.sid is None
+        """Fresh session = --resume YOK (Faz 2 --new ile açılan). (claude'a --new geçmiyor; ayırt edici
+        tek şey --resume'un olmaması.) `sid` taze oturumda da dolu olabildiği için (discovery, CLI'nin
+        sessions/<pid>.json'ı) ayrım `resumed` bayrağından okunur; bayrak yoksa (sentetik ya da yalnız
+        json'dan gelen girdi) eskisi gibi sid'den."""
+        return self.sid is None if self.resumed is None else not self.resumed
 
     @property
     def base(self) -> str:
