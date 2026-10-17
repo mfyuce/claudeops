@@ -48,11 +48,13 @@ değer (`read-only`/`allow-edit`) kullanılıyor (2026-09-24, kullanıcı
 "permission mode yok mu, ayarlanamaz mı?" diye sorunca düzeltildi — ilk
 taslak yanlışlıkla ShellProvider'ın "kavram yok" desenini kopyalamıştı).
 
-effort: gerçek bir "ne kadar düşünsün" karşılığı unified-cli'de hâlâ yok
-(TOBEDECIDED.md'ye ayrıca not edildi) — ama PRATİKTE `--max-steps` +
-`--max-context-kib`'e bağlandı, bkz. `_EFFORT_LIMITS`'in yorumu (2026-09-24,
-"8-round limit" ve ardından "context exceeds 256 KiB" hataları canlı
-yaşandı, aynı gün unified-cli'de ikisi de gevşetildi).
+effort: ilk başta unified-cli'de "ne kadar düşünsün" karşılığı yoktu — PRATİKTE
+`--max-steps` + `--max-context-kib`'e bağlandı, bkz. `_EFFORT_LIMITS`'in yorumu
+(2026-09-24, "8-round limit" ve ardından "context exceeds 256 KiB" hataları
+canlı yaşandı, aynı gün unified-cli'de ikisi de gevşetildi). `--effort`
+(low/medium/high/max, 2026-10-05'ten beri ucli'de) 2026-10-17'de bağlandı: seçili
+ön ayar aynı adla geçer, modelin alanı kabul ettiği Evren `capabilities`ından
+doğrulanırsa; bkz. `_effort_args`.
 
 Resume kimliği: ayrı bir UUID/sid kavramı yok — `sid` alanına doğrudan
 `--session`'ın kendi değerini (=session adı) koyuyoruz, çünkü
@@ -85,7 +87,7 @@ import psutil
 
 from .. import searxng
 from ..diaglog import diag_log
-from ..settings import byok_env_for, ucli_limit_overrides, ucli_web_config
+from ..settings import byok_env_for, ucli_limit_overrides, ucli_reasoning_mode, ucli_web_config
 from ..ucli_client import binary_supports_flag, read_chat_history, read_status_file, resolve_binary
 from .base import CliProvider
 
@@ -185,6 +187,9 @@ _ENDPOINT = "https://evren-llmapi.ssyz.org.tr/v1"
 _MODELS_TTL = 300.0
 _LIVE_MODEL_CACHE: Optional[List[str]] = None
 _LIVE_MODEL_CACHE_TS = 0.0
+# model kimliği -> Evren'in o modeldeki `capabilities` nesnesi (son BAŞARILI çekimden; `reasoning_effort_for`
+# okur). Boş = hiç çekilemedi (anahtarsız kurulum, ağ yok): `--effort` hiç geçmez.
+_LIVE_CAPS: Dict[str, dict] = {}
 
 
 def _fetch_live_models() -> Optional[List[str]]:
@@ -193,6 +198,7 @@ def _fetch_live_models() -> Optional[List[str]]:
     sebeple başarısız olursa None (çağıran sabit yedeğe düşer) — bu asla
     fırlatmaz, /api/status'un geri kalanını bir ağ/EVREN sorunu yüzünden
     kırmaz."""
+    global _LIVE_CAPS
     key = byok_env_for("ucli").get("UCLI_API_KEY", "").strip()
     if not key:
         return None
@@ -212,11 +218,50 @@ def _fetch_live_models() -> Optional[List[str]]:
     # alanı yoksa/tanınmayan bir değerse (ileride yeni bir kategori eklenirse)
     # temkinli davranıp DIŞARIDA bırakılıyor — sessizce yanlış bir modeli
     # sunmaktansa listeden eksik kalması daha güvenli.
-    models = [
-        m["id"] for m in payload.get("data", [])
+    chat = [
+        m for m in payload.get("data", [])
         if isinstance(m, dict) and m.get("id") and m.get("task") == "chat"
     ]
-    return models or None
+    if chat:
+        # AYNI çekimden model yetenekleri de saklanır (`--effort` kapısı, bkz. `reasoning_effort_for`): ikinci bir
+        # ağ isteği ve ikinci bir TTL yok. Boş/başarısız çekim önceki haritayı silmez (id listesiyle aynı kural).
+        _LIVE_CAPS ={m["id"]: m["capabilities"] for m in chat if isinstance(m.get("capabilities"), dict)}
+    return [m["id"] for m in chat] or None
+
+
+def _live_models() -> List[str]:
+    """TTL'li (`_MODELS_TTL`) canlı model listesi + yedek; `model_choices()` ve `reasoning_effort_for` ortak
+    kullanır. Asla fırlatmaz."""
+    global _LIVE_MODEL_CACHE, _LIVE_MODEL_CACHE_TS
+    now = time.monotonic()
+    if _LIVE_MODEL_CACHE is None or now - _LIVE_MODEL_CACHE_TS > _MODELS_TTL:
+        _LIVE_MODEL_CACHE_TS = now
+        fetched = _fetch_live_models()
+        if fetched:
+            _LIVE_MODEL_CACHE = fetched
+        elif _LIVE_MODEL_CACHE is None:
+            _LIVE_MODEL_CACHE = list(_MODEL_CHOICES)
+        # fetched boşsa ama zaten bir cache VARSA (önceki başarılı liste ya
+        # da statik yedek) dokunulmaz — geçici bir hata onu geriletmesin.
+    return _LIVE_MODEL_CACHE
+
+
+def reasoning_effort_for(model: str, level: str) -> Optional[str]:
+    """`--effort`e verilecek seviye; modelin alanı KABUL ETTİĞİ kanıtlı değilse None. Kaynak Evren'in
+    `GET /v1/models` `capabilities` alanı: `reasoning_effort` (true/false), `reasoning_effort_values` (izinli
+    liste ya da null), `reasoning_effort_aliases` (ör. glm-5.3: medium -> high). Canlı bulgu (2026-10-17):
+    gemma-4-31b alanı HTTP 400 ile reddediyor ("'reasoning_effort' parametresini desteklemiyor"); körlemesine
+    geçirmek o modelin oturumlarını ilk istekte öldürürdü. Bilinmeyen model, çekilememiş katalog ya da
+    anahtarsız kurulum = None (eski davranış: alan hiç gönderilmez)."""
+    _live_models()   # TTL'li tazeleme; panelin /api/status poll'u listeyi zaten sıcak tutuyor
+    caps = _LIVE_CAPS.get(model)
+    if not isinstance(caps, dict) or caps.get("reasoning_effort") is not True:
+        return None
+    values, aliases = caps.get("reasoning_effort_values"), caps.get("reasoning_effort_aliases")
+    if isinstance(values, list) and values and level not in values \
+            and not (isinstance(aliases, dict) and level in aliases):
+        return None
+    return level
 
 # EVREN `evren_llm_...` key'i — tmux SUNUCUSU yeni pane'lere `update-environment`
 # LİSTESİNDEKİ (DISPLAY/SSH_AUTH_SOCK) dışında hiçbir env değişkeni AKTARMIYOR
@@ -291,6 +336,32 @@ def _timeout_args(binary: str, limits: Dict[str, int], session_name: str = "") -
     return ["--request-timeout-secs", str(limits.get("request_timeout_secs", _REQUEST_TIMEOUT_SECS))]
 
 
+# `--effort` ("ne kadar düşünsün"; Evren'e üst düzey `reasoning_effort` olarak gider). Filo bugüne dek bayrağı HİÇ
+# geçirmedi ve ölçülen en pahalı seçenek tam da buydu (unified-cli `bench/token-economy/README.md`, 2026-10-17,
+# kod incelemesi görevi, ayar başına TEK koşu, deepseek-v4-flash): bayraksız 205K kota / 91K akıl yürütme tokeni /
+# 716 sn; low 87K / 25K / 118 sn; medium 74K / 34K / 196 sn; high 105K / 32K / 174 sn. Kalite karşılaştırması
+# YAPILMADI (cevap boyutları 8,4K / 4,3K / 4,4K / 18K karakter), bu yüzden yeni ayar/arayüz yok: panelde seçili
+# effort ön ayarı (medium/high) aynı adla geçer, `ucli_limits.reasoning_effort` = `off` bugünkü davranışa tek
+# ayarla döndürür. `_EFFORT_LIMITS`e BİLEREK girmedi (`_REQUEST_TIMEOUT_SECS`le aynı sebep: effort adı çalışan komut
+# satırından dört sayıyla geri okunur). Model başına destek ayrıca denetlenir, bkz. `reasoning_effort_for`.
+def _effort_args(binary: str, model: Optional[str], preset: str, session_name: str = "") -> List[str]:
+    """`--effort` (bkz. üstteki not). `_timeout_args`le AYNI sebepten YALNIZ ikili bayrağı tanıyorsa eklenir (eski
+    ikili 'unexpected argument' ile patlardı) ve YALNIZ model alanı kabul ediyorsa (HTTP 400 riski); atlanan her
+    durum günlüğe yazılır, o oturum bugünkü gibi bayraksız açılır. `off` ayarı sessiz atlar."""
+    mode = ucli_reasoning_mode()
+    if mode == "off" or not model:
+        return []
+    if not binary_supports_flag(binary, "--effort"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--effort", binary=binary)
+        return []
+    level = preset if mode == "auto" else mode
+    value = reasoning_effort_for(model, level)
+    if value is None:
+        diag_log("ucli_effort_skipped", name=session_name, model=model, level=level)
+        return []
+    return ["--effort", value]
+
+
 class UcliProvider(CliProvider):
     name = "ucli"
 
@@ -312,7 +383,8 @@ class UcliProvider(CliProvider):
         # maddesi, 2026-09-24) dolu olduğu alanlarda preset'in sayısının
         # YERİNE geçer — artık kullanıcı Python'a dokunmadan/servis restart
         # etmeden bu 3 sayıyı kendi ayarlayabiliyor.
-        limits = {**_EFFORT_LIMITS.get(effort, _EFFORT_LIMITS["medium"]), **ucli_limit_overrides()}
+        preset = effort if effort in _EFFORT_LIMITS else "medium"
+        limits = {**_EFFORT_LIMITS[preset], **ucli_limit_overrides()}
         argv = [
             resolve_binary(), "--root", cwd, "chat", "--repl", "--endpoint", _ENDPOINT,
             "--max-steps", str(limits["max_steps"]),
@@ -334,7 +406,8 @@ class UcliProvider(CliProvider):
             argv.append("--allow-edit")
         argv += _web_args(argv[0], session_name)
         argv += _timeout_args(argv[0], limits, session_name)
-        inner = " ".join(shlex.quote(a) for a in argv)
+        argv += _effort_args(argv[0], model, preset, session_name)
+        inner =" ".join(shlex.quote(a) for a in argv)
         if _sync_api_key_file():
             # Anahtarı argv'ye GÖMMÜYORUZ — bu makine çok-kullanıcılı, `ps aux`
             # komut satırını HERKESE gösterir (CLAUDE.md'nin uyardığı sınıf).
@@ -391,18 +464,7 @@ class UcliProvider(CliProvider):
         return {"sid": self._parse_session(cmd), "model": model, "permission_mode": permission_mode, "effort": effort}
 
     def model_choices(self) -> List[str]:
-        global _LIVE_MODEL_CACHE, _LIVE_MODEL_CACHE_TS
-        now = time.monotonic()
-        if _LIVE_MODEL_CACHE is None or now - _LIVE_MODEL_CACHE_TS > _MODELS_TTL:
-            _LIVE_MODEL_CACHE_TS = now
-            fetched = _fetch_live_models()
-            if fetched:
-                _LIVE_MODEL_CACHE = fetched
-            elif _LIVE_MODEL_CACHE is None:
-                _LIVE_MODEL_CACHE = list(_MODEL_CHOICES)
-            # fetched boşsa ama zaten bir cache VARSA (önceki başarılı liste ya
-            # da statik yedek) dokunulmaz — geçici bir hata onu geriletmesin.
-        return _LIVE_MODEL_CACHE
+        return _live_models()
 
     def permission_modes(self) -> List[str]:
         return _PERMISSION_MODES

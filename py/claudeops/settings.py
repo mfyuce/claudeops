@@ -93,7 +93,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # kurmadığı bir binary'nin üzerine ASLA yazmaz (cli_install.py'nin
                               # kendi install_cli() reddi buna dayanır).
     "ucli_limits": {},       # {max_steps, max_context_kib, max_tool_calls, max_output_tokens,
-                              # request_timeout_secs: str} (4. alan max_output_tokens 2026-09-28'de, 5. alan
+                              # request_timeout_secs, reasoning_effort: str} (6. alan reasoning_effort 2026-10-17'de,
+                              # SAYI DEĞİL: boş = oturumun effort'u aynı adla `--effort` olarak da geçer, `off` = hiç
+                              # geçirme (bugüne dek ki davranış), low/medium/high/max = hepsine o seviye; model
+                              # alanı kabul etmiyorsa yine geçmez, bkz. `ucli_reasoning_mode()`) (4. alan max_output_tokens 2026-09-28'de, 5. alan
                               # request_timeout_secs 2026-10-17'de eklendi; sonuncu effort preset'inde YOK,
                               # ayrı varsayılanı var: `providers/ucli_provider.py::_REQUEST_TIMEOUT_SECS`) — 2026-09-24,
                               # TODO.md'nin ucli effort maddesi: bu sayılar `providers/ucli_provider.py`
@@ -307,6 +310,23 @@ def ucli_limit_overrides() -> Dict[str, int]:
         if n > 0:
             out[key] = n
     return out
+
+
+_REASONING_LEVELS = ("low", "medium", "high", "max")
+
+
+def ucli_reasoning_mode() -> str:
+    """`ucli_limits.reasoning_effort` (2026-10-17): ucli'ye `--effort` geçirme kipi. "auto" (boş/eksik/geçersiz:
+    oturumun effort ön ayarı, medium/high, aynı adla geçer), "off" (hiç geçirme = bugüne dek ki davranış; kalite
+    sorunu çıkarsa tek ayarla geri dönüş) ya da low/medium/high/max (tüm oturumlara o seviye). Model desteği
+    ayrıca ve her kipte `providers/ucli_provider.py`de denetlenir. Asla fırlatmaz (settings.json elle düzenlenebiliyor)."""
+    raw = load_settings().get("ucli_limits") or {}
+    if not isinstance(raw, dict):
+        return "auto"
+    value = str(raw.get("reasoning_effort") or "").strip().lower()
+    if value in _OFF_WORDS:
+        return "off"
+    return value if value in _REASONING_LEVELS else "auto"
 
 
 # Tam host adı: etiketler [a-z0-9-], tire uçta olmaz, toplam <= 253. Joker (`*.org`),
