@@ -264,6 +264,16 @@ export interface Strings {
   diagWindowless: (names: string) => string;
   windowlessBadge: string;
   windowlessHint: string;
+  usageBadge: (tokens: string, requests: number, floor: boolean) => string;
+  usageHint: (u: {
+    requests: number;
+    reported: number;
+    prompt_tokens: number;
+    cached_tokens: number;
+    completion_tokens: number;
+    reasoning_tokens: number;
+    unmetered: number;
+  }) => string;
   openWindowBtn: string;
   openingWindow: string;
   mirrorBtn: string;
@@ -707,6 +717,22 @@ export const STRINGS: Record<Lang, Strings> = {
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
     windowlessBadge: "penceresiz",
     windowlessHint: "gnome-terminal penceresi yok (tmux-only fallback) — CLI çalışıyor, sadece görünür pencere yok. \"pencere aç\" ile CLI yeniden başlamadan bir pencere bağlayabilirsin.",
+    usageBadge: (tokens, requests, floor) => `${floor ? "≥" : ""}${tokens} token · ${requests} istek`,
+    usageHint: (u) => {
+      const n = (x: number) => x.toLocaleString("tr-TR");
+      const cachedPct = u.prompt_tokens > 0 ? ` (%${Math.round((100 * u.cached_tokens) / u.prompt_tokens)})` : "";
+      const floor = u.unmetered > 0 || u.reported < u.requests;
+      return [
+        "Bu ucli sürecinin başından beri (tüm görevler, başarısız olanlar dahil):",
+        `istek: ${n(u.requests)}${u.reported < u.requests ? ` (uç nokta yalnız ${n(u.reported)} tanesinin usage'ını bildirdi)` : ""}`,
+        `girdi: ${n(u.prompt_tokens)} token, ${n(u.cached_tokens)} tanesi önbellekli${cachedPct}`,
+        `çıktı: ${n(u.completion_tokens)} token (bunun ${n(u.reasoning_tokens)} tanesi akıl yürütme)`,
+        ...(u.unmetered > 0
+          ? [`cevapsız deneme: ${n(u.unmetered)} (zaman aşımı ya da sunucu hatası; sunucu sayıyor ama tokeni bilinmiyor)`]
+          : []),
+        ...(floor ? ["≥: gerçek yakım gösterilenden fazla olabilir, az olamaz"] : []),
+      ].join("\n");
+    },
     openWindowBtn: "pencere aç",
     openingWindow: "pencere açılıyor…",
     mirrorBtn: "masaüstüne aç",
@@ -1183,6 +1209,22 @@ export const STRINGS: Record<Lang, Strings> = {
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
     windowlessBadge: "windowless",
     windowlessHint: "no gnome-terminal window (tmux-only fallback) — the CLI is running, it just has no visible window. \"open window\" attaches one without restarting the CLI.",
+    usageBadge: (tokens, requests, floor) => `${floor ? "≥" : ""}${tokens} tokens · ${requests} req`,
+    usageHint: (u) => {
+      const n = (x: number) => x.toLocaleString("en-US");
+      const cachedPct = u.prompt_tokens > 0 ? ` (${Math.round((100 * u.cached_tokens) / u.prompt_tokens)}%)` : "";
+      const floor = u.unmetered > 0 || u.reported < u.requests;
+      return [
+        "Since this ucli process started (all tasks, failed ones included):",
+        `requests: ${n(u.requests)}${u.reported < u.requests ? ` (the endpoint reported usage for only ${n(u.reported)})` : ""}`,
+        `input: ${n(u.prompt_tokens)} tokens, ${n(u.cached_tokens)} of them cached${cachedPct}`,
+        `output: ${n(u.completion_tokens)} tokens (${n(u.reasoning_tokens)} of them reasoning)`,
+        ...(u.unmetered > 0
+          ? [`unanswered attempts: ${n(u.unmetered)} (timeout or server error; the server counts them but their tokens are unknown)`]
+          : []),
+        ...(floor ? ["≥: the real burn may be higher than shown, never lower"] : []),
+      ].join("\n");
+    },
     openWindowBtn: "open window",
     openingWindow: "opening window…",
     mirrorBtn: "open on desktop",

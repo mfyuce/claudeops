@@ -68,6 +68,27 @@ export interface SessionInfo {
    * Absent = unknown (local rows, or a backend older than this field): never
    * treat it as `false` ("closed"). */
   mirror_open?: boolean;
+  /** Process-lifetime token/request counters of the running session (`provider.live_usage()`, today only
+   * ucli's `--status-file` `usage`). Absent/`null` = this CLI has no counter, or it could not be read
+   * (also every REMOTE row: the gRPC host bridge does not carry it yet): show no badge, it does NOT mean
+   * "0 tokens". */
+  usage?: SessionUsage | null;
+}
+
+/** ucli `.status.json` `usage`: the sum over ALL tasks since the process started, failed ones included.
+ * `prompt_tokens` includes the cached part; `reasoning_tokens` is a subset of `completion_tokens`. When
+ * `reported < requests` (the endpoint sent no `usage` for some requests) or `unmetered > 0` (an attempt that
+ * got no usable response, e.g. a timeout the server still processed) the token totals are a FLOOR. */
+export interface SessionUsage {
+  requests: number;
+  reported: number;
+  prompt_tokens: number;
+  cached_tokens: number;
+  completion_tokens: number;
+  reasoning_tokens: number;
+  request_bytes: number;
+  unmetered: number;
+  unmetered_bytes: number;
 }
 
 /** One `GET /api/instances` row (History tab). */

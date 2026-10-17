@@ -149,6 +149,12 @@ _EFFORT_LEVELS = list(_EFFORT_LIMITS.keys())
 # "bilinmiyor"a düşürürdü.
 _REQUEST_TIMEOUT_SECS = 600
 
+# Durum dosyasının `usage` nesnesinin (unified-cli `status.rs`) alanları, `live_usage`in döndürdüğü anahtarlar.
+# `reported < requests` ya da `unmetered > 0` ise token sayıları TABANDIR (uç nokta bazı isteklerde `usage`
+# göndermedi / iptal edilen deneme sunucuda sayıldı ama tokeni bilinmiyor); bu karar arayüzde verilir.
+_USAGE_FIELDS = ("requests", "reported", "prompt_tokens", "cached_tokens", "completion_tokens",
+                 "reasoning_tokens", "request_bytes", "unmetered", "unmetered_bytes")
+
 # permission_mode: `chat --allow-edit`'in iki hali (varsayılan KAPALI = salt-
 # okunur araçlar). [0] varsayılan (RegisterForm.tsx effectiveModel deseniyle
 # AYNI "ilk eleman = varsayılan" kuralı).
@@ -429,6 +435,23 @@ class UcliProvider(CliProvider):
         if status is None:
             return None
         return status.get("activity") != "waiting_for_stdin"
+
+    def live_usage(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, int]]:
+        # Durum dosyasındaki `usage` (unified-cli 2026-10-16): SÜREÇ boyunca TÜM görevlerin toplamı,
+        # başarısız görev dahil. `usage` hiç yoksa (eski ikili) None = bilinmiyor; `unmetered*`
+        # (1d64d73) eski ikilide yok, yokluğu 0 sayılır. Sayı olmayan/negatif değer 0'a iner: rozet
+        # bozuk bir dosya yüzünden hiç görünmez olmasın, ama uydurma bir sayı da göstermesin.
+        if not sid:
+            return None
+        status = read_status_file(cwd, sid)
+        raw = status.get("usage") if status else None
+        if not isinstance(raw, dict):
+            return None
+        out: Dict[str, int] = {}
+        for key in _USAGE_FIELDS:
+            v = raw.get(key, 0)
+            out[key] = v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+        return out
 
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         turns = self.full_history(cwd, sid)

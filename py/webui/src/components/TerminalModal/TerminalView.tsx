@@ -49,6 +49,7 @@ import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, rowKey } from "../../state/hosts";
 import { copyToClipboard } from "../shared/clipboard";
 import { hasActiveSelectionWithin } from "../shared/selectionGuard";
+import { UsageBadge } from "../shared/UsageBadge";
 import { computeFitFontSize, fitContainerToTerm } from "./xtermSizing";
 import { UrlBanner } from "./UrlBanner";
 
@@ -1215,6 +1216,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
               {t.termEffortLabel}: {liveEffort || session?.live_effort}
             </span>
           )}
+          {session?.usage && <UsageBadge usage={session.usage} />}
           {modeMsg && <span className="opts-hint">{modeMsg}</span>}
         </div>
         <div

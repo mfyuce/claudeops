@@ -1204,6 +1204,17 @@ def _is_busy_cached(s) -> Optional[bool]:
     return val
 
 
+def _live_usage(s) -> Optional[Dict[str, int]]:
+    """Çalışan session'ın süreç-boyu token/istek sayaçları (`provider.live_usage`, bugün yalnız
+    ucli'nin durum dosyası): None = bu CLI'da sayaç yok ya da okunamadı, UI rozet göstermez.
+    Önbelleksiz: küçük bir JSON dosyası, ve yalnız sayacı olan provider dosyaya dokunur
+    (`live_busy`in ucli yolu AYNI dosyayı zaten her tick okuyor). Asla fırlatmaz."""
+    try:
+        return get_provider(s.cli).live_usage(s.cwd, s.sid)
+    except Exception:
+        return None
+
+
 _HISTORY_CACHE: dict = {}  # name -> (expires_monotonic, int | None)
 # `_needs_ho_cached`'in 30s'iyle AYNI (busy'nin 2s'inden ÇOK daha uzun kalabilir) —
 # tmux scrollback boyutu saniyeler içinde önemli ölçüde değişmez, ana tabloda HER
@@ -1377,6 +1388,7 @@ def _status_payload() -> dict:
             "kind": ("fresh" if s.is_fresh else "resume") if s else None,
             "needs_ho": _needs_ho_cached(s) if s else None,
             "busy": _is_busy_cached(s) if s else None,
+            "usage": _live_usage(s) if s else None,
             "history_size": _history_size_cached(s) if s else None,
             "registered": True,
             "instance": False,
@@ -1414,6 +1426,7 @@ def _status_payload() -> dict:
             "kind": "fresh" if s.is_fresh else "resume",
             "needs_ho": _needs_ho_cached(s),
             "busy": _is_busy_cached(s),
+            "usage": _live_usage(s),
             "history_size": _history_size_cached(s),
             "registered": rec is not None,
             "instance": rec is not None,

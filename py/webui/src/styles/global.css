@@ -309,6 +309,9 @@ button.selho { border-color: var(--amber); color: var(--amber); font-size: .78re
                border-radius: 4px; padding: 1px 4px; margin-left: .3rem; cursor: help; }
 .cli-badge { font-size: .65rem; color: var(--muted); border: 1px solid var(--border);
              border-radius: 4px; padding: 1px 5px; }
+.usage-badge { font-size: .65rem; color: var(--muted); border: 1px solid var(--border);
+               border-radius: 4px; padding: 1px 5px; margin-left: .3rem; white-space: nowrap; cursor: help; }
+.usage-badge.unmetered { color: var(--amber); border-color: var(--amber); }
 button.reactivate { border-color: var(--green); color: var(--green); }
 button:disabled { opacity: .5; cursor: default; }
 .actioncell { display: flex; gap: .35rem; flex-wrap: wrap; }

@@ -467,6 +467,16 @@ class CliProvider(ABC):
         kullanacağını belirsizleştirirdi."""
         return None
 
+    def live_usage(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, int]]:
+        """CLI'nin KENDİ yapılandırılmış sayacı varsa (ör. ucli'nin `--status-file`ındaki `usage`)
+        süreç boyunca biriken token/istek toplamları; `web.py`nin `_live_usage`ı bunu satırın
+        `usage` alanına koyar. Anahtarlar: requests, reported, prompt_tokens, cached_tokens,
+        completion_tokens, reasoning_tokens, request_bytes, unmetered, unmetered_bytes (hepsi
+        tam sayı, eksik olan 0). None (VARSAYILAN) = böyle bir sayaç yok/okunamadı → panel rozet
+        göstermez, "0 token" ile KARIŞTIRMAZ. `live_busy`le AYNI "yapılandırılmış veri, pane
+        metni değil" sözleşmesi."""
+        return None
+
     def cyclable_modes(self) -> List[str]:
         """Shift+Tab (BTab) döngüsüyle CANLIYKEN ulaşılabilen modlar, döngüde
         göründükleri sırayla; İLK eleman "durum çubuğunda hiçbir işaret yoksa

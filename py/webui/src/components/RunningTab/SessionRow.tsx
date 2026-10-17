@@ -23,6 +23,7 @@ import type { TabKey } from "../../state/tabs";
 import { CwdCell } from "../shared/CwdCell";
 import { effectiveModel } from "../shared/effectiveModel";
 import { isProtectedName } from "../shared/protectedNames";
+import { UsageBadge } from "../shared/UsageBadge";
 import { AdoptRow } from "./AdoptRow";
 import { HoCell } from "./HoCell";
 import { OptionsRow } from "./OptionsRow";
@@ -137,6 +138,7 @@ export function SessionRow({
               {t.windowlessBadge}
             </span>
           )}
+          {session.usage && <UsageBadge usage={session.usage} />}
         </td>
         <td title={modelDiffers ? t.modelLiveDiffersHint(session.model) : undefined}>
           {shownModel}
