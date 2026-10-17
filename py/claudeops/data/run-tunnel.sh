@@ -12,6 +12,13 @@
 # ~/.claude/claudeops/ntfy_topic.txt varsa https://ntfy.sh/<topic>'e POST edilir — dosya yoksa
 # hiçbir şey yapılmaz (no-op). Gönderim başarısız olursa arka planda yeniden denenir
 # (bkz. _notify_retry); her karar tunnel.log'a bir [run-tunnel] satırı olarak düşer.
+#
+# Quick-tunnel dalında SAĞLIK BEKÇİSİ (bkz. _watch_tunnel, 2026-10-17): genel adres art arda HTTP 530
+# verirse (Cloudflare: bu adrese bağlı tünel yok) cloudflared sonlandırılır, systemd 5 sn sonra yeni
+# bir tünel açar (YENİ URL + ntfy). Panelden SEÇİMLİK: Ayarlar > Genel > "tünel sağlık bekçisi" =
+# settings.json `tunnel_watch` ("on" varsayılan, "off" kapatır); her yoklamada yeniden okunur, yani
+# değişiklik tüneli (ve URL'i) yeniden başlatmadan geçerli olur. Ortam: CLAUDEOPS_TUNNEL_WATCH=0 (bekçiyi
+# HİÇ başlatma), _WATCH_INTERVAL (60 sn), _WATCH_FAILS (3), _WATCH_GRACE (90 sn).
 set -u
 TUNNEL_NAME="${CLAUDEOPS_TUNNEL_NAME:-claudeops}"
 PORT="${CLAUDEOPS_PORT:-8765}"
@@ -41,6 +48,13 @@ TUNNEL_LABEL="${CLAUDEOPS_TUNNEL_LABEL:-}"
 TUNNEL_PROTOCOL="${CLAUDEOPS_TUNNEL_PROTOCOL:-}"
 PROTOCOL_ARGS=()
 [ -n "$TUNNEL_PROTOCOL" ] && PROTOCOL_ARGS=(--protocol "$TUNNEL_PROTOCOL")
+# Sağlık bekçisi ayarları (bkz. _watch_tunnel). WATCH=0/off kapatır; YALNIZ quick-tunnel dalında çalışır.
+WATCH="${CLAUDEOPS_TUNNEL_WATCH:-1}"
+WATCH_INTERVAL="${CLAUDEOPS_TUNNEL_WATCH_INTERVAL:-60}"
+WATCH_FAILS="${CLAUDEOPS_TUNNEL_WATCH_FAILS:-3}"
+WATCH_GRACE="${CLAUDEOPS_TUNNEL_WATCH_GRACE:-90}"
+# Bekçinin Ayarlar'daki açma/kapama anahtarını okuduğu dosya (panelin settings.json'ı).
+SETTINGS_FILE="${CLAUDEOPS_SETTINGS_FILE:-$STATE_DIR/settings.json}"
 CLOUDFLARED="$HOME/.local/bin/cloudflared"
 command -v "$CLOUDFLARED" >/dev/null 2>&1 || CLOUDFLARED="cloudflared"
 mkdir -p "$STATE_DIR"
@@ -98,6 +112,69 @@ _write_url_and_notify() {
     fi
 }
 
+# Bekçinin Ayarlar'dan seçimli açma/kapama anahtarı: settings.json `tunnel_watch` ("on" varsayılan;
+# off/0/false/no/n/hayir/kapali/disabled/none kapatır, `settings.py::_OFF_WORDS` ile AYNI küme, bir test
+# ikisinin eşit kaldığını denetler). Dosya yok/bozuk/python3 yok/anahtar yok/tanınmayan değer = AÇIK.
+_watch_enabled() {
+    local v
+    v=$(python3 -c '
+import json, sys
+try:
+    v = json.load(open(sys.argv[1])).get("tunnel_watch", "on")
+except Exception:
+    v = "on"
+print("on" if v is None else str(v).strip().lower())
+' "$SETTINGS_FILE" 2>/dev/null) || v=on
+    case "$v" in
+        off|0|false|no|n|hayir|hayır|kapali|kapalı|disabled|none) return 1 ;;
+    esac
+    return 0
+}
+
+# Quick tunnel kopunca cloudflared kendiliğinden yeni tünel İSTEMİYOR: süreç canlı kalıp genel adres
+# HTTP 530 vermeye devam ediyor ve systemd `Restart=always` yalnız süreç ÖLÜNCE devreye giriyor
+# (2026-10-17 13:11: makinenin DNS sorgusu zaman aşımına uğradı, tünel 15 dk sessizce ölü kaldı,
+# servis "active" göründü). Bekçi genel adresi her WATCH_INTERVAL sn'de yoklar; ART ARDA WATCH_FAILS
+# kez HTTP 530 görürse cloudflared'ı sonlandırır: script `wait`ten çıkar, systemd yeni tüneli açar.
+# YALNIZ 530 ölü sayılır: 502/503/504 panelin (origin) yeniden başlamasıdır, 000 (curl ağa/DNS'e
+# ulaşamadı) yerel ağ sorunudur (makinenin çözümleyicisi aralıklı zaman aşımı veriyor); tüneli yeniden
+# açmak ikisini de düzeltmez, boşuna URL değiştirirdi. 000 sayacı SIFIRLAMAZ ve ARTIRMAZ (kopuk tünel +
+# dalgalı DNS'te teşhis gecikmesin); başka her yanıt (401 panel kimlik doğrulaması dahil) sıfırlar.
+# İlk yoklamadan önce WATCH_GRACE sn beklenir (yeni tünelin adresi hemen yayılmayabilir).
+_watch_tunnel() {
+    local url="$1" pid="$2" fails=0 code enabled=1
+    sleep "$WATCH_GRACE"
+    while kill -0 "$pid" 2>/dev/null; do
+        # Anahtar HER turda okunur: Ayarlar'dan değişiklik tüneli yeniden başlatmadan (URL değişmeden) geçerli olur.
+        if _watch_enabled; then
+            [ "$enabled" = 0 ] && echo "[run-tunnel] sağlık bekçisi: Ayarlar'dan AÇILDI"
+            enabled=1
+            code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$url/" 2>/dev/null || true)
+            case "$code" in
+                530)
+                    fails=$((fails + 1))
+                    [ "$fails" -eq 1 ] && echo "[run-tunnel] ⚠ sağlık bekçisi: $url HTTP 530 veriyor (tünel bağlı değil)"
+                    if [ "$fails" -ge "$WATCH_FAILS" ]; then
+                        echo "[run-tunnel] ⚠ sağlık bekçisi: $fails yoklamadır HTTP 530, cloudflared sonlandırılıyor (systemd yeni tünel açacak)"
+                        kill "$pid" 2>/dev/null
+                        return 0
+                    fi
+                    ;;
+                000|"") : ;;
+                *)
+                    [ "$fails" -gt 0 ] && echo "[run-tunnel] sağlık bekçisi: $url yeniden yanıt veriyor (HTTP $code)"
+                    fails=0
+                    ;;
+            esac
+        else
+            [ "$enabled" = 1 ] && echo "[run-tunnel] sağlık bekçisi: Ayarlar'dan KAPATILDI (yoklama durdu)"
+            enabled=0
+            fails=0
+        fi
+        sleep "$WATCH_INTERVAL"
+    done
+}
+
 if "$CLOUDFLARED" tunnel list 2>/dev/null | awk '{print $2}' | grep -qx "$TUNNEL_NAME"; then
     echo "[run-tunnel] named tunnel '$TUNNEL_NAME' bulundu — sabit URL kullanılıyor"
     # Sabit hostname'i (kurulum sırasında elle yazılır, bkz. README) URL_FILE'a yansıt.
@@ -138,4 +215,9 @@ for _ in $(seq 1 40); do
     [ "$alive" = 1 ] || break
     sleep 0.5
 done
+# Bekçi yalnız URL biliniyorsa başlar (yoklanacak adres yok demek). Çift fork (_notify_retry gibi):
+# iş script'ten kopar; cloudflared ölünce `kill -0` döngüyü bitirir.
+if [ -n "${URL:-}" ] && [ "$WATCH" != 0 ] && [ "$WATCH" != off ]; then
+    ( _watch_tunnel "$URL" "$CLOUDFLARED_PID" & )
+fi
 wait "$CLOUDFLARED_PID"

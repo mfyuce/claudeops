@@ -76,11 +76,13 @@ type SettingsPatch = {
   ucli_web?: Record<string, string>;
   /** {amber, red: string} — bkz. `Settings.ucli_usage_warn`. Boş string bir alanı varsayılana döndürür. */
   ucli_usage_warn?: Record<string, string>;
+  /** "on" | "off" — bkz. `Settings.tunnel_watch`. */
+  tunnel_watch?: string;
 };
 
-/** `settings.py`'nin `_OFF_WORDS`i: `ucli_web.search_docker`ın "kapalı" saydığı değerler (settings.json
- * elle düzenlenebiliyor, "false" yazılmış olsa da seçici KAPALI göstermeli). */
-const SEARCH_DOCKER_OFF_WORDS = new Set(["off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none"]);
+/** `settings.py`'nin `_OFF_WORDS`i: `ucli_web.search_docker` ve `tunnel_watch`ın "kapalı" saydığı değerler
+ * (settings.json elle düzenlenebiliyor, "false" yazılmış olsa da seçici KAPALI göstermeli). */
+const OFF_WORDS = new Set(["off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none"]);
 
 /** settings.json elle düzenlenebildiği için bir alan string yerine liste/boş olabilir. */
 function asText(v: unknown): string {
@@ -217,7 +219,7 @@ export function SettingsTab() {
   const settings = data.settings;
   const webCfg = settings.ucli_web ?? {};
   const webSearchUrl = (ucliWebDraft.search_url ?? asText(webCfg.search_url)).trim();
-  const webDockerOff = SEARCH_DOCKER_OFF_WORDS.has(asText(webCfg.search_docker).trim().toLowerCase());
+  const webDockerOff = OFF_WORDS.has(asText(webCfg.search_docker).trim().toLowerCase());
   const webFetchDomains = (ucliWebDraft.allow_fetch_domains ?? asText(webCfg.allow_fetch_domains)).trim();
 
   async function save(patch: SettingsPatch) {
@@ -314,6 +316,16 @@ export function SettingsTab() {
             >
               <option value="name">{t.fleetSortByName}</option>
               <option value="cwd">{t.fleetSortByCwd}</option>
+            </select>
+          </label>
+          <label title={t.tunnelWatchHint}>
+            {t.tunnelWatchLabel}
+            <select
+              value={OFF_WORDS.has(asText(settings.tunnel_watch).trim().toLowerCase()) ? "off" : "on"}
+              onChange={(e) => void save({ tunnel_watch: e.target.value })}
+            >
+              <option value="on">{t.tunnelWatchOn}</option>
+              <option value="off">{t.tunnelWatchOff}</option>
             </select>
           </label>
         </div>

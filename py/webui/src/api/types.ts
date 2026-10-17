@@ -264,6 +264,11 @@ export interface Settings {
   /** {amber, red: string} (2026-10-17) — per-session Evren quota-equivalent token thresholds for the ucli badge colour;
    * empty/missing = built-in 1M / 3M, "off" or "0" = that level disabled. `settings.py`'s `ucli_usage_warn_thresholds()`. */
   ucli_usage_warn: Record<string, string>;
+  /** "on" (default) | "off" — the tunnel health watchdog of `run-tunnel.sh` (2026-10-17): when the public tunnel
+   * address answers HTTP 530 three checks in a row, cloudflared is restarted (the URL changes, ntfy goes out).
+   * Read by the script every check, so a change applies without restarting the tunnel. `settings.py`'s
+   * `tunnel_watch_enabled()`; any `off`-word ("0", "false", "no", ...) counts as off. */
+  tunnel_watch: string;
 }
 
 /** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in

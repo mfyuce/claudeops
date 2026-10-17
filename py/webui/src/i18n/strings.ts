@@ -421,6 +421,10 @@ export interface Strings {
   ucliUsageWarnAmberLabel: string;
   ucliUsageWarnRedLabel: string;
   ucliUsageWarnPlaceholder: (def: string) => string;
+  tunnelWatchLabel: string;
+  tunnelWatchHint: string;
+  tunnelWatchOn: string;
+  tunnelWatchOff: string;
   ucliWebLabel: string;
   ucliWebDesc: string;
   ucliWebSearchUrlLabel: string;
@@ -923,6 +927,11 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliUsageWarnAmberLabel: "amber eşiği",
     ucliUsageWarnRedLabel: "kırmızı eşiği",
     ucliUsageWarnPlaceholder: (def) => `boş = ${def}`,
+    tunnelWatchLabel: "tünel sağlık bekçisi",
+    tunnelWatchHint:
+      "Genel tünel adresi art arda 3 dakika boyunca HTTP 530 verirse (tünel Cloudflare'den koptu ama servis 'active' görünüyor) cloudflared yeniden başlatılır: adres DEĞİŞİR ve ntfy bildirimi gider. Kapalıyken tünel kopunca elle yeniden başlatmak gerekir. Değişiklik en geç 1 dakikada, tüneli yeniden başlatmadan geçerli olur. Yalnız quick tunnel'da çalışır (named tunnel'da yok).",
+    tunnelWatchOn: "açık (önerilen)",
+    tunnelWatchOff: "kapalı",
     ucliWebLabel: "ucli web araçları (arama / sayfa getirme)",
     ucliWebDesc:
       "Yalnız claudeops'tan YENİ açılan ucli oturumlarına uygulanır; çalışanlar eski ayarla sürer, panel yeniden başlatması gerekmez. Arama varsayılan AÇIK: adres boşsa claudeops'un yönettiği yerel SearXNG kullanılır (docker kapsayıcısı, yalnız bu makineden erişilir; ucli aramayı kendi içine alınca bu geçici köprü kalkacak). Sayfa getirme (fetch_url) varsayılan KAPALI; yalnız aşağıya yazılan alan adlarına açılır.",
@@ -1443,6 +1452,11 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliUsageWarnAmberLabel: "amber threshold",
     ucliUsageWarnRedLabel: "red threshold",
     ucliUsageWarnPlaceholder: (def) => `empty = ${def}`,
+    tunnelWatchLabel: "tunnel health watch",
+    tunnelWatchHint:
+      "If the public tunnel address answers HTTP 530 three checks in a row (about 3 minutes: the tunnel dropped from Cloudflare but the service still looks 'active'), cloudflared is restarted: the address CHANGES and an ntfy notice goes out. When off, a dropped tunnel needs a manual restart. A change applies within a minute, without restarting the tunnel. Works for the quick tunnel only (not a named tunnel).",
+    tunnelWatchOn: "on (recommended)",
+    tunnelWatchOff: "off",
     ucliWebLabel: "ucli web tools (search / page fetch)",
     ucliWebDesc:
       "Applies only to ucli sessions newly opened from claudeops; running ones keep their old settings, and the panel does not need a restart. Search is ON by default: with an empty address the local SearXNG managed by claudeops is used (a docker container reachable from this machine only; this temporary bridge goes away once ucli does search itself). Page fetch (fetch_url) is OFF by default and opens only to the domains listed below.",

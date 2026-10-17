@@ -13,7 +13,9 @@ Kapsadığı iki kusur (2026-10-12, kullanıcı: "tunnel uyarisi gelmedi kurulma
   2. ntfy bildirimi TEK ATIŞTI: reboot sonrası ağ dengesizken düşünce bir daha denenmiyordu,
      üstelik URL_FILE yazıldığı için sonraki açılışlar da "değişmedi" deyip susuyordu.
 """
+import json
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -51,6 +53,19 @@ done
 # `curl -fsS -m 10 -d MESAJ URL` taklidi: çağrıyı günlüğe yazar; FAILS_FILE'daki sayı kadar çağrı
 # başarısız (curl -f'in 22'si) olur, sonrakiler başarılı.
 FAKE_CURL = r"""#!/bin/bash
+case "$*" in
+    *"%{http_code}"*)
+        # Sağlık bekçisinin yoklaması: ntfy çağrılarından AYRI günlük ve yanıt dizisi. PROBE_CODES'taki
+        # kodlar sırayla verilir; dizi bitince SON kod tekrarlanır (hiç kod yoksa 401: panel kimlik doğrulaması).
+        printf '%s\n' "$*" >> "$PROBE_LOG"
+        code=$(head -n 1 "$PROBE_CODES" 2>/dev/null)
+        if [ -n "$code" ]; then sed -i 1d "$PROBE_CODES"; else code=$(cat "$PROBE_LAST" 2>/dev/null || echo 401); fi
+        echo "$code" > "$PROBE_LAST"
+        printf '%s' "$code"
+        [ "$code" = 000 ] && exit 28
+        exit 0
+        ;;
+esac
 printf '%s\n' "$*" >> "$CURL_LOG"
 n=$(cat "$FAILS_FILE" 2>/dev/null || echo 0)
 if [ "$n" -gt 0 ]; then
@@ -94,6 +109,9 @@ class TunnelEnv:
         self.curl_log = self.root / "curl.log"
         self.fails_file = self.root / "curl_fails"
         self.stop_file = self.root / "stop"
+        self.probe_log = self.root / "probe.log"
+        self.probe_codes = self.root / "probe_codes"
+        self.probe_last = self.root / "probe_last"
         if topic:
             (self.state / "ntfy_topic.txt").write_text(topic + "\n")
         self.procs = []
@@ -104,9 +122,15 @@ class TunnelEnv:
         path.write_text(body)
         path.chmod(0o755)
 
-    def boot(self, *, scenario="ok", url=URL_A, named=False, curl_fails=0, retry_secs=30):
+    def boot(self, *, scenario="ok", url=URL_A, named=False, curl_fails=0, retry_secs=30,
+             watch=False, probes=(), watch_fails=3):
+        """`watch=True`: sağlık bekçisi AÇIK (aralık ve ilk bekleme 0,3 sn: kesirli bekleyişler sahte
+        `sleep`te gerçekten beklenir); `probes`: sahte curl'ün yoklamalara vereceği HTTP kodları."""
         self.stop_file.unlink(missing_ok=True)
         self.fails_file.write_text(str(curl_fails))
+        self.probe_codes.write_text("".join(f"{c}\n" for c in probes))
+        self.probe_last.unlink(missing_ok=True)
+        self.probe_log.unlink(missing_ok=True)
         env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDEOPS_")}
         env.pop("FAKE_NAMED", None)
         env.update(
@@ -118,7 +142,14 @@ class TunnelEnv:
             STOP_FILE=str(self.stop_file),
             CURL_LOG=str(self.curl_log),
             FAILS_FILE=str(self.fails_file),
+            PROBE_LOG=str(self.probe_log),
+            PROBE_CODES=str(self.probe_codes),
+            PROBE_LAST=str(self.probe_last),
+            CLAUDEOPS_TUNNEL_WATCH="0",  # eski testler bekçiden etkilenmesin (curl günlüğü sayılıyor)
         )
+        if watch:
+            env.update(CLAUDEOPS_TUNNEL_WATCH="1", CLAUDEOPS_TUNNEL_WATCH_INTERVAL="0.3",
+                       CLAUDEOPS_TUNNEL_WATCH_GRACE="0.3", CLAUDEOPS_TUNNEL_WATCH_FAILS=str(watch_fails))
         if named:
             env["FAKE_NAMED"] = "1"
             (self.state / "tunnel_fixed_hostname.txt").write_text(url + "\n")
@@ -147,6 +178,18 @@ class TunnelEnv:
 
     def curl_calls(self):
         return [line for line in self.text(self.curl_log).splitlines() if line]
+
+    def probe_calls(self):
+        return [line for line in self.text(self.probe_log).splitlines() if line]
+
+    def write_settings(self, content):
+        """Panelin settings.json'ı (bekçi `tunnel_watch` anahtarını buradan okur). dict -> JSON, str -> ham metin,
+        None -> dosyayı sil."""
+        path = self.state / "settings.json"
+        if content is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(content if isinstance(content, str) else json.dumps(content))
 
     def wait_for(self, condition, what, timeout=10):
         deadline = time.time() + timeout
@@ -247,6 +290,195 @@ class RunTunnelScriptTests(unittest.TestCase):
         self.assertEqual(env.text(env.url_file).strip(), "https://panel.example.com")
         self.assertIn("claudeops tunnel: https://panel.example.com", env.curl_calls()[0])
         env.finish(proc)
+
+
+class WatchdogTests(unittest.TestCase):
+    """Sağlık bekçisi (2026-10-17, "tunnel gitti"): quick tunnel kopunca cloudflared canlı kalıp adres HTTP 530
+    veriyordu ve systemd yalnız süreç ÖLÜNCE yeniden başlatır. Bekçi art arda 530 görürse cloudflared'ı
+    sonlandırır, script çıkar, systemd yeni tüneli açar."""
+
+    def alive_after(self, env, proc, probes, seconds=3.0):
+        env.wait_for(lambda: len(env.probe_calls()) >= probes, f"{probes} yoklama", timeout=10)
+        time.sleep(seconds / 10)  # kısa pay: yanlışlıkla sonlandırma varsa yakalansın
+        return proc.poll() is None
+
+    def test_three_consecutive_530_terminate_cloudflared_and_the_script_exits(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["530"])  # dizi bitince son kod (530) tekrarlanır
+        proc.wait(timeout=10)
+        self.assertNotEqual(proc.returncode, 0, "systemd yeniden başlatsın diye sıfırdan farklı çıkış")
+        log = env.log_text()
+        self.assertEqual(log.count("HTTP 530 veriyor"), 1, "ilk 530'da TEK uyarı satırı")
+        self.assertIn("3 yoklamadır HTTP 530, cloudflared sonlandırılıyor", log)
+        self.assertEqual(len(env.probe_calls()), 3)
+
+    def test_the_probe_hits_the_tunnel_url_with_no_credentials(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["401"])
+        env.wait_for(lambda: env.probe_calls(), "ilk yoklama")
+        call = env.probe_calls()[0]
+        self.assertIn(URL_A + "/", call)
+        self.assertNotIn("token", call)
+        self.assertIn("-m 15", call)
+        env.finish(proc)
+
+    def test_a_healthy_tunnel_is_left_alone(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["401"])
+        self.assertTrue(self.alive_after(env, proc, probes=4))
+        self.assertNotIn("sonlandırılıyor", env.log_text())
+        env.finish(proc)
+
+    def test_a_response_between_failures_resets_the_counter(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["530", "530", "401", "530", "530", "401"])
+        self.assertTrue(self.alive_after(env, proc, probes=7))
+        log = env.log_text()
+        self.assertEqual(log.count("HTTP 530 veriyor"), 2)
+        self.assertEqual(log.count("yeniden yanıt veriyor (HTTP 401)"), 2)
+        self.assertNotIn("sonlandırılıyor", log)
+        env.finish(proc)
+
+    def test_no_answer_000_neither_counts_nor_resets(self):
+        """Kopuk tünel + dalgalı DNS: 000'lar teşhisi geciktirmemeli (sayaç korunur), kendileri de sayılmamalı."""
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["530", "000", "530", "000", "530"])
+        proc.wait(timeout=10)
+        self.assertIn("3 yoklamadır HTTP 530", env.log_text())
+        self.assertEqual(len(env.probe_calls()), 5)
+
+    def test_only_a_run_of_000_never_restarts_the_tunnel(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["000"])
+        self.assertTrue(self.alive_after(env, proc, probes=6))
+        self.assertNotIn("sonlandırılıyor", env.log_text())
+        env.finish(proc)
+
+    def test_origin_errors_are_not_a_dead_tunnel(self):
+        """502/503/504 = panelin (origin) yeniden başlaması: tüneli yeniden açmak düzeltmez, sayacı sıfırlar."""
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["530", "530", "502", "530", "530", "503", "530", "530", "504", "401"])
+        self.assertTrue(self.alive_after(env, proc, probes=11))
+        self.assertNotIn("sonlandırılıyor", env.log_text())
+        env.finish(proc)
+
+    def test_the_failure_threshold_is_configurable(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["530"], watch_fails=2)
+        proc.wait(timeout=10)
+        self.assertIn("2 yoklamadır HTTP 530", env.log_text())
+        self.assertEqual(len(env.probe_calls()), 2)
+
+    def test_it_can_be_switched_off(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=False, probes=["530"])  # CLAUDEOPS_TUNNEL_WATCH=0
+        time.sleep(1.5)
+        self.assertIsNone(proc.poll())
+        self.assertEqual(env.probe_calls(), [])
+        env.finish(proc)
+
+    def test_the_named_tunnel_branch_has_no_watchdog(self):
+        env = TunnelEnv(self)
+        proc = env.boot(named=True, url="https://panel.example.com", watch=True, probes=["530"])
+        env.wait_for(lambda: SENT in env.log_text(), "named tunnel bildirimi")
+        time.sleep(1.5)
+        self.assertEqual(env.probe_calls(), [])
+        self.assertIsNone(proc.poll())
+        env.finish(proc)
+
+    def test_no_watchdog_when_cloudflared_never_gave_a_url(self):
+        env = TunnelEnv(self)
+        proc = env.boot(scenario="fail", watch=True, probes=["530"])
+        proc.wait(timeout=8)
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(env.probe_calls(), [])
+
+    def test_the_settings_switch_keeps_the_watchdog_off(self):
+        """Ayarlar > Genel > "tünel sağlık bekçisi" = kapalı (settings.json `tunnel_watch`): yoklama HİÇ yapılmaz."""
+        env = TunnelEnv(self)
+        env.write_settings({"tunnel_watch": "off"})
+        proc = env.boot(watch=True, probes=["530"])
+        env.wait_for(lambda: "Ayarlar'dan KAPATILDI" in env.log_text(), "kapatıldı satırı")
+        time.sleep(1.2)
+        self.assertEqual(env.probe_calls(), [])
+        self.assertIsNone(proc.poll(), "kapalıyken tünel/cloudflared dokunulmaz")
+        env.finish(proc)
+
+    def test_every_off_spelling_switches_it_off(self):
+        for value in ("off", "OFF", " 0 ", "false", "no", "kapali", "kapalı", "disabled", False, 0):
+            with self.subTest(value=value):
+                env = TunnelEnv(self)
+                env.write_settings({"tunnel_watch": value})
+                proc = env.boot(watch=True, probes=["530"])
+                env.wait_for(lambda: "KAPATILDI" in env.log_text(), "kapatıldı satırı")
+                time.sleep(0.7)
+                self.assertEqual(env.probe_calls(), [])
+                env.finish(proc)
+
+    def test_toggling_in_settings_takes_effect_without_restarting_the_tunnel(self):
+        """Anahtar HER turda okunur: kapatıp açmak tüneli (ve URL'i) yeniden başlatmaz, süreç aynı kalır."""
+        env = TunnelEnv(self)
+        env.write_settings({"tunnel_watch": "on"})
+        proc = env.boot(watch=True, probes=["401"])
+        env.wait_for(lambda: len(env.probe_calls()) >= 2, "açıkken yoklamalar")
+        env.write_settings({"tunnel_watch": "off"})
+        env.wait_for(lambda: "Ayarlar'dan KAPATILDI" in env.log_text(), "kapatma satırı")
+        time.sleep(0.5)  # uçuştaki bir tur bitsin
+        frozen = len(env.probe_calls())
+        time.sleep(1.2)
+        self.assertEqual(len(env.probe_calls()), frozen, "kapalıyken yoklama sürdü")
+        env.write_settings({"tunnel_watch": "on"})
+        env.wait_for(lambda: "Ayarlar'dan AÇILDI" in env.log_text(), "açma satırı")
+        env.wait_for(lambda: len(env.probe_calls()) > frozen, "açıldıktan sonra yoklama")
+        self.assertIsNone(proc.poll(), "anahtar tüneli yeniden başlatmamalı")
+        self.assertNotIn("sonlandırılıyor", env.log_text())
+        env.finish(proc)
+
+    def test_turning_it_off_forgets_a_half_counted_run_of_530(self):
+        env = TunnelEnv(self)
+        env.write_settings({"tunnel_watch": "on"})
+        proc = env.boot(watch=True, probes=["530", "530"], watch_fails=3)
+        env.wait_for(lambda: len(env.probe_calls()) >= 2, "iki 530")
+        env.write_settings({"tunnel_watch": "off"})
+        env.wait_for(lambda: "KAPATILDI" in env.log_text(), "kapatma satırı")
+        env.write_settings({"tunnel_watch": "on"})
+        env.wait_for(lambda: "AÇILDI" in env.log_text(), "açma satırı")
+        # Dizi bitti, son kod (530) tekrarlanır: sayaç SIFIRDAN sayılır, yeniden 3 yoklama gerekir.
+        proc.wait(timeout=10)
+        self.assertGreaterEqual(len(env.probe_calls()), 5, "kapatma sayacı sıfırlamadı")
+
+    def test_missing_unreadable_or_odd_settings_mean_on(self):
+        cases = {"dosya yok": None, "bozuk JSON": "{not json", "dizi": "[]", "boş değer": '{"tunnel_watch": ""}',
+                 "null": '{"tunnel_watch": null}', "tanınmayan": '{"tunnel_watch": "açık"}', "on": '{"tunnel_watch": "on"}'}
+        for name, content in cases.items():
+            with self.subTest(case=name):
+                env = TunnelEnv(self)
+                env.write_settings(content)
+                proc = env.boot(watch=True, probes=["401"])
+                env.wait_for(lambda: env.probe_calls(), "yoklama (varsayılan AÇIK)")
+                self.assertNotIn("KAPATILDI", env.log_text())
+                env.finish(proc)
+
+    def test_the_environment_switch_still_wins_over_an_enabled_setting(self):
+        env = TunnelEnv(self)
+        env.write_settings({"tunnel_watch": "on"})
+        proc = env.boot(watch=False, probes=["530"])  # CLAUDEOPS_TUNNEL_WATCH=0
+        time.sleep(1.2)
+        self.assertEqual(env.probe_calls(), [])
+        self.assertNotIn("Ayarlar'dan", env.log_text())
+        env.finish(proc)
+
+    def test_the_off_words_in_the_script_match_settings_py(self):
+        """Betikteki `case` kümesi ile `settings.py::_OFF_WORDS` aynı kalmalı (iki dil, tek kural)."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from claudeops import settings
+        match = re.search(r"case \"\$v\" in\s*\n\s*([^)]+)\) return 1", SCRIPT.read_text(encoding="utf-8"))
+        self.assertIsNotNone(match, "betikte _watch_enabled case kümesi bulunamadı")
+        self.assertEqual(set(match.group(1).split("|")), set(settings._OFF_WORDS))
+
+    def test_the_script_has_valid_bash_syntax(self):
+        self.assertEqual(subprocess.run(["bash", "-n", str(SCRIPT)]).returncode, 0)
 
 
 if __name__ == "__main__":

@@ -135,6 +135,14 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # %7'sini aşarsa amber); `off` (ya da 0/false/no) = o kademe KAPALI. YALNIZ renk/uyarı:
                               # otomatik durdurma YOK. `ucli_limits`le AYNI alan-bazlı merge. Okuma tarafı:
                               # `ucli_usage_warn_thresholds()`.
+    "tunnel_watch": "on",    # "on" | "off" — tünel SAĞLIK BEKÇİSİ (2026-10-17, kullanıcı: "settingslerde seçimlik
+                              # olsun"; `data/run-tunnel.sh::_watch_tunnel`): quick tunnel kopunca cloudflared
+                              # yeni tünel İSTEMİYOR, süreç canlı kalıp genel adres HTTP 530 veriyor ve systemd
+                              # yalnız süreç ÖLÜNCE yeniden başlatıyor; bekçi art arda 3 yoklama (~3 dk) HTTP 530
+                              # görürse cloudflared'ı sonlandırır, systemd yeni tüneli açar (URL DEĞİŞİR, ntfy
+                              # gider). Varsayılan AÇIK. Betik bu dosyayı HER yoklamada okur: Ayarlar > Genel'deki
+                              # değişiklik tüneli yeniden başlatmadan geçerli olur. `off`/0/false/no... kapatır
+                              # (`_OFF_WORDS`, betikteki küme ile AYNI). Okuma tarafı: `tunnel_watch_enabled()`.
 }
 
 
@@ -342,6 +350,13 @@ def ucli_usage_warn_thresholds() -> Tuple[int, int]:
             n = 0
         out.append(n if n > 0 else USAGE_WARN_DEFAULTS[key])
     return out[0], out[1]
+
+
+def tunnel_watch_enabled() -> bool:
+    """`tunnel_watch` (bkz. DEFAULT_SETTINGS) açık mı: varsayılan AÇIK, `_OFF_WORDS` kapatır, boş/tanınmayan değer açık sayılır.
+    `data/run-tunnel.sh` AYNI kuralı kendi okur (bash); bu işlev Python tarafının tek tanımıdır. Asla fırlatmaz."""
+    value = load_settings().get("tunnel_watch")
+    return ("on" if value is None else str(value)).strip().lower() not in _OFF_WORDS
 
 
 _REASONING_LEVELS = ("low", "medium", "high", "max")
