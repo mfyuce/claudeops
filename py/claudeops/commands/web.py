@@ -67,7 +67,7 @@ from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
 from ..settings import default_model_for, load_settings, resolved_model_for, save_settings
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots, normalize_mirrors
-from ..spawn import spawn_session, detect_display, find_latest_jsonl, open_window, open_mirror_window
+from ..spawn import spawn_session, detect_display, open_window, open_mirror_window
 from ..providers.claude_provider import jsonl_path_for, last_assistant_model, last_assistant_effort
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
@@ -1156,7 +1156,7 @@ def _needs_ho_cached(s) -> Optional[bool]:
     if hit and hit[0] > now:
         return hit[1]
     try:
-        val = needs_ho(s.sid or "", s.cwd, find_latest_jsonl(s.cwd))
+        val = needs_ho(s.sid or "", s.cwd, jsonl_path_for(s.cwd, s.sid))
     except Exception:
         val = None
     _NEEDSHO_CACHE[s.name] = (now + _NEEDSHO_TTL, val)

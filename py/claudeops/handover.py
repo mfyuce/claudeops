@@ -36,9 +36,8 @@ from .diaglog import diag_log
 from .discovery import find_sessions
 from .needs_ho import needs_ho
 from .providers import CliProvider, get_provider
-from .providers.claude_provider import live_or_spawn_effort, live_or_spawn_model
+from .providers.claude_provider import jsonl_path_for, live_or_spawn_effort, live_or_spawn_model
 from .settings import load_settings
-from .spawn import find_latest_jsonl
 from .tmux_backend import is_tmux_backed, tmux_send_keys
 
 # 2026-08-25: isim-bazlı hariç-tutma (HO_EXCLUDE_BASES={co,cops,ulaksec}) KALDIRILDI
@@ -389,7 +388,7 @@ def handover_faz1(
         # needs_ho kontrolü — SADECE batch modda (names verilmemişse). Tek-hedef seçimi
         # zaten "bunu şimdi yap" demektir.
         if not names:
-            jsonl = find_latest_jsonl(session.cwd)
+            jsonl = jsonl_path_for(session.cwd, session.sid)
             jsonl_path = str(jsonl) if jsonl else None
             if not dry_run and not needs_ho(session.pid_str if hasattr(session, 'pid_str') else str(session.pid), session.cwd, jsonl_path):
                 print(" skip (needs_ho=False: RFH var, repo temiz, yeni commit yok)")
