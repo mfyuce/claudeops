@@ -8,10 +8,10 @@ import argparse
 import sys
 
 from . import __version__
-from .commands import ls, kill, close, config, guard, rc, handover, stuck, layout, web, service, mcp_queue, migrate_instances, watch, winact, searxng
+from .commands import ls, kill, close, config, guard, rc, handover, stuck, layout, web, service, mcp_queue, migrate_instances, watch, winact, searxng, cache
 
 # devralındıkça büyüyecek: handover, rc, guard, layout, needs_ho, ...
-COMMANDS = [ls, kill, close, config, guard, rc, handover, stuck, layout, web, service, mcp_queue, migrate_instances, watch, winact, searxng]
+COMMANDS = [ls, kill, close, config, guard, rc, handover, stuck, layout, web, service, mcp_queue, migrate_instances, watch, winact, searxng, cache]
 
 
 def build_parser() -> argparse.ArgumentParser:
