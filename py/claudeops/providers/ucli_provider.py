@@ -139,6 +139,16 @@ _EFFORT_LIMITS = {
 }
 _EFFORT_LEVELS = list(_EFFORT_LIMITS.keys())
 
+# Bir model isteğinin ucli'de iptal edilmeden bekleyeceği süre (`--request-timeout-secs`; ucli'nin kendi
+# varsayılanı 120 sn). Zaman aşımı filoda ölçülen EN PAHALI tek olay: sunucu iptal edilen isteği yine işleyip
+# sayıyor ve yeniden deneme önbelleksiz dönüyor (unified-cli `bench/token-economy`: bir koşunun %28'i, bir
+# diğerinde meşru işin 2,4 katı; `wifi5gppr20261016_4`te ~231 KB'lık bir istek 120 sn'yi aşıp ~80K token
+# boşa yaktı). 600: unified-cli TOBEDECIDED.md "Token ekonomisi" seçenek (b)nin önerisi. Ayarlar'daki
+# `ucli_limits.request_timeout_secs` bunun YERİNE geçer. `_EFFORT_LIMITS`e BİLEREK girmedi: effort adı çalışan
+# komut satırından o dört sayıyla geri okunur (`extract_info`), beşincisi eski oturumların effort'unu
+# "bilinmiyor"a düşürürdü.
+_REQUEST_TIMEOUT_SECS = 600
+
 # permission_mode: `chat --allow-edit`'in iki hali (varsayılan KAPALI = salt-
 # okunur araçlar). [0] varsayılan (RegisterForm.tsx effectiveModel deseniyle
 # AYNI "ilk eleman = varsayılan" kuralı).
@@ -265,6 +275,16 @@ def _web_args(binary: str, session_name: str = "") -> List[str]:
     return args
 
 
+def _timeout_args(binary: str, limits: Dict[str, int], session_name: str = "") -> List[str]:
+    """`--request-timeout-secs` (bkz. `_REQUEST_TIMEOUT_SECS`). `_web_args`le AYNI sebepten YALNIZ ikili bayrağı
+    tanıyorsa eklenir: eski bir ikili 'unexpected argument' ile spawn anında patlardı; tanımıyorsa atlanır
+    ve günlüğe yazılır (o oturum ucli'nin kendi 120 sn'siyle açılır)."""
+    if not binary_supports_flag(binary, "--request-timeout-secs"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--request-timeout-secs", binary=binary)
+        return []
+    return ["--request-timeout-secs", str(limits.get("request_timeout_secs", _REQUEST_TIMEOUT_SECS))]
+
+
 class UcliProvider(CliProvider):
     name = "ucli"
 
@@ -307,6 +327,7 @@ class UcliProvider(CliProvider):
         if permission_mode == _ALLOW_EDIT:
             argv.append("--allow-edit")
         argv += _web_args(argv[0], session_name)
+        argv += _timeout_args(argv[0], limits, session_name)
         inner = " ".join(shlex.quote(a) for a in argv)
         if _sync_api_key_file():
             # Anahtarı argv'ye GÖMMÜYORUZ — bu makine çok-kullanıcılı, `ps aux`
