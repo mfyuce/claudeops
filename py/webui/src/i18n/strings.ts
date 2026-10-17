@@ -754,7 +754,7 @@ export const STRINGS: Record<Lang, Strings> = {
         ...(floor ? ["≥: gerçek yakım gösterilenden fazla olabilir, az olamaz"] : []),
       ].join("\n");
     },
-    cacheDur: (min) => (min < 60 ? `${min} dk` : min < 2880 ? `${Math.round(min / 60)} sa` : `${Math.round(min / 1440)} g`),
+    cacheDur: (min) => (min <= 60 ? `${min} dk` : min < 2880 ? `${Math.round(min / 60)} sa` : `${Math.round(min / 1440)} g`),
     cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5 dk" : `♨ ${dur}`),
     cacheHint: (state, age, left) =>
       [
@@ -1274,7 +1274,7 @@ export const STRINGS: Record<Lang, Strings> = {
         ...(floor ? ["≥: the real burn may be higher than shown, never lower"] : []),
       ].join("\n");
     },
-    cacheDur: (min) => (min < 60 ? `${min}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`),
+    cacheDur: (min) => (min <= 60 ? `${min}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`),
     cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5m" : `♨ ${dur}`),
     cacheHint: (state, age, left) =>
       [
