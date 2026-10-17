@@ -73,6 +73,16 @@ export interface SessionInfo {
    * (also every REMOTE row: the gRPC host bridge does not carry it yet): show no badge, it does NOT mean
    * "0 tokens". */
   usage?: SessionUsage | null;
+  /** Prompt-cache life of a running claude session (`web._cache_info_cached`, monitoring only): `age` = seconds since
+   * the last REAL model request, `ttl` = the cache lifetime (3600). Absent/`null` = unknown (a CLI without a cache
+   * lifetime, or no matching transcript, e.g. a resumed session that has not had a turn yet): show no badge, it does
+   * NOT mean cold. Local rows only (the gRPC host bridge does not carry it). */
+  cache?: SessionCache | null;
+}
+
+export interface SessionCache {
+  age: number;
+  ttl: number;
 }
 
 /** ucli `.status.json` `usage`: the sum over ALL tasks since the process started, failed ones included.
@@ -89,6 +99,12 @@ export interface SessionUsage {
   request_bytes: number;
   unmetered: number;
   unmetered_bytes: number;
+  /** Evren QUOTA-equivalent tokens (`ucli_client.quota_equivalent_tokens`: cached input counts 3%, unlike the
+   * board's raw "Toplam token"); a floor like the totals. Absent on a backend older than this field. */
+  quota_tokens?: number;
+  /** Colour level of `quota_tokens` against the `ucli_usage_warn` thresholds: 0 none, 1 amber, 2 red. Colour only,
+   * nothing is stopped. */
+  warn?: number;
 }
 
 /** One `GET /api/instances` row (History tab). */
@@ -245,6 +261,9 @@ export interface Settings {
    * kararı backend'in (`settings.py`'nin `ucli_web_config()`'i); settings.json elle
    * düzenlenebildiği için `allow_fetch_domains` çalışma anında liste de olabilir. */
   ucli_web: Record<string, string>;
+  /** {amber, red: string} (2026-10-17) — per-session Evren quota-equivalent token thresholds for the ucli badge colour;
+   * empty/missing = built-in 1M / 3M, "off" or "0" = that level disabled. `settings.py`'s `ucli_usage_warn_thresholds()`. */
+  ucli_usage_warn: Record<string, string>;
 }
 
 /** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in

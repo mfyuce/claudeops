@@ -312,6 +312,12 @@ button.selho { border-color: var(--amber); color: var(--amber); font-size: .78re
 .usage-badge { font-size: .65rem; color: var(--muted); border: 1px solid var(--border);
                border-radius: 4px; padding: 1px 5px; margin-left: .3rem; white-space: nowrap; cursor: help; }
 .usage-badge.unmetered { color: var(--amber); border-color: var(--amber); }
+.usage-badge.warn-1 { color: var(--amber); border-color: var(--amber); }
+.usage-badge.warn-2 { color: var(--red); border-color: var(--red); font-weight: 600; }
+.cache-badge { font-size: .65rem; color: var(--muted); border: 1px solid var(--border);
+               border-radius: 4px; padding: 1px 5px; margin-left: .3rem; white-space: nowrap; cursor: help; }
+.cache-badge.warm { color: var(--green); border-color: var(--green); }
+.cache-badge.expiring { color: var(--amber); border-color: var(--amber); }
 button.reactivate { border-color: var(--green); color: var(--green); }
 button:disabled { opacity: .5; cursor: default; }
 .actioncell { display: flex; gap: .35rem; flex-wrap: wrap; }

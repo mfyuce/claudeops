@@ -237,6 +237,32 @@ def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
+# Evren kotada önbellekli prompt tokenini 0,03, önbelleksizi 1,0 sayar (unified-cli `bench/token-economy`,
+# 2026-10-16/17: panonun "Toplam token"ı ikisini de 1,0 sayar ve hesap KOTASI değildir; koşu A'da pano 12,8M, kota
+# 0,93M). `completion_tokens` akıl yürütmeyi içerir (durum dosyasında `reasoning_tokens` onun alt kümesi).
+QUOTA_CACHED_WEIGHT = 0.03
+
+
+def quota_equivalent_tokens(usage: Dict[str, int]) -> int:
+    """Durum dosyası `usage`ından (bkz. `CliProvider.live_usage`) Evren kotasına yansıyan token: önbelleksiz girdi +
+    önbellekli girdi x `QUOTA_CACHED_WEIGHT` + çıktı. `cached_tokens` `prompt_tokens`ın parçasıdır; bozuk bir dosya
+    yüzünden büyük çıkarsa girdiyi aşamaz. TABANDIR: `reported < requests` / `unmetered > 0` iken gerçek değer yüksek olabilir."""
+    prompt = max(0, int(usage.get("prompt_tokens", 0)))
+    cached = min(prompt, max(0, int(usage.get("cached_tokens", 0))))
+    completion = max(0, int(usage.get("completion_tokens", 0)))
+    return round((prompt - cached) + QUOTA_CACHED_WEIGHT * cached + completion)
+
+
+def usage_warn_level(quota_tokens: int, amber: int, red: int) -> int:
+    """0 = uyarı yok, 1 = amber, 2 = kırmızı. Eşik 0 = o kademe kapalı. Kırmızı önce bakılır, böylece yanlışlıkla
+    red < amber yazılsa da en ağır geçerli kademe kazanır."""
+    if red > 0 and quota_tokens >= red:
+        return 2
+    if amber > 0 and quota_tokens >= amber:
+        return 1
+    return 0
+
+
 def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
     """`{session}.jsonl`'ı `[{"role":..., "text":...}, ...]`'a çevirir.
     Dosya yoksa boş liste (henüz mesaj yok, hata değil) — okunamaz/bozuksa

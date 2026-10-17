@@ -135,6 +135,7 @@ class StatusPayloadUsageTests(StatusDirCase):
             mock.patch.object(web, "PROVIDERS", {}),                       # model_choices() alt süreç açabilir (agy)
             mock.patch.object(web, "is_tmux_backed", lambda pid: False),
             mock.patch.object(web, "_needs_ho_cached", lambda s: None),     # git alt süreci yok
+            mock.patch.object(web, "ucli_usage_warn_thresholds", lambda: (1_000_000, 3_000_000)),   # gerçek ayar sızmasın
             mock.patch.object(web.inst_mod, "load_instances", lambda: {}),
             mock.patch.object(web_hosts.hosts_mod, "load_hosts", lambda: []),
         ):
@@ -145,7 +146,9 @@ class StatusPayloadUsageTests(StatusDirCase):
         return {r["name"]: r for r in web._status_payload()["sessions"] if r["host"] == web.LOCAL_HOST_NAME}
 
     def test_a_registered_running_ucli_row_carries_its_counters(self):
-        self.assertEqual(self.rows()["reg"]["usage"], FULL)
+        # + kota eşdeğeri ve uyarı kademesi (test_ucli_quota_warn.py ayrıntıyı sınar): 214.730 önbelleksiz girdi
+        # + 251.648 x 0,03 önbellekli + 9.001 çıktı = 231.280, varsayılan eşiklerin (1M/3M) altında.
+        self.assertEqual(self.rows()["reg"]["usage"], {**FULL, "quota_tokens": 231_280, "warn": 0})
 
     def test_an_unregistered_running_ucli_row_carries_its_counters(self):
         row = self.rows()["adhoc"]

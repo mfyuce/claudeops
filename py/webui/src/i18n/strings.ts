@@ -264,7 +264,7 @@ export interface Strings {
   diagWindowless: (names: string) => string;
   windowlessBadge: string;
   windowlessHint: string;
-  usageBadge: (tokens: string, requests: number, floor: boolean) => string;
+  usageBadge: (tokens: string, requests: number, floor: boolean, quota?: string) => string;
   usageHint: (u: {
     requests: number;
     reported: number;
@@ -273,7 +273,12 @@ export interface Strings {
     completion_tokens: number;
     reasoning_tokens: number;
     unmetered: number;
+    quota_tokens?: number;
+    warn?: number;
   }) => string;
+  cacheDur: (minutes: number) => string;
+  cacheBadge: (state: "warm" | "expiring" | "cold", dur: string) => string;
+  cacheHint: (state: "warm" | "expiring" | "cold", age: string, left: string) => string;
   openWindowBtn: string;
   openingWindow: string;
   mirrorBtn: string;
@@ -407,6 +412,15 @@ export interface Strings {
   ucliLimitsMaxToolCallsLabel: string;
   ucliLimitsMaxOutputTokensLabel: string;
   ucliLimitsPlaceholderAuto: string;
+  ucliLimitsReasoningLabel: string;
+  ucliLimitsReasoningHint: string;
+  ucliLimitsReasoningAuto: string;
+  ucliLimitsReasoningOff: string;
+  ucliUsageWarnLabel: string;
+  ucliUsageWarnDesc: string;
+  ucliUsageWarnAmberLabel: string;
+  ucliUsageWarnRedLabel: string;
+  ucliUsageWarnPlaceholder: (def: string) => string;
   ucliWebLabel: string;
   ucliWebDesc: string;
   ucliWebSearchUrlLabel: string;
@@ -717,7 +731,8 @@ export const STRINGS: Record<Lang, Strings> = {
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
     windowlessBadge: "penceresiz",
     windowlessHint: "gnome-terminal penceresi yok (tmux-only fallback) — CLI çalışıyor, sadece görünür pencere yok. \"pencere aç\" ile CLI yeniden başlamadan bir pencere bağlayabilirsin.",
-    usageBadge: (tokens, requests, floor) => `${floor ? "≥" : ""}${tokens} token · ${requests} istek`,
+    usageBadge: (tokens, requests, floor, quota) =>
+      `${floor ? "≥" : ""}${tokens} token · ${requests} istek${quota ? ` · kota ≈${quota}` : ""}`,
     usageHint: (u) => {
       const n = (x: number) => x.toLocaleString("tr-TR");
       const cachedPct = u.prompt_tokens > 0 ? ` (%${Math.round((100 * u.cached_tokens) / u.prompt_tokens)})` : "";
@@ -727,12 +742,28 @@ export const STRINGS: Record<Lang, Strings> = {
         `istek: ${n(u.requests)}${u.reported < u.requests ? ` (uç nokta yalnız ${n(u.reported)} tanesinin usage'ını bildirdi)` : ""}`,
         `girdi: ${n(u.prompt_tokens)} token, ${n(u.cached_tokens)} tanesi önbellekli${cachedPct}`,
         `çıktı: ${n(u.completion_tokens)} token (bunun ${n(u.reasoning_tokens)} tanesi akıl yürütme)`,
+        ...(u.quota_tokens != null
+          ? [`kota eşdeğeri: ≈${n(u.quota_tokens)} token (Evren önbellekli girdiyi %3 sayar; hesap kotasına yansıyan budur, ham toplam değil)`]
+          : []),
+        ...((u.warn ?? 0) > 0
+          ? [`⚠ ${(u.warn ?? 0) >= 2 ? "kırmızı" : "amber"} uyarı eşiği aşıldı (Ayarlar > ucli kullanım uyarısı; yalnız renk, hiçbir şey durdurulmaz)`]
+          : []),
         ...(u.unmetered > 0
           ? [`cevapsız deneme: ${n(u.unmetered)} (zaman aşımı ya da sunucu hatası; sunucu sayıyor ama tokeni bilinmiyor)`]
           : []),
         ...(floor ? ["≥: gerçek yakım gösterilenden fazla olabilir, az olamaz"] : []),
       ].join("\n");
     },
+    cacheDur: (min) => (min < 60 ? `${min} dk` : min < 2880 ? `${Math.round(min / 60)} sa` : `${Math.round(min / 1440)} g`),
+    cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5 dk" : `♨ ${dur}`),
+    cacheHint: (state, age, left) =>
+      [
+        `İstem önbelleği (1 saatlik): son gerçek model isteği ${age} önce.`,
+        state === "cold"
+          ? "SOĞUK: bu oturuma yazılan ilk mesaj bağlamın tamamını yeniden yazar (okumadan çok daha pahalı)."
+          : `Sıcak: yaklaşık ${left} sonra soğur; soğuyunca bir sonraki mesaj tüm bağlamı yeniden yazar.`,
+        "Yalnız izleme: hiçbir şeyi değiştirmez.",
+      ].join("\n"),
     openWindowBtn: "pencere aç",
     openingWindow: "pencere açılıyor…",
     mirrorBtn: "masaüstüne aç",
@@ -881,6 +912,17 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
+    ucliLimitsReasoningLabel: "akıl yürütme (--effort)",
+    ucliLimitsReasoningHint:
+      "ucli'ye --effort olarak geçen düzey (düşünme miktarı). Otomatik: oturumun effort'u (medium/high) aynı adla geçer. Kapalı: bayrak hiç geçmez (eski davranış). Model alanı kabul etmiyorsa (Evren yeteneklerinden okunur, ör. gemma-4-31b) hangi ayar seçilirse seçilsin geçmez. Yalnız YENİ açılan oturumlara uygulanır.",
+    ucliLimitsReasoningAuto: "otomatik (oturumun effort'u)",
+    ucliLimitsReasoningOff: "kapalı (bayrak yok)",
+    ucliUsageWarnLabel: "ucli kullanım uyarısı (oturum başına kota eşdeğeri token)",
+    ucliUsageWarnDesc:
+      "Token rozeti bu eşiklere göre amber/kırmızıya döner. Sayı, Evren hesap kotasına yansıyan değerdir (önbellekli girdi %3 sayılır), ham toplam DEĞİL; süreç başından beri biriken oturum toplamıdır. Yalnız renk: hiçbir şey durdurulmaz. Boş = varsayılan, off ya da 0 = o kademe kapalı.",
+    ucliUsageWarnAmberLabel: "amber eşiği",
+    ucliUsageWarnRedLabel: "kırmızı eşiği",
+    ucliUsageWarnPlaceholder: (def) => `boş = ${def}`,
     ucliWebLabel: "ucli web araçları (arama / sayfa getirme)",
     ucliWebDesc:
       "Yalnız claudeops'tan YENİ açılan ucli oturumlarına uygulanır; çalışanlar eski ayarla sürer, panel yeniden başlatması gerekmez. Arama varsayılan AÇIK: adres boşsa claudeops'un yönettiği yerel SearXNG kullanılır (docker kapsayıcısı, yalnız bu makineden erişilir; ucli aramayı kendi içine alınca bu geçici köprü kalkacak). Sayfa getirme (fetch_url) varsayılan KAPALI; yalnız aşağıya yazılan alan adlarına açılır.",
@@ -1209,7 +1251,8 @@ export const STRINGS: Record<Lang, Strings> = {
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
     windowlessBadge: "windowless",
     windowlessHint: "no gnome-terminal window (tmux-only fallback) — the CLI is running, it just has no visible window. \"open window\" attaches one without restarting the CLI.",
-    usageBadge: (tokens, requests, floor) => `${floor ? "≥" : ""}${tokens} tokens · ${requests} req`,
+    usageBadge: (tokens, requests, floor, quota) =>
+      `${floor ? "≥" : ""}${tokens} tokens · ${requests} req${quota ? ` · quota ≈${quota}` : ""}`,
     usageHint: (u) => {
       const n = (x: number) => x.toLocaleString("en-US");
       const cachedPct = u.prompt_tokens > 0 ? ` (${Math.round((100 * u.cached_tokens) / u.prompt_tokens)}%)` : "";
@@ -1219,12 +1262,28 @@ export const STRINGS: Record<Lang, Strings> = {
         `requests: ${n(u.requests)}${u.reported < u.requests ? ` (the endpoint reported usage for only ${n(u.reported)})` : ""}`,
         `input: ${n(u.prompt_tokens)} tokens, ${n(u.cached_tokens)} of them cached${cachedPct}`,
         `output: ${n(u.completion_tokens)} tokens (${n(u.reasoning_tokens)} of them reasoning)`,
+        ...(u.quota_tokens != null
+          ? [`quota equivalent: ≈${n(u.quota_tokens)} tokens (Evren counts cached input at 3%; this is what hits the account quota, not the raw total)`]
+          : []),
+        ...((u.warn ?? 0) > 0
+          ? [`⚠ ${(u.warn ?? 0) >= 2 ? "red" : "amber"} warning threshold exceeded (Settings > ucli usage warning; colour only, nothing is stopped)`]
+          : []),
         ...(u.unmetered > 0
           ? [`unanswered attempts: ${n(u.unmetered)} (timeout or server error; the server counts them but their tokens are unknown)`]
           : []),
         ...(floor ? ["≥: the real burn may be higher than shown, never lower"] : []),
       ].join("\n");
     },
+    cacheDur: (min) => (min < 60 ? `${min}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`),
+    cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5m" : `♨ ${dur}`),
+    cacheHint: (state, age, left) =>
+      [
+        `Prompt cache (1 hour): the last real model request was ${age} ago.`,
+        state === "cold"
+          ? "COLD: the first message sent to this session rewrites the whole context (far pricier than a read)."
+          : `Warm: goes cold in about ${left}; once cold, the next message rewrites the whole context.`,
+        "Monitoring only: it changes nothing.",
+      ].join("\n"),
     openWindowBtn: "open window",
     openingWindow: "opening window…",
     mirrorBtn: "open on desktop",
@@ -1373,6 +1432,17 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsPlaceholderAuto: "empty = preset default",
+    ucliLimitsReasoningLabel: "reasoning (--effort)",
+    ucliLimitsReasoningHint:
+      "The level passed to ucli as --effort (how much the model thinks). Auto: the session's effort (medium/high) goes through under the same name. Off: the flag is never passed (the old behaviour). If the model does not accept the field (read from Evren's capabilities, e.g. gemma-4-31b) it is not passed whatever you pick. Applies only to newly opened sessions.",
+    ucliLimitsReasoningAuto: "auto (the session's effort)",
+    ucliLimitsReasoningOff: "off (no flag)",
+    ucliUsageWarnLabel: "ucli usage warning (quota-equivalent tokens per session)",
+    ucliUsageWarnDesc:
+      "The token badge turns amber/red at these thresholds. The number is what hits the Evren account quota (cached input counts 3%), not the raw total; it is the per-session sum since the process started. Colour only: nothing is stopped. Empty = default, off or 0 = that level disabled.",
+    ucliUsageWarnAmberLabel: "amber threshold",
+    ucliUsageWarnRedLabel: "red threshold",
+    ucliUsageWarnPlaceholder: (def) => `empty = ${def}`,
     ucliWebLabel: "ucli web tools (search / page fetch)",
     ucliWebDesc:
       "Applies only to ucli sessions newly opened from claudeops; running ones keep their old settings, and the panel does not need a restart. Search is ON by default: with an empty address the local SearXNG managed by claudeops is used (a docker container reachable from this machine only; this temporary bridge goes away once ucli does search itself). Page fetch (fetch_url) is OFF by default and opens only to the domains listed below.",

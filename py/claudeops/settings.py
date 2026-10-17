@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import urllib.parse
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Tuple, TYPE_CHECKING
 
 from .atomic_json import atomic_write_json
 from .paths import CLAUDEOPS_DIR
@@ -128,6 +128,13 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # `--allow-fetch --allow-fetch-domain ...`; fetch_url HÂLÂ varsayılan kapalı.
                               # `provider_bin`/`ucli_limits`'le AYNI alan-bazlı merge ("boş=kaldır" = varsayılana
                               # dön). Okuma tarafı: `ucli_web_config()`.
+    "ucli_usage_warn": {},   # {amber, red: str} — 2026-10-17: ucli token rozetinin renk eşikleri, OTURUM başına
+                              # Evren KOTA EŞDEĞERİ token (`ucli_client.quota_equivalent_tokens`: önbellekli girdi
+                              # %3 sayılır, panonun ham toplamı DEĞİL), süreç başından beri. Boş/eksik = varsayılan
+                              # (amber 1M, kırmızı 3M: Evren günlük hesap kotası 15M, bir oturum tek başına bunun
+                              # %7'sini aşarsa amber); `off` (ya da 0/false/no) = o kademe KAPALI. YALNIZ renk/uyarı:
+                              # otomatik durdurma YOK. `ucli_limits`le AYNI alan-bazlı merge. Okuma tarafı:
+                              # `ucli_usage_warn_thresholds()`.
 }
 
 
@@ -151,6 +158,8 @@ def load_settings() -> Dict[str, Any]:
                 out["ucli_limits"] = {}
             if not isinstance(out.get("ucli_web"), dict):
                 out["ucli_web"] = {}
+            if not isinstance(out.get("ucli_usage_warn"), dict):
+                out["ucli_usage_warn"] = {}
             if not isinstance(out.get("cli_managed"), dict):
                 out["cli_managed"] = {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -170,7 +179,7 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "provider_bin", "ucli_limits", "ucli_web", "cli_managed") and isinstance(v, dict):
+        if k in ("default_model", "provider_bin", "ucli_limits", "ucli_web", "ucli_usage_warn", "cli_managed") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
@@ -310,6 +319,29 @@ def ucli_limit_overrides() -> Dict[str, int]:
         if n > 0:
             out[key] = n
     return out
+
+
+USAGE_WARN_DEFAULTS = {"amber": 1_000_000, "red": 3_000_000}
+
+
+def ucli_usage_warn_thresholds() -> Tuple[int, int]:
+    """(amber, kırmızı) kota-eşdeğeri token eşikleri (bkz. `ucli_usage_warn` yorumu). 0 = o kademe kapalı. Pozitif
+    tam sayı = eşik, `off` sözcükleri ya da "0" = kapalı, boş/eksik/geçersiz = varsayılan. Asla fırlatmaz."""
+    raw = load_settings().get("ucli_usage_warn") or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    out = []
+    for key in ("amber", "red"):
+        text = str(raw.get(key) if raw.get(key) is not None else "").strip().lower().replace("_", "").replace(",", "")
+        if text in _OFF_WORDS:
+            out.append(0)
+            continue
+        try:
+            n = int(text)
+        except ValueError:
+            n = 0
+        out.append(n if n > 0 else USAGE_WARN_DEFAULTS[key])
+    return out[0], out[1]
 
 
 _REASONING_LEVELS = ("low", "medium", "high", "max")

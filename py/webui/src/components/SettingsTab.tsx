@@ -74,6 +74,8 @@ type SettingsPatch = {
   /** {search_url, search_docker, allow_fetch_domains: string} — bkz. `Settings.ucli_web`.
    * Boş string bir alanı varsayılana döndürür (backend anahtarı siler). */
   ucli_web?: Record<string, string>;
+  /** {amber, red: string} — bkz. `Settings.ucli_usage_warn`. Boş string bir alanı varsayılana döndürür. */
+  ucli_usage_warn?: Record<string, string>;
 };
 
 /** `settings.py`'nin `_OFF_WORDS`i: `ucli_web.search_docker`ın "kapalı" saydığı değerler (settings.json
@@ -208,6 +210,8 @@ export function SettingsTab() {
   const [ucliLimitsDraft, setUcliLimitsDraft] = useState<Record<string, string>>({});
   // Same draft-until-blur reasoning for the two free-text `ucli_web` fields.
   const [ucliWebDraft, setUcliWebDraft] = useState<Record<string, string>>({});
+  // Same draft-until-blur reasoning for the two `ucli_usage_warn` thresholds (free text: a number or "off").
+  const [ucliWarnDraft, setUcliWarnDraft] = useState<Record<string, string>>({});
 
   if (!data) return null;
   const settings = data.settings;
@@ -419,6 +423,46 @@ export function SettingsTab() {
                     value={ucliLimitsDraft[field] ?? settings.ucli_limits[field] ?? ""}
                     onChange={(e) => setUcliLimitsDraft((prev) => ({ ...prev, [field]: e.target.value }))}
                     onBlur={(e) => void save({ ucli_limits: { [field]: e.target.value.trim() } })}
+                  />
+                </label>
+              ))}
+              <label title={t.ucliLimitsReasoningHint}>
+                {t.ucliLimitsReasoningLabel}
+                <select
+                  value={settings.ucli_limits.reasoning_effort ?? ""}
+                  onChange={(e) => void save({ ucli_limits: { reasoning_effort: e.target.value } })}
+                >
+                  <option value="">{t.ucliLimitsReasoningAuto}</option>
+                  <option value="off">{t.ucliLimitsReasoningOff}</option>
+                  {["low", "medium", "high", "max"].map((lvl) => (
+                    <option key={lvl} value={lvl}>
+                      {lvl}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+          {data.cli_list.includes("ucli") && (
+            <div className="opts" id="settingsUcliUsageWarnPanel">
+              <span className="opts-hint" style={{ flexBasis: "100%" }}>
+                <b>{t.ucliUsageWarnLabel}</b> {t.ucliUsageWarnDesc}
+              </span>
+              {(
+                [
+                  ["amber", t.ucliUsageWarnAmberLabel, "1M"],
+                  ["red", t.ucliUsageWarnRedLabel, "3M"],
+                ] as const
+              ).map(([field, label, def]) => (
+                <label key={field}>
+                  {label}
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder={t.ucliUsageWarnPlaceholder(def)}
+                    value={ucliWarnDraft[field] ?? settings.ucli_usage_warn?.[field] ?? ""}
+                    onChange={(e) => setUcliWarnDraft((prev) => ({ ...prev, [field]: e.target.value }))}
+                    onBlur={(e) => void save({ ucli_usage_warn: { [field]: e.target.value.trim() } })}
                   />
                 </label>
               ))}

@@ -65,7 +65,9 @@ from .. import model_freshness
 from .. import remote_desktop
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
-from ..settings import default_model_for, load_settings, resolved_model_for, save_settings
+from ..settings import (default_model_for, load_settings, resolved_model_for, save_settings,
+                        ucli_usage_warn_thresholds)
+from ..ucli_client import quota_equivalent_tokens, usage_warn_level
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots, normalize_mirrors
 from ..spawn import spawn_session, detect_display, open_window, open_mirror_window
 from ..providers.claude_provider import jsonl_path_for, last_assistant_model, last_assistant_effort
@@ -1208,11 +1210,54 @@ def _live_usage(s) -> Optional[Dict[str, int]]:
     """Çalışan session'ın süreç-boyu token/istek sayaçları (`provider.live_usage`, bugün yalnız
     ucli'nin durum dosyası): None = bu CLI'da sayaç yok ya da okunamadı, UI rozet göstermez.
     Önbelleksiz: küçük bir JSON dosyası, ve yalnız sayacı olan provider dosyaya dokunur
-    (`live_busy`in ucli yolu AYNI dosyayı zaten her tick okuyor). Asla fırlatmaz."""
+    (`live_busy`in ucli yolu AYNI dosyayı zaten her tick okuyor). Asla fırlatmaz.
+
+    Sayaç varsa iki alan eklenir (2026-10-17): `quota_tokens` (Evren KOTA EŞDEĞERİ: önbellekli girdi %3 sayılır,
+    rozetin ham toplamı değil) ve `warn` (0/1/2: `ucli_usage_warn` eşikleriyle amber/kırmızı). Yalnız renk, durdurma YOK."""
     try:
-        return get_provider(s.cli).live_usage(s.cwd, s.sid)
+        usage = get_provider(s.cli).live_usage(s.cwd, s.sid)
     except Exception:
         return None
+    if not usage or "prompt_tokens" not in usage:
+        return usage
+    try:
+        amber, red = ucli_usage_warn_thresholds()
+        quota = quota_equivalent_tokens(usage)
+        return {**usage, "quota_tokens": quota, "warn": usage_warn_level(quota, amber, red)}
+    except Exception:
+        return usage
+
+
+_CACHEINFO_CACHE: dict = {}  # (name, pid) -> (expires_monotonic, last_request_epoch | None, ttl_seconds)
+_CACHEINFO_TTL = 20.0
+
+
+def _cache_info_cached(s) -> Optional[Dict[str, int]]:
+    """Çalışan session'ın istem önbelleği ömrü: {"age": son GERÇEK model isteğinden bu yana sn, "ttl": önbellek ömrü sn}
+    ya da None (bu CLI'nın önbellek ömrü yok ya da eşleşen transkript bulunamadı: UI rozet göstermez, "soğuk" DEĞİL).
+    YALNIZ izleme (TBD#87 öneri A): hiçbir karara bağlanmaz. `handover.prompt_cache_is_warm`la AYNI yoklama
+    (`last_request_epoch`: yalnız tam eşleşen transkript, sondan okur, tüm dosyayı taramaz). Yoklama sonucu (istek
+    zamanı) 20 sn önbellekli, `age` her yanıtta yeniden hesaplanır. Asla fırlatmaz."""
+    now = time.monotonic()
+    key = (s.name, s.pid)
+    hit = _CACHEINFO_CACHE.get(key)
+    if not hit or hit[0] <= now:
+        last, ttl = None, 0
+        try:
+            provider = get_provider(s.cli)
+            ttl = int(provider.prompt_cache_ttl_seconds() or 0)
+            if ttl:
+                last = provider.last_request_epoch(s.cwd, s.sid, s.pid)
+        except Exception:
+            last = None
+        if len(_CACHEINFO_CACHE) > 256:   # emekli oturumların (ad, pid) anahtarları birikmesin
+            for k in [k for k, v in _CACHEINFO_CACHE.items() if v[0] <= now]:
+                del _CACHEINFO_CACHE[k]
+        hit = _CACHEINFO_CACHE[key] = (now + _CACHEINFO_TTL, last, ttl)
+    _, last, ttl = hit
+    if last is None or not ttl:
+        return None
+    return {"age": max(0, int(time.time() - last)), "ttl": ttl}
 
 
 _HISTORY_CACHE: dict = {}  # name -> (expires_monotonic, int | None)
@@ -1389,6 +1434,7 @@ def _status_payload() -> dict:
             "needs_ho": _needs_ho_cached(s) if s else None,
             "busy": _is_busy_cached(s) if s else None,
             "usage": _live_usage(s) if s else None,
+            "cache": _cache_info_cached(s) if s else None,
             "history_size": _history_size_cached(s) if s else None,
             "registered": True,
             "instance": False,
@@ -1427,6 +1473,7 @@ def _status_payload() -> dict:
             "needs_ho": _needs_ho_cached(s),
             "busy": _is_busy_cached(s),
             "usage": _live_usage(s),
+            "cache": _cache_info_cached(s),
             "history_size": _history_size_cached(s),
             "registered": rec is not None,
             "instance": rec is not None,

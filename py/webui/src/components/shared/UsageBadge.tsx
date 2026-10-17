@@ -5,6 +5,9 @@
  * "0 tokens". The headline is input + output tokens (what Evren's board calls "Toplam token", cached
  * input included); the tooltip has the breakdown. Amber when an attempt got no usable response
  * (`unmetered`): the server still counts it, and that is the single most expensive event measured so far.
+ * `warn` (backend, from the `ucli_usage_warn` thresholds on the quota-equivalent tokens, where Evren counts cached
+ * input at 3%) turns the badge amber (1) or red (2) and then also prints the quota number, so the colour is
+ * explained without hovering. Colour only: nothing is stopped.
  */
 
 import { useLang } from "../../i18n/LangContext";
@@ -24,9 +27,12 @@ export function UsageBadge({ usage }: { usage: SessionUsage }) {
   // A FLOOR: the endpoint sent no `usage` for some requests (`reported < requests`), or an attempt it
   // processed was cancelled client-side (`unmetered`), so the real burn can be higher, never lower.
   const floor = usage.unmetered > 0 || usage.reported < usage.requests;
+  const warn = usage.warn ?? 0;
+  const cls = `usage-badge${usage.unmetered > 0 ? " unmetered" : ""}${warn >= 2 ? " warn-2" : warn === 1 ? " warn-1" : ""}`;
+  const quota = warn > 0 && usage.quota_tokens != null ? formatTokens(usage.quota_tokens) : undefined;
   return (
-    <span className={`usage-badge${usage.unmetered > 0 ? " unmetered" : ""}`} title={t.usageHint(usage)}>
-      {t.usageBadge(formatTokens(usage.prompt_tokens + usage.completion_tokens), usage.requests, floor)}
+    <span className={cls} title={t.usageHint(usage)}>
+      {t.usageBadge(formatTokens(usage.prompt_tokens + usage.completion_tokens), usage.requests, floor, quota)}
     </span>
   );
 }
