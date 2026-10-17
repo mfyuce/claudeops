@@ -1251,8 +1251,10 @@ def _cache_info_cached(s) -> Optional[Dict[str, int]]:
         except Exception:
             last = None
         if len(_CACHEINFO_CACHE) > 256:   # emekli oturumların (ad, pid) anahtarları birikmesin
-            for k in [k for k, v in _CACHEINFO_CACHE.items() if v[0] <= now]:
-                del _CACHEINFO_CACHE[k]
+            # `list(...)`: sunucu iş parçacıklı, başka bir istek sözlüğe yazarken CANLI gezmek RuntimeError verirdi
+            for k, v in list(_CACHEINFO_CACHE.items()):
+                if v[0] <= now:
+                    _CACHEINFO_CACHE.pop(k, None)
         hit = _CACHEINFO_CACHE[key] = (now + _CACHEINFO_TTL, last, ttl)
     _, last, ttl = hit
     if last is None or not ttl:
