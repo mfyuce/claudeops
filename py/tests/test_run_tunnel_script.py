@@ -329,6 +329,43 @@ class WatchdogTests(unittest.TestCase):
         self.assertNotIn("sonlandırılıyor", env.log_text())
         env.finish(proc)
 
+    def down_alerts(self, env):
+        return [c for c in env.curl_calls() if "KOPUK" in c]
+
+    def test_two_consecutive_530_send_one_down_alert_before_the_restart(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["530"], watch_fails=6)
+        env.wait_for(lambda: len(env.probe_calls()) >= 5, "5 yoklama")
+        alerts = self.down_alerts(env)
+        self.assertEqual(len(alerts), 1, "ALERT_GAP içinde TEK uyarı")
+        self.assertIn(URL_A, alerts[0])
+        self.assertIn("kopuş uyarısı gönderildi", env.log_text())
+        env.finish(proc)
+
+    def test_flapping_530_401_alerts_although_the_counter_never_reaches_the_threshold(self):
+        """07:48-08:32 olayı: her 401 sayacı sıfırlıyor, yeniden başlatma yok, eskiden uyarı da yoktu."""
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["530", "401"] * 4)
+        env.wait_for(lambda: len(env.probe_calls()) >= 9, "9 yoklama")
+        self.assertEqual(len(self.down_alerts(env)), 1)
+        self.assertIn("kararsız", env.log_text())
+        self.assertNotIn("sonlandırılıyor", env.log_text())
+        env.finish(proc)
+
+    def test_a_healthy_or_single_blip_tunnel_sends_no_down_alert(self):
+        env = TunnelEnv(self)
+        proc = env.boot(watch=True, probes=["401", "530", "401", "401", "401", "401"])
+        env.wait_for(lambda: len(env.probe_calls()) >= 7, "7 yoklama")
+        self.assertEqual(self.down_alerts(env), [])
+        env.finish(proc)
+
+    def test_down_alert_is_silent_but_logged_when_notifications_are_off(self):
+        env = TunnelEnv(self, topic=None)
+        proc = env.boot(watch=True, probes=["530"], watch_fails=6)
+        env.wait_for(lambda: "kopuş uyarısı atlandı" in env.log_text(), "atlama satırı")
+        self.assertEqual(env.curl_calls(), [])
+        env.finish(proc)
+
     def test_a_response_between_failures_resets_the_counter(self):
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530", "530", "401", "530", "530", "401"])

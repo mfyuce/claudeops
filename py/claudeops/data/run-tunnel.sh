@@ -53,6 +53,14 @@ WATCH="${CLAUDEOPS_TUNNEL_WATCH:-1}"
 WATCH_INTERVAL="${CLAUDEOPS_TUNNEL_WATCH_INTERVAL:-60}"
 WATCH_FAILS="${CLAUDEOPS_TUNNEL_WATCH_FAILS:-3}"
 WATCH_GRACE="${CLAUDEOPS_TUNNEL_WATCH_GRACE:-90}"
+# KOPUŞ UYARISI (2026-10-18, kullanıcı: "tunnel gitti ama uyari gelmedi"): ntfy yalnız YENİ URL'de gidiyordu;
+# 07:48-08:32 arası tünel 530/401 arasında gidip gelirken (her 401 art arda sayacı sıfırlıyor, yeniden başlatma
+# hiç tetiklenmedi) telefona hiçbir şey düşmedi. Bekçi artık sayacı DEĞİŞTİRMEDEN ayrıca uyarır: art arda
+# ALERT_CONSEC yoklama 530 YA DA son ALERT_WINDOW yoklamanın ALERT_FLAPS'ı 530; en çok ALERT_GAP sn'de bir.
+ALERT_CONSEC="${CLAUDEOPS_TUNNEL_ALERT_CONSEC:-2}"
+ALERT_WINDOW="${CLAUDEOPS_TUNNEL_ALERT_WINDOW:-10}"
+ALERT_FLAPS="${CLAUDEOPS_TUNNEL_ALERT_FLAPS:-3}"
+ALERT_GAP="${CLAUDEOPS_TUNNEL_ALERT_GAP:-1800}"
 # Bekçinin Ayarlar'daki açma/kapama anahtarını okuduğu dosya (panelin settings.json'ı).
 SETTINGS_FILE="${CLAUDEOPS_SETTINGS_FILE:-$STATE_DIR/settings.json}"
 CLOUDFLARED="$HOME/.local/bin/cloudflared"
@@ -91,6 +99,20 @@ _notify_retry() {
         [ "$delay" -gt 300 ] && delay=300
         attempt=$((attempt + 1))
     done
+}
+
+# Tek atış kopuş uyarısı (ağ da kopuksa zaten gidemez; yeniden deneme yok, bir sonraki uyarı ALERT_GAP sonra).
+_notify_down() {
+    local url="$1" why="$2" topic prefix
+    topic=$(cat "$NTFY_TOPIC_FILE" 2>/dev/null || true)
+    [ -n "$topic" ] || { echo "[run-tunnel] kopuş uyarısı atlandı (ntfy kapalı)"; return 0; }
+    prefix="claudeops tunnel"
+    [ -n "$TUNNEL_LABEL" ] && prefix="claudeops [$TUNNEL_LABEL] tunnel"
+    if curl -fsS -m 10 -d "$prefix KOPUK ($why): $url" "https://ntfy.sh/${topic}" >/dev/null 2>&1; then
+        echo "[run-tunnel] kopuş uyarısı gönderildi ($why)"
+    else
+        echo "[run-tunnel] ⚠ kopuş uyarısı gönderilemedi ($why)"
+    fi
 }
 
 # Yeni URL'i URL_FILE'a yazar (HER ZAMAN; panel/service status oradan okur) ve bu URL daha önce
@@ -142,7 +164,7 @@ print("on" if v is None else str(v).strip().lower())
 # dalgalı DNS'te teşhis gecikmesin); başka her yanıt (401 panel kimlik doğrulaması dahil) sıfırlar.
 # İlk yoklamadan önce WATCH_GRACE sn beklenir (yeni tünelin adresi hemen yayılmayabilir).
 _watch_tunnel() {
-    local url="$1" pid="$2" fails=0 code enabled=1
+    local url="$1" pid="$2" fails=0 code enabled=1 hist="" flaps last_alert=0 now why
     sleep "$WATCH_GRACE"
     while kill -0 "$pid" 2>/dev/null; do
         # Anahtar HER turda okunur: Ayarlar'dan değişiklik tüneli yeniden başlatmadan (URL değişmeden) geçerli olur.
@@ -151,8 +173,23 @@ _watch_tunnel() {
             enabled=1
             code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$url/" 2>/dev/null || true)
             case "$code" in
+                530) hist="${hist}1" ;;
+                000|"") ;;
+                *) hist="${hist}0" ;;
+            esac
+            [ "${#hist}" -gt "$ALERT_WINDOW" ] && hist="${hist: -$ALERT_WINDOW}"
+            case "$code" in
                 530)
                     fails=$((fails + 1))
+                    flaps=$(printf '%s' "$hist" | tr -cd 1 | wc -c)
+                    why=""
+                    [ "$fails" -ge "$ALERT_CONSEC" ] && why="HTTP 530, $fails yoklamadır"
+                    [ -z "$why" ] && [ "$flaps" -ge "$ALERT_FLAPS" ] && why="kararsız: son ${#hist} yoklamada $flaps kez HTTP 530"
+                    now=$(date +%s)
+                    if [ -n "$why" ] && [ $((now - last_alert)) -ge "$ALERT_GAP" ]; then
+                        last_alert=$now
+                        _notify_down "$url" "$why"
+                    fi
                     [ "$fails" -eq 1 ] && echo "[run-tunnel] ⚠ sağlık bekçisi: $url HTTP 530 veriyor (tünel bağlı değil)"
                     if [ "$fails" -ge "$WATCH_FAILS" ]; then
                         echo "[run-tunnel] ⚠ sağlık bekçisi: $fails yoklamadır HTTP 530, cloudflared sonlandırılıyor (systemd yeni tünel açacak)"
