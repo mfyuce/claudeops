@@ -102,6 +102,11 @@ export function CliFields({
           ))}
         </select>
       </label>
+      {permissionMode === "allow-create" && (
+        <span className="opts-hint" style={{ flexBasis: "100%" }}>
+          {t.pmAllowCreateHint}
+        </span>
+      )}
     </>
   );
 }

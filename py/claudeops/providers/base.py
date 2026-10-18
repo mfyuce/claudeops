@@ -7,7 +7,7 @@ yeni bir CLI eklemek yeni bir provider dosyası + registry'ye bir satır demek.
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 import psutil
 
@@ -475,6 +475,15 @@ class CliProvider(ABC):
         tam sayı, eksik olan 0). None (VARSAYILAN) = böyle bir sayaç yok/okunamadı → panel rozet
         göstermez, "0 token" ile KARIŞTIRMAZ. `live_busy`le AYNI "yapılandırılmış veri, pane
         metni değil" sözleşmesi."""
+        return None
+
+    def live_phase(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, Any]]:
+        """CLI'nin KENDİ yapılandırılmış "şu an bir model çağrısının hangi AŞAMASINDAYIM" bilgisi varsa (ör. ucli'nin
+        `--status-file`ındaki `phase`: yanıt bekliyor / düşünüyor / yazıyor / yeniden deneme / kota beklemesi) onu döner;
+        `web.py`nin `_live_phase`i süre ve uyarı kademesini ekleyip satırın `phase` alanına koyar. Anahtarlar: `name`
+        (str) + isteğe bağlı since_unix, attempt, max_attempts, wait_secs, streamed_bytes (tam sayı) ve detail (str).
+        None (VARSAYILAN) = böyle bir bilgi yok, çağrı sürmüyor ya da okunamadı → panel rozet göstermez. `live_usage`le
+        AYNI "yapılandırılmış veri, pane metni değil" sözleşmesi."""
         return None
 
     def cyclable_modes(self) -> List[str]:

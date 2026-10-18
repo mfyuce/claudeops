@@ -110,6 +110,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # preset'in karşılık gelen sayısının YERİNE geçer; boş/eksik alan
                               # preset'in kendi varsayılanında kalır ("boş=otomatiğe dön",
                               # provider_bin/byok'la AYNI dil). Okuma tarafı: `ucli_limit_overrides()`.
+                              # 7. alan `stream` (2026-10-18, SAYI DEĞİL): ucli'ye `--stream` geçsin mi (yanıt akışlı
+                              # istenir: durum dosyasında `thinking`/`writing` aşamaları görünür, metin pane'e canlı
+                              # basılır; bedeli: cevap pane'de iki kez görünür, akış yarıda kesilirse çağrı yeniden
+                              # DENENMEZ). `on` aç, `off` kapat, boş = `UCLI_STREAM_DEFAULT` (AÇIK). Okuma: `ucli_stream_enabled()`.
     "ucli_web": {},          # {search_url, search_flavor, search_docker, allow_fetch_domains: str} — 2026-10-16
                               # (TODO.md "ucli web özellikleri"): unified-cli be4448a'nın web araçları
                               # (`web_search`, gerçek sayfada çalışan `fetch_url`) ucli'de varsayılan KAPALI.
@@ -128,6 +132,14 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # `--allow-fetch --allow-fetch-domain ...`; fetch_url HÂLÂ varsayılan kapalı.
                               # `provider_bin`/`ucli_limits`'le AYNI alan-bazlı merge ("boş=kaldır" = varsayılana
                               # dön). Okuma tarafı: `ucli_web_config()`.
+    "ucli_script": {},       # {mode: "off"|"read"|"full"} — 2026-10-17 (unified-cli 119c8e5, `chat --allow-script[=read|full]`):
+                              # model tek bir kısa Lua programı yazar, ucli bunu SÜREÇ İÇİNDE çalıştırıp araçları
+                              # çağırır. VARSAYILAN KAPALI (boş/eksik/`off`): token kazancı henüz gösterilemedi
+                              # (unified-cli TODO.md). `read` = yalnız salt-okuma araçlar; `full` = oturumun modele
+                              # zaten verdiği her şey (yazma `--allow-edit/--allow-create` ile, fetch, web_search,
+                              # MCP), kapılar aynı. YALNIZ ikili `--allow-script`'i tanıyorsa geçer. Tek alanlı sözlük:
+                              # `ucli_web`/`ucli_limits`'le aynı alan-bazlı merge ("boş=kaldır" = kapalı). Okuma tarafı:
+                              # `ucli_script_mode()`.
     "ucli_usage_warn": {},   # {amber, red: str} — 2026-10-17: ucli token rozetinin renk eşikleri, OTURUM başına
                               # Evren KOTA EŞDEĞERİ token (`ucli_client.quota_equivalent_tokens`: önbellekli girdi
                               # %3 sayılır, panonun ham toplamı DEĞİL), süreç başından beri. Boş/eksik = varsayılan
@@ -166,6 +178,8 @@ def load_settings() -> Dict[str, Any]:
                 out["ucli_limits"] = {}
             if not isinstance(out.get("ucli_web"), dict):
                 out["ucli_web"] = {}
+            if not isinstance(out.get("ucli_script"), dict):
+                out["ucli_script"] = {}
             if not isinstance(out.get("ucli_usage_warn"), dict):
                 out["ucli_usage_warn"] = {}
             if not isinstance(out.get("cli_managed"), dict):
@@ -187,7 +201,7 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "provider_bin", "ucli_limits", "ucli_web", "ucli_usage_warn", "cli_managed") and isinstance(v, dict):
+        if k in ("default_model", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_usage_warn", "cli_managed") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
@@ -376,6 +390,29 @@ def ucli_reasoning_mode() -> str:
     return value if value in _REASONING_LEVELS else "auto"
 
 
+_ON_WORDS = frozenset({"on", "1", "true", "yes", "y", "evet", "acik", "açık", "enabled"})
+# `--stream`in varsayılanı (2026-10-18, karar kullanıcıdan bana devredildi): AÇIK. Gerekçe ve ölçüm: TODO.md 2026-10-18 (3)
+# (7/7 Evren modeli düz ve araç çağrılı akışı doğru tamamladı, usage sayacı bozulmadı, gerçek Wi-Fi dalgalanmasında akış
+# kırılmadı; bedel: cevap terminalde iki kez görünür, akış yarıda kesilirse çağrı yeniden denenmez). Geri dönüş:
+# Ayarlar > model > "yanıt akışı" ya da `ucli_limits.stream=off`; yalnız YENİ oturumlara uygulanır.
+UCLI_STREAM_DEFAULT = True
+
+
+def ucli_stream_enabled() -> bool:
+    """`ucli_limits.stream` (2026-10-18): ucli'ye `--stream` geçirilsin mi. `_ON_WORDS` açar, `_OFF_WORDS` kapatır,
+    boş/eksik/tanınmayan değer `UCLI_STREAM_DEFAULT`. İkilinin bayrağı tanıması ayrıca ve her durumda
+    `providers/ucli_provider.py`de denetlenir. Asla fırlatmaz (settings.json elle düzenlenebiliyor)."""
+    raw = load_settings().get("ucli_limits") or {}
+    if not isinstance(raw, dict):
+        return UCLI_STREAM_DEFAULT
+    value = str(raw.get("stream") or "").strip().lower()
+    if value in _OFF_WORDS:
+        return False
+    if value in _ON_WORDS:
+        return True
+    return UCLI_STREAM_DEFAULT
+
+
 # Tam host adı: etiketler [a-z0-9-], tire uçta olmaz, toplam <= 253. Joker (`*.org`),
 # şema (`https://`), yol, port ve boşluk YOK: ucli `--allow-fetch-domain`i "tam host
 # adı eşleşmesi, büyük/küçük harf duyarsız, joker yok" diye tanımlıyor.
@@ -397,6 +434,16 @@ def _valid_http_url(url: str) -> bool:
 
 
 _OFF_WORDS = frozenset({"off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none"})
+
+
+def ucli_script_mode() -> str:
+    """`settings.json`'ın `ucli_script.mode` alanı — bkz. DEFAULT_SETTINGS'teki yorum. `"read"` ya da `"full"`;
+    boş/eksik/`off`/tanınmayan/bozuk her şey `""` (KAPALI). Asla fırlatmaz (settings.json elle düzenlenebiliyor)."""
+    raw = load_settings().get("ucli_script")
+    if not isinstance(raw, dict):
+        return ""
+    mode = str(raw.get("mode") or "").strip().lower()
+    return mode if mode in ("read", "full") else ""
 
 
 def ucli_web_config() -> Dict[str, Any]:

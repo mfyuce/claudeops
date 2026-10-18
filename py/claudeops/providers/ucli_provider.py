@@ -56,6 +56,12 @@ canlı yaşandı, aynı gün unified-cli'de ikisi de gevşetildi). `--effort`
 ön ayar aynı adla geçer, modelin alanı kabul ettiği Evren `capabilities`ından
 doğrulanırsa; bkz. `_effort_args`.
 
+2026-10-17/18'de ucli'nin yeni yüzeyleri bağlandı (hepsi ikilinin bayrağı tanımasına kapılı, eski ikili 'unexpected
+argument' ile spawn anında ölmesin diye): `allow-create` izin kipi (`--allow-create`, yalnız YENİ dosya), `ucli_script`
+ayarı (`--allow-script=read|full`, gömülü Lua katmanı, varsayılan KAPALI; bkz. `_script_args`), `ucli_limits.stream`
+(`--stream`, bkz. `_stream_args`) ve durum dosyasının `phase` alanı (`live_phase`: yanıt bekliyor / düşünüyor /
+yazıyor / yeniden deneme; panelde `web._live_phase` rozeti).
+
 Resume kimliği: ayrı bir UUID/sid kavramı yok — `sid` alanına doğrudan
 `--session`'ın kendi değerini (=session adı) koyuyoruz, çünkü
 `full_history`/`last_exchange`'in aldığı `sid` zaten `.ucli/chat/{sid}.jsonl`
@@ -81,13 +87,14 @@ import shlex
 import time
 import urllib.error
 import urllib.request
-from typing import Dict, FrozenSet, List, Optional, Sequence
+from typing import Any, Dict, FrozenSet, List, Optional, Sequence
 
 import psutil
 
 from .. import searxng
 from ..diaglog import diag_log
-from ..settings import byok_env_for, ucli_limit_overrides, ucli_reasoning_mode, ucli_web_config
+from ..settings import (byok_env_for, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_stream_enabled,
+                        ucli_web_config)
 from ..ucli_client import binary_supports_flag, read_chat_history, read_status_file, resolve_binary
 from .base import CliProvider
 
@@ -157,12 +164,19 @@ _REQUEST_TIMEOUT_SECS = 600
 _USAGE_FIELDS = ("requests", "reported", "prompt_tokens", "cached_tokens", "completion_tokens",
                  "reasoning_tokens", "request_bytes", "unmetered", "unmetered_bytes")
 
+# Durum dosyasındaki `phase` (unified-cli 1778f34, 2026-10-18) tam sayı alanları. `name` ve `detail` metin.
+_PHASE_INT_FIELDS = ("since_unix", "attempt", "max_attempts", "wait_secs", "streamed_bytes")
+
 # permission_mode: `chat --allow-edit`'in iki hali (varsayılan KAPALI = salt-
 # okunur araçlar). [0] varsayılan (RegisterForm.tsx effectiveModel deseniyle
 # AYNI "ilk eleman = varsayılan" kuralı).
 _READ_ONLY = "read-only"
 _ALLOW_EDIT = "allow-edit"
-_PERMISSION_MODES = [_READ_ONLY, _ALLOW_EDIT]
+# 2026-10-17: `chat --allow-create` (unified-cli 2026-09-28): YALNIZ yeni dosya yaratabilir, var olan hiçbir şeyi
+# değiştiremez/silemez/taşıyamaz (--allow-edit ile karşılıklı dışlayıcı). Araştırma oturumları "yalnız reviews/…
+# yaz" için bunu kullanır.
+_ALLOW_CREATE = "allow-create"
+_PERMISSION_MODES = [_READ_ONLY, _ALLOW_EDIT, _ALLOW_CREATE]
 
 # `_fetch_live_models()` başarısız olursa (key yok/ağ hatası) düşülecek son
 # çare — TOBEDECIDED#46'da canlı doğrulanmış TEK model. ucli'nin KENDİ
@@ -326,6 +340,32 @@ def _web_args(binary: str, session_name: str = "") -> List[str]:
     return args
 
 
+def _script_args(binary: str, session_name: str = "") -> List[str]:
+    """`--allow-script=read|full` (bkz. `settings.ucli_script_mode`). VARSAYILAN KAPALI: ayar boşsa argv BİREBİR
+    eskisi. Diğer bayraklarla AYNI sebepten YALNIZ ikili bayrağı tanıyorsa eklenir (eski ikili 'unexpected
+    argument' ile spawn anında patlardı); atlanırsa günlüğe yazılır. `=` biçimi ŞART: ucli'nin bayrağı isteğe
+    bağlı değer alır, ayrı argüman olarak yazılsa komut satırındaki bir sonraki sözcüğü yutabilirdi."""
+    mode = ucli_script_mode()
+    if not mode:
+        return []
+    if not binary_supports_flag(binary, "--allow-script"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--allow-script", binary=binary)
+        return []
+    return [f"--allow-script={mode}"]
+
+
+def _stream_args(binary: str, session_name: str = "") -> List[str]:
+    """`--stream` (bkz. `settings.ucli_stream_enabled`). Diğer bayraklarla AYNI sebepten YALNIZ ikili bayrağı tanıyorsa
+    eklenir (eski ikili 'unexpected argument' ile spawn anında patlardı); atlanırsa günlüğe yazılır. Sağlayıcı filtresi
+    YOK: claudeops `--provider` geçirmez, ucli'nin varsayılanı `chat-completions` (akışı yalnız o destekler)."""
+    if not ucli_stream_enabled():
+        return []
+    if not binary_supports_flag(binary, "--stream"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--stream", binary=binary)
+        return []
+    return ["--stream"]
+
+
 def _timeout_args(binary: str, limits: Dict[str, int], session_name: str = "") -> List[str]:
     """`--request-timeout-secs` (bkz. `_REQUEST_TIMEOUT_SECS`). `_web_args`le AYNI sebepten YALNIZ ikili bayrağı
     tanıyorsa eklenir: eski bir ikili 'unexpected argument' ile spawn anında patlardı; tanımıyorsa atlanır
@@ -404,9 +444,16 @@ class UcliProvider(CliProvider):
             argv += ["--model", model]
         if permission_mode == _ALLOW_EDIT:
             argv.append("--allow-edit")
+        elif permission_mode == _ALLOW_CREATE:
+            if binary_supports_flag(argv[0], "--allow-create"):
+                argv.append("--allow-create")
+            else:   # tanımayan eski ikili 'unexpected argument' ile patlardı: salt-okunur aç, günlüğe yaz
+                diag_log("ucli_flag_unsupported", name=session_name, flag="--allow-create", binary=argv[0])
         argv += _web_args(argv[0], session_name)
+        argv += _script_args(argv[0], session_name)
         argv += _timeout_args(argv[0], limits, session_name)
         argv += _effort_args(argv[0], model, preset, session_name)
+        argv += _stream_args(argv[0], session_name)
         inner =" ".join(shlex.quote(a) for a in argv)
         if _sync_api_key_file():
             # Anahtarı argv'ye GÖMMÜYORUZ — bu makine çok-kullanıcılı, `ps aux`
@@ -445,7 +492,8 @@ class UcliProvider(CliProvider):
                 model = cmd[i + 1]
             elif tok in flag_to_key and i + 1 < len(cmd):
                 parsed_limits[flag_to_key[tok]] = cmd[i + 1]
-        permission_mode = _ALLOW_EDIT if "--allow-edit" in cmd else _READ_ONLY
+        permission_mode = (_ALLOW_EDIT if "--allow-edit" in cmd
+                           else _ALLOW_CREATE if "--allow-create" in cmd else _READ_ONLY)
         # Ters eşleme: DÖRDÜNÜN BİRDEN eşleştiği preset'in adına dön — tek bir
         # bayrak artık yetmez (dört bağımsız bayrak var). Eşleşmezse (elle
         # değiştirilmiş/eski bir preset) None: bilinmeyen bir effort adı
@@ -513,6 +561,36 @@ class UcliProvider(CliProvider):
         for key in _USAGE_FIELDS:
             v = raw.get(key, 0)
             out[key] = v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+        return out
+
+    def live_phase(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, Any]]:
+        # Durum dosyasındaki `phase` (unified-cli 1778f34, 2026-10-18): bir MODEL ÇAĞRISI sürerken o an ne yapıldığı
+        # (`waiting_response`/`thinking`/`writing`/`retry_backoff`/`rate_limited`); çağrı dışında null, eski ikilide alan
+        # yok → None (bilinmiyor, rozet yok). `thinking`/`writing` YALNIZ `--stream` ile ayırt edilir (akışsız yanıt tek
+        # parça gelir). Bilinmeyen ad AYNEN geçer (ileri uyum: ucli yeni bir faz ekleyince rozet susmasın), sayı olmayan
+        # ya da negatif değer atılır (uydurma bir sayı göstermemek için 0'a ÇEKİLMEZ: eksik alan "bilinmiyor" demek).
+        if not sid:
+            return None
+        status = read_status_file(cwd, sid)
+        raw = status.get("phase") if status else None
+        if not isinstance(raw, dict):
+            return None
+        name = raw.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return None
+        out: Dict[str, Any] = {"name": name.strip()[:40]}
+        for key in _PHASE_INT_FIELDS:
+            v = raw.get(key)
+            if isinstance(v, int) and not isinstance(v, bool) and v >= 0:
+                out[key] = v
+        detail = raw.get("detail")
+        if isinstance(detail, str) and detail.strip():
+            out["detail"] = detail.strip()[:160]
+        # `last_activity_unix`: dosyanın EN SON yazıldığı an (ucli her yazımda yeniler; akışta en çok 2 sn'de bir yazar).
+        # Akış donarsa bu durur, `since_unix` (aşamanın başı) durmaz: "son bayttan beri" süresi ancak bundan çıkar.
+        last = status.get("last_activity_unix")
+        if isinstance(last, int) and not isinstance(last, bool) and last >= 0:
+            out["last_unix"] = last
         return out
 
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:

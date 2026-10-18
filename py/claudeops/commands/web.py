@@ -42,7 +42,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
 
@@ -1228,6 +1228,50 @@ def _live_usage(s) -> Optional[Dict[str, int]]:
         return usage
 
 
+# `waiting_response` süresinin amber/kırmızı kademeleri (sn). ucli'nin istek zaman aşımı 600 sn (claudeops
+# `--request-timeout-secs 600` geçirir): kırmızı = "zaman aşımı yaklaşıyor ya da geçti". Akışsız oturumda yavaş ama
+# çalışan bir çağrı ile asılı bir bağlantı AYNI görünür (ikisi de tek parça yanıt bekler), bu yüzden eşikler cömert.
+_PHASE_WAIT_AMBER_SECS = 300
+_PHASE_WAIT_RED_SECS = 600
+# `thinking`/`writing` (akışlı yanıt) sırasında son bayttan beri geçen süre (sn): ucli akış ilerledikçe durum dosyasını
+# en çok 2 sn'de bir yazar, yani normal akışta bu birkaç saniyeyi geçmez. Akış donarsa (bağlantı kopması/asılması)
+# `since_unix` durmaz ama dosya yazımı durur: rozet yeşil kalıp "ilerliyor" demesin diye bu süre amber/kırmızıya çevirir.
+_PHASE_STALL_AMBER_SECS = 60
+_PHASE_STALL_RED_SECS = 180
+
+
+def _live_phase(s) -> Optional[Dict[str, Any]]:
+    """Çalışan session'ın model çağrısı AŞAMASI (`provider.live_phase`, bugün yalnız ucli'nin durum dosyası): None = bu CLI'da
+    aşama yok, çağrı sürmüyor ya da okunamadı, UI rozet göstermez. Eklenen alanlar: `elapsed` (aşamanın başından beri sn,
+    SUNUCU saatiyle: tarayıcının saati başka olabilir; `since_unix` yoksa None), `idle` (durum dosyasının son yazımından beri
+    sn; bilinmiyorsa None) ve `warn` (0/1/2: yeniden deneme ve kota beklemesi amber, yanıt beklemesi `_PHASE_WAIT_*`
+    eşiklerinde, akış sessizliği `_PHASE_STALL_*` eşiklerinde amber/kırmızı). Yalnız renk, durdurma YOK. Asla fırlatmaz."""
+    try:
+        phase = get_provider(s.cli).live_phase(s.cwd, s.sid)
+    except Exception:
+        return None
+    if not phase:
+        return None
+    try:
+        phase = dict(phase)
+        now = time.time()
+        since = phase.get("since_unix")
+        elapsed = max(0, int(now - since)) if since else None
+        last = phase.pop("last_unix", None)
+        idle = max(0, int(now - last)) if last else None
+        name = phase.get("name")
+        warn = 0
+        if name in ("retry_backoff", "rate_limited"):
+            warn = 1
+        elif name == "waiting_response" and elapsed is not None:
+            warn = 2 if elapsed >= _PHASE_WAIT_RED_SECS else 1 if elapsed >= _PHASE_WAIT_AMBER_SECS else 0
+        elif name in ("thinking", "writing") and idle is not None:
+            warn = 2 if idle >= _PHASE_STALL_RED_SECS else 1 if idle >= _PHASE_STALL_AMBER_SECS else 0
+        return {**phase, "elapsed": elapsed, "idle": idle, "warn": warn}
+    except Exception:
+        return phase
+
+
 _CACHEINFO_CACHE: dict = {}  # (name, pid) -> (expires_monotonic, last_request_epoch | None, ttl_seconds)
 _CACHEINFO_TTL = 20.0
 
@@ -1436,6 +1480,7 @@ def _status_payload() -> dict:
             "needs_ho": _needs_ho_cached(s) if s else None,
             "busy": _is_busy_cached(s) if s else None,
             "usage": _live_usage(s) if s else None,
+            "phase": _live_phase(s) if s else None,
             "cache": _cache_info_cached(s) if s else None,
             "history_size": _history_size_cached(s) if s else None,
             "registered": True,
@@ -1475,6 +1520,7 @@ def _status_payload() -> dict:
             "needs_ho": _needs_ho_cached(s),
             "busy": _is_busy_cached(s),
             "usage": _live_usage(s),
+            "phase": _live_phase(s),
             "cache": _cache_info_cached(s),
             "history_size": _history_size_cached(s),
             "registered": rec is not None,

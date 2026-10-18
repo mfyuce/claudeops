@@ -73,6 +73,11 @@ export interface SessionInfo {
    * (also every REMOTE row: the gRPC host bridge does not carry it yet): show no badge, it does NOT mean
    * "0 tokens". */
   usage?: SessionUsage | null;
+  /** What a running ucli session's current MODEL CALL is doing right now (`web._live_phase`, from ucli's `--status-file`
+   * `phase`, unified-cli 1778f34): waiting for the response, thinking, writing, waiting to retry. Absent/`null` = no
+   * call in flight, a CLI without phases, or a binary older than that commit: show no badge. `thinking`/`writing` exist
+   * only when the session runs with `--stream`. Local rows only (the gRPC host bridge does not carry it). */
+  phase?: SessionPhase | null;
   /** Prompt-cache life of a running claude session (`web._cache_info_cached`, monitoring only): `age` = seconds since
    * the last REAL model request, `ttl` = the cache lifetime (3600). Absent/`null` = unknown (a CLI without a cache
    * lifetime, or no matching transcript, e.g. a resumed session that has not had a turn yet): show no badge, it does
@@ -83,6 +88,31 @@ export interface SessionInfo {
 export interface SessionCache {
   age: number;
   ttl: number;
+}
+
+/** ucli `.status.json` `phase` plus the two fields `web._live_phase` adds. `name` is `waiting_response`, `thinking`,
+ * `writing`, `retry_backoff` or `rate_limited`; an unknown name (a newer ucli) still arrives and is shown as-is. */
+export interface SessionPhase {
+  name: string;
+  /** Unix seconds when this phase began. */
+  since_unix?: number;
+  /** Seconds in this phase by the SERVER's clock (the browser's clock may differ); `null` without `since_unix`. */
+  elapsed?: number | null;
+  /** Seconds since ucli last wrote its status file (it rewrites at most every 2 s while a stream makes progress), by
+   * the server's clock; `null` when unknown. For `thinking`/`writing` this is "how long since the last bytes". */
+  idle?: number | null;
+  /** 1-based attempt of the model call and its retry budget. */
+  attempt?: number;
+  max_attempts?: number;
+  /** `retry_backoff` / `rate_limited`: the planned wait, seconds. */
+  wait_secs?: number;
+  /** `retry_backoff`: why the last attempt failed (a label). */
+  detail?: string;
+  /** `thinking` / `writing`: raw SSE bytes received so far (not tokens). */
+  streamed_bytes?: number;
+  /** 0 none, 1 amber, 2 red (`web._live_phase`): a retry or rate-limit wait is amber, a response that has not come for a
+   * long time amber then red. Colour only, nothing is stopped. */
+  warn?: number;
 }
 
 /** ucli `.status.json` `usage`: the sum over ALL tasks since the process started, failed ones included.
@@ -261,6 +291,13 @@ export interface Settings {
    * kararı backend'in (`settings.py`'nin `ucli_web_config()`'i); settings.json elle
    * düzenlenebildiği için `allow_fetch_domains` çalışma anında liste de olabilir. */
   ucli_web: Record<string, string>;
+  /** {mode: string} (2026-10-18) — ucli's embedded Lua script layer (`chat --allow-script[=read|full]`, unified-cli
+   * 119c8e5): empty/missing/"off" = off (the DEFAULT), "read" = scripts may call read-only tools, "full" = scripts may
+   * call everything the session already gives the model (writes only with allow-edit/allow-create, fetch_url,
+   * web_search, MCP; the gates are the model's own). Passed only to a binary that knows the flag, to NEW sessions.
+   * `settings.py`'s `ucli_script_mode()`; any other value counts as off. Optional on the wire: a backend older than
+   * this field omits it. */
+  ucli_script?: Record<string, string>;
   /** {amber, red: string} (2026-10-17) — per-session Evren quota-equivalent token thresholds for the ucli badge colour;
    * empty/missing = built-in 1M / 3M, "off" or "0" = that level disabled. `settings.py`'s `ucli_usage_warn_thresholds()`. */
   ucli_usage_warn: Record<string, string>;

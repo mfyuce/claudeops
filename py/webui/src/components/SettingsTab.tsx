@@ -42,6 +42,13 @@
  * field merge, `ucli_web_config()`) was already there. The panel also prints
  * the EFFECTIVE state in one line, because the server silently leaves search
  * off when the address is invalid.
+ *
+ * 2026-10-18: "models" gained the `ucli_script` panel (one off/read/full
+ * selector for ucli's embedded Lua script layer, default OFF). "Off" saves an
+ * empty `mode`, which the backend's field merge removes (the same "empty = back
+ * to the default" rule as the other ucli panels). The per-session permission
+ * choice needs no UI work here: `allow-create` arrives through the provider's
+ * `permission_modes` like any other mode.
  */
 
 import { useState } from "react";
@@ -74,6 +81,8 @@ type SettingsPatch = {
   /** {search_url, search_docker, allow_fetch_domains: string} — bkz. `Settings.ucli_web`.
    * Boş string bir alanı varsayılana döndürür (backend anahtarı siler). */
   ucli_web?: Record<string, string>;
+  /** {mode: "" | "read" | "full"} — bkz. `Settings.ucli_script`. Boş string betik katmanını KAPATIR (backend anahtarı siler). */
+  ucli_script?: Record<string, string>;
   /** {amber, red: string} — bkz. `Settings.ucli_usage_warn`. Boş string bir alanı varsayılana döndürür. */
   ucli_usage_warn?: Record<string, string>;
   /** "on" | "off" — bkz. `Settings.tunnel_watch`. */
@@ -221,6 +230,13 @@ export function SettingsTab() {
   const webSearchUrl = (ucliWebDraft.search_url ?? asText(webCfg.search_url)).trim();
   const webDockerOff = OFF_WORDS.has(asText(webCfg.search_docker).trim().toLowerCase());
   const webFetchDomains = (ucliWebDraft.allow_fetch_domains ?? asText(webCfg.allow_fetch_domains)).trim();
+  // `settings.py`'nin `ucli_script_mode()`i: yalnız "read"/"full" geçerli; boş, "off" ya da elle bozulmuş her değer KAPALI
+  // sayılır, seçici de olmayan bir seçeneği değil KAPALI'yı göstermeli.
+  const rawScriptMode = asText(settings.ucli_script?.mode).trim().toLowerCase();
+  const scriptMode = rawScriptMode === "read" || rawScriptMode === "full" ? rawScriptMode : "";
+  // `settings.py`'nin `ucli_stream_enabled()`i: varsayılan (`UCLI_STREAM_DEFAULT`) AÇIK; yalnız `_OFF_WORDS` kapatır, boş ya da
+  // bozuk değer açık kalır. Varsayılan değişirse bu mantık birlikte çevrilmeli.
+  const streamOff = OFF_WORDS.has(asText(settings.ucli_limits?.stream).trim().toLowerCase());
 
   async function save(patch: SettingsPatch) {
     setError("");
@@ -453,6 +469,19 @@ export function SettingsTab() {
                   ))}
                 </select>
               </label>
+              <label>
+                {t.ucliLimitsStreamLabel}
+                <select
+                  value={streamOff ? "off" : ""}
+                  onChange={(e) => void save({ ucli_limits: { stream: e.target.value } })}
+                >
+                  <option value="">{t.ucliLimitsStreamOn}</option>
+                  <option value="off">{t.ucliLimitsStreamOff}</option>
+                </select>
+              </label>
+              <span className="opts-hint" style={{ flexBasis: "100%" }}>
+                {t.ucliLimitsStreamHint}
+              </span>
             </div>
           )}
           {data.cli_list.includes("ucli") && (
@@ -526,6 +555,24 @@ export function SettingsTab() {
                     : t.ucliWebStateAuto}
                 {" · "}
                 {webFetchDomains ? t.ucliWebFetchOn : t.ucliWebFetchOff}
+              </span>
+            </div>
+          )}
+          {data.cli_list.includes("ucli") && (
+            <div className="opts" id="settingsUcliScriptPanel">
+              <span className="opts-hint" style={{ flexBasis: "100%" }}>
+                <b>{t.ucliScriptLabel}</b> {t.ucliScriptDesc}
+              </span>
+              <label>
+                {t.ucliScriptModeLabel}
+                <select value={scriptMode} onChange={(e) => void save({ ucli_script: { mode: e.target.value } })}>
+                  <option value="">{t.ucliScriptOff}</option>
+                  <option value="read">{t.ucliScriptRead}</option>
+                  <option value="full">{t.ucliScriptFull}</option>
+                </select>
+              </label>
+              <span className="opts-hint" style={{ flexBasis: "100%" }}>
+                {t.ucliScriptModeHint}
               </span>
             </div>
           )}

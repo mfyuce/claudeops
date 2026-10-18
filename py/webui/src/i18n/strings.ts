@@ -44,6 +44,19 @@
 
 export type Lang = "tr" | "en";
 
+/** The `SessionInfo.phase` fields the phase strings read (structural, so this file stays dependency-free). */
+export interface PhaseArg {
+  name: string;
+  elapsed?: number | null;
+  idle?: number | null;
+  attempt?: number;
+  max_attempts?: number;
+  wait_secs?: number;
+  detail?: string;
+  streamed_bytes?: number;
+  warn?: number;
+}
+
 export interface Strings {
   title: string;
   colName: string;
@@ -279,6 +292,9 @@ export interface Strings {
   cacheDur: (minutes: number) => string;
   cacheBadge: (state: "warm" | "expiring" | "cold", dur: string) => string;
   cacheHint: (state: "warm" | "expiring" | "cold", age: string, left: string) => string;
+  phaseBadge: (p: PhaseArg) => string;
+  phaseHint: (p: PhaseArg) => string;
+  pmAllowCreateHint: string;
   openWindowBtn: string;
   openingWindow: string;
   mirrorBtn: string;
@@ -416,6 +432,10 @@ export interface Strings {
   ucliLimitsReasoningHint: string;
   ucliLimitsReasoningAuto: string;
   ucliLimitsReasoningOff: string;
+  ucliLimitsStreamLabel: string;
+  ucliLimitsStreamHint: string;
+  ucliLimitsStreamOff: string;
+  ucliLimitsStreamOn: string;
   ucliUsageWarnLabel: string;
   ucliUsageWarnDesc: string;
   ucliUsageWarnAmberLabel: string;
@@ -443,6 +463,13 @@ export interface Strings {
   ucliWebStateOff: string;
   ucliWebFetchOn: string;
   ucliWebFetchOff: string;
+  ucliScriptLabel: string;
+  ucliScriptDesc: string;
+  ucliScriptModeLabel: string;
+  ucliScriptModeHint: string;
+  ucliScriptOff: string;
+  ucliScriptRead: string;
+  ucliScriptFull: string;
   tabHintToggle: string;
   tabSettingsGeneral: string;
   tabSettingsModels: string;
@@ -513,6 +540,18 @@ export interface Strings {
   orchHistoryEmpty: string;
   orchShowMoreBtn: string;
   orchViewBtn: string;
+}
+
+/** The phase badge's durations: whole seconds in (the server's clock), "45 sn" / "4 dk" / "1 sa 5 dk". */
+function phaseDurTr(s: number): string {
+  if (s < 60) return `${s} sn`;
+  if (s < 3600) return `${Math.floor(s / 60)} dk`;
+  return `${Math.floor(s / 3600)} sa ${Math.floor((s % 3600) / 60)} dk`;
+}
+function phaseDurEn(s: number): string {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -758,6 +797,62 @@ export const STRINGS: Record<Lang, Strings> = {
         ...(floor ? ["≥: gerçek yakım gösterilenden fazla olabilir, az olamaz"] : []),
       ].join("\n");
     },
+    pmAllowCreateHint:
+      "allow-create: yalnız YENİ dosya yaratır; var olan bir dosyayı değiştiremez, silemez, taşıyamaz. 'Önce iskeleti yaz, sonra doldur' çalışmaz: ikinci yazma reddedilir, raporu tek seferde yazdır.",
+    phaseBadge: (p) => {
+      const e = p.elapsed ?? null;
+      const d = e != null ? ` ${phaseDurTr(e)}` : "";
+      const quiet = p.idle != null && p.idle >= 20 ? ` · ${phaseDurTr(p.idle)} sessiz` : "";
+      const kib = p.streamed_bytes != null ? ` · ${Math.max(1, Math.round(p.streamed_bytes / 1024))} KiB` : "";
+      const tries = p.max_attempts ? ` ${p.attempt ?? 1}/${p.max_attempts}` : "";
+      const again = (p.attempt ?? 1) > 1 && p.max_attempts ? ` (${p.attempt}/${p.max_attempts})` : "";
+      const left = phaseDurTr(Math.max(0, (p.wait_secs ?? 0) - (e ?? 0)));
+      switch (p.name) {
+        case "waiting_response":
+          return `⏳ yanıt bekliyor${d}${again}`;
+        case "thinking":
+          return `💭 düşünüyor${d}${kib}${quiet}${again}`;
+        case "writing":
+          return `✍ yazıyor${d}${kib}${quiet}${again}`;
+        case "retry_backoff":
+          return `↻ yeniden deneme${tries}, ${left} sonra`;
+        case "rate_limited":
+          return `⏸ kota sınırı${tries}, ${left} bekliyor`;
+        default:
+          return `${p.name}${d}`;
+      }
+    },
+    phaseHint: (p) => {
+      const what: Record<string, string> = {
+        waiting_response: "yanıt bekliyor: istek gönderildi, yanıt henüz gelmedi",
+        thinking: "düşünüyor: model akıl yürütme parçalarını akıtıyor",
+        writing: "yazıyor: model cevap metnini akıtıyor",
+        retry_backoff: "yeniden deneme bekleniyor: son deneme başarısız oldu",
+        rate_limited: "kota/hız sınırı (429): ucli bekleyip yeniden deneyecek",
+      };
+      return [
+        "Şu anki model çağrısı (ucli durum dosyası):",
+        what[p.name] ?? `bilinmeyen aşama: ${p.name}`,
+        ...(p.elapsed != null ? [`bu aşama ${phaseDurTr(p.elapsed)} sürüyor`] : []),
+        ...(p.max_attempts ? [`deneme: ${p.attempt ?? 1}/${p.max_attempts}`] : []),
+        ...(p.detail ? [`son hata: ${p.detail}`] : []),
+        ...(p.streamed_bytes != null ? [`alınan akış: ${Math.round(p.streamed_bytes / 1024)} KiB (ham SSE baytı, token değil)`] : []),
+        ...(p.streamed_bytes != null && p.idle != null ? [`son bayt ${phaseDurTr(p.idle)} önce geldi`] : []),
+        ...(p.name === "waiting_response"
+          ? ["Oturum --stream olmadan çalışıyorsa yanıt tek parça gelir: düşünüyor/yazıyor ayrımı görünmez, yalnız bekleme süresi görünür."]
+          : []),
+        ...((p.warn ?? 0) > 0
+          ? [
+              p.name === "waiting_response"
+                ? `⚠ ${(p.warn ?? 0) >= 2 ? "kırmızı" : "amber"}: yanıt uzun süredir gelmiyor (ucli'nin istek zaman aşımı varsayılan 600 sn); çağrı takılmış olabilir`
+                : p.name === "thinking" || p.name === "writing"
+                  ? `⚠ ${(p.warn ?? 0) >= 2 ? "kırmızı" : "amber"}: akış durdu, uzun süredir yeni bayt gelmiyor; bağlantı donmuş olabilir`
+                  : "⚠ amber: ucli çağrıyı yeniden deniyor",
+              "Yalnız bilgi: hiçbir şey durdurulmaz.",
+            ]
+          : []),
+      ].join("\n");
+    },
     cacheDur: (min) => (min <= 60 ? `${min} dk` : min < 2880 ? `${Math.round(min / 60)} sa` : `${Math.round(min / 1440)} g`),
     cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5 dk" : `♨ ${dur}`),
     cacheHint: (state, age, left) =>
@@ -921,6 +1016,11 @@ export const STRINGS: Record<Lang, Strings> = {
       "ucli'ye --effort olarak geçen düzey (düşünme miktarı). Otomatik: oturumun effort'u (medium/high) aynı adla geçer. Kapalı: bayrak hiç geçmez (eski davranış). Model alanı kabul etmiyorsa (Evren yeteneklerinden okunur, ör. gemma-4-31b) hangi ayar seçilirse seçilsin geçmez. Yalnız YENİ açılan oturumlara uygulanır.",
     ucliLimitsReasoningAuto: "otomatik (oturumun effort'u)",
     ucliLimitsReasoningOff: "kapalı (bayrak yok)",
+    ucliLimitsStreamLabel: "yanıt akışı (--stream)",
+    ucliLimitsStreamHint:
+      "Varsayılan AÇIK. Açıkken model yanıtı akışlı istenir: ucli'nin durum dosyasında ve satırdaki rozette 'düşünüyor' / 'yazıyor' aşamaları ve akan miktar görünür (akış donarsa rozet uyarır), metin terminale canlı basılır. Bedeli: (1) cevap terminalde iki kez görünür (canlı akış, sonra son çıktı); (2) akış yarıda kesilirse (ağ kesintisi) çağrı yeniden DENENMEZ ve görev hata verir, akışsız çağrıda kesinti yanıt gelmeden olursa yeniden denenir. Yalnız YENİ açılan oturumlara uygulanır.",
+    ucliLimitsStreamOff: "kapalı",
+    ucliLimitsStreamOn: "açık (varsayılan)",
     ucliUsageWarnLabel: "ucli kullanım uyarısı (oturum başına kota eşdeğeri token)",
     ucliUsageWarnDesc:
       "Token rozeti bu eşiklere göre amber/kırmızıya döner. Sayı, Evren hesap kotasına yansıyan değerdir (önbellekli girdi %3 sayılır), ham toplam DEĞİL; süreç başından beri biriken oturum toplamıdır. Yalnız renk: hiçbir şey durdurulmaz. Boş = varsayılan, off ya da 0 = o kademe kapalı.",
@@ -954,6 +1054,15 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliWebStateOff: "Arama: kapalı",
     ucliWebFetchOn: "Sayfa getirme: yazılan alan adlarına açık",
     ucliWebFetchOff: "Sayfa getirme: kapalı",
+    ucliScriptLabel: "ucli betik katmanı (Lua)",
+    ucliScriptDesc:
+      "Model tek bir kısa Lua programı yazar; ucli bunu kendi süreci içinde çalıştırıp araçları o programdan çağırır, modele yalnız programın döndürdüğü küçük değer gider. Yalnız claudeops'tan YENİ açılan ucli oturumlarına uygulanır; çalışanlar eski ayarla sürer. Varsayılan KAPALI: token kazancı henüz kontrollü ölçümle gösterilmedi, kanıtlanmış değeri mekanik işte doğruluk (ör. harf sayma). Betik içindeki her araç çağrısı, yukarıdaki max-tool-calls bütçesine ayrı sayılır.",
+    ucliScriptModeLabel: "betik modu (--allow-script)",
+    ucliScriptModeHint:
+      "Salt-okuma: betik yalnız salt-okuma araçlarını çağırabilir. Tam: betik, oturumun modele zaten verdiği HER şeyi çağırabilir (yazma yalnız oturum yazma izniyle açıldıysa; ayrıca fetch_url, web_search ve MCP araçları). Kapılar modelin kendi çağrılarıyla aynıdır, betik fazladan yetki kazanmaz. Kurulu ucli ikilisi bayrağı tanımıyorsa sessizce atlanır (tanılama günlüğüne yazılır).",
+    ucliScriptOff: "kapalı (varsayılan)",
+    ucliScriptRead: "salt-okuma (read)",
+    ucliScriptFull: "tam (full)",
     tabHintToggle: "Açıklamayı göster/gizle",
     tabSettingsGeneral: "genel",
     tabSettingsModels: "model",
@@ -1283,6 +1392,62 @@ export const STRINGS: Record<Lang, Strings> = {
         ...(floor ? ["≥: the real burn may be higher than shown, never lower"] : []),
       ].join("\n");
     },
+    pmAllowCreateHint:
+      "allow-create: only creates NEW files; it cannot modify, delete or move an existing one. 'Write a skeleton first, fill it in later' does not work: the second write is refused, have the report written in one go.",
+    phaseBadge: (p) => {
+      const e = p.elapsed ?? null;
+      const d = e != null ? ` ${phaseDurEn(e)}` : "";
+      const quiet = p.idle != null && p.idle >= 20 ? ` · quiet ${phaseDurEn(p.idle)}` : "";
+      const kib = p.streamed_bytes != null ? ` · ${Math.max(1, Math.round(p.streamed_bytes / 1024))} KiB` : "";
+      const tries = p.max_attempts ? ` ${p.attempt ?? 1}/${p.max_attempts}` : "";
+      const again = (p.attempt ?? 1) > 1 && p.max_attempts ? ` (${p.attempt}/${p.max_attempts})` : "";
+      const left = phaseDurEn(Math.max(0, (p.wait_secs ?? 0) - (e ?? 0)));
+      switch (p.name) {
+        case "waiting_response":
+          return `⏳ waiting for response${d}${again}`;
+        case "thinking":
+          return `💭 thinking${d}${kib}${quiet}${again}`;
+        case "writing":
+          return `✍ writing${d}${kib}${quiet}${again}`;
+        case "retry_backoff":
+          return `↻ retry${tries} in ${left}`;
+        case "rate_limited":
+          return `⏸ rate limited${tries}, waiting ${left}`;
+        default:
+          return `${p.name}${d}`;
+      }
+    },
+    phaseHint: (p) => {
+      const what: Record<string, string> = {
+        waiting_response: "waiting for response: the request was sent, no answer yet",
+        thinking: "thinking: the model is streaming reasoning chunks",
+        writing: "writing: the model is streaming its answer text",
+        retry_backoff: "waiting to retry: the last attempt failed",
+        rate_limited: "rate limited (429): ucli will wait and retry",
+      };
+      return [
+        "Current model call (ucli status file):",
+        what[p.name] ?? `unknown phase: ${p.name}`,
+        ...(p.elapsed != null ? [`this phase has lasted ${phaseDurEn(p.elapsed)}`] : []),
+        ...(p.max_attempts ? [`attempt: ${p.attempt ?? 1}/${p.max_attempts}`] : []),
+        ...(p.detail ? [`last error: ${p.detail}`] : []),
+        ...(p.streamed_bytes != null ? [`streamed so far: ${Math.round(p.streamed_bytes / 1024)} KiB (raw SSE bytes, not tokens)`] : []),
+        ...(p.streamed_bytes != null && p.idle != null ? [`last bytes arrived ${phaseDurEn(p.idle)} ago`] : []),
+        ...(p.name === "waiting_response"
+          ? ["A session running without --stream gets its answer in one piece: the thinking/writing split is not visible, only the wait."]
+          : []),
+        ...((p.warn ?? 0) > 0
+          ? [
+              p.name === "waiting_response"
+                ? `⚠ ${(p.warn ?? 0) >= 2 ? "red" : "amber"}: no response for a long time (ucli's request timeout defaults to 600 s); the call may be stuck`
+                : p.name === "thinking" || p.name === "writing"
+                  ? `⚠ ${(p.warn ?? 0) >= 2 ? "red" : "amber"}: the stream stopped, no new bytes for a long time; the connection may be frozen`
+                  : "⚠ amber: ucli is retrying the call",
+              "Information only: nothing is stopped.",
+            ]
+          : []),
+      ].join("\n");
+    },
     cacheDur: (min) => (min <= 60 ? `${min}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`),
     cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5m" : `♨ ${dur}`),
     cacheHint: (state, age, left) =>
@@ -1446,6 +1611,11 @@ export const STRINGS: Record<Lang, Strings> = {
       "The level passed to ucli as --effort (how much the model thinks). Auto: the session's effort (medium/high) goes through under the same name. Off: the flag is never passed (the old behaviour). If the model does not accept the field (read from Evren's capabilities, e.g. gemma-4-31b) it is not passed whatever you pick. Applies only to newly opened sessions.",
     ucliLimitsReasoningAuto: "auto (the session's effort)",
     ucliLimitsReasoningOff: "off (no flag)",
+    ucliLimitsStreamLabel: "response streaming (--stream)",
+    ucliLimitsStreamHint:
+      "On by default. When on, the model response is requested as a stream: the 'thinking' / 'writing' phases and the amount received show in ucli's status file and in the row badge (which warns when the stream freezes), and the text is printed to the terminal live. The cost: (1) the answer appears twice in the terminal (the live stream, then the final output); (2) if the stream breaks off mid-way (a network drop) the call is NOT retried and the task fails, whereas a non-streamed call that drops before any answer arrives is retried. Applies only to newly opened sessions.",
+    ucliLimitsStreamOff: "off",
+    ucliLimitsStreamOn: "on (default)",
     ucliUsageWarnLabel: "ucli usage warning (quota-equivalent tokens per session)",
     ucliUsageWarnDesc:
       "The token badge turns amber/red at these thresholds. The number is what hits the Evren account quota (cached input counts 3%), not the raw total; it is the per-session sum since the process started. Colour only: nothing is stopped. Empty = default, off or 0 = that level disabled.",
@@ -1479,6 +1649,15 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliWebStateOff: "Search: off",
     ucliWebFetchOn: "Page fetch: open to the listed domains",
     ucliWebFetchOff: "Page fetch: off",
+    ucliScriptLabel: "ucli script layer (Lua)",
+    ucliScriptDesc:
+      "The model writes one short Lua program; ucli runs it inside its own process and calls its tools from that program, and only the small value the program returns goes back to the model. Applies only to ucli sessions newly opened from claudeops; running ones keep their old settings. OFF by default: the token saving has not been shown by a controlled measurement yet, the proven value is accuracy on mechanical work (e.g. counting letters). Every tool call made inside a script counts separately against the max-tool-calls budget above.",
+    ucliScriptModeLabel: "script mode (--allow-script)",
+    ucliScriptModeHint:
+      "Read-only: scripts may only call read-only tools. Full: scripts may call EVERYTHING the session already gives the model (writes only if the session was opened with write permission; also fetch_url, web_search and MCP tools). The gates are the model's own, a script gains no extra authority. If the installed ucli binary does not know the flag it is silently skipped (logged in the diagnostics log).",
+    ucliScriptOff: "off (default)",
+    ucliScriptRead: "read-only (read)",
+    ucliScriptFull: "full",
     tabHintToggle: "Show/hide description",
     tabSettingsGeneral: "general",
     tabSettingsModels: "models",
