@@ -108,6 +108,10 @@ export interface Strings {
   selectNeedsHo: string;
   selectAttention: string;
   selectWindowless: string;
+  mirrorAllBtn: string;
+  mirrorAllHint: string;
+  mirrorAllNone: string;
+  mirrorAllConfirm: (names: string[]) => string;
   windowlessSelectHint: string;
   windowlessUnknown: string;
   windowlessNone: string;
@@ -611,6 +615,11 @@ export const STRINGS: Record<Lang, Strings> = {
     selectNeedsHo: "needs-ho seç",
     selectAttention: "dikkat gerekenleri seç",
     selectWindowless: "penceresizleri seç",
+    mirrorAllBtn: "uzak pencereleri aç",
+    mirrorAllHint:
+      "Uzak host'lardaki çalışan oturumların yerel masaüstü (mirror) pencerelerini açar. Seçim varsa yalnız seçilenler, yoksa penceresi açık olmayan tümü. 4'lü gruplarla açılır; zaten açık olanlar tekrar açılmaz.",
+    mirrorAllNone: "Açılacak uzak oturum yok (hepsinin penceresi açık ya da uzakta çalışan tmux oturumu yok).",
+    mirrorAllConfirm: (names) => `${names.length} uzak oturumun masaüstü penceresi açılsın mı?\n\n${names.join(", ")}`,
     windowlessSelectHint:
       "Ekranda penceresi olmayan (tmux'ta arkada koşan) yerel oturumları seçer. Hiçbir şey durdurmaz: işi bitenleri 'durdur' ile sen kapatırsın. Uzak host'lar dahil değil.",
     windowlessUnknown: "Penceresiz listesi şu an bilinmiyor (tmux yanıt vermedi); hiçbir şey seçilmedi.",
@@ -1216,6 +1225,11 @@ export const STRINGS: Record<Lang, Strings> = {
     selectNeedsHo: "select needs-ho",
     selectAttention: "select needs attention",
     selectWindowless: "select windowless",
+    mirrorAllBtn: "open remote windows",
+    mirrorAllHint:
+      "Opens local desktop (mirror) windows for the running sessions on remote hosts. Only the selected ones if any are selected, otherwise every one without an open window. Opened in groups of 4; already-open windows are not opened again.",
+    mirrorAllNone: "Nothing to open (every remote session already has a window, or no remote tmux session is running).",
+    mirrorAllConfirm: (names) => `Open desktop windows for ${names.length} remote sessions?\n\n${names.join(", ")}`,
     windowlessSelectHint:
       "Selects local sessions with no screen window (running in the background in tmux). Stops nothing: close the finished ones with 'stop' yourself. Remote hosts are not included.",
     windowlessUnknown: "The windowless list is unknown right now (tmux did not answer); nothing was selected.",

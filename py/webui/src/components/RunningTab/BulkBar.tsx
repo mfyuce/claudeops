@@ -16,7 +16,7 @@
  */
 
 import { Fragment, useState } from "react";
-import { apiPost, apiStart, apiNewChat, ApiError, type StartPayload, type NewChatPayload } from "../../api/client";
+import { apiPost, apiStart, apiNewChat, apiTermMirrorWindow, ApiError, type StartPayload, type NewChatPayload } from "../../api/client";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
@@ -245,6 +245,44 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     selection.replace(picked.map(rowKey));
   }
 
+  // "Uzak pencereleri aç" (2026-10-19, kullanıcı TODO'su): uzak host'lardaki çalışan tmux oturumlarının YEREL
+  // `cops watch` mirror pencerelerini toplu açar. Seçim varsa yalnız seçilen uzak satırlar, yoksa pencere AÇIK
+  // OLMAYAN (`mirror_open !== true`; bilinmeyen = açık sayılmaz) tüm uzak satırlar. Zaten açık olan pencere
+  // backend'de tekrar açılmaz (`already_open`). 4'lü gruplar + aralarında 2 sn: toplu gnome-terminal açılışı ve
+  // uzak panele art arda bağlanma yükü (CLAUDE.md: köprü/toplu açılışlarda 4'lü grup).
+  async function handleOpenRemoteMirrors() {
+    if (busy) return;
+    const pool = selectedRows.length ? selectedRows : rows;
+    const targets = pool.filter((s) => s.host !== LOCAL_HOST && s.running && s.tmux && s.mirror_open !== true);
+    if (!targets.length) {
+      showToast(t.mirrorAllNone, "info");
+      return;
+    }
+    if (!window.confirm(t.mirrorAllConfirm(targets.map((s) => `${s.host}:${s.name}`)))) return;
+    setBusy(true);
+    const errs: string[] = [];
+    let done = 0;
+    for (let i = 0; i < targets.length; i += 4) {
+      const group = targets.slice(i, i + 4);
+      setMessage(`${t.mirrorAllBtn}: ${Math.min(i + 4, targets.length)}/${targets.length}…`);
+      await Promise.all(
+        group.map(async (s) => {
+          try {
+            const res = await apiTermMirrorWindow({ name: s.name, host: s.host, lang });
+            if (!res.ok) errs.push(`${s.host}:${s.name}: ${res.error}`);
+          } catch (e) {
+            errs.push(`${s.host}:${s.name}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+          done++;
+        }),
+      );
+      if (i + 4 < targets.length) await new Promise((r) => setTimeout(r, 2000));
+    }
+    setBusy(false);
+    setMessage(t.bulkDone(done - errs.length, errs.length) + (errs.length ? "\n" + errs.join("\n") : ""));
+    refresh();
+  }
+
   const legendRows: [string, string][] =
     tab === "running"
       ? [
@@ -351,6 +389,9 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
             </button>
             <button type="button" className="selho" disabled={busy} title={t.windowlessSelectHint} onClick={handleSelectWindowless}>
               {t.selectWindowless}
+            </button>
+            <button type="button" className="selho" disabled={busy} title={t.mirrorAllHint} onClick={() => void handleOpenRemoteMirrors()}>
+              {t.mirrorAllBtn}
             </button>
           </>
         )}
