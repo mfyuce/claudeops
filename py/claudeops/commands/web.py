@@ -63,9 +63,10 @@ from .. import mirrors
 from .. import instances as inst_mod
 from .. import model_freshness
 from .. import remote_desktop
+from .. import routing as routing_mod
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
-from ..settings import (default_model_for, load_settings, resolved_model_for, save_settings,
+from ..settings import (default_effort_for, default_model_for, load_settings, resolved_model_for, save_settings,
                         ucli_usage_warn_thresholds)
 from ..ucli_client import quota_equivalent_tokens, usage_warn_level
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots, normalize_mirrors
@@ -747,7 +748,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     chosen_model = model.strip() or (resolved_model_for(get_provider(chosen_cli), src_model) if chosen_cli == src_cli
                                       else default_model_for(get_provider(chosen_cli)))
     chosen_mode = permission_mode.strip() or "auto"
-    chosen_effort = effort.strip() or "max"
+    chosen_effort = effort.strip() or default_effort_for(get_provider(chosen_cli))
     inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
                              permission_mode=chosen_mode, effort=chosen_effort, origin="new_chat")
     try:
@@ -1019,7 +1020,7 @@ def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
                   else "Kullanıcı ek bir soru yazmadı — genel bir teşhis/özet yeterli.")
     prompt = "\n".join(lines)
 
-    mode, effort = provider.permission_modes()[0], provider.effort_levels()[-1]
+    mode, effort = provider.permission_modes()[0], default_effort_for(provider)
     inst_mod.record_instance(new_name, blueprint=None, cwd=REPO_DIR, cli=chosen_cli, model=model,
                              permission_mode=mode, effort=effort, origin="diag")
     try:
@@ -1556,6 +1557,10 @@ def _status_payload() -> dict:
                 "models": p.model_choices(),
                 "permission_modes": p.permission_modes(),
                 "effort_levels": p.effort_levels(),
+                # Yeni oturum formunun ön-dolu değerleri (Ayarlar > varsayılan, yoksa provider tercihi).
+                # Uzak (gRPC) satırlar bu alanları taşımaz: panel `models[0]`/son seviyeye düşer.
+                "default_model": default_model_for(p),
+                "default_effort": default_effort_for(p),
                 # permission_modes()'ın DAR alt kümesi: session çalışırken
                 # (Shift+Tab ile) gerçekten değiştirilebilenler. Boş liste →
                 # panel Terminal'de mod seçicisini hiç göstermez.
@@ -1654,7 +1659,14 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
     if theme is not None and theme not in _VALID_THEMES:
         return _err(lang, "invalid_theme")
     new = save_settings(patch)
-    return {"ok": True, "settings": _redact_settings_for_wire(new)}
+    routing_sync = None
+    if "routing_guidance" in patch or "routing_guidance_text" in patch:
+        # Claude her açılışta dosyadan okur (ek iş yok); codex'in küresel AGENTS.md bloğu burada tazelenir.
+        routing_sync = routing_mod.sync_global_files()
+    out = {"ok": True, "settings": _redact_settings_for_wire(new)}
+    if routing_sync is not None:
+        out["routing_sync"] = routing_sync
+    return out
 
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
@@ -1681,7 +1693,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
                       else default_model_for(get_provider(chosen_cli)))
     chosen_model = model.strip() or fallback_model
     chosen_mode = permission_mode.strip() or (rec or {}).get("permission_mode") or "auto"
-    chosen_effort = effort.strip() or (rec or {}).get("effort") or "max"
+    chosen_effort = effort.strip() or (rec or {}).get("effort") or default_effort_for(get_provider(chosen_cli))
     # TODO.md 2026-09-30: "restart fresh" servis'i bazen traceback'siz çökertiyor —
     # bugün temiz bir start hiçbir diag_log bırakmıyordu (diag_log sadece fallback/hata
     # olaylarını yazar), yani çökme TAM bu sırada olursa hangi isimdeki hangi işlemin
@@ -2871,7 +2883,7 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     provider = get_provider(chosen_cli)
     chosen_model = model.strip() or resolved_model_for(provider, procs[0].model)
     chosen_mode = permission_mode.strip() or provider.permission_modes()[0]
-    chosen_effort = effort.strip() or provider.effort_levels()[-1]
+    chosen_effort = effort.strip() or default_effort_for(provider)
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]

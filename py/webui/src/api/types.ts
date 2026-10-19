@@ -233,6 +233,11 @@ export interface CliOptions {
    * it's running (the CLI's own Shift+Tab cycle). Empty = this CLI has no live
    * mode switching at all, so the Terminal view shows no mode picker. */
   cyclable_modes: string[];
+  /** Prefill for the new-session form (Settings override, else the provider's
+   * preference; claude: newest Sonnet + medium). Absent on remote (gRPC) rows:
+   * callers fall back to `models[0]` / the last effort level. */
+  default_model?: string;
+  default_effort?: string;
 }
 
 export const EMPTY_CLI_OPTIONS: CliOptions = { models: [], permission_modes: [], effort_levels: [], cyclable_modes: [] };
@@ -257,6 +262,12 @@ export interface Settings {
   handover_effort: string;
   fleet_sort: FleetSort;
   default_model: Record<string, string>;
+  /** `{cli: effort}` override; missing entry = the provider's own default (`default_effort_for`). */
+  default_effort: Record<string, string>;
+  /** "on" | "off" — routing guidance for NEWLY opened sessions (`routing_guidance_enabled()`). */
+  routing_guidance: string;
+  /** "" = bundled `data/routing.md`; otherwise this text replaces it. */
+  routing_guidance_text: string;
   /** {cli: mutlak binary yolu} — PATH'te bulunamayan (ör. proje-yerel bir
    * node_modules/.bin kurulumu) bir CLI için elle override. Boş/eksik = PATH
    * araması (mevcut davranış, değişmez). `settings.py`'nin `resolved_binary()`. */

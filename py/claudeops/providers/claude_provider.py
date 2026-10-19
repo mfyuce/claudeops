@@ -11,6 +11,7 @@ from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec
 from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR
+from ..routing import claude_guidance_path
 from ..settings import resolved_binary
 
 MODEL_CHOICES = [
@@ -527,8 +528,12 @@ class ClaudeProvider(CliProvider):
         # zaten öyle).
         extra_prefix = "".join(f"{shlex.quote(a)} " for a in extra_args)
         prompt_arg = f" {shlex.quote(prompt)}" if prompt else ""
+        # İşe göre model/effort yönergesi (TBD#91): sistem isteminin SONUNA eklenir, proje CLAUDE.md'lerine
+        # dokunmaz; Ayarlar'dan kapatılabilir. `--model`den ÖNCE, `extra_args` gibi: değeri mutlak dosya yolu.
+        guidance = claude_guidance_path()
+        guidance_arg = f"--append-system-prompt-file {shlex.quote(guidance)} " if guidance else ""
         return (
-            f"{shlex.quote(binary)} {resume_arg}{extra_prefix}"
+            f"{shlex.quote(binary)} {resume_arg}{extra_prefix}{guidance_arg}"
             f"--model {shlex.quote(model)} "
             f"--permission-mode {shlex.quote(permission_mode)} "
             f"--effort {shlex.quote(effort)} "
@@ -905,6 +910,15 @@ class ClaudeProvider(CliProvider):
             "permission_mode": _arg(cmd, "--permission-mode"),
             "effort": _arg(cmd, "--effort"),
         }
+
+    def preferred_default_model(self) -> Optional[str]:
+        """Yeni oturum varsayılanı: en yeni Sonnet (TBD#91, 2026-10-19). Eskiden `model_choices()[0]` = alfabetik
+        ilk = `claude-fable-5-1` idi; işe göre yükseltme yönergesi (`routing.py`) düşük başlamayı varsayar."""
+        sonnets = [c for c in self.model_choices() if _SONNET_PIN_RE.match(c)]
+        return max(sonnets, key=_sonnet_version) if sonnets else None
+
+    def default_effort(self) -> str:
+        return "medium" if "medium" in self.effort_levels() else super().default_effort()
 
     def model_choices(self) -> List[str]:
         """`model_freshness.py`'nin günlük taze listesini okur (`enabled`

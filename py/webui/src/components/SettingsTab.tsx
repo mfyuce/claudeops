@@ -87,6 +87,12 @@ type SettingsPatch = {
   ucli_usage_warn?: Record<string, string>;
   /** "on" | "off" — bkz. `Settings.tunnel_watch`. */
   tunnel_watch?: string;
+  /** {cli: effort} — bkz. `Settings.default_effort`. Boş string o CLI'nın kaydını siler (= sağlayıcı varsayılanı). */
+  default_effort?: Record<string, string>;
+  /** "on" | "off" — bkz. `Settings.routing_guidance`. */
+  routing_guidance?: string;
+  /** Bkz. `Settings.routing_guidance_text`. Boş string paketlenmiş metne döner. */
+  routing_guidance_text?: string;
 };
 
 /** `settings.py`'nin `_OFF_WORDS`i: `ucli_web.search_docker` ve `tunnel_watch`ın "kapalı" saydığı değerler
@@ -215,6 +221,7 @@ export function SettingsTab() {
   // "ayarlı mı" bool'unu taşıyor, geri-doldurulacak bir şey yok) — draft
   // SADECE bu oturumda yazılanı tutar, blur'da gönderilip hemen temizlenir.
   const [byokDraft, setByokDraft] = useState<Record<string, string>>({});
+  const [routingDraft, setRoutingDraft] = useState<string | null>(null);
   // Same draft-until-blur reasoning as `binDraft` — `provider_bin`'in aksine
   // (`isSet`/mask yok) mevcut değer doğrudan gösterilir, BYOK'un "boşsa
   // dokunma" korumasına gerek yok (sır değil).
@@ -359,7 +366,7 @@ export function SettingsTab() {
                   value={settings.default_model[cli] ?? ""}
                   onChange={(e) => void save({ default_model: { [cli]: e.target.value } })}
                 >
-                  <option value="">{t.settingsAutoModel(data.cli_options[cli]?.models[0] ?? "?")}</option>
+                  <option value="">{t.settingsAutoModel(data.cli_options[cli]?.default_model ?? data.cli_options[cli]?.models[0] ?? "?")}</option>
                   {(data.cli_options[cli]?.models ?? []).map((m) => (
                     <option key={m} value={m}>
                       {m}
@@ -368,6 +375,54 @@ export function SettingsTab() {
                 </select>
               </label>
             ))}
+          </div>
+          <div className="opts" id="settingsDefaultEffortPanel">
+            <span className="opts-hint" style={{ flexBasis: "100%" }}>
+              {t.defaultEffortLabel}
+            </span>
+            {data.cli_list.map((cli) => (
+              <label key={cli}>
+                {cli}
+                <select
+                  value={settings.default_effort?.[cli] ?? ""}
+                  onChange={(e) => void save({ default_effort: { [cli]: e.target.value } })}
+                >
+                  <option value="">{t.settingsAutoModel(data.cli_options[cli]?.default_effort ?? "?")}</option>
+                  {(data.cli_options[cli]?.effort_levels ?? []).map((lv) => (
+                    <option key={lv} value={lv}>
+                      {lv}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+          <div className="opts" id="settingsRoutingPanel">
+            <span className="opts-hint" style={{ flexBasis: "100%" }}>
+              <b>{t.routingGuidanceLabel}</b> {t.routingGuidanceDesc}
+            </span>
+            <label>
+              {t.routingGuidanceLabel}
+              <select
+                value={OFF_WORDS.has(asText(settings.routing_guidance).trim().toLowerCase()) ? "off" : "on"}
+                onChange={(e) => void save({ routing_guidance: e.target.value })}
+              >
+                <option value="on">{t.tunnelWatchOn.replace(" (önerilen)", "").replace(" (recommended)", "")}</option>
+                <option value="off">{t.tunnelWatchOff}</option>
+              </select>
+            </label>
+            <textarea
+              rows={8}
+              style={{ flexBasis: "100%", fontFamily: "monospace" }}
+              placeholder={t.routingGuidancePlaceholder}
+              value={routingDraft ?? settings.routing_guidance_text ?? ""}
+              onChange={(e) => setRoutingDraft(e.target.value)}
+              onBlur={(e) => {
+                if (routingDraft === null) return;
+                void save({ routing_guidance_text: e.target.value.trim() });
+                setRoutingDraft(null);
+              }}
+            />
           </div>
           <div className="opts" id="settingsProviderBinPanel">
             <span className="opts-hint" style={{ flexBasis: "100%" }}>

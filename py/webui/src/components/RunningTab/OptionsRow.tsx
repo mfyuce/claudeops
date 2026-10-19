@@ -30,7 +30,7 @@ import type { SessionInfo } from "../../api/types";
 import type { TabKey } from "../../state/tabs";
 import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
-import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
+import { DEFAULT_PERMISSION_MODE, defaultEffort, defaultModel } from "./cliDefaults";
 
 type Mode = "resume" | "reset" | "newchat" | "restart";
 
@@ -130,7 +130,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   const cliList = cliListRaw.length ? cliListRaw : [session.cli];
   const cliOptions = cliOptionsFor(data, session.host, cli);
   const currentModelLabel =
-    cli === session.cli ? session.model || cliOptions.models[0] || "" : cliOptions.models[0] || "";
+    cli === session.cli ? session.model || defaultModel(cliOptions) : defaultModel(cliOptions);
 
   const modeChoices: [Mode, string][] = session.running
     ? [

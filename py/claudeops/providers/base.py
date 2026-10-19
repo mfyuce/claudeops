@@ -425,6 +425,17 @@ class CliProvider(ABC):
         known = self.model_effort_levels(model)
         return list(known) if known else self.effort_levels()
 
+    def preferred_default_model(self) -> Optional[str]:
+        """Ayarlarda `default_model` kaydı YOKKEN yeni oturum için tercih edilen model (`model_choices()`te yoksa
+        yok sayılır). None = listenin ilki (eski davranış). Bkz. `settings.default_model_for`."""
+        return None
+
+    def default_effort(self) -> str:
+        """Ayarlarda `default_effort` kaydı YOKKEN yeni oturumun effort'u. Taban: listenin SON (en yüksek)
+        seviyesi = eskiden her yerde sabit geçen davranış. Bkz. `settings.default_effort_for`."""
+        levels = self.effort_levels()
+        return levels[-1] if levels else ""
+
     def resolve_effort(self, model: Optional[str], requested: Optional[str]) -> Optional[str]:
         """spawn'da GERÇEKTEN gönderilecek effort (2026-10-14, kullanıcı: "modele göre
         ayarla; yoksa uygununu set et"). Model bazlı bilgi YOKSA `requested` aynen

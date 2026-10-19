@@ -155,6 +155,15 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # gider). Varsayılan AÇIK. Betik bu dosyayı HER yoklamada okur: Ayarlar > Genel'deki
                               # değişiklik tüneli yeniden başlatmadan geçerli olur. `off`/0/false/no... kapatır
                               # (`_OFF_WORDS`, betikteki küme ile AYNI). Okuma tarafı: `tunnel_watch_enabled()`.
+    "default_effort": {},    # {cli: effort} — `default_model`in effort karşılığı (2026-10-19, TBD#90/#91): yeni
+                              # oturum formunun ön-dolu değeri VE formsuz yolların (devral, diag) fallback'i.
+                              # Kayıt yoksa `provider.default_effort()` (claude: medium; diğerleri: en yüksek
+                              # seviye = eski davranış). Listede olmayan değer yok sayılır (bkz. `default_effort_for`).
+    "routing_guidance": "on",  # "on" | "off" — yeni açılan oturumlara işe-göre-model/effort yönergesi
+                              # (2026-10-19, TBD#91). Claude: her açılışta `--append-system-prompt-file`;
+                              # codex: `~/.codex/AGENTS.md`ye işaretli blok (`py/cops routing sync`). AÇIK
+                              # oturumlar yönergeyi ancak yeniden açılınca alır. Okuma tarafı: `routing_guidance_enabled()`.
+    "routing_guidance_text": "",  # "" = paketlenmiş `data/routing.md`; doluysa o metin kullanılır (Ayarlar'da düzenlenir).
 }
 
 
@@ -170,6 +179,8 @@ def load_settings() -> Dict[str, Any]:
             out.update({k: v for k, v in stored.items() if k in DEFAULT_SETTINGS})
             if not isinstance(out.get("default_model"), dict):
                 out["default_model"] = {}
+            if not isinstance(out.get("default_effort"), dict):
+                out["default_effort"] = {}
             if not isinstance(out.get("provider_bin"), dict):
                 out["provider_bin"] = {}
             if not isinstance(out.get("byok"), dict):
@@ -201,7 +212,7 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_usage_warn", "cli_managed") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_usage_warn", "cli_managed") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
@@ -275,7 +286,22 @@ def default_model_for(provider: "CliProvider") -> str:
     `resolved_model_for`."""
     choices = provider.model_choices()
     override = (load_settings().get("default_model") or {}).get(provider.name) or ""
-    return override if override in choices else choices[0]
+    if override in choices:
+        return override
+    # Ayarlarda kayıt yoksa provider'ın tercihi (claude: en yeni Sonnet); o da yoksa listenin ilki.
+    # Eskiden doğrudan `choices[0]` idi: claude'un sıralı listesinde bu ALFABETİK ilk = `claude-fable-5-1`
+    # (yeni oturumlar en pahalı kademede açılıyordu, 2026-10-19'da fark edildi).
+    preferred = provider.preferred_default_model()
+    return preferred if preferred in choices else choices[0]
+
+
+def default_effort_for(provider: "CliProvider") -> str:
+    """Bir provider için etkin varsayılan effort — `default_model_for`un effort karşılığı: Ayarlar'daki
+    `default_effort[cli]` VARSA ve provider'ın seviye listesinde geçerliyse o, yoksa `provider.default_effort()`.
+    Yalnız "effort verilmedi" durumunda çağrılmalı: var olan bir oturumun kendi effort'unu KORUMAK önceliklidir."""
+    levels = provider.effort_levels()
+    override = (load_settings().get("default_effort") or {}).get(provider.name) or ""
+    return override if override in levels else provider.default_effort()
 
 
 def resolved_model_for(provider: "CliProvider", stored: str) -> str:
@@ -364,6 +390,13 @@ def ucli_usage_warn_thresholds() -> Tuple[int, int]:
             n = 0
         out.append(n if n > 0 else USAGE_WARN_DEFAULTS[key])
     return out[0], out[1]
+
+
+def routing_guidance_enabled() -> bool:
+    """`routing_guidance` (bkz. DEFAULT_SETTINGS) açık mı: `tunnel_watch_enabled` ile AYNI kural (varsayılan AÇIK,
+    `_OFF_WORDS` kapatır). Asla fırlatmaz."""
+    value = load_settings().get("routing_guidance")
+    return ("on" if value is None else str(value)).strip().lower() not in _OFF_WORDS
 
 
 def tunnel_watch_enabled() -> bool:

@@ -23,7 +23,7 @@ import { cliOptionsFor } from "../../state/hosts";
 import type { SessionInfo } from "../../api/types";
 import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
-import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
+import { DEFAULT_PERMISSION_MODE, defaultEffort, defaultModel } from "./cliDefaults";
 
 interface AdoptRowProps {
   session: SessionInfo;
@@ -89,7 +89,7 @@ export function AdoptRow({ session, colspan, onClose }: AdoptRowProps) {
             <span className="cli-badge">{session.cli}</span>
           </label>
           <CliFields
-            currentModelLabel={session.model || cliOptions.models[0] || ""}
+            currentModelLabel={session.model || defaultModel(cliOptions)}
             model={model}
             modelOther={modelOther}
             permissionMode={permissionMode}

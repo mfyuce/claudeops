@@ -445,6 +445,10 @@ export interface Strings {
   tunnelWatchHint: string;
   tunnelWatchOn: string;
   tunnelWatchOff: string;
+  defaultEffortLabel: string;
+  routingGuidanceLabel: string;
+  routingGuidanceDesc: string;
+  routingGuidancePlaceholder: string;
   ucliWebLabel: string;
   ucliWebDesc: string;
   ucliWebSearchUrlLabel: string;
@@ -1032,6 +1036,11 @@ export const STRINGS: Record<Lang, Strings> = {
       "Genel tünel adresi art arda 3 dakika boyunca HTTP 530 verirse (tünel Cloudflare'den koptu ama servis 'active' görünüyor) cloudflared yeniden başlatılır: adres DEĞİŞİR ve ntfy bildirimi gider. Kapalıyken tünel kopunca elle yeniden başlatmak gerekir. Değişiklik en geç 1 dakikada, tüneli yeniden başlatmadan geçerli olur. Yalnız quick tunnel'da çalışır (named tunnel'da yok).",
     tunnelWatchOn: "açık (önerilen)",
     tunnelWatchOff: "kapalı",
+    defaultEffortLabel: "yeni oturum için varsayılan effort (CLI başına)",
+    routingGuidanceLabel: "işe göre model/effort yönergesi",
+    routingGuidanceDesc:
+      "Yeni açılan oturumlara 'düşük başla, işe göre alt ajan/model seç' yönergesi eklenir (claude: her açılışta sistem istemine; codex: ~/.codex/AGENTS.md içinde işaretli blok). Açık oturumlar yeniden açılana kadar etkilenmez. Metni boş bırakırsan paketlenmiş varsayılan kullanılır. agy ve copilot için henüz küresel dosya yolu doğrulanmadı.",
+    routingGuidancePlaceholder: "boş = paketlenmiş varsayılan metin (data/routing.md)",
     ucliWebLabel: "ucli web araçları (arama / sayfa getirme)",
     ucliWebDesc:
       "Yalnız claudeops'tan YENİ açılan ucli oturumlarına uygulanır; çalışanlar eski ayarla sürer, panel yeniden başlatması gerekmez. Arama varsayılan AÇIK: adres boşsa claudeops'un yönettiği yerel SearXNG kullanılır (docker kapsayıcısı, yalnız bu makineden erişilir; ucli aramayı kendi içine alınca bu geçici köprü kalkacak). Sayfa getirme (fetch_url) varsayılan KAPALI; yalnız aşağıya yazılan alan adlarına açılır.",
@@ -1627,6 +1636,11 @@ export const STRINGS: Record<Lang, Strings> = {
       "If the public tunnel address answers HTTP 530 three checks in a row (about 3 minutes: the tunnel dropped from Cloudflare but the service still looks 'active'), cloudflared is restarted: the address CHANGES and an ntfy notice goes out. When off, a dropped tunnel needs a manual restart. A change applies within a minute, without restarting the tunnel. Works for the quick tunnel only (not a named tunnel).",
     tunnelWatchOn: "on (recommended)",
     tunnelWatchOff: "off",
+    defaultEffortLabel: "default effort for new sessions (per CLI)",
+    routingGuidanceLabel: "model/effort routing guidance",
+    routingGuidanceDesc:
+      "Newly opened sessions get a 'start low, pick sub-agent/model per task' guidance (claude: appended to the system prompt on every launch; codex: a marked block in ~/.codex/AGENTS.md). Running sessions are unaffected until reopened. Leave the text empty to use the bundled default. No verified global file path yet for agy and copilot.",
+    routingGuidancePlaceholder: "empty = bundled default text (data/routing.md)",
     ucliWebLabel: "ucli web tools (search / page fetch)",
     ucliWebDesc:
       "Applies only to ucli sessions newly opened from claudeops; running ones keep their old settings, and the panel does not need a restart. Search is ON by default: with an empty address the local SearXNG managed by claudeops is used (a docker container reachable from this machine only; this temporary bridge goes away once ucli does search itself). Page fetch (fetch_url) is OFF by default and opens only to the domains listed below.",
