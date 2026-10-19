@@ -3,6 +3,7 @@
 Kullanım:
   py/cops steward status                      # özet: açık/kapalı, projeler faz faz, açık sorular, son tick
   py/cops steward projects [--phase planned]  # proje listesi
+  py/cops steward cards [NAME] [--refresh]    # proje kartları (NAME: tek kartın tamamı); --refresh: şimdi yenile (panel üzerinden)
   py/cops steward set NAME [--phase planning] [--kind book] [--goal "..."] [--priority 2]
                            [--cadence 240] [--note "..."] [--model m] [--effort e]
   py/cops steward import [--phase planned]    # roster'daki (değnekçide olmayan) projeleri toplu kaydet
@@ -56,6 +57,9 @@ def cmd_status(args) -> int:
           f"max_active={cfg.max_active}  beyin={cfg.brain_name} ({cfg.brain_cli} {cfg.brain_model or 'varsayılan'} {cfg.brain_effort})")
     counts = sw.summarize_projects(projects)
     print("projeler: " + "  ".join(f"{PHASE_ICON[p]} {p}={n}" for p, n in counts.items()) + f"  (toplam {len(projects)})")
+    cards = sw.load_cards()
+    print(f"kartlar: {len(cards)} (ham {sum(1 for c in cards.values() if not c.get('summarized', True))}, "
+          f"bayat {sum(1 for c in cards.values() if c.get('stale'))})   kart yenileme: {'açık' if cfg.card_refresh else 'kapalı'}")
     print(f"açık soru: {len(qs)}   yeni fikir: {len(ideas)}   bekleyen madde: {st.get('pending_items', 0)}   "
           f"son tick: {_ago(float(st.get('last_tick') or 0))}   son tur: {_ago(float(st.get('last_tour') or 0))}")
     if st.get("ho_pending"):
@@ -75,9 +79,42 @@ def cmd_projects(args) -> int:
     if not rows:
         print("değnekçi projesi yok — `py/cops steward import` roster'dakileri alır, `set NAME --phase ...` tek tek ekler")
         return 0
-    print(f"{'NAME':<24}{'PHASE':<10}{'P':>2} {'CAD':>5} {'VISIT':>6}  GOAL")
+    cards = sw.load_cards()
+    print(f"{'NAME':<24}{'PHASE':<10}{'P':>2} {'CAD':>5} {'VISIT':>6}  NEXT / GOAL")
     for p in rows:
-        print(f"{p.name:<24}{p.phase:<10}{p.priority:>2} {p.cadence_minutes:>5} {_ago(p.last_visit):>6}  {p.goal[:60]}")
+        nxt = sw.card_one_liner(cards.get(p.name)) or p.goal
+        print(f"{p.name:<24}{p.phase:<10}{p.priority:>2} {p.cadence_minutes:>5} {_ago(p.last_visit):>6}  {nxt[:70]}")
+    return 0
+
+
+def cmd_cards(args) -> int:
+    """Kartları listele / tek kartı göster (dosyadan, panel gerekmez); `--refresh` panele yenileme işi bırakır."""
+    if args.refresh:
+        res = _api(args.port, "POST", "/api/steward/cards/refresh", {"name": args.name or ""})
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        if res.get("ok"):
+            print("arka planda yenileniyor; sonuç: py/cops steward cards   (ya da: py/cops steward log)")
+        return 0 if res.get("ok") else 1
+    if args.name:
+        card = sw.load_card(args.name)
+        if card is None:
+            print(f"'{args.name}' için kart yok — py/cops steward cards --refresh {args.name}")
+            return 1
+        print("\n".join(sw.card_lines(card, True)))
+        print(f"\n{json.dumps(card, ensure_ascii=False, indent=2)}")
+        return 0
+    cards = sw.load_cards()
+    projects = sw.load_projects()
+    if not cards:
+        print("kart yok — `py/cops steward cards --refresh` (panel çalışıyorsa) ya da bir sonraki tick üretir")
+    else:
+        print(f"{'NAME':<24}{'AGE':>5}  {'':<6}NEXT STEP")
+        for name, c in sorted(cards.items()):
+            flag = "bayat" if c.get("stale") else ("ham" if not c.get("summarized", True) else "")
+            print(f"{name:<24}{_ago(float(c.get('updated_at') or 0)):>5}  {flag:<6}{str(c.get('next_step') or '-')[:80]}")
+    missing = sorted(n for n, p in projects.items() if p.phase in sw.ACTIVE_PHASES and n not in cards)
+    if missing:
+        print(f"\nkartı olmayan aktif proje: {len(missing)} ({', '.join(missing[:8])}{'…' if len(missing) > 8 else ''})")
     return 0
 
 
@@ -224,6 +261,11 @@ def register(sub):
     ps.add_argument("--model")
     ps.add_argument("--effort")
     ps.set_defaults(func=cmd_set)
+    pk = s.add_parser("cards", help="proje kartları (hedef / sıradaki adım / açık TBD / engel)")
+    pk.add_argument("name", nargs="?", default="")
+    pk.add_argument("--refresh", action="store_true", help="şimdi yenile (panel çalışıyor olmalı; ad verilmezse yenilemesi gerekenlerin hepsi)")
+    pk.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
+    pk.set_defaults(func=cmd_cards)
     pi = s.add_parser("import", help="roster'daki projeleri değnekçiye toplu kaydet")
     pi.add_argument("--phase", choices=sw.PHASES, default="planned")
     pi.add_argument("--cadence", type=int, default=240, metavar="MIN")

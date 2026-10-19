@@ -44,7 +44,7 @@ def _context(port: int, args: dict) -> dict:
     name = str(args.get("name") or "")
     if not name:
         return {"ok": False, "error": "name is required"}
-    return mcp_queue._api(port, "GET", "/api/steward/context" + _q({"name": name}))
+    return mcp_queue._api(port, "GET", "/api/steward/context" + _q({"name": name, "docs": "1" if args.get("docs") else ""}))
 
 
 def _read_file(port: int, args: dict) -> dict:
@@ -150,11 +150,11 @@ _EFFORT = {"type": "string", "description": "low|medium|high|max… per CLI; app
 
 TOOLS: List[Dict[str, Any]] = [
     {"name": "steward_overview",
-     "description": "Fleet + steward projects (phase/priority/last directive) + open questions + new ideas + recent actions. Call at the start of every tour.",
+     "description": "Fleet + steward projects (phase/priority/last directive/next_step from the project card) + open questions + new ideas + recent actions. Call at the start of every tour.",
      "inputSchema": _obj({}, [])},
     {"name": "steward_project_context",
-     "description": "One project's steward record, last user/assistant exchange of its session, heads of PLAN.md/TODO.md/TOBEDECIDED.md/GOAL.md, short git status, its open questions.",
-     "inputSchema": _obj({"name": _S}, ["name"])},
+     "description": "One project's steward record, last user/assistant exchange of its session, its project CARD (goal, phase guess, next step, open TBDs, blockers, recently done; refreshed by the engine) — or the heads of PLAN.md/TODO.md/TOBEDECIDED.md/GOAL.md when there is no card yet (docs=true gives both) — short git status, its open questions.",
+     "inputSchema": _obj({"name": _S, "docs": {"type": "boolean", "description": "Also include the raw document heads next to the card."}}, ["name"])},
     {"name": "steward_read_file",
      "description": "Read a file inside the project folder (read-only, path relative to the project root).",
      "inputSchema": _obj({"name": _S, "path": _S, "max_chars": _I}, ["name", "path"])},

@@ -30,6 +30,7 @@ import json
 import os
 import re
 import secrets
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -45,6 +46,11 @@ STATE_JSON = os.path.join(STEWARD_DIR, "state.json")
 LOG_JSONL = os.path.join(STEWARD_DIR, "log.jsonl")
 WORKSPACE_DIR = os.path.join(STEWARD_DIR, "workspace")   # beynin cwd'si (CLAUDE.md = persona)
 BUNDLED_PERSONA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "steward.md")
+# Proje kartları: `STEWARD_DIR/cards/<ad>.json` — yol çağrı anında `STEWARD_DIR`'den türetilir (testler tek sabiti patch'ler).
+CARD_DOCS = ("GOAL.md", "PLAN.md", "TODO.md", "TOBEDECIDED.md", "DONE.md")
+CARD_DOC_CHARS = 1500            # kartın modele göstereceği her doküman başı
+CARD_LIST_ITEMS = 8              # open_tbds / blockers / recent_done en çok bu kadar madde
+CARD_TEXT_CHARS = 400            # kart alanlarının (goal/next_step/madde) üst sınırı
 
 PHASES = ("idea", "planning", "planned", "paused", "done")
 KINDS = ("book", "article", "software", "other")
@@ -164,6 +170,11 @@ class Config:
     planned_model: str = ""
     planned_effort: str = ""
     lang: str = "tr"
+    card_refresh: bool = True        # tick'te proje kartlarını (eskiyen/değişen) yenile
+    card_cli: str = "claude"         # kart özetini üreten CLI (providers.oneshot)
+    card_model: str = ""             # "" = card_cli'nin model_choices'inde "haiku" geçen, yoksa varsayılan model
+    card_max_age_hours: int = 24     # kart bundan eskiyse yenile (0 = yaşa bakma)
+    cards_per_tick: int = 1          # bir tick'te en çok kaç kart yenilenir (0 = hiç)
 
 
 def _now() -> float:
@@ -383,6 +394,280 @@ def tail_log(n: int = 50) -> List[Dict[str, Any]]:
     return out
 
 
+# ── proje kartları ────────────────────────────────────────────────────────────
+#
+# Beyin 160 repoyu değil bu kartları okur (kullanıcı kararı 2026-10-19): her proje için GOAL/PLAN/TODO/
+# TOBEDECIDED/DONE başları + son commit'ler ucuz bir modelle tek JSON'a özetlenir ve diske yazılır. Ham kısım
+# (`build_raw_card`) modelsiz ve testlidir; model çağrısı motorda (`web_steward.summarize_card`), bu dosyada
+# yalnız prompt ve çıktı ayrıştırması var. Özet bozuk gelirse ham karttan türetilen kart KALIR.
+
+def card_path(name: str) -> str:
+    return os.path.join(STEWARD_DIR, "cards", f"{name}.json")
+
+
+def _read_doc_head(cwd: str, rel: str, max_chars: int = CARD_DOC_CHARS) -> str:
+    try:
+        with open(os.path.join(cwd, rel), encoding="utf-8", errors="replace") as f:
+            return f.read(max_chars + 1)[:max_chars].strip()
+    except OSError:
+        return ""
+
+
+def _git_recent(cwd: str, n: int = 5) -> Tuple[List[str], float]:
+    """(`<kısa-sha> <tarih> <konu>` satırları, son commit epoch'u). Git deposu değilse/hata: ([], 0.0).
+    `.git` YOKSA hiç çalıştırılmaz: üst klasördeki başka bir deponun geçmişi bu projeye yazılmasın."""
+    if not cwd or not os.path.exists(os.path.join(cwd, ".git")):
+        return [], 0.0
+    try:
+        r = subprocess.run(["git", "-C", cwd, "log", f"-{n}", "--format=%h\t%ct\t%cs\t%s"],
+                           capture_output=True, text=True, timeout=5)
+    except Exception:
+        return [], 0.0
+    if r.returncode != 0:
+        return [], 0.0
+    lines: List[str] = []
+    last = 0.0
+    for ln in r.stdout.splitlines():
+        parts = ln.split("\t", 3)
+        if len(parts) < 4:
+            continue
+        sha, ct, day, subject = parts
+        try:
+            last = max(last, float(ct))
+        except ValueError:
+            pass
+        lines.append(f"{sha} {day} {subject}")
+    return lines, last
+
+
+def build_raw_card(cwd: str) -> Dict[str, Any]:
+    """Modelsiz ham kart: {docs: {dosya: baş}, git_log: [...], last_commit: epoch, source_hash}. `source_hash`
+    kartın görebileceği her şeyin (doküman başları + son commit satırları) özeti; değişince kart eskimiş sayılır."""
+    docs: Dict[str, str] = {}
+    for d in CARD_DOCS:
+        head = _read_doc_head(cwd, d) if cwd else ""
+        if head:
+            docs[d] = head
+    git_log, last_commit = _git_recent(cwd)
+    h = hashlib.sha1()
+    for d in CARD_DOCS:
+        if d in docs:
+            h.update(f"\0{d}\0{docs[d]}".encode("utf-8", "replace"))
+    for ln in git_log:
+        h.update(f"\0{ln}".encode("utf-8", "replace"))
+    return {"docs": docs, "git_log": git_log, "last_commit": last_commit, "source_hash": h.hexdigest()[:16]}
+
+
+def _short(text: Any, n: int = CARD_TEXT_CHARS) -> str:
+    return _clip(" ".join(str(text or "").split()), n)
+
+
+def _str_list(v: Any) -> List[str]:
+    if isinstance(v, str):
+        v = [v]
+    if not isinstance(v, (list, tuple)):
+        return []
+    out = [_short(x) for x in v if str(x or "").strip()]
+    return out[:CARD_LIST_ITEMS]
+
+
+def _tbd_lines(text: str) -> List[str]:
+    """TOBEDECIDED başından `TBD`'li satırlar — model yokken `open_tbds` için kaba bir ham tahmin."""
+    out = []
+    for ln in (text or "").splitlines():
+        t = ln.strip().lstrip("-*#• ").strip()
+        if "TBD" in t and t:
+            out.append(_short(t))
+        if len(out) >= CARD_LIST_ITEMS:
+            break
+    return out
+
+
+def _goal_from_docs(docs: Dict[str, str]) -> str:
+    for line in (docs.get("GOAL.md") or "").splitlines():
+        t = line.strip()
+        if t and not t.startswith("#"):
+            return _short(t)
+    return ""
+
+
+def raw_card_fields(raw: Dict[str, Any], project: Optional[Project] = None) -> Dict[str, Any]:
+    """Modele hiç gidilemeyen/yanıtı bozuk durumda kartın içi: ham veriden türetilir, `next_step` bilinmiyor."""
+    docs = raw.get("docs") or {}
+    subjects = [ln.split(" ", 2)[2] for ln in (raw.get("git_log") or []) if ln.count(" ") >= 2]
+    return {
+        "goal": _short((project.goal if project else "") or _goal_from_docs(docs)),
+        "phase_guess": project.phase if project and project.phase in PHASES else "",
+        "next_step": "",
+        "open_tbds": _tbd_lines(docs.get("TOBEDECIDED.md", "")),
+        "blockers": [],
+        "recent_done": [_short(x) for x in subjects[:3]],
+    }
+
+
+def parse_card_json(text: str) -> Optional[Dict[str, Any]]:
+    """Modelin yanıtından kart alanlarını çıkar: ```json çitli ya da çıplak, etrafında düzyazı olabilir.
+    Ayrıştırılamıyor ya da hiç tanınan alan yoksa None (çağıran ham kartta kalır)."""
+    if not text:
+        return None
+    t = text.strip()
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", t, re.S)
+    cand = m.group(1) if m else None
+    if cand is None:
+        i, j = t.find("{"), t.rfind("}")
+        if i == -1 or j <= i:
+            return None
+        cand = t[i:j + 1]
+    try:
+        d = json.loads(cand)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    known = ("goal", "phase_guess", "next_step", "open_tbds", "blockers", "recent_done")
+    if not any(k in d for k in known):
+        return None
+    phase = str(d.get("phase_guess") or "").strip().lower()
+    return {
+        "goal": _short(d.get("goal")),
+        "phase_guess": phase if phase in PHASES else "",
+        "next_step": _short(d.get("next_step")),
+        "open_tbds": _str_list(d.get("open_tbds")),
+        "blockers": _str_list(d.get("blockers")),
+        "recent_done": _str_list(d.get("recent_done")),
+    }
+
+
+def build_card_prompt(name: str, raw: Dict[str, Any], project: Optional[Project] = None, lang: str = "tr") -> str:
+    """Kart özeti için tek seferlik prompt — dosya içeriği prompt'un içinde (model araç kullanamaz)."""
+    tr = lang != "en"
+    parts: List[str] = []
+    if tr:
+        parts.append(
+            f"Aşağıda '{name}' adlı bir projenin belge başları ve son commit'leri var. Bunlardan projenin durum kartını "
+            "çıkar. YALNIZ tek bir JSON nesnesi yaz (açıklama, markdown çiti yok), şu anahtarlarla:\n"
+            '{"goal": "tek cümle amaç", "phase_guess": "idea|planning|planned|paused|done", '
+            '"next_step": "sıradaki tek somut iş", "open_tbds": ["açık karar maddeleri"], '
+            '"blockers": ["engeller"], "recent_done": ["son biten işler"]}\n'
+            f"Listeler en çok {CARD_LIST_ITEMS} madde, her alan kısa ve Türkçe olsun. Bilmediğin alanı boş bırak "
+            "(\"\" ya da []); uydurma.")
+    else:
+        parts.append(
+            f"Below are the document heads and recent commits of a project called '{name}'. Produce its status card. "
+            "Write ONLY a single JSON object (no prose, no markdown fence) with these keys:\n"
+            '{"goal": "one-sentence goal", "phase_guess": "idea|planning|planned|paused|done", '
+            '"next_step": "the single next concrete task", "open_tbds": ["open decision items"], '
+            '"blockers": ["blockers"], "recent_done": ["recently finished work"]}\n'
+            f"At most {CARD_LIST_ITEMS} items per list, every field short. Leave unknown fields empty (\"\" or []); do not invent.")
+    if project is not None:
+        if project.goal:
+            parts.append(("Kayıtlı amaç: " if tr else "Registered goal: ") + _short(project.goal, 600))
+        parts.append(("Kayıtlı faz: " if tr else "Registered phase: ") + project.phase)
+    for d, body in (raw.get("docs") or {}).items():
+        parts.append(f"=== {d} ===\n{body}")
+    if raw.get("git_log"):
+        parts.append("=== git log -5 ===\n" + "\n".join(raw["git_log"]))
+    if not (raw.get("docs") or raw.get("git_log")):
+        parts.append("(belge ya da commit yok)" if tr else "(no documents or commits)")
+    return "\n\n".join(parts)
+
+
+def pick_card_model(configured: str, choices: List[str], fallback: str = "") -> str:
+    """`card_model` doluysa o; boşsa `choices` içinde "haiku" geçen ilk (sıralı listenin SONUNCUSU = en yeni
+    olanı), yoksa `fallback` (sağlayıcının varsayılan modeli)."""
+    if configured.strip():
+        return configured.strip()
+    haiku = sorted(c for c in choices if "haiku" in c.lower())
+    return haiku[-1] if haiku else fallback
+
+
+def make_card(raw: Dict[str, Any], parsed: Optional[Dict[str, Any]], project: Optional[Project] = None,
+              *, now: Optional[float] = None, meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Ham + (varsa) model özeti -> yazılacak kart. Özet alanı boşsa ham türetimdeki değer kalır.
+    `summarized`: modelden gelen özet kullanıldı mı (False = ham kart)."""
+    base = raw_card_fields(raw, project)
+    if parsed:
+        for k, v in parsed.items():
+            if v:
+                base[k] = v
+    card = dict(base)
+    card.update({
+        "last_activity": float(raw.get("last_commit") or 0.0),
+        "source_hash": raw.get("source_hash", ""),
+        "updated_at": now if now is not None else _now(),
+        "summarized": bool(parsed),
+    })
+    if meta:
+        card.update(meta)
+    return card
+
+
+def load_card(name: str) -> Optional[Dict[str, Any]]:
+    d = _load_json(card_path(name), None)
+    return d if isinstance(d, dict) else None
+
+
+def save_card(name: str, card: Dict[str, Any]) -> None:
+    _save_json(card_path(name), card)
+
+
+def load_cards() -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    try:
+        names = os.listdir(os.path.join(STEWARD_DIR, "cards"))
+    except OSError:
+        return out
+    for fn in sorted(names):
+        if fn.endswith(".json") and valid_name(fn[:-5]):
+            c = load_card(fn[:-5])
+            if c is not None:
+                out[fn[:-5]] = c
+    return out
+
+
+def mark_card_stale(name: str) -> bool:
+    """Oturum yeniden açıldı (handover sonrası) -> kart bir sonraki fırsatta yenilensin. Kart yoksa no-op."""
+    card = load_card(name)
+    if card is None or card.get("stale"):
+        return False
+    card["stale"] = True
+    save_card(name, card)
+    return True
+
+
+def card_refresh_reason(card: Optional[Dict[str, Any]], source_hash: str, now: float, max_age_hours: int) -> str:
+    """"" = yenileme gerekmez; aksi halde neden: missing | stale | changed | old. Aynı kaynak özeti için
+    başarısız bir deneme (`attempt_hash`) varsa `max_age_hours` dolana dek tekrar denenmez (her tick'te boşa
+    model çağrısı olmasın); kaynak değişirse hemen yeniden denenir."""
+    if card is None:
+        return "missing"
+    max_age = max_age_hours * 3600
+    attempt_at = float(card.get("attempt_at") or 0.0)
+    if card.get("attempt_hash") == source_hash and (not max_age or now - attempt_at < max_age):
+        return ""
+    if card.get("stale"):
+        return "stale"
+    if card.get("source_hash") != source_hash:
+        return "changed"
+    if max_age and now - max(float(card.get("updated_at") or 0.0), attempt_at) >= max_age:
+        return "old"
+    return ""
+
+
+def note_card_failure(name: str, source_hash: str, error: str, now: Optional[float] = None) -> None:
+    """Var olan kartı bozmadan başarısız denemeyi kaydet (`card_refresh_reason` geri çekilsin)."""
+    card = load_card(name)
+    if card is None:
+        return
+    card.update({"attempt_hash": source_hash, "attempt_at": now if now is not None else _now(),
+                 "last_error": _short(error, 300)})
+    save_card(name, card)
+
+
+def card_one_liner(card: Optional[Dict[str, Any]]) -> str:
+    return str((card or {}).get("next_step") or "")
+
+
 # ── persona ───────────────────────────────────────────────────────────────────
 
 def persona_text(override: str = "") -> str:
@@ -503,6 +788,27 @@ def _clip(text: str, n: int) -> str:
     return text if len(text) <= n else text[: n - 1].rstrip() + "…"
 
 
+def card_lines(card: Dict[str, Any], tr: bool = True, now: Optional[float] = None) -> List[str]:
+    """Proje kartını tur prompt'una / insan çıktısına gidecek kısa satırlara döker (boş alanlar atlanır)."""
+    out: List[str] = []
+    age = ""
+    if card.get("updated_at"):
+        h = max(0, int(((now or _now()) - float(card["updated_at"])) / 3600))
+        age = (f" ({h} sa önce" if tr else f" ({h}h ago") + (", bayat)" if card.get("stale") and tr else
+                                                              ", stale)" if card.get("stale") else ")")
+    out.append(("kart" if tr else "card") + age + ("" if card.get("summarized", True) else (" [ham]" if tr else " [raw]")) + ":")
+    for key, label_tr, label_en in (("goal", "amaç", "goal"), ("phase_guess", "faz tahmini", "phase guess"),
+                                    ("next_step", "sıradaki adım", "next step")):
+        if card.get(key):
+            out.append(f"- {label_tr if tr else label_en}: {_clip(card[key], 300)}")
+    for key, label_tr, label_en in (("open_tbds", "açık TBD", "open TBDs"), ("blockers", "engeller", "blockers"),
+                                    ("recent_done", "son biten", "recently done")):
+        vals = card.get(key) or []
+        if vals:
+            out.append(f"- {label_tr if tr else label_en}: " + "; ".join(_clip(v, 120) for v in vals[:5]))
+    return out
+
+
 def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Optional[List[Question]] = None,
                       now: Optional[float] = None) -> str:
     """Beyne gönderilen tur prompt'u. `items`: motorun topladığı gözden-geçirme maddeleri —
@@ -561,10 +867,14 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
             lines.append(("son istek: " if tr else "last request: ") + _clip(ex["user"], 300))
         if ex.get("assistant"):
             lines.append(("son yanıt: " if tr else "last reply: ") + _clip(ex["assistant"], 700))
-        for doc, body in (it.get("docs") or {}).items():
-            if body:
-                lines.append(f"{doc} (baş):" if tr else f"{doc} (head):")
-                lines.append(_clip(body, 600))
+        card = it.get("card")
+        if card:
+            lines += card_lines(card, tr)
+        else:
+            for doc, body in (it.get("docs") or {}).items():
+                if body:
+                    lines.append(f"{doc} (baş):" if tr else f"{doc} (head):")
+                    lines.append(_clip(body, 600))
         if it.get("text"):
             lines.append(_clip(it["text"], 600))
     lines.append("")
@@ -578,8 +888,9 @@ def build_workspace_claude_md(persona: str, lang: str = "tr") -> str:
     tr = lang != "en"
     tools = (
         "## Araçların (MCP `cops-steward`)\n"
-        "- `steward_overview` — filo + projeler + açık sorular + yeni fikirler (her turun başında bak)\n"
-        "- `steward_project_context name` — projenin fazı/amacı/notu, son konuşma, TODO/PLAN/TOBEDECIDED başları, git durumu\n"
+        "- `steward_overview` — filo + projeler (sıradaki adım dahil) + açık sorular + yeni fikirler (her turun başında bak)\n"
+        "- `steward_project_context name` — projenin fazı/amacı/notu, son konuşma, PROJE KARTI (hedef, sıradaki adım, açık TBD'ler, engeller; "
+        "kart yoksa TODO/PLAN/TOBEDECIDED başları; `docs=true` ikisini birden), git durumu\n"
         "- `steward_read_file name path` — proje klasöründen dosya oku (salt-okunur)\n"
         "- `steward_directive name text [model effort]` — oturuma sıradaki işi gönder (kapalıysa açar)\n"
         "- `steward_restart name directive reason [model effort]` — durdur + aynı konuşmayla yeniden aç + yeni direktif\n"

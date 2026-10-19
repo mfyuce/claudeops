@@ -95,8 +95,9 @@ from .. import searxng
 from ..diaglog import diag_log
 from ..settings import (byok_env_for, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_stream_enabled,
                         ucli_web_config)
-from ..ucli_client import binary_supports_flag, read_chat_history, read_status_file, resolve_binary
-from .base import CliProvider
+from ..ucli_client import (UcliError, binary_supports_flag, read_chat_history, read_status_file, resolve_binary,
+                           ucli_chat_once)
+from .base import CliProvider, OneshotError
 
 # effort: "ne kadar düşünsün" anlamında GERÇEK bir karşılığı yok (unified-cli
 # TOBEDECIDED.md'sine bu boşluk ayrıca not edildi) — ama 2026-09-24'te
@@ -465,6 +466,26 @@ class UcliProvider(CliProvider):
             wrapped = f'UCLI_API_KEY="$(cat {_API_KEY_FILE})" exec {inner}'
             return "sh -c " + shlex.quote(wrapped)
         return inner
+
+    def oneshot(self, prompt: str, model: Optional[str], cwd: str, timeout: float = 120.0) -> Optional[str]:
+        # argv ile ifade edilemez (anahtar argv'ye girmez, `ucli_client` env'e koyar): `oneshot_argv` None kalır.
+        # Evren uç noktası + BYOK anahtarı spawn ile AYNI kaynaktan (`byok.ucli.UCLI_API_KEY`, yoksa anahtar dosyası).
+        key = byok_env_for("ucli").get("UCLI_API_KEY", "").strip() or None
+        if key is None:
+            try:
+                with open(_API_KEY_FILE, encoding="utf-8") as f:
+                    key = f.read().strip() or None
+            except OSError:
+                key = None
+        os.makedirs(cwd, exist_ok=True)
+        try:
+            res = ucli_chat_once(cwd, prompt, model=(model or None), endpoint=_ENDPOINT, api_key=key, timeout=timeout)
+        except UcliError as e:
+            raise OneshotError(f"ucli: {e}") from e
+        text = str(res.get("answer") or "").strip()
+        if not text:
+            raise OneshotError("ucli: boş yanıt")
+        return text
 
     def matches_proc(self, cmd: List[str]) -> bool:
         return bool(cmd) and os.path.basename(cmd[0]) == "ucli"

@@ -276,8 +276,8 @@ py/cops mcp-queue # MCP stdio server: lets an *agent* (not a human) drive the Ek
                    #   run by hand — a provider wires a session's CLI up to it (claude: `--mcp-config`,
                    #   codex: `-c mcp_servers...`; agy has no per-invocation MCP flag, so it's a
                    #   registration hint only, not automated).
-py/cops steward   # the "değnekçi" (steward): status / projects / set / import / questions / answer / ideas /
-                   #   idea / log / persona / on / off / config / tick / tour / brain / directive / restart —
+py/cops steward   # the "değnekçi" (steward): status / projects / cards / set / import / questions / answer /
+                   #   ideas / idea / log / persona / on / off / config / tick / tour / brain / directive / restart —
                    #   see "The steward" below.
 py/cops mcp-steward # MCP stdio server the steward's own CLI session ("brain") drives the fleet through
                    #   (/api/steward/* adaptor, same pattern as mcp-queue). Not meant to be run by hand.
@@ -311,6 +311,24 @@ ticks every `tick_seconds` (default 120 s) and does the *measurable* part itself
   next tick (the session is reopened if needed). `STEWARD-IDEA: ...` lands in the idea inbox.
 - **Slot pressure** — when projects are waiting and no slot is free, a project session idle for
   `stop_idle_minutes` is stopped to make room.
+- **Project cards** — the brain reads *cards*, not 160 repos. A card (`steward/cards/<name>.json`:
+  `goal`, `phase_guess`, `next_step`, `open_tbds`, `blockers`, `recent_done`, `last_activity`, `source_hash`,
+  `updated_at`) is built from the heads of `GOAL/PLAN/TODO/TOBEDECIDED/DONE.md` plus `git log -5` (the raw
+  part, `steward.build_raw_card`, uses no model) and summarized by ONE headless call (`provider.oneshot`;
+  claude: `claude -p <prompt> --model <m> --output-format text --tools ""`, file contents travel inside the
+  prompt, stdin is `/dev/null`, cwd is a neutral `steward/oneshot/` folder; ucli: `ucli_chat_once`). A reply
+  that is not JSON leaves the raw-derived card in place (`summarized: false`, `last_error`). Each tick
+  (in a background thread, outside the tick lock) refreshes up to `cards_per_tick` of the projects that are
+  **not running**, in an active phase (`planning`/`planned`) and either have no card, have a stale one
+  (marked after a respawn), a changed `source_hash`, or a card older than `card_max_age_hours`; a failed
+  attempt backs off until the source changes or the max age passes. Settings (`py/cops steward config`):
+  `card_refresh` (on), `card_cli` (claude), `card_model` (`""` = the entry of `model_choices` containing
+  "haiku", else the CLI's default model), `card_max_age_hours` (24), `cards_per_tick` (1). `py/cops steward
+  cards [NAME] [--refresh]` lists/shows cards or queues a refresh (`POST /api/steward/cards/refresh`, runs
+  in the background — a model call can outlast the panel's 15 s API timeout; `GET /api/steward/cards`,
+  `/api/steward/card?name=`). The cards replace raw document heads in `steward_project_context`
+  (`docs=true` adds them back) and in the tour items; `projects`/`steward_overview` carry `next_step`.
+  Cost: scanning 160 projects for staleness is ~0.6 s of git/file reads per tick.
 
 The *judgement* part — "is this session doing useless work?", "what is the right next task?", "is this
 idea worth a project?", "should I ask the owner?" — goes to a **brain**: a normal CLI session named
@@ -326,7 +344,7 @@ answers that have no session to go to), at most every `tour_minutes` and only wh
 idle. The brain's decisions are tool calls, so every one of them is logged (`py/cops steward log`).
 
 Data lives outside the repo in `~/.claude/claudeops/steward/` (`projects.json`, `questions.json`,
-`ideas.json`, `state.json`, `log.jsonl`, `workspace/`). Settings: the `steward` block in `settings.json`
+`ideas.json`, `state.json`, `log.jsonl`, `cards/`, `oneshot/`, `workspace/`). Settings: the `steward` block in `settings.json`
 (`py/cops steward config KEY VALUE`, `py/cops steward on|off`). API: `/api/steward/*` (local-only, like
 `/api/orch/*`); `/api/status` carries a light `steward` summary for the panel. A dedicated panel tab is
 not built yet — the CLI and the API cover everything.

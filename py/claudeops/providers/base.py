@@ -5,6 +5,7 @@ Manager kod (spawn.py/discovery.py/commands/web.py) YALNIZCA bu arayüz
 yeni bir CLI eklemek yeni bir provider dosyası + registry'ye bir satır demek.
 """
 from __future__ import annotations
+import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
@@ -12,6 +13,10 @@ from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 import psutil
 
 from ..effort import nearest_effort
+
+
+class OneshotError(RuntimeError):
+    """`CliProvider.oneshot` çalıştırılamadı/başarısız (ikili yok, zaman aşımı, sıfır olmayan çıkış, boş yanıt)."""
 
 
 @dataclass
@@ -365,6 +370,35 @@ class CliProvider(ABC):
         MCP-bağlama kavramı var (claude/codex — ikisi de `mcp_launch_args()`
         ile ÇAĞRI-BAŞINA hallediyor, kalıcı kayda ihtiyaçları yok)."""
         return None
+
+    # ── tek seferlik (headless) çağrı ────────────────────────────────────────
+
+    def oneshot_argv(self, prompt: str, model: Optional[str]) -> Optional[List[str]]:
+        """Tek bir prompt'u araçsız, etkileşimsiz çalıştırıp metin yanıtını stdout'a yazan ham argv (quote'lanmamış)
+        ya da None = bu CLI'da böyle bir yol YOK (VARSAYILAN). Oturum açmaz, tmux kullanmaz; değnekçinin proje kartı
+        özeti gibi ucuz mekanik işler içindir. `mcp_launch_args`/`busy_status_pattern` ile AYNI "yok=None, sadece
+        destekleyen override eder" sözleşmesi."""
+        return None
+
+    def oneshot(self, prompt: str, model: Optional[str], cwd: str, timeout: float = 120.0) -> Optional[str]:
+        """`oneshot_argv` ile tek seferlik çağrı -> yanıt metni. None = bu CLI desteklemiyor; başarısızlık
+        `OneshotError`. stdin /dev/null (CLI girdi beklemesin), cwd çağıranın seçtiği NÖTR klasör (projenin kendi
+        klasörü değil: CLAUDE.md/transkript karışmasın). ucli gibi argv ile ifade edilemeyen CLI'lar bunu override eder."""
+        argv = self.oneshot_argv(prompt, model)
+        if argv is None:
+            return None
+        try:
+            res = subprocess.run(argv, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            raise OneshotError(f"{self.name}: {timeout:.0f}s içinde yanıt vermedi") from e
+        except OSError as e:
+            raise OneshotError(f"{self.name}: çalıştırılamadı: {e}") from e
+        text = (res.stdout or "").strip()
+        if res.returncode != 0:
+            raise OneshotError(f"{self.name}: exit={res.returncode}: {(res.stderr or text)[:300].strip()}")
+        if not text:
+            raise OneshotError(f"{self.name}: boş yanıt")
+        return text
 
     # ── discovery tarafı ─────────────────────────────────────────────────────
 

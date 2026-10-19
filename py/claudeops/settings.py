@@ -168,7 +168,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "steward": {},           # {enabled, tick_seconds, tour_minutes, max_active, max_starts_per_tick, idle_minutes,
                               # review_minutes, stop_idle_minutes, ho_grace_minutes, brain_cli, brain_model,
                               # brain_effort, brain_name, planning_model, planning_effort, planned_model,
-                              # planned_effort, lang: str} — değnekçi (2026-10-19, kullanıcı: "160 projemde sürekli
+                              # planned_effort, lang, card_refresh, card_cli, card_model, card_max_age_hours,
+                              # cards_per_tick: str} — değnekçi (2026-10-19, kullanıcı: "160 projemde sürekli
                               # gezip ... bir değnekçiye/scheduler'a ihtiyacım var"). Hepsi str, alan bazlı merge
                               # ("boş = varsayılana dön", `ucli_limits` dili); varsayılanlar ve tipler
                               # `steward.Config`'de TEK yerde. `enabled` VARSAYILAN KAPALI — hiçbir şey

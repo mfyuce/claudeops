@@ -19,7 +19,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import psutil
 
@@ -31,7 +31,7 @@ from ..guard import guard_lock
 from ..hosts import LOCAL_HOST_NAME
 from ..paths import CLAUDEOPS_DIR
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
-from ..providers.base import McpServerSpec
+from ..providers.base import McpServerSpec, OneshotError
 from ..settings import default_effort_for, default_model_for, load_settings, steward_config
 from ..spawn import spawn_session, detect_display
 from ..stuck import find_stuck
@@ -54,6 +54,9 @@ _ACTIONS: Dict[str, Callable[..., Any]] = {}
 _RECENT: List[Dict[str, Any]] = []
 _LAST_TICK: Dict[str, Any] = {"at": 0.0, "trigger": "", "actions": 0, "error": ""}
 _loop_started = False
+_CARD_LOCK = threading.Lock()      # aynı anda tek kart yenileme işi (tick'in arka plan işi / elle tetiklenen)
+_CARD_BACKGROUND = True            # testler False yapıp işi satır içi koşturur
+CARD_TIMEOUT_SECONDS = 120.0
 
 
 def configure(**callbacks: Callable[..., Any]) -> None:
@@ -304,6 +307,151 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
     return {"ok": True, "name": s.name, "chars": len(message)}
 
 
+# ── proje kartları ────────────────────────────────────────────────────────────
+#
+# Çekirdek (`steward.py`): ham kart, prompt, ayrıştırma, yenileme kuralı. Burada: modeli çağıran tek seferlik
+# özet (`summarize_card`), hangi projenin yenileneceği (`refresh_due_cards`) ve arka plan işi. Kart yenileme
+# `_LOCK` ALTINDA DEĞİL: bir model çağrısı (10-60 sn) tick'i ve beynin MCP çağrılarını bekletmesin.
+
+def oneshot_cwd() -> str:
+    """Tek seferlik çağrıların NÖTR cwd'si (proje klasörü değil): CLAUDE.md/transkript projeye karışmasın."""
+    return os.path.join(sw.STEWARD_DIR, "oneshot")
+
+
+def summarize_card(raw: Dict[str, Any], name: str = "", project: Optional[sw.Project] = None,
+                   cfg: Optional[sw.Config] = None) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+    """Ham karttan tek seferlik headless çağrıyla (`provider.oneshot`) özet iste. Dönen: (alanlar | None, meta).
+    None = çağrı başarısız ya da yanıt JSON değil (`meta["error"]` nedeni söyler); çağıran ham kartta kalır."""
+    cfg = cfg or steward_config()
+    cli = cfg.card_cli if cfg.card_cli in PROVIDERS else DEFAULT_CLI
+    provider = get_provider(cli)
+    model = sw.pick_card_model(cfg.card_model, provider.model_choices(), default_model_for(provider))
+    meta: Dict[str, Any] = {"cli": cli, "model": model}
+    prompt = sw.build_card_prompt(name, raw, project, lang=cfg.lang)
+    t0 = time.time()
+    try:
+        text = provider.oneshot(prompt, model, oneshot_cwd(), timeout=CARD_TIMEOUT_SECONDS)
+    except OneshotError as e:
+        meta["error"] = str(e)
+        return None, meta
+    finally:
+        meta["secs"] = round(time.time() - t0, 1)
+    if text is None:
+        meta["error"] = f"{cli}: tek seferlik çağrı desteklenmiyor"
+        return None, meta
+    parsed = sw.parse_card_json(text)
+    if parsed is None:
+        meta["error"] = "yanıt JSON olarak ayrıştırılamadı"
+    return parsed, meta
+
+
+def _cwd_resolver() -> Callable[[str], str]:
+    """Proje adı -> cwd, filo anlık görüntüsü bir kez alınarak (160 projede her biri için süreç taraması YOK;
+    çalışan projeler zaten kart yenilemeden dışlanır, yalnız roster/instance kayıtlarına bakılır)."""
+    fleet = _act("fleet_status") or {}
+
+    def resolve(name: str) -> str:
+        info = fleet.get(name) if isinstance(fleet, dict) else None
+        if info and info.get("cwd"):
+            return info["cwd"]
+        rec = inst_mod.get_instance(name)
+        return (rec or {}).get("cwd") or ""
+    return resolve
+
+
+def refresh_card(name: str, cfg: Optional[sw.Config] = None, *, cwd: str = "", raw: Optional[Dict[str, Any]] = None,
+                 reason: str = "") -> Dict[str, Any]:
+    """Tek projenin kartını üret/yenile ve yaz. Özet başarısızsa: kart varsa DOKUNULMAZ (yalnız deneme kaydı),
+    yoksa ham kart yazılır. Her çağrı `log.jsonl`'a bir `card` olayı düşer (günlük özet bunu sayar)."""
+    cfg = cfg or steward_config()
+    project = sw.load_projects().get(name)
+    cwd = cwd or _project_cwd(name)
+    if not cwd or not os.path.isdir(cwd):
+        return {"ok": False, "name": name, "error": "project folder unknown"}
+    raw = raw or sw.build_raw_card(cwd)
+    parsed, meta = summarize_card(raw, name, project, cfg)
+    old = sw.load_card(name)
+    if parsed is None and old is not None:
+        sw.note_card_failure(name, raw["source_hash"], meta.get("error", ""))
+    else:
+        sw.save_card(name, sw.make_card(raw, parsed, project, meta={
+            **{k: meta[k] for k in ("cli", "model") if k in meta},
+            **({"last_error": meta["error"]} if parsed is None and meta.get("error") else {})}))
+    ok = parsed is not None
+    sw.log_event("card", name=name, ok=ok, reason=reason, model=meta.get("model", ""), cli=meta.get("cli", ""),
+                 secs=meta.get("secs", 0), error=meta.get("error", ""))
+    return {"ok": ok, "name": name, "error": meta.get("error", ""), "model": meta.get("model", "")}
+
+
+def _running_project_names() -> set:
+    live = find_sessions(measure_cpu=False)
+    return {s.name for s in live} | {s.base for s in live}
+
+
+def refresh_due_cards(cfg: Optional[sw.Config] = None, limit: Optional[int] = None,
+                      now: Optional[float] = None) -> List[Dict[str, Any]]:
+    """Kartı olmayan / bayat / kaynağı değişmiş / eskimiş, ÇALIŞMAYAN, aktif fazdaki projeleri yenile (en çok
+    `limit`; None = `cards_per_tick`). Önce kartı hiç olmayanlar, sonra en eski kart. Çalışan proje atlanır:
+    oturum yazarken kaynak zaten değişiyor (handover'dan sonra `mark_card_stale` ile işaretlenir)."""
+    cfg = cfg or steward_config()
+    limit = cfg.cards_per_tick if limit is None else limit
+    if limit <= 0:
+        return []
+    now = now if now is not None else time.time()
+    projects = sw.load_projects()
+    running = _running_project_names()
+    cards = sw.load_cards()
+    cwd_of = _cwd_resolver()
+    due = []
+    for p in projects.values():
+        if p.phase not in sw.ACTIVE_PHASES or p.name in running:
+            continue
+        cwd = cwd_of(p.name)
+        if not cwd or not os.path.isdir(cwd):
+            continue
+        raw = sw.build_raw_card(cwd)
+        reason = sw.card_refresh_reason(cards.get(p.name), raw["source_hash"], now, cfg.card_max_age_hours)
+        if reason:
+            old = cards.get(p.name)
+            due.append(((old is not None, float((old or {}).get("updated_at") or 0.0), p.priority, p.name), p, cwd, raw, reason))
+    due.sort(key=lambda x: x[0])
+    results = []
+    for _, p, cwd, raw, reason in due[:limit]:
+        try:
+            results.append(refresh_card(p.name, cfg, cwd=cwd, raw=raw, reason=reason))
+        except Exception as e:  # tek kart döngüyü düşürmesin
+            diag_log("steward_card_crashed", name=p.name, error=repr(e))
+            results.append({"ok": False, "name": p.name, "error": repr(e)})
+    return results
+
+
+def _run_cards_job(job: Callable[[], Any]) -> bool:
+    """Kart işini arka planda koştur; zaten bir iş sürüyorsa False (üst üste binmesin)."""
+    if not _CARD_LOCK.acquire(blocking=False):
+        return False
+
+    def _work() -> None:
+        try:
+            job()
+        except Exception as e:
+            diag_log("steward_card_job_crashed", error=repr(e))
+        finally:
+            _CARD_LOCK.release()
+
+    if _CARD_BACKGROUND:
+        threading.Thread(target=_work, daemon=True, name="steward-cards").start()
+    else:
+        _work()
+    return True
+
+
+def card_tick(cfg: sw.Config) -> bool:
+    """tick_once'ın kart adımı: `card_refresh` açıksa ve `cards_per_tick` > 0 ise arka planda bir tur."""
+    if not cfg.card_refresh or cfg.cards_per_tick <= 0:
+        return False
+    return _run_cards_job(lambda: refresh_due_cards(cfg))
+
+
 # ── beyin ─────────────────────────────────────────────────────────────────────
 
 def brain_spec() -> McpServerSpec:
@@ -378,6 +526,10 @@ def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project]) -> Dict[st
             out["last_exchange"] = get_provider(s.cli).last_exchange(s.cwd, s.sid) or {}
         except Exception:
             out["last_exchange"] = {}
+    card = sw.load_card(proj.name) if proj is not None else None
+    if card is not None:
+        out["card"] = card    # beyin 160 repoyu değil kartları okur; ham belge başı yalnız kart yokken
+        return out
     docs = {}
     for d in ("TODO.md", "PLAN.md"):
         head = _read_head(cwd, d, 600) if cwd else ""
@@ -439,6 +591,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
         res = _ensure_running(name, model=model, effort=effort, lang=cfg.lang)
         if not res.get("ok") or p is None:
             return res
+        sw.mark_card_stale(p.name)   # handover'da oturum işini yazdı: kart, proje durunca yeniden özetlensin
         return _give_directive(p, "", reason="respawn", session_name=name)
     if k == "start":
         p = projects.get(name)
@@ -501,7 +654,11 @@ def tick_once(trigger: str = "timer") -> Dict[str, Any]:
         _LAST_TICK.update({"at": t0, "trigger": trigger, "actions": len(applied), "error": error})
         if applied:
             web_ws.notify_status_changed()
-        return {"ok": not error, "error": error, "actions": applied, "at": t0}
+    try:
+        card_tick(cfg)
+    except Exception as e:
+        diag_log("steward_card_tick_crashed", error=repr(e))
+    return {"ok": not error, "error": error, "actions": applied, "at": t0}
 
 
 def _loop() -> None:
@@ -562,10 +719,14 @@ def invalidate_summary() -> None:
     _SUMMARY_CACHE["until"] = 0.0
 
 
-def _project_dict(p: sw.Project, running: Optional[set] = None) -> Dict[str, Any]:
+def _project_dict(p: sw.Project, running: Optional[set] = None,
+                  cards: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
     d = dataclasses.asdict(p)
     if running is not None:
         d["running"] = p.name in running
+    card = (cards if cards is not None else {p.name: sw.load_card(p.name)}).get(p.name) or {}
+    d["next_step"] = sw.card_one_liner(card)
+    d["card_updated_at"] = float(card.get("updated_at") or 0.0)
     return d
 
 
@@ -574,11 +735,13 @@ def http_state() -> Dict[str, Any]:
     projects = sw.load_projects()
     live = find_sessions(measure_cpu=False)
     running_projects = {s.name for s in live} | {s.base for s in live}
+    cards = sw.load_cards()
     return {
         "ok": True,
         "config": dataclasses.asdict(cfg),
         "summary": summary(),
-        "projects": [_project_dict(p, running_projects) for p in sorted(projects.values(), key=lambda p: (p.priority, p.name))],
+        "projects": [_project_dict(p, running_projects, cards)
+                     for p in sorted(projects.values(), key=lambda p: (p.priority, p.name))],
         "running": [{"name": s.name, "cwd": s.cwd, "cli": s.cli, "model": s.model} for s in live],
         "questions": [dataclasses.asdict(q) for q in sw.open_questions()],
         "ideas": [dataclasses.asdict(i) for i in sw.load_ideas() if i.status == "new"],
@@ -587,7 +750,8 @@ def http_state() -> Dict[str, Any]:
 
 
 def http_projects() -> Dict[str, Any]:
-    return {"ok": True, "projects": [_project_dict(p) for p in sw.load_projects().values()]}
+    cards = sw.load_cards()
+    return {"ok": True, "projects": [_project_dict(p, None, cards) for p in sw.load_projects().values()]}
 
 
 def http_questions(status: str = "open") -> Dict[str, Any]:
@@ -610,7 +774,7 @@ def http_log(n: int = 50) -> Dict[str, Any]:
     return {"ok": True, "entries": sw.tail_log(max(1, min(500, n)))}
 
 
-def http_context(name: str) -> Dict[str, Any]:
+def http_context(name: str, docs: bool = False) -> Dict[str, Any]:
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
     projects = sw.load_projects()
@@ -626,8 +790,14 @@ def http_context(name: str) -> Dict[str, Any]:
         except Exception:
             out["last_exchange"] = {}
         out["cli"], out["model"] = s.cli, s.model
-    out["docs"] = {d: _read_head(cwd, d) for d in DOCS if cwd} if cwd else {}
-    out["docs"] = {k: v for k, v in out["docs"].items() if v}
+    owner = _project_for_session(name, projects)
+    card = sw.load_card(owner.name if owner is not None else name)
+    if card is not None:
+        out["card"] = card
+        out["card_stale"] = bool(card.get("stale"))
+    if card is None or docs:    # kart varsa ham belge başları yerine kart; `docs=1` ikisini birden ister
+        out["docs"] = {d: _read_head(cwd, d) for d in DOCS if cwd} if cwd else {}
+        out["docs"] = {k: v for k, v in out["docs"].items() if v}
     out["git"] = _git_short(cwd)
     out["questions"] = [dataclasses.asdict(q) for q in sw.load_questions() if q.project == name and q.status == "open"]
     return out
@@ -852,6 +1022,40 @@ def http_brain(data: Dict[str, Any]) -> Dict[str, Any]:
         return brain_start() if action == "start" else brain_stop()
 
 
+def http_cards() -> Dict[str, Any]:
+    projects = sw.load_projects()
+    cards = sw.load_cards()
+    return {"ok": True, "cards": [dict(c, name=n) for n, c in sorted(cards.items())],
+            "missing": sorted(n for n, p in projects.items() if p.phase in sw.ACTIVE_PHASES and n not in cards),
+            "busy": _CARD_LOCK.locked()}
+
+
+def http_card(name: str) -> Dict[str, Any]:
+    if not sw.valid_name(name):
+        return {"ok": False, "error": "invalid name"}
+    card = sw.load_card(name)
+    return {"ok": True, "name": name, "card": card} if card is not None else {"ok": False, "error": "no card"}
+
+
+def http_cards_refresh(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Kartları şimdi yenile (arka planda; model çağrısı panelin 15 sn'lik API zaman aşımını aşabilir, sonuç
+    `py/cops steward cards` / `log`ta). `name` verilirse O proje (çalışıyor olsa da, kaynak değişmemiş olsa da);
+    verilmezse yenilemesi GEREKEN tüm çalışmayan aktif projeler (tick başına sınırı yok)."""
+    cfg = steward_config()
+    name = str(data.get("name") or "").strip()
+    if name:
+        if not sw.valid_name(name):
+            return {"ok": False, "error": "invalid name"}
+        if name not in sw.load_projects():
+            return {"ok": False, "error": "not a steward project"}
+        job = lambda: refresh_card(name, cfg, reason="manual")   # noqa: E731
+    else:
+        job = lambda: refresh_due_cards(cfg, limit=10 ** 6)   # noqa: E731
+    if not _run_cards_job(job):
+        return {"ok": False, "error": "a card refresh is already running"}
+    return {"ok": True, "queued": name or "due"}
+
+
 def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
     """`web.py` do_GET: `/api/steward/*` → dict (bilinmeyen alt yol → None = 404)."""
     g = lambda k, d="": (qs.get(k) or [d])[0]
@@ -869,7 +1073,11 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         except ValueError:
             return http_log()
     if path == "/api/steward/context":
-        return http_context(g("name").strip())
+        return http_context(g("name").strip(), docs=g("docs") in ("1", "true"))
+    if path == "/api/steward/cards":
+        return http_cards()
+    if path == "/api/steward/card":
+        return http_card(g("name").strip())
     if path == "/api/steward/file":
         try:
             mx = int(g("max", str(MAX_FILE_READ_CHARS)))
@@ -892,6 +1100,7 @@ POST_PATHS = {
     "/api/steward/stop": http_stop,
     "/api/steward/handover": http_handover,
     "/api/steward/skip": http_skip,
+    "/api/steward/cards/refresh": http_cards_refresh,
     "/api/steward/brain": http_brain,
     "/api/steward/tick": lambda data: tick_once("manual"),
     "/api/steward/tour": lambda data: run_tour(force=True),

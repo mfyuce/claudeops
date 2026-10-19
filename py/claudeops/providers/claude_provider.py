@@ -542,6 +542,15 @@ class ClaudeProvider(CliProvider):
             f"{prompt_arg}"
         )
 
+    def oneshot_argv(self, prompt: str, model: Optional[str]) -> Optional[List[str]]:
+        # `-p` (print): tek yanıt, metin. `--tools ""` = hiçbir araç yok (dosya okutma yok; içerik prompt'ta).
+        # Prompt `-p`den HEMEN SONRA, bayraklardan ÖNCE: `--tools` variadic (bkz. build_inner_command'daki
+        # `--mcp-config` notu), arkasına konan prompt'u kendi değeri sanıp yutardı.
+        argv = [resolved_binary("claude"), "-p", prompt]
+        if model:
+            argv += ["--model", model]
+        return argv + ["--output-format", "text", "--tools", ""]
+
     def mcp_launch_args(self, spec: McpServerSpec) -> List[str]:
         # Claude Code'un `--mcp-config` bayrağı bir JSON DOSYA yolu bekliyor
         # (inline JSON'u tmux'un shell komut satırına gömmek `shlex.quote`'un

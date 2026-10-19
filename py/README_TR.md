@@ -280,8 +280,8 @@ py/cops mcp-queue # MCP stdio server: bir *agent'ın* (insan değil) Ekip/Team o
                    #   elle çalıştırılmaz — bir provider session'ın CLI'sını buna bağlar (claude:
                    #   `--mcp-config`, codex: `-c mcp_servers...`; agy'de çağrı-başına MCP bayrağı
                    #   yok, sadece bir kayıt ipucu gösterilir, otomatik yapılmaz).
-py/cops steward   # değnekçi: status / projects / set / import / questions / answer / ideas / idea / log /
-                   #   persona / on / off / config / tick / tour / brain / directive / restart — aşağıdaki
+py/cops steward   # değnekçi: status / projects / cards / set / import / questions / answer / ideas / idea /
+                   #   log / persona / on / off / config / tick / tour / brain / directive / restart — aşağıdaki
                    #   "Değnekçi" bölümüne bak.
 py/cops mcp-steward # değnekçinin kendi CLI oturumunun ("beyin") filoyu sürdüğü MCP stdio server
                    #   (/api/steward/* adaptörü, mcp-queue ile aynı desen). Elle çalıştırılmaz.
@@ -315,6 +315,24 @@ içindeki bir döngü her `tick_seconds`'ta (varsayılan 120 sn) *ölçülebilir
   açılır). `STEWARD-IDEA: ...` fikir kutusuna düşer.
 - **Slot baskısı** — bekleyen proje varken boş slot yoksa, `stop_idle_minutes` boyunca boşta duran proje
   oturumu yer açmak için durdurulur.
+- **Proje kartları** — beyin 160 repoyu değil *kartları* okur. Kart (`steward/cards/<ad>.json`: `goal`,
+  `phase_guess`, `next_step`, `open_tbds`, `blockers`, `recent_done`, `last_activity`, `source_hash`,
+  `updated_at`) `GOAL/PLAN/TODO/TOBEDECIDED/DONE.md` başları + `git log -5`'ten kurulur (ham kısım,
+  `steward.build_raw_card`, model kullanmaz) ve TEK bir headless çağrıyla özetlenir (`provider.oneshot`;
+  claude: `claude -p <prompt> --model <m> --output-format text --tools ""`, dosya içeriği prompt'un
+  içinde gider, stdin `/dev/null`, cwd nötr `steward/oneshot/` klasörü; ucli: `ucli_chat_once`). Yanıt JSON
+  değilse ham karttan türetilen kart kalır (`summarized: false`, `last_error`). Her tick'te (arka plan
+  thread'inde, tick kilidinin DIŞINDA) **çalışmayan**, aktif fazdaki (`planning`/`planned`) ve kartı yok /
+  bayat (respawn sonrası işaretlenir) / `source_hash`'i değişmiş / `card_max_age_hours`'tan eski olan
+  projelerden en çok `cards_per_tick` tanesi yenilenir; başarısız deneme, kaynak değişene ya da azami yaş
+  dolana dek tekrar denenmez. Ayarlar (`py/cops steward config`): `card_refresh` (on), `card_cli` (claude),
+  `card_model` (`""` = `model_choices` içinde "haiku" geçen, yoksa CLI'nin varsayılan modeli),
+  `card_max_age_hours` (24), `cards_per_tick` (1). `py/cops steward cards [AD] [--refresh]` kartları
+  listeler/gösterir ya da yenileme kuyruğa alır (`POST /api/steward/cards/refresh`, arka planda çalışır —
+  model çağrısı panelin 15 sn'lik API zaman aşımını aşabilir; `GET /api/steward/cards`,
+  `/api/steward/card?name=`). Kartlar `steward_project_context`'te (`docs=true` ham başları da ekler) ve tur
+  maddelerinde ham belge başlarının yerine geçer; `projects`/`steward_overview` `next_step` taşır.
+  Maliyet: 160 projenin bayatlık taraması tick başına ~0,6 sn git/dosya okuması.
 
 *Yargı* gerektiren kısım — "bu oturum boş iş mi yapıyor?", "sıradaki doğru iş ne?", "bu fikir proje olur
 mu?", "sahibine sormalı mıyım?" — bir **beyne** gider: `degnekci` adlı (ayarlanabilir; `brain_cli`/
@@ -330,7 +348,7 @@ gözden geçirilmemiş oturum, yeni fikir, gidecek oturumu olmayan cevap) bir **
 (`py/cops steward log`).
 
 Veri repo dışında `~/.claude/claudeops/steward/` altında (`projects.json`, `questions.json`,
-`ideas.json`, `state.json`, `log.jsonl`, `workspace/`). Ayar: `settings.json`'daki `steward` bloğu
+`ideas.json`, `state.json`, `log.jsonl`, `cards/`, `oneshot/`, `workspace/`). Ayar: `settings.json`'daki `steward` bloğu
 (`py/cops steward config ALAN DEĞER`, `py/cops steward on|off`). API: `/api/steward/*` (yalnız yerel,
 `/api/orch/*` gibi); `/api/status` panel için hafif bir `steward` özeti taşır. Panelde ayrı bir sekme
 henüz yok — CLI ve API her şeyi kapsıyor.
