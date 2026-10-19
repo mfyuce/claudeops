@@ -157,12 +157,39 @@ function ChatBody({ state, t }: { state: ChatState; t: Strings }) {
   if (state.messages.length === 0) return <div>{t.chatEmpty}</div>;
   return (
     <>
-      {state.messages.map((m, i) => (
-        <ChatBlock key={i} label={m.role === "user" ? t.chatYou : t.chatAssistant} text={m.text} emptyLabel={t.chatEmpty} />
-      ))}
+      {state.messages.map((m, i) => {
+        if (m.role === "boundary") {
+          const [trigger, tokens] = m.text.split(", ");
+          const detail = [trigger, tokens ? `${tokens} token` : ""].filter(Boolean).join(", ");
+          return (
+            <div key={i} style={BOUNDARY_STYLE}>
+              {t.chatCompacted}{detail ? ` (${detail})` : ""}
+            </div>
+          );
+        }
+        if (m.role === "summary") {
+          return (
+            <details key={i} style={{ margin: ".4rem 0" }}>
+              <summary style={{ cursor: "pointer", opacity: 0.75 }}>{t.chatSummary}</summary>
+              <ChatBlock label={t.chatSummary} text={m.text} emptyLabel={t.chatEmpty} />
+            </details>
+          );
+        }
+        return <ChatBlock key={i} label={m.role === "user" ? t.chatYou : t.chatAssistant} text={m.text} emptyLabel={t.chatEmpty} />;
+      })}
     </>
   );
 }
+
+const BOUNDARY_STYLE: CSSProperties = {
+  margin: ".6rem 0",
+  padding: ".25rem 0",
+  textAlign: "center",
+  fontSize: ".75rem",
+  opacity: 0.75,
+  borderTop: "1px dashed var(--border)",
+  borderBottom: "1px dashed var(--border)",
+};
 
 const CHAT_BLOCK_BOX_STYLE: CSSProperties = {
   fontSize: ".85rem",

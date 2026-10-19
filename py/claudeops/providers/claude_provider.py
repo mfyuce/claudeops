@@ -1037,7 +1037,17 @@ class ClaudeProvider(CliProvider):
         out: List[Dict[str, str]] = []
         for d in self._transcript_lines(cwd, sid):
             t = d.get("type")
-            if t == "assistant" and not d.get("isSidechain"):
+            if t == "system" and d.get("subtype") == "compact_boundary":
+                # Compaction öncesi mesajlar dosyada durur (arşiv yok, TBD#89): sınır yalnız
+                # bir işaret; "text" = "tetikleyen, öncesi token" (arayüz etiketi kendi diliyle).
+                meta = d.get("compactMetadata") or {}
+                out.append({"role": "boundary",
+                            "text": f"{meta.get('trigger', '')}, {meta.get('preTokens', '')}"})
+            elif t == "user" and d.get("isCompactSummary") and not d.get("isSidechain"):
+                text = _extract_text(d.get("message", {}).get("content"))
+                if text:
+                    out.append({"role": "summary", "text": text})
+            elif t == "assistant" and not d.get("isSidechain"):
                 text = _extract_text(d.get("message", {}).get("content"))
                 if text:
                     out.append({"role": "assistant", "text": text})

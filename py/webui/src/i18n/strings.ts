@@ -181,6 +181,8 @@ export interface Strings {
   chatYou: string;
   chatAssistant: string;
   chatEmpty: string;
+  chatCompacted: string;
+  chatSummary: string;
   chatUnsupported: string;
   chatLoadError: string;
   tabFilesView: string;
@@ -690,6 +692,8 @@ export const STRINGS: Record<Lang, Strings> = {
     chatYou: "Sen",
     chatAssistant: "Asistan",
     chatEmpty: "(boş)",
+    chatCompacted: "Bağlam sıkıştırıldı (compaction)",
+    chatSummary: "Sıkıştırma özeti (aç/kapat)",
     chatUnsupported: "bu CLI için sohbet görünümü henüz yok — terminal sekmesini kullanın",
     chatLoadError: "yüklenemedi: ",
     tabFilesView: "dosyalar",
@@ -1300,6 +1304,8 @@ export const STRINGS: Record<Lang, Strings> = {
     chatYou: "You",
     chatAssistant: "Assistant",
     chatEmpty: "(empty)",
+    chatCompacted: "Context compacted",
+    chatSummary: "Compaction summary (toggle)",
     chatUnsupported: "chat view isn't available for this CLI yet — use the terminal tab",
     chatLoadError: "failed to load: ",
     tabFilesView: "files",

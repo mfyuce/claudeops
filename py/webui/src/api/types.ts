@@ -644,7 +644,9 @@ export type TermOutputResult = ApiResult<{
 }>;
 /** One message in `_term_chat(mode="full")`'s `full_history()`-backed history. */
 export interface ChatMessage {
-  role: "user" | "assistant";
+  /** `boundary` = compaction marker (`text` "trigger, preTokens"), `summary` = the compaction
+   * summary the CLI injected as a user turn; both only from claude, older hosts never send them. */
+  role: "user" | "assistant" | "boundary" | "summary";
   text: string;
 }
 
