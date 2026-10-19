@@ -1,8 +1,8 @@
-"""`routing` — işe göre model/effort yönergesini göster ya da codex'in küresel AGENTS.md'sine yaz (TBD#91).
+"""`routing` — işe göre model/effort yönergesini göster ya da codex AGENTS.md ve agy GEMINI.md'ye yaz (TBD#91).
 
 Kullanım:
   py/cops routing show    # etkin metin + durum (açık/kapalı, kaynak)
-  py/cops routing sync    # codex ~/.codex/AGENTS.md işaretli bloğunu Ayarlar'a göre yaz/kaldır
+  py/cops routing sync    # codex AGENTS.md + agy GEMINI.md işaretli bloğunu Ayarlar'a göre yaz/kaldır
 
 Claude'a teslim her açılışta bayrakla olur (sync gerekmez). Açık oturumlara hiçbir şey göndermez.
 """

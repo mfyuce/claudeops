@@ -77,6 +77,27 @@ class GuidanceTest(_Tmp):
 
 
 class CodexSyncTest(_Tmp):
+    def setUp(self):
+        super().setUp()
+        self.agy = os.path.join(self.dir.name, "GEMINI.md")
+
+    def test_agy_file_is_created_with_only_the_block_and_removed_with_it(self):
+        path = self._agents("# Notlar\n")
+        self.assertEqual(routing.sync_global_files(path, self.agy)["agy"], "written")
+        self.assertTrue(self._read(self.agy).startswith(routing.BLOCK_BEGIN))
+        settings.save_settings({"routing_guidance": "off"})
+        self.assertEqual(routing.sync_global_files(path, self.agy)["agy"], "removed")
+        self.assertFalse(os.path.exists(self.agy))
+
+    def test_existing_agy_file_keeps_user_text(self):
+        path = self._agents("x\n")
+        with open(self.agy, "w", encoding="utf-8") as f:
+            f.write("benim gemini notlarim\n")
+        routing.sync_global_files(path, self.agy)
+        settings.save_settings({"routing_guidance": "off"})
+        routing.sync_global_files(path, self.agy)
+        self.assertEqual(self._read(self.agy), "benim gemini notlarim\n")
+
     def _agents(self, text):
         path = os.path.join(self.dir.name, "AGENTS.md")
         with open(path, "w", encoding="utf-8") as f:
@@ -89,28 +110,28 @@ class CodexSyncTest(_Tmp):
 
     def test_missing_file_is_not_created(self):
         path = os.path.join(self.dir.name, "yok.md")
-        self.assertEqual(routing.sync_global_files(path)["codex"], "skipped:no AGENTS.md")
+        self.assertEqual(routing.sync_global_files(path, os.path.join(self.dir.name, "g.md"))["codex"], "skipped:no file")
         self.assertFalse(os.path.exists(path))
 
     def test_write_is_idempotent_keeps_rest_and_backs_up(self):
         path = self._agents("# Benim notlarim\n\nmetin\n")
-        self.assertEqual(routing.sync_global_files(path)["codex"], "written")
+        self.assertEqual(routing.sync_global_files(path, self.agy)["codex"], "written")
         text = self._read(path)
         self.assertTrue(text.startswith("# Benim notlarim\n\nmetin\n"))
         self.assertEqual(text.count(routing.BLOCK_BEGIN), 1)
         self.assertEqual(self._read(path + ".bak-routing"), "# Benim notlarim\n\nmetin\n")
-        self.assertEqual(routing.sync_global_files(path)["codex"], "unchanged")
+        self.assertEqual(routing.sync_global_files(path, self.agy)["codex"], "unchanged")
 
     def test_text_change_replaces_block_and_off_removes_it(self):
         path = self._agents("# Notlar\n")
-        routing.sync_global_files(path)
+        routing.sync_global_files(path, self.agy)
         settings.save_settings({"routing_guidance_text": "yeni metin"})
-        self.assertEqual(routing.sync_global_files(path)["codex"], "written")
+        self.assertEqual(routing.sync_global_files(path, self.agy)["codex"], "written")
         text = self._read(path)
         self.assertIn("yeni metin", text)
         self.assertEqual(text.count(routing.BLOCK_BEGIN), 1)
         settings.save_settings({"routing_guidance": "off"})
-        self.assertEqual(routing.sync_global_files(path)["codex"], "removed")
+        self.assertEqual(routing.sync_global_files(path, self.agy)["codex"], "removed")
         self.assertEqual(self._read(path), "# Notlar\n")
 
 

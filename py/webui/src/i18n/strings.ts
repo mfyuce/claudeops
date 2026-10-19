@@ -1057,7 +1057,7 @@ export const STRINGS: Record<Lang, Strings> = {
     defaultEffortLabel: "yeni oturum için varsayılan effort (CLI başına)",
     routingGuidanceLabel: "işe göre model/effort yönergesi",
     routingGuidanceDesc:
-      "Yeni açılan oturumlara 'düşük başla, işe göre alt ajan/model seç' yönergesi eklenir (claude: her açılışta sistem istemine; codex: ~/.codex/AGENTS.md içinde işaretli blok). Açık oturumlar yeniden açılana kadar etkilenmez. Metni boş bırakırsan paketlenmiş varsayılan kullanılır. agy ve copilot için henüz küresel dosya yolu doğrulanmadı.",
+      "Yeni açılan oturumlara 'düşük başla, işe göre alt ajan/model seç' yönergesi eklenir (claude: her açılışta sistem istemine; codex: ~/.codex/AGENTS.md, agy: ~/.gemini/GEMINI.md içinde işaretli blok). Açık oturumlar yeniden açılana kadar etkilenmez. Metni boş bırakırsan paketlenmiş varsayılan kullanılır. copilot için küresel dosya yolu henüz doğrulanamadı (hesap kotası dolu).",
     routingGuidancePlaceholder: "boş = paketlenmiş varsayılan metin (data/routing.md)",
     ucliWebLabel: "ucli web araçları (arama / sayfa getirme)",
     ucliWebDesc:
@@ -1667,7 +1667,7 @@ export const STRINGS: Record<Lang, Strings> = {
     defaultEffortLabel: "default effort for new sessions (per CLI)",
     routingGuidanceLabel: "model/effort routing guidance",
     routingGuidanceDesc:
-      "Newly opened sessions get a 'start low, pick sub-agent/model per task' guidance (claude: appended to the system prompt on every launch; codex: a marked block in ~/.codex/AGENTS.md). Running sessions are unaffected until reopened. Leave the text empty to use the bundled default. No verified global file path yet for agy and copilot.",
+      "Newly opened sessions get a 'start low, pick sub-agent/model per task' guidance (claude: appended to the system prompt on every launch; codex: a marked block in ~/.codex/AGENTS.md, agy: in ~/.gemini/GEMINI.md). Running sessions are unaffected until reopened. Leave the text empty to use the bundled default. The global file path for copilot is not verified yet (account quota exhausted).",
     routingGuidancePlaceholder: "empty = bundled default text (data/routing.md)",
     ucliWebLabel: "ucli web tools (search / page fetch)",
     ucliWebDesc:

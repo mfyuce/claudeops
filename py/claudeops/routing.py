@@ -4,7 +4,9 @@ Tek kaynak: paketlenmiş `data/routing.md`, ya da Ayarlar'daki `routing_guidance
 Teslim:
 - claude: her açılışta `--append-system-prompt-file <yol>` (`claude_guidance_path`); proje CLAUDE.md'lerine dokunulmaz.
 - codex: `~/.codex/AGENTS.md` içinde işaretli bir blok (`sync_global_files`); işaretin DIŞINA dokunmaz, ilk yazımda `.bak-routing` yedeği alır.
-- agy/copilot: küresel talimat dosyası konumu DOĞRULANMADI (hafıza `cli-instruction-files-canary`); şimdilik yok.
+- agy: `~/.gemini/GEMINI.md` (canary ile doğrulandı 2026-10-19; dosya yoksa YALNIZ bu blokla oluşturulur, blok kalkınca
+  dosya yalnız bloktan ibaretse silinir).
+- copilot: küresel dosya yolu DOĞRULANAMADI (hesap aylık kotası dolu, canary çalışmadı); şimdilik yok.
 Açık oturumlar yönergeyi ancak yeniden açılınca alır.
 """
 from __future__ import annotations
@@ -20,6 +22,7 @@ OVERRIDE_PATH = os.path.join(CLAUDEOPS_DIR, "routing-guidance.md")
 BLOCK_BEGIN = "<!-- claudeops-routing:begin -->"
 BLOCK_END = "<!-- claudeops-routing:end -->"
 CODEX_AGENTS = os.path.expanduser("~/.codex/AGENTS.md")
+AGY_GEMINI = os.path.expanduser("~/.gemini/GEMINI.md")
 
 
 def routing_text() -> str:
@@ -72,27 +75,38 @@ def _with_block(existing: str, block_body: Optional[str]) -> str:
     return (existing.rstrip("\n") + "\n\n" if existing.strip() else "") + block
 
 
-def sync_global_files(codex_path: str = CODEX_AGENTS) -> Dict[str, str]:
-    """Yönergeyi codex'in küresel `AGENTS.md`sine işaretli blok olarak yaz (kapalıysa bloğu kaldır). Sonuç:
-    {"codex": "written|removed|unchanged|skipped:<neden>"}. Dosya yoksa oluşturmaz (codex kurulu değilse dokunma)."""
-    out: Dict[str, str] = {}
-    if not os.path.isfile(codex_path):
-        return {"codex": "skipped:no AGENTS.md"}
+def _sync_one(path: str, create: bool) -> str:
+    """Tek dosyada işaretli bloğu Ayarlar'a göre yaz/kaldır. `create`: dosya yoksa yalnız bu blokla oluştur (agy);
+    değilse dosya yokken dokunma (codex kurulu değilse yeni dosya açma). Sonuç: written|removed|unchanged|skipped:<neden>."""
+    exists = os.path.isfile(path)
+    if not exists and not create:
+        return "skipped:no file"
     try:
-        with open(codex_path, encoding="utf-8") as f:
-            current = f.read()
+        current = ""
+        if exists:
+            with open(path, encoding="utf-8") as f:
+                current = f.read()
         body = routing_text() if routing_guidance_enabled() else ""
         new = _with_block(current, body if body.strip() else None)
         if new == current:
-            return {"codex": "unchanged"}
-        backup = codex_path + ".bak-routing"
-        if not os.path.exists(backup):
-            shutil.copy2(codex_path, backup)
-        tmp = codex_path + ".tmp-routing"
+            return "unchanged"
+        if exists and new.strip() == "" and create:
+            os.remove(path)   # biz oluşturduk ve içinde başka bir şey kalmadı
+            return "removed"
+        backup = path + ".bak-routing"
+        if exists and not os.path.exists(backup):
+            shutil.copy2(path, backup)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp-routing"
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(new)
-        os.replace(tmp, codex_path)
-        out["codex"] = "written" if body.strip() else "removed"
+        os.replace(tmp, path)
+        return "written" if body.strip() else "removed"
     except OSError as e:
-        out["codex"] = f"skipped:{e.__class__.__name__}"
-    return out
+        return f"skipped:{e.__class__.__name__}"
+
+
+def sync_global_files(codex_path: str = CODEX_AGENTS, agy_path: str = AGY_GEMINI) -> Dict[str, str]:
+    """Yönergeyi codex'in `AGENTS.md`sine ve agy'nin `GEMINI.md`sine işaretli blok olarak yaz (kapalıysa kaldır).
+    Sonuç: {"codex": ..., "agy": ...}. codex dosyası yoksa oluşturulmaz; agy dosyası yoksa oluşturulur."""
+    return {"codex": _sync_one(codex_path, create=False), "agy": _sync_one(agy_path, create=True)}
