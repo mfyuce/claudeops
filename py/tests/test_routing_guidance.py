@@ -35,6 +35,12 @@ class DefaultsTest(_Tmp):
             self.assertEqual(settings.default_model_for(p), "claude-sonnet-5-5")
         self.assertEqual(settings.default_effort_for(p), "medium")
 
+    def test_provider_without_model_choices_gives_empty_default(self):
+        # Uzak host'ta modeli listelenemeyen CLI: eskiden IndexError ile /api/status 500'lenirdi (yuhem, 2026-10-19).
+        p = get_provider("claude")
+        with mock.patch.object(type(p), "model_choices", lambda self: []):
+            self.assertEqual(settings.default_model_for(p), "")
+
     def test_override_wins_and_invalid_override_falls_back(self):
         p = get_provider("claude")
         settings.save_settings({"default_effort": {"claude": "high"}})

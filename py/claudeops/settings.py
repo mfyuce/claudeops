@@ -292,7 +292,8 @@ def default_model_for(provider: "CliProvider") -> str:
     # Eskiden doğrudan `choices[0]` idi: claude'un sıralı listesinde bu ALFABETİK ilk = `claude-fable-5-1`
     # (yeni oturumlar en pahalı kademede açılıyordu, 2026-10-19'da fark edildi).
     preferred = provider.preferred_default_model()
-    return preferred if preferred in choices else choices[0]
+    # Seçeneği olmayan provider (ör. uzak host'ta modeli listelenemeyen CLI) boş döner: `choices[0]` /api/status'u 500'lerdi.
+    return preferred if preferred in choices else (choices[0] if choices else "")
 
 
 def default_effort_for(provider: "CliProvider") -> str:
