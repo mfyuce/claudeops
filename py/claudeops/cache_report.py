@@ -113,14 +113,17 @@ def read_transcript(path: Path) -> Transcript:
 
 
 def scan(root: str = PROJECTS_DIR, days: float = 7.0, now: Optional[float] = None,
-         project: str = "") -> Iterator[Transcript]:
-    """`root/*/*.jsonl` içinden son `days` günde değişmiş olanları okur. `project`: dizin adında geçen alt dize."""
+         project: str = "", exclude_remote: bool = False) -> Iterator[Transcript]:
+    """`root/*/*.jsonl` içinden son `days` günde değişmiş olanları okur. `project`: dizin adında geçen alt dize.
+    `exclude_remote`: uzak host'tan içe aktarılan transkriptleri (dizin adı `-home-<kullanıcı>-remote-` ile başlar) atla."""
     cutoff = (time.time() if now is None else now) - days * 86400
     base = Path(root)
     if not base.is_dir():
         return
     for d in sorted(base.iterdir()):
         if not d.is_dir() or (project and project not in d.name):
+            continue
+        if exclude_remote and "-remote-" in d.name:
             continue
         for p in sorted(d.glob("*.jsonl")):
             try:

@@ -19,10 +19,12 @@ def register(sub):
     p.add_argument("--ttl", type=int, default=PROMPT_CACHE_TTL_SECONDS, metavar="SEC",
                    help=f"önbellek ömrü sn (varsayılan {PROMPT_CACHE_TTL_SECONDS}; boşluk kovası etiketleri 3600'e göredir)")
     p.add_argument("--project", default="", metavar="TEXT", help="yalnız adında TEXT geçen proje dizinleri")
+    p.add_argument("--exclude-remote", action="store_true",
+                   help="uzak host'tan içe aktarılan transkriptleri (-remote- dizinleri) sayma; varsayılan: say")
     p.set_defaults(func=run)
 
 
 def run(args) -> int:
-    rep = analyze(scan(days=args.days, project=args.project), ttl=args.ttl)
+    rep = analyze(scan(days=args.days, project=args.project, exclude_remote=args.exclude_remote), ttl=args.ttl)
     print(render(rep, days=args.days, top=args.top))
     return 0

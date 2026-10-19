@@ -171,6 +171,14 @@ class ScanAndRenderTests(unittest.TestCase):
         names = [t.name for t in cr.scan(root=str(self.root), days=7, now=T0 + 10, project="beta")]
         self.assertEqual(names, ["b"])
 
+    def test_exclude_remote_skips_imported_remote_transcripts_only_when_asked(self):
+        self.make("-home-x-remote-ulak31-alpha", "s1", self.rows("uzak"))
+        self.make("-home-x-alpha", "s2", self.rows("yerel"))
+        both = sorted(t.name for t in cr.scan(root=str(self.root), days=7, now=T0 + 10))
+        self.assertEqual(both, ["uzak", "yerel"])
+        local = [t.name for t in cr.scan(root=str(self.root), days=7, now=T0 + 10, exclude_remote=True)]
+        self.assertEqual(local, ["yerel"])
+
     def test_a_missing_root_scans_nothing(self):
         self.assertEqual(list(cr.scan(root=str(self.root / "yok"), days=7, now=T0)), [])
 
