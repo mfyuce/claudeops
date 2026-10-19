@@ -83,6 +83,7 @@ from .web_static import DIST_DIR, resolve_static_path
 from . import web_grpc
 from . import web_hosts
 from . import web_orch
+from . import web_steward
 from . import web_term_lite
 from . import web_ws
 
@@ -1601,6 +1602,9 @@ def _status_payload() -> dict:
         # son birkaç run. Local-only, `web_hosts.merge_status`'a hiç girmez.
         "orch": {"draft": web_orch.get_draft(), "active": web_orch.active_summary(),
                  "recent": web_orch.list_runs(5)},
+        # Değnekçi (2026-10-19) — `orch` gibi HAFİF, local-only özet (5 sn önbellekli; canlı liste
+        # bu turun kendi taramasından verilir, ikinci bir proc taraması yapılmaz).
+        "steward": web_steward.summary(running_names={s.name for s in all_live}),
         # 2026-09-17, "son snapshot" — bkz. aşağıdaki "Fleet snapshot" bölümü.
         # `orch` gibi local-only, `web_hosts.merge_status`'a hiç girmez (bu
         # makinenin KENDİ fleet'inin anlık görüntüsü, uzak host'unkiyle
@@ -3968,6 +3972,10 @@ class _Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             run_id = (qs.get("id") or [""])[0].strip()
             self._json(web_orch.http_run(run_id))
+        elif path.startswith("/api/steward/"):
+            # Değnekçi (2026-10-19) — `/api/orch/*` ile AYNI ilke: local-only, host-routed DEĞİL.
+            result = web_steward.http_get(path, parse_qs(urlparse(self.path).query))
+            self._json(result if result is not None else {"error": "not found"}, status=200 if result is not None else 404)
         elif path == "/api/hosts":
             # Settings/Hosts UI için — /api/status'un yalın "hosts" alanından
             # (badge/routing) farklı, base_url/has_token de taşıyan tam liste.
@@ -4133,7 +4141,7 @@ class _Handler(BaseHTTPRequestHandler):
             # — baştan geçersiz kılardı).
             self._handle_files_upload()
             return
-        if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
+        if not path.startswith("/api/steward/") and path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/resize", "/api/term/set-mode",
@@ -4213,6 +4221,16 @@ class _Handler(BaseHTTPRequestHandler):
             # — `_run_turn` zaten tur bitince normal `_save_progress` yoluyla
             # `notify_status_changed()`'i tetikleyecek.
             self._json(web_orch.http_result(data))
+            return
+
+        if path.startswith("/api/steward/"):
+            # Değnekçi (2026-10-19) — `/api/orch/*` ile AYNI ilke: host-routing'den ÖNCE/bağımsız,
+            # sadece yerel filo. Mutasyonların çoğu fleet'i değiştirir → `_json_notify`.
+            result = web_steward.http_post(path, data)
+            if result is None:
+                self._json({"error": "not found"}, status=404)
+            else:
+                self._json_notify(result)
             return
 
         lang = "en" if data.get("lang") == "en" else "tr"
@@ -4718,6 +4736,12 @@ def run(args) -> int:
     web_hosts.start_remote_poller()  # aynı desen — uzak host'ları arka planda poll'layan daemon thread
     web_hosts.start_capability_prober()  # aynı desen — her host için grpc/ws/rest tier'ini arka planda dener
     model_freshness.start_daily_check()  # aynı desen — claude model listesini günde-bir/başlarken tazeler (koda dokunmaz, bkz. modülün kendi docstring'i)
+    # Değnekçi (2026-10-19): döngü thread'i hep var, ama `steward.enabled=on` değilken HİÇBİR tick atmaz
+    # (projenin "nothing ever starts automatically" ilkesi). Filo eylemleri bu modülün kendi
+    # fonksiyonları — web_steward bizi import etmez (web_orch ile aynı yön).
+    web_steward.configure(status_payload=_status_payload, fleet_status=_fleet_status, start=_start, stop=_stop,
+                          handover=_handover, register_project=_register_project)
+    web_steward.start_loop()
     grpc_port = args.grpc_port if args.grpc_port is not None else args.port + 1
     grpc_server = web_grpc.start_grpc_server(grpc_port, token, _status_payload, _term_output)
     if grpc_server is not None:

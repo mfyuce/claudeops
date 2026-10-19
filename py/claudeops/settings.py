@@ -9,6 +9,7 @@ Leaf modül (sadece paths'e bağımlı, diaglog.py'yle aynı disiplin) — hando
 gibi commands/ PAKETİNE bağımlı olmayan modüller de sorunsuz import edebilsin.
 """
 from __future__ import annotations
+import dataclasses
 import json
 import os
 import re
@@ -164,6 +165,16 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # codex: `~/.codex/AGENTS.md`ye işaretli blok (`py/cops routing sync`). AÇIK
                               # oturumlar yönergeyi ancak yeniden açılınca alır. Okuma tarafı: `routing_guidance_enabled()`.
     "routing_guidance_text": "",  # "" = paketlenmiş `data/routing.md`; doluysa o metin kullanılır (Ayarlar'da düzenlenir).
+    "steward": {},           # {enabled, tick_seconds, tour_minutes, max_active, max_starts_per_tick, idle_minutes,
+                              # review_minutes, stop_idle_minutes, ho_grace_minutes, brain_cli, brain_model,
+                              # brain_effort, brain_name, planning_model, planning_effort, planned_model,
+                              # planned_effort, lang: str} — değnekçi (2026-10-19, kullanıcı: "160 projemde sürekli
+                              # gezip ... bir değnekçiye/scheduler'a ihtiyacım var"). Hepsi str, alan bazlı merge
+                              # ("boş = varsayılana dön", `ucli_limits` dili); varsayılanlar ve tipler
+                              # `steward.Config`'de TEK yerde. `enabled` VARSAYILAN KAPALI — hiçbir şey
+                              # kendiliğinden başlamaz; `history_warn_at` üstteki genel ayardan okunur, burada
+                              # tekrarlanmaz. Okuma tarafı: `steward_config()`.
+    "steward_persona_text": "",  # "" = paketlenmiş `data/steward.md`; doluysa beynin CLAUDE.md'si bu metinden üretilir.
 }
 
 
@@ -212,7 +223,7 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_usage_warn", "cli_managed") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_usage_warn", "cli_managed", "steward") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
@@ -514,3 +525,41 @@ def ucli_web_config() -> Dict[str, Any]:
     if domains:
         out["allow_fetch_domains"] = domains
     return out
+
+
+def steward_config() -> "Config":
+    """`settings.json`'ın `steward` alanı → `steward.Config` (tip-güvenli; bozuk/eksik alan varsayılanda kalır,
+    asla fırlatmaz). `history_warn_at` genel ayardan gelir (Terminal sayacı/"dikkat gerekenleri seç" ile AYNI
+    eşik: değnekçi de aynı sayıda handover'a sokar). `enabled`: on/1/true/yes/evet AÇIK, geri kalanı KAPALI."""
+    from .steward import Config  # leaf-döngüsü yok: steward.py settings'i import etmez
+    s = load_settings()
+    raw = s.get("steward") or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    cfg = Config()
+    for f in dataclasses.fields(Config):
+        if f.name == "history_warn_at":
+            continue
+        if f.name not in raw:
+            continue
+        val = raw[f.name]
+        try:
+            if f.type == "bool" or isinstance(getattr(cfg, f.name), bool):
+                setattr(cfg, f.name, str(val).strip().lower() in ("on", "1", "true", "yes", "evet"))
+            elif isinstance(getattr(cfg, f.name), int):
+                setattr(cfg, f.name, max(0, int(str(val).strip())))
+            else:
+                setattr(cfg, f.name, str(val).strip())
+        except (TypeError, ValueError):
+            continue
+    try:
+        cfg.history_warn_at = max(100, int(s.get("history_warn_at") or Config.history_warn_at))
+    except (TypeError, ValueError):
+        pass
+    if cfg.lang not in ("tr", "en"):
+        cfg.lang = "tr"
+    if cfg.tick_seconds < 15:
+        cfg.tick_seconds = 15
+    if not cfg.brain_name or not cfg.brain_name.replace("_", "").isalnum():
+        cfg.brain_name = "degnekci"
+    return cfg

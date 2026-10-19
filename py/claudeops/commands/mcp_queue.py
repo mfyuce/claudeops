@@ -294,10 +294,16 @@ def _send(msg: dict) -> None:
     sys.stdout.flush()
 
 
-def _handle(port: int, msg: dict) -> Optional[dict]:
+def _handle(port: int, msg: dict, tools: Optional[List[Dict[str, Any]]] = None,
+            dispatch: Optional[Dict[str, Callable[[int, dict], dict]]] = None,
+            server_name: str = SERVER_NAME) -> Optional[dict]:
     """Bir JSON-RPC mesajını işler. İSTEK (id'li) ise yanıt dict'i döner;
     NOTIFICATION (id'siz) ise None döner — JSON-RPC 2.0'da notification'a
-    yanıt YAZILMAZ."""
+    yanıt YAZILMAZ. `tools`/`dispatch`/`server_name` (2026-10-19, değnekçi):
+    aynı protokol döngüsünü başka bir araç setiyle (`mcp_steward.py`) paylaşmak
+    için; verilmezse bu modülün kendi TOOLS/DISPATCH'i (davranış birebir eski)."""
+    tools = TOOLS if tools is None else tools
+    dispatch = DISPATCH if dispatch is None else dispatch
     msg_id = msg.get("id")
     method = msg.get("method")
     params = msg.get("params") or {}
@@ -306,18 +312,18 @@ def _handle(port: int, msg: dict) -> Optional[dict]:
         return {"jsonrpc": "2.0", "id": msg_id, "result": {
             "protocolVersion": params.get("protocolVersion") or PROTOCOL_VERSION_FALLBACK,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": SERVER_NAME, "version": "0.1.0"},
+            "serverInfo": {"name": server_name, "version": "0.1.0"},
         }}
     if method == "notifications/initialized":
         return None
     if method == "ping":
         return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
     if method == "tools/list":
-        return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": TOOLS}}
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools}}
     if method == "tools/call":
         name = params.get("name")
         args = params.get("arguments") or {}
-        handler = DISPATCH.get(name)
+        handler = dispatch.get(name)
         if handler is None:
             return {"jsonrpc": "2.0", "id": msg_id,
                      "result": {"content": [{"type": "text", "text": f"unknown tool: {name!r}"}], "isError": True}}
@@ -338,8 +344,10 @@ def _handle(port: int, msg: dict) -> Optional[dict]:
     return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32601, "message": f"method not found: {method}"}}
 
 
-def run_server(port: int) -> None:
-    _log(f"cops-mcp-queue starting (pid={os.getpid()}), backing panel at 127.0.0.1:{port}")
+def run_server(port: int, tools: Optional[List[Dict[str, Any]]] = None,
+               dispatch: Optional[Dict[str, Callable[[int, dict], dict]]] = None,
+               server_name: str = SERVER_NAME) -> None:
+    _log(f"{server_name} starting (pid={os.getpid()}), backing panel at 127.0.0.1:{port}")
     for raw_line in sys.stdin:
         line = raw_line.strip()
         if not line:
@@ -350,7 +358,7 @@ def run_server(port: int) -> None:
             _log(f"bad JSON-RPC line, skipped: {e}")
             continue
         try:
-            reply = _handle(port, msg)
+            reply = _handle(port, msg, tools, dispatch, server_name)
         except Exception as e:  # protokol döngüsü TEK bozuk mesaj yüzünden ölemez
             _log(f"handler crashed: {e!r}")
             reply = {"jsonrpc": "2.0", "id": msg.get("id"), "error": {"code": -32603, "message": str(e)}}

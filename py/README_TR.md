@@ -280,9 +280,60 @@ py/cops mcp-queue # MCP stdio server: bir *agent'ın* (insan değil) Ekip/Team o
                    #   elle çalıştırılmaz — bir provider session'ın CLI'sını buna bağlar (claude:
                    #   `--mcp-config`, codex: `-c mcp_servers...`; agy'de çağrı-başına MCP bayrağı
                    #   yok, sadece bir kayıt ipucu gösterilir, otomatik yapılmaz).
+py/cops steward   # değnekçi: status / projects / set / import / questions / answer / ideas / idea / log /
+                   #   persona / on / off / config / tick / tour / brain / directive / restart — aşağıdaki
+                   #   "Değnekçi" bölümüne bak.
+py/cops mcp-steward # değnekçinin kendi CLI oturumunun ("beyin") filoyu sürdüğü MCP stdio server
+                   #   (/api/steward/* adaptörü, mcp-queue ile aynı desen). Elle çalıştırılmaz.
 ```
 
 Her komutun kendi `--help`'i var.
+
+## Değnekçi — yüzlerce projeyi senin yerine gezen zamanlayıcı
+
+**Varsayılan KAPALI** (`steward.enabled`); hiçbir şey kendiliğinden başlamaz. Açınca `py/cops web`
+içindeki bir döngü her `tick_seconds`'ta (varsayılan 120 sn) *ölçülebilir* işleri LLM'siz kendisi yapar:
+
+- **Oturum ekonomisi** — tmux scrollback'i `history_warn_at`'a (Terminal sayacının kullandığı aynı 1900
+  satır eşiği) ulaşan oturuma kapanış (handover) mesajı gider; `READY FOR HANDOVER` deyince (ya da süre
+  dolunca) durdurulur ve aynı konuşmayla, sıradaki direktifle yeniden açılır. Takılı oturumlar da aynı
+  görünümde.
+- **Gezme** — değnekçiye kaydettiğin her projenin (`py/cops steward set AD --phase ...`, roster'ın tamamı
+  için `py/cops steward import`) bir fazı (`planning` / `planned` / `paused` / `done` / `idea`), önceliği
+  (1-5) ve uğrama sıklığı var. Sırası gelen projeye boş slot varsa (`max_active`, varsayılan 4) oturumu
+  açılır (resume) ve **faz direktifi** verilir:
+  - `planning` — literatürü ve mevcut çözümleri tara (→ `KAYNAKLAR.md`), zaten yapan var mı / işe yarar
+    mı / daha iyisi var mı, olur mu değerlendir, `PLAN.md` yaz, kararları `TOBEDECIDED.md`'ye yaz; sonunda
+    `STEWARD-PLAN-READY` → değnekçi fazı `planned` yapar.
+  - `planned` — `PLAN.md`/`TODO.md`'deki sıradaki işi al, gereken komutları çalıştır, kararları (TBD#) ve
+    edge case'leri kaydet, commit+push; `STEWARD-DONE` projeyi kapatır.
+  - Faza göre model/effort (`planning_effort` varsayılan `high`; `planned_*` boş = roster varsayılanı),
+    proje bazında ezilebilir. Değişiklik oturum (yeniden) açılırken uygulanır.
+- **Sana sorular** — `STEWARD-ASK: <soru>` (ya da `STEWARD-BLOCKED: ...`) yazan oturum bir soru açar
+  (`py/cops steward questions`), `service notify` (ntfy) kuruluysa telefona bildirim gider, cevabın
+  (`py/cops steward answer ID "..."`) bir sonraki tick'te o oturuma iletilir (gerekirse oturum yeniden
+  açılır). `STEWARD-IDEA: ...` fikir kutusuna düşer.
+- **Slot baskısı** — bekleyen proje varken boş slot yoksa, `stop_idle_minutes` boyunca boşta duran proje
+  oturumu yer açmak için durdurulur.
+
+*Yargı* gerektiren kısım — "bu oturum boş iş mi yapıyor?", "sıradaki doğru iş ne?", "bu fikir proje olur
+mu?", "sahibine sormalı mıyım?" — bir **beyne** gider: `degnekci` adlı (ayarlanabilir; `brain_cli`/
+`brain_model`/`brain_effort`) normal bir CLI oturumu. Çalışma klasöründeki üretilmiş `CLAUDE.md` =
+**persona** (`py/claudeops/data/steward.md`, sahibi gibi düşünsün diye yazıldı; Ayarlar'daki
+`steward_persona_text` ile ezilir) + MCP araçlarının kılavuzu (`steward_overview`,
+`steward_project_context`, `steward_directive`, `steward_restart`, `steward_stop`, `steward_ask_user`,
+`steward_set_project`, `steward_register_project` (klasörü açar, amaç+kaynaklarla `GOAL.md` yazar — yerel
+dosyalar `kaynaklar/`a kopyalanır —, projeyi kaydeder), `steward_note`, `steward_idea`/`steward_idea_update`,
+`steward_skip`, …). Döngü beyne ancak yargılanacak bir şey varken (boşta oturum, uzun süredir çalışıp
+gözden geçirilmemiş oturum, yeni fikir, gidecek oturumu olmayan cevap) bir **tur** gönderir; en çok
+`tour_minutes`'ta bir ve yalnız beyin boştayken. Beynin kararları araç çağrısıdır, hepsi kayda geçer
+(`py/cops steward log`).
+
+Veri repo dışında `~/.claude/claudeops/steward/` altında (`projects.json`, `questions.json`,
+`ideas.json`, `state.json`, `log.jsonl`, `workspace/`). Ayar: `settings.json`'daki `steward` bloğu
+(`py/cops steward config ALAN DEĞER`, `py/cops steward on|off`). API: `/api/steward/*` (yalnız yerel,
+`/api/orch/*` gibi); `/api/status` panel için hafif bir `steward` özeti taşır. Panelde ayrı bir sekme
+henüz yok — CLI ve API her şeyi kapsıyor.
 
 ## Nasıl çalışır
 

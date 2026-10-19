@@ -276,9 +276,60 @@ py/cops mcp-queue # MCP stdio server: lets an *agent* (not a human) drive the Ek
                    #   run by hand — a provider wires a session's CLI up to it (claude: `--mcp-config`,
                    #   codex: `-c mcp_servers...`; agy has no per-invocation MCP flag, so it's a
                    #   registration hint only, not automated).
+py/cops steward   # the "değnekçi" (steward): status / projects / set / import / questions / answer / ideas /
+                   #   idea / log / persona / on / off / config / tick / tour / brain / directive / restart —
+                   #   see "The steward" below.
+py/cops mcp-steward # MCP stdio server the steward's own CLI session ("brain") drives the fleet through
+                   #   (/api/steward/* adaptor, same pattern as mcp-queue). Not meant to be run by hand.
 ```
 
 Every command has its own `--help`.
+
+## The steward ("değnekçi") — touring hundreds of projects for you
+
+**Off by default** (`steward.enabled`); nothing starts on its own. Once on, a loop inside `py/cops web`
+ticks every `tick_seconds` (default 120 s) and does the *measurable* part itself, no LLM involved:
+
+- **Session economy** — a session whose tmux scrollback reaches `history_warn_at` (the same 1900-line
+  threshold the Terminal counter uses) gets the wrap-up (handover) message; once it replies
+  `READY FOR HANDOVER` (or the grace period passes) it is stopped and reopened on the same conversation
+  with the next directive. Stuck sessions are reported in the same view.
+- **Touring** — every project you registered with the steward (`py/cops steward set NAME --phase ...`,
+  or `py/cops steward import` for the whole roster) has a phase (`planning` / `planned` / `paused` /
+  `done` / `idea`), a priority (1-5) and a cadence. When a project is due and a slot is free
+  (`max_active`, default 4), its session is opened (resumed) and given the **phase directive**:
+  - `planning` — survey the literature and existing solutions (→ `KAYNAKLAR.md`), judge whether
+    something usable already exists or something better is possible, write `PLAN.md`, record decisions
+    in `TOBEDECIDED.md`; finish with `STEWARD-PLAN-READY` → the steward flips the phase to `planned`.
+  - `planned` — take the next item in `PLAN.md`/`TODO.md`, run what is needed, record decisions (TBD#)
+    and edge cases, commit+push; `STEWARD-DONE` closes the project.
+  - Model/effort per phase (`planning_effort` defaults to `high`; `planned_*` empty = roster default),
+    overridable per project. Changes apply when a session is (re)opened.
+- **Questions for you** — a session that writes `STEWARD-ASK: <question>` (or `STEWARD-BLOCKED: ...`)
+  opens a question (`py/cops steward questions`), pushes a phone notification if `service notify`
+  (ntfy) is set up, and the answer (`py/cops steward answer ID "..."`) is delivered to that session on the
+  next tick (the session is reopened if needed). `STEWARD-IDEA: ...` lands in the idea inbox.
+- **Slot pressure** — when projects are waiting and no slot is free, a project session idle for
+  `stop_idle_minutes` is stopped to make room.
+
+The *judgement* part — "is this session doing useless work?", "what is the right next task?", "is this
+idea worth a project?", "should I ask the owner?" — goes to a **brain**: a normal CLI session named
+`degnekci` (configurable; `brain_cli`/`brain_model`/`brain_effort`) whose working folder holds a
+generated `CLAUDE.md` = the **persona** (`py/claudeops/data/steward.md`, written to think the way the
+owner does; override it from Settings via `steward_persona_text`) plus a guide to its MCP tools
+(`steward_overview`, `steward_project_context`, `steward_directive`, `steward_restart`, `steward_stop`,
+`steward_ask_user`, `steward_set_project`, `steward_register_project` (creates the folder, writes
+`GOAL.md` with the goal and resources — local files are copied into `kaynaklar/` —, registers the
+project), `steward_note`, `steward_idea`/`steward_idea_update`, `steward_skip`, …). The loop only sends the
+brain a **tour** when there is something to judge (idle sessions, long-running ones to review, new ideas,
+answers that have no session to go to), at most every `tour_minutes` and only while the brain itself is
+idle. The brain's decisions are tool calls, so every one of them is logged (`py/cops steward log`).
+
+Data lives outside the repo in `~/.claude/claudeops/steward/` (`projects.json`, `questions.json`,
+`ideas.json`, `state.json`, `log.jsonl`, `workspace/`). Settings: the `steward` block in `settings.json`
+(`py/cops steward config KEY VALUE`, `py/cops steward on|off`). API: `/api/steward/*` (local-only, like
+`/api/orch/*`); `/api/status` carries a light `steward` summary for the panel. A dedicated panel tab is
+not built yet — the CLI and the API cover everything.
 
 ## How it works
 
@@ -314,12 +365,14 @@ py/claudeops/
   paths.py, session.py, discovery.py   # foundation: paths, data model, proc discovery (psutil)
   spawn.py, kill.py, guard.py, layout.py, roster.py, handover.py, needs_ho.py, config.py, stuck.py,
   remote_desktop.py
+  steward.py                            # the steward's pure core (projects/questions/ideas store, tick rules, prompts)
   tmux_backend.py                       # tmux helpers (dedicated -L cops socket), fail-soft if no tmux
   providers/                            # CliProvider ABC + one file per CLI backend + registry
     base.py, claude_provider.py, agy_provider.py, codex_provider.py, copilot_provider.py,
     shell_provider.py, __init__.py
-  data/                                  # bundled static assets: tmux.conf, run-tunnel.sh
-  commands/                             # one file per CLI command (web.py/web_ws.py are the largest)
+  data/                                  # bundled static assets: tmux.conf, run-tunnel.sh, routing.md, steward.md
+  commands/                             # one file per CLI command (web.py/web_ws.py are the largest);
+                                        #   web_steward.py = the steward loop + /api/steward/*, mcp_steward.py = its MCP tools
 py/webui/                               # the panel's browser client (React+TS+Vite) — see its own README.md
   src/, dist/                           # dist/ is committed (built output, sourcemaps included) — no build step on deploy
 cops                                    # entry point → python3 -m claudeops

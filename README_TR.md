@@ -42,6 +42,11 @@ MIT lisanslı — bkz. [`LICENSE`](LICENSE).
 - 3 fazlı handover: wrap-up mesajı → kill & taze respawn → pencereleri masaüstlerine dağıt
 - Git-farkında "bu session'ın handover'a ihtiyacı var mı" kontrolü (kirli ağaç, untracked dosyalar,
   push'lanmamış commit'ler, eksik özet)
+- **Değnekçi** — varsayılan kapalı; kayıtlı projelerini sırayla gezer, her birinin oturumunu faz direktifiyle
+  açar (planlama: literatür/mevcut çözüm taraması → `PLAN.md`; uygulama: sıradaki `TODO.md` maddesi,
+  kararlar → `TOBEDECIDED.md`), 1900 satır handover/yeniden açma döngüsünü kendisi yürütür, sana soru sorar
+  (ntfy ile telefona), yargı gerektiren kararları MCP araçlarıyla sürülen bir "beyin" CLI oturumuna bırakır —
+  bkz. `py/README_TR.md`
 
 **Web kontrol paneli** (`py/cops web`)
 - Sadece Python standart kütüphanesiyle çalışır — ekstra bağımlılık kurmaya gerek yok
@@ -70,7 +75,7 @@ MIT lisanslı — bkz. [`LICENSE`](LICENSE).
   (sadece claudeops'u değil) alaşağı ederse onu geri getiren root-seviyeli bir timer
 
 **Komut satırı** (`py/cops <komut>`, her birinin kendi `--help`'i var)
-`list · kill · close · config · guard · rc · handover · stuck · layout · web · service`
+`list · kill · close · config · guard · rc · handover · stuck · layout · web · service · steward`
 
 ---
 

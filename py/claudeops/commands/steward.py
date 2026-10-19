@@ -1,0 +1,274 @@
+"""`steward` (değnekçi) — projeleri gezen zamanlayıcının insan tarafı.
+
+Kullanım:
+  py/cops steward status                      # özet: açık/kapalı, projeler faz faz, açık sorular, son tick
+  py/cops steward projects [--phase planned]  # proje listesi
+  py/cops steward set NAME [--phase planning] [--kind book] [--goal "..."] [--priority 2]
+                           [--cadence 240] [--note "..."] [--model m] [--effort e]
+  py/cops steward import [--phase planned]    # roster'daki (değnekçide olmayan) projeleri toplu kaydet
+  py/cops steward questions [--all]           # bana sorulanlar
+  py/cops steward answer ID "cevap"           # cevapla (motor oturuma iletir)
+  py/cops steward ideas [--all] / idea "metin"
+  py/cops steward log [-n 50]
+  py/cops steward persona                     # etkin persona metni
+  py/cops steward on|off / config KEY VALUE   # döngüyü aç-kapat / steward.<alan> ayarı (tick_seconds, max_active...)
+  py/cops steward tick / tour / brain start|stop / directive NAME "metin" / restart NAME "direktif" --reason "..."
+                                               (panel çalışıyor olmalı: /api/steward/* üzerinden)
+
+Depo/ayar dosyaları: ~/.claude/claudeops/steward/ ve settings.json'daki `steward` alanı
+(`py/cops config` ya da panel Ayarlar). Döngü yalnız `steward.enabled=on` iken kendiliğinden tick atar.
+"""
+from __future__ import annotations
+import dataclasses
+import json
+import time
+from typing import Any, Dict
+
+from .. import roster as roster_mod
+from .. import steward as sw
+from ..settings import load_settings, save_settings, steward_config
+from . import mcp_queue
+
+PHASE_ICON = {"idea": "💡", "planning": "📐", "planned": "🛠", "paused": "⏸", "done": "✅"}
+
+
+def _api(port: int, method: str, path: str, body: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    try:
+        return mcp_queue._api(port, method, path, body)
+    except mcp_queue.ApiError as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _ago(ts: float) -> str:
+    if not ts:
+        return "-"
+    d = int(time.time() - ts)
+    return f"{d // 86400}g" if d >= 86400 else f"{d // 3600}s" if d >= 3600 else f"{d // 60}dk"
+
+
+def cmd_status(args) -> int:
+    cfg = steward_config()
+    projects = sw.load_projects()
+    qs = sw.open_questions()
+    ideas = [i for i in sw.load_ideas() if i.status == "new"]
+    st = sw.load_state()
+    print(f"değnekçi: {'AÇIK' if cfg.enabled else 'KAPALI'}  tick={cfg.tick_seconds}s  tur≥{cfg.tour_minutes}dk  "
+          f"max_active={cfg.max_active}  beyin={cfg.brain_name} ({cfg.brain_cli} {cfg.brain_model or 'varsayılan'} {cfg.brain_effort})")
+    counts = sw.summarize_projects(projects)
+    print("projeler: " + "  ".join(f"{PHASE_ICON[p]} {p}={n}" for p, n in counts.items()) + f"  (toplam {len(projects)})")
+    print(f"açık soru: {len(qs)}   yeni fikir: {len(ideas)}   bekleyen madde: {st.get('pending_items', 0)}   "
+          f"son tick: {_ago(float(st.get('last_tick') or 0))}   son tur: {_ago(float(st.get('last_tour') or 0))}")
+    if st.get("ho_pending"):
+        print("handover bekleyen: " + ", ".join(st["ho_pending"]))
+    for q in qs[:5]:
+        print(f"  ? [{q.id}] {q.project or '-'}: {q.text[:120]}")
+    if not cfg.enabled:
+        print("\naçmak için: py/cops steward on   (ya da panel Ayarlar) — hiçbir şey kendiliğinden başlamaz")
+    return 0
+
+
+def cmd_projects(args) -> int:
+    projects = sw.load_projects()
+    rows = sorted(projects.values(), key=lambda p: (p.priority, p.phase, p.name))
+    if args.phase:
+        rows = [p for p in rows if p.phase == args.phase]
+    if not rows:
+        print("değnekçi projesi yok — `py/cops steward import` roster'dakileri alır, `set NAME --phase ...` tek tek ekler")
+        return 0
+    print(f"{'NAME':<24}{'PHASE':<10}{'P':>2} {'CAD':>5} {'VISIT':>6}  GOAL")
+    for p in rows:
+        print(f"{p.name:<24}{p.phase:<10}{p.priority:>2} {p.cadence_minutes:>5} {_ago(p.last_visit):>6}  {p.goal[:60]}")
+    return 0
+
+
+def cmd_set(args) -> int:
+    fields = {"phase": args.phase, "kind": args.kind, "goal": args.goal, "priority": args.priority,
+              "cadence_minutes": args.cadence, "notes": args.note, "model": args.model, "effort": args.effort}
+    try:
+        p = sw.upsert_project(args.name, **{k: v for k, v in fields.items() if v is not None})
+    except ValueError as e:
+        print(f"hata: {e}")
+        return 1
+    sw.log_event("project_set", name=p.name, fields=[k for k, v in fields.items() if v is not None], source="cli")
+    print(json.dumps(dataclasses.asdict(p), ensure_ascii=False, indent=2))
+    if p.name not in {e.name for e in roster_mod.read_roster()}:
+        print(f"uyarı: '{p.name}' roster'da yok — değnekçi oturum açamaz. Panelden kaydet ya da beyne "
+              f"steward_register_project yaptır (klasör + GOAL.md + roster).")
+    return 0
+
+
+def cmd_import(args) -> int:
+    projects = sw.load_projects()
+    added = 0
+    for e in roster_mod.read_roster():
+        if e.name in projects or not sw.valid_name(e.name):
+            continue
+        sw.upsert_project(e.name, phase=args.phase, cadence_minutes=args.cadence)
+        added += 1
+    print(f"{added} proje eklendi (faz={args.phase}, cadence={args.cadence} dk); amaç/tür için: py/cops steward set NAME --goal ...")
+    return 0
+
+
+def cmd_questions(args) -> int:
+    qs = sw.load_questions() if args.all else sw.open_questions()
+    if not qs:
+        print("soru yok")
+        return 0
+    for q in qs:
+        mark = "?" if q.status == "open" else ("✓" if q.delivered_at else "…")
+        print(f"{mark} [{q.id}] {q.project or '-'} ({_ago(q.created_at)}): {q.text}")
+        if q.answer:
+            print(f"    → {q.answer}")
+    return 0
+
+
+def cmd_answer(args) -> int:
+    try:
+        q = sw.answer_question(args.id, args.answer)
+    except ValueError as e:
+        print(f"hata: {e}")
+        return 1
+    if q is None:
+        print("bilinmeyen soru id'si")
+        return 1
+    sw.log_event("answer", id=q.id, project=q.project, source="cli")
+    print(f"✓ cevaplandı — motor bir sonraki tick'te {q.project or 'beyne'} iletir (hemen: py/cops steward tick)")
+    return 0
+
+
+def cmd_ideas(args) -> int:
+    ideas = sw.load_ideas() if args.all else [i for i in sw.load_ideas() if i.status == "new"]
+    if not ideas:
+        print("fikir yok")
+        return 0
+    for i in ideas:
+        print(f"[{i.id}] {i.status:<7} {i.project or '-':<16} {i.text[:140]}")
+    return 0
+
+
+def cmd_idea(args) -> int:
+    i = sw.add_idea(args.text, source="cli")
+    sw.log_event("idea", id=i.id, source="cli")
+    print(f"✓ {i.id}")
+    return 0
+
+
+def cmd_log(args) -> int:
+    for e in sw.tail_log(args.n):
+        rest = {k: v for k, v in e.items() if k not in ("ts", "event")}
+        print(f"{e.get('ts')}  {e.get('event'):<16} {json.dumps(rest, ensure_ascii=False)}")
+    return 0
+
+
+def cmd_persona(args) -> int:
+    print(sw.persona_text(str(load_settings().get("steward_persona_text") or "")))
+    return 0
+
+
+def cmd_config(args) -> int:
+    """`steward.<alan>` ayarı: `py/cops steward config tick_seconds 90`; `on`/`off` = enabled."""
+    field = args.key
+    if field not in {f.name for f in dataclasses.fields(sw.Config)} or field == "history_warn_at":
+        print("bilinmeyen alan; geçerli: " + ", ".join(f.name for f in dataclasses.fields(sw.Config) if f.name != "history_warn_at"))
+        return 1
+    save_settings({"steward": {field: args.value}})
+    cfg = steward_config()
+    print(f"✓ steward.{field} = {getattr(cfg, field)!r}")
+    return 0
+
+
+def cmd_toggle(args) -> int:
+    save_settings({"steward": {"enabled": "on" if args.action == "on" else "off"}})
+    print(f"✓ değnekçi {'AÇIK' if args.action == 'on' else 'KAPALI'} (panel çalışıyorsa bir sonraki tick'ten itibaren geçerli)")
+    return 0
+
+
+def cmd_api(args) -> int:
+    port = args.port
+    if args.action == "tick":
+        res = _api(port, "POST", "/api/steward/tick", {})
+    elif args.action == "tour":
+        res = _api(port, "POST", "/api/steward/tour", {})
+    elif args.action == "brain":
+        res = _api(port, "POST", "/api/steward/brain", {"action": args.what or "start"})
+    elif args.action == "directive":
+        res = _api(port, "POST", "/api/steward/directive", {"name": args.name, "text": args.text or "",
+                                                            "model": args.model or "", "effort": args.effort or "",
+                                                            "reason": "cli"})
+    elif args.action == "restart":
+        res = _api(port, "POST", "/api/steward/restart", {"name": args.name, "text": args.text or "",
+                                                          "model": args.model or "", "effort": args.effort or "",
+                                                          "reason": args.reason or "cli"})
+    else:
+        res = {"ok": False, "error": "unknown action"}
+    print(json.dumps(res, ensure_ascii=False, indent=2))
+    return 0 if res.get("ok") else 1
+
+
+def register(sub):
+    p = sub.add_parser("steward", help="değnekçi: projeleri gezip iş veren zamanlayıcı (durum/proje/soru/fikir/tick)")
+    s = p.add_subparsers(dest="action", metavar="<alt-komut>")
+
+    s.add_parser("status", help="özet").set_defaults(func=cmd_status)
+    pp = s.add_parser("projects", help="proje listesi")
+    pp.add_argument("--phase", choices=sw.PHASES, default=None)
+    pp.set_defaults(func=cmd_projects)
+    ps = s.add_parser("set", help="proje kaydını ekle/güncelle")
+    ps.add_argument("name")
+    ps.add_argument("--phase", choices=sw.PHASES)
+    ps.add_argument("--kind", choices=sw.KINDS)
+    ps.add_argument("--goal")
+    ps.add_argument("--priority", type=int)
+    ps.add_argument("--cadence", type=int, metavar="MIN", help="en az bu sıklıkta uğra (0 = elle)")
+    ps.add_argument("--note")
+    ps.add_argument("--model")
+    ps.add_argument("--effort")
+    ps.set_defaults(func=cmd_set)
+    pi = s.add_parser("import", help="roster'daki projeleri değnekçiye toplu kaydet")
+    pi.add_argument("--phase", choices=sw.PHASES, default="planned")
+    pi.add_argument("--cadence", type=int, default=240, metavar="MIN")
+    pi.set_defaults(func=cmd_import)
+    pq = s.add_parser("questions", help="sorular")
+    pq.add_argument("--all", action="store_true")
+    pq.set_defaults(func=cmd_questions)
+    pa = s.add_parser("answer", help="soruyu cevapla")
+    pa.add_argument("id")
+    pa.add_argument("answer")
+    pa.set_defaults(func=cmd_answer)
+    pd = s.add_parser("ideas", help="fikir kutusu")
+    pd.add_argument("--all", action="store_true")
+    pd.set_defaults(func=cmd_ideas)
+    pn = s.add_parser("idea", help="fikir ekle")
+    pn.add_argument("text")
+    pn.set_defaults(func=cmd_idea)
+    pl = s.add_parser("log", help="son olaylar")
+    pl.add_argument("-n", type=int, default=50)
+    pl.set_defaults(func=cmd_log)
+    s.add_parser("persona", help="etkin persona metni").set_defaults(func=cmd_persona)
+    pc = s.add_parser("config", help="steward.<alan> ayarını yaz (tick_seconds, max_active, brain_model, ...)")
+    pc.add_argument("key")
+    pc.add_argument("value")
+    pc.set_defaults(func=cmd_config)
+    s.add_parser("on", help="döngüyü aç (steward.enabled=on)").set_defaults(func=cmd_toggle)
+    s.add_parser("off", help="döngüyü kapat").set_defaults(func=cmd_toggle)
+    for name, helptext in (("tick", "bir tick çalıştır (panel üzerinden)"), ("tour", "beyne şimdi bir tur gönder"),
+                           ("brain", "beyin oturumu: start|stop"), ("directive", "NAME'e direktif gönder"),
+                           ("restart", "NAME'i durdur + yeni direktifle aç")):
+        px = s.add_parser(name, help=helptext)
+        px.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
+        if name == "brain":
+            px.add_argument("what", nargs="?", choices=["start", "stop"], default="start")
+        if name in ("directive", "restart"):
+            px.add_argument("name")
+            px.add_argument("text", nargs="?", default="")
+            px.add_argument("--model")
+            px.add_argument("--effort")
+            px.add_argument("--reason")
+        px.set_defaults(func=cmd_api)
+    p.set_defaults(func=run)
+
+
+def run(args) -> int:
+    if getattr(args, "action", None) is None:
+        return cmd_status(args)
+    return args.func(args)

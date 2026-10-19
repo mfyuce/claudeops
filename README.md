@@ -40,6 +40,11 @@ MIT licensed — see [`LICENSE`](LICENSE).
 - 3-phase handover: wrap-up message → kill & respawn fresh → rearrange windows across desktops
 - Git-aware "does this need a handover" check (dirty tree, untracked files, unpushed commits, missing
   summary)
+- **Steward ("değnekçi")** — off by default; tours your registered projects on a cadence, opens each one's
+  session with a phase directive (planning: literature/existing-solution survey → `PLAN.md`; planned: next
+  `TODO.md` item, decisions → `TOBEDECIDED.md`), handles the 1900-line handover/reopen cycle itself, asks
+  you questions (phone push via ntfy), and leaves judgement calls to a "brain" CLI session driven through
+  MCP tools — see `py/README.md`
 
 **Web control panel** (`py/cops web`)
 - Runs off the Python standard library only — no extra dependencies to install
@@ -68,7 +73,7 @@ MIT licensed — see [`LICENSE`](LICENSE).
   own memory-pressure killer (`oomd`) ever takes the entire thing down, not just claudeops
 
 **Command line** (`py/cops <command>`, every one has its own `--help`)
-`list · kill · close · config · guard · rc · handover · stuck · layout · web · service`
+`list · kill · close · config · guard · rc · handover · stuck · layout · web · service · steward`
 
 ---
 
