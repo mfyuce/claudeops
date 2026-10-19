@@ -334,6 +334,7 @@ Veri repo dışında `~/.claude/claudeops/steward/` altında (`projects.json`, `
 (`py/cops steward config ALAN DEĞER`, `py/cops steward on|off`). API: `/api/steward/*` (yalnız yerel,
 `/api/orch/*` gibi); `/api/status` panel için hafif bir `steward` özeti taşır. Panelde ayrı bir sekme
 henüz yok — CLI ve API her şeyi kapsıyor.
+Yol haritası, kararlar ve faz 1-2 implementasyon brief'i: [`docs/degnekci-plan.md`](../docs/degnekci-plan.md).
 
 ## Nasıl çalışır
 

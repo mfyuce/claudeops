@@ -330,6 +330,7 @@ Data lives outside the repo in `~/.claude/claudeops/steward/` (`projects.json`, 
 (`py/cops steward config KEY VALUE`, `py/cops steward on|off`). API: `/api/steward/*` (local-only, like
 `/api/orch/*`); `/api/status` carries a light `steward` summary for the panel. A dedicated panel tab is
 not built yet — the CLI and the API cover everything.
+Roadmap, decisions and the phase-1/2 implementation brief: [`docs/degnekci-plan.md`](../docs/degnekci-plan.md).
 
 ## How it works
 
