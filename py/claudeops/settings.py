@@ -169,7 +169,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # review_minutes, stop_idle_minutes, ho_grace_minutes, brain_cli, brain_model,
                               # brain_effort, brain_name, planning_model, planning_effort, planned_model,
                               # planned_effort, lang, card_refresh, card_cli, card_model, card_max_age_hours,
-                              # cards_per_tick: str} — değnekçi (2026-10-19, kullanıcı: "160 projemde sürekli
+                              # cards_per_tick, mode (observe|act, VARSAYILAN observe), summary_hour: str} — değnekçi (2026-10-19, kullanıcı: "160 projemde sürekli
                               # gezip ... bir değnekçiye/scheduler'a ihtiyacım var"). Hepsi str, alan bazlı merge
                               # ("boş = varsayılana dön", `ucli_limits` dili); varsayılanlar ve tipler
                               # `steward.Config`'de TEK yerde. `enabled` VARSAYILAN KAPALI — hiçbir şey
@@ -532,7 +532,7 @@ def steward_config() -> "Config":
     """`settings.json`'ın `steward` alanı → `steward.Config` (tip-güvenli; bozuk/eksik alan varsayılanda kalır,
     asla fırlatmaz). `history_warn_at` genel ayardan gelir (Terminal sayacı/"dikkat gerekenleri seç" ile AYNI
     eşik: değnekçi de aynı sayıda handover'a sokar). `enabled`: on/1/true/yes/evet AÇIK, geri kalanı KAPALI."""
-    from .steward import Config  # leaf-döngüsü yok: steward.py settings'i import etmez
+    from .steward import MODES, Config  # leaf-döngüsü yok: steward.py settings'i import etmez
     s = load_settings()
     raw = s.get("steward") or {}
     if not isinstance(raw, dict):
@@ -559,6 +559,9 @@ def steward_config() -> "Config":
         pass
     if cfg.lang not in ("tr", "en"):
         cfg.lang = "tr"
+    if cfg.mode not in MODES:      # bilinmeyen kip = en güvenlisi (hiçbir şeye dokunma)
+        cfg.mode = "observe"
+    cfg.summary_hour = min(23, cfg.summary_hour)
     if cfg.tick_seconds < 15:
         cfg.tick_seconds = 15
     if not cfg.brain_name or not cfg.brain_name.replace("_", "").isalnum():

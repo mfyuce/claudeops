@@ -60,6 +60,7 @@ def _directive(port: int, args: dict) -> dict:
     body = _pick(args, "name", "text", "model", "effort", "reason")
     body["start_if_stopped"] = bool(args.get("start_if_stopped", True))
     body["source"] = os.environ.get("COPS_NAME") or "brain"
+    body["actor"] = "brain"   # observe kipinde uygulanmaz, `would:directive` olarak kaydedilir
     return mcp_queue._api(port, "POST", "/api/steward/directive", body)
 
 
@@ -68,19 +69,20 @@ def _restart(port: int, args: dict) -> dict:
         return {"ok": False, "error": "name and directive are required"}
     body = _pick(args, "name", "model", "effort", "reason")
     body["text"] = args["directive"]
+    body["actor"] = "brain"
     return mcp_queue._api(port, "POST", "/api/steward/restart", body)
 
 
 def _stop(port: int, args: dict) -> dict:
     if not args.get("name"):
         return {"ok": False, "error": "name is required"}
-    return mcp_queue._api(port, "POST", "/api/steward/stop", _pick(args, "name", "reason"))
+    return mcp_queue._api(port, "POST", "/api/steward/stop", dict(_pick(args, "name", "reason"), actor="brain"))
 
 
 def _handover(port: int, args: dict) -> dict:
     if not args.get("name"):
         return {"ok": False, "error": "name is required"}
-    return mcp_queue._api(port, "POST", "/api/steward/handover", _pick(args, "name"))
+    return mcp_queue._api(port, "POST", "/api/steward/handover", dict(_pick(args, "name"), actor="brain"))
 
 
 def _set_project(port: int, args: dict) -> dict:
@@ -150,7 +152,7 @@ _EFFORT = {"type": "string", "description": "low|medium|high|max… per CLI; app
 
 TOOLS: List[Dict[str, Any]] = [
     {"name": "steward_overview",
-     "description": "Fleet + steward projects (phase/priority/last directive/next_step from the project card) + open questions + new ideas + recent actions. Call at the start of every tour.",
+     "description": "Fleet + steward projects (phase/priority/last directive/next_step from the project card) + open questions + new ideas + recent actions + the steward `mode` (in `observe` your directive/restart/stop/handover calls are recorded as would:<kind> but NOT applied; ask_user/idea/set_project still work). Call at the start of every tour.",
      "inputSchema": _obj({}, [])},
     {"name": "steward_project_context",
      "description": "One project's steward record, last user/assistant exchange of its session, its project CARD (goal, phase guess, next step, open TBDs, blockers, recently done; refreshed by the engine) — or the heads of PLAN.md/TODO.md/TOBEDECIDED.md/GOAL.md when there is no card yet (docs=true gives both) — short git status, its open questions.",

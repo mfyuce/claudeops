@@ -277,7 +277,8 @@ py/cops mcp-queue # MCP stdio server: lets an *agent* (not a human) drive the Ek
                    #   codex: `-c mcp_servers...`; agy has no per-invocation MCP flag, so it's a
                    #   registration hint only, not automated).
 py/cops steward   # the "değnekçi" (steward): status / projects / cards / set / import / questions / answer /
-                   #   ideas / idea / log / persona / on / off / config / tick / tour / brain / directive / restart —
+                   #   ideas / idea / summary / log / persona / on / off / config / tick / tour / brain /
+                   #   directive / restart —
                    #   see "The steward" below.
 py/cops mcp-steward # MCP stdio server the steward's own CLI session ("brain") drives the fleet through
                    #   (/api/steward/* adaptor, same pattern as mcp-queue). Not meant to be run by hand.
@@ -288,7 +289,18 @@ Every command has its own `--help`.
 ## The steward ("değnekçi") — touring hundreds of projects for you
 
 **Off by default** (`steward.enabled`); nothing starts on its own. Once on, a loop inside `py/cops web`
-ticks every `tick_seconds` (default 120 s) and does the *measurable* part itself, no LLM involved:
+ticks every `tick_seconds` (default 120 s) and does the *measurable* part itself, no LLM involved.
+
+**Mode — `observe` (default) or `act`** (`steward.mode`, trust ramp from `docs/degnekci-plan.md`). In
+`observe` the loop decides everything but does **not touch a single session**: `handover`, `respawn`,
+`start`, `stop`, `deliver_answer` and the brain `tour` are not applied — each is written to `log.jsonl` as
+`would:<kind>` (and shows up in the recent-actions list with `dry: true`), once per (kind, name, question)
+per 6 h so an action that never happens does not repeat every tick; due projects are paced by their
+cadence as if they had been visited. What still runs in `observe`: `ask_user` (questions + phone push),
+`idea`, `set_phase` (`STEWARD-PLAN-READY`/`STEWARD-DONE` markers) and card refresh. The brain's own MCP
+calls that touch sessions (`steward_directive/restart/stop/handover`, sent with `actor: brain`) are
+recorded the same way and answered with `dry: true`; your own CLI/API calls (`py/cops steward directive ...`)
+always apply. Switch with `py/cops steward config mode act`.
 
 - **Session economy** — a session whose tmux scrollback reaches `history_warn_at` (the same 1900-line
   threshold the Terminal counter uses) gets the wrap-up (handover) message; once it replies
@@ -329,6 +341,14 @@ ticks every `tick_seconds` (default 120 s) and does the *measurable* part itself
   `/api/steward/card?name=`). The cards replace raw document heads in `steward_project_context`
   (`docs=true` adds them back) and in the tour items; `projects`/`steward_overview` carry `next_step`.
   Cost: scanning 160 projects for staleness is ~0.6 s of git/file reads per tick.
+- **Daily summary** — once a day, on the first tick after `steward.summary_hour` (local, default 21), the
+  loop writes `steward/daily/<date>.md`, pushes it to your phone (ntfy, if set up) and logs a `summary`
+  event. Content (`steward.daily_summary`, pure, from `log.jsonl`): ticks (manual/with errors), applied
+  actions by kind, what *would* have been done (`observe`, by kind with project names), questions opened/
+  answered, ideas, refreshed cards, handovers, directives, phase changes, and what is still pending (open
+  questions, new ideas, review items, undelivered answers). `py/cops steward summary [--date D] [--lang
+  tr|en] [--save]` prints the same text on demand (no panel needed); `GET /api/steward/summary?date=&lang=`
+  returns it. A day on which the panel was down at `summary_hour` is simply not summarized.
 
 The *judgement* part — "is this session doing useless work?", "what is the right next task?", "is this
 idea worth a project?", "should I ask the owner?" — goes to a **brain**: a normal CLI session named

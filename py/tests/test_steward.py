@@ -421,12 +421,120 @@ class OneshotProviderTest(unittest.TestCase):
                 return prov.oneshot("p", None, tmp, **kw)
 
         self.assertEqual(run([sys.executable, "-c", "import sys; print(sys.stdin.read() == '', 'cwd-ok')"]), "True cwd-ok")
+        fresh = os.path.join(tempfile.mkdtemp(), "henüz", "yok")           # nötr cwd ilk çağrıda kendiliğinden açılır
+        with mock.patch.object(prov, "oneshot_argv", return_value=[sys.executable, "-c", "print('x')"]):
+            self.assertEqual(prov.oneshot("p", None, fresh), "x")
+        self.assertTrue(os.path.isdir(fresh))
         for argv, kw in (([sys.executable, "-c", "import sys; sys.exit(3)"], {}),
                          ([sys.executable, "-c", "pass"], {}),                            # boş yanıt
                          ([sys.executable, "-c", "import time; time.sleep(5)"], {"timeout": 0.5}),
                          (["/yok/boyle/bir/ikili"], {})):
             with self.assertRaises(OneshotError, msg=str(argv)):
                 run(argv, **kw)
+
+
+class ObserveCoreTest(unittest.TestCase):
+    def test_filter_act_passes_everything_and_clears_traces(self):
+        acts = [sw.Action("start", "a"), sw.Action("handover", "b")]
+        st = {"observed": {"x": 1.0}, "observed_visit": {"a": 1.0}, "keep": 1}
+        apply, dry, new = sw.observe_filter(acts, "act", st, 100.0)
+        self.assertEqual((apply, dry), (acts, []))
+        self.assertEqual(new, {"keep": 1})
+
+    def test_filter_observe_splits_dedups_and_prunes(self):
+        acts = [sw.Action("handover", "a"), sw.Action("start", "b", "due"), sw.Action("ask_user", "c"),
+                sw.Action("idea", "c"), sw.Action("set_phase", "c"), sw.Action("deliver_answer", "d", payload={"question_id": "q1"}),
+                sw.Action("tour", "degnekci"), sw.Action("stop", "e"), sw.Action("respawn", "f")]
+        apply, dry, st = sw.observe_filter(acts, "observe", {}, 1000.0)
+        self.assertEqual([a.kind for a in apply], ["ask_user", "idea", "set_phase"])    # oturuma dokunmayanlar çalışır
+        self.assertEqual([a.kind for a in dry], ["handover", "start", "deliver_answer", "tour", "stop", "respawn"])
+        self.assertEqual(st["observed_visit"], {"b": 1000.0})                              # yalnız soru dışı start
+        # aynı anahtarlar pencere içinde tekrar raporlanmaz; farklı soru id'si yeni anahtardır
+        again = [sw.Action("handover", "a"), sw.Action("deliver_answer", "d", payload={"question_id": "q1"}),
+                 sw.Action("deliver_answer", "d", payload={"question_id": "q2"}), sw.Action("start", "g")]
+        _, dry2, st2 = sw.observe_filter(again, "observe", st, 1000.0 + 60)
+        self.assertEqual([(a.kind, a.name) for a in dry2], [("deliver_answer", "d"), ("start", "g")])
+        # pencere dolunca tekrar raporlanır
+        _, dry3, _ = sw.observe_filter([sw.Action("handover", "a")], "observe", st2, 1000.0 + sw.OBSERVE_DEDUP_SECONDS + 1)
+        self.assertEqual(len(dry3), 1)
+
+    def test_observed_visit_paces_due_projects_across_ticks(self):
+        now = 1_000_000.0
+        projects = {"a": sw.Project(name="a", phase="planned", priority=1, cadence_minutes=240),
+                    "b": sw.Project(name="b", phase="planned", priority=2, cadence_minutes=240)}
+        cfg = _cfg(max_starts_per_tick=1)
+        state = {}
+        started = []
+        for n in range(4):
+            acts, state = sw.plan_tick([], projects, state, cfg, now + n * 120, [], [])
+            apply, dry, state = sw.observe_filter(acts, "observe", state, now + n * 120)
+            started += [a.name for a in dry]
+        self.assertEqual(started, ["a", "b"])        # her proje cadence içinde BİR kez "would:start"; sonsuz tekrar yok
+        acts, state = sw.plan_tick([], projects, state, cfg, now + 241 * 60, [], [])
+        self.assertEqual([a.name for a in acts], ["a"])   # cadence dolunca yine sıra gelir
+
+
+class SummaryCoreTest(_Tmp):
+    @staticmethod
+    def _e(event, ts="2026-10-19T10:00:00", **kw):
+        return {"ts": ts, "event": event, **kw}
+
+    def test_daily_summary_counts_and_filters_by_date(self):
+        e = self._e
+        entries = [
+            e("tick", mode="observe", trigger="timer", n=0, dry=2, error=""),
+            e("tick", mode="observe", trigger="manual", n=1, dry=0, error=""),
+            e("tick", mode="observe", trigger="timer", n=0, dry=0, error="boom"),
+            e("action", kind="handover", name="a", ok=True), e("action", kind="stop", name="b", ok=False),
+            e("action", kind="ask_user", name="a", ok=True), e("ask", id="q9", project="x"),
+            e("answer", id="q9"), e("action", kind="idea", name="a", ok=True),
+            e("action", kind="set_phase", name="kitap", ok=True, reason="STEWARD-PLAN-READY"),
+            e("would:start", name="p1"), e("would:start", name="p2"), e("would:handover", name="a"),
+            e("card", name="c1", ok=True), e("card", name="c2", ok=False), e("directive", name="a"),
+            e("tick", ts="2026-10-18T10:00:00", mode="act", trigger="timer"),       # başka gün
+            e("would:start", ts="2026-10-18T10:00:00", name="eski"),
+        ]
+        text = sw.daily_summary(entries, "2026-10-19", "tr", {"open_questions": 2, "ideas_new": 1, "pending_items": 3,
+                                                              "undelivered_answers": 0})
+        for needle in ("Değnekçi günlük özet — 2026-10-19", "**observe**", "Tick: 3 (1 elle, 1 hatalı)",
+                       "Uygulanan eylemler: 2 — handover 1, stop 1 (1 başarısız)",
+                       "Yapılacaktı (observe, uygulanmadı): 3 — handover 1 (a); start 2 (p1, p2)",
+                       "Sorular: 2 açıldı, 1 cevaplandı", "Fikirler: 1 yeni", "Kartlar: 1 yenilendi (c1), 1 başarısız",
+                       "Handover: 1 (a)", "Direktifler: 1 (a)", "Faz değişimi: kitap (STEWARD-PLAN-READY)",
+                       "Bekleyen: 2 açık soru, 1 yeni fikir, 3 gözden geçirme maddesi, 0 iletilmemiş cevap"):
+            self.assertIn(needle, text)
+        self.assertNotIn("eski", text)
+        en = sw.daily_summary(entries, "2026-10-19", "en")
+        self.assertIn("Steward daily summary", en)
+        self.assertIn("Would have done (observe, not applied): 3", en)
+        self.assertNotIn("Pending", en)                                             # pending verilmediyse satır yok
+        empty = sw.daily_summary([], "2026-10-19", "tr")
+        self.assertIn("Tick: kayıt yok", empty)
+        self.assertNotIn("Mod:", empty)
+
+    def test_summary_due(self):
+        at = lambda h: time.mktime((2026, 10, 19, h, 30, 0, 0, 0, -1))   # noqa: E731
+        self.assertEqual(sw.summary_due({}, at(20), 21), "")
+        self.assertEqual(sw.summary_due({}, at(21), 21), "2026-10-19")
+        self.assertEqual(sw.summary_due({"summary_date": "2026-10-18"}, at(23), 21), "2026-10-19")
+        self.assertEqual(sw.summary_due({"summary_date": "2026-10-19"}, at(23), 21), "")
+        self.assertEqual(sw.summary_due({}, at(0), 0), "2026-10-19")
+
+    def test_log_reader_and_summary_text(self):
+        sw.log_event("tick", mode="act", trigger="timer", n=1, dry=0, error="")
+        sw.log_event("action", kind="handover", name="a", ok=True)
+        today = time.strftime("%Y-%m-%d")
+        self.assertEqual(len(sw.log_entries_for_date(today)), 2)
+        self.assertEqual(sw.log_entries_for_date("1999-01-01"), [])
+        sw.add_question("p", "soru?")
+        sw.add_idea("fikir")
+        text = sw.summary_text(today, "tr")
+        self.assertIn("Tick: 1", text)
+        self.assertIn("Bekleyen: 1 açık soru, 1 yeni fikir", text)
+        path = sw.write_daily(today, text)
+        self.assertTrue(path.endswith(os.path.join("daily", today + ".md")))
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(f.read(), text)
 
 
 class SettingsTest(_Tmp):
@@ -440,6 +548,13 @@ class SettingsTest(_Tmp):
         self.assertTrue(cfg.enabled)
         self.assertEqual((cfg.tick_seconds, cfg.max_active, cfg.lang, cfg.brain_name, cfg.history_warn_at),
                          (15, 4, "tr", "degnekci", 1500))
+        self.assertEqual((cfg.mode, cfg.summary_hour), ("observe", 21))            # varsayılan: observe
+        settings.save_settings({"steward": {"mode": "act", "summary_hour": "99"}})
+        cfg = settings.steward_config()
+        self.assertEqual((cfg.mode, cfg.summary_hour), ("act", 23))
+        settings.save_settings({"steward": {"mode": "yolo", "card_refresh": "off", "cards_per_tick": "3"}})
+        cfg = settings.steward_config()
+        self.assertEqual((cfg.mode, cfg.card_refresh, cfg.cards_per_tick), ("observe", False, 3))   # bilinmeyen kip = observe
         settings.save_settings({"steward": {"enabled": ""}})   # boş = varsayılana dön
         self.assertFalse(settings.steward_config().enabled)
         self.assertNotIn("enabled", settings.load_settings()["steward"])
@@ -552,7 +667,7 @@ class HttpTest(_Tmp):
 
     def test_tick_applies_actions_with_mocked_views(self):
         sw.upsert_project("a", phase="planned", cadence_minutes=60)
-        settings.save_settings({"steward": {"enabled": "on"}})
+        settings.save_settings({"steward": {"enabled": "on", "mode": "act"}})
         views = [_view("a", running=False)]
         with mock.patch.object(web_steward, "_collect_views", lambda cfg: views), \
                 mock.patch.object(web_steward, "_running", lambda name: None), \
@@ -703,6 +818,150 @@ class HttpTest(_Tmp):
             self.assertFalse(web_steward.http_post("/api/steward/cards/refresh", {})["ok"])
         finally:
             web_steward._CARD_LOCK.release()
+
+
+    # ── observe kipi + günlük özet (motor) ──────────────────────────────────
+
+    def _observe_env(self, mode):
+        settings.save_settings({"steward": {"enabled": "on", "mode": mode, "card_refresh": "off"}})
+        self.touched = []
+        patches = [mock.patch.object(web_steward, "_ensure_running",
+                                     lambda name, **kw: self.touched.append(("ensure", name)) or {"ok": False, "error": "no tmux"}),
+                   mock.patch.object(web_steward, "_running", lambda name: None)]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_observe_tick_records_would_and_touches_nothing(self):
+        self._observe_env("observe")
+        sw.upsert_project("a", phase="planned", cadence_minutes=60, priority=1)
+        sw.upsert_project("b", phase="planned", cadence_minutes=60, priority=2)
+        views = [_view("a", running=False), _view("b", running=False)]
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: views):
+            r1 = web_steward.tick_once("timer")
+            r2 = web_steward.tick_once("timer")
+            r3 = web_steward.tick_once("timer")
+        self.assertEqual(self.touched, [])                                    # hiçbir oturuma dokunulmadı
+        self.assertEqual((r1["actions"], r1["mode"]), ([], "observe"))
+        self.assertEqual([(d["kind"], d["name"]) for d in r1["dry"]], [("start", "a")])
+        self.assertEqual([(d["kind"], d["name"]) for d in r2["dry"]], [("start", "b")])   # a'ya sonsuz tekrar yok
+        self.assertEqual(r3["dry"], [])
+        self.assertTrue(web_steward._RECENT[0]["dry"])
+        log = sw.tail_log(50)
+        self.assertEqual([e["name"] for e in log if e["event"] == "would:start"], ["a", "b"])
+        self.assertEqual([e["trigger"] for e in log if e["event"] == "tick"], ["timer"] * 3)
+        self.assertFalse(any(e["event"] == "action" for e in log))
+        self.assertEqual(sw.load_projects()["a"].last_visit, 0.0)             # gerçek uğrama kaydı da yok
+        self.assertEqual(web_steward.summary()["mode"], "observe")
+
+    def test_observe_still_runs_questions_ideas_and_phase_changes(self):
+        self._observe_env("observe")
+        sw.upsert_project("a", phase="planning", cadence_minutes=0)
+        done = _view("a", last_assistant="STEWARD-ASK: A mı B mi?\nSTEWARD-IDEA: yeni bir şey\nSTEWARD-PLAN-READY")
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: [done]):
+            r = web_steward.tick_once("timer")
+        self.assertEqual(sorted(a["kind"] for a in r["actions"]), ["ask_user", "idea", "set_phase"])
+        self.assertTrue(all(a["ok"] for a in r["actions"]))
+        self.assertEqual(sw.load_projects()["a"].phase, "planned")
+        self.assertEqual(len(sw.open_questions()), 1)
+        self.assertEqual(len(sw.load_ideas()), 1)
+        # STEWARD-DONE: faz değişir ama oturum DURDURULMAZ (stop observe'da would:)
+        done2 = _view("a", last_assistant="bitti\nSTEWARD-DONE")
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: [done2]):
+            r = web_steward.tick_once("timer")
+        self.assertEqual([a["kind"] for a in r["actions"]], ["set_phase"])
+        self.assertEqual([(d["kind"], d["name"]) for d in r["dry"]], [("stop", "a")])
+
+    def test_act_mode_applies_and_logs_actions(self):
+        self._observe_env("act")
+        sw.upsert_project("a", phase="planned", cadence_minutes=60)
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: [_view("a", running=False)]):
+            r = web_steward.tick_once("timer")
+        self.assertEqual(self.touched, [("ensure", "a")])
+        self.assertEqual(([a["kind"] for a in r["actions"]], r["dry"]), (["start"], []))
+        self.assertFalse(any(e["event"].startswith("would:") for e in sw.tail_log(50)))
+
+    def test_brain_calls_are_dry_in_observe_but_cli_calls_apply(self):
+        calls = []
+        with mock.patch.object(web_steward, "_give_directive", lambda p, text, **kw: calls.append(("dir", p.name, text)) or {"ok": True}):
+            settings.save_settings({"steward": {"mode": "observe"}})
+            sw.upsert_project("a", phase="planned")
+            r = web_steward.http_post("/api/steward/directive", {"name": "a", "text": "yap", "actor": "brain", "reason": "boş"})
+            self.assertEqual((r["ok"], r["dry"], calls), (True, True, []))
+            r = web_steward.http_post("/api/steward/stop", {"name": "a", "actor": "brain", "reason": "x"})
+            self.assertTrue(r["dry"])
+            r = web_steward.http_post("/api/steward/handover", {"name": "a", "actor": "brain"})
+            self.assertTrue(r["dry"])
+            r = web_steward.http_post("/api/steward/restart", {"name": "a", "text": "yeni", "actor": "brain", "reason": "r"})
+            self.assertTrue(r["dry"])
+            self.assertEqual(self.calls, [])                                       # stop/handover callback'i çağrılmadı
+            self.assertEqual(sorted(e["event"] for e in sw.tail_log(50) if e["event"].startswith("would:")),
+                             ["would:directive", "would:handover", "would:restart", "would:stop"])
+            # insanın CLI'ı (actor yok) observe'da da uygulanır
+            r = web_steward.http_post("/api/steward/directive", {"name": "a", "text": "yap"})
+            self.assertEqual((r["ok"], calls), (True, [("dir", "a", "yap")]))
+            # act kipinde beyin de uygular
+            settings.save_settings({"steward": {"mode": "act"}})
+            web_steward.http_post("/api/steward/directive", {"name": "a", "text": "yine", "actor": "brain"})
+            self.assertEqual(calls[-1], ("dir", "a", "yine"))
+            # MCP araçları actor=brain gönderir
+            sent = []
+            with mock.patch.object(mcp_queue, "_api", lambda port, m, path, body=None: sent.append(body) or {"ok": True}):
+                mcp_steward._directive(1, {"name": "a", "text": "t"})
+                mcp_steward._restart(1, {"name": "a", "directive": "d", "reason": "r"})
+                mcp_steward._stop(1, {"name": "a", "reason": "r"})
+                mcp_steward._handover(1, {"name": "a"})
+            self.assertTrue(all(b.get("actor") == "brain" for b in sent) and len(sent) == 4)
+
+    def test_daily_summary_runs_once_after_hour_and_notifies(self):
+        settings.save_settings({"steward": {"enabled": "on", "summary_hour": "21", "card_refresh": "off"}})
+        cfg = settings.steward_config()
+        notes = []
+        at = lambda h: time.mktime((2026, 10, 19, h, 5, 0, 0, 0, -1))   # noqa: E731
+        sw.log_event("would:start", name="p1")
+        with mock.patch.object(web_steward, "notify_phone", lambda text: notes.append(text) or True):
+            self.assertIsNone(web_steward.maybe_daily_summary(cfg, at(20)))        # saat gelmedi
+            self.assertEqual(notes, [])
+            path = web_steward.maybe_daily_summary(cfg, at(21))
+            self.assertIsNone(web_steward.maybe_daily_summary(cfg, at(22)))        # günde bir
+        self.assertTrue(path.endswith(os.path.join("daily", "2026-10-19.md")))
+        self.assertEqual(sw.load_state()["summary_date"], "2026-10-19")
+        self.assertEqual(len(notes), 1)
+        self.assertTrue(any(e["event"] == "summary" and e["notified"] for e in sw.tail_log(20)))
+        # tick içinden: enabled iken tetiklenir, kapalıyken (elle tick) tetiklenmez
+        sw.save_state({})
+        settings.save_settings({"steward": {"enabled": "off"}})
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: []), \
+                mock.patch.object(web_steward, "maybe_daily_summary", lambda cfg, now: notes.append("tick-summary")):
+            web_steward.tick_once("manual")
+            self.assertNotIn("tick-summary", notes)
+            settings.save_settings({"steward": {"enabled": "on"}})
+            web_steward.tick_once("timer")
+        self.assertIn("tick-summary", notes)
+
+    def test_summary_api_and_cli(self):
+        import contextlib
+        import io
+        from claudeops.commands import steward as steward_cli
+        sw.log_event("would:start", name="p1")
+        today = time.strftime("%Y-%m-%d")
+        r = web_steward.http_get("/api/steward/summary", {})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["date"], today)
+        self.assertIn("start 1 (p1)", r["text"])
+        self.assertFalse(r["saved"])
+        self.assertIn("Steward daily summary", web_steward.http_get("/api/steward/summary", {"lang": ["en"]})["text"])
+        self.assertFalse(web_steward.http_get("/api/steward/summary", {"date": ["dün"]})["ok"])
+        ns = type("A", (), {"date": "", "lang": "", "save": True})()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(steward_cli.cmd_summary(ns), 0)
+        self.assertIn("start 1 (p1)", buf.getvalue())
+        self.assertTrue(os.path.isfile(sw.daily_path(today)))
+        self.assertTrue(web_steward.http_get("/api/steward/summary", {})["saved"])
+        bad = type("A", (), {"date": "x", "lang": "", "save": False})()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(steward_cli.cmd_summary(bad), 1)
 
 
     def test_handover_route_marks_pending(self):

@@ -32,6 +32,7 @@ import re
 import secrets
 import subprocess
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -55,6 +56,13 @@ CARD_TEXT_CHARS = 400            # kart alanlarının (goal/next_step/madde) üs
 PHASES = ("idea", "planning", "planned", "paused", "done")
 KINDS = ("book", "article", "software", "other")
 ACTIVE_PHASES = ("planning", "planned")
+
+# Yetki kipi (docs/degnekci-plan.md: observe → suggest → act, ilk hafta observe). `suggest` henüz yok (faz 5).
+MODES = ("observe", "act")
+# observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
+# ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
+OBSERVE_SKIPPED = ("handover", "respawn", "start", "stop", "deliver_answer", "tour")
+OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
 # (`orchestration.VERDICT_MARKER` ile aynı ilke). Proje oturumları MCP olmadan da
@@ -175,6 +183,8 @@ class Config:
     card_model: str = ""             # "" = card_cli'nin model_choices'inde "haiku" geçen, yoksa varsayılan model
     card_max_age_hours: int = 24     # kart bundan eskiyse yenile (0 = yaşa bakma)
     cards_per_tick: int = 1          # bir tick'te en çok kaç kart yenilenir (0 = hiç)
+    mode: str = "observe"            # observe: oturuma dokunan eylemler uygulanmaz, `would:` olarak kaydedilir | act
+    summary_hour: int = 21           # günlük özet: bu saatten (yerel) sonraki ilk tick'te, günde bir
 
 
 def _now() -> float:
@@ -903,12 +913,18 @@ def build_workspace_claude_md(persona: str, lang: str = "tr") -> str:
         "- `steward_idea text` / `steward_idea_update id status [project]` — fikir kutusu\n"
         "- `steward_questions` / `steward_log` — açık sorular / son olaylar\n"
         "- `steward_skip name reason` — bu tur dokunmuyorum (kayda geçer)\n"
+        "\n`steward_overview` içindeki `config.mode` `observe` ise `steward_directive`/`steward_restart`/`steward_stop`/"
+        "`steward_handover` KAYDA geçer ama UYGULANMAZ (yanıtta `dry: true`); soru, fikir, faz/not değişikliği çalışır. "
+        "Kararını yine ver: sahibi `would:` kayıtlarından neyi yapacağını görüp güven kazandırır.\n"
         if tr else
         "## Your tools (MCP `cops-steward`)\n"
         "- `steward_overview`, `steward_project_context name`, `steward_read_file name path`\n"
         "- `steward_directive`, `steward_restart`, `steward_handover`, `steward_stop`\n"
         "- `steward_set_project`, `steward_register_project`, `steward_ask_user`, `steward_note`\n"
         "- `steward_idea`, `steward_idea_update`, `steward_questions`, `steward_log`, `steward_skip`\n"
+        "\nWhen `config.mode` in `steward_overview` is `observe`, `steward_directive`/`steward_restart`/`steward_stop`/"
+        "`steward_handover` are recorded but NOT applied (`dry: true` in the reply); questions, ideas and phase/note "
+        "changes still work. Decide anyway: the owner reads the `would:` records to learn what you would do.\n"
     )
     tail = (
         f"\n## Tur protokolü\nHer tur prompt'unda listelenen her madde için bir araç çağır; bitince yanıtını tek başına "
@@ -1052,14 +1068,18 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             busy_names.add(target)
             last_directive_at[target] = now
 
-    # 5) Uğrama sırası — çalışmayan, aktif fazdaki, süresi dolmuş projeler
+    # 5) Uğrama sırası — çalışmayan, aktif fazdaki, süresi dolmuş projeler.
+    # observe kipinde `start` uygulanmaz, `last_visit` hiç ilerlemez: `observed_visit` (bkz. `observe_filter`)
+    # "uğranmış gibi" davranmayı sağlar, yoksa her tick aynı en öncelikli proje için `would:start` üretirdi.
+    observed_visit: Dict[str, float] = dict(st.get("observed_visit") or {})
+    visit_of = lambda p: max(p.last_visit, float(observed_visit.get(p.name) or 0.0))   # noqa: E731
     due: List[Project] = []
     for p in projects.values():
         if p.phase not in ACTIVE_PHASES or p.cadence_minutes <= 0 or p.name in running_projects or p.name in busy_names:
             continue
-        if p.last_visit == 0 or (now - p.last_visit) >= p.cadence_minutes * 60:
+        if visit_of(p) == 0 or (now - visit_of(p)) >= p.cadence_minutes * 60:
             due.append(p)
-    due.sort(key=lambda p: (p.priority, p.last_visit))
+    due.sort(key=lambda p: (p.priority, visit_of(p)))
     free = max(0, cfg.max_active - active - starts)
     for p in due:
         if starts >= cfg.max_starts_per_tick or free <= 0:
@@ -1099,6 +1119,191 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     st["reviewed_at"] = reviewed_at
     st["last_tick"] = now
     return actions, st
+
+
+def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now: float
+                   ) -> Tuple[List[Action], List[Action], Dict[str, Any]]:
+    """`plan_tick`in eylemlerini kipe göre ayır: (uygulanacak, kuru/`would:`, güncellenmiş state). SAF.
+
+    `act`: hepsi uygulanır, observe izleri (`observed`, `observed_visit`) silinir.
+    `observe`: `OBSERVE_SKIPPED` türleri uygulanmaz; aynı (tür, ad, soru) anahtarı `OBSERVE_DEDUP_SECONDS` içinde
+    bir kez raporlanır — eylem hiç uygulanmadığı için durum (cevaplanmış ama iletilmemiş soru, eşik üstü scrollback)
+    değişmez ve plan_tick her tick aynısını üretirdi. Uğrama (`start`, soru dışı) `observed_visit`e yazılır ki
+    sıradaki projeler de görünsün (bkz. plan_tick adım 5)."""
+    st = dict(state)
+    if mode != "observe":
+        st.pop("observed", None)
+        st.pop("observed_visit", None)
+        return list(actions), [], st
+    seen: Dict[str, float] = {k: float(v) for k, v in (st.get("observed") or {}).items()
+                              if now - float(v) < OBSERVE_DEDUP_SECONDS}
+    visits: Dict[str, float] = dict(st.get("observed_visit") or {})
+    apply: List[Action] = []
+    dry: List[Action] = []
+    for a in actions:
+        if a.kind not in OBSERVE_SKIPPED:
+            apply.append(a)
+            continue
+        if a.kind == "start" and not a.payload.get("question_id"):
+            visits[a.name] = now
+        key = f"{a.kind}:{a.name}:{a.payload.get('question_id', '')}"
+        if key in seen:
+            continue
+        seen[key] = now
+        dry.append(a)
+    st["observed"] = seen
+    st["observed_visit"] = visits
+    return apply, dry, st
+
+
+# ── günlük özet ───────────────────────────────────────────────────────────────
+
+def daily_path(date: str) -> str:
+    return os.path.join(STEWARD_DIR, "daily", f"{date}.md")
+
+
+def log_entries_for_date(date: str) -> List[Dict[str, Any]]:
+    """`log.jsonl`'dan o güne (`YYYY-MM-DD`, yerel) ait kayıtlar; dosyayı satır satır okur (bütününü belleğe almaz)."""
+    out: List[Dict[str, Any]] = []
+    try:
+        with open(LOG_JSONL, encoding="utf-8") as f:
+            for ln in f:
+                if f'"ts": "{date}' not in ln[:40]:
+                    continue
+                try:
+                    out.append(json.loads(ln))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    return out
+
+
+def summary_due(state: Dict[str, Any], now: float, hour: int) -> str:
+    """Bugünün (yerel) günlük özeti yazılmalı mı: saat `hour`u geçtiyse ve bugün henüz yazılmadıysa tarih, yoksa ""."""
+    lt = time.localtime(now)
+    today = time.strftime("%Y-%m-%d", lt)
+    return today if lt.tm_hour >= hour and state.get("summary_date") != today else ""
+
+
+_SUMMARY_TXT = {
+    "tr": {
+        "title": "Değnekçi günlük özet", "mode": "Mod", "obs_note": "oturuma dokunan eylemler uygulanmadı, yalnız kaydedildi",
+        "ticks": "Tick", "manual": "elle", "errors": "hatalı", "no_ticks": "kayıt yok (döngü kapalıydı ya da panel çalışmıyordu)",
+        "applied": "Uygulanan eylemler", "failed": "başarısız", "would": "Yapılacaktı (observe, uygulanmadı)",
+        "questions": "Sorular", "opened": "açıldı", "answered": "cevaplandı", "ideas": "Fikirler", "new": "yeni",
+        "cards": "Kartlar", "refreshed": "yenilendi", "handovers": "Handover", "directives": "Direktifler",
+        "phases": "Faz değişimi", "pending": "Bekleyen", "open_q": "açık soru", "ideas_new": "yeni fikir",
+        "items": "gözden geçirme maddesi", "undelivered": "iletilmemiş cevap", "none": "yok",
+    },
+    "en": {
+        "title": "Steward daily summary", "mode": "Mode", "obs_note": "actions that touch sessions were recorded, not applied",
+        "ticks": "Ticks", "manual": "manual", "errors": "with errors", "no_ticks": "none logged (loop was off or the panel was down)",
+        "applied": "Actions applied", "failed": "failed", "would": "Would have done (observe, not applied)",
+        "questions": "Questions", "opened": "opened", "answered": "answered", "ideas": "Ideas", "new": "new",
+        "cards": "Cards", "refreshed": "refreshed", "handovers": "Handovers", "directives": "Directives",
+        "phases": "Phase changes", "pending": "Pending", "open_q": "open questions", "ideas_new": "new ideas",
+        "items": "review items", "undelivered": "undelivered answers", "none": "none",
+    },
+}
+
+
+def _names(names: List[str], n: int = 5) -> str:
+    uniq = list(dict.fromkeys(x for x in names if x))
+    return ", ".join(uniq[:n]) + (f" +{len(uniq) - n}" if len(uniq) > n else "")
+
+
+def _kind_counts(entries: List[Dict[str, Any]], key: str = "kind") -> str:
+    c = Counter(str(e.get(key) or "?") for e in entries)
+    return ", ".join(f"{k} {v}" for k, v in sorted(c.items()))
+
+
+def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
+                  pending: Optional[Dict[str, int]] = None) -> str:
+    """`log.jsonl` kayıtlarından (o güne ait olanlar süzülür) bir günün özeti — SAF, markdown. Sayılanlar: tick,
+    uygulanan eylemler ve observe'da `would:` olanlar (türe göre), açılan/cevaplanan soru, fikir, yenilenen kart,
+    handover, direktif, faz değişimi; `pending` (depodan: açık soru, yeni fikir, bekleyen madde, iletilmemiş cevap)."""
+    T = _SUMMARY_TXT["en" if lang == "en" else "tr"]
+    day = [e for e in entries if str(e.get("ts", "")).startswith(date)]
+    ev = lambda name: [e for e in day if e.get("event") == name]   # noqa: E731
+    ticks = ev("tick")
+    actions = ev("action")
+    would = [e for e in day if str(e.get("event", "")).startswith("would:")]
+    asks = [e for e in actions if e.get("kind") == "ask_user" and e.get("ok")] + ev("ask")
+    ideas = [e for e in actions if e.get("kind") == "idea" and e.get("ok")] + ev("idea")
+    cards = ev("card")
+    phases = [e for e in actions if e.get("kind") == "set_phase" and e.get("ok")]
+    handovers = [e for e in actions if e.get("kind") == "handover" and e.get("ok")] + ev("handover")
+    applied = [e for e in actions if e.get("kind") not in ("ask_user", "idea", "set_phase")]
+    mode = next((str(e.get("mode")) for e in reversed(ticks) if e.get("mode")), "")
+
+    lines = [f"# {T['title']} — {date}"]
+    if mode:
+        lines.append(f"{T['mode']}: **{mode}**" + (f" ({T['obs_note']})" if mode == "observe" else ""))
+    lines.append("")
+    if ticks:
+        extra = []
+        manual = sum(1 for e in ticks if e.get("trigger") != "timer")
+        bad = sum(1 for e in ticks if e.get("error"))
+        if manual:
+            extra.append(f"{manual} {T['manual']}")
+        if bad:
+            extra.append(f"{bad} {T['errors']}")
+        lines.append(f"- {T['ticks']}: {len(ticks)}" + (f" ({', '.join(extra)})" if extra else ""))
+    else:
+        lines.append(f"- {T['ticks']}: {T['no_ticks']}")
+    if applied:
+        failed = sum(1 for e in applied if not e.get("ok"))
+        lines.append(f"- {T['applied']}: {len(applied)} — {_kind_counts(applied)}" + (f" ({failed} {T['failed']})" if failed else ""))
+    if would:
+        per_kind = {}
+        for e in would:
+            per_kind.setdefault(str(e["event"]).split(":", 1)[1], []).append(str(e.get("name") or ""))
+        parts = [f"{k} {len(v)}" + (f" ({_names(v)})" if _names(v) else "") for k, v in sorted(per_kind.items())]
+        lines.append(f"- {T['would']}: {len(would)} — " + "; ".join(parts))
+    answers = ev("answer")
+    if asks or answers:
+        lines.append(f"- {T['questions']}: {len(asks)} {T['opened']}, {len(answers)} {T['answered']}")
+    if ideas:
+        lines.append(f"- {T['ideas']}: {len(ideas)} {T['new']}")
+    if cards:
+        ok = [e for e in cards if e.get("ok")]
+        bad = [e for e in cards if not e.get("ok")]
+        lines.append(f"- {T['cards']}: {len(ok)} {T['refreshed']}" + (f" ({_names([str(e.get('name')) for e in ok])})" if ok else "")
+                     + (f", {len(bad)} {T['failed']}" if bad else ""))
+    if handovers:
+        lines.append(f"- {T['handovers']}: {len(handovers)} ({_names([str(e.get('name')) for e in handovers])})")
+    dirs = ev("directive")
+    if dirs:
+        lines.append(f"- {T['directives']}: {len(dirs)} ({_names([str(e.get('name')) for e in dirs])})")
+    if phases:
+        lines.append(f"- {T['phases']}: " + _names([f"{e.get('name')} ({e.get('reason')})" for e in phases], 8))
+    if pending is not None:
+        lines.append(f"- {T['pending']}: {pending.get('open_questions', 0)} {T['open_q']}, {pending.get('ideas_new', 0)} "
+                     f"{T['ideas_new']}, {pending.get('pending_items', 0)} {T['items']}, "
+                     f"{pending.get('undelivered_answers', 0)} {T['undelivered']}")
+    return "\n".join(lines) + "\n"
+
+
+def summary_text(date: Optional[str] = None, lang: str = "tr") -> str:
+    """Depolardan (log, soru/fikir kutusu, state) `date`in (varsayılan: bugün) özetini kur."""
+    date = date or time.strftime("%Y-%m-%d")
+    state = load_state()
+    pending = {"open_questions": len(open_questions()),
+               "ideas_new": sum(1 for i in load_ideas() if i.status == "new"),
+               "pending_items": int(state.get("pending_items") or 0),
+               "undelivered_answers": len(undelivered_answers())}
+    return daily_summary(log_entries_for_date(date), date, lang, pending)
+
+
+def write_daily(date: str, text: str) -> str:
+    path = daily_path(date)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+    return path
 
 
 def summarize_projects(projects: Dict[str, Project]) -> Dict[str, int]:

@@ -1,6 +1,6 @@
 # Değnekçi (steward) — plan ve handover notu
 
-Son güncelleme: 2026-10-19 (Fable 5.1 oturumu, commit `369c931` ile faz 0 ana dala girdi).
+Son güncelleme: 2026-10-19 (Sonnet 5.5 oturumu: faz 1 `9c1e612` + faz 2 ile proje kartları ve observe modu/günlük özet ana dalda; faz 0 `369c931`).
 Bu dosya tasarım/plan belgesidir; kişisel fleet notları (TODO.md / TOBEDECIDED.md / DONE.md) her zamanki
 gibi private docs reposunda tutulur. En alttaki "yapıştırmalık" bloklar oraya taşınmak için.
 
@@ -24,6 +24,33 @@ gibi private docs reposunda tutulur. En alttaki "yapıştırmalık" bloklar oray
 - Bilinen sınırlar: panel sekmesi yok; direktif enjeksiyonu tmux ister; MCP claude/codex'te var, agy'de
   yok; model/effort yalnız yeniden açılışta uygulanır; `_wait_ready` sezgisel.
 
+## Ne var (faz 1-2, bitti)
+
+- **Proje kartları** — `steward/cards/<ad>.json`: `goal`, `phase_guess`, `next_step`, `open_tbds[]`,
+  `blockers[]`, `recent_done[]`, `last_activity`, `source_hash`, `updated_at` (+ `summarized`, `stale`,
+  `model`, `cli`, `last_error`/`attempt_*`). Ham kısım `steward.build_raw_card(cwd)` (GOAL/PLAN/TODO/
+  TOBEDECIDED/DONE başları + `git log -5`, modelsiz); özet `web_steward.summarize_card` →
+  `CliProvider.oneshot` (claude `-p ... --output-format text --tools ""`, ucli `ucli_chat_once`; diğer CLI'lar
+  desteklemez). JSON çıkmazsa ham karttan türetilen kart kalır. Tick'te, ÇALIŞMAYAN aktif fazlı projelerden
+  kartı olmayan / bayat (respawn sonrası) / `source_hash`'i değişmiş / `card_max_age_hours`'tan eski olan
+  `cards_per_tick` kadarı yenilenir (arka plan thread'i, tick kilidi dışında; başarısız deneme aynı kaynak için
+  geri çekilir). `http_context` ve tur maddeleri ham doc başları yerine kartı verir (`docs=true` ikisini),
+  `projects`/`steward_overview` `next_step` taşır. `py/cops steward cards [AD] [--refresh]`;
+  `GET /api/steward/cards|card`, `POST /api/steward/cards/refresh`.
+- **Observe modu** — `steward.mode = observe | act` (VARSAYILAN observe). observe'da `handover/respawn/start/
+  stop/deliver_answer/tour` uygulanmaz: `log.jsonl`'a `would:<tür>`, `_RECENT`e `dry=True`; aynı anahtar 6 saatte
+  bir (`steward.observe_filter`). Uğrama `observed_visit` ile cadence'a göre ilerler. `ask_user/idea/set_phase`
+  ve kart yenileme çalışır. Beynin MCP çağrıları (`actor: brain`) da observe'da kuru döner. Her tick `tick`
+  olayı loglar (özetin sayacı).
+- **Günlük özet** — `steward.daily_summary(entries, date, lang, pending)` (saf) →
+  `steward.summary_hour` (21) sonrası günde bir `steward/daily/<tarih>.md` + ntfy + `summary` olayı;
+  `py/cops steward summary [--date] [--lang] [--save]`, `GET /api/steward/summary`.
+- Testler: `py/tests/test_steward.py` 53 test. Tam paket (test_web_ws_ping hariç) 1324+ test yeşil.
+- Bilinen sınırlar / sonraki adımlar: `suggest` modu yok; kart yenileme çalışan projelere dokunmaz (çalışırken
+  kart eski kalabilir); `tick` olayı günde ~720 satır (log rotasyonu yok); `summary_hour`da panel kapalıysa
+  o gün özetlenmez; kart çağrıları nötr `steward/oneshot/` cwd'sinde claude transkripti bırakır
+  (`--no-session-persistence` bilerek eklenmedi: federasyondaki eski claude sürümleri tanımayabilir).
+
 ## Kararlar (2026-10-19 sohbeti)
 
 - Model eğitimi YOK (şimdilik). "Benim gibi düşünme" = persona + **karar hafızası** (transkript ve
@@ -37,14 +64,14 @@ gibi private docs reposunda tutulur. En alttaki "yapıştırmalık" bloklar oray
 
 ## Plan
 
-1. **Proje kartları** (sıradaki)
-2. **Observe modu + günlük özet** (sıradaki)
+1. ~~**Proje kartları**~~ (bitti, `9c1e612`)
+2. ~~**Observe modu + günlük özet**~~ (bitti)
 3. Soru seçenekleri (`options`) + `/q/<id>` compact mobil sayfa + panelde "Değnekçi" sekmesi
 4. Karar hafızası (transkript + TOBEDECIDED.md çıkarımı, benzer karar getirme)
 5. `suggest`/`act` modları, proje bazında yetki
 6. Bütçe: günlük token tavanı, `/usage` kota okuma, gece toplu çalışma
 
-## Faz 1-2 implementasyon brief'i (yeni oturuma ilk mesaj)
+## Faz 1-2 implementasyon brief'i (UYGULANDI — tarihçe için duruyor)
 
 ```
 claudeops değnekçi — faz 1 ve 2 implementasyonu. Bağlam: docs/degnekci-plan.md, py/README.md

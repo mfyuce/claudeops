@@ -281,7 +281,7 @@ py/cops mcp-queue # MCP stdio server: bir *agent'ın* (insan değil) Ekip/Team o
                    #   `--mcp-config`, codex: `-c mcp_servers...`; agy'de çağrı-başına MCP bayrağı
                    #   yok, sadece bir kayıt ipucu gösterilir, otomatik yapılmaz).
 py/cops steward   # değnekçi: status / projects / cards / set / import / questions / answer / ideas / idea /
-                   #   log / persona / on / off / config / tick / tour / brain / directive / restart — aşağıdaki
+                   #   summary / log / persona / on / off / config / tick / tour / brain / directive / restart — aşağıdaki
                    #   "Değnekçi" bölümüne bak.
 py/cops mcp-steward # değnekçinin kendi CLI oturumunun ("beyin") filoyu sürdüğü MCP stdio server
                    #   (/api/steward/* adaptörü, mcp-queue ile aynı desen). Elle çalıştırılmaz.
@@ -292,7 +292,18 @@ Her komutun kendi `--help`'i var.
 ## Değnekçi — yüzlerce projeyi senin yerine gezen zamanlayıcı
 
 **Varsayılan KAPALI** (`steward.enabled`); hiçbir şey kendiliğinden başlamaz. Açınca `py/cops web`
-içindeki bir döngü her `tick_seconds`'ta (varsayılan 120 sn) *ölçülebilir* işleri LLM'siz kendisi yapar:
+içindeki bir döngü her `tick_seconds`'ta (varsayılan 120 sn) *ölçülebilir* işleri LLM'siz kendisi yapar.
+
+**Kip — `observe` (varsayılan) ya da `act`** (`steward.mode`, `docs/degnekci-plan.md`'deki güven rampası).
+`observe`'da döngü her şeye karar verir ama **hiçbir oturuma dokunmaz**: `handover`, `respawn`, `start`,
+`stop`, `deliver_answer` ve beyin `tour`'u uygulanmaz — her biri `log.jsonl`'a `would:<tür>` olarak yazılır
+(son eylemler listesinde `dry: true`), aynı (tür, ad, soru) 6 saatte bir kez; hiç gerçekleşmeyen bir
+eylem her tick tekrarlanmasın diye. Uğranacak projeler sanki uğranmış gibi cadence'a göre sıralanır.
+`observe`'da yine çalışanlar: `ask_user` (soru + telefona bildirim), `idea`, `set_phase`
+(`STEWARD-PLAN-READY`/`STEWARD-DONE` işaretleri) ve kart yenileme. Beynin oturuma dokunan MCP çağrıları
+(`steward_directive/restart/stop/handover`, `actor: brain` ile gider) aynı şekilde kaydedilir ve
+`dry: true` ile yanıtlanır; senin elle çağırdığın CLI/API (`py/cops steward directive ...`) her zaman
+uygulanır. Geçiş: `py/cops steward config mode act`.
 
 - **Oturum ekonomisi** — tmux scrollback'i `history_warn_at`'a (Terminal sayacının kullandığı aynı 1900
   satır eşiği) ulaşan oturuma kapanış (handover) mesajı gider; `READY FOR HANDOVER` deyince (ya da süre
@@ -333,6 +344,14 @@ içindeki bir döngü her `tick_seconds`'ta (varsayılan 120 sn) *ölçülebilir
   `/api/steward/card?name=`). Kartlar `steward_project_context`'te (`docs=true` ham başları da ekler) ve tur
   maddelerinde ham belge başlarının yerine geçer; `projects`/`steward_overview` `next_step` taşır.
   Maliyet: 160 projenin bayatlık taraması tick başına ~0,6 sn git/dosya okuması.
+- **Günlük özet** — günde bir kez, `steward.summary_hour`'dan (yerel, varsayılan 21) sonraki ilk tick'te
+  döngü `steward/daily/<tarih>.md` yazar, telefona gönderir (ntfy kuruluysa) ve `summary` olayı loglar.
+  İçerik (`steward.daily_summary`, saf, `log.jsonl`'dan): tick sayısı (elle/hatalı), uygulanan eylemler
+  türe göre, yapılacaktı (`observe`, türe göre + proje adları), açılan/cevaplanan soru, fikir, yenilenen
+  kart, handover, direktif, faz değişimi ve bekleyenler (açık soru, yeni fikir, gözden geçirme maddesi,
+  iletilmemiş cevap). `py/cops steward summary [--date T] [--lang tr|en] [--save]` aynı metni istek
+  üzerine yazdırır (panel gerekmez); `GET /api/steward/summary?date=&lang=` döner. `summary_hour`da panel
+  kapalıysa o gün özetlenmez.
 
 *Yargı* gerektiren kısım — "bu oturum boş iş mi yapıyor?", "sıradaki doğru iş ne?", "bu fikir proje olur
 mu?", "sahibine sormalı mıyım?" — bir **beyne** gider: `degnekci` adlı (ayarlanabilir; `brain_cli`/

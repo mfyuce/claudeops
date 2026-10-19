@@ -10,6 +10,7 @@ Kullanım:
   py/cops steward questions [--all]           # bana sorulanlar
   py/cops steward answer ID "cevap"           # cevapla (motor oturuma iletir)
   py/cops steward ideas [--all] / idea "metin"
+  py/cops steward summary [--date YYYY-MM-DD] [--lang tr|en] [--save]   # günlük özet (log.jsonl'dan; panel gerekmez)
   py/cops steward log [-n 50]
   py/cops steward persona                     # etkin persona metni
   py/cops steward on|off / config KEY VALUE   # döngüyü aç-kapat / steward.<alan> ayarı (tick_seconds, max_active...)
@@ -53,7 +54,7 @@ def cmd_status(args) -> int:
     qs = sw.open_questions()
     ideas = [i for i in sw.load_ideas() if i.status == "new"]
     st = sw.load_state()
-    print(f"değnekçi: {'AÇIK' if cfg.enabled else 'KAPALI'}  tick={cfg.tick_seconds}s  tur≥{cfg.tour_minutes}dk  "
+    print(f"değnekçi: {'AÇIK' if cfg.enabled else 'KAPALI'}  mod={cfg.mode}  tick={cfg.tick_seconds}s  tur≥{cfg.tour_minutes}dk  "
           f"max_active={cfg.max_active}  beyin={cfg.brain_name} ({cfg.brain_cli} {cfg.brain_model or 'varsayılan'} {cfg.brain_effort})")
     counts = sw.summarize_projects(projects)
     print("projeler: " + "  ".join(f"{PHASE_ICON[p]} {p}={n}" for p, n in counts.items()) + f"  (toplam {len(projects)})")
@@ -197,6 +198,22 @@ def cmd_log(args) -> int:
     return 0
 
 
+def cmd_summary(args) -> int:
+    """Günlük özeti `log.jsonl` + depolardan kurup yazdırır (motorun günde bir yazdığıyla AYNI metin); `--save`
+    `steward/daily/<tarih>.md`ye de yazar (ntfy gitmez)."""
+    date = args.date or time.strftime("%Y-%m-%d")
+    try:
+        time.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        print("hata: --date YYYY-MM-DD olmalı")
+        return 1
+    text = sw.summary_text(date, args.lang or steward_config().lang)
+    print(text, end="")
+    if args.save:
+        print(f"\n→ {sw.write_daily(date, text)}")
+    return 0
+
+
 def cmd_persona(args) -> int:
     print(sw.persona_text(str(load_settings().get("steward_persona_text") or "")))
     return 0
@@ -205,6 +222,12 @@ def cmd_persona(args) -> int:
 def cmd_config(args) -> int:
     """`steward.<alan>` ayarı: `py/cops steward config tick_seconds 90`; `on`/`off` = enabled."""
     field = args.key
+    if field == "mode" and args.value not in sw.MODES:
+        print(f"hata: mode {' | '.join(sw.MODES)} olmalı")
+        return 1
+    if field == "summary_hour" and not (args.value.isdigit() and 0 <= int(args.value) <= 23):
+        print("hata: summary_hour 0-23 arası bir saat olmalı")
+        return 1
     if field not in {f.name for f in dataclasses.fields(sw.Config)} or field == "history_warn_at":
         print("bilinmeyen alan; geçerli: " + ", ".join(f.name for f in dataclasses.fields(sw.Config) if f.name != "history_warn_at"))
         return 1
@@ -217,6 +240,12 @@ def cmd_config(args) -> int:
 def cmd_toggle(args) -> int:
     save_settings({"steward": {"enabled": "on" if args.action == "on" else "off"}})
     print(f"✓ değnekçi {'AÇIK' if args.action == 'on' else 'KAPALI'} (panel çalışıyorsa bir sonraki tick'ten itibaren geçerli)")
+    if args.action == "on":
+        if steward_config().mode == "observe":
+            print("  mod=observe: oturumlara DOKUNULMAZ, yapılacaklar `would:` olarak kaydedilir, günde bir özet gelir "
+                  "(act için: py/cops steward config mode act)")
+        else:
+            print("  mod=act: değnekçi oturumları açar/durdurur/direktif verir")
     return 0
 
 
@@ -283,6 +312,11 @@ def register(sub):
     pn = s.add_parser("idea", help="fikir ekle")
     pn.add_argument("text")
     pn.set_defaults(func=cmd_idea)
+    pm = s.add_parser("summary", help="günlük özet (tick/eylem/would/soru/fikir/kart/handover/bekleyen)")
+    pm.add_argument("--date", default="", metavar="YYYY-MM-DD", help="varsayılan: bugün")
+    pm.add_argument("--lang", choices=["tr", "en"], default="")
+    pm.add_argument("--save", action="store_true", help="steward/daily/<tarih>.md'ye de yaz")
+    pm.set_defaults(func=cmd_summary)
     pl = s.add_parser("log", help="son olaylar")
     pl.add_argument("-n", type=int, default=50)
     pl.set_defaults(func=cmd_log)

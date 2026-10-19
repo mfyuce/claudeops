@@ -5,6 +5,7 @@ Manager kod (spawn.py/discovery.py/commands/web.py) YALNIZCA bu arayüz
 yeni bir CLI eklemek yeni bir provider dosyası + registry'ye bir satır demek.
 """
 from __future__ import annotations
+import os
 import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -388,6 +389,7 @@ class CliProvider(ABC):
         if argv is None:
             return None
         try:
+            os.makedirs(cwd, exist_ok=True)
             res = subprocess.run(argv, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired as e:
             raise OneshotError(f"{self.name}: {timeout:.0f}s içinde yanıt vermedi") from e

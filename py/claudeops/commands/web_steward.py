@@ -52,7 +52,7 @@ RECENT_ACTIONS = 12
 _LOCK = threading.Lock()          # tick'ler ve elle tetiklenen eylemler sıralı
 _ACTIONS: Dict[str, Callable[..., Any]] = {}
 _RECENT: List[Dict[str, Any]] = []
-_LAST_TICK: Dict[str, Any] = {"at": 0.0, "trigger": "", "actions": 0, "error": ""}
+_LAST_TICK: Dict[str, Any] = {"at": 0.0, "trigger": "", "actions": 0, "dry": 0, "error": ""}
 _loop_started = False
 _CARD_LOCK = threading.Lock()      # aynı anda tek kart yenileme işi (tick'in arka plan işi / elle tetiklenen)
 _CARD_BACKGROUND = True            # testler False yapıp işi satır içi koşturur
@@ -80,6 +80,25 @@ def _remember(action: sw.Action, result: Any) -> None:
     del _RECENT[RECENT_ACTIONS:]
     sw.log_event("action", kind=action.kind, name=action.name, reason=action.reason,
                  ok=entry["ok"], detail=entry["detail"])
+
+
+def _remember_dry(action: sw.Action) -> None:
+    """observe kipi: eylem UYGULANMADI. `_RECENT`e `dry=True` ile, log'a `would:<kind>` olayı olarak yazılır."""
+    detail = f"{len(action.payload.get('items') or [])} madde" if action.kind == "tour" else str(action.payload.get("text") or "")[:200]
+    _RECENT.insert(0, {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
+                       "ok": True, "dry": True, "detail": detail})
+    del _RECENT[RECENT_ACTIONS:]
+    extra = {"question_id": action.payload["question_id"]} if action.payload.get("question_id") else {}
+    sw.log_event("would:" + action.kind, name=action.name, reason=action.reason, detail=detail, **extra)
+
+
+def _brain_dry(kind: str, data: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:
+    """observe kipinde BEYNİN (`actor: brain`, MCP aracı) oturuma dokunan çağrıları da uygulanmaz: aynı `would:`
+    kaydı düşer, beyne başarılı-ama-kuru yanıt döner. İnsanın elle çağırdığı CLI/API (`actor` yok) her zaman uygulanır."""
+    if data.get("actor") != "brain" or steward_config().mode != "observe":
+        return None
+    _remember_dry(sw.Action(kind, name, "brain: " + str(data.get("reason") or "")[:200], {"text": str(data.get("text") or "")}))
+    return {"ok": True, "dry": True, "note": f"observe mode: recorded as would:{kind}, not applied"}
 
 
 # ── telefon bildirimi (ntfy) ──────────────────────────────────────────────────
@@ -572,6 +591,40 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False) 
     return {"ok": True, "items": len(enriched), "chars": len(prompt)}
 
 
+# ── günlük özet ───────────────────────────────────────────────────────────────
+
+NTFY_SUMMARY_CHARS = 1500
+
+
+def maybe_daily_summary(cfg: sw.Config, now: float) -> Optional[str]:
+    """`summary_hour`u geçtiyse ve bugünün özeti yazılmadıysa: `steward/daily/<tarih>.md` yaz, ntfy ile telefona
+    gönder (kuruluysa), `summary` olayını logla, `state.summary_date`i işaretle. Yazılmışsa/saat gelmediyse None."""
+    state = sw.load_state()
+    date = sw.summary_due(state, now, cfg.summary_hour)
+    if not date:
+        return None
+    text = sw.summary_text(date, cfg.lang)
+    path = sw.write_daily(date, text)
+    notified = notify_phone(text[:NTFY_SUMMARY_CHARS])
+    state = sw.load_state()
+    state["summary_date"] = date
+    sw.save_state(state)
+    sw.log_event("summary", date=date, path=path, notified=notified, chars=len(text))
+    return path
+
+
+def http_summary(date: str = "", lang: str = "") -> Dict[str, Any]:
+    cfg = steward_config()
+    date = date or time.strftime("%Y-%m-%d")
+    try:
+        time.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        return {"ok": False, "error": "date must be YYYY-MM-DD"}
+    path = sw.daily_path(date)
+    return {"ok": True, "date": date, "text": sw.summary_text(date, lang if lang in ("tr", "en") else cfg.lang),
+            "saved": os.path.isfile(path), "path": path if os.path.isfile(path) else ""}
+
+
 # ── eylem uygulama ────────────────────────────────────────────────────────────
 
 def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -> Dict[str, Any]:
@@ -632,13 +685,18 @@ def tick_once(trigger: str = "timer") -> Dict[str, Any]:
         cfg = steward_config()
         t0 = time.time()
         applied: List[Dict[str, Any]] = []
+        dry_applied: List[Dict[str, Any]] = []
         error = ""
         try:
             projects = sw.load_projects()
             views = _collect_views(cfg)
             actions, new_state = sw.plan_tick(views, projects, sw.load_state(), cfg, t0,
                                               sw.load_questions(), sw.load_ideas())
+            actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
             sw.save_state(new_state)
+            for a in dry:
+                _remember_dry(a)
+                dry_applied.append({"kind": a.kind, "name": a.name, "reason": a.reason, "dry": True})
             for a in actions:
                 try:
                     res = _apply(a, cfg, projects)
@@ -651,14 +709,20 @@ def tick_once(trigger: str = "timer") -> Dict[str, Any]:
         except Exception as e:
             error = repr(e)
             diag_log("steward_tick_crashed", error=repr(e))
-        _LAST_TICK.update({"at": t0, "trigger": trigger, "actions": len(applied), "error": error})
+        _LAST_TICK.update({"at": t0, "trigger": trigger, "actions": len(applied), "dry": len(dry_applied), "error": error})
+        sw.log_event("tick", trigger=trigger, mode=cfg.mode, n=len(applied), dry=len(dry_applied), error=error)
         if applied:
             web_ws.notify_status_changed()
+        if cfg.enabled:
+            try:
+                maybe_daily_summary(cfg, t0)
+            except Exception as e:
+                diag_log("steward_summary_crashed", error=repr(e))
     try:
         card_tick(cfg)
     except Exception as e:
         diag_log("steward_card_tick_crashed", error=repr(e))
-    return {"ok": not error, "error": error, "actions": applied, "at": t0}
+    return {"ok": not error, "error": error, "actions": applied, "dry": dry_applied, "mode": cfg.mode, "at": t0}
 
 
 def _loop() -> None:
@@ -701,6 +765,7 @@ def summary(running_names: Optional[set] = None) -> Dict[str, Any]:
     brain_running = (cfg.brain_name in running_names) if running_names is not None else (_running(cfg.brain_name) is not None)
     value = {
         "enabled": cfg.enabled,
+        "mode": cfg.mode,
         "tick_seconds": cfg.tick_seconds,
         "projects": sw.summarize_projects(projects),
         "open_questions": len(sw.open_questions(questions)),
@@ -959,6 +1024,9 @@ def http_directive(data: Dict[str, Any]) -> Dict[str, Any]:
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
+    dry = _brain_dry("directive", data, name)
+    if dry is not None:
+        return dry
     with _LOCK:
         projects = sw.load_projects()
         p = _project_for_session(name, projects)
@@ -976,6 +1044,9 @@ def http_restart(data: Dict[str, Any]) -> Dict[str, Any]:
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
     cfg = steward_config()
+    dry = _brain_dry("restart", data, name)
+    if dry is not None:
+        return dry
     with _LOCK:
         if _running(name) is not None:
             res = _act("stop", name, lang=cfg.lang)
@@ -988,6 +1059,9 @@ def http_restart(data: Dict[str, Any]) -> Dict[str, Any]:
 def http_stop(data: Dict[str, Any]) -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     cfg = steward_config()
+    dry = _brain_dry("stop", data, name)
+    if dry is not None:
+        return dry
     with _LOCK:
         res = _act("stop", name, lang=cfg.lang)
     sw.log_event("stop", name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")))
@@ -997,6 +1071,9 @@ def http_stop(data: Dict[str, Any]) -> Dict[str, Any]:
 def http_handover(data: Dict[str, Any]) -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     cfg = steward_config()
+    dry = _brain_dry("handover", data, name)
+    if dry is not None:
+        return dry
     with _LOCK:
         res = _act("handover", name, lang=cfg.lang)
         if res.get("ok"):
@@ -1074,6 +1151,8 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
             return http_log()
     if path == "/api/steward/context":
         return http_context(g("name").strip(), docs=g("docs") in ("1", "true"))
+    if path == "/api/steward/summary":
+        return http_summary(g("date").strip(), g("lang").strip())
     if path == "/api/steward/cards":
         return http_cards()
     if path == "/api/steward/card":
