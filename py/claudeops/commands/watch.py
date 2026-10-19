@@ -666,6 +666,7 @@ class Viewer:
         self._popup_key: Any = None
         self._last_size: Optional[Tuple[int, int]] = None
         self._resized_for: Optional[Tuple[int, int]] = None
+        self.follow: Optional["SizeFollower"] = None   # pencere elle yeniden boyutlanınca uzak pane'i de boyutlandırır
         # Girdi kipleri çubuğu devralır: `overlay(cols)` (metin, stil) döndürürse durum çubuğunun yerine o çizilir
         # (yazı satırı, kısa tuş ipucu, ham geçiş uyarısı, gönderim sonucu); None = normal durum çubuğu.
         self.overlay: Optional[Callable[[int], Optional[Tuple[str, str]]]] = None
@@ -783,6 +784,8 @@ class Viewer:
             # kullanıcı pencereyi elle büyütürse onunla savaşılmaz. Yok sayan terminal kırpar.
             out.append(f"\x1b[8;{pane[1] + 1};{pane[0]}t")
             self._resized_for = pane
+        if self.follow is not None and self._resize and pane and self._resized_for == pane:
+            self.follow.observe((cols, rows), (pane[0], pane[1] + 1))
         if (cols, rows) != self._last_size:
             self._last_size = (cols, rows)
             self._body_dirty = True
@@ -1007,6 +1010,100 @@ def tail_fit(s: str, width: int) -> str:
         kept.append(ch)
         used += cw
     return "…" + "".join(reversed(kept))
+
+
+class SizeFollower:
+    """Mirror penceresi elle büyütülünce/küçültülünce UZAK pane'i de o boyuta getirir (2026-10-19, kullanıcı: "uzak da
+    büyüsün"): `Viewer.render()` her çizimde `observe(pencere, beklenen)` çağırır; pencere boyutu `delay` sn KARARLI
+    kalıp pane'in kendi (pane+1 çubuk) boyutundan farklıysa yerel panelin `/api/term/resize`ine (HOST_ROUTED_PATHS:
+    uzak host'a yönlendirilir) tek bir arka plan POST'u gider. Döngü yok: pane yeni boyuta gelince `Viewer` pencereyi
+    pane'e ister (zaten o boyut), `beklenen` ile eşleşince aday düşer. Reddedilirse (başka bir terminal istemcisi bağlı,
+    eski host'ta uç yok, yetki) bu pencere ömrü boyunca bırakılır. Çıkışta `release()` elle boyutu geri alır."""
+
+    def __init__(self, port: int, host: str, session: str, *, delay: float = 0.8,
+                 read_token: Optional[Callable[[], str]] = None,
+                 urlopen: Callable[..., Any] = urllib.request.urlopen,
+                 clock: Callable[[], float] = time.monotonic,
+                 start: Optional[Callable[[Callable[[], None]], None]] = None):
+        self.port, self.host, self.session = port, host, session
+        self.delay = delay
+        self._read_token = read_token
+        self._urlopen = urlopen
+        self._clock = clock
+        self._start = start or (lambda fn: threading.Thread(target=fn, name="watch-size", daemon=True).start())
+        self._lock = threading.Lock()
+        self._candidate: Optional[Tuple[int, int]] = None
+        self._since = 0.0
+        self._last_sent: Optional[Tuple[int, int]] = None
+        self._inflight = False
+        self.disabled = False
+        self.sent_any = False
+        self.last_error = ""
+
+    def observe(self, window: Tuple[int, int], expected: Optional[Tuple[int, int]]) -> None:
+        """`window`: (sütun, satır) pencere boyutu; `expected`: pane'in boyutu + 1 çubuk satırı (None = henüz kare yok)."""
+        if self.disabled or expected is None:
+            return
+        want = (window[0], window[1] - 1)   # alt çubuk satırı pane'e ait değil
+        fire = False
+        with self._lock:
+            if window == expected or want == self._last_sent:
+                self._candidate = None
+                return
+            if want != self._candidate:
+                self._candidate, self._since = want, self._clock()
+                return
+            if self._clock() - self._since >= self.delay and not self._inflight:
+                self._inflight = True
+                fire = True
+        if fire:
+            self._start(lambda w=want: self._send(w))
+
+    def _send(self, want: Tuple[int, int]) -> None:
+        try:
+            ok, err = self._post({"cols": want[0], "rows": want[1]})
+        except Exception as e:
+            ok, err = False, f"iç hata: {type(e).__name__}"
+        with self._lock:
+            self._inflight = False
+            if ok:
+                self._last_sent, self.sent_any, self._candidate = want, True, None
+            else:
+                self.last_error = err
+                self.disabled = True   # reddedildi/ulaşılamadı: bu pencere ömrü boyunca tekrar deneme
+
+    def release(self) -> None:
+        """Elle boyutu geri alır (yalnız bir kez boyut yollandıysa). Hata sessizce yutulur: pencere zaten kapanıyor."""
+        if not self.sent_any:
+            return
+        try:
+            self._post({"release": True})
+        except Exception:
+            pass
+
+    def _post(self, extra: dict) -> Tuple[bool, str]:
+        try:
+            token = (self._read_token or read_token)()
+        except TransportError as e:
+            return False, e.detail
+        body = json.dumps({"name": self.session, "host": self.host, "lang": "en", **extra}).encode("utf-8")
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/term/resize", data=body, method="POST",
+                                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+        try:
+            with self._urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as e:
+            e.close()
+            return False, f"http {e.code}"
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            return False, str(getattr(e, "reason", None) or e)
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return False, "panel JSON olmayan yanıt verdi"
+        if isinstance(data, dict) and data.get("ok"):
+            return True, ""
+        return False, str((data.get("error") if isinstance(data, dict) else None) or "panel reddetti")
 
 
 class InputSender:
@@ -1954,6 +2051,9 @@ def register(sub) -> None:
     p.add_argument("--once", action="store_true", help="tek kare bas ve çık (REST; TTY gerekmez)")
     p.add_argument("--plain", action="store_true", help="--once ile: renk kaçışlarını at")
     p.add_argument("--no-resize", action="store_true", help="pencereyi pane boyutuna istemeyi kapat")
+    p.add_argument("--no-follow-size", action="store_true",
+                   help="pencere elle büyütülünce uzak pane'i de büyütmeyi kapat (varsayılan: büyütür; bağlı başka "
+                        "terminal istemcisi varsa panel reddeder)")
     p.add_argument("--read-only", action="store_true",
                    help="girdi kiplerini (i yazı satırı, k kısa tuş, R ham geçiş, a işlem) kapat: oturuma hiçbir tuş gitmez")
     p.set_defaults(func=run)
@@ -2019,6 +2119,10 @@ def run(args: argparse.Namespace) -> int:
     screen = Screen(sys.stdout, title=f"{host}:{name}", bracketed_paste=not args.read_only)
     viewer = Viewer(host, name, screen, resize=not args.no_resize)
     viewer.history_warn_at = history_warn_at()
+    follower: Optional[SizeFollower] = None
+    if not args.no_resize and not args.no_follow_size:
+        follower = SizeFollower(args.port, host, name)
+        viewer.follow = follower
     screen.enter()
     try:
         with Keys() as keys, quiet_terminal(f"{host}:{name}"):
@@ -2037,5 +2141,7 @@ def run(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        if follower is not None:
+            follower.release()   # elle verilen pane boyutunu geri al (tmux window-size manual kalmasın)
         screen.leave()
     return 0

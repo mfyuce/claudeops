@@ -191,6 +191,36 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
 ALLOWED_SPECIAL_KEYS = {"C-c", "C-d", "Escape", "Up", "Down", "Left", "Right", "Tab", "Enter", "BTab"}
 
 
+RESIZE_COLS = (20, 500)
+RESIZE_ROWS = (5, 200)
+
+
+def tmux_resize_window(name: str, cols: int, rows: int) -> bool:
+    """Oturumun pencere boyutunu `cols x rows` yapar (`resize-window -x -y`, tmux >= 2.9). tmux 3.1+ bunu pencereyi
+    `window-size manual` yapar: işi bitince `tmux_release_size` ŞART (yoksa sonradan bağlanan istemci boyutu
+    değiştiremez). Bağlı istemci olan oturumda ÇAĞIRMA (çağıran `tmux_client_count` ile eler). Sınır dışı değer reddedilir."""
+    if not (RESIZE_COLS[0] <= cols <= RESIZE_COLS[1] and RESIZE_ROWS[0] <= rows <= RESIZE_ROWS[1]):
+        return False
+    try:
+        r = subprocess.run(_base_argv() + ["resize-window", "-t", _exact(name), "-x", str(cols), "-y", str(rows)],
+                            capture_output=True, timeout=_TIMEOUT)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def tmux_release_size(name: str) -> bool:
+    """`tmux_resize_window`un bıraktığı elle boyutu geri alır: pencerenin `window-size` seçeneğini kaldırır (genel
+    `latest`e döner); boyutun kendisi yerinde kalır, sonraki istemci bağlanınca tmux normal şekilde ayarlar.
+    `window-size` seçeneği yoksa (tmux 3.0a) hata verir ve zararsızdır: False döner."""
+    try:
+        r = subprocess.run(_base_argv() + ["set-option", "-wu", "-t", _exact(name), "window-size"],
+                            capture_output=True, timeout=_TIMEOUT)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def tmux_send_special_key(name: str, key: str) -> bool:
     if key not in ALLOWED_SPECIAL_KEYS:
         return False

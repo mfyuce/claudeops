@@ -64,7 +64,7 @@ from ..settings import load_settings
 HOST_ROUTED_PATHS = {
     "/api/start", "/api/stop", "/api/retire", "/api/reactivate", "/api/close",
     "/api/handover", "/api/compact", "/api/adopt", "/api/new-chat", "/api/register", "/api/edit",
-    "/api/term/input", "/api/term/key", "/api/term/raw", "/api/term/open-window", "/api/term/set-mode",
+    "/api/term/input", "/api/term/key", "/api/term/raw", "/api/term/resize", "/api/term/open-window", "/api/term/set-mode",
     "/api/instances/forget", "/api/cli/install",
     "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write",
     "/api/context", "/api/live-model", "/api/live-effort",

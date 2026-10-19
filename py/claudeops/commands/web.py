@@ -76,7 +76,7 @@ from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
 from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_capture_range, tmux_client_count, tmux_send_keys, tmux_send_raw,
-    tmux_send_special_key, tmux_pane_size, tmux_pane_snapshot, pane_is_masked_input, tty_is_masked,
+    tmux_send_special_key, tmux_resize_window, tmux_release_size, tmux_pane_size, tmux_pane_snapshot, pane_is_masked_input, tty_is_masked,
     ALLOWED_SPECIAL_KEYS, strip_ansi,
 )
 from .web_static import DIST_DIR, resolve_static_path
@@ -142,6 +142,10 @@ ERR = {
                                     "Unlock the screen first, then retry."},
     "no_x11": {"tr": "X11 display bulunamadı (Wayland'da çalışmaz)",
                "en": "X11 display not found (doesn't work on Wayland)"},
+    "resize_attached": {"tr": "{name}: oturuma bağlı bir terminal istemcisi var; boyutu onun penceresi belirler, mirror boyutlandırmaz",
+                         "en": "{name}: a terminal client is attached; its window decides the size, the mirror will not resize"},
+    "resize_bad_size": {"tr": "{name}: geçersiz boyut (sütun 20-500, satır 5-200)",
+                         "en": "{name}: invalid size (columns 20-500, rows 5-200)"},
     "mirror_local": {"tr": "{name}: yerel session'ın zaten kendi terminal penceresi var (mirror yalnız uzak host "
                             "session'ları içindir); penceresi yoksa \"pencere aç\" kullanın",
                       "en": "{name}: a local session already has its own terminal window (mirror is for remote-host "
@@ -2114,6 +2118,27 @@ def _term_input(name: str, text: str, lang: str = "tr") -> dict:
     if ok:
         web_ws.notify_term_activity(name)
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
+
+
+def _term_resize(name: str, cols: int, rows: int, release: bool = False, lang: str = "tr") -> dict:
+    """Mirror penceresinin boyutunu oturumun pane'ine uygular (2026-10-19, kullanıcı: "uzak da büyüsün"). `release`:
+    elle boyutu geri al (mirror kapanırken). Oturuma bağlı BAŞKA bir terminal istemcisi varsa (`open-window`) REDDEDER:
+    tmux o durumda boyutu istemcinin penceresine göre belirler ve `resize-window` onun görünümünü bozardı."""
+    s, err = _term_resolve(name, lang)
+    if err:
+        return err
+    if release:
+        return {"ok": True, "released": tmux_release_size(s.name)}
+    if not (isinstance(cols, int) and isinstance(rows, int) and not isinstance(cols, bool) and not isinstance(rows, bool)
+            and 20 <= cols <= 500 and 5 <= rows <= 200):
+        return _err(lang, "resize_bad_size", name=name)
+    clients = tmux_client_count(s.name)
+    if clients is None or clients > 0:
+        return _err(lang, "resize_attached", name=name)
+    if not tmux_resize_window(s.name, cols, rows):
+        return _err(lang, "term_session_gone", name=name)
+    web_ws.notify_term_activity(name)
+    return {"ok": True, "cols": cols, "rows": rows}
 
 
 def _term_key(name: str, key: str, lang: str = "tr") -> dict:
@@ -4111,7 +4136,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
-                         "/api/term/raw", "/api/term/set-mode",
+                         "/api/term/raw", "/api/term/resize", "/api/term/set-mode",
                          "/api/term/open-window", "/api/term/mirror-window", "/api/settings", "/api/usage", "/api/context", "/api/live-model",
                          "/api/live-effort",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
@@ -4504,6 +4529,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_term_key(name, key=str(data.get("key", "")), lang=lang))
+            return
+
+        if path == "/api/term/resize":
+            name = str(data.get("name", "")).strip()
+            if not name:
+                self._json(_err(lang, "name_required"), status=400)
+                return
+            self._json(_term_resize(name, data.get("cols"), data.get("rows"), release=bool(data.get("release")), lang=lang))
             return
 
         if path == "/api/term/raw":
