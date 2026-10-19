@@ -230,6 +230,21 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     );
   }
 
+  // "Penceresizleri seç" (2026-10-19, TODO "pencereleri kapatınca arkada koşuyor", karar (3)): otomatik
+  // DURDURMA yok; yalnız seçer, durdurma kullanıcının mevcut Durdur düğmesiyle (onay penceresi dahil).
+  // `diag.windowless` YEREL tmux oturumlarının listesidir ve null = bilinmiyor (boş liste DEĞİL): ikisinde de
+  // hiçbir şey seçilmez ve kullanıcıya söylenir. Uzak satırlar bu listede yok (bkz. SessionRow).
+  function handleSelectWindowless() {
+    const list = data?.diag.windowless;
+    if (list == null) {
+      showToast(t.windowlessUnknown, "info");
+      return;
+    }
+    const picked = rows.filter((s) => s.host === LOCAL_HOST && s.tmux && list.includes(s.name));
+    if (!picked.length) showToast(t.windowlessNone, "info");
+    selection.replace(picked.map(rowKey));
+  }
+
   const legendRows: [string, string][] =
     tab === "running"
       ? [
@@ -333,6 +348,9 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
             </button>
             <button type="button" className="selho" disabled={busy} title={t.attentionHint} onClick={handleSelectAttention}>
               {t.selectAttention}
+            </button>
+            <button type="button" className="selho" disabled={busy} title={t.windowlessSelectHint} onClick={handleSelectWindowless}>
+              {t.selectWindowless}
             </button>
           </>
         )}

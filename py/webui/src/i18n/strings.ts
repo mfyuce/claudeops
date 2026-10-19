@@ -107,6 +107,10 @@ export interface Strings {
   selWord: string;
   selectNeedsHo: string;
   selectAttention: string;
+  selectWindowless: string;
+  windowlessSelectHint: string;
+  windowlessUnknown: string;
+  windowlessNone: string;
   attentionHint: string;
   hoCol: string;
   hoHint: string;
@@ -606,6 +610,11 @@ export const STRINGS: Record<Lang, Strings> = {
     selWord: "seçili",
     selectNeedsHo: "needs-ho seç",
     selectAttention: "dikkat gerekenleri seç",
+    selectWindowless: "penceresizleri seç",
+    windowlessSelectHint:
+      "Ekranda penceresi olmayan (tmux'ta arkada koşan) yerel oturumları seçer. Hiçbir şey durdurmaz: işi bitenleri 'durdur' ile sen kapatırsın. Uzak host'lar dahil değil.",
+    windowlessUnknown: "Penceresiz listesi şu an bilinmiyor (tmux yanıt vermedi); hiçbir şey seçilmedi.",
+    windowlessNone: "Penceresiz çalışan yerel oturum yok.",
     attentionHint: "boşta olan (meşgul değil) VE AYRICA satır uyarı eşiğine (Ayarlar) ulaşmış olanları seçer — ikisi birden gerekir",
     hoCol: "ho?",
     hoHint: "handover gerekli mi? (repo kirli / untracked / baseline'dan beri commit / RFH yok — sinyallerden biri)",
@@ -1206,6 +1215,11 @@ export const STRINGS: Record<Lang, Strings> = {
     selWord: "selected",
     selectNeedsHo: "select needs-ho",
     selectAttention: "select needs attention",
+    selectWindowless: "select windowless",
+    windowlessSelectHint:
+      "Selects local sessions with no screen window (running in the background in tmux). Stops nothing: close the finished ones with 'stop' yourself. Remote hosts are not included.",
+    windowlessUnknown: "The windowless list is unknown right now (tmux did not answer); nothing was selected.",
+    windowlessNone: "No local session is running windowless.",
     attentionHint: "selects sessions that are idle (not busy) AND have reached the line warn threshold (Settings) — both required",
     hoCol: "ho?",
     hoHint: "needs handover? (dirty repo / untracked / commits since baseline / no RFH — any one signal)",
