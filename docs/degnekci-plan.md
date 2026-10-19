@@ -83,6 +83,13 @@ gibi private docs reposunda tutulur. En alttaki "yapıştırmalık" bloklar oray
 - Mekanik işler (kart özetleme, çıkarım) ucuz/yerel model; tur kararları Sonnet/Opus sınıfı.
 - İmplementasyon modeli: faz 1-2 Sonnet 5.5 (high). Faz 4 (karar hafızası) ve review turları için
   Opus/Fable'a dönülür.
+- **TBD#93-95 kapandı (2026-10-19, kullanıcı seçti):** soru sıklığına SINIR YOK (her soru anında ntfy,
+  "aynı açık soru bir kez" kuralı yeter; observe haftasında özetten ölçülür). Karar hafızası (faz 4) TÜM
+  `~/.claude/projects/*.jsonl` + TOBEDECIDED.md, kişisel filtre VAR (e-posta/token/anahtar desenleri,
+  `ulaksec`/`~/.cache/huggingface` dışarıda; yalnız soru/cevap çiftleri; ilk tarama gece batch; aralık
+  Ayarlar'dan daraltılabilir). Beyin İKİ kademe: tur kararı Sonnet (`degnekci`), mekanik iş haiku oneshot.
+  Kart yenileme (24 sa + hash, çalışmayan proje, tick başına 1), devir (`max_active`=4 ⇒ ~3 gün; dinamik
+  `max_active` faz 6) ve fikir→proje (beyin önerir, `project` HER ZAMAN kullanıcı onayı) brief'teki gibi.
 
 ## Plan
 
@@ -144,7 +151,7 @@ tests/test_steward.py. Doğrudan main'de çalış, yeni dal açma. Her adımda t
 - [ ] test_web_ws_ping.py cloud ortamında asılı kalıyor (websockets request_line.encode ascii); yerelde doğrula
 ```
 
-## Yapıştırmalık: TOBEDECIDED.md
+## Yapıştırmalık: TOBEDECIDED.md (TARİHÇE — hepsi 2026-10-19'da kararlaştı, bkz. Kararlar)
 
 ```
 - TBD: Model eğitimi — fine-tuning yok; önce karar hafızası + persona. Yüzlerce cevaplı soru birikince dar sınıflandırıcı. (2026-10-19: şimdilik yok, kabul)
