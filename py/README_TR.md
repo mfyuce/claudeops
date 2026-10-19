@@ -324,6 +324,14 @@ uygulanır. Geçiş: `py/cops steward config mode act`.
   (`py/cops steward questions`), `service notify` (ntfy) kuruluysa telefona bildirim gider, cevabın
   (`py/cops steward answer ID "..."`) bir sonraki tick'te o oturuma iletilir (gerekirse oturum yeniden
   açılır). `STEWARD-IDEA: ...` fikir kutusuna düşer.
+  Soru en çok 6 kısa **seçenek** taşıyabilir (`steward_ask_user ... options=[...]`, `py/cops steward ask
+  -o evet -o hayır "…"`, panel); cevap seçenek numarası, metni ya da serbest metin olabilir. Bildirim
+  seçenekleri listeler ve **`/q/<id>?k=<anahtar>`** bağlantısını verir — seçenek düğmeleri + metin
+  kutusundan oluşan, JS'siz kompakt telefon sayfası; yetkisi sorunun kendi rastgele anahtarı (panel
+  token'ı ntfy'den geçmez), bildirime dokununca açılır (ntfy `Click`). Aynı soru bir kez bildirilir.
+  Panelin **Değnekçi sekmesi** üç sayıyı (açık soru / yeni fikir / bekleyen madde, ayrıca faza göre
+  proje), yerinde cevaplanan soru kartlarını, kartın sıradaki adımı ve son uğramasıyla proje listesini,
+  fikir kutusunu (ekle / sonra / vazgeç), son eylemleri ve bir `tick` düğmesini gösterir.
 - **Slot baskısı** — bekleyen proje varken boş slot yoksa, `stop_idle_minutes` boyunca boşta duran proje
   oturumu yer açmak için durdurulur.
 - **Proje kartları** — beyin 160 repoyu değil *kartları* okur. Kart (`steward/cards/<ad>.json`: `goal`,
@@ -372,8 +380,9 @@ gözden geçirilmemiş oturum, yeni fikir, gidecek oturumu olmayan cevap) bir **
 Veri repo dışında `~/.claude/claudeops/steward/` altında (`projects.json`, `questions.json`,
 `ideas.json`, `state.json`, `log.jsonl`, `cards/`, `oneshot/`, `workspace/`). Ayar: `settings.json`'daki `steward` bloğu
 (`py/cops steward config ALAN DEĞER`, `py/cops steward on|off`). API: `/api/steward/*` (yalnız yerel,
-`/api/orch/*` gibi); `/api/status` panel için hafif bir `steward` özeti taşır. Panelde ayrı bir sekme
-henüz yok — CLI ve API her şeyi kapsıyor.
+`/api/orch/*` gibi); `/api/status`'taki hafif `steward` özeti sekme çubuğunun ve Değnekçi sekmesinin
+sayaçlarını besler (sekme `/api/steward/state`i yalnız açıkken çeker). `/q/<id>` `/api/` dışındaki tek
+değnekçi yolu: soru anahtarı ya da panel token'ı, HTML, önbelleksiz.
 Yol haritası, kararlar ve faz 1-2 implementasyon brief'i: [`docs/degnekci-plan.md`](../docs/degnekci-plan.md).
 
 ## Nasıl çalışır

@@ -106,6 +106,7 @@ def _ask(port: int, args: dict) -> dict:
         return {"ok": False, "error": "question is required"}
     return mcp_queue._api(port, "POST", "/api/steward/ask",
                           {"project": args.get("project") or "", "text": args["question"],
+                           "options": args.get("options") or [],
                            "source": os.environ.get("COPS_NAME") or "brain"})
 
 
@@ -183,8 +184,10 @@ TOOLS: List[Dict[str, Any]] = [
                           "priority": _I, "cadence_minutes": _I, "idea_id": _S,
                           "resources": {"type": "array", "items": _S}}, ["name", "cwd", "goal"])},
     {"name": "steward_ask_user",
-     "description": "Ask the owner a question (one sentence, easy to answer). Pushes a phone notification if ntfy is set up; the engine delivers the answer to the project's session.",
-     "inputSchema": _obj({"project": _S, "question": _S}, ["question"])},
+     "description": "Ask the owner a question (one sentence, easy to answer). Give `options` whenever the answer can be a pick (yes/no, A/B/C, 'later'): up to 6 short strings, answered with one tap on the phone page. Pushes a phone notification if ntfy is set up; the engine delivers the answer to the project's session.",
+     "inputSchema": _obj({"project": _S, "question": _S,
+                          "options": {"type": "array", "items": _S, "description": "Up to 6 short choices; omit for a free-text question."}},
+                         ["question"])},
     {"name": "steward_note",
      "description": "Your own note on a project (replaces the previous one; included in the next directive).",
      "inputSchema": _obj({"project": _S, "text": _S}, ["project", "text"])},

@@ -13,6 +13,7 @@ sorusunu `py/cops steward log` ile görür.
 from __future__ import annotations
 import dataclasses
 import os
+import secrets
 import shutil
 import subprocess
 import threading
@@ -40,6 +41,8 @@ from ..turns import is_busy_now
 from . import web_ws
 
 NTFY_TOPIC_FILE = os.path.join(CLAUDEOPS_DIR, "ntfy_topic.txt")
+TUNNEL_URL_FILE = os.path.join(CLAUDEOPS_DIR, "tunnel_url.txt")
+MAX_FORM_BYTES = 16 * 1024
 GUARD_LOCK_ACQUIRE_TIMEOUT = 60.0
 READY_TIMEOUT_SECONDS = 60.0
 READY_MIN_SECONDS = 6.0
@@ -103,9 +106,10 @@ def _brain_dry(kind: str, data: Dict[str, Any], name: str) -> Optional[Dict[str,
 
 # ── telefon bildirimi (ntfy) ──────────────────────────────────────────────────
 
-def notify_phone(text: str) -> bool:
+def notify_phone(text: str, click: str = "", title: str = "claudeops degnekci") -> bool:
     """`py/cops service notify` ile kurulmuş ntfy topic'i varsa oraya POST (arka planda, best-effort).
-    Yoksa False — soru yine de `questions.json`'da bekler, panel/CLI'dan görülür."""
+    Yoksa False — soru yine de `questions.json`'da bekler, panel/CLI'dan görülür. `click`: bildirime dokununca
+    açılacak adres (ntfy `Click` başlığı; soru sayfası `/q/<id>?k=`)."""
     try:
         with open(NTFY_TOPIC_FILE, encoding="utf-8") as f:
             topic = f.read().strip()
@@ -116,14 +120,28 @@ def notify_phone(text: str) -> bool:
 
     def _post() -> None:
         try:
+            headers = {"Title": title}
+            if click:
+                headers["Click"] = click
             req = urllib.request.Request(f"https://ntfy.sh/{topic}", data=text.encode("utf-8"),
-                                         headers={"Title": "claudeops degnekci"}, method="POST")
+                                         headers=headers, method="POST")
             urllib.request.urlopen(req, timeout=10).read()
         except Exception as e:
             diag_log("steward_notify_failed", error=str(e))
 
     threading.Thread(target=_post, daemon=True, name="steward-ntfy").start()
     return True
+
+
+def public_base() -> str:
+    """Telefondan ulaşılabilen panel adresi: `tunnel_url.txt` (quick tunnel her restart'ta yeni URL yazar) ya da "".
+    Soru bağlantısı panel token'ını DEĞİL sorunun kendi anahtarını taşır (`steward.question_link`)."""
+    try:
+        with open(TUNNEL_URL_FILE, encoding="utf-8") as f:
+            url = f.read().strip()
+    except OSError:
+        return ""
+    return url if url.startswith("http") else ""
 
 
 # ── proje klasörü yardımcıları ────────────────────────────────────────────────
@@ -988,13 +1006,49 @@ def http_register(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def http_ask(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Soru aç (+ `options`: en çok 6 kısa seçenek) → ntfy: metin + numaralı seçenekler + `/q/<id>?k=` bağlantısı
+    (tünel varsa; bildirime dokunmak sayfayı açar). Aynı açık soru ikinci kez bildirilmez (`add_question` dedup)."""
+    cfg = steward_config()
     try:
-        q = sw.add_question(str(data.get("project") or ""), str(data.get("text") or ""), source=str(data.get("source") or "api"))
+        q = sw.add_question(str(data.get("project") or ""), str(data.get("text") or ""),
+                            source=str(data.get("source") or "api"), options=data.get("options"))
     except ValueError as e:
         return {"ok": False, "error": str(e)}
-    notified = notify_phone(f"[{q.project or 'degnekci'}] {q.text}\n→ py/cops steward answer {q.id} \"...\"")
-    sw.log_event("ask", id=q.id, project=q.project, notified=notified)
-    return {"ok": True, "id": q.id, "notified": notified}
+    link = sw.question_link(q, public_base())
+    if q.notified_at:
+        return {"ok": True, "id": q.id, "notified": False, "link": link, "dup": True}
+    notified = notify_phone(sw.question_notification(q, link, cfg.lang), click=link)
+    if notified:
+        sw.mark_notified(q.id)
+    sw.log_event("ask", id=q.id, project=q.project, notified=notified, options=len(q.options))
+    return {"ok": True, "id": q.id, "notified": notified, "link": link}
+
+
+def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
+    """`/q/<id>` (GET: sayfa, POST: `form["answer"]`). Yetki: panel token'ı YA DA sorunun kendi anahtarı (`k`,
+    sabit zamanlı karşılaştırma; anahtarsız eski kayıt yalnız token'la). Dönen: (HTTP durumu, HTML)."""
+    cfg = steward_config()
+    lang = cfg.lang
+    q = sw.find_question(qid) if qid else None
+    if q is None:
+        return 404, sw.question_page_html(None, lang, "missing")
+    key_ok = bool(key and q.key) and secrets.compare_digest(key.encode("utf-8", "replace"), q.key.encode("utf-8"))
+    if not token_ok and not key_ok:
+        return 401, sw.question_page_html(None, lang, "denied")
+    action = f"/q/{q.id}?k={q.key}" if q.key else f"/q/{q.id}"   # token'la gelen tarayıcı formu da anahtarla POST eder
+    if q.status != "open":
+        return 200, sw.question_page_html(q, lang, "already", action=action)
+    if form is None:
+        return 200, sw.question_page_html(q, lang, "ask", action=action)
+    try:
+        answered = sw.answer_question(q.id, str(form.get("answer") or ""))
+    except ValueError:
+        return 400, sw.question_page_html(q, lang, "ask", error=sw._QPAGE_TXT["en" if lang == "en" else "tr"]["empty"],
+                                          action=action)
+    sw.log_event("answer", id=q.id, project=q.project, source="phone")
+    invalidate_summary()
+    web_ws.notify_status_changed()
+    return 200, sw.question_page_html(answered, lang, "done", action=action)
 
 
 def http_answer(data: Dict[str, Any]) -> Dict[str, Any]:

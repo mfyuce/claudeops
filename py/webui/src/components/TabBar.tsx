@@ -43,6 +43,8 @@ export function TabBar({ active, onSelect, search }: TabBarProps) {
     // Running indicator (not a count), same convention as "desktop" below —
     // TOBEDECIDED#15 Phase 1 allows only one active run fleet-wide.
     ["team", data.orch.active ? `${t.tabTeam} ●` : t.tabTeam],
+    // Open-question count: the one number the owner acts on from this tab (answers unblock sessions).
+    ["steward", data.steward?.open_questions ? `${t.tabSteward} (${data.steward.open_questions})` : t.tabSteward],
     // Running indicator (not a count) — this daemon captures the screen
     // continuously while active, worth a glance even from other tabs.
     ["desktop", data.remote_desktop.running ? `${t.tabDesktop} ●` : t.tabDesktop],

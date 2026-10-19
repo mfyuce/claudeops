@@ -440,6 +440,10 @@ export interface StatusPayload {
    * merged across hosts, unlike `sessions`/`hosts` above — `commands/
    * web_orch.py` refuses any `host != "local"` participant). */
   orch: OrchState;
+  /** Değnekçi (steward, 2026-10-19) — `web_steward.summary()`: local-only, 5 s cached light slice
+   * (counts + last tick + brain). The full picture (`/api/steward/state`) is fetched by `StewardTab`
+   * only while that tab is open, keyed on the counts here changing (no extra polling). */
+  steward: StewardSummary;
   /** 2026-09-17, "son snapshot" — snapshot GEÇMİŞİNİN (bkz. `SnapshotListResult`)
    * en son kaydının meta özeti (tam session listesi DEĞİL, sadece ne-zaman/
    * kaç-session/hangi-tür — Settings panelinin "Son snapshot: X, N session"
@@ -790,3 +794,107 @@ export type SnapshotResumeResult = ApiResult<{
 export type SnapshotListResult = ApiResult<{
   snapshots: { saved_at: number; kind: "manual" | "closing"; count: number; mirrors?: number }[];
 }>;
+
+// ── Değnekçi (steward) — `py/claudeops/steward.py` dataclasses via `dataclasses.asdict` ──
+
+export interface StewardSummary {
+  enabled: boolean;
+  mode: string;
+  tick_seconds: number;
+  projects: Record<string, number>;
+  open_questions: number;
+  ideas_new: number;
+  pending_items: number;
+  last_tick: { at?: number; trigger?: string; actions?: number; dry?: number; error?: string };
+  last_tour: number;
+  brain: { name: string; running: boolean };
+  recent: StewardRecent[];
+}
+
+export interface StewardRecent {
+  ts: number;
+  kind: string;
+  name: string;
+  reason?: string;
+  ok?: boolean;
+  dry?: boolean;
+  detail?: string;
+}
+
+export interface StewardQuestion {
+  id: string;
+  project: string;
+  text: string;
+  created_at: number;
+  status: string;
+  answer: string;
+  answered_at: number;
+  delivered_at: number;
+  source: string;
+  /** Short choices (≤6); empty = free-text question. The answer may still be free text. */
+  options?: string[];
+  notified_at?: number;
+}
+
+export interface StewardProject {
+  name: string;
+  phase: string;
+  kind: string;
+  goal: string;
+  priority: number;
+  cadence_minutes: number;
+  notes: string;
+  model: string;
+  effort: string;
+  last_visit: number;
+  last_directive?: string;
+  running?: boolean;
+  /** One line from the project card (`card_one_liner`), "" when no card yet. */
+  next_step: string;
+  card_updated_at: number;
+}
+
+export interface StewardIdea {
+  id: string;
+  text: string;
+  created_at: number;
+  status: string;
+  project: string;
+  source: string;
+}
+
+export interface StewardStateResult {
+  ok: boolean;
+  config: Record<string, unknown>;
+  summary: StewardSummary;
+  projects: StewardProject[];
+  running: { name: string; cwd: string; cli: string; model: string }[];
+  questions: StewardQuestion[];
+  ideas: StewardIdea[];
+  recent: StewardRecent[];
+}
+
+export interface StewardAnswerResult {
+  ok: boolean;
+  error?: string;
+  question?: StewardQuestion;
+}
+
+export interface StewardAskResult {
+  ok: boolean;
+  error?: string;
+  id?: string;
+  notified?: boolean;
+  link?: string;
+  dup?: boolean;
+}
+
+export interface StewardTickResult {
+  ok: boolean;
+  error: string;
+  actions: { kind: string; name: string; reason: string; ok: boolean; detail: string }[];
+  dry: { kind: string; name: string; reason: string; dry: boolean }[];
+  mode: string;
+  at: number;
+}
+

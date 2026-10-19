@@ -36,6 +36,7 @@ class _Tmp(unittest.TestCase):
             mock.patch.object(sw, "LOG_JSONL", os.path.join(sd, "log.jsonl")),
             mock.patch.object(sw, "WORKSPACE_DIR", os.path.join(sd, "workspace")),
             mock.patch.object(web_steward, "NTFY_TOPIC_FILE", os.path.join(d, "ntfy_topic.txt")),
+            mock.patch.object(web_steward, "TUNNEL_URL_FILE", os.path.join(d, "tunnel_url.txt")),
         ]
         for p in patches:
             p.start()
@@ -627,6 +628,60 @@ class SummaryCoreTest(_Tmp):
         self.assertFalse(notes[-1].startswith("(gecikmiş"))
 
 
+class QuestionOptionsTest(_Tmp):
+    def test_options_normalize_resolve_and_key(self):
+        self.assertEqual(sw.normalize_options(["  evet ", "hayır", "evet", "", None, 3, True]), ["evet", "hayır", "3"])
+        self.assertEqual(sw.normalize_options("tek"), ["tek"])
+        self.assertEqual(sw.normalize_options(None), [])
+        self.assertEqual(len(sw.normalize_options([str(i) for i in range(10)])), sw.QUESTION_MAX_OPTIONS)
+        self.assertEqual(len(sw.normalize_options(["x" * 500])[0]), sw._MAX_OPTION_CHARS)
+        q = sw.add_question("kitap", "A mı B mi?", source="brain", options=["A", "B", "sonra"])
+        self.assertEqual(q.options, ["A", "B", "sonra"])
+        self.assertEqual(len(q.key), 16)
+        self.assertEqual(sw.add_question("kitap", "A mı B mi?").key, q.key)            # dedup aynı kaydı döner
+        for raw, want in (("2", "B"), ("b", "B"), ("SONRA", "sonra"), ("C", "sonra"), ("0", "0"), ("başka şey", "başka şey"),
+                          ("  A  ", "A")):
+            self.assertEqual(sw.resolve_answer(q, raw), want, raw)
+        self.assertEqual(sw.resolve_answer(sw.Question("x", "", "s", 0.0), "1"), "1")   # seçeneksiz: metin olduğu gibi
+        self.assertEqual(sw.answer_question(q.id, "3").answer, "sonra")
+        self.assertEqual(sw.find_question(q.id).status, "answered")
+        self.assertIsNone(sw.find_question("yok"))
+        # eski kayıt (options/key/notified_at alanları yok) sorunsuz yüklenir
+        sw.save_questions([])
+        with open(sw.QUESTIONS_JSON, "w", encoding="utf-8") as f:
+            json.dump([{"id": "q_old", "project": "p", "text": "eski?", "created_at": 1.0}], f)
+        old = sw.load_questions()[0]
+        self.assertEqual((old.options, old.key, old.notified_at), ([], "", 0.0))
+        self.assertEqual(sw.question_link(old, "https://t.example"), "")              # anahtarsız: bağlantı yok
+        self.assertEqual(sw.question_link(q, "https://t.example/"), f"https://t.example/q/{q.id}?k={q.key}")
+        self.assertEqual(sw.question_link(q, ""), "")
+        sw.mark_notified(old.id)
+        self.assertGreater(sw.load_questions()[0].notified_at, 0)
+
+    def test_notification_text_and_page_html(self):
+        q = sw.Question("q1", "kitap", "A <b>mı</b> B mi?", 1_700_000_000.0, source="brain", options=["A", "B & C"], key="k1")
+        txt = sw.question_notification(q, "https://t/q/q1?k=k1", "tr")
+        self.assertEqual(txt.splitlines(), ["[kitap] A <b>mı</b> B mi?", "1) A", "2) B & C", "→ cevapla: https://t/q/q1?k=k1"])
+        self.assertIn("py/cops steward answer q1", sw.question_notification(q, "", "en"))
+        page = sw.question_page_html(q, "tr", "ask", action="/q/q1?k=k1")
+        self.assertIn("A &lt;b&gt;mı&lt;/b&gt; B mi?", page)                        # kaçışlı
+        self.assertNotIn("<b>mı</b>", page)
+        self.assertIn("value='B &amp; C'", page)
+        self.assertEqual(page.count("class='opt'"), 2)
+        self.assertIn("method='post' action='/q/q1?k=k1'", page)
+        self.assertIn("viewport", page)
+        self.assertNotIn("<script", page)
+        q.answer, q.status = "B & C", "answered"
+        done = sw.question_page_html(q, "en", "done")
+        self.assertIn("Answer saved", done)
+        self.assertIn("→ B &amp; C", done)
+        self.assertNotIn("<form", done)
+        self.assertIn("already answered", sw.question_page_html(q, "en", "already"))
+        self.assertIn("Böyle bir soru yok", sw.question_page_html(None, "tr", "missing"))
+        self.assertIn("Invalid link", sw.question_page_html(None, "en", "denied"))
+        self.assertIn("Boş cevap", sw.question_page_html(q, "tr", "ask", error="Boş cevap gönderilemez"))
+
+
 class SettingsTest(_Tmp):
     def test_defaults_parse_and_clamp(self):
         cfg = settings.steward_config()
@@ -731,6 +786,58 @@ class HttpTest(_Tmp):
         state = web_steward.http_get("/api/steward/state", {})
         self.assertEqual(state["summary"]["projects"]["planning"], 1)
         self.assertEqual(len(web_steward.http_get("/api/steward/log", {"n": ["100"]})["entries"]), 6)
+
+    def test_ask_with_options_notifies_with_link_once(self):
+        notes = []
+        with open(web_steward.TUNNEL_URL_FILE, "w", encoding="utf-8") as f:
+            f.write("https://tun.example.com\n")
+        with mock.patch.object(web_steward, "notify_phone", lambda text, click="", title="": notes.append((text, click)) or True):
+            r = web_steward.http_post("/api/steward/ask", {"project": "p", "text": "A mı B mi?", "options": ["A", "B"], "source": "t"})
+            self.assertTrue(r["ok"] and r["notified"])
+            self.assertEqual(r["link"], f"https://tun.example.com/q/{r['id']}?k={sw.find_question(r['id']).key}")
+            self.assertEqual(notes[0][1], r["link"])                                  # ntfy Click başlığı = sayfa
+            self.assertIn("1) A\n2) B\n→ cevapla: https://tun.example.com/q/", notes[0][0])
+            again = web_steward.http_post("/api/steward/ask", {"project": "p", "text": "A mı B mi?"})
+        self.assertEqual((again["id"], again["notified"], again.get("dup")), (r["id"], False, True))   # ikinci bildirim yok
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(web_steward.http_get("/api/steward/questions", {})["questions"][0]["options"], ["A", "B"])
+        self.assertTrue(web_steward.http_post("/api/steward/answer", {"id": r["id"], "answer": "2"})["ok"])
+        self.assertEqual(sw.find_question(r["id"]).answer, "B")
+        os.remove(web_steward.TUNNEL_URL_FILE)
+        with mock.patch.object(web_steward, "notify_phone", lambda text, click="", title="": notes.append((text, click)) or False):
+            r2 = web_steward.http_post("/api/steward/ask", {"project": "p", "text": "tünelsiz?"})
+        self.assertEqual((r2["link"], r2["notified"]), ("", False))
+        self.assertEqual(notes[-1][1], "")
+        self.assertIn("py/cops steward answer", notes[-1][0])
+        self.assertEqual(sw.find_question(r2["id"]).notified_at, 0.0)                 # ntfy yoksa işaretlenmez
+
+    def test_question_page_auth_and_answer_flow(self):
+        q = sw.add_question("p", "Devam mı?", options=["evet", "hayır"])
+        page = lambda key="", token=False, form=None: web_steward.http_question_page(q.id, key, token, form)  # noqa: E731
+        self.assertEqual(web_steward.http_question_page("yok", q.key, True)[0], 404)
+        self.assertEqual(page()[0], 401)
+        self.assertEqual(page("yanlış")[0], 401)
+        status, html_text = page(q.key)
+        self.assertEqual(status, 200)
+        self.assertIn("value='evet'", html_text)
+        self.assertIn(f"action='/q/{q.id}?k={q.key}'", html_text)
+        self.assertEqual(page("", token=True)[0], 200)                                # panel token'ı da yeter
+        status, html_text = page(q.key, form={"answer": ""})
+        self.assertEqual(status, 400)
+        self.assertIn("Boş cevap", html_text)
+        self.assertEqual(sw.find_question(q.id).status, "open")
+        with mock.patch.object(web_steward.web_ws, "notify_status_changed", lambda: None):
+            status, html_text = page(q.key, form={"answer": "2"})
+        self.assertEqual(status, 200)
+        self.assertIn("Cevap kaydedildi", html_text)
+        self.assertIn("→ hayır", html_text)
+        self.assertEqual(sw.find_question(q.id).answer, "hayır")
+        self.assertTrue(any(e["event"] == "answer" and e.get("source") == "phone" for e in sw.tail_log(10)))
+        status, html_text = page(q.key)                                               # tekrar açınca: zaten cevaplanmış
+        self.assertEqual(status, 200)
+        self.assertIn("zaten cevaplanmış", html_text)
+        self.assertNotIn("<form", html_text)
+        self.assertEqual(page(q.key, form={"answer": "evet"})[1].count("→ hayır"), 1)   # ikinci POST cevabı değiştirmez
 
     def test_register_creates_folder_goal_and_roster(self):
         cwd = os.path.join(self.dir.name, "proj")
@@ -1064,3 +1171,80 @@ class HttpTest(_Tmp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuestionPageHttpTest(_Tmp):
+    """Gerçek HTTP (`web._Handler`): `/q/<id>` panel token'ı olmadan da sorunun anahtarıyla açılır, form POST cevaplar."""
+
+    def setUp(self):
+        super().setUp()
+        import threading
+        import urllib.error
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        from claudeops.commands import web
+        self.urllib = urllib
+        p = mock.patch.object(web._Handler, "token", "tok")
+        p.start()
+        self.addCleanup(p.stop)
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), web._Handler)
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def req(self, path, data=None, headers=None):
+        req = self.urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=data,
+                                          method="POST" if data is not None else "GET", headers=headers or {})
+        try:
+            with self.urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, r.read().decode("utf-8"), r.headers
+        except self.urllib.error.HTTPError as e:
+            return e.code, e.read().decode("utf-8"), e.headers
+
+    def test_question_page_round_trip(self):
+        q = sw.add_question("p", "Yayınlayalım mı?", options=["evet", "hayır"])
+        status, body, _ = self.req(f"/q/{q.id}")
+        self.assertEqual(status, 401)
+        self.assertIn("Bağlantı geçersiz", body)                                    # HTML, panelin 401'i değil
+        status, body, headers = self.req(f"/q/{q.id}?k={q.key}")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers["Content-Type"])
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertIn("value='evet'", body)
+        self.assertEqual(self.req(f"/q/{q.id}?token=tok")[0], 200)                 # panel token'ı da geçer
+        self.assertEqual(self.req("/q/yok?k=x")[0], 404)
+        form = b"answer=hay%C4%B1r"
+        with mock.patch.object(web_steward.web_ws, "notify_status_changed", lambda: None):
+            status, body, _ = self.req(f"/q/{q.id}?k={q.key}", data=form,
+                                       headers={"Content-Type": "application/x-www-form-urlencoded"})
+        self.assertEqual(status, 200)
+        self.assertIn("Cevap kaydedildi", body)
+        self.assertEqual(sw.find_question(q.id).answer, "hayır")
+        big = b"answer=" + b"x" * (web_steward.MAX_FORM_BYTES + 1)
+        self.assertEqual(self.req(f"/q/{q.id}?k={q.key}", data=big)[0], 400)
+        self.assertEqual(self.req("/api/steward/state")[0], 401)                     # geri kalan yüzey token ister
+
+    def test_notify_phone_sets_click_header(self):
+        import threading
+        seen = {}
+        done = threading.Event()
+        with open(web_steward.NTFY_TOPIC_FILE, "w", encoding="utf-8") as f:
+            f.write("topic1\n")
+
+        class _Resp:
+            def read(self):
+                return b""
+
+        def fake_open(req, timeout=0):
+            seen.update(url=req.full_url, headers=dict(req.headers), data=req.data)
+            done.set()
+            return _Resp()
+
+        with mock.patch.object(web_steward.urllib.request, "urlopen", fake_open):
+            self.assertTrue(web_steward.notify_phone("soru?", click="https://t/q/1?k=a"))
+            self.assertTrue(done.wait(5))
+        self.assertEqual(seen["url"], "https://ntfy.sh/topic1")
+        self.assertEqual((seen["headers"].get("Click"), seen["headers"].get("Title")), ("https://t/q/1?k=a", "claudeops degnekci"))
+        self.assertEqual(seen["data"], "soru?".encode("utf-8"))
+

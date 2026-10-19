@@ -56,6 +56,10 @@ import type {
   SnapshotSaveResult,
   StartResult,
   StatusPayload,
+  StewardAnswerResult,
+  StewardAskResult,
+  StewardStateResult,
+  StewardTickResult,
   StopResult,
   IoAskResult,
   IoHistoryResult,
@@ -592,3 +596,17 @@ export const apiSnapshotList = (lang: Lang): Promise<SnapshotListResult> =>
  * açılsın default ama istenirse gizli açılsın"). */
 export const apiSnapshotResume = (hidden: boolean, lang: Lang, savedAt?: number): Promise<SnapshotResumeResult> =>
   apiPost<SnapshotResumeResult>("/api/snapshot/resume", { hidden, lang, ...(savedAt !== undefined ? { saved_at: savedAt } : {}) });
+
+// ── Değnekçi (steward) — `/api/steward/*`, local-only like `/api/orch/*` ──
+export const getStewardState = (): Promise<StewardStateResult> => apiGet<StewardStateResult>("/api/steward/state");
+/** `answer` may be an option number ("2"), an option text or free text — the backend resolves it. */
+export const apiStewardAnswer = (id: string, answer: string): Promise<StewardAnswerResult> =>
+  apiPost<StewardAnswerResult>("/api/steward/answer", { id, answer });
+export const apiStewardAsk = (project: string, text: string, options: string[]): Promise<StewardAskResult> =>
+  apiPost<StewardAskResult>("/api/steward/ask", { project, text, options, source: "panel" });
+export const apiStewardIdea = (text: string): Promise<SimpleResult & { id?: string }> =>
+  apiPost<SimpleResult & { id?: string }>("/api/steward/idea", { text, source: "panel" });
+export const apiStewardIdeaUpdate = (id: string, status: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/idea", { id, status });
+export const apiStewardTick = (): Promise<StewardTickResult> => apiPost<StewardTickResult>("/api/steward/tick", {});
+

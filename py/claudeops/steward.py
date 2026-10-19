@@ -26,6 +26,7 @@ deseni). Hiçbir şey kendiliğinden başlamaz: `steward.enabled` varsayılan KA
 from __future__ import annotations
 import dataclasses
 import hashlib
+import html
 import json
 import os
 import re
@@ -78,6 +79,8 @@ READY_FOR_HANDOVER = "READY FOR HANDOVER"
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _MAX_QUESTION_CHARS = 2000
+QUESTION_MAX_OPTIONS = 6         # soru seçenekleri (evet/hayır, A/B/C, sonra): telefon sayfasında tek dokunuş
+_MAX_OPTION_CHARS = 80
 _MAX_IDEA_CHARS = 2000
 _MAX_NOTE_CHARS = 4000
 
@@ -123,6 +126,9 @@ class Question:
     answered_at: float = 0.0
     delivered_at: float = 0.0       # cevap ilgili oturuma iletildi
     source: str = ""                # soruyu kim açtı (oturum adı / brain / cli)
+    options: List[str] = field(default_factory=list)   # kısa seçenekler (boş = serbest metin); cevap bunlardan biri ya da metin
+    key: str = ""                   # `/q/<id>?k=<key>` sayfasının soruya ÖZEL anahtarı (panel token'ı ntfy'ye girmesin)
+    notified_at: float = 0.0        # telefona bildirildi (aynı açık soru ikinci kez bildirilmez)
 
 
 @dataclass
@@ -321,7 +327,41 @@ def save_questions(questions: List[Question]) -> None:
     _save_json(QUESTIONS_JSON, [dataclasses.asdict(q) for q in questions])
 
 
-def add_question(project: str, text: str, source: str = "") -> Question:
+def normalize_options(options: Any) -> List[str]:
+    """Seçenek listesi: dize/sayı elemanlar, boşluk kırpılır, boş/yinelenen atılır, en çok `QUESTION_MAX_OPTIONS`,
+    her biri `_MAX_OPTION_CHARS`. Liste değilse (ör. tek dize, None) boş liste = serbest metin sorusu."""
+    if isinstance(options, str):
+        options = [options]
+    if not isinstance(options, (list, tuple)):
+        return []
+    out: List[str] = []
+    for o in options:
+        if isinstance(o, bool) or o is None:
+            continue
+        t = " ".join(str(o).split())[:_MAX_OPTION_CHARS]
+        if t and t not in out:
+            out.append(t)
+        if len(out) >= QUESTION_MAX_OPTIONS:
+            break
+    return out
+
+
+def resolve_answer(q: Question, raw: str) -> str:
+    """Ham cevap → kaydedilecek metin: seçenekli soruda `1`..`n` (ya da `A`..) o seçeneğin metni, seçenek metnine
+    (büyük/küçük harf duyarsız) tam eşleşen de kanonik metin; diğer her şey serbest metin olarak kalır."""
+    raw = " ".join(str(raw).split())
+    if q.options and raw:
+        if raw.isdigit() and 1 <= int(raw) <= len(q.options):
+            return q.options[int(raw) - 1]
+        if len(raw) == 1 and raw.upper().isalpha() and ord(raw.upper()) - 65 < len(q.options):
+            return q.options[ord(raw.upper()) - 65]
+        for o in q.options:
+            if o.casefold() == raw.casefold():
+                return o
+    return raw
+
+
+def add_question(project: str, text: str, source: str = "", options: Any = None) -> Question:
     text = str(text).strip()[:_MAX_QUESTION_CHARS]
     if not text:
         raise ValueError("empty question")
@@ -331,7 +371,8 @@ def add_question(project: str, text: str, source: str = "") -> Question:
     for q in questions:
         if q.status == "open" and q.project == project and q.text == text:
             return q
-    q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source)
+    q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
+                 options=normalize_options(options), key=secrets.token_hex(8))
     questions.append(q)
     save_questions(questions)
     return q
@@ -344,13 +385,105 @@ def answer_question(question_id: str, answer: str) -> Optional[Question]:
     questions = load_questions()
     for q in questions:
         if q.id == question_id:
-            q.answer = answer[:_MAX_QUESTION_CHARS]
+            q.answer = resolve_answer(q, answer)[:_MAX_QUESTION_CHARS]
             q.status = "answered"
             q.answered_at = _now()
             q.delivered_at = 0.0
             save_questions(questions)
             return q
     return None
+
+
+def find_question(question_id: str) -> Optional[Question]:
+    return next((q for q in load_questions() if q.id == question_id), None)
+
+
+def mark_notified(question_id: str) -> None:
+    questions = load_questions()
+    for q in questions:
+        if q.id == question_id:
+            q.notified_at = _now()
+    save_questions(questions)
+
+
+def question_link(q: Question, base: str) -> str:
+    """Telefon sayfası: `<base>/q/<id>?k=<key>`. `base` boşsa (tünel yok) ya da soru anahtarsızsa (eski kayıt) ""."""
+    base = (base or "").rstrip("/")
+    return f"{base}/q/{q.id}?k={q.key}" if base and q.key else ""
+
+
+def question_notification(q: Question, link: str, lang: str = "tr") -> str:
+    """ntfy gövdesi: `[proje] soru`, numaralı seçenekler, sonra bağlantı ya da (yoksa) CLI ipucu."""
+    lines = [f"[{q.project or 'degnekci'}] {q.text}"]
+    lines += [f"{i}) {o}" for i, o in enumerate(q.options, 1)]
+    if link:
+        lines.append(("→ cevapla: " if lang != "en" else "→ answer: ") + link)
+    else:
+        lines.append(f"→ py/cops steward answer {q.id} \"...\"")
+    return "\n".join(lines)
+
+
+_QPAGE_TXT = {
+    "tr": {"title": "Değnekçi sorusu", "project": "Proje", "asked": "Soruldu", "free": "ya da yaz…", "send": "Gönder",
+           "done": "Cevap kaydedildi", "deliver": "Motor bir sonraki turda ilgili oturuma iletir.",
+           "already": "Bu soru zaten cevaplanmış", "missing": "Böyle bir soru yok", "denied": "Bağlantı geçersiz",
+           "empty": "Boş cevap gönderilemez", "by": "kaynak", "opts_hint": "Birine dokun ya da aşağıya yaz."},
+    "en": {"title": "Steward question", "project": "Project", "asked": "Asked", "free": "or type…", "send": "Send",
+           "done": "Answer saved", "deliver": "The engine delivers it to the session on its next tick.",
+           "already": "This question was already answered", "missing": "No such question", "denied": "Invalid link",
+           "empty": "An empty answer cannot be sent", "by": "source", "opts_hint": "Tap one or type below."},
+}
+
+_QPAGE_CSS = (
+    "body{font:17px/1.45 -apple-system,system-ui,sans-serif;margin:0;padding:1rem;background:#f6f6f4;color:#1b1b1b}"
+    "@media(prefers-color-scheme:dark){body{background:#151618;color:#e8e8e6}.card{background:#1f2124!important;"
+    "border-color:#33363a!important}input{background:#151618;color:#e8e8e6;border-color:#44474c!important}}"
+    ".card{max-width:34rem;margin:0 auto;background:#fff;border:1px solid #ddd;border-radius:12px;padding:1rem}"
+    "h1{font-size:.85rem;letter-spacing:.04em;text-transform:uppercase;opacity:.6;margin:0 0 .4rem}"
+    ".q{font-size:1.15rem;margin:0 0 .8rem;white-space:pre-wrap}.meta{font-size:.8rem;opacity:.6;margin-bottom:.8rem}"
+    ".opt{display:block;width:100%;box-sizing:border-box;font:inherit;font-size:1.05rem;padding:.8rem 1rem;margin:.4rem 0;"
+    "border:1px solid #4a7;border-radius:10px;background:#e9f7ee;color:inherit;text-align:left;cursor:pointer}"
+    "@media(prefers-color-scheme:dark){.opt{background:#1d3327;border-color:#3f8a5c}}"
+    ".row{display:flex;gap:.5rem;margin-top:.8rem}input{flex:1;min-width:0;font:inherit;padding:.7rem .8rem;border:1px solid #bbb;border-radius:10px}"
+    ".send{font:inherit;padding:.7rem 1rem;border:1px solid #666;border-radius:10px;background:transparent;color:inherit}"
+    ".ok{color:#2a7;font-weight:600}.err{color:#c33}.ans{font-size:1.1rem;margin:.6rem 0;white-space:pre-wrap}"
+)
+
+
+def question_page_html(q: Optional[Question], lang: str = "tr", state: str = "ask", error: str = "",
+                       action: str = "") -> str:
+    """`/q/<id>` kompakt mobil sayfası (SAF, inline CSS, JS yok): `state` ask (seçenek düğmeleri + serbest metin
+    formu) | done (cevap kaydedildi) | already (daha önce cevaplanmış) | missing | denied. Form `action`a POST eder
+    (`answer` alanı: düğmenin değeri ya da metin kutusu)."""
+    T = _QPAGE_TXT["en" if lang == "en" else "tr"]
+    esc = html.escape
+    body: List[str] = [f"<h1>{T['title']}</h1>"]
+    if q is None or state in ("missing", "denied"):
+        body.append(f"<p class='err'>{T['missing'] if state != 'denied' else T['denied']}</p>")
+    else:
+        body.append(f"<p class='q'>{esc(q.text)}</p>")
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(q.created_at)) if q.created_at else ""
+        body.append(f"<p class='meta'>{T['project']}: <b>{esc(q.project or 'degnekci')}</b> · {T['asked']}: {when}"
+                    + (f" · {T['by']}: {esc(q.source)}" if q.source else "") + "</p>")
+        if state in ("done", "already"):
+            body.append(f"<p class='ok'>{T['done'] if state == 'done' else T['already']}</p>")
+            body.append(f"<p class='ans'>→ {esc(q.answer)}</p>")
+            if state == "done":
+                body.append(f"<p class='meta'>{T['deliver']}</p>")
+        else:
+            if error:
+                body.append(f"<p class='err'>{esc(error)}</p>")
+            body.append(f"<form method='post' action='{esc(action, quote=True)}'>")
+            if q.options:
+                body.append(f"<p class='meta'>{T['opts_hint']}</p>")
+                for o in q.options:
+                    body.append(f"<button class='opt' type='submit' name='answer' value='{esc(o, quote=True)}'>{esc(o)}</button>")
+            body.append(f"<div class='row'><input name='answer' placeholder='{esc(T['free'], quote=True)}' autocomplete='off'>"
+                        f"<button class='send' type='submit'>{T['send']}</button></div></form>")
+    return ("<!doctype html><html lang='" + ("en" if lang == "en" else "tr") + "'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'><meta name='robots' content='noindex'>"
+            f"<title>{T['title']}</title><style>{_QPAGE_CSS}</style></head><body><div class='card'>"
+            + "".join(body) + "</div></body></html>")
 
 
 def mark_delivered(question_id: str) -> None:
@@ -974,7 +1107,8 @@ def build_workspace_claude_md(persona: str, lang: str = "tr") -> str:
         "- `steward_stop name reason` — oturumu durdur\n"
         "- `steward_set_project name [phase kind goal priority cadence_minutes notes model effort]`\n"
         "- `steward_register_project name cwd goal [kind phase cli model resources]` — yeni proje (klasör yoksa açar, GOAL.md yazar)\n"
-        "- `steward_ask_user project question` — bana soru (telefona bildirim gider; cevabı motor oturuma iletir)\n"
+        "- `steward_ask_user project question [options]` — bana soru (telefona bildirim gider, `options` verirsen "
+        "(en çok 6 kısa seçenek: evet/hayır, A/B/C, sonra) tek dokunuşla cevaplarım; cevabı motor oturuma iletir)\n"
         "- `steward_note project text` — kendi notun (bir sonraki direktifte oturuma da gider)\n"
         "- `steward_idea text` / `steward_idea_update id status [project]` — fikir kutusu\n"
         "- `steward_questions` / `steward_log` — açık sorular / son olaylar\n"

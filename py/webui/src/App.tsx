@@ -30,6 +30,7 @@ import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
 import { RunningTab } from "./components/RunningTab/RunningTab";
 import { SearchBox } from "./components/shared/SearchBox";
 import { SettingsTab } from "./components/SettingsTab";
+import { StewardTab } from "./components/StewardTab";
 import { SnapshotSection } from "./components/SnapshotSection";
 import { TabBar } from "./components/TabBar";
 import { ReadOnlySessionModal } from "./components/TerminalModal/ReadOnlySessionModal";
@@ -202,6 +203,7 @@ function AppShell() {
         {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} onView={onViewSession} />}
         {data && activeTab === "history" && <HistoryTab search={search} onView={onViewSession} />}
         {data && activeTab === "team" && <OrchTab selection={selection} />}
+        {data && activeTab === "steward" && <StewardTab />}
         {data && activeTab === "desktop" && <DesktopTab />}
         {data && activeTab === "snapshots" && <SnapshotSection />}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}

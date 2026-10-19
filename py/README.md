@@ -321,6 +321,14 @@ always apply. Switch with `py/cops steward config mode act`.
   opens a question (`py/cops steward questions`), pushes a phone notification if `service notify`
   (ntfy) is set up, and the answer (`py/cops steward answer ID "..."`) is delivered to that session on the
   next tick (the session is reopened if needed). `STEWARD-IDEA: ...` lands in the idea inbox.
+  A question can carry up to 6 short **options** (`steward_ask_user ... options=[...]`, `py/cops steward
+  ask -o yes -o no "…"`, panel); the answer may be an option number, its text, or free text. The
+  notification lists the options and links to **`/q/<id>?k=<key>`** — a compact phone page (option
+  buttons + text box, no JS) authorised by the question's own random key, so the panel token never
+  travels through ntfy; tapping the notification opens it (ntfy `Click`). The same question is notified
+  once. The panel's **Steward tab** shows the three numbers (open questions / new ideas / pending
+  items, plus projects by phase), question cards answered in place, the project list with each card's
+  next step and last visit, the idea inbox (add / later / drop), recent actions, and a `tick` button.
 - **Slot pressure** — when projects are waiting and no slot is free, a project session idle for
   `stop_idle_minutes` is stopped to make room.
 - **Project cards** — the brain reads *cards*, not 160 repos. A card (`steward/cards/<name>.json`:
@@ -370,8 +378,9 @@ idle. The brain's decisions are tool calls, so every one of them is logged (`py/
 Data lives outside the repo in `~/.claude/claudeops/steward/` (`projects.json`, `questions.json`,
 `ideas.json`, `state.json`, `log.jsonl`, `cards/`, `oneshot/`, `workspace/`). Settings: the `steward` block in `settings.json`
 (`py/cops steward config KEY VALUE`, `py/cops steward on|off`). API: `/api/steward/*` (local-only, like
-`/api/orch/*`); `/api/status` carries a light `steward` summary for the panel. A dedicated panel tab is
-not built yet — the CLI and the API cover everything.
+`/api/orch/*`); `/api/status` carries the light `steward` summary the tab bar and the Steward tab's
+counters ride on (the tab fetches `/api/steward/state` only while open). `/q/<id>` is the one steward
+route outside `/api/`: question key or panel token, HTML, never cached.
 Roadmap, decisions and the phase-1/2 implementation brief: [`docs/degnekci-plan.md`](../docs/degnekci-plan.md).
 
 ## How it works

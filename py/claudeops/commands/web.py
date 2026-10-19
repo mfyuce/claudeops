@@ -3899,6 +3899,11 @@ class _Handler(BaseHTTPRequestHandler):
             if not self._serve_static(path):
                 self._json({"error": "not found"}, status=404)
             return
+        if path.startswith("/q/"):
+            # Değnekçi soru sayfası (faz 3): kendi yetkisi var — panel token'ı YA DA sorunun özel anahtarı
+            # (`?k=`, ntfy bağlantısında token taşınmasın diye). `_authorized()` burada yalnız "token var mı" sorar.
+            self._question_page(None)
+            return
         if not self._authorized():
             self._unauthorized()
             return
@@ -4127,11 +4132,40 @@ class _Handler(BaseHTTPRequestHandler):
             if not self._serve_static(path):
                 self._json({"error": "not found"}, status=404)
 
+    def _question_page(self, form: Optional[Dict[str, Any]]) -> None:
+        """`/q/<id>` GET (form=None) / POST (`application/x-www-form-urlencoded`, `answer`). HTML, önbelleksiz."""
+        parsed = urlparse(self.path)
+        qid = parsed.path[len("/q/"):].strip("/")
+        key = (parse_qs(parsed.query).get("k") or [""])[0]
+        status, html_text = web_steward.http_question_page(qid, key, self._authorized(), form)
+        body = html_text.encode("utf-8")
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            diag_log("response_write_failed", path=parsed.path, error=str(e))
+
     def do_POST(self):
+        path = urlparse(self.path).path
+        if path.startswith("/q/"):
+            try:
+                length = int(self.headers.get("Content-Length", 0) or 0)
+            except ValueError:
+                length = -1
+            if length < 0 or length > web_steward.MAX_FORM_BYTES:
+                self._json({"ok": False, "error": "invalid or oversized form"}, status=400)
+                return
+            raw = self.rfile.read(length) if length else b""
+            form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True).items()}
+            self._question_page(form)
+            return
         if not self._authorized():
             self._unauthorized()
             return
-        path = urlparse(self.path).path
         if path == "/api/files/upload":
             # `_handle_files_download`'ın (do_GET'te) AYNI istisnası: gövde
             # JSON değil ham dosya baytları, aşağıdaki genel allowlist +

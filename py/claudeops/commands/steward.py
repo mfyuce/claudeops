@@ -155,8 +155,23 @@ def cmd_questions(args) -> int:
     for q in qs:
         mark = "?" if q.status == "open" else ("✓" if q.delivered_at else "…")
         print(f"{mark} [{q.id}] {q.project or '-'} ({_ago(q.created_at)}): {q.text}")
+        if q.options:
+            print("    " + "  ".join(f"{i}) {o}" for i, o in enumerate(q.options, 1)))
         if q.answer:
             print(f"    → {q.answer}")
+    return 0
+
+
+def cmd_ask(args) -> int:
+    """Panel üzerinden soru aç (bildirim + `/q/<id>` bağlantısı panelin işi): `py/cops steward ask [-p PROJE]
+    [-o A -o B ...] "soru"`."""
+    res = _api(args.port, "POST", "/api/steward/ask",
+               {"project": args.project or "", "text": args.text, "options": args.option or [], "source": "cli"})
+    if not res.get("ok"):
+        print(f"hata: {res.get('error')}")
+        return 1
+    print(f"✓ soru [{res['id']}] " + ("bildirildi" if res.get("notified") else "kaydedildi (ntfy yok ya da zaten bildirilmişti)")
+          + (f"\n  {res['link']}" if res.get("link") else "  (tünel adresi yok: bağlantı üretilmedi)"))
     return 0
 
 
@@ -302,10 +317,16 @@ def register(sub):
     pq = s.add_parser("questions", help="sorular")
     pq.add_argument("--all", action="store_true")
     pq.set_defaults(func=cmd_questions)
-    pa = s.add_parser("answer", help="soruyu cevapla")
+    pa = s.add_parser("answer", help="soruyu cevapla (seçenekli soruda numara da olur)")
     pa.add_argument("id")
     pa.add_argument("answer")
     pa.set_defaults(func=cmd_answer)
+    pask = s.add_parser("ask", help="soru aç (panel üzerinden: telefona bildirim + /q/<id> bağlantısı)")
+    pask.add_argument("text")
+    pask.add_argument("-p", "--project", default="")
+    pask.add_argument("-o", "--option", action="append", help="seçenek (tekrarlanabilir, en çok 6)")
+    pask.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
+    pask.set_defaults(func=cmd_ask)
     pd = s.add_parser("ideas", help="fikir kutusu")
     pd.add_argument("--all", action="store_true")
     pd.set_defaults(func=cmd_ideas)

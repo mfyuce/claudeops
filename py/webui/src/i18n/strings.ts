@@ -521,6 +521,43 @@ export interface Strings {
   searchClear: string;
   noSearchMatches: string;
   tabTeam: string;
+  tabSteward: string;
+  stewardDesc: string;
+  stewardOff: string;
+  stewardMode: (mode: string) => string;
+  stewardLastTick: (ago: string) => string;
+  stewardNoTick: string;
+  stewardBrain: string;
+  stewardTickBtn: string;
+  stewardStatQuestions: string;
+  stewardStatIdeas: string;
+  stewardStatPending: string;
+  stewardStatProjects: string;
+  stewardQuestionsTitle: string;
+  stewardNoQuestions: string;
+  stewardAnswerPlaceholder: string;
+  stewardAnswerBtn: string;
+  stewardAnswered: string;
+  stewardAskTitle: string;
+  stewardAskPlaceholder: string;
+  stewardAskOptionsPlaceholder: string;
+  stewardAskBtn: string;
+  stewardProjectsTitle: string;
+  stewardNoProjects: string;
+  stewardColProject: string;
+  stewardColPhase: string;
+  stewardColPriority: string;
+  stewardColNext: string;
+  stewardColVisit: string;
+  stewardNever: string;
+  stewardIdeasTitle: string;
+  stewardNoIdeas: string;
+  stewardIdeaPlaceholder: string;
+  stewardIdeaAddBtn: string;
+  stewardIdeaLater: string;
+  stewardIdeaDrop: string;
+  stewardRecentTitle: string;
+  stewardDry: string;
   orchDesc: string;
   orchLineupTitle: string;
   orchAddSelectedBtn: string;
@@ -1132,6 +1169,43 @@ export const STRINGS: Record<Lang, Strings> = {
     searchClear: "aramayı temizle",
     noSearchMatches: "Aramayla eşleşen yok.",
     tabTeam: "Ekip",
+    tabSteward: "Değnekçi",
+    stewardDesc: "Değnekçi projeleri gezen zamanlayıcı: açık soruları buradan (ya da telefondaki /q bağlantısından) cevaplarsınız, cevap bir sonraki tick'te ilgili oturuma gider. Projeler ve fikir kutusu py/cops steward ile aynı veridir.",
+    stewardOff: "Döngü kapalı (steward.enabled) — kayıtlar görülebilir, kendiliğinden tick atılmaz; \"tick\" düğmesi yine çalışır.",
+    stewardMode: (mode) => (mode === "observe" ? "mod: observe (oturuma dokunan eylemler yalnız kaydedilir)" : `mod: ${mode}`),
+    stewardLastTick: (ago) => `son tick ${ago}`,
+    stewardNoTick: "henüz tick yok",
+    stewardBrain: "beyin",
+    stewardTickBtn: "tick",
+    stewardStatQuestions: "açık soru",
+    stewardStatIdeas: "yeni fikir",
+    stewardStatPending: "bekleyen madde",
+    stewardStatProjects: "proje",
+    stewardQuestionsTitle: "Sorular",
+    stewardNoQuestions: "Açık soru yok.",
+    stewardAnswerPlaceholder: "cevap… (seçenekli soruda numara da olur)",
+    stewardAnswerBtn: "Cevapla",
+    stewardAnswered: "cevaplandı",
+    stewardAskTitle: "Soru aç (kendine/beyne not gibi; telefona da gider)",
+    stewardAskPlaceholder: "soru metni",
+    stewardAskOptionsPlaceholder: "seçenekler, virgülle (isteğe bağlı): evet, hayır, sonra",
+    stewardAskBtn: "Sor",
+    stewardProjectsTitle: "Projeler",
+    stewardNoProjects: "Değnekçi projesi yok — py/cops steward import roster'dakileri alır.",
+    stewardColProject: "proje",
+    stewardColPhase: "faz",
+    stewardColPriority: "öncelik",
+    stewardColNext: "sıradaki adım (kart)",
+    stewardColVisit: "son uğrama",
+    stewardNever: "hiç",
+    stewardIdeasTitle: "Fikir kutusu",
+    stewardNoIdeas: "Yeni fikir yok.",
+    stewardIdeaPlaceholder: "fikir…",
+    stewardIdeaAddBtn: "Ekle",
+    stewardIdeaLater: "sonra",
+    stewardIdeaDrop: "vazgeç",
+    stewardRecentTitle: "Son eylemler",
+    stewardDry: "kuru",
     orchDesc: "Birden fazla session'a aynı görevi verip yanıtları karşılaştırın. Opsiyonel bir kontrolcü göreve önce kendi brief'ini yazabilir; opsiyonel bir karar verici işçilerin yanıtlarını görüp son kararı verebilir — hiçbiri atanmazsa sonuç işçiler arasındaki çoğunluk oyuyla belirlenir. Bitince kontrolcüye sonuç mesajı gönderilir.",
     orchLineupTitle: "Kadro",
     orchAddSelectedBtn: "Seçilenleri ekle",
@@ -1744,6 +1818,43 @@ export const STRINGS: Record<Lang, Strings> = {
     searchClear: "clear search",
     noSearchMatches: "Nothing matches the search.",
     tabTeam: "Team",
+    tabSteward: "Steward",
+    stewardDesc: "The steward is the scheduler that tours your projects: answer its open questions here (or from the /q link on your phone) and the answer reaches the session on the next tick. Projects and the idea inbox are the same data as py/cops steward.",
+    stewardOff: "Loop is off (steward.enabled) — records are visible, nothing ticks on its own; the \"tick\" button still works.",
+    stewardMode: (mode) => (mode === "observe" ? "mode: observe (actions touching sessions are only recorded)" : `mode: ${mode}`),
+    stewardLastTick: (ago) => `last tick ${ago}`,
+    stewardNoTick: "no tick yet",
+    stewardBrain: "brain",
+    stewardTickBtn: "tick",
+    stewardStatQuestions: "open questions",
+    stewardStatIdeas: "new ideas",
+    stewardStatPending: "pending items",
+    stewardStatProjects: "projects",
+    stewardQuestionsTitle: "Questions",
+    stewardNoQuestions: "No open questions.",
+    stewardAnswerPlaceholder: "answer… (an option number works too)",
+    stewardAnswerBtn: "Answer",
+    stewardAnswered: "answered",
+    stewardAskTitle: "Ask a question (a note to yourself/the brain; also pushed to your phone)",
+    stewardAskPlaceholder: "question text",
+    stewardAskOptionsPlaceholder: "options, comma-separated (optional): yes, no, later",
+    stewardAskBtn: "Ask",
+    stewardProjectsTitle: "Projects",
+    stewardNoProjects: "No steward projects yet — py/cops steward import takes the roster.",
+    stewardColProject: "project",
+    stewardColPhase: "phase",
+    stewardColPriority: "priority",
+    stewardColNext: "next step (card)",
+    stewardColVisit: "last visit",
+    stewardNever: "never",
+    stewardIdeasTitle: "Idea inbox",
+    stewardNoIdeas: "No new ideas.",
+    stewardIdeaPlaceholder: "idea…",
+    stewardIdeaAddBtn: "Add",
+    stewardIdeaLater: "later",
+    stewardIdeaDrop: "drop",
+    stewardRecentTitle: "Recent actions",
+    stewardDry: "dry",
     orchDesc: "Send the same task to several sessions and compare the answers. An optional controller can write its own brief for the task first; an optional decider can see the workers' answers and make the final call — with neither assigned, the result is decided by majority vote among the workers. The controller (if any) gets a result message once the run finishes.",
     orchLineupTitle: "Lineup",
     orchAddSelectedBtn: "Add selected",

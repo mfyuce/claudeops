@@ -55,6 +55,24 @@ gibi private docs reposunda tutulur. En alttaki "yapıştırmalık" bloklar oray
 - Bilinen sınırlar / sonraki adımlar: `suggest` modu yok; kart yenileme çalışan projelere dokunmaz (çalışırken
   kart eski kalabilir); ucli kart yolu gerçek Evren ile denenmedi.
 
+## Ne var (faz 3, bitti)
+
+- **Soru seçenekleri** — `Question.options` (≤6, ≤80 karakter, `steward.normalize_options`), `key` (soruya özel
+  16 hex anahtar), `notified_at`. `resolve_answer`: `1`/`A`/metin → kanonik seçenek, aksi serbest metin.
+  `steward_ask_user` MCP aracı `options` alır; `py/cops steward ask [-p P] [-o A -o B] "soru"` panel
+  üzerinden; `questions` seçenekleri basar. Aynı açık soru ikinci kez bildirilmez.
+- **`/q/<id>?k=<key>`** — `web.py` `do_GET/do_POST` başında, panel token'ından BAĞIMSIZ yetki (anahtar sabit
+  zamanlı karşılaştırma; token da geçer). Sayfa saf `steward.question_page_html` (inline CSS, JS yok, 320 px'te
+  taşma yok, kaçışlı); form POST `answer` → `answer_question` + `answer` olayı (`source: phone`) + WS bildirimi.
+  ntfy gövdesi `question_notification` (seçenekler numaralı + bağlantı), `Click` başlığı sayfayı açar; bağlantı
+  tabanı `tunnel_url.txt` (yoksa yalnız CLI ipucu).
+- **Panel "Değnekçi" sekmesi** — `StewardTab.tsx`: `data.steward` (WS) sayaçları değişince `/api/steward/state`
+  çekilir (kendi zamanlayıcısı yok). Üç sayı + proje/faz, soru kartları (seçenek düğmesi ya da metin),
+  "soru aç" (seçenekli), proje tablosu (çalışıyor noktası, faz, öncelik, kartın sıradaki adımı, son uğrama),
+  fikir kutusu (ekle/sonra/vazgeç), son eylemler (`dry` işaretli), `tick` düğmesi. Sekme etiketi açık soru
+  sayısını taşır. Headless Chromium ile uçtan uca sürüldü (cevaplama, fikir, soru açma, EN/TR, telefon sayfası).
+- Yapılmayanlar: mod değiştirme/ayarlar sekmede yok (CLI `config mode`); soru sıklığı sınırı (TBD#94) yok.
+
 ## Kararlar (2026-10-19 sohbeti)
 
 - Model eğitimi YOK (şimdilik). "Benim gibi düşünme" = persona + **karar hafızası** (transkript ve
@@ -70,7 +88,7 @@ gibi private docs reposunda tutulur. En alttaki "yapıştırmalık" bloklar oray
 
 1. ~~**Proje kartları**~~ (bitti, `9c1e612`)
 2. ~~**Observe modu + günlük özet**~~ (bitti)
-3. Soru seçenekleri (`options`) + `/q/<id>` compact mobil sayfa + panelde "Değnekçi" sekmesi
+3. ~~Soru seçenekleri (`options`) + `/q/<id>` compact mobil sayfa + panelde "Değnekçi" sekmesi~~ (bitti)
 4. Karar hafızası (transkript + TOBEDECIDED.md çıkarımı, benzer karar getirme)
 5. `suggest`/`act` modları, proje bazında yetki
 6. Bütçe: günlük token tavanı, `/usage` kota okuma, gece toplu çalışma
