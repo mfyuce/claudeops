@@ -96,6 +96,8 @@ AGY_SIDS_JSON = os.path.join(CLAUDEOPS_DIR, "agy_sids.json")
 # sadece bu ikisi kullanıcı-görünür user/assistant turn'lerini taşıyor.
 _STEP_TYPE_USER = 14
 _STEP_TYPE_ASSISTANT = 15
+# `/compact` kontrol noktası: type 23 + `<summary>` (yalnız 23 kanıt DEĞİL, başka type-23 adımları var; TBD#89).
+_STEP_TYPE_CHECKPOINT = 23
 
 
 def _read_varint(data: bytes, i: int) -> Tuple[int, int]:
@@ -495,14 +497,15 @@ class AgyProvider(CliProvider):
             conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
             try:
                 rows = conn.execute(
-                    "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?) ORDER BY idx",
-                    (_STEP_TYPE_USER, _STEP_TYPE_ASSISTANT),
+                    "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) ORDER BY idx",
+                    (_STEP_TYPE_USER, _STEP_TYPE_ASSISTANT, _STEP_TYPE_CHECKPOINT),
                 ).fetchall()
             finally:
                 conn.close()
         except sqlite3.Error:
             return []
-        return [(t, p) for t, p in rows if isinstance(p, (bytes, bytearray))]
+        return [(t, p) for t, p in rows if isinstance(p, (bytes, bytearray))
+                and (t != _STEP_TYPE_CHECKPOINT or b"<summary>" in p)]
 
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         # claude/codex provider'larıyla AYNI "her zaman dict, None değil" sözleşmesi
@@ -541,6 +544,9 @@ class AgyProvider(CliProvider):
                 text = _step_assistant_text(payload)
                 if text:
                     out.append({"role": "assistant", "text": text})
+            elif step_type == _STEP_TYPE_CHECKPOINT:
+                # Eski adımlar DB'de durur (TBD#89); yalnız sınır işareti, özet metni şemasız okunmaz.
+                out.append({"role": "boundary", "text": ""})
         return out
 
     def sid_for_stopped_session(self, cwd: str, session_name: str) -> Optional[str]:
