@@ -596,20 +596,37 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False) 
 NTFY_SUMMARY_CHARS = 1500
 
 
+def _write_summary(date: str, cfg: sw.Config, late: bool = False) -> str:
+    """Bir günün özetini yaz + telefona gönder + logla; ardından o günün `tick` satırlarını tek toplama katla
+    (`compact_log`; özet sayıları aynı kalır) ve dosya büyüdüyse devir (`rotate_log`)."""
+    text = sw.summary_text(date, cfg.lang)
+    path = sw.write_daily(date, text)
+    note = ("(gecikmiş özet) " if cfg.lang != "en" else "(late summary) ") if late else ""
+    notified = notify_phone((note + text)[:NTFY_SUMMARY_CHARS])
+    sw.log_event("summary", date=date, path=path, notified=notified, chars=len(text), late=late)
+    folded = sw.compact_log(date)
+    rotated = sw.rotate_log()
+    if folded or rotated:
+        sw.log_event("log_compact", date=date, ticks=folded, rotated=rotated)
+    return path
+
+
 def maybe_daily_summary(cfg: sw.Config, now: float) -> Optional[str]:
     """`summary_hour`u geçtiyse ve bugünün özeti yazılmadıysa: `steward/daily/<tarih>.md` yaz, ntfy ile telefona
-    gönder (kuruluysa), `summary` olayını logla, `state.summary_date`i işaretle. Yazılmışsa/saat gelmediyse None."""
+    gönder (kuruluysa), `summary` olayını logla, `state.summary_date`i işaretle. Önce KAÇAN günler
+    (`missed_summary_dates`: panel `summary_hour`da kapalıysa o gün özetlenmemişti) saat beklemeden tamamlanır.
+    Dönen: yazılan son dosyanın yolu; yazılacak bir şey yoksa None."""
+    path: Optional[str] = None
+    for date in sw.missed_summary_dates(now):
+        path = _write_summary(date, cfg, late=True)
     state = sw.load_state()
     date = sw.summary_due(state, now, cfg.summary_hour)
     if not date:
-        return None
-    text = sw.summary_text(date, cfg.lang)
-    path = sw.write_daily(date, text)
-    notified = notify_phone(text[:NTFY_SUMMARY_CHARS])
+        return path
+    path = _write_summary(date, cfg)
     state = sw.load_state()
     state["summary_date"] = date
     sw.save_state(state)
-    sw.log_event("summary", date=date, path=path, notified=notified, chars=len(text))
     return path
 
 

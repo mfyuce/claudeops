@@ -385,11 +385,27 @@ class CardCoreTest(_Tmp):
 
 class OneshotProviderTest(unittest.TestCase):
     def test_claude_argv_shape_and_unsupported_default(self):
-        argv = get_provider("claude").oneshot_argv("özetle", "claude-haiku-4-5")
+        from claudeops.providers import claude_provider as cp
+        with mock.patch.object(cp, "claude_help_text", lambda binary=None: "  --tools <tools...>  --no-session"):
+            argv = get_provider("claude").oneshot_argv("özetle", "claude-haiku-4-5")
+            self.assertNotIn("--model", get_provider("claude").oneshot_argv("x", ""))
         self.assertEqual(argv[1:3], ["-p", "özetle"])      # prompt -p'den hemen sonra, variadic --tools'tan ÖNCE
         self.assertEqual(argv[-4:], ["--output-format", "text", "--tools", ""])
         self.assertEqual(argv[argv.index("--model") + 1], "claude-haiku-4-5")
-        self.assertNotIn("--model", get_provider("claude").oneshot_argv("x", ""))
+        self.assertNotIn("--no-session-persistence", argv)   # `--no-session` tam eşleşme DEĞİL → bayrak yok
+        # ikili bayrağı tanıyorsa transkript bırakmasın; `--tools ""` (variadic) yine EN SONDA
+        with mock.patch.object(cp, "claude_help_text", lambda binary=None: "--no-session-persistence  Disable session persistence"):
+            argv = get_provider("claude").oneshot_argv("özetle", "m")
+        self.assertEqual(argv[-5:], ["text", "--no-session-persistence", "--tools", ""][-4:] and
+                         ["--output-format", "text", "--no-session-persistence", "--tools", ""])
+        # çalıştırılamayan ikili: "" (ve önbelleğe alınmaz) → bayrak eklenmez
+        cp._HELP_CACHE.clear()
+        self.assertEqual(cp.claude_help_text("/yok/boyle/claude"), "")
+        self.assertFalse(cp.claude_supports_flag("--no-session-persistence", "/yok/boyle/claude"))
+        self.assertEqual(cp._HELP_CACHE, {})
+        # gerçek bir ikili (python) ile: --help çıktısı (yol, mtime, boyut) anahtarıyla bir kez okunur
+        self.assertIn("usage", cp.claude_help_text(sys.executable).lower())
+        self.assertEqual(len(cp._HELP_CACHE), 1)
         for cli in ("agy", "codex", "copilot", "ucli"):
             self.assertIsNone(get_provider(cli).oneshot_argv("x", None), cli)
         self.assertIsNone(get_provider("agy").oneshot("x", None, "/tmp"))
@@ -535,6 +551,80 @@ class SummaryCoreTest(_Tmp):
         self.assertTrue(path.endswith(os.path.join("daily", today + ".md")))
         with open(path, encoding="utf-8") as f:
             self.assertEqual(f.read(), text)
+
+    def test_compact_log_folds_ticks_and_keeps_summary_identical(self):
+        def raw(ts, event, **d):
+            with open(sw.LOG_JSONL, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"ts": ts, "event": event, **d}, ensure_ascii=False) + "\n")
+        os.makedirs(sw.STEWARD_DIR, exist_ok=True)
+        raw("2026-10-18T23:58:00", "tick", trigger="timer", mode="observe", n=0, dry=0, error="")
+        raw("2026-10-19T00:02:00", "tick", trigger="timer", mode="observe", n=0, dry=1, error="")
+        raw("2026-10-19T00:04:00", "would:start", name="p1")
+        raw("2026-10-19T09:00:00", "tick", trigger="manual", mode="act", n=1, dry=0, error="")
+        raw("2026-10-19T09:00:01", "action", kind="start", name="p1", ok=True)
+        raw("2026-10-19T12:00:00", "tick", trigger="timer", mode="act", n=0, dry=0, error="boom")
+        with open(sw.LOG_JSONL, "a", encoding="utf-8") as f:
+            f.write("bozuk satır\n")
+        raw("2026-10-20T00:02:00", "tick", trigger="timer", mode="act", n=0, dry=0, error="")
+        before = sw.daily_summary(sw.log_entries_for_date("2026-10-19"), "2026-10-19", "tr")
+        self.assertIn("Tick: 3 (1 elle, 1 hatalı)", before)
+        self.assertIn("Mod: **act**", before)
+        self.assertEqual(sw.compact_log("2026-10-19"), 3)
+        with open(sw.LOG_JSONL, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        events = [(json.loads(ln)["ts"], json.loads(ln)["event"]) if ln.startswith("{") else ("", ln) for ln in lines]
+        self.assertEqual([e for _, e in events], ["tick", "would:start", "action", "bozuk satır", "ticks", "tick"])
+        folded = json.loads(lines[4])
+        self.assertEqual((folded["n"], folded["manual"], folded["errors"], folded["mode"], folded["ts"]),
+                         (3, 1, 1, "act", "2026-10-19T23:59:59"))
+        after = sw.daily_summary(sw.log_entries_for_date("2026-10-19"), "2026-10-19", "tr")
+        self.assertEqual(before, after)                         # özet sıkıştırmadan sonra AYNI
+        self.assertEqual(sw.compact_log("2026-10-19"), 0)       # ikinci kez: katlanacak tick yok, dosya değişmez
+        self.assertEqual(sw.compact_log("2026-10-20"), 1)       # günün sonu dosya sonu: toplam en sona
+        with open(sw.LOG_JSONL, encoding="utf-8") as f:
+            self.assertEqual(json.loads(f.read().splitlines()[-1])["event"], "ticks")
+        self.assertEqual(sw.compact_log("1999-01-01"), 0)
+        # rotasyon: eşik altı dokunmaz, üstü .1'e devirir
+        self.assertFalse(sw.rotate_log(10 ** 9))
+        self.assertTrue(sw.rotate_log(10))
+        self.assertFalse(os.path.exists(sw.LOG_JSONL))
+        self.assertTrue(os.path.isfile(sw.LOG_JSONL + ".1"))
+        self.assertFalse(sw.rotate_log(10))                     # dosya yok: sessizce False
+        sw.log_event("tick", mode="observe", trigger="timer")   # sonraki ekleme yeni dosya açar
+        self.assertEqual(len(sw.tail_log(5)), 1)
+
+    def test_missed_summary_dates_and_catch_up(self):
+        settings.save_settings({"steward": {"enabled": "on", "summary_hour": "21", "card_refresh": "off"}})
+        cfg = settings.steward_config()
+        now = time.mktime((2026, 10, 19, 9, 5, 0, 0, 0, -1))
+        self.assertEqual(sw.missed_summary_dates(now), [])                     # kayıt yok: boş özet gitmez
+        os.makedirs(sw.STEWARD_DIR, exist_ok=True)
+        with open(sw.LOG_JSONL, "a", encoding="utf-8") as f:
+            for ts, ev in (("2026-10-15T10:00:00", "tick"), ("2026-10-17T10:00:00", "tick"),
+                           ("2026-10-18T10:00:00", "tick"), ("2026-10-18T10:02:00", "would:start")):
+                f.write(json.dumps({"ts": ts, "event": ev, "mode": "observe", "trigger": "timer", "name": "p"}) + "\n")
+        self.assertEqual(sw.missed_summary_dates(now), ["2026-10-17", "2026-10-18"])   # 15'i pencere dışı (3 gün)
+        sw.write_daily("2026-10-17", "x")
+        self.assertEqual(sw.missed_summary_dates(now), ["2026-10-18"])
+        notes = []
+        with mock.patch.object(web_steward, "notify_phone", lambda text: notes.append(text) or True):
+            path = web_steward.maybe_daily_summary(cfg, now)                   # saat 9: bugün değil, dün yazılır
+        self.assertTrue(path.endswith(os.path.join("daily", "2026-10-18.md")))
+        self.assertEqual(len(notes), 1)
+        self.assertTrue(notes[0].startswith("(gecikmiş özet) # Değnekçi günlük özet — 2026-10-18"))
+        self.assertIn("Tick: 1", notes[0])
+        self.assertNotIn("summary_date", sw.load_state())                      # bugünün işareti dokunulmadı
+        self.assertEqual(sw.missed_summary_dates(now), [])
+        events = [e for e in sw.tail_log(50)]
+        self.assertTrue(any(e["event"] == "summary" and e.get("late") and e["date"] == "2026-10-18" for e in events))
+        self.assertTrue(any(e["event"] == "log_compact" and e["ticks"] == 1 for e in events))
+        self.assertEqual([e["event"] for e in sw.log_entries_for_date("2026-10-18") if e["event"] in ("tick", "ticks")], ["ticks"])
+        with mock.patch.object(web_steward, "notify_phone", lambda text: notes.append(text) or True):
+            self.assertIsNone(web_steward.maybe_daily_summary(cfg, now))      # tekrar: dün yazıldı, saat gelmedi
+            today_path = web_steward.maybe_daily_summary(cfg, now + 12 * 3600)
+        self.assertTrue(today_path.endswith("2026-10-19.md"))
+        self.assertEqual(sw.load_state()["summary_date"], "2026-10-19")
+        self.assertFalse(notes[-1].startswith("(gecikmiş"))
 
 
 class SettingsTest(_Tmp):
@@ -827,7 +917,9 @@ class HttpTest(_Tmp):
         self.touched = []
         patches = [mock.patch.object(web_steward, "_ensure_running",
                                      lambda name, **kw: self.touched.append(("ensure", name)) or {"ok": False, "error": "no tmux"}),
-                   mock.patch.object(web_steward, "_running", lambda name: None)]
+                   mock.patch.object(web_steward, "_running", lambda name: None),
+                   # günlük özet saati gerçek saate bağlı (21'den sonra bugünün tick'lerini katlardı); kendi testi var
+                   mock.patch.object(web_steward, "maybe_daily_summary", lambda cfg, now: None)]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)

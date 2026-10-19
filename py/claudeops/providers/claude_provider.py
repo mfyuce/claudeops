@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -454,6 +455,41 @@ def _is_real_user_text(content) -> bool:
     return False
 
 
+# `claude --help` çıktısı, (yol, mtime_ns, boyut) başına (ucli_client.chat_help_text ile AYNI disiplin): bayrak
+# yoklaması her çağrıda alt süreç açmasın, ama güncellenen ikili (mtime/boyut değişir) yoklamayı kendiliğinden
+# tazelesin. Çalıştırılamayan/çıktısız ikili ÖNBELLEĞE ALINMAZ ("" döner, bayrak yok sayılır: güvenli taraf).
+_HELP_CACHE: Dict[Tuple[str, int, int], str] = {}
+_HELP_TIMEOUT_SECONDS = 10.0
+
+
+def claude_help_text(binary: Optional[str] = None) -> str:
+    binary = binary or resolved_binary("claude")
+    try:
+        st = os.stat(binary)
+    except OSError:
+        return ""
+    key = (binary, st.st_mtime_ns, st.st_size)
+    hit = _HELP_CACHE.get(key)
+    if hit is not None:
+        return hit
+    try:
+        res = subprocess.run([binary, "--help"], capture_output=True, text=True, timeout=_HELP_TIMEOUT_SECONDS,
+                             stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    text = (res.stdout or "") + (res.stderr or "")
+    if not text.strip():
+        return ""
+    _HELP_CACHE[key] = text
+    return text
+
+
+def claude_supports_flag(flag: str, binary: Optional[str] = None) -> bool:
+    """`claude --help` `flag`i TAM sözcük olarak listeliyor mu (`--no-session-persistence` için `--no-session`
+    'var' sayılmaz)."""
+    return re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", claude_help_text(binary)) is not None
+
+
 class ClaudeProvider(CliProvider):
     name = "claude"
 
@@ -546,10 +582,17 @@ class ClaudeProvider(CliProvider):
         # `-p` (print): tek yanıt, metin. `--tools ""` = hiçbir araç yok (dosya okutma yok; içerik prompt'ta).
         # Prompt `-p`den HEMEN SONRA, bayraklardan ÖNCE: `--tools` variadic (bkz. build_inner_command'daki
         # `--mcp-config` notu), arkasına konan prompt'u kendi değeri sanıp yutardı.
-        argv = [resolved_binary("claude"), "-p", prompt]
+        binary = resolved_binary("claude")
+        argv = [binary, "-p", prompt]
         if model:
             argv += ["--model", model]
-        return argv + ["--output-format", "text", "--tools", ""]
+        argv += ["--output-format", "text"]
+        # Transkript bırakma (`~/.claude/projects/<nötr cwd>/` altında her kart çağrısı bir jsonl açardı): YALNIZ
+        # ikilinin `--help`'i bayrağı tanıyorsa (federasyondaki eski claude sürümü tanımayabilir; tanımayan ikili
+        # "unknown option" ile çıkar ve kart hiç üretilmezdi). `--tools ""` variadic olduğundan en sonda kalır.
+        if claude_supports_flag("--no-session-persistence", binary):
+            argv.append("--no-session-persistence")
+        return argv + ["--tools", ""]
 
     def mcp_launch_args(self, spec: McpServerSpec) -> List[str]:
         # Claude Code'un `--mcp-config` bayrağı bir JSON DOSYA yolu bekliyor

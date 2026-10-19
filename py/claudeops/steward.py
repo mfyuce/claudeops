@@ -31,6 +31,7 @@ import os
 import re
 import secrets
 import subprocess
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -378,15 +379,80 @@ def save_state(state: Dict[str, Any]) -> None:
     _save_json(STATE_JSON, state)
 
 
+_LOG_LOCK = threading.Lock()   # ekleme (tick/kart thread'leri) ile sıkıştırma/rotasyon (özet anı) çakışmasın
+LOG_MAX_BYTES = 5 * 1024 * 1024   # `rotate_log`: dosya bunu aşınca `log.jsonl.1`e devrilir (tek nesil)
+SUMMARY_CATCHUP_DAYS = 3          # açılışta geriye en çok bu kadar günün kaçan özeti üretilir
+
+
 def log_event(event: str, **data: Any) -> None:
     """Append-only JSONL — `diaglog.diag_log` ile aynı best-effort disiplin."""
     try:
         os.makedirs(STEWARD_DIR, exist_ok=True)
         entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": event, **data}
-        with open(LOG_JSONL, "a", encoding="utf-8") as f:
+        with _LOG_LOCK, open(LOG_JSONL, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
+
+
+def _rewrite_log(lines: List[str]) -> None:
+    tmp = LOG_JSONL + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    os.replace(tmp, LOG_JSONL)
+
+
+def compact_log(date: str) -> int:
+    """O günün (`YYYY-MM-DD`) `tick` satırlarını (günde ~720: her 2 dakikada bir) TEK bir `ticks` satırına katla:
+    `{"ts": "<date>T23:59:59", "event": "ticks", "n", "manual", "errors", "mode"}`. Günlük özet yazıldıktan SONRA
+    çağrılır; `daily_summary` bu toplamı sayar, dolayısıyla o günün özeti sıkıştırmadan sonra da AYNI çıkar. Diğer
+    olaylar (eylem, soru, kart, özet...) yerinde kalır. Dönen: katlanan tick sayısı (0 = dosyaya dokunulmadı)."""
+    with _LOG_LOCK:
+        try:
+            with open(LOG_JSONL, encoding="utf-8") as f:
+                lines = f.readlines()
+        except OSError:
+            return 0
+        agg = {"n": 0, "manual": 0, "errors": 0, "mode": ""}
+        out: List[str] = []
+        placed = False
+        agg_line = lambda: json.dumps({"ts": f"{date}T23:59:59", "event": "ticks", **agg}, ensure_ascii=False) + "\n"  # noqa: E731
+        for ln in lines:
+            ts = ln[8:27] if ln.startswith('{"ts": "') else ""
+            if ts.startswith(date) and '"event": "tick"' in ln:
+                try:
+                    e = json.loads(ln)
+                except json.JSONDecodeError:
+                    out.append(ln)
+                    continue
+                agg["n"] += 1
+                agg["manual"] += 1 if e.get("trigger") != "timer" else 0
+                agg["errors"] += 1 if e.get("error") else 0
+                agg["mode"] = str(e.get("mode") or agg["mode"])
+                continue
+            if agg["n"] and not placed and ts and ts[:10] > date:
+                out.append(agg_line())      # o günün sonu: toplam satırı sonraki günün ilk kaydından ÖNCE
+                placed = True
+            out.append(ln)
+        if not agg["n"]:
+            return 0
+        if not placed:
+            out.append(agg_line())
+        _rewrite_log(out)
+        return int(agg["n"])
+
+
+def rotate_log(max_bytes: int = LOG_MAX_BYTES) -> bool:
+    """`log.jsonl` `max_bytes`ı aşınca `log.jsonl.1`e devir (öncekinin üstüne; tek nesil yeter: günlük özetler
+    `daily/`de duruyor). Dönen: devrildi mi."""
+    with _LOG_LOCK:
+        try:
+            if os.path.getsize(LOG_JSONL) <= max_bytes:
+                return False
+            os.replace(LOG_JSONL, LOG_JSONL + ".1")
+            return True
+        except OSError:
+            return False
 
 
 def tail_log(n: int = 50) -> List[Dict[str, Any]]:
@@ -1186,6 +1252,20 @@ def summary_due(state: Dict[str, Any], now: float, hour: int) -> str:
     return today if lt.tm_hour >= hour and state.get("summary_date") != today else ""
 
 
+def missed_summary_dates(now: float, days: int = SUMMARY_CATCHUP_DAYS) -> List[str]:
+    """Özeti KAÇMIŞ geçmiş günler (eskiden yeniye): bugün hariç son `days` günden `daily/<tarih>.md`si olmayan ve
+    `log.jsonl`'da kaydı bulunanlar. `summary_hour`da panel kapalıysa o gün özetlenmezdi (TODO 2026-10-19 (6d));
+    açılıştan sonraki ilk tick bunları tamamlar. Kaydı olmayan gün (döngü kapalıydı) özetlenmez: boş özet gitmesin."""
+    out: List[str] = []
+    for back in range(max(0, days), 0, -1):
+        date = time.strftime("%Y-%m-%d", time.localtime(now - back * 86400))
+        if os.path.isfile(daily_path(date)):
+            continue
+        if log_entries_for_date(date):
+            out.append(date)
+    return out
+
+
 _SUMMARY_TXT = {
     "tr": {
         "title": "Değnekçi günlük özet", "mode": "Mod", "obs_note": "oturuma dokunan eylemler uygulanmadı, yalnız kaydedildi",
@@ -1227,6 +1307,7 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     day = [e for e in entries if str(e.get("ts", "")).startswith(date)]
     ev = lambda name: [e for e in day if e.get("event") == name]   # noqa: E731
     ticks = ev("tick")
+    folded = ev("ticks")            # `compact_log` sonrası: o günün tick'leri tek toplam satırında
     actions = ev("action")
     would = [e for e in day if str(e.get("event", "")).startswith("would:")]
     asks = [e for e in actions if e.get("kind") == "ask_user" and e.get("ok")] + ev("ask")
@@ -1235,21 +1316,22 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     phases = [e for e in actions if e.get("kind") == "set_phase" and e.get("ok")]
     handovers = [e for e in actions if e.get("kind") == "handover" and e.get("ok")] + ev("handover")
     applied = [e for e in actions if e.get("kind") not in ("ask_user", "idea", "set_phase")]
-    mode = next((str(e.get("mode")) for e in reversed(ticks) if e.get("mode")), "")
+    mode = next((str(e.get("mode")) for e in reversed(ticks + folded) if e.get("mode")), "")
+    n_ticks = len(ticks) + sum(int(e.get("n") or 0) for e in folded)
 
     lines = [f"# {T['title']} — {date}"]
     if mode:
         lines.append(f"{T['mode']}: **{mode}**" + (f" ({T['obs_note']})" if mode == "observe" else ""))
     lines.append("")
-    if ticks:
+    if n_ticks:
         extra = []
-        manual = sum(1 for e in ticks if e.get("trigger") != "timer")
-        bad = sum(1 for e in ticks if e.get("error"))
+        manual = sum(1 for e in ticks if e.get("trigger") != "timer") + sum(int(e.get("manual") or 0) for e in folded)
+        bad = sum(1 for e in ticks if e.get("error")) + sum(int(e.get("errors") or 0) for e in folded)
         if manual:
             extra.append(f"{manual} {T['manual']}")
         if bad:
             extra.append(f"{bad} {T['errors']}")
-        lines.append(f"- {T['ticks']}: {len(ticks)}" + (f" ({', '.join(extra)})" if extra else ""))
+        lines.append(f"- {T['ticks']}: {n_ticks}" + (f" ({', '.join(extra)})" if extra else ""))
     else:
         lines.append(f"- {T['ticks']}: {T['no_ticks']}")
     if applied:

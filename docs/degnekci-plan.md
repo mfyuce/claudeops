@@ -46,10 +46,14 @@ gibi private docs reposunda tutulur. En alttaki "yapıştırmalık" bloklar oray
   `steward.summary_hour` (21) sonrası günde bir `steward/daily/<tarih>.md` + ntfy + `summary` olayı;
   `py/cops steward summary [--date] [--lang] [--save]`, `GET /api/steward/summary`.
 - Testler: `py/tests/test_steward.py` 53 test. Tam paket (test_web_ws_ping hariç) 1324+ test yeşil.
+- Küçükler (2026-10-19, Fable oturumu): özet sonrası günün `tick` satırları tek `ticks` satırına katlanır
+  (`steward.compact_log`, özet aynı kalır) + 5 MB'da `log.jsonl.1`e devir (`rotate_log`); kaçan günlerin özeti
+  açılıştan sonraki ilk tick'te (`missed_summary_dates`, 3 gün geriye, yalnız kaydı olan günler, ntfy'de
+  "(gecikmiş özet)"); claude `-p` kart çağrısına `--no-session-persistence` YALNIZ `claude --help` listeliyorsa
+  (`claude_provider.claude_supports_flag`, ucli'deki `binary_supports_flag` disiplini: eski ikili bayrağı
+  tanımayınca "unknown option" ile çıkardı).
 - Bilinen sınırlar / sonraki adımlar: `suggest` modu yok; kart yenileme çalışan projelere dokunmaz (çalışırken
-  kart eski kalabilir); `tick` olayı günde ~720 satır (log rotasyonu yok); `summary_hour`da panel kapalıysa
-  o gün özetlenmez; kart çağrıları nötr `steward/oneshot/` cwd'sinde claude transkripti bırakır
-  (`--no-session-persistence` bilerek eklenmedi: federasyondaki eski claude sürümleri tanımayabilir).
+  kart eski kalabilir); ucli kart yolu gerçek Evren ile denenmedi.
 
 ## Kararlar (2026-10-19 sohbeti)
 

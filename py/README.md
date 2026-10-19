@@ -328,7 +328,8 @@ always apply. Switch with `py/cops steward config mode act`.
   `updated_at`) is built from the heads of `GOAL/PLAN/TODO/TOBEDECIDED/DONE.md` plus `git log -5` (the raw
   part, `steward.build_raw_card`, uses no model) and summarized by ONE headless call (`provider.oneshot`;
   claude: `claude -p <prompt> --model <m> --output-format text --tools ""`, file contents travel inside the
-  prompt, stdin is `/dev/null`, cwd is a neutral `steward/oneshot/` folder; ucli: `ucli_chat_once`). A reply
+  prompt, stdin is `/dev/null`, cwd is a neutral `steward/oneshot/` folder, `--no-session-persistence` is added
+  only when `claude --help` lists it, so the call leaves no transcript; ucli: `ucli_chat_once`). A reply
   that is not JSON leaves the raw-derived card in place (`summarized: false`, `last_error`). Each tick
   (in a background thread, outside the tick lock) refreshes up to `cards_per_tick` of the projects that are
   **not running**, in an active phase (`planning`/`planned`) and either have no card, have a stale one
@@ -348,7 +349,10 @@ always apply. Switch with `py/cops steward config mode act`.
   answered, ideas, refreshed cards, handovers, directives, phase changes, and what is still pending (open
   questions, new ideas, review items, undelivered answers). `py/cops steward summary [--date D] [--lang
   tr|en] [--save]` prints the same text on demand (no panel needed); `GET /api/steward/summary?date=&lang=`
-  returns it. A day on which the panel was down at `summary_hour` is simply not summarized.
+  returns it. If the panel was down at `summary_hour`, the first tick afterwards writes the missed days (up to
+  3 back, only days that have log entries) as *late* summaries. After each summary the day's `tick` lines in
+  `log.jsonl` (~720/day) are folded into one `ticks` line (the summary stays identical) and the file rolls
+  over to `log.jsonl.1` past 5 MB.
 
 The *judgement* part — "is this session doing useless work?", "what is the right next task?", "is this
 idea worth a project?", "should I ask the owner?" — goes to a **brain**: a normal CLI session named

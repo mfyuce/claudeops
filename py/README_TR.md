@@ -331,7 +331,8 @@ uygulanır. Geçiş: `py/cops steward config mode act`.
   `updated_at`) `GOAL/PLAN/TODO/TOBEDECIDED/DONE.md` başları + `git log -5`'ten kurulur (ham kısım,
   `steward.build_raw_card`, model kullanmaz) ve TEK bir headless çağrıyla özetlenir (`provider.oneshot`;
   claude: `claude -p <prompt> --model <m> --output-format text --tools ""`, dosya içeriği prompt'un
-  içinde gider, stdin `/dev/null`, cwd nötr `steward/oneshot/` klasörü; ucli: `ucli_chat_once`). Yanıt JSON
+  içinde gider, stdin `/dev/null`, cwd nötr `steward/oneshot/` klasörü, `--no-session-persistence` yalnız
+  `claude --help` listeliyorsa eklenir ve çağrı transkript bırakmaz; ucli: `ucli_chat_once`). Yanıt JSON
   değilse ham karttan türetilen kart kalır (`summarized: false`, `last_error`). Her tick'te (arka plan
   thread'inde, tick kilidinin DIŞINDA) **çalışmayan**, aktif fazdaki (`planning`/`planned`) ve kartı yok /
   bayat (respawn sonrası işaretlenir) / `source_hash`'i değişmiş / `card_max_age_hours`'tan eski olan
@@ -351,7 +352,9 @@ uygulanır. Geçiş: `py/cops steward config mode act`.
   kart, handover, direktif, faz değişimi ve bekleyenler (açık soru, yeni fikir, gözden geçirme maddesi,
   iletilmemiş cevap). `py/cops steward summary [--date T] [--lang tr|en] [--save]` aynı metni istek
   üzerine yazdırır (panel gerekmez); `GET /api/steward/summary?date=&lang=` döner. `summary_hour`da panel
-  kapalıysa o gün özetlenmez.
+  kapalıysa, açılıştan sonraki ilk tick kaçan günleri (en çok 3 gün geriye, yalnız log kaydı olanlar) *gecikmiş*
+  özet olarak yazar. Her özetten sonra o günün `tick` satırları (`log.jsonl`, günde ~720) tek bir `ticks`
+  satırına katlanır (özet aynı kalır) ve dosya 5 MB'ı aşınca `log.jsonl.1`e devrilir.
 
 *Yargı* gerektiren kısım — "bu oturum boş iş mi yapıyor?", "sıradaki doğru iş ne?", "bu fikir proje olur
 mu?", "sahibine sormalı mıyım?" — bir **beyne** gider: `degnekci` adlı (ayarlanabilir; `brain_cli`/
