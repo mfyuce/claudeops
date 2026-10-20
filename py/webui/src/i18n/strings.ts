@@ -572,6 +572,10 @@ export interface Strings {
   stewardExportAll: string;
   stewardRecentTitle: string;
   stewardDry: string;
+  stewardPick: string;
+  stewardRowStat: (projects: number, questions: number) => string;
+  stewardOn: string;
+  stewardOffShort: string;
   orchDesc: string;
   orchLineupTitle: string;
   orchAddSelectedBtn: string;
@@ -1237,6 +1241,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardExportAll: "tüm projelere",
     stewardRecentTitle: "Son eylemler",
     stewardDry: "kuru",
+    stewardPick: "değnekçi",
+    stewardRowStat: (projects, questions) => `${projects} proje · ${questions} açık soru`,
+    stewardOn: "açık",
+    stewardOffShort: "kapalı",
     orchDesc: "Birden fazla session'a aynı görevi verip yanıtları karşılaştırın. Opsiyonel bir kontrolcü göreve önce kendi brief'ini yazabilir; opsiyonel bir karar verici işçilerin yanıtlarını görüp son kararı verebilir — hiçbiri atanmazsa sonuç işçiler arasındaki çoğunluk oyuyla belirlenir. Bitince kontrolcüye sonuç mesajı gönderilir.",
     orchLineupTitle: "Kadro",
     orchAddSelectedBtn: "Seçilenleri ekle",
@@ -1903,6 +1911,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardExportAll: "all projects",
     stewardRecentTitle: "Recent actions",
     stewardDry: "dry",
+    stewardPick: "steward",
+    stewardRowStat: (projects, questions) => `${projects} project${projects === 1 ? "" : "s"} · ${questions} open question${questions === 1 ? "" : "s"}`,
+    stewardOn: "on",
+    stewardOffShort: "off",
     orchDesc: "Send the same task to several sessions and compare the answers. An optional controller can write its own brief for the task first; an optional decider can see the workers' answers and make the final call — with neither assigned, the result is decided by majority vote among the workers. The controller (if any) gets a result message once the run finishes.",
     orchLineupTitle: "Lineup",
     orchAddSelectedBtn: "Add selected",

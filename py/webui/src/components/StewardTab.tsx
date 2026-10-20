@@ -7,7 +7,7 @@
  * goes through `/api/steward/*` (local-only, same data as `py/cops steward`).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   apiStewardAnswer,
   apiStewardAsk,
@@ -41,7 +41,17 @@ const tile: React.CSSProperties = {
 };
 const card: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 8, padding: ".6rem .8rem", background: "var(--panel)" };
 
-function QuestionCard({ q, onAnswered }: { q: StewardQuestion; onAnswered: () => void }) {
+const SID_KEY = "claudeops.steward.sid";
+
+function readSid(): string {
+  try {
+    return localStorage.getItem(SID_KEY) || "default";
+  } catch {
+    return "default";
+  }
+}
+
+function QuestionCard({ q, sid, onAnswered }: { q: StewardQuestion; sid: string; onAnswered: () => void }) {
   const { t } = useLang();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -51,7 +61,7 @@ function QuestionCard({ q, onAnswered }: { q: StewardQuestion; onAnswered: () =>
     if (!a || busy) return;
     setBusy(true);
     try {
-      const res = await apiStewardAnswer(q.id, a);
+      const res = await apiStewardAnswer(q.id, a, sid);
       if (!res.ok) showToast(res.error || t.requestFailed);
       else {
         showToast(`${t.stewardAnswered}: ${res.question?.answer ?? a}`, "success");
@@ -110,12 +120,37 @@ export function StewardTab() {
   const [ideaText, setIdeaText] = useState("");
   const [exportTarget, setExportTarget] = useState<"project" | "all">("project");
   const [busy, setBusy] = useState(false);
+  const [pickedSid, setPickedSid] = useState(readSid);
+
+  // Identity rows (multi-steward, P6). One identity (or an older backend without the slice) = no picker, UI as before.
+  const rows = data?.stewards;
+  const multi = !!rows && rows.length > 1;
+  // A stored id that no longer exists falls back to `default`; with a single identity the selection is always `default`.
+  const sid = useMemo(() => (multi && rows.some((x) => x.id === pickedSid) ? pickedSid : "default"), [multi, rows, pickedSid]);
+
+  const sidRef = useRef(sid);
+  useEffect(() => {
+    sidRef.current = sid;
+  }, [sid]);
+
+  function pick(id: string) {
+    if (id === sid) return;
+    setState(null);
+    setError("");
+    setPickedSid(id);
+    try {
+      localStorage.setItem(SID_KEY, id);
+    } catch {
+      /* private mode / blocked storage: the choice just is not remembered */
+    }
+  }
 
   // Same shape as `OrchTab`'s detail fetch: the promise's `.then` updates state (never synchronously in the effect).
   const load = useCallback(
     () =>
-      getStewardState().then(
+      getStewardState(sid).then(
         (res) => {
+          if (sidRef.current !== sid) return; // identity switched while in flight: drop the stale answer
           if (res.ok) {
             setState(res);
             setError("");
@@ -123,12 +158,12 @@ export function StewardTab() {
         },
         (e: unknown) => setError(describeApiError(e, t)),
       ),
-    [t],
+    [t, sid],
   );
 
   // Re-fetch on the pushed light slice changing (counts / last tick), never on a timer.
-  const sum = data?.steward;
-  const key = `${sum?.open_questions ?? 0}|${sum?.ideas_new ?? 0}|${sum?.pending_items ?? 0}|${sum?.last_tick?.at ?? 0}|${sum?.mode ?? ""}|${sum?.enabled ?? ""}`;
+  const sum = rows?.find((x) => x.id === sid) ?? data?.steward;
+  const key = `${sum?.open_questions ?? 0}|${sum?.ideas_new ?? 0}|${sum?.pending_items ?? 0}|${data?.steward?.last_tick?.at ?? 0}|${sid}|${rows?.length ?? 0}|${sum?.mode ?? ""}|${sum?.enabled ?? ""}`;
   useEffect(() => {
     void load();
   }, [load, key]);
@@ -150,9 +185,9 @@ export function StewardTab() {
   }
 
   if (!data) return null;
-  const s = state?.summary ?? data.steward;
-  const projectsTotal = Object.values(s.projects || {}).reduce((a, b) => a + b, 0);
-  const phases = Object.entries(s.projects || {})
+  const s = state?.summary ?? (sid === "default" ? data.steward : null);
+  const projectsTotal = Object.values(s?.projects || {}).reduce((a, b) => a + b, 0);
+  const phases = Object.entries(s?.projects || {})
     .filter(([, n]) => n > 0)
     .map(([ph, n]) => `${ph} ${n}`)
     .join(", ");
@@ -160,9 +195,28 @@ export function StewardTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
       <span className="opts-hint">{t.stewardDesc}</span>
-      {!s.enabled && <div className="warn-banner">{t.stewardOff}</div>}
+      {multi && (
+        <div className="opts" role="group" aria-label={t.stewardPick}>
+          {rows.map((x) => (
+            <button
+              key={x.id}
+              type="button"
+              className={x.id === sid ? "go" : undefined}
+              aria-pressed={x.id === sid}
+              onClick={() => pick(x.id)}
+              title={t.stewardRowStat(x.project_count, x.open_questions)}
+            >
+              <span className={`dot ${x.brain?.running ? "on" : "off"}`} />
+              {x.label || x.id} · {x.enabled ? t.stewardOn : t.stewardOffShort} · {x.mode} · {t.stewardRowStat(x.project_count, x.open_questions)}
+            </button>
+          ))}
+        </div>
+      )}
+      {s && !s.enabled && <div className="warn-banner">{t.stewardOff}</div>}
       {error && <div className="warn-banner">{error}</div>}
 
+      {s && (
+        <>
       <div className="opts">
         <span className="cli-badge">{t.stewardMode(s.mode)}</span>
         <span className="legend" style={{ margin: 0 }}>
@@ -173,7 +227,7 @@ export function StewardTab() {
           <span className={`dot ${s.brain?.running ? "on" : "off"}`} />
           {t.stewardBrain} {s.brain?.name}
         </span>
-        <button type="button" disabled={busy} onClick={() => void run(apiStewardTick)}>
+        <button type="button" disabled={busy} onClick={() => void run(() => apiStewardTick(sid))}>
           {t.stewardTickBtn}
         </button>
       </div>
@@ -203,7 +257,7 @@ export function StewardTab() {
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardQuestionsTitle}</h3>
       {state && state.questions.length === 0 && <span className="opts-hint">{t.stewardNoQuestions}</span>}
       {state?.questions.map((q) => (
-        <QuestionCard key={q.id} q={q} onAnswered={() => void load().then(refresh)} />
+        <QuestionCard key={q.id} q={q} sid={sid} onAnswered={() => void load().then(refresh)} />
       ))}
       <details>
         <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardAskTitle}</summary>
@@ -235,6 +289,7 @@ export function StewardTab() {
                       .split(",")
                       .map((o) => o.trim())
                       .filter(Boolean),
+                    sid,
                   ),
                 () => {
                   setAskText("");
@@ -301,16 +356,16 @@ export function StewardTab() {
           <span style={{ flex: 1, minWidth: "12rem" }}>
             {i.text} <span className="legend">({ago(i.created_at, t.stewardNever)}{i.source ? `, ${i.source}` : ""})</span>
           </span>
-          <button type="button" disabled={busy} title={t.stewardIdeaToTodoTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "todo", exportTarget), () => showToast(t.stewardIdeaExported))}>
+          <button type="button" disabled={busy} title={t.stewardIdeaToTodoTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "todo", exportTarget, sid), () => showToast(t.stewardIdeaExported))}>
             {t.stewardIdeaToTodo}
           </button>
-          <button type="button" disabled={busy} title={t.stewardIdeaToTbdTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "tbd", exportTarget), () => showToast(t.stewardIdeaExported))}>
+          <button type="button" disabled={busy} title={t.stewardIdeaToTbdTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "tbd", exportTarget, sid), () => showToast(t.stewardIdeaExported))}>
             {t.stewardIdeaToTbd}
           </button>
-          <button type="button" className="retire" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "later"))}>
+          <button type="button" className="retire" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "later", sid))}>
             {t.stewardIdeaLater}
           </button>
-          <button type="button" className="closebtn" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "dropped"))}>
+          <button type="button" className="closebtn" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "dropped", sid))}>
             {t.stewardIdeaDrop}
           </button>
         </div>
@@ -323,10 +378,10 @@ export function StewardTab() {
           style={{ flex: 1, minWidth: "14rem" }}
           onChange={(e) => setIdeaText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && ideaText.trim()) void run(() => apiStewardIdea(ideaText), () => setIdeaText(""));
+            if (e.key === "Enter" && ideaText.trim()) void run(() => apiStewardIdea(ideaText, sid), () => setIdeaText(""));
           }}
         />
-        <button type="button" disabled={busy || !ideaText.trim()} onClick={() => void run(() => apiStewardIdea(ideaText), () => setIdeaText(""))}>
+        <button type="button" disabled={busy || !ideaText.trim()} onClick={() => void run(() => apiStewardIdea(ideaText, sid), () => setIdeaText(""))}>
           {t.stewardIdeaAddBtn}
         </button>
       </div>
@@ -344,6 +399,8 @@ export function StewardTab() {
               </div>
             ))}
           </div>
+        </>
+      )}
         </>
       )}
     </div>

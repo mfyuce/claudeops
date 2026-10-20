@@ -58,6 +58,7 @@ import type {
   StatusPayload,
   StewardAnswerResult,
   StewardAskResult,
+  StewardListResult,
   StewardStateResult,
   StewardTickResult,
   StopResult,
@@ -598,17 +599,24 @@ export const apiSnapshotResume = (hidden: boolean, lang: Lang, savedAt?: number)
   apiPost<SnapshotResumeResult>("/api/snapshot/resume", { hidden, lang, ...(savedAt !== undefined ? { saved_at: savedAt } : {}) });
 
 // ── Değnekçi (steward) — `/api/steward/*`, local-only like `/api/orch/*` ──
-export const getStewardState = (): Promise<StewardStateResult> => apiGet<StewardStateResult>("/api/steward/state");
+/** Selected steward identity -> request field. `default`/empty adds NOTHING (URLs and bodies stay as before P7). */
+const stewardQs = (sid?: string): string => (sid && sid !== "default" ? `?steward=${encodeURIComponent(sid)}` : "");
+const stewardBody = (sid?: string): { steward?: string } => (sid && sid !== "default" ? { steward: sid } : {});
+
+export const getStewardList = (): Promise<StewardListResult> => apiGet<StewardListResult>("/api/steward/list");
+export const getStewardState = (sid?: string): Promise<StewardStateResult> =>
+  apiGet<StewardStateResult>(`/api/steward/state${stewardQs(sid)}`);
 /** `answer` may be an option number ("2"), an option text or free text — the backend resolves it. */
-export const apiStewardAnswer = (id: string, answer: string): Promise<StewardAnswerResult> =>
-  apiPost<StewardAnswerResult>("/api/steward/answer", { id, answer });
-export const apiStewardAsk = (project: string, text: string, options: string[]): Promise<StewardAskResult> =>
-  apiPost<StewardAskResult>("/api/steward/ask", { project, text, options, source: "panel" });
-export const apiStewardIdea = (text: string): Promise<SimpleResult & { id?: string }> =>
-  apiPost<SimpleResult & { id?: string }>("/api/steward/idea", { text, source: "panel" });
-export const apiStewardIdeaUpdate = (id: string, status: string): Promise<SimpleResult> =>
-  apiPost<SimpleResult>("/api/steward/idea", { id, status });
-export const apiStewardIdeaExport = (id: string, kind: "todo" | "tbd", target: "project" | "all"): Promise<SimpleResult> =>
-  apiPost<SimpleResult>("/api/steward/idea/export", { id, kind, target });
-export const apiStewardTick = (): Promise<StewardTickResult> => apiPost<StewardTickResult>("/api/steward/tick", {});
+export const apiStewardAnswer = (id: string, answer: string, sid?: string): Promise<StewardAnswerResult> =>
+  apiPost<StewardAnswerResult>("/api/steward/answer", { id, answer, ...stewardBody(sid) });
+export const apiStewardAsk = (project: string, text: string, options: string[], sid?: string): Promise<StewardAskResult> =>
+  apiPost<StewardAskResult>("/api/steward/ask", { project, text, options, source: "panel", ...stewardBody(sid) });
+export const apiStewardIdea = (text: string, sid?: string): Promise<SimpleResult & { id?: string }> =>
+  apiPost<SimpleResult & { id?: string }>("/api/steward/idea", { text, source: "panel", ...stewardBody(sid) });
+export const apiStewardIdeaUpdate = (id: string, status: string, sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/idea", { id, status, ...stewardBody(sid) });
+export const apiStewardIdeaExport = (id: string, kind: "todo" | "tbd", target: "project" | "all", sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/idea/export", { id, kind, target, ...stewardBody(sid) });
+export const apiStewardTick = (sid?: string): Promise<StewardTickResult> =>
+  apiPost<StewardTickResult>("/api/steward/tick", { ...stewardBody(sid) });
 

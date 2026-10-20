@@ -30,6 +30,11 @@ export function TabBar({ active, onSelect, search }: TabBarProps) {
   const disabled = data.closed.filter((r) => matchesSearch(r, search)).length;
   const retired = data.retired.filter((r) => matchesSearch(r, search)).length;
 
+  // Total over all identities (`stewards` slice); a payload without it = the default's count.
+  const stewardOpen = data.stewards?.length
+    ? data.stewards.reduce((a, x) => a + (x.open_questions || 0), 0)
+    : data.steward?.open_questions ?? 0;
+
   const tabs: [TabKey, string][] = [
     ["running", `${t.tabRunning} (${running})`],
     ["registered", `${t.tabRegistered} (${registered})`],
@@ -44,7 +49,7 @@ export function TabBar({ active, onSelect, search }: TabBarProps) {
     // TOBEDECIDED#15 Phase 1 allows only one active run fleet-wide.
     ["team", data.orch.active ? `${t.tabTeam} ●` : t.tabTeam],
     // Open-question count: the one number the owner acts on from this tab (answers unblock sessions).
-    ["steward", data.steward?.open_questions ? `${t.tabSteward} (${data.steward.open_questions})` : t.tabSteward],
+    ["steward", stewardOpen ? `${t.tabSteward} (${stewardOpen})` : t.tabSteward],
     // Running indicator (not a count) — this daemon captures the screen
     // continuously while active, worth a glance even from other tabs.
     ["desktop", data.remote_desktop.running ? `${t.tabDesktop} ●` : t.tabDesktop],

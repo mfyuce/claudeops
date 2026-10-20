@@ -456,6 +456,8 @@ export interface StatusPayload {
    * (counts + last tick + brain). The full picture (`/api/steward/state`) is fetched by `StewardTab`
    * only while that tab is open, keyed on the counts here changing (no extra polling). */
   steward: StewardSummary;
+  /** Multi-steward (P6): one light row per identity; `steward` above stays the default's. Absent on older backends. */
+  stewards?: StewardIdentity[];
   /** Token use per model family over the last `window_minutes` (`model_usage.summary()`, monitoring only, refreshed in the
    * background; `null` until the first scan finishes). `fresh` = input + cache-write tokens, `read` = cache-read tokens. */
   model_usage?: ModelUsage | null;
@@ -824,6 +826,25 @@ export interface StewardSummary {
   last_tour: number;
   brain: { name: string; running: boolean };
   recent: StewardRecent[];
+}
+
+export interface StewardIdentity {
+  id: string;
+  label: string;
+  enabled: boolean;
+  mode: string;
+  projects: Record<string, number>;
+  project_count: number;
+  open_questions: number;
+  ideas_new: number;
+  pending_items: number;
+  brain: { name: string; running: boolean };
+  ownership_conflicts?: unknown;
+}
+
+export interface StewardListResult {
+  ok: boolean;
+  stewards: StewardIdentity[];
 }
 
 export interface StewardRecent {
