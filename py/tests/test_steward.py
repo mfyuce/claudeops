@@ -629,6 +629,18 @@ class SummaryCoreTest(_Tmp):
         self.assertFalse(notes[-1].startswith("(gecikmiş"))
 
 
+class DeliveryTargetTest(_Tmp):
+    def test_prefers_asking_session_then_main_over_experiment_sessions(self):
+        V = lambda n: sw.SessionView(name=n, running=True, blueprint="wifi5gppr")
+        views = [V("wifi5gppr20261016_2"), V("wifi5gppr20261019"), V("wifi5gppr20261016_5")]
+        self.assertEqual(sw.pick_delivery_view(views, "wifi5gppr", "wifi5gppr20261016_5").name, "wifi5gppr20261016_5")
+        self.assertEqual(sw.pick_delivery_view(views, "wifi5gppr", "").name, "wifi5gppr20261019")
+        self.assertEqual(sw.pick_delivery_view(views, "wifi5gppr", "kapali").name, "wifi5gppr20261019")
+        self.assertIsNone(sw.pick_delivery_view(views, "baska", ""))
+        views[0].running = False
+        self.assertEqual(sw.pick_delivery_view(views, "wifi5gppr", "wifi5gppr20261016_2").name, "wifi5gppr20261019")
+
+
 class ReaskTest(_Tmp):
     def _answered(self, project, text, answer, ago=60.0):
         q = sw.add_question(project, text)
@@ -786,6 +798,11 @@ class McpTest(unittest.TestCase):
 class HttpTest(_Tmp):
     def setUp(self):
         super().setUp()
+        # tick_once kart adımını arka plan thread'inde koşturur: bir sonraki test `_CARD_LOCK`u tutulu bulup
+        # kartı hiç üretmiyordu (dosya bütün koşunca kırılan flaky test). Testlerde iş satır içi koşsun.
+        bg = mock.patch.object(web_steward, "_CARD_BACKGROUND", False)
+        bg.start()
+        self.addCleanup(bg.stop)
         self.calls = []
         self.fleet = {}
 

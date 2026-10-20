@@ -1259,6 +1259,18 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     return items
 
 
+def pick_delivery_view(views: List[Any], project: str, source: str = "") -> Optional[Any]:
+    """Cevabın gideceği çalışan oturum. Projenin birden çok açık oturumu olabilir (deneme `_1`, `_2`...):
+    önce soruyu açan oturum (`source`), sonra adı projeyle başlayan en kısa/eski ad (ana oturum), son çare ilk bulunan."""
+    mine = [x for x in views if x.running and x.project == project]
+    if not mine:
+        return None
+    for x in mine:
+        if source and x.name == source:
+            return x
+    return sorted(mine, key=lambda x: (len(x.name), x.name))[0]
+
+
 def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
               now: float, questions: List[Question], ideas: List[Idea]) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
@@ -1334,7 +1346,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if not target or target == cfg.brain_name or target not in projects:
             # Genel/beyin sorusu: beyin turunda gösterilir (aşağıda), oturuma iletilmez
             continue
-        v = next((x for x in views if x.running and x.project == target), None)
+        v = pick_delivery_view(views, target, q.source)
         if v is not None:
             if v.name in busy_names or v.busy:
                 continue   # bir sonraki tick
