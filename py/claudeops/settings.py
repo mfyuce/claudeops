@@ -179,6 +179,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # `steward.Config`'de TEK yerde. `enabled` VARSAYILAN KAPALI — hiçbir şey
                               # kendiliğinden başlamaz; `history_warn_at` üstteki genel ayardan okunur, burada
                               # tekrarlanmaz. Okuma tarafı: `steward_config()`.
+    "stewards": {},          # {<sid>: {label, enabled, mode, max_active, brain_*, lang, summary_hour, persona_text, ntfy_topic, ...}}:
+                              # `default` DIŞI değnekçi kimlikleri (çoklu değnekçi P2; kimlik kuralı `steward.valid_steward_id`).
+                              # `save_settings` bu blokta İKİ seviye birleştirir (kimlik başına alan alan; `{sid: null}` siler).
+                              # Makine geneli anahtarlar (`steward.MACHINE_KEYS`) yalnız `steward`'ta okunur. Okuma: `steward_config(sid)`.
     "steward_persona_text": "",  # "" = paketlenmiş `data/steward.md`; doluysa beynin CLAUDE.md'si bu metinden üretilir.
 }
 
@@ -211,6 +215,8 @@ def load_settings() -> Dict[str, Any]:
                 out["ucli_usage_warn"] = {}
             if not isinstance(out.get("cli_managed"), dict):
                 out["cli_managed"] = {}
+            if not isinstance(out.get("stewards"), dict):
+                out["stewards"] = {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return out
@@ -240,6 +246,32 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
                 else:
                     merged.pop(str(ck), None)
             current[k] = merged
+        elif k == "stewards" and isinstance(v, dict):
+            # İKİ seviye: {sid: {alan: değer}}. Tek seviye birleştirme diğer kimliklerin bloklarını EZERDİ
+            # (kısmi güncelleme başka değnekçinin ayarını silerdi): kimlik başına alan alan birleşir,
+            # boş değer alanı kaldırır, `{sid: None}` kimliği siler. Geçersiz kimlik (ve `default`) atlanır.
+            from .steward import valid_custom_id  # leaf-döngüsü yok: steward.py settings'i import etmez
+            cur = current.get("stewards")
+            merged_st = {sk: dict(sv) for sk, sv in (cur.items() if isinstance(cur, dict) else []) if isinstance(sv, dict)}
+            for sid, fields in v.items():
+                sid = str(sid)
+                if fields is None:
+                    merged_st.pop(sid, None)
+                    continue
+                if not isinstance(fields, dict) or not valid_custom_id(sid):
+                    continue
+                target = dict(merged_st.get(sid) or {})
+                for fk, fv in fields.items():
+                    if isinstance(fv, (list, tuple)):
+                        fv = ",".join(str(x) for x in fv if str(x).strip())
+                    elif isinstance(fv, bool):
+                        fv = "on" if fv else "off"
+                    if fv is not None and fv != "":
+                        target[str(fk)] = str(fv)
+                    else:
+                        target.pop(str(fk), None)
+                merged_st[sid] = target
+            current["stewards"] = merged_st
         elif k == "byok" and isinstance(v, dict):
             # {cli: {ENV_VAR: value}} — bir seviye daha derin merge, YUKARIDAKİ
             # düz {cli: value} deseninden farklı (byok_env_for()'un docstring'i
@@ -539,31 +571,54 @@ def ucli_web_config() -> Dict[str, Any]:
     return out
 
 
-def steward_config() -> "Config":
-    """`settings.json`'ın `steward` alanı → `steward.Config` (tip-güvenli; bozuk/eksik alan varsayılanda kalır,
-    asla fırlatmaz). `history_warn_at` genel ayardan gelir (Terminal sayacı/"dikkat gerekenleri seç" ile AYNI
+def steward_ids() -> list:
+    """`["default"] + sorted(geçerli stewards anahtarları)`. Geçersiz/rezerve anahtarlar (elle düzenlenmiş
+    dosyada) yok sayılır; asla fırlatmaz."""
+    from .steward import valid_custom_id
+    st = load_settings().get("stewards")
+    ids = sorted(k for k, v in (st.items() if isinstance(st, dict) else []) if isinstance(v, dict) and valid_custom_id(k))
+    return ["default"] + ids
+
+
+def steward_config(sid: str = "default") -> "Config":
+    """`settings.json`'ın `steward` (default) / `stewards.<sid>` alanı → `steward.Config` (tip-güvenli; bozuk/eksik
+    alan varsayılanda kalır, alan değerleri asla fırlatmaz). `default`: bugünkü davranış birebir (`steward` bloğu).
+    Diğer kimlikler: `Config()` varsayılanları + `stewards.<sid>` + makine geneli anahtarlar (`steward.MACHINE_KEYS`)
+    `steward` bloğundan (kimlik bloğundakiler yok sayılır); `brain_name` kimlikten TÜRETİLİR. Geçersiz kimlikte
+    `ValueError` (sessizce `default`a düşmek başka değnekçinin ayarını okutur).
+    `history_warn_at` genel ayardan gelir (Terminal sayacı/"dikkat gerekenleri seç" ile AYNI
     eşik: değnekçi de aynı sayıda handover'a sokar). `enabled`: on/1/true/yes/evet AÇIK, geri kalanı KAPALI."""
-    from .steward import MODES, Config  # leaf-döngüsü yok: steward.py settings'i import etmez
+    from .steward import MACHINE_KEYS, MODES, Config, brain_name_for, valid_steward_id  # leaf-döngüsü yok: steward.py settings'i import etmez
+    if not valid_steward_id(sid):
+        raise ValueError(f"geçersiz değnekçi kimliği: {sid!r}")
     s = load_settings()
-    raw = s.get("steward") or {}
-    if not isinstance(raw, dict):
-        raw = {}
-    cfg = Config()
-    for f in dataclasses.fields(Config):
-        if f.name == "history_warn_at":
-            continue
-        if f.name not in raw:
-            continue
-        val = raw[f.name]
-        try:
-            if f.type == "bool" or isinstance(getattr(cfg, f.name), bool):
-                setattr(cfg, f.name, str(val).strip().lower() in ("on", "1", "true", "yes", "evet"))
-            elif isinstance(getattr(cfg, f.name), int):
-                setattr(cfg, f.name, max(0, int(str(val).strip())))
-            else:
-                setattr(cfg, f.name, str(val).strip())
-        except (TypeError, ValueError):
-            continue
+    base = s.get("steward") or {}
+    if not isinstance(base, dict):
+        base = {}
+    cfg = Config(sid=sid)
+    if sid == "default":
+        sources = [(base, {"sid"})]
+    else:
+        own = (s.get("stewards") or {}).get(sid)
+        if not isinstance(own, dict):
+            own = {}
+        # önce makine geneli (yalnız `steward` bloğundan), sonra kimliğin kendi bloğu (makine geneli, sid, brain_name yok sayılır)
+        sources = [(base, {f.name for f in dataclasses.fields(Config)} - set(MACHINE_KEYS)),
+                   (own, set(MACHINE_KEYS) | {"sid", "brain_name"})]
+    for raw, skip in sources:
+        for f in dataclasses.fields(Config):
+            if f.name == "history_warn_at" or f.name in skip or f.name not in raw:
+                continue
+            val = raw[f.name]
+            try:
+                if f.type == "bool" or isinstance(getattr(cfg, f.name), bool):
+                    setattr(cfg, f.name, str(val).strip().lower() in ("on", "1", "true", "yes", "evet"))
+                elif isinstance(getattr(cfg, f.name), int):
+                    setattr(cfg, f.name, max(0, int(str(val).strip())))
+                else:
+                    setattr(cfg, f.name, str(val).strip())
+            except (TypeError, ValueError):
+                continue
     try:
         cfg.history_warn_at = max(100, int(s.get("history_warn_at") or Config.history_warn_at))
     except (TypeError, ValueError):
@@ -575,6 +630,8 @@ def steward_config() -> "Config":
     cfg.summary_hour = min(23, cfg.summary_hour)
     if cfg.tick_seconds < 15:
         cfg.tick_seconds = 15
-    if not cfg.brain_name or not cfg.brain_name.replace("_", "").isalnum():
+    if sid != "default":
+        cfg.brain_name = brain_name_for(sid)
+    elif not cfg.brain_name or not cfg.brain_name.replace("_", "").isalnum():
         cfg.brain_name = "degnekci"
     return cfg

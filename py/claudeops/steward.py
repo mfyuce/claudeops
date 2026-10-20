@@ -250,6 +250,39 @@ class Config:
     cards_per_tick: int = 1          # bir tick'te en çok kaç kart yenilenir (0 = hiç)
     mode: str = "observe"            # observe: oturuma dokunan eylemler uygulanmaz, `would:` olarak kaydedilir | act
     summary_hour: int = 21           # günlük özet: bu saatten (yerel) sonraki ilk tick'te, günde bir
+    # ── çoklu değnekçi (P2) ──
+    sid: str = "default"             # bu Config'in kimliği (`steward_config(sid)` doldurur)
+    label: str = ""                  # panelde görünen ad
+    persona_text: str = ""           # kimliğe özel persona ("" = ortak); default'unki `steward_persona_text`
+    ntfy_topic: str = ""             # "" = ortak topic
+    max_active_total: int = 6        # MAKİNE GENELİ (yalnız `steward` bloğu): tüm kimliklerde en çok etkin oturum; 0 = sınırsız
+    max_starts_total: int = 1        # MAKİNE GENELİ: döngü turu başına tüm kimliklerde en çok başlatma
+
+
+# Yalnız `settings.steward` bloğunda okunan makine geneli anahtarlar (`stewards.<sid>`'de görülürse yok sayılır).
+MACHINE_KEYS = ("tick_seconds", "card_refresh", "card_cli", "card_model", "card_max_age_hours", "cards_per_tick",
+                "max_active_total", "max_starts_total")
+
+# Kimlik kuralı (K2): yalnız küçük harf (`session._NAME_RE` `degnekci_2`/`degnekci2`'yi `degnekci` tabanına indirger).
+STEWARD_ID_RE = re.compile(r"^[a-z]{2,16}$")
+RESERVED_IDS = frozenset({"default", "all", "services", "service", "steward", "stewards"})
+BRAIN_PREFIX = "degnekci"
+
+
+def valid_custom_id(sid: str) -> bool:
+    """`default` DIŞI bir kimlik için geçerli mi: `^[a-z]{2,16}$`, rezerve değil, beyin öneki (`degnekci*`) değil."""
+    return (isinstance(sid, str) and bool(STEWARD_ID_RE.match(sid)) and sid not in RESERVED_IDS
+            and not sid.startswith(BRAIN_PREFIX))
+
+
+def valid_steward_id(sid: str) -> bool:
+    """`default` (özel kimlik) ya da geçerli özel kimlik."""
+    return sid == "default" or valid_custom_id(sid)
+
+
+def brain_name_for(sid: str) -> str:
+    """Beyin oturumunun adı: `default` -> `degnekci`, diğerleri `degnekci_<sid>`."""
+    return BRAIN_PREFIX if sid == "default" else f"{BRAIN_PREFIX}_{sid}"
 
 
 def _now() -> float:
