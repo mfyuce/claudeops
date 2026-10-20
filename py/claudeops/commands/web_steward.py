@@ -405,7 +405,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
 
 def oneshot_cwd() -> str:
     """Tek seferlik çağrıların NÖTR cwd'si (proje klasörü değil): CLAUDE.md/transkript projeye karışmasın."""
-    return os.path.join(sw.STEWARD_DIR, "oneshot")
+    return sw.paths_for().oneshot
 
 
 def summarize_card(raw: Dict[str, Any], name: str = "", project: Optional[sw.Project] = None,

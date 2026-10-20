@@ -50,6 +50,52 @@ LOG_JSONL = os.path.join(STEWARD_DIR, "log.jsonl")
 WORKSPACE_DIR = os.path.join(STEWARD_DIR, "workspace")   # beynin cwd'si (CLAUDE.md = persona)
 BUNDLED_PERSONA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "steward.md")
 # Proje kartları: `STEWARD_DIR/cards/<ad>.json` — yol çağrı anında `STEWARD_DIR`'den türetilir (testler tek sabiti patch'ler).
+
+
+@dataclass(frozen=True)
+class StewardPaths:
+    """Bir değnekçi kimliğinin dosya yolları. `cards`/`oneshot` kimlikler arasında ORTAKTIR (hep `STEWARD_DIR` altında)."""
+    sid: str
+    root: str
+    projects: str
+    ideas: str
+    questions: str
+    state: str
+    log: str
+    jobs: str
+    workspace: str
+    daily: str
+    lock: str
+    cards: str
+    oneshot: str
+
+
+_SID_RE = re.compile(r"[a-z]+")   # yalnız harf: yol ayıracı/`..` ile `stewards/` dışına çıkılamaz (tam kimlik kuralı P2)
+
+
+def paths_for(sid: str = "default") -> StewardPaths:
+    """Yollar ÇAĞRI ANINDA türer. `default`: bugünkü düzen (`STEWARD_DIR` ve modül sabitleri, veri taşınmaz);
+    diğer kimlikler `STEWARD_DIR/stewards/<sid>/`. `stewards/` asimetrisi yalnız burada."""
+    sid = "default" if sid is None else sid
+    if not isinstance(sid, str) or not _SID_RE.fullmatch(sid):
+        raise ValueError(f"invalid steward id: {sid!r}")
+    shared = dict(cards=os.path.join(STEWARD_DIR, "cards"), oneshot=os.path.join(STEWARD_DIR, "oneshot"))
+    if sid == "default":
+        return StewardPaths(sid=sid, root=STEWARD_DIR, projects=PROJECTS_JSON, ideas=IDEAS_JSON,
+                            questions=QUESTIONS_JSON, state=STATE_JSON, log=LOG_JSONL,
+                            jobs=os.path.join(STEWARD_DIR, "jobs.json"), workspace=WORKSPACE_DIR,
+                            daily=os.path.join(STEWARD_DIR, "daily"), lock=os.path.join(STEWARD_DIR, ".lock"), **shared)
+    r = os.path.join(STEWARD_DIR, "stewards", sid)
+    return StewardPaths(sid=sid, root=r, projects=os.path.join(r, "projects.json"), ideas=os.path.join(r, "ideas.json"),
+                        questions=os.path.join(r, "questions.json"), state=os.path.join(r, "state.json"),
+                        log=os.path.join(r, "log.jsonl"), jobs=os.path.join(r, "jobs.json"),
+                        workspace=os.path.join(r, "workspace"), daily=os.path.join(r, "daily"),
+                        lock=os.path.join(r, ".lock"), **shared)
+
+
+def _pp(paths: Any = None) -> StewardPaths:
+    """İsteğe bağlı `paths` argümanı: None = `default` (eski davranış), str = kimlik, StewardPaths = olduğu gibi."""
+    return paths if isinstance(paths, StewardPaths) else paths_for("default" if paths is None else paths)
 CARD_DOCS = ("GOAL.md", "PLAN.md", "TODO.md", "TOBEDECIDED.md", "DONE.md")
 CARD_DOC_CHARS = 1500            # kartın modele göstereceği her doküman başı
 CARD_LIST_ITEMS = 8              # open_tbds / blockers / recent_done en çok bu kadar madde
@@ -235,8 +281,8 @@ def _from_dict(cls, d: Dict[str, Any]):
     return cls(**{k: v for k, v in d.items() if k in names})
 
 
-def load_projects() -> Dict[str, Project]:
-    raw = _load_json(PROJECTS_JSON, {})
+def load_projects(paths: Any = None) -> Dict[str, Project]:
+    raw = _load_json(_pp(paths).projects, {})
     out: Dict[str, Project] = {}
     if isinstance(raw, dict):
         for name, d in raw.items():
@@ -250,15 +296,15 @@ def load_projects() -> Dict[str, Project]:
     return out
 
 
-def save_projects(projects: Dict[str, Project]) -> None:
-    _save_json(PROJECTS_JSON, {n: dataclasses.asdict(p) for n, p in projects.items()})
+def save_projects(projects: Dict[str, Project], paths: Any = None) -> None:
+    _save_json(_pp(paths).projects, {n: dataclasses.asdict(p) for n, p in projects.items()})
 
 
-def upsert_project(name: str, **fields: Any) -> Project:
+def upsert_project(name: str, *, paths: Any = None, **fields: Any) -> Project:
     """Alan bazlı güncelle (None/verilmeyen alanlar korunur). Geçersiz faz/tür/priority yok sayılır."""
     if not valid_name(name):
         raise ValueError(f"invalid project name: {name!r}")
-    projects = load_projects()
+    projects = load_projects(paths)
     p = projects.get(name) or Project(name=name, created_at=_now())
     for k, v in fields.items():
         if v is None or not hasattr(p, k) or k in ("name", "created_at"):
@@ -281,71 +327,72 @@ def upsert_project(name: str, **fields: Any) -> Project:
         setattr(p, k, v)
     p.updated_at = _now()
     projects[name] = p
-    save_projects(projects)
+    save_projects(projects, paths)
     return p
 
 
-def remove_project(name: str) -> bool:
-    projects = load_projects()
+def remove_project(name: str, paths: Any = None) -> bool:
+    projects = load_projects(paths)
     if name not in projects:
         return False
     del projects[name]
-    save_projects(projects)
+    save_projects(projects, paths)
     return True
 
 
-def load_ideas() -> List[Idea]:
-    raw = _load_json(IDEAS_JSON, [])
+def load_ideas(paths: Any = None) -> List[Idea]:
+    raw = _load_json(_pp(paths).ideas, [])
     return [_from_dict(Idea, d) for d in raw if isinstance(d, dict) and d.get("id")] if isinstance(raw, list) else []
 
 
-def save_ideas(ideas: List[Idea]) -> None:
-    _save_json(IDEAS_JSON, [dataclasses.asdict(i) for i in ideas])
+def save_ideas(ideas: List[Idea], paths: Any = None) -> None:
+    _save_json(_pp(paths).ideas, [dataclasses.asdict(i) for i in ideas])
 
 
-def add_idea(text: str, source: str = "") -> Idea:
+def add_idea(text: str, source: str = "", paths: Any = None) -> Idea:
     text = str(text).strip()[:_MAX_IDEA_CHARS]
     if not text:
         raise ValueError("empty idea")
-    ideas = load_ideas()
+    ideas = load_ideas(paths)
     idea = Idea(id=_new_id("i"), text=text, created_at=_now(), source=source)
     ideas.append(idea)
-    save_ideas(ideas)
+    save_ideas(ideas, paths)
     return idea
 
 
-def update_idea(idea_id: str, status: Optional[str] = None, project: Optional[str] = None) -> Optional[Idea]:
-    ideas = load_ideas()
+def update_idea(idea_id: str, status: Optional[str] = None, project: Optional[str] = None,
+                paths: Any = None) -> Optional[Idea]:
+    ideas = load_ideas(paths)
     for i in ideas:
         if i.id == idea_id:
             if status in ("new", "project", "dropped", "later", "exported"):
                 i.status = status
             if project is not None:
                 i.project = str(project)
-            save_ideas(ideas)
+            save_ideas(ideas, paths)
             return i
     return None
 
 
-def record_idea_export(idea_id: str, record: Dict[str, Any]) -> Optional[Idea]:
+def record_idea_export(idea_id: str, record: Dict[str, Any], paths: Any = None) -> Optional[Idea]:
     """Fikri `exported` yapar (varsayılan listeden kalkar) ve aktarım kaydını fikrin üstünde tutar (silinmez)."""
-    ideas = load_ideas()
+    ideas = load_ideas(paths)
     for i in ideas:
         if i.id == idea_id:
             i.status = "exported"
             i.exported = list(i.exported or []) + [record]
-            save_ideas(ideas)
+            save_ideas(ideas, paths)
             return i
     return None
 
 
-def load_questions() -> List[Question]:
-    raw = _load_json(QUESTIONS_JSON, [])
+def load_questions(paths: Any = None) -> List[Question]:
+    raw = _load_json(_pp(paths).questions, [])
     return [_from_dict(Question, d) for d in raw if isinstance(d, dict) and d.get("id")] if isinstance(raw, list) else []
 
 
-def save_questions(questions: List[Question]) -> None:
-    _save_json(QUESTIONS_JSON, [dataclasses.asdict(q) for q in questions])
+def save_questions(questions: List[Question], paths: Any = None) -> None:
+    _save_json(_pp(paths).questions, [dataclasses.asdict(q) for q in questions])
 
 
 def normalize_options(options: Any) -> List[str]:
@@ -420,26 +467,27 @@ def find_answered_duplicate(questions: List["Question"], project: str, text: str
 
 
 def recent_answers(project: str, exclude_id: str = "", limit: int = 5,
-                   questions: Optional[List["Question"]] = None) -> List["Question"]:
+                   questions: Optional[List["Question"]] = None, paths: Any = None) -> List["Question"]:
     """Projenin en son `limit` cevaplanmış sorusu (eskiden yeniye); `exclude_id` hariç."""
-    qs = [q for q in (questions if questions is not None else load_questions())
+    qs = [q for q in (questions if questions is not None else load_questions(paths))
           if q.status == "answered" and q.project == project and q.id != exclude_id and q.answer.strip()]
     qs.sort(key=lambda q: q.answered_at)
     return qs[-limit:]
 
 
-def add_question(project: str, text: str, source: str = "", options: Any = None, routine: bool = False) -> Question:
+def add_question(project: str, text: str, source: str = "", options: Any = None, routine: bool = False,
+                 paths: Any = None) -> Question:
     text = str(text).strip()[:_MAX_QUESTION_CHARS]
     if not text:
         raise ValueError("empty question")
-    questions = load_questions()
+    questions = load_questions(paths)
     # Oturum yakın zamanda cevaplanmış bir soruyu yeniden sordu: yeni soru açma, cevabı "zaten cevapladım"
     # notuyla yeniden ilet (üst sınırdan sonra gerçekten yeni soru say; sonsuz döngü olmasın).
     dup = find_answered_duplicate(questions, project, text)
     if dup is not None and dup.repeats < REASK_MAX_REPEATS:
         dup.repeats += 1
         dup.delivered_at = 0.0
-        save_questions(questions)
+        save_questions(questions, paths)
         return dup
     # Aynı projeden AYNI metinle açık bir soru varsa ikinci kez açma (işaret taraması her
     # tick aynı yanıtı görebilir; motor `seen` ile de korur ama depo kendi başına da dayanıklı olsun).
@@ -449,36 +497,36 @@ def add_question(project: str, text: str, source: str = "", options: Any = None,
     q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
                  options=normalize_options(options), key=secrets.token_hex(8), routine=bool(routine))
     questions.append(q)
-    save_questions(questions)
+    save_questions(questions, paths)
     return q
 
 
-def answer_question(question_id: str, answer: str) -> Optional[Question]:
+def answer_question(question_id: str, answer: str, paths: Any = None) -> Optional[Question]:
     answer = str(answer).strip()
     if not answer:
         raise ValueError("empty answer")
-    questions = load_questions()
+    questions = load_questions(paths)
     for q in questions:
         if q.id == question_id:
             q.answer = resolve_answer(q, answer)[:_MAX_QUESTION_CHARS]
             q.status = "answered"
             q.answered_at = _now()
             q.delivered_at = 0.0
-            save_questions(questions)
+            save_questions(questions, paths)
             return q
     return None
 
 
-def find_question(question_id: str) -> Optional[Question]:
-    return next((q for q in load_questions() if q.id == question_id), None)
+def find_question(question_id: str, paths: Any = None) -> Optional[Question]:
+    return next((q for q in load_questions(paths) if q.id == question_id), None)
 
 
-def mark_notified(question_id: str) -> None:
-    questions = load_questions()
+def mark_notified(question_id: str, paths: Any = None) -> None:
+    questions = load_questions(paths)
     for q in questions:
         if q.id == question_id:
             q.notified_at = _now()
-    save_questions(questions)
+    save_questions(questions, paths)
 
 
 def question_link(q: Question, base: str) -> str:
@@ -561,43 +609,43 @@ def question_page_html(q: Optional[Question], lang: str = "tr", state: str = "as
             + "".join(body) + "</div></body></html>")
 
 
-def escalate_routine(question_id: str) -> Optional[Question]:
+def escalate_routine(question_id: str, paths: Any = None) -> Optional[Question]:
     """Cevapsız kalan rutin soruyu sahibine açık soruya çevir (`routine` kalkar; bildirim çağıranda)."""
-    questions = load_questions()
+    questions = load_questions(paths)
     hit = None
     for q in questions:
         if q.id == question_id and q.status == "open" and q.routine:
             q.routine = False
             hit = q
     if hit is not None:
-        save_questions(questions)
+        save_questions(questions, paths)
     return hit
 
 
-def mark_delivered(question_id: str) -> None:
-    questions = load_questions()
+def mark_delivered(question_id: str, paths: Any = None) -> None:
+    questions = load_questions(paths)
     for q in questions:
         if q.id == question_id:
             q.delivered_at = _now()
-    save_questions(questions)
+    save_questions(questions, paths)
 
 
-def open_questions(questions: Optional[List[Question]] = None) -> List[Question]:
-    return [q for q in (questions if questions is not None else load_questions()) if q.status == "open"]
+def open_questions(questions: Optional[List[Question]] = None, paths: Any = None) -> List[Question]:
+    return [q for q in (questions if questions is not None else load_questions(paths)) if q.status == "open"]
 
 
-def undelivered_answers(questions: Optional[List[Question]] = None) -> List[Question]:
-    return [q for q in (questions if questions is not None else load_questions())
+def undelivered_answers(questions: Optional[List[Question]] = None, paths: Any = None) -> List[Question]:
+    return [q for q in (questions if questions is not None else load_questions(paths))
             if q.status == "answered" and not q.delivered_at]
 
 
-def load_state() -> Dict[str, Any]:
-    st = _load_json(STATE_JSON, {})
+def load_state(paths: Any = None) -> Dict[str, Any]:
+    st = _load_json(_pp(paths).state, {})
     return st if isinstance(st, dict) else {}
 
 
-def save_state(state: Dict[str, Any]) -> None:
-    _save_json(STATE_JSON, state)
+def save_state(state: Dict[str, Any], paths: Any = None) -> None:
+    _save_json(_pp(paths).state, state)
 
 
 _LOG_LOCK = threading.Lock()   # ekleme (tick/kart thread'leri) ile sıkıştırma/rotasyon (özet anı) çakışmasın
@@ -605,32 +653,34 @@ LOG_MAX_BYTES = 5 * 1024 * 1024   # `rotate_log`: dosya bunu aşınca `log.jsonl
 SUMMARY_CATCHUP_DAYS = 3          # açılışta geriye en çok bu kadar günün kaçan özeti üretilir
 
 
-def log_event(event: str, **data: Any) -> None:
+def log_event(event: str, *, paths: Any = None, **data: Any) -> None:
     """Append-only JSONL — `diaglog.diag_log` ile aynı best-effort disiplin."""
     try:
-        os.makedirs(STEWARD_DIR, exist_ok=True)
+        pp = _pp(paths)
+        os.makedirs(os.path.dirname(pp.log), exist_ok=True)
         entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": event, **data}
-        with _LOG_LOCK, open(LOG_JSONL, "a", encoding="utf-8") as f:
+        with _LOG_LOCK, open(pp.log, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
 
 
-def _rewrite_log(lines: List[str]) -> None:
-    tmp = LOG_JSONL + ".tmp"
+def _rewrite_log(lines: List[str], paths: Any = None) -> None:
+    log = _pp(paths).log
+    tmp = log + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.writelines(lines)
-    os.replace(tmp, LOG_JSONL)
+    os.replace(tmp, log)
 
 
-def compact_log(date: str) -> int:
+def compact_log(date: str, paths: Any = None) -> int:
     """O günün (`YYYY-MM-DD`) `tick` satırlarını (günde ~720: her 2 dakikada bir) TEK bir `ticks` satırına katla:
     `{"ts": "<date>T23:59:59", "event": "ticks", "n", "manual", "errors", "mode"}`. Günlük özet yazıldıktan SONRA
     çağrılır; `daily_summary` bu toplamı sayar, dolayısıyla o günün özeti sıkıştırmadan sonra da AYNI çıkar. Diğer
     olaylar (eylem, soru, kart, özet...) yerinde kalır. Dönen: katlanan tick sayısı (0 = dosyaya dokunulmadı)."""
     with _LOG_LOCK:
         try:
-            with open(LOG_JSONL, encoding="utf-8") as f:
+            with open(_pp(paths).log, encoding="utf-8") as f:
                 lines = f.readlines()
         except OSError:
             return 0
@@ -659,26 +709,27 @@ def compact_log(date: str) -> int:
             return 0
         if not placed:
             out.append(agg_line())
-        _rewrite_log(out)
+        _rewrite_log(out, paths)
         return int(agg["n"])
 
 
-def rotate_log(max_bytes: int = LOG_MAX_BYTES) -> bool:
+def rotate_log(max_bytes: int = LOG_MAX_BYTES, paths: Any = None) -> bool:
     """`log.jsonl` `max_bytes`ı aşınca `log.jsonl.1`e devir (öncekinin üstüne; tek nesil yeter: günlük özetler
     `daily/`de duruyor). Dönen: devrildi mi."""
     with _LOG_LOCK:
         try:
-            if os.path.getsize(LOG_JSONL) <= max_bytes:
+            log = _pp(paths).log
+            if os.path.getsize(log) <= max_bytes:
                 return False
-            os.replace(LOG_JSONL, LOG_JSONL + ".1")
+            os.replace(log, log + ".1")
             return True
         except OSError:
             return False
 
 
-def tail_log(n: int = 50) -> List[Dict[str, Any]]:
+def tail_log(n: int = 50, paths: Any = None) -> List[Dict[str, Any]]:
     try:
-        with open(LOG_JSONL, encoding="utf-8") as f:
+        with open(_pp(paths).log, encoding="utf-8") as f:
             lines = f.readlines()[-n:]
     except OSError:
         return []
@@ -698,8 +749,8 @@ def tail_log(n: int = 50) -> List[Dict[str, Any]]:
 # (`build_raw_card`) modelsiz ve testlidir; model çağrısı motorda (`web_steward.summarize_card`), bu dosyada
 # yalnız prompt ve çıktı ayrıştırması var. Özet bozuk gelirse ham karttan türetilen kart KALIR.
 
-def card_path(name: str) -> str:
-    return os.path.join(STEWARD_DIR, "cards", f"{name}.json")
+def card_path(name: str, paths: Any = None) -> str:
+    return os.path.join(_pp(paths).cards, f"{name}.json")
 
 
 def _read_doc_head(cwd: str, rel: str, max_chars: int = CARD_DOC_CHARS) -> str:
@@ -899,36 +950,36 @@ def make_card(raw: Dict[str, Any], parsed: Optional[Dict[str, Any]], project: Op
     return card
 
 
-def load_card(name: str) -> Optional[Dict[str, Any]]:
-    d = _load_json(card_path(name), None)
+def load_card(name: str, paths: Any = None) -> Optional[Dict[str, Any]]:
+    d = _load_json(card_path(name, paths), None)
     return d if isinstance(d, dict) else None
 
 
-def save_card(name: str, card: Dict[str, Any]) -> None:
-    _save_json(card_path(name), card)
+def save_card(name: str, card: Dict[str, Any], paths: Any = None) -> None:
+    _save_json(card_path(name, paths), card)
 
 
-def load_cards() -> Dict[str, Dict[str, Any]]:
+def load_cards(paths: Any = None) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     try:
-        names = os.listdir(os.path.join(STEWARD_DIR, "cards"))
+        names = os.listdir(_pp(paths).cards)
     except OSError:
         return out
     for fn in sorted(names):
         if fn.endswith(".json") and valid_name(fn[:-5]):
-            c = load_card(fn[:-5])
+            c = load_card(fn[:-5], paths)
             if c is not None:
                 out[fn[:-5]] = c
     return out
 
 
-def mark_card_stale(name: str) -> bool:
+def mark_card_stale(name: str, paths: Any = None) -> bool:
     """Oturum yeniden açıldı (handover sonrası) -> kart bir sonraki fırsatta yenilensin. Kart yoksa no-op."""
-    card = load_card(name)
+    card = load_card(name, paths)
     if card is None or card.get("stale"):
         return False
     card["stale"] = True
-    save_card(name, card)
+    save_card(name, card, paths)
     return True
 
 
@@ -951,14 +1002,15 @@ def card_refresh_reason(card: Optional[Dict[str, Any]], source_hash: str, now: f
     return ""
 
 
-def note_card_failure(name: str, source_hash: str, error: str, now: Optional[float] = None) -> None:
+def note_card_failure(name: str, source_hash: str, error: str, now: Optional[float] = None,
+                      paths: Any = None) -> None:
     """Var olan kartı bozmadan başarısız denemeyi kaydet (`card_refresh_reason` geri çekilsin)."""
-    card = load_card(name)
+    card = load_card(name, paths)
     if card is None:
         return
     card.update({"attempt_hash": source_hash, "attempt_at": now if now is not None else _now(),
                  "last_error": _short(error, 300)})
-    save_card(name, card)
+    save_card(name, card, paths)
 
 
 def card_one_liner(card: Optional[Dict[str, Any]]) -> str:
@@ -1585,15 +1637,15 @@ def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now:
 
 # ── günlük özet ───────────────────────────────────────────────────────────────
 
-def daily_path(date: str) -> str:
-    return os.path.join(STEWARD_DIR, "daily", f"{date}.md")
+def daily_path(date: str, paths: Any = None) -> str:
+    return os.path.join(_pp(paths).daily, f"{date}.md")
 
 
-def log_entries_for_date(date: str) -> List[Dict[str, Any]]:
+def log_entries_for_date(date: str, paths: Any = None) -> List[Dict[str, Any]]:
     """`log.jsonl`'dan o güne (`YYYY-MM-DD`, yerel) ait kayıtlar; dosyayı satır satır okur (bütününü belleğe almaz)."""
     out: List[Dict[str, Any]] = []
     try:
-        with open(LOG_JSONL, encoding="utf-8") as f:
+        with open(_pp(paths).log, encoding="utf-8") as f:
             for ln in f:
                 if f'"ts": "{date}' not in ln[:40]:
                     continue
@@ -1613,16 +1665,16 @@ def summary_due(state: Dict[str, Any], now: float, hour: int) -> str:
     return today if lt.tm_hour >= hour and state.get("summary_date") != today else ""
 
 
-def missed_summary_dates(now: float, days: int = SUMMARY_CATCHUP_DAYS) -> List[str]:
+def missed_summary_dates(now: float, days: int = SUMMARY_CATCHUP_DAYS, paths: Any = None) -> List[str]:
     """Özeti KAÇMIŞ geçmiş günler (eskiden yeniye): bugün hariç son `days` günden `daily/<tarih>.md`si olmayan ve
     `log.jsonl`'da kaydı bulunanlar. `summary_hour`da panel kapalıysa o gün özetlenmezdi (TODO 2026-10-19 (6d));
     açılıştan sonraki ilk tick bunları tamamlar. Kaydı olmayan gün (döngü kapalıydı) özetlenmez: boş özet gitmesin."""
     out: List[str] = []
     for back in range(max(0, days), 0, -1):
         date = time.strftime("%Y-%m-%d", time.localtime(now - back * 86400))
-        if os.path.isfile(daily_path(date)):
+        if os.path.isfile(daily_path(date, paths)):
             continue
-        if log_entries_for_date(date):
+        if log_entries_for_date(date, paths):
             out.append(date)
     return out
 
@@ -1728,19 +1780,19 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     return "\n".join(lines) + "\n"
 
 
-def summary_text(date: Optional[str] = None, lang: str = "tr") -> str:
+def summary_text(date: Optional[str] = None, lang: str = "tr", paths: Any = None) -> str:
     """Depolardan (log, soru/fikir kutusu, state) `date`in (varsayılan: bugün) özetini kur."""
     date = date or time.strftime("%Y-%m-%d")
-    state = load_state()
-    pending = {"open_questions": len(open_questions()),
-               "ideas_new": sum(1 for i in load_ideas() if i.status == "new"),
+    state = load_state(paths)
+    pending = {"open_questions": len(open_questions(paths=paths)),
+               "ideas_new": sum(1 for i in load_ideas(paths) if i.status == "new"),
                "pending_items": int(state.get("pending_items") or 0),
-               "undelivered_answers": len(undelivered_answers())}
-    return daily_summary(log_entries_for_date(date), date, lang, pending)
+               "undelivered_answers": len(undelivered_answers(paths=paths))}
+    return daily_summary(log_entries_for_date(date, paths), date, lang, pending)
 
 
-def write_daily(date: str, text: str) -> str:
-    path = daily_path(date)
+def write_daily(date: str, text: str, paths: Any = None) -> str:
+    path = daily_path(date, paths)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
