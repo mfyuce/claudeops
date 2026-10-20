@@ -78,7 +78,25 @@ function AppShell() {
   // own counts at once. Plain local state — not persisted (localStorage/
   // settings.json), unlike activeTab/theme: a stale filter silently
   // narrowing a fresh page load would be more surprising than useful here.
-  const [search, setSearch] = useState("");
+  // 2026-10-20 (TODO 668): the text mirrors into `?q=` (replaceState, no history entries) so a refresh or a
+  // shared link restores the filtered grid; an empty search drops the param. Initial value read once.
+  const [search, setSearch] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("q") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (search) url.searchParams.set("q", search);
+      else url.searchParams.delete("q");
+      window.history.replaceState(null, "", url.toString());
+    } catch {
+      // ignore - URL APIs unavailable
+    }
+  }, [search]);
 
   const setActiveTab = useCallback((tab: TabKey) => {
     setActiveTabState(tab);

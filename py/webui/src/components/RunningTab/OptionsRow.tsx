@@ -22,6 +22,7 @@
 import { useState } from "react";
 import { apiNewChat, apiStart, apiStop } from "../../api/client";
 import { callAction, describeApiError } from "../../api/errors";
+import { TabHint } from "../shared/TabHint";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -247,7 +248,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
     <tr className="opts-row">
       <td colSpan={colspan}>
         <div className="opts">
-          {session.running && <span className="opts-hint">{t.runningNote(session.name)}</span>}
+          {session.running && <TabHint>{t.runningNote(session.name)}</TabHint>}
           <div className="modes">
             {modeChoices.map(([value, label]) => (
               <label className="mode-radio" key={value}>
