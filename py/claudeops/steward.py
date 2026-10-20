@@ -560,6 +560,55 @@ def remove_project(name: str, paths: Any = None) -> bool:
         return True
 
 
+def transfer_project(name: str, to_sid: str) -> str:
+    """Projeyi bugünkü sahibinden `to_sid`e devret (plan (b) devir): kayıt + o projenin açık/iletilmemiş soruları +
+    (varsa) bekleyen işler (`jobs.json`, `project` alanı) TEK kilit altında taşınır (önce `.ownership.lock`, sonra
+    iki kimlik kilidi kimlik adına göre sıralı: kilitlenme yok); her iki logda `transfer` olayı. Oturumun çalışıp
+    çalışmadığı ÇAĞIRANIN işi (CLI denetler). Dönen: eski sahip. Hata: `ValueError` (yok / zaten orada / hedefte aynı ad)."""
+    if not valid_steward_id(to_sid):
+        raise ValueError(f"invalid steward id: {to_sid!r}")
+    with ownership_lock():
+        src = project_owner(name)
+        if not src:
+            raise ValueError(f"project {name!r} not found in any steward")
+        if src == to_sid:
+            raise ValueError(f"project {name!r} already belongs to steward {to_sid!r}")
+        first, second = sorted((src, to_sid))
+        with steward_lock(first), steward_lock(second):
+            if name in load_projects(to_sid):
+                raise ValueError(f"project {name!r} already exists in steward {to_sid!r}")
+            src_projects = load_projects(src)
+            if name not in src_projects:
+                raise ValueError(f"project {name!r} not found in steward {src!r}")
+            dst_projects = load_projects(to_sid)
+            dst_projects[name] = src_projects.pop(name)
+            moved_q = 0
+            src_qs, dst_qs = load_questions(src), load_questions(to_sid)
+            keep = []
+            for q in src_qs:
+                if q.project == name and (q.status == "open" or not q.delivered_at):
+                    dst_qs.append(q)
+                    moved_q += 1
+                else:
+                    keep.append(q)
+            moved_jobs = 0
+            sj, dj = _pp(src).jobs, _pp(to_sid).jobs
+            sjobs, djobs = _load_json(sj, []), _load_json(dj, [])
+            if isinstance(sjobs, list) and isinstance(djobs, list):
+                mine = [j for j in sjobs if isinstance(j, dict) and j.get("project") == name]
+                if mine:
+                    moved_jobs = len(mine)
+                    _save_json(dj, djobs + mine)
+                    _save_json(sj, [j for j in sjobs if j not in mine])
+            save_projects(dst_projects, to_sid)      # hedefe ÖNCE yaz: yarıda kalırsa ad iki yerde (güvenli başarısızlık: kimse yönetmez)
+            save_questions(dst_qs, to_sid)
+            save_projects(src_projects, src)
+            save_questions(keep, src)
+            log_event("transfer", paths=src, name=name, to=to_sid, questions=moved_q, jobs=moved_jobs)
+            log_event("transfer", paths=to_sid, name=name, frm=src, questions=moved_q, jobs=moved_jobs)
+        return src
+
+
 def load_ideas(paths: Any = None) -> List[Idea]:
     raw = _load_json(_pp(paths).ideas, [])
     return [_from_dict(Idea, d) for d in raw if isinstance(d, dict) and d.get("id")] if isinstance(raw, list) else []
@@ -700,6 +749,19 @@ def recent_answers(project: str, exclude_id: str = "", limit: int = 5,
     return qs[-limit:]
 
 
+def _unique_question_key(sid: str) -> str:
+    """Soruya özel anahtar: rastgele 16 hex; diğer kimliklerin sorularında zaten varsa yenisi çekilir (`/q/` kimlik
+    verilmeden tüm depolarda arar: anahtar kimlikler arası çakışmasın)."""
+    taken = set()
+    for other in discover_steward_ids():
+        if other != sid:
+            taken.update(q.key for q in load_questions(other) if q.key)
+    while True:
+        key = secrets.token_hex(8)
+        if key not in taken:
+            return key
+
+
 def add_question(project: str, text: str, source: str = "", options: Any = None, routine: bool = False,
                  paths: Any = None) -> Question:
     text = str(text).strip()[:_MAX_QUESTION_CHARS]
@@ -721,7 +783,7 @@ def add_question(project: str, text: str, source: str = "", options: Any = None,
             if q.status == "open" and q.project == project and q.text == text:
                 return q
         q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
-                     options=normalize_options(options), key=secrets.token_hex(8), routine=bool(routine))
+                     options=normalize_options(options), key=_unique_question_key(_pp(paths).sid), routine=bool(routine))
         questions.append(q)
         save_questions(questions, paths)
         return q
@@ -757,20 +819,33 @@ def mark_notified(question_id: str, paths: Any = None) -> None:
         save_questions(questions, paths)
 
 
-def question_link(q: Question, base: str) -> str:
-    """Telefon sayfası: `<base>/q/<id>?k=<key>`. `base` boşsa (tünel yok) ya da soru anahtarsızsa (eski kayıt) ""."""
+def question_link(q: Question, base: str, sid: str = "default") -> str:
+    """Telefon sayfası: `<base>/q/<id>?k=<key>`; default dışı kimlikte `&s=<sid>` (soru o kimliğin deposunda aranır;
+    default için biçim eskisiyle AYNI). `base` boşsa (tünel yok) ya da soru anahtarsızsa (eski kayıt) ""."""
     base = (base or "").rstrip("/")
-    return f"{base}/q/{q.id}?k={q.key}" if base and q.key else ""
+    if not (base and q.key):
+        return ""
+    return f"{base}/q/{q.id}?k={q.key}" + ("" if sid == "default" else f"&s={sid}")
 
 
-def question_notification(q: Question, link: str, lang: str = "tr") -> str:
-    """ntfy gövdesi: `[proje] soru`, numaralı seçenekler, sonra bağlantı ya da (yoksa) CLI ipucu."""
-    lines = [f"[{q.project or 'degnekci'}] {q.text}"]
+def ask_hint(question_id: str, sid: str = "default") -> str:
+    """CLI cevap ipucu (`py/cops steward [-s <sid>] answer <id> "..."`)."""
+    return f"py/cops steward{'' if sid == 'default' else ' -s ' + sid} answer {question_id} \"...\""
+
+
+def ask_prefix(project: str, sid: str = "default") -> str:
+    """ntfy gövde öneki: default `[proje]` (eskisi), diğer kimlik `[<sid>/<proje>]` (K4)."""
+    return f"[{project or 'degnekci'}]" if sid == "default" else f"[{sid}/{project or 'degnekci'}]"
+
+
+def question_notification(q: Question, link: str, lang: str = "tr", sid: str = "default") -> str:
+    """ntfy gövdesi: `[proje] soru` (default dışı: `[sid/proje]`), numaralı seçenekler, sonra bağlantı ya da (yoksa) CLI ipucu."""
+    lines = [f"{ask_prefix(q.project, sid)} {q.text}"]
     lines += [f"{i}) {o}" for i, o in enumerate(q.options, 1)]
     if link:
         lines.append(("→ cevapla: " if lang != "en" else "→ answer: ") + link)
     else:
-        lines.append(f"→ py/cops steward answer {q.id} \"...\"")
+        lines.append("→ " + ask_hint(q.id, sid))
     return "\n".join(lines)
 
 

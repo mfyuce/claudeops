@@ -1640,6 +1640,8 @@ def _status_payload() -> dict:
         # Değnekçi (2026-10-19) — `orch` gibi HAFİF, local-only özet (5 sn önbellekli; canlı liste
         # bu turun kendi taramasından verilir, ikinci bir proc taraması yapılmaz).
         "steward": web_steward.summary(running_names={s.name for s in all_live}),
+        # Çoklu değnekçi (P6): kimlik başına hafif özet listesi; `steward` (default) alanı yukarıda AYNEN durur.
+        "stewards": web_steward.stewards_summary(running_names={s.name for s in all_live}),
         # Model bazlı token özeti (son 60 dk; YALNIZ izleme, arka planda yenilenir; ilk çağrıda None = UI gizler).
         "model_usage": model_usage.summary(),
         # 2026-09-17, "son snapshot" — bkz. aşağıdaki "Fleet snapshot" bölümü.
@@ -4173,8 +4175,10 @@ class _Handler(BaseHTTPRequestHandler):
         """`/q/<id>` GET (form=None) / POST (`application/x-www-form-urlencoded`, `answer`). HTML, önbelleksiz."""
         parsed = urlparse(self.path)
         qid = parsed.path[len("/q/"):].strip("/")
-        key = (parse_qs(parsed.query).get("k") or [""])[0]
-        status, html_text = web_steward.http_question_page(qid, key, self._authorized(), form)
+        qs = parse_qs(parsed.query)
+        key = (qs.get("k") or [""])[0]
+        sid = (qs.get("s") or [""])[0]    # çoklu değnekçi: soru o kimliğin deposunda aranır (yoksa tüm kimliklerde)
+        status, html_text = web_steward.http_question_page(qid, key, self._authorized(), form, sid)
         body = html_text.encode("utf-8")
         try:
             self.send_response(status)

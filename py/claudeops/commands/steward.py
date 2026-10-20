@@ -1,6 +1,11 @@
 """`steward` (değnekçi) — projeleri gezen zamanlayıcının insan tarafı.
 
 Kullanım:
+  py/cops steward [-s|--steward SID] <alt-komut>   # kimlik: -s, yoksa COPS_STEWARD ortam değişkeni, yoksa default
+  py/cops steward list                        # kimlikler: açık/kapalı, kip, proje sayısı, beyin
+  py/cops steward create SID [--label "Ad"]   # yeni kimlik (ayar bloğu + dizin; varsayılan KAPALI + observe)
+  py/cops steward remove SID                  # kimliği sil (projesi varsa REDDEDİLİR; dizin stewards/.removed/'e taşınır)
+  py/cops steward transfer PROJE SID          # projeyi başka kimliğe devret (oturum kapalıyken; --force: denetimi atla)
   py/cops steward status                      # özet: açık/kapalı, projeler faz faz, açık sorular, son tick
   py/cops steward projects [--phase planned]  # proje listesi
   py/cops steward cards [NAME] [--refresh]    # proje kartları (NAME: tek kartın tamamı); --refresh: şimdi yenile (panel üzerinden)
@@ -24,21 +29,50 @@ from __future__ import annotations
 import dataclasses
 import json
 import time
-from typing import Any, Dict
+import os
+import shutil
+from typing import Any, Dict, List
 
 from .. import roster as roster_mod
 from .. import steward as sw
-from ..settings import load_settings, save_settings, steward_config
+from ..settings import load_settings, save_settings, steward_config, steward_ids
 from . import mcp_queue
+
+ENV_STEWARD = "COPS_STEWARD"
 
 PHASE_ICON = {"idea": "💡", "planning": "📐", "planned": "🛠", "paused": "⏸", "done": "✅"}
 
 
-def _api(port: int, method: str, path: str, body: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def _sid(args) -> str:
+    """Seçili kimlik (`resolve_sid` `run()`da doldurur); doğrudan çağrılan komutlarda yoksa default."""
+    return getattr(args, "sid", None) or "default"
+
+
+def resolve_sid(args) -> str:
+    """`-s/--steward`, yoksa `COPS_STEWARD`, yoksa `default`. Geçersiz ya da ayarda tanımlı olmayan kimlik `ValueError`
+    (sessizce default'a DÜŞMEZ: başka kimliğin deposuna yazılmasın)."""
+    sid = (getattr(args, "steward", None) or os.environ.get(ENV_STEWARD) or "default").strip()
+    if getattr(args, "action", None) in ("list", "create", "remove", "transfer"):
+        return sid      # kimlik yönetimi komutları seçili kimliği KULLANMAZ (kendi argümanları var)
+    if sid != "default" and not sw.valid_steward_id(sid):
+        raise ValueError(f"geçersiz değnekçi kimliği: {sid!r} (küçük harf, 2-16)")
+    if sid not in steward_ids():
+        raise ValueError(f"bilinmeyen değnekçi kimliği: {sid!r} (tanımlı: {', '.join(steward_ids())}); oluşturmak için: "
+                         f"py/cops steward create {sid}")
+    return sid
+
+
+def _api(port: int, method: str, path: str, body: Dict[str, Any] | None = None, sid: str = "default") -> Dict[str, Any]:
+    if sid != "default" and isinstance(body, dict):
+        body = dict(body, steward=sid)      # default'ta gövde BUGÜNKÜYLE aynı (kimliksiz)
     try:
         return mcp_queue._api(port, method, path, body)
     except mcp_queue.ApiError as e:
         return {"ok": False, "error": str(e)}
+
+
+def _sflag(sid: str) -> str:
+    return "" if sid == "default" else f" -s {sid}"
 
 
 def _ago(ts: float) -> str:
@@ -49,11 +83,14 @@ def _ago(ts: float) -> str:
 
 
 def cmd_status(args) -> int:
-    cfg = steward_config()
-    projects = sw.load_projects()
-    qs = sw.open_questions()
-    ideas = [i for i in sw.load_ideas() if i.status == "new"]
-    st = sw.load_state()
+    sid = _sid(args)
+    cfg = steward_config(sid)
+    projects = sw.load_projects(sid)
+    qs = sw.open_questions(paths=sid)
+    ideas = [i for i in sw.load_ideas(sid) if i.status == "new"]
+    st = sw.load_state(sid)
+    if sid != "default":
+        print(f"kimlik: {sid}" + (f" ({cfg.label})" if cfg.label else ""))
     print(f"değnekçi: {'AÇIK' if cfg.enabled else 'KAPALI'}  mod={cfg.mode}  tick={cfg.tick_seconds}s  tur≥{cfg.tour_minutes}dk  "
           f"max_active={cfg.max_active}  beyin={cfg.brain_name} ({cfg.brain_cli} {cfg.brain_model or 'varsayılan'} {cfg.brain_effort})")
     counts = sw.summarize_projects(projects)
@@ -65,15 +102,19 @@ def cmd_status(args) -> int:
           f"son tick: {_ago(float(st.get('last_tick') or 0))}   son tur: {_ago(float(st.get('last_tour') or 0))}")
     if st.get("ho_pending"):
         print("handover bekleyen: " + ", ".join(st["ho_pending"]))
+    conflicts = sw.ownership_index(steward_ids()).get("conflicts") or {}
+    mine = sorted(n for n in projects if n in conflicts)
+    for n in mine:
+        print(f"uyarı: sahiplik ÇAKIŞMASI '{n}' ({', '.join(conflicts[n])}): hiçbiri yönetmez; birinin projects.json'undan çıkarın")
     for q in qs[:5]:
         print(f"  ? [{q.id}] {q.project or '-'}: {q.text[:120]}")
     if not cfg.enabled:
-        print("\naçmak için: py/cops steward on   (ya da panel Ayarlar) — hiçbir şey kendiliğinden başlamaz")
+        print(f"\naçmak için: py/cops steward{_sflag(sid)} on   (ya da panel Ayarlar) — hiçbir şey kendiliğinden başlamaz")
     return 0
 
 
 def cmd_projects(args) -> int:
-    projects = sw.load_projects()
+    projects = sw.load_projects(_sid(args))
     rows = sorted(projects.values(), key=lambda p: (p.priority, p.phase, p.name))
     if args.phase:
         rows = [p for p in rows if p.phase == args.phase]
@@ -91,7 +132,7 @@ def cmd_projects(args) -> int:
 def cmd_cards(args) -> int:
     """Kartları listele / tek kartı göster (dosyadan, panel gerekmez); `--refresh` panele yenileme işi bırakır."""
     if args.refresh:
-        res = _api(args.port, "POST", "/api/steward/cards/refresh", {"name": args.name or ""})
+        res = _api(args.port, "POST", "/api/steward/cards/refresh", {"name": args.name or ""}, _sid(args))
         print(json.dumps(res, ensure_ascii=False, indent=2))
         if res.get("ok"):
             print("arka planda yenileniyor; sonuç: py/cops steward cards   (ya da: py/cops steward log)")
@@ -105,7 +146,7 @@ def cmd_cards(args) -> int:
         print(f"\n{json.dumps(card, ensure_ascii=False, indent=2)}")
         return 0
     cards = sw.load_cards()
-    projects = sw.load_projects()
+    projects = sw.load_projects(_sid(args))
     if not cards:
         print("kart yok — `py/cops steward cards --refresh` (panel çalışıyorsa) ya da bir sonraki tick üretir")
     else:
@@ -123,11 +164,11 @@ def cmd_set(args) -> int:
     fields = {"phase": args.phase, "kind": args.kind, "goal": args.goal, "priority": args.priority,
               "cadence_minutes": args.cadence, "notes": args.note, "model": args.model, "effort": args.effort}
     try:
-        p = sw.upsert_project(args.name, **{k: v for k, v in fields.items() if v is not None})
+        p = sw.upsert_project(args.name, paths=_sid(args), **{k: v for k, v in fields.items() if v is not None})
     except ValueError as e:
         print(f"hata: {e}")
         return 1
-    sw.log_event("project_set", name=p.name, fields=[k for k, v in fields.items() if v is not None], source="cli")
+    sw.log_event("project_set", paths=_sid(args), name=p.name, fields=[k for k, v in fields.items() if v is not None], source="cli")
     print(json.dumps(dataclasses.asdict(p), ensure_ascii=False, indent=2))
     if p.name not in {e.name for e in roster_mod.read_roster()}:
         print(f"uyarı: '{p.name}' roster'da yok — değnekçi oturum açamaz. Panelden kaydet ya da beyne "
@@ -136,19 +177,25 @@ def cmd_set(args) -> int:
 
 
 def cmd_import(args) -> int:
-    projects = sw.load_projects()
-    added = 0
+    sid = _sid(args)
+    projects = sw.load_projects(sid)
+    added = skipped = 0
     for e in roster_mod.read_roster():
         if e.name in projects or not sw.valid_name(e.name):
             continue
-        sw.upsert_project(e.name, phase=args.phase, cadence_minutes=args.cadence)
+        try:
+            sw.upsert_project(e.name, paths=sid, phase=args.phase, cadence_minutes=args.cadence)
+        except ValueError:      # başka kimliğin projesi (OwnedElsewhere) ya da rezerve ad: atla
+            skipped += 1
+            continue
         added += 1
-    print(f"{added} proje eklendi (faz={args.phase}, cadence={args.cadence} dk); amaç/tür için: py/cops steward set NAME --goal ...")
+    print(f"{added} proje eklendi (faz={args.phase}, cadence={args.cadence} dk); amaç/tür için: py/cops steward{_sflag(sid)} set NAME --goal ..."
+          + (f"  ({skipped} proje başka kimliğin ya da rezerve: atlandı)" if skipped else ""))
     return 0
 
 
 def cmd_questions(args) -> int:
-    qs = sw.load_questions() if args.all else sw.open_questions()
+    qs = sw.load_questions(_sid(args)) if args.all else sw.open_questions(paths=_sid(args))
     if not qs:
         print("soru yok")
         return 0
@@ -166,7 +213,7 @@ def cmd_ask(args) -> int:
     """Panel üzerinden soru aç (bildirim + `/q/<id>` bağlantısı panelin işi): `py/cops steward ask [-p PROJE]
     [-o A -o B ...] "soru"`."""
     res = _api(args.port, "POST", "/api/steward/ask",
-               {"project": args.project or "", "text": args.text, "options": args.option or [], "source": "cli"})
+               {"project": args.project or "", "text": args.text, "options": args.option or [], "source": "cli"}, _sid(args))
     if not res.get("ok"):
         print(f"hata: {res.get('error')}")
         return 1
@@ -177,20 +224,20 @@ def cmd_ask(args) -> int:
 
 def cmd_answer(args) -> int:
     try:
-        q = sw.answer_question(args.id, args.answer)
+        q = sw.answer_question(args.id, args.answer, _sid(args))
     except ValueError as e:
         print(f"hata: {e}")
         return 1
     if q is None:
         print("bilinmeyen soru id'si")
         return 1
-    sw.log_event("answer", id=q.id, project=q.project, source="cli")
-    print(f"✓ cevaplandı — motor bir sonraki tick'te {q.project or 'beyne'} iletir (hemen: py/cops steward tick)")
+    sw.log_event("answer", paths=_sid(args), id=q.id, project=q.project, source="cli")
+    print(f"✓ cevaplandı — motor bir sonraki tick'te {q.project or 'beyne'} iletir (hemen: py/cops steward{_sflag(_sid(args))} tick)")
     return 0
 
 
 def cmd_ideas(args) -> int:
-    ideas = sw.load_ideas() if args.all else [i for i in sw.load_ideas() if i.status == "new"]
+    ideas = sw.load_ideas(_sid(args)) if args.all else [i for i in sw.load_ideas(_sid(args)) if i.status == "new"]
     if not ideas:
         print("fikir yok")
         return 0
@@ -200,14 +247,14 @@ def cmd_ideas(args) -> int:
 
 
 def cmd_idea(args) -> int:
-    i = sw.add_idea(args.text, source="cli")
-    sw.log_event("idea", id=i.id, source="cli")
+    i = sw.add_idea(args.text, source="cli", paths=_sid(args))
+    sw.log_event("idea", paths=_sid(args), id=i.id, source="cli")
     print(f"✓ {i.id}")
     return 0
 
 
 def cmd_log(args) -> int:
-    for e in sw.tail_log(args.n):
+    for e in sw.tail_log(args.n, _sid(args)):
         rest = {k: v for k, v in e.items() if k not in ("ts", "event")}
         print(f"{e.get('ts')}  {e.get('event'):<16} {json.dumps(rest, ensure_ascii=False)}")
     return 0
@@ -222,20 +269,25 @@ def cmd_summary(args) -> int:
     except ValueError:
         print("hata: --date YYYY-MM-DD olmalı")
         return 1
-    text = sw.summary_text(date, args.lang or steward_config().lang)
+    sid = _sid(args)
+    text = sw.summary_text(date, args.lang or steward_config(sid).lang, sid)
     print(text, end="")
     if args.save:
-        print(f"\n→ {sw.write_daily(date, text)}")
+        print(f"\n→ {sw.write_daily(date, text, sid)}")
     return 0
 
 
 def cmd_persona(args) -> int:
-    print(sw.persona_text(str(load_settings().get("steward_persona_text") or "")))
+    shared = str(load_settings().get("steward_persona_text") or "")
+    sid = _sid(args)
+    print(sw.persona_text(shared if sid == "default" else (steward_config(sid).persona_text or shared)))
     return 0
 
 
 def cmd_config(args) -> int:
-    """`steward.<alan>` ayarı: `py/cops steward config tick_seconds 90`; `on`/`off` = enabled."""
+    """`steward.<alan>` ayarı: `py/cops steward config tick_seconds 90`; `-s SID` ile `stewards.<SID>.<alan>`. Makine geneli
+    anahtar (`sw.MACHINE_KEYS`) kimlik bloğunda YOK SAYILIR: yazılmaz, uyarılır (default'a yazın)."""
+    sid = _sid(args)
     field = args.key
     if field == "mode" and args.value not in sw.MODES:
         print(f"hata: mode {' | '.join(sw.MODES)} olmalı")
@@ -243,43 +295,148 @@ def cmd_config(args) -> int:
     if field == "summary_hour" and not (args.value.isdigit() and 0 <= int(args.value) <= 23):
         print("hata: summary_hour 0-23 arası bir saat olmalı")
         return 1
-    if field not in {f.name for f in dataclasses.fields(sw.Config)} or field == "history_warn_at":
-        print("bilinmeyen alan; geçerli: " + ", ".join(f.name for f in dataclasses.fields(sw.Config) if f.name != "history_warn_at"))
+    hidden = {"history_warn_at"} | ({"sid", "brain_name"} if sid != "default" else set())
+    if field not in {f.name for f in dataclasses.fields(sw.Config)} or field in hidden:
+        print("bilinmeyen alan; geçerli: " + ", ".join(f.name for f in dataclasses.fields(sw.Config) if f.name not in hidden))
         return 1
-    save_settings({"steward": {field: args.value}})
-    cfg = steward_config()
-    print(f"✓ steward.{field} = {getattr(cfg, field)!r}")
+    if sid != "default" and field in sw.MACHINE_KEYS:
+        print(f"uyarı: '{field}' MAKİNE GENELİ bir anahtar: stewards.{sid} içinde yok sayılır, YAZILMADI. "
+              f"Makine geneli değer için: py/cops steward config {field} {args.value}  (default bloğu)")
+        return 1
+    if sid == "default":
+        save_settings({"steward": {field: args.value}})
+    else:
+        save_settings({"stewards": {sid: {field: args.value}}})
+    cfg = steward_config(sid)
+    print(f"✓ {'steward' if sid == 'default' else 'stewards.' + sid}.{field} = {getattr(cfg, field)!r}")
     return 0
 
 
 def cmd_toggle(args) -> int:
-    save_settings({"steward": {"enabled": "on" if args.action == "on" else "off"}})
-    print(f"✓ değnekçi {'AÇIK' if args.action == 'on' else 'KAPALI'} (panel çalışıyorsa bir sonraki tick'ten itibaren geçerli)")
-    if args.action == "on":
-        if steward_config().mode == "observe":
+    on = args.action == "on"
+    if getattr(args, "all", False) and not on:     # `off --all`: tüm kimlikleri kapat
+        for sid in steward_ids():
+            save_settings({"steward": {"enabled": "off"}} if sid == "default" else {"stewards": {sid: {"enabled": "off"}}})
+        print(f"✓ tüm değnekçiler KAPALI ({', '.join(steward_ids())}); beyin oturumları panel Durdur ile kapatılır")
+        return 0
+    sid = _sid(args)
+    save_settings({"steward": {"enabled": "on" if on else "off"}} if sid == "default"
+                  else {"stewards": {sid: {"enabled": "on" if on else "off"}}})
+    tag = "" if sid == "default" else f" [{sid}]"
+    print(f"✓ değnekçi{tag} {'AÇIK' if on else 'KAPALI'} (panel çalışıyorsa bir sonraki tick'ten itibaren geçerli)")
+    if on:
+        if steward_config(sid).mode == "observe":
             print("  mod=observe: oturumlara DOKUNULMAZ, yapılacaklar `would:` olarak kaydedilir, günde bir özet gelir "
-                  "(act için: py/cops steward config mode act)")
+                  f"(act için: py/cops steward{_sflag(sid)} config mode act)")
         else:
             print("  mod=act: değnekçi oturumları açar/durdurur/direktif verir")
     return 0
 
 
+# ── kimlik yönetimi (çoklu değnekçi P6) ───────────────────────────────────────
+
+def cmd_list(args) -> int:
+    ids = steward_ids()
+    index = sw.ownership_index(ids)
+    print(f"{'ID':<14}{'AÇIK':<7}{'MOD':<9}{'PROJE':>6}  {'BEYİN':<22}LABEL")
+    for sid in ids:
+        cfg = steward_config(sid)
+        print(f"{sid:<14}{'açık' if cfg.enabled else 'kapalı':<7}{cfg.mode:<9}{len(sw.load_projects(sid)):>6}  "
+              f"{cfg.brain_name:<22}{cfg.label}")
+    if index.get("conflicts"):
+        print("uyarı: sahiplik çakışması: " + ", ".join(f"{n} ({'/'.join(v)})" for n, v in sorted(index["conflicts"].items())))
+    return 0
+
+
+def cmd_create(args) -> int:
+    sid = args.target_sid
+    if not sw.valid_custom_id(sid):
+        print(f"hata: geçersiz kimlik {sid!r}: ^[a-z]{{2,16}}$, rezerve değil ('default', 'all', ...), 'degnekci' ile başlamaz")
+        return 1
+    if sid in steward_ids():
+        print(f"hata: '{sid}' zaten tanımlı")
+        return 1
+    save_settings({"stewards": {sid: {"label": args.label or "", "enabled": "off", "mode": "observe"}}})
+    os.makedirs(sw.paths_for(sid).root, exist_ok=True)
+    sw.log_event("create", paths=sid, label=args.label or "", source="cli")
+    cfg = steward_config(sid)
+    print(f"✓ değnekçi '{sid}' oluşturuldu (KAPALI, mod={cfg.mode}, beyin={cfg.brain_name}); dizin: {sw.paths_for(sid).root}")
+    print(f"  proje devri: py/cops steward transfer PROJE {sid}   açmak için: py/cops steward -s {sid} on")
+    return 0
+
+
+def cmd_remove(args) -> int:
+    sid = args.target_sid
+    if sid == "default":
+        print("hata: 'default' silinemez")
+        return 1
+    if sid not in steward_ids():
+        print(f"hata: bilinmeyen değnekçi kimliği: {sid!r}")
+        return 1
+    with sw.ownership_lock():       # yeni proje talebi bu kilidi alır: kontrol ile taşıma arasında proje eklenemez
+        names = sorted(sw.load_projects(sid))
+        if names:
+            print(f"hata: '{sid}' kimliğinin projesi var ({', '.join(names[:8])}{'…' if len(names) > 8 else ''}): "
+                  f"önce devredin (py/cops steward transfer PROJE <başka-kimlik>)")
+            return 1
+        root = sw.paths_for(sid).root
+        dest = ""
+        if os.path.isdir(root):
+            dest = os.path.join(os.path.dirname(root), ".removed", f"{sid}-{time.strftime('%Y%m%d_%H%M%S')}")
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.move(root, dest)
+    save_settings({"stewards": {sid: None}})
+    print(f"✓ değnekçi '{sid}' silindi" + (f" (dizin: {dest})" if dest else "")
+          + f"; beyin oturumu '{sw.brain_name_for(sid)}' çalışıyorsa panel Durdur ile kapatın")
+    return 0
+
+
+def _project_running(name: str) -> bool:
+    from ..discovery import find_sessions
+    return any(s.name == name for s in find_sessions(measure_cpu=False))
+
+
+def cmd_transfer(args) -> int:
+    target = args.to or args.target
+    if not target:
+        print("hata: hedef kimlik gerekli: py/cops steward transfer PROJE SID")
+        return 1
+    if target not in steward_ids():
+        print(f"hata: bilinmeyen değnekçi kimliği: {target!r} (tanımlı: {', '.join(steward_ids())})")
+        return 1
+    if not args.force:
+        try:
+            if _project_running(args.project):
+                print(f"hata: '{args.project}' oturumu ÇALIŞIYOR; önce kapatın (panel Durdur) ya da --force")
+                return 1
+        except Exception as e:
+            print(f"uyarı: oturum denetimi yapılamadı ({e}); devam ediliyor")
+    try:
+        src = sw.transfer_project(args.project, target)
+    except (ValueError, sw.LockTimeout) as e:
+        print(f"hata: {e}")
+        return 1
+    print(f"✓ '{args.project}' {src} -> {target} devredildi (kayıt + açık/iletilmemiş sorular + bekleyen işler)")
+    return 0
+
+
 def cmd_api(args) -> int:
     port = args.port
+    sid = _sid(args)
     if args.action == "tick":
-        res = _api(port, "POST", "/api/steward/tick", {})
+        res = _api(port, "POST", "/api/steward/tick", {}, sid)
     elif args.action == "tour":
-        res = _api(port, "POST", "/api/steward/tour", {})
+        res = _api(port, "POST", "/api/steward/tour", {}, sid)
     elif args.action == "brain":
-        res = _api(port, "POST", "/api/steward/brain", {"action": args.what or "start"})
+        res = _api(port, "POST", "/api/steward/brain", {"action": args.what or "start"}, sid)
     elif args.action == "directive":
         res = _api(port, "POST", "/api/steward/directive", {"name": args.name, "text": args.text or "",
                                                             "model": args.model or "", "effort": args.effort or "",
-                                                            "reason": "cli"})
+                                                            "reason": "cli"}, sid)
     elif args.action == "restart":
         res = _api(port, "POST", "/api/steward/restart", {"name": args.name, "text": args.text or "",
                                                           "model": args.model or "", "effort": args.effort or "",
-                                                          "reason": args.reason or "cli"})
+                                                          "reason": args.reason or "cli"}, sid)
     else:
         res = {"ok": False, "error": "unknown action"}
     print(json.dumps(res, ensure_ascii=False, indent=2))
@@ -288,7 +445,24 @@ def cmd_api(args) -> int:
 
 def register(sub):
     p = sub.add_parser("steward", help="değnekçi: projeleri gezip iş veren zamanlayıcı (durum/proje/soru/fikir/tick)")
+    p.add_argument("-s", "--steward", default=None, metavar="SID",
+                   help=f"değnekçi kimliği (yoksa {ENV_STEWARD} ortam değişkeni, o da yoksa default)")
     s = p.add_subparsers(dest="action", metavar="<alt-komut>")
+
+    s.add_parser("list", help="kimlikler (açık/kapalı, kip, proje sayısı, beyin)").set_defaults(func=cmd_list)
+    pcr = s.add_parser("create", help="yeni değnekçi kimliği (varsayılan KAPALI + observe)")
+    pcr.add_argument("target_sid", metavar="SID")
+    pcr.add_argument("--label", default="")
+    pcr.set_defaults(func=cmd_create)
+    prm = s.add_parser("remove", help="kimliği sil (projesi varsa reddedilir)")
+    prm.add_argument("target_sid", metavar="SID")
+    prm.set_defaults(func=cmd_remove)
+    ptr = s.add_parser("transfer", help="projeyi başka kimliğe devret (oturum kapalıyken)")
+    ptr.add_argument("project")
+    ptr.add_argument("target", nargs="?", default="", metavar="SID")
+    ptr.add_argument("--to", default="", metavar="SID", help="hedef kimlik (konumsal SID ile aynı)")
+    ptr.add_argument("--force", action="store_true", help="oturum çalışıyor denetimini atla")
+    ptr.set_defaults(func=cmd_transfer)
 
     s.add_parser("status", help="özet").set_defaults(func=cmd_status)
     pp = s.add_parser("projects", help="proje listesi")
@@ -347,7 +521,9 @@ def register(sub):
     pc.add_argument("value")
     pc.set_defaults(func=cmd_config)
     s.add_parser("on", help="döngüyü aç (steward.enabled=on)").set_defaults(func=cmd_toggle)
-    s.add_parser("off", help="döngüyü kapat").set_defaults(func=cmd_toggle)
+    poff = s.add_parser("off", help="döngüyü kapat (--all: tüm kimlikleri)")
+    poff.add_argument("--all", action="store_true")
+    poff.set_defaults(func=cmd_toggle)
     for name, helptext in (("tick", "bir tick çalıştır (panel üzerinden)"), ("tour", "beyne şimdi bir tur gönder"),
                            ("brain", "beyin oturumu: start|stop"), ("directive", "NAME'e direktif gönder"),
                            ("restart", "NAME'i durdur + yeni direktifle aç")):
@@ -362,10 +538,22 @@ def register(sub):
             px.add_argument("--effort")
             px.add_argument("--reason")
         px.set_defaults(func=cmd_api)
+    for sp in s.choices.values():      # alt-komut `func`ı doğrudan çağrılır (`run` yalnız alt-komutsuz): kimliği HER BİRİNDE çöz
+        sp.set_defaults(func=_with_sid(sp.get_default("func")))
     p.set_defaults(func=run)
 
 
+def _with_sid(fn):
+    def wrapped(args) -> int:
+        try:
+            args.sid = resolve_sid(args)
+        except ValueError as e:
+            print(f"hata: {e}")
+            return 1
+        return fn(args)
+    return wrapped
+
+
 def run(args) -> int:
-    if getattr(args, "action", None) is None:
-        return cmd_status(args)
-    return args.func(args)
+    """Alt-komutsuz `py/cops steward` = status."""
+    return _with_sid(cmd_status)(args)

@@ -200,15 +200,18 @@ def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = N
 
 # ── telefon bildirimi (ntfy) ──────────────────────────────────────────────────
 
-def notify_phone(text: str, click: str = "", title: str = "claudeops degnekci") -> bool:
+def notify_phone(text: str, click: str = "", title: str = "claudeops degnekci", topic: str = "") -> bool:
     """`py/cops service notify` ile kurulmuş ntfy topic'i varsa oraya POST (arka planda, best-effort).
     Yoksa False — soru yine de `questions.json`'da bekler, panel/CLI'dan görülür. `click`: bildirime dokununca
-    açılacak adres (ntfy `Click` başlığı; soru sayfası `/q/<id>?k=`)."""
-    try:
-        with open(NTFY_TOPIC_FILE, encoding="utf-8") as f:
-            topic = f.read().strip()
-    except OSError:
-        return False
+    açılacak adres (ntfy `Click` başlığı; soru sayfası `/q/<id>?k=`). `topic`: kimliğe özel topic (boş = ortak
+    `ntfy_topic.txt`)."""
+    topic = (topic or "").strip()
+    if not topic:
+        try:
+            with open(NTFY_TOPIC_FILE, encoding="utf-8") as f:
+                topic = f.read().strip()
+        except OSError:
+            return False
     if not topic:
         return False
 
@@ -225,6 +228,18 @@ def notify_phone(text: str, click: str = "", title: str = "claudeops degnekci") 
 
     threading.Thread(target=_post, daemon=True, name="steward-ntfy").start()
     return True
+
+
+def _notify(cfg: sw.Config, text: str, click: str = "") -> bool:
+    """Kimliğe göre ntfy: default için `notify_phone(text[, click])` BUGÜNKÜ çağrı (başlık/topic/gövde aynı); diğer
+    kimlikte başlık `claudeops degnekci:<sid>`, `ntfy_topic` doluysa o topic, aksi halde ortak topic. Gövde önekini
+    (`[<sid>/<proje>]`) çağıran kurar (`sw.ask_prefix`)."""
+    kw: Dict[str, Any] = {"click": click} if click else {}
+    if cfg.sid != "default":
+        kw["title"] = f"claudeops degnekci:{cfg.sid}"
+        if cfg.ntfy_topic:
+            kw["topic"] = cfg.ntfy_topic
+    return notify_phone(text, **kw)
 
 
 def public_base() -> str:
@@ -834,15 +849,17 @@ NTFY_SUMMARY_CHARS = 1500
 def _write_summary(date: str, cfg: sw.Config, late: bool = False) -> str:
     """Bir günün özetini yaz + telefona gönder + logla; ardından o günün `tick` satırlarını tek toplama katla
     (`compact_log`; özet sayıları aynı kalır) ve dosya büyüdüyse devir (`rotate_log`)."""
-    text = sw.summary_text(date, cfg.lang)
-    path = sw.write_daily(date, text)
+    text = sw.summary_text(date, cfg.lang, cfg.sid)
+    path = sw.write_daily(date, text, cfg.sid)
     note = ("(gecikmiş özet) " if cfg.lang != "en" else "(late summary) ") if late else ""
-    notified = notify_phone((note + text)[:NTFY_SUMMARY_CHARS])
-    sw.log_event("summary", date=date, path=path, notified=notified, chars=len(text), late=late)
-    folded = sw.compact_log(date)
-    rotated = sw.rotate_log()
+    paths = sw.paths_for(cfg.sid)
+    body = (note + text)[:NTFY_SUMMARY_CHARS]
+    notified = _notify(cfg, body if cfg.sid == "default" else f"[{cfg.sid}] {body}"[:NTFY_SUMMARY_CHARS])
+    sw.log_event("summary", paths=paths, date=date, path=path, notified=notified, chars=len(text), late=late)
+    folded = sw.compact_log(date, paths)
+    rotated = sw.rotate_log(paths=paths)
     if folded or rotated:
-        sw.log_event("log_compact", date=date, ticks=folded, rotated=rotated)
+        sw.log_event("log_compact", paths=paths, date=date, ticks=folded, rotated=rotated)
     return path
 
 
@@ -852,16 +869,18 @@ def maybe_daily_summary(cfg: sw.Config, now: float) -> Optional[str]:
     (`missed_summary_dates`: panel `summary_hour`da kapalıysa o gün özetlenmemişti) saat beklemeden tamamlanır.
     Dönen: yazılan son dosyanın yolu; yazılacak bir şey yoksa None."""
     path: Optional[str] = None
-    for date in sw.missed_summary_dates(now):
+    paths = sw.paths_for(cfg.sid)       # özet/log/daily/state KİMLİK BAŞINA (default: bugünkü yerler)
+    for date in sw.missed_summary_dates(now, paths=paths):
         path = _write_summary(date, cfg, late=True)
-    state = sw.load_state()
+    state = sw.load_state(paths)
     date = sw.summary_due(state, now, cfg.summary_hour)
     if not date:
         return path
     path = _write_summary(date, cfg)
-    state = sw.load_state()
-    state["summary_date"] = date
-    sw.save_state(state)
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        state["summary_date"] = date
+        sw.save_state(state, paths)
     return path
 
 
@@ -937,13 +956,13 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": True, "id": q.id, "notified": False, "routine": True}
         if q.status != "open":   # yakın zamanda cevaplanmış soru yeniden soruldu: telefona yeni soru gitmez, cevap yeniden iletilir
             return {"ok": True, "id": q.id, "notified": False, "reasked": True}
-        notified = notify_phone(f"[{q.project}] {q.text}\n→ py/cops steward answer {q.id} \"...\"")
+        notified = _notify(cfg, f"{sw.ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "escalate_routine":
         q = sw.escalate_routine(action.payload.get("question_id") or "", paths)
         if q is None:
             return {"ok": False, "error": "not an open routine question"}
-        notified = notify_phone(f"[{q.project}] {q.text}\n→ py/cops steward answer {q.id} \"...\"")
+        notified = _notify(cfg, f"{sw.ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "idea":
         i = sw.add_idea(action.payload.get("text") or "", source=name, paths=paths)
@@ -1039,7 +1058,7 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
         sw.log_event("tick", paths=paths, trigger=trigger, mode=cfg.mode, n=len(applied), dry=len(dry_applied), error=error)
         if applied:
             web_ws.notify_status_changed()
-        if cfg.enabled and sid == "default":   # kimlik başına özet/compact P6'da
+        if cfg.enabled:    # günlük özet + log sıkıştırma kimlik başına (kendi logu, kendi daily/'i)
             try:
                 maybe_daily_summary(cfg, t0)
             except Exception as e:
@@ -1137,6 +1156,32 @@ def summary(running_names: Optional[set] = None, sid: str = "default") -> Dict[s
         value["ownership_conflicts"] = list(ctx.conflicts)
     cache.update(until=now + _SUMMARY_TTL, value=value)
     return value
+
+
+def stewards_summary(running_names: Optional[set] = None) -> List[Dict[str, Any]]:
+    """`/api/status` `stewards` dilimi ve `/api/steward/list`: her kimlik için hafif özet (kimlik, ad, açık/kapalı, kip,
+    proje/soru/fikir sayıları, beyin). `summary()` kimlik başına 5 sn önbellekli. Default'un ALANLARI `/api/status`
+    `steward` diliminde AYNEN durur (eski panel bozulmaz); burası yenidir."""
+    out: List[Dict[str, Any]] = []
+    for sid in steward_ids():
+        try:
+            cfg = steward_config(sid)
+            sm = summary(running_names, sid)
+        except Exception as e:        # bozuk bir kimlik listeyi düşürmesin
+            diag_log("steward_list_failed", sid=sid, error=repr(e))
+            continue
+        row = {"id": sid, "label": cfg.label, "enabled": sm["enabled"], "mode": sm["mode"],
+               "projects": sm["projects"], "project_count": sum(sm["projects"].values()),
+               "open_questions": sm["open_questions"], "ideas_new": sm["ideas_new"],
+               "pending_items": sm["pending_items"], "brain": sm["brain"]}
+        if sm.get("ownership_conflicts"):
+            row["ownership_conflicts"] = sm["ownership_conflicts"]
+        out.append(row)
+    return out
+
+
+def http_list() -> Dict[str, Any]:
+    return {"ok": True, "stewards": stewards_summary()}
 
 
 def invalidate_summary(sid: Optional[str] = None) -> None:
@@ -1477,38 +1522,62 @@ def http_ask(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                             source=str(data.get("source") or "api"), options=data.get("options"), paths=sid)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
-    link = sw.question_link(q, public_base())
+    link = sw.question_link(q, public_base(), cfg.sid)
     if q.notified_at:
         return {"ok": True, "id": q.id, "notified": False, "link": link, "dup": True}
-    notified = notify_phone(sw.question_notification(q, link, cfg.lang), click=link)
+    notified = _notify(cfg, sw.question_notification(q, link, cfg.lang, cfg.sid), click=link)
     if notified:
         sw.mark_notified(q.id, sid)
     sw.log_event("ask", paths=sid, id=q.id, project=q.project, notified=notified, options=len(q.options))
     return {"ok": True, "id": q.id, "notified": notified, "link": link}
 
 
-def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
+def _known_sids() -> List[str]:
+    """Ayardaki + diskte dizini olan kimlikler (default önce)."""
+    return list(dict.fromkeys(["default"] + list(steward_ids()) + sw.discover_steward_ids()))
+
+
+def _find_question_any(qid: str, key: str, sid: str = "") -> Tuple[str, Optional["sw.Question"]]:
+    """(kimlik, soru). `sid` verildiyse YALNIZ o kimliğin deposu; yoksa (eski bağlantılar) tüm kimlikler, default önce.
+    Aynı id birden fazla depoda varsa (çok nadir) anahtarı eşleşen kazanır."""
+    cands = [sid] if sid else _known_sids()
+    hits = [(s, q) for s in cands if (q := sw.find_question(qid, s)) is not None]
+    for s, q in hits:
+        if key and q.key and secrets.compare_digest(key.encode("utf-8", "replace"), q.key.encode("utf-8")):
+            return s, q
+    return hits[0] if hits else ("", None)
+
+
+def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[str, Any]] = None,
+                       sid: str = "") -> Tuple[int, str]:
     """`/q/<id>` (GET: sayfa, POST: `form["answer"]`). Yetki: panel token'ı YA DA sorunun kendi anahtarı (`k`,
-    sabit zamanlı karşılaştırma; anahtarsız eski kayıt yalnız token'la). Dönen: (HTTP durumu, HTML)."""
-    cfg = steward_config()
+    sabit zamanlı karşılaştırma; anahtarsız eski kayıt yalnız token'la). `sid` (`?s=`): soru o kimliğin deposunda
+    aranır; yoksa tüm kimliklerde. Dönen: (HTTP durumu, HTML)."""
+    sid = (sid or "").strip()
+    if sid and (not sw.valid_steward_id(sid) or sid not in _known_sids()):
+        return 404, sw.question_page_html(None, steward_config().lang, "missing")
+    found_sid, q = _find_question_any(qid, key, sid) if qid else ("", None)
+    cfg = steward_config(found_sid or "default")
     lang = cfg.lang
-    q = sw.find_question(qid) if qid else None
     if q is None:
         return 404, sw.question_page_html(None, lang, "missing")
     key_ok = bool(key and q.key) and secrets.compare_digest(key.encode("utf-8", "replace"), q.key.encode("utf-8"))
     if not token_ok and not key_ok:
         return 401, sw.question_page_html(None, lang, "denied")
+    suffix = "" if found_sid == "default" else f"s={found_sid}"
     action = f"/q/{q.id}?k={q.key}" if q.key else f"/q/{q.id}"   # token'la gelen tarayıcı formu da anahtarla POST eder
+    if suffix:
+        action += ("&" if "?" in action else "?") + suffix
     if q.status != "open":
         return 200, sw.question_page_html(q, lang, "already", action=action)
     if form is None:
         return 200, sw.question_page_html(q, lang, "ask", action=action)
     try:
-        answered = sw.answer_question(q.id, str(form.get("answer") or ""))
+        answered = sw.answer_question(q.id, str(form.get("answer") or ""), found_sid)
     except ValueError:
         return 400, sw.question_page_html(q, lang, "ask", error=sw._QPAGE_TXT["en" if lang == "en" else "tr"]["empty"],
                                           action=action)
-    sw.log_event("answer", id=q.id, project=q.project, source="phone")
+    sw.log_event("answer", paths=found_sid, id=q.id, project=q.project, source="phone")
     invalidate_summary()
     web_ws.notify_status_changed()
     return 200, sw.question_page_html(answered, lang, "done", action=action)
@@ -1709,7 +1778,7 @@ def _unknown_steward() -> Dict[str, Any]:
     return {"ok": False, "error": "unknown steward"}
 
 
-_GET_PATHS = frozenset(("state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file"))
+_GET_PATHS = frozenset(("state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list"))
 
 
 def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
@@ -1718,6 +1787,8 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
     g = lambda k, d="": (qs.get(k) or [d])[0]
     if not path.startswith("/api/steward/") or path[len("/api/steward/"):] not in _GET_PATHS:
         return None
+    if path == "/api/steward/list":
+        return http_list()
     try:
         sid = _ctx_for(qs).sid
     except UnknownSteward:
