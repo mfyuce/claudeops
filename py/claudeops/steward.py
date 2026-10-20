@@ -1209,6 +1209,8 @@ MODEL_RULE_TR = (
     "- Aynı anda en fazla 1 Fable ajanı; ajana yalnız gereken dosyaları okut (alt ajan bağlamı cache yazmayı şişirir). "
     "Direktifte \"Fable high ile yaz\" deme.\n"
     "- Sebep: Fable haftalık kotası hızla doluyor; token başına en pahalı model. Proje notunda eski bir model satırı bununla çelişirse BU KURAL geçerli.\n"
+    "- İSTİSNA: sahibin bu kuraldan SONRA verdiği AÇIK bir model cevabı (ör. \"yazım Fable\") o iş için kuralı esnetir; onu uygula, kuralla "
+    "\"netleştirme\" yapma. Kuraldan ÖNCE (2026-10-20 öncesi) verilmiş eski bir cevap kuralla çakışıyorsa sahibe `steward_ask_user` ile seçenekli yeniden sor, kendin ezme.\n"
 )
 MODEL_RULE_EN = (
     "\n## Model rule (owner's PERMANENT decision, 2026-10-20; not negotiable)\n"
@@ -1219,6 +1221,9 @@ MODEL_RULE_EN = (
     "polish/audit of finished work (one pass, read once).\n"
     "- At most 1 Fable agent at a time; make the agent read only the files it needs. Never write \"write it with Fable high\" in a directive.\n"
     "- Why: the Fable weekly quota fills fast and it is the priciest model per token. If an old model line in a project note conflicts, THIS rule wins.\n"
+    "- EXCEPTION: an EXPLICIT model answer the owner gives AFTER this rule (e.g. \"write it with Fable\") relaxes the rule for that job; apply it, "
+    "do not \"clarify\" it away with the rule. If an older answer (given before 2026-10-20) conflicts with the rule, re-ask the owner with "
+    "`steward_ask_user` and options; do not override it yourself.\n"
 )
 
 

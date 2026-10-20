@@ -763,6 +763,8 @@ class OneLiveSessionPerProjectTest(_Tmp):
             self.assertIn(needle, text)
             self.assertIn("Fable", text)
         self.assertEqual(sw.Config().planning_effort, "medium")
+        self.assertIn("İSTİSNA", sw.build_workspace_claude_md("p", lang="tr"))
+        self.assertIn("EXCEPTION", sw.build_workspace_claude_md("p", lang="en"))
 
     def test_fable_sessions_use_the_lower_context_threshold(self):
         projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}
