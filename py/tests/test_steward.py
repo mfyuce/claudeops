@@ -684,6 +684,44 @@ class RoutineQuestionTest(_Tmp):
         self.assertEqual([x.id for x in sw.undelivered_answers()], [q.id])
 
 
+class StuckBrainTest(_Tmp):
+    def test_status_sentence_is_not_a_routine_question_and_tour_is_capped(self):
+        cfg = _cfg(max_active=4)
+        projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}
+        v = _view("a", last_assistant="STEWARD-ROUTINE: Paket 4a bitene kadar bekliyorum, yeni soru yok.")
+        acts, _ = sw.plan_tick([v], projects, {}, cfg, 5000.0, [], [])
+        self.assertEqual([a for a in acts if a.reason == "STEWARD-ROUTINE"], [])
+        ideas = [sw.Idea(id=f"i{n}", text="t", created_at=0) for n in range(sw.TOUR_MAX_ITEMS + 5)]
+        brain = _view("degnekci", busy=False)
+        acts, st = sw.plan_tick([brain], projects, {}, _cfg(tour_minutes=1), 99999.0, [], ideas)
+        tour = [a for a in acts if a.kind == "tour"]
+        self.assertEqual(len(tour), 1)
+        self.assertEqual(len(tour[0].payload["items"]), sw.TOUR_MAX_ITEMS)
+
+    def test_two_failed_tours_restart_the_brain(self):
+        cfg = steward_cfg()
+        restarted = []
+        with mock.patch.object(web_steward, "run_tour", lambda items=None, force=False: {"ok": False, "error": "send failed"}), \
+                mock.patch.object(web_steward, "brain_restart_for_stuck_input", lambda c: restarted.append(1) or {"ok": True}):
+            r1 = web_steward._apply(sw.Action("tour", "degnekci", "t", {"items": []}), cfg, {})
+            self.assertFalse(r1["ok"])
+            self.assertEqual((restarted, sw.load_state().get("tour_fail")), ([], 1))
+            web_steward._apply(sw.Action("tour", "degnekci", "t", {"items": []}), cfg, {})
+            self.assertEqual((restarted, sw.load_state().get("tour_fail")), ([1], 0))
+        with mock.patch.object(web_steward, "run_tour", lambda items=None, force=False: {"ok": True}):
+            sw.save_state({"tour_fail": 1})
+            web_steward._apply(sw.Action("tour", "degnekci", "t", {"items": []}), cfg, {})
+            self.assertEqual(sw.load_state().get("tour_fail"), 0)
+
+    def test_undeliverable_adhoc_answer_is_given_up(self):
+        q = sw.add_question("zk_x", "?", source="zk_x")
+        sw.answer_question(q.id, "A")
+        with mock.patch.object(web_steward, "_give_directive", lambda *a, **k: {"ok": False, "error": "send failed"}):
+            res = web_steward._apply(sw.Action("deliver_answer", "zk_x", "answer", {"question_id": q.id}), steward_cfg(), {})
+        self.assertFalse(res["ok"])
+        self.assertEqual(sw.undelivered_answers(), [])
+
+
 class DeliveryTargetTest(_Tmp):
     def test_prefers_asking_session_then_main_over_experiment_sessions(self):
         V = lambda n: sw.SessionView(name=n, running=True, blueprint="wifi5gppr")

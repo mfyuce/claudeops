@@ -592,6 +592,18 @@ def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project]) -> Dict[st
     return out
 
 
+TOUR_FAILS_BEFORE_RESTART = 2    # art arda bu kadar tur gönderimi başarısızsa beyin oturumu yeniden açılır
+
+
+def brain_restart_for_stuck_input(cfg: sw.Config) -> Dict[str, Any]:
+    """Beyin oturumunu durdurup yeniden aç (konuşma `--resume` ile sürer; giriş kutusu temizlenir)."""
+    stop = _act("stop", cfg.brain_name, lang=cfg.lang)
+    if not stop.get("ok"):
+        return stop
+    time.sleep(3)
+    return brain_start(cfg)
+
+
 def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False) -> Dict[str, Any]:
     """Beyne bir tur prompt'u gönder. `items` None ise şu anki gözden-geçirme maddeleri `review_items`'tan
     alınır (`force`: tour_minutes/beyin-boşta şartına bakılmaz, madde yoksa yine de "tur" gönderilir —
@@ -712,7 +724,13 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
             return {"ok": False, "error": "question gone"}
         p = projects.get(q.project) or sw.Project(name=q.project)
         extra = "Cevaba göre devam et." if cfg.lang != "en" else "Continue according to the answer."
-        return _give_directive(p, extra, answer=q, start_if_stopped=False, reason="answer", session_name=name)
+        res = _give_directive(p, extra, answer=q, start_if_stopped=False, reason="answer", session_name=name)
+        if not res.get("ok") and q.project not in projects:
+            # Kayıtlı proje olmayan (ad hoc) oturum kapanmış ya da yazı kabul etmiyor: her tick yeniden deneme,
+            # bırak (cevap kayıtta durur, kimse beklemiyor).
+            sw.mark_delivered(q.id)
+            sw.log_event("answer_undeliverable", id=q.id, session=name, error=res.get("error", ""))
+        return res
     if k == "ask_user":
         q = sw.add_question(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
                             routine=bool(action.payload.get("routine")))
@@ -735,7 +753,25 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
         sw.upsert_project(name, phase=action.payload.get("phase"))
         return {"ok": True}
     if k == "tour":
-        return run_tour(action.payload.get("items") or [])
+        res = run_tour(action.payload.get("items") or [])
+        state = sw.load_state()
+        if res.get("ok"):
+            if state.get("tour_fail"):
+                state["tour_fail"] = 0
+                sw.save_state(state)
+            return res
+        fails = int(state.get("tour_fail") or 0) + 1
+        state["tour_fail"] = fails
+        sw.save_state(state)
+        if fails >= TOUR_FAILS_BEFORE_RESTART:
+            # Beynin giriş kutusu takılı (gönderilmemiş yapıştırma birikir): oturumu yeniden aç, sayacı sıfırla.
+            sw.log_event("brain_unstick", fails=fails, error=res.get("error", ""))
+            rb = brain_restart_for_stuck_input(cfg)
+            state = sw.load_state()
+            state["tour_fail"] = 0
+            sw.save_state(state)
+            res = dict(res, restarted=bool(rb.get("ok")))
+        return res
     return {"ok": False, "error": f"unknown action {k}"}
 
 

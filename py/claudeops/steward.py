@@ -379,6 +379,7 @@ def resolve_answer(q: Question, raw: str) -> str:
 
 REASK_WINDOW_SECONDS = 12 * 3600   # bu süre içinde cevaplanmış benzer soru "tekrar" sayılır
 REASK_MIN_SIMILARITY = 0.6         # kelime kümesi Jaccard benzerliği eşiği
+TOUR_MAX_ITEMS = 8                  # bir turda en çok bu kadar madde (büyük prompt beynin giriş kutusunda takılıyordu); kalanı sonraki tura
 ROUTINE_ESCALATE_SECONDS = 30 * 60   # beyin bu sürede rutin soruyu cevaplamazsa soru sahibine (telefon) düşer
 REASK_MAX_REPEATS = 2              # aynı cevap en çok bu kadar yeniden iletilir, sonra soru gerçekten açılır
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
@@ -1006,7 +1007,8 @@ _PROTOCOL_TR = (
     "Değnekçi protokolü (yanıtının SONUNDA, her biri ayrı satır, gerektiğinde):\n"
     f"- bana sormadan ilerleyemeyeceğin bir karar varsa: `{MARK_ASK} <tek cümlelik soru>`\n"
     f"- işleyiş sorusu (ne zaman açılsın, hangi sırayla, hangi modelle, devir notuyla mı): `{MARK_ROUTINE} <soru>`; "
-    "bunu değnekçi beyni cevaplar, sana değil bana sorma\n"
+    "bunu değnekçi beyni cevaplar, sana değil bana sorma. YALNIZ gerçek bir soru için ve soru işaretiyle bitir; "
+    "'bekliyorum', 'bitti', 'yeni soru yok' gibi durum cümlesi için KULLANMA\n"
     f"- aklına bu projeyle ilgisiz yeni bir fikir gelirse: `{MARK_IDEA} <fikir>`\n"
     f"- takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>`\n"
     "Kurallar: cevaplarım kısadır ('ikisi de', 'sıradan git', 'sen devam') ve KALICI kuraldır; aynı konuyu "
@@ -1352,6 +1354,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         for q in m["asks"]:
             actions.append(Action("ask_user", v.name, "STEWARD-ASK", {"project": proj or v.name, "text": q}))
         for q in m["routines"]:
+            if "?" not in q:
+                continue   # "bekliyorum, yeni soru yok" gibi durum cümlesi soru değil: kayda da girmez, sahibine de gitmez
             actions.append(Action("ask_user", v.name, "STEWARD-ROUTINE",
                                   {"project": proj or v.name, "text": q, "routine": True}))
         for b in m["blocked"]:
@@ -1442,6 +1446,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     last_tour = float(st.get("last_tour") or 0.0)
     brain = by_name.get(cfg.brain_name)
     if items and (now - last_tour) >= cfg.tour_minutes * 60 and brain is not None and brain.running and brain.busy is False:
+        items = items[:TOUR_MAX_ITEMS]
         actions.append(Action("tour", cfg.brain_name, f"{len(items)} madde", {"items": items}))
         st["last_tour"] = now
         for it in items:

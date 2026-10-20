@@ -167,6 +167,9 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
     tmux-only test session'ında güvenilir şekilde doğrulandı). Çağıran taraf
     `CliProvider.input_settle_delay()` ile provider-bazlı değeri geçer — burada
     `if cli==...` YOK, sadece parametrenin kendisi."""
+    # Uzun metin (beyin turu ~10-25 KB) TUI'de yapıştırma işlenirken tmux'u 5 sn'den uzun tutabilir: zaman aşımı metni
+    # yazılmış ama Enter'sız bırakıyordu (kutuda "[Pasted text]" birikiyor, sonraki turlar hep başarısız). Süre metinle büyür.
+    timeout = max(_TIMEOUT, 5.0 + len(text) / 1500.0)
     try:
         # `--` ZORUNLU (`tmux_send_raw`'daki AYNI tuzak, burada 2026-09-14'e
         # kadar eksikti — bilinen açık bug, bkz. TODO.md): `--` olmadan tire
@@ -174,7 +177,7 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
         # unified diff "--- a/file") tmux'un KENDİ `send-keys` bayrağı sanılıp
         # `unknown option` ile reddediliyordu, girdi pane'e HİÇ ulaşmıyordu.
         r1 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "-l", "--", text],
-                             capture_output=True, timeout=_TIMEOUT)
+                             capture_output=True, timeout=timeout)
         if r1.returncode != 0:
             return False
         if settle_delay > 0:
