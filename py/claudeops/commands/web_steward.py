@@ -106,6 +106,24 @@ def _brain_dry(kind: str, data: Dict[str, Any], name: str) -> Optional[Dict[str,
     return {"ok": True, "dry": True, "note": f"observe mode: recorded as would:{kind}, not applied"}
 
 
+def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = None,
+            kind: str = "") -> Optional[Dict[str, Any]]:
+    """Oturuma dokunan yolların TEK kapısı (docs/multi-steward-plan.md K5). `None` = izinli, aksi halde red yanıtı.
+    Beyin (`actor: brain`, MCP) ve motor (`actor: engine`, `_apply`) YALNIZ beyin oturumunu ve kayıtlı proje oturumlarını
+    hedefleyebilir; kayıtsız (ad hoc) oturum kullanıcınındır. İnsanın CLI/panel çağrısı (`actor` yok) kısıtsız."""
+    if actor not in ("brain", "engine"):
+        return None
+    if name == steward_config().brain_name:
+        return None
+    if sw.valid_name(name):
+        if projects is None:
+            projects = sw.load_projects()
+        if _project_for_session(name, projects) is not None:
+            return None
+    sw.log_event("target_denied", actor=actor, kind=kind, name=name)
+    return {"ok": False, "error": "target denied: not the brain session or a registered steward project"}
+
+
 # ── telefon bildirimi (ntfy) ──────────────────────────────────────────────────
 
 def notify_phone(text: str, click: str = "", title: str = "claudeops degnekci") -> bool:
@@ -723,6 +741,10 @@ def http_summary(date: str = "", lang: str = "") -> Dict[str, Any]:
 def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -> Dict[str, Any]:
     k = action.kind
     name = action.name
+    if k in ("handover", "respawn", "stop"):   # deliver_answer kayıtsız oturuma da gider (cevap kaynağına); start zaten projects'e bağlı
+        denied = _target(name, "engine", projects, k)
+        if denied is not None:
+            return denied
     if k == "handover":
         return _act("handover", name, lang=cfg.lang)
     if k == "respawn":
@@ -1267,6 +1289,9 @@ def http_directive(data: Dict[str, Any]) -> Dict[str, Any]:
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
+    denied = _target(name, str(data.get("actor") or ""), kind="directive")
+    if denied is not None:
+        return denied
     dry = _brain_dry("directive", data, name)
     if dry is not None:
         return dry
@@ -1287,6 +1312,9 @@ def http_restart(data: Dict[str, Any]) -> Dict[str, Any]:
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
     cfg = steward_config()
+    denied = _target(name, str(data.get("actor") or ""), kind="restart")
+    if denied is not None:
+        return denied
     dry = _brain_dry("restart", data, name)
     if dry is not None:
         return dry
@@ -1302,6 +1330,9 @@ def http_restart(data: Dict[str, Any]) -> Dict[str, Any]:
 def http_stop(data: Dict[str, Any]) -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     cfg = steward_config()
+    denied = _target(name, str(data.get("actor") or ""), kind="stop")
+    if denied is not None:
+        return denied
     dry = _brain_dry("stop", data, name)
     if dry is not None:
         return dry
@@ -1314,6 +1345,9 @@ def http_stop(data: Dict[str, Any]) -> Dict[str, Any]:
 def http_handover(data: Dict[str, Any]) -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     cfg = steward_config()
+    denied = _target(name, str(data.get("actor") or ""), kind="handover")
+    if denied is not None:
+        return denied
     dry = _brain_dry("handover", data, name)
     if dry is not None:
         return dry

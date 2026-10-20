@@ -1440,6 +1440,56 @@ class HttpTest(_Tmp):
                 mcp_steward._handover(1, {"name": "a"})
             self.assertTrue(all(b.get("actor") == "brain" for b in sent) and len(sent) == 4)
 
+    def test_brain_cannot_touch_unregistered_session(self):
+        """P0 kapısı (`_target`): beyin kaynaklı stop/handover/restart/directive kullanıcının kayıtsız (ad hoc) oturumuna
+        REDDEDİLİR (observe de act de); aynı çağrı insan kaynaklıysa (`actor` yok) eskisi gibi uygulanır."""
+        dirs = []
+        with mock.patch.object(web_steward, "_give_directive", lambda p, text, **kw: dirs.append((p.name, text)) or {"ok": True}), \
+                mock.patch.object(web_steward, "_running", lambda name: object()), \
+                mock.patch.object(web_steward.inst_mod, "get_instance", lambda name: None):
+            sw.upsert_project("a", phase="planned")
+            for mode in ("act", "observe"):
+                settings.save_settings({"steward": {"mode": mode}})
+                for path, extra in (("stop", {}), ("handover", {}), ("restart", {"text": "x"}), ("directive", {"text": "x"})):
+                    r = web_steward.http_post("/api/steward/" + path, dict(extra, name="adhocsess", actor="brain", reason="r"))
+                    self.assertEqual((mode, path, r["ok"], "dry" in r), (mode, path, False, False))
+            self.assertEqual((self.calls, dirs), ([], []))                         # hiçbir geri çağrı çalışmadı
+            self.assertFalse(any(e["event"].startswith("would:") for e in sw.tail_log(50)))
+            self.assertEqual(sum(1 for e in sw.tail_log(50) if e["event"] == "target_denied"), 8)
+            # geçersiz ad da beyin için red (stop/handover adı bugüne dek doğrulamıyordu)
+            self.assertFalse(web_steward.http_post("/api/steward/stop", {"name": "", "actor": "brain"})["ok"])
+            self.assertFalse(web_steward.http_post("/api/steward/stop", {"name": "x; rm", "actor": "brain"})["ok"])
+            self.assertEqual(self.calls, [])
+            # insan kaynaklı çağrı kayıtsız oturuma eskisi gibi gider
+            self.assertTrue(web_steward.http_post("/api/steward/stop", {"name": "adhocsess"})["ok"])
+            self.assertTrue(web_steward.http_post("/api/steward/handover", {"name": "adhocsess"})["ok"])
+            self.assertTrue(web_steward.http_post("/api/steward/directive", {"name": "adhocsess", "text": "x"})["ok"])
+            self.assertEqual(self.calls, [("stop", "adhocsess"), ("handover", "adhocsess")])
+            self.assertEqual(dirs, [("adhocsess", "x")])
+
+    def test_brain_may_touch_brain_and_registered_projects(self):
+        settings.save_settings({"steward": {"mode": "act"}})
+        sw.upsert_project("a", phase="planned")
+        brain = steward_cfg().brain_name
+        with mock.patch.object(web_steward, "_running", lambda name: None):
+            self.assertTrue(web_steward.http_post("/api/steward/stop", {"name": "a", "actor": "brain"})["ok"])
+            self.assertTrue(web_steward.http_post("/api/steward/stop", {"name": brain, "actor": "brain"})["ok"])
+            self.assertTrue(web_steward.http_post("/api/steward/handover", {"name": "a", "actor": "brain"})["ok"])
+        self.assertEqual(self.calls, [("stop", "a"), ("stop", brain), ("handover", "a")])
+
+    def test_apply_gate_denies_engine_actions_on_unregistered_sessions(self):
+        """`_apply` motor eylemleri de aynı kapıdan geçer; deliver_answer (kayıtsız oturumun kaynağına cevap) etkilenmez."""
+        cfg = steward_cfg()
+        projects = {"a": sw.Project(name="a")}
+        with mock.patch.object(web_steward.inst_mod, "get_instance", lambda name: None):
+            for kind in ("stop", "handover", "respawn"):
+                r = web_steward._apply(sw.Action(kind, "adhocsess", "t"), cfg, projects)
+                self.assertFalse(r["ok"], kind)
+            self.assertEqual(self.calls, [])
+            self.assertTrue(web_steward._apply(sw.Action("stop", "a", "t"), cfg, projects)["ok"])
+            self.assertTrue(web_steward._apply(sw.Action("handover", cfg.brain_name, "t"), cfg, projects)["ok"])
+            self.assertEqual(self.calls, [("stop", "a"), ("handover", cfg.brain_name)])
+
     def test_daily_summary_runs_once_after_hour_and_notifies(self):
         settings.save_settings({"steward": {"enabled": "on", "summary_hour": "21", "card_refresh": "off"}})
         cfg = settings.steward_config()
