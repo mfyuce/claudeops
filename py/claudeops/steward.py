@@ -1343,8 +1343,17 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     active = len(running_projects)
     for q in undelivered_answers(questions):
         target = q.project
-        if not target or target == cfg.brain_name or target not in projects:
+        if not target or target == cfg.brain_name:
             # Genel/beyin sorusu: beyin turunda gösterilir (aşağıda), oturuma iletilmez
+            continue
+        if target not in projects:
+            # Kayıtlı proje olmayan (ad hoc) oturumun sorusu: cevap, soruyu açan oturum hâlâ çalışıyorsa ona gider
+            # (eskiden sessizce iletilmiyordu: sahibi cevap yazıyor, oturum hiç görmüyordu); çalışmıyorsa beklemez, atlanır.
+            v = next((x for x in views if x.running and x.name == q.source and x.name != cfg.brain_name), None)
+            if v is not None and v.name not in busy_names and not v.busy:
+                actions.append(Action("deliver_answer", v.name, "answer", {"question_id": q.id}))
+                busy_names.add(v.name)
+                last_directive_at[v.name] = now
             continue
         v = pick_delivery_view(views, target, q.source)
         if v is not None:

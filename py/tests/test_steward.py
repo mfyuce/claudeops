@@ -226,6 +226,18 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([_view("a", running=False)], self.projects, {}, cfg, self.now, [q], [])
         self.assertEqual([(a.kind, a.payload.get("question_id")) for a in acts if a.name == "a"], [("start", "q")])
 
+    def test_adhoc_session_answer_goes_to_asking_session_only_if_running(self):
+        cfg = _cfg(max_active=4)
+        q = sw.Question(id="q", project="zk_x20261020", text="?", created_at=0, status="answered", answer="A",
+                        answered_at=1, source="zk_x20261020")
+        sess = _view("zk_x20261020", busy=False)
+        acts, _ = sw.plan_tick([sess], self.projects, {}, cfg, self.now, [q], [])
+        self.assertEqual([(a.kind, a.name) for a in acts if a.kind == "deliver_answer"], [("deliver_answer", "zk_x20261020")])
+        acts, _ = sw.plan_tick([_view("zk_x20261020", busy=True)], self.projects, {}, cfg, self.now, [q], [])
+        self.assertEqual([a.kind for a in acts if a.kind == "deliver_answer"], [])      # meşgul: sonraki tick
+        acts, _ = sw.plan_tick([_view("zk_x20261020", running=False)], self.projects, {}, cfg, self.now, [q], [])
+        self.assertEqual([a.kind for a in acts if a.name == "zk_x20261020"], [])   # kapalıysa açılmaz
+
     def test_instance_sessions_map_to_blueprint_project(self):
         cfg = _cfg(max_active=1)
         inst = _view("a20261019", blueprint="a", busy=True)
