@@ -714,9 +714,18 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
         extra = "Cevaba göre devam et." if cfg.lang != "en" else "Continue according to the answer."
         return _give_directive(p, extra, answer=q, start_if_stopped=False, reason="answer", session_name=name)
     if k == "ask_user":
-        q = sw.add_question(action.payload.get("project") or name, action.payload.get("text") or "", source=name)
+        q = sw.add_question(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
+                            routine=bool(action.payload.get("routine")))
+        if q.status == "open" and q.routine:   # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır
+            return {"ok": True, "id": q.id, "notified": False, "routine": True}
         if q.status != "open":   # yakın zamanda cevaplanmış soru yeniden soruldu: telefona yeni soru gitmez, cevap yeniden iletilir
             return {"ok": True, "id": q.id, "notified": False, "reasked": True}
+        notified = notify_phone(f"[{q.project}] {q.text}\n→ py/cops steward answer {q.id} \"...\"")
+        return {"ok": True, "id": q.id, "notified": notified}
+    if k == "escalate_routine":
+        q = sw.escalate_routine(action.payload.get("question_id") or "")
+        if q is None:
+            return {"ok": False, "error": "not an open routine question"}
         notified = notify_phone(f"[{q.project}] {q.text}\n→ py/cops steward answer {q.id} \"...\"")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "idea":

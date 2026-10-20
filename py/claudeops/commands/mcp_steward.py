@@ -110,6 +110,12 @@ def _ask(port: int, args: dict) -> dict:
                            "source": os.environ.get("COPS_NAME") or "brain"})
 
 
+def _answer(port: int, args: dict) -> dict:
+    if not args.get("id") or not args.get("answer"):
+        return {"ok": False, "error": "id and answer are required"}
+    return mcp_queue._api(port, "POST", "/api/steward/answer", {"id": args["id"], "answer": args["answer"]})
+
+
 def _note(port: int, args: dict) -> dict:
     if not args.get("project") or not args.get("text"):
         return {"ok": False, "error": "project and text are required"}
@@ -188,6 +194,9 @@ TOOLS: List[Dict[str, Any]] = [
      "inputSchema": _obj({"project": _S, "question": _S,
                           "options": {"type": "array", "items": _S, "description": "Up to 6 short choices; omit for a free-text question."}},
                          ["question"])},
+    {"name": "steward_answer",
+     "description": "Answer a ROUTINE QUESTION (a project session's process question: when to reopen, which order, which model, with the handover note?) yourself; the engine delivers the answer to the session. Never use it for owner decisions (copyright, spending, commit/push): those stay with the owner.",
+     "inputSchema": _obj({"id": _S, "answer": _S}, ["id", "answer"])},
     {"name": "steward_note",
      "description": "Your own note on a project (replaces the previous one; included in the next directive).",
      "inputSchema": _obj({"project": _S, "text": _S}, ["project", "text"])},
@@ -219,6 +228,7 @@ DISPATCH: Dict[str, Callable[[int, dict], dict]] = {
     "steward_set_project": _set_project,
     "steward_register_project": _register,
     "steward_ask_user": _ask,
+    "steward_answer": _answer,
     "steward_note": _note,
     "steward_idea": _idea,
     "steward_idea_update": _idea_update,

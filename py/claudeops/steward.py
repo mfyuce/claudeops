@@ -72,6 +72,7 @@ OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu s
 MARK_END = "COPS-STEWARD-END"          # beynin tur yanıtının sonu
 MARK_ASK = "STEWARD-ASK:"              # insana soru (satırın kalanı soru metni)
 MARK_IDEA = "STEWARD-IDEA:"            # yeni fikir
+MARK_ROUTINE = "STEWARD-ROUTINE:"      # işleyiş sorusu (ne zaman/hangi sıra/hangi model): beyin cevaplar, sahibi rahatsız edilmez
 MARK_BLOCKED = "STEWARD-BLOCKED:"      # takıldım (insana soru olarak düşer, önekli)
 MARK_PLAN_READY = "STEWARD-PLAN-READY"  # planlama bitti → faz planned
 MARK_DONE = "STEWARD-DONE"             # proje bitti → faz done, oturum durur
@@ -130,6 +131,7 @@ class Question:
     options: List[str] = field(default_factory=list)   # kısa seçenekler (boş = serbest metin); cevap bunlardan biri ya da metin
     key: str = ""                   # `/q/<id>?k=<key>` sayfasının soruya ÖZEL anahtarı (panel token'ı ntfy'ye girmesin)
     notified_at: float = 0.0        # telefona bildirildi (aynı açık soru ikinci kez bildirilmez)
+    routine: bool = False           # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır; ROUTINE_ESCALATE_SECONDS dolarsa sahibine düşer
     repeats: int = 0                # oturum aynı soruyu yeniden sordu: cevap "zaten cevapladım" notuyla yeniden iletildi
 
 
@@ -377,6 +379,7 @@ def resolve_answer(q: Question, raw: str) -> str:
 
 REASK_WINDOW_SECONDS = 12 * 3600   # bu süre içinde cevaplanmış benzer soru "tekrar" sayılır
 REASK_MIN_SIMILARITY = 0.6         # kelime kümesi Jaccard benzerliği eşiği
+ROUTINE_ESCALATE_SECONDS = 30 * 60   # beyin bu sürede rutin soruyu cevaplamazsa soru sahibine (telefon) düşer
 REASK_MAX_REPEATS = 2              # aynı cevap en çok bu kadar yeniden iletilir, sonra soru gerçekten açılır
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
 
@@ -419,7 +422,7 @@ def recent_answers(project: str, exclude_id: str = "", limit: int = 5,
     return qs[-limit:]
 
 
-def add_question(project: str, text: str, source: str = "", options: Any = None) -> Question:
+def add_question(project: str, text: str, source: str = "", options: Any = None, routine: bool = False) -> Question:
     text = str(text).strip()[:_MAX_QUESTION_CHARS]
     if not text:
         raise ValueError("empty question")
@@ -438,7 +441,7 @@ def add_question(project: str, text: str, source: str = "", options: Any = None)
         if q.status == "open" and q.project == project and q.text == text:
             return q
     q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
-                 options=normalize_options(options), key=secrets.token_hex(8))
+                 options=normalize_options(options), key=secrets.token_hex(8), routine=bool(routine))
     questions.append(q)
     save_questions(questions)
     return q
@@ -550,6 +553,19 @@ def question_page_html(q: Optional[Question], lang: str = "tr", state: str = "as
             "<meta name='viewport' content='width=device-width,initial-scale=1'><meta name='robots' content='noindex'>"
             f"<title>{T['title']}</title><style>{_QPAGE_CSS}</style></head><body><div class='card'>"
             + "".join(body) + "</div></body></html>")
+
+
+def escalate_routine(question_id: str) -> Optional[Question]:
+    """Cevapsız kalan rutin soruyu sahibine açık soruya çevir (`routine` kalkar; bildirim çağıranda)."""
+    questions = load_questions()
+    hit = None
+    for q in questions:
+        if q.id == question_id and q.status == "open" and q.routine:
+            q.routine = False
+            hit = q
+    if hit is not None:
+        save_questions(questions)
+    return hit
 
 
 def mark_delivered(question_id: str) -> None:
@@ -962,14 +978,14 @@ def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool}. Satır başındaki madde/boşluk toleranslı;
     işaret satırın İÇİNDE de olabilir (model bazen önüne açıklama koyar) — kalanı alınır."""
-    out: Dict[str, Any] = {"asks": [], "ideas": [], "blocked": [], "plan_ready": False, "done": False}
+    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "plan_ready": False, "done": False}
     if not text:
         return out
     for raw in text.splitlines():
         line = raw.strip().lstrip("-*• ").strip()
         if not line:
             continue
-        for mark, key in ((MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked")):
+        for mark, key in ((MARK_ROUTINE, "routines"), (MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked")):
             idx = line.find(mark)
             if idx != -1:
                 body = line[idx + len(mark):].strip().strip("`")
@@ -989,6 +1005,8 @@ def scan_markers(text: str) -> Dict[str, Any]:
 _PROTOCOL_TR = (
     "Değnekçi protokolü (yanıtının SONUNDA, her biri ayrı satır, gerektiğinde):\n"
     f"- bana sormadan ilerleyemeyeceğin bir karar varsa: `{MARK_ASK} <tek cümlelik soru>`\n"
+    f"- işleyiş sorusu (ne zaman açılsın, hangi sırayla, hangi modelle, devir notuyla mı): `{MARK_ROUTINE} <soru>`; "
+    "bunu değnekçi beyni cevaplar, sana değil bana sorma\n"
     f"- aklına bu projeyle ilgisiz yeni bir fikir gelirse: `{MARK_IDEA} <fikir>`\n"
     f"- takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>`\n"
     "Kurallar: cevaplarım kısadır ('ikisi de', 'sıradan git', 'sen devam') ve KALICI kuraldır; aynı konuyu "
@@ -999,6 +1017,8 @@ _PROTOCOL_TR = (
 _PROTOCOL_EN = (
     "Steward protocol (at the END of your reply, one per line, only when needed):\n"
     f"- a decision you cannot make without me: `{MARK_ASK} <one-sentence question>`\n"
+    f"- a process question (when to reopen, which order, which model, with the handover note?): `{MARK_ROUTINE} <question>`; "
+    "the steward brain answers it, not me\n"
     f"- a new idea unrelated to this project: `{MARK_IDEA} <idea>`\n"
     f"- stuck after thinking it through: `{MARK_BLOCKED} <where>`\n"
     "Rules: my answers are short ('both', 'go in order', 'you continue') and are STANDING rules; do not re-ask "
@@ -1114,6 +1134,7 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
             "(steward_project_context ile daha fazla bağlam alabilirsin): "
             "steward_directive (sıradaki işi ver), steward_restart (boş/yanlış iş yapıyor → durdur, daha iyi "
             "direktifle ve gerekirse başka model/effort ile yeniden aç), steward_stop (şimdilik dursun), "
+            "steward_answer (RUTİN SORU: ne zaman/hangi sıra/hangi model gibi işleyiş sorusunu sen cevapla, bana sorma), "
             "steward_ask_user (benim kararım gerekiyor), steward_set_project (faz/öncelik/not), "
             "steward_idea_update (fikir: proje/sonra/çöp), steward_register_project (fikirden proje), "
             "steward_skip (bu tur dokunma). Kararsız kaldığında sor, ama sormadan verebileceğin kararı sorma."
@@ -1122,13 +1143,13 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
         lines.append(
             "For EACH item below decide and call the matching MCP tool (steward_project_context gives more context): "
             "steward_directive (next task), steward_restart (idle/wrong work → stop and reopen with a better directive, "
-            "other model/effort if needed), steward_stop, steward_ask_user (needs my decision), steward_set_project, "
+            "other model/effort if needed), steward_stop, steward_answer (ROUTINE QUESTION: answer process questions yourself, do not ask me), steward_ask_user (needs my decision), steward_set_project, "
             "steward_idea_update, steward_register_project, steward_skip. Ask when unsure, never ask what you can decide."
         )
     if open_qs:
         lines.append("")
         lines.append("Bana sorulmuş, hâlâ cevapsız sorular (tekrar sorma):" if tr else "Open questions already waiting on me (do not re-ask):")
-        for q in open_qs[:10]:
+        for q in [x for x in open_qs if not x.routine][:10]:
             lines.append(f"- [{q.id}] {q.project or '-'}: {_clip(q.text, 200)}")
     for n, it in enumerate(items, 1):
         lines.append("")
@@ -1136,7 +1157,8 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
         name = it.get("name", "")
         label = {"idle": "BOŞTA" if tr else "IDLE", "review": "GÖZDEN GEÇİR" if tr else "REVIEW",
                  "idea": "FİKİR" if tr else "IDEA", "due": "SIRASI GELDİ" if tr else "DUE",
-                 "blocked": "TAKILDI" if tr else "BLOCKED"}.get(kind, kind.upper())
+                 "blocked": "TAKILDI" if tr else "BLOCKED",
+                 "routine": "RUTİN SORU" if tr else "ROUTINE QUESTION"}.get(kind, kind.upper())
         lines.append(f"### {n}. {label} — {name or it.get('id', '')}")
         if kind == "idea":
             lines.append(f"id={it.get('id')}  {_clip(it.get('text', ''), 600)}")
@@ -1186,6 +1208,7 @@ def build_workspace_claude_md(persona: str, lang: str = "tr") -> str:
         "- `steward_stop name reason` — oturumu durdur\n"
         "- `steward_set_project name [phase kind goal priority cadence_minutes notes model effort]`\n"
         "- `steward_register_project name cwd goal [kind phase cli model resources]` — yeni proje (klasör yoksa açar, GOAL.md yazar)\n"
+        "- `steward_answer id answer` — bir RUTİN SORU'yu (projenin işleyiş sorusu) cevapla; motor cevabı oturuma iletir. Karar sorularını (telif, harcama, commit/push) sahibine bırak\n"
         "- `steward_ask_user project question [options]` — bana soru (telefona bildirim gider, `options` verirsen "
         "(en çok 6 kısa seçenek: evet/hayır, A/B/C, sonra) tek dokunuşla cevaplarım; cevabı motor oturuma iletir)\n"
         "- `steward_note project text` — kendi notun (bir sonraki direktifte oturuma da gider)\n"
@@ -1252,6 +1275,10 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     for i in ideas:
         if i.status == "new":
             items.append({"kind": "idea", "id": i.id, "text": i.text, "name": ""})
+    for q in questions:
+        if q.status == "open" and q.routine:
+            items.append({"kind": "routine", "name": q.project or "-", "id": q.id,
+                          "text": f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla): {q.text}"})
     for q in undelivered_answers(questions):
         if not q.project or q.project == cfg.brain_name or q.project not in projects:
             items.append({"kind": "blocked", "name": q.project or "-", "id": q.id,
@@ -1324,6 +1351,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         proj = v.project if v.project in projects else ""
         for q in m["asks"]:
             actions.append(Action("ask_user", v.name, "STEWARD-ASK", {"project": proj or v.name, "text": q}))
+        for q in m["routines"]:
+            actions.append(Action("ask_user", v.name, "STEWARD-ROUTINE",
+                                  {"project": proj or v.name, "text": q, "routine": True}))
         for b in m["blocked"]:
             actions.append(Action("ask_user", v.name, "STEWARD-BLOCKED",
                                   {"project": proj or v.name, "text": ("Takıldım: " + b)}))
@@ -1400,6 +1430,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             if v.busy is False and idle_since and (now - idle_since) >= cfg.stop_idle_minutes * 60:
                 actions.append(Action("stop", v.name, f"idle ≥ {cfg.stop_idle_minutes} dk, slot bekleyen var"))
                 busy_names.add(v.name)
+
+    # 6b) Beynin cevaplamadığı rutin soru sahibine düşer (sessizce takılı kalmasın)
+    for q in questions:
+        if q.status == "open" and q.routine and (now - q.created_at) >= ROUTINE_ESCALATE_SECONDS:
+            actions.append(Action("escalate_routine", q.project or "-", "rutin soru cevapsız", {"question_id": q.id}))
 
     # 7) Beyin turu maddeleri
     items = review_items(views, projects, cfg, now, questions, ideas,

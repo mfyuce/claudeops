@@ -641,6 +641,49 @@ class SummaryCoreTest(_Tmp):
         self.assertFalse(notes[-1].startswith("(gecikmiş"))
 
 
+class RoutineQuestionTest(_Tmp):
+    def test_marker_scan_and_session_reply_opens_routine_ask(self):
+        m = sw.scan_markers("tamam\nSTEWARD-ROUTINE: Opus high oturumunu ne zaman açıyorsunuz?\nSTEWARD-ASK: Beck PDF alınsın mı?")
+        self.assertEqual(m["routines"], ["Opus high oturumunu ne zaman açıyorsunuz?"])
+        self.assertEqual(m["asks"], ["Beck PDF alınsın mı?"])
+        cfg = _cfg(max_active=4)
+        projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}
+        v = _view("a", last_assistant="STEWARD-ROUTINE: Şimdi mi açalım?")
+        acts, _ = sw.plan_tick([v], projects, {}, cfg, 5000.0, [], [])
+        got = [a for a in acts if a.reason == "STEWARD-ROUTINE"]
+        self.assertEqual([(a.kind, a.payload["project"], a.payload["routine"]) for a in got], [("ask_user", "a", True)])
+
+    def test_routine_goes_to_brain_tour_not_phone_and_escalates_late(self):
+        notes = []
+        with mock.patch.object(web_steward, "notify_phone", lambda text, click="", title="": notes.append(text) or True):
+            res = web_steward._apply(sw.Action("ask_user", "a", "STEWARD-ROUTINE",
+                                               {"project": "a", "text": "Şimdi mi açalım?", "routine": True}),
+                                     steward_cfg(), sw.load_projects())
+            self.assertTrue(res["ok"] and res["routine"] and not res["notified"])
+            self.assertEqual(notes, [])
+            q = sw.open_questions()[0]
+            self.assertTrue(q.routine)
+            cfg = _cfg(max_active=4)
+            projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}
+            items = sw.review_items([], projects, cfg, q.created_at + 60, [q], [])
+            self.assertEqual([(i["kind"], i["id"]) for i in items], [("routine", q.id)])
+            self.assertIn("steward_answer", sw.build_tour_prompt(items, "tr", sw.open_questions()))
+            acts, _ = sw.plan_tick([], projects, {}, cfg, q.created_at + 60, [q], [])
+            self.assertEqual([a.kind for a in acts if a.kind == "escalate_routine"], [])
+            acts, _ = sw.plan_tick([], projects, {}, cfg, q.created_at + sw.ROUTINE_ESCALATE_SECONDS + 1, [q], [])
+            esc = [a for a in acts if a.kind == "escalate_routine"]
+            self.assertEqual(len(esc), 1)
+            res = web_steward._apply(esc[0], steward_cfg(), sw.load_projects())
+            self.assertTrue(res["ok"] and res["notified"])
+            self.assertEqual(len(notes), 1)
+            self.assertFalse(sw.find_question(q.id).routine)
+
+    def test_brain_answer_is_delivered_like_any_answer(self):
+        q = sw.add_question("a", "Şimdi mi açalım?", source="a", routine=True)
+        sw.answer_question(q.id, "Evet, devir notuyla aç")
+        self.assertEqual([x.id for x in sw.undelivered_answers()], [q.id])
+
+
 class DeliveryTargetTest(_Tmp):
     def test_prefers_asking_session_then_main_over_experiment_sessions(self):
         V = lambda n: sw.SessionView(name=n, running=True, blueprint="wifi5gppr")
