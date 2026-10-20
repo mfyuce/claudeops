@@ -698,6 +698,27 @@ class OneLiveSessionPerProjectTest(_Tmp):
         acts, _ = sw.plan_tick([a], projects, {"ho_pending": {"ncs": 1000.0}}, cfg, 2000.0, [], [])
         self.assertEqual([(x.kind, x.name) for x in acts if x.name == "ncs"], [("respawn", "ncs")])
 
+    def test_economy_rules_only_touch_managed_sessions(self):
+        cfg = _cfg(max_active=4, context_warn_tokens=300000)
+        projects = {"ncs": sw.Project(name="ncs", phase="planned", cadence_minutes=60)}
+        other = _view("egyptian20260917", busy=False, history_size=1990, context_tokens=700000)
+        mine = _view("ncs20261019", blueprint="ncs", busy=True, history_size=10, context_tokens=700000)
+        brain = _view("degnekci", busy=False, history_size=1950)
+        acts, st = sw.plan_tick([other, mine, brain], projects, {}, cfg, 5000.0, [], [])
+        self.assertEqual(sorted(x.name for x in acts if x.kind == "handover"), ["degnekci", "ncs20261019"])
+        # eski kayıttaki yönetilmeyen ho_pending: yeniden açma yok, kayıt temizlenir
+        acts, st = sw.plan_tick([other], projects, {"ho_pending": {"egyptian20260917": 1000.0}}, cfg, 99999.0, [], [])
+        self.assertEqual([x for x in acts if x.name == "egyptian20260917"], [])
+        self.assertNotIn("egyptian20260917", st["ho_pending"])
+
+    def test_brain_respawn_after_handover_is_a_new_conversation(self):
+        calls = []
+        cfg = steward_cfg()
+        with mock.patch.object(web_steward, "_running", lambda n: None), \
+                mock.patch.object(web_steward, "brain_start", lambda c=None, fresh=False: calls.append(fresh) or {"ok": True}):
+            web_steward._apply(sw.Action("respawn", cfg.brain_name, "READY FOR HANDOVER"), cfg, {})
+        self.assertEqual(calls, [True])
+
     def test_context_tokens_trigger_handover(self):
         cfg = _cfg(max_active=4, context_warn_tokens=300000)
         projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}

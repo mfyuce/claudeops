@@ -1335,8 +1335,13 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     busy_names: set = set()   # bu tick'te zaten dokunulan oturumlar (ikinci bir eylem gönderme)
 
     # 1) Oturum ekonomisi — scrollback eşiği → handover (beyin dahil: onun da scrollback'i dolar)
+    def _managed(name: str) -> bool:
+        # Oturum ekonomisi (handover/yeniden açma) YALNIZ değnekçinin yönettiği oturumlara: beyin + kayıtlı proje
+        # oturumları. Kullanıcının diğer oturumlarına (egyptian.., oa.., cops..) mesaj gönderilmez, yeniden açılmaz.
+        return name == cfg.brain_name or bool(_project_key(name, projects))
+
     for v in views:
-        if not v.running or not v.tmux:
+        if not v.running or not v.tmux or not _managed(v.name):
             continue
         if v.history_size is not None and v.history_size >= cfg.history_warn_at and v.name not in ho_pending:
             actions.append(Action("handover", v.name, f"history_size {v.history_size} >= {cfg.history_warn_at}"))
@@ -1350,6 +1355,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
 
     # 2) Handover gönderilmiş olanlar — READY FOR HANDOVER geldi ya da süre doldu → yeniden aç
     for name, sent_at in list(ho_pending.items()):
+        if not _managed(name):
+            ho_pending.pop(name, None)   # yönetilmeyen oturum (eski kayıt/elle): yeniden AÇILMAZ
+            continue
         if name in busy_names:
             continue
         v = by_name.get(name)

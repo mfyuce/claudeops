@@ -559,7 +559,7 @@ def ensure_workspace(cfg: Optional[sw.Config] = None) -> str:
     return path
 
 
-def brain_start(cfg: Optional[sw.Config] = None) -> Dict[str, Any]:
+def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False) -> Dict[str, Any]:
     cfg = cfg or steward_config()
     if _running(cfg.brain_name) is not None:
         return {"ok": True, "started": False, "name": cfg.brain_name}
@@ -574,7 +574,7 @@ def brain_start(cfg: Optional[sw.Config] = None) -> Dict[str, Any]:
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(name=cfg.brain_name, cwd=sw.WORKSPACE_DIR, model=model, display=detect_display(),
-                                 permission_mode=mode, effort=effort, force_new=False, cli=cli,
+                                 permission_mode=mode, effort=effort, force_new=bool(fresh), cli=cli,
                                  mcp_server=brain_spec())
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
@@ -731,7 +731,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
             if not res.get("ok"):
                 return res
         if name == cfg.brain_name:
-            return brain_start(cfg)
+            return brain_start(cfg, fresh=True)   # devirden sonra YENİ konuşma (aynı şişmiş bağlam taşınmasın; notlar NOTLAR.md'de)
         p = _project_for_session(name, projects)
         model, effort = sw.phase_model_effort(p, cfg) if p else ("", "")
         # Devirden sonra YENİ konuşma (`--new`): `--resume` aynı şişmiş bağlamı (her tur yeniden okunan ~400K token)
