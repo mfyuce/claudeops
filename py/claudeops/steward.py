@@ -24,7 +24,10 @@ deseni). Hiçbir şey kendiliğinden başlamaz: `steward.enabled` varsayılan KA
 "nothing ever starts automatically" ilkesi).
 """
 from __future__ import annotations
+import contextlib
 import dataclasses
+import fcntl
+import glob
 import hashlib
 import html
 import json
@@ -276,6 +279,86 @@ def _save_json(path: str, obj: Any) -> None:
     atomic_write_json(path, obj, mode=0o600)
 
 
+# ── kilitler (çoklu değnekçi P1b) ─────────────────────────────────────────────
+
+LOCK_TIMEOUT = 10.0   # sn; aşılırsa `LockTimeout` (SESSİZ ATLAMA YOK; panelin 15 sn API zaman aşımının altında)
+_LOCK_POLL = 0.02
+_HELD = threading.local()   # bu iş parçacığının tuttuğu kilitler {yol: derinlik}: yeniden girişli
+
+
+class LockTimeout(RuntimeError):
+    """`flock` zaman aşımında alınamadı: yazım yapılmadı, çağıran hatayı görür."""
+
+
+class OwnedElsewhere(ValueError):
+    """Proje adı başka bir değnekçi kimliğinin `projects.json`'unda zaten var (`owner` = o kimlik)."""
+    def __init__(self, name: str, owner: str):
+        super().__init__(f"project {name!r} is owned by steward {owner!r}")
+        self.name = name
+        self.owner = owner
+
+
+@contextlib.contextmanager
+def _flock(path: str, timeout: Optional[float] = None):
+    """`path` üzerinde dışlayıcı `fcntl.flock`. Süreçler arası dışlar; aynı süreçte iş parçacıkları da birbirini
+    dışlar (her giriş kendi açık dosya tanımını açar). AYNI iş parçacığı yeniden girerse kilitlenmez (sayaç)."""
+    key = os.path.abspath(path)
+    held = _HELD.__dict__.setdefault("held", {})
+    if held.get(key):
+        held[key] += 1
+        try:
+            yield
+        finally:
+            held[key] -= 1
+        return
+    wait = LOCK_TIMEOUT if timeout is None else timeout
+    os.makedirs(os.path.dirname(key), exist_ok=True)
+    fd = os.open(key, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise LockTimeout(f"could not lock {key} within {wait:g}s") from None
+                time.sleep(_LOCK_POLL)
+        held[key] = 1
+        try:
+            yield
+        finally:
+            held.pop(key, None)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def steward_lock(paths: Any = None, timeout: Optional[float] = None):
+    """Kimlik başına okuma-değiştir-yaz kilidi (`StewardPaths.lock`): `with sw.steward_lock(sid): load → değiştir → save`."""
+    return _flock(_pp(paths).lock, timeout)
+
+
+def ownership_lock(timeout: Optional[float] = None):
+    """Global sahiplik kilidi (`STEWARD_DIR/.ownership.lock`): herhangi bir `projects.json` yazımı. Sıra: önce bu,
+    sonra kimlik kilidi (ters sıra kilitlenme riski)."""
+    return _flock(os.path.join(STEWARD_DIR, ".ownership.lock"), timeout)
+
+
+def project_owner(name: str, exclude: str = "") -> str:
+    """`name` adlı proje hangi kimliğin `projects.json`'unda (`exclude` hariç)? Yok = "". Yalnız dosyalara bakar
+    (P3'te tam `ownership_index` bunun yerini alır)."""
+    sids = ["default"] + sorted(os.path.basename(os.path.dirname(f)) for f in
+                                glob.glob(os.path.join(STEWARD_DIR, "stewards", "*", "projects.json")))
+    for sid in sids:
+        if sid == exclude or not _SID_RE.fullmatch(sid):
+            continue
+        raw = _load_json(paths_for(sid).projects, {})
+        if isinstance(raw, dict) and name in raw:
+            return sid
+    return ""
+
+
 def _from_dict(cls, d: Dict[str, Any]):
     names = {f.name for f in dataclasses.fields(cls)}
     return cls(**{k: v for k, v in d.items() if k in names})
@@ -297,47 +380,54 @@ def load_projects(paths: Any = None) -> Dict[str, Project]:
 
 
 def save_projects(projects: Dict[str, Project], paths: Any = None) -> None:
-    _save_json(_pp(paths).projects, {n: dataclasses.asdict(p) for n, p in projects.items()})
+    with ownership_lock(), steward_lock(paths):
+        _save_json(_pp(paths).projects, {n: dataclasses.asdict(p) for n, p in projects.items()})
 
 
 def upsert_project(name: str, *, paths: Any = None, **fields: Any) -> Project:
     """Alan bazlı güncelle (None/verilmeyen alanlar korunur). Geçersiz faz/tür/priority yok sayılır."""
     if not valid_name(name):
         raise ValueError(f"invalid project name: {name!r}")
-    projects = load_projects(paths)
-    p = projects.get(name) or Project(name=name, created_at=_now())
-    for k, v in fields.items():
-        if v is None or not hasattr(p, k) or k in ("name", "created_at"):
-            continue
-        if k == "phase" and v not in PHASES:
-            continue
-        if k == "kind" and v not in KINDS and v != "":
-            continue
-        if k in ("priority", "cadence_minutes", "visits"):
-            try:
-                v = int(v)
-            except (TypeError, ValueError):
+    # Talep protokolü: ownership kilidi → ad başka kimlikte mi → kendi RMW (kimlik kilidi)
+    with ownership_lock(), steward_lock(paths):
+        other = project_owner(name, exclude=_pp(paths).sid)
+        if other:
+            raise OwnedElsewhere(name, other)
+        projects = load_projects(paths)
+        p = projects.get(name) or Project(name=name, created_at=_now())
+        for k, v in fields.items():
+            if v is None or not hasattr(p, k) or k in ("name", "created_at"):
                 continue
-            if k == "priority":
-                v = min(5, max(1, v))
-            if k == "cadence_minutes":
-                v = max(0, v)
-        if k == "notes":
-            v = str(v)[:_MAX_NOTE_CHARS]
-        setattr(p, k, v)
-    p.updated_at = _now()
-    projects[name] = p
-    save_projects(projects, paths)
-    return p
+            if k == "phase" and v not in PHASES:
+                continue
+            if k == "kind" and v not in KINDS and v != "":
+                continue
+            if k in ("priority", "cadence_minutes", "visits"):
+                try:
+                    v = int(v)
+                except (TypeError, ValueError):
+                    continue
+                if k == "priority":
+                    v = min(5, max(1, v))
+                if k == "cadence_minutes":
+                    v = max(0, v)
+            if k == "notes":
+                v = str(v)[:_MAX_NOTE_CHARS]
+            setattr(p, k, v)
+        p.updated_at = _now()
+        projects[name] = p
+        save_projects(projects, paths)
+        return p
 
 
 def remove_project(name: str, paths: Any = None) -> bool:
-    projects = load_projects(paths)
-    if name not in projects:
-        return False
-    del projects[name]
-    save_projects(projects, paths)
-    return True
+    with ownership_lock(), steward_lock(paths):
+        projects = load_projects(paths)
+        if name not in projects:
+            return False
+        del projects[name]
+        save_projects(projects, paths)
+        return True
 
 
 def load_ideas(paths: Any = None) -> List[Idea]:
@@ -346,44 +436,48 @@ def load_ideas(paths: Any = None) -> List[Idea]:
 
 
 def save_ideas(ideas: List[Idea], paths: Any = None) -> None:
-    _save_json(_pp(paths).ideas, [dataclasses.asdict(i) for i in ideas])
+    with steward_lock(paths):
+        _save_json(_pp(paths).ideas, [dataclasses.asdict(i) for i in ideas])
 
 
 def add_idea(text: str, source: str = "", paths: Any = None) -> Idea:
     text = str(text).strip()[:_MAX_IDEA_CHARS]
     if not text:
         raise ValueError("empty idea")
-    ideas = load_ideas(paths)
-    idea = Idea(id=_new_id("i"), text=text, created_at=_now(), source=source)
-    ideas.append(idea)
-    save_ideas(ideas, paths)
-    return idea
+    with steward_lock(paths):
+        ideas = load_ideas(paths)
+        idea = Idea(id=_new_id("i"), text=text, created_at=_now(), source=source)
+        ideas.append(idea)
+        save_ideas(ideas, paths)
+        return idea
 
 
 def update_idea(idea_id: str, status: Optional[str] = None, project: Optional[str] = None,
                 paths: Any = None) -> Optional[Idea]:
-    ideas = load_ideas(paths)
-    for i in ideas:
-        if i.id == idea_id:
-            if status in ("new", "project", "dropped", "later", "exported"):
-                i.status = status
-            if project is not None:
-                i.project = str(project)
-            save_ideas(ideas, paths)
-            return i
-    return None
+    with steward_lock(paths):
+        ideas = load_ideas(paths)
+        for i in ideas:
+            if i.id == idea_id:
+                if status in ("new", "project", "dropped", "later", "exported"):
+                    i.status = status
+                if project is not None:
+                    i.project = str(project)
+                save_ideas(ideas, paths)
+                return i
+        return None
 
 
 def record_idea_export(idea_id: str, record: Dict[str, Any], paths: Any = None) -> Optional[Idea]:
     """Fikri `exported` yapar (varsayılan listeden kalkar) ve aktarım kaydını fikrin üstünde tutar (silinmez)."""
-    ideas = load_ideas(paths)
-    for i in ideas:
-        if i.id == idea_id:
-            i.status = "exported"
-            i.exported = list(i.exported or []) + [record]
-            save_ideas(ideas, paths)
-            return i
-    return None
+    with steward_lock(paths):
+        ideas = load_ideas(paths)
+        for i in ideas:
+            if i.id == idea_id:
+                i.status = "exported"
+                i.exported = list(i.exported or []) + [record]
+                save_ideas(ideas, paths)
+                return i
+        return None
 
 
 def load_questions(paths: Any = None) -> List[Question]:
@@ -392,7 +486,8 @@ def load_questions(paths: Any = None) -> List[Question]:
 
 
 def save_questions(questions: List[Question], paths: Any = None) -> None:
-    _save_json(_pp(paths).questions, [dataclasses.asdict(q) for q in questions])
+    with steward_lock(paths):
+        _save_json(_pp(paths).questions, [dataclasses.asdict(q) for q in questions])
 
 
 def normalize_options(options: Any) -> List[str]:
@@ -480,41 +575,43 @@ def add_question(project: str, text: str, source: str = "", options: Any = None,
     text = str(text).strip()[:_MAX_QUESTION_CHARS]
     if not text:
         raise ValueError("empty question")
-    questions = load_questions(paths)
-    # Oturum yakın zamanda cevaplanmış bir soruyu yeniden sordu: yeni soru açma, cevabı "zaten cevapladım"
-    # notuyla yeniden ilet (üst sınırdan sonra gerçekten yeni soru say; sonsuz döngü olmasın).
-    dup = find_answered_duplicate(questions, project, text)
-    if dup is not None and dup.repeats < REASK_MAX_REPEATS:
-        dup.repeats += 1
-        dup.delivered_at = 0.0
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        # Oturum yakın zamanda cevaplanmış bir soruyu yeniden sordu: yeni soru açma, cevabı "zaten cevapladım"
+        # notuyla yeniden ilet (üst sınırdan sonra gerçekten yeni soru say; sonsuz döngü olmasın).
+        dup = find_answered_duplicate(questions, project, text)
+        if dup is not None and dup.repeats < REASK_MAX_REPEATS:
+            dup.repeats += 1
+            dup.delivered_at = 0.0
+            save_questions(questions, paths)
+            return dup
+        # Aynı projeden AYNI metinle açık bir soru varsa ikinci kez açma (işaret taraması her
+        # tick aynı yanıtı görebilir; motor `seen` ile de korur ama depo kendi başına da dayanıklı olsun).
+        for q in questions:
+            if q.status == "open" and q.project == project and q.text == text:
+                return q
+        q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
+                     options=normalize_options(options), key=secrets.token_hex(8), routine=bool(routine))
+        questions.append(q)
         save_questions(questions, paths)
-        return dup
-    # Aynı projeden AYNI metinle açık bir soru varsa ikinci kez açma (işaret taraması her
-    # tick aynı yanıtı görebilir; motor `seen` ile de korur ama depo kendi başına da dayanıklı olsun).
-    for q in questions:
-        if q.status == "open" and q.project == project and q.text == text:
-            return q
-    q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
-                 options=normalize_options(options), key=secrets.token_hex(8), routine=bool(routine))
-    questions.append(q)
-    save_questions(questions, paths)
-    return q
+        return q
 
 
 def answer_question(question_id: str, answer: str, paths: Any = None) -> Optional[Question]:
     answer = str(answer).strip()
     if not answer:
         raise ValueError("empty answer")
-    questions = load_questions(paths)
-    for q in questions:
-        if q.id == question_id:
-            q.answer = resolve_answer(q, answer)[:_MAX_QUESTION_CHARS]
-            q.status = "answered"
-            q.answered_at = _now()
-            q.delivered_at = 0.0
-            save_questions(questions, paths)
-            return q
-    return None
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        for q in questions:
+            if q.id == question_id:
+                q.answer = resolve_answer(q, answer)[:_MAX_QUESTION_CHARS]
+                q.status = "answered"
+                q.answered_at = _now()
+                q.delivered_at = 0.0
+                save_questions(questions, paths)
+                return q
+        return None
 
 
 def find_question(question_id: str, paths: Any = None) -> Optional[Question]:
@@ -522,11 +619,12 @@ def find_question(question_id: str, paths: Any = None) -> Optional[Question]:
 
 
 def mark_notified(question_id: str, paths: Any = None) -> None:
-    questions = load_questions(paths)
-    for q in questions:
-        if q.id == question_id:
-            q.notified_at = _now()
-    save_questions(questions, paths)
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        for q in questions:
+            if q.id == question_id:
+                q.notified_at = _now()
+        save_questions(questions, paths)
 
 
 def question_link(q: Question, base: str) -> str:
@@ -611,23 +709,25 @@ def question_page_html(q: Optional[Question], lang: str = "tr", state: str = "as
 
 def escalate_routine(question_id: str, paths: Any = None) -> Optional[Question]:
     """Cevapsız kalan rutin soruyu sahibine açık soruya çevir (`routine` kalkar; bildirim çağıranda)."""
-    questions = load_questions(paths)
-    hit = None
-    for q in questions:
-        if q.id == question_id and q.status == "open" and q.routine:
-            q.routine = False
-            hit = q
-    if hit is not None:
-        save_questions(questions, paths)
-    return hit
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        hit = None
+        for q in questions:
+            if q.id == question_id and q.status == "open" and q.routine:
+                q.routine = False
+                hit = q
+        if hit is not None:
+            save_questions(questions, paths)
+        return hit
 
 
 def mark_delivered(question_id: str, paths: Any = None) -> None:
-    questions = load_questions(paths)
-    for q in questions:
-        if q.id == question_id:
-            q.delivered_at = _now()
-    save_questions(questions, paths)
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        for q in questions:
+            if q.id == question_id:
+                q.delivered_at = _now()
+        save_questions(questions, paths)
 
 
 def open_questions(questions: Optional[List[Question]] = None, paths: Any = None) -> List[Question]:
@@ -645,7 +745,8 @@ def load_state(paths: Any = None) -> Dict[str, Any]:
 
 
 def save_state(state: Dict[str, Any], paths: Any = None) -> None:
-    _save_json(_pp(paths).state, state)
+    with steward_lock(paths):
+        _save_json(_pp(paths).state, state)
 
 
 _LOG_LOCK = threading.Lock()   # ekleme (tick/kart thread'leri) ile sıkıştırma/rotasyon (özet anı) çakışmasın
