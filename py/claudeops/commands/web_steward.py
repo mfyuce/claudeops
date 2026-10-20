@@ -28,6 +28,7 @@ import psutil
 
 from .. import instances as inst_mod
 from .. import steward as sw
+from .. import steward_jobs as sj
 from ..diaglog import diag_log
 from ..discovery import find_sessions
 from ..guard import guard_lock
@@ -158,10 +159,14 @@ def _remember_dry(action: sw.Action, ctx: Optional[StewardContext] = None) -> No
     """observe kipi: eylem UYGULANMADI. `recent`e `dry=True` ile, log'a `would:<kind>` olayı olarak yazılır."""
     ctx = ctx or _ctx()
     detail = f"{len(action.payload.get('items') or [])} madde" if action.kind == "tour" else str(action.payload.get("text") or "")[:200]
+    if action.kind == "deliver_job":
+        detail = f"job {action.payload.get('service')}#{action.payload.get('job_id')} {action.payload.get('stage')}"
     ctx.recent.insert(0, {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
                           "ok": True, "dry": True, "detail": detail})
     del ctx.recent[RECENT_ACTIONS:]
     extra = {"question_id": action.payload["question_id"]} if action.payload.get("question_id") else {}
+    if action.payload.get("job_id") is not None:
+        extra["job_id"] = action.payload["job_id"]
     sw.log_event("would:" + action.kind, paths=ctx.paths, name=action.name, reason=action.reason, detail=detail, **extra)
 
 
@@ -175,6 +180,14 @@ def _brain_dry(kind: str, data: Dict[str, Any], name: str, sid: str = "default")
     return {"ok": True, "dry": True, "note": f"observe mode: recorded as would:{kind}, not applied"}
 
 
+def _service_session(name: str) -> str:
+    """Oturum adı kayıtlı bir pasif servise (`services.json`, tam ad ya da önek) çözülüyorsa servis adı, değilse ""."""
+    for s, rec in sj.load_services().items():
+        if name == s or (rec.get("match") != "exact" and name.startswith(s)):
+            return s
+    return ""
+
+
 def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = None,
             kind: str = "", sid: str = "default", world: Optional[sw.World] = None) -> Optional[Dict[str, Any]]:
     """Oturuma dokunan yolların TEK kapısı (docs/multi-steward-plan.md K5). `None` = izinli, aksi halde red yanıtı.
@@ -183,6 +196,10 @@ def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = N
     oturum reddedilir (çözüm global, `World.session_class`). İnsanın CLI/panel çağrısı (`actor` yok): `default` bağlamında
     kısıtsız (kayıtsız oturuma da yazabilir, bugünkü ad hoc davranış); diğer bağlamlarda yalnız o kimliğin kendi
     projeleri/beyni (plan (e) insan geçidi)."""
+    svc = _service_session(name)
+    if svc:     # pasif servis (varaka): HİÇBİR eylemin hedefi olamaz (insan dahil; `steward service` kaydı watch/passive)
+        sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name, service=svc)
+        return {"ok": False, "error": "target denied: passive shared service session"}
     if actor not in ("brain", "engine") and sid == "default":
         return None
     if name == steward_config(sid).brain_name:
@@ -949,6 +966,11 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             sw.mark_delivered(q.id, paths)
             sw.log_event("answer_undeliverable", paths=paths, id=q.id, session=name, error=res.get("error", ""))
         return res
+    if k == "deliver_job":
+        denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
+        if denied is not None:
+            return denied
+        return _deliver_job(action, cfg, projects)
     if k == "ask_user":
         q = sw.add_question(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
                             routine=bool(action.payload.get("routine")), paths=paths)
@@ -996,6 +1018,30 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
     return {"ok": False, "error": f"unknown action {k}"}
 
 
+def _deliver_job(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -> Dict[str, Any]:
+    """`deliver_job`: iş sonucu (ya da onay bekliyor bildirimi) projenin ÇALIŞAN oturumuna, `deliver_answer` ile aynı
+    güvenli yoldan (`_give_directive`, `start_if_stopped=False`) iletilir. Başarıda `delivered`/`notified` işaretlenir
+    (aynı iş iki kez iletilmez); başarısızlıkta deneme sayacı (üst sınırda bırakılır, kayıt jobs.json'da kalır)."""
+    paths = sw.paths_for(cfg.sid)
+    jid, svc, stage = action.payload.get("job_id"), str(action.payload.get("service") or ""), str(action.payload.get("stage") or "result")
+    job = sj.find_job(sj.load_jobs(paths), jid, svc)
+    if job is None:
+        return {"ok": False, "error": "job gone"}
+    if sj.pending_stage(job) != stage:
+        return {"ok": True, "skipped": "already delivered"}
+    p = projects.get(str(job.get("project") or ""))
+    if p is None:
+        return {"ok": False, "error": "not a steward project"}
+    res = _give_directive(p, sj.build_job_message(job, stage, cfg.lang), start_if_stopped=False, reason="job",
+                          session_name=action.name, cfg=cfg)
+    if res.get("ok"):
+        sj.mark_delivered(jid, svc, stage, paths=paths)
+        sw.log_event("job_delivered", paths=paths, service=svc, id=jid, project=p.name, stage=stage, session=action.name)
+    elif sj.mark_attempt(jid, svc, paths) >= sj.DELIVER_MAX_ATTEMPTS:
+        sw.log_event("job_undeliverable", paths=paths, service=svc, id=jid, project=p.name, error=str(res.get("error") or ""))
+    return res
+
+
 def _note_conflicts(ctx: StewardContext, index: Dict[str, Any], own_names: set, now: float) -> None:
     """Bu kimliğin `projects.json`'unda olup başka kimlikte de görünen adlar (elle düzenleme): ikisi de yönetmez
     (`World.own_projects` süzer). `ownership_conflict` olayı ad başına GÜNDE BİR; `ctx.conflicts` status uyarısı."""
@@ -1008,6 +1054,70 @@ def _note_conflicts(ctx: StewardContext, index: Dict[str, Any], own_names: set, 
             ctx.conflict_logged[n] = day
             sw.log_event("ownership_conflict", paths=ctx.paths, name=n, stewards=list(conflicts[n]))
             diag_log("steward_ownership_conflict", sid=ctx.sid, name=n, stewards=list(conflicts[n]))
+
+
+# ── dış iş kuyruğu (varaka) poll ──────────────────────────────────────────────
+#
+# Açık işler kimlik başına küçük bir arka plan thread'inde yoklanır (`_CTX.lock` / `_LOCK` DIŞINDA: bir servis
+# gecikmesi tick'i ve beynin MCP çağrılarını bekletmesin). Zaman aşımı kısa, hata yutulur ve loglanır.
+# İletim kararı bir SONRAKİ tick'in saf `plan_job_deliveries`ında (observe'da `would:deliver_job`).
+
+_JOBS_BACKGROUND = True            # testler False yapıp işi satır içi koşturur
+_JOBS_LOCKS: Dict[str, threading.Lock] = {}
+_JOBS_GUARD = threading.Lock()
+
+
+def _notify_approvals(cfg: sw.Config) -> int:
+    """Onay bekleyen ve sahibine henüz bildirilmemiş işler için TEK telefon bildirimi (onay yalnız insan adminde,
+    varaka'da). Bildirim kaydı `approval_phone` bayrağı; proje oturumuna bildirim ayrı (`deliver_job`)."""
+    paths = sw.paths_for(cfg.sid)
+    n = 0
+    for j in sj.load_jobs(paths):
+        if j.get("state") != "awaiting_approval" or j.get("approval_phone"):
+            continue
+        text = (f"{sw.ask_prefix(str(j.get('project') or ''), cfg.sid)} {j.get('service')} işi #{j.get('id')} "
+                f"({j.get('kind')}) ONAY BEKLİYOR: varaka'da insan yönetici onaylamalı")
+        if _notify(cfg, text):
+            n += 1
+        sj.update_records({(str(j.get("service")), str(j.get("id"))): {"approval_phone": True}}, paths)
+    return n
+
+
+def _poll_job(cfg: sw.Config, force: bool = False) -> Dict[str, Any]:
+    res = sj.poll_jobs(cfg.sid, force=force)
+    _notify_approvals(cfg)
+    return res
+
+
+def jobs_tick(cfg: sw.Config, force: bool = False) -> bool:
+    """tick_once'ın iş kuyruğu adımı: yoklanacak açık iş varsa (ya da onay bildirimi bekliyorsa) arka planda bir poll.
+    Kimlik başına tek iş (üst üste binmez). İş yoksa dosya okumaktan başka bir şey yapmaz."""
+    paths = sw.paths_for(cfg.sid)
+    jobs = sj.load_jobs(paths)
+    if not jobs:
+        return False
+    now = time.time()
+    if not (sj.due_jobs(jobs, now, force=force)
+            or any(j.get("state") == "awaiting_approval" and not j.get("approval_phone") for j in jobs)):
+        return False
+    with _JOBS_GUARD:
+        lock = _JOBS_LOCKS.setdefault(cfg.sid, threading.Lock())
+    if not lock.acquire(blocking=False):
+        return False
+
+    def _work() -> None:
+        try:
+            _poll_job(cfg, force)
+        except Exception as e:
+            diag_log("steward_jobs_poll_crashed", sid=cfg.sid, error=repr(e))
+        finally:
+            lock.release()
+
+    if _JOBS_BACKGROUND:
+        threading.Thread(target=_work, daemon=True, name=f"steward-jobs-{cfg.sid}").start()
+    else:
+        _work()
+    return True
 
 
 def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Optional[int] = None,
@@ -1035,6 +1145,8 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
             with sw.steward_lock(paths):     # state RMW atomik (CLI süreci de aynı dosyaya yazar)
                 actions, new_state = sw.plan_tick(views, projects, sw.load_state(paths), cfg, t0,
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world)
+                job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
+                actions = actions + job_actions     # iş sonucu iletimi (varaka kuyruğu): `plan_tick`e DOKUNMAZ, aynı observe/_target yolundan
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 sw.save_state(new_state, paths)
             for a in dry:
@@ -1068,6 +1180,10 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
             card_tick(cfg)
         except Exception as e:
             diag_log("steward_card_tick_crashed", sid=sid, error=repr(e))
+    try:
+        jobs_tick(cfg)
+    except Exception as e:
+        diag_log("steward_jobs_tick_crashed", sid=sid, error=repr(e))
     return {"ok": not error, "error": error, "actions": applied, "dry": dry_applied, "mode": cfg.mode, "at": t0,
             "started": started}
 
@@ -1753,6 +1869,97 @@ def http_cards_refresh(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
     return {"ok": True, "queued": name or "due"}
 
 
+# ── dış iş kuyruğu (varaka): gönderim ve liste ────────────────────────────────
+
+_KIND_RE = re.compile(r"[a-z][a-z0-9_]{0,47}")
+MAX_SPEC_CHARS = 200_000
+JOBS_LIST_MAX = 100
+
+
+def _owns_project(project: str, sid: str) -> bool:
+    """Proje bu kimliğin KAYITLI ve çakışmasız projesi mi (sahiplik dosyalardan, `World`)."""
+    return project in sw.load_projects(sid) and _world(sid).owns(project)
+
+
+def http_job_submit(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Beynin (ya da insanın) KENDİ projesi adına varaka'ya iş eklemesi. Kapılar: proje sahipliği, servis kaydı, yerel
+    dosya yolları PROJE DİZİNİ içinde. Onay gerektiren iş `awaiting_approval` döner; değnekçi ASLA approve/reject çağırmaz.
+    Idempotency anahtarı otomatik (kimlik+proje+özellik özeti). observe + `actor: brain` → `would:job_submit`, servise
+    dokunulmaz."""
+    project = str(data.get("project") or "").strip()
+    kind = str(data.get("kind") or "").strip()
+    if not sw.valid_name(project):
+        return {"ok": False, "error": "invalid project"}
+    if not _KIND_RE.fullmatch(kind):
+        return {"ok": False, "error": "invalid kind"}
+    if not _owns_project(project, sid):
+        sw.log_event("target_denied", paths=sid, actor=str(data.get("actor") or "human"), kind="job_submit", name=project)
+        return {"ok": False, "error": "not a project of this steward"}
+    params = data.get("params") if data.get("params") is not None else {}
+    spec_text = data.get("spec_text") if data.get("spec_text") is not None else ""
+    files = data.get("files") if data.get("files") is not None else []
+    if not isinstance(params, dict) or not isinstance(spec_text, str) or not isinstance(files, list):
+        return {"ok": False, "error": "params must be an object, spec_text a string, files a list"}
+    if len(spec_text) > MAX_SPEC_CHARS:
+        return {"ok": False, "error": f"spec_text too long (max {MAX_SPEC_CHARS})"}
+    service = str(data.get("service") or "").strip() or sj.default_service()
+    if not service or service not in sj.load_services():
+        return {"ok": False, "error": "no such registered service (a human registers one: py/cops steward service add)"}
+    try:
+        resolved = sj.resolve_local_files(_project_cwd(project), files) if files else []
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    dry = _brain_dry("job_submit", dict(data, text=f"{service}: {kind} for {project} ({len(resolved)} files)"), project, sid)
+    if dry is not None:
+        return dry
+    priority = data.get("priority")
+    res = sj.submit_job(sid, project, kind, params, spec_text, resolved, service=service,
+                        priority=int(priority) if isinstance(priority, int) and not isinstance(priority, bool) else None,
+                        approval_ref=str(data.get("approval_ref") or ""), host=LOCAL_HOST_NAME)
+    if res.get("ok") and res.get("state") == "awaiting_approval":
+        res["awaiting_approval"] = True
+        res["message"] = ("job is awaiting approval by a HUMAN admin in varaka: do not approve/reject it yourself; "
+                          "the owner has been notified and the project session will be told")
+        try:
+            _notify_approvals(steward_config(sid))
+        except Exception as e:
+            diag_log("steward_job_notify_failed", sid=sid, error=repr(e))
+    return res
+
+
+def http_jobs(sid: str = "default", state: str = "open", project: str = "", job_id: str = "", refresh: bool = False,
+              kinds: bool = False) -> Dict[str, Any]:
+    """Bu kimliğin iş kayıtları (yerel `jobs.json`). `refresh`: önce açık işleri hemen yokla; `kinds`: varaka'nın iş türü
+    kataloğu (`GET /api/jobs/kinds`, salt okuma). Başka kimliğin işi görünmez (dosya kimliğe özel)."""
+    if kinds:
+        name = sj.default_service()
+        svc = sj.load_services().get(name)
+        if svc is None:
+            return {"ok": False, "error": "no registered service"}
+        try:
+            status, body = sj.request_json(svc, "GET", "/api/jobs/kinds")
+        except sj.ServiceError as e:
+            return {"ok": False, "error": f"{name}: {e}"}
+        return {"ok": status == 200, "service": name, "status": status, "kinds": body}
+    if refresh:
+        sj.poll_jobs(sid, force=True)
+        try:
+            _notify_approvals(steward_config(sid))
+        except Exception as e:
+            diag_log("steward_job_notify_failed", sid=sid, error=repr(e))
+    jobs = sj.load_jobs(sid)
+    if job_id:
+        jobs = [j for j in jobs if str(j.get("id")) == str(job_id)]
+    if project:
+        jobs = [j for j in jobs if j.get("project") == project]
+    if state == "open":
+        jobs = [j for j in jobs if sj.is_open(j)]
+    elif state not in ("", "all"):
+        jobs = [j for j in jobs if j.get("state") == state]
+    jobs = sorted(jobs, key=lambda j: -float(j.get("created_at") or 0))[:JOBS_LIST_MAX]
+    return {"ok": True, "jobs": [sj.job_view(j) for j in jobs], "services": sorted(sj.load_services())}
+
+
 class UnknownSteward(ValueError):
     """İstekte verilen `steward` kimliği geçersiz ya da ayarda tanımlı değil."""
 
@@ -1778,7 +1985,8 @@ def _unknown_steward() -> Dict[str, Any]:
     return {"ok": False, "error": "unknown steward"}
 
 
-_GET_PATHS = frozenset(("state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list"))
+_GET_PATHS = frozenset(("state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
+                        "jobs"))
 
 
 def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
@@ -1810,6 +2018,9 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return http_context(g("name").strip(), docs=g("docs") in ("1", "true"), sid=sid)
     if path == "/api/steward/summary":
         return http_summary(g("date").strip(), g("lang").strip(), sid)
+    if path == "/api/steward/jobs":
+        return http_jobs(sid, g("state", "open"), g("project").strip(), g("id").strip(), g("refresh") in ("1", "true"),
+                         g("kinds") in ("1", "true"))
     if path == "/api/steward/cards":
         return http_cards(sid)
     if path == "/api/steward/card":
@@ -1838,6 +2049,7 @@ POST_PATHS = {
     "/api/steward/handover": http_handover,
     "/api/steward/skip": http_skip,
     "/api/steward/cards/refresh": http_cards_refresh,
+    "/api/steward/job/submit": http_job_submit,
     "/api/steward/brain": http_brain,
     "/api/steward/tick": lambda data, sid="default": tick_once("manual", sid),
     "/api/steward/tour": lambda data, sid="default": run_tour(force=True, cfg=steward_config(sid)),

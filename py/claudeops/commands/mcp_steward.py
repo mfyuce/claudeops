@@ -167,6 +167,20 @@ def _skip(port: int, args: dict) -> dict:
     return _api(port, "POST", "/api/steward/skip", _pick(args, "name", "reason"))
 
 
+def _job_submit(port: int, args: dict) -> dict:
+    if not args.get("project") or not args.get("kind"):
+        return {"ok": False, "error": "project and kind are required"}
+    body = _pick(args, "project", "kind", "params", "spec_text", "files", "priority", "approval_ref")
+    body["actor"] = "brain"    # observe kipinde servise dokunulmaz, `would:job_submit` olarak kaydedilir
+    return _api(port, "POST", "/api/steward/job/submit", body)
+
+
+def _jobs(port: int, args: dict) -> dict:
+    return _api(port, "GET", "/api/steward/jobs" + _q({
+        "state": args.get("status") or "open", "project": args.get("project"), "id": args.get("id"),
+        "refresh": "1" if args.get("refresh") else "", "kinds": "1" if args.get("kinds") else ""}))
+
+
 def _obj(props: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
     return {"type": "object", "properties": props, "required": required}
 
@@ -231,6 +245,13 @@ TOOLS: List[Dict[str, Any]] = [
     {"name": "steward_log",
      "description": "Recent steward events (what the engine/you did and why).",
      "inputSchema": _obj({"n": _I}, [])},
+    {"name": "steward_job_submit",
+     "description": "Queue a job in the shared service's job queue (varaka: import/embed/regression work) on behalf of ONE OF YOUR OWN projects. `kind` is a queue job kind (see steward_jobs kinds=true), `params` its parameters, `spec_text` an optional request text, `files` optional local file paths INSIDE that project's folder (uploaded multipart; paths outside the folder are refused). The idempotency key is automatic: the same request returns the same job. A job that needs approval comes back `awaiting_approval`: only a HUMAN admin can approve it in varaka, NEVER try to approve/reject it yourself; tell the owner (the engine also pushes a phone notification and tells the project session). The result is delivered to the project session by the engine when the job finishes; you do not need to poll. In observe mode nothing is sent (recorded as would:job_submit).",
+     "inputSchema": _obj({"project": _S, "kind": _S, "params": {"type": "object"}, "spec_text": _S,
+                          "files": {"type": "array", "items": _S}, "priority": _I, "approval_ref": _S}, ["project", "kind"])},
+    {"name": "steward_jobs",
+     "description": "Your queued jobs (local record of what you submitted): state, result summary, error, artifacts. `status`: open (default) | all | queued | running | awaiting_approval | done | failed | cancelled. `refresh=true` polls the queue right now; `kinds=true` returns the queue's job kind catalogue instead. Read-only.",
+     "inputSchema": _obj({"status": _S, "project": _S, "id": _S, "refresh": {"type": "boolean"}, "kinds": {"type": "boolean"}}, [])},
     {"name": "steward_skip",
      "description": "Explicitly leave a listed item alone this tour (recorded; defers the next idle check).",
      "inputSchema": _obj({"name": _S, "reason": _S}, ["name", "reason"])},
@@ -254,6 +275,8 @@ DISPATCH: Dict[str, Callable[[int, dict], dict]] = {
     "steward_questions": _questions,
     "steward_log": _log,
     "steward_skip": _skip,
+    "steward_job_submit": _job_submit,
+    "steward_jobs": _jobs,
 }
 
 

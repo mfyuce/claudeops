@@ -112,7 +112,7 @@ ACTIVE_PHASES = ("planning", "planned")
 MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
-OBSERVE_SKIPPED = ("handover", "respawn", "start", "stop", "deliver_answer", "tour")
+OBSERVE_SKIPPED = ("handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "tour")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -211,7 +211,7 @@ class SessionView:
 
 @dataclass
 class Action:
-    kind: str       # handover | respawn | start | stop | directive | deliver_answer | ask_user | idea
+    kind: str       # handover | respawn | start | stop | directive | deliver_answer | deliver_job | ask_user | idea
                     # | set_phase | tour
     name: str = ""  # oturum/proje adı ("" = genel)
     reason: str = ""
@@ -2134,7 +2134,7 @@ def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now:
             continue
         if a.kind == "start" and not a.payload.get("question_id"):
             visits[a.name] = now
-        key = f"{a.kind}:{a.name}:{a.payload.get('question_id', '')}"
+        key = f"{a.kind}:{a.name}:{a.payload.get('question_id', '') or a.payload.get('job_id', '')}"
         if key in seen:
             continue
         seen[key] = now

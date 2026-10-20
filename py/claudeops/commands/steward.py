@@ -6,6 +6,9 @@ Kullanım:
   py/cops steward create SID [--label "Ad"]   # yeni kimlik (ayar bloğu + dizin; varsayılan KAPALI + observe)
   py/cops steward remove SID                  # kimliği sil (projesi varsa REDDEDİLİR; dizin stewards/.removed/'e taşınır)
   py/cops steward transfer PROJE SID          # projeyi başka kimliğe devret (oturum kapalıyken; --force: denetimi atla)
+  py/cops steward service add NAME --url URL --token-file PATH [--match prefix|exact] [--label L] / rm NAME / list
+                                              # pasif paylaşımlı servis kaydı (varaka): makine geneli, oturumlarına HİÇ dokunulmaz
+  py/cops steward [-s SID] jobs [list [--all|--state S]|show ID|poll|ack ID]   # dış iş kuyruğu (varaka) kayıtları / şimdi yokla
   py/cops steward status                      # özet: açık/kapalı, projeler faz faz, açık sorular, son tick
   py/cops steward projects [--phase planned]  # proje listesi
   py/cops steward cards [NAME] [--refresh]    # proje kartları (NAME: tek kartın tamamı); --refresh: şimdi yenile (panel üzerinden)
@@ -35,6 +38,7 @@ from typing import Any, Dict, List
 
 from .. import roster as roster_mod
 from .. import steward as sw
+from .. import steward_jobs as sj
 from ..settings import load_settings, save_settings, steward_config, steward_ids
 from . import mcp_queue
 
@@ -52,7 +56,7 @@ def resolve_sid(args) -> str:
     """`-s/--steward`, yoksa `COPS_STEWARD`, yoksa `default`. Geçersiz ya da ayarda tanımlı olmayan kimlik `ValueError`
     (sessizce default'a DÜŞMEZ: başka kimliğin deposuna yazılmasın)."""
     sid = (getattr(args, "steward", None) or os.environ.get(ENV_STEWARD) or "default").strip()
-    if getattr(args, "action", None) in ("list", "create", "remove", "transfer"):
+    if getattr(args, "action", None) in ("list", "create", "remove", "transfer", "service"):
         return sid      # kimlik yönetimi komutları seçili kimliği KULLANMAZ (kendi argümanları var)
     if sid != "default" and not sw.valid_steward_id(sid):
         raise ValueError(f"geçersiz değnekçi kimliği: {sid!r} (küçük harf, 2-16)")
@@ -106,6 +110,11 @@ def cmd_status(args) -> int:
     mine = sorted(n for n in projects if n in conflicts)
     for n in mine:
         print(f"uyarı: sahiplik ÇAKIŞMASI '{n}' ({', '.join(conflicts[n])}): hiçbiri yönetmez; birinin projects.json'undan çıkarın")
+    jobs = sj.load_jobs(sid)
+    if jobs:
+        open_n = sum(1 for j in jobs if sj.is_open(j))
+        wait_n = sum(1 for j in jobs if sj.pending_stage(j))
+        print(f"iş kuyruğu: {open_n} açık, {wait_n} iletilmemiş (py/cops steward{_sflag(sid)} jobs)")
     for q in qs[:5]:
         print(f"  ? [{q.id}] {q.project or '-'}: {q.text[:120]}")
     if not cfg.enabled:
@@ -420,6 +429,89 @@ def cmd_transfer(args) -> int:
     return 0
 
 
+# ── pasif servis kaydı ve dış iş kuyruğu (çoklu değnekçi P8b) ─────────────────
+
+def cmd_service(args) -> int:
+    act = getattr(args, "svc_action", None) or "list"
+    if act == "add":
+        try:
+            rec = sj.add_service(args.name, args.url, args.token_file, args.match, args.label or "")
+        except (ValueError, sw.LockTimeout) as e:
+            print(f"hata: {e}")
+            return 1
+        warn = sj.token_file_warning(sj.token_file_path(rec))
+        print(f"✓ servis '{args.name}' kaydedildi ({rec['url']}, {rec['match']}): oturumlarına hiçbir değnekçi eylemi gitmez")
+        if warn:
+            print("uyarı: " + warn)
+        return 0
+    if act == "rm":
+        try:
+            ok = sj.remove_service(args.name)
+        except sw.LockTimeout as e:
+            print(f"hata: {e}")
+            return 1
+        print(f"✓ servis '{args.name}' silindi" if ok else f"hata: servis '{args.name}' kayıtlı değil")
+        return 0 if ok else 1
+    svcs = sj.load_services()
+    if not svcs:
+        print("kayıtlı servis yok (eklemek için: py/cops steward service add NAME --url URL --token-file PATH)")
+        return 0
+    print(f"{'AD':<14}{'EŞLEME':<8}URL")
+    for n, r in sorted(svcs.items()):
+        tf = sj.token_file_path(r)
+        print(f"{n:<14}{r.get('match') or 'prefix':<8}{r.get('url')}   token: {tf or '-'}")
+        warn = sj.token_file_warning(tf) if tf else ""
+        if warn:
+            print("  uyarı: " + warn)
+        elif tf and not os.path.isfile(tf):
+            print("  uyarı: token dosyası YOK")
+    return 0
+
+
+def _job_line(j: Dict[str, Any]) -> str:
+    done = "iletildi" if j.get("delivered") else ("bekliyor" if sj.pending_stage(j) else "-")
+    return (f"{str(j.get('service')) + '#' + str(j.get('id')):<16}{j.get('state') or '?':<18}{j.get('project') or '-':<14}"
+            f"{j.get('kind') or '-':<20}{done:<9}{_ago(float(j.get('created_at') or 0))}")
+
+
+def cmd_jobs(args) -> int:
+    sid = _sid(args)
+    act = getattr(args, "jobs_action", None) or "list"
+    jobs = sj.load_jobs(sid)
+    if act == "poll":
+        if not jobs:
+            print("iş kaydı yok")
+            return 0
+        res = sj.poll_jobs(sid, force=True)
+        print(f"yoklandı: {res['polled']}  değişen: {res['changed']}  hata: {res['errors']}  atlanan: {res['skipped']}")
+        return 0 if not res["errors"] else 1
+    if act == "ack":
+        j = sj.find_job(jobs, args.id)
+        if j is None:
+            print(f"hata: iş bulunamadı: {args.id}")
+            return 1
+        sj.mark_delivered(j["id"], j.get("service") or "", "result", paths=sid)      # yerel: varaka'ya YAZILMAZ
+        print(f"✓ iş {j.get('service')}#{j['id']} iletildi sayıldı (yerel işaret)")
+        return 0
+    if act == "show":
+        j = sj.find_job(jobs, args.id)
+        if j is None:
+            print(f"hata: iş bulunamadı: {args.id}")
+            return 1
+        print(json.dumps(j, ensure_ascii=False, indent=2))
+        return 0
+    rows = jobs if getattr(args, "all", False) else [j for j in jobs if sj.is_open(j) or sj.pending_stage(j)]
+    if getattr(args, "state", None):
+        rows = [j for j in jobs if j.get("state") == args.state]
+    if not rows:
+        print("iş yok" if not jobs else "açık/iletilmemiş iş yok (hepsi için: --all)")
+        return 0
+    print(f"{'İŞ':<16}{'DURUM':<18}{'PROJE':<14}{'TÜR':<20}{'İLETİM':<9}YAŞ")
+    for j in sorted(rows, key=lambda x: -float(x.get("created_at") or 0)):
+        print(_job_line(j))
+    return 0
+
+
 def cmd_api(args) -> int:
     port = args.port
     sid = _sid(args)
@@ -464,6 +556,29 @@ def register(sub):
     ptr.add_argument("--force", action="store_true", help="oturum çalışıyor denetimini atla")
     ptr.set_defaults(func=cmd_transfer)
 
+    psv = s.add_parser("service", help="pasif paylaşımlı servis kaydı (varaka): add|rm|list (makine geneli, yalnız insan)")
+    sv = psv.add_subparsers(dest="svc_action", metavar="<add|rm|list>")
+    sva = sv.add_parser("add", help="servis ekle (token DOSYASI yolu; token argv'ye girmez)")
+    sva.add_argument("name")
+    sva.add_argument("--url", required=True, help="kök adres, ör. http://127.0.0.1:8080")
+    sva.add_argument("--token-file", required=True, help="Bearer token dosyası (chmod 600)")
+    sva.add_argument("--match", choices=["prefix", "exact"], default="prefix", help="oturum adı eşlemesi (varsayılan prefix)")
+    sva.add_argument("--label", default="")
+    svr = sv.add_parser("rm", help="servis kaydını sil")
+    svr.add_argument("name")
+    sv.add_parser("list", help="kayıtlı servisler")
+    psv.set_defaults(func=cmd_service)
+    pjb = s.add_parser("jobs", help="dış iş kuyruğu (varaka) kayıtları: list|show ID|poll|ack ID")
+    jb = pjb.add_subparsers(dest="jobs_action", metavar="<list|show|poll|ack>")
+    jbl = jb.add_parser("list", help="açık/iletilmemiş işler")
+    jbl.add_argument("--all", action="store_true")
+    jbl.add_argument("--state", default="")
+    jbs = jb.add_parser("show", help="bir işin tam kaydı")
+    jbs.add_argument("id")
+    jb.add_parser("poll", help="açık işleri şimdi yokla (panel gerekmez)")
+    jba = jb.add_parser("ack", help="sonucu iletildi say (yerel işaret; varaka'ya yazılmaz)")
+    jba.add_argument("id")
+    pjb.set_defaults(func=cmd_jobs)
     s.add_parser("status", help="özet").set_defaults(func=cmd_status)
     pp = s.add_parser("projects", help="proje listesi")
     pp.add_argument("--phase", choices=sw.PHASES, default=None)
