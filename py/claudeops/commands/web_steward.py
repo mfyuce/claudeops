@@ -35,7 +35,7 @@ from ..hosts import LOCAL_HOST_NAME
 from ..paths import CLAUDEOPS_DIR
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..providers.base import McpServerSpec, OneshotError
-from ..settings import default_effort_for, default_model_for, load_settings, steward_config
+from ..settings import default_effort_for, default_model_for, load_settings, steward_config, steward_ids
 from ..spawn import spawn_session, detect_display
 from ..stuck import find_stuck
 from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys
@@ -54,14 +54,80 @@ MAX_RESOURCE_BYTES = 50 * 1024 * 1024
 MAX_FILE_READ_CHARS = 20000
 RECENT_ACTIONS = 12
 
-_LOCK = threading.Lock()          # tick'ler ve elle tetiklenen eylemler sıralı
+# Kimlik başına motor durumu (docs/multi-steward-plan.md K3): kilit, son eylemler, son tick, özet önbelleği.
+# `default` bağlamı modül globallerinin KENDİSİNİ taşır (`_LOCK`, `_RECENT`, `_LAST_TICK`, `_SUMMARY_CACHE` aynı
+# nesneler): argümansız eski çağrılar ve eski testler değişmeden default'a gider.
+# Kilit YENİDEN GİRİŞLİ: `http_restart` kilit altındayken `http_directive`i çağırır (düz Lock'ta kendini kilitliyordu).
+_LOCK = threading.RLock()         # bir kimliğin tick'i ve elle tetiklenen eylemleri sıralı (başka kimliği beklemez)
 _ACTIONS: Dict[str, Callable[..., Any]] = {}
 _RECENT: List[Dict[str, Any]] = []
 _LAST_TICK: Dict[str, Any] = {"at": 0.0, "trigger": "", "actions": 0, "dry": 0, "error": ""}
+_SUMMARY_CACHE: Dict[str, Any] = {"until": 0.0, "value": None}
 _loop_started = False
-_CARD_LOCK = threading.Lock()      # aynı anda tek kart yenileme işi (tick'in arka plan işi / elle tetiklenen)
+_CARD_LOCK = threading.Lock()      # aynı anda tek kart yenileme işi, TÜM kimlikler için ortak (K7)
 _CARD_BACKGROUND = True            # testler False yapıp işi satır içi koşturur
 CARD_TIMEOUT_SECONDS = 120.0
+
+
+@dataclasses.dataclass
+class StewardContext:
+    """Bir değnekçi kimliğinin süreç içi motor durumu. Dosya yolları ÇAĞRI ANINDA (`paths`), testler `STEWARD_DIR`'i
+    patch'ler. `conflicts`: son tick'te bu kimliğin `projects.json`'unda görülen sahiplik çakışmaları (status uyarısı);
+    `conflict_logged`: {proje: gün} `ownership_conflict` olayı günde bir."""
+    sid: str
+    lock: Any = dataclasses.field(default_factory=threading.RLock)
+    recent: List[Dict[str, Any]] = dataclasses.field(default_factory=list)
+    last_tick: Dict[str, Any] = dataclasses.field(
+        default_factory=lambda: {"at": 0.0, "trigger": "", "actions": 0, "dry": 0, "error": ""})
+    summary_cache: Dict[str, Any] = dataclasses.field(default_factory=lambda: {"until": 0.0, "value": None})
+    conflicts: List[str] = dataclasses.field(default_factory=list)
+    conflict_logged: Dict[str, str] = dataclasses.field(default_factory=dict)
+
+    @property
+    def paths(self) -> sw.StewardPaths:
+        return sw.paths_for(self.sid)
+
+
+_CTX: Dict[str, StewardContext] = {
+    "default": StewardContext("default", lock=_LOCK, recent=_RECENT, last_tick=_LAST_TICK, summary_cache=_SUMMARY_CACHE)}
+_CTX_GUARD = threading.Lock()
+
+
+def _ctx(sid: str = "default") -> StewardContext:
+    """Kimliğin bağlamı (ilk istekte açılır). Geçersiz kimlik `ValueError` (sessizce default'a DÜŞMEZ)."""
+    sid = sid or "default"
+    with _CTX_GUARD:
+        ctx = _CTX.get(sid)
+        if ctx is None:
+            if not sw.valid_steward_id(sid):
+                raise ValueError(f"invalid steward id: {sid!r}")
+            ctx = _CTX[sid] = StewardContext(sid)
+        return ctx
+
+
+def _reset_contexts() -> None:
+    """Testler: default DIŞI bağlamları at (default'unkiler modül globalleri, testler onları kendisi temizler)."""
+    with _CTX_GUARD:
+        for sid in [s for s in _CTX if s != "default"]:
+            del _CTX[sid]
+
+
+def _ownership_index(fresh: bool = False) -> Dict[str, Any]:
+    """Ayardaki kimlikler + etkin beyin adları (default'un `brain_name` ezmesi dahil) ile sahiplik indeksi."""
+    ids = steward_ids()
+    brains: Dict[str, str] = {}
+    for s in ids:
+        try:
+            brains[s] = steward_config(s).brain_name
+        except ValueError:
+            continue
+    return sw.ownership_index(ids, brains=brains, fresh=fresh)
+
+
+def _world(sid: str = "default", cfg: Optional[sw.Config] = None, starts_left: Optional[int] = None,
+           index: Optional[Dict[str, Any]] = None) -> sw.World:
+    cfg = cfg or steward_config(sid)
+    return sw.world_for(sid, index if index is not None else _ownership_index(), cfg.brain_name, starts_left)
 
 
 def configure(**callbacks: Callable[..., Any]) -> None:
@@ -77,50 +143,56 @@ def _act(name: str, *args: Any, **kw: Any) -> Any:
     return fn(*args, **kw)
 
 
-def _remember(action: sw.Action, result: Any) -> None:
+def _remember(action: sw.Action, result: Any, ctx: Optional[StewardContext] = None) -> None:
+    ctx = ctx or _ctx()
     entry = {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
              "ok": bool(result.get("ok")) if isinstance(result, dict) else bool(result),
              "detail": (result.get("error") or result.get("detail") or "") if isinstance(result, dict) else ""}
-    _RECENT.insert(0, entry)
-    del _RECENT[RECENT_ACTIONS:]
-    sw.log_event("action", kind=action.kind, name=action.name, reason=action.reason,
+    ctx.recent.insert(0, entry)
+    del ctx.recent[RECENT_ACTIONS:]
+    sw.log_event("action", paths=ctx.paths, kind=action.kind, name=action.name, reason=action.reason,
                  ok=entry["ok"], detail=entry["detail"])
 
 
-def _remember_dry(action: sw.Action) -> None:
-    """observe kipi: eylem UYGULANMADI. `_RECENT`e `dry=True` ile, log'a `would:<kind>` olayı olarak yazılır."""
+def _remember_dry(action: sw.Action, ctx: Optional[StewardContext] = None) -> None:
+    """observe kipi: eylem UYGULANMADI. `recent`e `dry=True` ile, log'a `would:<kind>` olayı olarak yazılır."""
+    ctx = ctx or _ctx()
     detail = f"{len(action.payload.get('items') or [])} madde" if action.kind == "tour" else str(action.payload.get("text") or "")[:200]
-    _RECENT.insert(0, {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
-                       "ok": True, "dry": True, "detail": detail})
-    del _RECENT[RECENT_ACTIONS:]
+    ctx.recent.insert(0, {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
+                          "ok": True, "dry": True, "detail": detail})
+    del ctx.recent[RECENT_ACTIONS:]
     extra = {"question_id": action.payload["question_id"]} if action.payload.get("question_id") else {}
-    sw.log_event("would:" + action.kind, name=action.name, reason=action.reason, detail=detail, **extra)
+    sw.log_event("would:" + action.kind, paths=ctx.paths, name=action.name, reason=action.reason, detail=detail, **extra)
 
 
-def _brain_dry(kind: str, data: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:
+def _brain_dry(kind: str, data: Dict[str, Any], name: str, sid: str = "default") -> Optional[Dict[str, Any]]:
     """observe kipinde BEYNİN (`actor: brain`, MCP aracı) oturuma dokunan çağrıları da uygulanmaz: aynı `would:`
     kaydı düşer, beyne başarılı-ama-kuru yanıt döner. İnsanın elle çağırdığı CLI/API (`actor` yok) her zaman uygulanır."""
-    if data.get("actor") != "brain" or steward_config().mode != "observe":
+    if data.get("actor") != "brain" or steward_config(sid).mode != "observe":
         return None
-    _remember_dry(sw.Action(kind, name, "brain: " + str(data.get("reason") or "")[:200], {"text": str(data.get("text") or "")}))
+    _remember_dry(sw.Action(kind, name, "brain: " + str(data.get("reason") or "")[:200], {"text": str(data.get("text") or "")}),
+                  _ctx(sid))
     return {"ok": True, "dry": True, "note": f"observe mode: recorded as would:{kind}, not applied"}
 
 
 def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = None,
-            kind: str = "") -> Optional[Dict[str, Any]]:
+            kind: str = "", sid: str = "default", world: Optional[sw.World] = None) -> Optional[Dict[str, Any]]:
     """Oturuma dokunan yolların TEK kapısı (docs/multi-steward-plan.md K5). `None` = izinli, aksi halde red yanıtı.
-    Beyin (`actor: brain`, MCP) ve motor (`actor: engine`, `_apply`) YALNIZ beyin oturumunu ve kayıtlı proje oturumlarını
-    hedefleyebilir; kayıtsız (ad hoc) oturum kullanıcınındır. İnsanın CLI/panel çağrısı (`actor` yok) kısıtsız."""
+    Beyin (`actor: brain`, MCP) ve motor (`actor: engine`, `_apply`) YALNIZ KENDİ kimliğinin (`sid`) beyin oturumunu ve
+    kayıtlı proje oturumlarını hedefleyebilir: başka kimliğin projesi/beyni, servis, çakışmalı proje ve kayıtsız (ad hoc)
+    oturum reddedilir (çözüm global, `World.session_class`). İnsanın CLI/panel çağrısı (`actor` yok) kısıtsız."""
     if actor not in ("brain", "engine"):
         return None
-    if name == steward_config().brain_name:
+    if name == steward_config(sid).brain_name:
         return None
     if sw.valid_name(name):
         if projects is None:
-            projects = sw.load_projects()
-        if _project_for_session(name, projects) is not None:
+            projects = sw.load_projects(sid)
+        if world is None:
+            world = _world(sid)
+        if _project_for_session(name, projects, world) is not None:
             return None
-    sw.log_event("target_denied", actor=actor, kind=kind, name=name)
+    sw.log_event("target_denied", paths=sid, actor=actor, kind=kind, name=name)
     return {"ok": False, "error": "target denied: not the brain session or a registered steward project"}
 
 
@@ -333,19 +405,33 @@ def _running(name: str):
     return None
 
 
-def _project_for_session(name: str, projects: Dict[str, sw.Project]) -> Optional[sw.Project]:
-    """Oturum adı → değnekçi projesi: tam ad, yoksa instance kaydının blueprint'i, yoksa base adı."""
-    if name in projects:
-        return projects[name]
+# Kimliğin dokunamayacağı oturum sınıfları (`World.session_class`): başka kimliğin projesi, çakışmalı proje, servis, beyinler.
+_FOREIGN = ("other", "conflict", "service", "brain_other", "brain_own")
+
+
+def _project_for_session(name: str, projects: Dict[str, sw.Project],
+                         world: Optional[sw.World] = None) -> Optional[sw.Project]:
+    """Oturum adı → değnekçi projesi: tam ad, yoksa instance kaydının blueprint'i, yoksa base adı.
+    `world` verilirse çözüm GLOBAL süzgeçten geçer (K4): ad (ya da blueprint) başka kimliğin projesine, çakışmalı
+    projeye, servise ya da bir beyne çözülüyorsa None (`ncs` A'nın, `ncs2` B'nin iken `ncs2` oturumu `Session.base`
+    ile A'nın `ncs`'ine İNMEZ). Tek kimlikte sonuç eskisiyle aynı."""
     rec = inst_mod.get_instance(name)
-    if rec and rec.get("blueprint") in projects:
-        return projects[rec["blueprint"]]
-    from ..session import Session
-    base = Session(name=name, pid=0).base
-    if base in projects:
-        return projects[base]
-    m = inst_mod.DERIVED_NAME_RE.match(name)     # rakamlı proje adı (wifi5gppr20261019): Session.base çözemez
-    return projects.get(m.group(1)) if m else None
+    p = None
+    if name in projects:
+        p = projects[name]
+    elif rec and rec.get("blueprint") in projects:
+        p = projects[rec["blueprint"]]
+    else:
+        from ..session import Session
+        base = Session(name=name, pid=0).base
+        if base in projects:
+            p = projects[base]
+        else:
+            m = inst_mod.DERIVED_NAME_RE.match(name)     # rakamlı proje adı (wifi5gppr20261019): Session.base çözemez
+            p = projects.get(m.group(1)) if m else None
+    if p is None or world is None:
+        return p
+    return None if world.session_class(name, (rec or {}).get("blueprint")) in _FOREIGN else p
 
 
 def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr", fresh: bool = False) -> Dict[str, Any]:
@@ -362,10 +448,11 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
 
 def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: str = "",
                     answer: Optional[sw.Question] = None, start_if_stopped: bool = True,
-                    reason: str = "", session_name: str = "") -> Dict[str, Any]:
+                    reason: str = "", session_name: str = "", cfg: Optional[sw.Config] = None) -> Dict[str, Any]:
     """`project`'e (ya da onun `session_name` adlı çalışan instance'ına) direktif gönder; kapalıysa aç.
-    Proje değnekçi kaydında değilse (ad hoc oturum) sadece gönderir, kayıt açmaz."""
-    cfg = steward_config()
+    Proje değnekçi kaydında değilse (ad hoc oturum) sadece gönderir, kayıt açmaz. Kayıtlar `cfg.sid`'in deposuna."""
+    cfg = cfg or steward_config()
+    paths = sw.paths_for(cfg.sid)
     lang = cfg.lang
     target = session_name or project.name
     if not model and not effort:
@@ -385,15 +472,19 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
     message = sw.build_directive(project, lang=lang, extra=text, answer=answer)
     if not _send(s.name, s.cli, message):
         return {"ok": False, "error": "send failed"}
-    if project.name in sw.load_projects():
-        sw.upsert_project(project.name, last_visit=time.time(),
-                          last_directive=(text or f"[{project.phase} şablonu]")[:400], visits=project.visits + 1)
-    state = sw.load_state()
-    state.setdefault("last_directive_at", {})[s.name] = time.time()
-    sw.save_state(state)
+    if project.name in sw.load_projects(paths):
+        try:
+            sw.upsert_project(project.name, paths=paths, last_visit=time.time(),
+                              last_directive=(text or f"[{project.phase} şablonu]")[:400], visits=project.visits + 1)
+        except ValueError as e:   # OwnedElsewhere: ad elle iki kimliğe yazılmış (çakışma); mesaj gitti, kayıt yazılmaz
+            sw.log_event("directive_unrecorded", paths=paths, name=project.name, error=str(e))
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        state.setdefault("last_directive_at", {})[s.name] = time.time()
+        sw.save_state(state, paths)
     if answer is not None:
-        sw.mark_delivered(answer.id)
-    sw.log_event("directive", name=project.name, reason=reason, chars=len(message))
+        sw.mark_delivered(answer.id, paths)
+    sw.log_event("directive", paths=paths, name=project.name, reason=reason, chars=len(message))
     return {"ok": True, "name": s.name, "chars": len(message)}
 
 
@@ -454,7 +545,7 @@ def refresh_card(name: str, cfg: Optional[sw.Config] = None, *, cwd: str = "", r
     """Tek projenin kartını üret/yenile ve yaz. Özet başarısızsa: kart varsa DOKUNULMAZ (yalnız deneme kaydı),
     yoksa ham kart yazılır. Her çağrı `log.jsonl`'a bir `card` olayı düşer (günlük özet bunu sayar)."""
     cfg = cfg or steward_config()
-    project = sw.load_projects().get(name)
+    project = sw.load_projects(cfg.sid).get(name)
     cwd = cwd or _project_cwd(name)
     if not cwd or not os.path.isdir(cwd):
         return {"ok": False, "name": name, "error": "project folder unknown"}
@@ -468,39 +559,49 @@ def refresh_card(name: str, cfg: Optional[sw.Config] = None, *, cwd: str = "", r
             **{k: meta[k] for k in ("cli", "model") if k in meta},
             **({"last_error": meta["error"]} if parsed is None and meta.get("error") else {})}))
     ok = parsed is not None
-    sw.log_event("card", name=name, ok=ok, reason=reason, model=meta.get("model", ""), cli=meta.get("cli", ""),
-                 secs=meta.get("secs", 0), error=meta.get("error", ""))
+    sw.log_event("card", paths=cfg.sid, name=name, ok=ok, reason=reason, model=meta.get("model", ""),
+                 cli=meta.get("cli", ""), secs=meta.get("secs", 0), error=meta.get("error", ""))
     return {"ok": ok, "name": name, "error": meta.get("error", ""), "model": meta.get("model", "")}
 
 
-def _running_names_for(live: List[Any], projects: Dict[str, sw.Project]) -> set:
+def _running_names_for(live: List[Any], projects: Dict[str, sw.Project], world: Optional[sw.World] = None) -> set:
     """Çalışan oturumların proje adları: tam ad + `Session.base` + değnekçi projesine eşleme. `Session.base` yalnız
     harften oluşan adları çözer (`wifi5gppr20261019` → kendisi), bu yüzden rakamlı proje adları "çalışmıyor" görünür
-    ve uğrama sırası ikinci bir oturum açardı; `_project_for_session` blueprint/tarih sonekinden de çözer."""
-    out = {s.name for s in live} | {s.base for s in live}
+    ve uğrama sırası ikinci bir oturum açardı; `_project_for_session` blueprint/tarih sonekinden de çözer.
+    `world` verilirse global çözümle uyumlu: oturum başka kimliğe çözülüyorsa (`ncs2` B'nin) tabanı (`ncs`, A'nın)
+    "çalışıyor" sayılmaz."""
+    out = {s.name for s in live}
+    known = (set(world.owners) | set(world.conflicts)) if world is not None else set()
     for s in live:
-        p = _project_for_session(s.name, projects)
+        if world is None or s.base not in known or world.session_class(s.name) not in _FOREIGN:
+            out.add(s.base)
+        p = _project_for_session(s.name, projects, world)
         if p is not None:
             out.add(p.name)
     return out
 
 
-def _running_project_names() -> set:
-    return _running_names_for(find_sessions(measure_cpu=False), sw.load_projects())
+def _running_project_names(sid: str = "default") -> set:
+    return _running_names_for(find_sessions(measure_cpu=False), sw.load_projects(sid), _world(sid))
 
 
 def refresh_due_cards(cfg: Optional[sw.Config] = None, limit: Optional[int] = None,
                       now: Optional[float] = None) -> List[Dict[str, Any]]:
     """Kartı olmayan / bayat / kaynağı değişmiş / eskimiş, ÇALIŞMAYAN, aktif fazdaki projeleri yenile (en çok
     `limit`; None = `cards_per_tick`). Önce kartı hiç olmayanlar, sonra en eski kart. Çalışan proje atlanır:
-    oturum yazarken kaynak zaten değişiyor (handover'dan sonra `mark_card_stale` ile işaretlenir)."""
+    oturum yazarken kaynak zaten değişiyor (handover'dan sonra `mark_card_stale` ile işaretlenir).
+    Projeler `cfg.sid`'in deposundan; default dışı kimlikte çakışmalı projeler atlanır (kimse yönetmez)."""
     cfg = cfg or steward_config()
     limit = cfg.cards_per_tick if limit is None else limit
     if limit <= 0:
         return []
     now = now if now is not None else time.time()
-    projects = sw.load_projects()
-    running = _running_project_names()
+    projects = sw.load_projects(cfg.sid)
+    if cfg.sid == "default":
+        running = _running_project_names()
+    else:
+        projects = _world(cfg.sid, cfg).own_projects(projects)
+        running = _running_project_names(cfg.sid)
     cards = sw.load_cards()
     cwd_of = _cwd_resolver()
     due = []
@@ -553,6 +654,26 @@ def card_tick(cfg: sw.Config) -> bool:
     return _run_cards_job(lambda: refresh_due_cards(cfg))
 
 
+def cards_round(cfgs: List[sw.Config]) -> bool:
+    """Döngü turunun TEK kart işi (K7): kimlikler sırayla, `cards_per_tick` (makine geneli) bütçesi TÜM kimliklerde
+    ortak. Tek kimlikte `card_tick(cfg)` ile aynı. İş zaten sürüyorsa False."""
+    if not cfgs or not cfgs[0].card_refresh or cfgs[0].cards_per_tick <= 0:
+        return False
+    if len(cfgs) == 1:
+        return card_tick(cfgs[0])
+
+    def job() -> None:
+        left = cfgs[0].cards_per_tick
+        for c in cfgs:
+            if left <= 0:
+                break
+            try:
+                left -= len(refresh_due_cards(c, limit=left))
+            except Exception as e:  # bir kimliğin kart adımı diğerlerini düşürmesin
+                diag_log("steward_card_round_crashed", sid=c.sid, error=repr(e))
+    return _run_cards_job(job)
+
+
 # ── beyin ─────────────────────────────────────────────────────────────────────
 
 def brain_spec() -> McpServerSpec:
@@ -577,8 +698,15 @@ def ensure_workspace(cfg: Optional[sw.Config] = None) -> str:
     return path
 
 
+# Default dışı kimliğin beyni (kendi workspace'i, `mcp-steward --steward <sid>`) P5'te gelir. O zamana dek motor o beyni
+# AÇMAZ, ona tur/devir GÖNDERMEZ: eski MCP sunucusu parametresiz = default deposuna yazardı (kimlik karışması).
+_NO_OTHER_BRAIN = {"ok": False, "error": "brain of a non-default steward is not supported yet (multi-steward P5)"}
+
+
 def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False) -> Dict[str, Any]:
     cfg = cfg or steward_config()
+    if cfg.sid != "default":
+        return dict(_NO_OTHER_BRAIN)
     if _running(cfg.brain_name) is not None:
         return {"ok": True, "started": False, "name": cfg.brain_name}
     ensure_workspace(cfg)
@@ -611,13 +739,14 @@ def brain_stop(cfg: Optional[sw.Config] = None) -> Dict[str, Any]:
     return res
 
 
-def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project]) -> Dict[str, Any]:
+def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project],
+                 world: Optional[sw.World] = None) -> Dict[str, Any]:
     if it.get("kind") == "idea":
         return it
     name = it.get("name") or ""
     p = projects.get(name)
     s = _running(name)
-    proj = p or (_project_for_session(s.name, projects) if s is not None else None)
+    proj = p or (_project_for_session(s.name, projects, world) if s is not None else None)
     out = dict(it)
     if proj is not None:
         out.update({"phase": proj.phase, "kindp": proj.kind, "goal": proj.goal, "last_directive": proj.last_directive})
@@ -646,6 +775,8 @@ TOUR_FAILS_BEFORE_RESTART = 2    # art arda bu kadar tur gönderimi başarısız
 
 def brain_restart_for_stuck_input(cfg: sw.Config) -> Dict[str, Any]:
     """Beyin oturumunu durdurup yeniden aç (konuşma `--resume` ile sürer; giriş kutusu temizlenir)."""
+    if cfg.sid != "default":
+        return dict(_NO_OTHER_BRAIN)
     stop = _act("stop", cfg.brain_name, lang=cfg.lang)
     if not stop.get("ok"):
         return stop
@@ -653,19 +784,26 @@ def brain_restart_for_stuck_input(cfg: sw.Config) -> Dict[str, Any]:
     return brain_start(cfg)
 
 
-def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False) -> Dict[str, Any]:
+def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
+             cfg: Optional[sw.Config] = None, world: Optional[sw.World] = None) -> Dict[str, Any]:
     """Beyne bir tur prompt'u gönder. `items` None ise şu anki gözden-geçirme maddeleri `review_items`'tan
     alınır (`force`: tour_minutes/beyin-boşta şartına bakılmaz, madde yoksa yine de "tur" gönderilir —
-    kullanıcı bilerek istedi; beyin `steward_overview` ile kendi bakar). Beyin kapalıysa açılır."""
-    cfg = steward_config()
-    projects = sw.load_projects()
+    kullanıcı bilerek istedi; beyin `steward_overview` ile kendi bakar). Beyin kapalıysa açılır.
+    `cfg`/`world`: kimlik (verilmezse default); maddeler yalnız o kimliğin projelerinden."""
+    cfg = cfg or steward_config()
+    if cfg.sid != "default":
+        return dict(_NO_OTHER_BRAIN)
+    paths = sw.paths_for(cfg.sid)
+    projects = sw.load_projects(paths)
+    if world is None:
+        world = _world(cfg.sid, cfg)
     if items is None:
-        state = sw.load_state()
+        state = sw.load_state(paths)
         views = _collect_views(cfg)
-        items = sw.review_items(views, projects, cfg, time.time(), sw.load_questions(), sw.load_ideas(),
+        items = sw.review_items(views, projects, cfg, time.time(), sw.load_questions(paths), sw.load_ideas(paths),
                                 skip=set(state.get("ho_pending") or {}),
                                 last_directive_at=state.get("last_directive_at") or {},
-                                reviewed_at=state.get("reviewed_at") or {})
+                                reviewed_at=state.get("reviewed_at") or {}, world=world)
         if not items and not force:
             return {"ok": False, "error": "no review items right now"}
     res = brain_start(cfg)
@@ -674,14 +812,15 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False) 
     s = _running(cfg.brain_name)
     if s is None or not is_tmux_backed(s.pid):
         return {"ok": False, "error": "brain session not reachable"}
-    enriched = [_enrich_item(it, projects) for it in items]
-    prompt = sw.build_tour_prompt(enriched, lang=cfg.lang, open_qs=sw.open_questions(), now=time.time())
+    enriched = [_enrich_item(it, projects, world) for it in items]
+    prompt = sw.build_tour_prompt(enriched, lang=cfg.lang, open_qs=sw.open_questions(paths=paths), now=time.time())
     if not _send(s.name, s.cli, prompt):
         return {"ok": False, "error": "send failed"}
-    state = sw.load_state()
-    state["last_tour"] = time.time()
-    sw.save_state(state)
-    sw.log_event("tour", items=len(enriched), chars=len(prompt))
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        state["last_tour"] = time.time()
+        sw.save_state(state, paths)
+    sw.log_event("tour", paths=paths, items=len(enriched), chars=len(prompt))
     return {"ok": True, "items": len(enriched), "chars": len(prompt)}
 
 
@@ -738,11 +877,16 @@ def http_summary(date: str = "", lang: str = "") -> Dict[str, Any]:
 
 # ── eylem uygulama ────────────────────────────────────────────────────────────
 
-def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -> Dict[str, Any]:
+def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
+           world: Optional[sw.World] = None) -> Dict[str, Any]:
+    """Tek eylemi uygula. Kayıtlar `cfg.sid`'in deposuna; oturuma dokunan eylemler `_target` kapısından (kimlikli)."""
     k = action.kind
     name = action.name
+    paths = sw.paths_for(cfg.sid)
+    if cfg.sid != "default" and name == cfg.brain_name and k in ("handover", "respawn", "stop", "tour"):
+        return dict(_NO_OTHER_BRAIN)
     if k in ("handover", "respawn", "stop"):   # deliver_answer kayıtsız oturuma da gider (cevap kaynağına); start zaten projects'e bağlı
-        denied = _target(name, "engine", projects, k)
+        denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
         if denied is not None:
             return denied
     if k == "handover":
@@ -754,7 +898,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
                 return res
         if name == cfg.brain_name:
             return brain_start(cfg, fresh=True)   # devirden sonra YENİ konuşma (aynı şişmiş bağlam taşınmasın; notlar NOTLAR.md'de)
-        p = _project_for_session(name, projects)
+        p = _project_for_session(name, projects, world)
         model, effort = sw.phase_model_effort(p, cfg) if p else ("", "")
         # Devirden sonra YENİ konuşma (`--new`): `--resume` aynı şişmiş bağlamı (her tur yeniden okunan ~400K token)
         # ve eski modelin önbelleğini taşırdı. Devir özeti CLAUDE.md'de, yeni oturum onu kendisi okur.
@@ -762,33 +906,33 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
         if not res.get("ok") or p is None:
             return res
         sw.mark_card_stale(p.name)   # handover'da oturum işini yazdı: kart, proje durunca yeniden özetlensin
-        return _give_directive(p, "", reason="respawn", session_name=name)
+        return _give_directive(p, "", reason="respawn", session_name=name, cfg=cfg)
     if k == "start":
         p = projects.get(name)
         if p is None:
             return {"ok": False, "error": "not a steward project"}
         q = None
         if action.payload.get("question_id"):
-            q = next((x for x in sw.load_questions() if x.id == action.payload["question_id"]), None)
-        return _give_directive(p, "", answer=q, reason=action.reason)
+            q = next((x for x in sw.load_questions(paths) if x.id == action.payload["question_id"]), None)
+        return _give_directive(p, "", answer=q, reason=action.reason, cfg=cfg)
     if k == "stop":
         return _act("stop", name, lang=cfg.lang)
     if k == "deliver_answer":
-        q = next((x for x in sw.load_questions() if x.id == action.payload.get("question_id")), None)
+        q = next((x for x in sw.load_questions(paths) if x.id == action.payload.get("question_id")), None)
         if q is None:
             return {"ok": False, "error": "question gone"}
         p = projects.get(q.project) or sw.Project(name=q.project)
         extra = "Cevaba göre devam et." if cfg.lang != "en" else "Continue according to the answer."
-        res = _give_directive(p, extra, answer=q, start_if_stopped=False, reason="answer", session_name=name)
+        res = _give_directive(p, extra, answer=q, start_if_stopped=False, reason="answer", session_name=name, cfg=cfg)
         if not res.get("ok") and q.project not in projects:
             # Kayıtlı proje olmayan (ad hoc) oturum kapanmış ya da yazı kabul etmiyor: her tick yeniden deneme,
             # bırak (cevap kayıtta durur, kimse beklemiyor).
-            sw.mark_delivered(q.id)
-            sw.log_event("answer_undeliverable", id=q.id, session=name, error=res.get("error", ""))
+            sw.mark_delivered(q.id, paths)
+            sw.log_event("answer_undeliverable", paths=paths, id=q.id, session=name, error=res.get("error", ""))
         return res
     if k == "ask_user":
         q = sw.add_question(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
-                            routine=bool(action.payload.get("routine")))
+                            routine=bool(action.payload.get("routine")), paths=paths)
         if q.status == "open" and q.routine:   # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır
             return {"ok": True, "id": q.id, "notified": False, "routine": True}
         if q.status != "open":   # yakın zamanda cevaplanmış soru yeniden soruldu: telefona yeni soru gitmez, cevap yeniden iletilir
@@ -796,95 +940,152 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
         notified = notify_phone(f"[{q.project}] {q.text}\n→ py/cops steward answer {q.id} \"...\"")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "escalate_routine":
-        q = sw.escalate_routine(action.payload.get("question_id") or "")
+        q = sw.escalate_routine(action.payload.get("question_id") or "", paths)
         if q is None:
             return {"ok": False, "error": "not an open routine question"}
         notified = notify_phone(f"[{q.project}] {q.text}\n→ py/cops steward answer {q.id} \"...\"")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "idea":
-        i = sw.add_idea(action.payload.get("text") or "", source=name)
+        i = sw.add_idea(action.payload.get("text") or "", source=name, paths=paths)
         return {"ok": True, "id": i.id}
     if k == "set_phase":
-        sw.upsert_project(name, phase=action.payload.get("phase"))
+        sw.upsert_project(name, paths=paths, phase=action.payload.get("phase"))
         return {"ok": True}
     if k == "tour":
-        res = run_tour(action.payload.get("items") or [])
-        state = sw.load_state()
-        if res.get("ok"):
-            if state.get("tour_fail"):
-                state["tour_fail"] = 0
-                sw.save_state(state)
-            return res
-        fails = int(state.get("tour_fail") or 0) + 1
-        state["tour_fail"] = fails
-        sw.save_state(state)
+        res = run_tour(action.payload.get("items") or [])   # yalnız default (yukarıda default dışı beyin reddedildi)
+        with sw.steward_lock(paths):
+            state = sw.load_state(paths)
+            if res.get("ok"):
+                if state.get("tour_fail"):
+                    state["tour_fail"] = 0
+                    sw.save_state(state, paths)
+                return res
+            fails = int(state.get("tour_fail") or 0) + 1
+            state["tour_fail"] = fails
+            sw.save_state(state, paths)
         if fails >= TOUR_FAILS_BEFORE_RESTART:
             # Beynin giriş kutusu takılı (gönderilmemiş yapıştırma birikir): oturumu yeniden aç, sayacı sıfırla.
-            sw.log_event("brain_unstick", fails=fails, error=res.get("error", ""))
+            sw.log_event("brain_unstick", paths=paths, fails=fails, error=res.get("error", ""))
             rb = brain_restart_for_stuck_input(cfg)
-            state = sw.load_state()
-            state["tour_fail"] = 0
-            sw.save_state(state)
+            with sw.steward_lock(paths):
+                state = sw.load_state(paths)
+                state["tour_fail"] = 0
+                sw.save_state(state, paths)
             res = dict(res, restarted=bool(rb.get("ok")))
         return res
     return {"ok": False, "error": f"unknown action {k}"}
 
 
-def tick_once(trigger: str = "timer") -> Dict[str, Any]:
-    """Bir tick: görünümleri topla → kararlar → uygula → state kaydet. Elle (`/api/steward/tick`,
-    `py/cops steward tick`) de çağrılır; döngü kapalıyken bile çalışır (kullanıcı bilerek istedi)."""
-    with _LOCK:
-        cfg = steward_config()
+def _note_conflicts(ctx: StewardContext, index: Dict[str, Any], own_names: set, now: float) -> None:
+    """Bu kimliğin `projects.json`'unda olup başka kimlikte de görünen adlar (elle düzenleme): ikisi de yönetmez
+    (`World.own_projects` süzer). `ownership_conflict` olayı ad başına GÜNDE BİR; `ctx.conflicts` status uyarısı."""
+    conflicts = index.get("conflicts") or {}
+    mine = sorted(n for n in own_names if n in conflicts)
+    ctx.conflicts = mine
+    day = time.strftime("%Y-%m-%d", time.localtime(now))
+    for n in mine:
+        if ctx.conflict_logged.get(n) != day:
+            ctx.conflict_logged[n] = day
+            sw.log_event("ownership_conflict", paths=ctx.paths, name=n, stewards=list(conflicts[n]))
+            diag_log("steward_ownership_conflict", sid=ctx.sid, name=n, stewards=list(conflicts[n]))
+
+
+def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Optional[int] = None,
+              cards: bool = True, index: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """`sid` kimliği için bir tick: görünümleri topla → kararlar (`plan_tick(world=...)`) → uygula → state kaydet.
+    Elle (`/api/steward/tick`, `py/cops steward tick`) de çağrılır; döngü kapalıyken bile çalışır (kullanıcı bilerek
+    istedi). Kilit KİMLİK BAŞINA (`ctx.lock`): A'nın tick'i B'nin elle eylemini bekletmez. Okuma/yazma yalnız
+    `paths_for(sid)` yollarında. `starts_left`: döngü turunun kalan makine geneli başlatma hakkı (None = sınırsız,
+    elle tick). `cards=False`: kart adımını çağıran yapar (döngü turu tek kart işi koşturur)."""
+    ctx = _ctx(sid)
+    with ctx.lock:
+        cfg = steward_config(sid)
+        paths = ctx.paths
         t0 = time.time()
         applied: List[Dict[str, Any]] = []
         dry_applied: List[Dict[str, Any]] = []
+        started = 0
         error = ""
         try:
-            projects = sw.load_projects()
+            projects = sw.load_projects(paths)
+            idx = index if index is not None else _ownership_index()
+            world = _world(sid, cfg, starts_left, idx)
+            _note_conflicts(ctx, idx, set(projects), t0)
             views = _collect_views(cfg)
-            actions, new_state = sw.plan_tick(views, projects, sw.load_state(), cfg, t0,
-                                              sw.load_questions(), sw.load_ideas())
-            actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
-            sw.save_state(new_state)
+            with sw.steward_lock(paths):     # state RMW atomik (CLI süreci de aynı dosyaya yazar)
+                actions, new_state = sw.plan_tick(views, projects, sw.load_state(paths), cfg, t0,
+                                                  sw.load_questions(paths), sw.load_ideas(paths), world=world)
+                actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
+                sw.save_state(new_state, paths)
             for a in dry:
-                _remember_dry(a)
+                _remember_dry(a, ctx)
                 dry_applied.append({"kind": a.kind, "name": a.name, "reason": a.reason, "dry": True})
             for a in actions:
+                if a.kind == "start":
+                    started += 1      # deneme sayılır (başarısız açılış da bir spawn dalgası olabilir)
                 try:
-                    res = _apply(a, cfg, projects)
+                    res = _apply(a, cfg, projects, world)
                 except Exception as e:  # tek eylem tick'i düşürmesin
                     res = {"ok": False, "error": repr(e)}
-                    diag_log("steward_action_crashed", kind=a.kind, name=a.name, error=repr(e))
-                _remember(a, res)
+                    diag_log("steward_action_crashed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
+                _remember(a, res, ctx)
                 applied.append({"kind": a.kind, "name": a.name, "reason": a.reason, "ok": bool(res.get("ok")),
                                 "detail": res.get("error") or ""})
         except Exception as e:
             error = repr(e)
-            diag_log("steward_tick_crashed", error=repr(e))
-        _LAST_TICK.update({"at": t0, "trigger": trigger, "actions": len(applied), "dry": len(dry_applied), "error": error})
-        sw.log_event("tick", trigger=trigger, mode=cfg.mode, n=len(applied), dry=len(dry_applied), error=error)
+            diag_log("steward_tick_crashed", sid=sid, error=repr(e))
+        ctx.last_tick.update({"at": t0, "trigger": trigger, "actions": len(applied), "dry": len(dry_applied), "error": error})
+        sw.log_event("tick", paths=paths, trigger=trigger, mode=cfg.mode, n=len(applied), dry=len(dry_applied), error=error)
         if applied:
             web_ws.notify_status_changed()
-        if cfg.enabled:
+        if cfg.enabled and sid == "default":   # kimlik başına özet/compact P6'da
             try:
                 maybe_daily_summary(cfg, t0)
             except Exception as e:
                 diag_log("steward_summary_crashed", error=repr(e))
+    if cards:
+        try:
+            card_tick(cfg)
+        except Exception as e:
+            diag_log("steward_card_tick_crashed", sid=sid, error=repr(e))
+    return {"ok": not error, "error": error, "actions": applied, "dry": dry_applied, "mode": cfg.mode, "at": t0,
+            "started": started}
+
+
+def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
+    """Döngünün bir turu: `steward_ids()` sırasıyla, YALNIZ `enabled` kimlikler SIRAYLA tick'lenir (aynı anda tek spawn
+    dalgası). Bir kimliğin hatası yutulup loglanır, diğerleri yine tick'lenir. Makine geneli `max_starts_total` bütçesi
+    kimlikler arasında taşınır (`starts_left`); `max_active_total` her tick'in kendi görünümünden (diğer kimliklerin
+    çalışan projeleri dahil) `plan_tick`'te uygulanır. Kart işi turda bir kez, tüm etkin kimlikler için."""
+    base = steward_config()
+    starts_left = max(0, base.max_starts_total)
+    results: List[Dict[str, Any]] = []
+    enabled: List[sw.Config] = []
+    for sid in steward_ids():
+        try:
+            cfg = steward_config(sid)
+            if not cfg.enabled:
+                continue
+            enabled.append(cfg)
+            res = tick_once(trigger, sid, starts_left=starts_left, cards=False)
+            starts_left = max(0, starts_left - int(res.get("started") or 0))
+            results.append(dict(res, sid=sid))
+        except Exception as e:   # bir kimlik diğerlerini atlatmasın
+            diag_log("steward_tick_round_crashed", sid=sid, error=repr(e))
+            results.append({"ok": False, "sid": sid, "error": repr(e)})
     try:
-        card_tick(cfg)
+        cards_round(enabled)
     except Exception as e:
         diag_log("steward_card_tick_crashed", error=repr(e))
-    return {"ok": not error, "error": error, "actions": applied, "dry": dry_applied, "mode": cfg.mode, "at": t0}
+    return results
 
 
 def _loop() -> None:
     while True:
         cfg = steward_config()
         time.sleep(max(15, cfg.tick_seconds))
-        if not steward_config().enabled:
-            continue
         try:
-            tick_once("timer")
+            tick_round("timer")
         except Exception as e:
             diag_log("steward_loop_crashed", error=repr(e))
 
@@ -899,21 +1100,24 @@ def start_loop() -> None:
 
 # ── özet / HTTP ───────────────────────────────────────────────────────────────
 
-_SUMMARY_CACHE: Dict[str, Any] = {"until": 0.0, "value": None}
 _SUMMARY_TTL = 5.0
 
 
-def summary(running_names: Optional[set] = None) -> Dict[str, Any]:
+def summary(running_names: Optional[set] = None, sid: str = "default") -> Dict[str, Any]:
     """`/api/status`'a giden HAFİF alan (`orch` gibi local-only). ~2 sn'lik WS/poll cadence'ine bindiği için
-    5 sn önbellekli; `running_names` verilirse (status payload'ın kendi taraması) ayrıca proc taranmaz."""
+    5 sn önbellekli (kimlik başına); `running_names` verilirse (status payload'ın kendi taraması) ayrıca proc taranmaz.
+    `ownership_conflicts` yalnız çakışma varken eklenir (status uyarısı; tek kimlikte anahtarlar aynı kalır)."""
+    ctx = _ctx(sid)
+    cache = ctx.summary_cache
     now = time.monotonic()
-    hit = _SUMMARY_CACHE["value"]
-    if hit is not None and _SUMMARY_CACHE["until"] > now:
+    hit = cache["value"]
+    if hit is not None and cache["until"] > now:
         return hit
-    cfg = steward_config()
-    projects = sw.load_projects()
-    questions = sw.load_questions()
-    state = sw.load_state()
+    cfg = steward_config(sid)
+    paths = ctx.paths
+    projects = sw.load_projects(paths)
+    questions = sw.load_questions(paths)
+    state = sw.load_state(paths)
     brain_running = (cfg.brain_name in running_names) if running_names is not None else (_running(cfg.brain_name) is not None)
     value = {
         "enabled": cfg.enabled,
@@ -921,19 +1125,28 @@ def summary(running_names: Optional[set] = None) -> Dict[str, Any]:
         "tick_seconds": cfg.tick_seconds,
         "projects": sw.summarize_projects(projects),
         "open_questions": len(sw.open_questions(questions)),
-        "ideas_new": sum(1 for i in sw.load_ideas() if i.status == "new"),
+        "ideas_new": sum(1 for i in sw.load_ideas(paths) if i.status == "new"),
         "pending_items": int(state.get("pending_items") or 0),
-        "last_tick": dict(_LAST_TICK),
+        "last_tick": dict(ctx.last_tick),
         "last_tour": state.get("last_tour") or 0.0,
         "brain": {"name": cfg.brain_name, "running": brain_running},
-        "recent": _RECENT[:5],
+        "recent": ctx.recent[:5],
     }
-    _SUMMARY_CACHE.update(until=now + _SUMMARY_TTL, value=value)
+    if ctx.conflicts:
+        value["ownership_conflicts"] = list(ctx.conflicts)
+    cache.update(until=now + _SUMMARY_TTL, value=value)
     return value
 
 
-def invalidate_summary() -> None:
-    _SUMMARY_CACHE["until"] = 0.0
+def invalidate_summary(sid: Optional[str] = None) -> None:
+    """`sid` verilmezse TÜM kimliklerin özet önbelleği."""
+    if sid:
+        ctxs = [_ctx(sid)]
+    else:
+        with _CTX_GUARD:
+            ctxs = list(_CTX.values())
+    for ctx in ctxs:
+        ctx.summary_cache["until"] = 0.0
 
 
 def _project_dict(p: sw.Project, running: Optional[set] = None,
@@ -947,22 +1160,24 @@ def _project_dict(p: sw.Project, running: Optional[set] = None,
     return d
 
 
-def http_state() -> Dict[str, Any]:
-    cfg = steward_config()
-    projects = sw.load_projects()
+def http_state(sid: str = "default") -> Dict[str, Any]:
+    ctx = _ctx(sid)
+    cfg = steward_config(sid)
+    paths = ctx.paths
+    projects = sw.load_projects(paths)
     live = find_sessions(measure_cpu=False)
-    running_projects = _running_names_for(live, projects)
+    running_projects = _running_names_for(live, projects, _world(sid, cfg))
     cards = sw.load_cards()
     return {
         "ok": True,
         "config": dataclasses.asdict(cfg),
-        "summary": summary(),
+        "summary": summary(sid=sid),
         "projects": [_project_dict(p, running_projects, cards)
                      for p in sorted(projects.values(), key=lambda p: (p.priority, p.name))],
         "running": [{"name": s.name, "cwd": s.cwd, "cli": s.cli, "model": s.model} for s in live],
-        "questions": [dataclasses.asdict(q) for q in sw.open_questions()],
-        "ideas": [dataclasses.asdict(i) for i in sw.load_ideas() if i.status == "new"],
-        "recent": _RECENT,
+        "questions": [dataclasses.asdict(q) for q in sw.open_questions(paths=paths)],
+        "ideas": [dataclasses.asdict(i) for i in sw.load_ideas(paths) if i.status == "new"],
+        "recent": ctx.recent,
     }
 
 
@@ -1084,7 +1299,7 @@ def http_context(name: str, docs: bool = False) -> Dict[str, Any]:
         except Exception:
             out["last_exchange"] = {}
         out["cli"], out["model"] = s.cli, s.model
-    owner = _project_for_session(name, projects)
+    owner = _project_for_session(name, projects, _world())
     card = sw.load_card(owner.name if owner is not None else name)
     if card is not None:
         out["card"] = card
@@ -1118,10 +1333,26 @@ def http_project_upsert(data: Dict[str, Any]) -> Dict[str, Any]:
               if k in data}
     try:
         p = sw.upsert_project(name, **fields)
-    except ValueError as e:
+    except ValueError as e:      # OwnedElsewhere / ReservedName mesajı olduğu gibi
         return {"ok": False, "error": str(e)}
     sw.log_event("project_set", name=name, fields=sorted(fields))
-    return {"ok": True, "project": _project_dict(p)}
+    out = {"ok": True, "project": _project_dict(p)}
+    warning = _prefix_warning(name)
+    if warning:
+        out["warning"] = warning
+    return out
+
+
+def _prefix_warning(name: str, sid: str = "default", index: Optional[Dict[str, Any]] = None) -> str:
+    """Ad başka kimliğin bir proje adının öneki/uzantısıysa (`ncs` / `ncs2`) uyarı metni, değilse "". Kabul edilir
+    (oturum adları tüm kimliklerde en uzun önekle GLOBAL çözülür, K4) ama kullanıcı karışıklığı bilsin."""
+    idx = index if index is not None else _ownership_index()
+    hits = sorted(f"{p} ({s})" for p, s in (idx.get("owners") or {}).items()
+                  if s != sid and p != name and (p.startswith(name) or name.startswith(p)))
+    if not hits:
+        return ""
+    return ("name shares a prefix with project(s) of other stewards: " + ", ".join(hits)
+            + "; sessions resolve to the longest matching project name across all stewards")
 
 
 def http_project_remove(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1140,6 +1371,17 @@ def http_register(data: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "error": "invalid name"}
     if not cwd or not os.path.isabs(cwd):
         return {"ok": False, "error": "cwd must be an absolute path"}
+    # Talep ÖNCE denetlenir (klasör/GOAL.md/roster yan etkilerinden önce): başka kimliğin adı ya da rezerve ad reddedilir.
+    paths = sw.paths_for(cfg.sid)
+    other = sw.project_owner(name, exclude=cfg.sid)
+    if other:
+        return {"ok": False, "error": str(sw.OwnedElsewhere(name, other))}
+    idx = _ownership_index(fresh=True)
+    if name not in sw.load_projects(paths):
+        why = sw.reserved_reason(name, idx)
+        if why:
+            return {"ok": False, "error": str(sw.ReservedName(name, why))}
+    warning = _prefix_warning(name, cfg.sid, idx)
     try:
         os.makedirs(cwd, exist_ok=True)
     except OSError as e:
@@ -1190,13 +1432,19 @@ def http_register(data: Dict[str, Any]) -> Dict[str, Any]:
         if not reg.get("ok"):
             return reg
     phase = data.get("phase") if data.get("phase") in sw.PHASES else "planning"
-    p = sw.upsert_project(name, phase=phase, kind=data.get("kind") or "", goal=goal,
-                          priority=data.get("priority"), cadence_minutes=data.get("cadence_minutes"))
+    try:
+        p = sw.upsert_project(name, paths=paths, phase=phase, kind=data.get("kind") or "", goal=goal,
+                              priority=data.get("priority"), cadence_minutes=data.get("cadence_minutes"))
+    except ValueError as e:     # yarış: denetimden sonra başka kimlik talep etti (OwnedElsewhere) ya da rezerve
+        return {"ok": False, "error": str(e), "cwd": cwd, "copied": copied, "roster": reg}
     idea_id = str(data.get("idea_id") or "")
     if idea_id:
-        sw.update_idea(idea_id, status="project", project=name)
-    sw.log_event("project_register", name=name, cwd=cwd, copied=copied, listed=len(listed))
-    return {"ok": True, "project": _project_dict(p), "cwd": cwd, "copied": copied, "roster": reg}
+        sw.update_idea(idea_id, status="project", project=name, paths=paths)
+    sw.log_event("project_register", paths=paths, name=name, cwd=cwd, copied=copied, listed=len(listed))
+    out = {"ok": True, "project": _project_dict(p), "cwd": cwd, "copied": copied, "roster": reg}
+    if warning:
+        out["warning"] = warning
+    return out
 
 
 def http_ask(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1295,9 +1543,9 @@ def http_directive(data: Dict[str, Any]) -> Dict[str, Any]:
     dry = _brain_dry("directive", data, name)
     if dry is not None:
         return dry
-    with _LOCK:
+    with _ctx().lock:
         projects = sw.load_projects()
-        p = _project_for_session(name, projects)
+        p = _project_for_session(name, projects, _world())
         if p is None:
             if _running(name) is None and not inst_mod.get_instance(name) and name not in (_act("fleet_status") or {}):
                 return {"ok": False, "error": "unknown session/project"}
@@ -1318,7 +1566,7 @@ def http_restart(data: Dict[str, Any]) -> Dict[str, Any]:
     dry = _brain_dry("restart", data, name)
     if dry is not None:
         return dry
-    with _LOCK:
+    with _ctx().lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
         if _running(name) is not None:
             res = _act("stop", name, lang=cfg.lang)
             if not res.get("ok"):
@@ -1336,7 +1584,7 @@ def http_stop(data: Dict[str, Any]) -> Dict[str, Any]:
     dry = _brain_dry("stop", data, name)
     if dry is not None:
         return dry
-    with _LOCK:
+    with _ctx().lock:
         res = _act("stop", name, lang=cfg.lang)
     sw.log_event("stop", name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")))
     return res
@@ -1351,12 +1599,13 @@ def http_handover(data: Dict[str, Any]) -> Dict[str, Any]:
     dry = _brain_dry("handover", data, name)
     if dry is not None:
         return dry
-    with _LOCK:
+    with _ctx().lock:
         res = _act("handover", name, lang=cfg.lang)
         if res.get("ok"):
-            state = sw.load_state()
-            state.setdefault("ho_pending", {})[name] = time.time()
-            sw.save_state(state)
+            with sw.steward_lock():
+                state = sw.load_state()
+                state.setdefault("ho_pending", {})[name] = time.time()
+                sw.save_state(state)
     sw.log_event("handover", name=name, ok=bool(res.get("ok")))
     return res
 
@@ -1364,15 +1613,16 @@ def http_handover(data: Dict[str, Any]) -> Dict[str, Any]:
 def http_skip(data: Dict[str, Any]) -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     sw.log_event("skip", name=name, reason=str(data.get("reason") or ""))
-    state = sw.load_state()
-    state.setdefault("last_directive_at", {})[name] = time.time()   # bir sonraki `idle` maddesini erteler
-    sw.save_state(state)
+    with sw.steward_lock():
+        state = sw.load_state()
+        state.setdefault("last_directive_at", {})[name] = time.time()   # bir sonraki `idle` maddesini erteler
+        sw.save_state(state)
     return {"ok": True}
 
 
 def http_brain(data: Dict[str, Any]) -> Dict[str, Any]:
     action = str(data.get("action") or "start")
-    with _LOCK:
+    with _ctx().lock:
         return brain_start() if action == "start" else brain_stop()
 
 
