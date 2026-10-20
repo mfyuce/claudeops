@@ -734,6 +734,29 @@ class OneLiveSessionPerProjectTest(_Tmp):
         acts, _ = sw.plan_tick([big], projects, {}, off, 5000.0, [], [])
         self.assertEqual([x for x in acts if x.kind == "handover"], [])
 
+    def test_line_count_is_only_a_fallback_and_ignores_young_sessions(self):
+        projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}
+        cfg = _cfg(max_active=4, context_warn_tokens=300000, history_warn_at=1900, history_min_age_minutes=15)
+        now = 100000.0
+        # token biliniyor ve küçük: satır sayısı ne olursa olsun devir yok
+        known = _view("a", busy=True, history_size=1990, context_tokens=120000, started_at=now - 3600)
+        acts, _ = sw.plan_tick([known], projects, {}, cfg, now, [], [])
+        self.assertEqual([x for x in acts if x.kind == "handover"], [])
+        # token bilinmiyor + satır dolu ama oturum yeni açıldı (7 dk): devir yok
+        young = _view("a", busy=True, history_size=1990, context_tokens=None, started_at=now - 7 * 60)
+        acts, _ = sw.plan_tick([young], projects, {}, cfg, now, [], [])
+        self.assertEqual([x for x in acts if x.kind == "handover"], [])
+        # token bilinmiyor + satır dolu + yaşlı oturum: yedek ölçüt devreye girer
+        old = _view("a", busy=True, history_size=1990, context_tokens=None, started_at=now - 40 * 60)
+        acts, _ = sw.plan_tick([old], projects, {}, cfg, now, [], [])
+        ho = [x for x in acts if x.kind == "handover"]
+        self.assertEqual([x.name for x in ho], ["a"])
+        self.assertIn("history_size", ho[0].reason)
+        # yaş koruması kapalı (0): yeni oturum da devreder
+        nocfg = _cfg(max_active=4, context_warn_tokens=300000, history_warn_at=1900, history_min_age_minutes=0)
+        acts, _ = sw.plan_tick([young], projects, {}, nocfg, now, [], [])
+        self.assertEqual([x.name for x in acts if x.kind == "handover"], ["a"])
+
     def test_context_tokens_from_transcript_tail(self):
         import json as _json
         d = os.path.join(self.dir.name, "t")

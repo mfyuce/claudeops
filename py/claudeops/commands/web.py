@@ -1312,6 +1312,37 @@ def _cache_info_cached(s) -> Optional[Dict[str, int]]:
     return {"age": max(0, int(time.time() - last)), "ttl": ttl}
 
 
+_CTXINFO_CACHE: dict = {}  # (name, pid) -> (expires_monotonic, tokens | None, warn)
+
+
+def _context_info_cached(s) -> Optional[Dict[str, int]]:
+    """Çalışan claude oturumunun bağlam boyutu: {"tokens": son asistan turunun girdi+cache token'ı, "warn": değnekçinin
+    handover eşiği (`steward.context_warn_tokens`, 0 = kapalı)} ya da None (claude değil / transkript yok / henüz tur
+    yok: UI rozet göstermez). YALNIZ izleme; sonuç 20 sn önbellekli. Asla fırlatmaz."""
+    if s.cli != "claude":
+        return None
+    now = time.monotonic()
+    key = (s.name, s.pid)
+    hit = _CTXINFO_CACHE.get(key)
+    if not hit or hit[0] <= now:
+        tokens, warn = None, 0
+        try:
+            tokens = web_steward.context_tokens_for(s.cwd, s.sid)
+            from ..settings import steward_config
+            warn = int(steward_config().context_warn_tokens or 0)
+        except Exception:
+            tokens = None
+        if len(_CTXINFO_CACHE) > 256:
+            for k, v in list(_CTXINFO_CACHE.items()):
+                if v[0] <= now:
+                    _CTXINFO_CACHE.pop(k, None)
+        hit = _CTXINFO_CACHE[key] = (now + _CACHEINFO_TTL, tokens, warn)
+    _, tokens, warn = hit
+    if not tokens:
+        return None
+    return {"tokens": int(tokens), "warn": warn}
+
+
 _HISTORY_CACHE: dict = {}  # name -> (expires_monotonic, int | None)
 # `_needs_ho_cached`'in 30s'iyle AYNI (busy'nin 2s'inden ÇOK daha uzun kalabilir) —
 # tmux scrollback boyutu saniyeler içinde önemli ölçüde değişmez, ana tabloda HER
@@ -1488,6 +1519,7 @@ def _status_payload() -> dict:
             "usage": _live_usage(s) if s else None,
             "phase": _live_phase(s) if s else None,
             "cache": _cache_info_cached(s) if s else None,
+            "context": _context_info_cached(s) if s else None,
             "history_size": _history_size_cached(s) if s else None,
             "registered": True,
             "instance": False,
@@ -1528,6 +1560,7 @@ def _status_payload() -> dict:
             "usage": _live_usage(s),
             "phase": _live_phase(s),
             "cache": _cache_info_cached(s),
+            "context": _context_info_cached(s),
             "history_size": _history_size_cached(s),
             "registered": rec is not None,
             "instance": rec is not None,

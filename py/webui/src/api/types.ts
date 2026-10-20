@@ -83,6 +83,15 @@ export interface SessionInfo {
    * lifetime, or no matching transcript, e.g. a resumed session that has not had a turn yet): show no badge, it does
    * NOT mean cold. Local rows only (the gRPC host bridge does not carry it). */
   cache?: SessionCache | null;
+  /** Context size of a running claude session (`web._context_info_cached`, monitoring only): `tokens` = the last
+   * assistant turn's input + cache tokens (re-read on every turn), `warn` = the steward's handover threshold
+   * (`steward.context_warn_tokens`, 0 = off). Absent/`null` = unknown (not claude, no turn yet): show no badge. */
+  context?: SessionContext | null;
+}
+
+export interface SessionContext {
+  tokens: number;
+  warn: number;
 }
 
 export interface SessionCache {

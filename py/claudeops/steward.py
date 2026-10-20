@@ -181,6 +181,7 @@ class Config:
     stop_idle_minutes: int = 45
     ho_grace_minutes: int = 15
     history_warn_at: int = 1900
+    history_min_age_minutes: int = 15   # satır eşiği (yedek yol) yalnız bu kadar dakikadan yaşlı oturumda tetikler; 0 = yaşa bakma
     context_warn_tokens: int = 300000   # oturumun bağlamı (son turun girdi+cache token'ı) bu sayıyı aşarsa handover (0 = kapalı); her tur bağlamın TAMAMI yeniden okunur
     brain_cli: str = "claude"
     brain_model: str = ""
@@ -1343,15 +1344,25 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     for v in views:
         if not v.running or not v.tmux or not _managed(v.name):
             continue
-        if v.history_size is not None and v.history_size >= cfg.history_warn_at and v.name not in ho_pending:
-            actions.append(Action("handover", v.name, f"history_size {v.history_size} >= {cfg.history_warn_at}"))
-            ho_pending[v.name] = now
-            busy_names.add(v.name)
-        elif (cfg.context_warn_tokens and v.context_tokens and v.context_tokens >= cfg.context_warn_tokens
-              and v.name not in ho_pending):
-            actions.append(Action("handover", v.name, f"context {v.context_tokens} token >= {cfg.context_warn_tokens}"))
-            ho_pending[v.name] = now
-            busy_names.add(v.name)
+        if v.name in ho_pending:
+            continue
+        # Bağlam token'ı BİLİNİYORSA (claude transkripti) tek ölçüt odur: satır sayısı tmux ekranını yansıtır,
+        # bağlamı değil (uzun çıktıda dakikada ~80 satır; yeni açılan oturum 7 dk'da eşiğe varıp devri döngüye sokuyordu).
+        # Token bilinmiyorsa (claude dışı CLI, henüz tur yapmamış oturum) ya da eşik kapalıysa satır sayısı YEDEK ölçüt;
+        # o da yeni açılmış oturumda tetiklemez (`history_min_age_minutes`).
+        tokens_known = bool(cfg.context_warn_tokens and v.context_tokens)
+        if tokens_known:
+            if v.context_tokens >= cfg.context_warn_tokens:
+                actions.append(Action("handover", v.name, f"context {v.context_tokens} token >= {cfg.context_warn_tokens}"))
+                ho_pending[v.name] = now
+                busy_names.add(v.name)
+        elif v.history_size is not None and v.history_size >= cfg.history_warn_at:
+            young = (cfg.history_min_age_minutes and v.started_at
+                     and (now - v.started_at) < cfg.history_min_age_minutes * 60)
+            if not young:
+                actions.append(Action("handover", v.name, f"history_size {v.history_size} >= {cfg.history_warn_at}"))
+                ho_pending[v.name] = now
+                busy_names.add(v.name)
 
     # 2) Handover gönderilmiş olanlar — READY FOR HANDOVER geldi ya da süre doldu → yeniden aç
     for name, sent_at in list(ho_pending.items()):

@@ -302,6 +302,7 @@ export interface Strings {
   cacheDur: (minutes: number) => string;
   cacheBadge: (state: "warm" | "expiring" | "cold", dur: string) => string;
   cacheHint: (state: "warm" | "expiring" | "cold", age: string, left: string) => string;
+  ctxBadgeHint: (tokens: number, warn: number) => string;
   phaseBadge: (p: PhaseArg) => string;
   phaseHint: (p: PhaseArg) => string;
   pmAllowCreateHint: string;
@@ -929,6 +930,9 @@ export const STRINGS: Record<Lang, Strings> = {
     },
     cacheDur: (min) => (min <= 60 ? `${min} dk` : min < 2880 ? `${Math.round(min / 60)} sa` : `${Math.round(min / 1440)} g`),
     cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5 dk" : `♨ ${dur}`),
+    ctxBadgeHint: (tokens, warn) =>
+      `Bağlam boyutu: ${tokens.toLocaleString("tr-TR")} token (her tur tamamı yeniden okunur).` +
+      (warn ? ` Değnekçi ${warn.toLocaleString("tr-TR")} token'da devir yapar.` : " Değnekçi token eşiği kapalı."),
     cacheHint: (state, age, left) =>
       [
         `İstem önbelleği (1 saatlik): son gerçek model isteği ${age} önce.`,
@@ -1589,6 +1593,9 @@ export const STRINGS: Record<Lang, Strings> = {
     },
     cacheDur: (min) => (min <= 60 ? `${min}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`),
     cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5m" : `♨ ${dur}`),
+    ctxBadgeHint: (tokens, warn) =>
+      `Context size: ${tokens.toLocaleString("en-US")} tokens (re-read in full on every turn).` +
+      (warn ? ` The steward hands over at ${warn.toLocaleString("en-US")} tokens.` : " The steward token threshold is off."),
     cacheHint: (state, age, left) =>
       [
         `Prompt cache (1 hour): the last real model request was ${age} ago.`,
