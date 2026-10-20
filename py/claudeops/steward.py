@@ -380,7 +380,7 @@ def ownership_lock(timeout: Optional[float] = None):
 
 def project_owner(name: str, exclude: str = "") -> str:
     """`name` adlı proje hangi kimliğin `projects.json`'unda (`exclude` hariç)? Yok = "". Yalnız dosyalara bakar
-    (P3'te tam `ownership_index` bunun yerini alır)."""
+    (talep protokolünün `OwnedElsewhere` denetimi; okuma tarafının tam görünümü `ownership_index`)."""
     sids = ["default"] + sorted(os.path.basename(os.path.dirname(f)) for f in
                                 glob.glob(os.path.join(STEWARD_DIR, "stewards", "*", "projects.json")))
     for sid in sids:
@@ -389,6 +389,99 @@ def project_owner(name: str, exclude: str = "") -> str:
         raw = _load_json(paths_for(sid).projects, {})
         if isinstance(raw, dict) and name in raw:
             return sid
+    return ""
+
+
+# ── sahiplik indeksi (çoklu değnekçi P3) ──────────────────────────────────────
+# Sahiplik = projects.json dosyalarının KENDİSİ (K2): ayrı kayıt yok. Aynı ad iki kimlikte = çakışma, kimse yönetmez.
+# İndeks bölümlü bir sözlük: ileride (TODO 2026-10-20 (14)) `"hosts": {proje: host}` gibi bir bölüm eklenebilir,
+# tüketiciler `World` yöntemleriyle okur (iç biçim değişebilir).
+
+_OWN_CACHE: Dict[str, Tuple[int, int, Tuple[str, ...]]] = {}   # projects.json yolu → (mtime_ns, size, adlar)
+
+
+class ReservedName(ValueError):
+    """Ad proje olarak talep edilemez (beyin adı/öneki, `degnekci*` ailesi, servis adı)."""
+    def __init__(self, name: str, reason: str):
+        super().__init__(f"project name {name!r} is reserved ({reason})")
+        self.name = name
+        self.reason = reason
+
+
+def services_path() -> str:
+    """Pasif servis kaydı (K10, P8b'de yazılır; burada yalnız okunur)."""
+    return os.path.join(STEWARD_DIR, "services.json")
+
+
+def discover_steward_ids() -> List[str]:
+    """Diskte durum dizini olan kimlikler: `default` + `STEWARD_DIR/stewards/<harf>/`. Ayarda geçersiz sayılan bir
+    dizin de (elle açılmış) sayılır: onun projeleri kimsenin olmaz ama başkası da talep edemez (güvenli başarısızlık)."""
+    try:
+        entries = os.listdir(os.path.join(STEWARD_DIR, "stewards"))
+    except OSError:
+        entries = []
+    return ["default"] + sorted(e for e in entries if e != "default" and _SID_RE.fullmatch(e)
+                                and os.path.isdir(os.path.join(STEWARD_DIR, "stewards", e)))
+
+
+def _project_names(path: str, fresh: bool = False) -> Tuple[str, ...]:
+    """`projects.json`'daki geçerli proje adları (`load_projects` ile aynı süzgeç); `(mtime_ns, size)` önbellekli."""
+    try:
+        stt = os.stat(path)
+    except OSError:
+        _OWN_CACHE.pop(path, None)
+        return ()
+    hit = _OWN_CACHE.get(path)
+    if not fresh and hit and hit[0] == stt.st_mtime_ns and hit[1] == stt.st_size:
+        return hit[2]
+    raw = _load_json(path, {})
+    names = tuple(sorted(str(n) for n, d in raw.items() if isinstance(d, dict) and valid_name(str(n)))) \
+        if isinstance(raw, dict) else ()
+    _OWN_CACHE[path] = (stt.st_mtime_ns, stt.st_size, names)
+    return names
+
+
+def build_ownership_index(names_by_sid: Dict[str, Any], brains: Optional[Dict[str, str]] = None,
+                          services: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """SAF. `names_by_sid`: {kimlik: proje adları}; `brains`: {kimlik: beyin adı} (verilmeyen kimlik `brain_name_for`);
+    `services`: services.json içeriği. Dönüş `{"owners": {proje: kimlik}, "conflicts": {proje: [kimlik..]},
+    "brains": {beyin_adı: kimlik}, "services": {ad: kayıt}}`. Çakışan ad `owners`'a GİRMEZ."""
+    seen: Dict[str, List[str]] = {}
+    for sid in sorted(names_by_sid):
+        for n in names_by_sid[sid] or ():
+            lst = seen.setdefault(str(n), [])
+            if sid not in lst:
+                lst.append(sid)
+    owners = {n: s[0] for n, s in seen.items() if len(s) == 1}
+    conflicts = {n: sorted(s) for n, s in seen.items() if len(s) > 1}
+    brain_map: Dict[str, str] = {}
+    for sid in sorted(set(names_by_sid) | set(brains or {})):
+        brain_map[(brains or {}).get(sid) or brain_name_for(sid)] = sid
+    svc = {str(n): (dict(r) if isinstance(r, dict) else {}) for n, r in (services or {}).items() if valid_name(str(n))}
+    return {"owners": owners, "conflicts": conflicts, "brains": brain_map, "services": svc}
+
+
+def ownership_index(sids: Optional[List[str]] = None, *, brains: Optional[Dict[str, str]] = None,
+                    fresh: bool = False) -> Dict[str, Any]:
+    """Tüm kimliklerin `projects.json`'u + beyin adları + `services.json` → `build_ownership_index`. G/Ç yalnız
+    burada (okuma); `sids`: ayardaki kimlikler (dizini olmasa da beyin adı rezerve olur), `fresh`: önbelleği atla
+    (talep protokolü)."""
+    ids = list(dict.fromkeys(discover_steward_ids() + [s for s in (sids or []) if valid_steward_id(s)]))
+    names = {sid: _project_names(paths_for(sid).projects, fresh) for sid in ids}
+    svc = _load_json(services_path(), {})
+    return build_ownership_index(names, brains, svc if isinstance(svc, dict) else {})
+
+
+def reserved_reason(name: str, index: Dict[str, Any]) -> str:
+    """Ad proje olarak talep edilemiyorsa nedeni, değilse "". SAF. `_project_key` önek eşlediği için beyin adının
+    öneki (`deg`) ya da uzantısı (`degnekci_x`) da rezerve; `degnekci*` ailesi her zaman. Servis adı (prefix kipinde
+    servisle başlayan ad da)."""
+    for b in sorted(set(index.get("brains") or {}) | {BRAIN_PREFIX}):
+        if name == b or b.startswith(name) or name.startswith(b):
+            return f"brain name {b}"
+    for s, rec in (index.get("services") or {}).items():
+        if name == s or ((rec or {}).get("match") != "exact" and name.startswith(s)):
+            return f"service {s}"
     return ""
 
 
@@ -427,6 +520,10 @@ def upsert_project(name: str, *, paths: Any = None, **fields: Any) -> Project:
         if other:
             raise OwnedElsewhere(name, other)
         projects = load_projects(paths)
+        if name not in projects:   # yeni talep: rezerve ad reddi (mevcut kayıt hiç etkilenmez)
+            why = reserved_reason(name, ownership_index(fresh=True))
+            if why:
+                raise ReservedName(name, why)
         p = projects.get(name) or Project(name=name, created_at=_now())
         for k, v in fields.items():
             if v is None or not hasattr(p, k) or k in ("name", "created_at"):
@@ -1476,16 +1573,22 @@ def phase_model_effort(project: Project, cfg: Config) -> Tuple[str, str]:
 def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Config, now: float,
                  questions: List[Question], ideas: List[Idea], *, skip: Optional[set] = None,
                  last_directive_at: Optional[Dict[str, float]] = None,
-                 reviewed_at: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
+                 reviewed_at: Optional[Dict[str, float]] = None,
+                 world: Optional[World] = None) -> List[Dict[str, Any]]:
     """Beynin yargısını gerektiren maddeler: boşta bekleyen proje oturumu (`idle`), uzun süredir meşgul
     olup gözden geçirilmemiş oturum (`review`), yeni fikir (`idea`), oturuma iletilemeyen cevap
-    (`blocked`). `plan_tick` bunu çağırır; elle "tur" (`web_steward.run_tour(force=True)`) de aynı listeyi alır."""
+    (`blocked`). `plan_tick` bunu çağırır; elle "tur" (`web_steward.run_tour(force=True)`) de aynı listeyi alır.
+    `world` verilirse yalnız o kimliğin projeleri/oturumları (fikir/soru zaten kimliğin kendi deposundan gelir)."""
     skip = skip or set()
     lda = last_directive_at or {}
     rva = reviewed_at or {}
+    if world is not None:
+        projects = world.own_projects(projects)
     items: List[Dict[str, Any]] = []
     for v in views:
         if not v.running or not _is_project_session(v, projects) or v.name in skip or v.name == cfg.brain_name:
+            continue
+        if world is not None and world.session_class(v.name, v.blueprint) != "own":
             continue
         idle_since = max(v.last_activity, lda.get(v.name, 0.0), v.started_at)
         if v.busy is False and idle_since and (now - idle_since) >= cfg.idle_minutes * 60:
@@ -1515,8 +1618,127 @@ def _project_key(name: str, projects: Dict[str, "Project"]) -> str:
     return best
 
 
-def _sibling_running(views: List[SessionView], name: str, projects: Dict[str, "Project"], cfg: "Config") -> bool:
+# ── kimlik görünümü (çoklu değnekçi P3, SAF) ─────────────────────────────────
+
+_DATE8_RE = re.compile(r"20\d\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])")   # türetilmiş oturum adının tarih soneki
+_DENY = ("other", "conflict", "service", "brain_other", "brain_own")
+
+
+@dataclass
+class World:
+    """Bir değnekçi kimliğinin (`sid`) dünyaya bakışı: sahiplik indeksinden türer (`world_for`). `plan_tick`/`review_items`
+    `world` alınca yalnız bu kimliğin projelerine eylem/madde üretir. Oturum sınıfları (`session_class`):
+    `own` (bu kimliğin projesi), `other` (başka kimliğin), `conflict` (aynı ad iki kimlikte: kimse yönetmez),
+    `adhoc` (hiçbir kimliğin değil), `brain_own`/`brain_other` (beyin oturumları), `service` (pasif servis)."""
+    sid: str = "default"
+    owners: Dict[str, str] = field(default_factory=dict)        # proje → kimlik (çakışanlar hariç)
+    conflicts: frozenset = frozenset()                           # birden çok kimlikte görünen proje adları
+    brains: Dict[str, str] = field(default_factory=dict)        # beyin oturumu adı → kimlik
+    services: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    is_adhoc_owner: bool = True                                  # kayıtsız oturumların işaretlerini işler (yalnız default)
+    starts_left: Optional[int] = None                            # döngü turunun kalan başlatma hakkı (`max_starts_total`); None = sınırsız
+
+    def owner_of(self, project: str) -> str:
+        """Projenin sahibi ("" = sahipsiz ya da çakışmalı)."""
+        return "" if project in self.conflicts else self.owners.get(project, "")
+
+    def owns(self, project: str) -> bool:
+        return bool(project) and self.owner_of(project) == self.sid
+
+    def own_projects(self, projects: Dict[str, "Project"]) -> Dict[str, "Project"]:
+        """Verilen proje sözlüğünden YALNIZ bu kimliğin sahip olduğu (çakışmasız) projeler."""
+        return {n: p for n, p in projects.items() if self.owns(n)}
+
+    def _owner_tag(self, project: str) -> str:
+        return "!conflict" if project in self.conflicts else self.owners.get(project, "")
+
+    def resolve(self, name: str) -> Tuple[str, str]:
+        """Oturum adı → (tür, anahtar): tür `brain` | `service` | `project` | "". Proje çözümü GLOBAL (K4): tüm
+        kimliklerin projeleri üzerinde tam ad, sonra en uzun önek (`_project_key` ile aynı). Tek fark: en uzun önek
+        ile tarih sonekli ayrıştırma (`ncs` + `20261019`) FARKLI sahiplere düşerse ayrıştırma kazanır: `ncs` (A) ve
+        `ncs2` (B) varken `ncs20261019` A'nın, `ncs2x` B'nin. Aynı sahipte eski sonuç (en uzun önek) birebir kalır."""
+        if not name:
+            return "", ""
+        if name in self.brains:
+            return "brain", name
+        for s, rec in self.services.items():
+            if name == s or ((rec or {}).get("match") != "exact" and name.startswith(s)):
+                return "service", s
+        cands = set(self.owners) | set(self.conflicts)
+        if name in cands:
+            return "project", name
+        longest = ""
+        dated = ""
+        for p in cands:
+            if not name.startswith(p):
+                continue
+            if len(p) > len(longest):
+                longest = p
+            if _DATE8_RE.match(name[len(p):len(p) + 8]) and len(name) >= len(p) + 8 and len(p) > len(dated):
+                dated = p
+        if dated and dated != longest and self._owner_tag(dated) != self._owner_tag(longest):
+            return "project", dated
+        return ("project", longest) if longest else ("", "")
+
+    def _class(self, kind: str, key: str) -> str:
+        if kind == "brain":
+            return "brain_own" if self.brains.get(key) == self.sid else "brain_other"
+        if kind == "service":
+            return "service"
+        if kind == "project":
+            if key in self.conflicts:
+                return "conflict"
+            owner = self.owners.get(key, "")
+            return "own" if owner == self.sid else ("other" if owner else "adhoc")
+        return "adhoc"
+
+    def name_class(self, name: str) -> str:
+        """Yalnız ada göre sınıf (blueprint'siz; ör. `ho_pending`'deki görünümü olmayan adlar)."""
+        return self._class(*self.resolve(name))
+
+    def session_class(self, name: str, blueprint: Optional[str] = None) -> str:
+        """Ad + (varsa) instance blueprint'i. Blueprint yalnız TAM adla bakılır ve ancak REDDEDEBİLİR ya da `adhoc`'u
+        `own`'a çevirebilir: ad A'yı, blueprint B'yi gösteriyorsa iki kimlik de dokunmaz."""
+        c = self.name_class(name)
+        if c in ("brain_own", "brain_other", "service"):
+            return c
+        b = "adhoc"
+        if blueprint and blueprint != name:
+            if blueprint in self.brains:
+                b = "brain_other"
+            elif blueprint in self.services:
+                b = "service"
+            elif blueprint in self.owners or blueprint in self.conflicts:
+                b = self._class("project", blueprint)
+        if c in _DENY:
+            return c
+        if b in _DENY:
+            return b
+        return "own" if "own" in (c, b) else "adhoc"
+
+    def project_key(self, name: str) -> str:
+        """Ad bu kimliğin projesine çözülüyorsa proje adı, değilse "" (`_project_key`'in kimlikli karşılığı)."""
+        kind, key = self.resolve(name)
+        return key if kind == "project" and self.owns(key) else ""
+
+
+def world_for(sid: str, index: Dict[str, Any], brain_name: str = "", starts_left: Optional[int] = None) -> World:
+    """`ownership_index()` çıktısından kimliğin görünümü. `brain_name`: bu kimliğin etkin beyin adı (default'ta
+    `steward.brain_name` ezmesi olabilir; verilmezse `brain_name_for`). SAF."""
+    brains = {n: s for n, s in (index.get("brains") or {}).items() if s != sid}
+    brains[brain_name or brain_name_for(sid)] = sid
+    return World(sid=sid, owners=dict(index.get("owners") or {}), conflicts=frozenset(index.get("conflicts") or ()),
+                 brains=brains, services=dict(index.get("services") or {}), is_adhoc_owner=(sid == "default"),
+                 starts_left=starts_left)
+
+
+def _sibling_running(views: List[SessionView], name: str, projects: Dict[str, "Project"], cfg: "Config",
+                     world: Optional[World] = None) -> bool:
     """`name`in projesinin BAŞKA bir çalışan oturumu var mı (beyin sayılmaz, kayıtsız proje = hayır)."""
+    if world is not None:
+        key = world.project_key(name)
+        return bool(key) and any(x.running and x.name != name and x.name != cfg.brain_name
+                                 and world.resolve(x.name) == ("project", key) for x in views)
     key = _project_key(name, projects)
     if not key:
         return False
@@ -1544,10 +1766,25 @@ def context_threshold(cfg: "Config", model: str) -> int:
 
 
 def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
-              now: float, questions: List[Question], ideas: List[Idea]) -> Tuple[List[Action], Dict[str, Any]]:
+              now: float, questions: List[Question], ideas: List[Idea],
+              world: Optional[World] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
     (motor kaydeder). Sıra: ekonomi (handover/respawn) → işaretler → cevap iletimi → uğrama/başlatma →
-    slot baskısı → beyin turu."""
+    slot baskısı → beyin turu.
+
+    `world` (çoklu değnekçi): verilmezse eski davranış birebir. Verilirse `projects` kimliğin sahip olduğu
+    (çakışmasız) projelere süzülür; başka kimliğin projesi/beyni, servis ve çakışmalı proje oturumuna HİÇBİR eylem
+    üretilmez; kayıtsız oturumun işaretlerini ve ad hoc cevap iletimini yalnız `is_adhoc_owner` (default) işler;
+    slot `max_active` yanında makine geneli `max_active_total` (diğer kimliklerin çalışan projeleri dahil) ve
+    `world.starts_left` ile sınırlanır."""
+    if world is not None:
+        projects = world.own_projects(projects)
+    bp = {v.name: v.blueprint for v in views if v.blueprint}
+
+    def _mine(v: SessionView) -> bool:
+        """Görünüm bu kimliğin proje oturumu mu (eski yol: `_is_project_session`)."""
+        return _is_project_session(v, projects) and (world is None or world.session_class(v.name, v.blueprint) == "own")
+
     st: Dict[str, Any] = json.loads(json.dumps(state)) if state else {}
     ho_pending: Dict[str, float] = dict(st.get("ho_pending") or {})
     seen: Dict[str, str] = dict(st.get("seen_assistant") or {})
@@ -1561,7 +1798,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     def _managed(name: str) -> bool:
         # Oturum ekonomisi (handover/yeniden açma) YALNIZ değnekçinin yönettiği oturumlara: beyin + kayıtlı proje
         # oturumları. Kullanıcının diğer oturumlarına (egyptian.., oa.., cops..) mesaj gönderilmez, yeniden açılmaz.
-        return name == cfg.brain_name or bool(_project_key(name, projects))
+        if name == cfg.brain_name:
+            return True
+        if world is None:
+            return bool(_project_key(name, projects))
+        # Ad bu kimliğin projesine çözülmeli (eski önek kuralı, global) VE blueprint başkasını göstermemeli
+        return bool(world.project_key(name)) and world.session_class(name, bp.get(name)) == "own"
 
     for v in views:
         if not v.running or not v.tmux or not _managed(v.name):
@@ -1596,7 +1838,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             continue
         v = by_name.get(name)
         if v is None or not v.running:
-            if not _sibling_running(views, name, projects, cfg):
+            if not _sibling_running(views, name, projects, cfg, world):
                 actions.append(Action("respawn", name, "handover sent, session gone → start"))
             ho_pending.pop(name, None)
             busy_names.add(name)
@@ -1605,7 +1847,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         expired = (now - float(sent_at)) >= cfg.ho_grace_minutes * 60
         # busy None (bu CLI'da sinyal yok) = "meşgul değil" sayılır; yalnız kesin True bekletir
         if v.busy is not True and (ready or expired):
-            if _sibling_running(views, name, projects, cfg):
+            if _sibling_running(views, name, projects, cfg, world):
                 # Aynı projenin başka oturumu çalışıyor: devri biten ikinci oturum yeniden AÇILMAZ, kapanır
                 # (proje başına tek canlı oturum; her oturum kendi bağlamını her turda yeniden okur).
                 actions.append(Action("stop", name, "devir bitti, projenin başka oturumu çalışıyor → kapat"))
@@ -1618,6 +1860,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     for v in views:
         if not v.running or not v.last_assistant or v.name == cfg.brain_name:
             continue
+        if world is not None:
+            # Yalnız KENDİ proje oturumları; kayıtsız oturumu yalnız default işler (K9): başka kimliğin projesi/beyni,
+            # servis ve çakışmalı proje oturumunun işaretleri bu kimliğe soru/fikir olarak düşmez.
+            cls = world.session_class(v.name, v.blueprint)
+            if cls != "own" and not (cls == "adhoc" and world.is_adhoc_owner):
+                continue
         digest = hashlib.sha1(v.last_assistant.encode('utf-8', 'replace')).hexdigest()[:16]
         if seen.get(v.name) == digest:
             continue
@@ -1646,8 +1894,35 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
 
     # 4) Cevaplanmış sorular → ilgili oturuma ilet (kapalıysa aç)
     starts = 0
-    running_projects = {v.project for v in views if v.running and _is_project_session(v, projects)}
+    running_projects = {v.project for v in views if v.running and _mine(v)}
     active = len(running_projects)
+    max_starts = cfg.max_starts_per_tick
+    others_active = 0
+    if world is not None:
+        if world.starts_left is not None:
+            max_starts = max(0, min(max_starts, world.starts_left))
+        if cfg.max_active_total > 0:
+            # Makine geneli sınır: başka kimliklerin çalışan (çakışmasız) proje oturumları da sayılır
+            busy_other = set()
+            for x in views:
+                if not x.running:
+                    continue
+                if x.blueprint and x.blueprint in world.owners:
+                    key = x.blueprint
+                else:
+                    kind, key = world.resolve(x.name)
+                    if kind != "project":
+                        continue
+                owner = world.owner_of(key)
+                if owner and owner != world.sid:
+                    busy_other.add(key)
+            others_active = len(busy_other)
+
+    def _slots() -> int:
+        n = cfg.max_active - active - starts
+        if world is not None and cfg.max_active_total > 0:
+            n = min(n, cfg.max_active_total - active - others_active - starts)
+        return n
     for q in undelivered_answers(questions):
         target = q.project
         if not target or target == cfg.brain_name:
@@ -1656,20 +1931,22 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if target not in projects:
             # Kayıtlı proje olmayan (ad hoc) oturumun sorusu: cevap, soruyu açan oturum hâlâ çalışıyorsa ona gider
             # (eskiden sessizce iletilmiyordu: sahibi cevap yazıyor, oturum hiç görmüyordu); çalışmıyorsa beklemez, atlanır.
-            v = next((x for x in views if x.running and x.name == q.source and x.name != cfg.brain_name), None)
+            v = next((x for x in views if x.running and x.name == q.source and x.name != cfg.brain_name
+                      and (world is None or world.session_class(x.name, x.blueprint) == "own"
+                           or (world.is_adhoc_owner and world.session_class(x.name, x.blueprint) == "adhoc"))), None)
             if v is not None and v.name not in busy_names and not v.busy:
                 actions.append(Action("deliver_answer", v.name, "answer", {"question_id": q.id}))
                 busy_names.add(v.name)
                 last_directive_at[v.name] = now
             continue
-        v = pick_delivery_view(views, target, q.source)
+        v = pick_delivery_view(views if world is None else [x for x in views if _mine(x)], target, q.source)
         if v is not None:
             if v.name in busy_names or v.busy:
                 continue   # bir sonraki tick
             actions.append(Action("deliver_answer", v.name, "answer", {"question_id": q.id}))
             busy_names.add(v.name)
             last_directive_at[v.name] = now
-        elif starts < cfg.max_starts_per_tick and active + starts < cfg.max_active:
+        elif starts < max_starts and _slots() > 0:
             actions.append(Action("start", target, "answer → start", {"question_id": q.id}))
             starts += 1
             busy_names.add(target)
@@ -1687,9 +1964,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if visit_of(p) == 0 or (now - visit_of(p)) >= p.cadence_minutes * 60:
             due.append(p)
     due.sort(key=lambda p: (p.priority, visit_of(p)))
-    free = max(0, cfg.max_active - active - starts)
+    free = max(0, _slots())
     for p in due:
-        if starts >= cfg.max_starts_per_tick or free <= 0:
+        if starts >= max_starts or free <= 0:
             break
         actions.append(Action("start", p.name, "due", {"phase": p.phase}))
         starts += 1
@@ -1701,7 +1978,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     # 6) Slot baskısı — bekleyen varsa, uzun süredir boşta duran proje oturumlarını durdur
     if waiting and free <= 0:
         for v in views:
-            if not v.running or not _is_project_session(v, projects) or v.name in busy_names or v.name in ho_pending:
+            if not v.running or not _mine(v) or v.name in busy_names or v.name in ho_pending:
                 continue
             idle_since = max(v.last_activity, last_directive_at.get(v.name, 0.0), v.started_at)
             if v.busy is False and idle_since and (now - idle_since) >= cfg.stop_idle_minutes * 60:
@@ -1715,7 +1992,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
 
     # 7) Beyin turu maddeleri
     items = review_items(views, projects, cfg, now, questions, ideas,
-                         skip=busy_names | set(ho_pending), last_directive_at=last_directive_at, reviewed_at=reviewed_at)
+                         skip=busy_names | set(ho_pending), last_directive_at=last_directive_at, reviewed_at=reviewed_at,
+                         world=world)
     last_tour = float(st.get("last_tour") or 0.0)
     brain = by_name.get(cfg.brain_name)
     if items and (now - last_tour) >= cfg.tour_minutes * 60 and brain is not None and brain.running and brain.busy is False:

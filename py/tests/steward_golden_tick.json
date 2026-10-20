@@ -1,0 +1,1202 @@
+[
+ {
+  "actions": [
+   [
+    "handover",
+    "ncs20261019",
+    "context 410000 token >= 300000",
+    {}
+   ],
+   [
+    "handover",
+    "wifi5gppr20261019",
+    "history_size 1950 >= 1900",
+    {}
+   ],
+   [
+    "handover",
+    "zlkrn",
+    "context 200000 token >= 150000",
+    {}
+   ],
+   [
+    "ask_user",
+    "egyptian20260917",
+    "STEWARD-ASK",
+    {
+     "project": "egyptian20260917",
+     "text": "Hangi baskı?"
+    }
+   ],
+   [
+    "idea",
+    "egyptian20260917",
+    "STEWARD-IDEA",
+    {
+     "text": "yeni bir kitap"
+    }
+   ],
+   [
+    "ask_user",
+    "a",
+    "STEWARD-ROUTINE",
+    {
+     "project": "a",
+     "routine": true,
+     "text": "Opus ne zaman açılsın?"
+    }
+   ],
+   [
+    "ask_user",
+    "a",
+    "STEWARD-BLOCKED",
+    {
+     "project": "a",
+     "text": "Takıldım: PDF yok"
+    }
+   ],
+   [
+    "set_phase",
+    "a",
+    "STEWARD-PLAN-READY",
+    {
+     "phase": "planned"
+    }
+   ],
+   [
+    "ask_user",
+    "degnekci_kitap",
+    "STEWARD-ASK",
+    {
+     "project": "degnekci_kitap",
+     "text": "beyin sorusu?"
+    }
+   ],
+   [
+    "start",
+    "ncs",
+    "answer → start",
+    {
+     "question_id": "q1"
+    }
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "idle ≥ 45 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "6 madde",
+    {
+     "items": [
+      {
+       "idle_minutes": 30.0,
+       "kind": "idle",
+       "name": "a"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {
+    "ncs20261019": 1760000000.0,
+    "wifi5gppr20261019": 1760000000.0,
+    "zlkrn": 1760000000.0
+   },
+   "last_directive_at": {
+    "egyptian20260917": 1760000000.0,
+    "ncs": 1760000000.0
+   },
+   "last_tick": 1760000000.0,
+   "last_tour": 1760000000.0,
+   "pending_items": 6,
+   "reviewed_at": {},
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "ncs20261019": "0082017e463558ee"
+   }
+  }
+ },
+ {
+  "actions": [
+   [
+    "stop",
+    "ncs20261019",
+    "devir bitti, projenin başka oturumu çalışıyor → kapat",
+    {}
+   ],
+   [
+    "respawn",
+    "wifi5gppr20261019",
+    "handover grace expired",
+    {}
+   ],
+   [
+    "set_phase",
+    "kitap",
+    "STEWARD-DONE",
+    {
+     "phase": "done"
+    }
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "STEWARD-DONE",
+    {}
+   ],
+   [
+    "start",
+    "ncs",
+    "answer → start",
+    {
+     "question_id": "q1"
+    }
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "stop",
+    "a",
+    "idle ≥ 45 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "5 madde",
+    {
+     "items": [
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {
+    "zlkrn": 1760000000.0
+   },
+   "last_directive_at": {
+    "egyptian20260917": 1760001200.0,
+    "ncs": 1760001200.0
+   },
+   "last_tick": 1760001200.0,
+   "last_tour": 1760001200.0,
+   "pending_items": 5,
+   "reviewed_at": {},
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "kitap_1": "ea1256cf4b4c8f39",
+    "ncs20261019": "684b5c4e0a5e9ef6"
+   }
+  }
+ },
+ {
+  "actions": [
+   [
+    "handover",
+    "wifi5gppr20261019",
+    "history_size 1950 >= 1900",
+    {}
+   ],
+   [
+    "start",
+    "ncs",
+    "answer → start",
+    {
+     "question_id": "q1"
+    }
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "stop",
+    "a",
+    "idle ≥ 45 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "idle ≥ 45 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "5 madde",
+    {
+     "items": [
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {
+    "wifi5gppr20261019": 1760002400.0,
+    "zlkrn": 1760000000.0
+   },
+   "last_directive_at": {
+    "egyptian20260917": 1760002400.0,
+    "ncs": 1760002400.0
+   },
+   "last_tick": 1760002400.0,
+   "last_tour": 1760002400.0,
+   "pending_items": 5,
+   "reviewed_at": {},
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "kitap_1": "ea1256cf4b4c8f39",
+    "ncs20261019": "684b5c4e0a5e9ef6"
+   }
+  }
+ },
+ {
+  "actions": [
+   [
+    "handover",
+    "ncs20261019",
+    "context 410000 token >= 300000",
+    {}
+   ],
+   [
+    "handover",
+    "wifi5gppr20261019",
+    "history_size 1950 >= 1900",
+    {}
+   ],
+   [
+    "handover",
+    "zlkrn",
+    "context 200000 token >= 150000",
+    {}
+   ],
+   [
+    "ask_user",
+    "egyptian20260917",
+    "STEWARD-ASK",
+    {
+     "project": "egyptian20260917",
+     "text": "Hangi baskı?"
+    }
+   ],
+   [
+    "idea",
+    "egyptian20260917",
+    "STEWARD-IDEA",
+    {
+     "text": "yeni bir kitap"
+    }
+   ],
+   [
+    "ask_user",
+    "a",
+    "STEWARD-ROUTINE",
+    {
+     "project": "a",
+     "routine": true,
+     "text": "Opus ne zaman açılsın?"
+    }
+   ],
+   [
+    "ask_user",
+    "a",
+    "STEWARD-BLOCKED",
+    {
+     "project": "a",
+     "text": "Takıldım: PDF yok"
+    }
+   ],
+   [
+    "set_phase",
+    "a",
+    "STEWARD-PLAN-READY",
+    {
+     "phase": "planned"
+    }
+   ],
+   [
+    "ask_user",
+    "degnekci_kitap",
+    "STEWARD-ASK",
+    {
+     "project": "degnekci_kitap",
+     "text": "beyin sorusu?"
+    }
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "stop",
+    "a",
+    "idle ≥ 30 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "idle ≥ 30 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "5 madde",
+    {
+     "items": [
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {
+    "ncs20261019": 1760000000.0,
+    "wifi5gppr20261019": 1760000000.0,
+    "zlkrn": 1760000000.0
+   },
+   "last_directive_at": {
+    "egyptian20260917": 1760000000.0
+   },
+   "last_tick": 1760000000.0,
+   "last_tour": 1760000000.0,
+   "pending_items": 5,
+   "reviewed_at": {},
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "ncs20261019": "0082017e463558ee"
+   }
+  }
+ },
+ {
+  "actions": [
+   [
+    "stop",
+    "ncs20261019",
+    "devir bitti, projenin başka oturumu çalışıyor → kapat",
+    {}
+   ],
+   [
+    "respawn",
+    "wifi5gppr20261019",
+    "handover grace expired",
+    {}
+   ],
+   [
+    "set_phase",
+    "kitap",
+    "STEWARD-DONE",
+    {
+     "phase": "done"
+    }
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "STEWARD-DONE",
+    {}
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "stop",
+    "a",
+    "idle ≥ 30 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "5 madde",
+    {
+     "items": [
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {
+    "zlkrn": 1760000000.0
+   },
+   "last_directive_at": {
+    "egyptian20260917": 1760001200.0
+   },
+   "last_tick": 1760001200.0,
+   "last_tour": 1760001200.0,
+   "pending_items": 5,
+   "reviewed_at": {},
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "kitap_1": "ea1256cf4b4c8f39",
+    "ncs20261019": "684b5c4e0a5e9ef6"
+   }
+  }
+ },
+ {
+  "actions": [
+   [
+    "handover",
+    "wifi5gppr20261019",
+    "history_size 1950 >= 1900",
+    {}
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "stop",
+    "a",
+    "idle ≥ 30 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "idle ≥ 30 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "5 madde",
+    {
+     "items": [
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {
+    "wifi5gppr20261019": 1760002400.0,
+    "zlkrn": 1760000000.0
+   },
+   "last_directive_at": {
+    "egyptian20260917": 1760002400.0
+   },
+   "last_tick": 1760002400.0,
+   "last_tour": 1760002400.0,
+   "pending_items": 5,
+   "reviewed_at": {},
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "kitap_1": "ea1256cf4b4c8f39",
+    "ncs20261019": "684b5c4e0a5e9ef6"
+   }
+  }
+ },
+ {
+  "actions": [
+   [
+    "handover",
+    "wifi5gppr20261019",
+    "history_size 1950 >= 1900",
+    {}
+   ],
+   [
+    "ask_user",
+    "egyptian20260917",
+    "STEWARD-ASK",
+    {
+     "project": "egyptian20260917",
+     "text": "Hangi baskı?"
+    }
+   ],
+   [
+    "idea",
+    "egyptian20260917",
+    "STEWARD-IDEA",
+    {
+     "text": "yeni bir kitap"
+    }
+   ],
+   [
+    "ask_user",
+    "a",
+    "STEWARD-ROUTINE",
+    {
+     "project": "a",
+     "routine": true,
+     "text": "Opus ne zaman açılsın?"
+    }
+   ],
+   [
+    "ask_user",
+    "a",
+    "STEWARD-BLOCKED",
+    {
+     "project": "a",
+     "text": "Takıldım: PDF yok"
+    }
+   ],
+   [
+    "set_phase",
+    "a",
+    "STEWARD-PLAN-READY",
+    {
+     "phase": "planned"
+    }
+   ],
+   [
+    "ask_user",
+    "degnekci_kitap",
+    "STEWARD-ASK",
+    {
+     "project": "degnekci_kitap",
+     "text": "beyin sorusu?"
+    }
+   ],
+   [
+    "start",
+    "ncs",
+    "answer → start",
+    {
+     "question_id": "q1"
+    }
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "start",
+    "mkt",
+    "answer → start",
+    {
+     "question_id": "q3"
+    }
+   ],
+   [
+    "start",
+    "wifi5gppr",
+    "due",
+    {
+     "phase": "planned"
+    }
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "idle ≥ 45 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "7 madde",
+    {
+     "items": [
+      {
+       "kind": "review",
+       "name": "zlkrn"
+      },
+      {
+       "idle_minutes": 30.0,
+       "kind": "idle",
+       "name": "a"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {
+    "wifi5gppr20261019": 1760000000.0
+   },
+   "last_directive_at": {
+    "egyptian20260917": 1760000000.0,
+    "mkt": 1760000000.0,
+    "ncs": 1760000000.0,
+    "wifi5gppr": 1760000000.0
+   },
+   "last_tick": 1760000000.0,
+   "last_tour": 1760000000.0,
+   "pending_items": 7,
+   "reviewed_at": {
+    "zlkrn": 1760000000.0
+   },
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "ncs20261019": "0082017e463558ee"
+   }
+  }
+ },
+ {
+  "actions": [
+   [
+    "respawn",
+    "wifi5gppr20261019",
+    "handover grace expired",
+    {}
+   ],
+   [
+    "set_phase",
+    "kitap",
+    "STEWARD-DONE",
+    {
+     "phase": "done"
+    }
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "STEWARD-DONE",
+    {}
+   ],
+   [
+    "start",
+    "ncs",
+    "answer → start",
+    {
+     "question_id": "q1"
+    }
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "start",
+    "mkt",
+    "answer → start",
+    {
+     "question_id": "q3"
+    }
+   ],
+   [
+    "start",
+    "wifi5gppr",
+    "due",
+    {
+     "phase": "planned"
+    }
+   ],
+   [
+    "stop",
+    "a",
+    "idle ≥ 45 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "5 madde",
+    {
+     "items": [
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {},
+   "last_directive_at": {
+    "egyptian20260917": 1760001200.0,
+    "mkt": 1760001200.0,
+    "ncs": 1760001200.0,
+    "wifi5gppr": 1760001200.0
+   },
+   "last_tick": 1760001200.0,
+   "last_tour": 1760001200.0,
+   "pending_items": 5,
+   "reviewed_at": {
+    "zlkrn": 1760000000.0
+   },
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "kitap_1": "ea1256cf4b4c8f39",
+    "ncs20261019": "684b5c4e0a5e9ef6"
+   }
+  }
+ },
+ {
+  "actions": [
+   [
+    "handover",
+    "wifi5gppr20261019",
+    "history_size 1950 >= 1900",
+    {}
+   ],
+   [
+    "start",
+    "ncs",
+    "answer → start",
+    {
+     "question_id": "q1"
+    }
+   ],
+   [
+    "deliver_answer",
+    "egyptian20260917",
+    "answer",
+    {
+     "question_id": "q2"
+    }
+   ],
+   [
+    "start",
+    "mkt",
+    "answer → start",
+    {
+     "question_id": "q3"
+    }
+   ],
+   [
+    "start",
+    "wifi5gppr",
+    "due",
+    {
+     "phase": "planned"
+    }
+   ],
+   [
+    "stop",
+    "a",
+    "idle ≥ 45 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "stop",
+    "kitap_1",
+    "idle ≥ 45 dk, slot bekleyen var",
+    {}
+   ],
+   [
+    "escalate_routine",
+    "a",
+    "rutin soru cevapsız",
+    {
+     "question_id": "q4"
+    }
+   ],
+   [
+    "tour",
+    "degnekci",
+    "5 madde",
+    {
+     "items": [
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
+      },
+      {
+       "id": "q4",
+       "kind": "routine",
+       "name": "a",
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "q2",
+       "kind": "blocked",
+       "name": "egyptian20260917",
+       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
+      },
+      {
+       "id": "q5",
+       "kind": "blocked",
+       "name": "-",
+       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
+      },
+      {
+       "id": "q6",
+       "kind": "blocked",
+       "name": "yok",
+       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      }
+     ]
+    }
+   ]
+  ],
+  "state": {
+   "ho_pending": {
+    "wifi5gppr20261019": 1760002400.0
+   },
+   "last_directive_at": {
+    "egyptian20260917": 1760002400.0,
+    "mkt": 1760002400.0,
+    "ncs": 1760002400.0,
+    "wifi5gppr": 1760002400.0
+   },
+   "last_tick": 1760002400.0,
+   "last_tour": 1760002400.0,
+   "pending_items": 5,
+   "reviewed_at": {
+    "zlkrn": 1760000000.0
+   },
+   "seen_assistant": {
+    "a": "44ff252c30dc83af",
+    "degnekci_kitap": "77e2b9072b2332cd",
+    "egyptian20260917": "7df76bdc67272358",
+    "kitap_1": "ea1256cf4b4c8f39",
+    "ncs20261019": "684b5c4e0a5e9ef6"
+   }
+  }
+ }
+]
