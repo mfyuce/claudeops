@@ -815,6 +815,19 @@ class HttpTest(_Tmp):
         self.assertFalse(web_steward.http_post("/api/steward/idea/export", {"id": "yok", "kind": "todo", "target": "all"})["ok"])
         self.assertEqual(web_steward.http_get("/api/steward/ideas", {})["ideas"][0]["id"], c["id"])           # başarısız aktarım fikri saklamaz
 
+    def test_running_names_resolve_digit_in_project_name(self):
+        """`Session.base` rakamlı proje adını (wifi5gppr) çözemez: oturum yine de o projenin çalıştığını göstermeli."""
+        from types import SimpleNamespace as NS
+        for n in ("wifi5gppr", "ncs"):
+            sw.upsert_project(n, phase="planned")
+        live = [NS(name="wifi5gppr20261019", base="wifi5gppr20261019"), NS(name="wifi5gppr20261016_2", base="wifi5gppr20261016_2"),
+                NS(name="ncs20261019", base="ncs")]
+        got = web_steward._running_names_for(live, sw.load_projects())
+        self.assertIn("wifi5gppr", got)
+        self.assertIn("ncs", got)
+        self.assertNotIn("zzz", got)
+        self.assertEqual(web_steward._running_names_for([], sw.load_projects()), set())
+
     def test_project_ask_answer_idea_note(self):
         r = web_steward.http_post("/api/steward/project", {"name": "p", "phase": "planning", "goal": "g", "priority": 2})
         self.assertTrue(r["ok"])

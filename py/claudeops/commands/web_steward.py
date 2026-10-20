@@ -293,7 +293,10 @@ def _project_for_session(name: str, projects: Dict[str, sw.Project]) -> Optional
         return projects[rec["blueprint"]]
     from ..session import Session
     base = Session(name=name, pid=0).base
-    return projects.get(base)
+    if base in projects:
+        return projects[base]
+    m = inst_mod.DERIVED_NAME_RE.match(name)     # rakamlı proje adı (wifi5gppr20261019): Session.base çözemez
+    return projects.get(m.group(1)) if m else None
 
 
 def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr") -> Dict[str, Any]:
@@ -421,9 +424,20 @@ def refresh_card(name: str, cfg: Optional[sw.Config] = None, *, cwd: str = "", r
     return {"ok": ok, "name": name, "error": meta.get("error", ""), "model": meta.get("model", "")}
 
 
+def _running_names_for(live: List[Any], projects: Dict[str, sw.Project]) -> set:
+    """Çalışan oturumların proje adları: tam ad + `Session.base` + değnekçi projesine eşleme. `Session.base` yalnız
+    harften oluşan adları çözer (`wifi5gppr20261019` → kendisi), bu yüzden rakamlı proje adları "çalışmıyor" görünür
+    ve uğrama sırası ikinci bir oturum açardı; `_project_for_session` blueprint/tarih sonekinden de çözer."""
+    out = {s.name for s in live} | {s.base for s in live}
+    for s in live:
+        p = _project_for_session(s.name, projects)
+        if p is not None:
+            out.add(p.name)
+    return out
+
+
 def _running_project_names() -> set:
-    live = find_sessions(measure_cpu=False)
-    return {s.name for s in live} | {s.base for s in live}
+    return _running_names_for(find_sessions(measure_cpu=False), sw.load_projects())
 
 
 def refresh_due_cards(cfg: Optional[sw.Config] = None, limit: Optional[int] = None,
@@ -554,7 +568,7 @@ def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project]) -> Dict[st
     name = it.get("name") or ""
     p = projects.get(name)
     s = _running(name)
-    proj = p or (projects.get(s.base) if s is not None else None)
+    proj = p or (_project_for_session(s.name, projects) if s is not None else None)
     out = dict(it)
     if proj is not None:
         out.update({"phase": proj.phase, "kindp": proj.kind, "goal": proj.goal, "last_directive": proj.last_directive})
@@ -835,7 +849,7 @@ def http_state() -> Dict[str, Any]:
     cfg = steward_config()
     projects = sw.load_projects()
     live = find_sessions(measure_cpu=False)
-    running_projects = {s.name for s in live} | {s.base for s in live}
+    running_projects = _running_names_for(live, projects)
     cards = sw.load_cards()
     return {
         "ok": True,
