@@ -303,6 +303,8 @@ export interface Strings {
   cacheBadge: (state: "warm" | "expiring" | "cold", dur: string) => string;
   cacheHint: (state: "warm" | "expiring" | "cold", age: string, left: string) => string;
   ctxBadgeHint: (tokens: number, warn: number) => string;
+  modelUsageLabel: (minutes: number, calls: number, read: string, fresh: string) => string;
+  modelUsageHint: (minutes: number) => string;
   phaseBadge: (p: PhaseArg) => string;
   phaseHint: (p: PhaseArg) => string;
   pmAllowCreateHint: string;
@@ -930,6 +932,9 @@ export const STRINGS: Record<Lang, Strings> = {
     },
     cacheDur: (min) => (min <= 60 ? `${min} dk` : min < 2880 ? `${Math.round(min / 60)} sa` : `${Math.round(min / 1440)} g`),
     cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5 dk" : `♨ ${dur}`),
+    modelUsageLabel: (min, calls, read, fresh) => `Fable son ${min} dk: ${calls} çağrı · okuma ${read} · yazma ${fresh}`,
+    modelUsageHint: (min) =>
+      `Son ${min} dakikanın model bazlı token kullanımı (okuma = cache okuma, yazma = girdi + cache yazma). Fable en pahalı model; altında diğer aileler ve en çok harcayan Fable oturumları/alt ajanlar.`,
     ctxBadgeHint: (tokens, warn) =>
       `Bağlam boyutu: ${tokens.toLocaleString("tr-TR")} token (her tur tamamı yeniden okunur).` +
       (warn ? ` Değnekçi ${warn.toLocaleString("tr-TR")} token'da devir yapar.` : " Değnekçi token eşiği kapalı."),
@@ -1593,6 +1598,9 @@ export const STRINGS: Record<Lang, Strings> = {
     },
     cacheDur: (min) => (min <= 60 ? `${min}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`),
     cacheBadge: (state, dur) => (state === "cold" ? `❄ ${dur}` : state === "expiring" ? "♨ <5m" : `♨ ${dur}`),
+    modelUsageLabel: (min, calls, read, fresh) => `Fable last ${min} min: ${calls} calls · read ${read} · write ${fresh}`,
+    modelUsageHint: (min) =>
+      `Token use per model over the last ${min} minutes (read = cache read, write = input + cache write). Fable is the priciest model; below: other families and the top Fable sessions/sub-agents.`,
     ctxBadgeHint: (tokens, warn) =>
       `Context size: ${tokens.toLocaleString("en-US")} tokens (re-read in full on every turn).` +
       (warn ? ` The steward hands over at ${warn.toLocaleString("en-US")} tokens.` : " The steward token threshold is off."),

@@ -148,6 +148,7 @@ class SessionView:
     history_size: Optional[int] = None
     needs_ho: Optional[bool] = None
     context_tokens: Optional[int] = None   # son asistan turunun bağlam boyutu (claude transkriptinden; bilinmiyorsa None)
+    model: str = ""                     # çalışan modelin adı (eşik modele göre seçilir; bilinmiyorsa "")
     tmux: bool = False
     last_assistant: str = ""            # son asistan metni (işaret taraması için)
     last_activity: float = 0.0          # son model isteği/aktivite (epoch, 0 = bilinmiyor)
@@ -182,13 +183,14 @@ class Config:
     ho_grace_minutes: int = 15
     history_warn_at: int = 1900
     history_min_age_minutes: int = 15   # satır eşiği (yedek yol) yalnız bu kadar dakikadan yaşlı oturumda tetikler; 0 = yaşa bakma
+    context_warn_tokens_fable: int = 150000   # Fable oturumlarında eşik (token başına daha pahalı: 0 = genel eşiği kullan)
     context_warn_tokens: int = 300000   # oturumun bağlamı (son turun girdi+cache token'ı) bu sayıyı aşarsa handover (0 = kapalı); her tur bağlamın TAMAMI yeniden okunur
     brain_cli: str = "claude"
     brain_model: str = ""
     brain_effort: str = "high"
     brain_name: str = "degnekci"
     planning_model: str = ""
-    planning_effort: str = "high"
+    planning_effort: str = "medium"   # sahibin kalıcı kuralı: proje ANA oturumu Sonnet medium; ağır iş alt ajanda
     planned_model: str = ""
     planned_effort: str = ""
     lang: str = "tr"
@@ -1198,6 +1200,28 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
     return "\n".join(lines)
 
 
+MODEL_RULE_TR = (
+    "\n## Model kuralı (sahibin KALICI kararı, 2026-10-20; pazarlık yok)\n"
+    "- Proje ANA oturumu HER ZAMAN Sonnet 5.5 + medium. `steward_directive`/`steward_restart`/`steward_set_project` ile model/effort verirken "
+    "ana oturumu Fable, Opus ya da high YAPMA; boş bırakma, `claude-sonnet-5-5` + `medium` yaz.\n"
+    "- Ağır iş İŞE GÖRE ALT AJANDA, modeli direktife AÇIK yaz: araştırma/doğrulama/çekme = Sonnet; ilk taslak (bölüm, nesir, analiz) = Opus high "
+    "(mekanik kısım: tablo, kaynakça, özet = Opus medium); Fable YALNIZ bitmiş işin son cilası/denetimi (tek geçiş, bir kez okuma).\n"
+    "- Aynı anda en fazla 1 Fable ajanı; ajana yalnız gereken dosyaları okut (alt ajan bağlamı cache yazmayı şişirir). "
+    "Direktifte \"Fable high ile yaz\" deme.\n"
+    "- Sebep: Fable haftalık kotası hızla doluyor; token başına en pahalı model. Proje notunda eski bir model satırı bununla çelişirse BU KURAL geçerli.\n"
+)
+MODEL_RULE_EN = (
+    "\n## Model rule (owner's PERMANENT decision, 2026-10-20; not negotiable)\n"
+    "- A project's MAIN session is ALWAYS Sonnet 5.5 + medium. When you pass model/effort via `steward_directive`/`steward_restart`/"
+    "`steward_set_project`, never make the main session Fable, Opus or high; never leave it blank, write `claude-sonnet-5-5` + `medium`.\n"
+    "- Heavy work goes to a SUB-AGENT chosen by task, with the model written EXPLICITLY in the directive: research/verification/fetching = Sonnet; "
+    "first draft (chapter, prose, analysis) = Opus high (mechanical parts: tables, references, summaries = Opus medium); Fable ONLY for the final "
+    "polish/audit of finished work (one pass, read once).\n"
+    "- At most 1 Fable agent at a time; make the agent read only the files it needs. Never write \"write it with Fable high\" in a directive.\n"
+    "- Why: the Fable weekly quota fills fast and it is the priciest model per token. If an old model line in a project note conflicts, THIS rule wins.\n"
+)
+
+
 def build_workspace_claude_md(persona: str, lang: str = "tr") -> str:
     """Beynin cwd'sindeki CLAUDE.md — persona + araç kılavuzu. Her beyin açılışında yeniden yazılır."""
     tr = lang != "en"
@@ -1240,7 +1264,7 @@ def build_workspace_claude_md(persona: str, lang: str = "tr") -> str:
         f"\n## Tour protocol\nCall one tool per listed item; finish with a line containing only `{MARK_END}`. "
         "A decision without a tool call is not recorded.\n"
     )
-    return persona.rstrip() + "\n\n" + tools + tail
+    return persona.rstrip() + "\n\n" + tools + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + tail
 
 
 # ── kural motoru ──────────────────────────────────────────────────────────────
@@ -1321,6 +1345,13 @@ def pick_delivery_view(views: List[Any], project: str, source: str = "") -> Opti
     return sorted(mine, key=lambda x: (len(x.name), x.name))[0]
 
 
+def context_threshold(cfg: "Config", model: str) -> int:
+    """Bu modelde handover'ı tetikleyen bağlam token eşiği (0 = kapalı). Fable daha pahalıdır: ayrı, genelde düşük eşik."""
+    if "fable" in (model or "").lower() and cfg.context_warn_tokens_fable and cfg.context_warn_tokens:
+        return min(cfg.context_warn_tokens_fable, cfg.context_warn_tokens)
+    return cfg.context_warn_tokens
+
+
 def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
               now: float, questions: List[Question], ideas: List[Idea]) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
@@ -1350,10 +1381,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         # bağlamı değil (uzun çıktıda dakikada ~80 satır; yeni açılan oturum 7 dk'da eşiğe varıp devri döngüye sokuyordu).
         # Token bilinmiyorsa (claude dışı CLI, henüz tur yapmamış oturum) ya da eşik kapalıysa satır sayısı YEDEK ölçüt;
         # o da yeni açılmış oturumda tetiklemez (`history_min_age_minutes`).
-        tokens_known = bool(cfg.context_warn_tokens and v.context_tokens)
+        warn_tokens = context_threshold(cfg, v.model)
+        tokens_known = bool(warn_tokens and v.context_tokens)
         if tokens_known:
-            if v.context_tokens >= cfg.context_warn_tokens:
-                actions.append(Action("handover", v.name, f"context {v.context_tokens} token >= {cfg.context_warn_tokens}"))
+            if v.context_tokens >= warn_tokens:
+                actions.append(Action("handover", v.name, f"context {v.context_tokens} token >= {warn_tokens}"))
                 ho_pending[v.name] = now
                 busy_names.add(v.name)
         elif v.history_size is not None and v.history_size >= cfg.history_warn_at:

@@ -83,6 +83,7 @@ from .web_static import DIST_DIR, resolve_static_path
 from . import web_grpc
 from . import web_hosts
 from . import web_orch
+from .. import model_usage
 from . import web_steward
 from . import web_term_lite
 from . import web_ws
@@ -1329,7 +1330,8 @@ def _context_info_cached(s) -> Optional[Dict[str, int]]:
         try:
             tokens = web_steward.context_tokens_for(s.cwd, s.sid)
             from ..settings import steward_config
-            warn = int(steward_config().context_warn_tokens or 0)
+            from ..steward import context_threshold
+            warn = int(context_threshold(steward_config(), s.model or "") or 0)
         except Exception:
             tokens = None
         if len(_CTXINFO_CACHE) > 256:
@@ -1638,6 +1640,8 @@ def _status_payload() -> dict:
         # Değnekçi (2026-10-19) — `orch` gibi HAFİF, local-only özet (5 sn önbellekli; canlı liste
         # bu turun kendi taramasından verilir, ikinci bir proc taraması yapılmaz).
         "steward": web_steward.summary(running_names={s.name for s in all_live}),
+        # Model bazlı token özeti (son 60 dk; YALNIZ izleme, arka planda yenilenir; ilk çağrıda None = UI gizler).
+        "model_usage": model_usage.summary(),
         # 2026-09-17, "son snapshot" — bkz. aşağıdaki "Fleet snapshot" bölümü.
         # `orch` gibi local-only, `web_hosts.merge_status`'a hiç girmez (bu
         # makinenin KENDİ fleet'inin anlık görüntüsü, uzak host'unkiyle

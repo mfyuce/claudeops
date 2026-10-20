@@ -247,7 +247,7 @@ def _collect_views(cfg: sw.Config) -> List[sw.SessionView]:
             name=name, running=bool(r.get("running")), cwd=r.get("cwd") or "", cli=r.get("cli") or DEFAULT_CLI,
             blueprint=r.get("blueprint") if r.get("instance") else None,
             busy=r.get("busy"), history_size=r.get("history_size"), needs_ho=r.get("needs_ho"),
-            tmux=bool(r.get("tmux")), stuck=name in stuck_names,
+            tmux=bool(r.get("tmux")), stuck=name in stuck_names, model=str(r.get("model") or ""),
         )
         if v.running and s is not None:
             provider = get_provider(s.cli)

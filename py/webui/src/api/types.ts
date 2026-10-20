@@ -456,6 +456,9 @@ export interface StatusPayload {
    * (counts + last tick + brain). The full picture (`/api/steward/state`) is fetched by `StewardTab`
    * only while that tab is open, keyed on the counts here changing (no extra polling). */
   steward: StewardSummary;
+  /** Token use per model family over the last `window_minutes` (`model_usage.summary()`, monitoring only, refreshed in the
+   * background; `null` until the first scan finishes). `fresh` = input + cache-write tokens, `read` = cache-read tokens. */
+  model_usage?: ModelUsage | null;
   /** 2026-09-17, "son snapshot" — snapshot GEÇMİŞİNİN (bkz. `SnapshotListResult`)
    * en son kaydının meta özeti (tam session listesi DEĞİL, sadece ne-zaman/
    * kaç-session/hangi-tür — Settings panelinin "Son snapshot: X, N session"
@@ -910,3 +913,17 @@ export interface StewardTickResult {
   at: number;
 }
 
+
+export interface ModelUsageFamily {
+  calls: number;
+  fresh: number;
+  read: number;
+  out: number;
+}
+
+export interface ModelUsage {
+  window_minutes: number;
+  at: number;
+  families: Record<string, ModelUsageFamily>;
+  fable_top: { label: string; calls: number; fresh: number; read: number }[];
+}

@@ -757,6 +757,29 @@ class OneLiveSessionPerProjectTest(_Tmp):
         acts, _ = sw.plan_tick([young], projects, {}, nocfg, now, [], [])
         self.assertEqual([x.name for x in acts if x.kind == "handover"], ["a"])
 
+    def test_workspace_claude_md_carries_the_permanent_model_rule(self):
+        for lang, needle in (("tr", "Sonnet 5.5 + medium"), ("en", "Sonnet 5.5 + medium")):
+            text = sw.build_workspace_claude_md("persona", lang=lang)
+            self.assertIn(needle, text)
+            self.assertIn("Fable", text)
+        self.assertEqual(sw.Config().planning_effort, "medium")
+
+    def test_fable_sessions_use_the_lower_context_threshold(self):
+        projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}
+        cfg = _cfg(max_active=4, context_warn_tokens=300000, context_warn_tokens_fable=150000)
+        fable = _view("a", busy=True, history_size=10, context_tokens=200000, model="claude-fable-5-1")
+        acts, _ = sw.plan_tick([fable], projects, {}, cfg, 5000.0, [], [])
+        ho = [x for x in acts if x.kind == "handover"]
+        self.assertEqual([x.name for x in ho], ["a"])
+        self.assertIn("150000", ho[0].reason)
+        sonnet = _view("a", busy=True, history_size=10, context_tokens=200000, model="claude-sonnet-5-5")
+        acts, _ = sw.plan_tick([sonnet], projects, {}, cfg, 5000.0, [], [])
+        self.assertEqual([x for x in acts if x.kind == "handover"], [])
+        # Fable eşiği 0: genel eşik (300K) geçerli
+        off = _cfg(max_active=4, context_warn_tokens=300000, context_warn_tokens_fable=0)
+        acts, _ = sw.plan_tick([fable], projects, {}, off, 5000.0, [], [])
+        self.assertEqual([x for x in acts if x.kind == "handover"], [])
+
     def test_context_tokens_from_transcript_tail(self):
         import json as _json
         d = os.path.join(self.dir.name, "t")
