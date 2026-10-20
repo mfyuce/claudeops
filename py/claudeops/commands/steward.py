@@ -238,6 +238,11 @@ def cmd_answer(args) -> int:
         print(f"hata: {e}")
         return 1
     if q is None:
+        elsewhere = [s for s in sw.discover_steward_ids() if s != _sid(args) and sw.find_question(args.id, s) is not None]
+        if elsewhere:      # soru devirle taşınmış olabilir: sessizce başka depoya yazmak yerine nerede olduğunu söyle
+            print(f"soru bu kimlikte yok, başka kimlikte bulundu: {', '.join(elsewhere)}; "
+                  f"cevap: py/cops steward{_sflag(elsewhere[0])} answer {args.id} \"...\"")
+            return 1
         print("bilinmeyen soru id'si")
         return 1
     sw.log_event("answer", paths=_sid(args), id=q.id, project=q.project, source="cli")
@@ -382,6 +387,16 @@ def cmd_remove(args) -> int:
     if sid not in steward_ids():
         print(f"hata: bilinmeyen değnekçi kimliği: {sid!r}")
         return 1
+    brain = sw.brain_name_for(sid)
+    try:
+        brain_up = _project_running(brain)
+    except Exception as e:
+        print(f"uyarı: beyin oturumu denetimi yapılamadı ({e}); devam ediliyor")
+        brain_up = False
+    if brain_up:
+        # Kimlik silinince çalışan beyni sahipsiz kalır (bu CLI süreci panelde değil: kapatamaz); önce panel Durdur.
+        print(f"hata: '{sid}' kimliğinin beyin oturumu '{brain}' ÇALIŞIYOR; önce kapatın (panel Durdur), sonra silin")
+        return 1
     with sw.ownership_lock():       # yeni proje talebi bu kilidi alır: kontrol ile taşıma arasında proje eklenemez
         names = sorted(sw.load_projects(sid))
         if names:
@@ -489,6 +504,11 @@ def cmd_jobs(args) -> int:
         j = sj.find_job(jobs, args.id)
         if j is None:
             print(f"hata: iş bulunamadı: {args.id}")
+            return 1
+        if j.get("state") not in sj.TERMINAL_STATES:
+            # Açık (ya da bilinmeyen durumlu) işe ack: `delivered` yazılırsa iş bitince sonuç proje oturumuna HİÇ gitmezdi.
+            print(f"hata: iş {j.get('service')}#{j['id']} henüz açık ({j.get('state') or '?'}); "
+                  f"yalnız bitmiş/başarısız/iptal/kayıp iş iletildi sayılabilir")
             return 1
         sj.mark_delivered(j["id"], j.get("service") or "", "result", paths=sid)      # yerel: varaka'ya YAZILMAZ
         print(f"✓ iş {j.get('service')}#{j['id']} iletildi sayıldı (yerel işaret)")

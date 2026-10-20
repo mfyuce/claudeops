@@ -360,7 +360,8 @@ class TestQuestionPage(_Cli):
         self.assertEqual(st, 200)
         self.assertIn(f"action='/q/{qk.id}?k={qk.key}&amp;s=kitap'", html_text)             # form kimliği taşır
         self.assertEqual(page(qk, qk.key)[0], 200)                                           # eski bağlantı: tüm kimliklerde ara
-        self.assertEqual(page(qk, qk.key, "default")[0], 404)                                # yanlış kimlik: o depoda yok
+        self.assertEqual(page(qk, qk.key, "default")[0], 200)                                # P9 Y1: yanlış/eski kimlik, doğru anahtar: anahtarla bulunur
+        self.assertEqual(page(qk, "", "default", token=True)[0], 404)                        # anahtarsız geri düşüş yok
         self.assertEqual(page(qk, qk.key, "nope")[0], 404)
         self.assertEqual(page(qk, qk.key, "../x")[0], 404)
         self.assertEqual(page(qk, "yanlış", "kitap")[0], 401)

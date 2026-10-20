@@ -108,7 +108,8 @@ def _set_project(port: int, args: dict) -> dict:
     if not args.get("name"):
         return {"ok": False, "error": "name is required"}
     return _api(port, "POST", "/api/steward/project",
-                          _pick(args, "name", "phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort"))
+                dict(_pick(args, "name", "phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort"),
+                     actor="brain"))
 
 
 def _register(port: int, args: dict) -> dict:
@@ -214,7 +215,7 @@ TOOLS: List[Dict[str, Any]] = [
      "description": "Send the wrap-up (handover) message to a session whose context looks exhausted. The engine already does this on its own at the scrollback threshold.",
      "inputSchema": _obj({"name": _S}, ["name"])},
     {"name": "steward_set_project",
-     "description": "Update a project's steward record: phase (idea|planning|planned|paused|done), kind (book|article|software|other), goal, priority 1-5, cadence_minutes (0 = manual only), notes, model, effort.",
+     "description": "Update an EXISTING project's steward record (a new name is refused: use steward_register_project): phase (idea|planning|planned|paused|done), kind (book|article|software|other), goal, priority 1-5, cadence_minutes (0 = manual only), notes, model, effort.",
      "inputSchema": _obj({"name": _S, "phase": _S, "kind": _S, "goal": _S, "priority": _I, "cadence_minutes": _I,
                           "notes": _S, "model": _S, "effort": _S}, ["name"])},
     {"name": "steward_register_project",

@@ -298,7 +298,14 @@ def find_job(jobs: Iterable[Dict[str, Any]], job_id: Any, service: str = "") -> 
 
 
 def is_open(job: Dict[str, Any]) -> bool:
-    return job.get("state") in OPEN_STATES
+    """Açık = bilinen açık durum YA DA bilinmeyen (boş olmayan) durum: varaka ileride yeni bir ara durum (`paused`,
+    `retrying`) dönerse iş yoklanmaya devam eder (donup kalmaz). Yalnız `TERMINAL_STATES` ve durumsuz kayıt kapalıdır."""
+    st = job.get("state")
+    return st in OPEN_STATES or (isinstance(st, str) and bool(st) and st not in TERMINAL_STATES)
+
+
+def is_known_state(state: Any) -> bool:
+    return state in OPEN_STATES or state in TERMINAL_STATES
 
 
 def make_idempotency_key(sid: str, project: str, kind: str, params: Any, spec_text: str,
@@ -609,6 +616,9 @@ def poll_jobs(sid: str = "default", now: Optional[float] = None, force: bool = F
         upd = apply_remote(j, body, now)
         if upd.get("state", j.get("state")) != j.get("state"):
             res["changed"] += 1
+            if not is_known_state(upd.get("state")):     # kayıt artık bu durumda: sonraki yoklamalar aynı durumu görüp bir daha loglamaz
+                sw.log_event("job_unknown_state", paths=paths, service=name, id=j.get("id"), project=j.get("project"),
+                             state=str(upd.get("state"))[:40])
             sw.log_event("job_state", paths=paths, service=name, id=j.get("id"), project=j.get("project"),
                          frm=j.get("state"), to=upd.get("state"))
         updates[k] = upd

@@ -371,7 +371,7 @@ class TestEngineGolden(_Tmp):
                     res = ws.tick_once("manual", cards=False)
                 self.assertTrue(res["ok"], res)
                 out.append(_tm._ser(got, sw.load_state()))
-        self.assertEqual(out, _tm._golden())
+        self.assertEqual(out, _tm._golden_world())       # P9 O4: sahipsiz `degnekci_kitap` ad hoc sayılmaz (bkz. `_golden_world`)
 
 
 if __name__ == "__main__":

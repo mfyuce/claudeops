@@ -147,6 +147,17 @@ def _golden():
         return json.load(f)
 
 
+def _golden_world():
+    """P9 O4: altın girdideki `degnekci_kitap` görünümü kimliği olmayan (çıkarılmış) bir beyindir; `world` ile planlarken
+    artık kullanıcının ad hoc oturumu SAYILMAZ (`brain_other`: işareti taranmaz). `world=None` eski yol kaydı aynen korur
+    (`_golden()`); `world` yolu için tek fark: o oturumun `ask_user` eylemi ve `seen_assistant` kaydı yoktur."""
+    out = _golden()
+    for rec in out:
+        rec["actions"] = [a for a in rec["actions"] if a[1] != "degnekci_kitap"]
+        rec["state"].get("seen_assistant", {}).pop("degnekci_kitap", None)
+    return out
+
+
 def _default_world(projects, cfg):
     return sw.world_for("default", sw.build_ownership_index({"default": list(projects)}), cfg.brain_name)
 
@@ -167,7 +178,7 @@ class TestGolden(_Tmp):
         self.assertEqual(run_golden(sw.plan_tick), _golden())
 
     def test_default_world_is_identical(self):
-        self.assertEqual(run_golden(_tick_default_world), _golden())
+        self.assertEqual(run_golden(_tick_default_world), _golden_world())
 
     def test_default_world_from_disk_index_is_identical(self):
         sw.save_projects(_golden_projects())
@@ -178,7 +189,7 @@ class TestGolden(_Tmp):
         def tick(views, projects, state, cfg, now, questions, ideas):
             return sw.plan_tick(views, projects, state, cfg, now, questions, ideas,
                                 world=sw.world_for("default", idx, cfg.brain_name))
-        self.assertEqual(run_golden(tick), _golden())
+        self.assertEqual(run_golden(tick), _golden_world())
 
 
 # ── mevcut test girdileri üzerinde altın karşılaştırma: test_steward'ın TÜM sınıfları, her plan_tick/review_items

@@ -564,9 +564,14 @@ def transfer_project(name: str, to_sid: str) -> str:
     """Projeyi bugünkü sahibinden `to_sid`e devret (plan (b) devir): kayıt + o projenin açık/iletilmemiş soruları +
     (varsa) bekleyen işler (`jobs.json`, `project` alanı) TEK kilit altında taşınır (önce `.ownership.lock`, sonra
     iki kimlik kilidi kimlik adına göre sıralı: kilitlenme yok); her iki logda `transfer` olayı. Oturumun çalışıp
-    çalışmadığı ÇAĞIRANIN işi (CLI denetler). Dönen: eski sahip. Hata: `ValueError` (yok / zaten orada / hedefte aynı ad)."""
+    çalışmadığı ÇAĞIRANIN işi (CLI denetler). Dönen: eski sahip. Hata: `ValueError` (yok / zaten orada / hedefte aynı ad
+    / hedef kimlik ayarda tanımlı değil)."""
     if not valid_steward_id(to_sid):
         raise ValueError(f"invalid steward id: {to_sid!r}")
+    from .settings import steward_ids      # tembel: `settings` bu modülü tembel içe aktarır (döngü yok)
+    if to_sid not in steward_ids():
+        # Ayarda olmayan kimliğe devir `stewards/<yeni>/projects.json` açardı: "dizin var, ayar yok" kimlik, kimse yönetmez.
+        raise ValueError(f"unknown steward id: {to_sid!r} (not defined in settings)")
     with ownership_lock():
         src = project_owner(name)
         if not src:
@@ -594,15 +599,20 @@ def transfer_project(name: str, to_sid: str) -> str:
             moved_jobs = 0
             sj, dj = _pp(src).jobs, _pp(to_sid).jobs
             sjobs, djobs = _load_json(sj, []), _load_json(dj, [])
+            mine: List[Any] = []
             if isinstance(sjobs, list) and isinstance(djobs, list):
                 mine = [j for j in sjobs if isinstance(j, dict) and j.get("project") == name]
-                if mine:
-                    moved_jobs = len(mine)
-                    _save_json(dj, djobs + mine)
-                    _save_json(sj, [j for j in sjobs if j not in mine])
-            save_projects(dst_projects, to_sid)      # hedefe ÖNCE yaz: yarıda kalırsa ad iki yerde (güvenli başarısızlık: kimse yönetmez)
+                moved_jobs = len(mine)
+            # Yazım sırası: hedef projects → hedef jobs/questions → kaynak projects → kaynak jobs/questions. Yarıda kalırsa
+            # (disk/OSError) ad İKİ yerde olur = çakışma (kimse yönetmez, `ownership_conflict` görünür; güvenli başarısızlık);
+            # kaynak kaydı/işleri/soruları silinmeden önce hedefte tam kopya vardır, hiçbir iş öksüz kalmaz.
+            save_projects(dst_projects, to_sid)
+            if mine:
+                _save_json(dj, djobs + mine)
             save_questions(dst_qs, to_sid)
             save_projects(src_projects, src)
+            if mine:
+                _save_json(sj, [j for j in sjobs if j not in mine])
             save_questions(keep, src)
             log_event("transfer", paths=src, name=name, to=to_sid, questions=moved_q, jobs=moved_jobs)
             log_event("transfer", paths=to_sid, name=name, frm=src, questions=moved_q, jobs=moved_jobs)
@@ -1757,6 +1767,11 @@ class World:
         if not name:
             return "", ""
         if name in self.brains:
+            return "brain", name
+        if name.startswith(BRAIN_PREFIX):
+            # `degnekci*` ailesi ad kuralıyla rezerve (`reserved_reason`): sahipsiz olsa da (kimliği çıkarılmış ama beyni hâlâ
+            # çalışan `degnekci_kitap`) kullanıcının ad hoc oturumu DEĞİL, başka bir beyindir (`brain_other`: işaretleri
+            # taranmaz, cevap iletilmez).
             return "brain", name
         for s, rec in self.services.items():
             if name == s or ((rec or {}).get("match") != "exact" and name.startswith(s)):

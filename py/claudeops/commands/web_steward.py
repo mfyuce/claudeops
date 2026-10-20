@@ -489,6 +489,8 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
     paths = sw.paths_for(cfg.sid)
     lang = cfg.lang
     target = session_name or project.name
+    if answer is not None and _already_sent(lambda: sw.mark_delivered(answer.id, paths), cfg.sid, "answer", answer.id):
+        return {"ok": True, "name": target, "skipped": "already sent"}       # önceki turda gitti, işareti yazılamamıştı
     if not model and not effort:
         model, effort = sw.phase_model_effort(project, cfg)
     s = _running(target)
@@ -506,20 +508,62 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
     message = sw.build_directive(project, lang=lang, extra=text, answer=answer)
     if not _send(s.name, s.cli, message):
         return {"ok": False, "error": "send failed"}
+    # Mesaj GİTTİ: bundan sonrası kayıt tutmadır. Hiçbir kayıt hatası (ör. kilit zaman aşımı) çağırana "başarısız" demez ve
+    # cevabın İKİNCİ KEZ iletilmesine yol açmaz: yinelenmeyi engelleyen `delivered` işareti ÖNCE ve yeniden denemeli yazılır.
+    unrecorded = False
+    if answer is not None:
+        unrecorded = not _mark_after_send(lambda: sw.mark_delivered(answer.id, paths), cfg.sid, "answer", answer.id)
     if project.name in sw.load_projects(paths):
         try:
             sw.upsert_project(project.name, paths=paths, last_visit=time.time(),
                               last_directive=(text or f"[{project.phase} şablonu]")[:400], visits=project.visits + 1)
-        except ValueError as e:   # OwnedElsewhere: ad elle iki kimliğe yazılmış (çakışma); mesaj gitti, kayıt yazılmaz
+        except (ValueError, sw.LockTimeout) as e:   # OwnedElsewhere: ad elle iki kimliğe yazılmış (çakışma) / kilit zaman aşımı; mesaj gitti, kayıt yazılmaz
             sw.log_event("directive_unrecorded", paths=paths, name=project.name, error=str(e))
-    with sw.steward_lock(paths):
-        state = sw.load_state(paths)
-        state.setdefault("last_directive_at", {})[s.name] = time.time()
-        sw.save_state(state, paths)
-    if answer is not None:
-        sw.mark_delivered(answer.id, paths)
+    try:
+        with sw.steward_lock(paths):
+            state = sw.load_state(paths)
+            state.setdefault("last_directive_at", {})[s.name] = time.time()
+            sw.save_state(state, paths)
+    except sw.LockTimeout as e:
+        sw.log_event("directive_unrecorded", paths=paths, name=project.name, error=str(e))
     sw.log_event("directive", paths=paths, name=project.name, reason=reason, chars=len(message))
-    return {"ok": True, "name": s.name, "chars": len(message)}
+    out = {"ok": True, "name": s.name, "chars": len(message)}
+    if unrecorded:
+        out["unrecorded"] = True
+    return out
+
+
+# Mesajı GİDEN ama `delivered` işareti kilit zaman aşımıyla yazılamayan öğeler (süreç içi): {(kimlik, tür, id)}. Sonraki tick
+# aynı cevabı/işi YENİDEN GÖNDERMEZ, yalnız işareti yeniden yazmayı dener. Süreç yeniden başlarsa küme kaybolur (nadir iki
+# olayın çakışması: kilit zaman aşımı + restart); o durumda tek bir yinelenen iletim mümkündür.
+_SENT_UNMARKED: set = set()
+
+
+def _mark_after_send(mark, sid: str, what: str, ident: Any, attempts: int = 2) -> bool:
+    """Mesaj GİTTİKTEN sonra `delivered` işaretini yaz; `LockTimeout`ta yeniden dene. Yine olmazsa `delivery_unrecorded`
+    loglanır, öğe `_SENT_UNMARKED`a girer (yinelenen iletim olmasın) ve istisna YUKARI ÇIKMAZ: mesaj gitti, çağıran işi
+    başarısız saymasın. Dönen: işaret yazıldı mı."""
+    key = (sid, what, str(ident))
+    last = ""
+    for _ in range(max(1, attempts)):
+        try:
+            mark()
+            _SENT_UNMARKED.discard(key)
+            return True
+        except sw.LockTimeout as e:
+            last = str(e)
+    _SENT_UNMARKED.add(key)
+    sw.log_event("delivery_unrecorded", paths=sid, what=what, id=ident, error=last)
+    return False
+
+
+def _already_sent(mark, sid: str, what: str, ident: Any) -> bool:
+    """Önceki turda mesajı gitmiş ama işareti yazılamamış öğe mi? Öyleyse işareti bir kez daha yazmayı dener ve True döner
+    (çağıran YENİDEN GÖNDERMEZ)."""
+    if (sid, what, str(ident)) not in _SENT_UNMARKED:
+        return False
+    _mark_after_send(mark, sid, what, ident, attempts=1)
+    return True
 
 
 # ── proje kartları ────────────────────────────────────────────────────────────
@@ -1032,10 +1076,13 @@ def _deliver_job(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Proje
     p = projects.get(str(job.get("project") or ""))
     if p is None:
         return {"ok": False, "error": "not a steward project"}
+    mark = lambda: sj.mark_delivered(jid, svc, stage, paths=paths)   # noqa: E731
+    if _already_sent(mark, cfg.sid, f"job:{stage}", f"{svc}#{jid}"):
+        return {"ok": True, "skipped": "already sent"}
     res = _give_directive(p, sj.build_job_message(job, stage, cfg.lang), start_if_stopped=False, reason="job",
                           session_name=action.name, cfg=cfg)
     if res.get("ok"):
-        sj.mark_delivered(jid, svc, stage, paths=paths)
+        _mark_after_send(mark, cfg.sid, f"job:{stage}", f"{svc}#{jid}")      # mesaj gitti: kilit zaman aşımı yinelenmeye yol açmasın
         sw.log_event("job_delivered", paths=paths, service=svc, id=jid, project=p.name, stage=stage, session=action.name)
     elif sj.mark_attempt(jid, svc, paths) >= sj.DELIVER_MAX_ATTEMPTS:
         sw.log_event("job_undeliverable", paths=paths, service=svc, id=jid, project=p.name, error=str(res.get("error") or ""))
@@ -1511,6 +1558,12 @@ def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str,
     name = str(data.get("name") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
+    if data.get("actor") == "brain" and name not in sw.load_projects(sid):
+        # Beyin yeni ad AÇAMAZ (mevcut kaydı günceller): ad bir kez kayda girince `_target` onu "kayıtlı proje" sayar ve
+        # kullanıcının ad hoc oturumu iki çağrıyla hedeflenebilirdi. Yeni proje yalnız `steward_register_project` ya da insan.
+        sw.log_event("project_denied", paths=sid, actor="brain", name=name)
+        return {"ok": False, "error": "brain cannot create a new project with steward_set_project; "
+                                      "use steward_register_project (or ask the owner)"}
     fields = {k: data.get(k) for k in ("phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort")
               if k in data}
     try:
@@ -1654,14 +1707,25 @@ def _known_sids() -> List[str]:
 
 
 def _find_question_any(qid: str, key: str, sid: str = "") -> Tuple[str, Optional["sw.Question"]]:
-    """(kimlik, soru). `sid` verildiyse YALNIZ o kimliğin deposu; yoksa (eski bağlantılar) tüm kimlikler, default önce.
-    Aynı id birden fazla depoda varsa (çok nadir) anahtarı eşleşen kazanır."""
+    """(kimlik, soru). `sid` verildiyse önce YALNIZ o kimliğin deposu; yoksa (eski bağlantılar) tüm kimlikler, default önce.
+    Aynı id birden fazla depoda varsa (çok nadir) anahtarı eşleşen kazanır. `sid` deposunda bulunamazsa ve `key` verildiyse
+    (soru devirle başka kimliğe taşınmış olabilir: ntfy bağlantısındaki `s=` eski sahibi gösterir) tüm depolarda ANAHTAR
+    eşleşmesiyle aranır (anahtar depolar arası benzersiz, `_unique_question_key`); anahtarsız geri düşüş YOK."""
     cands = [sid] if sid else _known_sids()
     hits = [(s, q) for s in cands if (q := sw.find_question(qid, s)) is not None]
     for s, q in hits:
         if key and q.key and secrets.compare_digest(key.encode("utf-8", "replace"), q.key.encode("utf-8")):
             return s, q
-    return hits[0] if hits else ("", None)
+    if hits:
+        return hits[0]
+    if sid and key:
+        for s in _known_sids():
+            if s == sid:
+                continue
+            q = sw.find_question(qid, s)
+            if q is not None and q.key and secrets.compare_digest(key.encode("utf-8", "replace"), q.key.encode("utf-8")):
+                return s, q
+    return "", None
 
 
 def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[str, Any]] = None,
