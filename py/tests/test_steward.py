@@ -629,6 +629,49 @@ class SummaryCoreTest(_Tmp):
         self.assertFalse(notes[-1].startswith("(gecikmiş"))
 
 
+class ReaskTest(_Tmp):
+    def _answered(self, project, text, answer, ago=60.0):
+        q = sw.add_question(project, text)
+        sw.answer_question(q.id, answer)
+        qs = sw.load_questions()
+        for x in qs:
+            if x.id == q.id:
+                x.answered_at = sw._now() - ago
+                x.delivered_at = sw._now() - ago
+        sw.save_questions(qs)
+        return q
+
+    def test_similar_answered_question_is_redelivered_not_reopened(self):
+        q = self._answered("zlkrn", "Sıradaki iş Urdu Âzâd kalan sayfaları mı olsun yoksa Aşama 2 mi", "ikisi de")
+        again = sw.add_question("zlkrn", "Sıradaki iş Urdu Âzâd'ın kalan sayfaları mı olsun, yoksa Aşama 2'ye mi geçelim")
+        self.assertEqual(again.id, q.id)
+        self.assertEqual(sw.find_question(q.id).repeats, 1)
+        self.assertEqual([x.id for x in sw.undelivered_answers()], [q.id])
+        self.assertEqual(sw.open_questions(), [])
+        msg = sw.build_directive(sw.Project(name="zlkrn"), answer=sw.find_question(q.id))
+        self.assertIn("zaten cevapladım", msg)
+
+    def test_repeat_cap_other_project_old_and_clarification_open_new(self):
+        q = self._answered("zlkrn", "Urdu Âzâd kalan sayfaları mı olsun", "ikisi de")
+        for _ in range(sw.REASK_MAX_REPEATS):
+            self.assertEqual(sw.add_question("zlkrn", "Urdu Âzâd kalan sayfaları mı olsun").id, q.id)
+        self.assertNotEqual(sw.add_question("zlkrn", "Urdu Âzâd kalan sayfaları mı olsun").id, q.id)   # sınır aşıldı
+        self.assertNotEqual(sw.add_question("ncs", "Urdu Âzâd kalan sayfaları mı olsun").id, q.id)      # başka proje
+        old = self._answered("mkt", "Beck PDF import edilsin mi", "evet", ago=sw.REASK_WINDOW_SECONDS + 10)
+        self.assertNotEqual(sw.add_question("mkt", "Beck PDF import edilsin mi").id, old.id)             # eski
+        unclear = self._answered("wifi", "GSA satırı parça düzeyi mi katı kural mı", "anlamadim detayli sor")
+        self.assertNotEqual(sw.add_question("wifi", "GSA satırı parça düzeyi mi katı kural mı").id, unclear.id)
+
+    def test_directive_lists_earlier_answers(self):
+        a = self._answered("zlkrn", "Birinci soru burada", "sıradan git", ago=300)
+        b = self._answered("zlkrn", "İkinci farklı soru metni", "ikisi de", ago=100)
+        msg = sw.build_directive(sw.Project(name="zlkrn"), answer=sw.find_question(b.id))
+        self.assertIn("Önceki cevaplarım", msg)
+        self.assertIn("sıradan git", msg)
+        self.assertNotIn("zaten cevapladım", msg)
+        self.assertIn("KALICI kuraldır", msg)
+
+
 class QuestionOptionsTest(_Tmp):
     def test_options_normalize_resolve_and_key(self):
         self.assertEqual(sw.normalize_options(["  evet ", "hayır", "evet", "", None, 3, True]), ["evet", "hayır", "3"])

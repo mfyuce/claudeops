@@ -715,6 +715,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
         return _give_directive(p, extra, answer=q, start_if_stopped=False, reason="answer", session_name=name)
     if k == "ask_user":
         q = sw.add_question(action.payload.get("project") or name, action.payload.get("text") or "", source=name)
+        if q.status != "open":   # yakın zamanda cevaplanmış soru yeniden soruldu: telefona yeni soru gitmez, cevap yeniden iletilir
+            return {"ok": True, "id": q.id, "notified": False, "reasked": True}
         notified = notify_phone(f"[{q.project}] {q.text}\n→ py/cops steward answer {q.id} \"...\"")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "idea":

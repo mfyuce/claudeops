@@ -130,6 +130,7 @@ class Question:
     options: List[str] = field(default_factory=list)   # kısa seçenekler (boş = serbest metin); cevap bunlardan biri ya da metin
     key: str = ""                   # `/q/<id>?k=<key>` sayfasının soruya ÖZEL anahtarı (panel token'ı ntfy'ye girmesin)
     notified_at: float = 0.0        # telefona bildirildi (aynı açık soru ikinci kez bildirilmez)
+    repeats: int = 0                # oturum aynı soruyu yeniden sordu: cevap "zaten cevapladım" notuyla yeniden iletildi
 
 
 @dataclass
@@ -374,11 +375,63 @@ def resolve_answer(q: Question, raw: str) -> str:
     return raw
 
 
+REASK_WINDOW_SECONDS = 12 * 3600   # bu süre içinde cevaplanmış benzer soru "tekrar" sayılır
+REASK_MIN_SIMILARITY = 0.6         # kelime kümesi Jaccard benzerliği eşiği
+REASK_MAX_REPEATS = 2              # aynı cevap en çok bu kadar yeniden iletilir, sonra soru gerçekten açılır
+_WORD_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def _words(text: str) -> set:
+    return {w for w in _WORD_RE.findall(text.lower()) if len(w) > 2}
+
+
+def find_answered_duplicate(questions: List["Question"], project: str, text: str,
+                            now: Optional[float] = None) -> Optional["Question"]:
+    """Aynı projede, son `REASK_WINDOW_SECONDS` içinde cevaplanmış ve `text`e kelime düzeyinde çok benzeyen soru
+    (en benzeri); yoksa None."""
+    now = _now() if now is None else now
+    mine = _words(text)
+    if not mine:
+        return None
+    best, best_sim = None, 0.0
+    for q in questions:
+        if q.status != "answered" or q.project != project or not q.answered_at:
+            continue
+        if now - q.answered_at > REASK_WINDOW_SECONDS:
+            continue
+        if "anlamad" in q.answer.lower() or "understand" in q.answer.lower():
+            continue   # "anlamadım, ayrıntılı sor" = sahibi yeniden sorulmasını istedi
+        theirs = _words(q.text)
+        if not theirs:
+            continue
+        sim = len(mine & theirs) / len(mine | theirs)
+        if sim >= REASK_MIN_SIMILARITY and sim > best_sim:
+            best, best_sim = q, sim
+    return best
+
+
+def recent_answers(project: str, exclude_id: str = "", limit: int = 5,
+                   questions: Optional[List["Question"]] = None) -> List["Question"]:
+    """Projenin en son `limit` cevaplanmış sorusu (eskiden yeniye); `exclude_id` hariç."""
+    qs = [q for q in (questions if questions is not None else load_questions())
+          if q.status == "answered" and q.project == project and q.id != exclude_id and q.answer.strip()]
+    qs.sort(key=lambda q: q.answered_at)
+    return qs[-limit:]
+
+
 def add_question(project: str, text: str, source: str = "", options: Any = None) -> Question:
     text = str(text).strip()[:_MAX_QUESTION_CHARS]
     if not text:
         raise ValueError("empty question")
     questions = load_questions()
+    # Oturum yakın zamanda cevaplanmış bir soruyu yeniden sordu: yeni soru açma, cevabı "zaten cevapladım"
+    # notuyla yeniden ilet (üst sınırdan sonra gerçekten yeni soru say; sonsuz döngü olmasın).
+    dup = find_answered_duplicate(questions, project, text)
+    if dup is not None and dup.repeats < REASK_MAX_REPEATS:
+        dup.repeats += 1
+        dup.delivered_at = 0.0
+        save_questions(questions)
+        return dup
     # Aynı projeden AYNI metinle açık bir soru varsa ikinci kez açma (işaret taraması her
     # tick aynı yanıtı görebilir; motor `seen` ile de korur ama depo kendi başına da dayanıklı olsun).
     for q in questions:
@@ -938,6 +991,9 @@ _PROTOCOL_TR = (
     f"- bana sormadan ilerleyemeyeceğin bir karar varsa: `{MARK_ASK} <tek cümlelik soru>`\n"
     f"- aklına bu projeyle ilgisiz yeni bir fikir gelirse: `{MARK_IDEA} <fikir>`\n"
     f"- takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>`\n"
+    "Kurallar: cevaplarım kısadır ('ikisi de', 'sıradan git', 'sen devam') ve KALICI kuraldır; aynı konuyu "
+    "yeniden sorma. Cevap yetmiyorsa makul bir varsayılanla ilerle, varsayımını TOBEDECIDED.md'ye yaz. "
+    "Aşağıdaki 'Önceki cevaplarım' listesi sana verdiğim kararlardır, onlara uy.\n"
 )
 
 _PROTOCOL_EN = (
@@ -945,6 +1001,9 @@ _PROTOCOL_EN = (
     f"- a decision you cannot make without me: `{MARK_ASK} <one-sentence question>`\n"
     f"- a new idea unrelated to this project: `{MARK_IDEA} <idea>`\n"
     f"- stuck after thinking it through: `{MARK_BLOCKED} <where>`\n"
+    "Rules: my answers are short ('both', 'go in order', 'you continue') and are STANDING rules; do not re-ask "
+    "the same topic. If an answer is not enough, proceed with a sensible default and record the assumption in "
+    "TOBEDECIDED.md. The 'My earlier answers' list below holds decisions I already gave you; follow them.\n"
 )
 
 
@@ -960,6 +1019,13 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
     if answer is not None:
         parts.append(("Sorduğun soru: " if tr else "Your question: ") + answer.text.strip())
         parts.append(("Cevabım: " if tr else "My answer: ") + answer.answer.strip())
+        if answer.repeats:
+            parts.append("Bunu zaten cevapladım, yukarıdaki cevap geçerli; yeniden sorma, devam et." if tr else
+                         "I already answered this; the answer above stands. Do not ask again, continue.")
+        prior = recent_answers(project.name, exclude_id=answer.id)
+        if prior:
+            parts.append(("Önceki cevaplarım:\n" if tr else "My earlier answers:\n") +
+                         "\n".join(f"- {q.text.strip()[:140]} → {q.answer.strip()[:200]}" for q in prior))
     if extra.strip():
         parts.append(extra.strip())
     elif project.phase == "planning":
