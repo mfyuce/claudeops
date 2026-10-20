@@ -684,6 +684,50 @@ class RoutineQuestionTest(_Tmp):
         self.assertEqual([x.id for x in sw.undelivered_answers()], [q.id])
 
 
+class OneLiveSessionPerProjectTest(_Tmp):
+    def test_finished_handover_of_second_session_stops_it_instead_of_respawn(self):
+        cfg = _cfg(max_active=4)
+        projects = {"ncs": sw.Project(name="ncs", phase="planned", cadence_minutes=60)}
+        a = _view("ncs", busy=False, last_assistant="devir\nREADY FOR HANDOVER")
+        b = _view("ncs20261019", blueprint="ncs", busy=True)
+        acts, st = sw.plan_tick([a, b], projects, {"ho_pending": {"ncs": 1000.0}}, cfg, 2000.0, [], [])
+        mine = [(x.kind, x.name) for x in acts if x.name == "ncs"]
+        self.assertEqual(mine, [("stop", "ncs")])
+        self.assertNotIn("ncs", st["ho_pending"])
+        # tek oturum kaldıysa eskisi gibi yeniden açılır
+        acts, _ = sw.plan_tick([a], projects, {"ho_pending": {"ncs": 1000.0}}, cfg, 2000.0, [], [])
+        self.assertEqual([(x.kind, x.name) for x in acts if x.name == "ncs"], [("respawn", "ncs")])
+
+    def test_context_tokens_trigger_handover(self):
+        cfg = _cfg(max_active=4, context_warn_tokens=300000)
+        projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}
+        big = _view("a", busy=True, history_size=10, context_tokens=410000)
+        acts, st = sw.plan_tick([big], projects, {}, cfg, 5000.0, [], [])
+        ho = [x for x in acts if x.kind == "handover"]
+        self.assertEqual([x.name for x in ho], ["a"])
+        self.assertIn("token", ho[0].reason)
+        small = _view("a", busy=True, history_size=10, context_tokens=120000)
+        acts, _ = sw.plan_tick([small], projects, {}, cfg, 5000.0, [], [])
+        self.assertEqual([x for x in acts if x.kind == "handover"], [])
+        off = _cfg(max_active=4, context_warn_tokens=0)
+        acts, _ = sw.plan_tick([big], projects, {}, off, 5000.0, [], [])
+        self.assertEqual([x for x in acts if x.kind == "handover"], [])
+
+    def test_context_tokens_from_transcript_tail(self):
+        import json as _json
+        d = os.path.join(self.dir.name, "t")
+        os.makedirs(d)
+        path = os.path.join(d, "s.jsonl")
+        with open(path, "w") as f:
+            f.write(_json.dumps({"message": {"role": "assistant", "usage": {"input_tokens": 3, "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 50}}}) + "\n")
+            f.write(_json.dumps({"message": {"role": "user", "content": "x"}}) + "\n")
+            f.write(_json.dumps({"message": {"role": "assistant", "usage": {"input_tokens": 5, "cache_read_input_tokens": 400000, "cache_creation_input_tokens": 200}}}) + "\n")
+        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: path):
+            self.assertEqual(web_steward.context_tokens_for("/x", "sid"), 400205)
+        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: None):
+            self.assertIsNone(web_steward.context_tokens_for("/x", "sid"))
+
+
 class StuckBrainTest(_Tmp):
     def test_status_sentence_is_not_a_routine_question_and_tour_is_capped(self):
         cfg = _cfg(max_active=4)

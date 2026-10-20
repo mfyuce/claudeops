@@ -12,6 +12,7 @@ sorusunu `py/cops steward log` ile görür.
 """
 from __future__ import annotations
 import dataclasses
+import json
 import os
 import re
 import secrets
@@ -204,6 +205,31 @@ def _safe_project_file(cwd: str, rel: str) -> Optional[str]:
 
 # ── görünümler ────────────────────────────────────────────────────────────────
 
+def context_tokens_for(cwd: str, sid: Optional[str]) -> Optional[int]:
+    """Claude transkriptinin SON asistan turunun bağlam boyutu: girdi + cache okuma + cache yazma token'ı (her
+    turda yeniden okunan bağlamın boyutu). Dosyanın yalnız sonundan okur (~256 KB); bulunamazsa None."""
+    from ..providers.claude_provider import jsonl_path_for
+    path = jsonl_path_for(cwd, sid)
+    if not path or not os.path.isfile(path):
+        return None
+    size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        f.seek(max(0, size - 262144))
+        tail = f.read().decode("utf-8", "replace")
+    for line in reversed(tail.splitlines()):
+        if '"usage"' not in line or '"assistant"' not in line:
+            continue
+        try:
+            o = json.loads(line)
+        except ValueError:
+            continue
+        m = o.get("message") or {}
+        u = m.get("usage") if m.get("role") == "assistant" else None
+        if u:
+            return int(u.get("input_tokens", 0)) + int(u.get("cache_read_input_tokens", 0)) + int(u.get("cache_creation_input_tokens", 0))
+    return None
+
+
 def _collect_views(cfg: sw.Config) -> List[sw.SessionView]:
     payload = _act("status_payload") or {}
     rows = [r for r in (payload.get("sessions") or []) if r.get("host", LOCAL_HOST_NAME) == LOCAL_HOST_NAME]
@@ -234,6 +260,11 @@ def _collect_views(cfg: sw.Config) -> List[sw.SessionView]:
                 v.last_activity = float(provider.last_request_epoch(s.cwd, s.sid, s.pid) or 0.0)
             except Exception:
                 v.last_activity = 0.0
+            if s.cli == "claude":
+                try:
+                    v.context_tokens = context_tokens_for(s.cwd, s.sid)
+                except Exception:
+                    v.context_tokens = None
             try:
                 v.started_at = float(psutil.Process(s.pid).create_time())
             except Exception:
@@ -299,11 +330,11 @@ def _project_for_session(name: str, projects: Dict[str, sw.Project]) -> Optional
     return projects.get(m.group(1)) if m else None
 
 
-def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr") -> Dict[str, Any]:
+def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr", fresh: bool = False) -> Dict[str, Any]:
     s = _running(name)
     if s is not None:
         return {"ok": True, "started": False, "cli": s.cli}
-    res = _act("start", name, model=model, effort=effort, fresh=False, lang=lang)
+    res = _act("start", name, model=model, effort=effort, fresh=fresh, lang=lang)
     if not res.get("ok"):
         return res
     cli = _project_cli(name)
@@ -703,7 +734,9 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project]) -
             return brain_start(cfg)
         p = _project_for_session(name, projects)
         model, effort = sw.phase_model_effort(p, cfg) if p else ("", "")
-        res = _ensure_running(name, model=model, effort=effort, lang=cfg.lang)
+        # Devirden sonra YENİ konuşma (`--new`): `--resume` aynı şişmiş bağlamı (her tur yeniden okunan ~400K token)
+        # ve eski modelin önbelleğini taşırdı. Devir özeti CLAUDE.md'de, yeni oturum onu kendisi okur.
+        res = _ensure_running(name, model=model, effort=effort, lang=cfg.lang, fresh=True)
         if not res.get("ok") or p is None:
             return res
         sw.mark_card_stale(p.name)   # handover'da oturum işini yazdı: kart, proje durunca yeniden özetlensin

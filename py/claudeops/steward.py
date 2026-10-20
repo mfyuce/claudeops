@@ -147,6 +147,7 @@ class SessionView:
     busy: Optional[bool] = None
     history_size: Optional[int] = None
     needs_ho: Optional[bool] = None
+    context_tokens: Optional[int] = None   # son asistan turunun bağlam boyutu (claude transkriptinden; bilinmiyorsa None)
     tmux: bool = False
     last_assistant: str = ""            # son asistan metni (işaret taraması için)
     last_activity: float = 0.0          # son model isteği/aktivite (epoch, 0 = bilinmiyor)
@@ -180,6 +181,7 @@ class Config:
     stop_idle_minutes: int = 45
     ho_grace_minutes: int = 15
     history_warn_at: int = 1900
+    context_warn_tokens: int = 300000   # oturumun bağlamı (son turun girdi+cache token'ı) bu sayıyı aşarsa handover (0 = kapalı); her tur bağlamın TAMAMI yeniden okunur
     brain_cli: str = "claude"
     brain_model: str = ""
     brain_effort: str = "high"
@@ -1288,6 +1290,24 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     return items
 
 
+def _project_key(name: str, projects: Dict[str, "Project"]) -> str:
+    """Oturum adı → kayıtlı proje adı (tam ad ya da en uzun proje-adı öneki: `ncs20261019` → `ncs`); yoksa ""."""
+    best = ""
+    for p in projects:
+        if (name == p or name.startswith(p)) and len(p) > len(best):
+            best = p
+    return best
+
+
+def _sibling_running(views: List[SessionView], name: str, projects: Dict[str, "Project"], cfg: "Config") -> bool:
+    """`name`in projesinin BAŞKA bir çalışan oturumu var mı (beyin sayılmaz, kayıtsız proje = hayır)."""
+    key = _project_key(name, projects)
+    if not key:
+        return False
+    return any(x.running and x.name != name and x.name != cfg.brain_name and _project_key(x.name, projects) == key
+               for x in views)
+
+
 def pick_delivery_view(views: List[Any], project: str, source: str = "") -> Optional[Any]:
     """Cevabın gideceği çalışan oturum. Projenin birden çok açık oturumu olabilir (deneme `_1`, `_2`...):
     önce soruyu açan oturum (`source`), sonra adı projeyle başlayan en kısa/eski ad (ana oturum), son çare ilk bulunan."""
@@ -1322,6 +1342,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             actions.append(Action("handover", v.name, f"history_size {v.history_size} >= {cfg.history_warn_at}"))
             ho_pending[v.name] = now
             busy_names.add(v.name)
+        elif (cfg.context_warn_tokens and v.context_tokens and v.context_tokens >= cfg.context_warn_tokens
+              and v.name not in ho_pending):
+            actions.append(Action("handover", v.name, f"context {v.context_tokens} token >= {cfg.context_warn_tokens}"))
+            ho_pending[v.name] = now
+            busy_names.add(v.name)
 
     # 2) Handover gönderilmiş olanlar — READY FOR HANDOVER geldi ya da süre doldu → yeniden aç
     for name, sent_at in list(ho_pending.items()):
@@ -1329,7 +1354,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             continue
         v = by_name.get(name)
         if v is None or not v.running:
-            actions.append(Action("respawn", name, "handover sent, session gone → start"))
+            if not _sibling_running(views, name, projects, cfg):
+                actions.append(Action("respawn", name, "handover sent, session gone → start"))
             ho_pending.pop(name, None)
             busy_names.add(name)
             continue
@@ -1337,7 +1363,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         expired = (now - float(sent_at)) >= cfg.ho_grace_minutes * 60
         # busy None (bu CLI'da sinyal yok) = "meşgul değil" sayılır; yalnız kesin True bekletir
         if v.busy is not True and (ready or expired):
-            actions.append(Action("respawn", name, "READY FOR HANDOVER" if ready else "handover grace expired"))
+            if _sibling_running(views, name, projects, cfg):
+                # Aynı projenin başka oturumu çalışıyor: devri biten ikinci oturum yeniden AÇILMAZ, kapanır
+                # (proje başına tek canlı oturum; her oturum kendi bağlamını her turda yeniden okur).
+                actions.append(Action("stop", name, "devir bitti, projenin başka oturumu çalışıyor → kapat"))
+            else:
+                actions.append(Action("respawn", name, "READY FOR HANDOVER" if ready else "handover grace expired"))
             ho_pending.pop(name, None)
             busy_names.add(name)
 
