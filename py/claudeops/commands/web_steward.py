@@ -13,6 +13,7 @@ sorusunu `py/cops steward log` ile görür.
 from __future__ import annotations
 import dataclasses
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -870,6 +871,83 @@ def http_ideas(status: str = "new") -> Dict[str, Any]:
     return {"ok": True, "ideas": [dataclasses.asdict(i) for i in ideas]}
 
 
+_EXPORT_FILES = {"todo": "TODO.md", "tbd": "TOBEDECIDED.md"}
+_EXPORT_HEADING = "## Değnekçi fikirleri"
+
+
+def _idea_project(idea: "sw.Idea", projects: Dict[str, "sw.Project"]) -> str:
+    """Fikrin bağlı olduğu değnekçi projesi: `project`/`source` ya doğrudan proje adıdır ya da tarih sonekli oturum adı."""
+    for cand in (idea.project, idea.source):
+        cand = str(cand or "")
+        if cand in projects:
+            return cand
+        m = re.match(r"^(.*?)\d{8}(?:_\d+)?$", cand)
+        if m and m.group(1) in projects:
+            return m.group(1)
+    return ""
+
+
+def _append_idea_item(path: str, idea: "sw.Idea", stamp: str) -> bool:
+    """Fikri `path`in sonuna `- [ ]` maddesi olarak ekler (aynı fikir kimliği varsa dokunmaz). True = yazıldı."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except FileNotFoundError:
+        text = ""
+    if idea.id in text:
+        return False
+    line = f"- [ ] (değnekçi fikri {idea.id}) {' '.join(idea.text.split())}"
+    last_head = next((ln for ln in reversed(text.splitlines()) if ln.startswith("## ")), "")
+    body = text.rstrip("\n")
+    if last_head.startswith(_EXPORT_HEADING):
+        new = f"{body}\n{line}\n"
+    else:
+        new = (f"{body}\n\n" if body else "") + f"{_EXPORT_HEADING} ({stamp})\n{line}\n"
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(new)
+    os.replace(tmp, path)
+    return True
+
+
+def http_idea_export(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Fikri projenin `TODO.md`/`TOBEDECIDED.md` dosyasına yazar. `kind`: todo|tbd; `target`: project (fikrin projesi) |
+    all (kayıtlı tüm değnekçi projeleri). Fikir `exported` olur (listeden kalkar), kayıt fikrin üstünde durur."""
+    kind = str(data.get("kind") or "")
+    target = str(data.get("target") or "project")
+    fname = _EXPORT_FILES.get(kind)
+    if fname is None:
+        return {"ok": False, "error": "kind must be todo or tbd"}
+    if target not in ("project", "all"):
+        return {"ok": False, "error": "target must be project or all"}
+    idea = next((i for i in sw.load_ideas() if i.id == str(data.get("id") or "")), None)
+    if idea is None:
+        return {"ok": False, "error": "unknown idea id"}
+    projects = sw.load_projects()
+    names = [n for n in (_idea_project(idea, projects),) if n] if target == "project" else sorted(projects)
+    if not names:
+        return {"ok": False, "error": "idea has no steward project; choose target=all"}
+    stamp = time.strftime("%Y-%m-%d")
+    written: List[str] = []
+    present: List[str] = []
+    skipped: List[str] = []
+    for n in names:
+        cwd = _project_cwd(n)
+        if not cwd or not os.path.isdir(cwd):
+            skipped.append(n)
+            continue
+        try:
+            (written if _append_idea_item(os.path.join(cwd, fname), idea, stamp) else present).append(n)
+        except OSError as e:
+            diag_log("steward_idea_export_failed", project=n, error=repr(e))
+            skipped.append(n)
+    if not written and not present:
+        return {"ok": False, "error": "no project directory found", "skipped": skipped}
+    sw.record_idea_export(idea.id, {"kind": kind, "target": target, "file": fname, "projects": written + present, "at": time.time()})
+    sw.log_event("idea_export", id=idea.id, kind=kind, target=target, written=written, present=present, skipped=skipped)
+    return {"ok": True, "written": written, "already": present, "skipped": skipped}
+
+
 def http_log(n: int = 50) -> Dict[str, Any]:
     return {"ok": True, "entries": sw.tail_log(max(1, min(500, n)))}
 
@@ -1244,6 +1322,7 @@ POST_PATHS = {
     "/api/steward/ask": http_ask,
     "/api/steward/answer": http_answer,
     "/api/steward/idea": http_idea,
+    "/api/steward/idea/export": http_idea_export,
     "/api/steward/note": http_note,
     "/api/steward/directive": http_directive,
     "/api/steward/restart": http_restart,

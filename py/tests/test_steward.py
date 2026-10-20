@@ -6,6 +6,7 @@
 """
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -765,6 +766,54 @@ class HttpTest(_Tmp):
         web_steward.configure(status_payload=lambda: {"sessions": []}, fleet_status=lambda: self.fleet,
                               start=start, stop=stop, handover=handover, register_project=register)
         web_steward._RECENT.clear()
+
+    def _export_env(self, names=("zlkrn", "mkt")):
+        cwds = {}
+        for n in names:
+            d = os.path.join(self.dir.name, n)
+            os.makedirs(d)
+            cwds[n] = d
+            self.fleet[n] = {"cwd": d, "model": "", "cli": "claude", "state": "active"}
+            sw.upsert_project(n, phase="planned")
+        return cwds
+
+    def test_idea_export_project_todo_hides_idea_and_keeps_record(self):
+        cwds = self._export_env()
+        i = web_steward.http_post("/api/steward/idea", {"text": "Nüvayrî\nlistesi bak", "source": "zlkrn20261018"})["idea"]
+        r = web_steward.http_post("/api/steward/idea/export", {"id": i["id"], "kind": "todo", "target": "project"})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["written"], ["zlkrn"])
+        todo = Path(os.path.join(cwds["zlkrn"], "TODO.md")).read_text(encoding="utf-8")
+        self.assertIn("## Değnekçi fikirleri", todo)
+        self.assertIn(f"- [ ] (değnekçi fikri {i['id']}) Nüvayrî listesi bak", todo)      # satır sonu tek satıra iner
+        self.assertFalse(os.path.exists(os.path.join(cwds["mkt"], "TODO.md")))
+        self.assertEqual(web_steward.http_get("/api/steward/ideas", {})["ideas"], [])        # varsayılan (new) listeden kalktı
+        kept = web_steward.http_get("/api/steward/ideas", {"status": ["exported"]})["ideas"]
+        self.assertEqual(kept[0]["exported"][0]["projects"], ["zlkrn"])                      # kayıt fikrin üstünde duruyor
+
+    def test_idea_export_all_tbd_and_idempotent(self):
+        cwds = self._export_env()
+        i = web_steward.http_post("/api/steward/idea", {"text": "genel fikir"})["idea"]
+        r = web_steward.http_post("/api/steward/idea/export", {"id": i["id"], "kind": "tbd", "target": "all"})
+        self.assertEqual(sorted(r["written"]), ["mkt", "zlkrn"])
+        r2 = web_steward.http_post("/api/steward/idea/export", {"id": i["id"], "kind": "tbd", "target": "all"})
+        self.assertEqual((r2["written"], sorted(r2["already"])), ([], ["mkt", "zlkrn"]))
+        for d in cwds.values():
+            self.assertEqual(Path(os.path.join(d, "TOBEDECIDED.md")).read_text(encoding="utf-8").count(i["id"]), 1)
+
+    def test_idea_export_appends_under_existing_heading_and_validates(self):
+        cwds = self._export_env(("zlkrn",))
+        a = web_steward.http_post("/api/steward/idea", {"text": "bir", "source": "zlkrn20261018"})["idea"]
+        b = web_steward.http_post("/api/steward/idea", {"text": "iki", "source": "zlkrn"})["idea"]
+        for x in (a, b):
+            self.assertTrue(web_steward.http_post("/api/steward/idea/export", {"id": x["id"], "kind": "todo"})["ok"])
+        todo = Path(os.path.join(cwds["zlkrn"], "TODO.md")).read_text(encoding="utf-8")
+        self.assertEqual(todo.count("## Değnekçi fikirleri"), 1)                             # ikinci madde aynı başlığın altına
+        c = web_steward.http_post("/api/steward/idea", {"text": "sahipsiz"})["idea"]
+        self.assertFalse(web_steward.http_post("/api/steward/idea/export", {"id": c["id"], "kind": "todo"})["ok"])   # projesiz + target=project
+        self.assertFalse(web_steward.http_post("/api/steward/idea/export", {"id": c["id"], "kind": "x"})["ok"])
+        self.assertFalse(web_steward.http_post("/api/steward/idea/export", {"id": "yok", "kind": "todo", "target": "all"})["ok"])
+        self.assertEqual(web_steward.http_get("/api/steward/ideas", {})["ideas"][0]["id"], c["id"])           # başarısız aktarım fikri saklamaz
 
     def test_project_ask_answer_idea_note(self):
         r = web_steward.http_post("/api/steward/project", {"name": "p", "phase": "planning", "goal": "g", "priority": 2})

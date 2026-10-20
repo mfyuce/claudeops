@@ -12,6 +12,7 @@ import {
   apiStewardAnswer,
   apiStewardAsk,
   apiStewardIdea,
+  apiStewardIdeaExport,
   apiStewardIdeaUpdate,
   apiStewardTick,
   getStewardState,
@@ -107,6 +108,7 @@ export function StewardTab() {
   const [askText, setAskText] = useState("");
   const [askOptions, setAskOptions] = useState("");
   const [ideaText, setIdeaText] = useState("");
+  const [exportTarget, setExportTarget] = useState<"project" | "all">("project");
   const [busy, setBusy] = useState(false);
 
   // Same shape as `OrchTab`'s detail fetch: the promise's `.then` updates state (never synchronously in the effect).
@@ -285,11 +287,26 @@ export function StewardTab() {
 
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardIdeasTitle}</h3>
       {state && state.ideas.length === 0 && <span className="opts-hint">{t.stewardNoIdeas}</span>}
+      {state && state.ideas.length > 0 && (
+        <label className="opts-hint">
+          {t.stewardExportTarget}{" "}
+          <select value={exportTarget} onChange={(e) => setExportTarget(e.target.value === "all" ? "all" : "project")}>
+            <option value="project">{t.stewardExportProject}</option>
+            <option value="all">{t.stewardExportAll}</option>
+          </select>
+        </label>
+      )}
       {state?.ideas.map((i) => (
         <div key={i.id} className="opts" style={card}>
           <span style={{ flex: 1, minWidth: "12rem" }}>
             {i.text} <span className="legend">({ago(i.created_at, t.stewardNever)}{i.source ? `, ${i.source}` : ""})</span>
           </span>
+          <button type="button" disabled={busy} title={t.stewardIdeaToTodoTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "todo", exportTarget), () => showToast(t.stewardIdeaExported))}>
+            {t.stewardIdeaToTodo}
+          </button>
+          <button type="button" disabled={busy} title={t.stewardIdeaToTbdTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "tbd", exportTarget), () => showToast(t.stewardIdeaExported))}>
+            {t.stewardIdeaToTbd}
+          </button>
           <button type="button" className="retire" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "later"))}>
             {t.stewardIdeaLater}
           </button>

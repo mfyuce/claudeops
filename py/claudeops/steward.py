@@ -110,9 +110,10 @@ class Idea:
     id: str
     text: str
     created_at: float
-    status: str = "new"             # new | project | dropped | later
+    status: str = "new"             # new | project | dropped | later | exported
     project: str = ""               # projeye dönüştüyse adı
     source: str = ""                # hangi oturum/kim yazdı
+    exported: List[Dict[str, Any]] = field(default_factory=list)   # TODO/TBD'ye aktarım kayıtları (kind, target, projects, at)
 
 
 @dataclass
@@ -309,10 +310,22 @@ def update_idea(idea_id: str, status: Optional[str] = None, project: Optional[st
     ideas = load_ideas()
     for i in ideas:
         if i.id == idea_id:
-            if status in ("new", "project", "dropped", "later"):
+            if status in ("new", "project", "dropped", "later", "exported"):
                 i.status = status
             if project is not None:
                 i.project = str(project)
+            save_ideas(ideas)
+            return i
+    return None
+
+
+def record_idea_export(idea_id: str, record: Dict[str, Any]) -> Optional[Idea]:
+    """Fikri `exported` yapar (varsayılan listeden kalkar) ve aktarım kaydını fikrin üstünde tutar (silinmez)."""
+    ideas = load_ideas()
+    for i in ideas:
+        if i.id == idea_id:
+            i.status = "exported"
+            i.exported = list(i.exported or []) + [record]
             save_ideas(ideas)
             return i
     return None

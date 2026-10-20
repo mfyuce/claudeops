@@ -556,6 +556,14 @@ export interface Strings {
   stewardIdeaAddBtn: string;
   stewardIdeaLater: string;
   stewardIdeaDrop: string;
+  stewardIdeaToTodo: string;
+  stewardIdeaToTbd: string;
+  stewardIdeaToTodoTitle: string;
+  stewardIdeaToTbdTitle: string;
+  stewardIdeaExported: string;
+  stewardExportTarget: string;
+  stewardExportProject: string;
+  stewardExportAll: string;
   stewardRecentTitle: string;
   stewardDry: string;
   orchDesc: string;
@@ -1204,6 +1212,14 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdeaAddBtn: "Ekle",
     stewardIdeaLater: "sonra",
     stewardIdeaDrop: "vazgeç",
+    stewardIdeaToTodo: "TODO'ya",
+    stewardIdeaToTbd: "TBD'ye",
+    stewardIdeaToTodoTitle: "Fikri projenin TODO.md dosyasına ekle; listeden kalkar, kaydı fikirde durur",
+    stewardIdeaToTbdTitle: "Fikri projenin TOBEDECIDED.md dosyasına ekle; listeden kalkar, kaydı fikirde durur",
+    stewardIdeaExported: "Eklendi.",
+    stewardExportTarget: "Ekle:",
+    stewardExportProject: "ilgili projeye",
+    stewardExportAll: "tüm projelere",
     stewardRecentTitle: "Son eylemler",
     stewardDry: "kuru",
     orchDesc: "Birden fazla session'a aynı görevi verip yanıtları karşılaştırın. Opsiyonel bir kontrolcü göreve önce kendi brief'ini yazabilir; opsiyonel bir karar verici işçilerin yanıtlarını görüp son kararı verebilir — hiçbiri atanmazsa sonuç işçiler arasındaki çoğunluk oyuyla belirlenir. Bitince kontrolcüye sonuç mesajı gönderilir.",
@@ -1853,6 +1869,14 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdeaAddBtn: "Add",
     stewardIdeaLater: "later",
     stewardIdeaDrop: "drop",
+    stewardIdeaToTodo: "To TODO",
+    stewardIdeaToTbd: "To TBD",
+    stewardIdeaToTodoTitle: "Append the idea to the project's TODO.md; it leaves the list, the record stays on the idea",
+    stewardIdeaToTbdTitle: "Append the idea to the project's TOBEDECIDED.md; it leaves the list, the record stays on the idea",
+    stewardIdeaExported: "Added.",
+    stewardExportTarget: "Add to:",
+    stewardExportProject: "its project",
+    stewardExportAll: "all projects",
     stewardRecentTitle: "Recent actions",
     stewardDry: "dry",
     orchDesc: "Send the same task to several sessions and compare the answers. An optional controller can write its own brief for the task first; an optional decider can see the workers' answers and make the final call — with neither assigned, the result is decided by majority vote among the workers. The controller (if any) gets a result message once the run finishes.",

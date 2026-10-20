@@ -608,5 +608,7 @@ export const apiStewardIdea = (text: string): Promise<SimpleResult & { id?: stri
   apiPost<SimpleResult & { id?: string }>("/api/steward/idea", { text, source: "panel" });
 export const apiStewardIdeaUpdate = (id: string, status: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/idea", { id, status });
+export const apiStewardIdeaExport = (id: string, kind: "todo" | "tbd", target: "project" | "all"): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/idea/export", { id, kind, target });
 export const apiStewardTick = (): Promise<StewardTickResult> => apiPost<StewardTickResult>("/api/steward/tick", {});
 
