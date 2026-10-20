@@ -4297,7 +4297,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/steward/"):
             # Değnekçi (2026-10-19) — `/api/orch/*` ile AYNI ilke: host-routing'den ÖNCE/bağımsız,
             # sadece yerel filo. Mutasyonların çoğu fleet'i değiştirir → `_json_notify`.
-            result = web_steward.http_post(path, data)
+            result = web_steward.http_post(path, data, parse_qs(urlparse(self.path).query))
             if result is None:
                 self._json({"error": "not found"}, status=404)
             else:

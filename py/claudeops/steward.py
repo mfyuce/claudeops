@@ -1510,8 +1510,30 @@ MODEL_RULE_EN = (
 )
 
 
-def build_workspace_claude_md(persona: str, lang: str = "tr") -> str:
-    """Beynin cwd'sindeki CLAUDE.md — persona + araç kılavuzu. Her beyin açılışında yeniden yazılır."""
+def identity_section(sid: str, label: str = "", lang: str = "tr") -> str:
+    """Default DIŞI kimliğin beyni için kısa kimlik bölümü (docs/multi-steward-plan.md (d)). `default` için "" (o beynin
+    CLAUDE.md'si BAYT BAYT eskisi gibi kalır)."""
+    if sid == "default":
+        return ""
+    who = f"`{sid}` (`{label}`)" if label else f"`{sid}`"
+    if lang != "en":
+        return (
+            f"## Kimliğin\n"
+            f"Sen {who} değnekçisisin. Yalnız `steward_overview`'daki projeler senin; başka proje ya da oturuma hâkim değilsin.\n"
+            f"`degnekci*` adlı oturumlar başka değnekçilerin beyinleri, paylaşımlı servis oturumları da senin değil: hiçbirine yazma; "
+            f"araçlar reddeder, reddi yeniden deneme.\n"
+            f"MCP araçları kimliğini (`{sid}`) her çağrıya OTOMATİK ekler; kimlik parametresi yoktur, değiştirilemez.\n\n")
+    return (
+        f"## Your identity\n"
+        f"You are the steward {who}. Only the projects listed by `steward_overview` are yours; you do not govern any other project or session.\n"
+        f"Sessions named `degnekci*` are the brains of other stewards, and shared service sessions are not yours either: never write to "
+        f"them; the tools refuse, and you must not retry a refusal.\n"
+        f"The MCP tools add your identity (`{sid}`) to every call AUTOMATICALLY; there is no identity parameter and it cannot be changed.\n\n")
+
+
+def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "default", label: str = "") -> str:
+    """Beynin cwd'sindeki CLAUDE.md — persona + (default dışı kimlikte kimlik bölümü) + araç kılavuzu + model kuralı.
+    Her beyin açılışında yeniden yazılır. `sid="default"` çıktısı kimlik kavramından ÖNCEKİyle birebir aynıdır."""
     tr = lang != "en"
     tools = (
         "## Araçların (MCP `cops-steward`)\n"
@@ -1552,7 +1574,7 @@ def build_workspace_claude_md(persona: str, lang: str = "tr") -> str:
         f"\n## Tour protocol\nCall one tool per listed item; finish with a line containing only `{MARK_END}`. "
         "A decision without a tool call is not recorded.\n"
     )
-    return persona.rstrip() + "\n\n" + tools + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + tail
+    return persona.rstrip() + "\n\n" + identity_section(sid, label, lang) + tools + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + tail
 
 
 # ── kural motoru ──────────────────────────────────────────────────────────────

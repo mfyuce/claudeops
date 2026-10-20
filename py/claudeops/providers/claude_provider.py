@@ -413,14 +413,27 @@ def _has_chat_rows(path: Path) -> bool:
 MCP_CONFIG_PATH = os.path.join(CLAUDEOPS_DIR, "orchestration", "mcp_config.json")
 
 
+def _mcp_config_path(spec: McpServerSpec) -> str:
+    """Paylaşımlı dosya (`MCP_CONFIG_PATH`); `--steward <sid>` taşıyan spec (çoklu değnekçi beyni) kimlik başına KENDİ
+    dosyasını alır (`mcp_config_<sid>.json`): içerik kimlik başına invariant kalır, bir kimliğin açılışı başka kimliğin
+    beyninin henüz okumadığı yapılandırmayı ezip onu yanlış kimlikle bağlamaz."""
+    args = list(spec.args)
+    if "--steward" in args and args.index("--steward") + 1 < len(args):
+        sid = str(args[args.index("--steward") + 1])
+        if sid.isalpha() and sid.islower():
+            return MCP_CONFIG_PATH[:-len(".json")] + f"_{sid}.json"
+    return MCP_CONFIG_PATH
+
+
 def _write_mcp_config_file(spec: McpServerSpec) -> str:
-    os.makedirs(os.path.dirname(MCP_CONFIG_PATH), exist_ok=True)
+    path = _mcp_config_path(spec)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     payload = {"mcpServers": {spec.name: {"command": spec.command, "args": list(spec.args)}}}
-    tmp = MCP_CONFIG_PATH + ".tmp"
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(payload, f)
-    os.replace(tmp, MCP_CONFIG_PATH)  # atomik — eşzamanlı bir spawn yarım dosya görmesin
-    return MCP_CONFIG_PATH
+    os.replace(tmp, path)  # atomik — eşzamanlı bir spawn yarım dosya görmesin
+    return path
 
 
 def _arg(cmd: List[str], flag: str) -> Optional[str]:

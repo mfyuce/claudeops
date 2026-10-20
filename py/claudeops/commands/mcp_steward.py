@@ -11,18 +11,37 @@ Protokol döngüsü (`_handle`/`run_server`) `mcp_queue.py`'den paylaşılır �
 """
 from __future__ import annotations
 import os
+import sys
 from typing import Any, Callable, Dict, List
 
 from ..paths import REPO_DIR
 from ..providers.base import McpServerSpec
+from ..steward import valid_steward_id
 from . import mcp_queue
 
 SERVER_NAME = "cops-steward"
 DEFAULT_PORT = mcp_queue.DEFAULT_PORT
 
 
-def default_spec() -> McpServerSpec:
-    return McpServerSpec(name=SERVER_NAME, command=os.path.join(REPO_DIR, "py", "cops"), args=("mcp-steward",))
+def default_spec(sid: str = "default") -> McpServerSpec:
+    """`default`: argümansız komut satırı (eski beyin/eski config birebir aynı). Diğer kimlikler: `--steward <sid>`."""
+    args = ("mcp-steward",) if sid == "default" else ("mcp-steward", "--steward", sid)
+    return McpServerSpec(name=SERVER_NAME, command=os.path.join(REPO_DIR, "py", "cops"), args=args)
+
+
+# Bu MCP sunucusunun kimliği (`--steward`, süreç başına BİR KEZ; `run_server` ayarlar). "default" = parametre EKLENMEZ
+# (eski sunucu/eski beyin davranışı). Araç argümanlarından gelmez: beyin kimliğini değiştiremez.
+_STEWARD = "default"
+
+
+def _api(port: int, method: str, path: str, body: dict = None) -> dict:
+    """`mcp_queue._api` + kimlik: default dışında GET'e `steward=` sorgusu, POST gövdesine `steward` (varsa EZİLİR)."""
+    if _STEWARD != "default":
+        if method == "GET":
+            path += ("&" if "?" in path else "?") + "steward=" + _STEWARD
+        else:
+            body = dict(body or {}, steward=_STEWARD)
+    return mcp_queue._api(port, method, path, body)
 
 
 def _q(params: Dict[str, Any]) -> str:
@@ -37,21 +56,21 @@ def _pick(args: dict, *keys: str) -> Dict[str, Any]:
 # ── araç handler'ları: (port, arguments) → dict ──────────────────────────────
 
 def _overview(port: int, args: dict) -> dict:
-    return mcp_queue._api(port, "GET", "/api/steward/state")
+    return _api(port, "GET", "/api/steward/state")
 
 
 def _context(port: int, args: dict) -> dict:
     name = str(args.get("name") or "")
     if not name:
         return {"ok": False, "error": "name is required"}
-    return mcp_queue._api(port, "GET", "/api/steward/context" + _q({"name": name, "docs": "1" if args.get("docs") else ""}))
+    return _api(port, "GET", "/api/steward/context" + _q({"name": name, "docs": "1" if args.get("docs") else ""}))
 
 
 def _read_file(port: int, args: dict) -> dict:
     name, path = str(args.get("name") or ""), str(args.get("path") or "")
     if not name or not path:
         return {"ok": False, "error": "name and path are required"}
-    return mcp_queue._api(port, "GET", "/api/steward/file" + _q({"name": name, "path": path, "max": args.get("max_chars")}))
+    return _api(port, "GET", "/api/steward/file" + _q({"name": name, "path": path, "max": args.get("max_chars")}))
 
 
 def _directive(port: int, args: dict) -> dict:
@@ -61,7 +80,7 @@ def _directive(port: int, args: dict) -> dict:
     body["start_if_stopped"] = bool(args.get("start_if_stopped", True))
     body["source"] = os.environ.get("COPS_NAME") or "brain"
     body["actor"] = "brain"   # observe kipinde uygulanmaz, `would:directive` olarak kaydedilir
-    return mcp_queue._api(port, "POST", "/api/steward/directive", body)
+    return _api(port, "POST", "/api/steward/directive", body)
 
 
 def _restart(port: int, args: dict) -> dict:
@@ -70,25 +89,25 @@ def _restart(port: int, args: dict) -> dict:
     body = _pick(args, "name", "model", "effort", "reason")
     body["text"] = args["directive"]
     body["actor"] = "brain"
-    return mcp_queue._api(port, "POST", "/api/steward/restart", body)
+    return _api(port, "POST", "/api/steward/restart", body)
 
 
 def _stop(port: int, args: dict) -> dict:
     if not args.get("name"):
         return {"ok": False, "error": "name is required"}
-    return mcp_queue._api(port, "POST", "/api/steward/stop", dict(_pick(args, "name", "reason"), actor="brain"))
+    return _api(port, "POST", "/api/steward/stop", dict(_pick(args, "name", "reason"), actor="brain"))
 
 
 def _handover(port: int, args: dict) -> dict:
     if not args.get("name"):
         return {"ok": False, "error": "name is required"}
-    return mcp_queue._api(port, "POST", "/api/steward/handover", dict(_pick(args, "name"), actor="brain"))
+    return _api(port, "POST", "/api/steward/handover", dict(_pick(args, "name"), actor="brain"))
 
 
 def _set_project(port: int, args: dict) -> dict:
     if not args.get("name"):
         return {"ok": False, "error": "name is required"}
-    return mcp_queue._api(port, "POST", "/api/steward/project",
+    return _api(port, "POST", "/api/steward/project",
                           _pick(args, "name", "phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort"))
 
 
@@ -98,13 +117,13 @@ def _register(port: int, args: dict) -> dict:
     body = _pick(args, "name", "cwd", "goal", "kind", "phase", "cli", "model", "priority", "cadence_minutes", "idea_id")
     if args.get("resources"):
         body["resources"] = args["resources"]
-    return mcp_queue._api(port, "POST", "/api/steward/register", body)
+    return _api(port, "POST", "/api/steward/register", body)
 
 
 def _ask(port: int, args: dict) -> dict:
     if not args.get("question"):
         return {"ok": False, "error": "question is required"}
-    return mcp_queue._api(port, "POST", "/api/steward/ask",
+    return _api(port, "POST", "/api/steward/ask",
                           {"project": args.get("project") or "", "text": args["question"],
                            "options": args.get("options") or [],
                            "source": os.environ.get("COPS_NAME") or "brain"})
@@ -113,39 +132,39 @@ def _ask(port: int, args: dict) -> dict:
 def _answer(port: int, args: dict) -> dict:
     if not args.get("id") or not args.get("answer"):
         return {"ok": False, "error": "id and answer are required"}
-    return mcp_queue._api(port, "POST", "/api/steward/answer", {"id": args["id"], "answer": args["answer"]})
+    return _api(port, "POST", "/api/steward/answer", {"id": args["id"], "answer": args["answer"]})
 
 
 def _note(port: int, args: dict) -> dict:
     if not args.get("project") or not args.get("text"):
         return {"ok": False, "error": "project and text are required"}
-    return mcp_queue._api(port, "POST", "/api/steward/note", _pick(args, "project", "text"))
+    return _api(port, "POST", "/api/steward/note", _pick(args, "project", "text"))
 
 
 def _idea(port: int, args: dict) -> dict:
     if not args.get("text"):
         return {"ok": False, "error": "text is required"}
-    return mcp_queue._api(port, "POST", "/api/steward/idea", {"text": args["text"], "source": os.environ.get("COPS_NAME") or "brain"})
+    return _api(port, "POST", "/api/steward/idea", {"text": args["text"], "source": os.environ.get("COPS_NAME") or "brain"})
 
 
 def _idea_update(port: int, args: dict) -> dict:
     if not args.get("id") or not args.get("status"):
         return {"ok": False, "error": "id and status are required"}
-    return mcp_queue._api(port, "POST", "/api/steward/idea", _pick(args, "id", "status", "project"))
+    return _api(port, "POST", "/api/steward/idea", _pick(args, "id", "status", "project"))
 
 
 def _questions(port: int, args: dict) -> dict:
-    return mcp_queue._api(port, "GET", "/api/steward/questions" + _q({"status": args.get("status") or "open"}))
+    return _api(port, "GET", "/api/steward/questions" + _q({"status": args.get("status") or "open"}))
 
 
 def _log(port: int, args: dict) -> dict:
-    return mcp_queue._api(port, "GET", "/api/steward/log" + _q({"n": args.get("n") or 30}))
+    return _api(port, "GET", "/api/steward/log" + _q({"n": args.get("n") or 30}))
 
 
 def _skip(port: int, args: dict) -> dict:
     if not args.get("name"):
         return {"ok": False, "error": "name is required"}
-    return mcp_queue._api(port, "POST", "/api/steward/skip", _pick(args, "name", "reason"))
+    return _api(port, "POST", "/api/steward/skip", _pick(args, "name", "reason"))
 
 
 def _obj(props: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
@@ -238,7 +257,9 @@ DISPATCH: Dict[str, Callable[[int, dict], dict]] = {
 }
 
 
-def run_server(port: int) -> None:
+def run_server(port: int, steward: str = "default") -> None:
+    global _STEWARD
+    _STEWARD = steward or "default"
     mcp_queue.run_server(port, tools=TOOLS, dispatch=DISPATCH, server_name=SERVER_NAME)
 
 
@@ -246,9 +267,15 @@ def register(sub) -> None:
     p = sub.add_parser("mcp-steward", help="MCP stdio server: değnekçi beyninin filoyu sürdüğü araçlar (/api/steward/* adaptörü)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT,
                    help=f"claudeops web panel's port (default {DEFAULT_PORT}) — must match the running `py/cops web [--port]`")
+    p.add_argument("--steward", default="default",
+                   help="değnekçi kimliği (varsayılan default); her API çağrısına bu sunucu ekler, beyin değiştiremez")
     p.set_defaults(func=run)
 
 
 def run(args) -> int:
-    run_server(args.port)
+    sid = getattr(args, "steward", "default") or "default"
+    if not valid_steward_id(sid):
+        print(f"geçersiz değnekçi kimliği: {sid!r}", file=sys.stderr)
+        return 2
+    run_server(args.port, sid)
     return 0

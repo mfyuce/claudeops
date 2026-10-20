@@ -84,12 +84,17 @@ class _Engine(_Tmp):
             mock.patch.object(ws, "_ensure_running",
                               lambda name, **kw: self.touched.append(name) or {"ok": False, "error": "no tmux here"}),
             mock.patch.object(ws, "maybe_daily_summary", lambda cfg, now: None),
+            mock.patch.object(ws, "spawn_session", self._no_real_spawn),        # P5: kimlik beyni gerçek açılmasın
             mock.patch.object(ws.inst_mod, "get_instance", lambda name: None),
             mock.patch.object(ws.web_ws, "notify_status_changed", lambda: None),
         ]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
+
+    @staticmethod
+    def _no_real_spawn(**kw):
+        raise AssertionError("test gerçek oturum açmaya çalıştı: " + repr(kw.get("name")))
 
     def settings(self, default=None, kitap=None):
         settings.save_settings({
@@ -270,14 +275,22 @@ class TestIdentityGate(_Engine):
         self.assertFalse(ws.http_post("/api/steward/stop", {"name": "k", "actor": "brain"})["ok"])   # default beyni
         self.assertEqual(self.calls, [("stop", "k"), ("handover", "ncs2")])
 
-    def test_non_default_brain_is_not_driven_before_p5(self):
+    def test_non_default_brain_is_governed_like_default_p5(self):
+        """P5: kimliğin KENDİ beyni artık sürülür (devir/durdurma/yeniden açma/tur); başka kimliğin beyni hâlâ red.
+        Gerçek spawn YOK: `brain_start`/`run_tour` sahte."""
         brain = self.kcfg.brain_name
         self.assertEqual(brain, "degnekci_kitap")
-        for kind in ("tour", "respawn", "handover", "stop"):
-            self.assertFalse(self.apply(kind, brain, self.kcfg)["ok"], kind)
-        self.assertFalse(ws.brain_start(self.kcfg)["ok"])
-        self.assertFalse(ws.run_tour([], cfg=self.kcfg)["ok"])
-        self.assertEqual((self.calls, self.touched), ([], []))
+        started, tours = [], []
+        with mock.patch.object(ws, "brain_start", lambda cfg=None, fresh=False: started.append((cfg.sid, fresh)) or {"ok": True}), \
+                mock.patch.object(ws, "run_tour", lambda items=None, force=False, cfg=None, world=None:
+                                  tours.append(cfg.sid) or {"ok": True}):
+            for kind in ("tour", "respawn", "handover", "stop"):
+                self.assertTrue(self.apply(kind, brain, self.kcfg)["ok"], kind)
+            self.assertFalse(self.apply("handover", self.dcfg.brain_name, self.kcfg)["ok"])    # default beyni kitap'ın değil
+            self.assertFalse(self.apply("stop", brain, self.dcfg)["ok"])                       # kitap beyni default'un değil
+        self.assertEqual(started, [("kitap", True)])
+        self.assertEqual(tours, ["kitap"])
+        self.assertEqual(self.calls, [("handover", brain), ("stop", brain)])
 
 
 class TestConflictAndRegister(_Engine):

@@ -180,8 +180,10 @@ def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = N
     """Oturuma dokunan yolların TEK kapısı (docs/multi-steward-plan.md K5). `None` = izinli, aksi halde red yanıtı.
     Beyin (`actor: brain`, MCP) ve motor (`actor: engine`, `_apply`) YALNIZ KENDİ kimliğinin (`sid`) beyin oturumunu ve
     kayıtlı proje oturumlarını hedefleyebilir: başka kimliğin projesi/beyni, servis, çakışmalı proje ve kayıtsız (ad hoc)
-    oturum reddedilir (çözüm global, `World.session_class`). İnsanın CLI/panel çağrısı (`actor` yok) kısıtsız."""
-    if actor not in ("brain", "engine"):
+    oturum reddedilir (çözüm global, `World.session_class`). İnsanın CLI/panel çağrısı (`actor` yok): `default` bağlamında
+    kısıtsız (kayıtsız oturuma da yazabilir, bugünkü ad hoc davranış); diğer bağlamlarda yalnız o kimliğin kendi
+    projeleri/beyni (plan (e) insan geçidi)."""
+    if actor not in ("brain", "engine") and sid == "default":
         return None
     if name == steward_config(sid).brain_name:
         return None
@@ -192,7 +194,7 @@ def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = N
             world = _world(sid)
         if _project_for_session(name, projects, world) is not None:
             return None
-    sw.log_event("target_denied", paths=sid, actor=actor, kind=kind, name=name)
+    sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name)
     return {"ok": False, "error": "target denied: not the brain session or a registered steward project"}
 
 
@@ -676,17 +678,23 @@ def cards_round(cfgs: List[sw.Config]) -> bool:
 
 # ── beyin ─────────────────────────────────────────────────────────────────────
 
-def brain_spec() -> McpServerSpec:
+def brain_spec(sid: str = "default") -> McpServerSpec:
+    """Beynin MCP sunucusu: default argümansız (eski komut satırı), diğer kimlikler `--steward <sid>`."""
     from . import mcp_steward
-    return mcp_steward.default_spec()
+    return mcp_steward.default_spec(sid)
 
 
 def ensure_workspace(cfg: Optional[sw.Config] = None) -> str:
+    """Kimliğin beyin cwd'sini (`paths_for(sid).workspace`) ve CLAUDE.md'sini hazırla. Persona: default `steward_persona_text`
+    (yoksa paketlenmiş); diğer kimlik kendi `persona_text`i, boşsa ortak `steward_persona_text`. Default dışında kimlik
+    bölümü eklenir, `MODEL_RULE_*` her kimliğin CLAUDE.md'sine girer."""
     cfg = cfg or steward_config()
-    os.makedirs(sw.WORKSPACE_DIR, exist_ok=True)
-    persona = sw.persona_text(str(load_settings().get("steward_persona_text") or ""))
-    text = sw.build_workspace_claude_md(persona, lang=cfg.lang)
-    path = os.path.join(sw.WORKSPACE_DIR, "CLAUDE.md")
+    workspace = sw.paths_for(cfg.sid).workspace
+    os.makedirs(workspace, exist_ok=True)
+    shared = str(load_settings().get("steward_persona_text") or "")
+    persona = sw.persona_text(shared if cfg.sid == "default" else (cfg.persona_text or shared))
+    text = sw.build_workspace_claude_md(persona, lang=cfg.lang, sid=cfg.sid, label=cfg.label)
+    path = os.path.join(workspace, "CLAUDE.md")
     try:
         with open(path, encoding="utf-8") as f:
             if f.read() == text:
@@ -698,35 +706,33 @@ def ensure_workspace(cfg: Optional[sw.Config] = None) -> str:
     return path
 
 
-# Default dışı kimliğin beyni (kendi workspace'i, `mcp-steward --steward <sid>`) P5'te gelir. O zamana dek motor o beyni
-# AÇMAZ, ona tur/devir GÖNDERMEZ: eski MCP sunucusu parametresiz = default deposuna yazardı (kimlik karışması).
-_NO_OTHER_BRAIN = {"ok": False, "error": "brain of a non-default steward is not supported yet (multi-steward P5)"}
-
-
 def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False) -> Dict[str, Any]:
+    """Kimliğin beynini aç (kendi workspace'i, `mcp-steward --steward <sid>`). Default dışı kimlik YALNIZ `enabled` iken
+    açılır (hiçbir yeni kimlik kendiliğinden beyin açmaz; ayar varsayılan KAPALI); default'un davranışı eskisiyle aynı."""
     cfg = cfg or steward_config()
-    if cfg.sid != "default":
-        return dict(_NO_OTHER_BRAIN)
+    if cfg.sid != "default" and not cfg.enabled:
+        return {"ok": False, "error": f"steward {cfg.sid} is disabled; its brain is not started"}
     if _running(cfg.brain_name) is not None:
         return {"ok": True, "started": False, "name": cfg.brain_name}
     ensure_workspace(cfg)
+    workspace = sw.paths_for(cfg.sid).workspace
     cli = cfg.brain_cli if cfg.brain_cli in PROVIDERS else DEFAULT_CLI
     provider = get_provider(cli)
     model = cfg.brain_model or default_model_for(provider)
     effort = cfg.brain_effort or default_effort_for(provider)
     mode = provider.permission_modes()[0] if provider.permission_modes() else "auto"
-    inst_mod.record_instance(cfg.brain_name, blueprint=None, cwd=sw.WORKSPACE_DIR, cli=cli, model=model,
+    inst_mod.record_instance(cfg.brain_name, blueprint=None, cwd=workspace, cli=cli, model=model,
                              permission_mode=mode, effort=effort, origin="steward")
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
-            kind = spawn_session(name=cfg.brain_name, cwd=sw.WORKSPACE_DIR, model=model, display=detect_display(),
+            kind = spawn_session(name=cfg.brain_name, cwd=workspace, model=model, display=detect_display(),
                                  permission_mode=mode, effort=effort, force_new=bool(fresh), cli=cli,
-                                 mcp_server=brain_spec())
+                                 mcp_server=brain_spec(cfg.sid))
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     inst_mod.mark_started(cfg.brain_name, cli=cli, model=model, permission_mode=mode, effort=effort)
     ready = _wait_ready(cfg.brain_name, cli)
-    sw.log_event("brain_start", name=cfg.brain_name, kind=kind, ready=ready)
+    sw.log_event("brain_start", paths=cfg.sid, name=cfg.brain_name, kind=kind, ready=ready)
     return {"ok": True, "started": True, "name": cfg.brain_name, "kind": kind, "ready": ready}
 
 
@@ -735,7 +741,7 @@ def brain_stop(cfg: Optional[sw.Config] = None) -> Dict[str, Any]:
     if _running(cfg.brain_name) is None:
         return {"ok": True, "stopped": False}
     res = _act("stop", cfg.brain_name, lang=cfg.lang)
-    sw.log_event("brain_stop", name=cfg.brain_name, ok=bool(res.get("ok")))
+    sw.log_event("brain_stop", paths=cfg.sid, name=cfg.brain_name, ok=bool(res.get("ok")))
     return res
 
 
@@ -775,8 +781,6 @@ TOUR_FAILS_BEFORE_RESTART = 2    # art arda bu kadar tur gönderimi başarısız
 
 def brain_restart_for_stuck_input(cfg: sw.Config) -> Dict[str, Any]:
     """Beyin oturumunu durdurup yeniden aç (konuşma `--resume` ile sürer; giriş kutusu temizlenir)."""
-    if cfg.sid != "default":
-        return dict(_NO_OTHER_BRAIN)
     stop = _act("stop", cfg.brain_name, lang=cfg.lang)
     if not stop.get("ok"):
         return stop
@@ -791,8 +795,6 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
     kullanıcı bilerek istedi; beyin `steward_overview` ile kendi bakar). Beyin kapalıysa açılır.
     `cfg`/`world`: kimlik (verilmezse default); maddeler yalnız o kimliğin projelerinden."""
     cfg = cfg or steward_config()
-    if cfg.sid != "default":
-        return dict(_NO_OTHER_BRAIN)
     paths = sw.paths_for(cfg.sid)
     projects = sw.load_projects(paths)
     if world is None:
@@ -863,15 +865,15 @@ def maybe_daily_summary(cfg: sw.Config, now: float) -> Optional[str]:
     return path
 
 
-def http_summary(date: str = "", lang: str = "") -> Dict[str, Any]:
-    cfg = steward_config()
+def http_summary(date: str = "", lang: str = "", sid: str = "default") -> Dict[str, Any]:
+    cfg = steward_config(sid)
     date = date or time.strftime("%Y-%m-%d")
     try:
         time.strptime(date, "%Y-%m-%d")
     except ValueError:
         return {"ok": False, "error": "date must be YYYY-MM-DD"}
-    path = sw.daily_path(date)
-    return {"ok": True, "date": date, "text": sw.summary_text(date, lang if lang in ("tr", "en") else cfg.lang),
+    path = sw.daily_path(date, sid)
+    return {"ok": True, "date": date, "text": sw.summary_text(date, lang if lang in ("tr", "en") else cfg.lang, sid),
             "saved": os.path.isfile(path), "path": path if os.path.isfile(path) else ""}
 
 
@@ -883,8 +885,6 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
     k = action.kind
     name = action.name
     paths = sw.paths_for(cfg.sid)
-    if cfg.sid != "default" and name == cfg.brain_name and k in ("handover", "respawn", "stop", "tour"):
-        return dict(_NO_OTHER_BRAIN)
     if k in ("handover", "respawn", "stop"):   # deliver_answer kayıtsız oturuma da gider (cevap kaynağına); start zaten projects'e bağlı
         denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
         if denied is not None:
@@ -952,7 +952,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         sw.upsert_project(name, paths=paths, phase=action.payload.get("phase"))
         return {"ok": True}
     if k == "tour":
-        res = run_tour(action.payload.get("items") or [])   # yalnız default (yukarıda default dışı beyin reddedildi)
+        # default: eski çağrı biçimi; diğer kimlikte kimliğin cfg/world'ü açıkça verilir (kendi beyni, kendi projeleri)
+        res = run_tour(action.payload.get("items") or [], **({} if cfg.sid == "default" else {"cfg": cfg, "world": world}))
         with sw.steward_lock(paths):
             state = sw.load_state(paths)
             if res.get("ok"):
@@ -1181,13 +1182,13 @@ def http_state(sid: str = "default") -> Dict[str, Any]:
     }
 
 
-def http_projects() -> Dict[str, Any]:
+def http_projects(sid: str = "default") -> Dict[str, Any]:
     cards = sw.load_cards()
-    return {"ok": True, "projects": [_project_dict(p, None, cards) for p in sw.load_projects().values()]}
+    return {"ok": True, "projects": [_project_dict(p, None, cards) for p in sw.load_projects(sid).values()]}
 
 
-def http_questions(status: str = "open") -> Dict[str, Any]:
-    qs = sw.load_questions()
+def http_questions(status: str = "open", sid: str = "default") -> Dict[str, Any]:
+    qs = sw.load_questions(sid)
     if status == "open":
         qs = [q for q in qs if q.status == "open"]
     elif status == "answered":
@@ -1195,8 +1196,8 @@ def http_questions(status: str = "open") -> Dict[str, Any]:
     return {"ok": True, "questions": [dataclasses.asdict(q) for q in qs]}
 
 
-def http_ideas(status: str = "new") -> Dict[str, Any]:
-    ideas = sw.load_ideas()
+def http_ideas(status: str = "new", sid: str = "default") -> Dict[str, Any]:
+    ideas = sw.load_ideas(sid)
     if status and status != "all":
         ideas = [i for i in ideas if i.status == status]
     return {"ok": True, "ideas": [dataclasses.asdict(i) for i in ideas]}
@@ -1241,7 +1242,7 @@ def _append_idea_item(path: str, idea: "sw.Idea", stamp: str) -> bool:
     return True
 
 
-def http_idea_export(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_idea_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Fikri projenin `TODO.md`/`TOBEDECIDED.md` dosyasına yazar. `kind`: todo|tbd; `target`: project (fikrin projesi) |
     all (kayıtlı tüm değnekçi projeleri). Fikir `exported` olur (listeden kalkar), kayıt fikrin üstünde durur."""
     kind = str(data.get("kind") or "")
@@ -1251,10 +1252,10 @@ def http_idea_export(data: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "error": "kind must be todo or tbd"}
     if target not in ("project", "all"):
         return {"ok": False, "error": "target must be project or all"}
-    idea = next((i for i in sw.load_ideas() if i.id == str(data.get("id") or "")), None)
+    idea = next((i for i in sw.load_ideas(sid) if i.id == str(data.get("id") or "")), None)
     if idea is None:
         return {"ok": False, "error": "unknown idea id"}
-    projects = sw.load_projects()
+    projects = sw.load_projects(sid)
     names = [n for n in (_idea_project(idea, projects),) if n] if target == "project" else sorted(projects)
     if not names:
         return {"ok": False, "error": "idea has no steward project; choose target=all"}
@@ -1274,19 +1275,36 @@ def http_idea_export(data: Dict[str, Any]) -> Dict[str, Any]:
             skipped.append(n)
     if not written and not present:
         return {"ok": False, "error": "no project directory found", "skipped": skipped}
-    sw.record_idea_export(idea.id, {"kind": kind, "target": target, "file": fname, "projects": written + present, "at": time.time()})
-    sw.log_event("idea_export", id=idea.id, kind=kind, target=target, written=written, present=present, skipped=skipped)
+    sw.record_idea_export(idea.id, {"kind": kind, "target": target, "file": fname, "projects": written + present, "at": time.time()},
+                          sid)
+    sw.log_event("idea_export", paths=sid, id=idea.id, kind=kind, target=target, written=written, present=present, skipped=skipped)
     return {"ok": True, "written": written, "already": present, "skipped": skipped}
 
 
-def http_log(n: int = 50) -> Dict[str, Any]:
-    return {"ok": True, "entries": sw.tail_log(max(1, min(500, n)))}
+def http_log(n: int = 50, sid: str = "default") -> Dict[str, Any]:
+    return {"ok": True, "entries": sw.tail_log(max(1, min(500, n)), sid)}
 
 
-def http_context(name: str, docs: bool = False) -> Dict[str, Any]:
+_NOT_OWN_PROJECT = {"ok": False, "error": "not a project of this steward"}
+
+
+def _read_denied(name: str, sid: str) -> Optional[Dict[str, Any]]:
+    """Okuma kapısı (plan (k)5): default dışı kimlik yalnız KENDİ projelerini okur (başka kimliğin projesi, servis,
+    beyin, kayıtsız oturum red). `default` bugünkü gibi kısıtsız (insan/eski beyin)."""
+    if sid == "default":
+        return None
+    if _project_for_session(name, sw.load_projects(sid), _world(sid)) is None:
+        return dict(_NOT_OWN_PROJECT)
+    return None
+
+
+def http_context(name: str, docs: bool = False, sid: str = "default") -> Dict[str, Any]:
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
-    projects = sw.load_projects()
+    denied = _read_denied(name, sid)
+    if denied is not None:
+        return denied
+    projects = sw.load_projects(sid)
     p = projects.get(name)
     s = _running(name)
     cwd = (s.cwd if s is not None else "") or _project_cwd(name)
@@ -1299,7 +1317,7 @@ def http_context(name: str, docs: bool = False) -> Dict[str, Any]:
         except Exception:
             out["last_exchange"] = {}
         out["cli"], out["model"] = s.cli, s.model
-    owner = _project_for_session(name, projects, _world())
+    owner = _project_for_session(name, projects, _world(sid))
     card = sw.load_card(owner.name if owner is not None else name)
     if card is not None:
         out["card"] = card
@@ -1308,11 +1326,14 @@ def http_context(name: str, docs: bool = False) -> Dict[str, Any]:
         out["docs"] = {d: _read_head(cwd, d) for d in DOCS if cwd} if cwd else {}
         out["docs"] = {k: v for k, v in out["docs"].items() if v}
     out["git"] = _git_short(cwd)
-    out["questions"] = [dataclasses.asdict(q) for q in sw.load_questions() if q.project == name and q.status == "open"]
+    out["questions"] = [dataclasses.asdict(q) for q in sw.load_questions(sid) if q.project == name and q.status == "open"]
     return out
 
 
-def http_file(name: str, rel: str, max_chars: int = MAX_FILE_READ_CHARS) -> Dict[str, Any]:
+def http_file(name: str, rel: str, max_chars: int = MAX_FILE_READ_CHARS, sid: str = "default") -> Dict[str, Any]:
+    denied = _read_denied(name, sid) if sw.valid_name(name) else None
+    if denied is not None:
+        return denied
     cwd = _project_cwd(name)
     full = _safe_project_file(cwd, rel) if cwd else None
     if full is None:
@@ -1325,19 +1346,19 @@ def http_file(name: str, rel: str, max_chars: int = MAX_FILE_READ_CHARS) -> Dict
     return {"ok": True, "path": rel, "text": text[:max_chars], "truncated": len(text) > max_chars}
 
 
-def http_project_upsert(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
     fields = {k: data.get(k) for k in ("phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort")
               if k in data}
     try:
-        p = sw.upsert_project(name, **fields)
+        p = sw.upsert_project(name, paths=sid, **fields)
     except ValueError as e:      # OwnedElsewhere / ReservedName mesajı olduğu gibi
         return {"ok": False, "error": str(e)}
-    sw.log_event("project_set", name=name, fields=sorted(fields))
+    sw.log_event("project_set", paths=sid, name=name, fields=sorted(fields))
     out = {"ok": True, "project": _project_dict(p)}
-    warning = _prefix_warning(name)
+    warning = _prefix_warning(name, sid)
     if warning:
         out["warning"] = warning
     return out
@@ -1355,15 +1376,15 @@ def _prefix_warning(name: str, sid: str = "default", index: Optional[Dict[str, A
             + "; sessions resolve to the longest matching project name across all stewards")
 
 
-def http_project_remove(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_project_remove(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
-    return {"ok": sw.remove_project(name)}
+    return {"ok": sw.remove_project(name, sid)}
 
 
-def http_register(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Yeni proje: klasör (yoksa oluştur + git init), GOAL.md (amaç + kaynaklar), yerel kaynak dosyalarını
     `kaynaklar/`a kopyala, roster'a kaydet (`web._register_project`), değnekçi kaydını aç."""
-    cfg = steward_config()
+    cfg = steward_config(sid)
     name = str(data.get("name") or "").strip()
     cwd = os.path.expanduser(str(data.get("cwd") or "").strip())
     goal = str(data.get("goal") or "").strip()
@@ -1447,13 +1468,13 @@ def http_register(data: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def http_ask(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_ask(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Soru aç (+ `options`: en çok 6 kısa seçenek) → ntfy: metin + numaralı seçenekler + `/q/<id>?k=` bağlantısı
     (tünel varsa; bildirime dokunmak sayfayı açar). Aynı açık soru ikinci kez bildirilmez (`add_question` dedup)."""
-    cfg = steward_config()
+    cfg = steward_config(sid)
     try:
         q = sw.add_question(str(data.get("project") or ""), str(data.get("text") or ""),
-                            source=str(data.get("source") or "api"), options=data.get("options"))
+                            source=str(data.get("source") or "api"), options=data.get("options"), paths=sid)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     link = sw.question_link(q, public_base())
@@ -1461,8 +1482,8 @@ def http_ask(data: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": True, "id": q.id, "notified": False, "link": link, "dup": True}
     notified = notify_phone(sw.question_notification(q, link, cfg.lang), click=link)
     if notified:
-        sw.mark_notified(q.id)
-    sw.log_event("ask", id=q.id, project=q.project, notified=notified, options=len(q.options))
+        sw.mark_notified(q.id, sid)
+    sw.log_event("ask", paths=sid, id=q.id, project=q.project, notified=notified, options=len(q.options))
     return {"ok": True, "id": q.id, "notified": notified, "link": link}
 
 
@@ -1493,164 +1514,167 @@ def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[s
     return 200, sw.question_page_html(answered, lang, "done", action=action)
 
 
-def http_answer(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     try:
-        q = sw.answer_question(str(data.get("id") or ""), str(data.get("answer") or ""))
+        q = sw.answer_question(str(data.get("id") or ""), str(data.get("answer") or ""), sid)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     if q is None:
         return {"ok": False, "error": "unknown question id"}
-    sw.log_event("answer", id=q.id, project=q.project)
+    sw.log_event("answer", paths=sid, id=q.id, project=q.project)
     return {"ok": True, "question": dataclasses.asdict(q)}
 
 
-def http_idea(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_idea(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if data.get("id"):
-        i = sw.update_idea(str(data["id"]), status=data.get("status"), project=data.get("project"))
+        i = sw.update_idea(str(data["id"]), status=data.get("status"), project=data.get("project"), paths=sid)
         if i is None:
             return {"ok": False, "error": "unknown idea id"}
-        sw.log_event("idea_update", id=i.id, status=i.status, project=i.project)
+        sw.log_event("idea_update", paths=sid, id=i.id, status=i.status, project=i.project)
         return {"ok": True, "idea": dataclasses.asdict(i)}
     try:
-        i = sw.add_idea(str(data.get("text") or ""), source=str(data.get("source") or "api"))
+        i = sw.add_idea(str(data.get("text") or ""), source=str(data.get("source") or "api"), paths=sid)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
-    sw.log_event("idea", id=i.id)
+    sw.log_event("idea", paths=sid, id=i.id)
     return {"ok": True, "idea": dataclasses.asdict(i)}
 
 
-def http_note(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_note(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("project") or data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name) or not text:
         return {"ok": False, "error": "project and text are required"}
-    p = sw.load_projects().get(name)
+    p = sw.load_projects(sid).get(name)
     if p is None:
         return {"ok": False, "error": "not a steward project"}
-    sw.upsert_project(name, notes=text)
-    sw.log_event("note", name=name, chars=len(text))
+    sw.upsert_project(name, paths=sid, notes=text)
+    sw.log_event("note", paths=sid, name=name, chars=len(text))
     return {"ok": True}
 
 
-def http_directive(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
-    denied = _target(name, str(data.get("actor") or ""), kind="directive")
+    denied = _target(name, str(data.get("actor") or ""), kind="directive", sid=sid)
     if denied is not None:
         return denied
-    dry = _brain_dry("directive", data, name)
+    dry = _brain_dry("directive", data, name, sid)
     if dry is not None:
         return dry
-    with _ctx().lock:
-        projects = sw.load_projects()
-        p = _project_for_session(name, projects, _world())
+    with _ctx(sid).lock:
+        projects = sw.load_projects(sid)
+        p = _project_for_session(name, projects, _world(sid))
         if p is None:
             if _running(name) is None and not inst_mod.get_instance(name) and name not in (_act("fleet_status") or {}):
                 return {"ok": False, "error": "unknown session/project"}
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
         return _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
                                start_if_stopped=bool(data.get("start_if_stopped", True)),
-                               reason=str(data.get("reason") or "brain"), session_name=name)
+                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid))
 
 
-def http_restart(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
-    cfg = steward_config()
-    denied = _target(name, str(data.get("actor") or ""), kind="restart")
+    cfg = steward_config(sid)
+    denied = _target(name, str(data.get("actor") or ""), kind="restart", sid=sid)
     if denied is not None:
         return denied
-    dry = _brain_dry("restart", data, name)
+    dry = _brain_dry("restart", data, name, sid)
     if dry is not None:
         return dry
-    with _ctx().lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
+    with _ctx(sid).lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
         if _running(name) is not None:
             res = _act("stop", name, lang=cfg.lang)
             if not res.get("ok"):
                 return res
-        sw.log_event("restart", name=name, reason=str(data.get("reason") or ""))
-        return http_directive(dict(data, start_if_stopped=True, reason="restart: " + str(data.get("reason") or "")))
+        sw.log_event("restart", paths=sid, name=name, reason=str(data.get("reason") or ""))
+        return http_directive(dict(data, start_if_stopped=True, reason="restart: " + str(data.get("reason") or "")), sid)
 
 
-def http_stop(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
-    cfg = steward_config()
-    denied = _target(name, str(data.get("actor") or ""), kind="stop")
+    cfg = steward_config(sid)
+    denied = _target(name, str(data.get("actor") or ""), kind="stop", sid=sid)
     if denied is not None:
         return denied
-    dry = _brain_dry("stop", data, name)
+    dry = _brain_dry("stop", data, name, sid)
     if dry is not None:
         return dry
-    with _ctx().lock:
+    with _ctx(sid).lock:
         res = _act("stop", name, lang=cfg.lang)
-    sw.log_event("stop", name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")))
+    sw.log_event("stop", paths=sid, name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")))
     return res
 
 
-def http_handover(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_handover(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
-    cfg = steward_config()
-    denied = _target(name, str(data.get("actor") or ""), kind="handover")
+    cfg = steward_config(sid)
+    denied = _target(name, str(data.get("actor") or ""), kind="handover", sid=sid)
     if denied is not None:
         return denied
-    dry = _brain_dry("handover", data, name)
+    dry = _brain_dry("handover", data, name, sid)
     if dry is not None:
         return dry
-    with _ctx().lock:
+    with _ctx(sid).lock:
         res = _act("handover", name, lang=cfg.lang)
         if res.get("ok"):
-            with sw.steward_lock():
-                state = sw.load_state()
+            with sw.steward_lock(sid):
+                state = sw.load_state(sid)
                 state.setdefault("ho_pending", {})[name] = time.time()
-                sw.save_state(state)
-    sw.log_event("handover", name=name, ok=bool(res.get("ok")))
+                sw.save_state(state, sid)
+    sw.log_event("handover", paths=sid, name=name, ok=bool(res.get("ok")))
     return res
 
 
-def http_skip(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_skip(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
-    sw.log_event("skip", name=name, reason=str(data.get("reason") or ""))
-    with sw.steward_lock():
-        state = sw.load_state()
+    sw.log_event("skip", paths=sid, name=name, reason=str(data.get("reason") or ""))
+    with sw.steward_lock(sid):
+        state = sw.load_state(sid)
         state.setdefault("last_directive_at", {})[name] = time.time()   # bir sonraki `idle` maddesini erteler
-        sw.save_state(state)
+        sw.save_state(state, sid)
     return {"ok": True}
 
 
-def http_brain(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_brain(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     action = str(data.get("action") or "start")
-    with _ctx().lock:
-        return brain_start() if action == "start" else brain_stop()
+    cfg = steward_config(sid)
+    with _ctx(sid).lock:
+        return brain_start(cfg) if action == "start" else brain_stop(cfg)
 
 
-def http_cards() -> Dict[str, Any]:
-    projects = sw.load_projects()
+def http_cards(sid: str = "default") -> Dict[str, Any]:
+    projects = sw.load_projects(sid)
     cards = sw.load_cards()
     return {"ok": True, "cards": [dict(c, name=n) for n, c in sorted(cards.items())],
             "missing": sorted(n for n, p in projects.items() if p.phase in sw.ACTIVE_PHASES and n not in cards),
             "busy": _CARD_LOCK.locked()}
 
 
-def http_card(name: str) -> Dict[str, Any]:
+def http_card(name: str, sid: str = "default") -> Dict[str, Any]:
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
+    if sid != "default" and name not in sw.load_projects(sid):
+        return dict(_NOT_OWN_PROJECT)
     card = sw.load_card(name)
     return {"ok": True, "name": name, "card": card} if card is not None else {"ok": False, "error": "no card"}
 
 
-def http_cards_refresh(data: Dict[str, Any]) -> Dict[str, Any]:
+def http_cards_refresh(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Kartları şimdi yenile (arka planda; model çağrısı panelin 15 sn'lik API zaman aşımını aşabilir, sonuç
     `py/cops steward cards` / `log`ta). `name` verilirse O proje (çalışıyor olsa da, kaynak değişmemiş olsa da);
     verilmezse yenilemesi GEREKEN tüm çalışmayan aktif projeler (tick başına sınırı yok)."""
-    cfg = steward_config()
+    cfg = steward_config(sid)
     name = str(data.get("name") or "").strip()
     if name:
         if not sw.valid_name(name):
             return {"ok": False, "error": "invalid name"}
-        if name not in sw.load_projects():
+        if name not in sw.load_projects(sid):
             return {"ok": False, "error": "not a steward project"}
         job = lambda: refresh_card(name, cfg, reason="manual")   # noqa: E731
     else:
@@ -1660,36 +1684,71 @@ def http_cards_refresh(data: Dict[str, Any]) -> Dict[str, Any]:
     return {"ok": True, "queued": name or "due"}
 
 
+class UnknownSteward(ValueError):
+    """İstekte verilen `steward` kimliği geçersiz ya da ayarda tanımlı değil."""
+
+
+def _ctx_for(src: Any) -> StewardContext:
+    """HTTP isteğinin değnekçi bağlamı. `src`: JSON gövdesi (dict) ya da sorgu (`{anahtar: [değer]}`). `steward` yoksa/boşsa
+    `default` (eski MCP/UI/CLI aynen çalışır). Geçersiz biçim ya da ayarda tanımlı olmayan kimlik `UnknownSteward`
+    (sessizce `default`a DÜŞMEZ: başka değnekçinin deposuna yazılmasın)."""
+    raw = src.get("steward") if isinstance(src, dict) else None
+    if isinstance(raw, (list, tuple)):
+        raw = raw[0] if raw else None
+    if raw is None or raw == "":
+        return _ctx("default")
+    if not isinstance(raw, str):
+        raise UnknownSteward("unknown steward")
+    sid = raw.strip()
+    if sid != "default" and (not sw.valid_steward_id(sid) or sid not in steward_ids()):
+        raise UnknownSteward("unknown steward")
+    return _ctx(sid)
+
+
+def _unknown_steward() -> Dict[str, Any]:
+    return {"ok": False, "error": "unknown steward"}
+
+
+_GET_PATHS = frozenset(("state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file"))
+
+
 def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
-    """`web.py` do_GET: `/api/steward/*` → dict (bilinmeyen alt yol → None = 404)."""
+    """`web.py` do_GET: `/api/steward/*` → dict (bilinmeyen alt yol → None = 404). `?steward=<sid>` kimliği seçer
+    (yoksa `default`); bilinmeyen kimlik `{"ok": false, "error": "unknown steward"}`."""
     g = lambda k, d="": (qs.get(k) or [d])[0]
+    if not path.startswith("/api/steward/") or path[len("/api/steward/"):] not in _GET_PATHS:
+        return None
+    try:
+        sid = _ctx_for(qs).sid
+    except UnknownSteward:
+        return _unknown_steward()
     if path == "/api/steward/state":
-        return http_state()
+        return http_state(sid)
     if path == "/api/steward/projects":
-        return http_projects()
+        return http_projects(sid)
     if path == "/api/steward/questions":
-        return http_questions(g("status", "open"))
+        return http_questions(g("status", "open"), sid)
     if path == "/api/steward/ideas":
-        return http_ideas(g("status", "new"))
+        return http_ideas(g("status", "new"), sid)
     if path == "/api/steward/log":
         try:
-            return http_log(int(g("n", "50")))
+            return http_log(int(g("n", "50")), sid)
         except ValueError:
-            return http_log()
+            return http_log(sid=sid)
     if path == "/api/steward/context":
-        return http_context(g("name").strip(), docs=g("docs") in ("1", "true"))
+        return http_context(g("name").strip(), docs=g("docs") in ("1", "true"), sid=sid)
     if path == "/api/steward/summary":
-        return http_summary(g("date").strip(), g("lang").strip())
+        return http_summary(g("date").strip(), g("lang").strip(), sid)
     if path == "/api/steward/cards":
-        return http_cards()
+        return http_cards(sid)
     if path == "/api/steward/card":
-        return http_card(g("name").strip())
+        return http_card(g("name").strip(), sid)
     if path == "/api/steward/file":
         try:
             mx = int(g("max", str(MAX_FILE_READ_CHARS)))
         except ValueError:
             mx = MAX_FILE_READ_CHARS
-        return http_file(g("name").strip(), g("path").strip(), max(1, min(mx, MAX_FILE_READ_CHARS)))
+        return http_file(g("name").strip(), g("path").strip(), max(1, min(mx, MAX_FILE_READ_CHARS)), sid)
     return None
 
 
@@ -1709,16 +1768,22 @@ POST_PATHS = {
     "/api/steward/skip": http_skip,
     "/api/steward/cards/refresh": http_cards_refresh,
     "/api/steward/brain": http_brain,
-    "/api/steward/tick": lambda data: tick_once("manual"),
-    "/api/steward/tour": lambda data: run_tour(force=True),
+    "/api/steward/tick": lambda data, sid="default": tick_once("manual", sid),
+    "/api/steward/tour": lambda data, sid="default": run_tour(force=True, cfg=steward_config(sid)),
 }
 
 
-def http_post(path: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def http_post(path: str, data: Dict[str, Any], qs: Optional[Dict[str, List[str]]] = None) -> Optional[Dict[str, Any]]:
+    """`steward` kimliği JSON gövdesinden, yoksa sorgudan (`qs`, `web.py` verir); ikisi de yoksa `default`."""
     fn = POST_PATHS.get(path)
     if fn is None:
         return None
+    data = data if isinstance(data, dict) else {}
     try:
-        return fn(data if isinstance(data, dict) else {})
+        try:
+            sid = _ctx_for(data if data.get("steward") not in (None, "") else (qs or {})).sid
+        except UnknownSteward:
+            return _unknown_steward()
+        return fn(data, sid=sid)
     finally:
         invalidate_summary()
