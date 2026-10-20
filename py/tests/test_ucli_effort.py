@@ -136,7 +136,7 @@ class CatalogTests(unittest.TestCase):
                   mock.patch.object(up, "_LIVE_CAPS", {}),
                   mock.patch.object(up, "_LIVE_MODEL_CACHE", None),
                   mock.patch.object(up, "_LIVE_MODEL_CACHE_TS", 0.0),
-                  mock.patch.object(up, "_ENDPOINT", "https://evren.invalid/v1")):
+                  mock.patch.object(up, "DEFAULT_ENDPOINT", "https://evren.invalid/v1")):
             p.start()
             self.addCleanup(p.stop)
 

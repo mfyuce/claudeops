@@ -81,6 +81,8 @@ type SettingsPatch = {
   /** {search_url, search_docker, allow_fetch_domains: string} — bkz. `Settings.ucli_web`.
    * Boş string bir alanı varsayılana döndürür (backend anahtarı siler). */
   ucli_web?: Record<string, string>;
+  /** Bkz. `Settings.ucli_endpoint`. Boş string Evren varsayılanına döner. */
+  ucli_endpoint?: string;
   /** {mode: "" | "read" | "full"} — bkz. `Settings.ucli_script`. Boş string betik katmanını KAPATIR (backend anahtarı siler). */
   ucli_script?: Record<string, string>;
   /** {amber, red: string} — bkz. `Settings.ucli_usage_warn`. Boş string bir alanı varsayılana döndürür. */
@@ -228,6 +230,8 @@ export function SettingsTab() {
   const [ucliLimitsDraft, setUcliLimitsDraft] = useState<Record<string, string>>({});
   // Same draft-until-blur reasoning for the two free-text `ucli_web` fields.
   const [ucliWebDraft, setUcliWebDraft] = useState<Record<string, string>>({});
+  // Same draft-until-blur reasoning for the `ucli_endpoint` text field.
+  const [ucliEndpointDraft, setUcliEndpointDraft] = useState<string | null>(null);
   // Same draft-until-blur reasoning for the two `ucli_usage_warn` thresholds (free text: a number or "off").
   const [ucliWarnDraft, setUcliWarnDraft] = useState<Record<string, string>>({});
 
@@ -562,6 +566,23 @@ export function SettingsTab() {
                   />
                 </label>
               ))}
+            </div>
+          )}
+          {data.cli_list.includes("ucli") && (
+            <div className="opts" id="settingsUcliEndpointPanel">
+              <label title={t.ucliEndpointHint} style={{ flexBasis: "100%" }}>
+                {t.ucliEndpointLabel}
+                <input
+                  type="text"
+                  placeholder={t.ucliEndpointPlaceholder}
+                  value={ucliEndpointDraft ?? asText(settings.ucli_endpoint)}
+                  onChange={(e) => setUcliEndpointDraft(e.target.value)}
+                  onBlur={(e) => {
+                    void save({ ucli_endpoint: e.target.value.trim() });
+                    setUcliEndpointDraft(null);
+                  }}
+                />
+              </label>
             </div>
           )}
           {data.cli_list.includes("ucli") && (

@@ -115,6 +115,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # istenir: durum dosyasında `thinking`/`writing` aşamaları görünür, metin pane'e canlı
                               # basılır; bedeli: cevap pane'de iki kez görünür, akış yarıda kesilirse çağrı yeniden
                               # DENENMEZ). `on` aç, `off` kapat, boş = `UCLI_STREAM_DEFAULT` (AÇIK). Okuma: `ucli_stream_enabled()`.
+    "ucli_endpoint": "",     # 2026-10-20 (TODO "ucli sadece Evren'e sabit"): ucli'nin OpenAI-uyumlu uç noktası (http/https
+                              # adres). Boş/geçersiz = Evren varsayılanı (`ucli_provider.DEFAULT_ENDPOINT`). Sır DEĞİL
+                              # (API key `byok`ta kalır). Model listesi çekme VE yeni ucli oturumlarının `--endpoint`i
+                              # buradan okunur; çalışan oturumlar etkilenmez. Okuma tarafı: `ucli_endpoint()`.
     "ucli_web": {},          # {search_url, search_flavor, search_docker, allow_fetch_domains: str} — 2026-10-16
                               # (TODO.md "ucli web özellikleri"): unified-cli be4448a'nın web araçları
                               # (`web_search`, gerçek sayfada çalışan `fetch_url`) ucli'de varsayılan KAPALI.
@@ -490,6 +494,13 @@ def ucli_script_mode() -> str:
         return ""
     mode = str(raw.get("mode") or "").strip().lower()
     return mode if mode in ("read", "full") else ""
+
+
+def ucli_endpoint() -> str:
+    """`ucli_endpoint` ayarı (bkz. DEFAULT_SETTINGS): geçerli bir http(s) adresiyse sonundaki `/` atılmış hali, aksi halde
+    "" (çağıran Evren varsayılanına düşer). Bozuk elle girilmiş değer sessizce yok sayılır, asla fırlatmaz."""
+    url = str(load_settings().get("ucli_endpoint") or "").strip().rstrip("/")
+    return url if url and _valid_http_url(url) else ""
 
 
 def ucli_web_config() -> Dict[str, Any]:

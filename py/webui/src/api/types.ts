@@ -302,6 +302,9 @@ export interface Settings {
    * kararı backend'in (`settings.py`'nin `ucli_web_config()`'i); settings.json elle
    * düzenlenebildiği için `allow_fetch_domains` çalışma anında liste de olabilir. */
   ucli_web: Record<string, string>;
+  /** ucli's OpenAI-compatible endpoint (2026-10-20): http(s) address; empty/invalid = the Evren default. Not a secret
+   * (the API key stays in `byok`). New ucli sessions + the model-list fetch read it; running sessions are unaffected. */
+  ucli_endpoint: string;
   /** {mode: string} (2026-10-18) — ucli's embedded Lua script layer (`chat --allow-script[=read|full]`, unified-cli
    * 119c8e5): empty/missing/"off" = off (the DEFAULT), "read" = scripts may call read-only tools, "full" = scripts may
    * call everything the session already gives the model (writes only with allow-edit/allow-create, fetch_url,

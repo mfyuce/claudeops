@@ -459,6 +459,9 @@ export interface Strings {
   routingGuidanceLabel: string;
   routingGuidanceDesc: string;
   routingGuidancePlaceholder: string;
+  ucliEndpointLabel: string;
+  ucliEndpointPlaceholder: string;
+  ucliEndpointHint: string;
   ucliWebLabel: string;
   ucliWebDesc: string;
   ucliWebSearchUrlLabel: string;
@@ -1108,6 +1111,9 @@ export const STRINGS: Record<Lang, Strings> = {
     routingGuidanceDesc:
       "Yeni açılan oturumlara 'düşük başla, işe göre alt ajan/model seç' yönergesi eklenir (claude: her açılışta sistem istemine; codex: ~/.codex/AGENTS.md, agy: ~/.gemini/GEMINI.md içinde işaretli blok). Açık oturumlar yeniden açılana kadar etkilenmez. Metni boş bırakırsan paketlenmiş varsayılan kullanılır. copilot için küresel dosya yolu henüz doğrulanamadı (hesap kotası dolu).",
     routingGuidancePlaceholder: "boş = paketlenmiş varsayılan metin (data/routing.md)",
+    ucliEndpointLabel: "ucli uç noktası (OpenAI-uyumlu adres)",
+    ucliEndpointPlaceholder: "boş = Evren (https://evren-llmapi.ssyz.org.tr/v1)",
+    ucliEndpointHint: "Model listesi çekme ve YENİ ucli oturumlarının --endpoint'i buradan okunur; çalışan oturumlar değişmez. API key Ayarlar > model'deki BYOK alanında kalır. Geçersiz adres yok sayılır (Evren'e düşer).",
     ucliWebLabel: "ucli web araçları (arama / sayfa getirme)",
     ucliWebDesc:
       "Yalnız claudeops'tan YENİ açılan ucli oturumlarına uygulanır; çalışanlar eski ayarla sürer, panel yeniden başlatması gerekmez. Arama varsayılan AÇIK: adres boşsa claudeops'un yönettiği yerel SearXNG kullanılır (docker kapsayıcısı, yalnız bu makineden erişilir; ucli aramayı kendi içine alınca bu geçici köprü kalkacak). Sayfa getirme (fetch_url) varsayılan KAPALI; yalnız aşağıya yazılan alan adlarına açılır.",
@@ -1765,6 +1771,9 @@ export const STRINGS: Record<Lang, Strings> = {
     routingGuidanceDesc:
       "Newly opened sessions get a 'start low, pick sub-agent/model per task' guidance (claude: appended to the system prompt on every launch; codex: a marked block in ~/.codex/AGENTS.md, agy: in ~/.gemini/GEMINI.md). Running sessions are unaffected until reopened. Leave the text empty to use the bundled default. The global file path for copilot is not verified yet (account quota exhausted).",
     routingGuidancePlaceholder: "empty = bundled default text (data/routing.md)",
+    ucliEndpointLabel: "ucli endpoint (OpenAI-compatible URL)",
+    ucliEndpointPlaceholder: "empty = Evren (https://evren-llmapi.ssyz.org.tr/v1)",
+    ucliEndpointHint: "The model-list fetch and NEW ucli sessions' --endpoint read this; running sessions are unchanged. The API key stays in the BYOK field under Settings > model. An invalid address is ignored (falls back to Evren).",
     ucliWebLabel: "ucli web tools (search / page fetch)",
     ucliWebDesc:
       "Applies only to ucli sessions newly opened from claudeops; running ones keep their old settings, and the panel does not need a restart. Search is ON by default: with an empty address the local SearXNG managed by claudeops is used (a docker container reachable from this machine only; this temporary bridge goes away once ucli does search itself). Page fetch (fetch_url) is OFF by default and opens only to the domains listed below.",

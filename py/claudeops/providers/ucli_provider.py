@@ -93,7 +93,7 @@ import psutil
 
 from .. import searxng
 from ..diaglog import diag_log
-from ..settings import (byok_env_for, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_stream_enabled,
+from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_stream_enabled,
                         ucli_web_config)
 from ..ucli_client import (UcliError, binary_supports_flag, read_chat_history, read_status_file, resolve_binary,
                            ucli_chat_once)
@@ -186,7 +186,13 @@ _PERMISSION_MODES = [_READ_ONLY, _ALLOW_EDIT, _ALLOW_CREATE]
 # 2026-09-24, kullanıcı "selam" deyip 404 aldı) — bu yüzden model VE endpoint
 # burada birlikte, sabit bir çift olarak tutuluyor.
 _MODEL_CHOICES = ["deepseek-v4-flash"]
-_ENDPOINT = "https://evren-llmapi.ssyz.org.tr/v1"
+DEFAULT_ENDPOINT = "https://evren-llmapi.ssyz.org.tr/v1"
+_ENDPOINT = DEFAULT_ENDPOINT   # eski ad (yalnız geriye uyum); kullanım yeri `endpoint()`
+
+
+def endpoint() -> str:
+    """Etkin uç nokta: Ayarlar'daki `ucli_endpoint` (geçerliyse), değilse Evren varsayılanı."""
+    return ucli_endpoint() or DEFAULT_ENDPOINT
 
 # 2026-09-29 canlı bulgu: eskiden süreç ömrü boyunca EN FAZLA BİR ağ isteği
 # vardı (TTL yok) — ilk çağrı reboot'tan hemen sonra ağ/Evren henüz hazır
@@ -218,7 +224,7 @@ def _fetch_live_models() -> Optional[List[str]]:
     if not key:
         return None
     req = urllib.request.Request(
-        _ENDPOINT.rstrip("/") + "/models",
+        endpoint().rstrip("/") + "/models",
         headers={"X-API-Key": key},
     )
     try:
@@ -427,7 +433,7 @@ class UcliProvider(CliProvider):
         preset = effort if effort in _EFFORT_LIMITS else "medium"
         limits = {**_EFFORT_LIMITS[preset], **ucli_limit_overrides()}
         argv = [
-            resolve_binary(), "--root", cwd, "chat", "--repl", "--endpoint", _ENDPOINT,
+            resolve_binary(), "--root", cwd, "chat", "--repl", "--endpoint", endpoint(),
             "--max-steps", str(limits["max_steps"]),
             "--max-context-kib", str(limits["max_context_kib"]),
             "--max-tool-calls", str(limits["max_tool_calls"]),
@@ -479,7 +485,7 @@ class UcliProvider(CliProvider):
                 key = None
         os.makedirs(cwd, exist_ok=True)
         try:
-            res = ucli_chat_once(cwd, prompt, model=(model or None), endpoint=_ENDPOINT, api_key=key, timeout=timeout)
+            res = ucli_chat_once(cwd, prompt, model=(model or None), endpoint=endpoint(), api_key=key, timeout=timeout)
         except UcliError as e:
             raise OneshotError(f"ucli: {e}") from e
         text = str(res.get("answer") or "").strip()
