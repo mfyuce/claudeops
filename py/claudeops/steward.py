@@ -1666,6 +1666,19 @@ def identity_section(sid: str, label: str = "", lang: str = "tr") -> str:
         f"The MCP tools add your identity (`{sid}`) to every call AUTOMATICALLY; there is no identity parameter and it cannot be changed.\n\n")
 
 
+MEMORY_TR = (
+    "\n## Hafızan (NOTLAR.md)\n"
+    "- Bu klasördeki `NOTLAR.md` senin kalıcı hafızan: bu CLAUDE.md her açılışta yeniden yazılır, o dosyaya DOKUNULMAZ. Oturum başında oku; "
+    "kalıcı bir şey öğrendiğinde (sahibin tercihi, bir projenin tuhaflığı, tekrar eden hata) bir iki satır ekle; şişirme, eskiyeni sil.\n"
+    "- Devir/kapatma mesajı geldiğinde önce `NOTLAR.md`yi güncelle, sonra yanıtını `READY FOR HANDOVER` ile bitir.\n"
+)
+MEMORY_EN = (
+    "\n## Your memory (NOTLAR.md)\n"
+    "- `NOTLAR.md` in this folder is your persistent memory: this CLAUDE.md is rewritten at every start, that file is NEVER touched. Read it at "
+    "session start; when you learn something durable (owner preference, a project quirk, a recurring mistake) add a line or two; keep it short, drop stale entries.\n"
+    "- When a handover/shutdown message arrives, update `NOTLAR.md` first, then end your reply with `READY FOR HANDOVER`.\n"
+)
+
 def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "default", label: str = "") -> str:
     """Beynin cwd'sindeki CLAUDE.md — persona + (default dışı kimlikte kimlik bölümü) + araç kılavuzu + model kuralı.
     Her beyin açılışında yeniden yazılır. `sid="default"` çıktısı kimlik kavramından ÖNCEKİyle birebir aynıdır."""
@@ -1709,7 +1722,7 @@ def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "defaul
         f"\n## Tour protocol\nCall one tool per listed item; finish with a line containing only `{MARK_END}`. "
         "A decision without a tool call is not recorded.\n"
     )
-    return persona.rstrip() + "\n\n" + identity_section(sid, label, lang) + tools + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + tail
+    return persona.rstrip() + "\n\n" + identity_section(sid, label, lang) + tools + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + (MEMORY_TR if tr else MEMORY_EN) + tail
 
 
 # ── kural motoru ──────────────────────────────────────────────────────────────
