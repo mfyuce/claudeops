@@ -441,6 +441,16 @@ class OneshotProviderTest(unittest.TestCase):
                 run(argv, **kw)
 
 
+class ScanTicksTest(unittest.TestCase):
+    def test_leading_code_tick_in_question_kept(self):
+        m = sw.scan_markers("STEWARD-ASK: `dano_2023_federated` (Light Reading) alınsın mı?")
+        self.assertEqual(m["asks"], ["`dano_2023_federated` (Light Reading) alınsın mı?"])
+
+    def test_wrapped_marker_and_wrapped_body(self):
+        self.assertEqual(sw.scan_markers("`STEWARD-ASK: Devam mı?`")["asks"], ["Devam mı?"])
+        self.assertEqual(sw.scan_markers("STEWARD-IDEA: `tek parça fikir`")["ideas"], ["tek parça fikir"])
+
+
 class PlanMarkersTest(unittest.TestCase):
     """Değnekçi kapalıyken salt kayıt taraması: yalnız soru/fikir, oturuma/faza dokunmaz."""
 

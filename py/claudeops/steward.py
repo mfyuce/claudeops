@@ -1348,6 +1348,17 @@ def persona_text(override: str = "") -> str:
 
 # ── işaret taraması ───────────────────────────────────────────────────────────
 
+def _unwrap_ticks(prefix: str, body: str) -> str:
+    """İşaretin etrafındaki biçimlendirme backtick'ini at, gövdenin KENDİ backtick'ine dokunma: `` `STEWARD-ASK: x` ``
+    (öndeki tek backtick işaretten ÖNCE) sondaki eşini atar; gövde tümüyle `...` ise sarmalı atılır. Eskiden
+    `.strip("`")` gövdenin başındaki meşru `kod` backtick'ini de silip soruyu ortadan başlatıyordu."""
+    if prefix.count("`") % 2 == 1 and body.endswith("`"):
+        body = body[:-1].rstrip()
+    if len(body) > 1 and body.startswith("`") and body.endswith("`") and body.count("`") == 2:
+        body = body[1:-1]
+    return body.strip()
+
+
 def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool}. Satır başındaki madde/boşluk toleranslı;
@@ -1362,7 +1373,7 @@ def scan_markers(text: str) -> Dict[str, Any]:
         for mark, key in ((MARK_ROUTINE, "routines"), (MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked")):
             idx = line.find(mark)
             if idx != -1:
-                body = line[idx + len(mark):].strip().strip("`")
+                body = _unwrap_ticks(line[:idx], line[idx + len(mark):].strip())
                 if body:
                     out[key].append(body)
                 break
