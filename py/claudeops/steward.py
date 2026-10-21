@@ -125,6 +125,8 @@ MARK_ASK = "STEWARD-ASK:"              # insana soru (satırın kalanı soru met
 MARK_IDEA = "STEWARD-IDEA:"            # yeni fikir
 MARK_ROUTINE = "STEWARD-ROUTINE:"      # işleyiş sorusu (ne zaman/hangi sıra/hangi model): beyin cevaplar, sahibi rahatsız edilmez
 MARK_BLOCKED = "STEWARD-BLOCKED:"      # takıldım (insana soru olarak düşer, önekli)
+MARK_JOB = "STEWARD-JOB:"              # paylaşımlı servise iş isteği (<tür> [dosya...] [açıklama]): beyin steward_job_submit ile gönderir
+JOB_REQUEST_PREFIX = "İŞ İSTEĞİ (STEWARD-JOB): "
 MARK_PLAN_READY = "STEWARD-PLAN-READY"  # planlama bitti → faz planned
 MARK_DONE = "STEWARD-DONE"             # proje bitti → faz done, oturum durur
 READY_FOR_HANDOVER = "READY FOR HANDOVER"
@@ -1496,14 +1498,15 @@ def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool}. Satır başındaki madde/boşluk toleranslı;
     işaret satırın İÇİNDE de olabilir (model bazen önüne açıklama koyar) — kalanı alınır."""
-    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "plan_ready": False, "done": False}
+    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "plan_ready": False, "done": False}
     if not text:
         return out
     for raw in text.splitlines():
         line = raw.strip().lstrip("-*• ").strip()
         if not line:
             continue
-        for mark, key in ((MARK_ROUTINE, "routines"), (MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked")):
+        for mark, key in ((MARK_ROUTINE, "routines"), (MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked"),
+                          (MARK_JOB, "jobs")):
             idx = line.find(mark)
             if idx != -1:
                 body = _unwrap_ticks(line[:idx], line[idx + len(mark):].strip())
@@ -1527,6 +1530,8 @@ _PROTOCOL_TR = (
     "bunu değnekçi beyni cevaplar, sana değil bana sorma. YALNIZ gerçek bir soru için ve soru işaretiyle bitir; "
     "'bekliyorum', 'bitti', 'yeni soru yok' gibi durum cümlesi için KULLANMA\n"
     f"- aklına bu projeyle ilgisiz yeni bir fikir gelirse: `{MARK_IDEA} <fikir>`\n"
+    f"- paylaşımlı servise (varaka) iş göndermek istiyorsan, istek dosyasını projede hazırla ve: `{MARK_JOB} <iş türü> <dosya yolu> [kısa açıklama]`; "
+    "değnekçi beyni işi kuyruğa gönderir, sonucu sana iletilir; sahibe 'devam de' deme\n"
     f"- takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>`\n"
     "Kurallar: cevaplarım kısadır ('ikisi de', 'sıradan git', 'sen devam') ve KALICI kuraldır; aynı konuyu "
     "yeniden sorma. Cevap yetmiyorsa makul bir varsayılanla ilerle, varsayımını TOBEDECIDED.md'ye yaz. "
@@ -1539,6 +1544,8 @@ _PROTOCOL_EN = (
     f"- a process question (when to reopen, which order, which model, with the handover note?): `{MARK_ROUTINE} <question>`; "
     "the steward brain answers it, not me\n"
     f"- a new idea unrelated to this project: `{MARK_IDEA} <idea>`\n"
+    f"- to send a job to the shared service (varaka), prepare the request file in the project and write: `{MARK_JOB} <job kind> <file path> [short note]`; "
+    "the steward brain submits it to the queue and its result is delivered to you; do NOT ask me to say 'go on'\n"
     f"- stuck after thinking it through: `{MARK_BLOCKED} <where>`\n"
     "Rules: my answers are short ('both', 'go in order', 'you continue') and are STANDING rules; do not re-ask "
     "the same topic. If an answer is not enough, proceed with a sensible default and record the assumption in "
@@ -1744,6 +1751,10 @@ MODEL_RULE_TR = (
     "düzenleme (her araç çağrısı tüm bağlamı yeniden okutur). Fable ajanına özellikle dar dosya listesi ver.\n"
     "- Rutin sorular: bu kuralda ve proje notunda zaten karara bağlı bir işi (hangi modelle, sırayla mı, ayrı ajanla mı) `steward_answer` ile kendin cevapla; "
     "sahibe yükseltme. Yeni bir karar gerektirmiyorsa \"devam et\" de.\n"
+    "- İŞ İSTEĞİ maddesi (\"İŞ İSTEĞİ (STEWARD-JOB): <tür> <dosya> ...\"): proje paylaşımlı servise (varaka) iş istiyor. `steward_jobs kinds=true` ile "
+    "türü doğrula, `steward_job_submit` ile (project, kind, files=[proje klasörü içi yol]) gönder, sonra `steward_answer` ile projeye iş kimliğini ve durumu "
+    "(queued / awaiting_approval) bildir. Onay bekleyen işi KENDİN onaylama, sahibe `steward_ask_user` ile haber ver. Tür ya da dosya belirsizse "
+    "tahmin etme, `steward_answer` ile projeye neyin eksik olduğunu söyle. Sonucu motor iş bitince projeye zaten iletir.\n"
 )
 MODEL_RULE_EN = (
     "\n## Model rule (owner's PERMANENT decision, 2026-10-20; not negotiable)\n"
@@ -1762,6 +1773,10 @@ MODEL_RULE_EN = (
     "3-4 large edits (every tool call re-reads the whole context). Give Fable agents an especially narrow file list.\n"
     "- Routine questions: if this rule or the project note already decides it (which model, in order or not, separate agent), answer it yourself with `steward_answer`; "
     "do not escalate to the owner. If no new decision is needed, say \"continue\".\n"
+    "- JOB REQUEST item (\"İŞ İSTEĞİ (STEWARD-JOB): <kind> <file> ...\"): the project wants a job in the shared service (varaka). Check the kind with "
+    "`steward_jobs kinds=true`, submit with `steward_job_submit` (project, kind, files=[path inside the project folder]), then tell the project the job id and "
+    "state (queued / awaiting_approval) with `steward_answer`. NEVER approve a job awaiting approval yourself; tell the owner with `steward_ask_user`. If the "
+    "kind or file is unclear, do not guess: tell the project what is missing via `steward_answer`. The engine delivers the result when the job finishes.\n"
 )
 
 
@@ -2192,6 +2207,8 @@ def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Actio
         if "?" not in q:
             continue   # "bekliyorum, yeni soru yok" gibi durum cümlesi soru değil: kayda da girmez, sahibine de gitmez
         out.append(Action("ask_user", name, "STEWARD-ROUTINE", {"project": proj or name, "text": q, "routine": True}))
+    for j in m.get("jobs", []):   # iş isteği: beyin turunda rutin madde olarak görünür, `steward_job_submit` + `steward_answer` ile kapanır
+        out.append(Action("ask_user", name, "STEWARD-JOB", {"project": proj or name, "text": JOB_REQUEST_PREFIX + j, "routine": True}))
     for b in m["blocked"]:
         out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or name, "text": ("Takıldım: " + b)}))
     for i in m["ideas"]:

@@ -78,6 +78,17 @@ class StoreTest(_Tmp):
 
 
 class MarkerTest(unittest.TestCase):
+    def test_scan_markers_job_line(self):
+        m = sw.scan_markers("bitti\n- STEWARD-JOB: import_registry REQUEST_x.md Cezîrî dipnotları\n")
+        self.assertEqual(m["jobs"], ["import_registry REQUEST_x.md Cezîrî dipnotları"])
+        acts = sw.marker_record_actions("wifi5gppr", "wifi5gppr", m)
+        self.assertEqual([(a.kind, a.reason) for a in acts], [("ask_user", "STEWARD-JOB")])
+        self.assertTrue(acts[0].payload["routine"])   # beyin turunda rutin madde: telefona gitmez
+        self.assertTrue(acts[0].payload["text"].startswith(sw.JOB_REQUEST_PREFIX))
+        self.assertEqual(sw.scan_markers("STEWARD-JOB:\n")["jobs"], [])
+        self.assertIn(sw.MARK_JOB, sw._PROTOCOL_TR)
+        self.assertIn(sw.MARK_JOB, sw._PROTOCOL_EN)
+
     def test_scan_markers(self):
         text = ("iş bitti.\n- STEWARD-ASK: A mı B mi?\nSTEWARD-IDEA: `yeni şey`\n"
                 "   * STEWARD-BLOCKED: build kırık\nSTEWARD-PLAN-READY\n")
