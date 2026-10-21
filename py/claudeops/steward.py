@@ -1933,6 +1933,76 @@ def context_threshold(cfg: "Config", model: str) -> int:
     return cfg.context_warn_tokens
 
 
+# ── kontrollü kapatma (`steward shutdown`, SAF çekirdek) ───────────────────────
+
+SHUTDOWN_QUIET_SECONDS = 60.0          # ana transkript + alt ajanlar bu kadar sessizse "iş bitti"
+SHUTDOWN_WAIT_MAX_SECONDS = 45 * 60    # iş bitmezse bu süreden sonra oturum AÇIK bırakılır (zorlanmaz)
+SHUTDOWN_HO_MAX_SECONDS = 10 * 60      # devir cevabı gelmezse oturum AÇIK bırakılır
+_SD_TERMINAL = ("closed", "gone", "busy_left", "ho_timeout")
+
+
+def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Dict[str, Any], cfg: Config, now: float,
+                  world: Optional[World] = None) -> Tuple[List[Action], Dict[str, Any], bool]:
+    """Kontrollü kapatma adımı. `sd`: {started, items: {ad: {stage, at}}}; dönen: (eylemler, yeni sd, bitti mi).
+    Sıra: proje oturumları (iş sessiz → devir mesajı → asistan "READY FOR HANDOVER" dedi → durdur), SONRA beyin.
+    Zorlamaz: iş bitmeyen / devir cevaplamayan oturum açık bırakılır (`busy_left`/`ho_timeout`). SAF."""
+    sd = json.loads(json.dumps(sd or {}))
+    sd.setdefault("started", now)
+    items: Dict[str, Dict[str, Any]] = sd.setdefault("items", {})
+    by_name = {v.name: v for v in views}
+    own = world.own_projects(projects) if world is not None else projects
+
+    def _is_own(v: SessionView) -> bool:
+        if v.name == cfg.brain_name or not v.running:
+            return False
+        if world is not None:
+            return world.session_class(v.name, v.blueprint) == "own"
+        return v.project in own
+
+    if not sd.get("init"):
+        sd["init"] = True
+        for v in views:
+            if _is_own(v):
+                items[v.name] = {"stage": "wait", "at": now}
+    brain = by_name.get(cfg.brain_name)
+    actions: List[Action] = []
+
+    def _step(name: str) -> None:
+        it = items[name]
+        v = by_name.get(name)
+        if it["stage"] in _SD_TERMINAL:
+            return
+        if v is None or not v.running:
+            it["stage"], it["at"] = "gone" if it["stage"] == "wait" else "closed", now
+            return
+        if it["stage"] == "wait":
+            quiet = (now - max(v.last_activity, 0.0)) >= SHUTDOWN_QUIET_SECONDS if v.last_activity else True
+            if v.busy is not True and not v.subagent_active and quiet:
+                actions.append(Action("handover", name, "shutdown"))
+                it["stage"], it["at"] = "ho", now
+            elif now - float(sd["started"]) >= SHUTDOWN_WAIT_MAX_SECONDS:
+                it["stage"], it["at"] = "busy_left", now
+        elif it["stage"] == "ho":
+            ready = READY_FOR_HANDOVER in (v.last_assistant or "") and v.last_activity >= float(it["at"])
+            if ready and v.busy is not True:
+                actions.append(Action("stop", name, "shutdown"))
+                it["stage"], it["at"] = "closed", now
+            elif now - float(it["at"]) >= SHUTDOWN_HO_MAX_SECONDS:
+                it["stage"], it["at"] = "ho_timeout", now
+
+    for name in list(items):
+        if name != cfg.brain_name:
+            _step(name)
+    projects_done = all(i["stage"] in _SD_TERMINAL for n, i in items.items() if n != cfg.brain_name)
+    if projects_done:
+        if brain is not None and brain.running and cfg.brain_name not in items:
+            items[cfg.brain_name] = {"stage": "wait", "at": now}
+        if cfg.brain_name in items:
+            _step(cfg.brain_name)
+    done = projects_done and all(i["stage"] in _SD_TERMINAL for i in items.values())
+    return actions, sd, done
+
+
 def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:
     """Oturum yanıtındaki soru/rutin/takıldım/fikir işaretlerinin KAYIT eylemleri (oturuma dokunmaz). `plan_tick` ve
     döngü kapalıyken çalışan `plan_markers` aynı kuralı paylaşır."""

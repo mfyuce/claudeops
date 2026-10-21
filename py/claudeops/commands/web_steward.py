@@ -1340,6 +1340,82 @@ def passive_scan(sid: str = "default", *, views: Optional[List[sw.SessionView]] 
             return {"ok": False, "error": repr(e)}
 
 
+# ── kontrollü kapatma (`py/cops steward shutdown`) ────────────────────────────
+
+def shutdown_start(sid: str = "default", *, stop_loop: bool = True) -> Dict[str, Any]:
+    """Kapatmayı başlat: döngüyü kapat (yeni iş/direktif/açılış olmasın) ve `state["shutdown"]` yaz. Adımları döngü her
+    tick'te `shutdown_tick` ile ilerletir (kapalı kimlikte de çalışır). Zaten sürüyorsa yeniden başlatmaz."""
+    from ..settings import save_settings
+    ctx = _ctx(sid)
+    with ctx.lock, sw.steward_lock(ctx.paths):
+        state = sw.load_state(ctx.paths)
+        if state.get("shutdown") and not state["shutdown"].get("done"):
+            return {"ok": True, "already": True, "shutdown": state["shutdown"]}
+        state["shutdown"] = {"started": time.time(), "items": {}}
+        sw.save_state(state, ctx.paths)
+    if stop_loop:
+        save_settings({"steward": {"enabled": "off"}} if sid == "default" else {"stewards": {sid: {"enabled": "off"}}})
+    sw.log_event("shutdown_start", paths=ctx.paths)
+    return {"ok": True, "started": True}
+
+
+def shutdown_tick(sid: str = "default", views: Optional[List[sw.SessionView]] = None) -> Optional[Dict[str, Any]]:
+    """Süren kapatmayı bir adım ilerlet (yoksa None). Eylemler `_apply` ile (observe kipi ATLANIR: kullanıcı açıkça kapatıyor),
+    yine de `_target` kapısından geçer (yalnız kimliğin kendi projeleri + beyni)."""
+    ctx = _ctx(sid)
+    with ctx.lock:
+        cfg = steward_config(sid)
+        paths = ctx.paths
+        state0 = sw.load_state(paths)
+        sd0 = state0.get("shutdown")
+        if not sd0 or sd0.get("done"):
+            return None
+        if cfg.enabled:    # kapatma başlayınca döngü kapatılmıştı; yeniden açılmışsa (`steward up`) kapatma İPTAL
+            with sw.steward_lock(paths):
+                state = sw.load_state(paths)
+                state["shutdown"] = dict(sd0, done=time.time(), cancelled=True)
+                sw.save_state(state, paths)
+            sw.log_event("shutdown_cancelled", paths=paths)
+            return None
+        projects = sw.load_projects(paths)
+        world = _world(sid, cfg, 0, _ownership_index())
+        vs = views if views is not None else _collect_views(cfg)
+        now = time.time()
+        actions, sd, done = sw.plan_shutdown(vs, projects, sd0, cfg, now, world=world)
+        for a in actions:
+            try:
+                res = _apply(a, cfg, projects, world)
+            except Exception as e:
+                res = {"ok": False, "error": repr(e)}
+                diag_log("steward_action_crashed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
+            _remember(a, res, ctx)
+            if not res.get("ok"):                      # eylem başarısız: adımı bir sonraki tick'te yeniden dene
+                it = (sd.get("items") or {}).get(a.name)
+                if it is not None:
+                    it["stage"] = "wait" if a.kind == "handover" else "ho"
+                    done = False
+        if done:
+            sd["done"] = now
+        with sw.steward_lock(paths):
+            state = sw.load_state(paths)
+            state["shutdown"] = sd
+            sw.save_state(state, paths)
+        if done:
+            sw.log_event("shutdown_done", paths=paths, items={n: i["stage"] for n, i in sd["items"].items()})
+        web_ws.notify_status_changed()
+        return {"ok": True, "done": done, "items": {n: i["stage"] for n, i in sd["items"].items()}}
+
+
+def http_shutdown(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    if data.get("actor") == "brain":
+        return {"ok": False, "error": "brain cannot shut the steward down"}
+    if data.get("status"):
+        sd = sw.load_state(sid).get("shutdown") or {}
+        return {"ok": True, "shutdown": sd, "items": {n: i.get("stage") for n, i in (sd.get("items") or {}).items()},
+                "done": bool(sd.get("done"))}
+    return shutdown_start(sid)
+
+
 def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
     """Döngünün bir turu: `steward_ids()` sırasıyla, YALNIZ `enabled` kimlikler SIRAYLA tick'lenir (aynı anda tek spawn
     dalgası). Bir kimliğin hatası yutulup loglanır, diğerleri yine tick'lenir. Makine geneli `max_starts_total` bütçesi
@@ -1367,6 +1443,11 @@ def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
         cards_round(enabled)
     except Exception as e:
         diag_log("steward_card_tick_crashed", error=repr(e))
+    for sid in steward_ids():    # süren kontrollü kapatmalar (kapalı kimlikte de ilerler)
+        try:
+            shutdown_tick(sid)
+        except Exception as e:
+            diag_log("steward_shutdown_crashed", sid=sid, error=repr(e))
     if disabled:    # kapalı kimlikler: yalnız soru/fikir kaydı (oturuma dokunmaz)
         try:
             views = _collect_views(steward_config(disabled[0]))
@@ -2230,6 +2311,7 @@ POST_PATHS = {
     "/api/steward/cards/refresh": http_cards_refresh,
     "/api/steward/job/submit": http_job_submit,
     "/api/steward/brain": http_brain,
+    "/api/steward/shutdown": http_shutdown,
     "/api/steward/tick": lambda data, sid="default": tick_once("manual", sid),
     "/api/steward/tour": lambda data, sid="default": run_tour(force=True, cfg=steward_config(sid)),
 }

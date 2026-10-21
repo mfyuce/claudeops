@@ -441,6 +441,60 @@ class OneshotProviderTest(unittest.TestCase):
                 run(argv, **kw)
 
 
+class ShutdownPlanTest(unittest.TestCase):
+    def _run(self, views, sd, now):
+        projects = {"p1": sw.Project(name="p1", phase="planned"), "p2": sw.Project(name="p2", phase="planned")}
+        return sw.plan_shutdown(views, projects, sd, _cfg(), now)
+
+    def test_waits_for_quiet_then_handover_then_stop_then_brain(self):
+        t = 10000.0
+        brain = _view("degnekci", last_activity=t - 500)
+        busy = _view("p1", busy=True, last_activity=t - 5)
+        quiet = _view("p2", busy=False, last_activity=t - 300)
+        acts, sd, done = self._run([busy, quiet, brain], {}, t)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("handover", "p2")])
+        self.assertFalse(done)
+        self.assertEqual(sd["items"]["p1"]["stage"], "wait")
+        # p2 asistanı READY dedi; p1 hâlâ meşgul: yalnız p2 durdurulur, beyin henüz beklemede
+        ready = _view("p2", busy=False, last_activity=t + 10, last_assistant="READY FOR HANDOVER")
+        acts, sd, done = self._run([busy, ready, brain], sd, t + 60)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("stop", "p2")])
+        self.assertNotIn("degnekci", sd["items"])
+        # p1 sessizleşir -> devir; sonra RFH -> durdur; sonra beyin
+        q1 = _view("p1", busy=False, last_activity=t - 200)
+        acts, sd, _ = self._run([q1, brain], sd, t + 120)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("handover", "p1")])
+        r1 = _view("p1", busy=False, last_activity=t + 200, last_assistant="READY FOR HANDOVER")
+        acts, sd, done = self._run([r1, brain], sd, t + 180)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("stop", "p1"), ("handover", "degnekci")])   # projeler bitti: beyin sırası aynı adımda
+        self.assertFalse(done)
+        rb = _view("degnekci", busy=False, last_activity=t + 400, last_assistant="READY FOR HANDOVER")
+        acts, sd, done = self._run([rb], sd, t + 300)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("stop", "degnekci")])
+        acts, sd, done = self._run([], sd, t + 360)
+        self.assertTrue(done)
+
+    def test_subagent_blocks_and_timeouts_leave_session_open(self):
+        t = 10000.0
+        v = _view("p1", busy=False, last_activity=t - 300, subagent_active=True)
+        acts, sd, done = self._run([v], {}, t)
+        self.assertEqual(acts, [])
+        acts, sd, done = self._run([v], sd, t + sw.SHUTDOWN_WAIT_MAX_SECONDS + 1)
+        self.assertEqual((acts, sd["items"]["p1"]["stage"], done), ([], "busy_left", True))
+        # devir gönderildi ama cevap yok -> ho_timeout, durdurulmaz
+        q = _view("p1", busy=False, last_activity=t - 300)
+        _, sd, _ = self._run([q], {}, t)
+        acts, sd, done = self._run([q], sd, t + sw.SHUTDOWN_HO_MAX_SECONDS + 1)
+        self.assertEqual((acts, sd["items"]["p1"]["stage"], done), ([], "ho_timeout", True))
+
+    def test_stale_ready_text_before_handover_does_not_count(self):
+        t = 10000.0
+        q = _view("p1", busy=False, last_activity=t - 300, last_assistant="READY FOR HANDOVER")
+        _, sd, _ = self._run([q], {}, t)                     # devir gönderildi (stage ho, at=t)
+        acts, sd, _ = self._run([q], sd, t + 30)             # etkinlik t'den ESKİ: eski RFH metni sayılmaz
+        self.assertEqual(acts, [])
+
+
 class SalientReaskTest(unittest.TestCase):
     def _a(self, text, ans="evet"):
         return sw.Question(id="q1", project="p1", text=text, created_at=1.0, status="answered", answer=ans, answered_at=100.0)

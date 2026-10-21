@@ -553,6 +553,23 @@ def cmd_up(args) -> int:
     return 0 if res.get("ok") else 1
 
 
+def cmd_shutdown(args) -> int:
+    """Kontrollü kapatma: döngü kapanır; sonra servis (web) her tick'te proje oturumlarını SIRAYLA bitirir: iş sessizleşince
+    devir mesajı → asistan "READY FOR HANDOVER" deyince durdur → en sonda beyin. İş bitmeyen/cevap vermeyen oturum
+    AÇIK bırakılır. `--status` ilerlemeyi gösterir; `py/cops steward up` geri açar."""
+    res = _api(args.port, "POST", "/api/steward/shutdown", {"status": True} if args.status else {}, args.sid)
+    if not res.get("ok"):
+        print(json.dumps(res, ensure_ascii=False))
+        return 1
+    if args.status or res.get("already"):
+        sd = res.get("shutdown") or {}
+        items = {n: i.get("stage") for n, i in (sd.get("items") or {}).items()}
+        print(("BİTTİ" if sd.get("done") else "SÜRÜYOR" if sd else "yok") + f": {items}")
+    else:
+        print("✓ kapatma başladı (döngü kapalı); ilerleme: py/cops steward shutdown --status (tick başına bir adım)")
+    return 0
+
+
 def cmd_api(args) -> int:
     port = args.port
     sid = _sid(args)
@@ -676,6 +693,10 @@ def register(sub):
     pc.add_argument("key")
     pc.add_argument("value")
     pc.set_defaults(func=cmd_config)
+    psd = s.add_parser("shutdown", help="kontrollü kapatma: kapat → işi bitir → devir → durdur (önce projeler, sonra beyin)")
+    psd.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
+    psd.add_argument("--status", action="store_true")
+    psd.set_defaults(func=cmd_shutdown)
     pup = s.add_parser("up", help="tek komutla aç: on + models.tsv'de # CLOSED satırlarını geri aç + beyni başlat")
     pup.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     pup.add_argument("--dry-run", action="store_true", help="models.tsv'ye yazma, beyni başlatma (yalnız on yapılır)")
