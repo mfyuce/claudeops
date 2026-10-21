@@ -454,6 +454,31 @@ class MergedAnswersTest(unittest.TestCase):
         self.assertEqual(len(dl), 1)
         self.assertEqual([dl[0].payload["question_id"]] + dl[0].payload["more_ids"], ["a", "b", "c"])
 
+    def test_answer_waits_while_subagent_active(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        qs = [self._q("a", "evet")]
+        acts, _ = sw.plan_tick([_view("p1", last_assistant="", subagent_active=True)], projects, {}, _cfg(), 5000.0, qs, [])
+        self.assertEqual([a for a in acts if a.kind == "deliver_answer"], [])
+        acts, _ = sw.plan_tick([_view("p1", last_assistant="")], projects, {}, _cfg(), 5000.0, qs, [])
+        self.assertEqual(len([a for a in acts if a.kind == "deliver_answer"]), 1)
+
+    def test_subagent_active_for_reads_mtime(self):
+        import tempfile
+        import unittest.mock as um
+        from claudeops.commands import web_steward as ws
+        with tempfile.TemporaryDirectory() as d:
+            tr = os.path.join(d, "abc.jsonl")
+            open(tr, "w").close()
+            sub = os.path.join(d, "abc", "subagents")
+            os.makedirs(sub)
+            f = os.path.join(sub, "agent-x.jsonl")
+            open(f, "w").close()
+            with um.patch("claudeops.providers.claude_provider.jsonl_path_for", return_value=tr):
+                self.assertTrue(ws.subagent_active_for("/x", "abc"))
+                old = os.path.getmtime(f) - 1000
+                os.utime(f, (old, old))
+                self.assertFalse(ws.subagent_active_for("/x", "abc"))
+
     def test_directive_contains_all_answers(self):
         p = sw.Project(name="p1", phase="planned")
         msg = sw.build_directive(p, answer=self._q("a", "evet"), more=[self._q("b", "hayır")])

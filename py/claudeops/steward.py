@@ -112,6 +112,7 @@ ACTIVE_PHASES = ("planning", "planned")
 MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
+SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
 OBSERVE_SKIPPED = ("handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "tour")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
@@ -203,6 +204,7 @@ class SessionView:
     last_activity: float = 0.0          # son model isteği/aktivite (epoch, 0 = bilinmiyor)
     started_at: float = 0.0             # sürecin başlangıcı (epoch)
     stuck: bool = False
+    subagent_active: bool = False       # transkriptin `subagents/agent-*.jsonl` dosyaları SUBAGENT_QUIET_SECONDS içinde yazıldı
 
     @property
     def project(self) -> str:
@@ -2108,8 +2110,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             if v.name in deliver_by_session:
                 deliver_by_session[v.name].payload.setdefault("more_ids", []).append(q.id)    # aynı tick, aynı oturum: birleştir
                 continue
-            if v.name in busy_names or v.busy:
-                continue   # bir sonraki tick
+            if v.name in busy_names or v.busy or v.subagent_active:
+                continue   # bir sonraki tick (çalışan alt ajan varken ana oturumu uyandırma)
             act = Action("deliver_answer", v.name, "answer", {"question_id": q.id})
             actions.append(act)
             deliver_by_session[v.name] = act

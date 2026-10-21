@@ -354,6 +354,29 @@ def context_tokens_for(cwd: str, sid: Optional[str]) -> Optional[int]:
     return None
 
 
+def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = None) -> bool:
+    """Oturumun alt ajanı (`<oturum>/subagents/agent-*.jsonl`) hâlâ yazıyor mu: son `SUBAGENT_QUIET_SECONDS` içinde
+    değişen bir dosya varsa True. Transkript bulunamazsa False (bilinmiyor = bekletme)."""
+    from ..providers.claude_provider import jsonl_path_for
+    path = jsonl_path_for(cwd, sid)
+    if not path or not path.endswith(".jsonl"):
+        return False
+    d = os.path.join(path[:-len(".jsonl")], "subagents")
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return False
+    t = time.time() if now is None else now
+    for n in names:
+        if n.startswith("agent-") and n.endswith(".jsonl"):
+            try:
+                if t - os.path.getmtime(os.path.join(d, n)) < sw.SUBAGENT_QUIET_SECONDS:
+                    return True
+            except OSError:
+                continue
+    return False
+
+
 def _collect_views(cfg: sw.Config) -> List[sw.SessionView]:
     payload = _act("status_payload") or {}
     rows = [r for r in (payload.get("sessions") or []) if r.get("host", LOCAL_HOST_NAME) == LOCAL_HOST_NAME]
@@ -389,6 +412,10 @@ def _collect_views(cfg: sw.Config) -> List[sw.SessionView]:
                     v.context_tokens = context_tokens_for(s.cwd, s.sid)
                 except Exception:
                     v.context_tokens = None
+                try:
+                    v.subagent_active = subagent_active_for(s.cwd, s.sid)
+                except Exception:
+                    v.subagent_active = False
             try:
                 v.started_at = float(psutil.Process(s.pid).create_time())
             except Exception:
