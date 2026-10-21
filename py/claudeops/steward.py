@@ -1413,7 +1413,8 @@ _PROTOCOL_EN = (
 )
 
 
-def build_directive(project: Project, lang: str = "tr", extra: str = "", answer: Optional[Question] = None) -> str:
+def build_directive(project: Project, lang: str = "tr", extra: str = "", answer: Optional[Question] = None,
+                    more: Optional[List[Question]] = None) -> str:
     """Bir proje oturumuna gönderilecek faz direktifi. `answer` verilirse önce insanın cevabı iletilir.
     Beyin kendi direktifini `extra` ile tamamen ezebilir (şablon yine protokol kuyruğunu ekler)."""
     tr = lang != "en"
@@ -1428,7 +1429,13 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
         if answer.repeats:
             parts.append("Bunu zaten cevapladım, yukarıdaki cevap geçerli; yeniden sorma, devam et." if tr else
                          "I already answered this; the answer above stands. Do not ask again, continue.")
+        for m in more or []:    # aynı oturuma aynı tickte biriken ek cevaplar: TEK mesajda (ayrı ayrı uyandırma yok)
+            parts.append(("Sorduğun soru: " if tr else "Your question: ") + m.text.strip())
+            parts.append(("Cevabım: " if tr else "My answer: ") + m.answer.strip())
         prior = recent_answers(project.name, exclude_id=answer.id)
+        if prior and more:
+            skip = {m.id for m in more}
+            prior = [q for q in prior if q.id not in skip]
         if prior:
             parts.append(("Önceki cevaplarım:\n" if tr else "My earlier answers:\n") +
                          "\n".join(f"- {q.text.strip()[:140]} → {q.answer.strip()[:200]}" for q in prior))
@@ -2079,6 +2086,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if world is not None and cfg.max_active_total > 0:
             n = min(n, cfg.max_active_total - active - others_active - starts)
         return n
+    deliver_by_session: Dict[str, Action] = {}
     for q in undelivered_answers(questions):
         target = q.project
         if not target or target == cfg.brain_name:
@@ -2097,9 +2105,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             continue
         v = pick_delivery_view(views if world is None else [x for x in views if _mine(x)], target, q.source)
         if v is not None:
+            if v.name in deliver_by_session:
+                deliver_by_session[v.name].payload.setdefault("more_ids", []).append(q.id)    # aynı tick, aynı oturum: birleştir
+                continue
             if v.name in busy_names or v.busy:
                 continue   # bir sonraki tick
-            actions.append(Action("deliver_answer", v.name, "answer", {"question_id": q.id}))
+            act = Action("deliver_answer", v.name, "answer", {"question_id": q.id})
+            actions.append(act)
+            deliver_by_session[v.name] = act
             busy_names.add(v.name)
             last_directive_at[v.name] = now
         elif starts < max_starts and _slots() > 0:

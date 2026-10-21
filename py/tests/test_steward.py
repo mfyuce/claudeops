@@ -441,6 +441,27 @@ class OneshotProviderTest(unittest.TestCase):
                 run(argv, **kw)
 
 
+class MergedAnswersTest(unittest.TestCase):
+    def _q(self, i, ans):
+        return sw.Question(id=i, project="p1", text=f"soru {i}?", created_at=1.0, status="answered", answer=ans,
+                           answered_at=2.0, source="p1")
+
+    def test_planner_merges_same_session_answers_in_one_action(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        qs = [self._q("a", "evet"), self._q("b", "hayır"), self._q("c", "sıradan")]
+        acts, _ = sw.plan_tick([_view("p1", last_assistant="")], projects, {}, _cfg(), 5000.0, qs, [])
+        dl = [a for a in acts if a.kind == "deliver_answer"]
+        self.assertEqual(len(dl), 1)
+        self.assertEqual([dl[0].payload["question_id"]] + dl[0].payload["more_ids"], ["a", "b", "c"])
+
+    def test_directive_contains_all_answers(self):
+        p = sw.Project(name="p1", phase="planned")
+        msg = sw.build_directive(p, answer=self._q("a", "evet"), more=[self._q("b", "hayır")])
+        self.assertIn("Cevabım: evet", msg)
+        self.assertIn("soru b?", msg)
+        self.assertIn("Cevabım: hayır", msg)
+
+
 class ScanTicksTest(unittest.TestCase):
     def test_leading_code_tick_in_question_kept(self):
         m = sw.scan_markers("STEWARD-ASK: `dano_2023_federated` (Light Reading) alınsın mı?")

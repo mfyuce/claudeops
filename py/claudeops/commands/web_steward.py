@@ -481,7 +481,8 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
 
 
 def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: str = "",
-                    answer: Optional[sw.Question] = None, start_if_stopped: bool = True,
+                    answer: Optional[sw.Question] = None, more: Optional[List[sw.Question]] = None,
+                    start_if_stopped: bool = True,
                     reason: str = "", session_name: str = "", cfg: Optional[sw.Config] = None) -> Dict[str, Any]:
     """`project`'e (ya da onun `session_name` adlı çalışan instance'ına) direktif gönder; kapalıysa aç.
     Proje değnekçi kaydında değilse (ad hoc oturum) sadece gönderir, kayıt açmaz. Kayıtlar `cfg.sid`'in deposuna."""
@@ -505,7 +506,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             return {"ok": False, "error": "start reported ok but no process found"}
     if not is_tmux_backed(s.pid):
         return {"ok": False, "error": "not tmux-backed (cannot inject)"}
-    message = sw.build_directive(project, lang=lang, extra=text, answer=answer)
+    message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more)
     if not _send(s.name, s.cli, message):
         return {"ok": False, "error": "send failed"}
     # Mesaj GİTTİ: bundan sonrası kayıt tutmadır. Hiçbir kayıt hatası (ör. kilit zaman aşımı) çağırana "başarısız" demez ve
@@ -513,6 +514,8 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
     unrecorded = False
     if answer is not None:
         unrecorded = not _mark_after_send(lambda: sw.mark_delivered(answer.id, paths), cfg.sid, "answer", answer.id)
+        for m in more or []:
+            unrecorded |= not _mark_after_send(lambda m=m: sw.mark_delivered(m.id, paths), cfg.sid, "answer", m.id)
     if project.name in sw.load_projects(paths):
         try:
             sw.upsert_project(project.name, paths=paths, last_visit=time.time(),
@@ -1003,7 +1006,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": False, "error": "question gone"}
         p = projects.get(q.project) or sw.Project(name=q.project)
         extra = "Cevaba göre devam et." if cfg.lang != "en" else "Continue according to the answer."
-        res = _give_directive(p, extra, answer=q, start_if_stopped=False, reason="answer", session_name=name, cfg=cfg)
+        by_id = {x.id: x for x in sw.load_questions(paths)}
+        more = [by_id[i] for i in action.payload.get("more_ids") or []
+                if i in by_id and by_id[i].answer and not by_id[i].delivered_at]
+        res = _give_directive(p, extra, answer=q, more=more, start_if_stopped=False, reason="answer", session_name=name, cfg=cfg)
         if not res.get("ok") and q.project not in projects:
             # Kayıtlı proje olmayan (ad hoc) oturum kapanmış ya da yazı kabul etmiyor: her tick yeniden deneme,
             # bırak (cevap kayıtta durur, kimse beklemiyor).
