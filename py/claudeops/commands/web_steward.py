@@ -26,6 +26,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import psutil
 
+from .. import hosts as hosts_mod
 from .. import instances as inst_mod
 from .. import steward as sw
 from .. import steward_jobs as sj
@@ -131,6 +132,160 @@ def _world(sid: str = "default", cfg: Optional[sw.Config] = None, starts_left: O
     return sw.world_for(sid, index if index is not None else _ownership_index(), cfg.brain_name, starts_left)
 
 
+# ── uzak host'lar (TODO 2026-10-20 (14), A1: okuma + gözlem; uzak EYLEM YOK) ────────────────────────────────
+#
+# Proje kaydının `host` alanı uzak bir `hosts.json` adıysa oturumları o host'ta yaşar: değnekçi onları `/api/status`
+# önbelleğinden (`web_hosts` poller'ı, ağa gitmez) ve `/api/term/chat` okumasından görür. Uzak G/Ç'nin TEK arayüzü
+# `_remote` (testler sahte host'la değiştirir). `web_hosts` TEMBEL içe aktarılır: grpc/websockets yalnız uzak proje
+# varken yüklenir (CLI/mcp süreçlerine taşınmasın). A1'de uzak hedefe hiçbir eylem uygulanmaz (`_target`).
+
+REMOTE_STALE_SECONDS = 60.0          # son başarılı poll bundan eskiyse host "kapalı": bayat satırlarla karar verilmez
+REMOTE_READ_BUDGET_SECONDS = 10.0    # tick başına uzak okumaların (term/chat) TOPLAM süresi
+REMOTE_ACTIONS_IMPLEMENTED = False   # uzak eylem yolu (proxy start/stop/handover/input) henüz yok: ayar açık olsa da red
+
+
+def _wh():
+    from . import web_hosts      # TEMBEL (yukarıdaki not)
+    return web_hosts
+
+
+class _RemoteIO:
+    """Uzak host G/Ç'si: `status(host)` poller önbelleği + `last_ok_at` (ağa gitmez; yoksa None), `get(path, host, q)`
+    salt okuma proxy'si (`proxy_get`), `post(path, host, body)` eylem proxy'si (`proxy_action`; A1'de çağrılmaz)."""
+
+    def status(self, host: str) -> Optional[Dict[str, Any]]:
+        wh = _wh()
+        cached = wh.get_cached(host)
+        if cached is None:
+            return None
+        cached["last_ok_at"] = wh.last_ok_at(host)
+        return cached
+
+    def get(self, path: str, host: str, query: Dict[str, str], timeout: Optional[float] = None) -> Tuple[Dict[str, Any], int]:
+        return _wh().proxy_get(path, host, query, timeout=timeout)
+
+    def post(self, path: str, host: str, body: Dict[str, Any], timeout: Optional[float] = None) -> Tuple[Dict[str, Any], int]:
+        return _wh().proxy_action(path, host, body)
+
+
+_remote = _RemoteIO()
+
+
+def _host_fresh(st: Optional[Dict[str, Any]], now: Optional[float] = None) -> bool:
+    """Önbellek kaydı taze mi: `ok` ve son başarılı poll `REMOTE_STALE_SECONDS` içinde (stale-while-error'ın koruduğu
+    bayat satır taze SAYILMAZ)."""
+    if not st or not st.get("ok"):
+        return False
+    last = float(st.get("last_ok_at") or 0.0)
+    return bool(last) and ((time.time() if now is None else now) - last) <= REMOTE_STALE_SECONDS
+
+
+def _fresh_hosts(hosts: Any, now: Optional[float] = None) -> set:
+    return {h for h in hosts if _host_fresh(_remote.status(h), now)}
+
+
+def _with_availability(world: sw.World, cfg: sw.Config, now: Optional[float] = None) -> sw.World:
+    """`world.unavailable`: host'u taze olmayan uzak projeler. act kipinde uzak eylem uygulanamıyorsa (A1) TÜM uzak
+    projeler: başlatma planına girip her tick reddedilmesinler, yerel başlatma bütçesini yemesinler (observe'da
+    `would:start` görünmeye devam eder). Uzak proje yoksa `world` aynen döner."""
+    if not world.hosts:
+        return world
+    fresh = _fresh_hosts(set(world.hosts.values()), now)
+    down = {p for p, h in world.hosts.items() if h not in fresh}
+    if cfg.mode != "observe" and not (REMOTE_ACTIONS_IMPLEMENTED and cfg.remote_actions):
+        down |= set(world.hosts)
+    return dataclasses.replace(world, unavailable=frozenset(down))
+
+
+def _locate(name: str, projects: Dict[str, sw.Project], world: Optional[sw.World] = None) -> Tuple[str, Optional[sw.Project]]:
+    """Oturum/proje adı → (host, kimliğin projesi). Host GLOBAL çözümden (`World.resolve` + indeksin `hosts`u; kayıt
+    `host`u da uzaksa o): "" = yerel. Proje bu kimliğin kaydında değilse None."""
+    world = world or _world()
+    kind, key = world.resolve(name)
+    if kind != "project":
+        return "", None
+    p = projects.get(key)
+    return (world.host_of(key) or (p.host if p is not None else "")), p
+
+
+def _name_host(name: str) -> str:
+    """Ad uzak host'lu bir projeye (herhangi bir kimliğin) çözülüyorsa host'u, değilse "". Yerel dosya sistemi
+    korumalarının (`_project_cwd`, kartlar, fikir aktarımı) tek sorusu."""
+    try:
+        return _locate(name, {})[0]
+    except Exception:       # bozuk ayar/indeks: korumayı bozmasın, yerel say
+        return ""
+
+
+def _remote_last_assistant(targets: List[Tuple[str, str]], budget: float = REMOTE_READ_BUDGET_SECONDS) -> Dict[Tuple[str, str], str]:
+    """{(host, ad): son asistan metni}: `GET /api/term/chat?mode=last`, paralel, TOPLAM `budget` sn. Süresi dolan ya da
+    hata veren okuma sonuçta YOK (= "" bilinmiyor); süresi dolan iş parçacığı arka planda biter, sonucu atılır."""
+    out: Dict[Tuple[str, str], str] = {}
+    if not targets:
+        return out
+    lock = threading.Lock()
+    deadline = time.monotonic() + budget
+
+    def work(host: str, name: str) -> None:
+        try:
+            parsed, _status = _remote.get("/api/term/chat", host, {"name": name, "mode": "last"}, timeout=budget)
+        except Exception:
+            return
+        if isinstance(parsed, dict) and parsed.get("ok") and parsed.get("supported"):
+            with lock:
+                out[(host, name)] = str(parsed.get("assistant") or "")
+
+    threads = [threading.Thread(target=work, args=t, daemon=True, name="steward-remote-read") for t in targets]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(max(0.0, deadline - time.monotonic()))
+    with lock:
+        return dict(out)
+
+
+def _remote_view(r: Dict[str, Any], host: str, now: float) -> sw.SessionView:
+    """Uzak `/api/status` satırı → görünüm. Bağlam = satırın `context.tokens` (yoksa None ve satır sayısı da None: yaşı
+    bilinmeyen oturum satır eşiğiyle devre sokulmasın); son aktivite = `now - cache.age` (göreli, saat kayması yok; yoksa
+    0 = bilinmiyor); başlangıç bilinmiyor (0); alt ajan durumu bilinmiyor (`subagent_unknown`)."""
+    ctx = r.get("context") if isinstance(r.get("context"), dict) else {}
+    cache = r.get("cache") if isinstance(r.get("cache"), dict) else {}
+    tokens = ctx.get("tokens")
+    tokens = int(tokens) if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) and tokens > 0 else None
+    age = cache.get("age")
+    v = sw.SessionView(
+        name=str(r.get("name") or ""), running=bool(r.get("running")), cwd=r.get("cwd") or "",
+        cli=r.get("cli") or DEFAULT_CLI, blueprint=r.get("blueprint") if r.get("instance") else None,
+        busy=r.get("busy"), history_size=r.get("history_size") if tokens is not None else None,
+        needs_ho=r.get("needs_ho"), tmux=bool(r.get("tmux")), model=str(r.get("model") or ""),
+        context_tokens=tokens, host=host, subagent_unknown=True)
+    if v.running and isinstance(age, (int, float)) and not isinstance(age, bool) and age >= 0:
+        v.last_activity = now - float(age)
+    return v
+
+
+def _remote_views(world: sw.World, now: Optional[float] = None) -> List[sw.SessionView]:
+    """Uzak projelerin (tüm kimliklerin: `max_active_total` sayımı için) taze host'lardaki oturum görünümleri.
+    Satır seçimi `sw.select_rows` (saf); son asistan metni yalnız ÇALIŞAN seçilmiş oturumlar için okunur."""
+    hosts = sorted(set(world.hosts.values()))
+    if not hosts:
+        return []
+    now = time.time() if now is None else now
+    fresh: set = set()
+    rows: List[Dict[str, Any]] = []
+    for h in hosts:
+        st = _remote.status(h)
+        if not _host_fresh(st, now):
+            continue
+        fresh.add(h)
+        rows.extend(dict(r, host=h) for r in (st.get("sessions") or []) if isinstance(r, dict))
+    views = [_remote_view(r, r["host"], now) for r in sw.select_rows(rows, world, fresh)]
+    texts = _remote_last_assistant([(v.host, v.name) for v in views if v.running])
+    for v in views:
+        v.last_assistant = texts.get((v.host, v.name), "")
+    return views
+
+
 def configure(**callbacks: Callable[..., Any]) -> None:
     """`web.py` `run()`'da verir: status_payload(), fleet_status(), start(name, model, effort, fresh, lang),
     stop(name, lang), handover(name, lang), register_project(name, cwd, model, cli, lang)."""
@@ -155,29 +310,51 @@ def _remember(action: sw.Action, result: Any, ctx: Optional[StewardContext] = No
                  ok=entry["ok"], detail=entry["detail"])
 
 
-def _remember_dry(action: sw.Action, ctx: Optional[StewardContext] = None) -> None:
-    """observe kipi: eylem UYGULANMADI. `recent`e `dry=True` ile, log'a `would:<kind>` olayı olarak yazılır."""
+def _remember_dry(action: sw.Action, ctx: Optional[StewardContext] = None, host: str = "") -> None:
+    """observe kipi: eylem UYGULANMADI. `recent`e `dry=True` ile, log'a `would:<kind>` olayı olarak yazılır. `host`:
+    hedef uzak bir projedeyse host adı (yerelde alan HİÇ yazılmaz: kayıt biçimi eskisiyle aynı)."""
     ctx = ctx or _ctx()
     detail = f"{len(action.payload.get('items') or [])} madde" if action.kind == "tour" else str(action.payload.get("text") or "")[:200]
     if action.kind == "deliver_job":
         detail = f"job {action.payload.get('service')}#{action.payload.get('job_id')} {action.payload.get('stage')}"
-    ctx.recent.insert(0, {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
-                          "ok": True, "dry": True, "detail": detail})
+    entry = {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
+             "ok": True, "dry": True, "detail": detail}
+    if host:
+        entry["host"] = host
+    ctx.recent.insert(0, entry)
     del ctx.recent[RECENT_ACTIONS:]
     extra = {"question_id": action.payload["question_id"]} if action.payload.get("question_id") else {}
     if action.payload.get("job_id") is not None:
         extra["job_id"] = action.payload["job_id"]
+    if host:
+        extra["host"] = host
     sw.log_event("would:" + action.kind, paths=ctx.paths, name=action.name, reason=action.reason, detail=detail, **extra)
 
 
-def _brain_dry(kind: str, data: Dict[str, Any], name: str, sid: str = "default") -> Optional[Dict[str, Any]]:
+def _brain_dry(kind: str, data: Dict[str, Any], name: str, sid: str = "default", host: str = "") -> Optional[Dict[str, Any]]:
     """observe kipinde BEYNİN (`actor: brain`, MCP aracı) oturuma dokunan çağrıları da uygulanmaz: aynı `would:`
     kaydı düşer, beyne başarılı-ama-kuru yanıt döner. İnsanın elle çağırdığı CLI/API (`actor` yok) her zaman uygulanır."""
     if data.get("actor") != "brain" or steward_config(sid).mode != "observe":
         return None
     _remember_dry(sw.Action(kind, name, "brain: " + str(data.get("reason") or "")[:200], {"text": str(data.get("text") or "")}),
-                  _ctx(sid))
-    return {"ok": True, "dry": True, "note": f"observe mode: recorded as would:{kind}, not applied"}
+                  _ctx(sid), host=host)
+    out = {"ok": True, "dry": True, "note": f"observe mode: recorded as would:{kind}, not applied"}
+    if host:
+        out["host"] = host
+    return out
+
+
+def _gate(name: str, data: Dict[str, Any], kind: str, sid: str = "default") -> Optional[Dict[str, Any]]:
+    """HTTP eylem uçlarının ortak kapısı: `_target` (istekteki opsiyonel `host` ile) sonra `_brain_dry`. Uzak hedef
+    YALNIZ uzak eylem kapalı olduğu için reddedildiyse (`code: remote_disabled`) ve çağıran observe kipindeki beyinse
+    red yerine `would:<kind>` (host alanlı) kaydı döner: beyin observe'da yerelde de kuru yanıt alıyor."""
+    actor = str(data.get("actor") or "")
+    denied = _target(name, actor, kind=kind, sid=sid, host=data.get("host"))
+    if denied is not None:
+        if denied.get("code") == "remote_disabled" and actor == "brain":
+            return _brain_dry(kind, data, name, sid, host=str(denied.get("host") or "")) or denied
+        return denied
+    return _brain_dry(kind, data, name, sid)
 
 
 def _service_session(name: str) -> str:
@@ -188,29 +365,59 @@ def _service_session(name: str) -> str:
     return ""
 
 
+def _remote_denied(name: str, actor: str, kind: str, sid: str, want: str, proj_host: str) -> Dict[str, Any]:
+    """Uzak hedef reddi (A1'de uzak hedef KOŞULSUZ reddedilir). Sıra: bilinmeyen host → host uyuşmazlığı (istenen host
+    ile adın çözüldüğü projenin host'u; "" = yerel) → `remote_actions` kapalı → uzak eylem yolu yok."""
+    if want and hosts_mod.get_host(want) is None:
+        code, err = "unknown_host", f"target denied: unknown host {want!r} (not in hosts.json)"
+    elif want != proj_host:
+        code, err = "host_mismatch", (f"target denied: {name!r} belongs to a project on {proj_host or 'local'!r}, "
+                                      f"not {want or 'local'!r}")
+    elif not steward_config(sid).remote_actions:
+        code, err = "remote_disabled", "target denied: remote actions are disabled (steward.remote_actions is off)"
+    else:
+        code, err = "remote_disabled", "target denied: remote actions are not available yet"
+    host = want or proj_host
+    sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name, host=host, code=code)
+    return {"ok": False, "error": err, "code": code, "host": host}
+
+
 def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = None,
-            kind: str = "", sid: str = "default", world: Optional[sw.World] = None) -> Optional[Dict[str, Any]]:
+            kind: str = "", sid: str = "default", world: Optional[sw.World] = None,
+            host: Any = None) -> Optional[Dict[str, Any]]:
     """Oturuma dokunan yolların TEK kapısı (docs/multi-steward-plan.md K5). `None` = izinli, aksi halde red yanıtı.
     Beyin (`actor: brain`, MCP) ve motor (`actor: engine`, `_apply`) YALNIZ KENDİ kimliğinin (`sid`) beyin oturumunu ve
     kayıtlı proje oturumlarını hedefleyebilir: başka kimliğin projesi/beyni, servis, çakışmalı proje ve kayıtsız (ad hoc)
     oturum reddedilir (çözüm global, `World.session_class`). İnsanın CLI/panel çağrısı (`actor` yok): `default` bağlamında
     kısıtsız (kayıtsız oturuma da yazabilir, bugünkü ad hoc davranış); diğer bağlamlarda yalnız o kimliğin kendi
-    projeleri/beyni (plan (e) insan geçidi)."""
+    projeleri/beyni (plan (e) insan geçidi).
+
+    Host (uzak proje): verilmezse adın çözüldüğü projenin host'u (beyin/motor host vermez: proje kaydından); verilirse
+    ("local" = yerel) o host'la aynı olmalı, aksi halde red (insan default bağlamında bile: `host=local` ile uzaktaki
+    `oiso` projesinin yerel adaşına, `host=ulak31` ile kayıtsız uzak oturuma dokunulmaz). Uzak hedef
+    ayrıca `steward.remote_actions` + uygulanmış uzak eylem yolu ister: A1'de HİÇBİRİ yok, uzak hedef hep reddedilir
+    (`_remote_denied`). Kimlik reddi (başka kimliğin projesi vb.) uzak reddinden önce gelir."""
     svc = _service_session(name)
     if svc:     # pasif servis (varaka): HİÇBİR eylemin hedefi olamaz (insan dahil; `steward service` kaydı watch/passive)
         sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name, service=svc)
         return {"ok": False, "error": "target denied: passive shared service session"}
+    if projects is None:
+        projects = sw.load_projects(sid)
+    if world is None:
+        world = _world(sid)
+    proj_host = _locate(name, projects, world)[0] if sw.valid_name(name) else ""
+    want = proj_host if host is None or host == "" else sw.normalize_host(host)    # verilmeyen host = projenin host'u
+
+    def remote() -> Optional[Dict[str, Any]]:      # kimlik kapısı geçildiyse: yerel hedef serbest, uzak hedef red
+        return _remote_denied(name, actor, kind, sid, want, proj_host) if (want or proj_host) else None
+
     if actor not in ("brain", "engine") and sid == "default":
-        return None
+        return remote()
     if name == steward_config(sid).brain_name:
-        return None
+        return remote()
     if sw.valid_name(name):
-        if projects is None:
-            projects = sw.load_projects(sid)
-        if world is None:
-            world = _world(sid)
         if _project_for_session(name, projects, world) is not None:
-            return None
+            return remote()
     sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name)
     return {"ok": False, "error": "target denied: not the brain session or a registered steward project"}
 
@@ -273,6 +480,10 @@ def public_base() -> str:
 # ── proje klasörü yardımcıları ────────────────────────────────────────────────
 
 def _project_cwd(name: str) -> str:
+    """Projenin YEREL klasörü. Ad uzak host'lu bir projeye çözülüyorsa "" (uzak projede yerel dosya sistemi ASLA
+    okunmaz/yazılmaz: aynı yolda yerel bir klasör, roster satırı ya da adaş oturum o projenin değildir)."""
+    if _name_host(name):
+        return ""
     fleet = _act("fleet_status") or {}
     info = fleet.get(name) if isinstance(fleet, dict) else None
     if info and info.get("cwd"):
@@ -378,8 +589,11 @@ def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = Non
 
 
 def _collect_views(cfg: sw.Config) -> List[sw.SessionView]:
+    """Tick'in oturum görünümleri: yerel `/api/status` satırları (+ provider okumaları) ve uzak projelerin taze
+    host'lardaki satırları (`_remote_views`). Satır seçimi `sw.select_rows`: adı uzak projeye çözülen yerel satır düşer."""
     payload = _act("status_payload") or {}
-    rows = [r for r in (payload.get("sessions") or []) if r.get("host", LOCAL_HOST_NAME) == LOCAL_HOST_NAME]
+    world = _world(cfg.sid, cfg)
+    rows = sw.select_rows([r for r in (payload.get("sessions") or []) if not sw.normalize_host(r.get("host"))], world)
     live = {s.name: s for s in find_sessions(measure_cpu=False)}
     stuck_names = set()
     try:
@@ -421,6 +635,11 @@ def _collect_views(cfg: sw.Config) -> List[sw.SessionView]:
             except Exception:
                 v.started_at = 0.0
         views.append(v)
+    if world.hosts:
+        try:
+            views.extend(_remote_views(world))
+        except Exception as e:      # uzak okuma yerel görünümleri düşürmesin
+            diag_log("steward_remote_views_failed", sid=cfg.sid, error=repr(e))
     return views
 
 
@@ -475,7 +694,17 @@ def _project_for_session(name: str, projects: Dict[str, sw.Project],
     """Oturum adı → değnekçi projesi: tam ad, yoksa instance kaydının blueprint'i, yoksa base adı.
     `world` verilirse çözüm GLOBAL süzgeçten geçer (K4): ad (ya da blueprint) başka kimliğin projesine, çakışmalı
     projeye, servise ya da bir beyne çözülüyorsa None (`ncs` A'nın, `ncs2` B'nin iken `ncs2` oturumu `Session.base`
-    ile A'nın `ncs`'ine İNMEZ). Tek kimlikte sonuç eskisiyle aynı."""
+    ile A'nın `ncs`'ine İNMEZ). Tek kimlikte sonuç eskisiyle aynı.
+    Ad UZAK host'lu bir projeye çözülüyorsa yerel instance kaydına BAKILMAZ (o kayıt buradaki adaş oturumun)."""
+    if world is not None:
+        kind, key = world.resolve(name)
+        if kind == "project" and world.host_of(key):
+            p = projects.get(key)
+            return None if p is None or world.name_class(name) in _FOREIGN else p
+    else:
+        key = sw._project_key(name, projects)
+        if key and projects[key].host:
+            return projects[key]
     rec = inst_mod.get_instance(name)
     p = None
     if name in projects:
@@ -655,8 +884,14 @@ def _cwd_resolver() -> Callable[[str], str]:
     """Proje adı -> cwd, filo anlık görüntüsü bir kez alınarak (160 projede her biri için süreç taraması YOK;
     çalışan projeler zaten kart yenilemeden dışlanır, yalnız roster/instance kayıtlarına bakılır)."""
     fleet = _act("fleet_status") or {}
+    try:
+        hosts = _ownership_index().get("hosts") or {}
+    except Exception:
+        hosts = {}
 
     def resolve(name: str) -> str:
+        if hosts.get(name):     # uzak proje: yerel klasör YOK (aynı yoldaki yerel klasör onun değil)
+            return ""
         info = fleet.get(name) if isinstance(fleet, dict) else None
         if info and info.get("cwd"):
             return info["cwd"]
@@ -671,6 +906,8 @@ def refresh_card(name: str, cfg: Optional[sw.Config] = None, *, cwd: str = "", r
     yoksa ham kart yazılır. Her çağrı `log.jsonl`'a bir `card` olayı düşer (günlük özet bunu sayar)."""
     cfg = cfg or steward_config()
     project = sw.load_projects(cfg.sid).get(name)
+    if (project is not None and project.host) or _name_host(name):
+        return {"ok": False, "name": name, "error": "remote project: cards are not built from a remote folder yet"}
     cwd = cwd or _project_cwd(name)
     if not cwd or not os.path.isdir(cwd):
         return {"ok": False, "name": name, "error": "project folder unknown"}
@@ -731,8 +968,8 @@ def refresh_due_cards(cfg: Optional[sw.Config] = None, limit: Optional[int] = No
     cwd_of = _cwd_resolver()
     due = []
     for p in projects.values():
-        if p.phase not in sw.ACTIVE_PHASES or p.name in running:
-            continue
+        if p.phase not in sw.ACTIVE_PHASES or p.name in running or p.host:
+            continue     # uzak proje: kartı uzak klasörden üretilmez (A1: atlanır)
         cwd = cwd_of(p.name)
         if not cwd or not os.path.isdir(cwd):
             continue
@@ -874,12 +1111,17 @@ def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project],
         return it
     name = it.get("name") or ""
     p = projects.get(name)
-    s = _running(name)
+    remote = _name_host(name) if sw.valid_name(name) else ""
+    s = None if remote else _running(name)        # uzak projede yerel adaş oturum/klasör okunmaz
     proj = p or (_project_for_session(s.name, projects, world) if s is not None else None)
+    if proj is None and remote:
+        proj = _locate(name, projects, world)[1]
     out = dict(it)
     if proj is not None:
         out.update({"phase": proj.phase, "kindp": proj.kind, "goal": proj.goal, "last_directive": proj.last_directive})
-    cwd = (s.cwd if s is not None else "") or _project_cwd(name)
+    if remote:
+        out["host"] = remote
+    cwd = "" if remote else ((s.cwd if s is not None else "") or _project_cwd(name))
     if s is not None:
         try:
             out["last_exchange"] = get_provider(s.cli).last_exchange(s.cwd, s.sid) or {}
@@ -1013,12 +1255,24 @@ def http_summary(date: str = "", lang: str = "", sid: str = "default") -> Dict[s
 
 # ── eylem uygulama ────────────────────────────────────────────────────────────
 
+# Oturuma dokunan eylem türleri (observe'da uygulanmayanlar, beynin turu hariç: beyin hep yerel).
+_SESSION_KINDS = tuple(k for k in sw.OBSERVE_SKIPPED if k != "tour")
+
+
 def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
            world: Optional[sw.World] = None) -> Dict[str, Any]:
-    """Tek eylemi uygula. Kayıtlar `cfg.sid`'in deposuna; oturuma dokunan eylemler `_target` kapısından (kimlikli)."""
+    """Tek eylemi uygula. Kayıtlar `cfg.sid`'in deposuna; oturuma dokunan eylemler `_target` kapısından (kimlikli).
+    Hedef UZAK bir projedeyse (`_locate`) oturuma dokunan HER tür (`start`/`deliver_answer` dahil) `_target`ın host
+    kuralından geçer: A1'de reddedilir, yerel yola (yerel adaş oturuma) ASLA düşmez."""
     k = action.kind
     name = action.name
     paths = sw.paths_for(cfg.sid)
+    if k in _SESSION_KINDS:
+        host = _locate(name, projects, world or _world(cfg.sid, cfg))[0]
+        if host:
+            denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world, host=host)
+            if denied is not None:
+                return denied
     if k in ("handover", "respawn", "stop"):   # deliver_answer kayıtsız oturuma da gider (cevap kaynağına); start zaten projects'e bağlı
         denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
         if denied is not None:
@@ -1261,7 +1515,7 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
         try:
             projects = sw.load_projects(paths)
             idx = index if index is not None else _ownership_index()
-            world = _world(sid, cfg, starts_left, idx)
+            world = _with_availability(_world(sid, cfg, starts_left, idx), cfg, t0)
             _note_conflicts(ctx, idx, set(projects), t0)
             views = _collect_views(cfg)
             with sw.steward_lock(paths):     # state RMW atomik (CLI süreci de aynı dosyaya yazar)
@@ -1272,8 +1526,10 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 sw.save_state(new_state, paths)
             for a in dry:
-                _remember_dry(a, ctx)
-                dry_applied.append({"kind": a.kind, "name": a.name, "reason": a.reason, "dry": True})
+                host = _locate(a.name, projects, world)[0] if a.kind in _SESSION_KINDS else ""
+                _remember_dry(a, ctx, host=host)
+                dry_applied.append(dict({"kind": a.kind, "name": a.name, "reason": a.reason, "dry": True},
+                                        **({"host": host} if host else {})))
             for a in actions:
                 if a.kind == "start":
                     started += 1      # deneme sayılır (başarısız açılış da bir spawn dalgası olabilir)
@@ -1675,6 +1931,9 @@ def http_idea_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, An
     present: List[str] = []
     skipped: List[str] = []
     for n in names:
+        if projects[n].host:      # uzak proje: yerel klasöre YAZILMAZ (aynı yolda yerel klasör olsa bile)
+            skipped.append(n)
+            continue
         cwd = _project_cwd(n)
         if not cwd or not os.path.isdir(cwd):
             skipped.append(n)
@@ -1717,10 +1976,14 @@ def http_context(name: str, docs: bool = False, sid: str = "default") -> Dict[st
         return denied
     projects = sw.load_projects(sid)
     p = projects.get(name)
-    s = _running(name)
-    cwd = (s.cwd if s is not None else "") or _project_cwd(name)
+    remote = _name_host(name)
+    s = None if remote else _running(name)       # uzak projede yerel adaş oturum/klasör/git okunmaz
+    cwd = "" if remote else ((s.cwd if s is not None else "") or _project_cwd(name))
     out: Dict[str, Any] = {"ok": True, "name": name, "project": _project_dict(p) if p else None, "cwd": cwd,
                            "running": s is not None}
+    if remote:
+        out["host"] = remote
+        out["note"] = "remote project: live context/docs are read on the remote host (not available yet)"
     if s is not None:
         provider = get_provider(s.cli)
         try:
@@ -1745,6 +2008,8 @@ def http_file(name: str, rel: str, max_chars: int = MAX_FILE_READ_CHARS, sid: st
     denied = _read_denied(name, sid) if sw.valid_name(name) else None
     if denied is not None:
         return denied
+    if sw.valid_name(name) and _name_host(name):
+        return {"ok": False, "error": "remote project: files are read on the remote host (not available yet)"}
     cwd = _project_cwd(name)
     full = _safe_project_file(cwd, rel) if cwd else None
     if full is None:
@@ -1762,6 +2027,34 @@ def _in_roster(name: str) -> bool:
     return name in {e.name for e in roster_mod.read_roster()}
 
 
+def _in_remote_roster(name: str, host: str) -> bool:
+    """Uzak projenin roster'ı: host'un TAZE `/api/status` önbelleğinde `registered` ve adı tam `name` olan satır
+    (çalışan ya da kapalı; ağa gidilmez). Host kapalı/bilinmiyorsa False."""
+    st = _remote.status(host)
+    if not _host_fresh(st):
+        return False
+    rows = list(st.get("sessions") or []) + list(st.get("closed") or [])
+    return any(isinstance(r, dict) and r.get("name") == name and r.get("registered", True) for r in rows)
+
+
+def _project_running_anywhere(name: str, hosts: Any = ()) -> Optional[bool]:
+    """Projenin (adı `name`e çözülen) bir oturumu çalışıyor mu: yerel süreç taraması + `hosts`taki uzak önbellek
+    satırları. True = çalışıyor; False = hiçbir yerde çalışmıyor; None = bir host'un durumu bilinmiyor (kapalı/bayat)."""
+    only = {name: None}
+    if any(sw._project_key(s.name, only) == name for s in find_sessions(measure_cpu=False)):
+        return True
+    unknown = False
+    for h in sorted({x for x in hosts if x}):
+        st = _remote.status(h)
+        rows = (st or {}).get("sessions") or []
+        if any(isinstance(r, dict) and r.get("running") and sw._project_key(str(r.get("name") or ""), only) == name
+               for r in rows):
+            return True
+        if not _host_fresh(st):
+            unknown = True
+    return None if unknown else False
+
+
 def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     if not sw.valid_name(name):
@@ -1772,17 +2065,34 @@ def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str,
         sw.log_event("project_denied", paths=sid, actor="brain", name=name)
         return {"ok": False, "error": "brain cannot create a new project with steward_set_project; "
                                       "use steward_register_project (or ask the owner)"}
-    fields = {k: data.get(k) for k in ("phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort")
-              if k in data}
+    fields = {k: data.get(k) for k in ("phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort",
+                                        "host") if k in data}
+    old = sw.load_projects(sid).get(name)
+    old_host = old.host if old is not None else ""
+    if "host" in fields:
+        if data.get("actor") == "brain":
+            # Projenin hangi makinede yaşadığı sahibin kararı: beyin host'u değiştiremez (yanlış host = yanlış adaş oturum).
+            sw.log_event("project_denied", paths=sid, actor="brain", name=name, field="host")
+            return {"ok": False, "error": "brain cannot change a project's host (ask the owner)"}
+        fields["host"] = sw.normalize_host(fields["host"])
+    new_host = fields.get("host", old_host)
     if fields.get("phase") in sw.ACTIVE_PHASES:
         # Roster'da olmayan projeyi AKTİF faza alma/kaydetme (idea→planned dahil): her tick başarısız `start` üretirdi (CLI zaten uyarıyordu).
-        # `idea/paused/done` serbest; önce `steward_register_project`/panel kaydı.
-        if not _in_roster(name):
+        # `idea/paused/done` serbest; önce `steward_register_project`/panel kaydı. Uzak projede roster = o host'un satırları.
+        if new_host:
+            if not _in_remote_roster(name, new_host):
+                return {"ok": False, "error": f"'{name}' is not in the roster of host {new_host!r} (or the host is not "
+                                              "reachable right now); register it there first or use phase idea/paused"}
+        elif not _in_roster(name):
             return {"ok": False, "error": f"'{name}' is not in the roster; register it first "
                                           "(panel / steward_register_project) or use phase idea/paused"}
+    running = None
+    if old is not None and "host" in fields and new_host != old_host:
+        busy = _project_running_anywhere(name, (old_host, new_host))
+        running = lambda: busy      # noqa: E731 — kilit altında ağ/süreç taraması yapılmasın: önceden hesaplandı
     try:
-        p = sw.upsert_project(name, paths=sid, **fields)
-    except ValueError as e:      # OwnedElsewhere / ReservedName mesajı olduğu gibi
+        p = sw.upsert_project(name, paths=sid, force=bool(data.get("force")), running=running, **fields)
+    except ValueError as e:      # OwnedElsewhere / ReservedName / HostChangeRefused mesajı olduğu gibi
         return {"ok": False, "error": str(e)}
     sw.log_event("project_set", paths=sid, name=name, fields=sorted(fields))
     out = {"ok": True, "project": _project_dict(p)}
@@ -1818,6 +2128,12 @@ def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     goal = str(data.get("goal") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
+    known = sw.load_projects(cfg.sid).get(name)
+    if sw.normalize_host(data.get("host")) or (known is not None and known.host) or _name_host(name):
+        # Uzak proje burada AÇILMAZ (klasör/GOAL.md/roster bu makineye yazılırdı): uzak host'ta kayıtlı roster satırı
+        # `steward set NAME --host H` ile benimsenir.
+        return {"ok": False, "error": "remote project: register it on its host, then adopt it with "
+                                      "`py/cops steward set NAME --host HOST`"}
     if not cwd or not os.path.isabs(cwd):
         return {"ok": False, "error": "cwd must be an absolute path"}
     # Talep ÖNCE denetlenir (klasör/GOAL.md/roster yan etkilerinden önce): başka kimliğin adı ya da rezerve ad reddedilir.
@@ -2021,12 +2337,9 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
-    denied = _target(name, str(data.get("actor") or ""), kind="directive", sid=sid)
-    if denied is not None:
-        return denied
-    dry = _brain_dry("directive", data, name, sid)
-    if dry is not None:
-        return dry
+    gated = _gate(name, data, "directive", sid)
+    if gated is not None:
+        return gated
     with _ctx(sid).lock:
         projects = sw.load_projects(sid)
         p = _project_for_session(name, projects, _world(sid))
@@ -2044,12 +2357,9 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
     cfg = steward_config(sid)
-    denied = _target(name, str(data.get("actor") or ""), kind="restart", sid=sid)
-    if denied is not None:
-        return denied
-    dry = _brain_dry("restart", data, name, sid)
-    if dry is not None:
-        return dry
+    gated = _gate(name, data, "restart", sid)
+    if gated is not None:
+        return gated
     with _ctx(sid).lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
         if _running(name) is not None:
             res = _act("stop", name, lang=cfg.lang)
@@ -2062,12 +2372,9 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     cfg = steward_config(sid)
-    denied = _target(name, str(data.get("actor") or ""), kind="stop", sid=sid)
-    if denied is not None:
-        return denied
-    dry = _brain_dry("stop", data, name, sid)
-    if dry is not None:
-        return dry
+    gated = _gate(name, data, "stop", sid)
+    if gated is not None:
+        return gated
     with _ctx(sid).lock:
         res = _act("stop", name, lang=cfg.lang)
     sw.log_event("stop", paths=sid, name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")))
@@ -2077,12 +2384,9 @@ def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 def http_handover(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     cfg = steward_config(sid)
-    denied = _target(name, str(data.get("actor") or ""), kind="handover", sid=sid)
-    if denied is not None:
-        return denied
-    dry = _brain_dry("handover", data, name, sid)
-    if dry is not None:
-        return dry
+    gated = _gate(name, data, "handover", sid)
+    if gated is not None:
+        return gated
     with _ctx(sid).lock:
         res = _act("handover", name, lang=cfg.lang)
         if res.get("ok"):

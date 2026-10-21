@@ -41,6 +41,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import hosts as hosts_mod      # yaprak modül (yalnız paths'e bağlı): proje `host` doğrulaması
 from .atomic_json import atomic_write_json
 from .paths import CLAUDEOPS_DIR
 
@@ -154,6 +155,13 @@ class Project:
     visits: int = 0
     created_at: float = 0.0
     updated_at: float = 0.0
+    host: str = ""                  # oturumun çalıştığı host (`hosts.json` adı); "" = yerel ("local" de yerele normalize edilir)
+
+
+def normalize_host(host: Any) -> str:
+    """Proje/istek host alanı: boşluk kırpılır, `local` (`hosts.LOCAL_HOST_NAME`) ve boş = "" (yerel). SAF."""
+    h = str(host or "").strip()
+    return "" if h in ("", hosts_mod.LOCAL_HOST_NAME) else h
 
 
 @dataclass
@@ -205,6 +213,8 @@ class SessionView:
     started_at: float = 0.0             # sürecin başlangıcı (epoch)
     stuck: bool = False
     subagent_active: bool = False       # transkriptin `subagents/agent-*.jsonl` dosyaları SUBAGENT_QUIET_SECONDS içinde yazıldı
+    host: str = "local"                 # satırın geldiği host (`/api/status` `host` alanı); uzak = `hosts.json` adı
+    subagent_unknown: bool = False      # alt ajan durumu okunamadı (uzak oturum): "boşta" SAYILMAZ (DONE/kapatma devri bekler)
 
     @property
     def project(self) -> str:
@@ -252,6 +262,8 @@ class Config:
     cards_per_tick: int = 1          # bir tick'te en çok kaç kart yenilenir (0 = hiç)
     mode: str = "observe"            # observe: oturuma dokunan eylemler uygulanmaz, `would:` olarak kaydedilir | act
     summary_hour: int = 21           # günlük özet: bu saatten (yerel) sonraki ilk tick'te, günde bir
+    remote_actions: bool = False     # uzak host'taki proje oturumlarına eylem (kimlik başına, VARSAYILAN KAPALI). Uzak eylem
+                                     # yolu henüz yok (A1): açık olsa da uzak hedef `_target`ta reddedilir
     # ── çoklu değnekçi (P2) ──
     sid: str = "default"             # bu Config'in kimliği (`steward_config(sid)` doldurur)
     label: str = ""                  # panelde görünen ad
@@ -396,10 +408,11 @@ def project_owner(name: str, exclude: str = "") -> str:
 
 # ── sahiplik indeksi (çoklu değnekçi P3) ──────────────────────────────────────
 # Sahiplik = projects.json dosyalarının KENDİSİ (K2): ayrı kayıt yok. Aynı ad iki kimlikte = çakışma, kimse yönetmez.
-# İndeks bölümlü bir sözlük: ileride (TODO 2026-10-20 (14)) `"hosts": {proje: host}` gibi bir bölüm eklenebilir,
-# tüketiciler `World` yöntemleriyle okur (iç biçim değişebilir).
+# İndeks bölümlü bir sözlük; `"hosts": {proje: host}` bölümü uzak projeleri taşır (TODO 2026-10-20 (14)): yalnız yerel
+# OLMAYANLAR, yalnız çakışmasız projeler. Tüketiciler `World` yöntemleriyle okur (iç biçim değişebilir).
 
-_OWN_CACHE: Dict[str, Tuple[int, int, Tuple[str, ...]]] = {}   # projects.json yolu → (mtime_ns, size, adlar)
+# projects.json yolu → (mtime_ns, size, adlar, {ad: host} yalnız uzaklar)
+_OWN_CACHE: Dict[str, Tuple[int, int, Tuple[str, ...], Dict[str, str]]] = {}
 
 
 class ReservedName(ValueError):
@@ -426,28 +439,36 @@ def discover_steward_ids() -> List[str]:
                                 and os.path.isdir(os.path.join(STEWARD_DIR, "stewards", e)))
 
 
-def _project_names(path: str, fresh: bool = False) -> Tuple[str, ...]:
-    """`projects.json`'daki geçerli proje adları (`load_projects` ile aynı süzgeç); `(mtime_ns, size)` önbellekli."""
+def _project_meta(path: str, fresh: bool = False) -> Tuple[Tuple[str, ...], Dict[str, str]]:
+    """`projects.json`'daki geçerli proje adları (`load_projects` ile aynı süzgeç) + uzak projelerin host'ları;
+    `(mtime_ns, size)` önbellekli."""
     try:
         stt = os.stat(path)
     except OSError:
         _OWN_CACHE.pop(path, None)
-        return ()
+        return (), {}
     hit = _OWN_CACHE.get(path)
     if not fresh and hit and hit[0] == stt.st_mtime_ns and hit[1] == stt.st_size:
-        return hit[2]
+        return hit[2], hit[3]
     raw = _load_json(path, {})
     names = tuple(sorted(str(n) for n, d in raw.items() if isinstance(d, dict) and valid_name(str(n)))) \
         if isinstance(raw, dict) else ()
-    _OWN_CACHE[path] = (stt.st_mtime_ns, stt.st_size, names)
-    return names
+    hosts = {n: h for n in names if (h := normalize_host(raw[n].get("host")))}
+    _OWN_CACHE[path] = (stt.st_mtime_ns, stt.st_size, names, hosts)
+    return names, hosts
+
+
+def _project_names(path: str, fresh: bool = False) -> Tuple[str, ...]:
+    return _project_meta(path, fresh)[0]
 
 
 def build_ownership_index(names_by_sid: Dict[str, Any], brains: Optional[Dict[str, str]] = None,
-                          services: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                          services: Optional[Dict[str, Any]] = None,
+                          hosts: Optional[Dict[str, Dict[str, str]]] = None) -> Dict[str, Any]:
     """SAF. `names_by_sid`: {kimlik: proje adları}; `brains`: {kimlik: beyin adı} (verilmeyen kimlik `brain_name_for`);
-    `services`: services.json içeriği. Dönüş `{"owners": {proje: kimlik}, "conflicts": {proje: [kimlik..]},
-    "brains": {beyin_adı: kimlik}, "services": {ad: kayıt}}`. Çakışan ad `owners`'a GİRMEZ."""
+    `services`: services.json içeriği; `hosts`: {kimlik: {proje: host}} (yalnız uzak projeler). Dönüş `{"owners":
+    {proje: kimlik}, "conflicts": {proje: [kimlik..]}, "brains": {beyin_adı: kimlik}, "services": {ad: kayıt},
+    "hosts": {proje: host}}`. Çakışan ad `owners`'a da `hosts`'a da GİRMEZ."""
     seen: Dict[str, List[str]] = {}
     for sid in sorted(names_by_sid):
         for n in names_by_sid[sid] or ():
@@ -460,7 +481,8 @@ def build_ownership_index(names_by_sid: Dict[str, Any], brains: Optional[Dict[st
     for sid in sorted(set(names_by_sid) | set(brains or {})):
         brain_map[(brains or {}).get(sid) or brain_name_for(sid)] = sid
     svc = {str(n): (dict(r) if isinstance(r, dict) else {}) for n, r in (services or {}).items() if valid_name(str(n))}
-    return {"owners": owners, "conflicts": conflicts, "brains": brain_map, "services": svc}
+    host_map = {p: h for p, h in ((p, normalize_host((hosts or {}).get(s, {}).get(p))) for p, s in owners.items()) if h}
+    return {"owners": owners, "conflicts": conflicts, "brains": brain_map, "services": svc, "hosts": host_map}
 
 
 def ownership_index(sids: Optional[List[str]] = None, *, brains: Optional[Dict[str, str]] = None,
@@ -469,9 +491,10 @@ def ownership_index(sids: Optional[List[str]] = None, *, brains: Optional[Dict[s
     burada (okuma); `sids`: ayardaki kimlikler (dizini olmasa da beyin adı rezerve olur), `fresh`: önbelleği atla
     (talep protokolü)."""
     ids = list(dict.fromkeys(discover_steward_ids() + [s for s in (sids or []) if valid_steward_id(s)]))
-    names = {sid: _project_names(paths_for(sid).projects, fresh) for sid in ids}
+    meta = {sid: _project_meta(paths_for(sid).projects, fresh) for sid in ids}
     svc = _load_json(services_path(), {})
-    return build_ownership_index(names, brains, svc if isinstance(svc, dict) else {})
+    return build_ownership_index({s: m[0] for s, m in meta.items()}, brains, svc if isinstance(svc, dict) else {},
+                                 {s: m[1] for s, m in meta.items()})
 
 
 def reserved_reason(name: str, index: Dict[str, Any]) -> str:
@@ -503,6 +526,7 @@ def load_projects(paths: Any = None) -> Dict[str, Project]:
                 p = _from_dict(Project, d)
                 if p.phase not in PHASES:
                     p.phase = "planned"
+                p.host = normalize_host(p.host)    # elle yazılmış "local" / bozuk tip: yerel
                 out[p.name] = p
     return out
 
@@ -512,10 +536,48 @@ def save_projects(projects: Dict[str, Project], paths: Any = None) -> None:
         _save_json(_pp(paths).projects, {n: dataclasses.asdict(p) for n, p in projects.items()})
 
 
-def upsert_project(name: str, *, paths: Any = None, **fields: Any) -> Project:
-    """Alan bazlı güncelle (None/verilmeyen alanlar korunur). Geçersiz faz/tür/priority yok sayılır."""
+class HostChangeRefused(ValueError):
+    """Proje `host`u değiştirilemez: geçersiz/kayıtsız host ya da projenin bir oturumu çalışıyor (ya da bilinmiyor)."""
+
+
+# Host değişince o projenin oturum adlarıyla tutulan devir/iletim izleri silinir (eski host'taki oturumun izi yeni host'taki
+# aynı adlı oturuma taşınmasın: bekleyen devir yanlış oturumu yeniden açar, önsöz "gitti" sanılır, yanıt özeti tutmaz).
+_HOST_STATE_KEYS = ("ho_pending", "done_pending", "preamble_sent", "seen_assistant")
+
+
+def _clear_project_state(name: str, projects: Dict[str, Project], paths: Any = None) -> List[str]:
+    """`state`teki `_HOST_STATE_KEYS` sözlüklerinden adı (`host:ad` biçimi dahil) `name` projesine çözülen girdileri sil.
+    Dönen: silinen anahtarlar. Çağıran kimlik kilidini tutar (kilit yeniden girişli)."""
+    st = load_state(paths)
+    gone: List[str] = []
+    for key in _HOST_STATE_KEYS:
+        d = st.get(key)
+        if not isinstance(d, dict):
+            continue
+        for k in list(d):
+            bare = str(k).split(":", 1)[-1]
+            if _project_key(bare, projects) == name or (key == "done_pending" and d.get(k) == name):
+                del d[k]
+                gone.append(f"{key}.{k}")
+    if gone:
+        save_state(st, paths)
+    return gone
+
+
+def upsert_project(name: str, *, paths: Any = None, force: bool = False,
+                   running: Optional[Any] = None, **fields: Any) -> Project:
+    """Alan bazlı güncelle (None/verilmeyen alanlar korunur). Geçersiz faz/tür/priority yok sayılır.
+
+    `host` (uzak proje): `hosts.json`'da kayıtlı olmalı (`normalize_host`: "local"/"" = yerel), aksi halde
+    `HostChangeRefused`. Mevcut projenin host'u DEĞİŞİYORSA `running()` (çağıranın "projenin herhangi bir host'ta
+    çalışan oturumu var mı" denetimi: True/False/None=bilinmiyor) yalnız False dönerse kabul edilir; `force` denetimi
+    atlar. Değişince o projenin `state` izleri (`_HOST_STATE_KEYS`) temizlenir. Yeni projede çalışma denetimi yok."""
     if not valid_name(name):
         raise ValueError(f"invalid project name: {name!r}")
+    if "host" in fields and fields["host"] is not None:
+        fields["host"] = normalize_host(fields["host"])
+        if fields["host"] and hosts_mod.get_host(fields["host"]) is None:
+            raise HostChangeRefused(f"unknown host: {fields['host']!r} (not in hosts.json)")
     # Talep protokolü: ownership kilidi → ad başka kimlikte mi → kendi RMW (kimlik kilidi)
     with ownership_lock(), steward_lock(paths):
         other = project_owner(name, exclude=_pp(paths).sid)
@@ -527,6 +589,13 @@ def upsert_project(name: str, *, paths: Any = None, **fields: Any) -> Project:
             if why:
                 raise ReservedName(name, why)
         p = projects.get(name) or Project(name=name, created_at=_now())
+        host_changed = name in projects and fields.get("host") is not None and fields["host"] != p.host
+        if host_changed and not force:
+            busy = running() if callable(running) else None
+            if busy is not False:
+                raise HostChangeRefused(
+                    f"project {name!r} has a running session (or its state is unknown): stop it before moving it "
+                    f"from {p.host or 'local'!r} to {fields['host'] or 'local'!r} (or force)")
         for k, v in fields.items():
             if v is None or not hasattr(p, k) or k in ("name", "created_at"):
                 continue
@@ -549,6 +618,9 @@ def upsert_project(name: str, *, paths: Any = None, **fields: Any) -> Project:
         p.updated_at = _now()
         projects[name] = p
         save_projects(projects, paths)
+        if host_changed:
+            gone = _clear_project_state(name, projects, paths)
+            log_event("project_host", paths=paths, name=name, host=p.host, forced=bool(force), cleared=gone)
         return p
 
 
@@ -1846,6 +1918,13 @@ class World:
     services: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     is_adhoc_owner: bool = True                                  # kayıtsız oturumların işaretlerini işler (yalnız default)
     starts_left: Optional[int] = None                            # döngü turunun kalan başlatma hakkı (`max_starts_total`); None = sınırsız
+    hosts: Dict[str, str] = field(default_factory=dict)          # uzak proje → host (yerel projeler YOK; indeksin `hosts` bölümü)
+    unavailable: frozenset = frozenset()                         # host'u şu an erişilemeyen (ya da uzak eylemi kapalı) projeler:
+                                                                 # başlatılmaz, devir/DONE izi silinmez (görünümleri yok diye "kapandı" sayılmaz)
+
+    def host_of(self, project: str) -> str:
+        """Projenin host'u ("" = yerel)."""
+        return self.hosts.get(project, "")
 
     def owner_of(self, project: str) -> str:
         """Projenin sahibi ("" = sahipsiz ya da çakışmalı)."""
@@ -1943,7 +2022,30 @@ def world_for(sid: str, index: Dict[str, Any], brain_name: str = "", starts_left
     brains[brain_name or brain_name_for(sid)] = sid
     return World(sid=sid, owners=dict(index.get("owners") or {}), conflicts=frozenset(index.get("conflicts") or ()),
                  brains=brains, services=dict(index.get("services") or {}), is_adhoc_owner=(sid == "default"),
-                 starts_left=starts_left)
+                 starts_left=starts_left, hosts=dict(index.get("hosts") or {}))
+
+
+def select_rows(rows: List[Dict[str, Any]], world: World, fresh_hosts: Any = ()) -> List[Dict[str, Any]]:
+    """`/api/status` satırlarından değnekçinin göreceği oturumlar. SAF. Yerel satır (`host` yok/`local`) dahil; istisna:
+    adı (ya da instance blueprint'i) UZAK host'lu bir projeye çözülüyorsa düşer (o proje orada yaşar, buradaki aynı adlı
+    oturum onun değil). Uzak satır YALNIZ: ad bir projeye çözülür VE o projenin host'u satırın host'u VE host taze
+    (`fresh_hosts`) ise. Uzak beyin/servis/kayıtsız satır HEP düşer (uzaktaki `degnekci` bizim beynimiz sanılmasın).
+    Görünümlerde ad tekil kalır: bir ad ya yerelden ya da projesinin host'undan gelir."""
+    fresh = set(fresh_hosts or ())
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        host = normalize_host(r.get("host"))
+        name = str(r.get("name") or "")
+        kind, key = world.resolve(name)
+        proj_host = world.host_of(key) if kind == "project" else ""
+        if not host:
+            bp = r.get("blueprint") if r.get("instance") else None
+            if proj_host or (bp and bp != name and world.host_of(bp)):
+                continue
+            out.append(r)
+        elif kind == "project" and proj_host == host and host in fresh:
+            out.append(r)
+    return out
 
 
 def _sibling_running(views: List[SessionView], name: str, projects: Dict[str, "Project"], cfg: "Config",
@@ -2023,7 +2125,7 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
             return
         if it["stage"] == "wait":
             quiet = (now - max(v.last_activity, 0.0)) >= SHUTDOWN_QUIET_SECONDS if v.last_activity else True
-            if v.busy is not True and not v.subagent_active and quiet:
+            if v.busy is not True and not v.subagent_active and not v.subagent_unknown and quiet:
                 actions.append(Action("handover", name, "shutdown"))
                 it["stage"], it["at"] = "ho", now
             elif now - float(sd["started"]) >= SHUTDOWN_WAIT_MAX_SECONDS:
@@ -2104,7 +2206,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     (çakışmasız) projelere süzülür; başka kimliğin projesi/beyni, servis ve çakışmalı proje oturumuna HİÇBİR eylem
     üretilmez; kayıtsız oturumun işaretlerini ve ad hoc cevap iletimini yalnız `is_adhoc_owner` (default) işler;
     slot `max_active` yanında makine geneli `max_active_total` (diğer kimliklerin çalışan projeleri dahil) ve
-    `world.starts_left` ile sınırlanır."""
+    `world.starts_left` ile sınırlanır. Uzak projelerin oturumları (`SessionView.host`) aynı kurallardan geçer ve
+    sayımlara girer; `world.unavailable` projeleri için başlatma üretilmez, görünümleri yok diye devir/DONE izleri
+    silinmez. `subagent_unknown` görünümde STEWARD-DONE ertelenir (bilinmiyor = boşta değil)."""
     if world is not None:
         projects = world.own_projects(projects)
     bp = {v.name: v.blueprint for v in views if v.blueprint}
@@ -2122,6 +2226,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     actions: List[Action] = []
     by_name = {v.name: v for v in views}
     busy_names: set = set()   # bu tick'te zaten dokunulan oturumlar (ikinci bir eylem gönderme)
+
+    def _unavail(name: str) -> bool:
+        """Ad, host'u şu an erişilemeyen bir projeye çözülüyor mu (görünümü yok diye "kapandı" sayılmaz)."""
+        return world is not None and bool(world.unavailable) and world.project_key(name) in world.unavailable
 
     # 1) Oturum ekonomisi — scrollback eşiği → handover (beyin dahil: onun da scrollback'i dolar)
     def _managed(name: str) -> bool:
@@ -2166,6 +2274,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if name in busy_names:
             continue
         v = by_name.get(name)
+        if v is None and _unavail(name):
+            continue     # host kapalı: devir izi korunur, yeniden açma host dönünce kararlaştırılır
         if v is None or not v.running:
             if not _sibling_running(views, name, projects, cfg, world):
                 actions.append(Action("respawn", name, "handover sent, session gone → start"))
@@ -2205,7 +2315,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if proj and m["plan_ready"] and projects[proj].phase == "planning":
             actions.append(Action("set_phase", proj, "STEWARD-PLAN-READY", {"phase": "planned"}))
         if proj and m["done"]:
-            if v.subagent_active:
+            if v.subagent_active or v.subagent_unknown:
                 # Alt ajan hâlâ çalışıyor: işaret erken (wifi5g, Aşama 3 cila sürerken `done` oldu). Ertele; ajan bitince uygulanır.
                 done_pending[v.name] = proj
             else:
@@ -2216,9 +2326,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
 
     for name, proj in list(done_pending.items()):    # ertelenmiş STEWARD-DONE: alt ajan sustu mu?
         v = by_name.get(name)
+        if v is None and _unavail(name):
+            continue
         if v is None or not v.running or proj not in projects:
             done_pending.pop(name, None)
-        elif not v.subagent_active and v.busy is not True and name not in busy_names:
+        elif not v.subagent_active and not v.subagent_unknown and v.busy is not True and name not in busy_names:
             actions.append(Action("set_phase", proj, "STEWARD-DONE (ertelenmişti)", {"phase": "done"}))
             actions.append(Action("stop", name, "STEWARD-DONE (ertelenmişti)"))
             busy_names.add(name)
@@ -2284,7 +2396,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             deliver_by_session[v.name] = act
             busy_names.add(v.name)
             last_directive_at[v.name] = now
-        elif starts < max_starts and _slots() > 0:
+        elif starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable):
             actions.append(Action("start", target, "answer → start", {"question_id": q.id}))
             starts += 1
             busy_names.add(target)
@@ -2299,6 +2411,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     for p in projects.values():
         if p.phase not in ACTIVE_PHASES or p.cadence_minutes <= 0 or p.name in running_projects or p.name in busy_names:
             continue
+        if world is not None and p.name in world.unavailable:
+            continue     # host erişilemiyor: görünümü yok diye "çalışmıyor" sayılıp başlatılmaz
         if visit_of(p) == 0 or (now - visit_of(p)) >= p.cadence_minutes * 60:
             due.append(p)
     due.sort(key=lambda p: (p.priority, visit_of(p)))

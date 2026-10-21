@@ -14,6 +14,7 @@ Kullanım:
   py/cops steward cards [NAME] [--refresh]    # proje kartları (NAME: tek kartın tamamı); --refresh: şimdi yenile (panel üzerinden)
   py/cops steward set NAME [--phase planning] [--kind book] [--goal "..."] [--priority 2]
                            [--cadence 240] [--note "..."] [--model m] [--effort e]
+                           [--host HOST [--force]]   # uzak proje (hosts.json adı; local = yerel): panel üzerinden
   py/cops steward import [--phase planned]    # roster'daki (değnekçide olmayan) projeleri toplu kaydet
   py/cops steward questions [--all]           # bana sorulanlar
   py/cops steward answer ID "cevap"           # cevapla (motor oturuma iletir)
@@ -107,6 +108,10 @@ def cmd_status(args) -> int:
           f"son tick: {_ago(float(st.get('last_tick') or 0))}   son tur: {_ago(float(st.get('last_tour') or 0))}")
     if st.get("ho_pending"):
         print("handover bekleyen: " + ", ".join(st["ho_pending"]))
+    remote = sorted(f"{p.name}@{p.host}" for p in projects.values() if p.host)
+    if remote:
+        print(f"uzak projeler: {', '.join(remote)}   uzak eylem: "
+              f"{'açık' if cfg.remote_actions else 'kapalı'} (henüz uygulanmıyor: yalnız gözlem)")
     conflicts = sw.ownership_index(steward_ids()).get("conflicts") or {}
     mine = sorted(n for n in projects if n in conflicts)
     for n in mine:
@@ -132,10 +137,13 @@ def cmd_projects(args) -> int:
         print("değnekçi projesi yok — `py/cops steward import` roster'dakileri alır, `set NAME --phase ...` tek tek ekler")
         return 0
     cards = sw.load_cards()
-    print(f"{'NAME':<24}{'PHASE':<10}{'P':>2} {'CAD':>5} {'VISIT':>6}  NEXT / GOAL")
+    remote = any(p.host for p in rows)       # HOST sütunu yalnız uzak proje varken (yerel düzen eskisiyle aynı)
+    hcol = f"{'HOST':<12}" if remote else ""
+    print(f"{'NAME':<24}{'PHASE':<10}{hcol}{'P':>2} {'CAD':>5} {'VISIT':>6}  NEXT / GOAL")
     for p in rows:
         nxt = sw.card_one_liner(cards.get(p.name)) or p.goal
-        print(f"{p.name:<24}{p.phase:<10}{p.priority:>2} {p.cadence_minutes:>5} {_ago(p.last_visit):>6}  {nxt[:70]}")
+        h = f"{(p.host or 'local'):<12}" if remote else ""
+        print(f"{p.name:<24}{p.phase:<10}{h}{p.priority:>2} {p.cadence_minutes:>5} {_ago(p.last_visit):>6}  {nxt[:70]}")
     return 0
 
 
@@ -173,6 +181,19 @@ def cmd_cards(args) -> int:
 def cmd_set(args) -> int:
     fields = {"phase": args.phase, "kind": args.kind, "goal": args.goal, "priority": args.priority,
               "cadence_minutes": args.cadence, "notes": args.note, "model": args.model, "effort": args.effort}
+    if getattr(args, "host", None) is not None:
+        # Host (uzak proje) PANEL üzerinden yazılır: "projenin çalışan oturumu var mı" ve uzak roster denetimi panelin
+        # uzak host önbelleğine bakar (bu süreçte yok).
+        body = dict({k: v for k, v in fields.items() if v is not None}, name=args.name, host=args.host,
+                    force=bool(getattr(args, "force", False)))
+        res = _api(args.port, "POST", "/api/steward/project", body, _sid(args))
+        if not res.get("ok"):
+            print(f"hata: {res.get('error')}")
+            return 1
+        print(json.dumps(res.get("project") or {}, ensure_ascii=False, indent=2))
+        if res.get("warning"):
+            print(f"uyarı: {res['warning']}")
+        return 0
     try:
         p = sw.upsert_project(args.name, paths=_sid(args), **{k: v for k, v in fields.items() if v is not None})
     except ValueError as e:
@@ -180,7 +201,9 @@ def cmd_set(args) -> int:
         return 1
     sw.log_event("project_set", paths=_sid(args), name=p.name, fields=[k for k, v in fields.items() if v is not None], source="cli")
     print(json.dumps(dataclasses.asdict(p), ensure_ascii=False, indent=2))
-    if p.name not in {e.name for e in roster_mod.read_roster()}:
+    if p.host:
+        print(f"not: '{p.name}' uzak proje ({p.host}): roster'ı o host'ta, panel denetler (yerel roster'a bakılmadı).")
+    elif p.name not in {e.name for e in roster_mod.read_roster()}:
         print(f"uyarı: '{p.name}' roster'da yok — değnekçi oturum açamaz. Panelden kaydet ya da beyne "
               f"steward_register_project yaptır (klasör + GOAL.md + roster).")
     return 0
@@ -651,6 +674,10 @@ def register(sub):
     ps.add_argument("--note")
     ps.add_argument("--model")
     ps.add_argument("--effort")
+    ps.add_argument("--host", default=None, metavar="HOST",
+                    help="oturumun çalıştığı host (hosts.json adı; local = yerel). Panel üzerinden yazılır")
+    ps.add_argument("--force", action="store_true", help="--host: çalışan oturum denetimini atla")
+    ps.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     ps.set_defaults(func=cmd_set)
     pk = s.add_parser("cards", help="proje kartları (hedef / sıradaki adım / açık TBD / engel)")
     pk.add_argument("name", nargs="?", default="")
