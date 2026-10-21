@@ -1243,6 +1243,16 @@ def build_raw_card(cwd: str) -> Dict[str, Any]:
     return {"docs": docs, "git_log": git_log, "last_commit": last_commit, "source_hash": h.hexdigest()[:16]}
 
 
+def raw_card_from_docs(docs: Dict[str, str]) -> Dict[str, Any]:
+    """UZAK projenin ham kartı: belge başları host-routed okumadan gelir, git bilgisi YOK (`git_unknown`; yerel `git`
+    uzak yola bakamaz). `source_hash` yalnız belgelerden (`build_raw_card`ın belge kısmıyla aynı şema). SAF."""
+    h = hashlib.sha1()
+    for d in CARD_DOCS:
+        if d in docs:
+            h.update(f"\0{d}\0{docs[d]}".encode("utf-8", "replace"))
+    return {"docs": dict(docs), "git_log": [], "last_commit": 0.0, "git_unknown": True, "source_hash": h.hexdigest()[:16]}
+
+
 def _short(text: Any, n: int = CARD_TEXT_CHARS) -> str:
     return _clip(" ".join(str(text or "").split()), n)
 
@@ -1352,6 +1362,8 @@ def build_card_prompt(name: str, raw: Dict[str, Any], project: Optional[Project]
         parts.append(f"=== {d} ===\n{body}")
     if raw.get("git_log"):
         parts.append("=== git log -5 ===\n" + "\n".join(raw["git_log"]))
+    if raw.get("git_unknown"):
+        parts.append("=== git ===\nremote: bilinmiyor" if tr else "=== git ===\nremote: unknown")
     if not (raw.get("docs") or raw.get("git_log")):
         parts.append("(belge ya da commit yok)" if tr else "(no documents or commits)")
     return "\n\n".join(parts)

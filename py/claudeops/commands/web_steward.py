@@ -149,6 +149,8 @@ def _world(sid: str = "default", cfg: Optional[sw.Config] = None, starts_left: O
 
 REMOTE_STALE_SECONDS = 60.0          # son başarılı poll bundan eskiyse host "kapalı": bayat satırlarla karar verilmez
 REMOTE_READ_BUDGET_SECONDS = 10.0    # tick başına uzak okumaların (term/chat) TOPLAM süresi
+MAX_REMOTE_CARDS_PER_TICK = 1            # tick başına (kart işi çağrısı başına) en çok bu kadar uzak proje kartı denetlenir/yenilenir (A6)
+REMOTE_CARD_BUDGET_SECONDS = 10.0        # bir kart işi çağrısında uzak belge okumalarının TOPLAM süresi (A6)
 REMOTE_DESTRUCTIVE_KINDS = ("stop", "respawn", "restart")   # uzakta YALNIZ exact_target + tam ad ön denetimiyle (A4)
 MAX_DESTRUCTIVE_PER_HOST = 1             # tick başına bir host'a en çok bu kadar yıkıcı eylem (fazlası ertelenir)
 REMOTE_STOP_TIMEOUT_SECONDS = 60.0       # `/api/stop` (uzak tarafta guard_lock + kill_session_and_parent)
@@ -925,6 +927,43 @@ def _remote_read_context(host: str, name: str, want_docs: bool, docs: Tuple[str,
     return out
 
 
+def _remote_files_gate(host: str, sid: str = "default") -> bool:
+    """Uzak proje dosyasına (kart okuması, fikir aktarımı) dokunma kapısı (A6): `steward.remote_actions` açık, host
+    kayıtlı + TAZE ve geri çekilmede değil. Kapalı/bayat host'a hiç istek atılmaz."""
+    if not host or hosts_mod.get_host(host) is None or not steward_config(sid).remote_actions:
+        return False
+    return _host_fresh(_remote.status(host)) and not _backing_off(host, time.time())
+
+
+# Uzak kart denetim sırası: {proje: son denetim zamanı}. Her tick yalnız MAX_REMOTE_CARDS_PER_TICK proje okunur; en
+# eski denetlenen önce gelir, böylece "kaynağı değişmemiş" bir proje kuyruğun başında diğerlerini aç bırakmaz.
+_REMOTE_CARD_CHECKED: Dict[str, float] = {}
+
+
+def _remote_raw_card(host: str, name: str, budget: float) -> Optional[Dict[str, Any]]:
+    """Uzak projenin ham kartı: klasörü host'un taze önbelleğinden, `CARD_DOCS` başları host-routed `files/read`den
+    (yerelle aynı liste ve uzunluk), git bilgisi YOK (`sw.raw_card_from_docs`). Yerel dosya sistemine ASLA bakılmaz.
+    None = bilinmiyor (klasör yok, bütçe bitti ya da hiçbir belge okunamadı: yoksa yenileme yanlışlıkla "değişti"
+    sayılırdı); belgesiz ama okunabilir klasör boş docs ile döner. Fırlatmaz."""
+    cwd = _remote_cwd(host, name)
+    if not cwd:
+        return None
+    deadline = time.monotonic() + budget
+    docs: Dict[str, str] = {}
+    reads = 0
+    for d in sw.CARD_DOCS:
+        left = deadline - time.monotonic()
+        if left <= 0.2:
+            return None
+        text, _cut, ok = _remote_file_head(host, name, cwd.rstrip("/") + "/" + d, sw.CARD_DOC_CHARS,
+                                           min(left, REMOTE_CARD_BUDGET_SECONDS))
+        if ok:
+            reads += 1
+            if text.strip():
+                docs[d] = text.strip()
+    return sw.raw_card_from_docs(docs) if reads else None
+
+
 # ── görünümler ────────────────────────────────────────────────────────────────
 
 def context_tokens_for(cwd: str, sid: Optional[str]) -> Optional[int]:
@@ -1418,12 +1457,20 @@ def refresh_card(name: str, cfg: Optional[sw.Config] = None, *, cwd: str = "", r
     yoksa ham kart yazılır. Her çağrı `log.jsonl`'a bir `card` olayı düşer (günlük özet bunu sayar)."""
     cfg = cfg or steward_config()
     project = sw.load_projects(cfg.sid).get(name)
-    if (project is not None and project.host) or _name_host(name):
-        return {"ok": False, "name": name, "error": "remote project: cards are not built from a remote folder yet"}
-    cwd = cwd or _project_cwd(name)
-    if not cwd or not os.path.isdir(cwd):
-        return {"ok": False, "name": name, "error": "project folder unknown"}
-    raw = raw or sw.build_raw_card(cwd)
+    host = (project.host if project is not None else "") or _name_host(name)
+    if host:
+        # Uzak proje (A6): ham kart uzak belge başlarından; YEREL klasör/git ASLA (aynı yoldaki yerel klasör onun değil).
+        if raw is None:
+            if not _remote_files_gate(host, cfg.sid):
+                return {"ok": False, "name": name, "error": "remote host unavailable or remote actions off", "host": host}
+            raw = _remote_raw_card(host, name, REMOTE_CARD_BUDGET_SECONDS)
+            if raw is None:
+                return {"ok": False, "name": name, "error": "remote project documents unreadable", "host": host}
+    else:
+        cwd = cwd or _project_cwd(name)
+        if not cwd or not os.path.isdir(cwd):
+            return {"ok": False, "name": name, "error": "project folder unknown"}
+        raw = raw or sw.build_raw_card(cwd)
     parsed, meta = summarize_card(raw, name, project, cfg)
     old = sw.load_card(name)
     if parsed is None and old is not None:
@@ -1475,11 +1522,15 @@ def _running_project_names(sid: str = "default") -> set:
 
 
 def refresh_due_cards(cfg: Optional[sw.Config] = None, limit: Optional[int] = None,
-                      now: Optional[float] = None) -> List[Dict[str, Any]]:
+                      now: Optional[float] = None, remote_limit: int = MAX_REMOTE_CARDS_PER_TICK,
+                      remote_budget: float = REMOTE_CARD_BUDGET_SECONDS) -> List[Dict[str, Any]]:
     """Kartı olmayan / bayat / kaynağı değişmiş / eskimiş, ÇALIŞMAYAN, aktif fazdaki projeleri yenile (en çok
     `limit`; None = `cards_per_tick`). Önce kartı hiç olmayanlar, sonra en eski kart. Çalışan proje atlanır:
     oturum yazarken kaynak zaten değişiyor (handover'dan sonra `mark_card_stale` ile işaretlenir).
-    Projeler `cfg.sid`'in deposundan; default dışı kimlikte çakışmalı projeler atlanır (kimse yönetmez)."""
+    Projeler `cfg.sid`'in deposundan; default dışı kimlikte çakışmalı projeler atlanır (kimse yönetmez).
+    Uzak proje (A6): `remote_actions` açık + host taze iken belge başları host-routed okunur (tick başına en çok
+    `remote_limit` proje, TOPLAM `remote_budget` sn; en eski denetlenen önce); host kapalı/okuma hatası = atlanır,
+    kart YEREL `steward/cards/`a yazılır (uzağa hiçbir şey yazılmaz)."""
     cfg = cfg or steward_config()
     limit = cfg.cards_per_tick if limit is None else limit
     if limit <= 0:
@@ -1494,9 +1545,13 @@ def refresh_due_cards(cfg: Optional[sw.Config] = None, limit: Optional[int] = No
     cards = sw.load_cards()
     cwd_of = _cwd_resolver()
     due = []
+    remote_projects: List[sw.Project] = []
     for p in projects.values():
-        if p.phase not in sw.ACTIVE_PHASES or p.name in running or p.host:
-            continue     # uzak proje: kartı uzak klasörden üretilmez (A1: atlanır)
+        if p.phase not in sw.ACTIVE_PHASES or p.name in running:
+            continue
+        if p.host:       # uzak proje: aşağıda, uzak okumayla (yerel cwd çözümü bu projeye HİÇ uygulanmaz)
+            remote_projects.append(p)
+            continue
         cwd = cwd_of(p.name)
         if not cwd or not os.path.isdir(cwd):
             continue
@@ -1512,6 +1567,33 @@ def refresh_due_cards(cfg: Optional[sw.Config] = None, limit: Optional[int] = No
             results.append(refresh_card(p.name, cfg, cwd=cwd, raw=raw, reason=reason))
         except Exception as e:  # tek kart döngüyü düşürmesin
             diag_log("steward_card_crashed", name=p.name, error=repr(e))
+            results.append({"ok": False, "name": p.name, "error": repr(e)})
+    if remote_projects and remote_limit > 0 and len(results) < limit:
+        results += _refresh_remote_cards(cfg, remote_projects, cards, now, min(remote_limit, limit - len(results)),
+                                         remote_budget)
+    return results
+
+
+def _refresh_remote_cards(cfg: sw.Config, projects: List[sw.Project], cards: Dict[str, Any], now: float,
+                          limit: int, budget: float) -> List[Dict[str, Any]]:
+    """`refresh_due_cards`ın uzak kolu: kapı geçen (remote_actions + taze host) projelerden en eski denetlenen
+    `limit` tanesinin belgelerini okur, yenilemesi gerekiyorsa kartı üretir. Okunamayan proje sessizce atlanır
+    (kart/deneme kaydı DEĞİŞMEZ); fırlatmaz."""
+    deadline = time.monotonic() + budget
+    results: List[Dict[str, Any]] = []
+    gated = [p for p in projects if _remote_files_gate(p.host, cfg.sid)]
+    gated.sort(key=lambda p: (_REMOTE_CARD_CHECKED.get(p.name, 0.0), p.priority, p.name))
+    for p in gated[:limit]:
+        _REMOTE_CARD_CHECKED[p.name] = now
+        try:
+            raw = _remote_raw_card(p.host, p.name, deadline - time.monotonic())
+            if raw is None:
+                continue
+            reason = sw.card_refresh_reason(cards.get(p.name), raw["source_hash"], now, cfg.card_max_age_hours)
+            if reason:
+                results.append(refresh_card(p.name, cfg, raw=raw, reason=reason))
+        except Exception as e:
+            diag_log("steward_card_crashed", name=p.name, error=repr(e), host=p.host)
             results.append({"ok": False, "name": p.name, "error": repr(e)})
     return results
 
@@ -2602,15 +2684,11 @@ def _idea_project(idea: "sw.Idea", projects: Dict[str, "sw.Project"]) -> str:
     return ""
 
 
-def _append_idea_item(path: str, idea: "sw.Idea", stamp: str) -> bool:
-    """Fikri `path`in sonuna `- [ ]` maddesi olarak ekler (aynı fikir kimliği varsa dokunmaz). True = yazıldı."""
-    try:
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-    except FileNotFoundError:
-        text = ""
+def _idea_appended(text: str, idea: "sw.Idea", stamp: str) -> Optional[str]:
+    """`text`in sonuna fikri `- [ ]` maddesi olarak eklenmiş yeni içerik; aynı fikir kimliği zaten varsa None. SAF
+    (yerel `_append_idea_item` ile uzak `_remote_append_idea` ortak çekirdeği)."""
     if idea.id in text:
-        return False
+        return None
     line = f"- [ ] (değnekçi fikri {idea.id}) {' '.join(idea.text.split())}"
     last_head = next((ln for ln in reversed(text.splitlines()) if ln.startswith("## ")), "")
     body = text.rstrip("\n")
@@ -2618,11 +2696,65 @@ def _append_idea_item(path: str, idea: "sw.Idea", stamp: str) -> bool:
         new = f"{body}\n{line}\n"
     else:
         new = (f"{body}\n\n" if body else "") + f"{_EXPORT_HEADING} ({stamp})\n{line}\n"
+    return new
+
+
+def _append_idea_item(path: str, idea: "sw.Idea", stamp: str) -> bool:
+    """Fikri `path`in sonuna `- [ ]` maddesi olarak ekler (aynı fikir kimliği varsa dokunmaz). True = yazıldı."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except FileNotFoundError:
+        text = ""
+    new = _idea_appended(text, idea, stamp)
+    if new is None:
+        return False
     tmp = f"{path}.{os.getpid()}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(new)
     os.replace(tmp, path)
     return True
+
+
+def _remote_read_full(host: str, name: str, path: str, budget: float) -> Optional[str]:
+    """Host-routed `GET /api/files/read` ile dosyanın TAMAMI (kırpma YOK: yazılacak içerik buna dayanır); None =
+    okunamadı (dosya yok, boyut sınırı, ağ/zaman aşımı, uygulama hatası). Fırlatmaz."""
+    try:
+        parsed, _status = _remote.get("/api/files/read", host, {"name": name, "path": path}, timeout=budget)
+    except Exception:
+        return None
+    if not isinstance(parsed, dict) or not parsed.get("ok") or not isinstance(parsed.get("text"), str):
+        return None
+    return parsed["text"]
+
+
+def _remote_append_idea(host: str, name: str, fname: str, idea: "sw.Idea", stamp: str, dry: bool,
+                        sid: str = "default") -> str:
+    """Uzak projenin `fname` dosyasının sonuna fikri ekler (A6). Sonuç: written | already | would | denied |
+    no_folder | unreadable | remote_conflict | write_failed. Sıra: kapı (remote_actions + taze host) → uzak klasör →
+    dosyayı OKU (okunamazsa YAZILMAZ) → madde ekli mi → observe'da dur (`would`) → yazmadan hemen önce TEKRAR oku,
+    değiştiyse bırak (`remote_conflict`) → host-routed `files/write` (kök denetimi uzak tarafta). Uzak `files/write`
+    yalnız VAR OLAN dosyayı değiştirir, yeni dosya oluşturmaz: dosya yoksa okuma da başarısız olur → `unreadable`."""
+    if not _remote_files_gate(host, sid):
+        return "denied"
+    cwd = _remote_cwd(host, name)
+    if not cwd:
+        return "no_folder"
+    if "/" in fname or ".." in fname or "\x00" in fname:      # sözcük denetimi (fname sabit tablodan gelir; yine de)
+        return "unreadable"
+    path = cwd.rstrip("/") + "/" + fname
+    before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
+    if before is None:
+        return "unreadable"
+    new = _idea_appended(before, idea, stamp)
+    if new is None:
+        return "already"
+    if dry:
+        return "would"
+    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != before:
+        return "remote_conflict"
+    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+    return "written" if res.get("ok") else "write_failed"
 
 
 def http_idea_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -2646,9 +2778,25 @@ def http_idea_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, An
     written: List[str] = []
     present: List[str] = []
     skipped: List[str] = []
+    would: List[str] = []
+    problems: Dict[str, str] = {}       # uzak proje → neden yazılamadı (yalnız uzak projeler; yerel çıktı değişmez)
+    dry = data.get("actor") == "brain" and steward_config(sid).mode == "observe"    # insan çağrısı observe'da da yazar
     for n in names:
-        if projects[n].host:      # uzak proje: yerel klasöre YAZILMAZ (aynı yolda yerel klasör olsa bile)
-            skipped.append(n)
+        if projects[n].host:      # uzak proje: yerel klasöre ASLA yazılmaz; host-routed okuma + yazma (A6)
+            try:
+                st = _remote_append_idea(projects[n].host, n, fname, idea, stamp, dry, sid)
+            except Exception as e:
+                diag_log("steward_idea_export_failed", project=n, host=projects[n].host, error=repr(e))
+                st = "write_failed"
+            if st == "written":
+                written.append(n)
+            elif st == "already":
+                present.append(n)
+            elif st == "would":
+                would.append(n)
+            else:
+                skipped.append(n)
+                problems[n] = st
             continue
         cwd = _project_cwd(n)
         if not cwd or not os.path.isdir(cwd):
@@ -2659,12 +2807,17 @@ def http_idea_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, An
         except OSError as e:
             diag_log("steward_idea_export_failed", project=n, error=repr(e))
             skipped.append(n)
+    if would and not written and not present:     # observe + beyin: hiçbir şey yazılmadı, fikir `exported` OLMAZ
+        sw.log_event("would:idea_export", paths=sid, id=idea.id, kind=kind, target=target, would=would, skipped=skipped)
+        return {"ok": True, "dry": True, "would": would, "skipped": skipped, **({"remote": problems} if problems else {})}
     if not written and not present:
-        return {"ok": False, "error": "no project directory found", "skipped": skipped}
+        return {"ok": False, "error": "no project directory found", "skipped": skipped,
+                **({"remote": problems} if problems else {})}
     sw.record_idea_export(idea.id, {"kind": kind, "target": target, "file": fname, "projects": written + present, "at": time.time()},
                           sid)
     sw.log_event("idea_export", paths=sid, id=idea.id, kind=kind, target=target, written=written, present=present, skipped=skipped)
-    return {"ok": True, "written": written, "already": present, "skipped": skipped}
+    return {"ok": True, "written": written, "already": present, "skipped": skipped,
+            **({"remote": problems} if problems else {}), **({"would": would} if would else {})}
 
 
 def http_log(n: int = 50, sid: str = "default") -> Dict[str, Any]:
@@ -2851,6 +3004,41 @@ def http_project_remove(data: Dict[str, Any], sid: str = "default") -> Dict[str,
     return {"ok": sw.remove_project(name, sid)}
 
 
+def _register_remote(name: str, host: str, want_host: str, known: Optional["sw.Project"], data: Dict[str, Any],
+                     cfg: sw.Config) -> Dict[str, Any]:
+    """`http_register`in uzak kolu (A6): uzak host'taki MEVCUT roster satırını benimser (taze `registered` satırında ad
+    var mı; `_in_remote_roster`). Uzak klasör/GOAL.md/roster satırı OLUŞTURMAZ ve yerel hiçbir şeye dokunmaz: uzak
+    host'ta kayıt yoksa net hata. Proje kaydı `host` alanıyla YEREL tutulur. Kapı: `remote_actions` açık + taze host."""
+    paths = sw.paths_for(cfg.sid)
+    err = ("remote project: register it on its host first (proxy /api/register on that host), then adopt it with "
+           "`py/cops steward set NAME --host HOST`")
+    if want_host and known is not None and known.host and known.host != want_host:
+        return {"ok": False, "error": f"remote project: {name!r} is registered on host {known.host!r}, not {want_host!r}"}
+    if not _remote_files_gate(host, cfg.sid):
+        return {"ok": False, "error": err + " (adoption also needs steward.remote_actions on and a fresh host)"}
+    if not _in_remote_roster(name, host):
+        return {"ok": False, "error": err + f" (no registered row named {name!r} on {host})"}
+    other = sw.project_owner(name, exclude=cfg.sid)
+    if other:
+        return {"ok": False, "error": str(sw.OwnedElsewhere(name, other))}
+    if name not in sw.load_projects(paths):
+        why = sw.reserved_reason(name, _ownership_index(fresh=True))
+        if why:
+            return {"ok": False, "error": str(sw.ReservedName(name, why))}
+    phase = data.get("phase") if data.get("phase") in sw.PHASES else "planning"
+    try:
+        p = sw.upsert_project(name, paths=paths, phase=phase, kind=data.get("kind") or "",
+                              goal=str(data.get("goal") or "").strip(), priority=data.get("priority"),
+                              cadence_minutes=data.get("cadence_minutes"), host=host)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    idea_id = str(data.get("idea_id") or "")
+    if idea_id:
+        sw.update_idea(idea_id, status="project", project=name, paths=paths)
+    sw.log_event("project_register", paths=paths, name=name, host=host, adopted=True)
+    return {"ok": True, "project": _project_dict(p), "host": host, "adopted": True}
+
+
 def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Yeni proje: klasör (yoksa oluştur + git init), GOAL.md (amaç + kaynaklar), yerel kaynak dosyalarını
     `kaynaklar/`a kopyala, roster'a kaydet (`web._register_project`), değnekçi kaydını aç."""
@@ -2861,11 +3049,10 @@ def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
     known = sw.load_projects(cfg.sid).get(name)
-    if sw.normalize_host(data.get("host")) or (known is not None and known.host) or _name_host(name):
-        # Uzak proje burada AÇILMAZ (klasör/GOAL.md/roster bu makineye yazılırdı): uzak host'ta kayıtlı roster satırı
-        # `steward set NAME --host H` ile benimsenir.
-        return {"ok": False, "error": "remote project: register it on its host, then adopt it with "
-                                      "`py/cops steward set NAME --host HOST`"}
+    want_host = sw.normalize_host(data.get("host"))
+    host = want_host or (known.host if known is not None else "") or _name_host(name)
+    if host:
+        return _register_remote(name, host, want_host, known, data, cfg)
     if not cwd or not os.path.isabs(cwd):
         return {"ok": False, "error": "cwd must be an absolute path"}
     # Talep ÖNCE denetlenir (klasör/GOAL.md/roster yan etkilerinden önce): başka kimliğin adı ya da rezerve ad reddedilir.
@@ -3194,7 +3381,7 @@ def http_cards_refresh(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
             return {"ok": False, "error": "not a steward project"}
         job = lambda: refresh_card(name, cfg, reason="manual")   # noqa: E731
     else:
-        job = lambda: refresh_due_cards(cfg, limit=10 ** 6)   # noqa: E731
+        job = lambda: refresh_due_cards(cfg, limit=10 ** 6, remote_limit=10 ** 6, remote_budget=600.0)   # noqa: E731
     if not _run_cards_job(job):
         return {"ok": False, "error": "a card refresh is already running"}
     return {"ok": True, "queued": name or "due"}
