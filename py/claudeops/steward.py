@@ -1416,14 +1416,16 @@ _PROTOCOL_EN = (
 
 
 def build_directive(project: Project, lang: str = "tr", extra: str = "", answer: Optional[Question] = None,
-                    more: Optional[List[Question]] = None) -> str:
+                    more: Optional[List[Question]] = None, compact: bool = False) -> str:
     """Bir proje oturumuna gönderilecek faz direktifi. `answer` verilirse önce insanın cevabı iletilir.
-    Beyin kendi direktifini `extra` ile tamamen ezebilir (şablon yine protokol kuyruğunu ekler)."""
+    Beyin kendi direktifini `extra` ile tamamen ezebilir (şablon yine protokol kuyruğunu ekler).
+    `compact` (yalnız `answer` ile): oturum amaç/not/protokolü bu yaşamında zaten aldı; yalnız soru-cevap + `extra`."""
     tr = lang != "en"
+    compact = bool(compact and answer is not None)
     parts: List[str] = []
     head = f"[claudeops değnekçi — {project.name}]" if tr else f"[claudeops steward — {project.name}]"
     parts.append(head)
-    if project.goal:
+    if project.goal and not compact:
         parts.append(("Amaç: " if tr else "Goal: ") + project.goal.strip())
     if answer is not None:
         parts.append(("Sorduğun soru: " if tr else "Your question: ") + answer.text.strip())
@@ -1434,7 +1436,7 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
         for m in more or []:    # aynı oturuma aynı tickte biriken ek cevaplar: TEK mesajda (ayrı ayrı uyandırma yok)
             parts.append(("Sorduğun soru: " if tr else "Your question: ") + m.text.strip())
             parts.append(("Cevabım: " if tr else "My answer: ") + m.answer.strip())
-        prior = recent_answers(project.name, exclude_id=answer.id)
+        prior = [] if compact else recent_answers(project.name, exclude_id=answer.id)
         if prior and more:
             skip = {m.id for m in more}
             prior = [q for q in prior if q.id not in skip]
@@ -1443,6 +1445,8 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
                          "\n".join(f"- {q.text.strip()[:140]} → {q.answer.strip()[:200]}" for q in prior))
     if extra.strip():
         parts.append(extra.strip())
+    elif compact:
+        pass
     elif project.phase == "planning":
         if tr:
             parts.append(
@@ -1480,6 +1484,8 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
                 "When stuck, think first, ask only if you cannot resolve it. Commit+push when done, one line in DONE.md.\n"
                 f"If the whole project is finished, end your reply with `{MARK_DONE}`."
             )
+    if compact:
+        return "\n\n".join(parts)
     if project.notes.strip():
         parts.append(("Değnekçi notu: " if tr else "Steward note: ") + project.notes.strip())
     parts.append(_PROTOCOL_TR if tr else _PROTOCOL_EN)

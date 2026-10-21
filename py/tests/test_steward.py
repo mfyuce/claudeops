@@ -479,6 +479,18 @@ class MergedAnswersTest(unittest.TestCase):
                 os.utime(f, (old, old))
                 self.assertFalse(ws.subagent_active_for("/x", "abc"))
 
+    def test_compact_answer_directive_drops_preamble(self):
+        p = sw.Project(name="p1", phase="planned", goal="AMAÇ-X", notes="NOT-Y")
+        full = sw.build_directive(p, extra="Cevaba göre devam et.", answer=self._q("a", "evet"))
+        small = sw.build_directive(p, extra="Cevaba göre devam et.", answer=self._q("a", "evet"), compact=True)
+        for needle in ("AMAÇ-X", "NOT-Y", "Değnekçi protokolü"):
+            self.assertIn(needle, full)
+            self.assertNotIn(needle, small)
+        self.assertIn("Cevabım: evet", small)
+        self.assertLess(len(small), len(full) // 2)
+        # cevapsız faz direktifi compact'tan etkilenmez
+        self.assertIn("Değnekçi protokolü", sw.build_directive(p, compact=True))
+
     def test_directive_contains_all_answers(self):
         p = sw.Project(name="p1", phase="planned")
         msg = sw.build_directive(p, answer=self._q("a", "evet"), more=[self._q("b", "hayır")])

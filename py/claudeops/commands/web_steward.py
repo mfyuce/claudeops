@@ -507,6 +507,14 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     return {"ok": True, "started": True, "ready": ready, "cli": cli}
 
 
+def _proc_born(pid: int) -> float:
+    """Sürecin başlangıç zamanı (epoch); oturumun yaşam kimliği. Bilinmiyorsa 0."""
+    try:
+        return round(float(psutil.Process(pid).create_time()), 2)
+    except Exception:
+        return 0.0
+
+
 def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: str = "",
                     answer: Optional[sw.Question] = None, more: Optional[List[sw.Question]] = None,
                     start_if_stopped: bool = True,
@@ -533,7 +541,14 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             return {"ok": False, "error": "start reported ok but no process found"}
     if not is_tmux_backed(s.pid):
         return {"ok": False, "error": "not tmux-backed (cannot inject)"}
-    message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more)
+    born = _proc_born(s.pid)
+    compact = False
+    if answer is not None and born:
+        try:     # bu süreç yaşamında tam başlık (amaç/not/protokol) zaten gitti mi?
+            compact = float(sw.load_state(paths).get("preamble_sent", {}).get(s.name) or 0.0) == born
+        except Exception:
+            compact = False
+    message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more, compact=compact)
     if not _send(s.name, s.cli, message):
         return {"ok": False, "error": "send failed"}
     # Mesaj GİTTİ: bundan sonrası kayıt tutmadır. Hiçbir kayıt hatası (ör. kilit zaman aşımı) çağırana "başarısız" demez ve
@@ -553,6 +568,8 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
         with sw.steward_lock(paths):
             state = sw.load_state(paths)
             state.setdefault("last_directive_at", {})[s.name] = time.time()
+            if born and not compact:
+                state.setdefault("preamble_sent", {})[s.name] = born
             sw.save_state(state, paths)
     except sw.LockTimeout as e:
         sw.log_event("directive_unrecorded", paths=paths, name=project.name, error=str(e))
