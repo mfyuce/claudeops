@@ -127,8 +127,8 @@ class TestRemoteStop(_Destructive):
     def test_precheck_exact_running_own_row(self):
         self.act()
         world = ws._world()
-        self.fake.set(HOST, [_row("oiso20261021")])                          # yalnız tarihli adaş: tam ad yok
-        self.assertEqual(self.apply("stop")["code"], "no_exact_row")
+        # (tarihli tek oturum `oiso20261021` artık projeden çözülür ve TAM adıyla durdurulur:
+        # test_steward_remote_session_resolve.py)
         self.fake.set(HOST, [_row("oiso", running=False)])                    # kapalı satır
         self.assertEqual(self.apply("stop")["code"], "no_exact_row")
         self.fake.set(HOST, [_row("oiso", instance=True, blueprint="degnekci")])   # blueprint beyni gösteriyor

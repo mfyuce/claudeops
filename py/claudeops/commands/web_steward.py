@@ -222,13 +222,16 @@ class _RemoteTick:
     """Bir tick'in uzak host durumu. `statuses`/`fresh`: tick başında BİR KEZ alınan tazelik anlık görüntüsü
     (`unavailable`, görünümler ve eylem ön denetimleri AYNI görüntüyü kullanır; A1'deki iki ayrı okuma arasındaki yarış
     kapanır). `failed`/`succeeded`: bu tick'te eylem gönderilen host'lar (devre kesici + geri çekilme sayacı).
-    `destructive`: {host: bu tick'te gönderilen yıkıcı eylem sayısı} (`MAX_DESTRUCTIVE_PER_HOST`, A4)."""
+    `destructive`: {host: bu tick'te gönderilen yıkıcı eylem sayısı} (`MAX_DESTRUCTIVE_PER_HOST`, A4).
+    `started`: bu tick'te `/api/start` gönderilen (host, proje) çiftleri: önbellek yeni satırı henüz göstermese de
+    aynı tick'te o projeye ikinci başlatma GİTMEZ."""
     now: float
     statuses: Dict[str, Optional[Dict[str, Any]]] = dataclasses.field(default_factory=dict)
     fresh: frozenset = frozenset()
     failed: set = dataclasses.field(default_factory=set)
     succeeded: set = dataclasses.field(default_factory=set)
     destructive: Dict[str, int] = dataclasses.field(default_factory=dict)
+    started: set = dataclasses.field(default_factory=set)
 
     def blocked(self, host: str) -> bool:
         """Devre kesici: bu tick'te host'a ilk taşıma hatasından sonra kalan eylemler DENENMEZ."""
@@ -492,6 +495,13 @@ def _remote_views(world: sw.World, now: Optional[float] = None, rt: Optional[_Re
         rows.extend(dict(r, host=h) for r in (st.get("sessions") or []) if isinstance(r, dict))
     selected = sw.select_rows(rows, world, fresh)
     views = [_remote_view(r, r["host"], now) for r in selected]
+    for v in views:
+        # Instance kaydı (blueprint) taşımayan uzak satır: tarih sonekli ad (`oiso20261017`) projesine çözülür, yoksa
+        # `SessionView.project` adın kendisi olur ve proje "çalışmıyor" sayılıp ikinci bir başlatma planlanırdı.
+        if not v.blueprint:
+            key = _remote_key(v.name, v.host, world)
+            if key and key != v.name:
+                v.blueprint = key
     history = {(r["host"], str(r.get("name") or "")): r.get("history_size") for r in selected}
     deadline = time.monotonic() + REMOTE_READ_BUDGET_SECONDS
     running: Dict[str, List[sw.SessionView]] = {}
@@ -633,15 +643,16 @@ _DENIED_LOCK = threading.Lock()
 
 
 def _log_remote_denied(sid: str, actor: str, kind: str, name: str, host: str, code: str,
-                       event: str = "target_denied") -> None:
+                       event: str = "target_denied", **extra: Any) -> None:
     """Uzak red olayı, (kimlik, aktör, ad, sebep) başına `REMOTE_DENIED_DEDUP_SECONDS`te bir. `event`: olay adı
-    (`remote_too_old` kendi adıyla düşer: eski host'un yükseltilmesi gerektiğini log'da aramak kolay olsun)."""
+    (`remote_too_old` kendi adıyla düşer: eski host'un yükseltilmesi gerektiğini log'da aramak kolay olsun). `extra`
+    olaya eklenir (ör. `sessions`), tekrarsızlık anahtarına girmez."""
     key, now = (sid, actor or "human", name, code), time.time()
     with _DENIED_LOCK:
         if now - _DENIED_LOGGED.get(key, 0.0) < REMOTE_DENIED_DEDUP_SECONDS:
             return
         _DENIED_LOGGED[key] = now
-    sw.log_event(event, paths=sid, actor=actor or "human", kind=kind, name=name, host=host, code=code)
+    sw.log_event(event, paths=sid, actor=actor or "human", kind=kind, name=name, host=host, code=code, **extra)
 
 
 def _remote_denied(name: str, actor: str, kind: str, sid: str, want: str, proj_host: str,
@@ -869,17 +880,37 @@ def remote_health(hosts: Any, now: Optional[float] = None) -> Dict[str, Dict[str
     return out
 
 
-def _remote_cwd(host: str, name: str) -> str:
-    """Uzak oturumun klasörü: host'un TAZE önbelleğinde (çalışan ya da kapalı satır) adı TAM `name` olan satırdan; yoksa
-    ""."""
+def _remote_ref(host: str, name: str) -> Tuple[str, str]:
+    """Uzak okuma hedefi: (oturumun GERÇEK adı, klasörü); host'un TAZE önbelleğinden, ağa gitmez; bulunamazsa ("", "").
+    Sıra: adı TAM `name` olan satır (çalışan ya da kapalı); yoksa ad bu host'taki bir projeye çözülüyorsa (proje adı
+    `oiso`, oturum `oiso20261017`) projenin TEK çalışan oturumu; çalışan yoksa projeye çözülen kapalı satırlar (hepsi
+    aynı klasördeyse ilki). Projenin iki çalışan oturumu varsa ya da kapalı satırların klasörleri farklıysa tahmin
+    edilmez: ("", "")."""
     st = _remote.status(host)
     if not _host_fresh(st) or _backing_off(host, time.time()):
-        return ""
+        return "", ""
+    rows = {k: [r for r in (st.get(k) or []) if isinstance(r, dict)] for k in ("sessions", "closed")}
     for key in ("sessions", "closed"):
-        for r in (st.get(key) or []):
-            if isinstance(r, dict) and r.get("name") == name and r.get("cwd"):
-                return str(r["cwd"])
-    return ""
+        for r in rows[key]:
+            if r.get("name") == name and r.get("cwd"):
+                return name, str(r["cwd"])
+    world = _world()
+    key = _remote_key(name, host, world)
+    if not key:
+        return "", ""
+    live = _remote_project_rows(rows["sessions"], host, key, world)
+    if live:
+        return (str(live[0].get("name") or ""), str(live[0].get("cwd") or "")) if len(live) == 1 else ("", "")
+    closed = [r for r in rows["closed"] + [r for r in rows["sessions"] if not r.get("running")]
+              if r.get("cwd") and world.resolve(str(r.get("name") or "")) == ("project", key)]
+    if closed and len({str(r["cwd"]) for r in closed}) == 1:
+        return str(closed[0].get("name") or ""), str(closed[0]["cwd"])
+    return "", ""
+
+
+def _remote_cwd(host: str, name: str) -> str:
+    """Uzak oturumun klasörü (`_remote_ref`: tam ad, yoksa projenin tek oturumu); yoksa ""."""
+    return _remote_ref(host, name)[1]
 
 
 def _remote_file_head(host: str, name: str, path: str, max_chars: int, budget: float) -> Tuple[str, bool, bool]:
@@ -915,7 +946,8 @@ def _remote_read_context(host: str, name: str, want_docs: bool, docs: Tuple[str,
     """`http_context`in uzak karşılığı: son konuşma + (istenirse) belge başları, TOPLAM `REMOTE_READ_BUDGET_SECONDS`.
     Hata/zaman aşımı boş döner, fırlatmaz. Çıktı: {"last_exchange", "docs", "remote_cwd"}."""
     deadline = time.monotonic() + REMOTE_READ_BUDGET_SECONDS
-    cwd = _remote_cwd(host, name)
+    real, cwd = _remote_ref(host, name)
+    name = real or name         # okumalar oturumun GERÇEK adıyla (proje adı `oiso`, oturum `oiso20261017`)
     out: Dict[str, Any] = {"last_exchange": _remote_last_exchange(host, name, deadline - time.monotonic()),
                            "docs": {}, "remote_cwd": cwd}
     if want_docs and cwd:
@@ -945,9 +977,10 @@ def _remote_raw_card(host: str, name: str, budget: float) -> Optional[Dict[str, 
     (yerelle aynı liste ve uzunluk), git bilgisi YOK (`sw.raw_card_from_docs`). Yerel dosya sistemine ASLA bakılmaz.
     None = bilinmiyor (klasör yok, bütçe bitti ya da hiçbir belge okunamadı: yoksa yenileme yanlışlıkla "değişti"
     sayılırdı); belgesiz ama okunabilir klasör boş docs ile döner. Fırlatmaz."""
-    cwd = _remote_cwd(host, name)
+    real, cwd = _remote_ref(host, name)
     if not cwd:
         return None
+    name = real or name
     deadline = time.monotonic() + budget
     docs: Dict[str, str] = {}
     reads = 0
@@ -1167,11 +1200,64 @@ def _remote_rows(host: str, rt: Optional[_RemoteTick] = None) -> Optional[List[D
 
 def _remote_running_row(host: str, name: str, rt: Optional[_RemoteTick] = None) -> Tuple[bool, Optional[Dict[str, Any]]]:
     """(host taze mi, adı TAM `name` olan ÇALIŞAN satır ya da None). Ön ek/base eşleşmesi YOK: uzak tarafın
-    unique_base çözümüne güvenilmez (yanlış adaş oturum)."""
+    unique_base çözümüne güvenilmez (yanlış adaş oturum). Yalnız gerçek adı BİLİNEN oturumun kapanma beklemesi
+    (`_remote_wait_closed`) bunu kullanır; proje → oturum çözümü `_remote_session`da."""
     rows = _remote_rows(host, rt)
     if rows is None:
         return False, None
     return True, next((r for r in rows if r.get("name") == name and r.get("running")), None)
+
+
+def _remote_key(name: str, host: str, world: sw.World) -> str:
+    """Ad (proje adı ya da tarih/_N sonekli oturum adı) `host`taki bir projeye çözülüyorsa proje adı, değilse ""."""
+    kind, key = world.resolve(name)
+    return key if kind == "project" and key and world.host_of(key) == host else ""
+
+
+def _remote_project_rows(rows: List[Dict[str, Any]], host: str, key: str, world: sw.World) -> List[Dict[str, Any]]:
+    """`rows` içinden `key` projesinin ÇALIŞAN oturumları: adı `key`e çözülen (tam ad, `oiso20261017`, `oiso20261017_1`)
+    ve `sw.select_rows`un bu host için seçtiği satırlar (uzak beyin/servis/kayıtsız düşer). Başka projenin öneki
+    karışmaz (`World.resolve` en uzun proje adını seçer). Sıra satır sırası; dönen satırlar özgün sözlüklerdir."""
+    running = [r for r in rows if r.get("running") and world.resolve(str(r.get("name") or "")) == ("project", key)]
+    keep = {str(r.get("name") or "") for r in sw.select_rows([dict(r, host=host) for r in running], world, {host})}
+    return [r for r in running if str(r.get("name") or "") in keep]
+
+
+def _remote_session(host: str, name: str, rt: Optional[_RemoteTick] = None, world: Optional[sw.World] = None,
+                    *, sid: str = "default", actor: str = "", kind: str = ""
+                    ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Uzak "proje → çalışan oturum" çözümü: (host taze mi, hedef satır ya da None, red ya da None). Oturum adı proje
+    adı + tarih soneki (+ `_N`) ve her yeni açılışta DEĞİŞİR; proje başına TEK canlı oturum olmalı. `name` proje adı
+    (`oiso`) ya da tam oturum adı (`oiso20261017`) olabilir; çözüm `rt` verilirse tick görüntüsünden, yoksa önbellekten
+    ŞİMDİ (ağa gitmez):
+    - projenin çalışan oturumu yok → (True, None, None): çağıran (izin veriyorsa) PROJE adıyla başlatabilir;
+    - tek oturum → o satır (gerçek tam adıyla); `name` tam oturum adıysa o satır OLMALI, değilse
+      `other_session_running` reddi (kapanmış eski ada yazılmaz, yanına ikinci oturum da açılmaz);
+    - iki ya da daha çok → `ambiguous_sessions` reddi (tekrarsız log): hiçbir eylem, ASLA başlatma.
+    Ad bu host'taki bir projeye çözülmüyorsa (uzak beyin/servis/kayıtsız) eski kural: yalnız TAM adlı çalışan satır."""
+    rows = _remote_rows(host, rt)
+    if rows is None:
+        return False, None, None
+    world = world or _world(sid)
+    key = _remote_key(name, host, world)
+    if not key:
+        return True, next((r for r in rows if r.get("name") == name and r.get("running")), None), None
+    mine = _remote_project_rows(rows, host, key, world)
+    names = [str(r.get("name") or "") for r in mine]
+    if len(mine) >= 2:
+        _log_remote_denied(sid, actor, kind, name, host, "ambiguous_sessions", event="remote_ambiguous",
+                           project=key, sessions=names)
+        return True, None, {"ok": False, "code": "ambiguous_sessions", "host": host, "sessions": names,
+                            "error": (f"target denied: project {key!r} has {len(mine)} running sessions on {host} "
+                                      f"({', '.join(names)}); refusing to guess"), "project": key}
+    if not mine:
+        return True, None, None
+    row = mine[0]
+    if name not in (key, names[0]):
+        return True, None, {"ok": False, "code": "other_session_running", "host": host, "sessions": names,
+                            "error": (f"{name!r} is not running on {host}; project {key!r} runs as {names[0]!r}"),
+                            "project": key}
+    return True, row, None
 
 
 _remote_sleep = time.sleep      # testler no-op yapar (hazır bekleme yoklaması)
@@ -1180,38 +1266,57 @@ _remote_sleep = time.sleep      # testler no-op yapar (hazır bekleme yoklaması
 def _remote_wait_ready(host: str, name: str, timeout: float = READY_TIMEOUT_SECONDS) -> bool:
     """Uzak başlatmadan sonra hazır bekleme. AĞ ÇAĞRISI YAPMAZ: poller önbelleğine `REMOTE_READY_POLL_SECONDS`te bir
     bakar; satır çalışıyor ve `busy is False` (bilinmiyor = hazır değil) olunca True, en çok `timeout`. Yerel
-    `_wait_ready` gibi garanti değil: claude meşgulken gelen girdiyi kuyruğa alır, en kötü durumda yönerge gecikir."""
+    `_wait_ready` gibi garanti değil: claude meşgulken gelen girdiyi kuyruğa alır, en kötü durumda yönerge gecikir.
+    `name` proje adıdır: uzak taraf yeni oturuma tarihli ad verir, satır `_remote_session` ile projeden çözülür."""
+    world = _world()
     for i in range(max(1, int(timeout / REMOTE_READY_POLL_SECONDS))):
         if i:
             _remote_sleep(REMOTE_READY_POLL_SECONDS)
-        _fresh, r = _remote_running_row(host, name)
+        _fresh, r, _err = _remote_session(host, name, world=world)
         if r is not None and r.get("busy") is False:
             return True
     return False
 
 
 def _ensure_running_remote(name: str, host: str, model: str, effort: str, fresh: bool,
-                           rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
-    """Uzak `_ensure_running`: taze satırda TAM adla çalışıyorsa dokunmaz; değilse `POST /api/start` (gövdede host YOK,
-    `REMOTE_START_TIMEOUT_SECONDS`) ve önbellekten hazır bekleme. Host taze değilse başlatma DENENMEZ."""
-    fresh_host, r = _remote_running_row(host, name, rt)
+                           rt: Optional[_RemoteTick] = None, *, sid: str = "default", actor: str = "",
+                           kind: str = "start") -> Dict[str, Any]:
+    """Uzak `_ensure_running`: projenin (`_remote_session`) tek çalışan oturumu varsa dokunmaz (yanıtta gerçek `name`);
+    iki ya da daha çoksa ya da `name` kapanmış eski bir oturum adıyken başka oturum çalışıyorsa red (başlatma YOK);
+    hiç yoksa PROJE adıyla `POST /api/start` (gövdede host YOK, `REMOTE_START_TIMEOUT_SECONDS`), önbellekten hazır
+    bekleme ve tick görüntüsünün yenilenmesi (`rt.refresh`; aynı tick'te o projeye ikinci başlatma `rt.started` ile de
+    kesilir). Host taze değilse başlatma DENENMEZ."""
+    world = _world(sid)
+    fresh_host, r, err = _remote_session(host, name, rt, world, sid=sid, actor=actor, kind=kind)
     if not fresh_host:
         return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+    if err is not None:
+        return err
     if r is not None:
-        return {"ok": True, "started": False, "cli": r.get("cli") or DEFAULT_CLI, "host": host}
-    res = _remote_post(host, "/api/start", {"name": name, "model": model, "effort": effort, "fresh": bool(fresh)},
+        return {"ok": True, "started": False, "cli": r.get("cli") or DEFAULT_CLI, "host": host, "name": r.get("name")}
+    start_name = _remote_key(name, host, world) or name
+    if rt is not None and (host, start_name) in rt.started:
+        return {"ok": False, "error": f"start already sent for {start_name!r} on {host} this tick",
+                "code": "start_pending", "host": host}
+    res = _remote_post(host, "/api/start", {"name": start_name, "model": model, "effort": effort, "fresh": bool(fresh)},
                        REMOTE_START_TIMEOUT_SECONDS, rt)
     if not res.get("ok"):
         return res
-    ready = _remote_wait_ready(host, name)
-    _f, r = _remote_running_row(host, name)
-    return {"ok": True, "started": True, "ready": ready, "cli": (r or {}).get("cli") or DEFAULT_CLI, "host": host}
+    if rt is not None:
+        rt.started.add((host, start_name))
+    ready = _remote_wait_ready(host, start_name)
+    if rt is not None:
+        rt.refresh(host)        # aynı tick'in sonraki adımları yeni satırı görsün (A4 deseni)
+    _f, r, _err = _remote_session(host, start_name, world=world)
+    return {"ok": True, "started": True, "ready": ready, "cli": (r or {}).get("cli") or DEFAULT_CLI, "host": host,
+            "name": (r or {}).get("name") or start_name}
 
 
 def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr", fresh: bool = False,
-                    host: str = "", rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
-    if host:
-        return _ensure_running_remote(name, host, model, effort, fresh, rt)
+                    host: str = "", rt: Optional[_RemoteTick] = None, sid: str = "default",
+                    actor: str = "") -> Dict[str, Any]:
+    if host:     # `sid`/`actor` yalnız uzak yolun red log'u için; yerel yol değişmedi
+        return _ensure_running_remote(name, host, model, effort, fresh, rt, sid=sid, actor=actor)
     s = _running(name)
     if s is not None:
         return {"ok": True, "started": False, "cli": s.cli}
@@ -1258,13 +1363,15 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
                     answer: Optional[sw.Question] = None, more: Optional[List[sw.Question]] = None,
                     start_if_stopped: bool = True,
                     reason: str = "", session_name: str = "", cfg: Optional[sw.Config] = None,
-                    host: Optional[str] = None, rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
+                    host: Optional[str] = None, rt: Optional[_RemoteTick] = None, actor: str = "") -> Dict[str, Any]:
     """`project`'e (ya da onun `session_name` adlı çalışan instance'ına) direktif gönder; kapalıysa aç.
     Proje değnekçi kaydında değilse (ad hoc oturum) sadece gönderir, kayıt açmaz. Kayıtlar `cfg.sid`'in deposuna.
 
-    Uzak hedef (`host`; None = addan çözülür, yerel yola ASLA düşmez): oturum taze satırdan TAM adla (running/tmux/cli),
-    kapalıysa `_ensure_running_remote`, gönderim `POST /api/term/input` (`exact: true`), yaşam kimliği facts yaşından,
-    `preamble_sent` anahtarı `host:ad` (aynı adlı yerel oturumun kaydına karışmaz)."""
+    Uzak hedef (`host`; None = addan çözülür, yerel yola ASLA düşmez): hedef ad (proje adı ya da tam oturum adı)
+    `_remote_session` ile projenin TEK çalışan oturumuna çözülür (tarihli/_N'li ad dahil; iki oturum = red, başlatma
+    yok); oturum yoksa `_ensure_running_remote` PROJE adıyla başlatır. Gönderim `POST /api/term/input` (`exact: true`,
+    satırın GERÇEK adı), yaşam kimliği facts yaşından, `preamble_sent` anahtarı `host:<gerçek ad>` (aynı adlı yerel
+    oturumun kaydına karışmaz). `actor` yalnız uzak red log'u için."""
     cfg = cfg or steward_config()
     paths = sw.paths_for(cfg.sid)
     lang = cfg.lang
@@ -1276,22 +1383,30 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
     if not model and not effort:
         model, effort = sw.phase_model_effort(project, cfg)
     if host:
-        fresh_host, row = _remote_running_row(host, target, rt)
+        world = _world(cfg.sid, cfg)
+        fresh_host, row, err = _remote_session(host, target, rt, world, sid=cfg.sid, actor=actor, kind="directive")
         if not fresh_host:
             return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+        if err is not None:
+            return err
         if row is None:
             if not start_if_stopped:
                 return {"ok": False, "error": "not running", "host": host}
-            res = _ensure_running(target, model=model, effort=effort, lang=lang, host=host, rt=rt)
+            res = _ensure_running(target, model=model, effort=effort, lang=lang, host=host, rt=rt, sid=cfg.sid,
+                                  actor=actor)
             if not res.get("ok"):
                 return res
-            _f, row = _remote_running_row(host, target)        # başlatmadan sonra: tick görüntüsü değil, önbellek şimdi
+            # başlatmadan sonra: tick görüntüsü değil, önbellek şimdi; yeni oturumun adı tarihli (projeden çözülür)
+            after = str(res.get("name") or "") or _remote_key(target, host, world) or target
+            _f, row, err = _remote_session(host, after, world=world, sid=cfg.sid, actor=actor, kind="directive")
+            if err is not None:
+                return err
             if row is None:
                 return {"ok": False, "error": "start reported ok but no session row on the host", "host": host}
         if not row.get("tmux"):
             return {"ok": False, "error": "not tmux-backed (cannot inject)", "host": host}
-        sname, scli = target, str(row.get("cli") or DEFAULT_CLI)
-        born, pkey = _remote_born(host, target, rt), f"{host}:{target}"
+        sname, scli = str(row.get("name") or target), str(row.get("cli") or DEFAULT_CLI)
+        born, pkey = _remote_born(host, sname, rt), f"{host}:{sname}"
     else:
         s = _running(target)
         if s is None:
@@ -1876,22 +1991,28 @@ def http_summary(date: str = "", lang: str = "", sid: str = "default") -> Dict[s
 _SESSION_KINDS = tuple(k for k in sw.OBSERVE_SKIPPED if k != "tour")
 
 
-def _remote_handover(name: str, host: str, rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
-    """Uzak devir: ön denetim (taze satırlarda TAM ad, çalışıyor) sonra `POST /api/handover` (`exact: true`: eski host
-    alanı yok sayar, yeni host unique_base'e düşmez; gövdede host YOK). Canlı mesaj; kill/respawn uzak tarafta da yok."""
-    fresh_host, row = _remote_running_row(host, name, rt)
+def _remote_handover(name: str, host: str, rt: Optional[_RemoteTick] = None, *, sid: str = "default",
+                     actor: str = "") -> Dict[str, Any]:
+    """Uzak devir: ön denetim (`_remote_session`: projenin TEK çalışan oturumu, tarihli ad dahil; iki oturum = red)
+    sonra `POST /api/handover` satırın GERÇEK adıyla (`exact: true`: eski host alanı yok sayar, yeni host unique_base'e
+    düşmez; gövdede host YOK). Canlı mesaj; kill/respawn uzak tarafta da yok. Yanıtta `name` = gerçek ad."""
+    fresh_host, row, err = _remote_session(host, name, rt, sid=sid, actor=actor, kind="handover")
     if not fresh_host:
         return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+    if err is not None:
+        return err
     if row is None:
-        return {"ok": False, "error": "not running (no exact running row on the host)", "host": host}
-    return dict(_remote_post(host, "/api/handover", {"name": name, "exact": True}, REMOTE_HANDOVER_TIMEOUT_SECONDS, rt),
-                host=host)
+        return {"ok": False, "error": "not running (no running session of the project on the host)", "host": host}
+    real = str(row.get("name") or name)
+    return dict(_remote_post(host, "/api/handover", {"name": real, "exact": True}, REMOTE_HANDOVER_TIMEOUT_SECONDS, rt),
+                host=host, name=real)
 
 
 def _remote_stop(name: str, host: str, world: sw.World, sid: str, actor: str,
                  rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
     """Uzak durdurmanın TEK yolu (A4; `_target` kapıları çağırandan önce geçildi). Sıra:
-    1. host taze, satırlarda adı TAM `name` olan ÇALIŞAN satır var (ön ek/base yok);
+    1. host taze, `_remote_session` adı projenin TEK çalışan oturumuna çözüyor (tarihli/_N'li ad dahil; iki oturum =
+       `ambiguous_sessions`); bundan sonra her şey o satırın GERÇEK adıyla;
     2. satır bu kimliğin kayıtlı proje oturumu: `sw.select_rows` onu bu host için seçiyor VE sınıfı "own" (uzak beyin,
        servis, kayıtsız ya da başka kimliğin oturumu DEĞİL);
     3. host `exact_target` bildiriyor (`host_capabilities`); bildirmeyen eski host'ta (api 0) `remote_too_old` olayı
@@ -1900,13 +2021,16 @@ def _remote_stop(name: str, host: str, world: sw.World, sid: str, actor: str,
     5. `POST /api/stop {"name", "exact": true}` (`REMOTE_STOP_TIMEOUT_SECONDS`, gövdede host YOK).
     Yanıt `ok: false` (ör. `no_exact_match`: uzakta tam ad yok) uygulanmış SAYILMAZ, `remote_stop_rejected` loglanır;
     uygulama düzeyi ret devre kesiciyi açmaz (taşıma hatası `_remote_post`ta A3 kuralıyla açar). Sayaç gönderimden
-    ÖNCE artar: yanıtı ne olursa olsun bu tick'te host'a ikinci yıkıcı istek gitmez."""
-    fresh_host, row = _remote_running_row(host, name, rt)
+    ÖNCE artar: yanıtı ne olursa olsun bu tick'te host'a ikinci yıkıcı istek gitmez. Yanıtta `name` = gerçek ad."""
+    fresh_host, row, err = _remote_session(host, name, rt, world, sid=sid, actor=actor, kind="stop")
     if not fresh_host:
         return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+    if err is not None:
+        return err
     if row is None:
-        return {"ok": False, "error": "not running (no exact running row on the host)", "code": "no_exact_row",
-                "host": host}
+        return {"ok": False, "error": "not running (no running session of the project on the host)",
+                "code": "no_exact_row", "host": host}
+    name = str(row.get("name") or name)
     bp = row.get("blueprint") if row.get("instance") else None
     if not sw.select_rows([dict(row, host=host)], world, {host}) or world.session_class(name, bp) != "own":
         _log_remote_denied(sid, actor, "stop", name, host, "not_own")
@@ -1927,7 +2051,7 @@ def _remote_stop(name: str, host: str, world: sw.World, sid: str, actor: str,
                     "code": "destructive_budget", "host": host}
         rt.destructive[host] = rt.destructive.get(host, 0) + 1
     res = dict(_remote_post(host, "/api/stop", {"name": name, "exact": True}, REMOTE_STOP_TIMEOUT_SECONDS, rt),
-               host=host)
+               host=host, name=name)
     if not res.get("ok"):
         sw.log_event("remote_stop_rejected", paths=sid, name=name, host=host, actor=actor or "human",
                      error=str(res.get("error") or ""), code=str(res.get("code") or ""))
@@ -1938,7 +2062,8 @@ def _remote_stop(name: str, host: str, world: sw.World, sid: str, actor: str,
 def _remote_wait_closed(host: str, name: str, timeout: float = READY_TIMEOUT_SECONDS) -> bool:
     """Uzak durdurmadan sonra satırın kapanmasını bekle. AĞ ÇAĞRISI YAPMAZ: poller önbelleğine
     `REMOTE_READY_POLL_SECONDS`te bir bakar; host taze VE adı TAM `name` olan çalışan satır yoksa True, en çok
-    `timeout`. Host bayatsa kapanma DOĞRULANAMAZ (beklemeye devam)."""
+    `timeout`. Host bayatsa kapanma DOĞRULANAMAZ (beklemeye devam). `name` durdurulan oturumun GERÇEK adıdır
+    (`_remote_stop` yanıtının `name`i), proje adı değil."""
     for i in range(max(1, int(timeout / REMOTE_READY_POLL_SECONDS))):
         if i:
             _remote_sleep(REMOTE_READY_POLL_SECONDS)
@@ -1950,22 +2075,27 @@ def _remote_wait_closed(host: str, name: str, timeout: float = READY_TIMEOUT_SEC
 
 def _remote_stop_and_wait(name: str, host: str, world: sw.World, sid: str, actor: str,
                           rt: Optional[_RemoteTick] = None) -> Optional[Dict[str, Any]]:
-    """Yeniden açmanın ve restart'ın durdurma adımı: oturum TAM adla çalışıyorsa `_remote_stop` + kapanma beklemesi
-    (`READY_TIMEOUT_SECONDS`). None = devam edilebilir (durdu ya da zaten kapalıydı); aksi halde başarısızlık yanıtı
-    (çağıran sonraki adıma GEÇMEZ). Durdurmadan sonra tick görüntüsü o host için yenilenir (`rt.refresh`)."""
-    fresh_host, row = _remote_running_row(host, name, rt)
+    """Yeniden açmanın ve restart'ın durdurma adımı: projenin (`_remote_session`) tek çalışan oturumu varsa
+    `_remote_stop` + o GERÇEK adın kapanma beklemesi (`READY_TIMEOUT_SECONDS`). None = devam edilebilir (durdu ya da
+    zaten kapalıydı); aksi halde başarısızlık yanıtı (çağıran sonraki adıma GEÇMEZ; iki oturum ya da başka bir oturum
+    çalışıyorsa da). Durdurmadan sonra tick görüntüsü o host için yenilenir (`rt.refresh`)."""
+    fresh_host, row, err = _remote_session(host, name, rt, world, sid=sid, actor=actor, kind="stop")
     if not fresh_host:
         return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+    if err is not None:
+        return err
     if row is None:
         return None          # zaten kapalı (devir sonrası oturum kendisi çıkmış): durdurulacak bir şey yok
-    res = _remote_stop(name, host, world, sid, actor, rt)
+    real = str(row.get("name") or name)
+    res = _remote_stop(real, host, world, sid, actor, rt)
     if not res.get("ok"):
         return res
-    closed = _remote_wait_closed(host, name)
+    real = str(res.get("name") or real)
+    closed = _remote_wait_closed(host, real)
     if rt is not None:
         rt.refresh(host)
     if not closed:
-        return {"ok": False, "error": f"stop sent but {name!r} still running on {host} after "
+        return {"ok": False, "error": f"stop sent but {real!r} still running on {host} after "
                                       f"{int(READY_TIMEOUT_SECONDS)} s", "code": "stop_not_confirmed", "host": host}
     return None
 
@@ -1990,13 +2120,15 @@ def _remote_respawn(name: str, host: str, project: Optional[sw.Project], cfg: sw
     if stopped is not None:
         return failed("stop", stopped)
     model, effort = sw.phase_model_effort(project, cfg)
-    res = _ensure_running_remote(name, host, model, effort, True, rt)
+    # PROJE adıyla başlat: eski oturumun tarihli adı kapandı, uzak taraf yeni oturuma yeni (tarihli) ad verir
+    res = _ensure_running_remote(project.name, host, model, effort, True, rt, sid=cfg.sid, actor="engine",
+                                 kind="respawn")
     if not res.get("ok"):
         return failed("start", res)
     if rt is not None:
         rt.refresh(host)
-    res = _give_directive(project, "", reason="respawn", session_name=name, cfg=cfg, start_if_stopped=False,
-                          host=host, rt=rt)
+    res = _give_directive(project, "", reason="respawn", session_name=str(res.get("name") or ""), cfg=cfg,
+                          start_if_stopped=False, host=host, rt=rt, actor="engine")
     if not res.get("ok"):
         return failed("directive", res)
     sw.log_event("remote_respawn", paths=paths, name=name, host=host, step="done", ok=True)
@@ -2048,7 +2180,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if denied is not None:
             return denied
     if k == "handover":
-        return _remote_handover(name, host, rt) if host else _act("handover", name, lang=cfg.lang)
+        return _remote_handover(name, host, rt, sid=cfg.sid, actor="engine") if host else _act("handover", name, lang=cfg.lang)
     if host and k in ("stop", "respawn"):      # uzak yıkıcı: yerel yola (yerel adaşı öldüren `_act("stop")`) düşmez
         w = world or _world(cfg.sid, cfg)
         if k == "stop":
@@ -2077,7 +2209,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         q = None
         if action.payload.get("question_id"):
             q = next((x for x in sw.load_questions(paths) if x.id == action.payload["question_id"]), None)
-        return _give_directive(p, "", answer=q, reason=action.reason, cfg=cfg, host=host, rt=rt)
+        return _give_directive(p, "", answer=q, reason=action.reason, cfg=cfg, host=host, rt=rt, actor="engine")
     if k == "stop":
         return _act("stop", name, lang=cfg.lang)
     if k == "deliver_answer":
@@ -2090,7 +2222,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         more = [by_id[i] for i in action.payload.get("more_ids") or []
                 if i in by_id and by_id[i].answer and not by_id[i].delivered_at]
         res = _give_directive(p, extra, answer=q, more=more, start_if_stopped=False, reason="answer", session_name=name, cfg=cfg,
-                              host=host, rt=rt)
+                              host=host, rt=rt, actor="engine")
         if not res.get("ok") and q.project not in projects:
             # Kayıtlı proje olmayan (ad hoc) oturum kapanmış ya da yazı kabul etmiyor: her tick yeniden deneme,
             # bırak (cevap kayıtta durur, kimse beklemiyor).
@@ -2169,7 +2301,7 @@ def _deliver_job(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Proje
     if _already_sent(mark, cfg.sid, f"job:{stage}", f"{svc}#{jid}"):
         return {"ok": True, "skipped": "already sent"}
     res = _give_directive(p, sj.build_job_message(job, stage, cfg.lang), start_if_stopped=False, reason="job",
-                          session_name=action.name, cfg=cfg, host=host or None, rt=rt)
+                          session_name=action.name, cfg=cfg, host=host or None, rt=rt, actor="engine")
     if res.get("ok"):
         _mark_after_send(mark, cfg.sid, f"job:{stage}", f"{svc}#{jid}")      # mesaj gitti: kilit zaman aşımı yinelenmeye yol açmasın
         sw.log_event("job_delivered", paths=paths, service=svc, id=jid, project=p.name, stage=stage, session=action.name)
@@ -2737,9 +2869,10 @@ def _remote_append_idea(host: str, name: str, fname: str, idea: "sw.Idea", stamp
     yalnız VAR OLAN dosyayı değiştirir, yeni dosya oluşturmaz: dosya yoksa okuma da başarısız olur → `unreadable`."""
     if not _remote_files_gate(host, sid):
         return "denied"
-    cwd = _remote_cwd(host, name)
+    real, cwd = _remote_ref(host, name)
     if not cwd:
         return "no_folder"
+    name = real or name
     if "/" in fname or ".." in fname or "\x00" in fname:      # sözcük denetimi (fname sabit tablodan gelir; yine de)
         return "unreadable"
     path = cwd.rstrip("/") + "/" + fname
@@ -2889,7 +3022,8 @@ def http_file(name: str, rel: str, max_chars: int = MAX_FILE_READ_CHARS, sid: st
         return denied
     remote = _name_host(name) if sw.valid_name(name) else ""
     if remote:      # host-routed files/read: mutlak uzak yol = oturumun uzak klasörü + güvenli göreli yol; yerel dosya yok
-        cwd = _remote_cwd(remote, name)
+        real, cwd = _remote_ref(remote, name)
+        name = real or name
         if not cwd or not rel or "\x00" in rel or rel.startswith("/") or ".." in Path(rel).parts:    # yalnız sözcük denetimi
             return {"ok": False, "error": "unknown remote project folder or path outside project", "host": remote}
         text, truncated, ok = _remote_file_head(remote, name, cwd.rstrip("/") + "/" + rel, max_chars,
@@ -3270,7 +3404,8 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
         return _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
                                start_if_stopped=bool(data.get("start_if_stopped", True)),
-                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid))
+                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
+                               actor=str(data.get("actor") or ""))
 
 
 def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -3326,11 +3461,13 @@ def http_handover(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         return gated
     host = _name_host(name)      # `_gate` istekteki host'u projeninkiyle zaten eşledi
     with _ctx(sid).lock:
-        res = _remote_handover(name, host) if host else _act("handover", name, lang=cfg.lang)
+        res = (_remote_handover(name, host, sid=sid, actor=str(data.get("actor") or "")) if host
+               else _act("handover", name, lang=cfg.lang))
         if res.get("ok"):
             with sw.steward_lock(sid):
                 state = sw.load_state(sid)
-                state.setdefault("ho_pending", {})[name] = time.time()
+                # uzak: iz oturumun GERÇEK adıyla (plan_tick görünüm adıyla okur; `oiso` → `oiso20261017`)
+                state.setdefault("ho_pending", {})[str(res.get("name") or name) if host else name] = time.time()
                 sw.save_state(state, sid)
     sw.log_event("handover", paths=sid, name=name, ok=bool(res.get("ok")), **({"host": host} if host else {}))
     return res

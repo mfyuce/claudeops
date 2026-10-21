@@ -116,8 +116,7 @@ class TestRemoteActions(_Actions):
 
     def test_handover_needs_an_exact_running_row(self):
         self.act()
-        self.fake.set(HOST, [_row("oiso20261021")])                          # yalnız tarihli adaş: tam ad yok
-        self.assertFalse(ws._remote_handover("oiso", HOST)["ok"])
+        # (tarihli tek oturum `oiso20261021` artık projeden çözülür: test_steward_remote_session_resolve.py)
         self.fake.set(HOST, [_row("oiso", running=False)])
         self.assertFalse(ws._remote_handover("oiso", HOST)["ok"])
         self.assertEqual(self.posts(), [])
