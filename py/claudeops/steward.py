@@ -114,7 +114,7 @@ MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
 SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
-OBSERVE_SKIPPED = ("handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "tour")
+OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "tour")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -248,6 +248,8 @@ class Config:
     history_min_age_minutes: int = 15   # satır eşiği (yedek yol) yalnız bu kadar dakikadan yaşlı oturumda tetikler; 0 = yaşa bakma
     context_warn_tokens_fable: int = 150000   # Fable oturumlarında eşik (token başına daha pahalı: 0 = genel eşiği kullan)
     context_warn_tokens: int = 300000   # oturumun bağlamı (son turun girdi+cache token'ı) bu sayıyı aşarsa handover (0 = kapalı); her tur bağlamın TAMAMI yeniden okunur
+    auto_context_answer: bool = True    # "bu oturumda mı sürdüreyim, devirle mi" sorusunu motor bağlam ölçümüne bakıp kendisi cevaplar
+    auto_context_ratio: float = 0.7     # bağlam devir eşiğinin bu oranını aşmışsa cevap "önce devir" (altındaysa "bu oturumda sürdür")
     brain_cli: str = "claude"
     brain_model: str = ""
     brain_effort: str = "high"
@@ -2202,6 +2204,31 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
     return actions, sd, done
 
 
+_CTX_Q_SESSION_RE = re.compile(r"bu oturum|this session", re.I)
+_CTX_Q_HANDOVER_RE = re.compile(r"devir|yeni oturum|handover|new session", re.I)
+_CTX_Q_EXCLUDE_RE = re.compile(r"commit|push|merge|deploy|force|\bsil|delete", re.I)   # sahip kararları otomatik cevaplanmaz
+
+
+def is_context_question(text: str) -> bool:
+    """'Bu oturumda mı sürdüreyim, devir notuyla yeni oturuma mı bırakayım?' kalıbı: cevabı bağlam ölçümünden çıkar."""
+    t = text or ""
+    return bool(_CTX_Q_SESSION_RE.search(t) and _CTX_Q_HANDOVER_RE.search(t) and not _CTX_Q_EXCLUDE_RE.search(t))
+
+
+def context_answer(tokens: int, warn: int, ratio: float, lang: str = "tr") -> Tuple[bool, str]:
+    """(devir_gerekli, cevap metni). Bağlam devir eşiğinin `ratio` oranını aşmışsa devir, aksi halde bu oturumda sürdür."""
+    pct = int(round(100.0 * tokens / warn)) if warn else 0
+    ho = bool(warn) and tokens >= ratio * warn
+    k = f"{tokens // 1000}K/{warn // 1000}K"
+    if lang == "en":
+        return ho, (f"Hand over first: context {k} ({pct}% of the handover threshold). The handover message is being sent now; "
+                    f"the new session continues from the handover note. Start no new work here, write the note."
+                    if ho else f"Continue in this session (context {k}, {pct}% of the handover threshold: far from it).")
+    return ho, (f"Önce devir: bağlam {k} (devir eşiğinin %{pct}'i). Devir mesajı şimdi gönderiliyor; yeni oturum devir notuyla sürdürür. "
+                f"Burada yeni iş başlatma, devir notunu yaz." if ho
+                else f"Bu oturumda sürdür (bağlam {k}, devir eşiğinin %{pct}'i: eşiğe uzak).")
+
+
 def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:
     """Oturum yanıtındaki soru/rutin/takıldım/fikir işaretlerinin KAYIT eylemleri (oturuma dokunmaz). `plan_tick` ve
     döngü kapalıyken çalışan `plan_markers` aynı kuralı paylaşır."""
@@ -2316,6 +2343,25 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                      and (now - v.started_at) < cfg.history_min_age_minutes * 60)
             if not young:
                 actions.append(Action("handover", v.name, f"history_size {v.history_size} >= {cfg.history_warn_at}"))
+                ho_pending[v.name] = now
+                busy_names.add(v.name)
+
+    # 1b) Bağlam sorusu: "bu oturumda mı sürdüreyim, devirle mi" sahibine/beyne sorulmaz; bağlam ölçümünden motor cevaplar.
+    # Eşiğe yakınsa aynı tick'te devir de başlar (oturum kendini kapatıp açamaz; devri motor yürütür).
+    if cfg.auto_context_answer:
+        for q in questions:
+            if q.status != "open" or not is_context_question(q.text):
+                continue
+            v = by_name.get(q.source)
+            if v is None or not v.running or not v.tmux or not v.context_tokens or not _managed(v.name):
+                continue
+            warn = context_threshold(cfg, v.model)
+            if not warn or v.name in ho_pending or v.name in busy_names:
+                continue
+            ho, text = context_answer(v.context_tokens, warn, cfg.auto_context_ratio, cfg.lang)
+            actions.append(Action("auto_answer", v.name, "context", {"question_id": q.id, "answer": text, "handover": ho}))
+            if ho:
+                actions.append(Action("handover", v.name, f"context soru: {v.context_tokens} token >= {int(cfg.auto_context_ratio * warn)}"))
                 ho_pending[v.name] = now
                 busy_names.add(v.name)
 

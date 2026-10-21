@@ -142,6 +142,57 @@ class PromptTest(unittest.TestCase):
         self.assertIn(sw.MARK_END, md)
 
 
+class ContextQuestionTest(unittest.TestCase):
+    """'Bu oturumda mı sürdüreyim, devirle mi' sorusu bağlam ölçümünden motor tarafından cevaplanır."""
+    Q = "§3.16.15 entegrasyon zincirini bu oturumda mı sürdüreyim, yoksa devir notuyla yeni oturuma mı bırakayım?"
+
+    def setUp(self):
+        self.now = 100000.0
+        self.projects = {"a": sw.Project(name="a", phase="planned", priority=1, cadence_minutes=60)}
+
+    def _q(self, text=None, source="a"):
+        return sw.Question(id="q1", project="a", text=text or self.Q, created_at=self.now - 60, source=source)
+
+    def _plan(self, tokens, text=None, **cfgkw):
+        cfg = _cfg(context_warn_tokens=300000, **cfgkw)
+        v = _view("a", context_tokens=tokens, model="claude-sonnet-5-5")
+        return sw.plan_tick([v], self.projects, {}, cfg, self.now, [self._q(text)], [])
+
+    def test_classifier(self):
+        self.assertTrue(sw.is_context_question(self.Q))
+        self.assertFalse(sw.is_context_question("Bu oturumda commit+push yapayım mı, devir notunda mı yazayım?"))
+        self.assertFalse(sw.is_context_question("Sonnet doğrulama turunu şimdi koşayım mı?"))
+
+    def test_low_context_continues_without_handover(self):
+        acts, st = self._plan(100000)
+        kinds = [a.kind for a in acts if a.name == "a"]
+        self.assertIn("auto_answer", kinds)
+        self.assertNotIn("handover", kinds)
+        ans = next(a for a in acts if a.kind == "auto_answer")
+        self.assertFalse(ans.payload["handover"])
+        self.assertIn("Bu oturumda sürdür", ans.payload["answer"])
+        self.assertIn("100K/300K", ans.payload["answer"])
+
+    def test_high_context_hands_over(self):
+        acts, st = self._plan(240000)   # 0.8 >= 0.7 (eşik 300K'nın altında, otomatik devir henüz tetiklemez)
+        kinds = [a.kind for a in acts if a.name == "a"]
+        self.assertEqual(kinds.count("handover"), 1)
+        ans = next(a for a in acts if a.kind == "auto_answer")
+        self.assertTrue(ans.payload["handover"])
+        self.assertIn("Önce devir", ans.payload["answer"])
+        self.assertIn("a", st["ho_pending"])
+
+    def test_unknown_context_or_disabled_leaves_question(self):
+        acts, _ = self._plan(None)
+        self.assertNotIn("auto_answer", [a.kind for a in acts])
+        acts, _ = self._plan(240000, auto_context_answer=False)
+        self.assertNotIn("auto_answer", [a.kind for a in acts])
+
+    def test_over_threshold_single_handover(self):
+        acts, _ = self._plan(310000)   # eşik aşıldı: mevcut devir yolu, ikinci handover üretilmez
+        self.assertEqual([a.kind for a in acts if a.name == "a"].count("handover"), 1)
+
+
 class RulesTest(unittest.TestCase):
     def setUp(self):
         self.now = 100000.0

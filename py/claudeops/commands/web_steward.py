@@ -2212,6 +2212,13 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         return _give_directive(p, "", answer=q, reason=action.reason, cfg=cfg, host=host, rt=rt, actor="engine")
     if k == "stop":
         return _act("stop", name, lang=cfg.lang)
+    if k == "auto_answer":
+        q = sw.answer_question(action.payload.get("question_id") or "", action.payload.get("answer") or "", paths)
+        if q is None:
+            return {"ok": False, "error": "question gone"}
+        if action.payload.get("handover"):
+            sw.mark_delivered(q.id, paths)   # devir mesajı zaten gidiyor: cevap yeni oturuma ayrıca iletilmez
+        return {"ok": True, "id": q.id, "handover": bool(action.payload.get("handover"))}
     if k == "deliver_answer":
         q = next((x for x in sw.load_questions(paths) if x.id == action.payload.get("question_id")), None)
         if q is None:
