@@ -1605,6 +1605,11 @@ MODEL_RULE_TR = (
     "- Sebep: Fable haftalık kotası hızla doluyor; token başına en pahalı model. Proje notunda eski bir model satırı bununla çelişirse BU KURAL geçerli.\n"
     "- İSTİSNA: sahibin bu kuraldan SONRA verdiği AÇIK bir model cevabı (ör. \"yazım Fable\") o iş için kuralı esnetir; onu uygula, kuralla "
     "\"netleştirme\" yapma. Kuraldan ÖNCE (2026-10-20 öncesi) verilmiş eski bir cevap kuralla çakışıyorsa sahibe `steward_ask_user` ile seçenekli yeniden sor, kendin ezme.\n"
+    "- Alt ajan bağlam bütçesi: ajan direktifine \"yalnız şu dosyaları oku\" listesini ve çıktı dosyasını AÇIK yaz (bütün repoyu/büyük kaynakları okutma; "
+    "büyük ön okumayı ayrı Sonnet çekme ajanına yaptır, Opus/Fable'a kısa özet ver). Çıktıyı bölüm bölüm `Edit`leme: tek `Write` ya da en çok 3-4 büyük "
+    "düzenleme (her araç çağrısı tüm bağlamı yeniden okutur). Fable ajanına özellikle dar dosya listesi ver.\n"
+    "- Rutin sorular: bu kuralda ve proje notunda zaten karara bağlı bir işi (hangi modelle, sırayla mı, ayrı ajanla mı) `steward_answer` ile kendin cevapla; "
+    "sahibe yükseltme. Yeni bir karar gerektirmiyorsa \"devam et\" de.\n"
 )
 MODEL_RULE_EN = (
     "\n## Model rule (owner's PERMANENT decision, 2026-10-20; not negotiable)\n"
@@ -1618,6 +1623,11 @@ MODEL_RULE_EN = (
     "- EXCEPTION: an EXPLICIT model answer the owner gives AFTER this rule (e.g. \"write it with Fable\") relaxes the rule for that job; apply it, "
     "do not \"clarify\" it away with the rule. If an older answer (given before 2026-10-20) conflicts with the rule, re-ask the owner with "
     "`steward_ask_user` and options; do not override it yourself.\n"
+    "- Sub-agent context budget: write an explicit \"read only these files\" list and the output file in each sub-agent directive (never the whole repo/large sources; "
+    "have a separate Sonnet fetch agent do big pre-reading and hand Opus/Fable a short summary). Do not `Edit` output section by section: one `Write` or at most "
+    "3-4 large edits (every tool call re-reads the whole context). Give Fable agents an especially narrow file list.\n"
+    "- Routine questions: if this rule or the project note already decides it (which model, in order or not, separate agent), answer it yourself with `steward_answer`; "
+    "do not escalate to the owner. If no new decision is needed, say \"continue\".\n"
 )
 
 
