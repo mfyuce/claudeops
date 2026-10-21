@@ -441,6 +441,20 @@ class OneshotProviderTest(unittest.TestCase):
                 run(argv, **kw)
 
 
+class SalientReaskTest(unittest.TestCase):
+    def _a(self, text, ans="evet"):
+        return sw.Question(id="q1", project="p1", text=text, created_at=1.0, status="answered", answer=ans, answered_at=100.0)
+
+    def test_paraphrased_same_topic_is_duplicate(self):
+        old = self._a("Kalan işler G8 sentezi (Opus high), G8 yazımı. Sonra yazım için Fable high mı?")
+        new = "Bu oturumda yapılabilir iş kalmadı. Yeniden açılış sırası G8 için Opus high, ardından yazım için Fable high mı"
+        self.assertIsNotNone(sw.find_answered_duplicate([old], "p1", new, now=200.0))
+
+    def test_different_topic_not_duplicate(self):
+        old = self._a("Kalan işler G8 sentezi (Opus high), yazım Fable high mı?")
+        self.assertIsNone(sw.find_answered_duplicate([old], "p1", "G6 ve G7 için kaynak arama sırası Sonnet medium ile mi?", now=200.0))
+
+
 class DoneDeferralTest(unittest.TestCase):
     def test_done_deferred_while_subagent_then_applied(self):
         projects = {"p1": sw.Project(name="p1", phase="planned")}

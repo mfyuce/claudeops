@@ -727,6 +727,16 @@ def _words(text: str) -> set:
     return {w for w in _WORD_RE.findall(text.lower()) if len(w) > 2}
 
 
+_SALIENT_RE = re.compile(r"\b[A-Za-z]{1,3}\d+(?:[-_.]\d+)*\b|\b(?:opus|fable|sonnet|haiku|high|medium|low|max)\b", re.IGNORECASE)
+SALIENT_MIN_TOKENS = 3             # bölüm/aşama kodu + model + effort gibi ayırt edici kelimeler: en az bu kadar ortak ve aynı küme
+
+
+def _salient(text: str) -> frozenset:
+    """Sorunun konusunu belirleyen kısa jetonlar (G8, A3-5, opus, fable, high...). Uzun serbest cümlelerde kelime Jaccard'ı
+    düşük kalır ("G8 Opus high, sonra Fable high mı?" 4 farklı anlatımla 4 kez soruldu); konu jetonları aynıysa tekrar sayılır."""
+    return frozenset(m.group(0).lower() for m in _SALIENT_RE.finditer(text))
+
+
 def find_answered_duplicate(questions: List["Question"], project: str, text: str,
                             now: Optional[float] = None) -> Optional["Question"]:
     """Aynı projede, son `REASK_WINDOW_SECONDS` içinde cevaplanmış ve `text`e kelime düzeyinde çok benzeyen soru
@@ -747,6 +757,10 @@ def find_answered_duplicate(questions: List["Question"], project: str, text: str
         if not theirs:
             continue
         sim = len(mine & theirs) / len(mine | theirs)
+        if sim < REASK_MIN_SIMILARITY:
+            sal, sal_q = _salient(text), _salient(q.text)
+            if len(sal) >= SALIENT_MIN_TOKENS and sal == sal_q:
+                sim = REASK_MIN_SIMILARITY       # konu jetonları birebir aynı: tekrar say
         if sim >= REASK_MIN_SIMILARITY and sim > best_sim:
             best, best_sim = q, sim
     return best
