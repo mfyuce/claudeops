@@ -1235,6 +1235,42 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
             "started": started}
 
 
+def passive_scan(sid: str = "default", *, views: Optional[List[sw.SessionView]] = None,
+                 index: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Değnekçi KAPALIYKEN salt kayıt: proje oturumlarının yanıtlarındaki STEWARD-ASK/-ROUTINE/-BLOCKED/-IDEA satırları
+    soru/fikir olarak kaydedilir (`sw.plan_markers`); oturuma HİÇBİR şey gönderilmez, faz/durdurma/başlatma yok.
+    Kapalıyken düşen soru kaybolmasın, açınca cevap iletimi çalışsın."""
+    ctx = _ctx(sid)
+    with ctx.lock:
+        cfg = steward_config(sid)
+        paths = ctx.paths
+        try:
+            projects = sw.load_projects(paths)
+            if not projects and sid != "default":
+                return {"ok": True, "recorded": 0}
+            world = _world(sid, cfg, 0, index if index is not None else _ownership_index())
+            vs = views if views is not None else _collect_views(cfg)
+            with sw.steward_lock(paths):
+                actions, new_state = sw.plan_markers(vs, projects, sw.load_state(paths), cfg, world=world)
+                sw.save_state(new_state, paths)
+            recorded = 0
+            for a in actions:
+                try:
+                    res = _apply(a, cfg, projects, world)
+                except Exception as e:
+                    res = {"ok": False, "error": repr(e)}
+                    diag_log("steward_action_crashed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
+                _remember(a, res, ctx)
+                recorded += 1 if res.get("ok") else 0
+            if recorded:
+                sw.log_event("passive_scan", paths=paths, n=recorded)
+                web_ws.notify_status_changed()
+            return {"ok": True, "recorded": recorded}
+        except Exception as e:
+            diag_log("steward_passive_scan_crashed", sid=sid, error=repr(e))
+            return {"ok": False, "error": repr(e)}
+
+
 def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
     """Döngünün bir turu: `steward_ids()` sırasıyla, YALNIZ `enabled` kimlikler SIRAYLA tick'lenir (aynı anda tek spawn
     dalgası). Bir kimliğin hatası yutulup loglanır, diğerleri yine tick'lenir. Makine geneli `max_starts_total` bütçesi
@@ -1244,10 +1280,12 @@ def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
     starts_left = max(0, base.max_starts_total)
     results: List[Dict[str, Any]] = []
     enabled: List[sw.Config] = []
+    disabled: List[str] = []
     for sid in steward_ids():
         try:
             cfg = steward_config(sid)
             if not cfg.enabled:
+                disabled.append(sid)
                 continue
             enabled.append(cfg)
             res = tick_once(trigger, sid, starts_left=starts_left, cards=False)
@@ -1260,6 +1298,14 @@ def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
         cards_round(enabled)
     except Exception as e:
         diag_log("steward_card_tick_crashed", error=repr(e))
+    if disabled:    # kapalı kimlikler: yalnız soru/fikir kaydı (oturuma dokunmaz)
+        try:
+            views = _collect_views(steward_config(disabled[0]))
+            idx = _ownership_index()
+            for sid in disabled:
+                passive_scan(sid, views=views, index=idx)
+        except Exception as e:
+            diag_log("steward_passive_scan_crashed", error=repr(e))
     return results
 
 

@@ -32,6 +32,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import time
+import types
 import os
 import shutil
 from typing import Any, Dict, List
@@ -532,6 +533,26 @@ def cmd_jobs(args) -> int:
     return 0
 
 
+def cmd_up(args) -> int:
+    """Tek komutla açma: `on` + `close`'un yorumladığı (`# CLOSED`) proje satırlarını geri aç + beyni başlat. Bekleyen
+    cevapları ayrıca iletmek gerekmez: ilk tick `deliver_answer` ile iletir."""
+    from . import close as close_cmd
+    rc = cmd_toggle(types.SimpleNamespace(action="on", all=False, sid=args.sid))
+    if rc:
+        return rc
+    sid = args.sid
+    paths = sw.paths_for(sid)
+    for name in sorted(sw.load_projects(paths)):
+        res = close_cmd.uncomment_models(name, dry_run=args.dry_run)
+        if res == "restored":
+            print(f"  models.tsv: {name} geri açıldı" + (" (kuru çalıştırma)" if args.dry_run else ""))
+    if args.dry_run or args.no_brain:
+        return 0
+    res = _api(args.port, "POST", "/api/steward/brain", {"action": "start"}, sid)
+    print(json.dumps(res, ensure_ascii=False))
+    return 0 if res.get("ok") else 1
+
+
 def cmd_api(args) -> int:
     port = args.port
     sid = _sid(args)
@@ -655,6 +676,11 @@ def register(sub):
     pc.add_argument("key")
     pc.add_argument("value")
     pc.set_defaults(func=cmd_config)
+    pup = s.add_parser("up", help="tek komutla aç: on + models.tsv'de # CLOSED satırlarını geri aç + beyni başlat")
+    pup.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
+    pup.add_argument("--dry-run", action="store_true", help="models.tsv'ye yazma, beyni başlatma (yalnız on yapılır)")
+    pup.add_argument("--no-brain", action="store_true")
+    pup.set_defaults(func=cmd_up)
     s.add_parser("on", help="döngüyü aç (steward.enabled=on)").set_defaults(func=cmd_toggle)
     poff = s.add_parser("off", help="döngüyü kapat (--all: tüm kimlikleri)")
     poff.add_argument("--all", action="store_true")

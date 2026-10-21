@@ -1877,6 +1877,50 @@ def context_threshold(cfg: "Config", model: str) -> int:
     return cfg.context_warn_tokens
 
 
+def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:
+    """Oturum yanıtındaki soru/rutin/takıldım/fikir işaretlerinin KAYIT eylemleri (oturuma dokunmaz). `plan_tick` ve
+    döngü kapalıyken çalışan `plan_markers` aynı kuralı paylaşır."""
+    out: List[Action] = []
+    for q in m["asks"]:
+        out.append(Action("ask_user", name, "STEWARD-ASK", {"project": proj or name, "text": q}))
+    for q in m["routines"]:
+        if "?" not in q:
+            continue   # "bekliyorum, yeni soru yok" gibi durum cümlesi soru değil: kayda da girmez, sahibine de gitmez
+        out.append(Action("ask_user", name, "STEWARD-ROUTINE", {"project": proj or name, "text": q, "routine": True}))
+    for b in m["blocked"]:
+        out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or name, "text": ("Takıldım: " + b)}))
+    for i in m["ideas"]:
+        out.append(Action("idea", name, "STEWARD-IDEA", {"text": i}))
+    return out
+
+
+def plan_markers(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
+                 world: Optional[World] = None) -> Tuple[List[Action], Dict[str, Any]]:
+    """Değnekçi KAPALIYKEN çalışan salt kayıt taraması: `plan_tick` adım 3'ün yalnız soru/fikir kısmı. Faz değiştirme,
+    durdurma, iletim, başlatma YOK; yalnız `ask_user`/`idea` eylemleri ve `seen_assistant` güncellenir (kapalıyken
+    düşen STEWARD-ASK kaybolmasın; açılınca ayrıca taranmasına gerek kalmasın). SAF."""
+    if world is not None:
+        projects = world.own_projects(projects)
+    st: Dict[str, Any] = json.loads(json.dumps(state)) if state else {}
+    seen: Dict[str, str] = dict(st.get("seen_assistant") or {})
+    actions: List[Action] = []
+    for v in views:
+        if not v.running or not v.last_assistant or v.name == cfg.brain_name:
+            continue
+        if world is not None:
+            cls = world.session_class(v.name, v.blueprint)
+            if cls != "own" and not (cls == "adhoc" and world.is_adhoc_owner):
+                continue
+        digest = hashlib.sha1(v.last_assistant.encode('utf-8', 'replace')).hexdigest()[:16]
+        if seen.get(v.name) == digest:
+            continue
+        seen[v.name] = digest
+        proj = v.project if v.project in projects else ""
+        actions.extend(marker_record_actions(v.name, proj, scan_markers(v.last_assistant)))
+    st["seen_assistant"] = seen
+    return actions, st
+
+
 def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
               now: float, questions: List[Question], ideas: List[Idea],
               world: Optional[World] = None) -> Tuple[List[Action], Dict[str, Any]]:
@@ -1984,18 +2028,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         seen[v.name] = digest
         m = scan_markers(v.last_assistant)
         proj = v.project if v.project in projects else ""
-        for q in m["asks"]:
-            actions.append(Action("ask_user", v.name, "STEWARD-ASK", {"project": proj or v.name, "text": q}))
-        for q in m["routines"]:
-            if "?" not in q:
-                continue   # "bekliyorum, yeni soru yok" gibi durum cümlesi soru değil: kayda da girmez, sahibine de gitmez
-            actions.append(Action("ask_user", v.name, "STEWARD-ROUTINE",
-                                  {"project": proj or v.name, "text": q, "routine": True}))
-        for b in m["blocked"]:
-            actions.append(Action("ask_user", v.name, "STEWARD-BLOCKED",
-                                  {"project": proj or v.name, "text": ("Takıldım: " + b)}))
-        for i in m["ideas"]:
-            actions.append(Action("idea", v.name, "STEWARD-IDEA", {"text": i}))
+        actions.extend(marker_record_actions(v.name, proj, m))
         if proj and m["plan_ready"] and projects[proj].phase == "planning":
             actions.append(Action("set_phase", proj, "STEWARD-PLAN-READY", {"phase": "planned"}))
         if proj and m["done"]:

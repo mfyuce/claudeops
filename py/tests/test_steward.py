@@ -441,6 +441,33 @@ class OneshotProviderTest(unittest.TestCase):
                 run(argv, **kw)
 
 
+class PlanMarkersTest(unittest.TestCase):
+    """Değnekçi kapalıyken salt kayıt taraması: yalnız soru/fikir, oturuma/faza dokunmaz."""
+
+    def _projects(self):
+        return {"p1": sw.Project(name="p1", phase="planned")}
+
+    def test_records_asks_and_ideas_only(self):
+        v = _view("p1", last_assistant="STEWARD-ASK: Hangi yol?\nSTEWARD-IDEA: yeni\nSTEWARD-DONE\nSTEWARD-PLAN-READY")
+        acts, st = sw.plan_markers([v], self._projects(), {}, _cfg())
+        self.assertEqual([(a.kind, a.reason) for a in acts], [("ask_user", "STEWARD-ASK"), ("idea", "STEWARD-IDEA")])
+        self.assertIn("p1", st["seen_assistant"])
+
+    def test_same_reply_not_rescanned_and_routine_needs_question_mark(self):
+        v = _view("p1", last_assistant="STEWARD-ROUTINE: bekliyorum\nSTEWARD-ROUTINE: Devam mı?")
+        acts, st = sw.plan_markers([v], self._projects(), {}, _cfg())
+        self.assertEqual([a.payload["text"] for a in acts], ["Devam mı?"])
+        again, _ = sw.plan_markers([v], self._projects(), st, _cfg())
+        self.assertEqual(again, [])
+
+    def test_matches_plan_tick_marker_actions(self):
+        v = _view("p1", last_assistant="STEWARD-ASK: a?\nSTEWARD-BLOCKED: x\nSTEWARD-IDEA: i")
+        passive, _ = sw.plan_markers([v], self._projects(), {}, _cfg())
+        full, _ = sw.plan_tick([v], self._projects(), {}, _cfg(), 5000.0, [], [])
+        keep = [(a.kind, a.reason, a.payload) for a in full if a.kind in ("ask_user", "idea")]
+        self.assertEqual([(a.kind, a.reason, a.payload) for a in passive], keep)
+
+
 class ObserveCoreTest(unittest.TestCase):
     def test_filter_act_passes_everything_and_clears_traces(self):
         acts = [sw.Action("start", "a"), sw.Action("handover", "b")]

@@ -76,6 +76,31 @@ def comment_out_models(base: str, dry_run: bool) -> str:
     return status
 
 
+def uncomment_models(base: str, dry_run: bool = False) -> str:
+    """`comment_out_models`'in tersi: `close`'un bıraktığı `#<satır>\t# CLOSED` kaydını geri aç (yalnız CLOSED işaretli).
+
+    Returns: 'restored' | 'active' | 'notfound'."""
+    try:
+        lines = open(MODELS_TSV, encoding="utf-8").read().splitlines()
+    except OSError:
+        return "notfound"
+    status = "notfound"
+    out = []
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            if status != "restored" and stripped.rstrip().endswith("# CLOSED") and _first_field(stripped[1:]) == base:
+                status = "restored"
+                if not dry_run:
+                    line = stripped[1:].rstrip()[: -len("# CLOSED")].rstrip("\t ")
+        elif _first_field(line) == base and status == "notfound":
+            status = "active"
+        out.append(line)
+    if status == "restored" and not dry_run:
+        open(MODELS_TSV, "w", encoding="utf-8").write("\n".join(out) + "\n")
+    return status
+
+
 def _kill_with_parent(pid: int, grace: float, keep_terminal: bool, name: Optional[str] = None) -> str:
     """claude proc'u öldür; keep_terminal=False ise parent terminali de.
 
