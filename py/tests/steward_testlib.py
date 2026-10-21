@@ -30,6 +30,7 @@ class _Tmp(unittest.TestCase):
             mock.patch.object(sw, "WORKSPACE_DIR", os.path.join(sd, "workspace")),
             mock.patch.object(web_steward, "NTFY_TOPIC_FILE", os.path.join(d, "ntfy_topic.txt")),
             mock.patch.object(web_steward, "TUNNEL_URL_FILE", os.path.join(d, "tunnel_url.txt")),
+            mock.patch.object(web_steward, "_in_roster", lambda name: True),    # roster reddi ayrı testte (RosterGateTest)
         ]
         for p in patches:
             p.start()

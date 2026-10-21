@@ -1750,6 +1750,11 @@ def http_file(name: str, rel: str, max_chars: int = MAX_FILE_READ_CHARS, sid: st
     return {"ok": True, "path": rel, "text": text[:max_chars], "truncated": len(text) > max_chars}
 
 
+def _in_roster(name: str) -> bool:
+    from .. import roster as roster_mod
+    return name in {e.name for e in roster_mod.read_roster()}
+
+
 def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     if not sw.valid_name(name):
@@ -1762,6 +1767,12 @@ def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str,
                                       "use steward_register_project (or ask the owner)"}
     fields = {k: data.get(k) for k in ("phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort")
               if k in data}
+    if fields.get("phase") in sw.ACTIVE_PHASES:
+        # Roster'da olmayan projeyi AKTİF faza alma/kaydetme (idea→planned dahil): her tick başarısız `start` üretirdi (CLI zaten uyarıyordu).
+        # `idea/paused/done` serbest; önce `steward_register_project`/panel kaydı.
+        if not _in_roster(name):
+            return {"ok": False, "error": f"'{name}' is not in the roster; register it first "
+                                          "(panel / steward_register_project) or use phase idea/paused"}
     try:
         p = sw.upsert_project(name, paths=sid, **fields)
     except ValueError as e:      # OwnedElsewhere / ReservedName mesajı olduğu gibi

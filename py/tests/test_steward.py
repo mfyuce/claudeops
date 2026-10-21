@@ -441,6 +441,18 @@ class OneshotProviderTest(unittest.TestCase):
                 run(argv, **kw)
 
 
+class RosterGateTest(_Tmp):
+    def test_active_phase_needs_roster_but_idea_does_not(self):
+        with mock.patch.object(web_steward, "_in_roster", lambda name: False):
+            r = web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})
+            self.assertFalse(r["ok"])
+            self.assertIn("roster", r["error"])
+            self.assertTrue(web_steward.http_project_upsert({"name": "zzz", "phase": "idea"})["ok"])
+            # fazı değiştirmeyen güncelleme (not) roster'a bakmaz; idea→planned dahil aktif faza geçiş bakar
+            self.assertTrue(web_steward.http_project_upsert({"name": "zzz", "notes": "x"})["ok"])
+            self.assertFalse(web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})["ok"])
+
+
 class ShutdownPlanTest(unittest.TestCase):
     def _run(self, views, sd, now):
         projects = {"p1": sw.Project(name="p1", phase="planned"), "p2": sw.Project(name="p2", phase="planned")}
