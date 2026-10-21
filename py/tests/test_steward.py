@@ -441,6 +441,27 @@ class OneshotProviderTest(unittest.TestCase):
                 run(argv, **kw)
 
 
+class SimilarAnswersTest(unittest.TestCase):
+    def _q(self, i, proj, text, ans, at=100.0):
+        return sw.Question(id=i, project=proj, text=text, created_at=1.0, status="answered", answer=ans, answered_at=at)
+
+    def test_ranks_by_similarity_and_excludes_self(self):
+        qs = [self._q("a", "zlkrn", "G8 sentezi için Opus high oturumu açılsın mı?", "evet"),
+              self._q("b", "mkt", "Kaynakça biçimi APA mı olsun?", "APA"),
+              self._q("c", "zlkrn", "G8 yazımı Fable high ile mi yapılsın?", "hayır sonnet", at=200.0)]
+        got = sw.similar_answers("G8 için Opus high oturumu ne zaman açılsın?", qs, project="zlkrn")
+        self.assertEqual([q.id for q in got][:1], ["a"])
+        self.assertNotIn("b", [q.id for q in got])
+        self.assertEqual(sw.similar_answers("G8 için Opus high oturumu ne zaman açılsın?", qs, exclude_id="a")[0].id, "c")
+
+    def test_open_or_unanswered_ignored_and_prompt_renders(self):
+        qs = [sw.Question(id="o", project="p", text="G8 Opus high mı?", created_at=1.0)]
+        self.assertEqual(sw.similar_answers("G8 Opus high mı?", qs), [])
+        it = {"kind": "routine", "name": "p", "id": "r1", "text": "soru?",
+              "similar": [{"project": "p", "text": "eski soru", "answer": "eski cevap"}]}
+        self.assertIn("benzer geçmiş karar [p]: eski soru → eski cevap", sw.build_tour_prompt([it]))
+
+
 class RosterGateTest(_Tmp):
     def test_active_phase_needs_roster_but_idea_does_not(self):
         with mock.patch.object(web_steward, "_in_roster", lambda name: False):

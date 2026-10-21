@@ -938,6 +938,13 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
     if s is None or not is_tmux_backed(s.pid):
         return {"ok": False, "error": "brain session not reachable"}
     enriched = [_enrich_item(it, projects, world) for it in items]
+    answered = [q for q in sw.load_questions(paths) if q.status == "answered"]
+    for it in enriched:     # karar hafızası: rutin/takılma maddelerine sahibin benzer geçmiş cevapları
+        if it.get("kind") in ("routine", "blocked") and it.get("text") and answered:
+            sims = sw.similar_answers(it["text"], answered, project=it.get("name") if it.get("name") != "-" else "",
+                                      exclude_id=str(it.get("id") or ""))
+            if sims:
+                it["similar"] = [{"project": q.project, "text": q.text, "answer": q.answer} for q in sims]
     prompt = sw.build_tour_prompt(enriched, lang=cfg.lang, open_qs=sw.open_questions(paths=paths), now=time.time())
     if not _send(s.name, s.cli, prompt):
         return {"ok": False, "error": "send failed"}

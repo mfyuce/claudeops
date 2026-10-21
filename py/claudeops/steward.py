@@ -737,6 +737,36 @@ def _salient(text: str) -> frozenset:
     return frozenset(m.group(0).lower() for m in _SALIENT_RE.finditer(text))
 
 
+SIMILAR_MIN_SCORE = 0.25
+
+
+def similar_answers(text: str, questions: List["Question"], project: str = "", exclude_id: str = "",
+                    limit: int = 3) -> List["Question"]:
+    """Karar hafızası (yalnız bu kimliğin `questions.json`'u): `text`e en çok benzeyen cevaplanmış sorular (en benzer önce).
+    Skor = kelime Jaccard'ı + ortak konu jetonu payı (+0.1 aynı proje). Beyin rutin/takılma maddesinde sahibin geçmiş
+    kararlarını görür; aynı şeyi yeniden sormasın, tutarlı cevaplasın."""
+    mine, mine_sal = _words(text), _salient(text)
+    if not mine:
+        return []
+    scored = []
+    for q in questions:
+        if q.status != "answered" or not q.answer.strip() or q.id == exclude_id:
+            continue
+        theirs = _words(q.text)
+        if not theirs:
+            continue
+        score = len(mine & theirs) / len(mine | theirs)
+        sal = _salient(q.text)
+        if mine_sal and sal:
+            score += 0.3 * len(mine_sal & sal) / len(mine_sal | sal)
+        if project and q.project == project:
+            score += 0.1
+        if score >= SIMILAR_MIN_SCORE:
+            scored.append((score, q.answered_at, q))
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    return [q for _, _, q in scored[:limit]]
+
+
 def find_answered_duplicate(questions: List["Question"], project: str, text: str,
                             now: Optional[float] = None) -> Optional["Question"]:
     """Aynı projede, son `REASK_WINDOW_SECONDS` içinde cevaplanmış ve `text`e kelime düzeyinde çok benzeyen soru
@@ -1602,6 +1632,9 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
                     lines.append(_clip(body, 600))
         if it.get("text"):
             lines.append(_clip(it["text"], 600))
+        for sq in it.get("similar") or []:
+            lines.append((f"benzer geçmiş karar [{sq.get('project') or '-'}]: " if tr else f"similar past decision [{sq.get('project') or '-'}]: ")
+                         + _clip(sq.get("text", ""), 160) + " → " + _clip(sq.get("answer", ""), 200))
     lines.append("")
     lines.append((f"Bütün maddeleri işledikten sonra yanıtını tek başına `{MARK_END}` satırıyla bitir."
                   if tr else f"After handling every item, end your reply with a line containing only `{MARK_END}`."))
