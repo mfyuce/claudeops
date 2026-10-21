@@ -1,7 +1,8 @@
 """Uzak host'taki projeyi yönetme, A1 (TODO 2026-10-20 (14)): `Project.host` + doğrulama/host değişimi kuralı, sahiplik
 indeksinin `hosts` bölümü, `World.hosts/host_of/unavailable`, saf `select_rows`, uzak satırlardan görünüm (`_collect_views`
 + `_remote`), "host kapalı" tazelik kuralı, uzak oturumların slot sayımına girmesi, `_target`/`_apply`ta uzak hedefin
-KOŞULSUZ reddi (observe'da `would:` kaydı host alanıyla), uzak projede yerel dosya sistemi korumaları, CLI `set --host`.
+kapıları (A1'de koşulsuz red; A3'te `remote_actions` kapalıyken red, açıkken eylemler test_steward_remote_actions.py'de;
+observe'da `would:` kaydı host alanıyla), uzak projede yerel dosya sistemi korumaları, CLI `set --host`.
 
 Gerçek ağ/uzak host/tmux/servis/`spawn_session` YOK: `ws._remote` sahte host (`FakeHost`), `web_hosts._http_json`/`_http_raw`
 ve `ws.spawn_session` AssertionError'a bağlı, `hosts.HOSTS_JSON` ve değnekçi dizini geçici (`_Tmp`). Gerçek settings.json
@@ -116,6 +117,8 @@ class _Remote(_Tmp):
                        {"name": "yuhem", "base_url": "http://127.0.0.1:9", "token": "t"}], f)
         ws._reset_contexts()
         ws._CAPS.clear()
+        ws._HOST_HEALTH.clear()       # A3: süreç içi host sağlığı / red log tekrarsızlığı testler arası taşınmasın
+        ws._DENIED_LOGGED.clear()
         ws._RECENT.clear()
         ws.invalidate_summary()
         self.addCleanup(ws._reset_contexts)
@@ -366,8 +369,9 @@ class TestEngineRemote(_Remote):
         self.assertEqual(self.log("would:deliver_answer")[0]["host"], HOST)
         self.assertEqual((self.fake.posts, self.calls, self.touched), ([], [], []))
 
-    def test_act_mode_denies_remote_even_with_remote_actions_on(self):
-        self.settings(mode="act", remote_actions="on")
+    def test_act_mode_denies_remote_while_remote_actions_off(self):
+        # A3: `remote_actions` açıkken uzak eylem uygulanır (test_steward_remote_actions.py); kapalıyken act'te de red.
+        self.settings(mode="act")
         self.fake.set(HOST, [_row("oiso", context={"tokens": 400000})])
         res = ws.tick_once("manual")
         self.assertEqual([(a["kind"], a["ok"]) for a in res["actions"]], [("handover", False)])
@@ -415,11 +419,15 @@ class TestTargetRemote(_Remote):
     def test_rules(self):
         self.settings(remote_actions="on")
         codes = lambda r: r and r.get("code")   # noqa: E731
-        self.assertEqual(codes(ws._target("oiso", "", kind="stop")), "remote_disabled")       # host verilmedi: projeninki
+        self.assertEqual(codes(ws._target("oiso", "", kind="stop")), "remote_destructive_pending")   # A3: yıkıcı yok (A4)
+        self.assertEqual(codes(ws._target("oiso", "", kind="handover")), "host_down")   # host önbellekte yok: taze değil
+        self.fake.set(HOST, [_row("oiso")])
+        self.assertIsNone(ws._target("oiso", "", kind="handover"))                      # host verilmedi: projeninki
+        self.assertIsNone(ws._target("oiso", "", kind="handover", host=HOST))
         self.assertEqual(codes(ws._target("oiso", "", kind="stop", host="local")), "host_mismatch")   # yerel adaş: red
         self.assertEqual(codes(ws._target("oiso20261021", "", kind="stop", host="local")), "host_mismatch")
-        self.assertEqual(codes(ws._target("oiso20261021", "engine", kind="stop")), "remote_disabled")
-        self.assertEqual(codes(ws._target("oiso", "", kind="stop", host=HOST)), "remote_disabled")   # A1: koşulsuz
+        self.assertIsNone(ws._target("oiso20261021", "engine", kind="handover"))
+        self.assertEqual(codes(ws._target("oiso", "", kind="restart", host=HOST)), "remote_destructive_pending")
         self.assertEqual(codes(ws._target("oiso", "", kind="stop", host="yok")), "unknown_host")
         self.assertEqual(codes(ws._target("loc", "", kind="stop", host=HOST)), "host_mismatch")
         self.assertEqual(codes(ws._target("zzz", "", kind="stop", host=HOST)), "host_mismatch")   # kayıtsız uzak

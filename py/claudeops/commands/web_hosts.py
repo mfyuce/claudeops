@@ -751,20 +751,24 @@ def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collectio
     return local_payload
 
 
-def proxy_action(path: str, host_name: str, body: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+def proxy_action(path: str, host_name: str, body: Dict[str, Any],
+                 timeout: Optional[float] = None) -> Tuple[Dict[str, Any], int]:
     """`path`'i `host_name`'e proxy'ler. Giden body'deki `host` hep "local"a
     zorlanır (bkz. modül docstring'i — 2. hop'u yapısal olarak imkansız kılan
     zorlama, KALDIRMA). Transport hatası → (200, ok:false) — bu codebase'in
     zaten kullandığı "aksiyon hatası = 200 + ok:false" konvansiyonuyla aynı
     (bkz. web.py'deki _err() kullanımları — sadece malformed-request'ler 400
-    dönüyor, gerçek aksiyon hataları hep 200)."""
+    dönüyor, gerçek aksiyon hataları hep 200).
+
+    `timeout`: verilmezse `ACTION_TIMEOUT_SECONDS` (panel yolu değişmez); uzak
+    değnekçi eylemleri daha kısa verir (input/handover 60, start 120 sn)."""
     host = hosts_mod.get_host(host_name)
     if host is None:
         return {"ok": False, "error": f"unknown host: {host_name}"}, 200
     outgoing = dict(body)
     outgoing["host"] = LOCAL_HOST_NAME
     url = f"{host['base_url']}{path}?token={host['token']}"
-    status, parsed, err = _http_json("POST", url, outgoing, ACTION_TIMEOUT_SECONDS)
+    status, parsed, err = _http_json("POST", url, outgoing, ACTION_TIMEOUT_SECONDS if timeout is None else timeout)
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status

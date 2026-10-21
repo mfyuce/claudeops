@@ -262,8 +262,8 @@ class Config:
     cards_per_tick: int = 1          # bir tick'te en çok kaç kart yenilenir (0 = hiç)
     mode: str = "observe"            # observe: oturuma dokunan eylemler uygulanmaz, `would:` olarak kaydedilir | act
     summary_hour: int = 21           # günlük özet: bu saatten (yerel) sonraki ilk tick'te, günde bir
-    remote_actions: bool = False     # uzak host'taki proje oturumlarına eylem (kimlik başına, VARSAYILAN KAPALI). Uzak eylem
-                                     # yolu henüz yok (A1): açık olsa da uzak hedef `_target`ta reddedilir
+    remote_actions: bool = False     # uzak host'taki proje oturumlarına eylem (kimlik başına, VARSAYILAN KAPALI). Açıkken
+                                     # yalnız yıkıcı olmayanlar (devir/yönerge/cevap/iş/başlatma); stop/respawn uzakta red (A4)
     # ── çoklu değnekçi (P2) ──
     sid: str = "default"             # bu Config'in kimliği (`steward_config(sid)` doldurur)
     label: str = ""                  # panelde görünen ad

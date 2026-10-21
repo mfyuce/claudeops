@@ -111,7 +111,7 @@ def cmd_status(args) -> int:
     remote = sorted(f"{p.name}@{p.host}" for p in projects.values() if p.host)
     if remote:
         print(f"uzak projeler: {', '.join(remote)}   uzak eylem: "
-              f"{'açık' if cfg.remote_actions else 'kapalı'} (henüz uygulanmıyor: yalnız gözlem)")
+              f"{'açık' if cfg.remote_actions else 'kapalı'} (yalnız devir/yönerge/cevap/başlatma; durdurma/yeniden açma henüz yok)")
     conflicts = sw.ownership_index(steward_ids()).get("conflicts") or {}
     mine = sorted(n for n in projects if n in conflicts)
     for n in mine:
