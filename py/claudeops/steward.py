@@ -100,7 +100,7 @@ def paths_for(sid: str = "default") -> StewardPaths:
 def _pp(paths: Any = None) -> StewardPaths:
     """İsteğe bağlı `paths` argümanı: None = `default` (eski davranış), str = kimlik, StewardPaths = olduğu gibi."""
     return paths if isinstance(paths, StewardPaths) else paths_for("default" if paths is None else paths)
-CARD_DOCS = ("GOAL.md", "PLAN.md", "TODO.md", "TOBEDECIDED.md", "DONE.md")
+CARD_DOCS = ("STEWARD_BRIEF.md", "GOAL.md", "PLAN.md", "TODO.md", "TOBEDECIDED.md", "DONE.md")   # STEWARD_BRIEF.md: proje oturumunun güncel görev tarifi (parolasız); CLAUDE.md BİLEREK yok (parola içerebilir)
 CARD_DOC_CHARS = 1500            # kartın modele göstereceği her doküman başı
 CARD_LIST_ITEMS = 8              # open_tbds / blockers / recent_done en çok bu kadar madde
 CARD_TEXT_CHARS = 400            # kart alanlarının (goal/next_step/madde) üst sınırı
