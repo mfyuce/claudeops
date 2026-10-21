@@ -86,6 +86,12 @@ class MarkerTest(unittest.TestCase):
         self.assertTrue(acts[0].payload["routine"])   # beyin turunda rutin madde: telefona gitmez
         self.assertTrue(acts[0].payload["text"].startswith(sw.JOB_REQUEST_PREFIX))
         self.assertEqual(sw.scan_markers("STEWARD-JOB:\n")["jobs"], [])
+        # düzyazıdaki anma, yer tutucu ve protokol metninin yankısı iş isteği SAYILMAZ
+        for txt in ("Yazdığımda `STEWARD-JOB:` satırını görecek, bunu izlerim.",
+                    "- `STEWARD-JOB: <iş türü> <dosya yolu> [kısa açıklama]`; değnekçi gönderir",
+                    "STEWARD-JOB: ` yazısı iş isteği sanıldı", "Cevabım: STEWARD-JOB: embed x.md"):
+            self.assertEqual(sw.scan_markers(txt)["jobs"], [], txt)
+        self.assertEqual(sw.scan_markers("`STEWARD-JOB: embed a.md`")["jobs"], ["embed a.md"])
         self.assertIn(sw.MARK_JOB, sw._PROTOCOL_TR)
         self.assertIn(sw.MARK_JOB, sw._PROTOCOL_EN)
 

@@ -1494,6 +1494,9 @@ def _unwrap_ticks(prefix: str, body: str) -> str:
     return body.strip()
 
 
+_JOB_BODY_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}\s+\S")   # '<tür> <dosya/açıklama>': tür küçük harf kimliği
+
+
 def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool}. Satır başındaki madde/boşluk toleranslı;
@@ -1510,6 +1513,8 @@ def scan_markers(text: str) -> Dict[str, Any]:
             idx = line.find(mark)
             if idx != -1:
                 body = _unwrap_ticks(line[:idx], line[idx + len(mark):].strip())
+                if key == "jobs" and not (line[:idx] in ("", "`") and _JOB_BODY_RE.match(body)):
+                    break   # düzyazıdaki anma ya da yer tutucu ('<iş türü> <dosya>'): iş isteği değil
                 if body:
                     out[key].append(body)
                 break
