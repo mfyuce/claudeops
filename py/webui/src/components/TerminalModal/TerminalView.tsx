@@ -981,8 +981,10 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
             // if it turns out not to be the whole story.
             touchAction: "pan-y",
             maxWidth: "calc(95vw - 1.4rem)",
-            // dvh, see TerminalModal.tsx's maxHeight comment.
-            maxHeight: "calc(92dvh - 130px)",
+            // dvh, see TerminalModal.tsx's maxHeight comment. 270px = what the modal needs around
+            // this pane (title + tabs above; toolbar, status lines and the live-input textarea below);
+            // 130px left the textarea/send button off-screen at 100% zoom (2026-10-21).
+            maxHeight: "calc(92dvh - 270px)",
             boxSizing: "content-box",
             fontFamily: "monospace",
             fontSize: ".8rem",
@@ -998,8 +1000,8 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
               borderRadius: "4px",
               overflow: "auto",
               maxWidth: "calc(95vw - 1.4rem)",
-              // dvh, see TerminalModal.tsx's maxHeight comment.
-              maxHeight: "calc(92dvh - 130px)",
+              // dvh, see TerminalModal.tsx's maxHeight comment; 270px: see the xterm container above.
+              maxHeight: "calc(92dvh - 270px)",
               boxSizing: "content-box",
               fontFamily: "monospace",
               fontSize: ".8rem",
