@@ -75,7 +75,7 @@ HOST_ROUTED_PATHS = {
 # (files/download) JSON değil ham binary dönüyor. TODO.md'nin bilerek
 # ERTELEDİĞİ parça buydu (TOBEDECIDED #16 kapanışı) — artık uygulandı.
 GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/history", "/api/term/chat", "/api/files/list", "/api/files/read",
-                         "/api/instances", "/api/cli/status"}
+                         "/api/instances", "/api/cli/status", "/api/session/facts"}
 FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
 FILE_UPLOAD_PATH = "/api/files/upload"  # download'ın YAZMA kardeşi — POST + ham binary REQUEST body (ne JSON-body proxy_action'a ne query-only GET proxy'lerine uyar), kendi proxy_post_raw()'ı var
 

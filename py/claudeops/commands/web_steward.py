@@ -264,9 +264,86 @@ def _remote_view(r: Dict[str, Any], host: str, now: float) -> sw.SessionView:
     return v
 
 
+# Uzak host yetenek önbelleği (A2): host -> (yoklama zamanı, {"api": int, "capabilities": [..]}). `api` 0 = eski host
+# (`/api/session/facts` 404): started/subagent bilinmez, yalnız status + term/chat yolu; 10 dk'da bir yeniden yoklanır.
+REMOTE_CAPS_RECHECK_SECONDS = 600.0
+_CAPS: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_CAPS_LOCK = threading.Lock()
+
+
+def _caps_put(host: str, api: int, capabilities: Any, now: float) -> Dict[str, Any]:
+    caps = {"api": int(api), "capabilities": [str(c) for c in (capabilities or [])]}
+    with _CAPS_LOCK:
+        _CAPS[host] = (now, caps)
+    return caps
+
+
+def _caps_cached(host: str, now: float) -> Optional[Dict[str, Any]]:
+    """Önbellekteki yetenek ya da None (hiç yok / api 0 kaydı 10 dk'dan eski: yeniden yoklanmalı)."""
+    with _CAPS_LOCK:
+        hit = _CAPS.get(host)
+    if hit is None:
+        return None
+    if hit[1]["api"] == 0 and now - hit[0] >= REMOTE_CAPS_RECHECK_SECONDS:
+        return None
+    return dict(hit[1])
+
+
+def _probe_facts(host: str, names: List[str], budget: float, now: Optional[float] = None
+                 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Host'un `GET /api/session/facts` ucu: (yetenek, {ad: olgular}). Tek istek hem yetenek yoklaması hem veri okumasıdır.
+    404 = eski host: önbelleğe api 0 yazılır, taşıma hatası SAYILMAZ. Ağ/zaman aşımı/başka HTTP hatası: önbelleğe
+    YAZILMAZ (geçici arıza yeteneği silmesin), yetenek önbellekteki (yoksa api 0) döner ve olgu boştur. Önbellekte taze
+    api 0 kaydı varsa hiç istek atılmaz."""
+    now = time.time() if now is None else now
+    cached = _caps_cached(host, now)
+    if cached is not None and cached["api"] == 0:
+        return cached, {}
+    try:
+        parsed, status = _remote.get("/api/session/facts", host, {"names": ",".join(names)}, timeout=budget)
+    except Exception:
+        return cached or {"api": 0, "capabilities": []}, {}
+    if status == 404:
+        return _caps_put(host, 0, [], now), {}
+    if status == 200 and isinstance(parsed, dict) and parsed.get("ok") is not False \
+            and isinstance(parsed.get("api"), int) and not isinstance(parsed.get("api"), bool):
+        caps = _caps_put(host, parsed["api"], parsed.get("capabilities"), now)
+        sess = parsed.get("sessions")
+        return caps, (sess if isinstance(sess, dict) else {})
+    return cached or {"api": 0, "capabilities": []}, {}
+
+
+def host_capabilities(host: str, now: Optional[float] = None, budget: float = 5.0) -> Dict[str, Any]:
+    """Host başına {"api", "capabilities"}: önbellekten, yoksa (ya da api 0 kaydı 10 dk'dan eskiyse) ad listesiz facts
+    yoklamasıyla. Ağ hatasında önbelleğe yazılmaz; bilinmeyen = api 0, boş yetenek."""
+    now = time.time() if now is None else now
+    cached = _caps_cached(host, now)
+    if cached is not None:
+        return cached
+    return _probe_facts(host, [], budget, now)[0]
+
+
+def _apply_facts(v: sw.SessionView, f: Dict[str, Any], now: float, row_history: Any) -> None:
+    """Uzak olguları görünüme işler: başlangıç (yaş saniyesinden, saat kayması yok), alt ajan (gerçek değer, artık
+    bilinmiyor DEĞİL), bağlam, son asistan metni."""
+    age = f.get("started_age_s")
+    if isinstance(age, (int, float)) and not isinstance(age, bool) and age >= 0:
+        v.started_at = now - float(age)
+    v.subagent_active = f.get("subagent_active") is True
+    v.subagent_unknown = False
+    tok = f.get("context_tokens")
+    if isinstance(tok, (int, float)) and not isinstance(tok, bool) and tok > 0:
+        v.context_tokens = int(tok)
+        if v.history_size is None:
+            v.history_size = row_history
+    v.last_assistant = str(f.get("last_assistant") or "")
+
+
 def _remote_views(world: sw.World, now: Optional[float] = None) -> List[sw.SessionView]:
     """Uzak projelerin (tüm kimliklerin: `max_active_total` sayımı için) taze host'lardaki oturum görünümleri.
-    Satır seçimi `sw.select_rows` (saf); son asistan metni yalnız ÇALIŞAN seçilmiş oturumlar için okunur."""
+    Satır seçimi `sw.select_rows` (saf). Zenginleştirme: host `session_facts` bildiriyorsa host başına TEK facts isteği
+    (started/subagent/bağlam/son asistan); bildirmeyen (eski) host ve olgusu gelmeyen oturum için A1 yolu (term/chat).
+    Tüm uzak okumalar TOPLAM `REMOTE_READ_BUDGET_SECONDS` içinde."""
     hosts = sorted(set(world.hosts.values()))
     if not hosts:
         return []
@@ -279,10 +356,47 @@ def _remote_views(world: sw.World, now: Optional[float] = None) -> List[sw.Sessi
             continue
         fresh.add(h)
         rows.extend(dict(r, host=h) for r in (st.get("sessions") or []) if isinstance(r, dict))
-    views = [_remote_view(r, r["host"], now) for r in sw.select_rows(rows, world, fresh)]
-    texts = _remote_last_assistant([(v.host, v.name) for v in views if v.running])
+    selected = sw.select_rows(rows, world, fresh)
+    views = [_remote_view(r, r["host"], now) for r in selected]
+    history = {(r["host"], str(r.get("name") or "")): r.get("history_size") for r in selected}
+    deadline = time.monotonic() + REMOTE_READ_BUDGET_SECONDS
+    running: Dict[str, List[sw.SessionView]] = {}
     for v in views:
-        v.last_assistant = texts.get((v.host, v.name), "")
+        if v.running:
+            running.setdefault(v.host, []).append(v)
+    got: Dict[str, Dict[str, Any]] = {}
+    lock = threading.Lock()
+
+    def probe(host: str) -> None:
+        try:
+            caps, facts = _probe_facts(host, [v.name for v in running[host]], max(0.5, deadline - time.monotonic()), now)
+        except Exception:
+            return
+        if "session_facts" in caps["capabilities"]:
+            with lock:
+                got[host] = facts
+
+    threads = [threading.Thread(target=probe, args=(h,), daemon=True, name="steward-remote-facts") for h in running]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(max(0.0, deadline - time.monotonic()))
+    with lock:
+        enriched = {h: dict(f) for h, f in got.items()}
+    fallback: List[Tuple[str, str]] = []
+    for v in views:
+        if not v.running:
+            continue
+        f = (enriched.get(v.host) or {}).get(v.name)
+        if isinstance(f, dict) and f.get("running") is not False:
+            _apply_facts(v, f, now, history.get((v.host, v.name)))
+        else:
+            fallback.append((v.host, v.name))
+    left = deadline - time.monotonic()
+    texts = _remote_last_assistant(fallback, budget=left) if fallback and left > 0 else {}
+    for v in views:
+        if (v.host, v.name) in texts:
+            v.last_assistant = texts[(v.host, v.name)]
     return views
 
 

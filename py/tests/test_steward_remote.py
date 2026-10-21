@@ -92,6 +92,8 @@ class FakeHost:
 
     def get(self, path, host, query, timeout=None):
         self.gets.append((path, host, dict(query)))
+        if path == "/api/session/facts":      # A1 testleri eski host'u temsil eder: yeni uç yok (404)
+            return {"error": "not found"}, 404
         delay = self.slow.get(query.get("name"))
         if delay:
             time.sleep(delay)
@@ -113,6 +115,7 @@ class _Remote(_Tmp):
             json.dump([{"name": HOST, "base_url": "http://127.0.0.1:9", "token": "t"},
                        {"name": "yuhem", "base_url": "http://127.0.0.1:9", "token": "t"}], f)
         ws._reset_contexts()
+        ws._CAPS.clear()
         ws._RECENT.clear()
         ws.invalidate_summary()
         self.addCleanup(ws._reset_contexts)
@@ -329,7 +332,8 @@ class TestEngineRemote(_Remote):
         self.assertEqual((v.context_tokens, v.history_size, v.started_at, v.subagent_unknown), (1234, 50, 0.0, True))
         self.assertAlmostEqual(v.last_activity, time.time() - 20, delta=5)
         self.assertEqual(v.last_assistant, "selam\nSTEWARD-ASK: hangi bölüm?")
-        self.assertEqual(self.fake.gets, [("/api/term/chat", HOST, {"name": "oiso", "mode": "last"})])
+        self.assertEqual([g for g in self.fake.gets if g[0] == "/api/term/chat"],
+                         [("/api/term/chat", HOST, {"name": "oiso", "mode": "last"})])
         self.fake.set(HOST, [_row("oiso", context=None, cache=None)])
         v = [x for x in ws._collect_views(settings.steward_config()) if x.host == HOST][0]
         self.assertEqual((v.context_tokens, v.history_size, v.last_activity), (None, None, 0.0))   # bilinmiyor

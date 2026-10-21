@@ -1773,8 +1773,14 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     return {"ok": True, "kind": kind}
 
 
-def _stop(name: str, lang: str = "tr") -> dict:
+NO_EXACT_MATCH = {"ok": False, "error": "no_exact_match"}
+
+
+def _stop(name: str, lang: str = "tr", exact: bool = False) -> dict:
+    """`exact=True` (uzak değnekçi, A2): YALNIZ tam ad eşleşmesi; yoksa unique_base'e DÜŞMEZ, `no_exact_match`."""
     kind, procs = _find_running_for_action(name)
+    if exact and kind != "exact":
+        return dict(NO_EXACT_MATCH)
     if kind == "none":
         return _err(lang, "not_running", name=name)
     if kind == "ambiguous":
@@ -1790,7 +1796,7 @@ def _stop(name: str, lang: str = "tr") -> dict:
     return {"ok": True, "result": results}
 
 
-def _term_resolve(name: str, lang: str = "tr"):
+def _term_resolve(name: str, lang: str = "tr", exact: bool = False):
     """Terminal endpoint'lerinin ortak çözümlemesi: name → tek, canlı, tmux-backed
     Session, yoksa (None, err-dict) döner.
 
@@ -1800,6 +1806,8 @@ def _term_resolve(name: str, lang: str = "tr"):
     ama fark edilmesi zor bir yanlış-yönlendirme). `_find_running_for_action`
     artık bu belirsizliği açıkça reddediyor."""
     kind, procs = _find_running_for_action(name)
+    if exact and kind != "exact":      # uzak değnekçi (A2): unique_base'e düşme
+        return None, dict(NO_EXACT_MATCH)
     if kind == "none":
         return None, _err(lang, "not_running", name=name)
     if kind == "ambiguous":
@@ -2153,8 +2161,8 @@ def _term_loop_seconds(host: str, interval: Optional[float]) -> Optional[float]:
     return interval
 
 
-def _term_input(name: str, text: str, lang: str = "tr") -> dict:
-    s, err = _term_resolve(name, lang)
+def _term_input(name: str, text: str, lang: str = "tr", exact: bool = False) -> dict:
+    s, err = _term_resolve(name, lang, exact=True) if exact else _term_resolve(name, lang)
     if err:
         return err
     ok = tmux_send_keys(s.name, text, settle_delay=get_provider(s.cli).input_settle_delay())
@@ -2313,6 +2321,46 @@ def _term_set_mode(name: str, target_mode: str, lang: str = "tr") -> dict:
             # istenmeyen bir moda taşıyıp üstüne "başarısız" demek demekti.)
             return _err(lang, "mode_cycle_unreachable", name=name, mode=target_mode, current=current)
     return _err(lang, "mode_cycle_failed", name=name, mode=target_mode, current=current or "?")
+
+
+SESSION_FACTS_API = 1
+SESSION_FACTS_CAPABILITIES = ["exact_target", "session_facts"]
+SESSION_FACTS_MAX_NAMES = 50
+SESSION_FACTS_TEXT_MAX = 20000
+
+
+def _session_facts(names: List[str]) -> dict:
+    """`GET /api/session/facts?names=a,b` (uzak değnekçi, A2): salt okur, TAM ad eşleşmesi. Ad başına yaş (saniye,
+    saat kayması yok), alt ajan, bağlam token'ı, son asistan metni; çalışmayan ad için `running: false` ve boş değerler.
+    Üst düzey `api` + `capabilities` yerel istemcinin yetenek yoklaması içindir (eski host bu uca 404 verir)."""
+    live = {s.name: s for s in find_sessions(measure_cpu=False)}
+    out: Dict[str, Any] = {}
+    for name in names[:SESSION_FACTS_MAX_NAMES]:
+        s = live.get(name)
+        if s is None:
+            out[name] = {"running": False, "started_age_s": None, "subagent_active": False,
+                         "context_tokens": None, "last_assistant": "", "sid_known": False}
+            continue
+        started = _process_started_at(s.pid)
+        tokens, sub, text = None, False, ""
+        if s.cli == "claude":
+            try:
+                tokens = web_steward.context_tokens_for(s.cwd, s.sid)
+            except Exception:
+                tokens = None
+            try:
+                sub = bool(web_steward.subagent_active_for(s.cwd, s.sid))
+            except Exception:
+                sub = False
+        try:
+            text = str((get_provider(s.cli).last_exchange(s.cwd, s.sid) or {}).get("assistant") or "")
+        except Exception:
+            text = ""
+        out[name] = {"running": True,
+                     "started_age_s": max(0.0, time.time() - started) if started else None,
+                     "subagent_active": sub, "context_tokens": tokens,
+                     "last_assistant": text[:SESSION_FACTS_TEXT_MAX], "sid_known": bool(s.sid)}
+    return {"ok": True, "api": SESSION_FACTS_API, "capabilities": list(SESSION_FACTS_CAPABILITIES), "sessions": out}
 
 
 def _term_chat(name: str, lang: str = "tr", mode: str = "last", since: int = 0) -> dict:
@@ -2540,7 +2588,7 @@ HANDOVER_PROC_WAIT_SECONDS = 25.0
 GUARD_LOCK_ACQUIRE_TIMEOUT = 60.0
 
 
-def _handover(name: str, lang: str = "tr") -> dict:
+def _handover(name: str, lang: str = "tr", exact: bool = False) -> dict:
     """Wrap-up mesajını CANLI session'a enjekte eder — py/cops handover'ın TEK-session
     web karşılığı. kill/respawn YOK.
 
@@ -2567,6 +2615,8 @@ def _handover(name: str, lang: str = "tr") -> dict:
     kirletmeyen spawn-time yol) ile kendi gerçek modeline dönüyor.
     """
     kind, procs = _find_running_for_action(name)
+    if exact and kind != "exact":      # uzak değnekçi (A2): unique_base'e düşme
+        return dict(NO_EXACT_MATCH)
     if kind == "none":
         return _err(lang, "not_running", name=name)
     if kind == "ambiguous":
@@ -4093,6 +4143,15 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             result = _term_output(name, lang=lang, viewport=viewport)
             self._json(web_term_lite.to_lite(result) if lite else result)
+        elif path == "/api/session/facts":
+            qs = parse_qs(urlparse(self.path).query)
+            names = [n.strip() for n in (qs.get("names") or [""])[0].split(",") if n.strip()]
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            if host != LOCAL_HOST_NAME:
+                result, status = web_hosts.proxy_get(path, host, {"names": ",".join(names)}, dedup=False)
+                self._json(result, status=status)
+                return
+            self._json(_session_facts(names))
         elif path == "/api/term/history":
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
@@ -4613,7 +4672,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(_term_input(name, text=str(data.get("text", "")), lang=lang))
+            self._json(_term_input(name, text=str(data.get("text", "")), lang=lang, exact=data.get("exact") is True))
             return
 
         if path == "/api/term/key":
@@ -4690,13 +4749,13 @@ class _Handler(BaseHTTPRequestHandler):
                 lang=lang,
             )
         elif path == "/api/stop":
-            result = _stop(name, lang=lang)
+            result = _stop(name, lang=lang, exact=data.get("exact") is True)
         elif path == "/api/retire":
             result = _retire(name, lang=lang)
         elif path == "/api/close":
             result = _close_project(name, lang=lang)
         elif path == "/api/handover":
-            result = _handover(name, lang=lang)
+            result = _handover(name, lang=lang, exact=data.get("exact") is True)
         elif path == "/api/compact":
             result = _compact(name, lang=lang)
         else:
