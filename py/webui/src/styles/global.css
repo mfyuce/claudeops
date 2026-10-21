@@ -327,6 +327,8 @@ button.selho { border-color: var(--amber); color: var(--amber); font-size: .78re
                  border-radius: 4px; padding: 1px 5px; margin-left: .3rem; white-space: nowrap; cursor: help; }
 .context-badge.near { color: var(--amber); border-color: var(--amber); }
 .context-badge.over { color: var(--red); border-color: var(--red); font-weight: 600; }
+.usage-total-badge { font-size: .65rem; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 4px; padding: 0 .3rem; margin-left: .3rem; white-space: nowrap; cursor: help; }
 .model-usage-bar { font-size: .72rem; color: var(--muted); padding: .15rem 16px; cursor: help; white-space: nowrap;
                    overflow: hidden; text-overflow: ellipsis; }
 button.reactivate { border-color: var(--green); color: var(--green); }

@@ -25,6 +25,7 @@ import { effectiveModel } from "../shared/effectiveModel";
 import { isProtectedName } from "../shared/protectedNames";
 import { CacheBadge } from "../shared/CacheBadge";
 import { ContextBadge } from "../shared/ContextBadge";
+import { UsageTotalBadge } from "../shared/UsageTotalBadge";
 import { PhaseBadge } from "../shared/PhaseBadge";
 import { UsageBadge } from "../shared/UsageBadge";
 import { AdoptRow } from "./AdoptRow";
@@ -145,6 +146,7 @@ export function SessionRow({
           {session.phase && <PhaseBadge phase={session.phase} />}
           {session.cache && <CacheBadge cache={session.cache} />}
           {session.context && <ContextBadge context={session.context} />}
+          {session.usage_total && <UsageTotalBadge usage={session.usage_total} />}
         </td>
         <td title={modelDiffers ? t.modelLiveDiffersHint(session.model) : undefined}>
           {shownModel}

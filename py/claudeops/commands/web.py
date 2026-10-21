@@ -84,6 +84,7 @@ from . import web_grpc
 from . import web_hosts
 from . import web_orch
 from .. import model_usage
+from .. import session_usage
 from . import web_steward
 from . import web_term_lite
 from . import web_ws
@@ -1345,6 +1346,19 @@ def _context_info_cached(s) -> Optional[Dict[str, int]]:
     return {"tokens": int(tokens), "warn": warn}
 
 
+def _usage_total(s) -> Optional[Dict[str, Any]]:
+    """Çalışan claude oturumunun KÜMÜLATİF token harcaması (`session_usage`: ana oturum + alt ajanlar ayrı toplam, aile
+    kırılımı) ya da None (claude değil / transkript yok / hesap henüz ilk kez sürüyor: UI rozet göstermez). Hesap ARKA
+    PLAN thread'inde, `/api/status` hiç beklemez. YALNIZ izleme. Codex/agy/copilot için sayaç yok (bilinmiyor). Asla fırlatmaz."""
+    if s.cli != "claude" or not s.sid:
+        return None
+    try:
+        path = jsonl_path_for(s.cwd, s.sid)
+        return session_usage.cached_usage_for_path(path) if path else None
+    except Exception:
+        return None
+
+
 _HISTORY_CACHE: dict = {}  # name -> (expires_monotonic, int | None)
 # `_needs_ho_cached`'in 30s'iyle AYNI (busy'nin 2s'inden ÇOK daha uzun kalabilir) —
 # tmux scrollback boyutu saniyeler içinde önemli ölçüde değişmez, ana tabloda HER
@@ -1522,6 +1536,7 @@ def _status_payload() -> dict:
             "phase": _live_phase(s) if s else None,
             "cache": _cache_info_cached(s) if s else None,
             "context": _context_info_cached(s) if s else None,
+            "usage_total": _usage_total(s) if s else None,
             "history_size": _history_size_cached(s) if s else None,
             "registered": True,
             "instance": False,
@@ -1563,6 +1578,7 @@ def _status_payload() -> dict:
             "phase": _live_phase(s),
             "cache": _cache_info_cached(s),
             "context": _context_info_cached(s),
+            "usage_total": _usage_total(s),
             "history_size": _history_size_cached(s),
             "registered": rec is not None,
             "instance": rec is not None,

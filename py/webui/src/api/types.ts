@@ -87,6 +87,24 @@ export interface SessionInfo {
    * assistant turn's input + cache tokens (re-read on every turn), `warn` = the steward's handover threshold
    * (`steward.context_warn_tokens`, 0 = off). Absent/`null` = unknown (not claude, no turn yet): show no badge. */
   context?: SessionContext | null;
+  /** CUMULATIVE token spend of a local claude session (`web._usage_total`, monitoring only; transcript-derived, one
+   * turn counted once). Main-session totals plus a separate sub-agent total and a per-family breakdown. Absent/`null` =
+   * unknown (not claude, no transcript, or the first background computation has not finished): show no badge.
+   * Local rows only; codex/agy/copilot usage is unknown. */
+  usage_total?: SessionUsageTotal | null;
+}
+
+export interface UsageParts {
+  in: number;
+  out: number;
+  cache_write: number;
+  cache_read: number;
+}
+
+export interface SessionUsageTotal extends UsageParts {
+  turns: number;
+  subagents: UsageParts & { n: number; turns: number };
+  by_family: Record<string, UsageParts & { turns: number }>;
 }
 
 export interface SessionContext {
