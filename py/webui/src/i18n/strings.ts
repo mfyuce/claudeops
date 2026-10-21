@@ -572,6 +572,8 @@ export interface Strings {
   stewardExportAll: string;
   stewardRecentTitle: string;
   stewardDry: string;
+  stewardHostDown: string;
+  stewardHostBackoff: string;
   stewardPick: string;
   stewardRowStat: (projects: number, questions: number) => string;
   stewardOn: string;
@@ -1241,6 +1243,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardExportAll: "tüm projelere",
     stewardRecentTitle: "Son eylemler",
     stewardDry: "kuru",
+    stewardHostDown: "host kapalı: bu projeye eylem yapılmıyor",
+    stewardHostBackoff: "host geri çekilmede: tekrar denemeden önce bekleniyor",
     stewardPick: "değnekçi",
     stewardRowStat: (projects, questions) => `${projects} proje · ${questions} açık soru`,
     stewardOn: "açık",
@@ -1911,6 +1915,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardExportAll: "all projects",
     stewardRecentTitle: "Recent actions",
     stewardDry: "dry",
+    stewardHostDown: "host unreachable: no actions on this project",
+    stewardHostBackoff: "host backing off: waiting before retrying",
     stewardPick: "steward",
     stewardRowStat: (projects, questions) => `${projects} project${projects === 1 ? "" : "s"} · ${questions} open question${questions === 1 ? "" : "s"}`,
     stewardOn: "on",

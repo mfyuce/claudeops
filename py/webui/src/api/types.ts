@@ -855,6 +855,17 @@ export interface StewardRecent {
   ok?: boolean;
   dry?: boolean;
   detail?: string;
+  /** Remote host the action targeted (only present for remote projects). */
+  host?: string;
+}
+
+/** Cached health of a remote host (`remote_health`): ok = fresh, down = unreachable/stale, backoff = paused after repeated failures. */
+export interface StewardHostHealth {
+  state: "ok" | "down" | "backoff";
+  /** Capability api version (0 = old host), null = not probed yet. */
+  api: number | null;
+  /** Seconds since the last successful poll, null = never. */
+  age: number | null;
 }
 
 export interface StewardQuestion {
@@ -870,6 +881,8 @@ export interface StewardQuestion {
   /** Short choices (≤6); empty = free-text question. The answer may still be free text. */
   options?: string[];
   notified_at?: number;
+  /** Remote host of the question's project (only present for remote projects). */
+  host?: string;
 }
 
 export interface StewardProject {
@@ -888,6 +901,8 @@ export interface StewardProject {
   /** One line from the project card (`card_one_liner`), "" when no card yet. */
   next_step: string;
   card_updated_at: number;
+  /** Remote host (`hosts.json` name); "" or absent = local. */
+  host?: string;
 }
 
 export interface StewardIdea {
@@ -904,10 +919,12 @@ export interface StewardStateResult {
   config: Record<string, unknown>;
   summary: StewardSummary;
   projects: StewardProject[];
-  running: { name: string; cwd: string; cli: string; model: string }[];
+  running: { name: string; cwd: string; cli: string; model: string; host?: string }[];
   questions: StewardQuestion[];
   ideas: StewardIdea[];
   recent: StewardRecent[];
+  /** Present only when the identity has remote projects. */
+  remote_hosts?: Record<string, StewardHostHealth>;
 }
 
 export interface StewardAnswerResult {

@@ -21,7 +21,7 @@ import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { showToast } from "../state/toast";
-import type { StewardQuestion, StewardStateResult } from "../api/types";
+import type { StewardHostHealth, StewardQuestion, StewardStateResult } from "../api/types";
 
 function ago(ts: number | undefined, never: string): string {
   if (!ts) return never;
@@ -51,7 +51,21 @@ function readSid(): string {
   }
 }
 
-function QuestionCard({ q, sid, onAnswered }: { q: StewardQuestion; sid: string; onAnswered: () => void }) {
+/** `@host` badge for a remote project (nothing for local); a warning mark when the host is down or backing off. */
+function HostBadge({ host, health }: { host?: string; health?: StewardHostHealth }) {
+  const { t } = useLang();
+  if (!host) return null;
+  const bad = health && health.state !== "ok";
+  const warn = health?.state === "backoff" ? t.stewardHostBackoff : t.stewardHostDown;
+  return (
+    <span className="cli-badge" style={{ marginLeft: ".3rem" }} title={bad ? warn : host}>
+      @{host}
+      {bad ? " ⚠" : ""}
+    </span>
+  );
+}
+
+function QuestionCard({ q, sid, health, onAnswered }: { q: StewardQuestion; sid: string; health?: StewardHostHealth; onAnswered: () => void }) {
   const { t } = useLang();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -77,7 +91,8 @@ function QuestionCard({ q, sid, onAnswered }: { q: StewardQuestion; sid: string;
   return (
     <div style={card}>
       <div className="legend" style={{ margin: 0 }}>
-        <b>{q.project || "degnekci"}</b> · {ago(q.created_at, t.stewardNever)}
+        <b>{q.project || "degnekci"}</b>
+        <HostBadge host={q.host} health={health} /> · {ago(q.created_at, t.stewardNever)}
         {q.source ? ` · ${q.source}` : ""}
       </div>
       <div style={{ whiteSpace: "pre-wrap", margin: ".3rem 0 .5rem" }}>{q.text}</div>
@@ -257,7 +272,7 @@ export function StewardTab() {
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardQuestionsTitle}</h3>
       {state && state.questions.length === 0 && <span className="opts-hint">{t.stewardNoQuestions}</span>}
       {state?.questions.map((q) => (
-        <QuestionCard key={q.id} q={q} sid={sid} onAnswered={() => void load().then(refresh)} />
+        <QuestionCard key={q.id} q={q} sid={sid} health={q.host ? state.remote_hosts?.[q.host] : undefined} onAnswered={() => void load().then(refresh)} />
       ))}
       <details>
         <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardAskTitle}</summary>
@@ -323,6 +338,7 @@ export function StewardTab() {
                   <td>
                     <span className={`dot ${p.running ? "on" : "off"}`} />
                     {p.name}
+                    <HostBadge host={p.host} health={p.host ? state.remote_hosts?.[p.host] : undefined} />
                     {p.kind && p.kind !== "other" ? <span className="cli-badge" style={{ marginLeft: ".3rem" }}>{p.kind}</span> : null}
                   </td>
                   <td>
@@ -393,6 +409,7 @@ export function StewardTab() {
             {(state?.recent ?? s.recent).slice(0, 12).map((r, idx) => (
               <div key={`${r.ts}-${idx}`}>
                 {ago(r.ts, t.stewardNever)} · {r.kind} {r.name}
+                {r.host ? `@${r.host}` : ""}
                 {r.dry ? ` (${t.stewardDry})` : ""}
                 {r.ok === false ? ` ✗ ${r.detail ?? ""}` : ""}
                 {r.reason ? ` — ${r.reason}` : ""}

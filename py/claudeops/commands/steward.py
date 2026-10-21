@@ -88,6 +88,29 @@ def _ago(ts: float) -> str:
     return f"{d // 86400}g" if d >= 86400 else f"{d // 3600}s" if d >= 3600 else f"{d // 60}dk"
 
 
+_HEALTH_TR = {"ok": "taze", "down": "kapalı", "backoff": "geri çekilmede"}
+
+
+def _remote_health_line(args, sid: str, hosts: List[str]) -> str:
+    """`host=durum(api:N, yaş)` listesi; sağlık panelin önbelleğinde (bu süreçte yok): panel kapalı/eski ise zarifçe
+    "bilinmiyor"."""
+    res = _api(getattr(args, "port", mcp_queue.DEFAULT_PORT), "GET",
+               "/api/steward/state" + ("" if sid == "default" else f"?steward={sid}"), None, sid)
+    health = res.get("remote_hosts") if isinstance(res, dict) and res.get("ok") else None
+    if not isinstance(health, dict):
+        return "bilinmiyor (panel yanıt vermedi)  " + ", ".join(hosts)
+    parts = []
+    for h in hosts:
+        e = health.get(h)
+        if not isinstance(e, dict):
+            parts.append(f"{h}=bilinmiyor")
+            continue
+        api = "?" if e.get("api") is None else str(e["api"])
+        age = "" if e.get("age") is None else f", {_ago(time.time() - float(e['age']))} önce"
+        parts.append(f"{h}={_HEALTH_TR.get(str(e.get('state')), 'bilinmiyor')} (api:{api}{age})")
+    return "  ".join(parts)
+
+
 def cmd_status(args) -> int:
     sid = _sid(args)
     cfg = steward_config(sid)
@@ -110,8 +133,8 @@ def cmd_status(args) -> int:
         print("handover bekleyen: " + ", ".join(st["ho_pending"]))
     remote = sorted(f"{p.name}@{p.host}" for p in projects.values() if p.host)
     if remote:
-        print(f"uzak projeler: {', '.join(remote)}   uzak eylem: "
-              f"{'açık' if cfg.remote_actions else 'kapalı'} (yalnız devir/yönerge/cevap/başlatma; durdurma/yeniden açma henüz yok)")
+        print(f"uzak projeler: {', '.join(remote)}   uzak eylem: {'açık' if cfg.remote_actions else 'kapalı'}")
+        print("uzak host sağlığı: " + _remote_health_line(args, sid, sorted({p.host for p in projects.values() if p.host})))
     conflicts = sw.ownership_index(steward_ids()).get("conflicts") or {}
     mine = sorted(n for n in projects if n in conflicts)
     for n in mine:
@@ -660,7 +683,9 @@ def register(sub):
     jba = jb.add_parser("ack", help="sonucu iletildi say (yerel işaret; varaka'ya yazılmaz)")
     jba.add_argument("id")
     pjb.set_defaults(func=cmd_jobs)
-    s.add_parser("status", help="özet").set_defaults(func=cmd_status)
+    pst = s.add_parser("status", help="özet")
+    pst.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT, help="uzak host sağlığı için panel portu")
+    pst.set_defaults(func=cmd_status)
     pp = s.add_parser("projects", help="proje listesi")
     pp.add_argument("--phase", choices=sw.PHASES, default=None)
     pp.set_defaults(func=cmd_projects)

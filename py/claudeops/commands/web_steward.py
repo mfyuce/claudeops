@@ -545,15 +545,21 @@ def _act(name: str, *args: Any, **kw: Any) -> Any:
     return fn(*args, **kw)
 
 
-def _remember(action: sw.Action, result: Any, ctx: Optional[StewardContext] = None) -> None:
+def _remember(action: sw.Action, result: Any, ctx: Optional[StewardContext] = None, host: str = "") -> None:
+    """Uygulanan eylemin kaydı. `host`: uzak projeye yapılan eylemde host adı (verilmezse uzak sonucun `host`u; yerelde
+    alan HİÇ yazılmaz: kayıt biçimi eskisiyle aynı)."""
     ctx = ctx or _ctx()
+    if not host and isinstance(result, dict):
+        host = sw.normalize_host(result.get("host"))
     entry = {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
              "ok": bool(result.get("ok")) if isinstance(result, dict) else bool(result),
              "detail": (result.get("error") or result.get("detail") or "") if isinstance(result, dict) else ""}
+    if host:
+        entry["host"] = host
     ctx.recent.insert(0, entry)
     del ctx.recent[RECENT_ACTIONS:]
     sw.log_event("action", paths=ctx.paths, kind=action.kind, name=action.name, reason=action.reason,
-                 ok=entry["ok"], detail=entry["detail"])
+                 ok=entry["ok"], detail=entry["detail"], **({"host": host} if host else {}))
 
 
 def _remember_dry(action: sw.Action, ctx: Optional[StewardContext] = None, host: str = "") -> None:
@@ -733,6 +739,11 @@ def notify_phone(text: str, click: str = "", title: str = "claudeops degnekci", 
     return True
 
 
+def _ask_prefix(project: str, sid: str) -> str:
+    """ntfy önek: uzak projede `[proje@host]` (hangi makinedeki oturum olduğu telefondan okunsun)."""
+    return sw.ask_prefix(project, sid, _name_host(project) if project else "")
+
+
 def _notify(cfg: sw.Config, text: str, click: str = "") -> bool:
     """Kimliğe göre ntfy: default için `notify_phone(text[, click])` BUGÜNKÜ çağrı (başlık/topic/gövde aynı); diğer
     kimlikte başlık `claudeops degnekci:<sid>`, `ntfy_topic` doluysa o topic, aksi halde ortak topic. Gövde önekini
@@ -815,6 +826,103 @@ def _safe_project_file(cwd: str, rel: str) -> Optional[str]:
     if full != root and not full.startswith(root + os.sep):
         return None
     return full
+
+
+# ── uzak projenin okuma yüzeyi (A5): context/file/state; ağ yalnız host-routed salt-okuma uçlarına ───────────
+
+REMOTE_GIT_UNKNOWN = "remote: bilinmiyor"       # uzak klasörün git durumu okunmaz (yerel `git` uzak yola bakamaz)
+
+
+def _remote_running_listing(world: Optional[sw.World]) -> List[Dict[str, Any]]:
+    """Taze host'lardaki ÇALIŞAN uzak proje oturumları (`http_state.running` ve çalışıyor sayımı): yalnızca poller
+    önbelleği (ağa gitmez), satır seçimi `sw.select_rows` (yerel adaş, uzak beyin/servis/kayıtsız satır düşer). Her
+    öğede `host`. Dünya ya da uzak proje yoksa boş."""
+    if world is None or not world.hosts:
+        return []
+    now = time.time()
+    fresh: set = set()
+    rows: List[Dict[str, Any]] = []
+    for h in sorted(set(world.hosts.values())):
+        st = _remote.status(h)
+        if not _host_fresh(st, now) or _backing_off(h, now):
+            continue
+        fresh.add(h)
+        rows.extend(dict(r, host=h) for r in (st.get("sessions") or []) if isinstance(r, dict) and r.get("running"))
+    return [{"name": r.get("name"), "cwd": r.get("cwd") or "", "cli": r.get("cli") or "", "model": r.get("model") or "",
+             "host": r["host"]} for r in sw.select_rows(rows, world, fresh)]
+
+
+def remote_health(hosts: Any, now: Optional[float] = None) -> Dict[str, Dict[str, Any]]:
+    """Host başına sağlık özeti (panel rozeti + `steward status`): `state` = ok (taze) | down (kapalı/bayat) | backoff
+    (geri çekilmede); `api` = yetenek önbelleğindeki sürüm (0 eski host, None henüz yoklanmadı); `age` = son başarılı
+    poll'dan beri saniye (None: hiç). Yalnız önbelleğe bakar, ağa gitmez."""
+    now = time.time() if now is None else now
+    out: Dict[str, Dict[str, Any]] = {}
+    for h in sorted({x for x in hosts if x}):
+        st = _remote.status(h)
+        last = float((st or {}).get("last_ok_at") or 0.0)
+        state = "backoff" if _backing_off(h, now) else ("ok" if _host_fresh(st, now) else "down")
+        caps = _caps_cached(h, now)
+        out[h] = {"state": state, "api": caps["api"] if caps else None, "age": int(now - last) if last else None}
+    return out
+
+
+def _remote_cwd(host: str, name: str) -> str:
+    """Uzak oturumun klasörü: host'un TAZE önbelleğinde (çalışan ya da kapalı satır) adı TAM `name` olan satırdan; yoksa
+    ""."""
+    st = _remote.status(host)
+    if not _host_fresh(st) or _backing_off(host, time.time()):
+        return ""
+    for key in ("sessions", "closed"):
+        for r in (st.get(key) or []):
+            if isinstance(r, dict) and r.get("name") == name and r.get("cwd"):
+                return str(r["cwd"])
+    return ""
+
+
+def _remote_file_head(host: str, name: str, path: str, max_chars: int, budget: float) -> Tuple[str, bool, bool]:
+    """Host-routed `GET /api/files/read` (name = oturum adı, path = MUTLAK uzak yol): (metin, kesildi mi, okundu mu).
+    Ağ/zaman aşımı/uygulama hatası fırlatmaz: okundu=False (boş metin). Yerel dosya sistemine ASLA bakılmaz."""
+    if budget <= 0.2:
+        return "", False, False
+    try:
+        parsed, _status = _remote.get("/api/files/read", host, {"name": name, "path": path}, timeout=budget)
+    except Exception:
+        return "", False, False
+    if not isinstance(parsed, dict) or not parsed.get("ok") or not isinstance(parsed.get("text"), str):
+        return "", False, False
+    text = parsed["text"]
+    return text[:max_chars], len(text) > max_chars, True
+
+
+def _remote_last_exchange(host: str, name: str, budget: float) -> Dict[str, Any]:
+    """Uzak oturumun son konuşması: `GET /api/term/chat?mode=last` → {"user", "assistant"}; okunamazsa {} (bilinmiyor)."""
+    if budget <= 0.2:
+        return {}
+    try:
+        parsed, _status = _remote.get("/api/term/chat", host, {"name": name, "mode": "last"}, timeout=budget)
+    except Exception:
+        return {}
+    if not isinstance(parsed, dict) or not parsed.get("ok") or not parsed.get("supported"):
+        return {}
+    return {"user": str(parsed.get("user") or ""), "assistant": str(parsed.get("assistant") or "")}
+
+
+def _remote_read_context(host: str, name: str, want_docs: bool, docs: Tuple[str, ...] = DOCS,
+                         head: int = DOC_HEAD_CHARS) -> Dict[str, Any]:
+    """`http_context`in uzak karşılığı: son konuşma + (istenirse) belge başları, TOPLAM `REMOTE_READ_BUDGET_SECONDS`.
+    Hata/zaman aşımı boş döner, fırlatmaz. Çıktı: {"last_exchange", "docs", "remote_cwd"}."""
+    deadline = time.monotonic() + REMOTE_READ_BUDGET_SECONDS
+    cwd = _remote_cwd(host, name)
+    out: Dict[str, Any] = {"last_exchange": _remote_last_exchange(host, name, deadline - time.monotonic()),
+                           "docs": {}, "remote_cwd": cwd}
+    if want_docs and cwd:
+        for d in docs:
+            text, _cut, ok = _remote_file_head(host, name, cwd.rstrip("/") + "/" + d, head,
+                                               deadline - time.monotonic())
+            if ok and text:
+                out["docs"][d] = text
+    return out
 
 
 # ── görünümler ────────────────────────────────────────────────────────────────
@@ -1330,12 +1438,15 @@ def refresh_card(name: str, cfg: Optional[sw.Config] = None, *, cwd: str = "", r
     return {"ok": ok, "name": name, "error": meta.get("error", ""), "model": meta.get("model", "")}
 
 
-def _running_names_for(live: List[Any], projects: Dict[str, sw.Project], world: Optional[sw.World] = None) -> set:
+def _running_names_for(live: List[Any], projects: Dict[str, sw.Project], world: Optional[sw.World] = None,
+                       remote: Optional[List[Dict[str, Any]]] = None) -> set:
     """Çalışan oturumların proje adları: tam ad + `Session.base` + değnekçi projesine eşleme. `Session.base` yalnız
     harften oluşan adları çözer (`wifi5gppr20261019` → kendisi), bu yüzden rakamlı proje adları "çalışmıyor" görünür
     ve uğrama sırası ikinci bir oturum açardı; `_project_for_session` blueprint/tarih sonekinden de çözer.
     `world` verilirse global çözümle uyumlu: oturum başka kimliğe çözülüyorsa (`ncs2` B'nin) tabanı (`ncs`, A'nın)
     "çalışıyor" sayılmaz."""
+    if world is not None and world.hosts:       # uzak projenin YEREL adaşı o projenin çalıştığını göstermez
+        live = [s for s in live if not _name_host_in(s.name, projects, world)]
     out = {s.name for s in live}
     known = (set(world.owners) | set(world.conflicts)) if world is not None else set()
     for s in live:
@@ -1344,11 +1455,23 @@ def _running_names_for(live: List[Any], projects: Dict[str, sw.Project], world: 
         p = _project_for_session(s.name, projects, world)
         if p is not None:
             out.add(p.name)
+    for r in (remote or ()):       # taze host'lardaki uzak proje oturumları (A5): aynı ad kümeye iki kez girmez (set)
+        out.add(str(r.get("name") or ""))
+        p = _project_for_session(str(r.get("name") or ""), projects, world)
+        if p is not None:
+            out.add(p.name)
     return out
 
 
+def _name_host_in(name: str, projects: Dict[str, sw.Project], world: sw.World) -> str:
+    """Ad world'e göre uzak host'lu bir projeye çözülüyorsa host'u, değilse ""."""
+    return _locate(name, projects, world)[0]
+
+
 def _running_project_names(sid: str = "default") -> set:
-    return _running_names_for(find_sessions(measure_cpu=False), sw.load_projects(sid), _world(sid))
+    world = _world(sid)
+    return _running_names_for(find_sessions(measure_cpu=False), sw.load_projects(sid), world,
+                              remote=_remote_running_listing(world))
 
 
 def refresh_due_cards(cfg: Optional[sw.Config] = None, limit: Optional[int] = None,
@@ -1457,7 +1580,8 @@ def ensure_workspace(cfg: Optional[sw.Config] = None) -> str:
     os.makedirs(workspace, exist_ok=True)
     shared = str(load_settings().get("steward_persona_text") or "")
     persona = sw.persona_text(shared if cfg.sid == "default" else (cfg.persona_text or shared))
-    text = sw.build_workspace_claude_md(persona, lang=cfg.lang, sid=cfg.sid, label=cfg.label)
+    has_remote = any(pr.host for pr in sw.load_projects(cfg.sid).values())
+    text = sw.build_workspace_claude_md(persona, lang=cfg.lang, sid=cfg.sid, label=cfg.label, remote=has_remote)
     path = os.path.join(workspace, "CLAUDE.md")
     try:
         with open(path, encoding="utf-8") as f:
@@ -1526,14 +1650,21 @@ def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project],
     if remote:
         out["host"] = remote
     cwd = "" if remote else ((s.cwd if s is not None else "") or _project_cwd(name))
-    if s is not None:
+    card = sw.load_card(proj.name) if proj is not None else None
+    if remote:      # uzak: son konuşma term/chat'ten, belge başları host-routed files/read'den (yerel dosya sistemi yok)
+        rd = _remote_read_context(remote, name, card is None, ("TODO.md", "PLAN.md"), 600)
+        out["last_exchange"] = rd["last_exchange"]
+        if card is None and rd["docs"]:
+            out["docs"] = rd["docs"]
+    elif s is not None:
         try:
             out["last_exchange"] = get_provider(s.cli).last_exchange(s.cwd, s.sid) or {}
         except Exception:
             out["last_exchange"] = {}
-    card = sw.load_card(proj.name) if proj is not None else None
     if card is not None:
         out["card"] = card    # beyin 160 repoyu değil kartları okur; ham belge başı yalnız kart yokken
+        return out
+    if remote:
         return out
     docs = {}
     for d in ("TODO.md", "PLAN.md"):
@@ -1897,13 +2028,13 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": True, "id": q.id, "notified": False, "routine": True}
         if q.status != "open":   # yakın zamanda cevaplanmış soru yeniden soruldu: telefona yeni soru gitmez, cevap yeniden iletilir
             return {"ok": True, "id": q.id, "notified": False, "reasked": True}
-        notified = _notify(cfg, f"{sw.ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
+        notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "escalate_routine":
         q = sw.escalate_routine(action.payload.get("question_id") or "", paths)
         if q is None:
             return {"ok": False, "error": "not an open routine question"}
-        notified = _notify(cfg, f"{sw.ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
+        notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "idea":
         i = sw.add_idea(action.payload.get("text") or "", source=name, paths=paths)
@@ -1998,7 +2129,7 @@ def _notify_approvals(cfg: sw.Config) -> int:
     for j in sj.load_jobs(paths):
         if j.get("state") != "awaiting_approval" or j.get("approval_phone"):
             continue
-        text = (f"{sw.ask_prefix(str(j.get('project') or ''), cfg.sid)} {j.get('service')} işi #{j.get('id')} "
+        text = (f"{_ask_prefix(str(j.get('project') or ''), cfg.sid)} {j.get('service')} işi #{j.get('id')} "
                 f"({j.get('kind')}) ONAY BEKLİYOR: varaka'da insan yönetici onaylamalı")
         if _notify(cfg, text):
             n += 1
@@ -2410,19 +2541,28 @@ def http_state(sid: str = "default") -> Dict[str, Any]:
     paths = ctx.paths
     projects = sw.load_projects(paths)
     live = find_sessions(measure_cpu=False)
-    running_projects = _running_names_for(live, projects, _world(sid, cfg))
+    world = _world(sid, cfg)
+    remote_running = _remote_running_listing(world)
+    running_projects = _running_names_for(live, projects, world, remote=remote_running)
     cards = sw.load_cards()
-    return {
+    questions = [dataclasses.asdict(q) for q in sw.open_questions(paths=paths)]
+    for q in questions:       # uzak projenin sorusu host'u taşır (panel rozeti); yerelde alan HİÇ eklenmez
+        if world.host_of(str(q.get("project") or "")):
+            q["host"] = world.host_of(str(q["project"]))
+    out = {
         "ok": True,
         "config": dataclasses.asdict(cfg),
         "summary": summary(sid=sid),
         "projects": [_project_dict(p, running_projects, cards)
                      for p in sorted(projects.values(), key=lambda p: (p.priority, p.name))],
-        "running": [{"name": s.name, "cwd": s.cwd, "cli": s.cli, "model": s.model} for s in live],
-        "questions": [dataclasses.asdict(q) for q in sw.open_questions(paths=paths)],
+        "running": [{"name": s.name, "cwd": s.cwd, "cli": s.cli, "model": s.model} for s in live] + remote_running,
+        "questions": questions,
         "ideas": [dataclasses.asdict(i) for i in sw.load_ideas(paths) if i.status == "new"],
         "recent": ctx.recent,
     }
+    if any(p.host for p in projects.values()):       # uzak proje yoksa anahtar HİÇ eklenmez (yerel çıktı aynı)
+        out["remote_hosts"] = remote_health({p.host for p in projects.values() if p.host})
+    return out
 
 
 def http_projects(sid: str = "default") -> Dict[str, Any]:
@@ -2559,7 +2699,6 @@ def http_context(name: str, docs: bool = False, sid: str = "default") -> Dict[st
                            "running": s is not None}
     if remote:
         out["host"] = remote
-        out["note"] = "remote project: live context/docs are read on the remote host (not available yet)"
     if s is not None:
         provider = get_provider(s.cli)
         try:
@@ -2572,10 +2711,19 @@ def http_context(name: str, docs: bool = False, sid: str = "default") -> Dict[st
     if card is not None:
         out["card"] = card
         out["card_stale"] = bool(card.get("stale"))
-    if card is None or docs:    # kart varsa ham belge başları yerine kart; `docs=1` ikisini birden ister
-        out["docs"] = {d: _read_head(cwd, d) for d in DOCS if cwd} if cwd else {}
-        out["docs"] = {k: v for k, v in out["docs"].items() if v}
-    out["git"] = _git_short(cwd)
+    want_docs = card is None or docs     # kart varsa ham belge başları yerine kart; `docs=1` ikisini birden ister
+    if remote:      # uzak: yalnız host-routed okumalar (term/chat + files/read), bütçeli; hata = boş/bilinmiyor
+        rd = _remote_read_context(remote, name, want_docs)
+        out["last_exchange"], out["remote_cwd"] = rd["last_exchange"], rd["remote_cwd"]
+        if want_docs:
+            out["docs"] = rd["docs"]
+        out["git"] = REMOTE_GIT_UNKNOWN
+        out["running"] = any(r["name"] == name for r in _remote_running_listing(_world(sid)))
+    else:
+        if want_docs:
+            out["docs"] = {d: _read_head(cwd, d) for d in DOCS if cwd} if cwd else {}
+            out["docs"] = {k: v for k, v in out["docs"].items() if v}
+        out["git"] = _git_short(cwd)
     out["questions"] = [dataclasses.asdict(q) for q in sw.load_questions(sid) if q.project == name and q.status == "open"]
     return out
 
@@ -2584,8 +2732,16 @@ def http_file(name: str, rel: str, max_chars: int = MAX_FILE_READ_CHARS, sid: st
     denied = _read_denied(name, sid) if sw.valid_name(name) else None
     if denied is not None:
         return denied
-    if sw.valid_name(name) and _name_host(name):
-        return {"ok": False, "error": "remote project: files are read on the remote host (not available yet)"}
+    remote = _name_host(name) if sw.valid_name(name) else ""
+    if remote:      # host-routed files/read: mutlak uzak yol = oturumun uzak klasörü + güvenli göreli yol; yerel dosya yok
+        cwd = _remote_cwd(remote, name)
+        if not cwd or not rel or "\x00" in rel or rel.startswith("/") or ".." in Path(rel).parts:    # yalnız sözcük denetimi
+            return {"ok": False, "error": "unknown remote project folder or path outside project", "host": remote}
+        text, truncated, ok = _remote_file_head(remote, name, cwd.rstrip("/") + "/" + rel, max_chars,
+                                                REMOTE_READ_BUDGET_SECONDS)
+        if not ok:
+            return {"ok": False, "error": f"could not read {rel} on {remote}", "host": remote}
+        return {"ok": True, "path": rel, "text": text, "truncated": truncated, "host": remote}
     cwd = _project_cwd(name)
     full = _safe_project_file(cwd, rel) if cwd else None
     if full is None:
@@ -2800,7 +2956,7 @@ def http_ask(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     link = sw.question_link(q, public_base(), cfg.sid)
     if q.notified_at:
         return {"ok": True, "id": q.id, "notified": False, "link": link, "dup": True}
-    notified = _notify(cfg, sw.question_notification(q, link, cfg.lang, cfg.sid), click=link)
+    notified = _notify(cfg, sw.question_notification(q, link, cfg.lang, cfg.sid, host=_name_host(q.project) if q.project else ""), click=link)
     if notified:
         sw.mark_notified(q.id, sid)
     sw.log_event("ask", paths=sid, id=q.id, project=q.project, notified=notified, options=len(q.options))
@@ -3090,7 +3246,8 @@ def http_job_submit(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any
     priority = data.get("priority")
     res = sj.submit_job(sid, project, kind, params, spec_text, resolved, service=service,
                         priority=int(priority) if isinstance(priority, int) and not isinstance(priority, bool) else None,
-                        approval_ref=str(data.get("approval_ref") or ""), host=LOCAL_HOST_NAME)
+                        approval_ref=str(data.get("approval_ref") or ""),
+                        host=_name_host(project) or LOCAL_HOST_NAME)     # uzak projede işin host'u proje host'u
     if res.get("ok") and res.get("state") == "awaiting_approval":
         res["awaiting_approval"] = True
         res["message"] = ("job is awaiting approval by a HUMAN admin in varaka: do not approve/reject it yourself; "

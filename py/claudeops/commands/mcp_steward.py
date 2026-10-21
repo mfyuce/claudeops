@@ -188,21 +188,24 @@ def _obj(props: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
 
 _S = {"type": "string"}
 _I = {"type": "integer"}
+# Uzak proje notu (A5): araç imzaları DEĞİŞMEZ; host proje kaydından çözülür, çıktıda yalnız uzak projede `host` görünür.
+_REMOTE = (" The project may live on a REMOTE host: its rows then carry a `host` field (local rows do not); the host is "
+           "resolved from the project record, never pass one.")
 _MODEL = {"type": "string", "description": "Only when (re)starting the session; ignored while it already runs."}
 _EFFORT = {"type": "string", "description": "low|medium|high|max… per CLI; applied at (re)start only."}
 
 TOOLS: List[Dict[str, Any]] = [
     {"name": "steward_overview",
-     "description": "Fleet + steward projects (phase/priority/last directive/next_step from the project card) + open questions + new ideas + recent actions + the steward `mode` (in `observe` your directive/restart/stop/handover calls are recorded as would:<kind> but NOT applied; ask_user/idea/set_project still work). Call at the start of every tour.",
+     "description": "Fleet + steward projects (phase/priority/last directive/next_step from the project card) + open questions + new ideas + recent actions + the steward `mode` (in `observe` your directive/restart/stop/handover calls are recorded as would:<kind> but NOT applied; ask_user/idea/set_project still work). Call at the start of every tour." + _REMOTE,
      "inputSchema": _obj({}, [])},
     {"name": "steward_project_context",
-     "description": "One project's steward record, last user/assistant exchange of its session, its project CARD (goal, phase guess, next step, open TBDs, blockers, recently done; refreshed by the engine) — or the heads of PLAN.md/TODO.md/TOBEDECIDED.md/GOAL.md when there is no card yet (docs=true gives both) — short git status, its open questions.",
+     "description": "One project's steward record, last user/assistant exchange of its session, its project CARD (goal, phase guess, next step, open TBDs, blockers, recently done; refreshed by the engine) — or the heads of PLAN.md/TODO.md/TOBEDECIDED.md/GOAL.md when there is no card yet (docs=true gives both) — short git status, its open questions." + _REMOTE + " On a remote project the exchange and document heads are read over the host and the git status is `remote: bilinmiyor` (unknown).",
      "inputSchema": _obj({"name": _S, "docs": {"type": "boolean", "description": "Also include the raw document heads next to the card."}}, ["name"])},
     {"name": "steward_read_file",
-     "description": "Read a file inside the project folder (read-only, path relative to the project root).",
+     "description": "Read a file inside the project folder (read-only, path relative to the project root)." + _REMOTE,
      "inputSchema": _obj({"name": _S, "path": _S, "max_chars": _I}, ["name", "path"])},
     {"name": "steward_directive",
-     "description": "Send the next task to a project session (starts it if stopped, same conversation). The text is wrapped with the project's goal/notes and the steward protocol tail.",
+     "description": "Send the next task to a project session (starts it if stopped, same conversation). The text is wrapped with the project's goal/notes and the steward protocol tail." + _REMOTE,
      "inputSchema": _obj({"name": _S, "text": _S, "model": _MODEL, "effort": _EFFORT, "reason": _S,
                           "start_if_stopped": {"type": "boolean", "default": True}}, ["name", "text"])},
     {"name": "steward_restart",

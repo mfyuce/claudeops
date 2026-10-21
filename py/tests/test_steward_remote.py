@@ -490,7 +490,7 @@ class TestLocalFsGuards(_Remote):
         self.assertEqual(self.calls, [])
         self.assertFalse(ws.http_file("oiso", "TODO.md")["ok"])
         ctx = ws.http_context("oiso")
-        self.assertEqual((ctx["host"], ctx["cwd"], ctx.get("docs"), ctx["git"]), (HOST, "", {}, ""))
+        self.assertEqual((ctx["host"], ctx["cwd"], ctx.get("docs"), ctx["git"]), (HOST, "", {}, ws.REMOTE_GIT_UNKNOWN))
 
     def test_project_for_session_skips_local_instance_registry(self):
         projects = sw.load_projects()

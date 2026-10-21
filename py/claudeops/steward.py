@@ -961,14 +961,17 @@ def ask_hint(question_id: str, sid: str = "default") -> str:
     return f"py/cops steward{'' if sid == 'default' else ' -s ' + sid} answer {question_id} \"...\""
 
 
-def ask_prefix(project: str, sid: str = "default") -> str:
-    """ntfy gövde öneki: default `[proje]` (eskisi), diğer kimlik `[<sid>/<proje>]` (K4)."""
-    return f"[{project or 'degnekci'}]" if sid == "default" else f"[{sid}/{project or 'degnekci'}]"
+def ask_prefix(project: str, sid: str = "default", host: str = "") -> str:
+    """ntfy gövde öneki: default `[proje]` (eskisi), diğer kimlik `[<sid>/<proje>]` (K4). Uzak projede (`host`, A5)
+    ad `proje@host` olur (`[oiso@ulak_31]`); yerelde ("" / "local") çıktı DEĞİŞMEZ."""
+    h = normalize_host(host)
+    name = (project or 'degnekci') + (f"@{h}" if h and project else "")
+    return f"[{name}]" if sid == "default" else f"[{sid}/{name}]"
 
 
-def question_notification(q: Question, link: str, lang: str = "tr", sid: str = "default") -> str:
+def question_notification(q: Question, link: str, lang: str = "tr", sid: str = "default", host: str = "") -> str:
     """ntfy gövdesi: `[proje] soru` (default dışı: `[sid/proje]`), numaralı seçenekler, sonra bağlantı ya da (yoksa) CLI ipucu."""
-    lines = [f"{ask_prefix(q.project, sid)} {q.text}"]
+    lines = [f"{ask_prefix(q.project, sid, host)} {q.text}"]
     lines += [f"{i}) {o}" for i, o in enumerate(q.options, 1)]
     if link:
         lines.append(("→ cevapla: " if lang != "en" else "→ answer: ") + link)
@@ -1784,9 +1787,24 @@ MEMORY_EN = (
     "- When a handover/shutdown message arrives, update `NOTLAR.md` first, then end your reply with `READY FOR HANDOVER`.\n"
 )
 
-def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "default", label: str = "") -> str:
+REMOTE_NOTE_TR = (
+    "\n## Uzak host'taki projeler\n"
+    "Bazı proje oturumları başka bir makinede (host) çalışır: araç çıktılarında `host` alanıyla (ve `proje@host` "
+    "adıyla) görünür. Yerel ve uzak oturumlar AYNI araçlarla yönetilir; host'u sen verme, proje kaydından çözülür. "
+    "Host kapalıysa o projeye eylem yapılmaz (beklemek doğru), uzak klasörün git durumu bilinmez.\n")
+REMOTE_NOTE_EN = (
+    "\n## Projects on remote hosts\n"
+    "Some project sessions run on another machine (host): they show up with a `host` field (and a `project@host` "
+    "name) in tool output. Local and remote sessions are managed with the SAME tools; never pass a host, it is "
+    "resolved from the project record. While a host is down nothing is done to its projects (waiting is right), and "
+    "the git state of a remote folder is unknown.\n")
+
+
+def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "default", label: str = "",
+                              remote: bool = False) -> str:
     """Beynin cwd'sindeki CLAUDE.md — persona + (default dışı kimlikte kimlik bölümü) + araç kılavuzu + model kuralı.
-    Her beyin açılışında yeniden yazılır. `sid="default"` çıktısı kimlik kavramından ÖNCEKİyle birebir aynıdır."""
+    Her beyin açılışında yeniden yazılır. `sid="default"` çıktısı kimlik kavramından ÖNCEKİyle birebir aynıdır.
+    `remote`: kimliğin uzak host'lu projesi var (A5) → kısa "uzak projeler" notu eklenir."""
     tr = lang != "en"
     tools = (
         "## Araçların (MCP `cops-steward`)\n"
@@ -1827,7 +1845,8 @@ def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "defaul
         f"\n## Tour protocol\nCall one tool per listed item; finish with a line containing only `{MARK_END}`. "
         "A decision without a tool call is not recorded.\n"
     )
-    return persona.rstrip() + "\n\n" + identity_section(sid, label, lang) + tools + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + (MEMORY_TR if tr else MEMORY_EN) + tail
+    note = (REMOTE_NOTE_TR if tr else REMOTE_NOTE_EN) if remote else ""     # yalnız uzak projesi olan kimlikte (yerel çıktı aynı)
+    return persona.rstrip() + "\n\n" + identity_section(sid, label, lang) + tools + note + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + (MEMORY_TR if tr else MEMORY_EN) + tail
 
 
 # ── kural motoru ──────────────────────────────────────────────────────────────
