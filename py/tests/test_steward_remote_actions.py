@@ -1,5 +1,6 @@
 """Uzak host'taki projeyi yönetme, A3 (TODO 2026-10-20 (14)): YIKICI OLMAYAN uzak eylemler. `_target`ın uzak kapıları
-(`remote_actions`, kayıtlı + taze host, proje host'u = hedef host, yıkıcı tür reddi), devir (`/api/handover`), yönerge/cevap
+(`remote_actions`, kayıtlı + taze host, proje host'u = hedef host; yıkıcı türler A4'ten beri
+test_steward_remote_destructive.py'de), devir (`/api/handover`), yönerge/cevap
 iletimi (`/api/term/input`, `exact: true`), başlatma (`/api/start` + önbellekten hazır bekleme), `preamble_sent` anahtarı
 `host:ad`, `proxy_action` zaman aşımı, devre kesici (tick içinde), geri çekilme (3 tick → 10 dk) ve tick'in tek tazelik
 anlık görüntüsü. Yerel eylemler değişmedi (altın testler ayrıca test_steward_engine_multi.py'de).
@@ -263,15 +264,18 @@ class TestRemoteGates(_Actions):
             self.assertEqual(ws.http_post("/api/steward/handover", {"name": "oiso"})["code"], "host_down")
         self.assertEqual(self.posts(), [])
 
-    def test_destructive_kinds_still_denied_remotely(self):
+    def test_destructive_kinds_need_exact_target_on_the_host(self):
+        # A4: yıkıcı türler artık uzakta uygulanabilir, ama `exact_target` bildirmeyen eski host'ta HİÇ gönderilmez
+        # (ayrıntılı yıkıcı testler test_steward_remote_destructive.py'de).
         self.act()
+        self.fake.mode = "old"                                                # facts 404 → api 0, yetenek yok
         self.fake.set(HOST, [_row("oiso")])
         for path in ("/api/steward/stop", "/api/steward/restart"):
-            self.assertEqual(ws.http_post(path, {"name": "oiso"})["code"], "remote_destructive_pending")
+            self.assertEqual(ws.http_post(path, {"name": "oiso"})["code"], "remote_too_old")
         cfg, projects = ws.steward_config(), sw.load_projects()
         for kind in ("stop", "respawn"):
             r = ws._apply(sw.Action(kind, "oiso", "t"), cfg, projects, ws._world())
-            self.assertEqual(r["code"], "remote_destructive_pending")
+            self.assertEqual(r["code"], "remote_too_old")
         self.assertEqual(self.log("would:stop"), [])
         self.assertEqual((self.posts(), self.calls, self.touched), ([], [], []))
 

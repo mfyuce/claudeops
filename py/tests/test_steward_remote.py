@@ -419,7 +419,7 @@ class TestTargetRemote(_Remote):
     def test_rules(self):
         self.settings(remote_actions="on")
         codes = lambda r: r and r.get("code")   # noqa: E731
-        self.assertEqual(codes(ws._target("oiso", "", kind="stop")), "remote_destructive_pending")   # A3: yıkıcı yok (A4)
+        self.assertEqual(codes(ws._target("oiso", "", kind="stop")), "host_down")       # A4: yıkıcı tür de aynı kapılardan
         self.assertEqual(codes(ws._target("oiso", "", kind="handover")), "host_down")   # host önbellekte yok: taze değil
         self.fake.set(HOST, [_row("oiso")])
         self.assertIsNone(ws._target("oiso", "", kind="handover"))                      # host verilmedi: projeninki
@@ -427,7 +427,7 @@ class TestTargetRemote(_Remote):
         self.assertEqual(codes(ws._target("oiso", "", kind="stop", host="local")), "host_mismatch")   # yerel adaş: red
         self.assertEqual(codes(ws._target("oiso20261021", "", kind="stop", host="local")), "host_mismatch")
         self.assertIsNone(ws._target("oiso20261021", "engine", kind="handover"))
-        self.assertEqual(codes(ws._target("oiso", "", kind="restart", host=HOST)), "remote_destructive_pending")
+        self.assertIsNone(ws._target("oiso", "", kind="restart", host=HOST))     # A4: ek koşullar gönderimde (`_remote_stop`)
         self.assertEqual(codes(ws._target("oiso", "", kind="stop", host="yok")), "unknown_host")
         self.assertEqual(codes(ws._target("loc", "", kind="stop", host=HOST)), "host_mismatch")
         self.assertEqual(codes(ws._target("zzz", "", kind="stop", host=HOST)), "host_mismatch")   # kayıtsız uzak

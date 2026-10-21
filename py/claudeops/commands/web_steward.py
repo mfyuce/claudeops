@@ -140,11 +140,18 @@ def _world(sid: str = "default", cfg: Optional[sw.Config] = None, starts_left: O
 # varken yüklenir (CLI/mcp süreçlerine taşınmasın).
 # A3: uzak hedefe YALNIZ yıkıcı olmayan eylemler (handover, yönerge/cevap/iş iletimi = `/api/term/input`, başlatma)
 # ve yalnız `_target`ın uzak kapıları geçilirse (`steward.remote_actions`, kayıtlı + taze host, proje host'u = hedef
-# host). Durdurma/yeniden açma/restart uzakta HÂLÂ reddedilir (`remote_destructive_pending`, A4).
+# host).
+# A4: YIKICI uzak eylemler (durdurma, yeniden açmanın ve restart'ın durdurma adımı) aynı kapılara EK olarak: host
+# `exact_target` bildiriyor (yoksa `remote_too_old`, uygulanmaz), ön denetimde taze satırlarda adı TAM eşleşen, çalışan,
+# bu kimliğin kayıtlı proje oturumu ("own"; beyin/servis/kayıtsız DEĞİL) ve tick'te host başına en çok
+# `MAX_DESTRUCTIVE_PER_HOST` (yarış/yanlış hedef riski: bir host'ta aynı tick'te ikinci durdurma yok). Gönderim
+# `POST /api/stop {"name", "exact": true}`: uzak taraf unique_base'e düşmez, tam ad yoksa `no_exact_match`.
 
 REMOTE_STALE_SECONDS = 60.0          # son başarılı poll bundan eskiyse host "kapalı": bayat satırlarla karar verilmez
 REMOTE_READ_BUDGET_SECONDS = 10.0    # tick başına uzak okumaların (term/chat) TOPLAM süresi
-REMOTE_DESTRUCTIVE_KINDS = ("stop", "respawn", "restart")   # uzakta henüz UYGULANMAZ (A4: exact_target + ön denetim)
+REMOTE_DESTRUCTIVE_KINDS = ("stop", "respawn", "restart")   # uzakta YALNIZ exact_target + tam ad ön denetimiyle (A4)
+MAX_DESTRUCTIVE_PER_HOST = 1             # tick başına bir host'a en çok bu kadar yıkıcı eylem (fazlası ertelenir)
+REMOTE_STOP_TIMEOUT_SECONDS = 60.0       # `/api/stop` (uzak tarafta guard_lock + kill_session_and_parent)
 REMOTE_INPUT_TIMEOUT_SECONDS = 60.0      # `/api/term/input` (yönerge/cevap/iş sonucu)
 REMOTE_HANDOVER_TIMEOUT_SECONDS = 60.0   # `/api/handover` (canlı devir mesajı; kill/respawn yok)
 REMOTE_START_TIMEOUT_SECONDS = 120.0     # `/api/start` (uzak spawn)
@@ -212,16 +219,28 @@ def _backing_off(host: str, now: float) -> bool:
 class _RemoteTick:
     """Bir tick'in uzak host durumu. `statuses`/`fresh`: tick başında BİR KEZ alınan tazelik anlık görüntüsü
     (`unavailable`, görünümler ve eylem ön denetimleri AYNI görüntüyü kullanır; A1'deki iki ayrı okuma arasındaki yarış
-    kapanır). `failed`/`succeeded`: bu tick'te eylem gönderilen host'lar (devre kesici + geri çekilme sayacı)."""
+    kapanır). `failed`/`succeeded`: bu tick'te eylem gönderilen host'lar (devre kesici + geri çekilme sayacı).
+    `destructive`: {host: bu tick'te gönderilen yıkıcı eylem sayısı} (`MAX_DESTRUCTIVE_PER_HOST`, A4)."""
     now: float
     statuses: Dict[str, Optional[Dict[str, Any]]] = dataclasses.field(default_factory=dict)
     fresh: frozenset = frozenset()
     failed: set = dataclasses.field(default_factory=set)
     succeeded: set = dataclasses.field(default_factory=set)
+    destructive: Dict[str, int] = dataclasses.field(default_factory=dict)
 
     def blocked(self, host: str) -> bool:
         """Devre kesici: bu tick'te host'a ilk taşıma hatasından sonra kalan eylemler DENENMEZ."""
         return host in self.failed
+
+    def refresh(self, host: str) -> None:
+        """Host'un durumunu bu tick'te BİZ değiştirdik (durdurma/başlatma): görüntünün o host'luk kısmı önbellekten
+        yenilenir (ağa gitmez). Yoksa sonraki adım (yeniden açmada başlatma, yönerge) tick başındaki "çalışıyor"
+        satırını görüp kapanmış oturumu açık sanırdı ya da ikinci bir başlatma gönderirdi."""
+        st = _remote.status(host)
+        self.statuses[host] = st
+        t = time.time()
+        ok = _host_fresh(st, t) and not _backing_off(host, t)
+        self.fresh = frozenset(self.fresh | {host}) if ok else frozenset(self.fresh - {host})
 
 
 def _remote_snapshot(hosts: Any, now: Optional[float] = None) -> _RemoteTick:
@@ -573,7 +592,7 @@ def _brain_dry(kind: str, data: Dict[str, Any], name: str, sid: str = "default",
 
 # Uzak hedefin "şu an uygulanamaz" redleri: observe kipindeki beyne red yerine kuru (`would:`) yanıt döner (nasılsa
 # hiçbir şey uygulanmayacaktı). Host uyuşmazlığı/bilinmeyen host gerçek hatadır, kuruya çevrilmez.
-_DRYABLE_REMOTE = ("remote_disabled", "host_down", "remote_destructive_pending")
+_DRYABLE_REMOTE = ("remote_disabled", "host_down")
 
 
 def _gate(name: str, data: Dict[str, Any], kind: str, sid: str = "default") -> Optional[Dict[str, Any]]:
@@ -605,21 +624,25 @@ _DENIED_LOGGED: Dict[Tuple[str, str, str, str], float] = {}
 _DENIED_LOCK = threading.Lock()
 
 
-def _log_remote_denied(sid: str, actor: str, kind: str, name: str, host: str, code: str) -> None:
+def _log_remote_denied(sid: str, actor: str, kind: str, name: str, host: str, code: str,
+                       event: str = "target_denied") -> None:
+    """Uzak red olayı, (kimlik, aktör, ad, sebep) başına `REMOTE_DENIED_DEDUP_SECONDS`te bir. `event`: olay adı
+    (`remote_too_old` kendi adıyla düşer: eski host'un yükseltilmesi gerektiğini log'da aramak kolay olsun)."""
     key, now = (sid, actor or "human", name, code), time.time()
     with _DENIED_LOCK:
         if now - _DENIED_LOGGED.get(key, 0.0) < REMOTE_DENIED_DEDUP_SECONDS:
             return
         _DENIED_LOGGED[key] = now
-    sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name, host=host, code=code)
+    sw.log_event(event, paths=sid, actor=actor or "human", kind=kind, name=name, host=host, code=code)
 
 
 def _remote_denied(name: str, actor: str, kind: str, sid: str, want: str, proj_host: str,
                    rt: Optional[_RemoteTick] = None) -> Optional[Dict[str, Any]]:
     """Uzak hedef kapıları; None = izinli. Sıra: bilinmeyen host → host uyuşmazlığı (istenen host ile adın çözüldüğü
-    projenin host'u; "" = yerel) → `remote_actions` kapalı → yıkıcı tür (A4'e kadar) → host taze değil (kapalı, bayat
-    ya da geri çekilmede; `rt` verilirse tick'in anlık görüntüsü, yoksa önbellek şimdi). Yerel hedef (ikisi de "")
-    hiç buraya gelmez."""
+    projenin host'u; "" = yerel) → `remote_actions` kapalı → host taze değil (kapalı, bayat ya da geri çekilmede; `rt`
+    verilirse tick'in anlık görüntüsü, yoksa önbellek şimdi). Yerel hedef (ikisi de "") hiç buraya gelmez. Yıkıcı
+    türlerin EK koşulları (exact_target, tam ad + "own" ön denetimi, host başına tick bütçesi) gönderim anında
+    `_remote_stop`ta (A4): kapı yalnız hedefin kimliğine/host'una bakar, satırın o anki durumuna değil."""
     host = want or proj_host
     if want and hosts_mod.get_host(want) is None:
         code, err = "unknown_host", f"target denied: unknown host {want!r} (not in hosts.json)"
@@ -628,8 +651,6 @@ def _remote_denied(name: str, actor: str, kind: str, sid: str, want: str, proj_h
                                       f"not {want or 'local'!r}")
     elif not steward_config(sid).remote_actions:
         code, err = "remote_disabled", "target denied: remote actions are disabled (steward.remote_actions is off)"
-    elif kind in REMOTE_DESTRUCTIVE_KINDS:
-        code, err = "remote_destructive_pending", f"target denied: {kind} on a remote host is not available yet"
     elif not (host in rt.fresh if rt is not None else
               (_host_fresh(_remote.status(host)) and not _backing_off(host, time.time()))):
         code, err = "host_down", f"target denied: host {host!r} is unreachable or stale right now"
@@ -652,8 +673,9 @@ def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = N
     Host (uzak proje): verilmezse adın çözüldüğü projenin host'u (beyin/motor host vermez: proje kaydından); verilirse
     ("local" = yerel) o host'la aynı olmalı, aksi halde red (insan default bağlamında bile: `host=local` ile uzaktaki
     `oiso` projesinin yerel adaşına, `host=ulak31` ile kayıtsız uzak oturuma dokunulmaz). Uzak hedef ayrıca
-    `steward.remote_actions` açık, host kayıtlı ve taze (`rt`: tick'in anlık görüntüsü), tür yıkıcı DEĞİL ister
-    (`_remote_denied`; A3). Kimlik reddi (başka kimliğin projesi vb.) uzak reddinden önce gelir."""
+    `steward.remote_actions` açık, host kayıtlı ve taze (`rt`: tick'in anlık görüntüsü) ister (`_remote_denied`; A3);
+    yıkıcı türün ek koşulları gönderim anında (`_remote_stop`, A4). Kimlik reddi (başka kimliğin projesi vb.) uzak
+    reddinden önce gelir."""
     svc = _service_session(name)
     if svc:     # pasif servis (varaka): HİÇBİR eylemin hedefi olamaz (insan dahil; `steward service` kaydı watch/passive)
         sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name, service=svc)
@@ -1653,12 +1675,151 @@ def _remote_handover(name: str, host: str, rt: Optional[_RemoteTick] = None) -> 
                 host=host)
 
 
+def _remote_stop(name: str, host: str, world: sw.World, sid: str, actor: str,
+                 rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
+    """Uzak durdurmanın TEK yolu (A4; `_target` kapıları çağırandan önce geçildi). Sıra:
+    1. host taze, satırlarda adı TAM `name` olan ÇALIŞAN satır var (ön ek/base yok);
+    2. satır bu kimliğin kayıtlı proje oturumu: `sw.select_rows` onu bu host için seçiyor VE sınıfı "own" (uzak beyin,
+       servis, kayıtsız ya da başka kimliğin oturumu DEĞİL);
+    3. host `exact_target` bildiriyor (`host_capabilities`); bildirmeyen eski host'ta (api 0) `remote_too_old` olayı
+       (tekrarsız) ve eylem YOK. Yetenek bilinemediyse (yoklama ağ hatası, önbellek yok) de uygulanmaz;
+    4. tick içinde (`rt`) host başına `MAX_DESTRUCTIVE_PER_HOST` (`destructive_budget`: ertelenir, gönderilmez);
+    5. `POST /api/stop {"name", "exact": true}` (`REMOTE_STOP_TIMEOUT_SECONDS`, gövdede host YOK).
+    Yanıt `ok: false` (ör. `no_exact_match`: uzakta tam ad yok) uygulanmış SAYILMAZ, `remote_stop_rejected` loglanır;
+    uygulama düzeyi ret devre kesiciyi açmaz (taşıma hatası `_remote_post`ta A3 kuralıyla açar). Sayaç gönderimden
+    ÖNCE artar: yanıtı ne olursa olsun bu tick'te host'a ikinci yıkıcı istek gitmez."""
+    fresh_host, row = _remote_running_row(host, name, rt)
+    if not fresh_host:
+        return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+    if row is None:
+        return {"ok": False, "error": "not running (no exact running row on the host)", "code": "no_exact_row",
+                "host": host}
+    bp = row.get("blueprint") if row.get("instance") else None
+    if not sw.select_rows([dict(row, host=host)], world, {host}) or world.session_class(name, bp) != "own":
+        _log_remote_denied(sid, actor, "stop", name, host, "not_own")
+        return {"ok": False, "error": "target denied: the remote row is not this steward's registered project session",
+                "code": "not_own", "host": host}
+    if rt is not None and rt.blocked(host):
+        return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+    caps = host_capabilities(host)
+    if "exact_target" not in caps["capabilities"]:
+        known = _caps_cached(host, time.time()) is not None      # önbellekte kayıt = host gerçekten bildirmiyor
+        code = "remote_too_old" if known else "caps_unknown"
+        _log_remote_denied(sid, actor, "stop", name, host, code, event="remote_too_old" if known else "target_denied")
+        return {"ok": False, "error": (f"{host} does not support exact targeting (upgrade claudeops there)" if known
+                                       else f"{host} capabilities unknown right now"), "code": code, "host": host}
+    if rt is not None:
+        if rt.destructive.get(host, 0) >= MAX_DESTRUCTIVE_PER_HOST:
+            return {"ok": False, "error": f"one destructive action per host per tick ({host})",
+                    "code": "destructive_budget", "host": host}
+        rt.destructive[host] = rt.destructive.get(host, 0) + 1
+    res = dict(_remote_post(host, "/api/stop", {"name": name, "exact": True}, REMOTE_STOP_TIMEOUT_SECONDS, rt),
+               host=host)
+    if not res.get("ok"):
+        sw.log_event("remote_stop_rejected", paths=sid, name=name, host=host, actor=actor or "human",
+                     error=str(res.get("error") or ""), code=str(res.get("code") or ""))
+        res["ok"] = False
+    return res
+
+
+def _remote_wait_closed(host: str, name: str, timeout: float = READY_TIMEOUT_SECONDS) -> bool:
+    """Uzak durdurmadan sonra satırın kapanmasını bekle. AĞ ÇAĞRISI YAPMAZ: poller önbelleğine
+    `REMOTE_READY_POLL_SECONDS`te bir bakar; host taze VE adı TAM `name` olan çalışan satır yoksa True, en çok
+    `timeout`. Host bayatsa kapanma DOĞRULANAMAZ (beklemeye devam)."""
+    for i in range(max(1, int(timeout / REMOTE_READY_POLL_SECONDS))):
+        if i:
+            _remote_sleep(REMOTE_READY_POLL_SECONDS)
+        fresh_host, r = _remote_running_row(host, name)
+        if fresh_host and r is None:
+            return True
+    return False
+
+
+def _remote_stop_and_wait(name: str, host: str, world: sw.World, sid: str, actor: str,
+                          rt: Optional[_RemoteTick] = None) -> Optional[Dict[str, Any]]:
+    """Yeniden açmanın ve restart'ın durdurma adımı: oturum TAM adla çalışıyorsa `_remote_stop` + kapanma beklemesi
+    (`READY_TIMEOUT_SECONDS`). None = devam edilebilir (durdu ya da zaten kapalıydı); aksi halde başarısızlık yanıtı
+    (çağıran sonraki adıma GEÇMEZ). Durdurmadan sonra tick görüntüsü o host için yenilenir (`rt.refresh`)."""
+    fresh_host, row = _remote_running_row(host, name, rt)
+    if not fresh_host:
+        return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+    if row is None:
+        return None          # zaten kapalı (devir sonrası oturum kendisi çıkmış): durdurulacak bir şey yok
+    res = _remote_stop(name, host, world, sid, actor, rt)
+    if not res.get("ok"):
+        return res
+    closed = _remote_wait_closed(host, name)
+    if rt is not None:
+        rt.refresh(host)
+    if not closed:
+        return {"ok": False, "error": f"stop sent but {name!r} still running on {host} after "
+                                      f"{int(READY_TIMEOUT_SECONDS)} s", "code": "stop_not_confirmed", "host": host}
+    return None
+
+
+def _remote_respawn(name: str, host: str, project: Optional[sw.Project], cfg: sw.Config, world: sw.World,
+                    rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
+    """Uzak yeniden açma (devirden sonra READY / süre doldu / oturum gitti): durdur (`_remote_stop_and_wait`) → YENİ
+    konuşmayla başlat (`_ensure_running_remote`, `fresh=True`) → yönerge (`_give_directive`, `start_if_stopped=False`:
+    ikinci bir başlatma asla gitmez). Bir adım başarısızsa sonrakine GEÇİLMEZ, `remote_respawn` olayı adımı söyler.
+    Yarım kalan yeniden açmada oturum kapalı kalırsa proje sonraki tick'lerde normal `start` yolundan açılır (proje
+    aktif fazdaysa). Kart işaretlenmez (uzak projenin kartı yok, A1)."""
+    paths = sw.paths_for(cfg.sid)
+    if project is None:
+        return {"ok": False, "error": "not a steward project", "host": host}
+
+    def failed(step: str, res: Dict[str, Any]) -> Dict[str, Any]:
+        sw.log_event("remote_respawn", paths=paths, name=name, host=host, step=step, ok=False,
+                     error=str(res.get("error") or ""), code=str(res.get("code") or ""))
+        return dict(res, ok=False, step=step, host=host)
+
+    stopped = _remote_stop_and_wait(name, host, world, cfg.sid, "engine", rt)
+    if stopped is not None:
+        return failed("stop", stopped)
+    model, effort = sw.phase_model_effort(project, cfg)
+    res = _ensure_running_remote(name, host, model, effort, True, rt)
+    if not res.get("ok"):
+        return failed("start", res)
+    if rt is not None:
+        rt.refresh(host)
+    res = _give_directive(project, "", reason="respawn", session_name=name, cfg=cfg, start_if_stopped=False,
+                          host=host, rt=rt)
+    if not res.get("ok"):
+        return failed("directive", res)
+    sw.log_event("remote_respawn", paths=paths, name=name, host=host, step="done", ok=True)
+    return dict(res, host=host)
+
+
+def _defer_destructive(action: sw.Action, paths: Any, world: Optional[sw.World]) -> bool:
+    """Host'un tick bütçesine takılan (`destructive_budget`) uzak eylemi bir SONRAKİ tick'e bırak: `plan_tick` onu
+    planlarken izini (`ho_pending` / `done_pending`) silmişti, yeniden yazılmazsa eylem kaybolurdu. Karar yine saf
+    çekirdekte: yeniden açma `ho_pending`e süresi dolmuş damgayla döner (READY/süre kuralı yeniden değerlendirilir),
+    STEWARD-DONE durdurması `done_pending`e. Diğer durdurmalar (boşta durdurma) zaten kendiliğinden yeniden planlanır;
+    kapatma (`shutdown`) durdurması geri yazılmaz. Dönen: iz yeniden yazıldı mı."""
+    try:
+        with sw.steward_lock(paths):
+            state = sw.load_state(paths)
+            if action.kind == "respawn":
+                state.setdefault("ho_pending", {})[action.name] = 0.0      # 0 = süre çoktan doldu
+            elif action.kind == "stop" and action.reason.startswith("STEWARD-DONE"):
+                proj = (world.project_key(action.name) if world is not None else "") or action.name
+                state.setdefault("done_pending", {})[action.name] = proj
+            else:
+                return False
+            sw.save_state(state, paths)
+    except sw.LockTimeout as e:
+        sw.log_event("remote_deferred", paths=paths, kind=action.kind, name=action.name, requeued=False, error=str(e))
+        return False
+    sw.log_event("remote_deferred", paths=paths, kind=action.kind, name=action.name, requeued=True)
+    return True
+
+
 def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
            world: Optional[sw.World] = None, rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
     """Tek eylemi uygula. Kayıtlar `cfg.sid`'in deposuna; oturuma dokunan eylemler `_target` kapısından (kimlikli).
     Hedef UZAK bir projedeyse (`_locate`) oturuma dokunan HER tür (`start`/`deliver_answer` dahil) `_target`ın host
     kapılarından geçer (`rt`: tick'in tazelik görüntüsü + devre kesici) ve uzak yoldan uygulanır; yerel yola (yerel
-    adaş oturuma) ASLA düşmez. Yıkıcı türler (stop/respawn) uzakta reddedilir (A4)."""
+    adaş oturuma) ASLA düşmez. Yıkıcı türler (stop/respawn) uzakta `_remote_stop`un ek koşullarıyla (A4)."""
     k = action.kind
     name = action.name
     paths = sw.paths_for(cfg.sid)
@@ -1675,9 +1836,11 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return denied
     if k == "handover":
         return _remote_handover(name, host, rt) if host else _act("handover", name, lang=cfg.lang)
-    if host and k in REMOTE_DESTRUCTIVE_KINDS:     # `_target` zaten reddeder; yerel yola düşmesin diye ikinci kilit
-        return {"ok": False, "error": f"{k} on a remote host is not available yet", "code": "remote_destructive_pending",
-                "host": host}
+    if host and k in ("stop", "respawn"):      # uzak yıkıcı: yerel yola (yerel adaşı öldüren `_act("stop")`) düşmez
+        w = world or _world(cfg.sid, cfg)
+        if k == "stop":
+            return _remote_stop(name, host, w, cfg.sid, "engine", rt)
+        return _remote_respawn(name, host, _project_for_session(name, projects, w), cfg, w, rt)
     if k == "respawn":
         if _running(name) is not None:
             res = _act("stop", name, lang=cfg.lang)
@@ -1946,6 +2109,8 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 except Exception as e:  # tek eylem tick'i düşürmesin
                     res = {"ok": False, "error": repr(e)}
                     diag_log("steward_action_crashed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
+                if isinstance(res, dict) and res.get("code") == "destructive_budget":
+                    _defer_destructive(a, paths, world)     # host'un bu tick'lik yıkıcı hakkı doldu: sonraki tick'e
                 _remember(a, res, ctx)
                 applied.append({"kind": a.kind, "name": a.name, "reason": a.reason, "ok": bool(res.get("ok")),
                                 "detail": res.get("error") or ""})
@@ -2771,7 +2936,18 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     gated = _gate(name, data, "restart", sid)
     if gated is not None:
         return gated
+    host = _name_host(name)      # `_gate` istekteki host'u projeninkiyle zaten eşledi
     with _ctx(sid).lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
+        if host:
+            # Uzak restart = durdurma (`_remote_stop` koşulları + kapanma beklemesi) + yönerge (kapalıysa uzak başlatma).
+            # Durdurma doğrulanmadıysa yönerge GÖNDERİLMEZ: kapanmakta olan oturuma yazılır ya da ikinci oturum açılırdı.
+            stopped = _remote_stop_and_wait(name, host, _world(sid), sid, str(data.get("actor") or ""))
+            if stopped is not None:
+                sw.log_event("restart", paths=sid, name=name, host=host, ok=False, step="stop",
+                             error=str(stopped.get("error") or ""), reason=str(data.get("reason") or ""))
+                return stopped
+            sw.log_event("restart", paths=sid, name=name, host=host, reason=str(data.get("reason") or ""))
+            return http_directive(dict(data, start_if_stopped=True, reason="restart: " + str(data.get("reason") or "")), sid)
         if _running(name) is not None:
             res = _act("stop", name, lang=cfg.lang)
             if not res.get("ok"):
@@ -2786,9 +2962,14 @@ def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     gated = _gate(name, data, "stop", sid)
     if gated is not None:
         return gated
+    host = _name_host(name)      # `_gate` istekteki host'u projeninkiyle zaten eşledi
     with _ctx(sid).lock:
-        res = _act("stop", name, lang=cfg.lang)
-    sw.log_event("stop", paths=sid, name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")))
+        if host:     # uzak: yalnız `_remote_stop`un koşullarıyla (exact_target, tam ad, "own"); yerel `_act` ASLA
+            res = _remote_stop(name, host, _world(sid), sid, str(data.get("actor") or ""))
+        else:
+            res = _act("stop", name, lang=cfg.lang)
+    sw.log_event("stop", paths=sid, name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")),
+                 **({"host": host} if host else {}))
     return res
 
 
