@@ -1728,10 +1728,16 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     if world is not None:
         projects = world.own_projects(projects)
     items: List[Dict[str, Any]] = []
+    # Sahibin cevabını bekleyen oturum (açık, rutin olmayan soru) ya da bitmiş/duraklatılmış proje "boşta" sayılmaz:
+    # beynin yapacağı bir şey yok, bayat bayrak olarak `skip` yedirirdi (20 Eki: 54 boşa tur maddesi).
+    waiting = {q.source for q in questions if q.status == "open" and not q.routine and q.source}
+    waiting |= {q.project for q in questions if q.status == "open" and not q.routine and q.project}
     for v in views:
         if not v.running or not _is_project_session(v, projects) or v.name in skip or v.name == cfg.brain_name:
             continue
         if world is not None and world.session_class(v.name, v.blueprint) != "own":
+            continue
+        if v.name in waiting or v.project in waiting or projects[v.project].phase in ("done", "paused"):
             continue
         idle_since = max(v.last_activity, lda.get(v.name, 0.0), v.started_at)
         if v.busy is False and idle_since and (now - idle_since) >= cfg.idle_minutes * 60:
@@ -1980,6 +1986,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     st: Dict[str, Any] = json.loads(json.dumps(state)) if state else {}
     ho_pending: Dict[str, float] = dict(st.get("ho_pending") or {})
     seen: Dict[str, str] = dict(st.get("seen_assistant") or {})
+    done_pending: Dict[str, str] = dict(st.get("done_pending") or {})
     last_directive_at: Dict[str, float] = dict(st.get("last_directive_at") or {})
     reviewed_at: Dict[str, float] = dict(st.get("reviewed_at") or {})
     actions: List[Action] = []
@@ -2068,10 +2075,24 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if proj and m["plan_ready"] and projects[proj].phase == "planning":
             actions.append(Action("set_phase", proj, "STEWARD-PLAN-READY", {"phase": "planned"}))
         if proj and m["done"]:
-            actions.append(Action("set_phase", proj, "STEWARD-DONE", {"phase": "done"}))
-            if v.name not in busy_names:
-                actions.append(Action("stop", v.name, "STEWARD-DONE"))
-                busy_names.add(v.name)
+            if v.subagent_active:
+                # Alt ajan hâlâ çalışıyor: işaret erken (wifi5g, Aşama 3 cila sürerken `done` oldu). Ertele; ajan bitince uygulanır.
+                done_pending[v.name] = proj
+            else:
+                actions.append(Action("set_phase", proj, "STEWARD-DONE", {"phase": "done"}))
+                if v.name not in busy_names:
+                    actions.append(Action("stop", v.name, "STEWARD-DONE"))
+                    busy_names.add(v.name)
+
+    for name, proj in list(done_pending.items()):    # ertelenmiş STEWARD-DONE: alt ajan sustu mu?
+        v = by_name.get(name)
+        if v is None or not v.running or proj not in projects:
+            done_pending.pop(name, None)
+        elif not v.subagent_active and v.busy is not True and name not in busy_names:
+            actions.append(Action("set_phase", proj, "STEWARD-DONE (ertelenmişti)", {"phase": "done"}))
+            actions.append(Action("stop", name, "STEWARD-DONE (ertelenmişti)"))
+            busy_names.add(name)
+            done_pending.pop(name, None)
 
     # 4) Cevaplanmış sorular → ilgili oturuma ilet (kapalıysa aç)
     starts = 0
@@ -2193,6 +2214,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     st["pending_items"] = len(items)
     st["ho_pending"] = ho_pending
     st["seen_assistant"] = seen
+    if done_pending:
+        st["done_pending"] = done_pending
+    else:
+        st.pop("done_pending", None)     # boşken anahtar yazılmaz (varsayılan durum biçimi değişmez)
     st["last_directive_at"] = last_directive_at
     st["reviewed_at"] = reviewed_at
     st["last_tick"] = now

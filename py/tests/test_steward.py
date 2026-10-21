@@ -441,6 +441,36 @@ class OneshotProviderTest(unittest.TestCase):
                 run(argv, **kw)
 
 
+class DoneDeferralTest(unittest.TestCase):
+    def test_done_deferred_while_subagent_then_applied(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        v = _view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=True)
+        acts, st = sw.plan_tick([v], projects, {}, _cfg(), 5000.0, [], [])
+        self.assertEqual([a for a in acts if a.kind in ("set_phase", "stop")], [])
+        self.assertEqual(st["done_pending"], {"p1": "p1"})
+        v2 = _view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=False)
+        acts, st = sw.plan_tick([v2], projects, st, _cfg(), 5200.0, [], [])
+        self.assertEqual([(a.kind, a.name) for a in acts if a.kind in ("set_phase", "stop")], [("set_phase", "p1"), ("stop", "p1")])
+        self.assertNotIn("done_pending", st)
+
+    def test_done_immediate_without_subagent(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        acts, _ = sw.plan_tick([_view("p1", last_assistant="STEWARD-DONE")], projects, {}, _cfg(), 5000.0, [], [])
+        self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop")], ["set_phase", "stop"])
+
+
+class IdleSkipTest(unittest.TestCase):
+    def test_no_idle_item_for_waiting_or_done_projects(self):
+        now = 100000.0
+        projects = {"p1": sw.Project(name="p1", phase="planned"), "p2": sw.Project(name="p2", phase="done")}
+        views = [_view("p1", last_activity=1.0, started_at=1.0), _view("p2", last_activity=1.0, started_at=1.0)]
+        items = sw.review_items(views, projects, _cfg(), now, [], [])
+        self.assertEqual([i["name"] for i in items if i["kind"] == "idle"], ["p1"])    # p2 done: boşta sayılmaz
+        q = sw.Question(id="q1", project="p1", text="?", created_at=1.0, source="p1")
+        items = sw.review_items(views, projects, _cfg(), now, [q], [])
+        self.assertEqual([i for i in items if i["kind"] == "idle"], [])               # p1 sahibini bekliyor
+
+
 class MergedAnswersTest(unittest.TestCase):
     def _q(self, i, ans):
         return sw.Question(id=i, project="p1", text=f"soru {i}?", created_at=1.0, status="answered", answer=ans,
