@@ -1217,6 +1217,24 @@ def jobs_tick(cfg: sw.Config, force: bool = False) -> bool:
     return True
 
 
+_FABLE_WARN_AT: Dict[str, float] = {}
+
+
+def _audit_fable_rule(sid: str, paths: Any) -> None:
+    """Model kuralı denetimi: penceredeki Fable alt ajan sayısı 1'i aşarsa `fable_rule` olayı loglanır (10 dk'da bir).
+    Yalnız izleme; `model_usage` önbelleği boşsa (ilk çağrı) sessizce geçer."""
+    try:
+        from .. import model_usage
+        mu = model_usage.summary() or {}
+    except Exception:
+        return
+    n = int(mu.get("fable_agents") or 0)
+    if n > 1 and time.time() - _FABLE_WARN_AT.get(sid, 0.0) > 600:
+        _FABLE_WARN_AT[sid] = time.time()
+        sw.log_event("fable_rule", paths=paths, fable_agents=n, window_minutes=mu.get("window_minutes"),
+                     top=[x.get("label") for x in (mu.get("fable_top") or [])[:3]])
+
+
 def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Optional[int] = None,
               cards: bool = True, index: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """`sid` kimliği için bir tick: görünümleri topla → kararlar (`plan_tick(world=...)`) → uygula → state kaydet.
@@ -1268,6 +1286,7 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
         if applied:
             web_ws.notify_status_changed()
         if cfg.enabled:    # günlük özet + log sıkıştırma kimlik başına (kendi logu, kendi daily/'i)
+            _audit_fable_rule(sid, paths)
             try:
                 maybe_daily_summary(cfg, t0)
             except Exception as e:

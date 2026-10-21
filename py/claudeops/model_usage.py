@@ -58,18 +58,30 @@ def _iter_recent_lines(path: str, cutoff: float):
                     pass
 
 
+def _sub_effort(path: str) -> str:
+    """Alt ajan transkriptinin yanındaki `.meta.json`dan effort ("" = kayıtlı değil). Ana oturumda effort transkriptte YOK."""
+    try:
+        with open(path[:-len(".jsonl")] + ".meta.json", encoding="utf-8") as f:
+            return str((json.load(f) or {}).get("effort") or "").lower()
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
 def scan(minutes: int = WINDOW_MINUTES, now: Optional[float] = None) -> Dict[str, Any]:
-    """{window_minutes, families: {fam: {calls, fresh, read, out}}, fable_top: [{label, calls, fresh, read}]} (token sayıları)."""
+    """{window_minutes, families: {fam: {calls, fresh, read, out}}, fable_top: [{label, calls, fresh, read}], efforts: {"fam/effort": {...}}, fable_agents: N} (token sayıları)."""
     now = now or time.time()
     cutoff = now - minutes * 60
     fam: Dict[str, Dict[str, int]] = {}
     fable: Dict[str, Dict[str, Any]] = {}
+    efforts: Dict[str, Dict[str, int]] = {}      # "<aile>/<effort>" → sayaçlar (yalnız effort'u bilinen alt ajanlar)
+    fable_agents: set = set()                    # penceredeki Fable alt ajan transkriptleri ("en çok 1 Fable ajanı" denetimi)
     for path in glob.glob(os.path.join(PROJECTS_DIR, "**", "*.jsonl"), recursive=True):
         try:
             if os.path.getmtime(path) < cutoff:
                 continue
             is_sub = "/subagents/" in path
             proj = os.path.relpath(path, PROJECTS_DIR).split(os.sep)[0]
+            effort = _sub_effort(path) if is_sub else ""
             for raw in _iter_recent_lines(path, cutoff):
                 if b'"usage"' not in raw:
                     continue
@@ -97,6 +109,13 @@ def scan(minutes: int = WINDOW_MINUTES, now: Optional[float] = None) -> Dict[str
                 a["fresh"] += fresh
                 a["read"] += read
                 a["out"] += int(u.get("output_tokens", 0))
+                if effort:
+                    e = efforts.setdefault(f"{f}/{effort}", {"calls": 0, "fresh": 0, "read": 0})
+                    e["calls"] += 1
+                    e["fresh"] += fresh
+                    e["read"] += read
+                if f == "fable" and is_sub:
+                    fable_agents.add(path)
                 if f == "fable":
                     label = proj.replace("-home-fatihyuce-work-", "").replace("academic-yeterlilik2-belge-backups-", "")[-34:]
                     label += " (alt ajan)" if is_sub else ""
@@ -107,7 +126,8 @@ def scan(minutes: int = WINDOW_MINUTES, now: Optional[float] = None) -> Dict[str
         except OSError:
             continue
     top = sorted(fable.values(), key=lambda x: -(x["read"] + 12 * x["fresh"]))[:5]
-    return {"window_minutes": minutes, "at": now, "families": fam, "fable_top": top}
+    return {"window_minutes": minutes, "at": now, "families": fam, "fable_top": top,
+            "efforts": efforts, "fable_agents": len(fable_agents)}
 
 
 def _refresh() -> None:

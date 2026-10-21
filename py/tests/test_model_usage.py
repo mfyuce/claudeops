@@ -38,6 +38,22 @@ class ModelUsageTest(unittest.TestCase):
         self.assertEqual(r["families"]["sonnet"]["calls"], 1)
         self.assertEqual(sorted(x["label"].endswith("(alt ajan)") for x in r["fable_top"]), [False, True])
 
+    def test_subagent_effort_and_fable_agent_count(self):
+        now = time.time()
+        with tempfile.TemporaryDirectory() as d:
+            sub = os.path.join(d, "-home-x-proj", "sess", "subagents")
+            os.makedirs(sub)
+            for n, model, effort in (("agent-a1", "claude-opus-5-5", "high"), ("agent-a2", "claude-opus-5-5", "medium"),
+                                     ("agent-a3", "claude-fable-5-1", "high"), ("agent-a4", "claude-fable-5-1", "")):
+                with open(os.path.join(sub, n + ".jsonl"), "w") as f:
+                    f.write(_line(model, now - 60))
+                with open(os.path.join(sub, n + ".meta.json"), "w") as f:
+                    json.dump({"effort": effort} if effort else {}, f)
+            with mock.patch.object(mu, "PROJECTS_DIR", d):
+                r = mu.scan(minutes=60, now=now)
+        self.assertEqual(sorted(r["efforts"]), ["fable/high", "opus/high", "opus/medium"])
+        self.assertEqual(r["fable_agents"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
