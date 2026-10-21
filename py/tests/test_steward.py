@@ -1279,6 +1279,12 @@ class HttpTest(_Tmp):
             self.assertTrue(web_steward.http_post("/api/steward/idea/export", {"id": x["id"], "kind": "todo"})["ok"])
         todo = Path(os.path.join(cwds["zlkrn"], "TODO.md")).read_text(encoding="utf-8")
         self.assertEqual(todo.count("## Değnekçi fikirleri"), 1)                             # ikinci madde aynı başlığın altına
+        # Kimlikte TEK proje varsa projesiz fikir ona gider (kullanıcı kararı 2026-10-21)
+        one = web_steward.http_post("/api/steward/idea", {"text": "tek proje"})["idea"]
+        r1 = web_steward.http_post("/api/steward/idea/export", {"id": one["id"], "kind": "todo"})
+        self.assertTrue(r1["ok"] and r1["written"] == ["zlkrn"], r1)
+        # ... birden çok proje varsa belirsizdir: reddedilir (target=all seçilmeli)
+        sw.upsert_project("mkt2", phase="planned")
         c = web_steward.http_post("/api/steward/idea", {"text": "sahipsiz"})["idea"]
         self.assertFalse(web_steward.http_post("/api/steward/idea/export", {"id": c["id"], "kind": "todo"})["ok"])   # projesiz + target=project
         self.assertFalse(web_steward.http_post("/api/steward/idea/export", {"id": c["id"], "kind": "x"})["ok"])

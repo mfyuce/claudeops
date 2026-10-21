@@ -2905,6 +2905,8 @@ def http_idea_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, An
         return {"ok": False, "error": "unknown idea id"}
     projects = sw.load_projects(sid)
     names = [n for n in (_idea_project(idea, projects),) if n] if target == "project" else sorted(projects)
+    if not names and target == "project" and len(projects) == 1:
+        names = sorted(projects)      # fikrin projesi yok (panelden eklenen) ama kimlikte TEK proje var: belirsizlik yok
     if not names:
         return {"ok": False, "error": "idea has no steward project; choose target=all"}
     stamp = time.strftime("%Y-%m-%d")
