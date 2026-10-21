@@ -2871,7 +2871,9 @@ def http_context(name: str, docs: bool = False, sid: str = "default") -> Dict[st
         if want_docs:
             out["docs"] = rd["docs"]
         out["git"] = REMOTE_GIT_UNKNOWN
-        out["running"] = any(r["name"] == name for r in _remote_running_listing(_world(sid)))
+        world = _world(sid)      # uzak oturum adı tarih sonekli olabilir (`oiso20261017` -> `oiso`): proje çözümüyle karşılaştır
+        out["running"] = any(world is not None and world.resolve(str(r["name"] or "")) == ("project", name)
+                             for r in _remote_running_listing(world))
     else:
         if want_docs:
             out["docs"] = {d: _read_head(cwd, d) for d in DOCS if cwd} if cwd else {}

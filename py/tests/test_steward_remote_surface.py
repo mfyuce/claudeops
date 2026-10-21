@@ -150,6 +150,14 @@ class TestRemoteReads(_Surface):
         self.assertIn((HOST, "oiso", "/srv/oiso/PLAN.md"), files)
         self.assertEqual(self.fake.posts, [])
 
+    def test_context_running_with_dated_session_name(self):
+        """Canlı hata: uzak oturum `oiso20261017`, proje `oiso`; `running` ad eşitliğine bakıyordu, hep False çıkıyordu."""
+        self.fake.hosts[HOST]["sessions"][0]["name"] = "oiso20261017"
+        self.assertTrue(ws.http_context("oiso")["running"])
+        self.assertTrue({p["name"]: p for p in ws.http_state()["projects"]}["oiso"]["running"])
+        self.fake.hosts[HOST]["sessions"][0]["name"] = "baska20261017"    # kayıtsız oturum: oiso'ya çözülmemeli
+        self.assertFalse(ws.http_context("oiso")["running"])
+
     def test_same_path_local_folder_is_never_read(self):
         """Uzak cwd'nin AYNI yolunda yerel klasör + TODO.md var: içeriği (YEREL) asla çıkmaz."""
         self.fake.hosts[HOST]["sessions"][0]["cwd"] = self.local_dir
