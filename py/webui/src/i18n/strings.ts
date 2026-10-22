@@ -585,6 +585,18 @@ export interface Strings {
   stewardJobsNote: string;
   stewardJobsSubmitted: string;
   stewardJobsBadJson: string;
+  stewardActTitle: string;
+  stewardActHint: string;
+  stewardActDirective: string;
+  stewardActHandover: string;
+  stewardActRestart: string;
+  stewardActStop: string;
+  stewardActText: string;
+  stewardActConfirm: string;
+  stewardActDone: string;
+  stewardLogTitle: string;
+  stewardLogRefresh: string;
+  stewardLogNone: string;
   stewardSettingsTitle: string;
   stewardSetTick: string;
   stewardSetTour: string;
@@ -1319,6 +1331,18 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardJobsNote: "not (isteğe bağlı)",
     stewardJobsSubmitted: "İş gönderildi",
     stewardJobsBadJson: "Parametreler geçerli JSON değil",
+    stewardActTitle: "Proje eylemleri",
+    stewardActHint: "Direktif oturuma yazılır; devir, durdurma ve yeniden başlatma çalışan oturumu etkiler.",
+    stewardActDirective: "Direktif gönder",
+    stewardActHandover: "Devir iste",
+    stewardActRestart: "Yeniden başlat",
+    stewardActStop: "Durdur",
+    stewardActText: "direktif metni",
+    stewardActConfirm: "Bu eylem çalışan oturumu etkiler. Devam edilsin mi?",
+    stewardActDone: "Gönderildi",
+    stewardLogTitle: "Olay günlüğü",
+    stewardLogRefresh: "Yenile",
+    stewardLogNone: "Kayıt yok.",
     stewardSettingsTitle: "Ayarlar",
     stewardSetTick: "tick (sn)",
     stewardSetTour: "tur aralığı (dk)",
@@ -2054,6 +2078,18 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardJobsNote: "note (optional)",
     stewardJobsSubmitted: "Job submitted",
     stewardJobsBadJson: "Params are not valid JSON",
+    stewardActTitle: "Project actions",
+    stewardActHint: "A directive is typed into the session; handover, stop and restart affect the running session.",
+    stewardActDirective: "Send directive",
+    stewardActHandover: "Request handover",
+    stewardActRestart: "Restart",
+    stewardActStop: "Stop",
+    stewardActText: "directive text",
+    stewardActConfirm: "This affects the running session. Continue?",
+    stewardActDone: "Sent",
+    stewardLogTitle: "Event log",
+    stewardLogRefresh: "Refresh",
+    stewardLogNone: "No entries.",
     stewardSettingsTitle: "Settings",
     stewardSetTick: "tick (s)",
     stewardSetTour: "tour interval (min)",

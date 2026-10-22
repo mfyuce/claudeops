@@ -664,6 +664,15 @@ export const apiStewardJobSubmit = (
   sid?: string,
 ): Promise<SimpleResult & { awaiting_approval?: boolean }> =>
   apiPost<SimpleResult & { awaiting_approval?: boolean }>("/api/steward/job/submit", { ...body, ...stewardBody(sid) });
+export const getStewardLog = (n = 80, sid?: string): Promise<SimpleResult & { entries?: Array<Record<string, unknown>> }> =>
+  apiGet<SimpleResult & { entries?: Array<Record<string, unknown>> }>(`/api/steward/log?n=${n}${sid && sid !== "default" ? `&steward=${encodeURIComponent(sid)}` : ""}`);
+export const apiStewardProjectAction = (
+  action: "directive" | "handover" | "stop" | "restart",
+  name: string,
+  text: string,
+  sid?: string,
+): Promise<SimpleResult> =>
+  apiPost<SimpleResult>(`/api/steward/${action}`, { name, text, reason: "panel", ...stewardBody(sid) });
 export const apiStewardProjectSet = (name: string, fields: Record<string, string | number>, sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/project", { name, ...fields, ...stewardBody(sid) });
 
