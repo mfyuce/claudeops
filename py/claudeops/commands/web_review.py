@@ -9,8 +9,10 @@ Adım 5'te doldurulacak: havuz eşitleme (`review.pool_sync`), sıradaki çift (
 çalıştırıcıları (kendi `Popen`'ı, zaman aşımı, iptal), sonuç dosyası + bulgu çıkarımı.
 
 Bu modül `web.py`'yi ve `web_steward`'ı İÇE AKTARMAZ (döngü yok; eylemler gerekirse geri çağrıyla verilir)."""
+import codecs
 import json
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -28,6 +30,10 @@ UCLI_KEY_FILE = os.path.expanduser("~/.claude/claudeops/ucli_api_key")
 EVREN_MAX_STEPS = 200
 EVREN_MAX_IO_MIB = 2048
 STDERR_KEEP = 300
+LIVE_CAP_BYTES = 512 * 1024         # canlı günlük dosyası tavanı; aşılınca yalnız son LIVE_KEEP_BYTES kalır
+LIVE_KEEP_BYTES = 384 * 1024
+LIVE_READ_BYTES = 128 * 1024        # GET review/live tek yanıtta en çok bu kadar (son kısım)
+HEARTBEAT_SECONDS = 10.0            # testler küçültür
 
 # Süreç geneli TEK çalıştırma kilidi (claudeops'un `_LOCK`'u ile ilgisi YOK, onu TUTMA). Çalışırken iş thread'inde tutulur.
 _REVIEW_LOCK = threading.Lock()
@@ -41,6 +47,7 @@ class _Job:
         self.proc: Any = None
         self.cancelled = False
         self.sid = ""                # işi başlatan reviewer kimliği
+        self.prompt = ""
 
 
 # ── ortam / argv ──────────────────────────────────────────────────────────────
@@ -64,13 +71,15 @@ def _api_key() -> str:
     return key
 
 
-def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, supports_io: bool) -> List[str]:
+def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, supports_io: bool,
+               live_flags: Optional[List[str]] = None, budget_flags: Optional[List[str]] = None) -> List[str]:
     """`ucli --root <cwd> chat --model M --endpoint E --api-key-env UCLI_API_KEY --max-steps 200 [--max-io-mib N] <prompt>`.
-    --allow-edit/--allow-create ASLA (varsayılan salt okunur); anahtar argv'de DEĞİL, yalnız süreç ortamında."""
+    --allow-edit/--allow-create ASLA (varsayılan salt okunur); anahtar argv'de DEĞİL, yalnız süreç ortamında.
+    `live_flags` (`--stream`, `--show-reasoning`): yalnız stderr sunumu, stdout sözleşmesi ve yazma izni değişmez."""
     return ucli_client.build_chat_argv(
         binary, cwd, repl=False, session=None, model=model, endpoint=endpoint, api_key_env="UCLI_API_KEY",
         with_mcp=False, max_steps=EVREN_MAX_STEPS,
-        extra_args=(["--max-io-mib", str(EVREN_MAX_IO_MIB)] if supports_io else [])) + [prompt]
+        extra_args=(["--max-io-mib", str(EVREN_MAX_IO_MIB)] if supports_io else []) + list(budget_flags or []) + list(live_flags or [])) + [prompt]
 
 
 def agy_argv(binary: str, model: str, prompt: str, provider: Any) -> List[str]:
@@ -152,6 +161,304 @@ def cancel_key(key: str) -> bool:
     return True
 
 
+# ── kalıcı IO günlüğü (sohbet görünümü: <ts>.io.jsonl, review md'nin yanında) ──
+
+IO_SUFFIX = ".io.jsonl"
+IO_MAX_BYTES = 50 * 1024 * 1024     # kalıcı dosya üst sınırı; aşılınca ortası kırpılır (baş + son kalır, not düşülür)
+IO_HEAD_BYTES = 1 * 1024 * 1024
+IO_TAIL_BYTES = 24 * 1024 * 1024
+LIVE_READ_BYTES = 512 * 1024        # GET yanıtı penceresi: dosyanın SON bu kadarı (kalıcı dosya sınırsız)
+PREFIX = "UnifiedCLI "
+
+
+def io_path_for(md_path: str) -> str:
+    return (md_path[:-3] if md_path.endswith(".md") else md_path) + IO_SUFFIX
+
+
+class IoLog:
+    """Artımlı (her olayda açıp ekler: servis çökse de kaybolmaz), sırları temizlenmiş olay günlüğü, satır başına JSON
+    `{ts, role: user|assistant|tool|system, kind, text}`. Dosya iş bitse/iptal/timeout olsa da SİLİNMEZ.
+    stderr akışı (`feed_err`) satırlara ayrılır: `UnifiedCLI tool:` -> tool; `UnifiedCLI model:`/`reasoning:` ->
+    assistant; diğer `UnifiedCLI ...` -> system; öneksiz metin (--stream delta) -> assistant `delta` (istemci birleştirir).
+    Sondaki bölünmüş sözcük bir sonraki yazıya kadar tutulur ki bir sır iki parçaya bölünüp redact'ten kaçmasın."""
+
+    def __init__(self, path: str, now: Callable[[], float] = time.time, max_bytes: int = IO_MAX_BYTES,
+                 head: int = IO_HEAD_BYTES, tail: int = IO_TAIL_BYTES) -> None:
+        self.path, self.now, self.max_bytes, self.head, self.tail = path, now, max_bytes, head, tail
+        self._lock = threading.RLock()
+        self._buf = ""              # stderr satır birleştirici
+        self._at_start = True
+        self._hold = ""             # delta için tutulan sözcük kuyruğu
+        self.ok = True
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8"):
+                pass
+        except OSError:
+            self.ok = False
+
+    def event(self, role: str, text: str, kind: str = "") -> None:
+        if not self.ok or not text:
+            return
+        rec = {"ts": round(self.now(), 3), "role": role, "text": rv.redact_secrets(text)}
+        if kind:
+            rec["kind"] = kind
+        line = json.dumps(rec, ensure_ascii=False) + "\n"
+        with self._lock:
+            try:
+                with open(self.path, "a", encoding="utf-8") as f:
+                    f.write(line)
+                if os.path.getsize(self.path) > self.max_bytes:
+                    self._trim()
+            except OSError:
+                self.ok = False
+
+    def _trim(self) -> None:
+        with open(self.path, "rb") as f:
+            head = f.read(self.head)
+            f.seek(-self.tail, os.SEEK_END)
+            tail = f.read()
+        nl = head.rfind(b"\n")
+        head = head[:nl + 1] if nl >= 0 else b""
+        nl = tail.find(b"\n")
+        tail = tail[nl + 1:] if nl >= 0 else b""
+        note = json.dumps({"ts": round(self.now(), 3), "role": "system", "kind": "trim",
+                           "text": "(ortadaki çıktı boyut sınırı nedeniyle kırpıldı)"}, ensure_ascii=False) + "\n"
+        tmp = self.path + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(head + note.encode() + tail)
+        os.replace(tmp, self.path)
+
+    def system(self, msg: str) -> None:
+        self.event("system", msg)
+
+    def out(self, text: str) -> None:
+        """stdout: ajan modunda tek JSON sonuç, agy'de düz cevap."""
+        self.event("assistant", text, "result")
+
+    def _delta(self, text: str, final: bool = False) -> None:
+        with self._lock:
+            buf = self._hold + text
+            self._hold = ""
+            if not final:
+                m = re.search(r"\S+$", buf)
+                if m:
+                    self._hold, buf = buf[m.start():], buf[:m.start()]
+            self.event("assistant", buf, "delta")
+
+    def feed_err(self, txt: str) -> None:
+        with self._lock:
+            self._buf += txt
+            while self._buf:
+                if self._at_start:
+                    if self._buf.startswith(PREFIX):
+                        i = self._buf.find("\n")
+                        if i < 0:
+                            break
+                        line, self._buf = self._buf[:i], self._buf[i + 1:]
+                        self._line(line[len(PREFIX):])
+                        continue
+                    if len(self._buf) < len(PREFIX) and PREFIX.startswith(self._buf):
+                        break
+                    self._at_start = False
+                i = self._buf.find("\n")
+                if i < 0:
+                    self._delta(self._buf)
+                    self._buf = ""
+                    break
+                self._delta(self._buf[:i + 1])
+                self._buf = self._buf[i + 1:]
+                self._at_start = True
+
+    def _line(self, rest: str) -> None:
+        for pre, role, kind in (("tool:", "tool", "call"), ("model:", "assistant", "model"),
+                                ("reasoning:", "assistant", "reasoning")):
+            if rest.startswith(pre):
+                self.event(role, rest[len(pre):].strip(), kind)
+                return
+        self.event("system", PREFIX + rest, "ucli")
+
+    def close(self) -> None:
+        with self._lock:
+            tail, self._buf = self._buf, ""
+            if tail:
+                if self._at_start and tail.startswith(PREFIX):
+                    self._line(tail[len(PREFIX):])
+                else:
+                    self._delta(tail, final=True)
+            self._delta("", final=True)
+
+
+def _read_io_file(full: str, offset: Any) -> Dict[str, Any]:
+    """Tam satırlarla, `offset` baytından; pencere son LIVE_READ_BYTES ile sınırlı. `events` ayrıştırılmış satırlar
+    (bozuk satır -> system/raw olay, çökme yok)."""
+    size = os.path.getsize(full)
+    try:
+        off = int(offset)
+    except (TypeError, ValueError):
+        off = 0
+    reset = False
+    if off < 0 or off > size:
+        off, reset = 0, True
+    if size - off > LIVE_READ_BYTES:
+        off, reset = size - LIVE_READ_BYTES, True
+    with open(full, "rb") as f:
+        f.seek(off)
+        data = f.read(size - off)
+    if reset and off > 0:       # pencere satır ortasında başlamasın
+        nl = data.find(b"\n")
+        data = data[nl + 1:] if nl >= 0 else b""
+        off = size - len(data)
+    end = data.rfind(b"\n")    # yarım son satırı sonraki çekişe bırak
+    data = data[:end + 1] if end >= 0 else b""
+    events: List[Dict[str, Any]] = []
+    for ln in data.decode("utf-8", "replace").splitlines():
+        if not ln.strip():
+            continue
+        try:
+            ev = json.loads(ln)
+            if not isinstance(ev, dict):
+                raise ValueError
+        except ValueError:
+            ev = {"role": "system", "kind": "raw", "text": ln}
+        events.append(ev)
+    return {"events": events, "offset": off + len(data), "size": size, "reset": reset or off == 0}
+
+
+def read_io(cfg: Any, rel: str, offset: Any = 0) -> Dict[str, Any]:
+    """GET `review/io?path=`: kimliğin `reviews/` ağacı altındaki `*.io.jsonl` (ya da onun `.md` eşi). Mutlak yol, `..`,
+    NUL ve symlink kaçışı reddedilir."""
+    p = sw.paths_for(cfg.sid)
+    rel = str(rel or "")
+    if not rel or "\x00" in rel:
+        return {"ok": False, "error": "path required"}
+    if rel.endswith(".md"):
+        rel = io_path_for(rel)
+    if not rel.endswith(IO_SUFFIX):
+        return {"ok": False, "error": "not an io log"}
+    root = os.path.realpath(p.reviews)
+    cand = rel if os.path.isabs(rel) else os.path.join(p.reviews, rel)
+    if ".." in rel.replace("\\", "/").split("/"):
+        return {"ok": False, "error": "path outside reviews"}
+    full = os.path.realpath(cand)
+    if not full.startswith(root + os.sep):
+        return {"ok": False, "error": "path outside reviews"}
+    if not os.path.isfile(full):
+        return {"ok": False, "error": "not found"}
+    try:
+        res = _read_io_file(full, offset)
+    except OSError as e:
+        return {"ok": False, "error": str(e)}
+    res.update(ok=True, path=os.path.relpath(full, root))
+    return res
+
+
+def io_to_messages(events: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """IO olayları -> sohbet iletileri (`role` user|assistant|tool|system, `text`, `kind`). Ardışık `delta` parçaları tek
+    assistant iletisinde birleşir; araç çağrıları/ucli satırları/düşünce `tool`/`system` (istemci katlar). Akışla gelmiş
+    cevabın ardından gelen stdout sonucu tekrar gösterilmez; akışsızsa (agy ya da `--stream` yok) sonuç cevaptır
+    (Evren JSON'unda `answer`)."""
+    msgs: List[Dict[str, str]] = []
+    streamed = False
+    for ev in events:
+        role, kind, text = str(ev.get("role") or "system"), str(ev.get("kind") or ""), str(ev.get("text") or "")
+        if not text:
+            continue
+        if role == "assistant" and kind == "delta":
+            streamed = True
+            if msgs and msgs[-1]["role"] == "assistant" and msgs[-1].get("kind") == "delta":
+                msgs[-1]["text"] += text
+            else:
+                msgs.append({"role": "assistant", "text": text, "kind": "delta"})
+        elif role == "assistant" and kind == "result":
+            if streamed:
+                continue
+            ans, _e = _extract_text("evren", text)
+            msgs.append({"role": "assistant", "text": ans or text, "kind": "result"})
+        elif role == "assistant" and kind == "reasoning":
+            msgs.append({"role": "system", "text": text, "kind": "reasoning"})
+        elif role in ("user", "assistant", "tool", "system"):
+            msgs.append({"role": role, "text": text, "kind": kind})
+        else:
+            msgs.append({"role": "system", "text": text, "kind": kind})
+    return msgs
+
+
+def read_chat(cfg: Any, rel: str) -> Dict[str, Any]:
+    """GET `review/chat?path=`: `read_io` ile aynı yol güvenliği; olaylar sohbet iletilerine çevrilir. `running` çift
+    kaydındaki `io_file` ile eşleşen çalışan iş varsa True."""
+    r = read_io(cfg, rel, 0)
+    if not r.get("ok"):
+        return r
+    p = sw.paths_for(cfg.sid)
+    hist = rv.load_history(p)
+    running = False
+    status = ""
+    for key, rec in hist["pairs"].items():
+        io = str((rec or {}).get("io_file") or "")
+        if io and os.path.realpath(io) == os.path.realpath(os.path.join(p.reviews, r["path"])):
+            status = str(rec.get("status") or "")
+            running = key in running_keys(cfg.sid)
+    msgs = io_to_messages(r.pop("events"))
+    r.update(messages=msgs, total=len(msgs), running=running, status=status, supported=True)
+    return r
+
+
+def review_runs(cfg: Any) -> List[Dict[str, Any]]:
+    """History'de listelenecek review koşuları (kimlik başına): çift kayıtlarının son koşusu + `runs` geçmişindeki dosyalar;
+    yalnız IO günlüğü diskte olanlar. `io` = `reviews/` altı göreli yol (istemci bunu `review/chat`e geri verir)."""
+    p = sw.paths_for(cfg.sid)
+    hist = rv.load_history(p)
+    root = os.path.realpath(p.reviews)
+    running = set(running_keys(cfg.sid))
+    rows: Dict[str, Dict[str, Any]] = {}
+
+    def add(pair: str, md: str, status: str, started: Any, finished: Any, is_run: bool, error: str = "") -> None:
+        proj, _, tk = pair.partition("|")
+        mode, _, slug = tk.partition("/")
+        io = io_path_for(md) if md else ""
+        if not io or not os.path.isfile(io):
+            return
+        rel = os.path.relpath(os.path.realpath(io), root)
+        if rel.startswith(".."):
+            return
+        stamp = os.path.basename(md)[:14]
+        ts = started if started else (stamp if re.fullmatch(r"\d{14}", stamp) else None)
+        rows[rel] = {"sid": cfg.sid, "project": proj, "mode": mode, "model": slug, "status": status, "io": rel,
+                     "file": md, "started_at": started, "finished_at": finished, "running": is_run,
+                     "error": error, "duration": (float(finished) - float(started)) if started and finished else None,
+                     "title": rv.review_title(proj, mode, slug, ts)}
+    for r in hist.get("runs") or []:
+        if isinstance(r, dict) and r.get("file"):
+            add(str(r.get("pair") or ""), str(r["file"]), str(r.get("status") or ""), None, r.get("at"), False)
+    for key, rec in hist["pairs"].items():
+        if isinstance(rec, dict) and rec.get("io_file"):
+            md = str(rec["io_file"])[:-len(IO_SUFFIX)] + ".md"
+            add(key, md, str(rec.get("status") or ""), rec.get("started_at"), rec.get("finished_at"), key in running, str(rec.get("error") or ""))
+    return sorted(rows.values(), key=lambda r: r["io"], reverse=True)
+
+
+def read_live(cfg: Any, project: str, target_key: str, offset: Any = 0) -> Dict[str, Any]:
+    """GET `review/live`: çiftin son koşusunun IO günlüğü (`io_file` çift kaydında). Yol istemciden gelmez; `target` bilinen
+    hedef anahtarı olmak zorunda. İş bitince de aynı çağrı son hâli döner (`running: false`)."""
+    p = sw.paths_for(cfg.sid)
+    proj = str(project or "").strip()
+    match = [tg for tg in current_targets(cfg) if tg.key == str(target_key or "")]
+    if not match or not proj:
+        return {"ok": False, "error": "unknown target"}
+    tg = match[0]
+    rec = rv.load_history(p)["pairs"].get(rv.pair_key(proj, tg)) or {}
+    running = rv.pair_key(proj, tg) in running_keys(cfg.sid)
+    io = str(rec.get("io_file") or "")
+    if not io:
+        return {"ok": True, "running": running, "events": [], "offset": 0, "size": 0, "reset": True, "exists": False}
+    r = read_io(cfg, io, offset)
+    if not r.get("ok"):
+        return {"ok": True, "running": running, "events": [], "offset": 0, "size": 0, "reset": True, "exists": False}
+    r.update(running=running, exists=True, status=rec.get("status"), file=rec.get("file"))
+    return r
+
+
 def _extract_text(mode: str, stdout: str) -> Tuple[str, str]:
     """(metin, hata). Evren: JSON `answer`; bozuk/yarım JSON'da ham metin (kısmi çıktı kaybolmasın)."""
     if mode != "evren":
@@ -183,23 +490,75 @@ def _tail(s: str) -> str:
 def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, argv: List[str], env: Dict[str, str],
              cwd: str, path: str, started: float, popen: Callable, agy_log_dir: str, now: Callable[[], float]) -> None:
     key = job.key
+    live = IoLog(io_path_for(path), now)
+    if job.prompt:
+        live.event("user", job.prompt, "prompt")
     try:
         try:
             proc = popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                          start_new_session=True)
         except OSError as e:
+            live.system(f"süreç başlamadı: {e}")
             rv.update_pair(paths, project, target, status="error", finished_at=now(), error=f"spawn: {e}")
             return
         job.proc = proc
         rv.update_pair(paths, project, target, pid=getattr(proc, "pid", None))
+        live.system(f"başladı: {project} {target.mode}/{target.slug}, pid {getattr(proc, 'pid', '?')}. "
+                 + ("Çıktı canlı akar." if target.mode == "evren" else "Çıktı iş bitince gelir."))
+        stop_hb = threading.Event()
+
+        def _beat() -> None:
+            while not stop_hb.wait(HEARTBEAT_SECONDS):
+                live.system(f"çalışıyor: {int(now() - started)} sn, pid {getattr(proc, 'pid', '?')}")
+        threading.Thread(target=_beat, daemon=True, name=f"review-hb-{key}").start()
         timed_out = False
         timeout = max(1.0, float(getattr(cfg, "review_timeout_minutes", 45)) * 60.0)
+        bufs: Dict[str, List[str]] = {"out": [], "err": []}
+        readers: List[threading.Thread] = []
+
+        def _pump(name: str, stream: Any) -> None:
+            dec = codecs.getincrementaldecoder("utf-8")("replace")
+            try:
+                fd = stream.fileno()
+                while True:
+                    chunk = os.read(fd, 4096)
+                    if not chunk:
+                        break
+                    txt = dec.decode(chunk)
+                    bufs[name].append(txt)
+                    (live.out if name == "out" else live.feed_err)(txt)
+            except (OSError, ValueError):
+                pass
+            tail = dec.decode(b"", final=True)
+            if tail:
+                bufs[name].append(tail)
+                (live.out if name == "out" else live.feed_err)(tail)
         try:
-            out, err = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            _terminate(proc, KILL_GRACE_SECONDS)
-            out, err = proc.communicate()
+            real = all(callable(getattr(getattr(proc, a, None), "fileno", None)) for a in ("stdout", "stderr"))
+            if real:
+                for nm, st in (("out", proc.stdout), ("err", proc.stderr)):
+                    th = threading.Thread(target=_pump, args=(nm, st), daemon=True, name=f"review-pump-{nm}-{key}")
+                    th.start()
+                    readers.append(th)
+                try:
+                    proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    _terminate(proc, KILL_GRACE_SECONDS)
+                for th in readers:
+                    th.join(10)
+                out, err = "".join(bufs["out"]), "".join(bufs["err"])
+            else:   # sahte/akışsız süreç: tek seferde topla, bitince günlüğe yaz
+                try:
+                    out, err = proc.communicate(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    _terminate(proc, KILL_GRACE_SECONDS)
+                    out, err = proc.communicate()
+                live.out(out or "")
+                live.feed_err(err or "")
+        finally:
+            stop_hb.set()
         out, err = out or "", err or ""
         text, jerr = _extract_text(target.mode, out)
         text = rv.redact_secrets(text)
@@ -227,6 +586,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
                 # dosya saklanır ama done sayılmaz: agy planda olmayan modeli sessizce başka modele düşürür
                 status, error = "model_fallback", f"agy etiket uyuşmadı: istenen={target.model} görülen={seen or '(yok)'}"
         fields.update(status=status, error=error)
+        live.system(f"bitti: {status}" + (f" ({error})" if error else "") + (f"; dosya: {fields['file']}" if fields.get("file") else ""))
+        live.close()
         rv.update_pair(paths, project, target, **fields)
         if status in ("done", "partial") and fields.get("file"):
             try:    # bulgular state=new ile kaydedilir; ayrıştırma hatası koşunun sonucunu bozmaz
@@ -239,6 +600,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         except Exception:
             pass
     finally:
+        live.close()
         with _JOBS_LOCK:
             _JOBS.pop(key, None)
         _REVIEW_LOCK.release()
@@ -271,7 +633,14 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             from ..providers import ucli_provider as up
             binary = ucli_client.resolve_binary(ucli_bin)
             sup = (supports_flag or ucli_client.binary_supports_flag)(binary, "--max-io-mib")
-            argv = evren_argv(binary, cwd, target.model, prompt, (endpoint_fn or up.endpoint)(), bool(sup))
+            sf = supports_flag or ucli_client.binary_supports_flag
+            live_flags = [fl for fl in ("--stream", "--show-reasoning") if sf(binary, fl)]
+            budget: List[str] = []
+            for flag, attr, dflt in (("--max-context-kib", "review_max_context_kib", 768),
+                                     ("--max-compactions", "review_max_compactions", 24)):
+                if sf(binary, flag):
+                    budget += [flag, str(max(1, int(getattr(cfg, attr, dflt) or dflt)))]
+            argv = evren_argv(binary, cwd, target.model, prompt, (endpoint_fn or up.endpoint)(), bool(sup), live_flags, budget)
             key_val = api_key if api_key is not None else _api_key()
             if not key_val:
                 raise RuntimeError("Evren API anahtarı yok")
@@ -290,9 +659,11 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                        label_seen=None, pid=None)
         job = _Job(key)
         job.sid = p.sid
+        job.prompt = prompt
         with _JOBS_LOCK:
             _JOBS[key] = job
         path = rv.review_path(p.reviews, project, target, t0)
+        rv.update_pair(p, project, target, io_file=io_path_for(path))
         th = threading.Thread(target=_execute, daemon=True, name=f"review-{key}",
                               args=(job, p, cfg, project, target, argv, clean_env(env_extra), cwd, path, t0, popen,
                                     agy_log_dir, now))

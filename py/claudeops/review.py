@@ -73,6 +73,21 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
     return out
 
 
+def review_title(project: str, mode: str, model: str, ts: Any) -> str:
+    """History satırı/sohbet başlığı (TEK kaynak): `review · <proje> · <mode>/<model> · <yyyy-MM-dd HH:mm>`.
+    `ts` epoch ya da 14 haneli `yyyyMMddHHmmss` damgası; çözülemezse zaman parçası atlanır."""
+    when = ""
+    try:
+        if isinstance(ts, str) and re.fullmatch(r"\d{14}", ts):
+            when = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}"
+        elif ts not in (None, ""):
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(ts)))
+    except (ValueError, TypeError, OverflowError, OSError):
+        when = ""
+    parts = ["review", str(project), f"{mode}/{model}"] + ([when] if when else [])
+    return " · ".join(parts)
+
+
 def pair_key(proj: str, t: ReviewTarget) -> str:
     return f"{proj}|{t.mode}/{t.slug}"
 

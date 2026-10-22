@@ -178,6 +178,10 @@ export interface InstanceRecord {
   last_started_at: number | null;
   origin: string;
   running: boolean;
+  /** Backend-computed History badge (steward brain / steward-managed project session); absent on remote rows. */
+  badge?: { kind: "steward"; role: "brain" | "project"; sid: string; title: string };
+  /** Readable title (steward rows); absent = use `name`. */
+  title?: string;
 }
 
 export interface RosterEntry {
@@ -685,8 +689,19 @@ export type TermOutputResult = ApiResult<{
 export interface ChatMessage {
   /** `boundary` = compaction marker (`text` "trigger, preTokens"), `summary` = the compaction
    * summary the CLI injected as a user turn; both only from claude, older hosts never send them. */
-  role: "user" | "assistant" | "boundary" | "summary";
+  role: "user" | "assistant" | "boundary" | "summary" | "tool" | "system";
   text: string;
+  /** Review chats only: call | reasoning | model | ucli | prompt | delta | result. */
+  kind?: string;
+}
+
+/** One review run row (`GET /api/steward/review/runs`), listed in History. */
+export interface ReviewRun {
+  sid: string; project: string; mode: string; model: string; status: string; io: string; file: string;
+  started_at: number | null; finished_at: number | null; running: boolean; duration: number | null; title: string; error?: string;
+}
+export interface ReviewChatResult {
+  ok: boolean; error?: string; messages?: ChatMessage[]; running?: boolean; status?: string; path?: string;
 }
 
 /** `_term_chat()` — `supported: false` for CLIs without a chat transcript

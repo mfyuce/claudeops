@@ -3308,6 +3308,16 @@ def _instances_list() -> dict:
     items = [dict(rec, name=name, running=name in live, host=LOCAL_HOST_NAME)
              for name, rec in inst_mod.load_instances().items() if not rec.get("forgotten")]
     items.sort(key=lambda r: r.get("last_started_at") or r.get("created_at") or 0, reverse=True)
+    try:    # History rozeti (değnekçi beyni / yönetilen proje oturumu); yalnız ek bilgi, hata satırı bozmaz
+        from .. import steward as _sw
+        idx = _sw.ownership_index()
+        for it in items:
+            b = _sw.steward_badge(it["name"], idx)
+            if b:
+                it["badge"] = b
+                it["title"] = b["title"]
+    except Exception:
+        pass
     return {"ok": True, "instances": items}
 
 

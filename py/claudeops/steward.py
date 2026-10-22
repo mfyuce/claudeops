@@ -294,6 +294,8 @@ class Config:
     review_timeout_minutes: int = 45   # tek review çalıştırması bu sürede bitmezse iptal
     review_min_gap_minutes: int = 10   # iki review başlatması arası en az bekleme
     review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
+    review_max_context_kib: int = 768  # Evren: `--max-context-kib` (ucli varsayılanı 256 uzun review'u düşürüyordu)
+    review_max_compactions: int = 24   # Evren: `--max-compactions` (ucli varsayılanı 8)
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
 
 
@@ -344,6 +346,34 @@ def is_reviewer(sid: Any) -> bool:
 def brain_name_for(sid: str) -> str:
     """Beyin oturumunun adı: `default` -> `degnekci`, diğerleri `degnekci_<sid>`."""
     return BRAIN_PREFIX if sid == "default" else f"{BRAIN_PREFIX}_{sid}"
+
+
+def steward_title(sid: str, role: str, session: str = "") -> str:
+    """History başlığı (TEK kaynak): beyin -> `değnekçi · <sid> · beyin`; yönetilen proje oturumu ->
+    `<oturum adı> (değnekçi: <sid>)`."""
+    if role == "brain":
+        return f"değnekçi · {sid} · beyin"
+    return f"{session} (değnekçi: {sid})"
+
+
+def steward_badge(name: str, index: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """SAF. Oturum/instance adı için History rozeti: beyin (`index["brains"]` ya da `degnekci*`) ya da bir değnekçinin
+    sahip olduğu proje oturumu (`_project_key` önek eşler: `ncs20261019` -> `ncs`); değilse None.
+    Dönüş `{kind: "steward", role: brain|project, sid, title}`."""
+    brains = index.get("brains") or {}
+    if name in brains:
+        sid = brains[name]
+    elif name == BRAIN_PREFIX or name.startswith(BRAIN_PREFIX + "_"):
+        sid = "default" if name == BRAIN_PREFIX else name[len(BRAIN_PREFIX) + 1:]
+    else:
+        sid = ""
+    if sid:
+        return {"kind": "steward", "role": "brain", "sid": sid, "title": steward_title(sid, "brain")}
+    owners = index.get("owners") or {}
+    key = _project_key(name, owners)
+    if key and owners.get(key):
+        return {"kind": "steward", "role": "project", "sid": owners[key], "title": steward_title(owners[key], "project", name)}
+    return None
 
 
 def _now() -> float:

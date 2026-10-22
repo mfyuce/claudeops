@@ -24,6 +24,8 @@ export interface Searchable {
   host: string;
   kind?: "fresh" | "resume" | null;
   blueprint?: string | null;
+  /** History rows: backend-computed readable title (review / steward). */
+  title?: string;
 }
 
 /** Empty/whitespace-only query matches everything (search box cleared). */
@@ -32,6 +34,7 @@ export function matchesSearch(item: Searchable, query: string): boolean {
   if (!q) return true;
   return (
     item.name.toLowerCase().includes(q) ||
+    (item.title?.toLowerCase().includes(q) ?? false) ||
     item.cwd.toLowerCase().includes(q) ||
     item.model.toLowerCase().includes(q) ||
     (item.live_model?.toLowerCase().includes(q) ?? false) ||

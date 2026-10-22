@@ -64,6 +64,8 @@ import type {
   StopResult,
   IoAskResult,
   IoHistoryResult,
+  ReviewChatResult,
+  ReviewRun,
   IoProvidersResult,
   IoSessionsResult,
   TermChatResult,
@@ -693,6 +695,10 @@ export const getReviewState = (sid: string): Promise<ReviewStateResult> =>
   apiGet<ReviewStateResult>(`/api/steward/review/state${rvQs(sid)}`);
 export const getReviewFile = (sid: string, path: string): Promise<SimpleResult & { path?: string; text?: string; truncated?: boolean }> =>
   apiGet<SimpleResult & { path?: string; text?: string; truncated?: boolean }>(`/api/steward/review/file${rvQs(sid, { path })}`);
+export const getReviewRuns = (): Promise<{ ok: boolean; error?: string; runs?: ReviewRun[] }> =>
+  apiGet<{ ok: boolean; error?: string; runs?: ReviewRun[] }>("/api/steward/review/runs");
+export const getReviewChat = (sid: string, path: string): Promise<ReviewChatResult> =>
+  apiGet<ReviewChatResult>(`/api/steward/review/chat${rvQs(sid, { path })}`);
 export const getReviewFindings = (sid: string, project = "", state = ""): Promise<SimpleResult & { findings?: ReviewFinding[] }> =>
   apiGet<SimpleResult & { findings?: ReviewFinding[] }>(`/api/steward/review/findings${rvQs(sid, { project, state })}`);
 export const apiReviewPool = (sid: string, action: "add" | "remove" | "enable" | "disable", project: string): Promise<SimpleResult> =>

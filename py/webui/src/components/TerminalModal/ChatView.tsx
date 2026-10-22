@@ -141,6 +141,11 @@ export function ChatView({ name, host, live = true }: ChatViewProps) {
   );
 }
 
+/** Message list shared with the review chat (History): tool/system rows fold into one-line `<details>`. */
+export function ChatMessageList({ messages, t }: { messages: ChatMessage[]; t: Strings }) {
+  return <ChatBody state={{ kind: "ok-full", messages }} t={t} />;
+}
+
 function ChatBody({ state, t }: { state: ChatState; t: Strings }) {
   if (state.kind === "loading") return null;
   if (state.kind === "error") return <div>{t.chatLoadError}{state.message}</div>;
@@ -172,6 +177,17 @@ function ChatBody({ state, t }: { state: ChatState; t: Strings }) {
             <details key={i} style={{ margin: ".4rem 0" }}>
               <summary style={{ cursor: "pointer", opacity: 0.75 }}>{t.chatSummary}</summary>
               <ChatBlock label={t.chatSummary} text={m.text} emptyLabel={t.chatEmpty} />
+            </details>
+          );
+        }
+        if (m.role === "tool" || m.role === "system") {
+          const first = m.text.split("\n")[0];
+          return (
+            <details key={i} style={{ margin: ".25rem 0", fontSize: ".78rem", opacity: 0.85 }}>
+              <summary style={{ cursor: "pointer", overflowWrap: "anywhere" }}>
+                <span className="cli-badge">{m.role === "tool" ? t.hChatTool : t.hChatSystem}</span> {first.length > 120 ? `${first.slice(0, 120)}…` : first}
+              </summary>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: ".2rem 0 0" }}>{m.text}</pre>
             </details>
           );
         }

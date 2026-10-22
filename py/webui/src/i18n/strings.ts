@@ -663,6 +663,14 @@ export interface Strings {
   stewardHostBackoff: string;
   stewardPick: string;
   rvTitle: string;
+  hReviewBadge: string;
+  hStewardBadge: string;
+  hBrain: string;
+  hReviewGroup: string;
+  hChatTool: string;
+  hChatSystem: string;
+  hReviewHint: string;
+  hOpenBtn: string;
   rvDesc: string;
   rvOff: string;
   rvProject: string;
@@ -1455,6 +1463,14 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardHostBackoff: "host geri çekilmede: tekrar denemeden önce bekleniyor",
     stewardPick: "değnekçi",
     rvTitle: "Review panosu",
+    hReviewBadge: "REVIEW",
+    hStewardBadge: "DEĞNEKÇİ",
+    hBrain: "beyin",
+    hReviewGroup: "Review koşuları",
+    hChatTool: "araç",
+    hChatSystem: "sistem",
+    hReviewHint: "Review koşusu: sohbet olarak salt-okunur gösterilir; çalışıyorsa canlı güncellenir.",
+    hOpenBtn: "Aç",
     rvDesc: "Proje x model matrisi: her hücre bir modelin projeyi son gözden geçirişi. Etkin kutusu projeyi havuza alır/çıkarır.",
     rvOff: "Bu reviewer kapalı: yeni review başlamaz.",
     rvProject: "Proje",
@@ -2248,6 +2264,14 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardHostBackoff: "host backing off: waiting before retrying",
     stewardPick: "steward",
     rvTitle: "Review board",
+    hReviewBadge: "REVIEW",
+    hStewardBadge: "STEWARD",
+    hBrain: "brain",
+    hReviewGroup: "Review runs",
+    hChatTool: "tool",
+    hChatSystem: "system",
+    hReviewHint: "Review run: shown read-only as a chat; updates live while running.",
+    hOpenBtn: "Open",
     rvDesc: "Project x model matrix: each cell is one model's latest review of a project. The checkbox enables/disables the project in the pool.",
     rvOff: "This reviewer is off: no new reviews start.",
     rvProject: "Project",

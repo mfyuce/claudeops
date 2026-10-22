@@ -3952,7 +3952,7 @@ def _unknown_steward() -> Dict[str, Any]:
     return {"ok": False, "error": "unknown steward"}
 
 
-_GET_PATHS = frozenset(("review/state", "review/file", "review/findings", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
+_GET_PATHS = frozenset(("review/state", "review/file", "review/live", "review/io", "review/chat", "review/runs", "review/findings", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
                         "jobs", "services"))
 
 
@@ -3966,6 +3966,8 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return http_list()
     if path == "/api/steward/services":
         return http_services()
+    if path == "/api/steward/review/runs":
+        return http_review_runs()
     try:
         sid = _ctx_for(qs).sid
     except UnknownSteward:
@@ -3974,6 +3976,12 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return http_review_state(sid)
     if path == "/api/steward/review/file":
         return http_review_file(g("path"), sid)
+    if path == "/api/steward/review/live":
+        return http_review_live(g("project").strip(), g("target").strip(), g("offset", "0"), sid)
+    if path == "/api/steward/review/chat":
+        return http_review_chat(g("path"), sid)
+    if path == "/api/steward/review/io":
+        return http_review_io(g("path"), g("offset", "0"), sid)
     if path == "/api/steward/review/findings":
         return http_review_findings(g("project").strip(), g("state").strip(), sid)
     if path == "/api/steward/state":
@@ -4162,6 +4170,34 @@ def http_review_state(sid: str = "default") -> Dict[str, Any]:
 def http_review_file(rel: str, sid: str = "default") -> Dict[str, Any]:
     cfg, err = _reviewer_cfg(sid)
     return err or web_review.read_review_file(cfg, rel)
+
+
+def http_review_live(project: str, target: str, offset: str = "0", sid: str = "default") -> Dict[str, Any]:
+    cfg, err = _reviewer_cfg(sid)
+    return err or web_review.read_live(cfg, project, target, offset)
+
+
+def http_review_runs() -> Dict[str, Any]:
+    """History için: TÜM reviewer kimliklerinin koşuları (kimlik başına `review_runs`)."""
+    rows: List[Dict[str, Any]] = []
+    for sid in sorted(sw.reviewer_ids()):
+        try:
+            cfg, err = _reviewer_cfg(sid)
+            if cfg is not None:
+                rows.extend(web_review.review_runs(cfg))
+        except Exception:
+            continue
+    return {"ok": True, "runs": rows}
+
+
+def http_review_chat(rel: str, sid: str = "default") -> Dict[str, Any]:
+    cfg, err = _reviewer_cfg(sid)
+    return err or web_review.read_chat(cfg, rel)
+
+
+def http_review_io(rel: str, offset: str = "0", sid: str = "default") -> Dict[str, Any]:
+    cfg, err = _reviewer_cfg(sid)
+    return err or web_review.read_io(cfg, rel, offset)
 
 
 def http_review_findings(project: str = "", state: str = "", sid: str = "default") -> Dict[str, Any]:

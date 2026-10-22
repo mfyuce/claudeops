@@ -7,10 +7,11 @@
  */
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { apiForgetInstance, apiStart, getInstances } from "../api/client";
+import { apiForgetInstance, apiStart, getInstances, getReviewRuns } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
-import type { InstanceRecord } from "../api/types";
+import type { InstanceRecord, ReviewRun } from "../api/types";
+import { ReviewChatModal } from "./ReviewChatModal";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { usePagination } from "../hooks/usePagination";
@@ -63,7 +64,13 @@ function HistoryRow({ item, onView, onChanged }: HistoryRowProps) {
   return (
     <tr>
       <td style={{ width: "16%" }}>
-        {item.name}
+        {item.title ?? item.name}
+        {item.badge && (
+          <span className="cli-badge" title={item.badge.title}>
+            {t.hStewardBadge} {item.badge.role === "brain" ? `${t.hBrain} ` : ""}
+            {item.badge.sid}
+          </span>
+        )}
         {item.host !== LOCAL_HOST && (
           <span className="cli-badge" title={t.hostBadgeHint(item.host)}>
             {item.host}
@@ -99,12 +106,43 @@ function HistoryRow({ item, onView, onChanged }: HistoryRowProps) {
   );
 }
 
+function fmtDuration(sec: number | null): string {
+  if (sec == null) return "";
+  const m = Math.floor(sec / 60);
+  return m >= 1 ? `${m}m ${Math.round(sec % 60)}s` : `${Math.round(sec)}s`;
+}
+
+function ReviewRunRow({ run, onOpen }: { run: ReviewRun; onOpen: (r: ReviewRun) => void }) {
+  const { t } = useLang();
+  return (
+    <tr>
+      <td colSpan={5} style={{ overflowWrap: "anywhere" }}>
+        <span className="cli-badge">{t.hReviewBadge}</span> {run.title}{" "}
+        <span className="cli-badge">{run.status}</span>
+        {run.running && " …"}
+        {run.error && <div className="opts-hint" style={{ color: "var(--danger, #d1453b)" }}>{run.error}</div>}
+      </td>
+      <td style={{ whiteSpace: "nowrap" }}>
+        {run.project} · {run.mode}/{run.model}
+        {run.duration != null && ` · ${fmtDuration(run.duration)}`}
+      </td>
+      <td>
+        <button type="button" className="start" onClick={() => onOpen(run)}>
+          {t.hOpenBtn}
+        </button>
+      </td>
+    </tr>
+  );
+}
+
 export function HistoryTab({ search, onView }: { search: string; onView: (host: string, name: string) => void }) {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
   const collapse = useGroupCollapse();
   const [items, setItems] = useState<InstanceRecord[] | null>(null);
   const [hostErrors, setHostErrors] = useState<string[]>([]);
+  const [runs, setRuns] = useState<ReviewRun[]>([]);
+  const [openRun, setOpenRun] = useState<ReviewRun | null>(null);
 
   const hostsKey = [LOCAL_HOST, ...(data?.hosts ?? []).map((h) => h.name)].join("\n");
   // Refetch when the set of running sessions changes (an instance stopped or resumed elsewhere).
@@ -132,11 +170,33 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
     void load();
   }, [load, runningKey]);
 
+  // Review runs are local-only; failures leave the list empty (History itself must not break).
+  const loadRuns = useCallback(async () => {
+    try {
+      const r = await getReviewRuns();
+      setRuns(r.ok ? (r.runs ?? []) : []);
+    } catch {
+      setRuns([]);
+    }
+  }, []);
+  useEffect(() => {
+    void loadRuns();
+  }, [loadRuns, runningKey]);
+  // Status refresh only while some review is running (no timer otherwise).
+  const anyRunning = runs.some((r) => r.running);
+  useEffect(() => {
+    if (!anyRunning) return;
+    const id = setInterval(() => void loadRuns(), 3000);
+    return () => clearInterval(id);
+  }, [anyRunning, loadRuns]);
+
   const onChanged = useCallback(() => {
     refresh();
     void load();
   }, [refresh, load]);
 
+  const q = search.trim().toLowerCase();
+  const shownRuns = runs.filter((r) => !q || `${r.title} ${r.status} ${r.sid}`.toLowerCase().includes(q));
   const stopped = (items ?? []).filter((it) => !it.running);
   const filtered = stopped.filter((it) => matchesSearch(it, search));
   const groups = groupByCwd(filtered);
@@ -161,7 +221,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
       ))}
       {items === null ? (
         <div className="opts-hint">…</div>
-      ) : !filtered.length ? (
+      ) : !filtered.length && !shownRuns.length ? (
         <div className="opts-hint">{stopped.length === 0 ? t.empty : t.noSearchMatches}</div>
       ) : (
         <div className="tablewrap">
@@ -174,6 +234,18 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
           />
           <table className="historytab">
             <tbody>
+              {shownRuns.length > 0 && (
+                <>
+                  <tr>
+                    <th colSpan={HISTORY_COLSPAN} style={{ textAlign: "left" }}>
+                      {t.hReviewGroup} ({shownRuns.length})
+                    </th>
+                  </tr>
+                  {shownRuns.map((r) => (
+                    <ReviewRunRow key={r.io} run={r} onOpen={setOpenRun} />
+                  ))}
+                </>
+              )}
               {pageGroups.map((g) => {
                 const gKey = groupKey(g.host, g.cwd);
                 const expanded = collapse.isExpanded(gKey);
@@ -198,6 +270,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
           <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         </div>
       )}
+      {openRun && <ReviewChatModal key={openRun.io} run={openRun} onClose={() => setOpenRun(null)} />}
     </>
   );
 }
