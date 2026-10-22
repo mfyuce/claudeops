@@ -588,7 +588,7 @@ def steward_config(sid: str = "default") -> "Config":
     `ValueError` (sessizce `default`a düşmek başka değnekçinin ayarını okutur).
     `history_warn_at` genel ayardan gelir (Terminal sayacı/"dikkat gerekenleri seç" ile AYNI
     eşik: değnekçi de aynı sayıda handover'a sokar). `enabled`: on/1/true/yes/evet AÇIK, geri kalanı KAPALI."""
-    from .steward import MACHINE_KEYS, MODES, Config, brain_name_for, valid_steward_id  # leaf-döngüsü yok: steward.py settings'i import etmez
+    from .steward import MACHINE_KEYS, MODES, ROLES, Config, brain_name_for, valid_steward_id  # leaf-döngüsü yok: steward.py settings'i import etmez
     if not valid_steward_id(sid):
         raise ValueError(f"geçersiz değnekçi kimliği: {sid!r}")
     s = load_settings()
@@ -628,6 +628,9 @@ def steward_config(sid: str = "default") -> "Config":
     if cfg.mode not in MODES:      # bilinmeyen kip = en güvenlisi (hiçbir şeye dokunma)
         cfg.mode = "observe"
     cfg.summary_hour = min(23, cfg.summary_hour)
+    if cfg.role not in ROLES:      # bilinmeyen rol = sıradan değnekçi
+        cfg.role = "steward"
+    cfg.review_timeout_minutes = max(1, cfg.review_timeout_minutes)
     if cfg.tick_seconds < 15:
         cfg.tick_seconds = 15
     if sid != "default":

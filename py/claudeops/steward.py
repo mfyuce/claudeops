@@ -72,6 +72,11 @@ class StewardPaths:
     lock: str
     cards: str
     oneshot: str
+    # ── reviewer rolü (yalnız `paths_for` doldurur; `default` kökünde de türer ama kullanılmaz) ──
+    reviews: str = ""          # <root>/reviews/<proje>/<mode>/<altmodel>/<ts>.md
+    review_pool: str = ""      # review_pool.json (projects.json'a YAZILMAZ: ownership_index çakışması)
+    review_history: str = ""   # review_history.json (çift durumları + son çalıştırmalar)
+    findings: str = ""         # findings.json (bulgu yaşam döngüsü)
 
 
 _SID_RE = re.compile(r"[a-z]+")   # yalnız harf: yol ayıracı/`..` ile `stewards/` dışına çıkılamaz (tam kimlik kuralı P2)
@@ -84,12 +89,17 @@ def paths_for(sid: str = "default") -> StewardPaths:
     if not isinstance(sid, str) or not _SID_RE.fullmatch(sid):
         raise ValueError(f"invalid steward id: {sid!r}")
     shared = dict(cards=os.path.join(STEWARD_DIR, "cards"), oneshot=os.path.join(STEWARD_DIR, "oneshot"))
+    def _rv(root: str) -> Dict[str, str]:
+        return dict(reviews=os.path.join(root, "reviews"), review_pool=os.path.join(root, "review_pool.json"),
+                    review_history=os.path.join(root, "review_history.json"), findings=os.path.join(root, "findings.json"))
     if sid == "default":
+        shared.update(_rv(STEWARD_DIR))
         return StewardPaths(sid=sid, root=STEWARD_DIR, projects=PROJECTS_JSON, ideas=IDEAS_JSON,
                             questions=QUESTIONS_JSON, state=STATE_JSON, log=LOG_JSONL,
                             jobs=os.path.join(STEWARD_DIR, "jobs.json"), workspace=WORKSPACE_DIR,
                             daily=os.path.join(STEWARD_DIR, "daily"), lock=os.path.join(STEWARD_DIR, ".lock"), **shared)
     r = os.path.join(STEWARD_DIR, "stewards", sid)
+    shared.update(_rv(r))
     return StewardPaths(sid=sid, root=r, projects=os.path.join(r, "projects.json"), ideas=os.path.join(r, "ideas.json"),
                         questions=os.path.join(r, "questions.json"), state=os.path.join(r, "state.json"),
                         log=os.path.join(r, "log.jsonl"), jobs=os.path.join(r, "jobs.json"),
@@ -277,6 +287,12 @@ class Config:
     ntfy_topic: str = ""             # "" = ortak topic
     max_active_total: int = 6        # MAKİNE GENELİ (yalnız `steward` bloğu): tüm kimliklerde en çok etkin oturum; 0 = sınırsız
     max_starts_total: int = 1        # MAKİNE GENELİ: döngü turu başına tüm kimliklerde en çok başlatma
+    # ── reviewer rolü (review.py; yalnız role="reviewer" kimliklerinde anlamlı) ──
+    role: str = "steward"            # steward | reviewer
+    review_timeout_minutes: int = 45   # tek review çalıştırması bu sürede bitmezse iptal
+    review_min_gap_minutes: int = 10   # iki review başlatması arası en az bekleme
+    review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
+    review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
 
 
 # Yalnız `settings.steward` bloğunda okunan makine geneli anahtarlar (`stewards.<sid>`'de görülürse yok sayılır).
@@ -285,6 +301,7 @@ MACHINE_KEYS = ("tick_seconds", "card_refresh", "card_cli", "card_model", "card_
 
 # Kimlik kuralı (K2): yalnız küçük harf (`session._NAME_RE` `degnekci_2`/`degnekci2`'yi `degnekci` tabanına indirger).
 STEWARD_ID_RE = re.compile(r"^[a-z]{2,16}$")
+ROLES = ("steward", "reviewer")
 RESERVED_IDS = frozenset({"default", "all", "services", "service", "steward", "stewards"})
 BRAIN_PREFIX = "degnekci"
 
