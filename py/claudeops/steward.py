@@ -236,7 +236,7 @@ class SessionView:
 @dataclass
 class Action:
     kind: str       # handover | respawn | start | stop | directive | deliver_answer | deliver_job | ask_user | idea
-                    # | set_phase | tour
+                    # | set_phase | tour | handover_deferred (yalnız kayıt: eşik devri ertelendi, oturuma dokunmaz)
     name: str = ""  # oturum/proje adı ("" = genel)
     reason: str = ""
     payload: Dict[str, Any] = field(default_factory=dict)
@@ -262,6 +262,8 @@ class Config:
     auto_context_answer: bool = True    # "bu oturumda mı sürdüreyim, devirle mi" sorusunu motor bağlam ölçümüne bakıp kendisi cevaplar
     drain: bool = False                 # YENİ İŞ ALMA: oturum başlatma (uğrama/cevap-başlatma) ve beyin direktifi durur; çalışan iş, cevap iletimi, devir sürer
     auto_context_ratio: float = 0.7     # bağlam devir eşiğinin bu oranını aşmışsa cevap "önce devir" (altındaysa "bu oturumda sürdür")
+    handover_force_ratio: float = 1.3   # eşik devri oturum meşgul/alt ajan çalışırken ERTELENİR; bağlam eşiğin bu katını aşarsa zorla (0 = oran tavanı yok)
+    handover_defer_max_minutes: int = 30   # eşik devri en çok bu kadar ertelenir, sonra zorla (0 = erteleme kapalı: eski davranış)
     brain_cli: str = "claude"
     brain_model: str = ""
     brain_effort: str = "high"
@@ -589,7 +591,7 @@ class HostChangeRefused(ValueError):
 
 # Host değişince o projenin oturum adlarıyla tutulan devir/iletim izleri silinir (eski host'taki oturumun izi yeni host'taki
 # aynı adlı oturuma taşınmasın: bekleyen devir yanlış oturumu yeniden açar, önsöz "gitti" sanılır, yanıt özeti tutmaz).
-_HOST_STATE_KEYS = ("ho_pending", "done_pending", "preamble_sent", "seen_assistant")
+_HOST_STATE_KEYS = ("ho_pending", "done_pending", "preamble_sent", "seen_assistant", "ho_deferred")
 
 
 def _clear_project_state(name: str, projects: Dict[str, Project], paths: Any = None) -> List[str]:
@@ -2213,6 +2215,25 @@ def context_threshold(cfg: "Config", model: str) -> int:
     return cfg.context_warn_tokens
 
 
+def handover_defer_decision(v: "SessionView", cfg: "Config", now: float, since: Optional[float],
+                            tokens: Optional[int] = None, warn: int = 0) -> Tuple[str, str]:
+    """Eşiği aşmış oturumun devri ŞİMDİ mi: ("go" | "defer" | "force", neden). SAF.
+    Oturum meşgulse (`busy` kesin True), alt ajanı çalışıyorsa ya da alt ajan durumu bilinmiyorsa devir ertelenir
+    (devir yeni konuşma açar; arkadaki ajanın sonucu kaybolurdu). Sert tavan: bağlam eşiğin `handover_force_ratio`
+    katını aştıysa (yalnız token biliniyorsa) ya da erteleme `since`ten beri `handover_defer_max_minutes` dakikayı
+    aştıysa "force". `handover_defer_max_minutes` 0 = erteleme kapalı (her zaman "go")."""
+    why = ",".join(n for n, on in (("busy", v.busy is True), ("subagent_active", bool(v.subagent_active)),
+                                   ("subagent_unknown", bool(v.subagent_unknown))) if on)
+    if not why or cfg.handover_defer_max_minutes <= 0:
+        return "go", ""
+    ratio = float(cfg.handover_force_ratio or 0)
+    if tokens and warn and ratio > 0 and tokens >= warn * ratio:
+        return "force", f"{why}; context {tokens} >= {ratio:g} x {warn}"
+    if since is not None and (now - since) >= cfg.handover_defer_max_minutes * 60:
+        return "force", f"{why}; deferred {int((now - since) // 60)} min >= {cfg.handover_defer_max_minutes}"
+    return "defer", why
+
+
 # ── kontrollü kapatma (`steward shutdown`, SAF çekirdek) ───────────────────────
 
 SHUTDOWN_QUIET_SECONDS = 60.0          # ana transkript + alt ajanlar bu kadar sessizse "iş bitti"
@@ -2569,6 +2590,30 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         # Ad bu kimliğin projesine çözülmeli (eski önek kuralı, global) VE blueprint başkasını göstermemeli
         return bool(world.project_key(name)) and world.session_class(name, bp.get(name)) == "own"
 
+    # Eşik devri ertelemesi (`handover_defer_decision`): {oturum: {since, why}}; tick-arası iz (done_pending gibi).
+    # Yenilenmeyen kayıt (eşiğin altına indi, kapandı, devir başladı) düşer.
+    ho_deferred_prev: Dict[str, Dict[str, Any]] = dict(st.get("ho_deferred") or {})
+    ho_deferred: Dict[str, Dict[str, Any]] = {}
+
+    def _threshold_handover(v: SessionView, reason: str, tokens: Optional[int], warn: int) -> bool:
+        """Eşik devri: ertelenecekse kayıt (`handover_deferred` eylemi yalnız ilk ertelemede ya da neden değişince) +
+        oturum bu tick'te başka eylem almaz; değilse devir. Dönen: devir başladı mı."""
+        prev = ho_deferred_prev.get(v.name)
+        since = float(prev.get("since") or now) if isinstance(prev, dict) else None
+        verdict, why = handover_defer_decision(v, cfg, now, since, tokens, warn)
+        busy_names.add(v.name)
+        if verdict == "defer":
+            ho_deferred[v.name] = {"since": since if since is not None else now, "why": why}
+            if not isinstance(prev, dict) or prev.get("why") != why:
+                actions.append(Action("handover_deferred", v.name, why, {"handover_reason": reason}))
+            return False
+        # Gerekçe eki yalnız önceden ertelenmiş devirde (ertelemesiz ilk tick'teki zorlama eski metinle aynı kalır: altın kayıt)
+        if since is not None:
+            reason = f"{reason} (zorla: {why})" if verdict == "force" else f"{reason} (ertelenmişti)"
+        actions.append(Action("handover", v.name, reason))
+        ho_pending[v.name] = now
+        return True
+
     for v in views:
         if not v.running or not v.tmux or not _managed(v.name):
             continue
@@ -2582,16 +2627,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         tokens_known = bool(warn_tokens and v.context_tokens)
         if tokens_known:
             if v.context_tokens >= warn_tokens:
-                actions.append(Action("handover", v.name, f"context {v.context_tokens} token >= {warn_tokens}"))
-                ho_pending[v.name] = now
-                busy_names.add(v.name)
+                _threshold_handover(v, f"context {v.context_tokens} token >= {warn_tokens}", v.context_tokens, warn_tokens)
         elif v.history_size is not None and v.history_size >= cfg.history_warn_at:
             young = (cfg.history_min_age_minutes and v.started_at
                      and (now - v.started_at) < cfg.history_min_age_minutes * 60)
             if not young:
-                actions.append(Action("handover", v.name, f"history_size {v.history_size} >= {cfg.history_warn_at}"))
-                ho_pending[v.name] = now
-                busy_names.add(v.name)
+                _threshold_handover(v, f"history_size {v.history_size} >= {cfg.history_warn_at}", None, 0)
 
     # 1b) Bağlam sorusu: "bu oturumda mı sürdüreyim, devirle mi" sahibine/beyne sorulmaz; bağlam ölçümünden motor cevaplar.
     # Eşiğe yakınsa aynı tick'te devir de başlar (oturum kendini kapatıp açamaz; devri motor yürütür).
@@ -2606,11 +2647,18 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             if not warn or v.name in ho_pending or v.name in busy_names:
                 continue
             ho, text = context_answer(v.context_tokens, warn, cfg.auto_context_ratio, cfg.lang)
-            actions.append(Action("auto_answer", v.name, "context", {"question_id": q.id, "answer": text, "handover": ho}))
-            if ho:
-                actions.append(Action("handover", v.name, f"context soru: {v.context_tokens} token >= {int(cfg.auto_context_ratio * warn)}"))
-                ho_pending[v.name] = now
-                busy_names.add(v.name)
+            if not ho:
+                actions.append(Action("auto_answer", v.name, "context", {"question_id": q.id, "answer": text, "handover": False}))
+                continue
+            # "Önce devir" cevabı devirle birlikte gider; devir ertelenirse soru da açık kalır (sonraki tick yeniden karar)
+            mark = len(actions)
+            if _threshold_handover(v, f"context soru: {v.context_tokens} token >= {int(cfg.auto_context_ratio * warn)}",
+                                   v.context_tokens, warn):
+                actions.insert(mark, Action("auto_answer", v.name, "context", {"question_id": q.id, "answer": text, "handover": True}))
+
+    for name, rec in ho_deferred_prev.items():      # host kapalı: görünümü yok diye erteleme izi silinmez
+        if name not in ho_deferred and name not in by_name and _unavail(name):
+            ho_deferred[name] = rec
 
     # 2) Handover gönderilmiş olanlar — READY FOR HANDOVER geldi ya da süre doldu → yeniden aç
     for name, sent_at in list(ho_pending.items()):
@@ -2812,6 +2860,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         st["done_pending"] = done_pending
     else:
         st.pop("done_pending", None)     # boşken anahtar yazılmaz (varsayılan durum biçimi değişmez)
+    if ho_deferred:
+        st["ho_deferred"] = ho_deferred
+    else:
+        st.pop("ho_deferred", None)
     st["last_directive_at"] = last_directive_at
     st["reviewed_at"] = reviewed_at
     st["last_tick"] = now

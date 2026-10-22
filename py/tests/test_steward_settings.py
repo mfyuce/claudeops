@@ -22,7 +22,8 @@ GOLDEN_DEFAULT = {
 }
 NEW_FIELDS = {"sid", "label", "persona_text", "ntfy_topic", "max_active_total", "max_starts_total", "remote_actions",
               "auto_context_answer", "auto_context_ratio", "drain", "role", "review_timeout_minutes",
-              "review_min_gap_minutes", "review_agy_models", "review_evren_models"}
+              "review_min_gap_minutes", "review_agy_models", "review_evren_models",
+              "handover_force_ratio", "handover_defer_max_minutes"}
 
 
 def _write(obj):
@@ -54,6 +55,15 @@ class TestStewardSettings(_Tmp):
         self.assertEqual(_old_part(cfg), GOLDEN_DEFAULT)
         self.assertEqual((cfg.sid, cfg.max_active_total, cfg.max_starts_total), ("default", 6, 1))
         self.assertEqual(dataclasses.asdict(settings.steward_config("default")), dataclasses.asdict(cfg))
+
+    def test_handover_defer_fields(self):
+        cfg = settings.steward_config()
+        self.assertEqual((cfg.handover_force_ratio, cfg.handover_defer_max_minutes), (1.3, 30))
+        _write({"steward": {"handover_force_ratio": "1.5", "handover_defer_max_minutes": "10", "auto_context_ratio": "0.6"}})
+        cfg = settings.steward_config()
+        self.assertEqual((cfg.handover_force_ratio, cfg.handover_defer_max_minutes, cfg.auto_context_ratio), (1.5, 10, 0.6))
+        _write({"steward": {"handover_force_ratio": "x"}})
+        self.assertEqual(settings.steward_config().handover_force_ratio, 1.3)
 
     def test_default_ignores_stewards_block(self):
         _write({"steward": {"enabled": "on", "mode": "act", "max_active": "3"},

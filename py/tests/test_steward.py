@@ -1027,15 +1027,15 @@ class OneLiveSessionPerProjectTest(_Tmp):
         cfg = _cfg(max_active=4, context_warn_tokens=300000, history_warn_at=1900, history_min_age_minutes=15)
         now = 100000.0
         # token biliniyor ve küçük: satır sayısı ne olursa olsun devir yok
-        known = _view("a", busy=True, history_size=1990, context_tokens=120000, started_at=now - 3600)
+        known = _view("a", busy=False, history_size=1990, context_tokens=120000, started_at=now - 3600)
         acts, _ = sw.plan_tick([known], projects, {}, cfg, now, [], [])
         self.assertEqual([x for x in acts if x.kind == "handover"], [])
         # token bilinmiyor + satır dolu ama oturum yeni açıldı (7 dk): devir yok
-        young = _view("a", busy=True, history_size=1990, context_tokens=None, started_at=now - 7 * 60)
+        young = _view("a", busy=False, history_size=1990, context_tokens=None, started_at=now - 7 * 60)
         acts, _ = sw.plan_tick([young], projects, {}, cfg, now, [], [])
         self.assertEqual([x for x in acts if x.kind == "handover"], [])
         # token bilinmiyor + satır dolu + yaşlı oturum: yedek ölçüt devreye girer
-        old = _view("a", busy=True, history_size=1990, context_tokens=None, started_at=now - 40 * 60)
+        old = _view("a", busy=False, history_size=1990, context_tokens=None, started_at=now - 40 * 60)
         acts, _ = sw.plan_tick([old], projects, {}, cfg, now, [], [])
         ho = [x for x in acts if x.kind == "handover"]
         self.assertEqual([x.name for x in ho], ["a"])
@@ -1086,6 +1086,155 @@ class OneLiveSessionPerProjectTest(_Tmp):
         # sid bilinmiyorsa mtime tahmini YOK: başka konuşmanın transkripti sahte eşik aşımı üretmişti
         with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: path):
             self.assertIsNone(web_steward.context_tokens_for("/x", None))
+
+
+class HandoverDeferTest(unittest.TestCase):
+    """Eşik devri oturum meşgul / alt ajanı çalışıyor / alt ajan durumu bilinmiyorken ertelenir; sert tavanda zorlanır."""
+
+    def setUp(self):
+        self.now = 100000.0
+        self.projects = {"a": sw.Project(name="a", phase="planned", cadence_minutes=60)}
+        self.cfg = _cfg(max_active=4, context_warn_tokens=300000, context_warn_tokens_fable=0)
+
+    def _tick(self, views, state=None, now=None, qs=None, cfg=None):
+        return sw.plan_tick(views, self.projects, state or {}, cfg or self.cfg, now or self.now, qs or [], [])
+
+    @staticmethod
+    def _of(acts, name, kind=None):
+        return [x for x in acts if x.name == name and (kind is None or x.kind == kind)]
+
+    def test_pure_decision(self):
+        v = _view("a", busy=False)
+        self.assertEqual(sw.handover_defer_decision(v, self.cfg, self.now, None, 310000, 300000), ("go", ""))
+        v = _view("a", busy=None, subagent_active=True)
+        self.assertEqual(sw.handover_defer_decision(v, self.cfg, self.now, None, 310000, 300000)[0], "defer")
+        self.assertEqual(sw.handover_defer_decision(v, self.cfg, self.now, None, 390000, 300000)[0], "force")
+        self.assertEqual(sw.handover_defer_decision(v, self.cfg, self.now, self.now - 29 * 60, 310000, 300000)[0], "defer")
+        self.assertEqual(sw.handover_defer_decision(v, self.cfg, self.now, self.now - 30 * 60, 310000, 300000)[0], "force")
+        off = _cfg(handover_defer_max_minutes=0)
+        self.assertEqual(sw.handover_defer_decision(v, off, self.now, None, 310000, 300000)[0], "go")
+        noratio = _cfg(handover_force_ratio=0.0)
+        self.assertEqual(sw.handover_defer_decision(v, noratio, self.now, None, 900000, 300000)[0], "defer")
+        self.assertEqual((sw.Config().handover_force_ratio, sw.Config().handover_defer_max_minutes), (1.3, 30))
+
+    def test_subagent_active_defers_then_hands_over_when_quiet(self):
+        v = _view("a", context_tokens=320000, subagent_active=True)
+        acts, st = self._tick([v])
+        self.assertEqual(self._of(acts, "a", "handover"), [])
+        rec = self._of(acts, "a", "handover_deferred")
+        self.assertEqual(len(rec), 1)
+        self.assertEqual(rec[0].reason, "subagent_active")
+        self.assertIn("token", rec[0].payload["handover_reason"])
+        self.assertEqual(st["ho_deferred"]["a"]["since"], self.now)
+        self.assertNotIn("a", st["ho_pending"])
+        # sonraki tick: hâlâ çalışıyor -> devir yok, kayıt tekrar yazılmaz, başlangıç korunur
+        acts, st = self._tick([v], st, self.now + 120)
+        self.assertEqual(self._of(acts, "a"), [])
+        self.assertEqual(st["ho_deferred"]["a"]["since"], self.now)
+        # alt ajan sustu, meşgul değil -> ilk tick'te devir
+        quiet = _view("a", context_tokens=320000, subagent_active=False, busy=False)
+        acts, st = self._tick([quiet], st, self.now + 240)
+        ho = self._of(acts, "a", "handover")
+        self.assertEqual(len(ho), 1)
+        self.assertIn("ertelenmişti", ho[0].reason)
+        self.assertNotIn("ho_deferred", st)
+        self.assertIn("a", st["ho_pending"])
+
+    def test_busy_and_unknown_defer(self):
+        for kw, why in (({"busy": True}, "busy"), ({"subagent_unknown": True}, "subagent_unknown"),
+                        ({"busy": True, "subagent_active": True}, "busy,subagent_active")):
+            acts, st = self._tick([_view("a", context_tokens=320000, **kw)])
+            self.assertEqual(self._of(acts, "a", "handover"), [], kw)
+            self.assertEqual([x.reason for x in self._of(acts, "a", "handover_deferred")], [why])
+            self.assertIn("a", st["ho_deferred"])
+        # busy None (sinyal yok) meşgul sayılmaz
+        acts, _ = self._tick([_view("a", context_tokens=320000, busy=None)])
+        self.assertEqual(len(self._of(acts, "a", "handover")), 1)
+
+    def test_history_fallback_defers_too(self):
+        v = _view("a", busy=True, history_size=1990, context_tokens=None, started_at=self.now - 3600)
+        acts, st = self._tick([v])
+        self.assertEqual(self._of(acts, "a", "handover"), [])
+        self.assertIn("history_size", self._of(acts, "a", "handover_deferred")[0].payload["handover_reason"])
+
+    def test_force_by_ratio(self):
+        acts, st = self._tick([_view("a", context_tokens=390000, subagent_active=True)])
+        self.assertEqual(len(self._of(acts, "a", "handover")), 1)
+        self.assertEqual(self._of(acts, "a", "handover_deferred"), [])
+        self.assertNotIn("ho_deferred", st)
+        # ertelenmiş kayıt varken oran aşılırsa gerekçe zorlamayı söyler
+        acts, _ = self._tick([_view("a", context_tokens=390000, subagent_active=True)],
+                             {"ho_deferred": {"a": {"since": self.now - 60, "why": "subagent_active"}}})
+        self.assertIn("zorla", self._of(acts, "a", "handover")[0].reason)
+
+    def test_force_by_time(self):
+        v = _view("a", context_tokens=320000, subagent_unknown=True)
+        st0 = {"ho_deferred": {"a": {"since": self.now - 29 * 60, "why": "subagent_unknown"}}}
+        acts, st = self._tick([v], st0)
+        self.assertEqual(self._of(acts, "a"), [])      # neden aynı: yeni kayıt yok, devir yok
+        acts, st = self._tick([v], st, self.now + 60)
+        ho = self._of(acts, "a", "handover")
+        self.assertEqual(len(ho), 1)
+        self.assertIn("zorla", ho[0].reason)
+        self.assertIn("30", ho[0].reason)
+        self.assertNotIn("ho_deferred", st)
+
+    def test_defer_disabled_keeps_old_behaviour(self):
+        cfg = _cfg(max_active=4, context_warn_tokens=300000, handover_defer_max_minutes=0)
+        acts, st = self._tick([_view("a", context_tokens=320000, subagent_active=True)], cfg=cfg)
+        self.assertEqual(len(self._of(acts, "a", "handover")), 1)
+        self.assertNotIn("ho_deferred", st)
+
+    def test_below_threshold_drops_deferral(self):
+        st0 = {"ho_deferred": {"a": {"since": self.now - 60, "why": "busy"}}}
+        acts, st = self._tick([_view("a", context_tokens=100000, busy=True)], st0)
+        self.assertEqual(self._of(acts, "a"), [])
+        self.assertNotIn("ho_deferred", st)
+
+    def test_brain_same_rule(self):
+        brain = _view("degnekci", context_tokens=320000, subagent_active=True)
+        acts, st = self._tick([brain])
+        self.assertEqual(self._of(acts, "degnekci", "handover"), [])
+        self.assertEqual(len(self._of(acts, "degnekci", "handover_deferred")), 1)
+        acts, st = self._tick([_view("degnekci", context_tokens=320000)], st, self.now + 120)
+        self.assertEqual(len(self._of(acts, "degnekci", "handover")), 1)
+        acts, _ = self._tick([_view("degnekci", context_tokens=320000, busy=True)],
+                             {"ho_deferred": {"degnekci": {"since": self.now - 31 * 60, "why": "busy"}}})
+        self.assertEqual(len(self._of(acts, "degnekci", "handover")), 1)
+
+    def test_no_second_action_while_deferred(self):
+        q = sw.Question(id="q1", project="a", text="soru?", created_at=1.0, status="answered", answer="evet",
+                        answered_at=2.0, source="a")
+        v = _view("a", context_tokens=320000, subagent_unknown=True, last_assistant="")
+        acts, _ = self._tick([v], qs=[q])
+        self.assertEqual([x.kind for x in self._of(acts, "a")], ["handover_deferred"])
+        # erteleme yokken (eşik altı) aynı cevap iletilirdi
+        acts, _ = self._tick([_view("a", context_tokens=100000, subagent_unknown=True, last_assistant="")], qs=[q])
+        self.assertEqual([x.kind for x in self._of(acts, "a")], ["deliver_answer"])
+
+    def test_context_question_path_defers(self):
+        q = sw.Question(id="q1", project="a", text=ContextQuestionTest.Q, created_at=self.now - 60, source="a")
+        v = _view("a", context_tokens=240000, model="claude-sonnet-5-5", subagent_active=True)
+        acts, st = self._tick([v], qs=[q])
+        self.assertEqual([x.kind for x in self._of(acts, "a")], ["handover_deferred"])   # cevap da devir de yok
+        self.assertIn("context soru", self._of(acts, "a")[0].payload["handover_reason"])
+        quiet = _view("a", context_tokens=240000, model="claude-sonnet-5-5")
+        acts, st = self._tick([quiet], st, self.now + 120, qs=[q])
+        self.assertEqual([x.kind for x in self._of(acts, "a")], ["auto_answer", "handover"])
+        self.assertTrue(self._of(acts, "a", "auto_answer")[0].payload["handover"])
+        # düşük bağlam: "sürdür" cevabı ertelenmez (devir yok)
+        low = _view("a", context_tokens=100000, model="claude-sonnet-5-5", subagent_active=True)
+        acts, _ = self._tick([low], qs=[q])
+        self.assertEqual([x.kind for x in self._of(acts, "a")], ["auto_answer"])
+
+    def test_engine_logs_deferral(self):
+        cfg = _cfg(sid="default")
+        logged = []
+        with mock.patch.object(sw, "log_event", lambda ev, **kw: logged.append((ev, kw))):
+            res = web_steward._apply(sw.Action("handover_deferred", "a", "busy", {"handover_reason": "context x"}), cfg, {})
+        self.assertTrue(res["ok"])
+        self.assertEqual(logged[0][0], "handover_deferred")
+        self.assertEqual((logged[0][1]["name"], logged[0][1]["reason"], logged[0][1]["handover"]), ("a", "busy", "context x"))
 
 
 class StuckBrainTest(_Tmp):

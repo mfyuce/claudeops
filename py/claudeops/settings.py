@@ -615,6 +615,8 @@ def steward_config(sid: str = "default") -> "Config":
                     setattr(cfg, f.name, str(val).strip().lower() in ("on", "1", "true", "yes", "evet"))
                 elif isinstance(getattr(cfg, f.name), int):
                     setattr(cfg, f.name, max(0, int(str(val).strip())))
+                elif isinstance(getattr(cfg, f.name), float):
+                    setattr(cfg, f.name, max(0.0, float(str(val).strip())))
                 else:
                     setattr(cfg, f.name, str(val).strip())
             except (TypeError, ValueError):

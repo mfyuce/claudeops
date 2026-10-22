@@ -2321,6 +2321,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
     if k == "set_phase":
         sw.upsert_project(name, paths=paths, phase=action.payload.get("phase"))
         return {"ok": True}
+    if k == "handover_deferred":      # yalnız kayıt (oturuma dokunmaz): eşik devri meşgul/alt ajan yüzünden ertelendi
+        sw.log_event("handover_deferred", paths=paths, name=name, reason=action.reason,
+                     handover=str(action.payload.get("handover_reason") or ""))
+        return {"ok": True}
     if k == "tour":
         # default: eski çağrı biçimi; diğer kimlikte kimliğin cfg/world'ü açıkça verilir (kendi beyni, kendi projeleri)
         res = run_tour(action.payload.get("items") or [], **({} if cfg.sid == "default" else {"cfg": cfg, "world": world}))
