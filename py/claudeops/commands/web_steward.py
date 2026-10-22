@@ -1149,6 +1149,22 @@ def _running(name: str):
     return None
 
 
+def _live_sessions(name: str, sid: str = "default") -> List[Any]:
+    """`name` (oturum ya da PROJE adı) için çalışan yerel oturumlar: tam ad eşleşirse o; yoksa aynı projeye çözülenler
+    (`cli` projesi → `cli20261021`). Ad eşitliği tarihli oturumda HİÇ tutmaz: direktif `cli`ye gidince "kapalı" sanılıp
+    ikinci oturum açılmıştı (2026-10-22, ucli). Boş liste = çalışan yok."""
+    s = _running(name)
+    if s is not None:
+        return [s]
+    projects = sw.load_projects(sid)
+    world = _world(sid)
+    p = _project_for_session(name, projects, world)
+    if p is None:
+        return []
+    return [x for x in find_sessions(measure_cpu=False)
+            if (q := _project_for_session(x.name, projects, world)) is not None and q.name == p.name]
+
+
 # Kimliğin dokunamayacağı oturum sınıfları (`World.session_class`): başka kimliğin projesi, çakışmalı proje, servis, beyinler.
 _FOREIGN = ("other", "conflict", "service", "brain_other", "brain_own")
 
@@ -1318,12 +1334,13 @@ def _ensure_running_remote(name: str, host: str, model: str, effort: str, fresh:
 
 def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr", fresh: bool = False,
                     host: str = "", rt: Optional[_RemoteTick] = None, sid: str = "default",
-                    actor: str = "") -> Dict[str, Any]:
+                    actor: str = "", exact: bool = False) -> Dict[str, Any]:
     if host:     # `sid`/`actor` yalnız uzak yolun red log'u için; yerel yol değişmedi
         return _ensure_running_remote(name, host, model, effort, fresh, rt, sid=sid, actor=actor)
-    s = _running(name)
-    if s is not None:
-        return {"ok": True, "started": False, "cli": s.cli}
+    # exact: çağıran TAM oturum adını verir (respawn: az önce durdurulan oturumun adı); proje çözümü yapılmaz.
+    live = [_running(name)] if exact and _running(name) is not None else ([] if exact else _live_sessions(name, sid))
+    if live:
+        return {"ok": True, "started": False, "cli": live[0].cli}
     res = _act("start", name, model=model, effort=effort, fresh=fresh, lang=lang)
     if not res.get("ok"):
         return res
@@ -1412,14 +1429,18 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
         sname, scli = str(row.get("name") or target), str(row.get("cli") or DEFAULT_CLI)
         born, pkey = _remote_born(host, sname, rt), f"{host}:{sname}"
     else:
-        s = _running(target)
+        live = _live_sessions(target, cfg.sid)
+        if len(live) > 1:     # hangisi? tahmin etme, üçüncüyü de açma
+            return {"ok": False, "error": "ambiguous_sessions", "code": "ambiguous_sessions", "sessions": [x.name for x in live]}
+        s = live[0] if live else None
         if s is None:
             if not start_if_stopped:
                 return {"ok": False, "error": "not running"}
-            res = _ensure_running(target, model=model, effort=effort, lang=lang)
+            res = _ensure_running(target, model=model, effort=effort, lang=lang, sid=cfg.sid)
             if not res.get("ok"):
                 return res
-            s = _running(target)
+            live = _live_sessions(target, cfg.sid)
+            s = live[0] if len(live) == 1 else _running(target)
             if s is None:
                 return {"ok": False, "error": "start reported ok but no process found"}
         if not is_tmux_backed(s.pid):
@@ -2205,7 +2226,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         model, effort = sw.phase_model_effort(p, cfg) if p else ("", "")
         # Devirden sonra YENİ konuşma (`--new`): `--resume` aynı şişmiş bağlamı (her tur yeniden okunan ~400K token)
         # ve eski modelin önbelleğini taşırdı. Devir özeti CLAUDE.md'de, yeni oturum onu kendisi okur.
-        res = _ensure_running(name, model=model, effort=effort, lang=cfg.lang, fresh=True)
+        res = _ensure_running(name, model=model, effort=effort, lang=cfg.lang, fresh=True, sid=cfg.sid, exact=True)
         if not res.get("ok") or p is None:
             return res
         sw.mark_card_stale(p.name)   # handover'da oturum işini yazdı: kart, proje durunca yeniden özetlensin

@@ -145,6 +145,39 @@ class UiIdentityTest(_Tmp):
         self.assertNotIn("ncs", sw.load_projects("default"))
 
 
+class DirectiveDatedSessionTest(_Tmp):
+    """Proje adına giden direktif tarihli çalışan oturuma (`cli` -> `cli20261021`) gider, YENİ oturum açmaz (2026-10-22)."""
+
+    def _fake(self, name):
+        from unittest import mock
+        f = mock.Mock()
+        f.name, f.pid, f.cli, f.base = name, 4242, "claude", "cli"
+        return f
+
+    def _run(self, sessions):
+        from unittest import mock
+        sw.save_projects({"cli": sw.Project(name="cli")}, "default")
+        sent = []
+
+        def boom(*a, **k):
+            raise AssertionError("start çağrılmamalıydı: %r" % (a,))
+        with mock.patch.object(ws, "find_sessions", lambda **kw: list(sessions)), \
+                mock.patch.object(ws, "_act", boom), mock.patch.object(ws, "is_tmux_backed", lambda pid: True), \
+                mock.patch.object(ws, "_proc_born", lambda pid: 0.0), \
+                mock.patch.object(ws, "_send", lambda n, c, m: sent.append(n) or True):
+            return ws.http_directive({"name": "cli", "text": "devam"}), sent
+
+    def test_dated_session_gets_the_directive_without_a_start(self):
+        r, sent = self._run([self._fake("cli20261021")])
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(sent, ["cli20261021"])
+
+    def test_two_live_sessions_are_ambiguous_and_nothing_starts(self):
+        r, sent = self._run([self._fake("cli20261021"), self._fake("cli20261022")])
+        self.assertEqual(r.get("code"), "ambiguous_sessions")
+        self.assertEqual(sent, [])
+
+
 class UiServiceJobTest(_Tmp):
     """Servis ekle/sil/liste ve iş ack uçları; token değeri ASLA dönmez."""
 
