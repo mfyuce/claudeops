@@ -48,6 +48,15 @@ class UiConfigTest(_Tmp):
         self.assertFalse(ws.http_config({"key": "tour_minutes", "value": 5, "actor": "brain"}, "default")["ok"])
         self.assertFalse(ws.http_enable({"enabled": True, "actor": "brain"}, "default")["ok"])
 
+    def test_drain_toggle_and_brain_directive_gate(self):
+        self.assertTrue(ws.http_config({"key": "drain", "value": True}, "default")["ok"])
+        self.assertTrue(ws.steward_config("default").drain)
+        sw.save_projects({"ncs": sw.Project(name="ncs")}, "default")
+        r = ws.http_directive({"name": "ncs", "text": "x", "actor": "brain"}, "default")
+        self.assertEqual(r.get("code"), "draining")
+        self.assertTrue(ws.http_config({"key": "drain", "value": False}, "default")["ok"])
+        self.assertFalse(ws.steward_config("default").drain)
+
     def test_enable_toggles(self):
         self.assertTrue(ws.http_enable({"enabled": True}, "default")["ok"])
         self.assertTrue(ws.steward_config("default").enabled)

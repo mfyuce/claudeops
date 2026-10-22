@@ -598,6 +598,9 @@ export interface Strings {
   stewardLogRefresh: string;
   stewardLogNone: string;
   stewardSdRunning: string;
+  stewardCtlDrainOn: string;
+  stewardCtlDrainOff: string;
+  stewardDrainBanner: string;
   stewardSdDone: string;
   stewardSdCancelled: string;
   stewardSettingsTitle: string;
@@ -1347,6 +1350,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardLogRefresh: "Yenile",
     stewardLogNone: "Kayıt yok.",
     stewardSdRunning: "Kontrollü kapatma sürüyor",
+    stewardCtlDrainOn: "Yeni iş alma",
+    stewardCtlDrainOff: "Yeni iş almayı aç",
+    stewardDrainBanner: "Yeni iş alma kapalı: değnekçi oturum açmaz, beyin direktif veremez; çalışan işler, cevaplar ve devirler sürer.",
     stewardSdDone: "Kontrollü kapatma bitti",
     stewardSdCancelled: "Kontrollü kapatma iptal edildi (değnekçi yeniden açıldı)",
     stewardSettingsTitle: "Ayarlar",
@@ -2097,6 +2103,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardLogRefresh: "Refresh",
     stewardLogNone: "No entries.",
     stewardSdRunning: "Controlled shutdown in progress",
+    stewardCtlDrainOn: "Stop taking new work",
+    stewardCtlDrainOff: "Resume new work",
+    stewardDrainBanner: "Draining: the steward opens no sessions and the brain cannot give directives; running work, answers and handovers continue.",
     stewardSdDone: "Controlled shutdown finished",
     stewardSdCancelled: "Controlled shutdown cancelled (steward re-enabled)",
     stewardSettingsTitle: "Settings",

@@ -251,6 +251,13 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([], self.projects, {}, _cfg(max_active=4, max_starts_per_tick=1), self.now, [], [])
         self.assertEqual([a.name for a in acts], ["a"])
 
+    def test_drain_starts_nothing_but_keeps_answers_and_running(self):
+        cfg = _cfg(max_active=4, max_starts_per_tick=5, drain=True)
+        acts, _ = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [])
+        self.assertEqual([a for a in acts if a.kind == "start"], [])
+        acts, _ = sw.plan_tick([_view("b", last_assistant="STEWARD-DONE")], self.projects, {}, cfg, self.now, [], [])
+        self.assertEqual(sorted(a.kind for a in acts if a.name == "b"), ["set_phase", "stop"])   # işaretler hâlâ işlenir
+
     def test_slot_pressure_stops_idle_session(self):
         cfg = _cfg(max_active=1, stop_idle_minutes=30, idle_minutes=5)
         idle = _view("a", busy=False, last_activity=self.now - 40 * 60, started_at=self.now - 3600)

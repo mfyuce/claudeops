@@ -3497,6 +3497,8 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
+    if str(data.get("actor") or "") == "brain" and steward_config(sid).drain:
+        return {"ok": False, "error": "draining: the steward takes no new work (human turned 'drain' on)", "code": "draining"}
     gated = _gate(name, data, "directive", sid)
     if gated is not None:
         return gated
@@ -3598,6 +3600,9 @@ UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_re
                  "max_active": (0, 20), "max_starts_per_tick": (0, 10)}
 
 
+UI_CONFIG_BOOL = ("drain",)
+
+
 def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Panelden `steward.<alan>` (ya da `stewards.<sid>.<alan>`) ayarı; CLI `config` ile aynı kurallar, dar alan listesi."""
     if data.get("actor") == "brain":
@@ -3608,6 +3613,8 @@ def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if field == "mode":
         if value not in sw.MODES:
             return {"ok": False, "error": "mode must be one of " + ", ".join(sw.MODES)}
+    elif field in UI_CONFIG_BOOL:
+        value = "on" if str(value).strip().lower() in ("on", "1", "true", "yes") else "off"
     elif field in UI_CONFIG_INT:
         try:
             n = int(value)

@@ -253,6 +253,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
 
   if (!data) return null;
   const s = state?.summary ?? (sid === "default" ? data.steward : null);
+  const draining = (state?.config as Record<string, unknown> | undefined)?.drain === true;
   const projectsTotal = Object.values(s?.projects || {}).reduce((a, b) => a + b, 0);
   const phases = Object.entries(s?.projects || {})
     .filter(([, n]) => n > 0)
@@ -280,6 +281,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </div>
       )}
       {s && !s.enabled && <div className="warn-banner">{t.stewardOff}</div>}
+      {draining && <div className="warn-banner">{t.stewardDrainBanner}</div>}
       {state?.shutdown && (
         <div className="legend" style={{ margin: 0 }}>
           <b>{state.shutdown.cancelled ? t.stewardSdCancelled : state.shutdown.done ? t.stewardSdDone : t.stewardSdRunning}</b>
@@ -324,6 +326,9 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </select>
         <button type="button" disabled={busy} onClick={() => void run(() => apiStewardBrain(s.brain?.running ? "stop" : "start", sid))}>
           {s.brain?.running ? t.stewardCtlBrainStop : t.stewardCtlBrainStart}
+        </button>
+        <button type="button" disabled={busy} onClick={() => void run(() => apiStewardConfig("drain", draining ? "off" : "on", sid))}>
+          {draining ? t.stewardCtlDrainOff : t.stewardCtlDrainOn}
         </button>
         <button type="button" disabled={busy} onClick={() => void run(() => apiStewardTour(sid))}>
           {t.stewardCtlTour}

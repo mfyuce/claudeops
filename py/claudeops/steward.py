@@ -250,6 +250,7 @@ class Config:
     context_warn_tokens_fable: int = 150000   # Fable oturumlarında eşik (token başına daha pahalı: 0 = genel eşiği kullan)
     context_warn_tokens: int = 300000   # oturumun bağlamı (son turun girdi+cache token'ı) bu sayıyı aşarsa handover (0 = kapalı); her tur bağlamın TAMAMI yeniden okunur
     auto_context_answer: bool = True    # "bu oturumda mı sürdüreyim, devirle mi" sorusunu motor bağlam ölçümüne bakıp kendisi cevaplar
+    drain: bool = False                 # YENİ İŞ ALMA: oturum başlatma (uğrama/cevap-başlatma) ve beyin direktifi durur; çalışan iş, cevap iletimi, devir sürer
     auto_context_ratio: float = 0.7     # bağlam devir eşiğinin bu oranını aşmışsa cevap "önce devir" (altındaysa "bu oturumda sürdür")
     brain_cli: str = "claude"
     brain_model: str = ""
@@ -2508,7 +2509,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     starts = 0
     running_projects = {v.project for v in views if v.running and _mine(v)}
     active = len(running_projects)
-    max_starts = cfg.max_starts_per_tick
+    max_starts = 0 if cfg.drain else cfg.max_starts_per_tick
     others_active = 0
     if world is not None:
         if world.starts_left is not None:

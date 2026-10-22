@@ -21,7 +21,7 @@ GOLDEN_DEFAULT = {
     "card_max_age_hours": 24, "cards_per_tick": 1, "mode": "observe", "summary_hour": 21,
 }
 NEW_FIELDS = {"sid", "label", "persona_text", "ntfy_topic", "max_active_total", "max_starts_total", "remote_actions",
-              "auto_context_answer", "auto_context_ratio"}
+              "auto_context_answer", "auto_context_ratio", "drain"}
 
 
 def _write(obj):
