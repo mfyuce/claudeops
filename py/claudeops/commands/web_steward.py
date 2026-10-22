@@ -2799,6 +2799,8 @@ def stewards_summary(running_names: Optional[set] = None) -> List[Dict[str, Any]
                "pending_items": sm["pending_items"], "brain": sm["brain"]}
         if sm.get("ownership_conflicts"):
             row["ownership_conflicts"] = sm["ownership_conflicts"]
+        if cfg.role == "reviewer":      # yalnız reviewer'da: sıradan kimliğin satırı (ve altın testler) değişmez
+            row["role"] = "reviewer"
         out.append(row)
     return out
 

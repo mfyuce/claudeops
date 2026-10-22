@@ -657,6 +657,39 @@ export interface Strings {
   stewardHostDown: string;
   stewardHostBackoff: string;
   stewardPick: string;
+  rvTitle: string;
+  rvDesc: string;
+  rvOff: string;
+  rvProject: string;
+  rvEnabled: string;
+  rvComplete: string;
+  rvNever: string;
+  rvPoolAdd: string;
+  rvAddBtn: string;
+  rvRemove: string;
+  rvRunTitle: string;
+  rvRunning: string;
+  rvNoRunning: string;
+  rvCancel: string;
+  rvCancelAll: string;
+  rvNoPool: string;
+  rvNoTargets: string;
+  rvOpenFile: string;
+  rvFileClose: string;
+  rvTruncated: string;
+  rvFindings: string;
+  rvAllStates: string;
+  rvAllProjects: string;
+  rvNoFindings: string;
+  rvVerify: string;
+  rvApprove: string;
+  rvReject: string;
+  rvExportTodo: string;
+  rvExportTbd: string;
+  rvRefutedHint: string;
+  rvDone: string;
+  rvExported: string;
+  rvVerifySent: string;
   stewardRowStat: (projects: number, questions: number) => string;
   stewardOn: string;
   stewardOffShort: string;
@@ -1411,6 +1444,39 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardHostDown: "host kapalı: bu projeye eylem yapılmıyor",
     stewardHostBackoff: "host geri çekilmede: tekrar denemeden önce bekleniyor",
     stewardPick: "değnekçi",
+    rvTitle: "Review panosu",
+    rvDesc: "Proje x model matrisi: her hücre bir modelin projeyi son gözden geçirişi. Etkin kutusu projeyi havuza alır/çıkarır.",
+    rvOff: "Bu reviewer kapalı: yeni review başlamaz.",
+    rvProject: "Proje",
+    rvEnabled: "Etkin",
+    rvComplete: "30 gün tamam",
+    rvNever: "hiç",
+    rvPoolAdd: "Projeyi havuza ekle",
+    rvAddBtn: "Ekle",
+    rvRemove: "Çıkar",
+    rvRunTitle: "Elle çalıştır",
+    rvRunning: "Koşan işler",
+    rvNoRunning: "Koşan iş yok.",
+    rvCancel: "İptal",
+    rvCancelAll: "Hepsini iptal et",
+    rvNoPool: "Havuz boş.",
+    rvNoTargets: "Kullanılabilir model yok.",
+    rvOpenFile: "Review dosyasını aç",
+    rvFileClose: "Kapat",
+    rvTruncated: "(kırpıldı)",
+    rvFindings: "Bulgular",
+    rvAllStates: "tüm durumlar",
+    rvAllProjects: "tüm projeler",
+    rvNoFindings: "Bulgu yok.",
+    rvVerify: "Doğrulat",
+    rvApprove: "Onayla",
+    rvReject: "Reddet",
+    rvExportTodo: "TODO'ya yaz",
+    rvExportTbd: "TBD'ye yaz",
+    rvRefutedHint: "Çürütülmüş bulgu onaylanamaz",
+    rvDone: "Yapıldı.",
+    rvExported: "Dışa aktarıldı",
+    rvVerifySent: "Doğrulama gönderildi",
     stewardRowStat: (projects, questions) => `${projects} proje · ${questions} açık soru`,
     stewardOn: "açık",
     stewardOffShort: "kapalı",
@@ -2166,6 +2232,39 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardHostDown: "host unreachable: no actions on this project",
     stewardHostBackoff: "host backing off: waiting before retrying",
     stewardPick: "steward",
+    rvTitle: "Review board",
+    rvDesc: "Project x model matrix: each cell is one model's latest review of a project. The checkbox enables/disables the project in the pool.",
+    rvOff: "This reviewer is off: no new reviews start.",
+    rvProject: "Project",
+    rvEnabled: "On",
+    rvComplete: "30d complete",
+    rvNever: "never",
+    rvPoolAdd: "Add project to pool",
+    rvAddBtn: "Add",
+    rvRemove: "Remove",
+    rvRunTitle: "Run now",
+    rvRunning: "Running jobs",
+    rvNoRunning: "No running jobs.",
+    rvCancel: "Cancel",
+    rvCancelAll: "Cancel all",
+    rvNoPool: "The pool is empty.",
+    rvNoTargets: "No models available.",
+    rvOpenFile: "Open review file",
+    rvFileClose: "Close",
+    rvTruncated: "(truncated)",
+    rvFindings: "Findings",
+    rvAllStates: "all states",
+    rvAllProjects: "all projects",
+    rvNoFindings: "No findings.",
+    rvVerify: "Verify",
+    rvApprove: "Approve",
+    rvReject: "Reject",
+    rvExportTodo: "Export to TODO",
+    rvExportTbd: "Export to TBD",
+    rvRefutedHint: "A refuted finding cannot be approved",
+    rvDone: "Done.",
+    rvExported: "Exported",
+    rvVerifySent: "Verification sent",
     stewardRowStat: (projects, questions) => `${projects} project${projects === 1 ? "" : "s"} · ${questions} open question${questions === 1 ? "" : "s"}`,
     stewardOn: "on",
     stewardOffShort: "off",

@@ -858,6 +858,8 @@ export interface StewardIdentity {
   pending_items: number;
   brain: { name: string; running: boolean };
   ownership_conflicts?: unknown;
+  /** Only present ("reviewer") for reviewer identities. */
+  role?: string;
 }
 
 export interface StewardListResult {
@@ -994,4 +996,23 @@ export interface ModelUsage {
   at: number;
   families: Record<string, ModelUsageFamily>;
   fable_top: { label: string; calls: number; fresh: number; read: number }[];
+}
+
+// ── Reviewer (`/api/steward/review/*`) ──
+export interface ReviewTarget { mode: string; model: string; slug: string; key: string }
+export interface ReviewPair {
+  status?: string; started_at?: number; finished_at?: number; file?: string; error?: string; label_seen?: string; attempts?: number;
+}
+export interface ReviewPoolRow {
+  project: string; enabled: boolean; source: string; added_at?: number; removed_at?: number | null;
+  complete: boolean; pairs: Record<string, ReviewPair | null>;
+}
+export interface ReviewStateResult {
+  ok: boolean; error?: string; enabled: boolean; role: string; targets: ReviewTarget[]; pool: ReviewPoolRow[];
+  running: string[]; runs: Array<{ pair: string; status: string; at?: number; file?: string }>;
+  min_gap_minutes: number; timeout_minutes: number;
+}
+export interface ReviewFinding {
+  id: string; project: string; review_file: string; ref: string; severity: string; title: string; where: string;
+  body: string; state: string; verdict: string;
 }

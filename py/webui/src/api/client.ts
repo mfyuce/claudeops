@@ -70,6 +70,8 @@ import type {
   TermOutputResult,
   UsageResult,
   TestHostResult,
+  ReviewStateResult,
+  ReviewFinding,
 } from "./types";
 
 // Exported so `hooks/useStatus.ts` can build the `/ws?token=...` URL with the
@@ -678,3 +680,28 @@ export const apiStewardProjectAction = (
 export const apiStewardProjectSet = (name: string, fields: Record<string, string | number>, sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/project", { name, ...fields, ...stewardBody(sid) });
 
+
+// ── Reviewer ──
+const rvQs = (sid: string, extra: Record<string, string> = {}): string => {
+  const q = new URLSearchParams({ steward: sid });
+  for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v);
+  return `?${q.toString()}`;
+};
+export const getReviewState = (sid: string): Promise<ReviewStateResult> =>
+  apiGet<ReviewStateResult>(`/api/steward/review/state${rvQs(sid)}`);
+export const getReviewFile = (sid: string, path: string): Promise<SimpleResult & { path?: string; text?: string; truncated?: boolean }> =>
+  apiGet<SimpleResult & { path?: string; text?: string; truncated?: boolean }>(`/api/steward/review/file${rvQs(sid, { path })}`);
+export const getReviewFindings = (sid: string, project = "", state = ""): Promise<SimpleResult & { findings?: ReviewFinding[] }> =>
+  apiGet<SimpleResult & { findings?: ReviewFinding[] }>(`/api/steward/review/findings${rvQs(sid, { project, state })}`);
+export const apiReviewPool = (sid: string, action: "add" | "remove" | "enable" | "disable", project: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/review/pool", { steward: sid, action, project });
+export const apiReviewRun = (sid: string, project: string, mode: string, model: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/review/run", { steward: sid, project, mode, model });
+export const apiReviewCancel = (sid: string, project = ""): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/review/cancel", { steward: sid, project });
+export const apiReviewVerify = (sid: string, project: string, fids: string[]): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/review/verify", { steward: sid, project, fids });
+export const apiReviewFinding = (sid: string, id: string, action: "approve" | "reject"): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/review/finding", { steward: sid, id, action });
+export const apiReviewExport = (sid: string, project: string, kind: "todo" | "tbd"): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/review/export", { steward: sid, project, kind });

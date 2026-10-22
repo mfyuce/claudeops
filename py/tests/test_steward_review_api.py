@@ -61,6 +61,12 @@ class TestPool(_Api):
         wr.sync_pool(sw.paths_for("rev"), 2.0, ["a"])
         self.assertEqual(rv.pool_enabled(rv.load_pool(sw.paths_for("rev"))), [])
 
+    def test_list_row_carries_role_only_for_reviewer(self):
+        ws.invalidate_summary()
+        rows = {r["id"]: r for r in ws.stewards_summary(running_names=set())}
+        self.assertEqual(rows["rev"].get("role"), "reviewer")
+        self.assertNotIn("role", rows["default"])
+
     def test_non_reviewer_and_unknown_steward_rejected(self):
         r = ws.http_post("/api/steward/review/pool", {"action": "add", "project": "a"})        # default
         self.assertFalse(r["ok"])

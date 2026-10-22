@@ -29,6 +29,7 @@ import {
 } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { StewardJobs } from "./StewardJobs";
+import { ReviewPanel } from "./ReviewPanel";
 import { StewardActions } from "./StewardActions";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -232,9 +233,10 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
   // Re-fetch on the pushed light slice changing (counts / last tick), never on a timer.
   const sum = rows?.find((x) => x.id === sid) ?? data?.steward;
   const key = `${sum?.open_questions ?? 0}|${sum?.ideas_new ?? 0}|${sum?.pending_items ?? 0}|${data?.steward?.last_tick?.at ?? 0}|${sid}|${rows?.length ?? 0}|${sum?.mode ?? ""}|${sum?.enabled ?? ""}`;
+  const isReviewer = rows?.find((x) => x.id === sid)?.role === "reviewer";
   useEffect(() => {
-    void load();
-  }, [load, key]);
+    if (!isReviewer) void load(); // a reviewer has no project/question state; ReviewPanel loads its own
+  }, [load, key, isReviewer]);
 
   async function run<T extends { ok: boolean; error?: string }>(fn: () => Promise<T>, after?: (r: T) => void) {
     if (busy) return;
@@ -253,6 +255,32 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
   }
 
   if (!data) return null;
+  const pickerButtons = multi && (
+    <div className="opts" role="group" aria-label={t.stewardPick}>
+      {rows.map((x) => (
+        <button
+          key={x.id}
+          type="button"
+          className={x.id === sid ? "go" : undefined}
+          aria-pressed={x.id === sid}
+          onClick={() => pick(x.id)}
+          title={t.stewardRowStat(x.project_count, x.open_questions)}
+        >
+          <span className={`dot ${x.brain?.running ? "on" : "off"}`} />
+          {x.label || x.id} · {x.enabled ? t.stewardOn : t.stewardOffShort} · {x.mode}
+          {x.role === "reviewer" ? " · reviewer" : ` · ${t.stewardRowStat(x.project_count, x.open_questions)}`}
+        </button>
+      ))}
+    </div>
+  );
+  if (isReviewer) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
+        {pickerButtons}
+        <ReviewPanel sid={sid} refreshKey={key} />
+      </div>
+    );
+  }
   const s = state?.summary ?? (sid === "default" ? data.steward : null);
   const draining = (state?.config as Record<string, unknown> | undefined)?.drain === true;
   const projectsTotal = Object.values(s?.projects || {}).reduce((a, b) => a + b, 0);
@@ -264,23 +292,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
       <span className="opts-hint">{t.stewardDesc}</span>
-      {multi && (
-        <div className="opts" role="group" aria-label={t.stewardPick}>
-          {rows.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              className={x.id === sid ? "go" : undefined}
-              aria-pressed={x.id === sid}
-              onClick={() => pick(x.id)}
-              title={t.stewardRowStat(x.project_count, x.open_questions)}
-            >
-              <span className={`dot ${x.brain?.running ? "on" : "off"}`} />
-              {x.label || x.id} · {x.enabled ? t.stewardOn : t.stewardOffShort} · {x.mode} · {t.stewardRowStat(x.project_count, x.open_questions)}
-            </button>
-          ))}
-        </div>
-      )}
+      {pickerButtons}
       {s && !s.enabled && <div className="warn-banner">{t.stewardOff}</div>}
       {draining && <div className="warn-banner">{t.stewardDrainBanner}</div>}
       {state?.shutdown && (
