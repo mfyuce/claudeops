@@ -794,6 +794,8 @@ def resolve_answer(q: Question, raw: str) -> str:
 
 REASK_WINDOW_SECONDS = 12 * 3600   # bu süre içinde cevaplanmış benzer soru "tekrar" sayılır
 REASK_MIN_SIMILARITY = 0.6         # kelime kümesi Jaccard benzerliği eşiği
+TOUR_INLINE_MAX_CHARS = 4000        # tur bundan uzunsa tmux'e gömülmez: dosyaya yazılır, beyne kısa 'şunu oku' mesajı gider (>10K kesiliyordu)
+TOUR_FILES_KEEP = 5
 TOUR_MAX_ITEMS = 8                  # bir turda en çok bu kadar madde (büyük prompt beynin giriş kutusunda takılıyordu); kalanı sonraki tura
 ROUTINE_ESCALATE_SECONDS = 30 * 60   # beyin bu sürede rutin soruyu cevaplamazsa soru sahibine (telefon) düşer
 REASK_MAX_REPEATS = 2              # aynı cevap en çok bu kadar yeniden iletilir, sonra soru gerçekten açılır
@@ -2235,6 +2237,29 @@ def context_answer(tokens: int, warn: int, ratio: float, lang: str = "tr") -> Tu
                 f"Burada yeni iş başlatma, devir notunu yaz." if ho
                 else f"Bu oturumda sürdür (bağlam {k}, devir eşiğinin %{pct}'i: eşiğe uzak).")
 
+
+def tour_delivery(prompt: str, workspace: str, now: float, lang: str = "tr") -> Tuple[str, str]:
+    """(gönderilecek mesaj, yazılan dosya yolu ya da ""). Kısa tur olduğu gibi gider; uzunsa `<workspace>/tours/tour-<ts>.md`
+    dosyasına yazılır (çalışma alanı içinde: beynin okuma izni var) ve mesaj yalnız dosya yolunu gösterir. Eski dosyalar budanır."""
+    if len(prompt) <= TOUR_INLINE_MAX_CHARS:
+        return prompt, ""
+    d = os.path.join(workspace, "tours")
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, "tour-%d.md" % int(now))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(prompt)
+    for old in sorted(os.listdir(d))[:-TOUR_FILES_KEEP]:
+        try:
+            os.remove(os.path.join(d, old))
+        except OSError:
+            pass
+    if lang == "en":
+        msg = (f"[tour] The items are long, so they are in a file: {path} . Read the WHOLE file first (Read tool), then act on each "
+               f"item with the matching tool exactly as the file says. Do not answer from this message alone.")
+    else:
+        msg = (f"[tur] Maddeler uzun olduğu için dosyada: {path} . Önce dosyanın TAMAMINI oku (Read aracı), sonra dosyada yazdığı gibi "
+               f"her madde için ilgili aracı çağır. Yalnız bu mesaja bakarak cevap verme.")
+    return msg, path
 
 DIRECTIVE_MIN_GAP_SECONDS = 90.0     # aynı oturuma iki direktif arası: cevap teslimi ile beyin direktifi çarpışmasın
 

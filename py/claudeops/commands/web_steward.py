@@ -1920,13 +1920,17 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
             if sims:
                 it["similar"] = [{"project": q.project, "text": q.text, "answer": q.answer} for q in sims]
     prompt = sw.build_tour_prompt(enriched, lang=cfg.lang, open_qs=sw.open_questions(paths=paths), now=time.time())
-    if not _send(s.name, s.cli, prompt):
+    try:
+        message, tour_file = sw.tour_delivery(prompt, paths.workspace, time.time(), cfg.lang)
+    except OSError:
+        message, tour_file = prompt, ""      # dosya yazılamadı: eski yol (tmux'e gömülü)
+    if not _send(s.name, s.cli, message):
         return {"ok": False, "error": "send failed"}
     with sw.steward_lock(paths):
         state = sw.load_state(paths)
         state["last_tour"] = time.time()
         sw.save_state(state, paths)
-    sw.log_event("tour", paths=paths, items=len(enriched), chars=len(prompt))
+    sw.log_event("tour", paths=paths, items=len(enriched), chars=len(prompt), **({"file": tour_file} if tour_file else {}))
     return {"ok": True, "items": len(enriched), "chars": len(prompt)}
 
 

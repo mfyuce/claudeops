@@ -1932,3 +1932,26 @@ class BrainAuthorityAndDeferTest(unittest.TestCase):
 
     def test_tour_retry_gap_after_deferral(self):
         self.assertEqual(sw.Config().tour_retry_minutes, 5)
+
+
+class TourDeliveryTest(unittest.TestCase):
+    def test_short_tour_inline(self):
+        with tempfile.TemporaryDirectory() as d:
+            msg, path = sw.tour_delivery("kısa", d, 1000.0)
+            self.assertEqual((msg, path), ("kısa", ""))
+            self.assertFalse(os.path.exists(os.path.join(d, "tours")))
+
+    def test_long_tour_goes_to_file_and_old_files_pruned(self):
+        with tempfile.TemporaryDirectory() as d:
+            long = "x" * (sw.TOUR_INLINE_MAX_CHARS + 1)
+            paths = []
+            for i in range(8):
+                msg, p = sw.tour_delivery(long, d, 1000.0 + i)
+                paths.append(p)
+                self.assertIn(p, msg)
+                self.assertLess(len(msg), 400)
+                self.assertEqual(Path(p).read_text(encoding="utf-8"), long)
+            left = sorted(os.listdir(os.path.join(d, "tours")))
+            self.assertEqual(len(left), sw.TOUR_FILES_KEEP)
+            self.assertTrue(os.path.exists(paths[-1]))
+            self.assertFalse(os.path.exists(paths[0]))
