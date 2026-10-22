@@ -133,7 +133,7 @@ def _ask(port: int, args: dict) -> dict:
 def _answer(port: int, args: dict) -> dict:
     if not args.get("id") or not args.get("answer"):
         return {"ok": False, "error": "id and answer are required"}
-    return _api(port, "POST", "/api/steward/answer", {"id": args["id"], "answer": args["answer"]})
+    return _api(port, "POST", "/api/steward/answer", {"id": args["id"], "answer": args["answer"], "actor": "brain"})
 
 
 def _note(port: int, args: dict) -> dict:

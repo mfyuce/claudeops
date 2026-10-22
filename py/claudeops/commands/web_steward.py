@@ -3358,6 +3358,13 @@ def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[s
 
 
 def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    if str(data.get("actor") or "") == "brain":
+        q0 = next((q for q in sw.load_questions(sw.paths_for(sid)) if q.id == str(data.get("id") or "")), None)
+        if q0 is not None:
+            ok, why = sw.brain_may_answer(q0)
+            if not ok:
+                sw.log_event("answer_denied", paths=sid, id=q0.id, project=q0.project, reason=why)
+                return {"ok": False, "error": why, "code": "owner_only"}
     try:
         q = sw.answer_question(str(data.get("id") or ""), str(data.get("answer") or ""), sid)
     except ValueError as e:
@@ -3396,6 +3403,45 @@ def http_note(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return {"ok": True}
 
 
+def _brain_directive_defer(name: str, sid: str) -> Optional[Dict[str, Any]]:
+    """Beynin YEREL oturuma direktifi: oturum meşgulse ya da az önce direktif/cevap gittiyse GÖNDERİLMEZ, ertelenir
+    (`tour_deferred`: sonraki tur `tour_retry_minutes` sonra). Yanıt `session_busy`; beyin sonraki turda yeniden dener."""
+    projects = sw.load_projects(sid)
+    world = _world(sid)
+    p = _project_for_session(name, projects, world)
+    payload = _act("status_payload") or {}
+    paths = sw.paths_for(sid)
+    lda = sw.load_state(paths).get("last_directive_at") or {}
+    busy: Optional[bool] = None
+    last = 0.0
+    for r in payload.get("sessions") or []:
+        rn = str(r.get("name") or "")
+        if not r.get("running") or sw.normalize_host(r.get("host")):
+            continue
+        mine = rn == name
+        if not mine and p is not None:
+            q = _project_for_session(rn, projects, world)
+            mine = q is not None and q.name == p.name
+        if not mine:
+            continue
+        if r.get("busy") is True:
+            busy = True
+        last = max(last, float(lda.get(rn) or 0.0))
+    last = max(last, float(lda.get(name) or 0.0))
+    why = sw.directive_defer_reason(busy, last, time.time())
+    if not why:
+        return None
+    try:
+        with sw.steward_lock(paths):
+            state = sw.load_state(paths)
+            state["tour_deferred"] = True
+            sw.save_state(state, paths)
+    except sw.LockTimeout:
+        pass
+    sw.log_event("directive_deferred", paths=sid, name=name, reason=why)
+    return {"ok": False, "code": "session_busy", "error": f"session_busy ({why}): directive not sent; retried on the next tour"}
+
+
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
@@ -3404,6 +3450,10 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     gated = _gate(name, data, "directive", sid)
     if gated is not None:
         return gated
+    if str(data.get("actor") or "") == "brain" and not _name_host(name):
+        why = _brain_directive_defer(name, sid)
+        if why:
+            return why
     with _ctx(sid).lock:
         projects = sw.load_projects(sid)
         p = _project_for_session(name, projects, _world(sid))

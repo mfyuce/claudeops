@@ -238,6 +238,7 @@ class Config:
     enabled: bool = False
     tick_seconds: int = 120
     tour_minutes: int = 15
+    tour_retry_minutes: int = 5     # beyin direktifi meşgul oturum yüzünden ertelendiyse bir sonraki tur bu kadar sonra
     max_active: int = 4
     max_starts_per_tick: int = 1
     idle_minutes: int = 10
@@ -1762,6 +1763,9 @@ MODEL_RULE_TR = (
     "türü doğrula, `steward_job_submit` ile (project, kind, files=[proje klasörü içi yol]) gönder, sonra `steward_answer` ile projeye iş kimliğini ve durumu "
     "(queued / awaiting_approval) bildir. Onay bekleyen işi KENDİN onaylama, sahibe `steward_ask_user` ile haber ver. Tür ya da dosya belirsizse "
     "tahmin etme, `steward_answer` ile projeye neyin eksik olduğunu söyle. Sonucu motor iş bitince projeye zaten iletir.\n"
+    "- SAHİBE AİT KARARLAR: commit, push, merge, deploy, kurulum, silme, harcama, kimlik/yetki ve kod değişikliği onayı SAHİBİN kararıdır; "
+    "`steward_answer` ile ASLA onay verme (motor reddeder). Böyle bir soru gelirse `steward_ask_user` ile sahibe ilet. Direktif meşgul oturum yüzünden "
+    "`session_busy` dönerse tekrarlama; sonraki turda yeniden değerlendir.\n"
 )
 MODEL_RULE_EN = (
     "\n## Model rule (owner's PERMANENT decision, 2026-10-20; not negotiable)\n"
@@ -1784,6 +1788,9 @@ MODEL_RULE_EN = (
     "`steward_jobs kinds=true`, submit with `steward_job_submit` (project, kind, files=[path inside the project folder]), then tell the project the job id and "
     "state (queued / awaiting_approval) with `steward_answer`. NEVER approve a job awaiting approval yourself; tell the owner with `steward_ask_user`. If the "
     "kind or file is unclear, do not guess: tell the project what is missing via `steward_answer`. The engine delivers the result when the job finishes.\n"
+    "- OWNER-ONLY DECISIONS: commit, push, merge, deploy, install, delete, spending, credentials/authority and approving code changes belong to the "
+    "OWNER; NEVER approve them with `steward_answer` (the engine rejects it). Forward such a question with `steward_ask_user`. If a directive returns "
+    "`session_busy`, do not repeat it; re-evaluate on the next tour.\n"
 )
 
 
@@ -2229,6 +2236,32 @@ def context_answer(tokens: int, warn: int, ratio: float, lang: str = "tr") -> Tu
                 else f"Bu oturumda sürdür (bağlam {k}, devir eşiğinin %{pct}'i: eşiğe uzak).")
 
 
+DIRECTIVE_MIN_GAP_SECONDS = 90.0     # aynı oturuma iki direktif arası: cevap teslimi ile beyin direktifi çarpışmasın
+
+# Sahibin kararı olan konular: beyin bunlara `steward_answer` ile ASLA cevap vermez (soru rutin etiketli olsa bile).
+OWNER_ONLY_RE = re.compile(r"commit|push|merge|deploy|force|install|kurulum|kurul|\bsil|delete|harca|spend|password|parola|token|yetki|credential", re.I)
+
+
+def brain_may_answer(q: "Question") -> Tuple[bool, str]:
+    """Beynin bu soruya `steward_answer` ile cevap verip veremeyeceği: yalnız RUTİN etiketli ve sahip kararı içermeyen
+    sorular. SAF; kod, commit/push, kurulum, silme, harcama, kimlik/yetki sahibe aittir."""
+    if not q.routine:
+        return False, "owner question (STEWARD-ASK): only the owner answers it"
+    if OWNER_ONLY_RE.search(q.text or ""):
+        return False, "owner decision (commit/push/install/delete/spend/credentials): only the owner answers it"
+    return True, ""
+
+
+def directive_defer_reason(busy: Optional[bool], last_directive_at: float, now: float,
+                           gap: float = DIRECTIVE_MIN_GAP_SECONDS) -> str:
+    """Beyin direktifi şimdi gönderilmemeli mi: oturum meşgulse ya da az önce başka bir direktif/cevap gittiyse sebep, yoksa "". SAF."""
+    if busy is True:
+        return "busy"
+    if last_directive_at and (now - last_directive_at) < gap:
+        return "recent"
+    return ""
+
+
 def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:
     """Oturum yanıtındaki soru/rutin/takıldım/fikir işaretlerinin KAYIT eylemleri (oturuma dokunmaz). `plan_tick` ve
     döngü kapalıyken çalışan `plan_markers` aynı kuralı paylaşır."""
@@ -2547,8 +2580,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                          world=world)
     last_tour = float(st.get("last_tour") or 0.0)
     brain = by_name.get(cfg.brain_name)
-    if items and (now - last_tour) >= cfg.tour_minutes * 60 and brain is not None and brain.running and brain.busy is False:
+    tour_gap = (cfg.tour_retry_minutes if st.get("tour_deferred") else cfg.tour_minutes) * 60
+    if items and (now - last_tour) >= tour_gap and brain is not None and brain.running and brain.busy is False:
         items = items[:TOUR_MAX_ITEMS]
+        st.pop("tour_deferred", None)
         actions.append(Action("tour", cfg.brain_name, f"{len(items)} madde", {"items": items}))
         st["last_tour"] = now
         for it in items:

@@ -1904,3 +1904,31 @@ class QuestionPageHttpTest(_Tmp):
         self.assertEqual((seen["headers"].get("Click"), seen["headers"].get("Title")), ("https://t/q/1?k=a", "claudeops degnekci"))
         self.assertEqual(seen["data"], "soru?".encode("utf-8"))
 
+
+
+class BrainAuthorityAndDeferTest(unittest.TestCase):
+    """Beyin sahip kararına cevap veremez; meşgul/yeni direktif almış oturuma direktif ertelenir."""
+
+    def test_non_routine_question_is_owner_only(self):
+        q = sw.Question(id="q1", project="cli", text="Devam edeyim mi?", created_at=0.0, routine=False)
+        ok, why = sw.brain_may_answer(q)
+        self.assertFalse(ok)
+        self.assertIn("owner", why)
+
+    def test_routine_with_commit_push_is_owner_only(self):
+        for t in ("E4/E5 için commit + push yapayım mı?", "install-ucli.sh çalıştırayım mı?", "dosyayı sileyim mi? delete"):
+            q = sw.Question(id="q2", project="cli", text=t, created_at=0.0, routine=True)
+            self.assertFalse(sw.brain_may_answer(q)[0], t)
+
+    def test_plain_routine_is_answerable(self):
+        q = sw.Question(id="q3", project="cli", text="Hangi modelle, sırayla mı ayrı ajanla mı?", created_at=0.0, routine=True)
+        self.assertEqual(sw.brain_may_answer(q), (True, ""))
+
+    def test_defer_reason(self):
+        self.assertEqual(sw.directive_defer_reason(True, 0.0, 1000.0), "busy")
+        self.assertEqual(sw.directive_defer_reason(False, 960.0, 1000.0), "recent")      # 40 sn önce direktif gitti
+        self.assertEqual(sw.directive_defer_reason(False, 800.0, 1000.0), "")
+        self.assertEqual(sw.directive_defer_reason(None, 0.0, 1000.0), "")               # bilinmiyor = engelleme
+
+    def test_tour_retry_gap_after_deferral(self):
+        self.assertEqual(sw.Config().tour_retry_minutes, 5)

@@ -12,7 +12,7 @@ from claudeops import settings, steward as sw  # noqa: E402
 
 # P2 öncesi `steward_config()` çıktısı (boş ayar): ALTIN. Yeni alanlar ayrı sınanır.
 GOLDEN_DEFAULT = {
-    "enabled": False, "tick_seconds": 120, "tour_minutes": 15, "max_active": 4, "max_starts_per_tick": 1,
+    "enabled": False, "tick_seconds": 120, "tour_minutes": 15, "tour_retry_minutes": 5, "max_active": 4, "max_starts_per_tick": 1,
     "idle_minutes": 10, "review_minutes": 90, "stop_idle_minutes": 45, "ho_grace_minutes": 15,
     "history_warn_at": 1900, "history_min_age_minutes": 15, "context_warn_tokens_fable": 150000,
     "context_warn_tokens": 300000, "brain_cli": "claude", "brain_model": "", "brain_effort": "high",
