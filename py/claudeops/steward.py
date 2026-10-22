@@ -2148,7 +2148,7 @@ def context_threshold(cfg: "Config", model: str) -> int:
 SHUTDOWN_QUIET_SECONDS = 60.0          # ana transkript + alt ajanlar bu kadar sessizse "iş bitti"
 SHUTDOWN_WAIT_MAX_SECONDS = 45 * 60    # iş bitmezse bu süreden sonra oturum AÇIK bırakılır (zorlanmaz)
 SHUTDOWN_HO_MAX_SECONDS = 10 * 60      # devir cevabı gelmezse oturum AÇIK bırakılır
-_SD_TERMINAL = ("closed", "gone", "busy_left", "ho_timeout")
+_SD_TERMINAL = ("closed", "kept", "gone", "busy_left", "ho_timeout")
 
 
 def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Dict[str, Any], cfg: Config, now: float,
@@ -2160,6 +2160,7 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
     devir almaz, bekleme süresi dolarsa `busy_left` olur. SAF."""
     blockers = blockers or {}
     sd = json.loads(json.dumps(sd or {}))
+    modes: Dict[str, str] = sd.get("modes") or {}      # {oturum adı: "stop"|"keep"}; yoksa "stop"
     sd.setdefault("started", now)
     items: Dict[str, Dict[str, Any]] = sd.setdefault("items", {})
     by_name = {v.name: v for v in views}
@@ -2202,8 +2203,11 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
         elif it["stage"] == "ho":
             ready = READY_FOR_HANDOVER in (v.last_assistant or "") and v.last_activity >= float(it["at"])
             if ready and v.busy is not True:
-                actions.append(Action("stop", name, "shutdown"))
-                it["stage"], it["at"] = "closed", now
+                if modes.get(name) == "keep":      # devir alındı, oturum AÇIK kalır (yalnız dur)
+                    it["stage"], it["at"] = "kept", now
+                else:
+                    actions.append(Action("stop", name, "shutdown"))
+                    it["stage"], it["at"] = "closed", now
             elif now - float(it["at"]) >= SHUTDOWN_HO_MAX_SECONDS:
                 it["stage"], it["at"] = "ho_timeout", now
 

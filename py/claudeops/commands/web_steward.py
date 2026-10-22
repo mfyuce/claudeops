@@ -2537,7 +2537,7 @@ def passive_scan(sid: str = "default", *, views: Optional[List[sw.SessionView]] 
 
 # ── kontrollü kapatma (`py/cops steward shutdown`) ────────────────────────────
 
-def shutdown_start(sid: str = "default", *, stop_loop: bool = True) -> Dict[str, Any]:
+def shutdown_start(sid: str = "default", *, stop_loop: bool = True, modes: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """Kapatmayı başlat: döngüyü kapat (yeni iş/direktif/açılış olmasın) ve `state["shutdown"]` yaz. Adımları döngü her
     tick'te `shutdown_tick` ile ilerletir (kapalı kimlikte de çalışır). Zaten sürüyorsa yeniden başlatmaz."""
     from ..settings import save_settings
@@ -2547,6 +2547,9 @@ def shutdown_start(sid: str = "default", *, stop_loop: bool = True) -> Dict[str,
         if state.get("shutdown") and not state["shutdown"].get("done"):
             return {"ok": True, "already": True, "shutdown": state["shutdown"]}
         state["shutdown"] = {"started": time.time(), "items": {}}
+        keep = {str(n): "keep" for n, m in (modes or {}).items() if m == "keep"}     # yalnız "keep" anlamlı; gerisi "stop"
+        if keep:
+            state["shutdown"]["modes"] = keep
         sw.save_state(state, ctx.paths)
     if stop_loop:
         save_settings({"steward": {"enabled": "off"}} if sid == "default" else {"stewards": {sid: {"enabled": "off"}}})
@@ -2630,7 +2633,8 @@ def http_shutdown(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         sd = sw.load_state(sid).get("shutdown") or {}
         return {"ok": True, "shutdown": sd, "items": {n: i.get("stage") for n, i in (sd.get("items") or {}).items()},
                 "done": bool(sd.get("done"))}
-    return shutdown_start(sid)
+    raw = data.get("modes")
+    return shutdown_start(sid, modes=raw if isinstance(raw, dict) else None)
 
 
 def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:

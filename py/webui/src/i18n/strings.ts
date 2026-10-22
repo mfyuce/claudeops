@@ -543,6 +543,10 @@ export interface Strings {
   stewardCtlTour: string;
   stewardCtlShutdown: string;
   stewardCtlShutdownConfirm: string;
+  stewardShutdownKeepHint: string;
+  stewardShutdownKeepLabel: string;
+  stewardShutdownGo: string;
+  stewardShutdownCancel: string;
   stewardSettingsTitle: string;
   stewardSetTick: string;
   stewardSetTour: string;
@@ -1235,6 +1239,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardCtlTour: "Şimdi tur",
     stewardCtlShutdown: "Kontrollü kapat",
     stewardCtlShutdownConfirm: "Proje oturumları işi bitirince devir alıp durdurulur, sonra beyin kapanır. Başlatılsın mı?",
+    stewardShutdownKeepHint: "Her oturum işi bitince devir alır. İşaretli oturumlar devirden sonra AÇIK kalır (yalnız durur); işaretsizler kapatılır.",
+    stewardShutdownKeepLabel: "açık kalsın",
+    stewardShutdownGo: "Kapatmayı başlat",
+    stewardShutdownCancel: "Vazgeç",
     stewardSettingsTitle: "Ayarlar",
     stewardSetTick: "tick (sn)",
     stewardSetTour: "tur aralığı (dk)",
@@ -1928,6 +1936,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardCtlTour: "Tour now",
     stewardCtlShutdown: "Controlled shutdown",
     stewardCtlShutdownConfirm: "Project sessions hand over and stop when done, then the brain stops. Start it?",
+    stewardShutdownKeepHint: "Each session hands over when its work is done. Checked sessions stay OPEN after the handover (they only pause); unchecked ones are closed.",
+    stewardShutdownKeepLabel: "keep open",
+    stewardShutdownGo: "Start shutdown",
+    stewardShutdownCancel: "Cancel",
     stewardSettingsTitle: "Settings",
     stewardSetTick: "tick (s)",
     stewardSetTour: "tour interval (min)",

@@ -176,6 +176,8 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
   const [ideaText, setIdeaText] = useState("");
   const [exportTarget, setExportTarget] = useState<"project" | "all">("project");
   const [busy, setBusy] = useState(false);
+  const [shutdownOpen, setShutdownOpen] = useState(false);
+  const [keepSet, setKeepSet] = useState<Set<string>>(new Set());
   const [pickedSid, setPickedSid] = useState(readSid);
 
   // Identity rows (multi-steward, P6). One identity (or an older backend without the slice) = no picker, UI as before.
@@ -311,13 +313,42 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
           type="button"
           className="retire"
           disabled={busy}
-          onClick={() => {
-            if (window.confirm(t.stewardCtlShutdownConfirm)) void run(() => apiStewardShutdown(sid));
-          }}
+          onClick={() => setShutdownOpen((o) => !o)}
         >
           {t.stewardCtlShutdown}
         </button>
       </div>
+      {shutdownOpen && (
+        <div className="opts" style={{ flexDirection: "column", alignItems: "flex-start", gap: ".3rem" }}>
+          <span className="opts-hint">{t.stewardCtlShutdownConfirm}</span>
+          <span className="opts-hint">{t.stewardShutdownKeepHint}</span>
+          {(state?.projects || []).filter((p) => p.running).map((p) => (
+            <label key={p.name}>
+              <input
+                type="checkbox"
+                checked={keepSet.has(p.name)}
+                onChange={(e) => setKeepSet((cur) => { const n = new Set(cur); if (e.target.checked) n.add(p.name); else n.delete(p.name); return n; })}
+              />{" "}
+              {p.name} · {t.stewardShutdownKeepLabel}
+            </label>
+          ))}
+          <span>
+            <button
+              type="button"
+              className="retire"
+              disabled={busy}
+              onClick={() => {
+                const keep = (state?.projects || []).filter((p) => p.running && keepSet.has(p.name)).map((p) => p.session?.name ?? p.name);
+                setShutdownOpen(false);
+                void run(() => apiStewardShutdown(sid, keep));
+              }}
+            >
+              {t.stewardShutdownGo}
+            </button>{" "}
+            <button type="button" onClick={() => setShutdownOpen(false)}>{t.stewardShutdownCancel}</button>
+          </span>
+        </div>
+      )}
       <details>
         <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardSettingsTitle}</summary>
         <div className="opts" style={{ marginTop: ".4rem" }}>

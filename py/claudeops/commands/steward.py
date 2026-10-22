@@ -603,7 +603,11 @@ def cmd_shutdown(args) -> int:
     """Kontrollü kapatma: döngü kapanır; sonra servis (web) her tick'te proje oturumlarını SIRAYLA bitirir: iş sessizleşince
     devir mesajı → asistan "READY FOR HANDOVER" deyince durdur → en sonda beyin. İş bitmeyen/cevap vermeyen oturum
     AÇIK bırakılır. `--status` ilerlemeyi gösterir; `py/cops steward up` geri açar."""
-    res = _api(args.port, "POST", "/api/steward/shutdown", {"status": True} if args.status else {}, args.sid)
+    body: dict = {"status": True} if args.status else {}
+    keep = [n for n in (args.keep or "").split(",") if n.strip()]
+    if keep:
+        body["modes"] = {n.strip(): "keep" for n in keep}
+    res = _api(args.port, "POST", "/api/steward/shutdown", body, args.sid)
     if not res.get("ok"):
         print(json.dumps(res, ensure_ascii=False))
         return 1
@@ -748,6 +752,7 @@ def register(sub):
     psd = s.add_parser("shutdown", help="kontrollü kapatma: kapat → işi bitir → devir → durdur (önce projeler, sonra beyin)")
     psd.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     psd.add_argument("--status", action="store_true")
+    psd.add_argument("--keep", default="", help="virgüllü oturum adları: devir alınır ama oturum AÇIK kalır (yalnız dur)")
     psd.set_defaults(func=cmd_shutdown)
     pup = s.add_parser("up", help="tek komutla aç: on + models.tsv'de # CLOSED satırlarını geri aç + beyni başlat")
     pup.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)

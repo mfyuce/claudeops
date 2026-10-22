@@ -1957,6 +1957,27 @@ class TourDeliveryTest(unittest.TestCase):
             self.assertFalse(os.path.exists(paths[0]))
 
 
+class ShutdownKeepModeTest(unittest.TestCase):
+    """Oturum başına "keep": devir alınır, oturum durdurulmaz (stage kept); "stop"/modes yoksa eski davranış."""
+
+    def _ready(self, modes):
+        v = _view("ncs", last_activity=100.0)
+        projects = {"ncs": sw.Project(name="ncs")}
+        _a, sd, _d = sw.plan_shutdown([v], projects, {"modes": modes} if modes else {}, _cfg(), 1000.0)
+        v2 = _view("ncs", last_activity=1500.0, last_assistant=sw.READY_FOR_HANDOVER)
+        return sw.plan_shutdown([v2], projects, sd, _cfg(), 1600.0)
+
+    def test_keep_does_not_stop(self):
+        acts, sd, _d = self._ready({"ncs": "keep"})
+        self.assertEqual(acts, [])
+        self.assertEqual(sd["items"]["ncs"]["stage"], "kept")
+
+    def test_default_stops(self):
+        acts, sd, _d = self._ready(None)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("stop", "ncs")])
+        self.assertEqual(sd["items"]["ncs"]["stage"], "closed")
+
+
 class ShutdownBlockersTest(unittest.TestCase):
     """Sessizlik tek başına "iş bitti" değildir: açık varaka işi bekleyen oturum devir almaz."""
 
