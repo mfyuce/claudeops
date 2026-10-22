@@ -1001,8 +1001,12 @@ def _remote_raw_card(host: str, name: str, budget: float) -> Optional[Dict[str, 
 
 def context_tokens_for(cwd: str, sid: Optional[str]) -> Optional[int]:
     """Claude transkriptinin SON asistan turunun bağlam boyutu: girdi + cache okuma + cache yazma token'ı (her
-    turda yeniden okunan bağlamın boyutu). Dosyanın yalnız sonundan okur (~256 KB); bulunamazsa None."""
+    turda yeniden okunan bağlamın boyutu). Dosyanın yalnız sonundan okur (~256 KB); bulunamazsa None.
+    sid bilinmiyorsa None (bilinmiyor): mtime tahmini ortak cwd'de BAŞKA konuşmanın transkriptini döndürüp taze oturumu
+    sahte eşik aşımıyla devir döngüsüne sokmuştu (2026-10-22, ucli: 98K'lık oturuma 312K)."""
     from ..providers.claude_provider import jsonl_path_for
+    if not sid:
+        return None
     path = jsonl_path_for(cwd, sid)
     if not path or not os.path.isfile(path):
         return None

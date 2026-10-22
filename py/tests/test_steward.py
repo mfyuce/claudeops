@@ -1074,6 +1074,9 @@ class OneLiveSessionPerProjectTest(_Tmp):
             self.assertEqual(web_steward.context_tokens_for("/x", "sid"), 400205)
         with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: None):
             self.assertIsNone(web_steward.context_tokens_for("/x", "sid"))
+        # sid bilinmiyorsa mtime tahmini YOK: başka konuşmanın transkripti sahte eşik aşımı üretmişti
+        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: path):
+            self.assertIsNone(web_steward.context_tokens_for("/x", None))
 
 
 class StuckBrainTest(_Tmp):
