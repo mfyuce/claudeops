@@ -3842,7 +3842,81 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _human_only(data: Dict[str, Any], what: str) -> Optional[Dict[str, Any]]:
+    return {"ok": False, "error": f"brain cannot {what}"} if data.get("actor") == "brain" else None
+
+
+def http_identity_create(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Yeni kimlik (CLI `steward create`): KAPALI + observe. Kimlik adı `target` alanında (`steward` alanı MEVCUT kimliği seçer)."""
+    if (d := _human_only(data, "create a steward")):
+        return d
+    from ..settings import save_settings
+    new = str(data.get("target") or "").strip()
+    if not sw.valid_custom_id(new):
+        return {"ok": False, "error": f"invalid steward id {new!r}: ^[a-z]{{2,16}}$, not reserved, not 'degnekci*'"}
+    if new in steward_ids():
+        return {"ok": False, "error": f"steward {new!r} already exists"}
+    label = str(data.get("label") or "")
+    save_settings({"stewards": {new: {"label": label, "enabled": "off", "mode": "observe"}}})
+    os.makedirs(sw.paths_for(new).root, exist_ok=True)
+    sw.log_event("create", paths=new, label=label, source="ui")
+    return {"ok": True, "id": new}
+
+
+def http_identity_remove(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Kimliği sil (CLI `steward remove`): `default` silinmez; projesi ya da çalışan beyni varsa reddedilir. Dizin `.removed/`a taşınır."""
+    if (d := _human_only(data, "remove a steward")):
+        return d
+    from ..settings import save_settings
+    target = str(data.get("target") or "").strip()
+    if target == "default":
+        return {"ok": False, "error": "'default' cannot be removed"}
+    if target not in steward_ids():
+        return {"ok": False, "error": f"unknown steward {target!r}"}
+    brain = sw.brain_name_for(target)
+    if _running(brain) is not None:
+        return {"ok": False, "error": f"brain session {brain!r} is running; stop it first"}
+    with sw.ownership_lock():
+        names = sorted(sw.load_projects(target))
+        if names:
+            return {"ok": False, "error": f"steward {target!r} still has projects: {', '.join(names[:8])}; transfer them first"}
+        root = sw.paths_for(target).root
+        dest = ""
+        if os.path.isdir(root):
+            dest = os.path.join(os.path.dirname(root), ".removed", f"{target}-{time.strftime('%Y%m%d_%H%M%S')}")
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.move(root, dest)
+    save_settings({"stewards": {target: None}})
+    sw.log_event("remove", paths="default", target=target, source="ui")
+    return {"ok": True, "removed": target, "dir": dest}
+
+
+def http_identity_transfer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Projeyi başka kimliğe devret (CLI `steward transfer`): oturum çalışıyorsa reddedilir (`force` ile geçilir)."""
+    if (d := _human_only(data, "transfer a project")):
+        return d
+    name = str(data.get("project") or "").strip()
+    to = str(data.get("to") or "").strip()
+    if not name or to not in steward_ids():
+        return {"ok": False, "error": f"project and a known target steward required (known: {', '.join(steward_ids())})"}
+    if not data.get("force"):
+        src = sw.project_owner(name)
+        projects = sw.load_projects(src) if src else {}
+        for s in find_sessions(measure_cpu=False):
+            p = _project_for_session(s.name, projects) if projects else None
+            if (p is not None and p.name == name) or s.name == name:
+                return {"ok": False, "error": f"session {s.name!r} is running; stop it first", "running": s.name}
+    try:
+        src = sw.transfer_project(name, to)
+    except (ValueError, sw.LockTimeout) as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "project": name, "from": src, "to": to}
+
+
 POST_PATHS = {
+    "/api/steward/identity/create": http_identity_create,
+    "/api/steward/identity/remove": http_identity_remove,
+    "/api/steward/identity/transfer": http_identity_transfer,
     "/api/steward/project": http_project_upsert,
     "/api/steward/project/remove": http_project_remove,
     "/api/steward/register": http_register,

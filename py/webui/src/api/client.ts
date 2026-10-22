@@ -632,6 +632,12 @@ export const apiStewardShutdown = (sid?: string, keep: string[] = []): Promise<S
     ...(keep.length ? { modes: Object.fromEntries(keep.map((n) => [n, "keep"])) } : {}),
     ...stewardBody(sid),
   });
+export const apiStewardIdentityCreate = (target: string, label = ""): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/identity/create", { target, label });
+export const apiStewardIdentityRemove = (target: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/identity/remove", { target });
+export const apiStewardIdentityTransfer = (project: string, to: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/identity/transfer", { project, to });
 export const apiStewardProjectSet = (name: string, fields: Record<string, string | number>, sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/project", { name, ...fields, ...stewardBody(sid) });
 

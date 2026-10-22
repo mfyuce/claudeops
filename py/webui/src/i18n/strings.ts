@@ -547,6 +547,19 @@ export interface Strings {
   stewardShutdownKeepLabel: string;
   stewardShutdownGo: string;
   stewardShutdownCancel: string;
+  stewardIdTitle: string;
+  stewardIdCreateHint: string;
+  stewardIdNewPlaceholder: string;
+  stewardIdLabelPlaceholder: string;
+  stewardIdCreate: string;
+  stewardIdRemove: string;
+  stewardIdRemoveConfirm: string;
+  stewardIdDefaultKeep: string;
+  stewardIdTransfer: string;
+  stewardIdTransferHint: string;
+  stewardIdProject: string;
+  stewardIdTo: string;
+  stewardIdDone: string;
   stewardSettingsTitle: string;
   stewardSetTick: string;
   stewardSetTour: string;
@@ -1243,6 +1256,19 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardShutdownKeepLabel: "açık kalsın",
     stewardShutdownGo: "Kapatmayı başlat",
     stewardShutdownCancel: "Vazgeç",
+    stewardIdTitle: "Kimlik yönetimi",
+    stewardIdCreateHint: "Yeni kimlik KAPALI ve observe kipinde açılır (2-16 küçük harf).",
+    stewardIdNewPlaceholder: "kimlik adı",
+    stewardIdLabelPlaceholder: "etiket (isteğe bağlı)",
+    stewardIdCreate: "Oluştur",
+    stewardIdRemove: "Bu kimliği sil",
+    stewardIdRemoveConfirm: "Kimlik silinsin mi? Dizini .removed/ altına taşınır; projesi ya da çalışan beyni varsa reddedilir.",
+    stewardIdDefaultKeep: "'default' silinemez.",
+    stewardIdTransfer: "Projeyi devret",
+    stewardIdTransferHint: "Oturum çalışırken devredilmez; önce durdurun.",
+    stewardIdProject: "proje",
+    stewardIdTo: "hedef kimlik",
+    stewardIdDone: "Tamam",
     stewardSettingsTitle: "Ayarlar",
     stewardSetTick: "tick (sn)",
     stewardSetTour: "tur aralığı (dk)",
@@ -1940,6 +1966,19 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardShutdownKeepLabel: "keep open",
     stewardShutdownGo: "Start shutdown",
     stewardShutdownCancel: "Cancel",
+    stewardIdTitle: "Identity management",
+    stewardIdCreateHint: "A new identity starts OFF in observe mode (2-16 lowercase letters).",
+    stewardIdNewPlaceholder: "identity id",
+    stewardIdLabelPlaceholder: "label (optional)",
+    stewardIdCreate: "Create",
+    stewardIdRemove: "Remove this identity",
+    stewardIdRemoveConfirm: "Remove this identity? Its folder moves to .removed/; refused if it has projects or a running brain.",
+    stewardIdDefaultKeep: "'default' cannot be removed.",
+    stewardIdTransfer: "Transfer project",
+    stewardIdTransferHint: "A running session blocks a transfer; stop it first.",
+    stewardIdProject: "project",
+    stewardIdTo: "target identity",
+    stewardIdDone: "Done",
     stewardSettingsTitle: "Settings",
     stewardSetTick: "tick (s)",
     stewardSetTour: "tour interval (min)",

@@ -55,5 +55,60 @@ class UiConfigTest(_Tmp):
         self.assertFalse(ws.steward_config("default").enabled)
 
 
+class UiIdentityTest(_Tmp):
+    """Kimlik create/remove/transfer uçları (CLI mantığının HTTP karşılığı)."""
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        self._p = mock.patch.object(ws, "find_sessions", lambda **kw: [])
+        self._p.start()
+        self.addCleanup(self._p.stop)
+
+    def test_create_validates_and_opens_off_observe(self):
+        for bad in ("", "default", "A1", "degnekciz", "x"):
+            self.assertFalse(ws.http_identity_create({"target": bad})["ok"], bad)
+        self.assertTrue(ws.http_identity_create({"target": "kitap", "label": "Kitaplar"})["ok"])
+        cfg = ws.steward_config("kitap")
+        self.assertFalse(cfg.enabled)
+        self.assertEqual(cfg.mode, "observe")
+        self.assertFalse(ws.http_identity_create({"target": "kitap"})["ok"])      # zaten var
+
+    def test_brain_cannot_manage_identities(self):
+        for fn, body in ((ws.http_identity_create, {"target": "kitap"}), (ws.http_identity_remove, {"target": "kitap"}),
+                         (ws.http_identity_transfer, {"project": "a", "to": "kitap"})):
+            self.assertFalse(fn(dict(body, actor="brain"))["ok"])
+
+    def test_remove_refuses_default_unknown_and_nonempty(self):
+        self.assertFalse(ws.http_identity_remove({"target": "default"})["ok"])
+        self.assertFalse(ws.http_identity_remove({"target": "nope"})["ok"])
+        ws.http_identity_create({"target": "kitap"})
+        sw.save_projects({"ncs": sw.Project(name="ncs")}, "kitap")
+        r = ws.http_identity_remove({"target": "kitap"})
+        self.assertFalse(r["ok"])
+        self.assertIn("ncs", r["error"])
+
+    def test_remove_empty_identity(self):
+        ws.http_identity_create({"target": "kitap"})
+        self.assertTrue(ws.http_identity_remove({"target": "kitap"})["ok"])
+        self.assertNotIn("kitap", ws.steward_ids())
+
+    def test_transfer_moves_project_and_refuses_running(self):
+        from unittest import mock
+        ws.http_identity_create({"target": "kitap"})
+        sw.save_projects({"ncs": sw.Project(name="ncs")}, "default")
+        self.assertFalse(ws.http_identity_transfer({"project": "ncs", "to": "nope"})["ok"])
+        fake = mock.Mock()
+        fake.name = "ncs"
+        with mock.patch.object(ws, "find_sessions", lambda **kw: [fake]):
+            r = ws.http_identity_transfer({"project": "ncs", "to": "kitap"})
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["running"], "ncs")
+        r = ws.http_identity_transfer({"project": "ncs", "to": "kitap"})
+        self.assertTrue(r["ok"], r)
+        self.assertIn("ncs", sw.load_projects("kitap"))
+        self.assertNotIn("ncs", sw.load_projects("default"))
+
+
 if __name__ == "__main__":
     unittest.main()

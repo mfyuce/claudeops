@@ -19,6 +19,9 @@ import {
   apiStewardIdeaUpdate,
   apiStewardProjectSet,
   apiStewardShutdown,
+  apiStewardIdentityCreate,
+  apiStewardIdentityRemove,
+  apiStewardIdentityTransfer,
   apiStewardTick,
   apiStewardTour,
   getStewardState,
@@ -178,6 +181,10 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
   const [busy, setBusy] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [keepSet, setKeepSet] = useState<Set<string>>(new Set());
+  const [newId, setNewId] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [xferProject, setXferProject] = useState("");
+  const [xferTo, setXferTo] = useState("");
   const [pickedSid, setPickedSid] = useState(readSid);
 
   // Identity rows (multi-steward, P6). One identity (or an older backend without the slice) = no picker, UI as before.
@@ -434,6 +441,60 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
           >
             {t.stewardAskBtn}
           </button>
+        </div>
+      </details>
+
+      <details>
+        <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardIdTitle}</summary>
+        <div className="opts" style={{ marginTop: ".4rem", flexDirection: "column", alignItems: "flex-start", gap: ".4rem" }}>
+          <span className="opts-hint">{t.stewardIdCreateHint}</span>
+          <span>
+            <input value={newId} placeholder={t.stewardIdNewPlaceholder} onChange={(e) => setNewId(e.target.value.toLowerCase())} maxLength={16} />{" "}
+            <input value={newLabel} placeholder={t.stewardIdLabelPlaceholder} onChange={(e) => setNewLabel(e.target.value)} />{" "}
+            <button
+              type="button"
+              disabled={busy || !newId.trim()}
+              onClick={() => void run(() => apiStewardIdentityCreate(newId.trim(), newLabel.trim()), () => { setNewId(""); setNewLabel(""); showToast(t.stewardIdDone, "success"); })}
+            >
+              {t.stewardIdCreate}
+            </button>
+          </span>
+          <span className="opts-hint">{t.stewardIdTransferHint}</span>
+          <span>
+            <select value={xferProject} onChange={(e) => setXferProject(e.target.value)} aria-label={t.stewardIdProject}>
+              <option value="">{t.stewardIdProject}</option>
+              {(state?.projects || []).filter((p) => !p.running).map((p) => (
+                <option key={p.name} value={p.name}>{p.name}</option>
+              ))}
+            </select>{" "}
+            <select value={xferTo} onChange={(e) => setXferTo(e.target.value)} aria-label={t.stewardIdTo}>
+              <option value="">{t.stewardIdTo}</option>
+              {(rows || []).filter((x) => x.id !== sid).map((x) => (
+                <option key={x.id} value={x.id}>{x.label || x.id}</option>
+              ))}
+            </select>{" "}
+            <button
+              type="button"
+              disabled={busy || !xferProject || !xferTo}
+              onClick={() => void run(() => apiStewardIdentityTransfer(xferProject, xferTo), () => { setXferProject(""); showToast(t.stewardIdDone, "success"); })}
+            >
+              {t.stewardIdTransfer}
+            </button>
+          </span>
+          {sid === "default" ? (
+            <span className="opts-hint">{t.stewardIdDefaultKeep}</span>
+          ) : (
+            <button
+              type="button"
+              className="retire"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm(t.stewardIdRemoveConfirm)) void run(() => apiStewardIdentityRemove(sid), () => pick("default"));
+              }}
+            >
+              {t.stewardIdRemove}
+            </button>
+          )}
         </div>
       </details>
 
