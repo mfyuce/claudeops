@@ -14,12 +14,13 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from test_steward_engine_multi import _Engine  # noqa: E402
+from _no_real_review import NoRealReviewMixin  # noqa: E402
 from claudeops import settings, steward as sw  # noqa: E402
 from claudeops.commands import steward as cmd  # noqa: E402
 from claudeops.commands import web_steward as ws  # noqa: E402
 
 
-class _Generic(_Engine):
+class _Generic(NoRealReviewMixin, _Engine):
     def setUp(self):
         super().setUp()
         settings.save_settings({
@@ -62,7 +63,7 @@ class TestConfig(_Generic):
         self.assertEqual(settings.steward_config("default").role, "steward")
 
 
-class TestCreate(_Engine):
+class TestCreate(NoRealReviewMixin, _Engine):
     def test_http_create_with_role_generic(self):
         r = ws.http_identity_create({"target": "genel", "role": "generic"})
         self.assertEqual(r, {"ok": True, "id": "genel", "role": "generic"})

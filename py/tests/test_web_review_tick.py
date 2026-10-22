@@ -7,6 +7,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from test_steward_engine_multi import _Engine  # noqa: E402
+from _no_real_review import NoRealReviewMixin  # noqa: E402
 from claudeops import review as rv, settings, steward as sw  # noqa: E402
 from claudeops.commands import web_review as wr  # noqa: E402
 
@@ -15,7 +16,7 @@ T2 = rv.ReviewTarget("agy", "m2", "m2")
 NOW = 1_800_000_000.0
 
 
-class _Tick(_Engine):
+class _Tick(NoRealReviewMixin, _Engine):
     def setUp(self):
         super().setUp()
         self.settings()

@@ -11,6 +11,7 @@ from types import SimpleNamespace as NS
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from _no_real_review import NoRealReviewMixin  # noqa: E402
 from claudeops import review as rv  # noqa: E402
 from claudeops import steward as sw  # noqa: E402
 from claudeops.commands import web_review as wr  # noqa: E402
@@ -53,7 +54,7 @@ class FakeProc:
         return self.returncode
 
 
-class Base(unittest.TestCase):
+class Base(NoRealReviewMixin, unittest.TestCase):
     def setUp(self):
         FakeProc.instances = []
         self.tmp = tempfile.mkdtemp()

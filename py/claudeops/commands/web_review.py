@@ -244,14 +244,21 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         _REVIEW_LOCK.release()
 
 
+def _default_popen(*a: Any, **k: Any) -> Any:
+    """Üretimin süreç başlatıcısı. Ayrı bir ad: testler (`tests/_no_real_review.py`) bunu değiştirip gerçek süreç
+    başlamasını engeller."""
+    return subprocess.Popen(*a, **k)
+
+
 def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarget, *,
-            popen: Callable = subprocess.Popen, now: Callable[[], float] = time.time,
+            popen: Optional[Callable] = None, now: Callable[[], float] = time.time,
             ucli_bin: Optional[str] = None, agy_bin: Optional[str] = None, agy_log_dir: str = AGY_LOG_DIR,
             agy_models: Optional[List[str]] = None, provider: Any = None, api_key: Optional[str] = None,
             endpoint_fn: Optional[Callable[[], str]] = None, supports_flag: Optional[Callable[[str, str], bool]] = None,
             lang: str = "tr") -> Dict[str, Any]:
     """Bir (proje, mod, model) çiftinin review'ını arka plan thread'inde başlatır; hemen döner. Süreç genelinde aynı anda
     TEK iş (`_REVIEW_LOCK`); meşgulse `{"ok": False, "busy": True}`. Sonuç `review_history.json`a yazılır."""
+    popen = popen or _default_popen
     p = sw._pp(paths)
     key = rv.pair_key(project, target)
     if not _REVIEW_LOCK.acquire(blocking=False):

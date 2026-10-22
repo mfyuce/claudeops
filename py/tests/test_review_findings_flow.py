@@ -13,6 +13,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from test_steward_engine_multi import _Engine, _view  # noqa: E402
+from _no_real_review import NoRealReviewMixin  # noqa: E402
 from claudeops import review as rv, settings, steward as sw  # noqa: E402
 from claudeops.commands import steward as cli, web_review as wr, web_steward as ws  # noqa: E402
 
@@ -36,7 +37,7 @@ class FakeProc:
         return 0
 
 
-class _Flow(_Engine):
+class _Flow(NoRealReviewMixin, _Engine):
     def setUp(self):
         super().setUp()
         self.settings()
