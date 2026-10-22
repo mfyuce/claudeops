@@ -2622,6 +2622,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             if it["kind"] == "review":
                 reviewed_at[it["name"]] = now
     st["pending_items"] = len(items)
+    st["pending_list"] = [{"kind": str(it.get("kind") or ""), "name": str(it.get("name") or ""),
+                           "text": str(it.get("text") or "")[:300]} for it in items[:20]]
     st["ho_pending"] = ho_pending
     st["seen_assistant"] = seen
     if done_pending:

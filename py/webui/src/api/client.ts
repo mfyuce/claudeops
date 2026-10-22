@@ -619,4 +619,16 @@ export const apiStewardIdeaExport = (id: string, kind: "todo" | "tbd", target: "
   apiPost<SimpleResult>("/api/steward/idea/export", { id, kind, target, ...stewardBody(sid) });
 export const apiStewardTick = (sid?: string): Promise<StewardTickResult> =>
   apiPost<StewardTickResult>("/api/steward/tick", { ...stewardBody(sid) });
+export const apiStewardEnable = (enabled: boolean, sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/enable", { enabled, ...stewardBody(sid) });
+export const apiStewardConfig = (key: string, value: string | number, sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/config", { key, value, ...stewardBody(sid) });
+export const apiStewardBrain = (action: "start" | "stop", sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/brain", { action, ...stewardBody(sid) });
+export const apiStewardTour = (sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/tour", { ...stewardBody(sid) });
+export const apiStewardShutdown = (sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/shutdown", { ...stewardBody(sid) });
+export const apiStewardProjectSet = (name: string, fields: Record<string, string | number>, sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/project", { name, ...fields, ...stewardBody(sid) });
 

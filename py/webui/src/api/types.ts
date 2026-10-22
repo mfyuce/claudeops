@@ -921,6 +921,14 @@ export interface StewardProject {
   card_updated_at: number;
   /** Remote host (`hosts.json` name); "" or absent = local. */
   host?: string;
+  /** The project's running session (terminal target); absent when none is running. */
+  session?: { name: string; host: string };
+}
+
+export interface StewardPendingItem {
+  kind: string;
+  name: string;
+  text: string;
 }
 
 export interface StewardIdea {
@@ -941,6 +949,8 @@ export interface StewardStateResult {
   questions: StewardQuestion[];
   ideas: StewardIdea[];
   recent: StewardRecent[];
+  /** Items the engine will hand the brain on the next tour (last computed tick; may be absent on older backends). */
+  pending?: StewardPendingItem[];
   /** Present only when the identity has remote projects. */
   remote_hosts?: Record<string, StewardHostHealth>;
 }

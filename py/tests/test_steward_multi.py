@@ -52,7 +52,9 @@ def _cfg(**kw):
 
 
 def _ser(acts, st):
-    """Eylem listesi + state'in karşılaştırılabilir (JSON) biçimi."""
+    """Eylem listesi + state'in karşılaştırılabilir (JSON) biçimi. `pending_list` yalnız panelde gösterilen madde özeti
+    (altın kayıttan SONRA eklendi, davranışı etkilemez): karşılaştırmaya girmez."""
+    st = {k: v for k, v in st.items() if k != "pending_list"}
     return json.loads(json.dumps({"actions": [[a.kind, a.name, a.reason, a.payload] for a in acts], "state": st},
                                  sort_keys=True, default=str))
 

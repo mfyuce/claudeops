@@ -2796,12 +2796,27 @@ def http_state(sid: str = "default") -> Dict[str, Any]:
     for q in questions:       # uzak projenin sorusu host'u taşır (panel rozeti); yerelde alan HİÇ eklenmez
         if world.host_of(str(q.get("project") or "")):
             q["host"] = world.host_of(str(q["project"]))
+    session_of: Dict[str, Dict[str, str]] = {}      # proje adı -> {name, host}: panelde proje satırından terminali açmak için
+    for s_ in live:
+        pr = _project_for_session(s_.name, projects, world)
+        if pr is not None and pr.name not in session_of and not _name_host_in(s_.name, projects, world):
+            session_of[pr.name] = {"name": s_.name, "host": ""}
+    for r_ in remote_running:
+        pr = _project_for_session(str(r_.get("name") or ""), projects, world)
+        if pr is not None and pr.name not in session_of:
+            session_of[pr.name] = {"name": str(r_.get("name") or ""), "host": str(r_.get("host") or world.host_of(pr.name) or "")}
+    plist = []
+    for p_ in sorted(projects.values(), key=lambda p: (p.priority, p.name)):
+        d_ = _project_dict(p_, running_projects, cards)
+        if p_.name in session_of:
+            d_["session"] = session_of[p_.name]
+        plist.append(d_)
     out = {
         "ok": True,
         "config": dataclasses.asdict(cfg),
         "summary": summary(sid=sid),
-        "projects": [_project_dict(p, running_projects, cards)
-                     for p in sorted(projects.values(), key=lambda p: (p.priority, p.name))],
+        "pending": list(sw.load_state(paths).get("pending_list") or []),
+        "projects": plist,
         "running": [{"name": s.name, "cwd": s.cwd, "cli": s.cli, "model": s.model} for s in live] + remote_running,
         "questions": questions,
         "ideas": [dataclasses.asdict(i) for i in sw.load_ideas(paths) if i.status == "new"],
@@ -3568,6 +3583,52 @@ def http_skip(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return {"ok": True}
 
 
+# Panelden yazılabilen ayarlar (CLI `steward config` alt kümesi): alan -> (alt, üst) sınır. `mode` ayrıca doğrulanır.
+UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_retry_minutes": (1, 1440),
+                 "idle_minutes": (1, 1440), "review_minutes": (1, 10080), "stop_idle_minutes": (1, 10080),
+                 "max_active": (0, 20), "max_starts_per_tick": (0, 10)}
+
+
+def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Panelden `steward.<alan>` (ya da `stewards.<sid>.<alan>`) ayarı; CLI `config` ile aynı kurallar, dar alan listesi."""
+    if data.get("actor") == "brain":
+        return {"ok": False, "error": "brain cannot change steward settings"}
+    from ..settings import save_settings
+    field = str(data.get("key") or "")
+    value = data.get("value")
+    if field == "mode":
+        if value not in sw.MODES:
+            return {"ok": False, "error": "mode must be one of " + ", ".join(sw.MODES)}
+    elif field in UI_CONFIG_INT:
+        try:
+            n = int(value)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": f"{field} must be an integer"}
+        lo, hi = UI_CONFIG_INT[field]
+        if not lo <= n <= hi:
+            return {"ok": False, "error": f"{field} must be {lo}..{hi}"}
+        value = n
+    else:
+        return {"ok": False, "error": "unknown or not editable field: " + field}
+    if sid != "default" and field in sw.MACHINE_KEYS:
+        return {"ok": False, "error": f"{field} is machine-wide: set it on the default steward"}
+    save_settings({"steward": {field: value}} if sid == "default" else {"stewards": {sid: {field: value}}})
+    sw.log_event("config", paths=sid, key=field, value=value, source="ui")
+    return {"ok": True, "key": field, "value": getattr(steward_config(sid), field)}
+
+
+def http_enable(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Döngüyü aç/kapat (CLI `steward on|off`)."""
+    if data.get("actor") == "brain":
+        return {"ok": False, "error": "brain cannot enable or disable the steward"}
+    from ..settings import save_settings
+    on = bool(data.get("enabled"))
+    save_settings({"steward": {"enabled": "on" if on else "off"}} if sid == "default"
+                  else {"stewards": {sid: {"enabled": "on" if on else "off"}}})
+    sw.log_event("enable" if on else "disable", paths=sid, source="ui")
+    return {"ok": True, "enabled": on}
+
+
 def http_brain(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     action = str(data.get("action") or "start")
     cfg = steward_config(sid)
@@ -3794,6 +3855,8 @@ POST_PATHS = {
     "/api/steward/cards/refresh": http_cards_refresh,
     "/api/steward/job/submit": http_job_submit,
     "/api/steward/brain": http_brain,
+    "/api/steward/config": http_config,
+    "/api/steward/enable": http_enable,
     "/api/steward/shutdown": http_shutdown,
     "/api/steward/tick": lambda data, sid="default": tick_once("manual", sid),
     "/api/steward/tour": lambda data, sid="default": run_tour(force=True, cfg=steward_config(sid)),

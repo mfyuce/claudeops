@@ -380,3 +380,4 @@ button:disabled { opacity: .5; cursor: default; }
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .9), 0 0 0 3px rgba(0, 0, 0, .4);
   pointer-events: none;
 }
+button.linkbtn { background: none; border: 0; padding: 0; color: var(--accent, inherit); text-decoration: underline; cursor: pointer; font: inherit; }

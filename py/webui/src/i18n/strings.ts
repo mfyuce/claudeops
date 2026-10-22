@@ -536,6 +536,25 @@ export interface Strings {
   stewardNoTick: string;
   stewardBrain: string;
   stewardTickBtn: string;
+  stewardCtlEnable: string;
+  stewardCtlDisable: string;
+  stewardCtlBrainStart: string;
+  stewardCtlBrainStop: string;
+  stewardCtlTour: string;
+  stewardCtlShutdown: string;
+  stewardCtlShutdownConfirm: string;
+  stewardSettingsTitle: string;
+  stewardSetTick: string;
+  stewardSetTour: string;
+  stewardSetTourRetry: string;
+  stewardSetIdle: string;
+  stewardSetReview: string;
+  stewardSetMaxActive: string;
+  stewardPendingTitle: string;
+  stewardNoPending: string;
+  stewardColCadence: string;
+  stewardOpenTerminal: string;
+  stewardSaved: string;
   stewardStatQuestions: string;
   stewardStatIdeas: string;
   stewardStatPending: string;
@@ -1209,6 +1228,25 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardNoTick: "henüz tick yok",
     stewardBrain: "beyin",
     stewardTickBtn: "tick",
+    stewardCtlEnable: "Aç",
+    stewardCtlDisable: "Kapat",
+    stewardCtlBrainStart: "Beyni başlat",
+    stewardCtlBrainStop: "Beyni durdur",
+    stewardCtlTour: "Şimdi tur",
+    stewardCtlShutdown: "Kontrollü kapat",
+    stewardCtlShutdownConfirm: "Proje oturumları işi bitirince devir alıp durdurulur, sonra beyin kapanır. Başlatılsın mı?",
+    stewardSettingsTitle: "Ayarlar",
+    stewardSetTick: "tick (sn)",
+    stewardSetTour: "tur aralığı (dk)",
+    stewardSetTourRetry: "tur yeniden deneme (dk)",
+    stewardSetIdle: "boşta eşiği (dk)",
+    stewardSetReview: "review eşiği (dk)",
+    stewardSetMaxActive: "en çok aktif proje",
+    stewardPendingTitle: "Bekleyen maddeler (sonraki tur)",
+    stewardNoPending: "Bekleyen madde yok.",
+    stewardColCadence: "cadence (dk)",
+    stewardOpenTerminal: "Terminali aç",
+    stewardSaved: "Kaydedildi",
     stewardStatQuestions: "açık soru",
     stewardStatIdeas: "yeni fikir",
     stewardStatPending: "bekleyen madde",
@@ -1883,6 +1921,25 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardNoTick: "no tick yet",
     stewardBrain: "brain",
     stewardTickBtn: "tick",
+    stewardCtlEnable: "Enable",
+    stewardCtlDisable: "Disable",
+    stewardCtlBrainStart: "Start brain",
+    stewardCtlBrainStop: "Stop brain",
+    stewardCtlTour: "Tour now",
+    stewardCtlShutdown: "Controlled shutdown",
+    stewardCtlShutdownConfirm: "Project sessions hand over and stop when done, then the brain stops. Start it?",
+    stewardSettingsTitle: "Settings",
+    stewardSetTick: "tick (s)",
+    stewardSetTour: "tour interval (min)",
+    stewardSetTourRetry: "tour retry (min)",
+    stewardSetIdle: "idle threshold (min)",
+    stewardSetReview: "review threshold (min)",
+    stewardSetMaxActive: "max active projects",
+    stewardPendingTitle: "Pending items (next tour)",
+    stewardNoPending: "No pending items.",
+    stewardColCadence: "cadence (min)",
+    stewardOpenTerminal: "Open terminal",
+    stewardSaved: "Saved",
     stewardStatQuestions: "open questions",
     stewardStatIdeas: "new ideas",
     stewardStatPending: "pending items",

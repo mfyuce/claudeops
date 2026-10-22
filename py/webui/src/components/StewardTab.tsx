@@ -11,10 +11,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   apiStewardAnswer,
   apiStewardAsk,
+  apiStewardBrain,
+  apiStewardConfig,
+  apiStewardEnable,
   apiStewardIdea,
   apiStewardIdeaExport,
   apiStewardIdeaUpdate,
+  apiStewardProjectSet,
+  apiStewardShutdown,
   apiStewardTick,
+  apiStewardTour,
   getStewardState,
 } from "../api/client";
 import { describeApiError } from "../api/errors";
@@ -42,6 +48,41 @@ const tile: React.CSSProperties = {
 const card: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 8, padding: ".6rem .8rem", background: "var(--panel)" };
 
 const SID_KEY = "claudeops.steward.sid";
+
+const SETTING_FIELDS: { key: string; label: "stewardSetTick" | "stewardSetTour" | "stewardSetTourRetry" | "stewardSetIdle" | "stewardSetReview" | "stewardSetMaxActive" }[] = [
+  { key: "tick_seconds", label: "stewardSetTick" },
+  { key: "tour_minutes", label: "stewardSetTour" },
+  { key: "tour_retry_minutes", label: "stewardSetTourRetry" },
+  { key: "idle_minutes", label: "stewardSetIdle" },
+  { key: "review_minutes", label: "stewardSetReview" },
+  { key: "max_active", label: "stewardSetMaxActive" },
+];
+
+/** A number field that saves on Enter / blur when the value changed (the backend validates the range). */
+function NumberSetting({ label, value, width, onSave }: { label: string; value: number; width?: string; onSave: (n: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  function commit() {
+    const n = Number(text);
+    if (text.trim() !== "" && Number.isFinite(n) && n !== value) onSave(n);
+    else setText(String(value));
+  }
+  return (
+    <label className="opts-hint" style={{ display: "inline-flex", gap: ".3rem", alignItems: "center" }}>
+      {label}
+      <input
+        type="number"
+        value={text}
+        style={{ width: width ?? "5rem" }}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
+      />
+    </label>
+  );
+}
 
 function readSid(): string {
   try {
@@ -125,7 +166,7 @@ function QuestionCard({ q, sid, health, onAnswered }: { q: StewardQuestion; sid:
   );
 }
 
-export function StewardTab() {
+export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string, name: string) => void }) {
   const { t } = useLang();
   const { data, refresh } = useStatusContext();
   const [state, setState] = useState<StewardStateResult | null>(null);
@@ -248,6 +289,53 @@ export function StewardTab() {
       </div>
 
       <div className="opts">
+        <button type="button" disabled={busy} onClick={() => void run(() => apiStewardEnable(!s.enabled, sid))}>
+          {s.enabled ? t.stewardCtlDisable : t.stewardCtlEnable}
+        </button>
+        <select
+          value={s.mode}
+          disabled={busy}
+          aria-label="mode"
+          onChange={(e) => void run(() => apiStewardConfig("mode", e.target.value, sid))}
+        >
+          <option value="observe">observe</option>
+          <option value="act">act</option>
+        </select>
+        <button type="button" disabled={busy} onClick={() => void run(() => apiStewardBrain(s.brain?.running ? "stop" : "start", sid))}>
+          {s.brain?.running ? t.stewardCtlBrainStop : t.stewardCtlBrainStart}
+        </button>
+        <button type="button" disabled={busy} onClick={() => void run(() => apiStewardTour(sid))}>
+          {t.stewardCtlTour}
+        </button>
+        <button
+          type="button"
+          className="retire"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm(t.stewardCtlShutdownConfirm)) void run(() => apiStewardShutdown(sid));
+          }}
+        >
+          {t.stewardCtlShutdown}
+        </button>
+      </div>
+      <details>
+        <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardSettingsTitle}</summary>
+        <div className="opts" style={{ marginTop: ".4rem" }}>
+          {SETTING_FIELDS.map((f) => {
+            const v = Number((state?.config as Record<string, unknown> | undefined)?.[f.key]);
+            return Number.isFinite(v) ? (
+              <NumberSetting
+                key={f.key}
+                label={t[f.label]}
+                value={v}
+                onSave={(n) => void run(() => apiStewardConfig(f.key, n, sid), () => showToast(t.stewardSaved, "success"))}
+              />
+            ) : null;
+          })}
+        </div>
+      </details>
+
+      <div className="opts">
         <div style={tile}>
           <div style={{ fontSize: "1.4rem", fontWeight: 600 }}>{s.open_questions}</div>
           <div className="legend" style={{ margin: 0 }}>{t.stewardStatQuestions}</div>
@@ -318,6 +406,14 @@ export function StewardTab() {
         </div>
       </details>
 
+      <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardPendingTitle}</h3>
+      {state && (state.pending?.length ?? 0) === 0 && <span className="opts-hint">{t.stewardNoPending}</span>}
+      {state?.pending?.map((it, idx) => (
+        <div key={`${it.kind}-${it.name}-${idx}`} className="legend" style={{ margin: 0 }}>
+          <span className="cli-badge">{it.kind}</span> <b>{it.name}</b> {it.text}
+        </div>
+      ))}
+
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardProjectsTitle}</h3>
       {state && state.projects.length === 0 && <span className="opts-hint">{t.stewardNoProjects}</span>}
       {state && state.projects.length > 0 && (
@@ -328,6 +424,7 @@ export function StewardTab() {
                 <th>{t.stewardColProject}</th>
                 <th>{t.stewardColPhase}</th>
                 <th>{t.stewardColPriority}</th>
+                <th>{t.stewardColCadence}</th>
                 <th>{t.stewardColNext}</th>
                 <th>{t.stewardColVisit}</th>
               </tr>
@@ -337,7 +434,13 @@ export function StewardTab() {
                 <tr key={p.name}>
                   <td>
                     <span className={`dot ${p.running ? "on" : "off"}`} />
-                    {p.name}
+                    {p.session && onOpenTerminal ? (
+                      <button type="button" className="linkbtn" title={t.stewardOpenTerminal} onClick={() => onOpenTerminal(p.session?.host ?? "", p.session?.name ?? p.name)}>
+                        {p.name}
+                      </button>
+                    ) : (
+                      p.name
+                    )}
                     <HostBadge host={p.host} health={p.host ? state.remote_hosts?.[p.host] : undefined} />
                     {p.kind && p.kind !== "other" ? <span className="cli-badge" style={{ marginLeft: ".3rem" }}>{p.kind}</span> : null}
                   </td>
@@ -345,6 +448,14 @@ export function StewardTab() {
                     <span className="phase-badge">{p.phase}</span>
                   </td>
                   <td>{p.priority}</td>
+                  <td>
+                    <NumberSetting
+                      label=""
+                      width="4.5rem"
+                      value={p.cadence_minutes}
+                      onSave={(n) => void run(() => apiStewardProjectSet(p.name, { cadence_minutes: n }, sid), () => showToast(t.stewardSaved, "success"))}
+                    />
+                  </td>
                   <td className="cwd" title={p.goal}>
                     {p.next_step || p.goal || "—"}
                   </td>

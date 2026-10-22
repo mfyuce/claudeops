@@ -223,7 +223,7 @@ function AppShell() {
         {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} onView={onViewSession} />}
         {data && activeTab === "history" && <HistoryTab search={search} onView={onViewSession} />}
         {data && activeTab === "team" && <OrchTab selection={selection} />}
-        {data && activeTab === "steward" && <StewardTab />}
+        {data && activeTab === "steward" && <StewardTab onOpenTerminal={(host, name) => setOpenTerminalFor({ host: host || LOCAL_HOST, name })} />}
         {data && activeTab === "desktop" && <DesktopTab />}
         {data && activeTab === "snapshots" && <SnapshotSection />}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
