@@ -598,6 +598,8 @@ export interface Strings {
   stewardLogRefresh: string;
   stewardLogNone: string;
   stewardSdRunning: string;
+  stewardCtlUp: string;
+  stewardCtlUpHint: string;
   stewardCtlDrainOn: string;
   stewardCtlDrainOff: string;
   stewardDrainBanner: string;
@@ -1350,6 +1352,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardLogRefresh: "Yenile",
     stewardLogNone: "Kayıt yok.",
     stewardSdRunning: "Kontrollü kapatma sürüyor",
+    stewardCtlUp: "Hepsini aç",
+    stewardCtlUpHint: "Döngüyü açar, kapatılmış (# CLOSED) proje satırlarını geri açar, beyni başlatır.",
     stewardCtlDrainOn: "Yeni iş alma",
     stewardCtlDrainOff: "Yeni iş almayı aç",
     stewardDrainBanner: "Yeni iş alma kapalı: değnekçi oturum açmaz, beyin direktif veremez; çalışan işler, cevaplar ve devirler sürer.",
@@ -2103,6 +2107,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardLogRefresh: "Refresh",
     stewardLogNone: "No entries.",
     stewardSdRunning: "Controlled shutdown in progress",
+    stewardCtlUp: "Start everything",
+    stewardCtlUpHint: "Enables the loop, restores closed (# CLOSED) project rows and starts the brain.",
     stewardCtlDrainOn: "Stop taking new work",
     stewardCtlDrainOff: "Resume new work",
     stewardDrainBanner: "Draining: the steward opens no sessions and the brain cannot give directives; running work, answers and handovers continue.",

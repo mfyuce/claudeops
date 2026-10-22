@@ -19,6 +19,7 @@ import {
   apiStewardIdeaUpdate,
   apiStewardProjectSet,
   apiStewardShutdown,
+  apiStewardUp,
   apiStewardIdentityCreate,
   apiStewardIdentityRemove,
   apiStewardIdentityTransfer,
@@ -326,6 +327,9 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </select>
         <button type="button" disabled={busy} onClick={() => void run(() => apiStewardBrain(s.brain?.running ? "stop" : "start", sid))}>
           {s.brain?.running ? t.stewardCtlBrainStop : t.stewardCtlBrainStart}
+        </button>
+        <button type="button" disabled={busy} title={t.stewardCtlUpHint} onClick={() => void run(() => apiStewardUp(sid))}>
+          {t.stewardCtlUp}
         </button>
         <button type="button" disabled={busy} onClick={() => void run(() => apiStewardConfig("drain", draining ? "off" : "on", sid))}>
           {draining ? t.stewardCtlDrainOff : t.stewardCtlDrainOn}

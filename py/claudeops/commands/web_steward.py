@@ -3645,6 +3645,23 @@ def http_enable(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return {"ok": True, "enabled": on}
 
 
+def http_up(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Tek adımda aç (CLI `steward up`): döngüyü aç + projelerin `# CLOSED` models.tsv satırlarını geri aç + beyni başlat.
+    `no_brain` beyni atlar. YALNIZ insan (beyin kendini açamaz)."""
+    if (d := _human_only(data, "start the steward")):
+        return d
+    from ..settings import save_settings
+    from . import close as close_cmd
+    save_settings({"steward": {"enabled": "on"}} if sid == "default" else {"stewards": {sid: {"enabled": "on"}}})
+    sw.log_event("enable", paths=sid, source="ui_up")
+    restored = [n for n in sorted(sw.load_projects(sid)) if close_cmd.uncomment_models(n) == "restored"]
+    brain: Dict[str, Any] = {}
+    if not data.get("no_brain"):
+        with _ctx(sid).lock:
+            brain = brain_start(steward_config(sid))
+    return {"ok": True, "restored": restored, "brain": brain}
+
+
 def http_brain(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     action = str(data.get("action") or "start")
     cfg = steward_config(sid)
@@ -4013,6 +4030,7 @@ POST_PATHS = {
     "/api/steward/brain": http_brain,
     "/api/steward/config": http_config,
     "/api/steward/enable": http_enable,
+    "/api/steward/up": http_up,
     "/api/steward/shutdown": http_shutdown,
     "/api/steward/tick": lambda data, sid="default": tick_once("manual", sid),
     "/api/steward/tour": lambda data, sid="default": run_tour(force=True, cfg=steward_config(sid)),

@@ -64,6 +64,23 @@ class UiConfigTest(_Tmp):
         self.assertFalse(ws.steward_config("default").enabled)
 
 
+class UiUpTest(_Tmp):
+    def test_up_enables_restores_and_starts_brain_but_brain_cannot(self):
+        from unittest import mock
+        self.assertFalse(ws.http_up({"actor": "brain"})["ok"])
+        self.assertFalse(ws.steward_config("default").enabled)
+        sw.save_projects({"ncs": sw.Project(name="ncs"), "mkt": sw.Project(name="mkt")}, "default")
+        started = []
+        with mock.patch("claudeops.commands.close.uncomment_models", lambda n, dry_run=False: "restored" if n == "mkt" else "active"), \
+                mock.patch.object(ws, "brain_start", lambda cfg: started.append(cfg.brain_name) or {"ok": True}):
+            r = ws.http_up({})
+            self.assertEqual(r["restored"], ["mkt"])
+            self.assertEqual(started, ["degnekci"])
+            ws.http_up({"no_brain": True})
+            self.assertEqual(len(started), 1)
+        self.assertTrue(ws.steward_config("default").enabled)
+
+
 class UiShutdownStateTest(_Tmp):
     def test_state_exposes_shutdown_only_when_started(self):
         self.assertNotIn("shutdown", ws.http_state())
