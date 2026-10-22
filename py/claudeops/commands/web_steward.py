@@ -2826,6 +2826,11 @@ def http_state(sid: str = "default") -> Dict[str, Any]:
         "ideas": [dataclasses.asdict(i) for i in sw.load_ideas(paths) if i.status == "new"],
         "recent": ctx.recent,
     }
+    sd_ = sw.load_state(paths).get("shutdown")
+    if isinstance(sd_, dict) and sd_:                # kapatma hiç başlamadıysa anahtar HİÇ eklenmez (çıktı aynı)
+        out["shutdown"] = {"started": sd_.get("started"), "done": sd_.get("done"), "cancelled": bool(sd_.get("cancelled")),
+                           "items": {n: {"stage": i.get("stage"), "blocked": i.get("blocked", "")}
+                                     for n, i in (sd_.get("items") or {}).items() if isinstance(i, dict)}}
     if any(p.host for p in projects.values()):       # uzak proje yoksa anahtar HİÇ eklenmez (yerel çıktı aynı)
         out["remote_hosts"] = remote_health({p.host for p in projects.values() if p.host})
     return out

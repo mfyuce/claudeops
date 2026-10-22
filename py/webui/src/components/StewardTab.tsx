@@ -280,6 +280,16 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </div>
       )}
       {s && !s.enabled && <div className="warn-banner">{t.stewardOff}</div>}
+      {state?.shutdown && (
+        <div className="legend" style={{ margin: 0 }}>
+          <b>{state.shutdown.cancelled ? t.stewardSdCancelled : state.shutdown.done ? t.stewardSdDone : t.stewardSdRunning}</b>
+          {Object.entries(state.shutdown.items).map(([n, i]) => (
+            <span key={n} className="cli-badge" style={{ marginLeft: ".3rem" }} title={i.blocked || undefined}>
+              {n}: {i.stage}{i.blocked ? " ⚠" : ""}
+            </span>
+          ))}
+        </div>
+      )}
       {error && <div className="warn-banner">{error}</div>}
 
       {s && (

@@ -597,6 +597,9 @@ export interface Strings {
   stewardLogTitle: string;
   stewardLogRefresh: string;
   stewardLogNone: string;
+  stewardSdRunning: string;
+  stewardSdDone: string;
+  stewardSdCancelled: string;
   stewardSettingsTitle: string;
   stewardSetTick: string;
   stewardSetTour: string;
@@ -1343,6 +1346,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardLogTitle: "Olay günlüğü",
     stewardLogRefresh: "Yenile",
     stewardLogNone: "Kayıt yok.",
+    stewardSdRunning: "Kontrollü kapatma sürüyor",
+    stewardSdDone: "Kontrollü kapatma bitti",
+    stewardSdCancelled: "Kontrollü kapatma iptal edildi (değnekçi yeniden açıldı)",
     stewardSettingsTitle: "Ayarlar",
     stewardSetTick: "tick (sn)",
     stewardSetTour: "tur aralığı (dk)",
@@ -2090,6 +2096,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardLogTitle: "Event log",
     stewardLogRefresh: "Refresh",
     stewardLogNone: "No entries.",
+    stewardSdRunning: "Controlled shutdown in progress",
+    stewardSdDone: "Controlled shutdown finished",
+    stewardSdCancelled: "Controlled shutdown cancelled (steward re-enabled)",
     stewardSettingsTitle: "Settings",
     stewardSetTick: "tick (s)",
     stewardSetTour: "tour interval (min)",

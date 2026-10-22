@@ -55,6 +55,15 @@ class UiConfigTest(_Tmp):
         self.assertFalse(ws.steward_config("default").enabled)
 
 
+class UiShutdownStateTest(_Tmp):
+    def test_state_exposes_shutdown_only_when_started(self):
+        self.assertNotIn("shutdown", ws.http_state())
+        sw.save_state({"shutdown": {"started": 1.0, "items": {"ncs": {"stage": "ho", "at": 2.0, "blocked": "x"}}}}, "default")
+        got = ws.http_state()["shutdown"]
+        self.assertEqual(got["items"]["ncs"], {"stage": "ho", "blocked": "x"})
+        self.assertFalse(got["cancelled"])
+
+
 class UiIdentityTest(_Tmp):
     """Kimlik create/remove/transfer uçları (CLI mantığının HTTP karşılığı)."""
 
