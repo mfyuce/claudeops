@@ -43,7 +43,7 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .settings import load_settings
 
@@ -175,6 +175,7 @@ def build_chat_argv(
     api_key_env: str,
     with_mcp: bool,
     max_steps: Optional[int],
+    extra_args: Sequence[str] = (),
 ) -> list[str]:
     argv = [binary, "--root", root, "chat"]
     if repl:
@@ -191,6 +192,7 @@ def build_chat_argv(
         argv.append("--with-mcp")
     if max_steps is not None:
         argv += ["--max-steps", str(max_steps)]
+    argv += [str(a) for a in extra_args]   # çağıranın ek bayrakları (ör. reviewer: --max-io-mib); prompt'tan ÖNCE
     return argv
 
 
