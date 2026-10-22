@@ -638,6 +638,32 @@ export const apiStewardIdentityRemove = (target: string): Promise<SimpleResult> 
   apiPost<SimpleResult>("/api/steward/identity/remove", { target });
 export const apiStewardIdentityTransfer = (project: string, to: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/identity/transfer", { project, to });
+export interface StewardServiceRow {
+  name: string; url: string; match: string; label: string; token_file: string;
+  token_present: boolean; token_warning: string; open_jobs: number; default: boolean;
+}
+export interface StewardJobRow {
+  id: string | number; service: string; project?: string; kind?: string; state?: string; created_at?: number;
+  delivered?: boolean; result_summary?: string; approval_state?: string; error?: string; open: boolean; note?: string;
+}
+export const getStewardServices = (): Promise<SimpleResult & { services?: StewardServiceRow[] }> =>
+  apiGet<SimpleResult & { services?: StewardServiceRow[] }>("/api/steward/services");
+export const getStewardJobs = (sid?: string, state = "all", refresh = false): Promise<SimpleResult & { jobs?: StewardJobRow[] }> =>
+  apiGet<SimpleResult & { jobs?: StewardJobRow[] }>(
+    `/api/steward/jobs?state=${encodeURIComponent(state)}${refresh ? "&refresh=1" : ""}${sid && sid !== "default" ? `&steward=${encodeURIComponent(sid)}` : ""}`,
+  );
+export const getStewardJobKinds = (sid?: string): Promise<SimpleResult & { kinds?: unknown }> =>
+  apiGet<SimpleResult & { kinds?: unknown }>(`/api/steward/jobs?kinds=1${sid && sid !== "default" ? `&steward=${encodeURIComponent(sid)}` : ""}`);
+export const apiStewardServiceAdd = (name: string, url: string, token_file: string, match: string): Promise<SimpleResult & { warning?: string }> =>
+  apiPost<SimpleResult & { warning?: string }>("/api/steward/service/add", { name, url, token_file, match });
+export const apiStewardServiceRm = (name: string): Promise<SimpleResult> => apiPost<SimpleResult>("/api/steward/service/rm", { name });
+export const apiStewardJobAck = (id: string | number, service: string, sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/job/ack", { id, service, ...stewardBody(sid) });
+export const apiStewardJobSubmit = (
+  body: { project: string; kind: string; files: string[]; params: Record<string, unknown>; spec_text: string },
+  sid?: string,
+): Promise<SimpleResult & { awaiting_approval?: boolean }> =>
+  apiPost<SimpleResult & { awaiting_approval?: boolean }>("/api/steward/job/submit", { ...body, ...stewardBody(sid) });
 export const apiStewardProjectSet = (name: string, fields: Record<string, string | number>, sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/project", { name, ...fields, ...stewardBody(sid) });
 

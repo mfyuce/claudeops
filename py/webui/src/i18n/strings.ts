@@ -560,6 +560,31 @@ export interface Strings {
   stewardIdProject: string;
   stewardIdTo: string;
   stewardIdDone: string;
+  stewardSvcTitle: string;
+  stewardSvcHint: string;
+  stewardSvcNone: string;
+  stewardSvcName: string;
+  stewardSvcUrl: string;
+  stewardSvcTokenFile: string;
+  stewardSvcAdd: string;
+  stewardSvcRm: string;
+  stewardSvcRmConfirm: string;
+  stewardSvcOpenJobs: string;
+  stewardSvcNoToken: string;
+  stewardJobsTitle: string;
+  stewardJobsNone: string;
+  stewardJobsAll: string;
+  stewardJobsOpen: string;
+  stewardJobsPoll: string;
+  stewardJobsAck: string;
+  stewardJobsAwaiting: string;
+  stewardJobsSubmit: string;
+  stewardJobsKind: string;
+  stewardJobsFiles: string;
+  stewardJobsParams: string;
+  stewardJobsNote: string;
+  stewardJobsSubmitted: string;
+  stewardJobsBadJson: string;
   stewardSettingsTitle: string;
   stewardSetTick: string;
   stewardSetTour: string;
@@ -1269,6 +1294,31 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdProject: "proje",
     stewardIdTo: "hedef kimlik",
     stewardIdDone: "Tamam",
+    stewardSvcTitle: "Servisler (varaka)",
+    stewardSvcHint: "Makine geneli pasif servis kaydı. Token değeri girilmez, yalnız token DOSYASININ yolu.",
+    stewardSvcNone: "Kayıtlı servis yok.",
+    stewardSvcName: "ad",
+    stewardSvcUrl: "adres (http://…)",
+    stewardSvcTokenFile: "token dosyası yolu",
+    stewardSvcAdd: "Servis ekle",
+    stewardSvcRm: "Kaldır",
+    stewardSvcRmConfirm: "Servis kaydı silinsin mi?",
+    stewardSvcOpenJobs: "açık iş",
+    stewardSvcNoToken: "token dosyası YOK",
+    stewardJobsTitle: "İş kuyruğu",
+    stewardJobsNone: "İş yok.",
+    stewardJobsAll: "Hepsi",
+    stewardJobsOpen: "Açık",
+    stewardJobsPoll: "Şimdi yokla",
+    stewardJobsAck: "İletildi say",
+    stewardJobsAwaiting: "Onay varaka'da bir insan yöneticiden bekliyor; panelden onaylanmaz.",
+    stewardJobsSubmit: "İş gönder",
+    stewardJobsKind: "tür",
+    stewardJobsFiles: "dosyalar (virgülle, proje klasörüne göre)",
+    stewardJobsParams: "parametreler (JSON, isteğe bağlı)",
+    stewardJobsNote: "not (isteğe bağlı)",
+    stewardJobsSubmitted: "İş gönderildi",
+    stewardJobsBadJson: "Parametreler geçerli JSON değil",
     stewardSettingsTitle: "Ayarlar",
     stewardSetTick: "tick (sn)",
     stewardSetTour: "tur aralığı (dk)",
@@ -1979,6 +2029,31 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdProject: "project",
     stewardIdTo: "target identity",
     stewardIdDone: "Done",
+    stewardSvcTitle: "Services (varaka)",
+    stewardSvcHint: "Machine-wide passive service registry. No token value is entered, only the token FILE path.",
+    stewardSvcNone: "No registered service.",
+    stewardSvcName: "name",
+    stewardSvcUrl: "url (http://…)",
+    stewardSvcTokenFile: "token file path",
+    stewardSvcAdd: "Add service",
+    stewardSvcRm: "Remove",
+    stewardSvcRmConfirm: "Remove this service?",
+    stewardSvcOpenJobs: "open jobs",
+    stewardSvcNoToken: "token file MISSING",
+    stewardJobsTitle: "Job queue",
+    stewardJobsNone: "No jobs.",
+    stewardJobsAll: "All",
+    stewardJobsOpen: "Open",
+    stewardJobsPoll: "Poll now",
+    stewardJobsAck: "Mark delivered",
+    stewardJobsAwaiting: "Waiting for a human admin in varaka; it cannot be approved here.",
+    stewardJobsSubmit: "Submit job",
+    stewardJobsKind: "kind",
+    stewardJobsFiles: "files (comma-separated, relative to the project)",
+    stewardJobsParams: "params (JSON, optional)",
+    stewardJobsNote: "note (optional)",
+    stewardJobsSubmitted: "Job submitted",
+    stewardJobsBadJson: "Params are not valid JSON",
     stewardSettingsTitle: "Settings",
     stewardSetTick: "tick (s)",
     stewardSetTour: "tour interval (min)",

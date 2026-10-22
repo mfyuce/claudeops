@@ -27,6 +27,7 @@ import {
   getStewardState,
 } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { StewardJobs } from "./StewardJobs";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { showToast } from "../state/toast";
@@ -497,6 +498,8 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
           )}
         </div>
       </details>
+
+      <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} />
 
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardPendingTitle}</h3>
       {state && (state.pending?.length ?? 0) === 0 && <span className="opts-hint">{t.stewardNoPending}</span>}

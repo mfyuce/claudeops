@@ -3794,7 +3794,7 @@ def _unknown_steward() -> Dict[str, Any]:
 
 
 _GET_PATHS = frozenset(("state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
-                        "jobs"))
+                        "jobs", "services"))
 
 
 def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
@@ -3805,6 +3805,8 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return None
     if path == "/api/steward/list":
         return http_list()
+    if path == "/api/steward/services":
+        return http_services()
     try:
         sid = _ctx_for(qs).sid
     except UnknownSteward:
@@ -3913,7 +3915,71 @@ def http_identity_transfer(data: Dict[str, Any], sid: str = "default") -> Dict[s
     return {"ok": True, "project": name, "from": src, "to": to}
 
 
+def http_services() -> Dict[str, Any]:
+    """Kayıtlı pasif servisler (makine geneli). Token ASLA dönmez: yalnız dosya yolu + uyarı. `open_jobs`: TÜM kimliklerin açık işleri."""
+    open_by: Dict[str, int] = {}
+    for k in steward_ids():
+        for j in sj.load_jobs(sw.paths_for(k)):
+            if sj.is_open(j):
+                open_by[str(j.get("service") or "")] = open_by.get(str(j.get("service") or ""), 0) + 1
+    rows = []
+    for n, r in sorted(sj.load_services().items()):
+        tf = sj.token_file_path(r)
+        rows.append({"name": n, "url": r.get("url", ""), "match": r.get("match") or "prefix", "label": r.get("label") or n,
+                     "token_file": tf, "token_present": bool(tf) and os.path.isfile(tf),
+                     "token_warning": sj.token_file_warning(tf) if tf else "", "open_jobs": open_by.get(n, 0),
+                     "default": n == sj.default_service()})
+    return {"ok": True, "services": rows}
+
+
+def http_service_add(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Servis ekle (CLI `steward service add`): makine geneli, YALNIZ insan. Token değeri alınmaz, yalnız dosya yolu."""
+    if (d := _human_only(data, "register a service")):
+        return d
+    try:
+        rec = sj.add_service(str(data.get("name") or ""), str(data.get("url") or ""), str(data.get("token_file") or ""),
+                             str(data.get("match") or "prefix"), str(data.get("label") or ""))
+    except (ValueError, sw.LockTimeout) as e:
+        return {"ok": False, "error": str(e)}
+    sw.log_event("service_add", paths="default", name=str(data.get("name") or ""), source="ui")
+    tf = sj.token_file_path(rec)
+    return {"ok": True, "warning": sj.token_file_warning(tf) if tf else ""}
+
+
+def http_service_rm(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Servis sil: HERHANGİ bir kimlikte açık işi varsa reddedilir (sonuç iletimi kopardı)."""
+    if (d := _human_only(data, "remove a service")):
+        return d
+    name = str(data.get("name") or "").strip()
+    open_n = next((r["open_jobs"] for r in http_services()["services"] if r["name"] == name), 0)
+    if open_n:
+        return {"ok": False, "error": f"service {name!r} has {open_n} open job(s); wait for them to finish"}
+    try:
+        ok = sj.remove_service(name)
+    except sw.LockTimeout as e:
+        return {"ok": False, "error": str(e)}
+    if ok:
+        sw.log_event("service_rm", paths="default", name=name, source="ui")
+    return {"ok": ok} if ok else {"ok": False, "error": f"service {name!r} is not registered"}
+
+
+def http_job_ack(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Bitmiş işi iletildi say (CLI `steward jobs ack`): yerel işaret, varaka'ya yazılmaz; açık işe REDDEDİLİR."""
+    if (d := _human_only(data, "ack a job")):
+        return d
+    j = sj.find_job(sj.load_jobs(sid), str(data.get("id") or ""), str(data.get("service") or ""))
+    if j is None:
+        return {"ok": False, "error": "job not found"}
+    if j.get("state") not in sj.TERMINAL_STATES:
+        return {"ok": False, "error": f"job is still open ({j.get('state') or '?'})"}
+    sj.mark_delivered(j["id"], j.get("service") or "", "result", paths=sid)
+    return {"ok": True}
+
+
 POST_PATHS = {
+    "/api/steward/service/add": http_service_add,
+    "/api/steward/service/rm": http_service_rm,
+    "/api/steward/job/ack": http_job_ack,
     "/api/steward/identity/create": http_identity_create,
     "/api/steward/identity/remove": http_identity_remove,
     "/api/steward/identity/transfer": http_identity_transfer,

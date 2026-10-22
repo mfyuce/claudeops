@@ -110,5 +110,47 @@ class UiIdentityTest(_Tmp):
         self.assertNotIn("ncs", sw.load_projects("default"))
 
 
+class UiServiceJobTest(_Tmp):
+    """Servis ekle/sil/liste ve iş ack uçları; token değeri ASLA dönmez."""
+
+    def setUp(self):
+        super().setUp()
+        self.tok = os.path.join(self.dir.name, "t.token")
+        with open(self.tok, "w") as f:
+            f.write("SECRET-TOKEN-VALUE\n")
+        os.chmod(self.tok, 0o600)
+
+    def test_add_list_hides_token_and_rm(self):
+        r = ws.http_service_add({"name": "varaka", "url": "http://127.0.0.1:9", "token_file": self.tok})
+        self.assertTrue(r["ok"], r)
+        lst = ws.http_services()
+        self.assertEqual([x["name"] for x in lst["services"]], ["varaka"])
+        self.assertTrue(lst["services"][0]["token_present"])
+        self.assertNotIn("SECRET-TOKEN-VALUE", repr(lst))
+        self.assertFalse(ws.http_service_add({"name": "varaka", "url": "http://127.0.0.1:9", "token_file": self.tok})["ok"])
+        self.assertTrue(ws.http_service_rm({"name": "varaka"})["ok"])
+        self.assertFalse(ws.http_service_rm({"name": "varaka"})["ok"])
+
+    def test_add_validates_and_brain_refused(self):
+        for body in ({"name": "x1", "url": "ftp://h", "token_file": self.tok},
+                     {"name": "x2", "url": "http://h", "token_file": "/nope/token"}):
+            self.assertFalse(ws.http_service_add(body)["ok"], body)
+        self.assertFalse(ws.http_service_add({"name": "okay", "url": "http://h", "token_file": self.tok, "actor": "brain"})["ok"])
+        self.assertFalse(ws.http_service_rm({"name": "okay", "actor": "brain"})["ok"])
+        self.assertFalse(ws.http_job_ack({"id": "1", "actor": "brain"})["ok"])
+
+    def test_rm_refused_with_open_job_and_ack_only_terminal(self):
+        from claudeops import steward_jobs as sj
+        ws.http_service_add({"name": "varaka", "url": "http://127.0.0.1:9", "token_file": self.tok})
+        sj.save_record(sj.new_record("varaka", 7, "ncs", "embed", "running", "k1"), "default")
+        r = ws.http_service_rm({"name": "varaka"})
+        self.assertFalse(r["ok"])
+        self.assertIn("open job", r["error"])
+        self.assertFalse(ws.http_job_ack({"id": "7", "service": "varaka"})["ok"])          # açık iş: ack reddedilir
+        sj.save_record(sj.new_record("varaka", 8, "ncs", "embed", "done", "k2"), "default")
+        self.assertTrue(ws.http_job_ack({"id": "8", "service": "varaka"})["ok"])
+        self.assertFalse(ws.http_job_ack({"id": "99"})["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()
