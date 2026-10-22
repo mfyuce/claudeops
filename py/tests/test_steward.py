@@ -78,6 +78,15 @@ class StoreTest(_Tmp):
 
 
 class MarkerTest(unittest.TestCase):
+    def test_scan_markers_ignores_writing_examples(self):
+        txt = ("Protokol:\n- takıldın: `STEWARD-BLOCKED: <nerede takıldın>`\n> STEWARD-ASK: alıntı soru?\n"
+               "```\nSTEWARD-ASK: kod bloğundaki soru?\nSTEWARD-IDEA: kod fikri\n```\n"
+               "Takıldım: STEWARD-BLOCKED: <kullanıcı aksiyonu>`...\n")
+        m = sw.scan_markers(txt)
+        self.assertEqual((m["asks"], m["blocked"], m["ideas"]), ([], [], []))
+        m = sw.scan_markers("```\nx\n```\nSTEWARD-ASK: gerçek soru mu?\n- `STEWARD-IDEA: gerçek fikir`\n")
+        self.assertEqual((m["asks"], m["ideas"]), (["gerçek soru mu?"], ["gerçek fikir"]))
+
     def test_scan_markers_job_line(self):
         m = sw.scan_markers("bitti\n- STEWARD-JOB: import_registry REQUEST_x.md Cezîrî dipnotları\n")
         self.assertEqual(m["jobs"], ["import_registry REQUEST_x.md Cezîrî dipnotları"])

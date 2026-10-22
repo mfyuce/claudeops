@@ -1503,6 +1503,9 @@ def _unwrap_ticks(prefix: str, body: str) -> str:
 _JOB_BODY_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}\s+\S")   # '<tür> <dosya/açıklama>': tür küçük harf kimliği
 
 
+_PLACEHOLDER_BODY_RE = re.compile(r"^<[^<>\n]{1,80}>[\s`.…]*$")   # '<soru>' gibi YER TUTUCU: yazım örneği, gerçek soru değil
+
+
 def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool}. Satır başındaki madde/boşluk toleranslı;
@@ -1510,7 +1513,13 @@ def scan_markers(text: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "plan_ready": False, "done": False}
     if not text:
         return out
+    fenced = False
     for raw in text.splitlines():
+        if raw.strip().startswith("```"):      # kod bloğu içindeki işaret yazım örneğidir
+            fenced = not fenced
+            continue
+        if fenced or raw.lstrip().startswith(">"):     # kod bloğu / alıntı satırı
+            continue
         line = raw.strip().lstrip("-*• ").strip()
         if not line:
             continue
@@ -1519,6 +1528,8 @@ def scan_markers(text: str) -> Dict[str, Any]:
             idx = line.find(mark)
             if idx != -1:
                 body = _unwrap_ticks(line[:idx], line[idx + len(mark):].strip())
+                if _PLACEHOLDER_BODY_RE.match(body):
+                    break   # `STEWARD-BLOCKED: <nerede takıldın>` türü yazım örneği
                 if key == "jobs" and not (line[:idx] in ("", "`") and _JOB_BODY_RE.match(body)):
                     break   # düzyazıdaki anma ya da yer tutucu ('<iş türü> <dosya>'): iş isteği değil
                 if body:
