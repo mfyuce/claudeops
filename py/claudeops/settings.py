@@ -630,6 +630,14 @@ def steward_config(sid: str = "default") -> "Config":
     cfg.summary_hour = min(23, cfg.summary_hour)
     if cfg.role not in ROLES or sid == "default":      # bilinmeyen rol = sıradan değnekçi; default ASLA reviewer değil
         cfg.role = "steward"
+    if cfg.role == "generic":
+        # generic: proje ANA oturumu Sonnet medium (faz alanları default dışı kimlikte zaten yalnız kendi bloğundan gelir;
+        # boşsa doldurulur, sahibin kimlik bloğuna açıkça yazdığı değer geçer).
+        from .steward import GENERIC_EFFORT, GENERIC_MODEL
+        for key, val in (("planning_model", GENERIC_MODEL), ("planned_model", GENERIC_MODEL),
+                         ("planning_effort", GENERIC_EFFORT), ("planned_effort", GENERIC_EFFORT)):
+            if not getattr(cfg, key):
+                setattr(cfg, key, val)
     cfg.review_timeout_minutes = max(1, cfg.review_timeout_minutes)
     if cfg.tick_seconds < 15:
         cfg.tick_seconds = 15

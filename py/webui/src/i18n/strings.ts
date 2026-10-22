@@ -552,6 +552,11 @@ export interface Strings {
   stewardIdNewPlaceholder: string;
   stewardIdLabelPlaceholder: string;
   stewardIdCreate: string;
+  stewardIdRole: string;
+  stewardProjAddPlaceholder: string;
+  stewardProjAdd: string;
+  stewardProjRemove: string;
+  stewardProjRemoveConfirm: (name: string) => string;
   stewardIdRemove: string;
   stewardIdRemoveConfirm: string;
   stewardIdDefaultKeep: string;
@@ -1339,6 +1344,11 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdNewPlaceholder: "kimlik adı",
     stewardIdLabelPlaceholder: "etiket (isteğe bağlı)",
     stewardIdCreate: "Oluştur",
+    stewardIdRole: "rol (generic: dinamik projeler, Sonnet medium, üst model onayla)",
+    stewardProjAddPlaceholder: "roster'daki proje adı",
+    stewardProjAdd: "Proje ekle",
+    stewardProjRemove: "Çıkar",
+    stewardProjRemoveConfirm: (name: string) => `'${name}' değnekçi kaydından çıkarılsın mı? (oturum, roster ve klasör kalır)`,
     stewardIdRemove: "Bu kimliği sil",
     stewardIdRemoveConfirm: "Kimlik silinsin mi? Dizini .removed/ altına taşınır; projesi ya da çalışan beyni varsa reddedilir.",
     stewardIdDefaultKeep: "'default' silinemez.",
@@ -2127,6 +2137,11 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdNewPlaceholder: "identity id",
     stewardIdLabelPlaceholder: "label (optional)",
     stewardIdCreate: "Create",
+    stewardIdRole: "role (generic: dynamic projects, Sonnet medium, upper models need approval)",
+    stewardProjAddPlaceholder: "project name from the roster",
+    stewardProjAdd: "Add project",
+    stewardProjRemove: "Remove",
+    stewardProjRemoveConfirm: (name: string) => `Remove '${name}' from this steward? (session, roster and folder stay)`,
     stewardIdRemove: "Remove this identity",
     stewardIdRemoveConfirm: "Remove this identity? Its folder moves to .removed/; refused if it has projects or a running brain.",
     stewardIdDefaultKeep: "'default' cannot be removed.",

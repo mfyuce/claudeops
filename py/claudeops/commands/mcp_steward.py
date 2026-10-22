@@ -118,6 +118,7 @@ def _register(port: int, args: dict) -> dict:
     body = _pick(args, "name", "cwd", "goal", "kind", "phase", "cli", "model", "priority", "cadence_minutes", "idea_id")
     if args.get("resources"):
         body["resources"] = args["resources"]
+    body["actor"] = "brain"     # generic kimlikte üst model kapısı (http_register yalnız bunun için okur)
     return _api(port, "POST", "/api/steward/register", body)
 
 

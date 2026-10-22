@@ -18,6 +18,7 @@ import {
   apiStewardIdeaExport,
   apiStewardIdeaUpdate,
   apiStewardProjectSet,
+  apiStewardProjectRemove,
   apiStewardShutdown,
   apiStewardUp,
   apiStewardIdentityCreate,
@@ -187,6 +188,8 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
   const [keepSet, setKeepSet] = useState<Set<string>>(new Set());
   const [newId, setNewId] = useState("");
   const [newLabel, setNewLabel] = useState("");
+  const [newRole, setNewRole] = useState("steward");
+  const [newProject, setNewProject] = useState("");
   const [xferProject, setXferProject] = useState("");
   const [xferTo, setXferTo] = useState("");
   const [pickedSid, setPickedSid] = useState(readSid);
@@ -268,7 +271,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         >
           <span className={`dot ${x.brain?.running ? "on" : "off"}`} />
           {x.label || x.id} · {x.enabled ? t.stewardOn : t.stewardOffShort} · {x.mode}
-          {x.role === "reviewer" ? " · reviewer" : ` · ${t.stewardRowStat(x.project_count, x.open_questions)}`}
+          {x.role === "reviewer" ? " · reviewer" : `${x.role === "generic" ? " · generic" : ""} · ${t.stewardRowStat(x.project_count, x.open_questions)}`}
         </button>
       ))}
     </div>
@@ -484,10 +487,15 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
           <span>
             <input value={newId} placeholder={t.stewardIdNewPlaceholder} onChange={(e) => setNewId(e.target.value.toLowerCase())} maxLength={16} />{" "}
             <input value={newLabel} placeholder={t.stewardIdLabelPlaceholder} onChange={(e) => setNewLabel(e.target.value)} />{" "}
+            <select value={newRole} onChange={(e) => setNewRole(e.target.value)} aria-label={t.stewardIdRole} title={t.stewardIdRole}>
+              <option value="steward">steward</option>
+              <option value="generic">generic</option>
+              <option value="reviewer">reviewer</option>
+            </select>{" "}
             <button
               type="button"
               disabled={busy || !newId.trim()}
-              onClick={() => void run(() => apiStewardIdentityCreate(newId.trim(), newLabel.trim()), () => { setNewId(""); setNewLabel(""); showToast(t.stewardIdDone, "success"); })}
+              onClick={() => void run(() => apiStewardIdentityCreate(newId.trim(), newLabel.trim(), newRole), () => { setNewId(""); setNewLabel(""); setNewRole("steward"); showToast(t.stewardIdDone, "success"); })}
             >
               {t.stewardIdCreate}
             </button>
@@ -555,6 +563,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
                 <th>{t.stewardColCadence}</th>
                 <th>{t.stewardColNext}</th>
                 <th>{t.stewardColVisit}</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -588,12 +597,35 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
                     {p.next_step || p.goal || "—"}
                   </td>
                   <td>{ago(p.last_visit, t.stewardNever)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="closebtn"
+                      disabled={busy}
+                      onClick={() => {
+                        if (window.confirm(t.stewardProjRemoveConfirm(p.name))) void run(() => apiStewardProjectRemove(p.name, sid), () => showToast(t.stewardSaved, "success"));
+                      }}
+                    >
+                      {t.stewardProjRemove}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <div className="opts">
+        <input type="text" value={newProject} placeholder={t.stewardProjAddPlaceholder} onChange={(e) => setNewProject(e.target.value.trim())} />
+        <button
+          type="button"
+          disabled={busy || !newProject}
+          onClick={() => void run(() => apiStewardProjectSet(newProject, { phase: "planned" }, sid), () => { setNewProject(""); showToast(t.stewardSaved, "success"); })}
+        >
+          {t.stewardProjAdd}
+        </button>
+      </div>
 
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardIdeasTitle}</h3>
       {state && state.ideas.length === 0 && <span className="opts-hint">{t.stewardNoIdeas}</span>}

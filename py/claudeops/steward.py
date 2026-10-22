@@ -288,7 +288,7 @@ class Config:
     max_active_total: int = 6        # MAKİNE GENELİ (yalnız `steward` bloğu): tüm kimliklerde en çok etkin oturum; 0 = sınırsız
     max_starts_total: int = 1        # MAKİNE GENELİ: döngü turu başına tüm kimliklerde en çok başlatma
     # ── reviewer rolü (review.py; yalnız role="reviewer" kimliklerinde anlamlı) ──
-    role: str = "steward"            # steward | reviewer
+    role: str = "steward"            # steward | reviewer | generic (generic: GENERIC_* varsayılanları + üst model kapısı)
     review_timeout_minutes: int = 45   # tek review çalıştırması bu sürede bitmezse iptal
     review_min_gap_minutes: int = 10   # iki review başlatması arası en az bekleme
     review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
@@ -301,7 +301,7 @@ MACHINE_KEYS = ("tick_seconds", "card_refresh", "card_cli", "card_model", "card_
 
 # Kimlik kuralı (K2): yalnız küçük harf (`session._NAME_RE` `degnekci_2`/`degnekci2`'yi `degnekci` tabanına indirger).
 STEWARD_ID_RE = re.compile(r"^[a-z]{2,16}$")
-ROLES = ("steward", "reviewer")
+ROLES = ("steward", "reviewer", "generic")
 RESERVED_IDS = frozenset({"default", "all", "services", "service", "steward", "stewards"})
 BRAIN_PREFIX = "degnekci"
 
@@ -1793,6 +1793,15 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
                 if body:
                     lines.append(f"{doc} (baş):" if tr else f"{doc} (head):")
                     lines.append(_clip(body, 600))
+        bl = it.get("backlog")      # yalnız generic rolde (`web_steward.run_tour`); diğer kimliklerin prompt'u aynı
+        if bl:
+            if bl.get("auto"):
+                lines.append(("otonom ilerletilebilir (sahibin cevabı gerekmez): " if tr else "autonomous (no owner answer needed): ")
+                             + "; ".join(_clip(x, 160) for x in bl["auto"]))
+            if bl.get("decide"):
+                lines.append(("karar gerekir (ATLA, varsayılanı uygulama; açık değilse steward_ask_user): " if tr else
+                              "needs a decision (SKIP, never apply a default; steward_ask_user unless already open): ")
+                             + "; ".join(_clip(x, 160) for x in bl["decide"]))
         if it.get("text"):
             lines.append(_clip(it["text"], 600))
         for sq in it.get("similar") or []:
@@ -1903,10 +1912,11 @@ REMOTE_NOTE_EN = (
 
 
 def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "default", label: str = "",
-                              remote: bool = False) -> str:
+                              remote: bool = False, role: str = "steward") -> str:
     """Beynin cwd'sindeki CLAUDE.md — persona + (default dışı kimlikte kimlik bölümü) + araç kılavuzu + model kuralı.
     Her beyin açılışında yeniden yazılır. `sid="default"` çıktısı kimlik kavramından ÖNCEKİyle birebir aynıdır.
-    `remote`: kimliğin uzak host'lu projesi var (A5) → kısa "uzak projeler" notu eklenir."""
+    `remote`: kimliğin uzak host'lu projesi var (A5) → kısa "uzak projeler" notu eklenir. `role="generic"`: model
+    kuralından sonra generic bölümü eklenir (diğer rollerde çıktı aynı)."""
     tr = lang != "en"
     tools = (
         "## Araçların (MCP `cops-steward`)\n"
@@ -1948,7 +1958,8 @@ def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "defaul
         "A decision without a tool call is not recorded.\n"
     )
     note = (REMOTE_NOTE_TR if tr else REMOTE_NOTE_EN) if remote else ""     # yalnız uzak projesi olan kimlikte (yerel çıktı aynı)
-    return persona.rstrip() + "\n\n" + identity_section(sid, label, lang) + tools + note + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + (MEMORY_TR if tr else MEMORY_EN) + tail
+    gen = ((GENERIC_RULE_TR if tr else GENERIC_RULE_EN) if role == "generic" else "")
+    return persona.rstrip() + "\n\n" + identity_section(sid, label, lang) + tools + note + (MODEL_RULE_TR if tr else MODEL_RULE_EN) + gen + (MEMORY_TR if tr else MEMORY_EN) + tail
 
 
 # ── kural motoru ──────────────────────────────────────────────────────────────
@@ -2355,6 +2366,114 @@ def directive_defer_reason(busy: Optional[bool], last_directive_at: float, now: 
     if last_directive_at and (now - last_directive_at) < gap:
         return "recent"
     return ""
+
+
+# ── generic rolü (2026-10-22, TODO (20)): normal kimlik + Sonnet medium varsayılanı + üst model onay kapısı ──
+
+GENERIC_MODEL = "claude-sonnet-5-5"
+GENERIC_EFFORT = "medium"
+UPPER_MODEL_RE = re.compile(r"opus|fable", re.I)
+UPPER_EFFORTS = frozenset({"high", "xhigh", "max"})
+UPPER_MODEL_SOURCE = "upper_model"      # onay sorusunun `source`u (beyin cevaplayamaz: rutin değil)
+APPROVE_WORDS = frozenset({"onayla", "onay", "onaylıyorum", "evet", "approve", "approved", "yes"})
+GENERIC_BACKLOG_ITEMS = 6
+_TODO_DONE_RE = re.compile(r"^\[[xX✓]\]|\b(?:DONE|BİTTİ|bitti|tamamlandı)\b|~~")
+_TBD_DECIDED_RE = re.compile(r"\b(?:karar|decided|decision|cevap|answer|onaylandı|approved|kapandı|resolved)\s*[:=]|✓|✅", re.I)
+
+
+def is_generic(cfg: Any) -> bool:
+    return getattr(cfg, "role", "") == "generic"
+
+
+def is_upper_tier(model: str, effort: str) -> bool:
+    """Ana oturum için üst kademe mi: Opus/Fable modeli ya da high/xhigh/max effort. SAF."""
+    return bool(UPPER_MODEL_RE.search(model or "")) or (effort or "").strip().lower() in UPPER_EFFORTS
+
+
+def upper_tier_tag(project: str, model: str, effort: str) -> str:
+    """Onay sorusunun metnine gömülen imza (onay YALNIZ bu proje + model + effort üçlüsü için geçerli)."""
+    return f"[upper-model project={project} model={model or '-'} effort={effort or '-'}]"
+
+
+def upper_tier_question_text(project: str, model: str, effort: str, lang: str = "tr") -> str:
+    tag = upper_tier_tag(project, model, effort)
+    if lang == "en":
+        return (f"{tag} The steward wants to run the MAIN session of '{project}' with model {model or '-'} / effort "
+                f"{effort or '-'} (above Sonnet medium). Approve? Until approved it stays on Sonnet medium.")
+    return (f"{tag} Değnekçi '{project}' ANA oturumunu {model or '-'} / {effort or '-'} ile çalıştırmak istiyor "
+            f"(Sonnet medium üstü). Onaylıyor musun? Onaya kadar Sonnet medium sürer.")
+
+
+def upper_tier_approved(questions: List["Question"], project: str, model: str, effort: str) -> bool:
+    """Sahip bu proje + model + effort için üst kademeyi onayladı mı (cevaplanmış `upper_model` sorusu, onay kelimesi). SAF."""
+    tag = upper_tier_tag(project, model, effort)
+    for q in questions:
+        if q.status == "answered" and q.source == UPPER_MODEL_SOURCE and tag in (q.text or ""):
+            if (q.answer or "").strip().lower().rstrip(".!") in APPROVE_WORDS:
+                return True
+    return False
+
+
+def generic_backlog(todo_text: str = "", tbd_text: str = "", card: Optional[Dict[str, Any]] = None) -> Dict[str, List[str]]:
+    """generic tur maddesi için iş listesi: `auto` = kullanıcı cevabı gerektirmeyen (otonom ilerletilebilir) adaylar,
+    `decide` = karar gerektiren (beyin ATLAR, sahibe sorar). Kaba ve SAF: TODO.md madde satırları (biten/üstü çizili hariç;
+    sahibe ait iş (OWNER_ONLY_RE) `decide`e), TOBEDECIDED.md `TBD` satırları + kartın `open_tbds`i (kararı yazılmış olan
+    `auto`ya, gerisi `decide`e). Son kararı beyin verir; bu yalnız bağlam."""
+    auto: List[str] = []
+    decide: List[str] = []
+
+    def _add(lst: List[str], t: str) -> None:
+        t = _short(t)
+        if t and t not in auto and t not in decide and len(lst) < GENERIC_BACKLOG_ITEMS:
+            lst.append(t)
+
+    for ln in (todo_text or "").splitlines():
+        raw = ln.strip()
+        if not raw.startswith(("- ", "* ", "+ ")) and not re.match(r"^\d+[.)]\s", raw):
+            continue
+        t = re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", raw).strip()
+        if not t or _TODO_DONE_RE.search(t):
+            continue
+        t = re.sub(r"^\[ \]\s*", "", t)
+        _add(decide if OWNER_ONLY_RE.search(t) else auto, t)
+    tbds = [ln.strip().lstrip("-*+• ").strip() for ln in (tbd_text or "").splitlines()
+            if "TBD" in ln and not ln.lstrip().startswith("#")]      # başlık satırı (`# TBD`) madde değil
+    tbds += [str(x) for x in ((card or {}).get("open_tbds") or [])]
+    for t in tbds:
+        _add(auto if _TBD_DECIDED_RE.search(t) and not OWNER_ONLY_RE.search(t) else decide, t)
+    return {"auto": auto, "decide": decide}
+
+
+GENERIC_RULE_TR = (
+    "\n## Generic değnekçi kuralları (bu kimliğin rolü `generic`)\n"
+    "- Projeler panelden/CLI'dan DİNAMİK eklenir/çıkarılır; `steward_overview` güncel listeyi verir.\n"
+    "- Her turda proje maddesindeki `otonom ilerletilebilir` listesinden (kart, TODO.md, kararı yazılmış TBD) sahibin cevabını "
+    "GEREKTİRMEYEN EN ÖNEMLİ tek işi seç ve `steward_directive` ile ver; liste boşsa kartın sıradaki adımına bak.\n"
+    "- `karar gerekir` listesindeki maddeleri ATLA: her biri için (zaten açık değilse) `steward_ask_user` ile seçenekli soru aç. "
+    "Önerilen bir varsayılan olsa bile onu KENDİN UYGULAMA, projeye de \"varsayılanı uygula\" deme; cevap gelince motor iletir.\n"
+    "- Model: ana oturum HEP `claude-sonnet-5-5` + `medium`; model/effort alanını boş bırakırsan zaten budur. Opus/Fable ya da "
+    "high/xhigh/max effort'a çeken directive/restart/set_project çağrısı sahibin onayı yoksa REDDEDİLİR (`upper_model_needs_approval`) "
+    "ve motor sahibe onay sorusu açar; reddi tekrarlama, aynı işi model vermeden Sonnet medium ile sürdür. Onay gelince (soru "
+    "cevaplanınca) aynı model/effort ile yeniden deneyebilirsin.\n"
+    "- Ağır işi alt ajana (fork) ver ve direktife modelini AÇIK yaz: araştırma/çekme/doğrulama = Sonnet. Opus ya da Fable alt ajanı "
+    "da bu kimlikte YALNIZ sahibin onayıyla (`steward_ask_user`); onaya kadar Sonnet alt ajanla ilerle.\n"
+    "- Commit/push/merge/deploy/silme/harcama yine sahibin; bunları direktifle isteme, `steward_answer` ile onaylama.\n"
+)
+GENERIC_RULE_EN = (
+    "\n## Generic steward rules (this identity's role is `generic`)\n"
+    "- Projects are added/removed DYNAMICALLY from the panel/CLI; `steward_overview` has the current list.\n"
+    "- On each tour pick from the project item's `autonomous` list (card, TODO.md, TBDs with a recorded decision) the single MOST "
+    "important task that does NOT need the owner's answer and send it with `steward_directive`; if the list is empty use the card's next step.\n"
+    "- SKIP the items under `needs a decision`: for each one (unless already open) open a question with options via `steward_ask_user`. "
+    "Even if a default is suggested, NEVER apply it yourself and never tell the project to apply it; the engine delivers the answer.\n"
+    "- Model: the main session is ALWAYS `claude-sonnet-5-5` + `medium`; leaving model/effort empty gives exactly that. A "
+    "directive/restart/set_project that raises it to Opus/Fable or high/xhigh/max effort is REFUSED without the owner's approval "
+    "(`upper_model_needs_approval`) and the engine opens an approval question; do not retry the refusal, continue the same work on "
+    "Sonnet medium without a model. Once the question is answered with approval you may retry with that model/effort.\n"
+    "- Give heavy work to a sub-agent (fork) and write its model EXPLICITLY in the directive: research/fetching/verification = Sonnet. "
+    "Opus or Fable sub-agents also need the owner's approval in this identity (`steward_ask_user`); until then use Sonnet sub-agents.\n"
+    "- Commit/push/merge/deploy/delete/spending stay with the owner; never request them in a directive or approve them with `steward_answer`.\n"
+)
 
 
 def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:

@@ -1808,7 +1808,7 @@ def ensure_workspace(cfg: Optional[sw.Config] = None) -> str:
     shared = str(load_settings().get("steward_persona_text") or "")
     persona = sw.persona_text(shared if cfg.sid == "default" else (cfg.persona_text or shared))
     has_remote = any(pr.host for pr in sw.load_projects(cfg.sid).values())
-    text = sw.build_workspace_claude_md(persona, lang=cfg.lang, sid=cfg.sid, label=cfg.label, remote=has_remote)
+    text = sw.build_workspace_claude_md(persona, lang=cfg.lang, sid=cfg.sid, label=cfg.label, remote=has_remote, role=cfg.role)
     path = os.path.join(workspace, "CLAUDE.md")
     try:
         with open(path, encoding="utf-8") as f:
@@ -1905,6 +1905,25 @@ def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project],
     return out
 
 
+GENERIC_DOC_CHARS = 6000     # generic iş listesi için TODO.md/TOBEDECIDED.md başından okunan en çok karakter
+
+
+def _attach_backlog(it: Dict[str, Any], projects: Dict[str, sw.Project]) -> None:
+    """generic tur maddesine `backlog` ({auto, decide}) ekle: kart + YEREL TODO.md/TOBEDECIDED.md başı. Uzak projede
+    yerel dosya sistemi okunmaz (yalnız kart). Proje dışı madde (fikir, genel soru) dokunulmaz."""
+    if it.get("kind") in ("idea", "routine") or it.get("name") not in projects:
+        return
+    name = str(it["name"])
+    todo = tbd = ""
+    cwd = "" if (it.get("host") or _name_host(name)) else _project_cwd(name)
+    if cwd:
+        todo = _read_head(cwd, "TODO.md", GENERIC_DOC_CHARS)
+        tbd = _read_head(cwd, "TOBEDECIDED.md", GENERIC_DOC_CHARS)
+    bl = sw.generic_backlog(todo, tbd, it.get("card"))
+    if bl["auto"] or bl["decide"]:
+        it["backlog"] = bl
+
+
 TOUR_FAILS_BEFORE_RESTART = 2    # art arda bu kadar tur gönderimi başarısızsa beyin oturumu yeniden açılır
 
 
@@ -1951,6 +1970,9 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
                                       exclude_id=str(it.get("id") or ""))
             if sims:
                 it["similar"] = [{"project": q.project, "text": q.text, "answer": q.answer} for q in sims]
+    if sw.is_generic(cfg):      # generic: her proje maddesine otonom/karar-gerekir iş listesi (beyin karar-gerekiri ATLAR)
+        for it in enriched:
+            _attach_backlog(it, projects)
     prompt = sw.build_tour_prompt(enriched, lang=cfg.lang, open_qs=sw.open_questions(paths=paths), now=time.time())
     try:
         message, tour_file = sw.tour_delivery(prompt, paths.workspace, time.time(), cfg.lang)
@@ -2799,8 +2821,8 @@ def stewards_summary(running_names: Optional[set] = None) -> List[Dict[str, Any]
                "pending_items": sm["pending_items"], "brain": sm["brain"]}
         if sm.get("ownership_conflicts"):
             row["ownership_conflicts"] = sm["ownership_conflicts"]
-        if cfg.role == "reviewer":      # yalnız reviewer'da: sıradan kimliğin satırı (ve altın testler) değişmez
-            row["role"] = "reviewer"
+        if cfg.role != "steward":       # yalnız reviewer/generic'te: sıradan kimliğin satırı (ve altın testler) değişmez
+            row["role"] = cfg.role
         out.append(row)
     return out
 
@@ -3194,6 +3216,12 @@ def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str,
                                         "host") if k in data}
     old = sw.load_projects(sid).get(name)
     old_host = old.host if old is not None else ""
+    if "model" in fields or "effort" in fields:
+        # yalnız İSTENEN değer denetlenir (sahibin elle verdiği mevcut üst modeli beyin not/faz yazarken bozmaz)
+        upper = _upper_model_gate(name, str(fields.get("model") or ""), str(fields.get("effort") or ""), sid,
+                                  str(data.get("actor") or ""), project_name=name)
+        if upper is not None:
+            return upper
     if "host" in fields:
         if data.get("actor") == "brain":
             # Projenin hangi makinede yaşadığı sahibin kararı: beyin host'u değiştiremez (yanlış host = yanlış adaş oturum).
@@ -3240,8 +3268,14 @@ def _prefix_warning(name: str, sid: str = "default", index: Optional[Dict[str, A
 
 
 def http_project_remove(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Projeyi kimliğin kaydından çıkar (oturuma dokunmaz; roster/klasör kalır). Yalnız insan (panel/CLI)."""
+    if (d := _human_only(data, "remove a project")):
+        return d
     name = str(data.get("name") or "").strip()
-    return {"ok": sw.remove_project(name, sid)}
+    ok = sw.remove_project(name, sid)
+    if ok:
+        sw.log_event("project_remove", paths=sid, name=name, source=str(data.get("source") or "ui"))
+    return {"ok": ok} if ok else {"ok": False, "error": f"not a project of steward {sid}: {name!r}"}
 
 
 def _register_remote(name: str, host: str, want_host: str, known: Optional["sw.Project"], data: Dict[str, Any],
@@ -3290,6 +3324,10 @@ def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     goal = str(data.get("goal") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
+    upper = _upper_model_gate(name, str(data.get("model") or ""), "", cfg.sid, str(data.get("actor") or ""),
+                              project_name=name)
+    if upper is not None:      # yan etkiden ÖNCE: generic beyin roster'a Opus/Fable modelli proje yazamaz
+        return upper
     known = sw.load_projects(cfg.sid).get(name)
     want_host = sw.normalize_host(data.get("host"))
     host = want_host or (known.host if known is not None else "") or _name_host(name)
@@ -3539,6 +3577,39 @@ def _brain_directive_defer(name: str, sid: str) -> Optional[Dict[str, Any]]:
     return {"ok": False, "code": "session_busy", "error": f"session_busy ({why}): directive not sent; retried on the next tour"}
 
 
+def _upper_model_gate(name: str, model: str, effort: str, sid: str, actor: str,
+                      project_name: str = "") -> Optional[Dict[str, Any]]:
+    """generic kimlikte BEYNİN proje ana oturumunu üst kademeye (Opus/Fable ya da high/xhigh/max) çeken isteği: sahibin
+    cevaplanmış onay sorusu yoksa red + (yoksa) onay sorusu açılır. İnsan (actor != brain) ve diğer roller serbest.
+    Yanıt `upper_model_needs_approval`; onaya kadar beyin modelsiz (Sonnet medium) sürdürür."""
+    if actor != "brain" or not sw.is_upper_tier(model, effort):
+        return None
+    cfg = steward_config(sid)
+    if not sw.is_generic(cfg):
+        return None
+    pname = project_name
+    if not pname:
+        p = _project_for_session(name, sw.load_projects(sid), _world(sid))
+        pname = p.name if p is not None else name
+    if sw.upper_tier_approved(sw.load_questions(sid), pname, model, effort):
+        return None
+    asked = http_ask({"project": "", "text": sw.upper_tier_question_text(pname, model, effort, cfg.lang),
+                      "options": ["onayla", "reddet"] if cfg.lang != "en" else ["approve", "reject"],
+                      "source": sw.UPPER_MODEL_SOURCE}, sid)
+    qid = str(asked.get("id") or "")
+    rejected = False
+    if qid:
+        q = sw.find_question(qid, sid)
+        rejected = q is not None and q.status == "answered"
+    sw.log_event("upper_model_denied", paths=sid, name=name, project=pname, model=model, effort=effort, question=qid,
+                 rejected=rejected)
+    why = ("the owner rejected this model/effort for the main session" if rejected else
+           "owner approval required; an approval question is open")
+    return {"ok": False, "code": "upper_model_needs_approval", "question": qid,
+            "error": f"upper_model_needs_approval: {model or '-'}/{effort or '-'} for {pname!r}: {why}. "
+                     f"Continue on {sw.GENERIC_MODEL} + {sw.GENERIC_EFFORT} (send without model/effort)."}
+
+
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
@@ -3549,6 +3620,10 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     gated = _gate(name, data, "directive", sid)
     if gated is not None:
         return gated
+    upper = _upper_model_gate(name, str(data.get("model") or ""), str(data.get("effort") or ""), sid,
+                              str(data.get("actor") or ""))
+    if upper is not None:
+        return upper
     if str(data.get("actor") or "") == "brain" and not _name_host(name):
         why = _brain_directive_defer(name, sid)
         if why:
@@ -3574,6 +3649,10 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     gated = _gate(name, data, "restart", sid)
     if gated is not None:
         return gated
+    upper = _upper_model_gate(name, str(data.get("model") or ""), str(data.get("effort") or ""), sid,
+                              str(data.get("actor") or ""))
+    if upper is not None:      # DURDURMADAN önce: reddedilen restart oturumu kapalı bırakmasın
+        return upper
     host = _name_host(name)      # `_gate` istekteki host'u projeninkiyle zaten eşledi
     with _ctx(sid).lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
         if host:

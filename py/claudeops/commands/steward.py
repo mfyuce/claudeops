@@ -232,6 +232,17 @@ def cmd_set(args) -> int:
     return 0
 
 
+def cmd_drop(args) -> int:
+    """Projeyi kimliğin kaydından çıkar (dinamik proje listesi; oturum/roster/klasör olduğu gibi kalır)."""
+    sid = _sid(args)
+    if not sw.remove_project(args.name, sid):
+        print(f"hata: '{args.name}' bu kimliğin ({sid}) projesi değil")
+        return 1
+    sw.log_event("project_remove", paths=sid, name=args.name, source="cli")
+    print(f"✓ '{args.name}' değnekçi kaydından çıkarıldı ({sid}); çalışan oturumu varsa artık yönetilmez")
+    return 0
+
+
 def cmd_import(args) -> int:
     sid = _sid(args)
     projects = sw.load_projects(sid)
@@ -432,6 +443,12 @@ def cmd_create(args) -> int:
         print(f"✓ reviewer değnekçi '{sid}' oluşturuldu (KAPALI; beyin yok, proje sahibi olamaz, oturuma dokunmaz); "
               f"dizin: {sw.paths_for(sid).root}")
         print(f"  açmak için: py/cops steward -s {sid} on")
+        return 0
+    if cfg.role == "generic":
+        print(f"✓ generic değnekçi '{sid}' oluşturuldu (KAPALI, mod={cfg.mode}, beyin={cfg.brain_name}, ana oturum "
+              f"{cfg.planned_model} + {cfg.planned_effort}; beynin Opus/Fable/high isteği sahibin onayına bağlı); "
+              f"dizin: {sw.paths_for(sid).root}")
+        print(f"  proje ekle/çıkar: py/cops steward -s {sid} set PROJE --phase planned / drop PROJE   açmak için: py/cops steward -s {sid} on")
         return 0
     print(f"✓ değnekçi '{sid}' oluşturuldu (KAPALI, mod={cfg.mode}, beyin={cfg.brain_name}); dizin: {sw.paths_for(sid).root}")
     print(f"  proje devri: py/cops steward transfer PROJE {sid}   açmak için: py/cops steward -s {sid} on")
@@ -749,7 +766,8 @@ def register(sub):
     pcr.add_argument("target_sid", metavar="SID")
     pcr.add_argument("--label", default="")
     pcr.add_argument("--role", default="steward", choices=sw.ROLES,
-                     help="steward (varsayılan) | reviewer (projesiz, beyinsiz, oturuma dokunmaz; yalnız yaratılırken)")
+                     help="steward (varsayılan) | reviewer (projesiz, beyinsiz, oturuma dokunmaz) | generic (dinamik "
+                          "projeler, Sonnet medium, üst model sahibin onayıyla); yalnız yaratılırken")
     pcr.set_defaults(func=cmd_create)
     prm = s.add_parser("remove", help="kimliği sil (projesi varsa reddedilir)")
     prm.add_argument("target_sid", metavar="SID")
@@ -805,6 +823,9 @@ def register(sub):
     ps.add_argument("--force", action="store_true", help="--host: çalışan oturum denetimini atla")
     ps.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     ps.set_defaults(func=cmd_set)
+    pdr = s.add_parser("drop", help="projeyi kimliğin kaydından çıkar (oturuma/roster'a dokunmaz)")
+    pdr.add_argument("name")
+    pdr.set_defaults(func=cmd_drop)
     pk = s.add_parser("cards", help="proje kartları (hedef / sıradaki adım / açık TBD / engel)")
     pk.add_argument("name", nargs="?", default="")
     pk.add_argument("--refresh", action="store_true", help="şimdi yenile (panel çalışıyor olmalı; ad verilmezse yenilemesi gerekenlerin hepsi)")

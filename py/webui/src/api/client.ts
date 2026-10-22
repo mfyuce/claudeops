@@ -636,8 +636,8 @@ export const apiStewardShutdown = (sid?: string, keep: string[] = []): Promise<S
     ...(keep.length ? { modes: Object.fromEntries(keep.map((n) => [n, "keep"])) } : {}),
     ...stewardBody(sid),
   });
-export const apiStewardIdentityCreate = (target: string, label = ""): Promise<SimpleResult> =>
-  apiPost<SimpleResult>("/api/steward/identity/create", { target, label });
+export const apiStewardIdentityCreate = (target: string, label = "", role = "steward"): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/identity/create", { target, label, ...(role !== "steward" ? { role } : {}) });
 export const apiStewardIdentityRemove = (target: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/identity/remove", { target });
 export const apiStewardIdentityTransfer = (project: string, to: string): Promise<SimpleResult> =>
@@ -679,6 +679,8 @@ export const apiStewardProjectAction = (
   apiPost<SimpleResult>(`/api/steward/${action}`, { name, text, reason: "panel", ...stewardBody(sid) });
 export const apiStewardProjectSet = (name: string, fields: Record<string, string | number>, sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/project", { name, ...fields, ...stewardBody(sid) });
+export const apiStewardProjectRemove = (name: string, sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/project/remove", { name, ...stewardBody(sid) });
 
 
 // ── Reviewer ──
