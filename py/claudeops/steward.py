@@ -317,6 +317,28 @@ def valid_steward_id(sid: str) -> bool:
     return sid == "default" or valid_custom_id(sid)
 
 
+class ReviewerRefused(ValueError):
+    """reviewer rolündeki kimlik projects.json'a yazamaz / proje devralamaz / devredemez (havuzu `review_pool.json`)."""
+
+
+def reviewer_ids() -> frozenset:
+    """Ayarda `stewards.<sid>.role == "reviewer"` olan kimlikler (`default` ASLA reviewer değildir). Ayar okunamazsa
+    boş küme. `settings` tembel içe aktarılır (döngü yok)."""
+    try:
+        from .settings import load_settings
+        st = load_settings().get("stewards")
+    except Exception:
+        return frozenset()
+    return frozenset(k for k, v in (st.items() if isinstance(st, dict) else [])
+                     if isinstance(v, dict) and valid_custom_id(k) and str(v.get("role") or "").strip() == "reviewer")
+
+
+def is_reviewer(sid: Any) -> bool:
+    """`sid` (str ya da StewardPaths) reviewer rolünde mi?"""
+    s = sid.sid if isinstance(sid, StewardPaths) else ("default" if sid is None else sid)
+    return s != "default" and s in reviewer_ids()
+
+
 def brain_name_for(sid: str) -> str:
     """Beyin oturumunun adı: `default` -> `degnekci`, diğerleri `degnekci_<sid>`."""
     return BRAIN_PREFIX if sid == "default" else f"{BRAIN_PREFIX}_{sid}"
@@ -420,8 +442,9 @@ def project_owner(name: str, exclude: str = "") -> str:
     (talep protokolünün `OwnedElsewhere` denetimi; okuma tarafının tam görünümü `ownership_index`)."""
     sids = ["default"] + sorted(os.path.basename(os.path.dirname(f)) for f in
                                 glob.glob(os.path.join(STEWARD_DIR, "stewards", "*", "projects.json")))
+    rv = reviewer_ids()     # reviewer'ın (elle/eski) projects.json'u sahiplik sayılmaz
     for sid in sids:
-        if sid == exclude or not _SID_RE.fullmatch(sid):
+        if sid == exclude or sid in rv or not _SID_RE.fullmatch(sid):
             continue
         raw = _load_json(paths_for(sid).projects, {})
         if isinstance(raw, dict) and name in raw:
@@ -512,9 +535,10 @@ def ownership_index(sids: Optional[List[str]] = None, *, brains: Optional[Dict[s
                     fresh: bool = False) -> Dict[str, Any]:
     """Tüm kimliklerin `projects.json`'u + beyin adları + `services.json` → `build_ownership_index`. G/Ç yalnız
     burada (okuma); `sids`: ayardaki kimlikler (dizini olmasa da beyin adı rezerve olur), `fresh`: önbelleği atla
-    (talep protokolü)."""
+    (talep protokolü). reviewer kimliğinin `projects.json`'u HESABA KATILMAZ (boş sayılır; beyin adı yine rezerve)."""
     ids = list(dict.fromkeys(discover_steward_ids() + [s for s in (sids or []) if valid_steward_id(s)]))
-    meta = {sid: _project_meta(paths_for(sid).projects, fresh) for sid in ids}
+    rv = reviewer_ids()
+    meta = {sid: (((), {}) if sid in rv else _project_meta(paths_for(sid).projects, fresh)) for sid in ids}
     svc = _load_json(services_path(), {})
     return build_ownership_index({s: m[0] for s, m in meta.items()}, brains, svc if isinstance(svc, dict) else {},
                                  {s: m[1] for s, m in meta.items()})
@@ -597,6 +621,8 @@ def upsert_project(name: str, *, paths: Any = None, force: bool = False,
     atlar. Değişince o projenin `state` izleri (`_HOST_STATE_KEYS`) temizlenir. Yeni projede çalışma denetimi yok."""
     if not valid_name(name):
         raise ValueError(f"invalid project name: {name!r}")
+    if is_reviewer(_pp(paths)):
+        raise ReviewerRefused(f"steward {_pp(paths).sid!r} is a reviewer: it cannot own projects (use its review pool)")
     if "host" in fields and fields["host"] is not None:
         fields["host"] = normalize_host(fields["host"])
         if fields["host"] and hosts_mod.get_host(fields["host"]) is None:
@@ -669,8 +695,12 @@ def transfer_project(name: str, to_sid: str) -> str:
     if to_sid not in steward_ids():
         # Ayarda olmayan kimliğe devir `stewards/<yeni>/projects.json` açardı: "dizin var, ayar yok" kimlik, kimse yönetmez.
         raise ValueError(f"unknown steward id: {to_sid!r} (not defined in settings)")
+    if is_reviewer(to_sid):
+        raise ReviewerRefused(f"steward {to_sid!r} is a reviewer: projects cannot be transferred to it")
     with ownership_lock():
         src = project_owner(name)
+        if src and is_reviewer(src):    # project_owner reviewer'ı zaten atlar; savunma
+            raise ReviewerRefused(f"steward {src!r} is a reviewer: projects cannot be transferred from it")
         if not src:
             raise ValueError(f"project {name!r} not found in any steward")
         if src == to_sid:

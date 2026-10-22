@@ -628,7 +628,7 @@ def steward_config(sid: str = "default") -> "Config":
     if cfg.mode not in MODES:      # bilinmeyen kip = en güvenlisi (hiçbir şeye dokunma)
         cfg.mode = "observe"
     cfg.summary_hour = min(23, cfg.summary_hour)
-    if cfg.role not in ROLES:      # bilinmeyen rol = sıradan değnekçi
+    if cfg.role not in ROLES or sid == "default":      # bilinmeyen rol = sıradan değnekçi; default ASLA reviewer değil
         cfg.role = "steward"
     cfg.review_timeout_minutes = max(1, cfg.review_timeout_minutes)
     if cfg.tick_seconds < 15:

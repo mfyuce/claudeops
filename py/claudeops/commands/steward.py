@@ -356,7 +356,7 @@ def cmd_config(args) -> int:
     if field == "summary_hour" and not (args.value.isdigit() and 0 <= int(args.value) <= 23):
         print("hata: summary_hour 0-23 arası bir saat olmalı")
         return 1
-    hidden = {"history_warn_at"} | ({"sid", "brain_name"} if sid != "default" else set())
+    hidden = {"history_warn_at", "role"} | ({"sid", "brain_name"} if sid != "default" else set())   # rol yalnız `create --role`
     if field not in {f.name for f in dataclasses.fields(sw.Config)} or field in hidden:
         print("bilinmeyen alan; geçerli: " + ", ".join(f.name for f in dataclasses.fields(sw.Config) if f.name not in hidden))
         return 1
@@ -417,10 +417,22 @@ def cmd_create(args) -> int:
     if sid in steward_ids():
         print(f"hata: '{sid}' zaten tanımlı")
         return 1
-    save_settings({"stewards": {sid: {"label": args.label or "", "enabled": "off", "mode": "observe"}}})
+    role = getattr(args, "role", None) or "steward"
+    if role not in sw.ROLES:
+        print(f"hata: rol {' | '.join(sw.ROLES)} olmalı")
+        return 1
+    block = {"label": args.label or "", "enabled": "off", "mode": "observe"}
+    if role != "steward":
+        block["role"] = role        # rol YALNIZ yaratılırken verilir (`config` ile değişmez)
+    save_settings({"stewards": {sid: block}})
     os.makedirs(sw.paths_for(sid).root, exist_ok=True)
-    sw.log_event("create", paths=sid, label=args.label or "", source="cli")
+    sw.log_event("create", paths=sid, label=args.label or "", role=role, source="cli")
     cfg = steward_config(sid)
+    if cfg.role == "reviewer":
+        print(f"✓ reviewer değnekçi '{sid}' oluşturuldu (KAPALI; beyin yok, proje sahibi olamaz, oturuma dokunmaz); "
+              f"dizin: {sw.paths_for(sid).root}")
+        print(f"  açmak için: py/cops steward -s {sid} on")
+        return 0
     print(f"✓ değnekçi '{sid}' oluşturuldu (KAPALI, mod={cfg.mode}, beyin={cfg.brain_name}); dizin: {sw.paths_for(sid).root}")
     print(f"  proje devri: py/cops steward transfer PROJE {sid}   açmak için: py/cops steward -s {sid} on")
     return 0
@@ -653,6 +665,8 @@ def register(sub):
     pcr = s.add_parser("create", help="yeni değnekçi kimliği (varsayılan KAPALI + observe)")
     pcr.add_argument("target_sid", metavar="SID")
     pcr.add_argument("--label", default="")
+    pcr.add_argument("--role", default="steward", choices=sw.ROLES,
+                     help="steward (varsayılan) | reviewer (projesiz, beyinsiz, oturuma dokunmaz; yalnız yaratılırken)")
     pcr.set_defaults(func=cmd_create)
     prm = s.add_parser("remove", help="kimliği sil (projesi varsa reddedilir)")
     prm.add_argument("target_sid", metavar="SID")

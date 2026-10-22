@@ -42,7 +42,7 @@ from ..spawn import spawn_session, detect_display
 from ..stuck import find_stuck
 from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys
 from ..turns import is_busy_now
-from . import web_ws
+from . import web_review, web_ws
 
 NTFY_TOPIC_FILE = os.path.join(CLAUDEOPS_DIR, "ntfy_topic.txt")
 TUNNEL_URL_FILE = os.path.join(CLAUDEOPS_DIR, "tunnel_url.txt")
@@ -695,6 +695,10 @@ def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = N
     `steward.remote_actions` açık, host kayıtlı ve taze (`rt`: tick'in anlık görüntüsü) ister (`_remote_denied`; A3);
     yıkıcı türün ek koşulları gönderim anında (`_remote_stop`, A4). Kimlik reddi (başka kimliğin projesi vb.) uzak
     reddinden önce gelir."""
+    if sid != "default" and steward_config(sid).role == "reviewer":
+        # reviewer kimliği HİÇBİR oturuma dokunamaz (insan dahil): review çalıştırmaları kendi süreçleri, tmux oturumu değil
+        sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name, code="reviewer")
+        return {"ok": False, "error": "target denied: reviewer stewards never act on sessions", "code": "reviewer"}
     svc = _service_session(name)
     if svc:     # pasif servis (varaka): HİÇBİR eylemin hedefi olamaz (insan dahil; `steward service` kaydı watch/passive)
         sw.log_event("target_denied", paths=sid, actor=actor or "human", kind=kind, name=name, service=svc)
@@ -1820,6 +1824,8 @@ def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False) -> Dict[st
     """Kimliğin beynini aç (kendi workspace'i, `mcp-steward --steward <sid>`). Default dışı kimlik YALNIZ `enabled` iken
     açılır (hiçbir yeni kimlik kendiliğinden beyin açmaz; ayar varsayılan KAPALI); default'un davranışı eskisiyle aynı."""
     cfg = cfg or steward_config()
+    if cfg.role == "reviewer":      # reviewer'ın beyni yok (review_tick kendi çalıştırıcısıyla iş görür)
+        return {"ok": False, "error": f"steward {cfg.sid} is a reviewer; it has no brain session"}
     if cfg.sid != "default" and not cfg.enabled:
         return {"ok": False, "error": f"steward {cfg.sid} is disabled; its brain is not started"}
     if _running(cfg.brain_name) is not None:
@@ -2672,9 +2678,16 @@ def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     enabled: List[sw.Config] = []
     disabled: List[str] = []
+    reviewers: set = set()
     for sid in steward_ids():
         try:
             cfg = steward_config(sid)
+            if cfg.role == "reviewer":
+                # reviewer: tick_once/passive_scan/kart/beyin/kapatma YOK; yalnız kendi planlayıcısı (oturuma dokunmaz)
+                reviewers.add(sid)
+                if cfg.enabled:
+                    results.append(dict(web_review.review_tick(cfg) or {}, sid=sid, role="reviewer"))
+                continue
             if not cfg.enabled:
                 disabled.append(sid)
                 continue
@@ -2690,6 +2703,8 @@ def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
     except Exception as e:
         diag_log("steward_card_tick_crashed", error=repr(e))
     for sid in steward_ids():    # süren kontrollü kapatmalar (kapalı kimlikte de ilerler)
+        if sid in reviewers:
+            continue
         try:
             shutdown_tick(sid)
         except Exception as e:
@@ -3263,6 +3278,8 @@ def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Yeni proje: klasör (yoksa oluştur + git init), GOAL.md (amaç + kaynaklar), yerel kaynak dosyalarını
     `kaynaklar/`a kopyala, roster'a kaydet (`web._register_project`), değnekçi kaydını aç."""
     cfg = steward_config(sid)
+    if cfg.role == "reviewer":      # yan etkiden (klasör/git/roster) ÖNCE: reviewer proje sahibi olamaz
+        return {"ok": False, "error": f"steward {cfg.sid} is a reviewer: it cannot own projects"}
     name = str(data.get("name") or "").strip()
     cwd = os.path.expanduser(str(data.get("cwd") or "").strip())
     goal = str(data.get("goal") or "").strip()
@@ -3913,10 +3930,16 @@ def http_identity_create(data: Dict[str, Any], sid: str = "default") -> Dict[str
     if new in steward_ids():
         return {"ok": False, "error": f"steward {new!r} already exists"}
     label = str(data.get("label") or "")
-    save_settings({"stewards": {new: {"label": label, "enabled": "off", "mode": "observe"}}})
+    role = str(data.get("role") or "steward").strip()
+    if role not in sw.ROLES:
+        return {"ok": False, "error": f"invalid role {role!r}: one of {', '.join(sw.ROLES)}"}
+    block = {"label": label, "enabled": "off", "mode": "observe"}
+    if role != "steward":
+        block["role"] = role        # rol YALNIZ yaratılırken verilir (config ile değişmez)
+    save_settings({"stewards": {new: block}})
     os.makedirs(sw.paths_for(new).root, exist_ok=True)
-    sw.log_event("create", paths=new, label=label, source="ui")
-    return {"ok": True, "id": new}
+    sw.log_event("create", paths=new, label=label, role=role, source="ui")
+    return {"ok": True, "id": new, "role": role}
 
 
 def http_identity_remove(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
