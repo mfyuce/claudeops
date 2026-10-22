@@ -548,6 +548,10 @@ export interface Strings {
   stewardShutdownGo: string;
   stewardShutdownCancel: string;
   stewardIdTitle: string;
+  stewardDigestDaily: string;
+  stewardDigestTours: string;
+  stewardDigestNone: string;
+  stewardDigestTruncated: string;
   stewardIdCreateHint: string;
   stewardIdNewPlaceholder: string;
   stewardIdLabelPlaceholder: string;
@@ -1348,6 +1352,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardShutdownGo: "Kapatmayı başlat",
     stewardShutdownCancel: "Vazgeç",
     stewardIdTitle: "Kimlik yönetimi",
+    stewardDigestDaily: "Özetler",
+    stewardDigestTours: "Turlar",
+    stewardDigestNone: "Kayıt yok.",
+    stewardDigestTruncated: "(256 KiB üstü kısaltıldı)",
     stewardIdCreateHint: "Yeni kimlik KAPALI ve observe kipinde açılır (2-16 küçük harf).",
     stewardIdNewPlaceholder: "kimlik adı",
     stewardIdLabelPlaceholder: "etiket (isteğe bağlı)",
@@ -2149,6 +2157,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardShutdownGo: "Start shutdown",
     stewardShutdownCancel: "Cancel",
     stewardIdTitle: "Identity management",
+    stewardDigestDaily: "Digests",
+    stewardDigestTours: "Tours",
+    stewardDigestNone: "Nothing yet.",
+    stewardDigestTruncated: "(truncated above 256 KiB)",
     stewardIdCreateHint: "A new identity starts OFF in observe mode (2-16 lowercase letters).",
     stewardIdNewPlaceholder: "identity id",
     stewardIdLabelPlaceholder: "label (optional)",

@@ -60,6 +60,8 @@ import type {
   StewardAskResult,
   StewardListResult,
   StewardStateResult,
+  StewardDigestsResult,
+  StewardDigestFileResult,
   StewardTickResult,
   StopResult,
   IoAskResult,
@@ -610,6 +612,12 @@ const stewardBody = (sid?: string): { steward?: string } => (sid && sid !== "def
 export const getStewardList = (): Promise<StewardListResult> => apiGet<StewardListResult>("/api/steward/list");
 export const getStewardState = (sid?: string): Promise<StewardStateResult> =>
   apiGet<StewardStateResult>(`/api/steward/state${stewardQs(sid)}`);
+export const getStewardDigests = (sid?: string): Promise<StewardDigestsResult> =>
+  apiGet<StewardDigestsResult>(`/api/steward/digests${stewardQs(sid)}`);
+export const getStewardDigestFile = (kind: "daily" | "tours", name: string, sid?: string): Promise<StewardDigestFileResult> =>
+  apiGet<StewardDigestFileResult>(
+    `/api/steward/digest/file?kind=${kind}&name=${encodeURIComponent(name)}${sid && sid !== "default" ? `&steward=${encodeURIComponent(sid)}` : ""}`,
+  );
 /** `answer` may be an option number ("2"), an option text or free text — the backend resolves it. */
 export const apiStewardAnswer = (id: string, answer: string, sid?: string): Promise<StewardAnswerResult> =>
   apiPost<StewardAnswerResult>("/api/steward/answer", { id, answer, ...stewardBody(sid) });

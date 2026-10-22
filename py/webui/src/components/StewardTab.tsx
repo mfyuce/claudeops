@@ -30,6 +30,7 @@ import {
 } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { StewardJobs } from "./StewardJobs";
+import { StewardDigests } from "./StewardDigests";
 import { ReviewPanel } from "./ReviewPanel";
 import { StewardActions } from "./StewardActions";
 import { useLang } from "../i18n/LangContext";
@@ -540,6 +541,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       </details>
 
       <StewardActions sid={sid} projects={(state?.projects || []).map((p) => ({ name: p.name, running: !!p.running }))} />
+      <StewardDigests sid={sid} refreshKey={key} />
       <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} />
 
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardPendingTitle}</h3>

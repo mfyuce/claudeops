@@ -3952,8 +3952,75 @@ def _unknown_steward() -> Dict[str, Any]:
     return {"ok": False, "error": "unknown steward"}
 
 
+DIGEST_LIST_MAX = 60
+DIGEST_FILE_MAX = 256 * 1024
+_DIGEST_NAME_RES = {"daily": re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$"), "tours": re.compile(r"^tour-(\d{1,12})\.md$")}
+
+
+def _digest_dir(kind: str, sid: str) -> Optional[str]:
+    paths = sw.paths_for(sid)
+    return paths.daily if kind == "daily" else os.path.join(paths.workspace, "tours") if kind == "tours" else None
+
+
+def http_digests(sid: str = "default") -> Dict[str, Any]:
+    """Panel: günlük özet (`daily/<tarih>.md`) ve beyne giden uzun tur (`workspace/tours/tour-<ts>.md`) dosyaları, yeni -> eski,
+    her biri en çok 60. Salt okunur; reviewer kimliğinde boş."""
+    out: Dict[str, Any] = {"ok": True, "daily": [], "tours": []}
+    if sid != "default" and steward_config(sid).role == "reviewer":
+        return out
+    for kind in ("daily", "tours"):
+        d = _digest_dir(kind, sid)
+        rx = _DIGEST_NAME_RES[kind]
+        rows = []
+        try:
+            names = os.listdir(d) if d and os.path.isdir(d) else []
+        except OSError:
+            names = []
+        for name in names:
+            m = rx.match(name)
+            fp = os.path.join(d, name)
+            if not m or os.path.islink(fp) or not os.path.isfile(fp):
+                continue
+            try:
+                st = os.stat(fp)
+            except OSError:
+                continue
+            row = {"file": name, "size": st.st_size, "mtime": st.st_mtime}
+            if kind == "daily":
+                row["date"] = m.group(1)
+                key = m.group(1)
+            else:
+                row["ts"] = int(m.group(1))
+                key = "%020d" % row["ts"]
+            rows.append((key, row))
+        rows.sort(key=lambda x: x[0], reverse=True)
+        out[kind] = [r for _, r in rows[:DIGEST_LIST_MAX]]
+    return out
+
+
+def http_digest_file(kind: str, name: str, sid: str = "default") -> Dict[str, Any]:
+    """Tek özet/tur dosyası metni (<=256 KiB, sırlar maskeli). Ad yalnız beklenen desende olmalı; symlink/`..` reddedilir."""
+    rx = _DIGEST_NAME_RES.get(kind)
+    if rx is None or not rx.match(name or ""):
+        return {"ok": False, "error": "bad digest name"}
+    if sid != "default" and steward_config(sid).role == "reviewer":
+        return {"ok": False, "error": "not found"}
+    d = _digest_dir(kind, sid)
+    fp = os.path.join(d, name)
+    try:
+        if os.path.islink(fp) or not os.path.isfile(fp) or os.path.realpath(os.path.dirname(fp)) != os.path.realpath(d):
+            return {"ok": False, "error": "not found"}
+        with open(fp, "rb") as f:
+            raw = f.read(DIGEST_FILE_MAX + 1)
+    except OSError:
+        return {"ok": False, "error": "not found"}
+    truncated = len(raw) > DIGEST_FILE_MAX
+    text = raw[:DIGEST_FILE_MAX].decode("utf-8", "replace")
+    return {"ok": True, "text": rv.redact_secrets(text), "truncated": truncated}
+
+
 _GET_PATHS = frozenset(("review/state", "review/file", "review/live", "review/io", "review/chat", "review/runs", "review/findings", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
-                        "jobs", "services"))
+                        "jobs", "services", "digests", "digest/file"))
 
 
 def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
@@ -3984,6 +4051,10 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return http_review_io(g("path"), g("offset", "0"), sid)
     if path == "/api/steward/review/findings":
         return http_review_findings(g("project").strip(), g("state").strip(), sid)
+    if path == "/api/steward/digests":
+        return http_digests(sid)
+    if path == "/api/steward/digest/file":
+        return http_digest_file(g("kind").strip(), g("name").strip(), sid)
     if path == "/api/steward/state":
         return http_state(sid)
     if path == "/api/steward/projects":

@@ -957,6 +957,25 @@ export interface StewardIdea {
   source: string;
 }
 
+export interface StewardDigestRow {
+  file: string;
+  size: number;
+  mtime: number;
+  date?: string;
+  ts?: number;
+}
+export interface StewardDigestsResult {
+  ok: boolean;
+  daily: StewardDigestRow[];
+  tours: StewardDigestRow[];
+}
+export interface StewardDigestFileResult {
+  ok: boolean;
+  error?: string;
+  text?: string;
+  truncated?: boolean;
+}
+
 export interface StewardStateResult {
   ok: boolean;
   config: Record<string, unknown>;
