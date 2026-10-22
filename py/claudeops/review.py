@@ -360,8 +360,160 @@ def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[
                 continue
             data[fid] = {"project": proj, "review_file": review_file, "ref": f["ref"], "severity": f["severity"],
                          "title": f["title"], "where": f["where"], "body": f["body"], "state": "new", "verdict": "",
-                         "verdict_at": None, "decided_by": "", "decided_at": None, "exported_to": ""}
+                         "verdict_at": None, "decided_by": "", "decided_at": None, "exported_to": "",
+                         "created_at": time.time()}
             added.append(fid)
         if added:
             save_findings(p, data)
     return added
+
+
+# ── bulgu akışı (adım 7): doğrulama kararı, sahip onayı ──────────────────────
+# Bulguyu BEYİN onaylamaz: projenin kendi oturumu bir Sonnet alt ajanla koda karşı doğrular (`STEWARD-REVIEW-VERDICT`
+# satırı), sonra SAHİP bulgu başına onaylar/reddeder; yalnız onaylı bulgu TODO/TBD'ye dışa aktarılır.
+
+VERDICT_MARK = "STEWARD-REVIEW-VERDICT:"
+VERDICTS = ("verified", "refuted", "unclear")
+VERIFIABLE_STATES = ("new", "verify_sent", "unclear")          # doğrulama direktifi gönderilebilir
+APPROVABLE_STATES = ("verified", "unclear")                    # refuted/new/verify_sent approve EDİLEMEZ
+REJECTABLE_STATES = ("new", "verify_sent", "verified", "refuted", "unclear")
+VERIFY_MAX_FINDINGS = 20                                       # tek direktifte en çok bulgu
+VERDICT_REASON_MAX = 500
+
+# Satırın TAMAMI (baştaki boşluk hariç) işaretle başlamalı: düzyazıdaki anma, `...` içindeki örnek, madde imi sayılmaz.
+_VERDICT_RE = re.compile(r"^STEWARD-REVIEW-VERDICT:[ \t]*([A-Za-z0-9][A-Za-z0-9._:-]*)[ \t]+(verified|refuted|unclear)"
+                         r"(?:[ \t]+(.*))?$")
+_PLACEHOLDER_RE = re.compile(r"^<[^<>\n]{1,80}>[\s`.…]*$")
+
+
+def scan_verdicts(text: str) -> List[Tuple[str, str, str]]:
+    """Oturum yanıtındaki GERÇEK `STEWARD-REVIEW-VERDICT: <fid> verified|refuted|unclear <gerekçe>` satırları:
+    `[(fid, karar, gerekçe)]` (aynı fid için son satır geçerli). A11 deseni: kod bloğu (```/~~~) içi, `>` alıntı,
+    satır içinde geçen anma ve `<yer tutucu>` gerekçeli yazım örneği SAYILMAZ. SAF."""
+    out: Dict[str, Tuple[str, str, str]] = {}
+    fenced = False
+    for raw in str(text or "").splitlines():
+        s = raw.strip()
+        if s.startswith("```") or s.startswith("~~~"):
+            fenced = not fenced
+            continue
+        if fenced or s.startswith(">"):
+            continue
+        m = _VERDICT_RE.match(s)
+        if not m:
+            continue
+        reason = (m.group(3) or "").strip()
+        if _PLACEHOLDER_RE.match(reason):
+            continue
+        out[m.group(1)] = (m.group(1), m.group(2), reason[:VERDICT_REASON_MAX])
+    return list(out.values())
+
+
+def text_hash(text: str) -> str:
+    import hashlib
+    return hashlib.sha1(str(text or "").encode("utf-8", "replace")).hexdigest()
+
+
+def apply_verdicts(findings: Dict[str, Any], project: str, verdicts: Sequence[Tuple[str, str, str]], src_hash: str,
+                   session: str, now: float) -> List[str]:
+    """`findings`i YERİNDE günceller; uygulanan fid'ler döner. Kabul: bilinen fid, aynı proje, durum `verify_sent`,
+    ve metin doğrulama gönderilirken görülen (eski) son yanıt DEĞİL (`verify_baseline`) ya da bu fid'e daha önce
+    uygulanmış metin değil (`verdict_src`). SAF."""
+    applied: List[str] = []
+    for fid, verdict, reason in verdicts:
+        rec = findings.get(fid)
+        if not isinstance(rec, dict) or rec.get("project") != project or rec.get("state") != "verify_sent":
+            continue
+        if verdict not in VERDICTS or src_hash in (rec.get("verify_baseline"), rec.get("verdict_src")):
+            continue
+        rec.update(state=verdict, verdict=reason, verdict_at=now, verdict_session=session, verdict_src=src_hash)
+        applied.append(fid)
+    return applied
+
+
+def build_verify_message(rows: Sequence[Dict[str, Any]], lang: str = "tr") -> str:
+    """Proje oturumuna giden doğrulama direktifi. `rows`: `id`, `severity`, `where`, `title` alanlı bulgular."""
+    items = "\n".join(f"- {r['id']} | {r.get('severity') or '?'} | {r.get('where') or '?'} | "
+                      f"{' '.join(str(r.get('title') or '').split())[:200]}" for r in rows)
+    if lang == "en":
+        return ("An independent code review reported the findings below. Start a Sonnet sub-agent (model: sonnet) and "
+                "have it check EACH finding against the current code. Do NOT fix anything, do not edit files, do not "
+                "commit.\nFindings (id | severity | location | title):\n" + items + "\n"
+                "At the END of your answer write one line per finding, at the very start of the line (not inside a code "
+                "block or a quote):\n"
+                f"{VERDICT_MARK} <id> verified|refuted|unclear <one-sentence reason>")
+    return ("Bağımsız bir kod incelemesi aşağıdaki bulguları raporladı. Bir Sonnet alt ajanı (model: sonnet) başlat ve "
+            "HER bulguyu güncel koda karşı doğrulat. Düzeltme YAPMA, dosya değiştirme, commit etme.\n"
+            "Bulgular (kimlik | önem | yer | başlık):\n" + items + "\n"
+            "Cevabının SONUNDA her bulgu için ayrı bir satır yaz, satırın EN BAŞINDA (kod bloğu ya da alıntı içinde "
+            "değil):\n"
+            f"{VERDICT_MARK} <kimlik> verified|refuted|unclear <tek cümlelik gerekçe>")
+
+
+def mark_verify_sent(paths: Any, fids: Sequence[str], session: str, baseline: str, now: float) -> List[str]:
+    """Doğrulama direktifi GİTTİKTEN sonra bulguları `verify_sent` yapar (kilit altında); yalnız hâlâ
+    `VERIFIABLE_STATES`teki bulgular. `baseline`: gönderim anındaki son asistan metninin özeti (eski yanıt yeniden
+    işlenmesin)."""
+    p = sw._pp(paths)
+    done: List[str] = []
+    with sw.steward_lock(p):
+        data = load_findings(p)
+        for fid in fids:
+            rec = data.get(fid)
+            if isinstance(rec, dict) and rec.get("state") in VERIFIABLE_STATES:
+                rec.update(state="verify_sent", verify_sent_at=now, verify_session=session, verify_baseline=baseline)
+                done.append(fid)
+        if done:
+            save_findings(p, data)
+    return done
+
+
+def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "owner") -> Dict[str, Any]:
+    """Sahibin bulgu kararı: approve (yalnız verified|unclear) | reject (dışa aktarılmamış ve kararsız bulgu)."""
+    if action not in ("approve", "reject"):
+        return {"ok": False, "error": "action must be approve or reject"}
+    p = sw._pp(paths)
+    with sw.steward_lock(p):
+        data = load_findings(p)
+        rec = data.get(fid)
+        if not isinstance(rec, dict):
+            return {"ok": False, "error": f"unknown finding: {fid}"}
+        st = rec.get("state")
+        allowed = APPROVABLE_STATES if action == "approve" else REJECTABLE_STATES
+        if st not in allowed:
+            return {"ok": False, "error": f"cannot {action} a finding in state {st!r} (allowed: {', '.join(allowed)})",
+                    "state": st}
+        rec.update(state="approved" if action == "approve" else "rejected", decided_by=by, decided_at=now)
+        save_findings(p, data)
+    return {"ok": True, "id": fid, "state": rec["state"]}
+
+
+EXPORT_HEADING = "## Review bulguları"
+
+
+def export_lines(rows: Sequence[Dict[str, Any]], reviews_root: str) -> List[str]:
+    out = []
+    for r in rows:
+        src = str(r.get("review_file") or "")
+        if reviews_root and src.startswith(reviews_root.rstrip("/") + "/"):
+            src = os.path.relpath(src, reviews_root)
+        title = " ".join(str(r.get("title") or "").split())
+        out.append(f"- [ ] (review {r['id']}) [{r.get('severity') or '?'}] {r.get('where') or '?'}: {title} "
+                   f"(kaynak: {src})")
+    return out
+
+
+def appended_export(text: str, rows: Sequence[Dict[str, Any]], reviews_root: str, stamp: str) -> Tuple[Optional[str], List[str]]:
+    """`text`in sonuna onaylı bulguları `EXPORT_HEADING` altında ekler. Dosyada kimliği zaten geçen bulgu yeniden
+    yazılmaz. (yeni içerik ya da None, yazılan fid'ler). SAF."""
+    fresh = [r for r in rows if f"(review {r['id']})" not in text]
+    if not fresh:
+        return None, []
+    lines = export_lines(fresh, reviews_root)
+    last_head = next((ln for ln in reversed(text.splitlines()) if ln.startswith("## ")), "")
+    body = text.rstrip("\n")
+    if last_head.startswith(EXPORT_HEADING):
+        new = f"{body}\n" + "\n".join(lines) + "\n"
+    else:
+        new = (f"{body}\n\n" if body else "") + f"{EXPORT_HEADING} ({stamp})\n" + "\n".join(lines) + "\n"
+    return new, [r["id"] for r in fresh]

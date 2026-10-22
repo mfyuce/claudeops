@@ -620,6 +620,27 @@ def cmd_review(args) -> int:
         res = _api(port, "POST", "/api/steward/review/cancel", {"project": getattr(args, "project", "") or ""}, sid)
         print(f"iptal edilen: {', '.join(res.get('cancelled') or []) or '-'}" if res.get("ok") else f"hata: {res.get('error')}")
         return 0 if res.get("ok") else 1
+    if act == "verify":
+        body: Dict[str, Any] = {"project": args.project}
+        if getattr(args, "fid", None):
+            body["fids"] = list(args.fid)
+        res = _api(port, "POST", "/api/steward/review/verify", body, sid)
+        if res.get("ok"):
+            print(f"✓ doğrulama gönderildi: {res.get('session')} ({len(res.get('findings') or [])} bulgu, sahip {res.get('owner')})")
+            return 0
+        print(f"hata: {res.get('error')}")
+        return 1
+    if act in ("approve", "reject"):
+        res = _api(port, "POST", "/api/steward/review/finding", {"id": args.fid, "action": act}, sid)
+        print(f"✓ {args.fid}: {res.get('state')}" if res.get("ok") else f"hata: {res.get('error')}")
+        return 0 if res.get("ok") else 1
+    if act == "export":
+        res = _api(port, "POST", "/api/steward/review/export", {"project": args.project, "kind": args.kind}, sid)
+        if res.get("ok"):
+            print(f"✓ {res.get('file')}: yazılan {len(res.get('written') or [])}, zaten vardı {len(res.get('already') or [])}")
+            return 0
+        print(f"hata: {res.get('error')}")
+        return 1
     if act == "findings":
         res = _get(port, "/api/steward/review/findings", sid, project=getattr(args, "project", "") or "",
                    state=getattr(args, "state", "") or "")
@@ -835,7 +856,7 @@ def register(sub):
     pup.add_argument("--dry-run", action="store_true", help="models.tsv'ye yazma, beyni başlatma (yalnız on yapılır)")
     pup.add_argument("--no-brain", action="store_true")
     pup.set_defaults(func=cmd_up)
-    prv = s.add_parser("review", help="reviewer kimliği: status|pool add|rm|on|off PROJE|run PROJE [mode/model]|cancel [PROJE]|history|findings")
+    prv = s.add_parser("review", help="reviewer kimliği: status|pool add|rm|on|off PROJE|run PROJE [mode/model]|cancel [PROJE]|history|findings|verify PROJE|approve|reject FID|export PROJE")
     prv.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     rv_ = prv.add_subparsers(dest="review_action", metavar="<alt>")
     rv_.add_parser("status", help="havuz + hedefler + çalışan iş")
@@ -851,6 +872,15 @@ def register(sub):
     rfi = rv_.add_parser("findings", help="bulgular")
     rfi.add_argument("--project", default="")
     rfi.add_argument("--state", default="")
+    rve = rv_.add_parser("verify", help="bulguları projenin kendi oturumuna doğrulat (Sonnet alt ajan): PROJE [--fid ID]...")
+    rve.add_argument("project")
+    rve.add_argument("--fid", action="append", default=[], help="yalnız bu bulgu(lar); yoksa projenin yeni bulguları")
+    for verb, h in (("approve", "bulguyu onayla (yalnız verified|unclear)"), ("reject", "bulguyu reddet")):
+        rde = rv_.add_parser(verb, help=h)
+        rde.add_argument("fid")
+    rex = rv_.add_parser("export", help="onaylı bulguları projenin TODO.md/TOBEDECIDED.md dosyasına yaz: PROJE [--kind todo|tbd]")
+    rex.add_argument("project")
+    rex.add_argument("--kind", choices=["todo", "tbd"], default="todo")
     prv.set_defaults(func=cmd_review)
     s.add_parser("on", help="döngüyü aç (steward.enabled=on)").set_defaults(func=cmd_toggle)
     poff = s.add_parser("off", help="döngüyü kapat (--all: tüm kimlikleri)")

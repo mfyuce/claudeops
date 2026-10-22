@@ -228,6 +228,11 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
                 status, error = "model_fallback", f"agy etiket uyuşmadı: istenen={target.model} görülen={seen or '(yok)'}"
         fields.update(status=status, error=error)
         rv.update_pair(paths, project, target, **fields)
+        if status in ("done", "partial") and fields.get("file"):
+            try:    # bulgular state=new ile kaydedilir; ayrıştırma hatası koşunun sonucunu bozmaz
+                rv.add_findings(paths, project, path, rv.parse_findings(text))
+            except Exception as e:
+                sw.log_event("review_findings_failed", paths=paths, project=project, error=_tail(repr(e)))
     except Exception as e:   # çalıştırıcı asla `running` bırakıp ölmesin
         try:
             rv.update_pair(paths, project, target, status="error", finished_at=now(), error=_tail(f"{type(e).__name__}: {e}"))
@@ -440,6 +445,13 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         n = recover_on_start(p, now=lambda: t)
         if n:
             actions.append({"kind": "recover", "pairs": n})
+    try:
+        applied = process_verdicts(cfg, t)
+    except Exception as e:      # karar okuma hatası planlayıcıyı düşürmesin
+        sw.log_event("review_verdicts_failed", paths=p, error=_tail(repr(e)))
+        applied = []
+    if applied:
+        actions.append({"kind": "verdicts", "findings": applied})
     pool, changed = sync_pool(p, t)
     if changed:
         actions.append({"kind": "pool_sync"})
@@ -606,3 +618,119 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
 def cancel_action(cfg: Any, project: str = "") -> Dict[str, Any]:
     c = cancel_all(cfg.sid, str(project or "").strip())
     return {"ok": True, "cancelled": c}
+
+
+# ── bulgu akışı (adım 7) ──────────────────────────────────────────────────────
+# Karar okuma: reviewer kimliği oturuma YAZMAZ, oturum AÇMAZ, `_target`tan geçmez. Sahibin oturumunun son asistan
+# metnini `web_steward` kendi yalnız-okuma görünüm yolundan (`_collect_views`) verir: `fn(proje) -> (oturum, metin)`
+# ya da None (sahip yok / uzak / çalışan oturum yok / birden çok oturum). Bu modül web_steward'ı içe aktarmaz.
+
+_VERDICT_READER: Optional[Callable[[str], Optional[Tuple[str, str]]]] = None
+
+
+def set_verdict_reader(fn: Optional[Callable[[str], Optional[Tuple[str, str]]]]) -> None:
+    global _VERDICT_READER
+    _VERDICT_READER = fn
+
+
+def process_verdicts(cfg: Any, now: Optional[float] = None) -> List[str]:
+    """`verify_sent` bulguların projeleri için sahibin oturumunun son yanıtındaki `STEWARD-REVIEW-VERDICT` satırlarını
+    işler (`rv.scan_verdicts` + `rv.apply_verdicts`). Uygulanan fid'ler döner."""
+    reader = _VERDICT_READER
+    if reader is None:
+        return []
+    t = time.time() if now is None else now
+    p = sw.paths_for(cfg.sid)
+    data = rv.load_findings(p)
+    projects = sorted({str(v.get("project")) for v in data.values()
+                       if isinstance(v, dict) and v.get("state") == "verify_sent" and v.get("project")})
+    applied: List[str] = []
+    for proj in projects:
+        got = reader(proj)
+        if not got:
+            continue
+        session, text = got
+        verdicts = rv.scan_verdicts(text)
+        if not verdicts:
+            continue
+        h = rv.text_hash(text)
+        with sw.steward_lock(p):
+            cur = rv.load_findings(p)
+            done = rv.apply_verdicts(cur, proj, verdicts, h, session, t)
+            if done:
+                rv.save_findings(p, cur)
+        if done:
+            sw.log_event("review_verdicts", paths=p, project=proj, session=session, findings=done,
+                         verdicts={f: cur[f]["state"] for f in done})
+            applied.extend(done)
+    return applied
+
+
+def verify_candidates(cfg: Any, project: str, fids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Doğrulanacak bulgular: `fids` verildiyse onlar (yalnız bu projenin ve `VERIFIABLE_STATES`teki), yoksa projenin
+    `new` bulguları; önem sırasıyla, en çok `VERIFY_MAX_FINDINGS`."""
+    data = rv.load_findings(sw.paths_for(cfg.sid))
+    rows = []
+    for k, v in data.items():
+        if not isinstance(v, dict) or v.get("project") != project:
+            continue
+        if fids:
+            if k in fids and v.get("state") in rv.VERIFIABLE_STATES:
+                rows.append(dict(v, id=k))
+        elif v.get("state") == "new":
+            rows.append(dict(v, id=k))
+    rows.sort(key=lambda r: (str(r.get("severity") or "P9"), str(r.get("review_file")), str(r.get("ref"))))
+    return rows[:rv.VERIFY_MAX_FINDINGS]
+
+
+def decide(cfg: Any, fid: str, action: str, now: Optional[float] = None) -> Dict[str, Any]:
+    fid = str(fid or "").strip()
+    if not fid:
+        return {"ok": False, "error": "finding id required"}
+    r = rv.decide_finding(sw.paths_for(cfg.sid), fid, str(action or ""), time.time() if now is None else now)
+    if r.get("ok"):
+        sw.log_event("review_decide", paths=cfg.sid, id=fid, action=action, state=r["state"], by="owner")
+    return r
+
+
+def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None) -> Dict[str, Any]:
+    """Projenin ONAYLI bulgularını yerel proje klasöründeki `fname` (TODO.md / TOBEDECIDED.md) sonuna
+    `## Review bulguları` başlığı altında ekler; yazılanlar `exported` olur (çift dışa aktarma yok). Onaysız bulgu ASLA
+    yazılmaz. Uzak proje reddedilir (yerel dosya sistemi ona ait değil)."""
+    t = time.time() if now is None else now
+    project = str(project or "").strip()
+    if not project or not sw.valid_name(project):
+        return {"ok": False, "error": "invalid project name"}
+    if "/" in fname or ".." in fname or "\x00" in fname or not fname:
+        return {"ok": False, "error": "invalid target file"}
+    if project in (ownership().get("hosts") or {}):
+        return {"ok": False, "error": "remote projects are not exported (v1)"}
+    cwd = project_cwd(project)
+    if not cwd or not os.path.isdir(cwd):
+        return {"ok": False, "error": f"project folder not found: {project}"}
+    p = sw.paths_for(cfg.sid)
+    target = os.path.join(cwd, fname)
+    stamp = time.strftime("%Y-%m-%d", time.localtime(t))
+    with sw.steward_lock(p):
+        data = rv.load_findings(p)
+        rows = [dict(v, id=k) for k, v in sorted(data.items())
+                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"]
+        if not rows:
+            return {"ok": False, "error": "no approved findings to export", "project": project}
+        try:
+            with open(target, encoding="utf-8") as f:
+                text = f.read()
+        except FileNotFoundError:
+            text = ""
+        new, written = rv.appended_export(text, rows, p.reviews, stamp)
+        if new is not None:
+            tmp = f"{target}.{os.getpid()}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(new)
+            os.replace(tmp, target)
+        already = [r["id"] for r in rows if r["id"] not in written]
+        for fid in written + already:       # dosyada zaten olan onaylı bulgu da `exported` sayılır (yeniden yazılmaz)
+            data[fid].update(state="exported", exported_to=target, exported_at=t)
+        rv.save_findings(p, data)
+    sw.log_event("review_export", paths=p, project=project, file=fname, written=written, already=already)
+    return {"ok": True, "project": project, "file": target, "written": written, "already": already}

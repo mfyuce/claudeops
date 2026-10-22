@@ -28,6 +28,7 @@ import psutil
 
 from .. import hosts as hosts_mod
 from .. import instances as inst_mod
+from .. import review as rv
 from .. import steward as sw
 from .. import steward_jobs as sj
 from ..diaglog import diag_log
@@ -4119,13 +4120,112 @@ def http_review_cancel(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
     return r
 
 
+def _owner_project_views(project: str) -> Tuple[str, List[sw.SessionView], Optional[Dict[str, Any]]]:
+    """Reviewer bulgu akışı için projenin SAHİBİNİN yerel çalışan oturum görünümleri (yalnız okuma: `_collect_views`,
+    `_target`tan GEÇMEZ, hiçbir şey göndermez). (sahip kimliği, görünümler, hata)."""
+    idx = _ownership_index()
+    owner = (idx.get("owners") or {}).get(project) or ""
+    if not owner:
+        return "", [], {"ok": False, "error": f"project {project!r} has no (unique) owner steward", "code": "no_owner"}
+    if project in (idx.get("hosts") or {}):
+        return owner, [], {"ok": False, "error": "remote projects are not reviewed (v1)", "code": "remote"}
+    ocfg = steward_config(owner)
+    projects = sw.load_projects(owner)
+    world = _world(owner, ocfg)
+    out = []
+    for v in _collect_views(ocfg):
+        if not v.running or sw.normalize_host(v.host):
+            continue
+        q = _project_for_session(v.name, projects, world)
+        if q is not None and q.name == project:
+            out.append(v)
+    return owner, out, None
+
+
+def _review_verdict_reader(project: str) -> Optional[Tuple[str, str]]:
+    """`web_review.process_verdicts` okuyucusu: sahibin TEK çalışan oturumunun son asistan metni (yoksa/çoksa None)."""
+    _owner, views, err = _owner_project_views(project)
+    if err is not None or len(views) != 1:
+        return None
+    return views[0].name, views[0].last_assistant or ""
+
+
+def http_review_verify(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Bulguları projenin kendi oturumuna doğrulat (CLI `review verify PROJE`): sahibin kimliği üzerinden, İNSAN aktörüyle
+    `http_directive` (oturum kapalıysa AÇILMAZ, açık hata). Oturum meşgul / alt ajanı çalışıyor / az önce direktif aldıysa
+    gönderilmez (`session_busy`). Gönderilince bulgular `verify_sent`; karar reviewer tick'inde okunur."""
+    if (d := _human_only(data, "send a review verification")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    project = str(data.get("project") or "").strip()
+    if not sw.valid_name(project):
+        return {"ok": False, "error": "invalid project name"}
+    fids = data.get("fids")
+    fids = [str(x) for x in fids] if isinstance(fids, list) else []
+    rows = web_review.verify_candidates(cfg, project, fids or None)
+    if not rows:
+        return {"ok": False, "error": "no findings to verify (state new, or given ids in new|verify_sent|unclear)"}
+    owner, views, oerr = _owner_project_views(project)
+    if oerr is not None:
+        return oerr
+    if not views:
+        return {"ok": False, "code": "not_running",
+                "error": f"project {project!r} has no running session: verification NOT sent (open the session first)"}
+    if len(views) > 1:
+        return {"ok": False, "code": "ambiguous_sessions", "error": "ambiguous_sessions", "sessions": [v.name for v in views]}
+    v = views[0]
+    lda = sw.load_state(sw.paths_for(owner)).get("last_directive_at") or {}
+    why = "subagent_active" if v.subagent_active else sw.directive_defer_reason(v.busy, float(lda.get(v.name) or 0.0),
+                                                                                  time.time())
+    if why:
+        sw.log_event("review_verify_deferred", paths=sid, project=project, session=v.name, reason=why)
+        return {"ok": False, "code": "session_busy", "error": f"session_busy ({why}): verification not sent; try again later"}
+    msg = rv.build_verify_message(rows, steward_config(owner).lang)
+    res = http_directive({"name": v.name, "text": msg, "start_if_stopped": False, "reason": "review_verify"}, sid=owner)
+    if not res.get("ok"):
+        return dict(res, ok=False)
+    marked = rv.mark_verify_sent(sw.paths_for(sid), [r["id"] for r in rows], v.name, rv.text_hash(v.last_assistant),
+                                 time.time())
+    sw.log_event("review_verify", paths=sid, project=project, owner=owner, session=v.name, findings=marked, source="ui")
+    return {"ok": True, "project": project, "owner": owner, "session": v.name, "findings": marked}
+
+
+def http_review_finding(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Sahibin bulgu kararı (CLI `review approve|reject FID`): approve yalnız verified|unclear bulguya."""
+    if (d := _human_only(data, "decide on a review finding")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    return web_review.decide(cfg, str(data.get("id") or ""), str(data.get("action") or ""))
+
+
+def http_review_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Onaylı bulguları yerel projenin TODO.md / TOBEDECIDED.md dosyasına yaz (CLI `review export PROJE [--kind]`)."""
+    if (d := _human_only(data, "export review findings")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    fname = _EXPORT_FILES.get(str(data.get("kind") or "todo"))
+    if fname is None:
+        return {"ok": False, "error": "kind must be todo or tbd"}
+    return web_review.export_findings(cfg, str(data.get("project") or ""), fname)
+
+
 web_review.set_cwd_resolver(lambda name: _project_cwd(name))
+web_review.set_verdict_reader(_review_verdict_reader)
 
 
 POST_PATHS = {
     "/api/steward/review/pool": http_review_pool,
     "/api/steward/review/run": http_review_run,
     "/api/steward/review/cancel": http_review_cancel,
+    "/api/steward/review/verify": http_review_verify,
+    "/api/steward/review/finding": http_review_finding,
+    "/api/steward/review/export": http_review_export,
     "/api/steward/service/add": http_service_add,
     "/api/steward/service/rm": http_service_rm,
     "/api/steward/job/ack": http_job_ack,
