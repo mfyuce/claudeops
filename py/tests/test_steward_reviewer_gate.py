@@ -47,12 +47,13 @@ class TestReviewerTick(_Reviewer):
         self.assertFalse(os.path.exists(sw.paths_for("rev").projects))
         self.assertEqual(sw.tail_log(20, "rev"), [])
 
-    def test_real_review_tick_is_noop_and_spawns_nothing(self):
+    def test_idle_review_tick_is_noop_and_spawns_nothing(self):
         before = sorted(os.listdir(sw.paths_for("rev").root))
-        res = ws.tick_round("timer")                        # spawn_session gerçek çağrılırsa AssertionError (taban)
-        self.assertTrue(any(r.get("sid") == "rev" and r.get("noop") for r in res))
-        self.assertEqual(sorted(os.listdir(sw.paths_for("rev").root)), before)
-        self.assertEqual(web_review.review_tick(settings.steward_config("rev"))["actions"], [])
+        with mock.patch.object(web_review, "current_targets", lambda cfg: []):     # gerçek agy/Evren model listesi YOK
+            res = ws.tick_round("timer")                    # spawn_session gerçek çağrılırsa AssertionError (taban)
+            self.assertTrue(any(r.get("sid") == "rev" and r.get("noop") for r in res))
+            self.assertEqual([f for f in os.listdir(sw.paths_for("rev").root) if f != ".lock"], before)
+            self.assertEqual(web_review.review_tick(settings.steward_config("rev"))["actions"], [])
 
     def test_disabled_reviewer_is_not_passively_scanned(self):
         settings.save_settings({"stewards": {"rev": {"enabled": "off"}}})

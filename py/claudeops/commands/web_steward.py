@@ -2687,6 +2687,8 @@ def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
                 reviewers.add(sid)
                 if cfg.enabled:
                     results.append(dict(web_review.review_tick(cfg) or {}, sid=sid, role="reviewer"))
+                else:
+                    web_review.review_disable(cfg)      # kapalı reviewer: koşan iş iptal, hiçbir şey başlamaz
                 continue
             if not cfg.enabled:
                 disabled.append(sid)
@@ -3864,7 +3866,7 @@ def _unknown_steward() -> Dict[str, Any]:
     return {"ok": False, "error": "unknown steward"}
 
 
-_GET_PATHS = frozenset(("state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
+_GET_PATHS = frozenset(("review/state", "review/file", "review/findings", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
                         "jobs", "services"))
 
 
@@ -3882,6 +3884,12 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         sid = _ctx_for(qs).sid
     except UnknownSteward:
         return _unknown_steward()
+    if path == "/api/steward/review/state":
+        return http_review_state(sid)
+    if path == "/api/steward/review/file":
+        return http_review_file(g("path"), sid)
+    if path == "/api/steward/review/findings":
+        return http_review_findings(g("project").strip(), g("state").strip(), sid)
     if path == "/api/steward/state":
         return http_state(sid)
     if path == "/api/steward/projects":
@@ -4053,7 +4061,71 @@ def http_job_ack(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return {"ok": True}
 
 
+def _reviewer_cfg(sid: str) -> Tuple[Optional[sw.Config], Optional[Dict[str, Any]]]:
+    cfg = steward_config(sid)
+    if sid == "default" or cfg.role != "reviewer":
+        return None, {"ok": False, "error": f"steward {sid} is not a reviewer"}
+    return cfg, None
+
+
+def http_review_state(sid: str = "default") -> Dict[str, Any]:
+    cfg, err = _reviewer_cfg(sid)
+    return err or web_review.review_state(cfg)
+
+
+def http_review_file(rel: str, sid: str = "default") -> Dict[str, Any]:
+    cfg, err = _reviewer_cfg(sid)
+    return err or web_review.read_review_file(cfg, rel)
+
+
+def http_review_findings(project: str = "", state: str = "", sid: str = "default") -> Dict[str, Any]:
+    cfg, err = _reviewer_cfg(sid)
+    return err or web_review.list_findings(cfg, project, state)
+
+
+def http_review_pool(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Havuz: add|remove|enable|disable (CLI `review pool ...`); yalnız insan."""
+    if (d := _human_only(data, "change the review pool")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    r = web_review.pool_action(cfg, str(data.get("action") or ""), str(data.get("project") or ""))
+    if r.get("ok"):
+        sw.log_event("review_pool", paths=sid, action=r.get("action"), project=r.get("project"), source="ui")
+    return r
+
+
+def http_review_run(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    if (d := _human_only(data, "start a review")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    r = web_review.manual_run(cfg, str(data.get("project") or ""), str(data.get("mode") or ""), str(data.get("model") or ""))
+    if r.get("ok"):
+        sw.log_event("review_run", paths=sid, project=data.get("project"), key=r.get("key"), source="ui")
+    return r
+
+
+def http_review_cancel(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    if (d := _human_only(data, "cancel a review")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    r = web_review.cancel_action(cfg, str(data.get("project") or ""))
+    sw.log_event("review_cancel", paths=sid, project=data.get("project") or "*", cancelled=r["cancelled"], source="ui")
+    return r
+
+
+web_review.set_cwd_resolver(lambda name: _project_cwd(name))
+
+
 POST_PATHS = {
+    "/api/steward/review/pool": http_review_pool,
+    "/api/steward/review/run": http_review_run,
+    "/api/steward/review/cancel": http_review_cancel,
     "/api/steward/service/add": http_service_add,
     "/api/steward/service/rm": http_service_rm,
     "/api/steward/job/ack": http_job_ack,

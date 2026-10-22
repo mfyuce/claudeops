@@ -591,6 +591,68 @@ def cmd_jobs(args) -> int:
     return 0
 
 
+def _get(port: int, path: str, sid: str, **q: str) -> Dict[str, Any]:
+    import urllib.parse
+    qq = {k: v for k, v in dict(q, steward=("" if sid == "default" else sid)).items() if v}
+    return _api(port, "GET", path + ("?" + urllib.parse.urlencode(qq) if qq else ""), None)
+
+
+def cmd_review(args) -> int:
+    """reviewer kimliği: status|pool add|rm|on|off PROJE|run PROJE [mode/model]|cancel [PROJE]|history|findings."""
+    port, sid = args.port, _sid(args)
+    act = getattr(args, "review_action", None) or "status"
+    if act == "pool":
+        verb = {"add": "add", "rm": "remove", "on": "enable", "off": "disable"}[args.pool_action]
+        res = _api(port, "POST", "/api/steward/review/pool", {"action": verb, "project": args.project}, sid)
+        print(f"✓ havuz {verb}: {args.project}" if res.get("ok") else f"hata: {res.get('error')}")
+        return 0 if res.get("ok") else 1
+    if act == "run":
+        mode, model = "", ""
+        if getattr(args, "target", ""):
+            mode, _, model = args.target.partition("/")
+            if not mode or not model:
+                print("hata: hedef <mode>/<model> biçiminde olmalı (ör. evren/glm-4.6)")
+                return 1
+        res = _api(port, "POST", "/api/steward/review/run", {"project": args.project, "mode": mode, "model": model}, sid)
+        print(f"✓ başladı: {res.get('key')}" if res.get("ok") else f"hata: {res.get('error')}")
+        return 0 if res.get("ok") else 1
+    if act == "cancel":
+        res = _api(port, "POST", "/api/steward/review/cancel", {"project": getattr(args, "project", "") or ""}, sid)
+        print(f"iptal edilen: {', '.join(res.get('cancelled') or []) or '-'}" if res.get("ok") else f"hata: {res.get('error')}")
+        return 0 if res.get("ok") else 1
+    if act == "findings":
+        res = _get(port, "/api/steward/review/findings", sid, project=getattr(args, "project", "") or "",
+                   state=getattr(args, "state", "") or "")
+        if not res.get("ok"):
+            print(f"hata: {res.get('error')}")
+            return 1
+        rows = res.get("findings") or []
+        for f in rows:
+            print(f"{f.get('severity'):<3} {f.get('state'):<11} {f.get('project'):<14} {f.get('ref'):<6} {f.get('where')}  {f.get('title')}")
+        if not rows:
+            print("bulgu yok")
+        return 0
+    res = _get(port, "/api/steward/review/state", sid)
+    if not res.get("ok"):
+        print(f"hata: {res.get('error')}")
+        return 1
+    if act == "history":
+        for r in res.get("runs") or []:
+            print(f"{_ago(float(r.get('at') or 0)):<10} {r.get('status'):<15} {r.get('pair')}  {r.get('file') or ''}")
+        if not res.get("runs"):
+            print("çalıştırma kaydı yok")
+        return 0
+    tg = res.get("targets") or []
+    print(f"reviewer: {'AÇIK' if res.get('enabled') else 'KAPALI'}  hedef={len(tg)}  çalışan={', '.join(res.get('running') or []) or '-'}")
+    for r in res.get("pool") or []:
+        done = sum(1 for p in (r.get("pairs") or {}).values() if isinstance(p, dict) and p.get("status") == "done")
+        flag = "tamam" if r.get("complete") else f"{done}/{len(tg)}"
+        print(f"  {'+' if r.get('enabled') else '-'} {r.get('project'):<16} {r.get('source'):<7} {flag}")
+    if not res.get("pool"):
+        print("havuz boş")
+    return 0
+
+
 def cmd_up(args) -> int:
     """Tek komutla açma: `on` + `close`'un yorumladığı (`# CLOSED`) proje satırlarını geri aç + beyni başlat. Bekleyen
     cevapları ayrıca iletmek gerekmez: ilk tick `deliver_answer` ile iletir."""
@@ -773,6 +835,23 @@ def register(sub):
     pup.add_argument("--dry-run", action="store_true", help="models.tsv'ye yazma, beyni başlatma (yalnız on yapılır)")
     pup.add_argument("--no-brain", action="store_true")
     pup.set_defaults(func=cmd_up)
+    prv = s.add_parser("review", help="reviewer kimliği: status|pool add|rm|on|off PROJE|run PROJE [mode/model]|cancel [PROJE]|history|findings")
+    prv.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
+    rv_ = prv.add_subparsers(dest="review_action", metavar="<alt>")
+    rv_.add_parser("status", help="havuz + hedefler + çalışan iş")
+    rv_.add_parser("history", help="son çalıştırmalar")
+    rpl = rv_.add_parser("pool", help="havuz: add|rm|on|off PROJE")
+    rpl.add_argument("pool_action", choices=["add", "rm", "on", "off"])
+    rpl.add_argument("project")
+    rru = rv_.add_parser("run", help="elle başlat: PROJE [mode/model]")
+    rru.add_argument("project")
+    rru.add_argument("target", nargs="?", default="", help="<mode>/<model>, ör. evren/glm-4.6 (yoksa sıradaki hedef)")
+    rca = rv_.add_parser("cancel", help="koşan işi iptal et (PROJE yoksa hepsi)")
+    rca.add_argument("project", nargs="?", default="")
+    rfi = rv_.add_parser("findings", help="bulgular")
+    rfi.add_argument("--project", default="")
+    rfi.add_argument("--state", default="")
+    prv.set_defaults(func=cmd_review)
     s.add_parser("on", help="döngüyü aç (steward.enabled=on)").set_defaults(func=cmd_toggle)
     poff = s.add_parser("off", help="döngüyü kapat (--all: tüm kimlikleri)")
     poff.add_argument("--all", action="store_true")

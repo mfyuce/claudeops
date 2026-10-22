@@ -40,6 +40,7 @@ class _Job:
         self.key = key
         self.proc: Any = None
         self.cancelled = False
+        self.sid = ""                # işi başlatan reviewer kimliği
 
 
 # ── ortam / argv ──────────────────────────────────────────────────────────────
@@ -128,8 +129,12 @@ def _terminate(proc: Any, grace: float) -> None:
 
 def cancel_job(project: str, target: rv.ReviewTarget) -> bool:
     """Çalışan işi iptal eder: SIGTERM, `KILL_GRACE_SECONDS` sonra hâlâ yaşıyorsa SIGKILL. Çalışan iş yoksa False."""
+    return cancel_key(rv.pair_key(project, target))
+
+
+def cancel_key(key: str) -> bool:
     with _JOBS_LOCK:
-        job = _JOBS.get(rv.pair_key(project, target))
+        job = _JOBS.get(key)
     if job is None or job.proc is None:
         return False
     job.cancelled = True
@@ -272,6 +277,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
         rv.update_pair(p, project, target, status="running", started_at=t0, finished_at=None, file=None, error=None,
                        label_seen=None, pid=None)
         job = _Job(key)
+        job.sid = p.sid
         with _JOBS_LOCK:
             _JOBS[key] = job
         path = rv.review_path(p.reviews, project, target, t0)
@@ -305,6 +311,298 @@ def recover_on_start(paths: Any, now: Callable[[], float] = time.time) -> int:
     return n
 
 
-def review_tick(cfg: sw.Config) -> Dict[str, Any]:
-    """Bir reviewer kimliğinin döngü turu. Şimdilik no-op: hiçbir dosyaya/oturuma/sürece dokunmaz."""
-    return {"ok": True, "actions": [], "started": 0, "noop": True}
+# ── planlayıcı (adım 5) ───────────────────────────────────────────────────────
+
+# Test anahtarı: False iken tick'in başlattığı iş eşzamanlı (thread beklenir). Üretimde True.
+_REVIEW_BACKGROUND = True
+# `run_job`a ek anahtar sözcük argümanları (testler `popen=` vb. enjekte eder; üretimde boş).
+_RUN_KW: Dict[str, Any] = {}
+_RECOVERED: set = set()          # `recover_on_start` çalışmış kimlikler (süreç başına bir kez)
+
+
+def project_cwd(name: str) -> str:
+    """Projenin YEREL klasörü (instances kaydı). `web_steward` kendi çözücüsünü `set_cwd_resolver` ile bağlar."""
+    if _CWD_FN is not None:
+        return _CWD_FN(name) or ""
+    try:
+        from .. import instances as inst_mod
+        rec = inst_mod.get_instance(name)
+        return str((rec or {}).get("cwd") or "")
+    except Exception:
+        return ""
+
+
+_CWD_FN: Optional[Callable[[str], str]] = None
+
+
+def set_cwd_resolver(fn: Optional[Callable[[str], str]]) -> None:
+    global _CWD_FN
+    _CWD_FN = fn
+
+
+def ownership() -> Dict[str, Any]:
+    """Tüm kimliklerin sahiplik indeksi (reviewer kimlikleri zaten boş sayılır). Okuma hatası = boş."""
+    try:
+        from ..settings import steward_ids
+        return sw.ownership_index(steward_ids()) or {}
+    except Exception:
+        return {}
+
+
+def local_owned_names(idx: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Havuza girebilecek proje adları: tek sahipli ve YEREL (uzak `host`'lu projeler v1'de atlanır)."""
+    idx = ownership() if idx is None else idx
+    hosts = idx.get("hosts") or {}
+    return sorted(n for n in (idx.get("owners") or {}) if n not in hosts)
+
+
+def available_models() -> Tuple[List[str], List[str]]:
+    """(agy modelleri, Evren modelleri). Her kaynak ayrı korunur: liste alma hatası boş liste olur, tick'i düşürmez."""
+    agy: List[str] = []
+    evren: List[str] = []
+    try:
+        from ..providers.agy_provider import AgyProvider
+        agy = list(AgyProvider().model_choices() or [])
+    except Exception:
+        agy = []
+    try:
+        from ..providers import ucli_provider as up
+        evren = list(up._live_models() or [])
+    except Exception:
+        evren = []
+    return agy, evren
+
+
+def current_targets(cfg: Any) -> List[rv.ReviewTarget]:
+    try:
+        agy, evren = available_models()
+    except Exception:
+        agy, evren = [], []
+    try:
+        return rv.targets_from_config(cfg, agy, evren)
+    except Exception:
+        return []
+
+
+def running_keys(sid: str = "") -> List[str]:
+    with _JOBS_LOCK:
+        return sorted(k for k, j in _JOBS.items() if not sid or j.sid == sid)
+
+
+def cancel_all(sid: str = "", project: str = "") -> List[str]:
+    out = []
+    for k in running_keys(sid):
+        if project and k.split("|", 1)[0] != project:
+            continue
+        if cancel_key(k):
+            out.append(k)
+    return out
+
+
+def sync_pool(paths: Any, now: float, names: Optional[List[str]] = None) -> Tuple[Dict[str, Any], bool]:
+    """Havuzu sahip adlarıyla eşler (kilit altında okuyup-yazar). (havuz, değişti_mi)."""
+    p = sw._pp(paths)
+    names = local_owned_names() if names is None else names
+    with sw.steward_lock(p):
+        pool = rv.load_pool(p)
+        new, changed = rv.pool_sync(pool, names, now)
+        if changed:
+            rv.save_pool(p, new)
+    return new, changed
+
+
+def review_disable(cfg: Any) -> Dict[str, Any]:
+    """Kapalı reviewer kimliği: koşan iş iptal edilir, hiçbir şey başlamaz."""
+    cancelled = cancel_all(cfg.sid)
+    return {"ok": True, "actions": [{"kind": "cancel", "key": k, "why": "disabled"} for k in cancelled], "started": 0,
+            "noop": not cancelled, "disabled": True}
+
+
+def start_job(paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, cwd: str) -> Dict[str, Any]:
+    res = run_job(paths, cfg, project, cwd, target, **_RUN_KW)
+    th = res.get("thread")
+    if th is not None and not _REVIEW_BACKGROUND:
+        th.join(timeout=60)
+    return res
+
+
+def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
+    """Bir reviewer kimliğinin döngü turu: (kapalıysa iptal) -> ilk tick'te `recover_on_start` -> havuz eşitleme ->
+    havuzdan çıkan/devre dışı projenin koşan işini iptal -> tek iş kuralı + en az aralık -> sıradaki çift -> `run_job`.
+    Oturum AÇMAZ; `max_starts_total` bütçesine sayılmaz. Hata yutulmaz ama tick_round tek kimlik için yakalar."""
+    if not cfg.enabled:
+        return review_disable(cfg)
+    t = time.time() if now is None else now
+    p = sw.paths_for(cfg.sid)
+    actions: List[Dict[str, Any]] = []
+    if cfg.sid not in _RECOVERED:
+        _RECOVERED.add(cfg.sid)
+        n = recover_on_start(p, now=lambda: t)
+        if n:
+            actions.append({"kind": "recover", "pairs": n})
+    pool, changed = sync_pool(p, t)
+    if changed:
+        actions.append({"kind": "pool_sync"})
+    enabled = set(rv.pool_enabled(pool))
+    for k in running_keys(cfg.sid):          # havuzdan çıkan/devre dışı projenin işi
+        if k.split("|", 1)[0] not in enabled and cancel_key(k):
+            actions.append({"kind": "cancel", "key": k, "why": "not in pool"})
+    if running_keys():
+        return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "busy": True}
+    hist = rv.load_history(p)
+    last = max([float(r.get("started_at") or 0) for r in hist["pairs"].values() if isinstance(r, dict)] or [0.0])
+    gap = max(0, int(getattr(cfg, "review_min_gap_minutes", 0))) * 60
+    if last and t - last < gap:
+        return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "waiting": int(gap - (t - last))}
+    targets = current_targets(cfg)
+    if not targets:
+        return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "reason": "no targets"}
+    skip: List[str] = []
+    while True:
+        nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip)
+        if nxt is None:
+            return {"ok": True, "actions": actions, "started": 0, "noop": not actions}
+        proj, target = nxt
+        cwd = project_cwd(proj)
+        if cwd and os.path.isdir(cwd):
+            break
+        skip.append(proj)                    # klasörü bulunamayan proje bu turda atlanır
+    res = start_job(p, cfg, proj, target, cwd)
+    if res.get("ok"):
+        actions.append({"kind": "review_start", "project": proj, "target": target.key})
+        return {"ok": True, "actions": actions, "started": 1, "noop": False}
+    actions.append({"kind": "review_failed", "project": proj, "target": target.key, "error": res.get("error")})
+    return {"ok": False, "actions": actions, "started": 0, "noop": False, "error": res.get("error")}
+
+
+# ── yüzey (adım 6): saf yardımcılar, web_steward sarmalar ──────────────────────
+
+FILE_MAX_CHARS = 200_000
+
+
+def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
+    t = time.time() if now is None else now
+    p = sw.paths_for(cfg.sid)
+    pool = rv.load_pool(p)
+    hist = rv.load_history(p)
+    targets = current_targets(cfg)
+    rows = []
+    for name, e in sorted((pool.get("projects") or {}).items()):
+        if not isinstance(e, dict):
+            continue
+        rows.append({"project": name, "enabled": bool(e.get("enabled")) and not e.get("removed_at"),
+                     "source": e.get("source") or "", "added_at": e.get("added_at"), "removed_at": e.get("removed_at"),
+                     "complete": rv.project_complete(hist, name, targets, t),
+                     "pairs": {tg.key: hist["pairs"].get(rv.pair_key(name, tg)) for tg in targets}})
+    return {"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
+            "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key} for x in targets],
+            "pool": rows, "running": running_keys(cfg.sid),
+            "runs": list(hist.get("runs") or [])[-50:],
+            "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes}
+
+
+def read_review_file(cfg: Any, rel: str) -> Dict[str, Any]:
+    """YALNIZ kimliğin `reviews/` ağacı altı. Mutlak yol, `..`, NUL ve symlink kaçışı reddedilir."""
+    p = sw.paths_for(cfg.sid)
+    rel = str(rel or "")
+    if not rel or "\x00" in rel:
+        return {"ok": False, "error": "path required"}
+    root = os.path.realpath(p.reviews)
+    cand = rel if os.path.isabs(rel) else os.path.join(p.reviews, rel)
+    if ".." in rel.replace("\\", "/").split("/"):
+        return {"ok": False, "error": "path outside reviews"}
+    full = os.path.realpath(cand)
+    if full != root and not full.startswith(root + os.sep):
+        return {"ok": False, "error": "path outside reviews"}
+    if not os.path.isfile(full):
+        return {"ok": False, "error": "not found"}
+    try:
+        with open(full, errors="replace") as f:
+            text = f.read(FILE_MAX_CHARS + 1)
+    except OSError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "path": os.path.relpath(full, root), "text": text[:FILE_MAX_CHARS], "truncated": len(text) > FILE_MAX_CHARS}
+
+
+def list_findings(cfg: Any, project: str = "", state: str = "") -> Dict[str, Any]:
+    data = rv.load_findings(sw.paths_for(cfg.sid))
+    rows = [dict(v, id=k) for k, v in data.items() if isinstance(v, dict)
+            and (not project or v.get("project") == project) and (not state or v.get("state") == state)]
+    rows.sort(key=lambda r: (str(r.get("project")), str(r.get("review_file")), str(r.get("ref"))))
+    return {"ok": True, "findings": rows}
+
+
+def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None) -> Dict[str, Any]:
+    t = time.time() if now is None else now
+    project = str(project or "").strip()
+    if not project or not sw.valid_name(project):
+        return {"ok": False, "error": "invalid project name"}
+    p = sw.paths_for(cfg.sid)
+    if action not in ("add", "remove", "enable", "disable"):
+        return {"ok": False, "error": "action must be add|remove|enable|disable"}
+    idx = ownership()
+    if action in ("add", "enable") and project in (idx.get("hosts") or {}):
+        return {"ok": False, "error": "remote projects are not reviewed (v1)"}
+    with sw.steward_lock(p):
+        pool = rv.load_pool(p)
+        pr = pool["projects"]
+        e = pr.get(project)
+        if action == "add":
+            if e is None and not (project in (idx.get("owners") or {}) or project_cwd(project)):
+                return {"ok": False, "error": f"unknown project: {project}"}
+            pr[project] = dict(e or {}, enabled=True, source="manual", added_at=(e or {}).get("added_at") or t, removed_at=None)
+        elif e is None:
+            return {"ok": False, "error": f"not in pool: {project}"}
+        elif action == "enable":
+            e.update(enabled=True, removed_at=None)
+        elif action == "disable":
+            e["enabled"] = False
+        else:   # remove: elle eklenmiş ve sahipsiz kayıt silinir; aksi halde elle-pasif işaretlenir (pool_sync geri açmasın)
+            if e.get("source") == "manual" and project not in (idx.get("owners") or {}):
+                del pr[project]
+            else:
+                e.update(enabled=False, source="manual", removed_at=t)
+        rv.save_pool(p, pool)
+    cancelled = []
+    if action in ("remove", "disable"):
+        cancelled = cancel_all(cfg.sid, project)
+    return {"ok": True, "action": action, "project": project, "cancelled": cancelled}
+
+
+def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[str, Any]:
+    project = str(project or "").strip()
+    if not cfg.enabled:
+        return {"ok": False, "error": "reviewer is disabled"}
+    if not project or not sw.valid_name(project):
+        return {"ok": False, "error": "invalid project name"}
+    idx = ownership()
+    if project in (idx.get("hosts") or {}):
+        return {"ok": False, "error": "remote projects are not reviewed (v1)"}
+    cwd = project_cwd(project)
+    if not cwd or not os.path.isdir(cwd):
+        return {"ok": False, "error": f"project folder not found: {project}"}
+    p = sw.paths_for(cfg.sid)
+    targets = current_targets(cfg)
+    if mode or model:
+        if mode not in rv.MODES or not model:
+            return {"ok": False, "error": "mode must be agy|evren and model is required"}
+        known = [x for x in targets if x.mode == mode and x.model == model]
+        if targets and not known:
+            return {"ok": False, "error": f"unknown target: {mode}/{model}"}
+        target = known[0] if known else rv.ReviewTarget(mode, model, rv.slug_model(model))
+    else:
+        hist = rv.load_history(p)
+        pool = {"projects": {project: {"enabled": True}}}
+        nxt = rv.next_review(pool, hist, targets, time.time())
+        if nxt is None:
+            return {"ok": False, "error": "no pending target for this project"}
+        target = nxt[1]
+    if running_keys():
+        return {"ok": False, "busy": True, "error": "another review is running"}
+    res = start_job(p, cfg, project, target, cwd)
+    return {k: v for k, v in res.items() if k not in ("thread", "argv")}
+
+
+def cancel_action(cfg: Any, project: str = "") -> Dict[str, Any]:
+    c = cancel_all(cfg.sid, str(project or "").strip())
+    return {"ok": True, "cancelled": c}
