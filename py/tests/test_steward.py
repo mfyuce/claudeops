@@ -1955,3 +1955,31 @@ class TourDeliveryTest(unittest.TestCase):
             self.assertEqual(len(left), sw.TOUR_FILES_KEEP)
             self.assertTrue(os.path.exists(paths[-1]))
             self.assertFalse(os.path.exists(paths[0]))
+
+
+class ShutdownBlockersTest(unittest.TestCase):
+    """Sessizlik tek başına "iş bitti" değildir: açık varaka işi bekleyen oturum devir almaz."""
+
+    def _run(self, blockers):
+        v = _view("ncs", last_activity=100.0)
+        projects = {"ncs": sw.Project(name="ncs")}
+        return sw.plan_shutdown([v], projects, {}, _cfg(), 1000.0, blockers=blockers)
+
+    def test_quiet_session_without_blocker_gets_handover(self):
+        acts, sd, done = self._run({})
+        self.assertEqual([(a.kind, a.name) for a in acts], [("handover", "ncs")])
+
+    def test_blocked_session_waits_and_records_reason(self):
+        acts, sd, done = self._run({"ncs": "open varaka job (1)"})
+        self.assertEqual(acts, [])
+        self.assertEqual(sd["items"]["ncs"]["stage"], "wait")
+        self.assertEqual(sd["items"]["ncs"]["blocked"], "open varaka job (1)")
+        self.assertFalse(done)
+
+    def test_blocked_session_left_open_after_wait_max(self):
+        _a, sd, _d = self._run({"ncs": "open varaka job (1)"})
+        v = _view("ncs", last_activity=100.0)
+        acts, sd, done = sw.plan_shutdown([v], {"ncs": sw.Project(name="ncs")}, sd, _cfg(),
+                                          1000.0 + sw.SHUTDOWN_WAIT_MAX_SECONDS + 1, blockers={"ncs": "open varaka job (1)"})
+        self.assertEqual(acts, [])
+        self.assertEqual(sd["items"]["ncs"]["stage"], "busy_left")

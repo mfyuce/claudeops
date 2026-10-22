@@ -2554,6 +2554,27 @@ def shutdown_start(sid: str = "default", *, stop_loop: bool = True) -> Dict[str,
     return {"ok": True, "started": True}
 
 
+def _shutdown_blockers(views: List[sw.SessionView], projects: Dict[str, sw.Project], world: sw.World,
+                       paths: Any) -> Dict[str, str]:
+    """Kapatmada "iş bitti" sayılmaması gereken oturumlar: projesinin AÇIK (bitmemiş) varaka işi var. Sessizlik tek başına
+    yetmez: oturum işin sonucunu bekliyor olabilir (2026-10-21'de 3 oturum bu yüzden "güm diye" kapandı)."""
+    try:
+        open_by_project: Dict[str, int] = {}
+        for j in sj.load_jobs(paths):
+            if sj.is_open(j):
+                open_by_project[str(j.get("project") or "")] = open_by_project.get(str(j.get("project") or ""), 0) + 1
+    except Exception:
+        return {}
+    out: Dict[str, str] = {}
+    for v in views:
+        if not v.running:
+            continue
+        p = _project_for_session(v.name, projects, world)
+        if p is not None and open_by_project.get(p.name):
+            out[v.name] = f"open varaka job ({open_by_project[p.name]})"
+    return out
+
+
 def shutdown_tick(sid: str = "default", views: Optional[List[sw.SessionView]] = None) -> Optional[Dict[str, Any]]:
     """Süren kapatmayı bir adım ilerlet (yoksa None). Eylemler `_apply` ile (observe kipi ATLANIR: kullanıcı açıkça kapatıyor),
     yine de `_target` kapısından geçer (yalnız kimliğin kendi projeleri + beyni)."""
@@ -2576,7 +2597,8 @@ def shutdown_tick(sid: str = "default", views: Optional[List[sw.SessionView]] = 
         world = _world(sid, cfg, 0, _ownership_index())
         vs = views if views is not None else _collect_views(cfg)
         now = time.time()
-        actions, sd, done = sw.plan_shutdown(vs, projects, sd0, cfg, now, world=world)
+        actions, sd, done = sw.plan_shutdown(vs, projects, sd0, cfg, now, world=world,
+                                             blockers=_shutdown_blockers(vs, projects, world, paths))
         for a in actions:
             try:
                 res = _apply(a, cfg, projects, world)

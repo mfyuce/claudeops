@@ -2152,10 +2152,13 @@ _SD_TERMINAL = ("closed", "gone", "busy_left", "ho_timeout")
 
 
 def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Dict[str, Any], cfg: Config, now: float,
-                  world: Optional[World] = None) -> Tuple[List[Action], Dict[str, Any], bool]:
+                  world: Optional[World] = None, blockers: Optional[Dict[str, str]] = None) -> Tuple[List[Action], Dict[str, Any], bool]:
     """Kontrollü kapatma adımı. `sd`: {started, items: {ad: {stage, at}}}; dönen: (eylemler, yeni sd, bitti mi).
     Sıra: proje oturumları (iş sessiz → devir mesajı → asistan "READY FOR HANDOVER" dedi → durdur), SONRA beyin.
-    Zorlamaz: iş bitmeyen / devir cevaplamayan oturum açık bırakılır (`busy_left`/`ho_timeout`). SAF."""
+    Zorlamaz: iş bitmeyen / devir cevaplamayan oturum açık bırakılır (`busy_left`/`ho_timeout`).
+    `blockers`: {oturum adı: sebep}: sessizlik tek başına "iş bitti" sayılmasın (ör. açık varaka işi bekleyen oturum); bu oturumlar
+    devir almaz, bekleme süresi dolarsa `busy_left` olur. SAF."""
+    blockers = blockers or {}
     sd = json.loads(json.dumps(sd or {}))
     sd.setdefault("started", now)
     items: Dict[str, Dict[str, Any]] = sd.setdefault("items", {})
@@ -2187,7 +2190,11 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
             return
         if it["stage"] == "wait":
             quiet = (now - max(v.last_activity, 0.0)) >= SHUTDOWN_QUIET_SECONDS if v.last_activity else True
-            if v.busy is not True and not v.subagent_active and not v.subagent_unknown and quiet:
+            if name in blockers:
+                it["blocked"] = blockers[name]
+            else:
+                it.pop("blocked", None)
+            if v.busy is not True and not v.subagent_active and not v.subagent_unknown and quiet and name not in blockers:
                 actions.append(Action("handover", name, "shutdown"))
                 it["stage"], it["at"] = "ho", now
             elif now - float(sd["started"]) >= SHUTDOWN_WAIT_MAX_SECONDS:
