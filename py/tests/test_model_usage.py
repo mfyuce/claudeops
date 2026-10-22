@@ -18,6 +18,27 @@ def _line(model, ts, fresh=10, cw=100, read=1000, out=5):
 
 
 class ModelUsageTest(unittest.TestCase):
+    def test_split_rows_of_one_api_reply_count_once(self):
+        now = time.time()
+
+        def row(block, out):
+            d = json.loads(_line("claude-sonnet-5-5", now - 60, out=out))
+            d["requestId"] = "req1"
+            d["message"]["id"] = "msg1"
+            d["message"]["content"] = [{"type": block}]
+            return json.dumps(d) + "\n"
+        with tempfile.TemporaryDirectory() as d:
+            proj = os.path.join(d, "-home-x-proj")
+            os.makedirs(proj)
+            with open(os.path.join(proj, "main.jsonl"), "w") as f:
+                f.write(row("thinking", 5) + row("text", 5) + row("tool_use", 9))
+                f.write(_line("claude-sonnet-5-5", now - 30))               # kimliksiz satır ayrı sayılır
+            with mock.patch.object(mu, "PROJECTS_DIR", d):
+                r = mu.scan(minutes=60, now=now)
+        self.assertEqual(r["families"]["sonnet"]["calls"], 2)
+        self.assertEqual(r["families"]["sonnet"]["out"], 9 + 5)
+        self.assertEqual(r["families"]["sonnet"]["read"], 2000)
+
     def test_scan_counts_recent_calls_per_family_and_lists_fable_top(self):
         now = time.time()
         with tempfile.TemporaryDirectory() as d:

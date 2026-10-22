@@ -82,6 +82,7 @@ def scan(minutes: int = WINDOW_MINUTES, now: Optional[float] = None) -> Dict[str
             is_sub = "/subagents/" in path
             proj = os.path.relpath(path, PROJECTS_DIR).split(os.sep)[0]
             effort = _sub_effort(path) if is_sub else ""
+            turns: Dict[Any, list] = {}
             for raw in _iter_recent_lines(path, cutoff):
                 if b'"usage"' not in raw:
                     continue
@@ -104,11 +105,22 @@ def scan(minutes: int = WINDOW_MINUTES, now: Optional[float] = None) -> Dict[str
                     continue
                 fresh = int(u.get("input_tokens", 0)) + int(u.get("cache_creation_input_tokens", 0))
                 read = int(u.get("cache_read_input_tokens", 0))
+                out = int(u.get("output_tokens", 0))
+                # Aynı API cevabı içerik bloğu başına birden çok satıra bölünür (aynı message.id + requestId): tur başına bir kez say,
+                # tekrarlarda alan başına en büyük değer (session_usage ile aynı kural). Kimliksiz satır tek başına sayılır.
+                mid = m.get("id")
+                key = (mid, r.get("requestId")) if mid else ("row", len(turns))
+                prev = turns.get(key)
+                if prev:
+                    prev[1], prev[2], prev[3] = max(prev[1], fresh), max(prev[2], read), max(prev[3], out)
+                else:
+                    turns[key] = [f, fresh, read, out]
+            for f, fresh, read, out in turns.values():
                 a = fam.setdefault(f, {"calls": 0, "fresh": 0, "read": 0, "out": 0})
                 a["calls"] += 1
                 a["fresh"] += fresh
                 a["read"] += read
-                a["out"] += int(u.get("output_tokens", 0))
+                a["out"] += out
                 if effort:
                     e = efforts.setdefault(f"{f}/{effort}", {"calls": 0, "fresh": 0, "read": 0})
                     e["calls"] += 1
