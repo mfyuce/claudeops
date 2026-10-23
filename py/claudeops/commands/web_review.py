@@ -220,6 +220,7 @@ class IoLog:
         self._buf = ""              # stderr satır birleştirici
         self._at_start = True
         self._hold = ""             # delta için tutulan sözcük kuyruğu
+        self._learned: List[str] = []   # DSN'den öğrenilen parolalar: düz metinde de maskelenir
         self.ok = True
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -231,7 +232,10 @@ class IoLog:
     def event(self, role: str, text: str, kind: str = "") -> None:
         if not self.ok or not text:
             return
-        rec = {"ts": round(self.now(), 3), "role": role, "text": rv.redact_secrets(text)}
+        for s in rv.dsn_passwords(text):
+            if s not in self._learned:
+                self._learned.append(s)
+        rec = {"ts": round(self.now(), 3), "role": role, "text": rv.redact_secrets(text, self._learned)}
         if kind:
             rec["kind"] = kind
         line = json.dumps(rec, ensure_ascii=False) + "\n"

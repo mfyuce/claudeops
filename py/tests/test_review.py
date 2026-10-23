@@ -274,3 +274,24 @@ class TestCodexArgv(unittest.TestCase):
         self.assertNotIn("workspace-write", a)
         self.assertNotIn("danger-full-access", a)
         self.assertEqual(wr.codex_argv("b", "/w", "m", "", "P").count("-c"), 0)
+
+
+class TestDsnRedact(unittest.TestCase):
+    def test_dsn_password_masked_and_learned(self):
+        t = rv.redact_secrets("DSN postgresql://u:hunter22@h:5/db ok")
+        self.assertNotIn("hunter22", t)
+        self.assertIn("postgresql://u:[REDACTED]@h:5/db", t)
+        self.assertEqual(rv.dsn_passwords("x postgresql://u:hunter22@h/db"), ["hunter22"])
+        self.assertNotIn("hunter22", rv.redact_secrets('password "u:hunter22" burada', ["hunter22"]))
+        self.assertEqual(rv.redact_secrets("http://example.com/a:b", []), "http://example.com/a:b")
+
+    def test_iolog_learns_across_events(self):
+        import tempfile, os, json
+        from claudeops.commands import web_review as wr
+        with tempfile.TemporaryDirectory() as d:
+            lg = wr.IoLog(os.path.join(d, "a.io.jsonl"))
+            lg.event("assistant", "dsn postgresql://v:s3cretpw@l:1/d")
+            lg.event("assistant", "parola s3cretpw sızdı")
+            lg.close()
+            txt = open(os.path.join(d, "a.io.jsonl")).read()
+            self.assertNotIn("s3cretpw", txt)

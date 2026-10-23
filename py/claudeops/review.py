@@ -256,6 +256,9 @@ def parse_findings(md: str) -> List[Dict[str, str]]:
 
 # ── gizli değer ayıklama ──────────────────────────────────────────────────────
 
+# `scheme://kullanıcı:PAROLA@host`: parola grubu 2; IoLog bu parolayı ÖĞRENİR ve düz metinde (DSN dışında) de maskeler.
+_DSN_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://[^\s:/@\"']+:)([^\s@/\"']{3,})(@)")
+
 _SECRET_RES = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S),
     re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}"),
@@ -268,9 +271,18 @@ _SECRET_RES = (
 )
 
 
-def redact_secrets(text: str) -> str:
-    """Bilinen gizli değer biçimlerini `[REDACTED]` yapar (review çıktısı diske/panele yazılmadan önce)."""
-    out = str(text or "")
+def dsn_passwords(text: str) -> List[str]:
+    """Metindeki `scheme://user:PAROLA@host` parolaları (IoLog öğrenip sonraki olaylarda düz metinde de maskeler)."""
+    return [m.group(2) for m in _DSN_RE.finditer(str(text or "")) if m.group(2) != "[REDACTED]"]
+
+
+def redact_secrets(text: str, learned: Sequence[str] = ()) -> str:
+    """Bilinen gizli değer biçimlerini `[REDACTED]` yapar (review çıktısı diske/panele yazılmadan önce). `learned`:
+    daha önce görülmüş sır değerleri (DSN parolası) düz metinde de maskelenir."""
+    out = _DSN_RE.sub(lambda m: m.group(1) + "[REDACTED]" + m.group(3), str(text or ""))
+    for s in sorted(learned, key=len, reverse=True):
+        if s:
+            out = out.replace(s, "[REDACTED]")
     for rx in _SECRET_RES:
         if rx.groups:
             out = rx.sub(lambda m: m.group(1) + "[REDACTED]", out)
