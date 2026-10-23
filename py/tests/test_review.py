@@ -102,6 +102,18 @@ class TestPlanner(unittest.TestCase):
         bad["attempts"] = 1
         self.assertEqual(rv.next_review(pool("a"), h, TS, NOW), ("a", T1))
 
+    def test_evren_single_attempt_per_window(self):
+        # Evren: 1 başarısız deneme pencere dolana dek yeterli; agy aynı durumda 1 denemeden sonra yeniden denenir
+        ok_agy = done(NOW - 100)
+        bad = {"status": "error", "started_at": NOW - 3600, "attempts": 1, "error": "timeout 20 dk"}
+        h = hist(**{"a|agy/gemini-3-flash": ok_agy, "a|evren/glm-4.6": bad})
+        self.assertIsNone(rv.next_review(pool("a"), h, TS, NOW))
+        old = dict(bad, started_at=NOW - 31 * DAY)
+        h2 = hist(**{"a|agy/gemini-3-flash": ok_agy, "a|evren/glm-4.6": old})
+        self.assertEqual(rv.next_review(pool("a"), h2, TS, NOW), ("a", T2))
+        self.assertEqual(rv.max_attempts("evren"), 1)
+        self.assertEqual(rv.max_attempts("claude"), rv.MAX_ATTEMPTS)
+
 
 class TestPoolSync(unittest.TestCase):
     def test_sync(self):

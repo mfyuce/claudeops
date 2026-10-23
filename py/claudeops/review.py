@@ -17,6 +17,11 @@ WINDOW_SECONDS = 30 * 86400         # bir çift bu sürede `done` ise "taze" (pr
 HISTORY_VERSION = 1
 HISTORY_RUNS_MAX = 200
 MAX_ATTEMPTS = 3                    # error/model_fallback çifti bu denemeden sonra pencere dolana dek bırakılır
+MODE_MAX_ATTEMPTS = {"evren": 1}    # Evren: 20 dk zaman aşımı kota yakar, pencere başına en çok 1 deneme (sahip kararı 2026-10-24)
+
+
+def max_attempts(mode: str) -> int:
+    return MODE_MAX_ATTEMPTS.get(mode, MAX_ATTEMPTS)
 MODES = ("agy", "evren", "claude", "codex")
 PAIR_STATUSES = ("running", "done", "partial", "error", "model_fallback", "limit")
 SEVERITIES = ("P1", "P2", "P3")
@@ -130,7 +135,7 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
                 busy_projects: Sequence[str] = (), window: float = WINDOW_SECONDS) -> Optional[Tuple[str, ReviewTarget]]:
     """Sıradaki (proje, hedef) ya da None. TEK proje: önce yarım kalan (bazı çiftleri taze, bazısı değil), sonra hiç
     çifti olmayan, sonra en eskisi (en yeni bitişi en eski olan). Tamam projeler, `busy_projects` ve çalışan çiftler
-    atlanır; `MAX_ATTEMPTS`i dolduran error/model_fallback çifti `window` dolana dek denenmez."""
+    atlanır; `max_attempts(mod)`i (Evren 1, diğerleri `MAX_ATTEMPTS`) dolduran error/model_fallback çifti `window` dolana dek denenmez."""
     skip = set(blocked_modes(history, now))
     targets = [t for t in targets if t.mode not in skip]   # günlük kotası biten mod sıfırlanana dek denenmez
     if not targets:
@@ -149,7 +154,7 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
             if _fresh(r, now, window):
                 continue
             if (isinstance(r, dict) and r.get("status") in ("error", "model_fallback")
-                    and int(r.get("attempts") or 0) >= MAX_ATTEMPTS
+                    and int(r.get("attempts") or 0) >= max_attempts(t.mode)
                     and now - float(r.get("started_at") or 0) < window):
                 continue
             pick = t
