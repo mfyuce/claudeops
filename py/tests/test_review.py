@@ -47,6 +47,13 @@ class TestSlugTargets(unittest.TestCase):
         t = rv.targets_from_config(cfg, ["a", "b"], ["x/y"])
         self.assertEqual([x.key for x in t], ["agy/b", "evren/x-y"])
 
+    def test_claude_mode_opt_in(self):
+        cfg = sw.Config()
+        self.assertEqual([x.mode for x in rv.targets_from_config(cfg, [], [])], [])    # varsayılan KAPALI
+        cfg.review_claude_models = "claude-haiku-5-5, claude-haiku-5-5"
+        t = rv.targets_from_config(cfg, [], [])
+        self.assertEqual([(x.mode, x.model, x.key) for x in t], [("claude", "claude-haiku-5-5", "claude/claude-haiku-5-5")])
+
 
 class TestPlanner(unittest.TestCase):
     def test_complete_window(self):
@@ -239,3 +246,17 @@ class TestConfigRole(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestClaudeArgv(unittest.TestCase):
+    def test_claude_argv_read_only_and_prompt_first(self):
+        from claudeops.commands import web_review as wr
+        a = wr.claude_argv("/bin/claude", "claude-haiku-5-5", "low", "PROMPT")
+        self.assertEqual(a[:4], ["/bin/claude", "-p", "PROMPT", "--model"])
+        self.assertIn("--effort", a)
+        self.assertLess(a.index("PROMPT"), a.index("--allowedTools"))     # değişken sayılı bayrak promptu yutmasın
+        for forbidden in ("Edit", "Write", "NotebookEdit"):
+            self.assertIn(forbidden, a[a.index("--disallowedTools"):])
+            self.assertNotIn(forbidden, a[a.index("--allowedTools"):a.index("--disallowedTools")])
+        self.assertNotIn("--dangerously-skip-permissions", a)
+        self.assertEqual(wr.claude_argv("b", "m", "", "P").count("--effort"), 0)

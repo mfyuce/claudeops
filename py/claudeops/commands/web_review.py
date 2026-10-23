@@ -23,10 +23,11 @@ from .. import review as rv
 from .. import steward as sw
 from .. import ucli_client
 
-REVIEW_ENV_PREFIXES = ("CLAUDE", "GEMINI", "ANTIGRAVITY")   # spawn.py deseni: bu süreç kendi oturum kimliğini çocuğa sızdırmaz
+REVIEW_ENV_PREFIXES = ("CLAUDE", "GEMINI", "ANTIGRAVITY", "ANTHROPIC")   # spawn.py deseni: bu süreç kendi oturum kimliğini çocuğa sızdırmaz
 KILL_GRACE_SECONDS = 10.0                                   # SIGTERM -> SIGKILL aralığı
 AGY_LOG_DIR = os.path.expanduser("~/.gemini/antigravity-cli/log")
 UCLI_KEY_FILE = os.path.expanduser("~/.claude/claudeops/ucli_api_key")
+ANTHROPIC_REVIEW_KEY_FILE = os.path.expanduser("~/.claude/claudeops/anthropic_review_key")   # 600; videogen ürün anahtarı KULLANILMAZ
 EVREN_MAX_STEPS = 200
 EVREN_MAX_IO_MIB = 2048
 STDERR_KEEP = 300
@@ -69,6 +70,27 @@ def _api_key() -> str:
         except OSError:
             key = ""
     return key
+
+
+def _anthropic_review_key() -> str:
+    try:
+        with open(ANTHROPIC_REVIEW_KEY_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def claude_argv(binary: str, model: str, effort: str, prompt: str) -> List[str]:
+    """`claude -p <prompt> --model M --effort E` salt okunur: yalnız Read/Grep/Glob + `ls|wc|head`; yazma araçları ve CLAUDE.md
+    kapalı. Prompt `-p` DEĞERİ DEĞİL konumsal ilk argüman, çünkü `--allowedTools`/`--disallowedTools` değişken sayılıdır ve
+    sonrakini yutar. Ölçüm (2026-10-23, ncs): haiku-5-5 low 88 sn / $0.017, sonnet-5-5 low 26 sn / $0.069."""
+    argv = [binary, "-p", prompt, "--model", model]
+    if effort:
+        argv += ["--effort", effort]
+    return argv + ["--tools", "default", "--permission-mode", "dontAsk",
+                   "--settings", json.dumps({"claudeMdExcludes": ["**/CLAUDE.md"], "autoMemoryEnabled": False}),
+                   "--allowedTools", "Read", "Grep", "Glob", "Bash(ls:*)", "Bash(wc:*)", "Bash(head:*)",
+                   "--disallowedTools", "Read(**/CLAUDE.md)", "Edit", "Write", "NotebookEdit", "Bash(*CLAUDE.md*)"]
 
 
 def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, supports_io: bool,
@@ -645,6 +667,20 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             if not key_val:
                 raise RuntimeError("Evren API anahtarı yok")
             env_extra["UCLI_API_KEY"] = key_val
+        elif target.mode == "claude":
+            from ..settings import resolved_binary
+            key_val = api_key if api_key is not None else _anthropic_review_key()
+            if not key_val:
+                raise RuntimeError(f"Anthropic review anahtarı yok: {ANTHROPIC_REVIEW_KEY_FILE} (600) oluştur")
+            cdir = os.path.join(p.root, "claude_cfg")    # CLAUDE.md/hafıza/oturum geçmişi yok: izole yapılandırma dizini
+            os.makedirs(cdir, exist_ok=True)
+            cj = os.path.join(cdir, ".claude.json")
+            if not os.path.exists(cj):
+                with open(cj, "w") as f:
+                    json.dump({"hasCompletedOnboarding": True, "theme": "dark",
+                               "projects": {cwd: {"hasTrustDialogAccepted": True}}}, f)
+            argv = claude_argv(resolved_binary("claude"), target.model, str(getattr(cfg, "review_claude_effort", "low") or ""), prompt)
+            env_extra.update(ANTHROPIC_API_KEY=key_val, CLAUDE_CONFIG_DIR=cdir, DISABLE_AUTOUPDATER="1")
         elif target.mode == "agy":
             from ..providers.agy_provider import AgyProvider
             from ..settings import resolved_binary

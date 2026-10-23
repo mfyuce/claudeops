@@ -297,6 +297,8 @@ class Config:
     review_max_context_kib: int = 768  # Evren: `--max-context-kib` (ucli varsayılanı 256 uzun review'u düşürüyordu)
     review_max_compactions: int = 24   # Evren: `--max-compactions` (ucli varsayılanı 8)
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
+    review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)
+    review_claude_effort: str = "low"  # Anthropic review `--effort` (ölçüm 2026-10-23: haiku low en ucuz+geniş)
 
 
 # Yalnız `settings.steward` bloğunda okunan makine geneli anahtarlar (`stewards.<sid>`'de görülürse yok sayılır).
