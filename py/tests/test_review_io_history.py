@@ -129,6 +129,29 @@ class TestRunWritesIo(Base):
         self.assertEqual(a[a.index("--max-context-kib") + 1], "1024")
         self.assertNotIn("--max-compactions", a)
 
+    def test_create_dir_flag_and_draft_recovery(self):
+        # --allow-create-dir yalnız ikili destekliyorsa; model taslağı yazıp stdout boş kalırsa taslak rapor olur (maskeli)
+        self.ev(supports_flag=lambda b, f: f != "--allow-create-dir")
+        self.assertNotIn("--allow-create-dir", FakeProc.instances[0].argv)
+        self.assertNotIn(".model.md", FakeProc.instances[0].argv[-1])
+        FakeProc.instances = []
+        report = "## R-1 | P2 | a.py:1 | taslak\ngövde " + SECRET
+
+        def popen(argv, **k):
+            m = [w for w in argv[-1].split() if w.endswith(".model.md")][0]
+            self.assertTrue(m.startswith(argv[argv.index("--allow-create-dir") + 1]))
+            with open(m, "w", encoding="utf-8") as f:
+                f.write(report)
+            return FakeProc(argv, out="", err="", rc=1, **k)
+        res = self.ev(popen=popen)
+        draft = rv.draft_path(res["file"])
+        self.assertTrue(os.path.isfile(draft))
+        self.assertNotIn(SECRET, open(draft).read())           # ham taslak diskte maskelenir
+        self.assertIn("taslak", open(res["file"]).read())
+        self.assertNotIn(SECRET, open(res["file"]).read())
+        self.assertEqual(len(rv.parse_findings(open(res["file"]).read())), 1)
+        self.assertNotEqual(self.pair(EV)["status"], "running")
+
     def test_recover_leaves_io(self):
         res = self.ev()
         io = wr.io_path_for(res["file"])

@@ -103,14 +103,17 @@ def codex_argv(binary: str, cwd: str, model: str, effort: str, prompt: str) -> L
 
 
 def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, supports_io: bool,
-               live_flags: Optional[List[str]] = None, budget_flags: Optional[List[str]] = None) -> List[str]:
+               live_flags: Optional[List[str]] = None, budget_flags: Optional[List[str]] = None,
+               create_dir: str = "") -> List[str]:
     """`ucli --root <cwd> chat --model M --endpoint E --api-key-env UCLI_API_KEY --max-steps 200 [--max-io-mib N] <prompt>`.
     --allow-edit/--allow-create ASLA (varsayılan salt okunur); anahtar argv'de DEĞİL, yalnız süreç ortamında.
-    `live_flags` (`--stream`, `--show-reasoning`): yalnız stderr sunumu, stdout sözleşmesi ve yazma izni değişmez."""
+    `live_flags` (`--stream`, `--show-reasoning`): yalnız stderr sunumu, stdout sözleşmesi ve yazma izni değişmez.
+    `create_dir`: `--allow-create-dir DIR`, projenin DIŞINDA tek dizinde YALNIZ yeni dosya (raporun taslağı); proje içi salt okunur kalır."""
     return ucli_client.build_chat_argv(
         binary, cwd, repl=False, session=None, model=model, endpoint=endpoint, api_key_env="UCLI_API_KEY",
         with_mcp=False, max_steps=EVREN_MAX_STEPS,
-        extra_args=(["--max-io-mib", str(EVREN_MAX_IO_MIB)] if supports_io else []) + list(budget_flags or []) + list(live_flags or [])) + [prompt]
+        extra_args=(["--max-io-mib", str(EVREN_MAX_IO_MIB)] if supports_io else []) + list(budget_flags or []) + list(live_flags or [])
+        + (["--allow-create-dir", create_dir] if create_dir else [])) + [prompt]
 
 
 def agy_argv(binary: str, model: str, prompt: str, provider: Any) -> List[str]:
@@ -596,6 +599,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             stop_hb.set()
         out, err = out or "", err or ""
         text, jerr = _extract_text(target.mode, out)
+        if target.mode == "evren":
+            text = _recover_draft(path, text)
         text = rv.redact_secrets(text)
         rc = getattr(proc, "returncode", None)
         fields: Dict[str, Any] = {"finished_at": now(), "pid": None}
@@ -646,6 +651,24 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         _REVIEW_LOCK.release()
 
 
+def _recover_draft(path: str, text: str) -> str:
+    """Evren modelinin `--allow-create-dir` ile yazdığı taslak (`rv.draft_path`): ham taslak diskte maskelenmeden
+    kalmasın diye HER ZAMAN maskeli yeniden yazılır; stdout metni boşsa (zaman aşımı, kesik çıktı) taslak rapor olur."""
+    dp = rv.draft_path(path)
+    try:
+        with open(dp, encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+    except OSError:
+        return text
+    red = rv.redact_secrets(raw)
+    try:
+        with open(dp, "w", encoding="utf-8") as f:
+            f.write(red)
+    except OSError:
+        pass
+    return text if text.strip() else red
+
+
 def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, error: str) -> None:
     """Evren modeli review'u bitiremedi: ucli dersi `<çalışma alanı>/ucli-lessons.md`ye eklenir (ucli kimliğinin
     beyni TODO/TBD'ye çevirir; başka reponun dosyasına yazmayız)."""
@@ -693,7 +716,14 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                                      ("--max-compactions", "review_max_compactions", 24)):
                 if sf(binary, flag):
                     budget += [flag, str(max(1, int(getattr(cfg, attr, dflt) or dflt)))]
-            argv = evren_argv(binary, cwd, target.model, prompt, (endpoint_fn or up.endpoint)(), bool(sup), live_flags, budget)
+            create_dir = ""
+            if sf(binary, "--allow-create-dir"):
+                rpath = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode))
+                create_dir = os.path.dirname(rpath)
+                os.makedirs(create_dir, exist_ok=True)
+                prompt += rv.draft_prompt_suffix(rv.draft_path(rpath), lang)
+            argv = evren_argv(binary, cwd, target.model, prompt, (endpoint_fn or up.endpoint)(), bool(sup), live_flags, budget,
+                              create_dir)
             key_val = api_key if api_key is not None else _api_key()
             if not key_val:
                 raise RuntimeError("Evren API anahtarı yok")

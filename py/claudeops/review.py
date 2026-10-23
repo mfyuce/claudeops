@@ -340,6 +340,23 @@ def review_path(root: str, proj: str, t: ReviewTarget, ts: Any, effort: str = ""
     return os.path.join(*parts, stamp + ".md")
 
 
+def draft_path(md: str) -> str:
+    """Evren modelinin (`ucli --allow-create-dir`) kendi eliyle yazdığı rapor taslağı: raporun yanında `<ts>.model.md`.
+    Zaman aşımında stdout boşsa kurtarma kaynağı olur."""
+    return (md[:-3] if md.endswith(".md") else md) + ".model.md"
+
+
+def draft_prompt_suffix(draft: str, lang: str = "tr") -> str:
+    """Evren istemine eklenen: raporu create-only `write_file` ile TEK SEFERDE `draft` yoluna da yaz."""
+    if lang == "en":
+        return (f"\nAdditionally, as soon as your findings are ready, write the SAME report once with write_file to the "
+                f"absolute path {draft} (create-only: it fails if the file exists, so write it exactly once, never "
+                "partially). You may not write anywhere else. Then also reply with the report.")
+    return (f"\nAyrıca bulgularını hazırlar hazırlamaz AYNI raporu write_file ile {draft} mutlak yoluna TEK SEFERDE yaz "
+            "(yalnız yeni dosya: varsa hata verir, o yüzden tam bir kez yaz, parça parça değil). Başka hiçbir yere "
+            "yazamazsın. Sonra raporu yanıt olarak da ver.")
+
+
 # ── günlük kota engeli (Evren: hesap geneli 15M/gün, UTC gece yarısı sıfırlanır) ───────────────
 
 _LIMIT_RE = re.compile(r"daily_token_limit_exceeded|daily token limit", re.I)
