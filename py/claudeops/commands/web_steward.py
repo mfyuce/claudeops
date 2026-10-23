@@ -3552,6 +3552,7 @@ def _brain_directive_defer(name: str, sid: str) -> Optional[Dict[str, Any]]:
     paths = sw.paths_for(sid)
     lda = sw.load_state(paths).get("last_directive_at") or {}
     busy: Optional[bool] = None
+    sub = False
     last = 0.0
     for r in payload.get("sessions") or []:
         rn = str(r.get("name") or "")
@@ -3567,7 +3568,11 @@ def _brain_directive_defer(name: str, sid: str) -> Optional[Dict[str, Any]]:
             busy = True
         last = max(last, float(lda.get(rn) or 0.0))
     last = max(last, float(lda.get(name) or 0.0))
-    why = sw.directive_defer_reason(busy, last, time.time())
+    try:    # çalışan alt ajan = ana oturum boşta görünse de iş sürüyor (cevap iletimi de aynı kuralı izler)
+        sub = any(subagent_active_for(x.cwd, x.sid) for x in _live_sessions(name, sid))
+    except Exception:
+        sub = False
+    why = "subagent_active" if sub else sw.directive_defer_reason(busy, last, time.time())
     if not why:
         return None
     try:
