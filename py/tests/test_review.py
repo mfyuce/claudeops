@@ -156,6 +156,7 @@ class TestParse(unittest.TestCase):
             self.assertIn("CLAUDE.md", p)
             self.assertIn("R-1 | P2", p)
             self.assertIn("/w", p)
+            self.assertIn("reviews/", p)
         self.assertEqual(len(rv.parse_findings("## R-1 | P2 | f:1 | t\ngövde")), 1)
 
 

@@ -15,12 +15,14 @@ import {
   apiReviewVerify,
   getReviewFile,
   getReviewFindings,
+  getReviewRuns,
   getReviewState,
 } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { showToast } from "../state/toast";
-import type { ReviewFinding, ReviewPair, ReviewStateResult } from "../api/types";
+import type { ReviewFinding, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
+import { ReviewChatModal } from "./ReviewChatModal";
 
 const STATUS_COLOR: Record<string, string> = {
   done: "#2e9d57",
@@ -50,6 +52,8 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
   const [fProject, setFProject] = useState("");
   const [fState, setFState] = useState("");
   const [findings, setFindings] = useState<ReviewFinding[]>([]);
+  const [runs, setRuns] = useState<ReviewRun[]>([]);
+  const [openRun, setOpenRun] = useState<ReviewRun | null>(null);
   const sidRef = useRef(sid);
   useEffect(() => {
     sidRef.current = sid;
@@ -57,14 +61,15 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
 
   const load = useCallback(
     () =>
-      Promise.all([getReviewState(sid), getReviewFindings(sid, fProject, fState)]).then(
-        ([s, f]) => {
+      Promise.all([getReviewState(sid), getReviewFindings(sid, fProject, fState), getReviewRuns()]).then(
+        ([s, f, rr]) => {
           if (sidRef.current !== sid) return;
           if (s.ok) {
             setSt(s);
             setError("");
           } else setError(s.error || t.requestFailed);
           if (f.ok) setFindings(f.findings ?? []);
+          if (rr.ok) setRuns((rr.runs ?? []).filter((r) => r.sid === sid));
         },
         (e: unknown) => setError(describeApiError(e, t)),
       ),
@@ -109,6 +114,8 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
 
   function Cell({ project, tk, mode, model, pair }: { project: string; tk: string; mode: string; model: string; pair: ReviewPair | null | undefined }) {
     const status = pair?.status ?? "";
+    // `runs` is newest-first (io path ends in the timestamp, sorted descending), so `find` yields the latest run.
+    const lastRun = runs.find((r) => r.project === project && `${r.mode}/${r.model}` === tk);
     const color = STATUS_COLOR[status];
     return (
       <td style={{ whiteSpace: "nowrap" }}>
@@ -122,6 +129,11 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
         {pair?.file && (
           <button type="button" className="linkbtn" title={t.rvOpenFile} onClick={() => void openFile(pair.file as string)}>
             ⎘
+          </button>
+        )}
+        {lastRun && (
+          <button type="button" className="linkbtn" title={t.rvChat} onClick={() => setOpenRun(lastRun)}>
+            💬
           </button>
         )}
         <button
@@ -318,6 +330,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           </div>
         </div>
       ))}
+      {openRun && <ReviewChatModal key={openRun.io} run={openRun} onClose={() => setOpenRun(null)} />}
     </div>
   );
 }

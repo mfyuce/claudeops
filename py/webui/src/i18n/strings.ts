@@ -692,6 +692,7 @@ export interface Strings {
   rvNoPool: string;
   rvNoTargets: string;
   rvOpenFile: string;
+  rvChat: string;
   rvFileClose: string;
   rvTruncated: string;
   rvFindings: string;
@@ -1496,6 +1497,7 @@ export const STRINGS: Record<Lang, Strings> = {
     rvNoPool: "Havuz boş.",
     rvNoTargets: "Kullanılabilir model yok.",
     rvOpenFile: "Review dosyasını aç",
+    rvChat: "Son koşunun sohbetini aç",
     rvFileClose: "Kapat",
     rvTruncated: "(kırpıldı)",
     rvFindings: "Bulgular",
@@ -2301,6 +2303,7 @@ export const STRINGS: Record<Lang, Strings> = {
     rvNoPool: "The pool is empty.",
     rvNoTargets: "No models available.",
     rvOpenFile: "Open review file",
+    rvChat: "Open the chat of the latest run",
     rvFileClose: "Close",
     rvTruncated: "(truncated)",
     rvFindings: "Findings",
