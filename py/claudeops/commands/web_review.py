@@ -614,6 +614,11 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status, error = "partial", f"exit={rc} {_tail(err)}".strip()
         else:
             status, error = "error", f"exit={rc} {_tail(err)}".strip()
+        if status != "done" and rv.is_daily_limit(out, err, jerr):
+            status, error = "limit", "günlük kota doldu (daily_token_limit_exceeded); mod UTC gece yarısına dek durdu"
+            rv.set_block(paths, target.mode, rv.next_utc_midnight(now()), error)
+        elif target.mode == "evren" and status in ("error", "partial") and (timed_out or not text.strip()):
+            _write_lesson(sw._pp(paths), project, target, status, error)
         if target.mode == "agy" and status in ("done", "partial"):
             ok, seen = rv.agy_label_ok(_first_new_agy_log(agy_log_dir, started), target.model)
             fields["label_seen"] = seen
@@ -639,6 +644,19 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         with _JOBS_LOCK:
             _JOBS.pop(key, None)
         _REVIEW_LOCK.release()
+
+
+def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, error: str) -> None:
+    """Evren modeli review'u bitiremedi: ucli dersi `<çalışma alanı>/ucli-lessons.md`ye eklenir (ucli kimliğinin
+    beyni TODO/TBD'ye çevirir; başka reponun dosyasına yazmayız)."""
+    try:
+        line = (f"- {time.strftime('%Y-%m-%d %H:%M')} proje={project} model={target.model} durum={status} "
+                f"hata={_tail(error)}: ucli bu model/proje çiftinde review'u bitiremedi; nedenini araştır, TODO/TBD yap, düzelt.\n")
+        with open(os.path.join(p.root, "ucli-lessons.md"), "a", encoding="utf-8") as f:
+            f.write(line)
+        sw.log_event("review_ucli_lesson", paths=p, project=project, model=target.model, status=status)
+    except Exception:
+        pass
 
 
 def _default_popen(*a: Any, **k: Any) -> Any:
@@ -714,7 +732,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
         job.prompt = prompt
         with _JOBS_LOCK:
             _JOBS[key] = job
-        path = rv.review_path(p.reviews, project, target, t0)
+        path = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode))
         rv.update_pair(p, project, target, io_file=io_path_for(path))
         th = threading.Thread(target=_execute, daemon=True, name=f"review-{key}",
                               args=(job, p, cfg, project, target, argv, clean_env(env_extra), cwd, path, t0, popen,

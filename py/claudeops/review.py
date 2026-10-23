@@ -18,7 +18,7 @@ HISTORY_VERSION = 1
 HISTORY_RUNS_MAX = 200
 MAX_ATTEMPTS = 3                    # error/model_fallback çifti bu denemeden sonra pencere dolana dek bırakılır
 MODES = ("agy", "evren", "claude", "codex")
-PAIR_STATUSES = ("running", "done", "partial", "error", "model_fallback")
+PAIR_STATUSES = ("running", "done", "partial", "error", "model_fallback", "limit")
 SEVERITIES = ("P1", "P2", "P3")
 FINDING_STATES = ("new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported")
 
@@ -131,6 +131,8 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
     """Sıradaki (proje, hedef) ya da None. TEK proje: önce yarım kalan (bazı çiftleri taze, bazısı değil), sonra hiç
     çifti olmayan, sonra en eskisi (en yeni bitişi en eski olan). Tamam projeler, `busy_projects` ve çalışan çiftler
     atlanır; `MAX_ATTEMPTS`i dolduran error/model_fallback çifti `window` dolana dek denenmez."""
+    skip = set(blocked_modes(history, now))
+    targets = [t for t in targets if t.mode not in skip]   # günlük kotası biten mod sıfırlanana dek denenmez
     if not targets:
         return None
     pairs = _pairs(history)
@@ -314,11 +316,47 @@ def agy_label_ok(log_text: str, model: str) -> Tuple[bool, str]:
 
 # ── yollar ────────────────────────────────────────────────────────────────────
 
-def review_path(root: str, proj: str, t: ReviewTarget, ts: Any) -> str:
-    """`<root>/<proje>/<mode>/<altmodel>/<yyyyMMddHHmmss>.md`; `ts` epoch (yerel saat) ya da hazır 14 haneli metin.
-    `root` genelde `StewardPaths.reviews`. Proje adı yol güvenli hale getirilir."""
+def effort_for(cfg: Any, mode: str) -> str:
+    """Yol katmanı için effort adı: claude/codex `review_<mode>_effort`, diğerleri (agy: kademe model adında, evren:
+    bayrak yok) `default`."""
+    v = getattr(cfg, f"review_{mode}_effort", "") if mode in ("claude", "codex") else ""
+    return slug_model(v) if str(v or "").strip() else "default"
+
+
+def review_path(root: str, proj: str, t: ReviewTarget, ts: Any, effort: str = "") -> str:
+    """`<root>/<proje>/<mode>/<altmodel>[/<effort>]/<yyyyMMddHHmmss>.md`; `ts` epoch (yerel saat) ya da hazır 14 haneli
+    metin. `root` genelde `StewardPaths.reviews`. Proje adı yol güvenli hale getirilir. `effort` boşsa eski düzen."""
     stamp = ts if isinstance(ts, str) and re.fullmatch(r"\d{14}", ts) else time.strftime("%Y%m%d%H%M%S", time.localtime(float(ts)))
-    return os.path.join(root, slug_model(proj), t.mode, t.slug, stamp + ".md")
+    parts = [root, slug_model(proj), t.mode, t.slug] + ([slug_model(effort)] if effort else [])
+    return os.path.join(*parts, stamp + ".md")
+
+
+# ── günlük kota engeli (Evren: hesap geneli 15M/gün, UTC gece yarısı sıfırlanır) ───────────────
+
+_LIMIT_RE = re.compile(r"daily_token_limit_exceeded|daily token limit", re.I)
+
+
+def is_daily_limit(*texts: Any) -> bool:
+    return any(_LIMIT_RE.search(str(t or "")) for t in texts)
+
+
+def next_utc_midnight(now: float) -> float:
+    return (int(now) // 86400 + 1) * 86400.0
+
+
+def set_block(paths: Any, mode: str, until: float, reason: str = "") -> None:
+    p = sw._pp(paths)
+    with sw.steward_lock(p):
+        hist = load_history(p)
+        hist.setdefault("blocks", {})[mode] = {"until": float(until), "reason": reason}
+        save_history(p, hist)
+
+
+def blocked_modes(history: Any, now: float) -> List[str]:
+    b = history.get("blocks") if isinstance(history, dict) else None
+    if not isinstance(b, dict):
+        return []
+    return sorted(m for m, e in b.items() if isinstance(e, dict) and float(e.get("until") or 0) > now)
 
 
 # ── depolar ───────────────────────────────────────────────────────────────────
