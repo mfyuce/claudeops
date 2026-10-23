@@ -17,7 +17,7 @@ WINDOW_SECONDS = 30 * 86400         # bir çift bu sürede `done` ise "taze" (pr
 HISTORY_VERSION = 1
 HISTORY_RUNS_MAX = 200
 MAX_ATTEMPTS = 3                    # error/model_fallback çifti bu denemeden sonra pencere dolana dek bırakılır
-MODES = ("agy", "evren", "claude")
+MODES = ("agy", "evren", "claude", "codex")
 PAIR_STATUSES = ("running", "done", "partial", "error", "model_fallback")
 SEVERITIES = ("P1", "P2", "P3")
 FINDING_STATES = ("new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported")
@@ -30,7 +30,7 @@ FORBIDDEN_PATHS = ("CLAUDE.md", ".env*", "*token*", "*credential*", "*.pem", "se
 
 @dataclass(frozen=True)
 class ReviewTarget:
-    mode: str      # agy | evren | claude
+    mode: str      # agy | evren | claude | codex
     model: str     # sağlayıcıya verilen gerçek model kimliği
     slug: str      # yol/anahtar güvenli ad (`slug_model`)
 
@@ -58,7 +58,7 @@ def _split_models(text: Any) -> List[str]:
 def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Sequence[str]) -> List[ReviewTarget]:
     """`cfg.review_agy_models` / `review_evren_models` (virgülle ayrık) var olanla (`agy_models`/`evren_models`)
     KESİŞTİRİLİR; boş ayar = verilenin tümü. Sıra: önce agy, sonra evren; yinelenen slug atılır.
-    `claude` (Anthropic, `claude -p`) katalogsuz ve KAPALI başlar: yalnız `cfg.review_claude_models` doluysa o modeller."""
+    `claude` (Anthropic, `claude -p`) ve `codex` (`codex exec`) katalogsuz ve KAPALI başlar: yalnız `review_claude_models`/`review_codex_models` doluysa o modeller."""
     out: List[ReviewTarget] = []
     seen: Set[str] = set()
     for mode, avail, want in (("agy", agy_models, getattr(cfg, "review_agy_models", "")),
@@ -71,11 +71,12 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
             if t.key not in seen:
                 seen.add(t.key)
                 out.append(t)
-    for m in _split_models(getattr(cfg, "review_claude_models", "")):
-        t = ReviewTarget("claude", m, slug_model(m))
-        if t.key not in seen:
-            seen.add(t.key)
-            out.append(t)
+    for mode, attr in (("claude", "review_claude_models"), ("codex", "review_codex_models")):
+        for m in _split_models(getattr(cfg, attr, "")):
+            t = ReviewTarget(mode, m, slug_model(m))
+            if t.key not in seen:
+                seen.add(t.key)
+                out.append(t)
     return out
 
 

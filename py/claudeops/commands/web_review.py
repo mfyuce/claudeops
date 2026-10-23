@@ -93,6 +93,15 @@ def claude_argv(binary: str, model: str, effort: str, prompt: str) -> List[str]:
                    "--disallowedTools", "Read(**/CLAUDE.md)", "Edit", "Write", "NotebookEdit", "Bash(*CLAUDE.md*)"]
 
 
+def codex_argv(binary: str, cwd: str, model: str, effort: str, prompt: str) -> List[str]:
+    """`codex exec -s read-only -C <cwd> -m M [-c model_reasoning_effort=E] <prompt>`: sandbox salt okunur (yazma/ağ yok);
+    stdout yalnız son mesajdır, ilerleme stderr'e gider. Ölçüm: `-c model_reasoning_effort` olmadan config.toml'daki `max` uygulanır."""
+    argv = [binary, "exec", "-s", "read-only", "--skip-git-repo-check", "-C", cwd, "-m", model]
+    if effort:
+        argv += ["-c", f"model_reasoning_effort={effort}"]
+    return argv + [prompt]
+
+
 def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, supports_io: bool,
                live_flags: Optional[List[str]] = None, budget_flags: Optional[List[str]] = None) -> List[str]:
     """`ucli --root <cwd> chat --model M --endpoint E --api-key-env UCLI_API_KEY --max-steps 200 [--max-io-mib N] <prompt>`.
@@ -681,6 +690,9 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                                "projects": {cwd: {"hasTrustDialogAccepted": True}}}, f)
             argv = claude_argv(resolved_binary("claude"), target.model, str(getattr(cfg, "review_claude_effort", "low") or ""), prompt)
             env_extra.update(ANTHROPIC_API_KEY=key_val, CLAUDE_CONFIG_DIR=cdir, DISABLE_AUTOUPDATER="1")
+        elif target.mode == "codex":
+            from ..settings import resolved_binary
+            argv = codex_argv(resolved_binary("codex"), cwd, target.model, str(getattr(cfg, "review_codex_effort", "low") or ""), prompt)
         elif target.mode == "agy":
             from ..providers.agy_provider import AgyProvider
             from ..settings import resolved_binary

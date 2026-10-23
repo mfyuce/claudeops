@@ -53,6 +53,8 @@ class TestSlugTargets(unittest.TestCase):
         cfg.review_claude_models = "claude-haiku-5-5, claude-haiku-5-5"
         t = rv.targets_from_config(cfg, [], [])
         self.assertEqual([(x.mode, x.model, x.key) for x in t], [("claude", "claude-haiku-5-5", "claude/claude-haiku-5-5")])
+        cfg.review_codex_models = "gpt-6-luna"
+        self.assertEqual([x.key for x in rv.targets_from_config(cfg, [], [])], ["claude/claude-haiku-5-5", "codex/gpt-6-luna"])
 
 
 class TestPlanner(unittest.TestCase):
@@ -260,3 +262,15 @@ class TestClaudeArgv(unittest.TestCase):
             self.assertNotIn(forbidden, a[a.index("--allowedTools"):a.index("--disallowedTools")])
         self.assertNotIn("--dangerously-skip-permissions", a)
         self.assertEqual(wr.claude_argv("b", "m", "", "P").count("--effort"), 0)
+
+
+class TestCodexArgv(unittest.TestCase):
+    def test_codex_argv_read_only(self):
+        from claudeops.commands import web_review as wr
+        a = wr.codex_argv("/bin/codex", "/w", "gpt-6-luna", "low", "PROMPT")
+        self.assertEqual(a[:5], ["/bin/codex", "exec", "-s", "read-only", "--skip-git-repo-check"])
+        self.assertEqual(a[-1], "PROMPT")
+        self.assertIn("model_reasoning_effort=low", a)
+        self.assertNotIn("workspace-write", a)
+        self.assertNotIn("danger-full-access", a)
+        self.assertEqual(wr.codex_argv("b", "/w", "m", "", "P").count("-c"), 0)

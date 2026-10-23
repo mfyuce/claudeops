@@ -298,6 +298,8 @@ class Config:
     review_max_compactions: int = 24   # Evren: `--max-compactions` (ucli varsayılanı 8)
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
     review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)
+    review_codex_models: str = ""    # virgülle ayrık codex model listesi (`codex exec`, salt okunur sandbox); "" = KAPALI
+    review_codex_effort: str = "low"   # codex `model_reasoning_effort` (config.toml'daki `max` review için gereksiz pahalı)
     review_claude_effort: str = "low"  # Anthropic review `--effort` (ölçüm 2026-10-23: haiku low en ucuz+geniş)
 
 
