@@ -381,11 +381,14 @@ def effort_for(cfg: Any, mode: str, target: Optional["ReviewTarget"] = None) -> 
 
 
 def review_path(root: str, proj: str, t: ReviewTarget, ts: Any, effort: str = "") -> str:
-    """`<root>/<proje>/<mode>/<altmodel>[/<effort>]/<yyyyMMddHHmmss>.md`; `ts` epoch (yerel saat) ya da hazır 14 haneli
-    metin. `root` genelde `StewardPaths.reviews`. Proje adı yol güvenli hale getirilir. `effort` boşsa eski düzen."""
+    """`<root>/<proje>/<mode>/<altmodel>[/<effort>]/<yyyyMMddHHmmss>/<yyyyMMddHHmmss>.md`; `ts` epoch (yerel saat) ya da
+    hazır 14 haneli metin. Her koşunun dosyaları (rapor, `.io.jsonl`, `.model.md`, `.usage.jsonl`) kendi `<ts>/` klasöründe
+    toplanır; hepsi `<ts>` önekini korur, bu yüzden `.md` -> yan dosya türetmeleri aynen çalışır. `root` genelde
+    `StewardPaths.reviews`. Proje adı yol güvenli hale getirilir. `effort` boşsa effort katmanı yok. (2026-10-24'ten önceki
+    koşular eski düz düzende `<ts>.md`; kayıtlı yollar olduğu gibi okunur.)"""
     stamp = ts if isinstance(ts, str) and re.fullmatch(r"\d{14}", ts) else time.strftime("%Y%m%d%H%M%S", time.localtime(float(ts)))
     parts = [root, slug_model(proj), t.mode, t.slug] + ([slug_model(effort)] if effort else [])
-    return os.path.join(*parts, stamp + ".md")
+    return os.path.join(*parts, stamp, stamp + ".md")
 
 
 def draft_path(md: str) -> str:

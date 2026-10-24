@@ -218,8 +218,8 @@ class TestPathsAndStores(unittest.TestCase):
 
     def test_review_path(self):
         out = rv.review_path(self.paths.reviews, "my/proj", T2, 0)
-        self.assertRegex(out, r"reviews/my-proj/evren/glm-4\.6/\d{14}\.md$")
-        self.assertTrue(rv.review_path("/r", "p", T1, "20261022101500").endswith("/p/agy/gemini-3-flash/20261022101500.md"))
+        self.assertRegex(out, r"reviews/my-proj/evren/glm-4\.6/(\d{14})/\1\.md$")
+        self.assertTrue(rv.review_path("/r", "p", T1, "20261022101500").endswith("/p/agy/gemini-3-flash/20261022101500/20261022101500.md"))
 
     def test_history_and_pool_roundtrip(self):
         self.assertEqual(rv.load_pool(self.paths), {"projects": {}})
@@ -367,8 +367,11 @@ class TestEffortPairs(unittest.TestCase):
         self.assertEqual(rv.effort_for(C, "claude", ts[0]), "low")
         self.assertEqual(rv.effort_for(C, "claude", ts[2]), "medium")
         self.assertTrue(rv.review_path("/r", "p", ts[1], "20261024101500", "high").endswith(
-            "/p/claude/claude-haiku-5-5/high/20261024101500.md"))
+            "/p/claude/claude-haiku-5-5/high/20261024101500/20261024101500.md"))
         self.assertEqual(rv.split_spec("m@x"), ("m", "x"))
+        # çok dosyalı koşu klasörü: rapor + yan dosyalar aynı `<ts>/` altında, `<ts>` öneki korunur
+        md = rv.review_path("/r", "p", ts[1], "20261024101500", "high")
+        self.assertEqual(rv.draft_path(md), os.path.join(os.path.dirname(md), "20261024101500.model.md"))
         self.assertEqual(rv.split_spec("m"), ("m", ""))
 
 

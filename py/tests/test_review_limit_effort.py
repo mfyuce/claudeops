@@ -11,8 +11,8 @@ class TestEffortAndLimit(unittest.TestCase):
     def test_path_has_effort_layer(self):
         t = rv.ReviewTarget("claude", "claude-haiku-4-5", "claude-haiku-4-5")
         p = rv.review_path("/r", "ncs", t, "20261024120000", "low")
-        self.assertEqual(p, "/r/ncs/claude/claude-haiku-4-5/low/20261024120000.md")
-        self.assertEqual(rv.review_path("/r", "ncs", t, "20261024120000"), "/r/ncs/claude/claude-haiku-4-5/20261024120000.md")
+        self.assertEqual(p, "/r/ncs/claude/claude-haiku-4-5/low/20261024120000/20261024120000.md")
+        self.assertEqual(rv.review_path("/r", "ncs", t, "20261024120000"), "/r/ncs/claude/claude-haiku-4-5/20261024120000/20261024120000.md")
 
     def test_effort_for(self):
         cfg = types.SimpleNamespace(review_claude_effort="high")
