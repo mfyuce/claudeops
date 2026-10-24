@@ -992,6 +992,12 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                                      ("--max-tool-calls", "review_max_tool_calls", 14)):
                 if sf(binary, flag):
                     budget += [flag, str(max(1, int(getattr(cfg, attr, dflt) or dflt)))]
+            for flag, attr, dflt in (("--max-wall-secs", "review_max_wall_secs", 900),
+                                     ("--request-timeout-secs", "review_request_timeout_secs", 300)):
+                val = getattr(cfg, attr, dflt)
+                val = dflt if val is None else int(val)
+                if val > 0 and sf(binary, flag):        # 0 = kapalı (geri alma); eski ikili bayrağı bilmiyorsa gitmez
+                    budget += [flag, str(val)]
             create_dir = ""
             rpath = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode, target))
             os.makedirs(os.path.dirname(rpath), exist_ok=True)

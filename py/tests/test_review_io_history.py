@@ -257,6 +257,34 @@ class TestRunWritesIo(Base):
         self.ev()
         self.assertEqual(FakeProc.instances[0].argv[FakeProc.instances[0].argv.index("--max-tool-calls") + 1], "30")
 
+    def test_wall_and_request_timeout_flags(self):
+        # ae/mimo-v2.6-pro 20 dk duvarda bitmemişti: ucli kendi duvar/istek süresini bilsin (ayarlı, varsayılan 900/300)
+        self.ev()
+        a = FakeProc.instances[0].argv
+        self.assertEqual(a[a.index("--max-wall-secs") + 1], "900")
+        self.assertEqual(a[a.index("--request-timeout-secs") + 1], "300")
+        FakeProc.instances = []
+        self.cfg.review_max_wall_secs = 600
+        self.cfg.review_request_timeout_secs = 120
+        self.ev()
+        a = FakeProc.instances[0].argv
+        self.assertEqual((a[a.index("--max-wall-secs") + 1], a[a.index("--request-timeout-secs") + 1]), ("600", "120"))
+        for off in (0,):                                    # 0 = geri al: bayrak hiç gitmez
+            FakeProc.instances = []
+            self.cfg.review_max_wall_secs = off
+            self.cfg.review_request_timeout_secs = off
+            self.ev()
+            a = FakeProc.instances[0].argv
+            self.assertNotIn("--max-wall-secs", a)
+            self.assertNotIn("--request-timeout-secs", a)
+        FakeProc.instances = []
+        self.cfg.review_max_wall_secs = 900
+        self.cfg.review_request_timeout_secs = 300
+        self.ev(supports_flag=lambda b, f: f not in ("--max-wall-secs", "--request-timeout-secs"))   # eski ikili: bayrak yok
+        a = FakeProc.instances[0].argv
+        self.assertNotIn("--max-wall-secs", a)
+        self.assertNotIn("--request-timeout-secs", a)
+
     def test_recover_leaves_io(self):
         res = self.ev()
         io = wr.io_path_for(res["file"])

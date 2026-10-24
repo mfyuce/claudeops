@@ -312,6 +312,8 @@ class Config:
     review_store_dir: str = ""         # reviewer: biten koşuların raporu (`<ts>.md` + `<ts>.usage.jsonl`, maskeli) bu ÖZEL klasörün `reviews/` altına kopyalanır (TBD#118; "" = KAPALI; git add/commit/push otomatik DEĞİL)
     review_auto_approve: int = 0       # reviewer: `verified` bulguyu KENDİLİĞİNDEN onaylar: 0 kapalı, 1 yalnız P3, 2 P2+P3 (P1, `unclear` ve parola/gizli geçen bulgu ASLA)
     review_auto_export: bool = False   # reviewer: `approved` bulguları YEREL projenin TODO.md'sine KENDİLİĞİNDEN yazar (tick başına en çok 1 proje; TBD'ye ASLA, uzak proje ve hassas bulgu atlanır)
+    review_max_wall_secs: int = 900   # Evren: `--max-wall-secs` (ucli kendi duvar sınırı; timeout 20 dk iken 900 = kalan süreyle özet verir, partial kalmaz); 0 = bayrak gitmez
+    review_request_timeout_secs: int = 300   # Evren: `--request-timeout-secs` (tek model isteği); 0 = bayrak gitmez
     review_max_tool_calls: int = 14    # Evren: `--max-tool-calls` (ucli varsayılanı 64; ölçüm: 14 ile 5 tur/297-416 sn, sınırsız 1453 sn)
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
     review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)
