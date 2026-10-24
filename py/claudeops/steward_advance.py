@@ -17,6 +17,14 @@ SEND_MAX = 3                   # bir bulgu en çok bu kadar iletilir
 SENT_KEEP = 1000
 TODO_MAX_BYTES = 2_000_000
 _SEV = {"P1": 0, "P2": 1, "P3": 2}
+# Parola/gizli değer içeren düzeltmeler (rotasyon, kodda sabit parola ...) sahibin kararıdır: ilerletme bunları ASLA
+# iletmez (sahip 2026-10-24: "parola içeren düzeltmeleri ilk iş yapma"); TODO/TBD'de kalır, sahip elle yönlendirir.
+_SENSITIVE_RE = re.compile(r"parola|şifre|sifre|password|passwd|credential|secret|api[ _-]?key|\bdsn\b|gizli (?:değer|anahtar)",
+                           re.IGNORECASE)
+
+
+def is_sensitive(rec: Dict[str, Any]) -> bool:
+    return bool(_SENSITIVE_RE.search(f"{rec.get('title') or ''} {rec.get('where') or ''}"))
 
 
 def todo_status(path: str, cwd: str, fid: str) -> str:
@@ -47,7 +55,7 @@ def candidates(findings_by_sid: Iterable[Dict[str, Any]], cwd_of) -> List[Dict[s
     seen = set()
     for data in findings_by_sid:
         for fid, rec in (data.items() if isinstance(data, dict) else []):
-            if not isinstance(rec, dict) or rec.get("state") != "exported" or fid in seen:
+            if not isinstance(rec, dict) or rec.get("state") != "exported" or fid in seen or is_sensitive(rec):
                 continue
             seen.add(fid)
             proj = str(rec.get("project") or "")

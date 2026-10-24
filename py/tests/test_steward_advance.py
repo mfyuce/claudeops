@@ -58,6 +58,13 @@ class TodoStatusTest(unittest.TestCase):
         got = sa.candidates([data], lambda n: d)
         self.assertEqual([(c["id"], c["todo"], c["title"]) for c in got], [("f1", "open", "a b")])
 
+    def test_secret_findings_are_held_back(self):
+        d = os.path.realpath(tempfile.mkdtemp())
+        data = {"f1": {"project": "ncs", "state": "exported", "title": "Veritabanı parolası kaynak koduna gömülü"},
+                "f2": {"project": "ncs", "state": "exported", "title": "DB password hardcoded", "where": "a.py:6"},
+                "f3": {"project": "ncs", "state": "exported", "title": "Arapça anahtar kelime kaçışsız"}}
+        self.assertEqual([c["id"] for c in sa.candidates([data], lambda n: d)], ["f3"])
+
 
 class PlanTest(unittest.TestCase):
     def plan(self, views, cands, state=None, planned=(), projects=PROJ, limit=1):
