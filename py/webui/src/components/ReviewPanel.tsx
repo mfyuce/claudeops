@@ -169,7 +169,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
                 <th>{t.rvProject}</th>
                 {targets.map((tg) => (
                   <th key={tg.key} title={tg.key}>
-                    {tg.mode}:{tg.slug || tg.model}
+                    {tg.mode}:{tg.slug || tg.model}{tg.effort ? `@${tg.effort}` : ""}
                   </th>
                 ))}
               </tr>
@@ -198,7 +198,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
                     </button>
                   </td>
                   {targets.map((tg) => (
-                    <Cell key={tg.key} project={row.project} tk={tg.key} mode={tg.mode} model={tg.model} pair={row.pairs[tg.key]} />
+                    <Cell key={tg.key} project={row.project} tk={tg.key} mode={tg.mode} model={tg.effort ? `${tg.model}@${tg.effort}` : tg.model} pair={row.pairs[tg.key]} />
                   ))}
                 </tr>
               ))}

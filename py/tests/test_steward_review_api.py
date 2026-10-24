@@ -93,6 +93,15 @@ class TestRunCancel(_Api):
         self.assertFalse(post({"project": "far"})["ok"])
         self.assertFalse(post({"project": "zzz"})["ok"])
 
+    def test_manual_run_picks_the_effort_pair(self):
+        lo, hi = rv.ReviewTarget("claude", "cm", "cm", "low"), rv.ReviewTarget("claude", "cm", "cm", "high")
+        post = lambda b: ws.http_post("/api/steward/review/run", dict(b, steward="rev"))
+        with mock.patch.object(wr, "current_targets", lambda cfg: [lo, hi]):
+            st = ws.http_get("/api/steward/review/state", {"steward": ["rev"]})
+            self.assertEqual([(t["key"], t["effort"]) for t in st["targets"]], [("claude/cm@low", "low"), ("claude/cm@high", "high")])
+            self.assertEqual(post({"project": "a", "mode": "claude", "model": "cm@high"})["key"], "a|claude/cm@high")
+            self.assertEqual(post({"project": "a", "mode": "claude", "model": "cm@low"})["key"], "a|claude/cm@low")
+
     def test_manual_run_refused_when_disabled_or_busy(self):
         j = wr._Job("a|evren/m1")
         j.sid = "rev"

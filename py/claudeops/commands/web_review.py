@@ -1276,7 +1276,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
                      "complete": rv.project_complete(hist, name, targets, t),
                      "pairs": {tg.key: hist["pairs"].get(rv.pair_key(name, tg)) for tg in targets}})
     return {"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
-            "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key} for x in targets],
+            "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key, "effort": x.effort} for x in targets],
             "pool": rows, "running": running_keys(cfg.sid),
             "runs": list(hist.get("runs") or [])[-50:],
             "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes,

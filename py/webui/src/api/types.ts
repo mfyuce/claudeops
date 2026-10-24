@@ -1033,7 +1033,7 @@ export interface ModelUsage {
 }
 
 // ── Reviewer (`/api/steward/review/*`) ──
-export interface ReviewTarget { mode: string; model: string; slug: string; key: string }
+export interface ReviewTarget { mode: string; model: string; slug: string; key: string; effort?: string }
 export interface ReviewPair {
   status?: string; started_at?: number; finished_at?: number; file?: string; error?: string; label_seen?: string; attempts?: number;
 }
