@@ -307,6 +307,8 @@ class Config:
     advance_findings: bool = False     # İLERLETME değnekçisi: sahibin onayladığı (`exported`) review bulgularını KENDİ projelerinin çalışan oturumuna direktifle iletir (steward_advance.py)
     review_auto_verify: bool = False   # reviewer: `new` bulguları projenin çalışan oturumuna KENDİLİĞİNDEN doğrulatır (tick başına en çok 1 proje; oturum meşgulse bekler)
     review_before_tbd_dir: str = ""    # reviewer: `unclear`/`refuted` bulguları bu klasöre `BEFORETBD-<tarih>.md` olarak yazar (özel repo klasörü; "" = KAPALI; commit/push otomatik DEĞİL)
+    review_store_commit: bool = False  # reviewer: `review_store_dir` altındaki YENİ reviews/ dosyaları günde bir -prv depoya (yalnız reviews/ yolu, gizli değer taramalı) commit+push (TBD#118 ek; varsayılan KAPALI)
+    review_store_git_dir: str = "~/.claudeops-docs.git"   # -prv deposunun ayrı git-dir'ı (work-tree = review_store_dir)
     review_store_dir: str = ""         # reviewer: biten koşuların raporu (`<ts>.md` + `<ts>.usage.jsonl`, maskeli) bu ÖZEL klasörün `reviews/` altına kopyalanır (TBD#118; "" = KAPALI; git add/commit/push otomatik DEĞİL)
     review_auto_approve: int = 0       # reviewer: `verified` bulguyu KENDİLİĞİNDEN onaylar: 0 kapalı, 1 yalnız P3, 2 P2+P3 (P1, `unclear` ve parola/gizli geçen bulgu ASLA)
     review_max_tool_calls: int = 14    # Evren: `--max-tool-calls` (ucli varsayılanı 64; ölçüm: 14 ile 5 tur/297-416 sn, sınırsız 1453 sn)

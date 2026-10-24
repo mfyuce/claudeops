@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import review as rv
 from .. import review_remote as rr
+from .. import review_store as rs
 from .. import review_remote_run as rrun
 from .. import steward as sw
 from .. import steward_advance as sa
@@ -1482,6 +1483,13 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if stored:
         actions.append({"kind": "store_reports", "files": len(stored)})
     try:
+        committed = store_commit(cfg, t)
+    except Exception as e:
+        sw.log_event("review_store_commit_failed", paths=p, error=_tail(repr(e)))
+        committed = 0
+    if committed:
+        actions.append({"kind": "store_commit", "files": committed})
+    try:
         asked = ask_remote_choice(cfg, t)
     except Exception as e:      # soru açma hatası review turunu düşürmesin
         sw.log_event("review_where_ask_failed", paths=p, error=_tail(repr(e)))
@@ -1848,6 +1856,49 @@ _STORE_TS = re.compile(r"^\d{14}$")
 STORE_SUFFIXES = (".md", ".usage.jsonl")      # rapor (maskeli) + yalnız sayılar; `.io.jsonl`/`.model.md`/hata günlüğü SAKLANMAZ
 
 
+def store_commit(cfg: Any, now: float, run: Optional[Callable] = None) -> int:
+    """TBD#118 ek: `review_store_commit` açıksa günde bir (`review_store_commit.json`) `review_store_dir/reviews/` altındaki
+    yeni dosyalar -prv depoya commit+push edilir. İlk çalışma KURU (yalnız `would` günlüğe: hangi dosyalar eklenirdi);
+    sonraki günlük tur act. Gizli değer taramasını geçemeyen dosyalar dışarıda kalır ve sahibe tek soruyla bildirilir.
+    Dönen: commit edilen dosya sayısı."""
+    root = str(getattr(cfg, "review_store_dir", "") or "").strip()
+    if not getattr(cfg, "review_store_commit", False) or not root or not os.path.isdir(root):
+        return 0
+    p = sw.paths_for(cfg.sid)
+    sp = os.path.join(p.root, "review_store_commit.json")
+    try:
+        with open(sp, encoding="utf-8") as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        st = {}
+    if not isinstance(st, dict):
+        st = {}
+    if st.get("last_at") is not None and now - float(st["last_at"]) < rs.STORE_COMMIT_INTERVAL:
+        return 0
+    dry = not st.get("dry_done")
+    res = rs.commit_reviews(root, str(getattr(cfg, "review_store_git_dir", "") or ""),
+                            lambda txt: rv.redact_secrets(txt), dry=dry, run=run)
+    st.update(last_at=now, dry_done=True if res.get("ok") else st.get("dry_done"))
+    tmp = sp + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(st, f)
+    os.replace(tmp, sp)
+    sw.log_event("review_store_commit", paths=cfg.sid, dry=dry, ok=res.get("ok"), would=res.get("would"),
+                 held=res.get("held"), committed=res.get("committed"), pushed=res.get("pushed"), error=res.get("error"))
+    if res.get("held"):
+        q = sw.add_question("", f"review saklama: gizli değer taramasını geçemeyen {len(res['held'])} dosya -prv commit'inin DIŞINDA kaldı: "
+                                + ", ".join(list(res["held"])[:5]), source="reviewer-store", options=["Tamam"], paths=p)
+        if _NOTIFY_FN is not None:
+            try:
+                _NOTIFY_FN(cfg.sid, q)
+            except Exception:
+                pass
+    return int(res.get("committed") or 0)
+
+
+_STORE_DENIED: Dict[str, str] = {}   # `review_store_denied` olayı aynı nedenle bir kez
+
+
 def store_reports(cfg: Any) -> List[str]:
     """TBD#118 ilk dilim: `review_store_dir` (sahibin ÖZEL klasörü) doluysa `reviews/<proje>/<mode>/<model>/<effort>/<ts>/` altındaki
     biten koşunun raporu ve sayaç günlüğü `<klasör>/reviews/...` altına AYNI göreli yolla kopyalanır (var olan dosya yeniden
@@ -1860,6 +1911,12 @@ def store_reports(cfg: Any) -> List[str]:
     dst_root = os.path.join(os.path.realpath(root), "reviews")
     if os.path.realpath(dst_root).startswith(os.path.realpath(src_root) + os.sep):
         return []              # hedef kaynağın içinde: özyineleme
+    ok, why = rs.dest_guard(dst_root)
+    if not ok:             # TBD#118: public (ya da bilinmeyen) bir deponun izlenebilir yoluna kopyalama
+        if _STORE_DENIED.get(root) != why:
+            _STORE_DENIED[root] = why
+            sw.log_event("review_store_denied", paths=cfg.sid, root=root, reason=why)
+        return []
     copied: List[str] = []
     for dirpath, _dirs, files in os.walk(src_root):
         ts = os.path.basename(dirpath)
