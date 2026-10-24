@@ -138,9 +138,49 @@ def resolve_upload_target(s: Session, dir_path: Optional[str], filename: str,
     if not safe_name or safe_name in (".", ".."):
         return None, "bad_filename"
     dest = os.path.join(real_dir, safe_name)
+    if os.path.islink(dest):
+        # Son bileşen symlink olabilir (dizin zaten çözüldü, dosya adı değil): hedefi köklerin DIŞINA çıkıyorsa reddet;
+        # kök içindeyse gerçek yola çevir (asılı/dangling symlink dahil: realpath hedef var olmasa da çözer).
+        real = _resolve_within_roots(dest, roots)
+        if real is None:
+            return None, "forbidden"
+        dest = real
     if not overwrite and os.path.exists(dest):
         return None, "exists"
     return dest, None
+
+
+def write_upload(dest: str, rfile, length: int, chunk_size: int) -> Optional[str]:
+    """Gövdeyi `dest`e yazar: aynı dizinde O_EXCL|O_NOFOLLOW geçici dosyaya, TAM `length` bayt geldiyse `os.replace`.
+    Hata kodu ya da None. Yarım gövde (istemci koptu) `incomplete`: geçici dosya silinir, mevcut hedef bozulmaz;
+    `os.replace` symlink'i izlemez (hedef symlink ise bağın kendisi değişir, kök dışına yazılmaz)."""
+    tmp = os.path.join(os.path.dirname(dest), f".{os.path.basename(dest)}.upload-{os.getpid()}-{threading.get_ident()}")
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
+        with os.fdopen(fd, "wb") as f:
+            remaining = length
+            while remaining > 0:
+                chunk = rfile.read(min(chunk_size, remaining))
+                if not chunk:
+                    break
+                f.write(chunk)
+                remaining -= len(chunk)
+        if remaining > 0:
+            os.unlink(tmp)
+            return "incomplete"
+        try:    # üzerine yazılan dosyanın izinleri (ör. +x) korunur
+            if not os.path.islink(dest):
+                os.chmod(tmp, os.stat(dest).st_mode & 0o7777)
+        except OSError:
+            pass
+        os.replace(tmp, dest)
+    except OSError as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return f"io_error: {e}"
+    return None
 
 
 def _is_a_root(real: str, roots: List[Tuple[str, str]]) -> bool:

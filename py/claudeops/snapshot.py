@@ -33,6 +33,7 @@ Leaf modül (sadece atomic_json/paths'e bağımlı) — settings.py ile aynı di
 commands/ paketine bağımlı olmayan modüller de sorunsuz import edebilsin.
 """
 from __future__ import annotations
+import hashlib
 import json
 import os
 import time
@@ -106,6 +107,35 @@ def _load_all() -> List[Dict[str, Any]]:
     return _migrate_legacy()
 
 
+def _backup_if_corrupt() -> None:
+    """`snapshots.json` VAR ama JSON listesi değil/okunamıyor: `_load_all` boş görür ve sonraki yazım geçmişin tamamını
+    silerdi. Ham dosya `snapshots.json.corrupt-<sha8>` olarak (aynı içerik bir kez) yedeklenir; yazma YİNE yapılır
+    (kapanış snapshot'ı kritik, kayıp olmadan devam edebilir). Boş/yok dosya = bozuk sayılmaz."""
+    try:
+        with open(SNAPSHOTS_JSON, "rb") as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
+    if not raw.strip():
+        return
+    try:
+        if isinstance(json.loads(raw.decode("utf-8")), list):
+            return
+    except (ValueError, UnicodeDecodeError):
+        pass
+    dest = f"{SNAPSHOTS_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
+    if os.path.exists(dest):
+        return
+    try:
+        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as out:
+            out.write(raw)
+    except OSError:
+        pass
+
+
 def save_snapshot(sessions: List[Dict[str, Any]], kind: str = "manual",
                   mirrors: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
     """`sessions`: [{"name","cwd","model","permission_mode","effort","cli"}] —
@@ -117,6 +147,7 @@ def save_snapshot(sessions: List[Dict[str, Any]], kind: str = "manual",
 olduğu gibi döner (kullanıcının kuralı: "aynıysa sorun yok"); "aynı" session'larla BİRLİKTE
     açık mirror pencereleri de demektir. `mirrors`: [{"host","name"}], bkz. modül docstring'i."""
     mirrors = normalize_mirrors(mirrors)
+    _backup_if_corrupt()
     all_snaps = _load_all()
     if (kind == "closing" and all_snaps and _same_sessions(all_snaps[-1]["sessions"], sessions)
             and _same_mirrors(all_snaps[-1].get("mirrors"), mirrors)):

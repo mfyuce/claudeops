@@ -33,6 +33,7 @@ import select
 import threading
 import time
 import urllib.parse
+from collections import OrderedDict
 from typing import Any, Callable, Collection, Dict, List, Optional, Tuple
 
 from websockets.sync.client import connect as ws_connect
@@ -177,7 +178,16 @@ _inflight_starts: Dict[str, float] = {}
 # anahtarlı `_last_good` (poll-cache, ~500. satır) ile aynı ada sahip iki
 # AYRI modül değişkeniydi (biri URL->tuple, biri host->dict); anahtar
 # uzayları çakışmıyordu ama tür-karışıklığı tuzağıydı (TODO.md 2026-10-07).
-_dedup_last_good: Dict[str, Tuple[int, dict]] = {}
+_dedup_last_good: "OrderedDict[str, Tuple[int, dict]]" = OrderedDict()
+_DEDUP_LAST_GOOD_MAX = 256     # LRU sınırı: benzersiz URL'li (dosya yolu, sayfa) çağrılar önbelleği sınırsız şişirmesin
+
+
+def _remember_good(url: str, status: int, parsed: dict) -> None:
+    """`_inflight_lock` altında çağrılır. En son kullanılan en sonda; sınırı aşan en eskiler atılır."""
+    _dedup_last_good[url] = (status, parsed)
+    _dedup_last_good.move_to_end(url)
+    while len(_dedup_last_good) > _DEDUP_LAST_GOOD_MAX:
+        _dedup_last_good.popitem(last=False)
 
 # 2026-10-07 fix (canlı rapor: hiç `_dedup_last_good`'u olmayan taze bir URL —
 # yeni spawn edilmiş bir session'ın modalı — "busy: an earlier request..."
@@ -364,7 +374,7 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
                 return status, None, "bad response (not an object)"
             if dedup:
                 with _inflight_lock:
-                    _dedup_last_good[url] = (status, parsed)
+                    _remember_good(url, status, parsed)
             return status, parsed, None
         return 0, None, last_err
     finally:

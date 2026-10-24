@@ -17,7 +17,7 @@ import signal
 import subprocess
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import review as rv
 from .. import steward as sw
@@ -287,6 +287,11 @@ class IoLog:
             if buf:
                 self._deltas.append(rv.redact_secrets(buf, self._learned))
 
+    def learned(self) -> List[str]:
+        """Akışta DSN'den öğrenilmiş parolalar (nihai rapor/taslak maskelemesi de bunları kullanır)."""
+        with self._lock:
+            return list(self._learned)
+
     def streamed_report(self) -> str:
         """Akışla gelen cevap metninden SON `## R-1 | P.. |` başlığından itibaren kısım (bulgu başlığı yoksa ""). Ucli
         stdout'a yalnız iş BİTİNCE JSON yazar; zaman aşımında rapor yarıda ama akışta durur (ncs, effort high, 40 dk)."""
@@ -294,7 +299,12 @@ class IoLog:
             self._delta("", final=True)
             txt = "".join(self._deltas)
         starts = [m.start() for m in re.finditer(r"(?m)^#{2,4}\s*R-1\s*\|\s*P[123]\s*\|", txt)]
-        return txt[starts[-1]:].strip() if starts else ""
+        if starts:
+            return txt[starts[-1]:].strip()
+        lines = [l.strip() for l in txt.splitlines() if l.strip()]
+        if lines and re.fullmatch(r"(?i)(bulgu yok|no findings)\.?", lines[-1]):
+            return lines[-1]                       # başlıksız "bulgu yok" raporu: SON satır tam bu ifadeyse
+        return ""
 
     def feed_err(self, txt: str) -> None:
         with self._lock:
@@ -611,11 +621,13 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             stop_hb.set()
         out, err = out or "", err or ""
         text, jerr = _extract_text(target.mode, out)
+        recovered = False
         if target.mode == "evren":
-            text = _recover_draft(path, text)
+            text, recovered = _recover_draft(path, text, live.learned())
             if not text.strip():
-                text = live.streamed_report()       # taslak da yoksa: akıştaki yarım rapor (status partial olur)
-        text = rv.redact_secrets(text)
+                text = live.streamed_report()       # taslak da yoksa: akıştaki yarım rapor
+                recovered = bool(text.strip())
+        text = rv.redact_secrets(text, live.learned())
         rc = getattr(proc, "returncode", None)
         fields: Dict[str, Any] = {"finished_at": now(), "pid": None}
         if text.strip():
@@ -627,7 +639,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status, error = ("partial" if text.strip() else "error"), f"timeout {int(timeout // 60)} dk"
         elif jerr:
             status, error = "error", _tail(jerr)
-        elif rc == 0 and text.strip():
+        elif rc == 0 and text.strip() and not recovered:
             status, error = "done", ""
         elif text.strip():
             status, error = "partial", f"exit={rc} {_tail(err)}".strip()
@@ -665,22 +677,23 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         _REVIEW_LOCK.release()
 
 
-def _recover_draft(path: str, text: str) -> str:
+def _recover_draft(path: str, text: str, learned: Sequence[str] = ()) -> Tuple[str, bool]:
     """Evren modelinin `--allow-create-dir` ile yazdığı taslak (`rv.draft_path`): ham taslak diskte maskelenmeden
-    kalmasın diye HER ZAMAN maskeli yeniden yazılır; stdout metni boşsa (zaman aşımı, kesik çıktı) taslak rapor olur."""
+    kalmasın diye HER ZAMAN maskeli yeniden yazılır (`learned`: akışta DSN'den öğrenilmiş parolalar); stdout metni boşsa
+    (zaman aşımı, kesik çıktı) taslak rapor olur. (metin, taslaktan_mı)."""
     dp = rv.draft_path(path)
     try:
         with open(dp, encoding="utf-8", errors="replace") as f:
             raw = f.read()
     except OSError:
-        return text
-    red = rv.redact_secrets(raw)
+        return text, False
+    red = rv.redact_secrets(raw, learned)
     try:
         with open(dp, "w", encoding="utf-8") as f:
             f.write(red)
     except OSError:
         pass
-    return text if text.strip() else red
+    return (text, False) if text.strip() else (red, bool(red.strip()))
 
 
 def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, error: str) -> None:

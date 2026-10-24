@@ -9,6 +9,7 @@ Tasarım kararları:
 """
 from __future__ import annotations
 import fcntl
+import stat
 import os
 import time
 from contextlib import contextmanager
@@ -28,7 +29,19 @@ def guard_lock(timeout: float = 10.0):
     """guard.lock'u exclusive flock ile tut."""
     lock_dir = os.path.dirname(GUARD_LOCK)
     os.makedirs(lock_dir, exist_ok=True)
-    fd = open(GUARD_LOCK, "w")
+    # /tmp paylaşımlı: dizin/dosya başkasının symlink'i ya da sahibi biz değilsek REDDET (eski `open(.., "w")` symlink'in
+    # hedefini truncate ederdi). Kilit dosyası hiç truncate edilmez (içeriği yok).
+    dst = os.lstat(lock_dir)
+    if stat.S_ISLNK(dst.st_mode) or dst.st_uid != os.getuid():
+        raise PermissionError(f"{lock_dir} güvenli değil (symlink ya da başka kullanıcının)")
+    raw = os.open(GUARD_LOCK, os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        if os.fstat(raw).st_uid != os.getuid():
+            raise PermissionError(f"{GUARD_LOCK} başka kullanıcının")
+        fd = os.fdopen(raw, "w")
+    except BaseException:
+        os.close(raw)
+        raise
     try:
         start = time.monotonic()
         while True:

@@ -328,3 +328,20 @@ class ProxyGetDedupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DedupLastGoodBoundTests(unittest.TestCase):
+    def test_cache_is_lru_bounded(self):
+        before = dict(web_hosts._dedup_last_good)
+        self.addCleanup(lambda: (web_hosts._dedup_last_good.clear(), web_hosts._dedup_last_good.update(before)))
+        web_hosts._dedup_last_good.clear()
+        cap = web_hosts._DEDUP_LAST_GOOD_MAX
+        for i in range(cap + 50):
+            web_hosts._remember_good(f"http://h/api/files/read?path=/{i}", 200, {"i": i})
+        self.assertEqual(len(web_hosts._dedup_last_good), cap)
+        self.assertNotIn("http://h/api/files/read?path=/0", web_hosts._dedup_last_good)            # en eski atıldı
+        self.assertIn(f"http://h/api/files/read?path=/{cap + 49}", web_hosts._dedup_last_good)
+        web_hosts._remember_good("http://h/api/files/read?path=/60", 200, {"i": "yeni"})            # yeniden kullanılan korunur
+        for i in range(cap):
+            web_hosts._remember_good(f"http://h/x/{i}", 200, {})
+        self.assertNotIn("http://h/api/files/read?path=/60", web_hosts._dedup_last_good)

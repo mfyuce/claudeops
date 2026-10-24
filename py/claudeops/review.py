@@ -16,7 +16,7 @@ from . import steward as sw
 WINDOW_SECONDS = 30 * 86400         # bir çift bu sürede `done` ise "taze" (proje tamam ölçütü)
 HISTORY_VERSION = 1
 HISTORY_RUNS_MAX = 200
-MAX_ATTEMPTS = 3                    # error/model_fallback çifti bu denemeden sonra pencere dolana dek bırakılır
+MAX_ATTEMPTS = 3                    # error/model_fallback/partial çifti bu denemeden sonra pencere dolana dek bırakılır
 MODE_MAX_ATTEMPTS = {"evren": 1}    # Evren: 20 dk zaman aşımı kota yakar, pencere başına en çok 1 deneme (sahip kararı 2026-10-24)
 
 
@@ -135,7 +135,7 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
                 busy_projects: Sequence[str] = (), window: float = WINDOW_SECONDS) -> Optional[Tuple[str, ReviewTarget]]:
     """Sıradaki (proje, hedef) ya da None. TEK proje: önce yarım kalan (bazı çiftleri taze, bazısı değil), sonra hiç
     çifti olmayan, sonra en eskisi (en yeni bitişi en eski olan). Tamam projeler, `busy_projects` ve çalışan çiftler
-    atlanır; `max_attempts(mod)`i (Evren 1, diğerleri `MAX_ATTEMPTS`) dolduran error/model_fallback çifti `window` dolana dek denenmez."""
+    atlanır; `max_attempts(mod)`i (Evren 1, diğerleri `MAX_ATTEMPTS`) dolduran error/model_fallback/partial çifti `window` dolana dek denenmez."""
     skip = set(blocked_modes(history, now))
     targets = [t for t in targets if t.mode not in skip]   # günlük kotası biten mod sıfırlanana dek denenmez
     if not targets:
@@ -153,7 +153,7 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
         for t, r in zip(targets, recs):
             if _fresh(r, now, window):
                 continue
-            if (isinstance(r, dict) and r.get("status") in ("error", "model_fallback")
+            if (isinstance(r, dict) and r.get("status") in ("error", "model_fallback", "partial")
                     and int(r.get("attempts") or 0) >= max_attempts(t.mode)
                     and now - float(r.get("started_at") or 0) < window):
                 continue
@@ -290,7 +290,9 @@ def dsn_passwords(text: str) -> List[str]:
 def redact_secrets(text: str, learned: Sequence[str] = ()) -> str:
     """Bilinen gizli değer biçimlerini `[REDACTED]` yapar (review çıktısı diske/panele yazılmadan önce). `learned`:
     daha önce görülmüş sır değerleri (DSN parolası) düz metinde de maskelenir."""
-    out = _DSN_RE.sub(lambda m: m.group(1) + "[REDACTED]" + m.group(3), str(text or ""))
+    text = str(text or "")
+    learned = list(learned) + [pw for pw in dsn_passwords(text) if pw not in learned]   # bu metindeki DSN parolası metnin her yerinde maskelenir
+    out = _DSN_RE.sub(lambda m: m.group(1) + "[REDACTED]" + m.group(3), text)
     for s in sorted(learned, key=len, reverse=True):
         if s:
             out = out.replace(s, "[REDACTED]")

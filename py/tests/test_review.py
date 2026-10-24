@@ -111,6 +111,14 @@ class TestPlanner(unittest.TestCase):
         old = dict(bad, started_at=NOW - 31 * DAY)
         h2 = hist(**{"a|agy/gemini-3-flash": ok_agy, "a|evren/glm-4.6": old})
         self.assertEqual(rv.next_review(pool("a"), h2, TS, NOW), ("a", T2))
+        # `partial` (zaman aşımı + kurtarılan yarım rapor) da aynı sınıra tabidir: her tick yeniden seçilmez
+        part = {"status": "partial", "started_at": NOW - 3600, "finished_at": NOW - 3000, "attempts": 1}
+        h3 = hist(**{"a|agy/gemini-3-flash": ok_agy, "a|evren/glm-4.6": part})
+        self.assertIsNone(rv.next_review(pool("a"), h3, TS, NOW))
+        h4 = hist(**{"a|agy/gemini-3-flash": dict(part, attempts=2)})
+        self.assertEqual(rv.next_review(pool("a"), h4, TS, NOW), ("a", T1))       # agy: 3'e kadar yeniden denenir
+        h5 = hist(**{"a|agy/gemini-3-flash": dict(part, attempts=3)})
+        self.assertEqual(rv.next_review(pool("a"), h5, TS, NOW), ("a", T2))
         self.assertEqual(rv.max_attempts("evren"), 1)
         self.assertEqual(rv.max_attempts("claude"), rv.MAX_ATTEMPTS)
 
@@ -297,6 +305,10 @@ class TestDsnRedact(unittest.TestCase):
         self.assertEqual(rv.dsn_passwords("x postgresql://u:hunter22@h/db"), ["hunter22"])
         self.assertNotIn("hunter22", rv.redact_secrets('password "u:hunter22" burada', ["hunter22"]))
         self.assertEqual(rv.redact_secrets("http://example.com/a:b", []), "http://example.com/a:b")
+
+    def test_redact_learns_dsn_password_from_same_text(self):
+        t = rv.redact_secrets("postgresql://u:hunter22@h/db\nsonra düz: hunter22 yine hunter22")
+        self.assertNotIn("hunter22", t)
 
     def test_iolog_learns_across_events(self):
         import tempfile, os, json

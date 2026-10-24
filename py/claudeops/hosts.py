@@ -14,9 +14,11 @@ değil) yeniden uygulanır, çünkü bu dosya (token rotasyonu/host ekleme-çık
 ile) sık sık yeniden yazılıyor.
 """
 from __future__ import annotations
+import hashlib
 import json
 import os
 import re
+import shutil
 from typing import Any, Dict, List, Optional
 
 from .atomic_json import atomic_write_json
@@ -51,6 +53,10 @@ ERR: Dict[str, Dict[str, str]] = {
         "tr": "ek URL listesindeki bir adres http:// veya https:// ile başlamıyor",
         "en": "one of the extra URLs doesn't start with http:// or https://",
     },
+    "corrupt": {
+        "tr": "hosts.json bozuk/okunamıyor — kayıtların silinmemesi için yazma reddedildi (yedek: hosts.json.corrupt-*); dosyayı elle düzeltin",
+        "en": "hosts.json is corrupt/unreadable — write refused so no records are lost (backup: hosts.json.corrupt-*); fix the file by hand",
+    },
     "token_required": {
         "tr": "yeni bir host için token zorunlu",
         "en": "token is required for a new host",
@@ -74,6 +80,49 @@ def load_hosts() -> List[Dict[str, str]]:
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return []
+
+
+def _read_checked() -> "tuple[List[Dict[str, str]], bool]":
+    """(host listesi, bozuk_mu). Dosya YOK ya da yalnız boşluk = temiz boş liste; var ama JSON değil / liste değil /
+    okunamıyorsa bozuk: `load_hosts` bunu `[]` gösterir, o listeyi yazan biri TÜM host+token kayıtlarını silerdi."""
+    try:
+        with open(HOSTS_JSON, encoding="utf-8") as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return [], False
+    except OSError:
+        return [], True
+    if not raw.strip():
+        return [], False
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return [], True
+    if not isinstance(data, list):
+        return [], True
+    return [h for h in data if isinstance(h, dict) and "name" in h], False
+
+
+def _backup_corrupt() -> None:
+    """Bozuk dosyanın 0600 yedeği `hosts.json.corrupt-<sha8>` (aynı içerik tekrar yedeklenmez). Hata yutulur."""
+    try:
+        with open(HOSTS_JSON, "rb") as f:
+            raw = f.read()
+        dest = f"{HOSTS_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
+        if not os.path.exists(dest):
+            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as out:
+                out.write(raw)
+    except OSError:
+        pass
+
+
+def _load_for_write() -> "tuple[List[Dict[str, str]], bool]":
+    """Yazmadan önce okuma: bozuksa yedek alınır ve çağıran yazmayı REDDEDER."""
+    hosts, corrupt = _read_checked()
+    if corrupt:
+        _backup_corrupt()
+    return hosts, corrupt
 
 
 def get_host(name: str) -> Optional[Dict[str, str]]:
@@ -130,7 +179,9 @@ def save_host(
         if not (u.startswith("http://") or u.startswith("https://")):
             return _err(lang, "invalid_extra_url")
 
-    hosts = load_hosts()
+    hosts, corrupt = _load_for_write()
+    if corrupt:
+        return _err(lang, "corrupt")
     existing = next((h for h in hosts if h.get("name") == name), None)
     if not token:
         if existing is None:
@@ -158,7 +209,9 @@ def promote_base_url(name: str, new_base_url: str) -> None:
     çalışan öne" kaydırması). `token`/`grpc_url`'e DOKUNMAZ — `save_host()`'un
     genel upsert semantiğinden BİLEREK ayrı, dar bir iç-kullanım fonksiyonu.
     Host artık kayıtlı değilse (silinmiş/yeniden adlandırılmış) sessizce no-op."""
-    hosts = load_hosts()
+    hosts, corrupt = _load_for_write()
+    if corrupt:
+        return                                       # bozuk dosyanın üstüne yazılmaz (sessiz no-op)
     changed = False
     for h in hosts:
         if h.get("name") != name:
@@ -184,9 +237,10 @@ def remove_host(name: str, lang: str = "tr") -> Dict[str, Any]:
     """Idempotent — kayıtlı değilse bile {"ok": True} (settings.py'nin toleranslı
     stiliyle aynı ruh; frontend'in çift-tıklama/stale state için özel hata
     yönetimi yapmasına gerek kalmaz)."""
-    del lang  # şu an hiçbir hata yolu yok, imza tutarlılığı için tutuluyor
-    hosts = [h for h in load_hosts() if h.get("name") != name]
-    _write_hosts(hosts)
+    hosts, corrupt = _load_for_write()
+    if corrupt:
+        return _err(lang, "corrupt")
+    _write_hosts([h for h in hosts if h.get("name") != name])
     return {"ok": True}
 
 

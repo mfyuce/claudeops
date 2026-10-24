@@ -167,6 +167,39 @@ class TestRunWritesIo(Base):
         lg.feed_err("sadece sohbet\n")
         self.assertEqual(lg.streamed_report(), "")
 
+    def test_report_and_draft_mask_password_learned_from_stream(self):
+        # parola akışta DSN içinde görüldü (öğrenildi); rapor/taslakta yalnız çıplak geçer: ikisi de maskelenmeli
+        pw = "zq8Pw0rdXyz"
+        stream = f"UnifiedCLI tool: read_file(x.py)\nUnifiedCLI model: postgresql://u:{pw}@h:5/d\n"
+        answer = json.dumps({"answer": f"## R-1 | P1 | x.py:6 | gömülü parola\ngövde parola={pw} düz yazılmış"})
+        res = self.ev(popen=self.popen(out=answer, err=stream, rc=0))
+        self.assertNotIn(pw, open(res["file"]).read())
+        FakeProc.instances = []
+
+        def popen(argv, **k):
+            m = [w for w in argv[-1].split() if w.endswith(".model.md")][0]
+            with open(m, "w", encoding="utf-8") as f:
+                f.write(f"## R-1 | P1 | x.py:6 | taslak\ngövde {pw} burada")
+            return FakeProc(argv, out="", err=stream, rc=1, **k)
+        res = self.ev(popen=popen)
+        self.assertNotIn(pw, open(res["file"]).read())
+        self.assertNotIn(pw, open(rv.draft_path(res["file"])).read())
+
+    def test_recovered_text_with_clean_exit_is_partial_not_done(self):
+        # stdout boş + rc 0 + akıştan kurtarılan rapor: tam sonuç sayılmaz
+        rep = "UnifiedCLI tool: t()\n## R-1 | P2 | a.py:1 | kurtarılan\ngövde\n"
+        self.ev(popen=self.popen(out="", err=rep, rc=0))
+        self.assertEqual(self.pair(EV)["status"], "partial")
+
+    def test_no_findings_report_recovered_from_stream(self):
+        self.ev(popen=self.popen(out="", err="UnifiedCLI tool: t()\ninceledim\nBULGU YOK\n", rc=1))
+        p = self.pair(EV)
+        self.assertEqual(p["status"], "partial")
+        self.assertIn("BULGU YOK", open(p["file"]).read())
+        lg = wr.IoLog(os.path.join(tempfile.mkdtemp(), "y.io.jsonl"))
+        lg.feed_err("BULGU YOK bu bir sohbet cümlesi değil mi\ndevam ediyorum\n")
+        self.assertEqual(lg.streamed_report(), "")                                   # tek başına sohbet satırı sayılmaz
+
     def test_recover_leaves_io(self):
         res = self.ev()
         io = wr.io_path_for(res["file"])

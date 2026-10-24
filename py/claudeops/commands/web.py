@@ -252,6 +252,8 @@ ERR = {
                          "en": "{name}: file exceeds the download size limit (>{limit_mb:.0f}MB)"},
     "filename_required": {"tr": "filename gerekli", "en": "filename is required"},
     "files_empty_upload": {"tr": "gönderilen dosya boş", "en": "uploaded file is empty"},
+    "files_upload_incomplete": {"tr": "{name}: '{filename}' eksik geldi (bağlantı koptu), kaydedilmedi",
+                                 "en": "{name}: '{filename}' arrived incomplete (connection dropped), not saved"},
     "files_upload_too_large": {"tr": "{name}: dosya yükleme sınırını aşıyor (>{limit_mb:.0f}MB)",
                                 "en": "{name}: file exceeds the upload size limit (>{limit_mb:.0f}MB)"},
     "files_bad_filename": {"tr": "{name}: geçersiz ad", "en": "{name}: invalid name"},
@@ -3983,21 +3985,12 @@ class _Handler(BaseHTTPRequestHandler):
             status = 409 if code == "exists" else 400
             self._json(_err(lang, f"files_{code}", name=name, filename=filename), status=status)
             return
-        try:
-            remaining = length
-            with open(dest, "wb") as f:
-                while remaining > 0:
-                    chunk = self.rfile.read(min(_UPLOAD_CHUNK, remaining))
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    remaining -= len(chunk)
-        except OSError as e:
-            try:
-                os.unlink(dest)
-            except OSError:
-                pass
-            self._json({"ok": False, "error": str(e)}, status=200)
+        werr = files_mod.write_upload(dest, self.rfile, length, _UPLOAD_CHUNK)
+        if werr == "incomplete":
+            self._json(_err(lang, "files_upload_incomplete", name=name, filename=filename), status=400)
+            return
+        if werr:
+            self._json({"ok": False, "error": werr}, status=200)
             return
         self._json({"ok": True, "path": dest}, status=200)
 
@@ -4229,7 +4222,7 @@ class _Handler(BaseHTTPRequestHandler):
                 q = {"name": name, "lang": lang}
                 if fpath:
                     q["path"] = fpath
-                result, status = web_hosts.proxy_get(path, host, q)
+                result, status = web_hosts.proxy_get(path, host, q, dedup=False)    # yola göre benzersiz URL: önbelleği şişirmesin
                 self._json(result, status=status)
                 return
             self._json(_files_list(name, fpath, lang=lang))
@@ -4246,7 +4239,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "path_required"), status=400)
                 return
             if host != LOCAL_HOST_NAME:
-                result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang, "path": fpath})
+                result, status = web_hosts.proxy_get(path, host, {"name": name, "lang": lang, "path": fpath}, dedup=False)
                 self._json(result, status=status)
                 return
             self._json(_files_read(name, fpath, lang=lang))
