@@ -200,6 +200,50 @@ class TestRunWritesIo(Base):
         lg.feed_err("BULGU YOK bu bir sohbet cümlesi değil mi\ndevam ediyorum\n")
         self.assertEqual(lg.streamed_report(), "")                                   # tek başına sohbet satırı sayılmaz
 
+    def test_deltas_memory_bounded_keeps_tail_report(self):
+        old = wr.DELTA_KEEP_CHARS
+        wr.DELTA_KEEP_CHARS = 3000
+        self.addCleanup(setattr, wr, "DELTA_KEEP_CHARS", old)
+        lg = wr.IoLog(os.path.join(tempfile.mkdtemp(), "z.io.jsonl"))
+        for i in range(400):
+            lg.feed_err(f"sohbet satiri {i} " + "x" * 30 + "\n")
+        lg.feed_err("## R-1 | P2 | a.py:1 | son\ngövde\n")
+        self.assertLess(sum(len(d) for d in lg._deltas), 3000 + 200)
+        self.assertTrue(lg.streamed_report().startswith("## R-1 | P2 | a.py:1 | son"))
+
+    def test_recover_draft_atomic_and_ignores_symlink(self):
+        d = tempfile.mkdtemp()
+        md = os.path.join(d, "20261024000000.md")
+        dp = rv.draft_path(md)
+        open(dp, "w").write("## R-1 | P2 | a:1 | t\nparola=" + SECRET)
+        text, rec = wr._recover_draft(md, "", [])
+        self.assertTrue(rec)
+        self.assertNotIn(SECRET, text)
+        self.assertNotIn(SECRET, open(dp).read())
+        self.assertEqual(os.listdir(d), [os.path.basename(dp)])                         # .tmp kalmaz
+        victim = os.path.join(d, "victim.txt")
+        open(victim, "w").write("ONEMLI " + SECRET)
+        os.remove(dp)
+        os.symlink(victim, dp)
+        self.assertEqual(wr._recover_draft(md, "", []), ("", False))
+        self.assertIn(SECRET, open(victim).read())                                     # symlink hedefine dokunulmadı
+
+    def test_tool_call_cap_and_usage_log_flags(self):
+        res = self.ev()
+        a = FakeProc.instances[0].argv
+        self.assertEqual(a[a.index("--max-tool-calls") + 1], "14")
+        self.assertEqual(a[a.index("--usage-log") + 1], res["file"][:-3] + ".usage.jsonl")
+        self.assertNotIn("--show-usage", a)                  # stderr'i kirletir (akış kurtarma): yalnız usage-log
+        FakeProc.instances = []
+        self.cfg.review_max_tool_calls = 30
+        self.ev(supports_flag=lambda b, f: f not in ("--usage-log", "--max-tool-calls"))
+        a = FakeProc.instances[0].argv
+        self.assertNotIn("--usage-log", a)
+        self.assertNotIn("--max-tool-calls", a)
+        FakeProc.instances = []
+        self.ev()
+        self.assertEqual(FakeProc.instances[0].argv[FakeProc.instances[0].argv.index("--max-tool-calls") + 1], "30")
+
     def test_recover_leaves_io(self):
         res = self.ev()
         io = wr.io_path_for(res["file"])

@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace as NS
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -295,6 +296,37 @@ class TestCodexArgv(unittest.TestCase):
         self.assertNotIn("workspace-write", a)
         self.assertNotIn("danger-full-access", a)
         self.assertEqual(wr.codex_argv("b", "/w", "m", "", "P").count("-c"), 0)
+
+
+class TestCopilotMode(unittest.TestCase):
+    def test_argv_read_only_and_prompt(self):
+        from claudeops.commands import web_review as wr
+        a = wr.copilot_argv("/b/copilot", "gemini-3.8-flash", "low", "PROMPT")
+        self.assertEqual(a[:3], ["/b/copilot", "-p", "PROMPT"])
+        self.assertIn("-s", a)
+        self.assertEqual(a[a.index("--model") + 1], "gemini-3.8-flash")
+        self.assertEqual(a[a.index("--reasoning-effort") + 1], "low")
+        self.assertNotIn("--allow-all-tools", a)
+        self.assertNotIn("--yolo", a)
+        self.assertNotIn("--allow-all", a)
+        allows = [a[i + 1] for i, x in enumerate(a) if x == "--allow-tool"]
+        denies = [a[i + 1] for i, x in enumerate(a) if x == "--deny-tool"]
+        self.assertEqual(allows, ["shell(ls)", "shell(grep)", "shell(head)", "shell(tail)", "shell(wc)"])
+        for must in ("write", "shell(rm)", "shell(git push)", "shell(sed)", "shell(find)"):
+            self.assertIn(must, denies)
+        self.assertEqual(wr.copilot_argv("b", "m", "", "P").count("--reasoning-effort"), 0)
+
+    def test_targets_and_effort_path(self):
+        cfg = NS(review_agy_models="", review_evren_models="", review_claude_models="", review_codex_models="",
+                 review_copilot_models="gemini-3.8-flash,gpt-5.4-mini", review_copilot_effort="low")
+        ts = rv.targets_from_config(cfg, [], [])
+        self.assertEqual([t.key for t in ts], ["copilot/gemini-3.8-flash", "copilot/gpt-5.4-mini"])
+        self.assertIn("copilot", rv.MODES)
+        self.assertEqual(rv.effort_for(cfg, "copilot"), "low")
+        self.assertEqual(rv.targets_from_config(NS(), [], []), [])                      # varsayılan KAPALI
+
+    def test_monthly_quota_is_a_limit(self):
+        self.assertTrue(rv.is_daily_limit("You have exceeded your monthly quota (Request ID: X)"))
 
 
 class TestDsnRedact(unittest.TestCase):

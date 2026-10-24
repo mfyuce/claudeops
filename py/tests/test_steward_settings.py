@@ -22,7 +22,7 @@ GOLDEN_DEFAULT = {
 }
 NEW_FIELDS = {"sid", "label", "persona_text", "ntfy_topic", "max_active_total", "max_starts_total", "remote_actions",
               "auto_context_answer", "auto_context_ratio", "drain", "role", "review_timeout_minutes",
-              "review_min_gap_minutes", "review_agy_models", "review_evren_models", "review_claude_models", "review_codex_models", "review_codex_effort", "review_claude_effort", "review_max_context_kib", "review_max_compactions",
+              "review_min_gap_minutes", "review_agy_models", "review_evren_models", "review_claude_models", "review_codex_models", "review_codex_effort", "review_claude_effort", "review_max_context_kib", "review_max_compactions", "review_max_tool_calls", "review_agy_allow", "review_copilot_models", "review_copilot_effort",
               "handover_force_ratio", "handover_defer_max_minutes"}
 
 

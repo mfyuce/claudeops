@@ -22,7 +22,7 @@ MODE_MAX_ATTEMPTS = {"evren": 1}    # Evren: 20 dk zaman aşımı kota yakar, pe
 
 def max_attempts(mode: str) -> int:
     return MODE_MAX_ATTEMPTS.get(mode, MAX_ATTEMPTS)
-MODES = ("agy", "evren", "claude", "codex")
+MODES = ("agy", "evren", "claude", "codex", "copilot")
 PAIR_STATUSES = ("running", "done", "partial", "error", "model_fallback", "limit")
 SEVERITIES = ("P1", "P2", "P3")
 FINDING_STATES = ("new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported")
@@ -35,7 +35,7 @@ FORBIDDEN_PATHS = ("CLAUDE.md", ".env*", "*token*", "*credential*", "*.pem", "se
 
 @dataclass(frozen=True)
 class ReviewTarget:
-    mode: str      # agy | evren | claude | codex
+    mode: str      # agy | evren | claude | codex | copilot
     model: str     # sağlayıcıya verilen gerçek model kimliği
     slug: str      # yol/anahtar güvenli ad (`slug_model`)
 
@@ -63,7 +63,7 @@ def _split_models(text: Any) -> List[str]:
 def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Sequence[str]) -> List[ReviewTarget]:
     """`cfg.review_agy_models` / `review_evren_models` (virgülle ayrık) var olanla (`agy_models`/`evren_models`)
     KESİŞTİRİLİR; boş ayar = verilenin tümü. Sıra: önce agy, sonra evren; yinelenen slug atılır.
-    `claude` (Anthropic, `claude -p`) ve `codex` (`codex exec`) katalogsuz ve KAPALI başlar: yalnız `review_claude_models`/`review_codex_models` doluysa o modeller."""
+    `claude` (Anthropic, `claude -p`), `codex` (`codex exec`) ve `copilot` (`copilot -p`) katalogsuz ve KAPALI başlar: yalnız `review_claude_models`/`review_codex_models`/`review_copilot_models` doluysa o modeller."""
     out: List[ReviewTarget] = []
     seen: Set[str] = set()
     for mode, avail, want in (("agy", agy_models, getattr(cfg, "review_agy_models", "")),
@@ -76,7 +76,8 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
             if t.key not in seen:
                 seen.add(t.key)
                 out.append(t)
-    for mode, attr in (("claude", "review_claude_models"), ("codex", "review_codex_models")):
+    for mode, attr in (("claude", "review_claude_models"), ("codex", "review_codex_models"),
+                       ("copilot", "review_copilot_models")):
         for m in _split_models(getattr(cfg, attr, "")):
             t = ReviewTarget(mode, m, slug_model(m))
             if t.key not in seen:
@@ -304,6 +305,30 @@ def redact_secrets(text: str, learned: Sequence[str] = ()) -> str:
     return out
 
 
+# ── agy izin kuralı (başsız kipte komut izni sorulamaz: koşu "auto-denied" ile ölür) ───────────
+
+# Yalnız salt-okunur komutlar. Deneyle (2026-10-24): `command(ls)` `ls -la`yı kabul eder; `a && rm x`, `a; rm x`, `$(rm x)`,
+# `> dosya` YÖNLENDİRMESİ reddedilir (komut bütün olarak ayrıştırılır). BİLEREK YOK: rg (--pre komut çalıştırır),
+# git log/diff/show (--output dosya yazar), find (-exec/-delete), cat (yasak yolları okutur), sed/awk/xargs/sh/python.
+AGY_ALLOW_DEFAULT = ("ls", "grep", "head", "tail", "wc")
+
+
+def agy_allow_list(spec: Any) -> List[str]:
+    """`review_agy_allow` ayarı: "" = varsayılan; "off" = izolasyon kapalı (eski davranış). Virgülle ayrık komut adları."""
+    t = str(spec or "").strip()
+    if t.lower() == "off":
+        return []
+    names = [x.strip() for x in t.split(",") if x.strip()] or list(AGY_ALLOW_DEFAULT)
+    return [n for n in names if re.fullmatch(r"[A-Za-z0-9._-]+", n)]
+
+
+def agy_settings(cwd: str, allow: Sequence[str]) -> Dict[str, Any]:
+    """İzole agy HOME'unun `.gemini/antigravity-cli/settings.json`u: yalnız `allow` komutları, çalışma alanı dışı erişim yok."""
+    return {"allowNonWorkspaceAccess": False,
+            "permissions": {"allow": [f"command({a})" for a in allow]},
+            "trustedWorkspaces": [cwd]}
+
+
 # ── agy etiket doğrulama ──────────────────────────────────────────────────────
 
 _LABEL_RE = re.compile(r"Propagating selected model override\b.*?\blabel=(\"[^\"]*\"|'[^']*'|\S+)")
@@ -328,9 +353,9 @@ def agy_label_ok(log_text: str, model: str) -> Tuple[bool, str]:
 # ── yollar ────────────────────────────────────────────────────────────────────
 
 def effort_for(cfg: Any, mode: str) -> str:
-    """Yol katmanı için effort adı: claude/codex `review_<mode>_effort`, diğerleri (agy: kademe model adında, evren:
+    """Yol katmanı için effort adı: claude/codex/copilot `review_<mode>_effort`, diğerleri (agy: kademe model adında, evren:
     bayrak yok) `default`."""
-    v = getattr(cfg, f"review_{mode}_effort", "") if mode in ("claude", "codex") else ""
+    v = getattr(cfg, f"review_{mode}_effort", "") if mode in ("claude", "codex", "copilot") else ""
     return slug_model(v) if str(v or "").strip() else "default"
 
 
@@ -361,7 +386,7 @@ def draft_prompt_suffix(draft: str, lang: str = "tr") -> str:
 
 # ── günlük kota engeli (Evren: hesap geneli 15M/gün, UTC gece yarısı sıfırlanır) ───────────────
 
-_LIMIT_RE = re.compile(r"daily_token_limit_exceeded|daily token limit", re.I)
+_LIMIT_RE = re.compile(r"daily_token_limit_exceeded|daily token limit|exceeded your monthly quota", re.I)
 
 
 def is_daily_limit(*texts: Any) -> bool:

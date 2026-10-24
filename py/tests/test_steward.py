@@ -612,6 +612,39 @@ class ShutdownPlanTest(unittest.TestCase):
         self.assertEqual(acts, [])
 
 
+class OpenQuestionMergeTest(_Tmp):
+    """Aynı projeden AÇIK (cevapsız) benzer soru yeniden açılmaz: birleştirilir, sayaç artar (cli aynı soruyu 3 kez açtı)."""
+
+    def test_paraphrased_open_question_is_merged(self):
+        q1 = sw.add_question("cli", "ncs koşu kayıtlarının yolu nerede? reviews/ncs/evren altında mı yoksa reviewer dizininde mi?", source="cli")
+        q2 = sw.add_question("cli", "ncs koşu kayıtlarının yolu: reviews/ncs/evren altında mı yoksa reviewer dizininde mi bulunur?", source="cli")
+        q3 = sw.add_question("cli", "ncs koşu kayıtlarının yolu nedir, reviews/ncs/evren altında mı yoksa reviewer dizininde mi?", source="cli")
+        self.assertEqual(q1.id, q2.id)
+        self.assertEqual(q1.id, q3.id)
+        self.assertEqual(len(sw.open_questions()), 1)
+        self.assertEqual(sw.find_question(q1.id).asked_again, 2)
+        self.assertEqual(sw.find_question(q1.id).notified_at, 0.0)        # birleştirme yeniden bildirim doğurmaz (zaten bildirilmişse korunur)
+
+    def test_other_project_or_topic_not_merged(self):
+        a = sw.add_question("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?")
+        b = sw.add_question("vc", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?")          # başka proje
+        c = sw.add_question("cli", "Evren günlük kotası bitince reviewer hangi modele geçsin?")        # başka konu
+        self.assertEqual(len({a.id, b.id, c.id}), 3)
+
+    def test_short_distinct_questions_not_merged(self):
+        a = sw.add_question("p", "x soru 3?")
+        b = sw.add_question("p", "x soru 4?")
+        self.assertNotEqual(a.id, b.id)
+
+    def test_answered_question_not_merged_into_open_path(self):
+        q1 = sw.add_question("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?")
+        sw.answer_question(q1.id, "evet")
+        q2 = sw.add_question("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?")
+        self.assertEqual(q1.id, q2.id)                                                                  # cevaplı yol (REASK) eskisi gibi
+        self.assertEqual(sw.find_question(q1.id).repeats, 1)
+        self.assertEqual(sw.find_question(q1.id).asked_again, 0)
+
+
 class SalientReaskTest(unittest.TestCase):
     def _a(self, text, ans="evet"):
         return sw.Question(id="q1", project="p1", text=text, created_at=1.0, status="answered", answer=ans, answered_at=100.0)

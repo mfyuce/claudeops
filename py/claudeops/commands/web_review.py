@@ -14,6 +14,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import threading
 import time
@@ -34,6 +35,7 @@ STDERR_KEEP = 300
 LIVE_CAP_BYTES = 512 * 1024         # canlı günlük dosyası tavanı; aşılınca yalnız son LIVE_KEEP_BYTES kalır
 LIVE_KEEP_BYTES = 384 * 1024
 LIVE_READ_BYTES = 128 * 1024        # GET review/live tek yanıtta en çok bu kadar (son kısım)
+DELTA_KEEP_CHARS = 2_000_000    # IoLog'un bellekte tuttuğu akış metni üst sınırı (40 dk'lık koşu MB'larca delta üretir)
 HEARTBEAT_SECONDS = 10.0            # testler küçültür
 
 # Süreç geneli TEK çalıştırma kilidi (claudeops'un `_LOCK`'u ile ilgisi YOK, onu TUTMA). Çalışırken iş thread'inde tutulur.
@@ -102,6 +104,26 @@ def codex_argv(binary: str, cwd: str, model: str, effort: str, prompt: str) -> L
     return argv + [prompt]
 
 
+# copilot: yalnız bu salt-okunur komutlar onaysız çalışır; yazma ve yıkıcı/ağ komutları açıkça reddedilir.
+COPILOT_ALLOW_SHELL = ("ls", "grep", "head", "tail", "wc")
+COPILOT_DENY = ("write", "shell(rm)", "shell(mv)", "shell(cp)", "shell(git push)", "shell(git commit)", "shell(curl)", "shell(wget)",
+                "shell(sed)", "shell(find)", "shell(sh)", "shell(bash)", "shell(python)", "shell(python3)", "shell(tee)")
+
+
+def copilot_argv(binary: str, model: str, effort: str, prompt: str) -> List[str]:
+    """`copilot -p <prompt> -s --model M [--reasoning-effort E] --no-ask-user --allow-tool shell(ls) ... --deny-tool write ...`.
+    DOĞRULANMADI (2026-10-24: hesap aylık kotası dolu, canlı koşu yapılamadı): reddetme kuralları belgeye göre izinden önceliklidir
+    (`--deny-tool` > `--allow-tool`); başsız kipte izinsiz aracın davranışı (hata mı, sessiz ret mi) canlı denenmedi."""
+    argv = [binary, "-p", prompt, "-s", "--model", model, "--no-ask-user", "--disable-client-telemetry"]
+    if effort:
+        argv += ["--reasoning-effort", effort]
+    for c in COPILOT_ALLOW_SHELL:
+        argv += ["--allow-tool", f"shell({c})"]
+    for d in COPILOT_DENY:
+        argv += ["--deny-tool", d]
+    return argv
+
+
 def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, supports_io: bool,
                live_flags: Optional[List[str]] = None, budget_flags: Optional[List[str]] = None,
                create_dir: str = "") -> List[str]:
@@ -114,6 +136,27 @@ def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, su
         with_mcp=False, max_steps=EVREN_MAX_STEPS,
         extra_args=(["--max-io-mib", str(EVREN_MAX_IO_MIB)] if supports_io else []) + list(budget_flags or []) + list(live_flags or [])
         + (["--allow-create-dir", create_dir] if create_dir else [])) + [prompt]
+
+
+def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "") -> str:
+    """Review'a özel İZOLE agy HOME'u (`<root>/agy_home`): kendi `settings.json`ı (yalnız salt-okunur komut izni, kullanıcının
+    global ayarına/GEMINI.md'sine dokunmaz) + gerçek HOME'dan KOPYALANAN oturum belirteci. Belirteç her koşuda yeniden
+    kopyalanır (agy içeride yenilerse gerçeğe yazılmaz). Gerçek ~/.gemini/antigravity-cli yoksa belirteçsiz kurulur."""
+    real = os.path.join(real_home or os.path.expanduser("~"), ".gemini", "antigravity-cli")
+    home = os.path.join(root, "agy_home")
+    cfg = os.path.join(home, ".gemini", "antigravity-cli")
+    os.makedirs(cfg, mode=0o700, exist_ok=True)
+    for name in ("antigravity-oauth-token", "installation_id"):
+        try:
+            shutil.copyfile(os.path.join(real, name), os.path.join(cfg, name))
+            os.chmod(os.path.join(cfg, name), 0o600)
+        except OSError:
+            pass
+    tmp = os.path.join(cfg, "settings.json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(rv.agy_settings(cwd, allow), f, indent=2)
+    os.replace(tmp, os.path.join(cfg, "settings.json"))
+    return home
 
 
 def agy_argv(binary: str, model: str, prompt: str, provider: Any) -> List[str]:
@@ -225,6 +268,7 @@ class IoLog:
         self._hold = ""             # delta için tutulan sözcük kuyruğu
         self._learned: List[str] = []   # DSN'den öğrenilen parolalar: düz metinde de maskelenir
         self._deltas: List[str] = []    # akışla gelen cevap parçaları (maskeli): zaman aşımında rapor kurtarma kaynağı
+        self._delta_chars = 0           # `_deltas` toplam uzunluğu (DELTA_KEEP_CHARS ile sınırlı: bellek)
         self.ok = True
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -285,7 +329,11 @@ class IoLog:
                     self._hold, buf = buf[m.start():], buf[:m.start()]
             self.event("assistant", buf, "delta")
             if buf:
-                self._deltas.append(rv.redact_secrets(buf, self._learned))
+                red = rv.redact_secrets(buf, self._learned)
+                self._deltas.append(red)
+                self._delta_chars += len(red)
+                while self._delta_chars > DELTA_KEEP_CHARS and len(self._deltas) > 1:   # rapor SONDA: en eskiler atılır
+                    self._delta_chars -= len(self._deltas.pop(0))
 
     def learned(self) -> List[str]:
         """Akışta DSN'den öğrenilmiş parolalar (nihai rapor/taslak maskelemesi de bunları kullanır)."""
@@ -683,16 +731,23 @@ def _recover_draft(path: str, text: str, learned: Sequence[str] = ()) -> Tuple[s
     (zaman aşımı, kesik çıktı) taslak rapor olur. (metin, taslaktan_mı)."""
     dp = rv.draft_path(path)
     try:
+        if os.path.islink(dp):                   # model symlink bırakmış olamaz (create-only) ama okuma/yazma izlemesin
+            return text, False
         with open(dp, encoding="utf-8", errors="replace") as f:
             raw = f.read()
     except OSError:
         return text, False
     red = rv.redact_secrets(raw, learned)
-    try:
-        with open(dp, "w", encoding="utf-8") as f:
+    tmp = dp + ".tmp"
+    try:                                          # atomik: yarım yazılmış/boş taslak kalmaz
+        with open(tmp, "w", encoding="utf-8") as f:
             f.write(red)
+        os.replace(tmp, dp)
     except OSError:
-        pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
     return (text, False) if text.strip() else (red, bool(red.strip()))
 
 
@@ -740,14 +795,17 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             live_flags = [fl for fl in ("--stream", "--show-reasoning") if sf(binary, fl)]
             budget: List[str] = []
             for flag, attr, dflt in (("--max-context-kib", "review_max_context_kib", 768),
-                                     ("--max-compactions", "review_max_compactions", 24)):
+                                     ("--max-compactions", "review_max_compactions", 24),
+                                     ("--max-tool-calls", "review_max_tool_calls", 14)):
                 if sf(binary, flag):
                     budget += [flag, str(max(1, int(getattr(cfg, attr, dflt) or dflt)))]
             create_dir = ""
+            rpath = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode))
+            os.makedirs(os.path.dirname(rpath), exist_ok=True)
+            if sf(binary, "--usage-log"):           # token ekonomisi ölçümü: istek başına sayılar (istem/cevap/araç sonucu YOK)
+                budget += ["--usage-log", rpath[:-3] + ".usage.jsonl"]
             if sf(binary, "--allow-create-dir"):
-                rpath = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode))
                 create_dir = os.path.dirname(rpath)
-                os.makedirs(create_dir, exist_ok=True)
                 prompt += rv.draft_prompt_suffix(rv.draft_path(rpath), lang)
             argv = evren_argv(binary, cwd, target.model, prompt, (endpoint_fn or up.endpoint)(), bool(sup), live_flags, budget,
                               create_dir)
@@ -772,6 +830,9 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
         elif target.mode == "codex":
             from ..settings import resolved_binary
             argv = codex_argv(resolved_binary("codex"), cwd, target.model, str(getattr(cfg, "review_codex_effort", "low") or ""), prompt)
+        elif target.mode == "copilot":
+            from ..settings import resolved_binary
+            argv = copilot_argv(resolved_binary("copilot"), target.model, str(getattr(cfg, "review_copilot_effort", "low") or ""), prompt)
         elif target.mode == "agy":
             from ..providers.agy_provider import AgyProvider
             from ..settings import resolved_binary
@@ -780,6 +841,12 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             if target.model not in models:
                 raise RuntimeError(f"agy model listesinde yok: {target.model}")
             argv = agy_argv(agy_bin or resolved_binary("agy"), target.model, prompt, prov)
+            allow = rv.agy_allow_list(getattr(cfg, "review_agy_allow", ""))
+            if allow:   # izole HOME: komut izni yalnız salt-okunur liste; günlük/etiket doğrulaması da bu HOME'dan okunur
+                home = agy_home(p.root, cwd, allow)
+                env_extra["HOME"] = home
+                if agy_log_dir == AGY_LOG_DIR:
+                    agy_log_dir = os.path.join(home, ".gemini", "antigravity-cli", "log")
         else:
             raise RuntimeError(f"bilinmeyen mod: {target.mode}")
         rv.update_pair(p, project, target, status="running", started_at=t0, finished_at=None, file=None, error=None,
@@ -1102,7 +1169,7 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
     targets = current_targets(cfg)
     if mode or model:
         if mode not in rv.MODES or not model:
-            return {"ok": False, "error": "mode must be agy|evren and model is required"}
+            return {"ok": False, "error": "mode must be agy|evren|claude|codex|copilot and model is required"}
         known = [x for x in targets if x.mode == mode and x.model == model]
         if targets and not known:
             return {"ok": False, "error": f"unknown target: {mode}/{model}"}

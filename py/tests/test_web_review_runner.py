@@ -186,6 +186,43 @@ class TestCancel(Base):
 
 
 class TestAgy(Base):
+    def setUp(self):
+        super().setUp()
+        self.fake_home = tempfile.mkdtemp()                                  # gerçek ~/.gemini'ye dokunulmaz
+        real = os.path.join(self.fake_home, ".gemini", "antigravity-cli")
+        os.makedirs(real)
+        open(os.path.join(real, "antigravity-oauth-token"), "w").write("TOKEN-X")
+        p = mock.patch.dict(os.environ, {"HOME": self.fake_home})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_isolated_home_with_readonly_allow_list(self):
+        self.agy()
+        env = FakeProc.instances[0].kw["env"]
+        home = env["HOME"]
+        self.assertTrue(home.endswith("agy_home"))
+        self.assertNotEqual(home, self.fake_home)
+        cfgdir = os.path.join(home, ".gemini", "antigravity-cli")
+        st = json.load(open(os.path.join(cfgdir, "settings.json")))
+        self.assertEqual(st["permissions"]["allow"], ["command(ls)", "command(grep)", "command(head)", "command(tail)", "command(wc)"])
+        self.assertFalse(st["allowNonWorkspaceAccess"])
+        self.assertEqual(st["trustedWorkspaces"], [self.cwd])
+        self.assertEqual(open(os.path.join(cfgdir, "antigravity-oauth-token")).read(), "TOKEN-X")
+        self.assertEqual(os.stat(os.path.join(cfgdir, "antigravity-oauth-token")).st_mode & 0o777, 0o600)
+        for banned in ("rg", "git", "find", "cat", "sed", "sh", "rm"):
+            self.assertNotIn(f"command({banned})", st["permissions"]["allow"])
+
+    def test_allow_override_and_off(self):
+        self.cfg.review_agy_allow = "ls, grep ,bad name;rm"
+        self.agy()
+        st = json.load(open(os.path.join(FakeProc.instances[0].kw["env"]["HOME"], ".gemini", "antigravity-cli", "settings.json")))
+        self.assertEqual(st["permissions"]["allow"], ["command(ls)", "command(grep)"])
+        FakeProc.instances = []
+        self.cfg.review_agy_allow = "off"
+        self.agy()
+        self.assertNotEqual(FakeProc.instances[0].kw["env"].get("HOME"), os.path.join(self.fake_home, "agy_home"))
+        self.assertNotIn("agy_home", FakeProc.instances[0].kw["env"].get("HOME", ""))
+
     def prov(self, levels=("high",)):
         p = mock.Mock()
         p.model_effort_levels.side_effect = lambda m: list(levels) if m.endswith("-high") else None

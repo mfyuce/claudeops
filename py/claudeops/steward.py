@@ -203,6 +203,7 @@ class Question:
     notified_at: float = 0.0        # telefona bildirildi (aynı açık soru ikinci kez bildirilmez)
     routine: bool = False           # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır; ROUTINE_ESCALATE_SECONDS dolarsa sahibine düşer
     repeats: int = 0                # oturum aynı soruyu yeniden sordu: cevap "zaten cevapladım" notuyla yeniden iletildi
+    asked_again: int = 0            # AÇIK iken aynı proje/benzer metinle yeniden soruldu: yeni soru açılmadı, bu sayaç arttı
 
 
 @dataclass
@@ -296,10 +297,14 @@ class Config:
     review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
     review_max_context_kib: int = 768  # Evren: `--max-context-kib` (ucli varsayılanı 256 uzun review'u düşürüyordu)
     review_max_compactions: int = 24   # Evren: `--max-compactions` (ucli varsayılanı 8)
+    review_agy_allow: str = ""         # agy: izole HOME'da izinli salt-okunur komutlar ("" = ls,grep,head,tail,wc; "off" = izolasyon kapalı)
+    review_max_tool_calls: int = 14    # Evren: `--max-tool-calls` (ucli varsayılanı 64; ölçüm: 14 ile 5 tur/297-416 sn, sınırsız 1453 sn)
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
     review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)
     review_codex_models: str = ""    # virgülle ayrık codex model listesi (`codex exec`, salt okunur sandbox); "" = KAPALI
     review_codex_effort: str = "low"   # codex `model_reasoning_effort` (config.toml'daki `max` review için gereksiz pahalı)
+    review_copilot_models: str = ""  # virgülle ayrık Copilot model listesi (`copilot -p`); "" = KAPALI
+    review_copilot_effort: str = "low"  # copilot `--reasoning-effort`
     review_claude_effort: str = "low"  # Anthropic review `--effort` (ölçüm 2026-10-23: haiku low en ucuz+geniş)
 
 
@@ -959,6 +964,35 @@ def find_answered_duplicate(questions: List["Question"], project: str, text: str
     return best
 
 
+OPEN_MERGE_WINDOW_SECONDS = 24 * 3600   # açık benzer soru bu süre içinde sorulmuşsa yeni soru açılmaz
+OPEN_MERGE_MIN_WORDS = 4                # iki metinde de en az bu kadar anlamlı kelime: "x soru 3?"/"x soru 4?" gibi kısa sorular birleşmesin
+
+
+def find_open_similar(questions: List["Question"], project: str, text: str,
+                      now: Optional[float] = None) -> Optional["Question"]:
+    """Aynı projede hâlâ AÇIK (cevapsız), yakın zamanda açılmış ve `text`e kelime düzeyinde çok benzeyen soru (en benzeri).
+    Benzerlik ölçütü `find_answered_duplicate` ile aynı (Jaccard >= REASK_MIN_SIMILARITY ya da aynı konu jetonları)."""
+    now = _now() if now is None else now
+    mine = _words(text)
+    if len(mine) < OPEN_MERGE_MIN_WORDS:
+        return None
+    best, best_sim = None, 0.0
+    for q in questions:
+        if q.status != "open" or q.project != project or now - q.created_at > OPEN_MERGE_WINDOW_SECONDS:
+            continue
+        theirs = _words(q.text)
+        if len(theirs) < OPEN_MERGE_MIN_WORDS:
+            continue
+        sim = len(mine & theirs) / len(mine | theirs)
+        if sim < REASK_MIN_SIMILARITY:
+            sal, sal_q = _salient(text), _salient(q.text)
+            if len(sal) >= SALIENT_MIN_TOKENS and sal == sal_q:
+                sim = REASK_MIN_SIMILARITY
+        if sim >= REASK_MIN_SIMILARITY and sim > best_sim:
+            best, best_sim = q, sim
+    return best
+
+
 def recent_answers(project: str, exclude_id: str = "", limit: int = 5,
                    questions: Optional[List["Question"]] = None, paths: Any = None) -> List["Question"]:
     """Projenin en son `limit` cevaplanmış sorusu (eskiden yeniye); `exclude_id` hariç."""
@@ -1001,6 +1035,12 @@ def add_question(project: str, text: str, source: str = "", options: Any = None,
         for q in questions:
             if q.status == "open" and q.project == project and q.text == text:
                 return q
+        # Benzer (aynı olmayan) AÇIK soru: yenisi açılmaz, sayaç artar (devirle gelen yeni oturum öncekinin sorusunu bilmez).
+        sim = find_open_similar(questions, project, text)
+        if sim is not None:
+            sim.asked_again += 1
+            save_questions(questions, paths)
+            return sim
         q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
                      options=normalize_options(options), key=_unique_question_key(_pp(paths).sid), routine=bool(routine))
         questions.append(q)
