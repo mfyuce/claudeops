@@ -2606,7 +2606,7 @@ HANDOVER_PROC_WAIT_SECONDS = 25.0
 GUARD_LOCK_ACQUIRE_TIMEOUT = 60.0
 
 
-def _handover(name: str, lang: str = "tr", exact: bool = False) -> dict:
+def _handover(name: str, lang: str = "tr", exact: bool = False, extra: str = "") -> dict:
     """Wrap-up mesajını CANLI session'a enjekte eder — py/cops handover'ın TEK-session
     web karşılığı. kill/respawn YOK.
 
@@ -2651,6 +2651,8 @@ def _handover(name: str, lang: str = "tr", exact: bool = False) -> dict:
     if not provider.has_conversation():
         return _err(lang, "no_conversation", name=name)
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
+    if extra:      # değnekçi: oturumun açık soruları (`steward.handover_questions_note`)
+        message = message + "\n\n" + extra
     diag_log("handover_start", name=name)
 
     # Model + effort düşürmesi `handover.apply_handover_downgrades`te, `handover_faz1`

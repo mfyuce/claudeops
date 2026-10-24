@@ -2049,6 +2049,16 @@ def http_summary(date: str = "", lang: str = "", sid: str = "default") -> Dict[s
 _SESSION_KINDS = tuple(k for k in sw.OBSERVE_SKIPPED if k != "tour")
 
 
+def _local_handover(name: str, sid: str, lang: str) -> Any:
+    """Yerel canlı devir. Oturumun/projenin AÇIK soruları devir mesajına eklenir (yeni oturum aynı soruyu yeniden
+    açmasın; `sw.handover_questions_note`). Soru okunamazsa ya da yoksa mesaj eskisi gibi gider. Uzak devirde yok."""
+    try:
+        extra = sw.handover_questions_note(sw.load_questions(sw.paths_for(sid)), name, lang)
+    except Exception:       # soru dosyası okunamadı: devir yine de gitmeli
+        extra = ""
+    return _act("handover", name, lang=lang, extra=extra) if extra else _act("handover", name, lang=lang)
+
+
 def _remote_handover(name: str, host: str, rt: Optional[_RemoteTick] = None, *, sid: str = "default",
                      actor: str = "") -> Dict[str, Any]:
     """Uzak devir: ön denetim (`_remote_session`: projenin TEK çalışan oturumu, tarihli ad dahil; iki oturum = red)
@@ -2238,7 +2248,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if denied is not None:
             return denied
     if k == "handover":
-        return _remote_handover(name, host, rt, sid=cfg.sid, actor="engine") if host else _act("handover", name, lang=cfg.lang)
+        return _remote_handover(name, host, rt, sid=cfg.sid, actor="engine") if host else _local_handover(name, cfg.sid, cfg.lang)
     if host and k in ("stop", "respawn"):      # uzak yıkıcı: yerel yola (yerel adaşı öldüren `_act("stop")`) düşmez
         w = world or _world(cfg.sid, cfg)
         if k == "stop":
@@ -3732,7 +3742,7 @@ def http_handover(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     host = _name_host(name)      # `_gate` istekteki host'u projeninkiyle zaten eşledi
     with _ctx(sid).lock:
         res = (_remote_handover(name, host, sid=sid, actor=str(data.get("actor") or "")) if host
-               else _act("handover", name, lang=cfg.lang))
+               else _local_handover(name, sid, cfg.lang))
         if res.get("ok"):
             with sw.steward_lock(sid):
                 state = sw.load_state(sid)

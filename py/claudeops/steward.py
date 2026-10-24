@@ -1203,6 +1203,38 @@ def open_questions(questions: Optional[List[Question]] = None, paths: Any = None
     return [q for q in (questions if questions is not None else load_questions(paths)) if q.status == "open"]
 
 
+HANDOVER_QUESTIONS_MAX = 8
+HANDOVER_QUESTION_CHARS = 200
+
+
+def handover_questions_note(questions: List["Question"], name: str, lang: str = "tr") -> str:
+    """Devir mesajına eklenecek "sorduğum AÇIK sorular" bölümü: bu oturumun (kaynak) ya da projesinin cevapsız soruları.
+    Yeni oturum öncekinin sorusunu bilmez ve aynısını yeniden açar (copsdev, 2026-10-24); özet bu soruları taşısın.
+    Açık soru yoksa "" (mesaj değişmez)."""
+    rows = [q for q in questions if q.status == "open" and (q.source == name or q.project == name)]
+    if not rows:
+        return ""
+    rows.sort(key=lambda q: q.created_at)
+    lines = []
+    for q in rows[:HANDOVER_QUESTIONS_MAX]:
+        text = " ".join(str(q.text or "").split())
+        if len(text) > HANDOVER_QUESTION_CHARS:
+            text = text[:HANDOVER_QUESTION_CHARS - 1] + "…"
+        again = f" (+{q.asked_again} kez yeniden soruldu)" if lang != "en" and q.asked_again else (
+            f" (+{q.asked_again} re-asks)" if q.asked_again else "")
+        lines.append(f"- [{q.id}] {text}{again}")
+    more = len(rows) - len(lines)
+    if lang == "en":
+        head = ("OPEN QUESTIONS I asked (still unanswered; the new session must NOT ask them again, the steward delivers "
+                "the answer). Copy them under a \"## Open questions\" line in your READY FOR HANDOVER summary:")
+        tail = f"\n- … and {more} more" if more > 0 else ""
+    else:
+        head = ("Sorduğum AÇIK sorular (hâlâ cevapsız; yeni oturum AYNISINI yeniden SORMASIN, cevabı değnekçi iletir). "
+                "READY FOR HANDOVER özetine \"## Açık sorular\" başlığıyla aynen kopyala:")
+        tail = f"\n- … ve {more} soru daha" if more > 0 else ""
+    return head + "\n" + "\n".join(lines) + tail
+
+
 def undelivered_answers(questions: Optional[List[Question]] = None, paths: Any = None) -> List[Question]:
     return [q for q in (questions if questions is not None else load_questions(paths))
             if q.status == "answered" and not q.delivered_at]
