@@ -32,6 +32,7 @@ from .. import review as rv
 from .. import steward as sw
 from .. import steward_jobs as sj
 from .. import steward_lessons as sl
+from .. import steward_advance as sa
 from ..diaglog import diag_log
 from ..discovery import find_sessions
 from ..guard import guard_lock
@@ -583,6 +584,8 @@ def _remember_dry(action: sw.Action, ctx: Optional[StewardContext] = None, host:
     detail = f"{len(action.payload.get('items') or [])} madde" if action.kind == "tour" else str(action.payload.get("text") or "")[:200]
     if action.kind == "deliver_job":
         detail = f"job {action.payload.get('service')}#{action.payload.get('job_id')} {action.payload.get('stage')}"
+    if action.kind == "deliver_findings":
+        detail = f"findings x{len(action.payload.get('rows') or [])} -> {action.payload.get('project')}"
     if action.kind == "deliver_lesson":
         detail = f"lesson x{len(action.payload.get('hashes') or [])} -> {action.payload.get('project')}"
     entry = {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
@@ -2307,6 +2310,12 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             sw.mark_delivered(q.id, paths)
             sw.log_event("answer_undeliverable", paths=paths, id=q.id, session=name, error=res.get("error", ""))
         return res
+    if k == "deliver_findings":
+        if not host:
+            denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
+            if denied is not None:
+                return denied
+        return _deliver_findings(action, cfg, projects, host=host, rt=rt)
     if k == "deliver_lesson":
         if not host:
             denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
@@ -2444,6 +2453,46 @@ def _deliver_lesson(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Pr
     else:
         sl.mark_failed(hashes, paths)
     return res
+
+
+def _deliver_findings(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project], host: Optional[str] = None,
+                      rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
+    """`deliver_findings`: onaylı review bulgularını projenin ÇALIŞAN oturumuna `_give_directive` ile (`start_if_stopped=False`)
+    iletir. Başarıda bulgu başına `advance_sent` işaretlenir (iki kez/sıkça gitmez). Commit/push yapmaz."""
+    paths = sw.paths_for(cfg.sid)
+    rows = [r for r in (action.payload.get("rows") or []) if isinstance(r, dict) and r.get("id")]
+    p = projects.get(str(action.payload.get("project") or ""))
+    if p is None or not rows:
+        return {"ok": False, "error": "not a steward project"}
+    fids = [str(r["id"]) for r in rows]
+    mark = lambda: sa.mark_sent(fids, time.time(), paths)   # noqa: E731
+    ident = ",".join(fids)
+    if _already_sent(mark, cfg.sid, "advance", ident):
+        return {"ok": True, "skipped": "already sent"}
+    res = _give_directive(p, sa.build_advance_message(rows, cfg.lang), start_if_stopped=False, reason="advance",
+                          session_name=action.name, cfg=cfg, host=host or None, rt=rt, actor="engine")
+    if res.get("ok"):
+        _mark_after_send(mark, cfg.sid, "advance", ident)
+        sw.log_event("findings_advanced", paths=paths, project=p.name, session=action.name, n=len(fids), ids=fids)
+    return res
+
+
+def _advance_candidates(cfg: sw.Config) -> List[Dict[str, Any]]:
+    """Reviewer kimliklerinin `exported` bulguları + TODO durumu (yalnız `advance_findings=on` kimlikte). Hata = boş."""
+    if not cfg.advance_findings:
+        return []
+    try:
+        from .. import review as rv
+        data = [rv.load_findings(sw.paths_for(sid)) for sid in sorted(sw.reviewer_ids())]
+        cache: List[Callable[[str], str]] = []
+
+        def cwd_of(name: str) -> str:      # filo anlık görüntüsü yalnız gerçekten bir `exported` bulgu varsa ve bir kez alınır
+            if not cache:
+                cache.append(_cwd_resolver())
+            return cache[0](name)
+        return sa.candidates(data, cwd_of)
+    except Exception:
+        return []
 
 
 def _lessons(cfg: sw.Config) -> List[Tuple[str, str]]:
@@ -2588,6 +2637,9 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 lesson_actions, new_state = sl.plan_lesson_deliveries(views, projects, _lessons(cfg), new_state, t0,
                                                                       sl.target_project(cfg.lessons_project), actions, world)
                 actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
+                adv_actions, new_state = sa.plan_advance_deliveries(views, projects, _advance_candidates(cfg), new_state, t0,
+                                                                    actions, world)
+                actions = actions + adv_actions     # ilerletme (advance_findings=on): onaylı review bulguları -> kendi projesinin oturumu
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 sw.save_state(new_state, paths)
             for a in dry:
