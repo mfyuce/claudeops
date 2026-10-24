@@ -708,6 +708,12 @@ export interface Strings {
   rvDone: string;
   rvExported: string;
   rvVerifySent: string;
+  rvAutoVerify: string;
+  rvAutoApprove: string;
+  rvAutoApproveOff: string;
+  rvAutoApproveP3: string;
+  rvAutoApproveP2: string;
+  rvAutoHint: string;
   stewardRowStat: (projects: number, questions: number) => string;
   stewardOn: string;
   stewardOffShort: string;
@@ -1513,6 +1519,12 @@ export const STRINGS: Record<Lang, Strings> = {
     rvDone: "Yapıldı.",
     rvExported: "Dışa aktarıldı",
     rvVerifySent: "Doğrulama gönderildi",
+    rvAutoVerify: "Otomatik doğrula",
+    rvAutoApprove: "Otomatik onayla",
+    rvAutoApproveOff: "kapalı",
+    rvAutoApproveP3: "doğrulanmış P3",
+    rvAutoApproveP2: "doğrulanmış P2 ve P3",
+    rvAutoHint: "Doğrulama projenin çalışan oturumuna gider (meşgulse bekler). Onay dosyaya yazmaz; P1, belirsiz ve parola/gizli geçen bulgular hep sende kalır.",
     stewardRowStat: (projects, questions) => `${projects} proje · ${questions} açık soru`,
     stewardOn: "açık",
     stewardOffShort: "kapalı",
@@ -2319,6 +2331,12 @@ export const STRINGS: Record<Lang, Strings> = {
     rvDone: "Done.",
     rvExported: "Exported",
     rvVerifySent: "Verification sent",
+    rvAutoVerify: "Auto-verify",
+    rvAutoApprove: "Auto-approve",
+    rvAutoApproveOff: "off",
+    rvAutoApproveP3: "verified P3",
+    rvAutoApproveP2: "verified P2 and P3",
+    rvAutoHint: "Verification goes to the project's running session (waits if busy). Approval does not write files; P1, unclear and password/secret findings always stay with you.",
     stewardRowStat: (projects, questions) => `${projects} project${projects === 1 ? "" : "s"} · ${questions} open question${questions === 1 ? "" : "s"}`,
     stewardOn: "on",
     stewardOffShort: "off",

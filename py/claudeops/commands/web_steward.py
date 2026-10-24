@@ -2850,6 +2850,10 @@ def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
                 reviewers.add(sid)
                 if cfg.enabled:
                     results.append(dict(web_review.review_tick(cfg) or {}, sid=sid, role="reviewer"))
+                    try:
+                        auto_review_verify(cfg)
+                    except Exception as e:      # otomatik doğrulama hatası döngüyü düşürmesin
+                        sw.log_event("review_auto_verify_failed", paths=sid, error=repr(e)[:200])
                 else:
                     web_review.review_disable(cfg)      # kapalı reviewer: koşan iş iptal, hiçbir şey başlamaz
                 continue
@@ -3868,10 +3872,10 @@ def http_skip(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 # Panelden yazılabilen ayarlar (CLI `steward config` alt kümesi): alan -> (alt, üst) sınır. `mode` ayrıca doğrulanır.
 UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_retry_minutes": (1, 1440),
                  "idle_minutes": (1, 1440), "review_minutes": (1, 10080), "stop_idle_minutes": (1, 10080),
-                 "max_active": (0, 20), "max_starts_per_tick": (0, 10)}
+                 "max_active": (0, 20), "max_starts_per_tick": (0, 10), "review_auto_approve": (0, 2)}
 
 
-UI_CONFIG_BOOL = ("drain",)
+UI_CONFIG_BOOL = ("drain", "review_auto_verify")
 
 
 def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -4523,6 +4527,33 @@ def http_review_verify(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
                                  time.time())
     sw.log_event("review_verify", paths=sid, project=project, owner=owner, session=v.name, findings=marked, source="ui")
     return {"ok": True, "project": project, "owner": owner, "session": v.name, "findings": marked}
+
+
+AUTO_VERIFY_STALE_SECONDS = 3600     # bu kadar süredir cevapsız `verify_sent` bulgu projeyi otomatik doğrulamada bloklamaz
+AUTO_VERIFY_TRIES = 3                # tick başına en çok bu kadar proje denenir, ilk başarılı gönderimde durulur
+
+
+def auto_review_verify(cfg: sw.Config, now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """`review_auto_verify` açıksa havuzdaki projelerin `new` bulgularını KENDİ oturumlarına doğrulatır (sahibin elle
+    Doğrula düğmesiyle aynı yol: `http_review_verify`, oturum AÇILMAZ, meşgulse bekler). Cevap bekleyen (taze
+    `verify_sent`) bulgusu olan proje atlanır. Tick başına en çok 1 gönderim. Dönen: {project, ...} ya da None."""
+    if not cfg.review_auto_verify:
+        return None
+    t = time.time() if now is None else now
+    p = sw.paths_for(cfg.sid)
+    data = rv.load_findings(p)
+    enabled = set(rv.pool_enabled(rv.load_pool(p)))
+    waiting = {str(v.get("project")) for v in data.values()
+               if isinstance(v, dict) and v.get("state") == "verify_sent"
+               and t - float(v.get("verify_sent_at") or 0) < AUTO_VERIFY_STALE_SECONDS}
+    projects = sorted({str(v.get("project")) for v in data.values()
+                       if isinstance(v, dict) and v.get("state") == "new" and v.get("project")} & enabled - waiting)
+    for proj in projects[:AUTO_VERIFY_TRIES]:
+        res = http_review_verify({"project": proj}, sid=cfg.sid)
+        if res.get("ok"):
+            sw.log_event("review_auto_verify", paths=p, project=proj, session=res.get("session"), findings=res.get("findings"))
+            return {"project": proj, "findings": res.get("findings")}
+    return None
 
 
 def http_review_finding(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:

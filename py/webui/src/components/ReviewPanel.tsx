@@ -11,6 +11,7 @@ import {
   apiReviewExport,
   apiReviewFinding,
   apiReviewPool,
+  apiStewardConfig,
   apiReviewRun,
   apiReviewVerify,
   getReviewFile,
@@ -219,6 +220,31 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           {t.rvAddBtn}
         </button>
       </div>
+      {st && (
+      <div className="opts" title={t.rvAutoHint}>
+        <label>
+          <input
+            type="checkbox"
+            checked={!!st.auto_verify}
+            disabled={busy}
+            onChange={(e) => void act(() => apiStewardConfig("review_auto_verify", e.target.checked ? "on" : "off", sid), t.rvDone)}
+          />{" "}
+          {t.rvAutoVerify}
+        </label>
+        <label>
+          {t.rvAutoApprove}{" "}
+          <select
+            value={st.auto_approve ?? 0}
+            disabled={busy}
+            onChange={(e) => void act(() => apiStewardConfig("review_auto_approve", Number(e.target.value), sid), t.rvDone)}
+          >
+            <option value={0}>{t.rvAutoApproveOff}</option>
+            <option value={1}>{t.rvAutoApproveP3}</option>
+            <option value={2}>{t.rvAutoApproveP2}</option>
+          </select>
+        </label>
+      </div>
+      )}
 
       <h4 style={{ margin: 0 }}>{t.rvRunning}</h4>
       {running.length === 0 && <span className="opts-hint">{t.rvNoRunning}</span>}

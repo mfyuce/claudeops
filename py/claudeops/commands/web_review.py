@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import review as rv
 from .. import steward as sw
+from .. import steward_advance as sa
 from .. import steward_lessons as sl
 from .. import ucli_client
 
@@ -1098,6 +1099,13 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         applied = []
     if applied:
         actions.append({"kind": "verdicts", "findings": applied})
+    try:
+        auto = auto_approve(cfg, t)
+    except Exception as e:
+        sw.log_event("review_auto_approve_failed", paths=p, error=_tail(repr(e)))
+        auto = []
+    if auto:
+        actions.append({"kind": "auto_approve", "findings": auto})
     pool, changed = sync_pool(p, t)
     if changed:
         actions.append({"kind": "pool_sync"})
@@ -1156,7 +1164,8 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key} for x in targets],
             "pool": rows, "running": running_keys(cfg.sid),
             "runs": list(hist.get("runs") or [])[-50:],
-            "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes}
+            "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes,
+            "auto_verify": bool(cfg.review_auto_verify), "auto_approve": int(cfg.review_auto_approve)}
 
 
 def read_review_file(cfg: Any, rel: str) -> Dict[str, Any]:
@@ -1311,6 +1320,31 @@ def process_verdicts(cfg: Any, now: Optional[float] = None) -> List[str]:
                          verdicts={f: cur[f]["state"] for f in done})
             applied.extend(done)
     return applied
+
+
+AUTO_APPROVE_SEVERITIES = {1: ("P3",), 2: ("P2", "P3")}     # `review_auto_approve` düzeyi -> otomatik onaylanabilir önem; P1 ASLA
+
+
+def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
+    """`review_auto_approve` > 0 ise `verified` bulguları KENDİLİĞİNDEN onaylar (`decided_by=auto`): yalnız düzeyin önem
+    kümesi (1 = P3, 2 = P2+P3); `unclear`, P1 ve başlık/yer/gövdesinde parola/gizli değer geçen bulgu sahibe kalır.
+    Dosyaya YAZMAZ (export ayrı adım). Onaylananların fid'leri döner."""
+    sev = AUTO_APPROVE_SEVERITIES.get(int(getattr(cfg, "review_auto_approve", 0) or 0))
+    if not sev:
+        return []
+    t = time.time() if now is None else now
+    p = sw.paths_for(cfg.sid)
+    done: List[str] = []
+    for fid, rec in sorted(rv.load_findings(p).items()):
+        if not isinstance(rec, dict) or rec.get("state") != "verified" or str(rec.get("severity") or "") not in sev:
+            continue
+        if sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}")):
+            continue
+        if rv.decide_finding(p, fid, "approve", t, by="auto").get("ok"):
+            done.append(fid)
+    if done:
+        sw.log_event("review_auto_approve", paths=p, findings=done, level=int(cfg.review_auto_approve))
+    return done
 
 
 def verify_candidates(cfg: Any, project: str, fids: Optional[List[str]] = None) -> List[Dict[str, Any]]:

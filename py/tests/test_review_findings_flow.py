@@ -329,3 +329,73 @@ class TestCli(_Flow):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAutoApprove(_Flow):
+    def states(self):
+        return {v["ref"]: v["state"] for v in self.findings().values()}
+
+    def prep(self, md=REVIEW_MD + "\n## R-4 | P3 | w.py:1 | Veritabanı parolası kodda\ngovde 4\n\n## R-5 | P3 | v.py:1 | Beşinci\ngovde 5\n"):
+        self.seed(md)
+        data = self.findings()
+        for v in data.values():
+            v["state"] = "unclear" if v["ref"] == "R-5" else "verified"
+        rv.save_findings(self.p, data)
+
+    def test_level_1_approves_only_verified_p3_without_secrets(self):
+        self.prep()
+        done = wr.auto_approve(NS(sid="rev", review_auto_approve=1), now=5_000.0)
+        self.assertEqual(len(done), 1)
+        self.assertEqual(self.states(), {"R-1": "verified", "R-2": "verified", "R-3": "approved", "R-4": "verified", "R-5": "unclear"})
+        self.assertEqual([v["decided_by"] for v in self.findings().values() if v["state"] == "approved"], ["auto"])
+
+    def test_level_2_adds_p2_but_never_p1_unclear_or_secret(self):
+        self.prep()
+        wr.auto_approve(NS(sid="rev", review_auto_approve=2), now=5_000.0)
+        self.assertEqual(self.states(), {"R-1": "verified", "R-2": "approved", "R-3": "approved", "R-4": "verified", "R-5": "unclear"})
+
+    def test_off_and_tick_wiring(self):
+        self.prep()
+        self.assertEqual(wr.auto_approve(NS(sid="rev", review_auto_approve=0)), [])
+        self.assertTrue(all(s != "approved" for s in self.states().values()))
+        settings.save_settings({"stewards": {"rev": {"review_auto_approve": 1}}})
+        res = self.tick()
+        self.assertIn("auto_approve", [a["kind"] for a in res["actions"]])
+        self.assertEqual(self.states()["R-3"], "approved")
+
+
+class TestAutoVerify(_Flow):
+    def cfg(self, on=True):
+        import dataclasses
+        return dataclasses.replace(ws.steward_config("rev"), review_auto_verify=on)
+
+    def test_sends_once_per_tick_and_marks(self):
+        self.seed()
+        wr.sync_pool(self.p, 5_000.0)
+        self.views = [_view("a", last_assistant="eski")]
+        r = ws.auto_review_verify(self.cfg(), now=5_000.0)
+        self.assertEqual(r["project"], "a")
+        self.assertEqual(len(self.sent), 1)
+        self.assertTrue(all(v["state"] == "verify_sent" for v in self.findings().values()))
+        self.assertIsNone(ws.auto_review_verify(self.cfg(), now=5_100.0))      # cevap bekleyen proje atlanır
+        self.assertEqual(len(self.sent), 1)
+
+    def test_stale_waiting_does_not_block(self):
+        self.seed()
+        wr.sync_pool(self.p, 5_000.0)
+        data = self.findings()
+        for v in data.values():
+            v.update(state="verify_sent", verify_sent_at=1_000.0)
+        data["a:x:extra"] = {"project": "a", "state": "new", "ref": "R-9", "severity": "P3"}
+        rv.save_findings(self.p, data)
+        self.views = [_view("a", last_assistant="eski")]
+        self.assertEqual(ws.auto_review_verify(self.cfg(), now=1_000.0 + ws.AUTO_VERIFY_STALE_SECONDS + 1)["project"], "a")
+
+    def test_off_and_busy_send_nothing(self):
+        self.seed()
+        wr.sync_pool(self.p, 5_000.0)
+        self.views = [_view("a")]
+        self.assertIsNone(ws.auto_review_verify(self.cfg(False), now=5_000.0))
+        self.views = [_view("a", busy=True)]
+        self.assertIsNone(ws.auto_review_verify(self.cfg(), now=5_000.0))
+        self.assertEqual(self.sent, [])

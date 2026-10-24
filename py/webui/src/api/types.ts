@@ -1044,7 +1044,7 @@ export interface ReviewPoolRow {
 export interface ReviewStateResult {
   ok: boolean; error?: string; enabled: boolean; role: string; targets: ReviewTarget[]; pool: ReviewPoolRow[];
   running: string[]; runs: Array<{ pair: string; status: string; at?: number; file?: string }>;
-  min_gap_minutes: number; timeout_minutes: number;
+  min_gap_minutes: number; timeout_minutes: number; auto_verify?: boolean; auto_approve?: number;
 }
 export interface ReviewFinding {
   id: string; project: string; review_file: string; ref: string; severity: string; title: string; where: string;
