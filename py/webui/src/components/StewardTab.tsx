@@ -64,7 +64,6 @@ const SETTING_FIELDS: { key: string; label: "stewardSetTick" | "stewardSetTour" 
   { key: "tour_retry_minutes", label: "stewardSetTourRetry" },
   { key: "idle_minutes", label: "stewardSetIdle" },
   { key: "review_minutes", label: "stewardSetReview" },
-  { key: "max_active", label: "stewardSetMaxActive" },
 ];
 
 /** A number field that saves on Enter / blur when the value changed (the backend validates the range). */
@@ -616,13 +615,15 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
                   </td>
                   <td>{ago(p.last_visit, t.stewardNever)}</td>
                   <td>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void run(() => apiStewardProjectSet(p.name, { phase: p.phase === "paused" ? "planned" : "paused" }, sid), () => showToast(t.stewardSaved, "success"))}
-                    >
-                      {p.phase === "paused" ? t.stewardProjResume : t.stewardProjPause}
-                    </button>
+                    <label title={p.phase === "paused" ? t.stewardProjResume : t.stewardProjPause}>
+                      <input
+                        type="checkbox"
+                        checked={p.phase !== "paused"}
+                        disabled={busy}
+                        onChange={(e) => void run(() => apiStewardProjectSet(p.name, { phase: e.target.checked ? "planned" : "paused" }, sid), () => showToast(t.stewardSaved, "success"))}
+                      />{" "}
+                      {t.stewardProjRun}
+                    </label>
                     {p.running ? (
                       <button
                         type="button"
