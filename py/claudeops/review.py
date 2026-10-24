@@ -6,6 +6,7 @@ Havuz `projects.json`'a YAZILMAZ (aynı adın iki kimlikte olması `ownership_in
 `review_pool.json`. Çift = (proje, mod, alt model); anahtar `"<proje>|<mode>/<slug>"`."""
 from __future__ import annotations
 import os
+import calendar
 import re
 import time
 from dataclasses import dataclass
@@ -157,7 +158,7 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
     çifti olmayan, sonra en eskisi (en yeni bitişi en eski olan). Tamam projeler, `busy_projects` ve çalışan çiftler
     atlanır; `max_attempts(mod)`i (Evren 1, diğerleri `MAX_ATTEMPTS`) dolduran error/model_fallback/partial çifti `window` dolana dek denenmez."""
     skip = set(blocked_modes(history, now))
-    targets = [t for t in targets if t.mode not in skip]   # günlük kotası biten mod sıfırlanana dek denenmez
+    targets = [t for t in targets if t.mode not in skip and t.key not in skip]   # kotası biten mod / model sıfırlanana dek denenmez
     if not targets:
         return None
     pairs = _pairs(history)
@@ -421,15 +422,69 @@ def next_utc_midnight(now: float) -> float:
     return (int(now) // 86400 + 1) * 86400.0
 
 
-def set_block(paths: Any, mode: str, until: float, reason: str = "") -> None:
+def next_utc_month_start(now: float) -> float:
+    """Sonraki ayın 1'i 00:00 UTC (aylık kota, ör. copilot `exceeded your monthly quota`)."""
+    t = time.gmtime(now)
+    y, m = (t.tm_year + 1, 1) if t.tm_mon == 12 else (t.tm_year, t.tm_mon + 1)
+    return float(calendar.timegm((y, m, 1, 0, 0, 0)))
+
+
+def block_until_for_limit(now: float, *texts: Any) -> float:
+    """Günlük/aylık kota engelinin bitişi: "monthly" geçiyorsa ayın sonu, değilse UTC gece yarısı."""
+    if any(re.search(r"monthly", str(t or ""), re.I) for t in texts):
+        return next_utc_month_start(now)
+    return next_utc_midnight(now)
+
+
+BANNER_MAX_CHARS = 600
+
+
+def is_short_banner(text: Any) -> bool:
+    """Çıkış kodu 0 ama stdout'ta rapor yerine KISA bir sağlayıcı mesajı (ör. copilot kota mesajı) var mı? Bulgu başlığı
+    (`## R-`) ya da uzun metin gerçek rapordur: onda "quota" sözü geçmesi (kodu inceleyen rapor) limit sayılmaz."""
+    t = str(text or "").strip()
+    return 0 < len(t) < BANNER_MAX_CHARS and "## R-" not in t
+
+
+# Model başına kota (agy: `RESOURCE_EXHAUSTED (code 429): Individual quota reached ... Resets in 107h49m47s.`): yalnız o
+# mod/model sıfırlanana dek planlayıcıdan çıkar (günlük hesap geneli kota ise TÜM mod: `is_daily_limit`).
+_QUOTA_RE = re.compile(r"RESOURCE_EXHAUSTED|Individual quota reached|quota reached", re.I)
+_RESET_RE = re.compile(r"resets?\s+in\s+((?:\d+\s*[dhms]\s*)+)", re.I)
+_UNIT_SECONDS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+QUOTA_FALLBACK_SECONDS = 1800.0      # kota hatası ama sıfırlanma süresi okunamadı: yarım saat sonra yeniden dene
+QUOTA_MAX_SECONDS = 14 * 86400.0     # saçma uzun süreyi kırp
+
+
+def is_quota_exhausted(*texts: Any) -> bool:
+    return any(_QUOTA_RE.search(str(t or "")) for t in texts)
+
+
+def reset_seconds(*texts: Any) -> Optional[float]:
+    """"Resets in 107h49m47s" -> saniye (d/h/m/s birimleri); okunamazsa None. İlk eşleşen metin kazanır."""
+    for t in texts:
+        m = _RESET_RE.search(str(t or ""))
+        if m:
+            total = sum(int(n) * _UNIT_SECONDS[u.lower()] for n, u in re.findall(r"(\d+)\s*([dhmsDHMS])", m.group(1)))
+            if total > 0:
+                return float(min(total, QUOTA_MAX_SECONDS))
+    return None
+
+
+def quota_block_until(now: float, *texts: Any) -> float:
+    return now + (reset_seconds(*texts) or QUOTA_FALLBACK_SECONDS)
+
+
+def set_block(paths: Any, key: str, until: float, reason: str = "") -> None:
+    """`key`: mod (`evren`: tüm mod) ya da `mod/slug` (tek model, `ReviewTarget.key`)."""
     p = sw._pp(paths)
     with sw.steward_lock(p):
         hist = load_history(p)
-        hist.setdefault("blocks", {})[mode] = {"until": float(until), "reason": reason}
+        hist.setdefault("blocks", {})[key] = {"until": float(until), "reason": reason}
         save_history(p, hist)
 
 
 def blocked_modes(history: Any, now: float) -> List[str]:
+    """Süresi dolmamış engellerin anahtarları (mod ya da `mod/slug`)."""
     b = history.get("blocks") if isinstance(history, dict) else None
     if not isinstance(b, dict):
         return []

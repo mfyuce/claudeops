@@ -248,6 +248,25 @@ class TestAgy(Base):
             self.agy()
         self.assertNotIn("--dangerously-skip-permissions", FakeProc.instances[0].argv)
 
+    def test_agy_model_quota_blocks_only_that_model_until_reset(self):
+        err = ('AGY_ERROR: {"short_error":"RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 107h30m1s."}')
+        log = os.path.join(self.logdir, "cli-1.log")
+        base = self.popen(out="", err=err, rc=3)
+
+        def popen(argv, **k):
+            with open(log, "w") as f:
+                f.write("x Propagating selected model override foo label=gemini-3-flash-high\n")
+            return base(argv, **k)
+        t0 = time.time()
+        self.ev(target=AGY, popen=popen, agy_bin="/fake/agy", agy_log_dir=self.logdir, agy_models=[AGY.model],
+                provider=self.prov(), now=lambda: t0)
+        rec = self.pair(AGY)
+        self.assertEqual(rec["status"], "limit")
+        blocks = rv.load_history(self.paths)["blocks"]
+        self.assertEqual(list(blocks), [AGY.key])
+        self.assertAlmostEqual(blocks[AGY.key]["until"], t0 + 107 * 3600 + 30 * 60 + 1, delta=1)
+        self.assertEqual(rv.blocked_modes(rv.load_history(self.paths), t0 + 60), [AGY.key])
+
     def test_tmpdir_is_writable_home_tmp_and_stale_entries_pruned(self):
         self.agy()
         env = FakeProc.instances[0].kw["env"]
@@ -334,6 +353,37 @@ class TestAgy(Base):
         self.assertFalse(res["ok"])
         self.assertEqual(FakeProc.instances, [])
         self.assertEqual(self.pair(AGY)["status"], "error")
+
+
+class TestBannerLimit(Base):
+    """copilot kota mesajını ÇIKIŞ KODU 0 ile stdout'a basar: rapor sanılıp `done` olmamalı, ay sonuna dek engel."""
+    COP = rv.ReviewTarget("copilot", "auto", "auto")
+
+    def run_cop(self, out, rc=0, err=""):
+        return self.ev(target=self.COP, popen=self.popen(out=out, err=err, rc=rc), now=lambda: 1_792_800_000.0)  # 2026-10-24
+
+    def test_monthly_quota_banner_with_rc0_is_limit_not_done(self):
+        self.run_cop("You have exceeded your monthly quota (Request ID: E0EA:1)\n")
+        rec = self.pair(self.COP)
+        self.assertEqual(rec["status"], "limit")
+        blocks = rv.load_history(self.paths)["blocks"]
+        self.assertEqual(list(blocks), ["copilot"])                                     # tüm mod
+        self.assertEqual(blocks["copilot"]["until"], rv.next_utc_month_start(1_792_800_000.0))
+
+    def test_real_report_mentioning_quota_stays_done(self):
+        report = "## R-1 | P2 | a.py:1 | RESOURCE_EXHAUSTED işlenmiyor\nexceeded your monthly quota hatası yutuluyor.\n"
+        self.run_cop(report)
+        self.assertEqual(self.pair(self.COP)["status"], "done")
+        self.assertEqual(rv.load_history(self.paths).get("blocks") or {}, {})
+        long_report = "Genel değerlendirme. " * 80 + "RESOURCE_EXHAUSTED ve quota reached kavramları anlatıldı."
+        FakeProc.instances = []
+        self.run_cop(long_report)
+        self.assertEqual(self.pair(self.COP)["status"], "done")
+
+    def test_month_start_helper(self):
+        import calendar
+        self.assertEqual(rv.next_utc_month_start(calendar.timegm((2026, 10, 24, 5, 0, 0))), calendar.timegm((2026, 11, 1, 0, 0, 0)))
+        self.assertEqual(rv.next_utc_month_start(calendar.timegm((2026, 12, 31, 23, 0, 0))), calendar.timegm((2027, 1, 1, 0, 0, 0)))
 
 
 class TestRecover(Base):

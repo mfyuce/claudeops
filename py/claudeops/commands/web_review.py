@@ -740,9 +740,20 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status, error = "partial", f"exit={rc} {_tail(err)}".strip()
         else:
             status, error = "error", f"exit={rc} {_tail(err)}".strip()
-        if status != "done" and rv.is_daily_limit(out, err, jerr):
-            status, error = "limit", "günlük kota doldu (daily_token_limit_exceeded); mod UTC gece yarısına dek durdu"
-            rv.set_block(paths, target.mode, rv.next_utc_midnight(now()), error)
+        # Limit taraması: başarısız koşuda stdout+stderr; BAŞARILI görünen (rc=0) koşuda yalnız stdout KISA bir sağlayıcı
+        # mesajıysa (copilot kota mesajını çıkış kodu 0 ile basar; rapor sanılıp `done` olmasın).
+        chk = (out, err, jerr) if (status != "done" or rv.is_short_banner(text)) else ()
+        if chk and rv.is_daily_limit(*chk):
+            until = rv.block_until_for_limit(now(), *chk)
+            status = "limit"
+            error = ("aylık kota doldu; ay sonuna dek durdu" if until != rv.next_utc_midnight(now())
+                     else "günlük kota doldu (daily_token_limit_exceeded); mod UTC gece yarısına dek durdu")
+            rv.set_block(paths, target.mode, until, error)
+        elif chk and rv.is_quota_exhausted(*chk):
+            until = rv.quota_block_until(now(), *chk)
+            status = "limit"
+            error = f"model kotası doldu ({target.key}); {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))} dolayına dek planlayıcıdan çıktı"
+            rv.set_block(paths, target.key, until, error)
         elif target.mode == "evren" and status in ("error", "partial") and (timed_out or not text.strip()):
             _write_lesson(sw._pp(paths), project, target, status, error)
         if target.mode == "agy" and status in ("done", "partial"):

@@ -32,6 +32,29 @@ class TestEffortAndLimit(unittest.TestCase):
         self.assertEqual(rv.next_review(pool, hist, [ev, cl], 50.0), ("p", cl))
         self.assertEqual(rv.next_review(pool, hist, [ev, cl], 150.0), ("p", ev))
 
+    AGY_ERR = ('AGY_ERROR: {"short_error":"RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your '
+               'subscription to increase your limits. Resets in 107h49m47s.","status":"RESOURCE_EXHAUSTED","error_code":429}')
+
+    def test_agy_model_quota_parse(self):
+        self.assertTrue(rv.is_quota_exhausted("x", self.AGY_ERR))
+        self.assertFalse(rv.is_quota_exhausted("token_rate_limit_exceeded", "timeout"))
+        self.assertEqual(rv.reset_seconds(self.AGY_ERR), 107 * 3600 + 49 * 60 + 47)
+        self.assertEqual(rv.reset_seconds("Resets in 2d3h"), 2 * 86400 + 3 * 3600)
+        self.assertEqual(rv.reset_seconds("resets in 12m30s"), 750)
+        self.assertEqual(rv.reset_seconds("resets in 9999d"), rv.QUOTA_MAX_SECONDS)       # saçma süre kırpılır
+        self.assertIsNone(rv.reset_seconds("quota reached, try later"))
+        self.assertEqual(rv.quota_block_until(1000.0, "quota reached"), 1000.0 + rv.QUOTA_FALLBACK_SECONDS)
+        self.assertEqual(rv.quota_block_until(1000.0, "x", self.AGY_ERR), 1000.0 + 107 * 3600 + 49 * 60 + 47)
+
+    def test_model_block_only_removes_that_model(self):
+        a1 = rv.ReviewTarget("agy", "claude-opus-5-5-high", "claude-opus-5-5-high")
+        a2 = rv.ReviewTarget("agy", "gemini-4-argon-medium", "gemini-4-argon-medium")
+        pool = {"projects": {"p": {"enabled": True}}}
+        hist = {"pairs": {}, "blocks": {a1.key: {"until": 1000.0}}}
+        self.assertEqual(rv.next_review(pool, hist, [a1, a2], 50.0), ("p", a2))        # opus bloklu, argon sürer
+        self.assertIsNone(rv.next_review(pool, hist, [a1], 50.0))
+        self.assertEqual(rv.next_review(pool, hist, [a1], 1500.0), ("p", a1))          # süre dolunca geri gelir
+
 
 if __name__ == "__main__":
     unittest.main()
