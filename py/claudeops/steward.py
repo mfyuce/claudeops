@@ -311,6 +311,7 @@ class Config:
     review_codex_effort: str = "low"   # codex `model_reasoning_effort` (config.toml'daki `max` review için gereksiz pahalı)
     review_copilot_models: str = ""  # virgülle ayrık Copilot model listesi (`copilot -p`); "" = KAPALI
     review_copilot_effort: str = "low"  # copilot `--reasoning-effort`
+    review_evren_effort: str = "medium"  # Evren `--effort` (ucli: tavan yükseltilemezse `low` ile tek yeniden deneme YALNIZ görev effort gönderiyorsa çalışır; alanı reddeden modelde atlanır)
     review_claude_effort: str = "low"  # Anthropic review `--effort` (ölçüm 2026-10-23: haiku low en ucuz+geniş)
 
 

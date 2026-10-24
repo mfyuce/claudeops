@@ -71,6 +71,10 @@ class Base(NoRealReviewMixin, unittest.TestCase):
         self.cwd = os.path.join(self.tmp, "proj")
         os.makedirs(self.cwd)
         self.assertFalse(wr._REVIEW_LOCK.locked())
+        from claudeops.providers import ucli_provider as up
+        pe = mock.patch.object(up, "reasoning_effort_for", lambda model, level: None if model == "gemma-4-31b" else level)
+        pe.start()
+        self.addCleanup(pe.stop)
 
     def tearDown(self):
         if wr._REVIEW_LOCK.locked():
@@ -149,6 +153,21 @@ class TestEvren(Base):
                     json.dump(partial, fh)
             return FakeProc(argv, out="", hang=True, **k)
         return f
+
+    def test_effort_always_sent_unless_model_rejects_it(self):
+        self.ev()
+        argv = FakeProc.instances[0].argv
+        self.assertEqual(argv[argv.index("--effort") + 1], "medium")          # ayar varsayılanı
+        FakeProc.instances.clear()
+        self.ev(target=rv.ReviewTarget("evren", "glm-5.3", "glm-5-3", "high"))
+        argv = FakeProc.instances[0].argv
+        self.assertEqual(argv[argv.index("--effort") + 1], "high")            # model@effort hedefi
+        FakeProc.instances.clear()
+        self.ev(target=rv.ReviewTarget("evren", "gemma-4-31b", "gemma-4-31b"))
+        self.assertNotIn("--effort", FakeProc.instances[0].argv)              # alanı reddeden model
+        FakeProc.instances.clear()
+        self.ev(supports_flag=lambda b, f: f != "--effort")
+        self.assertNotIn("--effort", FakeProc.instances[0].argv)              # eski ikili
 
     def test_partial_file_flag_added_only_when_supported(self):
         self.ev()

@@ -948,6 +948,13 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             os.makedirs(os.path.dirname(rpath), exist_ok=True)
             if sf(binary, "--usage-log"):           # token ekonomisi ölçümü: istek başına sayılar (istem/cevap/araç sonucu YOK)
                 budget += ["--usage-log", rpath[:-3] + ".usage.jsonl"]
+            if sf(binary, "--effort"):
+                # HER Evren koşusunda effort gider (ucli'nin "output limit used up by reasoning" -> low yeniden denemesi bunu şart
+                # koşar); model alanı kabul ettiği kanıtlı değilse (gemma-4-31b 400) `reasoning_effort_for` None verir.
+                level = str(target.effort or getattr(cfg, "review_evren_effort", "medium") or "").strip()
+                eff = up.reasoning_effort_for(target.model, level) if level and level.lower() != "off" else None
+                if eff:
+                    budget += ["--effort", eff]
             if sf(binary, "--partial-file"):        # SIGKILL'e dayanıklı kısmi çıktı (tur sınırında atomik yazılır, 0600)
                 budget += ["--partial-file", os.path.realpath(rv.partial_path(rpath))]   # ucli yolun HERHANGİ bir bileşeni symlink ise reddeder
             if sf(binary, "--allow-create-dir"):
