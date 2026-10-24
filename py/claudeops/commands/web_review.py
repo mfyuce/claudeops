@@ -308,8 +308,10 @@ class IoLog:
     Sondaki bölünmüş sözcük bir sonraki yazıya kadar tutulur ki bir sır iki parçaya bölünüp redact'ten kaçmasın."""
 
     def __init__(self, path: str, now: Callable[[], float] = time.time, max_bytes: int = IO_MAX_BYTES,
-                 head: int = IO_HEAD_BYTES, tail: int = IO_TAIL_BYTES) -> None:
+                 head: int = IO_HEAD_BYTES, tail: int = IO_TAIL_BYTES, err_as_delta: bool = True) -> None:
         self.path, self.now, self.max_bytes, self.head, self.tail = path, now, max_bytes, head, tail
+        self.err_as_delta = err_as_delta    # False (claude/codex/agy/copilot): öneksiz stderr cevap DEĞİL, system/stderr satırı
+        self._eline = ""
         self._lock = threading.RLock()
         self._buf = ""              # stderr satır birleştirici
         self._at_start = True
@@ -421,12 +423,30 @@ class IoLog:
                     self._at_start = False
                 i = self._buf.find("\n")
                 if i < 0:
-                    self._delta(self._buf)
+                    self._plain(self._buf)
                     self._buf = ""
                     break
-                self._delta(self._buf[:i + 1])
+                self._plain(self._buf[:i + 1])
                 self._buf = self._buf[i + 1:]
                 self._at_start = True
+
+    def _plain(self, txt: str, final: bool = False) -> None:
+        """Öneksiz stderr metni: `--stream` Evren'de cevap parçası (delta); diğer modlarda hata/uyarı satırı (system)."""
+        if self.err_as_delta:
+            self._delta(txt, final=final)
+            return
+        self._eline += txt
+        while True:
+            i = self._eline.find("\n")
+            if i < 0:
+                break
+            line, self._eline = self._eline[:i], self._eline[i + 1:]
+            if line.strip():
+                self.event("system", line, "stderr")
+        if final and self._eline.strip():
+            self.event("system", self._eline, "stderr")
+        if final:
+            self._eline = ""
 
     def _line(self, rest: str) -> None:
         for pre, role, kind in (("tool:", "tool", "call"), ("model:", "assistant", "model"),
@@ -443,8 +463,8 @@ class IoLog:
                 if self._at_start and tail.startswith(PREFIX):
                     self._line(tail[len(PREFIX):])
                 else:
-                    self._delta(tail, final=True)
-            self._delta("", final=True)
+                    self._plain(tail, final=True)
+            self._plain("", final=True)
 
 
 def _read_io_file(full: str, offset: Any) -> Dict[str, Any]:
@@ -714,7 +734,7 @@ def _tail(s: str, learned: Sequence[str] = ()) -> str:
 def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, argv: List[str], env: Dict[str, str],
              cwd: str, path: str, started: float, popen: Callable, agy_log_dir: str, now: Callable[[], float]) -> None:
     key = job.key
-    live = IoLog(io_path_for(path), now)
+    live = IoLog(io_path_for(path), now, err_as_delta=(target.mode == "evren"))
     agy_before = _agy_log_names(agy_log_dir) if target.mode == "agy" else frozenset()
     if job.prompt:
         live.event("user", job.prompt, "prompt")

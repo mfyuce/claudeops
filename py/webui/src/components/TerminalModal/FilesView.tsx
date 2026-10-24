@@ -220,7 +220,7 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
             type="button"
             title={t.filesOpenVscodeHint}
             style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
-            onClick={() => void callAction(() => apiVscodeOpen(name, lang, path), "vscode", t)}
+            onClick={() => void callAction(() => apiVscodeOpen(name, lang, path, host), "vscode", t)}
           >
             {t.filesOpenVscode}
           </button>
@@ -288,7 +288,7 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
                        downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
                        deleteLabel={t.filesDelete} renameLabel={t.filesRename}
                        onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
-                       onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name)), "vscode", t)}
+                       onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name), host), "vscode", t)}
                        onDelete={() => void handleDelete(e)} onRename={() => void handleRename(e)} />
             ))}
           </div>

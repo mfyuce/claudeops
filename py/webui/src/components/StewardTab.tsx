@@ -278,9 +278,25 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
     </div>
   );
   if (isReviewer) {
+    const rvRow = rows?.find((x) => x.id === sid);
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
         {pickerButtons}
+        <div className="opts">
+          <button type="button" disabled={busy || !rvRow} onClick={() => void run(() => apiStewardEnable(!rvRow?.enabled, sid))}>
+            {rvRow?.enabled ? t.stewardCtlDisable : t.stewardCtlEnable}
+          </button>
+          <button
+            type="button"
+            className="retire"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm(t.stewardIdRemoveConfirm)) void run(() => apiStewardIdentityRemove(sid), () => pick("default"));
+            }}
+          >
+            {t.stewardIdRemove}
+          </button>
+        </div>
         <ReviewPanel sid={sid} refreshKey={key} />
       </div>
     );

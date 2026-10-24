@@ -276,8 +276,8 @@ export const apiFilesWrite = (
 /** `path` omitted → opens the session's project root (whole project). Only
  * useful physically at the machine (or viewing it via Uzak Masaüstü) — VS
  * Code opens a real X11 window, not something this panel can display. */
-export const apiVscodeOpen = (name: string, lang: Lang, path?: string): Promise<SimpleResult> =>
-  apiPost<SimpleResult>("/api/vscode/open", { name, lang, ...(path ? { path } : {}) });
+export const apiVscodeOpen = (name: string, lang: Lang, path?: string, host?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/vscode/open", { name, lang, host: host || "local", ...(path ? { path } : {}) });
 
 // ── POST routes ──────────────────────────────────────────────────────────
 // Payload interfaces mirror each `do_POST` branch's `data.get(...)` reads

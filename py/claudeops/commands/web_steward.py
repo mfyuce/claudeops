@@ -4325,6 +4325,9 @@ def http_identity_remove(data: Dict[str, Any], sid: str = "default") -> Dict[str
     brain = sw.brain_name_for(target)
     if _running(brain) is not None:
         return {"ok": False, "error": f"brain session {brain!r} is running; stop it first"}
+    jobs = web_review.running_keys(target)
+    if jobs:      # reviewer'ın çalışan review işi var: dizin taşınırsa koşu rapor/IO dosyasını yitirir
+        return {"ok": False, "error": f"steward {target!r} has a running review ({', '.join(jobs[:4])}); cancel it first"}
     with sw.ownership_lock():
         names = sorted(sw.load_projects(target))
         if names:

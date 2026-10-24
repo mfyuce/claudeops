@@ -40,6 +40,19 @@ class TestIoLog(unittest.TestCase):
         deltas = "".join(e["text"] for e in ev if e.get("kind") == "delta")
         self.assertEqual(deltas, "merhaba dunya\n")
 
+    def test_plain_stderr_is_system_when_not_a_delta_stream(self):
+        """claude/codex/agy/copilot: öneksiz stderr (hata/uyarı) assistant cevabı sayılmaz."""
+        lg = wr.IoLog(self.p, err_as_delta=False)
+        lg.feed_err("Warning: kota ya")
+        lg.feed_err("kin\nikinci satir")
+        lg.close()
+        ev = events(self.p)
+        self.assertEqual([(e["role"], e.get("kind"), e["text"]) for e in ev],
+                         [("system", "stderr", "Warning: kota yakin"), ("system", "stderr", "ikinci satir")])
+        self.assertEqual(lg.streamed_report(), "")
+        msgs = wr.io_to_messages(ev)
+        self.assertTrue(all(m["role"] != "assistant" for m in msgs))
+
     def test_split_prefix_and_secret(self):
         lg = wr.IoLog(self.p)
         lg.feed_err("Unified")

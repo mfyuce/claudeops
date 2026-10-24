@@ -123,6 +123,15 @@ class UiIdentityTest(_Tmp):
         self.assertFalse(r["ok"])
         self.assertIn("ncs", r["error"])
 
+    def test_remove_refuses_while_review_job_runs(self):
+        from unittest import mock
+        ws.http_identity_create({"target": "kitap", "role": "reviewer"})
+        with mock.patch.object(ws.web_review, "running_keys", lambda sid="": ["ncs|evren/glm-5.3"] if sid == "kitap" else []):
+            r = ws.http_identity_remove({"target": "kitap"})
+        self.assertFalse(r["ok"])
+        self.assertIn("running review", r["error"])
+        self.assertIn("kitap", ws.steward_ids())
+
     def test_remove_empty_identity(self):
         ws.http_identity_create({"target": "kitap"})
         self.assertTrue(ws.http_identity_remove({"target": "kitap"})["ok"])
