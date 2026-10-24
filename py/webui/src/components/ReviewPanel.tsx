@@ -30,6 +30,7 @@ const STATUS_COLOR: Record<string, string> = {
   partial: "#d19a1e",
   error: "#d1453b",
   model_fallback: "#c4631f",
+  limit: "#8b6bd1",
   running: "#3b82d1",
 };
 const FINDING_STATES = ["new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported"];

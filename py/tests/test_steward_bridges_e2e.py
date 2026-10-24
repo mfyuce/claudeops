@@ -57,6 +57,26 @@ class LessonsBridge(_Engine):
         self.assertIn("proje=zlkrn", self.given[1][1])
         self.assertNotIn("proje=ncs", self.given[1][1])
 
+    def test_lesson_masks_learned_password_in_error(self):
+        wr._write_lesson(self.rv_paths, "ncs", EV, "error", "bağlantı s3cr3tPW ile reddedildi", ["s3cr3tPW"])
+        with open(os.path.join(self.rv_paths.root, sl.LESSONS_FILE), encoding="utf-8") as f:
+            text = f.read()
+        self.assertNotIn("s3cr3tPW", text)
+        self.assertIn("[REDACTED]", text)
+
+    def test_lesson_already_sent_in_state_is_not_resent(self):
+        """Eylem planlandıktan sonra aynı ders başka yoldan `lessons_sent`e yazıldıysa tekrar gönderilmez."""
+        self.lesson("ncs", "timeout 20 dk")
+        lessons = sl.read_lessons([self.rv_paths.root])
+        hashes = [h for h, _ in lessons]
+        sl.mark_sent(hashes, sw.paths_for("default"))
+        action = sw.Action("deliver_lesson", "cli", "lesson",
+                           {"project": "ncs", "hashes": hashes, "lines": [ln for _, ln in lessons]})
+        cfg = ws.steward_config("default")
+        res = ws._deliver_lesson(action, cfg, {"ncs": sw.Project(name="ncs")})
+        self.assertEqual(res.get("skipped"), "already sent")
+        self.assertEqual(self.given, [])
+
     def test_waits_for_idle_session_and_never_starts_one(self):
         self.lesson()
         for v in ([self.view(busy=True)], [self.view(subagent_active=True)], [self.view(running=False)], []):

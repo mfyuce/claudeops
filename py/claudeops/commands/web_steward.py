@@ -2477,13 +2477,29 @@ def _deliver_lesson(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Pr
     ident = ",".join(hashes)
     if _already_sent(mark, cfg.sid, "lesson", ident):
         return {"ok": True, "skipped": "already sent"}
+    # Eylem planlandığı anki durumdan çıktı; araya giren başka bir tick/yol aynı dersleri göndermiş olabilir: güncel
+    # `lessons_sent`i yeniden oku, hepsi gitmişse gönderme, kısmen gitmişse yalnız kalanları gönder.
+    try:
+        sent_now = set(sw.load_state(paths).get("lessons_sent") or [])
+    except Exception:
+        sent_now = set()
+    keep = [(h, ln) for h, ln in zip(hashes, lines) if h not in sent_now]
+    if not keep:
+        return {"ok": True, "skipped": "already sent"}
+    if len(keep) != len(hashes):
+        hashes, lines = [h for h, _ in keep], [ln for _, ln in keep]
+        ident = ",".join(hashes)
+        mark = lambda: sl.mark_sent(hashes, paths)   # noqa: E731
     res = _give_directive(p, sl.build_lesson_message(lines, cfg.lang), start_if_stopped=False, reason="lesson",
                           session_name=action.name, cfg=cfg, host=host or None, rt=rt, actor="engine")
     if res.get("ok"):
         _mark_after_send(mark, cfg.sid, "lesson", ident)
         sw.log_event("lesson_delivered", paths=paths, project=p.name, session=action.name, n=len(hashes))
     else:
-        sl.mark_failed(hashes, paths)
+        try:
+            sl.mark_failed(hashes, paths)
+        except sw.LockTimeout as e:      # sayaç yazılamadı: iletim sonucu (res) yine döner, tick düşmesin
+            sw.log_event("delivery_unrecorded", paths=paths, what="lesson_fail", id=ident, error=str(e))
     return res
 
 

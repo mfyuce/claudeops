@@ -238,6 +238,10 @@ class TestPathsAndStores(unittest.TestCase):
         self.assertEqual(r["attempts"], 1)
         with self.assertRaises(ValueError):
             rv.update_pair(self.paths, "a", T1, status="bogus")
+        n = len(rv.load_history(self.paths)["runs"])
+        rv.update_pair(self.paths, "a", T1, status="limit", finished_at=NOW)      # limit koşusu da geçmişe düşer
+        self.assertEqual(rv.load_history(self.paths)["runs"][-1]["status"], "limit")
+        self.assertEqual(len(rv.load_history(self.paths)["runs"]), min(n + 1, rv.HISTORY_RUNS_MAX))
         for i in range(250):
             rv.update_pair(self.paths, "a", T1, status="error", finished_at=NOW + i)
         self.assertEqual(len(rv.load_history(self.paths)["runs"]), rv.HISTORY_RUNS_MAX)

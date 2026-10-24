@@ -549,7 +549,7 @@ def update_pair(paths: Any, proj: str, t: ReviewTarget, **fields: Any) -> Dict[s
             fields["attempts"] = (0 if stale else int(rec.get("attempts") or 0)) + 1
         rec.update(fields)
         hist["pairs"][key] = rec
-        if fields.get("status") in ("done", "partial", "error", "model_fallback"):
+        if fields.get("status") in ("done", "partial", "error", "model_fallback", "limit"):
             hist["runs"].append({"pair": key, "status": rec["status"], "at": rec.get("finished_at"), "file": rec.get("file")})
         save_history(p, hist)
     return rec

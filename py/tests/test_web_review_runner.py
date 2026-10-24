@@ -282,6 +282,35 @@ class TestCancel(Base):
         self.assertEqual(rec["error"], "cancelled")
         self.assertFalse(wr.cancel_job("proj", EV))
 
+    def test_cancel_before_process_exists_is_not_swallowed(self):
+        job = wr._Job("proj|evren/x")
+        with wr._JOBS_LOCK:
+            wr._JOBS[job.key] = job
+        try:
+            self.assertTrue(wr.cancel_key(job.key))          # süreç yok ama iş kayıtlı: iptal işaretlenir
+            self.assertTrue(job.cancelled)
+        finally:
+            with wr._JOBS_LOCK:
+                wr._JOBS.pop(job.key, None)
+        self.assertFalse(wr.cancel_key(job.key))
+
+    def test_cancelled_before_spawn_kills_new_process(self):
+        popen_calls = []
+
+        def popen(argv, **k):
+            p = FakeProc(argv, out="", **k)
+            popen_calls.append(p)
+            with wr._JOBS_LOCK:                              # iptal, Popen döndükten hemen ÖNCE gelmiş gibi
+                for j in wr._JOBS.values():
+                    j.cancelled = True
+            return p
+        with mock.patch.object(wr.os, "killpg") as kp:
+            res = wr.run_job(self.paths, self.cfg, "proj", self.cwd, EV, popen=popen, ucli_bin="/f/ucli", api_key="k",
+                             endpoint_fn=lambda: "e", supports_flag=lambda b, f: False)
+            res["thread"].join(10)
+        self.assertTrue(any(c.args[1] == wr.signal.SIGTERM for c in kp.call_args_list))
+        self.assertEqual(self.pair(EV)["error"], "cancelled")
+
 
 class TestAgy(Base):
     def setUp(self):

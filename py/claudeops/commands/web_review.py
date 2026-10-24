@@ -267,9 +267,11 @@ def cancel_job(project: str, target: rv.ReviewTarget) -> bool:
 def cancel_key(key: str) -> bool:
     with _JOBS_LOCK:
         job = _JOBS.get(key)
-    if job is None or job.proc is None:
+    if job is None:
         return False
     job.cancelled = True
+    if job.proc is None:      # süreç henüz oluşmadı: iptal işaretlendi, `_execute` süreci açar açmaz öldürür (yutulmaz)
+        return True
     _killpg(job.proc, signal.SIGTERM)
 
     def _late() -> None:
@@ -704,8 +706,8 @@ def _write_report(path: str, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _tail(s: str) -> str:
-    s = rv.redact_secrets((s or "").strip())
+def _tail(s: str, learned: Sequence[str] = ()) -> str:
+    s = rv.redact_secrets((s or "").strip(), learned)
     return s[-STDERR_KEEP:]
 
 
@@ -725,6 +727,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             rv.update_pair(paths, project, target, status="error", finished_at=now(), error=f"spawn: {e}")
             return
         job.proc = proc
+        if job.cancelled:     # süreç açılmadan gelen iptal (`cancel_key`): şimdi uygula
+            _killpg(proc, signal.SIGTERM)
         rv.update_pair(paths, project, target, pid=getattr(proc, "pid", None))
         live.system(f"başladı: {project} {target.mode}/{target.slug}, pid {getattr(proc, 'pid', '?')}. "
                  + ("Çıktı canlı akar." if target.mode == "evren" else "Çıktı iş bitince gelir."))
@@ -804,13 +808,13 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         elif timed_out:
             status, error = ("partial" if text.strip() else "error"), f"timeout {int(timeout // 60)} dk"
         elif jerr:
-            status, error = ("partial" if text.strip() else "error"), _tail(jerr)
+            status, error = ("partial" if text.strip() else "error"), _tail(jerr, live.learned())
         elif rc == 0 and text.strip() and not recovered:
             status, error = "done", ""
         elif text.strip():
-            status, error = "partial", f"exit={rc} {_tail(err)}".strip()
+            status, error = "partial", f"exit={rc} {_tail(err, live.learned())}".strip()
         else:
-            status, error = "error", f"exit={rc} {_tail(err)}".strip()
+            status, error = "error", f"exit={rc} {_tail(err, live.learned())}".strip()
         # Limit taraması: başarısız koşuda stdout+stderr; BAŞARILI görünen (rc=0) koşuda yalnız stdout KISA bir sağlayıcı
         # mesajıysa (copilot kota mesajını çıkış kodu 0 ile basar; rapor sanılıp `done` olmasın).
         chk = (out, err, jerr) if (status != "done" or rv.is_short_banner(text)) else ()
@@ -826,7 +830,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             error = f"model kotası doldu ({target.key}); {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))} dolayına dek planlayıcıdan çıktı"
             rv.set_block(paths, target.key, until, error)
         elif target.mode == "evren" and status in ("error", "partial") and (timed_out or not text.strip()):
-            _write_lesson(sw._pp(paths), project, target, status, error)
+            _write_lesson(sw._pp(paths), project, target, status, error, live.learned())
         if target.mode == "agy" and status in ("done", "partial"):
             ok, seen = rv.agy_label_ok(_first_new_agy_log(agy_log_dir, started, agy_before), target.model)
             fields["label_seen"] = seen
@@ -884,12 +888,13 @@ def _recover_draft(path: str, text: str, learned: Sequence[str] = ()) -> Tuple[s
     return (text, False) if text.strip() else (red, bool(red.strip()))
 
 
-def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, error: str) -> None:
+def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, error: str, learned: Sequence[str] = ()) -> None:
     """Evren modeli review'u bitiremedi: ucli dersi `<çalışma alanı>/ucli-lessons.md`ye eklenir (ucli kimliğinin
-    beyni TODO/TBD'ye çevirir; başka reponun dosyasına yazmayız)."""
+    beyni TODO/TBD'ye çevirir; başka reponun dosyasına yazmayız). `learned`: koşuda öğrenilen DSN parolaları (hata
+    metninde de maskelenir). Dosya `sl.prune_lessons` ile son `FILE_MAX` otomatik satıra kırpılır."""
     try:
         line = (f"- [otomatik] {time.strftime('%Y-%m-%d %H:%M')} proje={project} model={target.model} durum={status} "
-                f"hata={_tail(error)}: ucli bu model/proje çiftinde review'u bitiremedi; nedenini araştır, TODO/TBD yap, düzelt.\n")
+                f"hata={_tail(error, learned)}: ucli bu model/proje çiftinde review'u bitiremedi; nedenini araştır, TODO/TBD yap, düzelt.\n")
         path = os.path.join(p.root, sl.LESSONS_FILE)
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
@@ -1020,6 +1025,8 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                                     agy_log_dir, now))
         th.start()
     except Exception as e:
+        with _JOBS_LOCK:        # iş kaydı açıldıktan sonra başlatma düştüyse kayıt (ve iptal edilebilir sahte iş) kalmasın
+            _JOBS.pop(key, None)
         _REVIEW_LOCK.release()
         try:
             rv.update_pair(p, project, target, status="error", started_at=t0, finished_at=now(), error=_tail(str(e)))
