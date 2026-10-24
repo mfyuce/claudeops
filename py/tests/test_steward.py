@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from unittest import mock
 
@@ -675,6 +676,17 @@ class DoneDeferralTest(unittest.TestCase):
         v2 = _view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=False)
         acts, st = sw.plan_tick([v2], projects, st, _cfg(), 5200.0, [], [])
         self.assertEqual([(a.kind, a.name) for a in acts if a.kind in ("set_phase", "stop")], [("set_phase", "p1"), ("stop", "p1")])
+        self.assertNotIn("done_pending", st)
+
+    def test_deferred_done_dropped_when_no_done_tag_added_later(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        acts, st = sw.plan_tick([_view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=True)],
+                                projects, {}, _cfg(), 5000.0, [], [])
+        self.assertEqual(st["done_pending"], {"p1": "p1"})
+        projects["p1"].notes = "sürekli geliştirme " + sw.NO_DONE_TAG
+        acts, st = sw.plan_tick([_view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=False)],
+                                projects, st, _cfg(), 5200.0, [], [])
+        self.assertEqual([a for a in acts if a.kind in ("set_phase", "stop")], [])
         self.assertNotIn("done_pending", st)
 
     def test_done_immediate_without_subagent(self):
@@ -1930,7 +1942,7 @@ class HttpTest(_Tmp):
         REDDEDİLİR (observe de act de); aynı çağrı insan kaynaklıysa (`actor` yok) eskisi gibi uygulanır."""
         dirs = []
         with mock.patch.object(web_steward, "_give_directive", lambda p, text, **kw: dirs.append((p.name, text)) or {"ok": True}), \
-                mock.patch.object(web_steward, "_running", lambda name: object()), \
+                mock.patch.object(web_steward, "_running", lambda name: types.SimpleNamespace(name=name)), \
                 mock.patch.object(web_steward.inst_mod, "get_instance", lambda name: None):
             sw.upsert_project("a", phase="planned")
             for mode in ("act", "observe"):

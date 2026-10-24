@@ -1176,6 +1176,14 @@ def _live_sessions(name: str, sid: str = "default") -> List[Any]:
             if (q := _project_for_session(x.name, projects, world)) is not None and q.name == p.name]
 
 
+def _resolved_local_name(name: str, sid: str = "default") -> str:
+    """Proje adı (`oiso`) -> tek canlı yerel oturumun GERÇEK adı (`oiso20261017`); 0 ya da 2+ canlı oturumda `name`
+    olduğu gibi kalır (çözüm eylemin kendi denetimine bırakılır). `plan_tick` durumu (ho_pending, last_directive_at)
+    görünüm adıyla okur: anahtar proje adı olursa tarihli oturumda hiç tutmaz."""
+    live = _live_sessions(name, sid)
+    return live[0].name if len(live) == 1 else name
+
+
 # Kimliğin dokunamayacağı oturum sınıfları (`World.session_class`): başka kimliğin projesi, çakışmalı proje, servis, beyinler.
 _FOREIGN = ("other", "conflict", "service", "brain_other", "brain_own")
 
@@ -2080,11 +2088,14 @@ def _remote_nudge(name: str, host: str, action: sw.Action, cfg: sw.Config, paths
 def _local_handover(name: str, sid: str, lang: str) -> Any:
     """Yerel canlı devir. Oturumun/projenin AÇIK soruları devir mesajına eklenir (yeni oturum aynı soruyu yeniden
     açmasın; `sw.handover_questions_note`). Soru okunamazsa ya da yoksa mesaj eskisi gibi gider. Uzak devirde yok."""
+    real = _resolved_local_name(name, sid)
     try:
-        extra = sw.handover_questions_note(sw.load_questions(sw.paths_for(sid)), name, lang)
+        p = _project_for_session(real, sw.load_projects(sid), _world(sid))
+        extra = sw.handover_questions_note(sw.load_questions(sw.paths_for(sid)), real, lang,
+                                           project=p.name if p is not None else name)
     except Exception:       # soru dosyası okunamadı: devir yine de gitmeli
         extra = ""
-    return _act("handover", name, lang=lang, extra=extra) if extra else _act("handover", name, lang=lang)
+    return _act("handover", real, lang=lang, extra=extra) if extra else _act("handover", real, lang=lang)
 
 
 def _remote_handover(name: str, host: str, rt: Optional[_RemoteTick] = None, *, sid: str = "default",
@@ -3835,8 +3846,9 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                 return stopped
             sw.log_event("restart", paths=sid, name=name, host=host, reason=str(data.get("reason") or ""))
             return http_directive(dict(data, start_if_stopped=True, reason="restart: " + str(data.get("reason") or "")), sid)
-        if _running(name) is not None:
-            res = _act("stop", name, lang=cfg.lang)
+        live = _live_sessions(name, sid)
+        if live:
+            res = _act("stop", live[0].name if len(live) == 1 else name, lang=cfg.lang)
             if not res.get("ok"):
                 return res
         sw.log_event("restart", paths=sid, name=name, reason=str(data.get("reason") or ""))
@@ -3854,7 +3866,7 @@ def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         if host:     # uzak: yalnız `_remote_stop`un koşullarıyla (exact_target, tam ad, "own"); yerel `_act` ASLA
             res = _remote_stop(name, host, _world(sid), sid, str(data.get("actor") or ""))
         else:
-            res = _act("stop", name, lang=cfg.lang)
+            res = _act("stop", _resolved_local_name(name, sid), lang=cfg.lang)
     sw.log_event("stop", paths=sid, name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")),
                  **({"host": host} if host else {}))
     return res
@@ -3874,7 +3886,8 @@ def http_handover(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             with sw.steward_lock(sid):
                 state = sw.load_state(sid)
                 # uzak: iz oturumun GERÇEK adıyla (plan_tick görünüm adıyla okur; `oiso` → `oiso20261017`)
-                state.setdefault("ho_pending", {})[str(res.get("name") or name) if host else name] = time.time()
+                state.setdefault("ho_pending", {})[str(res.get("name") or name) if host
+                                                    else _resolved_local_name(name, sid)] = time.time()
                 sw.save_state(state, sid)
     sw.log_event("handover", paths=sid, name=name, ok=bool(res.get("ok")), **({"host": host} if host else {}))
     return res
@@ -3885,7 +3898,9 @@ def http_skip(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     sw.log_event("skip", paths=sid, name=name, reason=str(data.get("reason") or ""))
     with sw.steward_lock(sid):
         state = sw.load_state(sid)
-        state.setdefault("last_directive_at", {})[name] = time.time()   # bir sonraki `idle` maddesini erteler
+        lda = state.setdefault("last_directive_at", {})
+        for key in {name, _resolved_local_name(name, sid)}:     # `idle` oturum adıyla okur (proje adı tarihli oturumda tutmaz)
+            lda[key] = time.time()                                # bir sonraki `idle` maddesini erteler
         sw.save_state(state, sid)
     return {"ok": True}
 

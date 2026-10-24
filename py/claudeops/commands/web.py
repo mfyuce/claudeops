@@ -2639,6 +2639,9 @@ def _handover(name: str, lang: str = "tr", exact: bool = False, extra: str = "")
         return _err(lang, "not_running", name=name)
     if kind == "ambiguous":
         return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+    # unique_base'te (`cli` -> tek canlı `cli20261023`) tmux oturumu/günlük HAM ada
+    # değil çözülmüş oturum adına gider; ham ad yanlış/yok bir oturumu hedefler.
+    name = procs[0].name
     if not is_tmux_backed(procs[0].pid):
         return _err(lang, "not_tmux_backed", name=name)
     provider = get_provider(procs[0].cli)
@@ -2741,6 +2744,7 @@ def _compact(name: str, lang: str = "tr") -> dict:
         return _err(lang, "not_running", name=name)
     if kind == "ambiguous":
         return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+    name = procs[0].name      # unique_base: ham ad değil çözülmüş oturum (bkz. `_handover`)
     fleet = _fleet_status()
     info = fleet.get(name)
     chosen_cli = info["cli"] if info else procs[0].cli
@@ -2887,7 +2891,7 @@ def _context(name: str, lang: str = "tr") -> dict:
         return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     s = procs[0]
     fleet = _fleet_status()
-    info = fleet.get(name)
+    info = fleet.get(s.name)
     provider = get_provider(info["cli"] if info else s.cli)
     command = provider.context_command()
     if command is None:
@@ -2934,7 +2938,7 @@ def _live_model(name: str, lang: str = "tr") -> dict:
         return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     s = procs[0]
     fleet = _fleet_status()
-    info = fleet.get(name)
+    info = fleet.get(s.name)
     chosen_cli = info["cli"] if info else s.cli
     if chosen_cli != "claude":
         return {"ok": True, "available": False, "reason": "unsupported"}
@@ -2966,7 +2970,7 @@ def _live_effort(name: str, lang: str = "tr") -> dict:
         return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     s = procs[0]
     fleet = _fleet_status()
-    info = fleet.get(name)
+    info = fleet.get(s.name)
     chosen_cli = info["cli"] if info else s.cli
     if chosen_cli != "claude":
         return {"ok": True, "available": False, "reason": "unsupported"}

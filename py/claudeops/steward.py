@@ -1212,11 +1212,12 @@ HANDOVER_QUESTIONS_MAX = 8
 HANDOVER_QUESTION_CHARS = 200
 
 
-def handover_questions_note(questions: List["Question"], name: str, lang: str = "tr") -> str:
+def handover_questions_note(questions: List["Question"], name: str, lang: str = "tr", project: str = "") -> str:
     """Devir mesajına eklenecek "sorduğum AÇIK sorular" bölümü: bu oturumun (kaynak) ya da projesinin cevapsız soruları.
     Yeni oturum öncekinin sorusunu bilmez ve aynısını yeniden açar (copsdev, 2026-10-24); özet bu soruları taşısın.
     Açık soru yoksa "" (mesaj değişmez)."""
-    rows = [q for q in questions if q.status == "open" and (q.source == name or q.project == name)]
+    keys = {name, project} - {""}      # `name` = oturum adı (tarihli olabilir), `project` = kayıtlı proje adı
+    rows = [q for q in questions if q.status == "open" and (q.source in keys or q.project in keys)]
     if not rows:
         return ""
     rows.sort(key=lambda q: q.created_at)
@@ -2843,8 +2844,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         v = by_name.get(name)
         if v is None and _unavail(name):
             continue
-        if v is None or not v.running or proj not in projects:
-            done_pending.pop(name, None)
+        if v is None or not v.running or proj not in projects or done_blocked(projects[proj]):
+            done_pending.pop(name, None)    # (NO_DONE_TAG ertelemeden SONRA eklenmiş olabilir: yeniden denetle)
         elif not v.subagent_active and not v.subagent_unknown and v.busy is not True and name not in busy_names:
             actions.append(Action("set_phase", proj, "STEWARD-DONE (ertelenmişti)", {"phase": "done"}))
             actions.append(Action("stop", name, "STEWARD-DONE (ertelenmişti)"))

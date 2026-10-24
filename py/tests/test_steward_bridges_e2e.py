@@ -100,6 +100,9 @@ class HandoverQuestions(_Engine):
                      register_project=lambda *a, **k: {"ok": True})
         sw.upsert_project("cli", phase="planned", cadence_minutes=0)
         self.settings()
+        patcher = mock.patch.object(ws, "find_sessions", lambda **k: [])      # makinedeki gerçek `cli*` oturumu çözülmesin
+        patcher.start()
+        self.addCleanup(patcher.stop)
         res = ws.http_handover({"name": "cli", "actor": "human"}, "default")
         self.assertTrue(res["ok"], res)
         self.assertEqual(captured[0], ("cli", ""))                                # açık soru yok: mesaj eskisi gibi
@@ -109,6 +112,32 @@ class HandoverQuestions(_Engine):
         sw.answer_question(q.id, "reviews/ncs")
         ws.http_handover({"name": "cli", "actor": "human"}, "default")
         self.assertEqual(captured[2][1], "")                                      # cevaplanınca notta yok
+
+    def test_project_name_resolves_to_the_dated_session(self):
+        """`cli` projesi, canlı oturum `cli20261023`: devir/durdurma/skip durumu ve açık sorular GERÇEK oturum adıyla çalışır."""
+        import types
+        captured, stopped = [], []
+
+        def handover(name, lang="tr", exact=False, extra=""):
+            captured.append((name, extra))
+            return {"ok": True}
+        ws.configure(status_payload=lambda: {"sessions": []}, fleet_status=lambda: {},
+                     start=lambda *a, **k: {"ok": True}, stop=lambda name, **k: stopped.append(name) or {"ok": True},
+                     handover=handover, register_project=lambda *a, **k: {"ok": True})
+        sw.upsert_project("cli", phase="planned", cadence_minutes=0)
+        self.settings()
+        q = sw.add_question("cli", "ncs koşu kayıtlarının yolu hangi dizinde tutulmalı sizce?")   # source yok: proje adıyla eşleşir
+        with mock.patch.object(ws, "find_sessions", lambda **k: [types.SimpleNamespace(name="cli20261023")]):
+            self.assertTrue(ws.http_handover({"name": "cli", "actor": "human"}, "default")["ok"])
+            self.assertTrue(ws.http_stop({"name": "cli", "actor": "human"}, "default")["ok"])
+            self.assertTrue(ws.http_skip({"name": "cli"}, "default")["ok"])
+        self.assertEqual(captured[0][0], "cli20261023")
+        self.assertIn(f"[{q.id}]", captured[0][1])
+        self.assertEqual(stopped, ["cli20261023"])
+        st = sw.load_state("default")
+        self.assertIn("cli20261023", st["ho_pending"])
+        self.assertNotIn("cli", st["ho_pending"])
+        self.assertIn("cli20261023", st["last_directive_at"])
 
 
 if __name__ == "__main__":

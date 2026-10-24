@@ -544,6 +544,23 @@ class CallSiteWiringTests(PolicyCase):
         self.assertEqual(result, {"ok": True})
         policy.assert_called_once_with(prov, "vc", "claude", "/w/p", "sid-1", "claude-opus-5-5", "max", pid=4242)
 
+    def test_web_path_targets_the_resolved_session_for_unique_base(self):
+        """`cli` -> tek canlı `cli20261023` (unique_base): tmux ve politika HAM adı değil çözülmüş adı alır."""
+        prov = RecProvider()
+        proc = self.proc()
+        proc.name = "vc20261023"
+        sent = []
+        with mock.patch.object(web, "_find_running_for_action", lambda name: ("unique_base", [proc])), \
+             mock.patch.object(web, "is_tmux_backed", lambda pid: True), \
+             mock.patch.object(web, "get_provider", lambda cli: prov), \
+             mock.patch.object(web, "diag_log", lambda *a, **k: None), \
+             mock.patch.object(web, "tmux_send_keys", lambda n, *a, **k: sent.append(n) or True), \
+             mock.patch.object(web, "apply_handover_downgrades") as policy:
+            result = web._handover("vc")
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(sent, ["vc20261023"])
+        self.assertEqual(policy.call_args.args[1], "vc20261023")
+
     def test_real_policy_runs_end_to_end_through_the_web_path(self):
         """Sahte yok: web yolu gerçek kararı çalıştırır (sıcak Opus: model komutu YOK, effort var)."""
         prov = RecProvider(last=time_now() - 60)
