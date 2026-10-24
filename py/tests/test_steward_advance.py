@@ -101,6 +101,58 @@ class PlanTest(unittest.TestCase):
         self.assertIn("ONLY", sa.build_advance_message([cand()], "en"))
 
 
+class RemoteAdvanceTest(unittest.TestCase):
+    """TBD#117 ek 3: uzak projede `approved` bulgu, TODO denetimi olmadan; host'a gider, takip yerelde, tek iletim."""
+    HOSTS = {"ulak": "ulak_31"}
+
+    def remote_of(self, name):
+        return self.HOSTS.get(name, "")
+
+    def test_remote_candidates_take_approved_without_todo_check(self):
+        data = {"f1": {"project": "ulak", "state": "approved", "severity": "P2", "title": "t", "body": "uzun\n gövde"},
+                "f2": {"project": "ulak", "state": "exported", "severity": "P3", "title": "u"},
+                "f3": {"project": "ulak", "state": "verified", "title": "onaysız"},
+                "f4": {"project": "cli", "state": "approved", "title": "yerel + approved: export bekler"}}
+        got = sa.candidates([data], lambda n: "", self.remote_of)
+        self.assertEqual([(c["id"], c["todo"], c["remote"]) for c in got], [("f1", "open", "ulak_31"), ("f2", "open", "ulak_31")])
+        self.assertEqual(got[0]["body"], "uzun gövde")
+
+    def test_remote_secret_in_body_is_held_back(self):
+        data = {"f1": {"project": "ulak", "state": "approved", "title": "x", "body": "DSN içinde parola var"},
+                "f2": {"project": "ulak", "state": "approved", "title": "x", "body": "temiz"}}
+        self.assertEqual([c["id"] for c in sa.candidates([data], lambda n: "", self.remote_of)], ["f2"])
+
+    def test_plan_delivers_to_remote_view_and_sends_once(self):
+        projects = {"ulak": sw.Project(name="ulak", host="ulak_31")}
+        c = [cand("f1", project="ulak", remote="ulak_31", body="b")]
+        v = view("ulak", host="ulak_31")
+        acts, st = sa.plan_advance_deliveries([v], projects, c, {}, NOW, [])
+        self.assertEqual([(a.kind, a.name) for a in acts], [("deliver_findings", "ulak")])
+        sent = {"advance_sent": {"f1": {"at": NOW - 99 * 3600, "n": sa.SEND_MAX_REMOTE}}}
+        self.assertEqual(sa.plan_advance_deliveries([v], projects, c, sent, NOW, [])[0], [])    # uzakta ikinci iletim yok
+
+    def test_remote_message_carries_detail_and_limits(self):
+        m = sa.build_advance_message([cand("f1", sev="P1", title="başlık", remote="ulak_31", body="ayrıntı metni")], "tr")
+        for needle in ("f1", "ayrıntı metni", "TODO.md'sine", "YALNIZ", "dokunma"):
+            self.assertIn(needle, m)
+        self.assertIn("ONLY", sa.build_advance_message([cand(remote="h", body="b")], "en"))
+
+    def test_deliver_findings_passes_host(self):
+        got = {}
+
+        def give(project, text, **kw):
+            got.update(kw, text=text)
+            return {"ok": True}
+        cfg = sw.Config(sid="default", lang="tr")
+        act = sw.Action("deliver_findings", "ulak", "advance", {"project": "ulak", "rows": [cand("f1", project="ulak")]})
+        with mock.patch.object(ws, "_give_directive", give), mock.patch.object(ws, "_already_sent", lambda *a, **k: False), \
+                mock.patch.object(ws, "_mark_after_send", lambda *a, **k: None), mock.patch.object(ws.sw, "log_event"):
+            res = ws._deliver_findings(act, cfg, {"ulak": sw.Project(name="ulak", host="ulak_31")}, host="ulak_31")
+        self.assertTrue(res["ok"])
+        self.assertEqual(got["host"], "ulak_31")
+        self.assertFalse(got["start_if_stopped"])
+
+
 class TickE2E(_Engine):
     """Gerçek tick: `ilerlet` benzeri bayrak açık kimlik, reviewer'ın `exported` bulgusu, projenin TODO.md'si."""
 

@@ -2541,7 +2541,7 @@ def _advance_candidates(cfg: sw.Config) -> List[Dict[str, Any]]:
             if not cache:
                 cache.append(_cwd_resolver())
             return cache[0](name)
-        return sa.candidates(data, cwd_of)
+        return sa.candidates(data, cwd_of, _name_host)      # uzak proje: approved bulgu, TODO denetimi yok (TBD#117 ek 3)
     except Exception:
         return []
 
