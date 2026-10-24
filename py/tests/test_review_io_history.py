@@ -299,6 +299,21 @@ class TestChatApi(_Api):
         self.assertTrue(runs[0]["title"].startswith("review · a · evren/m1 · 20"))
         self.assertEqual(runs[0]["duration"], 100.0)
 
+    def test_runs_are_newest_first_across_projects(self):
+        """Sıra koşu zamanı: yol sırası (`a/...` < `z/...`) yeni koşuyu eski projenin arkasına atmaz."""
+        p = sw.paths_for("rev")
+        for proj, ts in (("z", 1_700_000_000), ("a", 1_700_005_000), ("m", 1_700_002_000)):
+            md = rv.review_path(p.reviews, proj, T1, ts)
+            os.makedirs(os.path.dirname(md), exist_ok=True)
+            with open(md, "w") as f:
+                f.write("x")
+            io = wr.io_path_for(md)
+            with open(io, "w") as f:
+                f.write('{"role":"user","text":"x"}\n')
+            rv.update_pair(p, proj, T1, status="done", started_at=float(ts), finished_at=ts + 10.0, file=md, io_file=io)
+        runs = ws.http_get("/api/steward/review/runs", {})["runs"]
+        self.assertEqual([r["project"] for r in runs], ["a", "m", "z"])
+
     def test_result_without_stream_is_answer(self):
         self.assertEqual(wr.io_to_messages([{"role": "assistant", "kind": "result", "text": '{"answer":"A"}'}])[0]["text"], "A")
 

@@ -613,7 +613,13 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
         if isinstance(rec, dict) and rec.get("io_file"):
             md = str(rec["io_file"])[:-len(IO_SUFFIX)] + ".md"
             add(key, md, str(rec.get("status") or ""), rec.get("started_at"), rec.get("finished_at"), key in running, str(rec.get("error") or ""))
-    return sorted(rows.values(), key=lambda r: r["io"], reverse=True)
+
+    def newest_first(r: Dict[str, Any]) -> Tuple[str, str]:
+        # Yol `proje/mod/model/effort/<ts>/...` ile başlar: yola göre sıralamak projeleri/modelleri gruplar, zamanı DEĞİL.
+        # Sıra koşunun zaman damgası (dosya adı `<14 hane>.md`); bilinmiyorsa en sona.
+        stamp = os.path.basename(str(r.get("file") or ""))[:14]
+        return (stamp if re.fullmatch(r"\d{14}", stamp) else "", r["io"])
+    return sorted(rows.values(), key=newest_first, reverse=True)
 
 
 def read_live(cfg: Any, project: str, target_key: str, offset: Any = 0) -> Dict[str, Any]:

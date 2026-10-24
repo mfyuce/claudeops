@@ -91,6 +91,19 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _is_screenshare(pid: int) -> bool:
+    """PID hâlâ bizim `screenshare` ikilisi mi? (PID yeniden kullanımı: orphan öldü, aynı numarayı başka süreç aldı.)
+    /proc yoksa (Linux dışı) doğrulanamaz: True (eski davranış)."""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            argv0 = f.read().split(b"\0", 1)[0]
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return not os.path.isdir("/proc")
+    return os.path.basename(argv0.decode("utf-8", "replace")) == "screenshare"
+
+
 def _write_pid_file(pid: int, port: int) -> None:
     try:
         with open(PID_FILE, "w", encoding="utf-8") as f:
@@ -112,7 +125,14 @@ def _adopt_if_orphaned() -> None:
     o port hâlâ açıksa bu bizim eski child'ımız (restart'ı atlatmış) — adopt
     et. Değilse (biri öldü/temizlendi) dosyayı sil, bir daha denenmesin."""
     global _adopted_pid, _port
-    if _proc is not None or _adopted_pid is not None:
+    if _adopted_pid is not None:
+        # Daha önce adopt ettiğimiz orphan öldü ya da PID başka sürece geçti: bayat kaydı bırak (yoksa `status` hep
+        # "çalışıyor" der ve `stop` yeniden kullanılmış bir PID'ye sinyal gönderirdi).
+        if not (_pid_alive(_adopted_pid) and _is_screenshare(_adopted_pid)):
+            _adopted_pid, _port = None, None
+            _clear_pid_file()
+        return
+    if _proc is not None:
         return
     try:
         with open(PID_FILE, encoding="utf-8") as f:
@@ -120,7 +140,7 @@ def _adopt_if_orphaned() -> None:
         pid, port = int(pid_str), int(port_str)
     except (OSError, ValueError):
         return
-    if _pid_alive(pid) and _port_open(port):
+    if _pid_alive(pid) and _is_screenshare(pid) and _port_open(port):
         _adopted_pid, _port = pid, port
     else:
         _clear_pid_file()
@@ -213,6 +233,8 @@ def stop() -> dict:
             proc.kill()
         return {"ok": True}
     # Adopted orphan — hiç Popen handle'ımız yok, PID-exact sinyal (pattern-match YOK, CLAUDE.md).
+    if not _is_screenshare(adopted_pid):
+        return {"ok": True}      # PID artık bizim ikilimiz değil (yeniden kullanıldı): başka sürece sinyal gönderme
     try:
         os.kill(adopted_pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -222,10 +244,11 @@ def stop() -> dict:
         if not _pid_alive(adopted_pid):
             return {"ok": True}
         time.sleep(0.1)
-    try:
-        os.kill(adopted_pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    if _is_screenshare(adopted_pid):
+        try:
+            os.kill(adopted_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
     return {"ok": True}
 
 

@@ -275,7 +275,7 @@ class AgyProvider(CliProvider):
                              resume_id, prompt, session_name, extra_args: Sequence[str] = ()) -> str:
         # Mutlak yol — bkz. claude_provider.py'deki aynı fix'in yorumu (pane'in kendi
         # PATH'i tmux server'ın miras kaldığından farklı/eksik olabilir).
-        parts = [resolved_binary("agy")]
+        parts = [shlex.quote(resolved_binary("agy"))]      # shell dizgesi: boşluklu/özel karakterli override yolu bölünmesin
         if resume_id:
             parts += ["--conversation", shlex.quote(resume_id)]
         parts += ["--model", shlex.quote(model)]
@@ -390,7 +390,7 @@ class AgyProvider(CliProvider):
             # `agy models` çağrısı — TTL'nin var oluş amacını boşa çıkarıyordu).
             self._cache_ts = now
             try:
-                out = subprocess.run(["agy", "models"], capture_output=True, text=True,
+                out = subprocess.run([resolved_binary("agy"), "models"], capture_output=True, text=True,
                                       timeout=5).stdout
                 # "agy models" gerçek satırlardan ÖNCE bir durum satırı basıyor
                 # ("Fetching available models..." — tab YOK) — sadece gerçek
