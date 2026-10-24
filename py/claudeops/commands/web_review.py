@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import review as rv
 from .. import steward as sw
+from .. import steward_lessons as sl
 from .. import ucli_client
 
 REVIEW_ENV_PREFIXES = ("CLAUDE", "GEMINI", "ANTIGRAVITY", "ANTHROPIC")   # spawn.py deseni: bu süreç kendi oturum kimliğini çocuğa sızdırmaz
@@ -815,8 +816,19 @@ def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, er
     try:
         line = (f"- [otomatik] {time.strftime('%Y-%m-%d %H:%M')} proje={project} model={target.model} durum={status} "
                 f"hata={_tail(error)}: ucli bu model/proje çiftinde review'u bitiremedi; nedenini araştır, TODO/TBD yap, düzelt.\n")
-        with open(os.path.join(p.root, "ucli-lessons.md"), "a", encoding="utf-8") as f:
+        path = os.path.join(p.root, sl.LESSONS_FILE)
+        with open(path, "a", encoding="utf-8") as f:
             f.write(line)
+        try:    # dosya sınırsız büyümesin: yalnız son `FILE_MAX` otomatik satır kalır (atomik yeniden yazım)
+            with open(path, encoding="utf-8", errors="replace") as f:
+                cur = f.read()
+            pruned = sl.prune_lessons(cur)
+            if pruned != cur:
+                with open(path + ".tmp", "w", encoding="utf-8") as f:
+                    f.write(pruned)
+                os.replace(path + ".tmp", path)
+        except OSError:
+            pass
         sw.log_event("review_ucli_lesson", paths=p, project=project, model=target.model, status=status)
     except Exception:
         pass

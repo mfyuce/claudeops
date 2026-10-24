@@ -18,6 +18,7 @@ SENT_MAX = 500          # `lessons_sent` üst sınırı (en eskiler düşer)
 BATCH_MAX = 5           # bir mesajda en çok bu kadar ders
 FAIL_MAX = 5            # bir ders bu kadar başarısız iletimden sonra bırakılır
 LINE_CHARS = 700        # mesajdaki ders satırı üst sınırı
+FILE_MAX = 200          # dosyada tutulan `AUTO_TAG` satırı üst sınırı (en eskiler düşer; elle notlara dokunulmaz)
 
 
 def target_project(value: Any) -> str:
@@ -51,6 +52,14 @@ def read_lessons(roots: Iterable[str]) -> List[Tuple[str, str]]:
                 seen.add(h)
                 out.append((h, ln))
     return out
+
+
+def prune_lessons(text: str, keep: int = FILE_MAX) -> str:
+    """`AUTO_TAG` satırlarından yalnız SON `keep` tanesini bırakır; başka satırlar (başlık, elle not) olduğu gibi kalır."""
+    lines = text.splitlines(keepends=True)
+    auto = [i for i, ln in enumerate(lines) if ln.startswith(AUTO_TAG)]
+    drop = set(auto[:-keep]) if keep > 0 and len(auto) > keep else set()
+    return "".join(ln for i, ln in enumerate(lines) if i not in drop) if drop else text
 
 
 def pending(lessons: List[Tuple[str, str]], state: Dict[str, Any]) -> List[Tuple[str, str]]:

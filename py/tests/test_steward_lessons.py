@@ -33,6 +33,28 @@ class ReadTest(unittest.TestCase):
         self.assertEqual([ln for _, ln in got], [AUTO + "a", AUTO + "b"])
 
 
+class PruneTest(unittest.TestCase):
+    def test_keeps_last_auto_lines_and_manual_notes(self):
+        text = "# başlık\n" + AUTO + "1\n- elle not\n" + AUTO + "2\n" + AUTO + "3\n"
+        self.assertEqual(sl.prune_lessons(text, keep=2), "# başlık\n- elle not\n" + AUTO + "2\n" + AUTO + "3\n")
+        self.assertEqual(sl.prune_lessons(text, keep=5), text)
+
+    def test_write_lesson_prunes_file(self):
+        from claudeops import review as rv
+        from claudeops.commands import web_review as wr
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, sl.LESSONS_FILE), "w") as f:
+            f.write("".join(AUTO + "eski%d\n" % i for i in range(sl.FILE_MAX + 20)))
+        class P:
+            root = d
+        with mock.patch.object(wr.sw, "log_event"):
+            wr._write_lesson(P(), "ncs", rv.ReviewTarget(mode="evren", model="glm-5.3", slug="glm-5-3"), "error", "zaman aşımı")
+        lines = open(os.path.join(d, sl.LESSONS_FILE)).read().splitlines()
+        self.assertEqual(len(lines), sl.FILE_MAX)
+        self.assertIn("zaman aşımı", lines[-1])
+        self.assertNotIn(AUTO + "eski0", lines)
+
+
 class PlanTest(unittest.TestCase):
     def lessons(self, *xs):
         return [(sl.line_hash(AUTO + x), AUTO + x) for x in xs]
