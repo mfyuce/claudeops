@@ -224,6 +224,7 @@ class IoLog:
         self._at_start = True
         self._hold = ""             # delta için tutulan sözcük kuyruğu
         self._learned: List[str] = []   # DSN'den öğrenilen parolalar: düz metinde de maskelenir
+        self._deltas: List[str] = []    # akışla gelen cevap parçaları (maskeli): zaman aşımında rapor kurtarma kaynağı
         self.ok = True
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -283,6 +284,17 @@ class IoLog:
                 if m:
                     self._hold, buf = buf[m.start():], buf[:m.start()]
             self.event("assistant", buf, "delta")
+            if buf:
+                self._deltas.append(rv.redact_secrets(buf, self._learned))
+
+    def streamed_report(self) -> str:
+        """Akışla gelen cevap metninden SON `## R-1 | P.. |` başlığından itibaren kısım (bulgu başlığı yoksa ""). Ucli
+        stdout'a yalnız iş BİTİNCE JSON yazar; zaman aşımında rapor yarıda ama akışta durur (ncs, effort high, 40 dk)."""
+        with self._lock:
+            self._delta("", final=True)
+            txt = "".join(self._deltas)
+        starts = [m.start() for m in re.finditer(r"(?m)^#{2,4}\s*R-1\s*\|\s*P[123]\s*\|", txt)]
+        return txt[starts[-1]:].strip() if starts else ""
 
     def feed_err(self, txt: str) -> None:
         with self._lock:
@@ -601,6 +613,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         text, jerr = _extract_text(target.mode, out)
         if target.mode == "evren":
             text = _recover_draft(path, text)
+            if not text.strip():
+                text = live.streamed_report()       # taslak da yoksa: akıştaki yarım rapor (status partial olur)
         text = rv.redact_secrets(text)
         rc = getattr(proc, "returncode", None)
         fields: Dict[str, Any] = {"finished_at": now(), "pid": None}

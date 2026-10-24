@@ -152,6 +152,21 @@ class TestRunWritesIo(Base):
         self.assertEqual(len(rv.parse_findings(open(res["file"]).read())), 1)
         self.assertNotEqual(self.pair(EV)["status"], "running")
 
+    def test_streamed_report_recovery_on_empty_stdout(self):
+        # stdout boş (zaman aşımı/çökme) ama rapor akışta (--stream delta) geldi: son R-1 başlığından itibaren kurtarılır
+        rep = ("tarıyorum\n## R-1 | P3 | eski:1 | ilk taslak\nvazgeçtim\n"
+               "## R-1 | P2 | a.py:1 | gerçek\ngövde " + SECRET + "\n## R-2 | P3 | b.py:2 | ikinci\ngövde iki\n")
+        res = self.ev(popen=self.popen(out="", err="UnifiedCLI tool: read_file(a.py)\n" + rep, rc=1))
+        txt = open(res["file"]).read()
+        self.assertTrue(txt.startswith("## R-1 | P2 | a.py:1 | gerçek"))
+        self.assertNotIn(SECRET, txt)
+        self.assertNotIn("ilk taslak", txt)
+        self.assertEqual([f["ref"] for f in rv.parse_findings(txt)], ["R-1", "R-2"])
+        self.assertEqual(self.pair(EV)["status"], "partial")
+        lg = wr.IoLog(os.path.join(tempfile.mkdtemp(), "x.io.jsonl"))
+        lg.feed_err("sadece sohbet\n")
+        self.assertEqual(lg.streamed_report(), "")
+
     def test_recover_leaves_io(self):
         res = self.ev()
         io = wr.io_path_for(res["file"])
