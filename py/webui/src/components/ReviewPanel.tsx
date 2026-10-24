@@ -291,6 +291,15 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
             <option value={2}>{t.rvAutoApproveP2}</option>
           </select>
         </label>
+        <label title={t.rvAutoExportHint}>
+          <input
+            type="checkbox"
+            checked={!!st.auto_export}
+            disabled={busy}
+            onChange={(e) => void act(() => apiStewardConfig("review_auto_export", e.target.checked ? "on" : "off", sid), t.rvDone)}
+          />{" "}
+          {t.rvAutoExport}
+        </label>
       </div>
       )}
 

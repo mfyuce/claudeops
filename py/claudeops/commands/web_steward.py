@@ -3984,7 +3984,7 @@ UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_re
                  "max_active": (0, 20), "max_starts_per_tick": (0, 10), "review_auto_approve": (0, 2)}
 
 
-UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit")
+UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_auto_export")
 
 
 def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:

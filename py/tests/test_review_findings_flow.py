@@ -365,6 +365,109 @@ class TestAutoApprove(_Flow):
         self.assertEqual(self.states()["R-3"], "approved")
 
 
+class TestAutoExport(_Flow):
+    """`review_auto_export`: approved bulgular tick'te YEREL projenin TODO.md'sine kendiliğinden yazılır (state exported,
+    exported_by=auto); TBD'ye ASLA; uzak proje atlanır; tick başına en çok 1 proje; hata sonrakini engellemez."""
+
+    def setUp(self):
+        super().setUp()
+        self.dir_b = os.path.join(self.dir.name, "proj_b")
+        os.makedirs(self.dir_b)
+        sw.upsert_project("b", phase="planned")
+        wr_cwd = lambda n: {"a": self.proj_dir, "b": self.dir_b}.get(n, "")          # noqa: E731
+        p = mock.patch.object(wr, "project_cwd", wr_cwd)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def approve(self, proj="a", md=REVIEW_MD):
+        fids = self.seed(md, proj)
+        d = self.findings()
+        for fid in fids:
+            d[fid]["state"] = "approved"
+        rv.save_findings(self.p, d)
+        return fids
+
+    def states(self, proj):
+        return {v["ref"]: v["state"] for v in self.findings().values() if v["project"] == proj}
+
+    def cfg(self, on=True):
+        import dataclasses
+        return dataclasses.replace(ws.steward_config("rev"), review_auto_export=on)
+
+    def test_off_by_default_writes_nothing(self):
+        self.approve()
+        self.assertFalse(ws.steward_config("rev").review_auto_export)
+        self.assertEqual(wr.auto_export(self.cfg(False), now=5_000.0), [])
+        self.assertFalse(os.path.exists(os.path.join(self.proj_dir, "TODO.md")))
+
+    def test_on_exports_to_todo_only_never_tbd(self):
+        fids = self.approve()
+        done = wr.auto_export(self.cfg(), now=5_000.0)
+        self.assertEqual(done, ["a"])
+        with open(os.path.join(self.proj_dir, "TODO.md")) as fh:
+            text = fh.read()
+        for fid in fids:
+            self.assertIn(f"(review {fid})", text)
+        self.assertFalse(os.path.exists(os.path.join(self.proj_dir, "TOBEDECIDED.md")))
+        d = self.findings()
+        self.assertTrue(all(d[f]["state"] == "exported" and d[f]["exported_by"] == "auto" for f in fids))
+        self.assertEqual(wr.auto_export(self.cfg(), now=5_001.0), [])               # ikinci kez bir şey yok
+
+    def test_already_in_file_is_not_written_twice(self):
+        fids = self.approve()
+        wr.auto_export(self.cfg(), now=5_000.0)
+        with open(os.path.join(self.proj_dir, "TODO.md")) as fh:
+            before = fh.read()
+        d = self.findings()
+        for f in fids:
+            d[f]["state"] = "approved"              # durum geri alındı: dosyada zaten var
+        rv.save_findings(self.p, d)
+        wr.auto_export(self.cfg(), now=5_002.0)
+        with open(os.path.join(self.proj_dir, "TODO.md")) as fh:
+            self.assertEqual(fh.read(), before)
+        self.assertTrue(all(v["state"] == "exported" for v in self.findings().values()))
+
+    def test_sensitive_and_remote_are_skipped(self):
+        md = "## R-1 | P3 | w.py:1 | Veritabanı parolası kodda\ngovde\n"
+        fids = self.approve("a", md)
+        self.approve("far", REVIEW_MD)
+        self.assertEqual(wr.auto_export(self.cfg(), now=5_000.0), [])
+        self.assertEqual(self.findings()[fids[0]]["state"], "approved")            # hassas: elle kalır
+        self.assertFalse(os.path.exists(os.path.join(self.proj_dir, "TODO.md")))
+        self.assertTrue(all(v["state"] == "approved" for v in self.findings().values()))
+
+    def test_one_project_per_tick_and_error_continues(self):
+        self.approve("a")
+        self.approve("b")
+        self.assertEqual(wr.auto_export(self.cfg(), now=5_000.0), ["a"])
+        self.assertEqual(wr.auto_export(self.cfg(), now=5_001.0), ["b"])
+        self.assertEqual(self.states("b"), {"R-1": "exported", "R-2": "exported", "R-3": "exported"})
+
+    def test_exception_is_logged_and_next_project_goes(self):
+        self.approve("a")
+        self.approve("b")
+        real = wr.export_findings
+        calls = []
+
+        def flaky(cfg, project, fname, now=None, **kw):
+            calls.append(project)
+            if project == "a":
+                raise RuntimeError("disk dolu")
+            return real(cfg, project, fname, now, **kw)
+        with mock.patch.object(wr, "export_findings", flaky):
+            self.assertEqual(wr.auto_export(self.cfg(), now=5_000.0), ["b"])
+        self.assertEqual(calls, ["a", "b"])
+        self.assertEqual(set(self.states("a").values()), {"approved"})
+
+    def test_review_tick_runs_it_when_on(self):
+        self.approve("a")
+        settings.save_settings({"stewards": {"rev": {"enabled": "on", "mode": "act", "role": "reviewer",
+                                                     "review_auto_export": "on"}}})
+        res = self.tick()
+        self.assertIn("auto_export", [a["kind"] for a in res["actions"]])
+        self.assertEqual(set(self.states("a").values()), {"exported"})
+
+
 class TestAutoVerify(_Flow):
     def cfg(self, on=True):
         import dataclasses

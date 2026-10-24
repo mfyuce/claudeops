@@ -1469,6 +1469,13 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if auto:
         actions.append({"kind": "auto_approve", "findings": auto})
     try:
+        exp = auto_export(cfg, t)
+    except Exception as e:
+        sw.log_event("review_auto_export_failed", paths=p, error=_tail(repr(e)))
+        exp = []
+    if exp:
+        actions.append({"kind": "auto_export", "projects": exp})
+    try:
         bt = before_tbd(cfg, t)
     except Exception as e:
         sw.log_event("review_before_tbd_failed", paths=p, error=_tail(repr(e)))
@@ -1575,7 +1582,8 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "pool": rows, "running": running_keys(cfg.sid),
             "runs": list(hist.get("runs") or [])[-50:],
             "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes,
-            "auto_verify": bool(cfg.review_auto_verify), "auto_approve": int(cfg.review_auto_approve)}
+            "auto_verify": bool(cfg.review_auto_verify), "auto_approve": int(cfg.review_auto_approve),
+            "auto_export": bool(cfg.review_auto_export)}
 
 
 def read_review_file(cfg: Any, rel: str) -> Dict[str, Any]:
@@ -1966,7 +1974,31 @@ def decide(cfg: Any, fid: str, action: str, now: Optional[float] = None) -> Dict
     return r
 
 
-def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None) -> Dict[str, Any]:
+def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
+    """`review_auto_export` açıksa YEREL projelerin `approved` bulgularını TODO.md'ye yazar (`exported_by=auto`). TBD'ye
+    ASLA (karar gerektirir, elle kalır); uzak proje (host'lu) ve parola/gizli geçen bulgu atlanır; tick başına EN ÇOK 1
+    proje; bir projede hata olursa log + sonrakine geçer. Aynı bulgu iki kez yazılmaz (`appended_export` dosyadakini
+    tanır). Yazılan projelerin adları döner."""
+    if not getattr(cfg, "review_auto_export", False):
+        return []
+    t = time.time() if now is None else now
+    p = sw.paths_for(cfg.sid)
+    remote = set(ownership().get("hosts") or {})
+    projects = sorted({str(v.get("project") or "") for v in rv.load_findings(p).values()
+                       if isinstance(v, dict) and v.get("state") == "approved"} - {""} - remote)
+    for proj in projects:
+        try:
+            res = export_findings(cfg, proj, "TODO.md", t, by="auto")
+        except Exception as e:
+            sw.log_event("review_auto_export_failed", paths=p, project=proj, error=_tail(repr(e)))
+            continue
+        if res.get("ok"):
+            sw.log_event("review_auto_export", paths=p, project=proj, written=res.get("written"), already=res.get("already"))
+            return [proj]
+    return []
+
+
+def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None, by: str = "") -> Dict[str, Any]:
     """Projenin ONAYLI bulgularını yerel proje klasöründeki `fname` (TODO.md / TOBEDECIDED.md) sonuna
     `## Review bulguları` başlığı altında ekler; yazılanlar `exported` olur (çift dışa aktarma yok). Onaysız bulgu ASLA
     yazılmaz. Uzak proje reddedilir (yerel dosya sistemi ona ait değil)."""
@@ -1987,7 +2019,8 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
     with sw.steward_lock(p):
         data = rv.load_findings(p)
         rows = [dict(v, id=k) for k, v in sorted(data.items())
-                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"]
+                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"
+                and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))]
         if not rows:
             return {"ok": False, "error": "no approved findings to export", "project": project}
         try:
@@ -2004,6 +2037,9 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
         already = [r["id"] for r in rows if r["id"] not in written]
         for fid in written + already:       # dosyada zaten olan onaylı bulgu da `exported` sayılır (yeniden yazılmaz)
             data[fid].update(state="exported", exported_to=target, exported_at=t)
+            if by:
+                data[fid]["exported_by"] = by
         rv.save_findings(p, data)
-    sw.log_event("review_export", paths=p, project=project, file=fname, written=written, already=already)
+    sw.log_event("review_export", paths=p, project=project, file=fname, written=written, already=already,
+                 **({"by": by} if by else {}))
     return {"ok": True, "project": project, "file": target, "written": written, "already": already}
