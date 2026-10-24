@@ -2055,6 +2055,28 @@ def http_summary(date: str = "", lang: str = "", sid: str = "default") -> Dict[s
 _SESSION_KINDS = tuple(k for k in sw.OBSERVE_SKIPPED if k != "tour")
 
 
+def _remote_nudge(name: str, host: str, action: sw.Action, cfg: sw.Config, paths: Any, world: sw.World,
+                  rt: Optional[_RemoteTick]) -> Dict[str, Any]:
+    """Uzak host'ta API hatasında takılan oturuma tek satır "devam" (`nudge`). `_target` kapıları (`remote_actions`, taze host,
+    kayıtlı proje) `_apply`da zaten geçildi; burada oturum host'ta TAM adla bulunur (`_remote_session`: 2+ oturum = red,
+    başlatma YOK), tmux'lu olmalı ve gönderim `/api/term/input {"exact": true}` (yönerge yoluyla aynı, yıkıcı değil)."""
+    fresh_host, row, err = _remote_session(host, name, rt, world, sid=cfg.sid, actor="engine", kind="nudge")
+    if not fresh_host:
+        return {"ok": False, "error": "host_down", "code": "host_down", "host": host}
+    if err is not None:
+        return err
+    if row is None:
+        return {"ok": False, "error": "not running", "host": host}
+    if not row.get("tmux"):
+        return {"ok": False, "error": "not tmux-backed (cannot inject)", "host": host}
+    sname = str(row.get("name") or name)
+    sent = _remote_post(host, "/api/term/input", {"name": sname, "text": str(action.payload.get("text") or sw.API_NUDGE_TEXT),
+                                                   "exact": True}, REMOTE_INPUT_TIMEOUT_SECONDS, rt)
+    ok = bool(sent.get("ok"))
+    sw.log_event("api_nudge", paths=paths, name=sname, host=host, n=action.payload.get("n"), reason=action.reason, ok=ok)
+    return {"ok": True, "host": host} if ok else dict(sent, ok=False, error=str(sent.get("error") or "send failed"), host=host)
+
+
 def _local_handover(name: str, sid: str, lang: str) -> Any:
     """Yerel canlı devir. Oturumun/projenin AÇIK soruları devir mesajına eklenir (yeni oturum aynı soruyu yeniden
     açmasın; `sw.handover_questions_note`). Soru okunamazsa ya da yoksa mesaj eskisi gibi gider. Uzak devirde yok."""
@@ -2351,8 +2373,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         return {"ok": True}
     if k == "nudge":                  # API hatasında takılan oturuma tek satır "devam" (alt ajan/etkinlik denetimi plan_tick'te yapıldı)
         if host:
-            sw.log_event("nudge_remote_skipped", paths=paths, name=name, host=host)
-            return {"ok": False, "error": "remote nudge not supported"}
+            return _remote_nudge(name, host, action, cfg, paths, world or _world(cfg.sid, cfg), rt)
         s = _running(name)
         if s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not running or not tmux-backed"}
