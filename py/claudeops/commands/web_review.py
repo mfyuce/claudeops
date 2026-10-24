@@ -21,6 +21,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import review as rv
+from .. import review_remote as rr
 from .. import steward as sw
 from .. import steward_advance as sa
 from .. import steward_lessons as sl
@@ -1102,6 +1103,82 @@ def project_cwd(name: str) -> str:
 _CWD_FN: Optional[Callable[[str], str]] = None
 
 
+def review_cwd(name: str, idx: Optional[Dict[str, Any]] = None) -> str:
+    """Review'un koşacağı klasör: uzak projede sahibin seçtiği yerel kopya, değilse projenin yerel klasörü."""
+    return remote_copy_path(name, idx) or project_cwd(name)
+
+
+_COPY_FAIL: Dict[str, Tuple[str, float]] = {}      # proje -> (son hata, log zamanı): her tick aynı hatayı yazmasın
+COPY_FAIL_LOG_SECONDS = 3600.0
+
+_NOTIFY_FN: Optional[Callable[[str, Any], Any]] = None
+ASK_RETRY_SECONDS = 24 * 3600.0                     # cevabı tanınmayan "nerede review" sorusu en erken bu kadar sonra yeniden sorulur
+
+
+def set_notifier(fn: Optional[Callable[[str, Any], Any]]) -> None:
+    """`web_steward` bağlar: `fn(sahip_kimlik, Question)` soruyu telefona bildirir (bu modül ntfy'yi bilmez)."""
+    global _NOTIFY_FN
+    _NOTIFY_FN = fn
+
+
+def _log_copy_fail(p: Any, project: str, msg: str, now: float) -> None:
+    last = _COPY_FAIL.get(project)
+    if last and last[0] == msg and now - last[1] < COPY_FAIL_LOG_SECONDS:
+        return
+    _COPY_FAIL[project] = (msg, now)
+    sw.log_event("review_copy_not_ready", paths=p, project=project, error=msg)
+
+
+def ask_remote_choice(cfg: Any, now: float, idx: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Sahip kararı bilinmeyen (`review_where` ""/"ask") uzak proje için SAHİBE tek soru açar (TBD#114): seçenekler yerel
+    kopya / uzak / vazgeç. Aynı anda en çok BİR açık soru (N uzak proje N bildirim üretmesin); cevabı tanınmayan soru
+    `ASK_RETRY_SECONDS` içinde yinelenmez. Cevap `steward.answer_question` kancasında projeye yazılır. Açılan projeyi döner."""
+    idx = ownership() if idx is None else idx
+    remotes = remote_projects(idx)
+    cands = sorted(n for n, (_sid, pj) in remotes.items() if pj.review_where in ("", "ask"))
+    if not cands:
+        return None
+    qcache: Dict[str, List[Any]] = {}
+
+    def questions(sid: str) -> List[Any]:
+        if sid not in qcache:
+            try:
+                qcache[sid] = [q for q in sw.load_questions(sw.paths_for(sid)) if q.source == rr.ASK_SOURCE]
+            except Exception:
+                qcache[sid] = []
+        return qcache[sid]
+    for _n, (sid, _pj) in remotes.items():
+        if any(q.status == "open" for q in questions(sid)):
+            return None
+    for name in cands:
+        sid, pj = remotes[name]
+        mine = [q for q in questions(sid) if q.project == name]
+        if mine and now - max(q.created_at for q in mine) < ASK_RETRY_SECONDS:
+            continue
+        q = sw.add_question(name, rr.ask_text(name, pj.host, getattr(cfg, "lang", "tr")), source=rr.ASK_SOURCE,
+                            options=rr.OPTIONS, paths=sw.paths_for(sid))
+        try:
+            sw.upsert_project(name, paths=sw.paths_for(sid), review_where="ask")
+        except Exception:
+            pass
+        sw.log_event("review_where_asked", paths=sw.paths_for(sid), project=name, id=q.id)
+        if _NOTIFY_FN is not None:
+            try:
+                _NOTIFY_FN(sid, q)
+            except Exception:
+                pass
+        return name
+    return None
+
+
+def prepare_project(name: str, idx: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
+    """Koşudan ÖNCE: uzak projenin yerel kopyası `git pull --ff-only` ile güncellenir (kirli/ayrışmışsa DUR). Yerel proje = (True, "")."""
+    path = remote_copy_path(name, idx)
+    if not path:
+        return True, ""
+    return rr.prepare_copy(path)
+
+
 def set_cwd_resolver(fn: Optional[Callable[[str], str]]) -> None:
     global _CWD_FN
     _CWD_FN = fn
@@ -1116,11 +1193,57 @@ def ownership() -> Dict[str, Any]:
         return {}
 
 
+def remote_projects(idx: Optional[Dict[str, Any]] = None) -> Dict[str, Tuple[str, Any]]:
+    """{ad: (sahip kimlik, Project)}: tek sahipli, uzak `host`'lu projeler (sahip kararı `review_where` burada)."""
+    idx = ownership() if idx is None else idx
+    owners = idx.get("owners") or {}
+    cache: Dict[str, Dict[str, Any]] = {}
+    out: Dict[str, Tuple[str, Any]] = {}
+    for name in (idx.get("hosts") or {}):
+        sid = owners.get(name)
+        if not sid:
+            continue
+        if sid not in cache:
+            try:
+                cache[sid] = sw.load_projects(sid)
+            except Exception:
+                cache[sid] = {}
+        proj = cache[sid].get(name)
+        if proj is not None:
+            out[name] = (sid, proj)
+    return out
+
+
+def remote_copy_path(name: str, idx: Optional[Dict[str, Any]] = None) -> str:
+    """Uzak projenin review edilebilir YEREL kopyası (sahip `local` seçti ve yol git deposu); yoksa ""."""
+    ent = remote_projects(idx).get(name)
+    if ent is None:
+        return ""
+    proj = ent[1]
+    return proj.local_path if rr.eligible(proj.review_where, proj.local_path) else ""
+
+
+def remote_block_reason(project: str, idx: Optional[Dict[str, Any]] = None) -> str:
+    """Uzak proje review/havuz/export'a alınamıyorsa nedeni, değilse "". Yerel proje = ""."""
+    idx = ownership() if idx is None else idx
+    if project not in (idx.get("hosts") or {}):
+        return ""
+    ent = remote_projects(idx).get(project)
+    where = ent[1].review_where if ent else ""
+    if where == "local":
+        return "" if remote_copy_path(project, idx) else "remote project: local copy path is missing or not a git repo (set local_path)"
+    if where == "remote":
+        return "remote projects are not reviewed (v1): 'remote' was chosen but is not implemented yet"
+    return "remote projects are not reviewed (v1)"
+
+
 def local_owned_names(idx: Optional[Dict[str, Any]] = None) -> List[str]:
-    """Havuza girebilecek proje adları: tek sahipli ve YEREL (uzak `host`'lu projeler v1'de atlanır)."""
+    """Havuza girebilecek proje adları: tek sahipli ve YEREL ya da sahibin yerel kopya seçtiği uzak proje."""
     idx = ownership() if idx is None else idx
     hosts = idx.get("hosts") or {}
-    return sorted(n for n in (idx.get("owners") or {}) if n not in hosts)
+    out = [n for n in (idx.get("owners") or {}) if n not in hosts]
+    out += [n for n in hosts if remote_copy_path(n, idx)]
+    return sorted(out)
 
 
 def available_models() -> Tuple[List[str], List[str]]:
@@ -1221,6 +1344,13 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         auto = []
     if auto:
         actions.append({"kind": "auto_approve", "findings": auto})
+    try:
+        asked = ask_remote_choice(cfg, t)
+    except Exception as e:      # soru açma hatası review turunu düşürmesin
+        sw.log_event("review_where_ask_failed", paths=p, error=_tail(repr(e)))
+        asked = None
+    if asked:
+        actions.append({"kind": "ask_remote_choice", "project": asked})
     pool, changed = sync_pool(p, t)
     if changed:
         actions.append({"kind": "pool_sync"})
@@ -1244,10 +1374,14 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         if nxt is None:
             return {"ok": True, "actions": actions, "started": 0, "noop": not actions}
         proj, target = nxt
-        cwd = project_cwd(proj)
+        cwd = review_cwd(proj)
         if cwd and os.path.isdir(cwd):
-            break
-        skip.append(proj)                    # klasörü bulunamayan proje bu turda atlanır
+            ready, msg = prepare_project(proj)
+            if ready:
+                break
+            _log_copy_fail(p, proj, msg, t)
+            actions.append({"kind": "copy_not_ready", "project": proj, "error": msg})
+        skip.append(proj)                    # klasörü bulunamayan / yerel kopyası hazırlanamayan proje bu turda atlanır
     res = start_job(p, cfg, proj, target, cwd)
     if res.get("ok"):
         actions.append({"kind": "review_start", "project": proj, "target": target.key})
@@ -1323,8 +1457,10 @@ def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None
     if action not in ("add", "remove", "enable", "disable"):
         return {"ok": False, "error": "action must be add|remove|enable|disable"}
     idx = ownership()
-    if action in ("add", "enable") and project in (idx.get("hosts") or {}):
-        return {"ok": False, "error": "remote projects are not reviewed (v1)"}
+    if action in ("add", "enable"):
+        why = remote_block_reason(project, idx)
+        if why:
+            return {"ok": False, "error": why}
     with sw.steward_lock(p):
         pool = rv.load_pool(p)
         pr = pool["projects"]
@@ -1358,9 +1494,10 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
     if not project or not sw.valid_name(project):
         return {"ok": False, "error": "invalid project name"}
     idx = ownership()
-    if project in (idx.get("hosts") or {}):
-        return {"ok": False, "error": "remote projects are not reviewed (v1)"}
-    cwd = project_cwd(project)
+    why = remote_block_reason(project, idx)
+    if why:
+        return {"ok": False, "error": why}
+    cwd = review_cwd(project, idx)
     if not cwd or not os.path.isdir(cwd):
         return {"ok": False, "error": f"project folder not found: {project}"}
     p = sw.paths_for(cfg.sid)
@@ -1382,6 +1519,10 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
         target = nxt[1]
     if running_keys():
         return {"ok": False, "busy": True, "error": "another review is running"}
+    ready, msg = prepare_project(project, idx)
+    if not ready:
+        sw.log_event("review_copy_not_ready", paths=p, project=project, error=msg)
+        return {"ok": False, "error": msg}
     res = start_job(p, cfg, project, target, cwd)
     return {k: v for k, v in res.items() if k not in ("thread", "argv")}
 

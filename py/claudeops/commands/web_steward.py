@@ -4639,6 +4639,7 @@ def http_review_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
 
 web_review.set_cwd_resolver(lambda name: _project_cwd(name))
 web_review.set_verdict_reader(_review_verdict_reader)
+web_review.set_notifier(lambda sid, q: _notify(steward_config(sid), f"{_ask_prefix(q.project, sid)} {q.text}\n→ {sw.ask_hint(q.id, sid)}"))
 
 
 POST_PATHS = {

@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from . import hosts as hosts_mod      # yaprak modül (yalnız paths'e bağlı): proje `host` doğrulaması
+from . import review_remote           # yaprak modül (saf yardımcılar): uzak proje review kararı (TBD#114)
 from .atomic_json import atomic_write_json
 from .paths import CLAUDEOPS_DIR
 
@@ -169,6 +170,8 @@ class Project:
     created_at: float = 0.0
     updated_at: float = 0.0
     host: str = ""                  # oturumun çalıştığı host (`hosts.json` adı); "" = yerel ("local" de yerele normalize edilir)
+    review_where: str = ""          # uzak proje için sahip kararı (TBD#114): ""|ask|local|remote|off; bkz. `review_remote`
+    local_path: str = ""            # review_where=local iken yerel kopyanın mutlak yolu (uzağa yazılmaz, review öncesi git pull --ff-only)
 
 
 def normalize_host(host: Any) -> str:
@@ -711,6 +714,12 @@ def upsert_project(name: str, *, paths: Any = None, force: bool = False,
                     v = max(0, v)
             if k == "notes":
                 v = str(v)[:_MAX_NOTE_CHARS]
+            if k == "review_where" and v not in review_remote.WHERE_VALUES:
+                continue
+            if k == "local_path":
+                v = os.path.expanduser(str(v).strip())
+                if v and not os.path.isabs(v):
+                    continue
             setattr(p, k, v)
         p.updated_at = _now()
         projects[name] = p
@@ -1074,6 +1083,7 @@ def answer_question(question_id: str, answer: str, paths: Any = None) -> Optiona
     answer = str(answer).strip()
     if not answer:
         raise ValueError("empty answer")
+    hit: Optional[Question] = None
     with steward_lock(paths):
         questions = load_questions(paths)
         for q in questions:
@@ -1083,8 +1093,33 @@ def answer_question(question_id: str, answer: str, paths: Any = None) -> Optiona
                 q.answered_at = _now()
                 q.delivered_at = 0.0
                 save_questions(questions, paths)
-                return q
-        return None
+                hit = q
+                break
+    if hit is not None and hit.source == review_remote.ASK_SOURCE:
+        apply_review_where_answer(hit, paths)      # kilit dışında: upsert_project ownership kilidi alır
+    return hit
+
+
+def apply_review_where_answer(q: Question, paths: Any = None) -> None:
+    """Reviewer'ın "uzak projeyi nerede review edeyim?" sorusunun cevabı projeye yazılır (TBD#114). Cevap oturuma
+    İLETİLMEZ (`delivered_at` işaretlenir: soruyu oturum açmadı). Tanınmayan cevap = proje `ask`te kalır, soru kapanmış
+    sayılır ve reviewer bir sonraki turda yeniden sorar."""
+    where, path = review_remote.parse_answer(q.answer)
+    fields: Dict[str, Any] = {}
+    if where == "local":
+        path = path or review_remote.find_local_copy(q.project)
+        fields = {"review_where": "local", "local_path": path}
+    elif where:
+        fields = {"review_where": where}
+    try:
+        if fields:
+            upsert_project(q.project, paths=paths, **fields)
+    except Exception as e:      # proje silinmiş / kimlik değişmiş: cevap kayıtta kalır, sahip elle düzeltir
+        log_event("review_where_failed", paths=paths, project=q.project, error=str(e))
+        fields = {}
+    mark_delivered(q.id, paths)
+    log_event("review_where", paths=paths, project=q.project, where=fields.get("review_where", ""),
+              path=fields.get("local_path", ""), answer=q.answer[:80])
 
 
 def find_question(question_id: str, paths: Any = None) -> Optional[Question]:
