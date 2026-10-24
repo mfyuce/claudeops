@@ -4762,6 +4762,18 @@ class RemoteReviewDriver:
             out["user"], out["assistant"] = str(parsed.get("user") or ""), str(parsed.get("assistant") or "")
         return out
 
+    def sweep(self) -> bool:
+        """Yetim review oturumu süpürücüsü: bu projede çalışan iş YOKKEN uzakta hâlâ `rvw_<proje>` çalışıyorsa (servis
+        restart'ı koşuyu öldürüp oturumu bırakır) kapatır. Kapılar kapalı / host bayat ise dokunmaz. Dönen: kapatıldı mı."""
+        if not self.ready()[0]:
+            return False
+        fresh_host, row = _remote_running_row(self.host, self.session)
+        if not fresh_host or row is None:
+            return False
+        self.stop()
+        sw.log_event("review_remote_swept", paths=self._owner(), project=self.project, host=self.host, session=self.session)
+        return True
+
     def stop(self) -> None:
         try:
             _remote_post(self.host, "/api/stop", {"name": self.session, "exact": True}, REMOTE_START_TIMEOUT_SECONDS)

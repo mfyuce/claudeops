@@ -157,6 +157,19 @@ class DriverTest(unittest.TestCase):
         self.assertTrue(state["closed"])
         self.assertTrue(self.posts[0][1]["exact"])
 
+    def test_sweep_stops_only_a_running_orphan(self):
+        self.assertFalse(self.drv.sweep())                                        # oturum yok: dokunma
+        self.assertEqual(self.posts, [])
+        self.rows.append({"name": "rvw_far", "running": True, "busy": False})
+        self.running_after_start = True
+        self.posts.append(("/api/start", {}))                                     # sahte `running_row` start sonrası satırı görsün
+        n = len(self.posts)
+        self.assertTrue(self.drv.sweep())
+        self.assertEqual(self.posts[n][0], "/api/stop")
+        self.denied = {"ok": False, "error": "x"}
+        self.assertFalse(self.drv.sweep())                                        # kapı kapalı: dokunma
+        self.assertEqual(len(self.posts), n + 1)
+
     def test_send_goes_exact_to_review_session_only(self):
         self.assertTrue(self.drv.send("istem\nikinci satır\n## R-1 | P2 | x")["ok"])
         path, body = self.posts[0]

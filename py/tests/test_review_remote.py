@@ -31,6 +31,11 @@ class FakeDriver:
     def __init__(self, project="far", host="ulak_31", script=None, ready=(True, ""), start_ok=True):
         self.project, self.host, self.script, self._ready, self.start_ok = project, host, list(script or []), ready, start_ok
         self.calls = []
+        self.swept = False
+
+    def sweep(self):
+        self.swept = True
+        return True
 
     def ready(self):
         return self._ready
@@ -248,6 +253,19 @@ class RemoteFlowTest(NoRealReviewMixin, _Engine):
         hist = wr.rv.load_history(paths)["pairs"]
         self.assertEqual(hist[wr.rv.pair_key("far", t)]["status"], "running")
         self.assertEqual(hist[wr.rv.pair_key("baska", t)]["status"], "partial")
+
+    def test_sweep_closes_orphan_only_when_no_live_job_and_is_throttled(self):
+        sw.upsert_project("far", review_where="remote")
+        wr._SWEPT_AT.clear()
+        drv = FakeDriver()
+        with mock.patch.object(wr, "_REMOTE_FN", lambda p, h: drv):
+            wr._JOBS["far|evren/m1"] = wr._Job("x")                                  # canlı iş var: dokunma
+            self.assertEqual(wr.sweep_remote(1000.0), [])
+            self.assertFalse(drv.swept)
+            wr._JOBS.clear()
+            self.assertEqual(wr.sweep_remote(1000.0), ["far"])
+            self.assertEqual(wr.sweep_remote(1100.0), [])                            # 10 dk dolmadan yoklanmaz
+            self.assertEqual(wr.sweep_remote(1000.0 + wr.SWEEP_EVERY_SECONDS + 1), ["far"])
 
     def test_unrecognized_answer_reasks_only_after_retry_window(self):
         t0 = time.time()

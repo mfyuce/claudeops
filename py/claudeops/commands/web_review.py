@@ -1259,6 +1259,40 @@ def remote_driver(project: str) -> Any:
     return _REMOTE_FN(project, host)
 
 
+SWEEP_EVERY_SECONDS = 600.0
+_SWEPT_AT: Dict[str, float] = {}
+
+
+def sweep_remote(now: float, idx: Optional[Dict[str, Any]] = None) -> List[str]:
+    """`remote` kipindeki her projede: bu süreçte o projenin çalışan işi YOKSA uzaktaki yetim `rvw_<proje>` oturumunu kapatır
+    (proje başına en çok `SWEEP_EVERY_SECONDS`te bir yoklama). Kapatılan projelerin listesi. Hata tick'i düşürmez."""
+    if _REMOTE_FN is None:
+        return []
+    if not _REVIEW_LOCK.acquire(blocking=False):      # bir iş (elle başlatılan dahil) şimdi başlıyor/koşuyor: yarışma, atla
+        return []
+    try:
+        return _sweep_remote_locked(now, idx)
+    finally:
+        _REVIEW_LOCK.release()
+
+
+def _sweep_remote_locked(now: float, idx: Optional[Dict[str, Any]]) -> List[str]:
+    idx = ownership() if idx is None else idx
+    live = {k.split("|", 1)[0] for k in running_keys()}
+    out: List[str] = []
+    for name in sorted(remote_projects(idx)):
+        host = remote_host(name, idx)
+        if not host or name in live or now - _SWEPT_AT.get(name, -1e9) < SWEEP_EVERY_SECONDS:
+            continue
+        _SWEPT_AT[name] = now
+        try:
+            if _REMOTE_FN(name, host).sweep():
+                out.append(name)
+        except Exception:
+            continue
+    return out
+
+
 def remote_ready(project: str, idx: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
     """Uzak (`remote` kipi) projede koşudan ÖNCE: sürücü bağlı mı, kapılar (remote_actions, host taze) ve uzak klasör tamam mı."""
     host = remote_host(project, idx)
@@ -1413,6 +1447,11 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         asked = None
     if asked:
         actions.append({"kind": "ask_remote_choice", "project": asked})
+    try:
+        for swept in sweep_remote(t):
+            actions.append({"kind": "remote_swept", "project": swept})
+    except Exception as e:
+        sw.log_event("review_remote_sweep_failed", paths=p, error=_tail(repr(e)))
     pool, changed = sync_pool(p, t)
     if changed:
         actions.append({"kind": "pool_sync"})
