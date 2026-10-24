@@ -162,6 +162,23 @@ class TickE2E(_Engine):
         self.assertEqual([d["kind"] for d in res["dry"]], ["deliver_findings"])
         self.assertEqual(self.given, [])
 
+    def test_observe_does_not_change_state_and_repeats_only_when_set_changes(self):
+        settings.save_settings({"steward": {"enabled": "on", "mode": "observe", "card_refresh": "off", "advance_findings": "on"}})
+        self.views = [_view("cli", last_activity=time.time())]
+        ws.tick_once("manual", "default")
+        st = sw.load_state(sw.paths_for("default"))
+        self.assertFalse(st.get("last_directive_at"))                          # observe durum DEĞİŞTİRMEZ
+        self.assertFalse(st.get("advance_sent"))
+        self.assertEqual(ws.tick_once("manual", "default")["dry"], [])         # aynı küme: yinelenmez
+        with open(self.todo, "a") as f:
+            f.write("- [ ] (review cli:r:R-3) [P2] c.py:3: ikinci\n")
+        rp = sw.paths_for("rvw")
+        data = rv.load_findings(rp)
+        data["cli:r:R-3"] = {"project": "cli", "state": "exported", "severity": "P2", "where": "c.py:3", "title": "ikinci",
+                             "exported_to": self.todo}
+        rv.save_findings(rp, data)
+        self.assertEqual([d["kind"] for d in ws.tick_once("manual", "default")["dry"]], ["deliver_findings"])   # küme değişti
+
 
 if __name__ == "__main__":
     unittest.main()

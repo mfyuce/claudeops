@@ -3112,6 +3112,18 @@ def plan_api_recovery(views: List[SessionView], eligible: Callable[[SessionView]
     return actions, err, out
 
 
+def _observe_cluster(a: Action) -> str:
+    """İletim eylemlerinin (`deliver_findings`/`deliver_lesson`) `would:` tekilleştirme eki: bulgu/ders KÜMESİ. Küme
+    değişmedikçe aynı kayıt yinelenmez; küme değişince (yeni bulgu, biri bitti) yeniden yazılır."""
+    if a.kind == "deliver_findings":
+        ids = sorted(str(r.get("id")) for r in (a.payload.get("rows") or []) if isinstance(r, dict))
+    elif a.kind == "deliver_lesson":
+        ids = sorted(str(h) for h in (a.payload.get("hashes") or []))
+    else:
+        return ""
+    return hashlib.sha1("|".join(ids).encode("utf-8")).hexdigest()[:10]
+
+
 def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now: float
                    ) -> Tuple[List[Action], List[Action], Dict[str, Any]]:
     """`plan_tick`in eylemlerini kipe göre ayır: (uygulanacak, kuru/`would:`, güncellenmiş state). SAF.
@@ -3137,7 +3149,7 @@ def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now:
             continue
         if a.kind == "start" and not a.payload.get("question_id"):
             visits[a.name] = now
-        key = f"{a.kind}:{a.name}:{a.payload.get('question_id', '') or a.payload.get('job_id', '')}"
+        key = f"{a.kind}:{a.name}:{a.payload.get('question_id', '') or a.payload.get('job_id', '') or _observe_cluster(a)}"
         if key in seen:
             continue
         seen[key] = now

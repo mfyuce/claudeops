@@ -2634,11 +2634,15 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world)
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
                 actions = actions + job_actions     # iş sonucu iletimi (varaka kuyruğu): `plan_tick`e DOKUNMAZ, aynı observe/_target yolundan
-                lesson_actions, new_state = sl.plan_lesson_deliveries(views, projects, _lessons(cfg), new_state, t0,
-                                                                      sl.target_project(cfg.lessons_project), actions, world)
+                lesson_actions, planned_state = sl.plan_lesson_deliveries(views, projects, _lessons(cfg), new_state, t0,
+                                                                          sl.target_project(cfg.lessons_project), actions, world)
+                if cfg.mode != "observe":   # observe durumu DEĞİŞTİRMEZ (direktif zamanı işaretlenmez): her tick would: üretebilir
+                    new_state = planned_state
                 actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
-                adv_actions, new_state = sa.plan_advance_deliveries(views, projects, _advance_candidates(cfg), new_state, t0,
-                                                                    actions, world)
+                adv_actions, planned_state = sa.plan_advance_deliveries(views, projects, _advance_candidates(cfg), new_state, t0,
+                                                                        actions, world)
+                if cfg.mode != "observe":
+                    new_state = planned_state
                 actions = actions + adv_actions     # ilerletme (advance_findings=on): onaylı review bulguları -> kendi projesinin oturumu
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 sw.save_state(new_state, paths)
