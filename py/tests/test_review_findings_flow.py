@@ -47,7 +47,8 @@ class _Flow(NoRealReviewMixin, _Engine):
         os.makedirs(self.proj_dir)
         sw.upsert_project("a", phase="planned")                  # sahibi: default
         sw.upsert_project("k", paths="kitap", phase="planned")   # sahibi: kitap
-        sw.upsert_project("far", phase="planned", host="ulak_31")
+        with mock.patch.object(sw.hosts_mod, "get_host", lambda h: {"name": h} if h == "ulak_31" else None):   # hosts.json'a bağımlı olma
+            sw.upsert_project("far", phase="planned", host="ulak_31")
         self.sent = []
 
         def give(project, text, **kw):

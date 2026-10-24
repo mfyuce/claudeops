@@ -38,7 +38,8 @@ class _Api(NoRealReviewMixin, _Engine):
             p.start()
             self.addCleanup(p.stop)
         sw.upsert_project("a", phase="planned")
-        sw.upsert_project("far", phase="planned", host="ulak_31")
+        with mock.patch.object(sw.hosts_mod, "get_host", lambda h: {"name": h} if h == "ulak_31" else None):   # hosts.json'a bağımlı olma
+            sw.upsert_project("far", phase="planned", host="ulak_31")
 
 
 class TestPool(_Api):

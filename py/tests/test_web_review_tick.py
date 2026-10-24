@@ -72,7 +72,8 @@ class TestTick(_Tick):
 
     def test_remote_project_skipped(self):
         self.own("a")
-        sw.upsert_project("far", phase="planned", host="ulak_31")
+        with mock.patch.object(sw.hosts_mod, "get_host", lambda h: {"name": h} if h == "ulak_31" else None):   # hosts.json'a bağımlı olma
+            sw.upsert_project("far", phase="planned", host="ulak_31")
         self.cwds["far"] = self.dir.name
         wr.review_tick(self.cfg(), now=NOW)
         self.assertEqual(rv.pool_enabled(rv.load_pool(sw.paths_for("rev"))), ["a"])

@@ -14,11 +14,15 @@ değil) yeniden uygulanır, çünkü bu dosya (token rotasyonu/host ekleme-çık
 ile) sık sık yeniden yazılıyor.
 """
 from __future__ import annotations
+import contextlib
+import fcntl
+import functools
 import hashlib
 import json
 import os
 import re
 import shutil
+import threading
 from typing import Any, Dict, List, Optional
 
 from .atomic_json import atomic_write_json
@@ -141,6 +145,38 @@ def _write_hosts(hosts: List[Dict[str, str]]) -> None:
     atomic_write_json(HOSTS_JSON, hosts, mode=0o600)
 
 
+_WRITE_LOCK = threading.RLock()
+
+
+@contextlib.contextmanager
+def _write_txn():
+    """oku-değiştir-yaz döngüsünün TAMAMI tek kilit altında: iş parçacıkları arası `RLock` + süreçler arası `flock`
+    (`hosts.json.lock`). Kilit dosyası açılamazsa yalnız iş parçacığı kilidiyle devam edilir."""
+    with _WRITE_LOCK:
+        fd = None
+        try:
+            fd = os.open(HOSTS_JSON + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
+            if fd is not None:
+                os.close(fd)
+            fd = None
+        try:
+            yield
+        finally:
+            if fd is not None:
+                os.close(fd)        # kapatmak flock'u bırakır
+
+
+def _txn(fn):
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        with _write_txn():
+            return fn(*a, **kw)
+    return wrapper
+
+
+@_txn
 def save_host(
     name: str, base_url: str, token: str, grpc_url: str = "", extra_urls: str = "", lang: str = "tr"
 ) -> Dict[str, Any]:
@@ -201,6 +237,7 @@ def save_host(
     return {"ok": True}
 
 
+@_txn
 def promote_base_url(name: str, new_base_url: str) -> None:
     """web_hosts.py'nin poller'ı, `base_url` başarısız olduğunda `extra_urls`
     listesindeki bir adayın ÇALIŞTIĞINI bulunca çağırır: o adayı `base_url`
@@ -233,6 +270,7 @@ def promote_base_url(name: str, new_base_url: str) -> None:
         _write_hosts(hosts)
 
 
+@_txn
 def remove_host(name: str, lang: str = "tr") -> Dict[str, Any]:
     """Idempotent — kayıtlı değilse bile {"ok": True} (settings.py'nin toleranslı
     stiliyle aynı ruh; frontend'in çift-tıklama/stale state için özel hata

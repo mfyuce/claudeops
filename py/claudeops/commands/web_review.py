@@ -298,10 +298,12 @@ class IoLog:
     def event(self, role: str, text: str, kind: str = "") -> None:
         if not self.ok or not text:
             return
-        for s in rv.dsn_passwords(text):
-            if s not in self._learned:
-                self._learned.append(s)
-        rec = {"ts": round(self.now(), 3), "role": role, "text": rv.redact_secrets(text, self._learned)}
+        with self._lock:
+            for s in rv.dsn_passwords(text):
+                if s not in self._learned:
+                    self._learned.append(s)
+            learned = list(self._learned)
+        rec = {"ts": round(self.now(), 3), "role": role, "text": rv.redact_secrets(text, learned)}
         if kind:
             rec["kind"] = kind
         line = json.dumps(rec, ensure_ascii=False) + "\n"
