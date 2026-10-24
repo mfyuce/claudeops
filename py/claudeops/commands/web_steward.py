@@ -2541,7 +2541,22 @@ def _advance_candidates(cfg: sw.Config) -> List[Dict[str, Any]]:
             if not cache:
                 cache.append(_cwd_resolver())
             return cache[0](name)
-        return sa.candidates(data, cwd_of, _name_host)      # uzak proje: approved bulgu, TODO denetimi yok (TBD#117 ek 3)
+        todo_cache: Dict[str, Optional[str]] = {}
+
+        def remote_todo_of(proj: str, fid: str) -> str:      # uzak TODO.md bir kez okunur; okunamazsa "" (tek iletim kuralı)
+            if proj not in todo_cache:
+                todo_cache[proj] = None
+                try:
+                    host = _name_host(proj)
+                    real, cwd = _remote_ref(host, proj) if host and _remote_files_gate(host, cfg.sid) else ("", "")
+                    if cwd:
+                        todo_cache[proj] = _remote_read_full(host, real or proj, cwd.rstrip("/") + "/TODO.md",
+                                                             REMOTE_READ_BUDGET_SECONDS)
+                except Exception:
+                    todo_cache[proj] = None
+            text = todo_cache[proj]
+            return sa.todo_status_text(text, fid) if text is not None else ""
+        return sa.candidates(data, cwd_of, _name_host, remote_todo_of)
     except Exception:
         return []
 

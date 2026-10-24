@@ -131,6 +131,27 @@ class RemoteAdvanceTest(unittest.TestCase):
         sent = {"advance_sent": {"f1": {"at": NOW - 99 * 3600, "n": sa.SEND_MAX_REMOTE}}}
         self.assertEqual(sa.plan_advance_deliveries([v], projects, c, sent, NOW, [])[0], [])    # uzakta ikinci iletim yok
 
+    def test_remote_todo_state_tracks_and_resends(self):
+        data = {"f1": {"project": "ulak", "state": "approved", "title": "a"},
+                "f2": {"project": "ulak", "state": "approved", "title": "b"},
+                "f3": {"project": "ulak", "state": "approved", "title": "c"},
+                "f4": {"project": "ulak", "state": "approved", "title": "d"}}
+        st = {"f1": "done", "f2": "open", "f3": "missing", "f4": ""}
+        got = {c["id"]: c for c in sa.candidates([data], lambda n: "", self.remote_of, lambda p, f: st[f])}
+        self.assertEqual(got["f1"]["todo"], "done")
+        self.assertEqual(got["f2"].get("remote_state"), "tracked")
+        self.assertEqual(got["f3"].get("remote_state"), "missing")
+        self.assertNotIn("remote_state", got["f4"])
+        projects = {"ulak": sw.Project(name="ulak", host="ulak_31")}
+        v = view("ulak", host="ulak_31")
+        sent = {"advance_sent": {k: {"at": NOW - 99 * 3600, "n": 1} for k in st}}
+        acts = sa.plan_advance_deliveries([v], projects, [got["f1"], got["f2"], got["f3"], got["f4"]], sent, NOW, [], limit=9)[0]
+        self.assertEqual([r["id"] for a in acts for r in a.payload["rows"]], ["f3"])     # yalnız okunup satırı olmayan yeniden gider
+
+    def test_todo_status_text(self):
+        t = "- [ ] a (review x1)\n- [x] b (review x2)\n"
+        self.assertEqual([sa.todo_status_text(t, f) for f in ("x1", "x2", "x3")], ["open", "done", "missing"])
+
     def test_remote_message_carries_detail_and_limits(self):
         m = sa.build_advance_message([cand("f1", sev="P1", title="başlık", remote="ulak_31", body="ayrıntı metni")], "tr")
         for needle in ("f1", "ayrıntı metni", "TODO.md'sine", "YALNIZ", "dokunma"):

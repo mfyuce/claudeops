@@ -19,7 +19,7 @@ from . import steward as sw
 BATCH_MAX = 3                  # bir direktifte en çok bu kadar bulgu
 RESEND_SECONDS = 12 * 3600     # aynı bulgu en sık bu aralıkla yeniden iletilir (TODO satırı hâlâ açıksa)
 SEND_MAX = 3                   # bir bulgu en çok bu kadar iletilir
-SEND_MAX_REMOTE = 1            # uzak projede TODO durumu okunamaz (yeniden gönderme kararı verilemez): tek iletim
+SEND_MAX_REMOTE = 1            # uzak TODO okunamazsa (yeniden gönderme kararı verilemez): tek iletim; okunup satır yoksa SEND_MAX
 BODY_MAX = 700                 # uzak mesajda bulgu başına gövde sınırı
 SENT_KEEP = 1000
 TODO_MAX_BYTES = 2_000_000
@@ -48,6 +48,11 @@ def todo_status(path: str, cwd: str, fid: str) -> str:
             text = f.read()
     except OSError:
         return "missing"
+    return todo_status_text(text, fid)
+
+
+def todo_status_text(text: str, fid: str) -> str:
+    """`todo_status`un saf çekirdeği: metindeki `(review <fid>)` satırı -> open | done | missing."""
     mark = f"(review {fid})"
     for ln in text.splitlines():
         if mark in ln:
@@ -56,7 +61,7 @@ def todo_status(path: str, cwd: str, fid: str) -> str:
     return "missing"
 
 
-def candidates(findings_by_sid: Iterable[Dict[str, Any]], cwd_of, remote_of=None) -> List[Dict[str, Any]]:
+def candidates(findings_by_sid: Iterable[Dict[str, Any]], cwd_of, remote_of=None, remote_todo_of=None) -> List[Dict[str, Any]]:
     """Reviewer `findings.json` sözlüklerinden aday bulgular + TODO durumu: [{id, project, severity, where, title, todo,
     remote, body}]. `cwd_of(proje)` proje klasörünü verir ("" = bilinmiyor). Yerel proje: `exported` + TODO satırı denetimi.
     `remote_of(proje)` (host, "" = yerel) uzak ise: `approved` ya da `exported` bulgu, TODO denetimi YOK (`todo=open`),
@@ -80,6 +85,13 @@ def candidates(findings_by_sid: Iterable[Dict[str, Any]], cwd_of, remote_of=None
                    "file": str(rec.get("exported_to") or "")}
             if host:
                 row.update(todo="open", remote=host, file="", body=" ".join(str(rec.get("body") or "").split())[:BODY_MAX])
+                st = (remote_todo_of(proj, fid) if remote_todo_of else "") or ""
+                if st == "done":        # uzak oturum satırı kapattı: aday değil
+                    row["todo"] = "done"
+                elif st == "open":      # uzak oturum satırı kendi TODO'suna ekledi: izlenir, yeniden gönderme yok
+                    row["remote_state"] = "tracked"
+                elif st == "missing":   # TODO okundu, satır yok: oturum yok saydı, yeniden gönderilebilir
+                    row["remote_state"] = "missing"
             else:
                 row["todo"] = todo_status(str(rec.get("exported_to") or ""), cwd_of(proj) if proj else "", fid)
             out.append(row)
@@ -105,7 +117,10 @@ def plan_advance_deliveries(views: List[Any], projects: Dict[str, Any], cands: L
         if c["project"] not in projects or c["todo"] != "open" or projects[c["project"]].phase == "paused":
             continue
         rec = sent.get(c["id"]) or {}
-        if int(rec.get("n") or 0) >= (SEND_MAX_REMOTE if c.get("remote") else SEND_MAX) or now - float(rec.get("at") or 0) < RESEND_SECONDS:
+        if c.get("remote_state") == "tracked":
+            continue
+        cap = SEND_MAX if (not c.get("remote") or c.get("remote_state") == "missing") else SEND_MAX_REMOTE
+        if int(rec.get("n") or 0) >= cap or now - float(rec.get("at") or 0) < RESEND_SECONDS:
             continue
         by_proj.setdefault(c["project"], []).append(c)
     out: List[sw.Action] = []
