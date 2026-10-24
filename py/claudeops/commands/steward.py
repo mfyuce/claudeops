@@ -356,6 +356,16 @@ def cmd_persona(args) -> int:
     return 0
 
 
+def _audit_cli(sid: str, event: str, **data: Any) -> None:
+    """CLI'dan gelen ayar değişikliğinin denetim izi (panel `http_config` zaten `source=ui` yazıyor): kim değiştirdi sorusu
+    (ör. ilerlet'in act'e alınması 2026-10-24) günlükten cevaplanabilsin. Çağıran: `COPS_NAME` (claudeops oturumu), cwd, ppid."""
+    try:
+        sw.log_event(event, paths=sid, source="cli", caller=os.environ.get("COPS_NAME") or "", cwd=os.getcwd(),
+                     ppid=os.getppid(), **data)
+    except Exception:
+        pass
+
+
 def cmd_config(args) -> int:
     """`steward.<alan>` ayarı: `py/cops steward config tick_seconds 90`; `-s SID` ile `stewards.<SID>.<alan>`. Makine geneli
     anahtar (`sw.MACHINE_KEYS`) kimlik bloğunda YOK SAYILIR: yazılmaz, uyarılır (default'a yazın)."""
@@ -375,11 +385,13 @@ def cmd_config(args) -> int:
         print(f"uyarı: '{field}' MAKİNE GENELİ bir anahtar: stewards.{sid} içinde yok sayılır, YAZILMADI. "
               f"Makine geneli değer için: py/cops steward config {field} {args.value}  (default bloğu)")
         return 1
+    old = getattr(steward_config(sid), field, None)
     if sid == "default":
         save_settings({"steward": {field: args.value}})
     else:
         save_settings({"stewards": {sid: {field: args.value}}})
     cfg = steward_config(sid)
+    _audit_cli(sid, "config", key=field, old=old, value=getattr(cfg, field))
     print(f"✓ {'steward' if sid == 'default' else 'stewards.' + sid}.{field} = {getattr(cfg, field)!r}")
     return 0
 
@@ -394,6 +406,7 @@ def cmd_toggle(args) -> int:
     sid = _sid(args)
     save_settings({"steward": {"enabled": "on" if on else "off"}} if sid == "default"
                   else {"stewards": {sid: {"enabled": "on" if on else "off"}}})
+    _audit_cli(sid, "enable" if on else "disable")
     tag = "" if sid == "default" else f" [{sid}]"
     print(f"✓ değnekçi{tag} {'AÇIK' if on else 'KAPALI'} (panel çalışıyorsa bir sonraki tick'ten itibaren geçerli)")
     if on:

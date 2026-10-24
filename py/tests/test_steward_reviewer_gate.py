@@ -163,6 +163,16 @@ class TestReviewerCreate(NoRealReviewMixin, _Engine):
             self.assertEqual(cmd.cmd_config(NS(sid="kitap", key="role", value="reviewer")), 1)
         self.assertEqual(settings.steward_config("kitap").role, "steward")
 
+    def test_cli_config_and_toggle_leave_an_audit_trail(self):
+        settings.save_settings({"stewards": {"kitap": {"enabled": "off", "mode": "observe"}}})
+        with mock.patch("builtins.print"), mock.patch.dict(os.environ, {"COPS_NAME": "cops-test"}):
+            self.assertEqual(cmd.cmd_config(NS(sid="kitap", key="mode", value="act")), 0)
+            self.assertEqual(cmd.cmd_toggle(NS(sid="kitap", action="on", all=False)), 0)
+        ev = [e for e in sw.tail_log(20, paths="kitap") if e["event"] in ("config", "enable")]
+        self.assertEqual([(e["event"], e.get("key"), e.get("old"), e.get("value")) for e in ev],
+                         [("config", "mode", "observe", "act"), ("enable", None, None, None)])
+        self.assertTrue(all(e["source"] == "cli" and e["caller"] == "cops-test" and e["cwd"] for e in ev))
+
     def test_default_is_never_reviewer(self):
         settings.save_settings({"steward": {"role": "reviewer"}})
         self.assertEqual(settings.steward_config("default").role, "steward")
