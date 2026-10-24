@@ -159,6 +159,16 @@ def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "") -> 
     return home
 
 
+def bwrap_jail(argv: List[str], home: str, bwrap: str) -> List[str]:
+    """`bwrap --ro-bind / / --dev /dev --proc /proc --bind HOME HOME --unshare-pid --new-session --die-with-parent -- <argv>
+    --dangerously-skip-permissions`: tüm dosya sistemi SALT OKUNUR (yalnız izole agy HOME'u yazılabilir), bu yüzden agy'nin
+    her komutu onaysız çalışabilir ama proje/ev dizinine yazamaz ("Read-only file system", 2026-10-24 deneyle doğrulandı;
+    izin listesi yaklaşımı agy'nin beklenmedik bir komutunda (`git status`) tüm koşuyu öldürüyordu). Ağ AÇIK kalır (API gerekli):
+    yetki sınırı yazma, sızdırma değil. `argv[0]` agy ikilisidir; bayrak ondan hemen sonra eklenir."""
+    return [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--bind", home, home,
+            "--unshare-pid", "--new-session", "--die-with-parent", "--", argv[0], "--dangerously-skip-permissions"] + list(argv[1:])
+
+
 def agy_argv(binary: str, model: str, prompt: str, provider: Any) -> List[str]:
     """`agy --print=<prompt> --model M [--effort E] --mode plan`.
     DOĞRULANMADI: `agy --print` kipinin araç (dosya okuma) kullanıp kullanmadığı ve `--mode plan`ın yazmayı gerçekten
@@ -845,6 +855,9 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             if allow:   # izole HOME: komut izni yalnız salt-okunur liste; günlük/etiket doğrulaması da bu HOME'dan okunur
                 home = agy_home(p.root, cwd, allow)
                 env_extra["HOME"] = home
+                bwrap = shutil.which("bwrap") if getattr(cfg, "review_agy_jail", True) else None
+                if bwrap:    # salt-okunur dosya sistemi kafesi: izin sorusu yok, yazma imkansız (yoksa izin listesi yolu)
+                    argv = bwrap_jail(argv, home, bwrap)
                 if agy_log_dir == AGY_LOG_DIR:
                     agy_log_dir = os.path.join(home, ".gemini", "antigravity-cli", "log")
         else:

@@ -195,6 +195,9 @@ class TestAgy(Base):
         p = mock.patch.dict(os.environ, {"HOME": self.fake_home})
         p.start()
         self.addCleanup(p.stop)
+        w = mock.patch.object(wr.shutil, "which", return_value=None)        # ana makinenin bwrap'ine bağımlı olma
+        w.start()
+        self.addCleanup(w.stop)
 
     def test_isolated_home_with_readonly_allow_list(self):
         self.agy()
@@ -211,6 +214,39 @@ class TestAgy(Base):
         self.assertEqual(os.stat(os.path.join(cfgdir, "antigravity-oauth-token")).st_mode & 0o777, 0o600)
         for banned in ("rg", "git", "find", "cat", "sed", "sh", "rm"):
             self.assertNotIn(f"command({banned})", st["permissions"]["allow"])
+
+    def test_bwrap_jail_wraps_argv_when_available(self):
+        with mock.patch.object(wr.shutil, "which", return_value="/usr/bin/bwrap"):
+            self.agy()
+        a = FakeProc.instances[0].argv
+        home = FakeProc.instances[0].kw["env"]["HOME"]
+        self.assertEqual(a[0], "/usr/bin/bwrap")
+        self.assertEqual(a[1:4], ["--ro-bind", "/", "/"])
+        self.assertEqual(a[a.index("--bind") + 1:a.index("--bind") + 3], [home, home])        # yalnız izole HOME yazılabilir
+        for f in ("--unshare-pid", "--new-session", "--die-with-parent"):
+            self.assertIn(f, a)
+        i = a.index("--")
+        self.assertEqual(a[i + 1:i + 3], ["/fake/agy", "--dangerously-skip-permissions"])
+        self.assertEqual(a.count("--bind"), 1)                                                 # proje/ev dizini bağlanmaz
+        self.assertEqual(a[-2:], ["--mode", "plan"])
+
+    def test_no_bwrap_or_jail_off_falls_back_to_allow_list(self):
+        with mock.patch.object(wr.shutil, "which", return_value=None):
+            self.agy()
+        a = FakeProc.instances[0].argv
+        self.assertEqual(a[0], "/fake/agy")
+        self.assertNotIn("--dangerously-skip-permissions", a)
+        FakeProc.instances = []
+        self.cfg.review_agy_jail = False
+        with mock.patch.object(wr.shutil, "which", return_value="/usr/bin/bwrap"):
+            self.agy()
+        self.assertNotIn("--dangerously-skip-permissions", FakeProc.instances[0].argv)
+        FakeProc.instances = []
+        self.cfg.review_agy_jail = True
+        self.cfg.review_agy_allow = "off"                                                       # izolasyon kapalı = kafes de yok
+        with mock.patch.object(wr.shutil, "which", return_value="/usr/bin/bwrap"):
+            self.agy()
+        self.assertNotIn("--dangerously-skip-permissions", FakeProc.instances[0].argv)
 
     def test_allow_override_and_off(self):
         self.cfg.review_agy_allow = "ls, grep ,bad name;rm"
