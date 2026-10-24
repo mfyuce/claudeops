@@ -108,7 +108,7 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
     if not git_dir or not os.path.isdir(gd) or os.path.realpath(gd) == os.path.realpath(os.path.join(rroot, ".git")):
         res["error"] = "git_dir yok ya da ana repo .git'i (yalnız ayrı -prv git-dir kabul edilir)"
         return res
-    base = ["git", f"--git-dir={gd}", f"--work-tree={rroot}"]
+    base = ["git", "-C", rroot, f"--git-dir={gd}", f"--work-tree={rroot}"]
     rc, out = _git(base, "ls-files", "-z", "--", "reviews/", run=run)
     if rc != 0:
         res["error"] = "git ls-files başarısız"

@@ -113,6 +113,19 @@ class CommitTest(unittest.TestCase):
         again = rs.commit_reviews(self.main, self.gd, scan, dry=False)                         # ikinci tur: yeni dosya yok
         self.assertEqual((again["would"], again["committed"]), ([], 0))
 
+    def test_act_works_from_foreign_cwd(self):
+        # servis cwd'si py/: git yolları kök'e göre çözülmeli (canlıda "pathspec did not match" idi)
+        sub = os.path.join(self.main, "sub")
+        os.makedirs(sub)
+        old = os.getcwd()
+        os.chdir(sub)
+        try:
+            r = rs.commit_reviews(self.main, self.gd, scan, dry=False)
+        finally:
+            os.chdir(old)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["committed"], 2)
+
     def test_refuses_main_repo_git_dir(self):
         r = rs.commit_reviews(self.main, os.path.join(self.main, ".git"), scan, dry=False)
         self.assertFalse(r["ok"])
