@@ -630,6 +630,72 @@ def _extract_text(mode: str, stdout: str) -> Tuple[str, str]:
     return stdout, ""
 
 
+_REPORT_HEAD_RE = re.compile(r"^## R-\d+ \||BULGU YOK", re.MULTILINE)
+ERROR_LOG_KEEP = 16 * 1024      # hata günlüğünde stdout/stderr kuyruğu (her biri)
+
+
+def _partial_turn_text(stdout: str) -> str:
+    """ucli başarısız tek-atımlık chat'te `{"error":..., "partial_turn": ...}` basar: kısmi tur metni (yoksa "")."""
+    try:
+        val = json.loads(stdout)
+    except ValueError:
+        return ""
+    pt = val.get("partial_turn") if isinstance(val, dict) else None
+    if isinstance(pt, dict):
+        pt = pt.get("assistant_text") or pt.get("answer") or pt.get("text")
+    return pt if isinstance(pt, str) else ""
+
+
+def _recover_partial(path: str, learned: Sequence[str] = ()) -> str:
+    """`--partial-file` (`rv.partial_path`) içindeki `assistant_text`: reviewer SIGKILL ettiğinde bile son tur sınırındaki
+    metin. Dosya diskte maskelenmeden kalmasın diye maskeli yeniden yazılır (atomik). Yalnız rapor başlığı (`## R-n |` ya da
+    `BULGU YOK`) içeren metin rapor sayılır; yoksa "" (çöp `partial` üretme)."""
+    pp = rv.partial_path(path)
+    try:
+        if os.path.islink(pp):
+            return ""
+        with open(pp, encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+        val = json.loads(raw)
+    except (OSError, ValueError):
+        return ""
+    red = rv.redact_secrets(raw, learned)
+    tmp = pp + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(red)
+        os.replace(tmp, pp)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    text = val.get("assistant_text") if isinstance(val, dict) else ""
+    text = rv.redact_secrets(text, learned) if isinstance(text, str) else ""
+    return text if _REPORT_HEAD_RE.search(text) else ""
+
+
+def _write_error_log(path: str, status: str, error: str, rc: Any, timed_out: bool, jerr: str, out: str, err: str,
+                     learned: Sequence[str] = ()) -> str:
+    """Başarısız (done olmayan) koşu için kalıcı hata günlüğü `<ts>.error.txt` (0600): durum, hata gövdesi, çıkış kodu,
+    stdout/stderr kuyruğu; hepsi maskeli. Günlüksüz kalan hatalar (glm-5.3 "exceeds 1 MiB", 2026-10-24) bir daha olmasın.
+    Yazılan yolu döndürür ("" = yazılamadı)."""
+    ep = rv.error_path(path)
+    body = (f"durum: {status}\nhata: {error}\nçıkış_kodu: {rc}\nzaman_aşımı: {bool(timed_out)}\n"
+            f"json_hata: {jerr}\n\n--- stdout (son {ERROR_LOG_KEEP} bayt) ---\n{(out or '')[-ERROR_LOG_KEEP:]}\n"
+            f"\n--- stderr (son {ERROR_LOG_KEEP} bayt) ---\n{(err or '')[-ERROR_LOG_KEEP:]}\n")
+    try:
+        os.makedirs(os.path.dirname(ep), exist_ok=True)
+        tmp = ep + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(rv.redact_secrets(body, learned))
+        os.replace(tmp, ep)
+        return ep
+    except OSError:
+        return ""
+
+
 def _write_report(path: str, text: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -724,6 +790,9 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             if not text.strip():
                 text = live.streamed_report()       # taslak da yoksa: akıştaki yarım rapor
                 recovered = bool(text.strip())
+            if not text.strip():                    # son çare: ucli `--partial-file` (SIGKILL'e dayanıklı) ya da `partial_turn`
+                text = _recover_partial(path, live.learned()) or _partial_turn_text(out)
+                recovered = bool(text.strip())
         text = rv.redact_secrets(text, live.learned())
         rc = getattr(proc, "returncode", None)
         fields: Dict[str, Any] = {"finished_at": now(), "pid": None}
@@ -735,7 +804,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         elif timed_out:
             status, error = ("partial" if text.strip() else "error"), f"timeout {int(timeout // 60)} dk"
         elif jerr:
-            status, error = "error", _tail(jerr)
+            status, error = ("partial" if text.strip() else "error"), _tail(jerr)
         elif rc == 0 and text.strip() and not recovered:
             status, error = "done", ""
         elif text.strip():
@@ -764,6 +833,10 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             if not ok:
                 # dosya saklanır ama done sayılmaz: agy planda olmayan modeli sessizce başka modele düşürür
                 status, error = "model_fallback", f"agy etiket uyuşmadı: istenen={target.model} görülen={seen or '(yok)'}"
+        if status != "done":
+            ef = _write_error_log(path, status, error, rc, timed_out, jerr, out, err, live.learned())
+            if ef:
+                fields["error_file"] = ef
         fields.update(status=status, error=error)
         live.system(f"bitti: {status}" + (f" ({error})" if error else "") + (f"; dosya: {fields['file']}" if fields.get("file") else ""))
         live.close()
@@ -875,6 +948,8 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             os.makedirs(os.path.dirname(rpath), exist_ok=True)
             if sf(binary, "--usage-log"):           # token ekonomisi ölçümü: istek başına sayılar (istem/cevap/araç sonucu YOK)
                 budget += ["--usage-log", rpath[:-3] + ".usage.jsonl"]
+            if sf(binary, "--partial-file"):        # SIGKILL'e dayanıklı kısmi çıktı (tur sınırında atomik yazılır, 0600)
+                budget += ["--partial-file", rv.partial_path(rpath)]
             if sf(binary, "--allow-create-dir"):
                 create_dir = os.path.dirname(rpath)
                 prompt += rv.draft_prompt_suffix(rv.draft_path(rpath), lang)

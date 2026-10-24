@@ -398,6 +398,17 @@ def draft_path(md: str) -> str:
     return (md[:-3] if md.endswith(".md") else md) + ".model.md"
 
 
+def partial_path(md: str) -> str:
+    """ucli `--partial-file` hedefi: görev her araç turu sınırında JSON yazar (partial, tool_rounds, tool_calls, written,
+    assistant_text = son 32 KiB); duvar saati bütçesinde SIGKILL gelirse kurtarma kaynağı olur."""
+    return (md[:-3] if md.endswith(".md") else md) + ".partial.json"
+
+
+def error_path(md: str) -> str:
+    """Başarısız koşunun kalıcı hata günlüğü: hata iletisi + stdout/stderr kuyruğu (maskeli, 0600)."""
+    return (md[:-3] if md.endswith(".md") else md) + ".error.txt"
+
+
 def draft_prompt_suffix(draft: str, lang: str = "tr") -> str:
     """Evren istemine eklenen: raporu create-only `write_file` ile TEK SEFERDE `draft` yoluna da yaz."""
     if lang == "en":

@@ -141,6 +141,73 @@ class TestEvren(Base):
         self.assertIn("yarim cikti", open(rec["file"]).read())
         self.assertTrue(kp.called)
 
+    def _killed_popen(self, partial):
+        """ucli taklidi: `--partial-file` verilmişse tur sınırında dosyayı yazar, sonra asılır (zaman aşımı + kill)."""
+        def f(argv, **k):
+            if "--partial-file" in argv and partial is not None:
+                with open(argv[argv.index("--partial-file") + 1], "w") as fh:
+                    json.dump(partial, fh)
+            return FakeProc(argv, out="", hang=True, **k)
+        return f
+
+    def test_partial_file_flag_added_only_when_supported(self):
+        self.ev()
+        argv = FakeProc.instances[0].argv
+        i = argv.index("--partial-file")
+        self.assertTrue(argv[i + 1].endswith(".partial.json"))
+        FakeProc.instances.clear()
+        self.ev(supports_flag=lambda b, f: f != "--partial-file")
+        self.assertNotIn("--partial-file", FakeProc.instances[0].argv)
+
+    def test_killed_run_is_recovered_from_partial_file_masked(self):
+        self.cfg.review_timeout_minutes = 1
+        part = {"partial": True, "tool_rounds": 7, "tool_calls": 12, "written": False,
+                "assistant_text": f"## R-1 | P2 | a.py:3 | Başlık\ngövde {SECRET} sonu"}
+        with mock.patch.object(wr, "KILL_GRACE_SECONDS", 0.01), mock.patch.object(wr.os, "killpg"):
+            self.ev(popen=self._killed_popen(part))
+        rec = self.pair(EV)
+        self.assertEqual(rec["status"], "partial")
+        self.assertIn("timeout", rec["error"])
+        text = open(rec["file"]).read()
+        self.assertIn("## R-1 | P2", text)
+        self.assertNotIn(SECRET, text)
+        pf = rv.partial_path(rec["file"])
+        self.assertNotIn(SECRET, open(pf).read())                    # kurtarılan ham dosya da maskelenir
+
+    def test_partial_without_report_heading_is_not_a_report(self):
+        self.cfg.review_timeout_minutes = 1
+        with mock.patch.object(wr, "KILL_GRACE_SECONDS", 0.01), mock.patch.object(wr.os, "killpg"):
+            self.ev(popen=self._killed_popen({"partial": True, "assistant_text": "dosyalara bakıyorum..."}))
+        rec = self.pair(EV)
+        self.assertEqual(rec["status"], "error")
+        self.assertFalse(rec.get("file"))
+
+    def test_partial_turn_in_error_json_is_recovered(self):
+        out = json.dumps({"error": "Model response exceeds 1 MiB",
+                          "partial_turn": {"assistant_text": "## R-1 | P3 | b.py:9 | Küçük\ngövde"}})
+        self.ev(popen=self.popen(out=out, rc=1))
+        rec = self.pair(EV)
+        self.assertEqual(rec["status"], "partial")                   # kurtarılan kısmi tur rapor sayılır, hata iletisi kalır
+        self.assertIn("exceeds 1 MiB", rec["error"])
+        self.assertIn("## R-1 | P3", open(rec["file"]).read())
+
+    def test_failed_run_keeps_error_log_masked_0600(self):
+        out = json.dumps({"error": f"Model response exceeds 1 MiB token {SECRET}"})
+        self.ev(popen=self.popen(out=out, err=f"stderr kuyruğu {SECRET}", rc=1))
+        rec = self.pair(EV)
+        self.assertEqual(rec["status"], "error")
+        ef = rec["error_file"]
+        self.assertEqual(ef, rv.error_path(os.path.splitext(ef[:-len(".error.txt")] + ".md")[0] + ".md"))
+        body = open(ef).read()
+        self.assertIn("exceeds 1 MiB", body)
+        self.assertIn("stderr kuyruğu", body)
+        self.assertNotIn(SECRET, body)
+        self.assertEqual(os.stat(ef).st_mode & 0o777, 0o600)
+
+    def test_successful_run_has_no_error_log(self):
+        self.ev()
+        self.assertFalse(self.pair(EV).get("error_file"))
+
     def test_nonzero_no_output_is_error(self):
         self.ev(popen=self.popen(out="", err="boom", rc=2))
         self.assertEqual(self.pair(EV)["status"], "error")
