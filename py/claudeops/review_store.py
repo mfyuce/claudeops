@@ -24,7 +24,10 @@ def _run(argv: List[str], timeout: float = 15.0, run: Optional[Callable] = None)
         r = run(argv, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
-    return int(r.returncode), (r.stdout or "").strip()
+    out = (r.stdout or "").strip()
+    if int(r.returncode) != 0 and (r.stderr or "").strip():
+        out = (out + "\n" + r.stderr.strip()).strip()
+    return int(r.returncode), out
 
 
 def remote_visibility(host: str, slug: str, run: Optional[Callable] = None) -> str:
