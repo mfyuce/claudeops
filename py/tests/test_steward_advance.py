@@ -155,6 +155,26 @@ class TickE2E(_Engine):
         ws.tick_once("manual", "default")
         self.assertEqual(self.given, [])
 
+    def test_act_mode_never_sends_secret_findings(self):
+        with open(self.todo, "a") as f:
+            f.write("- [ ] (review cli:r:R-9) [P1] x.py:6: Veritabanı parolası kaynak koduna gömülü\n"
+                    "- [ ] (review cli:r:R-8) [P1] y.py:1: DB password hardcoded\n")
+        rp = sw.paths_for("rvw")
+        data = rv.load_findings(rp)
+        data["cli:r:R-9"] = {"project": "cli", "state": "exported", "severity": "P1", "where": "x.py:6",
+                             "title": "Veritabanı parolası kaynak koduna gömülü", "exported_to": self.todo}
+        data["cli:r:R-8"] = {"project": "cli", "state": "exported", "severity": "P1", "where": "y.py:1",
+                             "title": "DB password hardcoded", "exported_to": self.todo}
+        rv.save_findings(rp, data)
+        self.views = [_view("cli", last_activity=time.time())]
+        for _ in range(3):
+            ws.tick_once("manual", "default")
+        sent = " ".join(t for _, t, _ in self.given)
+        self.assertIn("cli:r:R-1", sent)                                       # sıradan bulgu gitti
+        self.assertNotIn("R-9", sent)
+        self.assertNotIn("R-8", sent)
+        self.assertNotIn("parola", sent.lower().replace("parola/", ""))        # başlık metni de sızmadı
+
     def test_observe_mode_only_logs_would(self):
         settings.save_settings({"steward": {"enabled": "on", "mode": "observe", "card_refresh": "off", "advance_findings": "on"}})
         self.views = [_view("cli", last_activity=time.time())]
