@@ -732,6 +732,9 @@ def cmd_shutdown(args) -> int:
     keep = [n for n in (args.keep or "").split(",") if n.strip()]
     if keep:
         body["modes"] = {n.strip(): "keep" for n in keep}
+    only = [n.strip() for n in (getattr(args, "only", "") or "").split(",") if n.strip()]
+    if only and not args.status:
+        body["only"] = only
     res = _api(args.port, "POST", "/api/steward/shutdown", body, args.sid)
     if not res.get("ok"):
         print(json.dumps(res, ensure_ascii=False))
@@ -741,7 +744,7 @@ def cmd_shutdown(args) -> int:
         items = {n: i.get("stage") for n, i in (sd.get("items") or {}).items()}
         print(("BİTTİ" if sd.get("done") else "SÜRÜYOR" if sd else "yok") + f": {items}")
     else:
-        print("✓ kapatma başladı (döngü kapalı); ilerleme: py/cops steward shutdown --status (tick başına bir adım)")
+        print("✓ kapatma başladı" + (" (yalnız " + ",".join(only) + "; döngü açık)" if only else " (döngü kapalı)") + "; ilerleme: py/cops steward shutdown --status (tick başına bir adım)")
     return 0
 
 
@@ -884,6 +887,7 @@ def register(sub):
     psd.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     psd.add_argument("--status", action="store_true")
     psd.add_argument("--keep", default="", help="virgüllü oturum adları: devir alınır ama oturum AÇIK kalır (yalnız dur)")
+    psd.add_argument("--only", default="", help="virgüllü PROJE adları: yalnız bunlar kapatılır (paused; iş biter, devir, durdur); döngü ve diğer projeler sürer")
     psd.set_defaults(func=cmd_shutdown)
     pup = s.add_parser("up", help="tek komutla aç: on + models.tsv'de # CLOSED satırlarını geri aç + beyni başlat")
     pup.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)

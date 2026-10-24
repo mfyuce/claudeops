@@ -2429,8 +2429,12 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
     by_name = {v.name: v for v in views}
     own = world.own_projects(projects) if world is not None else projects
 
+    only = set(sd.get("only") or [])     # `shutdown --only P`: yalnız bu projelerin oturumları; beyin ve diğerleri dokunulmaz
+
     def _is_own(v: SessionView) -> bool:
         if v.name == cfg.brain_name or not v.running:
+            return False
+        if only and v.project not in only:
             return False
         if world is not None:
             return world.session_class(v.name, v.blueprint) == "own"
@@ -2478,7 +2482,7 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
         if name != cfg.brain_name:
             _step(name)
     projects_done = all(i["stage"] in _SD_TERMINAL for n, i in items.items() if n != cfg.brain_name)
-    if projects_done:
+    if projects_done and not only:
         if brain is not None and brain.running and cfg.brain_name not in items:
             items[cfg.brain_name] = {"stage": "wait", "at": now}
         if cfg.brain_name in items:

@@ -82,7 +82,7 @@ def plan_advance_deliveries(views: List[Any], projects: Dict[str, Any], cands: L
     taken = {a.name for a in planned}
     by_proj: Dict[str, List[Dict[str, Any]]] = {}
     for c in cands:
-        if c["project"] not in projects or c["todo"] != "open":
+        if c["project"] not in projects or c["todo"] != "open" or projects[c["project"]].phase == "paused":
             continue
         rec = sent.get(c["id"]) or {}
         if int(rec.get("n") or 0) >= SEND_MAX or now - float(rec.get("at") or 0) < RESEND_SECONDS:

@@ -2212,6 +2212,24 @@ class ShutdownKeepModeTest(unittest.TestCase):
         self.assertEqual(sd["items"]["ncs"]["stage"], "closed")
 
 
+class ShutdownOnlyTest(unittest.TestCase):
+    """`shutdown --only P`: yalnız P'nin oturumu devir alıp durur; diğer proje ve beyin dokunulmaz, kapatma beyin adımı yok."""
+
+    def test_only_closes_selected_project_and_leaves_rest(self):
+        projects = {"ncs": sw.Project(name="ncs"), "vc": sw.Project(name="vc")}
+        brain = _view("degnekci", last_activity=100.0)
+        ncs = _view("ncs", last_activity=100.0)
+        vc = _view("vc", last_activity=100.0)
+        acts, sd, done = sw.plan_shutdown([brain, ncs, vc], projects, {"only": ["ncs"]}, _cfg(), 1000.0)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("handover", "ncs")])
+        self.assertNotIn("vc", sd["items"])
+        ncs2 = _view("ncs", last_activity=1500.0, last_assistant=sw.READY_FOR_HANDOVER)
+        acts, sd, done = sw.plan_shutdown([brain, ncs2, vc], projects, sd, _cfg(), 1600.0)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("stop", "ncs")])
+        self.assertNotIn("degnekci", sd["items"])
+        self.assertTrue(done)
+
+
 class ShutdownBlockersTest(unittest.TestCase):
     """Sessizlik tek başına "iş bitti" değildir: açık varaka işi bekleyen oturum devir almaz."""
 

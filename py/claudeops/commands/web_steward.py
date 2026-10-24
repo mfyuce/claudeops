@@ -2782,7 +2782,8 @@ def passive_scan(sid: str = "default", *, views: Optional[List[sw.SessionView]] 
 
 # ── kontrollü kapatma (`py/cops steward shutdown`) ────────────────────────────
 
-def shutdown_start(sid: str = "default", *, stop_loop: bool = True, modes: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+def shutdown_start(sid: str = "default", *, stop_loop: bool = True, modes: Optional[Dict[str, str]] = None,
+                   only: Optional[List[str]] = None) -> Dict[str, Any]:
     """Kapatmayı başlat: döngüyü kapat (yeni iş/direktif/açılış olmasın) ve `state["shutdown"]` yaz. Adımları döngü her
     tick'te `shutdown_tick` ile ilerletir (kapalı kimlikte de çalışır). Zaten sürüyorsa yeniden başlatmaz."""
     from ..settings import save_settings
@@ -2795,7 +2796,19 @@ def shutdown_start(sid: str = "default", *, stop_loop: bool = True, modes: Optio
         keep = {str(n): "keep" for n, m in (modes or {}).items() if m == "keep"}     # yalnız "keep" anlamlı; gerisi "stop"
         if keep:
             state["shutdown"]["modes"] = keep
+        if only:
+            # Kısmi kapatma: döngü AÇIK kalır, diğer projeler sürer; seçilen projeler `paused` (yeni iş/başlatma/teslim yok).
+            projs = sw.load_projects(ctx.paths)
+            bad = [n for n in only if n not in projs]
+            if bad:
+                state.pop("shutdown", None)
+                return {"ok": False, "error": f"unknown project(s): {', '.join(bad)}"}
+            state["shutdown"]["only"] = sorted(only)
+            state["shutdown"]["prev_phase"] = {n: projs[n].phase for n in only}
+            stop_loop = False
         sw.save_state(state, ctx.paths)
+    for n in (only or []):
+        sw.upsert_project(n, paths=ctx.paths, phase="paused")
     if stop_loop:
         save_settings({"steward": {"enabled": "off"}} if sid == "default" else {"stewards": {sid: {"enabled": "off"}}})
     sw.log_event("shutdown_start", paths=ctx.paths)
@@ -2834,7 +2847,7 @@ def shutdown_tick(sid: str = "default", views: Optional[List[sw.SessionView]] = 
         sd0 = state0.get("shutdown")
         if not sd0 or sd0.get("done"):
             return None
-        if cfg.enabled:    # kapatma başlayınca döngü kapatılmıştı; yeniden açılmışsa (`steward up`) kapatma İPTAL
+        if cfg.enabled and not sd0.get("only"):    # kapatma başlayınca döngü kapatılmıştı; yeniden açılmışsa (`steward up`) kapatma İPTAL
             with sw.steward_lock(paths):
                 state = sw.load_state(paths)
                 state["shutdown"] = dict(sd0, done=time.time(), cancelled=True)
@@ -2879,7 +2892,8 @@ def http_shutdown(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         return {"ok": True, "shutdown": sd, "items": {n: i.get("stage") for n, i in (sd.get("items") or {}).items()},
                 "done": bool(sd.get("done"))}
     raw = data.get("modes")
-    return shutdown_start(sid, modes=raw if isinstance(raw, dict) else None)
+    only = [str(n).strip() for n in (data.get("only") or []) if str(n).strip()]
+    return shutdown_start(sid, modes=raw if isinstance(raw, dict) else None, only=only or None)
 
 
 def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
