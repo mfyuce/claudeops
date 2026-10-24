@@ -106,8 +106,12 @@ def codex_argv(binary: str, cwd: str, model: str, effort: str, prompt: str) -> L
 
 # copilot: yalnız bu salt-okunur komutlar onaysız çalışır; yazma ve yıkıcı/ağ komutları açıkça reddedilir.
 COPILOT_ALLOW_SHELL = ("ls", "grep", "head", "tail", "wc")
-COPILOT_DENY = ("write", "shell(rm)", "shell(mv)", "shell(cp)", "shell(git push)", "shell(git commit)", "shell(curl)", "shell(wget)",
-                "shell(sed)", "shell(find)", "shell(sh)", "shell(bash)", "shell(python)", "shell(python3)", "shell(tee)")
+COPILOT_DENY_SHELL = ("rm", "mv", "cp", "curl", "wget", "sed", "find", "sh", "bash", "zsh", "python", "python3", "tee",
+                      "awk", "perl", "ruby", "node", "xargs", "env", "nc", "ssh", "scp", "dd", "chmod", "chown", "ln", "touch",
+                      "mkdir", "rmdir", "truncate", "git push", "git commit", "git checkout", "git apply", "git reset",
+                      "git clean", "git stash", "git add")
+# Asıl koruma izin listesi (`--allow-tool shell(ls)`...; başsız kipte listede olmayan komut sorulmaz); bu liste ikinci kat.
+COPILOT_DENY = ("write",) + tuple(f"shell({c})" for c in COPILOT_DENY_SHELL)
 
 
 def copilot_argv(binary: str, model: str, effort: str, prompt: str) -> List[str]:
@@ -156,7 +160,29 @@ def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "") -> 
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(rv.agy_settings(cwd, allow), f, indent=2)
     os.replace(tmp, os.path.join(cfg, "settings.json"))
+    _prune_agy_tmp(os.path.join(home, "tmp"))
     return home
+
+
+AGY_TMP_KEEP_SECONDS = 86400
+
+
+def _prune_agy_tmp(tmp: str, now: Optional[float] = None) -> None:
+    """Kafeste `/tmp` salt okunurdur; geçici dosya isteyen araçlar için `TMPDIR=<agy_home>/tmp` (yazılabilir). Agy'nin
+    (ör. testleri koşturarak) biriktirdiği 1 günden eski kalıntılar her kurulumda silinir. Hata yutulur."""
+    os.makedirs(tmp, mode=0o700, exist_ok=True)
+    cut = (time.time() if now is None else now) - AGY_TMP_KEEP_SECONDS
+    try:
+        names = os.listdir(tmp)
+    except OSError:
+        return
+    for n in names:
+        fp = os.path.join(tmp, n)
+        try:
+            if os.path.getmtime(fp) < cut:
+                shutil.rmtree(fp) if os.path.isdir(fp) and not os.path.islink(fp) else os.unlink(fp)
+        except OSError:
+            pass
 
 
 def bwrap_jail(argv: List[str], home: str, bwrap: str) -> List[str]:
@@ -866,6 +892,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             if allow:   # izole HOME: komut izni yalnız salt-okunur liste; günlük/etiket doğrulaması da bu HOME'dan okunur
                 home = agy_home(p.root, cwd, allow)
                 env_extra["HOME"] = home
+                env_extra["TMPDIR"] = os.path.join(home, "tmp")     # kafeste /tmp salt okunur
                 bwrap = shutil.which("bwrap") if getattr(cfg, "review_agy_jail", True) else None
                 if bwrap:    # salt-okunur dosya sistemi kafesi: izin sorusu yok, yazma imkansız (yoksa izin listesi yolu)
                     argv = bwrap_jail(argv, home, bwrap)

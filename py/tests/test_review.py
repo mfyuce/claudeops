@@ -313,8 +313,10 @@ class TestCopilotMode(unittest.TestCase):
         allows = [a[i + 1] for i, x in enumerate(a) if x == "--allow-tool"]
         denies = [a[i + 1] for i, x in enumerate(a) if x == "--deny-tool"]
         self.assertEqual(allows, ["shell(ls)", "shell(grep)", "shell(head)", "shell(tail)", "shell(wc)"])
-        for must in ("write", "shell(rm)", "shell(git push)", "shell(sed)", "shell(find)"):
+        for must in ("write", "shell(rm)", "shell(git push)", "shell(sed)", "shell(find)", "shell(awk)", "shell(perl)",
+                     "shell(xargs)", "shell(env)", "shell(git checkout)", "shell(touch)"):
             self.assertIn(must, denies)
+        self.assertFalse({f"shell({c})" for c in wr.COPILOT_ALLOW_SHELL} & set(denies))     # izin verilen komut reddedilmez
         self.assertEqual(wr.copilot_argv("b", "m", "", "P").count("--reasoning-effort"), 0)
 
     def test_targets_and_effort_path(self):

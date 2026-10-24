@@ -2448,7 +2448,7 @@ def _deliver_lesson(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Pr
 
 def _lessons(cfg: sw.Config) -> List[Tuple[str, str]]:
     """Tüm reviewer kimliklerinin `ucli-lessons.md` satırları (proje bu kimliğin değilse planlayıcı zaten bir şey yapmaz)."""
-    if not cfg.lessons_project:
+    if not sl.target_project(cfg.lessons_project):
         return []
     try:
         return sl.read_lessons(sw.paths_for(sid).root for sid in sorted(sw.reviewer_ids()))
@@ -2586,7 +2586,7 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
                 actions = actions + job_actions     # iş sonucu iletimi (varaka kuyruğu): `plan_tick`e DOKUNMAZ, aynı observe/_target yolundan
                 lesson_actions, new_state = sl.plan_lesson_deliveries(views, projects, _lessons(cfg), new_state, t0,
-                                                                      cfg.lessons_project, actions, world)
+                                                                      sl.target_project(cfg.lessons_project), actions, world)
                 actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 sw.save_state(new_state, paths)

@@ -20,6 +20,13 @@ FAIL_MAX = 5            # bir ders bu kadar başarısız iletimden sonra bırak�
 LINE_CHARS = 700        # mesajdaki ders satırı üst sınırı
 
 
+def target_project(value: Any) -> str:
+    """`lessons_project` ayarından hedef proje adı; kapalı = "". Ayarlarda boş değer anahtarı SİLER (varsayılana döner), bu
+    yüzden kapatmak için `off` (ya da `none`/`-`) yazılır."""
+    v = str(value or "").strip()
+    return "" if v.lower() in ("", "off", "none", "-", "kapalı") else v
+
+
 def line_hash(line: str) -> str:
     return hashlib.sha1(" ".join(str(line).split()).encode("utf-8")).hexdigest()[:12]
 

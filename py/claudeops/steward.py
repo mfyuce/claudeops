@@ -300,7 +300,7 @@ class Config:
     review_max_compactions: int = 24   # Evren: `--max-compactions` (ucli varsayılanı 8)
     review_agy_allow: str = ""         # agy: izole HOME'da izinli salt-okunur komutlar ("" = ls,grep,head,tail,wc; "off" = izolasyon kapalı)
     review_agy_jail: bool = True       # agy: `bwrap` salt-okunur kafes + --dangerously-skip-permissions (bwrap yoksa/False ise izin listesi)
-    lessons_project: str = "cli"       # ucli dersleri (reviewer `ucli-lessons.md`) bu projenin çalışan oturumuna direktifle iletilir ("" = kapalı); projeyi bu kimlik yönetiyorsa
+    lessons_project: str = "cli"       # ucli dersleri (reviewer `ucli-lessons.md`) bu projenin çalışan oturumuna direktifle iletilir (`off` = kapalı; boş değer ayarda anahtarı siler); projeyi bu kimlik yönetiyorsa
     review_max_tool_calls: int = 14    # Evren: `--max-tool-calls` (ucli varsayılanı 64; ölçüm: 14 ile 5 tur/297-416 sn, sınırsız 1453 sn)
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
     review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)

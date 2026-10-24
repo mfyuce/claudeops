@@ -20,4 +20,4 @@ SESSIONS_DIR = os.path.join(CLAUDE_DIR, "sessions")      # <pid>.json (gecikmeli
 PROJECTS_DIR = os.path.join(CLAUDE_DIR, "projects")      # <encoded-cwd>/<sid>.jsonl
 CONFIG_JSON = os.path.join(HOME, ".claude.json")         # bozulursa resume-hang
 
-GUARD_LOCK = "/tmp/claudeops/guard.lock"
+GUARD_LOCK = f"/tmp/claudeops-{os.getuid()}/guard.lock"   # kullanıcıya özel: çok kullanıcılı makinede ikinci kullanıcı PermissionError almaz

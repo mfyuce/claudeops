@@ -92,7 +92,9 @@ class DeliverTest(_Tmp):
 
     def test_lessons_reads_reviewer_workspaces_only_when_enabled(self):
         cfg = sw.Config(enabled=True)
-        cfg.lessons_project = ""
+        cfg.lessons_project = "off"
+        self.assertEqual(sl.target_project("Off"), "")
+        self.assertEqual(sl.target_project(" cli "), "cli")
         self.assertEqual(web_steward._lessons(cfg), [])
 
 

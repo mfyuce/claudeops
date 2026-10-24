@@ -248,6 +248,20 @@ class TestAgy(Base):
             self.agy()
         self.assertNotIn("--dangerously-skip-permissions", FakeProc.instances[0].argv)
 
+    def test_tmpdir_is_writable_home_tmp_and_stale_entries_pruned(self):
+        self.agy()
+        env = FakeProc.instances[0].kw["env"]
+        self.assertEqual(env["TMPDIR"], os.path.join(env["HOME"], "tmp"))
+        self.assertTrue(os.path.isdir(env["TMPDIR"]))
+        old, new = os.path.join(env["TMPDIR"], "tmpold"), os.path.join(env["TMPDIR"], "tmpnew")
+        for d in (old, new):
+            os.makedirs(os.path.join(d, "x"))
+        t = time.time() - 3 * 86400
+        os.utime(old, (t, t))
+        wr._prune_agy_tmp(env["TMPDIR"])
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.isdir(new))
+
     def test_allow_override_and_off(self):
         self.cfg.review_agy_allow = "ls, grep ,bad name;rm"
         self.agy()

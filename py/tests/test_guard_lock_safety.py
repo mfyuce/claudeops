@@ -17,6 +17,10 @@ class GuardLockSafetyTest(unittest.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
+    def test_default_lock_path_is_per_user(self):
+        from claudeops import paths
+        self.assertIn(f"claudeops-{os.getuid()}", paths.GUARD_LOCK)     # çok kullanıcılı makinede ikinci kullanıcı PermissionError almaz
+
     def test_normal_lock_and_reentry_timeout(self):
         with guard.guard_lock(timeout=1):
             self.assertEqual(os.stat(self.lock).st_mode & 0o777, 0o600)
