@@ -712,6 +712,8 @@ export const getReviewFindings = (sid: string, project = "", state = ""): Promis
   apiGet<SimpleResult & { findings?: ReviewFinding[] }>(`/api/steward/review/findings${rvQs(sid, { project, state })}`);
 export const apiReviewPool = (sid: string, action: "add" | "remove" | "enable" | "disable", project: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/pool", { steward: sid, action, project });
+export const apiReviewWhere = (sid: string, project: string, where: string, local_path = ""): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/review/where", { steward: sid, project, where, local_path });
 export const apiReviewRun = (sid: string, project: string, mode: string, model: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/run", { steward: sid, project, mode, model });
 export const apiReviewCancel = (sid: string, project = ""): Promise<SimpleResult> =>

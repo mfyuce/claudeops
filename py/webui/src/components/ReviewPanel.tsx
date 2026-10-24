@@ -14,6 +14,7 @@ import {
   apiStewardConfig,
   apiReviewRun,
   apiReviewVerify,
+  apiReviewWhere,
   getReviewFile,
   getReviewFindings,
   getReviewRuns,
@@ -22,7 +23,7 @@ import {
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { showToast } from "../state/toast";
-import type { ReviewFinding, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
+import type { ReviewFinding, ReviewRemoteProject, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
 import { ReviewChatModal } from "./ReviewChatModal";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -43,6 +44,44 @@ function when(ts: number | undefined, never: string): string {
 }
 
 const card: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 8, padding: ".5rem .7rem", background: "var(--panel)" };
+
+function WhereRow({
+  rp,
+  busy,
+  t,
+  onApply,
+}: {
+  rp: ReviewRemoteProject;
+  busy: boolean;
+  t: ReturnType<typeof useLang>["t"];
+  onApply: (project: string, where: string, path: string) => void;
+}) {
+  const [where, setWhere] = useState(rp.where);
+  const [path, setPath] = useState(rp.local_path);
+  return (
+    <div className="opts">
+      <span style={{ minWidth: "9rem" }}>
+        <b>{rp.project}</b> <span className="opts-hint">@{rp.host}</span>
+      </span>
+      <select value={where} disabled={busy} aria-label={rp.project} onChange={(e) => setWhere(e.target.value)}>
+        <option value="ask">{t.rvWhereAsk}</option>
+        <option value="local">{t.rvWhereLocal}</option>
+        <option value="remote">{t.rvWhereRemote}</option>
+        <option value="off">{t.rvWhereOff}</option>
+      </select>
+      {where === "local" && (
+        <input type="text" value={path} placeholder={t.rvWhereLocalPath} style={{ flex: 1, minWidth: "10rem" }} onChange={(e) => setPath(e.target.value)} />
+      )}
+      <button
+        type="button"
+        disabled={busy || (where === rp.where && (where !== "local" || path === rp.local_path))}
+        onClick={() => onApply(rp.project, where, where === "local" ? path : "")}
+      >
+        {t.rvWhereApply}
+      </button>
+    </div>
+  );
+}
 
 export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: string }) {
   const { t } = useLang();
@@ -204,6 +243,14 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {st && (st.remote_projects ?? []).length > 0 && (
+        <div className="opts" style={{ flexDirection: "column", alignItems: "stretch" }}>
+          <b>{t.rvWhereTitle}</b>
+          {(st.remote_projects ?? []).map((rp) => (
+            <WhereRow key={`${rp.project}:${rp.where}:${rp.local_path}`} rp={rp} busy={busy} t={t} onApply={(pr, w, lp) => void act(() => apiReviewWhere(sid, pr, w, lp))} />
+          ))}
         </div>
       )}
       <div className="opts">

@@ -141,6 +141,22 @@ class RemoteFlowTest(NoRealReviewMixin, _Engine):
     def cfg(self):
         return ws.steward_config("rev")
 
+    def test_set_where_from_panel(self):
+        self.assertEqual(wr.remote_where_rows(), [{"project": "far", "host": "ulak_31", "where": "ask", "local_path": ""}])
+        self.assertFalse(wr.set_where("far", "bogus")["ok"])
+        self.assertFalse(wr.set_where("nope", "remote")["ok"])
+        self.assertFalse(wr.set_where("far", "local", "/yok/yol")["ok"])                       # git deposu değil
+        self.assertTrue(wr.set_where("far", "remote")["ok"])
+        self.assertEqual(sw.load_projects()["far"].review_where, "remote")
+        with tempfile.TemporaryDirectory() as d:
+            _work, clone = make_clone(d)
+            self.assertTrue(wr.set_where("far", "local", clone)["ok"])
+            pj = sw.load_projects()["far"]
+            self.assertEqual((pj.review_where, pj.local_path), ("local", clone))
+            self.assertEqual(wr.review_state(self.cfg())["remote_projects"][0]["where"], "local")
+        self.assertTrue(wr.set_where("far", "off")["ok"])
+        self.assertIn("not reviewed", wr.remote_block_reason("far"))
+
     def test_unknown_choice_blocks_review_and_asks_the_owner_once(self):
         self.assertIn("not reviewed", wr.remote_block_reason("far"))
         self.assertFalse(wr.pool_action(self.cfg(), "add", "far")["ok"])

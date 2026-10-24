@@ -4521,6 +4521,13 @@ def http_review_pool(data: Dict[str, Any], sid: str = "default") -> Dict[str, An
     return r
 
 
+def http_review_where(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Uzak projenin review yeri: ask|local|remote|off (+ `local_path`); yalnız insan."""
+    if (d := _human_only(data, "change a project's review location")):
+        return d
+    return web_review.set_where(str(data.get("project") or ""), str(data.get("where") or ""), str(data.get("local_path") or ""))
+
+
 def http_review_run(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if (d := _human_only(data, "start a review")):
         return d
@@ -4804,6 +4811,7 @@ web_review.set_notifier(lambda sid, q: _notify(steward_config(sid), f"{_ask_pref
 
 POST_PATHS = {
     "/api/steward/review/pool": http_review_pool,
+    "/api/steward/review/where": http_review_where,
     "/api/steward/review/run": http_review_run,
     "/api/steward/review/cancel": http_review_cancel,
     "/api/steward/review/verify": http_review_verify,

@@ -690,6 +690,13 @@ export interface Strings {
   rvComplete: string;
   rvNever: string;
   rvPoolAdd: string;
+  rvWhereTitle: string;
+  rvWhereLocalPath: string;
+  rvWhereApply: string;
+  rvWhereAsk: string;
+  rvWhereLocal: string;
+  rvWhereRemote: string;
+  rvWhereOff: string;
   rvAddBtn: string;
   rvRemove: string;
   rvRunTitle: string;
@@ -1509,6 +1516,13 @@ export const STRINGS: Record<Lang, Strings> = {
     rvComplete: "30 gün tamam",
     rvNever: "hiç",
     rvPoolAdd: "Projeyi havuza ekle",
+    rvWhereTitle: "Uzak projelerde review yeri",
+    rvWhereLocalPath: "yerel kopya yolu (mutlak, git)",
+    rvWhereApply: "Uygula",
+    rvWhereAsk: "sorulacak",
+    rvWhereLocal: "yerel kopya",
+    rvWhereRemote: "uzakta",
+    rvWhereOff: "kapalı",
     rvAddBtn: "Ekle",
     rvRemove: "Çıkar",
     rvRunTitle: "Elle çalıştır",
@@ -2329,6 +2343,13 @@ export const STRINGS: Record<Lang, Strings> = {
     rvComplete: "30d complete",
     rvNever: "never",
     rvPoolAdd: "Add project to pool",
+    rvWhereTitle: "Where remote projects are reviewed",
+    rvWhereLocalPath: "local copy path (absolute, git)",
+    rvWhereApply: "Apply",
+    rvWhereAsk: "ask",
+    rvWhereLocal: "local copy",
+    rvWhereRemote: "on the host",
+    rvWhereOff: "off",
     rvAddBtn: "Add",
     rvRemove: "Remove",
     rvRunTitle: "Run now",

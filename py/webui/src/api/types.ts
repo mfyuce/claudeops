@@ -1041,8 +1041,9 @@ export interface ReviewPoolRow {
   project: string; enabled: boolean; source: string; added_at?: number; removed_at?: number | null;
   complete: boolean; pairs: Record<string, ReviewPair | null>;
 }
+export interface ReviewRemoteProject { project: string; host: string; where: string; local_path: string }
 export interface ReviewStateResult {
-  ok: boolean; error?: string; enabled: boolean; role: string; targets: ReviewTarget[]; pool: ReviewPoolRow[];
+  ok: boolean; remote_projects?: ReviewRemoteProject[]; error?: string; enabled: boolean; role: string; targets: ReviewTarget[]; pool: ReviewPoolRow[];
   running: string[]; runs: Array<{ pair: string; status: string; at?: number; file?: string }>;
   min_gap_minutes: number; timeout_minutes: number; auto_verify?: boolean; auto_approve?: number;
 }

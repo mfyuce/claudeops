@@ -1562,6 +1562,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
                      "complete": rv.project_complete(hist, name, targets, t),
                      "pairs": {tg.key: hist["pairs"].get(rv.pair_key(name, tg)) for tg in targets}})
     return {"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
+            "remote_projects": remote_where_rows(),
             "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key, "effort": x.effort} for x in targets],
             "pool": rows, "running": running_keys(cfg.sid),
             "runs": list(hist.get("runs") or [])[-50:],
@@ -1598,6 +1599,40 @@ def list_findings(cfg: Any, project: str = "", state: str = "") -> Dict[str, Any
             and (not project or v.get("project") == project) and (not state or v.get("state") == state)]
     rows.sort(key=lambda r: (str(r.get("project")), str(r.get("review_file")), str(r.get("ref"))))
     return {"ok": True, "findings": rows}
+
+
+def remote_where_rows() -> List[Dict[str, Any]]:
+    """Panel: uzak projeler ve sahibin `review_where` kararı: [{project, host, where, local_path}] (ada göre)."""
+    try:
+        rp = remote_projects()
+    except Exception:
+        return []
+    return [{"project": n, "host": pj.host, "where": pj.review_where or "ask", "local_path": pj.local_path}
+            for n, (_sid, pj) in sorted(rp.items())]
+
+
+def set_where(project: str, where: str, local_path: str = "") -> Dict[str, Any]:
+    """Panel/API: uzak projenin `review_where` kararını (ask|local|remote|off) elle ayarla (soruyu beklemeden). `local`
+    geçerli bir git deposu yolu ister. Yerel proje ya da bilinmeyen ad reddedilir. Sahip kimliğin dosyasına yazılır."""
+    project = str(project or "").strip()
+    where = str(where or "").strip()
+    if where not in ("ask", "local", "remote", "off"):
+        return {"ok": False, "error": "where must be ask|local|remote|off"}
+    ent = remote_projects().get(project)
+    if ent is None:
+        return {"ok": False, "error": f"not a remote project: {project}"}
+    fields: Dict[str, Any] = {"review_where": where}
+    if where == "local":
+        path = os.path.expanduser(str(local_path or ent[1].local_path or "").strip())
+        if not os.path.isabs(path) or not rr.is_git_dir(path):
+            return {"ok": False, "error": "local requires an absolute path to a git repository"}
+        fields["local_path"] = path
+    try:
+        sw.upsert_project(project, paths=sw.paths_for(ent[0]), **fields)
+    except Exception as e:
+        return {"ok": False, "error": _tail(f"{type(e).__name__}: {e}")}
+    sw.log_event("review_where", paths=sw.paths_for(ent[0]), project=project, where=where, source="ui")
+    return {"ok": True, "project": project, "where": where, "local_path": fields.get("local_path", ent[1].local_path)}
 
 
 def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None) -> Dict[str, Any]:
