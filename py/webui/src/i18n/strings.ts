@@ -96,6 +96,10 @@ export interface Strings {
   desktopDesc: string;
   desktopStartBtn: string;
   desktopStopBtn: string;
+  audioOnBtn: string;
+  audioOffBtn: string;
+  audioHint: string;
+  audioError: string;
   desktopStarting: string;
   desktopStopping: string;
   desktopConnecting: string;
@@ -805,6 +809,10 @@ export const STRINGS: Record<Lang, Strings> = {
     desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
     desktopStartBtn: "Başlat",
     desktopStopBtn: "Durdur",
+    audioOnBtn: "Sesi aç",
+    audioOffBtn: "Sesi kapat",
+    audioHint: "Bilgisayarın çıkış sesi (kulaklık/hoparlör) canlı akar; gecikme 1-3 sn. Kapatınca akış durur.",
+    audioError: "Ses akışı açılamadı (araç eksik, çıkış yok ya da çok dinleyici).",
     desktopStarting: "başlatılıyor… (ilk seferde derleme birkaç saniye sürebilir)",
     desktopStopping: "durduruluyor…",
     desktopConnecting: "bağlanıyor…",
@@ -1621,6 +1629,10 @@ export const STRINGS: Record<Lang, Strings> = {
     desktopDesc: "Watch the machine's screen live (2 fps). Remember to stop it — it captures the screen continuously while running.",
     desktopStartBtn: "Start",
     desktopStopBtn: "Stop",
+    audioOnBtn: "Sound on",
+    audioOffBtn: "Sound off",
+    audioHint: "The computer's output audio (headset/speakers) streams live; 1-3 s delay. Turning it off stops the stream.",
+    audioError: "Could not open the audio stream (missing tool, no output, or too many listeners).",
     desktopStarting: "starting… (first run may take a few seconds to compile)",
     desktopStopping: "stopping…",
     desktopConnecting: "connecting…",

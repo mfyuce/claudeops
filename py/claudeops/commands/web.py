@@ -62,6 +62,7 @@ from .. import files as files_mod
 from .. import mirrors
 from .. import instances as inst_mod
 from .. import model_freshness
+from .. import audio_stream
 from .. import remote_desktop
 from .. import routing as routing_mod
 from ..session import Session
@@ -4037,6 +4038,12 @@ class _Handler(BaseHTTPRequestHandler):
             # web_ws.py web.py'nin business logic'ine geri-import ETMESİN
             # (plan: "diff additive kalsın").
             web_ws.handle_ws(self, _status_payload)
+            return
+        elif path == "/api/audio/state":
+            self._json(audio_stream.status())
+            return
+        elif path == "/api/audio/live.mp3":
+            audio_stream.stream(self)       # yerel çıkış sesi MP3 akışı (Masaüstü sekmesi "Ses"); kendi yanıtını yazar
             return
         elif path == "/ws/desktop":
             # `web_ws.py`'nin JSON-broadcast WS'inden TAMAMEN AYRI bir yol —

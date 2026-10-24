@@ -52,7 +52,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
-import { apiDesktopStart, apiDesktopStop, TOKEN } from "../api/client";
+import { apiDesktopStart, apiDesktopStop, TOKEN, withToken } from "../api/client";
 import { callAction } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -155,6 +155,8 @@ export function DesktopTab() {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
   const [busy, setBusy] = useState<"start" | "stop" | null>(null);
+  const [audioOn, setAudioOn] = useState(false);
+  const [audioError, setAudioError] = useState(false);
   const [controlWanted, setControlWanted] = useState(false);
   const [showCursor, setShowCursor] = useState(true);
 
@@ -281,6 +283,25 @@ export function DesktopTab() {
   return (
     <div>
       <div className="opts-hint">{t.desktopDesc}</div>
+      <div style={{ margin: ".5rem 0", display: "flex", gap: ".5rem", flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          type="button"
+          className={audioOn ? "stop" : "start"}
+          onClick={() => { setAudioError(false); setAudioOn((v) => !v); }}
+        >
+          {audioOn ? t.audioOffBtn : t.audioOnBtn}
+        </button>
+        {audioOn && (
+          <audio
+            autoPlay
+            controls
+            src={withToken("/api/audio/live.mp3")}
+            onError={() => { setAudioOn(false); setAudioError(true); }}
+            style={{ height: "2rem" }}
+          />
+        )}
+        <span className="opts-hint">{audioError ? t.audioError : t.audioHint}</span>
+      </div>
       <div style={{ margin: ".5rem 0", display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
         {!running ? (
           <button type="button" className="start" disabled={busy !== null} onClick={() => void handleStart()}>
