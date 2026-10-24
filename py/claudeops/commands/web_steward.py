@@ -4728,6 +4728,13 @@ class RemoteReviewDriver:
                 _remote_sleep(REMOTE_READY_POLL_SECONDS)
             _fresh, r = _remote_running_row(self.host, self.session)
             if r is not None and r.get("busy") is False:
+                # ucli `--session rvw_<proje>` önceki koşunun konuşmasını diskten DEVRALIR (`fresh` bunu sıfırlamaz; canlı
+                # denemede 146 KiB eski bağlam taşındı): `/clear` bellek içi geçmişi VE oturum dosyasını siler.
+                clr = _remote_post(self.host, "/api/term/input", {"name": self.session, "text": "/clear", "exact": True},
+                                   REMOTE_INPUT_TIMEOUT_SECONDS)
+                if not clr.get("ok"):
+                    return {"ok": False, "error": f"clear: {clr.get('error') or clr.get('code') or 'failed'}"}
+                _remote_sleep(REMOTE_READY_POLL_SECONDS)
                 sw.log_event("review_remote_started", paths=self._owner(), project=self.project, host=self.host, session=self.session)
                 return {"ok": True}
         return {"ok": False, "error": "review session did not become ready"}

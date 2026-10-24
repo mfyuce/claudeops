@@ -135,7 +135,8 @@ class DriverTest(unittest.TestCase):
     def test_start_registers_distinct_session_then_starts_read_only_fresh_ucli(self):
         res = self.drv.start("deepseek-v4.1-flash", "high")
         self.assertTrue(res["ok"], res)
-        self.assertEqual([p for p, _ in self.posts], ["/api/register", "/api/start"])
+        self.assertEqual([p for p, _ in self.posts], ["/api/register", "/api/start", "/api/term/input"])
+        self.assertEqual(self.posts[2][1]["text"], "/clear")                      # önceki koşunun konuşması devralınmasın
         reg, st = self.posts[0][1], self.posts[1][1]
         self.assertEqual((reg["name"], reg["cwd"], reg["cli"]), ("rvw_far", "/srv/far", "ucli"))
         self.assertEqual((st["name"], st["fresh"], st["cli"], st["permission_mode"], st["effort"]),
@@ -152,7 +153,7 @@ class DriverTest(unittest.TestCase):
         with mock.patch.object(ws, "_remote_wait_closed", closed):
             res = self.drv.start("m", "medium")
         self.assertTrue(res["ok"], res)
-        self.assertEqual([p for p, _ in self.posts], ["/api/stop", "/api/start"])
+        self.assertEqual([p for p, _ in self.posts], ["/api/stop", "/api/start", "/api/term/input"])
         self.assertTrue(state["closed"])
         self.assertTrue(self.posts[0][1]["exact"])
 
