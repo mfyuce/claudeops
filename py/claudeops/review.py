@@ -38,10 +38,20 @@ class ReviewTarget:
     mode: str      # agy | evren | claude | codex | copilot
     model: str     # sağlayıcıya verilen gerçek model kimliği
     slug: str      # yol/anahtar güvenli ad (`slug_model`)
+    effort: str = ""   # hedefe özel effort (`model@effort` biçimi); boşsa `review_<mode>_effort` ayarı
+
+    @property
+    def pslug(self) -> str:
+        """Çift anahtarındaki ad: aynı model birden çok effort ile ayrı çift olur (`slug@effort`)."""
+        return f"{self.slug}@{slug_model(self.effort)}" if self.effort else self.slug
 
     @property
     def key(self) -> str:
-        return f"{self.mode}/{self.slug}"
+        return f"{self.mode}/{self.pslug}"
+
+    @property
+    def spec(self) -> str:
+        return f"{self.model}@{self.effort}" if self.effort else self.model
 
 
 def slug_model(model: str) -> str:
@@ -49,6 +59,12 @@ def slug_model(model: str) -> str:
     s = re.sub(r"[^A-Za-z0-9._-]+", "-", str(model or "").strip()).strip("-.")
     s = re.sub(r"-{2,}", "-", s)
     return s or "model"
+
+
+def split_spec(spec: Any) -> Tuple[str, str]:
+    """`model@effort` -> (model, effort); `@` yoksa effort boş. Model kimliklerinde `@` bulunmaz."""
+    m, _, e = str(spec or "").strip().partition("@")
+    return m.strip(), e.strip()
 
 
 def _split_models(text: Any) -> List[str]:
@@ -78,8 +94,11 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
                 out.append(t)
     for mode, attr in (("claude", "review_claude_models"), ("codex", "review_codex_models"),
                        ("copilot", "review_copilot_models")):
-        for m in _split_models(getattr(cfg, attr, "")):
-            t = ReviewTarget(mode, m, slug_model(m))
+        for spec in _split_models(getattr(cfg, attr, "")):
+            m, eff = split_spec(spec)         # `claude-haiku-5-5@low,claude-haiku-5-5@high`: aynı model, iki ayrı çift
+            if not m:
+                continue
+            t = ReviewTarget(mode, m, slug_model(m), eff)
             if t.key not in seen:
                 seen.add(t.key)
                 out.append(t)
@@ -102,7 +121,7 @@ def review_title(project: str, mode: str, model: str, ts: Any) -> str:
 
 
 def pair_key(proj: str, t: ReviewTarget) -> str:
-    return f"{proj}|{t.mode}/{t.slug}"
+    return f"{proj}|{t.mode}/{t.pslug}"
 
 
 # ── planlayıcı ────────────────────────────────────────────────────────────────
@@ -352,10 +371,12 @@ def agy_label_ok(log_text: str, model: str) -> Tuple[bool, str]:
 
 # ── yollar ────────────────────────────────────────────────────────────────────
 
-def effort_for(cfg: Any, mode: str) -> str:
+def effort_for(cfg: Any, mode: str, target: Optional["ReviewTarget"] = None) -> str:
     """Yol katmanı için effort adı: claude/codex/copilot `review_<mode>_effort`, diğerleri (agy: kademe model adında, evren:
-    bayrak yok) `default`."""
-    v = getattr(cfg, f"review_{mode}_effort", "") if mode in ("claude", "codex", "copilot") else ""
+    bayrak yok) `default`. Hedefte `model@effort` ile effort verilmişse o geçer."""
+    v = getattr(target, "effort", "") if target is not None else ""
+    if not str(v or "").strip():
+        v = getattr(cfg, f"review_{mode}_effort", "") if mode in ("claude", "codex", "copilot") else ""
     return slug_model(v) if str(v or "").strip() else "default"
 
 
@@ -453,7 +474,10 @@ def update_pair(paths: Any, proj: str, t: ReviewTarget, **fields: Any) -> Dict[s
         key = pair_key(proj, t)
         rec = dict(hist["pairs"].get(key) or {})
         if fields.get("status") == "running" and "attempts" not in fields:
-            fields["attempts"] = int(rec.get("attempts") or 0) + 1
+            # önceki pencerenin sonucu (done ya da pencere dışı) sayaca taşınmaz: yeni pencere 1. denemeyle başlar
+            stale = rec.get("status") == "done" or (
+                float(fields.get("started_at") or 0) - float(rec.get("started_at") or 0) >= WINDOW_SECONDS)
+            fields["attempts"] = (0 if stale else int(rec.get("attempts") or 0)) + 1
         rec.update(fields)
         hist["pairs"][key] = rec
         if fields.get("status") in ("done", "partial", "error", "model_fallback"):

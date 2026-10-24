@@ -233,6 +233,9 @@ class TestPathsAndStores(unittest.TestCase):
         h = rv.load_history(self.paths)
         self.assertEqual(h["pairs"]["a|agy/gemini-3-flash"]["status"], "done")
         self.assertEqual(len(h["runs"]), 1)
+        # R-4: done sonrası yeni pencerede deneme sayacı 1'den başlar
+        r = rv.update_pair(self.paths, "a", T1, status="running", started_at=NOW + 40 * DAY)
+        self.assertEqual(r["attempts"], 1)
         with self.assertRaises(ValueError):
             rv.update_pair(self.paths, "a", T1, status="bogus")
         for i in range(250):
@@ -268,8 +271,6 @@ class TestConfigRole(unittest.TestCase):
             self.assertEqual(settings.steward_config().role, "steward")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestClaudeArgv(unittest.TestCase):
@@ -352,3 +353,24 @@ class TestDsnRedact(unittest.TestCase):
             lg.close()
             txt = open(os.path.join(d, "a.io.jsonl")).read()
             self.assertNotIn("s3cretpw", txt)
+
+
+class TestEffortPairs(unittest.TestCase):
+    def test_same_model_two_efforts_are_separate_pairs(self):
+        class C:
+            review_claude_models = "claude-haiku-5-5@low, claude-haiku-5-5@high, claude-sonnet-5-5"
+            review_claude_effort = "medium"
+        ts = rv.targets_from_config(C, [], [])
+        self.assertEqual([x.key for x in ts], ["claude/claude-haiku-5-5@low", "claude/claude-haiku-5-5@high", "claude/claude-sonnet-5-5"])
+        self.assertEqual({x.model for x in ts[:2]}, {"claude-haiku-5-5"})
+        self.assertEqual(len({rv.pair_key("p", x) for x in ts}), 3)
+        self.assertEqual(rv.effort_for(C, "claude", ts[0]), "low")
+        self.assertEqual(rv.effort_for(C, "claude", ts[2]), "medium")
+        self.assertTrue(rv.review_path("/r", "p", ts[1], "20261024101500", "high").endswith(
+            "/p/claude/claude-haiku-5-5/high/20261024101500.md"))
+        self.assertEqual(rv.split_spec("m@x"), ("m", "x"))
+        self.assertEqual(rv.split_spec("m"), ("m", ""))
+
+
+if __name__ == "__main__":
+    unittest.main()

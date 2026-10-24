@@ -184,12 +184,20 @@ def agy_argv(binary: str, model: str, prompt: str, provider: Any) -> List[str]:
     return argv + ["--mode", "plan"]
 
 
-def _first_new_agy_log(log_dir: str, since: float) -> str:
-    """Koşu BAŞLANGICINDAN (mtime >= since) yeni ilk `cli-*.log` içeriği; yoksa ""."""
+def _agy_log_names(log_dir: str) -> frozenset:
+    try:
+        return frozenset(n for n in os.listdir(log_dir) if n.startswith("cli-") and n.endswith(".log"))
+    except OSError:
+        return frozenset()
+
+
+def _first_new_agy_log(log_dir: str, since: float, exclude: Any = ()) -> str:
+    """Koşu BAŞLANGICINDAN (mtime >= since) yeni ilk `cli-*.log` içeriği; yoksa "". `exclude`: koşu öncesi var olan
+    günlük adları (hâlâ yazılan eski koşunun günlüğü yeni sanılmasın)."""
     try:
         cands = []
         for n in os.listdir(log_dir):
-            if n.startswith("cli-") and n.endswith(".log"):
+            if n.startswith("cli-") and n.endswith(".log") and n not in exclude:
                 fp = os.path.join(log_dir, n)
                 mt = os.path.getmtime(fp)
                 if mt >= since - 1.0:
@@ -609,6 +617,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
              cwd: str, path: str, started: float, popen: Callable, agy_log_dir: str, now: Callable[[], float]) -> None:
     key = job.key
     live = IoLog(io_path_for(path), now)
+    agy_before = _agy_log_names(agy_log_dir) if target.mode == "agy" else frozenset()
     if job.prompt:
         live.event("user", job.prompt, "prompt")
     try:
@@ -709,7 +718,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         elif target.mode == "evren" and status in ("error", "partial") and (timed_out or not text.strip()):
             _write_lesson(sw._pp(paths), project, target, status, error)
         if target.mode == "agy" and status in ("done", "partial"):
-            ok, seen = rv.agy_label_ok(_first_new_agy_log(agy_log_dir, started), target.model)
+            ok, seen = rv.agy_label_ok(_first_new_agy_log(agy_log_dir, started, agy_before), target.model)
             fields["label_seen"] = seen
             if not ok:
                 # dosya saklanır ama done sayılmaz: agy planda olmayan modeli sessizce başka modele düşürür
@@ -810,7 +819,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                 if sf(binary, flag):
                     budget += [flag, str(max(1, int(getattr(cfg, attr, dflt) or dflt)))]
             create_dir = ""
-            rpath = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode))
+            rpath = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode, target))
             os.makedirs(os.path.dirname(rpath), exist_ok=True)
             if sf(binary, "--usage-log"):           # token ekonomisi ölçümü: istek başına sayılar (istem/cevap/araç sonucu YOK)
                 budget += ["--usage-log", rpath[:-3] + ".usage.jsonl"]
@@ -835,14 +844,14 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                 with open(cj, "w") as f:
                     json.dump({"hasCompletedOnboarding": True, "theme": "dark",
                                "projects": {cwd: {"hasTrustDialogAccepted": True}}}, f)
-            argv = claude_argv(resolved_binary("claude"), target.model, str(getattr(cfg, "review_claude_effort", "low") or ""), prompt)
+            argv = claude_argv(resolved_binary("claude"), target.model, str(target.effort or getattr(cfg, "review_claude_effort", "low") or ""), prompt)
             env_extra.update(ANTHROPIC_API_KEY=key_val, CLAUDE_CONFIG_DIR=cdir, DISABLE_AUTOUPDATER="1")
         elif target.mode == "codex":
             from ..settings import resolved_binary
-            argv = codex_argv(resolved_binary("codex"), cwd, target.model, str(getattr(cfg, "review_codex_effort", "low") or ""), prompt)
+            argv = codex_argv(resolved_binary("codex"), cwd, target.model, str(target.effort or getattr(cfg, "review_codex_effort", "low") or ""), prompt)
         elif target.mode == "copilot":
             from ..settings import resolved_binary
-            argv = copilot_argv(resolved_binary("copilot"), target.model, str(getattr(cfg, "review_copilot_effort", "low") or ""), prompt)
+            argv = copilot_argv(resolved_binary("copilot"), target.model, str(target.effort or getattr(cfg, "review_copilot_effort", "low") or ""), prompt)
         elif target.mode == "agy":
             from ..providers.agy_provider import AgyProvider
             from ..settings import resolved_binary
@@ -869,7 +878,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
         job.prompt = prompt
         with _JOBS_LOCK:
             _JOBS[key] = job
-        path = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode))
+        path = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode, target))
         rv.update_pair(p, project, target, io_file=io_path_for(path))
         th = threading.Thread(target=_execute, daemon=True, name=f"review-{key}",
                               args=(job, p, cfg, project, target, argv, clean_env(env_extra), cwd, path, t0, popen,
@@ -1183,10 +1192,11 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
     if mode or model:
         if mode not in rv.MODES or not model:
             return {"ok": False, "error": "mode must be agy|evren|claude|codex|copilot and model is required"}
-        known = [x for x in targets if x.mode == mode and x.model == model]
+        mname, meff = rv.split_spec(model)    # `model@effort`: aynı modelin ayrı effort çifti
+        known = [x for x in targets if x.mode == mode and x.model == mname and (not meff or x.effort == meff)]
         if targets and not known:
             return {"ok": False, "error": f"unknown target: {mode}/{model}"}
-        target = known[0] if known else rv.ReviewTarget(mode, model, rv.slug_model(model))
+        target = known[0] if known else rv.ReviewTarget(mode, mname, rv.slug_model(mname), meff)
     else:
         hist = rv.load_history(p)
         pool = {"projects": {project: {"enabled": True}}}

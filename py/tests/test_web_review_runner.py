@@ -268,11 +268,15 @@ class TestAgy(Base):
     def agy(self, target=AGY, label="gemini-3-flash-high", models=None, **kw):
         log = os.path.join(self.logdir, "cli-1.log")
         t0 = time.time()
-        if label is not None:
-            with open(log, "w") as f:
-                f.write(f"x Propagating selected model override foo label={label}\n")
-        os.utime(log, (t0 + 5, t0 + 5)) if label is not None else None
-        return self.ev(target=target, popen=self.popen(out="## R-1 | P3 | t | a:1\nok"), agy_bin="/fake/agy",
+        base = self.popen(out="## R-1 | P3 | t | a:1\nok")
+
+        def popen(argv, **k):          # gerçek agy günlüğünü süreç başladıktan sonra yazar
+            if label is not None:
+                with open(log, "w") as f:
+                    f.write(f"x Propagating selected model override foo label={label}\n")
+                os.utime(log, (t0 + 5, t0 + 5))
+            return base(argv, **k)
+        return self.ev(target=target, popen=popen, agy_bin="/fake/agy",
                        agy_log_dir=self.logdir, agy_models=models or [target.model], provider=self.prov(), **kw)
 
     def test_ok_done_and_argv(self):
@@ -296,6 +300,15 @@ class TestAgy(Base):
     def test_no_log_is_model_fallback(self):
         self.agy(label=None)
         self.assertEqual(self.pair(AGY)["status"], "model_fallback")
+
+    def test_old_log_not_taken_for_new_run(self):
+        # R-3: koşu öncesi var olan (hâlâ yazılan) eski günlük yeni koşunun etiketi sayılmaz
+        old = os.path.join(self.logdir, "cli-old.log")
+        with open(old, "w") as f:
+            f.write("model: gemini-OLD-wrong")
+        self.assertEqual(wr._first_new_agy_log(self.logdir, 0.0, exclude=frozenset(["cli-old.log"])), "")
+        self.assertIn("OLD", wr._first_new_agy_log(self.logdir, 0.0))
+        self.assertEqual(wr._agy_log_names(self.logdir), frozenset(["cli-old.log"]))
 
     def test_no_effort_for_non_gemini(self):
         self.agy(target=AGY2, label="claude-sonnet-4")
