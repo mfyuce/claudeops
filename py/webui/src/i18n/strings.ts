@@ -565,6 +565,7 @@ export interface Strings {
   stewardProjAdd: string;
   stewardProjRemove: string;
   stewardProjPause: string;
+  stewardProjRun: string;
   stewardProjResume: string;
   stewardProjCloseOne: string;
   stewardProjCloseOneConfirm: (n: string) => string;
@@ -1391,6 +1392,7 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardProjAdd: "Proje ekle",
     stewardProjRemove: "Çıkar",
     stewardProjPause: "Duraklat",
+    stewardProjRun: "Çalışsın",
     stewardProjResume: "Sürdür",
     stewardProjCloseOne: "İşi bitir ve kapat",
     stewardProjCloseOneConfirm: (n) => `${n}: yeni iş verilmez, elindeki iş bitince devir alınıp oturum kapatılır. Diğer projeler sürer. Devam?`,
@@ -2218,6 +2220,7 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardProjAdd: "Add project",
     stewardProjRemove: "Remove",
     stewardProjPause: "Pause",
+    stewardProjRun: "Run",
     stewardProjResume: "Resume",
     stewardProjCloseOne: "Finish and close",
     stewardProjCloseOneConfirm: (n) => `${n}: no new work; when the current task ends a handover is taken and the session is closed. Other projects keep running. Continue?`,
