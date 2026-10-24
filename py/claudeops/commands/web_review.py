@@ -776,7 +776,7 @@ def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, er
     """Evren modeli review'u bitiremedi: ucli dersi `<çalışma alanı>/ucli-lessons.md`ye eklenir (ucli kimliğinin
     beyni TODO/TBD'ye çevirir; başka reponun dosyasına yazmayız)."""
     try:
-        line = (f"- {time.strftime('%Y-%m-%d %H:%M')} proje={project} model={target.model} durum={status} "
+        line = (f"- [otomatik] {time.strftime('%Y-%m-%d %H:%M')} proje={project} model={target.model} durum={status} "
                 f"hata={_tail(error)}: ucli bu model/proje çiftinde review'u bitiremedi; nedenini araştır, TODO/TBD yap, düzelt.\n")
         with open(os.path.join(p.root, "ucli-lessons.md"), "a", encoding="utf-8") as f:
             f.write(line)

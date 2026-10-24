@@ -124,7 +124,7 @@ MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
 SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
-OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "tour", "nudge")
+OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "tour", "nudge")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -237,7 +237,7 @@ class SessionView:
 
 @dataclass
 class Action:
-    kind: str       # handover | respawn | start | stop | directive | deliver_answer | deliver_job | ask_user | idea
+    kind: str       # handover | respawn | start | stop | directive | deliver_answer | deliver_job | deliver_lesson | ask_user | idea
                     # | set_phase | tour | handover_deferred (yalnız kayıt: eşik devri ertelendi, oturuma dokunmaz)
     name: str = ""  # oturum/proje adı ("" = genel)
     reason: str = ""
@@ -300,6 +300,7 @@ class Config:
     review_max_compactions: int = 24   # Evren: `--max-compactions` (ucli varsayılanı 8)
     review_agy_allow: str = ""         # agy: izole HOME'da izinli salt-okunur komutlar ("" = ls,grep,head,tail,wc; "off" = izolasyon kapalı)
     review_agy_jail: bool = True       # agy: `bwrap` salt-okunur kafes + --dangerously-skip-permissions (bwrap yoksa/False ise izin listesi)
+    lessons_project: str = "cli"       # ucli dersleri (reviewer `ucli-lessons.md`) bu projenin çalışan oturumuna direktifle iletilir ("" = kapalı); projeyi bu kimlik yönetiyorsa
     review_max_tool_calls: int = 14    # Evren: `--max-tool-calls` (ucli varsayılanı 64; ölçüm: 14 ile 5 tur/297-416 sn, sınırsız 1453 sn)
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
     review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)

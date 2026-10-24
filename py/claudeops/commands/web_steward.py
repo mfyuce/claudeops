@@ -31,6 +31,7 @@ from .. import instances as inst_mod
 from .. import review as rv
 from .. import steward as sw
 from .. import steward_jobs as sj
+from .. import steward_lessons as sl
 from ..diaglog import diag_log
 from ..discovery import find_sessions
 from ..guard import guard_lock
@@ -582,6 +583,8 @@ def _remember_dry(action: sw.Action, ctx: Optional[StewardContext] = None, host:
     detail = f"{len(action.payload.get('items') or [])} madde" if action.kind == "tour" else str(action.payload.get("text") or "")[:200]
     if action.kind == "deliver_job":
         detail = f"job {action.payload.get('service')}#{action.payload.get('job_id')} {action.payload.get('stage')}"
+    if action.kind == "deliver_lesson":
+        detail = f"lesson x{len(action.payload.get('hashes') or [])} -> {action.payload.get('project')}"
     entry = {"ts": time.time(), "kind": action.kind, "name": action.name, "reason": action.reason,
              "ok": True, "dry": True, "detail": detail}
     if host:
@@ -2304,6 +2307,12 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             sw.mark_delivered(q.id, paths)
             sw.log_event("answer_undeliverable", paths=paths, id=q.id, session=name, error=res.get("error", ""))
         return res
+    if k == "deliver_lesson":
+        if not host:
+            denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
+            if denied is not None:
+                return denied
+        return _deliver_lesson(action, cfg, projects, host=host, rt=rt)
     if k == "deliver_job":
         if not host:      # uzak hedef yukarıda (host kapılarıyla) denetlendi
             denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
@@ -2411,6 +2420,40 @@ def _deliver_job(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Proje
     elif sj.mark_attempt(jid, svc, paths) >= sj.DELIVER_MAX_ATTEMPTS:
         sw.log_event("job_undeliverable", paths=paths, service=svc, id=jid, project=p.name, error=str(res.get("error") or ""))
     return res
+
+
+def _deliver_lesson(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project], host: Optional[str] = None,
+                    rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
+    """`deliver_lesson`: reviewer'ın ucli dersleri projenin ÇALIŞAN oturumuna `_give_directive` ile (`start_if_stopped=False`)
+    iletilir. Başarıda satır özetleri `lessons_sent`e yazılır (aynı ders iki kez gitmez), başarısızlıkta sayaç artar."""
+    paths = sw.paths_for(cfg.sid)
+    hashes = [str(h) for h in (action.payload.get("hashes") or [])]
+    lines = [str(x) for x in (action.payload.get("lines") or [])]
+    p = projects.get(str(action.payload.get("project") or ""))
+    if p is None or not hashes or not lines:
+        return {"ok": False, "error": "not a steward project"}
+    mark = lambda: sl.mark_sent(hashes, paths)   # noqa: E731
+    ident = ",".join(hashes)
+    if _already_sent(mark, cfg.sid, "lesson", ident):
+        return {"ok": True, "skipped": "already sent"}
+    res = _give_directive(p, sl.build_lesson_message(lines, cfg.lang), start_if_stopped=False, reason="lesson",
+                          session_name=action.name, cfg=cfg, host=host or None, rt=rt, actor="engine")
+    if res.get("ok"):
+        _mark_after_send(mark, cfg.sid, "lesson", ident)
+        sw.log_event("lesson_delivered", paths=paths, project=p.name, session=action.name, n=len(hashes))
+    else:
+        sl.mark_failed(hashes, paths)
+    return res
+
+
+def _lessons(cfg: sw.Config) -> List[Tuple[str, str]]:
+    """Tüm reviewer kimliklerinin `ucli-lessons.md` satırları (proje bu kimliğin değilse planlayıcı zaten bir şey yapmaz)."""
+    if not cfg.lessons_project:
+        return []
+    try:
+        return sl.read_lessons(sw.paths_for(sid).root for sid in sorted(sw.reviewer_ids()))
+    except Exception:
+        return []
 
 
 def _note_conflicts(ctx: StewardContext, index: Dict[str, Any], own_names: set, now: float) -> None:
@@ -2542,6 +2585,9 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world)
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
                 actions = actions + job_actions     # iş sonucu iletimi (varaka kuyruğu): `plan_tick`e DOKUNMAZ, aynı observe/_target yolundan
+                lesson_actions, new_state = sl.plan_lesson_deliveries(views, projects, _lessons(cfg), new_state, t0,
+                                                                      cfg.lessons_project, actions, world)
+                actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 sw.save_state(new_state, paths)
             for a in dry:
