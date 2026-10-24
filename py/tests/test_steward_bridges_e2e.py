@@ -133,6 +133,32 @@ class HandoverQuestions(_Engine):
         ws.http_handover({"name": "cli", "actor": "human"}, "default")
         self.assertEqual(captured[2][1], "")                                      # cevaplanınca notta yok
 
+    def test_ask_user_notifies_once_and_again_only_on_promotion(self):
+        sent = []
+        text = "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?"
+        cfg = ws.steward_config("default")
+
+        def ask(routine):
+            return ws._apply(sw.Action("ask_user", "cli", "STEWARD-ASK", {"project": "cli", "text": text, "routine": routine}),
+                             cfg, sw.load_projects("default"))
+        with mock.patch.object(ws, "_notify", lambda c, msg: sent.append(msg) or True):
+            r1 = ask(True)                                           # rutin: telefona gitmez
+            r2 = ask(False)                                          # aynı soru sahibe: yükseltildi, bildirim
+            r3 = ask(False)                                          # tekrar: mükerrer bildirim yok
+        self.assertEqual((r1.get("notified"), r2.get("notified"), r3.get("merged")), (False, True, True))
+        self.assertEqual(len(sent), 1)
+
+    def test_directive_prior_answers_come_from_the_identitys_own_store(self):
+        other = sw.paths_for("rvw")
+        old = sw.add_question("cli", "eski kararlı soru nedir sizce bu projede?", paths=other)
+        sw.answer_question(old.id, "eski cevap", paths=other)
+        new = sw.add_question("cli", "yeni soru tamamen başka bir konu hakkında mıdır?", paths=other)
+        ans = sw.answer_question(new.id, "yeni cevap", paths=other)
+        proj = sw.Project(name="cli", goal="g")
+        with_paths = sw.build_directive(proj, answer=ans, paths=other)
+        self.assertIn("eski cevap", with_paths)
+        self.assertNotIn("eski cevap", sw.build_directive(proj, answer=ans))        # varsayılan depo başka kimliğin
+
     def test_project_name_resolves_to_the_dated_session(self):
         """`cli` projesi, canlı oturum `cli20261023`: devir/durdurma/skip durumu ve açık sorular GERÇEK oturum adıyla çalışır."""
         import types

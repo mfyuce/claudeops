@@ -1473,7 +1473,8 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             compact = _same_life(stored, born, bool(host))
         except Exception:
             compact = False
-    message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more, compact=compact)
+    message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more, compact=compact,
+                                paths=paths)
     if host:
         try:
             conversational = get_provider(scli).has_conversation()
@@ -2362,12 +2363,14 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
                 return denied
         return _deliver_job(action, cfg, projects, host=host, rt=rt)
     if k == "ask_user":
-        q = sw.add_question(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
-                            routine=bool(action.payload.get("routine")), paths=paths)
+        q, outcome = sw.add_question_ex(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
+                                        routine=bool(action.payload.get("routine")), paths=paths)
         if q.status == "open" and q.routine:   # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır
             return {"ok": True, "id": q.id, "notified": False, "routine": True}
         if q.status != "open":   # yakın zamanda cevaplanmış soru yeniden soruldu: telefona yeni soru gitmez, cevap yeniden iletilir
             return {"ok": True, "id": q.id, "notified": False, "reasked": True}
+        if outcome in ("same", "merged"):   # zaten açık (sahibe bir kez bildirildi): mükerrer bildirim yok
+            return {"ok": True, "id": q.id, "notified": False, "merged": True}
         notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "escalate_routine":

@@ -1022,8 +1022,11 @@ def _unique_question_key(sid: str) -> str:
             return key
 
 
-def add_question(project: str, text: str, source: str = "", options: Any = None, routine: bool = False,
-                 paths: Any = None) -> Question:
+def add_question_ex(project: str, text: str, source: str = "", options: Any = None, routine: bool = False,
+                    paths: Any = None) -> Tuple[Question, str]:
+    """`add_question` + ne olduğu: "new" (yeni soru), "reasked" (cevaplanmış soru yeniden iletilecek), "same" (aynı metinli
+    açık soru zaten var), "merged" (benzer açık soru, sayaç arttı), "promoted" (açık RUTİN soru, bu kez sahibe giden soru
+    olarak yeniden soruldu: `routine` kalktı, sahibe bildirilmeli). Bildirim yalnız "new"/"promoted"da gider."""
     text = str(text).strip()[:_MAX_QUESTION_CHARS]
     if not text:
         raise ValueError("empty question")
@@ -1036,23 +1039,35 @@ def add_question(project: str, text: str, source: str = "", options: Any = None,
             dup.repeats += 1
             dup.delivered_at = 0.0
             save_questions(questions, paths)
-            return dup
+            return dup, "reasked"
         # Aynı projeden AYNI metinle açık bir soru varsa ikinci kez açma (işaret taraması her
         # tick aynı yanıtı görebilir; motor `seen` ile de korur ama depo kendi başına da dayanıklı olsun).
         for q in questions:
             if q.status == "open" and q.project == project and q.text == text:
-                return q
+                if q.routine and not routine:      # rutin olarak açılmış soru şimdi sahibe soruluyor: yükselt
+                    q.routine = False
+                    save_questions(questions, paths)
+                    return q, "promoted"
+                return q, "same"
         # Benzer (aynı olmayan) AÇIK soru: yenisi açılmaz, sayaç artar (devirle gelen yeni oturum öncekinin sorusunu bilmez).
         sim = find_open_similar(questions, project, text)
         if sim is not None:
             sim.asked_again += 1
+            promoted = sim.routine and not routine
+            if promoted:
+                sim.routine = False
             save_questions(questions, paths)
-            return sim
+            return sim, ("promoted" if promoted else "merged")
         q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
                      options=normalize_options(options), key=_unique_question_key(_pp(paths).sid), routine=bool(routine))
         questions.append(q)
         save_questions(questions, paths)
-        return q
+        return q, "new"
+
+
+def add_question(project: str, text: str, source: str = "", options: Any = None, routine: bool = False,
+                 paths: Any = None) -> Question:
+    return add_question_ex(project, text, source=source, options=options, routine=routine, paths=paths)[0]
 
 
 def answer_question(question_id: str, answer: str, paths: Any = None) -> Optional[Question]:
@@ -1745,10 +1760,11 @@ _PROTOCOL_EN = (
 
 
 def build_directive(project: Project, lang: str = "tr", extra: str = "", answer: Optional[Question] = None,
-                    more: Optional[List[Question]] = None, compact: bool = False) -> str:
+                    more: Optional[List[Question]] = None, compact: bool = False, paths: Any = None) -> str:
     """Bir proje oturumuna gönderilecek faz direktifi. `answer` verilirse önce insanın cevabı iletilir.
     Beyin kendi direktifini `extra` ile tamamen ezebilir (şablon yine protokol kuyruğunu ekler).
-    `compact` (yalnız `answer` ile): oturum amaç/not/protokolü bu yaşamında zaten aldı; yalnız soru-cevap + `extra`."""
+    `compact` (yalnız `answer` ile): oturum amaç/not/protokolü bu yaşamında zaten aldı; yalnız soru-cevap + `extra`.
+    `paths`: "Önceki cevaplarım" bu kimliğin soru deposundan okunur (verilmezse `default`)."""
     tr = lang != "en"
     compact = bool(compact and answer is not None)
     parts: List[str] = []
@@ -1765,7 +1781,7 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
         for m in more or []:    # aynı oturuma aynı tickte biriken ek cevaplar: TEK mesajda (ayrı ayrı uyandırma yok)
             parts.append(("Sorduğun soru: " if tr else "Your question: ") + m.text.strip())
             parts.append(("Cevabım: " if tr else "My answer: ") + m.answer.strip())
-        prior = [] if compact else recent_answers(project.name, exclude_id=answer.id)
+        prior = [] if compact else recent_answers(project.name, exclude_id=answer.id, paths=paths)
         if prior and more:
             skip = {m.id for m in more}
             prior = [q for q in prior if q.id not in skip]

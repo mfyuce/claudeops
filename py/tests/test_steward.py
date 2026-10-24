@@ -643,6 +643,21 @@ class OpenQuestionMergeTest(_Tmp):
         b = sw.add_question("p", "x soru 4?")
         self.assertNotEqual(a.id, b.id)
 
+    def test_routine_question_promoted_when_asked_to_owner(self):
+        r, how = sw.add_question_ex("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?", routine=True)
+        self.assertEqual(how, "new")
+        self.assertTrue(r.routine)
+        q, how = sw.add_question_ex("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?")      # aynı metin, sahibe
+        self.assertEqual((q.id, how, q.routine), (r.id, "promoted", False))
+        q2, how2 = sw.add_question_ex("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?")
+        self.assertEqual((q2.id, how2), (r.id, "same"))                                                        # bir daha yükseltme yok
+        a, _ = sw.add_question_ex("cli", "zlkrn dosya yolu hangi dizinde tutulmalı sizce kesin olarak?", routine=True)
+        b, how3 = sw.add_question_ex("cli", "zlkrn dosya yolu hangi dizinde tutulmalı sizce kesin olarak mı?")  # benzer, sahibe
+        self.assertEqual((b.id, how3, b.routine), (a.id, "promoted", False))
+        c, how4 = sw.add_question_ex("cli", "zlkrn dosya yolu hangi dizinde tutulmalı sizce kesin olarak peki?", routine=True)
+        self.assertEqual((c.id, how4), (a.id, "merged"))                                                        # rutin sahibe soruyu geri çevirmez
+        self.assertFalse(sw.find_question(a.id).routine)
+
     def test_answered_question_not_merged_into_open_path(self):
         q1 = sw.add_question("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?")
         sw.answer_question(q1.id, "evet")
