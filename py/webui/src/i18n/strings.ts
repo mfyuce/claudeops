@@ -560,6 +560,10 @@ export interface Strings {
   stewardProjAddPlaceholder: string;
   stewardProjAdd: string;
   stewardProjRemove: string;
+  stewardProjPause: string;
+  stewardProjResume: string;
+  stewardProjCloseOne: string;
+  stewardProjCloseOneConfirm: (n: string) => string;
   stewardProjRemoveConfirm: (name: string) => string;
   stewardIdRemove: string;
   stewardIdRemoveConfirm: string;
@@ -1371,6 +1375,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardProjAddPlaceholder: "roster'daki proje adı",
     stewardProjAdd: "Proje ekle",
     stewardProjRemove: "Çıkar",
+    stewardProjPause: "Duraklat",
+    stewardProjResume: "Sürdür",
+    stewardProjCloseOne: "İşi bitir ve kapat",
+    stewardProjCloseOneConfirm: (n) => `${n}: yeni iş verilmez, elindeki iş bitince devir alınıp oturum kapatılır. Diğer projeler sürer. Devam?`,
     stewardProjRemoveConfirm: (name: string) => `'${name}' değnekçi kaydından çıkarılsın mı? (oturum, roster ve klasör kalır)`,
     stewardIdRemove: "Bu kimliği sil",
     stewardIdRemoveConfirm: "Kimlik silinsin mi? Dizini .removed/ altına taşınır; projesi ya da çalışan beyni varsa reddedilir.",
@@ -2183,6 +2191,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardProjAddPlaceholder: "project name from the roster",
     stewardProjAdd: "Add project",
     stewardProjRemove: "Remove",
+    stewardProjPause: "Pause",
+    stewardProjResume: "Resume",
+    stewardProjCloseOne: "Finish and close",
+    stewardProjCloseOneConfirm: (n) => `${n}: no new work; when the current task ends a handover is taken and the session is closed. Other projects keep running. Continue?`,
     stewardProjRemoveConfirm: (name: string) => `Remove '${name}' from this steward? (session, roster and folder stay)`,
     stewardIdRemove: "Remove this identity",
     stewardIdRemoveConfirm: "Remove this identity? Its folder moves to .removed/; refused if it has projects or a running brain.",

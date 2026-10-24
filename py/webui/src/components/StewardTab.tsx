@@ -618,6 +618,25 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
                   <td>
                     <button
                       type="button"
+                      disabled={busy}
+                      onClick={() => void run(() => apiStewardProjectSet(p.name, { phase: p.phase === "paused" ? "planned" : "paused" }, sid), () => showToast(t.stewardSaved, "success"))}
+                    >
+                      {p.phase === "paused" ? t.stewardProjResume : t.stewardProjPause}
+                    </button>
+                    {p.running ? (
+                      <button
+                        type="button"
+                        className="retire"
+                        disabled={busy}
+                        onClick={() => {
+                          if (window.confirm(t.stewardProjCloseOneConfirm(p.name))) void run(() => apiStewardShutdown(sid, [], [p.name]), () => showToast(t.stewardSaved, "success"));
+                        }}
+                      >
+                        {t.stewardProjCloseOne}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
                       className="closebtn"
                       disabled={busy}
                       onClick={() => {

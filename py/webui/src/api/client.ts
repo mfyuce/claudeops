@@ -641,8 +641,9 @@ export const apiStewardBrain = (action: "start" | "stop", sid?: string): Promise
   apiPost<SimpleResult>("/api/steward/brain", { action, ...stewardBody(sid) });
 export const apiStewardTour = (sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/tour", { ...stewardBody(sid) });
-export const apiStewardShutdown = (sid?: string, keep: string[] = []): Promise<SimpleResult> =>
+export const apiStewardShutdown = (sid?: string, keep: string[] = [], only: string[] = []): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/shutdown", {
+    ...(only.length ? { only } : {}),
     ...(keep.length ? { modes: Object.fromEntries(keep.map((n) => [n, "keep"])) } : {}),
     ...stewardBody(sid),
   });
