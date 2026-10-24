@@ -39,7 +39,7 @@ import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from . import hosts as hosts_mod      # yaprak modül (yalnız paths'e bağlı): proje `host` doğrulaması
 from .atomic_json import atomic_write_json
@@ -124,7 +124,7 @@ MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
 SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
-OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "tour")
+OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "tour", "nudge")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -2906,6 +2906,15 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 actions.append(Action("stop", v.name, f"idle ≥ {cfg.stop_idle_minutes} dk, slot bekleyen var"))
                 busy_names.add(v.name)
 
+    # 6a) API hatasında takılan oturumlar (yalnız bu kimliğin yönettiği, tmux'lu, yerel/uzak görünümler)
+    api_actions, api_err, api_out = plan_api_recovery(
+        views, lambda v: bool(v.tmux) and _managed(v.name), busy_names | set(ho_pending),
+        dict(st.get("api_err") or {}), dict(st.get("api_outage") or {}), now)
+    for a in api_actions:
+        actions.append(a)
+        if a.kind == "nudge":
+            busy_names.add(a.name)
+
     # 6b) Beynin cevaplamadığı rutin soru sahibine düşer (sessizce takılı kalmasın)
     for q in questions:
         if q.status == "open" and q.routine and (now - q.created_at) >= ROUTINE_ESCALATE_SECONDS:
@@ -2941,8 +2950,123 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         st.pop("ho_deferred", None)
     st["last_directive_at"] = last_directive_at
     st["reviewed_at"] = reviewed_at
+    for key, val in (("api_err", api_err), ("api_outage", api_out)):
+        if val:
+            st[key] = val
+        else:
+            st.pop(key, None)        # boşken anahtar yazılmaz (varsayılan durum biçimi değişmez)
     st["last_tick"] = now
     return actions, st
+
+
+# ── API hatası dayanıklılığı ──────────────────────────────────────────────────
+# Oturum `API Error: 500/429/overloaded/Connection lost` satırında takılıp boşta kalır (alt ajanı sürerken bile); kimse
+# uyandırmaz. Tek oturum: artan aralıkla "devam"; birden çok oturum aynı anda = sağlayıcı kesintisi: kimseye mesaj yok, TEK
+# bildirim, 10 dk'da bir TEK oturumla yoklama, düzelince 4'lü gruplarla uyandırma (toplu uyandırma rate-limit tetikler).
+
+_API_ERR_RE = re.compile(r"^\s*API Error:\s*(?P<body>.*)", re.I | re.S)
+_API_RETRY_HEAD_RE = re.compile(r"^\s*(?:5\d\d|429)\b")
+_API_RETRY_WORD_RE = re.compile(r"overloaded|connection lost|connection error|timed?[ -]?out|econnreset|socket hang up|"
+                                r"internal server error|service unavailable|bad gateway|gateway time-?out|rate.?limit|temporar", re.I)
+API_NUDGE_TEXT = "devam"
+API_NUDGE_DELAYS = (60.0, 180.0, 600.0)   # 1., 2., 3. "devam" öncesi bekleme (ilkinde hatanın görüldüğünden, sonrakilerde önceki "devam"dan)
+API_NUDGE_MAX = len(API_NUDGE_DELAYS)
+API_GIVEUP_AFTER = 600.0                  # son "devam"dan sonra hâlâ takılıysa bırak + bildir
+API_QUIET_SECONDS = 60.0                  # son etkinlikten bu kadar sessizse "takıldı"
+API_OUTAGE_MIN = 2                        # bu kadar oturum aynı anda takılırsa = kesinti
+API_OUTAGE_PROBE_SECONDS = 600.0
+API_WAKE_GROUP = 4
+
+
+def api_error_kind(text: str) -> str:
+    """Son asistan metni için: "" (API hatası değil) | "retry" (5xx/429/overloaded/bağlantı: "devam" işe yarayabilir) |
+    "fatal" (4xx ör. geçersiz istek/bağlam doldu: "devam" aynı hatayı üretir)."""
+    m = _API_ERR_RE.match(str(text or ""))
+    if not m:
+        return ""
+    body = m.group("body")[:300]
+    return "retry" if (_API_RETRY_HEAD_RE.search(body) or _API_RETRY_WORD_RE.search(body)) else "fatal"
+
+
+def plan_api_recovery(views: List[SessionView], eligible: Callable[[SessionView], bool], skip: Set[str],
+                      st_err: Dict[str, Any], st_out: Dict[str, Any], now: float
+                      ) -> Tuple[List[Action], Dict[str, Any], Dict[str, Any]]:
+    """SAF. Dönen: (eylemler, yeni api_err durumu, yeni api_outage durumu). Eylem türleri: `nudge` (oturuma "devam"),
+    `api_outage` (kesinti başladı: tek bildirim), `api_recovered` (kesinti bitti), `api_giveup` (3 denemede düzelmedi: bırak +
+    sahibine bildir). Alt ajanı süren, meşgul ya da yakın zamanda etkinliği olan oturuma dokunulmaz."""
+    actions: List[Action] = []
+    err: Dict[str, Any] = {}
+    stuck: List[SessionView] = []
+    for v in views:
+        if not v.running or v.name in skip or not eligible(v) or api_error_kind(v.last_assistant) != "retry":
+            continue
+        if v.busy is True or v.subagent_active or v.subagent_unknown:
+            continue
+        if v.last_activity and (now - v.last_activity) < API_QUIET_SECONDS:
+            continue
+        prev = st_err.get(v.name) if isinstance(st_err.get(v.name), dict) else {}
+        # aynı hata metni sürüyorsa kayıt devam eder; metin değiştiyse (yeni hata) sayaç sıfırlanır
+        h = hashlib.sha1(v.last_assistant.encode("utf-8", "replace")).hexdigest()[:10]
+        rec = dict(prev) if prev.get("hash") == h else {"since": now, "nudges": 0, "last_nudge": 0.0, "gave_up": False}
+        rec["hash"] = h
+        err[v.name] = rec
+        stuck.append(v)
+    out = dict(st_out) if isinstance(st_out, dict) else {}
+    live = [v for v in stuck if not err[v.name].get("gave_up")]
+
+    def _nudge(v: SessionView, why: str) -> None:
+        r = err[v.name]
+        r["nudges"] = int(r.get("nudges") or 0) + 1
+        r["last_nudge"] = now
+        actions.append(Action("nudge", v.name, why, {"text": API_NUDGE_TEXT, "n": r["nudges"]}))
+
+    def _due_single(v: SessionView) -> bool:
+        r = err[v.name]
+        n = int(r.get("nudges") or 0)
+        if n >= API_NUDGE_MAX:
+            return False
+        base = float(r["since"]) if n == 0 else float(r["last_nudge"])
+        return (now - base) >= API_NUDGE_DELAYS[n]
+
+    def _giveup(v: SessionView) -> None:
+        r = err[v.name]
+        if int(r.get("nudges") or 0) >= API_NUDGE_MAX and not r.get("gave_up") and (now - float(r["last_nudge"])) >= API_GIVEUP_AFTER:
+            r["gave_up"] = True
+            actions.append(Action("api_giveup", v.name, f"{API_NUDGE_MAX} 'devam' sonrası hâlâ API hatasında", {}))
+
+    if len(live) >= API_OUTAGE_MIN or (out and live):
+        # kesinti: oturumlara tek tek yazma
+        if not out:
+            out = {"since": now, "probe": "", "probe_at": 0.0, "woken": [], "recovered": False}
+            actions.append(Action("api_outage", "", f"{len(live)} oturum aynı anda API hatasında", {"names": sorted(v.name for v in live)}))
+        woken = set(out.get("woken") or [])
+        probe = str(out.get("probe") or "")
+        if not out.get("recovered") and probe and not any(v.name == probe for v in stuck):
+            out["recovered"] = True                           # yoklama oturumu ilerledi: sağlayıcı düzeldi
+            actions.append(Action("api_recovered", probe, "yoklama oturumu API hatasından çıktı", {}))
+        if out.get("recovered"):
+            waiting = [v for v in live if v.name not in woken]
+            for v in waiting[:API_WAKE_GROUP]:
+                _nudge(v, "kesinti bitti, sırayla uyandırma")
+                woken.add(v.name)
+        elif now >= float(out.get("probe_at") or 0.0):
+            cand = next((v for v in sorted(live, key=lambda x: x.name) if int(err[v.name].get("nudges") or 0) < API_NUDGE_MAX), None)
+            if cand is not None:
+                _nudge(cand, "kesinti yoklaması")
+                out["probe"] = cand.name
+                out["probe_at"] = now + API_OUTAGE_PROBE_SECONDS
+        out["woken"] = sorted(woken & {v.name for v in stuck})
+    else:
+        if out:                                                # kesinti bitti: kalanlar tek-oturum kurallarına döner
+            out = {}
+        for v in live:
+            if _due_single(v):
+                _nudge(v, "API hatası, otomatik devam")
+            else:
+                _giveup(v)
+    if not stuck and out:
+        out = {}                                                # kimse takılı değil: kesinti kaydı düşer
+    return actions, err, out
 
 
 def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now: float

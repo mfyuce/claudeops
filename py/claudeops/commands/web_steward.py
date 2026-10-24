@@ -2321,6 +2321,30 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
     if k == "set_phase":
         sw.upsert_project(name, paths=paths, phase=action.payload.get("phase"))
         return {"ok": True}
+    if k == "nudge":                  # API hatasında takılan oturuma tek satır "devam" (alt ajan/etkinlik denetimi plan_tick'te yapıldı)
+        if host:
+            sw.log_event("nudge_remote_skipped", paths=paths, name=name, host=host)
+            return {"ok": False, "error": "remote nudge not supported"}
+        s = _running(name)
+        if s is None or not is_tmux_backed(s.pid):
+            return {"ok": False, "error": "not running or not tmux-backed"}
+        ok = _send(s.name, s.cli, str(action.payload.get("text") or sw.API_NUDGE_TEXT))
+        sw.log_event("api_nudge", paths=paths, name=name, n=action.payload.get("n"), reason=action.reason, ok=ok)
+        return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
+    if k in ("api_outage", "api_recovered", "api_giveup"):      # yalnız bildirim + kayıt (oturuma dokunmaz)
+        tr = cfg.lang != "en"
+        if k == "api_outage":
+            names = ", ".join(action.payload.get("names") or [])
+            text = (f"API kesintisi: {names} aynı anda hata veriyor. Tek tek uyandırma yok; 10 dk'da bir tek oturumla yoklanır."
+                    if tr else f"API outage: {names} are failing at once. No per-session nudges; probing one session every 10 min.")
+        elif k == "api_recovered":
+            text = (f"API düzeldi ({name} ilerledi); takılı oturumlar 4'lü gruplarla uyandırılıyor."
+                    if tr else f"API recovered ({name} progressed); waking stuck sessions in groups of 4.")
+        else:
+            text = (f"{name}: API hatasında kaldı, {sw.API_NUDGE_MAX} 'devam' işe yaramadı. Bıraktım; sana kalıyor."
+                    if tr else f"{name}: stuck on an API error; {sw.API_NUDGE_MAX} nudges did not help. Giving up; over to you.")
+        sw.log_event(k, paths=paths, name=name, reason=action.reason)
+        return {"ok": True, "notified": _notify(cfg, text)}
     if k == "handover_deferred":      # yalnız kayıt (oturuma dokunmaz): eşik devri meşgul/alt ajan yüzünden ertelendi
         sw.log_event("handover_deferred", paths=paths, name=name, reason=action.reason,
                      handover=str(action.payload.get("handover_reason") or ""))
