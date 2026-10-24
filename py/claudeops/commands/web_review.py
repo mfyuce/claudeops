@@ -1441,6 +1441,13 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if bt:
         actions.append({"kind": "before_tbd", "findings": bt})
     try:
+        stored = store_reports(cfg)
+    except Exception as e:      # saklama hatası review turunu düşürmesin
+        sw.log_event("review_store_failed", paths=p, error=_tail(repr(e)))
+        stored = []
+    if stored:
+        actions.append({"kind": "store_reports", "files": len(stored)})
+    try:
         asked = ask_remote_choice(cfg, t)
     except Exception as e:      # soru açma hatası review turunu düşürmesin
         sw.log_event("review_where_ask_failed", paths=p, error=_tail(repr(e)))
@@ -1766,6 +1773,44 @@ def before_tbd(cfg: Any, now: Optional[float] = None) -> List[str]:
         f.write(head + "\n" + "\n".join(blocks))
     sw.log_event("review_before_tbd", paths=p, file=path, findings=done)
     return done
+
+
+_STORE_TS = re.compile(r"^\d{14}$")
+STORE_SUFFIXES = (".md", ".usage.jsonl")      # rapor (maskeli) + yalnız sayılar; `.io.jsonl`/`.model.md`/hata günlüğü SAKLANMAZ
+
+
+def store_reports(cfg: Any) -> List[str]:
+    """TBD#118 ilk dilim: `review_store_dir` (sahibin ÖZEL klasörü) doluysa `reviews/<proje>/<mode>/<model>/<effort>/<ts>/` altındaki
+    biten koşunun raporu ve sayaç günlüğü `<klasör>/reviews/...` altına AYNI göreli yolla kopyalanır (var olan dosya yeniden
+    yazılmaz). Git komutu ÇALIŞTIRILMAZ (add/commit/push sahibin ya da ayrı bir kararın işi, `before_tbd` ile aynı duruş).
+    Dönen: kopyalanan göreli yollar."""
+    root = str(getattr(cfg, "review_store_dir", "") or "").strip()
+    if not root or not os.path.isdir(root):
+        return []
+    src_root = sw._pp(cfg.sid).reviews
+    dst_root = os.path.join(os.path.realpath(root), "reviews")
+    if os.path.realpath(dst_root).startswith(os.path.realpath(src_root) + os.sep):
+        return []              # hedef kaynağın içinde: özyineleme
+    copied: List[str] = []
+    for dirpath, _dirs, files in os.walk(src_root):
+        ts = os.path.basename(dirpath)
+        if not _STORE_TS.match(ts):
+            continue
+        for name in sorted(files):
+            if not (name.startswith(ts) and name.endswith(STORE_SUFFIXES)) or name.endswith(".model.md") or ".err" in name:
+                continue
+            rel = os.path.relpath(os.path.join(dirpath, name), src_root)
+            dst = os.path.join(dst_root, rel)
+            if os.path.exists(dst) or os.path.islink(os.path.join(dirpath, name)):
+                continue
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            tmp = f"{dst}.{os.getpid()}.tmp"
+            shutil.copyfile(os.path.join(dirpath, name), tmp)
+            os.replace(tmp, dst)
+            copied.append(rel)
+    if copied:
+        sw.log_event("review_store", paths=cfg.sid, root=root, n=len(copied))
+    return copied
 
 
 def verify_candidates(cfg: Any, project: str, fids: Optional[List[str]] = None) -> List[Dict[str, Any]]:

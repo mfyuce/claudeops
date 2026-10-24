@@ -7,6 +7,7 @@ import contextlib
 import io
 import os
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace as NS
 from unittest import mock
@@ -443,3 +444,32 @@ class TestBeforeTbd(_Flow):
         settings.save_settings({"stewards": {"rev": {"review_before_tbd_dir": self.out}}})
         res = self.tick()
         self.assertIn("before_tbd", [a["kind"] for a in res["actions"]])
+
+
+class StoreReportsTest(unittest.TestCase):
+    """TBD#118 ilk dilim: biten koşunun maskeli raporu özel klasöre kopyalanır; io/model/hata günlüğü SAKLANMAZ; git yok."""
+
+    def test_copies_report_and_usage_once_and_skips_private_traces(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, out = os.path.join(d, "reviews"), os.path.join(d, "prv")
+            os.makedirs(out)
+            run = os.path.join(src, "oiso", "evren", "m", "low", "20261024164009")
+            os.makedirs(run)
+            for n, body in (("20261024164009.md", "rapor"), ("20261024164009.usage.jsonl", "{}"), ("20261024164009.io.jsonl", "sır"),
+                            ("20261024164009.model.md", "taslak"), ("20261024164009.err.md", "hata")):
+                with open(os.path.join(run, n), "w") as f:
+                    f.write(body)
+            with open(os.path.join(src, "oiso", "OZET.md"), "w") as f:      # zaman damgası klasörü dışı: dokunulmaz
+                f.write("x")
+            cfg = NS(sid="rev", review_store_dir=out)
+            with mock.patch.object(sw, "_pp", lambda sid: NS(reviews=src)):
+                got = wr.store_reports(cfg)
+                self.assertEqual(sorted(os.path.basename(g) for g in got), ["20261024164009.md", "20261024164009.usage.jsonl"])
+                self.assertEqual(wr.store_reports(cfg), [])                    # ikinci tur: yeniden yazılmaz
+            dst = os.path.join(out, "reviews", "oiso", "evren", "m", "low", "20261024164009")
+            self.assertEqual(sorted(os.listdir(dst)), ["20261024164009.md", "20261024164009.usage.jsonl"])
+            self.assertFalse(os.path.exists(os.path.join(out, ".git")))
+            with mock.patch.object(sw, "_pp", lambda sid: NS(reviews=src)):
+                self.assertEqual(wr.store_reports(NS(sid="rev", review_store_dir="")), [])
+                self.assertEqual(wr.store_reports(NS(sid="rev", review_store_dir=os.path.join(d, "yok"))), [])
+                self.assertEqual(wr.store_reports(NS(sid="rev", review_store_dir=src)), [])   # hedef kaynağın içi: özyineleme yok
