@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import review as rv
 from .. import review_remote as rr
+from .. import review_remote_run as rrun
 from .. import steward as sw
 from .. import steward_advance as sa
 from .. import steward_lessons as sl
@@ -243,6 +244,10 @@ def _first_new_agy_log(log_dir: str, since: float, exclude: Any = ()) -> str:
 
 def _killpg(proc: Any, sig: int) -> None:
     """YALNIZ kendi Popen'imizin grubu (`start_new_session` => pgid == pid). PID/ağaç taraması YOK."""
+    ab = getattr(proc, "abort", None)
+    if callable(ab):        # uzak review (RemoteReviewProc): gerçek süreç yok, uzak oturumu kapatır
+        ab()
+        return
     pid = getattr(proc, "pid", None)
     if not isinstance(pid, int) or pid <= 1:
         return
@@ -961,9 +966,20 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
         return {"ok": False, "busy": True, "error": "başka bir review çalışıyor"}
     t0 = now()
     try:
+        rdrv = remote_driver(project)
+        if rdrv is not None and target.mode != "evren":
+            raise RuntimeError("uzak projede review yalnız evren (ucli) hedefleriyle koşar")
+        if rdrv is not None:
+            cwd = rdrv.cwd()
         prompt = rv.build_review_prompt(project, cwd, lang)
         env_extra: Dict[str, str] = {}
-        if target.mode == "evren":
+        if rdrv is not None:
+            # UZAK koşu (TBD#117 ek 3 c): uzak host'ta normal ucli oturumu; yerel süreç, anahtar, taslak dosyası YOK
+            eff = str(target.effort or getattr(cfg, "review_evren_effort", "medium") or "medium")
+            argv = ["remote-review", rdrv.host, project, target.model]
+            popen = lambda *_a, **_k: rrun.RemoteReviewProc(   # noqa: E731
+                rdrv, target.model, eff, prompt, lambda t: bool(_REPORT_HEAD_RE.search(t or "")))
+        elif target.mode == "evren":
             from ..providers import ucli_provider as up
             binary = ucli_client.resolve_binary(ucli_bin)
             sup = (supports_flag or ucli_client.binary_supports_flag)(binary, "--max-io-mib")
@@ -1214,6 +1230,42 @@ def remote_projects(idx: Optional[Dict[str, Any]] = None) -> Dict[str, Tuple[str
     return out
 
 
+_REMOTE_FN: Optional[Callable[[str, str], Any]] = None
+
+
+def set_remote_driver(fn: Optional[Callable[[str, str], Any]]) -> None:
+    """`web_steward` bağlar: `fn(proje, host)` -> uzak review sürücüsü (kapılar + uzak G/Ç; `review_remote_run` sözleşmesi)."""
+    global _REMOTE_FN
+    _REMOTE_FN = fn
+
+
+def remote_host(project: str, idx: Optional[Dict[str, Any]] = None) -> str:
+    """Sahip `review_where=remote` seçtiyse projenin uzak host'u, değilse ""."""
+    idx = ownership() if idx is None else idx
+    ent = remote_projects(idx).get(project)
+    if ent is None or ent[1].review_where != "remote":
+        return ""
+    return (idx.get("hosts") or {}).get(project) or ""
+
+
+def remote_driver(project: str) -> Any:
+    """`run_job` için uzak sürücü ya da None (yerel proje / `remote` seçilmemiş / sürücü bağlı değil)."""
+    host = remote_host(project)
+    if not host or _REMOTE_FN is None:
+        return None
+    return _REMOTE_FN(project, host)
+
+
+def remote_ready(project: str, idx: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
+    """Uzak (`remote` kipi) projede koşudan ÖNCE: sürücü bağlı mı, kapılar (remote_actions, host taze) ve uzak klasör tamam mı."""
+    host = remote_host(project, idx)
+    if not host:
+        return True, ""
+    if _REMOTE_FN is None:
+        return False, "remote review driver is not wired"
+    return _REMOTE_FN(project, host).ready()
+
+
 def remote_copy_path(name: str, idx: Optional[Dict[str, Any]] = None) -> str:
     """Uzak projenin review edilebilir YEREL kopyası (sahip `local` seçti ve yol git deposu); yoksa ""."""
     ent = remote_projects(idx).get(name)
@@ -1233,7 +1285,7 @@ def remote_block_reason(project: str, idx: Optional[Dict[str, Any]] = None) -> s
     if where == "local":
         return "" if remote_copy_path(project, idx) else "remote project: local copy path is missing or not a git repo (set local_path)"
     if where == "remote":
-        return "remote projects are not reviewed (v1): 'remote' was chosen but is not implemented yet"
+        return "" if _REMOTE_FN is not None else "remote review driver is not wired"
     return "remote projects are not reviewed (v1)"
 
 
@@ -1242,7 +1294,7 @@ def local_owned_names(idx: Optional[Dict[str, Any]] = None) -> List[str]:
     idx = ownership() if idx is None else idx
     hosts = idx.get("hosts") or {}
     out = [n for n in (idx.get("owners") or {}) if n not in hosts]
-    out += [n for n in hosts if remote_copy_path(n, idx)]
+    out += [n for n in hosts if remote_copy_path(n, idx) or remote_host(n, idx)]
     return sorted(out)
 
 
@@ -1381,6 +1433,16 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         if nxt is None:
             return {"ok": True, "actions": actions, "started": 0, "noop": not actions}
         proj, target = nxt
+        if remote_host(proj):               # `remote` kipi: klasör uzakta; kapılar + host tazeliği + hedef evren mi
+            ready, msg = ((False, "remote review runs evren (ucli) targets only") if target.mode != "evren"
+                          else remote_ready(proj))
+            if ready:
+                cwd = ""
+                break
+            _log_copy_fail(p, proj, msg, t)
+            actions.append({"kind": "remote_not_ready", "project": proj, "error": msg})
+            skip.append(proj)
+            continue
         cwd = review_cwd(proj)
         if cwd and os.path.isdir(cwd):
             ready, msg = prepare_project(proj)
@@ -1504,8 +1566,9 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
     why = remote_block_reason(project, idx)
     if why:
         return {"ok": False, "error": why}
-    cwd = review_cwd(project, idx)
-    if not cwd or not os.path.isdir(cwd):
+    is_remote = bool(remote_host(project, idx))
+    cwd = "" if is_remote else review_cwd(project, idx)
+    if not is_remote and (not cwd or not os.path.isdir(cwd)):
         return {"ok": False, "error": f"project folder not found: {project}"}
     p = sw.paths_for(cfg.sid)
     targets = current_targets(cfg)
@@ -1526,7 +1589,12 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
         target = nxt[1]
     if running_keys():
         return {"ok": False, "busy": True, "error": "another review is running"}
-    ready, msg = prepare_project(project, idx)
+    if is_remote:
+        if target.mode != "evren":
+            return {"ok": False, "error": "remote review runs evren (ucli) targets only"}
+        ready, msg = remote_ready(project, idx)
+    else:
+        ready, msg = prepare_project(project, idx)
     if not ready:
         sw.log_event("review_copy_not_ready", paths=p, project=project, error=msg)
         return {"ok": False, "error": msg}

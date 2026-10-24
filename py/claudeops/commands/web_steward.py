@@ -4651,7 +4651,116 @@ def http_review_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
     return web_review.export_findings(cfg, str(data.get("project") or ""), fname)
 
 
+class RemoteReviewDriver:
+    """Uzak projede review sürücüsü (`review_remote_run` sözleşmesi; TBD#117 ek 3 c, sahip kararı 2026-10-24). Uzak host'ta
+    projeden AYRI adlı (`rvw_<proje>`: proje adıyla başlamaz, kayıtsız/ad hoc sayılır, değnekçi dokunmaz) NORMAL bir ucli
+    oturumu açar (salt-okunur, taze konuşma), istemi `term/input` ile gönderir, raporu `term/chat` ile okur. Anahtar
+    taşınmaz (uzakta kurulu), aynalama yok, uzak ağaca yazma yok. Proje başına TEK canlı review oturumu: artık oturum
+    önce kapatılır. Kapılar: projenin SAHİBİ kimliğin `remote_actions`ı + host taze (`_remote_denied`)."""
+
+    POLL_STALE_NONE = None      # host bayatken "çalışıyor mu" bilinmez
+
+    def __init__(self, project: str, host: str) -> None:
+        self.project, self.host = project, host
+        self.session = ("rvw_" + project)[:48]
+        self._cwd = ""
+
+    def _owner(self) -> str:
+        ent = web_review.remote_projects().get(self.project)
+        return ent[0] if ent else "default"
+
+    def _rows(self) -> Optional[List[Dict[str, Any]]]:
+        return _remote_rows(self.host)
+
+    def _project_cwd_remote(self, rows: List[Dict[str, Any]]) -> str:
+        for r in rows:
+            if r.get("name") == self.project and r.get("cwd"):
+                return str(r["cwd"])
+        for r in rows:
+            if r.get("cwd") and (r.get("blueprint") == self.project or str(r.get("name") or "").startswith(self.project)):
+                return str(r["cwd"])
+        return ""
+
+    def ready(self) -> Tuple[bool, str]:
+        denied = _remote_denied(self.project, "review", "review", self._owner(), self.host, self.host, None)
+        if denied is not None:
+            return False, str(denied.get("error") or denied.get("code") or "denied")
+        rows = self._rows()
+        if rows is None:
+            return False, f"host {self.host} is stale"
+        self._cwd = self._project_cwd_remote(rows)
+        if not self._cwd:
+            return False, f"remote folder of {self.project} unknown on {self.host}"
+        return True, ""
+
+    def cwd(self) -> str:
+        if not self._cwd:
+            ok, msg = self.ready()
+            if not ok:
+                raise RuntimeError(msg)
+        return self._cwd
+
+    def _wait_closed(self) -> bool:
+        return _remote_wait_closed(self.host, self.session)
+
+    def start(self, model: str, effort: str) -> Dict[str, Any]:
+        ok, msg = self.ready()
+        if not ok:
+            return {"ok": False, "error": msg}
+        rows = self._rows() or []
+        if any(r.get("name") == self.session and r.get("running") for r in rows):     # tek canlı review oturumu: artığı kapat
+            self.stop()
+            if not self._wait_closed():
+                return {"ok": False, "error": "previous review session did not close"}
+        if not any(r.get("name") == self.session for r in rows):
+            reg = _remote_post(self.host, "/api/register",
+                               {"name": self.session, "cwd": self._cwd, "model": model, "cli": "ucli"}, REMOTE_START_TIMEOUT_SECONDS)
+            if not reg.get("ok") and "already" not in str(reg.get("error") or "") and "in_use" not in str(reg.get("error") or ""):
+                return {"ok": False, "error": f"register: {reg.get('error') or reg.get('code') or 'failed'}"}
+        eff = effort if effort in ("low", "medium", "high") else "medium"
+        res = _remote_post(self.host, "/api/start",
+                           {"name": self.session, "model": model, "effort": eff, "fresh": True, "cli": "ucli",
+                            "permission_mode": "read-only"}, REMOTE_START_TIMEOUT_SECONDS)
+        if not res.get("ok"):
+            return {"ok": False, "error": f"start: {res.get('error') or res.get('code') or 'failed'}"}
+        for i in range(max(1, int(READY_TIMEOUT_SECONDS / REMOTE_READY_POLL_SECONDS))):
+            if i:
+                _remote_sleep(REMOTE_READY_POLL_SECONDS)
+            _fresh, r = _remote_running_row(self.host, self.session)
+            if r is not None and r.get("busy") is False:
+                sw.log_event("review_remote_started", paths=self._owner(), project=self.project, host=self.host, session=self.session)
+                return {"ok": True}
+        return {"ok": False, "error": "review session did not become ready"}
+
+    def send(self, text: str) -> Dict[str, Any]:
+        res = _remote_post(self.host, "/api/term/input", {"name": self.session, "text": text, "exact": True},
+                           REMOTE_INPUT_TIMEOUT_SECONDS)
+        return {"ok": bool(res.get("ok")), "error": str(res.get("error") or res.get("code") or "")}
+
+    def poll(self) -> Dict[str, Any]:
+        fresh_host, row = _remote_running_row(self.host, self.session)
+        out: Dict[str, Any] = {"running": (row is not None) if fresh_host else None,
+                               "busy": (row or {}).get("busy") if row is not None else None, "user": "", "assistant": ""}
+        if row is None:
+            return out
+        try:
+            parsed, _status = _remote.get("/api/term/chat", self.host, {"name": self.session, "mode": "last"},
+                                          timeout=REMOTE_READ_BUDGET_SECONDS)
+        except Exception:
+            return out
+        if isinstance(parsed, dict) and parsed.get("ok") and parsed.get("supported"):
+            out["user"], out["assistant"] = str(parsed.get("user") or ""), str(parsed.get("assistant") or "")
+        return out
+
+    def stop(self) -> None:
+        try:
+            _remote_post(self.host, "/api/stop", {"name": self.session, "exact": True}, REMOTE_START_TIMEOUT_SECONDS)
+        except Exception:
+            pass
+
+
 web_review.set_cwd_resolver(lambda name: _project_cwd(name))
+web_review.set_remote_driver(lambda project, host: RemoteReviewDriver(project, host))
 web_review.set_verdict_reader(_review_verdict_reader)
 web_review.set_notifier(lambda sid, q: _notify(steward_config(sid), f"{_ask_prefix(q.project, sid)} {q.text}\n→ {sw.ask_hint(q.id, sid)}"))
 

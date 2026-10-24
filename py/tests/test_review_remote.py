@@ -21,6 +21,39 @@ def git(path, *args):
                    env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"))
 
 
+_REAL_RUN_JOB = wr.run_job
+
+
+class FakeDriver:
+    """review_remote_run sürücü sözleşmesi: gerçek uzak G/Ç YOK. `script`: sıradaki poll yanıtları (sonuncusu tekrarlanır)."""
+    host = "ulak_31"
+
+    def __init__(self, project="far", host="ulak_31", script=None, ready=(True, ""), start_ok=True):
+        self.project, self.host, self.script, self._ready, self.start_ok = project, host, list(script or []), ready, start_ok
+        self.calls = []
+
+    def ready(self):
+        return self._ready
+
+    def cwd(self):
+        return "/srv/far"
+
+    def start(self, model, effort):
+        self.calls.append(("start", model, effort))
+        return {"ok": self.start_ok, "error": "" if self.start_ok else "boom"}
+
+    def send(self, text):
+        self.calls.append(("send", text))
+        return {"ok": True}
+
+    def poll(self):
+        self.calls.append(("poll",))
+        return self.script.pop(0) if len(self.script) > 1 else (self.script[0] if self.script else {})
+
+    def stop(self):
+        self.calls.append(("stop",))
+
+
 def make_clone(root):
     """origin (bare) + yerel kopya `clone`; (origin_work, clone) yolları. origin_work'a commit atılıp clone'a çekilir."""
     bare, work, clone = (os.path.join(root, n) for n in ("bare.git", "work", "clone"))
@@ -149,7 +182,61 @@ class RemoteFlowTest(NoRealReviewMixin, _Engine):
         self.assertEqual(sw.load_projects()["far"].review_where, "off")
         self.assertIsNone(wr.ask_remote_choice(self.cfg(), 1000.0 + 10 * 86400))
         sw.upsert_project("far", review_where="remote")
-        self.assertIn("not implemented", wr.remote_block_reason("far"))
+        self.assertEqual(wr.remote_block_reason("far"), "")                        # sürücü web_steward import'unda bağlı (TBD#117 ek 3 c)
+        with mock.patch.object(wr, "_REMOTE_FN", None):
+            self.assertIn("not wired", wr.remote_block_reason("far"))
+
+    def test_remote_mode_tick_starts_job_with_empty_cwd_when_ready(self):
+        sw.upsert_project("far", review_where="remote")
+        self.assertIn("far", wr.local_owned_names())
+        drv = FakeDriver()
+        with mock.patch.object(wr, "_REMOTE_FN", lambda p, h: drv):
+            res = wr.review_tick(self.cfg(), now=5000.0)
+        self.assertEqual(self.runs, [("far", "")], res)
+
+    def test_remote_mode_tick_waits_when_gates_say_no(self):
+        sw.upsert_project("far", review_where="remote")
+        drv = FakeDriver(ready=(False, "target denied: remote actions are disabled"))
+        with mock.patch.object(wr, "_REMOTE_FN", lambda p, h: drv):
+            res = wr.review_tick(self.cfg(), now=5000.0)
+        self.assertEqual(self.runs, [])
+        self.assertTrue(any(a["kind"] == "remote_not_ready" for a in res["actions"]), res)
+
+    def test_remote_mode_accepts_only_evren_targets(self):
+        sw.upsert_project("far", review_where="remote")
+        drv = FakeDriver()
+        both = [wr.rv.ReviewTarget("evren", "m1", "m1"), wr.rv.ReviewTarget("claude", "claude-x", "claude-x")]
+        with mock.patch.object(wr, "_REMOTE_FN", lambda p, h: drv), mock.patch.object(wr, "current_targets", lambda cfg: both):
+            r = wr.manual_run(self.cfg(), "far", mode="claude", model="claude-x")
+        self.assertFalse(r["ok"])
+        self.assertIn("evren", r["error"])
+
+    def test_remote_run_job_end_to_end_writes_report_and_stops_session(self):
+        sw.upsert_project("far", review_where="remote")
+        report = "## R-1 | P2 | a.py:3 | Gerçek kusur\ngövde"
+        user = wr.rv.build_review_prompt("far", "/srv/far", "tr")
+        drv = FakeDriver(script=[{"running": True, "busy": False, "user": "", "assistant": ""},       # gönderimden önceki anlık görüntü
+                                 {"running": True, "busy": True, "user": user, "assistant": "yarım"},
+                                 {"running": True, "busy": False, "user": user, "assistant": report}])
+        target = wr.rv.ReviewTarget("evren", "m1", "m1", "low")
+        paths = sw.paths_for("rev")
+        with mock.patch.object(wr, "_REMOTE_FN", lambda p, h: drv), \
+                mock.patch.object(wr.rrun, "POLL_SECONDS", 0.0), mock.patch.object(wr.rrun, "MIN_WAIT_SECONDS", 0.0), \
+                mock.patch.object(wr.rrun.time, "sleep", lambda s: None):
+            res = _REAL_RUN_JOB(paths, self.cfg(), "far", "", target, lang="tr")
+            self.assertTrue(res["ok"], res)
+            res["thread"].join(30)
+        hist = wr.rv.load_history(paths)["pairs"]
+        rec = next(iter(hist.values()))
+        self.assertEqual(rec["status"], "done", rec)
+        with open(rec["file"], encoding="utf-8") as f:
+            self.assertIn("R-1 | P2", f.read())
+        kinds = [c[0] for c in drv.calls]
+        self.assertEqual(kinds[0], "start")
+        self.assertIn("send", kinds)
+        self.assertEqual(kinds[-1], "stop")
+        self.assertEqual(drv.calls[0][1:], ("m1", "low"))
+        self.assertTrue(wr.rv.load_findings(paths))                                 # bulgu kaydedildi (state=new)
 
     def test_unrecognized_answer_reasks_only_after_retry_window(self):
         t0 = time.time()
