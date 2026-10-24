@@ -159,6 +159,18 @@ class TestEvren(Base):
         self.ev(supports_flag=lambda b, f: f != "--partial-file")
         self.assertNotIn("--partial-file", FakeProc.instances[0].argv)
 
+    def test_partial_file_path_is_symlink_free(self):
+        real = os.path.join(self.tmp, "real")
+        os.makedirs(real)
+        link = os.path.join(self.tmp, "alias")
+        os.symlink(real, link)
+        self.paths = dataclasses.replace(self.paths, reviews=os.path.join(link, "reviews"))   # kök takma adı
+        self.ev()
+        argv = FakeProc.instances[0].argv
+        pf = argv[argv.index("--partial-file") + 1]
+        self.assertEqual(pf, os.path.realpath(pf))
+        self.assertNotIn("alias", pf)
+
     def test_killed_run_is_recovered_from_partial_file_masked(self):
         self.cfg.review_timeout_minutes = 1
         part = {"partial": True, "tool_rounds": 7, "tool_calls": 12, "written": False,

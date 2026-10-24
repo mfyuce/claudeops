@@ -949,7 +949,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             if sf(binary, "--usage-log"):           # token ekonomisi ölçümü: istek başına sayılar (istem/cevap/araç sonucu YOK)
                 budget += ["--usage-log", rpath[:-3] + ".usage.jsonl"]
             if sf(binary, "--partial-file"):        # SIGKILL'e dayanıklı kısmi çıktı (tur sınırında atomik yazılır, 0600)
-                budget += ["--partial-file", rv.partial_path(rpath)]
+                budget += ["--partial-file", os.path.realpath(rv.partial_path(rpath))]   # ucli yolun HERHANGİ bir bileşeni symlink ise reddeder
             if sf(binary, "--allow-create-dir"):
                 create_dir = os.path.dirname(rpath)
                 prompt += rv.draft_prompt_suffix(rv.draft_path(rpath), lang)
