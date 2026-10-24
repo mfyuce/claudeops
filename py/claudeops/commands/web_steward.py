@@ -4733,6 +4733,9 @@ class RemoteReviewDriver:
         return {"ok": False, "error": "review session did not become ready"}
 
     def send(self, text: str) -> Dict[str, Any]:
+        # Canlı deneme (2026-10-24): `term/input` satır satır girer, ucli REPL her satırı AYRI tur sayıp istemi böler (model
+        # yalnız bir parçayı görür). Tek satıra indirilir; başlık biçimi için ayrıca uyarı eklenir.
+        text = " ".join(str(text).split()) + " (Her bulgu başlığı cevapta AYRI bir satırda olmalı.)"
         res = _remote_post(self.host, "/api/term/input", {"name": self.session, "text": text, "exact": True},
                            REMOTE_INPUT_TIMEOUT_SECONDS)
         return {"ok": bool(res.get("ok")), "error": str(res.get("error") or res.get("code") or "")}

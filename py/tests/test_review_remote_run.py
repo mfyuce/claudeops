@@ -157,8 +157,11 @@ class DriverTest(unittest.TestCase):
         self.assertTrue(self.posts[0][1]["exact"])
 
     def test_send_goes_exact_to_review_session_only(self):
-        self.assertTrue(self.drv.send("istem")["ok"])
-        self.assertEqual(self.posts, [("/api/term/input", {"name": "rvw_far", "text": "istem", "exact": True})])
+        self.assertTrue(self.drv.send("istem\nikinci satır\n## R-1 | P2 | x")["ok"])
+        path, body = self.posts[0]
+        self.assertEqual((path, body["name"], body["exact"]), ("/api/term/input", "rvw_far", True))
+        self.assertNotIn("\n", body["text"])                                   # REPL satırı ayrı tur sayar: TEK satır
+        self.assertTrue(body["text"].startswith("istem ikinci satır ## R-1 | P2 | x"))
 
     def test_ready_fails_when_remote_folder_unknown(self):
         self.rows[:] = [{"name": "baska", "cwd": "/x", "running": True}]
