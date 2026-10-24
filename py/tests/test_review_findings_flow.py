@@ -399,3 +399,47 @@ class TestAutoVerify(_Flow):
         self.views = [_view("a", busy=True)]
         self.assertIsNone(ws.auto_review_verify(self.cfg(), now=5_000.0))
         self.assertEqual(self.sent, [])
+
+
+class TestBeforeTbd(_Flow):
+    def prep(self):
+        self.seed(REVIEW_MD + "\n## R-4 | P3 | w.py:1 | Veritabanı parolası kodda\ngovde gizli\n")
+        data = self.findings()
+        for v in data.values():
+            v["state"] = {"R-1": "unclear", "R-2": "refuted", "R-3": "exported", "R-4": "refuted"}[v["ref"]]
+            v["verdict"] = "gerekçe " + v["ref"]
+        rv.save_findings(self.p, data)
+        self.out = os.path.join(self.dir.name, "prv")
+        os.makedirs(self.out)
+        return NS(sid="rev", review_before_tbd_dir=self.out)
+
+    def text(self):
+        files = [f for f in os.listdir(self.out) if f.startswith("BEFORETBD-")]
+        self.assertEqual(len(files), 1)
+        with open(os.path.join(self.out, files[0]), encoding="utf-8") as f:
+            return f.read()
+
+    def test_writes_only_unclear_and_refuted_once_and_hides_secrets(self):
+        cfg = self.prep()
+        done = wr.before_tbd(cfg, now=1_700_000_000.0)
+        self.assertEqual(len(done), 3)
+        txt = self.text()
+        self.assertIn("| P1 | unclear", txt)
+        self.assertIn("| P2 | refuted", txt)
+        self.assertNotIn("| P3 | exported", txt)
+        self.assertNotIn("govde gizli", txt)
+        self.assertIn("gövde yazılmadı", txt)
+        self.assertEqual(wr.before_tbd(cfg, now=1_700_000_100.0), [])     # çift yazma yok
+        self.assertEqual(self.text().count("## "), txt.count("## "))
+
+    def test_off_when_dir_empty_or_missing(self):
+        cfg = self.prep()
+        self.assertEqual(wr.before_tbd(NS(sid="rev", review_before_tbd_dir=""), now=1.0), [])
+        self.assertEqual(wr.before_tbd(NS(sid="rev", review_before_tbd_dir="/nonexistent/x"), now=1.0), [])
+        self.assertEqual(os.listdir(self.out), [])
+
+    def test_tick_wiring(self):
+        cfg = self.prep()
+        settings.save_settings({"stewards": {"rev": {"review_before_tbd_dir": self.out}}})
+        res = self.tick()
+        self.assertIn("before_tbd", [a["kind"] for a in res["actions"]])

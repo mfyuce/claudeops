@@ -1345,6 +1345,13 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if auto:
         actions.append({"kind": "auto_approve", "findings": auto})
     try:
+        bt = before_tbd(cfg, t)
+    except Exception as e:
+        sw.log_event("review_before_tbd_failed", paths=p, error=_tail(repr(e)))
+        bt = []
+    if bt:
+        actions.append({"kind": "before_tbd", "findings": bt})
+    try:
         asked = ask_remote_choice(cfg, t)
     except Exception as e:      # soru açma hatası review turunu düşürmesin
         sw.log_event("review_where_ask_failed", paths=p, error=_tail(repr(e)))
@@ -1600,6 +1607,54 @@ def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
             done.append(fid)
     if done:
         sw.log_event("review_auto_approve", paths=p, findings=done, level=int(cfg.review_auto_approve))
+    return done
+
+
+BEFORE_TBD_STATES = ("unclear", "refuted")     # başka yerde kalıcı olmayan bulgular (exported/approved zaten projenin TODO/TBD'sinde)
+
+
+def before_tbd(cfg: Any, now: Optional[float] = None) -> List[str]:
+    """`review_before_tbd_dir` doluysa `unclear`/`refuted` bulguları `<klasör>/BEFORETBD-<tarih>.md` sonuna ekler (özel
+    repo klasörü; commit/push OTOMATİK DEĞİL). Tek yazım: başlıktaki bulgu kimliği herhangi bir `BEFORETBD*.md`te varsa
+    atlanır. Parola/gizli değer geçen bulgunun gövdesi YAZILMAZ. Yazılan fid'ler döner."""
+    root = str(getattr(cfg, "review_before_tbd_dir", "") or "").strip()
+    if not root or not os.path.isdir(root):
+        return []
+    t = time.time() if now is None else now
+    p = sw.paths_for(cfg.sid)
+    rows = [(fid, rec) for fid, rec in sorted(rv.load_findings(p).items())
+            if isinstance(rec, dict) and rec.get("state") in BEFORE_TBD_STATES]
+    if not rows:
+        return []
+    seen = ""
+    for name in sorted(os.listdir(root)):
+        if name.startswith("BEFORETBD") and name.endswith(".md"):
+            try:
+                with open(os.path.join(root, name), encoding="utf-8") as f:
+                    seen += f.read()
+            except OSError:
+                pass
+    blocks: List[str] = []
+    done: List[str] = []
+    for fid, rec in rows:
+        if f"## {fid} |" in seen:
+            continue
+        secret = sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}"))
+        body = "(parola/gizli değer geçtiği için gövde yazılmadı)" if secret else " ".join(str(rec.get("body") or "").split())[:1500]
+        blocks.append(f"## {fid} | {rec.get('severity') or '?'} | {rec.get('state')}\n"
+                      f"- Yer: `{rec.get('where') or '?'}`\n"
+                      f"- Başlık: {' '.join(str(rec.get('title') or '').split())}\n"
+                      f"- Doğrulama: {' '.join(str(rec.get('verdict') or '').split()) or '-'}\n"
+                      f"- Bulgu gövdesi: {body}\n")
+        done.append(fid)
+    if not blocks:
+        return []
+    path = os.path.join(root, f"BEFORETBD-{time.strftime('%Y-%m-%d', time.localtime(t))}.md")
+    head = "" if os.path.exists(path) else ("# BEFORETBD: reviewer bulguları, başka yerde kalıcı olmayanlar (belirsiz / çürütülen)\n"
+                                           "> Otomatik yazıldı (review_before_tbd_dir). Sahip karar verir: karar verilemedi / saçma / TBD'ye taşı.\n")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(head + "\n" + "\n".join(blocks))
+    sw.log_event("review_before_tbd", paths=p, file=path, findings=done)
     return done
 
 
