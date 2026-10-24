@@ -238,6 +238,17 @@ class RemoteFlowTest(NoRealReviewMixin, _Engine):
         self.assertEqual(drv.calls[0][1:], ("m1", "low"))
         self.assertTrue(wr.rv.load_findings(paths))                                 # bulgu kaydedildi (state=new)
 
+    def test_recover_on_start_skips_live_job_of_this_process(self):
+        paths = sw.paths_for("rev")
+        t = wr.rv.ReviewTarget("evren", "m1", "m1")
+        wr.rv.update_pair(paths, "far", t, status="running", started_at=1.0)
+        wr.rv.update_pair(paths, "baska", t, status="running", started_at=1.0)
+        wr._JOBS[wr.rv.pair_key("far", t)] = wr._Job("x")
+        self.assertEqual(wr.recover_on_start(paths), 1)                           # yalnız canlı işi OLMAYAN
+        hist = wr.rv.load_history(paths)["pairs"]
+        self.assertEqual(hist[wr.rv.pair_key("far", t)]["status"], "running")
+        self.assertEqual(hist[wr.rv.pair_key("baska", t)]["status"], "partial")
+
     def test_unrecognized_answer_reasks_only_after_retry_window(self):
         t0 = time.time()
         wr.ask_remote_choice(self.cfg(), t0)

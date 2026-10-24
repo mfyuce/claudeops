@@ -1087,6 +1087,9 @@ def recover_on_start(paths: Any, now: Callable[[], float] = time.time) -> int:
         hist = rv.load_history(p)
         for key, rec in hist["pairs"].items():
             if isinstance(rec, dict) and rec.get("status") == "running":
+                with _JOBS_LOCK:
+                    if key in _JOBS:     # bu süreçte CANLI iş (restart sonrası ilk tick'ten ÖNCE elle başlatılan): yarıda kalmış değil
+                        continue
                 rec.update(status="partial", finished_at=now(), pid=None, error="yeniden başlatma: koşu yarıda kaldı")
                 hist["runs"].append({"pair": key, "status": "partial", "at": rec["finished_at"], "file": rec.get("file")})
                 n += 1
