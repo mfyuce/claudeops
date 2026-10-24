@@ -247,6 +247,12 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE")], self.projects, {}, _cfg(), self.now, [], [])
         self.assertEqual(sorted(a.kind for a in acts if a.name == "a"), ["set_phase", "stop"])
 
+    def test_done_marker_ignored_when_project_notes_have_no_done_tag(self):
+        self.projects["a"].notes = "sürekli geliştirme " + sw.NO_DONE_TAG
+        acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE")], self.projects, {}, _cfg(), self.now, [], [])
+        self.assertEqual([a for a in acts if a.name == "a" and a.kind in ("set_phase", "stop")], [])
+        self.assertTrue(sw.done_blocked(self.projects["a"]))
+
     def test_due_projects_respect_slots_priority_and_cadence(self):
         cfg = _cfg(max_active=2, max_starts_per_tick=5)
         acts, st = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [])

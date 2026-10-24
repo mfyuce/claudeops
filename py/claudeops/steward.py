@@ -139,6 +139,7 @@ MARK_JOB = "STEWARD-JOB:"              # paylaşımlı servise iş isteği (<tü
 JOB_REQUEST_PREFIX = "İŞ İSTEĞİ (STEWARD-JOB): "
 MARK_PLAN_READY = "STEWARD-PLAN-READY"  # planlama bitti → faz planned
 MARK_DONE = "STEWARD-DONE"             # proje bitti → faz done, oturum durur
+NO_DONE_TAG = "NO-STEWARD-DONE"           # proje notunda: STEWARD-DONE işareti yok sayılır (sürekli geliştirme)
 READY_FOR_HANDOVER = "READY FOR HANDOVER"
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -1630,6 +1631,12 @@ _JOB_BODY_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}\s+\S")   # '<tür> <dosya/aç�
 _PLACEHOLDER_BODY_RE = re.compile(r"^<[^<>\n]{1,80}>[\s`.…]*$")   # '<soru>' gibi YER TUTUCU: yazım örneği, gerçek soru değil
 
 
+def done_blocked(project: Any) -> bool:
+    """Proje notunda `NO_DONE_TAG` varsa `STEWARD-DONE` işlenmez (copsdev, 2026-10-24: iki kez bir bulgu paketi/devir
+    mesajı yüzünden proje `done` olup oturum durdu). SAF."""
+    return NO_DONE_TAG in str(getattr(project, "notes", "") or "")
+
+
 def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool}. Satır başındaki madde/boşluk toleranslı;
@@ -2783,7 +2790,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         actions.extend(marker_record_actions(v.name, proj, m))
         if proj and m["plan_ready"] and projects[proj].phase == "planning":
             actions.append(Action("set_phase", proj, "STEWARD-PLAN-READY", {"phase": "planned"}))
-        if proj and m["done"]:
+        if proj and m["done"] and done_blocked(projects[proj]):
+            pass    # sürekli geliştirme projesi: bir iş paketinin bitişi (devir mesajı dahil) projeyi `done` yapmaz
+        elif proj and m["done"]:
             if v.subagent_active or v.subagent_unknown:
                 # Alt ajan hâlâ çalışıyor: işaret erken (wifi5g, Aşama 3 cila sürerken `done` oldu). Ertele; ajan bitince uygulanır.
                 done_pending[v.name] = proj
