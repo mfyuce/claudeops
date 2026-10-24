@@ -93,9 +93,9 @@ import psutil
 
 from .. import searxng
 from ..diaglog import diag_log
-from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_stream_enabled,
+from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
-from ..ucli_client import (UcliError, binary_supports_flag, read_chat_history, read_status_file, resolve_binary,
+from ..ucli_client import (UcliError, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, resolve_binary,
                            ucli_chat_once)
 from .base import CliProvider, OneshotError
 
@@ -373,6 +373,23 @@ def _stream_args(binary: str, session_name: str = "") -> List[str]:
     return ["--stream"]
 
 
+def _state_dir_args(binary: str, cwd: str, session_name: str = "") -> List[str]:
+    """`--state-dir <STATE_ROOT>/<kök>` (bkz. `settings.ucli_state_dir_enabled`, VARSAYILAN KAPALI): oturum jsonl/durum/kilit
+    dosyaları depo dışına gider. Atlanır: ayar kapalı, ikili bayrağı tanımıyor (günlüğe yazılır) ya da GEÇMİŞİ eski dizinde olan
+    oturum (`<kök>/.ucli/chat/NAME.jsonl` var: yeni dizinle açılırsa konuşma geçmişi görünmez olurdu; o oturum eskisi gibi sürer)."""
+    sdir = state_dir_for(cwd)
+    # Ayar sonradan kapatılsa bile geçmişi YENİ dizinde olan oturum onunla açılır (aksi halde konuşması kaybolurdu).
+    in_new = bool(session_name) and os.path.exists(os.path.join(sdir, f"{session_name}.jsonl"))
+    if not (ucli_state_dir_enabled() or in_new):
+        return []
+    if not binary_supports_flag(binary, "--state-dir"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--state-dir", binary=binary)
+        return []
+    if not in_new and session_name and os.path.exists(os.path.join(legacy_chat_dir(cwd), f"{session_name}.jsonl")):
+        return []
+    return ["--state-dir", sdir]
+
+
 def _timeout_args(binary: str, limits: Dict[str, int], session_name: str = "") -> List[str]:
     """`--request-timeout-secs` (bkz. `_REQUEST_TIMEOUT_SECS`). `_web_args`le AYNI sebepten YALNIZ ikili bayrağı
     tanıyorsa eklenir: eski bir ikili 'unexpected argument' ile spawn anında patlardı; tanımıyorsa atlanır
@@ -461,6 +478,7 @@ class UcliProvider(CliProvider):
         argv += _timeout_args(argv[0], limits, session_name)
         argv += _effort_args(argv[0], model, preset, session_name)
         argv += _stream_args(argv[0], session_name)
+        argv += _state_dir_args(argv[0], cwd, session_name)
         inner =" ".join(shlex.quote(a) for a in argv)
         if _sync_api_key_file():
             # Anahtarı argv'ye GÖMMÜYORUZ — bu makine çok-kullanıcılı, `ps aux`

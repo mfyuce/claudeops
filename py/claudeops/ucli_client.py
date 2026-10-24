@@ -35,6 +35,7 @@ atlar, cevap gelmez → sıra kayar) ve timeout'ta session'ı KURTARMAYA
 `ask()`'in cevabıymış gibi görünebilirdi — bkz. `_pump_stdout`).
 """
 from __future__ import annotations
+import hashlib
 import json
 import os
 import queue
@@ -208,13 +209,47 @@ def _subprocess_env(api_key_env: str, api_key: Optional[str]) -> Optional[Dict[s
     return {**os.environ, api_key_env: api_key}
 
 
+STATE_ROOT = os.path.expanduser("~/.claude/claudeops/ucli-state")
+
+
+def state_dir_for(cwd: str) -> str:
+    """`ucli chat --state-dir`e verilecek kök-başına dizin (depo DIŞI): `<STATE_ROOT>/<ad>-<sha1(gerçek kök)[:10]>`. Aynı kök
+    her zaman aynı dizin; farklı köklerin (aynı ada sahip bile olsa) dizini ayrı."""
+    real = os.path.realpath(cwd)
+    base = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.basename(real.rstrip(os.sep)) or "root")[:40]
+    return os.path.join(STATE_ROOT, f"{base}-{hashlib.sha1(real.encode('utf-8')).hexdigest()[:10]}")
+
+
+def legacy_chat_dir(cwd: str) -> str:
+    return os.path.join(cwd, ".ucli", "chat")
+
+
+def chat_session_dirs(cwd: str) -> List[str]:
+    """Okuyucuların sırayla bakacağı dizinler. `--state-dir` açıksa (ayar) yeni dizin ÖNCE, eski `<kök>/.ucli/chat` ARKADAN
+    (açılmadan önce yazılmış / eski oturumlar); kapalıysa yalnız eski AMA yeni dizinde dosya zaten varsa o da (ayar kapatılsa
+    bile o dizindeki canlı oturum okunsun)."""
+    from .settings import ucli_state_dir_enabled
+    new, old = state_dir_for(cwd), legacy_chat_dir(cwd)
+    return [new, old] if (ucli_state_dir_enabled() or os.path.isdir(new)) else [old]
+
+
+def find_chat_file(cwd: str, filename: str) -> str:
+    """`filename`in (`NAME.jsonl`, `NAME.status.json`) var olan ilk yolu; yoksa birincil dizindeki yol (yoksunluk çağıranda)."""
+    dirs = chat_session_dirs(cwd)
+    for d in dirs:
+        path = os.path.join(d, filename)
+        if os.path.exists(path):
+            return path
+    return os.path.join(dirs[0], filename)
+
+
 def chat_session_dir(cwd: str) -> str:
     """`.ucli/chat/*.jsonl`'ın yaşadığı proje-başına dizin — `io_providers/
     ucli_provider.py` (tmux'suz `IoProvider`) ve `providers/ucli_provider.py`
     (tmux-backed `CliProvider`) AYNI klasörü/dosya biçimini okur: ikisi de aynı
     `--session NAME` kavramını paylaşıyor, sadece süreç yönetimi (Python'ın
     kendi pipe'ı vs. tmux pane) farklı."""
-    return os.path.join(cwd, ".ucli", "chat")
+    return chat_session_dirs(cwd)[0]
 
 
 def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
@@ -230,7 +265,7 @@ def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
     `/exit`'te siler ama crash/kill'de BİLEREK silmez — kendisi de bir sinyal,
     bkz. status.rs) — hiçbiri hata sayılmaz, hepsinde `None` (çağıran
     pane-capture'a düşsün)."""
-    path = os.path.join(chat_session_dir(cwd), f"{session}.status.json")
+    path = find_chat_file(cwd, f"{session}.status.json")
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -273,7 +308,7 @@ def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
     Yeni ucli sürümlerinde dosyanın ilk satırı `{"ucli_session_schema_version":1}` başlığı
     (`role` yok): eskiden `KeyError` → `None` → panel ucli sohbetini "desteklenmiyor" diye
     gösteriyordu (2026-10-14, Geçmiş'te "chat görünmüyor"); `role`süz satır atlanır."""
-    path = os.path.join(chat_session_dir(cwd), f"{session}.jsonl")
+    path = find_chat_file(cwd, f"{session}.jsonl")
     if not os.path.isfile(path):
         return []
     turns: List[Dict[str, str]] = []

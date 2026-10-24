@@ -495,6 +495,25 @@ def ucli_stream_enabled() -> bool:
     return UCLI_STREAM_DEFAULT
 
 
+UCLI_STATE_DIR_DEFAULT = False
+
+
+def ucli_state_dir_enabled() -> bool:
+    """`ucli_limits.state_dir` (2026-10-24, opt-in): ucli'ye `--state-dir` geçirilsin mi (oturum jsonl/durum dosyası depo DIŞINDA
+    `~/.claude/claudeops/ucli-state/<kök>/`). VARSAYILAN KAPALI: açıkken okuyucular (`ucli_client.chat_session_dirs`) yeni dizin
+    + eski `<kök>/.ucli/chat`e BAKAR, ama geçmişi eski dizinde olan bir oturum eski dizinle açılır (bkz. `_state_dir_args`).
+    Asla fırlatmaz."""
+    raw = load_settings().get("ucli_limits") or {}
+    if not isinstance(raw, dict):
+        return UCLI_STATE_DIR_DEFAULT
+    value = str(raw.get("state_dir") or "").strip().lower()
+    if value in _OFF_WORDS:
+        return False
+    if value in _ON_WORDS:
+        return True
+    return UCLI_STATE_DIR_DEFAULT
+
+
 # Tam host adı: etiketler [a-z0-9-], tire uçta olmaz, toplam <= 253. Joker (`*.org`),
 # şema (`https://`), yol, port ve boşluk YOK: ucli `--allow-fetch-domain`i "tam host
 # adı eşleşmesi, büyük/küçük harf duyarsız, joker yok" diye tanımlıyor.

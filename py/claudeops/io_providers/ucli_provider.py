@@ -7,7 +7,7 @@ import glob
 import os
 from typing import Dict, List, Optional
 
-from ..ucli_client import UcliError, chat_session_dir, read_chat_history, ucli_chat_once
+from ..ucli_client import UcliError, chat_session_dirs, read_chat_history, ucli_chat_once
 from .base import FormField, IoProvider, IoProviderError
 
 
@@ -29,9 +29,14 @@ class UcliIoProvider(IoProvider):
             raise IoProviderError(str(e)) from e
 
     def list_sessions(self, cwd: str) -> List[str]:
-        paths = glob.glob(os.path.join(chat_session_dir(cwd), "*.jsonl"))
+        paths = [p for d in chat_session_dirs(cwd) for p in glob.glob(os.path.join(d, "*.jsonl"))]
         paths.sort(key=os.path.getmtime, reverse=True)
-        return [os.path.splitext(os.path.basename(p))[0] for p in paths]
+        names: List[str] = []
+        for p in paths:     # iki dizinde aynı ad olabilir (taşınmış oturum): en yeni olan kazanır, tek kez
+            n = os.path.splitext(os.path.basename(p))[0]
+            if n not in names:
+                names.append(n)
+        return names
 
     def history(self, cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
         return read_chat_history(cwd, session)
