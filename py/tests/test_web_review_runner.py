@@ -522,6 +522,28 @@ class TestRecover(Base):
         self.assertEqual(rv.load_history(self.paths)["pairs"][rv.pair_key("other", EV)]["status"], "done")
         self.assertEqual(wr.recover_on_start(self.paths), 0)
 
+    def test_recover_on_start_salvages_draft_report(self):
+        md = os.path.join(self.paths.reviews, "proj", "evren", "m", "20261024100000", "20261024100000.md")
+        os.makedirs(os.path.dirname(md))
+        with open(rv.draft_path(md), "w") as f:
+            f.write("## R-1 | P1 | a.py:1 | başlık\ngövde\n")
+        rv.update_pair(self.paths, "proj", EV, status="running", started_at=1.0, io_file=wr.io_path_for(md))
+        self.assertEqual(wr.recover_on_start(self.paths, now=lambda: 99.0), 1)
+        rec = self.pair(EV)
+        self.assertEqual((rec["status"], rec["file"]), ("partial", md))
+        self.assertTrue(os.path.exists(md))
+        self.assertEqual([f["ref"] for f in rv.load_findings(self.paths).values()], ["R-1"])
+
+    def test_recover_on_start_no_report_head_keeps_file_empty(self):
+        md = os.path.join(self.paths.reviews, "proj", "evren", "m", "20261024100001", "20261024100001.md")
+        os.makedirs(os.path.dirname(md))
+        with open(rv.draft_path(md), "w") as f:
+            f.write("çöp")
+        rv.update_pair(self.paths, "proj", EV, status="running", started_at=1.0, io_file=wr.io_path_for(md))
+        wr.recover_on_start(self.paths)
+        self.assertFalse(os.path.exists(md))
+        self.assertFalse(self.pair(EV).get("file"))
+
 
 if __name__ == "__main__":
     unittest.main()

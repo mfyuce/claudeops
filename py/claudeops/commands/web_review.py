@@ -1079,10 +1079,34 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
     return {"ok": True, "key": key, "file": path, "thread": th, "argv": argv}
 
 
+def _recover_restart_report(rec: Dict[str, Any]) -> str:
+    """TBD#119 B: restart ile ölen koşunun diskte kalan taslağı (`.model.md`) ya da `--partial-file` metni rapor başlığı
+    içeriyorsa maskeli `<ts>.md` olarak yazılır ve bulgular `new` kaydedilir. Rapor yolu `io_file`dan türetilir. Yazılan
+    yol ("" = kurtarılacak rapor yok / var olan rapor dosyası korunur)."""
+    io = rec.get("io_file")
+    if not isinstance(io, str) or not io.endswith(IO_SUFFIX):
+        return ""
+    path = io[:-len(IO_SUFFIX)] + ".md"
+    if os.path.exists(path) or os.path.islink(path):
+        return ""
+    text, _ = _recover_draft(path, "")
+    if not _REPORT_HEAD_RE.search(text or ""):
+        text = _recover_partial(path)
+    text = rv.redact_secrets(text or "")
+    if not _REPORT_HEAD_RE.search(text):
+        return ""
+    try:
+        _write_report(path, text)
+    except OSError:
+        return ""
+    return path
+
+
 def recover_on_start(paths: Any, now: Callable[[], float] = time.time) -> int:
     """Servis yeniden başlayınca `running` kalan çiftler (süreç ölmüştür) `partial` olur. Kaç çift düzeltildi."""
     p = sw._pp(paths)
     n = 0
+    recovered: List[Tuple[str, str]] = []
     with sw.steward_lock(p):
         hist = rv.load_history(p)
         for key, rec in hist["pairs"].items():
@@ -1091,10 +1115,20 @@ def recover_on_start(paths: Any, now: Callable[[], float] = time.time) -> int:
                     if key in _JOBS:     # bu süreçte CANLI iş (restart sonrası ilk tick'ten ÖNCE elle başlatılan): yarıda kalmış değil
                         continue
                 rec.update(status="partial", finished_at=now(), pid=None, error="yeniden başlatma: koşu yarıda kaldı")
+                saved = _recover_restart_report(rec)
+                if saved:       # TBD#119 B: diskte kalan taslak/partial rapor olarak kurtarıldı
+                    rec["file"] = saved
+                    recovered.append((key.split("|", 1)[0], saved))
                 hist["runs"].append({"pair": key, "status": "partial", "at": rec["finished_at"], "file": rec.get("file")})
                 n += 1
         if n:
             rv.save_history(p, hist)
+    for proj, path in recovered:    # bulgular kilit dışında (add_findings kendi kilidini alır)
+        try:
+            with open(path, encoding="utf-8") as f:
+                rv.add_findings(paths, proj, path, rv.parse_findings(f.read()))
+        except Exception as e:
+            sw.log_event("review_findings_failed", paths=paths, project=proj, error=_tail(repr(e)))
     return n
 
 
