@@ -61,6 +61,7 @@ def candidates(findings_by_sid: Iterable[Dict[str, Any]], cwd_of) -> List[Dict[s
             proj = str(rec.get("project") or "")
             out.append({"id": fid, "project": proj, "severity": str(rec.get("severity") or ""),
                         "where": str(rec.get("where") or ""), "title": " ".join(str(rec.get("title") or "").split())[:200],
+                        "file": str(rec.get("exported_to") or ""),
                         "todo": todo_status(str(rec.get("exported_to") or ""), cwd_of(proj) if proj else "", fid)})
     return out
 
@@ -111,16 +112,18 @@ def plan_advance_deliveries(views: List[Any], projects: Dict[str, Any], cands: L
 
 def build_advance_message(rows: List[Dict[str, Any]], lang: str = "tr") -> str:
     """Proje oturumuna gidecek direktif (`extra`). Yetki sınırı METİNDE: commit/push/restart yalnız proje notundaki izinle."""
+    files = sorted({r["file"] for r in rows if r.get("file")})
+    where = ", ".join(files)
     items = "\n".join(f"- {r['id']} | {r.get('severity') or '?'} | {r.get('where') or '?'} | {r.get('title') or ''}" for r in rows)
     if lang == "en":
         return ("[review findings] The owner approved these findings; they are in the project's TODO/TBD as `(review <id>)` "
-                "lines (unchecked). Work them one by one:\n" + items + "\n"
+                "lines (unchecked)" + (f", in the file(s): {where}" if where else "") + ". Work them one by one:\n" + items + "\n"
                 "1) Re-check the finding against the CURRENT code. If it is wrong, mark the line `[x]` and write why "
                 "(\"rejected: ...\"). 2) If it is real, fix it, run the tests, mark the line `[x]` and add one line to DONE.md. "
                 "3) Commit, push or restart a service ONLY if this project's notes (CLAUDE.md) explicitly allow it; otherwise "
                 "do not, and tell the owner. 4) Touch nothing outside this project.")
     return ("[review bulguları] Sahibin onayladığı bulgular projenin TODO/TBD dosyasında `(review <kimlik>)` satırı olarak "
-            "(işaretsiz) duruyor. Sırayla ele al:\n" + items + "\n"
+            "(işaretsiz) duruyor" + (f"; dosya: {where}" if where else "") + ". Sırayla ele al:\n" + items + "\n"
             "1) Bulguyu GÜNCEL koda karşı yeniden doğrula. Yanlışsa satırı `[x]` yap ve nedenini yaz (\"reddedildi: ...\"). "
             "2) Gerçekse düzelt, testleri çalıştır, satırı `[x]` yap, DONE.md'ye tek satır ekle. "
             "3) Commit, push ya da servis restart'ı YALNIZ bu projenin notunda (CLAUDE.md) açıkça izin varsa yap; yoksa "
