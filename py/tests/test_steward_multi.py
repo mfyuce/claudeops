@@ -537,6 +537,18 @@ class TestSlots(unittest.TestCase):
         acts, _ = sw.plan_tick(views, mine["default"], {}, cfg6, T0, [], [], world=w)
         self.assertEqual([a.name for a in acts if a.kind == "start"], ["c"])
 
+    def test_start_blocked_reason_is_visible(self):
+        # canlı 2026-10-24: ae/hc/hcr süresi dolmuştu ama makine geneli sınır doluydu; neden hiçbir yerde görünmüyordu
+        mine, idx, views = self._setup()
+        w = sw.world_for("default", idx)
+        _, st = sw.plan_tick(views, mine["default"], {}, _cfg(max_active=4, max_active_total=5), T0, [], [], world=w)
+        self.assertEqual(st["start_blocked"]["reason"], "max_active_total")
+        self.assertEqual((st["start_blocked"]["projects"], st["start_blocked"]["others_active"]), (["c"], 3))
+        _, st = sw.plan_tick(views, mine["default"], {}, _cfg(max_active=2, max_active_total=0), T0, [], [], world=w)
+        self.assertEqual(st["start_blocked"]["reason"], "max_active")
+        _, st = sw.plan_tick(views, mine["default"], {}, _cfg(max_active=4, max_active_total=6), T0, [], [], world=w)
+        self.assertNotIn("start_blocked", st)                                  # başlatıldı: engel yok
+
     def test_starts_left_budget(self):
         mine, idx, views = self._setup()
         cfg = _cfg(max_active=4, max_active_total=0, max_starts_per_tick=2)

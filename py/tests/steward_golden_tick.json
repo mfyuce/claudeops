@@ -166,6 +166,15 @@
     "degnekci_kitap": "77e2b9072b2332cd",
     "egyptian20260917": "7df76bdc67272358",
     "ncs20261019": "0082017e463558ee"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 4,
+    "projects": [
+     "ncs2",
+     "wifi5gppr"
+    ],
+    "reason": "max_active"
    }
   }
  },
@@ -285,6 +294,15 @@
     "egyptian20260917": "7df76bdc67272358",
     "kitap_1": "ea1256cf4b4c8f39",
     "ncs20261019": "684b5c4e0a5e9ef6"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 4,
+    "projects": [
+     "ncs2",
+     "wifi5gppr"
+    ],
+    "reason": "max_active"
    }
   }
  },
@@ -391,6 +409,15 @@
     "egyptian20260917": "7df76bdc67272358",
     "kitap_1": "ea1256cf4b4c8f39",
     "ncs20261019": "684b5c4e0a5e9ef6"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 4,
+    "projects": [
+     "ncs2",
+     "wifi5gppr"
+    ],
+    "reason": "max_active"
    }
   }
  },
@@ -553,6 +580,16 @@
     "degnekci_kitap": "77e2b9072b2332cd",
     "egyptian20260917": "7df76bdc67272358",
     "ncs20261019": "0082017e463558ee"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 2,
+    "projects": [
+     "ncs",
+     "ncs2",
+     "wifi5gppr"
+    ],
+    "reason": "max_active"
    }
   }
  },
@@ -663,6 +700,16 @@
     "egyptian20260917": "7df76bdc67272358",
     "kitap_1": "ea1256cf4b4c8f39",
     "ncs20261019": "684b5c4e0a5e9ef6"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 2,
+    "projects": [
+     "ncs",
+     "ncs2",
+     "wifi5gppr"
+    ],
+    "reason": "max_active"
    }
   }
  },
@@ -760,6 +807,16 @@
     "egyptian20260917": "7df76bdc67272358",
     "kitap_1": "ea1256cf4b4c8f39",
     "ncs20261019": "684b5c4e0a5e9ef6"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 2,
+    "projects": [
+     "ncs",
+     "ncs2",
+     "wifi5gppr"
+    ],
+    "reason": "max_active"
    }
   }
  },
@@ -940,6 +997,14 @@
     "degnekci_kitap": "77e2b9072b2332cd",
     "egyptian20260917": "7df76bdc67272358",
     "ncs20261019": "0082017e463558ee"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 6,
+    "projects": [
+     "ncs2"
+    ],
+    "reason": "max_active"
    }
   }
  },
@@ -1071,6 +1136,14 @@
     "egyptian20260917": "7df76bdc67272358",
     "kitap_1": "ea1256cf4b4c8f39",
     "ncs20261019": "684b5c4e0a5e9ef6"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 6,
+    "projects": [
+     "ncs2"
+    ],
+    "reason": "max_active"
    }
   }
  },
@@ -1196,6 +1269,14 @@
     "egyptian20260917": "7df76bdc67272358",
     "kitap_1": "ea1256cf4b4c8f39",
     "ncs20261019": "684b5c4e0a5e9ef6"
+   },
+   "start_blocked": {
+    "active": 3,
+    "max_active": 6,
+    "projects": [
+     "ncs2"
+    ],
+    "reason": "max_active"
    }
   }
  }

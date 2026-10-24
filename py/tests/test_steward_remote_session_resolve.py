@@ -132,6 +132,30 @@ class TestDirective(_Resolve):
         self.assertEqual(self.inputs(), [("oiso" + NEW, True)])              # yeni (tarihli) adla
         self.assertEqual(r["name"], "oiso" + NEW)
 
+    def test_prefix_neighbour_session_is_not_a_second_session_of_the_project(self):
+        # canlı hata 2026-10-24: `saseimplppr20260930` (başka, kayıtsız proje) `saseimpl`in öneki sayılıp
+        # `saseimpl20261013`ü "2 çalışan oturum" yapıyordu; deliver_answer her tick ambiguous_sessions ile düşüyordu.
+        self.rows("oiso20261017", "oisoppr20260930")
+        r = self.directive("oiso20261017")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["name"], "oiso20261017")
+        self.assertEqual(self.log("remote_ambiguous"), [])
+
+    def test_repeated_identical_failure_is_logged_once(self):
+        # canlı 2026-10-24: aynı deliver_answer reddi her tick log'a yazılıyordu
+        ctx = ws._ctx()
+        ws._FAIL_LOGGED.clear()
+        act = sw.Action("deliver_answer", "oiso20261017", "answer", {})
+        bad = {"ok": False, "error": "target denied: x"}
+        for _ in range(3):
+            ws._remember(act, bad, ctx)
+        self.assertEqual(len(self.log("action")), 1)
+        ws._remember(act, {"ok": False, "error": "başka neden"}, ctx)          # neden değişti: yeniden kaydedilir
+        self.assertEqual(len(self.log("action")), 2)
+        ws._remember(act, {"ok": True}, ctx)                                    # başarı kaydı sıfırlar
+        ws._remember(act, bad, ctx)
+        self.assertEqual(len(self.log("action")), 4)
+
     def test_two_running_sessions_are_ambiguous_and_nothing_is_posted(self):
         self.rows("oiso20261017", "oiso20261018")
         for name in ("oiso", "oiso20261017", "oiso"):                        # tam ad verilse de: proje belirsiz

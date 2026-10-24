@@ -503,7 +503,7 @@ def _remote_views(world: sw.World, now: Optional[float] = None, rt: Optional[_Re
         # `SessionView.project` adın kendisi olur ve proje "çalışmıyor" sayılıp ikinci bir başlatma planlanırdı.
         if not v.blueprint:
             key = _remote_key(v.name, v.host, world)
-            if key and key != v.name:
+            if key and key != v.name and _derived_of(v.name, key):
                 v.blueprint = key
     history = {(r["host"], str(r.get("name") or "")): r.get("history_size") for r in selected}
     deadline = time.monotonic() + REMOTE_READ_BUDGET_SECONDS
@@ -560,6 +560,10 @@ def _act(name: str, *args: Any, **kw: Any) -> Any:
     return fn(*args, **kw)
 
 
+_FAIL_LOGGED: Dict[Tuple[str, str, str, str], float] = {}
+FAIL_LOG_REPEAT_SECONDS = 30 * 60   # aynı başarısız eylem + aynı neden bu aralıkta tek kez kaydedilir
+
+
 def _remember(action: sw.Action, result: Any, ctx: Optional[StewardContext] = None, host: str = "") -> None:
     """Uygulanan eylemin kaydı. `host`: uzak projeye yapılan eylemde host adı (verilmezse uzak sonucun `host`u; yerelde
     alan HİÇ yazılmaz: kayıt biçimi eskisiyle aynı)."""
@@ -571,6 +575,14 @@ def _remember(action: sw.Action, result: Any, ctx: Optional[StewardContext] = No
              "detail": (result.get("error") or result.get("detail") or "") if isinstance(result, dict) else ""}
     if host:
         entry["host"] = host
+    fkey = (str(ctx.paths.root), action.kind, action.name, entry["detail"])
+    if entry["ok"]:
+        for k in [k for k in _FAIL_LOGGED if k[:3] == fkey[:3]]:
+            _FAIL_LOGGED.pop(k, None)
+    elif entry["ts"] - _FAIL_LOGGED.get(fkey, 0.0) < FAIL_LOG_REPEAT_SECONDS:
+        return      # aynı eylem aynı nedenle yine düştü (ör. ambiguous_sessions): tick başına log/kayıt gürültüsü yok
+    else:
+        _FAIL_LOGGED[fkey] = entry["ts"]
     ctx.recent.insert(0, entry)
     del ctx.recent[RECENT_ACTIONS:]
     sw.log_event("action", paths=ctx.paths, kind=action.kind, name=action.name, reason=action.reason,
@@ -1253,11 +1265,21 @@ def _remote_key(name: str, host: str, world: sw.World) -> str:
     return key if kind == "project" and key and world.host_of(key) == host else ""
 
 
+_DERIVED_TAIL_RE = re.compile(r"(?:20\d\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))?(?:_\d+)?")
+
+
+def _derived_of(name: str, key: str) -> bool:
+    """Oturum adı `key` projesinin TÜRETİLMİŞ adı mı: tam ad ya da `key` + [tarih soneki] + [`_N`]. Salt önek yetmez:
+    `saseimplppr20260930` (başka, kayıtsız proje) `saseimpl`in ikinci oturumu DEĞİLDİR (canlı hata 2026-10-24)."""
+    return name.startswith(key) and bool(_DERIVED_TAIL_RE.fullmatch(name[len(key):]))
+
+
 def _remote_project_rows(rows: List[Dict[str, Any]], host: str, key: str, world: sw.World) -> List[Dict[str, Any]]:
     """`rows` içinden `key` projesinin ÇALIŞAN oturumları: adı `key`e çözülen (tam ad, `oiso20261017`, `oiso20261017_1`)
     ve `sw.select_rows`un bu host için seçtiği satırlar (uzak beyin/servis/kayıtsız düşer). Başka projenin öneki
     karışmaz (`World.resolve` en uzun proje adını seçer). Sıra satır sırası; dönen satırlar özgün sözlüklerdir."""
-    running = [r for r in rows if r.get("running") and world.resolve(str(r.get("name") or "")) == ("project", key)]
+    running = [r for r in rows if r.get("running") and world.resolve(str(r.get("name") or "")) == ("project", key)
+               and _derived_of(str(r.get("name") or ""), key)]
     keep = {str(r.get("name") or "") for r in sw.select_rows([dict(r, host=host) for r in running], world, {host})}
     return [r for r in running if str(r.get("name") or "") in keep]
 
@@ -2696,8 +2718,11 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
             _note_conflicts(ctx, idx, set(projects), t0)
             views = _collect_views(cfg, **rkw)
             with sw.steward_lock(paths):     # state RMW atomik (CLI süreci de aynı dosyaya yazar)
-                actions, new_state = sw.plan_tick(views, projects, sw.load_state(paths), cfg, t0,
+                prev_state = sw.load_state(paths)
+                actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world)
+                if new_state.get("start_blocked") != (prev_state.get("start_blocked") if "start_blocked" in new_state else None):
+                    sw.log_event("start_blocked", paths=paths, **new_state["start_blocked"])   # değişince bir kez
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
                 actions = actions + job_actions     # iş sonucu iletimi (varaka kuyruğu): `plan_tick`e DOKUNMAZ, aynı observe/_target yolundan
                 lesson_actions, planned_state = sl.plan_lesson_deliveries(views, projects, _lessons(cfg), new_state, t0,

@@ -3001,6 +3001,21 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         busy_names.add(p.name)
         last_directive_at[p.name] = now
     waiting = [p for p in due if p.name not in busy_names]
+    # Süresi dolup BAŞLATILAMAYAN projelerin nedeni durumda görünür (sessiz kalmasın: "cadence 5 dk, oturum neden açılmadı?")
+    if waiting:
+        total_free = (cfg.max_active_total - active - others_active - starts) if (world is not None and cfg.max_active_total > 0) else None
+        if starts >= max_starts and free > 0:
+            why = "max_starts"
+        elif total_free is not None and total_free <= 0 and total_free < cfg.max_active - active - starts:
+            why = "max_active_total"
+        else:
+            why = "max_active"
+        st["start_blocked"] = {"projects": sorted(p.name for p in waiting), "reason": why, "active": active,
+                               "max_active": cfg.max_active}
+        if why == "max_active_total":       # yalnız makine geneli sınır nedense (yerel/varsayılan dünya durumu aynı kalır)
+            st["start_blocked"].update(others_active=others_active, max_active_total=cfg.max_active_total)
+    else:
+        st.pop("start_blocked", None)
 
     # 6) Slot baskısı — bekleyen varsa, uzun süredir boşta duran proje oturumlarını durdur
     if waiting and free <= 0:
