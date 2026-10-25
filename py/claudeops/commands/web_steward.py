@@ -1425,6 +1425,43 @@ def _same_life(stored: float, born: float, remote: bool) -> bool:
     return abs(stored - born) <= REMOTE_BORN_TOLERANCE_SECONDS if remote else stored == born
 
 
+WAKE_GATED_REASONS = ("due", "idle", "review", "visit")    # kendiliğinden üretilen şablon uyandırmaları (cevap/iş/bulgu/devir/respawn/elle DEĞİL)
+
+
+def _wake_sha(message: str) -> str:
+    return hashlib.sha1(message.encode("utf-8", "replace")).hexdigest()[:12]
+
+
+def _wake_gate(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any, message: str) -> bool:
+    """TBD#121 uyandırma kapısı: aynı oturuma AYNI metin son `wake_repeat_minutes` dakikada zaten gittiyse ("Plan hazır, SIRADAKİ
+    işi al" tekrarı; her uyandırma tüm bağlamı yeniden okutur) True. `dry`: yalnız `would:wake_repeat` olayı yazar, False döner
+    (gönderilir; ölçüm); `act`: True döner (gönderilmez). Yalnız otomatik şablon nedenleri; cevap/iş/bulgu/devir/elle asla."""
+    if cfg.wake_gate not in ("dry", "act") or cfg.wake_repeat_minutes <= 0 or answer is not None or reason not in WAKE_GATED_REASONS:
+        return False
+    try:
+        rec = (sw.load_state(paths).get("wake_sent") or {}).get(sname) or {}
+    except Exception:
+        return False
+    age = time.time() - float(rec.get("at") or 0)
+    if rec.get("sha") != _wake_sha(message) or age >= cfg.wake_repeat_minutes * 60:
+        return False
+    sw.log_event("would:wake_repeat" if cfg.wake_gate == "dry" else "wake_repeat_skipped", paths=paths, name=sname, reason=reason,
+                 minutes=round(age / 60, 1), chars=len(message))
+    return cfg.wake_gate == "act"
+
+
+def _wake_record(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any, message: str) -> None:
+    if cfg.wake_gate not in ("dry", "act") or answer is not None or reason not in WAKE_GATED_REASONS:
+        return
+    try:
+        with sw.steward_lock(paths):
+            state = sw.load_state(paths)
+            state.setdefault("wake_sent", {})[sname] = {"sha": _wake_sha(message), "at": time.time()}
+            sw.save_state(state, paths)
+    except sw.LockTimeout:
+        pass
+
+
 def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: str = "",
                     answer: Optional[sw.Question] = None, more: Optional[List[sw.Question]] = None,
                     start_if_stopped: bool = True,
@@ -1501,6 +1538,8 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             compact = False
     message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more, compact=compact,
                                 paths=paths)
+    if _wake_gate(cfg, paths, sname, reason, answer, message):
+        return {"ok": True, "name": sname, "skipped": "wake_repeat"}
     if host:
         try:
             conversational = get_provider(scli).has_conversation()
@@ -1536,6 +1575,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             sw.save_state(state, paths)
     except sw.LockTimeout as e:
         sw.log_event("directive_unrecorded", paths=paths, name=project.name, error=str(e))
+    _wake_record(cfg, paths, sname, reason, answer, message)
     sw.log_event("directive", paths=paths, name=project.name, reason=reason, chars=len(message),
                  **({"host": host} if host else {}))
     out = {"ok": True, "name": sname, "chars": len(message)}

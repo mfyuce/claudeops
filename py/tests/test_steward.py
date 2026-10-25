@@ -2309,6 +2309,43 @@ class ActionJournalTest(HttpTest):
         self.assertNotIn("act_journal", sw.load_state())
 
 
+class WakeGateTest(HttpTest):
+    """TBD#121: aynı metinli otomatik `due` uyandırması pencerede tekrar gitmez (önce dry ölçüm, sonra act)."""
+
+    def _gate(self, mode, reason="due", answer=None, msg="Plan hazır", sname="s1", minutes=240):
+        cfg = _cfg(wake_gate=mode, wake_repeat_minutes=minutes)
+        paths = sw.paths_for("default")
+        return web_steward._wake_gate(cfg, paths, sname, reason, answer, msg), cfg, paths
+
+    def test_first_send_never_gated_then_repeat_dry_logs_but_sends_act_skips(self):
+        for mode, skipped in (("dry", False), ("act", True)):
+            sw.save_state({})
+            gated, cfg, paths = self._gate(mode)
+            self.assertFalse(gated)
+            web_steward._wake_record(cfg, paths, "s1", "due", None, "Plan hazır")
+            gated, _c, _p = self._gate(mode)
+            self.assertEqual(gated, skipped, mode)
+            evs = [e["event"] for e in sw.tail_log(20)]
+            self.assertIn("would:wake_repeat" if mode == "dry" else "wake_repeat_skipped", evs)
+
+    def test_other_text_other_reason_answer_off_and_window(self):
+        sw.save_state({})
+        gated, cfg, paths = self._gate("act")
+        web_steward._wake_record(cfg, paths, "s1", "due", None, "Plan hazır")
+        self.assertFalse(self._gate("act", msg="başka metin")[0])
+        self.assertFalse(self._gate("act", reason="answer")[0])
+        self.assertFalse(self._gate("act", answer=object())[0])
+        self.assertFalse(self._gate("off")[0])
+        self.assertFalse(self._gate("act", minutes=0)[0])
+        self.assertFalse(self._gate("act", sname="s2")[0])
+        st = sw.load_state()
+        st["wake_sent"]["s1"]["at"] -= 241 * 60
+        sw.save_state(st)
+        self.assertFalse(self._gate("act")[0])                                  # pencere doldu: yeniden gider
+        web_steward._wake_record(cfg, paths, "s1", "answer", None, "x")        # kapı dışı neden kaydı değiştirmez
+        self.assertNotEqual(sw.load_state()["wake_sent"]["s1"]["at"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
 
