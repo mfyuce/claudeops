@@ -88,6 +88,15 @@ class MarkerTest(unittest.TestCase):
         m = sw.scan_markers("```\nx\n```\nSTEWARD-ASK: gerçek soru mu?\n- `STEWARD-IDEA: gerçek fikir`\n")
         self.assertEqual((m["asks"], m["ideas"]), (["gerçek soru mu?"], ["gerçek fikir"]))
 
+    def test_scan_markers_ignores_inline_code_mention_in_prose(self):
+        # 2026-10-25: açıklama cümlesi fikir kutusuna "` satırı yazmasına bağlı" diye yarım kayıt düşürmüştü
+        txt = ("Fikir kaydı `STEWARD-IDEA: <fikir>` satırı yazmasına bağlı.\n"
+               "Bir de `STEWARD-ASK: <soru>` yaz, motor tarar.\n")
+        m = sw.scan_markers(txt)
+        self.assertEqual((m["asks"], m["ideas"]), ([], []))
+        m = sw.scan_markers("- `STEWARD-IDEA: gerçek fikir`\nSTEWARD-ASK: gerçek `kod` sorusu mu?\n")
+        self.assertEqual((m["asks"], m["ideas"]), (["gerçek `kod` sorusu mu?"], ["gerçek fikir"]))
+
     def test_scan_markers_job_line(self):
         m = sw.scan_markers("bitti\n- STEWARD-JOB: import_registry REQUEST_x.md Cezîrî dipnotları\n")
         self.assertEqual(m["jobs"], ["import_registry REQUEST_x.md Cezîrî dipnotları"])
