@@ -614,8 +614,12 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
                      "error": error, "duration": (float(finished) - float(started)) if started and finished else None,
                      "title": rv.review_title(proj, mode, slug, ts)}
     for r in hist.get("runs") or []:
-        if isinstance(r, dict) and r.get("file"):
-            add(str(r.get("pair") or ""), str(r["file"]), str(r.get("status") or ""), None, r.get("at"), False)
+        if not isinstance(r, dict):
+            continue
+        # Rapor üretmeden biten koşuda (`error`/`timeout`/`limit`) `file` yoktur; IO günlüğünden `.md` yolu türetilir.
+        md = str(r.get("file") or "") or (str(r["io_file"])[:-len(IO_SUFFIX)] + ".md" if r.get("io_file") else "")
+        if md:
+            add(str(r.get("pair") or ""), md, str(r.get("status") or ""), None, r.get("at"), False)
     for key, rec in hist["pairs"].items():
         if isinstance(rec, dict) and rec.get("io_file"):
             md = str(rec["io_file"])[:-len(IO_SUFFIX)] + ".md"

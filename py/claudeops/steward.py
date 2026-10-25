@@ -3143,6 +3143,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if v is None or not v.running or proj not in projects or done_blocked(projects[proj]):
             done_pending.pop(name, None)    # (NO_DONE_TAG ertelemeden SONRA eklenmiş olabilir: yeniden denetle)
         elif not v.subagent_active and not v.subagent_unknown and v.busy is not True and name not in busy_names:
+            if open_work is not None and open_work(proj):     # ertelemeden sonra TODO'ya açık iş düşmüş: kapatma
+                done_pending.pop(name, None)
+                continue
             actions.append(Action("set_phase", proj, "STEWARD-DONE (ertelenmişti)", {"phase": "done"}))
             actions.append(Action("stop", name, "STEWARD-DONE (ertelenmişti)"))
             busy_names.add(name)
