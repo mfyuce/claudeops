@@ -23,7 +23,7 @@ Kullanım:
   py/cops steward log [-n 50]
   py/cops steward persona                     # etkin persona metni
   py/cops steward on|off / config KEY VALUE   # döngüyü aç-kapat / steward.<alan> ayarı (tick_seconds, max_active...)
-  py/cops steward tick / tour / brain start|stop / directive NAME "metin" / restart NAME "direktif" --reason "..."
+  py/cops steward tick / tour / brain [status]|start|stop / directive NAME "metin" / restart NAME "direktif" --reason "..."
                                                (panel çalışıyor olmalı: /api/steward/* üzerinden)
 
 Depo/ayar dosyaları: ~/.claude/claudeops/steward/ ve settings.json'daki `steward` alanı
@@ -810,7 +810,16 @@ def cmd_api(args) -> int:
     elif args.action == "tour":
         res = _api(port, "POST", "/api/steward/tour", {}, sid)
     elif args.action == "brain":
-        res = _api(port, "POST", "/api/steward/brain", {"action": args.what or "start"}, sid)
+        what = args.what or "status"
+        if what == "status":
+            # Yalnız okur: hiçbir şey başlatmaz/göndermez (eskiden argümansız `brain` beyni BAŞLATIYORDU, TODO 1233)
+            cfg = steward_config(sid)
+            running = _project_running(cfg.brain_name)
+            print(f"beyin {cfg.brain_name}: {'çalışıyor' if running else 'çalışmıyor'}  "
+                  f"({cfg.brain_cli} {cfg.brain_model or 'varsayılan'} {cfg.brain_effort}); "
+                  f"başlatmak için: py/cops steward{_sflag(sid)} brain start")
+            return 0
+        res = _api(port, "POST", "/api/steward/brain", {"action": what}, sid)
     elif args.action == "directive":
         res = _api(port, "POST", "/api/steward/directive", {"name": args.name, "text": args.text or "",
                                                             "model": args.model or "", "effort": args.effort or "",
@@ -984,12 +993,14 @@ def register(sub):
     poff.add_argument("--all", action="store_true")
     poff.set_defaults(func=cmd_toggle)
     for name, helptext in (("tick", "bir tick çalıştır (panel üzerinden)"), ("tour", "beyne şimdi bir tur gönder"),
-                           ("brain", "beyin oturumu: start|stop"), ("directive", "NAME'e direktif gönder"),
+                           ("brain", "beyin oturumu: status (varsayılan, yalnız okur) | start | stop"), ("directive", "NAME'e direktif gönder"),
                            ("restart", "NAME'i durdur + yeni direktifle aç")):
         px = s.add_parser(name, help=helptext)
         px.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
         if name == "brain":
-            px.add_argument("what", nargs="?", choices=["start", "stop"], default="start")
+            px.add_argument("what", nargs="?", choices=["status", "start", "stop"], default="status",
+                            help="status: yalnız durumu göster (varsayılan, hiçbir şey başlatmaz); "
+                                 "start: beyni başlat; stop: beyni durdur")
         if name in ("directive", "restart"):
             px.add_argument("name")
             px.add_argument("text", nargs="?", default="")

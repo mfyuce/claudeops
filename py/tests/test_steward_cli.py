@@ -79,6 +79,43 @@ class _Cli(_Tmp):
         os.makedirs(sw.paths_for(sid).root, exist_ok=True)
 
 
+class TestBrainCommand(_Cli):
+    """TODO 1233 (2): `steward -s X brain` durum göstermek yerine beyni BAŞLATIYORDU."""
+
+    def test_bare_brain_is_read_only_status(self):
+        self.make()
+        for argv in (("-s", "kitap", "brain"), ("-s", "kitap", "brain", "status")):
+            self.api_calls.clear()
+            rc, out = self.run_cli(*argv)
+            self.assertEqual(rc, 0, argv)
+            self.assertEqual(self.api_calls, [], argv)                   # hiçbir şey başlatılmaz/gönderilmez
+            self.assertIn("degnekci_kitap", out)
+            self.assertIn("çalışmıyor", out)
+        self.running.add("degnekci_kitap")
+        rc, out = self.run_cli("-s", "kitap", "brain", "status")
+        self.assertIn("çalışıyor", out)
+        self.assertNotIn("çalışmıyor", out)
+        self.assertEqual(self.api_calls, [])
+
+    def test_start_and_stop_are_explicit(self):
+        self.make()
+        for what in ("start", "stop"):
+            self.api_calls.clear()
+            rc, _ = self.run_cli("-s", "kitap", "brain", what)
+            self.assertEqual(rc, 0)
+            self.assertEqual([(m, p, b) for m, p, b in self.api_calls],
+                             [("POST", "/api/steward/brain", {"action": what, "steward": "kitap"})])
+
+    def test_help_mentions_status(self):
+        ap = argparse.ArgumentParser()
+        cli.register(ap.add_subparsers())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            ap.parse_args(["steward", "brain", "--help"])
+        self.assertIn("status", out.getvalue())
+        self.assertIn("start", out.getvalue())
+
+
 class TestSidResolution(_Cli):
     def test_flag_env_default_and_unknown(self):
         self.make()

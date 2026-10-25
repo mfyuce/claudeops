@@ -2557,6 +2557,7 @@ def tour_delivery(prompt: str, workspace: str, now: float, lang: str = "tr") -> 
                f"her madde için ilgili aracı çağır. Yalnız bu mesaja bakarak cevap verme.")
     return msg, path
 
+SLOT_RECENT_SECONDS = 300.0          # makine geneli slot: bu kadar yakın etkinlik/direktif/açılış "mesaj alan" sayılır
 DIRECTIVE_MIN_GAP_SECONDS = 90.0     # aynı oturuma iki direktif arası: cevap teslimi ile beyin direktifi çarpışmasın
 
 # Sahibin kararı olan konular: beyin bunlara `steward_answer` ile ASLA cevap vermez (soru rutin etiketli olsa bile).
@@ -2735,6 +2736,19 @@ def plan_markers(views: List[SessionView], projects: Dict[str, Project], state: 
         actions.extend(marker_record_actions(v.name, proj, scan_markers(v.last_assistant)))
     st["seen_assistant"] = seen
     return actions, st
+
+
+def holds_total_slot(v: SessionView, now: float, last_directive_at: float = 0.0) -> bool:
+    """Oturum makine geneli (`max_active_total`) slotu yer mi. Sahip kuralı (TODO 1233): yalnız mesaj alan/meşgul oturum
+    slot yer, boşta açık oturum yemez. Meşgul: `busy` True ya da bilinmiyor (None: sinyal yok = boşta SAYILMAZ), alt
+    ajan çalışıyor/bilinmiyor, ya da son `SLOT_RECENT_SECONDS` içinde etkinlik/direktif/açılış (mesaj yeni gitti, meşgul
+    sinyali henüz dönmemiş olabilir). SAF."""
+    if not v.running:
+        return False
+    if v.busy is not False or v.subagent_active or v.subagent_unknown:
+        return True
+    last = max(v.last_activity or 0.0, v.started_at or 0.0, last_directive_at or 0.0)
+    return bool(last) and (now - last) < SLOT_RECENT_SECONDS
 
 
 def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
@@ -2939,7 +2953,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             # Makine geneli sınır: başka kimliklerin çalışan (çakışmasız) proje oturumları da sayılır
             busy_other = set()
             for x in views:
-                if not x.running:
+                if not holds_total_slot(x, now):     # boşta açık oturum makine geneli slot yemez (TODO 1233)
                     continue
                 if x.blueprint and x.blueprint in world.owners:
                     key = x.blueprint
@@ -2952,10 +2966,16 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                     busy_other.add(key)
             others_active = len(busy_other)
 
+    def _active_busy() -> int:
+        """Kendi projelerimden makine geneli slotu yiyenler (yerel `max_active` yine TÜM açık oturumları sayar). Her
+        çağrıda yeniden: bu tick'te cevap iletilen boşta oturum (`last_directive_at` = now) artık slot yer."""
+        return len({v.project for v in views if v.running and _mine(v) and (
+            v.name in ho_pending or holds_total_slot(v, now, float(last_directive_at.get(v.name) or 0.0)))})
+
     def _slots() -> int:
         n = cfg.max_active - active - starts
         if world is not None and cfg.max_active_total > 0:
-            n = min(n, cfg.max_active_total - active - others_active - starts)
+            n = min(n, cfg.max_active_total - _active_busy() - others_active - starts)
         return n
     deliver_by_session: Dict[str, Action] = {}
     for q in undelivered_answers(questions):
@@ -3018,7 +3038,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     waiting = [p for p in due if p.name not in busy_names]
     # Süresi dolup BAŞLATILAMAYAN projelerin nedeni durumda görünür (sessiz kalmasın: "cadence 5 dk, oturum neden açılmadı?")
     if waiting:
-        total_free = (cfg.max_active_total - active - others_active - starts) if (world is not None and cfg.max_active_total > 0) else None
+        active_busy = _active_busy()
+        total_free = (cfg.max_active_total - active_busy - others_active - starts) if (world is not None and cfg.max_active_total > 0) else None
         if starts >= max_starts and free > 0:
             why = "max_starts"
         elif total_free is not None and total_free <= 0 and total_free < cfg.max_active - active - starts:
@@ -3028,7 +3049,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         st["start_blocked"] = {"projects": sorted(p.name for p in waiting), "reason": why, "active": active,
                                "max_active": cfg.max_active}
         if why == "max_active_total":       # yalnız makine geneli sınır nedense (yerel/varsayılan dünya durumu aynı kalır)
-            st["start_blocked"].update(others_active=others_active, max_active_total=cfg.max_active_total)
+            st["start_blocked"].update(active_busy=active_busy, others_active=others_active,
+                                         max_active_total=cfg.max_active_total)
     else:
         st.pop("start_blocked", None)
 

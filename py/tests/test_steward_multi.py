@@ -549,6 +549,57 @@ class TestSlots(unittest.TestCase):
         _, st = sw.plan_tick(views, mine["default"], {}, _cfg(max_active=4, max_active_total=6), T0, [], [], world=w)
         self.assertNotIn("start_blocked", st)                                  # başlatıldı: engel yok
 
+    def test_max_active_total_counts_only_busy_sessions(self):
+        # Sahip kuralı (TODO 1233): makine geneli slotu yalnız mesaj alan/meşgul oturum yer; boşta açık oturum yemez
+        mine, idx, _ = self._setup()
+        w = sw.world_for("default", idx)
+        cfg = _cfg(max_active=4, max_active_total=5)
+        idle = [_view(n, busy=False) for n in ("a", "b", "x", "y", "z")]      # hepsi boşta (son etkinlik çok eski)
+        acts, st = sw.plan_tick(idle, mine["default"], {}, cfg, T0, [], [], world=w)
+        self.assertEqual([a.name for a in acts if a.kind == "start"], ["c"])
+        self.assertNotIn("start_blocked", st)
+        # yalnız kitap'ın oturumları meşgul (3) + benimkiler boşta: 0 + 3 < 5 → başlar
+        mixed = [_view("a", busy=False), _view("b", busy=False)] + [_view(n, busy=True) for n in ("x", "y", "z")]
+        acts, _ = sw.plan_tick(mixed, mine["default"], {}, cfg, T0, [], [], world=w)
+        self.assertEqual([a.name for a in acts if a.kind == "start"], ["c"])
+        # benimkiler de meşgul: 2 + 3 = 5 → dolu; olay güncel (meşgul) sayımı yazar
+        acts, st = sw.plan_tick([_view(n, busy=True) for n in ("a", "b", "x", "y", "z")], mine["default"], {}, cfg,
+                                T0, [], [], world=w)
+        self.assertEqual([a for a in acts if a.kind == "start"], [])
+        sb = st["start_blocked"]
+        self.assertEqual((sb["reason"], sb["active_busy"], sb["others_active"], sb["max_active_total"]),
+                         ("max_active_total", 2, 3, 5))
+
+    def test_busy_signal_variants_for_total_slot(self):
+        mine, idx, _ = self._setup()
+        w = sw.world_for("default", idx)
+        cfg = _cfg(max_active=4, max_active_total=3)
+        base = [_view("a", busy=False), _view("b", busy=False)]
+        cases = {
+            "unknown": [_view(n, busy=None) for n in ("x", "y", "z")],                    # sinyal yok: boşta SAYILMAZ, slot yer
+            "subagent": [_view(n, busy=False, subagent_active=True) for n in ("x", "y", "z")],
+            "remote?": [_view(n, busy=False, subagent_unknown=True) for n in ("x", "y", "z")],
+            "recent": [_view(n, busy=False, last_activity=T0 - 30) for n in ("x", "y", "z")],   # az önce mesaj aldı
+        }
+        for label, others in cases.items():
+            acts, _ = sw.plan_tick(base + others, mine["default"], {}, cfg, T0, [], [], world=w)
+            self.assertEqual([a for a in acts if a.kind == "start"], [], label)
+        # aynı oturumlar uzun süredir boşta: slot açılır
+        acts, _ = sw.plan_tick(base + [_view(n, busy=False, last_activity=T0 - 3600) for n in ("x", "y", "z")],
+                               mine["default"], {}, cfg, T0, [], [], world=w)
+        self.assertEqual([a.name for a in acts if a.kind == "start"], ["c"])
+
+    def test_local_max_active_still_counts_open_sessions(self):
+        # yerel `max_active` (ve ona bağlı stop_idle slot baskısı) değişmedi: boşta açık oturum yine sayılır
+        mine, idx, _ = self._setup()
+        w = sw.world_for("default", idx)
+        idle = [_view(n, busy=False) for n in ("a", "b", "x", "y", "z")]
+        acts, st = sw.plan_tick(idle, mine["default"], {}, _cfg(max_active=2, max_active_total=5, stop_idle_minutes=5),
+                                T0, [], [], world=w)
+        self.assertEqual([a for a in acts if a.kind == "start"], [])
+        self.assertEqual(st["start_blocked"]["reason"], "max_active")
+        self.assertEqual(sorted(a.name for a in acts if a.kind == "stop"), ["a", "b"])
+
     def test_starts_left_budget(self):
         mine, idx, views = self._setup()
         cfg = _cfg(max_active=4, max_active_total=0, max_starts_per_tick=2)
