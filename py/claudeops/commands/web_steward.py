@@ -2107,7 +2107,8 @@ def _remote_nudge(name: str, host: str, action: sw.Action, cfg: sw.Config, paths
     sent = _remote_post(host, "/api/term/input", {"name": sname, "text": str(action.payload.get("text") or sw.API_NUDGE_TEXT),
                                                    "exact": True}, REMOTE_INPUT_TIMEOUT_SECONDS, rt)
     ok = bool(sent.get("ok"))
-    sw.log_event("api_nudge", paths=paths, name=sname, host=host, n=action.payload.get("n"), reason=action.reason, ok=ok)
+    sw.log_event("done_confirm_asked" if action.payload.get("confirm") else "api_nudge", paths=paths, name=sname, host=host,
+                 n=action.payload.get("n"), reason=action.reason, ok=ok)
     return {"ok": True, "host": host} if ok else dict(sent, ok=False, error=str(sent.get("error") or "send failed"), host=host)
 
 
@@ -2417,7 +2418,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not running or not tmux-backed"}
         ok = _send(s.name, s.cli, str(action.payload.get("text") or sw.API_NUDGE_TEXT))
-        sw.log_event("api_nudge", paths=paths, name=name, n=action.payload.get("n"), reason=action.reason, ok=ok)
+        sw.log_event("done_confirm_asked" if action.payload.get("confirm") else "api_nudge", paths=paths, name=name,
+                     n=action.payload.get("n"), reason=action.reason, ok=ok)
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
     if k in ("api_outage", "api_recovered", "api_giveup"):      # yalnız bildirim + kayıt (oturuma dokunmaz)
         tr = cfg.lang != "en"
@@ -2551,6 +2553,26 @@ def _deliver_findings(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.
         _mark_after_send(mark, cfg.sid, "advance", ident)
         sw.log_event("findings_advanced", paths=paths, project=p.name, session=action.name, n=len(fids), ids=fids)
     return res
+
+
+def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
+    """`plan_tick` için: projenin YEREL TODO.md'sindeki açık `- [ ]` satırı sayısı (STEWARD-DONE-CONFIRMED ön-kontrolü).
+    Uzak proje, klasörü bilinmeyen ya da okunamayan dosya = None (ön-kontrol atlanır, teyit kanıta kalır). Yalnız
+    teyit gelince çağrılır; gerçek yol proje klasörü altında kalmalı, 2 MB sınırı."""
+    def count(proj: str) -> Optional[int]:
+        try:
+            p = projects.get(proj)
+            if p is None or p.host:
+                return None
+            cwd = _cwd_resolver()(proj)
+            real, root = os.path.realpath(os.path.join(cwd, "TODO.md")), os.path.realpath(cwd)
+            if not cwd or not real.startswith(root + os.sep) or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+                return None
+            with open(real, encoding="utf-8", errors="replace") as f:
+                return sum(1 for ln in f if re.match(r"\s*[-*]\s*\[ \]", ln))
+        except OSError:
+            return None
+    return count
 
 
 def _advance_candidates(cfg: sw.Config) -> List[Dict[str, Any]]:
@@ -2778,7 +2800,8 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
             with sw.steward_lock(paths):     # state RMW atomik (CLI süreci de aynı dosyaya yazar)
                 prev_state = sw.load_state(paths)
                 actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
-                                                  sw.load_questions(paths), sw.load_ideas(paths), world=world)
+                                                  sw.load_questions(paths), sw.load_ideas(paths), world=world,
+                                                  open_work=_open_work_of(projects))
                 if new_state.get("start_blocked") != (prev_state.get("start_blocked") if "start_blocked" in new_state else None):
                     sw.log_event("start_blocked", paths=paths, **new_state["start_blocked"])   # değişince bir kez
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)

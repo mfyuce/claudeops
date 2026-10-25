@@ -241,7 +241,7 @@ class TestPlanTickRemote(unittest.TestCase):
         self.assertIn(("start", "a"), [(a.kind, a.name) for a in acts])
 
     def test_subagent_unknown_defers_done_and_shutdown_handover(self):
-        v = _view("oiso", host=HOST, subagent_unknown=True, last_assistant="bitti\nSTEWARD-DONE")
+        v = _view("oiso", host=HOST, subagent_unknown=True, last_assistant="bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")
         acts, st = sw.plan_tick([v], self.projects, {}, _cfg(), 100000.0, [], [], world=self.world)
         self.assertNotIn("stop", [a.kind for a in acts])
         self.assertEqual(st["done_pending"], {"oiso": "oiso"})

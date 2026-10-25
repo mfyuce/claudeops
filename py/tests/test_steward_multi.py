@@ -93,7 +93,7 @@ def _golden_views(step):
               last_assistant="STEWARD-PLAN-READY\nSTEWARD-ROUTINE: Opus ne zaman açılsın?\nSTEWARD-BLOCKED: PDF yok"),
         _view("degnekci_kitap", busy=False, last_assistant="STEWARD-ASK: beyin sorusu?"),
         _view("kitap_1", blueprint="kitap", busy=False, started_at=old, last_activity=T0 - 4000,
-              last_assistant="STEWARD-DONE" if step else ""),
+              last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt" if step else ""),
         _view("ncs2x", busy=True, started_at=old, last_activity=T0 - 100),
     ]
     if step >= 2:
@@ -164,8 +164,9 @@ def _default_world(projects, cfg):
     return sw.world_for("default", sw.build_ownership_index({"default": list(projects)}), cfg.brain_name)
 
 
-def _tick_default_world(views, projects, state, cfg, now, questions, ideas):
-    return _ORIG_PLAN_TICK(views, projects, state, cfg, now, questions, ideas, world=_default_world(projects, cfg))
+def _tick_default_world(views, projects, state, cfg, now, questions, ideas, **kw):
+    kw.pop("world", None)
+    return _ORIG_PLAN_TICK(views, projects, state, cfg, now, questions, ideas, world=_default_world(projects, cfg), **kw)
 
 
 _ORIG_PLAN_TICK = sw.plan_tick
@@ -200,11 +201,11 @@ class TestGolden(_Tmp):
 _CHECKED = {"plan_tick": 0, "review_items": 0}
 
 
-def _plan_tick_checked(views, projects, state, cfg, now, questions, ideas, world=None):
+def _plan_tick_checked(views, projects, state, cfg, now, questions, ideas, world=None, **kw):
     if world is not None:
-        return _ORIG_PLAN_TICK(views, projects, state, cfg, now, questions, ideas, world=world)
-    old = _ORIG_PLAN_TICK(views, projects, state, cfg, now, questions, ideas)
-    new = _ORIG_PLAN_TICK(views, projects, state, cfg, now, questions, ideas, world=_default_world(projects, cfg))
+        return _ORIG_PLAN_TICK(views, projects, state, cfg, now, questions, ideas, world=world, **kw)
+    old = _ORIG_PLAN_TICK(views, projects, state, cfg, now, questions, ideas, **kw)
+    new = _ORIG_PLAN_TICK(views, projects, state, cfg, now, questions, ideas, world=_default_world(projects, cfg), **kw)
     if _ser(*old) != _ser(*new):
         raise AssertionError(f"default world differs from world=None:\n{_ser(*old)}\n!=\n{_ser(*new)}")
     _CHECKED["plan_tick"] += 1
@@ -466,7 +467,7 @@ class TestNoCrossActions(unittest.TestCase):
         mine, _ = _multi_setup()
         both = {"default": list(mine["default"]), "kitap": list(mine["kitap"]) + ["zlkrn"]}
         idx = sw.build_ownership_index(both)
-        views = [_view("zlkrn", context_tokens=900000, last_assistant="STEWARD-ASK: soru?\nSTEWARD-DONE")]
+        views = [_view("zlkrn", context_tokens=900000, last_assistant="STEWARD-ASK: soru?\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")]
         for sid in ("default", "kitap"):
             projects = dict(mine[sid])
             projects["zlkrn"] = sw.Project(name="zlkrn", phase="planned", cadence_minutes=1)

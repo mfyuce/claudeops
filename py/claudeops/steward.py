@@ -139,7 +139,11 @@ MARK_BLOCKED = "STEWARD-BLOCKED:"      # takıldım (insana soru olarak düşer,
 MARK_JOB = "STEWARD-JOB:"              # paylaşımlı servise iş isteği (<tür> [dosya...] [açıklama]): beyin steward_job_submit ile gönderir
 JOB_REQUEST_PREFIX = "İŞ İSTEĞİ (STEWARD-JOB): "
 MARK_PLAN_READY = "STEWARD-PLAN-READY"  # planlama bitti → faz planned
-MARK_DONE = "STEWARD-DONE"             # proje bitti → faz done, oturum durur
+MARK_DONE = "STEWARD-DONE"             # "iş bitti" İDDİASI: motor fazı DEĞİŞTİRMEZ, oturuma tek teyit direktifi gider
+MARK_DONE_CONFIRMED = "STEWARD-DONE-CONFIRMED"   # kanıtlı teyit ("<kısa hash> kalan açık iş 0 <kanıt>") → faz done, oturum durur
+DONE_CONFIRM_TTL = 6 * 3600.0          # aynı projeye bu süre içinde ikinci teyit direktifi gitmez
+_CONFIRM_HASH_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+_CONFIRM_ZERO_RE = re.compile(r"(?<![\w.])0(?![\w.])")
 NO_DONE_TAG = "NO-STEWARD-DONE"           # proje notunda: STEWARD-DONE işareti yok sayılır (sürekli geliştirme)
 READY_FOR_HANDOVER = "READY FOR HANDOVER"
 
@@ -1737,9 +1741,10 @@ def done_blocked(project: Any) -> bool:
 
 def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
-    blocked:[...], plan_ready: bool, done: bool}. Satır başındaki madde/boşluk toleranslı;
+    blocked:[...], plan_ready: bool, done: bool, confirmed: str|None}. Satır başındaki madde/boşluk toleranslı;
     işaret satırın İÇİNDE de olabilir (model bazen önüne açıklama koyar) — kalanı alınır."""
-    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "plan_ready": False, "done": False}
+    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "plan_ready": False, "done": False,
+                           "confirmed": None}
     if not text:
         return out
     fenced = False
@@ -1770,6 +1775,11 @@ def scan_markers(text: str) -> Dict[str, Any]:
         else:
             if MARK_PLAN_READY in line:
                 out["plan_ready"] = True
+            elif MARK_DONE_CONFIRMED in line:      # `STEWARD-DONE` alt dizgesini içerir: önce bakılır, düz DONE sayılmaz
+                idx = line.find(MARK_DONE_CONFIRMED)
+                body = _unwrap_ticks(line[:idx], line[idx + len(MARK_DONE_CONFIRMED):].lstrip(":").strip())
+                if not _PLACEHOLDER_BODY_RE.match(body) and "<" not in body and line[:idx].count("`") % 2 == 0:
+                    out["confirmed"] = body       # boş gövde de bir teyit denemesi (kanıtsız: geçersiz sayılır)
             elif MARK_DONE in line and MARK_END not in line:
                 out["done"] = True
     return out
@@ -1877,14 +1887,16 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
                 "çalıştır, sonucu doğrula. Aldığın kararları TOBEDECIDED.md'ye (TBD#), fark ettiğin edge case'leri "
                 "TODO.md'ye kaydet. Takıldığın yerde önce kendin düşün, çözüm bulamazsan sor. İş bitince commit+push, "
                 "DONE.md'ye tek satır.\n"
-                f"Projedeki her şey bittiyse yanıtını `{MARK_DONE}` satırıyla bitir."
+                f"Projedeki her şey bittiyse yanıtını `{MARK_DONE}` satırıyla bitir; motor bir teyit isteyecek, kanıtlı "
+                f"`{MARK_DONE_CONFIRMED}: <kısa hash> kalan açık iş 0, <kanıt>` olmadan proje kapanmaz. Bir PARÇAYI bitirmek proje bitti demek değildir."
             )
         else:
             parts.append(
                 "The plan is ready; execution phase. Take the NEXT item in PLAN.md/TODO.md and move it forward: run the "
                 "needed commands, verify the result. Record decisions in TOBEDECIDED.md (TBD#), edge cases in TODO.md. "
                 "When stuck, think first, ask only if you cannot resolve it. Commit+push when done, one line in DONE.md.\n"
-                f"If the whole project is finished, end your reply with `{MARK_DONE}`."
+                f"If the whole project is finished, end your reply with `{MARK_DONE}`; the engine will ask for a confirmation, and the "
+                f"project is not closed without an evidenced `{MARK_DONE_CONFIRMED}: <short hash> open items 0, <evidence>`. Finishing one PART is not finishing the project."
             )
     if compact:
         return "\n\n".join(parts)
@@ -2799,9 +2811,24 @@ def holds_total_slot(v: SessionView, now: float, last_directive_at: float = 0.0)
     return bool(last) and (now - last) < SLOT_RECENT_SECONDS
 
 
+DONE_CONFIRM_TEXT_TR = ("STEWARD-DONE aldım. TODO.md'deki açık `- [ ]` işlere ve kartın next_step alanına bak. Gerçekten iş "
+                        "kalmadıysa `STEWARD-DONE-CONFIRMED: <son commit kısa hash> kalan açık iş 0, <kanıt>` yaz; iş kaldıysa "
+                        "devam et ve STEWARD-DONE yazma.")
+DONE_CONFIRM_TEXT_EN = ("STEWARD-DONE received. Check the open `- [ ]` items in TODO.md and the card's next_step. If truly "
+                        "nothing is left, write `STEWARD-DONE-CONFIRMED: <last commit short hash> open items 0, <evidence>`; "
+                        "otherwise keep working and do NOT write STEWARD-DONE.")
+
+
+def _confirm_action(name: str, proj: str, cfg: "Config", why: str) -> "Action":
+    """Tek satır teyit direktifi (`nudge` yolu: yerel/uzak, observe'da yalnız `would:`); faz değişmez, oturum açık kalır."""
+    return Action("nudge", name, why, {"text": DONE_CONFIRM_TEXT_EN if cfg.lang == "en" else DONE_CONFIRM_TEXT_TR,
+                                        "confirm": True, "project": proj})
+
+
 def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
               now: float, questions: List[Question], ideas: List[Idea],
-              world: Optional[World] = None) -> Tuple[List[Action], Dict[str, Any]]:
+              world: Optional[World] = None,
+              open_work: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
     (motor kaydeder). Sıra: ekonomi (handover/respawn) → işaretler → cevap iletimi → uğrama/başlatma →
     slot baskısı → beyin turu.
@@ -2812,7 +2839,13 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     slot `max_active` yanında makine geneli `max_active_total` (diğer kimliklerin çalışan projeleri dahil) ve
     `world.starts_left` ile sınırlanır. Uzak projelerin oturumları (`SessionView.host`) aynı kurallardan geçer ve
     sayımlara girer; `world.unavailable` projeleri için başlatma üretilmez, görünümleri yok diye devir/DONE izleri
-    silinmez. `subagent_unknown` görünümde STEWARD-DONE ertelenir (bilinmiyor = boşta değil)."""
+    silinmez. `subagent_unknown` görünümde STEWARD-DONE ertelenir (bilinmiyor = boşta değil).
+
+    STEWARD-DONE iki adımlıdır (sahip kararı 2026-10-25: oturumlar bir PARÇAYI bitirip DONE yazıyor, proje done sanılıp
+    kapanıyordu): düz `STEWARD-DONE` fazı DEĞİŞTİRMEZ, oturumu KAPATMAZ, oturuma TEK teyit direktifi gider; yalnız
+    kanıtlı `STEWARD-DONE-CONFIRMED: <hash> ... 0 ...` fazı `done` yapar ve durdurur. `open_work(proje)` (varsa) projenin
+    yerel TODO.md'sindeki açık `- [ ]` sayısını verir (None = bilinmiyor/uzak): teyit "kalan 0" derken sayı >0 ise
+    done YAPILMAZ, sahibe soru açılır."""
     if world is not None:
         projects = world.own_projects(projects)
     bp = {v.name: v.blueprint for v in views if v.blueprint}
@@ -2825,6 +2858,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     ho_pending: Dict[str, float] = dict(st.get("ho_pending") or {})
     seen: Dict[str, str] = dict(st.get("seen_assistant") or {})
     done_pending: Dict[str, str] = dict(st.get("done_pending") or {})
+    done_confirm: Dict[str, float] = {k: float(t) for k, t in dict(st.get("done_confirm") or {}).items()
+                                      if now - float(t) < DONE_CONFIRM_TTL}     # {proje: teyit istenme zamanı}
     last_directive_at: Dict[str, float] = dict(st.get("last_directive_at") or {})
     reviewed_at: Dict[str, float] = dict(st.get("reviewed_at") or {})
     actions: List[Action] = []
@@ -2964,17 +2999,31 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         actions.extend(marker_record_actions(v.name, proj, m))
         if proj and m["plan_ready"] and projects[proj].phase == "planning":
             actions.append(Action("set_phase", proj, "STEWARD-PLAN-READY", {"phase": "planned"}))
-        if proj and m["done"] and done_blocked(projects[proj]):
+        if proj and (m["done"] or m["confirmed"] is not None) and done_blocked(projects[proj]):
             pass    # sürekli geliştirme projesi: bir iş paketinin bitişi (devir mesajı dahil) projeyi `done` yapmaz
-        elif proj and m["done"]:
-            if v.subagent_active or v.subagent_unknown:
-                # Alt ajan hâlâ çalışıyor: işaret erken (wifi5g, Aşama 3 cila sürerken `done` oldu). Ertele; ajan bitince uygulanır.
-                done_pending[v.name] = proj
+        elif proj and m["confirmed"] is not None:
+            body = m["confirmed"]
+            if not (_CONFIRM_HASH_RE.search(body) and _CONFIRM_ZERO_RE.search(body)):
+                if proj not in done_confirm:     # kanıtsız teyit: düz iddia gibi (tek teyit direktifi)
+                    done_confirm[proj] = now
+                    actions.append(_confirm_action(v.name, proj, cfg, "STEWARD-DONE-CONFIRMED kanıtsız"))
             else:
-                actions.append(Action("set_phase", proj, "STEWARD-DONE", {"phase": "done"}))
-                if v.name not in busy_names:
-                    actions.append(Action("stop", v.name, "STEWARD-DONE"))
-                    busy_names.add(v.name)
+                left = open_work(proj) if open_work is not None else None
+                if left:
+                    actions.append(Action("ask_user", v.name, "STEWARD-DONE-CONFIRMED yerel sayımla çelişti",
+                                          {"project": proj, "text": f"{v.name}: STEWARD-DONE-CONFIRMED geldi (\"{body[:160]}\") ama projenin TODO.md'sinde "
+                                                                    f"{left} açık `- [ ]` iş var; faz done yapılmadı, oturum açık. Gerçekten bitti mi?"}))
+                elif v.subagent_active or v.subagent_unknown:
+                    done_pending[v.name] = proj      # alt ajan hâlâ çalışıyor: ertele; ajan bitince uygulanır
+                else:
+                    done_confirm.pop(proj, None)
+                    actions.append(Action("set_phase", proj, "STEWARD-DONE", {"phase": "done"}))
+                    if v.name not in busy_names:
+                        actions.append(Action("stop", v.name, "STEWARD-DONE"))
+                        busy_names.add(v.name)
+        elif proj and m["done"] and proj not in done_confirm:
+            done_confirm[proj] = now
+            actions.append(_confirm_action(v.name, proj, cfg, "STEWARD-DONE iddiası: teyit istendi"))
 
     for name, proj in list(done_pending.items()):    # ertelenmiş STEWARD-DONE: alt ajan sustu mu?
         v = by_name.get(name)
@@ -3146,6 +3195,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                            "text": str(it.get("text") or "")[:300]} for it in items[:20]]
     st["ho_pending"] = ho_pending
     st["seen_assistant"] = seen
+    if done_confirm:
+        st["done_confirm"] = done_confirm
+    else:
+        st.pop("done_confirm", None)
     if done_pending:
         st["done_pending"] = done_pending
     else:

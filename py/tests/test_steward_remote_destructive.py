@@ -93,7 +93,7 @@ class TestRemoteStop(_Destructive):
     def test_steward_done_stop_path_body_timeout(self):
         self.act()
         self.fake.set(HOST, [_row("oiso")])
-        self.fake.facts["oiso"] = _facts("iş bitti\nSTEWARD-DONE")
+        self.fake.facts["oiso"] = _facts("iş bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")
         res = ws.tick_once("manual")
         self.assertTrue(res["ok"], res)
         self.assertEqual([(a["kind"], a["ok"], a.get("host")) for a in res["actions"] if a["kind"] == "stop"],
@@ -163,7 +163,7 @@ class TestRemoteStop(_Destructive):
     def test_observe_records_would_and_never_posts(self):
         self.settings(remote_actions="on")                                    # observe (varsayılan)
         self.fake.set(HOST, [_row("oiso")])
-        self.fake.facts["oiso"] = _facts("STEWARD-DONE")
+        self.fake.facts["oiso"] = _facts("STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")
         res = ws.tick_once("manual")
         self.assertEqual([(d["kind"], d.get("host")) for d in res["dry"]], [("stop", HOST)])
         for path in ("/api/steward/stop", "/api/steward/restart"):
@@ -196,7 +196,7 @@ class TestRemoteStop(_Destructive):
         self.fake.set(HOST, [_row("oiso"), _row("oiso2")])
         self.fake.set("yuhem", [_row("oiso3")])
         for n in ("oiso", "oiso2", "oiso3"):
-            self.fake.facts[n] = _facts("STEWARD-DONE")
+            self.fake.facts[n] = _facts("STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")
         res = ws.tick_once("manual")
         stops = [(a["name"], a["ok"], a["detail"]) for a in res["actions"] if a["kind"] == "stop"]
         budget = f"one destructive action per host per tick ({HOST})"

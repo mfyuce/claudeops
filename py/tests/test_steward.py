@@ -254,12 +254,12 @@ class RulesTest(unittest.TestCase):
         self.assertEqual([a for a in acts if a.name == "b"], [])   # aynı yanıt yeniden işlenmez
 
     def test_done_marker_stops_session(self):
-        acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE")], self.projects, {}, _cfg(), self.now, [], [])
+        acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], self.projects, {}, _cfg(), self.now, [], [])
         self.assertEqual(sorted(a.kind for a in acts if a.name == "a"), ["set_phase", "stop"])
 
     def test_done_marker_ignored_when_project_notes_have_no_done_tag(self):
         self.projects["a"].notes = "sürekli geliştirme " + sw.NO_DONE_TAG
-        acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE")], self.projects, {}, _cfg(), self.now, [], [])
+        acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], self.projects, {}, _cfg(), self.now, [], [])
         self.assertEqual([a for a in acts if a.name == "a" and a.kind in ("set_phase", "stop")], [])
         self.assertTrue(sw.done_blocked(self.projects["a"]))
 
@@ -280,7 +280,7 @@ class RulesTest(unittest.TestCase):
         cfg = _cfg(max_active=4, max_starts_per_tick=5, drain=True)
         acts, _ = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [])
         self.assertEqual([a for a in acts if a.kind == "start"], [])
-        acts, _ = sw.plan_tick([_view("b", last_assistant="STEWARD-DONE")], self.projects, {}, cfg, self.now, [], [])
+        acts, _ = sw.plan_tick([_view("b", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], self.projects, {}, cfg, self.now, [], [])
         self.assertEqual(sorted(a.kind for a in acts if a.name == "b"), ["set_phase", "stop"])   # işaretler hâlâ işlenir
 
     def test_slot_pressure_stops_idle_session(self):
@@ -693,30 +693,115 @@ class SalientReaskTest(unittest.TestCase):
 class DoneDeferralTest(unittest.TestCase):
     def test_done_deferred_while_subagent_then_applied(self):
         projects = {"p1": sw.Project(name="p1", phase="planned")}
-        v = _view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=True)
+        v = _view("p1", last_assistant="iş bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt", subagent_active=True)
         acts, st = sw.plan_tick([v], projects, {}, _cfg(), 5000.0, [], [])
         self.assertEqual([a for a in acts if a.kind in ("set_phase", "stop")], [])
         self.assertEqual(st["done_pending"], {"p1": "p1"})
-        v2 = _view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=False)
+        v2 = _view("p1", last_assistant="iş bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt", subagent_active=False)
         acts, st = sw.plan_tick([v2], projects, st, _cfg(), 5200.0, [], [])
         self.assertEqual([(a.kind, a.name) for a in acts if a.kind in ("set_phase", "stop")], [("set_phase", "p1"), ("stop", "p1")])
         self.assertNotIn("done_pending", st)
 
     def test_deferred_done_dropped_when_no_done_tag_added_later(self):
         projects = {"p1": sw.Project(name="p1", phase="planned")}
-        acts, st = sw.plan_tick([_view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=True)],
+        acts, st = sw.plan_tick([_view("p1", last_assistant="iş bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt", subagent_active=True)],
                                 projects, {}, _cfg(), 5000.0, [], [])
         self.assertEqual(st["done_pending"], {"p1": "p1"})
         projects["p1"].notes = "sürekli geliştirme " + sw.NO_DONE_TAG
-        acts, st = sw.plan_tick([_view("p1", last_assistant="iş bitti\nSTEWARD-DONE", subagent_active=False)],
+        acts, st = sw.plan_tick([_view("p1", last_assistant="iş bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt", subagent_active=False)],
                                 projects, st, _cfg(), 5200.0, [], [])
         self.assertEqual([a for a in acts if a.kind in ("set_phase", "stop")], [])
         self.assertNotIn("done_pending", st)
 
     def test_done_immediate_without_subagent(self):
         projects = {"p1": sw.Project(name="p1", phase="planned")}
-        acts, _ = sw.plan_tick([_view("p1", last_assistant="STEWARD-DONE")], projects, {}, _cfg(), 5000.0, [], [])
+        acts, _ = sw.plan_tick([_view("p1", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], projects, {}, _cfg(), 5000.0, [], [])
         self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop")], ["set_phase", "stop"])
+
+
+class DoneConfirmTest(unittest.TestCase):
+    """STEWARD-DONE iki adımlı (sahip kararı 2026-10-25): düz DONE = iddia -> tek teyit direktifi, faz/oturum değişmez;
+    yalnız kanıtlı STEWARD-DONE-CONFIRMED fazı done yapar ve durdurur."""
+    OK = "bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, testler yeşil"
+
+    def _projects(self, **kw):
+        return {"p1": sw.Project(name="p1", phase="planned", **kw)}
+
+    def _kinds(self, acts):
+        return [(a.kind, a.name) for a in acts if a.kind in ("set_phase", "stop", "nudge", "ask_user")]
+
+    def test_plain_done_asks_for_confirmation_and_keeps_phase(self):
+        acts, st = sw.plan_tick([_view("p1", last_assistant="parça 5 bitti\nSTEWARD-DONE")], self._projects(), {}, _cfg(), 5000.0, [], [])
+        self.assertEqual(self._kinds(acts), [("nudge", "p1")])
+        n = [a for a in acts if a.kind == "nudge"][0]
+        self.assertTrue(n.payload["confirm"])
+        self.assertIn("STEWARD-DONE-CONFIRMED", n.payload["text"])
+        self.assertEqual(st["done_confirm"], {"p1": 5000.0})
+
+    def test_second_plain_done_does_not_spam_but_ttl_reasks(self):
+        projects = self._projects()
+        _, st = sw.plan_tick([_view("p1", last_assistant="a\nSTEWARD-DONE")], projects, {}, _cfg(), 5000.0, [], [])
+        acts, st = sw.plan_tick([_view("p1", last_assistant="b\nSTEWARD-DONE")], projects, st, _cfg(), 5200.0, [], [])
+        self.assertEqual(self._kinds(acts), [])
+        acts, st = sw.plan_tick([_view("p1", last_assistant="c\nSTEWARD-DONE")], projects, st, _cfg(), 5000.0 + sw.DONE_CONFIRM_TTL + 1, [], [])
+        self.assertEqual(self._kinds(acts), [("nudge", "p1")])
+
+    def test_confirmed_with_evidence_sets_done_and_stops(self):
+        acts, st = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {"done_confirm": {"p1": 4900.0}}, _cfg(), 5000.0, [], [])
+        self.assertEqual(self._kinds(acts), [("set_phase", "p1"), ("stop", "p1")])
+        self.assertNotIn("done_confirm", st)
+
+    def test_confirmed_without_evidence_is_not_done(self):
+        for body in ("STEWARD-DONE-CONFIRMED:", "STEWARD-DONE-CONFIRMED: bitti", "STEWARD-DONE-CONFIRMED: abc1234 kalan 3 iş"):
+            acts, _ = sw.plan_tick([_view("p1", last_assistant=body)], self._projects(), {}, _cfg(), 5000.0, [], [])
+            self.assertEqual([k for k, _n in self._kinds(acts) if k in ("set_phase", "stop")], [], body)
+            self.assertEqual(self._kinds(acts), [("nudge", "p1")], body)
+
+    def test_confirmed_but_local_open_work_asks_owner_not_done(self):
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, _cfg(), 5000.0, [], [],
+                               open_work=lambda proj: 4)
+        self.assertEqual(self._kinds(acts), [("ask_user", "p1")])
+        self.assertIn("4 açık", [a for a in acts if a.kind == "ask_user"][0].payload["text"])
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, _cfg(), 5000.0, [], [],
+                               open_work=lambda proj: 0)
+        self.assertEqual(self._kinds(acts), [("set_phase", "p1"), ("stop", "p1")])
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, _cfg(), 5000.0, [], [],
+                               open_work=lambda proj: None)      # uzak/okunamayan: kanıta kalır
+        self.assertEqual(self._kinds(acts), [("set_phase", "p1"), ("stop", "p1")])
+
+    def test_no_steward_done_tag_ignores_both_markers(self):
+        for text in ("STEWARD-DONE", self.OK):
+            acts, st = sw.plan_tick([_view("p1", last_assistant=text)], self._projects(notes="sürekli " + sw.NO_DONE_TAG), {}, _cfg(), 5000.0, [], [])
+            self.assertEqual(self._kinds(acts), [])
+            self.assertNotIn("done_confirm", st)
+
+    def test_confirm_marker_is_not_plain_done_and_placeholder_ignored(self):
+        self.assertFalse(sw.scan_markers("STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0")["done"])
+        self.assertEqual(sw.scan_markers("STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0")["confirmed"], "abc1234 kalan açık iş 0")
+        for echo in ("`STEWARD-DONE-CONFIRMED: <son commit kısa hash> kalan açık iş 0, <kanıt>` yaz", "> STEWARD-DONE-CONFIRMED: abc1234 0"):
+            m = sw.scan_markers(echo)
+            self.assertIsNone(m["confirmed"], echo)
+            self.assertFalse(m["done"], echo)
+
+    def test_subagent_active_defers_confirmed(self):
+        acts, st = sw.plan_tick([_view("p1", last_assistant=self.OK, subagent_active=True)], self._projects(), {}, _cfg(), 5000.0, [], [])
+        self.assertEqual(self._kinds(acts), [])
+        self.assertEqual(st["done_pending"], {"p1": "p1"})
+
+    def test_open_work_of_counts_local_todo(self):
+        import tempfile
+        from claudeops.commands import web_steward as ws
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "TODO.md"), "w", encoding="utf-8") as f:
+                f.write("- [ ] a\n* [ ] b\n- [x] c\n  - [ ] d\ntext - [ ] not a task\n")
+            projs = {"p1": sw.Project(name="p1", phase="planned"), "r": sw.Project(name="r", phase="planned", host="ulak_31")}
+            with mock.patch.object(ws, "_cwd_resolver", lambda: (lambda n: d)):
+                f = ws._open_work_of(projs)
+                self.assertEqual(f("p1"), 3)
+                self.assertIsNone(f("r"))          # uzak: ön-kontrol yok
+                self.assertIsNone(f("yok"))
+            with mock.patch.object(ws, "_cwd_resolver", lambda: (lambda n: os.path.join(d, "yok"))):
+                self.assertIsNone(ws._open_work_of(projs)("p1"))
 
 
 class IdleSkipTest(unittest.TestCase):
@@ -806,7 +891,7 @@ class PlanMarkersTest(unittest.TestCase):
         return {"p1": sw.Project(name="p1", phase="planned")}
 
     def test_records_asks_and_ideas_only(self):
-        v = _view("p1", last_assistant="STEWARD-ASK: Hangi yol?\nSTEWARD-IDEA: yeni\nSTEWARD-DONE\nSTEWARD-PLAN-READY")
+        v = _view("p1", last_assistant="STEWARD-ASK: Hangi yol?\nSTEWARD-IDEA: yeni\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt\nSTEWARD-PLAN-READY")
         acts, st = sw.plan_markers([v], self._projects(), {}, _cfg())
         self.assertEqual([(a.kind, a.reason) for a in acts], [("ask_user", "STEWARD-ASK"), ("idea", "STEWARD-IDEA")])
         self.assertIn("p1", st["seen_assistant"])
@@ -1914,7 +1999,7 @@ class HttpTest(_Tmp):
         self.assertEqual(len(sw.open_questions()), 1)
         self.assertEqual(len(sw.load_ideas()), 1)
         # STEWARD-DONE: faz değişir ama oturum DURDURULMAZ (stop observe'da would:)
-        done2 = _view("a", last_assistant="bitti\nSTEWARD-DONE")
+        done2 = _view("a", last_assistant="bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")
         with mock.patch.object(web_steward, "_collect_views", lambda cfg: [done2]):
             r = web_steward.tick_once("timer")
         self.assertEqual([a["kind"] for a in r["actions"]], ["set_phase"])
