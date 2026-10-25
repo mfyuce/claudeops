@@ -3130,7 +3130,7 @@ def http_shutdown(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 # Claude planının haftalık kullanımını `claude -p /usage` ile (yerel komut, model turu yok) okur; `steward_quota.decide`
 # kararına göre: drain = yeni iş alınmaz (çalışan iş sürer), stop = tüm kimlikler kontrollü kapatılır (`--keep`).
 # Kapatma KENDİLİĞİNDEN geri açılmaz (`py/cops steward up`): yanlış okuma tüm sistemi sürekli açıp kapatmasın.
-_QUOTA: Dict[str, Any] = {"at": 0.0, "busy": False, "usage": None, "decision": None, "stopped": False}
+_QUOTA: Dict[str, Any] = {"at": 0.0, "busy": False, "usage": None, "decision": None, "stopped": False, "level": 0}
 _QUOTA_LOCK = threading.Lock()
 QUOTA_FILE = os.path.join(CLAUDEOPS_DIR, "steward", "quota.json")
 
@@ -3159,7 +3159,7 @@ def quota_read_usage() -> Optional["sq.Usage"]:
 def quota_blocking() -> bool:
     """Kota kararı yeni iş almayı engelliyor mu (drain ya da stop)."""
     d = _QUOTA.get("decision")
-    return bool(d is not None and d.action in ("drain", "stop"))
+    return bool(d is not None and d.action in ("drain", "shutdown", "stop"))
 
 
 def _quota_save() -> None:
@@ -3173,8 +3173,9 @@ def _quota_save() -> None:
         pass
 
 
-def _quota_stop(reason: str) -> None:
-    """Tüm AÇIK kimlikleri kapat: değnekçiler `shutdown_start` (devir alıp kapatmadan bırak), reviewer doğrudan kapalı."""
+def _quota_stop(reason: str, hard: bool = False) -> None:
+    """Tüm AÇIK kimlikleri kapat: değnekçiler `shutdown_start` (çalışmayana devir, bitince kapat; `hard`: ayrıca kendi
+    oturumlarını HEMEN durdur), reviewer doğrudan kapalı."""
     from ..settings import save_settings
     for sid in steward_ids():
         try:
@@ -3184,12 +3185,21 @@ def _quota_stop(reason: str) -> None:
             if cfg.role == "reviewer":
                 save_settings({"stewards": {sid: {"enabled": "off"}}})
                 continue
-            names = list(sw.load_projects(sw.paths_for(sid)).keys())
-            shutdown_start(sid, modes={n: "keep" for n in names})
+            shutdown_start(sid)
+            if hard:
+                ctx = _ctx(sid)
+                projects = sw.load_projects(ctx.paths)
+                world = _world(sid, cfg, 0, _ownership_index())
+                for v in _collect_views(cfg):
+                    if v.running and world.session_class(v.name, v.blueprint) == "own" or (v.running and v.name == cfg.brain_name):
+                        try:
+                            _apply(sw.Action("stop", v.name, "quota-hard"), cfg, projects, world)
+                        except Exception as e:
+                            diag_log("steward_quota_hard_stop_failed", sid=sid, name=v.name, error=repr(e))
         except Exception as e:
             diag_log("steward_quota_stop_failed", sid=sid, error=repr(e))
-    sw.log_event("quota_stop", paths="default", reason=reason)
-    notify_phone(f"Kota bekçisi: değnekçi sistemi durduruldu ({reason}). Açmak için: py/cops steward up")
+    sw.log_event("quota_hard_stop" if hard else "quota_stop", paths="default", reason=reason)
+    notify_phone(f"Kota bekçisi: {'HARD kapanma' if hard else 'devirli kapatma başladı'} ({reason}). Açmak için: py/cops steward up")
 
 
 def _quota_poll() -> None:
@@ -3204,14 +3214,13 @@ def _quota_poll() -> None:
             _QUOTA.update(usage=u, decision=d)
             if prev is None or prev.action != d.action:
                 sw.log_event("quota_decision", paths="default", action=d.action, used=u.week_pct, cap=d.cap, reason=d.reason)
-            stop_now = d.action == "stop" and not _QUOTA.get("stopped")
-            if d.action != "stop":
-                _QUOTA["stopped"] = False
-            if stop_now:
-                _QUOTA["stopped"] = True
+            lvl = {"shutdown": 1, "stop": 2}.get(d.action, 0)
+            go = lvl > int(_QUOTA.get("level") or 0)
+            _QUOTA["level"] = lvl if (go or lvl == 0) else _QUOTA.get("level")
+            _QUOTA["stopped"] = lvl > 0
         _quota_save()
-        if stop_now:
-            _quota_stop(d.reason)
+        if go:
+            _quota_stop(d.reason, hard=lvl == 2)
     except Exception as e:
         diag_log("steward_quota_poll_failed", error=repr(e))
     finally:

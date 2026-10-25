@@ -50,11 +50,19 @@ class DecideTest(unittest.TestCase):
         cfg = {"mode": "manual", "manual_limit": "85"}
         self.assertEqual(q.decide(cfg, self.usage(84.9), now, TZ).action, "ok")
         d = q.decide(cfg, self.usage(85), now, TZ)
-        self.assertEqual(d.action, "stop")
+        self.assertEqual(d.action, "drain")
         self.assertIn("85", d.reason)
 
-    def test_manual_without_limit_does_nothing(self):
-        self.assertEqual(q.decide({"mode": "manual"}, self.usage(99), _ts(2026, 10, 25, 11), TZ).action, "ok")
+    def test_manual_three_tiers(self):
+        now = _ts(2026, 10, 25, 11)
+        cfg = {"mode": "manual", "manual_limit": "93", "shutdown_limit": "94", "final_limit": "95"}
+        for used, want in ((92.9, "ok"), (93, "drain"), (93.9, "drain"), (94, "shutdown"), (94.9, "shutdown"), (95, "stop")):
+            self.assertEqual(q.decide(cfg, self.usage(used), now, TZ).action, want, used)
+
+    def test_manual_without_limit_only_final_acts(self):
+        now = _ts(2026, 10, 25, 11)
+        self.assertEqual(q.decide({"mode": "manual"}, self.usage(80), now, TZ).action, "ok")
+        self.assertEqual(q.decide({"mode": "manual"}, self.usage(99), now, TZ).action, "stop")
 
     def test_auto_daily_cap_pacing(self):
         # sıfırlanma Pzt 17:59; hafta başı geçen Pzt 17:59. Pazar 11:00 = 6. gün: tavan 95*6/7 = 81.4
