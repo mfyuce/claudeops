@@ -778,6 +778,22 @@ def cmd_up(args) -> int:
     return 0 if res.get("ok") else 1
 
 
+def cmd_panic(args) -> int:
+    """Acil durdurma: `on` = tüm kimlikler observe gibi (oturumlara direktif/devir/başlatma/durdurma yok), `off` = kaldır,
+    `status`. Dosya (`steward/PANIC`) doğrudan yazılır: web servisi yanıt vermese de çalışır."""
+    from .. import steward as _sw
+    try:
+        if args.panic_action == "on":
+            _sw.set_panic(True, args.reason or "cli")
+        elif args.panic_action == "off":
+            _sw.set_panic(False)
+    except OSError as e:
+        print(f"hata: {e}", file=sys.stderr)
+        return 1
+    print("ACİL DURDURMA: " + ("AÇIK (tüm kimlikler observe gibi)" if _sw.panic_active() else "kapalı"))
+    return 0
+
+
 def cmd_shutdown(args) -> int:
     """Kontrollü kapatma: döngü kapanır; sonra servis (web) her tick'te proje oturumlarını SIRAYLA bitirir: iş sessizleşince
     devir mesajı → asistan "READY FOR HANDOVER" deyince durdur → en sonda beyin. İş bitmeyen/cevap vermeyen oturum
@@ -935,6 +951,10 @@ def register(sub):
     pq.add_argument("value", nargs="?", default="")
     pq.add_argument("more", nargs="*")
     pq.set_defaults(func=cmd_quota)
+    ppc = s.add_parser("panic", help="ACİL DURDURMA: tüm değnekçi kimlikleri observe gibi (oturuma dokunma yok); on|off|status")
+    ppc.add_argument("panic_action", choices=("on", "off", "status"), nargs="?", default="status")
+    ppc.add_argument("--reason", default="")
+    ppc.set_defaults(func=cmd_panic)
     pn = s.add_parser("idea", help="fikir ekle")
     pn.add_argument("text")
     pn.set_defaults(func=cmd_idea)

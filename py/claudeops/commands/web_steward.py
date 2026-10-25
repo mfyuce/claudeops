@@ -1456,30 +1456,45 @@ def _wake_sha(message: str) -> str:
 
 
 def _wake_gate(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any, message: str) -> bool:
-    """TBD#121 uyandırma kapısı: aynı oturuma AYNI metin son `wake_repeat_minutes` dakikada zaten gittiyse ("Plan hazır, SIRADAKİ
-    işi al" tekrarı; her uyandırma tüm bağlamı yeniden okutur) True. `dry`: yalnız `would:wake_repeat` olayı yazar, False döner
-    (gönderilir; ölçüm); `act`: True döner (gönderilmez). Yalnız otomatik şablon nedenleri; cevap/iş/bulgu/devir/elle asla."""
-    if cfg.wake_gate not in ("dry", "act") or cfg.wake_repeat_minutes <= 0 or answer is not None or reason not in WAKE_GATED_REASONS:
+    """TBD#121/125 uyandırma kapısı (yalnız otomatik şablon nedenleri; cevap/iş/bulgu/devir/elle ASLA): (1) aynı oturuma AYNI metin
+    son `wake_repeat_minutes` dakikada gittiyse ("Plan hazır, SIRADAKİ işi al" tekrarı; her uyandırma tüm bağlamı yeniden okutur);
+    (2) son 24 saatte `wake_max_per_day` otomatik uyandırma zaten gittiyse (3.sü yeni girdi/cevap ister). `dry`: yalnız
+    `would:wake_repeat` / `would:wake_cap` olayı (False döner, direktif gider; ölçüm); `act`: True (gönderilmez)."""
+    if cfg.wake_gate not in ("dry", "act") or answer is not None or reason not in WAKE_GATED_REASONS:
         return False
     try:
-        rec = (sw.load_state(paths).get("wake_sent") or {}).get(sname) or {}
+        st = sw.load_state(paths)
     except Exception:
         return False
-    age = time.time() - float(rec.get("at") or 0)
-    if rec.get("sha") != _wake_sha(message) or age >= cfg.wake_repeat_minutes * 60:
+    now = time.time()
+    rec = (st.get("wake_sent") or {}).get(sname) or {}
+    age = now - float(rec.get("at") or 0)
+    why = ""
+    if cfg.wake_repeat_minutes > 0 and rec.get("sha") == _wake_sha(message) and age < cfg.wake_repeat_minutes * 60:
+        why = "wake_repeat"
+    elif cfg.wake_max_per_day > 0 and len([t for t in (st.get("auto_wake") or {}).get(sname, []) if now - float(t) < 86400]) >= cfg.wake_max_per_day:
+        why = "wake_cap"
+    if not why:
         return False
-    sw.log_event("would:wake_repeat" if cfg.wake_gate == "dry" else "wake_repeat_skipped", paths=paths, name=sname, reason=reason,
+    sw.log_event(f"would:{why}" if cfg.wake_gate == "dry" else f"{why}_skipped", paths=paths, name=sname, reason=reason,
                  minutes=round(age / 60, 1), chars=len(message))
     return cfg.wake_gate == "act"
 
 
 def _wake_record(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any, message: str) -> None:
-    if cfg.wake_gate not in ("dry", "act") or answer is not None or reason not in WAKE_GATED_REASONS:
+    gated = reason in WAKE_GATED_REASONS and answer is None
+    if cfg.wake_gate not in ("dry", "act") or not (gated or reason == "answer" or answer is not None):
         return
     try:
         with sw.steward_lock(paths):
             state = sw.load_state(paths)
-            state.setdefault("wake_sent", {})[sname] = {"sha": _wake_sha(message), "at": time.time()}
+            if gated:
+                now = time.time()
+                state.setdefault("wake_sent", {})[sname] = {"sha": _wake_sha(message), "at": now}
+                aw = state.setdefault("auto_wake", {})
+                aw[sname] = [t for t in aw.get(sname, []) if now - float(t) < 86400] + [now]
+            else:      # cevap gitti = yeni girdi: günlük sayaç sıfırlanır
+                (state.get("auto_wake") or {}).pop(sname, None)
             sw.save_state(state, paths)
     except sw.LockTimeout:
         pass
@@ -2899,6 +2914,8 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
         cfg = steward_config(sid)
         if quota_blocking() and not cfg.drain:
             cfg = dataclasses.replace(cfg, drain=True)      # kota bekçisi: yeni iş alınmaz (ayarı değiştirmez, yalnız bu tick)
+        if sw.panic_active() and cfg.mode != "observe":
+            cfg = dataclasses.replace(cfg, mode="observe", drain=True)   # ACİL DURDURMA: hiçbir oturuma dokunma, yeni iş alma (yalnız kayıt)
         paths = ctx.paths
         t0 = time.time()
         applied: List[Dict[str, Any]] = []
@@ -4205,12 +4222,26 @@ def _upper_model_gate(name: str, model: str, effort: str, sid: str, actor: str,
                      f"Continue on {sw.GENERIC_MODEL} + {sw.GENERIC_EFFORT} (send without model/effort)."}
 
 
+def http_panic(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Acil durdurma (`steward/PANIC`): `{"on": true|false}`; alan yoksa yalnız durum. Beyin DEĞİŞTİREMEZ (insan kararı).
+    Açıkken tüm kimlikler `observe` gibi davranır: oturuma direktif/devir/başlatma/durdurma gitmez, kayıt (soru/fikir) sürer."""
+    if str(data.get("actor") or "") == "brain":
+        return {"ok": False, "error": "brain cannot change the panic flag"}
+    if "on" in data:
+        try:
+            sw.set_panic(bool(data.get("on")), str(data.get("reason") or "")[:200])
+        except OSError as e:
+            return {"ok": False, "error": str(e)}
+        sw.log_event("panic", paths=sid, on=bool(data.get("on")), reason=str(data.get("reason") or "")[:200])
+    return {"ok": True, "panic": sw.panic_active()}
+
+
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
-    if str(data.get("actor") or "") == "brain" and (steward_config(sid).drain or quota_blocking()):
+    if str(data.get("actor") or "") == "brain" and (steward_config(sid).drain or quota_blocking() or sw.panic_active()):
         return {"ok": False, "error": "draining: the steward takes no new work (human turned 'drain' on)", "code": "draining"}
     gated = _gate(name, data, "directive", sid)
     if gated is not None:
@@ -5212,6 +5243,7 @@ POST_PATHS = {
     "/api/steward/enable": http_enable,
     "/api/steward/up": http_up,
     "/api/steward/shutdown": http_shutdown,
+    "/api/steward/panic": http_panic,
     "/api/steward/tick": lambda data, sid="default": tick_once("manual", sid),
     "/api/steward/tour": lambda data, sid="default": run_tour(force=True, cfg=steward_config(sid)),
 }

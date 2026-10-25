@@ -4,6 +4,7 @@
 Çalıştırma:  python3 py/tests/test_steward.py -v
 `CLAUDEOPS_DIR` geçici bir klasöre yönlendirilir (modül sabitleri patch'lenir), gerçek ayar/roster'a dokunmaz.
 """
+import dataclasses
 import json
 import os
 from pathlib import Path
@@ -2388,6 +2389,44 @@ class BigResumeTest(HttpTest):
         self._run(patches, lambda: web_steward._ensure_running("ysf"))
         self.assertTrue(seen["fresh"])
         self.assertTrue(any(e["event"] == "start_fresh_big_context" for e in sw.tail_log(20)))
+
+
+class WakeCapPanicTest(HttpTest):
+    def test_daily_cap_dry_and_act_and_reset_on_answer(self):
+        paths = sw.paths_for("default")
+        sw.save_state({})
+        cfg = _cfg(wake_gate="act", wake_repeat_minutes=0, wake_max_per_day=2)
+        for i in range(2):
+            self.assertFalse(web_steward._wake_gate(cfg, paths, "s1", "due", None, f"m{i}"))
+            web_steward._wake_record(cfg, paths, "s1", "due", None, f"m{i}")
+        self.assertTrue(web_steward._wake_gate(cfg, paths, "s1", "due", None, "m3"))               # 3.sü gitmez
+        self.assertFalse(web_steward._wake_gate(cfg, paths, "s2", "due", None, "m3"))              # başka oturum
+        self.assertFalse(web_steward._wake_gate(dataclasses.replace(cfg, wake_gate="dry"), paths, "s1", "due", None, "m3"))
+        self.assertTrue(any(e["event"] == "would:wake_cap" for e in sw.tail_log(30)))
+        web_steward._wake_record(cfg, paths, "s1", "answer", None, "x")                            # cevap = yeni girdi
+        self.assertFalse(web_steward._wake_gate(cfg, paths, "s1", "due", None, "m3"))
+        st = sw.load_state()
+        st["auto_wake"]["s1"] = [t - 90000 for t in (st.get("auto_wake") or {}).get("s1", [1.0, 2.0])]
+        sw.save_state(st)
+
+    def test_panic_flag_forces_observe_and_blocks_brain_directive(self):
+        self.assertFalse(sw.panic_active())
+        self.assertTrue(web_steward.http_panic({"on": True, "reason": "test"})["panic"])
+        try:
+            self.assertTrue(sw.panic_active())
+            self.assertFalse(web_steward.http_panic({"on": False, "actor": "brain"})["ok"])          # beyin kaldıramaz
+            self.assertTrue(sw.panic_active())
+            r = web_steward.http_directive({"name": "a", "text": "x", "actor": "brain"})
+            self.assertEqual(r.get("code"), "draining")
+            self._observe_env("act")
+            sw.upsert_project("a", phase="planned", cadence_minutes=60)
+            with mock.patch.object(web_steward, "_collect_views", lambda cfg: [_view("a", running=False)]):
+                r = web_steward.tick_once("timer")
+            self.assertEqual(r["mode"], "observe")
+            self.assertEqual(self.touched, [])                                                   # oturuma dokunulmadı
+        finally:
+            web_steward.http_panic({"on": False})
+        self.assertFalse(sw.panic_active())
 
 
 if __name__ == "__main__":

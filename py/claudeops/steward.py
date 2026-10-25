@@ -311,6 +311,7 @@ class Config:
     review_agy_jail: bool = True       # agy: `bwrap` salt-okunur kafes + --dangerously-skip-permissions (bwrap yoksa/False ise izin listesi)
     lessons_project: str = "cli"       # ucli dersleri (reviewer `ucli-lessons.md`) bu projenin çalışan oturumuna direktifle iletilir (`off` = kapalı; boş değer ayarda anahtarı siler); projeyi bu kimlik yönetiyorsa
     resume_max_context_tokens: int = 150000   # TBD#123: durmuş oturumu açarken `--resume` edilecek konuşmanın SON bağlamı bundan büyükse taze (`--new`) açılır (soğuk büyük okuma + hemen devir = çifte maliyet); 0 = kapalı (her zaman resume)
+    wake_max_per_day: int = 2          # uyandırma kapısı (TBD#125 agy): oturum başına 24 saatte en çok bu kadar otomatik `due` uyandırması (yeni girdi = cevap gidince sayaç sıfırlanır); `wake_gate` kipine uyar (dry = yalnız `would:wake_cap`); 0 = sınırsız
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
     wake_repeat_minutes: int = 240     # uyandırma kapısı penceresi (dk); 0 = kapalı
     upper_main_warn: bool = True       # denetim: proje ANA oturumu fiilen Sonnet medium üstüne çıktıysa (canlı model/effort) `upper_main` olayı + oturuma tek HATIRLATMA (zorlamaz; `off` = kapalı)
@@ -2629,6 +2630,28 @@ OWNER_ONLY_RE = re.compile(r"commit|push|merge|deploy|force|install|kurulum|kuru
 
 _JOB_RED_RE = re.compile(r"^\s*RED\b\s*[:\-–—]?\s*(.*)$", re.I | re.S)
 JOB_RED_MIN_CHARS = 12
+
+
+def panic_path() -> str:
+    """Acil durdurma bayrağı: makine geneli (`steward` kök klasörü / PANIC). Dosya varsa TÜM kimlikler `observe` gibi davranır."""
+    return os.path.join(str(paths_for("default").root), "PANIC")
+
+
+def panic_active() -> bool:
+    return os.path.exists(panic_path())
+
+
+def set_panic(on: bool, reason: str = "") -> bool:
+    """Bayrağı yaz/sil. Dönen: yeni durum (açık mı). Yazma hatası fırlatır (çağıran bildirir)."""
+    path = panic_path()
+    if on:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {reason}\n")
+    else:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(path)
+    return on
 
 
 def job_request_gate(q: "Question", answer: str, jobs: List[Dict[str, Any]]) -> Tuple[bool, str, str]:
