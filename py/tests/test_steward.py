@@ -2262,6 +2262,53 @@ class SkipMemoryHttpTest(HttpTest):
         self.assertEqual(sw.undelivered_answers(), [])
 
 
+class ActionJournalTest(HttpTest):
+    """codex R-2: işaret tüketilip eylem çökmeyle kaybolmasın ('bekliyor' -> 'tamamlandı'); yeniden denemede çift eylem yok."""
+
+    def _env(self):
+        self._observe_env("act")
+        sw.upsert_project("a", phase="planned", cadence_minutes=0)
+
+    def test_crash_between_state_save_and_apply_replays_once(self):
+        self._env()
+        v = _view("a", last_assistant="STEWARD-ASK: A mı B mi?\nSTEWARD-IDEA: yeni bir şey")
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: [v]), \
+             mock.patch.object(web_steward, "_apply", side_effect=KeyboardInterrupt):      # süreç ölümü: istisna tick'ten kaçar
+            with self.assertRaises(KeyboardInterrupt):
+                web_steward.tick_once("timer")
+        st = sw.load_state()
+        self.assertEqual(sorted(e["kind"] for e in st["act_journal"]), ["ask_user", "idea"])      # state'te bekliyor
+        self.assertEqual((sw.open_questions(), sw.load_ideas()), ([], []))                         # eylem uygulanmadı
+        # yeniden başlatma: aynı yanıt zaten tüketilmiş (seen_assistant), yine de eylemler tek kez uygulanır
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: [v]):
+            web_steward.tick_once("timer")
+            web_steward.tick_once("timer")
+        self.assertEqual(len(sw.open_questions()), 1)
+        self.assertEqual(len(sw.load_ideas()), 1)
+        self.assertNotIn("act_journal", sw.load_state())                                          # tamamlandı: girdi yok
+
+    def test_normal_tick_leaves_no_journal_and_no_duplicates(self):
+        self._env()
+        v = _view("a", last_assistant="STEWARD-ASK: A mı B mi?\nSTEWARD-IDEA: yeni bir şey")
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: [v]):
+            for _ in range(3):
+                web_steward.tick_once("timer")
+        self.assertNotIn("act_journal", sw.load_state())
+        self.assertEqual((len(sw.open_questions()), len(sw.load_ideas())), (1, 1))
+
+    def test_replay_skips_duplicate_idea(self):
+        self._env()
+        sw.add_idea("aynı fikir", source="a")
+        st = sw.load_state()
+        a = sw.Action("idea", "a", "STEWARD-IDEA", {"text": "aynı fikir"})
+        st["act_journal"] = web_steward._journal_entries([a], 1.0)
+        sw.save_state(st)
+        with mock.patch.object(web_steward, "_collect_views", lambda cfg: []):
+            web_steward.tick_once("timer")
+        self.assertEqual(len(sw.load_ideas()), 1)
+        self.assertNotIn("act_journal", sw.load_state())
+
+
 if __name__ == "__main__":
     unittest.main()
 

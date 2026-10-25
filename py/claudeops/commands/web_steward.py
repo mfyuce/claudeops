@@ -12,6 +12,7 @@ sorusunu `py/cops steward log` ile görür.
 """
 from __future__ import annotations
 import dataclasses
+import hashlib
 import json
 import os
 import re
@@ -2771,6 +2772,58 @@ def _audit_upper_main(cfg: sw.Config, views: List[sw.SessionView], projects: Dic
                      error=str((res or {}).get("error") if isinstance(res, dict) else res))
 
 
+_JOURNAL_KINDS = ("ask_user", "idea", "set_phase", "close_stale_answer")   # kaydı sessizce kaybolan tür: tetikleyici (yanıt özeti) tick'te tüketilir
+
+
+def _journal_id(a: sw.Action) -> str:
+    raw = json.dumps([a.kind, a.name, a.reason, a.payload], sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def _journal_entries(actions: List[sw.Action], now: float) -> List[Dict[str, Any]]:
+    """Kayıt eylemlerinin 'bekliyor' girdileri (state ile AYNI yazımda saklanır; codex R-2: plan_tick sonucu eylemlerden önce
+    yazılıyor, çökme penceresinde işaret tüketilip eylem kayboluyordu)."""
+    return [{"id": _journal_id(a), "kind": a.kind, "name": a.name, "reason": a.reason, "payload": a.payload, "at": now}
+            for a in actions if a.kind in _JOURNAL_KINDS]
+
+
+def _journal_done(paths: Any, jid: str) -> None:
+    """Eylem uygulandı ('tamamlandı'): girdiyi sil. Kilit alınamazsa girdi kalır ve sonraki tick yeniden dener (kayıt eylemleri
+    yinelenmeye dayanıklı: aynı açık soru birleşir, set_phase idempotent, fikir kopyası atlanır)."""
+    try:
+        with sw.steward_lock(paths):
+            state = sw.load_state(paths)
+            left = [e for e in (state.get("act_journal") or []) if e.get("id") != jid]
+            if left:
+                state["act_journal"] = left
+            else:
+                state.pop("act_journal", None)
+            sw.save_state(state, paths)
+    except sw.LockTimeout:
+        pass
+
+
+def _replay_journal(cfg: sw.Config, projects: Dict[str, sw.Project], world: Any, paths: Any, sid: str) -> int:
+    """Önceki tick eylemleri bitirmeden kesildiyse ('bekliyor' girdileri kaldı) onları bir kez uygula. Dönen: uygulanan sayısı."""
+    entries = [e for e in (sw.load_state(paths).get("act_journal") or []) if isinstance(e, dict) and e.get("kind") in _JOURNAL_KINDS]
+    n = 0
+    for e in entries:
+        a = sw.Action(str(e["kind"]), str(e.get("name") or ""), str(e.get("reason") or ""), dict(e.get("payload") or {}))
+        try:
+            if a.kind == "idea" and any(i.text == str(a.payload.get("text") or "").strip()[:2000] and i.source == a.name
+                                        for i in sw.load_ideas(paths)):
+                res: Dict[str, Any] = {"ok": True, "skipped": "duplicate"}
+            else:
+                res = _apply(a, cfg, projects, world)
+        except Exception as ex:
+            res = {"ok": False, "error": repr(ex)}
+            diag_log("steward_action_crashed", sid=sid, kind=a.kind, name=a.name, error=repr(ex))
+        sw.log_event("action_replayed", paths=paths, kind=a.kind, name=a.name, ok=bool(res.get("ok")))
+        _journal_done(paths, str(e.get("id")))
+        n += 1
+    return n
+
+
 def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Optional[int] = None,
               cards: bool = True, index: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """`sid` kimliği için bir tick: görünümleri topla → kararlar (`plan_tick(world=...)`) → uygula → state kaydet.
@@ -2801,6 +2854,8 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
             rkw: Dict[str, Any] = {"rt": rt} if world.hosts else {}
             _note_conflicts(ctx, idx, set(projects), t0)
             views = _collect_views(cfg, **rkw)
+            if sw.load_state(paths).get("act_journal"):
+                _replay_journal(cfg, projects, world, paths, sid)      # önceki tick yarıda kaldı: bekleyen kayıt eylemleri
             with sw.steward_lock(paths):     # state RMW atomik (CLI süreci de aynı dosyaya yazar)
                 prev_state = sw.load_state(paths)
                 actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
@@ -2821,6 +2876,9 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                     new_state = planned_state
                 actions = actions + adv_actions     # ilerletme (advance_findings=on): onaylı review bulguları -> kendi projesinin oturumu
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
+                journal = _journal_entries(actions, t0)
+                if journal:
+                    new_state["act_journal"] = list(new_state.get("act_journal") or []) + journal   # 'bekliyor': state ile aynı yazım
                 sw.save_state(new_state, paths)
             for a in dry:
                 host = _locate(a.name, projects, world)[0] if a.kind in _SESSION_KINDS else ""
@@ -2835,6 +2893,8 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 except Exception as e:  # tek eylem tick'i düşürmesin
                     res = {"ok": False, "error": repr(e)}
                     diag_log("steward_action_crashed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
+                if a.kind in _JOURNAL_KINDS:
+                    _journal_done(paths, _journal_id(a))       # 'tamamlandı' (süreç ölmedi: istisna olsa da yeniden denenmez, hata her tick'te tekrarlanmasın)
                 if isinstance(res, dict) and res.get("code") == "destructive_budget":
                     _defer_destructive(a, paths, world)     # host'un bu tick'lik yıkıcı hakkı doldu: sonraki tick'e
                 _remember(a, res, ctx)
