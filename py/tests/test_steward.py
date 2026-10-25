@@ -1484,6 +1484,9 @@ class StuckBrainTest(_Tmp):
             res = web_steward._apply(sw.Action("deliver_answer", "zk_x", "answer", {"question_id": q.id}), steward_cfg(), {})
         self.assertFalse(res["ok"])
         self.assertEqual(sw.undelivered_answers(), [])
+        q2 = next(x for x in sw.load_questions() if x.id == q.id)
+        self.assertEqual(q2.undeliverable, "send failed")            # 'iletildi' görünmez: neden kayıtlı
+        self.assertTrue(q2.delivered_at)                             # yalnız yeniden deneme durur
 
 
 class DeliveryTargetTest(_Tmp):

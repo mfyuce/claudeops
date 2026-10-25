@@ -2446,8 +2446,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if not res.get("ok") and q.project not in projects:
             # Kayıtlı proje olmayan (ad hoc) oturum kapanmış ya da yazı kabul etmiyor: her tick yeniden deneme,
             # bırak (cevap kayıtta durur, kimse beklemiyor).
-            sw.mark_delivered(q.id, paths)
+            sw.mark_undeliverable(q.id, str(res.get("error") or "undeliverable"), paths)
             sw.log_event("answer_undeliverable", paths=paths, id=q.id, session=name, error=res.get("error", ""))
+            _notify(cfg, (f"Cevabın {name} oturumuna İLETİLEMEDİ ({res.get('error', '')}): [{q.id}] {q.answer[:120]}" if cfg.lang != "en"
+                          else f"Your answer could NOT be delivered to {name} ({res.get('error', '')}): [{q.id}] {q.answer[:120]}"))
         return res
     if k == "deliver_findings":
         if not host:

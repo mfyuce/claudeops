@@ -204,7 +204,8 @@ class Question:
     status: str = "open"            # open | answered
     answer: str = ""
     answered_at: float = 0.0
-    delivered_at: float = 0.0       # cevap ilgili oturuma iletildi
+    delivered_at: float = 0.0       # cevap ilgili oturuma iletildi (ya da `undeliverable` ise tekrar denenmesin diye işaretlendi)
+    undeliverable: str = ""         # cevap oturuma İLETİLEMEDİ (kapalı/yazı kabul etmiyor): neden; `delivered_at` yalnız yeniden denemeyi durdurur
     source: str = ""                # soruyu kim açtı (oturum adı / brain / cli)
     options: List[str] = field(default_factory=list)   # kısa seçenekler (boş = serbest metin); cevap bunlardan biri ya da metin
     key: str = ""                   # `/q/<id>?k=<key>` sayfasının soruya ÖZEL anahtarı (panel token'ı ntfy'ye girmesin)
@@ -1270,6 +1271,22 @@ def mark_delivered(question_id: str, paths: Any = None) -> None:
             if q.id == question_id:
                 q.delivered_at = _now()
         save_questions(questions, paths)
+
+
+def mark_undeliverable(question_id: str, reason: str, paths: Any = None) -> bool:
+    """Cevap teslim EDİLEMEDİ (ad hoc oturum kapalı/yazı kabul etmiyor): yeniden denemeyi durdurur (`delivered_at`) ama
+    'iletildi' görünmesin diye nedeni kaydeder. Dönen: kayıt bulundu mu."""
+    hit = False
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        for q in questions:
+            if q.id == question_id:
+                q.delivered_at = _now()
+                q.undeliverable = (reason or "undeliverable")[:200]
+                hit = True
+        if hit:
+            save_questions(questions, paths)
+    return hit
 
 
 def open_questions(questions: Optional[List[Question]] = None, paths: Any = None) -> List[Question]:

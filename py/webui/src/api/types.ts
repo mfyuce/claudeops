@@ -912,6 +912,8 @@ export interface StewardQuestion {
   answer: string;
   answered_at: number;
   delivered_at: number;
+  /** Set when the answer could NOT be delivered (session closed / refuses input); delivered_at then only stops retries. */
+  undeliverable?: string;
   source: string;
   /** Short choices (≤6); empty = free-text question. The answer may still be free text. */
   options?: string[];
