@@ -48,3 +48,7 @@ Yük bu koşularda daha yüksekti (loadavg 1,1 ile 8,1). Modeller: claude = clau
 
 ## Düzeltme (2026-10-25): t4 doğrulayıcı hatası
 t4 doğrulayıcısı `compute_total` alt dizgisini her yerde aradığı için `test_compute_total` test adını "kalan eski ad" sayıyordu; ucli r2 ve agy r2 bu yüzden "kaldı" görünüyordu, ama fonksiyon, içe aktarmalar ve çağrı yerleri doğru yeniden adlandırılmıştı. Doğrulayıcı kelime sınırına (`\bcompute_total\b`) çekildi ve eldeki çalışma dizinleri yeniden puanlandı: ucli 9/9, agy 13/13 (yukarıdaki tablo güncel). Gemini t4 hâlâ kota hatası. Böylece gerçek yanlış sayısı: tüm çalıştırılan koşularda 0 (gemini kota hariç).
+
+## Güncelleme (2026-10-25): ucli `replace_in_files` (unified-cli 12d11a9) sonrası t4
+- t4 (çok dosyalı yeniden adlandırma), ucli, 2 tekrar, ikisi geçti: **15,8 s / 26,5k token** ve **22,2 s / 22,7k token** (önce 76-91 s, 23-46k token). Süre ~4 kat düştü; token benzer ya da biraz az. Yük yüksekti (loadavg 8,5-10), codex t4 10-15 s'nin hâlâ biraz üstünde. Tepe RSS ~16 MiB, 1 süreç.
+- Tek ölçüm kümesi (n=2); model ve istek sayısı ayrıca çözümlenmedi.
