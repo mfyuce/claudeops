@@ -326,20 +326,20 @@ def cmd_quota(args) -> int:
     from .. import steward_quota as sq
     act = args.quota_action
     cur = load_settings().get("steward_quota") or {}
-    if act in ("mode", "limit", "final", "poll", "day"):
+    if act in ("mode", "limit", "shutdown", "final", "poll", "day"):
         patch: Dict[str, str] = {}
         if act == "mode":
             if args.value not in sq.MODES:
                 print(f"mod: {'|'.join(sq.MODES)}", file=sys.stderr)
                 return 1
             patch["mode"] = args.value
-        elif act in ("limit", "final", "poll"):
+        elif act in ("limit", "shutdown", "final", "poll"):
             try:
                 float(args.value)
             except ValueError:
                 print("sayı ver (kullanılan %, poll için dakika)", file=sys.stderr)
                 return 1
-            patch[{"limit": "manual_limit", "final": "final_limit", "poll": "poll_minutes"}[act]] = args.value
+            patch[{"limit": "manual_limit", "shutdown": "shutdown_limit", "final": "final_limit", "poll": "poll_minutes"}[act]] = args.value
         else:
             for a in [args.value] + list(args.more or []):
                 k, _, v = (a or "").partition("=")
@@ -931,7 +931,7 @@ def register(sub):
     pd.add_argument("--all", action="store_true")
     pd.set_defaults(func=cmd_ideas)
     pq = s.add_parser("quota", help="kota bekçisi: haftalık plan kullanımına göre yeni işi kes (drain) ya da hepsini durdur")
-    pq.add_argument("quota_action", choices=("status", "check", "mode", "limit", "final", "poll", "day"))
+    pq.add_argument("quota_action", choices=("status", "check", "mode", "limit", "shutdown", "final", "poll", "day"))
     pq.add_argument("value", nargs="?", default="")
     pq.add_argument("more", nargs="*")
     pq.set_defaults(func=cmd_quota)

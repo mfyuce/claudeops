@@ -1,7 +1,7 @@
 """Değnekçi kota bekçisi: Claude plan haftalık kullanımı (`claude -p /usage`) -> karar. SAF çekirdek (süreç, ayar ve
 eylem `commands/web_steward.py`'de). TBD#116.
 
-Modlar: `off` (varsayılan), `manual` (`manual_limit`: kullanılan % buna ulaşınca HER ŞEY durur), `auto` (günlük tavan
+Modlar: `off` (varsayılan), `manual` (`manual_limit`: buna ulaşınca yeni iş alınmaz (drain); `shutdown_limit` (varsayılan final-1): çalışmayanlara devir, bitince kapat; `final_limit`: HARD kapanma), `auto` (günlük tavan
 = `final_limit` x geçen gün / 7; tavana ulaşınca yeni iş alınmaz (`drain`), `final_limit`e ulaşınca durur). `day_<mon..sun>`
 o haftanın günü için tavanı elle verir (her iki modda geçerli)."""
 from __future__ import annotations
@@ -31,7 +31,7 @@ class Usage:
 
 @dataclasses.dataclass
 class Decision:
-    action: str = "ok"                      # ok | drain | stop
+    action: str = "ok"                      # ok | drain | shutdown (devirle kapat) | stop (HARD)
     cap: Optional[float] = None             # bugünün tavanı (kullanılan %)
     reason: str = ""
 
@@ -111,18 +111,19 @@ def decide(cfg: Dict[str, Any], usage: Optional[Usage], now: float, tz: Optional
         return Decision(reason="kullanım okunamadı")
     used = usage.week_pct
     cap = day_cap(cfg, usage, now, tz)
+    final = _num(cfg, "final_limit", DEFAULT_FINAL) or DEFAULT_FINAL
+    sd = _num(cfg, "shutdown_limit", None)
+    sd = sd if sd is not None else final - 1
+    if used >= final:
+        return Decision("stop", cap, f"kullanılan %{used:g} >= son limit %{final:g} (hard kapanma)")
+    if used >= sd:
+        return Decision("shutdown", cap, f"kullanılan %{used:g} >= kapatma limiti %{sd:g} (devirle kapat)")
     if mode == "manual":
         limit = _num(cfg, "manual_limit", None)
         if limit is None:
             return Decision(cap=cap, reason="manual_limit verilmemiş")
         if used >= limit:
-            return Decision("stop", cap, f"kullanılan %{used:g} >= manuel limit %{limit:g}")
-        if cap is not None and used >= cap:
-            return Decision("drain", cap, f"kullanılan %{used:g} >= bugünün tavanı %{cap:g}")
-        return Decision(cap=cap)
-    final = _num(cfg, "final_limit", DEFAULT_FINAL) or DEFAULT_FINAL
-    if used >= final:
-        return Decision("stop", cap, f"kullanılan %{used:g} >= son limit %{final:g}")
+            return Decision("drain", cap, f"kullanılan %{used:g} >= yeni-iş-yok limiti %{limit:g}")
     if cap is not None and used >= cap:
         return Decision("drain", cap, f"kullanılan %{used:g} >= bugünün tavanı %{cap:g}")
     return Decision(cap=cap)
