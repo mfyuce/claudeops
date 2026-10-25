@@ -232,6 +232,8 @@ class SessionView:
     subagent_active: bool = False       # transkriptin `subagents/agent-*.jsonl` dosyaları SUBAGENT_QUIET_SECONDS içinde yazıldı
     host: str = "local"                 # satırın geldiği host (`/api/status` `host` alanı); uzak = `hosts.json` adı
     subagent_unknown: bool = False      # alt ajan durumu okunamadı (uzak oturum): "boşta" SAYILMAZ (DONE/kapatma devri bekler)
+    live_model: str = ""                # ÇALIŞAN sürecin GERÇEK modeli (`/api/status` `live_model`: claude'da transkriptin son asistan turu); "" = bilinmiyor
+    live_effort: str = ""               # aynı kaynaktan canlı effort ("" = bilinmiyor)
 
     @property
     def project(self) -> str:
@@ -304,6 +306,7 @@ class Config:
     review_agy_allow: str = ""         # agy: izole HOME'da izinli salt-okunur komutlar ("" = ls,grep,head,tail,wc; "off" = izolasyon kapalı)
     review_agy_jail: bool = True       # agy: `bwrap` salt-okunur kafes + --dangerously-skip-permissions (bwrap yoksa/False ise izin listesi)
     lessons_project: str = "cli"       # ucli dersleri (reviewer `ucli-lessons.md`) bu projenin çalışan oturumuna direktifle iletilir (`off` = kapalı; boş değer ayarda anahtarı siler); projeyi bu kimlik yönetiyorsa
+    upper_main_warn: bool = True       # denetim: proje ANA oturumu fiilen Sonnet medium üstüne çıktıysa (canlı model/effort) `upper_main` olayı + oturuma tek HATIRLATMA (zorlamaz; `off` = kapalı)
     advance_findings: bool = False     # İLERLETME değnekçisi: sahibin onayladığı (`exported`) review bulgularını KENDİ projelerinin çalışan oturumuna direktifle iletir (steward_advance.py)
     review_auto_verify: bool = False   # reviewer: `new` bulguları projenin çalışan oturumuna KENDİLİĞİNDEN doğrulatır (tick başına en çok 1 proje; oturum meşgulse bekler)
     review_before_tbd_dir: str = ""    # reviewer: `unclear`/`refuted` bulguları bu klasöre `BEFORETBD-<tarih>.md` olarak yazar (özel repo klasörü; "" = KAPALI; commit/push otomatik DEĞİL)
@@ -2604,6 +2607,42 @@ def is_generic(cfg: Any) -> bool:
 def is_upper_tier(model: str, effort: str) -> bool:
     """Ana oturum için üst kademe mi: Opus/Fable modeli ya da high/xhigh/max effort. SAF."""
     return bool(UPPER_MODEL_RE.search(model or "")) or (effort or "").strip().lower() in UPPER_EFFORTS
+
+
+def upper_main_views(views: List[SessionView], projects: Dict[str, "Project"], cfg: "Config",
+                     world: Optional["World"] = None) -> List[SessionView]:
+    """Denetim (TODO 1233/5): proje ANA oturumu fiilen üst kademede mi (canlı model/effort `is_upper_tier`). SAF.
+    Yalnız çalışan, instance OLMAYAN (blueprint yok), bu kimliğin kayıtlı projesine ait görünümler. Sahibin bilinçli seçimi
+    (proje override'ı ya da kimliğin faz ayarı, `phase_model_effort`) zaten üst kademeyse işaretlenmez; reviewer rolü
+    proje oturumu yönetmez, denetlenmez."""
+    if getattr(cfg, "role", "") == "reviewer":
+        return []
+    if world is not None:
+        projects = world.own_projects(projects)
+    out: List[SessionView] = []
+    for v in views:
+        if not v.running or v.blueprint or v.name not in projects:
+            continue
+        if not is_upper_tier(v.live_model, v.live_effort):
+            continue
+        if is_upper_tier(*phase_model_effort(projects[v.name], cfg)):
+            continue
+        out.append(v)
+    return out
+
+
+def upper_main_text(project: str, model: str, effort: str, lang: str = "tr") -> str:
+    """Ana oturumun canlı model/effort'u Sonnet medium üstünde: HATIRLATMA metni (emir değil; model değiştirilmez)."""
+    if lang == "en":
+        return (f"Reminder (steward audit): this MAIN session of '{project}' is currently running on {model or '-'} / "
+                f"{effort or '-'}. The owner's rule is that the main session stays on {GENERIC_MODEL} + {GENERIC_EFFORT}; "
+                f"an upper tier is only for a deliberate heavy step. If that step is done, switch back with "
+                f"`/model {GENERIC_MODEL}` and effort {GENERIC_EFFORT}, and put heavy work in a sub-agent. If you raised "
+                f"it on purpose, finish the step and ignore this reminder.")
+    return (f"Hatırlatma (değnekçi denetimi): '{project}' ANA oturumu şu an {model or '-'} / {effort or '-'} ile çalışıyor. "
+            f"Sahibin kuralı: ana oturum {GENERIC_MODEL} + {GENERIC_EFFORT}; üst kademe yalnız bilinçli ağır bir adım "
+            f"için geçici. O adım bittiyse `/model {GENERIC_MODEL}` ve effort {GENERIC_EFFORT} ile geri dön, ağır işi alt "
+            f"ajana ver. Bilerek yükselttiysen adımı bitir, bu hatırlatmayı yok say.")
 
 
 def upper_tier_tag(project: str, model: str, effort: str) -> str:

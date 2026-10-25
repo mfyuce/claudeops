@@ -396,7 +396,8 @@ def _remote_view(r: Dict[str, Any], host: str, now: float) -> sw.SessionView:
         cli=r.get("cli") or DEFAULT_CLI, blueprint=r.get("blueprint") if r.get("instance") else None,
         busy=r.get("busy"), history_size=r.get("history_size") if tokens is not None else None,
         needs_ho=r.get("needs_ho"), tmux=bool(r.get("tmux")), model=str(r.get("model") or ""),
-        context_tokens=tokens, host=host, subagent_unknown=True)
+        context_tokens=tokens, host=host, subagent_unknown=True,
+        live_model=str(r.get("live_model") or ""), live_effort=str(r.get("live_effort") or ""))
     if v.running and isinstance(age, (int, float)) and not isinstance(age, bool) and age >= 0:
         v.last_activity = now - float(age)
     return v
@@ -1097,6 +1098,7 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
             blueprint=r.get("blueprint") if r.get("instance") else None,
             busy=r.get("busy"), history_size=r.get("history_size"), needs_ho=r.get("needs_ho"),
             tmux=bool(r.get("tmux")), stuck=name in stuck_names, model=str(r.get("model") or ""),
+            live_model=str(r.get("live_model") or ""), live_effort=str(r.get("live_effort") or ""),
         )
         if v.running and s is not None:
             provider = get_provider(s.cli)
@@ -2690,6 +2692,59 @@ def _audit_fable_rule(sid: str, paths: Any) -> None:
                      top=[x.get("label") for x in (mu.get("fable_top") or [])[:3]])
 
 
+# Ana oturum üst kademe denetimi (TODO 1233/5): (kimlik, oturum adı) -> {model, effort, at, sent}. Süreç içi (fable_rule
+# kalıbı); süreç yeniden başlarsa en çok bir yinelenen hatırlatma. Aynı model/effort için bir kez loglanır + bir kez
+# hatırlatılır; oturum Sonnet medium'a dönünce kayıt düşer (yeniden yükselirse yine uyarılır).
+_UPPER_MAIN_WARNED: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+
+def _audit_upper_main(cfg: sw.Config, views: List[sw.SessionView], projects: Dict[str, sw.Project], world: Any,
+                      paths: Any, rt: Optional[_RemoteTick] = None) -> None:
+    """Proje ANA oturumu fiilen (canlı model/effort) Sonnet medium üstündeyse `upper_main` olayı + oturuma HATIRLATMA
+    direktifi (`_give_directive`, `start_if_stopped=False`, model/effort verilmez: hiçbir şey zorlanmaz/değiştirilmez).
+    Gönderim kapıları direktif yoluyla aynı: observe kipinde yalnız log; meşgul/alt ajanlı/az önce direktif almış oturum
+    beklenir (sonraki tick); uzak oturuma yalnız `remote_actions` açıkken. Başarısız gönderim sonraki tick'te yeniden denenir."""
+    if not cfg.upper_main_warn:
+        return
+    now = time.time()
+    flagged = {v.name: v for v in sw.upper_main_views(views, projects, cfg, world)}
+    for key in [k for k in _UPPER_MAIN_WARNED if k[0] == cfg.sid and k[1] not in flagged]:
+        _UPPER_MAIN_WARNED.pop(key, None)       # kurala döndü ya da kapandı: yeniden yükselirse yeniden uyarılır
+    if not flagged:
+        return
+    lda: Dict[str, Any] = {}
+    try:
+        lda = sw.load_state(paths).get("last_directive_at") or {}
+    except Exception:
+        lda = {}
+    for name, v in flagged.items():
+        key = (cfg.sid, name)
+        ent = _UPPER_MAIN_WARNED.get(key)
+        if ent is None or (ent["model"], ent["effort"]) != (v.live_model, v.live_effort):
+            ent = {"model": v.live_model, "effort": v.live_effort, "at": now, "sent": False}
+            _UPPER_MAIN_WARNED[key] = ent
+            sw.log_event("upper_main", paths=paths, name=name, project=v.project, model=v.live_model,
+                         effort=v.live_effort, **({"host": v.host} if sw.normalize_host(v.host) else {}))
+        if ent["sent"] or cfg.mode == "observe":
+            continue
+        host = sw.normalize_host(v.host)
+        if host and not cfg.remote_actions:
+            continue
+        if v.subagent_active or sw.directive_defer_reason(v.busy, float(lda.get(name) or 0.0), now):
+            continue
+        p = projects.get(name)
+        if p is None:
+            continue
+        res = _give_directive(p, sw.upper_main_text(name, v.live_model, v.live_effort, cfg.lang),
+                              start_if_stopped=False, reason="upper_main", session_name=name, cfg=cfg,
+                              host=host or None, rt=rt, actor="engine")
+        if isinstance(res, dict) and res.get("ok"):
+            ent["sent"] = True
+        else:
+            diag_log("steward_upper_main_send_failed", sid=cfg.sid, name=name,
+                     error=str((res or {}).get("error") if isinstance(res, dict) else res))
+
+
 def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Optional[int] = None,
               cards: bool = True, index: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """`sid` kimliği için bir tick: görünümleri topla → kararlar (`plan_tick(world=...)`) → uygula → state kaydet.
@@ -2760,6 +2815,11 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                                 "detail": res.get("error") or ""})
                 if res.get("host"):
                     applied[-1]["host"] = res["host"]
+            if cfg.enabled:
+                try:      # denetim tick'i düşürmesin
+                    _audit_upper_main(cfg, views, projects, world, paths, rt)
+                except Exception as e:
+                    diag_log("steward_upper_main_crashed", sid=sid, error=repr(e))
             _remote_tick_done(rt, paths)
         except Exception as e:
             error = repr(e)
