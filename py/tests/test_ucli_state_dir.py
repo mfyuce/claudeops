@@ -49,6 +49,32 @@ class TestSetting(unittest.TestCase):
             self.assertIs(settings.ucli_state_dir_enabled(), False)
 
 
+class TestChatOnce(_Base):
+    """`ucli_chat_once(session=...)` de `--state-dir` geçirir (ayar açıkken, bayrak destekliyse); aksi halde argv değişmez."""
+
+    def run_once(self, cfg, session, supports=True):
+        seen = {}
+
+        def fake_run(argv, **kw):
+            seen["argv"] = argv
+            return mock.Mock(returncode=0, stdout='{"answer": "x"}', stderr="")
+        with limits(cfg), mock.patch.object(ucli_client, "binary_supports_flag", lambda b, f: supports), \
+                mock.patch.object(ucli_client.subprocess, "run", fake_run), \
+                mock.patch.object(ucli_client, "resolve_binary", lambda b=None: "/f/ucli"):
+            ucli_client.ucli_chat_once(self.cwd, "hi", session=session, model="m", endpoint="http://e")
+        return seen["argv"]
+
+    def test_state_dir_passed_only_when_on_supported_and_session(self):
+        sdir = ucli_client.state_dir_for(self.cwd)
+        a = self.run_once({"state_dir": "on"}, "s1")
+        self.assertEqual(a[a.index("--state-dir") + 1], sdir)
+        self.assertNotIn("--state-dir", self.run_once({}, "s1"))                       # ayar kapalı
+        self.assertNotIn("--state-dir", self.run_once({"state_dir": "on"}, None))      # oturumsuz tek görev: durum yok
+        self.assertNotIn("--state-dir", self.run_once({"state_dir": "on"}, "s1", supports=False))   # eski ikili
+        self.put(ucli_client.legacy_chat_dir(self.cwd), "s2.jsonl", "{}\n")            # geçmişi eski dizinde: eskisi gibi
+        self.assertNotIn("--state-dir", self.run_once({"state_dir": "on"}, "s2"))
+
+
 class TestPaths(_Base):
     def test_dir_is_per_root_and_stable_and_outside_the_repo(self):
         a = ucli_client.state_dir_for(self.cwd)

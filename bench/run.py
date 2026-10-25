@@ -222,7 +222,8 @@ class UcliAdapter(Adapter):
         return [self.binary, "--root", workdir, "chat", "--model", self.model, "--endpoint", self.endpoint(),
                 "--api-key-env", "UCLI_API_KEY", "--max-steps", "20", "--allow-edit",
                 "--state-dir", os.path.join(rundir, "ucli_state"),
-                "--usage-log", os.path.join(rundir, "usage.jsonl"), prompt]
+                "--usage-log", os.path.join(rundir, "usage.jsonl")] + \
+               (["--effort", os.environ["BENCH_UCLI_EFFORT"]] if os.environ.get("BENCH_UCLI_EFFORT") else []) + [prompt]
 
     def parse(self, res, rundir):
         objs = _json_objs(res["stdout"])

@@ -359,10 +359,21 @@ def ucli_chat_once(
     printed JSON yazar ama `json.loads` boşluğa bakmaz, framing derdi yok
     (process ömrü boyunca TEK değer). `api_key` verilirse (çağıranın kendi
     ortamına güvenmek yerine, ör. bir web formundan) bkz. `_subprocess_env`."""
+    bin_path = resolve_binary(binary)
+    extra: list[str] = []
+    if session:
+        # Oturum durumu (jsonl/kilit) depo dışına: ayar açık, ikili bayrağı tanıyor ve geçmişi eski dizinde olan bir oturum değilse
+        # (o, eskisi gibi sürer: yeni dizinle açılırsa konuşma geçmişi görünmez olurdu). Sağlayıcıdaki `_state_dir_args` ile aynı kural.
+        from .settings import ucli_state_dir_enabled
+        sdir = state_dir_for(root)
+        in_new = os.path.exists(os.path.join(sdir, f"{session}.jsonl"))
+        in_old = os.path.exists(os.path.join(legacy_chat_dir(root), f"{session}.jsonl"))
+        if (ucli_state_dir_enabled() or in_new) and not (in_old and not in_new) and binary_supports_flag(bin_path, "--state-dir"):
+            extra = ["--state-dir", sdir]
     argv = build_chat_argv(
-        resolve_binary(binary), root, repl=False, session=session, model=model,
+        bin_path, root, repl=False, session=session, model=model,
         endpoint=endpoint, api_key_env=api_key_env, with_mcp=with_mcp,
-        max_steps=max_steps,
+        max_steps=max_steps, extra_args=extra,
     )
     argv.append(prompt)
     env = _subprocess_env(api_key_env, api_key)

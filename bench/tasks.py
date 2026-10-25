@@ -66,7 +66,7 @@ def v3(workdir, answer):
 def v4(workdir, answer):
     for path in _py_files(workdir):
         with open(path, encoding="utf-8") as f:
-            if "compute_total" in f.read():
+            if re.search(r"\bcompute_total\b", f.read()):      # kelime sınırı: test_compute_total başka bir tanımlayıcıdır
                 return False
     if "def sum_all(" not in (_read(workdir, "calc/mathops.py") or ""):
         return False
