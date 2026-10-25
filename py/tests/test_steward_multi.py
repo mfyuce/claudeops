@@ -213,8 +213,8 @@ def _plan_tick_checked(views, projects, state, cfg, now, questions, ideas, world
 
 
 def _review_items_checked(views, projects, cfg, now, questions, ideas, *, skip=None, last_directive_at=None,
-                          reviewed_at=None, world=None):
-    kw = dict(skip=skip, last_directive_at=last_directive_at, reviewed_at=reviewed_at)
+                          reviewed_at=None, world=None, skip_seen=None, sigs_out=None):
+    kw = dict(skip=skip, last_directive_at=last_directive_at, reviewed_at=reviewed_at, skip_seen=skip_seen, sigs_out=sigs_out)
     if world is not None:
         return _ORIG_REVIEW_ITEMS(views, projects, cfg, now, questions, ideas, world=world, **kw)
     old = _ORIG_REVIEW_ITEMS(views, projects, cfg, now, questions, ideas, **kw)

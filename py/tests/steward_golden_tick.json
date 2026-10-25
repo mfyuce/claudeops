@@ -175,6 +175,9 @@
      "wifi5gppr"
     ],
     "reason": "max_active"
+   },
+   "tour_sig": {
+    "a": "595aee82c85588b6"
    }
   }
  },
@@ -303,7 +306,8 @@
      "wifi5gppr"
     ],
     "reason": "max_active"
-   }
+   },
+   "tour_sig": {}
   }
  },
  {
@@ -418,7 +422,8 @@
      "wifi5gppr"
     ],
     "reason": "max_active"
-   }
+   },
+   "tour_sig": {}
   }
  },
  {
@@ -590,7 +595,8 @@
      "wifi5gppr"
     ],
     "reason": "max_active"
-   }
+   },
+   "tour_sig": {}
   }
  },
  {
@@ -710,7 +716,8 @@
      "wifi5gppr"
     ],
     "reason": "max_active"
-   }
+   },
+   "tour_sig": {}
   }
  },
  {
@@ -817,7 +824,8 @@
      "wifi5gppr"
     ],
     "reason": "max_active"
-   }
+   },
+   "tour_sig": {}
   }
  },
  {
@@ -1005,6 +1013,10 @@
      "ncs2"
     ],
     "reason": "max_active"
+   },
+   "tour_sig": {
+    "a": "595aee82c85588b6",
+    "zlkrn": "dd827b7342b99a8f"
    }
   }
  },
@@ -1144,7 +1156,8 @@
      "ncs2"
     ],
     "reason": "max_active"
-   }
+   },
+   "tour_sig": {}
   }
  },
  {
@@ -1277,7 +1290,8 @@
      "ncs2"
     ],
     "reason": "max_active"
-   }
+   },
+   "tour_sig": {}
   }
  }
 ]

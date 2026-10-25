@@ -314,7 +314,7 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([_view("zk_x20261020", busy=True)], self.projects, {}, cfg, self.now, [q], [])
         self.assertEqual([a.kind for a in acts if a.kind == "deliver_answer"], [])      # meşgul: sonraki tick
         acts, _ = sw.plan_tick([_view("zk_x20261020", running=False)], self.projects, {}, cfg, self.now, [q], [])
-        self.assertEqual([a.kind for a in acts if a.name == "zk_x20261020"], [])   # kapalıysa açılmaz
+        self.assertEqual([a.kind for a in acts if a.name == "zk_x20261020" and a.kind != "close_stale_answer"], [])   # kapalıysa açılmaz
 
     def test_instance_sessions_map_to_blueprint_project(self):
         cfg = _cfg(max_active=1)
@@ -802,6 +802,56 @@ class DoneConfirmTest(unittest.TestCase):
                 self.assertIsNone(f("yok"))
             with mock.patch.object(ws, "_cwd_resolver", lambda: (lambda n: os.path.join(d, "yok"))):
                 self.assertIsNone(ws._open_work_of(projs)("p1"))
+
+
+class TourQuietTest(unittest.TestCase):
+    """TBD#122: beynin skip ettiği ve durumu değişmeyen madde yeniden tura girmez; bayat blokaj kaydı kapanır."""
+
+    def _items(self, views, projects, qs, now, skip_seen=None, sigs=None):
+        return sw.review_items(views, projects, _cfg(), now, qs, [], skip_seen=skip_seen, sigs_out=sigs)
+
+    def test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        now = 100000.0
+        v = _view("p1", busy=False, last_activity=1.0, started_at=1.0, last_assistant="x")
+        sigs = {}
+        self.assertEqual([i["kind"] for i in self._items([v], projects, [], now, sigs=sigs)], ["idle"])
+        seen = {"p1": {"at": now, "sig": sigs["p1"]}}
+        self.assertEqual(self._items([v], projects, [], now + 1200, skip_seen=seen), [])               # değişmedi: sessiz
+        v2 = _view("p1", busy=False, last_activity=1.0, started_at=1.0, last_assistant="yeni çıktı")
+        self.assertEqual(len(self._items([v2], projects, [], now + 1200, skip_seen=seen)), 1)           # çıktı değişti
+        q = sw.Question(id="q1", project="p1", text="?", created_at=now, status="answered", answer="a", delivered_at=now, source="p1")
+        self.assertEqual(len(self._items([v], projects, [q], now + 1200, skip_seen=seen)), 1)           # yeni cevap
+        self.assertEqual(len(self._items([v], projects, [], now + sw.SKIP_QUIET_SECONDS + 1, skip_seen=seen)), 1)   # süre doldu
+
+    def test_plan_tick_records_tour_sig_and_honors_skip_seen(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        brain = _view("degnekci", busy=False)
+        v = _view("p1", busy=False, last_activity=1.0, started_at=1.0, last_assistant="x")
+        cfg = _cfg(brain_name="degnekci")
+        acts, st = sw.plan_tick([brain, v], projects, {}, cfg, 100000.0, [], [])
+        self.assertTrue(any(a.kind == "tour" for a in acts))
+        self.assertIn("p1", st["tour_sig"])
+        st["skip_seen"] = {"p1": {"at": 100000.0, "sig": st["tour_sig"]["p1"]}}
+        st["last_tour"] = 0.0
+        acts, st2 = sw.plan_tick([brain, v], projects, st, cfg, 101500.0, [], [])
+        self.assertFalse(any(a.kind == "tour" for a in acts))
+        self.assertIn("p1", st2["skip_seen"])
+
+    def test_stale_undelivered_answer_closed_not_toured(self):
+        projects = {"cli": sw.Project(name="cli", phase="planned")}
+        now = 1_000_000.0
+        q = sw.Question(id="q1", project="cli20261021", text="?", created_at=now - 9 * 3600, status="answered", answer="a",
+                        answered_at=now - 8 * 3600, source="brain")
+        self.assertEqual([i for i in self._items([], projects, [q], now) if i["kind"] == "blocked"], [])
+        acts, _ = sw.plan_tick([], projects, {}, _cfg(), now, [q], [])
+        self.assertEqual([(a.kind, a.payload["question_id"]) for a in acts if a.kind == "close_stale_answer"], [("close_stale_answer", "q1")])
+        fresh = sw.Question(id="q2", project="cli20261021", text="?", created_at=now - 100, status="answered", answer="a",
+                            answered_at=now - 50, source="brain")
+        self.assertEqual(len([i for i in self._items([], projects, [fresh], now) if i["kind"] == "blocked"]), 1)    # taze: hâlâ madde
+        live = _view("cli20261021", busy=True)
+        acts, _ = sw.plan_tick([live], projects, {}, _cfg(), now, [q], [])
+        self.assertFalse(any(a.kind == "close_stale_answer" for a in acts))                                         # soran canlı: iletilebilir
 
 
 class IdleSkipTest(unittest.TestCase):
@@ -2193,6 +2243,23 @@ class JobRequestGateTest(HttpTest):
         q = self._job_q()
         sj.save_record(sj.new_record("varaka", 42, "mkt", "embed", "queued", "k1", now=q.created_at + 30))
         self.assertTrue(web_steward.http_answer({"id": q.id, "answer": "iş #42 queued", "actor": "brain"})["ok"])
+
+
+class SkipMemoryHttpTest(HttpTest):
+    def test_skip_records_signature_from_last_tour(self):
+        sw.save_state({"tour_sig": {"p1": "abc123"}})
+        self.assertTrue(web_steward.http_skip({"name": "p1", "reason": "x"})["ok"])
+        rec = sw.load_state()["skip_seen"]["p1"]
+        self.assertEqual(rec["sig"], "abc123")
+        web_steward.http_skip({"name": "zz", "reason": "x"})            # turda olmayan ad: kayıt yok
+        self.assertNotIn("zz", sw.load_state()["skip_seen"])
+
+    def test_close_stale_answer_action_marks_delivered(self):
+        q, _ = sw.add_question_ex("cli20261021", "?", source="brain")
+        sw.answer_question(q.id, "a")
+        res = web_steward._apply(sw.Action("close_stale_answer", "cli20261021", "bayat", {"question_id": q.id}), sw.Config(), {})
+        self.assertTrue(res["ok"])
+        self.assertEqual(sw.undelivered_answers(), [])
 
 
 if __name__ == "__main__":

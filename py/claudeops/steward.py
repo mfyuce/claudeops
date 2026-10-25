@@ -2186,16 +2186,46 @@ def phase_model_effort(project: Project, cfg: Config) -> Tuple[str, str]:
     return (project.model or model or ""), (project.effort or effort or "")
 
 
+SKIP_QUIET_SECONDS = 6 * 3600.0       # beynin `skip` ettiği, durumu DEĞİŞMEYEN idle/review maddesi bu süre tura girmez (TBD#122)
+STALE_ANSWER_SECONDS = 6 * 3600.0     # kayıtlı projeye bağlı olmayan, bu kadar eski teslim edilmemiş cevap "bayat blokaj" sayılır, kapanır
+
+
+def item_signature(v: "SessionView", projects: Dict[str, "Project"], questions: List["Question"]) -> str:
+    """Oturum maddesinin DURUM imzası: son asistan metni, projenin fazı ve oturumla/projeyle ilgili soruların (kimlik, durum).
+    Beyin maddeyi `skip` ettikten sonra imza değişmedikçe madde yeniden tura girmez; yeni çıktı/soru/cevap/faz imzayı değiştirir. SAF."""
+    rel = sorted((q.id, q.status) for q in questions if q.source == v.name or (v.project and q.project == v.project))
+    phase = projects[v.project].phase if v.project in projects else ""
+    raw = json.dumps([hashlib.sha1((v.last_assistant or "").encode("utf-8", "replace")).hexdigest()[:12], phase, rel])
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def stale_answers(questions: List["Question"], projects: Dict[str, "Project"], cfg: "Config", now: float,
+                  live: Optional[Set[str]] = None) -> List["Question"]:
+    """Teslim edilmemiş cevaplı soru, projesi kayıtlı değil (ör. kapanmış tarihli oturum adı) ve `STALE_ANSWER_SECONDS`ten eskiyse:
+    hiçbir yol onu iletmez, her tick "takıldı" maddesi olarak beyne düşerdi (ucli kimliği: ~50 boş tur). `live`: şu an
+    ÇALIŞAN oturum adları; soran oturum canlıysa cevap hâlâ iletilebilir (ad hoc oturum), bayat sayılmaz. SAF."""
+    live = live or set()
+    return [q for q in undelivered_answers(questions)
+            if q.project and q.project != cfg.brain_name and q.project not in projects
+            and q.project not in live and (q.source or "") not in live
+            and now - float(q.answered_at or q.created_at or 0) >= STALE_ANSWER_SECONDS]
+
+
 def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Config, now: float,
                  questions: List[Question], ideas: List[Idea], *, skip: Optional[set] = None,
                  last_directive_at: Optional[Dict[str, float]] = None,
                  reviewed_at: Optional[Dict[str, float]] = None,
-                 world: Optional[World] = None) -> List[Dict[str, Any]]:
+                 world: Optional[World] = None,
+                 skip_seen: Optional[Dict[str, Any]] = None,
+                 sigs_out: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
     """Beynin yargısını gerektiren maddeler: boşta bekleyen proje oturumu (`idle`), uzun süredir meşgul
     olup gözden geçirilmemiş oturum (`review`), yeni fikir (`idea`), oturuma iletilemeyen cevap
     (`blocked`). `plan_tick` bunu çağırır; elle "tur" (`web_steward.run_tour(force=True)`) de aynı listeyi alır.
-    `world` verilirse yalnız o kimliğin projeleri/oturumları (fikir/soru zaten kimliğin kendi deposundan gelir)."""
+    `world` verilirse yalnız o kimliğin projeleri/oturumları (fikir/soru zaten kimliğin kendi deposundan gelir).
+    `skip_seen` ({oturum: {at, sig}}): beynin `skip` ettiği ve imzası (`item_signature`) DEĞİŞMEMİŞ idle/review maddesi
+    `SKIP_QUIET_SECONDS` boyunca atlanır; `sigs_out` verilirse eklenen oturum maddelerinin imzası içine yazılır."""
     skip = skip or set()
+    skip_seen = skip_seen or {}
     lda = last_directive_at or {}
     rva = reviewed_at or {}
     if world is not None:
@@ -2213,9 +2243,19 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
         if v.name in waiting or v.project in waiting or projects[v.project].phase in ("done", "paused"):
             continue
         idle_since = max(v.last_activity, lda.get(v.name, 0.0), v.started_at)
-        if v.busy is False and idle_since and (now - idle_since) >= cfg.idle_minutes * 60:
+        due_idle = v.busy is False and idle_since and (now - idle_since) >= cfg.idle_minutes * 60
+        due_review = not due_idle and v.busy and (now - max(lda.get(v.name, 0.0), rva.get(v.name, 0.0), v.started_at)) >= cfg.review_minutes * 60
+        if not (due_idle or due_review):
+            continue
+        sig = item_signature(v, projects, questions)
+        seen_rec = skip_seen.get(v.name)
+        if isinstance(seen_rec, dict) and seen_rec.get("sig") == sig and now - float(seen_rec.get("at") or 0) < SKIP_QUIET_SECONDS:
+            continue    # beyin bu durumu zaten gördü ve dokunmadı; durum değişmedi
+        if sigs_out is not None:
+            sigs_out[v.name] = sig
+        if due_idle:
             items.append({"kind": "idle", "name": v.name, "idle_minutes": (now - idle_since) / 60})
-        elif v.busy and (now - max(lda.get(v.name, 0.0), rva.get(v.name, 0.0), v.started_at)) >= cfg.review_minutes * 60:
+        else:
             items.append({"kind": "review", "name": v.name})
     for i in ideas:
         if i.status == "new":
@@ -2224,7 +2264,10 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
         if q.status == "open" and q.routine:
             items.append({"kind": "routine", "name": q.project or "-", "id": q.id,
                           "text": f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla): {q.text}"})
+    stale_ids = {q.id for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running})}
     for q in undelivered_answers(questions):
+        if q.id in stale_ids:
+            continue
         if not q.project or q.project == cfg.brain_name or q.project not in projects:
             items.append({"kind": "blocked", "name": q.project or "-", "id": q.id,
                           "text": f"Cevaplanan soru [{q.id}]: {q.text}\nCevap: {q.answer}"})
@@ -3199,9 +3242,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             actions.append(Action("escalate_routine", q.project or "-", "rutin soru cevapsız", {"question_id": q.id}))
 
     # 7) Beyin turu maddeleri
+    skip_seen = {k: r for k, r in dict(st.get("skip_seen") or {}).items()
+                 if isinstance(r, dict) and now - float(r.get("at") or 0) < SKIP_QUIET_SECONDS}
+    sigs: Dict[str, str] = {}
     items = review_items(views, projects, cfg, now, questions, ideas,
                          skip=busy_names | set(ho_pending), last_directive_at=last_directive_at, reviewed_at=reviewed_at,
-                         world=world)
+                         world=world, skip_seen=skip_seen, sigs_out=sigs)
+    for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running}):      # bayat blokaj kaydı: kapat (her tick beyne düşmesin)
+        actions.append(Action("close_stale_answer", q.project, "bayat blokaj kaydı", {"question_id": q.id}))
     last_tour = float(st.get("last_tour") or 0.0)
     brain = by_name.get(cfg.brain_name)
     tour_gap = (cfg.tour_retry_minutes if st.get("tour_deferred") else cfg.tour_minutes) * 60
@@ -3210,9 +3258,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         st.pop("tour_deferred", None)
         actions.append(Action("tour", cfg.brain_name, f"{len(items)} madde", {"items": items}))
         st["last_tour"] = now
+        st["tour_sig"] = {str(it.get("name")): sigs[it["name"]] for it in items if it.get("name") in sigs}   # `skip` bunu kaydeder
         for it in items:
             if it["kind"] == "review":
                 reviewed_at[it["name"]] = now
+    if skip_seen:
+        st["skip_seen"] = skip_seen
+    else:
+        st.pop("skip_seen", None)
     st["pending_items"] = len(items)
     st["pending_list"] = [{"kind": str(it.get("kind") or ""), "name": str(it.get("name") or ""),
                            "text": str(it.get("text") or "")[:300]} for it in items[:20]]

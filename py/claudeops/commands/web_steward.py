@@ -2399,6 +2399,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": True, "id": q.id, "notified": False, "merged": True}
         notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
+    if k == "close_stale_answer":      # bayat blokaj kaydı: teslim edilecek proje yok, tekrar tura düşmesin
+        sw.mark_delivered(str(action.payload.get("question_id") or ""), paths)
+        sw.log_event("stale_answer_closed", paths=paths, id=action.payload.get("question_id"), project=action.name)
+        return {"ok": True}
     if k == "escalate_routine":
         q = sw.escalate_routine(action.payload.get("question_id") or "", paths)
         if q is None:
@@ -4179,6 +4183,9 @@ def http_skip(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         lda = state.setdefault("last_directive_at", {})
         for key in {name, _resolved_local_name(name, sid)}:     # `idle` oturum adıyla okur (proje adı tarihli oturumda tutmaz)
             lda[key] = time.time()                                # bir sonraki `idle` maddesini erteler
+        sig = (state.get("tour_sig") or {}).get(name)
+        if sig:       # durumu değişmedikçe bu oturum maddesi 6 saat tura girmez (TBD#122)
+            state.setdefault("skip_seen", {})[name] = {"at": time.time(), "sig": sig}
         sw.save_state(state, sid)
     return {"ok": True}
 
