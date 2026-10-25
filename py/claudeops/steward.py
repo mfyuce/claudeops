@@ -1748,7 +1748,7 @@ def _unwrap_ticks(prefix: str, body: str) -> str:
     return body.strip()
 
 
-_JOB_BODY_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}\s+\S")   # '<tür> <dosya/açıklama>': tür küçük harf kimliği
+_JOB_BODY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,40}\s+\S")   # '<tür> <dosya/açıklama>': tür küçük harf kimliği
 
 
 _PLACEHOLDER_BODY_RE = re.compile(r"^<[^<>\n]{1,80}>[\s`.…]*$")   # '<soru>' gibi YER TUTUCU: yazım örneği, gerçek soru değil
@@ -1788,8 +1788,10 @@ def scan_markers(text: str) -> Dict[str, Any]:
                 body = _unwrap_ticks(line[:idx], raw_body)
                 if _PLACEHOLDER_BODY_RE.match(body):
                     break   # `STEWARD-BLOCKED: <nerede takıldın>` türü yazım örneği
-                if key == "jobs" and not (line[:idx] in ("", "`") and _JOB_BODY_RE.match(body)):
-                    break   # düzyazıdaki anma ya da yer tutucu ('<iş türü> <dosya>'): iş isteği değil
+                if key == "jobs" and (line[:idx] not in ("", "`") or not body[:1].isalpha()):
+                    break   # düzyazıdaki anma ya da artık parçası (` , tırnak): iş isteği değil
+                # Satır BAŞINDA ama gövde `<tür> <dosya>` biçiminde değilse de istek sessizce düşmez (rve 25 Eki: `varaka-import` türü
+                # kısa çizgili olduğundan eski regex elemiş, iş hiç görülmedi): beyne gider, katalogda yoksa gerekçeli RED verir.
                 if body:
                     out[key].append(body)
                 break

@@ -2432,6 +2432,18 @@ class WakeCapPanicTest(HttpTest):
         self.assertFalse(sw.panic_active())
 
 
+class JobMarkerParseTest(unittest.TestCase):
+    def test_hyphenated_kind_and_malformed_body_are_not_dropped(self):
+        m = sw.scan_markers("özet\nSTEWARD-JOB: varaka-import /a/b.md A1 İşârâtü'l-İ'câz importu")
+        self.assertEqual(m["jobs"], ["varaka-import /a/b.md A1 İşârâtü'l-İ'câz importu"])
+        self.assertEqual(sw.scan_markers("- `STEWARD-JOB: Embed /a.md`")["jobs"], ["Embed /a.md"])
+        self.assertEqual(sw.scan_markers("STEWARD-JOB: embed")["jobs"], ["embed"])      # gövde kısa da sessizce düşmez
+
+    def test_prose_mentions_and_placeholders_still_ignored(self):
+        for t in ("istek için STEWARD-JOB: embed /a.md yazdım", "`STEWARD-JOB: <iş türü> <dosya yolu>` biçimi", "```\nSTEWARD-JOB: embed /a.md\n```"):
+            self.assertEqual(sw.scan_markers(t)["jobs"], [], t)
+
+
 if __name__ == "__main__":
     unittest.main()
 
