@@ -18,7 +18,7 @@ GOLDEN_DEFAULT = {
     "context_warn_tokens": 300000, "brain_cli": "claude", "brain_model": "", "brain_effort": "high",
     "brain_name": "degnekci", "planning_model": "", "planning_effort": "medium", "planned_model": "",
     "planned_effort": "", "lang": "tr", "card_refresh": True, "card_cli": "claude", "card_model": "",
-    "card_max_age_hours": 24, "cards_per_tick": 1, "mode": "observe", "summary_hour": 21, "wake_gate": "dry", "wake_repeat_minutes": 240,
+    "card_max_age_hours": 24, "cards_per_tick": 1, "mode": "observe", "summary_hour": 21, "resume_max_context_tokens": 150000, "wake_gate": "dry", "wake_repeat_minutes": 240,
 }
 NEW_FIELDS = {"sid", "label", "persona_text", "ntfy_topic", "max_active_total", "max_starts_total", "remote_actions",
               "auto_context_answer", "auto_context_ratio", "drain", "role", "review_timeout_minutes",

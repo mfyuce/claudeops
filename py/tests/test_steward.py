@@ -2346,6 +2346,50 @@ class WakeGateTest(HttpTest):
         self.assertNotEqual(sw.load_state()["wake_sent"]["s1"]["at"], 0)
 
 
+class BigResumeTest(HttpTest):
+    """TBD#123: durmuş oturum büyük bağlamlı konuşmayı --resume etmesin, taze açılsın."""
+
+    def _patch(self, tokens, cli="claude", cwd="/x"):
+        prov = mock.Mock()
+        prov.resolve_resume_id.return_value = "sid1" if tokens is not None else None
+        return [mock.patch.object(web_steward, "_cwd_resolver", lambda: (lambda n: cwd)),
+                mock.patch.object(web_steward, "_project_cli", lambda n: cli),
+                mock.patch.object(web_steward, "get_provider", lambda c: prov),
+                mock.patch.object(web_steward, "context_tokens_for", lambda c, i: tokens)]
+
+    def _run(self, patches, fn):
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        return fn()
+
+    def test_oversized_detection(self):
+        cfg = _cfg(resume_max_context_tokens=150000)
+        self.assertEqual(self._run(self._patch(386000), lambda: web_steward._oversized_resume("ysf", cfg)), 386000)
+
+    def test_small_unknown_other_cli_and_off_keep_resume(self):
+        cfg = _cfg(resume_max_context_tokens=150000)
+        for tokens, c, conf in ((100000, "claude", cfg), (None, "claude", cfg), (386000, "agy", cfg),
+                                (386000, "claude", _cfg(resume_max_context_tokens=0))):
+            for p in self._patch(tokens, cli=c):
+                p.start()
+            try:
+                self.assertEqual(web_steward._oversized_resume("ysf", conf), 0, (tokens, c))
+            finally:
+                mock.patch.stopall()
+
+    def test_ensure_running_starts_fresh_for_big_context(self):
+        seen = {}
+        cfg = _cfg(resume_max_context_tokens=150000)
+        web_steward.configure(start=lambda name, model="", effort="", fresh=False, lang="tr": seen.update(fresh=fresh) or {"ok": True})
+        patches = self._patch(386000) + [mock.patch.object(web_steward, "steward_config", lambda sid="default": cfg),
+                                         mock.patch.object(web_steward, "_live_sessions", lambda n, s: []),
+                                         mock.patch.object(web_steward, "_wait_ready", lambda n, c: True)]
+        self._run(patches, lambda: web_steward._ensure_running("ysf"))
+        self.assertTrue(seen["fresh"])
+        self.assertTrue(any(e["event"] == "start_fresh_big_context" for e in sw.tail_log(20)))
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -1377,6 +1377,24 @@ def _ensure_running_remote(name: str, host: str, model: str, effort: str, fresh:
             "name": (r or {}).get("name") or start_name}
 
 
+def _oversized_resume(name: str, cfg: sw.Config) -> int:
+    """TBD#123: `--resume` edilecek konuşma (spawn'ın seçeceği jsonl) son turda `cfg.resume_max_context_tokens`ten büyük bağlam
+    taşıyorsa o token sayısı, değilse 0. Yalnız claude ailesi (jsonl bilinir); bilinmiyorsa 0 (davranış değişmez)."""
+    limit = int(cfg.resume_max_context_tokens or 0)
+    if limit <= 0:
+        return 0
+    try:
+        cwd = _cwd_resolver()(name)
+        cli = _project_cli(name)
+        if not cwd or cli != "claude":
+            return 0
+        rid = get_provider(cli).resolve_resume_id(cwd, session_name=name)
+        tokens = context_tokens_for(cwd, rid) if rid else None
+    except Exception:
+        return 0
+    return int(tokens) if tokens and tokens > limit else 0
+
+
 def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr", fresh: bool = False,
                     host: str = "", rt: Optional[_RemoteTick] = None, sid: str = "default",
                     actor: str = "", exact: bool = False) -> Dict[str, Any]:
@@ -1386,6 +1404,11 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     live = [_running(name)] if exact and _running(name) is not None else ([] if exact else _live_sessions(name, sid))
     if live:
         return {"ok": True, "started": False, "cli": live[0].cli}
+    if not fresh:
+        big = _oversized_resume(name, steward_config(sid))
+        if big:      # soğuk büyük konuşmayı yeniden okutup hemen devir almak yerine taze aç (ysf 386K örneği); özet kartta/CLAUDE.md'de
+            fresh = True
+            sw.log_event("start_fresh_big_context", paths=sw.paths_for(sid), name=name, tokens=big)
     res = _act("start", name, model=model, effort=effort, fresh=fresh, lang=lang)
     if not res.get("ok"):
         return res
