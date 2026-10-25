@@ -33,6 +33,7 @@ from .. import steward as sw
 from .. import steward_jobs as sj
 from .. import steward_lessons as sl
 from .. import steward_advance as sa
+from .. import steward_quota as sq
 from ..diaglog import diag_log
 from ..discovery import find_sessions
 from ..guard import guard_lock
@@ -2699,6 +2700,8 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
     ctx = _ctx(sid)
     with ctx.lock:
         cfg = steward_config(sid)
+        if quota_blocking() and not cfg.drain:
+            cfg = dataclasses.replace(cfg, drain=True)      # kota bekçisi: yeni iş alınmaz (ayarı değiştirmez, yalnız bu tick)
         paths = ctx.paths
         t0 = time.time()
         applied: List[Dict[str, Any]] = []
@@ -2936,12 +2939,123 @@ def http_shutdown(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return shutdown_start(sid, modes=raw if isinstance(raw, dict) else None, only=only or None)
 
 
+# ── kota bekçisi (TBD#116) ───────────────────────────────────────────────────────────────────────────────────────────
+# Claude planının haftalık kullanımını `claude -p /usage` ile (yerel komut, model turu yok) okur; `steward_quota.decide`
+# kararına göre: drain = yeni iş alınmaz (çalışan iş sürer), stop = tüm kimlikler kontrollü kapatılır (`--keep`).
+# Kapatma KENDİLİĞİNDEN geri açılmaz (`py/cops steward up`): yanlış okuma tüm sistemi sürekli açıp kapatmasın.
+_QUOTA: Dict[str, Any] = {"at": 0.0, "busy": False, "usage": None, "decision": None, "stopped": False}
+_QUOTA_LOCK = threading.Lock()
+QUOTA_FILE = os.path.join(CLAUDEOPS_DIR, "steward", "quota.json")
+
+
+def quota_config() -> Dict[str, Any]:
+    c = load_settings().get("steward_quota") or {}
+    return c if isinstance(c, dict) else {}
+
+
+def quota_read_usage() -> Optional["sq.Usage"]:
+    """`claude -p /usage` çıktısı -> Usage; okunamazsa None (karar değişmez). CLAUDE* ortamı süzülür (iç içe oturum sızıntısı)."""
+    exe = shutil.which("claude")
+    if not exe:
+        return None
+    cwd = os.path.join(CLAUDEOPS_DIR, "steward", "oneshot")
+    os.makedirs(cwd, exist_ok=True)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    try:
+        r = subprocess.run([exe, "-p", "/usage", "--no-session-persistence"], cwd=cwd, env=env, capture_output=True,
+                           text=True, timeout=90)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return sq.parse_usage(r.stdout, time.time())
+
+
+def quota_blocking() -> bool:
+    """Kota kararı yeni iş almayı engelliyor mu (drain ya da stop)."""
+    d = _QUOTA.get("decision")
+    return bool(d is not None and d.action in ("drain", "stop"))
+
+
+def _quota_save() -> None:
+    d, u = _QUOTA.get("decision"), _QUOTA.get("usage")
+    try:
+        os.makedirs(os.path.dirname(QUOTA_FILE), exist_ok=True)
+        with open(QUOTA_FILE, "w", encoding="utf-8") as f:
+            json.dump({"at": _QUOTA.get("at"), "usage": dataclasses.asdict(u) if u else None,
+                       "decision": dataclasses.asdict(d) if d else None, "stopped": bool(_QUOTA.get("stopped"))}, f)
+    except OSError:
+        pass
+
+
+def _quota_stop(reason: str) -> None:
+    """Tüm AÇIK kimlikleri kapat: değnekçiler `shutdown_start` (devir alıp kapatmadan bırak), reviewer doğrudan kapalı."""
+    from ..settings import save_settings
+    for sid in steward_ids():
+        try:
+            cfg = steward_config(sid)
+            if not cfg.enabled:
+                continue
+            if cfg.role == "reviewer":
+                save_settings({"stewards": {sid: {"enabled": "off"}}})
+                continue
+            names = list(sw.load_projects(sw.paths_for(sid)).keys())
+            shutdown_start(sid, modes={n: "keep" for n in names})
+        except Exception as e:
+            diag_log("steward_quota_stop_failed", sid=sid, error=repr(e))
+    sw.log_event("quota_stop", paths="default", reason=reason)
+    notify_phone(f"Kota bekçisi: değnekçi sistemi durduruldu ({reason}). Açmak için: py/cops steward up")
+
+
+def _quota_poll() -> None:
+    try:
+        u = quota_read_usage()
+        if u is None:
+            return
+        cfg = quota_config()
+        d = sq.decide(cfg, u, time.time())
+        with _QUOTA_LOCK:
+            prev = _QUOTA.get("decision")
+            _QUOTA.update(usage=u, decision=d)
+            if prev is None or prev.action != d.action:
+                sw.log_event("quota_decision", paths="default", action=d.action, used=u.week_pct, cap=d.cap, reason=d.reason)
+            stop_now = d.action == "stop" and not _QUOTA.get("stopped")
+            if d.action != "stop":
+                _QUOTA["stopped"] = False
+            if stop_now:
+                _QUOTA["stopped"] = True
+        _quota_save()
+        if stop_now:
+            _quota_stop(d.reason)
+    except Exception as e:
+        diag_log("steward_quota_poll_failed", error=repr(e))
+    finally:
+        _QUOTA["busy"] = False
+
+
+def quota_tick(now: Optional[float] = None) -> None:
+    """Tick başına çağrılır (ucuz): mod kapalıysa hiçbir şey; açıksa aralıkta bir arka plan thread'inde kullanımı okur."""
+    cfg = quota_config()
+    if str(cfg.get("mode") or "off") not in ("manual", "auto"):
+        _QUOTA["decision"] = None
+        return
+    now = now if now is not None else time.time()
+    try:
+        poll = max(1.0, float(cfg.get("poll_minutes") or sq.DEFAULT_POLL_MINUTES))
+    except ValueError:
+        poll = float(sq.DEFAULT_POLL_MINUTES)
+    if _QUOTA["busy"] or now - float(_QUOTA["at"]) < poll * 60:
+        return
+    _QUOTA["busy"] = True
+    _QUOTA["at"] = now
+    threading.Thread(target=_quota_poll, name="steward-quota", daemon=True).start()
+
+
 def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
     """Döngünün bir turu: `steward_ids()` sırasıyla, YALNIZ `enabled` kimlikler SIRAYLA tick'lenir (aynı anda tek spawn
     dalgası). Bir kimliğin hatası yutulup loglanır, diğerleri yine tick'lenir. Makine geneli `max_starts_total` bütçesi
     kimlikler arasında taşınır (`starts_left`); `max_active_total` her tick'in kendi görünümünden (diğer kimliklerin
     çalışan projeleri dahil) `plan_tick`'te uygulanır. Kart işi turda bir kez, tüm etkin kimlikler için."""
     base = steward_config()
+    quota_tick()
     starts_left = max(0, base.max_starts_total)
     results: List[Dict[str, Any]] = []
     enabled: List[sw.Config] = []
@@ -3869,7 +3983,7 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
-    if str(data.get("actor") or "") == "brain" and steward_config(sid).drain:
+    if str(data.get("actor") or "") == "brain" and (steward_config(sid).drain or quota_blocking()):
         return {"ok": False, "error": "draining: the steward takes no new work (human turned 'drain' on)", "code": "draining"}
     gated = _gate(name, data, "directive", sid)
     if gated is not None:

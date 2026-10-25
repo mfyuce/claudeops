@@ -36,11 +36,13 @@ import time
 import types
 import os
 import shutil
+import sys
 from typing import Any, Dict, List
 
 from .. import roster as roster_mod
 from .. import steward as sw
 from .. import steward_jobs as sj
+from ..paths import CLAUDEOPS_DIR
 from ..settings import load_settings, save_settings, steward_config, steward_ids
 from . import mcp_queue
 
@@ -315,6 +317,58 @@ def cmd_ideas(args) -> int:
         return 0
     for i in ideas:
         print(f"[{i.id}] {i.status:<7} {i.project or '-':<16} {i.text[:140]}")
+    return 0
+
+
+def cmd_quota(args) -> int:
+    """Kota bekçisi (TBD#116): status | check | mode off|manual|auto | limit N | final N | poll DAKİKA | day mon=80 tue=... (`day tue=` boşaltır)."""
+    import time as _t
+    from .. import steward_quota as sq
+    act = args.quota_action
+    cur = load_settings().get("steward_quota") or {}
+    if act in ("mode", "limit", "final", "poll", "day"):
+        patch: Dict[str, str] = {}
+        if act == "mode":
+            if args.value not in sq.MODES:
+                print(f"mod: {'|'.join(sq.MODES)}", file=sys.stderr)
+                return 1
+            patch["mode"] = args.value
+        elif act in ("limit", "final", "poll"):
+            try:
+                float(args.value)
+            except ValueError:
+                print("sayı ver (kullanılan %, poll için dakika)", file=sys.stderr)
+                return 1
+            patch[{"limit": "manual_limit", "final": "final_limit", "poll": "poll_minutes"}[act]] = args.value
+        else:
+            for a in [args.value] + list(args.more or []):
+                k, _, v = (a or "").partition("=")
+                if k not in sq.DAYS:
+                    print(f"gün: {','.join(sq.DAYS)} (örn tue=80); gün sıfırlanmadan itibaren sayılır: Pzt 18:00 sonrası = SALI", file=sys.stderr)
+                    return 1
+                patch["day_" + k] = v.strip()
+        save_settings({"steward_quota": patch})
+        print("✓ kaydedildi (servis bir sonraki tick'te okur)")
+        cur = load_settings().get("steward_quota") or {}
+    if act == "check":
+        from . import web_steward
+        u = web_steward.quota_read_usage()
+        if u is None:
+            print("kullanım okunamadı (claude -p /usage)")
+            return 1
+        d = sq.decide(cur, u, _t.time())
+        print(f"kullanılan %{u.week_pct:g} (Fable %{u.fable_pct}) sıfırlanma {_t.strftime('%d.%m %H:%M', _t.localtime(u.reset_ts)) if u.reset_ts else '?'}")
+        print(f"bugün: {sq.day_label(u, _t.time())}  tavan: {d.cap}  karar: {d.action} {d.reason}")
+        return 0
+    print("kota bekçisi: " + (json.dumps(cur, ensure_ascii=False) if cur else "ayar yok (mode=off)"))
+    try:
+        with open(os.path.join(CLAUDEOPS_DIR, "steward", "quota.json"), encoding="utf-8") as f:
+            st = json.load(f)
+        d = st.get("decision") or {}
+        print(f"son okuma: {_t.strftime('%d.%m %H:%M', _t.localtime(st.get('at') or 0))}  kullanılan: %{(st.get('usage') or {}).get('week_pct')}  "
+              f"karar: {d.get('action')} (tavan {d.get('cap')}) {d.get('reason', '')}  durduruldu: {st.get('stopped')}")
+    except (OSError, ValueError):
+        print("son okuma yok (servis henüz okumadı)")
     return 0
 
 
@@ -867,6 +921,11 @@ def register(sub):
     pd = s.add_parser("ideas", help="fikir kutusu")
     pd.add_argument("--all", action="store_true")
     pd.set_defaults(func=cmd_ideas)
+    pq = s.add_parser("quota", help="kota bekçisi: haftalık plan kullanımına göre yeni işi kes (drain) ya da hepsini durdur")
+    pq.add_argument("quota_action", choices=("status", "check", "mode", "limit", "final", "poll", "day"))
+    pq.add_argument("value", nargs="?", default="")
+    pq.add_argument("more", nargs="*")
+    pq.set_defaults(func=cmd_quota)
     pn = s.add_parser("idea", help="fikir ekle")
     pn.add_argument("text")
     pn.set_defaults(func=cmd_idea)

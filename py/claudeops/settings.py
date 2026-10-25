@@ -145,6 +145,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # MCP), kapılar aynı. YALNIZ ikili `--allow-script`'i tanıyorsa geçer. Tek alanlı sözlük:
                               # `ucli_web`/`ucli_limits`'le aynı alan-bazlı merge ("boş=kaldır" = kapalı). Okuma tarafı:
                               # `ucli_script_mode()`.
+    "steward_quota": {},      # {mode: off|manual|auto, manual_limit, final_limit, poll_minutes, day_mon..day_sun}: TBD#116 kota bekçisi
     "ucli_usage_warn": {},   # {amber, red: str} — 2026-10-17: ucli token rozetinin renk eşikleri, OTURUM başına
                               # Evren KOTA EŞDEĞERİ token (`ucli_client.quota_equivalent_tokens`: önbellekli girdi
                               # %3 sayılır, panonun ham toplamı DEĞİL), süreç başından beri. Boş/eksik = varsayılan
@@ -234,7 +235,7 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_usage_warn", "cli_managed", "steward") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]

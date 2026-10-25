@@ -1753,7 +1753,10 @@ def scan_markers(text: str) -> Dict[str, Any]:
                           (MARK_JOB, "jobs")):
             idx = line.find(mark)
             if idx != -1:
-                body = _unwrap_ticks(line[:idx], line[idx + len(mark):].strip())
+                raw_body = line[idx + len(mark):].strip()
+                if line[:idx].count("`") % 2 == 1 and "`" in raw_body and not raw_body.endswith("`"):
+                    break   # düzyazıda satır içi kodla anma (`STEWARD-IDEA: <fikir>` yaz...): kalanı fikir/soru değil
+                body = _unwrap_ticks(line[:idx], raw_body)
                 if _PLACEHOLDER_BODY_RE.match(body):
                     break   # `STEWARD-BLOCKED: <nerede takıldın>` türü yazım örneği
                 if key == "jobs" and not (line[:idx] in ("", "`") and _JOB_BODY_RE.match(body)):
@@ -1773,7 +1776,10 @@ def scan_markers(text: str) -> Dict[str, Any]:
 
 _PROTOCOL_TR = (
     "Değnekçi protokolü (yanıtının SONUNDA, her biri ayrı satır, gerektiğinde):\n"
-    f"- bana sormadan ilerleyemeyeceğin bir karar varsa: `{MARK_ASK} <tek cümlelik soru>`\n"
+    f"- bana sormadan ilerleyemeyeceğin bir karar varsa: `{MARK_ASK} <soru>`. Soru TEK BAŞINA anlaşılır olsun: "
+    "kısaltma/kimlik (R8, §55, D2-D6, STR-19) yazacaksan yanında ne olduğunu söyle; neyi, neden sorduğunu, "
+    "seçenekleri ve her birinin sonucunu, önerini ('öneri: ...') yaz; bağlamı hatırlamadığımı varsay. "
+    "Birkaç cümle olabilir, tek satırda\n"
     f"- işleyiş sorusu (ne zaman açılsın, hangi sırayla, hangi modelle, devir notuyla mı): `{MARK_ROUTINE} <soru>`; "
     "bunu değnekçi beyni cevaplar, sana değil bana sorma. YALNIZ gerçek bir soru için ve soru işaretiyle bitir; "
     "'bekliyorum', 'bitti', 'yeni soru yok' gibi durum cümlesi için KULLANMA\n"
@@ -1788,7 +1794,10 @@ _PROTOCOL_TR = (
 
 _PROTOCOL_EN = (
     "Steward protocol (at the END of your reply, one per line, only when needed):\n"
-    f"- a decision you cannot make without me: `{MARK_ASK} <one-sentence question>`\n"
+    f"- a decision you cannot make without me: `{MARK_ASK} <question>`. Make it understandable on its own: "
+    "if you use an abbreviation or id (R8, §55, D2-D6, STR-19) say what it is; state what you ask and why, the options "
+    "and the consequence of each, and your recommendation ('recommend: ...'); assume I do not remember the context. "
+    "A few sentences are fine, on one line\n"
     f"- a process question (when to reopen, which order, which model, with the handover note?): `{MARK_ROUTINE} <question>`; "
     "the steward brain answers it, not me\n"
     f"- a new idea unrelated to this project: `{MARK_IDEA} <idea>`\n"
