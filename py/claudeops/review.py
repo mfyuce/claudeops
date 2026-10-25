@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import calendar
 import re
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
@@ -709,6 +710,54 @@ def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "own
 
 EXPORT_HEADING = "## Review bulguları"
 
+_BACKTICK_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
+_WHERE_FILE_RE = re.compile(r"^\s*`?([^\s:`]+\.[A-Za-z0-9]+)")
+
+
+def _where_file(row: Dict[str, Any], cwd: str) -> str:
+    m = _WHERE_FILE_RE.match(str(row.get("where") or ""))
+    path = os.path.realpath(os.path.join(cwd, m.group(1))) if m else ""
+    root = os.path.realpath(cwd)
+    return path if path.startswith(root + os.sep) and os.path.isfile(path) else ""
+
+
+def stale_reason(row: Dict[str, Any], cwd: str) -> Optional[str]:
+    """Bulgu koddaki duruma göre ESKİMİŞ mi? Yalnız kesin işaret: bulgunun dosyası var ve başlığındaki backtick'li
+    tanımlayıcıların HİÇBİRİ dosyada geçmiyor (işlev silinmiş/yeniden adlandırılmış). Dosya yoksa ya da alıntılı ad yoksa
+    karar verilemez (None)."""
+    path = _where_file(row, cwd)
+    if not path:
+        return None
+    names = {n.split(".")[-1] for n in _BACKTICK_RE.findall(str(row.get("title") or ""))}
+    if not names:
+        return None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            src = f.read()
+    except OSError:
+        return None
+    if any(n in src for n in names):
+        return None
+    return "tanımlayıcılar dosyada yok: " + ", ".join(sorted(names))
+
+
+def changed_after_review(row: Dict[str, Any], cwd: str) -> bool:
+    """Bulgunun dosyası review raporundan SONRA değişti mi (git son commit zamanı, git yoksa mtime)? Karar verilemezse False."""
+    path = _where_file(row, cwd)
+    rf = str(row.get("review_file") or "")
+    if not path or not rf or not os.path.exists(rf):
+        return False
+    try:
+        t = os.path.getmtime(path)
+        if os.path.isdir(os.path.join(cwd, ".git")):
+            out = subprocess.run(["git", "-C", cwd, "log", "-1", "--format=%ct", "--", path], capture_output=True,
+                                 text=True, timeout=10).stdout.strip()
+            if out.isdigit():
+                t = float(out)
+        return t > os.path.getmtime(rf)
+    except (OSError, subprocess.SubprocessError):
+        return False
+
 
 def export_lines(rows: Sequence[Dict[str, Any]], reviews_root: str) -> List[str]:
     out = []
@@ -718,7 +767,7 @@ def export_lines(rows: Sequence[Dict[str, Any]], reviews_root: str) -> List[str]
             src = os.path.relpath(src, reviews_root)
         title = " ".join(str(r.get("title") or "").split())
         out.append(f"- [ ] (review {r['id']}) [{r.get('severity') or '?'}] {r.get('where') or '?'}: {title} "
-                   f"(kaynak: {src})")
+                   f"(kaynak: {src})" + (f" [{r['note']}]" if r.get("note") else ""))
     return out
 
 

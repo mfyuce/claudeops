@@ -2031,6 +2031,17 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
         rows = [dict(v, id=k) for k, v in sorted(data.items())
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"
                 and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))]
+        dropped = False
+        for r in list(rows):       # koddaki duruma karşı denetim: eskimiş bulgu yazılmaz, değişen dosya işaretlenir
+            why = rv.stale_reason(r, cwd)
+            if why:
+                data[r["id"]].update(state="rejected", decided_by="stale-check", decided_at=t, stale_reason=why)
+                rows.remove(r)
+                dropped = True
+            elif rv.changed_after_review(r, cwd):
+                r["note"] = "dosya incelemeden sonra değişti, hâlâ geçerli mi doğrula"
+        if dropped:
+            rv.save_findings(p, data)
         if not rows:
             return {"ok": False, "error": "no approved findings to export", "project": project}
         try:

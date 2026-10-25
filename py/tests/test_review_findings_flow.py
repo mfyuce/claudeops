@@ -96,6 +96,56 @@ class TestAutoFindings(_Flow):
         self.assertTrue(all(v["state"] == "new" and v["project"] == "a" for v in data.values()))
 
 
+class TestExportStaleCheck(_Flow):
+    """Dışa aktarmadan ÖNCE bulgu koddaki duruma karşı denetlenir (16 eskimiş bulgu TODO'ya doğrulanmadan düşmüştü)."""
+    MD = "## R-1 | P2 | x.py:10 | `gone_fn` yanlış çalışıyor\ngovde\n\n## R-2 | P2 | x.py:20 | `live_fn` yanlış\ngovde\n"
+
+    def _setup(self, src):
+        fids = self.seed(self.MD)
+        with open(os.path.join(self.proj_dir, "x.py"), "w") as fh:
+            fh.write(src)
+        for f in fids:
+            self.set_state(f, "approved")
+        return fids
+
+    def set_state(self, fid, state):
+        d = self.findings()
+        d[fid]["state"] = state
+        rv.save_findings(self.p, d)
+
+    def test_stale_reason_pure(self):
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "x.py"), "w") as fh:
+            fh.write("def live_fn(): pass\n")
+        row = lambda t, w="x.py:1": {"where": w, "title": t}   # noqa: E731
+        self.assertIsNotNone(rv.stale_reason(row("`gone_fn` bozuk"), d))
+        self.assertIsNone(rv.stale_reason(row("`live_fn` bozuk"), d))
+        self.assertIsNone(rv.stale_reason(row("`gone_fn` bozuk", "yok.py:1"), d))     # dosya yok: karar verilemez
+        self.assertIsNone(rv.stale_reason(row("tanımlayıcı yok"), d))                 # alıntılı ad yok: karar verilemez
+
+    def test_stale_finding_not_exported_and_rejected(self):
+        f1, f2 = self._setup("def live_fn(): pass\n")
+        r = self.post("export", project="a")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["written"], [f2])
+        d = self.findings()
+        self.assertEqual(d[f1]["state"], "rejected")
+        self.assertEqual(d[f1]["decided_by"], "stale-check")
+        with open(os.path.join(self.proj_dir, "TODO.md")) as fh:
+            text = fh.read()
+        self.assertNotIn(f1, text)
+
+    def test_changed_after_review_is_marked(self):
+        f1, f2 = self._setup("def live_fn(): pass\ndef gone_fn(): pass\n")
+        rf = self.findings()[f2]["review_file"]
+        os.utime(rf, (1_700_000_000, 1_700_000_000))               # review eskide, x.py şimdi değişmiş
+        r = self.post("export", project="a")
+        self.assertTrue(r["ok"], r)
+        with open(os.path.join(self.proj_dir, "TODO.md")) as fh:
+            text = fh.read()
+        self.assertIn("dosya incelemeden sonra değişti", text)
+
+
 class TestScanVerdicts(unittest.TestCase):
     def test_only_real_line_start(self):
         text = ("Özet: `STEWARD-REVIEW-VERDICT: a:x:R-9 verified prose` satırı örnektir.\n"
