@@ -3946,6 +3946,14 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             if not ok:
                 sw.log_event("answer_denied", paths=sid, id=q0.id, project=q0.project, reason=why)
                 return {"ok": False, "error": why, "code": "owner_only"}
+            ok, why, red = sw.job_request_gate(q0, str(data.get("answer") or ""), sj.load_jobs(sw.paths_for(sid)))
+            if not ok:
+                sw.log_event("answer_denied", paths=sid, id=q0.id, project=q0.project, reason="job_request_unsubmitted")
+                return {"ok": False, "error": why, "code": "job_not_submitted"}
+            if red:      # iş gönderilmedi (tür yok, dosya belirsiz): istek kaybolmasın, sahibe iletilir
+                sw.add_question_ex(q0.project, f"İş isteği gönderilmedi (beyin RED): {red}\nİstek: {q0.text[len(sw.JOB_REQUEST_PREFIX):][:400]}\n"
+                                   "Elle varaka oturumuna iletilsin mi, yoksa istek düzeltilsin mi?", source="job-red", paths=sw.paths_for(sid))
+                sw.log_event("job_request_red", paths=sid, id=q0.id, project=q0.project, reason=red[:200])
     try:
         q = sw.answer_question(str(data.get("id") or ""), str(data.get("answer") or ""), sid)
     except ValueError as e:

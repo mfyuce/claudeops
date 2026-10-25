@@ -16,7 +16,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from claudeops import settings, steward as sw  # noqa: E402
+from claudeops import settings, steward as sw, steward_jobs as sj  # noqa: E402
 from claudeops.commands import mcp_queue, mcp_steward, web_steward  # noqa: E402
 from claudeops.providers import get_provider  # noqa: E402
 from claudeops.providers.base import CliProvider, OneshotError  # noqa: E402
@@ -2151,6 +2151,48 @@ class HttpTest(_Tmp):
         self.assertTrue(web_steward.http_post("/api/steward/handover", {"name": "a"})["ok"])
         self.assertIn("a", sw.load_state()["ho_pending"])
         self.assertEqual(self.calls, [("handover", "a")])
+
+
+class JobRequestGateTest(HttpTest):
+    """TBD#126: İŞ İSTEĞİ maddesi, beyin tarafından çıplak `devam` ile kapatılamaz (iş kaybolurdu)."""
+
+    def _job_q(self):
+        q, _ = sw.add_question_ex("mkt", sw.JOB_REQUEST_PREFIX + "ingest /x/REQ.md Sayoud2013", source="s", routine=True)
+        return q
+
+    def test_gate_pure(self):
+        q = sw.Question(id="q1", project="mkt", text=sw.JOB_REQUEST_PREFIX + "ingest f", created_at=100.0, routine=True)
+        job = {"project": "mkt", "created_at": 120.0}
+        self.assertFalse(sw.job_request_gate(q, "devam", [])[0])
+        self.assertFalse(sw.job_request_gate(q, "RED: kısa", [])[0])                          # gerekçe >= 12 karakter
+        self.assertEqual(sw.job_request_gate(q, "RED: tür katalogda yok, ingest tanımsız", [])[::2], (True, "tür katalogda yok, ingest tanımsız"))
+        self.assertTrue(sw.job_request_gate(q, "iş #7 queued", [job])[0])
+        self.assertFalse(sw.job_request_gate(q, "iş #7", [{"project": "mkt", "created_at": 10.0}])[0])   # eski iş sayılmaz
+        self.assertFalse(sw.job_request_gate(q, "iş #7", [{"project": "baska", "created_at": 120.0}])[0])
+        plain = sw.Question(id="q2", project="mkt", text="Hangi sırayla?", created_at=1.0, routine=True)
+        self.assertTrue(sw.job_request_gate(plain, "devam", [])[0])
+
+    def test_brain_bare_devam_rejected_owner_allowed(self):
+        q = self._job_q()
+        r = web_steward.http_answer({"id": q.id, "answer": "devam", "actor": "brain"})
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["code"], "job_not_submitted")
+        self.assertEqual(sw.open_questions()[0].id, q.id)               # madde açık kaldı
+        self.assertTrue(web_steward.http_answer({"id": q.id, "answer": "devam"})["ok"])    # sahip (actor yok) kapatabilir
+
+    def test_brain_red_closes_and_opens_owner_question(self):
+        q = self._job_q()
+        r = web_steward.http_answer({"id": q.id, "answer": "RED: ingest türü katalogda yok", "actor": "brain"})
+        self.assertTrue(r["ok"])
+        opened = [x for x in sw.open_questions() if x.source == "job-red"]
+        self.assertEqual(len(opened), 1)
+        self.assertFalse(opened[0].routine)                             # sahibe gider
+        self.assertIn("katalogda yok", opened[0].text)
+
+    def test_brain_answer_after_submit_ok(self):
+        q = self._job_q()
+        sj.save_record(sj.new_record("varaka", 42, "mkt", "embed", "queued", "k1", now=q.created_at + 30))
+        self.assertTrue(web_steward.http_answer({"id": q.id, "answer": "iş #42 queued", "actor": "brain"})["ok"])
 
 
 if __name__ == "__main__":

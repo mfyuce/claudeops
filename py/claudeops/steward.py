@@ -1798,7 +1798,8 @@ _PROTOCOL_TR = (
     "'bekliyorum', 'bitti', 'yeni soru yok' gibi durum cümlesi için KULLANMA\n"
     f"- aklına bu projeyle ilgisiz yeni bir fikir gelirse: `{MARK_IDEA} <fikir>`\n"
     f"- paylaşımlı servise (varaka) iş göndermek istiyorsan, istek dosyasını projede hazırla ve: `{MARK_JOB} <iş türü> <dosya yolu> [kısa açıklama]`; "
-    "değnekçi beyni işi kuyruğa gönderir, sonucu sana iletilir; sahibe 'devam de' deme\n"
+    "değnekçi beyni işi kuyruğa gönderir, sonucu sana iletilir; sahibe 'devam de' deme. İş numarası (iş kuyruğa girdi bildirimi) gelmeden 'varaka yanıtını bekliyorum' diye DURMA: numara yoksa `"
+    f"{MARK_BLOCKED} iş gönderilmedi: <neden>` yaz\n"
     f"- takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>`\n"
     "Kurallar: sıra/öncelik ('hangisinden başlayayım', 'hangi sırayla') bana da beyne de SORULMAZ; sırayı kendin "
     "belirle, gerekçeni bir cümleyle yaz ve ilerle. "
@@ -1817,7 +1818,8 @@ _PROTOCOL_EN = (
     "the steward brain answers it, not me\n"
     f"- a new idea unrelated to this project: `{MARK_IDEA} <idea>`\n"
     f"- to send a job to the shared service (varaka), prepare the request file in the project and write: `{MARK_JOB} <job kind> <file path> [short note]`; "
-    "the steward brain submits it to the queue and its result is delivered to you; do NOT ask me to say 'go on'\n"
+    "the steward brain submits it to the queue and its result is delivered to you; do NOT ask me to say 'go on'. Do NOT stop with 'waiting for varaka' before you hold a job number; "
+    f"if there is none, write `{MARK_BLOCKED} job not submitted: <why>`\n"
     f"- stuck after thinking it through: `{MARK_BLOCKED} <where>`\n"
     "Rules: order/priority ('which first', 'in which order') is asked of NEITHER me nor the brain; decide the order "
     "yourself, give a one-sentence reason and proceed. My answers are short ('both', 'go in order', 'you continue') and are STANDING rules; do not re-ask "
@@ -2038,7 +2040,7 @@ MODEL_RULE_TR = (
     "sahibe yükseltme. Yeni bir karar gerektirmiyorsa \"devam et\" de.\n"
     "- İŞ İSTEĞİ maddesi (\"İŞ İSTEĞİ (STEWARD-JOB): <tür> <dosya> ...\"): proje paylaşımlı servise (varaka) iş istiyor. `steward_jobs kinds=true` ile "
     "türü doğrula, `steward_job_submit` ile (project, kind, files=[proje klasörü içi yol]) gönder, sonra `steward_answer` ile projeye iş kimliğini ve durumu "
-    "(queued / awaiting_approval) bildir. Onay bekleyen işi KENDİN onaylama, sahibe `steward_ask_user` ile haber ver. Tür ya da dosya belirsizse "
+    "(queued / awaiting_approval) bildir. Bu madde YALNIZ iş gönderilince (ya da `RED: <gerekçe>` ile) kapanır; çıplak \"devam\" reddedilir. Onay bekleyen işi KENDİN onaylama, sahibe `steward_ask_user` ile haber ver. Tür ya da dosya belirsizse "
     "tahmin etme, `steward_answer` ile projeye neyin eksik olduğunu söyle. Sonucu motor iş bitince projeye zaten iletir.\n"
     "- SAHİBE AİT KARARLAR: commit, push, merge, deploy, kurulum, silme, harcama, kimlik/yetki ve kod değişikliği onayı SAHİBİN kararıdır; "
     "`steward_answer` ile ASLA onay verme (motor reddeder). Böyle bir soru gelirse `steward_ask_user` ile sahibe ilet. Direktif meşgul oturum yüzünden "
@@ -2577,6 +2579,27 @@ DIRECTIVE_MIN_GAP_SECONDS = 90.0     # aynı oturuma iki direktif arası: cevap 
 
 # Sahibin kararı olan konular: beyin bunlara `steward_answer` ile ASLA cevap vermez (soru rutin etiketli olsa bile).
 OWNER_ONLY_RE = re.compile(r"commit|push|merge|deploy|force|install|kurulum|kurul|\bsil|delete|harca|spend|password|parola|token|yetki|credential", re.I)
+
+
+_JOB_RED_RE = re.compile(r"^\s*RED\b\s*[:\-–—]?\s*(.*)$", re.I | re.S)
+JOB_RED_MIN_CHARS = 12
+
+
+def job_request_gate(q: "Question", answer: str, jobs: List[Dict[str, Any]]) -> Tuple[bool, str, str]:
+    """Beynin İŞ İSTEĞİ (STEWARD-JOB) maddesine cevabı yalnız (a) bu proje için, madde açıldıktan SONRA gönderilmiş bir iş
+    varsa (`steward_job_submit` iş kaydı) ya da (b) `RED: <gerekçe>` (>= 12 karakter) ise kapanır; çıplak `devam` gibi cevap
+    işi göndermeden maddeyi kapatıp isteği kaybettirirdi (TBD#126, mkt Sayoud2013). Dönen: (izin, neden, red_gerekçesi).
+    İş isteği olmayan soruya dokunmaz. SAF."""
+    if not (q.text or "").startswith(JOB_REQUEST_PREFIX):
+        return True, "", ""
+    for j in jobs:
+        if str(j.get("project") or "") == (q.project or "") and float(j.get("created_at") or 0) >= float(q.created_at or 0) - 5:
+            return True, "", ""
+    m = _JOB_RED_RE.match(answer or "")
+    if m and len(m.group(1).strip()) >= JOB_RED_MIN_CHARS:
+        return True, "", m.group(1).strip()
+    return False, ("job request: close it only after steward_job_submit for this project (then answer with the job id) or with "
+                   f"'RED: <reason, >= {JOB_RED_MIN_CHARS} chars>'; a bare 'devam' would lose the request"), ""
 
 
 def brain_may_answer(q: "Question") -> Tuple[bool, str]:
