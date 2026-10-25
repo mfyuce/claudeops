@@ -2609,12 +2609,19 @@ def is_upper_tier(model: str, effort: str) -> bool:
     return bool(UPPER_MODEL_RE.search(model or "")) or (effort or "").strip().lower() in UPPER_EFFORTS
 
 
+def is_claude_model(model: str) -> bool:
+    """Claude ailesi model kimliği mi (`claude-` öneki; `[1m]` gibi ekler sorun değil). SAF.
+    ucli/evren gibi claude dışı sağlayıcıların modelleri (deepseek-v4-flash ...) için Sonnet-medium kuralı geçerli değil."""
+    return (model or "").strip().lower().startswith("claude-")
+
+
 def upper_main_views(views: List[SessionView], projects: Dict[str, "Project"], cfg: "Config",
                      world: Optional["World"] = None) -> List[SessionView]:
     """Denetim (TODO 1233/5): proje ANA oturumu fiilen üst kademede mi (canlı model/effort `is_upper_tier`). SAF.
     Yalnız çalışan, instance OLMAYAN (blueprint yok), bu kimliğin kayıtlı projesine ait görünümler. Sahibin bilinçli seçimi
     (proje override'ı ya da kimliğin faz ayarı, `phase_model_effort`) zaten üst kademeyse işaretlenmez; reviewer rolü
-    proje oturumu yönetmez, denetlenmez."""
+    proje oturumu yönetmez, denetlenmez. Yalnız claude ailesi canlı modeller (`is_claude_model`) değerlendirilir; boş
+    ya da claude dışı model (ör. ucli/evren deepseek-v4-flash + high) atlanır."""
     if getattr(cfg, "role", "") == "reviewer":
         return []
     if world is not None:
@@ -2622,6 +2629,8 @@ def upper_main_views(views: List[SessionView], projects: Dict[str, "Project"], c
     out: List[SessionView] = []
     for v in views:
         if not v.running or v.blueprint or v.name not in projects:
+            continue
+        if not is_claude_model(v.live_model):     # claude dışı model (ucli/evren) ya da bilinmeyen: atla
             continue
         if not is_upper_tier(v.live_model, v.live_effort):
             continue

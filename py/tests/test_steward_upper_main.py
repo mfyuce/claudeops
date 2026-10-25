@@ -43,6 +43,28 @@ class TestPure(unittest.TestCase):
         views = [_view("a", live_model="claude-sonnet-5-5", live_effort="high")]
         self.assertEqual(sw.upper_main_views(views, self.projects, cfg), [])
 
+    def test_only_claude_family_models_are_audited(self):
+        """Claude dışı model (ucli/evren deepseek vb.) effort high olsa da uyarılmaz; boş model de uyarılmaz."""
+        cases = [
+            ("deepseek-v4-flash", "high", False),
+            ("claude-opus-5-5", "", True),
+            ("claude-opus-5-5", "medium", True),
+            ("claude-sonnet-5-5", "max", True),
+            ("claude-sonnet-5-5", "medium", False),
+            ("", "high", False),
+            ("", "", False),
+        ]
+        for model, effort, flagged in cases:
+            with self.subTest(model=model, effort=effort):
+                views = [_view("a", live_model=model, live_effort=effort)]
+                got = [v.name for v in sw.upper_main_views(views, self.projects, self.cfg)]
+                self.assertEqual(got, ["a"] if flagged else [])
+
+    def test_is_upper_tier_itself_stays_model_family_agnostic(self):
+        # direktif kapısı (_upper_model_gate) bu davranışa dayanır; değişmemeli
+        self.assertTrue(sw.is_upper_tier("deepseek-v4-flash", "high"))
+        self.assertTrue(sw.is_upper_tier("", "high"))
+
     def test_reviewer_role_is_not_audited(self):
         views = [_view("a", live_model="claude-opus-5-5")]
         self.assertEqual(sw.upper_main_views(views, self.projects, sw.Config(role="reviewer")), [])
