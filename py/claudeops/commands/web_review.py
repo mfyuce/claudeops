@@ -846,6 +846,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status, error = ("partial" if text.strip() else "error"), f"timeout {int(timeout // 60)} dk"
         elif jerr:
             status, error = ("partial" if text.strip() else "error"), _tail(jerr, live.learned())
+        elif rc == 0 and text.strip() and not recovered and rv.report_incomplete(text):
+            status, error = "partial", "incomplete: tool budget exhausted (no findings, scope disclaimer)"
         elif rc == 0 and text.strip() and not recovered:
             status, error = "done", ""
         elif text.strip():
@@ -993,7 +995,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             budget: List[str] = []
             for flag, attr, dflt in (("--max-context-kib", "review_max_context_kib", 768),
                                      ("--max-compactions", "review_max_compactions", 24),
-                                     ("--max-tool-calls", "review_max_tool_calls", 14)):
+                                     ("--max-tool-calls", "review_max_tool_calls", 30)):
                 if sf(binary, flag):
                     budget += [flag, str(max(1, int(getattr(cfg, attr, dflt) or dflt)))]
             for flag, attr, dflt in (("--max-wall-secs", "review_max_wall_secs", 900),

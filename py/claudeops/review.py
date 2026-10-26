@@ -785,3 +785,15 @@ def appended_export(text: str, rows: Sequence[Dict[str, Any]], reviews_root: str
     else:
         new = (f"{body}\n\n" if body else "") + f"{EXPORT_HEADING} ({stamp})\n" + "\n".join(lines) + "\n"
     return new, [r["id"] for r in fresh]
+
+
+_INCOMPLETE_RE = re.compile(r"tool[- ]call budget (?:was )?exhausted|budget exhausted|araç (?:çağrısı )?bütçesi\s+(?:\(\d+ çağrı\)\s+)?tükendi|inceleme(?:nin)? (?:durumu: )?tamamlanmadı|denetlenmemiştir", re.I)
+_HAS_FINDING_RE = re.compile(r"^## R-\d+ \|", re.M)
+
+
+def report_incomplete(text: str) -> bool:
+    """Rapor "araç bütçesi tükendi / tamamlanmadı" diyor VE hiç `## R-n |` bulgu başlığı yok: `BULGU YOK` yazsa da bu bir
+    inceleme değil kapsam beyanıdır; `done` değil `partial` sayılır (2026-10-26 A/B koşusu B: bütçe bitti, durum yine `done`)."""
+    t = text or ""
+    return bool(_INCOMPLETE_RE.search(t)) and not _HAS_FINDING_RE.search(t)
+

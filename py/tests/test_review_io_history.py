@@ -244,18 +244,18 @@ class TestRunWritesIo(Base):
     def test_tool_call_cap_and_usage_log_flags(self):
         res = self.ev()
         a = FakeProc.instances[0].argv
-        self.assertEqual(a[a.index("--max-tool-calls") + 1], "14")
+        self.assertEqual(a[a.index("--max-tool-calls") + 1], "30")
         self.assertEqual(a[a.index("--usage-log") + 1], res["file"][:-3] + ".usage.jsonl")
         self.assertNotIn("--show-usage", a)                  # stderr'i kirletir (akış kurtarma): yalnız usage-log
         FakeProc.instances = []
-        self.cfg.review_max_tool_calls = 30
+        self.cfg.review_max_tool_calls = 40
         self.ev(supports_flag=lambda b, f: f not in ("--usage-log", "--max-tool-calls"))
         a = FakeProc.instances[0].argv
         self.assertNotIn("--usage-log", a)
         self.assertNotIn("--max-tool-calls", a)
         FakeProc.instances = []
         self.ev()
-        self.assertEqual(FakeProc.instances[0].argv[FakeProc.instances[0].argv.index("--max-tool-calls") + 1], "30")
+        self.assertEqual(FakeProc.instances[0].argv[FakeProc.instances[0].argv.index("--max-tool-calls") + 1], "40")
 
     def test_script_read_flag_is_opt_in_and_read_only(self):
         self.ev()
@@ -398,3 +398,16 @@ class TestNaming(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReportIncompleteTests(unittest.TestCase):
+    def test_budget_exhausted_without_finding_is_incomplete(self):
+        from claudeops import review as rv
+        self.assertTrue(rv.report_incomplete("... tool-call budget exhausted ...\n\n## Bulgular\n\nBULGU YOK"))
+        self.assertTrue(rv.report_incomplete("## İncelemenin durumu: tamamlanmadı (araç bütçesi tükendi)"))
+
+    def test_real_findings_or_clean_reports_are_not(self):
+        from claudeops import review as rv
+        self.assertFalse(rv.report_incomplete("budget exhausted\n\n## R-1 | P1 | a.py:1 | x"))
+        self.assertFalse(rv.report_incomplete("## Bulgular\n\nBULGU YOK"))
+        self.assertFalse(rv.report_incomplete(""))
