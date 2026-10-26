@@ -3139,11 +3139,9 @@ def shutdown_tick(sid: str = "default", views: Optional[List[sw.SessionView]] = 
                 res = {"ok": False, "error": repr(e)}
                 diag_log("steward_action_crashed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
             _remember(a, res, ctx)
-            if not res.get("ok"):                      # eylem başarısız: adımı bir sonraki tick'te yeniden dene
-                it = (sd.get("items") or {}).get(a.name)
-                if it is not None:
-                    it["stage"] = "wait" if a.kind == "handover" else "ho"
-                    done = False
+            it = (sd.get("items") or {}).get(a.name)
+            if it is not None and sw.shutdown_note_result(it, a.kind, res, now):
+                done = False                           # eylem başarısız: adım bir sonraki tick'te yeniden denenir
         if done:
             sd["done"] = now
         with sw.steward_lock(paths):

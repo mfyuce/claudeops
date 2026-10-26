@@ -2512,7 +2512,23 @@ def handover_defer_decision(v: "SessionView", cfg: "Config", now: float, since: 
 SHUTDOWN_QUIET_SECONDS = 60.0          # ana transkript + alt ajanlar bu kadar sessizse "iş bitti"
 SHUTDOWN_WAIT_MAX_SECONDS = 45 * 60    # iş bitmezse bu süreden sonra oturum AÇIK bırakılır (zorlanmaz)
 SHUTDOWN_HO_MAX_SECONDS = 10 * 60      # devir cevabı gelmezse oturum AÇIK bırakılır
-_SD_TERMINAL = ("closed", "kept", "gone", "busy_left", "ho_timeout")
+SHUTDOWN_ACTION_FAIL_MAX = 5            # art arda bu kadar başarısız devir/durdurma eylemi: oturum AÇIK bırakılır (`ho_failed`)
+_SD_TERMINAL = ("closed", "kept", "gone", "busy_left", "ho_timeout", "ho_failed")
+
+
+def shutdown_note_result(it: Dict[str, Any], kind: str, res: Dict[str, Any], now: float) -> bool:
+    """Kapatma eyleminin sonucunu öğeye işler; True = adım yeniden denenecek (kapatma bitmedi). Başarı sayacı sıfırlar.
+    Başarısızlıkta adım geri alınır (devir -> `wait`, durdurma -> `ho`); art arda `SHUTDOWN_ACTION_FAIL_MAX` başarısızlık
+    oturumu AÇIK bırakır (`ho_failed`, ör. uzak oturum adı projeye çözülmüyor: sonsuz tick-başı deneme olmasın). SAF."""
+    if res.get("ok"):
+        it.pop("fails", None)
+        return False
+    it["fails"] = int(it.get("fails") or 0) + 1
+    if it["fails"] >= SHUTDOWN_ACTION_FAIL_MAX:
+        it["stage"], it["at"], it["fail_error"] = "ho_failed", now, str(res.get("error") or "")[:200]
+        return False
+    it["stage"] = "wait" if kind == "handover" else "ho"
+    return True
 
 
 def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Dict[str, Any], cfg: Config, now: float,
