@@ -46,6 +46,7 @@ import { useEscapeKey } from "../shared/useEscapeKey";
 import { ChatView } from "./ChatView";
 import { FileViewerModal } from "./FileViewerModal";
 import { FilesView } from "./FilesView";
+import { TermContextMeter } from "./TermContextMeter";
 import { TerminalView, type SubTab } from "./TerminalView";
 
 interface TerminalModalProps {
@@ -123,7 +124,7 @@ export function TerminalModal({ name, host, onClose }: TerminalModalProps) {
             boxSizing: "border-box",
           }}
         >
-          <strong>{name}</strong>
+          <span><strong>{name}</strong><TermContextMeter name={name} host={host} /></span>
           <button type="button" style={{ fontSize: "1rem", lineHeight: 1, padding: ".2rem .55rem" }} onClick={onClose}>
             ✕
           </button>

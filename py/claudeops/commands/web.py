@@ -2361,12 +2361,18 @@ def _session_facts(names: List[str]) -> dict:
                          "context_tokens": None, "last_assistant": "", "sid_known": False}
             continue
         started = _process_started_at(s.pid)
-        tokens, sub, text = None, False, ""
+        tokens, sub, text, warn = None, False, "", 0
         if s.cli == "claude":
             try:
                 tokens = web_steward.context_tokens_for(s.cwd, s.sid)
             except Exception:
                 tokens = None
+            try:
+                from ..settings import steward_config
+                from ..steward import context_threshold
+                warn = int(context_threshold(steward_config(), s.model or "") or 0)
+            except Exception:
+                warn = 0
             try:
                 sub = bool(web_steward.subagent_active_for(s.cwd, s.sid))
             except Exception:
@@ -2378,7 +2384,7 @@ def _session_facts(names: List[str]) -> dict:
         out[name] = {"running": True,
                      "started_age_s": max(0.0, time.time() - started) if started else None,
                      "subagent_active": sub, "context_tokens": tokens,
-                     "last_assistant": text[:SESSION_FACTS_TEXT_MAX], "sid_known": bool(s.sid)}
+                     "context_warn": warn, "last_assistant": text[:SESSION_FACTS_TEXT_MAX], "sid_known": bool(s.sid)}
     return {"ok": True, "api": SESSION_FACTS_API, "capabilities": list(SESSION_FACTS_CAPABILITIES), "sessions": out}
 
 
