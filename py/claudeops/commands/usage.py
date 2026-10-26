@@ -21,6 +21,9 @@ def register(sub):
     p.add_argument("names", nargs="*", metavar="ad", help="yalnız bu oturumlar (boşsa en çok harcayan --top tane)")
     p.add_argument("--json", action="store_true", help="tablo yerine JSON yaz")
     p.add_argument("--top", type=int, default=15, metavar="N", help="isim verilmezse en çok harcayan N oturum (varsayılan 15)")
+    p.add_argument("--day", nargs="?", const="", default=None, metavar="TARİH",
+                   help="o günün (yerel, YYYY-MM-DD; boşsa bugün) tüm assistant turlarının dökümü; oturum başına tablo yerine")
+    p.add_argument("--by", choices=["category"], default="category", help="--day kırılımı: category = project/brain/subagent")
     p.set_defaults(func=run)
 
 
@@ -58,7 +61,34 @@ def render(rows) -> str:
     return "\n".join(out)
 
 
+def render_day(d: dict) -> str:
+    head = f"{'KATEGORİ':<10}{'TUR':>8}{'IN':>9}{'OUT':>9}{'CW':>9}{'CR':>9}{'AĞIRLIKLI':>11}{'%':>7}"
+    out = [f"{d['day']} (yerel gün; ağırlık: in x1 + out x5 + cw x1.25 + cr x0.1)", head, "-" * len(head)]
+    tot = d["total"]
+    rows = [(c, d["categories"][c]) for c in ("project", "brain", "subagent")] + [("TOPLAM", tot)]
+    for name, u in rows:
+        if name == "TOPLAM":
+            out.append("-" * len(head))
+        pct = 100.0 * u["weighted"] / tot["weighted"] if tot["weighted"] else 0.0
+        out.append(f"{name:<10}{u['turns']:>8}{fmt_tokens(u['in']):>9}{fmt_tokens(u['out']):>9}{fmt_tokens(u['cache_write']):>9}"
+                   f"{fmt_tokens(u['cache_read']):>9}{fmt_tokens(u['weighted']):>11}{pct:>6.1f}%")
+    return "\n".join(out)
+
+
+def run_day(args) -> int:
+    from ..day_usage import collect_day
+    try:
+        d = collect_day(args.day or None)
+    except ValueError:
+        print("geçersiz tarih (YYYY-MM-DD bekleniyor)")
+        return 2
+    print(json.dumps(d, ensure_ascii=False, indent=2) if args.json else render_day(d))
+    return 0
+
+
 def run(args) -> int:
+    if getattr(args, "day", None) is not None:
+        return run_day(args)
     rows = collect(set(args.names))
     if not args.names:
         rows = sorted(rows, key=lambda r: -_weight(r[1]))[:max(1, args.top)]

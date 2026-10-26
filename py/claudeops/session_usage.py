@@ -47,6 +47,11 @@ def _parse(raw: bytes) -> Optional[Tuple[Any, Tuple[str, int, int, int, int]]]:
         r = json.loads(raw)
     except ValueError:
         return None
+    return _from_row(r)
+
+
+def _from_row(r: Any) -> Optional[Tuple[Any, Tuple[str, int, int, int, int]]]:
+    """Ayrıştırılmış satırdan `_parse` sonucu (gün bazlı dökümün zaman damgası da lazım olduğundan ayrıldı)."""
     if not isinstance(r, dict) or r.get("type") != "assistant":
         return None
     m = r.get("message")
