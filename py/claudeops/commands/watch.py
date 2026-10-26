@@ -663,6 +663,7 @@ class Viewer:
         self._frame_key: Any = None
         self._body_dirty = True
         self._status_key: Any = None
+        self.context_text: str = ""   # "ctx 120K/300K %40" (ContextClient yazar; boş = bilinmiyor)
         self._popup_key: Any = None
         self._last_size: Optional[Tuple[int, int]] = None
         self._resized_for: Optional[Tuple[int, int]] = None
@@ -748,6 +749,8 @@ class Viewer:
         lines = self._lines_part(style)
         if lines:
             parts.append(lines)
+        if self.context_text:
+            parts.append(self.context_text)
         if self.transport_name:
             parts.append(self.transport_name)
         if self.hint:
@@ -817,6 +820,53 @@ class Viewer:
             out.append(build_status(text, style, cols, rows))
             self._status_key = key
         self.screen.write("".join(out))
+
+
+def context_text_from_facts(data: Any, session: str) -> str:
+    """`/api/session/facts` yanıtından durum çubuğu parçası: "ctx 120K/300K %40" (eşik bilinmiyorsa "ctx 120K"),
+    bilinmiyorsa boş. Panelin başlık rozetiyle (`TermContextMeter`) aynı veri."""
+    try:
+        f = data["sessions"][session]
+        tokens = f.get("context_tokens")
+        warn = f.get("context_warn") or 0
+    except (KeyError, TypeError, AttributeError):
+        return ""
+    if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens <= 0:
+        return ""
+    if isinstance(warn, bool) or not isinstance(warn, int) or warn <= 0:
+        return f"ctx {round(tokens / 1000)}K"
+    return f"ctx {round(tokens / 1000)}K/{round(warn / 1000)}K %{min(100, round(tokens * 100 / warn))}"
+
+
+class ContextClient:
+    """Bağlam doluluğu için 20 sn'de bir `/api/session/facts` yoklar (yerel + uzak host; panel uzağa yönlendirir).
+    Başarısızlıkta son değer kalır; hiçbir hata thread'i öldürmez. Yalnız izleme."""
+
+    INTERVAL_SECONDS = 20.0
+
+    def __init__(self, port: int, host: str, session: str, viewer: "Viewer", *,
+                 read_token: Optional[Callable[[], str]] = None,
+                 urlopen: Callable[..., Any] = urllib.request.urlopen):
+        self.port, self.host, self.session, self.viewer = port, host, session, viewer
+        self._read_token = read_token
+        self._urlopen = urlopen
+
+    def fetch_once(self) -> None:
+        try:
+            token = (self._read_token or read_token)()
+            query = urllib.parse.urlencode({"names": self.session, "host": self.host})
+            req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/session/facts?{query}",
+                                         headers={"Authorization": f"Bearer {token}"})
+            with self._urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+                data = json.loads(resp.read())
+        except Exception:
+            return
+        self.viewer.context_text = context_text_from_facts(data, self.session)
+
+    def run(self, stop: threading.Event) -> None:
+        while not stop.is_set():
+            self.fetch_once()
+            stop.wait(self.INTERVAL_SECONDS)
 
 
 class Keys:
@@ -2123,6 +2173,7 @@ def run(args: argparse.Namespace) -> int:
     if not args.no_resize and not args.no_follow_size:
         follower = SizeFollower(args.port, host, name)
         viewer.follow = follower
+    threading.Thread(target=ContextClient(args.port, host, name, viewer).run, args=(stop,), daemon=True).start()
     screen.enter()
     try:
         with Keys() as keys, quiet_terminal(f"{host}:{name}"):
