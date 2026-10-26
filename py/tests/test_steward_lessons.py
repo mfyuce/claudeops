@@ -120,5 +120,64 @@ class DeliverTest(_Tmp):
         self.assertEqual(web_steward._lessons(cfg), [])
 
 
+class AckTest(unittest.TestCase):
+    def test_scan_markers_reads_lesson_ack(self):
+        m = sw.scan_markers("Bitti.\nSTEWARD-LESSON: 971b9269fa7f todo zaman aşımı TODO'ya yazıldı\n`STEWARD-LESSON: <id> <durum>` yaz")
+        self.assertEqual(m["lessons"], ["971b9269fa7f todo zaman aşımı TODO'ya yazıldı"])
+        acts = sw.marker_record_actions("cli", "cli", m)
+        self.assertEqual([a.kind for a in acts], ["lesson_ack"])
+
+    def test_parse_ack(self):
+        self.assertEqual(sl.parse_ack("971b9269fa7f todo not burada"), ("971b9269fa7f", "todo", "not burada"))
+        self.assertEqual(sl.parse_ack("[971B9269FA7F] fixed")[1], "fixed")
+        for bad in ("", "971b9269fa7f", "xyz todo", "971b9269fa7f belki", "971b9269fa7 todo"):
+            self.assertIsNone(sl.parse_ack(bad), bad)
+
+    def test_message_carries_ids_and_ack_instruction(self):
+        msg = sl.build_lesson_message([AUTO + "a"], "tr", ids=["971b9269fa7f"])
+        self.assertIn("[971b9269fa7f] " + AUTO + "a", msg)
+        self.assertIn("STEWARD-LESSON:", msg)
+        self.assertNotIn("STEWARD-LESSON:", sl.build_lesson_message([AUTO + "a"], "tr"))
+
+
+class AckStateTest(_Tmp):
+    def test_ack_only_for_sent_lessons_first_wins_and_rows(self):
+        cfg = sw.Config(enabled=True)
+        paths = sw.paths_for(cfg.sid)
+        h1, h2 = sl.line_hash(AUTO + "bir"), sl.line_hash(AUTO + "iki")
+        sl.mark_sent([h1], paths)
+        self.assertFalse(sl.mark_done(h2, "todo", "", "cli", NOW, paths))               # gönderilmemiş: yok sayılır
+        self.assertTrue(sl.mark_done(h1, "todo", "TODO'ya yazdım", "cli", NOW, paths))
+        self.assertFalse(sl.mark_done(h1, "fixed", "", "cli", NOW + 5, paths))          # ilk onay kalır
+        st = sw.load_state(paths)
+        rows = {r["id"]: r for r in sl.lesson_rows([(h1, AUTO + "bir"), (h2, AUTO + "iki")], [st], NOW)}
+        self.assertEqual(rows[h1]["status"], "done")
+        self.assertEqual(rows[h1]["ack"], "todo")
+        self.assertEqual(rows[h2]["status"], "pending")
+
+    def test_stale_failed_and_resend(self):
+        cfg = sw.Config(enabled=True)
+        paths = sw.paths_for(cfg.sid)
+        h = sl.line_hash(AUTO + "x")
+        sl.mark_sent([h], paths)
+        st = sw.load_state(paths)
+        st["lessons_sent_at"] = {h: NOW - 25 * 3600}
+        self.assertEqual(sl.lesson_rows([(h, AUTO + "x")], [st], NOW)[0]["status"], "stale")
+        self.assertEqual(sl.lesson_rows([(h, AUTO + "x")], [{"lessons_fail": {h: sl.FAIL_MAX}}], NOW)[0]["status"], "failed")
+        self.assertTrue(sl.resend(h, paths))
+        self.assertFalse(sl.resend(h, paths))
+        self.assertEqual(sl.pending([(h, AUTO + "x")], sw.load_state(paths)), [(h, AUTO + "x")])        # yeniden gider
+
+    def test_apply_lesson_ack_action(self):
+        cfg = sw.Config(enabled=True)
+        paths = sw.paths_for(cfg.sid)
+        h = sl.line_hash(AUTO + "x")
+        sl.mark_sent([h], paths)
+        a = sw.Action("lesson_ack", "cli", "STEWARD-LESSON", {"project": "cli", "text": f"{h} tbd karar bekliyor"})
+        res = web_steward._apply(a, cfg, {"cli": sw.Project(name="cli")})
+        self.assertTrue(res["ok"])
+        self.assertEqual(sw.load_state(paths)["lessons_done"][h]["status"], "tbd")
+
+
 if __name__ == "__main__":
     unittest.main()

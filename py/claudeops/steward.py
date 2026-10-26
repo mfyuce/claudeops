@@ -136,6 +136,7 @@ MARK_ASK = "STEWARD-ASK:"              # insana soru (satırın kalanı soru met
 MARK_IDEA = "STEWARD-IDEA:"            # yeni fikir
 MARK_ROUTINE = "STEWARD-ROUTINE:"      # işleyiş sorusu (ne zaman/hangi sıra/hangi model): beyin cevaplar, sahibi rahatsız edilmez
 MARK_BLOCKED = "STEWARD-BLOCKED:"      # takıldım (insana soru olarak düşer, önekli)
+MARK_LESSON = "STEWARD-LESSON:"       # reviewer dersi işlendi onayı (<id> <todo|tbd|fixed|no-action|duplicate> [not]); motor ders durumunu "işlendi" yapar
 MARK_JOB = "STEWARD-JOB:"              # paylaşımlı servise iş isteği (<tür> [dosya...] [açıklama]): beyin steward_job_submit ile gönderir
 JOB_REQUEST_PREFIX = "İŞ İSTEĞİ (STEWARD-JOB): "
 MARK_PLAN_READY = "STEWARD-PLAN-READY"  # planlama bitti → faz planned
@@ -1765,7 +1766,7 @@ def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool, confirmed: str|None}. Satır başındaki madde/boşluk toleranslı;
     işaret satırın İÇİNDE de olabilir (model bazen önüne açıklama koyar) — kalanı alınır."""
-    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "plan_ready": False, "done": False,
+    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "lessons": [], "plan_ready": False, "done": False,
                            "confirmed": None}
     if not text:
         return out
@@ -1780,7 +1781,7 @@ def scan_markers(text: str) -> Dict[str, Any]:
         if not line:
             continue
         for mark, key in ((MARK_ROUTINE, "routines"), (MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked"),
-                          (MARK_JOB, "jobs")):
+                          (MARK_JOB, "jobs"), (MARK_LESSON, "lessons")):
             idx = line.find(mark)
             if idx != -1:
                 raw_body = line[idx + len(mark):].strip()
@@ -2892,6 +2893,8 @@ def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Actio
         out.append(Action("ask_user", name, "STEWARD-ROUTINE", {"project": proj or name, "text": q, "routine": True}))
     for j in m.get("jobs", []):   # iş isteği: beyin turunda rutin madde olarak görünür, `steward_job_submit` + `steward_answer` ile kapanır
         out.append(Action("ask_user", name, "STEWARD-JOB", {"project": proj or name, "text": JOB_REQUEST_PREFIX + j, "routine": True}))
+    for ls in m.get("lessons", []):   # ders onayı: yalnız KAYIT (oturuma dokunmaz, soru açmaz)
+        out.append(Action("lesson_ack", name, "STEWARD-LESSON", {"project": proj or name, "text": ls}))
     for b in m["blocked"]:
         out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or name, "text": ("Takıldım: " + b)}))
     for i in m["ideas"]:

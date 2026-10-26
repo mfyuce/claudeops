@@ -1049,6 +1049,10 @@ export interface ReviewStateResult {
   running: string[]; runs: Array<{ pair: string; status: string; at?: number; file?: string }>;
   min_gap_minutes: number; timeout_minutes: number; auto_verify?: boolean; auto_approve?: number; auto_export?: boolean;
 }
+export interface ReviewLesson {
+  id: string; line: string; status: "pending" | "failed" | "sent" | "stale" | "done"; fails: number; sent_at?: number | null;
+  ack: string; note: string; ack_at?: number | null; session: string;
+}
 export interface ReviewFinding {
   id: string; project: string; review_file: string; ref: string; severity: string; title: string; where: string;
   body: string; state: string; verdict: string;

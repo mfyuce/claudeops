@@ -694,6 +694,16 @@ export interface Strings {
   rvWhereTitle: string;
   rvWhereLocalPath: string;
   rvWhereApply: string;
+  rvLessons: string;
+  rvLessonsDesc: string;
+  rvLessonsNone: string;
+  rvLessonPending: string;
+  rvLessonSent: string;
+  rvLessonStale: string;
+  rvLessonFailed: string;
+  rvLessonDone: string;
+  rvLessonResend: string;
+  rvLessonResent: string;
   rvWhereAsk: string;
   rvWhereLocal: string;
   rvWhereRemote: string;
@@ -1523,6 +1533,16 @@ export const STRINGS: Record<Lang, Strings> = {
     rvWhereTitle: "Uzak projelerde review yeri",
     rvWhereLocalPath: "yerel kopya yolu (mutlak, git)",
     rvWhereApply: "Uygula",
+    rvLessons: "Dersler",
+    rvLessonsDesc: "Reviewer'ın ucli ile bitiremediği çiftlerden çıkan dersler. Bekliyor: henüz gitmedi; iletildi: oturuma gitti, onay yok; onay yok: 24 saattir yanıt gelmedi; işlendi: oturum STEWARD-LESSON ile onayladı.",
+    rvLessonsNone: "Ders yok.",
+    rvLessonPending: "bekliyor",
+    rvLessonSent: "iletildi",
+    rvLessonStale: "onay yok",
+    rvLessonFailed: "iletilemedi",
+    rvLessonDone: "işlendi",
+    rvLessonResend: "Yeniden ilet",
+    rvLessonResent: "Sonraki turda yeniden iletilecek",
     rvWhereAsk: "sorulacak",
     rvWhereLocal: "yerel kopya",
     rvWhereRemote: "uzakta",
@@ -2353,6 +2373,16 @@ export const STRINGS: Record<Lang, Strings> = {
     rvWhereTitle: "Where remote projects are reviewed",
     rvWhereLocalPath: "local copy path (absolute, git)",
     rvWhereApply: "Apply",
+    rvLessons: "Lessons",
+    rvLessonsDesc: "Lessons from pairs the reviewer could not finish with ucli. Pending: not sent yet; sent: delivered, no confirmation; no ack: 24 h without a reply; handled: the session confirmed with STEWARD-LESSON.",
+    rvLessonsNone: "No lessons.",
+    rvLessonPending: "pending",
+    rvLessonSent: "sent",
+    rvLessonStale: "no ack",
+    rvLessonFailed: "undeliverable",
+    rvLessonDone: "handled",
+    rvLessonResend: "Resend",
+    rvLessonResent: "Will be resent next tick",
     rvWhereAsk: "ask",
     rvWhereLocal: "local copy",
     rvWhereRemote: "on the host",

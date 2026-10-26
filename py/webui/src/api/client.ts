@@ -76,6 +76,7 @@ import type {
   TestHostResult,
   ReviewStateResult,
   ReviewFinding,
+  ReviewLesson,
 } from "./types";
 
 // Exported so `hooks/useStatus.ts` can build the `/ws?token=...` URL with the
@@ -710,6 +711,10 @@ export const getReviewChat = (sid: string, path: string): Promise<ReviewChatResu
   apiGet<ReviewChatResult>(`/api/steward/review/chat${rvQs(sid, { path })}`);
 export const getReviewFindings = (sid: string, project = "", state = ""): Promise<SimpleResult & { findings?: ReviewFinding[] }> =>
   apiGet<SimpleResult & { findings?: ReviewFinding[] }>(`/api/steward/review/findings${rvQs(sid, { project, state })}`);
+export const getReviewLessons = (sid: string): Promise<SimpleResult & { lessons?: ReviewLesson[]; target?: string }> =>
+  apiGet<SimpleResult & { lessons?: ReviewLesson[]; target?: string }>(`/api/steward/review/lessons${rvQs(sid)}`);
+export const apiReviewLessonResend = (sid: string, id: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/review/lesson", { steward: sid, id, action: "resend" });
 export const apiReviewPool = (sid: string, action: "add" | "remove" | "enable" | "disable", project: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/pool", { steward: sid, action, project });
 export const apiReviewWhere = (sid: string, project: string, where: string, local_path = ""): Promise<SimpleResult> =>

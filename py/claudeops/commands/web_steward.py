@@ -2490,6 +2490,14 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": False, "error": "not an open routine question"}
         notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
+    if k == "lesson_ack":             # oturum dersi işledi: yalnız kayıt (geçersiz biçim/bilinmeyen kimlik sessizce düşer)
+        ack = sl.parse_ack(str(action.payload.get("text") or ""))
+        if ack is None:
+            return {"ok": True, "skipped": "bad ack"}
+        wrote = sl.mark_done(ack[0], ack[1], ack[2], name, time.time(), paths)
+        if wrote:
+            sw.log_event("lesson_acked", paths=paths, id=ack[0], status=ack[1], session=name)
+        return {"ok": True, "recorded": wrote}
     if k == "idea":
         i = sw.add_idea(action.payload.get("text") or "", source=name, paths=paths)
         return {"ok": True, "id": i.id}
@@ -2605,7 +2613,7 @@ def _deliver_lesson(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Pr
         hashes, lines = [h for h, _ in keep], [ln for _, ln in keep]
         ident = ",".join(hashes)
         mark = lambda: sl.mark_sent(hashes, paths)   # noqa: E731
-    res = _give_directive(p, sl.build_lesson_message(lines, cfg.lang), start_if_stopped=False, reason="lesson",
+    res = _give_directive(p, sl.build_lesson_message(lines, cfg.lang, ids=hashes), start_if_stopped=False, reason="lesson",
                           session_name=action.name, cfg=cfg, host=host or None, rt=rt, actor="engine")
     if res.get("ok"):
         _mark_after_send(mark, cfg.sid, "lesson", ident)
@@ -4673,7 +4681,7 @@ def http_digest_file(kind: str, name: str, sid: str = "default") -> Dict[str, An
     return {"ok": True, "text": rv.redact_secrets(text), "truncated": truncated}
 
 
-_GET_PATHS = frozenset(("review/state", "review/file", "review/live", "review/io", "review/chat", "review/runs", "review/findings", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
+_GET_PATHS = frozenset(("review/state", "review/file", "review/live", "review/io", "review/chat", "review/runs", "review/findings", "review/lessons", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
                         "jobs", "services", "digests", "digest/file"))
 
 
@@ -4705,6 +4713,8 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return http_review_io(g("path"), g("offset", "0"), sid)
     if path == "/api/steward/review/findings":
         return http_review_findings(g("project").strip(), g("state").strip(), sid)
+    if path == "/api/steward/review/lessons":
+        return http_review_lessons(sid)
     if path == "/api/steward/digests":
         return http_digests(sid)
     if path == "/api/steward/digest/file":
@@ -4931,6 +4941,40 @@ def http_review_io(rel: str, offset: str = "0", sid: str = "default") -> Dict[st
 def http_review_findings(project: str = "", state: str = "", sid: str = "default") -> Dict[str, Any]:
     cfg, err = _reviewer_cfg(sid)
     return err or web_review.list_findings(cfg, project, state)
+
+
+def http_review_lessons(sid: str = "default") -> Dict[str, Any]:
+    """Reviewer'ın ucli dersleri ve iletim durumu (pending|failed|sent|stale|done). Alıcı kimlikler `lessons_project` ayarı
+    olan TÜM kimlikler; ders bir alıcının state'inde gönderilmiş görünür."""
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    try:
+        lessons = sl.read_lessons([sw.paths_for(i).root for i in sorted(sw.reviewer_ids())])
+        states = [sw.load_state(sw.paths_for(i)) for i in steward_ids()]
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    projects = sorted({sl.target_project(steward_config(i).lessons_project) for i in steward_ids()} - {""})
+    return {"ok": True, "lessons": sl.lesson_rows(lessons, states, time.time()), "target": projects[0] if projects else ""}
+
+
+def http_review_lesson(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Dersi yeniden iletilebilir yap (`action: resend`): gönderildi/başarısız/onay kayıtları silinir, sonraki tick'te
+    yeniden gider. Yalnız insan."""
+    if (d := _human_only(data, "resend a lesson")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    hid = str(data.get("id") or "").strip().lower()
+    if str(data.get("action") or "") != "resend" or len(hid) != 12:
+        return {"ok": False, "error": "action=resend and 12-char id required"}
+    n = 0
+    for i in steward_ids():
+        if sl.resend(hid, sw.paths_for(i)):
+            n += 1
+    sw.log_event("lesson_resend", paths=sw.paths_for(sid), id=hid, n=n)
+    return {"ok": True, "resent": n}
 
 
 def http_review_pool(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -5242,6 +5286,7 @@ POST_PATHS = {
     "/api/steward/review/verify": http_review_verify,
     "/api/steward/review/finding": http_review_finding,
     "/api/steward/review/export": http_review_export,
+    "/api/steward/review/lesson": http_review_lesson,
     "/api/steward/service/add": http_service_add,
     "/api/steward/service/rm": http_service_rm,
     "/api/steward/job/ack": http_job_ack,

@@ -10,6 +10,7 @@ import {
   apiReviewCancel,
   apiReviewExport,
   apiReviewFinding,
+  apiReviewLessonResend,
   apiReviewPool,
   apiStewardConfig,
   apiReviewRun,
@@ -17,13 +18,14 @@ import {
   apiReviewWhere,
   getReviewFile,
   getReviewFindings,
+  getReviewLessons,
   getReviewRuns,
   getReviewState,
 } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { showToast } from "../state/toast";
-import type { ReviewFinding, ReviewRemoteProject, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
+import type { ReviewFinding, ReviewLesson, ReviewRemoteProject, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
 import { ReviewChatModal } from "./ReviewChatModal";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -33,6 +35,13 @@ const STATUS_COLOR: Record<string, string> = {
   model_fallback: "#c4631f",
   limit: "#8b6bd1",
   running: "#3b82d1",
+};
+const LESSON_COLOR: Record<string, string> = {
+  pending: "#8a8f98",
+  sent: "#3b82d1",
+  stale: "#d19a1e",
+  failed: "#d1453b",
+  done: "#2e9d57",
 };
 const FINDING_STATES = ["new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported"];
 
@@ -94,6 +103,8 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
   const [fState, setFState] = useState("");
   const [findings, setFindings] = useState<ReviewFinding[]>([]);
   const [runs, setRuns] = useState<ReviewRun[]>([]);
+  const [lessons, setLessons] = useState<ReviewLesson[]>([]);
+  const [lessonTarget, setLessonTarget] = useState("");
   const [openRun, setOpenRun] = useState<ReviewRun | null>(null);
   const sidRef = useRef(sid);
   useEffect(() => {
@@ -102,8 +113,8 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
 
   const load = useCallback(
     () =>
-      Promise.all([getReviewState(sid), getReviewFindings(sid, fProject, fState), getReviewRuns()]).then(
-        ([s, f, rr]) => {
+      Promise.all([getReviewState(sid), getReviewFindings(sid, fProject, fState), getReviewRuns(), getReviewLessons(sid)]).then(
+        ([s, f, rr, ls]) => {
           if (sidRef.current !== sid) return;
           if (s.ok) {
             setSt(s);
@@ -111,6 +122,10 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           } else setError(s.error || t.requestFailed);
           if (f.ok) setFindings(f.findings ?? []);
           if (rr.ok) setRuns((rr.runs ?? []).filter((r) => r.sid === sid));
+          if (ls.ok) {
+            setLessons(ls.lessons ?? []);
+            setLessonTarget(ls.target ?? "");
+          }
         },
         (e: unknown) => setError(describeApiError(e, t)),
       ),
@@ -335,6 +350,41 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: "28rem", overflow: "auto", margin: ".4rem 0 0" }}>{file.text}</pre>
         </div>
       )}
+
+      <h4 style={{ margin: 0 }}>
+        {t.rvLessons}
+        {lessonTarget ? ` → ${lessonTarget}` : ""}
+      </h4>
+      <span className="opts-hint">{t.rvLessonsDesc}</span>
+      {lessons.length === 0 && <span className="opts-hint">{t.rvLessonsNone}</span>}
+      {lessons
+        .slice()
+        .reverse()
+        .map((l) => {
+          const label = { pending: t.rvLessonPending, sent: t.rvLessonSent, stale: t.rvLessonStale, failed: t.rvLessonFailed, done: t.rvLessonDone }[l.status];
+          return (
+            <div key={l.id} style={card}>
+              <div className="legend" style={{ margin: 0, overflowWrap: "anywhere" }}>
+                <span className="cli-badge" style={{ borderColor: LESSON_COLOR[l.status], color: LESSON_COLOR[l.status] }}>
+                  {label}
+                  {l.status === "done" && l.ack ? ` · ${l.ack}` : ""}
+                </span>{" "}
+                {l.sent_at ? when(l.sent_at, "") : ""}
+                {l.fails > 0 && l.status !== "done" ? ` · ×${l.fails}` : ""}
+                {l.session ? ` · ${l.session}` : ""}
+              </div>
+              <div style={{ margin: ".3rem 0", overflowWrap: "anywhere" }}>{l.line}</div>
+              {l.note && <div className="legend" style={{ overflowWrap: "anywhere" }}>{l.note}</div>}
+              {l.status !== "pending" && (
+                <div className="opts">
+                  <button type="button" disabled={busy} onClick={() => void act(() => apiReviewLessonResend(sid, l.id), t.rvLessonResent)}>
+                    {t.rvLessonResend}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
 
       <h4 style={{ margin: 0 }}>{t.rvFindings}</h4>
       <div className="opts">
