@@ -3087,6 +3087,25 @@ def shutdown_start(sid: str = "default", *, stop_loop: bool = True, modes: Optio
     return {"ok": True, "started": True}
 
 
+_SHELL_COMMS = {"bash", "sh", "zsh", "dash"}
+
+
+def bg_shell_running(pid: int) -> bool:
+    """claude sürecinin DOĞRUDAN çocuğu olan, Bash aracının başlattığı bir kabuk (`bash -c source …/shell-snapshots/…`) var mı:
+    arka planda süren komut (nohup/`run_in_background`/uzun betik). Boştaki claude'un böyle çocuğu yoktur; MCP sunucuları doğrudan
+    kabuk değildir. Kapatma bu oturumu "iş bitti" saymaz (yoksa oturum durunca iş de ölür, baştan başlar). Okunamazsa False."""
+    try:
+        for c in psutil.Process(pid).children():
+            try:
+                if c.name() in _SHELL_COMMS and any("shell-snapshots" in a for a in c.cmdline()):
+                    return True
+            except (psutil.Error, OSError):
+                continue
+    except (psutil.Error, OSError, ValueError):
+        pass
+    return False
+
+
 def _shutdown_blockers(views: List[sw.SessionView], projects: Dict[str, sw.Project], world: sw.World,
                        paths: Any) -> Dict[str, str]:
     """Kapatmada "iş bitti" sayılmaması gereken oturumlar: projesinin AÇIK (bitmemiş) varaka işi var. Sessizlik tek başına
@@ -3099,12 +3118,18 @@ def _shutdown_blockers(views: List[sw.SessionView], projects: Dict[str, sw.Proje
     except Exception:
         return {}
     out: Dict[str, str] = {}
+    try:
+        pids = {s.name: s.pid for s in find_sessions(measure_cpu=False)}     # yalnız YEREL oturumlar (uzakta süreç ağacı okunamaz)
+    except Exception:
+        pids = {}
     for v in views:
         if not v.running:
             continue
         p = _project_for_session(v.name, projects, world)
         if p is not None and open_by_project.get(p.name):
             out[v.name] = f"open varaka job ({open_by_project[p.name]})"
+        elif v.host == LOCAL_HOST_NAME and v.name in pids and bg_shell_running(pids[v.name]):
+            out[v.name] = "background shell command running"
     return out
 
 
