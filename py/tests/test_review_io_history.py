@@ -257,6 +257,20 @@ class TestRunWritesIo(Base):
         self.ev()
         self.assertEqual(FakeProc.instances[0].argv[FakeProc.instances[0].argv.index("--max-tool-calls") + 1], "30")
 
+    def test_script_read_flag_is_opt_in_and_read_only(self):
+        self.ev()
+        self.assertFalse([x for x in FakeProc.instances[0].argv if x.startswith("--allow-script")])   # varsayılan KAPALI
+        FakeProc.instances = []
+        self.cfg.review_evren_script = "read"
+        self.ev()
+        a = FakeProc.instances[0].argv
+        self.assertIn("--allow-script=read", a)
+        self.assertNotIn("--allow-script=full", a)
+        self.assertFalse([x for x in a if x.startswith("--allow-edit") or x.startswith("--allow-fetch") or x == "--allow-exec"])
+        FakeProc.instances = []
+        self.ev(supports_flag=lambda b, f: f != "--allow-script")          # eski ikili: bayrak gitmez
+        self.assertFalse([x for x in FakeProc.instances[0].argv if x.startswith("--allow-script")])
+
     def test_wall_and_request_timeout_flags(self):
         # ae/mimo-v2.6-pro 20 dk duvarda bitmemişti: ucli kendi duvar/istek süresini bilsin (ayarlı, varsayılan 900/300)
         self.ev()

@@ -1002,6 +1002,8 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                 val = dflt if val is None else int(val)
                 if val > 0 and sf(binary, flag):        # 0 = kapalı (geri alma); eski ikili bayrağı bilmiyorsa gitmez
                     budget += [flag, str(val)]
+            if str(getattr(cfg, "review_evren_script", "") or "").strip().lower() == "read" and sf(binary, "--allow-script"):
+                budget += ["--allow-script=read"]     # yalnız salt-okunur araçlar (yazma/fetch/MCP YOK): review'ın salt-okunur kuralı bozulmaz
             create_dir = ""
             rpath = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode, target))
             os.makedirs(os.path.dirname(rpath), exist_ok=True)
