@@ -125,7 +125,7 @@ MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
 SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
-OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge")
+OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -314,6 +314,10 @@ class Config:
     lessons_project: str = "cli"       # ucli dersleri (reviewer `ucli-lessons.md`) bu projenin çalışan oturumuna direktifle iletilir (`off` = kapalı; boş değer ayarda anahtarı siler); projeyi bu kimlik yönetiyorsa
     resume_max_context_tokens: int = 150000   # TBD#123: durmuş oturumu açarken `--resume` edilecek konuşmanın SON bağlamı bundan büyükse taze (`--new`) açılır (soğuk büyük okuma + hemen devir = çifte maliyet); 0 = kapalı (her zaman resume)
     wake_max_per_day: int = 2          # uyandırma kapısı (TBD#125 agy): oturum başına 24 saatte en çok bu kadar otomatik `due` uyandırması (yeni girdi = cevap gidince sayaç sıfırlanır); `wake_gate` kipine uyar (dry = yalnız `would:wake_cap`); 0 = sınırsız
+    keepwarm: str = "dry"              # önbellek canlı tutma (2026-10-27): off | dry = YALNIZ `would:keepwarm` olayı | act = boşta, işi olan, büyük bağlamlı oturuma TTL (60 dk) dolmadan hafif dürtme; kesinlikle çalışmayana ASLA
+    keepwarm_after_minutes: int = 52   # son model isteğinden bu kadar dk sonra (58. dk'ya kadar) dürtülür
+    keepwarm_min_tokens: int = 100000  # bundan küçük bağlam dürtülmez (soğuk açılış zaten ucuz)
+    keepwarm_max_consecutive: int = 2  # dürtmeye rağmen gerçek etkinlik yoksa zincir bu kadar dürtmede KESİLİR
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
     wake_repeat_minutes: int = 240     # uyandırma kapısı penceresi (dk); 0 = kapalı
     upper_main_warn: bool = True       # denetim: proje ANA oturumu fiilen Sonnet medium üstüne çıktıysa (canlı model/effort) `upper_main` olayı + oturuma tek HATIRLATMA (zorlamaz; `off` = kapalı)

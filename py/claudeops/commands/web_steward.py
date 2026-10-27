@@ -33,6 +33,7 @@ from .. import review as rv
 from .. import steward as sw
 from .. import steward_jobs as sj
 from .. import steward_lessons as sl
+from .. import steward_keepwarm as skw
 from .. import steward_advance as sa
 from .. import steward_quota as sq
 from ..diaglog import diag_log
@@ -2504,6 +2505,17 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
     if k == "set_phase":
         sw.upsert_project(name, paths=paths, phase=action.payload.get("phase"))
         return {"ok": True}
+    if k == "keepwarm":               # TTL dolmadan hafif dürtme: tüm koşullar `plan_keepwarm`de denetlendi, burada yalnız gönder
+        if not host:
+            denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
+            if denied is not None:
+                return denied
+        s = _running(name)
+        if host or s is None or not is_tmux_backed(s.pid):
+            return {"ok": False, "error": "not a local running tmux session"}
+        ok = _send(s.name, s.cli, skw.KEEPWARM_TEXT)
+        sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n")})
+        return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
     if k == "nudge":                  # API hatasında takılan oturuma tek satır "devam" (alt ajan/etkinlik denetimi plan_tick'te yapıldı)
         if host:
             return _remote_nudge(name, host, action, cfg, paths, world or _world(cfg.sid, cfg), rt)
@@ -2960,6 +2972,14 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 if cfg.mode != "observe":   # observe durumu DEĞİŞTİRMEZ (direktif zamanı işaretlenmez): her tick would: üretebilir
                     new_state = planned_state
                 actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
+                kw_actions, kw_state = skw.plan_keepwarm(views, projects, new_state, cfg, t0, actions, world)
+                if kw_actions:
+                    new_state = kw_state       # keepwarm kaydı (dry'da da): aynı boşta dönemi için tekrar yazılmaz
+                    if cfg.keepwarm == "dry":
+                        for a in kw_actions:   # YALNIZ ölçüm: oturuma dokunmaz
+                            sw.log_event("would:keepwarm", paths=paths, name=a.name, **{k: a.payload.get(k) for k in ("project", "age_min", "tokens", "n")})
+                    else:
+                        actions = actions + kw_actions   # önbellek canlı tutma dürtmesi (observe kipinde OBSERVE_SKIPPED ile kuru kalır)
                 adv_actions, planned_state = sa.plan_advance_deliveries(views, projects, _advance_candidates(cfg), new_state, t0,
                                                                         actions, world)
                 if cfg.mode != "observe":
