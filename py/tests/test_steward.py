@@ -2641,3 +2641,56 @@ class ShutdownBlockersTest(unittest.TestCase):
                                           1000.0 + sw.SHUTDOWN_WAIT_MAX_SECONDS + 1, blockers={"ncs": "open varaka job (1)"})
         self.assertEqual(acts, [])
         self.assertEqual(sd["items"]["ncs"]["stage"], "busy_left")
+
+
+class SmartTickTest(unittest.TestCase):
+    """Akıllı tick: acil madde tur aralığını beklemez; done kuralı TBD'ye de bakar; yalnız-TBD proje açılmaz (sahibe soru);
+    açık TODO'su olmayan boşta oturum dürtülmez."""
+    now = 100000.0
+
+    def test_count_open_tbd(self):
+        t = "# x\n## Açık\n### 5) **AÇIK a**\n### 4) ~~kapalı~~\n### 3) **KARAR 2026 x**\n### 2) **AÇIK b**\n## Kapalı\n### 1) **AÇIK eski**\n"
+        self.assertEqual(sw.count_open_tbd(t), 2)
+        self.assertEqual(sw.count_open_tbd(""), 0)
+
+    def test_routine_question_skips_tour_interval(self):
+        cfg = _cfg(tour_minutes=15)
+        brain = _view("degnekci", busy=False)
+        q = [sw.Question(id="q1", project="p", text="nasıl?", created_at=0.0, routine=True)]
+        projects = {"p": sw.Project(name="p", phase="planned")}
+        acts, _ = sw.plan_tick([brain], projects, {"last_tour": self.now - 120}, cfg, self.now, q, [])
+        self.assertEqual([a.kind for a in acts if a.kind == "tour"], ["tour"])
+        ideas = [sw.Idea(id="i", text="t", created_at=0)]
+        acts, _ = sw.plan_tick([brain], projects, {"last_tour": self.now - 120}, cfg, self.now, [], ideas)
+        self.assertEqual([a.kind for a in acts if a.kind == "tour"], [])    # acil değil: aralık beklenir
+
+    def test_done_confirmed_with_open_tbd_asks_owner(self):
+        ok = "bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, testler yeşil"
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=ok)], projects, {"done_confirm": {"p1": self.now - 100}}, _cfg(), self.now, [], [],
+                               open_work=lambda p: 0, open_tbd=lambda p: 2)
+        self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop", "ask_user")], ["ask_user"])
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=ok)], projects, {"done_confirm": {"p1": self.now - 100}}, _cfg(), self.now, [], [],
+                               open_work=lambda p: 0, open_tbd=lambda p: 0)
+        self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop")], ["set_phase", "stop"])
+
+    def test_tbd_only_project_not_started_owner_asked_once(self):
+        projects = {"p": sw.Project(name="p", phase="planned", cadence_minutes=5)}
+        kw = dict(open_work=lambda p: 0, open_tbd=lambda p: 3)
+        acts, st = sw.plan_tick([], projects, {}, _cfg(), self.now, [], [], **kw)
+        self.assertEqual([a.kind for a in acts if a.kind in ("start", "ask_user")], ["ask_user"])
+        acts, st = sw.plan_tick([], projects, st, _cfg(), self.now + 300, [], [], **kw)
+        self.assertEqual([a.kind for a in acts if a.kind in ("start", "ask_user")], [])     # 6 saat dolmadan tekrar sormaz, açmaz
+        acts, _ = sw.plan_tick([], projects, {}, _cfg(), self.now, [], [], open_work=lambda p: 2, open_tbd=lambda p: 3)
+        self.assertEqual([a.kind for a in acts if a.kind == "start"], ["start"])           # TODO'su varsa açılır
+
+    def test_idle_session_without_open_todo_not_nudged(self):
+        cfg = _cfg(idle_minutes=5)
+        projects = {"a": sw.Project(name="a", phase="planned")}
+        idle = _view("a", busy=False, last_activity=self.now - 600)
+        items = sw.review_items([idle], projects, cfg, self.now, [], [], open_work=lambda p: 0)
+        self.assertEqual([i for i in items if i["kind"] == "idle"], [])
+        items = sw.review_items([idle], projects, cfg, self.now, [], [], open_work=lambda p: 3)
+        self.assertEqual([i["kind"] for i in items], ["idle"])
+        items = sw.review_items([idle], projects, cfg, self.now, [], [], open_work=lambda p: None)
+        self.assertEqual([i["kind"] for i in items], ["idle"])      # bilinmiyor: eski davranış

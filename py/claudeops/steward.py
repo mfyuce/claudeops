@@ -1760,6 +1760,21 @@ _JOB_BODY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,40}\s+\S")   # '<tür> <dos
 _PLACEHOLDER_BODY_RE = re.compile(r"^<[^<>\n]{1,80}>[\s`.…]*$")   # '<soru>' gibi YER TUTUCU: yazım örneği, gerçek soru değil
 
 
+def count_open_tbd(text: str) -> int:
+    """TOBEDECIDED.md'deki AÇIK karar sayısı: `## Açık` altındaki `### N)` başlıkları; üstü çizili (`~~`), KAPANDI/KARAR
+    (kullanıcı kararı yazılmış) olanlar sayılmaz. Kaba ve SAF; `## Açık` yoksa tüm `### N)` başlıkları taranır."""
+    n, in_open, has_open_hdr = 0, False, bool(re.search(r"^##\s+Açık", text or "", re.M))
+    for ln in (text or "").splitlines():
+        if ln.startswith("## "):
+            in_open = ln.startswith("## Açık")
+            continue
+        if has_open_hdr and not in_open:
+            continue
+        if re.match(r"^###\s+\d+[).]", ln) and "~~" not in ln and not re.search(r"KAPANDI|\bKARAR\b|✅", ln):
+            n += 1
+    return n
+
+
 def done_blocked(project: Any) -> bool:
     """Proje notunda `NO_DONE_TAG` varsa `STEWARD-DONE` işlenmez (copsdev, 2026-10-24: iki kez bir bulgu paketi/devir
     mesajı yüzünden proje `done` olup oturum durdu). SAF."""
@@ -2246,7 +2261,8 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
                  reviewed_at: Optional[Dict[str, float]] = None,
                  world: Optional[World] = None,
                  skip_seen: Optional[Dict[str, Any]] = None,
-                 sigs_out: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+                 sigs_out: Optional[Dict[str, str]] = None,
+                 open_work: Optional[Callable[[str], Optional[int]]] = None) -> List[Dict[str, Any]]:
     """Beynin yargısını gerektiren maddeler: boşta bekleyen proje oturumu (`idle`), uzun süredir meşgul
     olup gözden geçirilmemiş oturum (`review`), yeni fikir (`idea`), oturuma iletilemeyen cevap
     (`blocked`). `plan_tick` bunu çağırır; elle "tur" (`web_steward.run_tour(force=True)`) de aynı listeyi alır.
@@ -2276,6 +2292,8 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
         due_review = not due_idle and v.busy and (now - max(lda.get(v.name, 0.0), rva.get(v.name, 0.0), v.started_at)) >= cfg.review_minutes * 60
         if not (due_idle or due_review):
             continue
+        if due_idle and open_work is not None and open_work(v.project) == 0:
+            continue    # yerel TODO.md'de açık `- [ ]` iş yok: boşta oturumu dürtmenin anlamı yok (TBD sahibe soru olarak kalır)
         sig = item_signature(v, projects, questions)
         seen_rec = skip_seen.get(v.name)
         if isinstance(seen_rec, dict) and seen_rec.get("sig") == sig and now - float(seen_rec.get("at") or 0) < SKIP_QUIET_SECONDS:
@@ -2963,7 +2981,8 @@ def _confirm_action(name: str, proj: str, cfg: "Config", why: str) -> "Action":
 def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
               now: float, questions: List[Question], ideas: List[Idea],
               world: Optional[World] = None,
-              open_work: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+              open_work: Optional[Callable[[str], Optional[int]]] = None,
+              open_tbd: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
     (motor kaydeder). Sıra: ekonomi (handover/respawn) → işaretler → cevap iletimi → uğrama/başlatma →
     slot baskısı → beyin turu.
@@ -3144,7 +3163,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                     actions.append(_confirm_action(v.name, proj, cfg, "STEWARD-DONE-CONFIRMED kanıtsız"))
             else:
                 left = open_work(proj) if open_work is not None else None
-                if left:
+                tbd_left = (open_tbd(proj) or 0) if open_tbd is not None else 0
+                if tbd_left and not left:
+                    actions.append(Action("ask_user", v.name, "STEWARD-DONE-CONFIRMED TBD ile çelişti",
+                                          {"project": proj, "text": f"{v.name}: STEWARD-DONE-CONFIRMED geldi ama TOBEDECIDED.md'de {tbd_left} açık "
+                                                                    f"karar var; faz done yapılmadı. Kararları verir misiniz, yoksa gerçekten bitti mi?"}))
+                elif left:
                     actions.append(Action("ask_user", v.name, "STEWARD-DONE-CONFIRMED yerel sayımla çelişti",
                                           {"project": proj, "text": f"{v.name}: STEWARD-DONE-CONFIRMED geldi (\"{body[:160]}\") ama projenin TODO.md'sinde "
                                                                     f"{left} açık `- [ ]` iş var; faz done yapılmadı, oturum açık. Gerçekten bitti mi?"}))
@@ -3167,7 +3191,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if v is None or not v.running or proj not in projects or done_blocked(projects[proj]):
             done_pending.pop(name, None)    # (NO_DONE_TAG ertelemeden SONRA eklenmiş olabilir: yeniden denetle)
         elif not v.subagent_active and not v.subagent_unknown and v.busy is not True and name not in busy_names:
-            if open_work is not None and open_work(proj):     # ertelemeden sonra TODO'ya açık iş düşmüş: kapatma
+            if (open_work is not None and open_work(proj)) or (open_tbd is not None and open_tbd(proj)):     # ertelemeden sonra TODO'ya/TBD'ye açık iş düşmüş: kapatma
                 done_pending.pop(name, None)
                 continue
             actions.append(Action("set_phase", proj, "STEWARD-DONE (ertelenmişti)", {"phase": "done"}))
@@ -3252,6 +3276,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     # "uğranmış gibi" davranmayı sağlar, yoksa her tick aynı en öncelikli proje için `would:start` üretirdi.
     observed_visit: Dict[str, float] = dict(st.get("observed_visit") or {})
     visit_of = lambda p: max(p.last_visit, float(observed_visit.get(p.name) or 0.0))   # noqa: E731
+    tbd_asked: Dict[str, float] = {k: float(v) for k, v in dict(st.get("tbd_asked") or {}).items()}
     due: List[Project] = []
     for p in projects.values():
         if p.phase not in ACTIVE_PHASES or p.cadence_minutes <= 0 or p.name in running_projects or p.name in busy_names:
@@ -3259,6 +3284,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if world is not None and p.name in world.unavailable:
             continue     # host erişilemiyor: görünümü yok diye "çalışmıyor" sayılıp başlatılmaz
         if visit_of(p) == 0 or (now - visit_of(p)) >= p.cadence_minutes * 60:
+            if open_work is not None and open_tbd is not None and open_work(p.name) == 0 and (open_tbd(p.name) or 0) > 0:
+                # yalnız TBD kaldı (yerel TODO'da açık iş yok): oturum açmak boşa tur; sahibe tek soru, cevap gelince `answer → start`
+                if now - tbd_asked.get(p.name, 0.0) >= 6 * 3600:      # günde en çok ~4 kez; aynı soru zaten açıksa birleşir
+                    actions.append(Action("ask_user", p.name, "yalnız TBD kaldı",
+                                          {"project": p.name, "text": f"{p.name}: yerel TODO.md'de açık iş kalmadı, TOBEDECIDED.md'de {open_tbd(p.name)} "
+                                                                      f"açık karar var. Kararları verir misiniz? Cevap gelince oturumu açıp devam ederim."}))
+                    tbd_asked[p.name] = now
+                continue
             due.append(p)
     due.sort(key=lambda p: (p.priority, visit_of(p)))
     free = max(0, _slots())
@@ -3270,6 +3303,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         free -= 1
         busy_names.add(p.name)
         last_directive_at[p.name] = now
+    if tbd_asked:
+        st["tbd_asked"] = tbd_asked
+    else:
+        st.pop("tbd_asked", None)
     waiting = [p for p in due if p.name not in busy_names]
     # Süresi dolup BAŞLATILAMAYAN projelerin nedeni durumda görünür (sessiz kalmasın: "cadence 5 dk, oturum neden açılmadı?")
     if waiting:
@@ -3319,12 +3356,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     sigs: Dict[str, str] = {}
     items = review_items(views, projects, cfg, now, questions, ideas,
                          skip=busy_names | set(ho_pending), last_directive_at=last_directive_at, reviewed_at=reviewed_at,
-                         world=world, skip_seen=skip_seen, sigs_out=sigs)
+                         world=world, skip_seen=skip_seen, sigs_out=sigs, open_work=open_work)
     for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running}):      # bayat blokaj kaydı: kapat (her tick beyne düşmesin)
         actions.append(Action("close_stale_answer", q.project, "bayat blokaj kaydı", {"question_id": q.id}))
     last_tour = float(st.get("last_tour") or 0.0)
     brain = by_name.get(cfg.brain_name)
     tour_gap = (cfg.tour_retry_minutes if st.get("tour_deferred") else cfg.tour_minutes) * 60
+    if any(it.get("kind") in ("routine", "blocked") for it in items):
+        tour_gap = min(tour_gap, 60)      # acil madde (işleyiş sorusu/iletilemeyen cevap): tur aralığını beklemeden bir sonraki tick'te
     if items and (now - last_tour) >= tour_gap and brain is not None and brain.running and brain.busy is False:
         items = items[:TOUR_MAX_ITEMS]
         st.pop("tour_deferred", None)

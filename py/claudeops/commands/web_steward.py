@@ -2680,6 +2680,24 @@ def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[i
     return count
 
 
+def _open_tbd_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
+    """`plan_tick` için: projenin YEREL TOBEDECIDED.md'sindeki açık karar sayısı (`sw.count_open_tbd`). Uzak/okunamayan = None."""
+    def count(proj: str) -> Optional[int]:
+        try:
+            p = projects.get(proj)
+            if p is None or p.host:
+                return None
+            cwd = _cwd_resolver()(proj)
+            real, root = os.path.realpath(os.path.join(cwd, "TOBEDECIDED.md")), os.path.realpath(cwd)
+            if not cwd or not real.startswith(root + os.sep) or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+                return None
+            with open(real, encoding="utf-8", errors="replace") as f:
+                return sw.count_open_tbd(f.read())
+        except OSError:
+            return None
+    return count
+
+
 def _advance_candidates(cfg: sw.Config) -> List[Dict[str, Any]]:
     """Reviewer kimliklerinin `exported` bulguları + TODO durumu (yalnız `advance_findings=on` kimlikte). Hata = boş."""
     if not cfg.advance_findings:
@@ -2962,7 +2980,7 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 prev_state = sw.load_state(paths)
                 actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world,
-                                                  open_work=_open_work_of(projects))
+                                                  open_work=_open_work_of(projects), open_tbd=_open_tbd_of(projects))
                 if new_state.get("start_blocked") != (prev_state.get("start_blocked") if "start_blocked" in new_state else None):
                     sw.log_event("start_blocked", paths=paths, **new_state["start_blocked"])   # değişince bir kez
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
