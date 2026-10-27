@@ -161,8 +161,10 @@ class TestO1BrainCannotCreateProjects(_Base):
         self.assertNotIn("egyptian", sw.load_projects())
         sw.upsert_project("mkt", phase="planned")
         r = ws.http_post("/api/steward/project", {"name": "mkt", "phase": "paused", "actor": "brain"})
+        self.assertFalse(r["ok"])      # beyin projeyi paused/done yapamaz (27 Eki): sahibin kararı
+        r = ws.http_post("/api/steward/project", {"name": "mkt", "notes": "n", "actor": "brain"})
         self.assertTrue(r["ok"])
-        self.assertEqual(sw.load_projects()["mkt"].phase, "paused")
+        self.assertEqual(sw.load_projects()["mkt"].phase, "planned")
 
     def test_human_may_still_create_a_project(self):
         r = ws.http_post("/api/steward/project", {"name": "yeni", "phase": "planned"})

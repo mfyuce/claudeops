@@ -575,6 +575,18 @@ class RosterGateTest(_Tmp):
             self.assertFalse(web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})["ok"])
 
 
+class BrainCannotPauseTest(_Tmp):
+    def test_brain_cannot_pause_or_done_but_owner_can(self):
+        with mock.patch.object(web_steward, "_in_roster", lambda name: True):
+            self.assertTrue(web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})["ok"])
+            for ph in ("paused", "done"):
+                r = web_steward.http_project_upsert({"name": "zzz", "phase": ph, "actor": "brain"})
+                self.assertFalse(r["ok"], ph)
+            self.assertEqual(sw.load_projects()["zzz"].phase, "planned")
+            self.assertTrue(web_steward.http_project_upsert({"name": "zzz", "notes": "x", "actor": "brain"})["ok"])
+            self.assertTrue(web_steward.http_project_upsert({"name": "zzz", "phase": "paused"})["ok"])    # insan/CLI serbest
+
+
 class ShutdownPlanTest(unittest.TestCase):
     def _run(self, views, sd, now):
         projects = {"p1": sw.Project(name="p1", phase="planned"), "p2": sw.Project(name="p2", phase="planned")}

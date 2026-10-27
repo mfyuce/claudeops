@@ -3898,6 +3898,12 @@ def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str,
             sw.log_event("project_denied", paths=sid, actor="brain", name=name, field="host")
             return {"ok": False, "error": "brain cannot change a project's host (ask the owner)"}
         fields["host"] = sw.normalize_host(fields["host"])
+    if data.get("actor") == "brain" and fields.get("phase") in ("paused", "done") and old is not None and old.phase != fields["phase"]:
+        # Projeyi durdurmak/bitirmek sahibin ya da kanıtlı STEWARD-DONE'ın işi: "sahibe bağlı" gerekçesiyle beyin kapatamaz
+        # (27 Eki: 4 proje paused'a çekilip oturumları kapandı). Sahibe bağlı iş = oturum açılmaz, tek soru (plan_tick), faz planned kalır.
+        sw.log_event("project_denied", paths=sid, actor="brain", name=name, field="phase", value=fields["phase"])
+        return {"ok": False, "error": f"brain cannot set phase {fields['phase']} (owner decision); owner-blocked work stays "
+                                      "'planned' and the engine asks the owner once instead of opening the session"}
     new_host = fields.get("host", old_host)
     if fields.get("phase") in sw.ACTIVE_PHASES:
         # Roster'da olmayan projeyi AKTİF faza alma/kaydetme (idea→planned dahil): her tick başarısız `start` üretirdi (CLI zaten uyarıyordu).
