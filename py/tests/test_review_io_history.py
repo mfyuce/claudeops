@@ -299,6 +299,25 @@ class TestRunWritesIo(Base):
         self.assertNotIn("--max-wall-secs", a)
         self.assertNotIn("--request-timeout-secs", a)
 
+    def test_max_output_tokens_flag(self):
+        # deepseek-v4-flash rapor yazarken "output limit (4096) used up by reasoning" ile düştü: ucli varsayılanı 4096, argv geçmiyordu
+        self.ev()
+        a = FakeProc.instances[0].argv
+        self.assertEqual(a[a.index("--max-output-tokens") + 1], "32768")
+        FakeProc.instances = []
+        self.cfg.review_max_output_tokens = 16000
+        self.ev()
+        a = FakeProc.instances[0].argv
+        self.assertEqual(a[a.index("--max-output-tokens") + 1], "16000")
+        FakeProc.instances = []
+        self.cfg.review_max_output_tokens = 0                # 0 = geri al: bayrak gitmez
+        self.ev()
+        self.assertNotIn("--max-output-tokens", FakeProc.instances[0].argv)
+        FakeProc.instances = []
+        self.cfg.review_max_output_tokens = 32768
+        self.ev(supports_flag=lambda b, f: f != "--max-output-tokens")   # eski ikili bayrağı tanımıyor: gitmez
+        self.assertNotIn("--max-output-tokens", FakeProc.instances[0].argv)
+
     def test_recover_leaves_io(self):
         res = self.ev()
         io = wr.io_path_for(res["file"])

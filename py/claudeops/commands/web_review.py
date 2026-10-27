@@ -1004,6 +1004,10 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                 val = dflt if val is None else int(val)
                 if val > 0 and sf(binary, flag):        # 0 = kapalı (geri alma); eski ikili bayrağı bilmiyorsa gitmez
                     budget += [flag, str(val)]
+            mot = getattr(cfg, "review_max_output_tokens", 32768)
+            mot = 32768 if mot is None else int(mot)
+            if mot > 0 and sf(binary, "--max-output-tokens"):    # 0 = kapalı; eski ikili bayrağı bilmiyorsa gitmez
+                budget += ["--max-output-tokens", str(mot)]
             if str(getattr(cfg, "review_evren_script", "") or "").strip().lower() == "read" and sf(binary, "--allow-script"):
                 budget += ["--allow-script=read"]     # yalnız salt-okunur araçlar (yazma/fetch/MCP YOK): review'ın salt-okunur kuralı bozulmaz
             create_dir = ""

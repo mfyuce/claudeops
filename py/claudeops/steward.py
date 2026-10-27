@@ -330,6 +330,7 @@ class Config:
     review_auto_approve: int = 0       # reviewer: `verified` bulguyu KENDİLİĞİNDEN onaylar: 0 kapalı, 1 yalnız P3, 2 P2+P3 (P1, `unclear` ve parola/gizli geçen bulgu ASLA)
     review_auto_export: bool = False   # reviewer: `approved` bulguları YEREL projenin TODO.md'sine KENDİLİĞİNDEN yazar (tick başına en çok 1 proje; TBD'ye ASLA, uzak proje ve hassas bulgu atlanır)
     review_max_wall_secs: int = 900   # Evren: `--max-wall-secs` (ucli kendi duvar sınırı; timeout 20 dk iken 900 = kalan süreyle özet verir, partial kalmaz); 0 = bayrak gitmez
+    review_max_output_tokens: int = 32768   # Evren: `--max-output-tokens` (ucli varsayılanı 4096; reasoning modelleri raporu yazamadan düşüyordu, TODO 1098); 0 = bayrak gitmez
     review_request_timeout_secs: int = 300   # Evren: `--request-timeout-secs` (tek model isteği); 0 = bayrak gitmez
     review_evren_script: str = ""      # Evren: "read" -> `--allow-script=read` (Lua ile SALT-OKUNUR araçları tek turda birleştir; tur bütçesi için). "" = kapalı
     review_max_tool_calls: int = 30    # Evren: `--max-tool-calls` (ucli varsayılanı 64; ölçüm 2026-10-26 copsdev: 14 ile bütçe bitip bulgu yok, 30 ile 363 sn/6 bulgu; sınırsız 1453 sn)
