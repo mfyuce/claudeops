@@ -15,7 +15,6 @@ ile) sık sık yeniden yazılıyor.
 """
 from __future__ import annotations
 import contextlib
-import fcntl
 import functools
 import hashlib
 import json
@@ -25,7 +24,7 @@ import shutil
 import threading
 from typing import Any, Dict, List, Optional
 
-from .atomic_json import atomic_write_json
+from .atomic_json import atomic_write_json, file_lock
 from .paths import CLAUDEOPS_DIR
 
 HOSTS_JSON = os.path.join(CLAUDEOPS_DIR, "hosts.json")
@@ -145,27 +144,12 @@ def _write_hosts(hosts: List[Dict[str, str]]) -> None:
     atomic_write_json(HOSTS_JSON, hosts, mode=0o600)
 
 
-_WRITE_LOCK = threading.RLock()
-
-
 @contextlib.contextmanager
 def _write_txn():
-    """oku-değiştir-yaz döngüsünün TAMAMI tek kilit altında: iş parçacıkları arası `RLock` + süreçler arası `flock`
-    (`hosts.json.lock`). Kilit dosyası açılamazsa yalnız iş parçacığı kilidiyle devam edilir."""
-    with _WRITE_LOCK:
-        fd = None
-        try:
-            fd = os.open(HOSTS_JSON + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
-            fcntl.flock(fd, fcntl.LOCK_EX)
-        except OSError:
-            if fd is not None:
-                os.close(fd)
-            fd = None
-        try:
-            yield
-        finally:
-            if fd is not None:
-                os.close(fd)        # kapatmak flock'u bırakır
+    """oku-değiştir-yaz döngüsünün TAMAMI tek kilit altında: iş parçacıkları arası kilit + süreçler arası `flock`
+    (`hosts.json.lock`; `atomic_json.file_lock`: O_NOFOLLOW + sahiplik denetimi, olmazsa yalnız iş parçacığı kilidi)."""
+    with file_lock(HOSTS_JSON):
+        yield
 
 
 def _txn(fn):

@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from claudeops import hosts  # noqa: E402
+from claudeops import atomic_json, hosts  # noqa: E402
 
 
 class ConcurrentWriteTest(unittest.TestCase):
@@ -35,7 +35,7 @@ class ConcurrentWriteTest(unittest.TestCase):
         self.assertEqual(sorted(h["name"] for h in hosts.load_hosts()), sorted(f"h{i}" for i in range(n)))
 
     def test_flock_failure_falls_back_to_thread_lock(self):
-        with mock.patch.object(hosts.fcntl, "flock", side_effect=OSError("no")):
+        with mock.patch.object(atomic_json.fcntl, "flock", side_effect=OSError("no")):
             self.assertTrue(hosts.save_host("x", "http://x", "t")["ok"])
 
 

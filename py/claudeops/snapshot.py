@@ -60,7 +60,8 @@ def _same_sessions(a: List[Dict[str, Any]], b: List[Dict[str, Any]]) -> bool:
     sırası garantili değil, önemli olan HANGİ session'ların (hangi GERÇEK
     model/permission_mode/effort/cli ile) çalıştığı, listede kaçıncı sırada
     oldukları değil."""
-    return {_entry_key(x) for x in a} == {_entry_key(x) for x in b}
+    # Çoklu küme: birebir kopya çifti ([A, A] vs [A]) "değişiklik yok" SAYILMAZ.
+    return sorted(map(repr, (_entry_key(x) for x in a))) == sorted(map(repr, (_entry_key(x) for x in b)))
 
 
 def normalize_mirrors(mirrors: Any) -> List[Dict[str, str]]:
@@ -149,8 +150,11 @@ olduğu gibi döner (kullanıcının kuralı: "aynıysa sorun yok"); "aynı" ses
     mirrors = normalize_mirrors(mirrors)
     _backup_if_corrupt()
     all_snaps = _load_all()
-    if (kind == "closing" and all_snaps and _same_sessions(all_snaps[-1]["sessions"], sessions)
-            and _same_mirrors(all_snaps[-1].get("mirrors"), mirrors)):
+    last = all_snaps[-1] if all_snaps else None
+    if (kind == "closing" and isinstance(last, dict) and isinstance(last.get("sessions"), list)
+            and all(isinstance(x, dict) for x in last["sessions"])         # bozuk/elle düzenlenmiş son girdi: kapanış kaydı düşmesin
+            and _same_sessions(last["sessions"], sessions)
+            and _same_mirrors(last.get("mirrors"), mirrors)):
         return all_snaps[-1]
     entry = {"saved_at": time.time(), "kind": kind, "sessions": sessions, "mirrors": mirrors}
     all_snaps.append(entry)

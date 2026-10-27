@@ -17,7 +17,7 @@ import shutil
 import urllib.parse
 from typing import Any, Dict, Tuple, TYPE_CHECKING
 
-from .atomic_json import atomic_write_json
+from .atomic_json import atomic_write_json, file_lock
 from .paths import CLAUDEOPS_DIR
 
 if TYPE_CHECKING:
@@ -231,6 +231,11 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     verilmesi o anahtarı "otomatiğe dön" anlamında sözlükten TAMAMEN kaldırır
     (`default_model`/`provider_bin`'de anahtar=cli adı, `ucli_limits`'te
     anahtar=alan adı — mekanik aynı, ne temsil ettiği farklı)."""
+    with file_lock(SETTINGS_JSON):      # oku-değiştir-yaz TEK kilit altında: eşzamanlı yamalar birbirini ezmesin
+        return _save_settings_locked(patch)
+
+
+def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
     current = load_settings()
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:

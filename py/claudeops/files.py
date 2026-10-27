@@ -16,6 +16,7 @@ Path-traversal/arbitrary-file-read'e karşı TEK kapı noktası:
 atlayamaz/unutamaz (fonksiyonların KENDİSİ doğruluyor)."""
 from __future__ import annotations
 import os
+import stat
 import shutil
 import threading
 from typing import List, Optional, Tuple
@@ -59,6 +60,27 @@ def _resolve_within_roots(path: str, roots: List[Tuple[str, str]]) -> Optional[s
     return None
 
 
+def _writable_roots(s: Session) -> List[Tuple[str, str]]:
+    """Yıkıcı/yazan işlemler (sil, yeniden adlandır, düzenle, klasör aç) için kökler: YALNIZ proje kökü. Sağlayıcının meta
+    kökleri (ör. claude transkript dizini) okunur/indirilir ama değiştirilmez."""
+    return [(k, r) for k, r in roots_for_session(s) if k == "project"]
+
+
+def _resolve_entry(path: str, roots: List[Tuple[str, str]]) -> Optional[str]:
+    """`_resolve_within_roots` gibi ama SON bileşen symlink ise ÇÖZMEZ: dizin çözülür ve kök-içi doğrulanır, bağlantının
+    kendisi döner (sil/yeniden adlandır bağlantıyı etkilesin, hedefini DEĞİL). Symlink değilse `_resolve_within_roots`."""
+    try:
+        lex = os.path.abspath(path)
+        if os.path.islink(lex):
+            parent = _resolve_within_roots(os.path.dirname(lex), roots)
+            if parent is not None:
+                return os.path.join(parent, os.path.basename(lex))
+            return None
+    except OSError:
+        return None
+    return _resolve_within_roots(path, roots)
+
+
 def list_dir(s: Session, path: Optional[str]) -> dict:
     """`path` verilmezse session'ın İLK kökü (proje cwd'si) listelenir.
     Hata kodları ("no_roots"/"forbidden"/"not_found") `web.py`'de
@@ -81,7 +103,7 @@ def list_dir(s: Session, path: Optional[str]) -> dict:
                     st = entry.stat(follow_symlinks=True)
                 except OSError:
                     continue  # kırık symlink/izin sorunu — sessizce atla, listenin geri kalanını bozma
-                entries.append({"name": entry.name, "is_dir": is_dir,
+                entries.append({"name": entry.name, "is_dir": is_dir, "symlink": entry.is_symlink(),
                                  "size": st.st_size, "mtime": st.st_mtime})
     except OSError:
         return {"ok": False, "error": "not_found"}
@@ -125,7 +147,7 @@ def resolve_upload_target(s: Session, dir_path: Optional[str], filename: str,
     dizin değiştiremez). (gerçek-yol, None) başarılı; (None, hata-kodu)
     başarısız — kodlar no_roots/forbidden/not_found (hedef dizin yok)/
     bad_filename/exists (overwrite=False iken zaten var)."""
-    roots = roots_for_session(s)
+    roots = _writable_roots(s)
     if not roots:
         return None, "no_roots"
     target_dir = dir_path or roots[0][1]
@@ -199,13 +221,13 @@ def delete_path(s: Session, path: str) -> dict:
     birlikte — bir upload/mkdir'le oluşturulmuş bir klasörü geri almanın
     doğal yolu). Geri dönüşü YOK (çöp kutusu/trash yok, kişisel/tek-kullanıcı
     araç) — çağıran taraf (web.py) onayı ZATEN almış olmalı."""
-    roots = roots_for_session(s)
-    real = _resolve_within_roots(path, roots)
+    roots = _writable_roots(s)
+    real = _resolve_entry(path, roots)      # symlink ise bağlantının KENDİSİ (hedefi rmtree'lenmez)
     if real is None:
         return {"ok": False, "error": "forbidden"}
     if _is_a_root(real, roots):
         return {"ok": False, "error": "is_root"}
-    if not os.path.exists(real):
+    if not os.path.lexists(real):
         return {"ok": False, "error": "not_found"}
     try:
         if os.path.isdir(real) and not os.path.islink(real):
@@ -222,13 +244,13 @@ def rename_path(s: Session, path: str, new_name: str) -> dict:
     taşıma) DEĞİL, `new_name` yine `os.path.basename()`'le soyulur (upload'un
     `filename`'iyle AYNI disiplin). Hedef zaten aynı isimse no-op başarı
     (hata değil — kullanıcı ismi hiç değiştirmeden 'kaydet'e basmış gibi)."""
-    roots = roots_for_session(s)
-    real = _resolve_within_roots(path, roots)
+    roots = _writable_roots(s)
+    real = _resolve_entry(path, roots)
     if real is None:
         return {"ok": False, "error": "forbidden"}
     if _is_a_root(real, roots):
         return {"ok": False, "error": "is_root"}
-    if not os.path.exists(real):
+    if not os.path.lexists(real):
         return {"ok": False, "error": "not_found"}
     safe_name = os.path.basename((new_name or "").strip())
     if not safe_name or safe_name in (".", ".."):
@@ -236,7 +258,7 @@ def rename_path(s: Session, path: str, new_name: str) -> dict:
     new_real = os.path.join(os.path.dirname(real), safe_name)
     if new_real == real:
         return {"ok": True, "path": real}
-    if os.path.exists(new_real):
+    if os.path.lexists(new_real):      # dangling symlink de "var" sayılır (exists onu yok görüp sessizce ezerdi)
         return {"ok": False, "error": "exists"}
     try:
         os.rename(real, new_real)
@@ -250,7 +272,7 @@ def make_folder(s: Session, dir_path: Optional[str], folder_name: str) -> dict:
     oluşturuyor — TEK seviye (`os.mkdir`, `os.makedirs` DEĞİL: "burada bir
     klasör" niyeti, ara dizinleri kendiliğinden icat eden derin bir yol
     değil)."""
-    roots = roots_for_session(s)
+    roots = _writable_roots(s)
     if not roots:
         return {"ok": False, "error": "no_roots"}
     target_dir = dir_path or roots[0][1]
@@ -304,7 +326,7 @@ def write_text(s: Session, path: str, content: str) -> dict:
     (delete_path/rename_path'in `real` üzerinde çalışmasıyla aynı gerekçe) —
     `os.replace` ayrıca hedefte bir symlink olsa bile onun HEDEFİNE değil
     KENDİSİNE yazar, ekstra bir güvenlik katmanı."""
-    roots = roots_for_session(s)
+    roots = _writable_roots(s)
     real = _resolve_within_roots(path, roots)
     if real is None:
         return {"ok": False, "error": "forbidden"}
@@ -314,8 +336,11 @@ def write_text(s: Session, path: str, content: str) -> dict:
         return {"ok": False, "error": "too_large"}
     tmp = f"{real}.{os.getpid()}-{threading.get_ident()}.tmp"
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        mode = stat.S_IMODE(os.stat(real).st_mode)      # os.replace izinleri KAYNAKTAN alır: 0600/+x korunsun
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
+        os.chmod(tmp, mode)                              # umask açılışta biti kırpmış olabilir
         os.replace(tmp, real)
     except OSError as e:
         try:
