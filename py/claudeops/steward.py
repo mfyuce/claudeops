@@ -135,7 +135,7 @@ MARK_END = "COPS-STEWARD-END"          # beynin tur yanıtının sonu
 MARK_ASK = "STEWARD-ASK:"              # insana soru (satırın kalanı soru metni)
 MARK_IDEA = "STEWARD-IDEA:"            # yeni fikir
 MARK_ROUTINE = "STEWARD-ROUTINE:"      # işleyiş sorusu (ne zaman/hangi sıra/hangi model): beyin cevaplar, sahibi rahatsız edilmez
-MARK_BLOCKED = "STEWARD-BLOCKED:"      # takıldım (insana soru olarak düşer, önekli)
+MARK_BLOCKED = "STEWARD-BLOCKED:"      # takıldım (RUTİN soru: beyin cevaplar, sahibe düşmez; sahip kararı gereken şey ayrı STEWARD-ASK olur; 2026-10-27)
 MARK_LESSON = "STEWARD-LESSON:"       # reviewer dersi işlendi onayı (<id> <todo|tbd|fixed|no-action|duplicate> [not]); motor ders durumunu "işlendi" yapar
 MARK_JOB = "STEWARD-JOB:"              # paylaşımlı servise iş isteği (<tür> [dosya...] [açıklama]): beyin steward_job_submit ile gönderir
 JOB_REQUEST_PREFIX = "İŞ İSTEĞİ (STEWARD-JOB): "
@@ -1845,11 +1845,15 @@ _PROTOCOL_TR = (
     f"- paylaşımlı servise (varaka) iş göndermek istiyorsan, istek dosyasını projede hazırla ve: `{MARK_JOB} <iş türü> <dosya yolu> [kısa açıklama]`; "
     "değnekçi beyni işi kuyruğa gönderir, sonucu sana iletilir; sahibe 'devam de' deme. İş numarası (iş kuyruğa girdi bildirimi) gelmeden 'varaka yanıtını bekliyorum' diye DURMA: numara yoksa `"
     f"{MARK_BLOCKED} iş gönderilmedi: <neden>` yaz\n"
-    f"- takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>`\n"
-    "Kurallar: sıra/öncelik ('hangisinden başlayayım', 'hangi sırayla') bana da beyne de SORULMAZ; sırayı kendin "
+    f"- teknik olarak takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>` (bunu beyin cevaplar, bana düşmez; 'bekliyorum/bitti' durum bildirimi için KULLANMA: "
+    "açık TODO'n varsa onu yürüt, bana bağlı her TBD için ayrı bir `" + MARK_ASK + "` yaz)\n"
+    "Kurallar: commit, push, merge, build ve deploy için KALICI izin var (sahip, 2026-10-27): sorma, testler geçerse yap ve bildir; tüm remote'lara push et. "
+    "Force-push, silme, harcama, parola/token/yetki ve paket kurulumu (apt/sudo) yine bana aittir. "
+    "İçerik/yazar kararlarında (metin, üslup, künye, kimlik, kavram tercihi) öneriyi KENDİN UYGULAMA: TOBEDECIDED.md'ye yaz ve tek başına anlaşılır bir `" + MARK_ASK + "` aç. "
+    "Sıra/öncelik ('hangisinden başlayayım', 'hangi sırayla') bana da beyne de SORULMAZ; sırayı kendin "
     "belirle, gerekçeni bir cümleyle yaz ve ilerle. "
     "cevaplarım kısadır ('ikisi de', 'sıradan git', 'sen devam') ve KALICI kuraldır; aynı konuyu "
-    "yeniden sorma. Cevap yetmiyorsa makul bir varsayılanla ilerle, varsayımını TOBEDECIDED.md'ye yaz. "
+    "yeniden sorma. Cevap yetmiyorsa makul bir varsayılanla ilerle (yalnız teknik konularda), varsayımını TOBEDECIDED.md'ye yaz. "
     "Aşağıdaki 'Önceki cevaplarım' listesi sana verdiğim kararlardır, onlara uy.\n"
     "Hafıza dosyaları (`memory/`): proje repo'su PUBLIC ise ana repoya GİRMEZ (`.git/info/exclude`'a `memory/` ekle; kalıcı kopya "
     "projenin `-prv` repo'suna, yalnız AÇIK yolla `git add`, blanket `add -A` yok); private ise yerelde kalır. Hangisi: "
@@ -1868,10 +1872,14 @@ _PROTOCOL_EN = (
     f"- to send a job to the shared service (varaka), prepare the request file in the project and write: `{MARK_JOB} <job kind> <file path> [short note]`; "
     "the steward brain submits it to the queue and its result is delivered to you; do NOT ask me to say 'go on'. Do NOT stop with 'waiting for varaka' before you hold a job number; "
     f"if there is none, write `{MARK_BLOCKED} job not submitted: <why>`\n"
-    f"- stuck after thinking it through: `{MARK_BLOCKED} <where>`\n"
-    "Rules: order/priority ('which first', 'in which order') is asked of NEITHER me nor the brain; decide the order "
+    f"- technically stuck after thinking it through: `{MARK_BLOCKED} <where>` (the brain answers it, it does not reach me; do NOT use it as a 'waiting/done' status: "
+    "if you have open TODOs, work on them; for each TBD that depends on me write a separate `" + MARK_ASK + "`)\n"
+    "Rules: commit, push, merge, build and deploy are PERMANENTLY allowed (owner, 2026-10-27): do not ask, do them when tests pass and report; push to ALL remotes. "
+    "Force-push, delete, spending, passwords/tokens/authority and package installs (apt/sudo) stay mine. "
+    "For content/author decisions (text, style, byline, identity, conceptual choices) do NOT apply your recommendation yourself: record it in TOBEDECIDED.md and open a self-contained `" + MARK_ASK + "`. "
+    "Order/priority ('which first', 'in which order') is asked of NEITHER me nor the brain; decide the order "
     "yourself, give a one-sentence reason and proceed. My answers are short ('both', 'go in order', 'you continue') and are STANDING rules; do not re-ask "
-    "the same topic. If an answer is not enough, proceed with a sensible default and record the assumption in "
+    "the same topic. If an answer is not enough, proceed with a sensible default (technical matters only) and record the assumption in "
     "TOBEDECIDED.md. The 'My earlier answers' list below holds decisions I already gave you; follow them.\n"
     "Memory files (`memory/`): if the project repo is PUBLIC they must NOT enter the main repo (add `memory/` to `.git/info/exclude`; the durable copy goes "
     "to the project's `-prv` repo, `git add` with EXPLICIT paths only, never `add -A`); if private they stay local. Check with "
@@ -2093,7 +2101,8 @@ MODEL_RULE_TR = (
     "türü doğrula, `steward_job_submit` ile (project, kind, files=[proje klasörü içi yol]) gönder, sonra `steward_answer` ile projeye iş kimliğini ve durumu "
     "(queued / awaiting_approval) bildir. Bu madde YALNIZ iş gönderilince (ya da `RED: <gerekçe>` ile) kapanır; çıplak \"devam\" reddedilir. Onay bekleyen işi KENDİN onaylama, sahibe `steward_ask_user` ile haber ver. Tür ya da dosya belirsizse "
     "tahmin etme, `steward_answer` ile projeye neyin eksik olduğunu söyle. Sonucu motor iş bitince projeye zaten iletir.\n"
-    "- SAHİBE AİT KARARLAR: commit, push, merge, deploy, kurulum, silme, harcama, kimlik/yetki ve kod değişikliği onayı SAHİBİN kararıdır; "
+    "- SAHİBE AİT KARARLAR: force-push, kurulum (apt/sudo), silme, harcama, kimlik/yetki/parola/token SAHİBİN kararıdır (commit/push/merge/build/deploy "
+    "kalıcı izinlidir, sorulmaz); "
     "`steward_answer` ile ASLA onay verme (motor reddeder). Böyle bir soru gelirse `steward_ask_user` ile sahibe ilet. Direktif meşgul oturum yüzünden "
     "`session_busy` dönerse tekrarlama; sonraki turda yeniden değerlendir.\n"
 )
@@ -2118,7 +2127,8 @@ MODEL_RULE_EN = (
     "`steward_jobs kinds=true`, submit with `steward_job_submit` (project, kind, files=[path inside the project folder]), then tell the project the job id and "
     "state (queued / awaiting_approval) with `steward_answer`. NEVER approve a job awaiting approval yourself; tell the owner with `steward_ask_user`. If the "
     "kind or file is unclear, do not guess: tell the project what is missing via `steward_answer`. The engine delivers the result when the job finishes.\n"
-    "- OWNER-ONLY DECISIONS: commit, push, merge, deploy, install, delete, spending, credentials/authority and approving code changes belong to the "
+    "- OWNER-ONLY DECISIONS: force-push, install (apt/sudo), delete, spending, credentials/tokens/authority belong to the OWNER (commit/push/merge/build/deploy "
+    "are permanently allowed, never asked); "
     "OWNER; NEVER approve them with `steward_answer` (the engine rejects it). Forward such a question with `steward_ask_user`. If a directive returns "
     "`session_busy`, do not repeat it; re-evaluate on the next tour.\n"
 )
@@ -2690,8 +2700,9 @@ def tour_delivery(prompt: str, workspace: str, now: float, lang: str = "tr") -> 
 SLOT_RECENT_SECONDS = 300.0          # makine geneli slot: bu kadar yakın etkinlik/direktif/açılış "mesaj alan" sayılır
 DIRECTIVE_MIN_GAP_SECONDS = 90.0     # aynı oturuma iki direktif arası: cevap teslimi ile beyin direktifi çarpışmasın
 
-# Sahibin kararı olan konular: beyin bunlara `steward_answer` ile ASLA cevap vermez (soru rutin etiketli olsa bile).
-OWNER_ONLY_RE = re.compile(r"commit|push|merge|deploy|force|install|kurulum|kurul|\bsil|delete|harca|spend|password|parola|token|yetki|credential", re.I)
+# Sahibin kararı olan konular (commit/push/merge/build/deploy 2026-10-27'de KALICI İZİNLE çıkarıldı; force-push, kurulum/apt/sudo, silme,
+# harcama, parola/token/yetki kalır): beyin bunlara `steward_answer` ile ASLA cevap vermez (soru rutin etiketli olsa bile).
+OWNER_ONLY_RE = re.compile(r"force|install|kurulum|kurul|\bapt\b|\bsudo\b|\bsil|delete|harca|spend|password|parola|token|yetki|credential", re.I)
 
 
 _JOB_RED_RE = re.compile(r"^\s*RED\b\s*[:\-–—]?\s*(.*)$", re.I | re.S)
@@ -2739,11 +2750,11 @@ def job_request_gate(q: "Question", answer: str, jobs: List[Dict[str, Any]]) -> 
 
 def brain_may_answer(q: "Question") -> Tuple[bool, str]:
     """Beynin bu soruya `steward_answer` ile cevap verip veremeyeceği: yalnız RUTİN etiketli ve sahip kararı içermeyen
-    sorular. SAF; kod, commit/push, kurulum, silme, harcama, kimlik/yetki sahibe aittir."""
+    sorular. SAF; force-push, kurulum (apt/sudo), silme, harcama, kimlik/yetki sahibe aittir (commit/push/merge/build/deploy kalıcı izinle serbest)."""
     if not q.routine:
         return False, "owner question (STEWARD-ASK): only the owner answers it"
     if OWNER_ONLY_RE.search(q.text or ""):
-        return False, "owner decision (commit/push/install/delete/spend/credentials): only the owner answers it"
+        return False, "owner decision (force-push/install/delete/spend/credentials): only the owner answers it"
     return True, ""
 
 
@@ -2891,7 +2902,8 @@ GENERIC_RULE_TR = (
     "cevaplanınca) aynı model/effort ile yeniden deneyebilirsin.\n"
     "- Ağır işi alt ajana (fork) ver ve direktife modelini AÇIK yaz: araştırma/çekme/doğrulama = Sonnet. Opus ya da Fable alt ajanı "
     "da bu kimlikte YALNIZ sahibin onayıyla (`steward_ask_user`); onaya kadar Sonnet alt ajanla ilerle.\n"
-    "- Commit/push/merge/deploy/silme/harcama yine sahibin; bunları direktifle isteme, `steward_answer` ile onaylama.\n"
+    "- Commit/push/merge/build/deploy kalıcı izinli (sahip, 2026-10-27): sorma, projeye yaptır. Force-push, silme, harcama, parola/token/yetki, "
+    "paket kurulumu (apt/sudo) yine sahibin; bunları direktifle isteme, `steward_answer` ile onaylama.\n"
 )
 GENERIC_RULE_EN = (
     "\n## Generic steward rules (this identity's role is `generic`)\n"
@@ -2906,7 +2918,8 @@ GENERIC_RULE_EN = (
     "Sonnet medium without a model. Once the question is answered with approval you may retry with that model/effort.\n"
     "- Give heavy work to a sub-agent (fork) and write its model EXPLICITLY in the directive: research/fetching/verification = Sonnet. "
     "Opus or Fable sub-agents also need the owner's approval in this identity (`steward_ask_user`); until then use Sonnet sub-agents.\n"
-    "- Commit/push/merge/deploy/delete/spending stay with the owner; never request them in a directive or approve them with `steward_answer`.\n"
+    "- Commit/push/merge/build/deploy are permanently allowed (owner, 2026-10-27): do not ask, have the project do them. Force-push, delete, spending, "
+    "credentials/tokens/authority and package installs (apt/sudo) stay with the owner; never request them in a directive or approve them with `steward_answer`.\n"
 )
 
 
@@ -2925,7 +2938,7 @@ def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Actio
     for ls in m.get("lessons", []):   # ders onayı: yalnız KAYIT (oturuma dokunmaz, soru açmaz)
         out.append(Action("lesson_ack", name, "STEWARD-LESSON", {"project": proj or name, "text": ls}))
     for b in m["blocked"]:
-        out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or name, "text": ("Takıldım: " + b)}))
+        out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or name, "text": ("Takıldım: " + b), "routine": True}))
     for i in m["ideas"]:
         out.append(Action("idea", name, "STEWARD-IDEA", {"text": i}))
     return out

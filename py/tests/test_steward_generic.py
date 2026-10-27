@@ -119,7 +119,7 @@ class TestBrainMd(unittest.TestCase):
 
 
 class TestBacklog(unittest.TestCase):
-    TODO = ("# TODO\n- [ ] testleri hızlandır\n- [x] eski iş\n- ~~iptal~~\n* yeni sürümü push et\n"
+    TODO = ("# TODO\n- [ ] testleri hızlandır\n- [x] eski iş\n- ~~iptal~~\n* yeni sürümü force-push et\n"
             "1. README örneğini düzelt\nserbest paragraf satırı\n")
     TBD = ("# TBD\n- TBD#3 cache stratejisi? A/B\n- TBD#4 log biçimi. Karar: JSON satırı\n"
            "- TBD#5 eski dalı sil. Karar: evet\n")
@@ -127,7 +127,7 @@ class TestBacklog(unittest.TestCase):
     def test_classification(self):
         bl = sw.generic_backlog(self.TODO, self.TBD, {"open_tbds": ["TBD#9 lisans seçimi"]})
         self.assertEqual(bl["auto"], ["testleri hızlandır", "README örneğini düzelt", "TBD#4 log biçimi. Karar: JSON satırı"])
-        self.assertEqual(bl["decide"], ["yeni sürümü push et", "TBD#3 cache stratejisi? A/B",
+        self.assertEqual(bl["decide"], ["yeni sürümü force-push et", "TBD#3 cache stratejisi? A/B",
                                         "TBD#5 eski dalı sil. Karar: evet", "TBD#9 lisans seçimi"])
 
     def test_empty_and_dedup_and_cap(self):
@@ -267,7 +267,7 @@ class TestTourBacklog(_Generic):
         proj = os.path.join(self.dir.name, "proj")
         os.makedirs(proj, exist_ok=True)
         with open(os.path.join(proj, "TODO.md"), "w", encoding="utf-8") as f:
-            f.write("- otonom iş\n- push et\n")
+            f.write("- otonom iş\n- force-push et\n")
         with open(os.path.join(proj, "TOBEDECIDED.md"), "w", encoding="utf-8") as f:
             f.write("- TBD#1 hangi kütüphane?\n")
         sent = []
@@ -285,7 +285,7 @@ class TestTourBacklog(_Generic):
     def test_generic_tour_item_has_backlog(self):
         msg = self._tour("gen")
         self.assertIn("otonom ilerletilebilir (sahibin cevabı gerekmez): otonom iş", msg)
-        self.assertIn("push et", msg.split("karar gerekir", 1)[1])
+        self.assertIn("force-push et", msg.split("karar gerekir", 1)[1])
         self.assertIn("TBD#1 hangi kütüphane?", msg)
 
     def test_plain_steward_tour_is_unchanged(self):

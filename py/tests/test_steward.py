@@ -2546,10 +2546,29 @@ class BrainAuthorityAndDeferTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("owner", why)
 
-    def test_routine_with_commit_push_is_owner_only(self):
-        for t in ("E4/E5 için commit + push yapayım mı?", "install-ucli.sh çalıştırayım mı?", "dosyayı sileyim mi? delete"):
+    def test_routine_owner_only_topics(self):
+        # sahipte KALAN: force-push, kurulum (apt/sudo/install), silme, harcama, parola/token/yetki
+        for t in ("main'e force-push yapayım mı?", "install-ucli.sh çalıştırayım mı?", "sudo apt install tmux yapayım mı?",
+                  "dosyayı sileyim mi? delete", "100 dolar harcayayım mı?", "parolayı döndüreyim mi?", "token yenileyeyim mi?"):
             q = sw.Question(id="q2", project="cli", text=t, created_at=0.0, routine=True)
             self.assertFalse(sw.brain_may_answer(q)[0], t)
+
+    def test_commit_push_merge_build_deploy_are_not_owner_only(self):
+        # sahip kararı 2026-10-27 (kalıcı izin): commit/push/merge/build/deploy sorulmaz; rutin ise beyin cevaplar
+        for t in ("E4/E5 için commit + push yapayım mı?", "ff-only merge edip iki remote'a push edeyim mi?",
+                  "dist build edip deploy edeyim mi?"):
+            q = sw.Question(id="q2", project="cli", text=t, created_at=0.0, routine=True)
+            self.assertEqual(sw.brain_may_answer(q), (True, ""), t)
+
+    def test_blocked_marker_goes_to_brain_not_owner(self):
+        acts = sw.marker_record_actions("s", "p", {"asks": [], "routines": [], "blocked": ["PDF yok"], "ideas": []})
+        self.assertEqual(len(acts), 1)
+        self.assertTrue(acts[0].payload.get("routine"), "genel 'Takıldım' bildirimi sahibe soru olarak düşmemeli")
+
+    def test_rules_text_no_longer_reserves_commit_push_for_owner(self):
+        for txt in (sw.GENERIC_RULE_TR, sw.GENERIC_RULE_EN, sw.MODEL_RULE_TR, sw.MODEL_RULE_EN):
+            self.assertNotIn("commit, push, merge, deploy", txt.lower().replace("commit/push/merge/deploy", "commit, push, merge, deploy"))
+            self.assertNotIn("Commit/push/merge/deploy", txt)
 
     def test_plain_routine_is_answerable(self):
         q = sw.Question(id="q3", project="cli", text="Hangi modelle, sırayla mı ayrı ajanla mı?", created_at=0.0, routine=True)

@@ -52,6 +52,7 @@
     "STEWARD-BLOCKED",
     {
      "project": "a",
+     "routine": true,
      "text": "Takıldım: PDF yok"
     }
    ],
@@ -479,6 +480,7 @@
     "STEWARD-BLOCKED",
     {
      "project": "a",
+     "routine": true,
      "text": "Takıldım: PDF yok"
     }
    ],
@@ -869,6 +871,7 @@
     "STEWARD-BLOCKED",
     {
      "project": "a",
+     "routine": true,
      "text": "Takıldım: PDF yok"
     }
    ],
