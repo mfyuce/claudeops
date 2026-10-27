@@ -76,6 +76,9 @@ const BOX_STYLE: React.CSSProperties = {
 };
 
 export function FilesView({ name, host, onView }: FilesViewProps) {
+  // VS Code opens on the machine running the server; for a remote host that
+  // is not the user's own machine, so the button is hidden there.
+  const canOpenVscode = !host || host === "local";
   const { t, lang } = useLang();
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [state, setState] = useState<FilesState>({ kind: "loading" });
@@ -216,14 +219,14 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
           {path}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: ".5rem", flexWrap: "wrap" }}>
-          <button
+          {canOpenVscode && <button
             type="button"
             title={t.filesOpenVscodeHint}
             style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
             onClick={() => void callAction(() => apiVscodeOpen(name, lang, path, host), "vscode", t)}
           >
             {t.filesOpenVscode}
-          </button>
+          </button>}
           <button
             type="button"
             style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
@@ -288,7 +291,7 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
                        downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
                        deleteLabel={t.filesDelete} renameLabel={t.filesRename}
                        onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
-                       onOpenVscode={() => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name), host), "vscode", t)}
+                       onOpenVscode={canOpenVscode ? () => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name), host), "vscode", t) : null}
                        onDelete={() => void handleDelete(e)} onRename={() => void handleRename(e)} />
             ))}
           </div>
@@ -314,7 +317,7 @@ function FileRow({
   deleteLabel: string;
   renameLabel: string;
   onView: (() => void) | null;
-  onOpenVscode: () => void;
+  onOpenVscode: (() => void) | null;
   onDelete: () => void;
   onRename: () => void;
 }) {
@@ -368,9 +371,11 @@ function FileRow({
           👁
         </button>
       )}
-      <button type="button" title={vscodeLabel} style={{ whiteSpace: "nowrap" }} onClick={onOpenVscode}>
-        {"</>"}
-      </button>
+      {onOpenVscode && (
+        <button type="button" title={vscodeLabel} style={{ whiteSpace: "nowrap" }} onClick={onOpenVscode}>
+          {"</>"}
+        </button>
+      )}
       <a href={downloadUrl} download={entry.name} style={{ whiteSpace: "nowrap" }}>
         {downloadLabel}
       </a>
