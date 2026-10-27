@@ -1850,6 +1850,9 @@ _PROTOCOL_TR = (
     "cevaplarım kısadır ('ikisi de', 'sıradan git', 'sen devam') ve KALICI kuraldır; aynı konuyu "
     "yeniden sorma. Cevap yetmiyorsa makul bir varsayılanla ilerle, varsayımını TOBEDECIDED.md'ye yaz. "
     "Aşağıdaki 'Önceki cevaplarım' listesi sana verdiğim kararlardır, onlara uy.\n"
+    "Hafıza dosyaları (`memory/`): proje repo'su PUBLIC ise ana repoya GİRMEZ (`.git/info/exclude`'a `memory/` ekle; kalıcı kopya "
+    "projenin `-prv` repo'suna, yalnız AÇIK yolla `git add`, blanket `add -A` yok); private ise yerelde kalır. Hangisi: "
+    "`gh repo view --json visibility` / `glab repo view`. `-prv` yoksa kendin kurma, `" + MARK_ASK + "` ile sor.\n"
 )
 
 _PROTOCOL_EN = (
@@ -1869,6 +1872,9 @@ _PROTOCOL_EN = (
     "yourself, give a one-sentence reason and proceed. My answers are short ('both', 'go in order', 'you continue') and are STANDING rules; do not re-ask "
     "the same topic. If an answer is not enough, proceed with a sensible default and record the assumption in "
     "TOBEDECIDED.md. The 'My earlier answers' list below holds decisions I already gave you; follow them.\n"
+    "Memory files (`memory/`): if the project repo is PUBLIC they must NOT enter the main repo (add `memory/` to `.git/info/exclude`; the durable copy goes "
+    "to the project's `-prv` repo, `git add` with EXPLICIT paths only, never `add -A`); if private they stay local. Check with "
+    "`gh repo view --json visibility` / `glab repo view`. If no `-prv` exists do not create it yourself, ask via `" + MARK_ASK + "`.\n"
 )
 
 

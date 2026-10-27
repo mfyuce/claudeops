@@ -326,6 +326,24 @@ class CopilotProvider(CliProvider):
             return []
         return [(u or "", a or "") for u, a in rows]
 
+    def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
+        """`assistant_usage_events`te oturumun ANA ajanının (`agent_id IS NULL`; alt ajanlar sayılmaz) son isteğinin
+        `input_tokens`ı (cache okuma DAHİL, canlı örnekte `cache_read_tokens` onun alt kümesi). Yok/DB yok = None."""
+        session_id = sid or self.resolve_resume_id(cwd)
+        if not session_id:
+            return None
+        try:
+            conn = _connect_ro()
+            try:
+                row = conn.execute(
+                    "SELECT input_tokens FROM assistant_usage_events WHERE session_id = ? AND agent_id IS NULL "
+                    "ORDER BY created_at DESC, turn_index DESC LIMIT 1", (session_id,)).fetchone()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            return None
+        return int(row[0]) if row and row[0] else None
+
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         # claude/agy/codex'le AYNI "her zaman dict, None değil" sözleşmesi — None
         # SADECE base.py'nin "desteklenmiyor" varsayılanında kalsın diye.

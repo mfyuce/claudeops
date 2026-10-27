@@ -514,6 +514,13 @@ class CliProvider(ABC):
         kullanacağını belirsizleştirirdi."""
         return None
 
+    def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
+        """Oturumun GÜNCEL bağlam boyutu: son model isteğine giden toplam girdi token'ı (cache okuma/yazma DAHİL,
+        ayrıca eklenmez). `web.py`nin `_context_info_cached`ı bunu `ctx NNNK` rozetine koyar. None (VARSAYILAN) =
+        bilinmiyor/okunamadı (dosya yok, olay yok, sağlayıcı bu alanı yazmıyor): rozet gösterilmez, "0" ile KARIŞTIRMAZ.
+        Claude'un kendi okuyucusu `web_steward.context_tokens_for`dur; bu kanca tmux-pane CLI'lar içindir."""
+        return None
+
     def live_usage(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, int]]:
         """CLI'nin KENDİ yapılandırılmış sayacı varsa (ör. ucli'nin `--status-file`ındaki `usage`)
         süreç boyunca biriken token/istek toplamları; `web.py`nin `_live_usage`ı bunu satırın

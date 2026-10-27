@@ -352,6 +352,33 @@ class CodexProvider(CliProvider):
             return []
         return out
 
+    def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
+        """Rollout dosyasının SONUNDAKİ (~256 KB) son `token_count` olayının `last_token_usage.input_tokens`ı: codex'te
+        `input_tokens` cache'lenen kısmı ZATEN içerir (`cached_input_tokens` alt kümesi), ayrıca eklenmez. Yok = None."""
+        path = self._rollout_path(cwd, sid)
+        if not path:
+            return None
+        try:
+            size = os.path.getsize(path)
+            with open(path, "rb") as f:
+                f.seek(max(0, size - 262144))
+                tail = f.read().decode("utf-8", "replace")
+        except OSError:
+            return None
+        for raw in reversed(tail.splitlines()):
+            if '"token_count"' not in raw:
+                continue
+            try:
+                o = json.loads(raw)
+            except ValueError:
+                continue
+            p = o.get("payload") if isinstance(o, dict) else None
+            info = p.get("info") if isinstance(p, dict) and p.get("type") == "token_count" else None
+            last = info.get("last_token_usage") if isinstance(info, dict) else None
+            if isinstance(last, dict) and isinstance(last.get("input_tokens"), int):
+                return last["input_tokens"] or None
+        return None
+
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         # claude_provider.py'nin last_exchange'iyle AYNI "her zaman dict, None değil"
         # sözleşmesi — None base.py'nin "desteklenmiyor" varsayılanında kalsın diye.

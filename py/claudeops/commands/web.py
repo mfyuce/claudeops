@@ -1321,10 +1321,10 @@ _CTXINFO_CACHE: dict = {}  # (name, pid) -> (expires_monotonic, tokens | None, w
 
 
 def _context_info_cached(s) -> Optional[Dict[str, int]]:
-    """Çalışan claude oturumunun bağlam boyutu: {"tokens": son asistan turunun girdi+cache token'ı, "warn": değnekçinin
-    handover eşiği (`steward.context_warn_tokens`, 0 = kapalı)} ya da None (claude değil / transkript yok / henüz tur
-    yok: UI rozet göstermez). YALNIZ izleme; sonuç 20 sn önbellekli. Asla fırlatmaz."""
-    if s.cli != "claude":
+    """Çalışan oturumun bağlam boyutu: {"tokens": son turun girdi+cache token'ı (claude: transkript; diğerleri:
+    `CliProvider.live_context`), "warn": değnekçinin handover eşiği (`steward.context_warn_tokens`, 0 = kapalı)} ya da
+    None (shell / kaynak yok / henüz tur yok: UI rozet göstermez, "0" DEĞİL). YALNIZ izleme; sonuç 20 sn önbellekli. Asla fırlatmaz."""
+    if s.cli == "shell":
         return None
     now = time.monotonic()
     key = (s.name, s.pid)
@@ -1332,7 +1332,10 @@ def _context_info_cached(s) -> Optional[Dict[str, int]]:
     if not hit or hit[0] <= now:
         tokens, warn = None, 0
         try:
-            tokens = web_steward.context_tokens_for(s.cwd, s.sid)
+            if s.cli == "claude":
+                tokens = web_steward.context_tokens_for(s.cwd, s.sid)
+            else:      # tmux-pane CLI'lar (codex/copilot; agy/ucli bilinmiyor = None): sağlayıcının kendi kancası
+                tokens = get_provider(s.cli).live_context(s.cwd, s.sid)
             from ..settings import steward_config
             from ..steward import context_threshold
             warn = int(context_threshold(steward_config(), s.model or "") or 0)
