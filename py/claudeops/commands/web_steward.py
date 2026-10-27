@@ -2482,8 +2482,12 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "close_stale_answer":      # bayat blokaj kaydı: teslim edilecek proje yok, tekrar tura düşmesin
-        sw.mark_delivered(str(action.payload.get("question_id") or ""), paths)
-        sw.log_event("stale_answer_closed", paths=paths, id=action.payload.get("question_id"), project=action.name)
+        why = str(action.payload.get("reason") or "")
+        if why:     # neden kayıtlı kalsın: 'iletildi' görünmesin
+            sw.mark_undeliverable(str(action.payload.get("question_id") or ""), why, paths)
+        else:
+            sw.mark_delivered(str(action.payload.get("question_id") or ""), paths)
+        sw.log_event("stale_answer_closed", paths=paths, id=action.payload.get("question_id"), project=action.name, **({"reason": why} if why else {}))
         return {"ok": True}
     if k == "escalate_routine":
         q = sw.escalate_routine(action.payload.get("question_id") or "", paths)

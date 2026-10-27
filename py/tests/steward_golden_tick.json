@@ -149,6 +149,11 @@
    ]
   ],
   "state": {
+   "blocked_tours": {
+    "q2": 1,
+    "q5": 1,
+    "q6": 1
+   },
    "ho_pending": {
     "ncs20261019": 1760000000.0,
     "wifi5gppr20261019": 1760000000.0,
@@ -281,6 +286,11 @@
    ]
   ],
   "state": {
+   "blocked_tours": {
+    "q2": 2,
+    "q5": 2,
+    "q6": 2
+   },
    "ho_pending": {
     "zlkrn": 1760000000.0
    },
@@ -356,9 +366,36 @@
     }
    ],
    [
+    "close_stale_answer",
+    "egyptian20260917",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q2",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
+    "close_stale_answer",
+    "-",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q5",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
+    "close_stale_answer",
+    "yok",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q6",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
     "tour",
     "degnekci",
-    "5 madde",
+    "2 madde",
     {
      "items": [
       {
@@ -372,24 +409,6 @@
        "kind": "routine",
        "name": "a",
        "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
-      },
-      {
-       "id": "q2",
-       "kind": "blocked",
-       "name": "egyptian20260917",
-       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
-      },
-      {
-       "id": "q5",
-       "kind": "blocked",
-       "name": "-",
-       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
-      },
-      {
-       "id": "q6",
-       "kind": "blocked",
-       "name": "yok",
-       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
       }
      ]
     }
@@ -406,7 +425,7 @@
    },
    "last_tick": 1760002400.0,
    "last_tour": 1760002400.0,
-   "pending_items": 5,
+   "pending_items": 2,
    "reviewed_at": {},
    "seen_assistant": {
     "a": "44ff252c30dc83af",
@@ -570,6 +589,11 @@
    ]
   ],
   "state": {
+   "blocked_tours": {
+    "q2": 1,
+    "q5": 1,
+    "q6": 1
+   },
    "ho_pending": {
     "ncs20261019": 1760000000.0,
     "wifi5gppr20261019": 1760000000.0,
@@ -692,6 +716,11 @@
    ]
   ],
   "state": {
+   "blocked_tours": {
+    "q2": 2,
+    "q5": 2,
+    "q6": 2
+   },
    "ho_pending": {
     "zlkrn": 1760000000.0
    },
@@ -759,9 +788,36 @@
     }
    ],
    [
+    "close_stale_answer",
+    "egyptian20260917",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q2",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
+    "close_stale_answer",
+    "-",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q5",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
+    "close_stale_answer",
+    "yok",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q6",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
     "tour",
     "degnekci",
-    "5 madde",
+    "2 madde",
     {
      "items": [
       {
@@ -775,24 +831,6 @@
        "kind": "routine",
        "name": "a",
        "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
-      },
-      {
-       "id": "q2",
-       "kind": "blocked",
-       "name": "egyptian20260917",
-       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
-      },
-      {
-       "id": "q5",
-       "kind": "blocked",
-       "name": "-",
-       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
-      },
-      {
-       "id": "q6",
-       "kind": "blocked",
-       "name": "yok",
-       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
       }
      ]
     }
@@ -808,7 +846,7 @@
    },
    "last_tick": 1760002400.0,
    "last_tour": 1760002400.0,
-   "pending_items": 5,
+   "pending_items": 2,
    "reviewed_at": {},
    "seen_assistant": {
     "a": "44ff252c30dc83af",
@@ -988,6 +1026,11 @@
    ]
   ],
   "state": {
+   "blocked_tours": {
+    "q2": 1,
+    "q5": 1,
+    "q6": 1
+   },
    "ho_pending": {
     "wifi5gppr20261019": 1760000000.0
    },
@@ -1132,6 +1175,11 @@
    ]
   ],
   "state": {
+   "blocked_tours": {
+    "q2": 2,
+    "q5": 2,
+    "q6": 2
+   },
    "ho_pending": {},
    "last_directive_at": {
     "egyptian20260917": 1760001200.0,
@@ -1224,9 +1272,36 @@
     }
    ],
    [
+    "close_stale_answer",
+    "egyptian20260917",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q2",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
+    "close_stale_answer",
+    "-",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q5",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
+    "close_stale_answer",
+    "yok",
+    "beyin 2 turda çözemedi",
+    {
+     "question_id": "q6",
+     "reason": "beyin 2 turda iletemedi/çözemedi (proje ya da oturum yok)"
+    }
+   ],
+   [
     "tour",
     "degnekci",
-    "5 madde",
+    "2 madde",
     {
      "items": [
       {
@@ -1240,24 +1315,6 @@
        "kind": "routine",
        "name": "a",
        "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
-      },
-      {
-       "id": "q2",
-       "kind": "blocked",
-       "name": "egyptian20260917",
-       "text": "Cevaplanan soru [q2]: eg?\nCevap: A"
-      },
-      {
-       "id": "q5",
-       "kind": "blocked",
-       "name": "-",
-       "text": "Cevaplanan soru [q5]: genel\nCevap: C"
-      },
-      {
-       "id": "q6",
-       "kind": "blocked",
-       "name": "yok",
-       "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
       }
      ]
     }
@@ -1275,7 +1332,7 @@
    },
    "last_tick": 1760002400.0,
    "last_tour": 1760002400.0,
-   "pending_items": 5,
+   "pending_items": 2,
    "reviewed_at": {
     "zlkrn": 1760000000.0
    },

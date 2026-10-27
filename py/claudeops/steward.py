@@ -2249,6 +2249,7 @@ def phase_model_effort(project: Project, cfg: Config) -> Tuple[str, str]:
 
 SKIP_QUIET_SECONDS = 6 * 3600.0       # beynin `skip` ettiği, durumu DEĞİŞMEYEN idle/review maddesi bu süre tura girmez (TBD#122)
 STALE_ANSWER_SECONDS = 6 * 3600.0     # kayıtlı projeye bağlı olmayan, bu kadar eski teslim edilmemiş cevap "bayat blokaj" sayılır, kapanır
+BLOCKED_MAX_TOURS = 2                 # iletilemeyen cevap (`blocked`) bu kadar turda beyne gösterilir, çözülmediyse sebep yazılarak kapanır
 
 
 def item_signature(v: "SessionView", projects: Dict[str, "Project"], questions: List["Question"]) -> str:
@@ -3265,7 +3266,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if target not in projects:
             # Kayıtlı proje olmayan (ad hoc) oturumun sorusu: cevap, soruyu açan oturum hâlâ çalışıyorsa ona gider
             # (eskiden sessizce iletilmiyordu: sahibi cevap yazıyor, oturum hiç görmüyordu); çalışmıyorsa beklemez, atlanır.
-            v = next((x for x in views if x.running and x.name == q.source and x.name != cfg.brain_name
+            # Soruyu beyin açtıysa (`source=brain`, `project` = tarihli oturum adı `hof20261026`) alıcı adı `q.project` olan oturumdur.
+            v = next((x for x in views if x.running and x.name in (q.source, q.project) and x.name != cfg.brain_name
                       and (world is None or world.session_class(x.name, x.blueprint) == "own"
                            or (world.is_adhoc_owner and world.session_class(x.name, x.blueprint) == "adhoc"))), None)
             if v is not None and v.name not in busy_names and not v.busy:
@@ -3379,15 +3381,26 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                          world=world, skip_seen=skip_seen, sigs_out=sigs, open_work=open_work)
     for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running}):      # bayat blokaj kaydı: kapat (her tick beyne düşmesin)
         actions.append(Action("close_stale_answer", q.project, "bayat blokaj kaydı", {"question_id": q.id}))
+    # `blocked` maddesinin beynin yapabileceği bir şeyi yok (iletim aracı yok, `skip` kalıcı değil): aynı madde art arda
+    # BLOCKED_MAX_TOURS turda çözülmediyse kapat (2026-10-27: 3 takılı kayıt ~80 aynı tur, ilerlet'te 188 tur yaktı).
+    blocked_tours = {str(k): int(n) for k, n in dict(st.get("blocked_tours") or {}).items()}
+    for it in [it for it in items if it.get("kind") == "blocked" and blocked_tours.get(str(it.get("id")), 0) >= BLOCKED_MAX_TOURS]:
+        items.remove(it)
+        actions.append(Action("close_stale_answer", it.get("name") or "-", f"beyin {BLOCKED_MAX_TOURS} turda çözemedi",
+                              {"question_id": it.get("id"), "reason": f"beyin {BLOCKED_MAX_TOURS} turda iletemedi/çözemedi (proje ya da oturum yok)"}))
     last_tour = float(st.get("last_tour") or 0.0)
     brain = by_name.get(cfg.brain_name)
     tour_gap = (cfg.tour_retry_minutes if st.get("tour_deferred") else cfg.tour_minutes) * 60
-    if any(it.get("kind") in ("routine", "blocked") for it in items):
-        tour_gap = min(tour_gap, 60)      # acil madde (işleyiş sorusu/iletilemeyen cevap): tur aralığını beklemeden bir sonraki tick'te
+    if any(it.get("kind") == "routine" or (it.get("kind") == "blocked" and not blocked_tours.get(str(it.get("id"))))
+           for it in items):
+        tour_gap = min(tour_gap, 60)      # YENİ acil madde (işleyiş sorusu/iletilemeyen cevap): tur aralığını beklemeden bir sonraki tick'te
     if items and (now - last_tour) >= tour_gap and brain is not None and brain.running and brain.busy is False:
         items = items[:TOUR_MAX_ITEMS]
         st.pop("tour_deferred", None)
         actions.append(Action("tour", cfg.brain_name, f"{len(items)} madde", {"items": items}))
+        for it in items:
+            if it.get("kind") == "blocked":
+                blocked_tours[str(it.get("id"))] = blocked_tours.get(str(it.get("id")), 0) + 1
         st["last_tour"] = now
         st["tour_sig"] = {str(it.get("name")): sigs[it["name"]] for it in items if it.get("name") in sigs}   # `skip` bunu kaydeder
         for it in items:
@@ -3397,6 +3410,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         st["skip_seen"] = skip_seen
     else:
         st.pop("skip_seen", None)
+    blocked_now = {str(it.get("id")) for it in items if it.get("kind") == "blocked"}
+    blocked_tours = {k: n for k, n in blocked_tours.items() if k in blocked_now}      # çözülen/kapanan madde sayacı düşer
+    if blocked_tours:
+        st["blocked_tours"] = blocked_tours
+    else:
+        st.pop("blocked_tours", None)
     st["pending_items"] = len(items)
     st["pending_list"] = [{"kind": str(it.get("kind") or ""), "name": str(it.get("name") or ""),
                            "text": str(it.get("text") or "")[:300]} for it in items[:20]]

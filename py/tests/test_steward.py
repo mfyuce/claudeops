@@ -866,6 +866,39 @@ class TourQuietTest(unittest.TestCase):
         acts, _ = sw.plan_tick([live], projects, {}, _cfg(), now, [q], [])
         self.assertFalse(any(a.kind == "close_stale_answer" for a in acts))                                         # soran canlı: iletilebilir
 
+    def test_brain_question_answer_goes_to_live_session_named_by_project(self):
+        # 2026-10-27: beyin `hof20261026` (tarihli oturum adı) için sordu (source=brain); cevap hiç iletilmeyip her turda 'blocked' oldu
+        projects = {"hof": sw.Project(name="hof", phase="planned")}
+        now = 1_000_000.0
+        q = sw.Question(id="q1", project="hof20261026", text="?", created_at=now - 100, status="answered", answer="evet",
+                        answered_at=now - 50, source="brain")
+        live = _view("hof20261026", busy=False)
+        acts, _ = sw.plan_tick([live], projects, {}, _cfg(), now, [q], [])
+        self.assertEqual([(a.kind, a.name) for a in acts if a.kind == "deliver_answer"], [("deliver_answer", "hof20261026")])
+
+    def test_blocked_item_closed_after_max_tours_not_urgent_again(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        now = 1_000_000.0
+        q = sw.Question(id="q1", project="", text="?", created_at=now - 100, status="answered", answer="a",
+                        answered_at=now - 50, source="brain")
+        brain = _view("degnekci", busy=False)
+        cfg = _cfg(brain_name="degnekci")
+        st: dict = {}
+        for n in range(sw.BLOCKED_MAX_TOURS):
+            acts, st = sw.plan_tick([brain], projects, st, cfg, now, [q], [])
+            self.assertEqual([a.kind for a in acts if a.kind == "tour"], ["tour"])        # her tur madde gösterilir
+            self.assertEqual(st["blocked_tours"]["q1"], n + 1)
+            if n == 0:
+                acts, st = sw.plan_tick([brain], projects, st, cfg, now + 61, [q], [])
+                self.assertFalse(any(a.kind == "tour" for a in acts))                       # YALNIZ ilk görünüş 60 sn acildir
+            now += cfg.tour_minutes * 60 + 1
+        acts, st = sw.plan_tick([brain], projects, st, cfg, now, [q], [])
+        self.assertFalse(any(a.kind == "tour" for a in acts))                               # artık tur yok
+        closes = [a for a in acts if a.kind == "close_stale_answer"]
+        self.assertEqual([a.payload["question_id"] for a in closes], ["q1"])
+        self.assertTrue(closes[0].payload["reason"])
+        self.assertNotIn("blocked_tours", st)
+
 
 class IdleSkipTest(unittest.TestCase):
     def test_no_idle_item_for_waiting_or_done_projects(self):
