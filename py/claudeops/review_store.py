@@ -117,7 +117,9 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
     would: List[str] = []
     held: List[str] = []
     rdir = os.path.join(rroot, "reviews")
-    for dirpath, _d, files in os.walk(rdir):
+    for dirpath, dirs, files in os.walk(rdir):
+        # tarayıcıdan "farklı kaydet" web sayfası yan dosyaları (`<ad>_files/`) saklanmaz; yalnız ana .html/.md kalır (sahip, TBD A, 2026-10-28)
+        dirs[:] = [d for d in dirs if not d.endswith("_files")]
         for name in sorted(files):
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, rroot).replace(os.sep, "/")

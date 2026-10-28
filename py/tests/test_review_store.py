@@ -96,6 +96,15 @@ class CommitTest(unittest.TestCase):
         self.assertEqual([h.split("/")[-1] for h in r["held"]], ["20261024100001.md"])        # gizli değer dışarıda
         self.assertEqual(git("-C", self.remotes[0], "branch", "-a").strip(), "")               # hiçbir şey itilmedi
 
+    def test_saved_page_files_dirs_are_skipped(self):
+        side = os.path.join(self.main, "reviews", "p", "agy", "Sayfa_files")
+        os.makedirs(side)
+        with open(os.path.join(side, "lazy.min.js"), "w") as f:
+            f.write("var x=1;\n")
+        r = rs.commit_reviews(self.main, self.gd, scan, dry=True)
+        self.assertEqual(len(r["would"]), 2)
+        self.assertFalse(any("_files" in w for w in r["would"] + r["held"]))
+
     def test_act_commits_only_reviews_to_prv_and_pushes_both(self):
         main_head = git("-C", self.main, "rev-parse", "HEAD").strip()
         with open(os.path.join(self.main, "a.txt"), "a") as f:
