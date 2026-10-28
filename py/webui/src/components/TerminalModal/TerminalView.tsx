@@ -776,16 +776,17 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     // Ctrl-armed: a lone a-z/A-Z keystroke becomes its Ctrl+letter control
     // byte (x -> 0x18, etc.) before it's queued — tmux_send_raw()/
     // `send-keys -l` forwards that byte to the pane untouched, same as a
-    // real Ctrl+X on a physical keyboard. Only a SINGLE-character chunk is
-    // converted; a longer chunk (an arrow key's escape sequence, a paste,
-    // IME input) passes through as-is so arming Ctrl can never mangle
-    // anything wider than one keystroke. `ctrlArmed` itself is read
+    // real Ctrl+X on a physical keyboard. Only a chunk made purely of letters
+    // is converted (mobile keyboards often deliver several letters per
+    // onData call); anything else (an arrow key's escape sequence, a paste
+    // with spaces/digits) passes through as-is so arming Ctrl can never
+    // mangle it. `ctrlArmed` itself is read
     // directly (not via a ref) because this closure is re-pointed onto
     // `queueRawRef` after every render (see the effect below), so it
     // always sees the latest value already.
     const toSend =
-      ctrlArmed && data.length === 1 && /[a-zA-Z]/.test(data)
-        ? String.fromCharCode(data.toUpperCase().charCodeAt(0) - 64)
+      ctrlArmed && /^[a-zA-Z]+$/.test(data)
+        ? Array.from(data, (c) => String.fromCharCode(c.toUpperCase().charCodeAt(0) - 64)).join("")
         : data;
     pendingRawRef.current += toSend;
     if (rawFlushTimer.current !== null) return;
