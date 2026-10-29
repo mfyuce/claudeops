@@ -276,6 +276,9 @@ class Config:
     drain: bool = False                 # YENİ İŞ ALMA: oturum başlatma (uğrama/cevap-başlatma) ve beyin direktifi durur; çalışan iş, cevap iletimi, devir sürer
     auto_context_ratio: float = 0.7     # bağlam devir eşiğinin bu oranını aşmışsa cevap "önce devir" (altındaysa "bu oturumda sürdür")
     handover_force_ratio: float = 1.3   # eşik devri oturum meşgul/alt ajan çalışırken ERTELENİR; bağlam eşiğin bu katını aşarsa zorla (0 = oran tavanı yok)
+    brain_mcp_check: bool = True           # beyin açılışında cops-steward MCP bağlandı mı doğrula; bağlanmadıysa BİR kez yeniden aç; araçsız tur kurtarma
+    brain_mcp_wait_seconds: int = 25       # açılışta MCP `initialize` beklenen süre
+    brain_nocall_tours: int = 3            # art arda bu kadar turda hiç steward_* çağrısı yoksa beyni bir kez yeniden aç (0 = kapalı)
     done_handover: bool = True             # STEWARD-DONE-CONFIRMED sonrası oturum önce DEVİR yapar (READY FOR HANDOVER), sonra kapanır; kapalı = doğrudan stop
     done_handover_min_ratio: float = 0.3   # bağlam bilinir ve eşiğin bu oranından azsa devir ATLANIR, doğrudan stop (0 = atlama yok)
     handover_defer_max_minutes: int = 30   # eşik devri en çok bu kadar ertelenir, sonra zorla (0 = erteleme kapalı: eski davranış)
@@ -3020,6 +3023,66 @@ DONE_CONFIRM_TEXT_TR = ("STEWARD-DONE aldım. TODO.md'deki açık `- [ ]` işler
 DONE_CONFIRM_TEXT_EN = ("STEWARD-DONE received. Check the open `- [ ]` items in TODO.md and the card's next_step. If truly "
                         "nothing is left, write `STEWARD-DONE-CONFIRMED: <last commit short hash> open items 0, <evidence>`; "
                         "otherwise keep working and do NOT write STEWARD-DONE.")
+
+
+# ── beyin MCP nabzı: `mcp-steward` süreci `initialize` ve her `tools/call`da bir dosyaya zaman yazar; motor "beyin araçsız mı" diye bakar
+BRAIN_MCP_FILE = "brain_mcp.json"
+BRAIN_MCP_RESTART_COOLDOWN = 6 * 3600.0     # araçsızlıktan yeniden açma en çok bu sıklıkta (döngüye girmesin)
+BRAIN_NOTOOLS_MIN_AGE = 180.0               # önceki turdan bu kadar süre geçmeden "çağrı yok" hükmü verilmez (beyin yanıt vermiş olmalı)
+_NO_TOOLS_RE = re.compile(
+    r"araçlar(?:ım)?\s+(?:yok|mevcut değil|erişilebilir değil|bulunam)|steward_\w+\s+(?:araç\w*\s+)?(?:yok|bulunamad|mevcut değil)|"
+    r"no (?:matching )?(?:deferred )?tools?\b|tools? (?:are )?(?:not available|unavailable|missing)|"
+    r"(?:cops-steward|steward)\s+(?:mcp\s+)?(?:server\s+)?(?:is\s+)?not (?:connected|available)|karar\s+veremedim", re.I)
+
+
+def brain_mcp_path(paths: "StewardPaths") -> str:
+    return os.path.join(str(paths.root), BRAIN_MCP_FILE)
+
+
+def read_brain_mcp(paths: "StewardPaths") -> Dict[str, float]:
+    """{connected_at, call_at} (yoksa 0.0). Okuma hatası = boş."""
+    try:
+        with open(brain_mcp_path(paths), encoding="utf-8") as f:
+            d = json.load(f)
+        return {"connected_at": float(d.get("connected_at") or 0.0), "call_at": float(d.get("call_at") or 0.0)}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {"connected_at": 0.0, "call_at": 0.0}
+
+
+def touch_brain_mcp(sid: str, kind: str, now: Optional[float] = None) -> None:
+    """MCP sunucusu çağırır: kind `connect` (initialize) ya da `call` (tools/call). Hata fırlatmaz."""
+    try:
+        from .atomic_json import atomic_write_json
+        paths = paths_for(sid)
+        cur = read_brain_mcp(paths)
+        t = time.time() if now is None else now
+        cur["connected_at" if kind == "connect" else "call_at"] = t
+        if kind == "call":
+            cur["connected_at"] = cur["connected_at"] or t
+        os.makedirs(str(paths.root), exist_ok=True)
+        atomic_write_json(brain_mcp_path(paths), cur)
+    except Exception:
+        pass
+
+
+def brain_tools_missing_text(text: str) -> bool:
+    """Beynin son cevabı "araçlar yok / karar veremedim" diyor mu."""
+    return bool(text) and bool(_NO_TOOLS_RE.search(text))
+
+
+def brain_notools_verdict(prev_tour: float, mcp: Dict[str, float], last_text: str, nocall: int, cfg: "Config", now: float) -> Tuple[int, str]:
+    """Bir tur GÖNDERİLMEDEN önce önceki turun sonucu: (yeni art arda 'çağrısız tur' sayacı, yeniden aç gerekçesi ya da ""). SAF.
+    Önceki tur yoksa/çok yeniyse hüküm yok. İşaret metni anında; yoksa `brain_nocall_tours` art arda çağrısız tur."""
+    if not prev_tour or now - prev_tour < BRAIN_NOTOOLS_MIN_AGE:
+        return nocall, ""
+    if brain_tools_missing_text(last_text):
+        return 0, "beyin 'araçlar yok' dedi"
+    if mcp.get("call_at", 0.0) >= prev_tour:
+        return 0, ""
+    nocall += 1
+    if cfg.brain_nocall_tours > 0 and nocall >= cfg.brain_nocall_tours:
+        return 0, f"art arda {nocall} turda hiç steward_* çağrısı yok"
+    return nocall, ""
 
 
 DONE_ANSWER_TTL = 24 * 3600.0     # DONE-CONFIRMED çelişki sorusuna sahip cevabı bu süre boyunca geçerli

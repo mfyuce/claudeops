@@ -346,7 +346,7 @@ def _handle(port: int, msg: dict, tools: Optional[List[Dict[str, Any]]] = None,
 
 def run_server(port: int, tools: Optional[List[Dict[str, Any]]] = None,
                dispatch: Optional[Dict[str, Callable[[int, dict], dict]]] = None,
-               server_name: str = SERVER_NAME) -> None:
+               server_name: str = SERVER_NAME, on_message: Optional[Callable[[dict], None]] = None) -> None:
     _log(f"{server_name} starting (pid={os.getpid()}), backing panel at 127.0.0.1:{port}")
     for raw_line in sys.stdin:
         line = raw_line.strip()
@@ -357,6 +357,11 @@ def run_server(port: int, tools: Optional[List[Dict[str, Any]]] = None,
         except json.JSONDecodeError as e:
             _log(f"bad JSON-RPC line, skipped: {e}")
             continue
+        if on_message is not None:
+            try:
+                on_message(msg)
+            except Exception:       # gözlem kancası protokol döngüsünü asla düşüremez
+                pass
         try:
             reply = _handle(port, msg, tools, dispatch, server_name)
         except Exception as e:  # protokol döngüsü TEK bozuk mesaj yüzünden ölemez

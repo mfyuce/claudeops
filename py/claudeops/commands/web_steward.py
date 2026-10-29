@@ -1956,7 +1956,21 @@ def ensure_workspace(cfg: Optional[sw.Config] = None) -> str:
     return path
 
 
-def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False) -> Dict[str, Any]:
+def _verify_brain_mcp(cfg: sw.Config, since: float) -> bool:
+    """Açılıştan (`since`) sonra cops-steward MCP `initialize` aldı mı: `brain_mcp_wait_seconds` içinde bekler. Kapalı ayar = True."""
+    if not cfg.brain_mcp_check:
+        return True
+    paths = sw.paths_for(cfg.sid)
+    deadline = time.time() + max(0, int(cfg.brain_mcp_wait_seconds))
+    while True:
+        if sw.read_brain_mcp(paths)["connected_at"] >= since:
+            return True
+        if time.time() >= deadline:
+            return False
+        time.sleep(1.0)
+
+
+def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False, _mcp_retry: bool = False) -> Dict[str, Any]:
     """Kimliğin beynini aç (kendi workspace'i, `mcp-steward --steward <sid>`). Default dışı kimlik YALNIZ `enabled` iken
     açılır (hiçbir yeni kimlik kendiliğinden beyin açmaz; ayar varsayılan KAPALI); default'un davranışı eskisiyle aynı."""
     cfg = cfg or steward_config()
@@ -1973,6 +1987,7 @@ def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False) -> Dict[st
     model = cfg.brain_model or default_model_for(provider)
     effort = cfg.brain_effort or default_effort_for(provider)
     mode = provider.permission_modes()[0] if provider.permission_modes() else "auto"
+    t_spawn = time.time()
     inst_mod.record_instance(cfg.brain_name, blueprint=None, cwd=workspace, cli=cli, model=model,
                              permission_mode=mode, effort=effort, origin="steward")
     try:
@@ -1985,6 +2000,14 @@ def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False) -> Dict[st
     inst_mod.mark_started(cfg.brain_name, cli=cli, model=model, permission_mode=mode, effort=effort)
     ready = _wait_ready(cfg.brain_name, cli)
     sw.log_event("brain_start", paths=cfg.sid, name=cfg.brain_name, kind=kind, ready=ready)
+    if not _verify_brain_mcp(cfg, t_spawn):
+        sw.log_event("brain_mcp_missing", paths=cfg.sid, name=cfg.brain_name, retry=_mcp_retry)
+        if not _mcp_retry:        # BİR kez yeniden aç (döngü yok)
+            _notify(cfg, f"[{cfg.sid}] Beyin açıldı ama cops-steward araçları bağlanmadı; bir kez yeniden açılıyor.")
+            brain_stop(cfg)
+            time.sleep(3)
+            return dict(brain_start(cfg, fresh=fresh, _mcp_retry=True), mcp_retried=True)
+        _notify(cfg, f"[{cfg.sid}] Beyin yeniden açıldı ama cops-steward araçları hâlâ bağlanmadı; elle bakmak gerek.")
     return {"ok": True, "started": True, "name": cfg.brain_name, "kind": kind, "ready": ready}
 
 
@@ -2071,6 +2094,46 @@ def brain_restart_for_stuck_input(cfg: sw.Config) -> Dict[str, Any]:
     return brain_start(cfg)
 
 
+def _brain_last_text(cfg: sw.Config) -> str:
+    """Beynin son asistan metni (okunamazsa "")."""
+    try:
+        v = next((x for x in _collect_views(cfg) if x.name == cfg.brain_name), None)
+        return (v.last_assistant or "") if v is not None else ""
+    except Exception:
+        return ""
+
+
+def _brain_notools_recover(cfg: sw.Config, now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """Tur göndermeden önce: önceki tur araçsız mı geçti ("araçlar yok" metni ya da art arda N turda hiç steward_* çağrısı
+    yok)? Öyleyse beyni BİR kez yeniden aç (log + ntfy; `BRAIN_MCP_RESTART_COOLDOWN` içinde ikinci kez açma). None = müdahale yok;
+    dict = yeniden açma sonucu (ok değilse tur gönderilmez)."""
+    t = time.time() if now is None else now
+    paths = sw.paths_for(cfg.sid)
+    state = sw.load_state(paths)
+    prev = float(state.get("last_tour") or 0.0)
+    nocall, why = sw.brain_notools_verdict(prev, sw.read_brain_mcp(paths), _brain_last_text(cfg) if prev else "",
+                                           int(state.get("tour_nocall") or 0), cfg, t)
+    last_restart = float(state.get("brain_mcp_restart_at") or 0.0)
+    if why and last_restart and t - last_restart < sw.BRAIN_MCP_RESTART_COOLDOWN:
+        sw.log_event("brain_notools_cooldown", paths=paths, why=why)
+        nocall, why = 0, ""
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        if nocall:
+            state["tour_nocall"] = nocall
+        else:
+            state.pop("tour_nocall", None)
+        if why:
+            state["brain_mcp_restart_at"] = t
+        sw.save_state(state, paths)
+    if not why:
+        return None
+    sw.log_event("brain_notools_restart", paths=paths, why=why)
+    _notify(cfg, f"[{cfg.sid}] Beyin araçsız kaldı ({why}); bir kez yeniden açılıyor.")
+    rb = brain_restart_for_stuck_input(cfg)
+    return dict(rb, notools_restart=True)
+
+
 def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
              cfg: Optional[sw.Config] = None, world: Optional[sw.World] = None) -> Dict[str, Any]:
     """Beyne bir tur prompt'u gönder. `items` None ise şu anki gözden-geçirme maddeleri `review_items`'tan
@@ -2094,6 +2157,10 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
     res = brain_start(cfg)
     if not res.get("ok"):
         return res
+    if res.get("started") is False:      # beyin zaten çalışıyordu: önceki turun sonucuna bak (araçsız mı kaldı)
+        rb = _brain_notools_recover(cfg)
+        if rb is not None and not rb.get("ok"):
+            return rb
     s = _running(cfg.brain_name)
     if s is None or not is_tmux_backed(s.pid):
         return {"ok": False, "error": "brain session not reachable"}

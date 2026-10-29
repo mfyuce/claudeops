@@ -288,7 +288,15 @@ DISPATCH: Dict[str, Callable[[int, dict], dict]] = {
 def run_server(port: int, steward: str = "default") -> None:
     global _STEWARD
     _STEWARD = steward or "default"
-    mcp_queue.run_server(port, tools=TOOLS, dispatch=DISPATCH, server_name=SERVER_NAME)
+    from .. import steward as _sw
+
+    def _beat(msg: dict) -> None:       # beyin nabzı: motor "araçlar bağlandı mı / çağrılıyor mu" buna bakar
+        m = msg.get("method")
+        if m == "initialize":
+            _sw.touch_brain_mcp(_STEWARD, "connect")
+        elif m == "tools/call":
+            _sw.touch_brain_mcp(_STEWARD, "call")
+    mcp_queue.run_server(port, tools=TOOLS, dispatch=DISPATCH, server_name=SERVER_NAME, on_message=_beat)
 
 
 def register(sub) -> None:

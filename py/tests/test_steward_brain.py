@@ -6,6 +6,7 @@ GERÇEK beyne/tmux'a/docker'a/servise/`~/.claude/claudeops/`a dokunmaz: spawn yo
 ve `record_instance`ı HATAYA bağlar), ayarlar geçici dosyada. Çalıştırma: python3 -m unittest discover -s py/tests"""
 import argparse
 import contextlib
+import dataclasses
 import hashlib
 import json
 import os
@@ -86,6 +87,9 @@ class TestDefaultClaudeMdGolden(unittest.TestCase):
             self.assertEqual(md.replace(sw.identity_section("kitap", "Kitaplar", lang), ""), default_md)
 
 
+_real_verify = ws._verify_brain_mcp      # _Brain.setUp onu sahteler; gerçeği burada tutulur
+
+
 class _Brain(_Tmp):
     def setUp(self):
         super().setUp()
@@ -108,6 +112,7 @@ class _Brain(_Tmp):
             mock.patch.object(ws, "guard_lock", lock),
             mock.patch.object(ws, "detect_display", lambda: ":0"),
             mock.patch.object(ws, "_wait_ready", lambda name, cli, timeout=0: True),
+            mock.patch.object(ws, "_verify_brain_mcp", lambda cfg, since: True),     # gerçek MCP nabzı yok; doğrulama TestBrainMcp'te
             mock.patch.object(ws, "_running", lambda name: None),
             mock.patch.object(ws.inst_mod, "record_instance", lambda name, **kw: self.records.append((name, kw))),
             mock.patch.object(ws.inst_mod, "mark_started", lambda *a, **k: None),
@@ -180,6 +185,82 @@ class TestWorkspace(_Brain):
         settings.save_settings({"stewards": {"kitap": {"persona_text": ""}}})
         with open(ws.ensure_workspace(settings.steward_config("kitap")), encoding="utf-8") as f:
             self.assertTrue(f.read().startswith("ORTAK"))
+
+
+class TestBrainMcp(_Brain):
+    """Beyin araçsız (cops-steward MCP bağlı değil) kalırsa motor bir kez yeniden açar: açılışta nabız, turda araçsız hüküm."""
+
+    def test_verify_uses_connect_heartbeat(self):
+        cfg = sw.Config(sid="default", brain_mcp_wait_seconds=0)
+        self.assertFalse(_real_verify(cfg, 1000.0))
+        sw.touch_brain_mcp("default", "connect", 1500.0)
+        self.assertTrue(_real_verify(cfg, 1000.0))
+        self.assertFalse(_real_verify(cfg, 2000.0))
+        self.assertTrue(_real_verify(dataclasses.replace(cfg, brain_mcp_check=False), 9999.0))
+
+    def test_start_without_mcp_restarts_once_then_gives_up(self):
+        self.settings(kitap={"enabled": "on"})
+        cfg = settings.steward_config("kitap")
+        stops, notes = [], []
+        with mock.patch.object(ws, "_verify_brain_mcp", lambda c, since: False), \
+                mock.patch.object(ws, "brain_stop", lambda c=None: stops.append(1) or {"ok": True}), \
+                mock.patch.object(ws, "_notify", lambda c, t, click="": notes.append(t) or True), \
+                mock.patch.object(ws.time, "sleep", lambda *_: None):
+            res = ws.brain_start(cfg)
+        self.assertTrue(res["ok"])
+        self.assertTrue(res.get("mcp_retried"))
+        self.assertEqual((len(self.spawns), len(stops), len(notes)), (2, 1, 2))      # tek yeniden açma, döngü yok
+        events = [e["event"] for e in sw.tail_log(10, "kitap")]
+        self.assertEqual(events.count("brain_mcp_missing"), 2)
+
+    def test_notools_verdict_pure(self):
+        cfg = sw.Config()
+        v = sw.brain_notools_verdict
+        self.assertEqual(v(0.0, {"call_at": 0.0}, "", 0, cfg, 9000.0), (0, ""))                       # önceki tur yok
+        self.assertEqual(v(8900.0, {"call_at": 0.0}, "", 0, cfg, 9000.0), (0, ""))                    # çok yeni
+        self.assertEqual(v(1000.0, {"call_at": 1050.0}, "", 2, cfg, 9000.0), (0, ""))                 # çağrı var: sayaç sıfırlanır
+        self.assertEqual(v(1000.0, {"call_at": 0.0}, "", 0, cfg, 9000.0), (1, ""))
+        self.assertEqual(v(1000.0, {"call_at": 0.0}, "", 1, cfg, 9000.0), (2, ""))
+        n, why = v(1000.0, {"call_at": 0.0}, "", 2, cfg, 9000.0)
+        self.assertEqual(n, 0)
+        self.assertIn("steward_*", why)
+        n, why = v(1000.0, {"call_at": 5000.0}, "Araçlar yok, karar veremedim.", 0, cfg, 9000.0)    # işaret metni anında
+        self.assertTrue(why)
+        off = sw.Config(brain_nocall_tours=0)
+        self.assertEqual(v(1000.0, {"call_at": 0.0}, "", 50, off, 9000.0)[1], "")
+        self.assertTrue(sw.brain_tools_missing_text("No matching deferred tools found"))
+        self.assertFalse(sw.brain_tools_missing_text("3 madde cevaplandı, steward_answer çağrıldı"))
+
+    def test_recover_restarts_once_with_cooldown(self):
+        cfg = sw.Config(sid="default")
+        paths = sw.paths_for("default")
+        sw.save_state({"last_tour": 1000.0, "tour_nocall": 2}, paths)
+        notes, restarts = [], []
+        with mock.patch.object(ws, "_brain_last_text", lambda c: ""), \
+                mock.patch.object(ws, "brain_restart_for_stuck_input", lambda c: restarts.append(1) or {"ok": True}), \
+                mock.patch.object(ws, "_notify", lambda c, t, click="": notes.append(t) or True):
+            r = ws._brain_notools_recover(cfg, now=9000.0)
+            self.assertTrue(r["ok"] and r["notools_restart"])
+            self.assertEqual((len(restarts), len(notes)), (1, 1))
+            self.assertNotIn("tour_nocall", sw.load_state(paths))
+            sw.save_state(dict(sw.load_state(paths), last_tour=9100.0, tour_nocall=2), paths)
+            self.assertIsNone(ws._brain_notools_recover(cfg, now=20000.0))                          # 6 sa soğuma içinde: ikinci açma YOK
+            self.assertEqual(len(restarts), 1)
+
+    def test_mcp_server_heartbeat_hook(self):
+        from claudeops.commands import mcp_queue
+        seen = []
+        import io
+        msgs = '{"jsonrpc":"2.0","id":1,"method":"ping"}\n{"jsonrpc":"2.0","method":"notifications/initialized"}\n'
+        with mock.patch("sys.stdin", io.StringIO(msgs)), mock.patch.object(mcp_queue, "_send", lambda r: None):
+            mcp_queue.run_server(1, on_message=lambda m: seen.append(m.get("method")))
+        self.assertEqual(seen, ["ping", "notifications/initialized"])
+
+    def test_touch_records_call_and_connect(self):
+        sw.touch_brain_mcp("default", "call", 100.0)
+        self.assertEqual(sw.read_brain_mcp(sw.paths_for("default")), {"connected_at": 100.0, "call_at": 100.0})
+        sw.touch_brain_mcp("default", "connect", 200.0)
+        self.assertEqual(sw.read_brain_mcp(sw.paths_for("default")), {"connected_at": 200.0, "call_at": 100.0})
 
 
 class TestBrainStart(_Brain):
@@ -325,7 +406,7 @@ class TestMcpIdentity(unittest.TestCase):
         self.addCleanup(setattr, mcp_steward, "_STEWARD", "default")
         seen = []
         with mock.patch.object(mcp_queue, "run_server",
-                               lambda port, tools=None, dispatch=None, server_name="": seen.append(mcp_steward._STEWARD)):
+                               lambda port, tools=None, dispatch=None, server_name="", on_message=None: seen.append(mcp_steward._STEWARD)):
             self.assertEqual(mcp_steward.run(argparse.Namespace(port=1, steward="kitap")), 0)
             self.assertEqual(seen, ["kitap"])
             self.assertEqual(mcp_steward.run(argparse.Namespace(port=1)), 0)          # eski çağrı: parametresiz = default
