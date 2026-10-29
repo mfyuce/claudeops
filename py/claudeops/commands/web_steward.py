@@ -189,6 +189,10 @@ class _RemoteIO:
         cached["last_ok_at"] = wh.last_ok_at(host)
         return cached
 
+    def probe(self, host: str) -> Optional[bool]:
+        """Hafif tek `/api/status` yoklaması (poller ile aynı kayıt yolu; host başına hız sınırlı). None = atlandı."""
+        return _wh().probe_host(host)
+
     def get(self, path: str, host: str, query: Dict[str, str], timeout: Optional[float] = None) -> Tuple[Dict[str, Any], int]:
         return _wh().proxy_get(path, host, query, timeout=timeout)
 
@@ -253,6 +257,32 @@ class _RemoteTick:
         t = time.time()
         ok = _host_fresh(st, t) and not _backing_off(host, t)
         self.fresh = frozenset(self.fresh | {host}) if ok else frozenset(self.fresh - {host})
+
+
+REMOTE_PROBES_PER_TICK = 2     # tick başına en çok bu kadar bayat host yoklanır (her yoklama en kötü ~8 sn)
+
+
+def _probe_stale_hosts(rt: "_RemoteTick") -> List[str]:
+    """Tick anlık görüntüsünde taze OLMAYAN host'ları (kapalı/bayat; geri çekilmedekiler dahil) BİR hafif `/api/status` ile
+    yoklar: poller ya da push akışı sessiz kalsa bile host dönünce hemen taze olur (2026-10-29: ulak_31 ulaşılabilirken
+    18+ dk "kapalı" kaldı). Yoklama poller ile aynı kayıt yolundan geçer; host başına hız sınırı `probe_host`ta. Toparlanan
+    host'ların görüntüsü `rt.refresh` ile yenilenir (başarısızlıkta ek önbellek okuması YOK). Toparlananlar döner. Fırlatmaz."""
+    recovered: List[str] = []
+    tried = 0
+    for h in sorted(set(rt.statuses) - set(rt.fresh)):
+        if tried >= REMOTE_PROBES_PER_TICK:
+            break
+        try:
+            ok = _remote.probe(h)
+        except Exception:
+            ok = None
+        if ok is None:
+            continue
+        tried += 1
+        if ok:
+            recovered.append(h)
+            rt.refresh(h)
+    return recovered
 
 
 def _remote_snapshot(hosts: Any, now: Optional[float] = None) -> _RemoteTick:
@@ -938,6 +968,11 @@ def remote_health(hosts: Any, now: Optional[float] = None) -> Dict[str, Dict[str
         state = "backoff" if _backing_off(h, now) else ("ok" if _host_fresh(st, now) else "down")
         caps = _caps_cached(h, now)
         out[h] = {"state": state, "api": caps["api"] if caps else None, "age": int(now - last) if last else None}
+        if state != "ok":      # kapalıyken NEDEN ve son deneme zamanı (`steward status`)
+            tried = _wh().last_try_at(h)
+            err = str((st or {}).get("error") or "") if st else "poller kaydı yok"
+            out[h]["reason"] = err[:120] or ("geri çekilmede" if state == "backoff" else "son başarılı poll bayat")
+            out[h]["last_try"] = int(now - tried) if tried else None
     return out
 
 
@@ -3167,6 +3202,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
             # Uzak tazelik anlık görüntüsü tick başında BİR KEZ: `unavailable`, görünümler ve eylem ön denetimleri aynı
             # görüntüden (iki ayrı önbellek okuması arasında host düşerse proje "çalışmıyor" sanılıp başlatılmasın).
             rt = _remote_snapshot(set(world.hosts.values()), t0)
+            for h_up in _probe_stale_hosts(rt):
+                sw.log_event("remote_probe_recovered", paths=paths, host=h_up)
             world = _with_availability(world, cfg, t0, rt)
             # Uzak proje yoksa çağrı biçimi eskisiyle AYNI (altın testler `_collect_views`/`_apply`ı bu biçimle değiştirir).
             rkw: Dict[str, Any] = {"rt": rt} if world.hosts else {}

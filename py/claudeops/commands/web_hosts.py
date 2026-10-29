@@ -560,6 +560,10 @@ def _apply_stale_while_error(prev: Optional[Dict[str, Any]], result: Dict[str, A
 # demek — gerçek/uzun süren bir kopuşu hâlâ doğru şekilde yakalar, sadece
 # tek-seferlik blip'leri rozete hiç yansıtmaz.
 CONSECUTIVE_FAILURES_BEFORE_ERROR = 5
+# Push akışı bu kadar süre HİÇ çerçeve getirmezse ölü sayılır: sunucu kalp atışı 30 sn (`web_ws._HEARTBEAT_SECONDS`),
+# değnekçi tazelik eşiği 60 sn (`REMOTE_STALE_SECONDS`); 45 sn = kalp atışı + pay, eşikten ÖNCE toparlanır.
+STATUS_PUSH_SILENCE_SECONDS = 45.0
+_last_try_at: Dict[str, float] = {}      # host adı -> son yoklama denemesi (başarılı ya da değil; `steward status` gösterir)
 _fail_streak: Dict[str, int] = {}  # host adı -> ardışık başarısız poll sayısı
 # host adı -> son GERÇEKTEN başarılı sonucun zamanı (epoch). Değnekçinin "host kapalı" tazelik kuralı buna bakar
 # (`last_ok_at`): `_apply_stale_while_error`'ın koruduğu bayat satırlarla karar vermesin (TODO 2026-10-20 (14)).
@@ -579,6 +583,7 @@ def _record_poll_result(name: str, result: Dict[str, Any]) -> None:
     kullanır — kullanıcının bilerek bastığı "şimdi test et" bir blip'in
     arkasına gizlenmemeli, sadece PAYLAŞILAN arka-plan sayacını besler."""
     with _cache_lock:
+        _last_try_at[name] = time.time()
         if result["ok"]:
             _fail_streak[name] = 0
             _cache[name] = result
@@ -627,11 +632,23 @@ def _poll_once() -> None:
                 _fail_streak.pop(stale, None)
                 _last_good.pop(stale, None)
                 _last_ok_at.pop(stale, None)
+                _last_try_at.pop(stale, None)
     _reap_status_consumers(current_names)
 
 
-def _poller_loop() -> None:
-    while True:
+POLLER_STALL_SECONDS = 90.0        # poller bu kadar süredir tur bitirmediyse takılı/ölü sayılır (tur normalde saniyeler sürer)
+WATCHDOG_INTERVAL_SECONDS = 15.0
+_poller_lock = threading.Lock()
+_poller_started = False
+_poller_gen = 0                    # her yeniden başlatmada artar; eski (takılıp sonra uyanan) thread kendiliğinden çıkar
+_poller_beat = 0.0                 # son tamamlanan turun monotonic zamanı
+_poller_thread: Optional[threading.Thread] = None
+_poller_restarts = 0
+
+
+def _poller_loop(gen: int = 0) -> None:
+    global _poller_beat
+    while gen == _poller_gen:
         try:
             _poll_once()
         except Exception:
@@ -639,22 +656,92 @@ def _poller_loop() -> None:
             # (ör. hosts.json eşzamanlı yazımla yarışır) daemon'ı sonsuza
             # kadar öldürmesin — bir sonraki tick tekrar dener.
             pass
+        _poller_beat = time.monotonic()
         time.sleep(POLL_INTERVAL_SECONDS)
 
 
-_poller_lock = threading.Lock()
-_poller_started = False
+def _spawn_poller_locked() -> None:
+    global _poller_gen, _poller_thread, _poller_beat
+    _poller_gen += 1
+    _poller_beat = time.monotonic()
+    _poller_thread = threading.Thread(target=_poller_loop, args=(_poller_gen,), daemon=True, name="host-poller")
+    _poller_thread.start()
+
+
+def poller_health() -> Dict[str, Any]:
+    """Poller'ın sağlığı: `alive` (thread canlı), `age` (son tamamlanan turdan beri sn), `restarts` (watchdog yeniden başlatma sayısı)."""
+    with _poller_lock:
+        th, beat, restarts = _poller_thread, _poller_beat, _poller_restarts
+    return {"alive": bool(th is not None and th.is_alive()), "age": int(time.monotonic() - beat) if beat else None,
+            "restarts": restarts}
+
+
+def ensure_poller_alive() -> bool:
+    """Watchdog: poller thread'i ölmüşse ya da `POLLER_STALL_SECONDS`tir tur bitirmemişse (ağ çağrısında takılı) YENİSİNİ
+    başlatır (eskisi, uyanırsa, nesil uyuşmazlığıyla kendiliğinden çıkar). Yeniden başlatıldıysa True."""
+    global _poller_restarts
+    with _poller_lock:
+        if not _poller_started:
+            return False
+        th = _poller_thread
+        stalled = (time.monotonic() - _poller_beat) > POLLER_STALL_SECONDS
+        if th is not None and th.is_alive() and not stalled:
+            return False
+        _poller_restarts += 1
+        _spawn_poller_locked()
+    diag_log("host_poller_restarted", dead=not (th is not None and th.is_alive()), stalled=stalled)
+    return True
+
+
+def _watchdog_loop() -> None:
+    while True:
+        time.sleep(WATCHDOG_INTERVAL_SECONDS)
+        try:
+            ensure_poller_alive()
+        except Exception:
+            pass
 
 
 def start_remote_poller() -> None:
     """`run()`'dan BİR KEZ çağrılır (web_ws.start_broadcaster ile aynı yerden,
-    aynı desen). İkinci çağrı no-op."""
+    aynı desen). İkinci çağrı no-op. Poller + onu izleyen watchdog thread'i."""
     global _poller_started
     with _poller_lock:
         if _poller_started:
             return
         _poller_started = True
-    threading.Thread(target=_poller_loop, daemon=True, name="host-poller").start()
+        _spawn_poller_locked()
+    threading.Thread(target=_watchdog_loop, daemon=True, name="host-poller-watchdog").start()
+
+
+_PROBE_MIN_GAP_SECONDS = 15.0
+_probe_at: Dict[str, float] = {}
+_probe_lock = threading.Lock()
+
+
+def probe_host(name: str, now: Optional[float] = None) -> Optional[bool]:
+    """Hafif tek yoklama (`/api/status`) + sonucu poller ile AYNI yoldan kaydeder (`_record_poll_result`): başarıda host hemen
+    taze olur. Host başına en çok `_PROBE_MIN_GAP_SECONDS`te bir; atlanırsa None, aksi halde başarı (True/False). Fırlatmaz.
+    Değnekçi, host "kapalı" görünürken poller/akış sessiz kalsa bile her tick'te toparlanmayı yakalasın diye çağırır."""
+    t = time.monotonic() if now is None else now
+    with _probe_lock:
+        if t - _probe_at.get(name, -1e9) < _PROBE_MIN_GAP_SECONDS:
+            return None
+        _probe_at[name] = t
+    try:
+        rec = next((h for h in hosts_mod.load_hosts() if h["name"] == name), None)
+        if rec is None:
+            return None
+        result = fetch_remote_status(rec)
+        _record_poll_result(name, result)
+        return bool(result.get("ok"))
+    except Exception:
+        return False
+
+
+def last_try_at(name: str) -> float:
+    with _cache_lock:
+        return float(_last_try_at.get(name) or 0.0)
 
 
 def get_cached(name: str) -> Optional[Dict[str, Any]]:
@@ -1080,6 +1167,7 @@ class _PushConsumer:
         self._on_item = on_item
         self._alive = threading.Event()
         self._alive.set()
+        self.last_msg_mono = time.monotonic()    # kuruluş = ilk "mesaj" (bağlanana dek haksız sessizlik sayılmasın)
         self._call: Any = None
         self._call_lock = threading.Lock()
         self._thread = threading.Thread(
@@ -1094,6 +1182,7 @@ class _PushConsumer:
             with self._call_lock:
                 self._call = call
             for raw in call:
+                self.last_msg_mono = time.monotonic()      # ham çerçeve (kalp atışı dahil) canlılık kanıtıdır
                 item = self._parse_item(raw)
                 if item is not None:
                     self._on_item(item)
@@ -1107,6 +1196,11 @@ class _PushConsumer:
 
     def is_alive(self) -> bool:
         return self._alive.is_set()
+
+    def silent_seconds(self) -> float:
+        """Son ham çerçeveden (yoksa kuruluştan) beri geçen süre. Yarı açık bağlantı (tünel/NAT) thread'i canlı tutar ama
+        hiç mesaj getirmez; `is_alive` tek başına bunu yakalayamaz."""
+        return time.monotonic() - self.last_msg_mono
 
     def stop(self) -> None:
         self._stopped = True
@@ -1185,17 +1279,31 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
     with _status_consumer_lock:
         existing = _status_consumers.get(name)
         if existing is not None and existing.is_alive() and existing.tier == tier:
-            return True
+            if existing.silent_seconds() <= STATUS_PUSH_SILENCE_SECONDS:
+                return True
+            # Canlı görünüp sessiz kalan akış (yarı açık bağlantı): yoklama HİÇ yapılmadığı için `last_ok_at` bayatlar,
+            # host "kapalı" sanılırdı (2026-10-29, ulak_31 18+ dk). Eskisi atılır, yenisi kurulur, BU tick REST'e düşer.
+            diag_log("status_consumer_silent", name=name, tier=tier, silent=int(existing.silent_seconds()))
+            _status_consumers.pop(name, None)
+            silent_old = existing
+            existing = None
+        else:
+            silent_old = None
         try:
             consumer = _start_status_consumer(host, tier)
         except Exception:
             # Yeni consumer başlatılamadı — eski girdiye (varsa) HİÇ dokunma,
             # olduğu gibi kalsın (hâlâ alive'sa eski tier'de servis etmeye
             # devam eder, ölüyse bir sonraki çağrı zaten yeniden dener).
+            if silent_old is not None:
+                silent_old.stop()
             return False
         _status_consumers[name] = consumer
     if existing is not None:
         existing.stop()  # ESKİ (tier değişmiş/ölmüş) consumer'ı kilidin DIŞINDA durdur — stop() ağ I/O yapabilir
+    if silent_old is not None:
+        silent_old.stop()
+        return False     # sessiz akış yenilendi: bu tick REST yoklaması yapılsın (taze veri yeni akışı beklemesin)
     return True
 
 

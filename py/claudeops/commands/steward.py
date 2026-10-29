@@ -113,7 +113,11 @@ def _remote_health_line(args, sid: str, hosts: List[str]) -> str:
             continue
         api = "?" if e.get("api") is None else str(e["api"])
         age = "" if e.get("age") is None else f", {_ago(time.time() - float(e['age']))} önce"
-        parts.append(f"{h}={_HEALTH_TR.get(str(e.get('state')), 'bilinmiyor')} (api:{api}{age})")
+        why = ""
+        if e.get("reason"):
+            lt = "" if e.get("last_try") is None else f", son deneme {_ago(time.time() - float(e['last_try']))} önce"
+            why = f" [{e['reason']}{lt}]"
+        parts.append(f"{h}={_HEALTH_TR.get(str(e.get('state')), 'bilinmiyor')} (api:{api}{age}){why}")
     return "  ".join(parts)
 
 
