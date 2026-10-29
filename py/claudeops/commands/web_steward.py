@@ -582,6 +582,7 @@ def _act(name: str, *args: Any, **kw: Any) -> Any:
 
 
 _FAIL_LOGGED: Dict[Tuple[str, str, str, str], float] = {}
+_FAIL_LOGGED_LOCK = threading.Lock()
 FAIL_LOG_REPEAT_SECONDS = 30 * 60   # aynı başarısız eylem + aynı neden bu aralıkta tek kez kaydedilir
 
 
@@ -597,13 +598,16 @@ def _remember(action: sw.Action, result: Any, ctx: Optional[StewardContext] = No
     if host:
         entry["host"] = host
     fkey = (str(ctx.paths.root), action.kind, action.name, entry["detail"])
-    if entry["ok"]:
-        for k in [k for k in _FAIL_LOGGED if k[:3] == fkey[:3]]:
-            _FAIL_LOGGED.pop(k, None)
-    elif entry["ts"] - _FAIL_LOGGED.get(fkey, 0.0) < FAIL_LOG_REPEAT_SECONDS:
-        return      # aynı eylem aynı nedenle yine düştü (ör. ambiguous_sessions): tick başına log/kayıt gürültüsü yok
-    else:
-        _FAIL_LOGGED[fkey] = entry["ts"]
+    with _FAIL_LOGGED_LOCK:       # elle tick/`shutdown_tick` farklı thread'den gelebilir: iterasyon sırasında ekleme RuntimeError verirdi
+        if entry["ok"]:
+            for k in [k for k in _FAIL_LOGGED if k[:3] == fkey[:3]]:
+                _FAIL_LOGGED.pop(k, None)
+        elif entry["ts"] - _FAIL_LOGGED.get(fkey, 0.0) < FAIL_LOG_REPEAT_SECONDS:
+            return      # aynı eylem aynı nedenle yine düştü (ör. ambiguous_sessions): tick başına log/kayıt gürültüsü yok
+        else:
+            for k in [k for k, t in _FAIL_LOGGED.items() if entry["ts"] - t >= FAIL_LOG_REPEAT_SECONDS]:
+                _FAIL_LOGGED.pop(k, None)     # süresi dolan anahtarlar (detail metni dahil) budanır: sınırsız büyüme yok
+            _FAIL_LOGGED[fkey] = entry["ts"]
     ctx.recent.insert(0, entry)
     del ctx.recent[RECENT_ACTIONS:]
     sw.log_event("action", paths=ctx.paths, kind=action.kind, name=action.name, reason=action.reason,
@@ -3159,7 +3163,10 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                     _journal_done(paths, _journal_id(a))       # 'tamamlandı' (süreç ölmedi: istisna olsa da yeniden denenmez, hata her tick'te tekrarlanmasın)
                 if isinstance(res, dict) and res.get("code") == "destructive_budget":
                     _defer_destructive(a, paths, world)     # host'un bu tick'lik yıkıcı hakkı doldu: sonraki tick'e
-                _remember(a, res, ctx)
+                try:
+                    _remember(a, res, ctx)
+                except Exception as e:      # kayıt hatası kalan eylemleri atlatmasın
+                    diag_log("steward_remember_failed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
                 applied.append({"kind": a.kind, "name": a.name, "reason": a.reason, "ok": bool(res.get("ok")),
                                 "detail": res.get("error") or ""})
                 if res.get("host"):
@@ -3294,13 +3301,14 @@ def _shutdown_blockers(views: List[sw.SessionView], projects: Dict[str, sw.Proje
                        paths: Any) -> Dict[str, str]:
     """Kapatmada "iş bitti" sayılmaması gereken oturumlar: projesinin AÇIK (bitmemiş) varaka işi var. Sessizlik tek başına
     yetmez: oturum işin sonucunu bekliyor olabilir (2026-10-21'de 3 oturum bu yüzden "güm diye" kapandı)."""
+    open_by_project: Dict[str, int] = {}
     try:
-        open_by_project: Dict[str, int] = {}
         for j in sj.load_jobs(paths):
             if sj.is_open(j):
                 open_by_project[str(j.get("project") or "")] = open_by_project.get(str(j.get("project") or ""), 0) + 1
-    except Exception:
-        return {}
+    except Exception as e:      # bozuk jobs.json yalnız varaka denetimini düşürür; arka-plan-kabuk denetimi sürer
+        diag_log("steward_shutdown_blockers_jobs_failed", error=repr(e))
+        open_by_project = {}
     out: Dict[str, str] = {}
     try:
         pids = {s.name: s.pid for s in find_sessions(measure_cpu=False)}     # yalnız YEREL oturumlar (uzakta süreç ağacı okunamaz)
@@ -3579,8 +3587,12 @@ def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
 
 def _loop() -> None:
     while True:
-        cfg = steward_config()
-        time.sleep(max(15, cfg.tick_seconds))
+        try:
+            tick = max(15, steward_config().tick_seconds)
+        except Exception as e:      # bozuk ayar thread'i öldürmesin (`_loop_started` True kalır, restart'a dek tick olmazdı)
+            diag_log("steward_loop_config_failed", error=repr(e))
+            tick = 60
+        time.sleep(tick)
         try:
             tick_round("timer")
         except Exception as e:

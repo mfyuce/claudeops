@@ -110,10 +110,11 @@
     {
      "items": [
       {
+       "age_min": 120,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [120 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "id": "q2",
@@ -252,10 +253,11 @@
     {
      "items": [
       {
+       "age_min": 140,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [140 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "id": "q2",
@@ -399,10 +401,11 @@
     {
      "items": [
       {
+       "age_min": 160,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [160 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "id": "i1",
@@ -555,10 +558,11 @@
     {
      "items": [
       {
+       "age_min": 120,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [120 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "id": "q2",
@@ -682,10 +686,11 @@
     {
      "items": [
       {
+       "age_min": 140,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [140 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "id": "q2",
@@ -821,10 +826,11 @@
     {
      "items": [
       {
+       "age_min": 160,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [160 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "id": "i1",
@@ -977,10 +983,11 @@
     {
      "items": [
       {
+       "age_min": 120,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [120 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "id": "q2",
@@ -1127,10 +1134,11 @@
     {
      "items": [
       {
+       "age_min": 140,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [140 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "id": "q2",
@@ -1278,10 +1286,11 @@
     {
      "items": [
       {
+       "age_min": 160,
        "id": "q4",
        "kind": "routine",
        "name": "a",
-       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+       "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla) [160 dk önce soruldu: beklemede, öncelik ver]: rutin?"
       },
       {
        "idle_minutes": 70.0,

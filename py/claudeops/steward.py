@@ -1366,13 +1366,30 @@ LOG_MAX_BYTES = 5 * 1024 * 1024   # `rotate_log`: dosya bunu aşınca `log.jsonl
 SUMMARY_CATCHUP_DAYS = 3          # açılışta geriye en çok bu kadar günün kaçan özeti üretilir
 
 
+@contextlib.contextmanager
+def _log_guard(paths: Any = None):
+    """`log.jsonl` için SÜREÇLER ARASI kilit (`log.jsonl.lock`): web servisi `compact_log`/rotasyonla dosyayı yeniden yazarken CLI'nin
+    `log_event`i eski inode'a ya da okuma-yazma arasına eklemesin (satır kaybı). Kilit alınamazsa (zaman aşımı/hata) kilitsiz sürer:
+    günlük best-effort'tur, yazım asla bloklanmaz."""
+    try:
+        cm = _flock(_pp(paths).log + ".lock", timeout=2.0)
+        cm.__enter__()
+    except Exception:
+        yield
+        return
+    try:
+        yield
+    finally:
+        cm.__exit__(None, None, None)
+
+
 def log_event(event: str, *, paths: Any = None, **data: Any) -> None:
     """Append-only JSONL — `diaglog.diag_log` ile aynı best-effort disiplin."""
     try:
         pp = _pp(paths)
         os.makedirs(os.path.dirname(pp.log), exist_ok=True)
         entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": event, **data}
-        with _LOG_LOCK, open(pp.log, "a", encoding="utf-8") as f:
+        with _LOG_LOCK, _log_guard(paths), open(pp.log, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
@@ -1391,7 +1408,7 @@ def compact_log(date: str, paths: Any = None) -> int:
     `{"ts": "<date>T23:59:59", "event": "ticks", "n", "manual", "errors", "mode"}`. Günlük özet yazıldıktan SONRA
     çağrılır; `daily_summary` bu toplamı sayar, dolayısıyla o günün özeti sıkıştırmadan sonra da AYNI çıkar. Diğer
     olaylar (eylem, soru, kart, özet...) yerinde kalır. Dönen: katlanan tick sayısı (0 = dosyaya dokunulmadı)."""
-    with _LOG_LOCK:
+    with _LOG_LOCK, _log_guard(paths):
         try:
             with open(_pp(paths).log, encoding="utf-8") as f:
                 lines = f.readlines()
@@ -1429,7 +1446,7 @@ def compact_log(date: str, paths: Any = None) -> int:
 def rotate_log(max_bytes: int = LOG_MAX_BYTES, paths: Any = None) -> bool:
     """`log.jsonl` `max_bytes`ı aşınca `log.jsonl.1`e devir (öncekinin üstüne; tek nesil yeter: günlük özetler
     `daily/`de duruyor). Dönen: devrildi mi."""
-    with _LOG_LOCK:
+    with _LOG_LOCK, _log_guard(paths):
         try:
             log = _pp(paths).log
             if os.path.getsize(log) <= max_bytes:
@@ -1780,6 +1797,10 @@ def count_open_tbd(text: str) -> int:
     for ln in (text or "").splitlines():
         if ln.startswith("## "):
             in_open = ln.startswith("## Açık")
+            # -prv'nin yeni biçimi (`## <tarih> TBD#N: ...`, `###` başlığı yok): güvenilir açık/kapalı işareti olmadığı için YALNIZ
+            # başlıkta `AÇIK` sözcüğü varsa açık sayılır (kapalı kararı yanlışlıkla açık sayıp DONE'ı tutmasın)
+            if re.search(r"TBD#\d", ln) and re.search(r"\bAÇIK\b", ln) and "~~" not in ln and not re.search(r"KAPANDI|\bKARAR\b|✅", ln):
+                n += 1
             continue
         if has_open_hdr and not in_open:
             continue
@@ -2286,7 +2307,10 @@ def item_signature(v: "SessionView", projects: Dict[str, "Project"], questions: 
     Beyin maddeyi `skip` ettikten sonra imza değişmedikçe madde yeniden tura girmez; yeni çıktı/soru/cevap/faz imzayı değiştirir. SAF."""
     rel = sorted((q.id, q.status) for q in questions if q.source == v.name or (v.project and q.project == v.project))
     phase = projects[v.project].phase if v.project in projects else ""
-    raw = json.dumps([hashlib.sha1((v.last_assistant or "").encode("utf-8", "replace")).hexdigest()[:12], phase, rel])
+    last = (v.last_assistant or "").strip()
+    if re.fullmatch(r"(?i)ok\.?|tamam\.?", last):
+        last = ""      # keepwarm dürtmesinin "ok" cevabı: her dürtmede imzayı bozup `skip_seen`i boşa çıkarmasın
+    raw = json.dumps([hashlib.sha1(last.encode("utf-8", "replace")).hexdigest()[:12], phase, rel])
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -2356,8 +2380,10 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
             items.append({"kind": "idea", "id": i.id, "text": i.text, "name": ""})
     for q in questions:
         if q.status == "open" and q.routine:
-            items.append({"kind": "routine", "name": q.project or "-", "id": q.id,
-                          "text": f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla): {q.text}"})
+            age = max(0, int((now - float(q.created_at or now)) / 60))
+            items.append({"kind": "routine", "name": q.project or "-", "id": q.id, "age_min": age,
+                          "text": f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla)"
+                                  + (f" [{age} dk önce soruldu: beklemede, öncelik ver]" if age >= 20 else "") + f": {q.text}"})
     stale_ids = {q.id for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running})}
     for q in undelivered_answers(questions):
         if q.id in stale_ids:
@@ -2647,7 +2673,8 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
             it["stage"], it["at"] = "gone" if it["stage"] == "wait" else "closed", now
             return
         if it["stage"] == "wait":
-            quiet = (now - max(v.last_activity, 0.0)) >= SHUTDOWN_QUIET_SECONDS if v.last_activity else True
+            # son etkinlik bilinmiyorsa (uzak/okunamadı) sessizlik KANITI yok: yalnız boşta (busy False) olması yeter; busy None = bekle
+            quiet = (now - max(v.last_activity, 0.0)) >= SHUTDOWN_QUIET_SECONDS if v.last_activity else v.busy is False
             if name in blockers:
                 it["blocked"] = blockers[name]
             else:
@@ -3540,6 +3567,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
            for it in items):
         tour_gap = min(tour_gap, 60)      # YENİ acil madde (işleyiş sorusu/iletilemeyen cevap): tur aralığını beklemeden bir sonraki tick'te
     blocked_now = {str(it.get("id")) for it in items if it.get("kind") == "blocked"}   # kesmeden ÖNCE: 8. sıradan sonrası sayaçtan düşmesin
+    all_items = list(items)
+    total_items = len(items)             # panel sayısı: tur gönderilsin ya da gönderilmesin KESİLMEMİŞ liste (eskiden ≤8 ile tam arasında zıplardı)
     if items and (now - last_tour) >= tour_gap and brain is not None and brain.running and brain.busy is False:
         items = sorted(items, key=lambda it: 0 if it.get("kind") in ("routine", "blocked") else 1)[:TOUR_MAX_ITEMS]
         st.pop("tour_deferred", None)
@@ -3561,9 +3590,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         st["blocked_tours"] = blocked_tours
     else:
         st.pop("blocked_tours", None)
-    st["pending_items"] = len(items)
+    st["pending_items"] = max(total_items, len(items))
     st["pending_list"] = [{"kind": str(it.get("kind") or ""), "name": str(it.get("name") or ""),
-                           "text": str(it.get("text") or "")[:300]} for it in items[:20]]
+                           "text": str(it.get("text") or "")[:300]} for it in all_items[:20]]
     st["ho_pending"] = ho_pending
     if ho_close:
         st["ho_close"] = ho_close
@@ -3742,6 +3771,20 @@ def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now:
         if a.kind not in OBSERVE_SKIPPED:
             apply.append(a)
             continue
+        if a.kind == "tour":
+            # observe'ta tur UYGULANMAZ: beyin görmediği halde `plan_tick`in artırdığı blocked_tours geri alınır; yoksa iletilemeyen
+            # cevap 2 KURU turda `undeliverable` kapanırdı
+            bt = dict(st.get("blocked_tours") or {})
+            for it in a.payload.get("items") or []:
+                k = str(it.get("id"))
+                if it.get("kind") == "blocked" and k in bt:
+                    bt[k] = max(0, int(bt[k]) - 1)
+                    if not bt[k]:
+                        bt.pop(k)
+            if bt:
+                st["blocked_tours"] = bt
+            else:
+                st.pop("blocked_tours", None)
         if a.kind == "start" and not a.payload.get("question_id"):
             visits[a.name] = now
         key = f"{a.kind}:{a.name}:{a.payload.get('question_id', '') or a.payload.get('job_id', '') or _observe_cluster(a)}"

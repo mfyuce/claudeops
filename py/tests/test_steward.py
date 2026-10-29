@@ -576,6 +576,28 @@ class RosterGateTest(_Tmp):
             self.assertFalse(web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})["ok"])
 
 
+class EngineSmallsTest(_Tmp):
+    """TODO 2026-10-28 (21) motor küçükleri."""
+
+    def test_fail_logged_is_pruned_and_thread_safe(self):
+        web_steward._FAIL_LOGGED.clear()
+        ctx = web_steward._ctx()
+        old = time.time() - web_steward.FAIL_LOG_REPEAT_SECONDS - 5
+        web_steward._FAIL_LOGGED[("x", "start", "a", "eski neden")] = old
+        web_steward._remember(sw.Action("start", "b", "r"), {"ok": False, "error": "yeni neden"}, ctx)
+        self.assertNotIn(("x", "start", "a", "eski neden"), web_steward._FAIL_LOGGED)      # süresi dolan anahtar budandı
+        self.assertTrue(any(k[3] == "yeni neden" for k in web_steward._FAIL_LOGGED))
+        web_steward._FAIL_LOGGED.clear()
+
+    def test_shutdown_blockers_survive_corrupt_jobs_file(self):
+        v = sw.SessionView(name="ncs", running=True, cwd="/x", cli="claude")
+        with mock.patch.object(web_steward.sj, "load_jobs", side_effect=ValueError("bozuk")), \
+                mock.patch.object(web_steward, "find_sessions", lambda measure_cpu=False: []), \
+                mock.patch.object(web_steward, "_project_for_session", lambda *a, **k: None):
+            out = web_steward._shutdown_blockers([v], {}, web_steward._world(), sw.paths_for("default"))
+        self.assertEqual(out, {})          # çökmez; bg-shell denetimine kadar ilerler
+
+
 class ShutdownOnlyLeavesPausedTest(_Tmp):
     """Sahip kararı 2026-10-29: kısmi kapatma fazı geri yüklemez; bitince `left_paused` olay + durumda uyarı."""
 
@@ -1013,6 +1035,61 @@ class TourQuietTest(unittest.TestCase):
         live = _view("hof20261026", busy=False)
         acts, _ = sw.plan_tick([live], projects, {}, _cfg(), now, [q], [])
         self.assertEqual([(a.kind, a.name) for a in acts if a.kind == "deliver_answer"], [("deliver_answer", "hof20261026")])
+
+    def test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        v1 = _view("p1", last_assistant="ok")
+        v2 = _view("p1", last_assistant="Ok.")
+        v3 = _view("p1", last_assistant="gerçek çıktı")
+        self.assertEqual(sw.item_signature(v1, projects, []), sw.item_signature(v2, projects, []))
+        self.assertNotEqual(sw.item_signature(v1, projects, []), sw.item_signature(v3, projects, []))
+        now = 1_000_000.0
+        q = sw.Question(id="r1", project="p1", text="Opus ne zaman?", created_at=now - 25 * 60, routine=True)
+        items = sw.review_items([], projects, _cfg(), now, [q], [])
+        it = [i for i in items if i["kind"] == "routine"][0]
+        self.assertEqual(it["age_min"], 25)
+        self.assertIn("25 dk önce", it["text"])
+
+    def test_observe_tour_does_not_burn_blocked_tour_budget(self):
+        # TODO 2026-10-28 (21): observe'ta tur uygulanmaz ama sayaç artıyordu: cevap 2 kuru turda undeliverable kapanırdı
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        now = 1_000_000.0
+        q = sw.Question(id="q1", project="", text="?", created_at=now - 100, status="answered", answer="a",
+                        answered_at=now - 50, source="brain")
+        brain = _view("degnekci", busy=False)
+        cfg = _cfg(brain_name="degnekci", mode="observe")
+        st: dict = {}
+        for _ in range(sw.BLOCKED_MAX_TOURS + 2):
+            acts, st = sw.plan_tick([brain], projects, st, cfg, now, [q], [])
+            apply, dry, st = sw.observe_filter(acts, "observe", st, now)
+            self.assertFalse(any(a.kind == "close_stale_answer" for a in apply))
+            now += cfg.tour_minutes * 60 + sw.OBSERVE_DEDUP_SECONDS + 1
+        self.assertNotIn("blocked_tours", st)
+
+    def test_pending_count_is_the_full_list_even_when_a_tour_is_sent(self):
+        projects = {"p1": sw.Project(name="p1", phase="planned")}
+        now = 1_000_000.0
+        qs = [sw.Question(id=f"q{i}", project="", text="?", created_at=now - 100, status="answered", answer="a",
+                          answered_at=now - 50, source="brain") for i in range(12)]
+        brain = _view("degnekci", busy=False)
+        acts, st = sw.plan_tick([brain], projects, {}, _cfg(brain_name="degnekci"), now, qs, [])
+        self.assertTrue(any(a.kind == "tour" for a in acts))
+        self.assertEqual(st["pending_items"], len(st["pending_list"]))
+        self.assertGreater(st["pending_items"], sw.TOUR_MAX_ITEMS)
+
+    def test_count_open_tbd_new_format_needs_an_AÇIK_heading(self):
+        txt = ("## Açık\n\n### 1) soru\n\n## 2026-10-25 TBD#116: kota\nKARAR yok ama işaret de yok\n\n"
+               "## 2026-10-29 TBD#141: AÇIK ne yapalım?\n")
+        self.assertEqual(sw.count_open_tbd(txt), 2)           # `### 1)` + AÇIK başlıklı yeni biçim; işaretsiz yenisi sayılmaz
+        self.assertEqual(sw.count_open_tbd("## Açık\n\n## 2026-10-29 TBD#141: KARAR AÇIK\n"), 0)   # KARAR işareti kapatır
+
+    def test_shutdown_unknown_activity_waits_unless_idle(self):
+        cfg = sw.Config()
+        projects = {"ncs": sw.Project(name="ncs")}
+        for busy, expect in ((None, []), (True, []), (False, ["handover"])):
+            v = sw.SessionView(name="ncs", running=True, cwd="/x", cli="claude", busy=busy, last_activity=0.0)
+            acts, _sd, _d = sw.plan_shutdown([v], projects, {}, cfg, 1000.0)
+            self.assertEqual([a.kind for a in acts], expect, busy)
 
     def test_blocked_item_closed_after_max_tours_not_urgent_again(self):
         projects = {"p1": sw.Project(name="p1", phase="planned")}
