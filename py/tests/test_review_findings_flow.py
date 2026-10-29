@@ -548,6 +548,100 @@ class TestCli(_Flow):
             ("/api/steward/review/export", {"project": "a", "kind": "tbd", "steward": "rev"})])
 
 
+
+class TestEvrenRemoteExportE2E(_Flow):
+    """Uçtan uca: Evren raporu -> parse+kayıt -> onay -> GERÇEK RemoteReviewDriver ile uzak TODO.md (taşıma sahte, ağ YOK)."""
+    HOST_FILE = "/r/far/TODO.md"
+
+    def setUp(self):
+        super().setUp()
+        self.remote = {self.HOST_FILE: "# TODO\n- mevcut\n"}
+        self.posts, self.busy, self.fail_write = [], False, False
+        drv = ws.RemoteReviewDriver("far", "ulak_31")
+
+        def post(host, path, body, timeout, *a, **k):
+            self.posts.append(path)
+            if path == "/api/files/write":
+                if self.fail_write:
+                    return {"ok": False, "error": "boom"}
+                self.remote[body["path"]] = body["content"]
+            return {"ok": True}
+
+        for pt in (mock.patch.object(wr, "_REMOTE_FN", lambda proj, host: drv),
+                   mock.patch.object(drv, "ready", lambda: (True, "")),
+                   mock.patch.object(ws, "_remote_files_gate", lambda h, sid="default": True),
+                   mock.patch.object(drv, "_owner", lambda: "default"),
+                   mock.patch.object(ws, "_remote_ref", lambda h, n: ("far", "/r/far")),
+                   mock.patch.object(ws, "_remote_read_full", lambda h, n, path, b: self.remote.get(path)),
+                   mock.patch.object(ws, "_remote_post", post),
+                   mock.patch.object(ws, "_remote_running_row", lambda h, n, rt=None: (True, {"name": n, "busy": self.busy}))):
+            pt.start()
+            self.addCleanup(pt.stop)
+        self.fids = self.seed(proj="far")                     # T1 = evren hedefi
+
+    def approve(self, *fids):
+        d = self.findings()
+        for f in fids:
+            d[f]["state"] = "approved"
+        rv.save_findings(self.p, d)
+
+    def test_report_to_remote_todo_once(self):
+        f1, f2, _ = self.fids
+        self.assertEqual({self.findings()[f]["state"] for f in self.fids}, {"new"})
+        self.approve(f1, f2)
+        r = self.post("export", project="far")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(sorted(r["written"]), sorted([f1, f2]))
+        self.assertTrue(r["notified"] and r["session_open"])
+        self.assertEqual(self.posts, ["/api/files/write", "/api/term/input"])
+        todo = self.remote[self.HOST_FILE]
+        self.assertTrue(todo.startswith("# TODO\n- mevcut\n"))
+        self.assertIn(f"(review {f1})", todo)
+        self.assertIn(f"(review {f2})", todo)
+        self.assertNotIn(self.fids[2], todo)                   # onaysız (new) yazılmaz
+        self.assertEqual(self.findings()[f1]["state"], "exported")
+        self.assertTrue(self.findings()[f1]["exported_to"].startswith("ulak_31:"))
+        self.assertFalse(self.post("export", project="far")["ok"])      # çift yazma yok
+        self.assertEqual(self.remote[self.HOST_FILE], todo)
+
+    def test_busy_session_written_but_not_notified(self):
+        self.busy = True
+        self.approve(self.fids[0])
+        r = self.post("export", project="far")
+        self.assertTrue(r["ok"] and not r["notified"], r)
+        self.assertEqual(self.posts, ["/api/files/write"])
+
+    def test_write_failure_keeps_approved_for_retry(self):
+        f1 = self.fids[0]
+        self.approve(f1)
+        self.fail_write = True
+        r = self.post("export", project="far")
+        self.assertFalse(r["ok"])
+        self.assertIn("write_failed", r["error"])
+        self.assertEqual(self.findings()[f1]["state"], "approved")
+        self.assertEqual(self.remote[self.HOST_FILE], "# TODO\n- mevcut\n")
+        self.fail_write = False
+        self.assertTrue(self.post("export", project="far")["ok"])        # yeniden denenebilir
+        self.assertEqual(self.findings()[f1]["state"], "exported")
+
+    def test_conflict_during_export_keeps_approved(self):
+        f1 = self.fids[0]
+        self.approve(f1)
+        reads = []
+
+        def read(h, n, path, b):
+            reads.append(1)
+            if len(reads) == 2:                                          # yazmadan hemen önceki ikinci okuma: dosya değişti
+                self.remote[path] += "- baskasi\n"
+            return self.remote.get(path)
+        with mock.patch.object(ws, "_remote_read_full", read):
+            r = self.post("export", project="far")
+        self.assertFalse(r["ok"])
+        self.assertIn("remote_conflict", r["error"])
+        self.assertEqual(self.findings()[f1]["state"], "approved")
+        self.assertNotIn(f"(review {f1})", self.remote[self.HOST_FILE])
+
+
 if __name__ == "__main__":
     unittest.main()
 
