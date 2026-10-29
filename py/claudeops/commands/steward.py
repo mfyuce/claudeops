@@ -386,6 +386,13 @@ def cmd_log(args) -> int:
     return 0
 
 
+def cmd_dry_report(args) -> int:
+    """`would:*` (ölçüm kipi) olaylarının son N saatlik dökümü (yalnız okur); TBD#138 a."""
+    rep = sw.dry_report(sw.paths_for(_sid(args)), hours=args.hours)
+    print(sw.dry_report_text(rep, args.hours), end="")
+    return 0
+
+
 def cmd_summary(args) -> int:
     """Günlük özeti `log.jsonl` + depolardan kurup yazdırır (motorun günde bir yazdığıyla AYNI metin); `--save`
     `steward/daily/<tarih>.md`ye de yazar (ntfy gitmez)."""
@@ -964,6 +971,9 @@ def register(sub):
     pn = s.add_parser("idea", help="fikir ekle")
     pn.add_argument("text")
     pn.set_defaults(func=cmd_idea)
+    pdr = s.add_parser("dry-report", help="ölçüm (dry) kiplerinin `would:*` dökümü (varsayılan son 72 saat)")
+    pdr.add_argument("--hours", type=float, default=sw.DRY_REPORT_HOURS)
+    pdr.set_defaults(func=cmd_dry_report)
     pm = s.add_parser("summary", help="günlük özet (tick/eylem/would/soru/fikir/kart/handover/bekleyen)")
     pm.add_argument("--date", default="", metavar="YYYY-MM-DD", help="varsayılan: bugün")
     pm.add_argument("--lang", choices=["tr", "en"], default="")

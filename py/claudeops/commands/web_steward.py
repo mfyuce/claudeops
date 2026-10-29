@@ -1449,19 +1449,29 @@ def _same_life(stored: float, born: float, remote: bool) -> bool:
     return abs(stored - born) <= REMOTE_BORN_TOLERANCE_SECONDS if remote else stored == born
 
 
-WAKE_GATED_REASONS = ("due", "idle", "review", "visit")    # kendiliğinden üretilen şablon uyandırmaları (cevap/iş/bulgu/devir/respawn/elle DEĞİL)
+WAKE_GATED_REASONS = ("due",)    # motorun kendiliğinden ürettiği şablon uyandırması (cevap/iş/bulgu/devir/respawn/elle DEĞİL; `idle`/`review` direktif nedeni DEĞİL, madde türü); beyin direktifi ayrıca (`_wake_kind`)
+
+
+def _wake_kind(reason: str, answer: Any, actor: str) -> str:
+    """Kapıya giren uyandırma türü: "auto" (motorun `due` şablonu), "brain" (beyin direktifi, TBD#138) ya da ""."""
+    if answer is not None:
+        return ""
+    if reason in WAKE_GATED_REASONS:
+        return "auto"
+    return "brain" if (reason == "brain" and actor == "brain") else ""
 
 
 def _wake_sha(message: str) -> str:
     return hashlib.sha1(message.encode("utf-8", "replace")).hexdigest()[:12]
 
 
-def _wake_gate(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any, message: str) -> bool:
+def _wake_gate(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any, message: str, actor: str = "") -> bool:
     """TBD#121/125 uyandırma kapısı (yalnız otomatik şablon nedenleri; cevap/iş/bulgu/devir/elle ASLA): (1) aynı oturuma AYNI metin
     son `wake_repeat_minutes` dakikada gittiyse ("Plan hazır, SIRADAKİ işi al" tekrarı; her uyandırma tüm bağlamı yeniden okutur);
     (2) son 24 saatte `wake_max_per_day` otomatik uyandırma zaten gittiyse (3.sü yeni girdi/cevap ister). `dry`: yalnız
     `would:wake_repeat` / `would:wake_cap` olayı (False döner, direktif gider; ölçüm); `act`: True (gönderilmez)."""
-    if cfg.wake_gate not in ("dry", "act") or answer is not None or reason not in WAKE_GATED_REASONS:
+    kind = _wake_kind(reason, answer, actor)
+    if cfg.wake_gate not in ("dry", "act") or not kind:
         return False
     try:
         st = sw.load_state(paths)
@@ -1473,8 +1483,10 @@ def _wake_gate(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any,
     why = ""
     if cfg.wake_repeat_minutes > 0 and rec.get("sha") == _wake_sha(message) and age < cfg.wake_repeat_minutes * 60:
         why = "wake_repeat"
-    elif cfg.wake_max_per_day > 0 and len([t for t in (st.get("auto_wake") or {}).get(sname, []) if now - float(t) < 86400]) >= cfg.wake_max_per_day:
+    elif kind == "auto" and cfg.wake_max_per_day > 0 and len([t for t in (st.get("auto_wake") or {}).get(sname, []) if now - float(t) < 86400]) >= cfg.wake_max_per_day:
         why = "wake_cap"
+    elif kind == "brain" and cfg.brain_wake_max_per_day > 0 and len([t for t in (st.get("brain_wake") or {}).get(sname, []) if now - float(t) < 86400]) >= cfg.brain_wake_max_per_day:
+        why = "brain_wake_cap"
     if not why:
         return False
     sw.log_event(f"would:{why}" if cfg.wake_gate == "dry" else f"{why}_skipped", paths=paths, name=sname, reason=reason,
@@ -1482,8 +1494,9 @@ def _wake_gate(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any,
     return cfg.wake_gate == "act"
 
 
-def _wake_record(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any, message: str) -> None:
-    gated = reason in WAKE_GATED_REASONS and answer is None
+def _wake_record(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: Any, message: str, actor: str = "") -> None:
+    kind = _wake_kind(reason, answer, actor)
+    gated = bool(kind)
     if cfg.wake_gate not in ("dry", "act") or not (gated or reason == "answer" or answer is not None):
         return
     try:
@@ -1492,10 +1505,12 @@ def _wake_record(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: An
             if gated:
                 now = time.time()
                 state.setdefault("wake_sent", {})[sname] = {"sha": _wake_sha(message), "at": now}
-                aw = state.setdefault("auto_wake", {})
+                key = "brain_wake" if kind == "brain" else "auto_wake"
+                aw = state.setdefault(key, {})
                 aw[sname] = [t for t in aw.get(sname, []) if now - float(t) < 86400] + [now]
-            else:      # cevap gitti = yeni girdi: günlük sayaç sıfırlanır
+            else:      # cevap gitti = yeni girdi: günlük sayaçlar sıfırlanır
                 (state.get("auto_wake") or {}).pop(sname, None)
+                (state.get("brain_wake") or {}).pop(sname, None)
             sw.save_state(state, paths)
     except sw.LockTimeout:
         pass
@@ -1577,7 +1592,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             compact = False
     message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more, compact=compact,
                                 paths=paths)
-    if _wake_gate(cfg, paths, sname, reason, answer, message):
+    if _wake_gate(cfg, paths, sname, reason, answer, message, actor):
         return {"ok": True, "name": sname, "skipped": "wake_repeat"}
     if host:
         try:
@@ -1614,7 +1629,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             sw.save_state(state, paths)
     except sw.LockTimeout as e:
         sw.log_event("directive_unrecorded", paths=paths, name=project.name, error=str(e))
-    _wake_record(cfg, paths, sname, reason, answer, message)
+    _wake_record(cfg, paths, sname, reason, answer, message, actor)
     sw.log_event("directive", paths=paths, name=project.name, reason=reason, chars=len(message),
                  **({"host": host} if host else {}))
     out = {"ok": True, "name": sname, "chars": len(message)}
@@ -2149,6 +2164,31 @@ def maybe_daily_summary(cfg: sw.Config, now: float) -> Optional[str]:
         state["summary_date"] = date
         sw.save_state(state, paths)
     return path
+
+
+def maybe_dry_ask(cfg: sw.Config, now: float) -> Optional[str]:
+    """TBD#138 a: bir ölçüm (dry) kipi `DRY_REPORT_HOURS` saattir olay üretiyorsa sahibe TEK "act?" sorusu (kip başına bir kez,
+    `state.dry_asked`). Kip hâlâ dry değilse sorulmaz (sahip zaten karar verdi). Dönen: açılan sorunun kimliği ya da None."""
+    paths = sw.paths_for(cfg.sid)
+    state = sw.load_state(paths)
+    cur = {"wake_gate": cfg.wake_gate, "keepwarm": cfg.keepwarm, "idle_big_handover": "dry"}
+    long_rep = sw.dry_report(paths, hours=7 * 24, now=now)      # "ne zamandır olay üretiyor" için uzun pencere (72 sa pencere `first`i kırpardı)
+    due = [k for k in sw.dry_ask_due(long_rep, state.get("dry_asked"), now) if cur.get(k) == "dry"]
+    if not due:
+        return None
+    rep = sw.dry_report(paths, now=now)
+    text = (f"Ölçüm (dry) kipleri {sw.DRY_REPORT_HOURS} saattir çalışıyor, act'e geçelim mi? Kipler: {', '.join(due)}.\n"
+            + sw.dry_report_text(rep) + "Rapor: py/cops steward dry-report. Öneri: sayılar makulse act, değilse dry kalsın.")
+    q, how = sw.add_question_ex("", text, source="dry-report", options=["act aç", "dry kalsın"], paths=paths)
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        state["dry_asked"] = sorted(set(state.get("dry_asked") or []) | set(due))
+        sw.save_state(state, paths)
+    if how in ("new", "promoted"):
+        _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}"[:NTFY_SUMMARY_CHARS])
+        sw.mark_notified(q.id, paths)
+    sw.log_event("dry_ask", paths=paths, kips=due)
+    return q.id
 
 
 def http_summary(date: str = "", lang: str = "", sid: str = "default") -> Dict[str, Any]:
@@ -3053,6 +3093,10 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 maybe_daily_summary(cfg, t0)
             except Exception as e:
                 diag_log("steward_summary_crashed", error=repr(e))
+            try:
+                maybe_dry_ask(cfg, t0)
+            except Exception as e:
+                diag_log("steward_dry_ask_crashed", error=repr(e))
     if cards:
         try:
             card_tick(cfg)

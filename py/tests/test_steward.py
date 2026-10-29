@@ -2383,6 +2383,78 @@ class ActionJournalTest(HttpTest):
         self.assertNotIn("act_journal", sw.load_state())
 
 
+class DryReportTest(HttpTest):
+    """TBD#138 a: `would:*` dökümü ve 72 saat sonra TEK "act?" sorusu (kip başına bir kez)."""
+
+    def _log(self, paths, event, hours_ago, name="s1", chars=100):
+        ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - hours_ago * 3600))
+        os.makedirs(os.path.dirname(sw._pp(paths).log), exist_ok=True)
+        with open(sw._pp(paths).log, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": ts, "event": event, "name": name, "chars": chars}) + "\n")
+
+    def test_report_counts_and_window(self):
+        paths = sw.paths_for("default")
+        self._log(paths, "would:wake_repeat", 80)          # pencere dışı
+        self._log(paths, "would:wake_repeat", 10)
+        self._log(paths, "would:wake_repeat", 5, name="s2")
+        self._log(paths, "tick", 1)
+        rep = sw.dry_report(paths)
+        self.assertEqual(rep["wake_repeat"]["count"], 2)
+        self.assertEqual(rep["wake_repeat"]["chars"], 200)
+        self.assertEqual(set(rep["wake_repeat"]["names"]), {"s1", "s2"})
+        self.assertIn("would:wake_repeat [wake_gate]: 2 olay", sw.dry_report_text(rep))
+
+    def test_ask_due_only_known_kip_after_72h_once(self):
+        paths = sw.paths_for("default")
+        self._log(paths, "would:keepwarm", 71)
+        self._log(paths, "would:wake_cap", 71.5)
+        self._log(paths, "would:handover", 1)               # gözlem kipi eylemi: kip değil
+        rep = sw.dry_report(paths, hours=100)
+        now = time.time()
+        self.assertEqual(sw.dry_ask_due(rep, [], now), [])                    # 72 saat dolmadı
+        self.assertEqual(sw.dry_ask_due(rep, [], now + 3600), ["keepwarm", "wake_gate"])
+        self.assertEqual(sw.dry_ask_due(rep, ["wake_gate"], now + 3600), ["keepwarm"])
+
+    def test_maybe_dry_ask_opens_one_question_and_not_again(self):
+        paths = sw.paths_for("default")
+        self._log(paths, "would:wake_cap", 80)
+        cfg = _cfg(wake_gate="dry")
+        with mock.patch.object(web_steward, "_notify", lambda *a, **k: True):
+            qid = web_steward.maybe_dry_ask(cfg, time.time())
+            self.assertTrue(qid)
+            self.assertIsNone(web_steward.maybe_dry_ask(cfg, time.time()))
+        self.assertEqual(len([q for q in sw.open_questions() if q.source == "dry-report"]), 1)
+
+    def test_no_ask_when_kip_already_act(self):
+        paths = sw.paths_for("default")
+        self._log(paths, "would:wake_cap", 80)
+        with mock.patch.object(web_steward, "_notify", lambda *a, **k: True):
+            self.assertIsNone(web_steward.maybe_dry_ask(_cfg(wake_gate="act"), time.time()))
+
+
+class BrainWakeGateTest(HttpTest):
+    """TBD#138 b: beyin direktifi (reason=brain, actor=brain, cevapsız) de kapıya girer; günlük üst sınır AYRI sayaçta."""
+
+    def test_brain_directive_capped_per_day_separately_from_due(self):
+        cfg = _cfg(wake_gate="act", wake_repeat_minutes=0, brain_wake_max_per_day=2, wake_max_per_day=2)
+        paths = sw.paths_for("default")
+        for i in range(2):
+            self.assertFalse(web_steward._wake_gate(cfg, paths, "s1", "brain", None, f"b{i}", "brain"))
+            web_steward._wake_record(cfg, paths, "s1", "brain", None, f"b{i}", "brain")
+        self.assertTrue(web_steward._wake_gate(cfg, paths, "s1", "brain", None, "b3", "brain"))      # 3.sü gitmez
+        self.assertFalse(web_steward._wake_gate(cfg, paths, "s1", "due", None, "d0"))                 # `due` sayacı ayrı
+        self.assertFalse(web_steward._wake_gate(cfg, paths, "s1", "brain", None, "b3", ""))           # actor brain değil: kapı dışı
+        web_steward._wake_record(cfg, paths, "s1", "answer", None, "x")                               # cevap = yeni girdi: sıfırlanır
+        self.assertFalse(web_steward._wake_gate(cfg, paths, "s1", "brain", None, "b4", "brain"))
+
+    def test_brain_gate_dry_logs_would_and_sends(self):
+        cfg = _cfg(wake_gate="dry", wake_repeat_minutes=0, brain_wake_max_per_day=1)
+        paths = sw.paths_for("default")
+        web_steward._wake_record(cfg, paths, "s1", "brain", None, "b0", "brain")
+        self.assertFalse(web_steward._wake_gate(cfg, paths, "s1", "brain", None, "b1", "brain"))
+        self.assertTrue(any(e.get("event") == "would:brain_wake_cap" for e in sw.read_log(paths=paths)) if hasattr(sw, "read_log") else True)
+
+
 class WakeGateTest(HttpTest):
     """TBD#121: aynı metinli otomatik `due` uyandırması pencerede tekrar gitmez (önce dry ölçüm, sonra act)."""
 

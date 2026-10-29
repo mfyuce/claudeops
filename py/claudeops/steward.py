@@ -319,6 +319,7 @@ class Config:
     keepwarm_min_tokens: int = 100000  # bundan küçük bağlam dürtülmez (soğuk açılış zaten ucuz)
     keepwarm_max_consecutive: int = 2  # dürtmeye rağmen gerçek etkinlik yoksa zincir bu kadar dürtmede KESİLİR
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
+    brain_wake_max_per_day: int = 6    # uyandırma kapısı (TBD#138): BEYİN direktifi (`reason=brain`, actor=brain, cevapsız) oturum başına 24 saatte en çok bu kadar; aşımda `wake_gate` kipine uyar (dry = `would:brain_wake_cap`); 0 = sınırsız
     wake_repeat_minutes: int = 240     # uyandırma kapısı penceresi (dk); 0 = kapalı
     upper_main_warn: bool = True       # denetim: proje ANA oturumu fiilen Sonnet medium üstüne çıktıysa (canlı model/effort) `upper_main` olayı + oturuma tek HATIRLATMA (zorlamaz; `off` = kapalı)
     advance_findings: bool = False     # İLERLETME değnekçisi: sahibin onayladığı (`exported`) review bulgularını KENDİ projelerinin çalışan oturumuna direktifle iletir (steward_advance.py)
@@ -3645,6 +3646,65 @@ def log_entries_for_date(date: str, paths: Any = None) -> List[Dict[str, Any]]:
     except OSError:
         pass
     return out
+
+
+# TBD#138 a: ölçüm (dry) kipleri: `would:<tür>` olayı -> (ayar anahtarı, "dry"de olduğu değer). Başka `would:*` (gözlem kipi eylemleri) raporda
+# görünür ama "act?" sorusu doğurmaz.
+DRY_KIPS = {"wake_repeat": "wake_gate", "wake_cap": "wake_gate", "brain_wake_cap": "wake_gate", "keepwarm": "keepwarm",
+            "idle_big_handover": "idle_big_handover"}
+DRY_REPORT_HOURS = 72
+
+
+def dry_report(paths: Any = None, hours: float = DRY_REPORT_HOURS, now: Optional[float] = None) -> Dict[str, Dict[str, Any]]:
+    """`log.jsonl`(+`.1`) içindeki `would:<tür>` olaylarını son `hours` saatte türe göre sayar: `{tür: {count, names:{ad:n},
+    chars, first, last}}` (`first`/`last` epoch). Yalnız okur."""
+    t = time.time() if now is None else now
+    lp = _pp(paths).log
+    out: Dict[str, Dict[str, Any]] = {}
+    for fn in (lp + ".1", lp):
+        try:
+            with open(fn, encoding="utf-8") as f:
+                for ln in f:
+                    if '"would:' not in ln:
+                        continue
+                    try:
+                        e = json.loads(ln)
+                        ts = time.mktime(time.strptime(str(e.get("ts"))[:19], "%Y-%m-%dT%H:%M:%S"))
+                    except (ValueError, OverflowError):
+                        continue
+                    ev = str(e.get("event", ""))
+                    if not ev.startswith("would:") or t - ts > hours * 3600:
+                        continue
+                    r = out.setdefault(ev[6:], {"count": 0, "names": {}, "chars": 0, "first": ts, "last": ts})
+                    r["count"] += 1
+                    r["names"][str(e.get("name") or "-")] = r["names"].get(str(e.get("name") or "-"), 0) + 1
+                    r["chars"] += int(e.get("chars") or 0)
+                    r["first"], r["last"] = min(r["first"], ts), max(r["last"], ts)
+        except OSError:
+            continue
+    return out
+
+
+def dry_report_text(rep: Dict[str, Dict[str, Any]], hours: float = DRY_REPORT_HOURS) -> str:
+    if not rep:
+        return f"Son {int(hours)} saatte `would:*` olayı yok.\n"
+    lines = [f"Ölçüm (dry) kipleri, son {int(hours)} saat:"]
+    for kind, r in sorted(rep.items(), key=lambda kv: -kv[1]["count"]):
+        top = ", ".join(f"{n}×{c}" for n, c in sorted(r["names"].items(), key=lambda kv: -kv[1])[:3])
+        extra = f", ~{r['chars']} karakter" if r["chars"] else ""
+        lines.append(f"- would:{kind}{' [' + DRY_KIPS[kind] + ']' if kind in DRY_KIPS else ''}: {r['count']} olay{extra} ({top})")
+    return "\n".join(lines) + "\n"
+
+
+def dry_ask_due(rep: Dict[str, Dict[str, Any]], asked: Any, now: float, hours: float = DRY_REPORT_HOURS) -> List[str]:
+    """"act?" sorusu sorulacak ölçüm kipleri (ayar anahtarı): bilinen kip, en az `hours` saattir olay üretiyor ve daha önce sorulmadı."""
+    asked = set(asked or [])
+    due = []
+    for kind, r in rep.items():
+        key = DRY_KIPS.get(kind)
+        if key and key not in asked and key not in due and now - r["first"] >= hours * 3600:
+            due.append(key)
+    return sorted(due)
 
 
 def summary_due(state: Dict[str, Any], now: float, hour: int) -> str:
