@@ -124,6 +124,24 @@ class TestPlanner(unittest.TestCase):
         self.assertEqual(rv.max_attempts("claude"), rv.MAX_ATTEMPTS)
 
 
+class TestUncountedAttempts(unittest.TestCase):
+    """TBD#139: restart/iptal/spawn hatası Evren çiftini 30 gün kilitlemez; gerçek zaman aşımı kilitler."""
+
+    def test_restart_cancel_spawn_do_not_consume_attempt(self):
+        ok_agy = done(NOW - 100)
+        for err in ("yeniden başlatma: koşu yarıda kaldı", "cancelled", "spawn: [Errno 2] no such file"):
+            bad = {"status": "partial", "started_at": NOW - 3600, "attempts": 1, "error": err}
+            h = hist(**{"a|agy/gemini-3-flash": ok_agy, "a|evren/glm-4.6": bad})
+            self.assertEqual(rv.next_review(pool("a"), h, TS, NOW), ("a", T2), err)
+        real = {"status": "partial", "started_at": NOW - 3600, "attempts": 1, "error": "timeout 20 dk"}
+        h = hist(**{"a|agy/gemini-3-flash": ok_agy, "a|evren/glm-4.6": real})
+        self.assertIsNone(rv.next_review(pool("a"), h, TS, NOW))
+
+    def test_single_word_denetlenmemistir_is_not_incomplete(self):
+        self.assertFalse(rv.report_incomplete("BULGU YOK\n\nNot: tests/ dizini denetlenmemiştir."))
+        self.assertTrue(rv.report_incomplete("İnceleme tamamlanmadı: araç bütçesi tükendi."))
+
+
 class TestPoolSync(unittest.TestCase):
     def test_sync(self):
         p0 = {"projects": {"man": {"enabled": True, "source": "manual", "added_at": 1, "removed_at": None},

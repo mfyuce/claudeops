@@ -22,6 +22,16 @@ MAX_ATTEMPTS = 3                    # error/model_fallback/partial çifti bu den
 MODE_MAX_ATTEMPTS = {"evren": 1}    # Evren: 20 dk zaman aşımı kota yakar, pencere başına en çok 1 deneme (sahip kararı 2026-10-24)
 
 
+UNCOUNTED_ERRORS = ("cancelled", "spawn:", "yeniden başlatma")     # TBD#139: kaza sayılmayan hatalar (iptal, süreç açılamadı, servis restart'ı)
+
+
+def counts_as_attempt(rec: Any) -> bool:
+    """Bu çift kaydının hatası deneme hakkını TÜKETİR mi: restart/iptal/spawn hatası tüketmez (aynı çift 30 gün kilitlenmesin);
+    gerçek zaman aşımı/`partial`/rc≠0 tüketir."""
+    err = str((rec or {}).get("error") or "")
+    return not any(err.startswith(p) for p in UNCOUNTED_ERRORS)
+
+
 def max_attempts(mode: str) -> int:
     return MODE_MAX_ATTEMPTS.get(mode, MAX_ATTEMPTS)
 MODES = ("agy", "evren", "claude", "codex", "copilot")
@@ -176,7 +186,7 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
             if _fresh(r, now, window):
                 continue
             if (isinstance(r, dict) and r.get("status") in ("error", "model_fallback", "partial")
-                    and int(r.get("attempts") or 0) >= max_attempts(t.mode)
+                    and int(r.get("attempts") or 0) >= max_attempts(t.mode) and counts_as_attempt(r)
                     and now - float(r.get("started_at") or 0) < window):
                 continue
             pick = t
@@ -805,7 +815,7 @@ def appended_export(text: str, rows: Sequence[Dict[str, Any]], reviews_root: str
     return new, [r["id"] for r in fresh]
 
 
-_INCOMPLETE_RE = re.compile(r"tool[- ]call budget (?:was )?exhausted|budget exhausted|araç (?:çağrısı )?bütçesi\s+(?:\(\d+ çağrı\)\s+)?tükendi|inceleme(?:nin)? (?:durumu: )?tamamlanmadı|denetlenmemiştir", re.I)
+_INCOMPLETE_RE = re.compile(r"tool[- ]call budget (?:was )?exhausted|budget exhausted|araç (?:çağrısı )?bütçesi\s+(?:\(\d+ çağrı\)\s+)?tükendi|inceleme(?:nin)? (?:durumu: )?tamamlanmadı", re.I)     # TBD#139: tek kelime `denetlenmemiştir` ("tests/ denetlenmemiştir" notu) yanlış pozitifti
 _HAS_FINDING_RE = re.compile(r"^## R-\d+ \|", re.M)
 
 

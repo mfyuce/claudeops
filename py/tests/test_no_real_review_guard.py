@@ -4,6 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))     # `claudeops` paketi: tek başına da çalışsın
 from _no_real_review import MSG, NoRealReviewMixin, install  # noqa: E402
 from claudeops.commands import web_review as wr  # noqa: E402
 
