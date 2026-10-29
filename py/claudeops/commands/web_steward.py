@@ -356,9 +356,11 @@ def _name_host(name: str) -> str:
         return ""
 
 
-def _remote_last_assistant(targets: List[Tuple[str, str]], budget: float = REMOTE_READ_BUDGET_SECONDS) -> Dict[Tuple[str, str], str]:
+def _remote_last_assistant(targets: List[Tuple[str, str]], budget: float = REMOTE_READ_BUDGET_SECONDS,
+                           failed: Optional[set] = None) -> Dict[Tuple[str, str], str]:
     """{(host, ad): son asistan metni}: `GET /api/term/chat?mode=last`, paralel, TOPLAM `budget` sn. Süresi dolan ya da
-    hata veren okuma sonuçta YOK (= "" bilinmiyor); süresi dolan iş parçacığı arka planda biter, sonucu atılır."""
+    hata veren okuma sonuçta YOK (= "" bilinmiyor); süresi dolan iş parçacığı arka planda biter, sonucu atılır. `failed`
+    verilirse taşıma hatası/zaman aşımı alan host'lar ona eklenir (devre kesici okuma yavaşlığını da saysın)."""
     out: Dict[Tuple[str, str], str] = {}
     if not targets:
         return out
@@ -369,7 +371,11 @@ def _remote_last_assistant(targets: List[Tuple[str, str]], budget: float = REMOT
         try:
             parsed, _status = _remote.get("/api/term/chat", host, {"name": name, "mode": "last"}, timeout=budget)
         except Exception:
+            if failed is not None:
+                failed.add(host)
             return
+        if failed is not None and _is_transport_error(host, parsed, _status):
+            failed.add(host)
         if isinstance(parsed, dict) and parsed.get("ok") and parsed.get("supported"):
             with lock:
                 out[(host, name)] = str(parsed.get("assistant") or "")
@@ -377,8 +383,10 @@ def _remote_last_assistant(targets: List[Tuple[str, str]], budget: float = REMOT
     threads = [threading.Thread(target=work, args=t, daemon=True, name="steward-remote-read") for t in targets]
     for t in threads:
         t.start()
-    for t in threads:
+    for t, (h, _n) in zip(threads, targets):
         t.join(max(0.0, deadline - time.monotonic()))
+        if t.is_alive() and failed is not None:
+            failed.add(h)      # süre doldu, host cevap vermedi
     with lock:
         return dict(out)
 
@@ -429,8 +437,8 @@ def _caps_cached(host: str, now: float) -> Optional[Dict[str, Any]]:
     return dict(hit[1])
 
 
-def _probe_facts(host: str, names: List[str], budget: float, now: Optional[float] = None
-                 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def _probe_facts(host: str, names: List[str], budget: float, now: Optional[float] = None,
+                 failed: Optional[set] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Host'un `GET /api/session/facts` ucu: (yetenek, {ad: olgular}). Tek istek hem yetenek yoklaması hem veri okumasıdır.
     404 = eski host: önbelleğe api 0 yazılır, taşıma hatası SAYILMAZ. Ağ/zaman aşımı/başka HTTP hatası: önbelleğe
     YAZILMAZ (geçici arıza yeteneği silmesin), yetenek önbellekteki (yoksa api 0) döner ve olgu boştur. Önbellekte taze
@@ -442,7 +450,11 @@ def _probe_facts(host: str, names: List[str], budget: float, now: Optional[float
     try:
         parsed, status = _remote.get("/api/session/facts", host, {"names": ",".join(names)}, timeout=budget)
     except Exception:
+        if failed is not None:
+            failed.add(host)
         return cached or {"api": 0, "capabilities": []}, {}
+    if failed is not None and _is_transport_error(host, parsed, status):
+        failed.add(host)
     if status == 404:
         return _caps_put(host, 0, [], now), {}
     if status == 200 and isinstance(parsed, dict) and parsed.get("ok") is not False \
@@ -516,10 +528,12 @@ def _remote_views(world: sw.World, now: Optional[float] = None, rt: Optional[_Re
             running.setdefault(v.host, []).append(v)
     got: Dict[str, Dict[str, Any]] = {}
     lock = threading.Lock()
+    read_failed: set = set()      # facts/term-chat okumasında taşıma hatası ya da zaman aşımı alan host'lar (set.add iş parçacığı güvenli)
 
     def probe(host: str) -> None:
         try:
-            caps, facts = _probe_facts(host, [v.name for v in running[host]], max(0.5, deadline - time.monotonic()), now)
+            caps, facts = _probe_facts(host, [v.name for v in running[host]], max(0.5, deadline - time.monotonic()), now,
+                                       failed=read_failed)
         except Exception:
             return
         if "session_facts" in caps["capabilities"]:
@@ -529,8 +543,10 @@ def _remote_views(world: sw.World, now: Optional[float] = None, rt: Optional[_Re
     threads = [threading.Thread(target=probe, args=(h,), daemon=True, name="steward-remote-facts") for h in running]
     for t in threads:
         t.start()
-    for t in threads:
+    for t, h in zip(threads, list(running)):
         t.join(max(0.0, deadline - time.monotonic()))
+        if t.is_alive():
+            read_failed.add(h)
     with lock:
         enriched = {h: dict(f) for h, f in got.items()}
     fallback: List[Tuple[str, str]] = []
@@ -543,7 +559,9 @@ def _remote_views(world: sw.World, now: Optional[float] = None, rt: Optional[_Re
         else:
             fallback.append((v.host, v.name))
     left = deadline - time.monotonic()
-    texts = _remote_last_assistant(fallback, budget=left) if fallback and left > 0 else {}
+    texts = _remote_last_assistant(fallback, budget=left, failed=read_failed) if fallback and left > 0 else {}
+    if rt is not None and read_failed:
+        rt.failed |= read_failed       # yavaş/yanıtsız okuma da devre kesiciyi besler (eskiden yalnız eylem POST'u sayılırdı)
     for v in views:
         if (v.host, v.name) in texts:
             v.last_assistant = texts[(v.host, v.name)]

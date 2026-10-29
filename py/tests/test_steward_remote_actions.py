@@ -366,6 +366,21 @@ class TestRemoteResilience(_Actions):
             ws.tick_once("manual")
         self.assertEqual(seen, [HOST])
 
+    def test_read_timeouts_feed_the_breaker(self):
+        # TODO 2026-10-28 (21): facts/term-chat okuma zaman aşımı `failed`e girmiyordu: yavaş host her tick 10 sn yedirirdi
+        self.fake.set(HOST, [_row("oiso")])
+        world = ws._world()
+        rt = ws._remote_snapshot([HOST])
+
+        def boom(path, host, query, timeout=None):
+            raise TimeoutError("read timed out")
+        with mock.patch.object(ws._remote, "get", boom):
+            ws._remote_views(world, rt=rt)
+        self.assertIn(HOST, rt.failed)
+        rt2 = ws._remote_snapshot([HOST])
+        ws._remote_views(world, rt=rt2)                                      # normal okuma: host düşmez
+        self.assertNotIn(HOST, rt2.failed)
+
     def test_snapshot_drives_both_unavailable_and_views(self):
         self.fake.set(HOST, [_row("oiso")])
         cfg = ws.steward_config()
