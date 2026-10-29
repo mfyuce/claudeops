@@ -46,6 +46,7 @@ def _view(name, **kw):
 
 def _cfg(**kw):
     c = sw.Config(enabled=True)
+    c.done_handover = False        # eski testler DONE -> doğrudan stop'u sınar; devirli yol ayrı sınıfta (DoneHandoverTest)
     for k, v in kw.items():
         setattr(c, k, v)
     return c

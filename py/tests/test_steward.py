@@ -38,6 +38,7 @@ def steward_cfg(**kw):
 
 def _cfg(**kw):
     c = sw.Config(enabled=True)
+    c.done_handover = False        # eski testler DONE -> doğrudan stop'u sınar; devirli yol ayrı sınıfta (DoneHandoverTest)
     for k, v in kw.items():
         setattr(c, k, v)
     return c
@@ -755,6 +756,80 @@ class DoneDeferralTest(unittest.TestCase):
         projects = {"p1": sw.Project(name="p1", phase="planned")}
         acts, _ = sw.plan_tick([_view("p1", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], projects, {}, _cfg(), 5000.0, [], [])
         self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop")], ["set_phase", "stop"])
+
+
+class DoneHandoverTest(unittest.TestCase):
+    """STEWARD-DONE-CONFIRMED: teyit -> faz done -> DEVİR (READY FOR HANDOVER) -> stop (yeniden açma YOK); küçük bağlamda
+    devir atlanır; sahip 'çelişti' cevabı yeniden soru açtırmaz, 'bitti' ise sayı çelişkisi sayılmaz."""
+    OK = "bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, testler yeşil"
+
+    def _cfg(self, **kw):
+        c = _cfg(**kw)
+        c.done_handover = True
+        return c
+
+    def _projects(self):
+        return {"p1": sw.Project(name="p1", phase="planned")}
+
+    def _k(self, acts):
+        return [(a.kind, a.name) for a in acts if a.kind in ("set_phase", "stop", "handover", "respawn", "ask_user")]
+
+    def test_done_hands_over_then_stops_never_respawns(self):
+        acts, st = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, self._cfg(), 5000.0, [], [])
+        self.assertEqual(self._k(acts), [("set_phase", "p1"), ("handover", "p1")])
+        self.assertEqual(st["ho_close"], {"p1": "p1"})
+        self.assertIn("p1", st["ho_pending"])
+        acts, st2 = sw.plan_tick([_view("p1", last_assistant="devir\n" + sw.READY_FOR_HANDOVER, busy=False)],
+                                 self._projects(), st, self._cfg(), 5100.0, [], [])
+        self.assertEqual([(a.kind, a.name) for a in acts if a.kind in ("stop", "respawn")], [("stop", "p1")])
+        self.assertNotIn("ho_close", st2)
+        self.assertNotIn("p1", st2.get("ho_pending", {}))
+
+    def test_session_gone_during_done_handover_is_not_respawned(self):
+        _, st = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, self._cfg(), 5000.0, [], [])
+        acts, st2 = sw.plan_tick([], self._projects(), st, self._cfg(), 5100.0, [], [])
+        self.assertEqual([a for a in acts if a.kind == "respawn"], [])
+        self.assertNotIn("ho_close", st2)
+
+    def test_grace_expiry_still_stops(self):
+        cfg = self._cfg()
+        _, st = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, cfg, 5000.0, [], [])
+        acts, _ = sw.plan_tick([_view("p1", last_assistant="hâlâ yazıyor", busy=False)], self._projects(), st, cfg,
+                               5000.0 + cfg.ho_grace_minutes * 60 + 1, [], [])
+        self.assertEqual([(a.kind, a.name) for a in acts if a.kind in ("stop", "respawn")], [("stop", "p1")])
+
+    def test_small_context_skips_handover(self):
+        cfg = self._cfg(context_warn_tokens=300000)
+        acts, st = sw.plan_tick([_view("p1", last_assistant=self.OK, context_tokens=20000)], self._projects(), {}, cfg, 5000.0, [], [])
+        self.assertEqual(self._k(acts), [("set_phase", "p1"), ("stop", "p1")])
+        self.assertNotIn("ho_close", st)
+        acts, st = sw.plan_tick([_view("p1", last_assistant=self.OK, context_tokens=200000)], self._projects(), {}, cfg, 5000.0, [], [])
+        self.assertEqual(self._k(acts), [("set_phase", "p1"), ("handover", "p1")])
+
+    def test_switch_off_is_old_direct_stop(self):
+        cfg = self._cfg()
+        cfg.done_handover = False
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, cfg, 5000.0, [], [])
+        self.assertEqual(self._k(acts), [("set_phase", "p1"), ("stop", "p1")])
+
+    def test_owner_answer_stops_reasking_and_bitti_closes(self):
+        q = sw.Question(id="q1", project="p1", text="p1: STEWARD-DONE-CONFIRMED geldi ama TODO.md'de 410 açık iş var", created_at=1000.0,
+                        status="answered", answer="bitti, kapat", answered_at=4000.0)
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, self._cfg(), 5000.0, [q], [],
+                               open_work=lambda proj: 410)
+        self.assertEqual(self._k(acts), [("set_phase", "p1"), ("handover", "p1")])       # 'bitti': sayı çelişkisi sayılmaz
+        q.answer = "hayır, devam et"
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, self._cfg(), 5000.0, [q], [],
+                               open_work=lambda proj: 410)
+        self.assertEqual(self._k(acts), [])                                               # yeniden 'çelişti' sorusu YOK, kapanış da yok
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, self._cfg(), 5000.0 + sw.DONE_ANSWER_TTL, [q], [],
+                               open_work=lambda proj: 410)
+        self.assertEqual(self._k(acts), [("ask_user", "p1")])                             # cevap eskidi: yeniden sorulabilir
+
+    def test_unanswered_conflict_still_asks(self):
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, self._cfg(), 5000.0, [], [],
+                               open_work=lambda proj: 410)
+        self.assertEqual(self._k(acts), [("ask_user", "p1")])
 
 
 class DoneConfirmTest(unittest.TestCase):
@@ -2127,7 +2202,7 @@ class HttpTest(_Tmp):
         with mock.patch.object(web_steward, "_collect_views", lambda cfg: [done2]):
             r = web_steward.tick_once("timer")
         self.assertEqual([a["kind"] for a in r["actions"]], ["set_phase"])
-        self.assertEqual([(d["kind"], d["name"]) for d in r["dry"]], [("stop", "a")])
+        self.assertEqual([(d["kind"], d["name"]) for d in r["dry"]], [("handover", "a")])   # DONE: önce devir (done_handover), sonra stop
 
     def test_act_mode_applies_and_logs_actions(self):
         self._observe_env("act")

@@ -276,6 +276,8 @@ class Config:
     drain: bool = False                 # YENİ İŞ ALMA: oturum başlatma (uğrama/cevap-başlatma) ve beyin direktifi durur; çalışan iş, cevap iletimi, devir sürer
     auto_context_ratio: float = 0.7     # bağlam devir eşiğinin bu oranını aşmışsa cevap "önce devir" (altındaysa "bu oturumda sürdür")
     handover_force_ratio: float = 1.3   # eşik devri oturum meşgul/alt ajan çalışırken ERTELENİR; bağlam eşiğin bu katını aşarsa zorla (0 = oran tavanı yok)
+    done_handover: bool = True             # STEWARD-DONE-CONFIRMED sonrası oturum önce DEVİR yapar (READY FOR HANDOVER), sonra kapanır; kapalı = doğrudan stop
+    done_handover_min_ratio: float = 0.3   # bağlam bilinir ve eşiğin bu oranından azsa devir ATLANIR, doğrudan stop (0 = atlama yok)
     handover_defer_max_minutes: int = 30   # eşik devri en çok bu kadar ertelenir, sonra zorla (0 = erteleme kapalı: eski davranış)
     brain_cli: str = "claude"
     brain_model: str = ""
@@ -668,7 +670,7 @@ class HostChangeRefused(ValueError):
 
 # Host değişince o projenin oturum adlarıyla tutulan devir/iletim izleri silinir (eski host'taki oturumun izi yeni host'taki
 # aynı adlı oturuma taşınmasın: bekleyen devir yanlış oturumu yeniden açar, önsöz "gitti" sanılır, yanıt özeti tutmaz).
-_HOST_STATE_KEYS = ("ho_pending", "done_pending", "preamble_sent", "seen_assistant", "ho_deferred")
+_HOST_STATE_KEYS = ("ho_pending", "ho_close", "done_pending", "preamble_sent", "seen_assistant", "ho_deferred")
 
 
 def _clear_project_state(name: str, projects: Dict[str, Project], paths: Any = None) -> List[str]:
@@ -3020,6 +3022,26 @@ DONE_CONFIRM_TEXT_EN = ("STEWARD-DONE received. Check the open `- [ ]` items in 
                         "otherwise keep working and do NOT write STEWARD-DONE.")
 
 
+DONE_ANSWER_TTL = 24 * 3600.0     # DONE-CONFIRMED çelişki sorusuna sahip cevabı bu süre boyunca geçerli
+_DONE_NO_RE = re.compile(r"bitmedi|bitmemiş|değil|degil|hayır|hayir|devam|sürdür|surdur|\bnot\b|\bno\b", re.I)
+_DONE_YES_RE = re.compile(r"\bbitti\b|\bbitmiş\b|\btamam(?:dır)?\b|\bkapat|\bevet\b|\bdone\b|\bfinished\b|\byes\b", re.I)
+
+
+def done_conflict_answer(questions: Sequence["Question"], proj: str, now: float) -> Optional[bool]:
+    """Projenin son (24 sa) STEWARD-DONE-CONFIRMED çelişki sorusuna sahip cevabı: None = cevap yok; True = 'bitti'
+    (TODO/TBD sayısı çelişki sayılmaz, proje kapanır); False = başka cevap (yeni 'çelişti' sorusu AÇILMAZ, kapanmaz)."""
+    best: Optional["Question"] = None
+    for q in questions:
+        if q.status == "answered" and q.project == proj and "STEWARD-DONE-CONFIRMED" in q.text and (q.answer or "").strip() \
+                and now - float(q.answered_at or q.created_at or 0.0) < DONE_ANSWER_TTL:
+            if best is None or q.answered_at >= best.answered_at:
+                best = q
+    if best is None:
+        return None
+    a = best.answer
+    return bool(_DONE_YES_RE.search(a)) and not _DONE_NO_RE.search(a)
+
+
 def _confirm_action(name: str, proj: str, cfg: "Config", why: str) -> "Action":
     """Tek satır teyit direktifi (`nudge` yolu: yerel/uzak, observe'da yalnız `would:`); faz değişmez, oturum açık kalır."""
     return Action("nudge", name, why, {"text": DONE_CONFIRM_TEXT_EN if cfg.lang == "en" else DONE_CONFIRM_TEXT_TR,
@@ -3058,6 +3080,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
 
     st: Dict[str, Any] = json.loads(json.dumps(state)) if state else {}
     ho_pending: Dict[str, float] = dict(st.get("ho_pending") or {})
+    ho_close: Dict[str, str] = dict(st.get("ho_close") or {})    # {oturum: proje}: bu devir bitince oturum YENİDEN AÇILMAZ, kapanır (DONE)
     seen: Dict[str, str] = dict(st.get("seen_assistant") or {})
     done_pending: Dict[str, str] = dict(st.get("done_pending") or {})
     done_confirm: Dict[str, float] = {k: float(t) for k, t in dict(st.get("done_confirm") or {}).items()
@@ -3157,6 +3180,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     for name, sent_at in list(ho_pending.items()):
         if not _managed(name):
             ho_pending.pop(name, None)   # yönetilmeyen oturum (eski kayıt/elle): yeniden AÇILMAZ
+            ho_close.pop(name, None)
             continue
         if name in busy_names:
             continue
@@ -3164,9 +3188,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if v is None and _unavail(name):
             continue     # host kapalı: devir izi korunur, yeniden açma host dönünce kararlaştırılır
         if v is None or not v.running:
-            if not _sibling_running(views, name, projects, cfg, world):
+            if name not in ho_close and not _sibling_running(views, name, projects, cfg, world):
                 actions.append(Action("respawn", name, "handover sent, session gone → start"))
             ho_pending.pop(name, None)
+            ho_close.pop(name, None)
             busy_names.add(name)
             continue
         ready = READY_FOR_HANDOVER in (v.last_assistant or "")
@@ -3177,10 +3202,29 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 # Aynı projenin başka oturumu çalışıyor: devri biten ikinci oturum yeniden AÇILMAZ, kapanır
                 # (proje başına tek canlı oturum; her oturum kendi bağlamını her turda yeniden okur).
                 actions.append(Action("stop", name, "devir bitti, projenin başka oturumu çalışıyor → kapat"))
+            elif name in ho_close:
+                # STEWARD-DONE-CONFIRMED devri: proje done, yeniden açılmaz; devir metni oturumda kalır (sonraki açılış taze `--new`)
+                actions.append(Action("stop", name, "STEWARD-DONE: devir bitti → kapat"))
             else:
                 actions.append(Action("respawn", name, "READY FOR HANDOVER" if ready else "handover grace expired"))
             ho_pending.pop(name, None)
+            ho_close.pop(name, None)
             busy_names.add(name)
+
+    def _close_done(v: SessionView, proj: str, why: str) -> None:
+        """Faz done olduktan sonra oturumu kapat: önce DEVİR (READY FOR HANDOVER beklenir), sonra stop (`ho_close`).
+        Atlama: `done_handover` kapalı, devir zaten sürüyor, oturum tmux'suz/yönetilmeyen ya da bağlam bilinir ve
+        eşiğin `done_handover_min_ratio` oranından küçük (küçük bağlamda devir israf)."""
+        busy_names.add(v.name)
+        warn = context_threshold(cfg, v.model)
+        small = bool(cfg.done_handover_min_ratio and warn and v.context_tokens
+                     and v.context_tokens < cfg.done_handover_min_ratio * warn)
+        if cfg.done_handover and v.tmux and _managed(v.name) and v.name not in ho_pending and not small:
+            actions.append(Action("handover", v.name, f"{why} → devir, sonra kapat"))
+            ho_pending[v.name] = now
+            ho_close[v.name] = proj
+        elif v.name not in ho_pending:
+            actions.append(Action("stop", v.name, why))
 
     # 3) İşaret taraması — yalnız DEĞİŞMİŞ yanıtlarda (aynı yanıtı her tick yeniden işleme)
     for v in views:
@@ -3212,7 +3256,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             else:
                 left = open_work(proj) if open_work is not None else None
                 tbd_left = (open_tbd(proj) or 0) if open_tbd is not None else 0
-                if tbd_left and not left:
+                owner_ans = done_conflict_answer(questions, proj, now) if (left or tbd_left) else None
+                if owner_ans is True:
+                    left, tbd_left = 0, 0       # sahip 'bitti' dedi: sayı çelişkisi sayılmaz
+                if owner_ans is False:
+                    pass                        # sahip cevapladı (bitmedi/devam): yeniden 'çelişti' sorusu AÇILMAZ, kapatma da yok
+                elif tbd_left and not left:
                     actions.append(Action("ask_user", v.name, "STEWARD-DONE-CONFIRMED TBD ile çelişti",
                                           {"project": proj, "text": f"{v.name}: STEWARD-DONE-CONFIRMED geldi ama TOBEDECIDED.md'de {tbd_left} açık "
                                                                     f"karar var; faz done yapılmadı. Kararları verir misiniz, yoksa gerçekten bitti mi?"}))
@@ -3226,8 +3275,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                     done_confirm.pop(proj, None)
                     actions.append(Action("set_phase", proj, "STEWARD-DONE", {"phase": "done"}))
                     if v.name not in busy_names:
-                        actions.append(Action("stop", v.name, "STEWARD-DONE"))
-                        busy_names.add(v.name)
+                        _close_done(v, proj, "STEWARD-DONE")
         elif proj and m["done"] and proj not in done_confirm:
             done_confirm[proj] = now
             actions.append(_confirm_action(v.name, proj, cfg, "STEWARD-DONE iddiası: teyit istendi"))
@@ -3243,8 +3291,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 done_pending.pop(name, None)
                 continue
             actions.append(Action("set_phase", proj, "STEWARD-DONE (ertelenmişti)", {"phase": "done"}))
-            actions.append(Action("stop", name, "STEWARD-DONE (ertelenmişti)"))
-            busy_names.add(name)
+            _close_done(v, proj, "STEWARD-DONE (ertelenmişti)")
             done_pending.pop(name, None)
 
     # 4) Cevaplanmış sorular → ilgili oturuma ilet (kapalıysa aç)
@@ -3450,6 +3497,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     st["pending_list"] = [{"kind": str(it.get("kind") or ""), "name": str(it.get("name") or ""),
                            "text": str(it.get("text") or "")[:300]} for it in items[:20]]
     st["ho_pending"] = ho_pending
+    if ho_close:
+        st["ho_close"] = ho_close
+    else:
+        st.pop("ho_close", None)
     st["seen_assistant"] = seen
     if done_confirm:
         st["done_confirm"] = done_confirm
