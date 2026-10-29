@@ -2533,7 +2533,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         q = sw.escalate_routine(action.payload.get("question_id") or "", paths)
         if q is None:
             return {"ok": False, "error": "not an open routine question"}
-        notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
+        lead = "Beyin çözemedi: " if q.text.startswith(sw.BLOCKED_TEXT_PREFIX) else ""
+        notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {lead}{q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "lesson_ack":             # oturum dersi işledi: yalnız kayıt (geçersiz biçim/bilinmeyen kimlik sessizce düşer)
         ack = sl.parse_ack(str(action.payload.get("text") or ""))
@@ -4223,6 +4224,11 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             ok, why = sw.brain_may_answer(q0)
             if not ok:
                 sw.log_event("answer_denied", paths=sid, id=q0.id, project=q0.project, reason=why)
+                if q0.routine:      # TBD#140: sahip kararı çıkan rutin/blocked madde beyinde 15 tur dönmez, ANINDA sahibe düşer
+                    esc = sw.escalate_routine(q0.id, sw.paths_for(sid))
+                    if esc is not None:
+                        _notify(steward_config(sid), f"{_ask_prefix(esc.project, sid)} Beyin cevaplayamaz (sahip kararı): {esc.text}\n→ {sw.ask_hint(esc.id, sid)}")
+                        sw.log_event("escalate_owner_only", paths=sid, id=esc.id, project=esc.project)
                 return {"ok": False, "error": why, "code": "owner_only"}
             ok, why, red = sw.job_request_gate(q0, str(data.get("answer") or ""), sj.load_jobs(sw.paths_for(sid)))
             if not ok:

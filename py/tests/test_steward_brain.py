@@ -50,8 +50,8 @@ def _sha_text(text):
 # Başlangıçta P5 ÖNCESİ kodla (41428ce) üretilmişti; model kuralı eklemeleriyle bilerek güncellenir (default yapı değişmemeli ama kural metni değişebilir). Üretilmiş `build_workspace_claude_md` çıktılarının (bayt sayısı, sha256): default CLAUDE.md
 # değişmemeli (her beyin açılışında yeniden yazıldığı için fark = gereksiz yeniden yazım). "PERSONA" ve paketlenmiş persona.
 GOLDEN_MD = {
-    ("tr", "PERSONA"): (5748, "7db508824c8d0624c44c70a3ab2483ac562c22af36fe007c3c776fca46381560"),
-    ("tr", "BUNDLED"): (9244, "c52da4fc1d6935460aea1590c4055411f778a809577288129013a307d07ee69d"),
+    ("tr", "PERSONA"): (5850, "d5eb5a1d935b73f5391bba6c18fc27938dbfb7cb151d919f141e33d648f5c3f2"),
+    ("tr", "BUNDLED"): (9346, "32c27e34dc680920a65f9dbf42b7ccc3572ea21466ddc9152194cd88c0be22c8"),
     ("en", "PERSONA"): (4252, "bb8c0cec772d1460ab5f3d9c1ae5c18e69ab3ab04a9e130c9a66668d1775f768"),
     ("en", "BUNDLED"): (7748, "4506a6d1b22ea76edf055ea687430cb32ff0d51db3d50f66ea8128642091e5fc"),
 }

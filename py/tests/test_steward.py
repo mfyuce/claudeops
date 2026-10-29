@@ -2667,6 +2667,37 @@ class QuestionPageHttpTest(_Tmp):
 
 
 
+class BlockedEscalationTest(HttpTest):
+    """TBD#140 A: BLOCKED beyinde 4 saat kalır; sahip kararı çıkan rutin madde ANINDA sahibe düşer; metinler tek kaynaktan."""
+
+    def _escalations(self, text, age_s):
+        now = 1_000_000.0
+        brain = _view("degnekci", busy=True)
+        q = [sw.Question(id="q1", project="p", text=text, created_at=now - age_s, routine=True)]
+        acts, _ = sw.plan_tick([brain], {"p": sw.Project(name="p", phase="planned")}, {}, _cfg(), now, q, [])
+        return [a for a in acts if a.kind == "escalate_routine"]
+
+    def test_blocked_waits_four_hours_routine_thirty_minutes(self):
+        blocked = sw.BLOCKED_TEXT_PREFIX + "PDF yok"
+        self.assertEqual(self._escalations(blocked, 40 * 60), [])
+        self.assertEqual(len(self._escalations(blocked, 5 * 3600)), 1)
+        self.assertEqual(len(self._escalations("nasıl açalım?", 40 * 60)), 1)       # düz rutin: eski 30 dk
+        self.assertEqual(self._escalations("nasıl açalım?", 10 * 60), [])
+
+    def test_owner_only_denial_escalates_routine_immediately(self):
+        q = sw.add_question("p", "main'e force-push yapayım mı?", source="p20261029", routine=True)
+        with mock.patch.object(web_steward, "_notify", lambda *a, **k: True):
+            r = web_steward.http_answer({"id": q.id, "answer": "evet", "actor": "brain"})
+        self.assertEqual(r["code"], "owner_only")
+        self.assertFalse(sw.find_question(q.id).routine)                  # sahibe düştü: artık rutin değil
+        self.assertEqual(sw.find_question(q.id).status, "open")
+
+    def test_protocol_and_guide_derive_from_owner_topics(self):
+        self.assertIn(sw.OWNER_ONLY_TOPICS_TR, sw._PROTOCOL_TR.replace("Force-push", "force-push", 1))
+        self.assertNotIn("bana düşmez", sw._PROTOCOL_TR)
+        self.assertNotIn("telif, harcama, commit/push", sw.build_workspace_claude_md("P", lang="tr"))
+
+
 class BrainAuthorityAndDeferTest(unittest.TestCase):
     """Beyin sahip kararına cevap veremez; meşgul/yeni direktif almış oturuma direktif ertelenir."""
 

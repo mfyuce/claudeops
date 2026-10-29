@@ -930,6 +930,11 @@ REASK_MIN_SIMILARITY = 0.6         # kelime kümesi Jaccard benzerliği eşiği
 TOUR_INLINE_MAX_CHARS = 4000        # tur bundan uzunsa tmux'e gömülmez: dosyaya yazılır, beyne kısa 'şunu oku' mesajı gider (>10K kesiliyordu)
 TOUR_FILES_KEEP = 5
 TOUR_MAX_ITEMS = 8                  # bir turda en çok bu kadar madde (büyük prompt beynin giriş kutusunda takılıyordu); kalanı sonraki tura
+BLOCKED_ESCALATE_SECONDS = 4 * 3600   # TBD#140: `Takıldım:` (STEWARD-BLOCKED) maddesi beyinde kalır; bu kadar çözülmezse sahibe "beyin çözemedi" olarak düşer
+BLOCKED_TEXT_PREFIX = "Takıldım: "     # `ask_user` STEWARD-BLOCKED metninin öneki (blocked ile rutin soruyu ayırt eder)
+# Sahibe AİT konular: `OWNER_ONLY_RE`nin insan-okunur karşılığı; protokol ve araç kılavuzu BURADAN türer (metin/kod çelişmesin, TBD#140)
+OWNER_ONLY_TOPICS_TR = "force-push, silme, harcama, parola/token/yetki ve paket kurulumu (apt/sudo)"
+OWNER_ONLY_TOPICS_EN = "force-push, deletion, spending, passwords/tokens/permissions and package installs (apt/sudo)"
 ROUTINE_ESCALATE_SECONDS = 30 * 60   # beyin bu sürede rutin soruyu cevaplamazsa soru sahibine (telefon) düşer
 REASK_MAX_REPEATS = 2              # aynı cevap en çok bu kadar yeniden iletilir, sonra soru gerçekten açılır
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
@@ -1866,10 +1871,10 @@ _PROTOCOL_TR = (
     f"- paylaşımlı servise (varaka) iş göndermek istiyorsan, istek dosyasını projede hazırla ve: `{MARK_JOB} <iş türü> <dosya yolu> [kısa açıklama]`; "
     "değnekçi beyni işi kuyruğa gönderir, sonucu sana iletilir; sahibe 'devam de' deme. İş numarası (iş kuyruğa girdi bildirimi) gelmeden 'varaka yanıtını bekliyorum' diye DURMA: numara yoksa `"
     f"{MARK_BLOCKED} iş gönderilmedi: <neden>` yaz\n"
-    f"- teknik olarak takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>` (bunu beyin cevaplar, bana düşmez; 'bekliyorum/bitti' durum bildirimi için KULLANMA: "
+    f"- teknik olarak takıldın, düşündün, çözemedin: `{MARK_BLOCKED} <nerede takıldın>` (bunu beyin cevaplar; beyin 4 saatte çözemezse bana düşer; 'bekliyorum/bitti' durum bildirimi için KULLANMA: "
     "açık TODO'n varsa onu yürüt, bana bağlı her TBD için ayrı bir `" + MARK_ASK + "` yaz)\n"
     "Kurallar: commit, push, merge, build ve deploy için KALICI izin var (sahip, 2026-10-27): sorma, testler geçerse yap ve bildir; tüm remote'lara push et. "
-    "Force-push, silme, harcama, parola/token/yetki ve paket kurulumu (apt/sudo) yine bana aittir. "
+    + OWNER_ONLY_TOPICS_TR[0].upper() + OWNER_ONLY_TOPICS_TR[1:] + " yine bana aittir. "
     "İçerik/yazar kararlarında (metin, üslup, künye, kimlik, kavram tercihi) öneriyi KENDİN UYGULAMA: TOBEDECIDED.md'ye yaz ve tek başına anlaşılır bir `" + MARK_ASK + "` aç. "
     "Sıra/öncelik ('hangisinden başlayayım', 'hangi sırayla') bana da beyne de SORULMAZ; sırayı kendin "
     "belirle, gerekçeni bir cümleyle yaz ve ilerle. "
@@ -1893,7 +1898,7 @@ _PROTOCOL_EN = (
     f"- to send a job to the shared service (varaka), prepare the request file in the project and write: `{MARK_JOB} <job kind> <file path> [short note]`; "
     "the steward brain submits it to the queue and its result is delivered to you; do NOT ask me to say 'go on'. Do NOT stop with 'waiting for varaka' before you hold a job number; "
     f"if there is none, write `{MARK_BLOCKED} job not submitted: <why>`\n"
-    f"- technically stuck after thinking it through: `{MARK_BLOCKED} <where>` (the brain answers it, it does not reach me; do NOT use it as a 'waiting/done' status: "
+    f"- technically stuck after thinking it through: `{MARK_BLOCKED} <where>` (the brain answers it; it reaches me only if the brain cannot solve it within 4 hours; do NOT use it as a 'waiting/done' status: "
     "if you have open TODOs, work on them; for each TBD that depends on me write a separate `" + MARK_ASK + "`)\n"
     "Rules: commit, push, merge, build and deploy are PERMANENTLY allowed (owner, 2026-10-27): do not ask, do them when tests pass and report; push to ALL remotes. "
     "Force-push, delete, spending, passwords/tokens/authority and package installs (apt/sudo) stay mine. "
@@ -2221,7 +2226,7 @@ def build_workspace_claude_md(persona: str, lang: str = "tr", sid: str = "defaul
         "- `steward_stop name reason` — oturumu durdur\n"
         "- `steward_set_project name [phase kind goal priority cadence_minutes notes model effort]`\n"
         "- `steward_register_project name cwd goal [kind phase cli model resources]` — yeni proje (klasör yoksa açar, GOAL.md yazar)\n"
-        "- `steward_answer id answer` — bir RUTİN SORU'yu (projenin işleyiş sorusu) cevapla; motor cevabı oturuma iletir. Karar sorularını (telif, harcama, commit/push) sahibine bırak\n"
+        "- `steward_answer id answer` — bir RUTİN SORU'yu (projenin işleyiş sorusu) cevapla; motor cevabı oturuma iletir. Sahibe ait kararları (" + OWNER_ONLY_TOPICS_TR + ") sahibine bırak; commit/push/merge/build/deploy kalıcı izinlidir\n"
         "- `steward_ask_user project question [options]` — bana soru (telefona bildirim gider, `options` verirsen "
         "(en çok 6 kısa seçenek: evet/hayır, A/B/C, sonra) tek dokunuşla cevaplarım; cevabı motor oturuma iletir)\n"
         "- `steward_note project text` — kendi notun (bir sonraki direktifte oturuma da gider)\n"
@@ -2961,7 +2966,7 @@ def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Actio
     for ls in m.get("lessons", []):   # ders onayı: yalnız KAYIT (oturuma dokunmaz, soru açmaz)
         out.append(Action("lesson_ack", name, "STEWARD-LESSON", {"project": proj or name, "text": ls}))
     for b in m["blocked"]:
-        out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or name, "text": ("Takıldım: " + b), "routine": True}))
+        out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or name, "text": (BLOCKED_TEXT_PREFIX + b), "routine": True}))
     for i in m["ideas"]:
         out.append(Action("idea", name, "STEWARD-IDEA", {"text": i}))
     return out
@@ -3391,7 +3396,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
 
     # 6b) Beynin cevaplamadığı rutin soru sahibine düşer (sessizce takılı kalmasın)
     for q in questions:
-        if q.status == "open" and q.routine and (now - q.created_at) >= ROUTINE_ESCALATE_SECONDS:
+        limit = BLOCKED_ESCALATE_SECONDS if (q.text or "").startswith(BLOCKED_TEXT_PREFIX) else ROUTINE_ESCALATE_SECONDS
+        if q.status == "open" and q.routine and (now - q.created_at) >= limit:
             actions.append(Action("escalate_routine", q.project or "-", "rutin soru cevapsız", {"question_id": q.id}))
 
     # 7) Beyin turu maddeleri
