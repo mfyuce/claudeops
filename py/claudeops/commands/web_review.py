@@ -307,6 +307,10 @@ def _terminate(proc: Any, grace: float) -> None:
         proc.wait(timeout=grace)
     except Exception:
         _killpg(proc, signal.SIGKILL)
+        try:
+            proc.wait(timeout=5)       # SIGKILL sonrası biçer: zombi kalmasın
+        except Exception:
+            pass
 
 
 def cancel_job(project: str, target: rv.ReviewTarget) -> bool:

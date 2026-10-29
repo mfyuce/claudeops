@@ -480,5 +480,23 @@ class TestEffortPairs(unittest.TestCase):
         self.assertEqual(rv.split_spec("m"), ("m", ""))
 
 
+
+class TerminateReapsTest(unittest.TestCase):
+    def test_wait_after_sigkill(self):
+        from claudeops.commands import web_review as wr_
+        calls = []
+
+        class P:
+            pid = None
+
+            def wait(self, timeout=None):
+                calls.append(timeout)
+                if len(calls) == 1:
+                    raise subprocess.TimeoutExpired("x", timeout)
+                return -9
+        wr_._terminate(P(), 3.0)
+        self.assertEqual(calls, [3.0, 5])
+
+
 if __name__ == "__main__":
     unittest.main()
