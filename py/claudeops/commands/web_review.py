@@ -44,6 +44,11 @@ HEARTBEAT_SECONDS = 10.0            # testler küçültür
 _REVIEW_LOCK = threading.Lock()
 _JOBS: Dict[str, "_Job"] = {}
 _JOBS_LOCK = threading.Lock()
+# Yuva kipi (`review_slots`): başlatmadan bitişe tutulan yuvalar (iş anahtarı -> (mod, yuva no)). Tek iş kipinde de iş
+# buraya yazılır (iki kip arası geçişte biri ötekini görür). `_SWEEPING`: şu an yetim oturumu süpürülen uzak projeler.
+_SLOT_LOCK = threading.Lock()
+_ACTIVE: Dict[str, Tuple[str, int]] = {}
+_SWEEPING: set = set()
 
 
 class _Job:
@@ -53,6 +58,44 @@ class _Job:
         self.cancelled = False
         self.sid = ""                # işi başlatan reviewer kimliği
         self.prompt = ""
+        self.locked = False          # tek iş kipinde `_REVIEW_LOCK`u tutuyor
+
+
+def _take_slot(key: str, project: str, mode: str, slots: Dict[str, int]) -> Tuple[int, str]:
+    """(yuva no, "") ya da (-1, neden). `slots` boş = tek iş kipi (başka iş varsa red). Yuva kipinde: mod yuvası dolu/0,
+    aynı PROJE başka koşuda (ortak yerel kopya/cwd) ya da süpürülüyorsa red. Yuva no modun boş en küçük numarası."""
+    with _SLOT_LOCK:
+        if key in _ACTIVE or project in _SWEEPING:
+            return -1, "bu proje için review çalışıyor"
+        if not slots:
+            if _ACTIVE:
+                return -1, "başka bir review çalışıyor"
+        else:
+            cap = slots.get(mode, 1)
+            if cap <= 0:
+                return -1, f"{mode} kapalı (0 yuva)"
+            if any(k.split("|", 1)[0] == project for k in _ACTIVE):
+                return -1, "bu proje için review çalışıyor"
+            used = {i for m, i in _ACTIVE.values() if m == mode}
+            if len(used) >= cap:
+                return -1, f"{mode} yuvaları dolu ({cap})"
+        idx = min(set(range(len(_ACTIVE) + 1)) - {i for m, i in _ACTIVE.values() if m == mode})
+        _ACTIVE[key] = (mode, idx)
+        return idx, ""
+
+
+def _release_slot(key: str) -> None:
+    with _SLOT_LOCK:
+        _ACTIVE.pop(key, None)
+
+
+def active_slots() -> Dict[str, List[str]]:
+    """{mod: [çalışan iş anahtarları]} (tüm kimlikler; başlamakta olanlar dahil)."""
+    with _SLOT_LOCK:
+        out: Dict[str, List[str]] = {}
+        for k, (m, _i) in _ACTIVE.items():
+            out.setdefault(m, []).append(k)
+    return {m: sorted(v) for m, v in out.items()}
 
 
 # ── ortam / argv ──────────────────────────────────────────────────────────────
@@ -144,12 +187,13 @@ def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, su
         + (["--allow-create-dir", create_dir] if create_dir else [])) + [prompt]
 
 
-def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "") -> str:
+def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "", slot: int = 0) -> str:
     """Review'a özel İZOLE agy HOME'u (`<root>/agy_home`): kendi `settings.json`ı (yalnız salt-okunur komut izni, kullanıcının
     global ayarına/GEMINI.md'sine dokunmaz) + gerçek HOME'dan KOPYALANAN oturum belirteci. Belirteç her koşuda yeniden
-    kopyalanır (agy içeride yenilerse gerçeğe yazılmaz). Gerçek ~/.gemini/antigravity-cli yoksa belirteçsiz kurulur."""
+    kopyalanır (agy içeride yenilerse gerçeğe yazılmaz). Gerçek ~/.gemini/antigravity-cli yoksa belirteçsiz kurulur.
+    `slot` > 0 (eşzamanlı agy yuvası): ayrı `<root>/agy_home_<n>` (settings.json'daki cwd, günlük dizini ve TMPDIR koşu başına)."""
     real = os.path.join(real_home or os.path.expanduser("~"), ".gemini", "antigravity-cli")
-    home = os.path.join(root, "agy_home")
+    home = os.path.join(root, "agy_home" if slot <= 0 else f"agy_home_{slot}")
     cfg = os.path.join(home, ".gemini", "antigravity-cli")
     os.makedirs(cfg, mode=0o700, exist_ok=True)
     for name in ("antigravity-oauth-token", "installation_id"):
@@ -897,7 +941,9 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         live.close()
         with _JOBS_LOCK:
             _JOBS.pop(key, None)
-        _REVIEW_LOCK.release()
+        _release_slot(key)
+        if job.locked:
+            _REVIEW_LOCK.release()
 
 
 def _recover_draft(path: str, text: str, learned: Sequence[str] = ()) -> Tuple[str, bool]:
@@ -963,13 +1009,21 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             agy_models: Optional[List[str]] = None, provider: Any = None, api_key: Optional[str] = None,
             endpoint_fn: Optional[Callable[[], str]] = None, supports_flag: Optional[Callable[[str, str], bool]] = None,
             lang: str = "tr") -> Dict[str, Any]:
-    """Bir (proje, mod, model) çiftinin review'ını arka plan thread'inde başlatır; hemen döner. Süreç genelinde aynı anda
-    TEK iş (`_REVIEW_LOCK`); meşgulse `{"ok": False, "busy": True}`. Sonuç `review_history.json`a yazılır."""
+    """Bir (proje, mod, model) çiftinin review'ını arka plan thread'inde başlatır; hemen döner. `review_slots` boşsa süreç
+    genelinde aynı anda TEK iş (`_REVIEW_LOCK`), doluysa mod başına yuva (`_take_slot`); meşgulse `{"ok": False, "busy": True}`.
+    Sonuç `review_history.json`a yazılır."""
     popen = popen or _default_popen
     p = sw._pp(paths)
     key = rv.pair_key(project, target)
-    if not _REVIEW_LOCK.acquire(blocking=False):
+    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    locked = not slots
+    if locked and not _REVIEW_LOCK.acquire(blocking=False):
         return {"ok": False, "busy": True, "error": "başka bir review çalışıyor"}
+    slot, why = _take_slot(key, project, target.mode, slots)
+    if slot < 0:
+        if locked:
+            _REVIEW_LOCK.release()
+        return {"ok": False, "busy": True, "error": why}
     t0 = now()
     try:
         rdrv = remote_driver(project)
@@ -1062,7 +1116,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             argv = agy_argv(agy_bin or resolved_binary("agy"), target.model, prompt, prov)
             allow = rv.agy_allow_list(getattr(cfg, "review_agy_allow", ""))
             if allow:   # izole HOME: komut izni yalnız salt-okunur liste; günlük/etiket doğrulaması da bu HOME'dan okunur
-                home = agy_home(p.root, cwd, allow)
+                home = agy_home(p.root, cwd, allow, slot=slot)
                 env_extra["HOME"] = home
                 env_extra["TMPDIR"] = os.path.join(home, "tmp")     # kafeste /tmp salt okunur
                 bwrap = shutil.which("bwrap") if getattr(cfg, "review_agy_jail", True) else None
@@ -1077,6 +1131,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
         job = _Job(key)
         job.sid = p.sid
         job.prompt = prompt
+        job.locked = locked
         with _JOBS_LOCK:
             _JOBS[key] = job
         path = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode, target))
@@ -1088,7 +1143,9 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
     except Exception as e:
         with _JOBS_LOCK:        # iş kaydı açıldıktan sonra başlatma düştüyse kayıt (ve iptal edilebilir sahte iş) kalmasın
             _JOBS.pop(key, None)
-        _REVIEW_LOCK.release()
+        _release_slot(key)
+        if locked:
+            _REVIEW_LOCK.release()
         try:
             rv.update_pair(p, project, target, status="error", started_at=t0, finished_at=now(), error=_tail(str(e)))
         except Exception:
@@ -1129,9 +1186,8 @@ def recover_on_start(paths: Any, now: Callable[[], float] = time.time) -> int:
         hist = rv.load_history(p)
         for key, rec in hist["pairs"].items():
             if isinstance(rec, dict) and rec.get("status") == "running":
-                with _JOBS_LOCK:
-                    if key in _JOBS:     # bu süreçte CANLI iş (restart sonrası ilk tick'ten ÖNCE elle başlatılan): yarıda kalmış değil
-                        continue
+                if key in busy_keys():   # bu süreçte CANLI ya da başlamakta olan iş (restart sonrası ilk tick'ten ÖNCE elle başlatılan): yarıda kalmış değil
+                    continue
                 rec.update(status="partial", finished_at=now(), pid=None, error="yeniden başlatma: koşu yarıda kaldı")
                 saved = _recover_restart_report(rec)
                 if saved:       # TBD#119 B: diskte kalan taslak/partial rapor olarak kurtarıldı
@@ -1330,18 +1386,24 @@ def sweep_remote(now: float, idx: Optional[Dict[str, Any]] = None) -> List[str]:
 
 def _sweep_remote_locked(now: float, idx: Optional[Dict[str, Any]]) -> List[str]:
     idx = ownership() if idx is None else idx
-    live = {k.split("|", 1)[0] for k in running_keys()}
     out: List[str] = []
     for name in sorted(remote_projects(idx)):
         host = remote_host(name, idx)
-        if not host or name in live or now - _SWEPT_AT.get(name, -1e9) < SWEEP_EVERY_SECONDS:
+        if not host or now - _SWEPT_AT.get(name, -1e9) < SWEEP_EVERY_SECONDS:
             continue
+        with _SLOT_LOCK:        # yuva kipinde başka projelerin işi sürerken de süpürülür: bu proje o arada başlatılamaz
+            if name in {k.split("|", 1)[0] for k in list(_ACTIVE) + running_keys()}:
+                continue
+            _SWEEPING.add(name)
         _SWEPT_AT[name] = now
         try:
             if _REMOTE_FN(name, host).sweep():
                 out.append(name)
         except Exception:
             continue
+        finally:
+            with _SLOT_LOCK:
+                _SWEEPING.discard(name)
     return out
 
 
@@ -1549,7 +1611,8 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     for k in running_keys(cfg.sid):          # havuzdan çıkan/devre dışı projenin işi
         if k.split("|", 1)[0] not in enabled and cancel_key(k):
             actions.append({"kind": "cancel", "key": k, "why": "not in pool"})
-    if running_keys():
+    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    if not slots and busy_keys():
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "busy": True}
     if getattr(cfg, "drain", False):      # "bitir, yeni başlatma": koşan iş sürdü (iptal edilmez), yenisi açılmaz; restart öncesi boşalt
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "draining": True}
@@ -1561,30 +1624,17 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     targets = current_targets(cfg)
     if not targets:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "reason": "no targets"}
+    if slots:
+        return _tick_slots(p, cfg, pool, hist, targets, slots, t, gap, actions)
     skip: List[str] = []
     while True:
-        nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip,
-                             head_of=lambda pr: "" if remote_host(pr) else project_head(project_cwd(pr)))
+        nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip, head_of=_head_of)
         if nxt is None:
             return {"ok": True, "actions": actions, "started": 0, "noop": not actions}
         proj, target = nxt
-        if remote_host(proj):               # `remote` kipi: klasör uzakta; kapılar + host tazeliği + hedef evren mi
-            ready, msg = ((False, "remote review runs evren (ucli) targets only") if target.mode != "evren"
-                          else remote_ready(proj))
-            if ready:
-                cwd = ""
-                break
-            _log_copy_fail(p, proj, msg, t)
-            actions.append({"kind": "remote_not_ready", "project": proj, "error": msg})
-            skip.append(proj)
-            continue
-        cwd = review_cwd(proj)
-        if cwd and os.path.isdir(cwd):
-            ready, msg = prepare_project(proj)
-            if ready:
-                break
-            _log_copy_fail(p, proj, msg, t)
-            actions.append({"kind": "copy_not_ready", "project": proj, "error": msg})
+        state, cwd = _ready_project(p, proj, target, t, actions)
+        if state == "ok":
+            break
         skip.append(proj)                    # klasörü bulunamayan / yerel kopyası hazırlanamayan proje bu turda atlanır
     res = start_job(p, cfg, proj, target, cwd)
     if res.get("ok"):
@@ -1594,9 +1644,105 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     return {"ok": False, "actions": actions, "started": 0, "noop": False, "error": res.get("error")}
 
 
+def _head_of(pr: str) -> str:
+    return "" if remote_host(pr) else project_head(project_cwd(pr))
+
+
+def _ready_project(p: Any, proj: str, target: rv.ReviewTarget, t: float, actions: List[Dict[str, Any]]) -> Tuple[str, str]:
+    """Koşudan önce proje hazır mı: ("ok", cwd) | ("mode", "") (uzak proje + evren dışı hedef: yalnız bu mod atlanır) |
+    ("proj", "") (klasör yok / yerel kopya hazırlanamadı / uzak kapı kapalı: proje bu turda atlanır)."""
+    if remote_host(proj):               # `remote` kipi: klasör uzakta; kapılar + host tazeliği + hedef evren mi
+        if target.mode != "evren":
+            msg = "remote review runs evren (ucli) targets only"
+            _log_copy_fail(p, proj, msg, t)
+            actions.append({"kind": "remote_not_ready", "project": proj, "error": msg})
+            return "mode", ""
+        ready, msg = remote_ready(proj)
+        if ready:
+            return "ok", ""
+        _log_copy_fail(p, proj, msg, t)
+        actions.append({"kind": "remote_not_ready", "project": proj, "error": msg})
+        return "proj", ""
+    cwd = review_cwd(proj)
+    if cwd and os.path.isdir(cwd):
+        ready, msg = prepare_project(proj)
+        if ready:
+            return "ok", cwd
+        _log_copy_fail(p, proj, msg, t)
+        actions.append({"kind": "copy_not_ready", "project": proj, "error": msg})
+    return "proj", ""
+
+
+def _key_mode(key: str) -> str:
+    return key.split("|", 1)[1].split("/", 1)[0] if "|" in key else ""
+
+
+def busy_keys() -> List[str]:
+    """Çalışan ya da başlamakta olan tüm işler (tüm kimlikler): `_JOBS` + yuva kayıtları."""
+    with _SLOT_LOCK:
+        act = set(_ACTIVE)
+    return sorted(act | set(running_keys()))
+
+
+def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], targets: List[rv.ReviewTarget],
+                slots: Dict[str, int], t: float, gap: int, actions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Yuva kipi (`review_slots`): her modda boş yuva kadar koşu, modlar arası sırayla birer birer (biri tüm projeleri
+    kapmasın). Aynı proje iki koşuda olmaz (mod fark etmez). 0 yuvalı modun hedefi seçilmez. `review_min_gap_minutes` > 0
+    ise tick başına en çok 1 başlatma (aralık başlatmalar arasıdır, yuva doluluğundan bağımsız)."""
+    busy = busy_keys()
+    free = {m: slots.get(m, 1) - sum(1 for k in busy if _key_mode(k) == m) for m in rv.MODES}
+    busy_proj = {k.split("|", 1)[0] for k in busy}
+    by_mode = {m: [x for x in targets if x.mode == m] for m in rv.MODES}
+    skip_mode: Dict[str, List[str]] = {m: [] for m in rv.MODES}
+    bad: List[str] = []                 # bu turda hazırlanamayan projeler (tüm modlarda atlanır)
+    live = [m for m in rv.MODES if by_mode[m] and free[m] > 0]
+    started, errors = 0, []
+    while live:
+        for mode in list(live):
+            if started and gap:
+                live = []
+                break
+            nxt = rv.next_review(pool, hist, by_mode[mode], t, busy_projects=sorted(busy_proj) + bad + skip_mode[mode],
+                                 head_of=_head_of)
+            if nxt is None:
+                live.remove(mode)
+                continue
+            proj, target = nxt
+            state, cwd = _ready_project(p, proj, target, t, actions)
+            if state != "ok":
+                (skip_mode[mode] if state == "mode" else bad).append(proj)
+                continue
+            res = start_job(p, cfg, proj, target, cwd)
+            if res.get("ok"):
+                actions.append({"kind": "review_start", "project": proj, "target": target.key})
+                started += 1
+                free[mode] -= 1
+                busy_proj.add(proj)
+                if free[mode] <= 0:
+                    live.remove(mode)
+            else:
+                actions.append({"kind": "review_failed", "project": proj, "target": target.key, "error": res.get("error")})
+                errors.append(res.get("error"))
+                skip_mode[mode].append(proj)
+    out: Dict[str, Any] = {"ok": not errors or bool(started), "actions": actions, "started": started,
+                           "noop": not actions}
+    if errors:
+        out["error"] = errors[0]
+    return out
+
+
 # ── yüzey (adım 6): saf yardımcılar, web_steward sarmalar ──────────────────────
 
 FILE_MAX_CHARS = 200_000
+
+
+def _slot_rows(cfg: Any) -> Dict[str, Dict[str, Any]]:
+    """Yuva kipinde {mod: {"slots": n, "running": [anahtar...]}} (0 = mod kapalı); tek iş kipinde {}."""
+    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    if not slots:
+        return {}
+    busy = busy_keys()
+    return {m: {"slots": n, "running": [k for k in busy if _key_mode(k) == m]} for m, n in slots.items()}
 
 
 def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
@@ -1616,7 +1762,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
     return {"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
             "remote_projects": remote_where_rows(),
             "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key, "effort": x.effort} for x in targets],
-            "pool": rows, "running": running_keys(cfg.sid),
+            "pool": rows, "running": running_keys(cfg.sid), "slots": _slot_rows(cfg),
             "runs": list(hist.get("runs") or [])[-50:],
             "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes,
             "auto_verify": bool(cfg.review_auto_verify), "auto_approve": int(cfg.review_auto_approve),
@@ -1754,12 +1900,22 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
     else:
         hist = rv.load_history(p)
         pool = {"projects": {project: {"enabled": True}}}
-        nxt = rv.next_review(pool, hist, targets, time.time())
+        slots0 = rv.parse_slots(getattr(cfg, "review_slots", ""))
+        nxt = rv.next_review(pool, hist, [x for x in targets if not slots0 or slots0.get(x.mode, 1) > 0], time.time())
         if nxt is None:
             return {"ok": False, "error": "no pending target for this project"}
         target = nxt[1]
-    if running_keys():
+    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    busy = busy_keys()
+    if not slots and busy:
         return {"ok": False, "busy": True, "error": "another review is running"}
+    if slots:       # yuva kipi: yerel kopya `git pull`u başlamadan, aynı proje / dolu ya da kapalı mod burada reddedilir
+        if slots.get(target.mode, 1) <= 0:
+            return {"ok": False, "error": f"{target.mode} is disabled (0 slots)"}
+        if any(k.split("|", 1)[0] == project for k in busy):
+            return {"ok": False, "busy": True, "error": "a review of this project is running"}
+        if sum(1 for k in busy if _key_mode(k) == target.mode) >= slots.get(target.mode, 1):
+            return {"ok": False, "busy": True, "error": f"{target.mode} slots are full"}
     if is_remote:
         if target.mode != "evren":
             return {"ok": False, "error": "remote review runs evren (ucli) targets only"}

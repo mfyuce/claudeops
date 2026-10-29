@@ -311,6 +311,7 @@ class Config:
     role: str = "steward"            # steward | reviewer | generic (generic: GENERIC_* varsayılanları + üst model kapısı)
     review_timeout_minutes: int = 45   # tek review çalıştırması bu sürede bitmezse iptal
     review_min_gap_minutes: int = 10   # iki review başlatması arası en az bekleme
+    review_slots: str = ""             # mod başına eşzamanlı koşu yuvası (`agy=5,evren=1,codex=1,copilot=0`; belirtilmeyen mod 1, 0 = mod kapalı); ""/off = TEK iş (eski davranış)
     review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
     review_max_context_kib: int = 768  # Evren: `--max-context-kib` (ucli varsayılanı 256 uzun review'u düşürüyordu)
     review_max_compactions: int = 24   # Evren: `--max-compactions` (ucli varsayılanı 8)
