@@ -80,5 +80,27 @@ class ClaudeJsonTest(unittest.TestCase):
         self.assertEqual(wr._extract_text("codex", self.RES), (self.RES, ""))        # diğer modlar değişmez
 
 
+class CodexUsageTest(unittest.TestCase):
+    def test_parse(self):
+        from claudeops.commands import web_review as wr
+        ev = wr.codex_usage_event("x\ntokens used\n15,008\n")                  # gerçek codex stderr biçimi
+        self.assertEqual(ev["usage"], {"total_tokens": 15008})
+        self.assertEqual(wr.codex_usage_event("tokens used: 1.234")["usage"]["total_tokens"], 1234)
+        self.assertEqual(wr.codex_usage_event("tokens used\n10\ntokens used\n20")["usage"]["total_tokens"], 20)
+        self.assertIsNone(wr.codex_usage_event("sayı yok"))
+        self.assertIsNone(wr.codex_usage_event(""))
+        self.assertIsNone(wr.codex_usage_event(None))
+
+    def test_summary_totals_without_invented_split(self):
+        import json, os
+        with tempfile.TemporaryDirectory() as d:
+            dd = os.path.join(d, "proj", "codex", "m", "medium", "20260101000000")
+            os.makedirs(dd)
+            with open(os.path.join(dd, "20260101000000.usage.jsonl"), "w") as f:
+                f.write(json.dumps({"event": "request", "usage": {"total_tokens": 15008}}) + "\n")
+            (row,) = rv.usage_summary(d)
+            self.assertEqual((row["total_tokens"], row["prompt_tokens"], row["completion_tokens"]), (15008, 0, 0))
+
+
 if __name__ == "__main__":
     unittest.main()

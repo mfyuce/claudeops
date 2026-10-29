@@ -731,6 +731,18 @@ def claude_usage_event(stdout: str) -> Optional[Dict[str, Any]]:
     return ev
 
 
+_CODEX_TOKENS_RE = re.compile(r"tokens used\s*[:\n]\s*([0-9][0-9.,]*)", re.I)
+
+
+def codex_usage_event(stderr: str) -> Optional[Dict[str, Any]]:
+    """codex stderr'indeki `tokens used` + sayı (yalnız TOPLAM bildirir; istem/cevap ayrımı yok). Yoksa None (uydurma yok)."""
+    ms = _CODEX_TOKENS_RE.findall(stderr or "")
+    if not ms:
+        return None
+    digits = re.sub(r"[.,]", "", ms[-1])
+    return {"event": "request", "usage": {"total_tokens": int(digits)}} if digits.isdigit() else None
+
+
 def _extract_text(mode: str, stdout: str) -> Tuple[str, str]:
     """(metin, hata). Evren: JSON `answer`; claude: JSON `result` (JSON değilse ham metin); bozuk/yarım JSON'da ham metin
     (kısmi çıktı kaybolmasın)."""
@@ -912,8 +924,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             stop_hb.set()
         out, err = out or "", err or ""
         text, jerr = _extract_text(target.mode, out)
-        if target.mode == "claude":     # token/süre: yalnız sayılar `<ts>.usage.jsonl`e (review usage okur); sayı yoksa dosya yok
-            uev = claude_usage_event(out)
+        if target.mode in ("claude", "codex"):     # token: yalnız sayılar `<ts>.usage.jsonl`e (review usage okur); sayı yoksa dosya yok
+            uev = claude_usage_event(out) if target.mode == "claude" else codex_usage_event(err)
             if uev and path.endswith(".md"):
                 try:
                     with open(path[:-3] + ".usage.jsonl", "w", encoding="utf-8") as uf:

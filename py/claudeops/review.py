@@ -753,7 +753,8 @@ def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
             if project and proj != project:
                 continue
             a = agg.setdefault((proj, tgt), {"project": proj, "target": tgt, "runs": 0, "requests": 0, "prompt_tokens": 0,
-                                             "completion_tokens": 0, "reasoning_tokens": 0, "cached_tokens": 0, "seconds": 0.0})
+                                             "completion_tokens": 0, "reasoning_tokens": 0, "cached_tokens": 0, "total_tokens": 0,
+                                             "seconds": 0.0})
             a["runs"] += 1
             try:
                 with open(os.path.join(dp, fn), encoding="utf-8", errors="replace") as f:
@@ -768,13 +769,14 @@ def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
                         a["requests"] += 1
                         a["seconds"] += float(e.get("seconds") or 0)
                         for src, dst in (("prompt_tokens", "prompt_tokens"), ("completion_tokens", "completion_tokens"),
-                                         ("reasoning_tokens", "reasoning_tokens"), ("cached_tokens", "cached_tokens")):
+                                         ("reasoning_tokens", "reasoning_tokens"), ("cached_tokens", "cached_tokens"),
+                                         ("total_tokens", "total_tokens")):     # total: yalnız toplam bildiren sağlayıcı (codex)
                             v = u.get(src)
                             if isinstance(v, (int, float)) and not isinstance(v, bool):
                                 a[dst] += int(v)
             except OSError:
                 continue
-    return sorted(agg.values(), key=lambda r: (-r["prompt_tokens"], r["project"], r["target"]))
+    return sorted(agg.values(), key=lambda r: (-(r["prompt_tokens"] or r["total_tokens"]), r["project"], r["target"]))
 
 
 def duration_summary(history: Any, project: str = "") -> List[Dict[str, Any]]:

@@ -727,12 +727,12 @@ def cmd_review(args) -> int:
                 print(f"{r['project'][:17]:<18}{r['target'][:33]:<34}{r['runs']:>5}{int(r['seconds']):>9}{r['unknown']:>12}")
             print()
         if not rows:
-            print("token kaydı yok (yalnız ucli koşuları --usage-log ile yazar: <ts>.usage.jsonl; diğer sağlayıcılarda token: bilinmiyor)")
+            print("token kaydı yok (yalnız ucli koşuları --usage-log ile yazar: <ts>.usage.jsonl; agy/copilot token: bilinmiyor; codex yalnız TOPLAM)")
             return 0
-        print(f"{'PROJE':<18}{'HEDEF':<34}{'KOŞU':>5}{'İSTEK':>7}{'İSTEM tk':>11}{'CEVAP tk':>10}{'AKIL tk':>9}{'SÜRE sn':>9}")
+        print(f"{'PROJE':<18}{'HEDEF':<34}{'KOŞU':>5}{'İSTEK':>7}{'İSTEM tk':>11}{'CEVAP tk':>10}{'AKIL tk':>9}{'TOPLAM tk':>11}{'SÜRE sn':>9}")
         for r in rows[: max(1, int(getattr(args, "top", 20) or 20))]:
             print(f"{r['project'][:17]:<18}{r['target'][:33]:<34}{r['runs']:>5}{r['requests']:>7}{r['prompt_tokens']:>11}"
-                  f"{r['completion_tokens']:>10}{r['reasoning_tokens']:>9}{int(r['seconds']):>9}")
+                  f"{r['completion_tokens']:>10}{r['reasoning_tokens']:>9}{(r['total_tokens'] or '-'):>11}{int(r['seconds']):>9}")
         print(f"toplam: {sum(r['runs'] for r in rows)} koşu, {sum(r['prompt_tokens'] for r in rows)} istem token, "
               f"{sum(r['completion_tokens'] for r in rows)} cevap token")
         return 0
