@@ -1,5 +1,5 @@
 """İlerletme değnekçisi (`advance_findings=on` kimliği): sahibin onayladığı (`exported`) review bulgularını, kimliğin KENDİ
-projesinin çalışan oturumuna direktifle iletir. Tasarım: `docs/ilerlet-plan.md` (özel notlar).
+projesinin çalışan oturumuna direktifle iletir. Tasarım: `docs/ilerlet-plan.md` (-prv reposunda, ana repoda yok).
 
 Saf planlayıcı + mesaj + gönderilenleri işaretleme. Commit/push/restart YAPMAZ; mesaj oturuma bunun için projenin notunda
 açık izin aranmasını söyler. Başka kimliğin projesine, kapalı oturuma dokunmaz (oturum AÇILMAZ).

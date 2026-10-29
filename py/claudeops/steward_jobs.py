@@ -1,6 +1,6 @@
 """Değnekçi tarafı: paylaşımlı servislerin (varaka) pasif kaydı ve dış iş kuyruğu İSTEMCİSİ (çoklu değnekçi P8b).
 
-Sözleşme varaka'nın KENDİ planıdır (`varaka/PLAN_is_kuyrugu_api.md` §5-§10, §14, §16-17); `docs/multi-steward-plan.md` (f)
+Sözleşme varaka'nın KENDİ planıdır (`varaka/PLAN_is_kuyrugu_api.md` §5-§10, §14, §16-17); `docs/multi-steward-plan.md` (-prv reposunda) (f)
 taslağının ÜSTÜNDE: kimlik başlığı YOK (auth = mevcut JWT/Bearer ya da iç servis anahtarı, burada Bearer token DOSYASI), iş
 sahibi (`owner`) varaka'da doğrulanmış kullanıcıdır (gövdeden alınmaz), değnekçi onay VERMEZ (`/approve` yalnız insan admin),
 varaka kimseye mesaj/push göndermez: değnekçi POLL eder. Başkasının işi 404.

@@ -580,7 +580,7 @@ class BrainCannotPauseTest(_Tmp):
     def test_brain_cannot_pause_or_done_but_owner_can(self):
         with mock.patch.object(web_steward, "_in_roster", lambda name: True):
             self.assertTrue(web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})["ok"])
-            for ph in ("paused", "done"):
+            for ph in ("paused", "done", "idea"):      # idea da aktif fazdan çıkıştır: kapıyı aşamaz
                 r = web_steward.http_project_upsert({"name": "zzz", "phase": ph, "actor": "brain"})
                 self.assertFalse(r["ok"], ph)
             self.assertEqual(sw.load_projects()["zzz"].phase, "planned")
@@ -1075,8 +1075,12 @@ class MergedAnswersTest(unittest.TestCase):
             self.assertNotIn(needle, small)
         self.assertIn("Cevabım: evet", small)
         self.assertLess(len(small), len(full) // 2)
-        # cevapsız faz direktifi compact'tan etkilenmez
-        self.assertIn("Değnekçi protokolü", sw.build_directive(p, compact=True))
+        # cevapsız faz direktifi: aynı yaşamda kısa (başlık/not/protokol yok), faz talimatı korunur
+        nb = sw.build_directive(p, compact=True)
+        self.assertNotIn("Değnekçi protokolü", nb)
+        self.assertNotIn("Amaç:", nb)
+        self.assertIn("SIRADAKİ işi al", nb)
+        self.assertIn("Değnekçi protokolü", sw.build_directive(p, compact=False))
 
     def test_directive_contains_all_answers(self):
         p = sw.Project(name="p1", phase="planned")
@@ -1273,6 +1277,12 @@ class SummaryCoreTest(_Tmp):
         now = time.mktime((2026, 10, 19, 9, 5, 0, 0, 0, -1))
         self.assertEqual(sw.missed_summary_dates(now), [])                     # kayıt yok: boş özet gitmez
         os.makedirs(sw.STEWARD_DIR, exist_ok=True)
+        open(sw.LOG_JSONL, "a").close()
+        with mock.patch.object(sw, "log_entries_for_date", wraps=sw.log_entries_for_date) as scan:
+            sw.missed_summary_dates(now)
+            first = scan.call_count
+            sw.missed_summary_dates(now)                                       # günlük değişmedi: kayıtsız günler yeniden taranmaz
+            self.assertEqual(scan.call_count, first)
         with open(sw.LOG_JSONL, "a", encoding="utf-8") as f:
             for ts, ev in (("2026-10-15T10:00:00", "tick"), ("2026-10-17T10:00:00", "tick"),
                            ("2026-10-18T10:00:00", "tick"), ("2026-10-18T10:02:00", "would:start")):
@@ -2397,12 +2407,15 @@ class JobRequestGateTest(HttpTest):
 
     def test_brain_red_closes_and_opens_owner_question(self):
         q = self._job_q()
-        r = web_steward.http_answer({"id": q.id, "answer": "RED: ingest türü katalogda yok", "actor": "brain"})
+        sent = []
+        with mock.patch.object(web_steward, "_notify", lambda cfg, msg, *a, **k: sent.append(msg) or True):
+            r = web_steward.http_answer({"id": q.id, "answer": "RED: ingest türü katalogda yok", "actor": "brain"})
         self.assertTrue(r["ok"])
         opened = [x for x in sw.open_questions() if x.source == "job-red"]
         self.assertEqual(len(opened), 1)
         self.assertFalse(opened[0].routine)                             # sahibe gider
         self.assertIn("katalogda yok", opened[0].text)
+        self.assertTrue(any("katalogda yok" in m for m in sent))     # sahip sorusu telefona da gider
 
     def test_brain_answer_after_submit_ok(self):
         q = self._job_q()

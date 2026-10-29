@@ -20,6 +20,21 @@ class ShutdownNoteResultTests(unittest.TestCase):
         self.assertTrue(sw.shutdown_note_result(it, "stop", {"ok": False}, 2.0))
         self.assertEqual(it["stage"], "ho")
 
+    def test_failed_stop_is_retried_end_to_end(self):
+        # TODO 2026-10-28 (21): stop başarısız -> `at` yenilenince `last_activity >= at` bir daha tutmuyor, oturum açık kalıyordu
+        cfg = sw.Config()
+        projects = {"ncs": sw.Project(name="ncs")}
+        v = sw.SessionView(name="ncs", running=True, cwd="/x", cli="claude", last_activity=100.0)
+        _, sd, _ = sw.plan_shutdown([v], projects, {}, cfg, 1000.0)
+        v2 = sw.SessionView(name="ncs", running=True, cwd="/x", cli="claude", last_activity=1500.0,
+                            last_assistant=sw.READY_FOR_HANDOVER)
+        acts, sd, _ = sw.plan_shutdown([v2], projects, sd, cfg, 1600.0)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("stop", "ncs")])
+        self.assertTrue(sw.shutdown_note_result(sd["items"]["ncs"], "stop", {"ok": False, "error": "lock"}, 1601.0))
+        acts, sd, done = sw.plan_shutdown([v2], projects, sd, cfg, 1700.0)
+        self.assertEqual([(a.kind, a.name) for a in acts], [("stop", "ncs")])      # yeniden denendi
+        self.assertNotEqual(sd["items"]["ncs"]["stage"], "ho_timeout")
+
     def test_success_resets_counter(self):
         it = {"stage": "ho", "fails": 3}
         self.assertFalse(sw.shutdown_note_result(it, "handover", {"ok": True}, 2.0))

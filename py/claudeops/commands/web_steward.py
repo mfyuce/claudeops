@@ -61,7 +61,7 @@ MAX_RESOURCE_BYTES = 50 * 1024 * 1024
 MAX_FILE_READ_CHARS = 20000
 RECENT_ACTIONS = 12
 
-# Kimlik başına motor durumu (docs/multi-steward-plan.md K3): kilit, son eylemler, son tick, özet önbelleği.
+# Kimlik başına motor durumu (-prv: docs/multi-steward-plan.md K3): kilit, son eylemler, son tick, özet önbelleği.
 # `default` bağlamı modül globallerinin KENDİSİNİ taşır (`_LOCK`, `_RECENT`, `_LAST_TICK`, `_SUMMARY_CACHE` aynı
 # nesneler): argümansız eski çağrılar ve eski testler değişmeden default'a gider.
 # Kilit YENİDEN GİRİŞLİ: `http_restart` kilit altındayken `http_directive`i çağırır (düz Lock'ta kendini kilitliyordu).
@@ -704,7 +704,7 @@ def _remote_denied(name: str, actor: str, kind: str, sid: str, want: str, proj_h
 def _target(name: str, actor: str, projects: Optional[Dict[str, sw.Project]] = None,
             kind: str = "", sid: str = "default", world: Optional[sw.World] = None,
             host: Any = None, rt: Optional[_RemoteTick] = None) -> Optional[Dict[str, Any]]:
-    """Oturuma dokunan yolların TEK kapısı (docs/multi-steward-plan.md K5). `None` = izinli, aksi halde red yanıtı.
+    """Oturuma dokunan yolların TEK kapısı (-prv: docs/multi-steward-plan.md K5). `None` = izinli, aksi halde red yanıtı.
     Beyin (`actor: brain`, MCP) ve motor (`actor: engine`, `_apply`) YALNIZ KENDİ kimliğinin (`sid`) beyin oturumunu ve
     kayıtlı proje oturumlarını hedefleyebilir: başka kimliğin projesi/beyni, servis, çakışmalı proje ve kayıtsız (ad hoc)
     oturum reddedilir (çözüm global, `World.session_class`). İnsanın CLI/panel çağrısı (`actor` yok): `default` bağlamında
@@ -1578,7 +1578,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
         sname, scli = s.name, s.cli
         born, pkey = _proc_born(s.pid), s.name
     compact = False
-    if answer is not None and born:
+    if born:
         try:     # bu süreç yaşamında tam başlık (amaç/not/protokol) zaten gitti mi?
             stored = float(sw.load_state(paths).get("preamble_sent", {}).get(pkey) or 0.0)
             compact = _same_life(stored, born, bool(host))
@@ -3394,6 +3394,23 @@ def _quota_save() -> None:
         pass
 
 
+def _quota_restore() -> None:
+    """Servis açılışında `quota.json`daki son karar seviyesini belleğe al: restart sonrası ilk yoklama aynı seviyeyi YENİ yükseliş
+    sanıp kapatma/ntfy'yi yinelemesin (sahip tavanda `steward up` ile açmışsa restart oturumları yeniden kapatırdı).
+    Dosya yoksa/bozuksa seviye 0 (eski davranış). Yalnız bir kez."""
+    if _QUOTA.get("loaded"):
+        return
+    _QUOTA["loaded"] = True
+    try:
+        with open(QUOTA_FILE, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        act = str(((saved or {}).get("decision") or {}).get("action") or "ok")
+        _QUOTA["level"] = {"shutdown": 1, "stop": 2}.get(act, 0)
+        _QUOTA["stopped"] = _QUOTA["level"] > 0
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
 def _quota_stop(reason: str, hard: bool = False) -> None:
     """Tüm AÇIK kimlikleri kapat: değnekçiler `shutdown_start` (çalışmayana devir, bitince kapat; `hard`: ayrıca kendi
     oturumlarını HEMEN durdur), reviewer doğrudan kapalı."""
@@ -3454,6 +3471,7 @@ def quota_tick(now: Optional[float] = None) -> None:
     if str(cfg.get("mode") or "off") not in ("manual", "auto"):
         _QUOTA["decision"] = None
         return
+    _quota_restore()
     now = now if now is not None else time.time()
     try:
         poll = max(1.0, float(cfg.get("poll_minutes") or sq.DEFAULT_POLL_MINUTES))
@@ -4008,7 +4026,8 @@ def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str,
             sw.log_event("project_denied", paths=sid, actor="brain", name=name, field="host")
             return {"ok": False, "error": "brain cannot change a project's host (ask the owner)"}
         fields["host"] = sw.normalize_host(fields["host"])
-    if data.get("actor") == "brain" and fields.get("phase") in ("paused", "done") and old is not None and old.phase != fields["phase"]:
+    if (data.get("actor") == "brain" and old is not None and old.phase in sw.ACTIVE_PHASES
+            and fields.get("phase") in ("idea", "paused", "done")):
         # Projeyi durdurmak/bitirmek sahibin ya da kanıtlı STEWARD-DONE'ın işi: "sahibe bağlı" gerekçesiyle beyin kapatamaz
         # (27 Eki: 4 proje paused'a çekilip oturumları kapandı). Sahibe bağlı iş = oturum açılmaz, tek soru (plan_tick), faz planned kalır.
         sw.log_event("project_denied", paths=sid, actor="brain", name=name, field="phase", value=fields["phase"])
@@ -4296,8 +4315,10 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                 sw.log_event("answer_denied", paths=sid, id=q0.id, project=q0.project, reason="job_request_unsubmitted")
                 return {"ok": False, "error": why, "code": "job_not_submitted"}
             if red:      # iş gönderilmedi (tür yok, dosya belirsiz): istek kaybolmasın, sahibe iletilir
-                sw.add_question_ex(q0.project, f"İş isteği gönderilmedi (beyin RED): {red}\nİstek: {q0.text[len(sw.JOB_REQUEST_PREFIX):][:400]}\n"
+                nq, _how = sw.add_question_ex(q0.project, f"İş isteği gönderilmedi (beyin RED): {red}\nİstek: {q0.text[len(sw.JOB_REQUEST_PREFIX):][:400]}\n"
                                    "Elle varaka oturumuna iletilsin mi, yoksa istek düzeltilsin mi?", source="job-red", paths=sw.paths_for(sid))
+                _notify(steward_config(sid), f"{_ask_prefix(q0.project, sid)} İş isteği gönderilmedi (beyin RED): {red[:200]}\n"
+                                             f"→ {sw.ask_hint(nq.id, sid)}")      # kaydedilen soru telefona da gitsin
                 sw.log_event("job_request_red", paths=sid, id=q0.id, project=q0.project, reason=red[:200])
     try:
         q = sw.answer_question(str(data.get("id") or ""), str(data.get("answer") or ""), sid)

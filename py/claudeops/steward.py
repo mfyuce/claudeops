@@ -120,7 +120,7 @@ PHASES = ("idea", "planning", "planned", "paused", "done")
 KINDS = ("book", "article", "software", "other")
 ACTIVE_PHASES = ("planning", "planned")
 
-# Yetki kipi (docs/degnekci-plan.md: observe → suggest → act, ilk hafta observe). `suggest` henüz yok (faz 5).
+# Yetki kipi (-prv: docs/degnekci-plan.md: observe → suggest → act, ilk hafta observe). `suggest` henüz yok (faz 5).
 MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
@@ -1921,10 +1921,9 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
                     more: Optional[List[Question]] = None, compact: bool = False, paths: Any = None) -> str:
     """Bir proje oturumuna gönderilecek faz direktifi. `answer` verilirse önce insanın cevabı iletilir.
     Beyin kendi direktifini `extra` ile tamamen ezebilir (şablon yine protokol kuyruğunu ekler).
-    `compact` (yalnız `answer` ile): oturum amaç/not/protokolü bu yaşamında zaten aldı; yalnız soru-cevap + `extra`.
+    `compact`: oturum amaç/not/protokolü bu yaşamında zaten aldı; cevapla yalnız soru-cevap + `extra`, cevapsız faz talimatı + `extra`.
     `paths`: "Önceki cevaplarım" bu kimliğin soru deposundan okunur (verilmezse `default`)."""
     tr = lang != "en"
-    compact = bool(compact and answer is not None)
     parts: List[str] = []
     head = f"[claudeops değnekçi — {project.name}]" if tr else f"[claudeops steward — {project.name}]"
     parts.append(head)
@@ -1948,8 +1947,8 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
                          "\n".join(f"- {q.text.strip()[:140]} → {q.answer.strip()[:200]}" for q in prior))
     if extra.strip():
         parts.append(extra.strip())
-    elif compact:
-        pass
+    elif compact and answer is not None:
+        pass      # cevap yolu: yalnız soru-cevap; cevapsız kısa direktif faz talimatını korur, başlık/not/protokolü atar
     elif project.phase == "planning":
         if tr:
             parts.append(
@@ -2165,7 +2164,7 @@ MODEL_RULE_EN = (
 
 
 def identity_section(sid: str, label: str = "", lang: str = "tr") -> str:
-    """Default DIŞI kimliğin beyni için kısa kimlik bölümü (docs/multi-steward-plan.md (d)). `default` için "" (o beynin
+    """Default DIŞI kimliğin beyni için kısa kimlik bölümü (-prv: docs/multi-steward-plan.md (d)). `default` için "" (o beynin
     CLAUDE.md'si BAYT BAYT eskisi gibi kalır)."""
     if sid == "default":
         return ""
@@ -2600,6 +2599,8 @@ def shutdown_note_result(it: Dict[str, Any], kind: str, res: Dict[str, Any], now
         it["stage"], it["at"], it["fail_error"] = "ho_failed", now, str(res.get("error") or "")[:200]
         return False
     it["stage"] = "wait" if kind == "handover" else "ho"
+    if kind != "handover":
+        it["at"] = now      # yeniden denenen stop yeni 10 dk'lık pencere alır; hazırlık `ho_at`tan okunur
     return True
 
 
@@ -2654,15 +2655,19 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
             if v.busy is not True and not v.subagent_active and not v.subagent_unknown and quiet and name not in blockers:
                 actions.append(Action("handover", name, "shutdown"))
                 it["stage"], it["at"] = "ho", now
+                it.pop("ho_at", None)
             elif now - float(sd["started"]) >= SHUTDOWN_WAIT_MAX_SECONDS:
                 it["stage"], it["at"] = "busy_left", now
         elif it["stage"] == "ho":
-            ready = READY_FOR_HANDOVER in (v.last_assistant or "") and v.last_activity >= float(it["at"])
+            # `ho_at`: devir mesajının gittiği an; başarısız `stop` sonrası `at` yenilense de hazırlık bununla ölçülür (aksi hâlde
+            # yeniden denenen stop hiç tetiklenmez, oturum 10 dk sonra `ho_timeout` ile açık kalırdı)
+            ready = READY_FOR_HANDOVER in (v.last_assistant or "") and v.last_activity >= float(it.get("ho_at", it["at"]))
             if ready and v.busy is not True:
                 if modes.get(name) == "keep":      # devir alındı, oturum AÇIK kalır (yalnız dur)
                     it["stage"], it["at"] = "kept", now
                 else:
                     actions.append(Action("stop", name, "shutdown"))
+                    it["ho_at"] = it["at"]
                     it["stage"], it["at"] = "closed", now
             elif now - float(it["at"]) >= SHUTDOWN_HO_MAX_SECONDS:
                 it["stage"], it["at"] = "ho_timeout", now
@@ -3670,7 +3675,8 @@ def plan_api_recovery(views: List[SessionView], eligible: Callable[[SessionView]
             actions.append(Action("api_outage", "", f"{len(live)} oturum aynı anda API hatasında", {"names": sorted(v.name for v in live)}))
         woken = set(out.get("woken") or [])
         probe = str(out.get("probe") or "")
-        if not out.get("recovered") and probe and not any(v.name == probe for v in stuck):
+        if not out.get("recovered") and probe and not any(v.name == probe for v in stuck) \
+                and any(v.name == probe and v.running for v in views):
             out["recovered"] = True                           # yoklama oturumu ilerledi: sağlayıcı düzeldi
             actions.append(Action("api_recovered", probe, "yoklama oturumu API hatasından çıktı", {}))
         if out.get("recovered"):
@@ -3684,6 +3690,9 @@ def plan_api_recovery(views: List[SessionView], eligible: Callable[[SessionView]
                 _nudge(cand, "kesinti yoklaması")
                 out["probe"] = cand.name
                 out["probe_at"] = now + API_OUTAGE_PROBE_SECONDS
+            else:
+                for v in live:      # tüm oturumların yoklama hakkı bitti: tek-oturum gibi vazgeç (kesinti sonsuza dek sessiz kalmasın)
+                    _giveup(v)
         out["woken"] = sorted(woken & {v.name for v in stuck})
     else:
         if out:                                                # kesinti bitti: kalanlar tek-oturum kurallarına döner
@@ -3839,13 +3848,26 @@ def missed_summary_dates(now: float, days: int = SUMMARY_CATCHUP_DAYS, paths: An
     `log.jsonl`'da kaydı bulunanlar. `summary_hour`da panel kapalıysa o gün özetlenmezdi (TODO 2026-10-19 (6d));
     açılıştan sonraki ilk tick bunları tamamlar. Kaydı olmayan gün (döngü kapalıydı) özetlenmez: boş özet gitmesin."""
     out: List[str] = []
+    try:
+        st = os.stat(_pp(paths).log)
+        sig: Any = (st.st_size, st.st_mtime_ns)
+    except OSError:
+        sig = None
     for back in range(max(0, days), 0, -1):
         date = time.strftime("%Y-%m-%d", time.localtime(now - back * 86400))
         if os.path.isfile(daily_path(date, paths)):
             continue
+        key = (str(_pp(paths).log), date)
+        if sig is not None and _NO_LOG_DAYS.get(key) == sig:
+            continue      # bu günün kaydı yok ve günlük dosyası değişmedi: tick başına tam tarama yapma
         if log_entries_for_date(date, paths):
             out.append(date)
+        elif sig is not None:
+            _NO_LOG_DAYS[key] = sig
     return out
+
+
+_NO_LOG_DAYS: Dict[Any, Any] = {}      # (log yolu, tarih) -> günlük dosyası (boyut, mtime) imzası; kayıtsız gün önbelleği
 
 
 _SUMMARY_TXT = {

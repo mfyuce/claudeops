@@ -106,6 +106,25 @@ class OutageTest(unittest.TestCase):
         acts, e, o = run([view(n, text="tamam") for n in names], e, o, T0 + 900)
         self.assertEqual((acts, e, o), ([], {}, {}))                            # kesinti kaydı düşer
 
+    def test_exhausted_outage_gives_up_instead_of_staying_silent(self):
+        v = [view("a"), view("b")]
+        acts, e, o = run(v, {}, {}, T0)
+        kinds, t = [x.kind for x in acts], T0
+        for _ in range(12):                                   # yoklama hakları (oturum başı API_NUDGE_MAX) tükenip bekleme dolana dek
+            t += sw.API_OUTAGE_PROBE_SECONDS + sw.API_GIVEUP_AFTER
+            acts, e, o = run(v, e, o, t)
+            kinds += [x.kind for x in acts]
+        self.assertIn("api_giveup", kinds)
+        self.assertEqual(o, {})                               # herkes bırakıldı: kesinti kaydı düştü
+
+    def test_closed_probe_session_is_not_a_recovery(self):
+        names = ["a", "b", "c"]
+        acts, e, o = run([view(n) for n in names], {}, {}, T0)
+        probe = o["probe"]
+        left = [view(n) for n in names if n != probe]          # yoklama oturumu KAPANDI (listede yok)
+        acts, e, o = run(left, e, o, T0 + 700)
+        self.assertNotIn("api_recovered", [a.kind for a in acts])
+
     def test_two_sessions_is_an_outage_one_is_not(self):
         acts, e, o = run([view("a"), view("b")], {}, {}, T0)
         self.assertEqual(acts[0].kind, "api_outage")
