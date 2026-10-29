@@ -354,6 +354,21 @@ class TestCopilotMode(unittest.TestCase):
         self.assertTrue(rv.is_daily_limit("You have exceeded your monthly quota (Request ID: X)"))
 
 
+class TestRedactLeaks(unittest.TestCase):
+    """TODO 2026-10-28 (21) redact_secrets kaçakları: tırnaklı/kaçışlı anahtar, DB_PASS, --password, AIza/glpat/JWT/ntfy."""
+
+    def test_leaks_closed(self):
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijkl"
+        for t, secret in (('"password": "x1234567"', "x1234567"), ('{\\"api_key\\": \\"abcdefgh12\\"}', "abcdefgh12"),
+                          ("export DB_PASS=abcdefgh1", "abcdefgh1"), ("db_password=abcdefgh1", "abcdefgh1"),
+                          ("run --password hunter2x now", "hunter2x"), ("k=AIza" + "a" * 35, "AIza"),
+                          ("glpat-" + "a" * 20, "glpat-"), (jwt, "eyJzdWIi"), ("tk_" + "a" * 20, "tk_a")):
+            self.assertNotIn(secret, rv.redact_secrets(t), t)
+
+    def test_plain_text_untouched(self):
+        self.assertEqual(rv.redact_secrets("tokens are 12345678 many"), "tokens are 12345678 many")
+
+
 class TestDsnRedact(unittest.TestCase):
     def test_dsn_password_masked_and_learned(self):
         t = rv.redact_secrets("DSN postgresql://u:hunter22@h:5/db ok")

@@ -1768,7 +1768,6 @@ def _unwrap_ticks(prefix: str, body: str) -> str:
     return body.strip()
 
 
-_JOB_BODY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{1,40}\s+\S")   # '<tür> <dosya/açıklama>': tür küçük harf kimliği
 
 
 _PLACEHOLDER_BODY_RE = re.compile(r"^<[^<>\n]{1,80}>[\s`.…]*$")   # '<soru>' gibi YER TUTUCU: yazım örneği, gerçek soru değil

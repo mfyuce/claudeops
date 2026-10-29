@@ -558,6 +558,17 @@ class TestDeliver(_Jobs):
         self.assertEqual(len(self.given), 1)                                   # aynı iş iki kez iletilmez
         self.assertIn("job_delivered", [e["event"] for e in sw.tail_log(50)])
 
+    def test_waits_while_a_subagent_is_active_or_unknown(self):
+        self.submit()
+        self.finish()
+        for kw in ({"subagent_active": True}, {"subagent_unknown": True}):
+            self.views = [self.mkt_view(**kw)]
+            ws.tick_once("manual", "default")
+        self.assertEqual(self.given, [])                                        # alt ajan sürerken ana oturum uyandırılmaz
+        self.views = [self.mkt_view()]
+        ws.tick_once("manual", "default")
+        self.assertEqual(len(self.given), 1)
+
     def test_waits_when_session_busy_or_not_running_and_never_starts_one(self):
         self.submit()
         self.finish()

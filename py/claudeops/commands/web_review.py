@@ -37,9 +37,6 @@ ANTHROPIC_REVIEW_KEY_FILE = os.path.expanduser("~/.claude/claudeops/anthropic_re
 EVREN_MAX_STEPS = 200
 EVREN_MAX_IO_MIB = 2048
 STDERR_KEEP = 300
-LIVE_CAP_BYTES = 512 * 1024         # canlı günlük dosyası tavanı; aşılınca yalnız son LIVE_KEEP_BYTES kalır
-LIVE_KEEP_BYTES = 384 * 1024
-LIVE_READ_BYTES = 128 * 1024        # GET review/live tek yanıtta en çok bu kadar (son kısım)
 DELTA_KEEP_CHARS = 2_000_000    # IoLog'un bellekte tuttuğu akış metni üst sınırı (40 dk'lık koşu MB'larca delta üretir)
 HEARTBEAT_SECONDS = 10.0            # testler küçültür
 

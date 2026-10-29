@@ -463,8 +463,9 @@ def plan_job_deliveries(views: List[Any], projects: Dict[str, Any], jobs: List[D
         if not stage or proj not in projects:
             continue
         v = sw.pick_delivery_view(mine, proj, "")
-        if v is None or v.busy or v.name in taken:
-            continue
+        if (v is None or v.busy or v.name in taken
+                or getattr(v, "subagent_active", False) or getattr(v, "subagent_unknown", False)):
+            continue      # alt ajan sürerken (ya da bilinmiyorsa) iş sonucu ana oturumu uyandırmaz
         out.append(sw.Action("deliver_job", v.name, "job", {"job_id": j.get("id"), "service": j.get("service"), "stage": stage}))
         taken.add(v.name)
         if lda is None:

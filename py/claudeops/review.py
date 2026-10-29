@@ -310,7 +310,13 @@ _SECRET_RES = (
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),
     re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{16,}"),
-    re.compile(r"(?i)\b((?:api[_-]?key|secret|token|passw(?:or)?d|authorization)\s*[:=]\s*)[\"']?[^\s\"',;]{8,}"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{30,}"),
+    re.compile(r"\bglpat-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),     # JWT
+    re.compile(r"\btk_[A-Za-z0-9]{16,}"),                                              # ntfy
+    # anahtar (db_password, API_KEY, "password", \"api_key\" dahil; tırnak/kaçışlı tırnak) + `:`/`=` + değer
+    re.compile(r"(?i)((?:api[_-]?key|secret|token|pass(?:w(?:or)?d)?|authorization)[\w-]*[\\\"']{0,2}\s*[:=]\s*[\\]?[\"']?)[^\s\\\"',;]{8,}"),
+    re.compile(r"(?i)(--(?:password|passwd|token|api-key|secret)[ =])[^\s\"']{4,}"),
 )
 
 

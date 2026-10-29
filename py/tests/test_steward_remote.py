@@ -142,7 +142,6 @@ class _Remote(_Tmp):
             mock.patch.object(hosts, "HOSTS_JSON", hj),
             mock.patch.object(ws, "_remote", self.fake),
             mock.patch.object(ws, "find_sessions", lambda measure_cpu=False, **kw: list(self.live)),
-            mock.patch.object(ws, "find_stuck", lambda live: []),
             mock.patch.object(ws, "_running", lambda name: None),
             mock.patch.object(ws, "_ensure_running",
                               lambda name, **kw: self.touched.append(name) or {"ok": False, "error": "no tmux here"}),

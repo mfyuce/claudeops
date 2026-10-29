@@ -181,8 +181,7 @@ class TestCollectViews(NoRealReviewMixin, _Engine):
         ws.configure(status_payload=lambda: {"sessions": [
             {"name": "a", "running": True, "cwd": "/tmp/x", "cli": "claude", "model": "claude-sonnet-5-5",
              "live_model": "claude-opus-5-5", "live_effort": "high", "host": "local"}]})
-        with mock.patch.object(ws, "find_sessions", lambda measure_cpu=False: []), \
-                mock.patch.object(ws, "find_stuck", lambda live: []):
+        with mock.patch.object(ws, "find_sessions", lambda measure_cpu=False: []):
             views = _real_collect(settings.steward_config())
         v = [x for x in views if x.name == "a"][0]
         self.assertEqual((v.model, v.live_model, v.live_effort), ("claude-sonnet-5-5", "claude-opus-5-5", "high"))

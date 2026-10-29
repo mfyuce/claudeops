@@ -45,7 +45,6 @@ from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..providers.base import McpServerSpec, OneshotError
 from ..settings import default_effort_for, default_model_for, load_settings, steward_config, steward_ids
 from ..spawn import spawn_session, detect_display
-from ..stuck import find_stuck
 from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys
 from ..turns import is_busy_now
 from . import web_review, web_ws
@@ -1086,11 +1085,6 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
     world = _world(cfg.sid, cfg)
     rows = sw.select_rows([r for r in (payload.get("sessions") or []) if not sw.normalize_host(r.get("host"))], world)
     live = {s.name: s for s in find_sessions(measure_cpu=False)}
-    stuck_names = set()
-    try:
-        stuck_names = {i.session.name for i in find_stuck(list(live.values()))}
-    except Exception:
-        pass
     views: List[sw.SessionView] = []
     for r in rows:
         name = r.get("name") or ""
@@ -1099,7 +1093,7 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
             name=name, running=bool(r.get("running")), cwd=r.get("cwd") or "", cli=r.get("cli") or DEFAULT_CLI,
             blueprint=r.get("blueprint") if r.get("instance") else None,
             busy=r.get("busy"), history_size=r.get("history_size"), needs_ho=r.get("needs_ho"),
-            tmux=bool(r.get("tmux")), stuck=name in stuck_names, model=str(r.get("model") or ""),
+            tmux=bool(r.get("tmux")), model=str(r.get("model") or ""),
             live_model=str(r.get("live_model") or ""), live_effort=str(r.get("live_effort") or ""),
         )
         if v.running and s is not None:
