@@ -79,6 +79,20 @@ class _Cli(_Tmp):
         os.makedirs(sw.paths_for(sid).root, exist_ok=True)
 
 
+class TestSkipHandoverCommands(_Cli):
+    """TODO 2026-10-28 (21): API'de `skip`/`handover` var, CLI'da yoktu."""
+
+    def test_skip_and_handover_post_to_the_api(self):
+        self.make()
+        for verb in ("skip", "handover"):
+            self.api_calls.clear()
+            rc, _ = self.run_cli("-s", "kitap", verb, "ncs", "--reason", "deneme")
+            self.assertEqual(rc, 0, verb)
+            (method, path, body), = self.api_calls
+            self.assertEqual((method, path), ("POST", f"/api/steward/{verb}"))
+            self.assertEqual((body["name"], body["reason"]), ("ncs", "deneme"))
+
+
 class TestBrainCommand(_Cli):
     """TODO 1233 (2): `steward -s X brain` durum göstermek yerine beyni BAŞLATIYORDU."""
 

@@ -15,6 +15,8 @@ Kullanım:
   py/cops steward set NAME [--phase planning] [--kind book] [--goal "..."] [--priority 2]
                            [--cadence 240] [--note "..."] [--model m] [--effort e]
                            [--host HOST [--force]]   # uzak proje (hosts.json adı; local = yerel): panel üzerinden
+  py/cops steward skip NAME [--reason R]     # sıradaki idle/review maddesini ertele (durum değişmedikçe 6 sa tura girmez)
+  py/cops steward handover NAME [--reason R]  # NAME'e devir (handover) başlat
   py/cops steward import [--phase planned]    # roster'daki (değnekçide olmayan) projeleri toplu kaydet
   py/cops steward questions [--all]           # bana sorulanlar
   py/cops steward answer ID "cevap"           # cevapla (motor oturuma iletir)
@@ -365,7 +367,8 @@ def cmd_quota(args) -> int:
         with open(os.path.join(CLAUDEOPS_DIR, "steward", "quota.json"), encoding="utf-8") as f:
             st = json.load(f)
         d = st.get("decision") or {}
-        print(f"son okuma: {_t.strftime('%d.%m %H:%M', _t.localtime(st.get('at') or 0))}  kullanılan: %{(st.get('usage') or {}).get('week_pct')}  "
+        age = max(0, int((_t.time() - float(st.get("at") or 0)) / 60))
+        print(f"son başarılı okuma: {_t.strftime('%d.%m %H:%M', _t.localtime(st.get('at') or 0))} ({age} dk önce)  kullanılan: %{(st.get('usage') or {}).get('week_pct')}  "
               f"karar: {d.get('action')} (tavan {d.get('cap')}) {d.get('reason', '')}  durduruldu: {st.get('stopped')}")
     except (OSError, ValueError):
         print("son okuma yok (servis henüz okumadı)")
@@ -857,6 +860,8 @@ def cmd_api(args) -> int:
         res = _api(port, "POST", "/api/steward/restart", {"name": args.name, "text": args.text or "",
                                                           "model": args.model or "", "effort": args.effort or "",
                                                           "reason": args.reason or "cli"}, sid)
+    elif args.action in ("skip", "handover"):
+        res = _api(port, "POST", f"/api/steward/{args.action}", {"name": args.name, "reason": args.reason or "cli"}, sid)
     else:
         res = {"ok": False, "error": "unknown action"}
     print(json.dumps(res, ensure_ascii=False, indent=2))
@@ -1034,13 +1039,18 @@ def register(sub):
     poff.set_defaults(func=cmd_toggle)
     for name, helptext in (("tick", "bir tick çalıştır (panel üzerinden)"), ("tour", "beyne şimdi bir tur gönder"),
                            ("brain", "beyin oturumu: status (varsayılan, yalnız okur) | start | stop"), ("directive", "NAME'e direktif gönder"),
-                           ("restart", "NAME'i durdur + yeni direktifle aç")):
+                           ("restart", "NAME'i durdur + yeni direktifle aç"),
+                           ("skip", "NAME'in sıradaki idle/review maddesini ertele (6 sa tura girmez)"),
+                           ("handover", "NAME'e devir (handover) başlat")):
         px = s.add_parser(name, help=helptext)
         px.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
         if name == "brain":
             px.add_argument("what", nargs="?", choices=["status", "start", "stop"], default="status",
                             help="status: yalnız durumu göster (varsayılan, hiçbir şey başlatmaz); "
                                  "start: beyni başlat; stop: beyni durdur")
+        if name in ("skip", "handover"):
+            px.add_argument("name")
+            px.add_argument("--reason")
         if name in ("directive", "restart"):
             px.add_argument("name")
             px.add_argument("text", nargs="?", default="")
