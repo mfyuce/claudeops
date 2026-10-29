@@ -110,17 +110,6 @@
     {
      "items": [
       {
-       "idle_minutes": 30.0,
-       "kind": "idle",
-       "name": "a"
-      },
-      {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
@@ -143,6 +132,17 @@
        "kind": "blocked",
        "name": "yok",
        "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      },
+      {
+       "idle_minutes": 30.0,
+       "kind": "idle",
+       "name": "a"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }
@@ -252,12 +252,6 @@
     {
      "items": [
       {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
@@ -280,6 +274,12 @@
        "kind": "blocked",
        "name": "yok",
        "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }
@@ -399,16 +399,16 @@
     {
      "items": [
       {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
        "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }
@@ -555,12 +555,6 @@
     {
      "items": [
       {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
@@ -583,6 +577,12 @@
        "kind": "blocked",
        "name": "yok",
        "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }
@@ -682,12 +682,6 @@
     {
      "items": [
       {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
@@ -710,6 +704,12 @@
        "kind": "blocked",
        "name": "yok",
        "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }
@@ -821,16 +821,16 @@
     {
      "items": [
       {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
        "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }
@@ -983,21 +983,6 @@
     {
      "items": [
       {
-       "kind": "review",
-       "name": "zlkrn"
-      },
-      {
-       "idle_minutes": 30.0,
-       "kind": "idle",
-       "name": "a"
-      },
-      {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
@@ -1020,6 +1005,21 @@
        "kind": "blocked",
        "name": "yok",
        "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      },
+      {
+       "kind": "review",
+       "name": "zlkrn"
+      },
+      {
+       "idle_minutes": 30.0,
+       "kind": "idle",
+       "name": "a"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }
@@ -1141,12 +1141,6 @@
     {
      "items": [
       {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
@@ -1169,6 +1163,12 @@
        "kind": "blocked",
        "name": "yok",
        "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }
@@ -1305,16 +1305,16 @@
     {
      "items": [
       {
-       "id": "i1",
-       "kind": "idea",
-       "name": "",
-       "text": "fikir"
-      },
-      {
        "id": "q4",
        "kind": "routine",
        "name": "a",
        "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "id": "i1",
+       "kind": "idea",
+       "name": "",
+       "text": "fikir"
       }
      ]
     }

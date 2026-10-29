@@ -1069,7 +1069,8 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
         questions = load_questions(paths)
         # Oturum yakın zamanda cevaplanmış bir soruyu yeniden sordu: yeni soru açma, cevabı "zaten cevapladım"
         # notuyla yeniden ilet (üst sınırdan sonra gerçekten yeni soru say; sonsuz döngü olmasın).
-        dup = find_answered_duplicate(questions, project, text)
+        is_job = text.startswith(JOB_REQUEST_PREFIX)    # farklı dosyalı iş istekleri Jaccard'da birbirine benzer: kopya/birleştirme sayılmaz
+        dup = None if is_job else find_answered_duplicate(questions, project, text)
         if dup is not None and dup.repeats < REASK_MAX_REPEATS:
             dup.repeats += 1
             dup.delivered_at = 0.0
@@ -1085,7 +1086,7 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
                     return q, "promoted"
                 return q, "same"
         # Benzer (aynı olmayan) AÇIK soru: yenisi açılmaz, sayaç artar (devirle gelen yeni oturum öncekinin sorusunu bilmez).
-        sim = find_open_similar(questions, project, text)
+        sim = None if is_job else find_open_similar(questions, project, text)
         if sim is not None:
             sim.asked_again += 1
             promoted = sim.routine and not routine
@@ -1782,6 +1783,24 @@ def done_blocked(project: Any) -> bool:
     return NO_DONE_TAG in str(getattr(project, "notes", "") or "")
 
 
+def _bare_marker(line: str, mark: str) -> bool:
+    """`mark` satırda ANILMAYA değil İŞARET olarak yazılmış mı: `NO-`/`-` önekli değil (NO-STEWARD-DONE), tek backtick
+    içinde ya da satırın başında, ve ardından yalnız `:`/boşluk/satır sonu (gövdede "yazmıyorum, iş kaldı" düzyazısı değil)."""
+    idx = line.find(mark)
+    if idx == -1:
+        return False
+    if idx > 0 and (line[idx - 1].isalnum() or line[idx - 1] == "-"):
+        return False
+    head = line[:idx].strip("` ")
+    if head and not head.endswith(":"):
+        return False       # "…STEWARD-DONE yazmıyorum" gibi düzyazı gövdesinin ortasında
+    tail = line[idx + len(mark):]
+    if tail[:1].isalnum() or tail[:1] == "-":
+        return False       # STEWARD-DONE-CONFIRMED / STEWARD-DONE-X
+    rest = tail.strip("` ")
+    return not rest or rest.startswith(":")    # işaret tek başına ya da `:` ile gövde alır; "… yazmıyorum" düzyazısı değil
+
+
 def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool, confirmed: str|None}. Satır başındaki madde/boşluk toleranslı;
@@ -1818,14 +1837,14 @@ def scan_markers(text: str) -> Dict[str, Any]:
                     out[key].append(body)
                 break
         else:
-            if MARK_PLAN_READY in line:
+            if _bare_marker(line, MARK_PLAN_READY):
                 out["plan_ready"] = True
             elif MARK_DONE_CONFIRMED in line:      # `STEWARD-DONE` alt dizgesini içerir: önce bakılır, düz DONE sayılmaz
                 idx = line.find(MARK_DONE_CONFIRMED)
                 body = _unwrap_ticks(line[:idx], line[idx + len(MARK_DONE_CONFIRMED):].lstrip(":").strip())
                 if not _PLACEHOLDER_BODY_RE.match(body) and "<" not in body and line[:idx].count("`") % 2 == 0:
                     out["confirmed"] = body       # boş gövde de bir teyit denemesi (kanıtsız: geçersiz sayılır)
-            elif MARK_DONE in line and MARK_END not in line:
+            elif _bare_marker(line, MARK_DONE) and MARK_END not in line:
                 out["done"] = True
     return out
 
@@ -2703,7 +2722,8 @@ DIRECTIVE_MIN_GAP_SECONDS = 90.0     # aynı oturuma iki direktif arası: cevap 
 
 # Sahibin kararı olan konular (commit/push/merge/build/deploy 2026-10-27'de KALICI İZİNLE çıkarıldı; force-push, kurulum/apt/sudo, silme,
 # harcama, parola/token/yetki kalır): beyin bunlara `steward_answer` ile ASLA cevap vermez (soru rutin etiketli olsa bile).
-OWNER_ONLY_RE = re.compile(r"force|install|kurulum|kurul|\bapt\b|\bsudo\b|\bsil|delete|harca|spend|password|parola|token|yetki|credential", re.I)
+# Kelime sınırlı (workforce/enforce, silsile, "kuruldu mu" sahte pozitifti); "bağlam token'ı" bir bütçe ölçüsüdür, kimlik bilgisi değil.
+OWNER_ONLY_RE = re.compile(r"\bforce\b|\bforce[- ]push|\binstall|\bkurulum|\bkurul(?:sun|mal|ac|ur|mas)|\bapt\b|\bsudo\b|\bsil(?:ey|in|el|se|ec|me|mi|di|dı|ik|ip|er)\w*|\bsil\b|\bdelete|\bharca|\bspend|\bpassword|\bparola|(?<!bağlam )(?<!baglam )(?<!context )\btokens?\b(?!'?[ıiuü]?\s*(?:\d|[a-zçğıöşü]*\s*(?:bütçe|limit|eşik)))|\byetki|\bcredential", re.I)
 
 
 _JOB_RED_RE = re.compile(r"^\s*RED\b\s*[:\-–—]?\s*(.*)$", re.I | re.S)
@@ -3391,11 +3411,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     last_tour = float(st.get("last_tour") or 0.0)
     brain = by_name.get(cfg.brain_name)
     tour_gap = (cfg.tour_retry_minutes if st.get("tour_deferred") else cfg.tour_minutes) * 60
-    if any(it.get("kind") == "routine" or (it.get("kind") == "blocked" and not blocked_tours.get(str(it.get("id"))))
+    fresh_routine = {q.id for q in questions if q.status == "open" and q.routine and q.created_at > last_tour}   # yalnız YENİ rutin soru acil
+    if any((it.get("kind") == "routine" and it.get("id") in fresh_routine)
+           or (it.get("kind") == "blocked" and not blocked_tours.get(str(it.get("id"))))
            for it in items):
         tour_gap = min(tour_gap, 60)      # YENİ acil madde (işleyiş sorusu/iletilemeyen cevap): tur aralığını beklemeden bir sonraki tick'te
+    blocked_now = {str(it.get("id")) for it in items if it.get("kind") == "blocked"}   # kesmeden ÖNCE: 8. sıradan sonrası sayaçtan düşmesin
     if items and (now - last_tour) >= tour_gap and brain is not None and brain.running and brain.busy is False:
-        items = items[:TOUR_MAX_ITEMS]
+        items = sorted(items, key=lambda it: 0 if it.get("kind") in ("routine", "blocked") else 1)[:TOUR_MAX_ITEMS]
         st.pop("tour_deferred", None)
         actions.append(Action("tour", cfg.brain_name, f"{len(items)} madde", {"items": items}))
         for it in items:
@@ -3410,7 +3433,6 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         st["skip_seen"] = skip_seen
     else:
         st.pop("skip_seen", None)
-    blocked_now = {str(it.get("id")) for it in items if it.get("kind") == "blocked"}
     blocked_tours = {k: n for k, n in blocked_tours.items() if k in blocked_now}      # çözülen/kapanan madde sayacı düşer
     if blocked_tours:
         st["blocked_tours"] = blocked_tours

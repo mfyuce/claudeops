@@ -641,6 +641,31 @@ class ShutdownPlanTest(unittest.TestCase):
         self.assertEqual(acts, [])
 
 
+class ReviewFindings20261029Test(_Tmp):
+    """TODO 2026-10-28 (21): JOB isteği kopya sayılmaz; DONE/PLAN-READY düzyazıda tetiklenmez; OWNER_ONLY sahte pozitifleri."""
+
+    def test_job_requests_for_different_files_are_not_merged(self):
+        a, how_a = sw.add_question_ex("p", sw.JOB_REQUEST_PREFIX + "embed docs/requests/A1_import.md A1 bölümü", routine=True)
+        b, how_b = sw.add_question_ex("p", sw.JOB_REQUEST_PREFIX + "embed docs/requests/A2_import.md A1 bölümü", routine=True)
+        self.assertEqual((how_a, how_b), ("new", "new"))
+        self.assertNotEqual(a.id, b.id)
+
+    def test_done_and_plan_ready_in_prose_are_ignored(self):
+        for text in ("`STEWARD-DONE` yazmıyorum, iş kaldı.", "NO-STEWARD-DONE etiketi notta var."):
+            self.assertFalse(sw.scan_markers(text)["done"], text)
+        self.assertFalse(sw.scan_markers("STEWARD-PLAN-READY yazmadan önce PLAN.md'yi bitireceğim.")["plan_ready"])
+        self.assertTrue(sw.scan_markers("bitti\nSTEWARD-DONE")["done"])
+        self.assertTrue(sw.scan_markers("- STEWARD-DONE: kanıt")["done"])
+        self.assertTrue(sw.scan_markers("`STEWARD-PLAN-READY`")["plan_ready"])
+
+    def test_owner_only_false_positives(self):
+        for t in ("Qdrant koleksiyonu kuruldu mu?", "bağlam token'ı 200K, alt ajan açayım mı?", "silsile tablosunu yeniden üretsem?",
+                  "workforce raporu"):
+            self.assertIsNone(sw.OWNER_ONLY_RE.search(t), t)
+        for t in ("git push --force yapayım mı", "dosyayı sileyim mi", "API token ver", "apt install x", "parolayı gir"):
+            self.assertIsNotNone(sw.OWNER_ONLY_RE.search(t), t)
+
+
 class OpenQuestionMergeTest(_Tmp):
     """Aynı projeden AÇIK (cevapsız) benzer soru yeniden açılmaz: birleştirilir, sayaç artar (cli aynı soruyu 3 kez açtı)."""
 
@@ -2720,10 +2745,14 @@ class SmartTickTest(unittest.TestCase):
     def test_routine_question_skips_tour_interval(self):
         cfg = _cfg(tour_minutes=15)
         brain = _view("degnekci", busy=False)
-        q = [sw.Question(id="q1", project="p", text="nasıl?", created_at=0.0, routine=True)]
+        q = [sw.Question(id="q1", project="p", text="nasıl?", created_at=self.now - 30, routine=True)]
         projects = {"p": sw.Project(name="p", phase="planned")}
         acts, _ = sw.plan_tick([brain], projects, {"last_tour": self.now - 120}, cfg, self.now, q, [])
         self.assertEqual([a.kind for a in acts if a.kind == "tour"], ["tour"])
+        # son turdan ESKİ rutin soru acil değil: tur aralığı beklenir (cevaplanamayan soru her tick tur yakmasın)
+        q[0].created_at = self.now - 600
+        acts, _ = sw.plan_tick([brain], projects, {"last_tour": self.now - 120}, cfg, self.now, q, [])
+        self.assertEqual([a.kind for a in acts if a.kind == "tour"], [])
         ideas = [sw.Idea(id="i", text="t", created_at=0)]
         acts, _ = sw.plan_tick([brain], projects, {"last_tour": self.now - 120}, cfg, self.now, [], ideas)
         self.assertEqual([a.kind for a in acts if a.kind == "tour"], [])    # acil değil: aralık beklenir
