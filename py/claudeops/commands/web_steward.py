@@ -358,6 +358,17 @@ def _is_transport_error(host: str, parsed: Any, status: int) -> bool:
             and str(parsed.get("error") or "").startswith(f"{host} unreachable:"))
 
 
+def _box_has_typed_input(session_name: str) -> bool:
+    """Oturumun giriş kutusunda KULLANICININ/motorun yazdığı ama GÖNDERİLMEMİŞ metin var mı (gri öneri sayılmaz). Pane
+    okunamaz ya da kutu bulunamazsa False (eski davranış: dürtme gider). Fırlatmaz."""
+    try:
+        from .. import tmux_backend as tmb
+        snap = tmb.tmux_pane_snapshot(session_name)
+        return bool(snap and tmb.typed_input_in_box(snap[1]) is True)
+    except Exception:
+        return False
+
+
 def _remote_post(host: str, path: str, body: Dict[str, Any], timeout: float,
                  rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
     """Uzak eylemin TEK gönderim yolu. Gövdede `host` OLMAZ (hedef host'u `proxy_action` seçer ve gidene `local`
@@ -2760,6 +2771,9 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         s = _running(name)
         if host or s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not a local running tmux session"}
+        if _box_has_typed_input(s.name):    # 2026-10-29 danisppr: kutudaki gönderilmemiş direktife "ok" eklenip tek mesaj gitti
+            sw.log_event("keepwarm_skipped", paths=paths, name=name, reason="input_box_not_empty")
+            return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, skw.KEEPWARM_TEXT)
         sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n")})
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}

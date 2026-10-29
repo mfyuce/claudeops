@@ -443,6 +443,73 @@ def tty_is_masked(pty_path: str) -> Optional[bool]:
 _SNAPSHOT_FORMAT = "#{pane_width} #{pane_height} #{history_size} #{alternate_on} #{pane_tty}"
 
 
+_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+_ANSI_ANY_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+_BOX_RULE_CHARS = "\u2500"         # ─
+_PROMPT_CHAR = "\u276f"            # ❯ (Claude TUI giriş kutusu istemi)
+
+
+def _is_dim_fg(params: List[int], cur_dim: bool) -> Optional[bool]:
+    """SGR parametrelerinden "soluk/gri" ön plan durumu: True gri/soluk, False varsayılan ya da renkli, None değişmedi."""
+    if not params:
+        return False
+    state: Optional[bool] = None
+    i = 0
+    while i < len(params):
+        p = params[i]
+        if p in (0, 22, 39):
+            state = False
+        elif p in (2, 90):
+            state = True
+        elif p == 38 and i + 2 < len(params) and params[i + 1] == 5:
+            state = 232 <= params[i + 2] <= 252 or params[i + 2] in (8, 59, 102, 145)     # gri tonlar (öneri/yer tutucu)
+            i += 2
+        elif 30 <= p <= 37 or 91 <= p <= 97:
+            state = False
+        i += 1
+    return state
+
+
+def typed_input_in_box(ansi_text: str) -> Optional[bool]:
+    """Claude TUI giriş kutusunda KULLANICININ yazdığı (gönderilmemiş) metin var mı? Girdi: `capture-pane -e` ekranı.
+    Kutu = iki `───` çizgisi arasındaki `❯` satırı (son kutu). Gri/soluk ön planla çizilen metin (boş kutu istemi, "devam"
+    gibi yer tutucu ÖNERİ) yazılmış SAYILMAZ; varsayılan/renkli ön planda görünür karakter varsa True. Kutu bulunamazsa None
+    (bilinmiyor: çağıran eski davranışta kalır). SAF; heuristik: yanlış pozitif yalnız bir dürtmeyi erteler."""
+    lines = (ansi_text or "").split("\n")
+    plain = [_ANSI_ANY_RE.sub("", ln) for ln in lines]
+    prompt_idx = [i for i, ln in enumerate(plain) if ln.lstrip().startswith(_PROMPT_CHAR)]
+    for i in reversed(prompt_idx):
+        above = any(_BOX_RULE_CHARS * 4 in plain[j] for j in range(max(0, i - 1), i)) or i == 0
+        if not above:
+            continue
+        raw = lines[i]
+        dim, seen_prompt, typed = False, False, False
+        pos = 0
+        for m in _SGR_RE.finditer(raw):
+            seg = _SGR_RE.sub("", raw[pos:m.start()])
+            typed |= _seg_typed(seg, dim, seen_prompt)
+            seen_prompt = seen_prompt or _PROMPT_CHAR in seg
+            st = _is_dim_fg([int(x) for x in m.group(1).split(";") if x.isdigit()], dim)
+            dim = dim if st is None else st
+            pos = m.end()
+        seg = _SGR_RE.sub("", raw[pos:])
+        typed |= _seg_typed(seg, dim, seen_prompt)
+        return typed
+    return None
+
+
+def _seg_typed(seg: str, dim: bool, seen_prompt: bool) -> bool:
+    """Bir renk parçasında, istem karakterinden SONRA gelen görünür (boşluk/NBSP/kenar çizgisi olmayan) karakter var mı
+    ve ön plan gri değil mi."""
+    if dim or not seg:
+        return False
+    if not seen_prompt:
+        if _PROMPT_CHAR not in seg:
+            return False
+        seg = seg.split(_PROMPT_CHAR, 1)[1]
+    return any(not c.isspace() and c not in "\u00a0\u2502" for c in seg)
+
+
 def tmux_pane_snapshot(name: str) -> Optional[tuple]:
     """Pane'in boyutu + GÖRÜNÜR ekranı TEK tmux sürecinde: `((cols, rows, history_size, alternate_on, pane_tty), text)`.
 
