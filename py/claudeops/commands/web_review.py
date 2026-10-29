@@ -2167,6 +2167,49 @@ def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
     return []
 
 
+def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dict[str, Any]:
+    """Uzak projenin onaylı bulgularını uzak `fname` sonuna yazar (taşıma: `RemoteReviewDriver.export_file`, claudeops
+    API'si). Yerel `stale_reason`/`changed_after_review` uzak ağaca bakamaz: atlanır. Hassas bulgu HER ZAMAN atlanır.
+    Çift yazma yok: dosyada `(review <id>)` varsa yeniden yazılmaz, yine `exported` sayılır. Dosya yoksa dur ve raporla."""
+    host = (ownership().get("hosts") or {}).get(project) or ""
+    drv = _REMOTE_FN(project, host) if (host and _REMOTE_FN is not None) else None     # review_where'den bağımsız: dışa aktarım host'a bakar
+    if drv is None:
+        return {"ok": False, "error": "remote export needs a wired remote driver"}
+    p = sw.paths_for(cfg.sid)
+    stamp = time.strftime("%Y-%m-%d", time.localtime(t))
+    with sw.steward_lock(p):
+        data = rv.load_findings(p)
+        rows = [dict(v, id=k) for k, v in sorted(data.items())
+                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"
+                and not sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}"))]
+    if not rows:
+        return {"ok": False, "error": "no approved findings to export", "project": project}
+    ids = [r["id"] for r in rows]
+    msg = (f"Review bulguları {fname} dosyasına eklendi ({len(ids)} madde, 'Review bulguları' başlığı); sırası geldiğinde bak."
+           if getattr(cfg, "lang", "tr") != "en" else
+           f"Review findings were appended to {fname} ({len(ids)} items, 'Review bulguları' section); see it when convenient.")
+    res = drv.export_file(fname, lambda text: rv.appended_export(text, rows, p.reviews, stamp), msg)
+    if not res.get("ok"):
+        sw.log_event("review_export_failed", paths=p, project=project, file=fname, error=_tail(str(res.get("error"))))
+        return dict(res, project=project)
+    written = list(res.get("written") or [])
+    already = [i for i in ids if i not in written]
+    target = f"{res.get('host')}:{res.get('path')}"
+    with sw.steward_lock(p):
+        data = rv.load_findings(p)
+        for fid in ids:
+            if fid in data and data[fid].get("state") == "approved":
+                data[fid].update(state="exported", exported_to=target, exported_at=t)
+                if by:
+                    data[fid]["exported_by"] = by
+        rv.save_findings(p, data)
+    sw.log_event("review_export", paths=p, project=project, file=fname, written=written, already=already, remote=res.get("host"),
+                 **({"by": by} if by else {}))
+    return {"ok": True, "project": project, "file": target, "written": written, "already": already,
+            "session_open": bool(res.get("session_open")), "notified": bool(res.get("notified")),
+            "commit": "not done (no remote shell API); commit/push the remote repo manually" if written else ""}
+
+
 def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None, by: str = "") -> Dict[str, Any]:
     """Projenin ONAYLI bulgularını yerel proje klasöründeki `fname` (TODO.md / TOBEDECIDED.md) sonuna
     `## Review bulguları` başlığı altında ekler; yazılanlar `exported` olur (çift dışa aktarma yok). Onaysız bulgu ASLA
@@ -2178,7 +2221,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
     if "/" in fname or ".." in fname or "\x00" in fname or not fname:
         return {"ok": False, "error": "invalid target file"}
     if project in (ownership().get("hosts") or {}):
-        return {"ok": False, "error": "remote projects are not exported (v1)"}
+        return _export_remote(cfg, project, fname, t, by)
     cwd = project_cwd(project)
     if not cwd or not os.path.isdir(cwd):
         return {"ok": False, "error": f"project folder not found: {project}"}

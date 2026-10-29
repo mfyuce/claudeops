@@ -5370,6 +5370,46 @@ class RemoteReviewDriver:
             out["user"], out["assistant"] = str(parsed.get("user") or ""), str(parsed.get("assistant") or "")
         return out
 
+    def export_file(self, fname: str, build: Callable[[str], Tuple[Optional[str], List[str]]], notify: str = "") -> Dict[str, Any]:
+        """Bulgu dışa aktarımı (uzak proje): `fname`yi host-routed `files/read` ile OKU (yoksa/okunamazsa DUR: uzak
+        `files/write` yeni dosya oluşturmaz), `build(metin) -> (yeni | None, yazılan_idler)`, yazmadan hemen önce TEKRAR
+        oku (değiştiyse `remote_conflict`), `files/write`, yazılanı geri oku doğrula. Proje oturumu AÇIK ve boştaysa
+        `notify` kısa bildirimi `term/input` ile gider (commit/push YOK: uzak kabuk API'si yok). Fırlatmaz."""
+        if "/" in fname or ".." in fname or "\x00" in fname or not fname:
+            return {"ok": False, "error": "invalid target file"}
+        ok, msg = self.ready()
+        if not ok:
+            return {"ok": False, "error": msg}
+        if not _remote_files_gate(self.host, self._owner()):
+            return {"ok": False, "error": f"remote files denied for host {self.host}"}
+        real, cwd = _remote_ref(self.host, self.project)
+        if not cwd:
+            return {"ok": False, "error": f"remote folder of {self.project} unknown on {self.host}"}
+        name = real or self.project
+        path = cwd.rstrip("/") + "/" + fname
+        before = _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS)
+        if before is None:
+            return {"ok": False, "error": f"{fname} missing or unreadable on {self.host}: not created", "path": path}
+        new, written = build(before)
+        out: Dict[str, Any] = {"ok": True, "path": path, "written": written, "host": self.host, "session": name}
+        if new is None:
+            return out
+        if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) != before:
+            return {"ok": False, "error": "remote_conflict: file changed while exporting", "path": path}
+        res = _remote_post(self.host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+        if not res.get("ok"):
+            return {"ok": False, "error": f"write_failed: {res.get('error') or res.get('code') or 'failed'}", "path": path}
+        if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) != new:
+            return {"ok": False, "error": "write_unverified: read-back differs", "path": path}
+        fresh_host, row = _remote_running_row(self.host, name)
+        out["session_open"] = row is not None
+        out["notified"] = False
+        if notify and row is not None and row.get("busy") is False:
+            r = _remote_post(self.host, "/api/term/input", {"name": name, "text": " ".join(notify.split()), "exact": True},
+                             REMOTE_INPUT_TIMEOUT_SECONDS)
+            out["notified"] = bool(r.get("ok"))
+        return out
+
     def sweep(self) -> bool:
         """Yetim review oturumu süpürücüsü: bu projede çalışan iş YOKKEN uzakta hâlâ `rvw_<proje>` çalışıyorsa (servis
         restart'ı koşuyu öldürüp oturumu bırakır) kapatır. Kapılar kapalı / host bayat ise dokunmaz. Dönen: kapatıldı mı."""

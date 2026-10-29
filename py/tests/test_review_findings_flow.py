@@ -322,6 +322,80 @@ class TestDecideExport(_Flow):
         self.assertFalse(self.post("export", project="far")["ok"])
 
 
+class _FakeRemoteDrv:
+    """RemoteReviewDriver.export_file sözleşmesinin sahtesi: uzak dosya bir sözlükte, ağ YOK."""
+    def __init__(self, files, log, open_session=False):
+        self.files, self.log, self.open_session = files, log, open_session
+
+    def export_file(self, fname, build, notify=""):
+        if fname not in self.files:
+            return {"ok": False, "error": f"{fname} missing or unreadable on ulak_31: not created"}
+        new, written = build(self.files[fname])
+        if new is not None:
+            self.files[fname] = new
+        self.log.append(("notify", notify) if (self.open_session and written) else ("quiet",))
+        return {"ok": True, "path": "/r/far/" + fname, "written": written, "host": "ulak_31",
+                "session_open": self.open_session, "notified": bool(self.open_session and written)}
+
+
+class TestRemoteExport(_Flow):
+    def set_state(self, fid, st):
+        d = self.findings()
+        d[fid]["state"] = st
+        rv.save_findings(self.p, d)
+
+    def setUp(self):
+        super().setUp()
+        self.fids = self.seed(proj="far")
+        self.files, self.log = {"TODO.md": "# TODO\n- mevcut\n"}, []
+        drv = _FakeRemoteDrv(self.files, self.log, open_session=True)
+        p = mock.patch.object(wr, "_REMOTE_FN", lambda proj, host: drv)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_remote_export_once_and_sensitive_skipped(self):
+        f1, f2, f3 = self.fids
+        self.set_state(f1, "approved")
+        self.set_state(f2, "verified")                                       # onaysız yazılmaz
+        r = self.post("export", project="far")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["written"], [f1])
+        self.assertTrue(r["notified"])
+        self.assertEqual(self.log[0][0], "notify")
+        self.assertIn(f"(review {f1})", self.files["TODO.md"])
+        self.assertNotIn(f2, self.files["TODO.md"])
+        self.assertIn("- mevcut", self.files["TODO.md"])
+        st = self.findings()[f1]
+        self.assertEqual(st["state"], "exported")
+        self.assertTrue(st["exported_to"].startswith("ulak_31:"))
+        self.assertFalse(self.post("export", project="far")["ok"])            # çift yazma yok
+        self.assertEqual(self.files["TODO.md"].count(f"(review {f1})"), 1)
+
+    def test_remote_missing_file_stops_and_reports(self):
+        self.set_state(self.fids[0], "approved")
+        del self.files["TODO.md"]
+        r = self.post("export", project="far")
+        self.assertFalse(r["ok"])
+        self.assertIn("not created", r["error"])
+        self.assertEqual(self.findings()[self.fids[0]]["state"], "approved")   # durum değişmez, tekrar denenebilir
+        self.assertEqual(self.files, {})
+
+    def test_remote_sensitive_finding_skipped(self):
+        f1 = self.fids[0]
+        data = rv.load_findings(self.p)
+        data[f1]["title"] = "DSN postgres://u:hunter2@h/db sızıyor"
+        rv.save_findings(self.p, data)
+        self.set_state(f1, "approved")
+        r = self.post("export", project="far")
+        self.assertFalse(r["ok"])
+        self.assertNotIn("hunter2", self.files["TODO.md"])
+
+    def test_no_driver_is_error_not_crash(self):
+        self.set_state(self.fids[0], "approved")
+        with mock.patch.object(wr, "_REMOTE_FN", None):
+            self.assertFalse(self.post("export", project="far")["ok"])
+
+
 class TestGates(_Flow):
     def test_brain_actor_rejected_on_all_new_posts(self):
         fid = self.seed()[0]
