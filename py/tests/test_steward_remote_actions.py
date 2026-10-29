@@ -184,6 +184,23 @@ class TestRemoteActions(_Actions):
         self.assertEqual((res["ok"], res["started"], res["ready"]), (True, True, False))
         self.assertEqual(self.fake.sleeps, int(ws.READY_TIMEOUT_SECONDS / ws.REMOTE_READY_POLL_SECONDS) - 1)
 
+    def test_unknown_busy_is_ready_after_a_few_polls_not_the_full_timeout(self):
+        # TODO 2026-10-28 (21): busy hiç bildirilmeyen (None) CLI'da her uzak başlatma 60 sn bekleyip kilidi tutuyordu
+        self.fake.set(HOST, [_row("oiso", running=False)])
+        self.fake.ready_after = 10 ** 6
+        orig = self.fake.sleep
+
+        def sleep_busy_none(seconds):
+            orig(seconds)
+            for st in self.fake.hosts.values():
+                for r in st["sessions"]:
+                    r["busy"] = None
+        self.act()
+        with mock.patch.object(ws, "_remote_sleep", sleep_busy_none):
+            res = ws._ensure_running("oiso", model="m", effort="e", host=HOST)
+        self.assertEqual((res["ok"], res["started"], res["ready"]), (True, True, True))
+        self.assertLessEqual(self.fake.sleeps, ws.REMOTE_READY_UNKNOWN_POLLS + 1)
+
     def test_start_is_not_attempted_on_a_down_host(self):
         self.fake.set(HOST, [], ok=False)
         self.assertEqual(ws._ensure_running("oiso", host=HOST)["error"], "host_down")

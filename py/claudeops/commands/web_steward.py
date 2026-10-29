@@ -162,6 +162,7 @@ REMOTE_STOP_TIMEOUT_SECONDS = 60.0       # `/api/stop` (uzak tarafta guard_lock 
 REMOTE_INPUT_TIMEOUT_SECONDS = 60.0      # `/api/term/input` (yönerge/cevap/iş sonucu)
 REMOTE_HANDOVER_TIMEOUT_SECONDS = 60.0   # `/api/handover` (canlı devir mesajı; kill/respawn yok)
 REMOTE_START_TIMEOUT_SECONDS = 120.0     # `/api/start` (uzak spawn)
+REMOTE_READY_UNKNOWN_POLLS = 3            # busy bilinmeyen çalışan satır bu kadar art arda yoklamada hazır sayılır
 REMOTE_READY_POLL_SECONDS = 2.0          # uzak başlatmadan sonra hazır bekleme: poller ÖNBELLEĞİNE bakış aralığı (ağ YOK)
 REMOTE_BORN_TOLERANCE_SECONDS = 5.0      # facts yaşından hesaplanan başlangıç her okumada gecikme kadar oynar
 REMOTE_BACKOFF_TICKS = 3                 # art arda bu kadar tick'te taşıma hatası → host geri çekilmeye girer
@@ -1358,11 +1359,17 @@ def _remote_wait_ready(host: str, name: str, timeout: float = READY_TIMEOUT_SECO
     `_wait_ready` gibi garanti değil: claude meşgulken gelen girdiyi kuyruğa alır, en kötü durumda yönerge gecikir.
     `name` proje adıdır: uzak taraf yeni oturuma tarihli ad verir, satır `_remote_session` ile projeden çözülür."""
     world = _world()
+    unknown = 0
     for i in range(max(1, int(timeout / REMOTE_READY_POLL_SECONDS))):
         if i:
             _remote_sleep(REMOTE_READY_POLL_SECONDS)
         _fresh, r, _err = _remote_session(host, name, world=world)
         if r is not None and r.get("busy") is False:
+            return True
+        # `busy` hiç bildirilmeyen CLI'da (None) her uzak başlatma tam `timeout` bekleyip kilidi tutardı: satır art arda
+        # REMOTE_READY_UNKNOWN_POLLS yoklamada çalışıyor ve busy bilinmiyorsa hazır say (girdi kuyruğa alınır, kaybolmaz)
+        unknown = unknown + 1 if (r is not None and r.get("running") is not False and r.get("busy") is None) else 0
+        if unknown >= REMOTE_READY_UNKNOWN_POLLS:
             return True
     return False
 
