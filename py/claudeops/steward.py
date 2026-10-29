@@ -3119,12 +3119,16 @@ def brain_notools_verdict(prev_tour: float, mcp: Dict[str, float], last_text: st
 
 DONE_ANSWER_TTL = 24 * 3600.0     # DONE-CONFIRMED çelişki sorusuna sahip cevabı bu süre boyunca geçerli
 _DONE_NO_RE = re.compile(r"bitmedi|bitmemiş|değil|degil|hayır|hayir|devam|sürdür|surdur|\bnot\b|\bno\b", re.I)
+# Çekince sözcükleri ("bitti ama X kaldı", "done except Y"): cevap BELİRSİZ; yanlış kapatma geri alınamaz, belirsiz = KAPATMA.
+_DONE_HEDGE_RE = re.compile(r"\bama\b|\bancak\b|\bfakat\b|\blakin\b|\bhariç\b|\bharic\b|\bkald[ıi]\w*|\bkalan\b|\beksik\b|"
+                            r"\bhenüz\b|\bhenuz\b|\bbut\b|\bexcept\b|\bremain\w*|\bstill\b|\bunless\b|\bonly\b|\?", re.I)
 _DONE_YES_RE = re.compile(r"\bbitti\b|\bbitmiş\b|\btamam(?:dır)?\b|\bkapat|\bevet\b|\bdone\b|\bfinished\b|\byes\b", re.I)
 
 
 def done_conflict_answer(questions: Sequence["Question"], proj: str, now: float) -> Optional[bool]:
     """Projenin son (24 sa) STEWARD-DONE-CONFIRMED çelişki sorusuna sahip cevabı: None = cevap yok; True = 'bitti'
-    (TODO/TBD sayısı çelişki sayılmaz, proje kapanır); False = başka cevap (yeni 'çelişti' sorusu AÇILMAZ, kapanmaz)."""
+    (TODO/TBD sayısı çelişki sayılmaz, proje kapanır); False = başka cevap (yeni 'çelişti' sorusu AÇILMAZ, kapanmaz).
+    Çekinceli cevap ("bitti ama X kaldı", soru işareti) False sayılır: belirsizlikte KAPATMA."""
     best: Optional["Question"] = None
     for q in questions:
         if q.status == "answered" and q.project == proj and "STEWARD-DONE-CONFIRMED" in q.text and (q.answer or "").strip() \
@@ -3134,7 +3138,7 @@ def done_conflict_answer(questions: Sequence["Question"], proj: str, now: float)
     if best is None:
         return None
     a = best.answer
-    return bool(_DONE_YES_RE.search(a)) and not _DONE_NO_RE.search(a)
+    return bool(_DONE_YES_RE.search(a)) and not _DONE_NO_RE.search(a) and not _DONE_HEDGE_RE.search(a)
 
 
 def _confirm_action(name: str, proj: str, cfg: "Config", why: str) -> "Action":
