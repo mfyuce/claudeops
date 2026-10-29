@@ -1120,6 +1120,13 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
                 v.started_at = float(psutil.Process(s.pid).create_time())
             except Exception:
                 v.started_at = 0.0
+        if not v.blueprint:
+            # Instance kaydı (blueprint) taşımayan yerel tarihli oturum (`ncs20261029`): uzak yoldaki `_derived_of` düzeltmesinin
+            # yerel karşılığı; yoksa `SessionView.project` adın kendisi olur, proje "çalışmıyor" sayılıp her cadence şablon
+            # uyandırması + sahte `start` (bütçeyi yer) üretilirdi.
+            key = world.project_key(name)
+            if key and key != name and _derived_of(name, key):
+                v.blueprint = key
         views.append(v)
     if world.hosts:
         try:
@@ -3120,13 +3127,13 @@ def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Opti
                 dry_applied.append(dict({"kind": a.kind, "name": a.name, "reason": a.reason, "dry": True},
                                         **({"host": host} if host else {})))
             for a in actions:
-                if a.kind == "start":
-                    started += 1      # deneme sayılır (başarısız açılış da bir spawn dalgası olabilir)
                 try:
                     res = _apply(a, cfg, projects, world, **rkw)
                 except Exception as e:  # tek eylem tick'i düşürmesin
                     res = {"ok": False, "error": repr(e)}
                     diag_log("steward_action_crashed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
+                if a.kind == "start" and not (isinstance(res, dict) and res.get("started") is False):
+                    started += 1      # deneme sayılır (başarısız açılış da bir spawn dalgası olabilir); VAR OLAN oturuma yönlenen start (started=False) sayılmaz
                 if a.kind in _JOURNAL_KINDS:
                     _journal_done(paths, _journal_id(a))       # 'tamamlandı' (süreç ölmedi: istisna olsa da yeniden denenmez, hata her tick'te tekrarlanmasın)
                 if isinstance(res, dict) and res.get("code") == "destructive_budget":

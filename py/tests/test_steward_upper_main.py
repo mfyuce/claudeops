@@ -186,6 +186,19 @@ class TestCollectViews(NoRealReviewMixin, _Engine):
         v = [x for x in views if x.name == "a"][0]
         self.assertEqual((v.model, v.live_model, v.live_effort), ("claude-sonnet-5-5", "claude-opus-5-5", "high"))
 
+    def test_dated_local_session_without_instance_resolves_to_its_project(self):
+        # TODO 2026-10-28 (21): blueprint'siz tarihli yerel oturum ("a20261029") yönetilen ama "çalışmıyor" sayılıyordu
+        self.settings()
+        sw.upsert_project("a", phase="planned", cadence_minutes=60)
+        ws.configure(status_payload=lambda: {"sessions": [
+            {"name": "a20261029", "running": True, "cwd": "/tmp/x", "cli": "claude", "host": "local"},
+            {"name": "ab20261029", "running": True, "cwd": "/tmp/y", "cli": "claude", "host": "local"}]})
+        with mock.patch.object(ws, "find_sessions", lambda measure_cpu=False: []):
+            views = _real_collect(settings.steward_config())
+        got = {x.name: x.project for x in views}
+        self.assertEqual(got["a20261029"], "a")                 # türetilmiş ad projeye çözülür
+        self.assertEqual(got["ab20261029"], "ab20261029")        # salt önek komşusu başka projenin oturumu DEĞİL
+
     def test_remote_row_live_values_reach_the_view(self):
         v = ws._remote_view({"name": "a", "running": True, "live_model": "claude-fable-5-1", "live_effort": None},
                             "yuhem", 0.0)
