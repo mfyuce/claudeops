@@ -224,6 +224,18 @@ class TestClient(_Remote):
         self.assertEqual([g for g in self.fake.gets if g[0] == "/api/term/chat"], [])            # term/chat'e gerek yok
         self.assertEqual(self.fake.posts, [])
 
+    def test_empty_facts_last_assistant_falls_back_to_term_chat_but_keeps_facts(self):
+        # ulak_31 iggy (2026-10-29): facts last_assistant="" idi -> işaret taraması sessizce kapalıydı (DONE-CONFIRMED hiç görülmedi)
+        self.fake.set(HOST, [_row("oiso", context={"tokens": 1000}, cache={"age": 30})])
+        self.fake.facts["oiso"] = {"running": True, "started_age_s": 600.0, "subagent_active": False,
+                                   "context_tokens": 77000, "last_assistant": "", "sid_known": True}
+        self.fake.chat[(HOST, "oiso")] = "STEWARD-DONE-CONFIRMED: 3b7dd4b kalan açık iş 0, testler yeşil"
+        v = self.views()[0]
+        self.assertEqual(v.last_assistant, "STEWARD-DONE-CONFIRMED: 3b7dd4b kalan açık iş 0, testler yeşil")
+        self.assertEqual((v.subagent_unknown, v.subagent_active, v.context_tokens), (False, False, 77000))   # olgular facts'ten
+        self.fake.chat[(HOST, "oiso")] = ""                       # term/chat de boşsa: boş kalır, bozulmaz
+        self.assertEqual(self.views()[0].last_assistant, "")
+
     def test_facts_missing_for_a_session_falls_back_to_term_chat(self):
         self.fake.set(HOST, [_row("oiso")])
         self.fake.chat[(HOST, "oiso")] = "yedek metin"         # host yeni ama bu ad için olgu yok

@@ -3320,6 +3320,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         elif v.name not in ho_pending:
             actions.append(Action("stop", v.name, why))
 
+    def _quiet_idle(v: SessionView) -> bool:
+        """Alt ajan durumu BİLİNMİYOR (uzak host `session_facts` bildirmiyor/yanıtsız) ama oturum kesin boşta (busy False) ve
+        `SHUTDOWN_QUIET_SECONDS`tir sessiz: alt ajan sürüyor sayılmaz. Yoksa uzakta ertelenen STEWARD-DONE(-CONFIRMED) ASLA
+        uygulanmazdı (`subagent_unknown` uzak görünümde hep True başlar; iggy@ulak_31 2026-10-29)."""
+        return bool(v.busy is False and v.last_activity and (now - v.last_activity) >= SHUTDOWN_QUIET_SECONDS)
+
     # 3) İşaret taraması — yalnız DEĞİŞMİŞ yanıtlarda (aynı yanıtı her tick yeniden işleme)
     for v in views:
         if not v.running or not v.last_assistant or v.name == cfg.brain_name:
@@ -3363,7 +3369,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                     actions.append(Action("ask_user", v.name, "STEWARD-DONE-CONFIRMED yerel sayımla çelişti",
                                           {"project": proj, "text": f"{v.name}: STEWARD-DONE-CONFIRMED geldi (\"{body[:160]}\") ama projenin TODO.md'sinde "
                                                                     f"{left} açık `- [ ]` iş var; faz done yapılmadı, oturum açık. Gerçekten bitti mi?"}))
-                elif v.subagent_active or v.subagent_unknown:
+                elif v.subagent_active or (v.subagent_unknown and not _quiet_idle(v)):
                     done_pending[v.name] = proj      # alt ajan hâlâ çalışıyor: ertele; ajan bitince uygulanır
                 else:
                     done_confirm.pop(proj, None)
@@ -3380,7 +3386,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             continue
         if v is None or not v.running or proj not in projects or done_blocked(projects[proj]):
             done_pending.pop(name, None)    # (NO_DONE_TAG ertelemeden SONRA eklenmiş olabilir: yeniden denetle)
-        elif not v.subagent_active and not v.subagent_unknown and v.busy is not True and name not in busy_names:
+        elif not v.subagent_active and (not v.subagent_unknown or _quiet_idle(v)) and v.busy is not True and name not in busy_names:
             if (open_work is not None and open_work(proj)) or (open_tbd is not None and open_tbd(proj)):     # ertelemeden sonra TODO'ya/TBD'ye açık iş düşmüş: kapatma
                 done_pending.pop(name, None)
                 continue

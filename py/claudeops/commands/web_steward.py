@@ -558,6 +558,10 @@ def _remote_views(world: sw.World, now: Optional[float] = None, rt: Optional[_Re
         f = (enriched.get(v.host) or {}).get(v.name)
         if isinstance(f, dict) and f.get("running") is not False:
             _apply_facts(v, f, now, history.get((v.host, v.name)))
+            if not v.last_assistant:
+                # facts yanıtladı ama `last_assistant` BOŞ (ulak_31 iggy, 2026-10-29): boş metin işaret taramasını (STEWARD-DONE-CONFIRMED
+                # vb.) sessizce kapatıyordu; olgular (alt ajan, bağlam, yaş) kalır, yalnız METİN term/chat'ten tamamlanır
+                fallback.append((v.host, v.name))
         else:
             fallback.append((v.host, v.name))
     left = deadline - time.monotonic()
@@ -565,7 +569,7 @@ def _remote_views(world: sw.World, now: Optional[float] = None, rt: Optional[_Re
     if rt is not None and read_failed:
         rt.failed |= read_failed       # yavaş/yanıtsız okuma da devre kesiciyi besler (eskiden yalnız eylem POST'u sayılırdı)
     for v in views:
-        if (v.host, v.name) in texts:
+        if (v.host, v.name) in texts and texts[(v.host, v.name)]:
             v.last_assistant = texts[(v.host, v.name)]
     return views
 

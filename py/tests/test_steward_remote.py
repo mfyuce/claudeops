@@ -240,7 +240,8 @@ class TestPlanTickRemote(unittest.TestCase):
         self.assertIn(("start", "a"), [(a.kind, a.name) for a in acts])
 
     def test_subagent_unknown_defers_done_and_shutdown_handover(self):
-        v = _view("oiso", host=HOST, subagent_unknown=True, last_assistant="bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")
+        v = _view("oiso", host=HOST, subagent_unknown=True, busy=True,       # meşgul/yeni etkinlik: alt ajan olabilir (boşta+sessizse bkz. quiet_idle testi)
+                  last_assistant="bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")
         acts, st = sw.plan_tick([v], self.projects, {}, _cfg(), 100000.0, [], [], world=self.world)
         self.assertNotIn("stop", [a.kind for a in acts])
         self.assertEqual(st["done_pending"], {"oiso": "oiso"})
@@ -249,6 +250,27 @@ class TestPlanTickRemote(unittest.TestCase):
         acts, sd, done = sw.plan_shutdown([v], self.projects, {}, _cfg(), 100000.0, world=self.world)
         self.assertEqual(acts, [])
         self.assertEqual(sd["items"]["oiso"]["stage"], "wait")
+
+    def test_subagent_unknown_but_quiet_idle_session_is_closed(self):
+        # iggy@ulak_31 (2026-10-29): facts'siz/yanıtsız host'ta `subagent_unknown` hep True -> teyit ASLA uygulanmıyordu
+        txt = "bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt"
+        now = 100000.0
+        busy_now = _view("oiso", host=HOST, subagent_unknown=True, last_assistant=txt, busy=True, last_activity=now - 600)
+        acts, st = sw.plan_tick([busy_now], self.projects, {}, _cfg(), now, [], [], world=self.world)
+        self.assertEqual(st["done_pending"], {"oiso": "oiso"})                # meşgul: ertelenir
+        fresh = _view("oiso", host=HOST, subagent_unknown=True, last_assistant=txt, busy=False, last_activity=now - 10)
+        acts, st2 = sw.plan_tick([fresh], self.projects, {}, _cfg(), now, [], [], world=self.world)
+        self.assertIn("oiso", st2.get("done_pending", {}))                    # boşta ama yeni etkinlik: bekler
+        quiet = _view("oiso", host=HOST, subagent_unknown=True, last_assistant=txt, busy=False, last_activity=now - 600)
+        acts, st3 = sw.plan_tick([quiet], self.projects, {}, _cfg(), now, [], [], world=self.world)
+        kinds = [a.kind for a in acts]
+        self.assertIn("set_phase", kinds)                                    # sessiz+boşta: faz done
+        self.assertTrue({"handover", "stop"} & set(kinds), kinds)            # devir sonra stop
+        self.assertNotIn("oiso", st3.get("done_pending", {}))
+        # ertelenmiş kayıt sonradan sessizleşince uygulanır (ilk tick işareti görüp erteledi, ikinci tick işaret aynı)
+        acts, st4 = sw.plan_tick([busy_now], self.projects, {}, _cfg(), now, [], [], world=self.world)
+        acts, st5 = sw.plan_tick([quiet], self.projects, st4, _cfg(), now + 60, [], [], world=self.world)
+        self.assertIn("set_phase", [a.kind for a in acts])
 
     def test_answer_delivery_still_allowed_with_unknown_subagent(self):
         v = _view("oiso", host=HOST, subagent_unknown=True)

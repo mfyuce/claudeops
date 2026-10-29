@@ -102,6 +102,29 @@ class TestRemoteStop(_Destructive):
         self.assertNotIn("host", self.posts()[0][2])
         self.assertEqual(self.calls, [])                                     # yerel `_act("stop")` (yerel adaş) YOK
 
+    def test_done_confirmed_read_from_term_chat_when_facts_last_assistant_is_empty(self):
+        # iggy@ulak_31 (2026-10-29): facts yanıtlıyor ama last_assistant="" -> DONE-CONFIRMED hiç taranmıyordu (faz/stop yok)
+        self.act()
+        self.fake.set(HOST, [_row("oiso")])
+        self.fake.facts["oiso"] = _facts("")                                     # facts var, metin boş
+        self.fake.chat[(HOST, "oiso")] = "bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt"
+        res = ws.tick_once("manual")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(sw.load_projects()["oiso"].phase, "done")
+        self.assertEqual([(a["kind"], a["ok"], a.get("host")) for a in res["actions"] if a["kind"] == "stop"],
+                         [("stop", True, HOST)])
+        self.assertEqual(self.posts(), [STOP])
+
+    def test_done_confirmed_on_host_without_facts_closes_a_quiet_idle_session(self):
+        # facts YOK (eski host): subagent_unknown hep True; boşta + sessizse ertelenmez
+        self.act()
+        self.fake.mode = "old"
+        self.fake.set(HOST, [_row("oiso", busy=False, cache={"age": 900})])
+        self.fake.chat[(HOST, "oiso")] = "bitti\nSTEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt"
+        ws._CAPS.clear()
+        res = ws.tick_once("manual")
+        self.assertEqual(sw.load_projects()["oiso"].phase, "done", res)
+
     def test_no_exact_target_logs_remote_too_old_once_and_never_posts(self):
         self.act()
         self.fake.mode = "old"                                               # facts 404 → api 0
