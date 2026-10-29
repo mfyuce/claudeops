@@ -714,6 +714,12 @@ def cmd_review(args) -> int:
             return 0
         print(f"hata: {res.get('error')}")
         return 1
+    if act in ("approve-all", "reject-all"):
+        body = {"action": act.split("-")[0], "project": args.project, "severities": args.severity}
+        res = _api(port, "POST", "/api/steward/review/bulk", body, sid)
+        print(f"✓ {len(res.get('done') or [])} bulgu {body['action']} (atlanan {len(res.get('skipped') or [])})" if res.get("ok")
+              else f"hata: {res.get('error')}")
+        return 0 if res.get("ok") else 1
     if act in ("approve", "reject"):
         res = _api(port, "POST", "/api/steward/review/finding", {"id": args.fid, "action": act}, sid)
         print(f"✓ {args.fid}: {res.get('state')}" if res.get("ok") else f"hata: {res.get('error')}")
@@ -1004,6 +1010,10 @@ def register(sub):
     for verb, h in (("approve", "bulguyu onayla (yalnız verified|unclear)"), ("reject", "bulguyu reddet")):
         rde = rv_.add_parser(verb, help=h)
         rde.add_argument("fid")
+    for verb, h in (("approve-all", "doğrulanmış (verified) bulguların HEPSİNİ onayla"), ("reject-all", "doğrulanmış bulguların hepsini reddet")):
+        rba = rv_.add_parser(verb, help=h + " [--project P] [--severity P2 ...]")
+        rba.add_argument("--project", default="")
+        rba.add_argument("--severity", action="append", default=[], help="yalnız bu önem(ler): P1/P2/P3")
     rex = rv_.add_parser("export", help="onaylı bulguları projenin TODO.md/TOBEDECIDED.md dosyasına yaz: PROJE [--kind todo|tbd]")
     rex.add_argument("project")
     rex.add_argument("--kind", choices=["todo", "tbd"], default="todo")

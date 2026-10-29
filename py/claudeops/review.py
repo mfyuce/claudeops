@@ -670,6 +670,24 @@ def build_verify_message(rows: Sequence[Dict[str, Any]], lang: str = "tr") -> st
             f"{VERDICT_MARK} <kimlik> verified|refuted|unclear <tek cümlelik gerekçe>")
 
 
+def build_self_verify_prompt(rows: Sequence[Dict[str, Any]], lang: str = "tr") -> str:
+    """Reviewer'ın KENDİ salt-okunur `claude -p` doğrulayıcısına giden istem (TBD#137 a=A): proje oturumu uyanmaz, alt ajan
+    yok; doğrulayıcı kodu kendisi okur. Çıktı biçimi `build_verify_message` ile AYNI (`scan_verdicts` okur)."""
+    items = "\n".join(f"- {r['id']} | {r.get('severity') or '?'} | {r.get('where') or '?'} | "
+                      f"{' '.join(str(r.get('title') or '').split())[:200]}" for r in rows)
+    if lang == "en":
+        return ("An independent code review reported the findings below. Check EACH one against the CURRENT code in this "
+                "directory (read-only: Read/Grep/Glob). Do not edit anything. A finding is `verified` when the code really "
+                "shows it, `refuted` when the code contradicts it, `unclear` when you cannot tell.\nFindings (id | severity | "
+                "location | title):\n" + items + "\nAt the END write one line per finding, at the very start of the line "
+                f"(not inside a code block or quote):\n{VERDICT_MARK} <id> verified|refuted|unclear <one-sentence reason>")
+    return ("Bağımsız bir kod incelemesi aşağıdaki bulguları raporladı. HER birini bu klasördeki GÜNCEL koda karşı kontrol et "
+            "(salt okunur: Read/Grep/Glob). Hiçbir şeyi değiştirme. Kod bulguyu gerçekten gösteriyorsa `verified`, koda "
+            "aykırıysa `refuted`, karar veremiyorsan `unclear`.\nBulgular (kimlik | önem | yer | başlık):\n" + items + "\n"
+            "SONUNDA her bulgu için ayrı bir satır yaz, satırın EN BAŞINDA (kod bloğu ya da alıntı içinde değil):\n"
+            f"{VERDICT_MARK} <kimlik> verified|refuted|unclear <tek cümlelik gerekçe>")
+
+
 def mark_verify_sent(paths: Any, fids: Sequence[str], session: str, baseline: str, now: float) -> List[str]:
     """Doğrulama direktifi GİTTİKTEN sonra bulguları `verify_sent` yapar (kilit altında); yalnız hâlâ
     `VERIFIABLE_STATES`teki bulgular. `baseline`: gönderim anındaki son asistan metninin özeti (eski yanıt yeniden

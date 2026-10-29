@@ -323,6 +323,7 @@ class Config:
     upper_main_warn: bool = True       # denetim: proje ANA oturumu fiilen Sonnet medium üstüne çıktıysa (canlı model/effort) `upper_main` olayı + oturuma tek HATIRLATMA (zorlamaz; `off` = kapalı)
     advance_findings: bool = False     # İLERLETME değnekçisi: sahibin onayladığı (`exported`) review bulgularını KENDİ projelerinin çalışan oturumuna direktifle iletir (steward_advance.py)
     review_auto_verify: bool = False   # reviewer: `new` bulguları projenin çalışan oturumuna KENDİLİĞİNDEN doğrulatır (tick başına en çok 1 proje; oturum meşgulse bekler)
+    review_verify_mode: str = "session"   # reviewer doğrulaması (TBD#137 a): session = projenin ana oturumuna direktif | self = reviewer'ın KENDİ salt-okunur `claude -p` Sonnet süreci (ana oturum uyanmaz)
     review_before_tbd_dir: str = ""    # reviewer: `unclear`/`refuted` bulguları bu klasöre `BEFORETBD-<tarih>.md` olarak yazar (özel repo klasörü; "" = KAPALI; commit/push otomatik DEĞİL)
     review_store_commit: bool = False  # reviewer: `review_store_dir` altındaki YENİ reviews/ dosyaları günde bir -prv depoya (yalnız reviews/ yolu, gizli değer taramalı) commit+push (TBD#118 ek; varsayılan KAPALI)
     review_store_git_dir: str = "~/.claudeops-docs.git"   # -prv deposunun ayrı git-dir'ı (work-tree = review_store_dir)

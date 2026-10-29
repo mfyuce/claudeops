@@ -727,5 +727,7 @@ export const apiReviewVerify = (sid: string, project: string, fids: string[]): P
   apiPost<SimpleResult>("/api/steward/review/verify", { steward: sid, project, fids });
 export const apiReviewFinding = (sid: string, id: string, action: "approve" | "reject"): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/finding", { steward: sid, id, action });
+export const apiReviewBulk = (sid: string, action: "approve" | "reject", project = ""): Promise<SimpleResult & { done?: string[]; skipped?: string[] }> =>
+  apiPost<SimpleResult & { done?: string[]; skipped?: string[] }>("/api/steward/review/bulk", { steward: sid, action, project });
 export const apiReviewExport = (sid: string, project: string, kind: "todo" | "tbd"): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/export", { steward: sid, project, kind });

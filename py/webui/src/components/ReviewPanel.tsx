@@ -14,6 +14,7 @@ import {
   apiReviewPool,
   apiStewardConfig,
   apiReviewRun,
+  apiReviewBulk,
   apiReviewVerify,
   apiReviewWhere,
   getReviewFile,
@@ -413,6 +414,15 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
             }
           >
             {t.rvVerify}
+          </button>
+        )}
+        {findings.some((f) => f.state === "verified" && (!fProject || f.project === fProject)) && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void act(() => apiReviewBulk(sid, "approve", fProject), t.rvApproveAllDone)}
+          >
+            {t.rvApproveAll}
           </button>
         )}
         {exportProjects.map((p) =>

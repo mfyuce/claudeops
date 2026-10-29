@@ -1472,6 +1472,10 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         n = recover_on_start(p, now=lambda: t)
         if n:
             actions.append({"kind": "recover", "pairs": n})
+        try:
+            recover_self_verify(p)
+        except Exception as e:
+            sw.log_event("review_self_verify_recover_failed", paths=p, error=_tail(repr(e)))
     try:
         applied = process_verdicts(cfg, t)
     except Exception as e:      # karar okuma hatası planlayıcıyı düşürmesin
@@ -1782,7 +1786,8 @@ def process_verdicts(cfg: Any, now: Optional[float] = None) -> List[str]:
     p = sw.paths_for(cfg.sid)
     data = rv.load_findings(p)
     projects = sorted({str(v.get("project")) for v in data.values()
-                       if isinstance(v, dict) and v.get("state") == "verify_sent" and v.get("project")})
+                       if isinstance(v, dict) and v.get("state") == "verify_sent" and v.get("project")
+                       and v.get("verify_session") != "self"})     # kendi doğrulama sonucunu kendi thread'i uygular
     applied: List[str] = []
     for proj in projects:
         got = reader(proj)
@@ -1803,6 +1808,152 @@ def process_verdicts(cfg: Any, now: Optional[float] = None) -> List[str]:
                          verdicts={f: cur[f]["state"] for f in done})
             applied.extend(done)
     return applied
+
+
+# ── kendi doğrulama (TBD#137 a=A): reviewer'ın salt-okunur `claude -p` Sonnet süreci, proje oturumu uyanmaz ──────────
+
+SELF_VERIFY_MODEL = "claude-sonnet-5-5"
+SELF_VERIFY_TIMEOUT = 900.0          # sn; aşılırsa süreç sonlandırılır, bulgular yeniden denenir
+SELF_VERIFY_MAX_TRIES = 3            # bulgu başına; dolunca `unclear` (elle bakılır)
+_SELF_VERIFY: Dict[str, threading.Thread] = {}     # proje -> canlı doğrulama thread'i
+_SELF_VERIFY_LOCK = threading.Lock()
+
+
+def self_verify_running(project: str = "") -> bool:
+    with _SELF_VERIFY_LOCK:
+        for k, t in list(_SELF_VERIFY.items()):
+            if not t.is_alive():
+                _SELF_VERIFY.pop(k, None)
+        return bool(_SELF_VERIFY) if not project else project in _SELF_VERIFY
+
+
+def _self_verify_fail(p: Any, fids: Sequence[str], reason: str, now: float) -> None:
+    """Çalışmayan/eksik doğrulama: bulgu `new`e döner (`verify_tries`+1); deneme hakkı bitince `unclear`."""
+    with sw.steward_lock(p):
+        data = rv.load_findings(p)
+        for fid in fids:
+            rec = data.get(fid)
+            if not isinstance(rec, dict) or rec.get("state") != "verify_sent" or rec.get("verify_session") != "self":
+                continue
+            tries = int(rec.get("verify_tries") or 0) + 1
+            if tries >= SELF_VERIFY_MAX_TRIES:
+                rec.update(state="unclear", verdict=f"otomatik doğrulama {tries} denemede sonuç vermedi: {reason}"[:rv.VERDICT_REASON_MAX],
+                           verdict_at=now, verify_tries=tries)
+            else:
+                rec.update(state="new", verify_tries=tries)
+        rv.save_findings(p, data)
+
+
+def _self_verify_run(cfg: Any, project: str, rows: List[Dict[str, Any]], cwd: str, popen: Optional[Callable],
+                     now: Callable[[], float]) -> List[str]:
+    p = sw.paths_for(cfg.sid)
+    fids = [r["id"] for r in rows]
+    from ..settings import resolved_binary
+    effort = str(getattr(cfg, "review_claude_effort", "") or "low")
+    argv = claude_argv(resolved_binary("claude"), SELF_VERIFY_MODEL, effort, rv.build_self_verify_prompt(rows, getattr(cfg, "lang", "tr")))
+    out = ""
+    try:
+        proc = (popen or _default_popen)(argv, cwd=cwd, env=clean_env({"DISABLE_AUTOUPDATER": "1"}), stdin=subprocess.DEVNULL,
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            out, _err = proc.communicate(timeout=SELF_VERIFY_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            _self_verify_fail(p, fids, "zaman aşımı", now())
+            return []
+        if getattr(proc, "returncode", 0) not in (0, None):
+            _self_verify_fail(p, fids, f"rc={proc.returncode}", now())
+            return []
+    except Exception as e:      # süreç açılamadı
+        sw.log_event("review_self_verify_failed", paths=p, project=project, error=_tail(repr(e)))
+        _self_verify_fail(p, fids, "başlatılamadı", now())
+        return []
+    verdicts = [v for v in rv.scan_verdicts(out) if v[0] in set(fids)]
+    h = rv.text_hash(out)
+    with sw.steward_lock(p):
+        cur = rv.load_findings(p)
+        done = rv.apply_verdicts(cur, project, verdicts, h, "self", now())
+        if done:
+            rv.save_findings(p, cur)
+    missing = [f for f in fids if f not in done]
+    if missing:
+        _self_verify_fail(p, missing, "kararsız/eksik çıktı", now())
+    if done:
+        sw.log_event("review_verdicts", paths=p, project=project, session="self", findings=done)
+    return done
+
+
+def self_verify(cfg: Any, project: str, rows: List[Dict[str, Any]], *, popen: Optional[Callable] = None,
+                now: Callable[[], float] = time.time, background: Optional[bool] = None) -> Dict[str, Any]:
+    """`rows`u (verify_candidates çıktısı) reviewer'ın KENDİ salt-okunur `claude -p` sürecine doğrulatır; proje oturumu
+    uyanmaz. Bulgular önce `verify_sent` (`verify_session=self`), sonuçla `verified|refuted|unclear`; süreç düşerse/karar
+    eksikse `new`e döner (en çok `SELF_VERIFY_MAX_TRIES`). Proje başına tek canlı doğrulama. Arka planda koşar
+    (`_REVIEW_BACKGROUND`; testte eşzamanlı)."""
+    project = str(project or "").strip()
+    if not rows:
+        return {"ok": False, "error": "no findings to verify"}
+    cwd = review_cwd(project)
+    if not cwd or not os.path.isdir(cwd):
+        return {"ok": False, "code": "no_cwd", "error": f"project {project!r} has no local folder to verify against"}
+    with _SELF_VERIFY_LOCK:
+        t = _SELF_VERIFY.get(project)
+        if t is not None and t.is_alive():
+            return {"ok": False, "code": "already_running", "error": f"a verification for {project!r} is already running"}
+    p = sw.paths_for(cfg.sid)
+    marked = rv.mark_verify_sent(p, [r["id"] for r in rows], "self", "", now())
+    if not marked:
+        return {"ok": False, "error": "no findings in a verifiable state"}
+    rows = [r for r in rows if r["id"] in set(marked)]
+    sw.log_event("review_verify", paths=p, project=project, session="self", findings=marked, source="self")
+    bg = _REVIEW_BACKGROUND if background is None else background
+    if bg:
+        th = threading.Thread(target=_self_verify_run, args=(cfg, project, rows, cwd, popen, now), daemon=True,
+                              name=f"self-verify-{project}")
+        with _SELF_VERIFY_LOCK:
+            _SELF_VERIFY[project] = th
+        th.start()
+    else:
+        _self_verify_run(cfg, project, rows, cwd, popen, now)
+    return {"ok": True, "project": project, "session": "self", "findings": marked}
+
+
+def recover_self_verify(paths: Any) -> int:
+    """Servis yeniden başlayınca canlı thread'i olmayan `verify_session=self` + `verify_sent` bulgular `new`e döner."""
+    p = sw._pp(paths)
+    live = {k for k, t in list(_SELF_VERIFY.items()) if t.is_alive()}
+    stuck = [k for k, v in rv.load_findings(p).items() if isinstance(v, dict) and v.get("state") == "verify_sent"
+             and v.get("verify_session") == "self" and v.get("project") not in live]
+    if stuck:
+        _self_verify_fail(p, stuck, "yeniden başlatma", time.time())
+    return len(stuck)
+
+
+def bulk_decide(cfg: Any, action: str, project: str = "", fids: Optional[Sequence[str]] = None,
+                severities: Optional[Sequence[str]] = None, now: Optional[float] = None) -> Dict[str, Any]:
+    """Toplu onay/ret (TBD#137 b): SAHİBİN çağrısı. `fids` verilirse yalnız onlar; yoksa `verified` bulgular (isteğe bağlı
+    proje ve önem süzgeci). `approve` yalnız `verified|unclear`, `reject` kararsızlara; geçersiz olanlar `skipped`."""
+    if action not in ("approve", "reject"):
+        return {"ok": False, "error": "action must be approve or reject"}
+    t = time.time() if now is None else now
+    p = sw.paths_for(cfg.sid)
+    data = rv.load_findings(p)
+    if fids:
+        targets = [str(f) for f in fids]
+    else:
+        targets = [k for k, v in sorted(data.items()) if isinstance(v, dict) and v.get("state") == "verified"
+                   and (not project or v.get("project") == project)
+                   and (not severities or str(v.get("severity") or "") in set(severities))]
+    done: List[str] = []
+    skipped: List[str] = []
+    for fid in targets:
+        if rv.decide_finding(p, fid, action, t, by="owner").get("ok"):
+            done.append(fid)
+        else:
+            skipped.append(fid)
+    if done:
+        sw.log_event("review_bulk_decide", paths=p, action=action, project=project, findings=done)
+    return {"ok": True, "action": action, "done": done, "skipped": skipped}
 
 
 AUTO_APPROVE_SEVERITIES = {1: ("P3",), 2: ("P2", "P3")}     # `review_auto_approve` düzeyi -> otomatik onaylanabilir önem; P1 ASLA

@@ -734,6 +734,8 @@ export interface Strings {
   rvDone: string;
   rvExported: string;
   rvVerifySent: string;
+  rvApproveAll: string;
+  rvApproveAllDone: string;
   rvAutoVerify: string;
   rvAutoApprove: string;
   rvAutoApproveOff: string;
@@ -1573,6 +1575,8 @@ export const STRINGS: Record<Lang, Strings> = {
     rvDone: "Yapıldı.",
     rvExported: "Dışa aktarıldı",
     rvVerifySent: "Doğrulama gönderildi",
+    rvApproveAll: "Doğrulananların hepsini onayla",
+    rvApproveAllDone: "Toplu onay",
     rvAutoVerify: "Otomatik doğrula",
     rvAutoApprove: "Otomatik onayla",
     rvAutoApproveOff: "kapalı",
@@ -2413,6 +2417,8 @@ export const STRINGS: Record<Lang, Strings> = {
     rvDone: "Done.",
     rvExported: "Exported",
     rvVerifySent: "Verification sent",
+    rvApproveAll: "Approve all verified",
+    rvApproveAllDone: "Bulk approval",
     rvAutoVerify: "Auto-verify",
     rvAutoApprove: "Auto-approve",
     rvAutoApproveOff: "off",

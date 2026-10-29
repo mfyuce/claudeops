@@ -5115,6 +5115,8 @@ def http_review_verify(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
     rows = web_review.verify_candidates(cfg, project, fids or None)
     if not rows:
         return {"ok": False, "error": "no findings to verify (state new, or given ids in new|verify_sent|unclear)"}
+    if cfg.review_verify_mode == "self":     # TBD#137 a=A: reviewer'ın kendi salt-okunur süreci; proje oturumu uyanmaz
+        return web_review.self_verify(cfg, project, rows)
     owner, views, oerr = _owner_project_views(project)
     if oerr is not None:
         return oerr
@@ -5160,6 +5162,8 @@ def auto_review_verify(cfg: sw.Config, now: Optional[float] = None) -> Optional[
     projects = sorted({str(v.get("project")) for v in data.values()
                        if isinstance(v, dict) and v.get("state") == "new" and v.get("project")} & enabled - waiting)
     for proj in projects[:AUTO_VERIFY_TRIES]:
+        if cfg.review_verify_mode == "self" and web_review.self_verify_running(proj):
+            continue
         res = http_review_verify({"project": proj}, sid=cfg.sid)
         if res.get("ok"):
             sw.log_event("review_auto_verify", paths=p, project=proj, session=res.get("session"), findings=res.get("findings"))
@@ -5175,6 +5179,21 @@ def http_review_finding(data: Dict[str, Any], sid: str = "default") -> Dict[str,
     if err:
         return err
     return web_review.decide(cfg, str(data.get("id") or ""), str(data.get("action") or ""))
+
+
+def http_review_bulk(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Toplu bulgu kararı (CLI `review approve-all`, panel "hepsini onayla"): gövde `action` approve|reject, isteğe bağlı
+    `project`, `fids`, `severities`. Yalnız insan (beyin çağıramaz)."""
+    if (d := _human_only(data, "decide on review findings in bulk")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    fids = data.get("fids")
+    sev = data.get("severities")
+    return web_review.bulk_decide(cfg, str(data.get("action") or ""), str(data.get("project") or ""),
+                                  [str(x) for x in fids] if isinstance(fids, list) else None,
+                                  [str(x) for x in sev] if isinstance(sev, list) else None)
 
 
 def http_review_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -5333,6 +5352,7 @@ POST_PATHS = {
     "/api/steward/review/cancel": http_review_cancel,
     "/api/steward/review/verify": http_review_verify,
     "/api/steward/review/finding": http_review_finding,
+    "/api/steward/review/bulk": http_review_bulk,
     "/api/steward/review/export": http_review_export,
     "/api/steward/review/lesson": http_review_lesson,
     "/api/steward/service/add": http_service_add,
