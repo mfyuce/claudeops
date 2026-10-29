@@ -228,6 +228,18 @@ def _backing_off(host: str, now: float) -> bool:
         return float((_HOST_HEALTH.get(host) or {}).get("until") or 0.0) > now
 
 
+def _clear_backoff(host: str) -> bool:
+    """Hafif yoklama host'u taze buldu: devre kesici sayacı ve geri çekilme ANINDA sıfırlanır (2026-10-29: probe başarılıydı
+    ama 600 sn geri çekilme sürdü, insan direktifi `host_down` ile reddedildi). Host bildirilmiş `down` durumundaysa True."""
+    with _HEALTH_LOCK:
+        hh = _HOST_HEALTH.get(host)
+        if hh is None:
+            return False
+        was_down = bool(hh.get("down"))
+        hh["streak"], hh["until"], hh["down"] = 0, 0.0, False
+    return was_down
+
+
 @dataclasses.dataclass
 class _RemoteTick:
     """Bir tick'in uzak host durumu. `statuses`/`fresh`: tick başında BİR KEZ alınan tazelik anlık görüntüsü
@@ -259,6 +271,7 @@ class _RemoteTick:
         self.fresh = frozenset(self.fresh | {host}) if ok else frozenset(self.fresh - {host})
 
 
+_RECOVERED_DOWN: set = set()    # probe ile geri çekilmeden çıkan host'lar (olay yazılınca çağıran boşaltır)
 REMOTE_PROBES_PER_TICK = 2     # tick başına en çok bu kadar bayat host yoklanır (her yoklama en kötü ~8 sn)
 
 
@@ -281,6 +294,8 @@ def _probe_stale_hosts(rt: "_RemoteTick") -> List[str]:
         tried += 1
         if ok:
             recovered.append(h)
+            if _clear_backoff(h):
+                _RECOVERED_DOWN.add(h)       # çağıran `remote_unreachable state=up` olayını yazar
             rt.refresh(h)
     return recovered
 
@@ -357,6 +372,9 @@ def _remote_post(host: str, path: str, body: Dict[str, Any], timeout: float,
     except Exception as e:      # sahte/gerçek G/Ç'nin beklenmedik istisnası da taşıma hatası sayılır
         parsed, status = {"ok": False, "error": f"{host} unreachable: {e!r}"}, 0
     transport = _is_transport_error(host, parsed, status)
+    if transport:       # geri çekilmeye giden taşıma hatalarının NEDENİ kayıtta olsun (2026-10-29: 3 ardışık düşüşün nedeni bilinmiyordu)
+        diag_log("remote_transport_error", host=host, path=path, status=status,
+                 error=str((parsed or {}).get("error") if isinstance(parsed, dict) else parsed)[:200])
     if rt is not None:
         (rt.failed if transport else rt.succeeded).add(host)
     if status == 404:
@@ -757,8 +775,11 @@ def _remote_denied(name: str, actor: str, kind: str, sid: str, want: str, proj_h
                                       f"not {want or 'local'!r}")
     elif not steward_config(sid).remote_actions:
         code, err = "remote_disabled", "target denied: remote actions are disabled (steward.remote_actions is off)"
-    elif not (host in rt.fresh if rt is not None else
-              (_host_fresh(_remote.status(host)) and not _backing_off(host, time.time()))):
+    elif (not _host_fresh(_remote.status(host)) if (actor or "human") == "human" else
+          not (host in rt.fresh if rt is not None else
+               (_host_fresh(_remote.status(host)) and not _backing_off(host, time.time())))):
+        # İnsan (CLI/panel) çağrısı geri çekilmeye TAKILMAZ: devre kesici otomatik eylemleri (motor/beyin) korur; host taze
+        # ise insanın isteği geçer (2026-10-29: probe 200 dönerken anomaly direktifi reddedildi).
         code, err = "host_down", f"target denied: host {host!r} is unreachable or stale right now"
     else:
         return None
@@ -3204,6 +3225,9 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
             rt = _remote_snapshot(set(world.hosts.values()), t0)
             for h_up in _probe_stale_hosts(rt):
                 sw.log_event("remote_probe_recovered", paths=paths, host=h_up)
+                if h_up in _RECOVERED_DOWN:
+                    _RECOVERED_DOWN.discard(h_up)
+                    sw.log_event("remote_unreachable", paths=paths, host=h_up, state="up", via="probe")
             world = _with_availability(world, cfg, t0, rt)
             # Uzak proje yoksa çağrı biçimi eskisiyle AYNI (altın testler `_collect_views`/`_apply`ı bu biçimle değiştirir).
             rkw: Dict[str, Any] = {"rt": rt} if world.hosts else {}

@@ -182,5 +182,87 @@ class StewardSideTest(unittest.TestCase):
         self.assertIn("son deneme", line)
 
 
+class BackoffRecoveryTest(unittest.TestCase):
+    def setUp(self):
+        ws._HOST_HEALTH.clear()
+        ws._RECOVERED_DOWN.clear()
+        self.addCleanup(ws._HOST_HEALTH.clear)
+        self.addCleanup(ws._RECOVERED_DOWN.clear)
+
+    def _down(self):
+        ws._HOST_HEALTH["ulak31"] = {"streak": 3, "until": time.time() + 600, "down": True}
+
+    def test_clear_backoff_resets_breaker(self):
+        self._down()
+        self.assertTrue(ws._backing_off("ulak31", time.time()))
+        self.assertTrue(ws._clear_backoff("ulak31"))                  # bildirilmiş 'down' idi
+        self.assertFalse(ws._backing_off("ulak31", time.time()))
+        self.assertEqual(ws._HOST_HEALTH["ulak31"], {"streak": 0, "until": 0.0, "down": False})
+        self.assertFalse(ws._clear_backoff("ulak31"))                 # ikinci çağrı: zaten temiz
+        self.assertFalse(ws._clear_backoff("hic-yok"))
+
+    def test_probe_success_clears_backoff_and_marks_recovered(self):
+        self._down()
+
+        class IO:
+            def probe(self, h):
+                return True
+
+            def status(self, h):
+                return {"ok": True, "last_ok_at": time.time()}
+        rt = ws._RemoteTick(now=time.time(), statuses={"ulak31": {"ok": True, "last_ok_at": time.time()}}, fresh=frozenset())
+        with mock.patch.object(ws, "_remote", IO()):
+            self.assertEqual(ws._probe_stale_hosts(rt), ["ulak31"])
+        self.assertFalse(ws._backing_off("ulak31", time.time()))
+        self.assertIn("ulak31", ws._RECOVERED_DOWN)
+        self.assertIn("ulak31", rt.fresh)                             # aynı tick'te eylem alabilir
+
+    def test_probe_failure_keeps_backoff(self):
+        self._down()
+
+        class IO:
+            def probe(self, h):
+                return False
+
+            def status(self, h):
+                return None
+        rt = ws._RemoteTick(now=time.time(), statuses={"ulak31": None}, fresh=frozenset())
+        with mock.patch.object(ws, "_remote", IO()):
+            self.assertEqual(ws._probe_stale_hosts(rt), [])
+        self.assertTrue(ws._backing_off("ulak31", time.time()))
+
+    def _gate(self, actor):
+        fresh = {"ok": True, "last_ok_at": time.time()}
+        with mock.patch.object(ws, "_remote", mock.Mock(status=lambda h: fresh)), \
+                mock.patch.object(ws.hosts_mod, "get_host", lambda h: {"name": h}), \
+                mock.patch.object(ws, "steward_config", lambda sid: mock.Mock(remote_actions=True)):
+            return ws._remote_denied("anomaly", actor, "directive", "default", "ulak31", "ulak31")
+
+    def test_human_not_blocked_by_backoff_when_host_fresh_but_engine_is(self):
+        self._down()
+        self.assertIsNone(self._gate(""))                             # insan: taze host -> geçer
+        self.assertIsNone(self._gate("human"))
+        self.assertEqual(self._gate("engine")["code"], "host_down")   # otomatik eylem hâlâ korunur
+        self.assertEqual(self._gate("brain")["code"], "host_down")
+
+    def test_human_still_denied_when_host_stale(self):
+        stale = {"ok": True, "last_ok_at": time.time() - ws.REMOTE_STALE_SECONDS - 30}
+        with mock.patch.object(ws, "_remote", mock.Mock(status=lambda h: stale)), \
+                mock.patch.object(ws.hosts_mod, "get_host", lambda h: {"name": h}), \
+                mock.patch.object(ws, "steward_config", lambda sid: mock.Mock(remote_actions=True)):
+            self.assertEqual(ws._remote_denied("anomaly", "", "directive", "default", "ulak31", "ulak31")["code"], "host_down")
+
+    def test_transport_error_is_logged_with_reason(self):
+        with mock.patch.object(ws, "_remote", mock.Mock(post=lambda *a, **k: ({"ok": False, "error": "ulak31 unreachable: timed out"}, 0))), \
+                mock.patch.object(ws, "diag_log") as dl:
+            rt = ws._RemoteTick(now=time.time())
+            out = ws._remote_post("ulak31", "/api/term/input", {"name": "x"}, 5.0, rt)
+        self.assertEqual(out["code"], "host_down")
+        self.assertIn("ulak31", rt.failed)
+        args = dl.call_args
+        self.assertEqual(args.args[0], "remote_transport_error")
+        self.assertIn("timed out", args.kwargs["error"])
+
+
 if __name__ == "__main__":
     unittest.main()
