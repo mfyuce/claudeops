@@ -264,5 +264,87 @@ class BackoffRecoveryTest(unittest.TestCase):
         self.assertIn("timed out", args.kwargs["error"])
 
 
+class FakeHost:
+    """Sahte ulak31: `up` bayrağı ile kapalı/açık; status önbelleği, probe ve post buna bağlı (gerçek ağ yok)."""
+    def __init__(self):
+        self.up = False
+        self.last_ok = time.time() - ws.REMOTE_STALE_SECONDS - 60
+
+    def status(self, h):
+        return {"ok": True, "last_ok_at": self.last_ok}
+
+    def probe(self, h):
+        if self.up:
+            self.last_ok = time.time()
+        return self.up
+
+    def post(self, path, host, body, timeout=None):
+        if self.up:
+            return {"ok": True}, 200
+        return {"ok": False, "error": f"{host} unreachable: timed out"}, 0
+
+
+class OutageScenarioTest(unittest.TestCase):
+    """Kapalı -> geri çekilme -> host döner -> geri çekilme temizlenir; insan geçer, motor geri çekilmede reddedilir."""
+
+    def setUp(self):
+        ws._HOST_HEALTH.clear()
+        ws._RECOVERED_DOWN.clear()
+        self.addCleanup(ws._HOST_HEALTH.clear)
+        self.addCleanup(ws._RECOVERED_DOWN.clear)
+        self.fh = FakeHost()
+        for patch in (mock.patch.object(ws, "_remote", self.fh),
+                      mock.patch.object(ws.hosts_mod, "get_host", lambda h: {"name": h}),
+                      mock.patch.object(ws, "steward_config", lambda sid: mock.Mock(remote_actions=True)),
+                      mock.patch.object(ws, "diag_log"),
+                      mock.patch.object(ws.sw, "log_event")):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def _tick(self):
+        rt = ws._remote_snapshot({"ulak31"})
+        ws._probe_stale_hosts(rt)
+        if "ulak31" in rt.fresh or self.fh.up:
+            ws._remote_post("ulak31", "/api/term/input", {"name": "x"}, 5.0, rt)
+        else:
+            rt.failed.add("ulak31")
+        ws._remote_tick_done(rt, None)
+        return rt
+
+    def _deny(self, actor):
+        r = ws._remote_denied("anomaly", actor, "directive", "default", "ulak31", "ulak31")
+        return r["code"] if r else None
+
+    def test_outage_backoff_recovery(self):
+        for _ in range(ws.REMOTE_BACKOFF_TICKS):                      # 1) host kapalı: ardışık hatalı tick'ler
+            self._tick()
+        self.assertTrue(ws._backing_off("ulak31", time.time()))
+        self.assertTrue(ws._HOST_HEALTH["ulak31"]["down"])
+        self.assertEqual(self._deny("engine"), "host_down")           # motor geri çekilmede reddedilir
+        self.assertEqual(self._deny("human"), "host_down")            # host bayat da: insan da geçemez
+        self.fh.up = True                                             # 2) host döner
+        rt = ws._remote_snapshot({"ulak31"})
+        self.assertEqual(ws._probe_stale_hosts(rt), ["ulak31"])       # 3) probe geri çekilmeyi ANINDA temizler
+        self.assertFalse(ws._backing_off("ulak31", time.time()))
+        self.assertEqual(ws._HOST_HEALTH["ulak31"], {"streak": 0, "until": 0.0, "down": False})
+        self.assertIn("ulak31", ws._RECOVERED_DOWN)
+        self.assertIsNone(self._deny("human"))                        # 4) insan direktifi geçer
+        self.assertIsNone(self._deny("engine"))                       #    temizlenince motor eylemi de geçer
+
+    def test_human_passes_while_backing_off_if_host_fresh(self):
+        for _ in range(ws.REMOTE_BACKOFF_TICKS):
+            self._tick()
+        self.fh.last_ok = time.time()                                 # taze ama geri çekilme sürüyor
+        self.assertTrue(ws._backing_off("ulak31", time.time()))
+        self.assertIsNone(self._deny("human"))
+        self.assertEqual(self._deny("engine"), "host_down")
+        self.assertEqual(self._deny("brain"), "host_down")
+
+    def test_sub_threshold_failures_do_not_back_off(self):
+        for _ in range(ws.REMOTE_BACKOFF_TICKS - 1):
+            self._tick()
+        self.assertFalse(ws._backing_off("ulak31", time.time()))
+
+
 if __name__ == "__main__":
     unittest.main()
