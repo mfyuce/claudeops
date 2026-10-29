@@ -948,14 +948,6 @@
    ],
    [
     "start",
-    "mkt",
-    "answer → start",
-    {
-     "question_id": "q3"
-    }
-   ],
-   [
-    "start",
     "wifi5gppr",
     "due",
     {
@@ -963,10 +955,12 @@
     }
    ],
    [
-    "stop",
-    "kitap_1",
-    "idle ≥ 45 dk, slot bekleyen var",
-    {}
+    "start",
+    "ncs2",
+    "due",
+    {
+     "phase": "planning"
+    }
    ],
    [
     "escalate_routine",
@@ -979,7 +973,7 @@
    [
     "tour",
     "degnekci",
-    "7 madde",
+    "8 madde",
     {
      "items": [
       {
@@ -1016,6 +1010,11 @@
        "name": "a"
       },
       {
+       "idle_minutes": 66.66666666666667,
+       "kind": "idle",
+       "name": "kitap_1"
+      },
+      {
        "id": "i1",
        "kind": "idea",
        "name": "",
@@ -1036,13 +1035,13 @@
    },
    "last_directive_at": {
     "egyptian20260917": 1760000000.0,
-    "mkt": 1760000000.0,
     "ncs": 1760000000.0,
+    "ncs2": 1760000000.0,
     "wifi5gppr": 1760000000.0
    },
    "last_tick": 1760000000.0,
    "last_tour": 1760000000.0,
-   "pending_items": 7,
+   "pending_items": 8,
    "reviewed_at": {
     "zlkrn": 1760000000.0
    },
@@ -1052,16 +1051,9 @@
     "egyptian20260917": "7df76bdc67272358",
     "ncs20261019": "0082017e463558ee"
    },
-   "start_blocked": {
-    "active": 3,
-    "max_active": 6,
-    "projects": [
-     "ncs2"
-    ],
-    "reason": "max_active"
-   },
    "tour_sig": {
     "a": "595aee82c85588b6",
+    "kitap_1": "dd827b7342b99a8f",
     "zlkrn": "dd827b7342b99a8f"
    }
   }
@@ -1106,14 +1098,6 @@
    ],
    [
     "start",
-    "mkt",
-    "answer → start",
-    {
-     "question_id": "q3"
-    }
-   ],
-   [
-    "start",
     "wifi5gppr",
     "due",
     {
@@ -1121,10 +1105,12 @@
     }
    ],
    [
-    "stop",
-    "a",
-    "idle ≥ 45 dk, slot bekleyen var",
-    {}
+    "start",
+    "ncs2",
+    "due",
+    {
+     "phase": "planning"
+    }
    ],
    [
     "escalate_routine",
@@ -1137,7 +1123,7 @@
    [
     "tour",
     "degnekci",
-    "5 madde",
+    "6 madde",
     {
      "items": [
       {
@@ -1165,6 +1151,11 @@
        "text": "Cevaplanan soru [q6]: kayıtsız kapalı\nCevap: D"
       },
       {
+       "idle_minutes": 50.0,
+       "kind": "idle",
+       "name": "a"
+      },
+      {
        "id": "i1",
        "kind": "idea",
        "name": "",
@@ -1183,13 +1174,13 @@
    "ho_pending": {},
    "last_directive_at": {
     "egyptian20260917": 1760001200.0,
-    "mkt": 1760001200.0,
     "ncs": 1760001200.0,
+    "ncs2": 1760001200.0,
     "wifi5gppr": 1760001200.0
    },
    "last_tick": 1760001200.0,
    "last_tour": 1760001200.0,
-   "pending_items": 5,
+   "pending_items": 6,
    "reviewed_at": {
     "zlkrn": 1760000000.0
    },
@@ -1200,15 +1191,9 @@
     "kitap_1": "373686b6a10efec0",
     "ncs20261019": "684b5c4e0a5e9ef6"
    },
-   "start_blocked": {
-    "active": 3,
-    "max_active": 6,
-    "projects": [
-     "ncs2"
-    ],
-    "reason": "max_active"
-   },
-   "tour_sig": {}
+   "tour_sig": {
+    "a": "595aee82c85588b6"
+   }
   }
  },
  {
@@ -1237,14 +1222,6 @@
    ],
    [
     "start",
-    "mkt",
-    "answer → start",
-    {
-     "question_id": "q3"
-    }
-   ],
-   [
-    "start",
     "wifi5gppr",
     "due",
     {
@@ -1252,16 +1229,12 @@
     }
    ],
    [
-    "stop",
-    "a",
-    "idle ≥ 45 dk, slot bekleyen var",
-    {}
-   ],
-   [
-    "stop",
-    "kitap_1",
-    "idle ≥ 45 dk, slot bekleyen var",
-    {}
+    "start",
+    "ncs2",
+    "due",
+    {
+     "phase": "planning"
+    }
    ],
    [
     "escalate_routine",
@@ -1301,7 +1274,7 @@
    [
     "tour",
     "degnekci",
-    "2 madde",
+    "4 madde",
     {
      "items": [
       {
@@ -1309,6 +1282,16 @@
        "kind": "routine",
        "name": "a",
        "text": "Rutin soru [q4] (steward_answer id cevap ile cevapla): rutin?"
+      },
+      {
+       "idle_minutes": 70.0,
+       "kind": "idle",
+       "name": "a"
+      },
+      {
+       "idle_minutes": 106.66666666666667,
+       "kind": "idle",
+       "name": "kitap_1"
       },
       {
        "id": "i1",
@@ -1326,13 +1309,13 @@
    },
    "last_directive_at": {
     "egyptian20260917": 1760002400.0,
-    "mkt": 1760002400.0,
     "ncs": 1760002400.0,
+    "ncs2": 1760002400.0,
     "wifi5gppr": 1760002400.0
    },
    "last_tick": 1760002400.0,
    "last_tour": 1760002400.0,
-   "pending_items": 2,
+   "pending_items": 4,
    "reviewed_at": {
     "zlkrn": 1760000000.0
    },
@@ -1343,15 +1326,10 @@
     "kitap_1": "373686b6a10efec0",
     "ncs20261019": "684b5c4e0a5e9ef6"
    },
-   "start_blocked": {
-    "active": 3,
-    "max_active": 6,
-    "projects": [
-     "ncs2"
-    ],
-    "reason": "max_active"
-   },
-   "tour_sig": {}
+   "tour_sig": {
+    "a": "595aee82c85588b6",
+    "kitap_1": "3d52fb34773286db"
+   }
   }
  }
 ]

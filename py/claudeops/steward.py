@@ -3361,7 +3361,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             deliver_by_session[v.name] = act
             busy_names.add(v.name)
             last_directive_at[v.name] = now
-        elif starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable):
+        elif (projects[target].phase in ACTIVE_PHASES        # duraklatılmış/bitmiş proje eski cevap yüzünden AÇILMAZ; cevap proje aktifleşince iletilir
+              and starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable)):
             actions.append(Action("start", target, "answer → start", {"question_id": q.id}))
             starts += 1
             busy_names.add(target)

@@ -758,6 +758,22 @@ class DoneDeferralTest(unittest.TestCase):
         self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop")], ["set_phase", "stop"])
 
 
+class AnswerStartPhaseTest(unittest.TestCase):
+    """Eski iletilmemiş cevap `answer → start` ile YALNIZ aktif fazdaki (planning/planned) projeyi açar; paused/done açılmaz."""
+    def _plan(self, phase):
+        q = sw.Question(id="q1", project="p1", text="soru?", created_at=1000.0, status="answered", answer="evet", answered_at=2000.0)
+        projects = {"p1": sw.Project(name="p1", phase=phase, cadence_minutes=60)}
+        acts, _ = sw.plan_tick([], projects, {}, _cfg(), 5000.0, [q], [])
+        return [(a.kind, a.name) for a in acts if a.kind in ("start", "deliver_answer")]
+
+    def test_active_phase_starts(self):
+        self.assertEqual(self._plan("planned"), [("start", "p1")])
+
+    def test_paused_and_done_never_start_from_stale_answer(self):
+        for phase in ("paused", "done"):
+            self.assertEqual(self._plan(phase), [], phase)
+
+
 class DoneHandoverTest(unittest.TestCase):
     """STEWARD-DONE-CONFIRMED: teyit -> faz done -> DEVİR (READY FOR HANDOVER) -> stop (yeniden açma YOK); küçük bağlamda
     devir atlanır; sahip 'çelişti' cevabı yeniden soru açtırmaz, 'bitti' ise sayı çelişkisi sayılmaz."""
