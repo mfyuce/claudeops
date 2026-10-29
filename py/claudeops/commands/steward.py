@@ -89,8 +89,9 @@ def _sflag(sid: str) -> str:
 def _ago(ts: float) -> str:
     if not ts:
         return "-"
-    d = int(time.time() - ts)
-    return f"{d // 86400}g" if d >= 86400 else f"{d // 3600}s" if d >= 3600 else f"{d // 60}dk"
+    d = max(0, int(time.time() - ts))
+    return (f"{d // 86400}g" if d >= 86400 else f"{d // 3600}s" if d >= 3600
+            else f"{d // 60}dk" if d >= 60 else f"{d}sn")
 
 
 _HEALTH_TR = {"ok": "taze", "down": "kapalı", "backoff": "geri çekilmede"}
