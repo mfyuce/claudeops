@@ -36,6 +36,23 @@ def counts_as_attempt(rec: Any) -> bool:
 def max_attempts(mode: str) -> int:
     return MODE_MAX_ATTEMPTS.get(mode, MAX_ATTEMPTS)
 MODES = ("agy", "evren", "claude", "codex", "copilot")
+
+
+def parse_slots(spec: Any) -> Dict[str, int]:
+    """`review_slots` ayarı (`agy=5,evren=1,codex=1,copilot=0`) -> {mod: yuva}. ""/`off` = {} (eski TEK iş kipi).
+    Belirtilmeyen mod 1 yuva, 0 = mod KAPALI (yeni koşu başlamaz, çalışan biter). Bilinmeyen mod/bozuk değer yok sayılır."""
+    t = str(spec or "").strip().lower()
+    if not t or t == "off":
+        return {}
+    out = {m: 1 for m in MODES}
+    seen = False
+    for part in t.split(","):
+        k, sep, v = part.partition("=")
+        k, v = k.strip(), v.strip()
+        if sep and k in MODES and v.isdigit():
+            out[k] = int(v)
+            seen = True
+    return out if seen else {}
 PAIR_STATUSES = ("running", "done", "partial", "error", "model_fallback", "limit")
 SEVERITIES = ("P1", "P2", "P3")
 FINDING_STATES = ("new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported")

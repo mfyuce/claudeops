@@ -791,6 +791,10 @@ def cmd_review(args) -> int:
         return 0
     tg = res.get("targets") or []
     print(f"reviewer: {'AÇIK' if res.get('enabled') else 'KAPALI'}  hedef={len(tg)}  çalışan={', '.join(res.get('running') or []) or '-'}")
+    sl = res.get("slots") or {}
+    if sl:
+        print("  yuva: " + "  ".join(f"{m}=kapalı (0 yuva)" if not int(v.get("slots") or 0)
+                                    else f"{m}={len(v.get('running') or [])}/{v.get('slots')}" for m, v in sl.items()))
     for r in res.get("pool") or []:
         done = sum(1 for p in (r.get("pairs") or {}).values() if isinstance(p, dict) and p.get("status") == "done")
         flag = "tamam" if r.get("complete") else f"{done}/{len(tg)}"
