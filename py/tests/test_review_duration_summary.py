@@ -104,3 +104,14 @@ class CodexUsageTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RunDurTest(unittest.TestCase):
+    def test_run_dur(self):
+        from claudeops.commands.steward import _run_dur
+        self.assertEqual(_run_dur(42.0), "42sn")
+        self.assertEqual(_run_dur(0.4), "0sn")
+        self.assertEqual(_run_dur(59.6), "1dk")
+        self.assertEqual(_run_dur(180), "3dk")
+        for bad in (None, True, "x", -1):
+            self.assertEqual(_run_dur(bad), "-")

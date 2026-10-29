@@ -94,6 +94,14 @@ def _ago(ts: float) -> str:
             else f"{d // 60}dk" if d >= 60 else f"{d}sn")
 
 
+def _run_dur(sec: Any) -> str:
+    """Koşu süresi: <1 dk saniye ("42sn"), sonrası dk ("3dk"); bilinmiyorsa "-" (kısa koşu "0dk" görünmesin)."""
+    if isinstance(sec, bool) or not isinstance(sec, (int, float)) or sec < 0:
+        return "-"
+    d = int(round(sec))
+    return f"{d}sn" if d < 60 else f"{d // 60}dk"
+
+
 _HEALTH_TR = {"ok": "taze", "down": "kapalı", "backoff": "geri çekilmede"}
 
 
@@ -789,7 +797,7 @@ def cmd_review(args) -> int:
         return 1
     if act == "history":
         for r in res.get("runs") or []:
-            print(f"{_ago(float(r.get('at') or 0)):<10} {r.get('status'):<15} {r.get('pair')}  {r.get('file') or ''}")
+            print(f"{_ago(float(r.get('at') or 0)):<10} {r.get('status'):<15} {_run_dur(r.get('seconds')):<7} {r.get('pair')}  {r.get('file') or ''}")
         if not res.get("runs"):
             print("çalıştırma kaydı yok")
         return 0
