@@ -566,6 +566,15 @@ def save_history(paths: Any, hist: Dict[str, Any]) -> None:
     sw._save_json(sw._pp(paths).review_history, hist)
 
 
+def _run_seconds(rec: Dict[str, Any]) -> Optional[float]:
+    """Koşunun duvar süresi (sn): `finished_at - started_at`; ikisi de yoksa ya da tutarsızsa None (uydurma yok)."""
+    try:
+        a, b = float(rec.get("started_at") or 0), float(rec.get("finished_at") or 0)
+    except (TypeError, ValueError):
+        return None
+    return round(b - a, 1) if a > 0 and b >= a else None
+
+
 def update_pair(paths: Any, proj: str, t: ReviewTarget, **fields: Any) -> Dict[str, Any]:
     """Çift kaydını kilit altında okuyup-değiştirip-yazar (`status`, `started_at`, `finished_at`, `file`, `error`,
     `label_seen`, `pid`, `attempts`...). `status="running"` yeni denemeyse `attempts` +1 (çağıran `attempts=`
@@ -586,7 +595,7 @@ def update_pair(paths: Any, proj: str, t: ReviewTarget, **fields: Any) -> Dict[s
         hist["pairs"][key] = rec
         if fields.get("status") in ("done", "partial", "error", "model_fallback", "limit"):
             hist["runs"].append({"pair": key, "status": rec["status"], "at": rec.get("finished_at"), "file": rec.get("file"),
-                                "io_file": rec.get("io_file")})
+                                "io_file": rec.get("io_file"), "seconds": _run_seconds(rec)})
         save_history(p, hist)
     return rec
 
@@ -749,6 +758,28 @@ def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
             except OSError:
                 continue
     return sorted(agg.values(), key=lambda r: (-r["prompt_tokens"], r["project"], r["target"]))
+
+
+def duration_summary(history: Any, project: str = "") -> List[Dict[str, Any]]:
+    """`runs` kayıtlarından (proje, mod/model) başına TÜM sağlayıcılar için koşu sayısı ve duvar süresi. Süresi kayıtlı olmayan
+    (eski) koşular `unknown` sayılır, süreye katılmaz. En çok süre önce."""
+    agg: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    runs = history.get("runs") if isinstance(history, dict) else None
+    for r in runs if isinstance(runs, list) else []:
+        if not isinstance(r, dict) or "|" not in str(r.get("pair") or ""):
+            continue
+        proj, tgt = str(r["pair"]).split("|", 1)
+        if project and proj != project:
+            continue
+        a = agg.setdefault((proj, tgt), {"project": proj, "target": tgt, "runs": 0, "timed": 0, "unknown": 0, "seconds": 0.0})
+        a["runs"] += 1
+        sec = r.get("seconds")
+        if isinstance(sec, (int, float)) and not isinstance(sec, bool) and sec >= 0:
+            a["timed"] += 1
+            a["seconds"] += float(sec)
+        else:
+            a["unknown"] += 1
+    return sorted(agg.values(), key=lambda r: (-r["seconds"], r["project"], r["target"]))
 
 
 def build_verify_message(rows: Sequence[Dict[str, Any]], lang: str = "tr") -> str:

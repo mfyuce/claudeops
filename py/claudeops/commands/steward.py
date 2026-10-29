@@ -718,8 +718,16 @@ def cmd_review(args) -> int:
         return 0 if res.get("ok") else 1
     if act == "usage":      # yerel dosya taraması (ucli --usage-log); servise gitmez
         rows = rv.usage_summary(sw.paths_for(sid).reviews, getattr(args, "project", "") or "")
+        drows = rv.duration_summary(rv.load_history(sw.paths_for(sid)), getattr(args, "project", "") or "")
+        if drows:     # token yalnız ucli'de ölçülür; diğer sağlayıcılarda süre var, token "bilinmiyor" (uydurma yok)
+            top = max(1, int(getattr(args, "top", 20) or 20))
+            print("SÜRE (tüm sağlayıcılar; son koşular, süresi kayıtlı olmayanlar 'bilinmiyor')")
+            print(f"{'PROJE':<18}{'HEDEF':<34}{'KOŞU':>5}{'SÜRE sn':>9}{'bilinmiyor':>12}")
+            for r in drows[:top]:
+                print(f"{r['project'][:17]:<18}{r['target'][:33]:<34}{r['runs']:>5}{int(r['seconds']):>9}{r['unknown']:>12}")
+            print()
         if not rows:
-            print("kullanım kaydı yok (koşular --usage-log ile yazar: <ts>.usage.jsonl)")
+            print("token kaydı yok (yalnız ucli koşuları --usage-log ile yazar: <ts>.usage.jsonl; diğer sağlayıcılarda token: bilinmiyor)")
             return 0
         print(f"{'PROJE':<18}{'HEDEF':<34}{'KOŞU':>5}{'İSTEK':>7}{'İSTEM tk':>11}{'CEVAP tk':>10}{'AKIL tk':>9}{'SÜRE sn':>9}")
         for r in rows[: max(1, int(getattr(args, "top", 20) or 20))]:
