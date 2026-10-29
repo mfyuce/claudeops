@@ -50,5 +50,35 @@ class StaleTextTest(unittest.TestCase):
         self.assertIsNone(rv.stale_reason_text({"title": "ad yok"}, "x"))
 
 
+class ClaudeJsonTest(unittest.TestCase):
+    RES = ('{"type":"result","is_error":false,"duration_ms":42500,"result":"## R-1 | P2 | a.py:1 | x","total_cost_usd":0.017,'
+           '"usage":{"input_tokens":10,"cache_read_input_tokens":200,"cache_creation_input_tokens":30,"output_tokens":55}}')
+
+    def test_argv_json_flag_only_for_review(self):
+        from claudeops.commands import web_review as wr
+        a = wr.claude_argv("b", "m", "low", "P", json_out=True)
+        self.assertEqual(a[a.index("--output-format") + 1], "json")
+        self.assertLess(a.index("--output-format"), a.index("--allowedTools"))
+        self.assertNotIn("--output-format", wr.claude_argv("b", "m", "low", "P"))      # öz-doğrulama düz metin okur
+
+    def test_extract_and_usage(self):
+        from claudeops.commands import web_review as wr
+        self.assertEqual(wr._extract_text("claude", self.RES), ("## R-1 | P2 | a.py:1 | x", ""))
+        ev = wr.claude_usage_event(self.RES)
+        self.assertEqual(ev["usage"], {"prompt_tokens": 240, "completion_tokens": 55, "cached_tokens": 200})
+        self.assertEqual((ev["seconds"], ev["cost_usd"]), (42.5, 0.017))
+        arr = "[" + '{"type":"system"},' + self.RES + "]"                       # dizi biçimi: SON result
+        self.assertEqual(wr._extract_text("claude", arr)[0], "## R-1 | P2 | a.py:1 | x")
+
+    def test_non_json_and_errors_fall_back(self):
+        from claudeops.commands import web_review as wr
+        self.assertEqual(wr._extract_text("claude", "düz metin rapor"), ("düz metin rapor", ""))
+        self.assertIsNone(wr.claude_usage_event("düz metin rapor"))
+        self.assertIsNone(wr.claude_usage_event('{"type":"result","result":"x"}'))   # usage yok: uydurma yok
+        t, e = wr._extract_text("claude", '{"type":"result","is_error":true,"result":"API Error 529"}')
+        self.assertEqual((t, e), ("API Error 529", "API Error 529"))
+        self.assertEqual(wr._extract_text("codex", self.RES), (self.RES, ""))        # diğer modlar değişmez
+
+
 if __name__ == "__main__":
     unittest.main()

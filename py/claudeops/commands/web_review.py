@@ -127,13 +127,15 @@ def _anthropic_review_key() -> str:
         return ""
 
 
-def claude_argv(binary: str, model: str, effort: str, prompt: str) -> List[str]:
+def claude_argv(binary: str, model: str, effort: str, prompt: str, json_out: bool = False) -> List[str]:
     """`claude -p <prompt> --model M --effort E` salt okunur: yalnız Read/Grep/Glob + `ls|wc|head`; yazma araçları ve CLAUDE.md
     kapalı. Prompt `-p` DEĞERİ DEĞİL konumsal ilk argüman, çünkü `--allowedTools`/`--disallowedTools` değişken sayılıdır ve
     sonrakini yutar. Ölçüm (2026-10-23, ncs): haiku-5-5 low 88 sn / $0.017, sonnet-5-5 low 26 sn / $0.069."""
     argv = [binary, "-p", prompt, "--model", model]
     if effort:
         argv += ["--effort", effort]
+    if json_out:        # reviewer koşusu: stdout tek JSON (result + usage); öz-doğrulama düz metin okur, bayrak onda yok
+        argv += ["--output-format", "json"]
     return argv + ["--tools", "default", "--permission-mode", "dontAsk",
                    "--settings", json.dumps({"claudeMdExcludes": ["**/CLAUDE.md"], "autoMemoryEnabled": False}),
                    "--allowedTools", "Read", "Grep", "Glob", "Bash(ls:*)", "Bash(wc:*)", "Bash(head:*)",
@@ -695,8 +697,51 @@ def read_live(cfg: Any, project: str, target_key: str, offset: Any = 0) -> Dict[
     return r
 
 
+def _claude_result(stdout: str) -> Optional[Dict[str, Any]]:
+    """`claude -p --output-format json` çıktısındaki `type: result` nesnesi (tek nesne ya da dizinin SON result'ı); yoksa None."""
+    try:
+        val = json.loads(stdout)
+    except ValueError:
+        return None
+    if isinstance(val, list):
+        val = next((v for v in reversed(val) if isinstance(v, dict) and v.get("type") == "result"), None)
+    return val if isinstance(val, dict) and ("result" in val or "usage" in val) else None
+
+
+def claude_usage_event(stdout: str) -> Optional[Dict[str, Any]]:
+    """claude JSON sonucundan `review usage`un okuduğu tek `request` olayı (yalnız SAYILAR). Sayı yoksa None (uydurma yok).
+    İstem = giriş + önbellek okuma + önbellek yazma; önbellekli = önbellek okuma."""
+    res = _claude_result(stdout)
+    u = res.get("usage") if isinstance(res, dict) and isinstance(res.get("usage"), dict) else None
+    if not u:
+        return None
+
+    def num(k: str) -> int:
+        v = u.get(k)
+        return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else 0
+
+    cached = num("cache_read_input_tokens")
+    ev: Dict[str, Any] = {"event": "request",
+                          "usage": {"prompt_tokens": num("input_tokens") + cached + num("cache_creation_input_tokens"),
+                                    "completion_tokens": num("output_tokens"), "cached_tokens": cached},
+                          "seconds": round(float(res.get("duration_ms") or 0) / 1000.0, 1)}
+    cost = res.get("total_cost_usd")
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        ev["cost_usd"] = float(cost)
+    return ev
+
+
 def _extract_text(mode: str, stdout: str) -> Tuple[str, str]:
-    """(metin, hata). Evren: JSON `answer`; bozuk/yarım JSON'da ham metin (kısmi çıktı kaybolmasın)."""
+    """(metin, hata). Evren: JSON `answer`; claude: JSON `result` (JSON değilse ham metin); bozuk/yarım JSON'da ham metin
+    (kısmi çıktı kaybolmasın)."""
+    if mode == "claude":
+        res = _claude_result(stdout)
+        if res is None:
+            return stdout, ""
+        txt = res.get("result")
+        if res.get("is_error"):
+            return (txt if isinstance(txt, str) else ""), (str(txt) if isinstance(txt, str) and txt else "claude is_error")
+        return (txt if isinstance(txt, str) else ""), ""
     if mode != "evren":
         return stdout, ""
     try:
@@ -867,6 +912,14 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             stop_hb.set()
         out, err = out or "", err or ""
         text, jerr = _extract_text(target.mode, out)
+        if target.mode == "claude":     # token/süre: yalnız sayılar `<ts>.usage.jsonl`e (review usage okur); sayı yoksa dosya yok
+            uev = claude_usage_event(out)
+            if uev and path.endswith(".md"):
+                try:
+                    with open(path[:-3] + ".usage.jsonl", "w", encoding="utf-8") as uf:
+                        uf.write(json.dumps(uev) + "\n")
+                except OSError:
+                    pass
         recovered = False
         if target.mode == "evren":
             text, recovered = _recover_draft(path, text, live.learned())
@@ -1098,7 +1151,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                 with open(cj, "w") as f:
                     json.dump({"hasCompletedOnboarding": True, "theme": "dark",
                                "projects": {cwd: {"hasTrustDialogAccepted": True}}}, f)
-            argv = claude_argv(resolved_binary("claude"), target.model, str(target.effort or getattr(cfg, "review_claude_effort", "low") or ""), prompt)
+            argv = claude_argv(resolved_binary("claude"), target.model, str(target.effort or getattr(cfg, "review_claude_effort", "low") or ""), prompt, json_out=True)
             env_extra.update(ANTHROPIC_API_KEY=key_val, CLAUDE_CONFIG_DIR=cdir, DISABLE_AUTOUPDATER="1")
         elif target.mode == "codex":
             from ..settings import resolved_binary
