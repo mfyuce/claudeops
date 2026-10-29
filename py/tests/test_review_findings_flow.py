@@ -396,6 +396,68 @@ class TestRemoteExport(_Flow):
             self.assertFalse(self.post("export", project="far")["ok"])
 
 
+class TestRemoteExportRealDriver(_Flow):
+    """Aynı akış, ama GERÇEK `RemoteReviewDriver.export_file` (yalnız ağ: `_remote_post`/`_remote_read_full` sahte): `_export_remote`
+    ile sürücü arasındaki sözleşme (build lambda'sı, written, host/path) birlikte sınanır."""
+
+    def set_state(self, fid, st):
+        d = self.findings()
+        d[fid]["state"] = st
+        rv.save_findings(self.p, d)
+
+    def setUp(self):
+        super().setUp()
+        self.fids = self.seed(proj="far")
+        self.posts, self.remote_files = [], {"/r/far/TODO.md": "# TODO\n- mevcut\n"}
+        drv = ws.RemoteReviewDriver("far", "ulak_31")
+
+        def post(host, path, body, timeout, *a, **k):
+            self.posts.append(path)
+            if path == "/api/files/write":
+                self.remote_files[body["path"]] = body["content"]
+            return {"ok": True}
+
+        for pt in (mock.patch.object(wr, "_REMOTE_FN", lambda proj, host: drv),
+                   mock.patch.object(drv, "ready", lambda: (True, "")),
+                   mock.patch.object(ws, "_remote_files_gate", lambda h, sid="default": True),
+                   mock.patch.object(drv, "_owner", lambda: "default"),
+                   mock.patch.object(ws, "_remote_ref", lambda h, n: ("far", "/r/far")),
+                   mock.patch.object(ws, "_remote_read_full", lambda h, n, path, b: self.remote_files.get(path)),
+                   mock.patch.object(ws, "_remote_post", post),
+                   mock.patch.object(ws, "_remote_running_row", lambda h, n, rt=None: (True, {"name": n, "busy": False}))):
+            pt.start()
+            self.addCleanup(pt.stop)
+        self._k = "/r/far/TODO.md"
+
+    def test_real_driver_writes_once_and_marks_exported(self):
+        f1 = self.fids[0]
+        self.set_state(f1, "approved")
+        r = self.post("export", project="far")
+        self.assertTrue(r["ok"], r)
+        self.assertIn(f"(review {f1})", self.remote_files[self._k])
+        self.assertEqual(self.findings()[f1]["state"], "exported")
+        self.assertTrue(self.findings()[f1]["exported_to"].startswith("ulak_31:"))
+        self.assertFalse(self.post("export", project="far")["ok"])
+        self.assertEqual(self.remote_files[self._k].count(f"(review {f1})"), 1)
+        self.assertEqual(self.posts.count("/api/files/write"), 1)
+
+    def test_real_driver_conflict_between_reads_leaves_finding_approved(self):
+        f1 = self.fids[0]
+        self.set_state(f1, "approved")
+        reads = []
+
+        def racing(h, n, path, b):
+            reads.append(1)
+            if len(reads) == 2:                          # okuma ile yazma arasında uzak dosya değişti
+                self.remote_files[self._k] += "- elle eklendi\n"
+            return self.remote_files.get(path)
+        with mock.patch.object(ws, "_remote_read_full", racing):
+            r = self.post("export", project="far")
+        self.assertFalse(r["ok"], r)
+        self.assertEqual(self.findings()[f1]["state"], "approved")
+        self.assertNotIn(f"(review {f1})", self.remote_files[self._k])
+
+
 class TestGates(_Flow):
     def test_brain_actor_rejected_on_all_new_posts(self):
         fid = self.seed()[0]
