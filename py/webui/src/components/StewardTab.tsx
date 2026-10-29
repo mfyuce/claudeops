@@ -324,6 +324,9 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
           ))}
         </div>
       )}
+      {!!state?.shutdown?.left_paused?.length && (
+        <div className="warn-banner">{state.shutdown.left_paused.join(", ")}: {t.stewardSdLeftPaused}</div>
+      )}
       {error && <div className="warn-banner">{error}</div>}
 
       {s && (

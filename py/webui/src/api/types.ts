@@ -990,7 +990,7 @@ export interface StewardStateResult {
   /** Items the engine will hand the brain on the next tour (last computed tick; may be absent on older backends). */
   pending?: StewardPendingItem[];
   /** Present only when a controlled shutdown has been started for this identity. */
-  shutdown?: { started?: number; done?: number | null; cancelled: boolean; items: Record<string, { stage: string; blocked: string }> };
+  shutdown?: { started?: number; done?: number | null; cancelled: boolean; left_paused?: string[]; items: Record<string, { stage: string; blocked: string }> };
   /** Present only when the identity has remote projects. */
   remote_hosts?: Record<string, StewardHostHealth>;
 }

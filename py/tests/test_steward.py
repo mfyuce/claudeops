@@ -576,6 +576,28 @@ class RosterGateTest(_Tmp):
             self.assertFalse(web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})["ok"])
 
 
+class ShutdownOnlyLeavesPausedTest(_Tmp):
+    """Sahip kararı 2026-10-29: kısmi kapatma fazı geri yüklemez; bitince `left_paused` olay + durumda uyarı."""
+
+    def test_done_records_left_paused_and_warns(self):
+        with mock.patch.object(web_steward, "_in_roster", lambda name: True):
+            self.assertTrue(web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})["ok"])
+        self.assertTrue(web_steward.http_project_upsert({"name": "zzz", "phase": "paused"})["ok"])
+        with sw.steward_lock("default"):
+            st = sw.load_state("default")
+            st["shutdown"] = {"started": 1.0, "only": ["zzz"], "init": True, "items": {}, "prev_phase": {"zzz": "planned"}}
+            sw.save_state(st, "default")
+        res = web_steward.shutdown_tick("default", views=[])
+        self.assertTrue(res["done"])
+        sd = sw.load_state("default")["shutdown"]
+        self.assertEqual(sd["left_paused"], ["zzz"])
+        ev = [e for e in sw.tail_log(20) if e["event"] == "shutdown_done"][-1]
+        self.assertEqual(ev["left_paused"], ["zzz"])
+        self.assertIn("steward set", ev["hint"])
+        self.assertEqual(web_steward.http_state("default")["shutdown"]["left_paused"], ["zzz"])
+        self.assertEqual(sw.load_projects()["zzz"].phase, "paused")        # faz geri yüklenmedi
+
+
 class BrainCannotPauseTest(_Tmp):
     def test_brain_cannot_pause_or_done_but_owner_can(self):
         with mock.patch.object(web_steward, "_in_roster", lambda name: True):

@@ -3325,12 +3325,18 @@ def shutdown_tick(sid: str = "default", views: Optional[List[sw.SessionView]] = 
                 done = False                           # eylem başarısız: adım bir sonraki tick'te yeniden denenir
         if done:
             sd["done"] = now
+            if sd.get("only"):      # kısmi kapatma fazı geri YÜKLEMEZ (sahip kararı 2026-10-29): açılmayı unutmasın diye uyar
+                pj = sw.load_projects(paths)
+                sd["left_paused"] = [n for n in sd["only"] if n in pj and pj[n].phase == "paused"]
         with sw.steward_lock(paths):
             state = sw.load_state(paths)
             state["shutdown"] = sd
             sw.save_state(state, paths)
         if done:
-            sw.log_event("shutdown_done", paths=paths, items={n: i["stage"] for n, i in sd["items"].items()})
+            sw.log_event("shutdown_done", paths=paths, items={n: i["stage"] for n, i in sd["items"].items()},
+                         **({"left_paused": sd["left_paused"],
+                             "hint": "paused kaldı; açmak için: py/cops steward set <ad> --phase planned (ya da panel)"}
+                            if sd.get("left_paused") else {}))
         web_ws.notify_status_changed()
         return {"ok": True, "done": done, "items": {n: i["stage"] for n, i in sd["items"].items()}}
 
@@ -3694,6 +3700,7 @@ def http_state(sid: str = "default") -> Dict[str, Any]:
     sd_ = sw.load_state(paths).get("shutdown")
     if isinstance(sd_, dict) and sd_:                # kapatma hiç başlamadıysa anahtar HİÇ eklenmez (çıktı aynı)
         out["shutdown"] = {"started": sd_.get("started"), "done": sd_.get("done"), "cancelled": bool(sd_.get("cancelled")),
+                           "left_paused": list(sd_.get("left_paused") or []),
                            "items": {n: {"stage": i.get("stage"), "blocked": i.get("blocked", "")}
                                      for n, i in (sd_.get("items") or {}).items() if isinstance(i, dict)}}
     if any(p.host for p in projects.values()):       # uzak proje yoksa anahtar HİÇ eklenmez (yerel çıktı aynı)

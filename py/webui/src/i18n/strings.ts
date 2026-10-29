@@ -622,6 +622,7 @@ export interface Strings {
   stewardCtlDrainOff: string;
   stewardDrainBanner: string;
   stewardSdDone: string;
+  stewardSdLeftPaused: string;
   stewardSdCancelled: string;
   stewardSettingsTitle: string;
   stewardSetTick: string;
@@ -1463,6 +1464,7 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardCtlDrainOff: "Yeni iş almayı aç",
     stewardDrainBanner: "Yeni iş alma kapalı: değnekçi oturum açmaz, beyin direktif veremez; çalışan işler, cevaplar ve devirler sürer.",
     stewardSdDone: "Kontrollü kapatma bitti",
+    stewardSdLeftPaused: "paused kaldı (kısmi kapatma fazı geri yüklemez); açmak için: py/cops steward set <ad> --phase planned ya da projeler sekmesinden",
     stewardSdCancelled: "Kontrollü kapatma iptal edildi (değnekçi yeniden açıldı)",
     stewardSettingsTitle: "Ayarlar",
     stewardSetTick: "tick (sn)",
@@ -2305,6 +2307,7 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardCtlDrainOff: "Resume new work",
     stewardDrainBanner: "Draining: the steward opens no sessions and the brain cannot give directives; running work, answers and handovers continue.",
     stewardSdDone: "Controlled shutdown finished",
+    stewardSdLeftPaused: "left paused (a partial shutdown does not restore the phase); to reopen: py/cops steward set <name> --phase planned or the projects tab",
     stewardSdCancelled: "Controlled shutdown cancelled (steward re-enabled)",
     stewardSettingsTitle: "Settings",
     stewardSetTick: "tick (s)",
