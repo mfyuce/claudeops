@@ -735,7 +735,8 @@ def _write_error_log(path: str, status: str, error: str, rc: Any, timed_out: boo
 def _write_report(path: str, text: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
-    with open(tmp, "w") as f:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)      # kod alıntılı rapor: hata günlüğüyle aynı izin (umask 0644 değil)
+    with os.fdopen(fd, "w") as f:
         f.write(text)
     os.replace(tmp, path)
 
@@ -865,7 +866,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status = "limit"
             error = f"model kotası doldu ({target.key}); {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))} dolayına dek planlayıcıdan çıktı"
             rv.set_block(paths, target.key, until, error)
-        elif target.mode == "evren" and status in ("error", "partial") and (timed_out or not text.strip()):
+        elif target.mode == "evren" and status in ("error", "partial") \
+                and (not text.strip() or (timed_out and not _REPORT_HEAD_RE.search(text))):      # kurtarılmış rapor varsa ders (= araştırma turu) açma
             _write_lesson(sw._pp(paths), project, target, status, error, live.learned())
         if target.mode == "agy" and status in ("done", "partial"):
             ok, seen = rv.agy_label_ok(_first_new_agy_log(agy_log_dir, started, agy_before), target.model)
@@ -1461,7 +1463,7 @@ def review_disable(cfg: Any) -> Dict[str, Any]:
 
 
 def start_job(paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, cwd: str) -> Dict[str, Any]:
-    res = run_job(paths, cfg, project, cwd, target, **_RUN_KW)
+    res = run_job(paths, cfg, project, cwd, target, **dict({"lang": getattr(cfg, "lang", "tr") or "tr"}, **_RUN_KW))
     th = res.get("thread")
     if th is not None and not _REVIEW_BACKGROUND:
         th.join(timeout=60)

@@ -5,6 +5,7 @@ sonraki partilerde; burada yalnız test edilebilir mantık var (`card` modülü 
 Havuz `projects.json`'a YAZILMAZ (aynı adın iki kimlikte olması `ownership_index`te projeyi kimseye vermez): ayrı
 `review_pool.json`. Çift = (proje, mod, alt model); anahtar `"<proje>|<mode>/<slug>"`."""
 from __future__ import annotations
+import json
 import os
 import calendar
 import re
@@ -707,6 +708,47 @@ def requeue_stale_verify(findings: Dict[str, Any], now: float, stale: float = VE
             rec.update(state="new", verify_tries=tries)
         out.append(fid)
     return out
+
+
+def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
+    """`<reviews>/<proje>/<mod>/<model>/.../<ts>/<ts>.usage.jsonl` (ucli `--usage-log`) dosyalarını (proje, mod/model) başına toplar:
+    koşu, istek, istem/cevap/akıl yürütme/önbellekli token, istek süresi. En çok istem token'ı olan önce. Okunamayan satır/dosya
+    atlanır. Yalnız SAYILAR okunur (istem/cevap metni dosyada yok). Koşu başına maliyet sorusunun cevabı."""
+    agg: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    root = os.path.abspath(reviews_root)
+    for dp, _dn, fns in os.walk(root):
+        for fn in fns:
+            if not fn.endswith(".usage.jsonl"):
+                continue
+            parts = os.path.relpath(os.path.join(dp, fn), root).split(os.sep)
+            if len(parts) < 4:
+                continue
+            proj, tgt = parts[0], parts[1] + "/" + parts[2]
+            if project and proj != project:
+                continue
+            a = agg.setdefault((proj, tgt), {"project": proj, "target": tgt, "runs": 0, "requests": 0, "prompt_tokens": 0,
+                                             "completion_tokens": 0, "reasoning_tokens": 0, "cached_tokens": 0, "seconds": 0.0})
+            a["runs"] += 1
+            try:
+                with open(os.path.join(dp, fn), encoding="utf-8", errors="replace") as f:
+                    for ln in f:
+                        try:
+                            e = json.loads(ln)
+                        except ValueError:
+                            continue
+                        if not isinstance(e, dict) or e.get("event") != "request":
+                            continue
+                        u = e.get("usage") if isinstance(e.get("usage"), dict) else {}
+                        a["requests"] += 1
+                        a["seconds"] += float(e.get("seconds") or 0)
+                        for src, dst in (("prompt_tokens", "prompt_tokens"), ("completion_tokens", "completion_tokens"),
+                                         ("reasoning_tokens", "reasoning_tokens"), ("cached_tokens", "cached_tokens")):
+                            v = u.get(src)
+                            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                                a[dst] += int(v)
+            except OSError:
+                continue
+    return sorted(agg.values(), key=lambda r: (-r["prompt_tokens"], r["project"], r["target"]))
 
 
 def build_verify_message(rows: Sequence[Dict[str, Any]], lang: str = "tr") -> str:

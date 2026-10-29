@@ -392,6 +392,34 @@ class TestRequeueStaleVerify(unittest.TestCase):
         self.assertEqual(rv.requeue_stale_verify(d, 10 ** 9), [])
 
 
+class TestUsageSummary(unittest.TestCase):
+    """TODO 2026-10-28 (21): `.usage.jsonl` yazılıyordu ama tüketicisi yoktu: koşu başına maliyet cevapsızdı."""
+
+    def test_sums_per_project_and_target(self):
+        import json as _j
+        import tempfile
+        root = tempfile.mkdtemp()
+
+        def w(rel, rows):
+            p = os.path.join(root, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as f:
+                for r in rows:
+                    f.write((r if isinstance(r, str) else _j.dumps(r)) + "\n")
+        req = lambda pt, ct: {"event": "request", "seconds": 2.0, "usage": {"prompt_tokens": pt, "completion_tokens": ct, "reasoning_tokens": 1, "cached_tokens": 5}}  # noqa: E731
+        w("a/evren/m1/default/1/1.usage.jsonl", [{"event": "open"}, req(100, 10), "bozuk satır", req(50, 5)])
+        w("a/evren/m1/default/2/2.usage.jsonl", [req(10, 1)])
+        w("b/agy/m2/default/3/3.usage.jsonl", [req(7, 7)])
+        rows = rv.usage_summary(root)
+        self.assertEqual([(r["project"], r["target"]) for r in rows], [("a", "evren/m1"), ("b", "agy/m2")])
+        a = rows[0]
+        self.assertEqual((a["runs"], a["requests"], a["prompt_tokens"], a["completion_tokens"], a["reasoning_tokens"], a["cached_tokens"]),
+                         (2, 3, 160, 16, 3, 15))
+        self.assertEqual(a["seconds"], 6.0)
+        self.assertEqual([r["project"] for r in rv.usage_summary(root, "b")], ["b"])
+        self.assertEqual(rv.usage_summary(os.path.join(root, "yok")), [])
+
+
 class TestRedactLeaks(unittest.TestCase):
     """TODO 2026-10-28 (21) redact_secrets kaçakları: tırnaklı/kaçışlı anahtar, DB_PASS, --password, AIza/glpat/JWT/ntfy."""
 

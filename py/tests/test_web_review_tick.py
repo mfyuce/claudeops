@@ -58,6 +58,28 @@ class _Tick(NoRealReviewMixin, _Engine):
         return settings.steward_config("rev")
 
 
+class TestReviewerSmalls(_Tick):
+    """TODO 2026-10-28 (21) reviewer küçükleri: rapor 0600, cfg.lang isteme ulaşır."""
+
+    def test_report_file_is_private(self):
+        path = os.path.join(self.dir.name, "r", "x.md")
+        wr._write_report(path, "## R-1 | P1 | a.py:1 | x\n")
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+
+    def test_cfg_lang_reaches_run_job(self):
+        self.own("a")
+        seen = {}
+        orig = self.fake_run
+
+        def spy(paths, cfg, project, cwd, target, **kw):
+            seen.update(kw)
+            return orig(paths, cfg, project, cwd, target, **kw)
+        settings.save_settings({"stewards": {"rev": {"lang": "en"}}})
+        with mock.patch.object(wr, "run_job", spy):
+            wr.review_tick(self.cfg(), now=NOW)
+        self.assertEqual(seen.get("lang"), "en")
+
+
 class TestTick(_Tick):
     def test_pool_autofills_and_starts_one_job_at_a_time(self):
         self.own("a", "b")

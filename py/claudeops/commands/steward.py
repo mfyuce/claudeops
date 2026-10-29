@@ -42,6 +42,7 @@ import sys
 from typing import Any, Dict, List
 
 from .. import roster as roster_mod
+from .. import review as rv
 from .. import steward as sw
 from .. import steward_jobs as sj
 from ..paths import CLAUDEOPS_DIR
@@ -710,6 +711,18 @@ def cmd_review(args) -> int:
         res = _api(port, "POST", "/api/steward/review/run", {"project": args.project, "mode": mode, "model": model}, sid)
         print(f"✓ başladı: {res.get('key')}" if res.get("ok") else f"hata: {res.get('error')}")
         return 0 if res.get("ok") else 1
+    if act == "usage":      # yerel dosya taraması (ucli --usage-log); servise gitmez
+        rows = rv.usage_summary(sw.paths_for(sid).reviews, getattr(args, "project", "") or "")
+        if not rows:
+            print("kullanım kaydı yok (koşular --usage-log ile yazar: <ts>.usage.jsonl)")
+            return 0
+        print(f"{'PROJE':<18}{'HEDEF':<34}{'KOŞU':>5}{'İSTEK':>7}{'İSTEM tk':>11}{'CEVAP tk':>10}{'AKIL tk':>9}{'SÜRE sn':>9}")
+        for r in rows[: max(1, int(getattr(args, "top", 20) or 20))]:
+            print(f"{r['project'][:17]:<18}{r['target'][:33]:<34}{r['runs']:>5}{r['requests']:>7}{r['prompt_tokens']:>11}"
+                  f"{r['completion_tokens']:>10}{r['reasoning_tokens']:>9}{int(r['seconds']):>9}")
+        print(f"toplam: {sum(r['runs'] for r in rows)} koşu, {sum(r['prompt_tokens'] for r in rows)} istem token, "
+              f"{sum(r['completion_tokens'] for r in rows)} cevap token")
+        return 0
     if act == "cancel":
         res = _api(port, "POST", "/api/steward/review/cancel", {"project": getattr(args, "project", "") or ""}, sid)
         print(f"iptal edilen: {', '.join(res.get('cancelled') or []) or '-'}" if res.get("ok") else f"hata: {res.get('error')}")
@@ -1016,6 +1029,9 @@ def register(sub):
     rru.add_argument("target", nargs="?", default="", help="<mode>/<model>, ör. evren/glm-4.6 (yoksa sıradaki hedef)")
     rca = rv_.add_parser("cancel", help="koşan işi iptal et (PROJE yoksa hepsi)")
     rca.add_argument("project", nargs="?", default="")
+    rus = rv_.add_parser("usage", help="koşu başına token/istek/süre toplamı (ucli --usage-log): [--project P] [--top N]")
+    rus.add_argument("--project", default="")
+    rus.add_argument("--top", type=int, default=20)
     rfi = rv_.add_parser("findings", help="bulgular")
     rfi.add_argument("--project", default="")
     rfi.add_argument("--state", default="")
