@@ -11,6 +11,7 @@ uygulanır. Her eylem `steward/log.jsonl`'a düşer (ne yapıldı, neden) — ku
 sorusunu `py/cops steward log` ile görür.
 """
 from __future__ import annotations
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -575,11 +576,18 @@ def configure(**callbacks: Callable[..., Any]) -> None:
     _ACTIONS.update(callbacks)
 
 
+_SESSION_CHANGING_ACTS = ("start", "stop", "handover", "register_project")
+
+
 def _act(name: str, *args: Any, **kw: Any) -> Any:
     fn = _ACTIONS.get(name)
     if fn is None:
         return {"ok": False, "error": f"steward engine not configured ({name})"}
-    return fn(*args, **kw)
+    try:
+        return fn(*args, **kw)
+    finally:
+        if name in _SESSION_CHANGING_ACTS:
+            _scan_invalidate()      # oturum kümesi değişmiş olabilir: tick içi tarama önbelleği düşer
 
 
 _FAIL_LOGGED: Dict[Tuple[str, str, str, str], float] = {}
@@ -1107,7 +1115,7 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
     payload = _act("status_payload") or {}
     world = _world(cfg.sid, cfg)
     rows = sw.select_rows([r for r in (payload.get("sessions") or []) if not sw.normalize_host(r.get("host"))], world)
-    live = {s.name: s for s in find_sessions(measure_cpu=False)}
+    live = {s.name: s for s in _scan()}
     views: List[sw.SessionView] = []
     for r in rows:
         name = r.get("name") or ""
@@ -1194,8 +1202,41 @@ def _send(name: str, cli: str, text: str) -> bool:
     return tmux_send_keys(name, text, settle_delay=provider.input_settle_delay())
 
 
+_SCAN = threading.local()
+
+
+@contextlib.contextmanager
+def _scan_scope():
+    """Bir tick boyunca `find_sessions` sonucunu önbellekle (~35 ms/tarama, 700+ süreç; tick başına ~15 tarama): oturum değiştiren her
+    eylem (`_act` start/stop/handover/register, beyin spawn) `_scan_invalidate` ile önbelleği düşürür. Kapsam DIŞINDA (HTTP, CLI,
+    testler) her çağrı taze tarar: eski davranış."""
+    outer = getattr(_SCAN, "cache", None)
+    if outer is None:
+        _SCAN.cache = {"live": None}
+    try:
+        yield
+    finally:
+        if outer is None:
+            _SCAN.cache = None
+
+
+def _scan_invalidate() -> None:
+    c = getattr(_SCAN, "cache", None)
+    if c is not None:
+        c["live"] = None
+
+
+def _scan() -> List[Any]:
+    c = getattr(_SCAN, "cache", None)
+    if c is None:
+        return find_sessions(measure_cpu=False)
+    if c["live"] is None:
+        c["live"] = list(find_sessions(measure_cpu=False))
+    return list(c["live"])
+
+
 def _running(name: str):
-    for s in find_sessions(measure_cpu=False):
+    for s in _scan():
         if s.name == name:
             return s
     return None
@@ -1213,7 +1254,7 @@ def _live_sessions(name: str, sid: str = "default") -> List[Any]:
     p = _project_for_session(name, projects, world)
     if p is None:
         return []
-    return [x for x in find_sessions(measure_cpu=False)
+    return [x for x in _scan()
             if (q := _project_for_session(x.name, projects, world)) is not None and q.name == p.name]
 
 
@@ -2025,6 +2066,7 @@ def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False, _mcp_retry
                              permission_mode=mode, effort=effort, origin="steward")
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            _scan_invalidate()
             kind = spawn_session(name=cfg.brain_name, cwd=workspace, model=model, display=detect_display(),
                                  permission_mode=mode, effort=effort, force_new=bool(fresh), cli=cli,
                                  mcp_server=brain_spec(cfg.sid))
@@ -3089,6 +3131,13 @@ def _replay_journal(cfg: sw.Config, projects: Dict[str, sw.Project], world: Any,
 
 def tick_once(trigger: str = "timer", sid: str = "default", *, starts_left: Optional[int] = None,
               cards: bool = True, index: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Bir tick; tarama önbelleği kapsamında (`_scan_scope`) `_tick_once_inner`i çalıştırır."""
+    with _scan_scope():
+        return _tick_once_inner(trigger, sid, starts_left=starts_left, cards=cards, index=index)
+
+
+def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_left: Optional[int] = None,
+              cards: bool = True, index: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """`sid` kimliği için bir tick: görünümleri topla → kararlar (`plan_tick(world=...)`) → uygula → state kaydet.
     Elle (`/api/steward/tick`, `py/cops steward tick`) de çağrılır; döngü kapalıyken bile çalışır (kullanıcı bilerek
     istedi). Kilit KİMLİK BAŞINA (`ctx.lock`): A'nın tick'i B'nin elle eylemini bekletmez. Okuma/yazma yalnız
@@ -3534,6 +3583,12 @@ def quota_tick(now: Optional[float] = None) -> None:
 
 
 def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
+    """Bir tur; tüm kimlikler tek tarama önbelleği kapsamında (kimlik başına yeniden taranmaz; eylemler önbelleği düşürür)."""
+    with _scan_scope():
+        return _tick_round_inner(trigger)
+
+
+def _tick_round_inner(trigger: str = "timer") -> List[Dict[str, Any]]:
     """Döngünün bir turu: `steward_ids()` sırasıyla, YALNIZ `enabled` kimlikler SIRAYLA tick'lenir (aynı anda tek spawn
     dalgası). Bir kimliğin hatası yutulup loglanır, diğerleri yine tick'lenir. Makine geneli `max_starts_total` bütçesi
     kimlikler arasında taşınır (`starts_left`); `max_active_total` her tick'in kendi görünümünden (diğer kimliklerin

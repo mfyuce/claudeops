@@ -576,6 +576,33 @@ class RosterGateTest(_Tmp):
             self.assertFalse(web_steward.http_project_upsert({"name": "zzz", "phase": "planned"})["ok"])
 
 
+class ScanCacheTest(_Tmp):
+    """TODO 2026-10-28 (21): `find_sessions` N+1: tick içinde tek tarama, oturum değiştiren eylemden sonra yenilenir."""
+
+    def test_scan_is_cached_inside_a_scope_and_invalidated_by_start(self):
+        calls = []
+
+        def fake(measure_cpu=False):
+            calls.append(1)
+            return []
+        web_steward.configure(start=lambda *a, **k: {"ok": True}, stop=lambda *a, **k: {"ok": True})
+        with mock.patch.object(web_steward, "find_sessions", fake):
+            web_steward._scan()
+            web_steward._scan()
+            self.assertEqual(len(calls), 2)                    # kapsam DIŞI: her çağrı taze (eski davranış)
+            calls.clear()
+            with web_steward._scan_scope():
+                for _ in range(5):
+                    web_steward._scan()
+                self.assertEqual(len(calls), 1)               # kapsam içi: tek tarama
+                web_steward._act("start", "x")                # oturum kümesi değişti
+                web_steward._scan()
+                web_steward._scan()
+                self.assertEqual(len(calls), 2)               # yalnız bir yeni tarama
+            web_steward._scan()
+            self.assertEqual(len(calls), 3)                   # kapsam kapandı: taze
+
+
 class EngineSmallsTest(_Tmp):
     """TODO 2026-10-28 (21) motor küçükleri."""
 
