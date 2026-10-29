@@ -2543,6 +2543,38 @@ class JobRequestGateTest(HttpTest):
         self.assertIn("katalogda yok", opened[0].text)
         self.assertTrue(any("katalogda yok" in m for m in sent))     # sahip sorusu telefona da gider
 
+    def test_red_feedback_to_project_session_and_no_repeat_owner_question(self):
+        """ncs 2026-10-29: RED oturuma gerekçe+geçerli türlerle iletilir; ardışık aynı RED sahibe tekrar sorulmaz."""
+        web_steward._JOB_RED_SEEN.clear()
+        self.addCleanup(web_steward._JOB_RED_SEEN.clear)
+        proj = sw.Project(name="mkt")
+        sent, notes = [], []
+        reason = "RED: 'ocr' türü yok, ocr_script kullan"
+        with mock.patch.object(web_steward, "_notify", lambda cfg, msg, *a, **k: notes.append(msg) or True), \
+                mock.patch.object(sw, "load_projects", lambda sid="default": {"mkt": proj}), \
+                mock.patch.object(web_steward, "_job_kinds_list", lambda sid: ["embed", "ocr_script"]), \
+                mock.patch.object(web_steward, "_give_directive",
+                                  lambda project, text, **kw: sent.append((project.name, text, kw)) or {"ok": True}):
+            q1 = self._job_q()
+            self.assertTrue(web_steward.http_answer({"id": q1.id, "answer": reason, "actor": "brain"})["ok"])
+            q2, _ = sw.add_question_ex("mkt", sw.JOB_REQUEST_PREFIX + "ocr /x/REQ2.md baska", source="s", routine=True)
+            self.assertTrue(web_steward.http_answer({"id": q2.id, "answer": reason, "actor": "brain"})["ok"])
+        self.assertEqual(len(sent), 2)                                              # her iki RED oturuma gitti
+        self.assertEqual(sent[0][0], "mkt")
+        self.assertIn("ocr_script", sent[0][1])
+        self.assertIn("embed, ocr_script", sent[0][1])
+        self.assertFalse(sent[0][2]["start_if_stopped"])
+        self.assertEqual(len([x for x in sw.open_questions() if x.source == "job-red"]), 1)   # sahip sorusu TEK
+        self.assertEqual(len(notes), 1)
+
+    def test_job_kinds_list_shapes(self):
+        for body, want in (({"kinds": ["b", "a"]}, ["a", "b"]), ({"kinds": {"x": 1, "y": 2}}, ["x", "y"]),
+                           ([{"kind": "k1"}, {"name": "k2"}], ["k1", "k2"])):
+            with mock.patch.object(web_steward, "http_jobs", lambda sid, **k: {"ok": True, "kinds": body}):
+                self.assertEqual(web_steward._job_kinds_list("default"), want)
+        with mock.patch.object(web_steward, "http_jobs", lambda sid, **k: {"ok": False}):
+            self.assertEqual(web_steward._job_kinds_list("default"), [])
+
     def test_brain_answer_after_submit_ok(self):
         q = self._job_q()
         sj.save_record(sj.new_record("varaka", 42, "mkt", "embed", "queued", "k1", now=q.created_at + 30))

@@ -4485,6 +4485,52 @@ def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[s
     return 200, sw.question_page_html(answered, lang, "done", action=action)
 
 
+_JOB_RED_SEEN: Dict[Tuple[str, str, str], float] = {}   # (kimlik, proje, normalize gerekçe) -> son RED zamanı (süreç içi; restart sıfırlar)
+JOB_RED_REPEAT_SECONDS = 24 * 3600
+
+
+def _job_red_seen(sid: str, project: str, red: str, now: Optional[float] = None) -> bool:
+    """Aynı proje için aynı gerekçeli RED 24 sa içinde daha önce geldi mi (geldiyse sahibe soru tekrarlanmaz). Kaydı da günceller."""
+    now = time.time() if now is None else now
+    key = (sid, project, re.sub(r"[\d\W_]+", " ", red.lower()).strip()[:80])
+    prev = _JOB_RED_SEEN.get(key, 0.0)
+    for k in [k for k, t in _JOB_RED_SEEN.items() if now - t > JOB_RED_REPEAT_SECONDS]:
+        _JOB_RED_SEEN.pop(k, None)
+    _JOB_RED_SEEN[key] = now
+    return bool(prev) and (now - prev) <= JOB_RED_REPEAT_SECONDS
+
+
+def _job_kinds_list(sid: str) -> List[str]:
+    """Varaka iş türü kataloğundaki tür adları (en iyi çaba; servis yoksa/ulaşılamazsa boş liste)."""
+    try:
+        res = http_jobs(sid, kinds=True)
+    except Exception:
+        return []
+    body = res.get("kinds") if res.get("ok") else None
+    items = body.get("kinds", body) if isinstance(body, dict) else body
+    if isinstance(items, dict):
+        return sorted(str(k) for k in items)[:40]
+    if isinstance(items, list):
+        return sorted({str(x.get("kind") or x.get("name") or "") if isinstance(x, dict) else str(x) for x in items} - {""})[:40]
+    return []
+
+
+def _job_red_feedback(sid: str, q0: "sw.Question", red: str) -> None:
+    """Beyin İŞ İSTEĞİ'ni RED'dedince gerekçeyi (+ geçerli iş türleri) isteği açan proje oturumuna kısa direktif olarak
+    gönder; çalışan oturum yoksa açmaz. Hata fırlatmaz."""
+    try:
+        cfg = steward_config(sid)
+        project = sw.load_projects(sid).get(q0.project)
+        if project is None:
+            return
+        kinds = _job_kinds_list(sid)
+        text = f"İş isteğin gönderilmedi: {red[:300]}." + (f" Geçerli iş türleri: {', '.join(kinds)}." if kinds else "") + \
+               " İsteği düzeltip yeniden yaz (STEWARD-JOB)."
+        _give_directive(project, text, start_if_stopped=False, reason="job-red", cfg=cfg, actor="engine")
+    except Exception as e:
+        diag_log("job_red_feedback_failed", sid=sid, project=q0.project, error=repr(e))
+
+
 def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if str(data.get("actor") or "") == "brain":
         q0 = next((q for q in sw.load_questions(sw.paths_for(sid)) if q.id == str(data.get("id") or "")), None)
@@ -4503,11 +4549,14 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                 sw.log_event("answer_denied", paths=sid, id=q0.id, project=q0.project, reason="job_request_unsubmitted")
                 return {"ok": False, "error": why, "code": "job_not_submitted"}
             if red:      # iş gönderilmedi (tür yok, dosya belirsiz): istek kaybolmasın, sahibe iletilir
-                nq, _how = sw.add_question_ex(q0.project, f"İş isteği gönderilmedi (beyin RED): {red}\nİstek: {q0.text[len(sw.JOB_REQUEST_PREFIX):][:400]}\n"
-                                   "Elle varaka oturumuna iletilsin mi, yoksa istek düzeltilsin mi?", source="job-red", paths=sw.paths_for(sid))
-                _notify(steward_config(sid), f"{_ask_prefix(q0.project, sid)} İş isteği gönderilmedi (beyin RED): {red[:200]}\n"
-                                             f"→ {sw.ask_hint(nq.id, sid)}")      # kaydedilen soru telefona da gitsin
-                sw.log_event("job_request_red", paths=sid, id=q0.id, project=q0.project, reason=red[:200])
+                repeat = _job_red_seen(sid, q0.project, red)
+                _job_red_feedback(sid, q0, red)       # proje oturumu kendi yanlışını görsün (ncs 2026-10-29: aynı yanlış türle yineledi)
+                if not repeat:                         # ardışık aynı RED sahibe tekrar sorulmaz (yalnız oturuma gider)
+                    nq, _how = sw.add_question_ex(q0.project, f"İş isteği gönderilmedi (beyin RED): {red}\nİstek: {q0.text[len(sw.JOB_REQUEST_PREFIX):][:400]}\n"
+                                       "Elle varaka oturumuna iletilsin mi, yoksa istek düzeltilsin mi?", source="job-red", paths=sw.paths_for(sid))
+                    _notify(steward_config(sid), f"{_ask_prefix(q0.project, sid)} İş isteği gönderilmedi (beyin RED): {red[:200]}\n"
+                                                 f"→ {sw.ask_hint(nq.id, sid)}")      # kaydedilen soru telefona da gitsin
+                sw.log_event("job_request_red", paths=sid, id=q0.id, project=q0.project, reason=red[:200], repeat=repeat)
     try:
         q = sw.answer_question(str(data.get("id") or ""), str(data.get("answer") or ""), sid)
     except ValueError as e:
