@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 POLL_SECONDS = 10.0
 MIN_WAIT_SECONDS = 20.0         # gönderimden sonra bu süre dolmadan "bitti" denmez (busy bayrağı henüz dönmemiş olabilir)
+START_GRACE_SECONDS = 30.0      # gönderimden sonra bu süre içinde, henüz eşleşen yanıt yokken `running: False` ölü sayılmaz (oturum host listesinde belirmemiş olabilir)
 STABLE_POLLS = 2                # busy=False + aynı cevap art arda bu kadar yoklamada görülürse bitti
 HEAD_CHARS = 60
 
@@ -34,11 +35,13 @@ class RemoteReviewProc:
 
     def __init__(self, driver: Any, model: str, effort: str, prompt: str, report_ok: Callable[[str], bool],
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
-                 poll_seconds: Optional[float] = None, min_wait: Optional[float] = None) -> None:
+                 poll_seconds: Optional[float] = None, min_wait: Optional[float] = None,
+                 start_grace: Optional[float] = None) -> None:
         self.driver, self.model, self.effort, self.prompt = driver, model, effort, prompt
         self.report_ok, self._sleep, self._clock = report_ok, sleep, clock
         self.poll_seconds = POLL_SECONDS if poll_seconds is None else poll_seconds    # çağrı anında okunur (testler küçültür)
         self.min_wait = MIN_WAIT_SECONDS if min_wait is None else min_wait
+        self.start_grace = START_GRACE_SECONDS if start_grace is None else start_grace
         self.returncode: Optional[int] = None
         self._started = False
         self._sent_at = 0.0
@@ -115,7 +118,7 @@ class RemoteReviewProc:
             matched = self._matches(st)
             if matched:
                 self._last = str(st.get("assistant") or "")
-            if st.get("running") is False:
+            if st.get("running") is False and not (not matched and self._clock() - self._sent_at < self.start_grace):
                 self._stop()
                 self.returncode = 0 if (matched and self.report_ok(self._last)) else 1
                 return self._last, ("" if self.returncode == 0 else (self._error or "remote session ended before a report"))

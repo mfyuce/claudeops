@@ -298,5 +298,37 @@ class RemoteFlowTest(NoRealReviewMixin, _Engine):
         self.assertEqual((pj.review_where, pj.local_path), ("", ""))
 
 
+
+class FirstPollRaceTest(unittest.TestCase):
+    """Oturum henüz host listesinde görünmeden ilk yoklama `running: False` dönebilir: koşu ÖLDÜ sayılmaz (karşılaştırma: kısa süre)."""
+
+    def _proc(self, script, start_grace=None):
+        from claudeops import review_remote_run as rrun
+        t = [0.0]
+        kw = {} if start_grace is None else {"start_grace": start_grace}
+        drv = FakeDriver(script=script)
+        proc = rrun.RemoteReviewProc(drv, "m", "low", "PROMPT metni", lambda txt: "## R-1" in txt,
+                                     sleep=lambda s: t.__setitem__(0, t[0] + s), clock=lambda: t[0],
+                                     poll_seconds=5.0, min_wait=0.0, **kw)
+        return proc, drv
+
+    def test_early_running_false_is_not_a_dead_run(self):
+        report = "## R-1 | P2 | a.py:3 | Kusur"
+        proc, _ = self._proc([{"running": True, "busy": False, "user": "", "assistant": ""},       # gönderimden önceki
+                              {"running": False, "busy": None, "user": "", "assistant": ""},       # oturum henüz görünmüyor
+                              {"running": True, "busy": False, "user": "PROMPT metni", "assistant": report},
+                              {"running": True, "busy": False, "user": "PROMPT metni", "assistant": report}])
+        out, err = proc.communicate(timeout=600)
+        self.assertEqual((proc.returncode, err), (0, ""))
+        self.assertIn("R-1", out)
+
+    def test_running_false_after_grace_still_ends_run(self):
+        proc, _ = self._proc([{"running": True, "busy": False, "user": "", "assistant": ""},
+                              {"running": False, "busy": None, "user": "", "assistant": ""}], start_grace=10.0)
+        out, err = proc.communicate(timeout=600)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("ended before a report", err)
+
+
 if __name__ == "__main__":
     unittest.main()
