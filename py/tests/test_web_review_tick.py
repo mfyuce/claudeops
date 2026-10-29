@@ -121,6 +121,23 @@ class TestTick(_Tick):
         wr.review_tick(self.cfg(), now=NOW + 3)
         self.assertEqual(self.started, [("a", "agy/m2")])    # tamamlanan T1 atlandı, partial önce
 
+    def test_drain_finishes_running_job_but_starts_nothing_new(self):
+        # TODO 2026-10-28 (21): reviewer'da "bitir, yeni başlatma" kipi yoktu (restart öncesi boşaltılamıyordu)
+        self.own("a", "b")
+        self.hold = True
+        self.assertEqual(wr.review_tick(self.cfg(), now=NOW)["started"], 1)
+        settings.save_settings({"stewards": {"rev": {"drain": "on"}}})
+        r = wr.review_tick(self.cfg(), now=NOW + 5)
+        self.assertTrue(r.get("busy"))                                       # koşan iş iptal EDİLMEZ
+        self.assertEqual(len(wr.running_keys()), 1)
+        wr._JOBS.clear()                                                     # iş bitti
+        r = wr.review_tick(self.cfg(), now=NOW + 10)
+        self.assertEqual((r["started"], r.get("draining")), (0, True))
+        self.assertEqual(len(self.started), 1)
+        settings.save_settings({"stewards": {"rev": {"drain": "off"}}})
+        self.hold = False
+        self.assertEqual(wr.review_tick(self.cfg(), now=NOW + 15)["started"], 1)    # drain kapanınca sürer
+
     def test_min_gap_blocks_start(self):
         self.own("a")
         settings.save_settings({"stewards": {"rev": {"review_min_gap_minutes": "10"}}})

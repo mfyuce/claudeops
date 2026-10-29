@@ -2600,6 +2600,28 @@ class WakeGateTest(HttpTest):
             evs = [e["event"] for e in sw.tail_log(20)]
             self.assertIn("would:wake_repeat" if mode == "dry" else "wake_repeat_skipped", evs)
 
+    def test_gate_is_skipped_when_the_directive_just_opened_the_session(self):
+        # TODO 2026-10-28 (21): kapı oturum AÇILDIKTAN sonra değerlendiriliyordu: act'te oturum açılır ama yönerge gitmezdi
+        sw.save_state({})
+        proj = sw.Project(name="s1", phase="planned")
+        cfg = _cfg(wake_gate="act", wake_repeat_minutes=240)
+        paths = sw.paths_for("default")
+        msg = sw.build_directive(proj, lang=cfg.lang, extra="", answer=None, more=None, compact=False, paths=paths)
+        web_steward._wake_record(cfg, paths, "s1", "due", None, msg)          # ESKİ yaşamdan kalan aynı metin kaydı
+        sess = mock.Mock(pid=1, cli="claude")
+        sess.name = "s1"
+        sent = []
+        for opened in (False, True):
+            sent.clear()
+            lives = [[sess]] if not opened else [[], [sess]]
+            with mock.patch.object(web_steward, "_live_sessions", side_effect=lambda *a, _l=lives, **k: _l.pop(0) if len(_l) > 1 else _l[0]), \
+                    mock.patch.object(web_steward, "_ensure_running", lambda *a, **k: {"ok": True, "started": True}), \
+                    mock.patch.object(web_steward, "is_tmux_backed", lambda pid: True), \
+                    mock.patch.object(web_steward, "_proc_born", lambda pid: 0.0), \
+                    mock.patch.object(web_steward, "_send", lambda n, c, m: sent.append(n) or True):
+                r = web_steward._give_directive(proj, "", reason="due", cfg=cfg, host="")
+            self.assertEqual(bool(sent), opened, (opened, r))                    # çalışana tekrar gitmez, AÇILANA gider
+
     def test_other_text_other_reason_answer_off_and_window(self):
         sw.save_state({})
         gated, cfg, paths = self._gate("act")

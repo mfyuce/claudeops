@@ -1558,6 +1558,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
         return {"ok": True, "name": target, "skipped": "already sent"}       # önceki turda gitti, işareti yazılamamıştı
     if not model and not effort:
         model, effort = sw.phase_model_effort(project, cfg)
+    started_here = False      # bu çağrıda oturum AÇILDI: yeni yaşam, eski yaşamın `wake_sent` kaydı "tekrar" sayılmaz
     if host:
         world = _world(cfg.sid, cfg)
         fresh_host, row, err = _remote_session(host, target, rt, world, sid=cfg.sid, actor=actor, kind="directive")
@@ -1572,6 +1573,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
                                   actor=actor)
             if not res.get("ok"):
                 return res
+            started_here = bool(res.get("started"))
             # başlatmadan sonra: tick görüntüsü değil, önbellek şimdi; yeni oturumun adı tarihli (projeden çözülür)
             after = str(res.get("name") or "") or _remote_key(target, host, world) or target
             _f, row, err = _remote_session(host, after, world=world, sid=cfg.sid, actor=actor, kind="directive")
@@ -1594,6 +1596,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             res = _ensure_running(target, model=model, effort=effort, lang=lang, sid=cfg.sid)
             if not res.get("ok"):
                 return res
+            started_here = bool(res.get("started"))
             live = _live_sessions(target, cfg.sid)
             s = live[0] if len(live) == 1 else _running(target)
             if s is None:
@@ -1611,7 +1614,7 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             compact = False
     message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more, compact=compact,
                                 paths=paths)
-    if _wake_gate(cfg, paths, sname, reason, answer, message, actor):
+    if not started_here and _wake_gate(cfg, paths, sname, reason, answer, message, actor):
         return {"ok": True, "name": sname, "skipped": "wake_repeat"}
     if host:
         try:

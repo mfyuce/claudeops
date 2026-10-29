@@ -1536,6 +1536,8 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
             actions.append({"kind": "cancel", "key": k, "why": "not in pool"})
     if running_keys():
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "busy": True}
+    if getattr(cfg, "drain", False):      # "bitir, yeni başlatma": koşan iş sürdü (iptal edilmez), yenisi açılmaz; restart öncesi boşalt
+        return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "draining": True}
     hist = rv.load_history(p)
     last = max([float(r.get("started_at") or 0) for r in hist["pairs"].values() if isinstance(r, dict)] or [0.0])
     gap = max(0, int(getattr(cfg, "review_min_gap_minutes", 0))) * 60
