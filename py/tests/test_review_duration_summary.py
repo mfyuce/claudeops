@@ -35,5 +35,20 @@ class DurationTest(unittest.TestCase):
         self.assertEqual(rv.duration_summary(None), [])
 
 
+class StaleTextTest(unittest.TestCase):
+    def test_where_relpath(self):
+        self.assertEqual(rv.where_relpath({"where": "src/a.py:10"}), "src/a.py")
+        self.assertEqual(rv.where_relpath({"where": "../etc/x.py:1"}), "")
+        self.assertEqual(rv.where_relpath({"where": "/etc/x.py:1"}), "")
+        self.assertEqual(rv.where_relpath({"where": "yok"}), "")
+
+    def test_stale_reason_text(self):
+        row = {"title": "`foo_bar` bozuk"}
+        self.assertIsNone(rv.stale_reason_text(row, None))                   # okunamadı
+        self.assertIsNone(rv.stale_reason_text(row, "def foo_bar(): pass"))
+        self.assertIn("foo_bar", rv.stale_reason_text(row, "def other(): pass"))
+        self.assertIsNone(rv.stale_reason_text({"title": "ad yok"}, "x"))
+
+
 if __name__ == "__main__":
     unittest.main()

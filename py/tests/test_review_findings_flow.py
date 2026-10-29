@@ -326,6 +326,10 @@ class _FakeRemoteDrv:
     """RemoteReviewDriver.export_file sözleşmesinin sahtesi: uzak dosya bir sözlükte, ağ YOK."""
     def __init__(self, files, log, open_session=False):
         self.files, self.log, self.open_session = files, log, open_session
+        self.src = {}            # uzak proje kaynakları (göreli yol -> metin); yoksa okunamadı
+
+    def read_rel(self, rel):
+        return self.src.get(rel)
 
     def export_file(self, fname, build, notify=""):
         if fname not in self.files:
@@ -370,6 +374,36 @@ class TestRemoteExport(_Flow):
         self.assertTrue(st["exported_to"].startswith("ulak_31:"))
         self.assertFalse(self.post("export", project="far")["ok"])            # çift yazma yok
         self.assertEqual(self.files["TODO.md"].count(f"(review {f1})"), 1)
+
+    def test_remote_stale_finding_rejected_not_written(self):
+        f1, f2, _f3 = self.fids
+        d = self.findings()
+        d[f1]["title"] = "`old_fn` yanlış çalışıyor"          # where: x.py:10
+        d[f2]["title"] = "`live_fn` yanlış çalışıyor"         # where: y.py:3
+        rv.save_findings(self.p, d)
+        self.set_state(f1, "approved")
+        self.set_state(f2, "approved")
+        drv = _FakeRemoteDrv(self.files, self.log)
+        drv.src = {"x.py": "def renamed_fn(): pass\n", "y.py": "def live_fn(): pass\n"}
+        with mock.patch.object(wr, "_REMOTE_FN", lambda proj, host: drv):
+            r = self.post("export", project="far")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["written"], [f2])
+        self.assertNotIn(f"(review {f1})", self.files["TODO.md"])
+        st = self.findings()[f1]
+        self.assertEqual((st["state"], st["decided_by"]), ("rejected", "stale-check"))
+        self.assertIn("old_fn", st["stale_reason"])
+        self.assertEqual(self.findings()[f2]["state"], "exported")
+
+    def test_remote_unreadable_source_does_not_block_export(self):
+        f1 = self.fids[0]
+        d = self.findings()
+        d[f1]["title"] = "`old_fn` yanlış çalışıyor"
+        rv.save_findings(self.p, d)
+        self.set_state(f1, "approved")                       # kaynak okunamıyor (src boş): karar verilemez, yazılır
+        r = self.post("export", project="far")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["written"], [f1])
 
     def test_remote_missing_file_stops_and_reports(self):
         self.set_state(self.fids[0], "approved")

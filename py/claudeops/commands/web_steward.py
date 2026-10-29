@@ -5565,6 +5565,17 @@ class RemoteReviewDriver:
             out["user"], out["assistant"] = str(parsed.get("user") or ""), str(parsed.get("assistant") or "")
         return out
 
+    def read_rel(self, rel: str) -> Optional[str]:
+        """Uzak projenin göreli bir dosyasının metni (eskimiş-bulgu denetimi); None = okunamadı/izin yok. Fırlatmaz."""
+        if not rel or rel.startswith("/") or ".." in rel.split("/") or "\x00" in rel:
+            return None
+        if not _remote_files_gate(self.host, self._owner()):
+            return None
+        real, cwd = _remote_ref(self.host, self.project)
+        if not cwd:
+            return None
+        return _remote_read_full(self.host, real or self.project, cwd.rstrip("/") + "/" + rel, REMOTE_READ_BUDGET_SECONDS)
+
     def export_file(self, fname: str, build: Callable[[str], Tuple[Optional[str], List[str]]], notify: str = "") -> Dict[str, Any]:
         """Bulgu dışa aktarımı (uzak proje): `fname`yi host-routed `files/read` ile OKU (yoksa/okunamazsa DUR: uzak
         `files/write` yeni dosya oluşturmaz), `build(metin) -> (yeni | None, yazılan_idler)`, yazmadan hemen önce TEKRAR

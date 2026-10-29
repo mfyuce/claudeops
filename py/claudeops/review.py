@@ -870,6 +870,28 @@ def _where_file(row: Dict[str, Any], cwd: str) -> str:
     return path if path.startswith(root + os.sep) and os.path.isfile(path) else ""
 
 
+def where_relpath(row: Dict[str, Any]) -> str:
+    """Bulgunun `where` alanındaki dosya yolu (göreli); mutlak yol ya da `..` içeren yol "" (proje dışına çıkamaz)."""
+    m = _WHERE_FILE_RE.match(str(row.get("where") or ""))
+    rel = m.group(1) if m else ""
+    return "" if (not rel or rel.startswith("/") or ".." in rel.split("/")) else rel
+
+
+def has_quoted_names(row: Dict[str, Any]) -> bool:
+    """Başlıkta backtick'li tanımlayıcı var mı (eskimiş-bulgu denetimi yalnız bunlarla karar verebilir)."""
+    return bool(_BACKTICK_RE.search(str(row.get("title") or "")))
+
+
+def stale_reason_text(row: Dict[str, Any], src: Optional[str]) -> Optional[str]:
+    """`stale_reason`un SAF çekirdeği: `src` bulgunun dosyasının metni (None = okunamadı -> karar verilemez)."""
+    if src is None:
+        return None
+    names = {n.split(".")[-1] for n in _BACKTICK_RE.findall(str(row.get("title") or ""))}
+    if not names or any(n in src for n in names):
+        return None
+    return "tanımlayıcılar dosyada yok: " + ", ".join(sorted(names))
+
+
 def stale_reason(row: Dict[str, Any], cwd: str) -> Optional[str]:
     """Bulgu koddaki duruma göre ESKİMİŞ mi? Yalnız kesin işaret: bulgunun dosyası var ve başlığındaki backtick'li
     tanımlayıcıların HİÇBİRİ dosyada geçmiyor (işlev silinmiş/yeniden adlandırılmış). Dosya yoksa ya da alıntılı ad yoksa
@@ -877,17 +899,12 @@ def stale_reason(row: Dict[str, Any], cwd: str) -> Optional[str]:
     path = _where_file(row, cwd)
     if not path:
         return None
-    names = {n.split(".")[-1] for n in _BACKTICK_RE.findall(str(row.get("title") or ""))}
-    if not names:
-        return None
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             src = f.read()
     except OSError:
         return None
-    if any(n in src for n in names):
-        return None
-    return "tanımlayıcılar dosyada yok: " + ", ".join(sorted(names))
+    return stale_reason_text(row, src)
 
 
 def changed_after_review(row: Dict[str, Any], cwd: str) -> bool:

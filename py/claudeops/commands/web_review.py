@@ -2204,6 +2204,30 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
         rows = [dict(v, id=k) for k, v in sorted(data.items())
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"
                 and not sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}"))]
+    reader = getattr(drv, "read_rel", None)
+    if callable(reader) and rows:       # eskimiş bulgu uzak TODO'ya yazılmasın: tanımlayıcı denetimi uzak dosya metniyle
+        stale: Dict[str, str] = {}
+        cache: Dict[str, Optional[str]] = {}
+        for r in rows:
+            rel = rv.where_relpath(r) if rv.has_quoted_names(r) else ""     # alıntılı ad yoksa karar verilemez: uzak okuma yok
+            if not rel:
+                continue
+            if rel not in cache:
+                try:
+                    cache[rel] = reader(rel)
+                except Exception:
+                    cache[rel] = None
+            why = rv.stale_reason_text(r, cache[rel])
+            if why:
+                stale[r["id"]] = why
+        if stale:
+            with sw.steward_lock(p):
+                data = rv.load_findings(p)
+                for fid, why in stale.items():
+                    if fid in data and data[fid].get("state") == "approved":
+                        data[fid].update(state="rejected", decided_by="stale-check", decided_at=t, stale_reason=why)
+                rv.save_findings(p, data)
+            rows = [r for r in rows if r["id"] not in stale]
     if not rows:
         return {"ok": False, "error": "no approved findings to export", "project": project}
     ids = [r["id"] for r in rows]
