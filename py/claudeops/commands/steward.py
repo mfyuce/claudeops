@@ -437,16 +437,20 @@ def cmd_config(args) -> int:
     anahtar (`sw.MACHINE_KEYS`) kimlik bloğunda YOK SAYILIR: yazılmaz, uyarılır (default'a yazın)."""
     sid = _sid(args)
     field = args.key
-    if field == "mode" and args.value not in sw.MODES:
+    value = getattr(args, "value", None)
+    if field == "mode" and value is not None and args.value not in sw.MODES:
         print(f"hata: mode {' | '.join(sw.MODES)} olmalı")
         return 1
-    if field == "summary_hour" and not (args.value.isdigit() and 0 <= int(args.value) <= 23):
+    if field == "summary_hour" and value is not None and not (args.value.isdigit() and 0 <= int(args.value) <= 23):
         print("hata: summary_hour 0-23 arası bir saat olmalı")
         return 1
     hidden = {"history_warn_at", "role"} | ({"sid", "brain_name"} if sid != "default" else set())   # rol yalnız `create --role`
     if field not in {f.name for f in dataclasses.fields(sw.Config)} or field in hidden:
         print("bilinmeyen alan; geçerli: " + ", ".join(f.name for f in dataclasses.fields(sw.Config) if f.name not in hidden))
         return 1
+    if value is None:     # okuma kipi: değer verilmediyse yalnız geçerli değeri yaz (yazma yok, denetim kaydı yok)
+        print(f"{'steward' if sid == 'default' else 'stewards.' + sid}.{field} = {getattr(steward_config(sid), field)!r}")
+        return 0
     if sid != "default" and field in sw.MACHINE_KEYS:
         print(f"uyarı: '{field}' MAKİNE GENELİ bir anahtar: stewards.{sid} içinde yok sayılır, YAZILMADI. "
               f"Makine geneli değer için: py/cops steward config {field} {args.value}  (default bloğu)")
@@ -1002,9 +1006,9 @@ def register(sub):
     pl.add_argument("-n", type=int, default=50)
     pl.set_defaults(func=cmd_log)
     s.add_parser("persona", help="etkin persona metni").set_defaults(func=cmd_persona)
-    pc = s.add_parser("config", help="steward.<alan> ayarını yaz (tick_seconds, max_active, brain_model, ...)")
+    pc = s.add_parser("config", help="steward.<alan> ayarını yaz (tick_seconds, max_active, brain_model, ...); DEĞER verilmezse mevcut değeri gösterir")
     pc.add_argument("key")
-    pc.add_argument("value")
+    pc.add_argument("value", nargs="?", default=None)
     pc.set_defaults(func=cmd_config)
     psd = s.add_parser("shutdown", help="kontrollü kapatma: kapat → işi bitir → devir → durdur (önce projeler, sonra beyin)")
     psd.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)

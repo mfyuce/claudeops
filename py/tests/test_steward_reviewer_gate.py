@@ -163,6 +163,21 @@ class TestReviewerCreate(NoRealReviewMixin, _Engine):
             self.assertEqual(cmd.cmd_config(NS(sid="kitap", key="role", value="reviewer")), 1)
         self.assertEqual(settings.steward_config("kitap").role, "steward")
 
+    def test_cli_config_without_value_reads_and_writes_nothing(self):
+        settings.save_settings({"stewards": {"kitap": {"enabled": "off", "mode": "observe", "review_claude_models": "m1"}}})
+        with mock.patch("builtins.print") as pr:
+            self.assertEqual(cmd.cmd_config(NS(sid="kitap", key="review_claude_models", value=None)), 0)
+            self.assertEqual(cmd.cmd_config(NS(sid="kitap", key="nope", value=None)), 1)      # bilinmeyen alan okumada da reddedilir
+            self.assertEqual(cmd.cmd_config(NS(sid="kitap", key="role", value=None)), 1)      # gizli alan okunmaz
+        self.assertIn("stewards.kitap.review_claude_models = 'm1'", pr.call_args_list[0].args[0])
+        self.assertEqual(settings.steward_config("kitap").review_claude_models, "m1")
+        self.assertEqual([e for e in sw.tail_log(20, paths="kitap") if e["event"] == "config"], [])    # denetim kaydı yok
+        import argparse
+        ap = argparse.ArgumentParser()
+        cmd.register(ap.add_subparsers(dest="cmd"))
+        self.assertIsNone(ap.parse_args(["steward", "config", "mode"]).value)
+        self.assertEqual(ap.parse_args(["steward", "config", "mode", "act"]).value, "act")
+
     def test_cli_config_and_toggle_leave_an_audit_trail(self):
         settings.save_settings({"stewards": {"kitap": {"enabled": "off", "mode": "observe"}}})
         with mock.patch("builtins.print"), mock.patch.dict(os.environ, {"COPS_NAME": "cops-test"}):
