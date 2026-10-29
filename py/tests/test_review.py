@@ -84,6 +84,22 @@ class TestPlanner(unittest.TestCase):
         h["pairs"]["never|evren/glm-4.6"] = done(NOW - DAY)
         self.assertEqual(rv.next_review(p, h, TS, NOW), ("older", T1))
 
+    def test_unchanged_head_is_not_reviewed_again_after_the_window(self):
+        # TODO 2026-10-28 (21): değişmeyen projede pencere dolunca tam review yapılıyordu
+        p = pool("a", "b")
+        old = dict(done(NOW - 40 * DAY), head="abc1234")
+        h = hist(**{"a|agy/gemini-3-flash": old, "a|evren/glm-4.6": dict(old),
+                    "b|agy/gemini-3-flash": dict(old, head="zzz9999"), "b|evren/glm-4.6": dict(old, head="zzz9999")})
+        self.assertEqual(rv.next_review(p, h, TS, NOW)[0], "a")                              # head_of yok: eski davranış
+        heads = {"a": "abc1234", "b": "new5678"}
+        self.assertEqual(rv.next_review(p, h, TS, NOW, head_of=heads.get), ("b", T1))        # a: aynı HEAD -> atla, b: değişmiş
+        self.assertIsNone(rv.next_review(pool("a"), h, TS, NOW, head_of={"a": "abc1234"}.get))
+        self.assertEqual(rv.next_review(pool("a"), h, TS, NOW, head_of=lambda pr: "")[0], "a")   # HEAD bilinmiyor: tam review
+        bad = dict(old)
+        bad["status"] = "partial"
+        h2 = hist(**{"a|agy/gemini-3-flash": bad, "a|evren/glm-4.6": bad})
+        self.assertEqual(rv.next_review(pool("a"), h2, TS, NOW, head_of={"a": "abc1234"}.get)[0], "a")   # yalnız `done` sayılır
+
     def test_busy_running_disabled_and_empty(self):
         p = pool("a", "b")
         self.assertEqual(rv.next_review(p, hist(), TS, NOW, busy_projects=["a"])[0], "b")
@@ -352,6 +368,28 @@ class TestCopilotMode(unittest.TestCase):
 
     def test_monthly_quota_is_a_limit(self):
         self.assertTrue(rv.is_daily_limit("You have exceeded your monthly quota (Request ID: X)"))
+
+
+class TestRequeueStaleVerify(unittest.TestCase):
+    """TODO 2026-10-28 (21): oturum doğrulaması cevapsız kalırsa bulgu sonsuza dek `verify_sent` kalmasın."""
+
+    def _f(self, **kw):
+        return {"a": dict({"state": "verify_sent", "verify_sent_at": 1000.0}, **kw)}
+
+    def test_stale_goes_back_then_gives_up(self):
+        d = self._f()
+        self.assertEqual(rv.requeue_stale_verify(d, 1000.0 + 60), [])                       # taze: dokunulmaz
+        t = 1000.0 + rv.VERIFY_REQUEUE_SECONDS + 1
+        self.assertEqual(rv.requeue_stale_verify(d, t), ["a"])
+        self.assertEqual((d["a"]["state"], d["a"]["verify_tries"]), ("new", 1))
+        d["a"].update(state="verify_sent", verify_sent_at=1000.0, verify_tries=rv.VERIFY_MAX_TRIES - 1)
+        rv.requeue_stale_verify(d, t)
+        self.assertEqual(d["a"]["state"], "unclear")                                         # hak bitti: elle bakılır
+
+    def test_self_verify_and_other_states_untouched(self):
+        d = {"a": {"state": "verify_sent", "verify_sent_at": 1.0, "verify_session": "self"},
+             "b": {"state": "approved", "verify_sent_at": 1.0}}
+        self.assertEqual(rv.requeue_stale_verify(d, 10 ** 9), [])
 
 
 class TestRedactLeaks(unittest.TestCase):

@@ -1071,7 +1071,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
         else:
             raise RuntimeError(f"bilinmeyen mod: {target.mode}")
         rv.update_pair(p, project, target, status="running", started_at=t0, finished_at=None, file=None, error=None,
-                       label_seen=None, pid=None)
+                       label_seen=None, pid=None, head=project_head(cwd) or None)
         job = _Job(key)
         job.sid = p.sid
         job.prompt = prompt
@@ -1413,6 +1413,19 @@ def current_targets(cfg: Any) -> List[rv.ReviewTarget]:
         return []
 
 
+def project_head(cwd: str) -> str:
+    """Projenin git HEAD'i (yerel klasör; "" = git değil/okunamadı). Değişmeyen koda yeniden review yapılmasın diye çift
+    kaydına yazılır (`head`) ve `rv.next_review(head_of=...)` ile karşılaştırılır."""
+    if not cwd or not os.path.isdir(cwd):
+        return ""
+    try:
+        r = subprocess.run(["git", "-C", cwd, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    out = (r.stdout or "").strip()
+    return out if r.returncode == 0 and re.fullmatch(r"[0-9a-f]{7,64}", out) else ""
+
+
 def running_keys(sid: str = "") -> List[str]:
     with _JOBS_LOCK:
         return sorted(k for k, j in _JOBS.items() if not sid or j.sid == sid)
@@ -1548,7 +1561,8 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "reason": "no targets"}
     skip: List[str] = []
     while True:
-        nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip)
+        nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip,
+                             head_of=lambda pr: "" if remote_host(pr) else project_head(project_cwd(pr)))
         if nxt is None:
             return {"ok": True, "actions": actions, "started": 0, "noop": not actions}
         proj, target = nxt
@@ -1788,6 +1802,13 @@ def process_verdicts(cfg: Any, now: Optional[float] = None) -> List[str]:
                        if isinstance(v, dict) and v.get("state") == "verify_sent" and v.get("project")
                        and v.get("verify_session") != "self"})     # kendi doğrulama sonucunu kendi thread'i uygular
     applied: List[str] = []
+    with sw.steward_lock(p):       # cevapsız kalan oturum doğrulaması yeniden sıraya (karar yalnız son mesajdan okunur)
+        cur0 = rv.load_findings(p)
+        requeued = rv.requeue_stale_verify(cur0, t)
+        if requeued:
+            rv.save_findings(p, cur0)
+    if requeued:
+        sw.log_event("review_verify_requeued", paths=p, findings=requeued)
     for proj in projects:
         got = reader(proj)
         if not got:

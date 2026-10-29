@@ -11,7 +11,7 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from . import steward as sw
 
@@ -164,10 +164,12 @@ def pool_enabled(pool: Any) -> List[str]:
 
 
 def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: float,
-                busy_projects: Sequence[str] = (), window: float = WINDOW_SECONDS) -> Optional[Tuple[str, ReviewTarget]]:
+                busy_projects: Sequence[str] = (), window: float = WINDOW_SECONDS,
+                head_of: Optional[Callable[[str], str]] = None) -> Optional[Tuple[str, ReviewTarget]]:
     """Sıradaki (proje, hedef) ya da None. TEK proje: önce yarım kalan (bazı çiftleri taze, bazısı değil), sonra hiç
     çifti olmayan, sonra en eskisi (en yeni bitişi en eski olan). Tamam projeler, `busy_projects` ve çalışan çiftler
-    atlanır; `max_attempts(mod)`i (Evren 1, diğerleri `MAX_ATTEMPTS`) dolduran error/model_fallback/partial çifti `window` dolana dek denenmez."""
+    atlanır; `head_of(proje)` (git HEAD, "" = bilinmiyor) verilirse pencere dolsa da `done` çiftin kayıtlı `head`i güncel
+    HEAD'e EŞİTSE taze sayılır (değişmeyen koda yeniden review yok); `max_attempts(mod)`i (Evren 1, diğerleri `MAX_ATTEMPTS`) dolduran error/model_fallback/partial çifti `window` dolana dek denenmez."""
     skip = set(blocked_modes(history, now))
     targets = [t for t in targets if t.mode not in skip and t.key not in skip]   # kotası biten mod / model sıfırlanana dek denenmez
     if not targets:
@@ -181,9 +183,24 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
         recs = [pairs.get(pair_key(proj, t)) for t in targets]
         if any(isinstance(r, dict) and r.get("status") == "running" for r in recs):
             continue                                   # projede çalışan çift var: aynı projeye ikinci iş yok
+        _hd: List[str] = []
+
+        def _same_head(r: Any) -> bool:
+            if head_of is None or not isinstance(r, dict) or r.get("status") != "done" or not r.get("head"):
+                return False
+            if not _hd:
+                try:
+                    _hd.append(str(head_of(proj) or ""))
+                except Exception:
+                    _hd.append("")
+            return bool(_hd[0]) and _hd[0] == r.get("head")
+
+        def _fresh_or_same(r: Any) -> bool:
+            return _fresh(r, now, window) or _same_head(r)
+
         pick = None
         for t, r in zip(targets, recs):
-            if _fresh(r, now, window):
+            if _fresh_or_same(r):
                 continue
             if (isinstance(r, dict) and r.get("status") in ("error", "model_fallback", "partial")
                     and int(r.get("attempts") or 0) >= max_attempts(t.mode) and counts_as_attempt(r)
@@ -193,7 +210,7 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
             break
         if pick is None:
             continue
-        nfresh = sum(1 for r in recs if _fresh(r, now, window))
+        nfresh = sum(1 for r in recs if _fresh_or_same(r))
         known = [float(r.get("finished_at") or r.get("started_at") or 0) for r in recs if isinstance(r, dict)]
         if nfresh:
             cands.append((0, -nfresh, proj, pick))     # yarım: en çok tamamlanmış olan önce
@@ -665,6 +682,31 @@ def apply_verdicts(findings: Dict[str, Any], project: str, verdicts: Sequence[Tu
         rec.update(state=verdict, verdict=reason, verdict_at=now, verdict_session=session, verdict_src=src_hash)
         applied.append(fid)
     return applied
+
+
+VERIFY_REQUEUE_SECONDS = 6 * 3600       # oturum doğrulaması bu kadar süredir cevapsız (karar son mesajda değildi/oturum yok): yeniden sıraya
+VERIFY_MAX_TRIES = 3                    # bulgu başına doğrulama gönderimi; dolunca `unclear` (elle bakılır)
+
+
+def requeue_stale_verify(findings: Dict[str, Any], now: float, stale: float = VERIFY_REQUEUE_SECONDS) -> List[str]:
+    """`findings`i YERİNDE günceller; OTURUM doğrulamasında (`verify_session != "self"`) `stale` sn'dir cevapsız kalan
+    `verify_sent` bulguyu `new`e döndürür (`verify_tries`+1; `VERIFY_MAX_TRIES` dolunca `unclear`). Karar yalnız SON asistan
+    mesajından okunduğu için proje oturumu araya başka mesaj üretirse karar bir daha görülmez; bulgu sonsuza dek
+    `verify_sent` kalmasın. Dönen: etkilenen fid'ler. SAF."""
+    out: List[str] = []
+    for fid, rec in findings.items():
+        if not isinstance(rec, dict) or rec.get("state") != "verify_sent" or rec.get("verify_session") == "self":
+            continue
+        if now - float(rec.get("verify_sent_at") or 0) < stale:
+            continue
+        tries = int(rec.get("verify_tries") or 0) + 1
+        if tries >= VERIFY_MAX_TRIES:
+            rec.update(state="unclear", verify_tries=tries, verdict_at=now,
+                       verdict=f"doğrulama {tries} gönderimde sonuç vermedi (karar son mesajda görülmedi)"[:VERDICT_REASON_MAX])
+        else:
+            rec.update(state="new", verify_tries=tries)
+        out.append(fid)
+    return out
 
 
 def build_verify_message(rows: Sequence[Dict[str, Any]], lang: str = "tr") -> str:
