@@ -324,7 +324,8 @@ def _load_or_create_token() -> str:
         pass
     tok = secrets.token_hex(24)
     os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
-    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # review R-3: O_NOFOLLOW + O_EXCL, so a (dangling) symlink planted at TOKEN_FILE is never written through
+    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(tok)
     return tok
@@ -353,8 +354,19 @@ def _ensure_cloudflared() -> Optional[str]:
     print(f"cloudflared bulunamadı — indiriliyor: {url}")
     try:
         os.makedirs(dest_dir, exist_ok=True)
-        urllib.request.urlretrieve(url, dest)
-        os.chmod(dest, 0o755)
+        # review R-6: indir -> ELF/boyut kontrolü -> atomik rename; yarım/bozuk indirme mevcut dosyanın üstüne yazmaz
+        tmp = dest + ".part"
+        try:
+            urllib.request.urlretrieve(url, tmp)
+            with open(tmp, "rb") as f:
+                magic = f.read(4)
+            if magic != b"\x7fELF" or os.path.getsize(tmp) < 1_000_000:
+                raise RuntimeError("indirilen dosya geçerli bir çalıştırılabilir değil")
+            os.chmod(tmp, 0o755)
+            os.replace(tmp, dest)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
         print(f"✓ cloudflared kuruldu: {dest}")
         return dest
     except Exception as e:
