@@ -186,6 +186,9 @@ class BackoffRecoveryTest(unittest.TestCase):
     def setUp(self):
         ws._HOST_HEALTH.clear()
         ws._RECOVERED_DOWN.clear()
+        patcher = mock.patch.object(ws.sw, "log_event", lambda *a, **k: None)   # canlı steward log'una sahte red olayı yazılmasın
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.addCleanup(ws._HOST_HEALTH.clear)
         self.addCleanup(ws._RECOVERED_DOWN.clear)
 
