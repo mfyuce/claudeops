@@ -107,6 +107,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
   const [runs, setRuns] = useState<ReviewRun[]>([]);
   const [lessons, setLessons] = useState<ReviewLesson[]>([]);
   const [lessonTarget, setLessonTarget] = useState("");
+  const [showDoneLessons, setShowDoneLessons] = useState(false);
   const [openRun, setOpenRun] = useState<ReviewRun | null>(null);
   const sidRef = useRef(sid);
   useEffect(() => {
@@ -359,7 +360,13 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
       </h4>
       <span className="opts-hint">{t.rvLessonsDesc}</span>
       {lessons.length === 0 && <span className="opts-hint">{t.rvLessonsNone}</span>}
+      {lessons.some((l) => l.status === "done") && (
+        <button type="button" className="linkbtn" onClick={() => setShowDoneLessons((v) => !v)}>
+          {showDoneLessons ? "işlenenleri gizle" : `işlenenleri göster (${lessons.filter((l) => l.status === "done").length})`}
+        </button>
+      )}
       {lessons
+        .filter((l) => showDoneLessons || l.status !== "done")
         .slice()
         .reverse()
         .map((l) => {
