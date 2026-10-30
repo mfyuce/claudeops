@@ -290,6 +290,19 @@ class TestPathsAndStores(unittest.TestCase):
         self.assertEqual(data[ids[0]]["state"], "new")
         self.assertIn(data[ids[0]]["state"], rv.FINDING_STATES)
 
+    def test_findings_dedup_by_key(self):
+        """TBD#137c: aynı (proje, dosya, normalize başlık) sonraki koşuda `dup` olur, eski fid `dup_of`; hatta yeni hatta döner."""
+        f = rv.parse_findings(MD)
+        r1 = os.path.join(self.paths.reviews, "a", "agy", "m", "20261022101500.md")
+        r2 = os.path.join(self.paths.reviews, "a", "agy", "m", "20261023101500.md")
+        ids = rv.add_findings(self.paths, "a", r1, f)
+        shifted = [dict(x, where=x["where"].split(":")[0] + ":999", title=x["title"].upper() + "!") for x in f]
+        self.assertEqual(rv.add_findings(self.paths, "a", r2, shifted), [])      # yeni hat yok
+        data = rv.load_findings(self.paths)
+        dups = [r for r in data.values() if r["state"] == "dup"]
+        self.assertEqual(sorted(r["dup_of"] for r in dups), sorted(ids))
+        self.assertEqual(len(rv.add_findings(self.paths, "b", r2, shifted)), 2)   # başka proje tekilleşmez
+
 
 class TestConfigRole(unittest.TestCase):
     def test_defaults_and_settings(self):

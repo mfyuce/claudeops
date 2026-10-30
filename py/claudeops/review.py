@@ -5,6 +5,7 @@ sonraki partilerde; burada yalnız test edilebilir mantık var (`card` modülü 
 Havuz `projects.json`'a YAZILMAZ (aynı adın iki kimlikte olması `ownership_index`te projeyi kimseye vermez): ayrı
 `review_pool.json`. Çift = (proje, mod, alt model); anahtar `"<proje>|<mode>/<slug>"`."""
 from __future__ import annotations
+import hashlib
 import json
 import os
 import calendar
@@ -55,7 +56,7 @@ def parse_slots(spec: Any) -> Dict[str, int]:
     return out if seen else {}
 PAIR_STATUSES = ("running", "done", "partial", "error", "model_fallback", "limit")
 SEVERITIES = ("P1", "P2", "P3")
-FINDING_STATES = ("new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported")
+FINDING_STATES = ("new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported", "dup")
 
 # Reviewer'a GÖSTERİLMEYECEK yollar (istemde yasak olarak sayılır; parola/anahtar içerebilir).
 FORBIDDEN_PATHS = ("CLAUDE.md", ".env*", "*token*", "*credential*", "*.pem", "settings*.json")
@@ -626,24 +627,46 @@ def save_findings(paths: Any, findings: Dict[str, Any]) -> None:
     sw._save_json(sw._pp(paths).findings, findings)
 
 
+def finding_key(proj: str, where: Any, title: Any) -> str:
+    """Bulgu kimliği (TBD#137c): (proje, dosya, normalize başlık) hash'i. Dosya = `where`in `:satır` öncesi; başlık küçük harf,
+    harf/rakam dışı atılır: aynı hata farklı koşuda/satırda yeniden bulunsa aynı anahtar."""
+    fil = re.split(r"[:#]", str(where or "").strip(), 1)[0].strip().lower()
+    ttl = re.sub(r"[^0-9a-zçğıöşü]+", " ", str(title or "").lower()).strip()
+    return hashlib.sha1(f"{proj}\x00{fil}\x00{ttl}".encode("utf-8")).hexdigest()[:16]
+
+
 def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[str, str]]) -> List[str]:
     """Ayrıştırılmış bulguları `findings.json`a `state=new` ile ekler (kilit altında); eklenen fid'ler döner.
-    fid = `<proje>:<review dosyası temel adı sıkıştırılmış>:<ref>`: aynı dosya iki kez işlenirse çoğalmaz."""
+    fid = `<proje>:<review dosyası temel adı sıkıştırılmış>:<ref>`: aynı dosya iki kez işlenirse çoğalmaz.
+    Aynı `finding_key`li bulgu zaten varsa (her durumda; reddedilmiş dahil) yenisi `state=dup`, `dup_of=<eski fid>` yazılır:
+    doğrulama/onay/dışa aktarım hattına girmez, dönen listeye de girmez."""
     p = sw._pp(paths)
     base = re.sub(r"[^A-Za-z0-9]+", "", os.path.relpath(review_file, p.reviews) if review_file.startswith(p.reviews) else review_file)
     added: List[str] = []
     with sw.steward_lock(p):
         data = load_findings(p)
+        by_key: Dict[str, str] = {}
+        for ofid, orec in data.items():
+            if isinstance(orec, dict) and orec.get("state") != "dup" and orec.get("project") == proj:
+                by_key.setdefault(orec.get("key") or finding_key(proj, orec.get("where"), orec.get("title")), ofid)
+        changed = False
         for f in parsed:
             fid = f"{slug_model(proj)}:{base}:{f['ref']}"
             if fid in data:
                 continue
-            data[fid] = {"project": proj, "review_file": review_file, "ref": f["ref"], "severity": f["severity"],
-                         "title": f["title"], "where": f["where"], "body": f["body"], "state": "new", "verdict": "",
-                         "verdict_at": None, "decided_by": "", "decided_at": None, "exported_to": "",
-                         "created_at": time.time()}
-            added.append(fid)
-        if added:
+            key = finding_key(proj, f["where"], f["title"])
+            rec = {"project": proj, "review_file": review_file, "ref": f["ref"], "severity": f["severity"],
+                   "title": f["title"], "where": f["where"], "body": f["body"], "state": "new", "verdict": "",
+                   "verdict_at": None, "decided_by": "", "decided_at": None, "exported_to": "",
+                   "created_at": time.time(), "key": key}
+            if key in by_key:
+                rec["state"], rec["dup_of"] = "dup", by_key[key]
+            else:
+                by_key[key] = fid
+                added.append(fid)
+            data[fid] = rec
+            changed = True
+        if changed:
             save_findings(p, data)
     return added
 
