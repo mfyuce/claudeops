@@ -2921,6 +2921,26 @@ def _deliver_findings(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.
     return res
 
 
+def _doc_path(cwd: str, fname: str) -> str:
+    """Proje klasöründeki `fname` yolu; yoksa (git worktree: TODO/TBD ana kopyada) ana worktree klasöründeki. Gerçek yol
+    ilgili kökün altında kalmalı; bulunamazsa ""."""
+    if not cwd:
+        return ""
+    roots = [cwd]
+    try:
+        out = subprocess.run(["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+        if out.endswith("/.git"):
+            roots.append(out[:-5])
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for root in roots:
+        real, rroot = os.path.realpath(os.path.join(root, fname)), os.path.realpath(root)
+        if real.startswith(rroot + os.sep) and os.path.isfile(real):
+            return real
+    return ""
+
+
 def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
     """`plan_tick` için: projenin YEREL TODO.md'sindeki açık `- [ ]` satırı sayısı (STEWARD-DONE-CONFIRMED ön-kontrolü).
     Uzak proje, klasörü bilinmeyen ya da okunamayan dosya = None (ön-kontrol atlanır, teyit kanıta kalır). Yalnız
@@ -2931,8 +2951,8 @@ def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[i
             if p is None or p.host:
                 return None
             cwd = _cwd_resolver()(proj)
-            real, root = os.path.realpath(os.path.join(cwd, "TODO.md")), os.path.realpath(cwd)
-            if not cwd or not real.startswith(root + os.sep) or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+            real = _doc_path(cwd, "TODO.md")
+            if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
                 return None
             with open(real, encoding="utf-8", errors="replace") as f:
                 return sum(1 for ln in f if re.match(r"\s*[-*]\s*\[ \]", ln))
@@ -2949,8 +2969,8 @@ def _open_tbd_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[in
             if p is None or p.host:
                 return None
             cwd = _cwd_resolver()(proj)
-            real, root = os.path.realpath(os.path.join(cwd, "TOBEDECIDED.md")), os.path.realpath(cwd)
-            if not cwd or not real.startswith(root + os.sep) or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+            real = _doc_path(cwd, "TOBEDECIDED.md")
+            if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
                 return None
             with open(real, encoding="utf-8", errors="replace") as f:
                 return sw.count_open_tbd(f.read())
@@ -4764,6 +4784,15 @@ def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             res = _act("stop", _resolved_local_name(name, sid), lang=cfg.lang)
     sw.log_event("stop", paths=sid, name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")),
                  **({"host": host} if host else {}))
+    if res.get("ok") and str(data.get("actor") or "") == "brain":
+        # beyin durdurdu: cadence bu projeyi `BRAIN_STOP_COOLDOWN_SECONDS` boyunca yeniden açmaz (faz değişmez)
+        with sw.steward_lock(sid):
+            state = sw.load_state(sid)
+            bs = {k: v for k, v in dict(state.get("brain_stopped") or {}).items()
+                  if time.time() - float(v or 0.0) < sw.BRAIN_STOP_COOLDOWN_SECONDS}
+            bs[name] = time.time()
+            state["brain_stopped"] = bs
+            sw.save_state(state, sid)
     return res
 
 

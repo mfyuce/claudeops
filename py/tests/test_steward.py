@@ -1003,6 +1003,29 @@ class DoneConfirmTest(unittest.TestCase):
             with mock.patch.object(ws, "_cwd_resolver", lambda: (lambda n: os.path.join(d, "yok"))):
                 self.assertIsNone(ws._open_work_of(projs)("p1"))
 
+    def test_open_tbd_of_falls_back_to_main_worktree(self):
+        import subprocess, tempfile
+        from claudeops.commands import web_steward as ws
+        with tempfile.TemporaryDirectory() as d:
+            main, wt = os.path.join(d, "main"), os.path.join(d, "wt")
+            os.makedirs(main)
+            git = lambda *a, cwd=main: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=cwd, check=True,
+                                                      capture_output=True)
+            git("init", "-q", "-b", "main")
+            with open(os.path.join(main, "TOBEDECIDED.md"), "w", encoding="utf-8") as f:
+                f.write("## Açık\n### 1) karar\n### 2) karar\n")
+            with open(os.path.join(main, "TODO.md"), "w", encoding="utf-8") as f:
+                f.write("- [x] bitti\n")
+            git("add", "."); git("commit", "-q", "-m", "x")
+            git("worktree", "add", "-q", wt, "-b", "wtb")
+            os.remove(os.path.join(wt, "TOBEDECIDED.md"))        # worktree'de dosya yok
+            projs = {"p": sw.Project(name="p", phase="planned")}
+            with mock.patch.object(ws, "_cwd_resolver", lambda: (lambda n: wt)):
+                self.assertEqual(ws._open_tbd_of(projs)("p"), 2)        # ana worktree'deki dosya sayılır
+                self.assertEqual(ws._open_work_of(projs)("p"), 0)
+            with mock.patch.object(ws, "_cwd_resolver", lambda: (lambda n: d)):
+                self.assertIsNone(ws._open_tbd_of(projs)("p"))           # git deposu değil, dosya yok: bilinmiyor
+
 
 class TourQuietTest(unittest.TestCase):
     """TBD#122: beynin skip ettiği ve durumu değişmeyen madde yeniden tura girmez; bayat blokaj kaydı kapanır."""
@@ -3164,6 +3187,18 @@ class SmartTickTest(unittest.TestCase):
         self.assertEqual([a.kind for a in acts if a.kind in ("start", "ask_user")], [])     # 6 saat dolmadan tekrar sormaz, açmaz
         acts, _ = sw.plan_tick([], projects, {}, _cfg(), self.now, [], [], open_work=lambda p: 2, open_tbd=lambda p: 3)
         self.assertEqual([a.kind for a in acts if a.kind == "start"], ["start"])           # TODO'su varsa açılır
+
+    def test_brain_stopped_project_not_restarted_by_cadence_until_cooldown(self):
+        projects = {"p": sw.Project(name="p", phase="planned", cadence_minutes=5)}
+        st = {"brain_stopped": {"p20261030": self.now - 60}}       # tarihli oturum adı proje adına çözülür
+        acts, _ = sw.plan_tick([], projects, dict(st), _cfg(), self.now, [], [], open_work=lambda p: 2, open_tbd=lambda p: 0)
+        self.assertEqual([a.kind for a in acts if a.kind == "start"], [])
+        acts, _ = sw.plan_tick([], projects, dict(st), _cfg(), self.now + sw.BRAIN_STOP_COOLDOWN_SECONDS + 1, [], [],
+                               open_work=lambda p: 2, open_tbd=lambda p: 0)
+        self.assertEqual([a.kind for a in acts if a.kind == "start"], ["start"])           # soğuma bitti: açılır
+        other = {"pp": sw.Project(name="pp", phase="planned", cadence_minutes=5)}
+        acts, _ = sw.plan_tick([], other, dict(st), _cfg(), self.now, [], [], open_work=lambda p: 2, open_tbd=lambda p: 0)
+        self.assertEqual([a.kind for a in acts if a.kind == "start"], ["start"])           # başka proje etkilenmez
 
     def test_idle_session_without_open_todo_not_nudged(self):
         cfg = _cfg(idle_minutes=5)

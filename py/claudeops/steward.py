@@ -2395,6 +2395,9 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     return items
 
 
+BRAIN_STOP_COOLDOWN_SECONDS = 4 * 3600   # beyin `stop` dedikten sonra cadence projeyi bu süre yeniden BAŞLATMAZ (faz değişmez)
+
+
 def _project_key(name: str, projects: Dict[str, "Project"]) -> str:
     """Oturum adı → kayıtlı proje adı (tam ad ya da en uzun proje-adı öneki: `ncs20261019` → `ncs`); yoksa ""."""
     best = ""
@@ -3485,6 +3488,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             continue
         if world is not None and p.name in world.unavailable:
             continue     # host erişilemiyor: görünümü yok diye "çalışmıyor" sayılıp başlatılmaz
+        if any(_project_key(k, projects) == p.name and now - float(v or 0.0) < BRAIN_STOP_COOLDOWN_SECONDS
+               for k, v in dict(st.get("brain_stopped") or {}).items()):
+            continue     # beyin "kalan iş yok / sahip kararı bekliyor" diye durdurdu: cadence soğuk bağlamla hemen yeniden açmaz
         if visit_of(p) == 0 or (now - visit_of(p)) >= p.cadence_minutes * 60:
             if open_work is not None and open_tbd is not None and open_work(p.name) == 0 and (open_tbd(p.name) or 0) > 0:
                 # yalnız TBD kaldı (yerel TODO'da açık iş yok): oturum açmak boşa tur; sahibe tek soru, cevap gelince `answer → start`
