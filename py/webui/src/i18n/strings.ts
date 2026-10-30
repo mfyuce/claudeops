@@ -684,6 +684,10 @@ export interface Strings {
   hChatTool: string;
   hChatSystem: string;
   hReviewHint: string;
+  rvWatchBtn: string;
+  rvWatchTitle: string;
+  rvTabChat: string;
+  rvTabRaw: string;
   hOpenBtn: string;
   rvDesc: string;
   rvOff: string;
@@ -1526,6 +1530,10 @@ export const STRINGS: Record<Lang, Strings> = {
     hChatTool: "araç",
     hChatSystem: "sistem",
     hReviewHint: "Review koşusu: sohbet olarak salt-okunur gösterilir; çalışıyorsa canlı güncellenir.",
+    rvWatchBtn: "izle",
+    rvWatchTitle: "Bu süreç koşan bir review'a ait: devralmadan salt-okunur izlenir (devral bu koşuyu öldürürdü)",
+    rvTabChat: "sohbet",
+    rvTabRaw: "ham akış",
     hOpenBtn: "Aç",
     rvDesc: "Proje x model matrisi: her hücre bir modelin projeyi son gözden geçirişi. Etkin kutusu projeyi havuza alır/çıkarır.",
     rvOff: "Bu reviewer kapalı: yeni review başlamaz.",
@@ -2369,6 +2377,10 @@ export const STRINGS: Record<Lang, Strings> = {
     hChatTool: "tool",
     hChatSystem: "system",
     hReviewHint: "Review run: shown read-only as a chat; updates live while running.",
+    rvWatchBtn: "watch",
+    rvWatchTitle: "This process belongs to a running review: watch it read-only without adopting (adopt would kill the run)",
+    rvTabChat: "chat",
+    rvTabRaw: "raw stream",
     hOpenBtn: "Open",
     rvDesc: "Project x model matrix: each cell is one model's latest review of a project. The checkbox enables/disables the project in the pool.",
     rvOff: "This reviewer is off: no new reviews start.",

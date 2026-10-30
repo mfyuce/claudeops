@@ -67,6 +67,7 @@ import type {
   IoAskResult,
   IoHistoryResult,
   ReviewChatResult,
+  ReviewIoResult,
   ReviewRun,
   IoProvidersResult,
   IoSessionsResult,
@@ -707,6 +708,8 @@ export const getReviewFile = (sid: string, path: string): Promise<SimpleResult &
   apiGet<SimpleResult & { path?: string; text?: string; truncated?: boolean }>(`/api/steward/review/file${rvQs(sid, { path })}`);
 export const getReviewRuns = (): Promise<{ ok: boolean; error?: string; runs?: ReviewRun[] }> =>
   apiGet<{ ok: boolean; error?: string; runs?: ReviewRun[] }>("/api/steward/review/runs");
+export const getReviewIo = (sid: string, path: string, offset: number): Promise<ReviewIoResult> =>
+  apiGet<ReviewIoResult>(`/api/steward/review/io${rvQs(sid, { path, offset: String(offset) })}`);
 export const getReviewChat = (sid: string, path: string): Promise<ReviewChatResult> =>
   apiGet<ReviewChatResult>(`/api/steward/review/chat${rvQs(sid, { path })}`);
 export const getReviewFindings = (sid: string, project = "", state = ""): Promise<SimpleResult & { findings?: ReviewFinding[] }> =>

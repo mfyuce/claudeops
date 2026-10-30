@@ -17,7 +17,8 @@ import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { LOCAL_HOST, rowKey } from "../../state/hosts";
-import type { SessionInfo } from "../../api/types";
+import type { ReviewRun, SessionInfo } from "../../api/types";
+import { ReviewChatModal } from "../ReviewChatModal";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
 import { CwdCell } from "../shared/CwdCell";
@@ -37,6 +38,8 @@ const RUNNING_ROW_COLSPAN = 10;
 interface SessionRowProps {
   session: SessionInfo;
   selection: SelectionControls;
+  /** Bu (kayıtsız) satır koşan bir review sürecine aitse: devral yerine salt-okunur izle. */
+  reviewRun?: ReviewRun;
   isOptionsOpen: boolean;
   onToggleOptions: () => void;
   isAdoptOpen: boolean;
@@ -48,6 +51,7 @@ interface SessionRowProps {
 export function SessionRow({
   session,
   selection,
+  reviewRun,
   isOptionsOpen,
   onToggleOptions,
   isAdoptOpen,
@@ -59,6 +63,7 @@ export function SessionRow({
   const { data, refresh } = useStatusContext();
   const [openingWindow, setOpeningWindow] = useState(false);
   const [openingMirror, setOpeningMirror] = useState(false);
+  const [watching, setWatching] = useState(false);
 
   // `diag.windowless` is inherently LOCAL-only (the aggregator's own
   // gnome-terminal-window bookkeeping) — a remote session's host may well
@@ -169,7 +174,15 @@ export function SessionRow({
         <CwdCell cwd={session.cwd} name={session.name} />
         <td>
           <div className="actioncell">
-            {session.registered === false ? (
+            {session.registered === false && reviewRun ? (
+              <>
+                <span className="cli-badge" title={t.rvWatchTitle}>review · {reviewRun.project}</span>
+                <button type="button" className="start" title={t.rvWatchTitle} onClick={() => setWatching(true)}>
+                  {t.rvWatchBtn}
+                </button>
+                {watching && <ReviewChatModal run={reviewRun} onClose={() => setWatching(false)} />}
+              </>
+            ) : session.registered === false ? (
               <button type="button" className="start" onClick={onToggleAdopt}>
                 {t.adoptBtn}
               </button>

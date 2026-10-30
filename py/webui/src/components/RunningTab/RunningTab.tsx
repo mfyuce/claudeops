@@ -24,7 +24,9 @@
  * badge would be true for every group and say nothing.
  */
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { getReviewRuns } from "../../api/client";
+import type { ReviewRun } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { usePagination } from "../../hooks/usePagination";
@@ -57,6 +59,29 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
   const [openAdoptFor, setOpenAdoptFor] = useState<string | null>(null);
   const collapse = useGroupCollapse();
+  // Koşan review süreçleri roster'da yok ("kayıtsız"): pid ağacıyla koşuya eşlenir, satırda devral yerine salt-okunur izle çıkar.
+  const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
+  const hasUnreg = !!data && data.sessions.some((s) => s.running && s.registered === false);
+  useEffect(() => {
+    if (!hasUnreg) {
+      setReviewRuns([]);
+      return;
+    }
+    let cancelled = false;
+    const load = () =>
+      getReviewRuns().then(
+        (r) => {
+          if (!cancelled && r.ok) setReviewRuns((r.runs ?? []).filter((x) => x.running));
+        },
+        () => undefined,
+      );
+    void load();
+    const id = setInterval(() => void load(), 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [hasUnreg]);
   // Hooks must run unconditionally (rules-of-hooks) — computed before the
   // `!data` early return below, with an empty-array fallback while `data`
   // hasn't loaded yet.
@@ -133,6 +158,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
                       <SessionRow
                         key={rowKey(s)}
                         session={s}
+                        reviewRun={s.registered === false && s.pid != null ? reviewRuns.find((r) => r.pids?.includes(s.pid as number)) : undefined}
                         selection={selection}
                         isOptionsOpen={openOptionsFor === rowKey(s)}
                         onToggleOptions={() => setOpenOptionsFor((prev) => (prev === rowKey(s) ? null : rowKey(s)))}

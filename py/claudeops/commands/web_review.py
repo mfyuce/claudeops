@@ -636,6 +636,39 @@ def read_chat(cfg: Any, rel: str) -> Dict[str, Any]:
     return r
 
 
+def _pid_tree(root: Any) -> List[int]:
+    """`root` pid'i + /proc'taki tüm torunları (koşan review sürecinin çocukları: agy/bwrap vb. panelde kendi satırıyla görünür).
+    Okunamazsa yalnız kök; pid yoksa boş."""
+    try:
+        root = int(root)
+    except (TypeError, ValueError):
+        return []
+    if root <= 0:
+        return []
+    kids: Dict[int, List[int]] = {}
+    try:
+        for name in os.listdir("/proc"):
+            if not name.isdigit():
+                continue
+            try:
+                with open(f"/proc/{name}/stat", "rb") as f:
+                    raw = f.read().decode("utf-8", "replace")
+                ppid = int(raw[raw.rindex(")") + 2:].split()[1])
+            except (OSError, ValueError, IndexError):
+                continue
+            kids.setdefault(ppid, []).append(int(name))
+    except OSError:
+        return [root]
+    out, todo = [], [root]
+    while todo:
+        cur = todo.pop()
+        if cur in out:
+            continue
+        out.append(cur)
+        todo.extend(kids.get(cur, []))
+    return out
+
+
 def review_runs(cfg: Any) -> List[Dict[str, Any]]:
     """History'de listelenecek review koşuları (kimlik başına): çift kayıtlarının son koşusu + `runs` geçmişindeki dosyalar;
     yalnız IO günlüğü diskte olanlar. `io` = `reviews/` altı göreli yol (istemci bunu `review/chat`e geri verir)."""
@@ -645,7 +678,7 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
     running = set(running_keys(cfg.sid))
     rows: Dict[str, Dict[str, Any]] = {}
 
-    def add(pair: str, md: str, status: str, started: Any, finished: Any, is_run: bool, error: str = "") -> None:
+    def add(pair: str, md: str, status: str, started: Any, finished: Any, is_run: bool, error: str = "", pid: Any = None) -> None:
         proj, _, tk = pair.partition("|")
         mode, _, slug = tk.partition("/")
         io = io_path_for(md) if md else ""
@@ -659,7 +692,8 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
         rows[rel] = {"sid": cfg.sid, "project": proj, "mode": mode, "model": slug, "status": status, "io": rel,
                      "file": md, "started_at": started, "finished_at": finished, "running": is_run,
                      "error": error, "duration": (float(finished) - float(started)) if started and finished else None,
-                     "title": rv.review_title(proj, mode, slug, ts)}
+                     "title": rv.review_title(proj, mode, slug, ts),
+                     "pids": _pid_tree(pid) if is_run else []}
     for r in hist.get("runs") or []:
         if not isinstance(r, dict):
             continue
@@ -670,7 +704,7 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
     for key, rec in hist["pairs"].items():
         if isinstance(rec, dict) and rec.get("io_file"):
             md = str(rec["io_file"])[:-len(IO_SUFFIX)] + ".md"
-            add(key, md, str(rec.get("status") or ""), rec.get("started_at"), rec.get("finished_at"), key in running, str(rec.get("error") or ""))
+            add(key, md, str(rec.get("status") or ""), rec.get("started_at"), rec.get("finished_at"), key in running, str(rec.get("error") or ""), rec.get("pid"))
 
     def newest_first(r: Dict[str, Any]) -> Tuple[str, str]:
         # Yol `proje/mod/model/effort/<ts>/...` ile başlar: yola göre sıralamak projeleri/modelleri gruplar, zamanı DEĞİL.

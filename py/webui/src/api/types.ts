@@ -699,7 +699,11 @@ export interface ChatMessage {
 export interface ReviewRun {
   sid: string; project: string; mode: string; model: string; status: string; io: string; file: string;
   started_at: number | null; finished_at: number | null; running: boolean; duration: number | null; title: string; error?: string;
+  /** Koşan review'ın süreç ağacı (kök pid + torunlar); Çalışanlar satırını koşuya eşler. */
+  pids?: number[];
 }
+export interface ReviewIoEvent { role?: string; kind?: string; text?: string }
+export interface ReviewIoResult { ok: boolean; error?: string; events?: ReviewIoEvent[]; offset?: number; size?: number; reset?: boolean }
 export interface ReviewChatResult {
   ok: boolean; error?: string; messages?: ChatMessage[]; running?: boolean; status?: string; path?: string;
 }
