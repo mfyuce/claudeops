@@ -44,7 +44,8 @@ const LESSON_COLOR: Record<string, string> = {
   failed: "#d1453b",
   done: "#2e9d57",
 };
-const FINDING_STATES = ["new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported"];
+const FINDING_STATES = ["new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported", "dup"];
+const DONE_STATES = ["exported", "rejected", "dup"];   // işlenmiş bulgular: "tüm durumlar"da gizli
 
 function when(ts: number | undefined, never: string): string {
   if (!ts) return never;
@@ -121,7 +122,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
             setSt(s);
             setError("");
           } else setError(s.error || t.requestFailed);
-          if (f.ok) setFindings((f.findings ?? []).filter((x) => fState !== "" || x.state !== "exported"));   // TODO.md'ye yazılmış (exported) bulgular "tüm durumlar"da gizli; yalnız state=exported seçilince görünür
+          if (f.ok) setFindings((f.findings ?? []).filter((x) => fState !== "" || !DONE_STATES.includes(x.state)));   // işlenmiş (exported/rejected/dup) bulgular "tüm durumlar"da gizli; yalnız o durum seçilince görünür
           if (rr.ok) setRuns((rr.runs ?? []).filter((r) => r.sid === sid));
           if (ls.ok) {
             setLessons(ls.lessons ?? []);
