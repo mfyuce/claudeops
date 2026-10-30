@@ -681,7 +681,7 @@ class TestAutoApprove(_Flow):
 
 class TestAutoExport(_Flow):
     """`review_auto_export`: approved bulgular tick'te YEREL projenin TODO.md'sine kendiliğinden yazılır (state exported,
-    exported_by=auto); TBD'ye ASLA; uzak proje atlanır; tick başına en çok 1 proje; hata sonrakini engellemez."""
+    exported_by=auto); `unclear` bulgular TOBEDECIDED.md'ye (onaylılar TBD'ye ASLA); uzak proje atlanır; tick başına en çok 1 proje; hata sonrakini engellemez."""
 
     def setUp(self):
         super().setUp()
@@ -726,6 +726,20 @@ class TestAutoExport(_Flow):
         d = self.findings()
         self.assertTrue(all(d[f]["state"] == "exported" and d[f]["exported_by"] == "auto" for f in fids))
         self.assertEqual(wr.auto_export(self.cfg(), now=5_001.0), [])               # ikinci kez bir şey yok
+
+    def test_unclear_goes_to_tbd_after_todo(self):
+        fids = self.seed(REVIEW_MD, "a")
+        d = self.findings()
+        for fid in fids:
+            d[fid]["state"] = "unclear"
+        rv.save_findings(self.p, d)
+        self.assertEqual(wr.auto_export(self.cfg(), now=5_000.0), ["a"])
+        self.assertFalse(os.path.exists(os.path.join(self.proj_dir, "TODO.md")))        # belirsiz bulgu TODO'ya gitmez
+        with open(os.path.join(self.proj_dir, "TOBEDECIDED.md")) as fh:
+            text = fh.read()
+        for fid in fids:
+            self.assertIn(f"(review {fid})", text)
+        self.assertTrue(all(v["state"] == "exported" for v in self.findings().values()))
 
     def test_already_in_file_is_not_written_twice(self):
         fids = self.approve()

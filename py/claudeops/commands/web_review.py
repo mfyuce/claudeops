@@ -2391,8 +2391,8 @@ def decide(cfg: Any, fid: str, action: str, now: Optional[float] = None) -> Dict
 
 
 def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
-    """`review_auto_export` açıksa YEREL projelerin `approved` bulgularını TODO.md'ye yazar (`exported_by=auto`). TBD'ye
-    ASLA (karar gerektirir, elle kalır); uzak proje (host'lu) ve parola/gizli geçen bulgu atlanır; tick başına EN ÇOK 1
+    """`review_auto_export` açıksa YEREL projelerin `approved` bulgularını TODO.md'ye, doğrulanamayan (`unclear`)
+    bulgularını TOBEDECIDED.md'ye yazar (`exported_by=auto`); uzak proje (host'lu) ve parola/gizli geçen bulgu atlanır; tick başına EN ÇOK 1
     proje; bir projede hata olursa log + sonrakine geçer. Aynı bulgu iki kez yazılmaz (`appended_export` dosyadakini
     tanır). Yazılan projelerin adları döner."""
     if not getattr(cfg, "review_auto_export", False):
@@ -2400,17 +2400,20 @@ def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
     t = time.time() if now is None else now
     p = sw.paths_for(cfg.sid)
     remote = set(ownership().get("hosts") or {})
-    projects = sorted({str(v.get("project") or "") for v in rv.load_findings(p).values()
-                       if isinstance(v, dict) and v.get("state") == "approved"} - {""} - remote)
-    for proj in projects:
-        try:
-            res = export_findings(cfg, proj, "TODO.md", t, by="auto")
-        except Exception as e:
-            sw.log_event("review_auto_export_failed", paths=p, project=proj, error=_tail(repr(e)))
-            continue
-        if res.get("ok"):
-            sw.log_event("review_auto_export", paths=p, project=proj, written=res.get("written"), already=res.get("already"))
-            return [proj]
+    allf = rv.load_findings(p)
+    # onaylı bulgular -> TODO.md; doğrulanamayan (`unclear`, karar gerektirir) bulgular -> TOBEDECIDED.md (tick başına 1 proje)
+    for fname, st in (("TODO.md", "approved"), ("TOBEDECIDED.md", "unclear")):
+        projects = sorted({str(v.get("project") or "") for v in allf.values()
+                           if isinstance(v, dict) and v.get("state") == st} - {""} - remote)
+        for proj in projects:
+            try:
+                res = export_findings(cfg, proj, fname, t, by="auto", states=(st,))
+            except Exception as e:
+                sw.log_event("review_auto_export_failed", paths=p, project=proj, file=fname, error=_tail(repr(e)))
+                continue
+            if res.get("ok"):
+                sw.log_event("review_auto_export", paths=p, project=proj, file=fname, written=res.get("written"), already=res.get("already"))
+                return [proj]
     return []
 
 
@@ -2481,7 +2484,8 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
             "commit": "not done (no remote shell API); commit/push the remote repo manually" if written else ""}
 
 
-def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None, by: str = "") -> Dict[str, Any]:
+def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None, by: str = "",
+                    states: Sequence[str] = ("approved",)) -> Dict[str, Any]:
     """Projenin ONAYLI bulgularını yerel proje klasöründeki `fname` (TODO.md / TOBEDECIDED.md) sonuna
     `## Review bulguları` başlığı altında ekler; yazılanlar `exported` olur (çift dışa aktarma yok). Onaysız bulgu ASLA
     yazılmaz. Uzak proje reddedilir (yerel dosya sistemi ona ait değil)."""
@@ -2502,7 +2506,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
     with sw.steward_lock(p):
         data = rv.load_findings(p)
         rows = [dict(v, id=k) for k, v in sorted(data.items())
-                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"
+                if isinstance(v, dict) and v.get("project") == project and v.get("state") in states
                 and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))]
         dropped = False
         for r in list(rows):       # koddaki duruma karşı denetim: eskimiş bulgu yazılmaz, değişen dosya işaretlenir
@@ -2516,7 +2520,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
         if dropped:
             rv.save_findings(p, data)
         if not rows:
-            return {"ok": False, "error": "no approved findings to export", "project": project}
+            return {"ok": False, "error": "no approved findings to export" if tuple(states) == ("approved",) else "no findings to export", "project": project}
         try:
             with open(target, encoding="utf-8") as f:
                 text = f.read()
