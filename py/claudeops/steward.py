@@ -2395,6 +2395,8 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     return items
 
 
+# TODO satırı sahibin kararını bekliyor (cadence/"açık iş" sayımında iş SAYILMAZ: oturum açmak boşa tur)
+OWNER_WAIT_LINE_RE = re.compile(r"SAH[İI]BE SORULDU|sahip(?:in)? (?:karar|cevab)\w* bekl|karar(?:ı)? sahip\w* bekl|STEWARD-ASK|sahibe bırak", re.I)
 BRAIN_STOP_COOLDOWN_SECONDS = 4 * 3600   # beyin `stop` dedikten sonra cadence projeyi bu süre yeniden BAŞLATMAZ (faz değişmez)
 
 

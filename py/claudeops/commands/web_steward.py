@@ -2955,7 +2955,7 @@ def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[i
             if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
                 return None
             with open(real, encoding="utf-8", errors="replace") as f:
-                return sum(1 for ln in f if re.match(r"\s*[-*]\s*\[ \]", ln))
+                return sum(1 for ln in f if re.match(r"\s*[-*]\s*\[ \]", ln) and not sw.OWNER_WAIT_LINE_RE.search(ln))
         except OSError:
             return None
     return count

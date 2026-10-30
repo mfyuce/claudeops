@@ -993,7 +993,7 @@ class DoneConfirmTest(unittest.TestCase):
         from claudeops.commands import web_steward as ws
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "TODO.md"), "w", encoding="utf-8") as f:
-                f.write("- [ ] a\n* [ ] b\n- [x] c\n  - [ ] d\ntext - [ ] not a task\n")
+                f.write("- [ ] a\n* [ ] b\n- [x] c\n  - [ ] d\ntext - [ ] not a task\n- [ ] e: SAHİBE SORULDU, cevap gelene dek uygulanmaz\n")
             projs = {"p1": sw.Project(name="p1", phase="planned"), "r": sw.Project(name="r", phase="planned", host="ulak_31")}
             with mock.patch.object(ws, "_cwd_resolver", lambda: (lambda n: d)):
                 f = ws._open_work_of(projs)
