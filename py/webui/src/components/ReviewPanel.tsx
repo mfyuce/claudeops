@@ -121,7 +121,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
             setSt(s);
             setError("");
           } else setError(s.error || t.requestFailed);
-          if (f.ok) setFindings(f.findings ?? []);
+          if (f.ok) setFindings((f.findings ?? []).filter((x) => fState !== "" || x.state !== "exported"));   // TODO.md'ye yazılmış (exported) bulgular "tüm durumlar"da gizli; yalnız state=exported seçilince görünür
           if (rr.ok) setRuns((rr.runs ?? []).filter((r) => r.sid === sid));
           if (ls.ok) {
             setLessons(ls.lessons ?? []);
