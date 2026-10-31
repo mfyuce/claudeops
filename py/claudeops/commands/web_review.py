@@ -1803,10 +1803,20 @@ def anthropic_excluded(cfg: Any, pool: Any) -> List[str]:
     return [pr for pr in rv.pool_enabled(pool) if pr not in allow]
 
 
-def anthropic_filter(p: Any, cfg: Any, targets: List[rv.ReviewTarget]) -> List[rv.ReviewTarget]:
+def anthropic_trial_complete(cfg: Any, pool: Any, hist: Any, targets: List[rv.ReviewTarget]) -> bool:
+    """Bir defalık deneme: izinli her proje x her anthropic hedefi bir kez `done` (pencere gözetilmez) ise True; mod bir daha koşmaz."""
+    allow = [x.strip() for x in str(getattr(cfg, "review_anthropic_projects", "") or "").split(",") if x.strip()]
+    ant = [t for t in targets if t.mode == "anthropic"]
+    pairs = rv._pairs(hist)
+    return bool(allow and ant) and all((pairs.get(rv.pair_key(pr, t)) or {}).get("status") == "done" for pr in allow for t in ant)
+
+
+def anthropic_filter(p: Any, cfg: Any, targets: List[rv.ReviewTarget], pool: Any = None, hist: Any = None) -> List[rv.ReviewTarget]:
     """Toplam harcama `review_anthropic_budget_usd`'ye ulaştıysa anthropic hedefleri bu turda planlanmaz (koşan iş biter)."""
     if not any(t.mode == "anthropic" for t in targets):
         return targets
+    if hist is not None and anthropic_trial_complete(cfg, pool, hist, targets):
+        return [t for t in targets if t.mode != "anthropic"]
     cap = float(getattr(cfg, "review_anthropic_budget_usd", 100.0) or 0)
     spent = rv.anthropic_spent_usd(p.reviews)
     if cap > 0 and spent >= cap:
@@ -1821,7 +1831,7 @@ def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], ta
     kapmasın). Aynı proje iki koşuda olmaz (mod fark etmez). 0 yuvalı modun hedefi seçilmez. `review_min_gap_minutes` > 0
     ise tick başına en çok 1 başlatma (aralık başlatmalar arasıdır, yuva doluluğundan bağımsız)."""
     busy = busy_keys()
-    targets = anthropic_filter(p, cfg, targets)
+    targets = anthropic_filter(p, cfg, targets, pool, hist)
     free = {m: slots.get(m, 1) - sum(1 for k in busy if _key_mode(k) == m) for m in rv.MODES}
     busy_proj = {k.split("|", 1)[0] for k in busy}
     by_mode = {m: [x for x in targets if x.mode == m] for m in rv.MODES}

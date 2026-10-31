@@ -29,3 +29,15 @@ class TestAnthropicCost(unittest.TestCase):
         ts = rv.targets_from_config(cfg, [], [])
         self.assertEqual([(t.mode, t.effort) for t in ts], [("anthropic", "low"), ("anthropic", "max")])
         self.assertEqual(rv.max_attempts("anthropic"), 1)
+
+
+class TestTrialComplete(unittest.TestCase):
+    def test_one_shot(self):
+        from claudeops.commands import web_review as wr
+        t = rv.ReviewTarget("anthropic", "claude-haiku-5-5", "claude-haiku-5-5", "low")
+        cfg = types.SimpleNamespace(review_anthropic_projects="copsdev")
+        pend = {"pairs": {}}
+        done = {"pairs": {rv.pair_key("copsdev", t): {"status": "done", "finished_at": 1}}}   # pencere (30 gün) çoktan geçmiş olsa da
+        self.assertFalse(wr.anthropic_trial_complete(cfg, {}, pend, [t]))
+        self.assertTrue(wr.anthropic_trial_complete(cfg, {}, done, [t]))
+        self.assertEqual(wr.anthropic_filter(types.SimpleNamespace(reviews="/nonexistent"), cfg, [t], {}, done), [])
