@@ -1324,7 +1324,11 @@ def _live_sessions(name: str, sid: str = "default") -> List[Any]:
     world = _world(sid)
     p = _project_for_session(name, projects, world)
     if p is None:
-        return []
+        # Kayıtsız (ad hoc) proje: `mecdtfl` direktifi `mecdtfl20261031_1`i bulamayıp ikinci oturum açıyordu (2026-10-31).
+        # Kayıt yoksa da tarihli/_N'li çalışan oturum, adı BLUEPRINT ya da taban ad olarak taşıyorsa o projenin oturumudur.
+        from ..session import Session
+        return [x for x in _scan()
+                if x.name != name and name in ((inst_mod.get_instance(x.name) or {}).get("blueprint"), Session(name=x.name, pid=0).base)]
     return [x for x in _scan()
             if (q := _project_for_session(x.name, projects, world)) is not None and q.name == p.name]
 
