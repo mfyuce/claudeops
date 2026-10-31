@@ -349,6 +349,9 @@ class Config:
     review_copilot_models: str = ""  # virgülle ayrık Copilot model listesi (`copilot -p`); "" = KAPALI
     review_copilot_effort: str = "low"  # copilot `--reasoning-effort`
     review_evren_effort: str = "medium"  # Evren `--effort` (ucli: tavan yükseltilemezse `low` ile tek yeniden deneme YALNIZ görev effort gönderiyorsa çalışır; alanı reddeden modelde atlanır)
+    review_anthropic_models: str = ""   # `model@effort,...` (ucli --provider anthropic-messages, gerçek Anthropic API); "" = KAPALI; anahtar dosyası `anthropic_review_key`
+    review_anthropic_projects: str = ""  # virgülle ayrık proje adları; boş = anthropic modu HİÇBİR projeye koşmaz
+    review_anthropic_budget_usd: float = 100.0   # toplam harcama tavanı ($); dolunca anthropic hedefleri planlanmaz
     review_claude_effort: str = "low"  # Anthropic review `--effort` (ölçüm 2026-10-23: haiku low en ucuz+geniş)
 
 

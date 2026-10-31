@@ -792,7 +792,7 @@ def _extract_text(mode: str, stdout: str) -> Tuple[str, str]:
         if res.get("is_error"):
             return (txt if isinstance(txt, str) else ""), (str(txt) if isinstance(txt, str) and txt else "claude is_error")
         return (txt if isinstance(txt, str) else ""), ""
-    if mode != "evren":
+    if mode not in rv.UCLI_MODES:
         return stdout, ""
     try:
         val = json.loads(stdout)
@@ -888,7 +888,7 @@ def _tail(s: str, learned: Sequence[str] = ()) -> str:
 def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, argv: List[str], env: Dict[str, str],
              cwd: str, path: str, started: float, popen: Callable, agy_log_dir: str, now: Callable[[], float]) -> None:
     key = job.key
-    live = IoLog(io_path_for(path), now, err_as_delta=(target.mode == "evren"))
+    live = IoLog(io_path_for(path), now, err_as_delta=(target.mode in rv.UCLI_MODES))
     agy_before = _agy_log_names(agy_log_dir) if target.mode == "agy" else frozenset()
     if job.prompt:
         live.event("user", job.prompt, "prompt")
@@ -905,7 +905,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             _killpg(proc, signal.SIGTERM)
         rv.update_pair(paths, project, target, pid=getattr(proc, "pid", None))
         live.system(f"başladı: {project} {target.mode}/{target.slug}, pid {getattr(proc, 'pid', '?')}. "
-                 + ("Çıktı canlı akar." if target.mode == "evren" else "Çıktı iş bitince gelir."))
+                 + ("Çıktı canlı akar." if target.mode in rv.UCLI_MODES else "Çıktı iş bitince gelir."))
         stop_hb = threading.Event()
 
         def _beat() -> None:
@@ -971,7 +971,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
                 except OSError:
                     pass
         recovered = False
-        if target.mode == "evren":
+        if target.mode in rv.UCLI_MODES:
             text, recovered = _recover_draft(path, text, live.learned())
             if not text.strip():
                 text = live.streamed_report()       # taslak da yoksa: akıştaki yarım rapor
@@ -1013,7 +1013,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status = "limit"
             error = f"model kotası doldu ({target.key}); {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))} dolayına dek planlayıcıdan çıktı"
             rv.set_block(paths, target.key, until, error)
-        elif target.mode == "evren" and status in ("error", "partial") \
+        elif target.mode in rv.UCLI_MODES and status in ("error", "partial") \
                 and (not text.strip() or (timed_out and not _REPORT_HEAD_RE.search(text))):      # kurtarılmış rapor varsa ders (= araştırma turu) açma
             _write_lesson(sw._pp(paths), project, target, status, error, live.learned())
         if target.mode == "agy" and status in ("done", "partial"):
@@ -1142,7 +1142,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             argv = ["remote-review", rdrv.host, project, target.model]
             popen = lambda *_a, **_k: rrun.RemoteReviewProc(   # noqa: E731
                 rdrv, target.model, eff, prompt, lambda t: bool(_REPORT_HEAD_RE.search(t or "")))
-        elif target.mode == "evren":
+        elif target.mode in rv.UCLI_MODES:
             from ..providers import ucli_provider as up
             binary = ucli_client.resolve_binary(ucli_bin)
             sup = (supports_flag or ucli_client.binary_supports_flag)(binary, "--max-io-mib")
@@ -1175,7 +1175,10 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                 # HER Evren koşusunda effort gider (ucli'nin "output limit used up by reasoning" -> low yeniden denemesi bunu şart
                 # koşar); model alanı kabul ettiği kanıtlı değilse (gemma-4-31b 400) `reasoning_effort_for` None verir.
                 level = str(target.effort or getattr(cfg, "review_evren_effort", "medium") or "").strip()
-                eff = up.reasoning_effort_for(target.model, level) if level and level.lower() != "off" else None
+                if target.mode == "anthropic":      # Claude modelleri low..max'i kabul eder; model alanı kapısı Evren'e özel
+                    eff = level if level in ("low", "medium", "high", "xhigh", "max") else None
+                else:
+                    eff = up.reasoning_effort_for(target.model, level) if level and level.lower() != "off" else None
                 if eff:
                     budget += ["--effort", eff]
             if sf(binary, "--partial-file"):        # SIGKILL'e dayanıklı kısmi çıktı (tur sınırında atomik yazılır, 0600)
@@ -1183,11 +1186,18 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             if sf(binary, "--allow-create-dir"):
                 create_dir = os.path.dirname(rpath)
                 prompt += rv.draft_prompt_suffix(rv.draft_path(rpath), lang)
-            argv = evren_argv(binary, cwd, target.model, prompt, (endpoint_fn or up.endpoint)(), bool(sup), live_flags, budget,
-                              create_dir)
-            key_val = api_key if api_key is not None else _api_key()
-            if not key_val:
-                raise RuntimeError("Evren API anahtarı yok")
+            if target.mode == "anthropic":
+                budget += ["--provider", "anthropic-messages"]
+                ep = rv.ANTHROPIC_ENDPOINT
+                key_val = api_key if api_key is not None else _anthropic_review_key()
+                if not key_val:
+                    raise RuntimeError(f"Anthropic review anahtarı yok: {ANTHROPIC_REVIEW_KEY_FILE}")
+            else:
+                ep = (endpoint_fn or up.endpoint)()
+                key_val = api_key if api_key is not None else _api_key()
+                if not key_val:
+                    raise RuntimeError("Evren API anahtarı yok")
+            argv = evren_argv(binary, cwd, target.model, prompt, ep, bool(sup), live_flags, budget, create_dir)
             env_extra["UCLI_API_KEY"] = key_val
         elif target.mode == "claude":
             from ..settings import resolved_binary
@@ -1787,12 +1797,31 @@ def busy_keys() -> List[str]:
     return sorted(act | set(running_keys()))
 
 
+def anthropic_excluded(cfg: Any, pool: Any) -> List[str]:
+    """`anthropic` modu yalnız `review_anthropic_projects` listesindeki projelere koşar: havuzdaki diğerleri atlanır."""
+    allow = {x.strip() for x in str(getattr(cfg, "review_anthropic_projects", "") or "").split(",") if x.strip()}
+    return [pr for pr in rv.pool_enabled(pool) if pr not in allow]
+
+
+def anthropic_filter(p: Any, cfg: Any, targets: List[rv.ReviewTarget]) -> List[rv.ReviewTarget]:
+    """Toplam harcama `review_anthropic_budget_usd`'ye ulaştıysa anthropic hedefleri bu turda planlanmaz (koşan iş biter)."""
+    if not any(t.mode == "anthropic" for t in targets):
+        return targets
+    cap = float(getattr(cfg, "review_anthropic_budget_usd", 100.0) or 0)
+    spent = rv.anthropic_spent_usd(p.reviews)
+    if cap > 0 and spent >= cap:
+        sw.log_event("review_anthropic_budget_reached", paths=p, spent=round(spent, 2), cap=cap)
+        return [t for t in targets if t.mode != "anthropic"]
+    return targets
+
+
 def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], targets: List[rv.ReviewTarget],
                 slots: Dict[str, int], t: float, gap: int, actions: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Yuva kipi (`review_slots`): her modda boş yuva kadar koşu, modlar arası sırayla birer birer (biri tüm projeleri
     kapmasın). Aynı proje iki koşuda olmaz (mod fark etmez). 0 yuvalı modun hedefi seçilmez. `review_min_gap_minutes` > 0
     ise tick başına en çok 1 başlatma (aralık başlatmalar arasıdır, yuva doluluğundan bağımsız)."""
     busy = busy_keys()
+    targets = anthropic_filter(p, cfg, targets)
     free = {m: slots.get(m, 1) - sum(1 for k in busy if _key_mode(k) == m) for m in rv.MODES}
     busy_proj = {k.split("|", 1)[0] for k in busy}
     by_mode = {m: [x for x in targets if x.mode == m] for m in rv.MODES}
@@ -1805,7 +1834,8 @@ def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], ta
             if started and gap:
                 live = []
                 break
-            nxt = rv.next_review(pool, hist, by_mode[mode], t, busy_projects=sorted(busy_proj) + bad + skip_mode[mode],
+            nxt = rv.next_review(pool, hist, by_mode[mode], t, busy_projects=sorted(busy_proj) + bad + skip_mode[mode]
+                                 + (anthropic_excluded(cfg, pool) if mode == "anthropic" else []),
                                  head_of=_head_of)
             if nxt is None:
                 live.remove(mode)

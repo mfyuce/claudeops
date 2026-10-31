@@ -22,7 +22,7 @@ class TestParseSlots(unittest.TestCase):
         self.assertEqual(rv.parse_slots("off"), {})
         self.assertEqual(rv.parse_slots("bozuk"), {})
         s = rv.parse_slots("agy=5, evren=1,codex=1,copilot=0,xx=9,claude=a")
-        self.assertEqual(s, {"agy": 5, "evren": 1, "claude": 1, "codex": 1, "copilot": 0})
+        self.assertEqual(s, {"agy": 5, "evren": 1, "claude": 1, "codex": 1, "copilot": 0, "anthropic": 1})
 
 
 class TestTakeSlot(unittest.TestCase):

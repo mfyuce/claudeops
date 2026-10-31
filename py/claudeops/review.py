@@ -21,7 +21,7 @@ WINDOW_SECONDS = 30 * 86400         # bir çift bu sürede `done` ise "taze" (pr
 HISTORY_VERSION = 1
 HISTORY_RUNS_MAX = 200
 MAX_ATTEMPTS = 3                    # error/model_fallback/partial çifti bu denemeden sonra pencere dolana dek bırakılır
-MODE_MAX_ATTEMPTS = {"evren": 1}    # Evren: 20 dk zaman aşımı kota yakar, pencere başına en çok 1 deneme (sahip kararı 2026-10-24)
+MODE_MAX_ATTEMPTS = {"evren": 1, "anthropic": 1}    # Evren: 20 dk zaman aşımı kota yakar, pencere başına en çok 1 deneme (sahip kararı 2026-10-24)
 
 
 UNCOUNTED_ERRORS = ("cancelled", "spawn:", "yeniden başlatma")     # TBD#139: kaza sayılmayan hatalar (iptal, süreç açılamadı, servis restart'ı)
@@ -36,7 +36,11 @@ def counts_as_attempt(rec: Any) -> bool:
 
 def max_attempts(mode: str) -> int:
     return MODE_MAX_ATTEMPTS.get(mode, MAX_ATTEMPTS)
-MODES = ("agy", "evren", "claude", "codex", "copilot")
+MODES = ("agy", "evren", "claude", "codex", "copilot", "anthropic")
+UCLI_MODES = ("evren", "anthropic")      # ucli ile koşan modlar (anthropic = ucli --provider anthropic-messages, gerçek API)
+ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1"
+# $ / 1M token: (girdi, çıktı, önbellek okuma, önbellek yazma). Haiku 5.5: >100K istemde 0,50/2,50 (ucli tek istek boyutunu ayırmaz: alt sınır)
+ANTHROPIC_PRICES = {"haiku-5-5": (0.10, 0.50, 0.01, 0.125), "sonnet-5-5": (2.0, 10.0, 0.20, 2.5), "opus-5-5": (4.0, 20.0, 0.20, 5.0)}
 
 
 def parse_slots(spec: Any) -> Dict[str, int]:
@@ -124,7 +128,7 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
                 seen.add(t.key)
                 out.append(t)
     for mode, attr in (("claude", "review_claude_models"), ("codex", "review_codex_models"),
-                       ("copilot", "review_copilot_models")):
+                       ("copilot", "review_copilot_models"), ("anthropic", "review_anthropic_models")):
         for spec in _split_models(getattr(cfg, attr, "")):
             m, eff = split_spec(spec)         # `claude-haiku-5-5@low,claude-haiku-5-5@high`: aynı model, iki ayrı çift
             if not m:
@@ -1005,3 +1009,51 @@ def report_incomplete(text: str) -> bool:
     t = text or ""
     return bool(_INCOMPLETE_RE.search(t)) and not _HAS_FINDING_RE.search(t)
 
+
+
+def anthropic_price(model: str) -> Tuple[float, float, float, float]:
+    m = str(model or "")
+    for k, v in ANTHROPIC_PRICES.items():
+        if k in m:
+            return v
+    return ANTHROPIC_PRICES["opus-5-5"]       # bilinmeyen model: en pahalı varsayım (bütçe güvenli tarafta)
+
+
+def usage_cost_usd(path: str, model: str) -> float:
+    """Bir `.usage.jsonl` dosyasının $ maliyeti (istek başına ucli `usage`: girdi/çıktı/önbellek okuma/yazma). Tanınmayan
+    alan 0 sayılır; hiç ayrıştırılamazsa dosya boyutundan bağımsız 0 döner (bütçe kapısı `anthropic_spent_usd` yedek tahmin ekler)."""
+    pi, po, pr, pw = anthropic_price(model)
+    tot = 0.0
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    u = (json.loads(line) or {}).get("usage") or {}
+                except ValueError:
+                    continue
+                def g(*names: str) -> float:
+                    for n in names:
+                        if isinstance(u.get(n), (int, float)):
+                            return float(u[n])
+                    return 0.0
+                cr = g("cache_read_input_tokens", "cached_tokens", "cache_read_tokens")
+                cw = g("cache_creation_input_tokens", "cache_write_tokens")
+                inp = max(0.0, g("input_tokens", "prompt_tokens") - (0 if "cache_read_input_tokens" in u else cr) - (0 if "cache_creation_input_tokens" in u else cw))
+                if "cached_tokens" in u and "cache_creation_input_tokens" not in u:
+                    inp_price = pw      # ucli normalleştirilmiş sayaç: yazma ayrı raporlanmaz, önbellek istendiğinden yeni girdi yazma fiyatından sayılır (güvenli üst sınır)
+                else:
+                    inp_price = pi
+                tot += (inp * inp_price + g("output_tokens", "completion_tokens") * po + cr * pr + cw * pw) / 1e6
+    except OSError:
+        pass
+    return tot
+
+
+def anthropic_spent_usd(reviews_root: str) -> float:
+    """Tüm `anthropic` koşularının toplam $ (yalnız `<root>/*/anthropic/<model>/<effort>/<ts>/<ts>.usage.jsonl`)."""
+    import glob
+    tot = 0.0
+    for f in glob.glob(os.path.join(reviews_root, "*", "anthropic", "*", "*", "*", "*.usage.jsonl")):
+        parts = f.split(os.sep)
+        tot += usage_cost_usd(f, parts[-4])
+    return tot
