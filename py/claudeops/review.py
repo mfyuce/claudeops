@@ -636,7 +636,8 @@ def save_findings(paths: Any, findings: Dict[str, Any]) -> None:
 def finding_key(proj: str, where: Any, title: Any) -> str:
     """Bulgu kimliği (TBD#137c): (proje, dosya, normalize başlık) hash'i. Dosya = `where`in `:satır` öncesi; başlık küçük harf,
     harf/rakam dışı atılır: aynı hata farklı koşuda/satırda yeniden bulunsa aynı anahtar."""
-    fil = re.split(r"[:#]", str(where or "").strip(), 1)[0].strip().lower()
+    fil = re.split(r"[:#]", str(where or "").strip().strip("`"), maxsplit=1)[0].strip().strip("`").lower()
+    fil = re.sub(r"^(\./|file://)", "", fil)
     ttl = re.sub(r"[^0-9a-zçğıöşü]+", " ", str(title or "").lower()).strip()
     return hashlib.sha1(f"{proj}\x00{fil}\x00{ttl}".encode("utf-8")).hexdigest()[:16]
 
@@ -963,7 +964,7 @@ def changed_after_review(row: Dict[str, Any], cwd: str) -> bool:
         return False
     try:
         t = os.path.getmtime(path)
-        if os.path.isdir(os.path.join(cwd, ".git")):
+        if os.path.exists(os.path.join(cwd, ".git")):  # dizin ya da worktree'deki .git DOSYASI
             out = subprocess.run(["git", "-C", cwd, "log", "-1", "--format=%ct", "--", path], capture_output=True,
                                  text=True, timeout=10).stdout.strip()
             if out.isdigit():
