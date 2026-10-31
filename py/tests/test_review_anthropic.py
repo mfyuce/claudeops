@@ -16,9 +16,9 @@ class TestAnthropicCost(unittest.TestCase):
     def test_cost_ucli_format(self):
         with tempfile.TemporaryDirectory() as d:
             f = self._usage(d, "claude-sonnet-5-5", [{"prompt_tokens": 1_000_000, "cached_tokens": 400_000, "completion_tokens": 100_000}])
-            # 600K yeni x2,5 + 400K okuma x0,2 + 100K cikti x10 = 1,5 + 0,08 + 1,0
+            # 600K yeni x2,5 + 400K okuma x0,1 (Sonnet 5.5 0,05x) + 100K cikti x10 = 1,5 + 0,04 + 1,0
             self.assertAlmostEqual(rv.usage_cost_usd(f, "claude-sonnet-5-5"), 2.54, places=4)
-            self.assertAlmostEqual(rv.anthropic_spent_usd(os.path.join(d, "reviews")), 2.58, places=4)
+            self.assertAlmostEqual(rv.anthropic_spent_usd(os.path.join(d, "reviews")), 2.54, places=4)
 
     def test_unknown_model_priced_as_opus(self):
         self.assertEqual(rv.anthropic_price("claude-x-9"), rv.ANTHROPIC_PRICES["opus-5-5"])
