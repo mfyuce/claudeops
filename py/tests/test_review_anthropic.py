@@ -22,6 +22,8 @@ class TestAnthropicCost(unittest.TestCase):
 
     def test_unknown_model_priced_as_opus(self):
         self.assertEqual(rv.anthropic_price("claude-x-9"), rv.ANTHROPIC_PRICES["opus-5-5"])
+        self.assertEqual(rv.anthropic_price("claude-fable-5-1"), rv.ANTHROPIC_PRICES["fable-5-1"])
+        self.assertGreater(rv.anthropic_price("claude-fable-5-1")[0], rv.anthropic_price("claude-opus-5-5")[0])
 
     def test_targets_and_attempts(self):
         cfg = types.SimpleNamespace(review_anthropic_models="claude-haiku-5-5@low,claude-haiku-5-5@max", review_claude_models="",

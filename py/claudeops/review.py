@@ -40,7 +40,9 @@ MODES = ("agy", "evren", "claude", "codex", "copilot", "anthropic")
 UCLI_MODES = ("evren", "anthropic")      # ucli ile koşan modlar (anthropic = ucli --provider anthropic-messages, gerçek API)
 ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1"
 # $ / 1M token: (girdi, çıktı, önbellek okuma, önbellek yazma). Haiku 5.5: >100K istemde 0,50/2,50 (ucli tek istek boyutunu ayırmaz: alt sınır)
-ANTHROPIC_PRICES = {"haiku-5-5": (0.10, 0.50, 0.01, 0.125), "sonnet-5-5": (2.0, 10.0, 0.20, 2.5), "opus-5-5": (4.0, 20.0, 0.20, 5.0)}
+ANTHROPIC_PRICES = {"haiku-5-5": (0.10, 0.50, 0.01, 0.125), "sonnet-5-5": (2.0, 10.0, 0.20, 2.5), "opus-5-5": (4.0, 20.0, 0.20, 5.0),
+                    # fable-5-1: 10/50 $/M (ikincil kaynak; önbellek okuma 0,25 bildirildi, güvenli tarafta 1,0 alındı), yazma 12,5
+                    "fable-5-1": (10.0, 50.0, 1.0, 12.5)}
 
 
 def parse_slots(spec: Any) -> Dict[str, int]:
