@@ -81,6 +81,23 @@ class PureTest(unittest.TestCase):
         self.assertEqual(rr.parse_answer("yerel, yol /home/x/rustrino olur"), ("local", "/home/x/rustrino"))
         self.assertEqual(rr.parse_answer("bilmiyorum"), ("", ""))
 
+    def test_parse_answer_keyword_beats_path(self):
+        self.assertEqual(rr.parse_answer("vazgeç /home/x/p"), ("off", ""))
+        self.assertEqual(rr.parse_answer("skip /home/x/p"), ("off", ""))
+        self.assertEqual(rr.parse_answer("hayır /home/x/p"), ("off", ""))
+        self.assertEqual(rr.parse_answer("no /home/x/p"), ("off", ""))
+        self.assertEqual(rr.parse_answer("uzak /home/x/p"), ("remote", ""))
+        self.assertEqual(rr.parse_answer("remote /home/x/p"), ("remote", ""))
+        self.assertEqual(rr.parse_answer("local /home/x/p"), ("local", "/home/x/p"))
+        self.assertEqual(rr.parse_answer("/home/x/p"), ("local", "/home/x/p"))
+
+    def test_parse_answer_word_boundary(self):
+        self.assertEqual(rr.parse_answer("nokta"), ("", ""))
+        self.assertEqual(rr.parse_answer("haydi"), ("", ""))
+        self.assertEqual(rr.parse_answer("no"), ("off", ""))
+        self.assertEqual(rr.parse_answer("no, thanks"), ("off", ""))
+        self.assertEqual(rr.parse_answer("Hayır"), ("off", ""))
+
     def test_prepare_copy_updates_and_refuses_dirty(self):
         with tempfile.TemporaryDirectory() as d:
             work, clone = make_clone(d)

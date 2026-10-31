@@ -44,20 +44,25 @@ def find_local_copy(name: str, roots: Tuple[str, ...] = DEFAULT_ROOTS) -> str:
 _PATH_RE = re.compile(r"(?:^|\s)((?:/|~/)[^\s`'\"]+)")
 
 
+_LOCAL_RE = re.compile(r"(?:yerel|local)\b")
+_REMOTE_RE = re.compile(r"(?:uzak|remote)\b")
+_OFF_RE = re.compile(r"(?:vazge\w*|skip|off|hay[ıi]r|no)\b")
+
+
 def parse_answer(answer: str) -> Tuple[str, str]:
     """Cevap -> (review_where, yol). Seçenek metni ya da serbest metin: "yerel"/"local" -> local, "uzak"/"remote" ->
     remote, "vazge"/"skip"/"hayır" -> off; metinde mutlak yol varsa local + o yol. Tanınmazsa ("", "")."""
     text = " ".join(str(answer or "").split())
+    low = text.casefold()
     m = _PATH_RE.search(text)
+    if _OFF_RE.match(low):
+        return "off", ""
+    if _REMOTE_RE.match(low):
+        return "remote", ""
+    if _LOCAL_RE.match(low):
+        return "local", (os.path.expanduser(m.group(1)).rstrip("/") if m else "")
     if m:
         return "local", os.path.expanduser(m.group(1)).rstrip("/")
-    low = text.casefold()
-    if low.startswith(("yerel", "local")):
-        return "local", ""
-    if low.startswith(("uzak", "remote")):
-        return "remote", ""
-    if low.startswith(("vazge", "skip", "off", "hay", "no")):
-        return "off", ""
     return "", ""
 
 
