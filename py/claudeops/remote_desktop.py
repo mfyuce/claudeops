@@ -211,7 +211,10 @@ def start(port: Optional[int] = None) -> dict:
             return {"ok": False, "error": f"binary bulunamadı ({binary})"}
 
         proc = subprocess.Popen(
-            [str(binary), str(port)],
+            # `--input`: uzakgoz 0.3.0'dan beri fare/klavye enjeksiyonu varsayılan KAPALI (aksi halde panelde "Kontrolü Al"
+            # sessizce çalışmaz); panelin kendi kapısı (Kontrolü Al düğmesi) zaten girdiyi ayrıca açar. Eski ikili fazla
+            # argümanı yok sayar (yalnız PORT'u okur).
+            [str(binary), str(port), "--input"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
         )
         _proc, _port = proc, port
