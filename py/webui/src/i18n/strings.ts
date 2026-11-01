@@ -447,6 +447,8 @@ export interface Strings {
   ucliLimitsMaxContextKibLabel: string;
   ucliLimitsMaxToolCallsLabel: string;
   ucliLimitsMaxOutputTokensLabel: string;
+  ucliLimitsRequestTimeoutLabel: string;
+  mixedCliBadgeHint: (cli: string) => string;
   ucliLimitsPlaceholderAuto: string;
   ucliLimitsReasoningLabel: string;
   ucliLimitsReasoningHint: string;
@@ -1283,6 +1285,8 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxContextKibLabel: "max-context-kib (KiB)",
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
+    ucliLimitsRequestTimeoutLabel: "request-timeout-secs",
+    mixedCliBadgeHint: (c) => `Bu klasörde birden çok CLI çalışıyor; bu satırlardan bazıları ${c}`,
     ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
     ucliLimitsReasoningLabel: "akıl yürütme (--effort)",
     ucliLimitsReasoningHint:
@@ -2132,6 +2136,8 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxContextKibLabel: "max-context-kib (KiB)",
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
+    ucliLimitsRequestTimeoutLabel: "request-timeout-secs",
+    mixedCliBadgeHint: (c) => `Several CLIs share this folder; some rows here are ${c}`,
     ucliLimitsPlaceholderAuto: "empty = preset default",
     ucliLimitsReasoningLabel: "reasoning (--effort)",
     ucliLimitsReasoningHint:

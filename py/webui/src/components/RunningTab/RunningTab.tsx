@@ -149,6 +149,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
                     cwd={g.cwd}
                     name={g.items[0]?.blueprint || g.items[0]?.name}
                     count={g.items.length}
+                    clis={g.items.map((x) => x.cli)}
                     colSpan={RUNNING_ROW_COLSPAN}
                     collapsed={!expanded}
                     onToggle={() => collapse.toggle(gKey)}

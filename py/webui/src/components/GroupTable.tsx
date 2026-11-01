@@ -136,6 +136,7 @@ export function GroupTable({ items, search, onView }: GroupTableProps) {
                   cwd={g.cwd}
                   name={g.items[0]?.name}
                   count={g.items.length}
+                  clis={g.items.map((x) => x.cli)}
                   colSpan={GROUP_TABLE_COLSPAN}
                   collapsed={!expanded}
                   onToggle={() => collapse.toggle(gKey)}
