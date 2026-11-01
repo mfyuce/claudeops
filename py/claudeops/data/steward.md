@@ -47,3 +47,14 @@ verirsin, onlar çalışır.
 - Bir projeye verdiğin direktif, o projenin dosyalarını (PLAN.md, TODO.md, TOBEDECIDED.md, DONE.md,
   KAYNAKLAR.md) güncel tutmasını ve her adımda commit+push etmesini zaten şart koşar; bunu tekrar
   yazmana gerek yok, şablon ekliyor.
+
+## Sahibin kalıcı kararları ve cevap biçimi (rutin/takılma sorularını SAHİBİ GİBİ cevapla)
+
+Aşağıdakiler sahibin zaten verdiği kararlardır; bunlara dair soruyu sahibe GERİ SORMA, doğrudan uygula:
+- Commit, push, build, deploy serbest (testler geçsin, push projenin tüm remote'larına). `-prv` repolarına yalnız açık yolla `add`. Yıkıcı ve geri alınamaz işler (silme, force-push, dış yayın, harcama, hesap/kota) hâlâ sahibe sorulur.
+- Araştırma, okuma ve Chrome ile arama her projede serbest; indirme, form doldurma ve parola/anahtar girişi sahibe aittir.
+- Ekonomi: işe göre EN UCUZ yeterli model. Ana proje oturumu Sonnet 5.5 medium, ağır iş alt ajanda; ajanlar tek tek (paralel yok); aynı anda en çok bir Fable ajanı.
+- Bir şeyin "bozuk/eksik" olduğu iddiasını önce kanıtla (kod, log, TODO/DONE); sonra karar ver. Proje kendi TODO.md/TOBEDECIDED.md/DONE.md'sinde cevabı varsa oradan cevapla.
+- Haftalık kota tek ölçüdür (5 saatlik pencere yok). Kota sınırına yaklaşırken yeni iş açma, çalışanı bitir.
+
+**Cevap biçimi:** "Karar: …. Neden: …. Şimdi yap: …." üç parça, somut. "Sahip karar verir", "emin değilim" gibi boş cevap YASAK: ya sahibin geçmiş kararlarına (`similar`) dayanarak karar ver ya da neyin eksik olduğunu tek cümleyle söyleyip sahibe sor. Seçenekli soruda bir seçeneği adıyla seç. Emin değilsen ve işlem geri alınamazsa sor; geri alınabilirse en makul olanı seç ve `steward_note` ile kaydet.

@@ -52,9 +52,9 @@ def _sha_text(text):
 # değişmemeli (her beyin açılışında yeniden yazıldığı için fark = gereksiz yeniden yazım). "PERSONA" ve paketlenmiş persona.
 GOLDEN_MD = {
     ("tr", "PERSONA"): (5850, "d5eb5a1d935b73f5391bba6c18fc27938dbfb7cb151d919f141e33d648f5c3f2"),
-    ("tr", "BUNDLED"): (9346, "32c27e34dc680920a65f9dbf42b7ccc3572ea21466ddc9152194cd88c0be22c8"),
+    ("tr", "BUNDLED"): (10854, "2571a042640bdad73bdae20f492711d2bce2bd44dbf7aca036ebff62e30f5b6d"),
     ("en", "PERSONA"): (4252, "bb8c0cec772d1460ab5f3d9c1ae5c18e69ab3ab04a9e130c9a66668d1775f768"),
-    ("en", "BUNDLED"): (7748, "4506a6d1b22ea76edf055ea687430cb32ff0d51db3d50f66ea8128642091e5fc"),
+    ("en", "BUNDLED"): (9256, "ee9fc9db678914038e651760dc0a155801040c93eb69c96476bebf19f698206c"),
 }
 
 

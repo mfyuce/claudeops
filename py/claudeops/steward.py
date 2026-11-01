@@ -974,7 +974,7 @@ SIMILAR_MIN_SCORE = 0.25
 
 
 def similar_answers(text: str, questions: List["Question"], project: str = "", exclude_id: str = "",
-                    limit: int = 3) -> List["Question"]:
+                    limit: int = 6) -> List["Question"]:
     """Karar hafızası (yalnız bu kimliğin `questions.json`'u): `text`e en çok benzeyen cevaplanmış sorular (en benzer önce).
     Skor = kelime Jaccard'ı + ortak konu jetonu payı (+0.1 aynı proje). Beyin rutin/takılma maddesinde sahibin geçmiş
     kararlarını görür; aynı şeyi yeniden sormasın, tutarlı cevaplasın."""
