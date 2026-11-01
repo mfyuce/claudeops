@@ -4213,6 +4213,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "clis": cli_install.all_cli_status()})
         elif path == "/api/diag/log":
             self._json({"lines": diag_log_tail(30)})
+        elif path == "/api/ucli/service-models":
+            from .. import ucli_session_opts as _uso
+            from ..settings import byok_env_for as _byok
+            svc = (parse_qs(urlparse(self.path).query).get("service") or [""])[0]
+            env = _uso.SERVICES.get(svc, ("", "", ""))[2]
+            self._json({"ok": True, "service": svc,
+                        "models": _uso.service_models(svc, (_byok("ucli").get(env, "") if env else "").strip())})
         elif path == "/api/io/providers":
             self._json(_io_providers_meta())
         elif path == "/api/io/sessions":

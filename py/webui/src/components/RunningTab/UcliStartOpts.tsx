@@ -4,6 +4,8 @@
  * glob for files the model wrote, a timeout). Shells / wrappers / network are not offered (the backend rejects them
  * too: `ucli_session_opts.validate_opts`). State is owned by `OptionsRow`; `toCliOpts` builds the `cli_opts` payload.
  */
+import { useEffect, useState } from "react";
+import { apiGet } from "../../api/client";
 import type { Lang } from "../../i18n/strings";
 import { useStatusContext } from "../../state/StatusContext";
 
@@ -59,12 +61,29 @@ export function UcliStartOpts({ value, onChange, lang }: Props) {
   const byok = data?.settings.byok?.ucli ?? {};
   const tr = lang === "tr";
   const set = (p: Partial<UcliStartState>) => onChange({ ...value, ...p });
-  const svc = SERVICES.find((s) => s.id === value.service) ?? SERVICES[0];
+  const svcBase = SERVICES.find((s) => s.id === value.service) ?? SERVICES[0];
+  const [live, setLive] = useState<string[]>([]);
+  useEffect(() => {
+    setLive([]);
+    if (value.service === "evren") return;
+    let on = true;
+    apiGet<{ models?: string[] }>(`/api/ucli/service-models?service=${encodeURIComponent(value.service)}`)
+      .then((r) => on && setLive(r.models ?? []))
+      .catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, [value.service]);
+  // canlı liste (hizmetin /models ucu) öncelikli; yoksa koddaki yedek liste
+  const svc = { ...svcBase, models: live.length > 0 ? live : svcBase.models };
   return (
     <>
       <label>
         {tr ? "hizmet" : "service"}
-        <select value={value.service} onChange={(e) => set({ service: e.target.value, serviceModel: "" })}>
+        <select value={value.service} onChange={(e) => {
+            const ns = SERVICES.find((x) => x.id === e.target.value);
+            set({ service: e.target.value, serviceModel: ns && ns.models.length > 0 ? ns.models[0] : "" });
+          }}>
           {SERVICES.map((s) => {
             const ok = s.id === "evren" || byok[s.env] === true;
             return (
@@ -79,18 +98,27 @@ export function UcliStartOpts({ value, onChange, lang }: Props) {
       {value.service !== "evren" && (
         <label>
           {tr ? "model (hizmet)" : "model (service)"}
-          <input
-            type="text"
-            list="ucliSvcModels"
-            placeholder="model id"
-            value={value.serviceModel}
-            onChange={(e) => set({ serviceModel: e.target.value })}
-          />
-          <datalist id="ucliSvcModels">
-            {svc.models.map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
+          {svc.models.length > 0 && (
+            <select
+              value={svc.models.includes(value.serviceModel) ? value.serviceModel : value.serviceModel ? "__custom" : ""}
+              onChange={(e) => set({ serviceModel: e.target.value === "__custom" ? "x-" : e.target.value })}
+            >
+              {svc.models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+              <option value="__custom">{tr ? "başka (elle yaz)…" : "other (type)…"}</option>
+            </select>
+          )}
+          {(svc.models.length === 0 || (value.serviceModel !== "" && !svc.models.includes(value.serviceModel))) && (
+            <input
+              type="text"
+              placeholder="model id"
+              value={value.serviceModel === "x-" ? "" : value.serviceModel}
+              onChange={(e) => set({ serviceModel: e.target.value })}
+            />
+          )}
         </label>
       )}
       <label title={tr ? "Varsayılan kapalı. Yalnız gerekirse aç." : "Off by default. Enable only when needed."}>

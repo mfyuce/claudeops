@@ -121,3 +121,36 @@ def exec_flags(opts: Dict[str, Any]) -> List[str]:
     if opts.get("exec_timeout"):
         argv += ["--exec-timeout-secs", str(int(opts["exec_timeout"]))]
     return argv
+
+
+# --- hizmetin canlı model listesi (2026-11-02: sabit liste yerine hizmetin KENDİ `/models` ucu) -------------------
+import json as _json
+import time as _time
+import urllib.request as _urlreq
+
+_MODELS_CACHE: Dict[str, Tuple[float, List[str]]] = {}
+_MODELS_TTL = 600.0   # sn; başarısızlık 60 sn tutulur (tekrar denemeden önce)
+
+
+def service_models(service: str, key: str, *, opener=None, now=None) -> List[str]:
+    """`SERVICES[service]` uç noktasının `/models` listesi (model kimlikleri, sıralı). Anahtar yoksa/ağ hatasında [].
+    Anthropic `x-api-key` + `anthropic-version`, diğerleri `Authorization: Bearer`. Anahtar ASLA loglanmaz."""
+    if service not in SERVICES or service == "evren" or not key:
+        return []
+    t = (now or _time.time)()
+    hit = _MODELS_CACHE.get(service)
+    if hit and t - hit[0] < (_MODELS_TTL if hit[1] else 60.0):
+        return list(hit[1])
+    wire, ep, _env = SERVICES[service]
+    hdr = {"x-api-key": key, "anthropic-version": "2023-06-01"} if wire == "anthropic-messages" else {"Authorization": f"Bearer {key}"}
+    ids: List[str] = []
+    try:
+        req = _urlreq.Request(ep.rstrip("/") + "/models?limit=200", headers=hdr)
+        with (opener or _urlreq.urlopen)(req, timeout=8) as r:
+            data = _json.loads(r.read().decode("utf-8", "replace"))
+        rows = data.get("data") if isinstance(data, dict) else data
+        ids = sorted({str(m.get("id")) for m in (rows or []) if isinstance(m, dict) and m.get("id")})
+    except Exception:
+        ids = []
+    _MODELS_CACHE[service] = (t, ids)
+    return list(ids)

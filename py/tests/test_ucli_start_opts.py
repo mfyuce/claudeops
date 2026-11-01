@@ -131,6 +131,30 @@ class BuildTests(unittest.TestCase):
         self.assertNotIn("--provider", inner)      # chat-completions varsayılanı
         self.assertNotIn("--cache-ttl", inner)     # Anthropic'e özgü bayraklar eklenmez
 
+    def test_service_models_fetches_live_list_with_correct_auth(self):
+        import io, json
+        from claudeops import ucli_session_opts as uso
+        uso._MODELS_CACHE.clear()
+        seen = {}
+
+        class R(io.BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def opener(req, timeout=0):
+            seen["h"] = dict(req.header_items()); seen["u"] = req.full_url
+            return R(json.dumps({"data": [{"id": "b-model"}, {"id": "a-model"}, {"id": "a-model"}]}).encode())
+
+        self.assertEqual(uso.service_models("claude", "KEY", opener=opener), ["a-model", "b-model"])
+        self.assertEqual(seen["h"].get("X-api-key"), "KEY")
+        self.assertIn("api.anthropic.com/v1/models", seen["u"])
+        uso._MODELS_CACHE.clear()
+        uso.service_models("groq", "K2", opener=opener)
+        self.assertEqual(seen["h"].get("Authorization"), "Bearer K2")
+        uso._MODELS_CACHE.clear()
+        self.assertEqual(uso.service_models("grok", "", opener=opener), [])            # anahtarsız: ağ yok
+        self.assertEqual(uso.service_models("evren", "K", opener=opener), [])          # evren kendi yolu
+
     def test_missing_service_key_refuses_spawn(self):
         with self.assertRaises(ValueError):
             self.build({"service": "grok"})
