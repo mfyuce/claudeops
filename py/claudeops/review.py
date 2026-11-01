@@ -157,6 +157,14 @@ def review_title(project: str, mode: str, model: str, ts: Any) -> str:
     return " · ".join(parts)
 
 
+def _num(v: Any, default: float = 0.0) -> float:
+    """Diskten gelen (elle düzenlenmiş/bozuk) sayı alanı: sayıya çevrilemezse `default` (planlayıcı çökmesin)."""
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
 def pair_key(proj: str, t: ReviewTarget) -> str:
     return f"{proj}|{t.mode}/{t.pslug}"
 
@@ -170,7 +178,7 @@ def _pairs(history: Any) -> Dict[str, Dict[str, Any]]:
 
 def _fresh(rec: Any, now: float, window: float) -> bool:
     return (isinstance(rec, dict) and rec.get("status") == "done"
-            and now - float(rec.get("finished_at") or 0) < window)
+            and now - _num(rec.get("finished_at")) < window)
 
 
 def project_complete(history: Any, proj: str, targets: Sequence[ReviewTarget], now: float,
@@ -228,15 +236,15 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
             if _fresh_or_same(r):
                 continue
             if (isinstance(r, dict) and r.get("status") in ("error", "model_fallback", "partial")
-                    and int(r.get("attempts") or 0) >= max_attempts(t.mode) and counts_as_attempt(r)
-                    and now - float(r.get("started_at") or 0) < window):
+                    and int(_num(r.get("attempts"))) >= max_attempts(t.mode) and counts_as_attempt(r)
+                    and now - _num(r.get("started_at")) < window):
                 continue
             pick = t
             break
         if pick is None:
             continue
         nfresh = sum(1 for r in recs if _fresh_or_same(r))
-        known = [float(r.get("finished_at") or r.get("started_at") or 0) for r in recs if isinstance(r, dict)]
+        known = [_num(r.get("finished_at") or r.get("started_at")) for r in recs if isinstance(r, dict)]
         if nfresh:
             cands.append((0, -nfresh, proj, pick))     # yarım: en çok tamamlanmış olan önce
         elif not known:
@@ -593,7 +601,7 @@ def save_history(paths: Any, hist: Dict[str, Any]) -> None:
 def _run_seconds(rec: Dict[str, Any]) -> Optional[float]:
     """Koşunun duvar süresi (sn): `finished_at - started_at`; ikisi de yoksa ya da tutarsızsa None (uydurma yok)."""
     try:
-        a, b = float(rec.get("started_at") or 0), float(rec.get("finished_at") or 0)
+        a, b = _num(rec.get("started_at")), _num(rec.get("finished_at"))
     except (TypeError, ValueError):
         return None
     return round(b - a, 1) if a > 0 and b >= a else None
@@ -613,8 +621,8 @@ def update_pair(paths: Any, proj: str, t: ReviewTarget, **fields: Any) -> Dict[s
         if fields.get("status") == "running" and "attempts" not in fields:
             # önceki pencerenin sonucu (done ya da pencere dışı) sayaca taşınmaz: yeni pencere 1. denemeyle başlar
             stale = rec.get("status") == "done" or (
-                float(fields.get("started_at") or 0) - float(rec.get("started_at") or 0) >= WINDOW_SECONDS)
-            fields["attempts"] = (0 if stale else int(rec.get("attempts") or 0)) + 1
+                _num(fields.get("started_at")) - _num(rec.get("started_at")) >= WINDOW_SECONDS)
+            fields["attempts"] = (0 if stale else int(_num(rec.get("attempts")))) + 1
         rec.update(fields)
         hist["pairs"][key] = rec
         if fields.get("status") in ("done", "partial", "error", "model_fallback", "limit"):
@@ -634,9 +642,9 @@ def save_findings(paths: Any, findings: Dict[str, Any]) -> None:
 
 
 def finding_key(proj: str, where: Any, title: Any) -> str:
-    """Bulgu kimliği (TBD#137c): (proje, dosya, normalize başlık) hash'i. Dosya = `where`in `:satır` öncesi; başlık küçük harf,
+    """Bulgu kimliği (TBD#137c): (proje, dosya, normalize başlık) hash'i. Dosya = `where`in `:satır` öncesi (harf duyarlı); başlık küçük harf,
     harf/rakam dışı atılır: aynı hata farklı koşuda/satırda yeniden bulunsa aynı anahtar."""
-    fil = re.split(r"[:#]", str(where or "").strip().strip("`"), maxsplit=1)[0].strip().strip("`").lower()
+    fil = re.split(r"[:#]", str(where or "").strip().strip("`"), maxsplit=1)[0].strip().strip("`")
     fil = re.sub(r"^(\./|file://)", "", fil)
     ttl = re.sub(r"[^0-9a-zçğıöşü]+", " ", str(title or "").lower()).strip()
     return hashlib.sha1(f"{proj}\x00{fil}\x00{ttl}".encode("utf-8")).hexdigest()[:16]
@@ -650,7 +658,8 @@ def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[
     bulguları (R-1, R-2…) birbirine karşı ASLA tekilleşmez (aynı başlık, ayrı satır = ayrı bulgu); yanlış `dup` için
     `decide_finding(..., "undup")` bulguyu `new`e döndürür."""
     p = sw._pp(paths)
-    base = re.sub(r"[^A-Za-z0-9]+", "", os.path.relpath(review_file, p.reviews) if review_file.startswith(p.reviews) else review_file)
+    root = p.reviews.rstrip(os.sep) + os.sep       # ayırıcılı önek: `/x/reviews2/..` `/x/reviews` altında sayılmaz
+    base = re.sub(r"[^A-Za-z0-9]+", "", os.path.relpath(review_file, p.reviews) if review_file.startswith(root) else review_file)
     added: List[str] = []
     with sw.steward_lock(p):
         data = load_findings(p)
@@ -663,7 +672,11 @@ def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[
         for f in parsed:
             fid = f"{slug_model(proj)}:{base}:{f['ref']}"
             if fid in data:
-                continue
+                if data[fid].get("review_file") == review_file:
+                    continue                                    # aynı rapor ikinci kez işleniyor: çoğalmaz
+                fid += "~" + hashlib.sha1(review_file.encode("utf-8")).hexdigest()[:6]    # ad sıkıştırma çakışması: ikinci raporun bulguları düşmesin
+                if fid in data:
+                    continue
             key = finding_key(proj, f["where"], f["title"])
             rec = {"project": proj, "review_file": review_file, "ref": f["ref"], "severity": f["severity"],
                    "title": f["title"], "where": f["where"], "body": f["body"], "state": "new", "verdict": "",
@@ -671,6 +684,10 @@ def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[
                    "created_at": time.time(), "key": key}
             if key in by_key:
                 rec["state"], rec["dup_of"] = "dup", by_key[key]
+                canon = data.get(by_key[key])
+                if (isinstance(canon, dict) and canon.get("state") in ("new", "verify_sent", "unclear", "verified")
+                        and str(f["severity"]) < str(canon.get("severity") or "P9")):
+                    canon["severity"] = f["severity"]           # aynı bulgu sonradan daha ağır bulunduysa asıl kayıt yükselir (P1 < P2 < P3)
             else:
                 added.append(fid)
             data[fid] = rec

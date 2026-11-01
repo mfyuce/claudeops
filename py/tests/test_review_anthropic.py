@@ -20,6 +20,14 @@ class TestAnthropicCost(unittest.TestCase):
             self.assertAlmostEqual(rv.usage_cost_usd(f, "claude-sonnet-5-5"), 2.54, places=4)
             self.assertAlmostEqual(rv.anthropic_spent_usd(os.path.join(d, "reviews")), 2.54, places=4)
 
+    def test_one_hour_cache_write_multiplier(self):
+        """TODO ANTHROPIC_PRICES: 1h TTL yazma 2x (= 5 dk 1,25x'in 1,6 katı): `write_mult` yalnız önbellek YAZMA kalemini çarpar."""
+        with tempfile.TemporaryDirectory() as d:
+            f = self._usage(d, "claude-sonnet-5-5", [{"input_tokens": 0, "cache_creation_input_tokens": 1_000_000,
+                                                      "cache_read_input_tokens": 0, "output_tokens": 0}])
+            self.assertAlmostEqual(rv.usage_cost_usd(f, "claude-sonnet-5-5"), 2.5, places=4)               # 5 dk
+            self.assertAlmostEqual(rv.usage_cost_usd(f, "claude-sonnet-5-5", write_mult=1.6), 4.0, places=4)  # 1h
+
     def test_unknown_model_priced_as_opus(self):
         self.assertEqual(rv.anthropic_price("claude-x-9"), rv.ANTHROPIC_PRICES["opus-5-5"])
         self.assertEqual(rv.anthropic_price("claude-fable-5-1"), rv.ANTHROPIC_PRICES["fable-5-1"])

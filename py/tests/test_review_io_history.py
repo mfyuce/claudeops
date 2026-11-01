@@ -40,6 +40,28 @@ class TestIoLog(unittest.TestCase):
         deltas = "".join(e["text"] for e in ev if e.get("kind") == "delta")
         self.assertEqual(deltas, "merhaba dunya\n")
 
+    def test_stdout_secret_split_across_chunks_is_redacted(self):
+        """_pump 4096 baytlık parçalar: parça sınırında bölünen sır io.jsonl'e açık yazılmaz (stream=True sözcük tutar)."""
+        secret = "glpat-" + "A1b2C3d4E5f6G7h8I9j0"
+        lg = wr.IoLog(self.p)
+        lg.out("token = " + secret[:9], stream=True)
+        lg.out(secret[9:] + " sonra", stream=True)
+        lg.out_flush()
+        lg.close()
+        blob = open(self.p, encoding="utf-8").read()
+        self.assertNotIn(secret, blob)
+        self.assertNotIn(secret[:9], blob)
+        self.assertIn("sonra", blob)
+
+    def test_stdout_stream_flush_emits_held_tail_and_nonstream_unchanged(self):
+        lg = wr.IoLog(self.p)
+        lg.out("kuyruk", stream=True)                      # tek sözcük: tutulur
+        self.assertEqual([e for e in events(self.p) if e.get("kind") == "result" and e["text"]], [])
+        lg.out_flush()
+        self.assertEqual([e["text"] for e in events(self.p) if e.get("kind") == "result"], ["kuyruk"])
+        lg.out("tam metin")                                # stream=False: hemen yazılır
+        self.assertEqual(events(self.p)[-1]["text"], "tam metin")
+
     def test_plain_stderr_is_system_when_not_a_delta_stream(self):
         """claude/codex/agy/copilot: öneksiz stderr (hata/uyarı) assistant cevabı sayılmaz."""
         lg = wr.IoLog(self.p, err_as_delta=False)

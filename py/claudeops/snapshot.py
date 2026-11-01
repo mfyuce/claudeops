@@ -39,7 +39,7 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from .atomic_json import atomic_write_json
+from .atomic_json import atomic_write_json, file_lock
 from .paths import CLAUDEOPS_DIR
 
 SNAPSHOT_JSON = os.path.join(CLAUDEOPS_DIR, "last_snapshot.json")  # legacy — sadece bir kerelik migrasyon kaynağı
@@ -148,19 +148,20 @@ def save_snapshot(sessions: List[Dict[str, Any]], kind: str = "manual",
 olduğu gibi döner (kullanıcının kuralı: "aynıysa sorun yok"); "aynı" session'larla BİRLİKTE
     açık mirror pencereleri de demektir. `mirrors`: [{"host","name"}], bkz. modül docstring'i."""
     mirrors = normalize_mirrors(mirrors)
-    _backup_if_corrupt()
-    all_snaps = _load_all()
-    last = all_snaps[-1] if all_snaps else None
-    if (kind == "closing" and isinstance(last, dict) and isinstance(last.get("sessions"), list)
-            and all(isinstance(x, dict) for x in last["sessions"])         # bozuk/elle düzenlenmiş son girdi: kapanış kaydı düşmesin
-            and _same_sessions(last["sessions"], sessions)
-            and _same_mirrors(last.get("mirrors"), mirrors)):
-        return all_snaps[-1]
-    entry = {"saved_at": time.time(), "kind": kind, "sessions": sessions, "mirrors": mirrors}
-    all_snaps.append(entry)
-    del all_snaps[:-MAX_SNAPSHOTS]
-    atomic_write_json(SNAPSHOTS_JSON, all_snaps)
-    return entry
+    with file_lock(SNAPSHOTS_JSON):     # oku-değiştir-yaz: eşzamanlı iki kayıt birbirinin girdisini ezmesin
+        _backup_if_corrupt()
+        all_snaps = _load_all()
+        last = all_snaps[-1] if all_snaps else None
+        if (kind == "closing" and isinstance(last, dict) and isinstance(last.get("sessions"), list)
+                and all(isinstance(x, dict) for x in last["sessions"])         # bozuk/elle düzenlenmiş son girdi: kapanış kaydı düşmesin
+                and _same_sessions(last["sessions"], sessions)
+                and _same_mirrors(last.get("mirrors"), mirrors)):
+            return all_snaps[-1]
+        entry = {"saved_at": time.time(), "kind": kind, "sessions": sessions, "mirrors": mirrors}
+        all_snaps.append(entry)
+        del all_snaps[:-MAX_SNAPSHOTS]
+        atomic_write_json(SNAPSHOTS_JSON, all_snaps)
+        return entry
 
 
 def load_latest_snapshot() -> Dict[str, Any]:

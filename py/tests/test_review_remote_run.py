@@ -62,6 +62,13 @@ class ProcTest(unittest.TestCase):
         with self.assertRaises(subprocess.TimeoutExpired):          # eski cevap bizimki sayılmaz, bitmez
             proc(d).communicate(timeout=20)
 
+    def test_prompt_echoed_but_assistant_still_previous_turn_is_not_taken(self):
+        """Önceki turun yanıtı (başlangıç görüntüsü) bizim istemimiz kaydedildikten sonra bile rapor sayılmaz."""
+        old = idle("eski soru", REPORT)
+        d = Drv([old, idle(PROMPT, REPORT), idle(PROMPT, REPORT)])      # istem görünür, ama yanıt = başlangıçtaki eski rapor
+        with self.assertRaises(subprocess.TimeoutExpired):
+            proc(d).communicate(timeout=20)
+
     def test_busy_never_finishes_then_timeout_then_abort_returns_partial(self):
         d = Drv([idle(), {"running": True, "busy": True, "user": PROMPT, "assistant": "## R-1 | P3 | b:1 | kısmi"}])
         p = proc(d)

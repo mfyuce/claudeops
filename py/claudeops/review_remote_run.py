@@ -78,7 +78,7 @@ class RemoteReviewProc:
         user = _norm(st.get("user"))
         asst = str(st.get("assistant") or "")
         if head and head in user:
-            return bool(asst.strip())
+            return bool(asst.strip()) and asst != self._before      # istemimiz kayıtlı ama yanıt hâlâ önceki turun artığı olabilir
         return bool(asst.strip()) and asst != self._before
 
     def communicate(self, timeout: Optional[float] = None) -> Tuple[str, str]:

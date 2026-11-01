@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import json
+import logging
 import os
 import threading
 from typing import Any, Iterator, Optional
@@ -58,6 +59,7 @@ def atomic_write_json(path: str, obj: Any, *, mode: Optional[int] = None) -> Non
 
 _LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict = {}
+_WARNED_LOCKS: set = set()      # path başına tek uyarı (log taşmasın)
 
 
 @contextlib.contextmanager
@@ -78,10 +80,13 @@ def file_lock(path: str) -> Iterator[None]:
             if not os.path.isfile(path + ".lock") or st.st_uid != os.getuid():
                 raise OSError("lock file not ours")
             fcntl.flock(fd, fcntl.LOCK_EX)
-        except OSError:
+        except OSError as e:
             if fd is not None:
                 os.close(fd)
             fd = None
+            if path not in _WARNED_LOCKS:       # sessiz değil: süreçler arası koruma yok, yalnız iş parçacığı kilidi
+                _WARNED_LOCKS.add(path)
+                logging.getLogger(__name__).warning("file_lock: %s.lock alınamadı (%s); yalnız iş parçacığı kilidiyle devam", path, e)
         try:
             yield
         finally:

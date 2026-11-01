@@ -10,6 +10,7 @@ Adım 5'te doldurulacak: havuz eşitleme (`review.pool_sync`), sıradaki çift (
 
 Bu modül `web.py`'yi ve `web_steward`'ı İÇE AKTARMAZ (döngü yok; eylemler gerekirse geri çağrıyla verilir)."""
 import codecs
+import functools
 import json
 import os
 import re
@@ -38,6 +39,7 @@ EVREN_MAX_STEPS = 200
 EVREN_MAX_IO_MIB = 2048
 STDERR_KEEP = 300
 DELTA_KEEP_CHARS = 2_000_000    # IoLog'un bellekte tuttuğu akış metni üst sınırı (40 dk'lık koşu MB'larca delta üretir)
+OUT_HOLD_MAX = 65536             # stdout parça-sınırı sözcük tutma üst sınırı (boşluksuz dev satırda sınırsız bellek olmasın)
 HEARTBEAT_SECONDS = 10.0            # testler küçültür
 
 # Süreç geneli TEK çalıştırma kilidi (claudeops'un `_LOCK`'u ile ilgisi YOK, onu TUTMA). Çalışırken iş thread'inde tutulur.
@@ -370,6 +372,7 @@ class IoLog:
         self._buf = ""              # stderr satır birleştirici
         self._at_start = True
         self._hold = ""             # delta için tutulan sözcük kuyruğu
+        self._out_hold = ""         # stdout parçaları için tutulan sözcük kuyruğu (`out(stream=True)`)
         self._learned: List[str] = []   # DSN'den öğrenilen parolalar: düz metinde de maskelenir
         self._deltas: List[str] = []    # akışla gelen cevap parçaları (maskeli): zaman aşımında rapor kurtarma kaynağı
         self._delta_chars = 0           # `_deltas` toplam uzunluğu (DELTA_KEEP_CHARS ile sınırlı: bellek)
@@ -421,9 +424,25 @@ class IoLog:
     def system(self, msg: str) -> None:
         self.event("system", msg)
 
-    def out(self, text: str) -> None:
-        """stdout: ajan modunda tek JSON sonuç, agy'de düz cevap."""
-        self.event("assistant", text, "result")
+    def out(self, text: str, stream: bool = False) -> None:
+        """stdout: ajan modunda tek JSON sonuç, agy'de düz cevap. `stream=True` (`_pump`: 4096 baytlık parçalar): sondaki
+        bölünmüş sözcük bir sonraki parçaya kadar tutulur ki parça sınırında bölünen sır redact'ten kaçmasın; akış
+        bitince `out_flush()`. Tutulan kuyruk `OUT_HOLD_MAX` karakteri aşarsa (boşluksuz dev satır) olduğu gibi yazılır."""
+        if not stream:
+            self.event("assistant", text, "result")
+            return
+        with self._lock:
+            buf = self._out_hold + text
+            self._out_hold = ""
+            m = re.search(r"\S+$", buf)
+            if m and len(buf) - m.start() <= OUT_HOLD_MAX:
+                self._out_hold, buf = buf[m.start():], buf[:m.start()]
+            self.event("assistant", buf, "result")
+
+    def out_flush(self) -> None:
+        with self._lock:
+            tail, self._out_hold = self._out_hold, ""
+            self.event("assistant", tail, "result")
 
     def _delta(self, text: str, final: bool = False) -> None:
         with self._lock:
@@ -927,13 +946,15 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
                         break
                     txt = dec.decode(chunk)
                     bufs[name].append(txt)
-                    (live.out if name == "out" else live.feed_err)(txt)
+                    (functools.partial(live.out, stream=True) if name == "out" else live.feed_err)(txt)
             except (OSError, ValueError):
                 pass
             tail = dec.decode(b"", final=True)
             if tail:
                 bufs[name].append(tail)
-                (live.out if name == "out" else live.feed_err)(tail)
+                (functools.partial(live.out, stream=True) if name == "out" else live.feed_err)(tail)
+            if name == "out":
+                live.out_flush()
         try:
             real = all(callable(getattr(getattr(proc, a, None), "fileno", None)) for a in ("stdout", "stderr"))
             if real:

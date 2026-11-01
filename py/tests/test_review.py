@@ -319,6 +319,27 @@ class TestPathsAndStores(unittest.TestCase):
         self.assertNotIn("dup_of", rv.load_findings(self.paths)[dup[0]])
         self.assertFalse(rv.decide_finding(self.paths, dup[0], "undup", NOW)["ok"])  # artık dup değil
 
+    def test_findings_fid_collision_prefix_case_severity(self):
+        """fid çakışması bulguyu düşürmez; `reviews2` öneki `reviews` altı sayılmaz; yol harf duyarlı; dup daha ağırsa asıl yükselir."""
+        a = os.path.join(self.paths.reviews, "a", "x_y.md")
+        b = os.path.join(self.paths.reviews, "a", "xy.md")                    # sıkıştırılmış ad aynı: "axy"
+        one = [{"ref": "R-1", "severity": "P3", "where": "m.py:1", "title": "Birinci", "body": ""}]
+        two = [{"ref": "R-1", "severity": "P3", "where": "m.py:2", "title": "İkinci", "body": ""}]
+        self.assertEqual(len(rv.add_findings(self.paths, "a", a, one)), 1)
+        self.assertEqual(len(rv.add_findings(self.paths, "a", b, two)), 1)    # düşmedi
+        self.assertEqual(len(rv.load_findings(self.paths)), 2)
+        self.assertNotEqual(rv.finding_key("a", "A.py:1", "t"), rv.finding_key("a", "a.py:1", "t"))
+        c = os.path.join(self.paths.reviews, "a", "z.md")
+        heavy = [{"ref": "R-1", "severity": "P1", "where": "m.py:1", "title": "birinci", "body": ""}]
+        self.assertEqual(rv.add_findings(self.paths, "a", c, heavy), [])      # dup
+        canon = [r for r in rv.load_findings(self.paths).values() if r["title"] == "Birinci"][0]
+        self.assertEqual(canon["severity"], "P1")
+
+    def test_planner_survives_corrupt_history_numbers(self):
+        self.assertEqual(rv._num("abc"), 0.0)
+        self.assertEqual(rv._num(None), 0.0)
+        self.assertEqual(rv._num("12.5"), 12.5)
+
 
 class TestConfigRole(unittest.TestCase):
     def test_defaults_and_settings(self):
