@@ -2452,10 +2452,16 @@ class HttpTest(_Tmp):
         sw.upsert_project("a", phase="planned")
         brain = steward_cfg().brain_name
         with mock.patch.object(web_steward, "_running", lambda name: None):
-            self.assertTrue(web_steward.http_post("/api/steward/stop", {"name": "a", "actor": "brain"})["ok"])
+            # planned = işi var: beyin KAPATAMAZ (sahip kuralı 2026-11-01)
+            self.assertFalse(web_steward.http_post("/api/steward/stop", {"name": "a", "actor": "brain"})["ok"])
             self.assertTrue(web_steward.http_post("/api/steward/stop", {"name": brain, "actor": "brain"})["ok"])
             self.assertTrue(web_steward.http_post("/api/steward/handover", {"name": "a", "actor": "brain"})["ok"])
-        self.assertEqual(self.calls, [("stop", "a"), ("stop", brain), ("handover", "a")])
+            # paused = iş yok: öldürme değil, önce devir (ho_close), sonra motor kapatır
+            sw.upsert_project("a", phase="paused")
+            r = web_steward.http_post("/api/steward/stop", {"name": "a", "actor": "brain"})
+            self.assertTrue(r["ok"])
+            self.assertIn("a", sw.load_state().get("ho_close", {}))
+        self.assertEqual(self.calls, [("stop", brain), ("handover", "a"), ("handover", "a")])
 
     def test_apply_gate_denies_engine_actions_on_unregistered_sessions(self):
         """`_apply` motor eylemleri de aynı kapıdan geçer; deliver_answer (kayıtsız oturumun kaynağına cevap) etkilenmez."""
