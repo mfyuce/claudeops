@@ -12,6 +12,7 @@ import calendar
 import re
 import subprocess
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -649,12 +650,18 @@ def save_findings(paths: Any, findings: Dict[str, Any]) -> None:
     sw._save_json(sw._pp(paths).findings, findings)
 
 
+def _fold(v: Any) -> str:
+    """Büyük/küçük harf + aksan katlama (Türkçe İ/I/ı/i dahil): `İşlem` == `işlem` == `ISLEM`. NFKD sonrası birleşik işaretler atılır."""
+    t = unicodedata.normalize("NFKD", str(v or "").replace("İ", "I").replace("ı", "i"))
+    return "".join(c for c in t if not unicodedata.combining(c)).casefold()
+
+
 def finding_key(proj: str, where: Any, title: Any) -> str:
     """Bulgu kimliği (TBD#137c): (proje, dosya, normalize başlık) hash'i. Dosya = `where`in `:satır` öncesi (harf duyarlı); başlık küçük harf,
     harf/rakam dışı atılır: aynı hata farklı koşuda/satırda yeniden bulunsa aynı anahtar."""
     fil = re.split(r"[:#]", str(where or "").strip().strip("`"), maxsplit=1)[0].strip().strip("`")
     fil = re.sub(r"^(\./|file://)", "", fil)
-    ttl = re.sub(r"[^0-9a-zçğıöşü]+", " ", str(title or "").lower()).strip()
+    ttl = re.sub(r"[^0-9a-z]+", " ", _fold(title)).strip()
     return hashlib.sha1(f"{proj}\x00{fil}\x00{ttl}".encode("utf-8")).hexdigest()[:16]
 
 

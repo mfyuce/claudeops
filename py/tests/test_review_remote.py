@@ -81,6 +81,13 @@ class PureTest(unittest.TestCase):
         self.assertEqual(rr.parse_answer("yerel, yol /home/x/rustrino olur"), ("local", "/home/x/rustrino"))
         self.assertEqual(rr.parse_answer("bilmiyorum"), ("", ""))
 
+    def test_parse_answer_long_free_text_starting_with_no_is_not_off(self):
+        """Serbest cevabın "no"/"hayır" ile başlaması projeyi review'dan KALICI çıkarmasın (uzun cümle = tanınmadı)."""
+        self.assertEqual(rr.parse_answer("no idea which one, ask again later"), ("", ""))
+        self.assertEqual(rr.parse_answer("hayır bu proje için henüz karar vermedim"), ("", ""))
+        self.assertEqual(rr.parse_answer("hayır"), ("off", ""))
+        self.assertEqual(rr.parse_answer("vazgeç, bu proje review edilmesin"), ("off", ""))
+
     def test_parse_answer_keyword_beats_path(self):
         self.assertEqual(rr.parse_answer("vazgeç /home/x/p"), ("off", ""))
         self.assertEqual(rr.parse_answer("skip /home/x/p"), ("off", ""))

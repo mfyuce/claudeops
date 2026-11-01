@@ -342,6 +342,13 @@ class TestPathsAndStores(unittest.TestCase):
         canon = [r for r in rv.load_findings(self.paths).values() if r["title"] == "Birinci"][0]
         self.assertEqual(canon["severity"], "P1")
 
+    def test_finding_key_folds_turkish_case_and_accents(self):
+        k = lambda t: rv.finding_key("a", "m.py:1", t)           # noqa: E731
+        self.assertEqual(k("İşlem hatası"), k("işlem HATASI"))
+        self.assertEqual(k("Işık sızıntısı"), k("ışık sızıntısı"))
+        self.assertEqual(k("Şifre yönetimi"), k("sifre yonetimi"))
+        self.assertNotEqual(k("Şifre yönetimi"), k("Şifre yedekleme"))
+
     def test_planner_survives_corrupt_history_numbers(self):
         self.assertEqual(rv._num("abc"), 0.0)
         self.assertEqual(rv._num(None), 0.0)

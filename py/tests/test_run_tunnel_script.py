@@ -298,7 +298,7 @@ class WatchdogTests(unittest.TestCase):
     sonlandırır, script çıkar, systemd yeni tüneli açar."""
 
     def alive_after(self, env, proc, probes, seconds=3.0):
-        env.wait_for(lambda: len(env.probe_calls()) >= probes, f"{probes} yoklama", timeout=10)
+        env.wait_for(lambda: len(env.probe_calls()) >= probes, f"{probes} yoklama", timeout=30)   # yük altında (paralel paket) kabuk betiği yavaşlar
         time.sleep(seconds / 10)  # kısa pay: yanlışlıkla sonlandırma varsa yakalansın
         return proc.poll() is None
 

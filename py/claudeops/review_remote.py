@@ -46,7 +46,9 @@ _PATH_RE = re.compile(r"(?:^|\s)((?:/|~/)[^\s`'\"]+)")
 
 _LOCAL_RE = re.compile(r"(?:yerel|local)\b")
 _REMOTE_RE = re.compile(r"(?:uzak|remote)\b")
-_OFF_RE = re.compile(r"(?:vazge\w*|skip|off|hay[ıi]r|no)\b")
+_OFF_RE = re.compile(r"vazge\w*\b")                       # seçenek metni "Vazgeç": serbest cümlede de kesin
+_OFF_WEAK_RE = re.compile(r"(?:skip|off|hay[ıi]r|no)\b")   # kısa ret kelimeleri: yalnız KISA cevapta (uzun cümle "no idea..." projeyi çıkarmasın)
+OFF_WEAK_MAX_WORDS = 3
 
 
 def parse_answer(answer: str) -> Tuple[str, str]:
@@ -55,7 +57,7 @@ def parse_answer(answer: str) -> Tuple[str, str]:
     text = " ".join(str(answer or "").split())
     low = text.casefold()
     m = _PATH_RE.search(text)
-    if _OFF_RE.match(low):
+    if _OFF_RE.match(low) or (_OFF_WEAK_RE.match(low) and len(text.split()) <= OFF_WEAK_MAX_WORDS):
         return "off", ""
     if _REMOTE_RE.match(low):
         return "remote", ""
