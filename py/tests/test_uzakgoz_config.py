@@ -77,7 +77,7 @@ class ResolveTests(unittest.TestCase):
             res = rd.start()
         self.assertEqual(res, {"ok": True, "port": 9123})
         run.assert_not_called()                                   # derleme yok
-        self.assertEqual(popen.call_args[0][0], ["/bin/true", "9123"])
+        self.assertEqual(popen.call_args[0][0], ["/bin/true", "9123", "--input"])
 
 
 if __name__ == "__main__":
