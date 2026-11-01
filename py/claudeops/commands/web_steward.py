@@ -3936,6 +3936,7 @@ def http_ideas(status: str = "new", sid: str = "default") -> Dict[str, Any]:
 
 _EXPORT_FILES = {"todo": "TODO.md", "tbd": "TOBEDECIDED.md"}
 _EXPORT_HEADING = "## Değnekçi fikirleri"
+_REVIEW_UNVERIFIED_FILES = {"rtodo": ("RTODO.md", lambda r: not rv.is_decision(r)), "rtbd": ("RTBD.md", rv.is_decision)}
 
 
 def _idea_project(idea: "sw.Idea", projects: Dict[str, "sw.Project"]) -> str:
@@ -5605,9 +5606,14 @@ def http_review_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
     cfg, err = _reviewer_cfg(sid)
     if err:
         return err
-    fname = _EXPORT_FILES.get(str(data.get("kind") or "todo"))
+    kind = str(data.get("kind") or "todo")
+    if kind in _REVIEW_UNVERIFIED_FILES:    # rtodo|rtbd: doğrulanmamış (new/unclear) bulgular, türe göre ayrılır
+        fname, only = _REVIEW_UNVERIFIED_FILES[kind]
+        return web_review.export_findings(cfg, str(data.get("project") or ""), fname, states=("new", "unclear"),
+                                          only=only, note="doğrulanmamış")
+    fname = _EXPORT_FILES.get(kind)
     if fname is None:
-        return {"ok": False, "error": "kind must be todo or tbd"}
+        return {"ok": False, "error": "kind must be todo, tbd, rtodo or rtbd"}
     return web_review.export_findings(cfg, str(data.get("project") or ""), fname)
 
 

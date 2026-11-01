@@ -908,6 +908,16 @@ def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "own
 
 EXPORT_HEADING = "## Review bulguları"
 
+# RTODO/RTBD ayrımı (sahip, 2026-11-01: "gerekirse rtodo rtbd'ye"): bulgunun TÜRÜNE göre. Anahtar kelime ile TAHMİNİ: karar
+# gerektiren (politika/tercih/seçenek/belirsiz davranış) bulgu RTBD'ye, düz hata RTODO'ya gider; şüphede RTODO.
+_DECISION_RE = re.compile(
+    r"\b(karar\w*|tercih\w*|seçenek\w*|politika\w*|sahip\w* karar|belirsiz\w*|trade-?off|design decision|should (?:we|it)|policy|ambiguous|undefined behaviou?r)",
+    re.I)
+
+
+def is_decision(row: Dict[str, Any]) -> bool:
+    return bool(_DECISION_RE.search(f"{row.get('title') or ''} {str(row.get('body') or '')[:600]}"))
+
 _BACKTICK_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
 _WHERE_FILE_RE = re.compile(r"^\s*`?([^\s:`]+\.[A-Za-z0-9]+)")
 

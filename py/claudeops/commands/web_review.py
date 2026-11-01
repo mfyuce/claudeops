@@ -2559,7 +2559,8 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
 
 
 def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None, by: str = "",
-                    states: Sequence[str] = ("approved",)) -> Dict[str, Any]:
+                    states: Sequence[str] = ("approved",), only: Optional[Callable[[Dict[str, Any]], bool]] = None,
+                    note: str = "") -> Dict[str, Any]:
     """Projenin ONAYLI bulgularını yerel proje klasöründeki `fname` (TODO.md / TOBEDECIDED.md) sonuna
     `## Review bulguları` başlığı altında ekler; yazılanlar `exported` olur (çift dışa aktarma yok). Onaysız bulgu ASLA
     yazılmaz. Uzak proje reddedilir (yerel dosya sistemi ona ait değil)."""
@@ -2581,7 +2582,11 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
         data = rv.load_findings(p)
         rows = [dict(v, id=k) for k, v in sorted(data.items())
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") in states
-                and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))]
+                and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))
+                and (only is None or only(v))]
+        if note:       # RTODO/RTBD: satıra durum notu (kayıttaki bulgu değişmez, yalnız yazılan satır)
+            for r in rows:
+                r["note"] = f"{r['note']}; {note}" if r.get("note") else note
         dropped = False
         for r in list(rows):       # koddaki duruma karşı denetim: eskimiş bulgu yazılmaz, değişen dosya işaretlenir
             why = rv.stale_reason(r, cwd)
@@ -2590,7 +2595,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
                 rows.remove(r)
                 dropped = True
             elif rv.changed_after_review(r, cwd):
-                r["note"] = "dosya incelemeden sonra değişti, hâlâ geçerli mi doğrula"
+                r["note"] = (f"{r['note']}; " if r.get("note") else "") + "dosya incelemeden sonra değişti, hâlâ geçerli mi doğrula"
         if dropped:
             rv.save_findings(p, data)
         if not rows:

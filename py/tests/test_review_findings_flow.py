@@ -259,6 +259,37 @@ class TestVerdicts(_Flow):
         self.assertEqual(self.findings()[f1]["state"], "verify_sent")
 
 
+class TestExportUnverifiedToRtodo(_Flow):
+    """`kind=rtodo|rtbd`: doğrulanmamış (new/unclear) bulgular RTODO.md/RTBD.md'ye, türe göre; onaylılar dokunulmaz."""
+    MD = ("## R-1 | P2 | x.py:10 | düz hata burada\ngovde\n\n"
+          "## R-2 | P2 | x.py:20 | Hangi seçenek tercih edilmeli karar gerekir\ngovde\n\n"
+          "## R-3 | P2 | x.py:30 | onaylı bulgu\ngovde\n")
+
+    def test_split_by_kind_and_note_and_state(self):
+        f1, f2, f3 = self.seed(self.MD)
+        d = self.findings()
+        d[f2]["state"] = "unclear"
+        d[f3]["state"] = "approved"
+        rv.save_findings(self.p, d)
+        r1 = self.post("export", project="a", kind="rtodo")
+        r2 = self.post("export", project="a", kind="rtbd")
+        self.assertTrue(r1["ok"] and r2["ok"], (r1, r2))
+        rtodo = open(os.path.join(self.proj_dir, "RTODO.md"), encoding="utf-8").read()
+        rtbd = open(os.path.join(self.proj_dir, "RTBD.md"), encoding="utf-8").read()
+        self.assertIn(f"(review {f1})", rtodo)
+        self.assertNotIn(f"(review {f2})", rtodo)
+        self.assertIn(f"(review {f2})", rtbd)
+        self.assertIn("doğrulanmamış", rtodo + rtbd)
+        self.assertNotIn(f"(review {f3})", rtodo + rtbd)          # onaylı bulgu bu yoldan yazılmaz
+        st = {k: v["state"] for k, v in self.findings().items()}
+        self.assertEqual((st[f1], st[f2], st[f3]), ("exported", "exported", "approved"))
+        self.assertFalse(os.path.exists(os.path.join(self.proj_dir, "TODO.md")))
+
+    def test_unknown_kind_rejected(self):
+        self.seed(self.MD)
+        self.assertFalse(self.post("export", project="a", kind="x")["ok"])
+
+
 class TestDecideExport(_Flow):
     def setUp(self):
         super().setUp()
