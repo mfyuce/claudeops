@@ -505,6 +505,7 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
     ex = exec_flags(opts)
     if ex:
         for flag in ("--allow-exec", "--allow-exec-cmd") + (("--allow-exec-own-glob",) if opts.get("exec_own_glob") else ()) \
+                + (("--exec-bind-ro",) if opts.get("exec_bind_ro") else ()) \
                 + (("--exec-timeout-secs",) if opts.get("exec_timeout") else ()):
             if not binary_supports_flag(binary, flag):
                 diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)

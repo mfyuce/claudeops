@@ -140,6 +140,14 @@ class BuildTests(unittest.TestCase):
         with self.assertRaises(ValueError):     # eski ikili: yarım exec izni YOK
             self.build({"exec_cmds": ["cargo"]})
 
+    def test_exec_bind_ro(self):
+        out, err = so.validate_opts({"exec_cmds": ["cargo"], "exec_bind_ro": "/opt/tc/x/, /usr/lib/node"})
+        self.assertEqual((out["exec_bind_ro"], err), (["/opt/tc/x", "/usr/lib/node"], ""))
+        self.assertEqual(so.exec_flags(out)[-4:], ["--exec-bind-ro", "/opt/tc/x", "--exec-bind-ro", "/usr/lib/node"])
+        for bad in ("/", "/home", "rel/dir", "/a/../b", "/a b/c", "~/x"):
+            self.assertTrue(so.validate_opts({"exec_cmds": ["cargo"], "exec_bind_ro": bad})[1], bad)
+        self.assertTrue(so.validate_opts({"exec_bind_ro": "/opt/tc/x"})[1])       # komutsuz olmaz
+
 
 class WiringTests(unittest.TestCase):
     def test_only_ucli_accepts_cli_opts(self):

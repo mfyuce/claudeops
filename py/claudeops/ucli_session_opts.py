@@ -33,6 +33,8 @@ _CMD_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
 _GLOB_RE = re.compile(r"^[A-Za-z0-9_./*?-]{1,120}$")
 MAX_CMDS = 12
 MAX_GLOBS = 4
+MAX_BINDS = 6
+_BIND_RE = re.compile(r"^/[A-Za-z0-9_./+@-]{1,200}$")
 TIMEOUT_RANGE = (1, 600)
 
 
@@ -46,7 +48,7 @@ def _items(v: Any) -> List[str]:
 
 def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
     """Ham pencere sözlüğü -> (temiz sözlük, hata). Hata boş değilse temiz sözlük BOŞTUR. Bilinmeyen anahtarlar yok sayılır.
-    Temiz anahtarlar (yalnız verilenler): `service`, `exec_cmds` (list), `exec_own_glob` (list), `exec_timeout` (int)."""
+    Temiz anahtarlar (yalnız verilenler): `service`, `exec_cmds` (list), `exec_own_glob` (list), `exec_bind_ro` (list, kafese salt-okunur bağlanacak mutlak dizinler: araç zinciri), `exec_timeout` (int)."""
     if not raw:
         return {}, ""
     if not isinstance(raw, dict):
@@ -80,6 +82,17 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
                     or "" in g.split("/") or g in ("*", "**", "**/*")):
                 return {}, f"geçersiz ya da çok geniş glob: {g}"
         out["exec_own_glob"] = list(dict.fromkeys(globs))
+    binds = _items(raw.get("exec_bind_ro"))
+    if binds:
+        if not cmds:
+            return {}, "exec_bind_ro için exec_cmds gerekli"
+        if len(binds) > MAX_BINDS:
+            return {}, f"en çok {MAX_BINDS} dizin"
+        for b in binds:
+            norm = b.rstrip("/")
+            if not _BIND_RE.match(b) or ".." in b.split("/") or "//" in b or norm.count("/") < 2:
+                return {}, f"geçersiz ya da çok geniş dizin (mutlak, kök/ev dizini olmaz): {b}"
+        out["exec_bind_ro"] = list(dict.fromkeys(b.rstrip("/") for b in binds))
     t = raw.get("exec_timeout")
     if t not in (None, ""):
         try:
@@ -102,6 +115,8 @@ def exec_flags(opts: Dict[str, Any]) -> List[str]:
     argv = ["--allow-exec", "--allow-exec-cmd", ",".join(cmds)]
     for g in opts.get("exec_own_glob") or []:
         argv += ["--allow-exec-own-glob", g]
+    for b in opts.get("exec_bind_ro") or []:
+        argv += ["--exec-bind-ro", b]
     if opts.get("exec_timeout"):
         argv += ["--exec-timeout-secs", str(int(opts["exec_timeout"]))]
     return argv

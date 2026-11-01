@@ -13,6 +13,7 @@ export interface UcliStartState {
   execOn: boolean;
   execCmds: string;
   execGlob: string;
+  execBind: string;
   execTimeout: string;
 }
 
@@ -22,6 +23,7 @@ export const EMPTY_UCLI_START: UcliStartState = {
   execOn: false,
   execCmds: "",
   execGlob: "",
+  execBind: "",
   execTimeout: "",
 };
 
@@ -39,6 +41,7 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
   if (s.execOn && s.execCmds.trim()) {
     o.exec_cmds = s.execCmds;
     if (s.execGlob.trim()) o.exec_own_glob = s.execGlob;
+    if (s.execBind.trim()) o.exec_bind_ro = s.execBind;
     if (s.execTimeout.trim()) o.exec_timeout = s.execTimeout.trim();
   }
   return Object.keys(o).length ? o : undefined;
@@ -108,6 +111,12 @@ export function UcliStartOpts({ value, onChange, lang }: Props) {
           />
           <input
             type="text"
+            placeholder={tr ? "bağlanacak dizinler (salt okunur): /home/ben/.rustup/toolchains/X" : "dirs to bind (read-only): /home/ben/.rustup/toolchains/X"}
+            value={value.execBind}
+            onChange={(e) => set({ execBind: e.target.value })}
+          />
+          <input
+            type="text"
             size={6}
             placeholder={tr ? "zaman aşımı sn" : "timeout s"}
             value={value.execTimeout}
@@ -115,8 +124,8 @@ export function UcliStartOpts({ value, onChange, lang }: Props) {
           />
           <span className="opts-hint" style={{ flexBasis: "100%" }}>
             {tr
-              ? "Kabuk, env/xargs/find/sudo ve ağ sunulmaz. Komut yoksa exec kapalı kalır."
-              : "No shells, env/xargs/find/sudo or network. With no commands exec stays off."}
+              ? "Komutlar kafes içinde (bwrap, ağsız) çalışır; kafes yalnız çalışma alanını yazılabilir görür. cargo/node gibi araç zinciri için kafese salt okunur bağlanacak MUTLAK dizinleri yaz (örn. /home/ben/.rustup/toolchains/X). Kabuk, env/xargs/find/sudo ve ağ sunulmaz. Komut yoksa exec kapalı kalır."
+              : "Commands run in a no-network bwrap cage where only the workspace is writable. For toolchains (cargo, node) list ABSOLUTE dirs to bind read-only (e.g. /home/me/.rustup/toolchains/X). No shells, env/xargs/find/sudo or network. With no commands exec stays off."}
           </span>
         </>
       )}
