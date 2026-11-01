@@ -357,6 +357,8 @@ export interface Settings {
    * `settings.py`'s `ucli_script_mode()`; any other value counts as off. Optional on the wire: a backend older than
    * this field omits it. */
   ucli_script?: Record<string, string>;
+  /** {daily_cap_usd, cache_ttl} (`settings.ucli_cost_config()`); a save with an empty value removes the key. */
+  ucli_cost?: Record<string, string>;
   /** {amber, red: string} (2026-10-17) — per-session Evren quota-equivalent token thresholds for the ucli badge colour;
    * empty/missing = built-in 1M / 3M, "off" or "0" = that level disabled. `settings.py`'s `ucli_usage_warn_thresholds()`. */
   ucli_usage_warn: Record<string, string>;
@@ -473,6 +475,9 @@ export interface StatusPayload {
    * proxy target, never exposed to the browser directly — it connects
    * through `/ws/desktop` (same token auth as everything else) regardless. */
   remote_desktop: { running: boolean; port: number | null };
+  /** Claude (Anthropic API) hizmetli ucli oturumlarının bugünkü dolar toplamı (alt sınır) ve günlük tavan (`ucli_cost.daily_cap_usd`;
+   * 0 = tavan yok). Eski backend'de yok. */
+  ucli_cost?: { today_usd: number; cap_usd: number; pct: number | null; cache_ttl: string };
   /** Read-only — `py/cops service install`'ın yazdığı `tunnel_url.txt`/
    * `tunnel_label.txt` (varsa). İkisi de dosya yoksa `null` (quick-tunnel'da
    * URL cloudflared'ın kendi log'undan gelir, `service install` hiç

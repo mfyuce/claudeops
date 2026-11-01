@@ -141,6 +141,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # dir = derlenecek kaynak dizini (boş: ~/work/projects/tmp/uzakgoz, yoksa eski rust/screenshare),
                               # bin = hazır ikili (doluysa cargo build ATLANIR), port = 1024-65535 (boş: 8877).
                               # Geçersiz değer sessizce atlanır, `uzakgoz_config()`.
+    "ucli_cost": {},         # {daily_cap_usd, cache_ttl} (2026-11-01): Claude/Anthropic hizmetiyle açılan ucli oturumlarının GÜNLÜK dolar
+                              # tavanı (boş/0 = tavan yok; aşılınca YENİ Claude oturumu reddedilir, çalışanlara dokunulmaz) ve önbellek
+                              # TTL'i (`5m` | `1h`, boş = `1h`: takım insan hızında çalışıyor, 5 dk önbellek aralarda soğur). `ucli_cost_config()`.
     "ucli_script": {},       # {mode: "off"|"read"|"full"} — 2026-10-17 (unified-cli 119c8e5, `chat --allow-script[=read|full]`):
                               # model tek bir kısa Lua programı yazar, ucli bunu SÜREÇ İÇİNDE çalıştırıp araçları
                               # çağırır. VARSAYILAN KAPALI (boş/eksik/`off`): token kazancı henüz gösterilemedi
@@ -216,6 +219,8 @@ def load_settings() -> Dict[str, Any]:
                 out["ucli_web"] = {}
             if not isinstance(out.get("ucli_script"), dict):
                 out["ucli_script"] = {}
+            if not isinstance(out.get("ucli_cost"), dict):
+                out["ucli_cost"] = {}
             if not isinstance(out.get("ucli_usage_warn"), dict):
                 out["ucli_usage_warn"] = {}
             if not isinstance(out.get("cli_managed"), dict):
@@ -244,7 +249,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "uzakgoz", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
@@ -571,6 +576,21 @@ def uzakgoz_config() -> Dict[str, Any]:
     except ValueError:
         pass
     return out
+
+
+def ucli_cost_config() -> Dict[str, Any]:
+    """`ucli_cost` ayarı -> {"daily_cap_usd": float (0 = tavan yok), "cache_ttl": "5m"|"1h"}. Bozuk/negatif/sonsuz değer
+    güvenli varsayılana (tavan yok, 1h) düşer, asla fırlatmaz."""
+    raw = load_settings().get("ucli_cost")
+    raw = raw if isinstance(raw, dict) else {}
+    try:
+        cap = float(str(raw.get("daily_cap_usd") or "0").replace(",", "."))
+    except ValueError:
+        cap = 0.0
+    if not (cap > 0) or cap == float("inf") or cap != cap:
+        cap = 0.0
+    ttl = str(raw.get("cache_ttl") or "").strip().lower()
+    return {"daily_cap_usd": cap, "cache_ttl": ttl if ttl in ("5m", "1h") else "1h"}
 
 
 def ucli_script_mode() -> str:

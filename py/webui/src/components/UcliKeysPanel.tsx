@@ -32,6 +32,7 @@ export function UcliKeysPanel() {
   const [error, setError] = useState("");
   if (!data) return null;
   const byok = data.settings.byok?.ucli ?? {};
+  const cost = data.ucli_cost;
 
   async function save(env: string, value: string) {
     setError("");
@@ -75,6 +76,32 @@ export function UcliKeysPanel() {
           </label>
         );
       })}
+      <label title={lang === "tr" ? "0 ya da boş = tavan yok. Aşılınca YENİ Claude oturumu açılmaz, çalışanlara dokunulmaz." : "0 or empty = no cap. Over the cap NEW Claude sessions are refused; running ones are untouched."}>
+        {lang === "tr" ? "Claude günlük tavan (USD)" : "Claude daily cap (USD)"}
+        <input
+          type="number"
+          min={0}
+          step={1}
+          key={cost?.cap_usd ?? 0}
+          defaultValue={cost && cost.cap_usd > 0 ? cost.cap_usd : ""}
+          placeholder={lang === "tr" ? "tavan yok" : "no cap"}
+          onBlur={(e) => {
+            void (async () => {
+              try {
+                const res = await apiSaveSettings({ ucli_cost: { daily_cap_usd: e.target.value }, lang });
+                if (!res.ok) setError(res.error);
+              } catch (err) {
+                setError(describeApiError(err, t));
+              }
+              refresh();
+            })();
+          }}
+        />
+        <span className="opts-hint">
+          {lang === "tr" ? "bugün" : "today"}: ${cost ? cost.today_usd.toFixed(2) : "0.00"}
+          {cost && cost.pct !== null ? ` (%${cost.pct})` : ""} · {lang === "tr" ? "alt sınır tahmini; önbellek" : "lower-bound estimate; cache"} {cost?.cache_ttl ?? "1h"}
+        </span>
+      </label>
       {error && <pre className="layout-result">✗ {error}</pre>}
     </div>
   );

@@ -1032,18 +1032,26 @@ def anthropic_price(model: str) -> Tuple[float, float, float, float]:
     return ANTHROPIC_PRICES["opus-5-5"]       # bilinmeyen model: en pahalı varsayım (bütçe güvenli tarafta)
 
 
-def usage_cost_usd(path: str, model: str) -> float:
+def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: float = 1.0) -> float:
     """Bir `.usage.jsonl` dosyasının $ maliyeti (istek başına ucli `usage`: girdi/çıktı/önbellek okuma/yazma). Tanınmayan
     alan 0 sayılır; hiç ayrıştırılamazsa dosya boyutundan bağımsız 0 döner (bütçe kapısı `anthropic_spent_usd` yedek tahmin ekler)."""
-    pi, po, pr, pw = anthropic_price(model)
+    # `model` boş: modeli kaydın kendisinden (task_start) izle (uzun ömürlü oturum günlüğü). `since_ms` > 0: yalnız o andan sonraki
+    # istekler (günlük toplam). `write_mult`: önbellek YAZMA fiyatına çarpan (1h TTL yazma 2x = 5 dk 1,25x'in 1,6 katı).
+    pi, po, pr, pw = anthropic_price(model or "opus-5-5")
     tot = 0.0
     try:
         with open(path, encoding="utf-8") as f:
             for line in f:
                 try:
-                    u = (json.loads(line) or {}).get("usage") or {}
+                    rec = json.loads(line) or {}
                 except ValueError:
                     continue
+                if not model and rec.get("event") == "task_start" and rec.get("model"):
+                    pi, po, pr, pw = anthropic_price(str(rec["model"]))
+                    continue
+                if since_ms and float(rec.get("t") or 0) < since_ms:
+                    continue
+                u = rec.get("usage") or {}
                 def g(*names: str) -> float:
                     for n in names:
                         if isinstance(u.get(n), (int, float)):
@@ -1056,7 +1064,7 @@ def usage_cost_usd(path: str, model: str) -> float:
                     inp_price = pw      # ucli normalleştirilmiş sayaç: yazma ayrı raporlanmaz, önbellek istendiğinden yeni girdi yazma fiyatından sayılır (güvenli üst sınır)
                 else:
                     inp_price = pi
-                tot += (inp * inp_price + g("output_tokens", "completion_tokens") * po + cr * pr + cw * pw) / 1e6
+                tot += (inp * inp_price + g("output_tokens", "completion_tokens") * po + cr * pr + cw * pw * write_mult) / 1e6
     except OSError:
         pass
     return tot

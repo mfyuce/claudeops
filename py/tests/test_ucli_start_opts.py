@@ -99,6 +99,30 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(Path(path).read_text(), "sk-secret")
         self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
 
+    def test_claude_service_gets_team_flags_and_is_refused_over_the_daily_cap(self):
+        ucli_client._HELP_CACHE.clear()
+        self.binary = fake_ucli(self._tmp.name, HELP_EXEC + "      --cache-ttl <T>\n      --usage-log <P>\n      --instructions-auto\n", name="new")
+        self.keys = {"ANTHROPIC_API_KEY": "sk-x"}
+        usage = os.path.join(self._tmp.name, "uu")
+        with mock.patch.object(up.ucli_cost, "USAGE_DIR", usage), \
+                mock.patch.object(up, "ucli_cost_config", return_value={"daily_cap_usd": 0.0, "cache_ttl": "1h"}), \
+                mock.patch.object(up.ucli_cost, "cap_exceeded", return_value=False):
+            inner = shlex.split(self.build({"service": "claude"}))[2]
+        argv = shlex.split(inner.split(" exec ", 1)[1])
+        self.assertEqual(argv[argv.index("--cache-ttl") + 1], "1h")
+        self.assertEqual(argv[argv.index("--max-output-tokens") + 1], "16000")
+        self.assertIn("--instructions-auto", argv)
+        self.assertTrue(argv[argv.index("--usage-log") + 1].endswith("vc.jsonl"))
+        self.assertEqual(argv.count("--max-output-tokens"), 1)
+        # tavan aşıldı: spawn REDDEDİLİR
+        with mock.patch.object(up.ucli_cost, "cap_exceeded", return_value=True):
+            with self.assertRaises(ValueError):
+                self.build({"service": "claude"})
+        # Grok'ta bu bayraklar (Anthropic'e özgü) EKLENMEZ
+        self.keys = {"XAI_API_KEY": "k"}
+        inner = shlex.split(self.build({"service": "grok"}))[2]
+        self.assertNotIn("--cache-ttl", inner)
+
     def test_missing_service_key_refuses_spawn(self):
         with self.assertRaises(ValueError):
             self.build({"service": "grok"})
@@ -160,3 +184,55 @@ class WiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CostCapTests(unittest.TestCase):
+    """Günlük USD tavanı (settings.ucli_cost) ve Claude hizmeti bayrakları."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.base = os.path.join(self._tmp.name, "usage")
+        os.makedirs(self.base)
+        from claudeops import ucli_cost
+        self.uc = ucli_cost
+        ucli_cost._CACHE.update(at=0.0, usd=0.0, day="")
+
+    def write_log(self, name, t_ms, prompt=1_000_000, completion=0, model="claude-sonnet-5-5"):
+        import json
+        with open(os.path.join(self.base, name), "w") as f:
+            f.write(json.dumps({"event": "task_start", "model": model, "t": t_ms}) + "\n")
+            f.write(json.dumps({"event": "request", "t": t_ms, "usage": {
+                "prompt_tokens": prompt, "completion_tokens": completion, "cached_tokens": 0}}) + "\n")
+
+    def test_today_sums_only_today_and_uses_the_task_model(self):
+        import time
+        now = time.time()
+        self.write_log("a.jsonl", now * 1000)                       # sonnet: 1M girdi, önbellek istenmiş sayılmaz -> 2.5 (yazma fiyatı üst sınır) ya da 2.0
+        self.write_log("old.jsonl", (now - 3 * 86400) * 1000)       # dün öncesi: sayılmaz
+        os.utime(os.path.join(self.base, "old.jsonl"), (now - 3 * 86400, now - 3 * 86400))
+        usd = self.uc.today_usd(now, self.base)
+        self.assertGreater(usd, 1.9)
+        self.assertLess(usd, 4.1)                                   # tek günlük: eski dosya eklenmedi
+
+    def test_cap_zero_means_off_and_cap_blocks_when_reached(self):
+        import time
+        now = time.time()
+        self.write_log("a.jsonl", now * 1000)
+        with mock.patch.object(self.uc, "ucli_cost_config", return_value={"daily_cap_usd": 0.0, "cache_ttl": "1h"}):
+            self.assertFalse(self.uc.cap_exceeded(now, self.base))
+        with mock.patch.object(self.uc, "ucli_cost_config", return_value={"daily_cap_usd": 1.0, "cache_ttl": "1h"}):
+            self.assertTrue(self.uc.cap_exceeded(now, self.base))
+        with mock.patch.object(self.uc, "ucli_cost_config", return_value={"daily_cap_usd": 500.0, "cache_ttl": "1h"}):
+            self.assertFalse(self.uc.cap_exceeded(now, self.base))
+
+    def test_config_parsing_is_safe(self):
+        from claudeops import settings
+        for raw, want in (({"daily_cap_usd": "20"}, 20.0), ({"daily_cap_usd": "-5"}, 0.0), ({"daily_cap_usd": "abc"}, 0.0),
+                          ({"daily_cap_usd": "inf"}, 0.0), ({}, 0.0), ({"daily_cap_usd": "12,5"}, 12.5)):
+            with mock.patch.object(settings, "load_settings", return_value={"ucli_cost": raw}):
+                self.assertEqual(settings.ucli_cost_config()["daily_cap_usd"], want, raw)
+        with mock.patch.object(settings, "load_settings", return_value={"ucli_cost": {"cache_ttl": "9h"}}):
+            self.assertEqual(settings.ucli_cost_config()["cache_ttl"], "1h")
+        with mock.patch.object(settings, "load_settings", return_value={"ucli_cost": "bozuk"}):
+            self.assertEqual(settings.ucli_cost_config(), {"daily_cap_usd": 0.0, "cache_ttl": "1h"})

@@ -93,6 +93,8 @@ import psutil
 
 from .. import searxng
 from ..diaglog import diag_log
+from .. import ucli_cost
+from ..settings import ucli_cost_config
 from ..ucli_session_opts import SERVICES, exec_flags, validate_opts as validate_start_opts
 from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
@@ -443,6 +445,33 @@ def _service_key_file(service: str) -> str:
     return os.path.expanduser(f"~/.claude/claudeops/ucli_key_{service}")
 
 
+def _claude_service_flags(argv: List[str], session_name: str) -> List[str]:
+    """Claude (Anthropic API) hizmetiyle açılan oturum için takım kullanımı bayrakları (sahip, 2026-11-01): günlük USD tavanı
+    aşıldıysa REDDET; `--cache-ttl` (ayar, varsayılan 1h: insan hızında turlar arası 5 dk önbelleği soğutur), `--max-output-tokens`
+    16000 (4096'da uzun bir write_file araç argümanının ortasında kesiliyordu), `--usage-log` (dolar sayacı: `ucli_cost`),
+    `--instructions-auto` (AGENTS.md/CLAUDE.md). Her bayrak YALNIZ ikili tanıyorsa eklenir, yoksa günlüğe yazılır."""
+    if ucli_cost.cap_exceeded():
+        st = ucli_cost.state(use_cache=False)
+        raise ValueError(f"claude: günlük USD tavanı aşıldı ({st['today_usd']:.2f} / {st['cap_usd']:.2f}); "
+                         "Ayarlar'dan ucli_cost.daily_cap_usd yükselt ya da yarın dene")
+    binary = argv[0]
+    cfg = ucli_cost_config()
+    argv = _set_flag_value(argv, "--max-output-tokens", "16000")
+    for flag, val in (("--cache-ttl", cfg["cache_ttl"]), ("--usage-log", None), ("--instructions-auto", "")):
+        if not binary_supports_flag(binary, flag):
+            diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
+            continue
+        if flag == "--usage-log":
+            os.makedirs(ucli_cost.USAGE_DIR, mode=0o700, exist_ok=True)
+            argv = _set_flag_value(argv, flag, ucli_cost.log_path(session_name))
+        elif val == "":
+            if flag not in argv:
+                argv = argv + [flag]
+        else:
+            argv = _set_flag_value(argv, flag, val)
+    return argv
+
+
 def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "") -> Tuple[List[str], str]:
     """Temiz `cli_opts` -> (yeni argv, anahtar env öneki). Hizmet seçilmiş ve anahtarı YOKSA `ValueError` (spawn REDDEDİLİR:
     yanlış hizmete/anahtarsız açmak sessizce başka modele düşmekten kötü). Her bayrak `binary_supports_flag` kapılı;
@@ -471,6 +500,8 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             i = argv.index("--effort")
             del argv[i:i + 2]
         env_prefix = f'{env_name}="$(cat {shlex.quote(path)})"'
+        if service == "claude":
+            argv = _claude_service_flags(argv, session_name)
     ex = exec_flags(opts)
     if ex:
         for flag in ("--allow-exec", "--allow-exec-cmd") + (("--allow-exec-own-glob",) if opts.get("exec_own_glob") else ()) \

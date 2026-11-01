@@ -57,6 +57,7 @@ from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_host
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
+from .. import ucli_cost
 from .. import cli_install
 from .. import files as files_mod
 from .. import mirrors
@@ -1689,6 +1690,8 @@ def _status_payload() -> dict:
         # lifecycle durumu — diğer açık tab/cihazlar da (WS push ile) canlı
         # görsün diye buraya eklendi, ayrı bir polling endpoint'i değil.
         "remote_desktop": remote_desktop.status(),
+        # Claude hizmetli ucli oturumlarının bugünkü $ toplamı + günlük tavan (Ayarlar > ucli_cost); ucli_cost.state() 30 sn önbellekli
+        "ucli_cost": ucli_cost.state(),
         # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine
         # biniyor, tam sonuç metni YOK): taslak kadro + aktif run özeti +
         # son birkaç run. Local-only, `web_hosts.merge_status`'a hiç girmez.
