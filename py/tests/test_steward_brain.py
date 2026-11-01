@@ -534,8 +534,11 @@ class TestHumanGate(_Brain):
     def test_brain_in_identity_context(self):
         for name in ("a", "degnekci", "adhocsess"):
             self.assertFalse(self.post("/api/steward/stop", name, "kitap", actor="brain")["ok"], name)
-        self.assertTrue(self.post("/api/steward/stop", "k", "kitap", actor="brain")["ok"])
-        self.assertEqual(self.calls, [("stop", "k")])
+        # k planned (işi var): beyin kapatamaz (2026-11-01 kuralı); kendi projesi olduğu için "target denied" DEĞİL
+        r = self.post("/api/steward/stop", "k", "kitap", actor="brain")
+        self.assertFalse(r["ok"])
+        self.assertNotIn("target denied", r.get("error", ""))
+        self.assertEqual(self.calls, [])
 
     def test_reads_are_limited_to_own_projects_outside_default(self):
         with mock.patch.object(ws, "_git_short", lambda cwd: ""), mock.patch.object(ws, "_project_cwd", lambda name: ""):

@@ -4786,7 +4786,31 @@ def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         if host:     # uzak: yalnız `_remote_stop`un koşullarıyla (exact_target, tam ad, "own"); yerel `_act` ASLA
             res = _remote_stop(name, host, _world(sid), sid, str(data.get("actor") or ""))
         else:
-            res = _act("stop", _resolved_local_name(name, sid), lang=cfg.lang)
+            real = _resolved_local_name(name, sid)
+            proj = None
+            if str(data.get("actor") or "") == "brain" and real != cfg.brain_name:
+                try:
+                    proj = _project_for_session(real, sw.load_projects(sid), _world(sid))
+                except Exception:
+                    proj = None
+            if proj is not None and str(getattr(proj, "phase", "")) not in ("done", "paused"):
+                # İŞİ VAR (planned/planning/idea): beyin kapatamaz. Bitti ise faz done/paused yapılır; kalan iş sahip
+                # kararıysa steward_ask_user ile sahibe SORULUR (sorusuz "sahipte" demek kapatma gerekçesi değil).
+                res = {"ok": False, "error": f"{proj.name} faz '{proj.phase}': işi var, kapatılamaz. Bitti ise önce "
+                       "steward_set_project phase=done|paused; kalan iş sahip kararıysa steward_ask_user ile sor."}
+            elif proj is not None:
+                # Beyin "bitti, kapat" dedi: GÜM diye öldürme YOK. Önce devir, READY FOR HANDOVER gelince motor kapatır
+                # (`ho_close`); iş varsa beyin stop çağırmamalı (sahip kuralı 2026-11-01).
+                res = _local_handover(name, sid, cfg.lang)
+                if res.get("ok"):
+                    with sw.steward_lock(sid):
+                        state = sw.load_state(sid)
+                        state.setdefault("ho_pending", {})[real] = time.time()
+                        state.setdefault("ho_close", {})[real] = proj.name
+                        sw.save_state(state, sid)
+                    res = dict(res, note="devir gönderildi; devir bitince oturum kapanır (anında öldürülmedi)")
+            else:
+                res = _act("stop", real, lang=cfg.lang)
     sw.log_event("stop", paths=sid, name=name, reason=str(data.get("reason") or ""), ok=bool(res.get("ok")),
                  **({"host": host} if host else {}))
     if res.get("ok") and str(data.get("actor") or "") == "brain":
