@@ -25,13 +25,13 @@ import { DesktopTab } from "./components/DesktopTab";
 import { DiagnosticsTab } from "./components/DiagnosticsTab";
 import { GroupTable } from "./components/GroupTable";
 import { HistoryTab } from "./components/HistoryTab";
-import { IoAskPanel } from "./components/IoAskPanel";
 import { OrchTab } from "./components/OrchTab/OrchTab";
 import { RegisteredTab } from "./components/RegisteredTab/RegisteredTab";
 import { RunningTab } from "./components/RunningTab/RunningTab";
 import { SearchBox } from "./components/shared/SearchBox";
 import { SettingsTab } from "./components/SettingsTab";
 import { StewardTab } from "./components/StewardTab";
+import { UcliTab } from "./components/UcliTab";
 import { SnapshotSection } from "./components/SnapshotSection";
 import { TabBar } from "./components/TabBar";
 import { ReadOnlySessionModal } from "./components/TerminalModal/ReadOnlySessionModal";
@@ -218,7 +218,7 @@ function AppShell() {
         {data && activeTab === "registered" && (
           <RegisteredTab selection={selection} onSwitchTab={setActiveTab} search={search} onView={onViewSession} />
         )}
-        {data && activeTab === "ucli" && <IoAskPanel />}
+        {data && activeTab === "ucli" && <UcliTab />}
         {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} onView={onViewSession} />}
         {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} onView={onViewSession} />}
         {data && activeTab === "history" && <HistoryTab search={search} onView={onViewSession} />}

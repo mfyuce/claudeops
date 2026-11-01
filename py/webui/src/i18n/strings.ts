@@ -448,6 +448,10 @@ export interface Strings {
   ucliLimitsMaxToolCallsLabel: string;
   ucliLimitsMaxOutputTokensLabel: string;
   ucliLimitsRequestTimeoutLabel: string;
+  ucliSectionRun: string;
+  ucliSectionStart: string;
+  ucliSectionGlobal: string;
+  ucliTabNoCli: string;
   mixedCliBadgeHint: (cli: string) => string;
   ucliLimitsPlaceholderAuto: string;
   ucliLimitsReasoningLabel: string;
@@ -1286,6 +1290,10 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsRequestTimeoutLabel: "request-timeout-secs",
+    ucliSectionRun: "Çalıştır",
+    ucliSectionStart: "Oturum başlatma",
+    ucliSectionGlobal: "Global ayarlar",
+    ucliTabNoCli: "ucli bu kurulumda etkin değil (cli_list içinde yok).",
     mixedCliBadgeHint: (c) => `Bu klasörde birden çok CLI çalışıyor; bu satırlardan bazıları ${c}`,
     ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
     ucliLimitsReasoningLabel: "akıl yürütme (--effort)",
@@ -2137,6 +2145,10 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsRequestTimeoutLabel: "request-timeout-secs",
+    ucliSectionRun: "Run",
+    ucliSectionStart: "Session start",
+    ucliSectionGlobal: "Global settings",
+    ucliTabNoCli: "ucli is not enabled on this install (not in cli_list).",
     mixedCliBadgeHint: (c) => `Several CLIs share this folder; some rows here are ${c}`,
     ucliLimitsPlaceholderAuto: "empty = preset default",
     ucliLimitsReasoningLabel: "reasoning (--effort)",
