@@ -57,6 +57,7 @@ import { callAction } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { UzakgozSettings } from "./UzakgozSettings";
+import { VirtualKeyboard, type ModName } from "./VirtualKeyboard";
 
 type MouseButtonName = "left" | "middle" | "right";
 
@@ -65,8 +66,18 @@ type InputEvent =
   | { t: "down"; b: MouseButtonName }
   | { t: "up"; b: MouseButtonName }
   | { t: "scroll"; dx: number; dy: number }
-  | { t: "key"; k: string; a: "click" }
-  | { t: "text"; s: string };
+  | { t: "key"; k: string; a: "click" | "down" | "up" }
+  | { t: "text"; s: string }
+  | { t: "cfg"; quality?: number; scale?: number; fps?: number };
+
+/** Stream presets sent as `cfg` (daemon clamps: quality 10-95, scale 10-100 %, fps 1-30). */
+const PRESETS: Record<string, { quality: number; scale: number; fps: number }> = {
+  fast: { quality: 50, scale: 60, fps: 12 },
+  balanced: { quality: 70, scale: 100, fps: 15 },
+  sharp: { quality: 85, scale: 100, fps: 20 },
+};
+
+type StreamInfo = { w: number; h: number };
 
 // Mirrors `named_key()` in rust/screenshare/src/main.rs — anything not on
 // this list is treated as printable text instead (see the hidden input's
@@ -105,6 +116,9 @@ function useDesktopStream(active: boolean) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [cursor, setCursor] = useState<CursorPos | null>(null);
+  const [info, setInfo] = useState<StreamInfo | null>(null);
+  const [fps, setFps] = useState(0);
+  const framesRef = useRef(0);
   const urlRef = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -114,18 +128,26 @@ function useDesktopStream(active: boolean) {
     wsRef.current = ws;
     ws.binaryType = "blob";
     ws.onopen = () => setConnected(true);
+    const fpsTimer = window.setInterval(() => {
+      setFps(framesRef.current);
+      framesRef.current = 0;
+    }, 1000);
     ws.onmessage = (ev) => {
       if (typeof ev.data === "string") {
         try {
-          const msg = JSON.parse(ev.data) as { t?: string; x?: number; y?: number };
+          const msg = JSON.parse(ev.data) as { t?: string; x?: number; y?: number; w?: number; h?: number };
           if (msg.t === "cursor" && typeof msg.x === "number" && typeof msg.y === "number") {
             setCursor({ x: msg.x, y: msg.y });
+          } else if (msg.t === "info" && typeof msg.w === "number" && typeof msg.h === "number") {
+            // Full SCREEN size: input/cursor coordinates live in this space even when scaled frames are smaller.
+            setInfo({ w: msg.w, h: msg.h });
           }
         } catch {
           // Ignore malformed control messages — never worth dropping the stream over.
         }
         return;
       }
+      framesRef.current += 1;
       const nextUrl = URL.createObjectURL(ev.data as Blob);
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
       urlRef.current = nextUrl;
@@ -134,6 +156,7 @@ function useDesktopStream(active: boolean) {
     ws.onclose = () => setConnected(false);
     ws.onerror = () => setConnected(false);
     return () => {
+      window.clearInterval(fpsTimer);
       wsRef.current = null;
       ws.close();
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -141,6 +164,8 @@ function useDesktopStream(active: boolean) {
       setFrameUrl(null);
       setConnected(false);
       setCursor(null);
+      setInfo(null);
+      setFps(0);
     };
   }, [active]);
 
@@ -149,7 +174,7 @@ function useDesktopStream(active: boolean) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event));
   }
 
-  return { frameUrl, connected, cursor, sendInput };
+  return { frameUrl, connected, cursor, info, fps, sendInput };
 }
 
 export function DesktopTab() {
@@ -160,10 +185,12 @@ export function DesktopTab() {
   const [audioError, setAudioError] = useState(false);
   const [controlWanted, setControlWanted] = useState(false);
   const [showCursor, setShowCursor] = useState(true);
+  const [showKeyboard, setShowKeyboard] = useState(false);
+  const [preset, setPreset] = useState("balanced");
 
   const running = data?.remote_desktop.running ?? false;
   const control = controlWanted && running; // can't control a stopped/stopping stream
-  const { frameUrl, connected, cursor, sendInput } = useDesktopStream(running);
+  const { frameUrl, connected, cursor, info, fps, sendInput } = useDesktopStream(running);
 
   const imgRef = useRef<HTMLImageElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
@@ -187,15 +214,20 @@ export function DesktopTab() {
       return;
     }
     const img = imgRef.current;
-    if (!img || !img.naturalWidth || !img.naturalHeight) {
+    const w = info?.w || img?.naturalWidth || 0;
+    const h = info?.h || img?.naturalHeight || 0;
+    if (!w || !h) {
       setMarkerStyle(null);
       return;
     }
-    setMarkerStyle({
-      left: `${(cursor.x / img.naturalWidth) * 100}%`,
-      top: `${(cursor.y / img.naturalHeight) * 100}%`,
-    });
-  }, [cursor, showCursor]);
+    setMarkerStyle({ left: `${(cursor.x / w) * 100}%`, top: `${(cursor.y / h) * 100}%` });
+  }, [cursor, showCursor, info]);
+
+  // Send the chosen quality preset whenever the stream (re)connects or the choice changes.
+  useEffect(() => {
+    if (connected) sendInput({ t: "cfg", ...PRESETS[preset] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, preset]);
 
   async function handleStart() {
     setBusy("start");
@@ -213,15 +245,15 @@ export function DesktopTab() {
 
   function remoteCoords(clientX: number, clientY: number): { x: number; y: number } | null {
     const img = imgRef.current;
-    if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+    // Input coordinates are in FULL SCREEN pixels (`info`), not in the (possibly scaled-down) frame's own pixels.
+    const w = info?.w || img?.naturalWidth || 0;
+    const h = info?.h || img?.naturalHeight || 0;
+    if (!img || !w || !h) return null;
     const rect = img.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
-    const x = Math.round(((clientX - rect.left) / rect.width) * img.naturalWidth);
-    const y = Math.round(((clientY - rect.top) / rect.height) * img.naturalHeight);
-    return {
-      x: Math.max(0, Math.min(img.naturalWidth - 1, x)),
-      y: Math.max(0, Math.min(img.naturalHeight - 1, y)),
-    };
+    const x = Math.round(((clientX - rect.left) / rect.width) * w);
+    const y = Math.round(((clientY - rect.top) / rect.height) * h);
+    return { x: Math.max(0, Math.min(w - 1, x)), y: Math.max(0, Math.min(h - 1, y)) };
   }
 
   function handlePointerDown(e: ReactPointerEvent<HTMLImageElement>) {
@@ -261,8 +293,31 @@ export function DesktopTab() {
     if (dx !== 0 || dy !== 0) sendInput({ t: "scroll", dx, dy });
   }
 
+  /** Modifier burst: `mod down ... key click ... mod up` in one go, so no modifier can stay held remotely. */
+  function sendCombo(mods: ModName[], key: string) {
+    if (!control) return;
+    for (const m of mods) sendInput({ t: "key", k: m, a: "down" });
+    if (key) sendInput({ t: "key", k: key, a: "click" });
+    else if (mods.length === 1) sendInput({ t: "key", k: mods[0], a: "click" });   // bare "Win"
+    for (const m of [...mods].reverse()) sendInput({ t: "key", k: m, a: "up" });
+  }
+
   function handleKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (!control) return;
+    // Physical Ctrl/Alt/Meta + a key (Ctrl+C...): forwarded as one burst. Combos the browser itself reserves never arrive.
+    if ((e.ctrlKey || e.altKey || e.metaKey) && !["Control", "Alt", "Meta", "Shift"].includes(e.key)) {
+      const mods: ModName[] = [];
+      if (e.ctrlKey) mods.push("Control");
+      if (e.altKey) mods.push("Alt");
+      if (e.metaKey) mods.push("Meta");
+      if (e.shiftKey) mods.push("Shift");
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (key.length === 1 || NAMED_KEYS.has(key)) {
+        e.preventDefault();
+        sendCombo(mods, key);
+        return;
+      }
+    }
     if (NAMED_KEYS.has(e.key)) {
       e.preventDefault();
       sendInput({ t: "key", k: e.key, a: "click" });
@@ -317,6 +372,18 @@ export function DesktopTab() {
             <button type="button" className={control ? "stop" : "start"} onClick={() => setControlWanted((v) => !v)}>
               {control ? t.desktopControlOffBtn : t.desktopControlOnBtn}
             </button>
+            <button type="button" className={showKeyboard ? "stop" : "start"} onClick={() => setShowKeyboard((v) => !v)}>
+              {lang === "tr" ? "Klavye" : "Keyboard"}
+            </button>
+            <label>
+              {lang === "tr" ? "kalite" : "quality"}{" "}
+              <select value={preset} onChange={(e) => setPreset(e.target.value)}>
+                <option value="fast">{lang === "tr" ? "hızlı (mobil)" : "fast (mobile)"}</option>
+                <option value="balanced">{lang === "tr" ? "dengeli" : "balanced"}</option>
+                <option value="sharp">{lang === "tr" ? "net" : "sharp"}</option>
+              </select>
+            </label>
+            <span className="opts-hint">{fps} fps</span>
             <label className="fresh-toggle">
               <input type="checkbox" checked={showCursor} onChange={(e) => setShowCursor(e.target.checked)} />{" "}
               {t.desktopCursorToggle}
@@ -325,6 +392,17 @@ export function DesktopTab() {
         )}
       </div>
       {running && control && <div className="opts-hint">{t.desktopControlHint}</div>}
+      {running && showKeyboard && (
+        control ? (
+          <VirtualKeyboard
+            lang={lang}
+            onKey={sendCombo}
+            onText={(s) => sendInput({ t: "text", s })}
+          />
+        ) : (
+          <div className="opts-hint">{lang === "tr" ? "Klavye için önce Kontrolü Al." : "Take control first to use the keyboard."}</div>
+        )
+      )}
       {running && (
         <div className={`desktop-viewport${control ? " controlling" : ""}`}>
           {frameUrl ? (
