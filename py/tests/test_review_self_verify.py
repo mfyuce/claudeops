@@ -82,6 +82,39 @@ class SelfVerifyTest(_Flow):
         self.assertTrue(proc.killed)
         self.assertEqual({v["state"] for v in self.findings().values()}, {"new"})
 
+    def test_concurrent_calls_same_project_only_one_starts(self):
+        """Denetle+yer ayır tek kilitte: iki eşzamanlı çağrıdan yalnız biri başlar, diğeri already_running."""
+        import threading
+        self.seed()
+        rows = self.rows()
+        gate, entered = threading.Event(), threading.Event()
+        started = []
+
+        class Slow(Proc):
+            def communicate(inner, timeout=None):
+                entered.set()
+                gate.wait(5)
+                return "", ""
+
+        def popen(argv, **k):
+            started.append(1)
+            return Slow()
+        results = []
+        ts = [threading.Thread(target=lambda: results.append(wr.self_verify(self.cfg, "a", rows, popen=popen, background=False)))
+              for _ in range(2)]
+        for t in ts:
+            t.start()
+        self.assertTrue(entered.wait(5))
+        for _ in range(100):
+            if any(not r["ok"] for r in results):
+                break
+            threading.Event().wait(0.02)
+        self.assertEqual([r.get("code") for r in results if not r["ok"]], ["already_running"])
+        gate.set()
+        for t in ts:
+            t.join(10)
+        self.assertEqual(len(started), 1)
+
     def test_missing_verdict_line_requeues_only_that_finding(self):
         self.seed()
         ids = [r["id"] for r in self.rows()]

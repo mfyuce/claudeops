@@ -370,6 +370,10 @@ _SECRET_RES = (
 )
 
 
+LEARNED_MIN = 4             # öğrenilmiş (DSN) parolası bundan kısaysa düz metinde maskelenmez (metni bozar); DSN'in kendisi yine maskelenir
+LEARNED_PLAIN_MIN = 8       # bundan uzunsa her yerde düz değiştirilir; arası yalnız sözcük sınırında
+
+
 def dsn_passwords(text: str) -> List[str]:
     """Metindeki `scheme://user:PAROLA@host` parolaları (IoLog öğrenip sonraki olaylarda düz metinde de maskeler)."""
     return [m.group(2) for m in _DSN_RE.finditer(str(text or "")) if m.group(2) != "[REDACTED]"]
@@ -382,8 +386,12 @@ def redact_secrets(text: str, learned: Sequence[str] = ()) -> str:
     learned = list(learned) + [pw for pw in dsn_passwords(text) if pw not in learned]   # bu metindeki DSN parolası metnin her yerinde maskelenir
     out = _DSN_RE.sub(lambda m: m.group(1) + "[REDACTED]" + m.group(3), text)
     for s in sorted(learned, key=len, reverse=True):
-        if s:
+        if not s:
+            continue
+        if len(s) >= LEARNED_PLAIN_MIN:
             out = out.replace(s, "[REDACTED]")
+        elif len(s) >= LEARNED_MIN:     # kısa parola: yalnız kendi başına geçen sözcük (yol/tanımlayıcı içinde geçince metin bozulmasın)
+            out = re.sub(r"(?<![A-Za-z0-9_./-])" + re.escape(s) + r"(?![A-Za-z0-9_./-])", "[REDACTED]", out)
     for rx in _SECRET_RES:
         if rx.groups:
             out = rx.sub(lambda m: m.group(1) + "[REDACTED]", out)
@@ -621,7 +629,7 @@ def update_pair(paths: Any, proj: str, t: ReviewTarget, **fields: Any) -> Dict[s
         if fields.get("status") == "running" and "attempts" not in fields:
             # önceki pencerenin sonucu (done ya da pencere dışı) sayaca taşınmaz: yeni pencere 1. denemeyle başlar
             stale = rec.get("status") == "done" or (
-                _num(fields.get("started_at")) - _num(rec.get("started_at")) >= WINDOW_SECONDS)
+                (_num(fields.get("started_at")) or time.time()) - _num(rec.get("started_at")) >= WINDOW_SECONDS)   # started_at verilmediyse şimdi
             fields["attempts"] = (0 if stale else int(_num(rec.get("attempts")))) + 1
         rec.update(fields)
         hist["pairs"][key] = rec
@@ -804,9 +812,9 @@ def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
             a = agg.setdefault((proj, tgt), {"project": proj, "target": tgt, "runs": 0, "requests": 0, "prompt_tokens": 0,
                                              "completion_tokens": 0, "reasoning_tokens": 0, "cached_tokens": 0, "total_tokens": 0,
                                              "seconds": 0.0})
-            a["runs"] += 1
             try:
                 with open(os.path.join(dp, fn), encoding="utf-8", errors="replace") as f:
+                    a["runs"] += 1                      # okunamayan dosya "koşu" sayılmaz
                     for ln in f:
                         try:
                             e = json.loads(ln)
@@ -1040,7 +1048,7 @@ def appended_export(text: str, rows: Sequence[Dict[str, Any]], reviews_root: str
 
 
 _INCOMPLETE_RE = re.compile(r"tool[- ]call budget (?:was )?exhausted|budget exhausted|araç (?:çağrısı )?bütçesi\s+(?:\(\d+ çağrı\)\s+)?tükendi|inceleme(?:nin)? (?:durumu: )?tamamlanmadı", re.I)     # TBD#139: tek kelime `denetlenmemiştir` ("tests/ denetlenmemiştir" notu) yanlış pozitifti
-_HAS_FINDING_RE = re.compile(r"^## R-\d+ \|", re.M)
+_HAS_FINDING_RE = re.compile(r"^#{2,4}\s*R-\d+\s*\|", re.M)       # `parse_findings` ile aynı başlık derinliği/boşluk toleransı
 
 
 def report_incomplete(text: str) -> bool:

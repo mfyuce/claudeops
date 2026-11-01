@@ -156,3 +156,58 @@ class TestSlotsTick(_Tick):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAgyHomeTokenPrivate(unittest.TestCase):
+    def test_token_copy_is_0600_never_wider_and_replaces_symlink(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            real = os.path.join(d, ".gemini", "antigravity-cli")
+            os.makedirs(real)
+            with open(os.path.join(real, "antigravity-oauth-token"), "w") as f:
+                f.write("sir")
+            old = os.umask(0)                                             # en gevşek umask: yine de 0600 olmalı
+            try:
+                home = wr.agy_home(d, "/x", ["ls"], real_home=d)
+                dst = os.path.join(home, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+                self.assertEqual(os.stat(dst).st_mode & 0o777, 0o600)
+                victim = os.path.join(d, "victim")
+                os.remove(dst)
+                os.symlink(victim, dst)                                   # hedef symlink: izlenmez, yerine dosya konur
+                wr.agy_home(d, "/x", ["ls"], real_home=d)
+            finally:
+                os.umask(old)
+            self.assertFalse(os.path.exists(victim))
+            self.assertFalse(os.path.islink(dst))
+            self.assertEqual(open(dst).read(), "sir")
+
+
+class TestReportFilesPrivateUtf8(unittest.TestCase):
+    def test_write_report_utf8_0600_and_recover_partial_0600(self):
+        import json as _json, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            old = os.umask(0)
+            try:
+                p = os.path.join(d, "r", "x.md")
+                wr._write_report(p, "## R-1 | P2 | a.py:1 | şğüİ\n")
+                self.assertEqual(open(p, encoding="utf-8").read(), "## R-1 | P2 | a.py:1 | şğüİ\n")
+                self.assertEqual(os.stat(p).st_mode & 0o777, 0o600)
+                pp = wr.rv.partial_path(p)
+                with open(pp, "w", encoding="utf-8") as f:
+                    _json.dump({"assistant_text": "## R-1 | P3 | b.py:2 | kısmi"}, f)
+                os.chmod(pp, 0o644)
+                self.assertIn("R-1", wr._recover_partial(p))
+                self.assertEqual(os.stat(pp).st_mode & 0o777, 0o600)
+            finally:
+                os.umask(old)
+
+
+class TestClaudeIsError(unittest.TestCase):
+    def test_is_error_message_is_not_a_report_but_real_report_is_kept(self):
+        import json as _json
+        err = _json.dumps({"type": "result", "is_error": True, "result": "API Error: 529 overloaded"})
+        self.assertEqual(wr._extract_text("claude", err), ("", "API Error: 529 overloaded"))
+        part = _json.dumps({"type": "result", "is_error": True, "result": "## R-1 | P2 | a.py:1 | x\ngövde"})
+        txt, e = wr._extract_text("claude", part)
+        self.assertIn("R-1", txt)
+        self.assertTrue(e)

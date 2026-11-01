@@ -10,6 +10,7 @@ Adım 5'te doldurulacak: havuz eşitleme (`review.pool_sync`), sıradaki çift (
 
 Bu modül `web.py`'yi ve `web_steward`'ı İÇE AKTARMAZ (döngü yok; eylemler gerekirse geri çağrıyla verilir)."""
 import codecs
+import contextlib
 import functools
 import json
 import os
@@ -191,6 +192,25 @@ def evren_argv(binary: str, cwd: str, model: str, prompt: str, endpoint: str, su
         + (["--allow-create-dir", create_dir] if create_dir else [])) + [prompt]
 
 
+def _copy_private(src: str, dst: str) -> None:
+    """Gizli dosyayı HİÇ gevşek izinle görünmeden kopyala: 0600 ile oluşturulan geçici dosya -> `os.replace` (copyfile+chmod
+    arasında okunabilir pencere olmaz; hedef symlink ise yerine yeni dosya konur, symlink izlenmez)."""
+    with open(src, "rb") as f:
+        data = f.read()
+    tmp = dst + ".tmp"
+    with contextlib.suppress(OSError):
+        os.remove(tmp)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+        os.replace(tmp, dst)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+
+
 def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "", slot: int = 0) -> str:
     """Review'a özel İZOLE agy HOME'u (`<root>/agy_home`): kendi `settings.json`ı (yalnız salt-okunur komut izni, kullanıcının
     global ayarına/GEMINI.md'sine dokunmaz) + gerçek HOME'dan KOPYALANAN oturum belirteci. Belirteç her koşuda yeniden
@@ -202,8 +222,7 @@ def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "", slo
     os.makedirs(cfg, mode=0o700, exist_ok=True)
     for name in ("antigravity-oauth-token", "installation_id"):
         try:
-            shutil.copyfile(os.path.join(real, name), os.path.join(cfg, name))
-            os.chmod(os.path.join(cfg, name), 0o600)
+            _copy_private(os.path.join(real, name), os.path.join(cfg, name))
         except OSError:
             pass
     tmp = os.path.join(cfg, "settings.json.tmp")
@@ -809,7 +828,9 @@ def _extract_text(mode: str, stdout: str) -> Tuple[str, str]:
             return stdout, ""
         txt = res.get("result")
         if res.get("is_error"):
-            return (txt if isinstance(txt, str) else ""), (str(txt) if isinstance(txt, str) and txt else "claude is_error")
+            # hata iletisi rapor DEĞİLDİR (`.md` olup `partial` sayılmasın); yalnız gerçek rapor başlığı taşıyan metin kurtarılır
+            err = str(txt) if isinstance(txt, str) and txt else "claude is_error"
+            return (txt if isinstance(txt, str) and _REPORT_HEAD_RE.search(txt) else ""), err
         return (txt if isinstance(txt, str) else ""), ""
     if mode not in rv.UCLI_MODES:
         return stdout, ""
@@ -856,7 +877,9 @@ def _recover_partial(path: str, learned: Sequence[str] = ()) -> str:
     red = rv.redact_secrets(raw, learned)
     tmp = pp + ".tmp"
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w", encoding="utf-8") as f:
             f.write(red)
         os.replace(tmp, pp)
     except OSError:
@@ -894,7 +917,7 @@ def _write_report(path: str, text: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)      # kod alıntılı rapor: hata günlüğüyle aynı izin (umask 0644 değil)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:       # yerel kodlama değil: Türkçe/Unicode rapor her ortamda aynı yazılır
         f.write(text)
     os.replace(tmp, path)
 
@@ -2158,11 +2181,14 @@ SELF_VERIFY_MODEL = "claude-sonnet-5-5"
 SELF_VERIFY_TIMEOUT = 900.0          # sn; aşılırsa süreç sonlandırılır, bulgular yeniden denenir
 SELF_VERIFY_MAX_TRIES = 3            # bulgu başına; dolunca `unclear` (elle bakılır)
 _SELF_VERIFY: Dict[str, threading.Thread] = {}     # proje -> canlı doğrulama thread'i
+_SELF_VERIFY_RESERVED: set = set()    # check-then-start yarışı: kilit altında yer ayrılan projeler (thread başlayana dek)
 _SELF_VERIFY_LOCK = threading.Lock()
 
 
 def self_verify_running(project: str = "") -> bool:
     with _SELF_VERIFY_LOCK:
+        if _SELF_VERIFY_RESERVED and (not project or project in _SELF_VERIFY_RESERVED):
+            return True
         for k, t in list(_SELF_VERIFY.items()):
             if not t.is_alive():
                 _SELF_VERIFY.pop(k, None)
@@ -2201,7 +2227,10 @@ def _self_verify_run(cfg: Any, project: str, rows: List[Dict[str, Any]], cwd: st
             out, _err = proc.communicate(timeout=SELF_VERIFY_TIMEOUT)
         except subprocess.TimeoutExpired:
             proc.kill()
-            proc.communicate()
+            try:
+                proc.communicate(timeout=10)       # torun süreç boruyu tutuyorsa sonsuza dek asılma
+            except Exception:
+                pass
             _self_verify_fail(p, fids, "zaman aşımı", now())
             return []
         if getattr(proc, "returncode", 0) not in (0, None):
@@ -2238,25 +2267,30 @@ def self_verify(cfg: Any, project: str, rows: List[Dict[str, Any]], *, popen: Op
     cwd = review_cwd(project)
     if not cwd or not os.path.isdir(cwd):
         return {"ok": False, "code": "no_cwd", "error": f"project {project!r} has no local folder to verify against"}
-    with _SELF_VERIFY_LOCK:
+    with _SELF_VERIFY_LOCK:      # denetle + yer ayır TEK kilitte (iki eşzamanlı çağrı aynı projede iki doğrulama başlatamaz)
         t = _SELF_VERIFY.get(project)
-        if t is not None and t.is_alive():
+        if project in _SELF_VERIFY_RESERVED or (t is not None and t.is_alive()):
             return {"ok": False, "code": "already_running", "error": f"a verification for {project!r} is already running"}
-    p = sw.paths_for(cfg.sid)
-    marked = rv.mark_verify_sent(p, [r["id"] for r in rows], "self", "", now())
-    if not marked:
-        return {"ok": False, "error": "no findings in a verifiable state"}
-    rows = [r for r in rows if r["id"] in set(marked)]
-    sw.log_event("review_verify", paths=p, project=project, session="self", findings=marked, source="self")
-    bg = _REVIEW_BACKGROUND if background is None else background
-    if bg:
-        th = threading.Thread(target=_self_verify_run, args=(cfg, project, rows, cwd, popen, now), daemon=True,
-                              name=f"self-verify-{project}")
+        _SELF_VERIFY_RESERVED.add(project)
+    try:
+        p = sw.paths_for(cfg.sid)
+        marked = rv.mark_verify_sent(p, [r["id"] for r in rows], "self", "", now())
+        if not marked:
+            return {"ok": False, "error": "no findings in a verifiable state"}
+        rows = [r for r in rows if r["id"] in set(marked)]
+        sw.log_event("review_verify", paths=p, project=project, session="self", findings=marked, source="self")
+        bg = _REVIEW_BACKGROUND if background is None else background
+        if bg:
+            th = threading.Thread(target=_self_verify_run, args=(cfg, project, rows, cwd, popen, now), daemon=True,
+                                  name=f"self-verify-{project}")
+            with _SELF_VERIFY_LOCK:
+                _SELF_VERIFY[project] = th
+            th.start()
+        else:
+            _self_verify_run(cfg, project, rows, cwd, popen, now)
+    finally:
         with _SELF_VERIFY_LOCK:
-            _SELF_VERIFY[project] = th
-        th.start()
-    else:
-        _self_verify_run(cfg, project, rows, cwd, popen, now)
+            _SELF_VERIFY_RESERVED.discard(project)
     return {"ok": True, "project": project, "session": "self", "findings": marked}
 
 

@@ -47,7 +47,7 @@ MIT licensed — see [`LICENSE`](LICENSE).
   MCP tools — see `py/README.md`
 
 **Web control panel** (`py/cops web`)
-- Runs off the Python standard library only — no extra dependencies to install
+- Pure Python; a few third-party packages are needed (psutil, websockets, grpcio, protobuf): `pip install -r py/requirements.txt`
 - Token-gated, reachable from your phone via a Cloudflare tunnel (random quick-tunnel, or a fixed
   URL on your own domain)
 - Running / Registered / Disabled / Retired tabs, bulk actions with checkboxes

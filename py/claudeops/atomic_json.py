@@ -40,10 +40,10 @@ def atomic_write_json(path: str, obj: Any, *, mode: Optional[int] = None) -> Non
         os.makedirs(d, exist_ok=True)
     tmp = f"{path}.{os.getpid()}-{threading.get_ident()}.tmp"
     try:
-        if mode is None:
-            f = open(tmp, "w", encoding="utf-8")
-        else:
-            f = os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode), "w", encoding="utf-8")
+        with contextlib.suppress(OSError):
+            os.remove(tmp)      # önceki çöküşten kalan aynı adlı tmp (ya da yerleştirilmiş symlink) takip edilmesin
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666 if mode is None else mode)   # None: umask uygular
+        f = os.fdopen(fd, "w", encoding="utf-8")
         with f:
             json.dump(obj, f, ensure_ascii=False, indent=2)
             f.flush()

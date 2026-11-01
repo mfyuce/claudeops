@@ -76,7 +76,7 @@ class ClaudeJsonTest(unittest.TestCase):
         self.assertIsNone(wr.claude_usage_event("düz metin rapor"))
         self.assertIsNone(wr.claude_usage_event('{"type":"result","result":"x"}'))   # usage yok: uydurma yok
         t, e = wr._extract_text("claude", '{"type":"result","is_error":true,"result":"API Error 529"}')
-        self.assertEqual((t, e), ("API Error 529", "API Error 529"))
+        self.assertEqual((t, e), ("", "API Error 529"))     # hata iletisi rapor DEĞİL (P3: .md olup partial sayılmasın)
         self.assertEqual(wr._extract_text("codex", self.RES), (self.RES, ""))        # diğer modlar değişmez
 
 

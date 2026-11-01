@@ -634,7 +634,9 @@ def start_run(participants: List[dict], task: str, verdict_hint: str = "",
     with _LOCK:
         if _ACTIVE_RUN_ID is not None:
             active = orch_store.load_run(_ACTIVE_RUN_ID)
-            if active and active.get("status") in ("briefing", "working", "deciding"):
+            # henüz diske kaydedilmemiş (yer ayrılmış, thread kurulumda) ama iptal olayı kayıtlı run da AKTİFTİR
+            pending = active is None and _ACTIVE_RUN_ID in _CANCEL_EVENTS
+            if pending or (active and active.get("status") in ("briefing", "working", "deciding")):
                 return None, f"a run is already active ({_ACTIVE_RUN_ID}) — cancel it or wait for it to finish"
         run_id = _new_run_id()
         _ACTIVE_RUN_ID = run_id

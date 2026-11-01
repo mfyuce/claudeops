@@ -2,7 +2,9 @@
 import dataclasses
 import os
 import sys
+import json
 import tempfile
+import time
 import unittest
 from types import SimpleNamespace as NS
 from unittest import mock
@@ -280,6 +282,11 @@ class TestPathsAndStores(unittest.TestCase):
             rv.update_pair(self.paths, "a", T1, status="error", finished_at=NOW + i)
         self.assertEqual(len(rv.load_history(self.paths)["runs"]), rv.HISTORY_RUNS_MAX)
 
+    def test_running_without_started_at_does_not_carry_old_window_attempts(self):
+        rv.update_pair(self.paths, "a", T1, status="error", started_at=time.time() - 40 * 86400, finished_at=time.time() - 40 * 86400, attempts=3)
+        r = rv.update_pair(self.paths, "a", T1, status="running")            # started_at verilmedi: şimdi sayılır, eski pencere taşınmaz
+        self.assertEqual(r["attempts"], 1)
+
     def test_findings_store(self):
         f = rv.parse_findings(MD)
         rf = os.path.join(self.paths.reviews, "a", "agy", "m", "20261022101500.md")
@@ -550,3 +557,34 @@ class TerminateReapsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReviewSmallFixes(unittest.TestCase):
+    def test_report_incomplete_recognizes_parser_heading_forms(self):
+        txt = "tool-call budget exhausted\n### R-1|P2|a.py:1|x\ngövde"
+        self.assertEqual(len(rv.parse_findings(txt)), 1)
+        self.assertFalse(rv.report_incomplete(txt))          # ayrıştırıcının gördüğü bulgu var: kapsam beyanı değil rapor
+
+    def test_usage_summary_ignores_unreadable_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            ok = os.path.join(d, "p", "evren", "m", "e", "20261101", "20261101.usage.jsonl")
+            bad = os.path.join(d, "p", "evren", "m", "e", "20261102", "20261102.usage.jsonl")
+            for f in (ok, bad):
+                os.makedirs(os.path.dirname(f))
+            with open(ok, "w") as f:
+                f.write(json.dumps({"event": "request", "usage": {"prompt_tokens": 5}}) + "\n")
+            os.symlink(os.path.join(d, "dangling"), bad)     # kırık symlink: açılamaz
+            rows = rv.usage_summary(d)
+            self.assertEqual(rows[0]["runs"], 1)
+
+
+class TestLearnedPasswordLength(unittest.TestCase):
+    def test_short_learned_password_does_not_corrupt_text(self):
+        t = "bağlan postgres://u:abc@h/db ve yol src/abc/labc.py içinde abc kelimesi"
+        out = rv.redact_secrets(t)
+        self.assertNotIn("u:abc@", out)                       # DSN her durumda maskelenir
+        self.assertIn("src/abc/labc.py", out)                 # 3 karakterlik parola yol/sözcük içini bozmaz
+        self.assertIn("içinde abc kelimesi", out)             # kısa (<4) parola düz metinde hiç maskelenmez (metni bozmasın)
+        out2 = rv.redact_secrets("kullan sifre1 burada ve sifre1x ayrı", ["sifre1"])    # 6 kar.: yalnız bağımsız sözcük
+        self.assertEqual(out2, "kullan [REDACTED] burada ve sifre1x ayrı")
+        self.assertEqual(rv.redact_secrets("uzunparola123 ve xuzunparola123x", ["uzunparola123"]), "[REDACTED] ve x[REDACTED]x")

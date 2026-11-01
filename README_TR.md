@@ -49,7 +49,7 @@ MIT lisanslı — bkz. [`LICENSE`](LICENSE).
   bkz. `py/README_TR.md`
 
 **Web kontrol paneli** (`py/cops web`)
-- Sadece Python standart kütüphanesiyle çalışır — ekstra bağımlılık kurmaya gerek yok
+- Saf Python; birkaç üçüncü taraf paket gerekir (psutil, websockets, grpcio, protobuf): `pip install -r py/requirements.txt`
 - Token korumalı, Cloudflare tunnel ile telefonundan erişilebilir (rastgele quick-tunnel ya da kendi
   domain'inde sabit bir URL)
 - Çalışanlar / Kayıtlı / Devre dışı / Emekli sekmeleri, checkbox'larla toplu işlemler

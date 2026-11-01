@@ -187,6 +187,9 @@ def write_upload(dest: str, rfile, length: int, chunk_size: int) -> Optional[str
                     break
                 f.write(chunk)
                 remaining -= len(chunk)
+            if remaining <= 0:
+                f.flush()
+                os.fsync(f.fileno())        # replace'ten ÖNCE kalıcı: güç kesilirse boş/yarım hedef kalmasın
         if remaining > 0:
             os.unlink(tmp)
             return "incomplete"

@@ -1073,8 +1073,17 @@ class RealWebsocketTests(unittest.TestCase):
     def test_end_to_end(self):
         t = watch.WsTransport(self.port, "yuhem", "s1", connect=watch.import_ws_connect(), read_token=lambda: "tok")
         gen = t.frames(threading.Event(), 0.25)
-        first = next(gen)
-        big = next(gen)
+
+        def next_frame(deadline=15.0):
+            # `frames` okuma zaman aşımında (0,25 sn) `None` verir; yük altında 3 MB'lık mesaj bu süreyi aşabilir: None'ları atla
+            end = time.monotonic() + deadline
+            while time.monotonic() < end:
+                f = next(gen)
+                if f is not None:
+                    return f
+            self.fail("kare gelmedi")
+        first = next_frame()
+        big = next_frame()
         gen.close()
         self.assertEqual(first["text"], "hello")
         self.assertEqual(len(big["text"]), 3_000_000)
