@@ -1,4 +1,4 @@
-"""remote_desktop — web panelin "Uzak Masaüstü" sekmesi: `rust/screenshare`
+"""remote_desktop — web panelin "Uzak Masaüstü" sekmesi: `uzakgoz` (eski adı `screenshare`)
 Rust daemon'ını on-demand spawn/kill eder; WS bağlantısını proxy'lemek
 `commands/web.py`'nin işi (bu modül sadece process lifecycle).
 
@@ -98,8 +98,12 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+DAEMON_NAMES = ("uzakgoz", "screenshare")     # yeni ad + geçiş dönemindeki eski ad (çalışan eski süreç adopt edilir)
+LOCAL_BIN = Path(REPO_DIR) / "bin" / "uzakgoz"  # claudeops'un git-dışı kopyası (uzakgoz `scripts/deliver.sh` teslim eder)
+
+
 def _is_screenshare(pid: int) -> bool:
-    """PID hâlâ bizim `screenshare` ikilisi mi? (PID yeniden kullanımı: orphan öldü, aynı numarayı başka süreç aldı.)
+    """PID hâlâ bizim `uzakgoz` (eski adıyla `screenshare`) ikilisi mi? (PID yeniden kullanımı: orphan öldü, aynı numarayı başka süreç aldı.)
     /proc yoksa (Linux dışı) doğrulanamaz: True (eski davranış)."""
     try:
         with open(f"/proc/{pid}/cmdline", "rb") as f:
@@ -108,7 +112,7 @@ def _is_screenshare(pid: int) -> bool:
         return False
     except OSError:
         return not os.path.isdir("/proc")
-    return os.path.basename(argv0.decode("utf-8", "replace")) == "screenshare"
+    return os.path.basename(argv0.decode("utf-8", "replace")) in DAEMON_NAMES
 
 
 def _write_pid_file(pid: int, port: int) -> None:
@@ -165,7 +169,8 @@ def _resolve_binary(manifest: Optional[str] = None) -> Optional[Path]:
         target_dir = Path(json.loads(result.stdout)["target_directory"])
     except (json.JSONDecodeError, KeyError):
         return None
-    return target_dir / "release" / "screenshare"
+    new = target_dir / "release" / "uzakgoz"
+    return new if new.exists() else target_dir / "release" / "screenshare"
 
 
 def status() -> dict:
@@ -193,6 +198,8 @@ def start(port: Optional[int] = None) -> dict:
 
         if cfg["bin"]:                      # hazır ikili: derleme YOK
             binary: Optional[Path] = Path(cfg["bin"])
+        elif LOCAL_BIN.is_file():           # claudeops'un teslim edilmiş kopyası: derleme YOK
+            binary = LOCAL_BIN
         else:
             manifest = _manifest_path()
             try:
@@ -223,12 +230,12 @@ def start(port: Optional[int] = None) -> dict:
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 _proc, _port = None, None
-                return {"ok": False, "error": f"screenshare hemen çöktü (exit={proc.returncode})"}
+                return {"ok": False, "error": f"uzakgoz hemen çöktü (exit={proc.returncode})"}
             if _port_open(port):
                 _write_pid_file(proc.pid, port)
                 return {"ok": True, "port": port}
             time.sleep(0.1)
-        return {"ok": False, "error": "screenshare port'u açmadı (timeout)"}
+        return {"ok": False, "error": "uzakgoz port'u açmadı (timeout)"}
 
 
 def stop() -> dict:

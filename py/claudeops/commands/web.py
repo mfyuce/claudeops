@@ -3641,6 +3641,29 @@ def _v1_stream_chunks(model: str, reply: str) -> list:
     ]
 
 
+def _serve_desktop_viewer(handler: "_Handler") -> None:
+    """`/desktop/viewer.js` — uzakgoz daemon'unun `/viewer.js` dosyasını (tarayıcı tarafı tek kaynak) panele sunar.
+    Daemon yalnız 127.0.0.1'e bağlı; token kontrolü `do_GET`'teki `_authorized()` ile burada (çağrıdan önce) yapılır."""
+    import urllib.request
+    port = remote_desktop.current_port()
+    if port is None:
+        handler._json({"ok": False, "error": "remote desktop daemon calismiyor"}, status=503)
+        return
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/viewer.js", timeout=5.0) as r:
+            body = r.read(2_000_000)
+    except OSError as e:
+        diag_log("desktop_viewer_unreachable", error=str(e))
+        handler._json({"ok": False, "error": "viewer.js alinamadi"}, status=502)
+        return
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/javascript; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
 def _proxy_desktop_ws(handler: "_Handler") -> None:
     """`/ws/desktop` — `remote_desktop`'un Rust daemon'ına RAW BYTE proxy.
 
@@ -4105,6 +4128,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif path == "/api/audio/live.mp3":
             audio_stream.stream(self)       # yerel çıkış sesi MP3 akışı (Masaüstü sekmesi "Ses"); kendi yanıtını yazar
+            return
+        elif path == "/desktop/viewer.js":
+            _serve_desktop_viewer(self)
             return
         elif path == "/ws/desktop":
             # `web_ws.py`'nin JSON-broadcast WS'inden TAMAMEN AYRI bir yol —

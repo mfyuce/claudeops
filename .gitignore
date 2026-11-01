@@ -40,3 +40,4 @@ target/
 # Build çıktısı: public repo, release ~25 MB, debug ~100 MB (GitHub dosya sınırı
 # 100 MB) ve derleyen makinenin yollarını gömer, asla commit edilmemeli.
 /bin/ucli*
+/bin/uzakgoz*

@@ -63,6 +63,28 @@ class AdoptRevalidateTest(unittest.TestCase):
         self.assertFalse(rd._is_screenshare(2 ** 22 + 12345))        # var olmayan PID
         self.assertFalse(rd._is_screenshare(os.getpid()))             # python süreci screenshare değil
 
+    def _is_with_argv0(self, argv0):
+        m = mock.mock_open(read_data=argv0.encode() + b"\0" + b"8877\0")
+        m.return_value.read.return_value = argv0.encode() + b"\0" + b"8877\0"
+        with mock.patch("builtins.open", m):
+            return rd._is_screenshare(1234)
+
+    def test_is_screenshare_accepts_new_and_old_names(self):
+        self.assertTrue(self._is_with_argv0("/x/bin/uzakgoz"))
+        self.assertTrue(self._is_with_argv0("/x/target/release/screenshare"))
+        self.assertFalse(self._is_with_argv0("/usr/bin/python3"))
+
+    def test_resolve_binary_prefers_uzakgoz_falls_back_to_screenshare(self):
+        target = tempfile.mkdtemp()
+        os.makedirs(os.path.join(target, "release"))
+        meta = mock.Mock(stdout='{"target_directory": "%s"}' % target)
+        with mock.patch.object(rd.subprocess, "run", return_value=meta):
+            self.assertEqual(rd._resolve_binary("m").name, "screenshare")      # hiçbiri yok -> eski ad
+            open(os.path.join(target, "release", "screenshare"), "w").close()
+            self.assertEqual(rd._resolve_binary("m").name, "screenshare")
+            open(os.path.join(target, "release", "uzakgoz"), "w").close()
+            self.assertEqual(rd._resolve_binary("m").name, "uzakgoz")
+
 
 if __name__ == "__main__":
     unittest.main()
