@@ -56,6 +56,7 @@ import { apiDesktopStart, apiDesktopStop, TOKEN, withToken } from "../api/client
 import { callAction } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
+import { UzakgozSettings } from "./UzakgozSettings";
 
 type MouseButtonName = "left" | "middle" | "right";
 
@@ -302,6 +303,7 @@ export function DesktopTab() {
         )}
         <span className="opts-hint">{audioError ? t.audioError : t.audioHint}</span>
       </div>
+      <UzakgozSettings />
       <div style={{ margin: ".5rem 0", display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
         {!running ? (
           <button type="button" className="start" disabled={busy !== null} onClick={() => void handleStart()}>

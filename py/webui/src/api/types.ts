@@ -337,6 +337,9 @@ export interface Settings {
    * `provider_bin` gibi {cli: ...} DEĞİL — bu numerik "effort" kavramı bugün
    * SADECE ucli'de var, `settings.py`'nin `ucli_limit_overrides()`'ı okur. */
   ucli_limits: Record<string, string>;
+  /** {dir, bin, port: string} — the remote-desktop daemon (`uzakgoz`, its own repo like ucli; `settings.uzakgoz_config()`).
+   * Empty field = default (dir ~/work/projects/tmp/uzakgoz, else the old in-repo copy; bin none = build from dir; port 8877). */
+  uzakgoz?: Record<string, string>;
   /** {search_url, search_docker, allow_fetch_domains: string} (+ `search_flavor`,
    * UI'da yok, yalnız "searxng") — ucli'nin web araçları (TODO.md 2026-10-16,
    * TBD#88). Hepsi isteğe bağlı ham string, eksik anahtar = varsayılan: arama

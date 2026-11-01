@@ -78,6 +78,7 @@ export type SettingsPatch = {
   /** {max_steps, max_context_kib, max_tool_calls: string} — bkz. `Settings.ucli_limits`.
    * Boş string bir alanı preset varsayılanına döndürür. */
   ucli_limits?: Record<string, string>;
+  uzakgoz?: Record<string, string>;
   /** {search_url, search_docker, allow_fetch_domains: string} — bkz. `Settings.ucli_web`.
    * Boş string bir alanı varsayılana döndürür (backend anahtarı siler). */
   ucli_web?: Record<string, string>;

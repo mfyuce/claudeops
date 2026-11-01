@@ -448,6 +448,12 @@ export interface Strings {
   ucliLimitsMaxToolCallsLabel: string;
   ucliLimitsMaxOutputTokensLabel: string;
   ucliLimitsRequestTimeoutLabel: string;
+  uzakgozSettingsTitle: string;
+  uzakgozDirLabel: string;
+  uzakgozBinLabel: string;
+  uzakgozPortLabel: string;
+  uzakgozPlaceholderAuto: string;
+  uzakgozSettingsHint: string;
   ucliSectionRun: string;
   ucliSectionStart: string;
   ucliSectionGlobal: string;
@@ -1290,6 +1296,12 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsRequestTimeoutLabel: "request-timeout-secs",
+    uzakgozSettingsTitle: "uzakgoz ayarları (uzak masaüstü daemon'u)",
+    uzakgozDirLabel: "kaynak dizini",
+    uzakgozBinLabel: "hazır ikili",
+    uzakgozPortLabel: "port",
+    uzakgozPlaceholderAuto: "otomatik",
+    uzakgozSettingsHint: "Boş alan = varsayılan: dizin ~/work/projects/tmp/uzakgoz (yoksa claudeops içindeki eski kopya), ikili yok (dizinden derlenir; doluysa derleme atlanır), port 8877. Geçersiz değer sessizce atlanır. Yalnız bir SONRAKİ başlatmada geçerli olur.",
     ucliSectionRun: "Çalıştır",
     ucliSectionStart: "Oturum başlatma",
     ucliSectionGlobal: "Global ayarlar",
@@ -2145,6 +2157,12 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
     ucliLimitsRequestTimeoutLabel: "request-timeout-secs",
+    uzakgozSettingsTitle: "uzakgoz settings (remote-desktop daemon)",
+    uzakgozDirLabel: "source dir",
+    uzakgozBinLabel: "prebuilt binary",
+    uzakgozPortLabel: "port",
+    uzakgozPlaceholderAuto: "auto",
+    uzakgozSettingsHint: "Empty = default: dir ~/work/projects/tmp/uzakgoz (else the old in-repo copy), no binary (built from the dir; if set the build is skipped), port 8877. An invalid value is silently skipped. Applies at the NEXT start only.",
     ucliSectionRun: "Run",
     ucliSectionStart: "Session start",
     ucliSectionGlobal: "Global settings",
