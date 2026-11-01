@@ -20,6 +20,7 @@ SERVICES: Dict[str, Tuple[str, str, str]] = {
     "claude": ("anthropic-messages", "https://api.anthropic.com/v1", "ANTHROPIC_API_KEY"),
     "grok": ("", "https://api.x.ai/v1", "XAI_API_KEY"),
     "openrouter": ("", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+    "groq": ("", "https://api.groq.com/openai/v1", "GROQ_API_KEY"),
 }
 
 # Rastgele komut çalıştırabilen ya da kabuk olan adlar: exec izin listesine GİREMEZ.

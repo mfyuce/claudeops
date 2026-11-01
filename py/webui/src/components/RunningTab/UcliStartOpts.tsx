@@ -32,6 +32,7 @@ const SERVICES = [
   { id: "claude", label: "Claude (Anthropic)", env: "ANTHROPIC_API_KEY", models: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"] },
   { id: "grok", label: "Grok (xAI)", env: "XAI_API_KEY", models: [] as string[] },
   { id: "openrouter", label: "OpenRouter", env: "OPENROUTER_API_KEY", models: [] as string[] },
+  { id: "groq", label: "Groq", env: "GROQ_API_KEY", models: [] as string[] },
 ];
 
 /** `cli_opts` for the start payload, or undefined when nothing non-default is chosen (payload unchanged for everyone else). */

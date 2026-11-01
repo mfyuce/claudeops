@@ -123,6 +123,14 @@ class BuildTests(unittest.TestCase):
         inner = shlex.split(self.build({"service": "grok"}))[2]
         self.assertNotIn("--cache-ttl", inner)
 
+    def test_groq_service_uses_groq_endpoint_and_key_env(self):
+        self.keys = {"GROQ_API_KEY": "k"}
+        inner = shlex.split(self.build({"service": "groq"}))[2]
+        self.assertIn("https://api.groq.com/openai/v1", inner)
+        self.assertIn("GROQ_API_KEY", inner)
+        self.assertNotIn("--provider", inner)      # chat-completions varsayılanı
+        self.assertNotIn("--cache-ttl", inner)     # Anthropic'e özgü bayraklar eklenmez
+
     def test_missing_service_key_refuses_spawn(self):
         with self.assertRaises(ValueError):
             self.build({"service": "grok"})

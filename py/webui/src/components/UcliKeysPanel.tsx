@@ -23,6 +23,7 @@ const KEY_SERVICES = [
   { id: "claude", label: "Claude (Anthropic)", env: "ANTHROPIC_API_KEY", hint: "anthropic-messages · https://api.anthropic.com" },
   { id: "grok", label: "Grok (xAI)", env: "XAI_API_KEY", hint: "chat-completions · https://api.x.ai/v1" },
   { id: "openrouter", label: "OpenRouter", env: "OPENROUTER_API_KEY", hint: "chat-completions · https://openrouter.ai/api/v1" },
+  { id: "groq", label: "Groq", env: "GROQ_API_KEY", hint: "chat-completions · https://api.groq.com/openai/v1" },
 ] as const;
 
 export function UcliKeysPanel() {
