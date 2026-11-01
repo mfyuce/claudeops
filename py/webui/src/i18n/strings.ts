@@ -454,6 +454,8 @@ export interface Strings {
   uzakgozPortLabel: string;
   uzakgozPlaceholderAuto: string;
   uzakgozSettingsHint: string;
+  ucliKeysTitle: string;
+  ucliKeysDesc: string;
   ucliSectionRun: string;
   ucliSectionStart: string;
   ucliSectionGlobal: string;
@@ -1302,6 +1304,8 @@ export const STRINGS: Record<Lang, Strings> = {
     uzakgozPortLabel: "port",
     uzakgozPlaceholderAuto: "otomatik",
     uzakgozSettingsHint: "Boş alan = varsayılan: dizin ~/work/projects/tmp/uzakgoz (yoksa claudeops içindeki eski kopya), ikili yok (dizinden derlenir; doluysa derleme atlanır), port 8877. Geçersiz değer sessizce atlanır. Yalnız bir SONRAKİ başlatmada geçerli olur.",
+    ucliKeysTitle: "Model anahtarları",
+    ucliKeysDesc: "Anahtar yalnız yazılır ve burada bir daha GÖSTERİLMEZ (settings.json, izin 600). Evren anahtarını yeni ucli oturumları zaten kullanır; Claude, Grok ve OpenRouter anahtarları oturum başlatmada kullanılmak üzere saklanır.",
     ucliSectionRun: "Çalıştır",
     ucliSectionStart: "Oturum başlatma",
     ucliSectionGlobal: "Global ayarlar",
@@ -2163,6 +2167,8 @@ export const STRINGS: Record<Lang, Strings> = {
     uzakgozPortLabel: "port",
     uzakgozPlaceholderAuto: "auto",
     uzakgozSettingsHint: "Empty = default: dir ~/work/projects/tmp/uzakgoz (else the old in-repo copy), no binary (built from the dir; if set the build is skipped), port 8877. An invalid value is silently skipped. Applies at the NEXT start only.",
+    ucliKeysTitle: "Model keys",
+    ucliKeysDesc: "A key is write-only and is never shown here again (settings.json, mode 600). New ucli sessions already use the Evren key; the Claude, Grok and OpenRouter keys are stored for use at session start.",
     ucliSectionRun: "Run",
     ucliSectionStart: "Session start",
     ucliSectionGlobal: "Global settings",

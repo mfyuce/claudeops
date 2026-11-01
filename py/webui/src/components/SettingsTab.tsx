@@ -419,12 +419,14 @@ export function SettingsTab() {
             ))}
           </div>
           <CliInstallSection />
+          {/* ucli's keys moved to the ucli tab (Global settings > Model keys); the block shows only the other CLIs. */}
+          {data.cli_list.some((cli) => BYOK_PRIMARY_ENV[cli] && cli !== "ucli") && (
           <div className="opts" id="settingsByokPanel">
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               <b>{t.byokLabel}</b> {t.byokDesc}
             </span>
             {data.cli_list
-              .filter((cli) => BYOK_PRIMARY_ENV[cli])
+              .filter((cli) => BYOK_PRIMARY_ENV[cli] && cli !== "ucli")
               .map((cli) => {
                 const envName = BYOK_PRIMARY_ENV[cli];
                 const isSet = settings.byok[cli]?.[envName] === true;
@@ -461,6 +463,7 @@ export function SettingsTab() {
                 );
               })}
           </div>
+          )}
         </>
       )}
       {subTab === "fleet" && <HostsSection />}
