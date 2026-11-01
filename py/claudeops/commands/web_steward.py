@@ -1324,7 +1324,11 @@ def _live_sessions(name: str, sid: str = "default") -> List[Any]:
     world = _world(sid)
     p = _project_for_session(name, projects, world)
     if p is None:
-        return []
+        # Kayıtsız (ad hoc) proje: `mecdtfl` direktifi `mecdtfl20261031_1`i bulamayıp ikinci oturum açıyordu (2026-10-31).
+        # Kayıt yoksa da tarihli/_N'li çalışan oturum, adı BLUEPRINT ya da taban ad olarak taşıyorsa o projenin oturumudur.
+        from ..session import Session
+        return [x for x in _scan()
+                if x.name != name and name in ((inst_mod.get_instance(x.name) or {}).get("blueprint"), Session(name=x.name, pid=0).base)]
     return [x for x in _scan()
             if (q := _project_for_session(x.name, projects, world)) is not None and q.name == p.name]
 
@@ -3932,6 +3936,7 @@ def http_ideas(status: str = "new", sid: str = "default") -> Dict[str, Any]:
 
 _EXPORT_FILES = {"todo": "TODO.md", "tbd": "TOBEDECIDED.md"}
 _EXPORT_HEADING = "## Değnekçi fikirleri"
+_REVIEW_UNVERIFIED_FILES = {"rtodo": ("RTODO.md", lambda r: not rv.is_decision(r)), "rtbd": ("RTBD.md", rv.is_decision)}
 
 
 def _idea_project(idea: "sw.Idea", projects: Dict[str, "sw.Project"]) -> str:
@@ -5601,9 +5606,14 @@ def http_review_export(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
     cfg, err = _reviewer_cfg(sid)
     if err:
         return err
-    fname = _EXPORT_FILES.get(str(data.get("kind") or "todo"))
+    kind = str(data.get("kind") or "todo")
+    if kind in _REVIEW_UNVERIFIED_FILES:    # rtodo|rtbd: doğrulanmamış (new/unclear) bulgular, türe göre ayrılır
+        fname, only = _REVIEW_UNVERIFIED_FILES[kind]
+        return web_review.export_findings(cfg, str(data.get("project") or ""), fname, states=("new", "unclear"),
+                                          only=only, note="doğrulanmamış")
+    fname = _EXPORT_FILES.get(kind)
     if fname is None:
-        return {"ok": False, "error": "kind must be todo or tbd"}
+        return {"ok": False, "error": "kind must be todo, tbd, rtodo or rtbd"}
     return web_review.export_findings(cfg, str(data.get("project") or ""), fname)
 
 

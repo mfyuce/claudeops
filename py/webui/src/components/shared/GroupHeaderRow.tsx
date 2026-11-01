@@ -24,10 +24,14 @@ interface GroupHeaderRowProps {
   collapsed: boolean;
   onToggle: () => void;
   extra?: ReactNode;
+  /** CLIs of the group's rows. Shown (one badge each) only when the group MIXES two or more, so a project's claude
+   * session and its ucli trial sessions that share a cwd are told apart at a glance (TODO 2026-10-20 (4)). */
+  clis?: string[];
 }
 
-export function GroupHeaderRow({ host, cwd, name, count, colSpan, collapsed, onToggle, extra }: GroupHeaderRowProps) {
+export function GroupHeaderRow({ host, cwd, name, count, colSpan, collapsed, onToggle, extra, clis }: GroupHeaderRowProps) {
   const { t } = useLang();
+  const mixed = Array.from(new Set((clis ?? []).filter(Boolean))).sort();
   return (
     <tr className="group-header" onClick={onToggle}>
       <td colSpan={colSpan}>
@@ -42,6 +46,12 @@ export function GroupHeaderRow({ host, cwd, name, count, colSpan, collapsed, onT
               {host}
             </span>
           )}
+          {mixed.length >= 2 &&
+            mixed.map((c) => (
+              <span key={c} className="cli-badge" title={t.mixedCliBadgeHint(c)}>
+                {c}
+              </span>
+            ))}
           {extra}
         </div>
       </td>

@@ -78,6 +78,9 @@ export interface SessionInfo {
    * call in flight, a CLI without phases, or a binary older than that commit: show no badge. `thinking`/`writing` exist
    * only when the session runs with `--stream`. Local rows only (the gRPC host bridge does not carry it). */
   phase?: SessionPhase | null;
+  /** Turns of a ucli session that died with an error after reaching the model (`web._live_failed_turns`, from ucli's
+   * `.ucli/chat/failed/` records, ucli 259593e). Absent/`null` = no such record (or another CLI): show no badge. */
+  failed_turns?: SessionFailedTurns | null;
   /** Prompt-cache life of a running claude session (`web._cache_info_cached`, monitoring only): `age` = seconds since
    * the last REAL model request, `ttl` = the cache lifetime (3600). Absent/`null` = unknown (a CLI without a cache
    * lifetime, or no matching transcript, e.g. a resumed session that has not had a turn yet): show no badge, it does
@@ -119,6 +122,14 @@ export interface SessionCache {
 
 /** ucli `.status.json` `phase` plus the two fields `web._live_phase` adds. `name` is `waiting_response`, `thinking`,
  * `writing`, `retry_backoff` or `rate_limited`; an unknown name (a newer ucli) still arrives and is shown as-is. */
+export interface SessionFailedTurns {
+  count: number;
+  /** Unix seconds of the newest failed turn. */
+  last_unix: number;
+  /** First 160 characters of the newest error, when the record carries one. */
+  last_error?: string;
+}
+
 export interface SessionPhase {
   name: string;
   /** Unix seconds when this phase began. */
@@ -326,6 +337,9 @@ export interface Settings {
    * `provider_bin` gibi {cli: ...} DEĞİL — bu numerik "effort" kavramı bugün
    * SADECE ucli'de var, `settings.py`'nin `ucli_limit_overrides()`'ı okur. */
   ucli_limits: Record<string, string>;
+  /** {dir, bin, port: string} — the remote-desktop daemon (`uzakgoz`, its own repo like ucli; `settings.uzakgoz_config()`).
+   * Empty field = default (dir ~/work/projects/tmp/uzakgoz, else the old in-repo copy; bin none = build from dir; port 8877). */
+  uzakgoz?: Record<string, string>;
   /** {search_url, search_docker, allow_fetch_domains: string} (+ `search_flavor`,
    * UI'da yok, yalnız "searxng") — ucli'nin web araçları (TODO.md 2026-10-16,
    * TBD#88). Hepsi isteğe bağlı ham string, eksik anahtar = varsayılan: arama
@@ -343,6 +357,8 @@ export interface Settings {
    * `settings.py`'s `ucli_script_mode()`; any other value counts as off. Optional on the wire: a backend older than
    * this field omits it. */
   ucli_script?: Record<string, string>;
+  /** {daily_cap_usd, cache_ttl} (`settings.ucli_cost_config()`); a save with an empty value removes the key. */
+  ucli_cost?: Record<string, string>;
   /** {amber, red: string} (2026-10-17) — per-session Evren quota-equivalent token thresholds for the ucli badge colour;
    * empty/missing = built-in 1M / 3M, "off" or "0" = that level disabled. `settings.py`'s `ucli_usage_warn_thresholds()`. */
   ucli_usage_warn: Record<string, string>;
@@ -459,6 +475,9 @@ export interface StatusPayload {
    * proxy target, never exposed to the browser directly — it connects
    * through `/ws/desktop` (same token auth as everything else) regardless. */
   remote_desktop: { running: boolean; port: number | null };
+  /** Claude (Anthropic API) hizmetli ucli oturumlarının bugünkü dolar toplamı (alt sınır) ve günlük tavan (`ucli_cost.daily_cap_usd`;
+   * 0 = tavan yok). Eski backend'de yok. */
+  ucli_cost?: { today_usd: number; cap_usd: number; pct: number | null; cache_ttl: string };
   /** Read-only — `py/cops service install`'ın yazdığı `tunnel_url.txt`/
    * `tunnel_label.txt` (varsa). İkisi de dosya yoksa `null` (quick-tunnel'da
    * URL cloudflared'ın kendi log'undan gelir, `service install` hiç
@@ -699,7 +718,11 @@ export interface ChatMessage {
 export interface ReviewRun {
   sid: string; project: string; mode: string; model: string; status: string; io: string; file: string;
   started_at: number | null; finished_at: number | null; running: boolean; duration: number | null; title: string; error?: string;
+  /** Koşan review'ın süreç ağacı (kök pid + torunlar); Çalışanlar satırını koşuya eşler. */
+  pids?: number[];
 }
+export interface ReviewIoEvent { role?: string; kind?: string; text?: string }
+export interface ReviewIoResult { ok: boolean; error?: string; events?: ReviewIoEvent[]; offset?: number; size?: number; reset?: boolean }
 export interface ReviewChatResult {
   ok: boolean; error?: string; messages?: ChatMessage[]; running?: boolean; status?: string; path?: string;
 }

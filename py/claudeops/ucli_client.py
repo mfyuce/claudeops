@@ -252,6 +252,28 @@ def chat_session_dir(cwd: str) -> str:
     return chat_session_dirs(cwd)[0]
 
 
+def failed_turn_records(cwd: str, session: str) -> list:
+    """`<chat dizini>/failed/<oturum>-<unix>-<n>.json` kayıtları (ucli `259593e`: model çağrısına varmış bir tur hatayla
+    ölünce yazılır): `[(unix, yol)]` eskiden yeniye. Ad AYRIŞTIRILIR (`rsplit("-", 2)`), ön ek eşlemesi YOK: `cli` oturumu
+    `cli-2` oturumunun kaydını saymaz. Dizin yok/okunamıyorsa boş liste (asla fırlatmaz)."""
+    out = []
+    for d in chat_session_dirs(cwd):
+        fd = os.path.join(d, "failed")
+        try:
+            names = os.listdir(fd)
+        except OSError:
+            continue
+        for nm in names:
+            if not nm.endswith(".json"):
+                continue
+            parts = nm[:-5].rsplit("-", 2)
+            if len(parts) != 3 or parts[0] != session or not parts[1].isdigit() or not parts[2].isdigit():
+                continue
+            out.append((int(parts[1]), int(parts[2]), os.path.join(fd, nm)))
+    out.sort()
+    return [(u, p) for u, _n, p in out]
+
+
 def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
     """`{session}.status.json`'ı ayrıştırır (unified-cli'nin `--status-file`'ı,
     2026-10-04'te `ucli chat --help`'te fark edildi — `chat --repl --session

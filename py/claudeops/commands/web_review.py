@@ -636,6 +636,39 @@ def read_chat(cfg: Any, rel: str) -> Dict[str, Any]:
     return r
 
 
+def _pid_tree(root: Any) -> List[int]:
+    """`root` pid'i + /proc'taki tüm torunları (koşan review sürecinin çocukları: agy/bwrap vb. panelde kendi satırıyla görünür).
+    Okunamazsa yalnız kök; pid yoksa boş."""
+    try:
+        root = int(root)
+    except (TypeError, ValueError):
+        return []
+    if root <= 0:
+        return []
+    kids: Dict[int, List[int]] = {}
+    try:
+        for name in os.listdir("/proc"):
+            if not name.isdigit():
+                continue
+            try:
+                with open(f"/proc/{name}/stat", "rb") as f:
+                    raw = f.read().decode("utf-8", "replace")
+                ppid = int(raw[raw.rindex(")") + 2:].split()[1])
+            except (OSError, ValueError, IndexError):
+                continue
+            kids.setdefault(ppid, []).append(int(name))
+    except OSError:
+        return [root]
+    out, todo = [], [root]
+    while todo:
+        cur = todo.pop()
+        if cur in out:
+            continue
+        out.append(cur)
+        todo.extend(kids.get(cur, []))
+    return out
+
+
 def review_runs(cfg: Any) -> List[Dict[str, Any]]:
     """History'de listelenecek review koşuları (kimlik başına): çift kayıtlarının son koşusu + `runs` geçmişindeki dosyalar;
     yalnız IO günlüğü diskte olanlar. `io` = `reviews/` altı göreli yol (istemci bunu `review/chat`e geri verir)."""
@@ -645,7 +678,7 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
     running = set(running_keys(cfg.sid))
     rows: Dict[str, Dict[str, Any]] = {}
 
-    def add(pair: str, md: str, status: str, started: Any, finished: Any, is_run: bool, error: str = "") -> None:
+    def add(pair: str, md: str, status: str, started: Any, finished: Any, is_run: bool, error: str = "", pid: Any = None) -> None:
         proj, _, tk = pair.partition("|")
         mode, _, slug = tk.partition("/")
         io = io_path_for(md) if md else ""
@@ -659,7 +692,8 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
         rows[rel] = {"sid": cfg.sid, "project": proj, "mode": mode, "model": slug, "status": status, "io": rel,
                      "file": md, "started_at": started, "finished_at": finished, "running": is_run,
                      "error": error, "duration": (float(finished) - float(started)) if started and finished else None,
-                     "title": rv.review_title(proj, mode, slug, ts)}
+                     "title": rv.review_title(proj, mode, slug, ts),
+                     "pids": _pid_tree(pid) if is_run else []}
     for r in hist.get("runs") or []:
         if not isinstance(r, dict):
             continue
@@ -670,7 +704,7 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
     for key, rec in hist["pairs"].items():
         if isinstance(rec, dict) and rec.get("io_file"):
             md = str(rec["io_file"])[:-len(IO_SUFFIX)] + ".md"
-            add(key, md, str(rec.get("status") or ""), rec.get("started_at"), rec.get("finished_at"), key in running, str(rec.get("error") or ""))
+            add(key, md, str(rec.get("status") or ""), rec.get("started_at"), rec.get("finished_at"), key in running, str(rec.get("error") or ""), rec.get("pid"))
 
     def newest_first(r: Dict[str, Any]) -> Tuple[str, str]:
         # Yol `proje/mod/model/effort/<ts>/...` ile başlar: yola göre sıralamak projeleri/modelleri gruplar, zamanı DEĞİL.
@@ -758,7 +792,7 @@ def _extract_text(mode: str, stdout: str) -> Tuple[str, str]:
         if res.get("is_error"):
             return (txt if isinstance(txt, str) else ""), (str(txt) if isinstance(txt, str) and txt else "claude is_error")
         return (txt if isinstance(txt, str) else ""), ""
-    if mode != "evren":
+    if mode not in rv.UCLI_MODES:
         return stdout, ""
     try:
         val = json.loads(stdout)
@@ -854,7 +888,7 @@ def _tail(s: str, learned: Sequence[str] = ()) -> str:
 def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, argv: List[str], env: Dict[str, str],
              cwd: str, path: str, started: float, popen: Callable, agy_log_dir: str, now: Callable[[], float]) -> None:
     key = job.key
-    live = IoLog(io_path_for(path), now, err_as_delta=(target.mode == "evren"))
+    live = IoLog(io_path_for(path), now, err_as_delta=(target.mode in rv.UCLI_MODES))
     agy_before = _agy_log_names(agy_log_dir) if target.mode == "agy" else frozenset()
     if job.prompt:
         live.event("user", job.prompt, "prompt")
@@ -871,7 +905,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             _killpg(proc, signal.SIGTERM)
         rv.update_pair(paths, project, target, pid=getattr(proc, "pid", None))
         live.system(f"başladı: {project} {target.mode}/{target.slug}, pid {getattr(proc, 'pid', '?')}. "
-                 + ("Çıktı canlı akar." if target.mode == "evren" else "Çıktı iş bitince gelir."))
+                 + ("Çıktı canlı akar." if target.mode in rv.UCLI_MODES else "Çıktı iş bitince gelir."))
         stop_hb = threading.Event()
 
         def _beat() -> None:
@@ -937,7 +971,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
                 except OSError:
                     pass
         recovered = False
-        if target.mode == "evren":
+        if target.mode in rv.UCLI_MODES:
             text, recovered = _recover_draft(path, text, live.learned())
             if not text.strip():
                 text = live.streamed_report()       # taslak da yoksa: akıştaki yarım rapor
@@ -979,7 +1013,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status = "limit"
             error = f"model kotası doldu ({target.key}); {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))} dolayına dek planlayıcıdan çıktı"
             rv.set_block(paths, target.key, until, error)
-        elif target.mode == "evren" and status in ("error", "partial") \
+        elif target.mode in rv.UCLI_MODES and status in ("error", "partial") \
                 and (not text.strip() or (timed_out and not _REPORT_HEAD_RE.search(text))):      # kurtarılmış rapor varsa ders (= araştırma turu) açma
             _write_lesson(sw._pp(paths), project, target, status, error, live.learned())
         if target.mode == "agy" and status in ("done", "partial"):
@@ -1108,7 +1142,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             argv = ["remote-review", rdrv.host, project, target.model]
             popen = lambda *_a, **_k: rrun.RemoteReviewProc(   # noqa: E731
                 rdrv, target.model, eff, prompt, lambda t: bool(_REPORT_HEAD_RE.search(t or "")))
-        elif target.mode == "evren":
+        elif target.mode in rv.UCLI_MODES:
             from ..providers import ucli_provider as up
             binary = ucli_client.resolve_binary(ucli_bin)
             sup = (supports_flag or ucli_client.binary_supports_flag)(binary, "--max-io-mib")
@@ -1141,7 +1175,10 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                 # HER Evren koşusunda effort gider (ucli'nin "output limit used up by reasoning" -> low yeniden denemesi bunu şart
                 # koşar); model alanı kabul ettiği kanıtlı değilse (gemma-4-31b 400) `reasoning_effort_for` None verir.
                 level = str(target.effort or getattr(cfg, "review_evren_effort", "medium") or "").strip()
-                eff = up.reasoning_effort_for(target.model, level) if level and level.lower() != "off" else None
+                if target.mode == "anthropic":      # Claude modelleri low..max'i kabul eder; model alanı kapısı Evren'e özel
+                    eff = level if level in ("low", "medium", "high", "xhigh", "max") else None
+                else:
+                    eff = up.reasoning_effort_for(target.model, level) if level and level.lower() != "off" else None
                 if eff:
                     budget += ["--effort", eff]
             if sf(binary, "--partial-file"):        # SIGKILL'e dayanıklı kısmi çıktı (tur sınırında atomik yazılır, 0600)
@@ -1149,11 +1186,18 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             if sf(binary, "--allow-create-dir"):
                 create_dir = os.path.dirname(rpath)
                 prompt += rv.draft_prompt_suffix(rv.draft_path(rpath), lang)
-            argv = evren_argv(binary, cwd, target.model, prompt, (endpoint_fn or up.endpoint)(), bool(sup), live_flags, budget,
-                              create_dir)
-            key_val = api_key if api_key is not None else _api_key()
-            if not key_val:
-                raise RuntimeError("Evren API anahtarı yok")
+            if target.mode == "anthropic":
+                budget += ["--provider", "anthropic-messages"]
+                ep = rv.ANTHROPIC_ENDPOINT
+                key_val = api_key if api_key is not None else _anthropic_review_key()
+                if not key_val:
+                    raise RuntimeError(f"Anthropic review anahtarı yok: {ANTHROPIC_REVIEW_KEY_FILE}")
+            else:
+                ep = (endpoint_fn or up.endpoint)()
+                key_val = api_key if api_key is not None else _api_key()
+                if not key_val:
+                    raise RuntimeError("Evren API anahtarı yok")
+            argv = evren_argv(binary, cwd, target.model, prompt, ep, bool(sup), live_flags, budget, create_dir)
             env_extra["UCLI_API_KEY"] = key_val
         elif target.mode == "claude":
             from ..settings import resolved_binary
@@ -1753,12 +1797,41 @@ def busy_keys() -> List[str]:
     return sorted(act | set(running_keys()))
 
 
+def anthropic_excluded(cfg: Any, pool: Any) -> List[str]:
+    """`anthropic` modu yalnız `review_anthropic_projects` listesindeki projelere koşar: havuzdaki diğerleri atlanır."""
+    allow = {x.strip() for x in str(getattr(cfg, "review_anthropic_projects", "") or "").split(",") if x.strip()}
+    return [pr for pr in rv.pool_enabled(pool) if pr not in allow]
+
+
+def anthropic_trial_complete(cfg: Any, pool: Any, hist: Any, targets: List[rv.ReviewTarget]) -> bool:
+    """Bir defalık deneme: izinli her proje x her anthropic hedefi bir kez `done` (pencere gözetilmez) ise True; mod bir daha koşmaz."""
+    allow = [x.strip() for x in str(getattr(cfg, "review_anthropic_projects", "") or "").split(",") if x.strip()]
+    ant = [t for t in targets if t.mode == "anthropic"]
+    pairs = rv._pairs(hist)
+    return bool(allow and ant) and all((pairs.get(rv.pair_key(pr, t)) or {}).get("status") == "done" for pr in allow for t in ant)
+
+
+def anthropic_filter(p: Any, cfg: Any, targets: List[rv.ReviewTarget], pool: Any = None, hist: Any = None) -> List[rv.ReviewTarget]:
+    """Toplam harcama `review_anthropic_budget_usd`'ye ulaştıysa anthropic hedefleri bu turda planlanmaz (koşan iş biter)."""
+    if not any(t.mode == "anthropic" for t in targets):
+        return targets
+    if hist is not None and anthropic_trial_complete(cfg, pool, hist, targets):
+        return [t for t in targets if t.mode != "anthropic"]
+    cap = float(getattr(cfg, "review_anthropic_budget_usd", 100.0) or 0)
+    spent = rv.anthropic_spent_usd(p.reviews)
+    if cap > 0 and spent >= cap:
+        sw.log_event("review_anthropic_budget_reached", paths=p, spent=round(spent, 2), cap=cap)
+        return [t for t in targets if t.mode != "anthropic"]
+    return targets
+
+
 def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], targets: List[rv.ReviewTarget],
                 slots: Dict[str, int], t: float, gap: int, actions: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Yuva kipi (`review_slots`): her modda boş yuva kadar koşu, modlar arası sırayla birer birer (biri tüm projeleri
     kapmasın). Aynı proje iki koşuda olmaz (mod fark etmez). 0 yuvalı modun hedefi seçilmez. `review_min_gap_minutes` > 0
     ise tick başına en çok 1 başlatma (aralık başlatmalar arasıdır, yuva doluluğundan bağımsız)."""
     busy = busy_keys()
+    targets = anthropic_filter(p, cfg, targets, pool, hist)
     free = {m: slots.get(m, 1) - sum(1 for k in busy if _key_mode(k) == m) for m in rv.MODES}
     busy_proj = {k.split("|", 1)[0] for k in busy}
     by_mode = {m: [x for x in targets if x.mode == m] for m in rv.MODES}
@@ -1771,7 +1844,8 @@ def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], ta
             if started and gap:
                 live = []
                 break
-            nxt = rv.next_review(pool, hist, by_mode[mode], t, busy_projects=sorted(busy_proj) + bad + skip_mode[mode],
+            nxt = rv.next_review(pool, hist, by_mode[mode], t, busy_projects=sorted(busy_proj) + bad + skip_mode[mode]
+                                 + (anthropic_excluded(cfg, pool) if mode == "anthropic" else []),
                                  head_of=_head_of)
             if nxt is None:
                 live.remove(mode)
@@ -2391,8 +2465,8 @@ def decide(cfg: Any, fid: str, action: str, now: Optional[float] = None) -> Dict
 
 
 def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
-    """`review_auto_export` açıksa YEREL projelerin `approved` bulgularını TODO.md'ye yazar (`exported_by=auto`). TBD'ye
-    ASLA (karar gerektirir, elle kalır); uzak proje (host'lu) ve parola/gizli geçen bulgu atlanır; tick başına EN ÇOK 1
+    """`review_auto_export` açıksa YEREL projelerin `approved` bulgularını TODO.md'ye, doğrulanamayan (`unclear`)
+    bulgularını TOBEDECIDED.md'ye yazar (`exported_by=auto`); uzak proje (host'lu) ve parola/gizli geçen bulgu atlanır; tick başına EN ÇOK 1
     proje; bir projede hata olursa log + sonrakine geçer. Aynı bulgu iki kez yazılmaz (`appended_export` dosyadakini
     tanır). Yazılan projelerin adları döner."""
     if not getattr(cfg, "review_auto_export", False):
@@ -2400,17 +2474,20 @@ def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
     t = time.time() if now is None else now
     p = sw.paths_for(cfg.sid)
     remote = set(ownership().get("hosts") or {})
-    projects = sorted({str(v.get("project") or "") for v in rv.load_findings(p).values()
-                       if isinstance(v, dict) and v.get("state") == "approved"} - {""} - remote)
-    for proj in projects:
-        try:
-            res = export_findings(cfg, proj, "TODO.md", t, by="auto")
-        except Exception as e:
-            sw.log_event("review_auto_export_failed", paths=p, project=proj, error=_tail(repr(e)))
-            continue
-        if res.get("ok"):
-            sw.log_event("review_auto_export", paths=p, project=proj, written=res.get("written"), already=res.get("already"))
-            return [proj]
+    allf = rv.load_findings(p)
+    # onaylı bulgular -> TODO.md; doğrulanamayan (`unclear`, karar gerektirir) bulgular -> TOBEDECIDED.md (tick başına 1 proje)
+    for fname, st in (("TODO.md", "approved"), ("TOBEDECIDED.md", "unclear")):
+        projects = sorted({str(v.get("project") or "") for v in allf.values()
+                           if isinstance(v, dict) and v.get("state") == st} - {""} - remote)
+        for proj in projects:
+            try:
+                res = export_findings(cfg, proj, fname, t, by="auto", states=(st,))
+            except Exception as e:
+                sw.log_event("review_auto_export_failed", paths=p, project=proj, file=fname, error=_tail(repr(e)))
+                continue
+            if res.get("ok"):
+                sw.log_event("review_auto_export", paths=p, project=proj, file=fname, written=res.get("written"), already=res.get("already"))
+                return [proj]
     return []
 
 
@@ -2481,7 +2558,9 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
             "commit": "not done (no remote shell API); commit/push the remote repo manually" if written else ""}
 
 
-def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None, by: str = "") -> Dict[str, Any]:
+def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None, by: str = "",
+                    states: Sequence[str] = ("approved",), only: Optional[Callable[[Dict[str, Any]], bool]] = None,
+                    note: str = "") -> Dict[str, Any]:
     """Projenin ONAYLI bulgularını yerel proje klasöründeki `fname` (TODO.md / TOBEDECIDED.md) sonuna
     `## Review bulguları` başlığı altında ekler; yazılanlar `exported` olur (çift dışa aktarma yok). Onaysız bulgu ASLA
     yazılmaz. Uzak proje reddedilir (yerel dosya sistemi ona ait değil)."""
@@ -2502,8 +2581,12 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
     with sw.steward_lock(p):
         data = rv.load_findings(p)
         rows = [dict(v, id=k) for k, v in sorted(data.items())
-                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"
-                and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))]
+                if isinstance(v, dict) and v.get("project") == project and v.get("state") in states
+                and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))
+                and (only is None or only(v))]
+        if note:       # RTODO/RTBD: satıra durum notu (kayıttaki bulgu değişmez, yalnız yazılan satır)
+            for r in rows:
+                r["note"] = f"{r['note']}; {note}" if r.get("note") else note
         dropped = False
         for r in list(rows):       # koddaki duruma karşı denetim: eskimiş bulgu yazılmaz, değişen dosya işaretlenir
             why = rv.stale_reason(r, cwd)
@@ -2512,11 +2595,11 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
                 rows.remove(r)
                 dropped = True
             elif rv.changed_after_review(r, cwd):
-                r["note"] = "dosya incelemeden sonra değişti, hâlâ geçerli mi doğrula"
+                r["note"] = (f"{r['note']}; " if r.get("note") else "") + "dosya incelemeden sonra değişti, hâlâ geçerli mi doğrula"
         if dropped:
             rv.save_findings(p, data)
         if not rows:
-            return {"ok": False, "error": "no approved findings to export", "project": project}
+            return {"ok": False, "error": "no approved findings to export" if tuple(states) == ("approved",) else "no findings to export", "project": project}
         try:
             with open(target, encoding="utf-8") as f:
                 text = f.read()

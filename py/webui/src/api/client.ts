@@ -67,6 +67,7 @@ import type {
   IoAskResult,
   IoHistoryResult,
   ReviewChatResult,
+  ReviewIoResult,
   ReviewRun,
   IoProvidersResult,
   IoSessionsResult,
@@ -295,6 +296,8 @@ export interface StartPayload {
   effort?: string;
   fresh?: boolean;
   cli?: string;
+  /** ucli start options (service, exec); omitted for every other CLI. */
+  cli_opts?: Record<string, unknown>;
   lang: Lang;
 }
 export const apiStart = (p: StartPayload): Promise<StartResult> => apiPost<StartResult>("/api/start", p);
@@ -330,6 +333,7 @@ export interface NewChatPayload {
   permission_mode?: string;
   effort?: string;
   cli?: string;
+  cli_opts?: Record<string, unknown>;
   lang: Lang;
 }
 export const apiNewChat = (p: NewChatPayload): Promise<NewChatResult> => apiPost<NewChatResult>("/api/new-chat", p);
@@ -707,6 +711,8 @@ export const getReviewFile = (sid: string, path: string): Promise<SimpleResult &
   apiGet<SimpleResult & { path?: string; text?: string; truncated?: boolean }>(`/api/steward/review/file${rvQs(sid, { path })}`);
 export const getReviewRuns = (): Promise<{ ok: boolean; error?: string; runs?: ReviewRun[] }> =>
   apiGet<{ ok: boolean; error?: string; runs?: ReviewRun[] }>("/api/steward/review/runs");
+export const getReviewIo = (sid: string, path: string, offset: number): Promise<ReviewIoResult> =>
+  apiGet<ReviewIoResult>(`/api/steward/review/io${rvQs(sid, { path, offset: String(offset) })}`);
 export const getReviewChat = (sid: string, path: string): Promise<ReviewChatResult> =>
   apiGet<ReviewChatResult>(`/api/steward/review/chat${rvQs(sid, { path })}`);
 export const getReviewFindings = (sid: string, project = "", state = ""): Promise<SimpleResult & { findings?: ReviewFinding[] }> =>

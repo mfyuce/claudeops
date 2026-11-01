@@ -349,6 +349,9 @@ class Config:
     review_copilot_models: str = ""  # virgülle ayrık Copilot model listesi (`copilot -p`); "" = KAPALI
     review_copilot_effort: str = "low"  # copilot `--reasoning-effort`
     review_evren_effort: str = "medium"  # Evren `--effort` (ucli: tavan yükseltilemezse `low` ile tek yeniden deneme YALNIZ görev effort gönderiyorsa çalışır; alanı reddeden modelde atlanır)
+    review_anthropic_models: str = ""   # `model@effort,...` (ucli --provider anthropic-messages, gerçek Anthropic API); "" = KAPALI; anahtar dosyası `anthropic_review_key`
+    review_anthropic_projects: str = ""  # virgülle ayrık proje adları; boş = anthropic modu HİÇBİR projeye koşmaz
+    review_anthropic_budget_usd: float = 100.0   # toplam harcama tavanı ($); dolunca anthropic hedefleri planlanmaz
     review_claude_effort: str = "low"  # Anthropic review `--effort` (ölçüm 2026-10-23: haiku low en ucuz+geniş)
 
 
@@ -447,7 +450,14 @@ def _load_json(path: str, default: Any) -> Any:
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except json.JSONDecodeError:
+        try:        # bozuk dosya: kanıt yedeği (sonraki yazım üstüne yazıp bulguları/soruları sessizce silmesin)
+            import shutil
+            shutil.copy2(path, f"{path}.corrupt-{int(time.time())}")
+        except OSError:
+            pass
+        return default
+    except (FileNotFoundError, OSError):
         return default
 
 
@@ -964,7 +974,7 @@ SIMILAR_MIN_SCORE = 0.25
 
 
 def similar_answers(text: str, questions: List["Question"], project: str = "", exclude_id: str = "",
-                    limit: int = 3) -> List["Question"]:
+                    limit: int = 6) -> List["Question"]:
     """Karar hafızası (yalnız bu kimliğin `questions.json`'u): `text`e en çok benzeyen cevaplanmış sorular (en benzer önce).
     Skor = kelime Jaccard'ı + ortak konu jetonu payı (+0.1 aynı proje). Beyin rutin/takılma maddesinde sahibin geçmiş
     kararlarını görür; aynı şeyi yeniden sormasın, tutarlı cevaplasın."""

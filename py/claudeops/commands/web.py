@@ -57,6 +57,7 @@ from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_host
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
+from .. import ucli_cost
 from .. import cli_install
 from .. import files as files_mod
 from .. import mirrors
@@ -754,7 +755,7 @@ def _new_chat_source(name: str, fleet: dict) -> Optional[tuple]:
 
 
 def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "",
-              cli: str = "", lang: str = "tr") -> dict:
+              cli: str = "", lang: str = "tr", cli_opts: Optional[dict] = None) -> dict:
     """`base`'in blueprint'inden YENİ, otomatik-isimli (tarih[+_N]) bir instance başlat.
 
     Var olan session'lara DOKUNMAZ. Roster'a satır YAZMAZ — instance kaydına girer,
@@ -769,6 +770,14 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     # yanlış provider'ın modeli olur, yeni cli'nin kendi varsayılanına düşülmeli.
     chosen_model = model.strip() or (resolved_model_for(get_provider(chosen_cli), src_model) if chosen_cli == src_cli
                                       else default_model_for(get_provider(chosen_cli)))
+    clean_opts: dict = {}
+    if cli_opts:   # bkz. _start(): kabul etmeyen provider / geçersiz seçenek = reddet, instance kaydı AÇILMADAN
+        prov = get_provider(chosen_cli)
+        if not getattr(prov, "accepts_cli_opts", False):
+            return {"ok": False, "error": f"{chosen_cli}: başlatma seçeneği desteklenmiyor"}
+        clean_opts, opt_err = prov.validate_cli_opts(cli_opts)
+        if opt_err:
+            return {"ok": False, "error": opt_err}
     chosen_mode = permission_mode.strip() or "auto"
     chosen_effort = effort.strip() or default_effort_for(get_provider(chosen_cli))
     inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
@@ -784,9 +793,13 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
                 effort=chosen_effort,
                 force_new=True,
                 cli=chosen_cli,
+                cli_opts=clean_opts or None,
             )
             opened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn reddedildi, instance kaydı geride KALMASIN
+        inst_mod.forget_instance(new_name)
         return {"ok": False, "error": str(e)}
     if not opened:
         return _err(lang, "newchat_start_failed", new_name=new_name, kind=kind)
@@ -1251,6 +1264,15 @@ def _live_usage(s) -> Optional[Dict[str, int]]:
         return usage
 
 
+def _live_failed_turns(s) -> Optional[Dict[str, Any]]:
+    """Hatayla ölen tur kayıtları (`provider.live_failed_turns`, bugün yalnız ucli): None = kayıt yok/okunamadı → rozet yok.
+    Küçük bir dizin listesi; asla fırlatmaz."""
+    try:
+        return get_provider(s.cli).live_failed_turns(s.cwd, s.sid)
+    except Exception:
+        return None
+
+
 # `waiting_response` süresinin amber/kırmızı kademeleri (sn). ucli'nin istek zaman aşımı 600 sn (claudeops
 # `--request-timeout-secs 600` geçirir): kırmızı = "zaman aşımı yaklaşıyor ya da geçti". Akışsız oturumda yavaş ama
 # çalışan bir çağrı ile asılı bir bağlantı AYNI görünür (ikisi de tek parça yanıt bekler), bu yüzden eşikler cömert.
@@ -1552,6 +1574,7 @@ def _status_payload() -> dict:
             "busy": _is_busy_cached(s) if s else None,
             "usage": _live_usage(s) if s else None,
             "phase": _live_phase(s) if s else None,
+            "failed_turns": _live_failed_turns(s) if s else None,
             "cache": _cache_info_cached(s) if s else None,
             "context": _context_info_cached(s) if s else None,
             "usage_total": _usage_total(s) if s else None,
@@ -1594,6 +1617,7 @@ def _status_payload() -> dict:
             "busy": _is_busy_cached(s),
             "usage": _live_usage(s),
             "phase": _live_phase(s),
+            "failed_turns": _live_failed_turns(s),
             "cache": _cache_info_cached(s),
             "context": _context_info_cached(s),
             "usage_total": _usage_total(s),
@@ -1666,6 +1690,8 @@ def _status_payload() -> dict:
         # lifecycle durumu — diğer açık tab/cihazlar da (WS push ile) canlı
         # görsün diye buraya eklendi, ayrı bir polling endpoint'i değil.
         "remote_desktop": remote_desktop.status(),
+        # Claude hizmetli ucli oturumlarının bugünkü $ toplamı + günlük tavan (Ayarlar > ucli_cost); ucli_cost.state() 30 sn önbellekli
+        "ucli_cost": ucli_cost.state(),
         # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine
         # biniyor, tam sonuç metni YOK): taslak kadro + aktif run özeti +
         # son birkaç run. Local-only, `web_hosts.merge_status`'a hiç girmez.
@@ -1751,7 +1777,7 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
 
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
-           cli: str = "", hidden: bool = False, lang: str = "tr") -> dict:
+           cli: str = "", hidden: bool = False, lang: str = "tr", cli_opts: Optional[dict] = None) -> dict:
     """Aktif bir blueprint'i ya da (Geçmiş'ten) durmuş bir instance'ı başlat/devam ettir."""
     fleet = _fleet_status()
     info = fleet.get(name)
@@ -1773,6 +1799,16 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     fallback_model = (resolved_model_for(get_provider(chosen_cli), src["model"]) if chosen_cli == src["cli"]
                       else default_model_for(get_provider(chosen_cli)))
     chosen_model = model.strip() or fallback_model
+    # Başlat penceresi seçenekleri (hizmet, exec): YALNIZ kabul eden provider'a ve spawn'dan ÖNCE doğrulanır;
+    # geçersiz/desteklenmeyen seçenek sessizce atlanmaz, başlatma reddedilir. Blueprint'e kalıcı YAZILMAZ.
+    clean_opts: dict = {}
+    if cli_opts:
+        prov = get_provider(chosen_cli)
+        if not getattr(prov, "accepts_cli_opts", False):
+            return {"ok": False, "error": f"{chosen_cli}: başlatma seçeneği desteklenmiyor"}
+        clean_opts, opt_err = prov.validate_cli_opts(cli_opts)
+        if opt_err:
+            return {"ok": False, "error": opt_err}
     chosen_mode = permission_mode.strip() or (rec or {}).get("permission_mode") or "auto"
     chosen_effort = effort.strip() or (rec or {}).get("effort") or default_effort_for(get_provider(chosen_cli))
     # TODO.md 2026-09-30: "restart fresh" servis'i bazen traceback'siz çökertiyor —
@@ -1794,9 +1830,13 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
                 force_new=bool(fresh),
                 cli=chosen_cli,
                 hidden=hidden,
+                cli_opts=clean_opts or None,
             )
             opened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn REDDEDİLİR
+        diag_log("start_refused", name=name, cli=chosen_cli, reason=str(e)[:200])
         return {"ok": False, "error": str(e)}
     diag_log("start_end", name=name, kind=kind, opened=opened)
     if not opened:
@@ -4681,6 +4721,7 @@ class _Handler(BaseHTTPRequestHandler):
                 effort=str(data.get("effort", "")),
                 cli=str(data.get("cli", "")),
                 lang=lang,
+                cli_opts=data.get("cli_opts") if isinstance(data.get("cli_opts"), dict) else None,
             ))
             return
 
@@ -4800,6 +4841,7 @@ class _Handler(BaseHTTPRequestHandler):
                 fresh=bool(data.get("fresh", False)),
                 cli=str(data.get("cli", "")),
                 lang=lang,
+                cli_opts=data.get("cli_opts") if isinstance(data.get("cli_opts"), dict) else None,
             )
         elif path == "/api/stop":
             result = _stop(name, lang=lang, exact=data.get("exact") is True)

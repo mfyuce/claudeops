@@ -50,8 +50,15 @@ from pathlib import Path
 from typing import Optional
 
 from .paths import CLAUDEOPS_DIR, REPO_DIR
+from .settings import uzakgoz_config
 
-MANIFEST_PATH = str(Path(REPO_DIR) / "rust" / "screenshare" / "Cargo.toml")
+MANIFEST_PATH = str(Path(REPO_DIR) / "rust" / "screenshare" / "Cargo.toml")   # ESKİ yer (ayrı `uzakgoz` reposu yoksa yedek)
+
+
+def _manifest_path() -> str:
+    """Derlenecek crate: ayardaki/varsayılan `uzakgoz` dizini (ayrı repo), yoksa claudeops içindeki eski kopya."""
+    d = uzakgoz_config()["dir"]
+    return os.path.join(d, "Cargo.toml") if d else MANIFEST_PATH
 DEFAULT_PORT = 8877
 BUILD_TIMEOUT_SECONDS = 120.0  # ilk derleme (soğuk cache) birkaç on saniye sürebilir
 PORT_WAIT_SECONDS = 5.0
@@ -146,10 +153,10 @@ def _adopt_if_orphaned() -> None:
         _clear_pid_file()
 
 
-def _resolve_binary() -> Optional[Path]:
+def _resolve_binary(manifest: Optional[str] = None) -> Optional[Path]:
     try:
         result = subprocess.run(
-            ["cargo", "metadata", "--manifest-path", MANIFEST_PATH, "--format-version=1", "--no-deps"],
+            ["cargo", "metadata", "--manifest-path", manifest or _manifest_path(), "--format-version=1", "--no-deps"],
             capture_output=True, text=True, timeout=15.0, check=True,
         )
     except (subprocess.SubprocessError, OSError):
@@ -168,13 +175,15 @@ def status() -> dict:
         return {"running": running, "port": _port if running else None}
 
 
-def start(port: int = DEFAULT_PORT) -> dict:
+def start(port: Optional[int] = None) -> dict:
     """Zaten çalışıyorsa no-op. Yoksa: `cargo build --release` (near-instant
     kaynak değişmemişse) → gerçek binary'yi doğrudan spawn et → portu açana
     kadar kısa bekle. Tüm bu süre boyunca lock TUTULUR — eşzamanlı ikinci bir
     `start()` çağrısı (ör. çift tık) paralel bir build/spawn YARIŞMAZ, sırada
     bekler (bu, tek-admin/düşük-trafikli bir özellik için basit ve yeterli)."""
     global _proc, _port, _adopted_pid
+    cfg = uzakgoz_config()
+    port = port or cfg["port"] or DEFAULT_PORT
     with _lock:
         _adopt_if_orphaned()
         if _proc is not None and _proc.poll() is None:
@@ -182,24 +191,30 @@ def start(port: int = DEFAULT_PORT) -> dict:
         if _adopted_pid is not None:
             return {"ok": True, "already_running": True, "port": _port, "adopted": True}
 
-        try:
-            build = subprocess.run(
-                ["cargo", "build", "--release", "--manifest-path", MANIFEST_PATH],
-                capture_output=True, text=True, timeout=BUILD_TIMEOUT_SECONDS,
-            )
-        except subprocess.TimeoutExpired:
-            return {"ok": False, "error": "cargo build zaman aşımına uğradı"}
-        except OSError as e:
-            return {"ok": False, "error": f"cargo çalıştırılamadı: {e}"}
-        if build.returncode != 0:
-            return {"ok": False, "error": f"cargo build başarısız:\n{build.stderr[-2000:]}"}
-
-        binary = _resolve_binary()
+        if cfg["bin"]:                      # hazır ikili: derleme YOK
+            binary: Optional[Path] = Path(cfg["bin"])
+        else:
+            manifest = _manifest_path()
+            try:
+                build = subprocess.run(
+                    ["cargo", "build", "--release", "--manifest-path", manifest],
+                    capture_output=True, text=True, timeout=BUILD_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                return {"ok": False, "error": "cargo build zaman aşımına uğradı"}
+            except OSError as e:
+                return {"ok": False, "error": f"cargo çalıştırılamadı: {e}"}
+            if build.returncode != 0:
+                return {"ok": False, "error": f"cargo build başarısız:\n{build.stderr[-2000:]}"}
+            binary = _resolve_binary(manifest)
         if binary is None or not binary.exists():
             return {"ok": False, "error": f"binary bulunamadı ({binary})"}
 
         proc = subprocess.Popen(
-            [str(binary), str(port)],
+            # `--input`: uzakgoz 0.3.0'dan beri fare/klavye enjeksiyonu varsayılan KAPALI (aksi halde panelde "Kontrolü Al"
+            # sessizce çalışmaz); panelin kendi kapısı (Kontrolü Al düğmesi) zaten girdiyi ayrıca açar. Eski ikili fazla
+            # argümanı yok sayar (yalnız PORT'u okur).
+            [str(binary), str(port), "--input"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
         )
         _proc, _port = proc, port

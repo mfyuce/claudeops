@@ -40,6 +40,14 @@ class McpServerSpec:
 class CliProvider(ABC):
     name: str  # "claude" | "agy" | ...
 
+    # Başlat penceresinden gelen `cli_opts` (hizmet, exec izinleri...) YALNIZ bunu True yapan provider'a iletilir;
+    # diğerlerinin `build_inner_command` imzası ve argv'si DEĞİŞMEZ (spawn onlara `cli_opts` kwarg'ı hiç geçirmez).
+    accepts_cli_opts = False
+
+    def validate_cli_opts(self, raw):
+        """Ham `cli_opts` -> (temiz sözlük, hata). Varsayılan: hiçbir seçenek kabul edilmez."""
+        return ({}, "") if not raw else ({}, f"{self.name}: başlatma seçeneği desteklenmiyor")
+
     # ── spawn tarafı ─────────────────────────────────────────────────────────
 
     @abstractmethod
@@ -529,6 +537,11 @@ class CliProvider(ABC):
         tam sayı, eksik olan 0). None (VARSAYILAN) = böyle bir sayaç yok/okunamadı → panel rozet
         göstermez, "0 token" ile KARIŞTIRMAZ. `live_busy`le AYNI "yapılandırılmış veri, pane
         metni değil" sözleşmesi."""
+        return None
+
+    def live_failed_turns(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Hatayla ölen tur kayıtları (ucli `.ucli/chat/failed/`): `{count, last_unix, last_error}`. None (VARSAYILAN) =
+        bu CLI'da böyle kayıt yok ya da HİÇ başarısız tur yok → panel rozet göstermez (0 rozeti çizilmez)."""
         return None
 
     def live_phase(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, Any]]:

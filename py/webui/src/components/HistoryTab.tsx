@@ -256,6 +256,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
                       cwd={g.cwd}
                       name={g.items[0]?.blueprint ?? g.items[0]?.name}
                       count={g.items.length}
+                      clis={g.items.map((x) => x.cli)}
                       colSpan={HISTORY_COLSPAN}
                       collapsed={!expanded}
                       onToggle={() => collapse.toggle(gKey)}

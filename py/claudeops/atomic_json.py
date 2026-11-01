@@ -42,7 +42,7 @@ def atomic_write_json(path: str, obj: Any, *, mode: Optional[int] = None) -> Non
         if mode is None:
             f = open(tmp, "w", encoding="utf-8")
         else:
-            f = os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode), "w")
+            f = os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode), "w", encoding="utf-8")
         with f:
             json.dump(obj, f, ensure_ascii=False, indent=2)
             f.flush()

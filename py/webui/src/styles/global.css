@@ -319,6 +319,8 @@ button.selho { border-color: var(--amber); color: var(--amber); font-size: .78re
 .phase-badge.live { color: var(--green); border-color: var(--green); }
 .phase-badge.warn-1 { color: var(--amber); border-color: var(--amber); }
 .phase-badge.warn-2 { color: var(--red); border-color: var(--red); font-weight: 600; }
+.failed-badge { font-size: .65rem; color: var(--red); border: 1px solid var(--red);
+               border-radius: 4px; padding: 1px 5px; margin-left: .3rem; white-space: nowrap; cursor: help; }
 .cache-badge { font-size: .65rem; color: var(--muted); border: 1px solid var(--border);
                border-radius: 4px; padding: 1px 5px; margin-left: .3rem; white-space: nowrap; cursor: help; }
 .cache-badge.warm { color: var(--green); border-color: var(--green); }
@@ -381,3 +383,12 @@ button:disabled { opacity: .5; cursor: default; }
   pointer-events: none;
 }
 button.linkbtn { background: none; border: 0; padding: 0; color: var(--accent, inherit); text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* Uzak Masaüstü sanal klavye */
+.vkbd { margin: .5rem 0; display: flex; flex-direction: column; gap: .25rem; max-width: 100%; }
+.vk-row { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; }
+.vk-key { min-width: 2.4rem; min-height: 2.4rem; padding: 0 .5rem; touch-action: manipulation; user-select: none; }
+.vk-wide { flex: 1; min-width: 8rem; }
+.vk-once { outline: 2px solid var(--accent, #4a8); }
+.vk-lock { outline: 2px solid var(--accent, #4a8); background: var(--accent, #4a8); color: #fff; }
+.vk-text { flex: 1; min-width: 8rem; font-size: 16px; }

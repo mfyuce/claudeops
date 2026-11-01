@@ -21,7 +21,7 @@ WINDOW_SECONDS = 30 * 86400         # bir çift bu sürede `done` ise "taze" (pr
 HISTORY_VERSION = 1
 HISTORY_RUNS_MAX = 200
 MAX_ATTEMPTS = 3                    # error/model_fallback/partial çifti bu denemeden sonra pencere dolana dek bırakılır
-MODE_MAX_ATTEMPTS = {"evren": 1}    # Evren: 20 dk zaman aşımı kota yakar, pencere başına en çok 1 deneme (sahip kararı 2026-10-24)
+MODE_MAX_ATTEMPTS = {"evren": 1, "anthropic": 1}    # Evren: 20 dk zaman aşımı kota yakar, pencere başına en çok 1 deneme (sahip kararı 2026-10-24)
 
 
 UNCOUNTED_ERRORS = ("cancelled", "spawn:", "yeniden başlatma")     # TBD#139: kaza sayılmayan hatalar (iptal, süreç açılamadı, servis restart'ı)
@@ -36,7 +36,13 @@ def counts_as_attempt(rec: Any) -> bool:
 
 def max_attempts(mode: str) -> int:
     return MODE_MAX_ATTEMPTS.get(mode, MAX_ATTEMPTS)
-MODES = ("agy", "evren", "claude", "codex", "copilot")
+MODES = ("agy", "evren", "claude", "codex", "copilot", "anthropic")
+UCLI_MODES = ("evren", "anthropic")      # ucli ile koşan modlar (anthropic = ucli --provider anthropic-messages, gerçek API)
+ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1"
+# $ / 1M token: (girdi, çıktı, önbellek okuma, önbellek yazma). Haiku 5.5: >100K istemde 0,50/2,50 (ucli tek istek boyutunu ayırmaz: alt sınır)
+ANTHROPIC_PRICES = {"haiku-5-5": (0.10, 0.50, 0.01, 0.125), "sonnet-5-5": (2.0, 10.0, 0.10, 2.5), "opus-5-5": (4.0, 20.0, 0.20, 5.0),
+                    # fable-5-1: 10/50 $/M; önbellek okuma 0,025x (resmî prompt-caching belgesi: Fable 5.1 0,025x, Opus/Sonnet 5.5 0,05x, Haiku 5.5 0,1x), yazma 5 dk 1,25x
+                    "fable-5-1": (10.0, 50.0, 0.25, 12.5)}
 
 
 def parse_slots(spec: Any) -> Dict[str, int]:
@@ -124,7 +130,7 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
                 seen.add(t.key)
                 out.append(t)
     for mode, attr in (("claude", "review_claude_models"), ("codex", "review_codex_models"),
-                       ("copilot", "review_copilot_models")):
+                       ("copilot", "review_copilot_models"), ("anthropic", "review_anthropic_models")):
         for spec in _split_models(getattr(cfg, attr, "")):
             m, eff = split_spec(spec)         # `claude-haiku-5-5@low,claude-haiku-5-5@high`: aynı model, iki ayrı çift
             if not m:
@@ -314,7 +320,7 @@ def parse_findings(md: str) -> List[Dict[str, str]]:
     fence = False
     seen: Set[str] = set()
     for line in str(md or "").splitlines():
-        if line.lstrip().startswith("```"):
+        if line.lstrip().startswith(("```", "~~~")):
             fence = not fence
             if cur is not None:
                 cur["lines"].append(line)
@@ -413,14 +419,14 @@ def _norm_label(s: str) -> str:
 
 def agy_label_ok(log_text: str, model: str) -> Tuple[bool, str]:
     """agy log'unda `Propagating selected model override ... label=<L>` satırlarından SONUNCUSU istenen modelle
-    uyuşuyor mu (büyük/küçük harf ve ayraç farkı yok sayılır; biri ötekini içeriyorsa uyuşur)? Etiket yoksa
+    uyuşuyor mu (büyük/küçük harf ve ayraç farkı yok sayılır; tam eşitlik gerekir)? Etiket yoksa
     `(False, "")`. Dönüş: (uyuştu, görülen etiket) — sessiz model düşüşünü (`model_fallback`) yakalamak için."""
     labels = [m.group(1).strip("\"'") for m in _LABEL_RE.finditer(str(log_text or ""))]
     if not labels:
         return False, ""
     seen = labels[-1]
     a, b = _norm_label(seen), _norm_label(model)
-    return bool(a and b and (a == b or a in b or b in a)), seen
+    return bool(a and b and a == b), seen     # alt dize YOK: gemini-3-pro, gemini-3-pro-high'ı kabul etmesin
 
 
 # ── yollar ────────────────────────────────────────────────────────────────────
@@ -630,7 +636,8 @@ def save_findings(paths: Any, findings: Dict[str, Any]) -> None:
 def finding_key(proj: str, where: Any, title: Any) -> str:
     """Bulgu kimliği (TBD#137c): (proje, dosya, normalize başlık) hash'i. Dosya = `where`in `:satır` öncesi; başlık küçük harf,
     harf/rakam dışı atılır: aynı hata farklı koşuda/satırda yeniden bulunsa aynı anahtar."""
-    fil = re.split(r"[:#]", str(where or "").strip(), 1)[0].strip().lower()
+    fil = re.split(r"[:#]", str(where or "").strip().strip("`"), maxsplit=1)[0].strip().strip("`").lower()
+    fil = re.sub(r"^(\./|file://)", "", fil)
     ttl = re.sub(r"[^0-9a-zçğıöşü]+", " ", str(title or "").lower()).strip()
     return hashlib.sha1(f"{proj}\x00{fil}\x00{ttl}".encode("utf-8")).hexdigest()[:16]
 
@@ -911,6 +918,16 @@ def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "own
 
 EXPORT_HEADING = "## Review bulguları"
 
+# RTODO/RTBD ayrımı (sahip, 2026-11-01: "gerekirse rtodo rtbd'ye"): bulgunun TÜRÜNE göre. Anahtar kelime ile TAHMİNİ: karar
+# gerektiren (politika/tercih/seçenek/belirsiz davranış) bulgu RTBD'ye, düz hata RTODO'ya gider; şüphede RTODO.
+_DECISION_RE = re.compile(
+    r"\b(karar\w*|tercih\w*|seçenek\w*|politika\w*|sahip\w* karar|belirsiz\w*|trade-?off|design decision|should (?:we|it)|policy|ambiguous|undefined behaviou?r)",
+    re.I)
+
+
+def is_decision(row: Dict[str, Any]) -> bool:
+    return bool(_DECISION_RE.search(f"{row.get('title') or ''} {str(row.get('body') or '')[:600]}"))
+
 _BACKTICK_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
 _WHERE_FILE_RE = re.compile(r"^\s*`?([^\s:`]+\.[A-Za-z0-9]+)")
 
@@ -967,7 +984,7 @@ def changed_after_review(row: Dict[str, Any], cwd: str) -> bool:
         return False
     try:
         t = os.path.getmtime(path)
-        if os.path.isdir(os.path.join(cwd, ".git")):
+        if os.path.exists(os.path.join(cwd, ".git")):  # dizin ya da worktree'deki .git DOSYASI
             out = subprocess.run(["git", "-C", cwd, "log", "-1", "--format=%ct", "--", path], capture_output=True,
                                  text=True, timeout=10).stdout.strip()
             if out.isdigit():
@@ -1015,3 +1032,59 @@ def report_incomplete(text: str) -> bool:
     t = text or ""
     return bool(_INCOMPLETE_RE.search(t)) and not _HAS_FINDING_RE.search(t)
 
+
+
+def anthropic_price(model: str) -> Tuple[float, float, float, float]:
+    m = str(model or "")
+    for k, v in ANTHROPIC_PRICES.items():
+        if k in m:
+            return v
+    return ANTHROPIC_PRICES["opus-5-5"]       # bilinmeyen model: en pahalı varsayım (bütçe güvenli tarafta)
+
+
+def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: float = 1.0) -> float:
+    """Bir `.usage.jsonl` dosyasının $ maliyeti (istek başına ucli `usage`: girdi/çıktı/önbellek okuma/yazma). Tanınmayan
+    alan 0 sayılır; hiç ayrıştırılamazsa dosya boyutundan bağımsız 0 döner (bütçe kapısı `anthropic_spent_usd` yedek tahmin ekler)."""
+    # `model` boş: modeli kaydın kendisinden (task_start) izle (uzun ömürlü oturum günlüğü). `since_ms` > 0: yalnız o andan sonraki
+    # istekler (günlük toplam). `write_mult`: önbellek YAZMA fiyatına çarpan (1h TTL yazma 2x = 5 dk 1,25x'in 1,6 katı).
+    pi, po, pr, pw = anthropic_price(model or "opus-5-5")
+    tot = 0.0
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line) or {}
+                except ValueError:
+                    continue
+                if not model and rec.get("event") == "task_start" and rec.get("model"):
+                    pi, po, pr, pw = anthropic_price(str(rec["model"]))
+                    continue
+                if since_ms and float(rec.get("t") or 0) < since_ms:
+                    continue
+                u = rec.get("usage") or {}
+                def g(*names: str) -> float:
+                    for n in names:
+                        if isinstance(u.get(n), (int, float)):
+                            return float(u[n])
+                    return 0.0
+                cr = g("cache_read_input_tokens", "cached_tokens", "cache_read_tokens")
+                cw = g("cache_creation_input_tokens", "cache_write_tokens")
+                inp = max(0.0, g("input_tokens", "prompt_tokens") - (0 if "cache_read_input_tokens" in u else cr) - (0 if "cache_creation_input_tokens" in u else cw))
+                if "cached_tokens" in u and "cache_creation_input_tokens" not in u:
+                    inp_price = pw      # ucli normalleştirilmiş sayaç: yazma ayrı raporlanmaz, önbellek istendiğinden yeni girdi yazma fiyatından sayılır (güvenli üst sınır)
+                else:
+                    inp_price = pi
+                tot += (inp * inp_price + g("output_tokens", "completion_tokens") * po + cr * pr + cw * pw * write_mult) / 1e6
+    except OSError:
+        pass
+    return tot
+
+
+def anthropic_spent_usd(reviews_root: str) -> float:
+    """Tüm `anthropic` koşularının toplam $ (yalnız `<root>/*/anthropic/<model>/<effort>/<ts>/<ts>.usage.jsonl`)."""
+    import glob
+    tot = 0.0
+    for f in glob.glob(os.path.join(reviews_root, "*", "anthropic", "*", "*", "*", "*.usage.jsonl")):
+        parts = f.split(os.sep)
+        tot += usage_cost_usd(f, parts[-4])
+    return tot

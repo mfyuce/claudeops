@@ -22,7 +22,8 @@ class QuotaRestoreTest(unittest.TestCase):
 
     def _poll(self, action):
         stops = []
-        with mock.patch.object(ws, "QUOTA_FILE", self.qf), \
+        with mock.patch.object(ws.sw, "log_event", lambda *a, **k: None), \
+                mock.patch.object(ws, "QUOTA_FILE", self.qf), \
                 mock.patch.object(ws, "quota_read_usage", lambda: sq.Usage(week_pct=95.0) if hasattr(sq, "Usage") else object()), \
                 mock.patch.object(ws, "quota_config", lambda: {}), \
                 mock.patch.object(ws.sq, "decide", lambda cfg, u, now: sq.Decision(action=action, reason="t")), \

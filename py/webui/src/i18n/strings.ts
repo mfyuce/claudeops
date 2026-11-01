@@ -310,6 +310,8 @@ export interface Strings {
   usageTotalHint: (main: string, subs: string, nSubs: number) => string;
   modelUsageLabel: (minutes: number, calls: number, read: string, fresh: string) => string;
   modelUsageHint: (minutes: number) => string;
+  failedTurnsBadge: (n: number) => string;
+  failedTurnsHint: (n: number, err: string) => string;
   phaseBadge: (p: PhaseArg) => string;
   phaseHint: (p: PhaseArg) => string;
   pmAllowCreateHint: string;
@@ -445,6 +447,20 @@ export interface Strings {
   ucliLimitsMaxContextKibLabel: string;
   ucliLimitsMaxToolCallsLabel: string;
   ucliLimitsMaxOutputTokensLabel: string;
+  ucliLimitsRequestTimeoutLabel: string;
+  uzakgozSettingsTitle: string;
+  uzakgozDirLabel: string;
+  uzakgozBinLabel: string;
+  uzakgozPortLabel: string;
+  uzakgozPlaceholderAuto: string;
+  uzakgozSettingsHint: string;
+  ucliKeysTitle: string;
+  ucliKeysDesc: string;
+  ucliSectionRun: string;
+  ucliSectionStart: string;
+  ucliSectionGlobal: string;
+  ucliTabNoCli: string;
+  mixedCliBadgeHint: (cli: string) => string;
   ucliLimitsPlaceholderAuto: string;
   ucliLimitsReasoningLabel: string;
   ucliLimitsReasoningHint: string;
@@ -684,6 +700,10 @@ export interface Strings {
   hChatTool: string;
   hChatSystem: string;
   hReviewHint: string;
+  rvWatchBtn: string;
+  rvWatchTitle: string;
+  rvTabChat: string;
+  rvTabRaw: string;
   hOpenBtn: string;
   rvDesc: string;
   rvOff: string;
@@ -1056,6 +1076,8 @@ export const STRINGS: Record<Lang, Strings> = {
     },
     pmAllowCreateHint:
       "allow-create: yalnız YENİ dosya yaratır; var olan bir dosyayı değiştiremez, silemez, taşıyamaz. 'Önce iskeleti yaz, sonra doldur' çalışmaz: ikinci yazma reddedilir, raporu tek seferde yazdır.",
+    failedTurnsBadge: (n) => `${n} başarısız tur`,
+    failedTurnsHint: (n, err) => `${n} tur modele ulaştıktan sonra hatayla öldü (ucli .ucli/chat/failed/ kayıtları)${err ? `. Son hata: ${err}` : ""}`,
     phaseBadge: (p) => {
       const e = p.elapsed ?? null;
       const d = e != null ? ` ${phaseDurTr(e)}` : "";
@@ -1275,6 +1297,20 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxContextKibLabel: "max-context-kib (KiB)",
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
+    ucliLimitsRequestTimeoutLabel: "request-timeout-secs",
+    uzakgozSettingsTitle: "uzakgoz ayarları (uzak masaüstü daemon'u)",
+    uzakgozDirLabel: "kaynak dizini",
+    uzakgozBinLabel: "hazır ikili",
+    uzakgozPortLabel: "port",
+    uzakgozPlaceholderAuto: "otomatik",
+    uzakgozSettingsHint: "Boş alan = varsayılan: dizin ~/work/projects/tmp/uzakgoz (yoksa claudeops içindeki eski kopya), ikili yok (dizinden derlenir; doluysa derleme atlanır), port 8877. Geçersiz değer sessizce atlanır. Yalnız bir SONRAKİ başlatmada geçerli olur.",
+    ucliKeysTitle: "Model anahtarları",
+    ucliKeysDesc: "Anahtar yalnız yazılır ve burada bir daha GÖSTERİLMEZ (settings.json, izin 600). Evren anahtarını yeni ucli oturumları zaten kullanır; Claude, Grok ve OpenRouter anahtarları oturum başlatmada kullanılmak üzere saklanır.",
+    ucliSectionRun: "Çalıştır",
+    ucliSectionStart: "Oturum başlatma",
+    ucliSectionGlobal: "Global ayarlar",
+    ucliTabNoCli: "ucli bu kurulumda etkin değil (cli_list içinde yok).",
+    mixedCliBadgeHint: (c) => `Bu klasörde birden çok CLI çalışıyor; bu satırlardan bazıları ${c}`,
     ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
     ucliLimitsReasoningLabel: "akıl yürütme (--effort)",
     ucliLimitsReasoningHint:
@@ -1526,6 +1562,10 @@ export const STRINGS: Record<Lang, Strings> = {
     hChatTool: "araç",
     hChatSystem: "sistem",
     hReviewHint: "Review koşusu: sohbet olarak salt-okunur gösterilir; çalışıyorsa canlı güncellenir.",
+    rvWatchBtn: "izle",
+    rvWatchTitle: "Bu süreç koşan bir review'a ait: devralmadan salt-okunur izlenir (devral bu koşuyu öldürürdü)",
+    rvTabChat: "sohbet",
+    rvTabRaw: "ham akış",
     hOpenBtn: "Aç",
     rvDesc: "Proje x model matrisi: her hücre bir modelin projeyi son gözden geçirişi. Etkin kutusu projeyi havuza alır/çıkarır.",
     rvOff: "Bu reviewer kapalı: yeni review başlamaz.",
@@ -1899,6 +1939,8 @@ export const STRINGS: Record<Lang, Strings> = {
     },
     pmAllowCreateHint:
       "allow-create: only creates NEW files; it cannot modify, delete or move an existing one. 'Write a skeleton first, fill it in later' does not work: the second write is refused, have the report written in one go.",
+    failedTurnsBadge: (n) => `${n} failed ${n === 1 ? "turn" : "turns"}`,
+    failedTurnsHint: (n, err) => `${n} ${n === 1 ? "turn" : "turns"} died with an error after reaching the model (ucli .ucli/chat/failed/ records)${err ? `. Last error: ${err}` : ""}`,
     phaseBadge: (p) => {
       const e = p.elapsed ?? null;
       const d = e != null ? ` ${phaseDurEn(e)}` : "";
@@ -2118,6 +2160,20 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliLimitsMaxContextKibLabel: "max-context-kib (KiB)",
     ucliLimitsMaxToolCallsLabel: "max-tool-calls",
     ucliLimitsMaxOutputTokensLabel: "max-output-tokens",
+    ucliLimitsRequestTimeoutLabel: "request-timeout-secs",
+    uzakgozSettingsTitle: "uzakgoz settings (remote-desktop daemon)",
+    uzakgozDirLabel: "source dir",
+    uzakgozBinLabel: "prebuilt binary",
+    uzakgozPortLabel: "port",
+    uzakgozPlaceholderAuto: "auto",
+    uzakgozSettingsHint: "Empty = default: dir ~/work/projects/tmp/uzakgoz (else the old in-repo copy), no binary (built from the dir; if set the build is skipped), port 8877. An invalid value is silently skipped. Applies at the NEXT start only.",
+    ucliKeysTitle: "Model keys",
+    ucliKeysDesc: "A key is write-only and is never shown here again (settings.json, mode 600). New ucli sessions already use the Evren key; the Claude, Grok and OpenRouter keys are stored for use at session start.",
+    ucliSectionRun: "Run",
+    ucliSectionStart: "Session start",
+    ucliSectionGlobal: "Global settings",
+    ucliTabNoCli: "ucli is not enabled on this install (not in cli_list).",
+    mixedCliBadgeHint: (c) => `Several CLIs share this folder; some rows here are ${c}`,
     ucliLimitsPlaceholderAuto: "empty = preset default",
     ucliLimitsReasoningLabel: "reasoning (--effort)",
     ucliLimitsReasoningHint:
@@ -2369,6 +2425,10 @@ export const STRINGS: Record<Lang, Strings> = {
     hChatTool: "tool",
     hChatSystem: "system",
     hReviewHint: "Review run: shown read-only as a chat; updates live while running.",
+    rvWatchBtn: "watch",
+    rvWatchTitle: "This process belongs to a running review: watch it read-only without adopting (adopt would kill the run)",
+    rvTabChat: "chat",
+    rvTabRaw: "raw stream",
     hOpenBtn: "Open",
     rvDesc: "Project x model matrix: each cell is one model's latest review of a project. The checkbox enables/disables the project in the pool.",
     rvOff: "This reviewer is off: no new reviews start.",

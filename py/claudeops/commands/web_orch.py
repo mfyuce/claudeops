@@ -13,6 +13,7 @@ from __future__ import annotations
 import concurrent.futures
 import dataclasses
 import itertools
+import math
 import os
 import re
 import secrets
@@ -172,6 +173,19 @@ def _preflight(participants: List[dict]) -> Optional[str]:
     return None
 
 
+def _write_private(path: str, text: str) -> None:
+    """Run ek dosyası: her zaman 0600 (umask'tan bağımsız, mevcut dosyada da)."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            fd = -1
+            f.write(text)
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
 def _inline_or_file(run_id: str, full_prompt: str, head_source: str, contract_tail: str, filename: str) -> str:
     """`full_prompt` boyu `INLINE_LIMIT_CHARS`'ı aşarsa TAMAMI run dizinine
     dosya olarak yazılır + `head_source`'un kısaltılmış başı + İŞARETÇİ +
@@ -185,8 +199,7 @@ def _inline_or_file(run_id: str, full_prompt: str, head_source: str, contract_ta
     d = orch_store.run_dir(run_id)
     os.makedirs(d, exist_ok=True)
     fpath = os.path.join(d, filename)
-    with open(fpath, "w", encoding="utf-8") as f:
-        f.write(full_prompt)
+    _write_private(fpath, full_prompt)
     head = head_source.strip()[:INLINE_HEAD_CHARS]
     return (
         f"{head}\n\n[... truncated for delivery size (a large paste has been observed to crash "
@@ -215,8 +228,7 @@ def _build_decider_dispatch(run_id: str, task: str, verdict_hint: str, bundle: s
     d = orch_store.run_dir(run_id)
     os.makedirs(d, exist_ok=True)
     fpath = os.path.join(d, "decider_bundle.md")
-    with open(fpath, "w", encoding="utf-8") as f:
-        f.write(bundle)
+    _write_private(fpath, bundle)
     hint = f"\n\nVerdict format hint: {verdict_hint.strip()}" if verdict_hint.strip() else ""
     return (
         f"You are the decider for a team task. Task:\n{task.strip()}{hint}\n\n"
@@ -509,9 +521,9 @@ def _run_thread(run_id: str, workers: List[orch.Participant], controller: Option
     bloklarının HİÇBİRİ çalışmaz, `effective_task` ham `task`, `resolve_outcome`
     AYNI şekilde `has_decider=False` ile çağrılır) — regresyon riski yok."""
     global _ACTIVE_RUN_ID
+    results: List[orch.RunResult] = []
     try:
         index = _eligible_index()
-        results: List[orch.RunResult] = []
         seq_counter = itertools.count(1)
         effective_task = task
 
@@ -598,7 +610,7 @@ def _run_thread(run_id: str, workers: List[orch.Participant], controller: Option
         # yüzden geniş bir yakalama burada BİLEREK var, engine'in geri
         # kalanında YOK.
         diag_log("orch_run_crashed", run_id=run_id, error=str(e))
-        _save_final(run_id, [], orch.Outcome(method="none", note=f"internal error: {e}"), "failed")
+        _save_final(run_id, results, orch.Outcome(method="none", note=f"internal error: {e}"), "failed")
     finally:
         with _LOCK:
             if _ACTIVE_RUN_ID == run_id:
@@ -716,6 +728,8 @@ def http_start(data: dict) -> dict:
     try:
         worker_timeout = float(data.get("worker_timeout") or DEFAULT_WORKER_TIMEOUT_SECONDS)
     except (TypeError, ValueError):
+        worker_timeout = DEFAULT_WORKER_TIMEOUT_SECONDS
+    if not math.isfinite(worker_timeout) or worker_timeout <= 0:
         worker_timeout = DEFAULT_WORKER_TIMEOUT_SECONDS
     run_id, err = start_run(participants, task, verdict_hint, worker_timeout)
     if err:
