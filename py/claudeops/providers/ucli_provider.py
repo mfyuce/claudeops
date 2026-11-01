@@ -95,7 +95,7 @@ from .. import searxng
 from ..diaglog import diag_log
 from .. import ucli_cost
 from ..settings import ucli_cost_config
-from ..ucli_session_opts import SERVICES, exec_flags, validate_opts as validate_start_opts
+from ..ucli_session_opts import services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
 from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
 from ..ucli_client import (UcliError, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, failed_turn_records, resolve_binary,
@@ -472,7 +472,7 @@ def _claude_service_flags(argv: List[str], session_name: str) -> List[str]:
     return argv
 
 
-def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "") -> Tuple[List[str], str]:
+def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "", effort: str = "") -> Tuple[List[str], str]:
     """Temiz `cli_opts` -> (yeni argv, anahtar env öneki). Hizmet seçilmiş ve anahtarı YOKSA `ValueError` (spawn REDDEDİLİR:
     yanlış hizmete/anahtarsız açmak sessizce başka modele düşmekten kötü). Her bayrak `binary_supports_flag` kapılı;
     `exec` bayrakları tanınmıyorsa ValueError (yarım güvenlik bayrağı uygulanmaz)."""
@@ -480,7 +480,7 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
     env_prefix = ""
     service = opts.get("service") or ""
     if service and service != "evren":
-        wire, ep, env_name = SERVICES[service]
+        wire, ep, env_name = _services()[service]
         key = byok_env_for("ucli").get(env_name, "").strip()
         if not key:
             raise ValueError(f"{service}: anahtar yok (Model anahtarları panelinden gir: {env_name})")
@@ -499,9 +499,19 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
         if "--effort" in argv:
             i = argv.index("--effort")
             del argv[i:i + 2]
+        # Hizmetin kendi modele-bağlı effort tablosu (Ayarlar): panelde seçilen effort o modelde GEÇERLİYSE geçer, değilse atlanır.
+        if "--model" in argv and argv.index("--model") + 1 < len(argv):
+            levels = effort_levels_for(service, argv[argv.index("--model") + 1])
+            if levels and effort in levels and binary_supports_flag(binary, "--effort"):
+                argv = argv + ["--effort", effort]
         env_prefix = f'{env_name}="$(cat {shlex.quote(path)})"'
         if service == "claude":
             argv = _claude_service_flags(argv, session_name)
+    if opts.get("exec_cmds"):
+        names, err = expand_exec_cmds(opts["exec_cmds"], path_executables())
+        if err:
+            raise ValueError(err)
+        opts = {**opts, "exec_cmds": names}
     ex = exec_flags(opts)
     if ex:
         for flag in ("--allow-exec", "--allow-exec-cmd") + (("--allow-exec-own-glob",) if opts.get("exec_own_glob") else ()) \
@@ -511,6 +521,11 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                 diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
                 raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (exec izni yarım uygulanmaz)")
         argv = argv + ex
+        if opts.get("exec_write"):          # yazma izni (varsayılan KAPALI): ucli'nin dosya yazma katmanı; --allow-create ile birlikte olmaz
+            if "--allow-edit" not in argv:
+                if not binary_supports_flag(binary, "--allow-edit"):
+                    raise ValueError("ucli ikilisi --allow-edit bayrağını tanımıyor (yazma izni yarım uygulanmaz)")
+                argv = [a for a in argv if a != "--allow-create"] + ["--allow-edit"]
     return argv, env_prefix
 
 
@@ -575,7 +590,7 @@ class UcliProvider(CliProvider):
         argv += _state_dir_args(argv[0], cwd, session_name)
         service_env = ""
         if cli_opts:
-            argv, service_env = _apply_cli_opts(argv, cli_opts, session_name)
+            argv, service_env = _apply_cli_opts(argv, cli_opts, session_name, effort)
         inner =" ".join(shlex.quote(a) for a in argv)
         if service_env:
             # Hizmet anahtarı (Claude/Grok/OpenRouter): argv'ye GİRMEZ, 600'lük dosyadan env'e (Evren yoluyla aynı desen).

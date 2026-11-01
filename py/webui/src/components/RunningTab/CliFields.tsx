@@ -47,6 +47,8 @@ interface CliFieldsProps {
   onEffortChange: (value: string) => void;
   /** ucli with a non-Evren service supplies its own model input; the Evren list would be wrong. */
   hideModel?: boolean;
+  /** Overrides `cliOptions.effort_levels` (ucli service + model table); an empty list hides the selector. */
+  effortLevels?: string[];
 }
 
 export function CliFields({
@@ -61,6 +63,7 @@ export function CliFields({
   onPermissionModeChange,
   onEffortChange,
   hideModel,
+  effortLevels,
 }: CliFieldsProps) {
   const { t } = useLang();
   return (
@@ -97,16 +100,18 @@ export function CliFields({
           ))}
         </select>
       </label>
-      <label>
-        {t.effortLabel}
-        <select value={effort} onChange={(e) => onEffortChange(e.target.value)}>
-          {cliOptions.effort_levels.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </label>
+      {(effortLevels ?? cliOptions.effort_levels).length > 0 && (
+        <label>
+          {t.effortLabel}
+          <select value={effort} onChange={(e) => onEffortChange(e.target.value)}>
+            {(effortLevels ?? cliOptions.effort_levels).map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {permissionMode === "allow-create" && (
         <span className="opts-hint" style={{ flexBasis: "100%" }}>
           {t.pmAllowCreateHint}

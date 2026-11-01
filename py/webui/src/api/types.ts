@@ -340,6 +340,9 @@ export interface Settings {
   /** {dir, bin, port: string} — the remote-desktop daemon (`uzakgoz`, its own repo like ucli; `settings.uzakgoz_config()`).
    * Empty field = default (dir ~/work/projects/tmp/uzakgoz, else the old in-repo copy; bin none = build from dir; port 8877). */
   uzakgoz?: Record<string, string>;
+  /** ucli model services, SINGLE source for the start window and the Model keys panel (`settings.ucli_services()`;
+   * the backend always sends a validated list, built-ins filled in). Saved as the WHOLE list. */
+  ucli_services?: UcliServiceDef[];
   /** {search_url, search_docker, allow_fetch_domains: string} (+ `search_flavor`,
    * UI'da yok, yalnız "searxng") — ucli'nin web araçları (TODO.md 2026-10-16,
    * TBD#88). Hepsi isteğe bağlı ham string, eksik anahtar = varsayılan: arama
@@ -1079,4 +1082,16 @@ export interface ReviewLesson {
 export interface ReviewFinding {
   id: string; project: string; review_file: string; ref: string; severity: string; title: string; where: string;
   body: string; state: string; verdict: string;
+}
+
+/** One ucli model service (`settings.normalize_ucli_services`). `wire` "" = chat-completions; `endpoint` "" only for Evren. */
+export interface UcliServiceDef {
+  id: string;
+  label: string;
+  wire: "" | "anthropic-messages";
+  endpoint: string;
+  env: string;
+  models: string[];
+  /** model-id fragment -> valid effort levels ([] = this model takes no effort); the longest fragment found in the model id wins */
+  efforts?: Record<string, string[]>;
 }

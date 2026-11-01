@@ -65,10 +65,11 @@ from .. import instances as inst_mod
 from .. import model_freshness
 from .. import audio_stream
 from .. import remote_desktop
+from .. import trust_dialog
 from .. import routing as routing_mod
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
-from ..settings import (default_effort_for, default_model_for, load_settings, resolved_model_for, save_settings,
+from ..settings import (normalize_ucli_services, default_effort_for, default_model_for, load_settings, resolved_model_for, save_settings,
                         ucli_usage_warn_thresholds)
 from ..ucli_client import quota_equivalent_tokens, usage_warn_level
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots, normalize_mirrors
@@ -166,6 +167,14 @@ ERR = {
                              "(gnome-terminal/DISPLAY/kilit ekranı sorunu olabilir, tekrar deneyin) — kind={kind}",
                        "en": "{name}: start attempted but no process appeared "
                              "(could be gnome-terminal/DISPLAY, retry) — kind={kind}"},
+    "start_died_early": {"tr": "{name}: başlatma BAŞARISIZ, oturum {secs} sn içinde öldü (ör. 'bu klasöre güveniyor musun?' "
+                                "diyaloğu, bozuk ~/.claude.json ya da çökme); pane/diag.log'a bak — kind={kind}",
+                          "en": "{name}: start FAILED, the session died within {secs}s (e.g. folder-trust dialog, broken "
+                                "~/.claude.json or a crash); check the pane/diag.log — kind={kind}"},
+    "start_trust_unregistered": {"tr": "{name}: klasör için güven diyaloğu çıktı ama klasör kayıtlı değil; "
+                                       "otomatik 'Yes' seçilmedi, sahibe sor",
+                                 "en": "{name}: folder-trust dialog appeared but the folder isn't registered; "
+                                       "not auto-accepted, ask the owner"},
     "not_running": {"tr": "{name}: çalışmıyor", "en": "{name}: not running"},
     "ambiguous_name": {"tr": "{name}: birden fazla çalışan session bu isme indirgeniyor ({candidates}) — "
                               "hangisi hedeflenecek belirsiz, tam ismini kullanın",
@@ -493,6 +502,19 @@ def _wait_stable(name: str, timeout: float, stable_for: float = STABLE_SECONDS) 
         if now >= deadline:
             return False
         time.sleep(1.0)
+
+
+EARLY_DEATH_SECONDS = 10.0
+
+
+def _died_within(name: str, seconds: float) -> bool:
+    """Oturum `seconds` sn içinde kaybolursa True (sessiz ölüm; `_wait_stable` bir kez görüp saymıştı)."""
+    deadline = time.monotonic() + max(0.0, seconds)
+    while time.monotonic() < deadline:
+        if not any(s.name == name for s in find_sessions(measure_cpu=False)):
+            return True
+        time.sleep(1.0)
+    return not any(s.name == name for s in find_sessions(measure_cpu=False))
 
 
 def _read_tsv_raw(path: str) -> list:
@@ -1748,6 +1770,7 @@ def _redact_settings_for_wire(settings: dict) -> dict:
     AYNI desen. Diğer TÜM ayarlar (theme/default_model/provider_bin/...) sır
     değil, olduğu gibi geçer — burada SADECE `byok`'a dokunuluyor."""
     out = dict(settings)
+    out["ucli_services"] = normalize_ucli_services(out.get("ucli_services"))     # UI'ya HER ZAMAN doğrulanmış/yerleşik-doldurulmuş liste
     byok = out.get("byok")
     if isinstance(byok, dict):
         out["byok"] = {
@@ -1818,6 +1841,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     # exception'ını yutar) — normal akışı hiç etkilemez, sadece bir sonraki olayda
     # "son görülen: start_begin, eşleşen start_end yok" gibi bir kanıt bırakır.
     diag_log("start_begin", name=name, fresh=bool(fresh), cli=chosen_cli, model=chosen_model)
+    died = False
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
@@ -1832,13 +1856,29 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
                 hidden=hidden,
                 cli_opts=clean_opts or None,
             )
+            t_spawn = time.monotonic()
+            trust = "none"
+            if chosen_cli == "claude":     # güven diyaloğu yalnız Claude'a özgü; kayıtlı (roster/instance) klasörde Yes seçilir
+                trust = trust_dialog.handle(
+                    name, registered=bool(src.get("cwd")), capture=tmux_capture, send_key=tmux_send_special_key,
+                    send_raw=tmux_send_raw, strip=strip_ansi, log=diag_log,
+                    alive=lambda: any(s.name == name for s in find_sessions(measure_cpu=False)))
             opened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
+            if opened:                      # "opened:true" sonra kaybolan oturum (sessiz ölüm): EARLY_DEATH_SECONDS içinde izle
+                died = _died_within(name, EARLY_DEATH_SECONDS - (time.monotonic() - t_spawn))
+                if died:
+                    opened = False
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn REDDEDİLİR
         diag_log("start_refused", name=name, cli=chosen_cli, reason=str(e)[:200])
         return {"ok": False, "error": str(e)}
-    diag_log("start_end", name=name, kind=kind, opened=opened)
+    diag_log("start_end", name=name, kind=kind, opened=opened, trust=trust)
+    if trust == "unregistered":
+        return _err(lang, "start_trust_unregistered", name=name)
+    if not opened and died:
+        diag_log("start_failed", name=name, reason="died_early", secs=EARLY_DEATH_SECONDS, trust=trust)
+        return _err(lang, "start_died_early", name=name, kind=kind, secs=int(EARLY_DEATH_SECONDS))
     if not opened:
         return _err(lang, "start_no_proc", name=name, kind=kind)
     if rec is not None:
@@ -4217,7 +4257,7 @@ class _Handler(BaseHTTPRequestHandler):
             from .. import ucli_session_opts as _uso
             from ..settings import byok_env_for as _byok
             svc = (parse_qs(urlparse(self.path).query).get("service") or [""])[0]
-            env = _uso.SERVICES.get(svc, ("", "", ""))[2]
+            env = _uso.services().get(svc, ("", "", ""))[2]
             self._json({"ok": True, "service": svc,
                         "models": _uso.service_models(svc, (_byok("ucli").get(env, "") if env else "").strip())})
         elif path == "/api/io/providers":

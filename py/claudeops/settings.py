@@ -115,6 +115,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # istenir: durum dosyasında `thinking`/`writing` aşamaları görünür, metin pane'e canlı
                               # basılır; bedeli: cevap pane'de iki kez görünür, akış yarıda kesilirse çağrı yeniden
                               # DENENMEZ). `on` aç, `off` kapat, boş = `UCLI_STREAM_DEFAULT` (AÇIK). Okuma: `ucli_stream_enabled()`.
+    "ucli_services": [],     # 2026-11-02: ucli model HİZMETLERİ (başlat penceresi + Model anahtarları paneli TEK kaynak):
+                              # [{id, label, wire ("" | "anthropic-messages"), endpoint, env, models: [str]}]. Boş/yok = yerleşik liste
+                              # (`DEFAULT_UCLI_SERVICES`). TÜM liste birden yazılır (alan-bazlı merge YOK). Okuma: `ucli_services()`.
     "ucli_endpoint": "",     # 2026-10-20 (TODO "ucli sadece Evren'e sabit"): ucli'nin OpenAI-uyumlu uç noktası (http/https
                               # adres). Boş/geçersiz = Evren varsayılanı (`ucli_provider.DEFAULT_ENDPOINT`). Sır DEĞİL
                               # (API key `byok`ta kalır). Model listesi çekme VE yeni ucli oturumlarının `--endpoint`i
@@ -261,6 +264,8 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
                 else:
                     merged.pop(str(ck), None)
             current[k] = merged
+        elif k == "ucli_services":
+            current[k] = normalize_ucli_services(v) if isinstance(v, list) and v else []    # [] = yerleşik listeye dön
         elif k == "stewards" and isinstance(v, dict):
             # İKİ seviye: {sid: {alan: değer}}. Tek seviye birleştirme diğer kimliklerin bloklarını EZERDİ
             # (kısmi güncelleme başka değnekçinin ayarını silerdi): kimlik başına alan alan birleşir,
@@ -576,6 +581,69 @@ def uzakgoz_config() -> Dict[str, Any]:
     except ValueError:
         pass
     return out
+
+
+DEFAULT_UCLI_SERVICES = [
+    {"id": "evren", "label": "Evren", "wire": "", "endpoint": "", "env": "UCLI_API_KEY", "models": []},
+    {"id": "claude", "label": "Claude (Anthropic)", "wire": "anthropic-messages", "endpoint": "https://api.anthropic.com/v1",
+     "env": "ANTHROPIC_API_KEY", "models": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"],
+     # effort listesi MODELE bağlı: anahtar = model kimliğinde geçen parça (en uzun eşleşen kazanır), değer = geçerli seviyeler
+     # ([] = bu modelde effort yok, seçici gizlenir). VARSAYIM (canlı doğrulanmadı, Ayarlar'dan düzeltilebilir): haiku effort
+     # almaz, sonnet max'sız, opus/fable max'lı.
+     "efforts": {"haiku": [], "sonnet": ["low", "medium", "high"], "opus": ["low", "medium", "high", "max"],
+                 "fable": ["low", "medium", "high", "max"]}},
+    {"id": "grok", "label": "Grok (xAI)", "wire": "", "endpoint": "https://api.x.ai/v1", "env": "XAI_API_KEY", "models": []},
+    {"id": "openrouter", "label": "OpenRouter", "wire": "", "endpoint": "https://openrouter.ai/api/v1",
+     "env": "OPENROUTER_API_KEY", "models": []},
+    {"id": "groq", "label": "Groq (groq.com)", "wire": "", "endpoint": "https://api.groq.com/openai/v1",
+     "env": "GROQ_API_KEY", "models": []},
+]
+UCLI_REASONING_LEVELS = ("low", "medium", "high", "max")      # ucli `--effort` değerleri
+_SVC_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,19}$")
+_SVC_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,39}$")
+
+
+def normalize_ucli_services(raw: Any) -> list:
+    """Ham liste -> doğrulanmış hizmet listesi (geçersiz girdiler sessizce atılır, asla fırlatmaz). `evren` HER ZAMAN vardır
+    (silinemez; yoksa yerleşik başa eklenir). Boş/geçersiz giriş = yerleşik liste."""
+    import copy
+    if not isinstance(raw, list) or not raw:
+        return copy.deepcopy(DEFAULT_UCLI_SERVICES)
+    out, seen = [], set()
+    for r in raw:
+        if not isinstance(r, dict):
+            continue
+        sid = str(r.get("id") or "").strip().lower()
+        env = str(r.get("env") or "").strip()
+        wire = str(r.get("wire") or "").strip()
+        ep = str(r.get("endpoint") or "").strip().rstrip("/")
+        if not _SVC_ID_RE.match(sid) or sid in seen or not _SVC_ENV_RE.match(env) or wire not in ("", "anthropic-messages"):
+            continue
+        if ep and not re.match(r"^https?://[^\s]+$", ep):
+            continue
+        if not ep and sid != "evren":        # yalnız Evren'in uç noktası `ucli_endpoint` ayarından gelir
+            continue
+        models = r.get("models")
+        if isinstance(models, str):
+            models = models.replace("\n", ",").split(",")
+        models = list(dict.fromkeys(str(m).strip()[:80] for m in (models or []) if str(m).strip()))[:60]
+        efforts: Dict[str, list] = {}
+        raw_eff = r.get("efforts")
+        if isinstance(raw_eff, dict):
+            for ek, ev in list(raw_eff.items())[:20]:
+                ek = str(ek).strip().lower()[:40]
+                if ek and isinstance(ev, (list, tuple)):
+                    efforts[ek] = [x for x in dict.fromkeys(str(v).strip() for v in ev) if x in UCLI_REASONING_LEVELS]
+        seen.add(sid)
+        out.append({"id": sid, "label": (str(r.get("label") or "").strip() or sid)[:40], "wire": wire,
+                    "endpoint": ep, "env": env, "models": models, "efforts": efforts})
+    if "evren" not in seen:
+        out.insert(0, copy.deepcopy(DEFAULT_UCLI_SERVICES[0]))
+    return out
+
+
+def ucli_services() -> list:
+    return normalize_ucli_services(load_settings().get("ucli_services"))
 
 
 def ucli_cost_config() -> Dict[str, Any]:

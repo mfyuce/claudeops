@@ -12,26 +12,24 @@
 
 import { useState } from "react";
 import { apiSaveSettings, ApiError } from "../api/client";
+import type { UcliServiceDef } from "../api/types";
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 
-/** id, label, the env var `ucli --api-key-env` reads, the wire protocol and typical endpoint (hint only, not enforced). */
-const KEY_SERVICES = [
-  { id: "evren", label: "Evren", env: "UCLI_API_KEY", hint: "chat-completions · endpoint: ucli_endpoint" },
-  { id: "claude", label: "Claude (Anthropic)", env: "ANTHROPIC_API_KEY", hint: "anthropic-messages · https://api.anthropic.com" },
-  { id: "grok", label: "Grok (xAI)", env: "XAI_API_KEY", hint: "chat-completions · https://api.x.ai/v1" },
-  { id: "openrouter", label: "OpenRouter", env: "OPENROUTER_API_KEY", hint: "chat-completions · https://openrouter.ai/api/v1" },
-  { id: "groq", label: "Groq", env: "GROQ_API_KEY", hint: "chat-completions · https://api.groq.com/openai/v1" },
-] as const;
+function hintOf(d: UcliServiceDef): string {
+  return `${d.wire || "chat-completions"} · ${d.endpoint || "endpoint: ucli_endpoint"}`;
+}
 
 export function UcliKeysPanel() {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [add, setAdd] = useState({ id: "", label: "", endpoint: "", env: "", anthropic: false });
   if (!data) return null;
+  const services = data.settings.ucli_services ?? [];
   const byok = data.settings.byok?.ucli ?? {};
   const cost = data.ucli_cost;
 
@@ -48,15 +46,29 @@ export function UcliKeysPanel() {
     refresh();
   }
 
+  /** The service list lives in settings.json as ONE list: every edit sends the whole thing. */
+  async function saveServices(next: UcliServiceDef[]) {
+    setError("");
+    try {
+      const res = await apiSaveSettings({ ucli_services: next, lang });
+      if (!res.ok) setError(res.error);
+    } catch (e) {
+      setError(describeApiError(e, t));
+    }
+    refresh();
+  }
+  const patchService = (id: string, p: Partial<UcliServiceDef>) =>
+    void saveServices(services.map((d) => (d.id === id ? { ...d, ...p } : d)));
+
   return (
     <div className="opts" id="ucliKeysPanel">
       <span className="opts-hint" style={{ flexBasis: "100%" }}>
         <b>{t.ucliKeysTitle}</b> {t.ucliKeysDesc}
       </span>
-      {KEY_SERVICES.map((s) => {
+      {services.map((s) => {
         const isSet = byok[s.env] === true;
         return (
-          <label key={s.id} title={s.hint}>
+          <label key={s.id} title={hintOf(s)}>
             {s.label} ({s.env})
             <input
               type="password"
@@ -73,10 +85,44 @@ export function UcliKeysPanel() {
                 {t.byokClearBtn}
               </button>
             )}
-            <span className="opts-hint">{s.hint}</span>
+            <span className="opts-hint">{hintOf(s)}</span>
+            <input
+              type="text"
+              key={s.models.join(",")}
+              defaultValue={s.models.join(", ")}
+              placeholder={lang === "tr" ? "modeller (virgülle; canlı liste yoksa yedek)" : "models (comma separated; fallback when no live list)"}
+              onBlur={(e) => {
+                const models = e.target.value.split(",").map((x) => x.trim()).filter(Boolean);
+                if (models.join(",") !== s.models.join(",")) patchService(s.id, { models });
+              }}
+            />
+            {s.id !== "evren" && (
+              <button type="button" className="stop" onClick={() => void saveServices(services.filter((d) => d.id !== s.id))}>
+                {lang === "tr" ? "hizmeti kaldır" : "remove service"}
+              </button>
+            )}
           </label>
         );
       })}
+      <div className="opts" style={{ flexBasis: "100%" }}>
+        <span className="opts-hint">{lang === "tr" ? "Hizmet ekle (OpenAI uyumlu uç):" : "Add a service (OpenAI-compatible endpoint):"}</span>
+        <input type="text" size={8} placeholder="id (groq2)" value={add.id} onChange={(e) => setAdd({ ...add, id: e.target.value })} />
+        <input type="text" size={14} placeholder={lang === "tr" ? "etiket" : "label"} value={add.label} onChange={(e) => setAdd({ ...add, label: e.target.value })} />
+        <input type="text" size={26} placeholder="https://host/v1" value={add.endpoint} onChange={(e) => setAdd({ ...add, endpoint: e.target.value })} />
+        <input type="text" size={16} placeholder="API_KEY_ENV" value={add.env} onChange={(e) => setAdd({ ...add, env: e.target.value })} />
+        <label><input type="checkbox" checked={add.anthropic} onChange={(e) => setAdd({ ...add, anthropic: e.target.checked })} /> anthropic-messages</label>
+        <button
+          type="button"
+          className="start"
+          disabled={!add.id.trim() || !add.endpoint.trim() || !add.env.trim()}
+          onClick={() => {
+            void saveServices([...services, { id: add.id.trim().toLowerCase(), label: add.label.trim(), wire: add.anthropic ? "anthropic-messages" : "", endpoint: add.endpoint.trim(), env: add.env.trim(), models: [] }]);
+            setAdd({ id: "", label: "", endpoint: "", env: "", anthropic: false });
+          }}
+        >
+          {lang === "tr" ? "ekle" : "add"}
+        </button>
+      </div>
       <label title={lang === "tr" ? "0 ya da boş = tavan yok. Aşılınca YENİ Claude oturumu açılmaz, çalışanlara dokunulmaz." : "0 or empty = no cap. Over the cap NEW Claude sessions are refused; running ones are untouched."}>
         {lang === "tr" ? "Claude günlük tavan (USD)" : "Claude daily cap (USD)"}
         <input

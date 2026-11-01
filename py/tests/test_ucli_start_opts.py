@@ -180,6 +180,43 @@ class BuildTests(unittest.TestCase):
             self.assertTrue(so.validate_opts({"exec_cmds": ["cargo"], "exec_bind_ro": bad})[1], bad)
         self.assertTrue(so.validate_opts({"exec_bind_ro": "/opt/tc/x"})[1])       # komutsuz olmaz
 
+    def test_star_expands_on_path_and_write_adds_allow_edit(self):
+        with mock.patch("claudeops.providers.ucli_provider.path_executables", return_value=["bash", "cargo", "ls", "sudo"]):
+            argv = shlex.split(self.build({"exec_cmds": ["*"], "exec_write": True}))
+        i = argv.index("--allow-exec-cmd")
+        self.assertEqual(argv[i + 1], "cargo,ls")
+        self.assertIn("--allow-edit", argv)
+        with mock.patch("claudeops.providers.ucli_provider.path_executables", return_value=["ls"]):
+            with self.assertRaises(ValueError):                             # ikili --allow-edit tanımıyorsa yarım uygulanmaz
+                up.UcliProvider().build_inner_command(self.CWD, "m", "default", "high", None, "", "vc",
+                                                      cli_opts={"exec_cmds": ["ls"], "exec_write": True})
+        with mock.patch("claudeops.providers.ucli_provider.path_executables", return_value=["cargo"]):
+            off = up.UcliProvider().build_inner_command(self.CWD, "m", "default", "high", None, "", "vc", cli_opts={"exec_cmds": ["*"]})
+            self.assertNotIn("--allow-edit", shlex.split(off))                                  # yazma izni varsayılan KAPALI
+
+    def test_patterns_validate(self):
+        ok, err = so.validate_opts({"exec_cmds": "*, cargo*, re:^py(test|3)$"})
+        self.assertEqual(err, "")
+        self.assertEqual(ok["exec_cmds"], ["*", "cargo*", "re:^py(test|3)$"])
+        for bad in ("re:(", "re:", "a/b", "x" * 70 + "*"):
+            self.assertTrue(so.validate_opts({"exec_cmds": [bad]})[1], bad)
+        self.assertTrue(so.validate_opts({"exec_cmds": ["bash"]})[1])          # açık yasaklı ad hâlâ reddedilir
+
+    def test_star_never_opens_forbidden(self):
+        avail = ["bash", "sh", "env", "xargs", "ssh", "nc", "sudo", "cargo", "ls", "python3", "find"]
+        names, err = so.expand_exec_cmds(["*"], avail)
+        self.assertEqual((names, err), (["cargo", "ls", "python3"], ""))
+        names, _ = so.expand_exec_cmds(["re:.*sh|nc|cargo"], avail)                    # regex de yasaklıları açamaz
+        self.assertEqual(names, ["cargo"])
+        self.assertTrue(so.expand_exec_cmds(["zz*"], avail)[1])                         # hiçbir şeye uymayan desen = hata
+        self.assertTrue(so.expand_exec_cmds(["bash*"], ["bash"])[1])                    # yalnız yasaklıya uyan desen = hata
+
+    def test_write_permission_default_off(self):
+        out, err = so.validate_opts({"exec_cmds": ["cargo"]})
+        self.assertNotIn("exec_write", out)
+        self.assertEqual(so.validate_opts({"exec_cmds": ["cargo"], "exec_write": True})[0]["exec_write"], True)
+        self.assertTrue(so.validate_opts({"exec_write": True})[1])                      # komutsuz olmaz
+
 
 class WiringTests(unittest.TestCase):
     def test_only_ucli_accepts_cli_opts(self):

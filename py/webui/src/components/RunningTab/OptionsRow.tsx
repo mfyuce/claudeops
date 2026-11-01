@@ -19,7 +19,7 @@
  * actually observed against the real backend, not just reasoned about.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiNewChat, apiStart, apiStop } from "../../api/client";
 import { callAction, describeApiError } from "../../api/errors";
 import { TabHint } from "../shared/TabHint";
@@ -31,7 +31,7 @@ import type { SessionInfo } from "../../api/types";
 import type { TabKey } from "../../state/tabs";
 import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
-import { EMPTY_UCLI_START, toCliOpts, UcliStartOpts, type UcliStartState } from "./UcliStartOpts";
+import { EMPTY_UCLI_START, serviceEffortLevels, toCliOpts, UcliStartOpts, type UcliStartState } from "./UcliStartOpts";
 import { DEFAULT_PERMISSION_MODE, defaultEffort, defaultModel } from "./cliDefaults";
 
 type Mode = "resume" | "reset" | "newchat" | "restart";
@@ -125,6 +125,16 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   const [effort, setEffort] = useState(() => defaultEffort(cliOptionsFor(data, session.host, session.cli)));
   const [busy, setBusy] = useState(false);
   const [ucliStart, setUcliStart] = useState<UcliStartState>(EMPTY_UCLI_START);
+  // effort list follows service + model (Settings table); an invalid current value is reset to the closest valid one
+  const effortLevels = cli === "ucli" && session.host === LOCAL_HOST
+    ? serviceEffortLevels(data?.settings.ucli_services, ucliStart.service, ucliStart.serviceModel) ?? undefined
+    : undefined;
+  const effortKey = effortLevels ? effortLevels.join(",") : null;
+  useEffect(() => {
+    if (!effortLevels || effortLevels.length === 0 || effortLevels.includes(effort)) return;
+    setEffort(effortLevels.includes("medium") ? "medium" : effortLevels[effortLevels.length - 1]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effortKey, effort]);
 
   // `cliListFor` can come back empty for a not-yet-known/unreachable remote
   // host — always fall back to at least the session's own current cli, same
@@ -305,6 +315,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             onModelOtherChange={setModelOther}
             onPermissionModeChange={setPermissionMode}
             onEffortChange={setEffort}
+            effortLevels={effortLevels}
             hideModel={cli === "ucli" && session.host === LOCAL_HOST && ucliStart.service !== "evren"}
           />
           {cli === "ucli" && session.host === LOCAL_HOST && (
