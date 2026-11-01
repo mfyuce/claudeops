@@ -768,7 +768,7 @@ def cmd_review(args) -> int:
         print(f"✓ {len(res.get('done') or [])} bulgu {body['action']} (atlanan {len(res.get('skipped') or [])})" if res.get("ok")
               else f"hata: {res.get('error')}")
         return 0 if res.get("ok") else 1
-    if act in ("approve", "reject"):
+    if act in ("approve", "reject", "undup"):
         res = _api(port, "POST", "/api/steward/review/finding", {"id": args.fid, "action": act}, sid)
         print(f"✓ {args.fid}: {res.get('state')}" if res.get("ok") else f"hata: {res.get('error')}")
         return 0 if res.get("ok") else 1
@@ -1067,7 +1067,7 @@ def register(sub):
     rve = rv_.add_parser("verify", help="bulguları projenin kendi oturumuna doğrulat (Sonnet alt ajan): PROJE [--fid ID]...")
     rve.add_argument("project")
     rve.add_argument("--fid", action="append", default=[], help="yalnız bu bulgu(lar); yoksa projenin yeni bulguları")
-    for verb, h in (("approve", "bulguyu onayla (yalnız verified|unclear)"), ("reject", "bulguyu reddet")):
+    for verb, h in (("approve", "bulguyu onayla (yalnız verified|unclear)"), ("reject", "bulguyu reddet"), ("undup", "yanlışlıkla dup olmuş bulguyu new'e döndür")):
         rde = rv_.add_parser(verb, help=h)
         rde.add_argument("fid")
     for verb, h in (("approve-all", "doğrulanmış (verified) bulguların HEPSİNİ onayla"), ("reject-all", "doğrulanmış bulguların hepsini reddet")):

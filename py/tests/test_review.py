@@ -303,6 +303,22 @@ class TestPathsAndStores(unittest.TestCase):
         self.assertEqual(sorted(r["dup_of"] for r in dups), sorted(ids))
         self.assertEqual(len(rv.add_findings(self.paths, "b", r2, shifted)), 2)   # başka proje tekilleşmez
 
+    def test_dedup_same_report_never_and_undup(self):
+        """Aynı raporda aynı başlık/dosya ayrı satırlar = ayrı bulgular (tekilleşmez); yanlış dup `undup` ile geri döner."""
+        r1 = os.path.join(self.paths.reviews, "a", "agy", "m", "20261101101500.md")
+        r2 = os.path.join(self.paths.reviews, "a", "agy", "m", "20261102101500.md")
+        two = [{"ref": "R-1", "severity": "P2", "where": "x.py:10", "title": "Eksik hata yönetimi", "body": "b1"},
+               {"ref": "R-2", "severity": "P2", "where": "x.py:90", "title": "Eksik hata yönetimi", "body": "b2"}]
+        self.assertEqual(len(rv.add_findings(self.paths, "a", r1, two)), 2)       # aynı rapor: ikisi de yeni
+        later = rv.add_findings(self.paths, "a", r2, two[:1])
+        self.assertEqual(later, [])                                               # başka rapor: tekrar
+        data = rv.load_findings(self.paths)
+        dup = [k for k, r in data.items() if r["state"] == "dup"]
+        self.assertEqual(len(dup), 1)
+        self.assertEqual(rv.decide_finding(self.paths, dup[0], "undup", NOW)["state"], "new")
+        self.assertNotIn("dup_of", rv.load_findings(self.paths)[dup[0]])
+        self.assertFalse(rv.decide_finding(self.paths, dup[0], "undup", NOW)["ok"])  # artık dup değil
+
 
 class TestConfigRole(unittest.TestCase):
     def test_defaults_and_settings(self):

@@ -638,8 +638,10 @@ def finding_key(proj: str, where: Any, title: Any) -> str:
 def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[str, str]]) -> List[str]:
     """Ayrıştırılmış bulguları `findings.json`a `state=new` ile ekler (kilit altında); eklenen fid'ler döner.
     fid = `<proje>:<review dosyası temel adı sıkıştırılmış>:<ref>`: aynı dosya iki kez işlenirse çoğalmaz.
-    Aynı `finding_key`li bulgu zaten varsa (her durumda; reddedilmiş dahil) yenisi `state=dup`, `dup_of=<eski fid>` yazılır:
-    doğrulama/onay/dışa aktarım hattına girmez, dönen listeye de girmez."""
+    Başka bir review dosyasından aynı `finding_key`li bulgu zaten varsa (reddedilmiş dahil) yenisi `state=dup`,
+    `dup_of=<eski fid>` yazılır: doğrulama/onay/dışa aktarım hattına girmez, dönen listeye de girmez. AYNI raporun
+    bulguları (R-1, R-2…) birbirine karşı ASLA tekilleşmez (aynı başlık, ayrı satır = ayrı bulgu); yanlış `dup` için
+    `decide_finding(..., "undup")` bulguyu `new`e döndürür."""
     p = sw._pp(paths)
     base = re.sub(r"[^A-Za-z0-9]+", "", os.path.relpath(review_file, p.reviews) if review_file.startswith(p.reviews) else review_file)
     added: List[str] = []
@@ -647,7 +649,8 @@ def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[
         data = load_findings(p)
         by_key: Dict[str, str] = {}
         for ofid, orec in data.items():
-            if isinstance(orec, dict) and orec.get("state") != "dup" and orec.get("project") == proj:
+            if (isinstance(orec, dict) and orec.get("state") != "dup" and orec.get("project") == proj
+                    and orec.get("review_file") != review_file):
                 by_key.setdefault(orec.get("key") or finding_key(proj, orec.get("where"), orec.get("title")), ofid)
         changed = False
         for f in parsed:
@@ -662,7 +665,6 @@ def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[
             if key in by_key:
                 rec["state"], rec["dup_of"] = "dup", by_key[key]
             else:
-                by_key[key] = fid
                 added.append(fid)
             data[fid] = rec
             changed = True
@@ -880,9 +882,10 @@ def mark_verify_sent(paths: Any, fids: Sequence[str], session: str, baseline: st
 
 
 def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "owner") -> Dict[str, Any]:
-    """Sahibin bulgu kararı: approve (yalnız verified|unclear) | reject (dışa aktarılmamış ve kararsız bulgu)."""
-    if action not in ("approve", "reject"):
-        return {"ok": False, "error": "action must be approve or reject"}
+    """Sahibin bulgu kararı: approve (yalnız verified|unclear) | reject (dışa aktarılmamış ve kararsız bulgu) |
+    undup (yanlışlıkla `dup` olmuş bulguyu `new`e döndürür, `dup_of` silinir)."""
+    if action not in ("approve", "reject", "undup"):
+        return {"ok": False, "error": "action must be approve, reject or undup"}
     p = sw._pp(paths)
     with sw.steward_lock(p):
         data = load_findings(p)
@@ -890,6 +893,13 @@ def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "own
         if not isinstance(rec, dict):
             return {"ok": False, "error": f"unknown finding: {fid}"}
         st = rec.get("state")
+        if action == "undup":
+            if st != "dup":
+                return {"ok": False, "error": f"cannot undup a finding in state {st!r} (allowed: dup)", "state": st}
+            rec.pop("dup_of", None)
+            rec.update(state="new", decided_by=by, decided_at=now)
+            save_findings(p, data)
+            return {"ok": True, "id": fid, "state": "new"}
         allowed = APPROVABLE_STATES if action == "approve" else REJECTABLE_STATES
         if st not in allowed:
             return {"ok": False, "error": f"cannot {action} a finding in state {st!r} (allowed: {', '.join(allowed)})",
