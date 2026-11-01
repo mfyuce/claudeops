@@ -1762,7 +1762,7 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
 
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
-           cli: str = "", hidden: bool = False, lang: str = "tr") -> dict:
+           cli: str = "", hidden: bool = False, lang: str = "tr", cli_opts: Optional[dict] = None) -> dict:
     """Aktif bir blueprint'i ya da (Geçmiş'ten) durmuş bir instance'ı başlat/devam ettir."""
     fleet = _fleet_status()
     info = fleet.get(name)
@@ -1784,6 +1784,16 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     fallback_model = (resolved_model_for(get_provider(chosen_cli), src["model"]) if chosen_cli == src["cli"]
                       else default_model_for(get_provider(chosen_cli)))
     chosen_model = model.strip() or fallback_model
+    # Başlat penceresi seçenekleri (hizmet, exec): YALNIZ kabul eden provider'a ve spawn'dan ÖNCE doğrulanır;
+    # geçersiz/desteklenmeyen seçenek sessizce atlanmaz, başlatma reddedilir. Blueprint'e kalıcı YAZILMAZ.
+    clean_opts: dict = {}
+    if cli_opts:
+        prov = get_provider(chosen_cli)
+        if not getattr(prov, "accepts_cli_opts", False):
+            return {"ok": False, "error": f"{chosen_cli}: başlatma seçeneği desteklenmiyor"}
+        clean_opts, opt_err = prov.validate_cli_opts(cli_opts)
+        if opt_err:
+            return {"ok": False, "error": opt_err}
     chosen_mode = permission_mode.strip() or (rec or {}).get("permission_mode") or "auto"
     chosen_effort = effort.strip() or (rec or {}).get("effort") or default_effort_for(get_provider(chosen_cli))
     # TODO.md 2026-09-30: "restart fresh" servis'i bazen traceback'siz çökertiyor —
@@ -1805,9 +1815,13 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
                 force_new=bool(fresh),
                 cli=chosen_cli,
                 hidden=hidden,
+                cli_opts=clean_opts or None,
             )
             opened = _wait_stable(name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn REDDEDİLİR
+        diag_log("start_refused", name=name, cli=chosen_cli, reason=str(e)[:200])
         return {"ok": False, "error": str(e)}
     diag_log("start_end", name=name, kind=kind, opened=opened)
     if not opened:
@@ -4811,6 +4825,7 @@ class _Handler(BaseHTTPRequestHandler):
                 fresh=bool(data.get("fresh", False)),
                 cli=str(data.get("cli", "")),
                 lang=lang,
+                cli_opts=data.get("cli_opts") if isinstance(data.get("cli_opts"), dict) else None,
             )
         elif path == "/api/stop":
             result = _stop(name, lang=lang, exact=data.get("exact") is True)

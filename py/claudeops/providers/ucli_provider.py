@@ -87,12 +87,13 @@ import shlex
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, FrozenSet, List, Optional, Sequence
+from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 import psutil
 
 from .. import searxng
 from ..diaglog import diag_log
+from ..ucli_session_opts import SERVICES, exec_flags, validate_opts as validate_start_opts
 from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
 from ..ucli_client import (UcliError, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, failed_turn_records, resolve_binary,
@@ -426,6 +427,61 @@ def _effort_args(binary: str, model: Optional[str], preset: str, session_name: s
     return ["--effort", value]
 
 
+def _set_flag_value(argv: List[str], flag: str, value: str) -> List[str]:
+    """`flag VALUE` çiftini DEĞİŞTİR (yoksa ekle): clap yinelenen bayrakta ölür (`--endpoint` argv'de zaten var)."""
+    out = list(argv)
+    if flag in out:
+        i = out.index(flag)
+        if i + 1 < len(out):
+            out[i + 1] = value
+            return out
+        out.pop(i)
+    return out + [flag, value]
+
+
+def _service_key_file(service: str) -> str:
+    return os.path.expanduser(f"~/.claude/claudeops/ucli_key_{service}")
+
+
+def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "") -> Tuple[List[str], str]:
+    """Temiz `cli_opts` -> (yeni argv, anahtar env öneki). Hizmet seçilmiş ve anahtarı YOKSA `ValueError` (spawn REDDEDİLİR:
+    yanlış hizmete/anahtarsız açmak sessizce başka modele düşmekten kötü). Her bayrak `binary_supports_flag` kapılı;
+    `exec` bayrakları tanınmıyorsa ValueError (yarım güvenlik bayrağı uygulanmaz)."""
+    binary = argv[0]
+    env_prefix = ""
+    service = opts.get("service") or ""
+    if service and service != "evren":
+        wire, ep, env_name = SERVICES[service]
+        key = byok_env_for("ucli").get(env_name, "").strip()
+        if not key:
+            raise ValueError(f"{service}: anahtar yok (Model anahtarları panelinden gir: {env_name})")
+        if wire and not binary_supports_flag(binary, "--provider"):
+            raise ValueError("ucli ikilisi --provider bayrağını tanımıyor")
+        path = _service_key_file(service)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(key)
+        os.chmod(path, 0o600)
+        argv = _set_flag_value(argv, "--endpoint", ep)
+        argv = _set_flag_value(argv, "--api-key-env", env_name)
+        if wire:
+            argv = _set_flag_value(argv, "--provider", wire)
+        # Evren kataloğuna bağlı `--effort` başka hizmette anlamsız (HTTP 400 riski): o hizmette atla.
+        if "--effort" in argv:
+            i = argv.index("--effort")
+            del argv[i:i + 2]
+        env_prefix = f'{env_name}="$(cat {shlex.quote(path)})"'
+    ex = exec_flags(opts)
+    if ex:
+        for flag in ("--allow-exec", "--allow-exec-cmd") + (("--allow-exec-own-glob",) if opts.get("exec_own_glob") else ()) \
+                + (("--exec-timeout-secs",) if opts.get("exec_timeout") else ()):
+            if not binary_supports_flag(binary, flag):
+                diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
+                raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (exec izni yarım uygulanmaz)")
+        argv = argv + ex
+    return argv, env_prefix
+
+
 class UcliProvider(CliProvider):
     name = "ucli"
 
@@ -436,8 +492,14 @@ class UcliProvider(CliProvider):
                           session_name: str = "") -> Optional[str]:
         return None  # "resume" zaten --session NAME'in kendisi, ayrı id yok
 
+    accepts_cli_opts = True
+
+    def validate_cli_opts(self, raw):
+        return validate_start_opts(raw)
+
     def build_inner_command(self, cwd, model, permission_mode, effort,
-                             resume_id, prompt, session_name, extra_args: Sequence[str] = ()) -> str:
+                             resume_id, prompt, session_name, extra_args: Sequence[str] = (),
+                             cli_opts: Optional[Dict[str, Any]] = None) -> str:
         # resume_id/prompt/extra_args ucli'de anlamsız — yok sayılır (MCP
         # kavramı bu yüzeyde yok, mcp_launch_args() base.py'nin boş-liste
         # varsayımında kalıyor). effort → --max-steps + --max-context-kib +
@@ -479,7 +541,14 @@ class UcliProvider(CliProvider):
         argv += _effort_args(argv[0], model, preset, session_name)
         argv += _stream_args(argv[0], session_name)
         argv += _state_dir_args(argv[0], cwd, session_name)
+        service_env = ""
+        if cli_opts:
+            argv, service_env = _apply_cli_opts(argv, cli_opts, session_name)
         inner =" ".join(shlex.quote(a) for a in argv)
+        if service_env:
+            # Hizmet anahtarı (Claude/Grok/OpenRouter): argv'ye GİRMEZ, 600'lük dosyadan env'e (Evren yoluyla aynı desen).
+            wrapped = f'{service_env} exec {inner}'
+            return "sh -c " + shlex.quote(wrapped)
         if _sync_api_key_file():
             # Anahtarı argv'ye GÖMMÜYORUZ — bu makine çok-kullanıcılı, `ps aux`
             # komut satırını HERKESE gösterir (CLAUDE.md'nin uyardığı sınıf).

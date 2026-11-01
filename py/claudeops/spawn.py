@@ -96,6 +96,7 @@ def spawn_session(
     cli: str = "claude",
     mcp_server: Optional[McpServerSpec] = None,
     hidden: bool = False,
+    cli_opts: Optional[dict] = None,
 ) -> str:
     """Session'ı gnome-terminal ile aç (hangi CLI: `cli` — provider registry'den çözülür).
 
@@ -138,8 +139,10 @@ def spawn_session(
                  requested=requested_effort, used=effort)
 
     extra_args = provider.mcp_launch_args(mcp_server) if mcp_server is not None else []
+    # `cli_opts` YALNIZ kabul eden provider'a (ucli) geçer: diğerlerinin çağrısı ve argv'si birebir aynı kalır.
+    opt_kwargs = {"cli_opts": cli_opts} if (cli_opts and getattr(provider, "accepts_cli_opts", False)) else {}
     cli_invocation = provider.build_inner_command(cwd, model, permission_mode, effort,
-                                                   resume_id, prompt, name, extra_args=extra_args)
+                                                   resume_id, prompt, name, extra_args=extra_args, **opt_kwargs)
 
     # env_overrides (ör. agy'nin COPS_NAME'i) Popen'ın env dict'ine DEĞİL, komut
     # satırının kendisine `env KEY=VAL ... <binary>` olarak gömülüyor — tmux zaten
