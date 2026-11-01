@@ -450,7 +450,14 @@ def _load_json(path: str, default: Any) -> Any:
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except json.JSONDecodeError:
+        try:        # bozuk dosya: kanıt yedeği (sonraki yazım üstüne yazıp bulguları/soruları sessizce silmesin)
+            import shutil
+            shutil.copy2(path, f"{path}.corrupt-{int(time.time())}")
+        except OSError:
+            pass
+        return default
+    except (FileNotFoundError, OSError):
         return default
 
 

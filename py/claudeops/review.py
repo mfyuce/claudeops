@@ -320,7 +320,7 @@ def parse_findings(md: str) -> List[Dict[str, str]]:
     fence = False
     seen: Set[str] = set()
     for line in str(md or "").splitlines():
-        if line.lstrip().startswith("```"):
+        if line.lstrip().startswith(("```", "~~~")):
             fence = not fence
             if cur is not None:
                 cur["lines"].append(line)
@@ -419,14 +419,14 @@ def _norm_label(s: str) -> str:
 
 def agy_label_ok(log_text: str, model: str) -> Tuple[bool, str]:
     """agy log'unda `Propagating selected model override ... label=<L>` satırlarından SONUNCUSU istenen modelle
-    uyuşuyor mu (büyük/küçük harf ve ayraç farkı yok sayılır; biri ötekini içeriyorsa uyuşur)? Etiket yoksa
+    uyuşuyor mu (büyük/küçük harf ve ayraç farkı yok sayılır; tam eşitlik gerekir)? Etiket yoksa
     `(False, "")`. Dönüş: (uyuştu, görülen etiket) — sessiz model düşüşünü (`model_fallback`) yakalamak için."""
     labels = [m.group(1).strip("\"'") for m in _LABEL_RE.finditer(str(log_text or ""))]
     if not labels:
         return False, ""
     seen = labels[-1]
     a, b = _norm_label(seen), _norm_label(model)
-    return bool(a and b and (a == b or a in b or b in a)), seen
+    return bool(a and b and a == b), seen     # alt dize YOK: gemini-3-pro, gemini-3-pro-high'ı kabul etmesin
 
 
 # ── yollar ────────────────────────────────────────────────────────────────────

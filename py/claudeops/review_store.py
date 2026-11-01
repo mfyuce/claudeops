@@ -22,8 +22,8 @@ def _run(argv: List[str], timeout: float = 15.0, run: Optional[Callable] = None)
     run = run or subprocess.run
     try:
         r = run(argv, capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired):
-        return 1, ""
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 1, ("timeout" if isinstance(e, subprocess.TimeoutExpired) else "oserror")
     out = (r.stdout or "").strip()
     if int(r.returncode) != 0 and (r.stderr or "").strip():
         out = (out + "\n" + r.stderr.strip()).strip()
@@ -43,7 +43,7 @@ def remote_visibility(host: str, slug: str, run: Optional[Callable] = None) -> s
             vis = str(json.loads(out).get("visibility") or "")
         except ValueError:
             return "unknown"
-        return "public" if vis == "public" else ("private" if vis in ("private", "internal") else "unknown")
+        return "public" if vis == "public" else ("private" if vis == "private" else "unknown")  # internal = girişli herkese açık: private SAYILMAZ
     return "unknown"
 
 
@@ -77,7 +77,9 @@ def dest_guard(dst_root: str, run: Optional[Callable] = None) -> Tuple[bool, str
         d = os.path.dirname(d)
     rc, top = _run(["git", "-C", d or "/", "rev-parse", "--show-toplevel"], run=run)
     if rc != 0 or not top:
-        return True, ""
+        if "not a git repository" in (top or "").lower():
+            return True, ""
+        return False, "git durumu belirlenemedi (zaman aşımı/hata): güvenli tarafta reddedildi"
     rc, _ = _run(["git", "-C", top, "check-ignore", "-q", probe], run=run)
     if rc == 0:
         return True, ""
@@ -141,15 +143,23 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
         return res
     rc, out = _git(base, "commit", "-m", f"reviews: {len(would)} yeni dosya (otomatik)", "--only", "--", *would, run=run)
     if rc != 0:
+        _git(base, "reset", "-q", "--", *would, run=run)      # index'te takılı kalmasın
         res.update(ok=False, error="git commit başarısız: " + out[-200:])
         return res
     res["committed"] = len(would)
     rc, remotes = _git(base, "remote", run=run)
+    if rc != 0 or not remotes.split():
+        res.update(ok=False, error="remote yok ya da `git remote` başarısız" if rc == 0 else "git remote başarısız: " + remotes[-200:])
+        return res
+    errs: List[str] = []
     for rem in remotes.split():
-        rc, out = _git(base, "push", rem, "HEAD", run=run, timeout=180.0)
-        if rc == 0:
-            res["pushed"].append(rem)         # type: ignore[union-attr]
+        for attempt in (1, 2):                  # tek yeniden deneme (geçici ağ hatası)
+            rc, out = _git(base, "push", rem, "HEAD", run=run, timeout=180.0)
+            if rc == 0:
+                res["pushed"].append(rem)       # type: ignore[union-attr]
+                break
         else:
-            res["error"] = f"push {rem} başarısız: {out[-200:]}"
-    res["ok"] = bool(res["pushed"]) and not res["error"]
+            errs.append(f"push {rem} başarısız: {out[-200:]}")
+    res["error"] = "; ".join(errs)
+    res["ok"] = bool(res["pushed"]) and not errs
     return res
