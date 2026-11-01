@@ -28,6 +28,7 @@ import { CacheBadge } from "../shared/CacheBadge";
 import { ContextBadge } from "../shared/ContextBadge";
 import { UsageTotalBadge } from "../shared/UsageTotalBadge";
 import { PhaseBadge } from "../shared/PhaseBadge";
+import { FailedTurnsBadge } from "../shared/FailedTurnsBadge";
 import { UsageBadge } from "../shared/UsageBadge";
 import { AdoptRow } from "./AdoptRow";
 import { HoCell } from "./HoCell";
@@ -149,6 +150,7 @@ export function SessionRow({
           )}
           {session.usage && <UsageBadge usage={session.usage} />}
           {session.phase && <PhaseBadge phase={session.phase} />}
+          {session.failed_turns && <FailedTurnsBadge failed={session.failed_turns} />}
           {session.cache && <CacheBadge cache={session.cache} />}
           {session.context && <ContextBadge context={session.context} />}
           {session.usage_total && <UsageTotalBadge usage={session.usage_total} />}

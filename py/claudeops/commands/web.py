@@ -1251,6 +1251,15 @@ def _live_usage(s) -> Optional[Dict[str, int]]:
         return usage
 
 
+def _live_failed_turns(s) -> Optional[Dict[str, Any]]:
+    """Hatayla ölen tur kayıtları (`provider.live_failed_turns`, bugün yalnız ucli): None = kayıt yok/okunamadı → rozet yok.
+    Küçük bir dizin listesi; asla fırlatmaz."""
+    try:
+        return get_provider(s.cli).live_failed_turns(s.cwd, s.sid)
+    except Exception:
+        return None
+
+
 # `waiting_response` süresinin amber/kırmızı kademeleri (sn). ucli'nin istek zaman aşımı 600 sn (claudeops
 # `--request-timeout-secs 600` geçirir): kırmızı = "zaman aşımı yaklaşıyor ya da geçti". Akışsız oturumda yavaş ama
 # çalışan bir çağrı ile asılı bir bağlantı AYNI görünür (ikisi de tek parça yanıt bekler), bu yüzden eşikler cömert.
@@ -1552,6 +1561,7 @@ def _status_payload() -> dict:
             "busy": _is_busy_cached(s) if s else None,
             "usage": _live_usage(s) if s else None,
             "phase": _live_phase(s) if s else None,
+            "failed_turns": _live_failed_turns(s) if s else None,
             "cache": _cache_info_cached(s) if s else None,
             "context": _context_info_cached(s) if s else None,
             "usage_total": _usage_total(s) if s else None,
@@ -1594,6 +1604,7 @@ def _status_payload() -> dict:
             "busy": _is_busy_cached(s),
             "usage": _live_usage(s),
             "phase": _live_phase(s),
+            "failed_turns": _live_failed_turns(s),
             "cache": _cache_info_cached(s),
             "context": _context_info_cached(s),
             "usage_total": _usage_total(s),

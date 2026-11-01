@@ -310,6 +310,8 @@ export interface Strings {
   usageTotalHint: (main: string, subs: string, nSubs: number) => string;
   modelUsageLabel: (minutes: number, calls: number, read: string, fresh: string) => string;
   modelUsageHint: (minutes: number) => string;
+  failedTurnsBadge: (n: number) => string;
+  failedTurnsHint: (n: number, err: string) => string;
   phaseBadge: (p: PhaseArg) => string;
   phaseHint: (p: PhaseArg) => string;
   pmAllowCreateHint: string;
@@ -1060,6 +1062,8 @@ export const STRINGS: Record<Lang, Strings> = {
     },
     pmAllowCreateHint:
       "allow-create: yalnız YENİ dosya yaratır; var olan bir dosyayı değiştiremez, silemez, taşıyamaz. 'Önce iskeleti yaz, sonra doldur' çalışmaz: ikinci yazma reddedilir, raporu tek seferde yazdır.",
+    failedTurnsBadge: (n) => `${n} başarısız tur`,
+    failedTurnsHint: (n, err) => `${n} tur modele ulaştıktan sonra hatayla öldü (ucli .ucli/chat/failed/ kayıtları)${err ? `. Son hata: ${err}` : ""}`,
     phaseBadge: (p) => {
       const e = p.elapsed ?? null;
       const d = e != null ? ` ${phaseDurTr(e)}` : "";
@@ -1907,6 +1911,8 @@ export const STRINGS: Record<Lang, Strings> = {
     },
     pmAllowCreateHint:
       "allow-create: only creates NEW files; it cannot modify, delete or move an existing one. 'Write a skeleton first, fill it in later' does not work: the second write is refused, have the report written in one go.",
+    failedTurnsBadge: (n) => `${n} failed ${n === 1 ? "turn" : "turns"}`,
+    failedTurnsHint: (n, err) => `${n} ${n === 1 ? "turn" : "turns"} died with an error after reaching the model (ucli .ucli/chat/failed/ records)${err ? `. Last error: ${err}` : ""}`,
     phaseBadge: (p) => {
       const e = p.elapsed ?? null;
       const d = e != null ? ` ${phaseDurEn(e)}` : "";

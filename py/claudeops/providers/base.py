@@ -531,6 +531,11 @@ class CliProvider(ABC):
         metni değil" sözleşmesi."""
         return None
 
+    def live_failed_turns(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Hatayla ölen tur kayıtları (ucli `.ucli/chat/failed/`): `{count, last_unix, last_error}`. None (VARSAYILAN) =
+        bu CLI'da böyle kayıt yok ya da HİÇ başarısız tur yok → panel rozet göstermez (0 rozeti çizilmez)."""
+        return None
+
     def live_phase(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, Any]]:
         """CLI'nin KENDİ yapılandırılmış "şu an bir model çağrısının hangi AŞAMASINDAYIM" bilgisi varsa (ör. ucli'nin
         `--status-file`ındaki `phase`: yanıt bekliyor / düşünüyor / yazıyor / yeniden deneme / kota beklemesi) onu döner;

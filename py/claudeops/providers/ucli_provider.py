@@ -95,7 +95,7 @@ from .. import searxng
 from ..diaglog import diag_log
 from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
-from ..ucli_client import (UcliError, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, resolve_binary,
+from ..ucli_client import (UcliError, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, failed_turn_records, resolve_binary,
                            ucli_chat_once)
 from .base import CliProvider, OneshotError
 
@@ -606,6 +606,29 @@ class UcliProvider(CliProvider):
         for key in _USAGE_FIELDS:
             v = raw.get(key, 0)
             out[key] = v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+        return out
+
+    def live_failed_turns(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, Any]]:
+        # ucli 259593e: model çağrısına varmış bir tur hatayla ölünce `failed/<oturum>-<unix>-<n>.json` yazılır (istem, hata,
+        # sayaçlar, kısmi transkript). Panelde `turns: 0` bunu göstermiyordu. Yalnız YENİ oturumlar; kayıt yoksa None.
+        if not sid:
+            return None
+        try:
+            recs = failed_turn_records(cwd, sid)
+        except Exception:
+            return None
+        if not recs:
+            return None
+        out: Dict[str, Any] = {"count": len(recs), "last_unix": recs[-1][0]}
+        try:
+            with open(recs[-1][1], encoding="utf-8") as f:
+                err = json.load(f).get("error")
+            if isinstance(err, dict):
+                err = err.get("message") or err.get("error") or json.dumps(err, ensure_ascii=False)
+            if err:
+                out["last_error"] = " ".join(str(err).split())[:160]
+        except (OSError, ValueError, AttributeError):
+            pass
         return out
 
     def live_phase(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, Any]]:

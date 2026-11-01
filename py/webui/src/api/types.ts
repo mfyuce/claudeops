@@ -78,6 +78,9 @@ export interface SessionInfo {
    * call in flight, a CLI without phases, or a binary older than that commit: show no badge. `thinking`/`writing` exist
    * only when the session runs with `--stream`. Local rows only (the gRPC host bridge does not carry it). */
   phase?: SessionPhase | null;
+  /** Turns of a ucli session that died with an error after reaching the model (`web._live_failed_turns`, from ucli's
+   * `.ucli/chat/failed/` records, ucli 259593e). Absent/`null` = no such record (or another CLI): show no badge. */
+  failed_turns?: SessionFailedTurns | null;
   /** Prompt-cache life of a running claude session (`web._cache_info_cached`, monitoring only): `age` = seconds since
    * the last REAL model request, `ttl` = the cache lifetime (3600). Absent/`null` = unknown (a CLI without a cache
    * lifetime, or no matching transcript, e.g. a resumed session that has not had a turn yet): show no badge, it does
@@ -119,6 +122,14 @@ export interface SessionCache {
 
 /** ucli `.status.json` `phase` plus the two fields `web._live_phase` adds. `name` is `waiting_response`, `thinking`,
  * `writing`, `retry_backoff` or `rate_limited`; an unknown name (a newer ucli) still arrives and is shown as-is. */
+export interface SessionFailedTurns {
+  count: number;
+  /** Unix seconds of the newest failed turn. */
+  last_unix: number;
+  /** First 160 characters of the newest error, when the record carries one. */
+  last_error?: string;
+}
+
 export interface SessionPhase {
   name: string;
   /** Unix seconds when this phase began. */
