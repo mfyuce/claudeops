@@ -754,7 +754,7 @@ def _new_chat_source(name: str, fleet: dict) -> Optional[tuple]:
 
 
 def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "",
-              cli: str = "", lang: str = "tr") -> dict:
+              cli: str = "", lang: str = "tr", cli_opts: Optional[dict] = None) -> dict:
     """`base`'in blueprint'inden YENİ, otomatik-isimli (tarih[+_N]) bir instance başlat.
 
     Var olan session'lara DOKUNMAZ. Roster'a satır YAZMAZ — instance kaydına girer,
@@ -769,6 +769,14 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     # yanlış provider'ın modeli olur, yeni cli'nin kendi varsayılanına düşülmeli.
     chosen_model = model.strip() or (resolved_model_for(get_provider(chosen_cli), src_model) if chosen_cli == src_cli
                                       else default_model_for(get_provider(chosen_cli)))
+    clean_opts: dict = {}
+    if cli_opts:   # bkz. _start(): kabul etmeyen provider / geçersiz seçenek = reddet, instance kaydı AÇILMADAN
+        prov = get_provider(chosen_cli)
+        if not getattr(prov, "accepts_cli_opts", False):
+            return {"ok": False, "error": f"{chosen_cli}: başlatma seçeneği desteklenmiyor"}
+        clean_opts, opt_err = prov.validate_cli_opts(cli_opts)
+        if opt_err:
+            return {"ok": False, "error": opt_err}
     chosen_mode = permission_mode.strip() or "auto"
     chosen_effort = effort.strip() or default_effort_for(get_provider(chosen_cli))
     inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
@@ -784,9 +792,13 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
                 effort=chosen_effort,
                 force_new=True,
                 cli=chosen_cli,
+                cli_opts=clean_opts or None,
             )
             opened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn reddedildi, instance kaydı geride KALMASIN
+        inst_mod.forget_instance(new_name)
         return {"ok": False, "error": str(e)}
     if not opened:
         return _err(lang, "newchat_start_failed", new_name=new_name, kind=kind)
@@ -4706,6 +4718,7 @@ class _Handler(BaseHTTPRequestHandler):
                 effort=str(data.get("effort", "")),
                 cli=str(data.get("cli", "")),
                 lang=lang,
+                cli_opts=data.get("cli_opts") if isinstance(data.get("cli_opts"), dict) else None,
             ))
             return
 

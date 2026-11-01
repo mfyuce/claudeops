@@ -31,6 +31,7 @@ import type { SessionInfo } from "../../api/types";
 import type { TabKey } from "../../state/tabs";
 import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
+import { EMPTY_UCLI_START, toCliOpts, UcliStartOpts, type UcliStartState } from "./UcliStartOpts";
 import { DEFAULT_PERMISSION_MODE, defaultEffort, defaultModel } from "./cliDefaults";
 
 type Mode = "resume" | "reset" | "newchat" | "restart";
@@ -123,6 +124,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
   const [effort, setEffort] = useState(() => defaultEffort(cliOptionsFor(data, session.host, session.cli)));
   const [busy, setBusy] = useState(false);
+  const [ucliStart, setUcliStart] = useState<UcliStartState>(EMPTY_UCLI_START);
 
   // `cliListFor` can come back empty for a not-yet-known/unreachable remote
   // host — always fall back to at least the session's own current cli, same
@@ -165,6 +167,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
     setModelOther("");
     setPermissionMode(DEFAULT_PERMISSION_MODE);
     setEffort(defaultEffort(cliOptionsFor(data, session.host, newCli)));
+    setUcliStart(EMPTY_UCLI_START);
   }
 
   /** Replaces `runDiagAfterFailure(msg)` (web.py ~2723-2730) minus the
@@ -179,8 +182,19 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   }
 
   async function handleGo() {
+    const ucliExtra = cli === "ucli" && session.host === LOCAL_HOST;
+    const cliOpts = ucliExtra ? toCliOpts(ucliStart) : undefined;
+    if (ucliExtra && ucliStart.service !== "evren" && !ucliStart.serviceModel.trim()) {
+      showToast(lang === "tr" ? "Hizmet için model gir" : "Enter a model for the service");
+      return;
+    }
     setBusy(true);
-    const resolvedModel = model === OTHER_MODEL_VALUE ? modelOther : model;
+    const resolvedModel =
+      ucliExtra && ucliStart.service !== "evren"
+        ? ucliStart.serviceModel.trim()
+        : model === OTHER_MODEL_VALUE
+          ? modelOther
+          : model;
     if (mode === "newchat" || mode === "restart") {
       // "restart" is "newchat" plus a stop first (only when still running) —
       // `_new_chat` never touches the source session itself (see its
@@ -203,6 +217,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             permission_mode: permissionMode,
             effort,
             cli,
+            ...(cliOpts ? { cli_opts: cliOpts } : {}),
             lang,
           });
           if (res.ok) showToast(t.newChatStarted + res.name, "success");
@@ -228,6 +243,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             permission_mode: permissionMode,
             effort,
             cli,
+            ...(cliOpts ? { cli_opts: cliOpts } : {}),
             fresh: mode === "reset",
             lang,
           });
@@ -289,7 +305,11 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             onModelOtherChange={setModelOther}
             onPermissionModeChange={setPermissionMode}
             onEffortChange={setEffort}
+            hideModel={cli === "ucli" && session.host === LOCAL_HOST && ucliStart.service !== "evren"}
           />
+          {cli === "ucli" && session.host === LOCAL_HOST && (
+            <UcliStartOpts value={ucliStart} onChange={setUcliStart} lang={lang} />
+          )}
           <button type="button" className="go" disabled={busy} onClick={() => void handleGo()}>
             {busy ? t.starting : modeLabels[mode]}
           </button>

@@ -296,6 +296,8 @@ export interface StartPayload {
   effort?: string;
   fresh?: boolean;
   cli?: string;
+  /** ucli start options (service, exec); omitted for every other CLI. */
+  cli_opts?: Record<string, unknown>;
   lang: Lang;
 }
 export const apiStart = (p: StartPayload): Promise<StartResult> => apiPost<StartResult>("/api/start", p);
@@ -331,6 +333,7 @@ export interface NewChatPayload {
   permission_mode?: string;
   effort?: string;
   cli?: string;
+  cli_opts?: Record<string, unknown>;
   lang: Lang;
 }
 export const apiNewChat = (p: NewChatPayload): Promise<NewChatResult> => apiPost<NewChatResult>("/api/new-chat", p);

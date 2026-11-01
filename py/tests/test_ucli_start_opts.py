@@ -144,6 +144,19 @@ class WiringTests(unittest.TestCase):
             self.assertFalse(r["ok"])
             sp.assert_not_called()
 
+    def test_new_chat_rejects_before_recording_an_instance(self):
+        from claudeops.commands import web
+        with mock.patch.object(web, "_new_chat_source", return_value=("bp", "bp", "/tmp", "claude", "m")), \
+                mock.patch.object(web, "_fleet_status", return_value={}), \
+                mock.patch.object(web.inst_mod, "record_instance") as rec, \
+                mock.patch.object(web, "spawn_session") as sp:
+            r = web._new_chat("bp", cli="ucli", model="m", cli_opts={"exec_cmds": ["sh"]})
+            self.assertFalse(r["ok"])
+            r = web._new_chat("bp", cli="claude", cli_opts={"service": "claude"})
+            self.assertFalse(r["ok"])
+            rec.assert_not_called()
+            sp.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -45,6 +45,8 @@ interface CliFieldsProps {
   onModelOtherChange: (value: string) => void;
   onPermissionModeChange: (value: string) => void;
   onEffortChange: (value: string) => void;
+  /** ucli with a non-Evren service supplies its own model input; the Evren list would be wrong. */
+  hideModel?: boolean;
 }
 
 export function CliFields({
@@ -58,10 +60,12 @@ export function CliFields({
   onModelOtherChange,
   onPermissionModeChange,
   onEffortChange,
+  hideModel,
 }: CliFieldsProps) {
   const { t } = useLang();
   return (
     <>
+      {!hideModel && (
       <label>
         {t.modelLabel}
         <select value={model} onChange={(e) => onModelChange(e.target.value)}>
@@ -74,7 +78,8 @@ export function CliFields({
           <option value={OTHER_MODEL_VALUE}>…</option>
         </select>
       </label>
-      {model === OTHER_MODEL_VALUE && (
+      )}
+      {!hideModel && model === OTHER_MODEL_VALUE && (
         <input
           type="text"
           placeholder="model id"
