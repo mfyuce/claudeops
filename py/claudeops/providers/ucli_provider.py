@@ -445,7 +445,21 @@ def _service_key_file(service: str) -> str:
     return os.path.expanduser(f"~/.claude/claudeops/ucli_key_{service}")
 
 
-def _claude_service_flags(argv: List[str], session_name: str) -> List[str]:
+_INSTRUCTIONS_MAX_BYTES = 16384   # ucli `--instructions` dosya başına sınırı
+
+
+def _instructions_too_big(cwd: str) -> bool:
+    """cwd'deki AGENTS.md/CLAUDE.md'den biri ucli'nin 16 KiB sınırını aşıyorsa True (`--instructions-auto` atlanır)."""
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        try:
+            if cwd and os.path.getsize(os.path.join(cwd, name)) > _INSTRUCTIONS_MAX_BYTES:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> List[str]:
     """Claude (Anthropic API) hizmetiyle açılan oturum için takım kullanımı bayrakları (sahip, 2026-11-01): günlük USD tavanı
     aşıldıysa REDDET; `--cache-ttl` (ayar, varsayılan 1h: insan hızında turlar arası 5 dk önbelleği soğutur), `--max-output-tokens`
     16000 (4096'da uzun bir write_file araç argümanının ortasında kesiliyordu), `--usage-log` (dolar sayacı: `ucli_cost`),
@@ -461,6 +475,10 @@ def _claude_service_flags(argv: List[str], session_name: str) -> List[str]:
         if not binary_supports_flag(binary, flag):
             diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
             continue
+        if flag == "--instructions-auto" and _instructions_too_big(cwd):
+            # ucli her talimat dosyasını 16 KiB ile sınırlar; büyükse oturum HEMEN ölür (claudeops AGENTS.md 30 KB'tı)
+            diag_log("ucli_instructions_skipped", name=session_name, cwd=cwd, limit=_INSTRUCTIONS_MAX_BYTES)
+            continue
         if flag == "--usage-log":
             os.makedirs(ucli_cost.USAGE_DIR, mode=0o700, exist_ok=True)
             argv = _set_flag_value(argv, flag, ucli_cost.log_path(session_name))
@@ -472,7 +490,7 @@ def _claude_service_flags(argv: List[str], session_name: str) -> List[str]:
     return argv
 
 
-def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "") -> Tuple[List[str], str]:
+def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "", cwd: str = "") -> Tuple[List[str], str]:
     """Temiz `cli_opts` -> (yeni argv, anahtar env öneki). Hizmet seçilmiş ve anahtarı YOKSA `ValueError` (spawn REDDEDİLİR:
     yanlış hizmete/anahtarsız açmak sessizce başka modele düşmekten kötü). Her bayrak `binary_supports_flag` kapılı;
     `exec` bayrakları tanınmıyorsa ValueError (yarım güvenlik bayrağı uygulanmaz)."""
@@ -501,7 +519,7 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             del argv[i:i + 2]
         env_prefix = f'{env_name}="$(cat {shlex.quote(path)})"'
         if service == "claude":
-            argv = _claude_service_flags(argv, session_name)
+            argv = _claude_service_flags(argv, session_name, cwd)
     ex = exec_flags(opts)
     if ex:
         for flag in ("--allow-exec", "--allow-exec-cmd") + (("--allow-exec-own-glob",) if opts.get("exec_own_glob") else ()) \
@@ -575,7 +593,7 @@ class UcliProvider(CliProvider):
         argv += _state_dir_args(argv[0], cwd, session_name)
         service_env = ""
         if cli_opts:
-            argv, service_env = _apply_cli_opts(argv, cli_opts, session_name)
+            argv, service_env = _apply_cli_opts(argv, cli_opts, session_name, cwd)
         inner =" ".join(shlex.quote(a) for a in argv)
         if service_env:
             # Hizmet anahtarı (Claude/Grok/OpenRouter): argv'ye GİRMEZ, 600'lük dosyadan env'e (Evren yoluyla aynı desen).

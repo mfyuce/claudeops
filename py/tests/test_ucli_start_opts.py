@@ -155,6 +155,31 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(uso.service_models("grok", "", opener=opener), [])            # anahtarsız: ağ yok
         self.assertEqual(uso.service_models("evren", "K", opener=opener), [])          # evren kendi yolu
 
+    def test_claude_service_skips_instructions_auto_when_file_over_16kib(self):
+        import tempfile, os
+        ucli_client._HELP_CACHE.clear()
+        self.binary = fake_ucli(self._tmp.name, HELP_EXEC + "      --cache-ttl <T>\n      --usage-log <P>\n      --instructions-auto\n", name="new2")
+        self.keys = {"ANTHROPIC_API_KEY": "k"}
+        usage = os.path.join(self._tmp.name, "uu2")
+        with mock.patch.object(up.ucli_cost, "USAGE_DIR", usage), \
+                mock.patch.object(up, "ucli_cost_config", return_value={"daily_cap_usd": 0.0, "cache_ttl": "1h"}), \
+                mock.patch.object(up.ucli_cost, "cap_exceeded", return_value=False), \
+                tempfile.TemporaryDirectory() as d:
+            big = os.path.join(d, "AGENTS.md")
+            with open(big, "w") as f:
+                f.write("x" * 20000)
+            old = self.CWD
+            self.CWD = d
+            try:
+                inner = shlex.split(self.build({"service": "claude"}))[2]
+                self.assertNotIn("--instructions-auto", inner)     # ucli 16 KiB sınırı: oturum açılır açılmaz ölürdü
+                with open(big, "w") as f:
+                    f.write("x" * 100)
+                inner = shlex.split(self.build({"service": "claude"}))[2]
+                self.assertIn("--instructions-auto", inner)        # küçükse eklenir
+            finally:
+                self.CWD = old
+
     def test_missing_service_key_refuses_spawn(self):
         with self.assertRaises(ValueError):
             self.build({"service": "grok"})
