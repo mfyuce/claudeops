@@ -683,6 +683,18 @@ def finding_key(proj: str, where: Any, title: Any) -> str:
     return hashlib.sha1(f"{proj}\x00{fil}\x00{ttl}".encode("utf-8")).hexdigest()[:16]
 
 
+def _canon_rank(rec: Dict[str, Any]) -> Tuple[int, float]:
+    """Tekilleştirmede kanonik kayıt sırası (küçük = tercih): doğrulanmış/onaylı/dışa aktarılmış < diğerleri <
+    refuted/rejected; eşitlikte en eski `created_at` (sahip kararı TBD#R3)."""
+    st = rec.get("state")
+    tier = 0 if st in ("verified", "approved", "exported") else 2 if st in ("refuted", "rejected") else 1
+    try:
+        ts = float(rec.get("created_at") or 0)
+    except (TypeError, ValueError):
+        ts = 0.0
+    return (tier, ts)
+
+
 def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[str, str]]) -> List[str]:
     """Ayrıştırılmış bulguları `findings.json`a `state=new` ile ekler (kilit altında); eklenen fid'ler döner.
     fid = `<proje>:<review dosyası temel adı sıkıştırılmış>:<ref>`: aynı dosya iki kez işlenirse çoğalmaz.
@@ -702,9 +714,9 @@ def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[
                     and orec.get("review_file") != review_file):
                 okey = orec.get("key") or finding_key(proj, orec.get("where"), orec.get("title"))
                 cur = data.get(by_key.get(okey, ""))
-                # kanonik kayıt dict sırasına değil duruma bağlı: canlı kayıt, reddedilmiş/çürütülmüş olanın yerine geçer
-                if okey not in by_key or (isinstance(cur, dict) and cur.get("state") in ("refuted", "rejected")
-                                          and orec.get("state") not in ("refuted", "rejected")):
+                # kanonik kayıt dict sırasına değil (öncelik, yaş) sırasına bağlı (TBD#R3): doğrulanmış/onaylı/dışa aktarılmış
+                # > diğer durumlar > refuted/rejected; eşitlikte en eski kayıt (created_at) kanonik kalır.
+                if okey not in by_key or not isinstance(cur, dict) or _canon_rank(orec) < _canon_rank(cur):
                     by_key[okey] = ofid
         changed = False
         for f in parsed:
