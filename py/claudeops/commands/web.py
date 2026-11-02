@@ -2814,7 +2814,7 @@ def _handover(name: str, lang: str = "tr", exact: bool = False, extra: str = "")
     # bir shell pane'ine düz metin enjekte edebiliyordu (`_v1_eligible_sessions`/
     # `_v1_chat_completions`'ın AYNI üçlüden `has_conversation()` bacağıyla
     # tutarlı hale getirildi).
-    if not provider.has_conversation():
+    if not provider.wants_handover_wrapup():
         return _err(lang, "no_conversation", name=name)
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     if extra:      # değnekçi: oturumun açık soruları (`steward.handover_questions_note`)
@@ -3922,6 +3922,23 @@ class _Handler(BaseHTTPRequestHandler):
     # HTTP isteği sanıp karıştırma riski YOK.
     protocol_version = "HTTP/1.1"
     token = ""  # run() içinde atanır
+    HEADER_READ_TIMEOUT = 15.0   # TBD#54: istek satırı + başlık okuma fazı (slowloris); başlık bitince eski değere dönülür
+
+    def handle_one_request(self):
+        try:
+            self._body_timeout = self.connection.gettimeout()
+            self.connection.settimeout(self.HEADER_READ_TIMEOUT)
+        except Exception:
+            self._body_timeout = None
+        super().handle_one_request()
+
+    def parse_request(self):
+        ok = super().parse_request()      # başlıklar burada okunur
+        try:
+            self.connection.settimeout(getattr(self, "_body_timeout", None))
+        except Exception:
+            pass
+        return ok
 
     def log_message(self, fmt, *a):
         pass  # stdout'u kirletme — sessiz

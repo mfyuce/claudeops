@@ -109,6 +109,14 @@ class CliProvider(ABC):
         çünkü kill edecek "konuşma" yok, sadece kullanıcının canlı terminal'i var."""
         return True
 
+    def wants_handover_wrapup(self) -> bool:
+        """TBD#50: handover Faz1 (wrap-up mesajı + kill/resume) bu provider'a uygulansın mı? Varsayılan `has_conversation()`."""
+        return self.has_conversation()
+
+    def wants_stuck_recovery(self) -> bool:
+        """TBD#50: stuck-recovery bu provider'ı yeniden açabilir mi? Varsayılan `has_conversation()`."""
+        return self.has_conversation()
+
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         """Son user mesajı + son assistant yanıtını {'user':..., 'assistant':...} olarak
         döndür — panelin terminal-popup'ındaki 'Sohbet' sekmesi için (capture-pane/ANSI

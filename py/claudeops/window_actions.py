@@ -259,8 +259,18 @@ def _post(client: PanelClient, path: str, payload: dict) -> Tuple[bool, str, dic
     return False, str(data.get("error") or "panel reddetti"), data
 
 
+def check_new_name(new_name: str) -> None:
+    """TBD#33: "Sıfırla + yeniden adlandır" için yeni ad `Session.base` kuralına uymalı (yalnız küçük harf; sondaki
+    rakam/`_N` base'e indirgenir, yani ad kendi base'i olmalı). Uymazsa ValueError."""
+    from .session import Session
+    if not isinstance(new_name, str) or not re.fullmatch(r"[a-z]+", new_name):
+        raise ValueError(f"geçersiz yeni ad {new_name!r}: yalnız küçük harf (a-z), rakam/ayraç yok")
+    if Session(name=new_name, pid=0, cwd="").base != new_name:
+        raise ValueError(f"geçersiz yeni ad {new_name!r}")
+
+
 def run_action(client: PanelClient, action_id: str, host: str, name: str, *,
-               on_step: Optional[Callable[[str], None]] = None) -> Result:
+               on_step: Optional[Callable[[str], None]] = None, new_name: str = "") -> Result:
     """`host`'taki `name` oturumuna eylemi uygular. Bloklar (yeni süreç ayakta kalana dek ~10 sn, uzak host'ta daha
     çok): arka plan thread'inden çağırın. `on_step` ilerleme metnini bildirir ("durduruluyor…")."""
     action = BY_ID.get(action_id)
@@ -270,6 +280,13 @@ def run_action(client: PanelClient, action_id: str, host: str, name: str, *,
         check_target(host, name)
     except ValueError as e:
         return Result(False, f"✗ {action.label}: {e}")
+    if new_name:
+        if action.id != "reset":
+            return Result(False, f"✗ {action.label}: yeni ad yalnız sıfırlama ile verilir")
+        try:
+            check_new_name(new_name)
+        except ValueError as e:
+            return Result(False, f"✗ {action.label}: {e}")
 
     def step(text: str) -> None:
         if on_step is not None:
@@ -322,8 +339,11 @@ def run_action(client: PanelClient, action_id: str, host: str, name: str, *,
         new = str(data.get("name") or "")
         return Result(True, f"✓ durduruldu · yeni chat: {new}" if new else "✓ durduruldu · yeni chat açıldı", name=new)
 
+    target = new_name or name
     step("durduruldu · sıfırdan başlatılıyor…")
-    ok, err, _ = _post(client, "/api/start", {"name": name, "host": host, "fresh": True, **fields})
+    ok, err, _ = _post(client, "/api/start", {"name": target, "host": host, "fresh": True, **fields})
     if not ok:
         return Result(False, f"✗ durduruldu ama sıfırdan başlatılamadı: {err}")
+    if new_name and new_name != name:
+        return Result(True, f"✓ sıfırlandı ve yeniden adlandırıldı: {name} → {new_name}", name=new_name)
     return Result(True, "✓ sıfırlandı: aynı adla taze başlatıldı")

@@ -369,12 +369,12 @@ def handover_faz1(
     # hedeflense: burada "wrap-up" edilecek bir konuşma yok, sadece kullanıcının
     # canlı terminal'i var; onu kill+respawn etmek sürpriz veri/iş kaybı demek
     # (ör. sudo parola beklerken veya uzun bir komut çalışırken).
-    no_conv = [s for s in targets if not get_provider(s.cli).has_conversation()]
+    no_conv = [s for s in targets if not get_provider(s.cli).wants_handover_wrapup()]
     if no_conv:
         for s in no_conv:
             print(f"  ⊘ konuşma yok: {s.name} ({s.cli}) — handover kapsamı dışı, atlandı")
             summary.results.append(Faz1Result(s.name, "skipped-no-conversation", s.cli))
-        targets = [s for s in targets if get_provider(s.cli).has_conversation()]
+        targets = [s for s in targets if get_provider(s.cli).wants_handover_wrapup()]
     targets.sort(key=lambda s: s.base)
 
     for i, session in enumerate(targets):

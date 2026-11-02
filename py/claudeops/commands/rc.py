@@ -126,7 +126,7 @@ def _run_inner(args, display, models, roster) -> int:
         # kullanıcı: "do not handover shells", canlı `shell_ulak` kaybı riskiyle
         # gündeme geldi) — Faz1'den FARKLI olarak rc tek-tek elle çağrılan bir komut,
         # bilerek override edilebilmesi anlamlı: --force.
-        if not provider.has_conversation() and not args.force:
+        if not provider.wants_handover_wrapup() and not args.force:
             print(f"  ⊘ konuşma yok: {base} ({cli}) — kill+respawn atlandı (mevcut interaktif "
                   f"durum sessizce kaybolurdu), bilerek yeniden başlatmak için --force ekleyin")
             continue

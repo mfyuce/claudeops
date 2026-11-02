@@ -691,6 +691,9 @@ class UcliProvider(CliProvider):
     def has_conversation(self) -> bool:
         return True  # gerçek bir sohbet: .ucli/chat/NAME.jsonl geçmişi tutuyor
 
+    def wants_handover_wrapup(self) -> bool:
+        return False  # TBD#50: ucli geçmişi kendi tutuyor; wrap-up + kill/resume gereksiz
+
     def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
                           session_name: str = "") -> Optional[str]:
         return None  # "resume" zaten --session NAME'in kendisi, ayrı id yok

@@ -44,7 +44,7 @@ def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
         if s.cpu >= STUCK_CPU_THRESHOLD:
             continue  # işliyor, stuck değil
         provider = get_provider(s.cli)
-        if not provider.has_conversation():
+        if not provider.wants_stuck_recovery():
             continue  # ör. düz shell: idle CPU normal, "stuck" kavramı yok — kill+resume ETME
         if _is_busy(provider, s):
             continue  # API yanıtı bekliyor (network-bound, CPU düşük) — SAĞLIKLI, stuck değil
