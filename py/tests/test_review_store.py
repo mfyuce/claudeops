@@ -112,6 +112,15 @@ class CommitTest(unittest.TestCase):
         self.assertEqual([h.split("/")[-1] for h in r["held"]], ["20261024100001.md"])        # gizli değer dışarıda
         self.assertEqual(git("-C", self.remotes[0], "branch", "-a").strip(), "")               # hiçbir şey itilmedi
 
+    def test_glob_chars_in_filename_are_literal(self):
+        self.write("rapor[1]*.md", "## R-1 | P1 | a | t\n")
+        self.write("rapor1x.md", "## R-2 | P1 | a | t\n")
+        r = rs.commit_reviews(self.main, self.gd, scan, dry=False)
+        self.assertTrue(r["ok"], r)
+        files = git("--git-dir=" + self.gd, "ls-tree", "-r", "--name-only", "HEAD").split("\n")
+        self.assertTrue(any(f.endswith("rapor[1]*.md") for f in files), files)
+        self.assertTrue(any(f.endswith("rapor1x.md") for f in files), files)
+
     def test_saved_page_files_dirs_are_skipped(self):
         side = os.path.join(self.main, "reviews", "p", "agy", "Sayfa_files")
         os.makedirs(side)
