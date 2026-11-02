@@ -33,7 +33,8 @@ class AtomicWriteTextTest(unittest.TestCase):
         real_open = os.open
 
         def spy(path, *a, **k):
-            seen.append(path)
+            if isinstance(path, str) and path.endswith(".tmp"):     # dizin fsync / .lock açılışları sayılmaz
+                seen.append(path)
             return real_open(path, *a, **k)
 
         with tempfile.TemporaryDirectory() as d:

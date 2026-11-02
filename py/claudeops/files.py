@@ -3,7 +3,7 @@ verilen kök dizinleri içindeki dosyaları listele/indir.
 
 2026-09-05, kullanıcı: "...folderları browse ve dosya indirme ve dosyaları
 terminalde listeleme ve indirme ... şimdilik en buyuk eksikliğim bu" —
-TODO.md'nin "folder browser" maddesinin implementasyonu. Kapsam kullanıcı
+(o dönemin "folder browser" maddesinin implementasyonu; madde kaydı repoda tutulmuyor). Kapsam kullanıcı
 tarafından netleştirildi: SADECE session'ın proje klasörü (cwd) + varsa
 provider'ın kendi per-proje meta-dizini (bkz. `CliProvider.extra_file_roots()`)
 — makinedeki HERHANGİ bir yol DEĞİL. `/tmp` (scratchpad) kasıtlı olarak dahil
@@ -265,7 +265,15 @@ def rename_path(s: Session, path: str, new_name: str) -> dict:
     if os.path.lexists(new_real):      # dangling symlink de "var" sayılır (exists onu yok görüp sessizce ezerdi)
         return {"ok": False, "error": "exists"}
     try:
-        os.rename(real, new_real)
+        if os.path.isdir(real) and not os.path.islink(real):
+            os.rename(real, new_real)       # dizinler hard-link'lenemez; lexists denetimi ile rename arası dar pencere kalır
+        else:
+            # link() hedef VARSA FileExistsError verir (kontrol+yazma atomik): os.rename lexists'ten sonra araya giren
+            # bir dosyayı sessizce EZERDİ.
+            os.link(real, new_real, follow_symlinks=False)
+            os.unlink(real)
+    except FileExistsError:
+        return {"ok": False, "error": "exists"}
     except OSError as e:
         return {"ok": False, "error": "io_error", "detail": str(e)}
     return {"ok": True, "path": new_real}

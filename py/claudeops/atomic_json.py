@@ -28,6 +28,45 @@ import threading
 from typing import Any, Iterator, Optional
 
 
+def _existing_mode(path: str, mode: Optional[int]) -> Optional[int]:
+    """`mode=None` iken hedef zaten varsa (normal dosya) onun izni korunur (0600'lük dosya 0644'e açılmasın)."""
+    if mode is not None:
+        return mode
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    import stat as _stat
+    return _stat.S_IMODE(st.st_mode) if _stat.S_ISREG(st.st_mode) else None
+
+
+def _fsync_dir(path: str) -> None:
+    """`os.replace` sonrası dizin girdisini kalıcılaştır (best-effort)."""
+    try:
+        dfd = os.open(os.path.dirname(os.path.abspath(path)), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dfd)
+    except OSError:
+        pass
+    finally:
+        os.close(dfd)
+
+
+def _open_tmp(tmp: str, mode: Optional[int]):
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666 if mode is None else mode)   # None: umask uygular
+    try:
+        f = os.fdopen(fd, "w", encoding="utf-8")
+    except BaseException:
+        os.close(fd)            # fdopen düşerse tanıtıcı sızmasın
+        raise
+    if mode is not None:
+        with contextlib.suppress(OSError):
+            os.fchmod(fd, mode)  # umask'ı aşarak istenen/korunan izin
+    return f
+
+
 def atomic_write_json(path: str, obj: Any, *, mode: Optional[int] = None) -> None:
     """`mode=None` → düz `open()` (umask varsayılanı, ör. `settings.json`).
     `mode=0o600` gibi verilirse → `os.open()` ile İLK OLUŞTURMADAN itibaren o
@@ -38,17 +77,18 @@ def atomic_write_json(path: str, obj: Any, *, mode: Optional[int] = None) -> Non
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)
+    mode = _existing_mode(path, mode)
     tmp = f"{path}.{os.getpid()}-{threading.get_ident()}.tmp"
     try:
         with contextlib.suppress(OSError):
             os.remove(tmp)      # önceki çöküşten kalan aynı adlı tmp (ya da yerleştirilmiş symlink) takip edilmesin
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666 if mode is None else mode)   # None: umask uygular
-        f = os.fdopen(fd, "w", encoding="utf-8")
+        f = _open_tmp(tmp, mode)
         with f:
             json.dump(obj, f, ensure_ascii=False, indent=2)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)  # atomik — eşzamanlı okuyan yarım dosya görmez
+        _fsync_dir(path)
     except BaseException:
         try:
             os.remove(tmp)
@@ -63,16 +103,17 @@ def atomic_write_text(path: str, text: str, *, mode: Optional[int] = None) -> No
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)
+    mode = _existing_mode(path, mode)
     tmp = f"{path}.{os.getpid()}-{threading.get_ident()}.tmp"
     try:
         with contextlib.suppress(OSError):
             os.remove(tmp)
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666 if mode is None else mode)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with _open_tmp(tmp, mode) as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
+        _fsync_dir(path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.remove(tmp)

@@ -18,14 +18,14 @@ class TestInvalidate(unittest.TestCase):
         cfg = {"daily_cap_usd": 5, "cache_ttl": "1h"}
         with tempfile.TemporaryDirectory() as d, \
                 mock.patch.object(ucli_cost, "ucli_cost_config", lambda: cfg), \
-                mock.patch.object(ucli_cost, "today_usd") as tu:
-            tu.return_value = 1.0
+                mock.patch.object(ucli_cost, "per_session_usd") as tu:
+            tu.return_value = {"a": 1.0}
             ucli_cost.invalidate()
             ucli_cost.state(base=d)
             ucli_cost.state(base=d)
             self.assertEqual(tu.call_count, 1)      # ikincisi önbellekten
             ucli_cost.invalidate()
-            tu.return_value = 2.0
+            tu.return_value = {"a": 2.0}
             st = ucli_cost.state(base=d)
             self.assertEqual(tu.call_count, 2)
             self.assertEqual(st["today_usd"], 2.0)

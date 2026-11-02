@@ -1100,6 +1100,9 @@ def _diag_ask(cli: str, extra_question: str = "", lang: str = "tr") -> dict:
             opened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
+    except ValueError as e:   # ör. hizmet anahtarı/tavan: spawn reddedildi, instance kaydı geride KALMASIN, 500 değil temiz hata
+        inst_mod.forget_instance(new_name)
+        return ucli_cost.refusal(e)
     if not opened:
         return _err(lang, "newchat_start_failed", new_name=new_name, kind=kind)
     diag_log("ask", name=new_name, cli=chosen_cli)
@@ -3148,7 +3151,8 @@ def _live_effort(name: str, lang: str = "tr") -> dict:
 
 
 def _adopt(old_name: str, new_name: str = "", model: str = "",
-           permission_mode: str = "", effort: str = "", lang: str = "tr") -> dict:
+           permission_mode: str = "", effort: str = "", lang: str = "tr",
+           cli_opts: Optional[dict] = None) -> dict:
     """claudeops'un AÇMADIĞI (kayıtsız/foreign) canlı bir session'ı devral.
 
     2026-08-25, kullanıcı: "açmadığı pencereleri de yönetme özelliği ekleyelim, istediğine
@@ -3189,6 +3193,17 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     chosen_model = model.strip() or resolved_model_for(provider, procs[0].model)
     chosen_mode = permission_mode.strip() or provider.permission_modes()[0]
     chosen_effort = effort.strip() or default_effort_for(provider)
+    opt_kwargs = {"cli_opts": cli_opts} if (cli_opts and getattr(provider, "accepts_cli_opts", False)) else {}
+    # Ön-doğrulama (P4-VERDICT #32): komut kurulumu (anahtar yok, günlük tavan...) eski oturum ÖLDÜRÜLMEDEN denenir;
+    # reddedilirse oturum ayakta kalır. Yalnız cli_opts kabul eden (ucli) provider; ValueError dışı hata spawn'a bırakılır.
+    if getattr(provider, "accepts_cli_opts", False):
+        try:
+            provider.build_inner_command(cwd, chosen_model, chosen_mode, chosen_effort, "", "", new_name, extra_args=[], **opt_kwargs)
+        except ValueError as e:
+            diag_log("adopt_preflight_refused", old_name=old_name, new_name=new_name, cli=chosen_cli, reason=str(e)[:200])
+            return ucli_cost.refusal(e)
+        except Exception as e:  # noqa: BLE001 - ön kontrol en iyi çabadır
+            diag_log("adopt_preflight_error", old_name=old_name, error=repr(e)[:200])
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
@@ -3203,13 +3218,14 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
                 effort=chosen_effort,
                 force_new=False,
                 cli=chosen_cli,
+                **({"cli_opts": cli_opts} if cli_opts else {}),
             )
             reopened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     except ValueError as e:   # ör. hizmet anahtarı yok: spawn reddedildi (eski oturum kapanmış olabilir); 500 değil temiz hata
         diag_log("adopt_refused", old_name=old_name, new_name=new_name, cli=chosen_cli, reason=str(e)[:200])
-        return {"ok": False, "error": str(e)}
+        return ucli_cost.refusal(e)   # tavan reddiyse `code` da döner (arayüz "tavanı yükselt, tekrar dene" sunar)
     if not reopened:
         return _err(lang, "adopt_reopen_failed", old_name=old_name, new_name=new_name, kind=kind)
     fleet = _fleet_status()
@@ -4630,7 +4646,7 @@ class _Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b"{}"
         try:
             data = json.loads(raw or b"{}")
-        except json.JSONDecodeError:
+        except ValueError:      # JSONDecodeError + UnicodeDecodeError (bozuk UTF-8 gövde 500 olmasın)
             if path.startswith("/v1/"):
                 # OpenAI-uyumlu katman native `ok:False` şeklini KULLANMAZ —
                 # istemciler `error.message`'a bakar (bkz. `_v1_error`).
@@ -4639,7 +4655,12 @@ class _Handler(BaseHTTPRequestHandler):
             # lang bilinemiyor (body hiç parse edilemedi) — iki dilde birden göster
             self._json({"ok": False, "error": "geçersiz JSON / invalid JSON"}, status=400)
             return
-
+        if not isinstance(data, dict):      # `[]`/`null`/sayı: aşağıdaki data.get(...) AttributeError -> 500 olurdu
+            if path.startswith("/v1/"):
+                self._json(_v1_error("request body must be a JSON object"), status=400)
+            else:
+                self._json({"ok": False, "error": "JSON gövde bir nesne olmalı / JSON body must be an object"}, status=400)
+            return
         # OpenAI-uyumlu katman (TOBEDECIDED #21) — host-routing bloğundan ÖNCE ve
         # ondan BAĞIMSIZ: `/v1/*` BİLEREK sadece YEREL session'lara bakar
         # (`web_hosts.HOST_ROUTED_PATHS`'a eklenmedi). Uzak-host desteği doğal bir
@@ -4989,6 +5010,7 @@ class _Handler(BaseHTTPRequestHandler):
                 permission_mode=str(data.get("permission_mode", "")),
                 effort=str(data.get("effort", "")),
                 lang=lang,
+                cli_opts=data.get("cli_opts") if isinstance(data.get("cli_opts"), dict) else None,
             ))
             return
 

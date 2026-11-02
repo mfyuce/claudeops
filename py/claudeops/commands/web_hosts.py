@@ -223,6 +223,43 @@ def _pool_key(parsed: Any) -> str:
     return f"{parsed.scheme}://{parsed.hostname}:{port}"
 
 
+class _BlockedPeer(OSError):
+    """Bağlanılan gerçek IP engelli aralıkta (DNS rebinding / kayıt sonrası değişen çözümleme)."""
+
+
+def _check_peer(conn: http.client.HTTPConnection) -> None:
+    """Bağlantı KURULDUKTAN sonra gerçek karşı IP'yi denetler (kayıt-anı denetimi DNS adlarında yetmez: ad sonradan
+    loopback/link-local'a çözülebilir; çözümleme hatasında da fail-open yok, çünkü denetim bağlanılan IP'dedir).
+    IP literalleri kayıt anında denetlendi ve değişemez, bu yüzden yalnız DNS adlarına uygulanır."""
+    if not hosts_mod.hostname_is_dns_name(conn.host):
+        return
+    try:
+        peer = conn.sock.getpeername()[0]
+    except (AttributeError, OSError):
+        peer = None
+    if peer is None or hosts_mod.ip_is_blocked(peer):
+        try:
+            conn.close()
+        finally:
+            raise _BlockedPeer(f"blocked: {conn.host} resolved to a loopback/link-local/unspecified address ({peer})")
+
+
+class _GuardedHTTPConnection(http.client.HTTPConnection):
+    def connect(self) -> None:
+        super().connect()
+        _check_peer(self)
+
+
+class _GuardedHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self) -> None:
+        super().connect()
+        _check_peer(self)
+
+
+def _conn_cls_for(scheme: str) -> type:
+    return _GuardedHTTPSConnection if scheme == "https" else _GuardedHTTPConnection
+
+
 def _conn_is_alive(conn: http.client.HTTPConnection) -> bool:
     """Idle havuzdaki bir bağlantının peer tarafından (restart/idle-timeout ile)
     sessizce kapatılmış olup olmadığını, ONU KULLANMADAN ÖNCE tespit eder —
@@ -348,7 +385,7 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
     try:
         url_parts, path = _split_url(url)
         key = _pool_key(url_parts)
-        conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
+        conn_cls = _conn_cls_for(url_parts.scheme)
         data = json.dumps(body).encode("utf-8") if body is not None else None
         headers = {"Content-Type": "application/json"} if data is not None else {}
         last_err = ""
@@ -887,7 +924,7 @@ def _http_raw(url: str, timeout: float, dedup: bool = False) -> Tuple[int, Optio
     try:
         url_parts, path = _split_url(url)
         key = _pool_key(url_parts)
-        conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
+        conn_cls = _conn_cls_for(url_parts.scheme)
         last_err = ""
         for _ in (1, 2):
             conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
@@ -996,7 +1033,7 @@ def proxy_post_raw(path: str, host_name: str, query: Dict[str, str], body_stream
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
     url_parts, req_path = _split_url(url)
-    conn_cls = http.client.HTTPSConnection if url_parts.scheme == "https" else http.client.HTTPConnection
+    conn_cls = _conn_cls_for(url_parts.scheme)
     conn = conn_cls(url_parts.hostname, url_parts.port, timeout=ACTION_TIMEOUT_SECONDS)
     try:
         conn.request("POST", req_path, body=_BoundedReader(body_stream, content_length),

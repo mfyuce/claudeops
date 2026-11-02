@@ -672,8 +672,14 @@ def ucli_cost_config() -> Dict[str, Any]:
         cap = 0.0
     if not (cap > 0) or cap == float("inf") or cap != cap:
         cap = 0.0
+    try:
+        credit = float(str(raw.get("credit_total_usd") or "0").replace(",", "."))
+    except ValueError:
+        credit = 0.0
+    if not (credit > 0) or credit == float("inf") or credit != credit:
+        credit = 0.0                # boş/0/bozuk = toplam kredi gösterilmez
     ttl = str(raw.get("cache_ttl") or "").strip().lower()
-    return {"daily_cap_usd": cap, "cache_ttl": ttl if ttl in ("5m", "1h") else "1h"}
+    return {"daily_cap_usd": cap, "cache_ttl": ttl if ttl in ("5m", "1h") else "1h", "credit_total_usd": credit}
 
 
 def ucli_script_mode() -> str:

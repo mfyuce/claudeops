@@ -525,6 +525,7 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
     if ucli_cost.cap_exceeded():
         st = ucli_cost.state(use_cache=False)
         raise ucli_cost.DailyCapExceeded(st['today_usd'], st['cap_usd'])
+    ucli_cost.reserve(session_name)      # eşanlı başlatmalar: her biri kısa süreli pay ayırır (tavan aşılırsa DailyCapExceeded)
     binary = argv[0]
     cfg = ucli_cost_config()
     argv = _set_flag_value(argv, "--max-output-tokens", "16000")

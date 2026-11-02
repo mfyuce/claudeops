@@ -6,8 +6,9 @@ tablosu `review.ANTHROPIC_PRICES`, 1h yazma çarpanı 1,6 (= 2x / 1,25x), >100K 
 from __future__ import annotations
 
 import os
+import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from . import review as rv
 from .settings import ucli_cost_config
@@ -46,15 +47,15 @@ def _day_start_ms(now: float) -> float:
     return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)) * 1000.0
 
 
-def today_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = 1.6) -> float:
-    """Bugünkü (yerel gün) toplam $ (tüm oturum günlükleri). Dizin yoksa 0."""
+def per_session_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = 1.6) -> Dict[str, float]:
+    """Bugünkü (yerel gün) $ — OTURUM (kodcu) başına: {oturum günlük adı (.jsonl'siz): usd}. Dizin yoksa {}."""
     t = time.time() if now is None else now
     since = _day_start_ms(t)
-    tot = 0.0
+    out: Dict[str, float] = {}
     try:
         names = os.listdir(base)
     except OSError:
-        return 0.0
+        return out
     for n in names:
         p = os.path.join(base, n)
         try:
@@ -62,8 +63,25 @@ def today_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: fl
                 continue
         except OSError:
             continue
-        tot += rv.usage_cost_usd(p, "", since_ms=since, write_mult=write_mult)
-    return tot
+        out[n[:-len(".jsonl")]] = rv.usage_cost_usd(p, "", since_ms=since, write_mult=write_mult)
+    return out
+
+
+def total_usd(base: str = USAGE_DIR, write_mult: float = 1.6) -> float:
+    """BİRİKMİŞ (tüm günler) toplam $: tüm oturum günlükleri, tarih süzgeci yok. Dizin yoksa 0."""
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return 0.0
+    return sum(rv.usage_cost_usd(os.path.join(base, n), "", write_mult=write_mult) for n in names if n.endswith(".jsonl"))
+
+
+def today_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = 1.6) -> float:
+    """Bugünkü (yerel gün) toplam $ (tüm oturum günlükleri). Dizin yoksa 0."""
+    return sum(per_session_usd(now, base, write_mult).values())
+
+
+BY_SESSION_TOP = 10   # durum yanıtında en çok harcayan N oturum (panel kısa kalsın)
 
 
 def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = True) -> Dict[str, Any]:
@@ -72,18 +90,59 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
     cfg = ucli_cost_config()
     if not use_cache or t - _CACHE["at"] > _TTL or _CACHE["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
         mult = 1.6 if cfg["cache_ttl"] == "1h" else 1.0
-        _CACHE.update(at=t, usd=today_usd(t, base, mult), day=time.strftime("%Y-%m-%d", time.localtime(t)))
+        by = per_session_usd(t, base, mult)
+        _CACHE.update(at=t, total=total_usd(base, mult), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)))
     cap = float(cfg["daily_cap_usd"])
     usd = float(_CACHE["usd"])
-    return {"today_usd": round(usd, 4), "cap_usd": cap, "pct": (round(100.0 * usd / cap, 1) if cap > 0 else None),
-            "cache_ttl": cfg["cache_ttl"]}
+    by_all = _CACHE.get("by") or {}
+    top = sorted(by_all.items(), key=lambda kv: (-kv[1], kv[0]))[:BY_SESSION_TOP]
+    out = {"today_usd": round(usd, 4), "cap_usd": cap, "pct": (round(100.0 * usd / cap, 1) if cap > 0 else None),
+           "cache_ttl": cfg["cache_ttl"], "by_session": [{"session": n, "usd": round(v, 4)} for n, v in top if v > 0]}
+    credit = float(cfg.get("credit_total_usd") or 0.0)
+    if credit > 0:      # kalan = toplam - birikmiş harcama (alt sınır tahmini; negatife düşmez)
+        spent = float(_CACHE.get("total") or 0.0)
+        out.update(credit_total_usd=credit, spent_total_usd=round(spent, 4), credit_left_usd=round(max(0.0, credit - spent), 4))
+    return out
 
 
 def invalidate() -> None:
     """Önbelleği düşür (ayar kaydedilince: cache_ttl çarpanı değişir, panel yeni değeri hemen görsün)."""
-    _CACHE.update(at=0.0, usd=0.0, day="")
+    _CACHE.update(at=0.0, usd=0.0, total=0.0, by={}, day="")
 
 
 def cap_exceeded(now: Optional[float] = None, base: str = USAGE_DIR) -> bool:
     s = state(now, base, use_cache=False)
     return s["cap_usd"] > 0 and s["today_usd"] >= s["cap_usd"]
+
+
+# Eşanlı başlatma rezervasyonu (P4-VERDICT #34): N oturum aynı anda açılırken hiçbiri henüz günlüğe harcama yazmadığından
+# hepsi tavan denetiminden geçerdi. Her başlatma kısa süreli (RESERVE_TTL) bir tahmini pay ayırır; sonraki başlatma
+# `bugün + başkalarının ayrılmış payı` ile denetlenir. Süreç içi (web sunucusu tek süreç, istek-başına thread).
+RESERVE_USD = 1.0
+RESERVE_TTL = 120.0
+_RESERVE_LOCK = threading.Lock()
+_RESERVED: Dict[str, Tuple[float, float]] = {}      # oturum -> (usd, bitiş zamanı)
+
+
+def reserve(session_name: str, now: Optional[float] = None, base: str = USAGE_DIR) -> None:
+    """Başlatma için RESERVE_USD ayır; tavan (bugün + başkalarının payı + bu pay) aşılıyorsa DailyCapExceeded.
+    Tavan yoksa (0) rezervasyon tutulmaz. Aynı ad yeniden ayırırsa öncekinin yerine geçer."""
+    t = time.time() if now is None else now
+    with _RESERVE_LOCK:
+        for k in [k for k, (_, exp) in _RESERVED.items() if exp <= t]:
+            del _RESERVED[k]
+        s = state(t, base, use_cache=False)
+        cap = float(s["cap_usd"])
+        if cap <= 0:
+            _RESERVED.pop(session_name, None)
+            return
+        others = sum(u for k, (u, _) in _RESERVED.items() if k != session_name)
+        if s["today_usd"] + others >= cap:
+            raise DailyCapExceeded(s["today_usd"] + others, cap)
+        _RESERVED[session_name] = (RESERVE_USD, t + RESERVE_TTL)
+
+
+def release(session_name: str) -> None:
+    """Başlatma başarısız olduysa payı hemen geri ver (yoksa TTL ile düşer)."""
+    with _RESERVE_LOCK:
+        _RESERVED.pop(session_name, None)

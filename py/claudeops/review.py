@@ -1,6 +1,6 @@
 """Reviewer rolü: saf çekirdek (ağ/süreç/tmux YOK). Planlama kararları, istem üretimi, bulgu ayrıştırma ve
-`review_pool.json` / `review_history.json` / `findings.json` depoları. Çalıştırıcılar (Evren/agy), tick döngüsü ve API
-sonraki partilerde; burada yalnız test edilebilir mantık var (`card` modülü gibi: girdi -> karar).
+`review_pool.json` / `review_history.json` / `findings.json` depoları. Çalıştırıcılar, tick döngüsü ve API
+`commands/web_review.py`/`web_steward.py`'de; burada yalnız test edilebilir mantık var (`card` modülü gibi: girdi -> karar).
 
 Havuz `projects.json`'a YAZILMAZ (aynı adın iki kimlikte olması `ownership_index`te projeyi kimseye vermez): ayrı
 `review_pool.json`. Çift = (proje, mod, alt model); anahtar `"<proje>|<mode>/<slug>"`."""
@@ -1120,15 +1120,23 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
         with open(path, encoding="utf-8") as f:
             for line in f:
                 try:
-                    rec = json.loads(line) or {}
+                    rec = json.loads(line)
+                    if not isinstance(rec, dict):
+                        continue
                 except ValueError:
                     continue
                 if not model and rec.get("event") == "task_start" and rec.get("model"):
                     pi, po, pr, pw = anthropic_price(str(rec["model"]))
                     continue
-                if since_ms and float(rec.get("t") or 0) < since_ms:
+                try:
+                    t_rec = float(rec.get("t") or 0)
+                except (TypeError, ValueError):
+                    t_rec = 0.0
+                if since_ms and t_rec < since_ms:
                     continue
-                u = rec.get("usage") or {}
+                u = rec.get("usage")
+                if not isinstance(u, dict):
+                    continue
                 def g(*names: str) -> float:
                     for n in names:
                         if isinstance(u.get(n), (int, float)):

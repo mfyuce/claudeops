@@ -103,9 +103,11 @@ def _load_all() -> List[Dict[str, Any]]:
             data = json.load(f)
         if isinstance(data, list):
             return [s for s in data if isinstance(s, dict)]   # dict olmayan öğe s.get ile çökertmesin
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        pass
-    return _migrate_legacy()
+        return []                                             # liste değil: bozuk; eski kaydı DİRİLTME
+    except FileNotFoundError:
+        return _migrate_legacy()                              # yalnız dosya HİÇ yokken bir kereliğine göç
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return []                                             # bozuk/okunamıyor: legacy diriltilmez (yazımda ham dosya yedeklenir)
 
 
 def _backup_if_corrupt() -> None:

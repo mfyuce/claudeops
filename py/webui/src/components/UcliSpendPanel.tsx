@@ -39,6 +39,18 @@ export function UcliSpendPanel() {
         </div>
       )}
       {state && <div style={{ color, fontWeight: 600 }}>{state}</div>}
+      {(cost.by_session?.length ?? 0) > 0 && (
+        <details className="ucli-spend-by">
+          <summary>{tr ? "kodcu başı (bugün)" : "per coder (today)"}</summary>
+          <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+            {cost.by_session!.map((s) => (
+              <li key={s.session}>
+                {s.session}: <strong>${s.usd.toFixed(2)}</strong>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <label className="opts-hint" title={tr ? "0 ya da boş = tavan yok." : "0 or empty = no cap."}>
         {tr ? "günlük tavan (USD)" : "daily cap (USD)"}{" "}
         <input
@@ -55,6 +67,37 @@ export function UcliSpendPanel() {
             void (async () => {
               try {
                 const res = await apiSaveSettings({ ucli_cost: { daily_cap_usd: v }, lang });
+                setError(res.ok ? null : res.error);
+              } catch (err) {
+                setError(describeApiError(err, t));
+              }
+              refresh();
+            })();
+          }}
+        />
+      </label>
+      {cost.credit_left_usd != null && (
+        <div title={tr ? "kalan = toplam kredi - birikmiş harcama (alt sınır tahmini)" : "left = total credit - accumulated spend (lower-bound estimate)"}>
+          {tr ? "kalan kredi" : "credit left"}: <strong>${cost.credit_left_usd.toFixed(2)}</strong>
+          <span className="opts-hint"> / ${(cost.credit_total_usd ?? 0).toFixed(0)} · {tr ? "harcanan" : "spent"} ${(cost.spent_total_usd ?? 0).toFixed(2)}</span>
+        </div>
+      )}
+      <label className="opts-hint" title={tr ? "Boş = kalan krediyi gösterme." : "Empty = hide remaining credit."}>
+        {tr ? "toplam kredi (USD)" : "total credit (USD)"}{" "}
+        <input
+          type="number"
+          min={0}
+          step={1}
+          style={{ width: 80 }}
+          key={`credit-${cost.credit_total_usd ?? 0}`}
+          defaultValue={cost.credit_total_usd ? cost.credit_total_usd : ""}
+          placeholder={tr ? "gösterme" : "hidden"}
+          onBlur={(e) => {
+            const v = e.target.value;
+            if (v === (cost.credit_total_usd ? String(cost.credit_total_usd) : "")) return;
+            void (async () => {
+              try {
+                const res = await apiSaveSettings({ ucli_cost: { credit_total_usd: v }, lang });
                 setError(res.ok ? null : res.error);
               } catch (err) {
                 setError(describeApiError(err, t));

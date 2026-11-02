@@ -43,6 +43,19 @@ class CorruptSnapshotsTest(unittest.TestCase):
         self.assertIsNotNone(snapshot.get_snapshot(5))
         self.assertEqual(len(snapshot.list_snapshots()), 1)
 
+    def test_legacy_not_resurrected_when_snapshots_corrupt(self):
+        with open(snapshot.SNAPSHOT_JSON, "w") as f:
+            f.write('{"saved_at": 5.0, "sessions": [{"name": "legacy"}]}')
+        open(self.f, "w").write("{bozuk")
+        self.assertEqual(snapshot._load_all(), [])
+        self.assertEqual(snapshot.load_latest_snapshot()["sessions"], [])
+
+    def test_legacy_migrates_only_when_snapshots_missing(self):
+        with open(snapshot.SNAPSHOT_JSON, "w") as f:
+            f.write('{"saved_at": 5.0, "sessions": [{"name": "legacy"}]}')
+        got = snapshot._load_all()
+        self.assertEqual([s["sessions"][0]["name"] for s in got], ["legacy"])
+
     def test_missing_or_empty_file_no_backup(self):
         snapshot.save_snapshot([{"name": "a"}], kind="manual")
         os.remove(self.f)

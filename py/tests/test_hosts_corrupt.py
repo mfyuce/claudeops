@@ -53,6 +53,14 @@ class CorruptHostsTest(unittest.TestCase):
         self.assertTrue(hosts.save_host("c", "http://y", "tok")["ok"])
         self.assertEqual([h["name"] for h in hosts.load_hosts()], ["c"])
 
+    def test_irregular_entries_backed_up_before_being_dropped(self):
+        self.put('[{"name": "a", "base_url": "http://x", "token": "T"}, 5, {"base_url": "http://orphan"}]')
+        self.assertTrue(hosts.save_host("b", "http://y", "tok")["ok"])
+        self.assertEqual(sorted(h["name"] for h in hosts.load_hosts()), ["a", "b"])
+        bk = glob.glob(self.f + ".corrupt-*")
+        self.assertEqual(len(bk), 1)
+        self.assertIn("orphan", open(bk[0]).read())
+
     def test_healthy_roundtrip_unchanged(self):
         hosts.save_host("a", "http://x", "t1")
         hosts.save_host("b", "http://y", "t2")

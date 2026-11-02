@@ -1,4 +1,4 @@
-"""TBD#118 devam: rapor saklama koruması + repo görünürlüğü tespiti. Saf yardımcılar; ağ yalnız `gh`/`glab` çağrısıyla
+"""Rapor saklama koruması + repo görünürlüğü tespiti (özel/herkese açık repoda rapor saklama kararı). Saf yardımcılar; ağ yalnız `gh`/`glab` çağrısıyla
 (zaman aşımlı, hata = "unknown", sonuç süreç içinde önbelleğe alınır). Git'e YAZMAZ."""
 import json
 import os

@@ -889,7 +889,7 @@ def _extract_text(mode: str, stdout: str) -> Tuple[str, str]:
     return stdout, ""
 
 
-_REPORT_HEAD_RE = re.compile(r"^## R-\d+ \||BULGU YOK", re.MULTILINE)
+_REPORT_HEAD_RE = re.compile(r"^(?:## R-\d+ \||\s*BULGU YOK\b)", re.MULTILINE)   # ikisi de SATIR BAŞINDA: cümle içi "BULGU YOK" rapor sayılmaz
 ERROR_LOG_KEEP = 16 * 1024      # hata günlüğünde stdout/stderr kuyruğu (her biri)
 
 

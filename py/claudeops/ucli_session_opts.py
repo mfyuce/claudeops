@@ -248,7 +248,9 @@ def rust_toolchain() -> Tuple[Dict[str, str], str]:
     except OSError:
         return {}, f"Rust araç zinciri bulunamadı: {tdir}"
     want = os.environ.get("RUSTUP_TOOLCHAIN", "")
-    pick = [n for n in names if want and n.startswith(want)] or names
+    pick = [n for n in names if n.startswith(want)] if want else names
+    if want and not pick:       # istenen araç zinciri yok: başkasını SESSİZCE seçme
+        return {}, f"RUSTUP_TOOLCHAIN={want} ile eşleşen araç zinciri yok: {tdir}"
     if len(pick) != 1:
         return {}, f"Rust araç zinciri belirsiz/yok ({len(pick)} aday): {tdir}"
     root = os.path.join(tdir, pick[0])

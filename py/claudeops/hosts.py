@@ -112,17 +112,30 @@ def _host_is_blocked(url: str) -> bool:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
         return False
-    for info in infos:
-        raw_ip = info[4][0]
-        try:
-            ip = ipaddress.ip_address(raw_ip)
-        except ValueError:
-            continue
-        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-            ip = ip.ipv4_mapped
-        if ip.is_loopback or ip.is_link_local or ip.is_unspecified:     # 0.0.0.0 / :: Linux'ta yerel makineye bağlanır
-            return True
-    return False
+    return any(ip_is_blocked(info[4][0]) for info in infos)
+
+
+def ip_is_blocked(raw_ip: str) -> bool:
+    """Çözülmüş/bağlanılmış bir IP engelli aralıkta mı (loopback / link-local / unspecified; IPv4-mapped IPv6 açılır)."""
+    try:
+        ip = ipaddress.ip_address(str(raw_ip).split("%", 1)[0])
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or ip.is_link_local or ip.is_unspecified      # 0.0.0.0 / :: Linux'ta yerel makineye bağlanır
+
+
+def hostname_is_dns_name(host: str) -> bool:
+    """True: `host` bir IP literali DEĞİL (DNS adı; kayıt anından sonra başka IP'ye çözülebilir = DNS rebinding).
+    Literal IP'ler kayıt anında `_host_is_blocked` ile kesin denetlenir, değişemez."""
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        return True
 
 
 def load_hosts() -> List[Dict[str, str]]:
@@ -174,11 +187,20 @@ def _backup_corrupt() -> None:
         pass
 
 
+def _has_irregular_entries() -> bool:
+    try:
+        with open(HOSTS_JSON, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, list) and any(not (isinstance(h, dict) and "name" in h) for h in data)
+
+
 def _load_for_write() -> "tuple[List[Dict[str, str]], bool]":
     """Yazmadan önce okuma: bozuksa yedek alınır ve çağıran yazmayı REDDEDER."""
     hosts, corrupt = _read_checked()
-    if corrupt:
-        _backup_corrupt()
+    if corrupt or _has_irregular_entries():
+        _backup_corrupt()       # düzensiz kayıtlar (dict değil / adsız) yazımda düşer: önce ham dosya yedeklenir
     return hosts, corrupt
 
 

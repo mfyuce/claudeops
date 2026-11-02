@@ -91,12 +91,24 @@ def _ensure_node(lang: str) -> Optional[Dict[str, Any]]:
         if not shutil.which("curl"):
             return {"ok": False, "error": "curl bulunamadı -- nvm kurulamıyor" if lang == "tr"
                     else "curl not found -- can't install nvm"}
+        # Boru yok: önce dosyaya indir (-f: HTTP hatasında dur), sonra çalıştır; yarım/hatalı indirme çalıştırılmaz.
+        # Sürüm etiketi sabit (v0.40.8); sağlama toplamı doğrulaması için bilinen bir özet yok (açık madde).
+        os.makedirs(INSTALL_DIR, exist_ok=True)
+        nvm_script = os.path.join(INSTALL_DIR, ".install-nvm.sh")
         try:
-            r = subprocess.run(["bash", "-c", f"curl -o- {NVM_INSTALL_SCRIPT_URL} | bash"],
-                                capture_output=True, text=True, timeout=120)
+            dl = subprocess.run(["curl", "-fsSL", NVM_INSTALL_SCRIPT_URL, "-o", nvm_script],
+                                capture_output=True, text=True, timeout=60)
+            if dl.returncode != 0:
+                return {"ok": False, "error": (dl.stderr or "nvm indirme başarısız").strip()[-2000:]}
+            r = subprocess.run(["bash", nvm_script], capture_output=True, text=True, timeout=120)
         except subprocess.TimeoutExpired:
             return {"ok": False, "error": "nvm kurulumu zaman aşımına uğradı (120sn)" if lang == "tr"
                     else "nvm install timed out (120s)"}
+        finally:
+            try:
+                os.remove(nvm_script)
+            except OSError:
+                pass
         if r.returncode != 0 or not os.path.isfile(NVM_SH):
             return {"ok": False, "error": (r.stderr or "nvm kurulumu başarısız").strip()[-2000:]}
     try:

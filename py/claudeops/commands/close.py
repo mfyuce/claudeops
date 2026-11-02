@@ -171,6 +171,10 @@ def run(args) -> int:
                   f"models.tsv → {st}")
             continue
 
+        # Önce models.tsv yorumlanır, SONRA öldürülür: tersi sırada öldürme ile yorumlama arasında guard satırı
+        # hâlâ aktif görüp session'ı yeniden açabilirdi.
+        st = None if is_instance else comment_out_models(base, dry_run=False)
+
         for s in matched:
             print(f"  {s.name} pid={s.pid} → kapatılıyor "
                   f"({'proc+terminal' if not args.keep_terminal else 'sadece proc'})...",
@@ -184,7 +188,6 @@ def run(args) -> int:
         if not matched:
             print(f"  {name}: çalışan proc yok (yine de models.tsv'de kapatılıyor)")
 
-        st = comment_out_models(base, dry_run=False)
         msg = {
             "commented": "✓ models.tsv'de yorumlandı → guard AÇMAYACAK",
             "already":   "zaten kapalı (models.tsv'de yorumlu)",
