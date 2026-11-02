@@ -14,6 +14,7 @@ import shlex
 import shutil
 import subprocess
 import termios
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -171,6 +172,23 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
     # yazılmış ama Enter'sız bırakıyordu (kutuda "[Pasted text]" birikiyor, sonraki turlar hep başarısız). Süre metinle büyür.
     timeout = max(_TIMEOUT, 5.0 + len(text) / 1500.0)
     try:
+        if "\n" in text or "\r" in text:
+            # Çok satırlı mesaj: `send-keys -l` içindeki satır sonu TUI'de Enter sayılıp mesajı PARÇALI gönderirdi.
+            # Tek parça bracketed paste (`load-buffer` + `paste-buffer -p`) ile yapıştır, sonra tek Enter.
+            buf = "cops-%d-%d" % (os.getpid(), threading.get_ident())
+            rl = subprocess.run(_base_argv() + ["load-buffer", "-b", buf, "-"], input=text.encode("utf-8"),
+                                capture_output=True, timeout=timeout)
+            if rl.returncode != 0:
+                return False
+            rp = subprocess.run(_base_argv() + ["paste-buffer", "-p", "-d", "-b", buf, "-t", _exact(name)],
+                                capture_output=True, timeout=timeout)
+            if rp.returncode != 0:
+                subprocess.run(_base_argv() + ["delete-buffer", "-b", buf], capture_output=True, timeout=_TIMEOUT)
+                return False
+            time.sleep(max(settle_delay, 0.15))     # TUI yapıştırmayı işlesin, sonra Enter
+            r2 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "Enter"],
+                                 capture_output=True, timeout=_TIMEOUT)
+            return r2.returncode == 0
         # `--` ZORUNLU (`tmux_send_raw`'daki AYNI tuzak, burada 2026-09-14'e
         # kadar eksikti — bilinen açık bug, bkz. TODO.md): `--` olmadan tire
         # ile başlayan literal metin ("-help", "--foo", markdown "- item",

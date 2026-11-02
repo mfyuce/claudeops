@@ -460,7 +460,15 @@ class WatchdogTests(unittest.TestCase):
         env.wait_for(lambda: len(env.probe_calls()) >= 2, "açıkken yoklamalar")
         env.write_settings({"tunnel_watch": "off"})
         env.wait_for(lambda: "Ayarlar'dan KAPATILDI" in env.log_text(), "kapatma satırı")
-        time.sleep(0.5)  # uçuştaki bir tur bitsin
+        # uçuştaki bir tur bitsin: sabit uyku yerine yoklama sayısı üst üste 3 kez (0.2 sn arayla) değişmeyene dek bekle
+        stable, last = 0, -1
+        for _ in range(50):
+            now_n = len(env.probe_calls())
+            stable = stable + 1 if now_n == last else 0
+            last = now_n
+            if stable >= 3:
+                break
+            time.sleep(0.2)
         frozen = len(env.probe_calls())
         time.sleep(1.2)
         self.assertEqual(len(env.probe_calls()), frozen, "kapalıyken yoklama sürdü")

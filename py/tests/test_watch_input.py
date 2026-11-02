@@ -11,6 +11,7 @@ import fcntl
 import io
 import json
 import os
+import select
 import shutil
 import struct
 import subprocess
@@ -480,8 +481,13 @@ class KeysPtyTests(unittest.TestCase):
     def test_a_multibyte_character_split_across_reads_is_not_lost(self):
         with watch.Keys(self.stream) as keys:
             os.write(self.master, b"\xc5")
-            time.sleep(0.05)
-            self.assertEqual(keys.poll(), "")
+            # sabit uyku yerine yoklama: ilk bayt okunana dek (en çok ~1 sn) her poll "" döndürmeli
+            end = time.time() + 1.0
+            while time.time() < end:
+                self.assertEqual(keys.poll(), "")
+                r, _w, _x = select.select([self.stream], [], [], 0.01)
+                if not r:
+                    break
             os.write(self.master, b"\x9f")
             self.assertEqual(self.read(keys, 1), "ş")
 
