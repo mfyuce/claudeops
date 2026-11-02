@@ -4342,6 +4342,9 @@ class _Handler(BaseHTTPRequestHandler):
             env = _uso.services().get(svc, ("", "", ""))[2]
             self._json({"ok": True, "service": svc,
                         "models": _uso.service_models(svc, (_byok("ucli").get(env, "") if env else "").strip())})
+        elif path == "/api/ucli/instructions-check":
+            from ..providers.ucli_provider import instructions_check as _ic
+            self._json(_ic((parse_qs(urlparse(self.path).query).get("cwd") or [""])[0]))
         elif path == "/api/io/providers":
             self._json(_io_providers_meta())
         elif path == "/api/io/sessions":

@@ -95,7 +95,7 @@ from .. import searxng
 from ..diaglog import diag_log
 from .. import ucli_cost
 from ..settings import ucli_cost_config
-from ..ucli_session_opts import services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
+from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
 from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
 from ..ucli_client import (UcliError, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, failed_turn_records, resolve_binary,
@@ -479,6 +479,27 @@ def _instructions_too_big(cwd: str) -> bool:
     return False
 
 
+def instructions_check(cwd: str) -> Dict[str, Any]:
+    """Salt-okur: cwd'deki AGENTS.md/CLAUDE.md boyutları (içerik OKUNMAZ). cwd mutlak, var olan dizin değilse boş liste.
+    Dosya symlink ise çözülen yol cwd dışına çıkıyorsa atlanır."""
+    res: Dict[str, Any] = {"limit": _INSTRUCTIONS_MAX_BYTES, "files": []}
+    if not cwd or not os.path.isabs(cwd) or "\0" in cwd:
+        return res
+    try:
+        root = os.path.realpath(cwd)
+        if not os.path.isdir(root):
+            return res
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            real = os.path.realpath(os.path.join(root, name))
+            if os.path.dirname(real) != root or not os.path.isfile(real):
+                continue
+            n = os.path.getsize(real)
+            res["files"].append({"name": name, "bytes": n, "over": n > _INSTRUCTIONS_MAX_BYTES})
+    except OSError:
+        pass
+    return res
+
+
 def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> List[str]:
     """Claude (Anthropic API) hizmetiyle açılan oturum için takım kullanımı bayrakları (sahip, 2026-11-01): günlük USD tavanı
     aşıldıysa REDDET; `--cache-ttl` (ayar, varsayılan 1h: insan hızında turlar arası 5 dk önbelleği soğutur), `--max-output-tokens`
@@ -551,6 +572,8 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             raise ValueError(err)
         opts = {**opts, "exec_cmds": names}
     ex = exec_flags(opts)
+    if opts.get("accept_risk") and any(g in BROAD_GLOBS for g in opts.get("exec_own_glob") or []):
+        diag_log("ucli_grant", name=session_name, globs=[g for g in opts["exec_own_glob"] if g in BROAD_GLOBS], accept_risk=True)
     if ex:
         for flag in ("--allow-exec", "--allow-exec-cmd") + (("--allow-exec-own-glob",) if opts.get("exec_own_glob") else ()) \
                 + (("--exec-bind-ro",) if opts.get("exec_bind_ro") else ()) \

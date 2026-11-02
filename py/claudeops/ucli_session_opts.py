@@ -52,6 +52,9 @@ _BIND_RE = re.compile(r"^/[A-Za-z0-9_./+@-]{1,200}$")
 TIMEOUT_RANGE = (1, 600)
 
 
+BROAD_GLOBS = ("*", "**", "**/*")   # yalnız `accept_risk` ile kabul edilir
+
+
 def _is_glob(c: str) -> bool:
     return any(ch in c for ch in "*?[")
 
@@ -108,10 +111,16 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
             return {}, "exec_own_glob için exec_cmds gerekli (komutsuz exec hiçbir şey çalıştırmaz)"
         if len(globs) > MAX_GLOBS:
             return {}, f"en çok {MAX_GLOBS} glob"
+        accept = bool(raw.get("accept_risk")) and str(raw.get("accept_risk")).lower() not in ("0", "false", "no", "off")
         for g in globs:
             if (not _GLOB_RE.match(g) or g.startswith("/") or g.startswith("-") or ".." in g.split("/")
-                    or "" in g.split("/") or g in ("*", "**", "**/*")):
-                return {}, f"geçersiz ya da çok geniş glob: {g}"
+                    or "" in g.split("/")):
+                return {}, f"geçersiz glob: {g}"
+            if g in BROAD_GLOBS:
+                if not accept:
+                    return {}, ('çok geniş glob: tüm dosyalara çalıştırma izni verir; kabul etmek için '
+                                f'"riski kabul ediyorum" işaretle: {g}')
+                out["accept_risk"] = True
         out["exec_own_glob"] = list(dict.fromkeys(globs))
     binds = _items(raw.get("exec_bind_ro"))
     if binds:

@@ -19,6 +19,7 @@ export interface UcliStartState {
   execWrite: boolean;
   execBind: string;
   execTimeout: string;
+  acceptRisk: boolean;
 }
 
 export const EMPTY_UCLI_START: UcliStartState = {
@@ -30,7 +31,18 @@ export const EMPTY_UCLI_START: UcliStartState = {
   execWrite: false,
   execBind: "",
   execTimeout: "",
+  acceptRisk: false,
 };
+
+/** Patterns that grant execution on EVERY file (backend needs `accept_risk` for them). */
+export function hasBroadGlob(glob: string): boolean {
+  return glob.split(/[,\n]/).some((g) => ["*", "**", "**/*"].includes(g.trim()));
+}
+
+interface InstrCheck {
+  limit: number;
+  files: { name: string; bytes: number; over: boolean }[];
+}
 
 /** Services come from Settings (`data.settings.ucli_services`, one source with the Model keys panel). */
 function useServices(): UcliServiceDef[] {
@@ -45,6 +57,7 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
   if (s.execOn && s.execCmds.trim()) {
     o.exec_cmds = s.execCmds;
     if (s.execGlob.trim()) o.exec_own_glob = s.execGlob;
+    if (s.acceptRisk && hasBroadGlob(s.execGlob)) o.accept_risk = true;
     if (s.execWrite) o.exec_write = true;
     if (s.execBind.trim()) o.exec_bind_ro = s.execBind;
     if (s.execTimeout.trim()) o.exec_timeout = s.execTimeout.trim();
@@ -56,9 +69,11 @@ interface Props {
   value: UcliStartState;
   onChange: (v: UcliStartState) => void;
   lang: Lang;
+  /** Session working directory (local sessions): used for the 16 KiB instruction-file warning. */
+  cwd?: string;
 }
 
-export function UcliStartOpts({ value, onChange, lang }: Props) {
+export function UcliStartOpts({ value, onChange, lang, cwd }: Props) {
   const { data } = useStatusContext();
   const byok = data?.settings.byok?.ucli ?? {};
   const tr = lang === "tr";
@@ -77,10 +92,32 @@ export function UcliStartOpts({ value, onChange, lang }: Props) {
       on = false;
     };
   }, [value.service]);
+  const [instr, setInstr] = useState<InstrCheck | null>(null);
+  useEffect(() => {
+    setInstr(null);
+    if (!cwd) return;
+    let on = true;
+    apiGet<InstrCheck>(`/api/ucli/instructions-check?cwd=${encodeURIComponent(cwd)}`)
+      .then((r) => on && setInstr(r))
+      .catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, [cwd]);
+  const overFiles = (instr?.files ?? []).filter((f) => f.over);
+  const broad = hasBroadGlob(value.execGlob);
   // canlı liste (hizmetin /models ucu) öncelikli; yoksa koddaki yedek liste
   const svc = { ...svcBase, models: live.length > 0 ? live : svcBase.models };
   return (
     <>
+      {overFiles.length > 0 && (
+        <span className="opts-hint" style={{ flexBasis: "100%", color: "#b45309" }} role="alert">
+          {overFiles
+            .map((f) => `${f.name} ${Math.round(f.bytes / 1024)} KB > ${Math.round((instr?.limit ?? 16384) / 1024)} KiB`)
+            .join(", ")}
+          {tr ? ": proje talimatları YÜKLENMEYECEK (ucli sınırı)" : ": project instructions will NOT be loaded (ucli limit)"}
+        </span>
+      )}
       <label>
         {tr ? "hizmet" : "service"}
         <select value={value.service} onChange={(e) => {
@@ -142,6 +179,17 @@ export function UcliStartOpts({ value, onChange, lang }: Props) {
             value={value.execGlob}
             onChange={(e) => set({ execGlob: e.target.value })}
           />
+          {broad && (
+            <span className="opts-hint" style={{ flexBasis: "100%", color: "#b91c1c" }} role="alert">
+              {tr
+                ? "Uyarı: bu desen modelin yazdığı TÜM dosyalara çalıştırma izni verir. Kabul etmek için işaretle (işaretsizse sunucu başlatmayı reddeder)."
+                : "Warning: this pattern allows executing ALL files the model writes. Tick to accept (unticked, the server refuses to start)."}{" "}
+              <label>
+                <input type="checkbox" checked={value.acceptRisk} onChange={(e) => set({ acceptRisk: e.target.checked })} />{" "}
+                {tr ? "Riski kabul ediyorum" : "I accept the risk"}
+              </label>
+            </span>
+          )}
           <label title={tr ? "Varsayılan kapalı. Açılınca modele dosya yazma katmanı (--allow-edit) verilir." : "Off by default. When on, the model gets the file-write tier (--allow-edit)."}>
             <input type="checkbox" checked={value.execWrite} onChange={(e) => set({ execWrite: e.target.checked })} /> {tr ? "yazma izni" : "write access"}
           </label>

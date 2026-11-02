@@ -319,7 +319,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             hideModel={cli === "ucli" && session.host === LOCAL_HOST && ucliStart.service !== "evren"}
           />
           {cli === "ucli" && session.host === LOCAL_HOST && (
-            <UcliStartOpts value={ucliStart} onChange={setUcliStart} lang={lang} />
+            <UcliStartOpts value={ucliStart} onChange={setUcliStart} lang={lang} cwd={session.cwd} />
           )}
           <button type="button" className="go" disabled={busy} onClick={() => void handleGo()}>
             {busy ? t.starting : modeLabels[mode]}
