@@ -244,7 +244,8 @@ class BuildTests(unittest.TestCase):
     def test_star_never_opens_forbidden(self):
         avail = ["bash", "sh", "env", "xargs", "ssh", "nc", "sudo", "cargo", "ls", "python3", "find"]
         names, err = so.expand_exec_cmds(["*"], avail)
-        self.assertEqual((names, err), (["cargo", "ls", "python3"], ""))
+        self.assertEqual((names, err), (["cargo", "ls"], ""))      # python3 yorumlayıcı: yasaklı (karar: sıkılaştırma kabul)
+        self.assertTrue(so.validate_opts({"exec_cmds": ["python3"]})[1])       # açık python3 reddedilir
         names, _ = so.expand_exec_cmds(["re:.*sh|nc|cargo"], avail)                    # regex de yasaklıları açamaz
         self.assertEqual(names, ["cargo"])
         self.assertTrue(so.expand_exec_cmds(["zz*"], avail)[1])                         # hiçbir şeye uymayan desen = hata

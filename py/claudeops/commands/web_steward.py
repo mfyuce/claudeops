@@ -3747,14 +3747,14 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
     st = ucli_cost.state(use_cache=False)
     day = time.strftime("%Y-%m-%d")
     if _COST_WATCH["day"] != day:
-        _COST_WATCH.update(day=day, warned=False, stopped=False)
+        _COST_WATCH.update(day=day, warned=False, stopped=False, notified=False)
     cap, usd = float(st["cap_usd"]), float(st["today_usd"])
     if _COST_WATCH.get("cap") != cap:     # tavan değişti (yükseltildi/düşürüldü): uyarı/durdurma bayrakları yeniden değerlendirilsin
-        _COST_WATCH.update(cap=cap, warned=False, stopped=False)
+        _COST_WATCH.update(cap=cap, warned=False, stopped=False, notified=False)
     if cap <= 0:
         return {"cap": 0}
     if usd >= cap and not _COST_WATCH["stopped"]:
-        _COST_WATCH["stopped"] = True
+        _COST_WATCH["stopped"] = True       # durdurulamayan beyin olursa aşağıda geri açılır: sonraki tick yeniden dener
         cfg = base or steward_config()
         brain_note = ""
         targets: List[sw.Config] = [cfg]
@@ -3778,9 +3778,13 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
             failed += not ok
         if stopped_n or failed:
             brain_note = f" Beyin (ucli) durduruldu ({stopped_n})." + (f" {failed} beyin durdurulamadı!" if failed else "")
-        sw.log_event("ucli_cost_cap", paths="all", usd=round(usd, 2), cap=cap)
-        notify_phone(f"ucli günlük harcama TAVANA ulaştı: {usd:.2f}/{cap:.0f} USD.{brain_note} Devam için: Ayarlar ucli_cost.daily_cap_usd yükselt "
-                     f"ya da `py/cops steward config brain_cli claude` (kota izin verince).", title="claudeops ucli tavan")
+        if failed:
+            _COST_WATCH["stopped"] = False   # tavan delinmesin: bir sonraki tick durdurmayı yeniden dener (bildirim tekrarlanmaz)
+        if not _COST_WATCH.get("notified"):
+            _COST_WATCH["notified"] = True
+            sw.log_event("ucli_cost_cap", paths="all", usd=round(usd, 2), cap=cap)
+            notify_phone(f"ucli günlük harcama TAVANA ulaştı: {usd:.2f}/{cap:.0f} USD.{brain_note} Devam için: Ayarlar ucli_cost.daily_cap_usd yükselt "
+                         f"ya da `py/cops steward config brain_cli claude` (kota izin verince).", title="claudeops ucli tavan")
     elif usd >= 0.8 * cap and not _COST_WATCH["warned"] and usd < cap:
         _COST_WATCH["warned"] = True
         notify_phone(f"ucli günlük harcama %80'i geçti: {usd:.2f}/{cap:.0f} USD. Tavanda beyin durur.", title="claudeops ucli tavan")

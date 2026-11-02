@@ -40,7 +40,25 @@ FORBIDDEN_CMDS = frozenset({
     "sh", "bash", "zsh", "dash", "fish", "ksh", "csh", "tcsh", "ash", "busybox",
     "env", "xargs", "find", "sudo", "doas", "su", "nohup", "timeout", "nice", "time", "strace", "ltrace",
     "ssh", "scp", "nc", "ncat", "socat",
+    # yorumlayıcılar / betik motorları (rastgele kod): `*` deseni de bunları AÇAMAZ
+    "perl", "ruby", "node", "nodejs", "deno", "bun", "php", "lua", "luajit", "tclsh", "wish", "expect", "julia", "Rscript",
+    "awk", "gawk", "mawk", "nawk", "sed", "pwsh", "powershell", "osascript", "groovy", "jshell", "guile", "emacs",
+    # başka komut çalıştıranlar / kaçış sağlayanlar
+    "flock", "chroot", "setsid", "stdbuf", "watch", "parallel", "tmux", "screen", "script", "unshare", "nsenter", "setpriv",
+    "taskset", "ionice", "systemd-run", "at", "batch", "crontab", "run-parts", "bwrap", "docker", "podman", "gdb", "lldb",
+    "vi", "vim", "nvim", "ed", "ex", "less", "more", "man", "curl", "wget",
 })
+
+# Sürümlü yorumlayıcı adları (`python3.12`, `pypy3`, `ruby3.2`, `perl5.38`): tam ad listesi bunları kaçırırdı.
+_FORBIDDEN_RE = re.compile(r"^(?:python|pypy|perl|ruby|node|php|lua|tclsh|busybox)[0-9._-]*$", re.I)
+
+
+def is_forbidden_cmd(name: str) -> bool:
+    n = (name or "").lower()
+    return n in FORBIDDEN_CMDS or n in _FORBIDDEN_LOWER or bool(_FORBIDDEN_RE.match(n))
+
+
+_FORBIDDEN_LOWER = frozenset(x.lower() for x in FORBIDDEN_CMDS)
 
 _CMD_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
 _GLOB_RE = re.compile(r"^[A-Za-z0-9_./*?-]{1,120}$")
@@ -104,7 +122,7 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
                 continue
             if not _CMD_RE.match(c):
                 return {}, f"geçersiz komut adı: {c}"
-            if c.lower() in FORBIDDEN_CMDS:
+            if is_forbidden_cmd(c):
                 return {}, f"izin listesine girmez (kabuk/komut çalıştırıcı): {c}"
         out["exec_cmds"] = list(dict.fromkeys(cmds))
     tcv = str(raw.get("exec_toolchain") or "").strip().lower()
@@ -207,7 +225,7 @@ def expand_exec_cmds(items: List[str], available: List[str]) -> Tuple[List[str],
         else:
             out.append(it)
             continue
-        hit = [n for n in hit if n.lower() not in FORBIDDEN_CMDS]
+        hit = [n for n in hit if not is_forbidden_cmd(n)]
         if not hit:
             return [], f"desen hiçbir komuta uymadı: {it}"
         out.extend(hit)

@@ -69,6 +69,14 @@ class CostWatch(unittest.TestCase):
             ws.ucli_cost_watch(self.cfg)
         self.assertEqual(len(self.stops), 3)              # base + a + c (b claude: dokunulmaz)
 
+    def test_failed_brain_stop_retries_without_renotify(self):
+        results = iter([{"ok": False}, {"ok": True}])
+        with mock.patch.object(ws, "brain_stop", lambda c=None: next(results)), self._state(11):
+            ws.ucli_cost_watch(self.cfg)      # durdurulamadı: bayrak açık kalır
+            ws.ucli_cost_watch(self.cfg)      # yeniden dener, başarır
+            ws.ucli_cost_watch(self.cfg)      # artık sessiz
+        self.assertEqual(len(self.sent), 1)
+
     def test_same_cap_does_not_rearm(self):
         with self._state(8.5):
             ws.ucli_cost_watch(self.cfg)
