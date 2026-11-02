@@ -10,6 +10,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { apiForgetInstance, apiStart, getInstances, getReviewRuns } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
+import { offerCapRetry } from "../state/capRetry";
 import type { InstanceRecord, ReviewRun } from "../api/types";
 import { ReviewChatModal } from "./ReviewChatModal";
 import { useLang } from "../i18n/LangContext";
@@ -43,11 +44,11 @@ function HistoryRow({ item, onView, onChanged }: HistoryRowProps) {
   const { t, lang } = useLang();
   const [busy, setBusy] = useState(false);
 
-  async function run(action: () => Promise<{ ok: boolean; error?: string }>) {
+  async function run(action: () => Promise<{ ok: boolean; error?: string; code?: string; today_usd?: number; cap_usd?: number }>) {
     setBusy(true);
     try {
       const res = await action();
-      if (!res.ok) showToast(`${item.name}: ${res.error}`);
+      if (!res.ok && !offerCapRetry(res, item.name, item.host, action)) showToast(`${item.name}: ${res.error}`);
     } catch (e) {
       showToast(describeApiError(e, t));
     } finally {

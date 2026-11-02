@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Banners } from "./components/Banners";
 import { ModelUsageBar } from "./components/ModelUsageBar";
 import { ToastContainer } from "./components/shared/Toast";
+import { CapRetryPrompt } from "./components/shared/CapRetryPrompt";
 import { DesktopTab } from "./components/DesktopTab";
 import { DiagnosticsTab } from "./components/DiagnosticsTab";
 import { GroupTable } from "./components/GroupTable";
@@ -209,6 +210,7 @@ function AppShell() {
       <Banners onGoToDiagnostics={() => setActiveTab("diag")} />
       <ModelUsageBar />
       <ToastContainer />
+      <CapRetryPrompt />
       <SearchBox value={search} onChange={setSearch} />
       <TabBar active={activeTab} onSelect={setActiveTab} search={search} />
       <div>

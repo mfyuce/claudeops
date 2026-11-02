@@ -22,6 +22,7 @@
 import { useEffect, useState } from "react";
 import { apiNewChat, apiStart, apiStop } from "../../api/client";
 import { callAction, describeApiError } from "../../api/errors";
+import { offerCapRetry } from "../../state/capRetry";
 import { TabHint } from "../shared/TabHint";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
@@ -220,7 +221,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
           if (!stopRes.ok) showToast(`${session.name}: ${stopRes.error}`);
         }
         if (stopOk) {
-          const res = await apiNewChat({
+          const newChatBody = {
             base: session.name,
             host: session.host,
             model: resolvedModel,
@@ -229,9 +230,12 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             cli,
             ...(cliOpts ? { cli_opts: cliOpts } : {}),
             lang,
-          });
+          };
+          const res = await apiNewChat(newChatBody);
           if (res.ok) showToast(t.newChatStarted + res.name, "success");
-          else confirmDiagFollowup(`${session.name}: ${res.error}`);
+          else if (!offerCapRetry(res, session.name, session.host, () => apiNewChat(newChatBody))) {
+            confirmDiagFollowup(`${session.name}: ${res.error}`);
+          }
         }
       } catch (e) {
         showToast(describeApiError(e, t));
@@ -240,27 +244,31 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
       // "reset" while still running (modeChoices above) needs the same
       // stop-then-fresh-start sequence BulkBar's bulk "reset" already does —
       // `/api/start` alone would just fail with "already_running".
+      // The cap refusal (`code: "ucli_daily_cap"`) happens AFTER the stop: the retry resends only the start.
+      const startBody = {
+        name: session.name,
+        host: session.host,
+        model: resolvedModel,
+        permission_mode: permissionMode,
+        effort,
+        cli,
+        ...(cliOpts ? { cli_opts: cliOpts } : {}),
+        fresh: mode === "reset",
+        lang,
+      };
       await callAction(
         async () => {
           if (session.running) {
             const stopRes = await apiStop({ name: session.name, host: session.host, lang });
             if (!stopRes.ok) return stopRes;
           }
-          return apiStart({
-            name: session.name,
-            host: session.host,
-            model: resolvedModel,
-            permission_mode: permissionMode,
-            effort,
-            cli,
-            ...(cliOpts ? { cli_opts: cliOpts } : {}),
-            fresh: mode === "reset",
-            lang,
-          });
+          return apiStart(startBody);
         },
         session.name,
         t,
-        confirmDiagFollowup,
+        (msg, res) => {
+          if (!offerCapRetry(res, session.name, session.host, () => apiStart(startBody))) confirmDiagFollowup(msg);
+        },
       );
     }
     // Original: unconditionally closes + refreshes after the request

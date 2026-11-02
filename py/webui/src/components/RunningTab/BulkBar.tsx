@@ -21,6 +21,7 @@ import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
 import { showToast } from "../../state/toast";
+import { CAP_CODE, offerCapRetry } from "../../state/capRetry";
 import type { ApiResult, SessionInfo } from "../../api/types";
 import type { SelectionControls } from "../../state/selection";
 import { effectiveModel } from "../shared/effectiveModel";
@@ -146,6 +147,15 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
 
     setBusy(true);
     const errs: string[] = [];
+    // Starts refused by the daily USD cap: one shared prompt retries them all after the cap is raised.
+    type Res = { ok: boolean; error?: string; code?: string; today_usd?: number; cap_usd?: number };
+    const capRetries: Array<() => Promise<Res>> = [];
+    const cap: { res: Res | null } = { res: null };
+    const noteCap = (res: Res, host: string, retry: () => Promise<Res>) => {
+      if (res.ok || res.code !== CAP_CODE || host !== LOCAL_HOST) return;
+      capRetries.push(retry);
+      cap.res = res;
+    };
     let done = 0;
     for (const s of picked) {
       const name = s.name;
@@ -162,7 +172,10 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
             errs.push(`${name}: ${stopRes.error}`);
           } else {
             const startRes = await apiStart({ ...startPayloadFor(s), fresh: true });
-            if (!startRes.ok) errs.push(`${name}: ${startRes.error}`);
+            if (!startRes.ok) {
+              errs.push(`${name}: ${startRes.error}`);
+              noteCap(startRes, s.host, () => apiStart({ ...startPayloadFor(s), fresh: true }));
+            }
           }
         } else if (action === "restart" || action === "newchat") {
           // Same split as OptionsRow's "restart"/"newchat" modes: `restart`
@@ -180,14 +193,20 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           }
           if (stopOk) {
             const newChatRes = await apiNewChat(newChatPayloadFor(s));
-            if (!newChatRes.ok) errs.push(`${name}: ${newChatRes.error}`);
+            if (!newChatRes.ok) {
+              errs.push(`${name}: ${newChatRes.error}`);
+              noteCap(newChatRes, s.host, () => apiNewChat(newChatPayloadFor(s)));
+            }
           }
         } else {
           const res =
             action === "start"
               ? await apiStart(startPayloadFor(s))
               : await apiPost<ApiResult>(`/api/${action}`, { name, host: s.host, lang });
-          if (!res.ok) errs.push(`${name}: ${res.error}`);
+          if (!res.ok) {
+            errs.push(`${name}: ${res.error}`);
+            if (action === "start") noteCap(res, s.host, () => apiStart(startPayloadFor(s)));
+          }
         }
       } catch (e) {
         if (e instanceof ApiError) {
@@ -201,6 +220,16 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     }
     setBusy(false);
     setMessage(t.bulkDone(names.length - errs.length, errs.length) + (errs.length ? "\n" + errs.join("\n") : ""));
+    if (cap.res && capRetries.length) {
+      // Re-send every cap-refused start in order; report the first failure (a still-capped one keeps the prompt open).
+      offerCapRetry(cap.res, `${capRetries.length}×`, LOCAL_HOST, async () => {
+        for (const retry of capRetries) {
+          const r = await retry();
+          if (!r.ok) return r;
+        }
+        return { ok: true };
+      });
+    }
     selection.replace([]);
     refresh();
   }

@@ -641,6 +641,10 @@ export type GetOrchRunResult = ApiResult<{ run: OrchRun }>;
 export interface ApiErr {
   ok: false;
   error: string;
+  /** Set for refusals the UI can act on; `ucli_daily_cap` (+ `today_usd`/`cap_usd`) = daily USD cap reached. */
+  code?: string;
+  today_usd?: number;
+  cap_usd?: number;
 }
 
 /** `T` is the extra fields present only on the success branch. */

@@ -524,8 +524,7 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
     `--instructions-auto` (AGENTS.md/CLAUDE.md). Her bayrak YALNIZ ikili tanıyorsa eklenir, yoksa günlüğe yazılır."""
     if ucli_cost.cap_exceeded():
         st = ucli_cost.state(use_cache=False)
-        raise ValueError(f"claude: günlük USD tavanı aşıldı ({st['today_usd']:.2f} / {st['cap_usd']:.2f}); "
-                         "Ayarlar'dan ucli_cost.daily_cap_usd yükselt ya da yarın dene")
+        raise ucli_cost.DailyCapExceeded(st['today_usd'], st['cap_usd'])
     binary = argv[0]
     cfg = ucli_cost_config()
     argv = _set_flag_value(argv, "--max-output-tokens", "16000")

@@ -47,13 +47,13 @@ export async function callAction<T extends { ok: boolean; error?: string }>(
   fn: () => Promise<T>,
   name: string,
   t: Strings,
-  onFailure?: (message: string) => void,
+  onFailure?: (message: string, res: T) => void,
 ): Promise<void> {
   try {
     const res = await fn();
     if (!res.ok) {
       const msg = `${name}: ${res.error ?? ""}`;
-      if (onFailure) onFailure(msg);
+      if (onFailure) onFailure(msg, res);
       else showToast(msg);
     }
   } catch (e) {

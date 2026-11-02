@@ -43,6 +43,7 @@ import { Fragment, useState } from "react";
 import { apiReactivate } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
+import { offerCapRetry } from "../state/capRetry";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { usePagination } from "../hooks/usePagination";
@@ -73,7 +74,9 @@ function ReactivateRow({ item, onView }: { item: RosterEntry; onView: (host: str
     setBusy(true);
     try {
       const res = await apiReactivate({ name: item.name, host: item.host, lang });
-      if (!res.ok) showToast(`${item.name}: ${res.error}`);
+      if (!res.ok && !offerCapRetry(res, item.name, item.host, () => apiReactivate({ name: item.name, host: item.host, lang }))) {
+        showToast(`${item.name}: ${res.error}`);
+      }
     } catch (e) {
       showToast(describeApiError(e, t));
     } finally {

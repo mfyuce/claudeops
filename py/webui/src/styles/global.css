@@ -97,6 +97,14 @@ h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
 .toast-text { flex: 1; white-space: pre-wrap; word-break: break-word; }
 .toast-close { background: transparent; border: none; color: var(--muted); padding: 0 .2rem; font-size: 1rem; line-height: 1; cursor: pointer; }
 .toast-close:hover { color: var(--text); }
+.cap-retry {
+  position: fixed; bottom: 4.5rem; left: 50%; transform: translateX(-50%); z-index: 1001;
+  width: min(460px, calc(100vw - 1.5rem)); padding: .65rem .8rem; border-radius: 6px;
+  border: 1px solid var(--red); background: var(--panel2); color: var(--text); font-size: .85rem;
+  box-shadow: 0 2px 12px rgba(0,0,0,.35);
+}
+.cap-retry-row { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; align-items: center; }
+.cap-retry-row input { width: 6rem; }
 .toast-error { border-color: var(--red); background: rgba(248,81,73,.12); }
 .toast-success { border-color: var(--green); background: rgba(63,185,80,.12); }
 .toast-info { border-color: var(--accent); background: rgba(88,166,255,.12); }

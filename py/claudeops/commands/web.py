@@ -822,7 +822,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
         return {"ok": False, "error": str(e)}
     except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn reddedildi, instance kaydı geride KALMASIN
         inst_mod.forget_instance(new_name)
-        return {"ok": False, "error": str(e)}
+        return ucli_cost.refusal(e)
     if not opened:
         return _err(lang, "newchat_start_failed", new_name=new_name, kind=kind)
     return {"ok": True, "name": new_name, "kind": kind}
@@ -1872,7 +1872,7 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
         return {"ok": False, "error": str(e)}
     except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn REDDEDİLİR
         diag_log("start_refused", name=name, cli=chosen_cli, reason=str(e)[:200])
-        return {"ok": False, "error": str(e)}
+        return ucli_cost.refusal(e)
     diag_log("start_end", name=name, kind=kind, opened=opened, trust=trust)
     if trust == "unregistered":
         return _err(lang, "start_trust_unregistered", name=name)

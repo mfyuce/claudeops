@@ -15,6 +15,25 @@ from .settings import ucli_cost_config
 USAGE_DIR = os.path.expanduser("~/.claude/claudeops/ucli_usage")
 _CACHE: Dict[str, Any] = {"at": 0.0, "usd": 0.0, "day": ""}
 _TTL = 30.0
+CAP_CODE = "ucli_daily_cap"   # başlatma sonucunda `code` alanı: arayüz "tavanı yükselt ve tekrar dene" sunar
+
+
+class DailyCapExceeded(ValueError):
+    """Günlük USD tavanı aşıldı: yeni Claude oturumu REDDEDİLİR. ValueError alt sınıfıdır (eski yakalayıcılar çalışır)."""
+
+    def __init__(self, today_usd: float, cap_usd: float):
+        self.today_usd = float(today_usd)
+        self.cap_usd = float(cap_usd)
+        super().__init__(f"claude: günlük USD tavanı aşıldı ({self.today_usd:.2f} / {self.cap_usd:.2f}); "
+                         "Ayarlar'dan ucli_cost.daily_cap_usd yükselt ya da yarın dene")
+
+
+def refusal(exc: BaseException) -> Dict[str, Any]:
+    """Başlatma reddi -> web sonucu. Tavan reddiyse `code` + tutarlar eklenir (arayüz bunu yakalar)."""
+    out: Dict[str, Any] = {"ok": False, "error": str(exc)}
+    if isinstance(exc, DailyCapExceeded):
+        out.update(code=CAP_CODE, today_usd=round(exc.today_usd, 2), cap_usd=round(exc.cap_usd, 2))
+    return out
 
 
 def log_path(session_name: str, base: str = USAGE_DIR) -> str:
