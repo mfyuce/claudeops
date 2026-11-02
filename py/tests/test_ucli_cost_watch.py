@@ -18,6 +18,7 @@ class CostWatch(unittest.TestCase):
         self.cfg = cfg
         for p in (mock.patch.object(ws, "notify_phone", lambda text, **k: self.sent.append(text) or True),
                   mock.patch.object(ws, "brain_stop", lambda c=None: self.stops.append(1) or {"ok": True}),
+                  mock.patch.object(ws, "steward_ids", lambda: []),
                   mock.patch.object(ws.sw, "log_event", lambda *a, **k: None)):
             p.start(); self.addCleanup(p.stop)
 
@@ -58,6 +59,15 @@ class CostWatch(unittest.TestCase):
         with self._state(20.5, 20.0):
             ws.ucli_cost_watch(self.cfg)                      # yeni tavanda tekrar durdurur
         self.assertEqual(len(self.stops), 2)
+
+    def test_cap_stops_all_ucli_identities(self):
+        def cfg_for(sid):
+            c = sw.Config(); c.brain_cli = "claude" if sid == "b" else "ucli"
+            return c
+        with mock.patch.object(ws, "steward_ids", lambda: ["a", "b", "c"]), \
+                mock.patch.object(ws, "steward_config", cfg_for), self._state(11):
+            ws.ucli_cost_watch(self.cfg)
+        self.assertEqual(len(self.stops), 3)              # base + a + c (b claude: dokunulmaz)
 
     def test_same_cap_does_not_rearm(self):
         with self._state(8.5):

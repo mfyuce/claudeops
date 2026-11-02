@@ -125,7 +125,11 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
         diag_log("kill_step", name=name, pid=pid, step="find_outer_bash_pids")
         outer_windows = find_outer_bash_pids(name) if name else []
         diag_log("kill_step", name=name, pid=pid, step="kill_session")
-        result = kill_session(pid, grace=grace, name=name, create_time=pid_ct)
+        denied: Optional[psutil.AccessDenied] = None
+        try:
+            result = kill_session(pid, grace=grace, name=name, create_time=pid_ct)
+        except psutil.AccessDenied as e:      # temizlik (tmux kill-session, dış pencere) yarıda kalmasın
+            denied, result = e, "already_dead"
         diag_log("kill_step", name=name, pid=pid, step="kill_session_done", result=result)
         if name:
             diag_log("kill_step", name=name, pid=pid, step="tmux_kill_session")
@@ -136,9 +140,11 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
                 p = psutil.Process(outer_pid)
                 if p.create_time() == outer_create_time:
                     p.kill()
-            except psutil.NoSuchProcess:
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         diag_log("kill_step", name=name, pid=pid, step="done", result=result)
+        if denied is not None:
+            raise denied                      # temizlik bitti; yetki hatası yine de çağırana görünür
         return result
 
     parent_pid: Optional[int] = None
@@ -152,14 +158,20 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
     except psutil.NoSuchProcess:
         pass
 
-    result = kill_session(pid, grace=grace, create_time=pid_ct)
+    denied2: Optional[psutil.AccessDenied] = None
+    try:
+        result = kill_session(pid, grace=grace, create_time=pid_ct)
+    except psutil.AccessDenied as e:
+        denied2, result = e, "already_dead"
 
     if parent_pid is not None:
         try:
             p = psutil.Process(parent_pid)
             if p.create_time() == parent_create_time:
                 p.kill()
-        except psutil.NoSuchProcess:
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
 
+    if denied2 is not None:
+        raise denied2
     return result

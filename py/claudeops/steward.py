@@ -43,7 +43,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from . import hosts as hosts_mod      # yaprak modül (yalnız paths'e bağlı): proje `host` doğrulaması
 from . import review_remote           # yaprak modül (saf yardımcılar): uzak proje review kararı (TBD#114)
-from .atomic_json import atomic_write_json
+from .atomic_json import atomic_write_json, atomic_write_text
 from .paths import CLAUDEOPS_DIR
 
 STEWARD_DIR = os.path.join(CLAUDEOPS_DIR, "steward")
@@ -1413,10 +1413,7 @@ def log_event(event: str, *, paths: Any = None, **data: Any) -> None:
 
 def _rewrite_log(lines: List[str], paths: Any = None) -> None:
     log = _pp(paths).log
-    tmp = log + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.writelines(lines)
-    os.replace(tmp, log)
+    atomic_write_text(log, "".join(lines))
 
 
 def compact_log(date: str, paths: Any = None) -> int:
@@ -4062,10 +4059,7 @@ def summary_text(date: Optional[str] = None, lang: str = "tr", paths: Any = None
 def write_daily(date: str, text: str, paths: Any = None) -> str:
     path = daily_path(date, paths)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text)
-    os.replace(tmp, path)
+    atomic_write_text(path, text)       # benzersiz geçici ad + fsync (sabit ".tmp" eşzamanlı yazımda çakışırdı)
     return path
 
 

@@ -620,6 +620,16 @@ class TestReviewSmallFixes(unittest.TestCase):
             self.assertEqual(rows[0]["runs"], 1)
 
 
+class TestDsnEdgeCases(unittest.TestCase):
+    def test_uppercase_scheme_and_special_chars_in_password(self):
+        for dsn, pw in (("POSTGRES://u:hunter22@h/db", "hunter22"), ("postgres://u:p@ss/word9@h:5/db", "p@ss/word9")):
+            out = rv.redact_secrets("bağlan " + dsn + " ok")
+            self.assertNotIn(pw, out)
+            self.assertNotIn("word9", out)
+            self.assertIn("[REDACTED]@h", out)
+            self.assertEqual(rv.dsn_passwords(dsn), [pw])
+
+
 class TestLearnedPasswordLength(unittest.TestCase):
     def test_short_learned_password_does_not_corrupt_text(self):
         t = "bağlan postgres://u:abc@h/db ve yol src/abc/labc.py içinde abc kelimesi"

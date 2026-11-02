@@ -369,7 +369,7 @@ def parse_findings(md: str) -> List[Dict[str, str]]:
 # ── gizli değer ayıklama ──────────────────────────────────────────────────────
 
 # `scheme://kullanıcı:PAROLA@host`: parola grubu 2; IoLog bu parolayı ÖĞRENİR ve düz metinde (DSN dışında) de maskeler.
-_DSN_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://[^\s:/@\"']+:)([^\s@/\"']{3,})(@)")
+_DSN_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://[^\s:/@\"']+:)([^\s\"']{3,})(@)(?=[^\s@/\"']+)", re.I)   # büyük harfli şema; parola `@` / `/` içerebilir (açgözlü: boşluksuz parçada SON `@`)
 
 _SECRET_RES = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S),

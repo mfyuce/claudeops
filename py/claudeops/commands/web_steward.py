@@ -3757,10 +3757,28 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
         _COST_WATCH["stopped"] = True
         cfg = base or steward_config()
         brain_note = ""
-        if cfg.brain_cli == "ucli":
-            res = brain_stop(cfg)
-            brain_note = " Beyin (ucli) durduruldu." if res.get("ok") else " Beyin durdurulamadı!"
-        sw.log_event("ucli_cost_cap", paths="default", usd=round(usd, 2), cap=cap)
+        targets: List[sw.Config] = [cfg]
+        for sid in steward_ids():     # tavan makine geneli: ucli ile koşan TÜM kimliklerin beyni durur (yalnız default değil)
+            try:
+                c = steward_config(sid)
+            except Exception:
+                continue
+            if c.brain_cli == "ucli":
+                targets.append(c)
+        failed = 0
+        stopped_n = 0
+        for c in targets:
+            if c.brain_cli != "ucli":
+                continue
+            try:
+                ok = bool(brain_stop(c).get("ok"))
+            except Exception:
+                ok = False
+            stopped_n += ok
+            failed += not ok
+        if stopped_n or failed:
+            brain_note = f" Beyin (ucli) durduruldu ({stopped_n})." + (f" {failed} beyin durdurulamadı!" if failed else "")
+        sw.log_event("ucli_cost_cap", paths="all", usd=round(usd, 2), cap=cap)
         notify_phone(f"ucli günlük harcama TAVANA ulaştı: {usd:.2f}/{cap:.0f} USD.{brain_note} Devam için: Ayarlar ucli_cost.daily_cap_usd yükselt "
                      f"ya da `py/cops steward config brain_cli claude` (kota izin verince).", title="claudeops ucli tavan")
     elif usd >= 0.8 * cap and not _COST_WATCH["warned"] and usd < cap:
@@ -4065,10 +4083,8 @@ def _append_idea_item(path: str, idea: "sw.Idea", stamp: str) -> bool:
     new = _idea_appended(text, idea, stamp)
     if new is None:
         return False
-    tmp = f"{path}.{os.getpid()}.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(new)
-    os.replace(tmp, path)
+    from ..atomic_json import atomic_write_text
+    atomic_write_text(path, new)        # pid+thread'e özel tmp (yalnız pid aynı süreçteki thread'leri çakıştırırdı)
     return True
 
 
