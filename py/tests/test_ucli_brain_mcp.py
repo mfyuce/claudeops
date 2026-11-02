@@ -269,7 +269,7 @@ class BrainUcliTests(_Brain):
         self.assertEqual(kw["cli"], "ucli")
         self.assertEqual(kw["cli_opts"], {"service": "claude", "max_cost_usd": 1.0})
         self.assertEqual(kw["model"], "claude-sonnet-5-5")    # Claude hizmetinin ilk modeli (Evren kataloğu değil)
-        self.assertEqual(kw["permission_mode"], "read-only")
+        self.assertEqual(kw["permission_mode"], "allow-edit")
         self.assertEqual(tuple(kw["mcp_server"].allowed_tools), tuple(t["name"] for t in mcp_steward.TOOLS))
         self.assertEqual(self.records[0][1]["cli"], "ucli")
 

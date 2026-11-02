@@ -2167,6 +2167,8 @@ def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False, _mcp_retry
     model = cfg.brain_model or ("" if cli == "ucli" else default_model_for(provider))
     effort = cfg.brain_effort or default_effort_for(provider)
     mode = provider.permission_modes()[0] if provider.permission_modes() else "auto"
+    if cli == "ucli" and cfg.brain_permission in (provider.permission_modes() or []):
+        mode = cfg.brain_permission     # ucli beyni devir notunu workspace'e yazabilsin (aksi halde salt-okunur: 2 Kas gözlemi B1)
     extra: Dict[str, Any] = {}
     if cli == "ucli":     # Anthropic API (dolar) ile beyin: başlat penceresiyle AYNI `cli_opts` yolu; claude yolu birebir aynı kalır
         opts, model, err = _brain_ucli_opts(cfg, provider, model, workspace)

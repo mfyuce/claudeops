@@ -284,6 +284,7 @@ class Config:
     done_handover_min_ratio: float = 0.3   # bağlam bilinir ve eşiğin bu oranından azsa devir ATLANIR, doğrudan stop (0 = atlama yok)
     handover_defer_max_minutes: int = 30   # eşik devri en çok bu kadar ertelenir, sonra zorla (0 = erteleme kapalı: eski davranış)
     brain_cli: str = "claude"
+    brain_permission: str = "allow-edit"   # YALNIZ brain_cli=ucli: ucli yazma katmanı (workspace içinde NOTLAR.md/CLAUDE.md devir notu; boş = sağlayıcı varsayılanı read-only). claude beyni etkilenmez
     brain_model: str = ""
     brain_effort: str = "high"
     brain_service: str = "claude"     # YALNIZ brain_cli=ucli: ucli hizmeti (`ucli_services` kimliği; claude = Anthropic API, dolardan yer)
