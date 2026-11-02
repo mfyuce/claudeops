@@ -277,7 +277,7 @@ class InputNotifiesTests(unittest.TestCase):
         self.addCleanup(web_ws._unregister_term_waker, "n", self.event)
         sess = SimpleNamespace(name="tm", cli="shell")
         for p in (mock.patch.object(web, "_term_resolve", lambda name, lang: (sess, None)),
-                  mock.patch.object(web, "get_provider", lambda cli: SimpleNamespace(input_settle_delay=lambda: 0)),
+                  mock.patch.object(web, "get_provider", lambda cli: SimpleNamespace(input_settle_delay=lambda: 0, prepare_input=lambda t: t)),
                   mock.patch.object(web, "tmux_send_keys", lambda *a, **k: self.sent_ok),
                   mock.patch.object(web, "tmux_send_special_key", lambda *a, **k: self.sent_ok),
                   mock.patch.object(web, "tmux_send_raw", lambda *a, **k: self.sent_ok)):

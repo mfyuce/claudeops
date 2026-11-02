@@ -413,6 +413,15 @@ def _start_tunnel(port: int, cloudflared_path: str = "cloudflared", timeout: flo
     return proc, url
 
 
+def _tunnel_failure(proc, url) -> str:
+    """TBD#62 (SAF): tünel kullanılabilir mi? "" = evet; aksi halde kısa hata metni (URL yok / cloudflared çıktı)."""
+    if proc is not None and proc.poll() is not None:
+        return f"cloudflared çıktı (kod {proc.returncode})"
+    if not url:
+        return "tünel URL'i zaman aşımı içinde alınamadı"
+    return ""
+
+
 def _find_running(name: str) -> list:
     """Tam isim VEYA base eşleşmesiyle çalışan session'ları bul — sadece salt-okunur
     metadata çözümlemesi için (`_files_resolve`: aynı base'i paylaşanların cwd/cli'si
@@ -1822,6 +1831,8 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
     if theme is not None and theme not in _VALID_THEMES:
         return _err(lang, "invalid_theme")
     new = save_settings(patch)
+    if "ucli_cost" in patch:
+        ucli_cost.invalidate()   # 30 sn önbellek: tavan/cache_ttl değişince panel hemen yeni değeri göstersin
     routing_sync = None
     if "routing_guidance" in patch or "routing_guidance_text" in patch:
         # Claude her açılışta dosyadan okur (ek iş yok); codex'in küresel AGENTS.md bloğu burada tazelenir.
@@ -2027,7 +2038,10 @@ def _files_resolve(name: str, lang: str = "tr"):
     `files_mod.list_dir`/`read_text`/`validate_candidates` SADECE `s.cwd`/
     `s.cli`'ye bakıyor, `s.pid`'e hiç dokunmuyor — canlı doğrulandı (kod
     okuması + gerçek bir kapalı roster girdisine karşı test)."""
-    procs = _find_running(name)
+    # TBD#56: önce tam ad, sonra TEKİL base; 2+ aday sessizce ilkini seçmez (belirsiz hata). Okuma/yazma/yükleme aynı yoldan.
+    kind, procs = _find_running_for_action(name)
+    if kind == "ambiguous":
+        return None, _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
     if procs:
         return procs[0], None
     info = _fleet_status().get(name) or inst_mod.get_instance(name)
@@ -2312,7 +2326,8 @@ def _term_input(name: str, text: str, lang: str = "tr", exact: bool = False) -> 
     s, err = _term_resolve(name, lang, exact=True) if exact else _term_resolve(name, lang)
     if err:
         return err
-    ok = tmux_send_keys(s.name, text, settle_delay=get_provider(s.cli).input_settle_delay())
+    _prov = get_provider(s.cli)
+    ok = tmux_send_keys(s.name, _prov.prepare_input(text), settle_delay=_prov.input_settle_delay())
     if ok:
         web_ws.notify_term_activity(name)
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
@@ -2814,7 +2829,7 @@ def _handover(name: str, lang: str = "tr", exact: bool = False, extra: str = "")
     apply_handover_downgrades(provider, name, procs[0].cli, procs[0].cwd, procs[0].sid,
                               procs[0].model, procs[0].effort, pid=procs[0].pid)
 
-    sent = tmux_send_keys(name, message, settle_delay=provider.input_settle_delay())
+    sent = tmux_send_keys(name, provider.prepare_input(message), settle_delay=provider.input_settle_delay())
 
     if not sent:
         diag_log("handover_send_failed", name=name)
@@ -3707,7 +3722,7 @@ def _v1_chat_completion(data) -> tuple:
         live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
 
         diag_log("v1_chat_start", name=s.name, chars=len(user_text))
-        if not tmux_send_keys(s.name, user_text, settle_delay=provider.input_settle_delay()):
+        if not tmux_send_keys(s.name, provider.prepare_input(user_text), settle_delay=provider.input_settle_delay()):
             diag_log("v1_chat_send_failed", name=s.name)
             return _v1_error(f"failed to deliver the message to session '{s.name}'", "server_error"), 500
 
@@ -5168,10 +5183,13 @@ def run(args) -> int:
         tunnel_proc, tunnel_url = _start_tunnel(args.port, cloudflared_path)
         global _TUNNEL_PROC
         _TUNNEL_PROC = tunnel_proc
-        if tunnel_url:
-            print(f"  tünel  →  {tunnel_url}/?token={token}")
-        else:
-            print(f"  ⚠ tünel URL'i {TUNNEL_LOG} içinde bulunamadı (20s) — log'a bak, süreç yine de ayakta olabilir.")
+        _tunnel_err = _tunnel_failure(tunnel_proc, tunnel_url)
+        if _tunnel_err:
+            # TBD#62: URL gelmedi / süreç öldü: "hazır" yazıp sessizce ayakta kalmak yerine hata + çıkış kodu
+            print(f"✗ tünel kurulamadı: {_tunnel_err} — log: {TUNNEL_LOG}")
+            _terminate_tunnel()
+            return 1
+        print(f"  tünel  →  {tunnel_url}/?token={token}")
 
     _Handler.token = token
     web_ws.start_broadcaster(_status_payload)  # tek broadcaster daemon thread'i, süreç ömrü boyunca bir kez

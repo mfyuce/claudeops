@@ -277,7 +277,7 @@ import time as _time
 import urllib.request as _urlreq
 
 _MODELS_CACHE: Dict[str, Tuple[float, List[str]]] = {}
-_MODELS_TTL = 600.0   # sn; başarısızlık 60 sn tutulur (tekrar denemeden önce)
+_MODELS_TTL = 86400.0   # sn (24 sa, TBD#146); başarısızlık 60 sn tutulur (tekrar denemeden önce)
 
 
 def service_models(service: str, key: str, *, opener=None, now=None) -> List[str]:

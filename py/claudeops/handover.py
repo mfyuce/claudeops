@@ -437,7 +437,7 @@ def handover_faz1(
         apply_handover_downgrades(provider, session.name, session.cli, session.cwd, session.sid,
                                   session.model, session.effort, pid=session.pid)
 
-        sent = tmux_send_keys(session.name, message, settle_delay=provider.input_settle_delay())
+        sent = tmux_send_keys(session.name, provider.prepare_input(message), settle_delay=provider.input_settle_delay())
 
         if sent:
             print(" sent (live)")

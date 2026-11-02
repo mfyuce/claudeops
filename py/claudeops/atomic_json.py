@@ -113,26 +113,25 @@ def file_lock(path: str) -> Iterator[None]:
 
 @contextlib.contextmanager
 def _file_lock_outer(path: str) -> Iterator[None]:
-    if True:
+    fd = None
+    try:
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        fd = os.open(path + ".lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        st = os.fstat(fd)
+        if not os.path.isfile(path + ".lock") or st.st_uid != os.getuid():
+            raise OSError("lock file not ours")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except OSError as e:
+        if fd is not None:
+            os.close(fd)
         fd = None
-        try:
-            d = os.path.dirname(path)
-            if d:
-                os.makedirs(d, exist_ok=True)
-            fd = os.open(path + ".lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-            st = os.fstat(fd)
-            if not os.path.isfile(path + ".lock") or st.st_uid != os.getuid():
-                raise OSError("lock file not ours")
-            fcntl.flock(fd, fcntl.LOCK_EX)
-        except OSError as e:
-            if fd is not None:
-                os.close(fd)
-            fd = None
-            if path not in _WARNED_LOCKS:       # sessiz değil: süreçler arası koruma yok, yalnız iş parçacığı kilidi
-                _WARNED_LOCKS.add(path)
-                logging.getLogger(__name__).warning("file_lock: %s.lock alınamadı (%s); yalnız iş parçacığı kilidiyle devam", path, e)
-        try:
-            yield
-        finally:
-            if fd is not None:
-                os.close(fd)        # kapatmak flock'u bırakır
+        if path not in _WARNED_LOCKS:       # sessiz değil: süreçler arası koruma yok, yalnız iş parçacığı kilidi
+            _WARNED_LOCKS.add(path)
+            logging.getLogger(__name__).warning("file_lock: %s.lock alınamadı (%s); yalnız iş parçacığı kilidiyle devam", path, e)
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)        # kapatmak flock'u bırakır

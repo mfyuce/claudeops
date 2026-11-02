@@ -244,6 +244,11 @@ class CliProvider(ABC):
         `CodexProvider.input_settle_delay`)."""
         return 0.0
 
+    def prepare_input(self, text: str) -> str:
+        """Pane'e gönderilmeden önce metni hazırla. Varsayılan: aynen (no-op).
+        Yalnız satırı tur sayan CLI (ucli) override eder."""
+        return text
+
     def compact_command(self) -> Optional[str]:
         """Bu CLI'nın konuşma-özetleme slash-command'ı (ör. `/compact`), varsa.
         None (varsayılan) = bu CLI için böyle bir kavram yok — panelin "compact"

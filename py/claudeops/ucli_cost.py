@@ -79,6 +79,11 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
             "cache_ttl": cfg["cache_ttl"]}
 
 
+def invalidate() -> None:
+    """Önbelleği düşür (ayar kaydedilince: cache_ttl çarpanı değişir, panel yeni değeri hemen görsün)."""
+    _CACHE.update(at=0.0, usd=0.0, day="")
+
+
 def cap_exceeded(now: Optional[float] = None, base: str = USAGE_DIR) -> bool:
     s = state(now, base, use_cache=False)
     return s["cap_usd"] > 0 and s["today_usd"] >= s["cap_usd"]

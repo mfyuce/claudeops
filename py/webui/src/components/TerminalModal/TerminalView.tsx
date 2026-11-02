@@ -292,6 +292,10 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // anything while liveInput is also on (see the [liveInput] effect below,
   // which forces this off whenever liveInput goes off).
   const [ctrlArmed, setCtrlArmed] = useState(false);
+  // TBD#68: the Ctrl checkbox is for touch devices (no physical Ctrl key); hidden on desktop pointers.
+  const [coarsePointer] = useState(
+    () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches,
+  );
   // Everything the once-registered onData handler needs, held in refs: the
   // handler is installed in the mount effect below and would otherwise keep
   // that first render's props/state forever.
@@ -1029,15 +1033,17 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
             />{" "}
             {t.termLiveLabel}
           </label>
-          <label title={t.termCtrlHint}>
-            <input
-              type="checkbox"
-              checked={ctrlArmed}
-              disabled={!liveInput}
-              onChange={(e) => setCtrlArmed(e.target.checked)}
-            />{" "}
-            {t.termCtrlLabel}
-          </label>
+          {coarsePointer && (
+            <label title={t.termCtrlHint}>
+              <input
+                type="checkbox"
+                checked={ctrlArmed}
+                disabled={!liveInput}
+                onChange={(e) => setCtrlArmed(e.target.checked)}
+              />{" "}
+              {t.termCtrlLabel}
+            </label>
+          )}
           {XTERM_KEYS.map(([label, key]) => (
             <button type="button" key={key} onClick={() => handleSendKey(key)}>
               {label}

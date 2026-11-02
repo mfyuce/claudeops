@@ -680,6 +680,14 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
 class UcliProvider(CliProvider):
     name = "ucli"
 
+    def prepare_input(self, text: str) -> str:
+        """ucli çok satırlı girdide her satırı AYRI komut/tur sayar: tek satıra indir
+        (satır sonları boşluğa, boş satırlar atılır)."""
+        if not isinstance(text, str) or ("\n" not in text and "\r" not in text):
+            return text
+        parts = [ln.strip() for ln in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+        return " ".join(p for p in parts if p)
+
     def has_conversation(self) -> bool:
         return True  # gerçek bir sohbet: .ucli/chat/NAME.jsonl geçmişi tutuyor
 

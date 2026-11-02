@@ -1270,7 +1270,7 @@ def _send(name: str, cli: str, text: str) -> bool:
     provider = get_provider(cli)
     if not provider.has_conversation():
         return False
-    return tmux_send_keys(name, text, settle_delay=provider.input_settle_delay())
+    return tmux_send_keys(name, provider.prepare_input(text), settle_delay=provider.input_settle_delay())
 
 
 _SCAN = threading.local()
@@ -1781,6 +1781,11 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
     _wake_record(cfg, paths, sname, reason, answer, message, actor)
     sw.log_event("directive", paths=paths, name=project.name, reason=reason, chars=len(message),
                  **({"host": host} if host else {}))
+    try:
+        from .. import qa_log
+        qa_log.append_qa(getattr(project, "local_path", ""), "directive", actor or "brain", message, ref=reason)
+    except Exception:
+        pass
     out = {"ok": True, "name": sname, "chars": len(message)}
     if host:
         out["host"] = host

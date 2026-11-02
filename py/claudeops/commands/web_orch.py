@@ -271,7 +271,8 @@ def _send_prompt(host: str, name: str, cli: str, prompt: str) -> bool:
     controller-handoff'u bu TEK fonksiyonu paylaşır — ikisi de aynı işlem
     (birine bir metin yolla), host dalı tekrarlanmasın diye."""
     if host == "local":
-        return tmux_send_keys(name, prompt, settle_delay=get_provider(cli).input_settle_delay())
+        _prov = get_provider(cli)
+        return tmux_send_keys(name, _prov.prepare_input(prompt), settle_delay=_prov.input_settle_delay())
     result, _status = web_hosts.proxy_action("/api/term/input", host, {"name": name, "text": prompt})
     return bool(result.get("ok"))
 

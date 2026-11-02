@@ -125,6 +125,14 @@ def _api_key() -> str:
 
 
 def _anthropic_review_key() -> str:
+    """TBD#144: önce `settings.byok.ucli.ANTHROPIC_API_KEY`, yoksa 600'lük `anthropic_review_key` dosyası."""
+    try:
+        from ..settings import byok_env_for
+        k = (byok_env_for("ucli").get("ANTHROPIC_API_KEY") or "").strip()
+        if k:
+            return k
+    except Exception:
+        pass
     try:
         with open(ANTHROPIC_REVIEW_KEY_FILE) as f:
             return f.read().strip()

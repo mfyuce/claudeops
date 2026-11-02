@@ -70,6 +70,10 @@ Next: nothing open for the assistant. Owner: item 9 (also `tsc`, py tests: test_
     - Tests for 37-39: new `py/tests/test_p3_fixes.py`.
     - Not touched: the other P3/P2 items in `claudeops-TODO-ui.md` (e.g. `dest_guard`, `file_lock` silent-fallback warning stays as is).
 
+## Round 9 (uipol3, GATE-TODO bolum 1)
+
+40. [ ] TBD#143 (kaynak: GATE-TODO.md): webui oturum listesine (RunningTab) klasor (cwd) varsayilanli KATLANIR gruplama + grup anahtari secici (klasor / cli / host / yok); secim localStorage'da. Tsc + tarayici dogrulamasi sahipte.
+
 ## KALDIGIM YER (devir, uipol2)
 Durum: yeni madde ACILMADI; hicbir edit yarim degil (son edit bitti).
 Yapilan (hepsi commit'siz, hicbiri CALISTIRILMADI: tsc/test yok):

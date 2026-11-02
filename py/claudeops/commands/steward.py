@@ -322,6 +322,13 @@ def cmd_answer(args) -> int:
         print("bilinmeyen soru id'si")
         return 1
     sw.log_event("answer", paths=_sid(args), id=q.id, project=q.project, source="cli")
+    try:
+        from .. import qa_log
+        _pr = sw.load_projects(_sid(args)).get(q.project) if q.project else None
+        if _pr is not None:
+            qa_log.append_qa(_pr.local_path, "answer", "cli", q.answer, ref=q.id)
+    except Exception:
+        pass
     print(f"✓ cevaplandı — motor bir sonraki tick'te {q.project or 'beyne'} iletir (hemen: py/cops steward{_sflag(_sid(args))} tick)")
     return 0
 
@@ -714,7 +721,8 @@ def cmd_review(args) -> int:
     port, sid = args.port, _sid(args)
     act = getattr(args, "review_action", None) or "status"
     if act == "pool":
-        verb = {"add": "add", "rm": "remove", "on": "enable", "off": "disable"}[args.pool_action]
+        verb = {"add": "add", "rm": "remove", "on": "enable", "off": "disable",
+                "focus": "focus", "unfocus": "unfocus"}[args.pool_action]
         res = _api(port, "POST", "/api/steward/review/pool", {"action": verb, "project": args.project}, sid)
         print(f"✓ havuz {verb}: {args.project}" if res.get("ok") else f"hata: {res.get('error')}")
         return 0 if res.get("ok") else 1
@@ -1050,8 +1058,8 @@ def register(sub):
     rv_ = prv.add_subparsers(dest="review_action", metavar="<alt>")
     rv_.add_parser("status", help="havuz + hedefler + çalışan iş")
     rv_.add_parser("history", help="son çalıştırmalar")
-    rpl = rv_.add_parser("pool", help="havuz: add|rm|on|off PROJE")
-    rpl.add_argument("pool_action", choices=["add", "rm", "on", "off"])
+    rpl = rv_.add_parser("pool", help="havuz: add|rm|on|off|focus|unfocus PROJE")
+    rpl.add_argument("pool_action", choices=["add", "rm", "on", "off", "focus", "unfocus"])
     rpl.add_argument("project")
     rru = rv_.add_parser("run", help="elle başlat: PROJE [mode/model]")
     rru.add_argument("project")
