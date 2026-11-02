@@ -78,6 +78,22 @@ class TestFactsEndpoint(unittest.TestCase):
         self.assertEqual((f["context_tokens"], f["subagent_active"], f["sid_known"], f["started_age_s"]),
                          (None, False, False, None))
 
+    def test_codex_context_from_provider_live_context(self):
+        """claude dışı tmux-pane CLI (codex/copilot): bağlam sağlayıcının `live_context`inden (terminal başlığı +
+        `cops watch` çubuğu eskiden yalnız claude için dolduruluyordu)."""
+        class P:
+            def live_context(self, cwd, sid):
+                return 98765
+
+            def last_exchange(self, cwd, sid):
+                return {}
+        live = [Session(name="cx", pid=333, cwd="/srv/c", sid="s1", cli="codex")]
+        with mock.patch.object(web, "find_sessions", lambda measure_cpu=False, **kw: live), \
+                mock.patch.object(web, "_process_started_at", lambda pid: None), \
+                mock.patch.object(web, "get_provider", lambda cli: P()):
+            f = web._session_facts(["cx"])["sessions"]["cx"]
+        self.assertEqual(f["context_tokens"], 98765)
+
     def test_no_names_gives_capabilities_only(self):
         r = web._session_facts([])
         self.assertEqual((r["sessions"], r["api"]), ({}, 1))

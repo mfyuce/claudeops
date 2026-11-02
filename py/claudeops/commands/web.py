@@ -2472,6 +2472,19 @@ def _session_facts(names: List[str]) -> dict:
                 sub = bool(web_steward.subagent_active_for(s.cwd, s.sid))
             except Exception:
                 sub = False
+        elif s.cli != "shell":
+            # claude dışı tmux-pane CLI'lar (codex/copilot): sağlayıcının kendi `live_context` kancası; satır rozeti
+            # (`_context_info_cached`) bunu zaten kullanıyordu, terminal başlığı + `cops watch` çubuğu kullanmıyordu.
+            try:
+                tokens = get_provider(s.cli).live_context(s.cwd, s.sid)
+            except Exception:
+                tokens = None
+            try:
+                from ..settings import steward_config
+                from ..steward import context_threshold
+                warn = int(context_threshold(steward_config(), s.model or "") or 0)
+            except Exception:
+                warn = 0
         try:
             text = str((get_provider(s.cli).last_exchange(s.cwd, s.sid) or {}).get("assistant") or "")
         except Exception:
