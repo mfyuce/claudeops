@@ -264,6 +264,7 @@ class Config:
     tour_retry_minutes: int = 5     # beyin direktifi meşgul oturum yüzünden ertelendiyse bir sonraki tur bu kadar sonra
     max_active: int = 4
     max_starts_per_tick: int = 1
+    auto_start: bool = True             # False: motor cadence ('due') ile oturum AÇMAZ; açılışı beyin ister (`steward_directive`, start_if_stopped) ya da cevap→başlat; sahip kararı 2026-11-02
     idle_minutes: int = 10
     review_minutes: int = 90
     stop_idle_minutes: int = 45
@@ -3517,7 +3518,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             due.append(p)
     due.sort(key=lambda p: (p.priority, visit_of(p)))
     free = max(0, _slots())
-    for p in due:
+    for p in (due if cfg.auto_start else []):
         if starts >= max_starts or free <= 0:
             break
         actions.append(Action("start", p.name, "due", {"phase": p.phase}))
