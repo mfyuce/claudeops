@@ -164,6 +164,12 @@ _EFFORT_LEVELS = list(_EFFORT_LIMITS.keys())
 # "bilinmiyor"a düşürürdü.
 _REQUEST_TIMEOUT_SECS = 600
 
+# Oturum geçmişi bayt bütçesi (`--max-history-kib`, 2026-11-02). ucli'nin kendi sabiti 64 KiB: koderin uzun cevapları 3-4
+# turda aşıp her seferinde ek bir model çağrısıyla sıkıştırma tetikliyordu (bağlam özetle değişir, önbellek soğur).
+# 128 = iki katı; `--max-context-kib`in (medium 256) altında kalmalı. Ayarlar'daki `ucli_limits.max_history_kib`
+# bunun YERİNE geçer. `_EFFORT_LIMITS`e BİLEREK girmedi (aynı sebep: effort adı dört sayıdan geri okunur).
+_MAX_HISTORY_KIB = 128
+
 # Durum dosyasının `usage` nesnesinin (unified-cli `status.rs`) alanları, `live_usage`in döndürdüğü anahtarlar.
 # `reported < requests` ya da `unmetered > 0` ise token sayıları TABANDIR (uç nokta bazı isteklerde `usage`
 # göndermedi / iptal edilen deneme sunucuda sayıldı ama tokeni bilinmiyor); bu karar arayüzde verilir.
@@ -423,6 +429,15 @@ def _timeout_args(binary: str, limits: Dict[str, int], session_name: str = "") -
         diag_log("ucli_flag_unsupported", name=session_name, flag="--request-timeout-secs", binary=binary)
         return []
     return ["--request-timeout-secs", str(limits.get("request_timeout_secs", _REQUEST_TIMEOUT_SECS))]
+
+
+def _history_args(binary: str, limits: Dict[str, int], session_name: str = "") -> List[str]:
+    """`--max-history-kib` (bkz. `_MAX_HISTORY_KIB`). `_timeout_args`le AYNI sebepten YALNIZ ikili bayrağı tanıyorsa
+    eklenir; tanımıyorsa atlanır (o oturum ucli'nin kendi 64 KiB'siyle açılır) ve günlüğe yazılır."""
+    if not binary_supports_flag(binary, "--max-history-kib"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--max-history-kib", binary=binary)
+        return []
+    return ["--max-history-kib", str(limits.get("max_history_kib", _MAX_HISTORY_KIB))]
 
 
 # `--effort` ("ne kadar düşünsün"; Evren'e üst düzey `reasoning_effort` olarak gider). Filo bugüne dek bayrağı HİÇ
@@ -742,6 +757,7 @@ class UcliProvider(CliProvider):
         argv += _web_args(argv[0], session_name)
         argv += _script_args(argv[0], session_name)
         argv += _timeout_args(argv[0], limits, session_name)
+        argv += _history_args(argv[0], limits, session_name)
         argv += _effort_args(argv[0], model, preset, session_name)
         argv += _stream_args(argv[0], session_name)
         argv += _state_dir_args(argv[0], cwd, session_name)

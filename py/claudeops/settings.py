@@ -443,7 +443,7 @@ def ucli_limit_overrides() -> Dict[str, int]:
     if not isinstance(raw, dict):
         return {}
     out: Dict[str, int] = {}
-    for key in ("max_steps", "max_context_kib", "max_tool_calls", "max_output_tokens", "request_timeout_secs"):
+    for key in ("max_steps", "max_context_kib", "max_tool_calls", "max_output_tokens", "request_timeout_secs", "max_history_kib"):
         try:
             n = int(str(raw.get(key)).strip())
         except (TypeError, ValueError):

@@ -81,6 +81,20 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(self.build(None), self.build({}))
         self.assertNotIn("--provider", self.build(None))
 
+    def test_max_history_kib_is_passed_only_when_the_binary_knows_it_and_the_setting_wins(self):
+        def argv_for(binary, limits):
+            self.binary = binary
+            with mock.patch.object(up, "ucli_limit_overrides", lambda: limits):
+                return shlex.split(self.build(None))
+        old = argv_for(fake_ucli(self._tmp.name, HELP_EXEC, name="old"), {})
+        self.assertNotIn("--max-history-kib", old)                      # eski ikili: bayrak hiç gitmez
+        ucli_client._HELP_CACHE.clear()
+        new_bin = fake_ucli(self._tmp.name, HELP_EXEC + "      --max-history-kib <N>\n", name="newh")
+        argv = argv_for(new_bin, {})
+        self.assertEqual(argv[argv.index("--max-history-kib") + 1], "128")
+        argv = argv_for(new_bin, {"max_history_kib": 200})
+        self.assertEqual(argv[argv.index("--max-history-kib") + 1], "200")
+
     def test_claude_service_swaps_endpoint_once_and_key_stays_out_of_argv(self):
         self.keys = {"ANTHROPIC_API_KEY": "sk-secret"}
         cmd = self.build({"service": "claude"})
