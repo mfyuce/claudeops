@@ -37,7 +37,15 @@ def resolve_static_path(url_path: str) -> Optional[Path]:
     if not candidate.is_relative_to(DIST_DIR):
         return None
     if candidate.is_dir():
-        candidate = candidate / "index.html"
+        # `.resolve()` again after appending "index.html": the DIRECTORY was
+        # already validated above, but appending a literal component doesn't
+        # re-check whether THAT component is itself a symlink escaping
+        # DIST_DIR — `is_relative_to` alone is a lexical/string comparison, it
+        # doesn't follow symlinks. Without the re-resolve, a symlink planted at
+        # `<dir>/index.html` pointing outside DIST_DIR would pass the
+        # boundary check and then get served (Codex F05, live-confirmed with a
+        # sentinel file).
+        candidate = (candidate / "index.html").resolve()
         if not candidate.is_relative_to(DIST_DIR):
             return None
     return candidate if candidate.is_file() else None

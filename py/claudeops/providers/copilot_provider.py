@@ -82,8 +82,9 @@ Farklar (agy/codex'e göre, ikisi de en yakın emsal):
   ediyor mu, bir seçici mi açıyor, onay diyaloğu var mı) CANLI DOĞRULANMADI — claude'un
   aynı alanda (bkz. `ClaudeProvider.apply_live_model_switch`) kanıtsız bir ilk deneme
   YANLIŞ ÇIKIP canlı veri kaybına yol açtığı bir tarihi var, o dersle aynı temkin.
-- BYOK (bring-your-own-key, ör. DeepSeek/Ollama/Azure): `env_overrides()` `COPS_NAME`'e
-  EK olarak `settings.byok_env_for("copilot")`'ı da enjekte eder — `settings.json`'ın
+- BYOK (bring-your-own-key, ör. DeepSeek/Ollama/Azure): `settings.byok_env_for("copilot")`
+  0600 bir dosyaya yazılır ve `sh -c '. dosya && exec copilot ...'` ile yüklenir (argv'ye
+  GİRMEZ, bkz. `_sync_byok_env_file`) — `settings.json`'ın
   `byok.copilot` alanına `COPILOT_PROVIDER_BASE_URL`/`_API_KEY`/`COPILOT_MODEL` gibi
   env'ler elle yazılırsa, copilot'un KENDİ resmi BYOK mekanizması (`copilot help
   providers` — örneklerinden biri LİTERALEN `deepseek-coder-v2:16b`, Ollama üzerinden)
@@ -103,6 +104,48 @@ from .base import CliProvider, McpServerSpec
 from ..settings import byok_env_for, resolved_binary
 
 SESSION_STORE_DB = os.path.expanduser("~/.copilot/session-store.db")
+
+# BYOK secrets (COPILOT_PROVIDER_BASE_URL/_API_KEY/_MODEL) used to be injected
+# via `env_overrides()` → spawn.py's `env KEY=VAL ... <binary>` — gömülü
+# doğrudan KOMUT SATIRINDA, `ps aux`/`/proc/*/cmdline` HERKESE açık (bu makine
+# çok-kullanıcılı). Üç bağımsız review (Codex F02, deepseek Y1/Y14, Antigravity
+# SEC-05) aynı sızıntıyı buldu. Fix: `providers/ucli_provider.py`'nin
+# `_API_KEY_FILE`+`sh -c '. file && exec ...'` deseninin AYNISI — tek fark,
+# ucli'nin TEK anahtarına karşı burada keyfi sayıda {ENV_VAR: value} çifti
+# olduğu için dosya içeriği `export KEY=VALUE` satırları (shlex-quoted).
+_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+_BYOK_ENV_FILE = os.path.expanduser("~/.claude/claudeops/copilot_byok_env")
+_BYOK_ENV_MANAGED_MARKER = _BYOK_ENV_FILE + ".managed"  # bkz. ucli_provider.py'nin AYNI deseni
+
+
+def _sync_byok_env_file() -> bool:
+    """`ucli_provider.py::_sync_api_key_file()` ile AYNI sözleşme (bkz. o
+    fonksiyonun docstring'i — marker/managed/silme mantığı birebir aynı), tek
+    fark: tek bir env değil, `byok_env_for("copilot")`'un TÜM {ENV_VAR: value}
+    çiftleri tek bir `export ...` satır dosyasına yazılıyor. Env-var ADI
+    (`k`) burada da doğrulanıyor (`^[A-Z_][A-Z0-9_]*$`) — settings.py'nin
+    `save_settings()`'i zaten aynı allowlist'i giriş noktasında uyguluyor, bu
+    sadece savunma-derinliği (TODO.md'nin "aynı allowlist deseniyle kapatılmalı"
+    notu, spawn.py'nin env_prefix'i için de geçerli aynı ilke)."""
+    env = byok_env_for("copilot")
+    safe_env = {k: v for k, v in env.items() if _ENV_NAME_RE.match(k)}
+    if not safe_env:
+        if os.path.isfile(_BYOK_ENV_MANAGED_MARKER):
+            for p in (_BYOK_ENV_FILE, _BYOK_ENV_MANAGED_MARKER):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+            return False
+        return os.path.isfile(_BYOK_ENV_FILE)
+    lines = "".join(f"export {k}={shlex.quote(v)}\n" for k, v in safe_env.items())
+    fd = os.open(_BYOK_ENV_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    os.fchmod(fd, 0o600)  # retroactive: O_CREAT's mode arg only applies on FIRST creation
+    with os.fdopen(fd, "w") as f:
+        f.write(lines)
+    os.close(os.open(_BYOK_ENV_MANAGED_MARKER, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600))
+    return True
+
 
 # Modül docstring'indeki 2026-09-13 düzeltmesine bkz.: `/model` seçicisinden
 # görülen ~19 modelden "Unavailable" iki tanesi çıkarılmış hali — sadece
@@ -223,12 +266,21 @@ class CopilotProvider(CliProvider):
         parts += [shlex.quote(a) for a in extra_args]
         if prompt:
             parts += ["-i", shlex.quote(prompt)]
-        return " ".join(parts)
+        inner = " ".join(parts)
+        if _sync_byok_env_file():
+            # Anahtarları argv'ye GÖMMÜYORUZ (yukarıdaki modül-seviyesi yoruma
+            # bkz.) — dosyayı `exec`'ten ÖNCE source'layan bir `sh -c` sarmalıyor,
+            # discovery'nin gördüğü argv (`matches_proc`/`extract_info`) temiz
+            # kalır (ucli_provider.py'nin AYNI `exec` deseni).
+            wrapped = f". {shlex.quote(_BYOK_ENV_FILE)} && exec {inner}"
+            return "sh -c " + shlex.quote(wrapped)
+        return inner
 
     def env_overrides(self, session_name: str) -> Dict[str, str]:
-        env = {"COPS_NAME": session_name}
-        env.update(byok_env_for("copilot"))
-        return env
+        # BYOK ARTIK burada YOK — bkz. `_sync_byok_env_file()`'in modül-seviyesi
+        # yorumu. COPS_NAME sır DEĞİL, spawn.py'nin `env KEY=VAL ...` argv-gömme
+        # yoluna güvenle kalabilir (agy/codex'le aynı, isimlendirme mekanizması).
+        return {"COPS_NAME": session_name}
 
     def matches_proc(self, cmd: List[str]) -> bool:
         # `--server`/`--stdio` = başka bir programın kendi backend'i olarak

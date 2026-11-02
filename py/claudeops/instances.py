@@ -91,7 +91,11 @@ def _mutate(fn: Callable[[Dict[str, dict]], object]) -> object:
         data = read_strict()
         result = fn(data["instances"])
         data["version"] = _VERSION
-        atomic_write_json(INSTANCES_JSON, data)
+        # mode=0o600: instances.json was the one registry file in this codebase
+        # that never passed a mode to atomic_write_json (settings.json/hosts.json
+        # already do) — under a normal umask it landed world-readable, and it
+        # can carry per-instance blueprint/cwd paths (Antigravity SEC-11).
+        atomic_write_json(INSTANCES_JSON, data, mode=0o600)
     return result
 
 

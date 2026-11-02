@@ -74,7 +74,7 @@ def tmux_attach_shell_fragment(name: str) -> str:
     command to bind a NEW window to an EXISTING tmux session, without touching
     the CLI process inside it (used by spawn.py's `open_window` — the one-click
     fix for a session that ended up windowless)."""
-    return f"{shlex.join(_base_argv())} -f {shlex.quote(tmux_conf_path())} attach-session -t {shlex.quote(name)}"
+    return f"{shlex.join(_base_argv())} -f {shlex.quote(tmux_conf_path())} attach-session -t {shlex.quote(_exact(name))}"
 
 
 def tmux_spawn_direct(name: str, cwd: str, inner: str, env: dict) -> bool:

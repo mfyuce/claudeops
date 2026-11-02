@@ -68,7 +68,7 @@ from .. import remote_desktop
 from .. import trust_dialog
 from .. import routing as routing_mod
 from ..session import Session
-from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV
+from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV, ensure_private_state_dir
 from ..settings import (normalize_ucli_services, default_effort_for, default_model_for, load_settings, resolved_model_for, save_settings,
                         ucli_usage_warn_thresholds)
 from ..ucli_client import quota_equivalent_tokens, usage_warn_level
@@ -3563,6 +3563,25 @@ def _v1_last_user_text(messages: list) -> str:
 # çağırıyor; davranış (varsayılan `stable_polls=2`, marker/cancel yok)
 # BİREBİR AYNI kaldı.
 
+# Session-adı → kilit — `_v1_chat_completion`'ın "aynı session'a AYNI ANDA iki
+# istek gelirse ikisi de mesajını gönderir, iki bekleme döngüsü aynı 'bitti'
+# sinyalini görüp AYNI metni döndürebilir" (kendi docstring'inin uzun süre
+# kabul ettiği açık) burada kapatılıyor (Codex'in "Ek bulgular" tablosu +
+# deepseek M6, bağımsız 2. kaynak). Kayıt asla temizlenmiyor — `guard_lock`/
+# `atomic_json`'ın thread-id'li tmp-dosya deseniyle AYNI ruh: sınırlı, sabit
+# sayıda session-adı için tutulan küçük bir sözlük, pratikte sızıntı değil.
+_V1_SESSION_LOCKS: Dict[str, threading.Lock] = {}
+_V1_SESSION_LOCKS_GUARD = threading.Lock()
+
+
+def _v1_lock_for(name: str) -> threading.Lock:
+    with _V1_SESSION_LOCKS_GUARD:
+        lock = _V1_SESSION_LOCKS.get(name)
+        if lock is None:
+            lock = threading.Lock()
+            _V1_SESSION_LOCKS[name] = lock
+        return lock
+
 
 def _v1_chat_completion(data) -> tuple:
     """`POST /v1/chat/completions` → (gövde, HTTP durum kodu).
@@ -3571,13 +3590,12 @@ def _v1_chat_completion(data) -> tuple:
     bağlanmadı (v1 kapsamı) — uzak host desteği doğal bir devam adımı, burada
     yapılmadı.
 
-    Session başına SERİLEŞTİRME YOK: aynı session'a AYNI ANDA iki istek gelirse
-    (ThreadingHTTPServer istek-başına-thread) ikisi de mesajını gönderir, CLI
-    ikincisini kuyruğa alır ve iki bekleme döngüsü aynı "bitti" sinyalini
-    görüp AYNI metni döndürebilir. Panelin kendi "mesaj gönder" kutusu da hep
-    böyleydi (aynı pane, aynı yarış) — burada da yeni bir sorun değil, sadece
-    tek-çağıran varsayımı. Gerçekten paralel kullanılacaksa session başına bir
-    kilit doğal devam adımı."""
+    Session başına SERİLEŞTİRME: `_v1_lock_for(s.name)` ile aynı session'a
+    AYNI ANDA gelen ikinci bir istek, birincinin tüm turu (baseline→gönder→
+    bekle→dön) bitene kadar bekler — aksi halde ikisi de mesajını gönderir,
+    iki bekleme döngüsü aynı "bitti" sinyalini görüp AYNI metni döndürebilirdi
+    (2026-09-27 review, Codex + deepseek M6 bağımsız buldu). FARKLI
+    session'lara giden istekler birbirini hiç beklemez (kilit isim-bazlı)."""
     if not isinstance(data, dict):
         return _v1_error("request body must be a JSON object"), 400
 
@@ -3615,54 +3633,63 @@ def _v1_chat_completion(data) -> tuple:
         return _v1_error(f"'{model}' has no conversation to talk to (its CLI is a plain shell) — "
                           "see GET /v1/models for addressable sessions"), 404
 
-    # Baseline gönderimden ÖNCE: "yeni yanıt geldi mi" sorusunun tek referansı.
-    # None = bu provider'ın okunabilir bir transcript'i yok → yanıtı hiçbir zaman
-    # geri okuyamayız; mesajı GÖNDERMEDEN reddet (aksi halde kullanıcının mesajı
-    # session'a düşer ama çağıran timeout alır).
-    baseline = provider.last_exchange(s.cwd, s.sid)
-    if baseline is None:
-        return _v1_error(f"'{model}' runs a CLI whose transcript can't be read back, so its reply "
-                          "can't be returned over this API"), 404
+    # Baseline'dan yanıtın dönüşüne kadar TÜM turu bu session'ın kendi kilidiyle
+    # seriyorluyoruz: aksi halde aynı session'a AYNI ANDA iki istek gelirse
+    # (ThreadingHTTPServer istek-başına-thread) ikisi de kendi mesajını
+    # gönderir, iki bekleme döngüsü aynı "bitti" sinyalini görüp AYNI metni
+    # döndürebilirdi (Codex'in "Ek bulgular" tablosu + deepseek M6, bağımsız
+    # 2. kaynak — fonksiyonun kendi eski docstring'i bunu bilinen bir sınırlama
+    # olarak kabul ediyordu). Kilit SADECE bu session-adına özel — başka bir
+    # session'a giden eşzamanlı bir istek hiç beklemez.
+    with _v1_lock_for(s.name):
+        # Baseline gönderimden ÖNCE: "yeni yanıt geldi mi" sorusunun tek referansı.
+        # None = bu provider'ın okunabilir bir transcript'i yok → yanıtı hiçbir zaman
+        # geri okuyamayız; mesajı GÖNDERMEDEN reddet (aksi halde kullanıcının mesajı
+        # session'a düşer ama çağıran timeout alır).
+        baseline = provider.last_exchange(s.cwd, s.sid)
+        if baseline is None:
+            return _v1_error(f"'{model}' runs a CLI whose transcript can't be read back, so its reply "
+                              "can't be returned over this API"), 404
 
-    # `s.sid` bilinmiyorsa (fresh/hiç resume edilmemiş session — 2026-09-09
-    # canlı bulundu: agy'nin cwd→id cache'i tam olarak bu durumda session
-    # ölene kadar boş kalıyor, `baseline` yukarıda YİNE de boş bir dict olarak
-    # geldiği için 404 DEĞİL sessiz bir 504'e düşüyordu) mesajı göndermeden
-    # ÖNCE ucuz bir "durum" yakala — provider desteklemiyorsa (claude/codex)
-    # None, davranış değişmez. `discover_live_sid()` ile eşleşen çift, bkz.
-    # `_v1_wait_for_reply` docstring'i.
-    live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
+        # `s.sid` bilinmiyorsa (fresh/hiç resume edilmemiş session — 2026-09-09
+        # canlı bulundu: agy'nin cwd→id cache'i tam olarak bu durumda session
+        # ölene kadar boş kalıyor, `baseline` yukarıda YİNE de boş bir dict olarak
+        # geldiği için 404 DEĞİL sessiz bir 504'e düşüyordu) mesajı göndermeden
+        # ÖNCE ucuz bir "durum" yakala — provider desteklemiyorsa (claude/codex)
+        # None, davranış değişmez. `discover_live_sid()` ile eşleşen çift, bkz.
+        # `_v1_wait_for_reply` docstring'i.
+        live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
 
-    diag_log("v1_chat_start", name=s.name, chars=len(user_text))
-    if not tmux_send_keys(s.name, user_text, settle_delay=provider.input_settle_delay()):
-        diag_log("v1_chat_send_failed", name=s.name)
-        return _v1_error(f"failed to deliver the message to session '{s.name}'", "server_error"), 500
+        diag_log("v1_chat_start", name=s.name, chars=len(user_text))
+        if not tmux_send_keys(s.name, user_text, settle_delay=provider.input_settle_delay()):
+            diag_log("v1_chat_send_failed", name=s.name)
+            return _v1_error(f"failed to deliver the message to session '{s.name}'", "server_error"), 500
 
-    reply = turns.wait_for_reply(s, provider, baseline, live_snapshot)
-    if reply is None:
-        diag_log("v1_chat_timeout", name=s.name)
-        return _v1_error(
-            f"'{model}' did not finish a reply within {turns.TIMEOUT_SECONDS:.0f}s. The message WAS "
-            "delivered and may still be processing — check the session, or read the result later.",
-            "timeout_error"), 504
-    diag_log("v1_chat_done", name=s.name, chars=len(reply))
-    if want_stream:
-        # `result`'ın LİSTE olması dispatcher için "bunu `_sse_chunks` ile yaz"
-        # sinyali (dict = tek JSON gövde, liste = SSE chunk dizisi) — bkz.
-        # `do_POST`'taki `/v1/chat/completions` dalı.
-        return _v1_stream_chunks(model, reply), 200
-    return {
-        "id": "chatcmpl-" + secrets.token_hex(12),
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": model,  # çağıranın YAZDIĞI ad (base-eşleşmede `s.name`den farklı olabilir)
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
-        # Gerçek token sayıları burada UCUZA elde edilemiyor: sayan taraf pane'in
-        # içindeki CLI ve bize o sayıyı veren bir arayüz yok. Sıfır bırakmak,
-        # sahte-hassas bir tahmin uydurmaktan iyidir (istemciler alanın VARLIĞINI
-        # bekler, doğruluğuna genelde bağımlı değildir).
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-    }, 200
+        reply = turns.wait_for_reply(s, provider, baseline, live_snapshot)
+        if reply is None:
+            diag_log("v1_chat_timeout", name=s.name)
+            return _v1_error(
+                f"'{model}' did not finish a reply within {turns.TIMEOUT_SECONDS:.0f}s. The message WAS "
+                "delivered and may still be processing — check the session, or read the result later.",
+                "timeout_error"), 504
+        diag_log("v1_chat_done", name=s.name, chars=len(reply))
+        if want_stream:
+            # `result`'ın LİSTE olması dispatcher için "bunu `_sse_chunks` ile yaz"
+            # sinyali (dict = tek JSON gövde, liste = SSE chunk dizisi) — bkz.
+            # `do_POST`'taki `/v1/chat/completions` dalı.
+            return _v1_stream_chunks(model, reply), 200
+        return {
+            "id": "chatcmpl-" + secrets.token_hex(12),
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,  # çağıranın YAZDIĞI ad (base-eşleşmede `s.name`den farklı olabilir)
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
+            # Gerçek token sayıları burada UCUZA elde edilemiyor: sayan taraf pane'in
+            # içindeki CLI ve bize o sayıyı veren bir arayüz yok. Sıfır bırakmak,
+            # sahte-hassas bir tahmin uydurmaktan iyidir (istemciler alanın VARLIĞINI
+            # bekler, doğruluğuna genelde bağımlı değildir).
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }, 200
 
 
 def _v1_stream_chunks(model: str, reply: str) -> list:
@@ -3837,6 +3864,48 @@ class _Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *a):
         pass  # stdout'u kirletme — sessiz
+
+    def end_headers(self):
+        # Standart sertleştirme header'ları — HİÇBİR yanıtta yoktu (Antigravity
+        # SEC-10). Tek noktadan (her `send_response(...)...end_headers()` zaten
+        # buradan geçiyor) TÜM yollara uygulanır — `_json`/`_serve_static`/
+        # `_unauthorized`/upload/download hepsi dahil.
+        #
+        # CSP: `py/webui/dist/index.html` TEK bir kendi-origin'inden `<script
+        # type=module>` + TEK bir kendi-origin'inden `<link rel=stylesheet>`
+        # içeriyor (Vite build'i doğrulandı) — harici script/font/CDN referansı
+        # YOK, css-in-js kütüphanesi (styled-components/emotion) YOK. React'in
+        # kendi `style={{...}}` prop'u DOM'a CSSOM property-atamasıyla uygulanır
+        # (`el.style.x = ...`), bir `style="..."` HTML attribute'u YAZMAZ — CSP
+        # `style-src` bunu kısıtlamaz. Yine de `style-src`e `'unsafe-inline'`
+        # BİLEREK eklendi (savunma-derinliği tarafında en ucuz taviz): asıl
+        # değerli sınır `script-src 'self'` (inline `<script>` enjeksiyonunu VE
+        # harici script yüklemeyi engeller) — bunu gevşetmedik. `img-src`e
+        # `blob:` savunma amaçlı açık: Uzak Masaüstü kareleri WS'ten `Blob` gelir
+        # (uzakgoz `viewer.js` şu an `createImageBitmap`+canvas kullanıyor, eski
+        # sürüm `createObjectURL` ile `<img>`e basıyordu). `viewer.js` aynı
+        # origin'den (`/desktop/viewer.js`) dinamik `import()` ile yüklenir, ses
+        # `/api/audio/live.mp3` (media-src = default-src 'self'). `connect-src` SADECE `'self'` — `ws:`/`wss:` şema-joker'leri
+        # İLK sürümde vardı ama 2026-09-28 code-review'ı bunun gereksiz geniş
+        # olduğunu buldu: bir CSP kaynağında sadece şema verilip host
+        # verilmezse O ŞEMADAKİ HERHANGİ bir host'a izin verilmiş olur —
+        # frontend'deki `new WebSocket(...)` çağrılarının ÜÇÜ DE (`useStatus.ts`/
+        # `useTermOutput.ts`/`DesktopTab.tsx`) `location.host`'tan URL kuruyor
+        # (uzak-host federasyonu TARAYICI DEĞİL, sunucu tarafında proxy'leniyor
+        # — `host=` query param'ıyla), yani `'self'` tek başına zaten tüm meşru
+        # kullanımı kapsıyor; şema-joker'leri sadece gelecekteki bir XSS'in
+        # keyfi bir `wss://` adresine veri sızdırmasını `script-src 'self'`in
+        # engellemeye çalıştığı SINIFTAN bir delik olarak açık bırakıyordu.
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; "
+            "frame-ancestors 'none'",
+        )
+        super().end_headers()
 
     def _authorized(self) -> bool:
         """Token İKİ yoldan gelebilir — ikisi de AYNI `self.token`'a, AYNI
@@ -5014,6 +5083,11 @@ def register(sub):
 
 
 def run(args) -> int:
+    # `cops web` TEK her zaman çalışan süreç olduğu için kapsayıcı uygulama
+    # noktası burası: roster.tsv/models.tsv/settings.json/hosts.json/web.token/
+    # instances.json/*_api_key — bu dizindeki HER dosyayı tek seferde 0700'e alır (Antigravity
+    # SEC-11 + Codex'in "Ek bulgular" tablosu).
+    ensure_private_state_dir()
     token = _load_or_create_token()
     if args.print_token:
         print(token)

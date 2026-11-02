@@ -21,3 +21,18 @@ PROJECTS_DIR = os.path.join(CLAUDE_DIR, "projects")      # <encoded-cwd>/<sid>.j
 CONFIG_JSON = os.path.join(HOME, ".claude.json")         # bozulursa resume-hang
 
 GUARD_LOCK = f"/tmp/claudeops-{os.getuid()}/guard.lock"   # kullanıcıya özel: çok kullanıcılı makinede ikinci kullanıcı PermissionError almaz
+
+
+def ensure_private_state_dir() -> None:
+    """`CLAUDEOPS_DIR` (roster.tsv/models.tsv/settings.json/hosts.json/
+    web.token/instances.json/ucli_api_key — every piece of this
+    tool's own state) must not be readable/traversable by another local
+    account: this machine is multi-user (see project CLAUDE.md), and several
+    of these files carry bearer tokens/API keys. A single `chmod 0700` on the
+    directory covers every file inside it regardless of each file's own mode
+    bits (a non-owner can't even `stat` a filename inside a 0700 dir) — cheaper
+    and more robust than chasing down every individual writer. Call at the
+    start of each long-lived entrypoint (`cops web`) — idempotent,
+    a plain `os.chmod` on an already-0700 dir is a no-op."""
+    os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
+    os.chmod(CLAUDEOPS_DIR, 0o700)
