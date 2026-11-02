@@ -55,7 +55,8 @@ def _resolve_within_roots(path: str, roots: List[Tuple[str, str]]) -> Optional[s
         return None
     for _key, root in roots:
         real_root = os.path.realpath(root)
-        if real == real_root or real.startswith(real_root + os.sep):
+        prefix = real_root if real_root.endswith(os.sep) else real_root + os.sep      # kök "/" ise "//" olmasın
+        if real == real_root or real.startswith(prefix):
             return real
     return None
 

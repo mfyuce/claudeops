@@ -26,6 +26,22 @@ class PureTest(unittest.TestCase):
         self.assertEqual(rs.parse_remote("https://gitlab.com/a/b/c"), ("gitlab.com", "a/b/c"))
         self.assertEqual(rs.parse_remote("/srv/local.git"), ("", ""))
 
+    def test_dest_guard_fails_closed_on_check_ignore_error(self):
+        from types import SimpleNamespace as NS
+
+        def run(argv, **kw):
+            if "rev-parse" in argv:
+                return NS(returncode=0, stdout="/repo\n", stderr="")
+            return NS(returncode=128, stdout="", stderr="fatal: boom")   # check-ignore hata
+        ok, why = rs.dest_guard("/nonexistent/reviews", run=run)
+        self.assertFalse(ok)
+        self.assertIn("check-ignore", why)
+
+    def test_dest_guard_localized_not_a_repo_is_rejected_not_open(self):
+        from types import SimpleNamespace as NS
+        run = lambda argv, **kw: NS(returncode=128, stdout="", stderr="fatal: kein Git-Repository")
+        self.assertFalse(rs.dest_guard("/nonexistent/reviews", run=run)[0])
+
     def test_dest_guard(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(rs.dest_guard(os.path.join(d, "plain", "reviews")), (True, ""))   # git deposu değil

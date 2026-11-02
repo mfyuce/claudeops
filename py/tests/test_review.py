@@ -70,6 +70,16 @@ class TestPlanner(unittest.TestCase):
         self.assertFalse(rv.project_complete(h, "p", TS, NOW))
         self.assertFalse(rv.project_complete(h, "p", [], NOW))
 
+    def test_focus_project_goes_first(self):
+        h = hist(**{"half|agy/gemini-3-flash": done(NOW - DAY)})          # half: yarım, normalde ilk
+        p = pool("half", "never", "older")
+        self.assertEqual(rv.next_review(p, h, TS, NOW)[0], "half")
+        p["projects"]["never"]["focus"] = True
+        self.assertEqual(rv.next_review(p, h, TS, NOW)[0], "never")      # odak öne geçer
+        p["projects"]["never"]["enabled"] = False                        # kapalı odak sayılmaz
+        self.assertEqual(rv.next_review(p, h, TS, NOW)[0], "half")
+        self.assertEqual(rv.pool_focus(p), [])
+
     def test_order_partial_then_never_then_oldest(self):
         h = hist(**{
             "half|agy/gemini-3-flash": done(NOW - DAY),                       # yarım: evren eksik
@@ -387,6 +397,17 @@ class TestClaudeArgv(unittest.TestCase):
             self.assertNotIn(forbidden, a[a.index("--allowedTools"):a.index("--disallowedTools")])
         self.assertNotIn("--dangerously-skip-permissions", a)
         self.assertEqual(wr.claude_argv("b", "m", "", "P").count("--effort"), 0)
+
+    def test_claude_argv_denies_every_forbidden_path_at_tool_level(self):
+        from claudeops import review as rv
+        from claudeops.commands import web_review as wr
+        a = wr.claude_argv("b", "m", "low", "P")
+        denied = a[a.index("--disallowedTools"):]
+        for p in rv.FORBIDDEN_PATHS:
+            self.assertIn(f"Read(**/{p})", denied)
+            self.assertIn(f"Bash(*{p}*)", denied)
+        self.assertIn("Read(**/CLAUDE.md)", denied)
+        self.assertIn("Bash(*CLAUDE.md*)", denied)
 
 
 class TestCodexArgv(unittest.TestCase):

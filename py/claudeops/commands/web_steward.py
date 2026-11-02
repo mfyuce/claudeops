@@ -5537,7 +5537,7 @@ def http_review_lesson(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
 
 
 def http_review_pool(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
-    """Havuz: add|remove|enable|disable (CLI `review pool ...`); yalnız insan."""
+    """Havuz: add|remove|enable|disable|focus|unfocus (CLI `review pool ...`); yalnız insan."""
     if (d := _human_only(data, "change the review pool")):
         return d
     cfg, err = _reviewer_cfg(sid)

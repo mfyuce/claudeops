@@ -82,15 +82,25 @@ def _num(cfg: Dict[str, Any], key: str, default: Optional[float]) -> Optional[fl
     return v if math.isfinite(v) else default      # "nan"/"inf" geçerli float'tır ama karşılaştırmalar hep yanlış olur
 
 
+def _week_day_index(usage: Usage, now: float, tz: Optional[Any] = None) -> "tuple[datetime.datetime, int]":
+    """(hafta başı, 0..6 gün indeksi). Sınırlar DUVAR SAATİYLE (sıfırlanma - 7 takvim günü, +k takvim günü); sabit 86400 sn
+    DST haftasında sınırı 1 saat kaydırıp gün etiketini/tavanı yanlış günde değiştirirdi. `reset_ts` bilinmeli."""
+    start = datetime.datetime.fromtimestamp(float(usage.reset_ts or 0), tz) - datetime.timedelta(days=7)
+    idx = 0
+    for k in range(1, 7):
+        if now >= (start + datetime.timedelta(days=k)).timestamp():
+            idx = k
+    return start, idx
+
+
 def day_label(usage: Usage, now: float, tz: Optional[Any] = None) -> str:
     """Bugünün gün adı (`mon`..`sun`). Haftalık sıfırlanmadan (Pzt 18:00) SONRAKİ 24 saat SALI sayılır (sahip kuralı
     2026-10-25): gün = sıfırlanmadan itibaren geçen 24 saatlik dilim, etiketi sıfırlanma gününün ERTESİ günüdür.
     Sıfırlanma bilinmiyorsa takvim günü."""
     if not usage.reset_ts:
         return DAYS[datetime.datetime.fromtimestamp(now, tz).weekday()]
-    start = usage.reset_ts - 7 * 86400
-    idx = min(6, max(0, int((now - start) // 86400)))
-    return DAYS[(datetime.datetime.fromtimestamp(start, tz).weekday() + 1 + idx) % 7]
+    start, idx = _week_day_index(usage, now, tz)
+    return DAYS[(start.weekday() + 1 + idx) % 7]
 
 
 def day_cap(cfg: Dict[str, Any], usage: Usage, now: float, tz: Optional[Any] = None) -> Optional[float]:
@@ -102,8 +112,7 @@ def day_cap(cfg: Dict[str, Any], usage: Usage, now: float, tz: Optional[Any] = N
     if str(cfg.get("mode")) != "auto" or not usage.reset_ts:
         return None
     final = _num(cfg, "final_limit", DEFAULT_FINAL) or DEFAULT_FINAL
-    start = usage.reset_ts - 7 * 86400
-    days = min(7, max(1, int((now - start) // 86400) + 1))
+    days = _week_day_index(usage, now, tz)[1] + 1
     return round(final * days / 7, 1)
 
 

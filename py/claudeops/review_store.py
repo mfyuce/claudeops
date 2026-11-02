@@ -19,9 +19,12 @@ def parse_remote(url: str) -> Tuple[str, str]:
 
 
 def _run(argv: List[str], timeout: float = 15.0, run: Optional[Callable] = None) -> Tuple[int, str]:
-    run = run or subprocess.run
+    kw: Dict[str, object] = {}
+    if run is None:
+        run = subprocess.run
+        kw["env"] = dict(os.environ, LC_ALL="C")      # git iletileri İngilizce: "not a git repository" ayrımı yerel dile bağlı olmasın
     try:
-        r = run(argv, capture_output=True, text=True, timeout=timeout)
+        r = run(argv, capture_output=True, text=True, timeout=timeout, **kw)
     except (OSError, subprocess.TimeoutExpired) as e:
         return 1, ("timeout" if isinstance(e, subprocess.TimeoutExpired) else "oserror")
     out = (r.stdout or "").strip()
@@ -83,6 +86,8 @@ def dest_guard(dst_root: str, run: Optional[Callable] = None) -> Tuple[bool, str
     rc, _ = _run(["git", "-C", top, "check-ignore", "-q", probe], run=run)
     if rc == 0:
         return True, ""
+    if rc != 1:         # 1 = "yok sayılmıyor"; başka kod (128 hata, zaman aşımı) = belirlenemedi: fail-closed
+        return False, "git check-ignore belirlenemedi (hata/zaman aşımı): güvenli tarafta reddedildi"
     vis = repo_visibility(top, run=run)
     if vis == "private":
         return True, ""

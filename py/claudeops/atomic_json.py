@@ -81,6 +81,7 @@ def atomic_write_text(path: str, text: str, *, mode: Optional[int] = None) -> No
 
 _LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict = {}
+_HELD = threading.local()       # iş parçacığı başına {path: iç içe derinlik}
 _WARNED_LOCKS: set = set()      # path başına tek uyarı (log taşmasın)
 
 
@@ -92,6 +93,27 @@ def file_lock(path: str) -> Iterator[None]:
     with _LOCKS_GUARD:
         tl = _THREAD_LOCKS.setdefault(path, threading.RLock())
     with tl:
+        held = getattr(_HELD, "paths", None)
+        if held is None:
+            held = _HELD.paths = {}
+        if held.get(path, 0) > 0:       # aynı iş parçacığı zaten tutuyor: ikinci flock (başka fd) kendini kilitlerdi
+            held[path] += 1
+            try:
+                yield
+            finally:
+                held[path] -= 1
+            return
+        held[path] = 1
+        try:
+            with _file_lock_outer(path):
+                yield
+        finally:
+            held.pop(path, None)
+
+
+@contextlib.contextmanager
+def _file_lock_outer(path: str) -> Iterator[None]:
+    if True:
         fd = None
         try:
             d = os.path.dirname(path)

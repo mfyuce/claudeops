@@ -1,12 +1,13 @@
-"""reviewer değnekçi motoru (adım 2: yalnız iskelet).
+"""reviewer değnekçi motoru: havuz eşitleme, sıradaki çift, çalıştırıcılar (claude/codex/Evren/agy), sonuç ve bulgular.
 
 `web_steward.tick_round`, rolü `reviewer` olan ve AÇIK kimlik için `tick_once`/`passive_scan`/kart/beyin/kapatma
 yerine YALNIZ `review_tick(cfg)` çağırır. reviewer kimliği hiçbir tmux oturumuna dokunmaz (`web_steward._target` onu
 her zaman reddeder), `projects.json`'a yazmaz (`steward.upsert_project`/`transfer_project` `ReviewerRefused`), beyni
 yoktur (`brain_start` reddeder); havuzu `review_pool.json`, geçmişi `review_history.json` (`review.py` saf çekirdeği).
 
-Adım 5'te doldurulacak: havuz eşitleme (`review.pool_sync`), sıradaki çift (`review.next_review`), Evren/agy
-çalıştırıcıları (kendi `Popen`'ı, zaman aşımı, iptal), sonuç dosyası + bulgu çıkarımı.
+Uygulanmış: havuz eşitleme (`review.pool_sync`), sıradaki çift (`review.next_review`), her koşu için kendi `Popen`'ı
+(zaman aşımı, iptal; `start_job`/`run_job`), sonuç dosyası + bulgu çıkarımı, ders dosyası (`_write_lesson`), öz-doğrulama
+(`self_verify`). claude koşusu salt okunur ve yasak yollar araç düzeyinde kapalıdır (`claude_argv`).
 
 Bu modül `web.py`'yi ve `web_steward`'ı İÇE AKTARMAZ (döngü yok; eylemler gerekirse geri çağrıyla verilir)."""
 import codecs
@@ -140,10 +141,12 @@ def claude_argv(binary: str, model: str, effort: str, prompt: str, json_out: boo
         argv += ["--effort", effort]
     if json_out:        # reviewer koşusu: stdout tek JSON (result + usage); öz-doğrulama düz metin okur, bayrak onda yok
         argv += ["--output-format", "json"]
+    # Yasak yollar yalnız istemle değil araç düzeyinde de kapalı (rv.FORBIDDEN_PATHS): Read/Bash(ls|wc|head ... desen).
+    deny = [f"Read(**/{p})" for p in rv.FORBIDDEN_PATHS] + [f"Bash(*{p}*)" for p in rv.FORBIDDEN_PATHS]
     return argv + ["--tools", "default", "--permission-mode", "dontAsk",
                    "--settings", json.dumps({"claudeMdExcludes": ["**/CLAUDE.md"], "autoMemoryEnabled": False}),
                    "--allowedTools", "Read", "Grep", "Glob", "Bash(ls:*)", "Bash(wc:*)", "Bash(head:*)",
-                   "--disallowedTools", "Read(**/CLAUDE.md)", "Edit", "Write", "NotebookEdit", "Bash(*CLAUDE.md*)"]
+                   "--disallowedTools", *deny, "Edit", "Write", "NotebookEdit"]
 
 
 def codex_argv(binary: str, cwd: str, model: str, effort: str, prompt: str) -> List[str]:
@@ -1937,6 +1940,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
         if not isinstance(e, dict):
             continue
         rows.append({"project": name, "enabled": bool(e.get("enabled")) and not e.get("removed_at"),
+                     "focus": bool(e.get("focus")) and bool(e.get("enabled")) and not e.get("removed_at"),
                      "source": e.get("source") or "", "added_at": e.get("added_at"), "removed_at": e.get("removed_at"),
                      "complete": rv.project_complete(hist, name, targets, t),
                      "pairs": {tg.key: hist["pairs"].get(rv.pair_key(name, tg)) for tg in targets}})
@@ -2021,8 +2025,8 @@ def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None
     if not project or not sw.valid_name(project):
         return {"ok": False, "error": "invalid project name"}
     p = sw.paths_for(cfg.sid)
-    if action not in ("add", "remove", "enable", "disable"):
-        return {"ok": False, "error": "action must be add|remove|enable|disable"}
+    if action not in ("add", "remove", "enable", "disable", "focus", "unfocus"):
+        return {"ok": False, "error": "action must be add|remove|enable|disable|focus|unfocus"}
     idx = ownership()
     if action in ("add", "enable"):
         why = remote_block_reason(project, idx)
@@ -2040,13 +2044,21 @@ def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None
             return {"ok": False, "error": f"not in pool: {project}"}
         elif action == "enable":
             e.update(enabled=True, removed_at=None)
+        elif action == "focus":
+            if not e.get("enabled") or e.get("removed_at"):
+                return {"ok": False, "error": f"project is not enabled in the pool: {project} (enable it first)"}
+            e["focus"] = True
+        elif action == "unfocus":
+            e.pop("focus", None)
         elif action == "disable":
             e["enabled"] = False
+            e.pop("focus", None)       # kapalı proje odakta kalmaz
         else:   # remove: elle eklenmiş ve sahipsiz kayıt silinir; aksi halde elle-pasif işaretlenir (pool_sync geri açmasın)
             if e.get("source") == "manual" and project not in (idx.get("owners") or {}):
                 del pr[project]
             else:
                 e.update(enabled=False, source="manual", removed_at=t)
+                e.pop("focus", None)
         rv.save_pool(p, pool)
     cancelled = []
     if action in ("remove", "disable"):

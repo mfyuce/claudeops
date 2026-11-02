@@ -282,6 +282,18 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
                     >
                       {t.rvOnly}
                     </button>{" "}
+                    {row.enabled && (
+                      <button
+                        type="button"
+                        className="linkbtn"
+                        disabled={busy}
+                        aria-pressed={!!row.focus}
+                        title={lang === "tr" ? "Odak: işi olan odak projeler sırada her zaman öne geçer" : "Focus: focused projects with work left always go first in the queue"}
+                        onClick={() => void act(() => apiReviewPool(sid, row.focus ? "unfocus" : "focus", row.project))}
+                      >
+                        {row.focus ? "★" : "☆"} {lang === "tr" ? "odak" : "focus"}
+                      </button>
+                    )}{" "}
                     <button type="button" className="linkbtn" disabled={busy} onClick={() => void act(() => apiReviewPool(sid, "remove", row.project))}>
                       {t.rvRemove}
                     </button>

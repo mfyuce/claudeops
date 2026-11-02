@@ -1072,7 +1072,7 @@ export interface ReviewPair {
   status?: string; started_at?: number; finished_at?: number; file?: string; error?: string; label_seen?: string; attempts?: number;
 }
 export interface ReviewPoolRow {
-  project: string; enabled: boolean; source: string; added_at?: number; removed_at?: number | null;
+  project: string; enabled: boolean; focus?: boolean; source: string; added_at?: number; removed_at?: number | null;
   complete: boolean; pairs: Record<string, ReviewPair | null>;
 }
 export interface ReviewRemoteProject { project: string; host: string; where: string; local_path: string }

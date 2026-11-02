@@ -38,9 +38,50 @@ Round 3 (P2 review findings; all tests in `py/tests/test_p2_atomic_writes.py`, N
 28. [x] 22 (SIGTERM tunnel) already done with its test.
 29. [x] `py/tests/test_web_grpc_ucli_flags.py`: mapping test for 14 (flag round-trip tests skip until pb2 is regenerated).
 
+Round 4:
+30. [x] `web_review.claude_argv`: every `rv.FORBIDDEN_PATHS` entry is now denied at tool level (`Read(**/pat)`, `Bash(*pat*)`), not only in the prompt (was CLAUDE.md only). Test in `py/tests/test_review.py` (not run). Caveat: Grep/Glob rely on Claude's Read-deny matching; not verified live.
+
+Round 5:
+31. [x] `review_store.dest_guard`: `check-ignore` exit codes other than 0/1 now fail closed; default git runs use `LC_ALL=C` so the "not a git repository" check is locale-independent. 2 tests in `py/tests/test_review_store.py` (not run).
+
+Round 6:
+32. [x] Checked, no change needed: `agy_label_ok` (exact normalised match, no substring), `commit_reviews` (no remote or `git remote` failure -> `ok=False` with error), `file_lock` (logs a one-time warning when the lock file cannot be taken; falls back to the thread lock). Stale entries in the TODO; owner may strike them.
+
+Round 7:
+33. [x] `snapshot.py:140` concurrent write: checked, `save_snapshot` already runs under `file_lock` + atomic write; stale entry.
+34. [x] `web_review.py` module docstring rewritten (said "step 2: skeleton only"). Docs only, no test.
+Open and larger (not started): multi-line message flattening for ucli targets (TODO line 30, touches tmux_send_keys, /api/term/input, steward directive, handover, web_orch).
+
 ## Resume point
 Next: nothing open for the assistant. Owner: item 9 (also `tsc`, py tests: test_p2_atomic_writes, test_web_grpc_ucli_flags, test_web_sigterm_tunnel, test_web_orch_push_key, test_ucli_cost_watch), regenerate `host_bridge_pb2.py` (14). 15 has no UI work left: it needs ucli to record the service in the session record first.
 
 ## Done log
 - friendlyError applied to 6 tabs; effort badge on ucli rows.
 - ucli_flags backend + badges; mobile CSS block.
+
+## Round 8 (uipol2)
+
+35. [x] ReviewPanel reviewer ODAK (FOCUS) toggle: `review.pool_focus(pool)` + `next_review` sorts focus projects first; `web_review.pool_action` accepts `focus`/`unfocus` (focus needs an enabled project; `disable`/`remove` clear it); `review_state` rows carry `focus`; `types.ts` `ReviewPoolRow.focus?`, `client.ts` `apiReviewPool` action type, ReviewPanel ★/☆ button (TR/EN title). Test: `test_focus_project_goes_first` (`py/tests/test_review.py`). `pool_sync` copies entries so `focus` is kept. `http_review_pool` docstring updated.
+    - GAPS (not done): no dedicated `pool_action` focus/unfocus test (budget ran out); CLI `steward.py` `pool` act (~line 716) does not know focus; ReviewPanel summary / "only this" interaction with focus untouched.
+36. [x] UcliSpendPanel improved (`UcliSpendPanel.tsx`): remaining USD, plain state line (>=80% "close to the cap", >=100% "cap reached: new Claude ucli sessions refused"), bar colour, inline daily-cap editor (same `apiSaveSettings({ucli_cost:{daily_cap_usd}})` as Model keys, then `refresh()`), "lower-bound estimate" note. No quota-percentage was added (Evren quota badge stays in `UsageBadge.tsx`). Needs owner `tsc`. Note: `ucli_cost` 30 s cache is not invalidated when the cap is saved, so the new value shows after up to 30 s (not fixed).
+37. [x] P3 `py/claudeops/files.py:55` `_resolve_within_roots`: root `/` made prefix `//` and matched nothing -> prefix normalised.
+38. [x] P3 `steward_quota`: day boundaries used fixed 86400 s, shifting 1 h in DST weeks (wrong day label/cap) -> new `_week_day_index` uses wall-clock calendar days (used by `day_label`, `day_cap`).
+39. [x] P3 `atomic_json.file_lock` reentrant: a nested call in the same thread opened a 2nd fd and `flock` self-deadlocked -> thread-local held-depth per path, nested calls skip flock (`_file_lock_outer` holds the real lock). Code is slightly awkward (`if True:` kept to avoid re-indenting) — owner may tidy.
+    - Tests for 37-39: new `py/tests/test_p3_fixes.py`.
+    - Not touched: the other P3/P2 items in `claudeops-TODO-ui.md` (e.g. `dest_guard`, `file_lock` silent-fallback warning stays as is).
+
+## KALDIGIM YER (devir, uipol2)
+Durum: yeni madde ACILMADI; hicbir edit yarim degil (son edit bitti).
+Yapilan (hepsi commit'siz, hicbiri CALISTIRILMADI: tsc/test yok):
+- 16-21: ucliErrors.ts, GroupTable.tsx, ReviewPanel.tsx, UcliStartOpts.tsx, RunningTab/{SessionRow,OptionsRow,AdoptRow}.tsx, web_steward.py (cost watch)
+- 14: host_bridge.proto (19-21), web_grpc.py
+- 22-34: web.py (SIGTERM tunel), web_orch.py (push key), atomic_json.py, web_review.py, close.py, files.py, steward_quota.py, review_store.py
+- 35-39: review.py, web_review.py, ReviewPanel.tsx, types.ts, client.ts, UcliSpendPanel.tsx, files.py, steward_quota.py, atomic_json.py
+Yarim kalan: item 35 GAPS (pool_action focus/unfocus testi yok; CLI steward.py `pool` (~l.716) focus bilmiyor; ozet/"yalniz bu" ile focus etkilesimi). atomic_json.py'de `if True:` girinti artigi.
+Siradaki 3 madde:
+1. 35 GAPS: pool_action focus/unfocus testi + steward.py pool focus.
+2. ucli hedefinde cok satirli mesaji tek satira indirme (TODO l.30; tmux_send_keys, /api/term/input, steward directive, handover, web_orch).
+3. ucli_cost 30 sn onbellegini tavan kaydedilince temizle (madde 36 notu) + test.
+Test durumu: yazilan testler calistirilmadi: test_ucli_cost_watch, test_web_sigterm_tunnel, test_web_orch_push_key, test_p2_atomic_writes, test_web_grpc_ucli_flags (pb2 yenilenene dek atlanir), test_review, test_review_store, test_p3_fixes, test_steward_quota*. tsc calistirilmadi.
+Not: git status'ta py/webui/dist degismis (yeni index-CTsxur94.js, eskisi silinmis); bunu ben yapmadim, sahibin build'i gorunuyor. dist'e dokunma.
+Sahip: madde 9 (tsc/test/tarayici), host_bridge_pb2.py yeniden uretimi (14); 15 ucli'nin servisi oturum kaydina yazmasini bekliyor.

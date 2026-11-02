@@ -254,8 +254,17 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
             cands.append((2, max(known), proj, pick))
     if not cands:
         return None
-    cands.sort(key=lambda c: (c[0], c[1], c[2]))
+    focus = pool_focus(pool)       # ODAK projeler (panel ★): işi olan ODAK proje her zaman diğerlerinin önünde
+    cands.sort(key=lambda c: (0 if c[2] in focus else 1, c[0], c[1], c[2]))
     return cands[0][2], cands[0][3]
+
+
+def pool_focus(pool: Any) -> List[str]:
+    """Havuzda `focus=True` işaretli, etkin projeler (sıralı)."""
+    pr = pool.get("projects") if isinstance(pool, dict) else None
+    if not isinstance(pr, dict):
+        return []
+    return sorted(n for n, e in pr.items() if isinstance(e, dict) and e.get("focus") and e.get("enabled") and not e.get("removed_at"))
 
 
 # ── havuz ─────────────────────────────────────────────────────────────────────

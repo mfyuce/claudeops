@@ -721,7 +721,7 @@ export const getReviewLessons = (sid: string): Promise<SimpleResult & { lessons?
   apiGet<SimpleResult & { lessons?: ReviewLesson[]; target?: string }>(`/api/steward/review/lessons${rvQs(sid)}`);
 export const apiReviewLessonResend = (sid: string, id: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/lesson", { steward: sid, id, action: "resend" });
-export const apiReviewPool = (sid: string, action: "add" | "remove" | "enable" | "disable", project: string): Promise<SimpleResult> =>
+export const apiReviewPool = (sid: string, action: "add" | "remove" | "enable" | "disable" | "focus" | "unfocus", project: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/pool", { steward: sid, action, project });
 export const apiReviewWhere = (sid: string, project: string, where: string, local_path = ""): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/where", { steward: sid, project, where, local_path });
