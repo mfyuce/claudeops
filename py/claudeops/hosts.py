@@ -120,7 +120,7 @@ def _host_is_blocked(url: str) -> bool:
             continue
         if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
             ip = ip.ipv4_mapped
-        if ip.is_loopback or ip.is_link_local:
+        if ip.is_loopback or ip.is_link_local or ip.is_unspecified:     # 0.0.0.0 / :: Linux'ta yerel makineye bağlanır
             return True
     return False
 
