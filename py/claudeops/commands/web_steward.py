@@ -3729,6 +3729,38 @@ def quota_tick(now: Optional[float] = None) -> None:
     threading.Thread(target=_quota_poll, name="steward-quota", daemon=True).start()
 
 
+_COST_WATCH: Dict[str, Any] = {"day": "", "warned": False, "stopped": False}
+
+
+def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
+    """ucli (Claude hizmeti) GÜNLÜK dolar harcamasını izler (`ucli_cost.daily_cap_usd`, 0 = tavan yok): %80'de TELEFONA
+    uyarı, tavanda bildirim + beyin ucli ile koşuyorsa beyni DURDURUR (sürekli koşan oturum tavanı kendiliğinden
+    aşardı; tavan yalnız açılışta denetleniyordu). Gün başına bir kez uyarır/durdurur; yeniden açma elle."""
+    from .. import ucli_cost
+    st = ucli_cost.state(use_cache=False)
+    day = time.strftime("%Y-%m-%d")
+    if _COST_WATCH["day"] != day:
+        _COST_WATCH.update(day=day, warned=False, stopped=False)
+    cap, usd = float(st["cap_usd"]), float(st["today_usd"])
+    if cap <= 0:
+        return {"cap": 0}
+    if usd >= cap and not _COST_WATCH["stopped"]:
+        _COST_WATCH["stopped"] = True
+        cfg = base or steward_config()
+        brain_note = ""
+        if cfg.brain_cli == "ucli":
+            res = brain_stop(cfg)
+            brain_note = " Beyin (ucli) durduruldu." if res.get("ok") else " Beyin durdurulamadı!"
+        sw.log_event("ucli_cost_cap", paths="default", usd=round(usd, 2), cap=cap)
+        notify_phone(f"ucli günlük harcama TAVANA ulaştı: {usd:.2f}/{cap:.0f} USD.{brain_note} Devam için: Ayarlar ucli_cost.daily_cap_usd yükselt "
+                     f"ya da `py/cops steward config brain_cli claude` (kota izin verince).", title="claudeops ucli tavan")
+    elif usd >= 0.8 * cap and not _COST_WATCH["warned"] and usd < cap:
+        _COST_WATCH["warned"] = True
+        notify_phone(f"ucli günlük harcama %80'i geçti: {usd:.2f}/{cap:.0f} USD. Tavanda beyin durur.", title="claudeops ucli tavan")
+    return {"cap": cap, "usd": usd}
+
+
+
 def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
     """Bir tur; tüm kimlikler tek tarama önbelleği kapsamında (kimlik başına yeniden taranmaz; eylemler önbelleği düşürür)."""
     with _scan_scope():
@@ -3742,6 +3774,10 @@ def _tick_round_inner(trigger: str = "timer") -> List[Dict[str, Any]]:
     çalışan projeleri dahil) `plan_tick`'te uygulanır. Kart işi turda bir kez, tüm etkin kimlikler için."""
     base = steward_config()
     quota_tick()
+    try:
+        ucli_cost_watch(base)
+    except Exception as e:      # izleyici döngüyü düşürmesin
+        diag_log("ucli_cost_watch_failed", error=repr(e))
     starts_left = max(0, base.max_starts_total)
     results: List[Dict[str, Any]] = []
     enabled: List[sw.Config] = []
