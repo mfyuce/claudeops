@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useLang } from "../i18n/LangContext";
 import { IoAskPanel } from "./IoAskPanel";
 import { UcliKeysPanel } from "./UcliKeysPanel";
+import { UcliSpendPanel } from "./UcliSpendPanel";
 import { UcliSettingsPanels } from "./UcliSettingsPanels";
 
 type Section = "run" | "start" | "global";
@@ -34,6 +35,7 @@ export function UcliTab() {
       {section === "start" && <UcliSettingsPanels group="start" />}
       {section === "global" && (
         <>
+          <UcliSpendPanel />
           <UcliKeysPanel />
           <UcliSettingsPanels group="global" />
         </>

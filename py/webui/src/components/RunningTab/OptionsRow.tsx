@@ -32,7 +32,7 @@ import type { SessionInfo } from "../../api/types";
 import type { TabKey } from "../../state/tabs";
 import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
-import { EMPTY_UCLI_START, serviceEffortLevels, toCliOpts, UcliStartOpts, type UcliStartState } from "./UcliStartOpts";
+import { EMPTY_UCLI_START, serviceEffortLevels, toCliOpts, UcliStartOpts, type UcliPreset, type UcliStartState } from "./UcliStartOpts";
 import { DEFAULT_PERMISSION_MODE, defaultEffort, defaultModel } from "./cliDefaults";
 
 type Mode = "resume" | "reset" | "newchat" | "restart";
@@ -181,6 +181,19 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
     setUcliStart(EMPTY_UCLI_START);
   }
 
+  /** ucli preset: fill the model / effort fields that live here (the rest is filled in `UcliStartOpts`). */
+  function applyPreset(p: UcliPreset) {
+    if (p.model && ucliStart.service === "evren") {
+      if (cliOptions.models.includes(p.model)) {
+        setModel(p.model);
+      } else {
+        setModel(OTHER_MODEL_VALUE);
+        setModelOther(p.model);
+      }
+    }
+    if (p.effort && (!effortLevels || effortLevels.includes(p.effort))) setEffort(p.effort);
+  }
+
   /** Replaces `runDiagAfterFailure(msg)` (web.py ~2723-2730) minus the
    * parts of it that reach into the Diagnostics tab's own internals
    * (`loadDiagLog()`/`doDiagTest()`) — that tab doesn't exist yet this
@@ -327,7 +340,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             hideModel={cli === "ucli" && session.host === LOCAL_HOST && ucliStart.service !== "evren"}
           />
           {cli === "ucli" && session.host === LOCAL_HOST && (
-            <UcliStartOpts value={ucliStart} onChange={setUcliStart} lang={lang} cwd={session.cwd} />
+            <UcliStartOpts value={ucliStart} onChange={setUcliStart} lang={lang} cwd={session.cwd} onPreset={applyPreset} />
           )}
           <button type="button" className="go" disabled={busy} onClick={() => void handleGo()}>
             {busy ? t.starting : modeLabels[mode]}

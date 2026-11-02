@@ -20,7 +20,55 @@ export interface UcliStartState {
   execBind: string;
   execTimeout: string;
   acceptRisk: boolean;
+  /** Ready-made Rust toolchain (`exec_toolchain: "rust"`): the backend finds cargo/rustc + binds them read-only. */
+  execToolchain: boolean;
+  /** Per-turn USD ceiling (`max_cost_usd`), empty = none. */
+  maxCost: string;
 }
+
+/** One-click start presets (coder = may run+write in the cage with the Rust toolchain; reviewer = read-only, no exec). */
+export interface UcliPreset {
+  id: "coder" | "reviewer" | "light";
+  tr: string;
+  en: string;
+  tipTr: string;
+  tipEn: string;
+  /** Model / effort live in `OptionsRow` (not in `UcliStartState`); they reach it through `onPreset`. */
+  model?: string;
+  effort?: string;
+  patch: Partial<UcliStartState>;
+}
+
+export const UCLI_PRESETS: UcliPreset[] = [
+  {
+    id: "coder",
+    tr: "Koder",
+    en: "Coder",
+    tipTr: "claude-sonnet-5-5, orta düşünme, dosya yazma izni, exec: git + Rust (cargo/rustc), tur tavanı 1 USD.",
+    tipEn: "claude-sonnet-5-5, medium effort, file write, exec: git + Rust (cargo/rustc), turn cap 1 USD.",
+    model: "claude-sonnet-5-5",
+    effort: "medium",
+    patch: { execOn: true, execCmds: "git", execWrite: true, execToolchain: true, execGlob: "", acceptRisk: false, maxCost: "1" },
+  },
+  {
+    id: "reviewer",
+    tr: "Reviewer",
+    en: "Reviewer",
+    tipTr: "Salt okunur inceleme: exec ve yazma kapalı, orta düşünme, tur tavanı 0.50 USD.",
+    tipEn: "Read-only review: exec and write off, medium effort, turn cap 0.50 USD.",
+    effort: "medium",
+    patch: { execOn: false, execWrite: false, execToolchain: false, execGlob: "", acceptRisk: false, maxCost: "0.50" },
+  },
+  {
+    id: "light",
+    tr: "Hafif sohbet",
+    en: "Light chat",
+    tipTr: "Kısa soru-cevap: exec ve yazma kapalı, düşük düşünme, tur tavanı 0.20 USD.",
+    tipEn: "Quick Q&A: exec and write off, low effort, turn cap 0.20 USD.",
+    effort: "low",
+    patch: { execOn: false, execWrite: false, execToolchain: false, execGlob: "", acceptRisk: false, maxCost: "0.20" },
+  },
+];
 
 export const EMPTY_UCLI_START: UcliStartState = {
   service: "evren",
@@ -32,6 +80,8 @@ export const EMPTY_UCLI_START: UcliStartState = {
   execBind: "",
   execTimeout: "",
   acceptRisk: false,
+  execToolchain: false,
+  maxCost: "",
 };
 
 /** Patterns that grant execution on EVERY file (backend needs `accept_risk` for them). */
@@ -61,7 +111,9 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
     if (s.execWrite) o.exec_write = true;
     if (s.execBind.trim()) o.exec_bind_ro = s.execBind;
     if (s.execTimeout.trim()) o.exec_timeout = s.execTimeout.trim();
+    if (s.execToolchain) o.exec_toolchain = "rust";
   }
+  if (s.maxCost.trim()) o.max_cost_usd = s.maxCost.trim();
   return Object.keys(o).length ? o : undefined;
 }
 
@@ -71,9 +123,11 @@ interface Props {
   lang: Lang;
   /** Session working directory (local sessions): used for the 16 KiB instruction-file warning. */
   cwd?: string;
+  /** Called with a preset's model/effort so the parent can fill its own fields. */
+  onPreset?: (p: UcliPreset) => void;
 }
 
-export function UcliStartOpts({ value, onChange, lang, cwd }: Props) {
+export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
   const { data } = useStatusContext();
   const byok = data?.settings.byok?.ucli ?? {};
   const tr = lang === "tr";
@@ -110,6 +164,29 @@ export function UcliStartOpts({ value, onChange, lang, cwd }: Props) {
   const svc = { ...svcBase, models: live.length > 0 ? live : svcBase.models };
   return (
     <>
+      <label title={tr ? "Hazır bir ayar seç: model, düşünme düzeyi, izinler ve tur tavanı birlikte dolar. Sonra istediğin alanı elle değiştirebilirsin." : "Pick a preset: model, effort, permissions and turn cap are filled together. You can still edit any field."}>
+        {tr ? "ön ayar" : "preset"}
+        <select
+          value=""
+          onChange={(e) => {
+            const p = UCLI_PRESETS.find((x) => x.id === e.target.value);
+            if (!p) return;
+            set(p.patch);
+            onPreset?.(p);
+          }}
+        >
+          <option value="">{tr ? "seç…" : "choose…"}</option>
+          {UCLI_PRESETS.map((p) => (
+            <option key={p.id} value={p.id} title={tr ? p.tipTr : p.tipEn}>
+              {tr ? p.tr : p.en}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label title={tr ? "Tur (görev) başına tahmini USD tavanı; aşılınca tur toparlanır. Boş = sınırsız." : "Estimated USD ceiling per turn; the turn wraps up when exceeded. Empty = no limit."}>
+        {tr ? "tur tavanı (USD)" : "turn cap (USD)"}
+        <input type="text" size={5} inputMode="decimal" placeholder="0.50" value={value.maxCost} onChange={(e) => set({ maxCost: e.target.value })} />
+      </label>
       {overFiles.length > 0 && (
         <span className="opts-hint" style={{ flexBasis: "100%", color: "#b45309" }} role="alert">
           {overFiles
@@ -175,7 +252,8 @@ export function UcliStartOpts({ value, onChange, lang, cwd }: Props) {
           />
           <input
             type="text"
-            placeholder={tr ? "modelin yazdığı dosyalar: tests/**" : "model-written files: tests/**"}
+            title={tr ? "Modelin yazdığı dosyalardan hangilerinin çalıştırılabileceğini belirleyen dar glob (örn. tests/**). Boş = yazılan dosya çalıştırılamaz." : "Narrow glob of model-written files that may be executed (e.g. tests/**). Empty = written files cannot be executed."}
+            placeholder={tr ? "çalıştırılabilir yazılan dosyalar: tests/**" : "executable model-written files: tests/**"}
             value={value.execGlob}
             onChange={(e) => set({ execGlob: e.target.value })}
           />
@@ -193,8 +271,16 @@ export function UcliStartOpts({ value, onChange, lang, cwd }: Props) {
           <label title={tr ? "Varsayılan kapalı. Açılınca modele dosya yazma katmanı (--allow-edit) verilir." : "Off by default. When on, the model gets the file-write tier (--allow-edit)."}>
             <input type="checkbox" checked={value.execWrite} onChange={(e) => set({ execWrite: e.target.checked })} /> {tr ? "yazma izni" : "write access"}
           </label>
+          <label title={tr ? "none: araç zinciri yok. rust: sunucu cargo/rustc'yi bulup kafese salt okunur bağlar; elle dizin yazmana gerek kalmaz. Ağ yok, çevrimdışı derler." : "none: no toolchain. rust: the server finds cargo/rustc and binds them read-only; no manual dirs needed. No network, builds offline."}>
+            {tr ? "exec_toolchain (araç zinciri)" : "exec_toolchain"}
+            <select value={value.execToolchain ? "rust" : "none"} onChange={(e) => set({ execToolchain: e.target.value === "rust" })}>
+              <option value="none">none</option>
+              <option value="rust">rust</option>
+            </select>
+          </label>
           <input
             type="text"
+            title={tr ? "Kafese salt okunur bağlanacak MUTLAK dizinler (virgülle). Rust için yukarıdaki exec_toolchain=rust yeterli." : "ABSOLUTE dirs to bind read-only into the cage (comma separated). For Rust, exec_toolchain=rust above is enough."}
             placeholder={tr ? "bağlanacak dizinler (salt okunur): /home/ben/.rustup/toolchains/X" : "dirs to bind (read-only): /home/ben/.rustup/toolchains/X"}
             value={value.execBind}
             onChange={(e) => set({ execBind: e.target.value })}
@@ -202,6 +288,7 @@ export function UcliStartOpts({ value, onChange, lang, cwd }: Props) {
           <input
             type="text"
             size={6}
+            title={tr ? "Her komut için saniye cinsinden zaman aşımı. Boş = sunucu varsayılanı." : "Per-command timeout in seconds. Empty = server default."}
             placeholder={tr ? "zaman aşımı sn" : "timeout s"}
             value={value.execTimeout}
             onChange={(e) => set({ execTimeout: e.target.value })}
