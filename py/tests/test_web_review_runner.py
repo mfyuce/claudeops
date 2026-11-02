@@ -71,6 +71,12 @@ class Base(NoRealReviewMixin, unittest.TestCase):
         self.cwd = os.path.join(self.tmp, "proj")
         os.makedirs(self.cwd)
         self.assertFalse(wr._REVIEW_LOCK.locked())
+        # Genel durum başka test dosyalarından sızmasın (tam takımda FakeProc.instances[0] IndexError'ı: run_job
+        # `busy` dönüp Popen'a hiç varmıyordu): yuva/iş tabloları boş başlar, test sonunda geri konur.
+        for name in ("_ACTIVE", "_JOBS", "_RUN_KW"):
+            saved = dict(getattr(wr, name))
+            getattr(wr, name).clear()
+            self.addCleanup(lambda n=name, s=saved: (getattr(wr, n).clear(), getattr(wr, n).update(s)))
         from claudeops.providers import ucli_provider as up
         pe = mock.patch.object(up, "reasoning_effort_for", lambda model, level: None if model == "gemma-4-31b" else level)
         pe.start()
@@ -91,6 +97,7 @@ class Base(NoRealReviewMixin, unittest.TestCase):
                     supports_flag=lambda b, f: True)
         args.update(kw)
         res = wr.run_job(self.paths, self.cfg, "proj", self.cwd, target, **args)
+        self.assertFalse(res.get("busy"), f"run_job meşgul döndü (sızan genel durum?): {res}")
         if res.get("thread"):
             res["thread"].join(10)
         return res

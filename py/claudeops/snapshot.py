@@ -102,7 +102,7 @@ def _load_all() -> List[Dict[str, Any]]:
         with open(SNAPSHOTS_JSON, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list):
-            return data
+            return [s for s in data if isinstance(s, dict)]   # dict olmayan öğe s.get ile çökertmesin
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return _migrate_legacy()

@@ -35,6 +35,14 @@ class CorruptSnapshotsTest(unittest.TestCase):
         snapshot.save_snapshot([{"name": "a"}], kind="manual")
         self.assertEqual(len(glob.glob(self.f + ".corrupt-*")), 1)
 
+    def test_non_dict_items_filtered(self):
+        open(self.f, "w").write('[1, "x", null, {"saved_at": 5, "kind": "manual", "sessions": []}]')
+        got = snapshot._load_all()
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0]["saved_at"], 5)
+        self.assertIsNotNone(snapshot.get_snapshot(5))
+        self.assertEqual(len(snapshot.list_snapshots()), 1)
+
     def test_missing_or_empty_file_no_backup(self):
         snapshot.save_snapshot([{"name": "a"}], kind="manual")
         os.remove(self.f)

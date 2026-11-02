@@ -241,7 +241,7 @@ def _copy_private(src: str, dst: str) -> None:
     arasında okunabilir pencere olmaz; hedef symlink ise yerine yeni dosya konur, symlink izlenmez)."""
     with open(src, "rb") as f:
         data = f.read()
-    tmp = dst + ".tmp"
+    tmp = _uniq_tmp(dst)
     with contextlib.suppress(OSError):
         os.remove(tmp)
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -269,7 +269,7 @@ def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "", slo
             _copy_private(os.path.join(real, name), os.path.join(cfg, name))
         except OSError:
             pass
-    tmp = os.path.join(cfg, "settings.json.tmp")
+    tmp = _uniq_tmp(os.path.join(cfg, "settings.json"))
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(rv.agy_settings(cwd, allow), f, indent=2)
     os.replace(tmp, os.path.join(cfg, "settings.json"))
@@ -479,7 +479,7 @@ class IoLog:
         tail = tail[nl + 1:] if nl >= 0 else b""
         note = json.dumps({"ts": round(self.now(), 3), "role": "system", "kind": "trim",
                            "text": "(ortadaki çıktı boyut sınırı nedeniyle kırpıldı)"}, ensure_ascii=False) + "\n"
-        tmp = self.path + ".tmp"
+        tmp = _uniq_tmp(self.path)
         with open(tmp, "wb") as f:
             f.write(head + note.encode() + tail)
         os.replace(tmp, self.path)
@@ -2461,7 +2461,7 @@ def store_commit(cfg: Any, now: float, run: Optional[Callable] = None) -> int:
     res = rs.commit_reviews(root, str(getattr(cfg, "review_store_git_dir", "") or ""),
                             lambda txt: rv.redact_secrets(txt), dry=dry, run=run)
     st.update(last_at=now, dry_done=True if res.get("ok") else st.get("dry_done"))
-    tmp = sp + ".tmp"
+    tmp = _uniq_tmp(sp)
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f)
     os.replace(tmp, sp)
