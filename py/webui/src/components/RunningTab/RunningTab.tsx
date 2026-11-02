@@ -31,18 +31,19 @@ import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { usePagination } from "../../hooks/usePagination";
 import { useGroupCollapse } from "../../hooks/useGroupCollapse";
-import { rowKey } from "../../state/hosts";
+import { LOCAL_HOST, rowKey } from "../../state/hosts";
 import type { SelectionControls } from "../../state/selection";
 import type { TabKey } from "../../state/tabs";
 import { CollapseControls } from "../shared/CollapseControls";
 import { GroupHeaderRow } from "../shared/GroupHeaderRow";
-import { groupByCwd, groupKey } from "../shared/groupByCwd";
+import { GROUP_MODES, groupKey, groupRowsBy, type GroupMode } from "../shared/groupByCwd";
 import { matchesSearch } from "../shared/searchFilter";
 import { Pagination } from "../shared/Pagination";
 import { BulkBar } from "./BulkBar";
 import { SessionRow } from "./SessionRow";
 
 const RUNNING_ROW_COLSPAN = 10;
+const GROUP_MODE_STORAGE_KEY = "ucli.runningGroupMode";
 
 interface RunningTabProps {
   selection: SelectionControls;
@@ -59,6 +60,23 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
   const [openAdoptFor, setOpenAdoptFor] = useState<string | null>(null);
   const collapse = useGroupCollapse();
+  // Grup anahtarı seçici (WEBUI-TODO 40): klasör (varsayılan) / cli / host / yok; seçim localStorage'da.
+  const [groupMode, setGroupModeState] = useState<GroupMode>(() => {
+    try {
+      const v = window.localStorage.getItem(GROUP_MODE_STORAGE_KEY);
+      return GROUP_MODES.includes(v as GroupMode) ? (v as GroupMode) : "cwd";
+    } catch {
+      return "cwd";
+    }
+  });
+  const setGroupMode = (m: GroupMode) => {
+    setGroupModeState(m);
+    try {
+      window.localStorage.setItem(GROUP_MODE_STORAGE_KEY, m);
+    } catch {
+      /* localStorage kapalı: yalnız bu oturumda geçerli */
+    }
+  };
   // Koşan review süreçleri roster'da yok ("kayıtsız"): pid ağacıyla koşuya eşlenir, satırda devral yerine salt-okunur izle çıkar.
   const [reviewRuns, setReviewRuns] = useState<ReviewRun[]>([]);
   const hasUnreg = !!data && data.sessions.some((s) => s.running && s.registered === false);
@@ -91,7 +109,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   // already treats `rows` as "the current tab's full set", so it needs no
   // separate search-awareness.
   const rows = allRows.filter((s) => matchesSearch(s, search));
-  const groups = groupByCwd(rows);
+  const groups = groupRowsBy(rows, groupMode, LOCAL_HOST);
   const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
   // Select-all/bulk actions stay scoped to the FULL (unpaginated) `rows` —
   // only which GROUPS are RENDERED on the current page is paginated (same
@@ -106,7 +124,19 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   return (
     <>
       <BulkBar tab="running" rows={rows} selection={selection} />
-      <CollapseControls groupKeys={groupKeys} isExpanded={collapse.isExpanded} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
+      <label style={{ marginRight: ".6rem" }}>
+        group:{" "}
+        <select value={groupMode} onChange={(e) => setGroupMode(e.target.value as GroupMode)}>
+          {GROUP_MODES.map((m) => (
+            <option key={m} value={m}>
+              {m === "none" ? "—" : m}
+            </option>
+          ))}
+        </select>
+      </label>
+      {groupMode !== "none" && (
+        <CollapseControls groupKeys={groupKeys} isExpanded={collapse.isExpanded} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
+      )}
       <div className="tablewrap">
         <table className="runtab">
           <thead>
@@ -146,19 +176,21 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
             )}
             {pageGroups.map((g) => {
               const gKey = groupKey(g.host, g.cwd);
-              const expanded = collapse.isExpanded(gKey);
+              const expanded = groupMode === "none" || collapse.isExpanded(gKey);
               return (
                 <Fragment key={gKey}>
-                  <GroupHeaderRow
-                    host={g.host}
-                    cwd={g.cwd}
-                    name={g.items[0]?.blueprint || g.items[0]?.name}
-                    count={g.items.length}
-                    clis={g.items.map((x) => x.cli)}
-                    colSpan={RUNNING_ROW_COLSPAN}
-                    collapsed={!expanded}
-                    onToggle={() => collapse.toggle(gKey)}
-                  />
+                  {groupMode !== "none" && (
+                    <GroupHeaderRow
+                      host={g.host}
+                      cwd={g.cwd}
+                      name={groupMode === "cwd" ? g.items[0]?.blueprint || g.items[0]?.name : undefined}
+                      count={g.items.length}
+                      clis={g.items.map((x) => x.cli)}
+                      colSpan={RUNNING_ROW_COLSPAN}
+                      collapsed={!expanded}
+                      onToggle={() => collapse.toggle(gKey)}
+                    />
+                  )}
                   {expanded &&
                     g.items.map((s) => (
                       <SessionRow

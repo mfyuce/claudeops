@@ -295,7 +295,9 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   return (
     <tr className="opts-row">
       <td colSpan={colspan}>
-        <div className="opts">
+        {/* WEBUI-TODO 45: modal başlat diyalogu; arka plana tıklama / Esc kapatır. İçerik aynı (UcliStartOpts üzerine kurulu). */}
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
+        <div className="opts modal-dialog" role="dialog" aria-modal="true">
           {session.running && <TabHint>{t.runningNote(session.name)}</TabHint>}
           <div className="modes">
             {modeChoices.map(([value, label]) => (
@@ -349,6 +351,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
           <button type="button" onClick={onClose}>
             {t.cancelBtn}
           </button>
+        </div>
         </div>
       </td>
     </tr>

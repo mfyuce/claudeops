@@ -30,6 +30,30 @@ export function groupKey(host: string, cwd: string): string {
   return `${host}:${cwd}`;
 }
 
+/** Group-key choices for the Running tab's selector (WEBUI-TODO 40). `cwd` = the default (host, cwd) grouping. */
+export type GroupMode = "cwd" | "cli" | "host" | "none";
+export const GROUP_MODES: GroupMode[] = ["cwd", "cli", "host", "none"];
+
+/** Groups rows by a chosen field. `cwd` delegates to `groupByCwd`; `cli`/`host` produce one group per value
+ * (group's `cwd` field carries the label, `host` is `localHost` so no host badge is drawn); `none` is one group. */
+export function groupRowsBy<T extends HasHostCwd & { cli?: string }>(rows: T[], mode: GroupMode, localHost: string): CwdGroup<T>[] {
+  if (mode === "cwd") return groupByCwd(rows);
+  if (mode === "none") return rows.length ? [{ host: localHost, cwd: "", items: rows }] : [];
+  const order: string[] = [];
+  const byKey = new Map<string, T[]>();
+  for (const r of rows) {
+    const key = (mode === "cli" ? r.cli : r.host) || "?";
+    let list = byKey.get(key);
+    if (!list) {
+      list = [];
+      byKey.set(key, list);
+      order.push(key);
+    }
+    list.push(r);
+  }
+  return order.map((key) => ({ host: localHost, cwd: key, items: byKey.get(key)! }));
+}
+
 /** Groups `rows` by `(host, cwd)`, in first-seen order. */
 export function groupByCwd<T extends HasHostCwd>(rows: T[]): CwdGroup<T>[] {
   const order: string[] = [];
