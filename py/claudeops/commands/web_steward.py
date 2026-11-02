@@ -3614,7 +3614,7 @@ def _quota_restore() -> None:
 
 def _quota_stop(reason: str, hard: bool = False) -> None:
     """Tüm AÇIK kimlikleri kapat: değnekçiler `shutdown_start` (çalışmayana devir, bitince kapat; `hard`: ayrıca kendi
-    oturumlarını HEMEN durdur), reviewer doğrudan kapalı."""
+    oturumlarını HEMEN durdur). Reviewer kotadan MUAF (kapatılmaz)."""
     from ..settings import save_settings
     for sid in steward_ids():
         try:
@@ -3622,7 +3622,8 @@ def _quota_stop(reason: str, hard: bool = False) -> None:
             if not cfg.enabled:
                 continue
             if cfg.role == "reviewer":
-                save_settings({"stewards": {sid: {"enabled": "off"}}})
+                # Reviewer Anthropic kotası tüketmez (agy/evren/codex; claude modu ayrı API anahtarı): kota bekçisi
+                # onu KAPATMAZ (sahip kararı 2026-11-02). Yalnız claude-modlu review açıksa o mod kendi eşiğini taşır.
                 continue
             shutdown_start(sid)
             if hard:
