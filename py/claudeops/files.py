@@ -343,6 +343,8 @@ def write_text(s: Session, path: str, content: str) -> dict:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())                         # replace'ten ÖNCE kalıcı: güç kesilirse boş/yarım dosya kalmasın
         os.chmod(tmp, mode)                              # umask açılışta biti kırpmış olabilir
         os.replace(tmp, real)
     except OSError as e:

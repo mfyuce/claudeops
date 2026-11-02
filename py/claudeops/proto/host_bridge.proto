@@ -75,6 +75,11 @@ message SessionRow {
   optional string live_effort = 16;
   bool instance = 17;             // instances.json'daki bir instance (roster satırı değil)
   optional string blueprint = 18; // bağlı olduğu blueprint; null = yok (diag/yabancı)
+  // ucli rozetleri (web.py `_ucli_flags`); üçü de yoksa == ucli_flags null. pb2'yi yeniden üretmeden ÖNCE
+  // web_grpc bu alanları yok sayar (hasattr koruması).
+  optional bool ucli_write = 19;
+  optional bool ucli_exec = 20;
+  optional double ucli_max_cost_usd = 21;
 }
 
 message StatusUpdate {

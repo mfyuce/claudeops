@@ -3744,6 +3744,8 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
     if _COST_WATCH["day"] != day:
         _COST_WATCH.update(day=day, warned=False, stopped=False)
     cap, usd = float(st["cap_usd"]), float(st["today_usd"])
+    if _COST_WATCH.get("cap") != cap:     # tavan değişti (yükseltildi/düşürüldü): uyarı/durdurma bayrakları yeniden değerlendirilsin
+        _COST_WATCH.update(cap=cap, warned=False, stopped=False)
     if cap <= 0:
         return {"cap": 0}
     if usd >= cap and not _COST_WATCH["stopped"]:

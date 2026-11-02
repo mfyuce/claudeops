@@ -63,8 +63,8 @@ _CANCEL_EVENTS: Dict[str, threading.Event] = {}
 # OLMAYAN bir push (yanlış run_id/name, ya da tur zaten bitmiş) REDDEDİLİR —
 # `http_result` bunu düz bir hata olarak yansıtır, sessizce yutulmaz.
 _PUSH_LOCK = threading.Lock()
-_WAITING: set = set()          # {(run_id, name)}
-_PUSHED: Dict[Tuple[str, str], str] = {}  # (run_id, name) -> formatted reply text
+_WAITING: set = set()          # {(run_id, host, name)}
+_PUSHED: Dict[Tuple[str, str, str], str] = {}  # (run_id, host, name) -> formatted reply text
 
 
 def _new_run_id() -> str:
@@ -237,7 +237,7 @@ def _build_decider_dispatch(run_id: str, task: str, verdict_hint: str, bundle: s
     )
 
 
-def _push_result(run_id: str, name: str, verdict: str, text: str) -> bool:
+def _push_result(run_id: str, name: str, verdict: str, text: str, host: Optional[str] = None) -> bool:
     """`http_result()`'tan çağrılır (MCP `cops_result_push`). Sadece o
     (run_id,name) İÇİN GERÇEKTEN bekleyen bir `_run_turn` varsa kabul eder
     (True) — aksi halde (yanlış run_id, henüz dispatch edilmemiş, ya da tur
@@ -248,8 +248,15 @@ def _push_result(run_id: str, name: str, verdict: str, text: str) -> bool:
     bu yoldan mı geldiğini AYIRT ETMEK ZORUNDA KALMAZ, tek bir parse yolu."""
     envelope = f"{orch.VERDICT_MARKER} {verdict.strip()}\n{orch.END_MARKER}"
     formatted = f"{text.strip()}\n\n{envelope}" if text.strip() else envelope
-    key = (run_id, name)
     with _PUSH_LOCK:
+        if host is not None:
+            key = (run_id, host, name)
+        else:
+            # host verilmedi (eski MCP istemcisi): yalnız TEK eşleşme varsa kabul, farklı host'lardaki aynı adlar belirsizdir
+            matches = [k for k in _WAITING if k[0] == run_id and k[2] == name]
+            if len(matches) != 1:
+                return False
+            key = matches[0]
         if key not in _WAITING:
             return False
         _PUSHED[key] = formatted
@@ -398,7 +405,7 @@ def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, s
     # temizler) — aradaki pencerede (mesaj gitti ama henüz kayıtlı değildik)
     # bir push'un reddedilme riskini TAMAMEN kapatır (pratikte imkansız kadar
     # dar bir pencere olsa da, bunu "yapısal olarak" kapatmak bedelsiz).
-    push_key = (run_id, p.name)
+    push_key = (run_id, p.host, p.name)
     with _PUSH_LOCK:
         _WAITING.add(push_key)
     try:
@@ -782,7 +789,8 @@ def http_result(data: dict) -> dict:
         return {"ok": False, "error": "run_id and name are required"}
     if not verdict.strip():
         return {"ok": False, "error": "verdict is required"}
-    accepted = _push_result(run_id, name, verdict, text)
+    host = data.get("host")
+    accepted = _push_result(run_id, name, verdict, text, str(host) if host else None)
     if not accepted:
         return {"ok": False, "error": f"no active turn is being waited on for run_id={run_id!r} name={name!r} "
                                        "(already answered, timed out, cancelled, or this run/participant doesn't exist)"}

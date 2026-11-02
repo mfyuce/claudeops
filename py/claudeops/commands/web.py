@@ -5074,6 +5074,20 @@ def _enable_faulthandler() -> None:
         pass
 
 
+_TUNNEL_PROC = None   # run()'ın başlattığı cloudflared süreci; SIGTERM handler'ı `os._exit` ettiği için orada sonlandırılır
+
+
+def _terminate_tunnel() -> None:
+    """cloudflared tünelini (varsa) sonlandır. BEST-EFFORT, asla fırlatmaz, bekletmez (SIGTERM handler'ından da çağrılır)."""
+    proc = _TUNNEL_PROC
+    if proc is None:
+        return
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+
+
 def _sigterm_handler(signum, frame) -> None:
     """`run()`'a `signal.signal(signal.SIGTERM, ...)` ile bağlanır (systemd
     `stop`/`restart` VE gerçek makine shutdown'ı hep bunu gönderir — hepsi
@@ -5093,6 +5107,7 @@ def _sigterm_handler(signum, frame) -> None:
     geldiğini ayırt etmek için."""
     diag_log("sigterm_received")
     _save_closing_snapshot()
+    _terminate_tunnel()      # os._exit finally bloğunu atlar: tünel yetim kalmasın
     os._exit(0)
 
 
@@ -5151,6 +5166,8 @@ def run(args) -> int:
             return 1
         print("cloudflared tünel başlatılıyor…")
         tunnel_proc, tunnel_url = _start_tunnel(args.port, cloudflared_path)
+        global _TUNNEL_PROC
+        _TUNNEL_PROC = tunnel_proc
         if tunnel_url:
             print(f"  tünel  →  {tunnel_url}/?token={token}")
         else:

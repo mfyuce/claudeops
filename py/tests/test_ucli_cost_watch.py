@@ -10,7 +10,9 @@ from claudeops import steward as sw  # noqa: E402
 
 class CostWatch(unittest.TestCase):
     def setUp(self):
+        ws._COST_WATCH.clear()
         ws._COST_WATCH.update(day="", warned=False, stopped=False)
+        self.addCleanup(ws._COST_WATCH.update, day="", warned=False, stopped=False)
         self.sent, self.stops = [], []
         cfg = sw.Config(); cfg.brain_cli = "ucli"
         self.cfg = cfg
@@ -42,6 +44,27 @@ class CostWatch(unittest.TestCase):
         with self._state(11):
             ws.ucli_cost_watch(self.cfg)
         self.assertEqual((len(self.sent), self.stops), (1, []))
+
+    def test_raising_cap_rearms_watch(self):
+        with self._state(10.5, 10.0):
+            ws.ucli_cost_watch(self.cfg)                      # tavan: durdurur
+        self.assertEqual(len(self.stops), 1)
+        with self._state(10.5, 20.0):
+            ws.ucli_cost_watch(self.cfg)                      # tavan yükseldi, %80 altı: sessiz
+        self.assertEqual((len(self.sent), len(self.stops)), (1, 1))
+        with self._state(16.5, 20.0):
+            ws.ucli_cost_watch(self.cfg)                      # yeni tavanın %80'i: tekrar uyarır
+        self.assertEqual(len(self.sent), 2)
+        with self._state(20.5, 20.0):
+            ws.ucli_cost_watch(self.cfg)                      # yeni tavanda tekrar durdurur
+        self.assertEqual(len(self.stops), 2)
+
+    def test_same_cap_does_not_rearm(self):
+        with self._state(8.5):
+            ws.ucli_cost_watch(self.cfg)
+        with self._state(8.6):
+            ws.ucli_cost_watch(self.cfg)
+        self.assertEqual(len(self.sent), 1)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { apiTermMirrorWindow, apiTermOpenWindow } from "../../api/client";
 import { describeApiError } from "../../api/errors";
+import { friendlyError } from "../../api/ucliErrors";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -85,7 +86,7 @@ export function SessionRow({
       const res = await apiTermOpenWindow({ name: session.name, host: session.host, lang });
       if (!res.ok) showToast(`${session.name}: ${res.error}`);
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     } finally {
       setOpeningWindow(false);
     }
@@ -105,7 +106,7 @@ export function SessionRow({
       else if (res.already_open) showToast(t.mirrorAlreadyOpen(label, !!res.focused), "info");
       else showToast(t.mirrorOpened(label), "success");
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     } finally {
       setOpeningMirror(false);
     }

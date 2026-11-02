@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from ..atomic_json import atomic_write_text, file_lock
 from ..discovery import find_sessions
 from ..instances import DERIVED_NAME_RE, get_instance
 from ..kill import kill_session, kill_session_and_parent
@@ -47,58 +48,63 @@ def _first_field(line: str) -> str:
     return (s.split("\t", 1)[0] if "\t" in s else s.split()[0]).strip()
 
 
+def _rewrite_models(transform) -> str:
+    """models.tsv oku-değiştir-yaz döngüsü: `file_lock` altında (panel/steward eşzamanlı yazımı kaybolmasın) ve atomik
+    yazım (yarım dosya yok). `transform(lines) -> (status, new_lines|None)`; new_lines None ise dosyaya dokunulmaz."""
+    with file_lock(MODELS_TSV):
+        try:
+            with open(MODELS_TSV, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except OSError:
+            return "notfound"
+        status, out = transform(lines)
+        if out is not None:
+            atomic_write_text(MODELS_TSV, "\n".join(out) + "\n")
+        return status
+
+
 def comment_out_models(base: str, dry_run: bool) -> str:
     """models.tsv'de aktif `<base>` satırını `#` ile yorumla.
 
     Returns: 'commented' | 'already' | 'notfound'.
     """
-    try:
-        lines = open(MODELS_TSV, encoding="utf-8").read().splitlines()
-    except OSError:
-        return "notfound"
-
-    status = "notfound"
-    out = []
-    for line in lines:
-        stripped = line.lstrip()
-        if stripped.startswith("#"):
-            # zaten yorumlu — bu base mi?
-            if _first_field(stripped[1:]) == base and status == "notfound":
-                status = "already"
-        elif _first_field(line) == base:
-            status = "commented"
-            if not dry_run:
-                line = f"#{line}\t# CLOSED"
-        out.append(line)
-
-    if status == "commented" and not dry_run:
-        open(MODELS_TSV, "w", encoding="utf-8").write("\n".join(out) + "\n")
-    return status
+    def tf(lines):
+        status = "notfound"
+        out = []
+        for line in lines:
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                # zaten yorumlu — bu base mi?
+                if _first_field(stripped[1:]) == base and status == "notfound":
+                    status = "already"
+            elif _first_field(line) == base:
+                status = "commented"
+                if not dry_run:
+                    line = f"#{line}\t# CLOSED"
+            out.append(line)
+        return status, (out if status == "commented" and not dry_run else None)
+    return _rewrite_models(tf)
 
 
 def uncomment_models(base: str, dry_run: bool = False) -> str:
     """`comment_out_models`'in tersi: `close`'un bıraktığı `#<satır>\t# CLOSED` kaydını geri aç (yalnız CLOSED işaretli).
 
     Returns: 'restored' | 'active' | 'notfound'."""
-    try:
-        lines = open(MODELS_TSV, encoding="utf-8").read().splitlines()
-    except OSError:
-        return "notfound"
-    status = "notfound"
-    out = []
-    for line in lines:
-        stripped = line.lstrip()
-        if stripped.startswith("#"):
-            if status != "restored" and stripped.rstrip().endswith("# CLOSED") and _first_field(stripped[1:]) == base:
-                status = "restored"
-                if not dry_run:
-                    line = stripped[1:].rstrip()[: -len("# CLOSED")].rstrip("\t ")
-        elif _first_field(line) == base and status == "notfound":
-            status = "active"
-        out.append(line)
-    if status == "restored" and not dry_run:
-        open(MODELS_TSV, "w", encoding="utf-8").write("\n".join(out) + "\n")
-    return status
+    def tf(lines):
+        status = "notfound"
+        out = []
+        for line in lines:
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                if status != "restored" and stripped.rstrip().endswith("# CLOSED") and _first_field(stripped[1:]) == base:
+                    status = "restored"
+                    if not dry_run:
+                        line = stripped[1:].rstrip()[: -len("# CLOSED")].rstrip("\t ")
+            elif _first_field(line) == base and status == "notfound":
+                status = "active"
+            out.append(line)
+        return status, (out if status == "restored" and not dry_run else None)
+    return _rewrite_models(tf)
 
 
 def _kill_with_parent(pid: int, grace: float, keep_terminal: bool, name: Optional[str] = None) -> str:

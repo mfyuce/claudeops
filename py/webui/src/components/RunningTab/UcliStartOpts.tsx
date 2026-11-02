@@ -295,8 +295,8 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
           />
           <span className="opts-hint" style={{ flexBasis: "100%" }}>
             {tr
-              ? "Komutlar kafes içinde (bwrap, ağsız) çalışır; kafes yalnız çalışma alanını yazılabilir görür. cargo/node gibi araç zinciri için kafese salt okunur bağlanacak MUTLAK dizinleri yaz (örn. /home/ben/.rustup/toolchains/X). Komut alanı: ad, glob (cargo*) ya da re:<regex>; * her komut demektir ama kabuk/env/xargs/find/sudo/ssh/nc HİÇBİR desenle açılmaz. Ağ sunulmaz. Komut yoksa exec kapalı kalır."
-              : "Commands run in a no-network bwrap cage where only the workspace is writable. For toolchains (cargo, node) list ABSOLUTE dirs to bind read-only (e.g. /home/me/.rustup/toolchains/X). Command field: name, glob (cargo*) or re:<regex>; * means every command but shells/env/xargs/find/sudo/ssh/nc are never opened by any pattern. No network. With no commands exec stays off."}
+              ? "Çoğu iş için exec gerekmez: oturumda zaten dosya okuma, arama, json_query, pipeline, git_* ve date_text araçları var. exec son çare. Açarsan komutlar ağsız bir kafeste çalışır ve yalnız çalışma alanına yazabilir. İzinli komutları yaz (ad, cargo* gibi glob ya da re:<regex>; * = her komut, ama kabuk/env/xargs/find/sudo/ssh/nc hiçbir desenle açılmaz). Cargo/node gerekiyorsa exec_toolchain=rust seç ya da salt okunur bağlanacak MUTLAK dizinleri yaz. Komut boşsa exec kapalı kalır."
+              : "Most tasks do not need exec: sessions already have file read, search, json_query, pipeline, git_* and date_text tools. Exec is a last resort. When on, commands run in a no-network cage and can only write inside the workspace. List allowed commands (name, a glob like cargo*, or re:<regex>; * = every command, but shells/env/xargs/find/sudo/ssh/nc are never opened by any pattern). For cargo/node pick exec_toolchain=rust or list ABSOLUTE dirs to bind read-only. With no commands, exec stays off."}
           </span>
         </>
       )}

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import math
 import re
 from typing import Any, Dict, Optional
 
@@ -49,9 +50,12 @@ def _parse_reset(text: str, tz_name: str, now: float) -> Optional[float]:
     mon = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].index(m.group(1).lower()) + 1
     hour = int(m.group(3)) % 12 + (12 if m.group(5).lower() == "pm" else 0)
     year = datetime.datetime.fromtimestamp(now, tz).year
-    dt = datetime.datetime(year, mon, int(m.group(2)), hour, int(m.group(4) or 0), tzinfo=tz)
-    if dt.timestamp() < now - 86400:
-        dt = dt.replace(year=year + 1)
+    try:
+        dt = datetime.datetime(year, mon, int(m.group(2)), hour, int(m.group(4) or 0), tzinfo=tz)
+        if dt.timestamp() < now - 86400:
+            dt = dt.replace(year=year + 1)
+    except (ValueError, OverflowError):      # geçersiz gün/saat ya da 29 Şubat'ın ertesi yıl karşılığı yok
+        return None
     return dt.timestamp()
 
 
@@ -72,9 +76,10 @@ def parse_usage(text: str, now: float) -> Optional[Usage]:
 
 def _num(cfg: Dict[str, Any], key: str, default: Optional[float]) -> Optional[float]:
     try:
-        return float(str(cfg.get(key, "")).strip())
+        v = float(str(cfg.get(key, "")).strip())
     except ValueError:
         return default
+    return v if math.isfinite(v) else default      # "nan"/"inf" geçerli float'tır ama karşılaştırmalar hep yanlış olur
 
 
 def day_label(usage: Usage, now: float, tz: Optional[Any] = None) -> str:

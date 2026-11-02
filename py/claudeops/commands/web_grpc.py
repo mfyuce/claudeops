@@ -62,6 +62,9 @@ _STATUS_TICK_SECONDS = web_ws._BROADCAST_TICK_SECONDS  # yerel broadcaster'la ay
 
 _OPTIONAL_SESSION_FIELDS = ("pid", "cpu", "needs_ho", "busy", "history_size", "live_model", "live_effort",
                             "blueprint")
+# host_bridge.proto'daki ucli_write/ucli_exec/ucli_max_cost_usd (19-21) üretilmiş pb2'de var mı? (pb2 yeniden
+# üretilene dek False: eski davranış, hata yok.)
+_PB_HAS_UCLI_FLAGS = "ucli_write" in pb2.SessionRow.DESCRIPTOR.fields_by_name
 _OPTIONAL_TERM_FIELDS = ("cols", "rows", "history_size")
 
 # fetch_remote_status()'un ZATEN indirgediği alan seti (web_hosts.py'nin
@@ -100,6 +103,12 @@ def _dict_to_session_row(d: Dict[str, Any]) -> pb2.SessionRow:
         v = d.get(f)
         if v is not None:
             kwargs[f] = v
+    flags = d.get("ucli_flags")
+    if flags and _PB_HAS_UCLI_FLAGS:       # pb2 yeniden üretilmediyse alanlar yok sayılır (rozet uzak satırda yok)
+        kwargs["ucli_write"] = bool(flags.get("write"))
+        kwargs["ucli_exec"] = bool(flags.get("exec"))
+        if flags.get("max_cost_usd") is not None:
+            kwargs["ucli_max_cost_usd"] = float(flags["max_cost_usd"])
     return pb2.SessionRow(**kwargs)
 
 
@@ -111,6 +120,13 @@ def _session_row_to_dict(row: pb2.SessionRow) -> Dict[str, Any]:
     }
     for f in _OPTIONAL_SESSION_FIELDS:
         d[f] = getattr(row, f) if row.HasField(f) else None
+    d["ucli_flags"] = None
+    if _PB_HAS_UCLI_FLAGS and row.HasField("ucli_write"):
+        d["ucli_flags"] = {
+            "write": row.ucli_write,
+            "exec": row.HasField("ucli_exec") and row.ucli_exec,
+            "max_cost_usd": row.ucli_max_cost_usd if row.HasField("ucli_max_cost_usd") else None,
+        }
     return d
 
 

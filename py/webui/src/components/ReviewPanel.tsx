@@ -263,12 +263,20 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
                       disabled={busy || (row.enabled && st.pool.every((o) => o.project === row.project || !o.enabled))}
                       onClick={() =>
                         void act(async () => {
+                          // Enable the target first: a mid-way failure then never leaves the pool with nothing enabled.
+                          if (!row.enabled) {
+                            const r0 = await apiReviewPool(sid, "enable", row.project);
+                            if (!r0.ok) return r0;
+                          }
                           for (const o of st.pool) {
                             if (o.project === row.project || !o.enabled) continue;
                             const r = await apiReviewPool(sid, "disable", o.project);
-                            if (!r.ok) return r;
+                            if (!r.ok) {
+                              const note = lang === "tr" ? `"Yalnız bu" yarım kaldı: ${o.project} kapatılamadı, bazı projeler hâlâ açık olabilir.` : `"Only this" stopped half-way: could not disable ${o.project}; some projects may still be enabled.`;
+                              return { ok: false, error: `${note}\n${r.error || t.requestFailed}` };
+                            }
                           }
-                          return row.enabled ? { ok: true } : apiReviewPool(sid, "enable", row.project);
+                          return { ok: true };
                         })
                       }
                     >

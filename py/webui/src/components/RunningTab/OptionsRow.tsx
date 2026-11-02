@@ -22,6 +22,7 @@
 import { useEffect, useState } from "react";
 import { apiNewChat, apiStart, apiStop } from "../../api/client";
 import { callAction, describeApiError } from "../../api/errors";
+import { friendlyError } from "../../api/ucliErrors";
 import { offerCapRetry } from "../../state/capRetry";
 import { TabHint } from "../shared/TabHint";
 import { showToast } from "../../state/toast";
@@ -251,7 +252,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
           }
         }
       } catch (e) {
-        showToast(describeApiError(e, t));
+        showToast(friendlyError(describeApiError(e, t), lang));
       }
     } else {
       // "reset" while still running (modeChoices above) needs the same

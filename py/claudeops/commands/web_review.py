@@ -22,6 +22,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
+from .. import atomic_json as aj
 from .. import review as rv
 from .. import review_remote as rr
 from .. import review_store as rs
@@ -1106,16 +1107,10 @@ def _recover_draft(path: str, text: str, learned: Sequence[str] = ()) -> Tuple[s
     except OSError:
         return text, False
     red = rv.redact_secrets(raw, learned)
-    tmp = dp + ".tmp"
-    try:                                          # atomik: yarım yazılmış/boş taslak kalmaz
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(red)
-        os.replace(tmp, dp)
+    try:                                          # atomik: yarım yazılmış/boş taslak kalmaz (thread'e özel tmp adı)
+        aj.atomic_write_text(dp, red)
     except OSError:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+        pass
     return (text, False) if text.strip() else (red, bool(red.strip()))
 
 
@@ -1127,18 +1122,17 @@ def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, er
         line = (f"- [otomatik] {time.strftime('%Y-%m-%d %H:%M')} proje={project} model={target.model} durum={status} "
                 f"hata={_tail(error, learned)}: ucli bu model/proje çiftinde review'u bitiremedi; nedenini araştır, TODO/TBD yap, düzelt.\n")
         path = os.path.join(p.root, sl.LESSONS_FILE)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(line)
-        try:    # dosya sınırsız büyümesin: yalnız son `FILE_MAX` otomatik satır kalır (atomik yeniden yazım)
-            with open(path, encoding="utf-8", errors="replace") as f:
-                cur = f.read()
-            pruned = sl.prune_lessons(cur)
-            if pruned != cur:
-                with open(path + ".tmp", "w", encoding="utf-8") as f:
-                    f.write(pruned)
-                os.replace(path + ".tmp", path)
-        except OSError:
-            pass
+        with aj.file_lock(path):     # eşzamanlı review işleri: ekle + kırp tek kilit altında, sabit .tmp adı yarışı yok
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line)
+            try:    # dosya sınırsız büyümesin: yalnız son `FILE_MAX` otomatik satır kalır (atomik yeniden yazım)
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    cur = f.read()
+                pruned = sl.prune_lessons(cur)
+                if pruned != cur:
+                    aj.atomic_write_text(path, pruned)
+            except OSError:
+                pass
         sw.log_event("review_ucli_lesson", paths=p, project=project, model=target.model, status=status)
     except Exception:
         pass

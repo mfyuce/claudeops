@@ -16,6 +16,7 @@
 import { useState } from "react";
 import { apiAdopt } from "../../api/client";
 import { describeApiError } from "../../api/errors";
+import { friendlyError } from "../../api/ucliErrors";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -67,7 +68,7 @@ export function AdoptRow({ session, colspan, onClose }: AdoptRowProps) {
       if (res.ok) showToast(t.adopted + res.new_name, "success");
       else showToast(`${session.name}: ${res.error}`);
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     }
     // Original: unconditionally closes + refreshes after the request
     // settles (`adoptFor = null; adoptChoice[oldName] = null; refresh();`).

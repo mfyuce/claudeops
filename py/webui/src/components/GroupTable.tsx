@@ -76,7 +76,9 @@ function ReactivateRow({ item, onView }: { item: RosterEntry; onView: (host: str
     try {
       const res = await apiReactivate({ name: item.name, host: item.host, lang });
       if (!res.ok && !offerCapRetry(res, item.name, item.host, () => apiReactivate({ name: item.name, host: item.host, lang }))) {
-        showToast(`${item.name}: ${res.error}`);
+        // Backend "already active" is not a failure: the session is up, the row just needs a refresh.
+        const already = /already active|zaten aktif/i.test(res.error ?? "");
+        showToast(already ? res.error ?? "" : `${item.name}: ${res.error}`, already ? "info" : "error");
       }
     } catch (e) {
       showToast(friendlyError(describeApiError(e, t), lang));

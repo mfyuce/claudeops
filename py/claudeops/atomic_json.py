@@ -57,6 +57,28 @@ def atomic_write_json(path: str, obj: Any, *, mode: Optional[int] = None) -> Non
         raise
 
 
+def atomic_write_text(path: str, text: str, *, mode: Optional[int] = None) -> None:
+    """`atomic_write_json`'un düz-metin karşılığı: pid+thread'e özel tmp (sabit `<path>.tmp` yarışı yok), O_EXCL|O_NOFOLLOW,
+    `fsync`, `os.replace`. Yazım düşerse tmp silinir. `mode=None` → umask varsayılanı."""
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}-{threading.get_ident()}.tmp"
+    try:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666 if mode is None else mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+
+
 _LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict = {}
 _WARNED_LOCKS: set = set()      # path başına tek uyarı (log taşmasın)
