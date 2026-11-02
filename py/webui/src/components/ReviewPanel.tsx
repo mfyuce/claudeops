@@ -25,6 +25,7 @@ import {
 } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
+import { ErrorBox } from "./shared/ErrorBox";
 import { useLang } from "../i18n/LangContext";
 import { showToast } from "../state/toast";
 import type { ReviewFinding, ReviewLesson, ReviewRemoteProject, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
@@ -215,7 +216,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
       <span className="opts-hint">{t.rvDesc}</span>
       {!st && !error && <div className="opts-hint" role="status">…</div>}
       {st && !st.enabled && <div className="warn-banner">{t.rvOff}</div>}
-      {error && <div className="warn-banner">{error}</div>}
+      {error && <ErrorBox text={error} />}
 
       {st && st.pool.length === 0 && <span className="opts-hint">{t.rvNoPool}</span>}
       {st && targets.length === 0 && <span className="opts-hint">{t.rvNoTargets}</span>}

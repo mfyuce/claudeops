@@ -55,6 +55,7 @@ import { useState } from "react";
 import { apiSaveSettings, apiUsage, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
+import { ErrorBox } from "./shared/ErrorBox";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -268,7 +269,7 @@ export function SettingsTab() {
           {t.tabSettingsUsage}
         </button>
       </div>
-      {error && <pre className="layout-result">✗ {error}</pre>}
+      {error && <ErrorBox text={error} />}
       {subTab === "usage" && <UsagePanel />}
       {subTab === "general" && (
         <div className="opts" id="settingsPanel">

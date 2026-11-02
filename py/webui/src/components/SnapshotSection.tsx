@@ -25,6 +25,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiSnapshotList, apiSnapshotResume, apiSnapshotSave, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
+import { ErrorBox } from "./shared/ErrorBox";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -119,7 +120,7 @@ export function SnapshotSection() {
           <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} /> {t.snapshotHiddenLabel}
         </label>
       </div>
-      {error && <pre className="layout-result">✗ {error}</pre>}
+      {error && <ErrorBox text={error} />}
       {result && (
         <pre className="layout-result">
           {t.snapshotResultSummary(result.started, result.already_running, result.failed)}

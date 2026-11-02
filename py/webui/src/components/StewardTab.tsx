@@ -29,6 +29,8 @@ import {
   getStewardState,
 } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { friendlyError } from "../api/ucliErrors";
+import { ErrorBox } from "./shared/ErrorBox";
 import { StewardJobs } from "./StewardJobs";
 import { StewardDigests } from "./StewardDigests";
 import { ReviewPanel } from "./ReviewPanel";
@@ -115,7 +117,7 @@ function HostBadge({ host, health }: { host?: string; health?: StewardHostHealth
 }
 
 function QuestionCard({ q, sid, health, onAnswered }: { q: StewardQuestion; sid: string; health?: StewardHostHealth; onAnswered: () => void }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -131,7 +133,7 @@ function QuestionCard({ q, sid, health, onAnswered }: { q: StewardQuestion; sid:
         onAnswered();
       }
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     } finally {
       setBusy(false);
     }
@@ -175,7 +177,7 @@ function QuestionCard({ q, sid, health, onAnswered }: { q: StewardQuestion; sid:
 }
 
 export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string, name: string) => void }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
   const [state, setState] = useState<StewardStateResult | null>(null);
   const [error, setError] = useState("");
@@ -249,7 +251,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       if (!r.ok) showToast(r.error || t.requestFailed);
       else after?.(r);
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     } finally {
       setBusy(false);
       void load();
@@ -327,7 +329,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       {!!state?.shutdown?.left_paused?.length && (
         <div className="warn-banner">{state.shutdown.left_paused.join(", ")}: {t.stewardSdLeftPaused}</div>
       )}
-      {error && <div className="warn-banner">{error}</div>}
+      {error && <ErrorBox text={error} />}
 
       {s && (
         <>

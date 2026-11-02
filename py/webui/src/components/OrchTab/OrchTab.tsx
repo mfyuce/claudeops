@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiOrchCancel, apiOrchSaveDraft, apiOrchStart, getOrchRun, getOrchRuns } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { friendlyError } from "../../api/ucliErrors";
+import { ErrorBox } from "../shared/ErrorBox";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -260,12 +261,7 @@ export function OrchTab({ selection }: OrchTabProps) {
                 onChange={(e) => setWorkerTimeout(Number(e.target.value.replace(/\D/g, "")) || DEFAULT_WORKER_TIMEOUT)}
               />
             </label>
-            {startError && (
-              <div className="warn-banner">
-                {t.requestFailed}
-                {startError}
-              </div>
-            )}
+            {startError && <ErrorBox text={`${t.requestFailed}${startError}`} />}
             <button
               type="button"
               className="start"

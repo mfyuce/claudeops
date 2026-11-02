@@ -20,6 +20,7 @@
 import { useEffect, useState } from "react";
 import { apiRemoveHost, apiSaveHost, apiTestHost, getHosts } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { friendlyError } from "../api/ucliErrors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -82,7 +83,7 @@ export function HostsSection() {
         await handleTest(savedName);
       }
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     } finally {
       setBusy(false);
     }
@@ -100,7 +101,7 @@ export function HostsSection() {
       const res = await apiTestHost({ name: hostName, lang });
       if (!res.ok) showToast(res.error);
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     } finally {
       setTestingNames((prev) => {
         const next = new Set(prev);
@@ -131,7 +132,7 @@ export function HostsSection() {
       const res = await apiRemoveHost({ name: hostName, lang });
       if (!res.ok) showToast(res.error);
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     }
     await load();
   }

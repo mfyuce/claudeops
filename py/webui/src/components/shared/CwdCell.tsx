@@ -19,6 +19,8 @@
 
 import { useState } from "react";
 import { useLang } from "../../i18n/LangContext";
+import { showToast } from "../../state/toast";
+import { copyToClipboard } from "./clipboard";
 
 export function CwdCell({ cwd, name }: { cwd: string; name?: string }) {
   const { t } = useLang();
@@ -26,6 +28,33 @@ export function CwdCell({ cwd, name }: { cwd: string; name?: string }) {
   return (
     <td className={expanded ? "cwd expanded" : "cwd"} title={t.cwdHint} onClick={() => setExpanded((v) => !v)}>
       {expanded && name ? `${name}: ${cwd}` : cwd}
+      {expanded && (
+        <>
+          {" "}
+          <button
+            type="button"
+            title="Yolu kopyala / copy path"
+            onClick={(e) => {
+              e.stopPropagation();
+              void copyToClipboard(cwd).then(() => showToast("✓ " + cwd)).catch(() => {});
+            }}
+          >
+            ⧉
+          </button>
+          {name && (
+            <button
+              type="button"
+              title="Adı kopyala / copy name"
+              onClick={(e) => {
+                e.stopPropagation();
+                void copyToClipboard(name).then(() => showToast("✓ " + name)).catch(() => {});
+              }}
+            >
+              ⧉ ad
+            </button>
+          )}
+        </>
+      )}
     </td>
   );
 }

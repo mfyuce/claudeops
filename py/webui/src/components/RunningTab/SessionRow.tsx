@@ -154,6 +154,27 @@ export function SessionRow({
           {session.cache && <CacheBadge cache={session.cache} />}
           {session.context && <ContextBadge context={session.context} />}
           {session.usage_total && <UsageTotalBadge usage={session.usage_total} />}
+          {/* ucli rozetleri isim hücresinde: cli sütunu <=640px'te gizli, burada dar ekranda da görünür */}
+          {session.cli === "ucli" && session.live_effort && (
+            <span className="cli-badge" title="Düşünme düzeyi (çalışan süreçten) / reasoning effort of the running process">
+              {session.live_effort}
+            </span>
+          )}
+          {session.cli === "ucli" && session.ucli_flags?.write && (
+            <span className="cli-badge" title="Yazma izni açık / file writes allowed (--allow-edit)">
+              ✎
+            </span>
+          )}
+          {session.cli === "ucli" && session.ucli_flags?.exec && (
+            <span className="cli-badge" title="Komut çalıştırma açık / command exec allowed (--allow-exec)">
+              exec
+            </span>
+          )}
+          {session.cli === "ucli" && session.ucli_flags?.max_cost_usd != null && (
+            <span className="cli-badge" title="Tur başına USD tavanı / per-turn USD cap (--max-cost-usd)">
+              ≤${session.ucli_flags.max_cost_usd}
+            </span>
+          )}
         </td>
         <td title={modelDiffers ? t.modelLiveDiffersHint(session.model) : undefined}>
           {shownModel}
@@ -161,30 +182,6 @@ export function SessionRow({
         </td>
         <td>
           <span className="cli-badge">{session.cli}</span>
-          {session.cli === "ucli" && session.live_effort && (
-            <span className="cli-badge" style={{ marginLeft: 4 }} title="Düşünme düzeyi (çalışan süreçten) / reasoning effort of the running process">
-              {session.live_effort}
-            </span>
-          )}
-          {session.cli === "ucli" && session.ucli_flags && (
-            <>
-              {session.ucli_flags.write && (
-                <span className="cli-badge" style={{ marginLeft: 4 }} title="Yazma izni açık / file writes allowed (--allow-edit)">
-                  ✎
-                </span>
-              )}
-              {session.ucli_flags.exec && (
-                <span className="cli-badge" style={{ marginLeft: 4 }} title="Komut çalıştırma açık / command exec allowed (--allow-exec)">
-                  exec
-                </span>
-              )}
-              {session.ucli_flags.max_cost_usd != null && (
-                <span className="cli-badge" style={{ marginLeft: 4 }} title="Tur başına USD tavanı / per-turn USD cap (--max-cost-usd)">
-                  ≤${session.ucli_flags.max_cost_usd}
-                </span>
-              )}
-            </>
-          )}
         </td>
         <td>
           <span

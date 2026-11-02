@@ -42,6 +42,7 @@
 import { Fragment, useState } from "react";
 import { apiReactivate } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { friendlyError } from "../api/ucliErrors";
 import { showToast } from "../state/toast";
 import { offerCapRetry } from "../state/capRetry";
 import { useLang } from "../i18n/LangContext";
@@ -78,7 +79,7 @@ function ReactivateRow({ item, onView }: { item: RosterEntry; onView: (host: str
         showToast(`${item.name}: ${res.error}`);
       }
     } catch (e) {
-      showToast(describeApiError(e, t));
+      showToast(friendlyError(describeApiError(e, t), lang));
     } finally {
       setBusy(false);
     }
