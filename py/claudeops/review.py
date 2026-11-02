@@ -1101,7 +1101,13 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
                     return 0.0
                 cr = g("cache_read_input_tokens", "cached_tokens", "cache_read_tokens")
                 cw = g("cache_creation_input_tokens", "cache_write_tokens")
-                inp = max(0.0, g("input_tokens", "prompt_tokens") - (0 if "cache_read_input_tokens" in u else cr) - (0 if "cache_creation_input_tokens" in u else cw))
+                # `input_tokens` (Anthropic yerli) önbelleği İÇERMEZ; ucli'nin normalleştirilmiş `prompt_tokens`ı önbellek okuma+yazmayı
+                # İÇERİR (21534 = 21530 yazma + 4): bu yüzden o alandan çıkarılır, yoksa önbellekli token'lar bir de tam girdi fiyatından
+                # sayılırdı (2 Kas 2026: günlük sayaç Console'dan ~5 kat şişkindi).
+                if isinstance(u.get("input_tokens"), (int, float)):
+                    inp = max(0.0, float(u["input_tokens"]) - (0 if "cache_read_input_tokens" in u else cr) - (0 if "cache_creation_input_tokens" in u else cw))
+                else:
+                    inp = max(0.0, g("prompt_tokens") - cr - cw)
                 if "cached_tokens" in u and "cache_creation_input_tokens" not in u:
                     inp_price = pw      # ucli normalleştirilmiş sayaç: yazma ayrı raporlanmaz, önbellek istendiğinden yeni girdi yazma fiyatından sayılır (güvenli üst sınır)
                 else:
