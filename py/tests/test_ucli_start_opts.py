@@ -181,7 +181,7 @@ class BuildTests(unittest.TestCase):
                 tempfile.TemporaryDirectory() as d:
             big = os.path.join(d, "AGENTS.md")
             with open(big, "w") as f:
-                f.write("x" * 20000)
+                f.write("x" * 50000)
             old = self.CWD
             self.CWD = d
             try:

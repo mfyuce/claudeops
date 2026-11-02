@@ -482,11 +482,11 @@ def _service_key_file(service: str) -> str:
     return os.path.expanduser(f"~/.claude/claudeops/ucli_key_{service}")
 
 
-_INSTRUCTIONS_MAX_BYTES = 16384   # ucli `--instructions` dosya başına sınırı
+_INSTRUCTIONS_MAX_BYTES = 40960   # ucli `--instructions` dosya başına sınırı (40 KiB)
 
 
 def _instructions_too_big(cwd: str) -> bool:
-    """cwd'deki AGENTS.md/CLAUDE.md'den biri ucli'nin 16 KiB sınırını aşıyorsa True (`--instructions-auto` atlanır)."""
+    """cwd'deki AGENTS.md/CLAUDE.md'den biri ucli'nin 40 KiB sınırını aşıyorsa True (`--instructions-auto` atlanır)."""
     for name in ("AGENTS.md", "CLAUDE.md"):
         try:
             if cwd and os.path.getsize(os.path.join(cwd, name)) > _INSTRUCTIONS_MAX_BYTES:
@@ -533,7 +533,7 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
             diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
             continue
         if flag == "--instructions-auto" and _instructions_too_big(cwd):
-            # ucli her talimat dosyasını 16 KiB ile sınırlar; büyükse oturum HEMEN ölür (claudeops AGENTS.md 30 KB'tı)
+            # ucli her talimat dosyasını 40 KiB ile sınırlar; büyükse oturum HEMEN ölür (claudeops AGENTS.md 30 KB'tı)
             diag_log("ucli_instructions_skipped", name=session_name, cwd=cwd, limit=_INSTRUCTIONS_MAX_BYTES)
             continue
         if flag == "--usage-log":

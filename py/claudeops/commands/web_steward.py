@@ -2128,7 +2128,7 @@ def _brain_ucli_opts(cfg: sw.Config, provider, model: str, workspace: str) -> Tu
     """`brain_cli=ucli` beyninin başlatma seçenekleri -> (temiz `cli_opts`, model, hata). Hizmet `brain_service` (varsayılan
     claude = Anthropic API), tur başına USD tavanı `brain_max_cost_usd`; ikisi de ucli başlat penceresinin doğrulayıcısından
     (`validate_cli_opts`) geçer. `brain_model` boşsa ve hizmet Evren değilse model hizmetin ilk modeli (Evren kataloğu modeli
-    Anthropic'te yok). Talimat dosyası (CLAUDE.md) ucli'nin 16 KiB sınırını aşarsa `--instructions-auto` zaten atlanır:
+    Anthropic'te yok). Talimat dosyası (CLAUDE.md) ucli'nin 40 KiB sınırını aşarsa `--instructions-auto` zaten atlanır:
     burada yalnız uyarı kaydı düşülür (beyin personasız açılır)."""
     raw: Dict[str, Any] = {"service": (cfg.brain_service or "claude").strip().lower()}
     if cfg.brain_max_cost_usd > 0:

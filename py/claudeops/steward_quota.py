@@ -143,4 +143,6 @@ def decide(cfg: Dict[str, Any], usage: Optional[Usage], now: float, tz: Optional
             return Decision("drain", cap, f"kullanılan %{used:g} >= yeni-iş-yok limiti %{limit:g}")
     if cap is not None and used >= cap:
         return Decision("drain", cap, f"kullanılan %{used:g} >= bugünün tavanı %{cap:g}")
+    if cap is None and mode == "auto":     # sessizce devre dışı kalmasın: neden görünür olsun (stop/shutdown yine yukarıda çalışır)
+        return Decision(reason="sıfırlanma zamanı çözülemedi: günlük tavan uygulanamıyor")
     return Decision(cap=cap)

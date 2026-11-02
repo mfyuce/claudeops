@@ -61,16 +61,16 @@ class BroadGlobTests(unittest.TestCase):
 class InstructionsCheckTests(unittest.TestCase):
     def test_sizes(self):
         with tempfile.TemporaryDirectory() as d:
-            Path(d, "AGENTS.md").write_bytes(b"x" * 30000)
+            Path(d, "AGENTS.md").write_bytes(b"x" * 50000)
             Path(d, "CLAUDE.md").write_bytes(b"x" * 100)
             r = up.instructions_check(d)
-        self.assertEqual(r["limit"], 16384)
-        self.assertEqual(r["files"], [{"name": "AGENTS.md", "bytes": 30000, "over": True},
+        self.assertEqual(r["limit"], 40960)
+        self.assertEqual(r["files"], [{"name": "AGENTS.md", "bytes": 50000, "over": True},
                                       {"name": "CLAUDE.md", "bytes": 100, "over": False}])
 
     def test_exact_limit_not_over(self):
         with tempfile.TemporaryDirectory() as d:
-            Path(d, "CLAUDE.md").write_bytes(b"x" * 16384)
+            Path(d, "CLAUDE.md").write_bytes(b"x" * 40960)
             self.assertFalse(up.instructions_check(d)["files"][0]["over"])
 
     def test_no_files_and_bad_cwd(self):

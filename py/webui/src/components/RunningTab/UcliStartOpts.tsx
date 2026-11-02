@@ -190,7 +190,7 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
       {overFiles.length > 0 && (
         <span className="opts-hint" style={{ flexBasis: "100%", color: "#b45309" }} role="alert">
           {overFiles
-            .map((f) => `${f.name} ${Math.round(f.bytes / 1024)} KB > ${Math.round((instr?.limit ?? 16384) / 1024)} KiB`)
+            .map((f) => `${f.name} ${Math.round(f.bytes / 1024)} KB > ${Math.round((instr?.limit ?? 40960) / 1024)} KiB`)
             .join(", ")}
           {tr ? ": proje talimatları YÜKLENMEYECEK (ucli sınırı)" : ": project instructions will NOT be loaded (ucli limit)"}
         </span>

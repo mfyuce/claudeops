@@ -691,7 +691,12 @@ def add_findings(paths: Any, proj: str, review_file: str, parsed: Sequence[Dict[
         for ofid, orec in data.items():
             if (isinstance(orec, dict) and orec.get("state") != "dup" and orec.get("project") == proj
                     and orec.get("review_file") != review_file):
-                by_key.setdefault(orec.get("key") or finding_key(proj, orec.get("where"), orec.get("title")), ofid)
+                okey = orec.get("key") or finding_key(proj, orec.get("where"), orec.get("title"))
+                cur = data.get(by_key.get(okey, ""))
+                # kanonik kayıt dict sırasına değil duruma bağlı: canlı kayıt, reddedilmiş/çürütülmüş olanın yerine geçer
+                if okey not in by_key or (isinstance(cur, dict) and cur.get("state") in ("refuted", "rejected")
+                                          and orec.get("state") not in ("refuted", "rejected")):
+                    by_key[okey] = ofid
         changed = False
         for f in parsed:
             fid = f"{slug_model(proj)}:{base}:{f['ref']}"

@@ -75,7 +75,13 @@ function ReactivateRow({ item, onView }: { item: RosterEntry; onView: (host: str
     setBusy(true);
     try {
       const res = await apiReactivate({ name: item.name, host: item.host, lang });
-      if (!res.ok && !offerCapRetry(res, item.name, item.host, () => apiReactivate({ name: item.name, host: item.host, lang }))) {
+      // Tavan yükseltilip tekrar denendiğinde oturum zaten ayaktaysa ("already active") bu başarıdır; hata gibi kalıp
+      // istemi/satırı kilitlemesin.
+      const retry = async () => {
+        const r = await apiReactivate({ name: item.name, host: item.host, lang });
+        return !r.ok && /already active|zaten aktif/i.test(r.error ?? "") ? { ...r, ok: true } : r;
+      };
+      if (!res.ok && !offerCapRetry(res, item.name, item.host, retry)) {
         // Backend "already active" is not a failure: the session is up, the row just needs a refresh.
         const already = /already active|zaten aktif/i.test(res.error ?? "");
         showToast(already ? res.error ?? "" : `${item.name}: ${res.error}`, already ? "info" : "error");

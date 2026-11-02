@@ -20,8 +20,12 @@ KillResult = Literal["clean", "forced", "already_dead"]
 KILL_GRACE_SECONDS: float = 10.0
 
 
-def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS, name: Optional[str] = None) -> KillResult:
+def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS, name: Optional[str] = None,
+                 create_time: Optional[float] = None) -> KillResult:
     """SIGTERM → grace saniye bekle → hâlâ canlıysa SIGKILL.
+
+    `create_time` verilirse (PID yeniden kullanımına karşı) sürecin create_time'ı eşleşmezse
+    başka bir süreç olduğundan sinyal GÖNDERİLMEZ ve "already_dead" döner.
 
     `name` verilirse (TODO.md 2026-10-01 EK #3 — kill_step bracket'ı ölümü bu
     fonksiyonun İÇİNE indirdi ama satır belirleyemedi) `psutil.Process(pid)` ve
@@ -39,6 +43,12 @@ def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS, name: Optional[str
         proc = psutil.Process(pid)
     except psutil.NoSuchProcess:
         return "already_dead"
+    if create_time is not None:
+        try:
+            if proc.create_time() != create_time:
+                return "already_dead"
+        except psutil.NoSuchProcess:
+            return "already_dead"
     if name:
         diag_log("kill_step", name=name, pid=pid, step="got_proc")
 
@@ -93,6 +103,11 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
     """
     from .tmux_backend import find_outer_bash_pids, is_tmux_backed, tmux_kill_session
 
+    try:
+        pid_ct: Optional[float] = psutil.Process(pid).create_time()    # PID yeniden kullanımına karşı kimlik
+    except psutil.Error:
+        pid_ct = None
+
     tmux_backed = False
     try:
         tmux_backed = is_tmux_backed(pid)
@@ -110,7 +125,7 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
         diag_log("kill_step", name=name, pid=pid, step="find_outer_bash_pids")
         outer_windows = find_outer_bash_pids(name) if name else []
         diag_log("kill_step", name=name, pid=pid, step="kill_session")
-        result = kill_session(pid, grace=grace, name=name)
+        result = kill_session(pid, grace=grace, name=name, create_time=pid_ct)
         diag_log("kill_step", name=name, pid=pid, step="kill_session_done", result=result)
         if name:
             diag_log("kill_step", name=name, pid=pid, step="tmux_kill_session")
@@ -137,7 +152,7 @@ def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
     except psutil.NoSuchProcess:
         pass
 
-    result = kill_session(pid, grace=grace)
+    result = kill_session(pid, grace=grace, create_time=pid_ct)
 
     if parent_pid is not None:
         try:

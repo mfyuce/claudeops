@@ -320,6 +320,20 @@ class TestPathsAndStores(unittest.TestCase):
         self.assertEqual(sorted(r["dup_of"] for r in dups), sorted(ids))
         self.assertEqual(len(rv.add_findings(self.paths, "b", r2, shifted)), 2)   # başka proje tekilleşmez
 
+    def test_dedup_canonical_prefers_live_over_refuted(self):
+        """Aynı anahtarlı eski kayıtlardan biri `refuted` ise kanonik (dup_of) canlı olan olur, dict sırası belirleyici değil."""
+        f = rv.parse_findings(MD)[:1]
+        r1 = os.path.join(self.paths.reviews, "a", "agy", "m", "20261020101500.md")
+        r2 = os.path.join(self.paths.reviews, "a", "agy", "m", "20261021101500.md")
+        r3 = os.path.join(self.paths.reviews, "a", "agy", "m", "20261022101500.md")
+        live = rv.add_findings(self.paths, "a", r1, f)[0]
+        data = rv.load_findings(self.paths)
+        refuted = dict(data[live], state="refuted", review_file=r2)
+        rv.save_findings(self.paths, {"a:old:R-1": refuted, **data})      # refuted kayıt dict'te ÖNDE
+        self.assertEqual(rv.add_findings(self.paths, "a", r3, f), [])
+        dup = [r for r in rv.load_findings(self.paths).values() if r["state"] == "dup"]
+        self.assertEqual([r["dup_of"] for r in dup], [live])
+
     def test_dedup_same_report_never_and_undup(self):
         """Aynı raporda aynı başlık/dosya ayrı satırlar = ayrı bulgular (tekilleşmez); yanlış dup `undup` ile geri döner."""
         r1 = os.path.join(self.paths.reviews, "a", "agy", "m", "20261101101500.md")

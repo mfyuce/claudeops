@@ -123,6 +123,7 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
     tracked = {x for x in out.split("\0") if x}
     would: List[str] = []
     held: List[str] = []
+    seen: Dict[str, str] = {}
     rdir = os.path.join(rroot, "reviews")
     for dirpath, dirs, files in os.walk(rdir):
         # tarayıcıdan "farklı kaydet" web sayfası yan dosyaları (`<ad>_files/`) saklanmaz; yalnız ana .html/.md kalır (sahip, TBD A, 2026-10-28)
@@ -139,9 +140,25 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
                 held.append(rel)
                 continue
             (held if scan(txt) != txt else would).append(rel)
+            if rel in would:
+                seen[rel] = txt
     res.update(would=would, held=held, ok=True)
     if dry:
         return res
+    if would and not dry:
+        # tarama ile ekleme arasında dosya değişmiş olabilir (TOCTOU): değişen dosya yeniden taranır, gizli değer içeriyorsa dışarıda kalır
+        for rel in list(would):
+            try:
+                with open(os.path.join(rroot, rel), encoding="utf-8", errors="replace") as f:
+                    now_txt = f.read()
+            except OSError:
+                would.remove(rel)
+                held.append(rel)
+                continue
+            if now_txt != seen.get(rel) and scan(now_txt) != now_txt:
+                would.remove(rel)
+                held.append(rel)
+        res.update(would=would, held=held)
     if would:
         rc, out = _git(base, "add", "-f", "--", *would, run=run)
         if rc != 0:

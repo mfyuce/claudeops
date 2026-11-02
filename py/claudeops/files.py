@@ -7,7 +7,7 @@ TODO.md'nin "folder browser" maddesinin implementasyonu. Kapsam kullanıcı
 tarafından netleştirildi: SADECE session'ın proje klasörü (cwd) + varsa
 provider'ın kendi per-proje meta-dizini (bkz. `CliProvider.extra_file_roots()`)
 — makinedeki HERHANGİ bir yol DEĞİL. `/tmp` (scratchpad) kasıtlı olarak dahil
-EDİLMEDİ (TODO.md'de "kullanıcı onayı bekleniyor" olarak not düşülmüştü,
+EDİLMEDİ (kullanıcı onayı bekleniyordu,
 netleşmeden eklenmedi — istenirse ayrı bir turda eklenebilir).
 
 Path-traversal/arbitrary-file-read'e karşı TEK kapı noktası:
@@ -379,7 +379,7 @@ def validate_candidates(s: Session, candidates: List[str]) -> List[str]:
     """Terminal çıktısında regex'le yakalanan dosya-yolu ADAYLARINDAN
     GERÇEKTEN var olan + izin verilen dosyalara karşılık gelenleri (sırayı
     koruyarak, dedup'lanmış) döndürür — regex kendi başına güvenilir değil
-    (2026-09-05, TODO.md'nin kendi notu: "salt regex güvenilir olmayabilir"),
+    (2026-09-05, dönemin kendi notu: "salt regex güvenilir olmayabilir"),
     bu fonksiyon o filtrenin KENDİSİ. Dizinler/uzak-kök-dışı/var-olmayan
     yollar sessizce elenir, hata döndürmez (caller için 'aday listesi' — bir
     tanesinin geçersiz olması diğerlerini etkilemez)."""
