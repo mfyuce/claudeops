@@ -26,7 +26,8 @@ DEFAULT_PORT = mcp_queue.DEFAULT_PORT
 def default_spec(sid: str = "default") -> McpServerSpec:
     """`default`: argümansız komut satırı (eski beyin/eski config birebir aynı). Diğer kimlikler: `--steward <sid>`."""
     args = ("mcp-steward",) if sid == "default" else ("mcp-steward", "--steward", sid)
-    return McpServerSpec(name=SERVER_NAME, command=os.path.join(REPO_DIR, "py", "cops"), args=args)
+    return McpServerSpec(name=SERVER_NAME, command=os.path.join(REPO_DIR, "py", "cops"), args=args,
+                         allowed_tools=tuple(t["name"] for t in TOOLS))
 
 
 # Bu MCP sunucusunun kimliği (`--steward`, süreç başına BİR KEZ; `run_server` ayarlar). "default" = parametre EKLENMEZ

@@ -285,6 +285,8 @@ class Config:
     brain_cli: str = "claude"
     brain_model: str = ""
     brain_effort: str = "high"
+    brain_service: str = "claude"     # YALNIZ brain_cli=ucli: ucli hizmeti (`ucli_services` kimliği; claude = Anthropic API, dolardan yer)
+    brain_max_cost_usd: float = 1.0   # YALNIZ brain_cli=ucli: tur başına `--max-cost-usd` (ikili tanırsa, model fiyatlıysa; 0 = yok)
     brain_name: str = "degnekci"
     planning_model: str = ""
     planning_effort: str = "medium"   # sahibin kalıcı kuralı: proje ANA oturumu Sonnet medium; ağır iş alt ajanda

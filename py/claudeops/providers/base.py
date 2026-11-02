@@ -35,6 +35,9 @@ class McpServerSpec:
     name: str
     command: str
     args: Sequence[str] = field(default_factory=tuple)
+    # Modele açılacak araç adları (izin listesi). Yalnız açık izin listesi isteyen CLI (ucli `mcp add --allow-tool`,
+    # `chat --with-mcp`) okur; claude/codex yok sayar (sunucunun TÜM araçları zaten görünür, argv/dosya içerikleri değişmez).
+    allowed_tools: Sequence[str] = field(default_factory=tuple)
 
 
 class CliProvider(ABC):
@@ -43,6 +46,10 @@ class CliProvider(ABC):
     # Başlat penceresinden gelen `cli_opts` (hizmet, exec izinleri...) YALNIZ bunu True yapan provider'a iletilir;
     # diğerlerinin `build_inner_command` imzası ve argv'si DEĞİŞMEZ (spawn onlara `cli_opts` kwarg'ı hiç geçirmez).
     accepts_cli_opts = False
+
+    # True ise spawn `mcp_launch_args(spec, cwd=<oturum kökü>)` çağırır (MCP kaydı çalışma alanına bağlı CLI: ucli
+    # `ROOT/.ucli/mcp.json`). Diğerlerinin çağrısı birebir aynı kalır (`mcp_launch_args(spec)`).
+    mcp_needs_cwd = False
 
     def validate_cli_opts(self, raw):
         """Ham `cli_opts` -> (temiz sözlük, hata). Varsayılan: hiçbir seçenek kabul edilmez."""

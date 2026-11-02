@@ -2119,6 +2119,36 @@ def _verify_brain_mcp(cfg: sw.Config, since: float) -> bool:
         time.sleep(1.0)
 
 
+def _brain_ucli_opts(cfg: sw.Config, provider, model: str, workspace: str) -> Tuple[Dict[str, Any], str, str]:
+    """`brain_cli=ucli` beyninin başlatma seçenekleri -> (temiz `cli_opts`, model, hata). Hizmet `brain_service` (varsayılan
+    claude = Anthropic API), tur başına USD tavanı `brain_max_cost_usd`; ikisi de ucli başlat penceresinin doğrulayıcısından
+    (`validate_cli_opts`) geçer. `brain_model` boşsa ve hizmet Evren değilse model hizmetin ilk modeli (Evren kataloğu modeli
+    Anthropic'te yok). Talimat dosyası (CLAUDE.md) ucli'nin 16 KiB sınırını aşarsa `--instructions-auto` zaten atlanır:
+    burada yalnız uyarı kaydı düşülür (beyin personasız açılır)."""
+    raw: Dict[str, Any] = {"service": (cfg.brain_service or "claude").strip().lower()}
+    if cfg.brain_max_cost_usd > 0:
+        raw["max_cost_usd"] = cfg.brain_max_cost_usd
+    opts, err = provider.validate_cli_opts(raw)
+    if err:
+        return {}, model, f"beyin ucli seçenekleri geçersiz: {err}"
+    service = opts.get("service") or ""
+    if not model and service and service != "evren":
+        from ..settings import ucli_services
+        models = next((d.get("models") or [] for d in ucli_services() if d["id"] == service), [])
+        if not models:
+            return {}, model, f"beyin: {service} hizmetinde model yok; brain_model ayarla"
+        model = models[0]
+    elif not model:
+        model = default_model_for(provider)
+    try:
+        from ..providers.ucli_provider import instructions_check
+        if any(f.get("over") for f in instructions_check(workspace).get("files", [])):
+            sw.log_event("brain_instructions_too_big", paths=cfg.sid, name=cfg.brain_name, workspace=workspace)
+    except Exception:
+        pass
+    return opts, model, ""
+
+
 def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False, _mcp_retry: bool = False) -> Dict[str, Any]:
     """Kimliğin beynini aç (kendi workspace'i, `mcp-steward --steward <sid>`). Default dışı kimlik YALNIZ `enabled` iken
     açılır (hiçbir yeni kimlik kendiliğinden beyin açmaz; ayar varsayılan KAPALI); default'un davranışı eskisiyle aynı."""
@@ -2133,9 +2163,17 @@ def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False, _mcp_retry
     workspace = sw.paths_for(cfg.sid).workspace
     cli = cfg.brain_cli if cfg.brain_cli in PROVIDERS else DEFAULT_CLI
     provider = get_provider(cli)
-    model = cfg.brain_model or default_model_for(provider)
+    # ucli: model hizmete bağlı (Evren kataloğu Anthropic'te yok), `_brain_ucli_opts` seçer (Evren'e ağ isteği atmadan)
+    model = cfg.brain_model or ("" if cli == "ucli" else default_model_for(provider))
     effort = cfg.brain_effort or default_effort_for(provider)
     mode = provider.permission_modes()[0] if provider.permission_modes() else "auto"
+    extra: Dict[str, Any] = {}
+    if cli == "ucli":     # Anthropic API (dolar) ile beyin: başlat penceresiyle AYNI `cli_opts` yolu; claude yolu birebir aynı kalır
+        opts, model, err = _brain_ucli_opts(cfg, provider, model, workspace)
+        if err:
+            sw.log_event("brain_start_refused", paths=cfg.sid, name=cfg.brain_name, error=err)
+            return {"ok": False, "error": err}
+        extra["cli_opts"] = opts or None
     t_spawn = time.time()
     inst_mod.record_instance(cfg.brain_name, blueprint=None, cwd=workspace, cli=cli, model=model,
                              permission_mode=mode, effort=effort, origin="steward")
@@ -2144,8 +2182,13 @@ def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False, _mcp_retry
             _scan_invalidate()
             kind = spawn_session(name=cfg.brain_name, cwd=workspace, model=model, display=detect_display(),
                                  permission_mode=mode, effort=effort, force_new=bool(fresh), cli=cli,
-                                 mcp_server=brain_spec(cfg.sid))
+                                 mcp_server=brain_spec(cfg.sid), **extra)
     except TimeoutError as e:
+        return {"ok": False, "error": str(e)}
+    except ValueError as e:     # ucli `_apply_cli_opts` reddi (anahtar yok, günlük USD tavanı aşıldı, bayrak yok)
+        if cli != "ucli":
+            raise
+        sw.log_event("brain_start_refused", paths=cfg.sid, name=cfg.brain_name, error=str(e))
         return {"ok": False, "error": str(e)}
     inst_mod.mark_started(cfg.brain_name, cli=cli, model=model, permission_mode=mode, effort=effort)
     ready = _wait_ready(cfg.brain_name, cli)

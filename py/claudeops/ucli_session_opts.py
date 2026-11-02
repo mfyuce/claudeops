@@ -50,6 +50,7 @@ MAX_GLOBS = 4
 MAX_BINDS = 6
 _BIND_RE = re.compile(r"^/[A-Za-z0-9_./+@-]{1,200}$")
 TIMEOUT_RANGE = (1, 600)
+MAX_COST_USD = 100.0         # `max_cost_usd` (tur başına USD) üst sınırı: yazım hatası sınırsız harcama açmasın
 
 
 BROAD_GLOBS = ("*", "**", "**/*")   # yalnız `accept_risk` ile kabul edilir
@@ -69,7 +70,7 @@ def _items(v: Any) -> List[str]:
 
 def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
     """Ham pencere sözlüğü -> (temiz sözlük, hata). Hata boş değilse temiz sözlük BOŞTUR. Bilinmeyen anahtarlar yok sayılır.
-    Temiz anahtarlar (yalnız verilenler): `service`, `exec_cmds` (list), `exec_own_glob` (list), `exec_write` (bool, VARSAYILAN KAPALI: modele dosya yazma katmanı `--allow-edit`), `exec_bind_ro` (list, kafese salt-okunur bağlanacak mutlak dizinler: araç zinciri), `exec_timeout` (int)."""
+    Temiz anahtarlar (yalnız verilenler): `service`, `exec_cmds` (list), `exec_own_glob` (list), `exec_write` (bool, VARSAYILAN KAPALI: modele dosya yazma katmanı `--allow-edit`), `exec_bind_ro` (list, kafese salt-okunur bağlanacak mutlak dizinler: araç zinciri), `exec_timeout` (int), `max_cost_usd` (float > 0, tur başına USD tavanı)."""
     if not raw:
         return {}, ""
     if not isinstance(raw, dict):
@@ -148,6 +149,17 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
         if not cmds:
             return {}, "exec_timeout için exec_cmds gerekli"
         out["exec_timeout"] = n
+    c = raw.get("max_cost_usd")
+    if c not in (None, ""):
+        # Tur (görev) başına tahmini USD tavanı -> ucli `--max-cost-usd` (aşılınca tur toparlanır). 0 = yok (anahtar düşer).
+        try:
+            usd = float(str(c).strip().replace(",", "."))
+        except ValueError:
+            return {}, "max_cost_usd sayı olmalı"
+        if not (0 <= usd <= MAX_COST_USD) or usd != usd:
+            return {}, f"max_cost_usd 0-{MAX_COST_USD:g} USD arası"
+        if usd > 0:
+            out["max_cost_usd"] = usd
     return out, ""
 
 

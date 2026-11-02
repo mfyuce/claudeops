@@ -189,7 +189,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "routing_guidance_text": "",  # "" = paketlenmiş `data/routing.md`; doluysa o metin kullanılır (Ayarlar'da düzenlenir).
     "steward": {},           # {enabled, tick_seconds, tour_minutes, max_active, max_starts_per_tick, idle_minutes,
                               # review_minutes, stop_idle_minutes, ho_grace_minutes, brain_cli, brain_model,
-                              # brain_effort, brain_name, planning_model, planning_effort, planned_model,
+                              # brain_effort, brain_service, brain_max_cost_usd (ikisi YALNIZ brain_cli=ucli:
+                              # ucli hizmeti, varsayılan claude = Anthropic API; tur başına USD tavanı, varsayılan 1.0),
+                              # brain_name, planning_model, planning_effort, planned_model,
                               # planned_effort, lang, card_refresh, card_cli, card_model, card_max_age_hours,
                               # cards_per_tick, mode (observe|act, VARSAYILAN observe), summary_hour: str} — değnekçi (2026-10-19, kullanıcı: "160 projemde sürekli
                               # gezip ... bir değnekçiye/scheduler'a ihtiyacım var"). Hepsi str, alan bazlı merge

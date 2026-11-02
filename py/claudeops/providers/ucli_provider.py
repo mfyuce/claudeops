@@ -83,7 +83,9 @@ değer yoksa dosyaya dokunulmaz (elle oluşturulmuş bir dosya varsa korunur).
 from __future__ import annotations
 import json
 import os
+import re
 import shlex
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -100,7 +102,7 @@ from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_
                         ucli_web_config)
 from ..ucli_client import (UcliError, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, failed_turn_records, resolve_binary,
                            ucli_chat_once)
-from .base import CliProvider, OneshotError
+from .base import CliProvider, McpServerSpec, OneshotError
 
 # effort: "ne kadar düşünsün" anlamında GERÇEK bir karşılığı yok (unified-cli
 # TOBEDECIDED.md'sine bu boşluk ayrıca not edildi) — ama 2026-09-24'te
@@ -531,6 +533,74 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
     return argv
 
 
+# ucli'nin `--max-cost-usd` için YERLEŞİK fiyatı olan modeller (unified-cli `usage.rs` `Price::builtin`). Fiyatsız modelde
+# ucli bayrağı HATA ile reddeder (oturum açılmaz): o modelde bayrak eklenmez, günlüğe yazılır.
+_PRICED_MODELS = frozenset({"claude-opus-5-5", "claude-sonnet-5-5"})
+
+
+def _max_cost_args(argv: List[str], usd: float, session_name: str = "") -> List[str]:
+    """`--max-cost-usd USD` (tur başına tahmini USD tavanı; aşılınca tur toparlanır). YALNIZ ikili bayrağı tanıyorsa ve
+    modelin yerleşik fiyatı varsa; aksi halde argv değişmez, günlüğe yazılır."""
+    binary = argv[0]
+    model = argv[argv.index("--model") + 1] if "--model" in argv and argv.index("--model") + 1 < len(argv) else ""
+    if not binary_supports_flag(binary, "--max-cost-usd"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--max-cost-usd", binary=binary)
+        return argv
+    if model not in _PRICED_MODELS:
+        diag_log("ucli_max_cost_skipped", name=session_name, model=model, reason="no built-in price")
+        return argv
+    return _set_flag_value(argv, "--max-cost-usd", f"{usd:g}")
+
+
+# ucli `mcp add` sunucu adı kuralı: 1-24 ASCII harf/rakam/alt çizgi (`cops-steward` -> `cops_steward`).
+_MCP_NAME_BAD = re.compile(r"[^A-Za-z0-9_]")
+_MCP_TOOL_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+_MCP_ADD_TIMEOUT = 20
+
+
+def mcp_server_name(spec_name: str) -> str:
+    return (_MCP_NAME_BAD.sub("_", spec_name or "") or "mcp")[:24]
+
+
+def mcp_add_argv(binary: str, cwd: str, spec: McpServerSpec) -> List[str]:
+    """`ucli --root CWD mcp add NAME --command CMD --allow-tool T... -- ARGS...` (kayıt `CWD/.ucli/mcp.json`'a yazılır;
+    sunucuyu BAŞLATMAZ). Kimlik bilgisi YOK: sunucu (mcp-steward) panel token'ını kendi dosyasından okur."""
+    argv = [binary, "--root", cwd, "mcp", "add", mcp_server_name(spec.name), "--command", spec.command]
+    for t in spec.allowed_tools:
+        argv += ["--allow-tool", t]
+    return argv + ["--", *[str(a) for a in spec.args]]
+
+
+def register_mcp(binary: str, cwd: str, spec: McpServerSpec, session_name: str = "") -> bool:
+    """`spec`'i oturum kökünün `.ucli/mcp.json`'una kaydet. Dosya her açılışta YENİDEN yazılır: eskisi silinir, sonra
+    `mcp add` (ucli, dosya YOKKEN eklenen kaydı kendisi onaylar: `trusted-mcp` özeti; onaylanmamış/başkasının yazdığı bir
+    dosyayı biz `mcp trust` ile ONAYLAMAYIZ). Bu kök claudeops'a ait olmalı (beyin çalışma alanı): orada elle eklenmiş
+    başka sunucu kaydı silinir. Başarı = True; her hata günlüğe yazılır, False döner (çağıran `--with-mcp` eklemez)."""
+    path = os.path.join(cwd, ".ucli", "mcp.json")
+    try:
+        if os.path.islink(os.path.join(cwd, ".ucli")):
+            diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, error=".ucli is a symlink")
+            return False
+        if os.path.lexists(path):
+            os.unlink(path)         # symlink'se hedefi değil bağlantının kendisi silinir
+    except OSError as e:
+        diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, error=repr(e))
+        return False
+    try:
+        r = subprocess.run(mcp_add_argv(binary, cwd, spec), stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                           timeout=_MCP_ADD_TIMEOUT, cwd=cwd)
+    except (OSError, subprocess.SubprocessError) as e:
+        diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, error=repr(e))
+        return False
+    if r.returncode != 0:
+        diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, rc=r.returncode,
+                 error=(r.stderr or r.stdout or "")[-300:])
+        return False
+    diag_log("ucli_mcp_registered", name=session_name, cwd=cwd, server=mcp_server_name(spec.name),
+             tools=len(spec.allowed_tools))
+    return True
+
+
 def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "", cwd: str = "", effort: str = "") -> Tuple[List[str], str]:
     """Temiz `cli_opts` -> (yeni argv, anahtar env öneki). Hizmet seçilmiş ve anahtarı YOKSA `ValueError` (spawn REDDEDİLİR:
     yanlış hizmete/anahtarsız açmak sessizce başka modele düşmekten kötü). Her bayrak `binary_supports_flag` kapılı;
@@ -566,6 +636,8 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
         env_prefix = f'{env_name}="$(cat {shlex.quote(path)})"'
         if service == "claude":
             argv = _claude_service_flags(argv, session_name, cwd)
+    if opts.get("max_cost_usd"):
+        argv = _max_cost_args(argv, float(opts["max_cost_usd"]), session_name)
     if opts.get("exec_cmds"):
         names, err = expand_exec_cmds(opts["exec_cmds"], path_executables())
         if err:
@@ -601,16 +673,39 @@ class UcliProvider(CliProvider):
         return None  # "resume" zaten --session NAME'in kendisi, ayrı id yok
 
     accepts_cli_opts = True
+    mcp_needs_cwd = True
 
     def validate_cli_opts(self, raw):
         return validate_start_opts(raw)
 
+    def mcp_launch_args(self, spec: McpServerSpec, cwd: str = "") -> List[str]:
+        """ucli'nin çağrı-başına MCP yolu: sunucu oturum kökünün `.ucli/mcp.json`'una `mcp add` ile kaydedilir (izinli
+        araçlar `spec.allowed_tools`), oturum `chat --with-mcp` ile açılır (yalnız izinli araçlar modele görünür; ad
+        `<sunucu>__<araç>`). İkili `--with-mcp`i tanımıyorsa, izin listesi boşsa, kök yoksa ya da kayıt başarısızsa []
+        (oturum MCP'siz açılır) ve günlüğe yazılır."""
+        try:
+            binary = resolve_binary()
+        except Exception as e:      # ikili yoksa spawn zaten build_inner_command'da net hatayla düşer
+            diag_log("ucli_mcp_skipped", server=spec.name, reason=repr(e))
+            return []
+        if not binary_supports_flag(binary, "--with-mcp"):
+            diag_log("ucli_flag_unsupported", flag="--with-mcp", binary=binary)
+            return []
+        tools = [str(t) for t in spec.allowed_tools if _MCP_TOOL_RE.match(str(t))]
+        if not tools:
+            diag_log("ucli_mcp_skipped", server=spec.name, reason="no allowed tools")
+            return []
+        if not cwd or not os.path.isabs(cwd) or not os.path.isdir(cwd):
+            diag_log("ucli_mcp_skipped", server=spec.name, reason="no workspace", cwd=cwd)
+            return []
+        clean = McpServerSpec(name=spec.name, command=spec.command, args=tuple(spec.args), allowed_tools=tuple(tools))
+        return ["--with-mcp"] if register_mcp(binary, cwd, clean) else []
+
     def build_inner_command(self, cwd, model, permission_mode, effort,
                              resume_id, prompt, session_name, extra_args: Sequence[str] = (),
                              cli_opts: Optional[Dict[str, Any]] = None) -> str:
-        # resume_id/prompt/extra_args ucli'de anlamsız — yok sayılır (MCP
-        # kavramı bu yüzeyde yok, mcp_launch_args() base.py'nin boş-liste
-        # varsayımında kalıyor). effort → --max-steps + --max-context-kib +
+        # resume_id/prompt ucli'de anlamsız — yok sayılır; extra_args'tan
+        # YALNIZ `--with-mcp` alınır (bkz. mcp_launch_args). effort → --max-steps + --max-context-kib +
         # --max-tool-calls, bkz. _EFFORT_LIMITS'in yorumu; tanınmayan/boş bir
         # değer sessizce "medium"a düşer. Ayarlar > model'deki `ucli_limits`
         # override'ı (settings.ucli_limit_overrides(), TODO.md'nin ucli effort
@@ -649,6 +744,8 @@ class UcliProvider(CliProvider):
         argv += _effort_args(argv[0], model, preset, session_name)
         argv += _stream_args(argv[0], session_name)
         argv += _state_dir_args(argv[0], cwd, session_name)
+        if "--with-mcp" in extra_args:      # yalnız `mcp_launch_args`ın (kayıt başarılıysa) verdiği bayrak; başka extra_args yok sayılır
+            argv.append("--with-mcp")
         service_env = ""
         if cli_opts:
             argv, service_env = _apply_cli_opts(argv, cli_opts, session_name, cwd, effort)

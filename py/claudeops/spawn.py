@@ -141,7 +141,12 @@ def spawn_session(
         diag_log("spawn_effort_adjusted", name=name, cli=cli, model=model,
                  requested=requested_effort, used=effort)
 
-    extra_args = provider.mcp_launch_args(mcp_server) if mcp_server is not None else []
+    if mcp_server is None:
+        extra_args = []
+    elif getattr(provider, "mcp_needs_cwd", False):     # ucli: kayıt oturum köküne (`ROOT/.ucli/mcp.json`) yazılır
+        extra_args = provider.mcp_launch_args(mcp_server, cwd=cwd)
+    else:
+        extra_args = provider.mcp_launch_args(mcp_server)
     # `cli_opts` YALNIZ kabul eden provider'a (ucli) geçer: diğerlerinin çağrısı ve argv'si birebir aynı kalır.
     opt_kwargs = {"cli_opts": cli_opts} if (cli_opts and getattr(provider, "accepts_cli_opts", False)) else {}
     cli_invocation = provider.build_inner_command(cwd, model, permission_mode, effort,
