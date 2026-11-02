@@ -47,7 +47,10 @@ def _parse_reset(text: str, tz_name: str, now: float) -> Optional[float]:
     m = re.match(r"([A-Za-z]{3})[a-z]*\s+(\d{1,2}),\s*(\d{1,2})(?::(\d{2}))?\s*([ap]m)", text.strip(), re.I)
     if not m:
         return None
-    mon = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].index(m.group(1).lower()) + 1
+    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    if m.group(1).lower() not in months:     # "Foo 26, 5pm": bilinmeyen ay adı istisna değil None
+        return None
+    mon = months.index(m.group(1).lower()) + 1
     hour = int(m.group(3)) % 12 + (12 if m.group(5).lower() == "pm" else 0)
     year = datetime.datetime.fromtimestamp(now, tz).year
     try:
@@ -134,9 +137,9 @@ def decide(cfg: Dict[str, Any], usage: Optional[Usage], now: float, tz: Optional
         return Decision("shutdown", cap, f"kullanılan %{used:g} >= kapatma limiti %{sd:g} (devirle kapat)")
     if mode == "manual":
         limit = _num(cfg, "manual_limit", None)
-        if limit is None:
+        if limit is None and cap is None:
             return Decision(cap=cap, reason="manual_limit verilmemiş")
-        if used >= limit:
+        if limit is not None and used >= limit:
             return Decision("drain", cap, f"kullanılan %{used:g} >= yeni-iş-yok limiti %{limit:g}")
     if cap is not None and used >= cap:
         return Decision("drain", cap, f"kullanılan %{used:g} >= bugünün tavanı %{cap:g}")

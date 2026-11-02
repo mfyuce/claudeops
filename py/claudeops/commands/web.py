@@ -3831,6 +3831,7 @@ def _proxy_desktop_ws(handler: "_Handler") -> None:
     handler.close_connection = True
     try:
         backend = socket.create_connection(("127.0.0.1", port), timeout=5.0)
+        backend.settimeout(None)   # 5 sn yalnız bağlanma için; boşta yayın kopmasın
     except OSError as e:
         diag_log("desktop_ws_backend_unreachable", error=str(e))
         handler.send_response(502)
@@ -3856,6 +3857,10 @@ def _proxy_desktop_ws(handler: "_Handler") -> None:
             finally:
                 try:
                     backend.shutdown(socket.SHUT_RD)
+                except OSError:
+                    pass
+                try:   # arka uç kapandı: istemci tarafındaki bloklu read1() dönsün, thread askıda kalmasın
+                    handler.connection.shutdown(socket.SHUT_RD)
                 except OSError:
                     pass
 
@@ -4186,7 +4191,7 @@ class _Handler(BaseHTTPRequestHandler):
         # RFC 6266: ASCII fallback (tırnak/CR/LF temizlenmiş, eski tarayıcılar
         # için) + UTF-8 filename* (bu ortamda sık olan Türkçe dosya adları için
         # ŞART — salt ASCII filename= onları ya kırpardı ya bozardı).
-        ascii_name = filename.replace('"', "").replace("\r", "").replace("\n", "")
+        ascii_name = "".join(c if (32 <= ord(c) < 127 and c not in '"\\') else "_" for c in filename) or "download"
         disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
         try:
             self.send_response(200)

@@ -140,18 +140,24 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
                 continue
             (held if scan(txt) != txt else would).append(rel)
     res.update(would=would, held=held, ok=True)
-    if dry or not would:
+    if dry:
         return res
-    rc, out = _git(base, "add", "-f", "--", *would, run=run)
-    if rc != 0:
-        res.update(ok=False, error="git add başarısız: " + out[-200:])
-        return res
-    rc, out = _git(base, "commit", "-m", f"reviews: {len(would)} yeni dosya (otomatik)", "--only", "--", *would, run=run)
-    if rc != 0:
-        _git(base, "reset", "-q", "--", *would, run=run)      # index'te takılı kalmasın
-        res.update(ok=False, error="git commit başarısız: " + out[-200:])
-        return res
-    res["committed"] = len(would)
+    if would:
+        rc, out = _git(base, "add", "-f", "--", *would, run=run)
+        if rc != 0:
+            res.update(ok=False, error="git add başarısız: " + out[-200:])
+            return res
+        rc, out = _git(base, "commit", "-m", f"reviews: {len(would)} yeni dosya (otomatik)", "--only", "--", *would, run=run)
+        if rc != 0:
+            _git(base, "reset", "-q", "--", *would, run=run)      # index'te takılı kalmasın
+            res.update(ok=False, error="git commit başarısız: " + out[-200:])
+            return res
+        res["committed"] = len(would)
+    else:
+        # yeni dosya yok: önceki koşudan commit'lenmiş ama push edilmemiş (push hatası) iş kalmış olabilir -> yine push dene.
+        rc, _o = _git(base, "rev-parse", "--verify", "-q", "HEAD", run=run)
+        if rc != 0:
+            return res          # hiç commit yok, itilecek bir şey yok
     rc, remotes = _git(base, "remote", run=run)
     if rc != 0 or not remotes.split():
         res.update(ok=False, error="remote yok ya da `git remote` başarısız" if rc == 0 else "git remote başarısız: " + remotes[-200:])

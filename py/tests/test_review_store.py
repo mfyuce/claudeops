@@ -138,6 +138,32 @@ class CommitTest(unittest.TestCase):
         again = rs.commit_reviews(self.main, self.gd, scan, dry=False)                         # ikinci tur: yeni dosya yok
         self.assertEqual((again["would"], again["committed"]), ([], 0))
 
+    def test_unpushed_local_commit_is_pushed_on_next_run(self):
+        # 1. tur: remote'lar geçici bozuk -> commit olur, push başarısız
+        bad = {}
+        for n in ("origin", "gitlab"):
+            bad[n] = self.remotes[0 if n == "origin" else 1]
+            git("--git-dir=" + self.gd, "remote", "set-url", n, os.path.join(self.tmp.name, "yok-" + n + ".git"))
+        r1 = rs.commit_reviews(self.main, self.gd, scan, dry=False)
+        self.assertFalse(r1["ok"])
+        self.assertEqual(r1["committed"], 2)
+        # 2. tur: remote'lar düzelir, yeni dosya YOK -> yine de push edilmeli
+        for n, path in bad.items():
+            git("--git-dir=" + self.gd, "remote", "set-url", n, path)
+        r2 = rs.commit_reviews(self.main, self.gd, scan, dry=False)
+        self.assertEqual((r2["would"], r2["committed"]), ([], 0))
+        self.assertTrue(r2["ok"], r2)
+        self.assertEqual(sorted(r2["pushed"]), ["gitlab", "origin"])
+        for rem in self.remotes:
+            self.assertIn("reviews/", git("--git-dir=" + rem, "ls-tree", "-r", "--name-only", "HEAD"))
+
+    def test_no_commit_yet_and_nothing_new_is_noop(self):
+        for f in os.listdir(self.rdir):
+            os.remove(os.path.join(self.rdir, f))
+        r = rs.commit_reviews(self.main, self.gd, scan, dry=False)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual((r["committed"], r["pushed"]), (0, []))
+
     def test_act_works_from_foreign_cwd(self):
         # servis cwd'si py/: git yolları kök'e göre çözülmeli (canlıda "pathspec did not match" idi)
         sub = os.path.join(self.main, "sub")

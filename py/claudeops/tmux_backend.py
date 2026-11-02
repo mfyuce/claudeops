@@ -550,6 +550,34 @@ def tmux_kill_session(name: str) -> None:
         pass
 
 
+def _outer_bash_via_list_clients(name: str) -> List[tuple]:
+    """`tmux list-clients -t NAME -F #{client_pid}`: her istemcinin ebeveyni `bash -c ...` ise (pid, create_time).
+    Herhangi bir hatada [] (çağıran psutil yoluna düşer)."""
+    try:
+        import psutil
+        r = subprocess.run(_base_argv() + ["list-clients", "-t", _exact(name), "-F", "#{client_pid}"],
+                           capture_output=True, text=True, timeout=_TIMEOUT)
+        if r.returncode != 0:
+            return []
+        found: List[tuple] = []
+        for line in r.stdout.split():
+            try:
+                parent = psutil.Process(int(line)).parent()
+                if parent is None or parent.name() != "bash":
+                    continue
+                cmd = parent.cmdline()
+                if len(cmd) < 3 or cmd[1] != "-c":
+                    continue
+                item = (parent.pid, parent.create_time())
+                if item not in found:
+                    found.append(item)
+            except (ValueError, psutil.Error):
+                continue
+        return found
+    except Exception:
+        return []
+
+
 def find_outer_bash_pids(name: str) -> List[tuple]:
     """Find gnome-terminal-launched `bash -c "... ; exec bash"` windows attached
     to tmux session `name`, BEFORE tearing it down (TODO: tmux-backed "stop"
@@ -578,6 +606,11 @@ def find_outer_bash_pids(name: str) -> List[tuple]:
     aç" extras), so this returns every match rather than just the first.
     """
     import psutil
+
+    # TBD#26: önce tmux'un kendi istemci listesi (cmdline metnine bağlı değil); boş/hata ise psutil taramasına düş.
+    native = _outer_bash_via_list_clients(name)
+    if native:
+        return native
 
     needles = (
         f"-s {shlex.quote(name)} -c ",              # spawn.py's initial window

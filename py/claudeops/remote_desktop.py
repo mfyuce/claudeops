@@ -235,6 +235,17 @@ def start(port: Optional[int] = None) -> dict:
                 _write_pid_file(proc.pid, port)
                 return {"ok": True, "port": port}
             time.sleep(0.1)
+        # Zaman aşımı: süreç sızmasın, durum "çalışıyor" kalmasın
+        _proc, _port = None, None
+        try:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=2.0)
+        except OSError:
+            pass
         return {"ok": False, "error": "uzakgoz port'u açmadı (timeout)"}
 
 
