@@ -16,13 +16,18 @@ import os
 from .paths import CLAUDEOPS_DIR
 
 # CLAUDEOPS_DIAG_LOG: testlerin gerçek diag.log'a yazmaması için yol geçersiz kılma (conftest.py / steward_testlib).
-DIAG_LOG = os.environ.get("CLAUDEOPS_DIAG_LOG") or os.path.join(CLAUDEOPS_DIR, "diag.log")
+DIAG_LOG_DEFAULT = os.path.join(CLAUDEOPS_DIR, "diag.log")
+
+
+def diag_log_path() -> str:
+    """Yol ÇAĞRI ZAMANINDA çözülür (env sonradan kurulsa da geçerli olur)."""
+    return os.environ.get("CLAUDEOPS_DIAG_LOG") or DIAG_LOG_DEFAULT
 
 
 def diag_log(event: str, **data) -> None:
     try:
         entry = {"ts": datetime.datetime.now().isoformat(timespec="seconds"), "event": event, **data}
-        with open(DIAG_LOG, "a", encoding="utf-8") as f:
+        with open(diag_log_path(), "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
@@ -30,7 +35,7 @@ def diag_log(event: str, **data) -> None:
 
 def diag_log_tail(n: int = 20) -> list:
     try:
-        with open(DIAG_LOG, encoding="utf-8") as f:
+        with open(diag_log_path(), encoding="utf-8") as f:
             lines = f.readlines()
         return [ln.strip() for ln in lines[-n:] if ln.strip()]
     except Exception:

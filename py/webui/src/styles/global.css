@@ -412,5 +412,8 @@ button.linkbtn { background: none; border: 0; padding: 0; color: var(--accent, i
   .opts-row td, .opts-hint { overflow-wrap: anywhere; }
   .opts-row select, .opts-row input:not([type="checkbox"]):not([type="radio"]) { max-width: 100%; min-height: 36px; }
   .actioncell { flex-wrap: wrap; gap: .3rem; }
+  /* 45 (kismen): baslat secenekleri dar ekranda diyalog gibi tam genislikte, alt alta */
+  .opts-row td > * { max-width: 100%; }
+  .opts-row select, .opts-row input:not([type="checkbox"]):not([type="radio"]), .opts-row textarea { width: 100%; box-sizing: border-box; font-size: 16px; }
   pre, code { overflow-wrap: anywhere; white-space: pre-wrap; }
 }

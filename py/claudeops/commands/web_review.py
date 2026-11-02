@@ -1790,7 +1790,8 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         return _tick_slots(p, cfg, pool, hist, targets, slots, t, gap, actions)
     skip: List[str] = []
     while True:
-        nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip, head_of=_head_of)
+        nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip, head_of=_head_of,
+                             window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)))
         if nxt is None:
             return {"ok": True, "actions": actions, "started": 0, "noop": not actions}
         proj, target = nxt
@@ -1895,7 +1896,7 @@ def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], ta
                 break
             nxt = rv.next_review(pool, hist, by_mode[mode], t, busy_projects=sorted(busy_proj) + bad + skip_mode[mode]
                                  + (anthropic_excluded(cfg, pool) if mode == "anthropic" else []),
-                                 head_of=_head_of)
+                                 head_of=_head_of, window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)))
             if nxt is None:
                 live.remove(mode)
                 continue
@@ -1950,7 +1951,8 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
         rows.append({"project": name, "enabled": bool(e.get("enabled")) and not e.get("removed_at"),
                      "focus": bool(e.get("focus")) and bool(e.get("enabled")) and not e.get("removed_at"),
                      "source": e.get("source") or "", "added_at": e.get("added_at"), "removed_at": e.get("removed_at"),
-                     "complete": rv.project_complete(hist, name, targets, t),
+                     "complete": rv.project_complete(hist, name, targets, t,
+                                                     rv.window_seconds(getattr(cfg, "review_window_hours", 720))),
                      "pairs": {tg.key: hist["pairs"].get(rv.pair_key(name, tg)) for tg in targets}})
     return {"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
             "remote_projects": remote_where_rows(),
@@ -1958,6 +1960,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "pool": rows, "running": running_keys(cfg.sid), "slots": _slot_rows(cfg),
             "runs": list(hist.get("runs") or [])[-50:],
             "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes,
+            "window_hours": cfg.review_window_hours,
             "auto_verify": bool(cfg.review_auto_verify), "auto_approve": int(cfg.review_auto_approve),
             "auto_export": bool(cfg.review_auto_export)}
 
@@ -2102,7 +2105,8 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
         hist = rv.load_history(p)
         pool = {"projects": {project: {"enabled": True}}}
         slots0 = rv.parse_slots(getattr(cfg, "review_slots", ""))
-        nxt = rv.next_review(pool, hist, [x for x in targets if not slots0 or slots0.get(x.mode, 1) > 0], time.time())
+        nxt = rv.next_review(pool, hist, [x for x in targets if not slots0 or slots0.get(x.mode, 1) > 0], time.time(),
+                             window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)))
         if nxt is None:
             return {"ok": False, "error": "no pending target for this project"}
         target = nxt[1]

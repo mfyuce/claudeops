@@ -799,6 +799,7 @@ def steward_config(sid: str = "default") -> "Config":
             if not getattr(cfg, key):
                 setattr(cfg, key, val)
     cfg.review_timeout_minutes = max(1, cfg.review_timeout_minutes)
+    cfg.review_window_hours = max(1, min(8760, cfg.review_window_hours))     # 1 saat .. 1 yıl
     if cfg.tick_seconds < 15:
         cfg.tick_seconds = 15
     if sid != "default":

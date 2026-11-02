@@ -177,6 +177,15 @@ def _pairs(history: Any) -> Dict[str, Dict[str, Any]]:
     return p if isinstance(p, dict) else {}
 
 
+def window_seconds(hours: Any) -> float:
+    """`steward.review_window_hours` -> saniye; geçersiz/<=0 değerde varsayılan `WINDOW_SECONDS` (30 gün)."""
+    try:
+        h = float(hours)
+    except (TypeError, ValueError):
+        return float(WINDOW_SECONDS)
+    return h * 3600.0 if h > 0 else float(WINDOW_SECONDS)
+
+
 def _fresh(rec: Any, now: float, window: float) -> bool:
     return (isinstance(rec, dict) and rec.get("status") == "done"
             and now - _num(rec.get("finished_at")) < window)

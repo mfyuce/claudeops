@@ -736,6 +736,18 @@ def cmd_review(args) -> int:
         res = _api(port, "POST", "/api/steward/review/run", {"project": args.project, "mode": mode, "model": model}, sid)
         print(f"✓ başladı: {res.get('key')}" if res.get("ok") else f"hata: {res.get('error')}")
         return 0 if res.get("ok") else 1
+    if act == "window":     # `review window [SAAT]`: tekrar-koşu penceresi (steward.review_window_hours); yerel ayar
+        hours = getattr(args, "hours", None)
+        if hours is None:
+            h = steward_config(sid).review_window_hours
+            print(f"review penceresi: {h} saat ({h / 24:.1f} gün); HEAD değişirse beklenmez")
+            return 0
+        if not str(hours).isdigit() or not (1 <= int(hours) <= 8760):
+            print("hata: saat 1-8760 arası bir tamsayı olmalı")
+            return 1
+        cfg_args = types.SimpleNamespace(**{k: v for k, v in vars(args).items() if k not in ("key", "value", "hours")})
+        cfg_args.key, cfg_args.value = "review_window_hours", str(hours)
+        return cmd_config(cfg_args)
     if act == "usage":      # yerel dosya taraması (ucli --usage-log); servise gitmez
         rows = rv.usage_summary(sw.paths_for(sid).reviews, getattr(args, "project", "") or "")
         drows = rv.duration_summary(rv.load_history(sw.paths_for(sid)), getattr(args, "project", "") or "")
@@ -1069,6 +1081,8 @@ def register(sub):
     rus = rv_.add_parser("usage", help="koşu başına token/istek/süre toplamı (ucli --usage-log): [--project P] [--top N]")
     rus.add_argument("--project", default="")
     rus.add_argument("--top", type=int, default=20)
+    rwi = rv_.add_parser("window", help="tekrar-koşu penceresi (saat; varsayılan 720): [SAAT] — yoksa geçerli değeri gösterir")
+    rwi.add_argument("hours", nargs="?", default=None)
     rfi = rv_.add_parser("findings", help="bulgular")
     rfi.add_argument("--project", default="")
     rfi.add_argument("--state", default="")
