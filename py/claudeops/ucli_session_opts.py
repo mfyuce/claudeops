@@ -11,6 +11,7 @@ Güvenlik duruşu (sahip, 2026-11-01: "allow-exec olmalı ama yalnız gerekli ol
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Dict, List, Tuple
 
@@ -106,6 +107,14 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
             if c.lower() in FORBIDDEN_CMDS:
                 return {}, f"izin listesine girmez (kabuk/komut çalıştırıcı): {c}"
         out["exec_cmds"] = list(dict.fromkeys(cmds))
+    tcv = str(raw.get("exec_toolchain") or "").strip().lower()
+    if tcv:
+        if tcv != "rust":
+            return {}, f"bilinmeyen exec_toolchain: {tcv} (yalnız rust)"
+        _tc, tc_err = rust_toolchain()
+        if tc_err:
+            return {}, tc_err
+        out["exec_toolchain"] = "rust"
     globs = _items(raw.get("exec_own_glob"))
     if globs:
         if not cmds:
@@ -208,15 +217,54 @@ def expand_exec_cmds(items: List[str], available: List[str]) -> Tuple[List[str],
     return out, ""
 
 
+def rust_toolchain() -> Tuple[Dict[str, str], str]:
+    """Kafese verilecek Rust araç zinciri -> ({root, cargo, rustc, registry, git, rustup_home, cargo_home}, hata). Yolu kullanıcı
+    VERMEZ: `~/.rustup/toolchains/` altındaki TEK dizin (ya da `RUSTUP_TOOLCHAIN` adlısı) bulunur; kafeste `$HOME` boştur ve çıplak
+    `cargo` bir rustup vekilidir (toolchain seçemez), bu yüzden GERÇEK ikili tam yolla çalıştırılır (ucli bunu kendi E3 hatasında önerir)."""
+    home = os.path.expanduser("~")
+    rh = os.path.join(home, ".rustup")
+    tdir = os.path.join(rh, "toolchains")
+    try:
+        names = sorted(n for n in os.listdir(tdir) if os.path.isfile(os.path.join(tdir, n, "bin", "cargo"))
+                       and os.path.isfile(os.path.join(tdir, n, "bin", "rustc")))
+    except OSError:
+        return {}, f"Rust araç zinciri bulunamadı: {tdir}"
+    want = os.environ.get("RUSTUP_TOOLCHAIN", "")
+    pick = [n for n in names if want and n.startswith(want)] or names
+    if len(pick) != 1:
+        return {}, f"Rust araç zinciri belirsiz/yok ({len(pick)} aday): {tdir}"
+    root = os.path.join(tdir, pick[0])
+    ch = os.path.join(home, ".cargo")
+    return {"root": root, "cargo": os.path.join(root, "bin", "cargo"), "rustc": os.path.join(root, "bin", "rustc"),
+            "registry": os.path.join(ch, "registry"), "git": os.path.join(ch, "git"),
+            "rustup_home": rh, "cargo_home": ch}, ""
+
+
 def exec_flags(opts: Dict[str, Any]) -> List[str]:
     """Temiz `opts` -> ucli bayrakları (hepsi `--allow-exec` ailesi; ikilinin tanıması çağıranın işi). Komut yoksa boş."""
-    cmds = opts.get("exec_cmds") or []
+    cmds = list(opts.get("exec_cmds") or [])
+    tc: Dict[str, str] = {}
+    if opts.get("exec_toolchain") == "rust":
+        tc, _err = rust_toolchain()
+        if tc:
+            cmds += [tc["cargo"], tc["rustc"]]
     if not cmds:
         return []
     argv = ["--allow-exec", "--allow-exec-cmd", ",".join(cmds)]
     for g in opts.get("exec_own_glob") or []:
         argv += ["--allow-exec-own-glob", g]
-    for b in opts.get("exec_bind_ro") or []:
+    binds = list(opts.get("exec_bind_ro") or [])
+    if tc:
+        binds += [tc["root"]] + [p for p in (tc["registry"], tc["git"]) if os.path.isdir(p)]
+        # ucli kafesi YALNIZ izinli değişkenleri kabul eder (RUSTC yok): gerçek toolchain bin'i PATH'in başına konur, böylece çıplak
+        # `rustc`/`cargo` rustup/snap vekiline çözülmez (canlı bulgu 2026-11-02: snap profil zaman aşımı, exit 46).
+        for kv in (f"RUSTUP_HOME={tc['rustup_home']}", f"CARGO_HOME={tc['cargo_home']}",
+                   f"RUSTUP_TOOLCHAIN={os.path.basename(tc['root'])}", "CARGO_NET_OFFLINE=true",
+                   f"PATH={os.path.dirname(tc['cargo'])}:/usr/local/bin:/usr/bin:/bin"):
+            argv += ["--exec-env", kv]
+        # rustc/linker çok sanal bellek ve iş parçacığı kullanır: varsayılan RLIMIT_AS bağlama aşamasında düşürüyordu (canlı 2026-11-02)
+        argv += ["--exec-memory-mib", "32768", "--exec-max-tasks", "4096"]
+    for b in dict.fromkeys(binds):
         argv += ["--exec-bind-ro", b]
     if opts.get("exec_timeout"):
         argv += ["--exec-timeout-secs", str(int(opts["exec_timeout"]))]

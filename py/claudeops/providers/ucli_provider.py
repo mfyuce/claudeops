@@ -648,7 +648,8 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
         diag_log("ucli_grant", name=session_name, globs=[g for g in opts["exec_own_glob"] if g in BROAD_GLOBS], accept_risk=True)
     if ex:
         for flag in ("--allow-exec", "--allow-exec-cmd") + (("--allow-exec-own-glob",) if opts.get("exec_own_glob") else ()) \
-                + (("--exec-bind-ro",) if opts.get("exec_bind_ro") else ()) \
+                + (("--exec-bind-ro",) if (opts.get("exec_bind_ro") or opts.get("exec_toolchain")) else ()) \
+                + (("--exec-env", "--exec-memory-mib", "--exec-max-tasks") if opts.get("exec_toolchain") else ()) \
                 + (("--exec-timeout-secs",) if opts.get("exec_timeout") else ()):
             if not binary_supports_flag(binary, flag):
                 diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
