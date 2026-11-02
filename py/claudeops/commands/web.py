@@ -3207,6 +3207,9 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
             reopened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
+    except ValueError as e:   # ör. hizmet anahtarı yok: spawn reddedildi (eski oturum kapanmış olabilir); 500 değil temiz hata
+        diag_log("adopt_refused", old_name=old_name, new_name=new_name, cli=chosen_cli, reason=str(e)[:200])
+        return {"ok": False, "error": str(e)}
     if not reopened:
         return _err(lang, "adopt_reopen_failed", old_name=old_name, new_name=new_name, kind=kind)
     fleet = _fleet_status()

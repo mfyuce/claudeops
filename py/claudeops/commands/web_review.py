@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import threading
 import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import atomic_json as aj
@@ -32,6 +33,37 @@ from .. import steward as sw
 from .. import steward_advance as sa
 from .. import steward_lessons as sl
 from .. import ucli_client
+
+def _ensure_claude_trust(cj: str, cwd: str) -> None:
+    """İzole `.claude.json`'a bu cwd için güven onayını ekler (her proje; yalnız ilk dosya oluşturulurken değil)."""
+    try:
+        with open(cj, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = {}
+    except (OSError, ValueError):
+        data = {}
+    data.setdefault("hasCompletedOnboarding", True)
+    data.setdefault("theme", "dark")
+    projects = data.get("projects")
+    if not isinstance(projects, dict):
+        projects = data["projects"] = {}
+    ent = projects.get(cwd)
+    if not isinstance(ent, dict):
+        ent = projects[cwd] = {}
+    if ent.get("hasTrustDialogAccepted") is True:
+        return
+    ent["hasTrustDialogAccepted"] = True
+    tmp = _uniq_tmp(cj)
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp, cj)
+
+
+def _uniq_tmp(path: str) -> str:
+    """Eşzamanlı yazarlar (aynı süreçte thread'ler dahil) aynı .tmp'yi ezmesin: pid + thread + rastgele ek."""
+    return f"{path}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp"
+
 
 REVIEW_ENV_PREFIXES = ("CLAUDE", "GEMINI", "ANTIGRAVITY", "ANTHROPIC")   # spawn.py deseni: bu süreç kendi oturum kimliğini çocuğa sızdırmaz
 KILL_GRACE_SECONDS = 10.0                                   # SIGTERM -> SIGKILL aralığı
@@ -887,18 +919,10 @@ def _recover_partial(path: str, learned: Sequence[str] = ()) -> str:
     except (OSError, ValueError):
         return ""
     red = rv.redact_secrets(raw, learned)
-    tmp = pp + ".tmp"
     try:
-        with contextlib.suppress(OSError):
-            os.remove(tmp)
-        with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w", encoding="utf-8") as f:
-            f.write(red)
-        os.replace(tmp, pp)
+        aj.atomic_write_text(pp, red, mode=0o600)       # benzersiz tmp + fsync
     except OSError:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+        pass
     text = val.get("assistant_text") if isinstance(val, dict) else ""
     text = rv.redact_secrets(text, learned) if isinstance(text, str) else ""
     return text if _REPORT_HEAD_RE.search(text) else ""
@@ -914,24 +938,14 @@ def _write_error_log(path: str, status: str, error: str, rc: Any, timed_out: boo
             f"json_hata: {jerr}\n\n--- stdout (son {ERROR_LOG_KEEP} bayt) ---\n{(out or '')[-ERROR_LOG_KEEP:]}\n"
             f"\n--- stderr (son {ERROR_LOG_KEEP} bayt) ---\n{(err or '')[-ERROR_LOG_KEEP:]}\n")
     try:
-        os.makedirs(os.path.dirname(ep), exist_ok=True)
-        tmp = ep + ".tmp"
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(rv.redact_secrets(body, learned))
-        os.replace(tmp, ep)
+        aj.atomic_write_text(ep, rv.redact_secrets(body, learned), mode=0o600)
         return ep
     except OSError:
         return ""
 
 
 def _write_report(path: str, text: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)      # kod alıntılı rapor: hata günlüğüyle aynı izin (umask 0644 değil)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:       # yerel kodlama değil: Türkçe/Unicode rapor her ortamda aynı yazılır
-        f.write(text)
-    os.replace(tmp, path)
+    aj.atomic_write_text(path, text, mode=0o600)      # kod alıntılı rapor: 0600 (umask 0644 değil); UTF-8, benzersiz tmp + fsync
 
 
 def _tail(s: str, learned: Sequence[str] = ()) -> str:
@@ -1256,10 +1270,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             cdir = os.path.join(p.root, "claude_cfg")    # CLAUDE.md/hafıza/oturum geçmişi yok: izole yapılandırma dizini
             os.makedirs(cdir, exist_ok=True)
             cj = os.path.join(cdir, ".claude.json")
-            if not os.path.exists(cj):
-                with open(cj, "w") as f:
-                    json.dump({"hasCompletedOnboarding": True, "theme": "dark",
-                               "projects": {cwd: {"hasTrustDialogAccepted": True}}}, f)
+            _ensure_claude_trust(cj, cwd)
             argv = claude_argv(resolved_binary("claude"), target.model, str(target.effort or getattr(cfg, "review_claude_effort", "low") or ""), prompt, json_out=True)
             env_extra.update(ANTHROPIC_API_KEY=key_val, CLAUDE_CONFIG_DIR=cdir, DISABLE_AUTOUPDATER="1")
         elif target.mode == "codex":
@@ -2501,7 +2512,7 @@ def store_reports(cfg: Any) -> List[str]:
             if os.path.exists(dst) or os.path.islink(os.path.join(dirpath, name)):
                 continue
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            tmp = f"{dst}.{os.getpid()}.tmp"
+            tmp = _uniq_tmp(dst)
             shutil.copyfile(os.path.join(dirpath, name), tmp)
             os.replace(tmp, dst)
             copied.append(rel)
@@ -2680,7 +2691,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
             text = ""
         new, written = rv.appended_export(text, rows, p.reviews, stamp)
         if new is not None:
-            tmp = f"{target}.{os.getpid()}.tmp"
+            tmp = _uniq_tmp(target)
             with open(tmp, "w", encoding="utf-8") as f:
                 f.write(new)
             os.replace(tmp, target)
