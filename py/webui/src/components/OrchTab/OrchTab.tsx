@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiOrchCancel, apiOrchSaveDraft, apiOrchStart, getOrchRun, getOrchRuns } from "../../api/client";
 import { describeApiError } from "../../api/errors";
+import { friendlyError } from "../../api/ucliErrors";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -36,7 +37,7 @@ interface OrchTabProps {
 }
 
 export function OrchTab({ selection }: OrchTabProps) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
 
   // Seeded from the server-persisted draft exactly once per mount — after
@@ -180,7 +181,7 @@ export function OrchTab({ selection }: OrchTabProps) {
       if (!res.ok) setStartError(res.error);
       else setTask(""); // lineup/verdictHint/timeout stay — re-running the same team is a click away
     } catch (e) {
-      setStartError(describeApiError(e, t));
+      setStartError(friendlyError(describeApiError(e, t), lang));
     } finally {
       setStarting(false);
       refresh();

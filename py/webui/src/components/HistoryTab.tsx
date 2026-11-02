@@ -223,7 +223,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
       {items === null ? (
         <div className="opts-hint">…</div>
       ) : !filtered.length && !shownRuns.length ? (
-        <div className="opts-hint">{stopped.length === 0 ? t.empty : t.noSearchMatches}</div>
+        <div className="opts-hint">{stopped.length === 0 ? t.emptyHint : t.noSearchMatches}</div>
       ) : (
         <div className="tablewrap">
           <div className="opts-hint">{t.historyCount(filtered.length)}</div>

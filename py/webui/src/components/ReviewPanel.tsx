@@ -24,6 +24,7 @@ import {
   getReviewState,
 } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { friendlyError } from "../api/ucliErrors";
 import { useLang } from "../i18n/LangContext";
 import { showToast } from "../state/toast";
 import type { ReviewFinding, ReviewLesson, ReviewRemoteProject, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
@@ -95,7 +96,7 @@ function WhereRow({
 }
 
 export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: string }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [st, setSt] = useState<ReviewStateResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -130,9 +131,9 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
             setLessonTarget(ls.target ?? "");
           }
         },
-        (e: unknown) => setError(describeApiError(e, t)),
+        (e: unknown) => setError(friendlyError(describeApiError(e, t), lang)),
       ),
-    [sid, fProject, fState, t],
+    [sid, fProject, fState, t, lang],
   );
   useEffect(() => {
     void load();
@@ -212,11 +213,15 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
     <div style={{ display: "flex", flexDirection: "column", gap: ".8rem", minWidth: 0 }}>
       <h3 style={{ margin: 0 }}>{t.rvTitle}</h3>
       <span className="opts-hint">{t.rvDesc}</span>
+      {!st && !error && <div className="opts-hint" role="status">…</div>}
       {st && !st.enabled && <div className="warn-banner">{t.rvOff}</div>}
       {error && <div className="warn-banner">{error}</div>}
 
       {st && st.pool.length === 0 && <span className="opts-hint">{t.rvNoPool}</span>}
       {st && targets.length === 0 && <span className="opts-hint">{t.rvNoTargets}</span>}
+      {st && st.pool.length > 0 && (
+        <span className="opts-hint">{t.rvSummary(st.pool.filter((r) => r.enabled).length, st.pool.length, running.length, targets.length)}</span>
+      )}
       {st && st.pool.length > 0 && (
         <div className="tablewrap" style={{ overflowX: "auto" }}>
           <table>
@@ -250,6 +255,24 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
                         ✓ {t.rvComplete}
                       </span>
                     )}{" "}
+                    <button
+                      type="button"
+                      className="linkbtn"
+                      title={t.rvOnlyTip}
+                      disabled={busy || (row.enabled && st.pool.every((o) => o.project === row.project || !o.enabled))}
+                      onClick={() =>
+                        void act(async () => {
+                          for (const o of st.pool) {
+                            if (o.project === row.project || !o.enabled) continue;
+                            const r = await apiReviewPool(sid, "disable", o.project);
+                            if (!r.ok) return r;
+                          }
+                          return row.enabled ? { ok: true } : apiReviewPool(sid, "enable", row.project);
+                        })
+                      }
+                    >
+                      {t.rvOnly}
+                    </button>{" "}
                     <button type="button" className="linkbtn" disabled={busy} onClick={() => void act(() => apiReviewPool(sid, "remove", row.project))}>
                       {t.rvRemove}
                     </button>

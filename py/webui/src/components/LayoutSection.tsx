@@ -30,6 +30,7 @@
 import { useState } from "react";
 import { apiLayout, apiSaveSettings, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { friendlyError } from "../api/ucliErrors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -55,7 +56,7 @@ export function LayoutSection() {
       if (!res.ok) setResult(`✗ ${res.error}`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-      else setResult(`✗ ${describeApiError(e, t)}`);
+      else setResult(`✗ ${friendlyError(describeApiError(e, t), lang)}`);
     }
     refresh();
   }
@@ -78,7 +79,7 @@ export function LayoutSection() {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-      else setResult(`✗ ${describeApiError(e, t)}`);
+      else setResult(`✗ ${friendlyError(describeApiError(e, t), lang)}`);
     }
     setBusy(false);
   }

@@ -40,6 +40,7 @@ import { TerminalModal } from "./components/TerminalModal/TerminalModal";
 import { LangProvider, useLang } from "./i18n/LangContext";
 import { StatusProvider, useStatusContext } from "./state/StatusContext";
 import { useSelection } from "./state/selection";
+import { ShortcutHelp } from "./components/shared/ShortcutHelp";
 import { isTabKey, TAB_STORAGE_KEY, type TabKey } from "./state/tabs";
 import { LOCAL_HOST, rowKey } from "./state/hosts";
 import { applyTheme } from "./theme";
@@ -211,9 +212,11 @@ function AppShell() {
       <ModelUsageBar />
       <ToastContainer />
       <CapRetryPrompt />
+      <ShortcutHelp />
       <SearchBox value={search} onChange={setSearch} />
       <TabBar active={activeTab} onSelect={setActiveTab} search={search} />
       <div>
+        {!data && !error && <div className="opts-hint" role="status">{t.loadingFirst}</div>}
         {data && activeTab === "running" && (
           <RunningTab selection={selection} onToggleTerminal={onToggleTerminal} onSwitchTab={setActiveTab} search={search} />
         )}

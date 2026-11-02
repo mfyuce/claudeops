@@ -32,6 +32,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiDiagAsk, apiDiagRestartGt, apiDiagSpawnTest, ApiError, getDiagLog } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { friendlyError } from "../api/ucliErrors";
 import { copyToClipboard } from "./shared/clipboard";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
@@ -114,7 +115,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
       else setDiagResult(t.diagTestFailWindow);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-      else setDiagResult(`✗ ${describeApiError(e, t)}`);
+      else setDiagResult(`✗ ${friendlyError(describeApiError(e, t), lang)}`);
     }
     setTestBusy(false);
     void loadLog();
@@ -130,7 +131,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
       setDiagResult(res.ok ? t.diagRestartDone(res.result) : `✗ ${res.error}`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-      else setDiagResult(`✗ ${describeApiError(e, t)}`);
+      else setDiagResult(`✗ ${friendlyError(describeApiError(e, t), lang)}`);
     }
     setRestartBusy(false);
     void loadLog();
@@ -169,7 +170,7 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-      else setAskResult(`✗ ${describeApiError(e, t)}`);
+      else setAskResult(`✗ ${friendlyError(describeApiError(e, t), lang)}`);
     }
     setAskBusy(false);
     void loadLog();

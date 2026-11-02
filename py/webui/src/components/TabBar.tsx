@@ -11,6 +11,7 @@
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { matchesSearch } from "./shared/searchFilter";
+import { useTabShortcuts } from "./shared/useTabShortcuts";
 import type { TabKey } from "../state/tabs";
 
 interface TabBarProps {
@@ -22,6 +23,7 @@ interface TabBarProps {
 export function TabBar({ active, onSelect, search }: TabBarProps) {
   const { t } = useLang();
   const { data } = useStatusContext();
+  useTabShortcuts();
 
   if (!data) return <div className="tabs" />;
 

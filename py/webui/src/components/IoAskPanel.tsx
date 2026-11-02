@@ -18,13 +18,14 @@ import { apiIoAsk, ApiError, getIoHistory, getIoProviders, getIoSessions } from 
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
+import { friendlyUcliError } from "../api/ucliErrors";
 import { useStatusContext } from "../state/StatusContext";
 import { TabHint } from "./shared/TabHint";
 
 const NEW_SESSION = "\u0000new"; // sentinel <select> value for "type a new session name below"
 
 export function IoAskPanel() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { data } = useStatusContext();
 
   const [providers, setProviders] = useState<Record<string, { fields: { key: string; label: string; type: string; placeholder: string; required: boolean }[] }> | null>(null);
@@ -101,11 +102,11 @@ export function IoAskPanel() {
           await loadHistoryFor(activeSession);
         }
       } else {
-        setResult(`✗ ${res.error}`);
+        setResult(`✗ ${friendlyUcliError(res.error, lang)}`);
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-      else setResult(`✗ ${describeApiError(e, t)}`);
+      else setResult(`✗ ${friendlyUcliError(describeApiError(e, t), lang)}`);
     }
     setBusy(false);
   }

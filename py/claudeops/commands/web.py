@@ -1467,6 +1467,35 @@ def _process_started_at(pid: int) -> Optional[float]:
         return None
 
 
+_UCLI_FLAGS_CACHE: dict = {}  # pid -> özet dict (süreç cmdline'ı ömür boyu değişmez)
+
+
+def _ucli_flags(s) -> Optional[dict]:
+    """Çalışan ucli oturumunun cmdline'ından panel rozetleri için özet: `write` (--allow-edit), `exec`
+    (--allow-exec*), `max_cost_usd` (--max-cost-usd). ucli değilse/okunamazsa None. Asla fırlatmaz."""
+    if s is None or s.cli != "ucli":
+        return None
+    hit = _UCLI_FLAGS_CACHE.get(s.pid)
+    if hit is not None:
+        return hit
+    try:
+        cmd = psutil.Process(s.pid).cmdline()
+    except Exception:
+        return None
+    cost = None
+    for i, tok in enumerate(cmd):
+        if tok == "--max-cost-usd" and i + 1 < len(cmd):
+            try:
+                cost = float(cmd[i + 1])
+            except ValueError:
+                cost = None
+    out = {"write": "--allow-edit" in cmd,
+           "exec": any(t.startswith("--allow-exec") for t in cmd),
+           "max_cost_usd": cost}
+    _UCLI_FLAGS_CACHE[s.pid] = out
+    return out
+
+
 def _live_model_effort(s) -> tuple:
     """Çalışan session'ın (model, effort)'u: claude için jsonl'daki CANLI değer (yukarıdaki
     üç kural), belirlenemezse (claude değil, sid/jsonl yok, bu süreç henüz assistant turu
@@ -1615,6 +1644,7 @@ def _status_payload() -> dict:
             # Çalışmıyorsa/bilinmiyorsa None.
             "live_model": live_model,
             "live_effort": live_effort,
+            "ucli_flags": _ucli_flags(s),
         })
 
     # Hiçbir AKTİF roster satırına bağlanamayan canlı session'lar (elle açılmış
@@ -1651,9 +1681,12 @@ def _status_payload() -> dict:
             "host": LOCAL_HOST_NAME,
             "live_model": live_model,
             "live_effort": live_effort,
+            "ucli_flags": _ucli_flags(s),
         })
 
     live_pids = {s.pid for s in all_live}
+    for dead_pid in [p for p in _UCLI_FLAGS_CACHE if p not in live_pids]:
+        _UCLI_FLAGS_CACHE.pop(dead_pid, None)
     for dead_pid in [p for p in _LIVE_VALUES_CACHE if p not in live_pids]:
         _LIVE_VALUES_CACHE.pop(dead_pid, None)
 

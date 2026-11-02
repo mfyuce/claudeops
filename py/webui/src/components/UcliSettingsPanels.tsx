@@ -10,6 +10,7 @@ import { apiSaveSettings, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
+import { friendlyUcliError } from "../api/ucliErrors";
 import { useStatusContext } from "../state/StatusContext";
 
 import type { SettingsPatch } from "./SettingsTab";
@@ -70,7 +71,7 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
 
   return (
     <>
-      {error && <pre className="layout-result">✗ {error}</pre>}
+      {error && <pre className="layout-result">✗ {friendlyUcliError(error, lang)}</pre>}
       {group === "global" && (
         <>
           <div className="opts" id="settingsUcliEndpointPanel">

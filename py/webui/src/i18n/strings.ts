@@ -82,6 +82,7 @@ export interface Strings {
   cwdHint: string;
   requestFailed: string;
   empty: string;
+  emptyHint: string;
   cancelBtn: string;
   tabRunning: string;
   tabRegistered: string;
@@ -546,6 +547,7 @@ export interface Strings {
   expandAllBtn: string;
   searchPlaceholder: string;
   searchClear: string;
+  loadingFirst: string;
   noSearchMatches: string;
   tabTeam: string;
   tabSteward: string;
@@ -730,6 +732,9 @@ export interface Strings {
   rvWhereRemote: string;
   rvWhereOff: string;
   rvAddBtn: string;
+  rvOnly: string;
+  rvOnlyTip: string;
+  rvSummary: (on: number, total: number, running: number, targets: number) => string;
   rvRemove: string;
   rvRunTitle: string;
   rvRunning: string;
@@ -838,6 +843,7 @@ export const STRINGS: Record<Lang, Strings> = {
     cwdHint: "tıkla: tam yolu göster/gizle",
     requestFailed: "istek başarısız: ",
     empty: "Boş.",
+    emptyHint: "Boş. Yeni bir oturum başlatınca burada görünür; farklı bir sekmede arıyor olabilirsin.",
     cancelBtn: "vazgeç",
     tabRunning: "Çalışanlar",
     tabRegistered: "Kayıtlı",
@@ -1408,6 +1414,7 @@ export const STRINGS: Record<Lang, Strings> = {
     expandAllBtn: "hepsini aç",
     searchPlaceholder: "isim veya cwd ara…",
     searchClear: "aramayı temizle",
+    loadingFirst: "Yükleniyor… (ilk durum verisi bekleniyor)",
     noSearchMatches: "Aramayla eşleşen yok.",
     tabTeam: "Ekip",
     tabSteward: "Değnekçi",
@@ -1592,6 +1599,9 @@ export const STRINGS: Record<Lang, Strings> = {
     rvWhereRemote: "uzakta",
     rvWhereOff: "kapalı",
     rvAddBtn: "Ekle",
+    rvOnly: "sadece bu",
+    rvOnlyTip: "Yalnız bu projeyi açık bırak, havuzdaki diğerlerini kapat (silmez).",
+    rvSummary: (on, total, running, targets) => `Havuz: ${on}/${total} proje açık · ${targets} hedef (yuva) · ${running} koşu sürüyor`,
     rvRemove: "Çıkar",
     rvRunTitle: "Elle çalıştır",
     rvRunning: "Koşan işler",
@@ -1701,6 +1711,7 @@ export const STRINGS: Record<Lang, Strings> = {
     cwdHint: "click: show/hide full path",
     requestFailed: "request failed: ",
     empty: "Empty.",
+    emptyHint: "Empty. Start a new session and it will show up here; you may be looking at a different tab.",
     cancelBtn: "cancel",
     tabRunning: "Running",
     tabRegistered: "Registered",
@@ -2271,6 +2282,7 @@ export const STRINGS: Record<Lang, Strings> = {
     expandAllBtn: "expand all",
     searchPlaceholder: "search name or cwd…",
     searchClear: "clear search",
+    loadingFirst: "Loading… (waiting for the first status data)",
     noSearchMatches: "Nothing matches the search.",
     tabTeam: "Team",
     tabSteward: "Steward",
@@ -2455,6 +2467,9 @@ export const STRINGS: Record<Lang, Strings> = {
     rvWhereRemote: "on the host",
     rvWhereOff: "off",
     rvAddBtn: "Add",
+    rvOnly: "only this",
+    rvOnlyTip: "Keep only this project enabled and disable the others in the pool (nothing is removed).",
+    rvSummary: (on, total, running, targets) => `Pool: ${on}/${total} projects enabled · ${targets} targets (slots) · ${running} runs in progress`,
     rvRemove: "Remove",
     rvRunTitle: "Run now",
     rvRunning: "Running jobs",

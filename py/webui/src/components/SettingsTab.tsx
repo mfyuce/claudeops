@@ -54,6 +54,7 @@
 import { useState } from "react";
 import { apiSaveSettings, apiUsage, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { friendlyError } from "../api/ucliErrors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -235,7 +236,7 @@ export function SettingsTab() {
       if (patch.theme) applyTheme(patch.theme);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-      else setError(describeApiError(e, t));
+      else setError(friendlyError(describeApiError(e, t), lang));
     }
     refresh();
   }

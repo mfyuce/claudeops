@@ -122,7 +122,7 @@ export function GroupTable({ items, search, onView }: GroupTableProps) {
   const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
   const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
 
-  if (!filtered.length) return <div className="opts-hint">{items.length === 0 ? t.empty : t.noSearchMatches}</div>;
+  if (!filtered.length) return <div className="opts-hint">{items.length === 0 ? t.emptyHint : t.noSearchMatches}</div>;
 
   return (
     <div className="tablewrap">

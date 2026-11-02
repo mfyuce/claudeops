@@ -16,6 +16,7 @@ import type { UcliServiceDef } from "../api/types";
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
+import { friendlyUcliError } from "../api/ucliErrors";
 import { useStatusContext } from "../state/StatusContext";
 
 function hintOf(d: UcliServiceDef): string {
@@ -149,7 +150,7 @@ export function UcliKeysPanel() {
           {cost && cost.pct !== null ? ` (%${cost.pct})` : ""} · {lang === "tr" ? "alt sınır tahmini; önbellek" : "lower-bound estimate; cache"} {cost?.cache_ttl ?? "1h"}
         </span>
       </label>
-      {error && <pre className="layout-result">✗ {error}</pre>}
+      {error && <pre className="layout-result">✗ {friendlyUcliError(error, lang)}</pre>}
     </div>
   );
 }

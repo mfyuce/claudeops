@@ -400,3 +400,14 @@ button.linkbtn { background: none; border: 0; padding: 0; color: var(--accent, i
 .vk-once { outline: 2px solid var(--accent, #4a8); }
 .vk-lock { outline: 2px solid var(--accent, #4a8); background: var(--accent, #4a8); color: #fff; }
 .vk-text { flex: 1; min-width: 8rem; font-size: 16px; }
+
+/* WEBUI-TODO #5: telefon düzeni — dokunma hedefleri >= 36px, sekmeler ve seçenek satırları sarılır, aşırı geniş içerik taşmaz. */
+@media (max-width: 640px) {
+  .tabs button, .actioncell button, .start, .reactivate { min-height: 36px; }
+  .tabs { gap: .15rem; }
+  .tabs button { padding-left: .6rem; padding-right: .6rem; }
+  .opts-row td, .opts-hint { overflow-wrap: anywhere; }
+  .opts-row select, .opts-row input:not([type="checkbox"]):not([type="radio"]) { max-width: 100%; min-height: 36px; }
+  .actioncell { flex-wrap: wrap; gap: .3rem; }
+  pre, code { overflow-wrap: anywhere; white-space: pre-wrap; }
+}

@@ -451,6 +451,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       </div>
 
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardQuestionsTitle}</h3>
+      {!state && <div className="opts-hint" role="status">…</div>}
       {state && state.questions.length === 0 && <span className="opts-hint">{t.stewardNoQuestions}</span>}
       {state?.questions.map((q) => (
         <QuestionCard key={q.id} q={q} sid={sid} health={q.host ? state.remote_hosts?.[q.host] : undefined} onAnswered={() => void load().then(refresh)} />

@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiSnapshotList, apiSnapshotResume, apiSnapshotSave, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
+import { friendlyError } from "../api/ucliErrors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -46,7 +47,7 @@ export function SnapshotSection() {
       else setError(res.error);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return; // sekme henüz görünmüyor olabilir — auth uyarısını burada gösterme
-      setError(describeApiError(e, t));
+      setError(friendlyError(describeApiError(e, t), lang));
     }
   }, [lang, t]);
 
@@ -59,7 +60,7 @@ export function SnapshotSection() {
 
   function handleAuthOrError(e: unknown) {
     if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-    else setError(describeApiError(e, t));
+    else setError(friendlyError(describeApiError(e, t), lang));
   }
 
   async function handleSave() {
