@@ -124,6 +124,9 @@ export function SessionRow({
         </td>
         <td>
           {session.name}
+          <div className="mobile-meta">
+            {shownModel} · {session.cli} · {session.cpu != null ? `${session.cpu.toFixed(1)}%` : "—"}
+          </div>
           {session.instance && session.blueprint && (
             <span className="cli-badge" style={{ whiteSpace: "nowrap" }} title={t.instanceBadgeHint(session.blueprint)}>
               ↳ {session.blueprint}

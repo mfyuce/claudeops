@@ -15,7 +15,8 @@ import os
 
 from .paths import CLAUDEOPS_DIR
 
-DIAG_LOG = os.path.join(CLAUDEOPS_DIR, "diag.log")
+# CLAUDEOPS_DIAG_LOG: testlerin gerçek diag.log'a yazmaması için yol geçersiz kılma (conftest.py / steward_testlib).
+DIAG_LOG = os.environ.get("CLAUDEOPS_DIAG_LOG") or os.path.join(CLAUDEOPS_DIR, "diag.log")
 
 
 def diag_log(event: str, **data) -> None:

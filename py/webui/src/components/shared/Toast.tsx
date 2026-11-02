@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { copyToClipboard } from "./clipboard";
 import { dismissToast, subscribeToasts, type ToastMessage } from "../../state/toast";
 
 export function ToastContainer() {
@@ -17,6 +18,20 @@ export function ToastContainer() {
       {toasts.map((toast) => (
         <div key={toast.id} className={`toast toast-${toast.kind}`} onClick={() => dismissToast(toast.id)}>
           <span className="toast-text">{toast.text}</span>
+          {toast.kind === "error" && (
+            <button
+              type="button"
+              className="toast-close"
+              aria-label="copy"
+              title="copy"
+              onClick={(e) => {
+                e.stopPropagation();
+                copyToClipboard(toast.text).catch(() => {});
+              }}
+            >
+              ⧉
+            </button>
+          )}
           <button
             type="button"
             className="toast-close"

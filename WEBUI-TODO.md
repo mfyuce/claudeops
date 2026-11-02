@@ -89,3 +89,12 @@ Siradaki 3 madde:
 Test durumu: yazilan testler calistirilmadi: test_ucli_cost_watch, test_web_sigterm_tunnel, test_web_orch_push_key, test_p2_atomic_writes, test_web_grpc_ucli_flags (pb2 yenilenene dek atlanir), test_review, test_review_store, test_p3_fixes, test_steward_quota*. tsc calistirilmadi.
 Not: git status'ta py/webui/dist degismis (yeni index-CTsxur94.js, eskisi silinmis); bunu ben yapmadim, sahibin build'i gorunuyor. dist'e dokunma.
 Sahip: madde 9 (tsc/test/tarayici), host_bridge_pb2.py yeniden uretimi (14); 15 ucli'nin servisi oturum kaydina yazmasini bekliyor.
+
+## Round 10 (uipol4, GATE-TODO bolum 3: "Claude Code'dan geri mi kaliyoruz?" denetimi)
+Salt-okunur denetim; kod DEGISMEDI, hicbir sey calistirilmadi (tsc/tarayici yok). Her madde sahibin dogrulamasina acik.
+
+41. [ ] Bos durum (RunningTab): `nothingRunning` yalniz yonlendirme metni ("Kayitli sekmesinden baslatin"); Claude Code'da bos durum dogrudan eylem sunar. Oneri: metnin yanina "Kayitli'ya git" dugmesi / yeni oturum baslat kisayolu. GroupTable/HistoryTab `emptyHint` ise sadece aciklama, eylem yok.
+42. [ ] Mobil (<=640px): iki `@media` blogu var (global.css:183 tablo sutunlari gizleme, :405 dokunma hedefi 36px + sarma). Claude Code mobilde tek sutun; burada hala `<table>` ve gizlenen model/cli/cpu sutunlari -> mobilde model/cli bilgisine ulasmanin yolu yok (satir genisletme/ayrinti yok). Oneri: dar ekranda gizlenen sutunlari satir altinda kucuk etiket olarak goster. Min dokunma hedefi 36px; platform onerisi 44px.
+43. [ ] Kopyalanabilir cikti: `copyToClipboard` yalniz TerminalView (gorunen cikti), DiagnosticsTab (devir mesaji) ve UrlBanner'da var. Hata mesajlari (`friendlyError` toast'lari) ve ReviewPanel/Ucli* panelleri kopyalama dugmesi sunmuyor; toast kisa omurlu, secip kopyalamak zor (ChatView'da ayni sikayet daha once duzeltilmisti). Oneri: hata toast'ina "Kopyala" (ham hata metni) ekle.
+44. [ ] Hata mesajlari: `ucliErrors.ts` kullanici dostu cevirir ama ham sunucu metnini gizliyor olabilir; Claude Code ham hatayi da gosterir. Oneri: dost mesajin altinda "ayrintilar" acilir alani (ham metin, kopyalanabilir).
+45. [ ] Baslat penceresi: `UcliStartOpts` secenekleri (servis/model/effort/talimat) satir ici `opts-row`; Claude Code'daki gibi tek bir "baslat" diyalogu yok, secenekler tabloda satir icinde aciliyor ve mobilde `overflow-wrap` ile siginiyor. Oneri: dar ekranda tam genislik alt-sayfa (sheet) diyalogu; bu buyuk bir is, ayri tur.

@@ -136,6 +136,11 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
               <tr>
                 <td colSpan={RUNNING_ROW_COLSPAN} style={{ color: "var(--muted)" }}>
                   {allRows.length === 0 ? t.nothingRunning : t.noSearchMatches}
+                  {allRows.length === 0 && (
+                    <button type="button" style={{ marginLeft: ".6rem" }} onClick={() => onSwitchTab("registered")}>
+                      {t.nothingRunningAction}
+                    </button>
+                  )}
                 </td>
               </tr>
             )}

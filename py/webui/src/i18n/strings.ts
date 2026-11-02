@@ -218,6 +218,7 @@ export interface Strings {
   filesSaveError: string;
   filesActionError: string;
   nothingRunning: string;
+  nothingRunningAction: string;
   unregBadge: string;
   unregHint: string;
   adoptBtn: string;
@@ -981,6 +982,7 @@ export const STRINGS: Record<Lang, Strings> = {
     filesSaveError: "kaydedilemedi: ",
     filesActionError: "işlem başarısız: ",
     nothingRunning: "Hiçbir şey çalışmıyor — \"Kayıtlı\" sekmesinden başlatın.",
+    nothingRunningAction: "Kayıtlı sekmesine git",
     unregBadge: "kayıtsız",
     unregHint: "roster.tsv'de kayıtlı değil (proc-scan'den bulundu) — claudeops'un açmadığı bir pencere; \"devral\"a basarsanız remote-control eklenip roster'a kalıcı kaydedilir",
     adoptBtn: "devral (remote ekle)",
@@ -1849,6 +1851,7 @@ export const STRINGS: Record<Lang, Strings> = {
     filesSaveError: "failed to save: ",
     filesActionError: "action failed: ",
     nothingRunning: "Nothing running — start from the \"Registered\" tab.",
+    nothingRunningAction: "Go to Registered tab",
     unregBadge: "unregistered",
     unregHint: "not in roster.tsv (found via proc-scan) — a window claudeops didn't open; click \"adopt\" to attach remote-control and register it permanently",
     adoptBtn: "adopt (attach remote)",

@@ -402,8 +402,11 @@ button.linkbtn { background: none; border: 0; padding: 0; color: var(--accent, i
 .vk-text { flex: 1; min-width: 8rem; font-size: 16px; }
 
 /* WEBUI-TODO #5: telefon düzeni — dokunma hedefleri >= 36px, sekmeler ve seçenek satırları sarılır, aşırı geniş içerik taşmaz. */
+.mobile-meta { display: none; }
 @media (max-width: 640px) {
-  .tabs button, .actioncell button, .start, .reactivate { min-height: 36px; }
+  /* 42: dar ekranda gizlenen model/cli/cpu isim hücresinin altında ikincil satır olarak görünür */
+  .mobile-meta { display: block; font-size: .75rem; color: var(--muted); }
+  .tabs button, .actioncell button, .start, .reactivate { min-height: 44px; }
   .tabs { gap: .15rem; }
   .tabs button { padding-left: .6rem; padding-right: .6rem; }
   .opts-row td, .opts-hint { overflow-wrap: anywhere; }
