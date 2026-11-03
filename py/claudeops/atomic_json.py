@@ -132,24 +132,34 @@ def file_lock(path: str) -> Iterator[None]:
     `flock`. Kilit dosyası `O_NOFOLLOW` ile açılır ve çağıranın kendisine ait normal dosya olmalı (symlink/başkasının
     dosyası = kilit dosyası KULLANILMAZ, yalnız iş parçacığı kilidiyle devam; bir hedefi sessizce yaratmaz/kilitlemez)."""
     with _LOCKS_GUARD:
-        tl = _THREAD_LOCKS.setdefault(path, threading.RLock())
-    with tl:
-        held = getattr(_HELD, "paths", None)
-        if held is None:
-            held = _HELD.paths = {}
-        if held.get(path, 0) > 0:       # aynı iş parçacığı zaten tutuyor: ikinci flock (başka fd) kendini kilitlerdi
-            held[path] += 1
+        ent = _THREAD_LOCKS.get(path)
+        if ent is None:
+            ent = _THREAD_LOCKS[path] = [threading.RLock(), 0]
+        ent[1] += 1             # kullanıcı/bekleyen sayısı: 0 olunca girdi silinir (tablo path sayısıyla büyümez)
+    tl = ent[0]
+    try:
+        with tl:
+            held = getattr(_HELD, "paths", None)
+            if held is None:
+                held = _HELD.paths = {}
+            if held.get(path, 0) > 0:       # aynı iş parçacığı zaten tutuyor: ikinci flock (başka fd) kendini kilitlerdi
+                held[path] += 1
+                try:
+                    yield
+                finally:
+                    held[path] -= 1
+                return
+            held[path] = 1
             try:
-                yield
+                with _file_lock_outer(path):
+                    yield
             finally:
-                held[path] -= 1
-            return
-        held[path] = 1
-        try:
-            with _file_lock_outer(path):
-                yield
-        finally:
-            held.pop(path, None)
+                held.pop(path, None)
+    finally:
+        with _LOCKS_GUARD:
+            ent[1] -= 1
+            if ent[1] <= 0 and _THREAD_LOCKS.get(path) is ent:
+                del _THREAD_LOCKS[path]
 
 
 @contextlib.contextmanager

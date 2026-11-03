@@ -321,12 +321,30 @@ _channel_lock = threading.Lock()
 _channels: Dict[str, grpc.Channel] = {}
 
 
+def _check_grpc_host(host: str, port: int) -> None:
+    """Kanal AÇILIRKEN (kayıt anında değil) DNS adını çöz; herhangi bir adres loopback/link-local/unspecified ise
+    reddet (#36). Çözülemezse de reddet (fail-closed). IP literalleri kayıt anında denetlendi, geçer.
+    Not: gRPC kendi çözümlemesini yapar; bu, kanal önbelleğe girmeden önceki en iyi çaba denetimidir."""
+    import socket as _socket
+    from .. import hosts as _hosts
+    if not host or not _hosts.hostname_is_dns_name(host):
+        return
+    try:
+        infos = _socket.getaddrinfo(host, port, type=_socket.SOCK_STREAM)
+    except OSError as e:
+        raise OSError(f"grpc host çözülemedi: {host}: {e}")
+    for info in infos:
+        if _hosts.ip_is_blocked(info[4][0]):
+            raise OSError(f"blocked: {host} resolved to a blocked address ({info[4][0]})")
+
+
 def _channel_for(grpc_url: str) -> grpc.Channel:
     with _channel_lock:
         ch = _channels.get(grpc_url)
         if ch is not None:
             return ch
         parsed = urllib.parse.urlsplit(grpc_url)
+        _check_grpc_host(parsed.hostname or "", parsed.port or (443 if parsed.scheme == "https" else 80))
         target = f"{parsed.hostname}:{parsed.port or (443 if parsed.scheme == 'https' else 80)}"
         if parsed.scheme == "https":
             ch = grpc.secure_channel(target, grpc.ssl_channel_credentials(), options=_KEEPALIVE_OPTIONS)

@@ -1439,6 +1439,19 @@ class ViewerProcessTests(unittest.TestCase):
             time.sleep(0.02)
         self.assertGreaterEqual(len(self.panel.posts), count, self.panel.posts)
 
+    def wait_isig(self, want, timeout=10.0):
+        """Terminal modunu (ISIG) pty'den OKU: ekran yazısı mod değişiminden önce görünebilir; sabit sleep yük altında flake'ti."""
+        end = time.time() + timeout
+        while time.time() < end:
+            try:
+                isig = bool(termios.tcgetattr(self.master)[3] & termios.ISIG)
+            except termios.error:
+                isig = None
+            if isig is want:
+                return
+            time.sleep(0.02)
+        self.fail(f"ISIG {want} olmadı")
+
     def send(self, data):
         os.write(self.master, data if isinstance(data, bytes) else data.encode())
 
@@ -1475,7 +1488,7 @@ class ViewerProcessTests(unittest.TestCase):
         self.wait_screen("HAM GEÇİŞ açılsın mı", since=m)
         self.send("\r")
         self.wait_screen("her tuş oturuma gider", since=m)
-        time.sleep(0.2)
+        self.wait_isig(False)       # ham mod gerçekten kuruldu (sabit sleep yük altında yetmiyordu)
         self.send("ls\r")
         self.send("\x03")
         end = time.time() + 10
@@ -1488,7 +1501,7 @@ class ViewerProcessTests(unittest.TestCase):
         m = self.mark()
         self.send("\x1d")
         self.wait_screen("ham geçiş kapandı", since=m)
-        time.sleep(0.2)
+        self.wait_isig(True)        # ISIG geri geldi
         self.send("\x03")
         self.assertEqual(self.proc.wait(10), 0)
         self.assertEqual(self.panel.raw_data(), "ls\r\x03", "çıkıştan sonra hiçbir şey gitmemeli")

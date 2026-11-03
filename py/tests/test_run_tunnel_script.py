@@ -336,6 +336,9 @@ class WatchdogTests(unittest.TestCase):
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530"], watch_fails=6)
         env.wait_for(lambda: len(env.probe_calls()) >= 5, "5 yoklama")
+        # Bildirici arka planda: uyarı çağrısı/log satırı probe sayısından GEÇ yazılabilir (yük altında flake kökü).
+        env.wait_for(lambda: self.down_alerts(env) and "kopuş uyarısı gönderildi" in env.log_text(), "kopuş uyarısı")
+        time.sleep(0.3)     # yinelenen uyarı olsaydı düşerdi
         alerts = self.down_alerts(env)
         self.assertEqual(len(alerts), 1, "ALERT_GAP içinde TEK uyarı")
         self.assertIn(URL_A, alerts[0])
@@ -370,6 +373,8 @@ class WatchdogTests(unittest.TestCase):
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530", "530", "401", "530", "530", "401"])
         self.assertTrue(self.alive_after(env, proc, probes=7))
+        # Log satırı yoklama kaydından geç düşebilir: ikinci "yeniden yanıt veriyor" satırını bekle.
+        env.wait_for(lambda: env.log_text().count("yeniden yanıt veriyor (HTTP 401)") >= 2, "2. toparlanma satırı", timeout=30)
         log = env.log_text()
         self.assertEqual(log.count("HTTP 530 veriyor"), 2)
         self.assertEqual(log.count("yeniden yanıt veriyor (HTTP 401)"), 2)

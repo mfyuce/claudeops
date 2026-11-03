@@ -260,6 +260,27 @@ def _conn_cls_for(scheme: str) -> type:
     return _GuardedHTTPSConnection if scheme == "https" else _GuardedHTTPConnection
 
 
+def _guarded_ws_connect(url: str, open_timeout: float = 10.0, **kw: Any) -> Any:
+    """`ws_connect` + bağlantı ANI peer denetimi (#36): DNS adı için soket önce burada açılır, karşı IP engelliyse
+    (loopback/link-local/unspecified) el sıkışmadan reddedilir; sonra hazır soket `sock=` ile verilir. IP literalleri
+    kayıt anında denetlendi, olduğu gibi geçer."""
+    import socket as _socket
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname or ""
+    if not host or not hosts_mod.hostname_is_dns_name(host):
+        return ws_connect(url, open_timeout=open_timeout, **kw)
+    port = parts.port or (443 if parts.scheme == "wss" else 80)
+    sock = _socket.create_connection((host, port), timeout=open_timeout)
+    try:
+        peer = sock.getpeername()[0]
+        if hosts_mod.ip_is_blocked(peer):
+            raise _BlockedPeer(f"blocked: {host} resolved to a loopback/link-local/unspecified address ({peer})")
+        return ws_connect(url, sock=sock, open_timeout=open_timeout, **kw)
+    except BaseException:
+        sock.close()
+        raise
+
+
 def _conn_is_alive(conn: http.client.HTTPConnection) -> bool:
     """Idle havuzdaki bir bağlantının peer tarafından (restart/idle-timeout ile)
     sessizce kapatılmış olup olmadığını, ONU KULLANMADAN ÖNCE tespit eder —
@@ -1093,7 +1114,7 @@ def _probe_ws(host: Dict[str, str]) -> bool:
     kapatılır — bu SADECE bir probe)."""
     url = _ws_url(host["base_url"], "/ws", host["token"])
     try:
-        with ws_connect(url, open_timeout=_WS_PROBE_TIMEOUT_SECONDS, close_timeout=1.0):
+        with _guarded_ws_connect(url, open_timeout=_WS_PROBE_TIMEOUT_SECONDS, close_timeout=1.0):
             return True
     except Exception:
         return False
@@ -1287,7 +1308,7 @@ def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
         parse_item: Callable[[Any], Optional[dict]] = web_grpc._status_proto_to_dict
     else:  # "ws"
         url = _ws_url(host["base_url"], "/ws", token)
-        make_call = lambda: ws_connect(url, open_timeout=10.0, ping_interval=None)
+        make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None)
         parse_item = _parse_ws_status_frame
 
     def on_item(parsed: dict) -> None:
@@ -1499,7 +1520,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                     if viewport:
                         extra["viewport"] = "1"
                     url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang, **extra)
-                    make_call = lambda: ws_connect(url, open_timeout=10.0, ping_interval=None)
+                    make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None)
                     parse_item = _parse_ws_term_frame
                 relay = _TermRelay(tier, make_call, parse_item,
                                    label=f"term:{host_name}/{name}" + ("?lite" if lite else "")
