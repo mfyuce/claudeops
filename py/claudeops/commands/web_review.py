@@ -2598,9 +2598,11 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
     stamp = time.strftime("%Y-%m-%d", time.localtime(t))
     with sw.steward_lock(p):
         data = rv.load_findings(p)
-        rows = [dict(v, id=k) for k, v in sorted(data.items())
-                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"
-                and not sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}"))]
+        cand = [dict(v, id=k) for k, v in sorted(data.items())
+                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"]
+        skipped_sensitive = [r["id"] for r in cand
+                             if sa.is_sensitive(dict(r, title=f"{r.get('title') or ''} {r.get('body') or ''}"))]
+        rows = [r for r in cand if r["id"] not in skipped_sensitive]
     reader = getattr(drv, "read_rel", None)
     if callable(reader) and rows:       # eskimiş bulgu uzak TODO'ya yazılmasın: tanımlayıcı denetimi uzak dosya metniyle
         stale: Dict[str, str] = {}
@@ -2626,7 +2628,8 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
                 rv.save_findings(p, data)
             rows = [r for r in rows if r["id"] not in stale]
     if not rows:
-        return {"ok": False, "error": "no approved findings to export", "project": project}
+        return {"ok": False, "error": "no approved findings to export", "project": project,
+                "skipped_sensitive": skipped_sensitive}
     ids = [r["id"] for r in rows]
     msg = (f"Review bulguları {fname} dosyasına eklendi ({len(ids)} madde, 'Review bulguları' başlığı); sırası geldiğinde bak."
            if getattr(cfg, "lang", "tr") != "en" else
@@ -2649,6 +2652,7 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
     sw.log_event("review_export", paths=p, project=project, file=fname, written=written, already=already, remote=res.get("host"),
                  **({"by": by} if by else {}))
     return {"ok": True, "project": project, "file": target, "written": written, "already": already,
+            "skipped_sensitive": skipped_sensitive,
             "session_open": bool(res.get("session_open")), "notified": bool(res.get("notified")),
             "commit": "not done (no remote shell API); commit/push the remote repo manually" if written else ""}
 

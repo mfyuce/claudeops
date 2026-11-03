@@ -2640,6 +2640,10 @@ def shutdown_note_result(it: Dict[str, Any], kind: str, res: Dict[str, Any], now
     if res.get("ok"):
         it.pop("fails", None)
         return False
+    if res.get("code") == "destructive_budget":
+        # Host'un tick başına yıkıcı hakkı doldu: hata DEĞİL erteleme; adım geri alınır, başarısızlık sayacı artmaz (A4/361).
+        it["stage"] = "wait" if kind == "handover" else "ho"
+        return True
     it["fails"] = int(it.get("fails") or 0) + 1
     if it["fails"] >= SHUTDOWN_ACTION_FAIL_MAX:
         it["stage"], it["at"], it["fail_error"] = "ho_failed", now, str(res.get("error") or "")[:200]

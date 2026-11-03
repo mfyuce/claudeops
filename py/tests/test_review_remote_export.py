@@ -68,6 +68,46 @@ class T(unittest.TestCase):
         self.assertTrue(r["ok"] and r["written"] == [])
         self.assertEqual(self.posts, [])
 
+    def test_write_unverified_when_readback_differs(self):
+        """GATE-TODO10 301: yazma ok ama geri okuma farklı -> write_unverified, bildirim yok."""
+        orig_post = ws._remote_post
+
+        def post_then_corrupt(host, path, body, timeout, *a, **k):
+            r = orig_post(host, path, body, timeout, *a, **k)
+            if path == "/api/files/write":
+                self.files[body["path"]] = "bozuk"
+            return r
+
+        with mock.patch.object(ws, "_remote_post", post_then_corrupt):
+            r = self.drv.export_file("TODO.md", self.build, "merhaba")
+        self.assertFalse(r["ok"])
+        self.assertIn("write_unverified", r["error"])
+        self.assertNotIn("/api/term/input", [p for p, _ in self.posts])
+
+    def test_files_gate_denied_no_io(self):
+        """GATE-TODO10 301: _remote_files_gate reddi -> hiç istek yok."""
+        with mock.patch.object(ws, "_remote_files_gate", lambda h, sid="default": False):
+            r = self.drv.export_file("TODO.md", self.build)
+        self.assertFalse(r["ok"])
+        self.assertIn("denied", r["error"])
+        self.assertEqual(self.posts, [])
+
+    def test_empty_remote_cwd_stops(self):
+        """GATE-TODO10 301: _remote_ref boş cwd -> klasör bilinmiyor, yazma yok."""
+        with mock.patch.object(ws, "_remote_ref", lambda h, n: ("p", "")):
+            r = self.drv.export_file("TODO.md", self.build)
+        self.assertFalse(r["ok"])
+        self.assertIn("unknown", r["error"])
+        self.assertEqual(self.posts, [])
+
+    def test_tobedecided_target_is_exported(self):
+        """GATE-TODO10 301: kind=tbd hedefi TOBEDECIDED.md aynı yoldan yazılır."""
+        self.files["/r/p/TOBEDECIDED.md"] = "# TBD\n"
+        r = self.drv.export_file("TOBEDECIDED.md", self.build)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(self.files["/r/p/TOBEDECIDED.md"], "# TBD\n- yeni\n")
+        self.assertEqual(self.files["/r/p/TODO.md"], "# TODO\n")
+
     def test_bad_filename(self):
         self.assertFalse(self.drv.export_file("../x", self.build)["ok"])
 

@@ -698,10 +698,11 @@ def cmd_jobs(args) -> int:
         res = sj.poll_jobs(sid, force=True)
         print(f"yoklandı: {res['polled']}  değişen: {res['changed']}  hata: {res['errors']}  atlanan: {res['skipped']}")
         return 0 if not res["errors"] else 1
+    svc_name = str(getattr(args, "service", "") or "")
     if act == "ack":
-        j = sj.find_job(jobs, args.id)
+        j = sj.find_job(jobs, args.id, svc_name)
         if j is None:
-            print(f"hata: iş bulunamadı: {args.id}")
+            print(f"hata: iş bulunamadı: {args.id}" + (f" (servis {svc_name})" if svc_name else ""))
             return 1
         if j.get("state") not in sj.TERMINAL_STATES:
             # Açık (ya da bilinmeyen durumlu) işe ack: `delivered` yazılırsa iş bitince sonuç proje oturumuna HİÇ gitmezdi.
@@ -712,9 +713,9 @@ def cmd_jobs(args) -> int:
         print(f"✓ iş {j.get('service')}#{j['id']} iletildi sayıldı (yerel işaret)")
         return 0
     if act == "show":
-        j = sj.find_job(jobs, args.id)
+        j = sj.find_job(jobs, args.id, svc_name)
         if j is None:
-            print(f"hata: iş bulunamadı: {args.id}")
+            print(f"hata: iş bulunamadı: {args.id}" + (f" (servis {svc_name})" if svc_name else ""))
             return 1
         print(json.dumps(j, ensure_ascii=False, indent=2))
         return 0
@@ -916,6 +917,16 @@ def cmd_shutdown(args) -> int:
     return 0
 
 
+def cmd_stop(args) -> int:
+    """Tek oturumu durdur: POST /api/steward/stop (sunucu kapısı tam ad/uzak kurallarını uygular)."""
+    body: dict = {"name": args.name, "actor": "cli"}
+    if getattr(args, "reason", ""):
+        body["reason"] = args.reason
+    res = _api(args.port, "POST", "/api/steward/stop", body, _sid(args))
+    print(json.dumps(res, ensure_ascii=False))
+    return 0 if res.get("ok") else 1
+
+
 def cmd_api(args) -> int:
     port = args.port
     sid = _sid(args)
@@ -993,9 +1004,11 @@ def register(sub):
     jbl.add_argument("--state", default="")
     jbs = jb.add_parser("show", help="bir işin tam kaydı")
     jbs.add_argument("id")
+    jbs.add_argument("--service", default="", help="servis adı (aynı kimlik birden çok serviste varsa)")
     jb.add_parser("poll", help="açık işleri şimdi yokla (panel gerekmez)")
     jba = jb.add_parser("ack", help="sonucu iletildi say (yerel işaret; varaka'ya yazılmaz)")
     jba.add_argument("id")
+    jba.add_argument("--service", default="", help="servis adı (aynı kimlik birden çok serviste varsa)")
     pjb.set_defaults(func=cmd_jobs)
     pst = s.add_parser("status", help="özet")
     pst.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT, help="uzak host sağlığı için panel portu")
@@ -1082,6 +1095,11 @@ def register(sub):
     psd.add_argument("--keep", default="", help="virgüllü oturum adları: devir alınır ama oturum AÇIK kalır (yalnız dur)")
     psd.add_argument("--only", default="", help="virgüllü PROJE adları: yalnız bunlar kapatılır (paused; iş biter, devir, durdur); döngü ve diğer projeler sürer")
     psd.set_defaults(func=cmd_shutdown)
+    pst = s.add_parser("stop", help="tek oturumu durdur (TAM oturum adı): POST /api/steward/stop")
+    pst.add_argument("name")
+    pst.add_argument("--reason", default="")
+    pst.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
+    pst.set_defaults(func=cmd_stop)
     pup = s.add_parser("up", help="tek komutla aç: on + models.tsv'de # CLOSED satırlarını geri aç + beyni başlat")
     pup.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     pup.add_argument("--dry-run", action="store_true", help="models.tsv'ye yazma, beyni başlatma (yalnız on yapılır)")

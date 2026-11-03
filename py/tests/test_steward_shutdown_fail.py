@@ -40,6 +40,14 @@ class ShutdownNoteResultTests(unittest.TestCase):
         self.assertFalse(sw.shutdown_note_result(it, "handover", {"ok": True}, 2.0))
         self.assertNotIn("fails", it)
 
+    def test_destructive_budget_defers_without_counting_failure(self):
+        # TODO 361: host bütçesine takılan stop hata sayılmaz; sınırsız tekrar da `ho_failed`e düşmez
+        it = {"stage": "closed", "at": 1.0}
+        for _ in range(sw.SHUTDOWN_ACTION_FAIL_MAX + 2):
+            self.assertTrue(sw.shutdown_note_result(it, "stop", {"ok": False, "code": "destructive_budget"}, 2.0))
+            self.assertEqual(it["stage"], "ho")
+        self.assertNotIn("fails", it)
+
     def test_terminal_plan_finishes(self):
         cfg = sw.Config()
         sd = {"init": True, "started": 0.0, "items": {"x": {"stage": "ho_failed", "at": 1.0}}}
