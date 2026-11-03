@@ -53,7 +53,7 @@ class RealStateUntouched(unittest.TestCase):
     def test_diag_env_does_not_point_at_real_log(self):
         # İzolasyon bayrağı: conftest/steward_testlib diag yolunu geçici dizine alır (gerçek yola değil).
         diag = os.environ.get("CLAUDEOPS_DIAG_LOG")
-        if diag:
+        if diag:  # (kok neden duzeltmesi: test_000_diag_env.py discover'da env'i en basta kurar)
             self.assertNotEqual(os.path.realpath(diag), os.path.realpath(_DIAG))
 
 
