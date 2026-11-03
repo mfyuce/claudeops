@@ -405,8 +405,10 @@ def cmd_quota(args) -> int:
         return 0
     print("kota bekçisi: " + (json.dumps(cur, ensure_ascii=False) if cur else "ayar yok (mode=off)"))
     try:
-        with open(os.path.join(CLAUDEOPS_DIR, "steward", "quota.json"), encoding="utf-8") as f:
-            st = json.load(f)
+        from .. import statedocs
+        st = statedocs.read_json("steward/quota", os.path.join(CLAUDEOPS_DIR, "steward", "quota.json"), None)
+        if st is None:
+            raise ValueError("quota yok")
         d = st.get("decision") or {}
         age = max(0, int((_t.time() - float(st.get("at") or 0)) / 60))
         print(f"son başarılı okuma: {_t.strftime('%d.%m %H:%M', _t.localtime(st.get('at') or 0))} ({age} dk önce)  kullanılan: %{(st.get('usage') or {}).get('week_pct')}  "

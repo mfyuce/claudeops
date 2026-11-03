@@ -3691,9 +3691,10 @@ def _quota_save() -> None:
     d, u = _QUOTA.get("decision"), _QUOTA.get("usage")
     try:
         os.makedirs(os.path.dirname(QUOTA_FILE), exist_ok=True)
-        with open(QUOTA_FILE, "w", encoding="utf-8") as f:
-            json.dump({"at": _QUOTA.get("at"), "usage": dataclasses.asdict(u) if u else None,
-                       "decision": dataclasses.asdict(d) if d else None, "stopped": bool(_QUOTA.get("stopped"))}, f)
+        from .. import statedocs
+        statedocs.write_json("steward/quota", QUOTA_FILE,
+                             {"at": _QUOTA.get("at"), "usage": dataclasses.asdict(u) if u else None,
+                              "decision": dataclasses.asdict(d) if d else None, "stopped": bool(_QUOTA.get("stopped"))})
     except OSError:
         pass
 
@@ -3706,8 +3707,10 @@ def _quota_restore() -> None:
         return
     _QUOTA["loaded"] = True
     try:
-        with open(QUOTA_FILE, "r", encoding="utf-8") as f:
-            saved = json.load(f)
+        from .. import statedocs
+        saved = statedocs.read_json("steward/quota", QUOTA_FILE, None)
+        if saved is None:
+            raise ValueError("quota yok")
         act = str(((saved or {}).get("decision") or {}).get("action") or "ok")
         _QUOTA["level"] = {"shutdown": 1, "stop": 2}.get(act, 0)
         _QUOTA["stopped"] = _QUOTA["level"] > 0
