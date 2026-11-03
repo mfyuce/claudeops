@@ -2044,13 +2044,20 @@ def _files_resolve(name: str, lang: str = "tr"):
     # TBD#56: önce tam ad, sonra TEKİL base; 2+ aday sessizce ilkini seçmez (belirsiz hata). Okuma/yazma/yükleme aynı yoldan.
     kind, procs = _find_running_for_action(name)
     if kind == "ambiguous":
-        return None, _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+        e = _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+        e["code"] = "ambiguous_name"
+        return None, e
     if procs:
         return procs[0], None
     info = _fleet_status().get(name) or inst_mod.get_instance(name)
     if info:
         return Session(name=name, pid=0, cwd=info["cwd"], cli=info["cli"]), None
     return None, _err(lang, "not_running", name=name)
+
+
+def _files_resolve_status(err: dict) -> int:
+    """TBD#56: `_files_resolve` hatası için HTTP durumu: belirsiz ad (2+ aday) 409, diğerleri 404."""
+    return 409 if isinstance(err, dict) and err.get("code") == "ambiguous_name" else 404
 
 
 def _files_list(name: str, path: Optional[str], lang: str = "tr") -> dict:
@@ -2104,7 +2111,7 @@ def _files_mutation_err(lang: str, name: str, target: str, result: dict) -> dict
 def _files_delete(name: str, path: str, lang: str = "tr") -> Tuple[dict, int]:
     s, err = _files_resolve(name, lang)
     if err:
-        return err, 404
+        return err, _files_resolve_status(err)
     result = files_mod.delete_path(s, path)
     if not result["ok"]:
         return _files_mutation_err(lang, name, os.path.basename(path.rstrip("/")), result)
@@ -2114,7 +2121,7 @@ def _files_delete(name: str, path: str, lang: str = "tr") -> Tuple[dict, int]:
 def _files_rename(name: str, path: str, new_name: str, lang: str = "tr") -> Tuple[dict, int]:
     s, err = _files_resolve(name, lang)
     if err:
-        return err, 404
+        return err, _files_resolve_status(err)
     result = files_mod.rename_path(s, path, new_name)
     if not result["ok"]:
         return _files_mutation_err(lang, name, new_name, result)
@@ -2124,7 +2131,7 @@ def _files_rename(name: str, path: str, new_name: str, lang: str = "tr") -> Tupl
 def _files_mkdir(name: str, dir_path: Optional[str], folder_name: str, lang: str = "tr") -> Tuple[dict, int]:
     s, err = _files_resolve(name, lang)
     if err:
-        return err, 404
+        return err, _files_resolve_status(err)
     result = files_mod.make_folder(s, dir_path, folder_name)
     if not result["ok"]:
         return _files_mutation_err(lang, name, folder_name, result)
@@ -2139,7 +2146,7 @@ def _files_write(name: str, path: str, content: str, lang: str = "tr") -> Tuple[
     kullandığı aynı özel-durumla burada da ele alınıyor."""
     s, err = _files_resolve(name, lang)
     if err:
-        return err, 404
+        return err, _files_resolve_status(err)
     result = files_mod.write_text(s, path, content)
     if result["ok"]:
         return result, 200
@@ -4190,7 +4197,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         s, err = _files_resolve(name, lang)
         if err:
-            self._json(err, status=404)
+            self._json(err, status=_files_resolve_status(err))
             return
         real, code = files_mod.resolve_download(s, fpath)
         if code:
@@ -4280,7 +4287,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         s, err = _files_resolve(name, lang)
         if err:
-            self._json(err, status=404)
+            self._json(err, status=_files_resolve_status(err))
             return
         dest, code = files_mod.resolve_upload_target(s, dir_path, filename, overwrite=overwrite)
         if code:

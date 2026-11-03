@@ -39,11 +39,23 @@ class FilesResolveTests(unittest.TestCase):
         s, err = self._run(live, "cops")
         self.assertIsNone(s)
         self.assertFalse(err["ok"])
+        self.assertEqual(web._files_resolve_status(err), 409)
 
     def test_unknown_is_not_running(self):
         s, err = self._run([], "yok")
         self.assertIsNone(s)
         self.assertFalse(err["ok"])
+        self.assertEqual(web._files_resolve_status(err), 404)
+
+    def test_mutation_wrappers_return_409_when_ambiguous(self):
+        live = [Session(name="cops20261021_1", pid=2, cwd="/b", cli="claude"),
+                Session(name="cops20261021_2", pid=3, cwd="/c", cli="claude")]
+        with mock.patch.object(web, "find_sessions", lambda measure_cpu=False, **kw: list(live)), \
+                mock.patch.object(web.inst_mod, "get_instance", lambda n: None), \
+                mock.patch.object(web, "_fleet_status", lambda: {}):
+            for res in (web._files_delete("cops", "/x", "en"), web._files_mkdir("cops", None, "d", "en"),
+                        web._files_write("cops", "/x", "t", "en"), web._files_rename("cops", "/x", "y", "en")):
+                self.assertEqual(res[1], 409)
 
 
 if __name__ == "__main__":

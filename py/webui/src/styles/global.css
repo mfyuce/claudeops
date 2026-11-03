@@ -420,4 +420,10 @@ button.linkbtn { background: none; border: 0; padding: 0; color: var(--accent, i
   .opts-row td > * { max-width: 100%; }
   .opts-row select, .opts-row input:not([type="checkbox"]):not([type="radio"]), .opts-row textarea { width: 100%; box-sizing: border-box; font-size: 16px; }
   pre, code { overflow-wrap: anywhere; white-space: pre-wrap; }
+  /* GATE-TODO2 #5: UcliSpendPanel / ReviewPanel .opts-row DISINDA; ayni dar ekran kurallari */
+  .ucli-spend { max-width: 100%; overflow-wrap: anywhere; }
+  .ucli-spend input[type="number"] { min-height: 36px; font-size: 16px; }
+  .ucli-spend [role="progressbar"] { max-width: 100% !important; }
+  .opts select, .opts input:not([type="checkbox"]):not([type="radio"]) { max-width: 100%; min-height: 36px; font-size: 16px; box-sizing: border-box; }
+  .opts button, button.linkbtn { min-height: 36px; }
 }
