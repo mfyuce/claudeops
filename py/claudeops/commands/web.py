@@ -296,6 +296,13 @@ ERR = {
 }
 
 
+def _content_disposition(filename: str) -> str:
+    """RFC 6266 indirme başlığı: filename= yalnız yazdırılabilir ASCII (başlık Latin-1 kodlanır; ş/ğ/ı güvenle `_`
+    olur, bağlantı kopmaz), gerçek ad filename*=UTF-8'' ile yüzde-kodlu."""
+    ascii_name = "".join(c if (32 <= ord(c) < 127 and c not in '"\\') else "_" for c in filename) or "download"
+    return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
+
+
 def _err(lang: str, key: str, **kwargs) -> dict:
     tpl = ERR[key]["en" if lang == "en" else "tr"]
     return {"ok": False, "error": tpl.format(**kwargs)}
@@ -4219,8 +4226,7 @@ class _Handler(BaseHTTPRequestHandler):
         # RFC 6266: ASCII fallback (tırnak/CR/LF temizlenmiş, eski tarayıcılar
         # için) + UTF-8 filename* (bu ortamda sık olan Türkçe dosya adları için
         # ŞART — salt ASCII filename= onları ya kırpardı ya bozardı).
-        ascii_name = "".join(c if (32 <= ord(c) < 127 and c not in '"\\') else "_" for c in filename) or "download"
-        disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
+        disposition = _content_disposition(filename)
         try:
             self.send_response(200)
             self.send_header("Content-Type", ctype)

@@ -331,7 +331,7 @@ def ensure_settings_file() -> str:
         secret = found.group(1) if found else None
     except OSError:
         pass
-    tmp = f"{path}.{os.getpid()}.tmp"
+    tmp = f"{path}.{os.getpid()}-{threading.get_ident()}.tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(_SETTINGS_TEMPLATE.format(secret=secret or secrets.token_hex(32)))
