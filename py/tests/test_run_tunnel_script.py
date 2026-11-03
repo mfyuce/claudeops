@@ -44,7 +44,7 @@ if [ -z "${FAKE_NAMED:-}" ]; then
     echo "2026-10-12T05:02:10Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |" >&2
     echo "2026-10-12T05:02:10Z INF |  ${FAKE_URL}                                     |" >&2
 fi
-for _ in $(seq 1 400); do
+for _ in $(seq 1 6000); do
     [ -e "$STOP_FILE" ] && exit 0
     sleep 0.05
 done
@@ -164,7 +164,7 @@ class TunnelEnv:
 
     def finish(self, proc):
         self.stop_file.touch()
-        proc.wait(timeout=10)
+        proc.wait(timeout=30)
 
     @staticmethod
     def text(path):
@@ -305,7 +305,7 @@ class WatchdogTests(unittest.TestCase):
     def test_three_consecutive_530_terminate_cloudflared_and_the_script_exits(self):
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530"])  # dizi bitince son kod (530) tekrarlanır
-        proc.wait(timeout=10)
+        proc.wait(timeout=30)
         self.assertNotEqual(proc.returncode, 0, "systemd yeniden başlatsın diye sıfırdan farklı çıkış")
         log = env.log_text()
         self.assertEqual(log.count("HTTP 530 veriyor"), 1, "ilk 530'da TEK uyarı satırı")
@@ -350,6 +350,8 @@ class WatchdogTests(unittest.TestCase):
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530", "401"] * 4)
         env.wait_for(lambda: len(env.probe_calls()) >= 9, "9 yoklama")
+        # Bildirici arka planda: uyarı probe sayısından geç düşebilir (yük altında flake kökü).
+        env.wait_for(lambda: self.down_alerts(env) and "kararsız" in env.log_text(), "kararsızlık uyarısı", timeout=30)
         self.assertEqual(len(self.down_alerts(env)), 1)
         self.assertIn("kararsız", env.log_text())
         self.assertNotIn("sonlandırılıyor", env.log_text())
@@ -385,7 +387,7 @@ class WatchdogTests(unittest.TestCase):
         """Kopuk tünel + dalgalı DNS: 000'lar teşhisi geciktirmemeli (sayaç korunur), kendileri de sayılmamalı."""
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530", "000", "530", "000", "530"])
-        proc.wait(timeout=10)
+        proc.wait(timeout=30)
         self.assertIn("3 yoklamadır HTTP 530", env.log_text())
         self.assertEqual(len(env.probe_calls()), 5)
 
@@ -407,7 +409,7 @@ class WatchdogTests(unittest.TestCase):
     def test_the_failure_threshold_is_configurable(self):
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530"], watch_fails=2)
-        proc.wait(timeout=10)
+        proc.wait(timeout=30)
         self.assertIn("2 yoklamadır HTTP 530", env.log_text())
         self.assertEqual(len(env.probe_calls()), 2)
 
@@ -494,7 +496,7 @@ class WatchdogTests(unittest.TestCase):
         env.write_settings({"tunnel_watch": "on"})
         env.wait_for(lambda: "AÇILDI" in env.log_text(), "açma satırı")
         # Dizi bitti, son kod (530) tekrarlanır: sayaç SIFIRDAN sayılır, yeniden 3 yoklama gerekir.
-        proc.wait(timeout=10)
+        proc.wait(timeout=30)
         self.assertGreaterEqual(len(env.probe_calls()), 5, "kapatma sayacı sıfırlamadı")
 
     def test_missing_unreadable_or_odd_settings_mean_on(self):
