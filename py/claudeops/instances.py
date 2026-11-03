@@ -95,7 +95,8 @@ def _mutate(fn: Callable[[Dict[str, dict]], object]) -> object:
         # that never passed a mode to atomic_write_json (settings.json/hosts.json
         # already do) — under a normal umask it landed world-readable, and it
         # can carry per-instance blueprint/cwd paths (Antigravity SEC-11).
-        atomic_write_json(INSTANCES_JSON, data, mode=0o600)
+        from . import statedocs
+        statedocs.write_json("instances", INSTANCES_JSON, data, mode=0o600, writer=atomic_write_json)
     return result
 
 

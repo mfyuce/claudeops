@@ -23,7 +23,11 @@ DRAFT_JSON = os.path.join(ORCH_DIR, "draft.json")
 
 
 def _atomic_write_json(path: str, obj: Any) -> None:
-    atomic_write_json(path, obj, mode=0o600)
+    from . import statedocs
+    if statedocs._db_ok(path):
+        statedocs.write_json(statedocs.name_for(path), path, obj, mode=0o600, writer=atomic_write_json)
+    else:
+        atomic_write_json(path, obj, mode=0o600)
 
 
 def _load_json(path: str, default: Any) -> Any:

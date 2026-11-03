@@ -7,14 +7,15 @@ from claudeops import statedocs as sd, store as S
 
 class StateDocsTests(unittest.TestCase):
     def setUp(self):
+        self._env = mock.patch.dict(os.environ, {"CLAUDEOPS_DIAG_LOG": os.path.join(tempfile.mkdtemp(prefix="cops-sd-diag-"), "diag.log")}); self._env.start()
         self.d = tempfile.mkdtemp(prefix="cops-sd-")
         self.path = os.path.join(self.d, "q.json")
         self.st = S.Store(os.path.join(self.d, "t.db"))
-        self.p = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d)]
+        self.p = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d), mock.patch.object(sd, "DB_READY", {"q", "x", "h", "hosts"})]
         [p.start() for p in self.p]
 
     def tearDown(self):
-        [p.stop() for p in self.p]; self.st.close()
+        [p.stop() for p in self.p]; self.st.close(); self._env.stop()
         os.environ.pop("CLAUDEOPS_STORE_BACKEND", None)
 
     def mode(self, m):
@@ -29,7 +30,9 @@ class StateDocsTests(unittest.TestCase):
     def test_dual_writes_both_and_reads_db(self):
         self.mode("dual"); sd.write_json("q", self.path, {"a": 2})
         self.assertEqual(json.load(open(self.path)), {"a": 2}); self.assertEqual(self.st.get_doc("q"), {"a": 2})
-        self.st.set_doc("q", {"a": 3}); self.assertEqual(sd.read_json("q", self.path), {"a": 3})
+        self.st.set_doc("q", {"a": 3})
+        self.assertEqual(sd.read_json("q", self.path), {"a": 2})                      # dual: dosya doğruluk kaynağı
+        self.assertEqual(sd.read_json("q", self.path, file_truth=False), {"a": 3})    # DB-önce istenirse
 
     def test_lazy_import_from_file(self):
         json.dump({"old": 1}, open(self.path, "w"))
@@ -72,6 +75,13 @@ class StateDocsTests(unittest.TestCase):
         self.assertEqual(self.st.get_doc("h"), [{"name": "a"}, {"name": "b"}])   # DB dosyaya uydu
         os.remove(self.path)                                                  # dosya yoksa DB'den
         self.assertEqual(sd.read_json("h", self.path, file_truth=True), [{"name": "a"}, {"name": "b"}])
+
+    def test_dual_skips_db_compare_when_file_unchanged(self):
+        self.mode("dual"); sd.write_json("q", self.path, {"a": 1})
+        self.st.set_doc("q", {"zzz": 1})                      # DB bozuldu ama dosya imzası değişmedi -> karşılaştırma YOK
+        self.assertEqual(sd.read_json("q", self.path), {"a": 1}); self.assertEqual(self.st.get_doc("q"), {"zzz": 1})
+        json.dump({"a": 9}, open(self.path, "w"))             # dosya değişti -> eşitlenir
+        self.assertEqual(sd.read_json("q", self.path), {"a": 9}); self.assertEqual(self.st.get_doc("q"), {"a": 9})
 
     def test_mirror_log_modes(self):
         p = os.path.join(self.d, "diag.log")

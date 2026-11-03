@@ -122,10 +122,11 @@ def _run_check_once() -> None:
     if newly_enabled or newly_disabled:
         diag_log("model_list_changed", enabled=sorted(newly_enabled), disabled=sorted(newly_disabled))
 
-    atomic_write_json(CLAUDE_MODELS_JSON, {
+    from . import statedocs
+    statedocs.write_json("claude_models", CLAUDE_MODELS_JSON, {
         "checked_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "models": models,
-    })
+    }, writer=atomic_write_json)
 
 
 def _loop() -> None:

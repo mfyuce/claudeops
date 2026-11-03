@@ -162,7 +162,8 @@ olduğu gibi döner (kullanıcının kuralı: "aynıysa sorun yok"); "aynı" ses
         entry = {"saved_at": time.time(), "kind": kind, "sessions": sessions, "mirrors": mirrors}
         all_snaps.append(entry)
         del all_snaps[:-MAX_SNAPSHOTS]
-        atomic_write_json(SNAPSHOTS_JSON, all_snaps)
+        from . import statedocs
+        statedocs.write_json("snapshots", SNAPSHOTS_JSON, all_snaps, writer=atomic_write_json)
         return entry
 
 

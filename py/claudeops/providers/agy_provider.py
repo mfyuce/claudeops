@@ -227,7 +227,8 @@ def _remember_agy_sid(session_name: str, sid: str) -> None:
     if known.get(session_name) == sid:
         return
     known[session_name] = sid
-    atomic_write_json(AGY_SIDS_JSON, known)
+    from .. import statedocs
+    statedocs.write_json("agy_sids", AGY_SIDS_JSON, known, writer=atomic_write_json)
 
 
 def _sid_claimed_by_other(known: Dict[str, str], sid: str, session_name: str) -> bool:

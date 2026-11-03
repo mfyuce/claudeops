@@ -144,7 +144,7 @@ def load_hosts() -> List[Dict[str, str]]:
     Eksik/bozuk dosyaya karşı toleranslı (settings.load_settings ile aynı disiplin)."""
     try:
         from . import statedocs
-        data = statedocs.read_json("hosts", HOSTS_JSON, None, file_truth=True)
+        data = statedocs.read_json("hosts", HOSTS_JSON, None)
         if isinstance(data, list):
             return [h for h in data if isinstance(h, dict) and "name" in h]
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -222,7 +222,7 @@ def _write_hosts(hosts: List[Dict[str, str]]) -> None:
     hedefi KAYNAĞIN izinleriyle değiştirir, hedefte önceden var olan izinlerle
     değil — yani her yazımda 0600 korunur, tek-seferlik oluşturmaya bağlı değil."""
     from . import statedocs
-    statedocs.write_json("hosts", HOSTS_JSON, hosts, mode=0o600)
+    statedocs.write_json("hosts", HOSTS_JSON, hosts, mode=0o600, writer=atomic_write_json)
 
 
 @contextlib.contextmanager

@@ -451,24 +451,35 @@ def valid_name(name: str) -> bool:
 
 # ── depo ──────────────────────────────────────────────────────────────────────
 
+def _corrupt_backup(path: str) -> None:
+    try:        # bozuk dosya: kanıt yedeği (sonraki yazım üstüne yazıp bulguları/soruları sessizce silmesin)
+        import shutil
+        shutil.copy2(path, f"{path}.corrupt-{int(time.time())}")
+    except OSError:
+        pass
+
+
 def _load_json(path: str, default: Any) -> Any:
+    from . import statedocs
+    if statedocs.backend() != "files" and statedocs._db_ok(path):    # SQLite gölge/geçiş (statedocs.py): dosya doğruluk kaynağı
+        return statedocs.read_json(statedocs.name_for(path), path, default, on_corrupt=_corrupt_backup)
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError:
-        try:        # bozuk dosya: kanıt yedeği (sonraki yazım üstüne yazıp bulguları/soruları sessizce silmesin)
-            import shutil
-            shutil.copy2(path, f"{path}.corrupt-{int(time.time())}")
-        except OSError:
-            pass
+        _corrupt_backup(path)
         return default
     except (FileNotFoundError, OSError):
         return default
 
 
 def _save_json(path: str, obj: Any) -> None:
+    from . import statedocs
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    atomic_write_json(path, obj, mode=0o600)
+    if statedocs._db_ok(path):
+        statedocs.write_json(statedocs.name_for(path), path, obj, mode=0o600, writer=atomic_write_json)
+    else:
+        atomic_write_json(path, obj, mode=0o600)
 
 
 # ── kilitler (çoklu değnekçi P1b) ─────────────────────────────────────────────
@@ -1408,7 +1419,7 @@ def log_event(event: str, *, paths: Any = None, **data: Any) -> None:
         with _LOG_LOCK, _log_guard(paths), open(pp.log, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         from . import statedocs
-        statedocs.mirror_log("steward/" + os.path.relpath(pp.log, CLAUDEOPS_DIR), pp.log, entry)
+        statedocs.mirror_log(statedocs.name_for(pp.log), pp.log, entry)
     except Exception:
         pass
 

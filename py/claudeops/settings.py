@@ -338,7 +338,8 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
     # mode=None'dı — settings.json 664/world-readable kalmıştı, çok-kullanıcılı
     # bu makinede gerçek bir açık; sonraki YAZIMDA `os.replace` hedefi kaynağın
     # izniyle değiştirdiği için elle chmod GEREKMEDİ, tek satır yeterli).
-    atomic_write_json(SETTINGS_JSON, current, mode=0o600)
+    from . import statedocs
+    statedocs.write_json("settings", SETTINGS_JSON, current, mode=0o600, writer=atomic_write_json)
     return current
 
 

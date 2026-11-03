@@ -42,6 +42,23 @@ def backend() -> str:
         return mode
 
 
+# `db` kipinde YALNIZ okuyucuları tamamen DB'ye bağlanmış belgeler DB-tek-kaynak olur; diğerleri `db` istense bile `dual`
+# (dosya doğruluk kaynağı, DB gölge) davranır. Yeni belgenin okuyucusu DB'ye bağlanınca buraya eklenir.
+DB_READY = {"hosts", "steward/quota"}
+
+
+def name_for(path: str) -> str:
+    """`CLAUDEOPS_DIR` altındaki yoldan belge adı: `steward/stewards/rev/questions.json` -> `steward/stewards/rev/questions`."""
+    from .paths import CLAUDEOPS_DIR
+    rel = os.path.relpath(os.path.realpath(path), os.path.realpath(CLAUDEOPS_DIR))
+    return rel[:-5] if rel.endswith(".json") else rel
+
+
+def _effective(name: str) -> str:
+    m = backend()
+    return "dual" if (m == "db" and name not in DB_READY) else m
+
+
 def _db_ok(path: str) -> bool:
     """DB YALNIZ `CLAUDEOPS_DIR` altındaki yollar için kullanılır: testlerin geçici yolları (ya da başka dizin) gerçek
     DB'yi kirletmesin; dışarıdaki yol her zaman `files` gibi davranır."""
@@ -61,49 +78,77 @@ def _log(msg: str) -> None:
         pass
 
 
-def _file_read(path: str, default: Any) -> Any:
+def _file_read(path: str, default: Any, on_corrupt: Any = None) -> Any:
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except (OSError, ValueError):
+    except ValueError:
+        if on_corrupt is not None:          # bozuk dosya: çağıranın kanıt yedeği (ör. steward `.corrupt-<ts>`)
+            try:
+                on_corrupt(path)
+            except Exception:
+                pass
+        return default
+    except OSError:
         return default
 
 
 _MISSING = object()
 
 
-def read_json(name: str, path: str, default: Any = None, *, file_truth: bool = False) -> Any:
-    """`file_truth=True` (elle düzenlenebilen/token'lı belgeler): `dual` kipinde DOSYA doğruluk kaynağıdır; DB ile fark
-    varsa loglanır ve DB dosyaya uydurulur. `db` kipinde her zaman DB."""
-    mode = backend()
+_SYNCED: dict = {}   # ad -> (mtime_ns, size) en son DB ile eşitlenmiş dosya imzası (büyük dosyada her okumada DB karşılaştırma YOK)
+
+
+def _sig(path: str):
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def read_json(name: str, path: str, default: Any = None, *, file_truth: bool = True, on_corrupt: Any = None) -> Any:
+    """`dual`: DOSYA doğruluk kaynağı, DB gölge kopya (uzun yaşayan eski kodlu süreçler yalnız dosyaya yazabilir; elle düzenleme
+    ezilmez). Dosya imzası (mtime,size) son eşitlemeden değiştiyse DB ile karşılaştırılır, fark loglanır ve DB uydurulur;
+    dosya yoksa DB'den okunur. `db`: DB tek kaynak (dosya yoksa tek seferlik içe aktarma). `file_truth=False`: dual'de de DB önce."""
+    mode = _effective(name)
     if mode == "files" or not _db_ok(path):
-        return _file_read(path, default)
+        return _file_read(path, default, on_corrupt)
     try:
         from .store import default_store
         st = default_store()
-        if file_truth and mode == "dual":
-            v = _file_read(path, _MISSING)
+        if mode == "dual" and file_truth:
+            v = _file_read(path, _MISSING, on_corrupt)
             if v is not _MISSING:
-                if st.get_doc(name, _MISSING) != v:
-                    _log(f"drift {name}: DB dosyaya uyduruldu")
-                    st.set_doc(name, v)
+                sg = _sig(path)
+                if _SYNCED.get(name) != sg:
+                    if st.get_doc(name, _MISSING) != v:
+                        _log(f"drift {name}: DB dosyaya uyduruldu")
+                        st.set_doc(name, v)
+                    _SYNCED[name] = sg
                 return v
+            v = st.get_doc(name, _MISSING)
+            return default if v is _MISSING else v
         v = st.get_doc(name, _MISSING)
         if v is not _MISSING:
             return v
-        v = _file_read(path, _MISSING)          # DB'de yok: dosyadan tembel içe aktarma
+        v = _file_read(path, _MISSING, on_corrupt)          # DB'de yok: dosyadan tembel içe aktarma
         if v is not _MISSING:
             st.set_doc(name, v)
             return v
         return default
     except Exception as e:                       # DB sorunu geçişi kırmasın
         _log(f"read {name}: {e!r} -> dosya")
-        return _file_read(path, default)
+        return _file_read(path, default, on_corrupt)
 
 
-def write_json(name: str, path: str, obj: Any, *, mode: Optional[int] = None) -> None:
-    be = backend()
-    if not _db_ok(path):
+def write_json(name: str, path: str, obj: Any, *, mode: Optional[int] = None, writer: Any = None) -> None:
+    """`writer`: çağıran modülün KENDİ `atomic_write_json` sembolü. Testler o sembolü taklit eder (gerçek dosyaya yazmasın diye);
+    taklit edilmişse (`atomic_json.atomic_write_json` ile aynı nesne DEĞİLSE) DB'ye HİÇ dokunulmaz ve yalnız o yazıcı çağrılır:
+    taklit edilen yazımın gerçek DB'yi/ayarı ezmesi (2026-11-03 settings.json kazası) böylece imkânsız."""
+    wr = writer if writer is not None else atomic_json.atomic_write_json
+    be = _effective(name)
+    if not _db_ok(path) or wr is not atomic_json.atomic_write_json:
         be = "files"
     if be != "files":
         try:
@@ -112,10 +157,12 @@ def write_json(name: str, path: str, obj: Any, *, mode: Optional[int] = None) ->
         except Exception as e:
             _log(f"write {name}: {e!r}")
             if be == "db":
-                atomic_json.atomic_write_json(path, obj, mode=mode)   # DB yazılamadıysa veri kaybolmasın
+                wr(path, obj, mode=mode)   # DB yazılamadıysa veri kaybolmasın
                 return
     if be in ("files", "dual"):
-        atomic_json.atomic_write_json(path, obj, mode=mode)
+        wr(path, obj, mode=mode)
+        if be == "dual":
+            _SYNCED[name] = _sig(path)         # bu yazımla DB zaten eşit: ilk okumada gereksiz karşılaştırma yok
 
 
 _MIRROR_N = {}
