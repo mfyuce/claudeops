@@ -5004,7 +5004,10 @@ def http_handover(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                 state.setdefault("ho_pending", {})[str(res.get("name") or name) if host
                                                     else _resolved_local_name(name, sid)] = time.time()
                 sw.save_state(state, sid)
-    sw.log_event("handover", paths=sid, name=name, ok=bool(res.get("ok")), **({"host": host} if host else {}))
+    # oturumun GERÇEK adı (sid'li, ör. `oiso20261017`): log'daki devrin eski mi yeni oturum mu olduğu ayırt edilsin
+    sess = str(res.get("name") or "") or name
+    sw.log_event("handover", paths=sid, name=name, session=sess, ok=bool(res.get("ok")),
+                 **({"host": host} if host else {}))
     return res
 
 
