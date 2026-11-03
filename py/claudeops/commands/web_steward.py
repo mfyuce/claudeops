@@ -1560,6 +1560,15 @@ def _oversized_resume(name: str, cfg: sw.Config) -> int:
     return int(tokens) if tokens and tokens > limit else 0
 
 
+def _closed_in_models(name: str) -> bool:
+    """`cops close` ile models.tsv'de `# CLOSED` bırakılmış mı (hata olursa False: start akışı bozulmaz)."""
+    try:
+        from .close import is_closed_in_models
+        return bool(is_closed_in_models(name))
+    except Exception:
+        return False
+
+
 def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr", fresh: bool = False,
                     host: str = "", rt: Optional[_RemoteTick] = None, sid: str = "default",
                     actor: str = "", exact: bool = False) -> Dict[str, Any]:
@@ -1574,9 +1583,12 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
         if big:      # soğuk büyük konuşmayı yeniden okutup hemen devir almak yerine taze aç (ysf 386K örneği); özet kartta/CLAUDE.md'de
             fresh = True
             sw.log_event("start_fresh_big_context", paths=sw.paths_for(sid), name=name, tokens=big)
+    closed = _closed_in_models(name)
+    if closed:   # `cops close` bıraktı: guard/cron bu oturumu yeniden AÇMAZ; elle başlatma sessiz geçmesin
+        sw.log_event("start_closed_project", paths=sw.paths_for(sid), name=name)
     res = _act("start", name, model=model, effort=effort, fresh=fresh, lang=lang)
     if not res.get("ok"):
-        return res
+        return dict(res, closed_in_models=True) if closed else res
     if not _start_appeared(name, sid):
         return {"ok": False, "code": "start_not_visible", "name": name,
                 "error": f"start for {name!r} returned ok but no session appeared within {START_APPEAR_SECONDS:g}s"}

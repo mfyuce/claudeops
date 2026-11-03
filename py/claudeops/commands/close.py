@@ -86,6 +86,25 @@ def comment_out_models(base: str, dry_run: bool) -> str:
     return _rewrite_models(tf)
 
 
+def is_closed_in_models(name: str, path: Optional[str] = None) -> bool:
+    """Salt-okunur: `name` (base ya da tam ad) models.tsv'de `close`'un bıraktığı `# CLOSED` satırı olarak duruyor mu
+    (aktif satırı yoksa). Dosya okunamazsa False."""
+    base = _base(name)
+    closed = False
+    try:
+        with open(path or MODELS_TSV, encoding="utf-8") as f:
+            for line in f.read().splitlines():
+                s = line.lstrip()
+                if s.startswith("#"):
+                    if s.rstrip().endswith("# CLOSED") and _first_field(s[1:]) in (base, name):
+                        closed = True
+                elif _first_field(line) in (base, name):
+                    return False
+    except OSError:
+        return False
+    return closed
+
+
 def uncomment_models(base: str, dry_run: bool = False) -> str:
     """`comment_out_models`'in tersi: `close`'un bıraktığı `#<satır>\t# CLOSED` kaydını geri aç (yalnız CLOSED işaretli).
 
