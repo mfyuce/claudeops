@@ -542,6 +542,8 @@ def _read_tsv_raw(path: str) -> list:
     (guard/roster.py bunları hiç görmez) — retire/reactivate için ham erişim gerekiyor.
     """
     rows = []
+    from .. import statedocs
+    statedocs.shadow_tsv(path)                 # elle/bash düzenlemeler dahil değişince DB gölgesi eşitlenir
     try:
         with open(path, encoding="utf-8") as f:
             lines = f.readlines()
@@ -650,6 +652,8 @@ def _atomic_write_text(path: str, content: str) -> None:
         except OSError:
             pass
         raise
+    from .. import statedocs
+    statedocs.shadow_tsv(path, force=True)     # SQLite gölge kopya (dosya doğruluk kaynağı)
 
 
 def _append_tsv_line(path: str, fields: list) -> None:

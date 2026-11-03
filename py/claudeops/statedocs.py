@@ -185,3 +185,31 @@ def mirror_log(stream: str, path: str, entry: Any) -> None:
             st.trim_log(stream, _MIRROR_KEEP)
     except Exception:
         pass
+
+
+_TSV_FILES = ("roster.tsv", "models.tsv")
+
+
+def shadow_tsv(path: str, *, force: bool = False) -> None:
+    """`roster.tsv`/`models.tsv` dosyasının GÜNCEL içeriğini DB `tsv_rows` tablosuna eşitle (gölge; dosya doğruluk kaynağı).
+    Dosya imzası (mtime,size) son eşitlemeden değişmediyse atlanır (okuyucuda ucuz çağrı); `force` = yazımdan hemen sonra.
+    Elle/bash/eski kodla yapılan düzenlemeler de bir sonraki okumada yakalanır. SESSİZ: hata yutulur (geçişi kırmasın)."""
+    try:
+        if backend() == "files" or os.path.basename(path) not in _TSV_FILES or not _db_ok(path):
+            return
+        sg = _sig(path)
+        key = "tsv:" + name_for(path)
+        if not force and _SYNCED.get(key) == sg:
+            return
+        try:
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        except FileNotFoundError:
+            return
+        from .store import default_store
+        st = default_store()
+        if st.tsv_text(name_for(path)) != text:
+            st.replace_tsv(name_for(path), text)
+        _SYNCED[key] = sg
+    except Exception as e:
+        _log(f"shadow_tsv {path}: {e!r}")

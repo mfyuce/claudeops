@@ -60,6 +60,8 @@ def _rewrite_models(transform) -> str:
         status, out = transform(lines)
         if out is not None:
             atomic_write_text(MODELS_TSV, "\n".join(out) + "\n")
+            from .. import statedocs
+            statedocs.shadow_tsv(MODELS_TSV, force=True)
         return status
 
 

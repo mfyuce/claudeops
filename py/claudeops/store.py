@@ -34,6 +34,24 @@ MIGRATIONS: List[str] = [
     );
     CREATE INDEX log_stream_id ON log(stream, id);
     """,
+    # v2: roster.tsv / models.tsv satır tablosu (gölge; ham satır saklanır, birebir geri üretilir)
+    """
+    CREATE TABLE tsv_rows (
+        file   TEXT NOT NULL,
+        seq    INTEGER NOT NULL,
+        kind   TEXT NOT NULL,
+        active INTEGER,
+        name   TEXT,
+        c1     TEXT,
+        c2     TEXT,
+        c3     TEXT,
+        c4     TEXT,
+        cols   TEXT,
+        raw    TEXT NOT NULL,
+        PRIMARY KEY (file, seq)
+    );
+    CREATE INDEX tsv_rows_name ON tsv_rows(file, name);
+    """,
 ]
 
 BUSY_TIMEOUT_MS = 5000
@@ -158,6 +176,41 @@ class Store:
             return c.execute(
                 "DELETE FROM log WHERE stream=? AND id <= COALESCE((SELECT id FROM log WHERE stream=? ORDER BY id DESC LIMIT 1 OFFSET ?), 0)",
                 (stream, stream, int(keep))).rowcount
+
+    # -- tsv (roster.tsv / models.tsv) -------------------------------------------------------------------------
+    def replace_tsv(self, file: str, text: str) -> int:
+        """Dosyanın TÜM satırlarını tek işlemde değiştirir. Ayrıştırma `web._read_tsv_raw` ile aynı kural (`#isim\t...` = kapalı
+        satır); ham satır (`raw`, satır sonuyla) saklanır, `tsv_text` birebir geri üretir. Satır sayısını döndürür."""
+        rows = []
+        for seq, line in enumerate(text.splitlines(keepends=True)):
+            stripped = line.strip()
+            if not stripped:
+                rows.append((file, seq, "blank", None, None, None, None, None, None, None, line))
+                continue
+            active = not stripped.startswith("#")
+            parts = (stripped if active else stripped[1:]).strip().split("\t")
+            if not parts or not parts[0]:
+                rows.append((file, seq, "comment", None, None, None, None, None, None, None, line))
+                continue
+            rest = parts[1:]
+            c = (rest + [None] * 4)[:4]
+            rows.append((file, seq, "row", 1 if active else 0, parts[0], c[0], c[1], c[2], c[3], json.dumps(rest, ensure_ascii=False), line))
+        with self._tx() as c:
+            c.execute("DELETE FROM tsv_rows WHERE file=?", (file,))
+            c.executemany("INSERT INTO tsv_rows(file,seq,kind,active,name,c1,c2,c3,c4,cols,raw) VALUES(?,?,?,?,?,?,?,?,?,?,?)", rows)
+        return len(rows)
+
+    def tsv_text(self, file: str) -> Optional[str]:
+        rows = self._conn().execute("SELECT raw FROM tsv_rows WHERE file=? ORDER BY seq", (file,)).fetchall()
+        return "".join(r[0] for r in rows) if rows else None
+
+    def tsv_rows(self, file: str, active: Optional[bool] = None) -> List[Dict[str, Any]]:
+        q = "SELECT seq,active,name,cols FROM tsv_rows WHERE file=? AND kind='row'"
+        args: List[Any] = [file]
+        if active is not None:
+            q += " AND active=?"
+            args.append(1 if active else 0)
+        return [{"seq": a, "active": bool(b), "name": n, "rest": json.loads(c)} for a, b, n, c in self._conn().execute(q + " ORDER BY seq", args)]
 
     # -- yedek ------------------------------------------------------------------------------------------------
     def backup(self, dest: str) -> None:

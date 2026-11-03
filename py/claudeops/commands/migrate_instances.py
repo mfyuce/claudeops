@@ -229,6 +229,9 @@ def run(args) -> int:
     added = add_missing(inst)
     _atomic_write_text(MODELS_TSV, p["new_models"])
     _atomic_write_text(ROSTER_TSV, p["new_roster"])
+    from .. import statedocs
+    statedocs.shadow_tsv(MODELS_TSV, force=True)
+    statedocs.shadow_tsv(ROSTER_TSV, force=True)
     print(f"\nUygulandı: {added} instance kaydı eklendi, roster'dan {p['roster_lines_removed']}, "
           f"models.tsv'den {p['models_lines_removed']} satır çıkarıldı.")
     print("Yedekler: " + ", ".join(backups))
