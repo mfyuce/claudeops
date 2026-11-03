@@ -136,7 +136,7 @@ class BuildCommandTests(TmpCase):
         with mock.patch.object(up, "resolve_binary", lambda: old):
             argv = self.build(True)
         self.assertNotIn("--stream", argv)
-        self.diag.assert_called_with("ucli_flag_unsupported", name="vc", flag="--stream", binary=old)
+        self.diag.assert_any_call("ucli_flag_unsupported", name="vc", flag="--stream", binary=old)
 
 
 if __name__ == "__main__":

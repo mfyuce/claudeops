@@ -411,6 +411,9 @@ def _run_turn(p: orch.Participant, seq: int, kind: str, index: Dict[Tuple[str, s
         _WAITING.add(push_key)
     try:
         t0 = time.monotonic()
+        if cancel_event.is_set():     # 860: iptal edilmiş run'a yeni prompt ENJEKTE edilmez
+            return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,
+                                   cli=p.cli, created_at=created_at, status="cancelled")
         diag_log("orch_turn_dispatch", name=s.name, host=p.host, seq=seq, kind=kind, chars=len(prompt))
         if not _send_prompt(p.host, s.name, s.cli, prompt):
             return orch.RunResult(seq=seq, kind=kind, role=p.role, host=p.host, name=p.name,

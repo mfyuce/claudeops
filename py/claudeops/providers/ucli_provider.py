@@ -404,6 +404,15 @@ def _stream_args(binary: str, session_name: str = "") -> List[str]:
     return ["--stream"]
 
 
+def _interactive_args(binary: str, session_name: str = "") -> List[str]:
+    """727: `--interactive` YALNIZ ikili bayrağı tanıyorsa eklenir (eski ikili 'unexpected argument' ile ölürdü);
+    tanımıyorsa günlüğe yazılır, argv değişmez."""
+    if not binary_supports_flag(binary, "--interactive"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--interactive", binary=binary)
+        return []
+    return ["--interactive"]
+
+
 def _state_dir_args(binary: str, cwd: str, session_name: str = "") -> List[str]:
     """`--state-dir <STATE_ROOT>/<kök>` (bkz. `settings.ucli_state_dir_enabled`, VARSAYILAN KAPALI): oturum jsonl/durum/kilit
     dosyaları depo dışına gider. Atlanır: ayar kapalı, ikili bayrağı tanımıyor (günlüğe yazılır) ya da GEÇMİŞİ eski dizinde olan
@@ -771,6 +780,7 @@ class UcliProvider(CliProvider):
         argv += _history_args(argv[0], limits, session_name)
         argv += _effort_args(argv[0], model, preset, session_name)
         argv += _stream_args(argv[0], session_name)
+        argv += _interactive_args(argv[0], session_name)
         argv += _state_dir_args(argv[0], cwd, session_name)
         if "--with-mcp" in extra_args:      # yalnız `mcp_launch_args`ın (kayıt başarılıysa) verdiği bayrak; başka extra_args yok sayılır
             argv.append("--with-mcp")

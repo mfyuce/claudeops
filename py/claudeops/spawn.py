@@ -55,7 +55,8 @@ def detect_display() -> str:
     if env:
         return env
     for d in (":1", ":0"):
-        if Path(f"/tmp/.X{d[1:]}-lock").exists():
+        # 862: modern Linux'ta X soketi `/tmp/.X11-unix/X<n>`; `-lock` dosyası yoksa da display vardır
+        if Path(f"/tmp/.X{d[1:]}-lock").exists() or Path(f"/tmp/.X11-unix/X{d[1:]}").exists():
             return d
     return ":1"
 
