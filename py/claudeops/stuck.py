@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from .discovery import find_sessions
-from .kill import kill_session, KILL_GRACE_SECONDS
+from .kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from .providers import get_provider
 from .session import Session
 from .settings import default_model_for
@@ -96,7 +96,8 @@ def recover_stuck(
     if dry_run:
         return "dry-run"
 
-    result = kill_session(s.pid, grace=grace)
+    # PROC-02: tmux/gnome ebeveynini de temizler (yalnız pid öldürmek tmux oturumunu/pencereyi artık bırakıyordu)
+    result = kill_session_and_parent(s.pid, grace=grace, name=s.name)
     # already_dead olsa bile respawn et — proc ölmüş ama resume yine gerekli
 
     # Resume — prompt yok, jsonl'deki son user mesajı tetikleyecek

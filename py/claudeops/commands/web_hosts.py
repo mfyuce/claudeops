@@ -412,14 +412,18 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
         last_err = ""
         for _ in (1, 2):
             conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
+            sent = False
             try:
                 conn.request(method, path, body=data, headers=headers)
+                sent = True
                 resp = conn.getresponse()
                 status = resp.status
                 raw = resp.read()
             except (OSError, http.client.HTTPException) as e:
                 _pool_checkin(key, conn, reusable=False)
-                if from_pool:
+                # FED-02: istek karşıya ULAŞMIŞ olabilir (sent) ve yöntem yan etkili (POST...) ise tekrar deneme —
+                # aksiyon iki kez uygulanabilir. Okuma yöntemleri ve gönderim aşamasında patlayan istekler güvenle retry'lanır.
+                if from_pool and (not sent or method.upper() in ("GET", "HEAD")):
                     last_err = str(e)
                     continue
                 return 0, None, str(e)

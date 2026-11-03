@@ -25,6 +25,7 @@ truncation-safe kural ([[claude-2183-conversation-truncation]]) + parent bash'i
 de öldürür (orphan terminal bırakmaz, TODO-b kök sebep fix).
 """
 from __future__ import annotations
+import contextlib
 import datetime
 import faulthandler
 import json
@@ -845,11 +846,38 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     return {"ok": True, "name": new_name, "kind": kind}
 
 
+@contextlib.contextmanager
+def _roster_lock(path: str):
+    """WEB-08: roster.tsv/models.tsv oku-değiştir-yaz bölgesini `<dir>/roster.lock`
+    flock'u ile serileştirir (iki dosya aynı dizinde → tek kilit). flock yoksa
+    (ör. Windows) ya da kilit dosyası açılamazsa sessizce kilitsiz devam eder."""
+    fd = None
+    try:
+        import fcntl
+        fd = os.open(os.path.join(os.path.dirname(os.path.abspath(path)), "roster.lock"),
+                     os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except (ImportError, OSError):
+        if fd is not None:
+            os.close(fd)
+            fd = None
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)   # kapanış flock'u da bırakır
+
+
 def _toggle_comment(path: str, name: str, want_active: bool) -> bool:
     """path'te `name` girdisinin satırını bul, want_active'e göre baştaki '#' ekle/kaldır.
 
     Satır bulunup değiştirildiyse True. Diğer satırlara/whitespace'e dokunmaz.
     """
+    with _roster_lock(path):
+        return _toggle_comment_unlocked(path, name, want_active)
+
+
+def _toggle_comment_unlocked(path: str, name: str, want_active: bool) -> bool:
     try:
         with open(path, encoding="utf-8") as f:
             lines = f.readlines()
@@ -875,6 +903,11 @@ def _replace_tsv_line(path: str, name: str, fields: list) -> bool:
     değiştirmek yerine satırın ALANLARINI `fields` ile değiştirir (aktif/kapalı/emekli
     durumu KORUNUR). `fields[0]` eskisinden FARKLI olabilir — bu, tek bir çağrıda
     rename'i de kapsar (satır hâlâ ESKİ `name`'e göre bulunur, sadece içeriği değişir)."""
+    with _roster_lock(path):
+        return _replace_tsv_line_unlocked(path, name, fields)
+
+
+def _replace_tsv_line_unlocked(path: str, name: str, fields: list) -> bool:
     try:
         with open(path, encoding="utf-8") as f:
             lines = f.readlines()
