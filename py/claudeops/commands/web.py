@@ -50,6 +50,7 @@ import psutil
 
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
+from .. import dist_check as _dist_check
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
@@ -1005,6 +1006,7 @@ def _diag_status() -> dict:
         "recent_fallback_count": recent_fallbacks,
         "fallback_alert": recent_fallbacks >= FALLBACK_ALERT_THRESHOLD,
         "fallback_alert_window_minutes": FALLBACK_ALERT_WINDOW_MINUTES,
+        "dist": _dist_check.check_dist(),
     }
 
 
@@ -5267,6 +5269,7 @@ def run(args) -> int:
     # start_grpc_server() zaten bind hatasını KENDİSİ yutup None döner (yukarıda
     # kendi uyarısını basar) — burada AYRICA bir hata/çıkış YOK, bu katman
     # opsiyonel, `cops web`'in kendisi asla bundan etkilenmemeli.
+    _dist_check.log_if_missing(diag_log)      # bundle eksikse boş sayfa: açılışta log'a 'dist-eksik'
     server = ThreadingHTTPServer((args.host, args.port), _Handler)
     url = f"http://{args.host}:{args.port}/?token={token}"
     print(f"claudeops web  →  {url}")

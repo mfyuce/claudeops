@@ -1510,18 +1510,36 @@ def _ensure_running_remote(name: str, host: str, model: str, effort: str, fresh:
     if rt is not None and (host, start_name) in rt.started:
         return {"ok": False, "error": f"start already sent for {start_name!r} on {host} this tick",
                 "code": "start_pending", "host": host}
+    warn = remote_resume_warning(start_name, host, bool(fresh), steward_config(sid))
+    if warn:
+        sw.log_event("remote_start_resume_unknown_context", paths=sw.paths_for(sid), name=start_name, host=host)
     res = _remote_post(host, "/api/start", {"name": start_name, "model": model, "effort": effort, "fresh": bool(fresh)},
                        REMOTE_START_TIMEOUT_SECONDS, rt)
     if not res.get("ok"):
         return res
+    if warn:
+        res = dict(res, warning=warn)
     if rt is not None:
         rt.started.add((host, start_name))
     ready = _remote_wait_ready(host, start_name)
     if rt is not None:
         rt.refresh(host)        # aynı tick'in sonraki adımları yeni satırı görsün (A4 deseni)
     _f, r, _err = _remote_session(host, start_name, world=world)
-    return {"ok": True, "started": True, "ready": ready, "cli": (r or {}).get("cli") or DEFAULT_CLI, "host": host,
-            "name": (r or {}).get("name") or start_name}
+    out = {"ok": True, "started": True, "ready": ready, "cli": (r or {}).get("cli") or DEFAULT_CLI, "host": host,
+           "name": (r or {}).get("name") or start_name}
+    if warn:
+        out["warning"] = warn
+    return out
+
+
+def remote_resume_warning(name: str, host: str, fresh: bool, cfg: sw.Config) -> str:
+    """TBD#123 (uzak): host API'si konuşmanın bağlam boyutunu vermiyor, bu yüzden büyük bağlamlı `--resume` ÖNLENEMEZ.
+    Yapılabilen kısım: `fresh` verilmediyse ve eşik açıksa uyarı metni (çağıran `fresh=True` ile taze açabilir).
+    Host'ta token sayımı için API gerekir (TODO'da kalır)."""
+    if fresh or int(cfg.resume_max_context_tokens or 0) <= 0:
+        return ""
+    return (f"{name}@{host}: uzak başlatma durmuş konuşmayı --resume edebilir; bağlam boyutu host'ta bilinmiyor "
+            f"(eşik {int(cfg.resume_max_context_tokens)} token uygulanamadı). Büyükse fresh=True ile taze açın.")
 
 
 def _oversized_resume(name: str, cfg: sw.Config) -> int:
@@ -1559,9 +1577,32 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     res = _act("start", name, model=model, effort=effort, fresh=fresh, lang=lang)
     if not res.get("ok"):
         return res
+    if not _start_appeared(name, sid):
+        return {"ok": False, "code": "start_not_visible", "name": name,
+                "error": f"start for {name!r} returned ok but no session appeared within {START_APPEAR_SECONDS:g}s"}
     cli = _project_cli(name)
     ready = _wait_ready(name, cli)
     return {"ok": True, "started": True, "ready": ready, "cli": cli}
+
+
+START_APPEAR_SECONDS = 6.0       # `start` ok döndükten sonra oturumun görünmesini bekleme üst sınırı (kısa poll)
+START_APPEAR_POLL_SECONDS = 0.5
+
+
+def _start_appeared(name: str, sid: str = "default", timeout: Optional[float] = None,
+                    sleep: Callable[[float], None] = time.sleep) -> bool:
+    """`start` 'ok' döndü: oturum GERÇEKTEN çalışanlar arasında mı (`danisppr` 2026-11: ok dönüp oturum açılmıyordu).
+    Her yoklamada tarama önbelleği düşer (bayat önbellek yeni oturumu gizlerdi)."""
+    limit = START_APPEAR_SECONDS if timeout is None else timeout
+    waited = 0.0
+    while True:
+        _scan_invalidate()
+        if _live_sessions(name, sid):
+            return True
+        if waited >= limit:
+            return False
+        sleep(START_APPEAR_POLL_SECONDS)
+        waited += START_APPEAR_POLL_SECONDS
 
 
 def _proc_born(pid: int) -> float:
