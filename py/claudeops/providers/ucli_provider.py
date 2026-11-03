@@ -978,7 +978,14 @@ class UcliProvider(CliProvider):
         if not turns:
             return None
         last_user = next((t["text"] for t in reversed(turns) if t["role"] == "user"), None)
-        last_assistant = next((t["text"] for t in reversed(turns) if t["role"] == "assistant"), None)
+        # 859: assistant YALNIZ son user turundan SONRA gelmişse sayılır; yoksa eski cevap yeni turun cevabı sanılmasın
+        last_assistant = None
+        for t in reversed(turns):
+            if t["role"] == "assistant":
+                last_assistant = t["text"]
+                break
+            if t["role"] == "user":
+                break
         if last_user is None and last_assistant is None:
             return None
         return {"user": last_user or "", "assistant": last_assistant or ""}

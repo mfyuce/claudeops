@@ -3455,7 +3455,9 @@ def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lan
     if not entries and not mirror_entries:
         return _err(lang, "no_snapshot")
     fleet = _fleet_status()
-    live_names = {s.name for s in find_sessions(measure_cpu=False)}
+    _live = find_sessions(measure_cpu=False)
+    live_names = {s.name for s in _live}
+    live_cwd_names = [(s.name, str(s.cwd or "")) for s in _live]
     results = []
     for entry in entries:
         name = str(entry.get("name") or "").strip()
@@ -3467,6 +3469,12 @@ def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lan
         cwd = str(entry.get("cwd") or "")
         cli = str(entry.get("cli") or "")
         model = str(entry.get("model") or "")
+        # 863: aynı türev taban + aynı cwd'de snapshot'tan SONRA açılmış canlı session varsa eski instance dirilmez
+        _d = inst_mod.DERIVED_NAME_RE.match(name)
+        if _d and cwd and any(lc == cwd and (inst_mod.DERIVED_NAME_RE.match(ln) or [None, None])[1] == _d.group(1)
+                              for ln, lc in live_cwd_names):
+            results.append({"name": name, "status": "already_running", "superseded": True})
+            continue
         info = fleet.get(name)
         if info is None and inst_mod.get_instance(name) is None:
             derived = inst_mod.DERIVED_NAME_RE.match(name)
