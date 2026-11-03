@@ -339,16 +339,29 @@ def build_review_prompt(proj: str, cwd: str, lang: str = "tr") -> str:
 _FINDING_RE = re.compile(r"^#{2,4}\s*(R-\d+)\s*\|\s*(P[123])\s*\|\s*(.*?)\s*\|\s*(.+?)\s*$")
 
 
+def _fence_step(open_mark: str, line: str) -> Tuple[str, bool]:
+    """Kod çiti durumu: (yeni açık çit işareti, bu satır çit satırı mı). Açık çit YALNIZ kendi türüyle kapanır
+    (``` içindeki ~~~ satırı çiti kapatmaz, tersi de)."""
+    s = line.lstrip()
+    mark = "```" if s.startswith("```") else ("~~~" if s.startswith("~~~") else "")
+    if not mark:
+        return open_mark, False
+    if not open_mark:
+        return mark, True
+    return ("" if mark == open_mark else open_mark), True
+
+
 def parse_findings(md: str) -> List[Dict[str, str]]:
     """Review çıktısından bulgular: `[{ref, severity, where, title, body}]` (kod çitleri içindeki başlıklar sayılmaz;
     aynı `ref` ikinci kez gelirse atlanır). Biçime uymayan metin yok sayılır."""
     out: List[Dict[str, str]] = []
     cur: Optional[Dict[str, Any]] = None
-    fence = False
+    fmark = ""
     seen: Set[str] = set()
     for line in str(md or "").splitlines():
-        if line.lstrip().startswith(("```", "~~~")):
-            fence = not fence
+        fmark, is_fence = _fence_step(fmark, line)
+        fence = bool(fmark)
+        if is_fence:
             if cur is not None:
                 cur["lines"].append(line)
             continue
@@ -770,11 +783,12 @@ def scan_verdicts(text: str) -> List[Tuple[str, str, str]]:
     `[(fid, karar, gerekçe)]` (aynı fid için son satır geçerli). A11 deseni: kod bloğu (```/~~~) içi, `>` alıntı,
     satır içinde geçen anma ve `<yer tutucu>` gerekçeli yazım örneği SAYILMAZ. SAF."""
     out: Dict[str, Tuple[str, str, str]] = {}
-    fenced = False
+    fmark = ""
     for raw in str(text or "").splitlines():
         s = raw.strip()
-        if s.startswith("```") or s.startswith("~~~"):
-            fenced = not fenced
+        fmark, is_fence = _fence_step(fmark, s)
+        fenced = bool(fmark)
+        if is_fence:
             continue
         if fenced or s.startswith(">"):
             continue

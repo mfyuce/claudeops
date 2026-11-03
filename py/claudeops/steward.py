@@ -1651,7 +1651,8 @@ def build_card_prompt(name: str, raw: Dict[str, Any], project: Optional[Project]
             '"next_step": "sıradaki tek somut iş", "open_tbds": ["açık karar maddeleri"], '
             '"blockers": ["engeller"], "recent_done": ["son biten işler"]}\n'
             f"Listeler en çok {CARD_LIST_ITEMS} madde, her alan kısa ve Türkçe olsun. Bilmediğin alanı boş bırak "
-            "(\"\" ya da []); uydurma.")
+            "(\"\" ya da []); uydurma. 'blockers' YALNIZ belgelerde ŞU AN açık görünen engelleri içersin; geçmiş/çözülmüş "
+            "olabilecek ya da doğrulayamadığın engeli yazma (bayat engel satırı yanlış alarm üretir).")
     else:
         parts.append(
             f"Below are the document heads and recent commits of a project called '{name}'. Produce its status card. "
@@ -1659,7 +1660,8 @@ def build_card_prompt(name: str, raw: Dict[str, Any], project: Optional[Project]
             '{"goal": "one-sentence goal", "phase_guess": "idea|planning|planned|paused|done", '
             '"next_step": "the single next concrete task", "open_tbds": ["open decision items"], '
             '"blockers": ["blockers"], "recent_done": ["recently finished work"]}\n'
-            f"At most {CARD_LIST_ITEMS} items per list, every field short. Leave unknown fields empty (\"\" or []); do not invent.")
+            f"At most {CARD_LIST_ITEMS} items per list, every field short. Leave unknown fields empty (\"\" or []); do not invent. 'blockers' must list ONLY blockers the documents show as open NOW; omit any that may be past/"
+            "resolved or that you cannot verify (a stale blocker line causes false alarms).")
     if project is not None:
         if project.goal:
             parts.append(("Kayıtlı amaç: " if tr else "Registered goal: ") + _short(project.goal, 600))
