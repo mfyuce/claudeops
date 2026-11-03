@@ -143,8 +143,8 @@ def load_hosts() -> List[Dict[str, str]]:
     kullanım için (asla doğrudan bir API yanıtına konmaz — bkz. list_hosts_public).
     Eksik/bozuk dosyaya karşı toleranslı (settings.load_settings ile aynı disiplin)."""
     try:
-        with open(HOSTS_JSON, encoding="utf-8") as f:
-            data = json.load(f)
+        from . import statedocs
+        data = statedocs.read_json("hosts", HOSTS_JSON, None, file_truth=True)
         if isinstance(data, list):
             return [h for h in data if isinstance(h, dict) and "name" in h]
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -155,6 +155,10 @@ def load_hosts() -> List[Dict[str, str]]:
 def _read_checked() -> "tuple[List[Dict[str, str]], bool]":
     """(host listesi, bozuk_mu). Dosya YOK ya da yalnız boşluk = temiz boş liste; var ama JSON değil / liste değil /
     okunamıyorsa bozuk: `load_hosts` bunu `[]` gösterir, o listeyi yazan biri TÜM host+token kayıtlarını silerdi."""
+    from . import statedocs
+    if statedocs.backend() == "db" and statedocs._db_ok(HOSTS_JSON):   # db kipinde dosya güncel DEĞİL: DB tek kaynak
+        data = statedocs.read_json("hosts", HOSTS_JSON, [])
+        return ([h for h in data if isinstance(h, dict) and "name" in h] if isinstance(data, list) else []), False
     try:
         with open(HOSTS_JSON, encoding="utf-8") as f:
             raw = f.read()
@@ -217,7 +221,8 @@ def _write_hosts(hosts: List[Dict[str, str]]) -> None:
     _load_or_create_token()'ıyla aynı os.open pattern'i). os.replace (rename)
     hedefi KAYNAĞIN izinleriyle değiştirir, hedefte önceden var olan izinlerle
     değil — yani her yazımda 0600 korunur, tek-seferlik oluşturmaya bağlı değil."""
-    atomic_write_json(HOSTS_JSON, hosts, mode=0o600)
+    from . import statedocs
+    statedocs.write_json("hosts", HOSTS_JSON, hosts, mode=0o600)
 
 
 @contextlib.contextmanager

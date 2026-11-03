@@ -29,6 +29,8 @@ def diag_log(event: str, **data) -> None:
         entry = {"ts": datetime.datetime.now().isoformat(timespec="seconds"), "event": event, **data}
         with open(diag_log_path(), "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        from . import statedocs
+        statedocs.mirror_log("diag", diag_log_path(), entry)
     except Exception:
         pass
 

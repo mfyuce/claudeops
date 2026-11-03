@@ -1407,6 +1407,8 @@ def log_event(event: str, *, paths: Any = None, **data: Any) -> None:
         entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": event, **data}
         with _LOG_LOCK, _log_guard(paths), open(pp.log, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        from . import statedocs
+        statedocs.mirror_log("steward/" + os.path.relpath(pp.log, CLAUDEOPS_DIR), pp.log, entry)
     except Exception:
         pass
 

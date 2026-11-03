@@ -10,7 +10,7 @@ class StateDocsTests(unittest.TestCase):
         self.d = tempfile.mkdtemp(prefix="cops-sd-")
         self.path = os.path.join(self.d, "q.json")
         self.st = S.Store(os.path.join(self.d, "t.db"))
-        self.p = [mock.patch.object(S, "default_store", lambda: self.st)]
+        self.p = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d)]
         [p.start() for p in self.p]
 
     def tearDown(self):
@@ -55,10 +55,30 @@ class StateDocsTests(unittest.TestCase):
 
     def test_backend_from_settings_and_default(self):
         os.environ.pop("CLAUDEOPS_STORE_BACKEND", None)
-        with mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d):
-            sd._CACHE.update(at=0.0); self.assertEqual(sd.backend(), "files")
-            json.dump({"store_backend": "dual"}, open(os.path.join(self.d, "settings.json"), "w"))
-            sd._CACHE.update(at=0.0); self.assertEqual(sd.backend(), "dual")
+        sd._CACHE.update(at=0.0); self.assertEqual(sd.backend(), "files")
+        json.dump({"store_backend": "dual"}, open(os.path.join(self.d, "settings.json"), "w"))
+        sd._CACHE.update(at=0.0); self.assertEqual(sd.backend(), "dual")
+
+    def test_outside_claudeops_dir_is_files_only(self):
+        other = tempfile.mkdtemp(prefix="cops-sd-other-"); path = os.path.join(other, "x.json")
+        self.mode("db"); sd.write_json("x", path, {"a": 1})
+        self.assertEqual(json.load(open(path)), {"a": 1}); self.assertEqual(self.st.list_docs(), [])
+        sd.mirror_log("s", path, {"e": 1}); self.assertEqual(self.st.tail_log("s"), [])
+
+    def test_file_truth_dual_heals_drift_and_survives_hand_edit(self):
+        self.mode("dual"); sd.write_json("h", self.path, [{"name": "a"}])
+        json.dump([{"name": "a"}, {"name": "b"}], open(self.path, "w"))      # elle düzenleme
+        self.assertEqual(sd.read_json("h", self.path, file_truth=True), [{"name": "a"}, {"name": "b"}])
+        self.assertEqual(self.st.get_doc("h"), [{"name": "a"}, {"name": "b"}])   # DB dosyaya uydu
+        os.remove(self.path)                                                  # dosya yoksa DB'den
+        self.assertEqual(sd.read_json("h", self.path, file_truth=True), [{"name": "a"}, {"name": "b"}])
+
+    def test_mirror_log_modes(self):
+        p = os.path.join(self.d, "diag.log")
+        self.mode("files"); sd.mirror_log("diag", p, {"e": 1}); self.assertEqual(self.st.tail_log("diag"), [])
+        self.mode("dual"); sd.mirror_log("diag", p, {"e": 2}); self.assertEqual([r[2] for r in self.st.tail_log("diag")], [{"e": 2}])
+        with mock.patch.object(S, "default_store", side_effect=RuntimeError("x")):
+            sd.mirror_log("diag", p, {"e": 3})                                # hata yutulur, yükseltmez
 
 
 if __name__ == "__main__":
