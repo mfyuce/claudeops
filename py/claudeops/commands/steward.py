@@ -279,14 +279,20 @@ def cmd_import(args) -> int:
     return 0
 
 
+def question_head(q) -> str:
+    """`questions` ciktisinin ilk satiri. Cevapli ama `delivered_at` bos kayit = cevap oturuma TESLIM EDILMEDI: 'teslim bekliyor' (GATE-TODO3 #6)."""
+    mark = "?" if q.status == "open" else ("✓" if q.delivered_at else "…")
+    pending = "" if (q.status == "open" or q.delivered_at) else "  [teslim bekliyor]"
+    return f"{mark} [{q.id}] {q.project or '-'} ({_ago(q.created_at)}): {q.text}{pending}"
+
+
 def cmd_questions(args) -> int:
     qs = sw.load_questions(_sid(args)) if args.all else sw.open_questions(paths=_sid(args))
     if not qs:
         print("soru yok")
         return 0
     for q in qs:
-        mark = "?" if q.status == "open" else ("✓" if q.delivered_at else "…")
-        print(f"{mark} [{q.id}] {q.project or '-'} ({_ago(q.created_at)}): {q.text}")
+        print(question_head(q))
         if q.options:
             print("    " + "  ".join(f"{i}) {o}" for i, o in enumerate(q.options, 1)))
         if q.answer:
