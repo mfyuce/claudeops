@@ -163,6 +163,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # `ucli_web`/`ucli_limits`'le aynı alan-bazlı merge ("boş=kaldır" = kapalı). Okuma tarafı:
                               # `ucli_script_mode()`.
     "steward_quota": {},      # {mode: off|manual|auto, manual_limit, final_limit, poll_minutes, day_mon..day_sun}: TBD#116 kota bekçisi
+    "store_backend": "files",  # files|dual|db: SQLite geçişi (statedocs.py, TBD#142 K5); boş değer anahtarı siler = files
     "ucli_usage_warn": {},   # {amber, red: str} — 2026-10-17: ucli token rozetinin renk eşikleri, OTURUM başına
                               # Evren KOTA EŞDEĞERİ token (`ucli_client.quota_equivalent_tokens`: önbellekli girdi
                               # %3 sayılır, panonun ham toplamı DEĞİL), süreç başından beri. Boş/eksik = varsayılan
