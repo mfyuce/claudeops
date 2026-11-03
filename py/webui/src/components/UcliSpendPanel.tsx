@@ -41,7 +41,7 @@ export function UcliSpendPanel() {
       {state && <div style={{ color, fontWeight: 600 }}>{state}</div>}
       {cost.rate_1h_usd != null && (
         <div className="ucli-spend-rate" title={tr ? "Harcama hızı (USD/saat): son 1 saat ve son 15 dk" : "Spend rate (USD/hour): last hour and last 15 min"}>
-          <span className="badge">{tr ? "hız" : "rate"}: <strong>${cost.rate_1h_usd.toFixed(2)}/{tr ? "sa" : "h"}</strong></span>
+          <span className="badge"><strong>~{Math.round(cost.rate_1h_usd)} USD/{tr ? "sa" : "h"}</strong></span>
           {cost.rate_15m_usd != null && <span className="opts-hint"> · 15 {tr ? "dk" : "min"}: ${cost.rate_15m_usd.toFixed(2)}/{tr ? "sa" : "h"}</span>}
         </div>
       )}

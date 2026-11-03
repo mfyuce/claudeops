@@ -37,6 +37,13 @@ class RateTest(unittest.TestCase):
         self.assertEqual(set(by), {"a", "b"})
         self.assertAlmostEqual(sum(by.values()), ucli_cost.rate_usd_per_hour(NOW, 60.0, self.d.name))
 
+    def test_corrupt_lines_are_skipped(self):
+        with open(os.path.join(self.d.name, "c.jsonl"), "w") as f:
+            f.write("{bozuk\n[]\n\n" + _rec(5))
+        by = ucli_cost.rate_by_session(NOW, 60.0, self.d.name)
+        self.assertIn("c", by)
+        self.assertGreater(by["c"], 0)
+
     def test_missing_dir_and_bad_window(self):
         self.assertEqual(ucli_cost.rate_usd_per_hour(NOW, 60.0, os.path.join(self.d.name, "yok")), 0.0)
         self.assertEqual(ucli_cost.rate_by_session(NOW, 0, self.d.name), {})
