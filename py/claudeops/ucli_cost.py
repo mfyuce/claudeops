@@ -67,6 +67,42 @@ def per_session_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mu
     return out
 
 
+def rate_by_session(now: Optional[float] = None, window_min: float = 60.0, base: str = USAGE_DIR,
+                    write_mult: float = 1.6) -> Dict[str, float]:
+    """Son `window_min` dakikadaki harcama HIZI, OTURUM başına: {oturum: USD/saat}. Fiyat mantığı `per_session_usd` ile
+    aynı (`rv.usage_cost_usd`, `since_ms` penceresi); dizin yok/pencere <= 0 -> {}. Yalnız hızı > 0 olanlar döner."""
+    t = time.time() if now is None else now
+    try:
+        win = float(window_min)
+    except (TypeError, ValueError):
+        return {}
+    if win <= 0:
+        return {}
+    since = t * 1000.0 - win * 60_000.0
+    out: Dict[str, float] = {}
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return out
+    for n in names:
+        p = os.path.join(base, n)
+        try:
+            if not n.endswith(".jsonl") or os.path.getmtime(p) * 1000.0 < since:
+                continue
+        except OSError:
+            continue
+        usd = rv.usage_cost_usd(p, "", since_ms=since, write_mult=write_mult)
+        if usd > 0:
+            out[n[:-len(".jsonl")]] = usd * 60.0 / win
+    return out
+
+
+def rate_usd_per_hour(now: Optional[float] = None, window_min: float = 60.0, base: str = USAGE_DIR,
+                      write_mult: float = 1.6) -> float:
+    """Son `window_min` dakikadaki toplam maliyet / window_min * 60 (USD/saat)."""
+    return sum(rate_by_session(now, window_min, base, write_mult).values())
+
+
 def total_usd(base: str = USAGE_DIR, write_mult: float = 1.6) -> float:
     """BİRİKMİŞ (tüm günler) toplam $: tüm oturum günlükleri, tarih süzgeci yok. Dizin yoksa 0."""
     try:
@@ -91,13 +127,16 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
     if not use_cache or t - _CACHE["at"] > _TTL or _CACHE["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
         mult = 1.6 if cfg["cache_ttl"] == "1h" else 1.0
         by = per_session_usd(t, base, mult)
-        _CACHE.update(at=t, total=total_usd(base, mult), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)))
+        _CACHE.update(at=t, total=total_usd(base, mult), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
+                      rate_1h=rate_by_session(t, 60.0, base, mult), rate_15m=rate_by_session(t, 15.0, base, mult))
     cap = float(cfg["daily_cap_usd"])
     usd = float(_CACHE["usd"])
     by_all = _CACHE.get("by") or {}
     top = sorted(by_all.items(), key=lambda kv: (-kv[1], kv[0]))[:BY_SESSION_TOP]
     out = {"today_usd": round(usd, 4), "cap_usd": cap, "pct": (round(100.0 * usd / cap, 1) if cap > 0 else None),
-           "cache_ttl": cfg["cache_ttl"], "by_session": [{"session": n, "usd": round(v, 4)} for n, v in top if v > 0]}
+           "cache_ttl": cfg["cache_ttl"], "by_session": [{"session": n, "usd": round(v, 4)} for n, v in top if v > 0],
+           "rate_1h_usd": round(sum((_CACHE.get("rate_1h") or {}).values()), 4),
+           "rate_15m_usd": round(sum((_CACHE.get("rate_15m") or {}).values()), 4)}
     credit = float(cfg.get("credit_total_usd") or 0.0)
     if credit > 0:      # kalan = toplam - birikmiş harcama (alt sınır tahmini; negatife düşmez)
         spent = float(_CACHE.get("total") or 0.0)
@@ -107,7 +146,7 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
 
 def invalidate() -> None:
     """Önbelleği düşür (ayar kaydedilince: cache_ttl çarpanı değişir, panel yeni değeri hemen görsün)."""
-    _CACHE.update(at=0.0, usd=0.0, total=0.0, by={}, day="")
+    _CACHE.update(at=0.0, usd=0.0, total=0.0, by={}, day="", rate_1h={}, rate_15m={})
 
 
 def cap_exceeded(now: Optional[float] = None, base: str = USAGE_DIR) -> bool:
