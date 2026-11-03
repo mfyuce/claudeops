@@ -143,6 +143,7 @@ def _get_screen(display: str, screen_y: Optional[int] = None, grid: int = GRID) 
 
 def _base_from_name(name: str) -> str:
     """Session adından base'i çıkar: hc54 → hc, anomaly54 → anomaly."""
+    name = name.partition(":")[2] or name   # `yuhem:hc54` mirror başlığı: host öneki grup üyeliğinde yok sayılır
     m = re.match(r"^([a-z]+)\d+$", name)
     return m.group(1) if m else name
 
