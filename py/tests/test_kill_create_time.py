@@ -1,5 +1,11 @@
 """kill_session: create_time uyuşmazsa (PID yeniden kullanımı) sinyal gönderilmez."""
-from claudeops import kill
+import os
+import sys
+import unittest
+from unittest import mock
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from claudeops import kill  # noqa: E402
 
 
 class _Proc:
@@ -20,21 +26,27 @@ class _Proc:
         self.signals.append("KILL")
 
 
-def test_mismatched_create_time_skips_signal(monkeypatch):
-    p = _Proc(100.0)
-    monkeypatch.setattr(kill.psutil, "Process", lambda pid: p)
-    assert kill.kill_session(1234, grace=0.1, create_time=999.0) == "already_dead"
-    assert p.signals == []
+class KillCreateTimeTest(unittest.TestCase):
+    def _run(self, **kw):
+        p = _Proc(100.0)
+        with mock.patch.object(kill.psutil, "Process", lambda pid: p):
+            res = kill.kill_session(1234, grace=0.1, **kw)
+        return res, p
+
+    def test_mismatched_create_time_skips_signal(self):
+        res, p = self._run(create_time=999.0)
+        self.assertEqual(res, "already_dead")
+        self.assertEqual(p.signals, [])
+
+    def test_matching_create_time_signals(self):
+        res, p = self._run(create_time=100.0)
+        self.assertEqual(res, "clean")
+        self.assertEqual(len(p.signals), 1)
+
+    def test_no_create_time_is_legacy(self):
+        res, _p = self._run()
+        self.assertEqual(res, "clean")
 
 
-def test_matching_create_time_signals(monkeypatch):
-    p = _Proc(100.0)
-    monkeypatch.setattr(kill.psutil, "Process", lambda pid: p)
-    assert kill.kill_session(1234, grace=0.1, create_time=100.0) == "clean"
-    assert len(p.signals) == 1
-
-
-def test_no_create_time_is_legacy(monkeypatch):
-    p = _Proc(100.0)
-    monkeypatch.setattr(kill.psutil, "Process", lambda pid: p)
-    assert kill.kill_session(1234, grace=0.1) == "clean"
+if __name__ == "__main__":
+    unittest.main()

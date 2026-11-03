@@ -35,6 +35,22 @@ class ThreadLocksBoundedTest(unittest.TestCase):
                     raise RuntimeError("x")
             self.assertNotIn(p, aj._THREAD_LOCKS)
 
+    def test_unusable_lock_file_warns_once_per_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "w.json")
+            target = os.path.join(d, "elsewhere")
+            with open(target, "w") as f:
+                f.write("x")
+            os.symlink(target, p + ".lock")     # O_NOFOLLOW -> OSError -> yalnız iş parçacığı kilidi
+            self.addCleanup(aj._WARNED_LOCKS.discard, p)
+            with self.assertLogs(aj.__name__, level="WARNING") as cm:
+                for _ in range(3):
+                    with aj.file_lock(p):
+                        pass
+            self.assertEqual(len(cm.records), 1)
+            self.assertIn("alınamadı", cm.records[0].getMessage())
+            self.assertNotIn(p, aj._THREAD_LOCKS)
+
     def test_concurrent_threads_stay_mutually_exclusive(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "c.json")

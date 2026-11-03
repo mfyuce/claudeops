@@ -56,6 +56,7 @@ class FakeProc:
 
 class Base(NoRealReviewMixin, unittest.TestCase):
     def setUp(self):
+        super().setUp()      # NoRealReviewMixin.setUp: önceden hiç çağrılmıyordu (Base.setUp onu eziyordu)
         FakeProc.instances = []
         self.tmp = tempfile.mkdtemp()
         base = sw.paths_for("rev")
@@ -70,7 +71,12 @@ class Base(NoRealReviewMixin, unittest.TestCase):
         os.makedirs(self.logdir)
         self.cwd = os.path.join(self.tmp, "proj")
         os.makedirs(self.cwd)
-        self.assertFalse(wr._REVIEW_LOCK.locked())
+        # Başka test dosyasının joinlenmemiş iş thread'i `_REVIEW_LOCK`u (run_job :1197) hâlâ tutuyor olabilir (tam paket, yük):
+        # anında assert 28 ERROR üretiyordu; thread bitince kilit kendiliğinden bırakılır, kısa süre bekle.
+        deadline = time.time() + 15
+        while wr._REVIEW_LOCK.locked() and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(wr._REVIEW_LOCK.locked(), "başka testten sızan iş 15 sn sonra da kilidi bırakmadı")
         # Genel durum başka test dosyalarından sızmasın (tam takımda FakeProc.instances[0] IndexError'ı: run_job
         # `busy` dönüp Popen'a hiç varmıyordu): yuva/iş tabloları boş başlar, test sonunda geri konur.
         for name in ("_ACTIVE", "_JOBS", "_RUN_KW"):
