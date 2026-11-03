@@ -366,6 +366,24 @@ def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
     return turns
 
 
+_BUDGET_NOTES = {
+    "failures": "ucli art arda başarısız araç çağrıları yüzünden takıldı; aşağıdaki cevap KISMİ, işi bitirmedi",
+}
+
+
+def mark_budget_exhausted(value: Dict[str, Any]) -> Dict[str, Any]:
+    """563: cevapta `budget_exhausted` (ör. \"failures\") varsa kısmi cevap tam cevap gibi okunmasın: `answer`ın başına
+    bir uyarı satırı eklenir (bir kez; zaten eklenmişse dokunmaz). Alan yoksa/boşsa değer AYNEN döner."""
+    why = value.get("budget_exhausted") if isinstance(value, dict) else None
+    if not why:
+        return value
+    note = "[⚠ " + _BUDGET_NOTES.get(str(why), f"ucli bütçesi tükendi ({why}); cevap KISMİ olabilir") + "]"
+    ans = value.get("answer")
+    if isinstance(ans, str) and not ans.startswith("[⚠ "):
+        value["answer"] = f"{note}\n{ans}"
+    return value
+
+
 def _parse_turn(line: str) -> Dict[str, Any]:
     line = line.strip()
     if not line:
@@ -376,7 +394,7 @@ def _parse_turn(line: str) -> Dict[str, Any]:
         raise UcliError(f"ucli çıktısı tek-satır JSON değildi: {e}\nsatır={line!r}") from e
     if "error" in value:
         raise UcliError(value["error"])
-    return value
+    return mark_budget_exhausted(value)
 
 
 def ucli_chat_once(
@@ -428,7 +446,7 @@ def ucli_chat_once(
         raise UcliError(f"ucli çıktısı JSON değildi: {e}\nstdout={result.stdout!r}") from e
     if "error" in value:
         raise UcliError(value["error"])
-    return value
+    return mark_budget_exhausted(value)
 
 
 class UcliReplSession:

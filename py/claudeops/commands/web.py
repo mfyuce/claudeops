@@ -3352,7 +3352,12 @@ def _live_mirror_entries() -> list:
             if host and name and host != LOCAL_HOST_NAME:
                 out.append({"host": host, "name": name})
         return sorted(out, key=lambda m: (m["host"], m["name"]))
-    except Exception:
+    except Exception as e:
+        # 689: boş dönüşün nedeni bilinmiyordu (istisna sessizce yutuluyordu) — artık iz bırakır
+        try:
+            diag_log("mirror_entries_failed", error=f"{type(e).__name__}: {e}"[:200])
+        except Exception:
+            pass
         return []
 
 
