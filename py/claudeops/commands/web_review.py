@@ -528,6 +528,12 @@ class IoLog:
         with self._lock:
             return list(self._learned)
 
+    def streamed_text(self) -> str:
+        """Akışta o ana dek gelen cevap metni (maskeli, DELTA_KEEP_CHARS ile sınırlı; sondaki kısım)."""
+        with self._lock:
+            self._delta("", final=True)
+            return "".join(self._deltas).strip()
+
     def streamed_report(self) -> str:
         """Akışla gelen cevap metninden SON `## R-1 | P.. |` başlığından itibaren kısım (bulgu başlığı yoksa ""). Ucli
         stdout'a yalnız iş BİTİNCE JSON yazar; zaman aşımında rapor yarıda ama akışta durur (ncs, effort high, 40 dk)."""
@@ -1049,6 +1055,11 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             if not text.strip():                    # son çare: ucli `--partial-file` (SIGKILL'e dayanıklı) ya da `partial_turn`
                 text = _recover_partial(path, live.learned()) or _partial_turn_text(out)
                 recovered = bool(text.strip())
+            if timed_out and not text.strip():      # hâlâ yok: akışta o ana dek gelen ham metin `KISMI` başlığıyla (rapor hiç kalmasın istemiyoruz)
+                raw = live.streamed_text()
+                if raw.strip():
+                    text = f"# KISMI RAPOR (zaman aşımı {int(timeout // 60)} dk; ham akış, bulgu başlığı yok olabilir)\n\n{raw}"
+                    recovered = True
         text = rv.redact_secrets(text, live.learned())
         rc = getattr(proc, "returncode", None)
         fields: Dict[str, Any] = {"finished_at": now(), "pid": None}
@@ -2106,7 +2117,7 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
     targets = current_targets(cfg)
     if mode or model:
         if mode not in rv.MODES or not model:
-            return {"ok": False, "error": "mode must be agy|evren|claude|codex|copilot and model is required"}
+            return {"ok": False, "error": "mode must be " + "|".join(rv.MODES) + " and model is required"}
         mname, meff = rv.split_spec(model)    # `model@effort`: aynı modelin ayrı effort çifti
         known = [x for x in targets if x.mode == mode and x.model == mname and (not meff or x.effort == meff)]
         if targets and not known:
@@ -2684,23 +2695,52 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
             rv.save_findings(p, data)
         if not rows:
             return {"ok": False, "error": "no approved findings to export" if tuple(states) == ("approved",) else "no findings to export", "project": project}
-        try:
-            with open(target, encoding="utf-8") as f:
-                text = f.read()
-        except FileNotFoundError:
-            text = ""
-        new, written = rv.appended_export(text, rows, p.reviews, stamp)
-        if new is not None:
-            tmp = _uniq_tmp(target)
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.write(new)
-            os.replace(tmp, target)
-        already = [r["id"] for r in rows if r["id"] not in written]
-        for fid in written + already:       # dosyada zaten olan onaylı bulgu da `exported` sayılır (yeniden yazılmaz)
-            data[fid].update(state="exported", exported_to=target, exported_at=t)
-            if by:
-                data[fid]["exported_by"] = by
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        unresolved: List[str] = []
+        for r in rows:      # hedef kök bulgunun yoluna göre (claudeops/... -> claudeops deposu); çözülemezse YAZMA
+            root = rv.export_root(r, project, cwd, project_cwd)
+            if root:
+                groups.setdefault(root, []).append(r)
+            else:
+                unresolved.append(r["id"])
+        warn = ""
+        if unresolved:
+            warn = (f"{len(unresolved)} bulgu için hedef git deposu bulunamadı (review-combo dizinine yazılmaz): "
+                    + ", ".join(unresolved[:5]))
+            sw.log_event("review_export_no_target", paths=p, project=project, file=fname, ids=unresolved)
+        if not groups:
+            return {"ok": False, "error": "no git repo target for findings", "project": project, "warning": warn,
+                    "unresolved": unresolved}
+        written: List[str] = []
+        already: List[str] = []
+        targets: List[str] = []
+        for root, grp in groups.items():
+            target = os.path.join(root, fname)
+            try:
+                with open(target, encoding="utf-8") as f:
+                    text = f.read()
+            except FileNotFoundError:
+                text = ""
+            new, w = rv.appended_export(text, grp, p.reviews, stamp)
+            if new is not None:
+                tmp = _uniq_tmp(target)
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write(new)
+                os.replace(tmp, target)
+            targets.append(target)
+            written += w
+            for r in grp:       # dosyada zaten olan onaylı bulgu da `exported` sayılır (yeniden yazılmaz)
+                fid = r["id"]
+                if fid not in w:
+                    already.append(fid)
+                data[fid].update(state="exported", exported_to=target, exported_at=t)
+                if by:
+                    data[fid]["exported_by"] = by
         rv.save_findings(p, data)
     sw.log_event("review_export", paths=p, project=project, file=fname, written=written, already=already,
                  **({"by": by} if by else {}))
-    return {"ok": True, "project": project, "file": target, "written": written, "already": already}
+    res = {"ok": True, "project": project, "file": targets[0], "files": targets, "written": written, "already": already}
+    if warn:
+        res["warning"] = warn
+        res["unresolved"] = unresolved
+    return res

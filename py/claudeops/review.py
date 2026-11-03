@@ -1061,6 +1061,24 @@ def changed_after_review(row: Dict[str, Any], cwd: str) -> bool:
         return False
 
 
+def export_root(row: Dict[str, Any], project: str, cwd: str, resolve: Callable[[str], str]) -> str:
+    """Bulgunun TODO/TBD/RTODO/RTBD dosyasının yazılacağı depo kökü; "" = çözülemedi (YAZMA, uyar).
+    `where` yolunun ilk parçası (`claudeops/...`, `unified-cli/...`) kayıtlı bir projeyse o projenin deposu (`resolve`);
+    değilse cwd git deposuysa cwd. review-combo dizini git deposu DEĞİL ve refresh.sh sıfırlıyor: oraya yazmak bulguyu kaybettirir.
+    Yol öneki yoksa (`x.py:1`) eski davranış: cwd."""
+    rel = where_relpath(row)
+    prefix = rel.split("/")[0] if "/" in rel else ""
+    if prefix and prefix != project:
+        d = resolve(prefix) or ""
+        if d and os.path.isdir(d) and os.path.exists(os.path.join(d, ".git")):
+            return d
+    if os.path.exists(os.path.join(cwd, ".git")):
+        return cwd
+    if prefix and os.path.isdir(os.path.join(cwd, prefix)):
+        return ""
+    return cwd
+
+
 def export_lines(rows: Sequence[Dict[str, Any]], reviews_root: str) -> List[str]:
     out = []
     for r in rows:

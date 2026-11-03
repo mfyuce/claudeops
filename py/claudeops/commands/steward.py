@@ -166,7 +166,21 @@ def cmd_status(args) -> int:
         print(f"  ? [{q.id}] {q.project or '-'}: {q.text[:120]}")
     if not cfg.enabled:
         print(f"\naçmak için: py/cops steward{_sflag(sid)} on   (ya da panel Ayarlar) — hiçbir şey kendiliğinden başlamaz")
+    from .. import ucli_freshness as _uf
+    _fr = _uf.freshness()
+    if _fr.get("stale"):
+        print(f"uyarı: {_fr['message']}")
     return 0
+
+
+def cmd_exclude_check(args) -> int:
+    """Kayıtlı yerel projelerde RTODO.md/RTBD.md `.git/info/exclude`da mı, git'te izli mi (YALNIZ rapor; yazmaz)."""
+    from .. import exclude_check as ec, instances as inst_mod
+    projects = sw.load_projects(_sid(args))
+    dirs = {n: str((inst_mod.get_instance(n) or {}).get("cwd") or "") for n, p in projects.items() if not p.host}
+    rows = ec.check_all(dirs)
+    print(ec.format_report(rows))
+    return 1 if ec.problems(rows) else 0
 
 
 def cmd_projects(args) -> int:
@@ -986,6 +1000,8 @@ def register(sub):
     pst = s.add_parser("status", help="özet")
     pst.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT, help="uzak host sağlığı için panel portu")
     pst.set_defaults(func=cmd_status)
+    pxc = s.add_parser("exclude-check", help="RTODO.md/RTBD.md .git/info/exclude'da mı, git'te iz var mı (yalnız rapor)")
+    pxc.set_defaults(func=cmd_exclude_check)
     pp = s.add_parser("projects", help="proje listesi")
     pp.add_argument("--phase", choices=sw.PHASES, default=None)
     pp.set_defaults(func=cmd_projects)
