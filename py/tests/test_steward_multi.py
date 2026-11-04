@@ -552,6 +552,21 @@ class TestSlots(unittest.TestCase):
         _, st = sw.plan_tick(views, mine["default"], {}, _cfg(max_active=4, max_active_total=6), T0, [], [], world=w)
         self.assertNotIn("start_blocked", st)                                  # başlatıldı: engel yok
 
+    def test_start_blocked_reason_auto_start_off(self):
+        # 5 Kas: auto_start=off iken neden yanlışlıkla max_active görünüyordu (max_active=99, active=9)
+        mine, idx, views = self._setup()
+        w = sw.world_for("default", idx)
+        cfg = _cfg(max_active=99, max_active_total=0)
+        cfg.auto_start = False
+        acts, st = sw.plan_tick(views, mine["default"], {}, cfg, T0, [], [], world=w)
+        self.assertEqual([a for a in acts if a.kind == "start"], [])
+        self.assertEqual(st["start_blocked"]["reason"], "auto_start_off")
+        self.assertEqual(st["start_blocked"]["projects"], ["c"])
+        cfg.auto_start = True                                                  # açıkken eski davranış: başlatır, engel yok
+        acts, st = sw.plan_tick(views, mine["default"], {}, cfg, T0, [], [], world=w)
+        self.assertEqual([a.name for a in acts if a.kind == "start"], ["c"])
+        self.assertNotIn("start_blocked", st)
+
     def test_max_active_total_counts_only_busy_sessions(self):
         # Sahip kuralı (TODO 1233): makine geneli slotu yalnız mesaj alan/meşgul oturum yer; boşta açık oturum yemez
         mine, idx, _ = self._setup()

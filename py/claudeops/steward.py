@@ -3560,7 +3560,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     if waiting:
         active_busy = _active_busy()
         total_free = (cfg.max_active_total - active_busy - others_active - starts) if (world is not None and cfg.max_active_total > 0) else None
-        if starts >= max_starts and free > 0:
+        if not cfg.auto_start:
+            why = "auto_start_off"       # motor cadence ile oturum AÇMAZ (sahip kararı); sınır nedeni DEĞİL
+        elif starts >= max_starts and free > 0:
             why = "max_starts"
         elif total_free is not None and total_free <= 0 and total_free < cfg.max_active - active - starts:
             why = "max_active_total"
