@@ -1589,7 +1589,10 @@ def _launch_kwargs(name: str, model: str, effort: str) -> Dict[str, Any]:
     Kayıt yoksa ya da kayıtlı cli claude ve roster/fleet cli'si de claude ise {} (eski davranış birebir). Kayıtlı cli
     claude DEĞİLSE (ucli kodcu) model/effort da kayıttan gelir: değnekçinin Claude model/effort'u o cli'de geçersiz olur."""
     rec = _last_launch(name)
-    if rec is None:
+    if rec is None or rec.get("cli") not in ("ucli", DEFAULT_CLI):
+        # ucli kodcular (TBD#156'nın amacı) ve claude. agy/codex/copilot kaydı roster'ı geçemez: projenin yardımcı agy
+        # oturumu (`vc20260929_1`) ana claude oturumundan birkaç sn sonra başlatılmış olabilir ve "en son kayıt"
+        # olur; 5 Kas 01:1x'te vc böyle agy (krediSİZ) açıldı.
         return {}
     cli = str(rec["cli"])
     opts = rec.get("cli_opts") if isinstance(rec.get("cli_opts"), dict) else None

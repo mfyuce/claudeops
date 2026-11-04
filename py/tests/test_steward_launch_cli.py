@@ -51,6 +51,13 @@ class LaunchKwargsTest(unittest.TestCase):
         with recs(p={"cli": "claude", "model": "sonnet"}), mock.patch.object(ws, "_project_cli", lambda n: "ucli"):
             self.assertEqual(ws._launch_kwargs("p", "sonnet", "medium"), {"cli": "claude"})
 
+    def test_newer_agy_helper_record_does_not_override_claude_roster(self):
+        # 5 Kas: vc'nin yardımcı agy oturumu (`vc20260929_1`) "en son kayıt" oldu, değnekçi vc'yi agy ile açtı
+        with recs(vc_old={"cli": "claude", "blueprint": "vc", "last_started_at": 100},
+                  vc_agy={"cli": "agy", "model": "gemini-3.8-flash-high", "blueprint": "vc", "last_started_at": 105}), \
+                mock.patch.object(ws, "_project_cli", lambda n: "claude"):
+            self.assertEqual(ws._launch_kwargs("vc", "claude-sonnet-5-5", "medium"), {})
+
     def test_unknown_cli_record_ignored(self):
         with recs(p={"cli": "nope"}), mock.patch.object(ws, "_project_cli", lambda n: "claude"):
             self.assertEqual(ws._launch_kwargs("p", "", ""), {})
