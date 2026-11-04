@@ -46,7 +46,7 @@ from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..providers.base import McpServerSpec, OneshotError
 from ..settings import default_effort_for, default_model_for, load_settings, steward_config, steward_ids
 from ..spawn import spawn_session, detect_display
-from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys
+from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys, tmux_send_raw
 from ..turns import is_busy_now
 from . import web_review, web_ws
 
@@ -1303,7 +1303,53 @@ def _send(name: str, cli: str, text: str) -> bool:
     provider = get_provider(cli)
     if not provider.has_conversation():
         return False
-    return tmux_send_keys(name, provider.prepare_input(text), settle_delay=provider.input_settle_delay())
+    if cli == "ucli":
+        text = " ".join(str(text or "").split())      # ucli çok satırı ayrı tur sayar: TEK satır, KESME YOK (bilgi kaybı yok)
+    ok = tmux_send_keys(name, provider.prepare_input(text), settle_delay=provider.input_settle_delay())
+    if ok and cli == "ucli":
+        _ucli_box_recheck(name)
+    return ok
+
+
+UCLI_BOX_CHECK_DELAY = 0.8
+_UCLI_PROMPT = "ucli>"
+# İstemden sonra bunlar varsa kutu boştur (tur sürüyor/bitmiş): metin kayması değil, çıktı.
+_UCLI_TURN_RE = re.compile(r"waiting for response|^\s*(?:\[[^\]]*\]\s*$|[●⏺▸→•]|tool\b)", re.IGNORECASE)
+
+
+def _ucli_box_text(name: str) -> str:
+    """Son 10 satırda `ucli>` içeren SON satırı bul (başında `[model | turn N | ...]` öneki olabilir); metin = istemden
+    sonrası + onu izleyen (pane genişliğinde kaymış) satırlar. İstemden sonra `waiting for response`/tur çıktısı varsa ''."""
+    lines = strip_ansi(tmux_capture(name, lines=10) or "").splitlines()
+    idx = -1
+    for i, l in enumerate(lines):
+        if _UCLI_PROMPT in l:
+            idx = i
+    if idx < 0:
+        return ""
+    parts = [lines[idx].rsplit(_UCLI_PROMPT, 1)[1].strip()]
+    for l in lines[idx + 1:]:
+        if not l.strip():
+            continue
+        if _UCLI_TURN_RE.search(l):
+            return ""
+        parts.append(l.strip())
+    return " ".join(p for p in parts if p)
+
+
+def _ucli_box_recheck(name: str) -> None:
+    """Enter'dan sonra ucli giriş kutusunda metin kaldıysa BİR kez daha Enter; yine kaldıysa olay kaydı. Asla fırlatmaz."""
+    try:
+        time.sleep(UCLI_BOX_CHECK_DELAY)
+        if not _ucli_box_text(name):
+            return
+        tmux_send_raw(name, "\r")          # yalnız Enter
+        time.sleep(UCLI_BOX_CHECK_DELAY)
+        left = _ucli_box_text(name)
+        if left:
+            sw.log_event("ucli_send_stuck", paths=sw.paths_for("default"), name=name, left=left[:120])
+    except Exception:
+        pass
 
 
 _SCAN = threading.local()

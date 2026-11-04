@@ -447,6 +447,8 @@ def handover_faz1(
         apply_handover_downgrades(provider, session.name, session.cli, session.cwd, session.sid,
                                   session.model, session.effort, pid=session.pid)
 
+        if session.cli == "ucli":
+            message = " ".join(str(message or "").split())      # ucli çok satırı ayrı tur sayar: tek satır, kesme yok
         sent = tmux_send_keys(session.name, provider.prepare_input(message), settle_delay=provider.input_settle_delay())
 
         if sent:
