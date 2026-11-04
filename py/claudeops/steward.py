@@ -125,7 +125,7 @@ MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
 SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
-OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm")
+OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm", "idle_nudge", "idle_close")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -240,6 +240,8 @@ class SessionView:
     subagent_unknown: bool = False      # alt ajan durumu okunamadı (uzak oturum): "boşta" SAYILMAZ (DONE/kapatma devri bekler)
     live_model: str = ""                # ÇALIŞAN sürecin GERÇEK modeli (`/api/status` `live_model`: claude'da transkriptin son asistan turu); "" = bilinmiyor
     live_effort: str = ""               # aynı kaynaktan canlı effort ("" = bilinmiyor)
+    idle_since: float = 0.0             # ucli: durum dosyası activity=waiting_for_stdin'e geçtiği an (epoch; 0 = bilinmiyor / boşta değil)
+    cache_ttl: str = ""                 # ucli: oturumun `--cache-ttl` değeri ("5m" | "1h"; "" = bilinmiyor)
 
     @property
     def project(self) -> str:
@@ -329,6 +331,10 @@ class Config:
     keepwarm: str = "dry"              # önbellek canlı tutma (2026-10-27): off | dry = YALNIZ `would:keepwarm` olayı | act = boşta, işi olan, büyük bağlamlı oturuma TTL (60 dk) dolmadan hafif dürtme; kesinlikle çalışmayana ASLA
     keepwarm_after_minutes: int = 52   # son model isteğinden bu kadar dk sonra (58. dk'ya kadar) dürtülür
     keepwarm_min_tokens: int = 100000  # bundan küçük bağlam dürtülmez (soğuk açılış zaten ucuz)
+    ucli_idle: str = "dry"             # TBD#156 boşta ucli kuralı: off = hiç eylem | dry = YALNIZ `would:idle_nudge`/`would:idle_close` olayı (uygulama + ho_pending/ho_close YOK, act kipinde de) | act = uygula
+    ucli_idle_nudge_secs: int = 180    # TBD#156: yönetilen ucli oturumu (activity=waiting_for_stdin) bu kadar sn boşta kalırsa "devam" dürtmesi / kapat+devir (0 = kapalı). Eşik oturumun `--cache-ttl`ine göre: 5m (ya da bilinmiyor) = bu değer
+    ucli_idle_nudge_secs_1h: int = 3000   # `--cache-ttl 1h` oturumda eşik (önbellek 1 saat sıcak: 5 dk boşluk israf değil; ~50 dk)
+    ucli_idle_max_consecutive: int = 2    # dürtmeye rağmen etkinlik yoksa zincir bu kadar dürtmede KESİLİR
     keepwarm_max_consecutive: int = 2  # dürtmeye rağmen gerçek etkinlik yoksa zincir bu kadar dürtmede KESİLİR
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
     brain_wake_max_per_day: int = 6    # uyandırma kapısı (TBD#138): BEYİN direktifi (`reason=brain`, actor=brain, cevapsız) oturum başına 24 saatte en çok bu kadar; aşımda `wake_gate` kipine uyar (dry = `would:brain_wake_cap`); 0 = sınırsız
@@ -3797,6 +3803,139 @@ def _observe_cluster(a: Action) -> str:
     else:
         return ""
     return hashlib.sha1("|".join(ids).encode("utf-8")).hexdigest()[:10]
+
+
+_AJ_CHILD_RE = re.compile(r"_aj\d+$")                          # ucli alt ajanı (`<üst>_aj<N>`): proje oturumu DEĞİL
+_NEXT_NOTE_RE = re.compile(r"(?:sıradaki|siradaki|next)\s*(?:iş|is|adım|adim|step|task)?\s*[:：]\s*(.+)", re.IGNORECASE)
+_NO_WORK_VALUES = {"yok", "none", "-", "—", "n/a", "bitti", "done"}
+_DONE_TEXT_RE = re.compile(r"(?<![-\w])STEWARD-DONE(?![-\w])")
+_NO_WORK_PHRASES = ("yapacak iş yok", "yapılacak iş yok", "yapacak başka iş yok", "yapılacak başka iş yok",
+                    "no work left", "nothing left to do", "no more work")
+
+
+def one_line(text: Any, limit: int = 400) -> str:
+    """Metni TEK satıra katla (ucli çok satırlı girdiyi ayrı tur sayar): tüm boşluk/satır sonları tek boşluk. SAF."""
+    return " ".join(str(text or "").split())[:limit]
+
+
+def ucli_idle_threshold(cfg: Config, cache_ttl: str) -> int:
+    """Boşluk eşiği (sn): `--cache-ttl 1h` oturumda `ucli_idle_nudge_secs_1h`, 5m/bilinmeyende `ucli_idle_nudge_secs`. 0 = kapalı."""
+    return cfg.ucli_idle_nudge_secs_1h if (cache_ttl or "").strip().lower() == "1h" else cfg.ucli_idle_nudge_secs
+
+
+def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[int]]] = None) -> str:
+    """Projenin sıradaki işi: proje notunda `sıradaki: <iş>` (ya da `next: ...`) satırı, yoksa notta `sıradaki` geçiyorsa genel ifade,
+    yoksa yerel TODO.md'de açık iş varsa (`open_work` > 0) genel ifade. "" = iş yok/bilinmiyor. `sıradaki: yok` iş sayılmaz. SAF."""
+    notes = proj.notes or ""
+    for line in notes.splitlines():
+        m = _NEXT_NOTE_RE.search(line)
+        if m:
+            val = one_line(m.group(1), 160)
+            if val.strip(" .").lower() in _NO_WORK_VALUES:
+                return ""
+            if val:
+                return val
+    if re.search(r"sıradaki|siradaki", notes, re.IGNORECASE):
+        return "notlardaki sıradaki iş"
+    try:
+        n = open_work(proj.name) if open_work is not None else None
+    except Exception:
+        n = None
+    return "TODO.md'deki ilk açık iş" if n else ""
+
+
+def idle_finish_marker(text: str) -> Tuple[str, bool]:
+    """Son asistan cevabı işin/devrin bittiğini söylüyor mu: (işaret, ready). işaret = "" | READY FOR HANDOVER | STEWARD-DONE |
+    "yapacak iş yok"; ready = READY FOR HANDOVER var (devir zaten yazıldı). SAF."""
+    t = text or ""
+    ready = READY_FOR_HANDOVER in t
+    if ready:
+        return READY_FOR_HANDOVER, True
+    if _DONE_TEXT_RE.search(t):
+        return MARK_DONE, False
+    low = t.lower()
+    for ph in _NO_WORK_PHRASES:
+        if ph in low:
+            return ph, False
+    return "", False
+
+
+def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
+                   planned: List[Action], world: Optional[World] = None,
+                   open_work: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+    """TBD#156 motor kuralı: yönetilen ucli kodcu (durum dosyası activity=waiting_for_stdin) `ucli_idle_nudge_secs` (cache-ttl'e göre,
+    `ucli_idle_threshold`) boşta kalmasın. SAF; (eylemler, güncellenmiş state) döner (`state["ucli_idle"][ad] = {at, n}`).
+    (a) cevap işin bittiğini söylemiyor + projenin sıradaki işi var -> `idle_nudge` (TEK satır `devam: <iş>`);
+    (b) cevap READY FOR HANDOVER / STEWARD-DONE / "yapacak iş yok" diyor -> `idle_close`: payload `mode` handover (devir iste; iş
+        yoksa devir sonrası kapanır = `ho_close`) | respawn (devir zaten yazılmış + iş var: yeni konuşmayla yeniden aç) | stop (devir
+        yazılmış + iş yok); `pause` = iş yok, proje `paused` olur. İş yoksa ve bitti işareti de yoksa HİÇBİR şey (bilinmiyor).
+    Aynı boşta dönem için en çok `ucli_idle_max_consecutive` dürtme (etkinlik gelince sayaç sıfırlanır; iki dürtme arası eşik kadar).
+    observe kipinde ho_pending/ho_close state'i YAZILMAZ (eylem uygulanmaz, `would:` olarak kalır). drain/kapalı: hiçbir şey."""
+    if cfg.ucli_idle not in ("dry", "act") or cfg.ucli_idle_nudge_secs <= 0 or cfg.drain:
+        return [], state
+    if world is not None:
+        projects = world.own_projects(projects)
+    rec_all: Dict[str, Any] = dict(state.get("ucli_idle") or {})
+    ho_pending: Dict[str, float] = dict(state.get("ho_pending") or {})
+    ho_close: Dict[str, str] = dict(state.get("ho_close") or {})
+    touched = {a.name for a in planned}
+    out: List[Action] = []
+    changed = False
+    for v in views:
+        if v.cli != "ucli" or not v.running or not v.tmux or getattr(v, "host", "local") not in ("local", ""):
+            continue
+        if v.name == cfg.brain_name or _AJ_CHILD_RE.search(v.name) or v.name in touched or v.name in ho_pending:
+            continue
+        if v.busy is not False or v.subagent_active or v.subagent_unknown:
+            continue
+        proj = projects.get(v.project)
+        if proj is None or proj.phase in ("done", "paused"):
+            continue
+        if world is not None and world.session_class(v.name, v.blueprint) != "own":
+            continue
+        thr = ucli_idle_threshold(cfg, v.cache_ttl)
+        since = max(v.idle_since or 0.0, v.last_activity or 0.0)
+        if thr <= 0 or not v.idle_since or since <= 0 or now - since < thr:
+            continue
+        rec = rec_all.get(v.name) or {}
+        at, n = float(rec.get("at") or 0), int(rec.get("n") or 0)
+        chain = 0 if since > at else n          # dürtmeden sonra etkinlik oldu: zincir sıfırlanır
+        if at and since <= at and now - at < thr:
+            continue                            # bu boşta dönem için yakın zamanda işlendi
+        if chain >= cfg.ucli_idle_max_consecutive:
+            continue
+        hint = next_work_hint(proj, open_work)
+        marker, ready = idle_finish_marker(v.last_assistant)
+        info = {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1}
+        if marker:
+            pause = not hint
+            if ready:
+                mode = "respawn" if hint else "stop"
+            else:
+                mode = "handover"
+            out.append(Action("idle_close", v.name, f"ucli boşta {int(now - since)} sn, cevap: {marker}",
+                              dict(info, mode=mode, pause=pause, marker=marker, next=hint)))
+            if mode == "handover" and cfg.mode != "observe" and cfg.ucli_idle == "act":
+                ho_pending[v.name] = now
+                if pause:
+                    ho_close[v.name] = proj.name
+        elif hint:
+            out.append(Action("idle_nudge", v.name, f"ucli boşta {int(now - since)} sn, sıradaki iş var",
+                              dict(info, text=one_line(f"devam: {hint}"), next=hint)))
+        else:
+            continue
+        rec_all[v.name] = {"at": now, "n": chain + 1}
+        changed = True
+    if not changed:
+        return [], state
+    st = dict(state)
+    st["ucli_idle"] = rec_all
+    if cfg.mode != "observe" and cfg.ucli_idle == "act":
+        if ho_pending:
+            st["ho_pending"] = ho_pending
+        if ho_close:
+            st["ho_close"] = ho_close
+    return out, st
 
 
 def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now: float

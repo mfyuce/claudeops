@@ -1179,6 +1179,37 @@ def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = Non
     return False
 
 
+def _ucli_idle_info(s: Any) -> Tuple[float, str]:
+    """(idle_since, cache_ttl) ucli oturumu için. idle_since: durum dosyası `activity=waiting_for_stdin` ise `last_activity_unix`
+    (yoksa 0 = boşta değil/bilinmiyor). cache_ttl: çalışan sürecin `--cache-ttl` argümanı; okunamazsa Ayarlar `ucli_cost.cache_ttl`."""
+    from ..ucli_client import read_status_file
+    idle = 0.0
+    try:
+        st = read_status_file(s.cwd, s.sid or s.name) or {}
+        last = st.get("last_activity_unix")
+        if st.get("activity") == "waiting_for_stdin" and isinstance(last, (int, float)) and not isinstance(last, bool):
+            idle = float(last)
+    except Exception:
+        idle = 0.0
+    ttl = ""
+    try:
+        argv = psutil.Process(s.pid).cmdline()
+        for i, a in enumerate(argv):
+            if a == "--cache-ttl" and i + 1 < len(argv):
+                ttl = argv[i + 1]
+            elif a.startswith("--cache-ttl="):
+                ttl = a.split("=", 1)[1]
+    except Exception:
+        ttl = ""
+    if ttl not in ("5m", "1h"):
+        try:
+            from ..settings import ucli_cost_config
+            ttl = str(ucli_cost_config().get("cache_ttl") or "")
+        except Exception:
+            ttl = ""
+    return idle, ttl
+
+
 def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.SessionView]:
     """Tick'in oturum görünümleri: yerel `/api/status` satırları (+ provider okumaları) ve uzak projelerin taze
     host'lardaki satırları (`_remote_views`, `rt`: tick'in tazelik anlık görüntüsü). Satır seçimi `sw.select_rows`: adı
@@ -1222,6 +1253,8 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
                 v.started_at = float(psutil.Process(s.pid).create_time())
             except Exception:
                 v.started_at = 0.0
+            if s.cli == "ucli":
+                v.idle_since, v.cache_ttl = _ucli_idle_info(s)
         if not v.blueprint:
             # Instance kaydı (blueprint) taşımayan yerel tarihli oturum (`ncs20261029`): uzak yoldaki `_derived_of` düzeltmesinin
             # yerel karşılığı; yoksa `SessionView.project` adın kendisi olur, proje "çalışmıyor" sayılıp her cadence şablon
@@ -2925,6 +2958,30 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         ok = _send(s.name, s.cli, skw.KEEPWARM_TEXT)
         sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n")})
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
+    if k == "idle_nudge":             # TBD#156: boşta ucli kodcuya TEK satır "devam: <iş>" (koşullar `plan_ucli_idle`de denetlendi)
+        if not host:
+            denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
+            if denied is not None:
+                return denied
+        s = _running(name)
+        if host or s is None or not is_tmux_backed(s.pid):
+            return {"ok": False, "error": "not a local running tmux session"}
+        if _box_has_typed_input(s.name):
+            sw.log_event("idle_nudge_skipped", paths=paths, name=name, reason="input_box_not_empty")
+            return {"ok": False, "error": "input box has unsent text"}
+        ok = _send(s.name, s.cli, sw.one_line(action.payload.get("text") or "devam"))   # ucli çok satırı ayrı tur sayar: TEK satır
+        sw.log_event("idle_nudge", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "threshold", "n", "next")})
+        return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
+    if k == "idle_close":             # TBD#156: handover / respawn / stop (mevcut yollar: `_local_handover`, `respawn` -> `_last_launch` cli_opts korunur)
+        mode = str(action.payload.get("mode") or "")
+        if mode not in ("handover", "respawn", "stop") or host:
+            return {"ok": False, "error": "unsupported idle_close"}
+        res = _apply(sw.Action(mode, name, action.reason), cfg, projects, world, rt=rt)
+        sw.log_event("idle_close", paths=paths, name=name, ok=bool(res.get("ok")), mode=mode,
+                     **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "marker", "pause", "next")})
+        if res.get("ok") and action.payload.get("pause") and action.payload.get("project"):
+            sw.upsert_project(str(action.payload["project"]), paths=paths, phase="paused")   # iş yok: proje paused (devir/kapanıştan SONRA)
+        return res
     if k == "nudge":                  # API hatasında takılan oturuma tek satır "devam" (alt ajan/etkinlik denetimi plan_tick'te yapıldı)
         if host:
             return _remote_nudge(name, host, action, cfg, paths, world or _world(cfg.sid, cfg), rt)
@@ -3444,6 +3501,14 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 if cfg.mode != "observe":
                     new_state = planned_state
                 actions = actions + adv_actions     # ilerletme (advance_findings=on): onaylı review bulguları -> kendi projesinin oturumu
+                idle_actions, new_state = sw.plan_ucli_idle(views, projects, new_state, cfg, t0, actions, world,
+                                                            open_work=_open_work_of(projects))
+                if cfg.ucli_idle == "dry":
+                    for a in idle_actions:          # YALNIZ ölçüm (act kipinde de): oturuma dokunmaz
+                        sw.log_event("would:" + a.kind, paths=paths, name=a.name,
+                                     **{k: a.payload.get(k) for k in ("project", "idle_secs", "threshold", "n", "next", "mode", "marker")})
+                else:
+                    actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 journal = _journal_entries(actions, t0)
                 if journal:
