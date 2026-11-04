@@ -1680,6 +1680,8 @@ def _launch_kwargs(name: str, model: str, effort: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {"cli": cli}
     if opts:
         out["cli_opts"] = dict(opts)
+    if rec.get("permission_mode"):      # örn. ucli `allow-edit`: yoksa respawn salt okunur açılırdı (5 Kas copsdev); `_start(permission_mode=)` kayda önceliklidir
+        out["permission_mode"] = str(rec["permission_mode"])
     if cli != DEFAULT_CLI:
         if rec.get("model"):
             out["model"] = str(rec["model"])

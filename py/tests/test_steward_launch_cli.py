@@ -30,6 +30,21 @@ class LaunchKwargsTest(unittest.TestCase):
             kw = ws._launch_kwargs("kod", "sonnet", "high")       # değnekçinin Claude değerleri atlanır
         self.assertEqual(kw, {"cli": "ucli", "cli_opts": UCLI_OPTS, "model": "claude-sonnet-5-5", "effort": "medium"})
 
+    def test_ucli_record_passes_permission_mode(self):
+        with recs(kod=dict(UREC, permission_mode="allow-edit")):
+            kw = ws._launch_kwargs("kod", "", "")
+        self.assertEqual(kw["permission_mode"], "allow-edit")
+        self.assertEqual(kw["cli"], "ucli")
+
+    def test_record_without_permission_mode_omits_key(self):
+        with recs(kod=UREC):
+            self.assertNotIn("permission_mode", ws._launch_kwargs("kod", "", ""))
+
+    def test_claude_plain_record_with_permission_mode_stays_empty(self):
+        with recs(p={"cli": "claude", "model": "sonnet", "permission_mode": "auto"}), \
+                mock.patch.object(ws, "_project_cli", lambda n: "claude"):
+            self.assertEqual(ws._launch_kwargs("p", "sonnet", "medium"), {})
+
     def test_opts_copied_not_aliased(self):
         with recs(kod=UREC):
             kw = ws._launch_kwargs("kod", "", "")
@@ -87,6 +102,10 @@ class EnsureRunningUsesRecordTest(unittest.TestCase):
         self.assertEqual((seen["cli"], seen["cli_opts"], seen["model"], seen["effort"]), ("ucli", UCLI_OPTS, "m", "high"))
         self.assertTrue(seen["fresh"])
         self.assertEqual((res["cli"], waited), ("ucli", ["ucli"]))
+
+    def test_permission_mode_reaches_start(self):
+        seen, _, _ = self._run({"cli": "ucli", "permission_mode": "allow-edit"})
+        self.assertEqual(seen["permission_mode"], "allow-edit")
 
     def test_no_record_leaves_start_args_unchanged(self):
         seen, res, _ = self._run({})
