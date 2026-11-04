@@ -26,6 +26,7 @@ import {
 import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
 import { ErrorBox } from "./shared/ErrorBox";
+import { NumberSetting } from "./shared/NumberSetting";
 import { useLang } from "../i18n/LangContext";
 import { showToast } from "../state/toast";
 import type { ReviewFinding, ReviewLesson, ReviewRemoteProject, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
@@ -362,6 +363,26 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           />{" "}
           {t.rvAutoExport}
         </label>
+      </div>
+      )}
+      {st && (
+      <div className="opts" title={t.rvEvrenHint}>
+        <span className="opts-hint">{t.rvEvrenTitle}</span>
+        <label>
+          <input
+            type="checkbox"
+            checked={!!st.evren_script}
+            disabled={busy}
+            onChange={(e) => void act(() => apiStewardConfig("review_evren_script", e.target.checked ? "read" : "off", sid), t.rvDone)}
+          />{" "}
+          {t.rvEvrenScript}
+        </label>
+        <NumberSetting label={t.rvEvrenToolCalls} value={st.max_tool_calls ?? 0} width="4.5rem"
+          onSave={(n) => void act(() => apiStewardConfig("review_max_tool_calls", n, sid), t.rvDone)} />
+        <NumberSetting label={t.rvEvrenContextKib} value={st.max_context_kib ?? 0} width="5rem"
+          onSave={(n) => void act(() => apiStewardConfig("review_max_context_kib", n, sid), t.rvDone)} />
+        <NumberSetting label={t.rvEvrenReadKib} value={st.max_read_kib ?? 0} width="5rem"
+          onSave={(n) => void act(() => apiStewardConfig("review_max_read_kib", n, sid), t.rvDone)} />
       </div>
       )}
 

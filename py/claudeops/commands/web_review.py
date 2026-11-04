@@ -2025,7 +2025,11 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes,
             "window_hours": cfg.review_window_hours,
             "auto_verify": bool(cfg.review_auto_verify), "auto_approve": int(cfg.review_auto_approve),
-            "auto_export": bool(cfg.review_auto_export)}
+            "auto_export": bool(cfg.review_auto_export),
+            "evren_script": str(getattr(cfg, "review_evren_script", "") or "").strip().lower() == "read",
+            "max_context_kib": int(getattr(cfg, "review_max_context_kib", 0) or 0),
+            "max_read_kib": int(getattr(cfg, "review_max_read_kib", 0) or 0),
+            "max_tool_calls": int(getattr(cfg, "review_max_tool_calls", 0) or 0)}
 
 
 def read_review_file(cfg: Any, rel: str) -> Dict[str, Any]:

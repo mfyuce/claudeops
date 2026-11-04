@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NumberSetting } from "./shared/NumberSetting";
 import {
   apiStewardAnswer,
   apiStewardAsk,
@@ -67,32 +68,6 @@ const SETTING_FIELDS: { key: string; label: "stewardSetTick" | "stewardSetTour" 
   { key: "idle_minutes", label: "stewardSetIdle" },
   { key: "review_minutes", label: "stewardSetReview" },
 ];
-
-/** A number field that saves on Enter / blur when the value changed (the backend validates the range). */
-function NumberSetting({ label, value, width, onSave }: { label: string; value: number; width?: string; onSave: (n: number) => void }) {
-  const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
-  function commit() {
-    const n = Number(text);
-    if (text.trim() !== "" && Number.isFinite(n) && n !== value) onSave(n);
-    else setText(String(value));
-  }
-  return (
-    <label className="opts-hint" style={{ display: "inline-flex", gap: ".3rem", alignItems: "center" }}>
-      {label}
-      <input
-        type="number"
-        value={text}
-        style={{ width: width ?? "5rem" }}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-        }}
-      />
-    </label>
-  );
-}
 
 function readSid(): string {
   try {

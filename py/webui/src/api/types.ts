@@ -1080,6 +1080,7 @@ export interface ReviewStateResult {
   ok: boolean; remote_projects?: ReviewRemoteProject[]; error?: string; enabled: boolean; role: string; targets: ReviewTarget[]; pool: ReviewPoolRow[];
   running: string[]; runs: Array<{ pair: string; status: string; at?: number; file?: string }>;
   min_gap_minutes: number; timeout_minutes: number; auto_verify?: boolean; auto_approve?: number; auto_export?: boolean;
+  evren_script?: boolean; max_context_kib?: number; max_read_kib?: number; max_tool_calls?: number;
 }
 export interface ReviewLesson {
   id: string; line: string; status: "pending" | "failed" | "sent" | "stale" | "done"; fails: number; sent_at?: number | null;

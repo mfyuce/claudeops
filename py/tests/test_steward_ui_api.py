@@ -44,6 +44,19 @@ class UiConfigTest(_Tmp):
             r = ws.http_config(body, "default")
             self.assertFalse(r["ok"], body)
 
+    def test_config_review_budgets_and_script_choice(self):
+        for k, v in (("review_max_context_kib", 0), ("review_max_context_kib", 1536), ("review_max_read_kib", 256),
+                     ("review_max_tool_calls", 14)):
+            self.assertTrue(ws.http_config({"key": k, "value": v}, "default")["ok"], (k, v))
+            self.assertEqual(getattr(ws.steward_config("default"), k), v)
+        for k, v in (("review_max_context_kib", 1537), ("review_max_read_kib", -1), ("review_max_tool_calls", 0),
+                     ("review_evren_script", "full"), ("review_evren_script", "")):
+            self.assertFalse(ws.http_config({"key": k, "value": v}, "default")["ok"], (k, v))
+        self.assertTrue(ws.http_config({"key": "review_evren_script", "value": "off"}, "default")["ok"])
+        self.assertEqual(ws.steward_config("default").review_evren_script, "off")
+        self.assertTrue(ws.http_config({"key": "review_evren_script", "value": "READ"}, "default")["ok"])
+        self.assertEqual(ws.steward_config("default").review_evren_script, "read")
+
     def test_brain_cannot_change_config_or_enable(self):
         self.assertFalse(ws.http_config({"key": "tour_minutes", "value": 5, "actor": "brain"}, "default")["ok"])
         self.assertFalse(ws.http_enable({"enabled": True, "actor": "brain"}, "default")["ok"])

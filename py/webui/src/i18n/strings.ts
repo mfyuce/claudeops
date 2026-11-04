@@ -771,6 +771,12 @@ export interface Strings {
   rvAutoHint: string;
   rvAutoExport: string;
   rvAutoExportHint: string;
+  rvEvrenTitle: string;
+  rvEvrenHint: string;
+  rvEvrenScript: string;
+  rvEvrenToolCalls: string;
+  rvEvrenContextKib: string;
+  rvEvrenReadKib: string;
   stewardRowStat: (projects: number, questions: number) => string;
   stewardOn: string;
   stewardOffShort: string;
@@ -1639,6 +1645,12 @@ export const STRINGS: Record<Lang, Strings> = {
     rvAutoHint: "Doğrulama projenin çalışan oturumuna gider (meşgulse bekler). Onay dosyaya yazmaz; P1, belirsiz ve parola/gizli geçen bulgular hep sende kalır.",
     rvAutoExport: "Onaylıları TODO.md'ye yaz",
     rvAutoExportHint: "Açıkken onaylı bulgular yerel projenin TODO.md dosyasına kendiliğinden yazılır (tick başına bir proje). TOBEDECIDED'a yazılmaz; uzak projeler ve parola/gizli geçen bulgular atlanır.",
+    rvEvrenTitle: "Evren/ucli:",
+    rvEvrenHint: "Evren (ucli) inceleme bütçeleri. Bağlam ve okuma sayfası 0 = ucli modelin /models kaydından kendi türetir (önerilen). Betik açıkken model salt-okunur araçları tek turda birleştirir; ölçümde ~3 kat hızlı ve daha çok bulgu (2026-11-04), çağrı bütçesi otomatik x7 büyür. Yeni koşulara uygulanır.",
+    rvEvrenScript: "Betik (salt-okunur)",
+    rvEvrenToolCalls: "Araç çağrısı",
+    rvEvrenContextKib: "Bağlam KiB (0=oto)",
+    rvEvrenReadKib: "Okuma KiB (0=oto)",
     stewardRowStat: (projects, questions) => `${projects} proje · ${questions} açık soru`,
     stewardOn: "açık",
     stewardOffShort: "kapalı",
@@ -2508,6 +2520,12 @@ export const STRINGS: Record<Lang, Strings> = {
     rvAutoHint: "Verification goes to the project's running session (waits if busy). Approval does not write files; P1, unclear and password/secret findings always stay with you.",
     rvAutoExport: "Write approved to TODO.md",
     rvAutoExportHint: "When on, approved findings are written to the local project's TODO.md automatically (one project per tick). Never to TOBEDECIDED; remote projects and password/secret findings are skipped.",
+    rvEvrenTitle: "Evren/ucli:",
+    rvEvrenHint: "Evren (ucli) review budgets. Context and read page 0 = ucli derives them from the model's /models entry (recommended). With scripts on the model batches read-only tools in one turn; measured ~3x faster with more findings (2026-11-04), the call budget grows x7 automatically. Applies to new runs.",
+    rvEvrenScript: "Scripts (read-only)",
+    rvEvrenToolCalls: "Tool calls",
+    rvEvrenContextKib: "Context KiB (0=auto)",
+    rvEvrenReadKib: "Read KiB (0=auto)",
     stewardRowStat: (projects, questions) => `${projects} project${projects === 1 ? "" : "s"} · ${questions} open question${questions === 1 ? "" : "s"}`,
     stewardOn: "on",
     stewardOffShort: "off",

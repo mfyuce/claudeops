@@ -5032,10 +5032,15 @@ def http_skip(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 # Panelden yazılabilen ayarlar (CLI `steward config` alt kümesi): alan -> (alt, üst) sınır. `mode` ayrıca doğrulanır.
 UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_retry_minutes": (1, 1440),
                  "idle_minutes": (1, 1440), "review_minutes": (1, 10080), "stop_idle_minutes": (1, 10080),
-                 "max_active": (0, 20), "max_starts_per_tick": (0, 10), "review_auto_approve": (0, 2)}
+                 "max_active": (0, 20), "max_starts_per_tick": (0, 10), "review_auto_approve": (0, 2),
+                 # Evren/ucli reviewer bütçeleri (2026-11-04): 0 = ucli modelin /models kaydından türetir; ucli üst sınırı 1536 KiB
+                 "review_max_context_kib": (0, 1536), "review_max_read_kib": (0, 1024), "review_max_tool_calls": (1, 500)}
 
 
 UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_auto_export")
+
+# Seçenek listeli metin ayarlar. `review_evren_script` kapatma değeri "off" (boş değer anahtarı SİLER, varsayılan "read" geri gelir).
+UI_CONFIG_CHOICE = {"review_evren_script": ("read", "off")}
 
 
 def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -5050,6 +5055,10 @@ def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             return {"ok": False, "error": "mode must be one of " + ", ".join(sw.MODES)}
     elif field in UI_CONFIG_BOOL:
         value = "on" if str(value).strip().lower() in ("on", "1", "true", "yes") else "off"
+    elif field in UI_CONFIG_CHOICE:
+        value = str(value or "").strip().lower()
+        if value not in UI_CONFIG_CHOICE[field]:
+            return {"ok": False, "error": f"{field} must be one of " + ", ".join(UI_CONFIG_CHOICE[field])}
     elif field in UI_CONFIG_INT:
         try:
             n = int(value)
