@@ -1134,20 +1134,47 @@ def _recover_draft(path: str, text: str, learned: Sequence[str] = ()) -> Tuple[s
     """Evren modelinin `--allow-create-dir` ile yazdığı taslak (`rv.draft_path`): ham taslak diskte maskelenmeden
     kalmasın diye HER ZAMAN maskeli yeniden yazılır (`learned`: akışta DSN'den öğrenilmiş parolalar); stdout metni boşsa
     (zaman aşımı, kesik çıktı) taslak rapor olur. (metin, taslaktan_mı)."""
+    found = _recover_findings(path, learned)
     dp = rv.draft_path(path)
     try:
         if os.path.islink(dp):                   # model symlink bırakmış olamaz (create-only) ama okuma/yazma izlemesin
-            return text, False
+            raise OSError("symlink")
         with open(dp, encoding="utf-8", errors="replace") as f:
             raw = f.read()
     except OSError:
-        return text, False
+        # Tam taslak yok (koşu kopmuş/bütçe bitmiş): bulduğu anda yazdığı tek bulgu dosyaları rapor olur.
+        return (text, False) if text.strip() or not found.strip() else (found, True)
     red = rv.redact_secrets(raw, learned)
+    if not _REPORT_HEAD_RE.search(red) and found.strip():
+        red = found
     try:                                          # atomik: yarım yazılmış/boş taslak kalmaz (thread'e özel tmp adı)
         aj.atomic_write_text(dp, red)
     except OSError:
         pass
     return (text, False) if text.strip() else (red, bool(red.strip()))
+
+
+SCRIPT_CALLS_PER_SCRIPT = 7     # bir `run_script` turunda ortalama iç araç çağrısı (2026-11-04 deepseek ölçümü: 83/11 ≈ 7,5)
+
+
+def _recover_findings(path: str, learned: Sequence[str] = ()) -> str:
+    """`<ts>.fNN.md` bulgu dosyaları (model bulduğu anda yazar): her biri maskeli yeniden yazılır, birleşimi döner
+    ("" = yok). Aynı `R-n` iki dosyada geçerse `parse_findings` ikincisini atlar; numara çakışmasın diye her dosyanın
+    başlığı dosya sırasıyla yeniden numaralanmaz (model kendi numarasını verir)."""
+    parts: List[str] = []
+    for fp in rv.finding_paths(path):
+        try:
+            with open(fp, encoding="utf-8", errors="replace") as f:
+                red = rv.redact_secrets(f.read(), learned)
+        except OSError:
+            continue
+        try:
+            aj.atomic_write_text(fp, red)
+        except OSError:
+            pass
+        if red.strip():
+            parts.append(red.strip())
+    return "\n\n".join(parts)
 
 
 def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, error: str, learned: Sequence[str] = ()) -> None:
@@ -1223,11 +1250,25 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             sf = supports_flag or ucli_client.binary_supports_flag
             live_flags = [fl for fl in ("--stream", "--show-reasoning") if sf(binary, fl)]
             budget: List[str] = []
-            for flag, attr, dflt in (("--max-context-kib", "review_max_context_kib", 768),
-                                     ("--max-compactions", "review_max_compactions", 24),
+            # Bağlam ve okuma sayfası: 0 = ucli modelin `/models` kaydından (bağlam penceresi, çıkış sınırı) KENDİ türetir
+            # (Evren, OpenRouter, Groq, Anthropic hepsinde aynı yol); >0 = açık değer. Eski sabit 768 KiB, 32K'lık `auto`
+            # modelini taşırıyor, 1M'lik deepseek'i ise 476 KiB'de kırptırıp aynı dosyaları yeniden okutuyordu.
+            for flag, attr in (("--max-context-kib", "review_max_context_kib"), ("--max-read-kib", "review_max_read_kib")):
+                val = int(getattr(cfg, attr, 0) or 0)
+                if val > 0 and sf(binary, flag):
+                    budget += [flag, str(min(val, 1024) if flag == "--max-read-kib" else val)]
+            script_on = str(getattr(cfg, "review_evren_script", "") or "").strip().lower() == "read" \
+                and sf(binary, "--allow-script")
+            for flag, attr, dflt in (("--max-compactions", "review_max_compactions", 24),
                                      ("--max-tool-calls", "review_max_tool_calls", 30)):
                 if sf(binary, flag):
-                    budget += [flag, str(max(1, int(getattr(cfg, attr, dflt) or dflt)))]
+                    val = max(1, int(getattr(cfg, attr, dflt) or dflt))
+                    if flag == "--max-tool-calls" and script_on:
+                        # ucli `run_script`in İÇ çağrılarını da bu bütçeden düşer (2026-11-04 ölçüm: 17 üst düzey çağrı,
+                        # 11'i betik, bütçeye 83 yazıldı); maliyeti tur belirler (--max-steps/--max-wall-secs), iç okuma
+                        # yereldir. Ayar "model kaç kez araç ister" anlamında kalsın diye betik açıkken ölçülen oranla büyür.
+                        val *= SCRIPT_CALLS_PER_SCRIPT
+                    budget += [flag, str(val)]
             for flag, attr, dflt in (("--max-wall-secs", "review_max_wall_secs", 900),
                                      ("--request-timeout-secs", "review_request_timeout_secs", 300)):
                 val = getattr(cfg, attr, dflt)
@@ -1238,7 +1279,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             mot = 32768 if mot is None else int(mot)
             if mot > 0 and sf(binary, "--max-output-tokens"):    # 0 = kapalı; eski ikili bayrağı bilmiyorsa gitmez
                 budget += ["--max-output-tokens", str(mot)]
-            if str(getattr(cfg, "review_evren_script", "") or "").strip().lower() == "read" and sf(binary, "--allow-script"):
+            if script_on:
                 budget += ["--allow-script=read"]     # yalnız salt-okunur araçlar (yazma/fetch/MCP YOK): review'ın salt-okunur kuralı bozulmaz
             create_dir = ""
             rpath = rv.review_path(p.reviews, project, target, t0, rv.effort_for(cfg, target.mode, target))
@@ -2516,7 +2557,8 @@ def store_reports(cfg: Any) -> List[str]:
         if not _STORE_TS.match(ts):
             continue
         for name in sorted(files):
-            if not (name.startswith(ts) and name.endswith(STORE_SUFFIXES)) or name.endswith(".model.md") or ".err" in name:
+            if not (name.startswith(ts) and name.endswith(STORE_SUFFIXES)) or name.endswith(".model.md") or ".err" in name \
+                    or rv.FINDING_FILE_RE.search(name):
                 continue
             rel = os.path.relpath(os.path.join(dirpath, name), src_root)
             dst = os.path.join(dst_root, rel)

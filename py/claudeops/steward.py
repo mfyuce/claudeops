@@ -318,7 +318,8 @@ class Config:
     review_window_hours: int = 720     # bir (proje,hedef) çifti bu sürede tekrar koşmaz (720 = 30 gün); HEAD değişirse bu süre beklenmez (_same_head)
     review_slots: str = ""             # mod başına eşzamanlı koşu yuvası (`agy=5,evren=1,codex=1,copilot=0`; belirtilmeyen mod 1, 0 = mod kapalı); ""/off = TEK iş (eski davranış)
     review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
-    review_max_context_kib: int = 768  # Evren: `--max-context-kib` (ucli varsayılanı 256 uzun review'u düşürüyordu)
+    review_max_context_kib: int = 0    # Evren/ucli: `--max-context-kib`; 0 = ucli modelin `/models` kaydından türetir (2026-11-04; eskiden sabit 768: 32K'lık modeli taşırıyor, 1M'likte erken kırpıyordu)
+    review_max_read_kib: int = 0       # Evren/ucli: `--max-read-kib` (okuma sayfası); 0 = ucli bağlamın 1/16'sı (32-256 KiB)
     review_max_compactions: int = 24   # Evren: `--max-compactions` (ucli varsayılanı 8)
     review_agy_allow: str = ""         # agy: izole HOME'da izinli salt-okunur komutlar ("" = ls,grep,head,tail,wc; "off" = izolasyon kapalı)
     review_agy_jail: bool = True       # agy: `bwrap` salt-okunur kafes + --dangerously-skip-permissions (bwrap yoksa/False ise izin listesi)
@@ -345,7 +346,7 @@ class Config:
     review_max_wall_secs: int = 900   # Evren: `--max-wall-secs` (ucli kendi duvar sınırı; timeout 20 dk iken 900 = kalan süreyle özet verir, partial kalmaz); 0 = bayrak gitmez
     review_max_output_tokens: int = 32768   # Evren: `--max-output-tokens` (ucli varsayılanı 4096; reasoning modelleri raporu yazamadan düşüyordu, TODO 1098); 0 = bayrak gitmez
     review_request_timeout_secs: int = 300   # Evren: `--request-timeout-secs` (tek model isteği); 0 = bayrak gitmez
-    review_evren_script: str = ""      # Evren: "read" -> `--allow-script=read` (Lua ile SALT-OKUNUR araçları tek turda birleştir; tur bütçesi için). "" = kapalı
+    review_evren_script: str = "read"  # Evren: "read" -> `--allow-script=read` (Lua ile SALT-OKUNUR araçları tek turda birleştir; tur bütçesi için); sahip 2026-11-04: varsayılan AÇIK, "off" kapatır
     review_max_tool_calls: int = 30    # Evren: `--max-tool-calls` (ucli varsayılanı 64; ölçüm 2026-10-26 copsdev: 14 ile bütçe bitip bulgu yok, 30 ile 363 sn/6 bulgu; sınırsız 1453 sn)
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
     review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)

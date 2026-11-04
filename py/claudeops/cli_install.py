@@ -203,17 +203,13 @@ def _seed_claude_tui_default(lang: str = "tr") -> None:
     if "tui" in data:
         return
     data["tui"] = "default"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = path + ".tmp"
+    # Var olan dosyanın izni korunur (0600 kalır), yeni dosya 0600; tmp adı süreç/thread'e özel, fsync'li. Eskiden
+    # `open(tmp, "w")` + `os.replace` izni umask'a (0664) düşürüyordu (review 2026-11-04, deepseek R-1/R-03).
+    from .atomic_json import atomic_write_json
     try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp_path, path)
+        atomic_write_json(path, data, mode=None if os.path.exists(path) else 0o600)
     except OSError:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+        pass
 
 
 def install_cli(cli_name: str, lang: str = "tr") -> Dict[str, Any]:

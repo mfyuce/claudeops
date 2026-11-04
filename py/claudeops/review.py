@@ -317,10 +317,16 @@ def build_review_prompt(proj: str, cwd: str, lang: str = "tr") -> str:
                 "they would bias you and may contain masked secrets. Judge the code itself.\n"
                 "Find real defects: correctness bugs, data loss, security problems, races, broken error handling, "
                 "stale docs that mislead. Skip style nits. Verify each claim in the code before reporting it.\n"
+                "Read files whole, in large pages (read_file returns up to 1000 lines a call; read_files several "
+                "files at once), not in small windows.\n"
+                "Before reporting a finding, read the whole function it is in and the code that calls or guards it; "
+                "if a guard, comment or caller already handles the case, drop the finding.\n"
                 "Report each finding as a heading line exactly like\n"
                 "## R-1 | P2 | path/to/file.py:123 | Short title\n"
                 "(severity P1 = critical, P2 = important, P3 = minor; numbering R-1, R-2, ...) followed by a short "
-                "body: what is wrong, why, how to reproduce or check, suggested fix. No findings: write 'NO FINDINGS'.")
+                "body: what is wrong, why, how to reproduce or check, suggested fix, and a last line "
+                "`Verified: <file:first-last line>` naming the lines you read to confirm it. "
+                "No findings: write 'NO FINDINGS'.")
     return (f"\"{proj}\" projesi için bağımsız bir kod gözden geçiricisisin (çalışma dizini: {cwd}).\n"
             "Bu SALT OKUNUR bir incelemedir: hiçbir dosyayı oluşturma, değiştirme, taşıma ya da silme; kurulum "
             "çalıştırma; commit/push yapma; ağa çıkma.\n"
@@ -330,10 +336,15 @@ def build_review_prompt(proj: str, cwd: str, lang: str = "tr") -> str:
             "yapar ve maskelenmiş gizli değer içerebilir. Yalnız kodun kendisini değerlendir.\n"
             "Gerçek kusurları bul: doğruluk hataları, veri kaybı, güvenlik, yarış durumu, bozuk hata yönetimi, "
             "yanıltan eski belgeler. Biçim önerilerini atla. Her iddiayı raporlamadan önce kodda doğrula.\n"
+            "Dosyaları küçük pencerelerle değil BÜYÜK parçalarla oku (read_file çağrı başına 1000 satıra kadar "
+            "döndürür; read_files birden çok dosyayı tek çağrıda okur).\n"
+            "Bir bulguyu yazmadan önce içinde olduğu fonksiyonu baştan sona ve onu çağıran ya da koruyan kodu oku; "
+            "bir koruma, açıklama ya da çağıran durumu zaten ele alıyorsa bulguyu bırak.\n"
             "Her bulguyu tam şu biçimde bir başlık satırıyla ver:\n"
             "## R-1 | P2 | yol/dosya.py:123 | Kısa başlık\n"
             "(önem P1 = kritik, P2 = önemli, P3 = küçük; numaralama R-1, R-2, ...) ve altında kısa gövde: ne yanlış, "
-            "neden, nasıl doğrulanır, önerilen düzeltme. Bulgu yoksa 'BULGU YOK' yaz.")
+            "neden, nasıl doğrulanır, önerilen düzeltme ve son satırda doğrulamak için okuduğun satırlar: "
+            "`Doğrulama: <dosya:ilk-son satır>`. Bulgu yoksa 'BULGU YOK' yaz.")
 
 
 _FINDING_RE = re.compile(r"^#{2,4}\s*(R-\d+)\s*\|\s*(P[123])\s*\|\s*(.*?)\s*\|\s*(.+?)\s*$")
@@ -516,15 +527,42 @@ def error_path(md: str) -> str:
     return (md[:-3] if md.endswith(".md") else md) + ".error.txt"
 
 
+FINDING_FILE_RE = re.compile(r"\.f(\d{2})\.md$")
+
+
+def finding_path(md: str, n: int) -> str:
+    """Modelin bulduğu anda yazdığı TEK bulgu dosyası: raporun yanında `<ts>.fNN.md` (2026-11-04: üç uzun Evren
+    koşusu ~3 saat sonra akış kopmasıyla öldü, bulgular sonda yazılacağı için hepsi gitti)."""
+    return (md[:-3] if md.endswith(".md") else md) + f".f{n:02d}.md"
+
+
+def finding_paths(md: str) -> List[str]:
+    """Raporun yanındaki `<ts>.fNN.md` bulgu dosyaları, sıra numarasına göre (symlink'ler atlanır)."""
+    stem = os.path.basename(md[:-3] if md.endswith(".md") else md)
+    d = os.path.dirname(md)
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return []
+    out = [os.path.join(d, n) for n in names if n.startswith(stem + ".") and FINDING_FILE_RE.search(n)]
+    return sorted(p for p in out if not os.path.islink(p))
+
+
 def draft_prompt_suffix(draft: str, lang: str = "tr") -> str:
-    """Evren istemine eklenen: raporu create-only `write_file` ile TEK SEFERDE `draft` yoluna da yaz."""
+    """Evren istemine eklenen: her bulguyu BULDUĞU ANDA ayrı create-only dosyaya (`<ts>.fNN.md`), sonda tam raporu
+    `draft` yoluna TEK SEFERDE yaz. Koşu yarıda kopsa da yazılmış bulgular kalır (`finding_paths`)."""
+    first = finding_path(draft[:-len(".model.md")] + ".md" if draft.endswith(".model.md") else draft, 1)
+    pattern = first[:-len("01.md")] + "NN.md"
     if lang == "en":
-        return (f"\nAdditionally, as soon as your findings are ready, write the SAME report once with write_file to the "
-                f"absolute path {draft} (create-only: it fails if the file exists, so write it exactly once, never "
-                "partially). You may not write anywhere else. Then also reply with the report.")
-    return (f"\nAyrıca bulgularını hazırlar hazırlamaz AYNI raporu write_file ile {draft} mutlak yoluna TEK SEFERDE yaz "
-            "(yalnız yeni dosya: varsa hata verir, o yüzden tam bir kez yaz, parça parça değil). Başka hiçbir yere "
-            "yazamazsın. Sonra raporu yanıt olarak da ver.")
+        return (f"\nWrite each finding THE MOMENT you have verified it, with write_file, to its own new file {pattern} "
+                f"(NN = 01, 02, ... in order; the first is {first} ; one finding per file, heading line included). Do not "
+                "keep findings for the end: a run can be cut off at any time. When you are done, write the whole report "
+                f"once to the absolute path {draft} (create-only: it fails if the file exists, so write it exactly "
+                "once). You may not write anywhere else. Then also reply with the report.")
+    return (f"\nHer bulguyu DOĞRULADIĞIN ANDA write_file ile kendi yeni dosyasına yaz: {pattern} (NN = 01, 02, ... "
+            f"sırayla; ilki {first} ; her dosyada tek bulgu, başlık satırı dahil). Bulguları sona saklama: koşu her an "
+            f"kesilebilir. Bitince tam raporu {draft} mutlak yoluna TEK SEFERDE yaz (yalnız yeni dosya: varsa hata "
+            "verir, o yüzden tam bir kez yaz). Başka hiçbir yere yazamazsın. Sonra raporu yanıt olarak da ver.")
 
 
 # ── günlük kota engeli (Evren: hesap geneli 15M/gün, UTC gece yarısı sıfırlanır) ───────────────

@@ -153,15 +153,18 @@ class TestRunWritesIo(Base):
     def test_budget_flags_gated_and_configurable(self):
         self.ev()
         a = FakeProc.instances[0].argv
-        self.assertEqual(a[a.index("--max-context-kib") + 1], "768")
+        self.assertNotIn("--max-context-kib", a)        # 0 = ucli modelin /models kaydından türetir
+        self.assertNotIn("--max-read-kib", a)
         self.assertEqual(a[a.index("--max-compactions") + 1], "24")
         self.assertEqual(a[a.index("--max-io-mib") + 1], "2048")
         self.assertNotIn("--session", a)
         FakeProc.instances = []
         self.cfg.review_max_context_kib = 1024
+        self.cfg.review_max_read_kib = 4096                # ucli üst sınırı 1024
         self.ev(supports_flag=lambda b, f: f != "--max-compactions")
         a = FakeProc.instances[0].argv
         self.assertEqual(a[a.index("--max-context-kib") + 1], "1024")
+        self.assertEqual(a[a.index("--max-read-kib") + 1], "1024")
         self.assertNotIn("--max-compactions", a)
 
     def test_create_dir_flag_and_draft_recovery(self):
@@ -186,6 +189,25 @@ class TestRunWritesIo(Base):
         self.assertNotIn(SECRET, open(res["file"]).read())
         self.assertEqual(len(rv.parse_findings(open(res["file"]).read())), 1)
         self.assertNotEqual(self.pair(EV)["status"], "running")
+
+    def test_findings_written_as_found_survive_a_cut_run(self):
+        # Koşu kopar (rc=1, stdout boş, tam taslak yok): bulduğu anda yazdığı <ts>.fNN.md dosyaları rapor olur, maskelenir
+        def popen(argv, **k):
+            prompt = argv[-1]
+            import re as _re
+            first = _re.search(r"(/\S+?\.f01\.md)", prompt).group(1)
+            self.assertIn(".fNN.md", prompt)
+            with open(first, "w", encoding="utf-8") as f:
+                f.write("## R-1 | P2 | a.py:1 | bir\ngövde " + SECRET + "\nDoğrulama: a.py:1-20\n")
+            with open(first.replace(".f01.md", ".f02.md"), "w", encoding="utf-8") as f:
+                f.write("## R-2 | P3 | b.py:5 | iki\ngövde\n")
+            return FakeProc(argv, out="", err="Model stream reported an error: Akış yarıda kesildi", rc=1, **k)
+        res = self.ev(popen=popen)
+        txt = open(res["file"]).read()
+        self.assertEqual([f["ref"] for f in rv.parse_findings(txt)], ["R-1", "R-2"])
+        self.assertNotIn(SECRET, txt)
+        for fp in rv.finding_paths(res["file"]):
+            self.assertNotIn(SECRET, open(fp).read())          # ham bulgu dosyası da maskelenir
 
     def test_streamed_report_recovery_on_empty_stdout(self):
         # stdout boş (zaman aşımı/çökme) ama rapor akışta (--stream delta) geldi: son R-1 başlığından itibaren kurtarılır
@@ -279,15 +301,18 @@ class TestRunWritesIo(Base):
         self.ev()
         self.assertEqual(FakeProc.instances[0].argv[FakeProc.instances[0].argv.index("--max-tool-calls") + 1], "40")
 
-    def test_script_read_flag_is_opt_in_and_read_only(self):
+    def test_script_read_flag_is_on_by_default_and_read_only(self):
+        self.cfg.review_evren_script = "off"
         self.ev()
-        self.assertFalse([x for x in FakeProc.instances[0].argv if x.startswith("--allow-script")])   # varsayılan KAPALI
+        self.assertFalse([x for x in FakeProc.instances[0].argv if x.startswith("--allow-script")])   # "off" kapatır
         FakeProc.instances = []
-        self.cfg.review_evren_script = "read"
+        self.cfg.review_evren_script = sw.Config().review_evren_script     # varsayılan AÇIK (sahip 2026-11-04)
         self.ev()
         a = FakeProc.instances[0].argv
         self.assertIn("--allow-script=read", a)
         self.assertNotIn("--allow-script=full", a)
+        calls = int(a[a.index("--max-tool-calls") + 1])          # iç betik çağrıları da sayıldığı için bütçe büyür
+        self.assertEqual(calls, int(getattr(self.cfg, "review_max_tool_calls", 30) or 30) * wr.SCRIPT_CALLS_PER_SCRIPT)
         self.assertFalse([x for x in a if x.startswith("--allow-edit") or x.startswith("--allow-fetch") or x == "--allow-exec"])
         FakeProc.instances = []
         self.ev(supports_flag=lambda b, f: f != "--allow-script")          # eski ikili: bayrak gitmez
