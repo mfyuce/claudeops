@@ -67,7 +67,11 @@ class ResolveTests(unittest.TestCase):
         proc = mock.Mock()
         proc.poll.return_value = None
         proc.pid = 4242
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
         with mock.patch.object(rd, "uzakgoz_config", return_value=cfg), \
+                mock.patch.object(rd, "TOKEN_FILE", os.path.join(tmp.name, "t")), \
+                mock.patch.object(rd, "_token", None), mock.patch.object(rd, "_port", None), \
                 mock.patch.object(rd.subprocess, "run") as run, \
                 mock.patch.object(rd.subprocess, "Popen", return_value=proc) as popen, \
                 mock.patch.object(rd, "_port_open", return_value=True), \

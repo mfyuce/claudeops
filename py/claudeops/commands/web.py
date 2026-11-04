@@ -3859,11 +3859,12 @@ def _serve_desktop_viewer(handler: "_Handler") -> None:
     Daemon yalnız 127.0.0.1'e bağlı; token kontrolü `do_GET`'teki `_authorized()` ile burada (çağrıdan önce) yapılır."""
     import urllib.request
     port = remote_desktop.current_port()
-    if port is None:
+    token = remote_desktop.current_token()
+    if port is None or not token:
         handler._json({"ok": False, "error": "remote desktop daemon calismiyor"}, status=503)
         return
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/viewer.js", timeout=5.0) as r:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}" + remote_desktop.rewrite_path_with_token("/viewer.js", token), timeout=5.0) as r:
             body = r.read(2_000_000)
     except OSError as e:
         diag_log("desktop_viewer_unreachable", error=str(e))
@@ -3904,7 +3905,8 @@ def _proxy_desktop_ws(handler: "_Handler") -> None:
     frame'i gibi) sessizce kaybedebilirdi.
     """
     port = remote_desktop.current_port()
-    if port is None:
+    token = remote_desktop.current_token()
+    if port is None or not token:
         handler.send_response(503)
         handler.send_header("Content-Type", "text/plain; charset=utf-8")
         body = b"remote desktop daemon calismiyor - once /api/desktop/start"
@@ -3924,8 +3926,10 @@ def _proxy_desktop_ws(handler: "_Handler") -> None:
         return
 
     try:
-        request_lines = [f"{handler.command} {handler.path} HTTP/1.1\r\n"]
+        request_lines = [f"{handler.command} {remote_desktop.rewrite_path_with_token(handler.path, token)} HTTP/1.1\r\n"]
         for k, v in handler.headers.items():
+            if k.lower() in ("authorization", "cookie"):
+                continue    # panel kimlik bilgisi daemon'a ulaşmasın
             request_lines.append(f"{k}: {v}\r\n")
         request_lines.append("\r\n")
         backend.sendall("".join(request_lines).encode("iso-8859-1"))

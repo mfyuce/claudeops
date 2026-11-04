@@ -14,11 +14,10 @@ kurulu olmayan `libpipewire-0.3` dev paketini build-time ZORUNLU kılıyordu;
 bu makine X11 (Wayland portal'a hiç ihtiyaç yok), `x11rb`'ye geçilince o
 sorun tamamen ortadan kalktı.
 
-Auth: daemon'ın KENDİSİ auth yapmaz — SADECE 127.0.0.1'e bind olur, dışarıdan
-hiç erişilemez. Token kontrolü zaten `web.py`'nin proxy route'unda (panelin
-TEK auth mekanizması, `_authorized()`) yapılıyor, PROXY token'ı doğruladıktan
-SONRA bu daemon'a bağlanıyor — daemon'ın token/HTTP header ayrıştırmayı hiç
-bilmesine gerek yok.
+Auth: daemon `UZAKGOZ_TOKEN` ortam değişkeniyle (start() üretir, argv'ye girmez) bağlantıda `?token=` ister;
+127.0.0.1'e bind olsa da çok kullanıcılı makinede başka yerel kullanıcılar bağlanamasın diye. Panelin kendi
+auth'u `web.py` proxy route'unda (`_authorized()`) yapılır; proxy istemcinin token/ticket anahtarlarını silip
+daemon token'ını ekler (`rewrite_path_with_token`), panel token'ı daemon'a ulaşmaz.
 
 v1 (ilk sürüm) view-only'ydu. v2 (2026-09-04, aynı gün) `enigo` ile mouse/
 klavye/scroll enjeksiyonunu EKLEDİ (Rust tarafı + frontend `DesktopTab.tsx`
@@ -41,6 +40,7 @@ kesin, ambiguity yok.
 from __future__ import annotations
 import json
 import os
+import secrets
 import signal
 import socket
 import subprocess
@@ -74,7 +74,13 @@ PORT_WAIT_SECONDS = 5.0
 # pkill YOK (CLAUDE.md), sadece diskten okunan tam PID.
 PID_FILE = os.path.join(CLAUDEOPS_DIR, "remote_desktop.pid")
 
+# Daemon'a özel oturum token'ı (UZAKGOZ_TOKEN): çok kullanıcılı makinede başka yerel kullanıcıların
+# 127.0.0.1 portuna doğrudan bağlanmasını engeller. Yalnız ortam değişkeniyle verilir (argv/log'a GİRMEZ),
+# 0600 dosyada restart sonrası sahiplenme için saklanır.
+TOKEN_FILE = os.path.join(CLAUDEOPS_DIR, "remote_desktop.token")
+
 _lock = threading.Lock()
+_token: Optional[str] = None
 _proc: Optional[subprocess.Popen] = None
 _port: Optional[int] = None
 _adopted_pid: Optional[int] = None  # spawn etmediğimiz ama PID_FILE'dan tanıdığımız canlı orphan
@@ -130,18 +136,74 @@ def _clear_pid_file() -> None:
         pass
 
 
+def _write_token_file(token: str) -> None:
+    """Token'ı 0600 ile yazar (oluşturulurken bile başkaları okuyamaz). Yazılamazsa OSError yükselir."""
+    tmp = TOKEN_FILE + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(token)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, TOKEN_FILE)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _read_token_file() -> Optional[str]:
+    try:
+        with open(TOKEN_FILE, encoding="utf-8") as f:
+            t = f.read().strip()
+    except OSError:
+        return None
+    return t or None
+
+
+def _clear_token() -> None:
+    global _token
+    _token = None
+    try:
+        os.remove(TOKEN_FILE)
+    except OSError:
+        pass
+
+
+def _kill_pid(pid: int) -> None:
+    """PID-exact sonlandırma (pattern-match YOK): önce SIGTERM, 5 sn sonra hâlâ bizim ikilimizse SIGKILL."""
+    if not _is_screenshare(pid):
+        return      # PID yeniden kullanılmış: başka sürece sinyal gönderme
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if not _pid_alive(pid):
+            return
+        time.sleep(0.1)
+    if _is_screenshare(pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
 def _adopt_if_orphaned() -> None:
     """`_lock` TUTULUYORKEN çağrılmalı. Elimizde ne canlı bir Popen ne de zaten
     adopt edilmiş bir PID varsa, PID_FILE'daki kaydı dene: PID hâlâ yaşıyor VE
     o port hâlâ açıksa bu bizim eski child'ımız (restart'ı atlatmış) — adopt
     et. Değilse (biri öldü/temizlendi) dosyayı sil, bir daha denenmesin."""
-    global _adopted_pid, _port
+    global _adopted_pid, _port, _token
     if _adopted_pid is not None:
         # Daha önce adopt ettiğimiz orphan öldü ya da PID başka sürece geçti: bayat kaydı bırak (yoksa `status` hep
         # "çalışıyor" der ve `stop` yeniden kullanılmış bir PID'ye sinyal gönderirdi).
         if not (_pid_alive(_adopted_pid) and _is_screenshare(_adopted_pid)):
             _adopted_pid, _port = None, None
             _clear_pid_file()
+            _clear_token()
         return
     if _proc is not None:
         return
@@ -152,7 +214,14 @@ def _adopt_if_orphaned() -> None:
     except (OSError, ValueError):
         return
     if _pid_alive(pid) and _is_screenshare(pid) and _port_open(port):
-        _adopted_pid, _port = pid, port
+        tok = _read_token_file()
+        if tok is None:
+            # Token'sız eski yetim: herhangi bir yerel kullanıcı bağlanabilir. Sahiplenme, durdur
+            # (start() sonra tokenla yeniden başlatır).
+            _kill_pid(pid)
+            _clear_pid_file()
+            return
+        _adopted_pid, _port, _token = pid, port, tok
     else:
         _clear_pid_file()
 
@@ -186,7 +255,7 @@ def start(port: Optional[int] = None) -> dict:
     kadar kısa bekle. Tüm bu süre boyunca lock TUTULUR — eşzamanlı ikinci bir
     `start()` çağrısı (ör. çift tık) paralel bir build/spawn YARIŞMAZ, sırada
     bekler (bu, tek-admin/düşük-trafikli bir özellik için basit ve yeterli)."""
-    global _proc, _port, _adopted_pid
+    global _proc, _port, _adopted_pid, _token
     cfg = uzakgoz_config()
     port = port or cfg["port"] or DEFAULT_PORT
     with _lock:
@@ -217,19 +286,27 @@ def start(port: Optional[int] = None) -> dict:
         if binary is None or not binary.exists():
             return {"ok": False, "error": f"binary bulunamadı ({binary})"}
 
+        token = secrets.token_hex(32)
+        try:
+            _write_token_file(token)
+        except OSError as e:
+            return {"ok": False, "error": f"token dosyası yazılamadı: {e.__class__.__name__}"}
         proc = subprocess.Popen(
             # `--input`: uzakgoz 0.3.0'dan beri fare/klavye enjeksiyonu varsayılan KAPALI (aksi halde panelde "Kontrolü Al"
             # sessizce çalışmaz); panelin kendi kapısı (Kontrolü Al düğmesi) zaten girdiyi ayrıca açar. Eski ikili fazla
             # argümanı yok sayar (yalnız PORT'u okur).
+            # Token YALNIZ ortamda (argv başka kullanıcılara /proc'tan görünür).
             [str(binary), str(port), "--input"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+            env={**os.environ, "UZAKGOZ_TOKEN": token},
         )
-        _proc, _port = proc, port
+        _proc, _port, _token = proc, port, token
 
         deadline = time.monotonic() + PORT_WAIT_SECONDS
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 _proc, _port = None, None
+                _clear_token()
                 return {"ok": False, "error": f"uzakgoz hemen çöktü (exit={proc.returncode})"}
             if _port_open(port):
                 _write_pid_file(proc.pid, port)
@@ -237,6 +314,7 @@ def start(port: Optional[int] = None) -> dict:
             time.sleep(0.1)
         # Zaman aşımı: süreç sızmasın, durum "çalışıyor" kalmasın
         _proc, _port = None, None
+        _clear_token()
         try:
             proc.terminate()
             try:
@@ -258,6 +336,7 @@ def stop() -> dict:
         proc, adopted_pid = _proc, _adopted_pid
         _proc, _port, _adopted_pid = None, None, None
     _clear_pid_file()
+    _clear_token()
     if proc is not None:
         proc.terminate()
         try:
@@ -266,23 +345,26 @@ def stop() -> dict:
             proc.kill()
         return {"ok": True}
     # Adopted orphan — hiç Popen handle'ımız yok, PID-exact sinyal (pattern-match YOK, CLAUDE.md).
-    if not _is_screenshare(adopted_pid):
-        return {"ok": True}      # PID artık bizim ikilimiz değil (yeniden kullanıldı): başka sürece sinyal gönderme
-    try:
-        os.kill(adopted_pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return {"ok": True}
-    deadline = time.monotonic() + 5.0
-    while time.monotonic() < deadline:
-        if not _pid_alive(adopted_pid):
-            return {"ok": True}
-        time.sleep(0.1)
-    if _is_screenshare(adopted_pid):
-        try:
-            os.kill(adopted_pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+    _kill_pid(adopted_pid)
     return {"ok": True}
+
+
+def current_token() -> Optional[str]:
+    """Çalışan daemon'un token'ı (yoksa None). Yalnız web.py'nin daemon'a giden istekleri için; istemciye ASLA verilmez."""
+    with _lock:
+        _adopt_if_orphaned()
+        if (_proc is not None and _proc.poll() is None) or _adopted_pid is not None:
+            return _token
+        return None
+
+
+def rewrite_path_with_token(path: str, token: str) -> str:
+    """İstemcinin `token`/`ticket` sorgu anahtarlarını SİL (panel token'ı daemon'a ulaşmasın), `token=<daemon token>` ekle."""
+    from urllib.parse import urlsplit, urlencode, parse_qsl
+    sp = urlsplit(path)
+    q = [(k, v) for k, v in parse_qsl(sp.query, keep_blank_values=True) if k.lower() not in ("token", "ticket")]
+    q.append(("token", token))
+    return sp._replace(query=urlencode(q)).geturl()
 
 
 def current_port() -> Optional[int]:

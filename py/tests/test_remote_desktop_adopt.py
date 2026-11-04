@@ -18,7 +18,11 @@ class AdoptRevalidateTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.pidfile = os.path.join(self.tmp, "rd.pid")
-        for p in (mock.patch.object(rd, "PID_FILE", self.pidfile), mock.patch.object(rd, "_proc", None),
+        self.tokfile = os.path.join(self.tmp, "rd.token")
+        with open(self.tokfile, "w") as f:
+            f.write("t" * 64)
+        for p in (mock.patch.object(rd, "PID_FILE", self.pidfile), mock.patch.object(rd, "TOKEN_FILE", self.tokfile),
+                  mock.patch.object(rd, "_token", None), mock.patch.object(rd, "_proc", None),
                   mock.patch.object(rd, "_port", None), mock.patch.object(rd, "_adopted_pid", None)):
             p.start()
             self.addCleanup(p.stop)

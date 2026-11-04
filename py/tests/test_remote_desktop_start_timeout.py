@@ -25,6 +25,8 @@ class StartTimeoutTest(unittest.TestCase):
             with mock.patch.object(rd, "uzakgoz_config", lambda: {"port": 0, "bin": str(fake_bin)}), \
                  mock.patch.object(rd, "_adopt_if_orphaned", lambda: None), \
                  mock.patch.object(rd, "_port_open", lambda p: False), \
+                 mock.patch.object(rd, "PID_FILE", os.path.join(d, "rd.pid")), \
+                 mock.patch.object(rd, "TOKEN_FILE", os.path.join(d, "rd.token")), \
                  mock.patch.object(rd, "PORT_WAIT_SECONDS", 0.2), \
                  mock.patch.object(rd.subprocess, "Popen", lambda *a, **k: proc):
                 rd._proc = None
