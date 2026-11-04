@@ -4352,7 +4352,10 @@ class _Handler(BaseHTTPRequestHandler):
             status = 409 if code == "exists" else 400
             self._json(_err(lang, f"files_{code}", name=name, filename=filename), status=status)
             return
-        werr = files_mod.write_upload(dest, self.rfile, length, _UPLOAD_CHUNK)
+        werr = files_mod.write_upload(dest, self.rfile, length, _UPLOAD_CHUNK, overwrite=overwrite)
+        if werr == "exists":
+            self._json(_err(lang, "files_exists", name=name, filename=filename), status=409)
+            return
         if werr == "incomplete":
             self._json(_err(lang, "files_upload_incomplete", name=name, filename=filename), status=400)
             return

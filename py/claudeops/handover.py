@@ -306,15 +306,20 @@ def handover_faz1(
     batch_size + batch_delay: rate-limit önlemi ([[mass-faz1-ratelimit-stuck]]) — sadece
     batch modda anlamlı (tek/birkaç isimli çağrıda batch_size'a nadiren ulaşılır).
     """
-    # Ho başında timestamp yaz — needs_ho baseline karşılaştırması için (bash _handover_stamp)
-    from .paths import STATE_DIR
-    import datetime
-    try:
-        ts_file = STATE_DIR / "last-handover.ts"
-        ts_file.parent.mkdir(parents=True, exist_ok=True)
-        ts_file.write_text(datetime.datetime.now().astimezone().isoformat())
-    except Exception:
-        pass
+    # Ho başında timestamp yaz — needs_ho baseline karşılaştırması için (bash _handover_stamp).
+    # dry-run YAZMAZ (önizleme baseline'ı kaydırıp sonraki gerçek batch'te commit'leri "eski" gösteriyordu;
+    # review 2026-11-04 E3/4A R-02) ve yazım atomik (yarım dosya `ci > ""` ile her commit'i yeni sayardı; 4B R-7).
+    if not dry_run:
+        from .paths import STATE_DIR
+        import datetime
+        try:
+            ts_file = STATE_DIR / "last-handover.ts"
+            ts_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = ts_file.with_name(f".last-handover.ts.{os.getpid()}.tmp")
+            tmp.write_text(datetime.datetime.now().astimezone().isoformat())
+            os.replace(tmp, ts_file)
+        except Exception:
+            pass
 
     sessions = find_sessions(measure_cpu=False)
     summary = Faz1Summary()
@@ -388,9 +393,14 @@ def handover_faz1(
         # needs_ho kontrolü — SADECE batch modda (names verilmemişse). Tek-hedef seçimi
         # zaten "bunu şimdi yap" demektir.
         if not names:
-            jsonl = jsonl_path_for(session.cwd, session.sid)
+            # sid yoksa `jsonl_path_for` cwd'nin EN YENİ transkriptine düşer; aynı cwd'de başka canlı oturum varsa
+            # o komşunun RFH'si bu oturumu yanlışlıkla "ho gerekmez" diye atlatabilir (review 2026-11-04 E6):
+            # belirsizse atlama, ho'yu yap.
+            shared_cwd = not session.sid and sum(1 for s in sessions if s.cwd == session.cwd) > 1
+            jsonl = None if shared_cwd else jsonl_path_for(session.cwd, session.sid)
             jsonl_path = str(jsonl) if jsonl else None
-            if not dry_run and not needs_ho(session.pid_str if hasattr(session, 'pid_str') else str(session.pid), session.cwd, jsonl_path):
+            # needs_ho salt okur: dry-run da aynı kararı göstersin (eskiden önizleme atlanacakları da "gönderilecekti" diyordu, E11)
+            if not shared_cwd and not needs_ho(session.pid_str if hasattr(session, 'pid_str') else str(session.pid), session.cwd, jsonl_path):
                 print(" skip (needs_ho=False: RFH var, repo temiz, yeni commit yok)")
                 summary.results.append(Faz1Result(session.name, "skipped-no-ho"))
                 continue

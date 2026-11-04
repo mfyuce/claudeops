@@ -24,7 +24,7 @@ class WriteTextFsyncTest(unittest.TestCase):
                     mock.patch("os.replace", side_effect=lambda a, b: (order.append("replace"), real_replace(a, b))[1]):
                 res = files.write_text(object(), target, "yeni")
             self.assertEqual(res, {"ok": True})
-            self.assertEqual(order, ["fsync", "replace"])
+            self.assertEqual(order, ["fsync", "replace", "fsync"])   # son fsync = dizin (rename kalıcı)
             with open(target, encoding="utf-8") as f:
                 self.assertEqual(f.read(), "yeni")
             self.assertEqual([n for n in os.listdir(real_d) if n != "a.txt"], [])

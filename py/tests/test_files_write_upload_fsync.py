@@ -19,7 +19,7 @@ class WriteUploadFsyncTest(unittest.TestCase):
             with mock.patch("os.fsync", side_effect=lambda fd: (order.append("fsync"), real_fsync(fd))[1]), \
                     mock.patch("os.replace", side_effect=lambda a, b: (order.append("replace"), real_replace(a, b))[1]):
                 self.assertIsNone(files.write_upload(dest, io.BytesIO(b"yeni"), 4, 2))
-            self.assertEqual(order, ["fsync", "replace"])
+            self.assertEqual(order, ["fsync", "replace", "fsync"])   # son fsync = dizin (rename kalıcı)
             self.assertEqual(open(dest, "rb").read(), b"yeni")
             self.assertEqual(files.write_upload(dest, io.BytesIO(b"x"), 4, 2), "incomplete")   # yarım gövde
             self.assertEqual(open(dest, "rb").read(), b"yeni")                                 # hedef bozulmadı

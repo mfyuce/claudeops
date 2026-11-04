@@ -15,6 +15,7 @@ Path-traversal/arbitrary-file-read'e karşı TEK kapı noktası:
 `list_dir`/`resolve_download` çağrısında zorunlu, caller'ın kendisi
 atlayamaz/unutamaz (fonksiyonların KENDİSİ doğruluyor)."""
 from __future__ import annotations
+import errno
 import os
 import stat
 import shutil
@@ -173,10 +174,26 @@ def resolve_upload_target(s: Session, dir_path: Optional[str], filename: str,
     return dest, None
 
 
-def write_upload(dest: str, rfile, length: int, chunk_size: int) -> Optional[str]:
+def _fsync_dir(path: str) -> None:
+    """rename/link'in kendisi de kalıcı olsun (güç kesilirse dizin girdisi kaybolmasın); başarısızlık önemsiz."""
+    try:
+        dfd = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(dfd)
+    except OSError:
+        pass
+    finally:
+        os.close(dfd)
+
+
+def write_upload(dest: str, rfile, length: int, chunk_size: int, overwrite: bool = True) -> Optional[str]:
     """Gövdeyi `dest`e yazar: aynı dizinde O_EXCL|O_NOFOLLOW geçici dosyaya, TAM `length` bayt geldiyse `os.replace`.
     Hata kodu ya da None. Yarım gövde (istemci koptu) `incomplete`: geçici dosya silinir, mevcut hedef bozulmaz;
-    `os.replace` symlink'i izlemez (hedef symlink ise bağın kendisi değişir, kök dışına yazılmaz)."""
+    `os.replace` symlink'i izlemez (hedef symlink ise bağın kendisi değişir, kök dışına yazılmaz).
+    `overwrite=False`: hedef `os.link` ile ATOMİK oluşturulur; arada biri aynı adla dosya yazdıysa ezmez, `exists` döner
+    (`resolve_upload_target`in varlık denetimi ile yazım arası yarış, review 2026-11-04 E13)."""
     tmp = os.path.join(os.path.dirname(dest), f".{os.path.basename(dest)}.upload-{os.getpid()}-{threading.get_ident()}")
     try:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
@@ -199,13 +216,30 @@ def write_upload(dest: str, rfile, length: int, chunk_size: int) -> Optional[str
                 os.chmod(tmp, os.stat(dest).st_mode & 0o7777)
         except OSError:
             pass
-        os.replace(tmp, dest)
+        if overwrite:
+            os.replace(tmp, dest)
+        else:
+            try:
+                os.link(tmp, dest)
+                os.unlink(tmp)
+            except FileExistsError:
+                os.unlink(tmp)
+                return "exists"
+            except OSError as le:
+                if le.errno not in (errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV, errno.EMLINK):
+                    raise
+                # hard link'siz dosya sistemi: eski yol (son anda yeniden denetle, kalan yarış penceresi dar)
+                if os.path.lexists(dest):
+                    os.unlink(tmp)
+                    return "exists"
+                os.replace(tmp, dest)
     except OSError as e:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         return f"io_error: {e}"
+    _fsync_dir(os.path.dirname(dest))
     return None
 
 
@@ -356,6 +390,7 @@ def write_text(s: Session, path: str, content: str) -> dict:
             os.fsync(f.fileno())                         # replace'ten ÖNCE kalıcı: güç kesilirse boş/yarım dosya kalmasın
         os.chmod(tmp, mode)                              # umask açılışta biti kırpmış olabilir
         os.replace(tmp, real)
+        _fsync_dir(os.path.dirname(real))                # rename de kalıcı olsun (4B R-6)
     except OSError as e:
         try:
             os.remove(tmp)

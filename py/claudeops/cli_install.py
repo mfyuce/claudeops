@@ -64,11 +64,15 @@ def cli_status(cli_name: str) -> Dict[str, Any]:
     override = (settings.get("provider_bin") or {}).get(cli_name, "").strip()
     on_path = shutil.which(cli_name)
     managed = bool((settings.get("cli_managed") or {}).get(cli_name))
-    found_path = override or on_path
+    # Override yalnız gerçekten çalıştırılabilir bir dosyaya (ya da PATH'te bulunan bir ada) çözülüyorsa sayılır:
+    # bayat yol eskiden "found: True" gösterip spawn'da "command not found" ile düşüyordu (review 2026-11-04 R-02).
+    override_path = shutil.which(os.path.expanduser(override)) if override else None
+    found_path = override_path or on_path
     return {
         "cli": cli_name,
         "found": bool(found_path),
         "path": found_path,
+        "override_invalid": bool(override) and not override_path,
         "managed_by_claudeops": managed,
         "installable": cli_name in NPM_INSTALLABLE or cli_name in SCRIPT_INSTALLABLE,
         "manual_url": None,
@@ -200,6 +204,8 @@ def _seed_claude_tui_default(lang: str = "tr") -> None:
             data = {}
     except (OSError, json.JSONDecodeError):
         return  # bozuk/okunamıyor -- kurulumu bu yüzden başarısız ETME, sessizce atla
+    if not isinstance(data, dict):
+        return  # liste/sayı gibi beklenmedik içerik: TypeError ile kurulumu düşürme, dokunma (review 2026-11-04 4A R-06)
     if "tui" in data:
         return
     data["tui"] = "default"

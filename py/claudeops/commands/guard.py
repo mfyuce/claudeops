@@ -41,9 +41,13 @@ def run(args) -> int:
         for name, kind in result.spawned:
             print(f"  {name} → {kind}")
 
+        # Spawn hatası `error:...` olarak listelenir; eskiden yine "N session spawn edildi" + çıkış 0 dönüyordu
+        # (cron/izleyici başarısızlığı göremiyordu; review 2026-11-04 E7/4A R-01).
+        failed = [n for n, kind in result.spawned if str(kind).startswith("error:")]
+        ok = len(result.spawned) - len(failed)
         verb = "gösterildi (dry-run)" if args.dry_run else "spawn edildi"
-        print(f"\n  {len(result.spawned)} session {verb}")
-        return 0
+        print(f"\n  {ok} session {verb}" + (f", {len(failed)} HATA: {', '.join(failed)}" if failed else ""))
+        return 1 if failed else 0
 
     if args.no_lock:
         return _run()

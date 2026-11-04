@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-_STATE_DIR = Path.home() / ".claude" / "claudeops"
+from .paths import STATE_DIR as _STATE_DIR  # handover ile AYNI kök (CLAUDEOPS_DIR izole koşuda da)
 _BASELINE_DIR = _STATE_DIR / "baselines"
 
 
@@ -109,7 +109,22 @@ def repo_committed_since(cwd: str) -> bool:
     except OSError:
         return False
     ci = _git(cwd, "log", "-1", "--format=%cI")
-    return bool(ci) and ci > base_ts
+    # ISO dizgileri sözlüksel karşılaştırılamaz (farklı ofsetler, boş/yarım dosyada `ci > ""` hep True; E2):
+    # ikisini de zamana çevir, çözülemeyen baseline "bilinmiyor" = yeni commit yok sayılmaz -> True (ho yapılır).
+    if not ci:
+        return False
+    import datetime
+    try:
+        c = datetime.datetime.fromisoformat(ci)
+    except ValueError:
+        return False
+    try:
+        b = datetime.datetime.fromisoformat(base_ts)
+    except ValueError:
+        return True
+    if (c.tzinfo is None) != (b.tzinfo is None):
+        c, b = c.replace(tzinfo=None), b.replace(tzinfo=None)
+    return c > b
 
 
 # ── jsonl helpers ─────────────────────────────────────────────────────────────
