@@ -3003,8 +3003,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if _box_has_typed_input(s.name):    # 2026-10-29 danisppr: kutudaki gönderilmemiş direktife "ok" eklenip tek mesaj gitti
             sw.log_event("keepwarm_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
-        ok = _send(s.name, s.cli, skw.KEEPWARM_TEXT)
-        sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n")})
+        ok = _send(s.name, s.cli, action.payload.get("text") or skw.KEEPWARM_TEXT)
+        sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n", "text")})
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
     if k == "idle_nudge":             # TBD#156: boşta ucli kodcuya TEK satır "devam: <iş>" (koşullar `plan_ucli_idle`de denetlendi)
         if not host:
@@ -3536,12 +3536,13 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 if cfg.mode != "observe":   # observe durumu DEĞİŞTİRMEZ (direktif zamanı işaretlenmez): her tick would: üretebilir
                     new_state = planned_state
                 actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
-                kw_actions, kw_state = skw.plan_keepwarm(views, projects, new_state, cfg, t0, actions, world)
+                kw_actions, kw_state = skw.plan_keepwarm(views, projects, new_state, cfg, t0, actions, world,
+                                                              open_work=_open_work_of(projects))
                 if kw_actions:
                     new_state = kw_state       # keepwarm kaydı (dry'da da): aynı boşta dönemi için tekrar yazılmaz
                     if cfg.keepwarm == "dry":
                         for a in kw_actions:   # YALNIZ ölçüm: oturuma dokunmaz
-                            sw.log_event("would:keepwarm", paths=paths, name=a.name, **{k: a.payload.get(k) for k in ("project", "age_min", "tokens", "n")})
+                            sw.log_event("would:keepwarm", paths=paths, name=a.name, **{k: a.payload.get(k) for k in ("project", "age_min", "tokens", "n", "text")})
                     else:
                         actions = actions + kw_actions   # önbellek canlı tutma dürtmesi (observe kipinde OBSERVE_SKIPPED ile kuru kalır)
                 adv_actions, planned_state = sa.plan_advance_deliveries(views, projects, _advance_candidates(cfg), new_state, t0,

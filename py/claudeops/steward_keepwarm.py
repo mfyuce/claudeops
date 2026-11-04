@@ -7,7 +7,7 @@ olan, küçük bağlamlı, alt ajanı çalışan ya da meşgul oturum atlanır; 
 `keepwarm_max_consecutive` dürtmede KESİLİR. Saf planlayıcı; `keepwarm=dry` yalnız `would:keepwarm` olayı üretir."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import steward as sw
 
@@ -39,8 +39,21 @@ def _skip_reason(v: Any, projects: Dict[str, Any], cfg: sw.Config, now: float) -
     return ""
 
 
+def keepwarm_text(proj: Any, v: Any, open_work: Optional[Callable[[str], Optional[int]]] = None) -> str:
+    """Dürtme metni: projenin sıradaki işi var VE son cevap bitti demiyorsa TEK satır `devam: <iş>`; yoksa (ya da
+    last_assistant boşsa bitti sayılmaz) iş varsa yine devam; iş yoksa eski KEEPWARM_TEXT. SAF."""
+    hint = sw.next_work_hint(proj, open_work) if proj is not None else ""
+    if not hint:
+        return KEEPWARM_TEXT
+    marker, _ready = sw.idle_finish_marker(getattr(v, "last_assistant", "") or "")
+    if marker:
+        return KEEPWARM_TEXT
+    return sw.one_line(f"devam: {hint}")
+
+
 def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, Any], cfg: sw.Config, now: float,
-                  planned: List[sw.Action], world: Optional[sw.World] = None) -> Tuple[List[sw.Action], Dict[str, Any]]:
+                  planned: List[sw.Action], world: Optional[sw.World] = None,
+                  open_work: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[sw.Action], Dict[str, Any]]:
     """Dürtülecek oturumlar için `keepwarm` eylemleri + güncellenmiş state (`state["keepwarm"][ad] = {at, n}`). `off`/drain: hiçbir
     şey. Aynı boşta dönemi için bir kez (`at` > son etkinlik); dürtmeye rağmen gerçek etkinlik yoksa en çok
     `keepwarm_max_consecutive` ardışık dürtme. `planned` aynı oturuma dokunuyorsa atlanır. SAF."""
@@ -67,7 +80,8 @@ def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, A
         rec_all[v.name] = {"at": now, "n": chain + 1}
         out.append(sw.Action("keepwarm", v.name, "keepwarm",
                              {"project": v.project, "age_min": round((now - v.last_activity) / 60, 1),
-                              "tokens": v.context_tokens, "n": chain + 1}))
+                              "tokens": v.context_tokens, "n": chain + 1,
+                              "text": keepwarm_text(projects.get(v.project), v, open_work)}))
     if not out:
         return [], state
     st = dict(state)

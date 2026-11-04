@@ -66,6 +66,33 @@ class KeepwarmTest(unittest.TestCase):
         a4, st4 = skw.plan_keepwarm([view(last_activity=t1 + 1800)], PROJ, st2, cfg(), t1 + 1800 + 54 * 60, [])
         self.assertEqual(a4[0].payload["n"], 1)
 
+    def _text(self, notes="", last="", open_work=None, c=None):
+        pr = {"cli": sw.Project(name="cli", phase="planned", notes=notes)}
+        acts, _ = skw.plan_keepwarm([view(last_assistant=last)], pr, {}, c or cfg(), NOW, [], open_work=open_work)
+        return acts[0].payload["text"]
+
+    def test_text_default_when_no_work(self):
+        self.assertEqual(self._text(), skw.KEEPWARM_TEXT)
+        self.assertEqual(self._text(notes="sıradaki: yok"), skw.KEEPWARM_TEXT)
+
+    def test_text_continue_when_work_pending(self):
+        t = self._text(notes="x\nsıradaki: testleri\nyaz")
+        self.assertEqual(t, "devam: testleri")
+        self.assertNotIn("\n", t)
+        self.assertEqual(self._text(open_work=lambda p: 2), "devam: TODO.md'deki ilk açık iş")
+
+    def test_text_light_ping_when_finished(self):
+        for last in ("READY FOR HANDOVER", "STEWARD-DONE", "Yapacak iş yok."):
+            self.assertEqual(self._text(notes="sıradaki: a", last=last), skw.KEEPWARM_TEXT, last)
+
+    def test_empty_last_assistant_is_not_finished(self):
+        self.assertEqual(self._text(notes="sıradaki: a", last=""), "devam: a")
+
+    def test_dry_mode_payload_has_text(self):
+        pr = {"cli": sw.Project(name="cli", phase="planned", notes="sıradaki: a")}
+        acts, _ = skw.plan_keepwarm([view()], pr, {}, cfg(keepwarm="dry"), NOW, [])
+        self.assertEqual(acts[0].payload["text"], "devam: a")
+
 
 if __name__ == "__main__":
     unittest.main()
