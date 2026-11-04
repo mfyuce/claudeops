@@ -467,7 +467,51 @@ class BuildInnerCommandTests(TmpCase):
                 dropped = list(argv)
                 i = dropped.index(flag)
                 del dropped[i:i + 2]   # 28 Eylül'den ÖNCE başlamış, `--max-output-tokens`suz eski oturum gibi
-                self.assertIsNone(up.UcliProvider().extract_info(dropped)["effort"])
+                # `--max-context-kib` 2026-11-04'ten beri isteğe bağlı (ucli modelden türetir): onsuz da preset tanınır
+                expect = "high" if flag == "--max-context-kib" else None
+                self.assertEqual(up.UcliProvider().extract_info(dropped)["effort"], expect)
+
+
+class AutoContextTests(TmpCase):
+    """2026-11-04: ucli bağlamı modelden türetiyorsa (`binary_derives_context`) `--max-context-kib` VERİLMEZ."""
+    CWD = "/w/vc"
+
+    def setUp(self):
+        super().setUp()
+        self.over = {}
+        for p in (mock.patch.object(up, "_sync_api_key_file", lambda: False),
+                  mock.patch.object(up, "ucli_limit_overrides", lambda: dict(self.over)),
+                  mock.patch.object(up, "diag_log", lambda *a, **k: None)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def argv(self, help_text, effort="high"):
+        b = fake_ucli(self.dir, help_text)
+        with mock.patch.object(up, "resolve_binary", lambda: b), with_web({}):
+            return shlex.split(up.UcliProvider().build_inner_command(self.CWD, "m", "allow-edit", effort, None, "", "vc"))
+
+    NEW_HELP = HELP_BOTH + "      --max-read-kib <K>\n          ~96 for a model that advertises a large window\n"
+
+    def test_deriving_binary_gets_no_context_flag_and_effort_round_trips(self):
+        for effort in up._EFFORT_LIMITS:
+            with self.subTest(effort=effort):
+                a = self.argv(self.NEW_HELP, effort)
+                self.assertNotIn("--max-context-kib", a)
+                self.assertEqual(up.UcliProvider().extract_info(a)["effort"], effort)
+
+    def test_old_binary_keeps_preset_context(self):
+        a = self.argv(HELP_BOTH, "high")
+        self.assertEqual(a[a.index("--max-context-kib") + 1], str(up._EFFORT_LIMITS["high"]["max_context_kib"]))
+
+    def test_explicit_setting_still_wins(self):
+        self.over = {"max_context_kib": 1024}
+        a = self.argv(self.NEW_HELP, "high")
+        self.assertEqual(a[a.index("--max-context-kib") + 1], "1024")
+
+    def test_legacy_session_with_other_context_value_is_unknown(self):
+        a = self.argv(self.NEW_HELP, "high")
+        a[a.index("--max-steps"):a.index("--max-steps")] = ["--max-context-kib", "777"]
+        self.assertIsNone(up.UcliProvider().extract_info(a)["effort"])
 
 
 class ProviderCfg:

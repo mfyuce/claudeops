@@ -180,6 +180,18 @@ def binary_supports_flag(binary: str, flag: str) -> bool:
     return re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", chat_help_text(binary)) is not None
 
 
+# `--max-context-kib` verilmezse bağlam tavanını modelin `/models` kaydından (bağlam penceresi + çıkış payı) türeten
+# ucli'nin `chat --help`inde geçen ifade. Türetme ve bu yardım metni unified-cli `66a1004`te (2026-11-04) BİRLİKTE geldi;
+# `--max-context-kib`in kendi yardım metni o commit'te güncellenmedi (hâlâ sağlayıcı sabitini anlatıyor), o yüzden
+# bayrak varlığı değil bu ifade aranır. Daha eski ikili bayraksız açılırsa sabit 256 KiB'ye düşerdi.
+_DERIVES_CONTEXT_MARK = "advertises a large window"
+
+
+def binary_derives_context(binary: str) -> bool:
+    """ucli bağlam tavanını modelden kendisi türetiyor mu (bkz. `_DERIVES_CONTEXT_MARK`)."""
+    return _DERIVES_CONTEXT_MARK in chat_help_text(binary)
+
+
 def build_chat_argv(
     binary: str,
     root: str,

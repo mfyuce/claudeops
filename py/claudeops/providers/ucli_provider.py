@@ -100,7 +100,7 @@ from ..settings import ucli_cost_config
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
 from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
-from ..ucli_client import (UcliError, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, failed_turn_records, resolve_binary,
+from ..ucli_client import (UcliError, binary_derives_context, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, failed_turn_records, resolve_binary,
                            ucli_chat_once)
 from .base import CliProvider, McpServerSpec, OneshotError
 
@@ -749,11 +749,18 @@ class UcliProvider(CliProvider):
         # YERİNE geçer — artık kullanıcı Python'a dokunmadan/servis restart
         # etmeden bu 3 sayıyı kendi ayarlayabiliyor.
         preset = effort if effort in _EFFORT_LIMITS else "medium"
-        limits = {**_EFFORT_LIMITS[preset], **ucli_limit_overrides()}
+        overrides = ucli_limit_overrides()
+        limits = {**_EFFORT_LIMITS[preset], **overrides}
+        binary = resolve_binary()
+        # Bağlam tavanı (2026-11-04): ucli modelin `/models` kaydından türetebiliyorsa `--max-context-kib` VERİLMEZ
+        # (sabit 256 KiB 1M'lik modeli erken kırpıyor, 16384 KiB 32K'lık modeli taşırıyordu; reviewer'daki aynı
+        # düzeltme `7230867`). Ayarlar'da `ucli_limits.max_context_kib` açıkça doluysa ya da ikili eskiyse eski davranış.
+        ctx = ["--max-context-kib", str(limits["max_context_kib"])] \
+            if "max_context_kib" in overrides or not binary_derives_context(binary) else []
         argv = [
-            resolve_binary(), "--root", cwd, "chat", "--repl", "--endpoint", endpoint(),
+            binary, "--root", cwd, "chat", "--repl", "--endpoint", endpoint(),
             "--max-steps", str(limits["max_steps"]),
-            "--max-context-kib", str(limits["max_context_kib"]),
+            *ctx,
             "--max-tool-calls", str(limits["max_tool_calls"]),
             "--max-output-tokens", str(limits["max_output_tokens"]),
             "--pretty",
@@ -859,9 +866,12 @@ class UcliProvider(CliProvider):
         # ayrıştırılmıyordu, bu yüzden hiçbir preset eşleşmiyor ve effort HEP None
         # çıkıyordu; `test_ucli_web.BuildInnerCommandTests.test_every_effort_preset_round_trips_
         # through_the_running_command` preset ile ayrıştırıcı birbirinden koparsa yakalar.
+        # `--max-context-kib` 2026-11-04'ten beri İSTEĞE BAĞLI (ucli modelden türetiyorsa verilmez): yoksa öteki üç
+        # sayı yeter; varsa (eski oturum / eski ikili) preset'in değeriyle eşleşmeli.
         effort = next(
             (name for name, lim in _EFFORT_LIMITS.items()
-             if all(str(v) == parsed_limits.get(k) for k, v in lim.items())),
+             if all(str(v) == parsed_limits.get(k) for k, v in lim.items()
+                    if not (k == "max_context_kib" and k not in parsed_limits))),
             None,
         )
         # sid = session adının kendisi (yukarıdaki modül docstring'ine bkz.) —
