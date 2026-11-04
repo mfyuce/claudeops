@@ -941,6 +941,21 @@ class UcliProvider(CliProvider):
             return None
         return status.get("activity") != "waiting_for_stdin"
 
+    def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
+        # Durum dosyasındaki `context_bytes` (oturumun GÜNCEL bağlam boyutu, bayt) / 4 = kaba token tahmini. `usage.prompt_tokens`
+        # süreç boyunca TOPLAM (her istekte bağlam yeniden sayılır) olduğundan güncel boyutu vermez: seçilmedi.
+        # Alan yok/sayı değil/negatif -> None (bilinmiyor; satır yedeği devreye girer).
+        if not sid:
+            return None
+        try:
+            status = read_status_file(cwd, sid)
+        except Exception:
+            return None
+        cb = status.get("context_bytes") if status else None
+        if not isinstance(cb, int) or isinstance(cb, bool) or cb < 0:
+            return None
+        return cb // 4
+
     def live_usage(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, int]]:
         # Durum dosyasındaki `usage` (unified-cli 2026-10-16): SÜREÇ boyunca TÜM görevlerin toplamı,
         # başarısız görev dahil. `usage` hiç yoksa (eski ikili) None = bilinmiyor; `unmetered*`

@@ -1245,6 +1245,12 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
                     v.context_tokens = context_tokens_for(s.cwd, s.sid)
                 except Exception:
                     v.context_tokens = None
+            elif s.cli == "ucli":     # durum dosyası context_bytes/4 (kaba); None = bilinmiyor -> satır yedeği
+                try:
+                    v.context_tokens = provider.live_context(s.cwd, s.sid)
+                except Exception:
+                    v.context_tokens = None
+            if s.cli == "claude":
                 try:
                     v.subagent_active = subagent_active_for(s.cwd, s.sid)
                 except Exception:
