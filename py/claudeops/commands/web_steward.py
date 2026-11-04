@@ -5816,7 +5816,8 @@ def http_review_run(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any
     cfg, err = _reviewer_cfg(sid)
     if err:
         return err
-    r = web_review.manual_run(cfg, str(data.get("project") or ""), str(data.get("mode") or ""), str(data.get("model") or ""))
+    r = web_review.manual_run(cfg, str(data.get("project") or ""), str(data.get("mode") or ""), str(data.get("model") or ""),
+                          str(data.get("lens") or ""))
     if r.get("ok"):
         sw.log_event("review_run", paths=sid, project=data.get("project"), key=r.get("key"), source="ui")
     return r

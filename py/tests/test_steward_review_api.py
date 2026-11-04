@@ -193,10 +193,13 @@ class TestCli(_Api):
         self.run_cli("review", "run", "a", "evren/glm/4.6")
         self.run_cli("review", "run", "a")
         self.run_cli("review", "cancel", "a")
+        self.run_cli("review", "run", "a", "evren/glm/4.6", "--lens", "dry")
         self.assertEqual([c[2]["action"] for c in self.calls[:4]], ["add", "remove", "enable", "disable"])
         self.assertEqual(self.calls[4][2], {"project": "a", "mode": "evren", "model": "glm/4.6", "steward": "rev"})
         self.assertEqual(self.calls[5][2]["mode"], "")
         self.assertEqual(self.calls[6][1], "/api/steward/review/cancel")
+        self.assertEqual(self.calls[7][2], {"project": "a", "mode": "evren", "model": "glm/4.6", "lens": "dry", "steward": "rev"})
+        self.assertNotIn("lens", self.calls[5][2])
 
     def test_reads_status_history_findings(self):
         for sub in (("review",), ("review", "status"), ("review", "history"), ("review", "findings", "--project", "a", "--state", "new")):

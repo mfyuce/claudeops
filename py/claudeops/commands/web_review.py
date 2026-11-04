@@ -12,6 +12,7 @@ Uygulanmış: havuz eşitleme (`review.pool_sync`), sıradaki çift (`review.nex
 Bu modül `web.py`'yi ve `web_steward`'ı İÇE AKTARMAZ (döngü yok; eylemler gerekirse geri çağrıyla verilir)."""
 import codecs
 import contextlib
+import dataclasses
 import functools
 import json
 import os
@@ -1235,7 +1236,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             raise RuntimeError("uzak projede review yalnız evren (ucli) hedefleriyle koşar")
         if rdrv is not None:
             cwd = rdrv.cwd()
-        prompt = rv.build_review_prompt(project, cwd, lang)
+        prompt = rv.build_review_prompt(project, cwd, lang, target.lens)
         env_extra: Dict[str, str] = {}
         if rdrv is not None:
             # UZAK koşu (TBD#117 ek 3 c): uzak host'ta normal ucli oturumu; yerel süreç, anahtar, taslak dosyası YOK
@@ -2144,8 +2145,11 @@ def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None
     return {"ok": True, "action": action, "project": project, "cancelled": cancelled}
 
 
-def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[str, Any]:
+def manual_run(cfg: Any, project: str, mode: str = "", model: str = "", lens: str = "") -> Dict[str, Any]:
     project = str(project or "").strip()
+    lens = str(lens or "").strip().lower()
+    if lens and lens not in rv.LENSES:     # lens YALNIZ elle koşuda; havuz/otomatik planlama hiç lens üretmez
+        return {"ok": False, "error": "lens must be one of: " + ", ".join(rv.LENSES)}
     if not cfg.enabled:
         return {"ok": False, "error": "reviewer is disabled"}
     if not project or not sw.valid_name(project):
@@ -2177,6 +2181,8 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "") -> Dict[
         if nxt is None:
             return {"ok": False, "error": "no pending target for this project"}
         target = nxt[1]
+    if lens:
+        target = dataclasses.replace(target, lens=lens)
     slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
     busy = busy_keys()
     if not slots and busy:

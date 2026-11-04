@@ -77,11 +77,14 @@ class ReviewTarget:
     model: str     # sağlayıcıya verilen gerçek model kimliği
     slug: str      # yol/anahtar güvenli ad (`slug_model`)
     effort: str = ""   # hedefe özel effort (`model@effort` biçimi); boşsa `review_<mode>_effort` ayarı
+    lens: str = ""     # inceleme merceği (`LENSES`); YALNIZ elle koşuda (`review run --lens`), havuz/planlayıcı hiç üretmez
 
     @property
     def pslug(self) -> str:
-        """Çift anahtarındaki ad: aynı model birden çok effort ile ayrı çift olur (`slug@effort`)."""
-        return f"{self.slug}@{slug_model(self.effort)}" if self.effort else self.slug
+        """Çift anahtarındaki ad: aynı model birden çok effort ile ayrı çift olur (`slug@effort`); lens ayrı çift (`~lens`),
+        böylece lensli koşu genel incelemenin geçmişini/pencere kararını bozmaz."""
+        base = f"{self.slug}@{slug_model(self.effort)}" if self.effort else self.slug
+        return f"{base}~{slug_model(self.lens)}" if self.lens else base
 
     @property
     def key(self) -> str:
@@ -303,9 +306,45 @@ def pool_sync(pool: Any, owner_names: Sequence[str], now: float) -> Tuple[Dict[s
 
 # ── istem ─────────────────────────────────────────────────────────────────────
 
-def build_review_prompt(proj: str, cwd: str, lang: str = "tr") -> str:
-    """Salt-okunur kod/belge incelemesi istemi. Bulgu biçimi `parse_findings` ile eşleşir:
-    `## R-<n> | P1|P2|P3 | dosya:satır | başlık` + gövde."""
+LENSES = ("dry",)     # "" = genel kod incelemesi (varsayılan)
+
+_LENS_DEFECTS_RE = {
+    "en": re.compile(r"Find real defects:.*?before reporting it\.\n", re.S),
+    "tr": re.compile(r"Gerçek kusurları bul:.*?raporlamadan önce kodda doğrula\.\n", re.S),
+}
+_LENS_TEXT = {
+    ("dry", "en"): (
+        "Review ONLY for DRY violations: repeated code or text blocks, copy-pasted sections, near-identical functions, and "
+        "the same knowledge (constants, lists, rules, messages, schemas) kept in more than one place so they can drift apart. "
+        "Ignore other kinds of defects and style. Verify both copies in the code before reporting.\n"),
+    ("dry", "tr"): (
+        "YALNIZ DRY ihlallerini incele: tekrar eden kod ya da metin blokları, kopyalanmış bölümler, neredeyse aynı "
+        "fonksiyonlar ve aynı bilginin (sabit, liste, kural, mesaj, şema) birden çok yerde tutulup birbirinden "
+        "ayrışabilmesi. Diğer kusur türlerini ve biçimi atla. Raporlamadan önce iki kopyayı da kodda doğrula.\n"),
+}
+_LENS_FORMAT = {
+    "en": (" For this review the body MUST also name the second (repeated) location as `Also at: <path:line>` and give "
+           "a consolidation proposal (where the single source of truth should live and what the callers become)."),
+    "tr": (" Bu incelemede gövde ayrıca tekrar eden ikinci yeri `Ayrıca: <yol:satır>` olarak vermeli ve bir birleştirme "
+           "önerisi içermeli (tek doğru kaynağın nerede duracağı, çağıranların ne olacağı)."),
+}
+
+
+def build_review_prompt(proj: str, cwd: str, lang: str = "tr", lens: str = "") -> str:
+    """Salt-okunur kod/belge incelemesi istemi; `lens` boşsa genel inceleme, `dry` ise tekrar/kopya mercesi (bulgu başlık
+    biçimi AYNI). Bulgu biçimi `parse_findings` ile eşleşir: `## R-<n> | P1|P2|P3 | dosya:satır | başlık` + gövde."""
+    base = _build_general_prompt(proj, cwd, lang)
+    if not lens:
+        return base
+    lg = "en" if lang == "en" else "tr"
+    text = _LENS_TEXT.get((lens, lg))
+    if text is None:
+        raise ValueError(f"unknown review lens: {lens}")
+    out, n = _LENS_DEFECTS_RE[lg].subn(lambda _m: text, base, count=1)
+    return (out if n else base + " " + text) + _LENS_FORMAT[lg]
+
+
+def _build_general_prompt(proj: str, cwd: str, lang: str = "tr") -> str:
     forb = ", ".join(FORBIDDEN_PATHS)
     if lang == "en":
         return (f"You are an independent code reviewer for the project \"{proj}\" (working directory: {cwd}).\n"
@@ -499,14 +538,15 @@ def effort_for(cfg: Any, mode: str, target: Optional["ReviewTarget"] = None) -> 
     return slug_model(v) if str(v or "").strip() else "default"
 
 
-def review_path(root: str, proj: str, t: ReviewTarget, ts: Any, effort: str = "") -> str:
+def review_path(root: str, proj: str, t: ReviewTarget, ts: Any, effort: str = "", lens: str = "") -> str:
     """`<root>/<proje>/<mode>/<altmodel>[/<effort>]/<yyyyMMddHHmmss>/<yyyyMMddHHmmss>.md`; `ts` epoch (yerel saat) ya da
     hazır 14 haneli metin. Her koşunun dosyaları (rapor, `.io.jsonl`, `.model.md`, `.usage.jsonl`) kendi `<ts>/` klasöründe
     toplanır; hepsi `<ts>` önekini korur, bu yüzden `.md` -> yan dosya türetmeleri aynen çalışır. `root` genelde
     `StewardPaths.reviews`. Proje adı yol güvenli hale getirilir. `effort` boşsa effort katmanı yok. (2026-10-24'ten önceki
     koşular eski düz düzende `<ts>.md`; kayıtlı yollar olduğu gibi okunur.)"""
     stamp = ts if isinstance(ts, str) and re.fullmatch(r"\d{14}", ts) else time.strftime("%Y%m%d%H%M%S", time.localtime(float(ts)))
-    parts = [root, slug_model(proj), t.mode, t.slug] + ([slug_model(effort)] if effort else [])
+    parts = [root, slug_model(proj), t.mode, t.slug] + ([slug_model(effort)] if effort else []) \
+        + ([slug_model(lens or t.lens)] if (lens or t.lens) else [])      # lens son katman: .../<effort>/dry/<ts>/<ts>.md
     return os.path.join(*parts, stamp, stamp + ".md")
 
 

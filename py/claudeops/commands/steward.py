@@ -756,7 +756,10 @@ def cmd_review(args) -> int:
             if not mode or not model:
                 print("hata: hedef <mode>/<model> biçiminde olmalı (ör. evren/glm-4.6)")
                 return 1
-        res = _api(port, "POST", "/api/steward/review/run", {"project": args.project, "mode": mode, "model": model}, sid)
+        body = {"project": args.project, "mode": mode, "model": model}
+        if getattr(args, "lens", ""):
+            body["lens"] = args.lens
+        res = _api(port, "POST", "/api/steward/review/run", body, sid)
         print(f"✓ başladı: {res.get('key')}" if res.get("ok") else f"hata: {res.get('error')}")
         return 0 if res.get("ok") else 1
     if act == "window":     # `review window [SAAT]`: tekrar-koşu penceresi (steward.review_window_hours); yerel ayar
@@ -1118,6 +1121,7 @@ def register(sub):
     rru = rv_.add_parser("run", help="elle başlat: PROJE [mode/model]")
     rru.add_argument("project")
     rru.add_argument("target", nargs="?", default="", help="<mode>/<model>, ör. evren/glm-4.6 (yoksa sıradaki hedef)")
+    rru.add_argument("--lens", default="", choices=["", "dry"], help="inceleme merceği: dry = tekrar/kopya kod ve bilgi (yalnız elle; yoksa genel inceleme)")
     rca = rv_.add_parser("cancel", help="koşan işi iptal et (PROJE yoksa hepsi)")
     rca.add_argument("project", nargs="?", default="")
     rus = rv_.add_parser("usage", help="koşu başına token/istek/süre toplamı (ucli --usage-log): [--project P] [--top N]")
