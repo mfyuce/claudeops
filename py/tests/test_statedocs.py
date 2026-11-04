@@ -76,6 +76,16 @@ class StateDocsTests(unittest.TestCase):
         os.remove(self.path)                                                  # dosya yoksa DB'den
         self.assertEqual(sd.read_json("h", self.path, file_truth=True), [{"name": "a"}, {"name": "b"}])
 
+    def test_first_import_is_not_logged_as_drift(self):
+        log = os.environ["CLAUDEOPS_DIAG_LOG"]
+        json.dump({"old": 1}, open(self.path, "w"))                           # gölgeden önce yazılmış dosya
+        self.mode("dual"); sd.read_json("q", self.path)
+        txt = open(log).read() if os.path.exists(log) else ""
+        self.assertIn("import q", txt); self.assertNotIn("drift q", txt)
+        self.st.set_doc("q", {"zzz": 1}); json.dump({"old": 22}, open(self.path, "w"))  # gerçek ayrışma (boyut farklı: mtime kaba olabilir)
+        sd.read_json("q", self.path)
+        self.assertIn("drift q", open(log).read())
+
     def test_dual_skips_db_compare_when_file_unchanged(self):
         self.mode("dual"); sd.write_json("q", self.path, {"a": 1})
         self.st.set_doc("q", {"zzz": 1})                      # DB bozuldu ama dosya imzası değişmedi -> karşılaştırma YOK

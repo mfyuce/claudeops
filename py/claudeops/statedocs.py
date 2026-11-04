@@ -122,8 +122,11 @@ def read_json(name: str, path: str, default: Any = None, *, file_truth: bool = T
             if v is not _MISSING:
                 sg = _sig(path)
                 if _SYNCED.get(name) != sg:
-                    if st.get_doc(name, _MISSING) != v:
-                        _log(f"drift {name}: DB dosyaya uyduruldu")
+                    have = st.get_doc(name, _MISSING)
+                    if have != v:
+                        # DB'de hiç yoksa bu drift DEĞİL, ilk içe aktarmadır (gölgeden önce yazılmış, sonra ilk kez okunan dosya);
+                        # "drift" yalnız iki kopya ayrıştığında loglanır (cutover'ın 48 sa temiz-drift ölçütü bunu sayar)
+                        _log(f"import {name}: DB'de yoktu, dosyadan alındı" if have is _MISSING else f"drift {name}: DB dosyaya uyduruldu")
                         st.set_doc(name, v)
                     _SYNCED[name] = sg
                 return v
