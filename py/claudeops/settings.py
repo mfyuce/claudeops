@@ -162,6 +162,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # MCP), kapılar aynı. YALNIZ ikili `--allow-script`'i tanıyorsa geçer. Tek alanlı sözlük:
                               # `ucli_web`/`ucli_limits`'le aynı alan-bazlı merge ("boş=kaldır" = kapalı). Okuma tarafı:
                               # `ucli_script_mode()`.
+    "ucli_agents": "on",      # "on" | "off" — ucli oturumlarının alt ajan açabilmesi (unified-cli `--allow-agents`, claudeops
+                              # `/api/agents/*`; 2026-11-04). VARSAYILAN AÇIK ama YALNIZ ikili `--allow-agents`'i tanıyorsa
+                              # bayrak geçer; `off` yeni oturumlara bayrağı/token'ı hiç vermez. Okuma: `ucli_agents.enabled()`.
+    "ucli_agents_max_cost_usd": "",   # çocuk ajan başına USD tavanı (`--max-cost-usd` + panel sayacı); boş = 2, 0 = tavan yok.
     "steward_quota": {},      # {mode: off|manual|auto, manual_limit, final_limit, poll_minutes, day_mon..day_sun}: TBD#116 kota bekçisi
     "store_backend": "files",  # files|dual|db: SQLite geçişi (statedocs.py, TBD#142 K5); boş değer anahtarı siler = files
     "ucli_usage_warn": {},   # {amber, red: str} — 2026-10-17: ucli token rozetinin renk eşikleri, OTURUM başına

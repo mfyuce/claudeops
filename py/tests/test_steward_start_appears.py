@@ -38,6 +38,7 @@ class StartAppearsTest(unittest.TestCase):
         ws.configure(start=lambda *a, **k: {"ok": True})
         with mock.patch.object(ws, "_live_sessions", lambda n, s="default": []), \
                 mock.patch.object(ws, "_oversized_resume", lambda n, c: 0), \
+                mock.patch.object(ws, "_launch_kwargs", lambda n, m, e: {}), \
                 mock.patch.object(ws, "steward_config", lambda sid="default": mock.MagicMock()), \
                 mock.patch.object(ws, "_start_appeared", lambda n, s="default": False), \
                 mock.patch.object(ws, "_wait_ready", lambda n, c: self.fail("must not wait")):

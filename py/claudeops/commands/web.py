@@ -87,6 +87,8 @@ from ..tmux_backend import (
 from .web_static import DIST_DIR, resolve_static_path
 from . import web_grpc
 from . import web_hosts
+from . import web_agents
+from .. import ucli_agents
 from . import web_orch
 from .. import model_usage
 from .. import session_usage
@@ -825,7 +827,8 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     chosen_mode = permission_mode.strip() or "auto"
     chosen_effort = effort.strip() or default_effort_for(get_provider(chosen_cli))
     inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
-                             permission_mode=chosen_mode, effort=chosen_effort, origin="new_chat")
+                             permission_mode=chosen_mode, effort=chosen_effort, origin="new_chat",
+                             **({"cli_opts": clean_opts} if clean_opts else {}))
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
@@ -1976,7 +1979,8 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
         return _err(lang, "start_no_proc", name=name, kind=kind)
     if rec is not None:
         inst_mod.mark_started(name, cli=chosen_cli, model=chosen_model,
-                              permission_mode=chosen_mode, effort=chosen_effort)
+                              permission_mode=chosen_mode, effort=chosen_effort,
+                              **({"cli_opts": clean_opts} if clean_opts else {}))
     return {"ok": True, "kind": kind}
 
 
@@ -2000,7 +2004,40 @@ def _stop(name: str, lang: str = "tr", exact: bool = False) -> dict:
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
     diag_log("stop_end", name=name, results=results)
+    for s in procs:
+        web_agents.parent_closed(s.name, _AGENT_OPS)    # ucli üst oturum kapandıysa çocuk ajanları da kapat (asla fırlatmaz)
     return {"ok": True, "result": results}
+
+
+class _AgentOps:
+    """`web_agents`'in filo eylemleri (enjekte edilir: web_agents web.py'yi içe aktarmaz, testte gerçek spawn yok). Çocuk
+    ajanlar HER ZAMAN tam adla ve penceresiz (`hidden`) açılır/durdurulur: `_start(fresh=True)` / `_stop(exact=True)`."""
+
+    def sessions(self):
+        return find_sessions(measure_cpu=False)
+
+    def name_taken(self, name: str) -> bool:
+        return inst_mod.get_instance(name) is not None or any(s.name == name for s in find_sessions(measure_cpu=False))
+
+    def register(self, name: str, cwd: str, model: str, permission_mode: str, effort: str) -> None:
+        inst_mod.record_instance(name, blueprint=None, cwd=cwd, cli="ucli", model=model,
+                                 permission_mode=permission_mode, effort=effort, origin="agent")
+
+    def forget(self, name: str) -> None:
+        inst_mod.forget_instance(name)
+
+    def start(self, name: str, model: str, permission_mode: str, effort: str, cli_opts: dict) -> dict:
+        return _start(name, model=model, permission_mode=permission_mode, effort=effort, fresh=True, cli="ucli",
+                      hidden=True, cli_opts=cli_opts)
+
+    def stop(self, name: str) -> dict:
+        return _stop(name, exact=True)
+
+    def send(self, name: str, text: str) -> dict:
+        return _term_input(name, text, exact=True)
+
+
+_AGENT_OPS = _AgentOps()
 
 
 def _term_resolve(name: str, lang: str = "tr", exact: bool = False):
@@ -2767,6 +2804,8 @@ def _retire(name: str, lang: str = "tr") -> dict:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
             return {"ok": False, "error": str(e)}
+        for s in procs:
+            web_agents.parent_closed(s.name, _AGENT_OPS)
     _toggle_comment(MODELS_TSV, name, want_active=False)
     _toggle_comment(ROSTER_TSV, name, want_active=False)
     return {"ok": True}
@@ -2803,6 +2842,8 @@ def _close_project(name: str, lang: str = "tr") -> dict:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
             return {"ok": False, "error": str(e)}
+        for s in procs:
+            web_agents.parent_closed(s.name, _AGENT_OPS)
     _toggle_comment(MODELS_TSV, name, want_active=False)
     return {"ok": True}
 
@@ -3854,7 +3895,7 @@ def _v1_stream_chunks(model: str, reply: str) -> list:
     ]
 
 
-def _serve_desktop_viewer(handler: "_Handler") -> None:
+def _serve_desktop_viewer(handler: "_Handler", asset: str = "viewer.js") -> None:
     """`/desktop/viewer.js` — uzakgoz daemon'unun `/viewer.js` dosyasını (tarayıcı tarafı tek kaynak) panele sunar.
     Daemon yalnız 127.0.0.1'e bağlı; token kontrolü `do_GET`'teki `_authorized()` ile burada (çağrıdan önce) yapılır."""
     import urllib.request
@@ -3864,11 +3905,11 @@ def _serve_desktop_viewer(handler: "_Handler") -> None:
         handler._json({"ok": False, "error": "remote desktop daemon calismiyor"}, status=503)
         return
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}" + remote_desktop.rewrite_path_with_token("/viewer.js", token), timeout=5.0) as r:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}" + remote_desktop.rewrite_path_with_token("/" + asset, token), timeout=5.0) as r:
             body = r.read(2_000_000)
     except OSError as e:
-        diag_log("desktop_viewer_unreachable", error=str(e))
-        handler._json({"ok": False, "error": "viewer.js alinamadi"}, status=502)
+        diag_log("desktop_viewer_unreachable", error=str(e), asset=asset)
+        handler._json({"ok": False, "error": f"{asset} alinamadi"}, status=502)
         return
     handler.send_response(200)
     handler.send_header("Content-Type", "text/javascript; charset=utf-8")
@@ -3928,9 +3969,10 @@ def _proxy_desktop_ws(handler: "_Handler") -> None:
     try:
         request_lines = [f"{handler.command} {remote_desktop.rewrite_path_with_token(handler.path, token)} HTTP/1.1\r\n"]
         for k, v in handler.headers.items():
-            if k.lower() in ("authorization", "cookie"):
-                continue    # panel kimlik bilgisi daemon'a ulaşmasın
+            if k.lower() in ("authorization", "cookie", "origin", "host"):
+                continue    # panel kimlik bilgisi daemon'a ulaşmasın; Origin düşer, Host aşağıda yeniden yazılır (daemon Origin/Host denetimi)
             request_lines.append(f"{k}: {v}\r\n")
+        request_lines.append(f"Host: 127.0.0.1:{port}\r\n")
         request_lines.append("\r\n")
         backend.sendall("".join(request_lines).encode("iso-8859-1"))
 
@@ -4113,6 +4155,23 @@ class _Handler(BaseHTTPRequestHandler):
             except TypeError:
                 continue
         return False
+
+    def _agents_caller(self):
+        """`/api/agents/*` çağıranı: panel token'ı -> ("human", ""); `Authorization: Bearer <ajan token'ı>` -> ("agent", <üst
+        oturum>); ikisi de değilse None (401). Ajan token'ı YALNIZ bu yollarda ve yalnız Bearer başlığıyla kabul edilir
+        (URL'ye/loga düşmesin); başka hiçbir uçta `_authorized()` onu tanımaz."""
+        if self._authorized():
+            return ("human", "")
+        auth = self.headers.get("Authorization") or ""
+        if auth.startswith("Bearer "):
+            parent = ucli_agents.parent_for_token(auth[len("Bearer "):].strip())
+            if parent:
+                return ("agent", parent)
+        return None
+
+    def _agents_reply(self, reply):
+        body, status = reply
+        self._json(body, status=status)
 
     def _sse_chunks(self, chunks: list, status=200):
         """`/v1/chat/completions`'ın `stream:true` yanıtı — `chat.completion.chunk`
@@ -4386,6 +4445,13 @@ class _Handler(BaseHTTPRequestHandler):
             # (`?k=`, ntfy bağlantısında token taşınmasın diye). `_authorized()` burada yalnız "token var mı" sorar.
             self._question_page(None)
             return
+        if path.startswith("/api/agents/"):
+            caller = self._agents_caller()
+            if caller is None:
+                self._json({"ok": False, "error": "missing or invalid token"}, status=401)
+                return
+            self._agents_reply(web_agents.handle_get(path, parse_qs(urlparse(self.path).query), caller, _AGENT_OPS))
+            return
         if not self._authorized():
             self._unauthorized()
             return
@@ -4414,6 +4480,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif path == "/desktop/viewer.js":
             _serve_desktop_viewer(self)
+            return
+        elif path == "/desktop/gestures.js":
+            _serve_desktop_viewer(self, "gestures.js")
             return
         elif path == "/ws/desktop":
             # `web_ws.py`'nin JSON-broadcast WS'inden TAMAMEN AYRI bir yol —
@@ -4678,8 +4747,12 @@ class _Handler(BaseHTTPRequestHandler):
             form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True).items()}
             self._question_page(form)
             return
-        if not self._authorized():
-            self._unauthorized()
+        agents_caller = self._agents_caller() if path.startswith("/api/agents/") else None
+        if agents_caller is None and not self._authorized():
+            if path.startswith("/api/agents/"):
+                self._json({"ok": False, "error": "missing or invalid token"}, status=401)
+            else:
+                self._unauthorized()
             return
         if path == "/api/files/upload":
             # `_handle_files_download`'ın (do_GET'te) AYNI istisnası: gövde
@@ -4703,6 +4776,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
                          "/api/cli/install",
+                         "/api/agents/start", "/api/agents/send", "/api/agents/stop",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
             return
@@ -4758,6 +4832,15 @@ class _Handler(BaseHTTPRequestHandler):
         # bakar (`web_hosts.HOST_ROUTED_PATHS`'a eklenmedi — uzak-host desteği
         # TOBEDECIDED#20, burada yapılmadı). Henüz TR/EN yerelleştirilmedi
         # (tüketen bir frontend yok, backend-only geçiş).
+        # ucli alt ajanları (2026-11-04): `/v1/*` ile AYNI ilke — host-routing'den ÖNCE/bağımsız, BİLEREK yalnız YEREL
+        # (`web_hosts.HOST_ROUTED_PATHS`'a EKLENMEZ). Kimlik `_agents_caller`: panel token'ı (insan) ya da ajan token'ı.
+        if path.startswith("/api/agents/"):
+            reply = web_agents.handle_post(path, data, agents_caller, _AGENT_OPS)
+            self._agents_reply(reply)
+            if reply[0].get("ok"):
+                web_ws.notify_status_changed()      # filoya çocuk oturum eklendi/çıkarıldı
+            return
+
         if path == "/api/orch/start":
             self._json_notify(web_orch.http_start(data))
             return
@@ -5324,6 +5407,8 @@ def run(args) -> int:
     web_steward.configure(status_payload=_status_payload, fleet_status=_fleet_status, start=_start, stop=_stop,
                           handover=_handover, register_project=_register_project)
     web_steward.start_loop()
+    ucli_agents.set_panel_port(args.port)       # ucli oturumlarına `UCLI_AGENT_URL` için (yeni oturumlar bunu kullanır)
+    web_agents.start_reaper(_AGENT_OPS)
     grpc_port = args.grpc_port if args.grpc_port is not None else args.port + 1
     grpc_server = web_grpc.start_grpc_server(grpc_port, token, _status_payload, _term_output)
     if grpc_server is not None:

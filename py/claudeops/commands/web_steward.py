@@ -1569,6 +1569,43 @@ def _closed_in_models(name: str) -> bool:
         return False
 
 
+def _last_launch(name: str) -> Optional[Dict[str, Any]]:
+    """`instances.json`daki SON başlatma kaydı (TBD#156): `name`in kendi kaydı, yoksa blueprint'i `name` olan en son
+    başlatılan/oluşturulan unutulmamış kayıt. Yoksa None (çağıran roster/varsayılana düşer). Fırlatmaz."""
+    try:
+        recs = inst_mod.load_instances()
+    except Exception:
+        return None
+    rec = recs.get(name)
+    if not isinstance(rec, dict) or rec.get("forgotten"):
+        cands = [r for r in recs.values()
+                 if isinstance(r, dict) and r.get("blueprint") == name and not r.get("forgotten")]
+        rec = max(cands, key=lambda r: float(r.get("last_started_at") or r.get("created_at") or 0), default=None)
+    return rec if isinstance(rec, dict) and rec.get("cli") in PROVIDERS else None
+
+
+def _launch_kwargs(name: str, model: str, effort: str) -> Dict[str, Any]:
+    """Devir/yeniden açma/başlatmada oturumu BAŞLADIĞI cli + `cli_opts` ile açmak için `start` ek argümanları (TBD#156).
+    Kayıt yoksa ya da kayıtlı cli claude ve roster/fleet cli'si de claude ise {} (eski davranış birebir). Kayıtlı cli
+    claude DEĞİLSE (ucli kodcu) model/effort da kayıttan gelir: değnekçinin Claude model/effort'u o cli'de geçersiz olur."""
+    rec = _last_launch(name)
+    if rec is None:
+        return {}
+    cli = str(rec["cli"])
+    opts = rec.get("cli_opts") if isinstance(rec.get("cli_opts"), dict) else None
+    if cli == DEFAULT_CLI and not opts and cli == _project_cli(name):
+        return {}
+    out: Dict[str, Any] = {"cli": cli}
+    if opts:
+        out["cli_opts"] = dict(opts)
+    if cli != DEFAULT_CLI:
+        if rec.get("model"):
+            out["model"] = str(rec["model"])
+        if rec.get("effort"):
+            out["effort"] = str(rec["effort"])
+    return out
+
+
 def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr", fresh: bool = False,
                     host: str = "", rt: Optional[_RemoteTick] = None, sid: str = "default",
                     actor: str = "", exact: bool = False) -> Dict[str, Any]:
@@ -1586,16 +1623,17 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     closed = _closed_in_models(name)
     if closed:   # `cops close` bıraktı: guard/cron bu oturumu yeniden AÇMAZ; elle başlatma sessiz geçmesin
         sw.log_event("start_closed_project", paths=sw.paths_for(sid), name=name)
-    res = _act("start", name, model=model, effort=effort, fresh=fresh, lang=lang)
+    kw = {"model": model, "effort": effort, "fresh": fresh, "lang": lang}
+    kw.update(_launch_kwargs(name, model, effort))      # kayıtlı cli/cli_opts/model/effort (varsa) başlatma değerlerini geçer
+    res = _act("start", name, **kw)
     if not res.get("ok"):
         return dict(res, closed_in_models=True) if closed else res
     if not _start_appeared(name, sid):
         return {"ok": False, "code": "start_not_visible", "name": name,
                 "error": f"start for {name!r} returned ok but no session appeared within {START_APPEAR_SECONDS:g}s"}
-    cli = _project_cli(name)
+    cli = kw.get("cli") or _project_cli(name)
     ready = _wait_ready(name, cli)
     return {"ok": True, "started": True, "ready": ready, "cli": cli}
-
 
 START_APPEAR_SECONDS = 6.0       # `start` ok döndükten sonra oturumun görünmesini bekleme üst sınırı (kısa poll)
 START_APPEAR_POLL_SECONDS = 0.5

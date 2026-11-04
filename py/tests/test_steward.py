@@ -2844,6 +2844,7 @@ class BigResumeTest(HttpTest):
         patches = self._patch(386000) + [mock.patch.object(web_steward, "steward_config", lambda sid="default": cfg),
                                          mock.patch.object(web_steward, "_live_sessions", lambda n, s: []),
                                          mock.patch.object(web_steward, "_wait_ready", lambda n, c: True),
+                                         mock.patch.object(web_steward, "_launch_kwargs", lambda n, m, e: {}),
                                          mock.patch.object(web_steward, "_start_appeared", lambda n, s="default": True),
                                          mock.patch.object(web_steward, "_verify_brain_mcp", lambda c, since: True)]
         self._run(patches, lambda: web_steward._ensure_running("ysf"))

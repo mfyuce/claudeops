@@ -102,8 +102,10 @@ def _mutate(fn: Callable[[Dict[str, dict]], object]) -> object:
 
 def record_instance(name: str, *, blueprint: Optional[str], cwd: str, cli: str, model: str,
                     permission_mode: str = "", effort: str = "", origin: str,
-                    created_at: Optional[float] = None) -> None:
-    """Upsert. Var olan kaydın created_at/origin'i korunur; launch parametreleri güncellenir."""
+                    created_at: Optional[float] = None, cli_opts: Optional[dict] = None) -> None:
+    """Upsert. Var olan kaydın created_at/origin'i korunur; launch parametreleri güncellenir.
+    `cli_opts` (ucli hizmet/exec seçenekleri, temiz sözlük): doluysa kayda yazılır; değnekçi devir/yeniden açmada AYNI
+    seçeneklerle açsın diye (TBD#156). Anahtar/parola taşımaz."""
     now = time.time()
 
     def _apply(items: Dict[str, dict]) -> None:
@@ -119,17 +121,25 @@ def record_instance(name: str, *, blueprint: Optional[str], cwd: str, cli: str, 
             "last_started_at": old.get("last_started_at"),
             "origin": old.get("origin") or origin,
         }
+        if cli_opts:
+            items[name]["cli_opts"] = dict(cli_opts)
 
     _mutate(_apply)
 
 
-def mark_started(name: str, *, cli: str, model: str, permission_mode: str, effort: str) -> None:
-    """Bir sonraki "Devam ettir"in varsayılanları, son başlatmanın gerçek parametreleri olsun."""
+def mark_started(name: str, *, cli: str, model: str, permission_mode: str, effort: str,
+                 cli_opts: Optional[dict] = None) -> None:
+    """Bir sonraki "Devam ettir"in varsayılanları, son başlatmanın gerçek parametreleri olsun (`cli_opts` dahil:
+    son başlatmanın seçenekleri; seçeneksiz başlatma eskisini siler)."""
 
     def _apply(items: Dict[str, dict]) -> None:
         rec = items.get(name)
         if rec is None:
             return
+        if cli_opts:
+            rec["cli_opts"] = dict(cli_opts)
+        elif rec.get("cli") != cli:
+            rec.pop("cli_opts", None)       # cli değişti: eski cli'nin seçenekleri geçersiz
         rec.update(cli=cli, model=model, permission_mode=permission_mode, effort=effort,
                    last_started_at=time.time())
         rec.pop("forgotten", None)

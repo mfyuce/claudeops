@@ -94,6 +94,7 @@ from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 import psutil
 
 from .. import searxng
+from .. import ucli_agents
 from ..diaglog import diag_log
 from .. import ucli_cost
 from ..settings import ucli_cost_config
@@ -687,6 +688,28 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
     return argv, env_prefix
 
 
+def _agent_setup(binary: str, session_name: str) -> Tuple[List[str], List[str]]:
+    """Alt ajan desteği (unified-cli `--allow-agents`, sahip 2026-11-04): (ek argv, ek env atamaları). YALNIZ şu hâlde dolu:
+    ayar `ucli_agents` kapalı değil, oturum adı var ve ÇOCUK değil (derinlik 1: `<üst>_aj<N>` ajan token'ı almaz), panelin
+    portu biliniyor ve ikili `--allow-agents`'i tanıyor. Oturuma özel token `ucli_agents.issue_token` ile üretilir; env'e
+    `UCLI_AGENT_TOKEN="$(cat <0600 dosya>)"` olarak girer (argv'ye ve loga GİRMEZ, `ps`/tmux komut satırında görünmez).
+    Token dosyası yazılamazsa oturum ajansız açılır (günlüğe yazılır), spawn kırılmaz."""
+    if not session_name or not ucli_agents.enabled() or ucli_agents.is_child_name(session_name):
+        return [], []
+    url = ucli_agents.panel_url()
+    if not url:
+        return [], []
+    if not binary_supports_flag(binary, "--allow-agents"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--allow-agents", binary=binary)
+        return [], []
+    try:
+        path = ucli_agents.issue_token(session_name)
+    except (OSError, ValueError) as e:
+        diag_log("ucli_agents_token_failed", name=session_name, error=e.__class__.__name__)
+        return [], []
+    return ["--allow-agents"], [f"UCLI_AGENT_URL={shlex.quote(url)}", f'UCLI_AGENT_TOKEN="$(cat {shlex.quote(path)})"']
+
+
 class UcliProvider(CliProvider):
     name = "ucli"
 
@@ -794,10 +817,13 @@ class UcliProvider(CliProvider):
         service_env = ""
         if cli_opts:
             argv, service_env = _apply_cli_opts(argv, cli_opts, session_name, cwd, effort)
+        agent_args, agent_env = _agent_setup(argv[0], session_name)
+        argv += agent_args
         inner =" ".join(shlex.quote(a) for a in argv)
+        agent_prefix = (" ".join(agent_env) + " ") if agent_env else ""
         if service_env:
             # Hizmet anahtarı (Claude/Grok/OpenRouter): argv'ye GİRMEZ, 600'lük dosyadan env'e (Evren yoluyla aynı desen).
-            wrapped = f'{service_env} exec {inner}'
+            wrapped = f'{service_env} {agent_prefix}exec {inner}'
             return "sh -c " + shlex.quote(wrapped)
         if _sync_api_key_file():
             # Anahtarı argv'ye GÖMMÜYORUZ — bu makine çok-kullanıcılı, `ps aux`
@@ -806,8 +832,10 @@ class UcliProvider(CliProvider):
             # anahtar SADECE ucli process'inin (argv'de DEĞİL) ortamında kalır,
             # `exec` sh'yi ucli ile DEĞİŞTİRDİĞİ için (aynı PROC_TAG deseni,
             # bkz. shell_provider.py) discovery'nin gördüğü argv de temiz kalır.
-            wrapped = f'UCLI_API_KEY="$(cat {_API_KEY_FILE})" exec {inner}'
+            wrapped = f'UCLI_API_KEY="$(cat {_API_KEY_FILE})" {agent_prefix}exec {inner}'
             return "sh -c " + shlex.quote(wrapped)
+        if agent_prefix:
+            return "sh -c " + shlex.quote(f'{agent_prefix}exec {inner}')
         return inner
 
     def oneshot(self, prompt: str, model: Optional[str], cwd: str, timeout: float = 120.0) -> Optional[str]:

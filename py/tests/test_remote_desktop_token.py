@@ -132,6 +132,59 @@ class WebProxyTest(_Base):
         self.assertNotIn("TK", req.split("\r\n")[0])
         self.assertIn("Upgrade: websocket", req)
 
+    def test_ws_proxy_rewrites_host_and_drops_origin(self):
+        from claudeops.commands import web
+        sent = []
+
+        class FakeSock:
+            def settimeout(self, t): pass
+            def sendall(self, b): sent.append(b)
+            def recv(self, n): return b""
+            def shutdown(self, h): pass
+            def close(self): pass
+
+        h = mock.Mock()
+        h.command = "GET"
+        h.path = "/ws/desktop?token=PANELSECRET"
+        h.headers = {"Host": "evil.trycloudflare.com", "Origin": "https://evil.trycloudflare.com",
+                     "Upgrade": "websocket", "Cookie": "s=1", "Authorization": "Bearer P",
+                     "Sec-WebSocket-Key": "abc"}
+        h.rfile.read1.return_value = b""
+        with mock.patch.object(web.remote_desktop, "current_port", return_value=9123), \
+                mock.patch.object(web.remote_desktop, "current_token", return_value="DAEMONTOK"), \
+                mock.patch.object(web.socket, "create_connection", return_value=FakeSock()):
+            web._proxy_desktop_ws(h)
+        lines = b"".join(sent).decode().split("\r\n")
+        hosts = [l for l in lines if l.lower().startswith("host:")]
+        self.assertEqual(hosts, ["Host: 127.0.0.1:9123"])
+        low = [l.lower() for l in lines]
+        self.assertFalse(any(l.startswith(("origin:", "authorization:", "cookie:")) for l in low))
+        self.assertNotIn("evil", "".join(lines))
+        self.assertIn("Sec-WebSocket-Key: abc", lines)
+
+    def test_gestures_fetch_uses_daemon_token(self):
+        from claudeops.commands import web
+        resp = mock.MagicMock()
+        resp.__enter__.return_value.read.return_value = b"js"
+        h = mock.Mock()
+        with mock.patch.object(web.remote_desktop, "current_port", return_value=9123), \
+                mock.patch.object(web.remote_desktop, "current_token", return_value="DAEMONTOK"), \
+                mock.patch("urllib.request.urlopen", return_value=resp) as uo:
+            web._serve_desktop_viewer(h, "gestures.js")
+        self.assertEqual(uo.call_args[0][0], "http://127.0.0.1:9123/gestures.js?token=DAEMONTOK")
+        h.send_response.assert_called_with(200)
+        h.wfile.write.assert_called_with(b"js")
+
+    def test_gestures_503_when_daemon_down(self):
+        from claudeops.commands import web
+        h = mock.Mock()
+        with mock.patch.object(web.remote_desktop, "current_port", return_value=None), \
+                mock.patch.object(web.remote_desktop, "current_token", return_value=None), \
+                mock.patch("urllib.request.urlopen") as uo:
+            web._serve_desktop_viewer(h, "gestures.js")
+        uo.assert_not_called()
+        self.assertEqual(h._json.call_args[1]["status"], 503)
+
     def test_ws_proxy_503_without_token(self):
         from claudeops.commands import web
         h = mock.Mock()
