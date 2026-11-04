@@ -88,6 +88,10 @@ export type SettingsPatch = {
   ucli_endpoint?: string;
   /** {mode: "" | "read" | "full"} — bkz. `Settings.ucli_script`. Boş string betik katmanını KAPATIR (backend anahtarı siler). */
   ucli_script?: Record<string, string>;
+  /** "on" | "off" — bkz. `Settings.ucli_agents`. Boş string = açık (varsayılan). */
+  ucli_agents?: string;
+  /** Bkz. `Settings.ucli_agents_max_cost_usd`. Boş = 2 USD, 0 = tavan yok. */
+  ucli_agents_max_cost_usd?: string;
   /** {amber, red: string} — bkz. `Settings.ucli_usage_warn`. Boş string bir alanı varsayılana döndürür. */
   ucli_usage_warn?: Record<string, string>;
   /** "on" | "off" — bkz. `Settings.tunnel_watch`. */

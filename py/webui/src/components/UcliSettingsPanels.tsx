@@ -40,6 +40,7 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
   const [ucliLimitsDraft, setUcliLimitsDraft] = useState<Record<string, string>>({});
   const [ucliWebDraft, setUcliWebDraft] = useState<Record<string, string>>({});
   const [ucliEndpointDraft, setUcliEndpointDraft] = useState<string | null>(null);
+  const [agentsCostDraft, setAgentsCostDraft] = useState<string | null>(null);
   const [ucliWarnDraft, setUcliWarnDraft] = useState<Record<string, string>>({});
 
   if (!data) return null;
@@ -232,6 +233,35 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               {t.ucliScriptModeHint}
             </span>
+          </div>
+          <div className="opts" id="settingsUcliAgentsPanel">
+            <span className="opts-hint" style={{ flexBasis: "100%" }}>
+              <b>{t.ucliAgentsLabel}</b> {t.ucliAgentsDesc}
+            </span>
+            <label>
+              {t.ucliAgentsEnabledLabel}
+              <select
+                value={OFF_WORDS.has(asText(settings.ucli_agents).trim().toLowerCase()) ? "off" : "on"}
+                onChange={(e) => void save({ ucli_agents: e.target.value })}
+              >
+                <option value="on">{t.ucliAgentsOn}</option>
+                <option value="off">{t.ucliAgentsOff}</option>
+              </select>
+            </label>
+            <label>
+              {t.ucliAgentsCostLabel}
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder={t.ucliAgentsCostPlaceholder}
+                value={agentsCostDraft ?? asText(settings.ucli_agents_max_cost_usd)}
+                onChange={(e) => setAgentsCostDraft(e.target.value)}
+                onBlur={(e) => {
+                  void save({ ucli_agents_max_cost_usd: e.target.value.trim() });
+                  setAgentsCostDraft(null);
+                }}
+              />
+            </label>
           </div>
         </>
       )}

@@ -513,6 +513,13 @@ export interface Strings {
   ucliScriptOff: string;
   ucliScriptRead: string;
   ucliScriptFull: string;
+  ucliAgentsLabel: string;
+  ucliAgentsDesc: string;
+  ucliAgentsEnabledLabel: string;
+  ucliAgentsOn: string;
+  ucliAgentsOff: string;
+  ucliAgentsCostLabel: string;
+  ucliAgentsCostPlaceholder: string;
   tabHintToggle: string;
   tabSettingsGeneral: string;
   tabSettingsModels: string;
@@ -1386,6 +1393,14 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliScriptOff: "kapalı (varsayılan)",
     ucliScriptRead: "salt-okuma (read)",
     ucliScriptFull: "tam (full)",
+    ucliAgentsLabel: "ucli alt ajanları",
+    ucliAgentsDesc:
+      "ucli oturumlarının kendi içinden alt ajan açabilmesi. Yalnız claudeops'tan YENİ açılan oturumlara uygulanır; çalışanlar eski ayarla sürer. Her alt ajan için aşağıdaki USD tavanı geçerlidir.",
+    ucliAgentsEnabledLabel: "alt ajanlar",
+    ucliAgentsOn: "açık (varsayılan)",
+    ucliAgentsOff: "kapalı",
+    ucliAgentsCostLabel: "alt ajan başına tavan (USD)",
+    ucliAgentsCostPlaceholder: "boş = 2, 0 = tavan yok",
     tabHintToggle: "Açıklamayı göster/gizle",
     tabSettingsGeneral: "genel",
     tabSettingsModels: "model",
@@ -2261,6 +2276,14 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliScriptOff: "off (default)",
     ucliScriptRead: "read-only (read)",
     ucliScriptFull: "full",
+    ucliAgentsLabel: "ucli sub-agents",
+    ucliAgentsDesc:
+      "Whether ucli sessions may spawn sub-agents from inside. Applies only to ucli sessions newly opened from claudeops; running ones keep their old settings. The USD cap below applies to each sub-agent.",
+    ucliAgentsEnabledLabel: "sub-agents",
+    ucliAgentsOn: "on (default)",
+    ucliAgentsOff: "off",
+    ucliAgentsCostLabel: "cap per sub-agent (USD)",
+    ucliAgentsCostPlaceholder: "empty = 2, 0 = no cap",
     tabHintToggle: "Show/hide description",
     tabSettingsGeneral: "general",
     tabSettingsModels: "models",

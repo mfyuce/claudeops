@@ -352,6 +352,10 @@ export interface Settings {
    * kararı backend'in (`settings.py`'nin `ucli_web_config()`'i); settings.json elle
    * düzenlenebildiği için `allow_fetch_domains` çalışma anında liste de olabilir. */
   ucli_web: Record<string, string>;
+  /** "on" (default) | "off" — whether ucli sessions may spawn sub-agents (`ucli_agents.enabled()`); new sessions only. */
+  ucli_agents?: string;
+  /** Per-child-agent USD cap (`ucli_agents.max_cost_usd()`): empty = 2, 0 = no cap. */
+  ucli_agents_max_cost_usd?: string;
   /** ucli's OpenAI-compatible endpoint (2026-10-20): http(s) address; empty/invalid = the Evren default. Not a secret
    * (the API key stays in `byok`). New ucli sessions + the model-list fetch read it; running sessions are unaffected. */
   ucli_endpoint: string;
