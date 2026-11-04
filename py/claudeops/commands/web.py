@@ -73,6 +73,7 @@ from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV, ensure_private_state_dir
 from ..settings import (normalize_ucli_services, default_effort_for, default_model_for, load_settings, resolved_model_for, save_settings,
                         ucli_usage_warn_thresholds)
+from .. import ucli_client
 from ..ucli_client import quota_equivalent_tokens, usage_warn_level
 from ..snapshot import save_snapshot, load_latest_snapshot, get_snapshot, list_snapshots, normalize_mirrors
 from ..spawn import spawn_session, detect_display, open_window, open_mirror_window
@@ -1938,6 +1939,11 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     # "son görülen: start_begin, eşleşen start_end yok" gibi bir kanıt bırakır.
     diag_log("start_begin", name=name, fresh=bool(fresh), cli=chosen_cli, model=chosen_model)
     died = False
+    if fresh and chosen_cli == "ucli" and _find_running_for_action(name)[0] != "exact":
+        # ucli'de "yeni konuşma" = `--session <ad>` geçmişi yok: eski dosyalar arşive taşınır (ad aynı kalır, okuyucular bozulmaz)
+        moved = ucli_client.archive_session_files(src["cwd"], name)
+        if moved:
+            diag_log("ucli_fresh_archived", name=name, files=len(moved))
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
@@ -2911,7 +2917,9 @@ def _handover(name: str, lang: str = "tr", exact: bool = False, extra: str = "")
     # bir shell pane'ine düz metin enjekte edebiliyordu (`_v1_eligible_sessions`/
     # `_v1_chat_completions`'ın AYNI üçlüden `has_conversation()` bacağıyla
     # tutarlı hale getirildi).
-    if not provider.wants_handover_wrapup():
+    # TBD#156 (5 Kas): kapı `wants_handover_wrapup` DEĞİL `has_conversation`: ucli wrap-up+kill/resume istemez (CLI toplu yolu
+    # onu atlar) AMA değnekçi devri = oturuma devir notunu yazdırmak, sonra `fresh` yeniden açmak; ucli'ye de mesaj gitmeli.
+    if not provider.has_conversation():
         return _err(lang, "no_conversation", name=name)
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     if extra:      # değnekçi: oturumun açık soruları (`steward.handover_questions_note`)

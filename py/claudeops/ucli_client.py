@@ -303,6 +303,40 @@ def failed_turn_records(cwd: str, session: str) -> list:
     return [(u, p) for u, _n, p in out]
 
 
+def archive_session_files(cwd: str, session: str, stamp: Optional[int] = None) -> List[str]:
+    """`fresh=True` ucli başlatması YENİ konuşma açsın diye: `<session>.jsonl` + `<session>.status.json`i her sohbet dizininde
+    (yeni `--state-dir` ve eski `<kök>/.ucli/chat`) `<dizin>/archive/<session>.<stamp>.<uzantı>` altına TAŞIR (silmez).
+    Oturum ADI değişmez (sid = ad; read_status_file/read_chat_history/jsonl okuyucuları aynen çalışır); `archive/` alt dizini
+    `*.jsonl` glob'larına (io_providers) görünmez. Taşınan yolların listesini döner; fırlatmaz. ÇAĞIRAN oturum çalışmıyorken çağırmalı."""
+    import time as _time
+    if not session or not re.fullmatch(r"[A-Za-z0-9_.-]+", session) or session in (".", ".."):
+        return []
+    ts = int(stamp if stamp is not None else _time.time())
+    moved: List[str] = []
+    try:
+        dirs = chat_session_dirs(cwd)
+    except Exception:
+        return moved
+    for d in dirs:
+        for suffix in (".jsonl", ".status.json"):
+            src = os.path.join(d, session + suffix)
+            if not os.path.isfile(src):
+                continue
+            try:
+                adir = os.path.join(d, "archive")
+                os.makedirs(adir, exist_ok=True)
+                dst = os.path.join(adir, f"{session}.{ts}{suffix}")
+                n = 1
+                while os.path.exists(dst):
+                    dst = os.path.join(adir, f"{session}.{ts}_{n}{suffix}")
+                    n += 1
+                os.replace(src, dst)
+                moved.append(dst)
+            except OSError:
+                continue
+    return moved
+
+
 def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
     """`{session}.status.json`'ı ayrıştırır (unified-cli'nin `--status-file`'ı,
     2026-10-04'te `ucli chat --help`'te fark edildi — `chat --repl --session
