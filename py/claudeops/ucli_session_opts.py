@@ -235,6 +235,19 @@ def expand_exec_cmds(items: List[str], available: List[str]) -> Tuple[List[str],
     return out, ""
 
 
+def _rustup_default_toolchain(rustup_home: str) -> str:
+    """`<rustup_home>/settings.toml` içindeki `default_toolchain` (yoksa/okunamazsa ""). Tam TOML ayrıştırıcı gerekmez: tek anahtar."""
+    try:
+        with open(os.path.join(rustup_home, "settings.toml"), encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r'\s*default_toolchain\s*=\s*"([^"]+)"', line)
+                if m:
+                    return m.group(1).strip()
+    except OSError:
+        pass
+    return ""
+
+
 def rust_toolchain() -> Tuple[Dict[str, str], str]:
     """Kafese verilecek Rust araç zinciri -> ({root, cargo, rustc, registry, git, rustup_home, cargo_home}, hata). Yolu kullanıcı
     VERMEZ: `~/.rustup/toolchains/` altındaki TEK dizin (ya da `RUSTUP_TOOLCHAIN` adlısı) bulunur; kafeste `$HOME` boştur ve çıplak
@@ -251,6 +264,10 @@ def rust_toolchain() -> Tuple[Dict[str, str], str]:
     pick = [n for n in names if n.startswith(want)] if want else names
     if want and not pick:       # istenen araç zinciri yok: başkasını SESSİZCE seçme
         return {}, f"RUSTUP_TOOLCHAIN={want} ile eşleşen araç zinciri yok: {tdir}"
+    if len(pick) > 1 and not want:      # birden çok: rustup'ın kendi varsayılanı (settings.toml default_toolchain) TEK adayı seçer
+        dflt = _rustup_default_toolchain(rh)
+        if dflt:
+            pick = [n for n in pick if n == dflt or n.startswith(dflt + "-")]
     if len(pick) != 1:
         return {}, f"Rust araç zinciri belirsiz/yok ({len(pick)} aday): {tdir}"
     root = os.path.join(tdir, pick[0])
