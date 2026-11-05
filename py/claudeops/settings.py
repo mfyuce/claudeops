@@ -261,7 +261,41 @@ def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
         return _save_settings_locked(patch)
 
 
+def _backup_if_corrupt() -> None:
+    """DATA-02: `settings.json` VAR ama JSON nesnesi değil/okunamıyor: `load_settings` varsayılanları döndürür ve bu
+    yazım BYOK anahtarlarını/ayarları KALICI silerdi. Ham dosya `settings.json.corrupt-<sha8>` (0600, aynı içerik bir
+    kez) olarak yedeklenir + diag.log; yazım YİNE yapılır (`snapshot._backup_if_corrupt` ile aynı kural). Boş/yok
+    dosya bozuk sayılmaz."""
+    try:
+        with open(SETTINGS_JSON, "rb") as f:
+            raw = f.read()
+    except OSError:
+        return
+    if not raw.strip():
+        return
+    try:
+        if isinstance(json.loads(raw.decode("utf-8")), dict):
+            return
+    except (ValueError, UnicodeDecodeError):
+        pass
+    import hashlib
+    dest = f"{SETTINGS_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
+    if not os.path.exists(dest):
+        try:
+            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as out:
+                out.write(raw)
+        except OSError:
+            dest = ""
+    try:
+        from .diaglog import diag_log
+        diag_log("settings_corrupt_backup", path=dest or "(yedeklenemedi)", size=len(raw))
+    except Exception:
+        pass
+
+
 def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
+    _backup_if_corrupt()
     current = load_settings()
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:

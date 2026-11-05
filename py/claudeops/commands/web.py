@@ -573,8 +573,10 @@ def _fleet_status() -> dict:
     KAPALI  = roster.tsv'de aktif ama models.tsv'de yorumlu (guard açmaz, cwd hâlâ bilinir).
     EMEKLİ  = ikisinde de yorumlu (eski suffix-döneminden tam çıkarılmış isimler).
     """
-    models_raw = {r["name"]: r for r in _read_tsv_raw(MODELS_TSV) if r["name"] != "name"}
-    roster_raw = {r["name"]: r for r in _read_tsv_raw(ROSTER_TSV) if r["name"] != "name"}
+    # DATA-04: yinelenen adda İLK satır geçer (eskiden dict son satırı alıyordu; `_toggle_comment`/`_replace_tsv_line`
+    # ilkini değiştirdiği için retire/close/reactivate sessizce etkisiz kalabiliyordu)
+    models_raw = _first_rows(_read_tsv_raw(MODELS_TSV))
+    roster_raw = _first_rows(_read_tsv_raw(ROSTER_TSV))
 
     result = {}
     for name, mrow in models_raw.items():
@@ -658,6 +660,15 @@ def _atomic_write_text(path: str, content: str) -> None:
         raise
     from .. import statedocs
     statedocs.shadow_tsv(path, force=True)     # SQLite gölge kopya (dosya doğruluk kaynağı)
+
+
+def _first_rows(rows: list) -> dict:
+    """{ad: satır}, yinelenen adda İLK satır (yazıcılar `_toggle_comment`/`_replace_tsv_line` ile aynı kural)."""
+    out: dict = {}
+    for r in rows:
+        if r["name"] != "name":
+            out.setdefault(r["name"], r)
+    return out
 
 
 def _append_tsv_line(path: str, fields: list) -> None:

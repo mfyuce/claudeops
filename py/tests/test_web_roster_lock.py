@@ -79,6 +79,12 @@ class RosterLockTest(unittest.TestCase):
         with open(self.p, encoding="utf-8") as f:
             self.assertIn("z\tv", f.read())
 
+    def test_data04_first_row_wins_like_writers(self):
+        rows = [{"name": "name"}, {"name": "a", "v": 1}, {"name": "a", "v": 2}, {"name": "b", "v": 3}]
+        out = web._first_rows(rows)
+        self.assertEqual(out["a"]["v"], 1)
+        self.assertNotIn("name", out)
+
 
 if __name__ == "__main__":
     unittest.main()
