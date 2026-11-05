@@ -86,7 +86,8 @@ def recover_stuck(
 
     Resume'da prompt YOK — jsonl'deki son user mesajı zaten var,
     claude kaldığı yerden devam eder.
-    Returns: "recovered" | "dry-run" | "kill-failed"
+    Returns: "recovered (<spawn kind>)" | "dry-run". Öldürmenin sonucu (`already_dead` vb.) BİLEREK yok sayılır ve
+    resume her zaman denenir; "kill-failed" diye bir dönüş YOK (eski belge yanlıştı).
     """
     if display is None:
         display = detect_display()
@@ -97,7 +98,7 @@ def recover_stuck(
         return "dry-run"
 
     # PROC-02: tmux/gnome ebeveynini de temizler (yalnız pid öldürmek tmux oturumunu/pencereyi artık bırakıyordu)
-    result = kill_session_and_parent(s.pid, grace=grace, name=s.name)
+    kill_session_and_parent(s.pid, grace=grace, name=s.name)
     # already_dead olsa bile respawn et — proc ölmüş ama resume yine gerekli
 
     # Resume — prompt yok, jsonl'deki son user mesajı tetikleyecek

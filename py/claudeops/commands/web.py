@@ -774,8 +774,9 @@ def _edit_project(name: str, new_name: str, new_cwd: str, new_model: str = "",
         if has_history:
             warnings.append(_msg(lang, "edit_warn_orphans_history", cwd=old_cwd))
 
-    _replace_tsv_line(ROSTER_TSV, name, [new_name, new_cwd, chosen_model, chosen_cli])
-    _replace_tsv_line(MODELS_TSV, name, [new_name, chosen_model])
+    with _roster_lock(ROSTER_TSV):      # iki TSV tek kritik bölgede (WEB-08)
+        _replace_tsv_line(ROSTER_TSV, name, [new_name, new_cwd, chosen_model, chosen_cli])
+        _replace_tsv_line(MODELS_TSV, name, [new_name, chosen_model])
     if new_name != name:
         inst_mod.rename_blueprint(name, new_name)
     return {"ok": True, "name": new_name, "warnings": warnings}
@@ -2806,8 +2807,9 @@ def _retire(name: str, lang: str = "tr") -> dict:
             return {"ok": False, "error": str(e)}
         for s in procs:
             web_agents.parent_closed(s.name, _AGENT_OPS)
-    _toggle_comment(MODELS_TSV, name, want_active=False)
-    _toggle_comment(ROSTER_TSV, name, want_active=False)
+    with _roster_lock(ROSTER_TSV):      # iki TSV tek kritik bölgede (WEB-08)
+        _toggle_comment(MODELS_TSV, name, want_active=False)
+        _toggle_comment(ROSTER_TSV, name, want_active=False)
     return {"ok": True}
 
 
@@ -3345,8 +3347,9 @@ def _reactivate_and_start(name: str, lang: str = "tr") -> dict:
         return _err(lang, "undefined", name=name)
     if info["state"] == "active":
         return _err(lang, "already_active", name=name)
-    _toggle_comment(MODELS_TSV, name, want_active=True)
-    _toggle_comment(ROSTER_TSV, name, want_active=True)
+    with _roster_lock(ROSTER_TSV):      # iki TSV tek kritik bölgede (WEB-08)
+        _toggle_comment(MODELS_TSV, name, want_active=True)
+        _toggle_comment(ROSTER_TSV, name, want_active=True)
     return _start(name, lang=lang)
 
 
@@ -3572,8 +3575,9 @@ def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lan
                     results.append({"name": name, "status": "failed", "error": reg.get("error")})
                     continue
         elif info is not None and info["state"] != "active":
-            _toggle_comment(MODELS_TSV, name, want_active=True)
-            _toggle_comment(ROSTER_TSV, name, want_active=True)
+            with _roster_lock(ROSTER_TSV):      # iki TSV tek kritik bölgede (WEB-08)
+                _toggle_comment(MODELS_TSV, name, want_active=True)
+                _toggle_comment(ROSTER_TSV, name, want_active=True)
         r = _start(
             name,
             model=model,

@@ -1230,6 +1230,7 @@ class _PushConsumer:
         self._alive = threading.Event()
         self._alive.set()
         self.last_msg_mono = time.monotonic()    # kuruluş = ilk "mesaj" (bağlanana dek haksız sessizlik sayılmasın)
+        self.has_data = False    # en az bir öğe `on_item`a ulaştı mı (FED-01: veri gelene kadar REST yoklaması sürer)
         self._call: Any = None
         self._call_lock = threading.Lock()
         self._thread = threading.Thread(
@@ -1248,6 +1249,7 @@ class _PushConsumer:
                 item = self._parse_item(raw)
                 if item is not None:
                     self._on_item(item)
+                    self.has_data = True
         except Exception as e:
             # bağlantı koptu/hata verdi — çağıran bir sonraki tick'te REST'e düşer / yeniden kurar
             reason = f"{type(e).__name__}: {e}"[:200]
@@ -1342,7 +1344,9 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
         existing = _status_consumers.get(name)
         if existing is not None and existing.is_alive() and existing.tier == tier:
             if existing.silent_seconds() <= STATUS_PUSH_SILENCE_SECONDS:
-                return True
+                # FED-01: akış henüz hiç veri getirmediyse REST yoklaması sürer (bağlanıp susan/hemen ölen akış
+                # `_record_poll_result`a hiçbir şey yazmaz; REST olmadan host süresiz "ok, bayat liste" görünürdü)
+                return bool(getattr(existing, "has_data", True))
             # Canlı görünüp sessiz kalan akış (yarı açık bağlantı): yoklama HİÇ yapılmadığı için `last_ok_at` bayatlar,
             # host "kapalı" sanılırdı (2026-10-29, ulak_31 18+ dk). Eskisi atılır, yenisi kurulur, BU tick REST'e düşer.
             diag_log("status_consumer_silent", name=name, tier=tier, silent=int(existing.silent_seconds()))
@@ -1365,8 +1369,10 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
         existing.stop()  # ESKİ (tier değişmiş/ölmüş) consumer'ı kilidin DIŞINDA durdur — stop() ağ I/O yapabilir
     if silent_old is not None:
         silent_old.stop()
-        return False     # sessiz akış yenilendi: bu tick REST yoklaması yapılsın (taze veri yeni akışı beklemesin)
-    return True
+    # FED-01: YENİ kurulan akışın tick'i (ilk kuruluş, ölüm sonrası, sessizlik ya da tier değişimi) REST'le yoklanır:
+    # host gerçekten çöktüyse her tick ölen akış hiç hata yazmıyor, `extra_urls` hiç denenmiyordu (sağlık "ok:true,
+    # bayat liste" kalırdı). REST sonucu ardışık-hata toleransıyla (`_record_poll_result`) kaydedilir.
+    return False
 
 
 def _reap_status_consumers(current_names: set) -> None:

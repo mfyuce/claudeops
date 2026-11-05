@@ -14,8 +14,9 @@ OK = {"ok": True, "error": "", "sessions": [], "closed": []}
 
 
 class FakeConsumer:
-    def __init__(self, tier="ws", silent=0.0, alive=True):
+    def __init__(self, tier="ws", silent=0.0, alive=True, has_data=True):
         self.tier, self._silent, self._alive, self.stopped = tier, silent, alive, False
+        self.has_data = has_data
 
     def is_alive(self):
         return self._alive
@@ -59,6 +60,47 @@ class SilentConsumerTest(unittest.TestCase):
             self.assertFalse(wh._ensure_status_consumer(HOST))
         self.assertTrue(old.stopped)
         self.assertNotIn("ulak31", wh._status_consumers)
+
+    def test_fed01_dead_consumer_restarted_and_rest_used_this_tick(self):
+        old, new = FakeConsumer(alive=False), FakeConsumer(has_data=False)
+        wh._status_consumers["ulak31"] = old
+        with mock.patch.object(wh, "get_tier", lambda n: "ws"), \
+                mock.patch.object(wh, "_start_status_consumer", lambda h, t: new):
+            self.assertFalse(wh._ensure_status_consumer(HOST))        # ölüm sonrası: REST (hata kaydı + extra_urls)
+            self.assertIs(wh._status_consumers["ulak31"], new)
+            self.assertFalse(wh._ensure_status_consumer(HOST))        # yeni akış henüz veri getirmedi: REST sürer
+            new.has_data = True
+            self.assertTrue(wh._ensure_status_consumer(HOST))         # veri geldi: REST kapanır
+
+    def test_fed01_first_start_uses_rest(self):
+        new = FakeConsumer(has_data=False)
+        with mock.patch.object(wh, "get_tier", lambda n: "ws"), \
+                mock.patch.object(wh, "_start_status_consumer", lambda h, t: new):
+            self.assertFalse(wh._ensure_status_consumer(HOST))
+
+    def test_fed01_poll_once_records_failure_when_push_dies(self):
+        # her tick ölen akış: REST hatası sayaca yazılır, eşik aşılınca cache ok:false olur (eskiden süresiz ok:true)
+        name = HOST["name"]
+        for d in (wh._cache, wh._last_good, wh._fail_streak, wh._last_ok_at):
+            d.pop(name, None)
+        wh._record_poll_result(name, dict(OK))
+        self.addCleanup(lambda: [d.pop(name, None) for d in (wh._cache, wh._last_good, wh._fail_streak, wh._last_ok_at)])
+        with mock.patch.object(wh.hosts_mod, "load_hosts", lambda: [HOST]), \
+                mock.patch.object(wh, "get_tier", lambda n: "ws"), \
+                mock.patch.object(wh, "_start_status_consumer", lambda h, t: FakeConsumer(alive=False, has_data=False)), \
+                mock.patch.object(wh, "fetch_remote_status", lambda h: {"ok": False, "error": "down"}), \
+                mock.patch.object(wh, "_reap_status_consumers", lambda names: None):
+            for _ in range(wh.CONSECUTIVE_FAILURES_BEFORE_ERROR):
+                wh._poll_once()
+        self.assertFalse(wh._cache[name]["ok"])
+
+    def test_push_consumer_sets_has_data(self):
+        c = wh._PushConsumer("ws", lambda: iter(["a"]), lambda r: {"v": r}, lambda item: None)
+        c._thread.join(2)
+        self.assertTrue(c.has_data)
+        c2 = wh._PushConsumer("ws", lambda: iter(["a"]), lambda r: None, lambda item: None)
+        c2._thread.join(2)
+        self.assertFalse(c2.has_data)
 
     def test_push_consumer_tracks_last_message(self):
         got = []
