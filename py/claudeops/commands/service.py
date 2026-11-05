@@ -102,12 +102,14 @@ UNIT_NAMES = ["claudeops-web.service", "claudeops-tunnel.service"]
 # bir `systemctl stop/restart` (kendi stop-job'u, Restart= mantığının hiç
 # uğramadığı ayrı bir kod yolu) servisi kalıcı durdurur, HERHANGİ beklenmedik
 # çıkış/sinyal (hangi türden olursa olsun) yine geri gelir.
+# OPS-06: `exec` açık: `bash -ic`in örtük exec kısayolu `.bashrc`de bir `trap` varsa iptal olur, MainPID bash kalır ve
+# `KillMode=process` restart'ta python'u yetim bırakır (EADDRINUSE döngüsü). `exec` ile MainPID her zaman python.
 WEB_UNIT_TEMPLATE = """[Unit]
 Description=claudeops web panel
 
 [Service]
 WorkingDirectory={repo_py}
-ExecStart=/bin/bash -ic '{python} -m claudeops web'
+ExecStart=/bin/bash -ic 'exec {python} -m claudeops web'
 Restart=always
 RestartSec=5
 KillMode=process
