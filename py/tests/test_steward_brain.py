@@ -532,7 +532,12 @@ class TestHumanGate(_Brain):
     def test_human_in_default_context_is_unrestricted(self):
         for name in ("a", "k", "adhocsess"):
             self.assertTrue(self.post("/api/steward/stop", name)["ok"], name)
-        self.assertEqual(self.calls, [("stop", "a"), ("stop", "k"), ("stop", "adhocsess")])
+        # kayıtlı proje oturumu (a) ho'suz kapanmaz: önce devir (sahip kuralı 2026-11-05); kayıtsız oturum (adhocsess) eskisi gibi
+        self.assertEqual(self.calls[0], ("handover", "a"))
+        self.assertIn(("stop", "adhocsess"), self.calls)
+        n = len(self.calls)
+        self.assertTrue(self.post("/api/steward/stop", "a", force=True)["ok"])      # insan zorla: ho'suz
+        self.assertEqual(self.calls[n:], [("stop", "a")])
 
     def test_human_in_other_context_only_own_projects_and_brain(self):
         self.assertTrue(self.post("/api/steward/stop", "k", "kitap")["ok"])
@@ -542,7 +547,7 @@ class TestHumanGate(_Brain):
                 r = self.post("/api/steward/" + path, name, "kitap", text="t", directive="d")
                 self.assertFalse(r["ok"], (path, name))
                 self.assertIn("target denied", r["error"])
-        self.assertEqual(self.calls, [("stop", "k"), ("handover", "degnekci_kitap")])
+        self.assertEqual(self.calls, [("handover", "k"), ("handover", "degnekci_kitap")])
         self.assertEqual(sum(1 for e in sw.tail_log(50, "kitap") if e["event"] == "target_denied"), 12)
         self.assertEqual(sw.tail_log(50), [])
 

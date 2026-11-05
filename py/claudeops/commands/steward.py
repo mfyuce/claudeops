@@ -927,6 +927,8 @@ def cmd_stop(args) -> int:
     body: dict = {"name": args.name, "actor": "cli"}
     if getattr(args, "reason", ""):
         body["reason"] = args.reason
+    if getattr(args, "force", False):
+        body["force"] = True       # ho'suz kapat (yalnız insan; varsayılan: kayıtlı proje oturumu önce devir yapar)
     res = _api(args.port, "POST", "/api/steward/stop", body, _sid(args))
     print(json.dumps(res, ensure_ascii=False))
     return 0 if res.get("ok") else 1
@@ -1103,6 +1105,7 @@ def register(sub):
     pst = s.add_parser("stop", help="tek oturumu durdur (TAM oturum adı): POST /api/steward/stop")
     pst.add_argument("name")
     pst.add_argument("--reason", default="")
+    pst.add_argument("--force", action="store_true", help="ho yapmadan kapat (varsayılan: kayıtlı proje oturumu önce devir)")
     pst.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     pst.set_defaults(func=cmd_stop)
     pup = s.add_parser("up", help="tek komutla aç: on + models.tsv'de # CLOSED satırlarını geri aç + beyni başlat")

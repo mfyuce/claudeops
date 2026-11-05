@@ -5134,19 +5134,21 @@ def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         else:
             real = _resolved_local_name(name, sid)
             proj = None
-            if str(data.get("actor") or "") == "brain" and real != cfg.brain_name:
+            actor = str(data.get("actor") or "")
+            force = bool(data.get("force"))      # YALNIZ insan: ho'suz zorla kapat (sahip kuralı 2026-11-05: kapatırken mutlaka ho)
+            if real != cfg.brain_name and (actor == "brain" or not force):
                 try:
                     proj = _project_for_session(real, sw.load_projects(sid), _world(sid))
                 except Exception:
                     proj = None
-            if proj is not None and str(getattr(proj, "phase", "")) not in ("done", "paused"):
+            if proj is not None and actor == "brain" and str(getattr(proj, "phase", "")) not in ("done", "paused"):
                 # İŞİ VAR (planned/planning/idea): beyin kapatamaz. Bitti ise faz done/paused yapılır; kalan iş sahip
                 # kararıysa steward_ask_user ile sahibe SORULUR (sorusuz "sahipte" demek kapatma gerekçesi değil).
                 res = {"ok": False, "error": f"{proj.name} faz '{proj.phase}': işi var, kapatılamaz. Bitti ise önce "
                        "steward_set_project phase=done|paused; kalan iş sahip kararıysa steward_ask_user ile sor."}
             elif proj is not None:
-                # Beyin "bitti, kapat" dedi: GÜM diye öldürme YOK. Önce devir, READY FOR HANDOVER gelince motor kapatır
-                # (`ho_close`); iş varsa beyin stop çağırmamalı (sahip kuralı 2026-11-01).
+                # Kayıtlı proje oturumu: GÜM diye öldürme YOK (beyin ya da insan fark etmez). Önce devir, READY FOR HANDOVER
+                # gelince motor kapatır (`ho_close`). Zorla kapatmak için `force` (yalnız insan).
                 res = _local_handover(name, sid, cfg.lang)
                 if res.get("ok"):
                     with sw.steward_lock(sid):

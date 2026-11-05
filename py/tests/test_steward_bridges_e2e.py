@@ -175,7 +175,7 @@ class HandoverQuestions(_Engine):
         q = sw.add_question("cli", "ncs koşu kayıtlarının yolu hangi dizinde tutulmalı sizce?")   # source yok: proje adıyla eşleşir
         with mock.patch.object(ws, "find_sessions", lambda **k: [types.SimpleNamespace(name="cli20261023")]):
             self.assertTrue(ws.http_handover({"name": "cli", "actor": "human"}, "default")["ok"])
-            self.assertTrue(ws.http_stop({"name": "cli", "actor": "human"}, "default")["ok"])
+            self.assertTrue(ws.http_stop({"name": "cli", "actor": "human", "force": True}, "default")["ok"])
             self.assertTrue(ws.http_skip({"name": "cli"}, "default")["ok"])
         self.assertEqual(captured[0][0], "cli20261023")
         self.assertIn(f"[{q.id}]", captured[0][1])
