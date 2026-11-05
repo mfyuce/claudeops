@@ -1179,6 +1179,9 @@ def _io_ask(provider: str, cwd: str, session: str, prompt: str, fields: dict) ->
     prompt = prompt.strip()
     if not prompt:
         return {"ok": False, "error": "prompt boş olamaz"}
+    if session.strip() and any(s.cli == provider and s.name == session.strip() for s in find_sessions(measure_cpu=False)):
+        # PROC-07: aynı adlı CANLI filo oturumu (`--repl`) aynı konuşma dosyasına yazıyor: tek atımlık soru onu bozardı
+        return {"ok": False, "error": f"{session.strip()!r} adlı canlı {provider} oturumu çalışıyor; başka bir ad seçin"}
     try:
         answer = io_provider.ask(cwd, session.strip(), prompt,
                                   {k: str(v) for k, v in fields.items()})

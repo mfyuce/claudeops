@@ -860,7 +860,9 @@ class UcliProvider(CliProvider):
         return text
 
     def matches_proc(self, cmd: List[str]) -> bool:
-        return bool(cmd) and os.path.basename(cmd[0]) == "ucli"
+        # PROC-07: filo oturumu HER ZAMAN `chat --repl` (`build_inner_command`); `--repl`siz ucli (io_providers tek atımlık
+        # `chat --session X <prompt>`, reviewer koşuları) filo oturumu DEĞİL: keşfe girip `_stop`un hedefi olmasın
+        return bool(cmd) and os.path.basename(cmd[0]) == "ucli" and "--repl" in cmd
 
     def _parse_session(self, cmd: List[str]) -> Optional[str]:
         for i, tok in enumerate(cmd):

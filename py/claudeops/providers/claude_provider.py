@@ -810,10 +810,11 @@ class ClaudeProvider(CliProvider):
             if "Set model to" in text or "Kept model as" in text:
                 return
         if not dialog_confirmed:
-            # Son bir şans: dialog belki tam bu son anda açıldı, henüz bir
-            # sonraki poll turuna denk gelmedi — kör bir son Enter, dialog
-            # yoksa (idle input kutusu) zaten kanıtlanmış zararsız bir no-op.
-            tmux_send_special_key(tmux_name, "Enter")
+            # Son bir şans: dialog belki tam bu son anda açıldı. PROC-08: Enter YALNIZ diyalog ekrandaysa; eskiden kör
+            # Enter gidiyordu ve pane başka bir diyalogda (izin sorusu: ilk seçenek "Yes") bekliyorsa onu ONAYLARDI.
+            # Onaysız kalan model diyaloğu zararsız (yukarıda: sonraki tek Enter temiz onaylar).
+            if "Switch model?" in strip_ansi(tmux_capture(tmux_name, lines=20) or ""):
+                tmux_send_special_key(tmux_name, "Enter")
 
     def handover_effort_downgrade(self, current_effort: str, target_effort: str) -> Optional[str]:
         """Handover wrap-up turu için `current_effort`, `target_effort`'un

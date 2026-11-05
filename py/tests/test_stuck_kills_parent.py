@@ -25,6 +25,18 @@ class RecoverStuckTest(unittest.TestCase):
         ks.assert_not_called()
         self.assertTrue(out.startswith("recovered"))
 
+    def test_unknown_permission_uses_provider_default(self):
+        # PROC-04 artığı: kip okunamadıysa sabit "auto" DEĞİL, sağlayıcının ilk kipi (ucli: salt okunur)
+        from claudeops.providers import get_provider
+        for cli in ("claude", "ucli", "agy"):
+            s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="m", permission_mode=None,
+                                effort="high", cli=cli)
+            with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed"), \
+                    mock.patch.object(stuck, "spawn_session", return_value="tmux") as sp:
+                stuck.recover_stuck(SimpleNamespace(session=s), display=":0")
+            self.assertEqual(sp.call_args.kwargs["permission_mode"], get_provider(cli).permission_modes()[0], cli)
+        self.assertNotEqual(get_provider("ucli").permission_modes()[0], "auto")
+
     def test_dry_run_kills_nothing(self):
         s = SimpleNamespace(name="vc1", pid=1)
         with mock.patch.object(stuck, "kill_session_and_parent") as kp:

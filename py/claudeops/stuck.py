@@ -107,7 +107,9 @@ def recover_stuck(
         cwd=s.cwd,
         model=s.model or default_model_for(get_provider(s.cli)),
         display=display,
-        permission_mode=s.permission_mode or "auto",
+        # PROC-04 artığı: kip okunamadıysa sağlayıcının KENDİ varsayılanı (`rc.py` ile aynı kural); sabit "auto" ucli'de
+        # geçersiz kipti ve sağlayıcıdan bağımsız tam bypass varsayıyordu
+        permission_mode=s.permission_mode or get_provider(s.cli).permission_modes()[0],
         effort=s.effort or "max",
         force_new=False,
         dry_run=False,
