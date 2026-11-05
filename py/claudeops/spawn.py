@@ -175,6 +175,8 @@ def spawn_session(
     if dry_run:
         return f"[dry-run] {kind}  cmd: {inner[:80]}..."
 
+    _reclaim_ghost_session(name, cli)
+
     # CLAUDE*/GEMINI*/ANTIGRAVITY*-prefixed env (CLAUDECODE, CLAUDE_CODE_SESSION_ID,
     # CLAUDE_CODE_CHILD_SESSION, messaging socket/token, pinned EXECPATH,
     # CLAUDE_EFFORT/PID...) is THIS process's own session identity. Spawned fleet
@@ -275,6 +277,24 @@ def _launch_gnome_terminal(name: str, cwd: str, window_cmd: str, env: dict) -> b
     # bunun yerine sadece BU child'ı arka planda reap et.
     threading.Thread(target=proc.wait, daemon=True).start()
     return True
+
+
+def _reclaim_ghost_session(name: str, cli: str) -> None:
+    """PROC-03: CLI'si çıkmış, `exec bash`le canlı kalan tmux oturumu (`tmux_ghost_session`) adı rehin tutar: `-A`
+    ona bağlanır, CLI başlamaz, panelden ne start ne stop çalışır. Spawn'dan ÖNCE kapatılır; son ekran (çıkış nedeni:
+    "Out of credits" vb.) diag.log'a yazılır. `shell` sağlayıcısı HARİÇ (orada CLI'nin kendisi bash). Fırlatmaz."""
+    if cli == "shell":
+        return
+    try:
+        from .tmux_backend import strip_ansi, tmux_capture, tmux_ghost_session, tmux_kill_session
+        if not tmux_available() or not tmux_ghost_session(name):
+            return
+        tail = strip_ansi(tmux_capture(name, lines=40) or "")
+        tail = "\n".join(ln for ln in tail.splitlines() if ln.strip())[-1500:]
+        tmux_kill_session(name)
+        diag_log("spawn_ghost_reclaimed", name=name, cli=cli, tail=tail)
+    except Exception as e:     # hayalet temizliği spawn'ı ASLA engellemesin
+        diag_log("spawn_ghost_reclaim_error", name=name, error=str(e)[:200])
 
 
 def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: str) -> None:

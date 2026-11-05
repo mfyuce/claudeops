@@ -560,6 +560,45 @@ def tmux_pane_snapshot(name: str) -> Optional[tuple]:
         return None
 
 
+_GHOST_SHELLS = ("bash", "sh", "zsh", "dash")
+GHOST_MIN_AGE_SECONDS = 30.0
+
+
+def tmux_ghost_session(name: str, now: Optional[float] = None) -> bool:
+    """PROC-03: `tmux_spawn_direct`in `; exec bash` eki CLI kendiliğinden çıkınca (kredi bitti, geçersiz effort, güven
+    diyaloğu) oturumu çıplak bir kabukla CANLI tutar; sonraki `new-session -A` buna bağlanır, CLI hiç başlamaz (ad
+    rehin). True = oturum var, TÜM pane'lerin ön plan süreci yalnız kabuk VE oturum `GHOST_MIN_AGE_SECONDS`ten eski
+    (yeni açılmış oturumun CLI'yi başlatmadan önceki anı hayalet sayılmasın). Hata/bilinmiyor = False (dokunma)."""
+    try:
+        r = subprocess.run(_base_argv() + ["list-panes", "-s", "-t", _exact(name), "-F",
+                                           "#{pane_current_command}\t#{session_created}\t#{pane_pid}"],
+                           capture_output=True, text=True, timeout=_TIMEOUT)
+    except Exception:
+        return False
+    if r.returncode != 0:
+        return False
+    rows = [ln.split("\t") for ln in r.stdout.splitlines() if ln.strip()]
+    if not rows or any(len(x) != 3 for x in rows):
+        return False
+    t = time.time() if now is None else now
+    try:
+        created = min(float(x[1]) for x in rows)
+    except ValueError:
+        return False
+    if not all(x[0] in _GHOST_SHELLS for x in rows) or (t - created) < GHOST_MIN_AGE_SECONDS:
+        return False
+    return all(_pid_childless(x[2]) for x in rows)     # canlı CLI = kabuğun alt süreci; hayalette kabuk yalnız
+
+
+def _pid_childless(pid: str) -> bool:
+    """Pane kabuğunun HİÇ alt süreci yok mu (okunamazsa False = hayalet sayma)."""
+    try:
+        import psutil
+        return not psutil.Process(int(pid)).children()
+    except Exception:
+        return False
+
+
 def tmux_kill_session(name: str) -> None:
     try:
         subprocess.run(_base_argv() + ["kill-session", "-t", _exact(name)],
