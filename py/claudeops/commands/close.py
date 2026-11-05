@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from ..atomic_json import atomic_write_text, file_lock
+from ..atomic_json import atomic_write_text, roster_lock
 from ..discovery import find_sessions
 from ..instances import DERIVED_NAME_RE, get_instance
 from ..kill import kill_session, kill_session_and_parent
@@ -49,9 +49,9 @@ def _first_field(line: str) -> str:
 
 
 def _rewrite_models(transform) -> str:
-    """models.tsv oku-değiştir-yaz döngüsü: `file_lock` altında (panel/steward eşzamanlı yazımı kaybolmasın) ve atomik
+    """models.tsv oku-değiştir-yaz döngüsü: `roster_lock` altında (panel ile AYNI kilit) (panel/steward eşzamanlı yazımı kaybolmasın) ve atomik
     yazım (yarım dosya yok). `transform(lines) -> (status, new_lines|None)`; new_lines None ise dosyaya dokunulmaz."""
-    with file_lock(MODELS_TSV):
+    with roster_lock(MODELS_TSV):
         try:
             with open(MODELS_TSV, encoding="utf-8") as f:
                 lines = f.read().splitlines()

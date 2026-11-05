@@ -221,17 +221,19 @@ def run(args) -> int:
             shutil.copy2(path, dst)
             backups.append(dst)
 
-    if _read(ROSTER_TSV) != roster_content or _read(MODELS_TSV) != models_content:
-        print("\nHATA: roster.tsv/models.tsv okunduktan sonra değişti (panelden bir işlem?). "
-              "Hiçbir şey yazılmadı, tekrar çalıştır.")
-        return 1
+    from ..atomic_json import roster_lock
+    with roster_lock(ROSTER_TSV):      # denetim + yazım panel/close ile aynı kilitte
+        if _read(ROSTER_TSV) != roster_content or _read(MODELS_TSV) != models_content:
+            print("\nHATA: roster.tsv/models.tsv okunduktan sonra değişti (panelden bir işlem?). "
+                  "Hiçbir şey yazılmadı, tekrar çalıştır.")
+            return 1
 
-    added = add_missing(inst)
-    _atomic_write_text(MODELS_TSV, p["new_models"])
-    _atomic_write_text(ROSTER_TSV, p["new_roster"])
-    from .. import statedocs
-    statedocs.shadow_tsv(MODELS_TSV, force=True)
-    statedocs.shadow_tsv(ROSTER_TSV, force=True)
+        added = add_missing(inst)
+        _atomic_write_text(MODELS_TSV, p["new_models"])
+        _atomic_write_text(ROSTER_TSV, p["new_roster"])
+        from .. import statedocs
+        statedocs.shadow_tsv(MODELS_TSV, force=True)
+        statedocs.shadow_tsv(ROSTER_TSV, force=True)
     print(f"\nUygulandı: {added} instance kaydı eklendi, roster'dan {p['roster_lines_removed']}, "
           f"models.tsv'den {p['models_lines_removed']} satır çıkarıldı.")
     print("Yedekler: " + ", ".join(backups))

@@ -661,7 +661,12 @@ def _atomic_write_text(path: str, content: str) -> None:
 
 
 def _append_tsv_line(path: str, fields: list) -> None:
-    """path'e yeni bir satır ekle (trailing-newline güvenli)."""
+    """path'e yeni bir satır ekle (trailing-newline güvenli), `_roster_lock` altında (oku-ekle-yaz kaybolmasın)."""
+    with _roster_lock(path):
+        _append_tsv_line_unlocked(path, fields)
+
+
+def _append_tsv_line_unlocked(path: str, fields: list) -> None:
     try:
         with open(path, encoding="utf-8") as f:
             content = f.read()
@@ -705,8 +710,11 @@ def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang:
         return _err(lang, "cwd_bad_chars")
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else DEFAULT_CLI
     chosen_model = model.strip() or default_model_for(get_provider(chosen_cli))
-    _append_tsv_line(ROSTER_TSV, [name, cwd, chosen_model, chosen_cli])
-    _append_tsv_line(MODELS_TSV, [name, chosen_model])
+    with _roster_lock(ROSTER_TSV):      # denetim + iki ekleme tek kilitte: eşzamanlı iki kayıt aynı adı iki kez yazmasın
+        if any(r["name"] == name for r in _read_tsv_raw(ROSTER_TSV)):
+            return _err(lang, "already_registered", name=name)
+        _append_tsv_line(ROSTER_TSV, [name, cwd, chosen_model, chosen_cli])
+        _append_tsv_line(MODELS_TSV, [name, chosen_model])
     return {"ok": True}
 
 
@@ -855,26 +863,11 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     return {"ok": True, "name": new_name, "kind": kind}
 
 
-@contextlib.contextmanager
 def _roster_lock(path: str):
-    """WEB-08: roster.tsv/models.tsv oku-değiştir-yaz bölgesini `<dir>/roster.lock`
-    flock'u ile serileştirir (iki dosya aynı dizinde → tek kilit). flock yoksa
-    (ör. Windows) ya da kilit dosyası açılamazsa sessizce kilitsiz devam eder."""
-    fd = None
-    try:
-        import fcntl
-        fd = os.open(os.path.join(os.path.dirname(os.path.abspath(path)), "roster.lock"),
-                     os.O_CREAT | os.O_RDWR, 0o600)
-        fcntl.flock(fd, fcntl.LOCK_EX)
-    except (ImportError, OSError):
-        if fd is not None:
-            os.close(fd)
-            fd = None
-    try:
-        yield
-    finally:
-        if fd is not None:
-            os.close(fd)   # kapanış flock'u da bırakır
+    """WEB-08: roster.tsv/models.tsv oku-değiştir-yaz bölgesi `<dir>/roster.lock` altında (`atomic_json.roster_lock`:
+    `cops close`/`migrate-instances` ile AYNI kilit, yeniden girilebilir)."""
+    from ..atomic_json import roster_lock
+    return roster_lock(path)
 
 
 def _toggle_comment(path: str, name: str, want_active: bool) -> bool:
@@ -3339,8 +3332,9 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
             inst_mod.record_instance(new_name, blueprint=bp, cwd=cwd, cli=chosen_cli, model=chosen_model,
                                      permission_mode=chosen_mode, effort=chosen_effort, origin="adopt")
         else:
-            _append_tsv_line(ROSTER_TSV, [new_name, cwd, chosen_model, chosen_cli])
-            _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
+            with _roster_lock(ROSTER_TSV):
+                _append_tsv_line(ROSTER_TSV, [new_name, cwd, chosen_model, chosen_cli])
+                _append_tsv_line(MODELS_TSV, [new_name, chosen_model])
     return {"ok": True, "kind": kind, "new_name": new_name}
 
 

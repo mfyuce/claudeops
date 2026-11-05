@@ -164,6 +164,13 @@ def file_lock(path: str) -> Iterator[None]:
                 del _THREAD_LOCKS[path]
 
 
+def roster_lock(tsv_path: str):
+    """roster.tsv + models.tsv (aynı dizin) için TEK kilit: `<dizin>/roster.lock` (`file_lock`). Panel (`web`),
+    `cops close` ve `migrate-instances` aynı kilidi alır (eskiden web `roster.lock`, close `models.tsv.lock` alıyordu,
+    birbirini dışlamıyordu; review 3-5 Kas R-1/R-4). Aynı iş parçacığında yeniden girilebilir."""
+    return file_lock(os.path.join(os.path.dirname(os.path.abspath(tsv_path)), "roster"))
+
+
 @contextlib.contextmanager
 def _file_lock_outer(path: str) -> Iterator[None]:
     fd = None

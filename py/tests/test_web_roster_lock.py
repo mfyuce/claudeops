@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from claudeops.commands import web  # noqa: E402
@@ -42,6 +43,41 @@ class RosterLockTest(unittest.TestCase):
             t.join()
         with open(self.p, encoding="utf-8") as f:
             self.assertTrue(all(l.startswith("#") for l in f.read().splitlines()))
+
+    def test_concurrent_appends_no_lost_line(self):
+        ts = [threading.Thread(target=web._append_tsv_line, args=(self.p, ["c%d" % i, "v"])) for i in range(20)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        with open(self.p, encoding="utf-8") as f:
+            names = {l.split("\t")[0] for l in f.read().splitlines()}
+        self.assertEqual(names, {"a", "b"} | {"c%d" % i for i in range(20)})
+
+    def test_web_close_migrate_share_one_lock(self):
+        # web `_roster_lock`, close `_rewrite_models` ve migrate-instances AYNI `<dir>/roster.lock`u almali
+        from claudeops import atomic_json
+        from claudeops.commands import close
+        seen = []
+        real = atomic_json.file_lock
+
+        def spy(path):
+            seen.append(path)
+            return real(path)
+        models = os.path.join(self.d, "models.tsv")
+        with open(models, "w", encoding="utf-8") as f:
+            f.write("a\tm\n")
+        with mock.patch.object(atomic_json, "file_lock", spy), mock.patch.object(close, "MODELS_TSV", models):
+            web._toggle_comment(self.p, "a", want_active=False)
+            close._rewrite_models(lambda lines: ("ok", None))
+        self.assertEqual(len(seen), 2)
+        self.assertEqual({os.path.normpath(x) for x in seen}, {os.path.join(self.d, "roster")})
+
+    def test_lock_reentrant_in_same_thread(self):
+        with web._roster_lock(self.p):
+            web._append_tsv_line(self.p, ["z", "v"])      # kilitliyken ekleme kendini kilitlememeli
+        with open(self.p, encoding="utf-8") as f:
+            self.assertIn("z\tv", f.read())
 
 
 if __name__ == "__main__":
