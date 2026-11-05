@@ -326,6 +326,7 @@ class Config:
     review_agy_allow: str = ""         # agy: izole HOME'da izinli salt-okunur komutlar ("" = ls,grep,head,tail,wc; "off" = izolasyon kapalı)
     review_agy_jail: bool = True       # agy: `bwrap` salt-okunur kafes + --dangerously-skip-permissions (bwrap yoksa/False ise izin listesi)
     lessons_project: str = "cli"       # ucli dersleri (reviewer `ucli-lessons.md`) bu projenin çalışan oturumuna direktifle iletilir (`off` = kapalı; boş değer ayarda anahtarı siler); projeyi bu kimlik yönetiyorsa
+    ho_on_open: str = "act"            # sahip kuralı 2026-11-05 (TBD#162): durmuş projeyi açarken resume edilecek claude konuşması devirsiz bitmişse önce onunla aç + devir, motor READY'de taze yeniden açar; off = kapalı
     resume_max_context_tokens: int = 150000   # TBD#123: durmuş oturumu açarken `--resume` edilecek konuşmanın SON bağlamı bundan büyükse taze (`--new`) açılır (soğuk büyük okuma + hemen devir = çifte maliyet); 0 = kapalı (her zaman resume)
     wake_max_per_day: int = 2          # uyandırma kapısı (TBD#125 agy): oturum başına 24 saatte en çok bu kadar otomatik `due` uyandırması (yeni girdi = cevap gidince sayaç sıfırlanır); `wake_gate` kipine uyar (dry = yalnız `would:wake_cap`); 0 = sınırsız
     keepwarm: str = "dry"              # önbellek canlı tutma (2026-10-27): off | dry = YALNIZ `would:keepwarm` olayı | act = boşta, işi olan, büyük bağlamlı oturuma TTL (60 dk) dolmadan hafif dürtme; kesinlikle çalışmayana ASLA

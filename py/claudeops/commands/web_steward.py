@@ -1704,7 +1704,10 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     live = [_running(name)] if exact and _running(name) is not None else ([] if exact else _live_sessions(name, sid))
     if live:
         return {"ok": True, "started": False, "cli": live[0].cli}
-    if not fresh:
+    ho_jsonl = "" if fresh else _resume_lacks_ho(name, steward_config(sid))
+    if ho_jsonl:     # sahip kuralı: eski konuşma devirsiz kapanmış -> önce o konuşmayla aç, devir al, motor taze yeniden açar
+        sw.log_event("ho_on_open", paths=sw.paths_for(sid), name=name, step="resume", jsonl=os.path.basename(ho_jsonl))
+    elif not fresh:
         big = _oversized_resume(name, steward_config(sid))
         if big:      # soğuk büyük konuşmayı yeniden okutup hemen devir almak yerine taze aç (ysf 386K örneği); özet kartta/CLAUDE.md'de
             fresh = True
@@ -1722,7 +1725,40 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
                 "error": f"start for {name!r} returned ok but no session appeared within {START_APPEAR_SECONDS:g}s"}
     cli = kw.get("cli") or _project_cli(name)
     ready = _wait_ready(name, cli)
+    if ho_jsonl:
+        h = _local_handover(name, sid, lang)
+        real = _resolved_local_name(name, sid)
+        if h.get("ok"):
+            with sw.steward_lock(sid):      # READY FOR HANDOVER gelince motor `respawn` (stop + taze `--new`, aynı cli/cli_opts)
+                state = sw.load_state(sid)
+                state.setdefault("ho_pending", {})[real] = time.time()
+                sw.save_state(state, sid)
+        sw.log_event("ho_on_open", paths=sw.paths_for(sid), name=name, session=real, step="handover", ok=bool(h.get("ok")),
+                     **({} if h.get("ok") else {"error": str(h.get("error") or "")[:200]}))
+        return {"ok": True, "started": True, "ready": ready, "cli": cli, "ho_on_open": bool(h.get("ok"))}
     return {"ok": True, "started": True, "ready": ready, "cli": cli}
+
+
+def _resume_lacks_ho(name: str, cfg: sw.Config) -> str:
+    """Sahip kuralı (2026-11-05, "açarken ho yapılmamışsa yapıp kapatıp açmalı"): `start`ın `--resume` edeceği konuşma
+    gerçek bir iş turu taşıyıp READY FOR HANDOVER olmadan bitmişse o jsonl'in yolu, değilse "". Yalnız claude (jsonl
+    bilinir) ve `cfg.ho_on_open == "act"`; bilinmiyor/hata = "" (davranış değişmez). TBD#123 (büyük bağlam taze aç)
+    bundan SONRA gelir: devir notu soğuk okumanın bedelinden önemli (TBD#162)."""
+    if str(getattr(cfg, "ho_on_open", "act") or "act") != "act":
+        return ""
+    try:
+        cwd = _cwd_resolver()(name)
+        if not cwd or _project_cli(name) != "claude" or _launch_kwargs(name, "", "").get("cli") not in (None, "claude"):
+            return ""
+        from ..providers.claude_provider import jsonl_path_for
+        from ..needs_ho import handover_done, has_real_user_turn
+        rid = get_provider("claude").resolve_resume_id(cwd, session_name=name)
+        path = jsonl_path_for(cwd, rid) if rid else None
+        if not path or not os.path.isfile(path):
+            return ""
+        return "" if (not has_real_user_turn(path) or handover_done(path)) else str(path)
+    except Exception:
+        return ""
 
 START_APPEAR_SECONDS = 6.0       # `start` ok döndükten sonra oturumun görünmesini bekleme üst sınırı (kısa poll)
 START_APPEAR_POLL_SECONDS = 0.5
@@ -1903,6 +1939,8 @@ def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: 
             res = _ensure_running(target, model=model, effort=effort, lang=lang, sid=cfg.sid)
             if not res.get("ok"):
                 return res
+            if res.get("ho_on_open"):    # açılışta devir gitti: direktif/cevap devirden sonraki TAZE oturuma (respawn) gider
+                return {"ok": True, "name": target, "skipped": "ho_on_open", "started": True}
             started_here = bool(res.get("started"))
             live = _live_sessions(target, cfg.sid)
             s = live[0] if len(live) == 1 else _running(target)
