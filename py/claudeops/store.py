@@ -227,6 +227,44 @@ class Store:
             out.close()
         os.replace(tmp, dest)
 
+    def list_streams(self) -> List[str]:
+        return [r[0] for r in self._conn().execute("SELECT DISTINCT stream FROM log ORDER BY stream")]
+
+    def tsv_files(self) -> List[str]:
+        return [r[0] for r in self._conn().execute("SELECT DISTINCT file FROM tsv_rows ORDER BY file")]
+
+    def export_all(self) -> Dict[str, Any]:
+        """Belgeler + tsv metinleri + günlük akışları tek nesnede (`cops db export`). Yalnız okur."""
+        logs = {}
+        for st in self.list_streams():
+            rows = self._conn().execute("SELECT ts, body FROM log WHERE stream=? ORDER BY id", (st,)).fetchall()
+            logs[st] = [[t, json.loads(b)] for t, b in rows]
+        return {"format": 1, "schema_version": self.schema_version(), "exported": time.time(),
+                "docs": self.export_docs(), "tsv": {f: self.tsv_text(f) for f in self.tsv_files()}, "logs": logs}
+
+    def import_all(self, data: Dict[str, Any]) -> Dict[str, int]:
+        """`export_all` çıktısını içe alır: belgeler ve tsv TAMAMEN değişir; günlük akışı YALNIZ bu akış boşsa eklenir
+        (çift kayıt olmasın). Sayıları döndürür."""
+        if int(data.get("format") or 0) != 1:
+            raise StoreError("desteklenmeyen dışa aktarım biçimi")
+        n = {"docs": 0, "tsv": 0, "logs": 0, "logs_skipped": 0}
+        for name, obj in (data.get("docs") or {}).items():
+            self.set_doc(name, obj)
+            n["docs"] += 1
+        for f, text in (data.get("tsv") or {}).items():
+            if text is not None:
+                self.replace_tsv(f, text)
+                n["tsv"] += 1
+        for st, rows in (data.get("logs") or {}).items():
+            if self._conn().execute("SELECT 1 FROM log WHERE stream=? LIMIT 1", (st,)).fetchone():
+                n["logs_skipped"] += 1
+                continue
+            with self._tx() as c:
+                c.executemany("INSERT INTO log(stream, ts, body) VALUES(?,?,?)",
+                              [(st, float(t), json.dumps(b, ensure_ascii=False)) for t, b in rows])
+            n["logs"] += len(rows)
+        return n
+
     def export_docs(self) -> Dict[str, Any]:
         """Tüm belgeler {ad: nesne} (K6 `cops db export` çekirdeği)."""
         return {n: self.get_doc(n) for n in self.list_docs()}
