@@ -23,6 +23,7 @@ import time
 import psutil
 
 from .mirrors import note_mirror
+from .paths import proc_stat_fields
 from .session import Session
 from .providers import PROVIDERS
 
@@ -61,9 +62,7 @@ def _sessions_from_json() -> Dict[Tuple[str, int], Session]:
         want = str(d.get("procStart", "")).strip()
         if want:
             try:
-                with open(f"/proc/{pid}/stat") as sf:
-                    rest = sf.read().rsplit(")", 1)[1].split()
-                if rest[19] != want:
+                if proc_stat_fields(pid)[19] != want:
                     continue  # procStart eşleşmiyor → stale json
             except Exception:
                 pass  # /proc okuma başarısızsa geç (docker/container gibi)

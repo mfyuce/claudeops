@@ -7,17 +7,21 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from claudeops.commands import web_steward as ws  # noqa: E402
+from claudeops.providers import get_provider  # noqa: E402
 
 
 class _Prov:
+    """Gerçek katlama kuralı: ucli için UcliProvider.prepare_input, diğerleri dokunmaz."""
+    def __init__(self, cli="claude"): self.cli = cli
     def has_conversation(self): return True
-    def prepare_input(self, t): return t
+    def prepare_input(self, t):
+        return get_provider("ucli").prepare_input(t) if self.cli == "ucli" else t
     def input_settle_delay(self): return 0.0
 
 
 class UcliSendTest(unittest.TestCase):
     def setUp(self):
-        for p in (mock.patch.object(ws, "get_provider", lambda cli: _Prov()),
+        for p in (mock.patch.object(ws, "get_provider", lambda cli: _Prov(cli)),
                   mock.patch.object(ws, "UCLI_BOX_CHECK_DELAY", 0.0),
                   mock.patch.object(ws.sw, "log_event")):
             p.start()

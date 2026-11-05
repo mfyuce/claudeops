@@ -96,6 +96,7 @@ import psutil
 from .. import searxng
 from .. import ucli_agents
 from ..diaglog import diag_log
+from ..paths import ucli_key_file
 from .. import ucli_cost
 from ..settings import ucli_cost_config
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
@@ -303,7 +304,7 @@ def reasoning_effort_for(model: str, level: str) -> Optional[str]:
 # claudeops-web'in KENDİ ortamından miras kalamıyor, `web.token`'la AYNI
 # desende (chmod 600, tek-kullanıcı) ayrı bir dosyadan okunuyor; asıl kaynak
 # Ayarlar'daki BYOK alanı (`_sync_api_key_file()` her spawn'da tazeler).
-_API_KEY_FILE = os.path.expanduser("~/.claude/claudeops/ucli_api_key")
+_API_KEY_FILE = ucli_key_file()
 # Yazıldığında `_API_KEY_FILE`'IN YANINA dokunulan boş bir "biz yazdık" damgası
 # — Settings'ten anahtar SİLİNİNCE (aşağıdaki `_sync_api_key_file`) dosyayı
 # silip silmeme kararı buna bakıyor: marker VARSA bu dosyayı BİZ yönetiyoruz
@@ -489,7 +490,7 @@ def _set_flag_value(argv: List[str], flag: str, value: str) -> List[str]:
 
 
 def _service_key_file(service: str) -> str:
-    return os.path.expanduser(f"~/.claude/claudeops/ucli_key_{service}")
+    return ucli_key_file(service)
 
 
 _INSTRUCTIONS_MAX_BYTES = 40960   # ucli `--instructions` dosya başına sınırı (40 KiB)
@@ -715,11 +716,11 @@ class UcliProvider(CliProvider):
 
     def prepare_input(self, text: str) -> str:
         """ucli çok satırlı girdide her satırı AYRI komut/tur sayar: tek satıra indir
-        (satır sonları boşluğa, boş satırlar atılır)."""
-        if not isinstance(text, str) or ("\n" not in text and "\r" not in text):
+        (satır sonları ve sekmeler boşluğa, boş satırlar atılır; tüm boşluklar tek boşluk, KESME YOK).
+        Sekme tek satırda bile Tab tamamlamayı tetikleyebilir."""
+        if not isinstance(text, str) or ("\n" not in text and "\r" not in text and "\t" not in text):
             return text
-        parts = [ln.strip() for ln in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
-        return " ".join(p for p in parts if p)
+        return " ".join(text.split())
 
     def has_conversation(self) -> bool:
         return True  # gerçek bir sohbet: .ucli/chat/NAME.jsonl geçmişi tutuyor

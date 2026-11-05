@@ -34,6 +34,7 @@ from .. import steward as sw
 from .. import steward_advance as sa
 from .. import steward_lessons as sl
 from .. import ucli_client
+from ..paths import ucli_key_file, proc_ppid
 
 def _ensure_claude_trust(cj: str, cwd: str) -> None:
     """İzole `.claude.json`'a bu cwd için güven onayını ekler (her proje; yalnız ilk dosya oluşturulurken değil)."""
@@ -69,7 +70,7 @@ def _uniq_tmp(path: str) -> str:
 REVIEW_ENV_PREFIXES = ("CLAUDE", "GEMINI", "ANTIGRAVITY", "ANTHROPIC")   # spawn.py deseni: bu süreç kendi oturum kimliğini çocuğa sızdırmaz
 KILL_GRACE_SECONDS = 10.0                                   # SIGTERM -> SIGKILL aralığı
 AGY_LOG_DIR = os.path.expanduser("~/.gemini/antigravity-cli/log")
-UCLI_KEY_FILE = os.path.expanduser("~/.claude/claudeops/ucli_api_key")
+UCLI_KEY_FILE = ucli_key_file()
 ANTHROPIC_REVIEW_KEY_FILE = os.path.expanduser("~/.claude/claudeops/anthropic_review_key")   # 600; videogen ürün anahtarı KULLANILMAZ
 EVREN_MAX_STEPS = 200
 EVREN_MAX_IO_MIB = 2048
@@ -740,9 +741,7 @@ def _pid_tree(root: Any) -> List[int]:
             if not name.isdigit():
                 continue
             try:
-                with open(f"/proc/{name}/stat", "rb") as f:
-                    raw = f.read().decode("utf-8", "replace")
-                ppid = int(raw[raw.rindex(")") + 2:].split()[1])
+                ppid = proc_ppid(name)
             except (OSError, ValueError, IndexError):
                 continue
             kids.setdefault(ppid, []).append(int(name))

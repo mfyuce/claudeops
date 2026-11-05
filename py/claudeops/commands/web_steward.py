@@ -1309,8 +1309,7 @@ def _send(name: str, cli: str, text: str) -> bool:
     provider = get_provider(cli)
     if not provider.has_conversation():
         return False
-    if cli == "ucli":
-        text = " ".join(str(text or "").split())      # ucli çok satırı ayrı tur sayar: TEK satır, KESME YOK (bilgi kaybı yok)
+    # ucli çok satırı ayrı tur sayar: tek satıra katlama + kesmeme TEK yerde, `UcliProvider.prepare_input`
     ok = tmux_send_keys(name, provider.prepare_input(text), settle_delay=provider.input_settle_delay())
     if ok and cli == "ucli":
         _ucli_box_recheck(name)

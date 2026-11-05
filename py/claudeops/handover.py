@@ -35,6 +35,7 @@ from typing import List, Optional, Tuple
 from .diaglog import diag_log
 from .discovery import find_sessions
 from .needs_ho import needs_ho
+from .paths import proc_ppid
 from .providers import CliProvider, get_provider
 from .providers.claude_provider import jsonl_path_for, live_or_spawn_effort, live_or_spawn_model
 from .settings import load_settings
@@ -54,8 +55,7 @@ def ancestor_pids() -> set:
     pid = os.getpid()
     for _ in range(64):
         try:
-            with open(f"/proc/{pid}/stat") as f:
-                ppid = int(f.read().rsplit(")", 1)[1].split()[1])
+            ppid = proc_ppid(pid)
         except (OSError, ValueError, IndexError):
             break
         if ppid <= 1:
@@ -447,8 +447,7 @@ def handover_faz1(
         apply_handover_downgrades(provider, session.name, session.cli, session.cwd, session.sid,
                                   session.model, session.effort, pid=session.pid)
 
-        if session.cli == "ucli":
-            message = " ".join(str(message or "").split())      # ucli çok satırı ayrı tur sayar: tek satır, kesme yok
+        # ucli tek satır katlaması `provider.prepare_input`te (UcliProvider): burada ayrıca katlanmaz
         sent = tmux_send_keys(session.name, provider.prepare_input(message), settle_delay=provider.input_settle_delay())
 
         if sent:

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec
-from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR
+from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, proc_stat_fields
 from ..routing import claude_guidance_path
 from ..settings import resolved_binary
 
@@ -275,9 +275,8 @@ def session_file_sid(pid: Optional[int]) -> Optional[str]:
         want = str(data.get("procStart", "")).strip()
         if not want:
             return None
-        with open(f"/proc/{pid}/stat") as sf:
-            if sf.read().rsplit(")", 1)[1].split()[19] != want:
-                return None
+        if proc_stat_fields(pid)[19] != want:
+            return None
         return sid.strip()
     except (OSError, ValueError, TypeError, IndexError):
         return None

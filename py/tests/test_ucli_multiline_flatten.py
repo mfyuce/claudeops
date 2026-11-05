@@ -23,6 +23,24 @@ class FlattenTest(unittest.TestCase):
     def test_ucli_trailing_newline(self):
         self.assertEqual(get_provider("ucli").prepare_input("x\n"), "x")
 
+    def test_ucli_tab_single_line(self):
+        self.assertEqual(get_provider("ucli").prepare_input("a\tb\t\tc  d"), "a b c d")
+
+    def test_ucli_long_text_not_truncated(self):
+        long = "bir\n" + ("uzun " * 400) + "\nson"
+        out = get_provider("ucli").prepare_input(long)
+        self.assertNotIn("\n", out)
+        self.assertTrue(out.startswith("bir uzun"))
+        self.assertTrue(out.endswith("son"))
+        self.assertGreater(len(out), 2000)
+
+    def test_single_fold_point_in_callers(self):
+        # katlama kopyaları kaldırıldı: handover.py ve web_steward._send artık kendileri katlamaz
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for rel in ("claudeops/handover.py",):
+            src = open(os.path.join(base, rel), encoding="utf-8").read()
+            self.assertNotIn('" ".join(str(message or "").split())', src)
+
     def test_other_providers_untouched(self):
         for cli in ("claude", "codex"):
             self.assertEqual(get_provider(cli).prepare_input("a\nb"), "a\nb")

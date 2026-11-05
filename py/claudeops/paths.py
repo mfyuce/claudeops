@@ -20,6 +20,29 @@ SESSIONS_DIR = os.path.join(CLAUDE_DIR, "sessions")      # <pid>.json (gecikmeli
 PROJECTS_DIR = os.path.join(CLAUDE_DIR, "projects")      # <encoded-cwd>/<sid>.jsonl
 CONFIG_JSON = os.path.join(HOME, ".claude.json")         # bozulursa resume-hang
 
+def parse_proc_stat(raw: str) -> list:
+    """`/proc/<pid>/stat` metninin comm'dan SONRAKİ alanları (0=state, 1=ppid, 19=starttime). comm boşluk/parantez
+    içerebilir: SON ')' sonrası ayrıştırılır. ')' yoksa ValueError."""
+    return raw[raw.rindex(")") + 1:].split()
+
+
+def proc_stat_fields(pid) -> list:
+    """`parse_proc_stat` + dosya okuma (OSError/ValueError çağırana)."""
+    with open(f"/proc/{pid}/stat", "rb") as f:
+        return parse_proc_stat(f.read().decode("utf-8", "replace"))
+
+
+def proc_ppid(pid) -> int:
+    return int(proc_stat_fields(pid)[1])
+
+
+def ucli_key_file(service: str = "") -> str:
+    """ucli anahtar dosyası TEK yerde: `service` boşsa Evren `ucli_api_key`, doluysa `ucli_key_<service>`.
+    Taban `~/.claude/claudeops` (CLAUDEOPS_DIR env'inden BAĞIMSIZ: eski davranış birebir)."""
+    name = f"ucli_key_{service}" if service else "ucli_api_key"
+    return os.path.expanduser(f"~/.claude/claudeops/{name}")
+
+
 GUARD_LOCK = f"/tmp/claudeops-{os.getuid()}/guard.lock"   # kullanıcıya özel: çok kullanıcılı makinede ikinci kullanıcı PermissionError almaz
 
 
