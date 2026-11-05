@@ -57,6 +57,8 @@ DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
     "interval_hours": 24,        # >=24: günde bir (start sonrası); <24: son başlangıçtan bu kadar saat sonra
     "repo_dir": os.path.join("~", "work", "projects", "tmp", "copschats-prv"),
     "repo_name": "copschats-prv",
+    "repos": {"claude": "", "codex": os.path.join("~", "work", "projects", "tmp", "copschats-codex-prv"),
+              "gemini": os.path.join("~", "work", "projects", "tmp", "copschats-gemini-prv")},  # claude boşsa repo_dir
     "sources": ["local"],        # ileride: "yuhem", "ulak_31"
     "max_file_mb": 50,           # tek ham dosya sınırı (GitHub blob 100 MB); aşan atlanır, günlüğe yazılır
     "max_repo_mb": 3000,         # çalışma ağacı sınırı; aşılırsa iş durur (sahibe sorulur)
@@ -299,91 +301,146 @@ def redact(text: str) -> Tuple[str, int]:
     return text, n
 
 
-def _git(repo: str, *args: str, timeout: int = 300) -> Tuple[int, str]:
+def _git(repo: str, *args: str, timeout: int = 300, env: Optional[Dict[str, str]] = None) -> Tuple[int, str]:
     """Tek git çıkış kapısı (testlerde yamalanır)."""
     try:
-        p = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=timeout, env=env)
         return p.returncode, (p.stdout or "") + (p.stderr or "")
     except (OSError, subprocess.SubprocessError) as e:
         return 127, str(e)
 
 
-def _local_sources() -> List[Tuple[str, str]]:
-    """(kaynak yol, repo içi göreli hedef öneki) çiftleri: yalnız Claude Code transkriptleri + prompt geçmişi."""
+CHUNK_MB = 45          # bundan büyük ikili dosya <ad>.partNNN parçalara bölünür (GitHub blob 100 MB; birleştir: cat <ad>.part* > <ad>)
+TEXT_EXT = (".jsonl",)
+BIN_EXT = (".db", ".sqlite", ".pb", ".json")
+
+
+def _local_sources() -> List[Tuple[str, ...]]:
+    """(kaynak yol, repo içi hedef öneki[, tür]) demetleri. tür: "text" (jsonl, sır maskelenir) | "bin" (ham, büyükse parçalanır).
+    Ayna (chat-mirror) canlı dizinden SİLİNMİŞ eski sohbetleri de taşır; aynı hedef yolda mtime'ı yeni olan kazanır.
+    Hedef yol = özgün göreli yol (tarih/oturum/proje yolu korunur). Grup = önekin ikinci parçası (claude|codex|gemini) -> kendi repo'su."""
     home = os.path.expanduser("~")
-    return [(os.path.join(home, ".claude", "projects"), os.path.join("local", "claude-projects")),
-            (os.path.join(home, ".claude", "history.jsonl"), os.path.join("local", "claude-history"))]
+    mir = os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
+    out: List[Tuple[str, ...]] = [
+        (os.path.join(mir, "claude-projects"), os.path.join("local", "claude-projects"), "text"),
+        (os.path.join(home, ".claude", "projects"), os.path.join("local", "claude-projects"), "text"),
+        (os.path.join(home, ".claude", "history.jsonl"), os.path.join("local", "claude-history"), "text"),
+        (os.path.join(mir, "codex", "sessions"), os.path.join("local", "codex-sessions"), "text"),
+        (os.path.join(home, ".codex", "sessions"), os.path.join("local", "codex-sessions"), "text"),
+        (os.path.join(mir, "codex", "thread_history_1.sqlite"), os.path.join("local", "codex-db"), "bin"),
+        (os.path.join(mir, "ucli"), os.path.join("local", "claude-ucli"), "text"),
+    ]
+    for sub in ("antigravity", "antigravity-cli", "antigravity-ide"):
+        for name in ("conversations", "conversation_summaries.db"):
+            out.append((os.path.join(mir, "gemini", sub, name), os.path.join("local", "gemini-" + sub), "bin"))
+    return out
 
 
-def _walk_jsonl(src: str) -> List[str]:
+def _group_of(prefix: str) -> str:
+    parts = prefix.replace("\\", "/").split("/")
+    return (parts[1] if len(parts) > 1 else parts[0]).split("-")[0]
+
+
+def _group_repo(cfg: Dict[str, Any], group: str) -> str:
+    repos = cfg.get("repos") if isinstance(cfg.get("repos"), dict) else {}
+    r = repos.get(group) or (cfg.get("repo_dir") if group == "claude" else "")
+    return os.path.expanduser(str(r)) if r else ""
+
+
+def _walk_files(src: str, kind: str) -> List[str]:
     if os.path.isfile(src):
         return [src]
+    exts = TEXT_EXT if kind == "text" else BIN_EXT + TEXT_EXT
     out: List[str] = []
     for root, _d, files in os.walk(src):
-        out.extend(os.path.join(root, f) for f in files if f.endswith(".jsonl"))
+        out.extend(os.path.join(root, f) for f in files if f.endswith(exts))
     return sorted(out)
 
 
 def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str, Any]:
     """Yeni/değişen dosyaları bulur (boyut+mtime imzası). Dosya OKUNMAZ/YAZILMAZ; saf plan."""
-    repo = os.path.expanduser(str(cfg["repo_dir"]))
-    todo: List[Dict[str, Any]] = []
+    best: Dict[str, Dict[str, Any]] = {}
     seen = 0
-    for src, prefix in _local_sources():
+    for srcdef in _local_sources():
+        src, prefix = srcdef[0], srcdef[1]
+        kind = srcdef[2] if len(srcdef) > 2 else "text"
         if not os.path.exists(src):
             continue
-        for f in _walk_jsonl(src):
-            seen += 1
+        for f in _walk_files(src, kind):
             try:
                 stt = os.stat(f)
             except OSError:
                 continue
+            seen += 1
             rel = os.path.relpath(f, src) if os.path.isdir(src) else os.path.basename(f)
-            sig = f"{stt.st_size}:{int(stt.st_mtime)}"
-            if manifest.get(f) == sig:
+            dest = os.path.join(prefix, rel)
+            cur = best.get(dest)
+            if cur is not None and (cur["mt"], cur["size"]) >= (stt.st_mtime, stt.st_size):
                 continue
-            todo.append({"src": f, "sig": sig, "dest": os.path.join(prefix, rel), "day": datetime.datetime.fromtimestamp(stt.st_mtime).strftime("%F")})
-    return {"repo": repo, "seen": seen, "changed": todo}
+            best[dest] = {"src": f, "sig": f"{stt.st_size}:{int(stt.st_mtime)}", "dest": dest, "mt": stt.st_mtime,
+                          "size": stt.st_size, "kind": kind,
+                          "group": _group_of(prefix),
+                          "day": datetime.datetime.fromtimestamp(stt.st_mtime).strftime("%F")}
+    todo = [e for _d, e in sorted(best.items()) if manifest.get(e["src"]) != e["sig"]]
+    return {"repo": _group_repo(cfg, "claude"), "seen": seen, "changed": todo}
+
+
+def _put(dest: str, blob: bytes) -> bool:
+    """Atomik, 0600 yazar; içerik aynıysa dokunmaz. True = yazıldı."""
+    if os.path.exists(dest):
+        try:
+            with open(dest, "rb") as f:
+                if hashlib.sha256(f.read()).digest() == hashlib.sha256(blob).digest():
+                    return False
+        except OSError:
+            pass
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(blob)
+    os.replace(tmp, dest)
+    return True
 
 
 def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str], Dict[str, str], Dict[str, Any]]:
-    """Değişenleri maskeleyip HAM (gzip yok; git zaten sıkıştırır) repo çalışma ağacına yazar. (yazılan göreli yollar, yeni manifest girdileri, istatistik)."""
-    repo = plan["repo"]
+    """Değişenleri repo çalışma ağacına yazar: metin = sır maskeli ham (gzip yok; git sıkıştırır), ikili = olduğu gibi
+    (büyükse CHUNK_MB parçalara). Dönüş: (yazılan göreli yollar, yeni manifest girdileri, istatistik: days[grup][gün] = yollar)."""
     limit = int(float(cfg.get("max_file_mb") or 50) * 1024 * 1024)
+    chunk = CHUNK_MB * 1024 * 1024
     written: List[str] = []
     sigs: Dict[str, str] = {}
-    stats = {"redacted": 0, "skipped_big": [], "unchanged": 0}
-    days: Dict[str, List[str]] = stats.setdefault("days", {})
+    stats: Dict[str, Any] = {"redacted": 0, "skipped_big": [], "unchanged": 0, "days": {}, "skipped_group": {}}
     for ent in plan["changed"]:
+        group = ent.get("group", "claude")
+        repo = _group_repo(cfg, group)
+        if not repo or not os.path.isdir(os.path.join(repo, ".git")):
+            stats["skipped_group"][group] = stats["skipped_group"].get(group, 0) + 1
+            continue
         try:
             with open(ent["src"], "rb") as f:
                 raw = f.read()
         except OSError:
             continue
-        text, n = redact(raw.decode("utf-8", errors="replace"))
-        stats["redacted"] += n
-        blob = text.encode("utf-8")
-        if len(blob) > limit:
-            stats["skipped_big"].append(ent["src"])
-            continue
-        dest = os.path.join(repo, ent["dest"])
-        if os.path.exists(dest):
-            try:
-                with open(dest, "rb") as f:
-                    if hashlib.sha256(f.read()).digest() == hashlib.sha256(blob).digest():
-                        sigs[ent["src"]] = ent["sig"]
-                        stats["unchanged"] += 1
-                        continue
-            except OSError:
-                pass
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        tmp = dest + ".tmp"
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "wb") as f:
-            f.write(blob)
-        os.replace(tmp, dest)
-        written.append(ent["dest"])
-        days.setdefault(ent["day"], []).append(ent["dest"])
+        if ent.get("kind") == "bin":
+            blobs = [(ent["dest"], raw)] if len(raw) <= chunk else [
+                (f"{ent['dest']}.part{i // chunk:03d}", raw[i:i + chunk]) for i in range(0, len(raw), chunk)]
+        else:
+            text, n = redact(raw.decode("utf-8", errors="replace"))
+            stats["redacted"] += n
+            blob = text.encode("utf-8")
+            if len(blob) > limit:
+                blobs = [(f"{ent['dest']}.part{i // chunk:03d}", blob[i:i + chunk]) for i in range(0, len(blob), chunk)]
+            else:
+                blobs = [(ent["dest"], blob)]
+        changed = False
+        for rel, data in blobs:
+            if _put(os.path.join(repo, rel), data):
+                changed = True
+                written.append(rel)
+                stats["days"].setdefault(group, {}).setdefault(ent["day"], []).append(rel)
+        if not changed:
+            stats["unchanged"] += 1
         sigs[ent["src"]] = ent["sig"]
     return written, sigs, stats
 
@@ -412,63 +469,87 @@ def _private_remotes(repo: str) -> Tuple[Dict[str, str], List[str]]:
     return rems, bad
 
 
+def _git_dated(repo: str, day: str, *args: str) -> Tuple[int, str]:
+    """Commit tarihi = dosyaların son değişme günü (öğlen), geçmiş gün sırasıyla görünür."""
+    return _git(repo, *args, env=dict(os.environ, GIT_AUTHOR_DATE=f"{day}T12:00:00", GIT_COMMITTER_DATE=f"{day}T12:00:00"))
+
+
+def _check_repo(repo: str, cfg: Dict[str, Any]) -> Tuple[Optional[Dict[str, str]], str]:
+    """(remote'lar, hata). hata boşsa repo kullanılabilir: git var, remote var, hepsi private, boyut sınırı aşılmamış."""
+    if not repo or not os.path.isdir(os.path.join(repo, ".git")):
+        return None, f"repo yok: {repo or '(ayarsız)'}"
+    rems, bad = _private_remotes(repo)
+    if not rems:
+        return None, f"remote yok: {repo}"
+    if bad:
+        return None, "private doğrulanamadı: " + ", ".join(bad)
+    return rems, ""
+
+
 def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
-    """Plan (apply=False) ya da uygula. Sonuç dict'i: ok, msg, written, ... Asla fırlatmaz."""
+    """Plan (apply=False) ya da uygula. Sonuç dict'i: ok, msg, written, ... Asla fırlatmaz.
+    Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
     manifest: Dict[str, str] = dict((state.get("chat_backup") or {}).get("manifest") or {})
     plan = plan_chat_backup(cfg, manifest)
-    repo = plan["repo"]
-    res: Dict[str, Any] = {"ok": True, "seen": plan["seen"], "changed": len(plan["changed"]), "repo": repo, "applied": False}
+    res: Dict[str, Any] = {"ok": True, "seen": plan["seen"], "changed": len(plan["changed"]), "repo": plan["repo"], "applied": False}
     if "local" not in (cfg.get("sources") or []):
         res.update(ok=False, msg="kaynak listesinde 'local' yok")
         return res
-    if not os.path.isdir(os.path.join(repo, ".git")):
-        res.update(ok=False, msg=f"repo yok: {repo} (önce private {cfg.get('repo_name')} oluştur: gh/glab, iki remote; sahip onayı)")
+    groups = sorted({e["group"] for e in plan["changed"]} | {"claude"})
+    remotes: Dict[str, Dict[str, str]] = {}
+    missing: Dict[str, str] = {}
+    for g in groups:
+        rems, err = _check_repo(_group_repo(cfg, g), cfg)
+        if rems is None:
+            missing[g] = err
+        else:
+            remotes[g] = rems
+    if "claude" in missing and not remotes:
+        res.update(ok=False, msg=missing["claude"] + f" (önce private {cfg.get('repo_name')} oluştur: gh/glab, iki remote)")
         return res
-    rems, bad = _private_remotes(repo)
-    if not rems:
-        res.update(ok=False, msg="repoda remote yok")
-        return res
-    if bad:
-        res.update(ok=False, msg="private doğrulanamadı: " + ", ".join(bad))
-        return res
+    per = {g: sum(1 for e in plan["changed"] if e["group"] == g) for g in groups}
     if not apply:
-        res["msg"] = f"plan: {len(plan['changed'])} yeni/değişen dosya ({plan['seen']} taranan); yazılmadı"
+        res["msg"] = f"plan: {len(plan['changed'])} yeni/değişen dosya ({plan['seen']} taranan); yazılmadı; gruplar {per}" + (
+            f"; repo'suz atlanacak: {sorted(missing)}" if missing else "")
+        res["missing"] = missing
         return res
-    if _tree_mb(repo) > float(cfg.get("max_repo_mb") or 3000):
-        res.update(ok=False, msg=f"repo {int(_tree_mb(repo))} MB > sınır {cfg.get('max_repo_mb')} MB: sahibe sor")
-        return res
-    written, sigs, stats = _write_changed(plan, cfg)
-    res.update(applied=True, written=len(written), redacted=stats["redacted"], skipped_big=stats["skipped_big"])
-    if written:
-        # her takvim günü (dosyanın son değişme günü) ayrı commit, eskiden yeniye
-        for day in sorted(stats["days"]):
-            files = stats["days"][day]
+    for g, rems in remotes.items():
+        repo = _group_repo(cfg, g)
+        if _tree_mb(repo) > float(cfg.get("max_repo_mb") or 3000):
+            res.update(ok=False, msg=f"{g}: .git {int(_tree_mb(repo))} MB > sınır {cfg.get('max_repo_mb')} MB: sahibe sor")
+            return res
+    written, sigs, stats = _write_changed(plan, dict(cfg, repos={g: _group_repo(cfg, g) for g in remotes}))
+    res.update(applied=True, written=len(written), redacted=stats["redacted"], skipped_big=stats["skipped_big"], missing=missing)
+    for g, days in sorted(stats["days"].items()):
+        repo, rems = _group_repo(cfg, g), remotes[g]
+        for day in sorted(days):          # her takvim günü ayrı commit, eskiden yeniye
+            files = days[day]
             rc, out = _git(repo, "add", "--", *files)
             if rc != 0:
-                res.update(ok=False, msg="git add: " + out[-200:])
+                res.update(ok=False, msg=f"{g} git add: " + out[-200:])
                 return res
-            rc, out = _git(repo, "commit", "-q", "-m", f"sohbet yedegi {day}: {len(files)} dosya", "--", *files)
+            rc, out = _git_dated(repo, day, "commit", "-q", "-m", f"sohbet yedegi {day}: {len(files)} dosya", "--", *files)
             if rc != 0:
-                res.update(ok=False, msg="git commit: " + out[-200:])
+                res.update(ok=False, msg=f"{g} git commit: " + out[-200:])
                 return res
         head = _git(repo, "rev-parse", "HEAD")[1].strip()
         for name in rems:
             args = ["push", "-q", name, "HEAD"]
             if "github.com" in rems[name]:
                 args = ["-c", "credential.helper=!gh auth git-credential", *args]
-            rc, out = _git(repo, *args, timeout=900)
+            rc, out = _git(repo, *args, timeout=3600)
             if rc != 0:
-                res.update(ok=False, msg=f"push {name}: " + out[-200:])
+                res.update(ok=False, msg=f"{g} push {name}: " + out[-200:])
                 return res
             rc, out = _git(repo, "ls-remote", name, "HEAD")
             if rc != 0 or not out.startswith(head[:12]):
-                res.update(ok=False, msg=f"ls-remote {name} eşleşmedi")
+                res.update(ok=False, msg=f"{g} ls-remote {name} eşleşmedi")
                 return res
-    manifest.update(sigs)
-    st = state.setdefault("chat_backup", {})
-    st["manifest"] = manifest
+    done = {e["src"]: sigs[e["src"]] for e in plan["changed"] if e["src"] in sigs}
+    manifest.update(done)
+    state.setdefault("chat_backup", {})["manifest"] = manifest
     res["msg"] = f"{len(written)} dosya yazıldı/gönderildi, {stats['redacted']} sır maskelendi" + (
-        f", {len(stats['skipped_big'])} büyük dosya atlandı" if stats["skipped_big"] else "")
+        f"; repo'suz atlanan: {stats['skipped_group']}" if stats["skipped_group"] else "")
     return res
 
 

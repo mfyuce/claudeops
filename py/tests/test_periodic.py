@@ -164,6 +164,28 @@ class ChatBackupTest(_Tmp):
             r2 = P.run_chat_backup(self.cfg, True, st)                         # değişmeyen = iş yok
             self.assertEqual(r2["changed"], 0)
 
+    def test_binary_chunked_and_group_repo(self):
+        repo = self._setup_repo()
+        codex = os.path.join(self.d, "codexrepo")
+        os.makedirs(os.path.join(codex, ".git"))
+        big = os.path.join(self.d, "g", "c.db")
+        os.makedirs(os.path.dirname(big))
+        with open(big, "wb") as f:
+            f.write(b"x" * (P.CHUNK_MB * 1024 * 1024 + 10))
+        srcs = self.srcs + [(os.path.dirname(big), os.path.join("local", "codex-db"), "bin")]
+        cfg = dict(self.cfg, repos={"codex": codex})
+        plan_src = mock.patch.object(P, "_local_sources", return_value=srcs)
+        with plan_src:
+            plan = P.plan_chat_backup(cfg, {})
+            ent = [e for e in plan["changed"] if e["src"] == big][0]
+            self.assertEqual((ent["group"], ent["kind"]), ("codex", "bin"))
+            written, _sigs, stats = P._write_changed(plan, cfg)
+        parts = sorted(w for w in written if w.startswith("local/codex-db/c.db.part"))
+        self.assertEqual(len(parts), 2)
+        self.assertIn(ent["day"], stats["days"]["codex"])
+        with open(os.path.join(codex, parts[0]), "rb") as f:
+            self.assertEqual(len(f.read()), P.CHUNK_MB * 1024 * 1024)
+
     def test_blocks(self):
         repo = self._setup_repo()
         with mock.patch.object(P, "_local_sources", return_value=self.srcs):
@@ -171,7 +193,8 @@ class ChatBackupTest(_Tmp):
                 self.assertFalse(P.run_chat_backup(self.cfg, True, {})["ok"])   # private değil = durur
             with mock.patch.object(P, "_private_remotes", return_value=({}, [])):
                 self.assertFalse(P.run_chat_backup(self.cfg, True, {})["ok"])   # remote yok
-        self.assertFalse(P.run_chat_backup(dict(self.cfg, repo_dir=os.path.join(self.d, "yok")), True, {})["ok"])
+        with mock.patch.object(P, "_local_sources", return_value=self.srcs):   # gerçek home taranmasın (40 sn + gerçek repolar)
+            self.assertFalse(P.run_chat_backup(dict(self.cfg, repo_dir=os.path.join(self.d, "yok"), repos={}), True, {})["ok"])
 
 
 if __name__ == "__main__":
