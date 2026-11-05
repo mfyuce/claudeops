@@ -20,6 +20,7 @@ import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 PROJECTS_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+MIRROR_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "claudeops", "backups", "chat-mirror", "claude-projects")
 SECRET_PATTERNS = [
     ("BEGIN PRIVATE KEY", re.compile(r"BEGIN [A-Z ]*PRIVATE KEY")),
     ("sk-ant-", re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}")),
@@ -51,7 +52,18 @@ def _run(argv: List[str], cwd: Optional[str] = None, timeout: int = 60) -> Tuple
 
 
 def read_cwd(projdir: str) -> str:
-    """Proje dizinindeki *.jsonl transkriptlerin ilk satırlarından `cwd` (en yeni dosya önce). Yoksa ""."""
+    """Proje dizinindeki *.jsonl transkriptlerin ilk satırlarından `cwd` (en yeni dosya önce). Yoksa sohbet aynasındaki
+    (`MIRROR_ROOT/<aynı kodlanmış ad>`) transkriptlerden; o da yoksa ""."""
+    c = _cwd_from_dir(projdir)
+    if c:
+        return c
+    mirror = os.path.join(MIRROR_ROOT, os.path.basename(projdir.rstrip(os.sep)))
+    if os.path.isdir(mirror):       # ayna yolu dizin olarak doğrulanır; yoksa denenmez
+        return _cwd_from_dir(mirror)
+    return ""
+
+
+def _cwd_from_dir(projdir: str) -> str:
     try:
         files = sorted((os.path.join(projdir, f) for f in os.listdir(projdir) if f.endswith(".jsonl")),
                        key=lambda p: os.path.getmtime(p), reverse=True)
@@ -178,6 +190,9 @@ def plan_one(memdir: str) -> Dict[str, Any]:
     ent["branch"] = br.strip()
     dest = os.path.join(repo, "memory")
     texts, changed = changed_files(memdir, dest)
+    if not texts:                   # yedeklenecek *.md yok (README hariç): README-only commit açma
+        ent["reason"] = "kaynak boş"
+        return ent
     hits = scan_secrets(texts)
     if hits:
         ent["reason"] = "sır taraması: " + "; ".join(hits)
@@ -213,10 +228,31 @@ def apply_one(ent: Dict[str, Any]) -> str:
     rc, _ = _run(["git", "commit", "-m", "chore(memory): Claude hafıza yedeği", "--"] + paths, cwd=repo)
     if rc != 0:
         return "HATA: git commit"
+    br = ent["branch"]
+    bad = []
+    pushable = []
+    for rn in ent["remotes"]:       # 1) fetch + gerekirse merge (rebase YOK: başka remote'a giden hash değişmesin)
+        rc, _ = _run(["git", "fetch", rn, br], cwd=repo, timeout=120)
+        if rc != 0:                 # uzak dal yok/erişilemiyor: push kendi başına sonucu söyler
+            pushable.append(rn)
+            continue
+        rc, _ = _run(["git", "merge-base", "--is-ancestor", f"{rn}/{br}", "HEAD"], cwd=repo)
+        if rc != 1:                 # 0 = zaten atası, başka = uzak ref çözülemedi: birleştirmeye gerek yok
+            pushable.append(rn)
+            continue
+        rc, dirty = _run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo)
+        if rc != 0 or dirty.strip():
+            bad.append(f"{rn}: uzak ileride, elle birleştir (çalışma ağacı kirli)")
+            continue
+        rc, _ = _run(["git", "merge", "--no-edit", f"{rn}/{br}"], cwd=repo, timeout=120)
+        if rc != 0:
+            _run(["git", "merge", "--abort"], cwd=repo)
+            bad.append(f"{rn}: uzak ileride, elle birleştir (merge çakıştı)")
+            continue
+        pushable.append(rn)
     rc, head = _run(["git", "rev-parse", "HEAD"], cwd=repo)
     head = head.strip()
-    bad = []
-    for rn in ent["remotes"]:
+    for rn in pushable:
         rc, _ = _run(["git", "push", rn, f"HEAD:refs/heads/{ent['branch']}"], cwd=repo, timeout=120)
         if rc != 0:
             bad.append(f"{rn}: push")

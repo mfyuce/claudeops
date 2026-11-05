@@ -11,15 +11,22 @@ from claudeops.commands import memory_backup as mm  # noqa: E402
 
 
 class Fake:
-    def __init__(self, repo, remotes, vis=None, top=None, head="abc123", ls_ok=True):
+    def __init__(self, repo, remotes, vis=None, top=None, head="abc123", ls_ok=True, behind=(), dirty="", merge_rc=0):
         self.repo, self.remotes, self.vis = repo, remotes, vis or {}
         self.top = repo if top is None else top
         self.head, self.ls_ok = head, ls_ok
+        self.behind, self.dirty, self.merge_rc = set(behind), dirty, merge_rc
         self.calls = []
 
     def __call__(self, argv, cwd=None, timeout=60):
         self.calls.append(list(argv))
         a = argv
+        if a[:2] == ["git", "merge-base"]:
+            return (1 if a[3].split("/")[0] in self.behind else 0), ""
+        if a[:2] == ["git", "status"]:
+            return 0, self.dirty
+        if a[:2] == ["git", "merge"]:
+            return (self.merge_rc, "") if a[2] != "--abort" else (0, "")
         if a[:3] == ["git", "rev-parse", "--show-toplevel"]:
             return (0, self.top + "\n") if self.top else (128, "")
         if a[:3] == ["git", "remote", "-v"]:
@@ -144,6 +151,62 @@ class Tests(Base):
         ents, failed = self.run_bk(Fake(self.repo, self.GH, vis={"me/wifi": "private"}, ls_ok=False), apply=True)
         self.assertEqual(failed, 1)
         self.assertIn("ls-remote", ents[0]["result"])
+
+    PRIV = {"me/wifi": "private"}
+
+    def test_empty_source_skipped(self):
+        self.proj(files={"README.md": "x"})
+        f = Fake(self.repo, self.GH, vis=self.PRIV)
+        ents, _ = self.run_bk(f, apply=True)
+        self.assertEqual(ents[0]["reason"], "kaynak boş")
+        self.assertFalse(any(c[:2] == ["git", "commit"] for c in f.calls))
+        self.assertFalse(os.path.exists(os.path.join(self.repo, "memory")))
+
+    def test_remote_ahead_clean_merges_before_push(self):
+        self.proj()
+        f = Fake(self.repo, self.GH, vis=self.PRIV, behind=["github"])
+        ents, failed = self.run_bk(f, apply=True)
+        self.assertEqual(failed, 0, ents)
+        names = [c[:2] for c in f.calls]
+        self.assertIn(["git", "fetch"], names)
+        merge = next(c for c in f.calls if c[:2] == ["git", "merge"])
+        self.assertEqual(merge, ["git", "merge", "--no-edit", "github/main"])
+        self.assertFalse(any(c[:2] == ["git", "rebase"] for c in f.calls))
+        self.assertLess(names.index(["git", "merge"]), names.index(["git", "push"]))
+
+    def test_remote_ahead_dirty_tree_skips_remote(self):
+        self.proj()
+        f = Fake(self.repo, self.GH, vis=self.PRIV, behind=["github"], dirty=" M x.py\n")
+        ents, failed = self.run_bk(f, apply=True)
+        self.assertEqual(failed, 1)
+        self.assertIn("elle birleştir", ents[0]["result"])
+        self.assertFalse(any(c[:2] in (["git", "merge"], ["git", "push"]) for c in f.calls))
+
+    def test_merge_conflict_aborts_and_skips(self):
+        self.proj()
+        f = Fake(self.repo, self.GH, vis=self.PRIV, behind=["github"], merge_rc=1)
+        ents, failed = self.run_bk(f, apply=True)
+        self.assertEqual(failed, 1)
+        self.assertIn(["git", "merge", "--abort"], f.calls)
+        self.assertFalse(any(c[:2] == ["git", "push"] for c in f.calls))
+
+    def test_not_ahead_no_merge(self):
+        self.proj()
+        f = Fake(self.repo, self.GH, vis=self.PRIV)
+        self.run_bk(f, apply=True)
+        self.assertFalse(any(c[:2] == ["git", "merge"] for c in f.calls))
+
+    def test_cwd_from_chat_mirror(self):
+        pd = self.proj("p-mirror", jsonl=False)
+        mroot = os.path.join(self.tmp.name, "mirror")
+        md = os.path.join(mroot, "p-mirror")
+        os.makedirs(md)
+        with open(os.path.join(md, "s.jsonl"), "w") as fh:
+            fh.write(json.dumps({"cwd": "/some/where"}) + "\n")
+        with mock.patch.object(mm, "MIRROR_ROOT", mroot):
+            self.assertEqual(mm.read_cwd(pd), "/some/where")
+        with mock.patch.object(mm, "MIRROR_ROOT", os.path.join(self.tmp.name, "yok")):
+            self.assertEqual(mm.read_cwd(pd), "")
 
     def test_only_filter(self):
         self.proj("p1")
