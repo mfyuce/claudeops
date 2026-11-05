@@ -120,10 +120,35 @@ def _gemini_cwd(c: sqlite3.Connection) -> str:
     return UNKNOWN
 
 
+_SUMM: Dict[str, Dict[str, Any]] = {}
+
+
+def _summary(db: str) -> Dict[str, Any]:
+    """conversation_summaries.db (konuşma dizininin kardeşi): workspace_uris -> proje, title, last_modified. Yoksa {}."""
+    sdb = os.path.join(os.path.dirname(os.path.dirname(db)), "conversation_summaries.db")
+    if sdb not in _SUMM:
+        m: Dict[str, Any] = {}
+        try:
+            for cid, title, uris, lm in _ro(sdb).execute("select conversation_id,title,workspace_uris,last_modified_time from conversation_summaries"):
+                try:
+                    u = next(iter(json.loads(uris or "[]")), "")
+                except ValueError:
+                    u = ""
+                m[cid] = {"project": u[7:] if u.startswith("file://") else u, "title": title or "", "last_modified": lm}
+        except sqlite3.Error:
+            pass
+        _SUMM[sdb] = m
+    return _SUMM[sdb].get(os.path.basename(db)[:-3], {})
+
+
 def dump_gemini(db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
     sess = os.path.basename(db)[:-3]
     c = _ro(db)
-    proj = _gemini_cwd(c)
+    summ = _summary(db)
+    proj = summ.get("project") or _gemini_cwd(c)      # önce özet tablosu (workspace_uris), yoksa payload alan 11
+    if summ:
+        yield proj, UNKNOWN if not summ.get("last_modified") else str(summ["last_modified"])[:10], sess, {
+            "summary": {"title": summ.get("title"), "workspace": summ.get("project"), "last_modified": summ.get("last_modified")}}
     for idx, stype, status, md, pl, ri in c.execute("select idx,step_type,status,metadata,step_payload,render_info from steps order by idx"):
         mdd = pb_decode(md) if md else None
         ts = _first_ts(mdd)
