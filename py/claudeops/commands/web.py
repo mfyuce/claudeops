@@ -65,6 +65,7 @@ from .. import files as files_mod
 from .. import mirrors
 from .. import instances as inst_mod
 from .. import model_freshness
+from .. import periodic
 from .. import audio_stream
 from .. import remote_desktop
 from .. import trust_dialog
@@ -4573,6 +4574,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "clis": cli_install.all_cli_status()})
         elif path == "/api/diag/log":
             self._json({"lines": diag_log_tail(30)})
+        elif path == "/api/periodic":
+            self._json(periodic.overview())
         elif path == "/api/ucli/service-models":
             from .. import ucli_session_opts as _uso
             from ..settings import byok_env_for as _byok
@@ -4770,6 +4773,19 @@ class _Handler(BaseHTTPRequestHandler):
             # streaming'in tüm amacını — dosyayı tek seferde belleğe almamak
             # — baştan geçersiz kılardı).
             self._handle_files_upload()
+            return
+        if path == "/api/periodic":
+            if agents_caller is not None:
+                self._json({"ok": False, "error": "forbidden"}, status=403)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0) or 0)
+                data = json.loads(self.rfile.read(length).decode("utf-8")) if 0 < length <= MAX_JSON_BODY_BYTES else {}
+            except (ValueError, UnicodeDecodeError):
+                self._json({"ok": False, "error": "invalid JSON"}, status=400)
+                return
+            res = periodic.api_action(data if isinstance(data, dict) else {})
+            self._json(res, status=200 if res.get("ok") else 400)
             return
         if not path.startswith("/api/steward/") and path not in ("/api/start", "/api/stop", "/api/retire", "/api/reactivate",
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
@@ -5408,6 +5424,7 @@ def run(args) -> int:
     web_ws.start_broadcaster(_status_payload)  # tek broadcaster daemon thread'i, süreç ömrü boyunca bir kez
     web_hosts.start_remote_poller()  # aynı desen — uzak host'ları arka planda poll'layan daemon thread
     web_hosts.start_capability_prober()  # aynı desen — her host için grpc/ws/rest tier'ini arka planda dener
+    periodic.start()  # periyodik işler (cops periodic): kapalıyken ucuz, kendi ayar dosyası
     model_freshness.start_daily_check()  # aynı desen — claude model listesini günde-bir/başlarken tazeler (koda dokunmaz, bkz. modülün kendi docstring'i)
     # Değnekçi (2026-10-19): döngü thread'i hep var, ama `steward.enabled=on` değilken HİÇBİR tick atmaz
     # (projenin "nothing ever starts automatically" ilkesi). Filo eylemleri bu modülün kendi
