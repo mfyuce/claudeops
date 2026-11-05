@@ -213,6 +213,21 @@ class TestBrainMcp(_Brain):
         events = [e["event"] for e in sw.tail_log(10, "kitap")]
         self.assertEqual(events.count("brain_mcp_missing"), 2)
 
+    def test_start_defaults_to_new_conversation(self):
+        self.settings(kitap={"enabled": "on"})
+        cfg = settings.steward_config("kitap")
+        with mock.patch.object(ws, "_verify_brain_mcp", lambda c, since: True):
+            ws.brain_start(cfg)
+        self.assertTrue(self.spawns[-1].get("force_new"))          # beyin hafizasi dosyalarda: --resume YOK
+
+    def test_close_note_written_without_model_turn(self):
+        self.settings(kitap={"enabled": "on"})
+        cfg = settings.steward_config("kitap")
+        self.assertTrue(ws._brain_close_note(cfg))
+        txt = open(os.path.join(sw.paths_for("kitap").workspace, "NOTLAR.md"), encoding="utf-8").read()
+        self.assertIn("Kapanış notu", txt)
+        self.assertIn("açık soru sayısı: 0", txt)
+
     def test_notools_verdict_pure(self):
         cfg = sw.Config()
         v = sw.brain_notools_verdict

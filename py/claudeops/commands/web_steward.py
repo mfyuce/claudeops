@@ -2334,8 +2334,10 @@ def _brain_ucli_opts(cfg: sw.Config, provider, model: str, workspace: str) -> Tu
     return opts, model, ""
 
 
-def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = False, _mcp_retry: bool = False) -> Dict[str, Any]:
-    """Kimliğin beynini aç (kendi workspace'i, `mcp-steward --steward <sid>`). Default dışı kimlik YALNIZ `enabled` iken
+def brain_start(cfg: Optional[sw.Config] = None, fresh: bool = True, _mcp_retry: bool = False) -> Dict[str, Any]:
+    """Kimliğin beynini aç (kendi workspace'i, `mcp-steward --steward <sid>`). VARSAYILAN YENİ konuşma (`fresh`; sahip kararı
+    2026-11-05: beynin hafızası konuşmada değil dosyalarda: state/kartlar/NOTLAR.md; eski konuşmayı `--resume` etmek şişmiş,
+    bayat ve soğuk önbellekte pahalı bağlam taşır). Default dışı kimlik YALNIZ `enabled` iken
     açılır (hiçbir yeni kimlik kendiliğinden beyin açmaz; ayar varsayılan KAPALI); default'un davranışı eskisiyle aynı."""
     cfg = cfg or steward_config()
     if cfg.role == "reviewer":      # reviewer'ın beyni yok (review_tick kendi çalıştırıcısıyla iş görür)
@@ -2395,9 +2397,28 @@ def brain_stop(cfg: Optional[sw.Config] = None) -> Dict[str, Any]:
     cfg = cfg or steward_config()
     if _running(cfg.brain_name) is None:
         return {"ok": True, "stopped": False}
+    note = _brain_close_note(cfg)        # model turu YOK: motor kapanış notunu NOTLAR.md'ye yazar (yeni beyin açılışta okur)
     res = _act("stop", cfg.brain_name, lang=cfg.lang)
-    sw.log_event("brain_stop", paths=cfg.sid, name=cfg.brain_name, ok=bool(res.get("ok")))
+    sw.log_event("brain_stop", paths=cfg.sid, name=cfg.brain_name, ok=bool(res.get("ok")), note=bool(note))
     return res
+
+
+def _brain_close_note(cfg: sw.Config) -> bool:
+    """Beyin kapanırken `NOTLAR.md` sonuna kısa, belirlenimli bir kapanış bloğu ekler (açık sorular, bekleyen ho). Asla fırlatmaz."""
+    try:
+        paths = sw.paths_for(cfg.sid)
+        ws = paths.workspace
+        state = sw.load_state(paths)
+        qs = [q for q in sw.load_questions(paths) if q.status == "open"]
+        lines = [f"\n## Kapanış notu {time.strftime('%Y-%m-%d %H:%M')} (motor yazdı, model turu yok)",
+                 f"- açık soru sayısı: {len(qs)}; ho bekleyen: {sorted((state.get('ho_pending') or {}))}",
+                 "- yeni açılışta durumu `steward_*` araçlarıyla taze oku; bu not yalnız izdir."]
+        os.makedirs(ws, exist_ok=True)
+        with open(os.path.join(ws, "NOTLAR.md"), "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        return True
+    except Exception:
+        return False
 
 
 def _enrich_item(it: Dict[str, Any], projects: Dict[str, sw.Project],
