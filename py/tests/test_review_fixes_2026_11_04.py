@@ -160,3 +160,21 @@ class SeedNonDict(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FileLockPathNormalizationTest(unittest.TestCase):
+    """review 4 Kas R-9: aynı dosyanın farklı yazımları aynı süreç içi kilidi almalı."""
+
+    def test_spellings_of_one_path_share_one_lock_entry(self):
+        import tempfile
+        from claudeops import atomic_json as aj
+        with tempfile.TemporaryDirectory() as d:
+            a = os.path.join(d, "x.json")
+            b = os.path.join(d, "sub", "..", "x.json")
+            os.makedirs(os.path.join(d, "sub"))
+            with aj.file_lock(a):
+                keys = [k for k in aj._THREAD_LOCKS if k.endswith("x.json")]
+                self.assertEqual(keys, [os.path.normpath(a)])
+                with aj.file_lock(b):          # aynı iş parçacığında iç içe: kilitlenmez, yeni girdi açmaz
+                    self.assertEqual([k for k in aj._THREAD_LOCKS if k.endswith("x.json")], keys)
+            self.assertFalse([k for k in aj._THREAD_LOCKS if k.endswith("x.json")])

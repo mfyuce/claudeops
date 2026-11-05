@@ -130,7 +130,9 @@ _WARNED_LOCKS: set = set()      # path başına tek uyarı (log taşmasın)
 def file_lock(path: str) -> Iterator[None]:
     """`path + ".lock"` üzerinde oku-değiştir-yaz döngüsü için kilit: süreç içi (path başına `RLock`) + süreçler arası
     `flock`. Kilit dosyası `O_NOFOLLOW` ile açılır ve çağıranın kendisine ait normal dosya olmalı (symlink/başkasının
-    dosyası = kilit dosyası KULLANILMAZ, yalnız iş parçacığı kilidiyle devam; bir hedefi sessizce yaratmaz/kilitlemez)."""
+    dosyası = kilit dosyası KULLANILMAZ, yalnız iş parçacığı kilidiyle devam; bir hedefi sessizce yaratmaz/kilitlemez).
+    Yol mutlak+normalize edilir: aynı dosyanın farklı yazımları (`a/../b`, göreli/mutlak) AYNI kilidi alır (review 4 Kas R-9)."""
+    path = os.path.normpath(os.path.abspath(path))
     with _LOCKS_GUARD:
         ent = _THREAD_LOCKS.get(path)
         if ent is None:
