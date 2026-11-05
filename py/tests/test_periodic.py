@@ -210,6 +210,28 @@ class ChatBackupTest(_Tmp):
         self.assertNotIn("ABCDEFGHIJKL", txt)
         self.assertEqual(open(os.path.join(repo, [w for w in written if w.endswith("x.db")][0]), "rb").read(), b"SQLite\0\0\1")
 
+    def test_zst_and_unvalidated_claude(self):
+        repo = self._setup_repo()
+        z = os.path.join(self.d, "z", "s.jsonl.zst")
+        os.makedirs(os.path.dirname(z))
+        open(z, "wb").write(b"\x28\xb5\x2f\xfd\0zst")
+        srcs = [(os.path.dirname(z), os.path.join("local", "codex-sessions"), "text")]
+        codex = os.path.join(self.d, "codexrepo")
+        os.makedirs(os.path.join(codex, ".git"))
+        cfg = dict(self.cfg, repos={"codex": codex})
+        with mock.patch.object(P, "_local_sources", return_value=srcs):
+            plan = P.plan_chat_backup(cfg, {})
+            self.assertEqual(len(plan["changed"]), 1)                          # .zst artık görülüyor
+            written, _s, _st = P._write_changed(plan, cfg)
+            self.assertEqual(open(os.path.join(codex, written[0]), "rb").read()[:4], b"\x28\xb5\x2f\xfd")   # ham, bozulmadan
+            # claude doğrulanmadı => repo_dir'e yazma yok
+            srcs2 = self.srcs
+        with mock.patch.object(P, "_local_sources", return_value=srcs2), \
+                mock.patch.object(P, "_check_repo", side_effect=lambda r, c: (None, "doğrulanamadı") if r == repo else ({"origin": "u"}, "")):
+            res = P.run_chat_backup(dict(cfg, repos={}), True, {})
+            self.assertFalse(res["ok"])
+            self.assertFalse(os.path.exists(os.path.join(repo, "local")))
+
     def test_blocks(self):
         repo = self._setup_repo()
         with mock.patch.object(P, "_local_sources", return_value=self.srcs):

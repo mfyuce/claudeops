@@ -313,7 +313,7 @@ def _git(repo: str, *args: str, timeout: int = 300, env: Optional[Dict[str, str]
 
 
 CHUNK_MB = 45          # bundan büyük ikili dosya <ad>.partNNN parçalara bölünür (GitHub blob 100 MB; birleştir: cat <ad>.part* > <ad>)
-TEXT_EXT = (".jsonl",)
+TEXT_EXT = (".jsonl", ".jsonl.zst")      # .zst = codex sıkıştırılmış oturum: ham (ikili) yedeklenir, maskelenemez
 BIN_EXT = (".db", ".sqlite", ".pb", ".json")
 MEM_SKIP = ("-shm", ".tmp", ".lock", ".swp")
 
@@ -450,7 +450,7 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
     for ent in plan["changed"]:
         group = ent.get("group", "claude")
         repo = _group_repo(cfg, group)
-        if not repo or not os.path.isdir(os.path.join(repo, ".git")):
+        if not repo or not os.path.exists(os.path.join(repo, ".git")):
             stats["skipped_group"][group] = stats["skipped_group"].get(group, 0) + 1
             continue
         try:
@@ -460,6 +460,8 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
             continue
         if ent.get("kind") == "mem":
             ent = dict(ent, kind="bin" if b"\0" in raw[:8192] else "text")
+        elif ent["src"].endswith(".zst"):
+            ent = dict(ent, kind="bin")
         if ent.get("kind") == "bin":
             blobs = [(ent["dest"], raw)] if len(raw) <= chunk else [
                 (f"{ent['dest']}.part{i // chunk:03d}", raw[i:i + chunk]) for i in range(0, len(raw), chunk)]
@@ -514,7 +516,7 @@ def _git_dated(repo: str, day: str, *args: str) -> Tuple[int, str]:
 
 def _check_repo(repo: str, cfg: Dict[str, Any]) -> Tuple[Optional[Dict[str, str]], str]:
     """(remote'lar, hata). hata boşsa repo kullanılabilir: git var, remote var, hepsi private, boyut sınırı aşılmamış."""
-    if not repo or not os.path.isdir(os.path.join(repo, ".git")):
+    if not repo or not os.path.exists(os.path.join(repo, ".git")):
         return None, f"repo yok: {repo or '(ayarsız)'}"
     rems, bad = _private_remotes(repo)
     if not rems:
@@ -564,10 +566,27 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         if _tree_mb(repo) > float(cfg.get("max_repo_mb") or 3000):
             res.update(ok=False, msg=f"{g}: .git {int(_tree_mb(repo))} MB > sınır {cfg.get('max_repo_mb')} MB: sahibe sor")
             return res
-    written, sigs, stats = _write_changed(plan, dict(cfg, repos={g: _group_repo(cfg, g) for g in remotes}))
+    wcfg = dict(cfg, repos={g: _group_repo(cfg, g) for g in remotes})
+    if "claude" not in remotes:
+        wcfg["repo_dir"] = ""             # doğrulanmamış (public olabilir) repo_dir'e ASLA yazma
+    written, sigs, stats = _write_changed(plan, wcfg)
     res.update(applied=True, written=len(written), redacted=stats["redacted"], skipped_big=stats["skipped_big"], missing=missing)
+    for g in sorted(remotes):
+        stats["days"].setdefault(g, {})
     for g, days in sorted(stats["days"].items()):
+        if g not in remotes:
+            continue
         repo, rems = _group_repo(cfg, g), remotes[g]
+        rc, por = _git(repo, "status", "--porcelain", "--untracked-files=all", "--", "local", "memory")
+        if rc == 0:                       # önceki yarım çalışmadan kalan (içerik aynı olduğu için _put'un yazmadığı) dosyaları da commit'le
+            for ln in por.split("\n"):
+                rel = ln[3:].strip().strip('"')
+                if rel and not any(rel in v for v in days.values()):
+                    try:
+                        d = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(repo, rel))).strftime("%F")
+                    except OSError:
+                        d = datetime.date.today().isoformat()
+                    days.setdefault(d, []).append(rel)
         for day in sorted(days):          # her takvim günü ayrı commit, eskiden yeniye
             files = days[day]
             rc, out = _git(repo, "add", "--", *files)
@@ -590,6 +609,10 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             diag_log(f"periodic chat_backup: INDEX hatası {type(e).__name__}: {e}")
         head = _git(repo, "rev-parse", "HEAD")[1].strip()
         for name in rems:
+            if not days:                  # bu çalışmada yeni commit yok: yalnız uzak geride ise it (yarım kalan itmeyi tamamlar)
+                rc0, o0 = _git(repo, "ls-remote", name, "HEAD")
+                if rc0 == 0 and o0.startswith(head[:12]):
+                    continue
             args = ["push", "-q", name, "HEAD"]
             if "github.com" in rems[name]:
                 args = ["-c", "credential.helper=!gh auth git-credential", *args]
