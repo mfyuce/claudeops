@@ -529,7 +529,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
     manifest: Dict[str, str] = dict((state.get("chat_backup") or {}).get("manifest") or {})
     dump_info: Dict[str, Any] = {}
-    if apply and "local" in (cfg.get("sources") or []) and cfg.get("dump_db", True):
+    if apply and "local" in (cfg.get("sources") or []) and str(cfg.get("dump_db", True)).lower() not in ("off", "0", "false", "no", ""):
         from . import chat_dump
         stamps: Dict[str, str] = dict((state.get("chat_backup") or {}).get("dump_stamps") or {})
         dump_info = chat_dump.stage_dumps(STAGE_DIR, stamps)
