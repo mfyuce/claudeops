@@ -3902,6 +3902,8 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
         rec = rec_all.get(v.name) or {}
         at, n = float(rec.get("at") or 0), int(rec.get("n") or 0)
         chain = 0 if since > at else n          # dürtmeden sonra etkinlik oldu: zincir sıfırlanır
+        if rec.get("mode", "dry") != cfg.ucli_idle:
+            at, chain = 0.0, 0                  # dry'da sayılan dürtmeler act'i KİLİTLEMEZ (5 Kas: copsdev 2 sa boşta kaldı)
         if at and since <= at and now - at < thr:
             continue                            # bu boşta dönem için yakın zamanda işlendi
         if chain >= cfg.ucli_idle_max_consecutive:
@@ -3926,7 +3928,7 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
                               dict(info, text=one_line(f"devam: {hint}"), next=hint)))
         else:
             continue
-        rec_all[v.name] = {"at": now, "n": chain + 1}
+        rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.ucli_idle}
         changed = True
     if not changed:
         return [], state

@@ -173,6 +173,20 @@ class PlanTest(unittest.TestCase):
         self.assertEqual((len(a3), st3["ucli_idle"]["cli"]["n"]), (1, 1))      # sayaç sıfırlandı
 
 
+    def test_dry_counts_do_not_block_act(self):
+        """5 Kas: dry'da 2 kez sayılan dürtme, act'e geçince zinciri kilitliyordu (copsdev 2 sa boşta)."""
+        v = view()
+        _, st = plan([v], c=cfg(ucli_idle="dry"))
+        _, st = plan([v], state=st, c=cfg(ucli_idle="dry"), now=NOW + 200)
+        self.assertEqual(st["ucli_idle"]["cli"], {"at": NOW + 200, "n": 2, "mode": "dry"})
+        a, st2 = plan([v], state=st, now=NOW + 210)                           # act: eşik beklemeden ilk gerçek dürtme
+        self.assertEqual((len(a), st2["ucli_idle"]["cli"]["n"], st2["ucli_idle"]["cli"]["mode"]), (1, 1, "act"))
+
+    def test_legacy_record_without_mode_counts_as_dry(self):
+        v = view()
+        a, st = plan([v], state={"ucli_idle": {"cli": {"at": NOW - 10, "n": 2}}})
+        self.assertEqual((len(a), st["ucli_idle"]["cli"]["n"]), (1, 1))
+
 class ApplyTest(_Engine):
     """`_apply`: mevcut yollar (`_send`, handover/stop/respawn); gerçek spawn/tmux yok."""
 
