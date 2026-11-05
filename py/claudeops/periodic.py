@@ -578,6 +578,16 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             if rc != 0:
                 res.update(ok=False, msg=f"{g} git commit: " + out[-200:])
                 return res
+        try:                              # INDEX.jsonl/INDEX.md (yalnız açık yollar); hata yedeği durdurmaz
+            from . import chat_index
+            import socket
+            rc, lst = _git(repo, "ls-files", "--", "local", "memory")
+            if rc == 0:
+                idx = chat_index.write_index(repo, [x for x in lst.split("\n") if x], re.sub(r"[^A-Za-z0-9._-]+", "-", socket.gethostname()))
+                _git(repo, "add", "--", *idx)
+                _git_dated(repo, datetime.date.today().isoformat(), "commit", "-q", "-m", "INDEX guncellendi", "--", *idx)
+        except Exception as e:  # noqa: BLE001
+            diag_log(f"periodic chat_backup: INDEX hatası {type(e).__name__}: {e}")
         head = _git(repo, "rev-parse", "HEAD")[1].strip()
         for name in rems:
             args = ["push", "-q", name, "HEAD"]

@@ -155,7 +155,8 @@ class ChatBackupTest(_Tmp):
                 txt = fh.read()
             self.assertNotIn("sk-ant", txt)
             self.assertEqual(oct(os.stat(gz).st_mode & 0o777), "0o600")
-            adds = [c for c in calls if c[0] == "add"]
+            adds = [c for c in calls if c[0] == "add" and "INDEX.jsonl" not in c]
+            self.assertTrue(any(c[0] == "add" and c[-2:] == ("INDEX.jsonl", "INDEX.md") for c in calls))   # INDEX açık yolla
             self.assertEqual(len(adds), 1)
             self.assertNotIn("-A", adds[0])
             self.assertNotIn(".", adds[0][2:])                                  # açık yollar, nokta/-A yok
