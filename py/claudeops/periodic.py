@@ -59,6 +59,8 @@ DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
     "repo_name": "copschats-prv",
     "repos": {"claude": "", "codex": os.path.join("~", "work", "projects", "tmp", "copschats-codex-prv"),
               "gemini": os.path.join("~", "work", "projects", "tmp", "copschats-gemini-prv")},  # claude boşsa repo_dir
+    "raw_remote": "gdrive:chat-raw",   # ham .db/.sqlite buraya (rclone); boş = yükleme yok
+    "dump_db": True,             # codex/gemini .db -> JSONL döküm (chat_dump)
     "sources": ["local"],        # ileride: "yuhem", "ulak_31"
     "max_file_mb": 50,           # tek ham dosya sınırı (GitHub blob 100 MB); aşan atlanır, günlüğe yazılır
     "max_repo_mb": 3000,         # çalışma ağacı sınırı; aşılırsa iş durur (sahibe sorulur)
@@ -315,6 +317,9 @@ TEXT_EXT = (".jsonl",)
 BIN_EXT = (".db", ".sqlite", ".pb", ".json")
 
 
+STAGE_DIR = os.path.join(CLAUDEOPS_DIR, "backups", "chat-dump")
+
+
 def _local_sources() -> List[Tuple[str, ...]]:
     """(kaynak yol, repo içi hedef öneki[, tür]) demetleri. tür: "text" (jsonl, sır maskelenir) | "bin" (ham, büyükse parçalanır).
     Ayna (chat-mirror) canlı dizinden SİLİNMİŞ eski sohbetleri de taşır; aynı hedef yolda mtime'ı yeni olan kazanır.
@@ -327,12 +332,10 @@ def _local_sources() -> List[Tuple[str, ...]]:
         (os.path.join(home, ".claude", "history.jsonl"), os.path.join("local", "claude-history"), "text"),
         (os.path.join(mir, "codex", "sessions"), os.path.join("local", "codex-sessions"), "text"),
         (os.path.join(home, ".codex", "sessions"), os.path.join("local", "codex-sessions"), "text"),
-        (os.path.join(mir, "codex", "thread_history_1.sqlite"), os.path.join("local", "codex-db"), "bin"),
+        (os.path.join(STAGE_DIR, "codex"), os.path.join("local", "codex-dump"), "text"),    # .db dökümü (chat_dump); ham .db gdrive'a
+        (os.path.join(STAGE_DIR, "gemini"), os.path.join("local", "gemini-dump"), "text"),
         (os.path.join(mir, "ucli"), os.path.join("local", "claude-ucli"), "text"),
     ]
-    for sub in ("antigravity", "antigravity-cli", "antigravity-ide"):
-        for name in ("conversations", "conversation_summaries.db"):
-            out.append((os.path.join(mir, "gemini", sub, name), os.path.join("local", "gemini-" + sub), "bin"))
     return out
 
 
@@ -490,6 +493,14 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     """Plan (apply=False) ya da uygula. Sonuç dict'i: ok, msg, written, ... Asla fırlatmaz.
     Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
     manifest: Dict[str, str] = dict((state.get("chat_backup") or {}).get("manifest") or {})
+    dump_info: Dict[str, Any] = {}
+    if apply and "local" in (cfg.get("sources") or []) and cfg.get("dump_db", True):
+        from . import chat_dump
+        stamps: Dict[str, str] = dict((state.get("chat_backup") or {}).get("dump_stamps") or {})
+        dump_info = chat_dump.stage_dumps(STAGE_DIR, stamps)
+        state.setdefault("chat_backup", {})["dump_stamps"] = stamps
+        if cfg.get("raw_remote"):
+            dump_info["raw_err"] = chat_dump.raw_to_remote(str(cfg["raw_remote"]))
     plan = plan_chat_backup(cfg, manifest)
     res: Dict[str, Any] = {"ok": True, "seen": plan["seen"], "changed": len(plan["changed"]), "repo": plan["repo"], "applied": False}
     if "local" not in (cfg.get("sources") or []):
@@ -548,7 +559,13 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     done = {e["src"]: sigs[e["src"]] for e in plan["changed"] if e["src"] in sigs}
     manifest.update(done)
     state.setdefault("chat_backup", {})["manifest"] = manifest
+    if dump_info:
+        res["dump"] = dump_info
+        if dump_info.get("errors") or dump_info.get("raw_err"):
+            res["ok"] = False
     res["msg"] = f"{len(written)} dosya yazıldı/gönderildi, {stats['redacted']} sır maskelendi" + (
+        f"; db dökümü {dump_info.get('dumped', 0)} db/{dump_info.get('files', 0)} dosya" if dump_info else "") + (
+        f"; DÖKÜM HATASI {(dump_info.get('errors') or [dump_info.get('raw_err')])[0]}" if dump_info and not res["ok"] else "") + (
         f"; repo'suz atlanan: {stats['skipped_group']}" if stats["skipped_group"] else "")
     return res
 

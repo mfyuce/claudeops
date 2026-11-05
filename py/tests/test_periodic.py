@@ -122,7 +122,7 @@ class ChatBackupTest(_Tmp):
         hist = os.path.join(self.d, "claude", "history.jsonl")
         with open(hist, "w") as f:
             f.write("{}\n")
-        self.cfg = dict(P.DEFAULT_CHAT_BACKUP, repo_dir=repo, enabled="on")
+        self.cfg = dict(P.DEFAULT_CHAT_BACKUP, repo_dir=repo, enabled="on", dump_db=False, raw_remote="")
         self.srcs = [(os.path.join(self.d, "claude", "projects"), os.path.join("local", "claude-projects")),
                      (hist, os.path.join("local", "claude-history"))]
         return repo

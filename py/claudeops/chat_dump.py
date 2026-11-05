@@ -106,19 +106,37 @@ def dump_codex(thread_db: str, state_db: str) -> Iterator[Tuple[str, str, str, D
                {"ordinal": ordn, "ts_ms": ms, "turn": turn, "item": iid, "type": typ, "title": title, "data": item})
 
 
+_CWD_RE = re.compile(r'"11": "\\n.(/(?:home|tmp|root)/[^"\\]+)"')
+
+
+def _gemini_cwd(c: sqlite3.Connection) -> str:
+    """Proje = ilk adımların payload'ındaki 11. alan (çalışma dizini); bulunamazsa 'bilinmiyor' (örnekte ~%40 bulunuyor)."""
+    for (pl,) in c.execute("select step_payload from steps where step_payload is not null order by idx limit 15"):
+        d = pb_decode(pl)
+        if d:
+            m = _CWD_RE.search(json.dumps(_jsonable(d), ensure_ascii=False))
+            if m:
+                return m.group(1)
+    return UNKNOWN
+
+
 def dump_gemini(db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
     sess = os.path.basename(db)[:-3]
     c = _ro(db)
+    proj = _gemini_cwd(c)
     for idx, stype, status, md, pl, ri in c.execute("select idx,step_type,status,metadata,step_payload,render_info from steps order by idx"):
         mdd = pb_decode(md) if md else None
         ts = _first_ts(mdd)
+        pld = pb_decode(pl) if pl else None
+        if pld and mdd:                       # payload alan 5, metadata'nın kopyası: yineleme (boyut)
+            pld = [(f, v) for f, v in pld if not (f == 5 and v == mdd)]
         row = {"idx": idx, "step_type": stype, "status": status, "ts": ts,
                "metadata": _jsonable(mdd) if mdd else None,
-               "payload": _jsonable(pb_decode(pl)) if pl and pb_decode(pl) else (pl.hex()[:200] if pl else None)}
-        yield UNKNOWN, _day(ts), sess, row
+               "payload": _jsonable(pld) if pld else (pl.hex()[:200] if pl else None)}
+        yield proj, _day(ts), sess, row
     for idx, data, _sz in c.execute("select idx,data,size from gen_metadata order by idx"):
         d = pb_decode(data) if data else None
-        yield UNKNOWN, _day(_first_ts(d)), sess, {"gen_metadata_idx": idx, "data": _jsonable(d) if d else None}
+        yield proj, _day(_first_ts(d)), sess, {"gen_metadata_idx": idx, "data": _jsonable(d) if d else None}
 
 
 def write_jsonl(rows: Iterator[Tuple[str, str, str, Dict[str, Any]]], out_root: str, cli: str) -> List[str]:
@@ -145,3 +163,83 @@ def write_jsonl(rows: Iterator[Tuple[str, str, str, Dict[str, Any]]], out_root: 
         for h in handles.values():
             h.close()
     return list(written)
+
+
+# ------------------------------------------------------------------ periodic entegrasyonu
+def _db_sources(home: str) -> List[Tuple[str, str, str]]:
+    """(cli, alt, db yolu). Canlı önce; ayna yalnız canlıda olmayan (silinmiş) oturumlar için."""
+    import glob
+    mir = os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
+    out: List[Tuple[str, str, str]] = []
+    seen = set()
+    for base in (os.path.join(home, ".gemini"), os.path.join(mir, "gemini")):
+        for p in sorted(glob.glob(os.path.join(base, "*", "conversations", "*.db"))):
+            key = (os.path.basename(os.path.dirname(os.path.dirname(p))), os.path.basename(p))
+            if key not in seen:
+                seen.add(key)
+                out.append(("gemini", key[0], p))
+    for base in (os.path.join(home, ".codex"), os.path.join(mir, "codex")):
+        th, st = os.path.join(base, "thread_history_1.sqlite"), os.path.join(base, "state_5.sqlite")
+        if os.path.exists(th) and os.path.exists(st):
+            out.append(("codex", "", th))
+            break
+    return out
+
+
+def stage_dumps(stage: str, stamps: Dict[str, str], home: Optional[str] = None) -> Dict[str, Any]:
+    """Değişen db'leri stage/<cli>/... altına JSONL döker; dosya mtime'ı = içerik günü (commit tarihi için). Hata db başına yutulur."""
+    home = home or os.path.expanduser("~")
+    st = {"dumped": 0, "skipped": 0, "errors": [], "files": 0}
+    for cli, sub, p in _db_sources(home):
+        try:
+            s = os.stat(p)
+        except OSError:
+            continue
+        sig = f"{s.st_size}:{int(s.st_mtime)}"
+        if stamps.get(p) == sig:
+            st["skipped"] += 1
+            continue
+        try:
+            if cli == "codex":
+                rows = dump_codex(p, os.path.join(os.path.dirname(p), "state_5.sqlite"))
+                rels = write_jsonl(rows, stage, "codex")
+            else:
+                rels = write_jsonl(dump_gemini(p), stage, os.path.join("gemini", sub))
+        except Exception as e:  # noqa: BLE001 — bozuk/kilitli db diğerlerini durdurmasın
+            st["errors"].append(f"{p}: {type(e).__name__}: {e}"[:200])
+            continue
+        for rel in rels:
+            day = rel.split(os.sep)[-2]
+            if day != UNKNOWN:
+                t = datetime.datetime.strptime(day, "%Y-%m-%d").replace(hour=12).timestamp()
+                os.utime(os.path.join(stage, rel), (t, t))
+        stamps[p] = sig
+        st["dumped"] += 1
+        st["files"] += len(rels)
+    return st
+
+
+def raw_to_remote(remote: str, home: Optional[str] = None, timeout: int = 10800) -> str:
+    """Ham .db/.sqlite -> rclone remote (git'e girmez). '' = ok, aksi hata metni."""
+    import socket, subprocess
+    home = home or os.path.expanduser("~")
+    host = socket.gethostname()
+    mir = os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
+    jobs = [(os.path.join(home, ".gemini"), "gemini", ["*/conversations/*.db", "*/conversation_summaries.db"]),
+            (os.path.join(mir, "gemini"), "gemini", ["*/conversations/*.db", "*/conversation_summaries.db"]),
+            (os.path.join(home, ".codex"), "codex", ["*.sqlite", "*.sqlite-wal"]),
+            (os.path.join(mir, "codex"), "codex", ["*.sqlite", "*.sqlite-wal"])]
+    errs = []
+    for src, name, inc in jobs:
+        if not os.path.isdir(src):
+            continue
+        cmd = ["rclone", "copy", "--update", "--transfers", "4", src, f"{remote.rstrip('/')}/{host}/{name}"]
+        for i in inc:
+            cmd += ["--include", i]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            if r.returncode != 0:
+                errs.append(f"{name}: rc={r.returncode} {r.stderr[-150:]}")
+        except (OSError, subprocess.TimeoutExpired) as e:
+            errs.append(f"{name}: {type(e).__name__}")
+    return "; ".join(errs)

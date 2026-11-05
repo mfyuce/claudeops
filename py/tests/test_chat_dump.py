@@ -20,6 +20,15 @@ class DumpTest(unittest.TestCase):
         self.assertEqual(D._first_ts(d), 1790000000)
         self.assertEqual(D._first_ts([(1, 5)]), None)
 
+    def test_gemini_cwd(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = sqlite3.connect(os.path.join(t, "s.db"))
+            c.execute("create table steps(idx integer,step_type int,status int,metadata blob,step_payload blob,render_info blob)")
+            path = b"/tmp/" + b"a" * 31                      # uzunluk 36 = "$" (yazdırılabilir)
+            val = b"\n$" + path
+            c.execute("insert into steps values(0,1,1,NULL,?,NULL)", (bytes([0x5a, len(val)]) + val,))
+            self.assertEqual(D._gemini_cwd(c), path.decode())
+
     def test_gemini_and_codex(self):
         with tempfile.TemporaryDirectory() as t:
             g = os.path.join(t, "abc.db")
@@ -37,6 +46,23 @@ class DumpTest(unittest.TestCase):
                                               "insert into thread_items values('T1','u','i',1,1790000000000,'{\"a\":1}','userMessage');")
             w = D.write_jsonl(D.dump_codex(th, st), t, "codex")
             self.assertEqual(w, ["codex/x-y/2026-09-21/T1.jsonl"])
+
+    def test_stage_dumps_incremental(self):
+        with tempfile.TemporaryDirectory() as t:
+            conv = os.path.join(t, ".gemini", "antigravity", "conversations")
+            os.makedirs(conv)
+            c = sqlite3.connect(os.path.join(conv, "s1.db"))
+            c.execute("create table steps(idx integer,step_type int,status int,metadata blob,step_payload blob,render_info blob)")
+            c.execute("create table gen_metadata(idx integer,data blob,size int)")
+            c.execute("insert into steps values(0,1,1,?,NULL,NULL)", (_pb_varint(1, 1790000000),))
+            c.commit(); c.close()
+            stamps, stage = {}, os.path.join(t, "stage")
+            a = D.stage_dumps(stage, stamps, home=t)
+            self.assertEqual((a["dumped"], a["files"], a["errors"]), (1, 1, []))
+            f = os.path.join(stage, "gemini", "antigravity", "bilinmiyor", "2026-09-21", "s1.jsonl")
+            self.assertTrue(os.path.exists(f))
+            self.assertEqual(__import__("datetime").datetime.fromtimestamp(os.path.getmtime(f)).strftime("%F"), "2026-09-21")
+            self.assertEqual(D.stage_dumps(stage, stamps, home=t)["skipped"], 1)
 
 
 if __name__ == "__main__":
