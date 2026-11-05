@@ -251,6 +251,18 @@ class ChatBackupTest(_Tmp):
         self.assertIn("local/codex-db/c.db.part001", written)
         self.assertEqual(open(os.path.join(codex, "local/codex-db/c.db"), "rb").read(), b"kucuk")
 
+    def test_notify_failure_cooldown(self):
+        sent = []
+        T0 = 10_000_000.0
+        with mock.patch("claudeops.commands.web_steward.notify_phone", side_effect=lambda t, **k: sent.append(t) or True):
+            st = {}
+            self.assertTrue(P._notify_failure("j", {"ok": False, "msg": "x"}, st, now=T0))
+            self.assertFalse(P._notify_failure("j", {"ok": False, "msg": "x"}, st, now=T0 + 60))        # soğuma
+            self.assertTrue(P._notify_failure("j", {"ok": False, "msg": "x"}, st, now=T0 + P.NOTIFY_COOLDOWN_S + 1))
+            self.assertFalse(P._notify_failure("j", {"ok": True}, st, now=1.0))
+            self.assertNotIn("last_notify", st)
+        self.assertEqual(len(sent), 2)
+
     def test_blocks(self):
         repo = self._setup_repo()
         with mock.patch.object(P, "_local_sources", return_value=self.srcs):

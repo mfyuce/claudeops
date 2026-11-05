@@ -747,11 +747,34 @@ def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
             st["last_end"] = time.time()
             st["last_ok"] = bool(res.get("ok"))
             st["last_msg"] = str(res.get("msg") or "")[:300]
+            _notify_failure(name, res, st)
             save_state(state)
             diag_log(f"periodic {name}: {'ok' if res.get('ok') else 'HATA'} {res.get('msg', '')}")
         return res
     finally:
         _LOCK.release()
+
+
+NOTIFY_COOLDOWN_S = 6 * 3600
+
+
+def _notify_failure(name: str, res: Dict[str, Any], st: Dict[str, Any], now: Optional[float] = None) -> bool:
+    """Başarısız koşuda ntfy (best-effort). Aynı iş için 6 saatte en fazla bir bildirim (spam yok); başarıda sayaç sıfırlanır."""
+    now = time.time() if now is None else now
+    if res.get("ok"):
+        st.pop("last_notify", None)
+        return False
+    if now - float(st.get("last_notify") or 0) < NOTIFY_COOLDOWN_S:
+        return False
+    try:
+        from .commands import web_steward
+        sent = bool(web_steward.notify_phone(f"periodic {name}: HATA {str(res.get('msg') or '')[:200]}", title="claudeops periyodik"))
+    except Exception as e:  # noqa: BLE001 — bildirim hatası işi bozmasın
+        diag_log(f"periodic {name}: bildirim hatası {type(e).__name__}")
+        return False
+    if sent:
+        st["last_notify"] = now
+    return sent
 
 
 def tick(now: Optional[datetime.datetime] = None) -> List[str]:
