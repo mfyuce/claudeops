@@ -208,7 +208,7 @@ class TestTwoIdentityTick(_Engine):
             try:
                 self.assertTrue(entered.wait(5))
                 t0 = time.monotonic()
-                self.assertTrue(ws.http_post("/api/steward/stop", {"name": "a"})["ok"])          # insan, default
+                self.assertTrue(ws.http_post("/api/steward/stop", {"name": "a", "force": True})["ok"])          # insan, default
                 self.assertTrue(ws.http_post("/api/steward/handover", {"name": "a", "actor": "brain"})["ok"])
                 self.assertTrue(ws.tick_once("manual")["ok"])                                  # default tick'i
                 self.assertLess(time.monotonic() - t0, 3.0)

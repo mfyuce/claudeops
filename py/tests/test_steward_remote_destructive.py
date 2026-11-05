@@ -385,7 +385,7 @@ class TestLocalUnchanged(_Destructive):
             self.assertEqual(self.apply("respawn", "loc"), {"ok": False, "error": "no tmux here"})
         self.assertEqual(self.calls, [("stop", "loc"), ("stop", "loc")])
         self.assertEqual([(n, kw.get("fresh"), kw.get("host", "")) for n, kw in self.ensure], [("loc", True, "")])
-        r = ws.http_post("/api/steward/stop", {"name": "loc"})
+        r = ws.http_post("/api/steward/stop", {"name": "loc", "force": True})
         self.assertTrue(r["ok"], r)
         self.assertEqual(self.calls[-1], ("stop", "loc"))
         self.assertEqual(self.posts(), [])
