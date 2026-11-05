@@ -90,5 +90,19 @@ class AdoptRevalidateTest(unittest.TestCase):
             self.assertEqual(rd._resolve_binary("m").name, "uzakgoz")
 
 
+class PidAliveEpermTest(unittest.TestCase):
+    """OPS-07: EPERM (başka kullanıcının süreci) canlı sayılmaz; ESRCH da değil; kendi PID canlı."""
+    def test_eperm_not_alive(self):
+        with mock.patch.object(rd.os, "kill", side_effect=PermissionError):
+            self.assertFalse(rd._pid_alive(4242))
+
+    def test_esrch_not_alive(self):
+        with mock.patch.object(rd.os, "kill", side_effect=ProcessLookupError):
+            self.assertFalse(rd._pid_alive(4242))
+
+    def test_own_pid_alive(self):
+        self.assertTrue(rd._pid_alive(os.getpid()))
+
+
 if __name__ == "__main__":
     unittest.main()
