@@ -315,6 +315,7 @@ def _git(repo: str, *args: str, timeout: int = 300, env: Optional[Dict[str, str]
 CHUNK_MB = 45          # bundan büyük ikili dosya <ad>.partNNN parçalara bölünür (GitHub blob 100 MB; birleştir: cat <ad>.part* > <ad>)
 TEXT_EXT = (".jsonl",)
 BIN_EXT = (".db", ".sqlite", ".pb", ".json")
+MEM_SKIP = ("-shm", ".tmp", ".lock", ".swp")
 
 
 STAGE_DIR = os.path.join(CLAUDEOPS_DIR, "backups", "chat-dump")
@@ -336,11 +337,40 @@ def _local_sources() -> List[Tuple[str, ...]]:
         (os.path.join(STAGE_DIR, "gemini"), os.path.join("local", "gemini-dump"), "text"),
         (os.path.join(mir, "ucli"), os.path.join("local", "claude-ucli"), "text"),
     ]
+    out.extend(_memory_sources(home, mir))
+    return out
+
+
+def _memory_sources(home: str, mir: str) -> List[Tuple[str, ...]]:
+    """HAFIZA grubu: memory/<host>/<cli>/<proje>/... Canlı + ayna (canlıdan silinmişler); aynı hedefte mtime'ı yeni olan kazanır.
+    Şirket GitLab'lı 6 proje DAHİL (sahip kararı TBD#158), hariç tutma yok."""
+    import glob
+    import socket
+    host = re.sub(r"[^A-Za-z0-9._-]+", "-", socket.gethostname()) or "host"
+    out: List[Tuple[str, ...]] = []
+    for base in (os.path.join(home, ".claude", "projects"), os.path.join(mir, "claude-projects")):
+        for d in sorted(glob.glob(os.path.join(base, "*", "memory"))):
+            proj = os.path.basename(os.path.dirname(d))
+            out.append((d, os.path.join("memory", host, "claude", proj), "mem"))
+    for base in (home, os.path.join(mir, "codex")):
+        sub = ".codex" if base == home else ""
+        root = os.path.join(base, sub) if sub else base
+        out.append((os.path.join(root, "memories"), os.path.join("memory", host, "codex", "memories"), "mem"))
+        out.append((os.path.join(root, "memories_1.sqlite"), os.path.join("memory", host, "codex", "memories"), "mem"))
+    for base in (os.path.join(home, ".gemini"), os.path.join(mir, "gemini")):
+        for sub in ("antigravity", "antigravity-cli", "antigravity-ide", "antigravity-backup"):
+            out.append((os.path.join(base, sub, "knowledge"), os.path.join("memory", host, "gemini", sub + "-knowledge"), "mem"))
+        out.append((os.path.join(base, "GEMINI.md"), os.path.join("memory", host, "gemini", "GEMINI"), "mem"))
+    cop = os.path.join(mir, "copilot")
+    out.append((os.path.join(cop, "data.db"), os.path.join("memory", host, "copilot", "data"), "mem"))
+    out.append((os.path.join(cop, "command-history-state.json"), os.path.join("memory", host, "copilot", "data"), "mem"))
     return out
 
 
 def _group_of(prefix: str) -> str:
     parts = prefix.replace("\\", "/").split("/")
+    if parts[0] == "memory" and len(parts) > 2:        # memory/<host>/<cli>/<proje>: grup = cli; copilot claude reposuna gider
+        return "claude" if parts[2] == "copilot" else parts[2]
     return (parts[1] if len(parts) > 1 else parts[0]).split("-")[0]
 
 
@@ -356,7 +386,10 @@ def _walk_files(src: str, kind: str) -> List[str]:
     exts = TEXT_EXT if kind == "text" else BIN_EXT + TEXT_EXT
     out: List[str] = []
     for root, _d, files in os.walk(src):
-        out.extend(os.path.join(root, f) for f in files if f.endswith(exts))
+        if kind == "mem":      # hafıza: her dosya (md/json/sqlite...), geçici/yedek/shm hariç
+            out.extend(os.path.join(root, f) for f in files if not f.endswith(MEM_SKIP) and ".pre-update-backup" not in f and ".bak-" not in f)
+        else:
+            out.extend(os.path.join(root, f) for f in files if f.endswith(exts))
     return sorted(out)
 
 
@@ -425,6 +458,8 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
                 raw = f.read()
         except OSError:
             continue
+        if ent.get("kind") == "mem":
+            ent = dict(ent, kind="bin" if b"\0" in raw[:8192] else "text")
         if ent.get("kind") == "bin":
             blobs = [(ent["dest"], raw)] if len(raw) <= chunk else [
                 (f"{ent['dest']}.part{i // chunk:03d}", raw[i:i + chunk]) for i in range(0, len(raw), chunk)]

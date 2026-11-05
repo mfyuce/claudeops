@@ -186,6 +186,29 @@ class ChatBackupTest(_Tmp):
         with open(os.path.join(codex, parts[0]), "rb") as f:
             self.assertEqual(len(f.read()), P.CHUNK_MB * 1024 * 1024)
 
+    def test_memory_group(self):
+        repo = self._setup_repo()
+        home = os.path.join(self.d, "home")
+        md = os.path.join(home, ".claude", "projects", "-p9", "memory")
+        os.makedirs(md)
+        with open(os.path.join(md, "m.md"), "w") as f:
+            f.write("key sk-ant-api03-ABCDEFGHIJKL\n")
+        with open(os.path.join(md, "x.db"), "wb") as f:
+            f.write(b"SQLite\0\0\1")
+        with open(os.path.join(md, "x.db-shm"), "wb") as f:
+            f.write(b"s")
+        srcs = P._memory_sources(home, os.path.join(home, "mir"))
+        with mock.patch.object(P, "_local_sources", return_value=srcs):
+            plan = P.plan_chat_backup(self.cfg, {})
+            dests = sorted(e["dest"] for e in plan["changed"])
+            self.assertEqual(len(dests), 2)                                     # -shm dışlandı
+            self.assertTrue(all(d.startswith("memory/") and "/claude/-p9/" in d for d in dests))
+            self.assertEqual({e["group"] for e in plan["changed"]}, {"claude"})
+            written, _s, stats = P._write_changed(plan, self.cfg)
+        txt = open(os.path.join(repo, [w for w in written if w.endswith("m.md")][0])).read()
+        self.assertNotIn("ABCDEFGHIJKL", txt)
+        self.assertEqual(open(os.path.join(repo, [w for w in written if w.endswith("x.db")][0]), "rb").read(), b"SQLite\0\0\1")
+
     def test_blocks(self):
         repo = self._setup_repo()
         with mock.patch.object(P, "_local_sources", return_value=self.srcs):
