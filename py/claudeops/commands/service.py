@@ -231,6 +231,15 @@ def run_install(args) -> int:
         TUNNEL_LABEL_FILE.write_text(args.label)
         print(f"✓ {TUNNEL_LABEL_FILE} (\"{args.label}\")")
 
+    # ENG-06: import/derleme hatası varsa restart ETME (Restart=always crash-loop'u); unit'ler yazıldı ama servis eski kodla sürer.
+    from . import check as _check
+    errs = _check.run_checks(Path(repo_py))
+    if errs:
+        for e in errs:
+            print(f"✗ check: {e}", file=sys.stderr)
+        print("✗ smoke başarısız: restart yapılmadı", file=sys.stderr)
+        return 1
+
     r = _sh("systemctl", "--user", "daemon-reload")
     if r.returncode != 0:
         print(f"✗ daemon-reload: {r.stderr.strip()}", file=sys.stderr)
