@@ -17,6 +17,7 @@ chat_backup: `~/.claude/projects/**/*.jsonl` + `history.jsonl` içinde YENİ/DE�
 from __future__ import annotations
 
 import datetime
+import glob
 import hashlib
 import json
 import os
@@ -474,6 +475,14 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
             else:
                 blobs = [(ent["dest"], blob)]
         changed = False
+        keep = {rel for rel, _d in blobs}
+        base = ent["dest"]
+        for stale in [base] + [os.path.relpath(x, repo) for x in sorted(glob.glob(glob.escape(os.path.join(repo, base)) + ".part*"))]:
+            if stale not in keep and os.path.isfile(os.path.join(repo, stale)):   # boyut sınıfı değişti: eski parça/bütün dosya kalmasın (birleştirme bozulur)
+                os.remove(os.path.join(repo, stale))
+                written.append(stale)
+                stats["days"].setdefault(group, {}).setdefault(ent["day"], []).append(stale)
+                changed = True
         for rel, data in blobs:
             if _put(os.path.join(repo, rel), data):
                 changed = True

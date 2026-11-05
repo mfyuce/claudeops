@@ -232,6 +232,25 @@ class ChatBackupTest(_Tmp):
             self.assertFalse(res["ok"])
             self.assertFalse(os.path.exists(os.path.join(repo, "local")))
 
+    def test_stale_parts_removed(self):
+        self._setup_repo()
+        codex = os.path.join(self.d, "codexrepo2")
+        os.makedirs(os.path.join(codex, ".git"))
+        src = os.path.join(self.d, "g2", "c.db")
+        os.makedirs(os.path.dirname(src))
+        old = os.path.join(codex, "local", "codex-db", "c.db.part001")
+        os.makedirs(os.path.dirname(old))
+        open(old, "wb").write(b"eski")
+        open(src, "wb").write(b"kucuk")
+        cfg = dict(self.cfg, repos={"codex": codex})
+        srcs = [(os.path.dirname(src), os.path.join("local", "codex-db"), "bin")]
+        with mock.patch.object(P, "_local_sources", return_value=srcs):
+            plan = P.plan_chat_backup(cfg, {})
+            written, _s, st = P._write_changed(plan, cfg)
+        self.assertFalse(os.path.exists(old))
+        self.assertIn("local/codex-db/c.db.part001", written)
+        self.assertEqual(open(os.path.join(codex, "local/codex-db/c.db"), "rb").read(), b"kucuk")
+
     def test_blocks(self):
         repo = self._setup_repo()
         with mock.patch.object(P, "_local_sources", return_value=self.srcs):
