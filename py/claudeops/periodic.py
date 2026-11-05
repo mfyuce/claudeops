@@ -9,7 +9,7 @@ Ayar dosyası `CLAUDEOPS_DIR/periodic.json` (settings.json'a DOKUNMAZ):
 `enabled`: "on" | "off" (varsayılan KAPALI; `_OFF_WORDS` kapatır). Durum `periodic_state.json` (son başlangıç, sonuç, manifest).
 Görev işleyicileri `JOBS`'ta; yeni iş = bir `Job` kaydı eklemek.
 
-chat_backup: `~/.claude/projects/**/*.jsonl` + `history.jsonl` içinde YENİ/DEĞİŞEN dosyaları sır-maskeleyip gzip'leyerek
+chat_backup: `~/.claude/projects/**/*.jsonl` + `history.jsonl` içinde YENİ/DEĞİŞEN dosyaları sır-maskeleyip ham (gzip yok) olarak, gün başına ayrı commit ile
 `repo_dir` (varsayılan ~/work/projects/tmp/copschats-prv) altına koyar, YALNIZ o açık yolları `git add` + commit + push eder
 (tüm remote'lar, ikisi de PRIVATE doğrulanır, push sonrası ls-remote). Uzak host kaynakları `sources`ta tanımlıdır
 (şimdilik yalnız "local"; uzak = TODO).
@@ -17,7 +17,6 @@ chat_backup: `~/.claude/projects/**/*.jsonl` + `history.jsonl` içinde YENİ/DE�
 from __future__ import annotations
 
 import datetime
-import gzip
 import hashlib
 import json
 import os
@@ -59,7 +58,7 @@ DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
     "repo_dir": os.path.join("~", "work", "projects", "tmp", "copschats-prv"),
     "repo_name": "copschats-prv",
     "sources": ["local"],        # ileride: "yuhem", "ulak_31"
-    "max_file_mb": 50,           # gzip SONRASI tek dosya sınırı (GitHub 100 MB); aşan atlanır, günlüğe yazılır
+    "max_file_mb": 50,           # tek ham dosya sınırı (GitHub blob 100 MB); aşan atlanır, günlüğe yazılır
     "max_repo_mb": 3000,         # çalışma ağacı sınırı; aşılırsa iş durur (sahibe sorulur)
 }
 
@@ -300,15 +299,6 @@ def redact(text: str) -> Tuple[str, int]:
     return text, n
 
 
-def _gz(data: bytes) -> bytes:
-    """Belirlenimli gzip (mtime=0): aynı içerik = aynı bayt, git gereksiz fark görmez."""
-    import io
-    buf = io.BytesIO()
-    with gzip.GzipFile(fileobj=buf, mode="wb", mtime=0, compresslevel=6) as g:
-        g.write(data)
-    return buf.getvalue()
-
-
 def _git(repo: str, *args: str, timeout: int = 300) -> Tuple[int, str]:
     """Tek git çıkış kapısı (testlerde yamalanır)."""
     try:
@@ -352,17 +342,18 @@ def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str,
             sig = f"{stt.st_size}:{int(stt.st_mtime)}"
             if manifest.get(f) == sig:
                 continue
-            todo.append({"src": f, "sig": sig, "dest": os.path.join(prefix, rel + ".gz")})
+            todo.append({"src": f, "sig": sig, "dest": os.path.join(prefix, rel), "day": datetime.datetime.fromtimestamp(stt.st_mtime).strftime("%F")})
     return {"repo": repo, "seen": seen, "changed": todo}
 
 
 def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str], Dict[str, str], Dict[str, Any]]:
-    """Değişenleri maskeleyip gzip'leyerek repo çalışma ağacına yazar. (yazılan göreli yollar, yeni manifest girdileri, istatistik)."""
+    """Değişenleri maskeleyip HAM (gzip yok; git zaten sıkıştırır) repo çalışma ağacına yazar. (yazılan göreli yollar, yeni manifest girdileri, istatistik)."""
     repo = plan["repo"]
     limit = int(float(cfg.get("max_file_mb") or 50) * 1024 * 1024)
     written: List[str] = []
     sigs: Dict[str, str] = {}
     stats = {"redacted": 0, "skipped_big": [], "unchanged": 0}
+    days: Dict[str, List[str]] = stats.setdefault("days", {})
     for ent in plan["changed"]:
         try:
             with open(ent["src"], "rb") as f:
@@ -371,7 +362,7 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
             continue
         text, n = redact(raw.decode("utf-8", errors="replace"))
         stats["redacted"] += n
-        blob = _gz(text.encode("utf-8"))
+        blob = text.encode("utf-8")
         if len(blob) > limit:
             stats["skipped_big"].append(ent["src"])
             continue
@@ -392,15 +383,15 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
             f.write(blob)
         os.replace(tmp, dest)
         written.append(ent["dest"])
+        days.setdefault(ent["day"], []).append(ent["dest"])
         sigs[ent["src"]] = ent["sig"]
     return written, sigs, stats
 
 
 def _tree_mb(repo: str) -> float:
+    """Repo'nun GERÇEK boyutu = .git (sıkıştırılmış); çalışma ağacı ham olduğu için ölçüt o değil."""
     total = 0
-    for root, dirs, files in os.walk(repo):
-        if ".git" in dirs:
-            dirs.remove(".git")
+    for root, dirs, files in os.walk(os.path.join(repo, ".git")):
         for f in files:
             try:
                 total += os.path.getsize(os.path.join(root, f))
@@ -449,15 +440,17 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     written, sigs, stats = _write_changed(plan, cfg)
     res.update(applied=True, written=len(written), redacted=stats["redacted"], skipped_big=stats["skipped_big"])
     if written:
-        rc, out = _git(repo, "add", "--", *written)
-        if rc != 0:
-            res.update(ok=False, msg="git add: " + out[-200:])
-            return res
-        stamp = datetime.datetime.now().strftime("%F %H:%M")
-        rc, out = _git(repo, "commit", "-q", "-m", f"sohbet yedegi {stamp}: {len(written)} dosya", "--", *written)
-        if rc != 0:
-            res.update(ok=False, msg="git commit: " + out[-200:])
-            return res
+        # her takvim günü (dosyanın son değişme günü) ayrı commit, eskiden yeniye
+        for day in sorted(stats["days"]):
+            files = stats["days"][day]
+            rc, out = _git(repo, "add", "--", *files)
+            if rc != 0:
+                res.update(ok=False, msg="git add: " + out[-200:])
+                return res
+            rc, out = _git(repo, "commit", "-q", "-m", f"sohbet yedegi {day}: {len(files)} dosya", "--", *files)
+            if rc != 0:
+                res.update(ok=False, msg="git commit: " + out[-200:])
+                return res
         head = _git(repo, "rev-parse", "HEAD")[1].strip()
         for name in rems:
             args = ["push", "-q", name, "HEAD"]

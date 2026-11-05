@@ -1,5 +1,4 @@
 import datetime
-import gzip
 import os
 import sys
 import tempfile
@@ -51,8 +50,6 @@ class RedactTest(unittest.TestCase):
         self.assertIn("password: " + P._REDACT, t)
         self.assertEqual(P.redact("düz metin")[1], 0)
 
-    def test_gz_deterministic(self):
-        self.assertEqual(P._gz(b"abc"), P._gz(b"abc"))
 
 
 class _Tmp(unittest.TestCase):
@@ -153,8 +150,9 @@ class ChatBackupTest(_Tmp):
             self.assertTrue(r["ok"], r)
             self.assertEqual(r["written"], 2)
             self.assertEqual(r["redacted"], 1)
-            gz = os.path.join(repo, "local", "claude-projects", "-p1", "a.jsonl.gz")
-            txt = gzip.open(gz).read().decode()
+            gz = os.path.join(repo, "local", "claude-projects", "-p1", "a.jsonl")
+            with open(gz) as fh:
+                txt = fh.read()
             self.assertNotIn("sk-ant", txt)
             self.assertEqual(oct(os.stat(gz).st_mode & 0o777), "0o600")
             adds = [c for c in calls if c[0] == "add"]
