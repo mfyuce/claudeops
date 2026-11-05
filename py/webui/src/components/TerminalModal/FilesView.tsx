@@ -40,6 +40,8 @@ interface FilesViewProps {
   name: string;
   host: string;
   onView: (path: string) => void;
+  /** Emekli/salt-okunur oturum: yükleme, yeni klasör, yeniden adlandırma ve silme gizlenir (UI-03). */
+  readOnly?: boolean;
 }
 
 type FilesState =
@@ -75,7 +77,7 @@ const BOX_STYLE: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export function FilesView({ name, host, onView }: FilesViewProps) {
+export function FilesView({ name, host, onView, readOnly = false }: FilesViewProps) {
   // VS Code opens on the machine running the server; for a remote host that
   // is not the user's own machine, so the button is hidden there.
   const canOpenVscode = !host || host === "local";
@@ -128,6 +130,7 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
   // progress readout meaningful and avoids saturating the connection for
   // what's already a single-user/single-machine tool.
   async function handleFiles(fileList: FileList | null) {
+    if (readOnly) return;
     if (!fileList || fileList.length === 0) return;
     const existing = new Set(entries.map((e) => e.name));
     for (const file of Array.from(fileList)) {
@@ -152,6 +155,7 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
   }
 
   async function handleNewFolder() {
+    if (readOnly) return;
     const folderName = window.prompt(t.filesNewFolderPrompt);
     if (!folderName || !folderName.trim()) return;
     try {
@@ -164,6 +168,7 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
   }
 
   async function handleDelete(entry: FileEntry) {
+    if (readOnly) return;
     const template = entry.is_dir ? t.filesDeleteConfirmFolder : t.filesDeleteConfirm;
     if (!window.confirm(template.replace("{name}", entry.name))) return;
     try {
@@ -176,6 +181,7 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
   }
 
   async function handleRename(entry: FileEntry) {
+    if (readOnly) return;
     const newName = window.prompt(t.filesRenamePrompt, entry.name);
     if (!newName || !newName.trim() || newName.trim() === entry.name) return;
     try {
@@ -227,21 +233,21 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
           >
             {t.filesOpenVscode}
           </button>}
-          <button
+          {!readOnly && <button
             type="button"
             style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
             disabled={uploading !== null}
             onClick={() => fileInputRef.current?.click()}
           >
             {t.filesUpload}
-          </button>
-          <button
+          </button>}
+          {!readOnly && <button
             type="button"
             style={{ whiteSpace: "nowrap", fontSize: ".75rem" }}
             onClick={() => void handleNewFolder()}
           >
             {t.filesNewFolder}
-          </button>
+          </button>}
           <input
             ref={fileInputRef}
             type="file"
@@ -289,23 +295,23 @@ export function FilesView({ name, host, onView }: FilesViewProps) {
               <FileRow key={e.name} entry={e} onOpenDir={() => setCurrentPath(joinPath(path, e.name))}
                        downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name), host)}
                        downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
-                       deleteLabel={t.filesDelete} renameLabel={t.filesRename}
+                       deleteLabel={t.filesDelete} renameLabel={t.filesRename} readOnly={readOnly}
                        onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
                        onOpenVscode={canOpenVscode ? () => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name), host), "vscode", t) : null}
                        onDelete={() => void handleDelete(e)} onRename={() => void handleRename(e)} />
             ))}
           </div>
         )}
-        <div style={{ fontSize: ".7rem", opacity: 0.5, marginTop: ".3rem", textAlign: "center" }}>
+        {!readOnly && <div style={{ fontSize: ".7rem", opacity: 0.5, marginTop: ".3rem", textAlign: "center" }}>
           {t.filesUploadHint}
-        </div>
+        </div>}
       </div>
     </div>
   );
 }
 
 function FileRow({
-  entry, onOpenDir, downloadUrl, downloadLabel, viewLabel, vscodeLabel, deleteLabel, renameLabel,
+  entry, onOpenDir, downloadUrl, downloadLabel, viewLabel, vscodeLabel, deleteLabel, renameLabel, readOnly,
   onView, onOpenVscode, onDelete, onRename,
 }: {
   entry: FileEntry;
@@ -316,6 +322,7 @@ function FileRow({
   vscodeLabel: string;
   deleteLabel: string;
   renameLabel: string;
+  readOnly?: boolean;
   onView: (() => void) | null;
   onOpenVscode: (() => void) | null;
   onDelete: () => void;
@@ -327,7 +334,7 @@ function FileRow({
   };
   // Rename/delete apply equally to files and directories — rendered once,
   // shared by both branches below (only the leading icon/name area differs).
-  const mutationButtons = (
+  const mutationButtons = readOnly ? null : (
     <>
       <button type="button" title={renameLabel} style={{ whiteSpace: "nowrap" }} onClick={onRename}>
         {renameLabel}

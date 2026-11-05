@@ -112,7 +112,7 @@ export function ReadOnlySessionModal({ name, host, onClose }: ReadOnlySessionMod
           </button>
         </div>
         {activeSubTab === "chat" && <ChatView name={name} host={host} live={false} />}
-        {activeSubTab === "files" && <FilesView name={name} host={host} onView={setViewingPath} />}
+        {activeSubTab === "files" && <FilesView name={name} host={host} onView={setViewingPath} readOnly />}
       </div>
       {viewingPath && (
         <FileViewerModal name={name} host={host} path={viewingPath} onClose={() => setViewingPath(null)} />
