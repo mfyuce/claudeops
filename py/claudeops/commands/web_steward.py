@@ -6365,15 +6365,18 @@ class RemoteReviewDriver:
             return {"ok": False, "error": f"remote folder of {self.project} unknown on {self.host}"}
         name = real or self.project
         path = cwd.rstrip("/") + "/" + fname
-        before = _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS)
-        if before is None:
-            return {"ok": False, "error": f"{fname} missing or unreadable on {self.host}: not created", "path": path}
-        new, written = build(before)
-        out: Dict[str, Any] = {"ok": True, "path": path, "written": written, "host": self.host, "session": name}
-        if new is None:
-            return out
-        if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) != before:
-            return {"ok": False, "error": "remote_conflict: file changed while exporting", "path": path}
+        for attempt in (0, 1):      # dosya okuma ile yazma arasında değişirse (proje oturumu aynı anda yazıyor) TEK otomatik yeniden deneme
+            before = _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS)
+            if before is None:
+                return {"ok": False, "error": f"{fname} missing or unreadable on {self.host}: not created", "path": path}
+            new, written = build(before)
+            out: Dict[str, Any] = {"ok": True, "path": path, "written": written, "host": self.host, "session": name}
+            if new is None:
+                return out
+            if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) == before:
+                break
+            if attempt:
+                return {"ok": False, "error": "remote_conflict: file changed while exporting", "path": path}
         res = _remote_post(self.host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
         if not res.get("ok"):
             return {"ok": False, "error": f"write_failed: {res.get('error') or res.get('code') or 'failed'}", "path": path}

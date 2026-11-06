@@ -513,7 +513,7 @@ class TestRemoteExportRealDriver(_Flow):
 
         def racing(h, n, path, b):
             reads.append(1)
-            if len(reads) == 2:                          # okuma ile yazma arasında uzak dosya değişti
+            if len(reads) >= 2:                          # okuma ile yazma arasında uzak dosya değişti
                 self.remote_files[self._k] += "- elle eklendi\n"
             return self.remote_files.get(path)
         with mock.patch.object(ws, "_remote_read_full", racing):
@@ -662,7 +662,7 @@ class TestEvrenRemoteExportE2E(_Flow):
 
         def read(h, n, path, b):
             reads.append(1)
-            if len(reads) == 2:                                          # yazmadan hemen önceki ikinci okuma: dosya değişti
+            if path == self.HOST_FILE:                                   # her okumada dosya değişir: iki deneme de çakışır
                 self.remote[path] += "- baskasi\n"
             return self.remote.get(path)
         with mock.patch.object(ws, "_remote_read_full", read):
@@ -671,6 +671,23 @@ class TestEvrenRemoteExportE2E(_Flow):
         self.assertIn("remote_conflict", r["error"])
         self.assertEqual(self.findings()[f1]["state"], "approved")
         self.assertNotIn(f"(review {f1})", self.remote[self.HOST_FILE])
+
+    def test_transient_conflict_retries_once_and_succeeds(self):
+        f1 = self.fids[0]
+        self.approve(f1)
+        reads = []
+
+        def read(h, n, path, b):
+            if path == self.HOST_FILE:
+                reads.append(1)
+            if path == self.HOST_FILE and len(reads) == 2:               # yalnız ilk denemede değişti
+                self.remote[path] += "- baskasi\n"
+            return self.remote.get(path)
+        with mock.patch.object(ws, "_remote_read_full", read):
+            r = self.post("export", project="far")
+        self.assertTrue(r["ok"], r)
+        self.assertIn("- baskasi", self.remote[self.HOST_FILE])
+        self.assertIn(f"(review {f1})", self.remote[self.HOST_FILE])
 
 
 if __name__ == "__main__":
