@@ -34,6 +34,7 @@ import { friendlyError } from "../api/ucliErrors";
 import { ErrorBox } from "./shared/ErrorBox";
 import { StewardJobs } from "./StewardJobs";
 import { StewardDigests } from "./StewardDigests";
+import { StewardQuota } from "./StewardQuota";
 import { ReviewPanel } from "./ReviewPanel";
 import { StewardActions } from "./StewardActions";
 import { useLang } from "../i18n/LangContext";
@@ -537,6 +538,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       </details>
 
       <StewardActions sid={sid} projects={(state?.projects || []).map((p) => ({ name: p.name, running: !!p.running }))} />
+      <StewardQuota />
       <StewardDigests sid={sid} refreshKey={key} />
       <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} />
 
