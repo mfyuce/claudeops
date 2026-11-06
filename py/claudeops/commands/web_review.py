@@ -1082,7 +1082,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status, error = "error", f"exit={rc} {_tail(err, live.learned())}".strip()
         # Limit taraması: başarısız koşuda stdout+stderr; BAŞARILI görünen (rc=0) koşuda yalnız stdout KISA bir sağlayıcı
         # mesajıysa (copilot kota mesajını çıkış kodu 0 ile basar; rapor sanılıp `done` olmasın).
-        chk = (out, err, jerr) if (status != "done" or rv.is_short_banner(text)) else ()
+        chk = rv.limit_scan_texts(out, err, jerr, err_has_model_text=target.mode in rv.UCLI_MODES) if (status != "done" or rv.is_short_banner(text)) else ()
         if chk and rv.is_daily_limit(*chk):
             until = rv.block_until_for_limit(now(), *chk)
             status = "limit"
