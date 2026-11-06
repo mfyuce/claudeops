@@ -586,10 +586,10 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         if g not in remotes:
             continue
         repo, rems = _group_repo(cfg, g), remotes[g]
-        rc, por = _git(repo, "status", "--porcelain", "--untracked-files=all", "--", "local", "memory")
+        rc, por = _git(repo, "status", "--porcelain", "-z", "--untracked-files=all", "--", "local", "memory")
         if rc == 0:                       # önceki yarım çalışmadan kalan (içerik aynı olduğu için _put'un yazmadığı) dosyaları da commit'le
-            for ln in por.split("\n"):
-                rel = ln[3:].strip().strip('"')
+            for ln in por.split("\0"):   # -z: Türkçe/boşluklu adlar tırnaksız gelir
+                rel = ln[3:]
                 if rel and not any(rel in v for v in days.values()):
                     try:
                         d = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(repo, rel))).strftime("%F")
@@ -609,9 +609,9 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         try:                              # INDEX.jsonl/INDEX.md (yalnız açık yollar); hata yedeği durdurmaz
             from . import chat_index
             import socket
-            rc, lst = _git(repo, "ls-files", "--", "local", "memory")
+            rc, lst = _git(repo, "ls-files", "-z", "--", "local", "memory")
             if rc == 0:
-                idx = chat_index.write_index(repo, [x for x in lst.split("\n") if x], re.sub(r"[^A-Za-z0-9._-]+", "-", socket.gethostname()))
+                idx = chat_index.write_index(repo, [x for x in lst.split("\0") if x], re.sub(r"[^A-Za-z0-9._-]+", "-", socket.gethostname()))
                 _git(repo, "add", "--", *idx)
                 _git_dated(repo, datetime.date.today().isoformat(), "commit", "-q", "-m", "INDEX guncellendi", "--", *idx)
         except Exception as e:  # noqa: BLE001
