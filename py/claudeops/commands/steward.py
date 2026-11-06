@@ -811,6 +811,19 @@ def cmd_review(args) -> int:
             return 0
         print(f"hata: {res.get('error')}")
         return 1
+    if act == "models":
+        res = _get(port, "/api/steward/review/models", sid)
+        if not res.get("ok"):
+            print(f"hata: {res.get('error')}")
+            return 1
+        for r in res.get("models") or []:
+            print(f"{'ADAY ' if r.get('candidate') else '     '}{r['target']:<40} {r['ok']}/{r['runs']} (%{round(100 * r['rate'])})")
+        print("dışlanan:", ", ".join(res.get("excluded") or []) or "-")
+        return 0
+    if act in ("exclude", "include"):
+        res = _api(port, "POST", "/api/steward/review/exclude", {"target": args.project, "action": act}, sid)
+        print(f"✓ dışlananlar: {', '.join(res.get('excluded') or []) or '-'}" if res.get("ok") else f"hata: {res.get('error')}")
+        return 0 if res.get("ok") else 1
     if act in ("approve-all", "reject-all"):
         body = {"action": act.split("-")[0], "project": args.project, "severities": args.severity}
         res = _api(port, "POST", "/api/steward/review/bulk", body, sid)
@@ -1149,6 +1162,10 @@ def register(sub):
         rba = rv_.add_parser(verb, help=h + " [--project P] [--severity P2 ...]")
         rba.add_argument("--project", default="")
         rba.add_argument("--severity", action="append", default=[], help="yalnız bu önem(ler): P1/P2/P3")
+    rv_.add_parser("models", help="model/mod sağlığı: son 7 gün başarı oranı (limit koşuları sayılmaz), çıkarma adayları")
+    for verb, h in (("exclude", "mod/modeli havuzdan ÇIKAR (sahip onayı)"), ("include", "çıkarılmış mod/modeli geri al")):
+        rxi = rv_.add_parser(verb, help=h + ": <mod/model>")
+        rxi.add_argument("project", metavar="mod/model")
     rex = rv_.add_parser("export", help="onaylı bulguları projenin TODO.md/TOBEDECIDED.md dosyasına yaz: PROJE [--kind todo|tbd]; --kind rtodo|rtbd = doğrulanmamış (new/unclear) bulguları RTODO.md/RTBD.md'ye")
     rex.add_argument("project")
     rex.add_argument("--kind", choices=["todo", "tbd", "rtodo", "rtbd"], default="todo")

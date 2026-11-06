@@ -117,6 +117,21 @@ def _split_models(text: Any) -> List[str]:
     return out
 
 
+def excluded_keys(cfg: Any) -> Set[str]:
+    """`review_excluded` (virgülle ayrık `mod/model` anahtarı, sahip onaylı çıkarma, TBD#163 c). `ReviewTarget.key` biçimi."""
+    return set(_split_models(getattr(cfg, "review_excluded", "")))
+
+
+def toggle_excluded(text: Any, key: str, exclude: bool) -> str:
+    """`review_excluded` değerine `key` ekler/çıkarır (yinelemesiz, sıra korunur); boş sonuç "" döner."""
+    cur = _split_models(text)
+    if exclude and key not in cur:
+        cur.append(key)
+    if not exclude:
+        cur = [c for c in cur if c != key]
+    return ",".join(cur)
+
+
 def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Sequence[str]) -> List[ReviewTarget]:
     """`cfg.review_agy_models` / `review_evren_models` (virgülle ayrık) var olanla (`agy_models`/`evren_models`)
     KESİŞTİRİLİR; boş ayar = verilenin tümü. Sıra: önce agy, sonra evren; yinelenen slug atılır.
@@ -143,7 +158,8 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
             if t.key not in seen:
                 seen.add(t.key)
                 out.append(t)
-    return out
+    skip = excluded_keys(cfg)
+    return [t for t in out if t.key not in skip] if skip else out
 
 
 def review_title(project: str, mode: str, model: str, ts: Any) -> str:
@@ -992,6 +1008,52 @@ def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
             except OSError:
                 continue
     return sorted(agg.values(), key=lambda r: (-(r["prompt_tokens"] or r["total_tokens"]), r["project"], r["target"]))
+
+
+HEALTH_DAYS = 7
+HEALTH_MIN_RUNS = 5
+HEALTH_MAX_RATE = 0.25
+
+
+def model_health(history: Any, now: float, days: float = HEALTH_DAYS, min_runs: int = HEALTH_MIN_RUNS,
+                 max_rate: float = HEALTH_MAX_RATE) -> List[Dict[str, Any]]:
+    """Son `days` günde (mod/model) başına başarı oranı (sahip TBD#163 c). SAF. `limit` koşuları (kota/sağlayıcı sınırı, modelin
+    kusuru değil) HİÇ sayılmaz; başarı = `done`/`partial` (rapor ya da kısmi bulgu bıraktı), `error` = başarısız. `candidate`:
+    en az `min_runs` sayılan koşu VE oran <= `max_rate`. En kötü oran önce."""
+    agg: Dict[str, Dict[str, Any]] = {}
+    runs = history.get("runs") if isinstance(history, dict) else None
+    cutoff = now - days * 86400
+    for r in runs if isinstance(runs, list) else []:
+        if not isinstance(r, dict) or "|" not in str(r.get("pair") or ""):
+            continue
+        if _num(r.get("at")) < cutoff or str(r.get("status")) == "limit":
+            continue
+        target = str(r["pair"]).split("|", 1)[1]
+        a = agg.setdefault(target, {"target": target, "runs": 0, "ok": 0, "error": 0})
+        a["runs"] += 1
+        if str(r.get("status")) in ("done", "partial"):
+            a["ok"] += 1
+        else:
+            a["error"] += 1
+    out = []
+    for a in agg.values():
+        a["rate"] = round(a["ok"] / a["runs"], 3) if a["runs"] else 0.0
+        a["candidate"] = a["runs"] >= min_runs and a["rate"] <= max_rate
+        out.append(a)
+    return sorted(out, key=lambda x: (x["rate"], -x["runs"], x["target"]))
+
+
+def health_digest(rows: Sequence[Dict[str, Any]], excluded: Sequence[str] = (), days: float = HEALTH_DAYS, lang: str = "tr") -> str:
+    """Haftalık özet metni: çıkarma ADAYLARI (onay sahipte) + zaten dışlananlar. Aday yoksa boş string."""
+    cands = [r for r in rows if r.get("candidate") and r["target"] not in set(excluded)]
+    if not cands:
+        return ""
+    head = (f"Reviewer: son {days:g} günde başarısız model/mod adayları (sahip onaylarsa havuzdan çıkar; `limit` koşuları sayılmaz):"
+            if lang == "tr" else f"Reviewer: low-success model/mode candidates over the last {days:g} days (excluded on owner approval; `limit` runs not counted):")
+    lines = [f"- {r['target']}: {r['ok']}/{r['runs']} başarılı (%{round(100 * r['rate'])})" for r in cands]
+    tail = ("Çıkarmak için: `py/cops steward -s reviewer review exclude <mod/model>`" if lang == "tr"
+            else "To exclude: `py/cops steward -s reviewer review exclude <mode/model>`")
+    return "\n".join([head] + lines + [tail])
 
 
 def duration_summary(history: Any, project: str = "") -> List[Dict[str, Any]]:

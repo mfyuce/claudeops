@@ -356,6 +356,7 @@ class Config:
     review_request_timeout_secs: int = 300   # Evren: `--request-timeout-secs` (tek model isteği); 0 = bayrak gitmez
     review_evren_script: str = "read"  # Evren: "read" -> `--allow-script=read` (Lua ile SALT-OKUNUR araçları tek turda birleştir; tur bütçesi için); sahip 2026-11-04: varsayılan AÇIK, "off" kapatır
     review_max_tool_calls: int = 30    # Evren: `--max-tool-calls` (ucli varsayılanı 64; ölçüm 2026-10-26 copsdev: 14 ile bütçe bitip bulgu yok, 30 ile 363 sn/6 bulgu; sınırsız 1453 sn)
+    review_excluded: str = ""        # virgülle ayrık `mod/model` anahtarı: sahip onaylı çıkarma (TBD#163 c); `review exclude/include` yazar
     review_evren_models: str = ""    # virgülle ayrık Evren model listesi ("" = çağıranın verdiği tümü)
     review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)
     review_codex_models: str = ""    # virgülle ayrık codex model listesi (`codex exec`, salt okunur sandbox); "" = KAPALI

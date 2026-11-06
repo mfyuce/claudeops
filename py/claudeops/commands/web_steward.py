@@ -5796,6 +5796,8 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return http_review_findings(g("project").strip(), g("state").strip(), sid)
     if path == "/api/steward/review/lessons":
         return http_review_lessons(sid)
+    if path == "/api/steward/review/models":
+        return http_review_models(sid)
     if path == "/api/steward/digests":
         return http_digests(sid)
     if path == "/api/steward/digest/file":
@@ -6215,6 +6217,35 @@ def http_review_finding(data: Dict[str, Any], sid: str = "default") -> Dict[str,
     return web_review.decide(cfg, str(data.get("id") or ""), str(data.get("action") or ""))
 
 
+def http_review_models(sid: str = "default") -> Dict[str, Any]:
+    """Model/mod sağlığı (son 7 gün başarı oranı, `limit` koşuları sayılmaz), çıkarma adayları ve dışlananlar; haftalık özet metni."""
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    rows = rv.model_health(rv.load_history(sw.paths_for(sid)), time.time())
+    excluded = sorted(rv.excluded_keys(cfg))
+    return {"ok": True, "models": rows, "excluded": excluded, "digest": rv.health_digest(rows, excluded)}
+
+
+def http_review_exclude(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Sahip onaylı çıkarma/geri alma (CLI `review exclude|include <mod/model>`): `target` + `action` exclude|include. Yalnız insan;
+    `review_excluded` ayarına yazar, havuz sonraki turdan itibaren o hedefi planlamaz (koşan iş sürer)."""
+    if (d := _human_only(data, "exclude a review model")):
+        return d
+    cfg, err = _reviewer_cfg(sid)
+    if err:
+        return err
+    target = str(data.get("target") or "").strip()
+    action = str(data.get("action") or "exclude")
+    if action not in ("exclude", "include") or not re.match(r"^[A-Za-z0-9_.:@/\-]+$", target) or "/" not in target:
+        return {"ok": False, "error": "target must look like mode/model and action exclude|include"}
+    from ..settings import save_settings
+    new = rv.toggle_excluded(cfg.review_excluded, target, action == "exclude")
+    save_settings({"stewards": {sid: {"review_excluded": new}}})     # boş değer anahtarı siler (varsayılan "")
+    sw.log_event("config", paths=sid, key="review_excluded", value=new, source="ui", action=action, target=target)
+    return {"ok": True, "excluded": [x for x in new.split(",") if x]}
+
+
 def http_review_bulk(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Toplu bulgu kararı (CLI `review approve-all`, panel "hepsini onayla"): gövde `action` approve|reject, isteğe bağlı
     `project`, `fids`, `severities`. Yalnız insan (beyin çağıramaz)."""
@@ -6446,6 +6477,7 @@ POST_PATHS = {
     "/api/steward/review/verify": http_review_verify,
     "/api/steward/review/finding": http_review_finding,
     "/api/steward/review/bulk": http_review_bulk,
+    "/api/steward/review/exclude": http_review_exclude,
     "/api/steward/review/export": http_review_export,
     "/api/steward/review/lesson": http_review_lesson,
     "/api/steward/service/add": http_service_add,
