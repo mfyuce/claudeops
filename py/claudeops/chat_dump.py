@@ -140,13 +140,18 @@ def _gemini_cwd(c: sqlite3.Connection) -> str:
     return UNKNOWN
 
 
-_SUMM: Dict[str, Dict[str, Any]] = {}
+_SUMM: Dict[str, Tuple[Any, Dict[str, Any]]] = {}   # sdb -> (mtime,boyut imzası, özet); dosya değişince yeniden okunur (uzun ömürlü servis)
 
 
 def _summary(db: str) -> Dict[str, Any]:
     """conversation_summaries.db (konuşma dizininin kardeşi): workspace_uris -> proje, title, last_modified. Yoksa {}."""
     sdb = os.path.join(os.path.dirname(os.path.dirname(db)), "conversation_summaries.db")
-    if sdb not in _SUMM:
+    try:
+        _st = os.stat(sdb)
+        sig: Any = (_st.st_mtime_ns, _st.st_size)
+    except OSError:
+        sig = None
+    if sdb not in _SUMM or _SUMM[sdb][0] != sig:
         m: Dict[str, Any] = {}
         try:
             for cid, title, uris, lm in _ro(sdb).execute("select conversation_id,title,workspace_uris,last_modified_time from conversation_summaries"):
@@ -158,8 +163,8 @@ def _summary(db: str) -> Dict[str, Any]:
                 m[cid] = {"project": u[7:] if u.startswith("file://") else u, "title": title or "", "last_modified": lm}
         except sqlite3.Error:
             pass
-        _SUMM[sdb] = m
-    return _SUMM[sdb].get(os.path.basename(db)[:-3], {})
+        _SUMM[sdb] = (sig, m)
+    return _SUMM[sdb][1].get(os.path.basename(db)[:-3], {})
 
 
 def dump_gemini(db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:

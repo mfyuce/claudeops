@@ -149,5 +149,24 @@ class DumpTest(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(hd, "extract", ".done")))      # bozuk arşiv bir daha denenir
 
 
+class SummaryCacheTest(unittest.TestCase):
+    def test_cache_refreshes_when_file_changes(self):
+        with tempfile.TemporaryDirectory() as t:
+            os.makedirs(os.path.join(t, "conversations"))
+            db = os.path.join(t, "conversations", "abc.db")
+            path = os.path.join(t, "conversation_summaries.db")
+
+            def put(title):
+                c = sqlite3.connect(path)
+                c.execute("create table if not exists conversation_summaries(conversation_id text,title text,workspace_uris text,last_modified_time text)")
+                c.execute("delete from conversation_summaries")
+                c.execute("insert into conversation_summaries values('abc',?,'[]','2026-07-01 10:00:00')", (title,))
+                c.commit(); c.close()
+            put("Bir")
+            self.assertEqual(D._summary(db)["title"], "Bir")
+            put("Iki, daha uzun baslik")
+            self.assertEqual(D._summary(db)["title"], "Iki, daha uzun baslik")
+
+
 if __name__ == "__main__":
     unittest.main()
