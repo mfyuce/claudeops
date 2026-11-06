@@ -5467,12 +5467,12 @@ def http_quota() -> Dict[str, Any]:
             "state": st if isinstance(st, dict) else None}
 
 
-_QUOTA_NUM_KEYS = {"manual_limit": (0, 100), "shutdown_limit": (0, 100), "final_limit": (0, 100), "poll_minutes": (1, 1440)}
+_QUOTA_NUM_KEYS = {"manual_limit": (0, 100), "shutdown_limit": (0, 100), "final_limit": (0, 100), "budget_pct": (0, 100), "poll_minutes": (1, 1440)}
 
 
 def http_quota_set(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Panelden kota ayarı (CLI `steward quota mode|limit|shutdown|final|poll|day` ile aynı kurallar). YALNIZ insan (`brain` reddedilir).
-    `key`: mode | manual_limit | shutdown_limit | final_limit | poll_minutes | day_<mon..sun>; gün değeri boşsa o günün tavanı silinir."""
+    `key`: mode | budget_pct (0 = kapalı) | manual_limit | shutdown_limit | final_limit | poll_minutes | day_<mon..sun>; gün değeri boşsa o günün tavanı silinir."""
     if (d := _human_only(data, "change quota settings")):
         return d
     from ..settings import save_settings

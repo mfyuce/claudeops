@@ -85,6 +85,18 @@ def _num(cfg: Dict[str, Any], key: str, default: Optional[float]) -> Optional[fl
     return v if math.isfinite(v) else default      # "nan"/"inf" geçerli float'tır ama karşılaştırmalar hep yanlış olur
 
 
+def limits(cfg: Dict[str, Any]) -> "tuple[Optional[float], float, float]":
+    """(manual, shutdown, final) kademeleri. `budget_pct` (X, 1..100) doluysa TEK ayar: manual=X-2, shutdown=X-1, final=X
+    (sahip TBD#163 d); tek tek limitler yalnız budget_pct YOKKEN okunur. Yoksa eski davranış (final varsayılan 95,
+    shutdown varsayılan final-1, manual verilmemişse None)."""
+    b = _num(cfg, "budget_pct", None)
+    if b is not None and b > 0:
+        return max(b - 2, 0.0), max(b - 1, 0.0), b
+    final = _num(cfg, "final_limit", DEFAULT_FINAL) or DEFAULT_FINAL
+    sd = _num(cfg, "shutdown_limit", None)
+    return _num(cfg, "manual_limit", None), (sd if sd is not None else final - 1), final
+
+
 def _week_day_index(usage: Usage, now: float, tz: Optional[Any] = None) -> "tuple[datetime.datetime, int]":
     """(hafta başı, 0..6 gün indeksi). Sınırlar DUVAR SAATİYLE (sıfırlanma - 7 takvim günü, +k takvim günü); sabit 86400 sn
     DST haftasında sınırı 1 saat kaydırıp gün etiketini/tavanı yanlış günde değiştirirdi. `reset_ts` bilinmeli."""
@@ -114,7 +126,7 @@ def day_cap(cfg: Dict[str, Any], usage: Usage, now: float, tz: Optional[Any] = N
         return manual
     if str(cfg.get("mode")) != "auto" or not usage.reset_ts:
         return None
-    final = _num(cfg, "final_limit", DEFAULT_FINAL) or DEFAULT_FINAL
+    final = limits(cfg)[2]
     days = _week_day_index(usage, now, tz)[1] + 1
     return round(final * days / 7, 1)
 
@@ -128,15 +140,12 @@ def decide(cfg: Dict[str, Any], usage: Optional[Usage], now: float, tz: Optional
         return Decision(reason="kullanım okunamadı")
     used = usage.week_pct
     cap = day_cap(cfg, usage, now, tz)
-    final = _num(cfg, "final_limit", DEFAULT_FINAL) or DEFAULT_FINAL
-    sd = _num(cfg, "shutdown_limit", None)
-    sd = sd if sd is not None else final - 1
+    limit, sd, final = limits(cfg)
     if used >= final:
         return Decision("stop", cap, f"kullanılan %{used:g} >= son limit %{final:g} (hard kapanma)")
     if used >= sd:
         return Decision("shutdown", cap, f"kullanılan %{used:g} >= kapatma limiti %{sd:g} (devirle kapat)")
     if mode == "manual":
-        limit = _num(cfg, "manual_limit", None)
         if limit is None and cap is None:
             return Decision(cap=cap, reason="manual_limit verilmemiş")
         if limit is not None and used >= limit:

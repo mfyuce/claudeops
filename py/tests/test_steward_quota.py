@@ -53,6 +53,18 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(d.action, "drain")
         self.assertIn("85", d.reason)
 
+    def test_budget_pct_derives_the_three_tiers_and_overrides_explicit_limits(self):
+        now = _ts(2026, 10, 25, 11)
+        cfg = {"mode": "manual", "budget_pct": "60", "manual_limit": "93", "shutdown_limit": "94", "final_limit": "95"}
+        self.assertEqual(q.limits(cfg), (58.0, 59.0, 60.0))
+        for used, want in ((57.9, "ok"), (58, "drain"), (59, "shutdown"), (60, "stop")):
+            self.assertEqual(q.decide(cfg, self.usage(used), now, TZ).action, want, used)
+
+    def test_budget_pct_zero_or_missing_keeps_the_explicit_limits(self):
+        self.assertEqual(q.limits({"budget_pct": "0", "manual_limit": "63", "shutdown_limit": "64", "final_limit": "65"}),
+                         (63.0, 64.0, 65.0))
+        self.assertEqual(q.limits({}), (None, 94.0, 95.0))
+
     def test_manual_three_tiers(self):
         now = _ts(2026, 10, 25, 11)
         cfg = {"mode": "manual", "manual_limit": "93", "shutdown_limit": "94", "final_limit": "95"}
