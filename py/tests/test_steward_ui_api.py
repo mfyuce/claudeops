@@ -40,7 +40,7 @@ class UiConfigTest(_Tmp):
 
     def test_config_rejects_bad_values_and_unknown_fields(self):
         for body in ({"key": "tour_minutes", "value": "0"}, {"key": "tour_minutes", "value": "abc"},
-                     {"key": "mode", "value": "yolo"}, {"key": "brain_model", "value": "x"}, {"key": "enabled", "value": "on"}):
+                     {"key": "mode", "value": "yolo"}, {"key": "brain_name", "value": "x"}, {"key": "enabled", "value": "on"}):
             r = ws.http_config(body, "default")
             self.assertFalse(r["ok"], body)
 

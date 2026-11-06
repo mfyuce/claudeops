@@ -5476,6 +5476,16 @@ def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if field == "mode":
         if value not in sw.MODES:
             return {"ok": False, "error": "mode must be one of " + ", ".join(sw.MODES)}
+    elif field == "brain_model":
+        # beyin modeli (TBD sonrası kalem): serbest metin ama dar karakter kümesi; boş = "otomatik" (save_settings anahtarı siler).
+        # Çalışan beyni YENİDEN AÇMAZ: sonraki açılış/devir `cfg.brain_model`i okur.
+        value = str(value or "").strip()
+        if not re.match(r"^[A-Za-z0-9_.:/@\[\]-]{0,80}$", value):
+            return {"ok": False, "error": "brain_model has invalid characters"}
+    elif field == "brain_effort":
+        value = str(value or "").strip().lower()
+        if value not in ("", "low", "medium", "high", "xhigh", "max"):
+            return {"ok": False, "error": "brain_effort must be one of low, medium, high, xhigh, max (or empty)"}
     elif field in UI_CONFIG_BOOL:
         value = "on" if str(value).strip().lower() in ("on", "1", "true", "yes") else "off"
     elif field in UI_CONFIG_CHOICE:

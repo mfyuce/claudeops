@@ -35,6 +35,7 @@ import { ErrorBox } from "./shared/ErrorBox";
 import { StewardJobs } from "./StewardJobs";
 import { StewardDigests } from "./StewardDigests";
 import { StewardQuota } from "./StewardQuota";
+import { StewardBrainModel } from "./StewardBrainModel";
 import { ReviewPanel } from "./ReviewPanel";
 import { StewardActions } from "./StewardActions";
 import { useLang } from "../i18n/LangContext";
@@ -404,6 +405,12 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
             ) : null;
           })}
         </div>
+        <StewardBrainModel
+          sid={sid}
+          model={String((state?.config as Record<string, unknown> | undefined)?.brain_model ?? "")}
+          effort={String((state?.config as Record<string, unknown> | undefined)?.brain_effort ?? "")}
+          onSaved={() => void load().then(refresh)}
+        />
       </details>
 
       <div className="opts">
