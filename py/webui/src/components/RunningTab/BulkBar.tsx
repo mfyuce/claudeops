@@ -28,7 +28,7 @@ import { effectiveModel } from "../shared/effectiveModel";
 import { TabHint } from "../shared/TabHint";
 import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
 
-type BulkAction = "start" | "handover" | "compact" | "stop" | "close" | "retire" | "reset" | "restart" | "newchat";
+type BulkAction = "start" | "handover" | "compact" | "stop" | "forcestop" | "close" | "retire" | "reset" | "restart" | "newchat";
 
 interface BulkBarProps {
   tab: "running" | "registered";
@@ -54,6 +54,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     handover: t.handoverBtn,
     compact: t.compactBtn,
     stop: t.stopBtn,
+    forcestop: t.forceStopBtn,
     close: t.disableBtn,
     retire: t.retireBtn,
     reset: t.resetBtn,
@@ -65,6 +66,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     handover: t.legendHandover,
     compact: t.legendCompact,
     stop: t.legendStop,
+    forcestop: t.legendForceStop,
     close: t.legendDisable,
     retire: t.legendRetire,
     reset: t.legendReset,
@@ -202,7 +204,9 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           const res =
             action === "start"
               ? await apiStart(startPayloadFor(s))
-              : await apiPost<ApiResult>(`/api/${action}`, { name, host: s.host, lang });
+              : action === "forcestop"
+                ? await apiPost<ApiResult>("/api/stop", { name, host: s.host, lang, force: true })     // devirsiz kapatma (sahip kararı 2026-11-06)
+                : await apiPost<ApiResult>(`/api/${action}`, { name, host: s.host, lang });
           if (!res.ok) {
             errs.push(`${name}: ${res.error}`);
             if (action === "start") noteCap(res, s.host, () => apiStart(startPayloadFor(s)));
@@ -219,7 +223,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
       done++;
     }
     setBusy(false);
-    setMessage(t.bulkDone(names.length - errs.length, errs.length) + (errs.length ? "\n" + errs.join("\n") : ""));
+    setMessage(t.bulkDone(names.length - errs.length, errs.length) + (errs.length ? "\n" + errs.join("\n") : "") + (errs.length && action === "stop" ? "\n" + t.stopFailHint : ""));
     if (cap.res && capRetries.length) {
       // Re-send every cap-refused start in order; report the first failure (a still-capped one keeps the prompt open).
       offerCapRetry(cap.res, `${capRetries.length}×`, LOCAL_HOST, async () => {
@@ -321,6 +325,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           [t.handoverBtn, t.legendHandover],
           [t.compactBtn, t.legendCompact],
           [t.stopBtn, t.legendStop],
+          [t.forceStopBtn, t.legendForceStop],
           [t.disableBtn, t.legendDisable],
           [t.retireBtn, t.legendRetire],
         ]
@@ -391,6 +396,15 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
               onClick={() => void handleBulk("stop")}
             >
               {t.stopBtn}
+            </button>
+            <button
+              type="button"
+              className="stop"
+              disabled={!canAct}
+              title={t.legendForceStop}
+              onClick={() => void handleBulk("forcestop")}
+            >
+              {t.forceStopBtn}
             </button>
             <button
               type="button"

@@ -125,6 +125,9 @@ export interface Strings {
   hoHint: string;
   hoUnknown: string;
   stopBtn: string;
+  forceStopBtn: string;
+  legendForceStop: string;
+  stopFailHint: string;
   disableBtn: string;
   retireBtn: string;
   resetBtn: string;
@@ -902,14 +905,17 @@ export const STRINGS: Record<Lang, Strings> = {
     hoCol: "ho?",
     hoHint: "handover gerekli mi? (repo kirli / untracked / baseline'dan beri commit / RFH yok — sinyallerden biri)",
     hoUnknown: "?",
-    stopBtn: "durdur",
+    stopBtn: "devir + kapat",
+    forceStopBtn: "kapat",
+    legendForceStop: "DEVİRSİZ kapatır (force): kayıtlı proje oturumunda devir alınmaz, konuşma bağlamı devredilmeden gider; onay sorar",
+    stopFailHint: "Devir hata verdiyse ya da takıldıysa \"kapat\" (devirsiz) düğmesini kullanabilirsiniz.",
     disableBtn: "devre dışı bırak",
     retireBtn: "emekli et",
     resetBtn: "durdur + sıfırdan başlat",
     bulkStartBtn: "başlat",
     handoverBtn: "handover",
     compactBtn: "compact",
-    legendStop: "sadece process/pencereyi kapatır — kayıt AKTİF kalır, \"Kayıtlı\" sekmesinden devam ettirilir; instance (↳) ise \"Geçmiş\" sekmesine düşer",
+    legendStop: "önce devir alır, sonra kapatır (kayıtlı proje oturumu); değnekçi kapalı/kayıtsız oturumda doğrudan kapatır. Sadece process/pencereyi kapatır — kayıt AKTİF kalır, \"Kayıtlı\" sekmesinden devam ettirilir; instance (↳) ise \"Geçmiş\" sekmesine düşer",
     legendDisable: "durdurur + otomasyon (guard) bir daha AÇMAZ — \"Devre dışı\" sekmesine taşınır, oradan geri alınır; instance'ta (↳) sadece durdurur",
     legendRetire: "durdurur + arşive kaldırır — \"Emekli\" sekmesine taşınır, \"tekrar işe al\" ile döner; instance'ta (↳) sadece durdurur",
     legendReset: "durdurur + roster/varsayılan ayarlarla sıfırdan (--new) yeniden başlatır (elle seçilmiş tek-seferlik bir model/effort korunmaz) — eski konuşma/context atılır, kayıt aktif kalır",
@@ -1786,14 +1792,17 @@ export const STRINGS: Record<Lang, Strings> = {
     hoCol: "ho?",
     hoHint: "needs handover? (dirty repo / untracked / commits since baseline / no RFH — any one signal)",
     hoUnknown: "?",
-    stopBtn: "stop",
+    stopBtn: "handover + close",
+    forceStopBtn: "close",
+    legendForceStop: "closes WITHOUT handover (force): a registered project session is not handed over, its context is lost; asks to confirm",
+    stopFailHint: "If the handover failed or got stuck, use the \"close\" button (no handover).",
     disableBtn: "disable",
     retireBtn: "retire",
     resetBtn: "stop + restart fresh",
     bulkStartBtn: "start",
     handoverBtn: "handover",
     compactBtn: "compact",
-    legendStop: "kills only the process/window — stays REGISTERED, resume it from the \"Registered\" tab; an instance (↳) goes to the \"History\" tab",
+    legendStop: "takes a handover first, then closes (registered project session); closes directly when the steward is off or the session is unregistered. Kills only the process/window — stays REGISTERED, resume it from the \"Registered\" tab; an instance (↳) goes to the \"History\" tab",
     legendDisable: "stop + automation (guard) will NOT reopen it — moves to the \"Disabled\" tab, reversible there; on an instance (↳) it just stops it",
     legendRetire: "stop + archive — moves to the \"Retired\" tab, comes back via \"reactivate\"; on an instance (↳) it just stops it",
     legendReset: "stops it, then restarts it fresh (--new) with the roster/default settings (a one-off manually-picked model/effort is NOT preserved) — drops the old conversation/context, keeps the registration active",
