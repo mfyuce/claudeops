@@ -93,10 +93,11 @@ def entry(repo: str, rel: str, host: str) -> Optional[Dict[str, Any]]:
                 first = first if first and first <= ts else ts
                 last = last if last >= ts else ts
             pl = d.get("payload") if isinstance(d.get("payload"), dict) else {}
-            cwd = d.get("cwd") or pl.get("cwd")
+            sm = d.get("summary") if isinstance(d.get("summary"), dict) else {}     # gemini döküm özet satırı
+            cwd = d.get("cwd") or pl.get("cwd") or sm.get("workspace")
             if cwd and not e["cwd"]:
                 e["cwd"] = str(cwd)
-            t = d.get("customTitle") or d.get("title") or d.get("summary") or pl.get("title")
+            t = d.get("customTitle") or d.get("title") or sm.get("title") or (d.get("summary") if isinstance(d.get("summary"), str) else "") or pl.get("title")
             if isinstance(t, str) and t and not e["title"]:
                 e["title"] = t[:100]
             if not e["title"] and d.get("type") == "user":

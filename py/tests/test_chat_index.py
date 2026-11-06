@@ -23,6 +23,15 @@ class IndexTest(unittest.TestCase):
             self.assertEqual([e for e in ents if e["kind"] == "memory"][0]["host"], "h1")
             self.assertIn("| claude | -p1 | 1 |", open(os.path.join(t, "INDEX.md")).read())
 
+    def test_gemini_summary_row(self):
+        with tempfile.TemporaryDirectory() as t:
+            rel = "local/gemini-dump/antigravity/w-proj/2026-07-01/c1.jsonl"
+            os.makedirs(os.path.join(t, os.path.dirname(rel)))
+            with open(os.path.join(t, rel), "w") as f:
+                f.write(json.dumps({"summary": {"title": "Baslik", "workspace": "/w/proj", "last_modified": "2026-07-01 10:00:00"}}) + "\n")
+            e = I.entry(t, rel, "h1")
+            self.assertEqual((e["title"], e["cwd"]), ("Baslik", "/w/proj"))
+
     def test_classify_remote_host(self):
         c = I.classify("local/claude-ulak_31-projects/-home-x/s1.jsonl")
         self.assertEqual((c["cli"], c["host"], c["project"], c["session"]), ("claude", "ulak_31", "-home-x", "s1"))

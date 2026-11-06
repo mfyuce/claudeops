@@ -47,6 +47,18 @@ class DumpTest(unittest.TestCase):
             self.assertTrue(all(x.startswith("gemini/w-proj/") for x in w), w)
             self.assertIn("gemini/w-proj/2026-07-01/abc.jsonl", w)
 
+    def test_summary_null_workspace(self):
+        with tempfile.TemporaryDirectory() as t:
+            os.makedirs(os.path.join(t, "conversations"))
+            sdb = sqlite3.connect(os.path.join(t, "conversation_summaries.db"))
+            sdb.execute("create table conversation_summaries(conversation_id text,title text,workspace_uris text,last_modified_time text)")
+            sdb.execute("insert into conversation_summaries values('n1','T','null','2026-07-01 10:00:00')")
+            sdb.execute("insert into conversation_summaries values('n2','T','[1]','2026-07-01 10:00:00')")
+            sdb.commit(); sdb.close()
+            D._SUMM.clear()
+            self.assertEqual(D._summary(os.path.join(t, "conversations", "n1.db"))["project"], "")
+            self.assertEqual(D._summary(os.path.join(t, "conversations", "n2.db"))["project"], "")
+
     def test_valid_day(self):
         self.assertEqual(D._valid_day("0000-00-00"), D.UNKNOWN)
         self.assertEqual(D._valid_day("0001-01-01"), D.UNKNOWN)
