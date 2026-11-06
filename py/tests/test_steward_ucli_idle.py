@@ -62,6 +62,45 @@ class IdleModeTest(unittest.TestCase):
         self.assertEqual(sw.Config().ucli_idle, "dry")
 
 
+class FailedTurnChainTest(unittest.TestCase):
+    ERR = "This turn failed: HTTP 404 model not found"
+
+    def test_detect(self):
+        self.assertTrue(sw.turn_failed(self.ERR))
+        self.assertTrue(sw.turn_failed("rate limited, wait a minute"))
+        self.assertFalse(sw.turn_failed("Testler geçti"))
+
+    def test_failed_turn_does_not_reset_chain(self):
+        c = cfg()
+        v1 = view(last_assistant=self.ERR, idle=400)
+        acts, st = plan([v1], c=c)
+        self.assertEqual([a.kind for a in acts], ["idle_nudge"])
+        # dürtme sonrası ucli başarısız tur verdi: son etkinlik ilerledi ama zincir SIFIRLANMAZ
+        t2 = NOW + 1000
+        v2 = view(last_assistant=self.ERR, idle=400, idle_since=t2 - 400)
+        acts, st = plan([v2], c=c, state=st, now=t2)
+        self.assertEqual([a.kind for a in acts], ["idle_nudge"])
+        self.assertEqual(st["ucli_idle"]["cli"]["n"], 2)
+        t3 = t2 + 1000
+        v3 = view(last_assistant=self.ERR, idle=400, idle_since=t3 - 400)
+        acts, st = plan([v3], c=c, state=st, now=t3)       # max_consecutive=2 doldu: dürtme yok, kapat
+        self.assertEqual([a.kind for a in acts], ["idle_close"])
+        self.assertEqual(acts[0].payload["marker"], "turn_failed")
+        self.assertEqual(acts[0].payload["mode"], "stop")
+        self.assertTrue(st["ucli_idle"]["cli"]["failed_closed"])
+        t4 = t3 + 1000
+        v4 = view(last_assistant=self.ERR, idle=400, idle_since=t4 - 400)
+        acts, _ = plan([v4], c=c, state=st, now=t4)
+        self.assertEqual(acts, [])                          # bir kez kapatılır
+
+    def test_successful_turn_still_resets_chain(self):
+        c = cfg()
+        acts, st = plan([view(last_assistant="bitirdim, sıradaki yok")], proj("sıradaki: testleri yaz"), c=c)
+        t2 = NOW + 1000
+        acts, st = plan([view(last_assistant="devam ediyorum", idle=400, idle_since=t2 - 400)], c=c, state=st, now=t2)
+        self.assertEqual(st["ucli_idle"]["cli"]["n"], 1)
+
+
 class GateWaitTest(unittest.TestCase):
     def test_gate_wait_text_detected(self):
         for t in ("Commit hazır, kapı onayı bekliyor.", "Merge için kapıya haber verdim", "kapı bekliyor",
@@ -262,6 +301,15 @@ class ApplyTest(_Engine):
         self.touched.clear()
         self.act("idle_close", mode="respawn", pause=False, project="cli")
         self.assertIn("cli", self.touched)          # `_ensure_running` (fresh, `_last_launch` cli_opts) yolu denendi
+
+    def test_turn_failed_close_stops_and_asks_owner_once(self):
+        res = self.act("idle_close", mode="stop", pause=False, project="cli", marker="turn_failed", n=2)
+        self.assertTrue(res["ok"])
+        self.assertEqual(self.calls, [("stop", "cli")])
+        qs = [q for q in sw.load_questions() if q.project == "cli"]
+        self.assertEqual(len(qs), 1)
+        self.assertIn("başarısız", qs[0].text)
+        self.assertEqual(sw.load_projects()["cli"].phase, "planned")      # paused DEĞİL: sahip karar verir
 
     def test_close_rejects_unknown_mode(self):
         self.assertFalse(self.act("idle_close", mode="kill", project="cli")["ok"])

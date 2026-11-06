@@ -3153,6 +3153,12 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
                      **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "marker", "pause", "next")})
         if res.get("ok") and action.payload.get("pause") and action.payload.get("project"):
             sw.upsert_project(str(action.payload["project"]), paths=paths, phase="paused")   # iş yok: proje paused (devir/kapanıştan SONRA)
+        if res.get("ok") and action.payload.get("marker") == "turn_failed" and action.payload.get("project"):
+            # D1: ardışık başarısız turlar (örn. HTTP 404): kapatıldı; sahibe TEK soru (model/uç nokta/anahtar sorunu olabilir)
+            sw.add_question(str(action.payload["project"]),
+                            f"{name} oturumu ardışık {action.payload.get('n')} başarısız model turu verdi (HTTP hatası/'This turn failed'); "
+                            "dürtmeyi kestim ve oturumu kapattım. Model/uç nokta/anahtar ayarı mı bozuk? Düzeltilmeden yeniden açılırsa aynı hata döner. "
+                            "Öneri: ayarı düzelt ya da projeyi paused yap.", source="engine", paths=paths)
         return res
     if k == "nudge":                  # API hatasında takılan oturuma tek satır "devam" (alt ajan/etkinlik denetimi plan_tick'te yapıldı)
         if host:

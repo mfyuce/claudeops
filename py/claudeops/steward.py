@@ -3828,6 +3828,16 @@ IDLE_STALE_NOTE_ESCAPE = " (bu iş zaten bittiyse TODO.md'deki sıradaki açık 
 _TODO_HINT_PREFIX = "TODO.md'deki"
 
 
+# ucli'nin BAŞARISIZ turu (HTTP 404/429/5xx, "This turn failed"): `last_activity`'yi ilerletir ama iş yapılmamıştır. Etkinlik sanılıp dürtme zinciri
+# sıfırlanırsa aynı hataya sonsuz dürtme gider (6 Kas: danisppr 12 sa, 158 `idle_nudge`, D1).
+_TURN_FAILED_RE = re.compile(r"This turn failed|HTTP\s*[45]\d\d|status(?: code)?[: ]+[45]\d\d|rate[ -]limited", re.IGNORECASE)
+
+
+def turn_failed(text: str) -> bool:
+    """Son asistan metni (son 600 karakter) başarısız bir tur izi taşıyor mu. SAF."""
+    return bool(_TURN_FAILED_RE.search((text or "")[-600:]))
+
+
 def waiting_for_gate(text: str) -> bool:
     """Son asistan cevabı kapıdan onay/karar beklediğini söylüyor mu (son 800 karakter). SAF."""
     return bool(_GATE_WAIT_RE.search((text or "")[-800:]))
@@ -3919,12 +3929,20 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
             continue
         rec = rec_all.get(v.name) or {}
         at, n = float(rec.get("at") or 0), int(rec.get("n") or 0)
-        chain = 0 if since > at else n          # dürtmeden sonra etkinlik oldu: zincir sıfırlanır
+        failed = turn_failed(v.last_assistant)
+        chain = 0 if (since > at and not failed) else n     # dürtmeden sonra etkinlik oldu: zincir sıfırlanır (BAŞARISIZ tur etkinlik DEĞİL)
         if rec.get("mode", "dry") != cfg.ucli_idle:
             at, chain = 0.0, 0                  # dry'da sayılan dürtmeler act'i KİLİTLEMEZ (5 Kas: copsdev 2 sa boşta kaldı)
         if at and since <= at and now - at < thr:
             continue                            # bu boşta dönem için yakın zamanda işlendi
         if chain >= cfg.ucli_idle_max_consecutive:
+            if failed and not rec.get("failed_closed") and cfg.ucli_idle in ("dry", "act"):
+                # D1: ardışık başarısız turlar: dürtmeyi kes, oturumu kapat, sahibe TEK soru (uygulama `_apply` idle_close marker=turn_failed)
+                out.append(Action("idle_close", v.name, f"ucli ardışık {chain} başarısız tur, dürtme kesildi",
+                                  {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain,
+                                   "mode": "stop", "pause": False, "marker": "turn_failed", "next": ""}))
+                rec_all[v.name] = {"at": now, "n": chain, "mode": cfg.ucli_idle, "failed_closed": True}
+                changed = True
             continue
         if waiting_for_gate(v.last_assistant):
             continue                            # kapı onayı bekliyor: dürtme de kapatma da yok (bekle)
