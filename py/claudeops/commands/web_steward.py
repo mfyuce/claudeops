@@ -2761,6 +2761,27 @@ def maybe_daily_summary(cfg: sw.Config, now: float) -> Optional[str]:
     return path
 
 
+def maybe_pending_digest(cfg: sw.Config, now: float) -> bool:
+    """D4: `PENDING_DIGEST_HOURS` dilimlerinde (günde 2) bekleyen sahip soruları için TEK ntfy özeti; dilim başına bir kez
+    (`state.pending_digest_slot`), soru yoksa gönderilmez ve dilim yine işaretlenir. True = gönderildi."""
+    paths = sw.paths_for(cfg.sid)
+    slot = sw.pending_digest_slot(now)
+    if not slot:
+        return False
+    state = sw.load_state(paths)
+    if state.get("pending_digest_slot") == slot:
+        return False
+    text = sw.pending_digest_text(sw.load_questions(paths), now, cfg.lang, cfg.sid)
+    sent = bool(text) and _notify(cfg, text[:NTFY_SUMMARY_CHARS])
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        state["pending_digest_slot"] = slot
+        sw.save_state(state, paths)
+    if text:
+        sw.log_event("pending_digest", paths=paths, slot=slot, notified=sent)
+    return sent
+
+
 def maybe_dry_ask(cfg: sw.Config, now: float) -> Optional[str]:
     """TBD#138 a: bir ölçüm (dry) kipi `DRY_REPORT_HOURS` saattir olay üretiyorsa sahibe TEK "act?" sorusu (kip başına bir kez,
     `state.dry_asked`). Kip hâlâ dry değilse sorulmaz (sahip zaten karar verdi). Dönen: açılan sorunun kimliği ya da None."""
@@ -3770,6 +3791,10 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 maybe_dry_ask(cfg, t0)
             except Exception as e:
                 diag_log("steward_dry_ask_crashed", error=repr(e))
+            try:
+                maybe_pending_digest(cfg, t0)
+            except Exception as e:
+                diag_log("steward_pending_digest_crashed", error=repr(e))
     if cards:
         try:
             card_tick(cfg)

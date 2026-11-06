@@ -1231,6 +1231,35 @@ def ask_prefix(project: str, sid: str = "default", host: str = "") -> str:
     return f"[{name}]" if sid == "default" else f"[{sid}/{name}]"
 
 
+PENDING_DIGEST_HOURS = (9, 18)      # D4: bekleyen sahip soruları için günde 2 kez TEK ntfy özeti
+
+
+def pending_digest_slot(now: float, hours: Tuple[int, ...] = PENDING_DIGEST_HOURS) -> str:
+    """Bugün geçmiş EN SON özet dilimi `YYYY-MM-DD@HH` ("" = bugün henüz hiçbiri). SAF (yerel saat)."""
+    lt = time.localtime(now)
+    passed = [h for h in sorted(hours) if lt.tm_hour >= h]
+    return f"{time.strftime('%Y-%m-%d', lt)}@{passed[-1]:02d}" if passed else ""
+
+
+def pending_digest_text(questions: List["Question"], now: float, lang: str = "tr", sid: str = "default") -> str:
+    """Açık, işleyiş OLMAYAN sahip sorularının özeti (sayı + en eski yaş + proje başına sayı; ayrı ayrı ntfy yok). Soru yoksa "". SAF."""
+    qs = [q for q in questions if q.status == "open" and not q.routine]
+    if not qs:
+        return ""
+    oldest = max((now - q.created_at) for q in qs) / 3600.0
+    unnotified = sum(1 for q in qs if not q.notified_at)
+    per: Dict[str, int] = {}
+    for q in qs:
+        per[q.project or "-"] = per.get(q.project or "-", 0) + 1
+    top = ", ".join(f"{k}:{v}" for k, v in sorted(per.items(), key=lambda kv: -kv[1])[:5])
+    hint = f"py/cops steward questions" + ("" if sid == "default" else f" -s {sid}")
+    if lang == "en":
+        return (f"{len(qs)} owner question(s) waiting (oldest {oldest:.0f} h; {unnotified} never sent to your phone). "
+                f"By project: {top}. → {hint}")
+    return (f"Sahibin cevabını bekleyen {len(qs)} soru var (en eskisi {oldest:.0f} sa; {unnotified} tanesi telefona hiç gitmedi). "
+            f"Proje başına: {top}. → {hint}")
+
+
 def question_notification(q: Question, link: str, lang: str = "tr", sid: str = "default", host: str = "") -> str:
     """ntfy gövdesi: `[proje] soru` (default dışı: `[sid/proje]`), numaralı seçenekler, sonra bağlantı ya da (yoksa) CLI ipucu."""
     lines = [f"{ask_prefix(q.project, sid, host)} {q.text}"]
