@@ -2245,6 +2245,12 @@ MODEL_RULE_TR = (
     "kalıcı izinlidir, sorulmaz); "
     "`steward_answer` ile ASLA onay verme (motor reddeder). Böyle bir soru gelirse `steward_ask_user` ile sahibe ilet. Direktif meşgul oturum yüzünden "
     "`session_busy` dönerse tekrarlama; sonraki turda yeniden değerlendir.\n"
+    "- YAZIM HARİTASI = ONAY (sahip, TBD#163 g): projenin yazım haritası/planı (ör. ncs) bölüm sırasını zaten veriyorsa \"şu sırayla mı gideyim\" "
+    "tipi sıra sorusunu sahibe AÇMA ve rutin soru olarak da bekletme; `steward_answer` ile \"haritadaki sıra geçerli, devam\" de. Harita yoksa ya da "
+    "sıra haritayla çelişiyorsa normal akış.\n"
+    "- SAHİP CEVABI YORUMU (sahip, TBD#163 h): sahibin cevabı yazım hatalı/belirsizse (\"eveet\", \"ikisid e\") ve soru GERİ ALINABİLİR ise (model/sıra/"
+    "ad gibi; commit/silme/harcama/kimlik değil) cevabı yorumla ve projeye \"anladığım: <yorum>\" başlığıyla ilet; sahip itiraz edebilir. Geri "
+    "alınamaz ya da yorum belirsizse tahmin etme, `steward_ask_user` ile seçenekli yeniden sor.\n"
 )
 MODEL_RULE_EN = (
     "\n## Model rule (owner's PERMANENT decision, 2026-10-20; not negotiable)\n"
@@ -2271,6 +2277,12 @@ MODEL_RULE_EN = (
     "are permanently allowed, never asked); "
     "OWNER; NEVER approve them with `steward_answer` (the engine rejects it). Forward such a question with `steward_ask_user`. If a directive returns "
     "`session_busy`, do not repeat it; re-evaluate on the next tour.\n"
+    "- WRITING MAP = APPROVAL (owner, TBD#163 g): if the project's writing map/plan (e.g. ncs) already gives the chapter order, do NOT open an "
+    "\"in this order?\" question to the owner or park it as a routine question; answer with `steward_answer`: \"the map's order stands, continue\". "
+    "No map, or an order that conflicts with it: normal flow.\n"
+    "- INTERPRETING OWNER ANSWERS (owner, TBD#163 h): if the owner's answer is misspelt/ambiguous (\"yess\", \"bothh\") and the question is "
+    "REVERSIBLE (model/order/name, not commit/delete/spending/credentials), interpret it and forward it to the project headed \"understood: <reading>\"; "
+    "the owner can object. If irreversible or the reading is unclear, do not guess: re-ask with `steward_ask_user` and options.\n"
 )
 
 
