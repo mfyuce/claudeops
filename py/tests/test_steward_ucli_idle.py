@@ -87,6 +87,7 @@ class FailedTurnChainTest(unittest.TestCase):
         self.assertEqual([a.kind for a in acts], ["idle_close"])
         self.assertEqual(acts[0].payload["marker"], "turn_failed")
         self.assertEqual(acts[0].payload["mode"], "stop")
+        self.assertTrue(acts[0].payload["pause"])
         self.assertTrue(st["ucli_idle"]["cli"]["failed_closed"])
         t4 = t3 + 1000
         v4 = view(last_assistant=self.ERR, idle=400, idle_since=t4 - 400)
@@ -303,13 +304,13 @@ class ApplyTest(_Engine):
         self.assertIn("cli", self.touched)          # `_ensure_running` (fresh, `_last_launch` cli_opts) yolu denendi
 
     def test_turn_failed_close_stops_and_asks_owner_once(self):
-        res = self.act("idle_close", mode="stop", pause=False, project="cli", marker="turn_failed", n=2)
+        res = self.act("idle_close", mode="stop", pause=True, project="cli", marker="turn_failed", n=2)
         self.assertTrue(res["ok"])
         self.assertEqual(self.calls, [("stop", "cli")])
         qs = [q for q in sw.load_questions() if q.project == "cli"]
         self.assertEqual(len(qs), 1)
         self.assertIn("başarısız", qs[0].text)
-        self.assertEqual(sw.load_projects()["cli"].phase, "planned")      # paused DEĞİL: sahip karar verir
+        self.assertEqual(sw.load_projects()["cli"].phase, "paused")       # `due` hatalı oturumu yeniden açmasın
 
     def test_close_rejects_unknown_mode(self):
         self.assertFalse(self.act("idle_close", mode="kill", project="cli")["ok"])

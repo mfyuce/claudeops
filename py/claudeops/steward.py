@@ -3969,7 +3969,7 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
                 # D1: ardışık başarısız turlar: dürtmeyi kes, oturumu kapat, sahibe TEK soru (uygulama `_apply` idle_close marker=turn_failed)
                 out.append(Action("idle_close", v.name, f"ucli ardışık {chain} başarısız tur, dürtme kesildi",
                                   {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain,
-                                   "mode": "stop", "pause": False, "marker": "turn_failed", "next": ""}))
+                                   "mode": "stop", "pause": True, "marker": "turn_failed", "next": ""}))   # paused: aksi halde `due` aynı hatalı oturumu yeniden açar (D5)
                 rec_all[v.name] = {"at": now, "n": chain, "mode": cfg.ucli_idle, "failed_closed": True}
                 changed = True
             continue

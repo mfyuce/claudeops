@@ -3207,8 +3207,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             # D1: ardışık başarısız turlar (örn. HTTP 404): kapatıldı; sahibe TEK soru (model/uç nokta/anahtar sorunu olabilir)
             sw.add_question(str(action.payload["project"]),
                             f"{name} oturumu ardışık {action.payload.get('n')} başarısız model turu verdi (HTTP hatası/'This turn failed'); "
-                            "dürtmeyi kestim ve oturumu kapattım. Model/uç nokta/anahtar ayarı mı bozuk? Düzeltilmeden yeniden açılırsa aynı hata döner. "
-                            "Öneri: ayarı düzelt ya da projeyi paused yap.", source="engine", paths=paths)
+                            "dürtmeyi kestim, oturumu kapattım ve projeyi paused yaptım (aksi halde cadence aynı hatalı oturumu yeniden açardı). "
+                            "Model/uç nokta/anahtar ayarı mı bozuk? Öneri: ayarı düzelt, sonra `steward set <proje> --phase planned`.", source="engine", paths=paths)
         return res
     if k == "nudge":                  # API hatasında takılan oturuma tek satır "devam" (alt ajan/etkinlik denetimi plan_tick'te yapıldı)
         if host:
