@@ -290,5 +290,26 @@ class ProcLockTest(_Tmp):
         os.close(fd2)
 
 
+class MirrorRegressionTest(_Tmp):
+    def test_old_mirror_copy_does_not_regress_after_live_deletion(self):
+        live, mir = os.path.join(self.d, "live"), os.path.join(self.d, "mir")
+        for r in (live, mir):
+            os.makedirs(r)
+        lf, mf = os.path.join(live, "s.jsonl"), os.path.join(mir, "s.jsonl")
+        open(lf, "w").write("v1\nv2\n"); open(mf, "w").write("v1\n")
+        os.utime(lf, (2_000_000_000, 2_000_000_000)); os.utime(mf, (1_900_000_000, 1_900_000_000))
+        srcs = [(mir, os.path.join("local", "claude-projects")), (live, os.path.join("local", "claude-projects"))]
+        manifest = {}
+        with mock.patch.object(P, "_local_sources", return_value=srcs):
+            plan = P.plan_chat_backup({}, manifest)
+            self.assertEqual([e["src"] for e in plan["changed"]], [lf])           # canlı (yeni) kazanır
+            sigs = {e["src"]: e["sig"] for e in plan["changed"]}
+            sigs.update(P._dest_marks(plan["changed"]))
+            manifest.update(sigs)
+            os.remove(lf)                                                         # canlıdan silindi, ayna eski kopyayı taşıyor
+            plan2 = P.plan_chat_backup({}, manifest)
+            self.assertEqual(plan2["changed"], [])                                # eski ayna kopyası repodaki yeni sürümü EZMEMELİ
+
+
 if __name__ == "__main__":
     unittest.main()

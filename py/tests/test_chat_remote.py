@@ -14,28 +14,37 @@ class FakeRemote:
         self.sent.append(cmd)
         got = cmd[1:] if self.lose_first else cmd           # ilk karakter kayboldu
         self.ran.append(got)
-        if got.startswith("nice "):                          # komut bozulmadıysa çalışır
+        if got.startswith("nice "):
+            assert "/live/.chatpull-" in got                          # komut bozulmadıysa çalışır
             self.files[".chatpull-yuhem-20261107.tgz"] = b"x" * 10
             self.files[".chatpull-yuhem-20261107.done"] = b""
             assert "cd " not in got                           # cwd (files kökü) değişmemeli
         elif got.startswith("rm "):
-            for k in list(self.files):
-                assert k.startswith(".chatpull-")             # yalnız kendi dosyası
-                del self.files[k]
+            for a in got.split()[3:]:                         # yalnız adı verilen dosyaları siler (joker yok)
+                self.files.pop(a.strip("'").split("/")[-1], None)
 
-    def listing(self):
+    busy = False
+
+    def idle(self):
+        return not self.busy
+
+    def root(self):
+        return self.cwd
+
+    def listing(self, root):
+        assert root == "/live"
         return list(self.files)
 
-    def download(self, name, dest):
+    def download(self, root, name, dest):
         return len(self.files.get(name, b""))
 
 
 class RemotePullTest(unittest.TestCase):
     def test_commands_start_with_space_so_first_char_loss_is_harmless(self):
-        for c in (R.pack_command("yuhem", "20261107"), R.cleanup_command("yuhem", "20261107")):
+        for c in (R.pack_command("yuhem", "20261107", outdir="/live"), R.cleanup_command("yuhem", "20261107", "/live")):
             self.assertTrue(c.startswith(" "))
-            self.assertNotIn(" cd ", c)                       # cwd'ye dokunma
-            self.assertNotIn("/live", c)                      # mutlak çıktı yolu yok
+            self.assertNotIn(" cd ", c)                       # shell cwd'sine dokunma
+            self.assertIn("/live/.chatpull-", c)              # çıktı başta okunan MUTLAK kök (cwd değişse de aynı yer)
 
     def test_pull_with_first_char_loss(self):
         fr = FakeRemote(lose_first=True)
@@ -45,8 +54,25 @@ class RemotePullTest(unittest.TestCase):
 
     def test_without_leading_space_would_break(self):
         fr = FakeRemote(lose_first=True)
-        fr.send(R.pack_command("yuhem", "20261107").lstrip())  # kanıt: boşluksuz komut bozulur
+        fr.send(R.pack_command("yuhem", "20261107", outdir="/live").lstrip())  # kanıt: boşluksuz komut bozulur
         self.assertEqual(fr.files, {})
+
+    def test_busy_shell_backs_off_cleanly(self):
+        fr = FakeRemote()
+        fr.busy = True
+        r = R.pull(fr, "yuhem", "20261107", "/tmp/x", sleep=lambda s: None)
+        self.assertFalse(r["ok"])
+        self.assertTrue(r.get("skipped"))
+        self.assertEqual(fr.sent, [])                          # hiçbir şey gönderilmedi
+
+    def test_cleanup_touches_only_own_files(self):
+        fr = FakeRemote()
+        fr.files["kullanici.txt"] = b"onemli"
+        fr.send(R.cleanup_command("yuhem", "20261107", "/live"))
+        self.assertIn("kullanici.txt", fr.files)
+        c = R.cleanup_command("yuhem", "20261107", "/live")
+        self.assertNotIn("*", c)                               # joker yok
+        self.assertEqual(sorted(a.split("/")[-1] for a in c.split()[3:]), sorted(R.names("yuhem", "20261107").values()))
 
     def test_timeout_and_bad_tag(self):
         class Never(FakeRemote):

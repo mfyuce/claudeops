@@ -168,5 +168,23 @@ class SummaryCacheTest(unittest.TestCase):
             self.assertEqual(D._summary(db)["title"], "Iki, daha uzun baslik")
 
 
+class WalSigTest(unittest.TestCase):
+    def test_sig_changes_when_only_wal_grows(self):
+        import time
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "t.sqlite")
+            c = sqlite3.connect(p)
+            c.execute("pragma journal_mode=wal")
+            c.execute("pragma wal_autocheckpoint=0")
+            c.execute("create table t(x)"); c.commit()
+            time.sleep(1.1)
+            a = D.db_sig(p)
+            main = os.stat(p)
+            c.execute("insert into t values(1)"); c.commit()
+            self.assertEqual((main.st_size, int(main.st_mtime)), (os.stat(p).st_size, int(os.stat(p).st_mtime)))  # ana dosya aynı
+            self.assertNotEqual(a, D.db_sig(p))                                                                   # ama imza değişti
+            c.close()
+
+
 if __name__ == "__main__":
     unittest.main()

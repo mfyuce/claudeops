@@ -237,6 +237,18 @@ def _db_sources(home: str) -> List[Tuple[str, str, str]]:
     return out
 
 
+def db_sig(p: str) -> str:
+    """Değişiklik imzası: ana dosya + `-wal` (WAL modunda yeni commit'ler ana dosyaya yazılmaz, yalnız -wal büyür)."""
+    s = os.stat(p)
+    sig = f"{s.st_size}:{int(s.st_mtime)}"
+    try:
+        w = os.stat(p + "-wal")
+        sig += f":w{w.st_size}:{int(w.st_mtime)}"
+    except OSError:
+        pass
+    return sig
+
+
 def stage_dumps(stage: str, stamps: Dict[str, str], home: Optional[str] = None) -> Dict[str, Any]:
     """Değişen db'leri stage/<cli>/... altına JSONL döker; dosya mtime'ı = içerik günü (commit tarihi için). Hata db başına yutulur."""
     home = home or os.path.expanduser("~")
@@ -246,7 +258,7 @@ def stage_dumps(stage: str, stamps: Dict[str, str], home: Optional[str] = None) 
             s = os.stat(p)
         except OSError:
             continue
-        sig = f"{s.st_size}:{int(s.st_mtime)}"
+        sig = db_sig(p)
         if stamps.get(p) == sig:
             st["skipped"] += 1
             continue
