@@ -78,6 +78,29 @@ def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS, name: Optional[str
 
 def kill_session_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
                              name: Optional[str] = None) -> KillResult:
+    """Ön yüz oturumunu kapatır (`_kill_front_and_parent`); ona KATLANMIŞ Claude Code arka plan süreci (`Session.bg_pid`,
+    bkz. `discovery.fold_background`) varsa onu da kapatır: Durdur asıl konuşmayı yetim bırakmasın."""
+    bg: Optional[int] = None
+    try:
+        from .discovery import find_sessions
+        bg = next((s.bg_pid for s in find_sessions(measure_cpu=False) if s.pid == pid and s.bg_pid), None)
+    except Exception:
+        bg = None
+    try:
+        bg_ct: Optional[float] = psutil.Process(bg).create_time() if bg else None
+    except psutil.Error:
+        bg, bg_ct = None, None
+    result = _kill_front_and_parent(pid, grace=grace, name=name)
+    if bg:
+        try:
+            kill_session(bg, grace=grace, name=name, create_time=bg_ct)
+        except psutil.Error:
+            pass
+    return result
+
+
+def _kill_front_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
+                           name: Optional[str] = None) -> KillResult:
     """kill_session + parent bash'i de öldür (terminal penceresi kapansın).
 
     TODO-b kök sebep fix: spawn.py terminali `bash -c "...; exec bash"` ile açıyor,

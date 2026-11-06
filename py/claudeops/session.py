@@ -24,6 +24,12 @@ class Session:
     cpu: float = 0.0                       # anlık %CPU (güvenilir aktiflik sinyali)
     cli: str = "claude"                    # hangi provider açtı (claude|agy)
     resumed: Optional[bool] = None         # cmdline'da --resume VARDI mı; None = bilinmiyor (sid'den çıkarılır)
+    # Claude Code arka plan oturumu (sessions/<pid>.json `kind:"bg"`): ön yüz kaydı `parkedJobId`, bg kaydı `jobId` taşır.
+    # `discovery.fold_background` bg kaydını ön yüz satırına katlar (ayrı satır/DUP olmaz); asıl konuşma bg'dedir.
+    kind: str = ""                         # json `kind` ("interactive" | "bg" | ""); yalnız claude json kaynağından
+    job_id: Optional[str] = None           # bg kaydının jobId'si
+    parked_job_id: Optional[str] = None    # ön yüz kaydının park ettiği işin jobId'si
+    bg_pid: Optional[int] = None           # ön yüze katlanmış bg sürecinin pid'i (Durdur bunu da kapatır)
 
     @property
     def is_fresh(self) -> bool:

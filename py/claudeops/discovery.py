@@ -85,8 +85,39 @@ def _sessions_from_json() -> Dict[Tuple[str, int], Session]:
             effort=None,
             cpu=0.0,
             cli="claude",     # bu kaynak (~/.claude/sessions/*.json) sadece claude'a özel
+            kind=str(d.get("kind") or ""),
+            job_id=str(d["jobId"]) if d.get("jobId") else None,
+            parked_job_id=str(d["parkedJobId"]) if d.get("parkedJobId") else None,
         )
     return result
+
+
+def fold_background(sessions: List[Session]) -> List[Session]:
+    """Claude Code arka plan oturumunu (kind "bg", AYNI ad) ebeveyni olan canlı ön yüz oturumunun satırına katlar:
+    ayrı satır/DUP (panel, `cops list`, `duplicates`, `ambiguous_sessions`) olmaz; ön yüzün `sid`i bg'nin sessionId'si olur
+    (asıl konuşma bg'de: transkript/bağlam/usage ondan okunur) ve `bg_pid` Durdur için işaretlenir.
+    Eşleşme: bg.jobId == ön.parkedJobId; yoksa AYNI ad+cwd'de TEK ön yüz (cli aynı). Ebeveyni bulunamayan (ya da belirsiz
+    olan) bg kaydı KAYBOLMAZ, ayrı satır kalır. SAF (yerinde `sid`/`bg_pid` günceller, yeni liste döndürür)."""
+    bgs = [s for s in sessions if s.kind == "bg"]
+    if not bgs:
+        return sessions
+    drop = set()
+    for b in bgs:
+        fronts = [f for f in sessions if f is not b and f.kind != "bg" and f.name == b.name and f.cli == b.cli]
+        link = [f for f in fronts if b.job_id and f.parked_job_id == b.job_id]
+        if not link:
+            same = [f for f in fronts if f.cwd == b.cwd]
+            link = same if len(same) == 1 else []
+        if len(link) != 1:
+            continue
+        f = link[0]
+        if f.bg_pid is not None and f.bg_pid != b.pid:      # ön yüze zaten başka bg katlandı: bu ayrı kalsın (kaybolmasın)
+            continue
+        f.bg_pid = b.pid
+        if b.sid:
+            f.sid = b.sid
+        drop.add(id(b))
+    return [s for s in sessions if id(s) not in drop]
 
 
 def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List[int]]] = None) -> List[Session]:
@@ -193,6 +224,9 @@ def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List
             prior = json_by_pid.get(p.pid)
             live_sid = prior.sid if prior is not None and prior.cli == provider.name else None
             by_key[(name, p.pid)] = Session(
+                kind=prior.kind if prior is not None and prior.cli == provider.name else "",
+                job_id=prior.job_id if prior is not None and prior.cli == provider.name else None,
+                parked_job_id=prior.parked_job_id if prior is not None and prior.cli == provider.name else None,
                 name=name,
                 pid=p.pid,
                 cwd=cwd,
@@ -216,7 +250,7 @@ def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List
                 except psutil.Error:
                     pass
 
-    return list(by_key.values())
+    return fold_background(list(by_key.values()))
 
 
 def find_by_name(name: str, measure_cpu: bool = False) -> List[Session]:
