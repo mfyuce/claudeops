@@ -122,9 +122,9 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     };
   }
 
-  async function handleBulk(action: BulkAction) {
+  async function handleBulk(action: BulkAction, override?: SessionInfo[], confirmText?: string) {
     if (busy) return;
-    let picked = selectedRows;
+    let picked = override ?? selectedRows;
     let note = "";
     if (action === "close" || action === "retire" || action === "reset" || action === "restart" || action === "newchat") {
       // close/retire/reset/restart/newchat can't apply to an unregistered
@@ -145,7 +145,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
       if (note) showToast(note.trim(), "info");
       return;
     }
-    if (!window.confirm(t.bulkConfirm(labels[action], explanations[action], names) + note)) return;
+    if (!window.confirm(confirmText ?? t.bulkConfirm(labels[action], explanations[action], names) + note)) return;
 
     setBusy(true);
     const errs: string[] = [];
@@ -267,6 +267,22 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
     selection.replace([]);
     refresh();
   }
+
+  /** Uzak host başına "tüm CLI'ları kapat": çalışan satırlar, shell_* / cops* / rvw_* hariç; onay diyaloğu; varsayılan devir + kapat
+   * (mevcut `stop` yolu: `ho:true`, devir alınamazsa kapatmaz). */
+  function handleCloseRemoteHost(host: string) {
+    const running = rows.filter((s) => s.running && s.host === host);
+    const excluded = (n: string) => /^(shell_|cops|rvw_)/.test(n);
+    const targets = running.filter((s) => !excluded(s.name));
+    const skipped = running.filter((s) => excluded(s.name)).map((s) => s.name);
+    if (!targets.length) {
+      showToast(t.closeRemoteNone, "info");
+      return;
+    }
+    void handleBulk("stop", targets, t.closeRemoteConfirm(host, targets.map((s) => s.name), skipped));
+  }
+
+  const remoteHosts = Array.from(new Set(rows.filter((s) => s.running && s.host !== LOCAL_HOST).map((s) => s.host))).sort();
 
   function handleSelectNeedsHo() {
     // Original: `for (const s of LAST.sessions) if (s.running &&
@@ -466,6 +482,11 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
             <button type="button" className="selho" disabled={busy} title={t.mirrorAllHint} onClick={() => void handleOpenRemoteMirrors()}>
               {t.mirrorAllBtn}
             </button>
+            {remoteHosts.map((h) => (
+              <button key={h} type="button" className="retire" disabled={busy} title={t.closeRemoteHint} onClick={() => handleCloseRemoteHost(h)}>
+                {t.closeRemoteBtn(h)}
+              </button>
+            ))}
           </>
         )}
         {tab === "registered" && (

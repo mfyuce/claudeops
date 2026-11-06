@@ -117,6 +117,10 @@ export interface Strings {
   mirrorAllHint: string;
   mirrorAllNone: string;
   mirrorAllConfirm: (names: string[]) => string;
+  closeRemoteBtn: (host: string) => string;
+  closeRemoteHint: string;
+  closeRemoteConfirm: (host: string, names: string[], skipped: string[]) => string;
+  closeRemoteNone: string;
   windowlessSelectHint: string;
   windowlessUnknown: string;
   windowlessNone: string;
@@ -900,6 +904,13 @@ export const STRINGS: Record<Lang, Strings> = {
       "Uzak host'lardaki çalışan oturumların yerel masaüstü (mirror) pencerelerini açar. Seçim varsa yalnız seçilenler, yoksa penceresi açık olmayan tümü. 4'lü gruplarla açılır; zaten açık olanlar tekrar açılmaz.",
     mirrorAllNone: "Açılacak uzak oturum yok (hepsinin penceresi açık ya da uzakta çalışan tmux oturumu yok).",
     mirrorAllConfirm: (names) => `${names.length} uzak oturumun masaüstü penceresi açılsın mı?\n\n${names.join(", ")}`,
+    closeRemoteBtn: (host) => `${host}: tüm CLI'ları kapat`,
+    closeRemoteHint:
+      "Bu host'taki çalışan oturumların HEPSİNİ devir + kapat ile kapatır (her biri önce devir alır, devir alınamazsa kapatılmaz). shell_*, cops* ve rvw_* oturumları hariç tutulur.",
+    closeRemoteConfirm: (host, names, skipped) =>
+      `${host} üzerindeki ${names.length} oturum devir + kapat ile kapatılsın mı?\n\n${names.join(", ")}` +
+      (skipped.length ? `\n\nHariç tutulan (shell_*, cops*, rvw_*): ${skipped.join(", ")}` : ""),
+    closeRemoteNone: "Kapatılacak uzak oturum yok (hepsi hariç tutulan türde ya da çalışan yok).",
     windowlessSelectHint:
       "Ekranda penceresi olmayan (tmux'ta arkada koşan) yerel oturumları seçer. Hiçbir şey durdurmaz: işi bitenleri 'durdur' ile sen kapatırsın. Uzak host'lar dahil değil.",
     windowlessUnknown: "Penceresiz listesi şu an bilinmiyor (tmux yanıt vermedi); hiçbir şey seçilmedi.",
@@ -1790,6 +1801,13 @@ export const STRINGS: Record<Lang, Strings> = {
       "Opens local desktop (mirror) windows for the running sessions on remote hosts. Only the selected ones if any are selected, otherwise every one without an open window. Opened in groups of 4; already-open windows are not opened again.",
     mirrorAllNone: "Nothing to open (every remote session already has a window, or no remote tmux session is running).",
     mirrorAllConfirm: (names) => `Open desktop windows for ${names.length} remote sessions?\n\n${names.join(", ")}`,
+    closeRemoteBtn: (host) => `${host}: close all CLIs`,
+    closeRemoteHint:
+      "Closes EVERY running session on this host with handover + close (each takes a handover first and is not closed if the handover fails). shell_*, cops* and rvw_* sessions are excluded.",
+    closeRemoteConfirm: (host, names, skipped) =>
+      `Close ${names.length} sessions on ${host} with handover + close?\n\n${names.join(", ")}` +
+      (skipped.length ? `\n\nExcluded (shell_*, cops*, rvw_*): ${skipped.join(", ")}` : ""),
+    closeRemoteNone: "No remote session to close (all are of an excluded kind, or none is running).",
     windowlessSelectHint:
       "Selects local sessions with no screen window (running in the background in tmux). Stops nothing: close the finished ones with 'stop' yourself. Remote hosts are not included.",
     windowlessUnknown: "The windowless list is unknown right now (tmux did not answer); nothing was selected.",
