@@ -252,6 +252,7 @@ class SessionView:
 class Action:
     kind: str       # handover | respawn | start | stop | directive | deliver_answer | deliver_job | deliver_lesson | deliver_findings | ask_user | idea
                     # | set_phase | tour | handover_deferred (yalnız kayıt: eşik devri ertelendi, oturuma dokunmaz)
+                    # | ho_halted (yalnız kayıt: devir gönderilmiş proje paused/done oldu, yeniden AÇILMADI, oturum devir notuyla kalır)
     name: str = ""  # oturum/proje adı ("" = genel)
     reason: str = ""
     payload: Dict[str, Any] = field(default_factory=dict)
@@ -3348,7 +3349,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if name not in ho_deferred and name not in by_name and _unavail(name):
             ho_deferred[name] = rec
 
+    def _halted_phase(name: str) -> str:
+        """Oturumun projesi paused/done ise fazın adı, değilse "" (bilinmiyor = "" = davranış değişmez)."""
+        key = world.project_key(name) if world is not None else _project_key(name, projects)
+        ph = projects[key].phase if key and key in projects else ""
+        return ph if ph in ("paused", "done") else ""
+
     # 2) Handover gönderilmiş olanlar — READY FOR HANDOVER geldi ya da süre doldu → yeniden aç
+    #    (proje paused/done ise AÇMA: `ho_halted` kaydı, ho_pending temizlenir)
     for name, sent_at in list(ho_pending.items()):
         if not _managed(name):
             ho_pending.pop(name, None)   # yönetilmeyen oturum (eski kayıt/elle): yeniden AÇILMAZ
@@ -3359,8 +3367,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         v = by_name.get(name)
         if v is None and _unavail(name):
             continue     # host kapalı: devir izi korunur, yeniden açma host dönünce kararlaştırılır
+        halted = _halted_phase(name)
         if v is None or not v.running:
-            if name not in ho_close and not _sibling_running(views, name, projects, cfg, world):
+            if name not in ho_close and halted:
+                actions.append(Action("ho_halted", name, f"devir sonrası oturum kapanmış ama proje {halted}: yeniden açılmadı",
+                                      {"phase": halted, "step": "gone"}))
+            elif name not in ho_close and not _sibling_running(views, name, projects, cfg, world):
                 actions.append(Action("respawn", name, "handover sent, session gone → start"))
             ho_pending.pop(name, None)
             ho_close.pop(name, None)
@@ -3377,6 +3389,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             elif name in ho_close:
                 # STEWARD-DONE-CONFIRMED devri: proje done, yeniden açılmaz; devir metni oturumda kalır (sonraki açılış taze `--new`)
                 actions.append(Action("stop", name, "STEWARD-DONE: devir bitti → kapat"))
+            elif halted:
+                # proje devir gönderildikten SONRA paused/done oldu (oiso 18:15): taze `--new` açılıp yönerge verilmesin;
+                # oturum devir notuyla açık kalır, sahip/`steward set --phase planned` ile geri alınca devam eder
+                actions.append(Action("ho_halted", name, f"devir bitti ama proje {halted}: yeniden açılmadı, oturum devir notuyla açık",
+                                      {"phase": halted, "step": "ready" if ready else "expired"}))
             else:
                 actions.append(Action("respawn", name, "READY FOR HANDOVER" if ready else "handover grace expired"))
             ho_pending.pop(name, None)

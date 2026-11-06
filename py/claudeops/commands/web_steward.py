@@ -3234,6 +3234,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
                     if tr else f"{name}: stuck on an API error; {sw.API_NUDGE_MAX} nudges did not help. Giving up; over to you.")
         sw.log_event(k, paths=paths, name=name, reason=action.reason)
         return {"ok": True, "notified": _notify(cfg, text)}
+    if k == "ho_halted":              # yalnız kayıt: devir sonrası proje paused/done, yeniden açma/yönerge YOK (oturum açık kalır)
+        sw.log_event("ho_halted", paths=paths, name=name, reason=action.reason,
+                     phase=str(action.payload.get("phase") or ""), step=str(action.payload.get("step") or ""))
+        return {"ok": True}
     if k == "handover_deferred":      # yalnız kayıt (oturuma dokunmaz): eşik devri meşgul/alt ajan yüzünden ertelendi
         sw.log_event("handover_deferred", paths=paths, name=name, reason=action.reason,
                      handover=str(action.payload.get("handover_reason") or ""))

@@ -193,6 +193,7 @@ class TestRemoteStop(_Destructive):
             r = ws.http_post(path, {"name": "oiso", "actor": "brain", "text": "x"})
             self.assertEqual((r["ok"], r.get("dry"), r.get("host")), (True, True, HOST))
         self.assertEqual({e["host"] for e in self.log("would:stop") + self.log("would:restart")}, {HOST})
+        sw.upsert_project("oiso", phase="planned")        # DONE işareti fazı done yaptı; done/paused projede devir sonrası yeniden açma YOK (ho_halted)
         sw.save_state({"ho_pending": {"oiso": time.time()}})
         self.fake.facts["oiso"] = _facts("READY FOR HANDOVER")
         res = ws.tick_once("manual")
