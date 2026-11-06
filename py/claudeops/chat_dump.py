@@ -280,3 +280,52 @@ def raw_to_remote(remote: str, home: Optional[str] = None, timeout: int = 10800)
         except (OSError, subprocess.TimeoutExpired) as e:
             errs.append(f"{name}: {type(e).__name__}")
     return "; ".join(errs)
+
+
+# ------------------------------------------------------------------ uzak host arşivleri (yuhem, ulak_31)
+def ingest_remote_archives(mir: str) -> Dict[str, Any]:
+    """mir/<host>/*.tgz (en yenisi) -> mir/<host>/extract/. Güvensiz veri: yalnız düz dosya/dizin, mutlak yol ve '..' reddedilir,
+    mod 0600/0700. Aynı arşiv bir kez açılır (extract/.done). Dönüş: {host: açılan üye sayısı | 'atlandı'}."""
+    import glob
+    import shutil
+    import tarfile
+    out: Dict[str, Any] = {}
+    for hd in sorted(glob.glob(os.path.join(mir, "*"))):
+        tgzs = sorted(glob.glob(os.path.join(hd, "*.tgz")), key=os.path.getmtime)
+        if not tgzs or not os.path.isdir(hd):
+            continue
+        tgz, host = tgzs[-1], os.path.basename(hd)
+        ex = os.path.join(hd, "extract")
+        stamp = f"{os.path.basename(tgz)}:{os.path.getsize(tgz)}"
+        done = os.path.join(ex, ".done")
+        try:
+            if os.path.exists(done) and open(done).read() == stamp:
+                out[host] = "atlandı"
+                continue
+            shutil.rmtree(ex, ignore_errors=True)
+            os.makedirs(ex, mode=0o700)
+            n = 0
+            with tarfile.open(tgz, "r:gz") as tf:
+                for m in tf:
+                    name = os.path.normpath(m.name)
+                    if name.startswith(("/", "..")) or ".." in name.split(os.sep) or not (m.isreg() or m.isdir()):
+                        continue
+                    dest = os.path.join(ex, name)
+                    if m.isdir():
+                        os.makedirs(dest, mode=0o700, exist_ok=True)
+                        continue
+                    os.makedirs(os.path.dirname(dest), mode=0o700, exist_ok=True)
+                    src = tf.extractfile(m)
+                    if src is None:
+                        continue
+                    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                    with os.fdopen(fd, "wb") as f:
+                        shutil.copyfileobj(src, f)
+                    os.utime(dest, (m.mtime, m.mtime))
+                    n += 1
+            with open(done, "w") as f:
+                f.write(stamp)
+            out[host] = n
+        except (OSError, tarfile.TarError, EOFError) as e:
+            out[host] = f"HATA {type(e).__name__}: {e}"[:160]
+    return out
