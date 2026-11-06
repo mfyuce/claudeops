@@ -308,6 +308,7 @@ def redact(text: str) -> Tuple[str, int]:
 
 def _git(repo: str, *args: str, timeout: int = 300, env: Optional[Dict[str, str]] = None) -> Tuple[int, str]:
     """Tek git çıkış kapısı (testlerde yamalanır)."""
+    env = dict(env if env is not None else os.environ, GIT_TERMINAL_PROMPT="0")    # parola/hostkey sorusunda askıda kalma yok
     try:
         p = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=timeout, env=env)
         return p.returncode, (p.stdout or "") + (p.stderr or "")
