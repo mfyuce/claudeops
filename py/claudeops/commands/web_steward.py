@@ -1318,6 +1318,9 @@ def _send(name: str, cli: str, text: str) -> bool:
 
 
 UCLI_BOX_CHECK_DELAY = 0.8
+UCLI_BOX_POLLS = 20         # en çok yoklama (~16 sn): geç çizilen uzun metni de yakala
+UCLI_BOX_EMPTY_OK = 5       # art arda boş yoklama = gerçekten gönderildi
+UCLI_BOX_MAX_ENTERS = 3
 _UCLI_PROMPT = "ucli>"
 # İstemden sonra bunlar varsa kutu boştur (tur sürüyor/bitmiş): metin kayması değil, çıktı.
 _UCLI_TURN_RE = re.compile(r"waiting for response|^\s*(?:\[[^\]]*\]\s*$|[●⏺▸→•]|tool\b)", re.IGNORECASE)
@@ -1344,16 +1347,27 @@ def _ucli_box_text(name: str) -> str:
 
 
 def _ucli_box_recheck(name: str) -> None:
-    """Enter'dan sonra ucli giriş kutusunda metin kaldıysa BİR kez daha Enter; yine kaldıysa olay kaydı. Asla fırlatmaz."""
+    """Gönderimden sonra ucli giriş kutusunu İZLE: metin kaldıysa Enter (en çok `UCLI_BOX_MAX_ENTERS`), kutu art arda
+    `UCLI_BOX_EMPTY_OK` yoklamada boşsa bitir; hâlâ doluysa `ucli_send_stuck` olayı. Tek yoklama yetmez (5 Kas 05:40: uzun metin
+    ~20 sn sonra çizildi, boş kutu "gönderildi" sanıldı, Enter hiç gitmedi). Asla fırlatmaz."""
     try:
-        time.sleep(UCLI_BOX_CHECK_DELAY)
-        if not _ucli_box_text(name):
-            return
-        tmux_send_raw(name, "\r")          # yalnız Enter
-        time.sleep(UCLI_BOX_CHECK_DELAY)
-        left = _ucli_box_text(name)
+        enters = empties = 0
+        left = ""
+        for _ in range(UCLI_BOX_POLLS):
+            time.sleep(UCLI_BOX_CHECK_DELAY)
+            left = _ucli_box_text(name)
+            if not left:
+                empties += 1
+                if empties >= UCLI_BOX_EMPTY_OK:
+                    return
+                continue
+            empties = 0
+            if enters >= UCLI_BOX_MAX_ENTERS:
+                break
+            tmux_send_raw(name, "\r")          # yalnız Enter
+            enters += 1
         if left:
-            sw.log_event("ucli_send_stuck", paths=sw.paths_for("default"), name=name, left=left[:120])
+            sw.log_event("ucli_send_stuck", paths=sw.paths_for("default"), name=name, left=left[:120], enters=enters)
     except Exception:
         pass
 

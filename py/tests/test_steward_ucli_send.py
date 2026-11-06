@@ -46,7 +46,8 @@ class UcliSendTest(unittest.TestCase):
         cap.assert_not_called()
 
     def test_text_left_in_box_sends_one_more_enter(self):
-        caps = iter(["ucli> kalan metin\n", "ucli> \n"])
+        import itertools
+        caps = itertools.chain(["ucli> kalan metin\n"], itertools.repeat("ucli> \n"))
         with mock.patch.object(ws, "tmux_send_keys", return_value=True), \
                 mock.patch.object(ws, "tmux_capture", side_effect=lambda *a, **k: next(caps)), \
                 mock.patch.object(ws, "tmux_send_raw") as raw:
@@ -59,8 +60,19 @@ class UcliSendTest(unittest.TestCase):
                 mock.patch.object(ws, "tmux_capture", return_value="ucli> kalan\n"), \
                 mock.patch.object(ws, "tmux_send_raw") as raw:
             ws._send("u", "ucli", "x")
-        self.assertEqual(raw.call_count, 1)
+        self.assertEqual(raw.call_count, ws.UCLI_BOX_MAX_ENTERS)      # sınırlı sayıda Enter, sonra olay
         self.assertEqual(self.log.call_args[0][0], "ucli_send_stuck")
+
+    def test_late_drawn_text_gets_enter(self):
+        """Metin ilk yoklamalarda henüz çizilmemiş (boş kutu), sonra belirir: Enter yine gider."""
+        import itertools
+        caps = itertools.chain(["ucli> \n", "ucli> \n", "ucli> geç gelen\n"], itertools.repeat("ucli> \n"))
+        with mock.patch.object(ws, "tmux_send_keys", return_value=True), \
+                mock.patch.object(ws, "tmux_capture", side_effect=lambda *a, **k: next(caps)), \
+                mock.patch.object(ws, "tmux_send_raw") as raw:
+            ws._send("u", "ucli", "x")
+        raw.assert_called_once_with("u", "\r")
+        self.log.assert_not_called()
 
     def test_empty_box_no_extra_enter(self):
         with mock.patch.object(ws, "tmux_send_keys", return_value=True), \
