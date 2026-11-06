@@ -25,14 +25,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from .. import ucli_agents as ag
 from .. import ucli_client as uc
 from ..diaglog import diag_log
-from ..settings import byok_env_for, ucli_cost_config, ucli_services
+from ..settings import byok_env_for, ucli_services
 
 Caller = Tuple[str, str]        # ("human", "") | ("agent", <üst oturum adı>)
 Reply = Tuple[Dict[str, Any], int]
 
 _MODES = {"read": "read-only", "edit": "allow-edit"}
 _EFFORT_CHOICES = ("low", "medium", "high")
-_DEFAULT_EFFORTS = ["medium", "high"]       # ucli presetleri (`--max-steps`/bağlam sınırları) yalnız bu ikisi
 _RECENT_INPUT_SECONDS = 4.0                 # girdi gönderdikten hemen sonra durum dosyası henüz "idle" diyebilir
 _MAX_ANSWER_CHARS = 256 * 1024
 _MISSES: Dict[str, int] = {}                # üst oturum -> art arda "çalışmıyor" gözlemi (reap geçici keşif hatasına dayanıklı)
@@ -46,10 +45,11 @@ def _err(msg: str, status: int = 400) -> Reply:
 # -- model kataloğu --------------------------------------------------------------------------------------------------
 
 def _efforts_for(service: str, model: str) -> List[str]:
+    from ..providers.ucli_provider import _EFFORT_LEVELS   # ucli presetleri (`--max-steps`/bağlam sınırları) TEK kaynak
     from ..ucli_session_opts import effort_levels_for
     lv = effort_levels_for(service, model) if service != "evren" else None
     got = [x for x in (lv or []) if x in _EFFORT_CHOICES]
-    return got or list(_DEFAULT_EFFORTS)
+    return got or list(_EFFORT_LEVELS)
 
 
 def models_catalog() -> List[Dict[str, Any]]:
@@ -116,7 +116,7 @@ def _cost_usd(name: str) -> float:
     try:
         from .. import review as rv
         from .. import ucli_cost
-        mult = 1.6 if ucli_cost_config().get("cache_ttl") == "1h" else 1.0
+        mult = ucli_cost.write_mult()
         return round(float(rv.usage_cost_usd(ucli_cost.log_path(name), "", write_mult=mult)), 4)
     except Exception:
         return 0.0

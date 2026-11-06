@@ -42,12 +42,21 @@ def log_path(session_name: str, base: str = USAGE_DIR) -> str:
     return os.path.join(base, f"{safe}.jsonl")
 
 
+CACHE_1H_WRITE_MULT = 1.6   # 1 saatlik önbellek yazması 5 dk'lıktan pahalı (log'daki maliyet alt sınır); TEK yer
+
+
+def write_mult(cfg: Optional[Dict[str, Any]] = None) -> float:
+    """Ayardaki `cache_ttl`e göre önbellek yazma çarpanı (1h -> `CACHE_1H_WRITE_MULT`, aksi 1.0)."""
+    cfg = ucli_cost_config() if cfg is None else cfg
+    return CACHE_1H_WRITE_MULT if cfg.get("cache_ttl") == "1h" else 1.0
+
+
 def _day_start_ms(now: float) -> float:
     lt = time.localtime(now)
     return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)) * 1000.0
 
 
-def per_session_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = 1.6) -> Dict[str, float]:
+def per_session_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT) -> Dict[str, float]:
     """Bugünkü (yerel gün) $ — OTURUM (kodcu) başına: {oturum günlük adı (.jsonl'siz): usd}. Dizin yoksa {}."""
     t = time.time() if now is None else now
     since = _day_start_ms(t)
@@ -68,7 +77,7 @@ def per_session_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mu
 
 
 def rate_by_session(now: Optional[float] = None, window_min: float = 60.0, base: str = USAGE_DIR,
-                    write_mult: float = 1.6) -> Dict[str, float]:
+                    write_mult: float = CACHE_1H_WRITE_MULT) -> Dict[str, float]:
     """Son `window_min` dakikadaki harcama HIZI, OTURUM başına: {oturum: USD/saat}. Fiyat mantığı `per_session_usd` ile
     aynı (`rv.usage_cost_usd`, `since_ms` penceresi); dizin yok/pencere <= 0 -> {}. Yalnız hızı > 0 olanlar döner."""
     t = time.time() if now is None else now
@@ -98,12 +107,12 @@ def rate_by_session(now: Optional[float] = None, window_min: float = 60.0, base:
 
 
 def rate_usd_per_hour(now: Optional[float] = None, window_min: float = 60.0, base: str = USAGE_DIR,
-                      write_mult: float = 1.6) -> float:
+                      write_mult: float = CACHE_1H_WRITE_MULT) -> float:
     """Son `window_min` dakikadaki toplam maliyet / window_min * 60 (USD/saat)."""
     return sum(rate_by_session(now, window_min, base, write_mult).values())
 
 
-def total_usd(base: str = USAGE_DIR, write_mult: float = 1.6) -> float:
+def total_usd(base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT) -> float:
     """BİRİKMİŞ (tüm günler) toplam $: tüm oturum günlükleri, tarih süzgeci yok. Dizin yoksa 0."""
     try:
         names = os.listdir(base)
@@ -112,7 +121,7 @@ def total_usd(base: str = USAGE_DIR, write_mult: float = 1.6) -> float:
     return sum(rv.usage_cost_usd(os.path.join(base, n), "", write_mult=write_mult) for n in names if n.endswith(".jsonl"))
 
 
-def today_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = 1.6) -> float:
+def today_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT) -> float:
     """Bugünkü (yerel gün) toplam $ (tüm oturum günlükleri). Dizin yoksa 0."""
     return sum(per_session_usd(now, base, write_mult).values())
 
@@ -125,7 +134,7 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
     t = time.time() if now is None else now
     cfg = ucli_cost_config()
     if not use_cache or t - _CACHE["at"] > _TTL or _CACHE["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
-        mult = 1.6 if cfg["cache_ttl"] == "1h" else 1.0
+        mult = write_mult(cfg)
         by = per_session_usd(t, base, mult)
         _CACHE.update(at=t, total=total_usd(base, mult), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
                       rate_1h=rate_by_session(t, 60.0, base, mult), rate_15m=rate_by_session(t, 15.0, base, mult))
