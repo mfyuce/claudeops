@@ -2024,6 +2024,76 @@ def _stop(name: str, lang: str = "tr", exact: bool = False) -> dict:
     return {"ok": True, "result": results}
 
 
+# Panel "devir + kapat" (force'suz /api/stop): düğmenin dediğini HER oturumda yapar (değnekçi kapalı/observe, kayıtsız ya da
+# uzak oturum dahil): devir mesajı -> READY FOR HANDOVER -> kapat. Devir alınamazsa/zaman aşımında KAPATMAZ, hata döner
+# (arayüz "kapat"ı önerir). `human_stop_with_ho` (kayıtlı proje + değnekçi act) kendi motor yolunu korur; bu yalnız onun None döndüğü yer.
+HO_STOP_TIMEOUT_SECONDS = 300.0
+HO_STOP_POLL_SECONDS = 2.0
+
+
+def _ho_stop_fail(lang: str, why: str, code: str) -> dict:
+    tr = {"handover_failed": "Devir mesajı gönderilemedi; oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın.",
+          "handover_timeout": "Devir zamanında tamamlanmadı (READY FOR HANDOVER görünmedi); oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın.",
+          "handover_unreadable": "Oturumun son yanıtı okunamadı, devir doğrulanamaz; oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın."}
+    en = {"handover_failed": "Could not send the handover message; session NOT closed. Use the \"close\" button to close without a handover.",
+          "handover_timeout": "Handover did not finish in time (no READY FOR HANDOVER); session NOT closed. Use the \"close\" button to close without a handover.",
+          "handover_unreadable": "The session's last reply could not be read, so the handover cannot be verified; session NOT closed. Use the \"close\" button to close without a handover."}
+    msg = (en if lang == "en" else tr)[code]
+    return {"ok": False, "error": msg + (f" ({why})" if why else ""), "code": code, "suggest": "force"}
+
+
+def _stop_with_handover(name: str, lang: str = "tr", timeout: float = HO_STOP_TIMEOUT_SECONDS) -> Optional[dict]:
+    """YEREL oturum: devir mesajı, READY FOR HANDOVER görününce kapat. None = devir uygulanamaz (çalışmıyor/belirsiz/konuşmasız
+    ya da tmux'suz oturum): çağıran düz `_stop`a düşer (o zaten doğru hatayı verir). Devir alınamazsa kapatmaz."""
+    kind, procs = _find_running_for_action(name)
+    if kind not in ("exact", "unique_base") or not procs:
+        return None
+    s = procs[0]
+    provider = get_provider(s.cli)
+    if not provider.has_conversation() or not is_tmux_backed(s.pid):
+        return None
+    baseline = provider.last_exchange(s.cwd, s.sid)
+    if baseline is None:
+        return _ho_stop_fail(lang, "", "handover_unreadable")
+    res = _handover(s.name, lang=lang, exact=True)
+    if not res.get("ok"):
+        return _ho_stop_fail(lang, str(res.get("error") or ""), "handover_failed")
+    live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
+    reply = turns.wait_for_reply(s, provider, baseline, live_snapshot, timeout=timeout, poll=HO_STOP_POLL_SECONDS,
+                                 stable_polls=2, require_marker="READY FOR HANDOVER", cancel=None)
+    if reply is None:
+        diag_log("ho_stop_timeout", name=s.name)
+        return _ho_stop_fail(lang, "", "handover_timeout")
+    diag_log("ho_stop_ready", name=s.name)
+    out = _stop(s.name, lang=lang, exact=True)
+    return dict(out, handover=True) if isinstance(out, dict) else out
+
+
+def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: float = HO_STOP_TIMEOUT_SECONDS) -> Optional[dict]:
+    """UZAK oturum (tam adı çalışan satır): uzak `/api/handover` -> `/api/term/chat` ile READY FOR HANDOVER -> uzak
+    `/api/stop` `force`+`exact` (devir zaten alındı). None = devir uygulanamaz: çağıran eski düz proxy yoluna düşer."""
+    fresh, row = web_steward._remote_running_row(host, name)
+    if not fresh or row is None:
+        return None
+    provider = get_provider(str(row.get("cli") or DEFAULT_CLI))
+    if not provider.has_conversation():
+        return None
+    baseline = web_orch._fetch_exchange(host, name, "", None, provider)
+    if baseline is None:
+        return _ho_stop_fail(lang, "", "handover_unreadable")
+    res, _status = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
+    if not res.get("ok"):
+        return _ho_stop_fail(lang, str(res.get("error") or ""), "handover_failed")
+    reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=timeout, poll=HO_STOP_POLL_SECONDS,
+                                            stable_polls=2, require_marker="READY FOR HANDOVER", cancel=threading.Event(),
+                                            push_check=None)
+    if reply is None:
+        diag_log("ho_stop_timeout", name=name, host=host)
+        return _ho_stop_fail(lang, "", "handover_timeout")
+    out, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang, "force": True, "exact": True})
+    return dict(out, handover=True) if isinstance(out, dict) else out
+
+
 class _AgentOps:
     """`web_agents`'in filo eylemleri (enjekte edilir: web_agents web.py'yi içe aktarmaz, testte gerçek spawn yok). Çocuk
     ajanlar HER ZAMAN tam adla ve penceresiz (`hidden`) açılır/durdurulur: `_start(fresh=True)` / `_stop(exact=True)`."""
@@ -4916,6 +4986,11 @@ class _Handler(BaseHTTPRequestHandler):
         if path in web_hosts.HOST_ROUTED_PATHS:
             host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
             if host != LOCAL_HOST_NAME:
+                if path == "/api/stop" and data.get("force") is not True and data.get("exact") is not True:
+                    ho = _remote_stop_with_handover(host, str(data.get("name") or "").strip(), lang=lang)
+                    if ho is not None:      # uzak "devir + kapat": önce devir, sonra force'lu kapat (host eski olsa da devir atlanmaz)
+                        self._json_notify(ho)
+                        return
                 result, proxy_status = web_hosts.proxy_action(path, host, data)
                 self._json_notify(result, status=proxy_status)
                 return
@@ -5295,6 +5370,8 @@ class _Handler(BaseHTTPRequestHandler):
             result = None
             if data.get("force") is not True and data.get("exact") is not True:
                 result = web_steward.human_stop_with_ho(name)
+                if result is None:      # düğme adı "devir + kapat": proje olmayan/değnekçi kapalı/beyin oturumunda da devir ALINIR
+                    result = _stop_with_handover(name, lang=lang)
             if result is None:
                 result = _stop(name, lang=lang, exact=data.get("exact") is True)
         elif path == "/api/retire":
