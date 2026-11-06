@@ -366,6 +366,7 @@ class TestEngineGolden(_Tmp):
                 with mock.patch.object(ws, "steward_config", lambda sid="default": cfg), \
                         mock.patch.object(ws, "_collect_views", lambda c, s=step: _tm._golden_views(s)), \
                         mock.patch.object(ws, "_apply", lambda a, c, p, w=None: got.append(a) or {"ok": True}), \
+                        mock.patch.object(ws, "maybe_pending_digest", lambda c, n: False), \
                         mock.patch.object(ws.web_ws, "notify_status_changed", lambda: None), \
                         mock.patch.object(ws.time, "time", lambda: now):
                     res = ws.tick_once("manual", cards=False)
