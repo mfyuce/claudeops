@@ -1696,6 +1696,25 @@ def _launch_kwargs(name: str, model: str, effort: str) -> Dict[str, Any]:
     return out
 
 
+def _model_endpoint_mismatch(name: str) -> Optional[Dict[str, Any]]:
+    """Tarihten BAĞIMSIZ yapılandırma denetimi: kayıt ucli + `claude-*` modeli ama hizmet claude/anthropic DEĞİL (boş `cli_opts` =
+    varsayılan Evren) ise oturum her turda 404 `model_not_found` döngüsüne girer (danisppr, 6 Kas: 157 tur). Açılış
+    REDDEDİLİR (`model_endpoint_mismatch`). Kayıt yok / claude CLI / başka model -> None. Fırlatmaz."""
+    try:
+        rec = _last_launch(name)
+        if not rec or rec.get("cli") != "ucli" or not str(rec.get("model") or "").lower().startswith("claude"):
+            return None
+        opts = rec.get("cli_opts") if isinstance(rec.get("cli_opts"), dict) else {}
+        blob = " ".join(str(opts.get(k) or "") for k in ("service", "endpoint", "base_url", "url")).lower()
+        if "claude" in blob or "anthropic" in blob:
+            return None
+        return {"ok": False, "code": "model_endpoint_mismatch",
+                "error": f"{name}: kayıt ucli + {rec.get('model')} ama hizmet/uç nokta Anthropic değil (Evren claude modelini "
+                         "tanımaz, 404 döngüsü). Kaydı claude CLI'ye çevir ya da cli_opts.service=claude ver; açılmadı."}
+    except Exception:
+        return None
+
+
 def _api_blocked(name: str, today: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """API yasağı kapısı (sahip, 2026-11-05): `settings.anthropic_api_block_until` (YYYY-MM-DD) henüz gelmediyse ve `name`in
     başlatma kaydı ucli + Anthropic hizmeti (`cli_opts.service` claude/anthropic ya da uç nokta anthropic) ise açılış
@@ -1709,8 +1728,7 @@ def _api_blocked(name: str, today: Optional[str] = None) -> Optional[Dict[str, A
             return None
         opts = rec.get("cli_opts") if isinstance(rec.get("cli_opts"), dict) else {}
         blob = " ".join(str(opts.get(k) or "") for k in ("service", "endpoint", "base_url", "url")).lower()
-        implicit = not blob.strip() and str(rec.get("model") or "").lower().startswith("claude")   # cli_opts boş + claude-* modeli: Anthropic'e düşer
-        if "claude" in blob or "anthropic" in blob or implicit:
+        if "claude" in blob or "anthropic" in blob:
             return {"ok": False, "code": "anthropic_api_blocked",
                     "error": f"{name}: Anthropic API yasağı {until} tarihine kadar; kayıt ucli+Anthropic, açılmadı "
                              "(instances.json kaydını claude CLI'ye çevir ya da yasağı kaldır)"}
@@ -1728,7 +1746,7 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     live = [_running(name)] if exact and _running(name) is not None else ([] if exact else _live_sessions(name, sid))
     if live:
         return {"ok": True, "started": False, "cli": live[0].cli}
-    blocked = _api_blocked(name)
+    blocked = _model_endpoint_mismatch(name) or _api_blocked(name)
     if blocked is not None:
         sw.log_event("api_blocked", paths=sw.paths_for(sid), name=name)
         return blocked

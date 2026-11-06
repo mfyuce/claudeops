@@ -25,9 +25,16 @@ class ApiBlockTest(unittest.TestCase):
     def test_endpoint_anthropic_blocked(self):
         self.assertIsNotNone(self.gate("2026-11-09", {"cli": "ucli", "cli_opts": {"endpoint": "https://api.anthropic.com"}}))
 
-    def test_empty_opts_claude_model_blocked(self):
-        self.assertIsNotNone(self.gate("2026-11-09", {"cli": "ucli", "model": "claude-sonnet-5-5", "cli_opts": None}))
-        self.assertIsNone(self.gate("2026-11-09", {"cli": "ucli", "model": "glm-5.3", "cli_opts": None}))
+    def test_empty_opts_claude_model_is_mismatch_not_date_gate(self):
+        rec = {"cli": "ucli", "model": "claude-sonnet-5-5", "cli_opts": None}
+        self.assertIsNone(self.gate("2026-11-09", rec))      # tarih kapısı artık bunu tutmaz
+        with mock.patch.object(ws, "_last_launch", return_value=rec):
+            r = ws._model_endpoint_mismatch("danisppr")
+        self.assertEqual(r["code"], "model_endpoint_mismatch")      # tarihten bağımsız
+        with mock.patch.object(ws, "_last_launch", return_value={"cli": "ucli", "model": "glm-5.3", "cli_opts": None}):
+            self.assertIsNone(ws._model_endpoint_mismatch("x"))
+        with mock.patch.object(ws, "_last_launch", return_value=UCLI_CLAUDE | {"model": "claude-sonnet-5-5"}):
+            self.assertIsNone(ws._model_endpoint_mismatch("x"))     # service claude: uyumlu
 
     def test_open_after_date_or_empty(self):
         self.assertIsNone(self.gate("2026-11-09", UCLI_CLAUDE, today="2026-11-09"))
