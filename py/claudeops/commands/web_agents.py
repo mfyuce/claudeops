@@ -128,7 +128,8 @@ def _state(name: str, rec: Dict[str, Any], running: Dict[str, Any], now: float) 
     st = _status_file(cwd, name)
     turns = _history(cwd, name)
     if st is not None:
-        busy = st.get("activity") != "waiting_for_stdin"
+        from ..providers.ucli_provider import busy_from_status    # tek kaynak (live_busy ile aynı kural)
+        busy = busy_from_status(st)
         if not busy and now - float(rec.get("last_input_at") or 0) < _RECENT_INPUT_SECONDS:
             busy = True
     else:       # durum dosyası yok (başlangıç ya da eski ikili): cevaplanmamış kullanıcı turu varsa meşgul

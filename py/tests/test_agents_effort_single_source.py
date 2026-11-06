@@ -14,3 +14,10 @@ class EffortSingleSource(unittest.TestCase):
 
     def test_fallback_follows_provider(self):
         self.assertEqual(web_agents._efforts_for("evren", "x"), list(up._EFFORT_LEVELS))
+
+
+class BusyRule(unittest.TestCase):
+    def test_rule(self):
+        self.assertFalse(up.busy_from_status({"activity": "waiting_for_stdin"}))
+        for a in ("waiting_for_model", "running_tool", "waiting_for_user", None):
+            self.assertTrue(up.busy_from_status({"activity": a}))

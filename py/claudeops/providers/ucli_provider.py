@@ -156,6 +156,12 @@ _EFFORT_LIMITS = {
 }
 _EFFORT_LEVELS = list(_EFFORT_LIMITS.keys())
 
+
+def busy_from_status(status: dict) -> bool:
+    """Durum dosyasından "meşgul mü" kuralının TEK kaynağı: yalnız `waiting_for_stdin` boşta, öteki her değer
+    meşgul (`UcliProvider.live_busy` ve web_agents durum ucu kullanır)."""
+    return status.get("activity") != "waiting_for_stdin"
+
 # Bir model isteğinin ucli'de iptal edilmeden bekleyeceği süre (`--request-timeout-secs`; ucli'nin kendi
 # varsayılanı 120 sn). Zaman aşımı filoda ölçülen EN PAHALI tek olay: sunucu iptal edilen isteği yine işleyip
 # sayıyor ve yeniden deneme önbelleksiz dönüyor (unified-cli `bench/token-economy`: bir koşunun %28'i, bir
@@ -942,7 +948,7 @@ class UcliProvider(CliProvider):
         status = read_status_file(cwd, sid)
         if status is None:
             return None
-        return status.get("activity") != "waiting_for_stdin"
+        return busy_from_status(status)
 
     def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
         # Durum dosyasındaki `context_bytes` (oturumun GÜNCEL bağlam boyutu, bayt) / 4 = kaba token tahmini. `usage.prompt_tokens`
