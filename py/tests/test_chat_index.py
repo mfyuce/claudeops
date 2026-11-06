@@ -23,6 +23,12 @@ class IndexTest(unittest.TestCase):
             self.assertEqual([e for e in ents if e["kind"] == "memory"][0]["host"], "h1")
             self.assertIn("| claude | -p1 | 1 |", open(os.path.join(t, "INDEX.md")).read())
 
+    def test_classify_remote_host(self):
+        c = I.classify("local/claude-ulak_31-projects/-home-x/s1.jsonl")
+        self.assertEqual((c["cli"], c["host"], c["project"], c["session"]), ("claude", "ulak_31", "-home-x", "s1"))
+        c = I.classify("local/codex-ulak_31-sessions/2026/11/06/rollout-a.jsonl")
+        self.assertEqual((c["cli"], c["host"]), ("codex", "ulak_31"))
+
 
 if __name__ == "__main__":
     unittest.main()

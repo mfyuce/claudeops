@@ -338,6 +338,12 @@ def _local_sources() -> List[Tuple[str, ...]]:
         (os.path.join(STAGE_DIR, "gemini"), os.path.join("local", "gemini-dump"), "text"),
         (os.path.join(mir, "ucli"), os.path.join("local", "claude-ucli"), "text"),
     ]
+    for hdir in sorted(glob.glob(os.path.join(mir, "*", "extract"))):          # uzak host sohbetleri: local/<cli>-<host>-... (grup = cli)
+        rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(hdir)))
+        for pr in (os.path.join(hdir, ".claude", "projects"), os.path.join(hdir, "projects")):
+            out.append((pr, os.path.join("local", f"claude-{rh}-projects"), "text"))
+        out.append((os.path.join(hdir, ".claude", "history.jsonl"), os.path.join("local", f"claude-{rh}-history"), "text"))
+        out.append((os.path.join(hdir, ".codex", "sessions"), os.path.join("local", f"codex-{rh}-sessions"), "text"))
     out.extend(_memory_sources(home, mir))
     return out
 
@@ -362,6 +368,12 @@ def _memory_sources(home: str, mir: str) -> List[Tuple[str, ...]]:
         for sub in ("antigravity", "antigravity-cli", "antigravity-ide", "antigravity-backup"):
             out.append((os.path.join(base, sub, "knowledge"), os.path.join("memory", host, "gemini", sub + "-knowledge"), "mem"))
         out.append((os.path.join(base, "GEMINI.md"), os.path.join("memory", host, "gemini", "GEMINI"), "mem"))
+    for hdir in sorted(glob.glob(os.path.join(mir, "*", "extract"))):          # uzak host arşivleri (chat_dump.ingest_remote_archives)
+        rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(hdir)))
+        for pr in (os.path.join(hdir, ".claude", "projects"), os.path.join(hdir, "projects")):
+            for d in sorted(glob.glob(os.path.join(pr, "*", "memory"))):
+                out.append((d, os.path.join("memory", rh, "claude", os.path.basename(os.path.dirname(d))), "mem"))
+        out.append((os.path.join(hdir, ".codex", "memories"), os.path.join("memory", rh, "codex", "memories"), "mem"))
     cop = os.path.join(mir, "copilot")
     out.append((os.path.join(cop, "data.db"), os.path.join("memory", host, "copilot", "data"), "mem"))
     out.append((os.path.join(cop, "command-history-state.json"), os.path.join("memory", host, "copilot", "data"), "mem"))
@@ -540,6 +552,13 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
     manifest: Dict[str, str] = dict((state.get("chat_backup") or {}).get("manifest") or {})
     dump_info: Dict[str, Any] = {}
+    if apply and "local" in (cfg.get("sources") or []):
+        try:                               # uzak host arşivlerini (yuhem, ulak_31 tgz) güvenle aç
+            from . import chat_dump
+            ing = chat_dump.ingest_remote_archives(os.path.join(CLAUDEOPS_DIR, "backups", "chat-mirror"))
+            diag_log(f"periodic chat_backup: uzak arşiv {ing}")
+        except Exception as e:  # noqa: BLE001
+            diag_log(f"periodic chat_backup: uzak arşiv hatası {type(e).__name__}: {e}")
     if apply and "local" in (cfg.get("sources") or []) and str(cfg.get("dump_db", True)).lower() not in ("off", "0", "false", "no", ""):
         from . import chat_dump
         stamps: Dict[str, str] = dict((state.get("chat_backup") or {}).get("dump_stamps") or {})

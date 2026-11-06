@@ -88,6 +88,21 @@ class DumpTest(unittest.TestCase):
             self.assertEqual(__import__("datetime").datetime.fromtimestamp(os.path.getmtime(f)).strftime("%F"), "2026-09-21")
             self.assertEqual(D.stage_dumps(stage, stamps, home=t)["skipped"], 1)
 
+    def test_ingest_remote_archives(self):
+        import io, tarfile
+        with tempfile.TemporaryDirectory() as t:
+            hd = os.path.join(t, "h1")
+            os.makedirs(hd)
+            with tarfile.open(os.path.join(hd, "a.tgz"), "w:gz") as tf:
+                for name, data in ((".claude/projects/-p/s.jsonl", b"{}\n"), ("../evil.txt", b"x"), ("/abs.txt", b"x")):
+                    ti = tarfile.TarInfo(name); ti.size = len(data)
+                    tf.addfile(ti, io.BytesIO(data))
+            r = D.ingest_remote_archives(t)
+            self.assertEqual(r, {"h1": 1})
+            self.assertTrue(os.path.exists(os.path.join(hd, "extract", ".claude/projects/-p/s.jsonl")))
+            self.assertFalse(os.path.exists(os.path.join(t, "evil.txt")))
+            self.assertEqual(D.ingest_remote_archives(t), {"h1": "atlandı"})
+
 
 if __name__ == "__main__":
     unittest.main()
