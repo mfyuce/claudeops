@@ -45,6 +45,40 @@ class TestExportRootPure(unittest.TestCase):
         self.assertEqual(rv.export_root({"where": "x.py:1"}, "p", plain, lambda n: ""), plain)
 
 
+class TestComboWorktree(unittest.TestCase):
+    """Combo alt dizini ana deponun worktree'si: depo adi kayitli proje adi olmasa da (claudeops=cops) ana depoya yazilir."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.main = _repo(self.tmp.name, "claudeops")
+        self.combo = os.path.join(self.tmp.name, "combo")
+        wt = os.path.join(self.combo, "claudeops")
+        os.makedirs(wt)
+        with open(os.path.join(wt, ".git"), "w", encoding="utf-8") as f:
+            f.write(f"gitdir: {self.main}/.git/worktrees/claudeops\n")
+
+    def test_worktree_prefix_resolves_to_main_repo(self):
+        self.assertEqual(rv.export_root({"where": "claudeops/py/a.py:1"}, "cliops", self.combo, lambda n: ""), self.main)
+
+    def test_non_worktree_git_file_is_not_followed(self):
+        wt = os.path.join(self.combo, "sub")
+        os.makedirs(wt)
+        with open(os.path.join(wt, ".git"), "w", encoding="utf-8") as f:
+            f.write("gitdir: /nowhere/modules/sub\n")
+        self.assertEqual(rv.export_root({"where": "sub/a.py:1"}, "cliops", self.combo, lambda n: ""), "")
+
+    def test_staleness_checks_the_real_repo_not_the_snapshot(self):
+        os.makedirs(os.path.join(self.main, "py"))
+        with open(os.path.join(self.main, "py", "a.py"), "w", encoding="utf-8") as f:
+            f.write("def yeni(): pass\n")
+        row = {"where": "claudeops/py/a.py:1", "title": "`eski` hatali"}
+        chk, root = rv.row_in_repo(row, self.main, self.combo)
+        self.assertEqual((chk["where"], root), ("py/a.py:1", self.main))
+        self.assertTrue(rv.stale_reason(chk, root))
+        same = {"where": "py/a.py:1"}
+        self.assertEqual(rv.row_in_repo(same, self.main, self.main), (same, self.main))
+
+
 class TestExportRoutesByPath(_Flow):
     MD = ("## R-1 | P2 | unified-cli/src/a.rs:1 | Birinci\ngovde\n\n"
           "## R-2 | P2 | zzz/b.py:2 | Ikinci\ngovde\n")
