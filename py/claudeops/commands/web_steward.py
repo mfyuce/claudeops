@@ -1751,6 +1751,27 @@ def _api_blocked(name: str, today: Optional[str] = None) -> Optional[Dict[str, A
     return None
 
 
+_START_FAILS: Dict[str, Tuple[int, float]] = {}          # oturum/proje adı -> (art arda başarısız sayısı, son başarısızlık zamanı)
+_START_BACKOFF_STEPS = (600.0, 3600.0, 21600.0)          # 10 dk / 1 sa / 6 sa
+
+
+def _start_backoff_remaining(name: str, now: Optional[float] = None) -> float:
+    """Son başarısız başlatmadan sonra beklenecek kalan saniye (0 = denenebilir). Bellek içi: servis restart'ında sıfırlanır."""
+    n, at = _START_FAILS.get(name, (0, 0.0))
+    if n <= 0:
+        return 0.0
+    step = _START_BACKOFF_STEPS[min(n, len(_START_BACKOFF_STEPS)) - 1]
+    return max(0.0, at + step - (time.time() if now is None else now))
+
+
+def _start_backoff_note(name: str, ok: bool, now: Optional[float] = None) -> None:
+    if ok:
+        _START_FAILS.pop(name, None)
+        return
+    n, _at = _START_FAILS.get(name, (0, 0.0))
+    _START_FAILS[name] = (n + 1, time.time() if now is None else now)
+
+
 def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "tr", fresh: bool = False,
                     host: str = "", rt: Optional[_RemoteTick] = None, sid: str = "default",
                     actor: str = "", exact: bool = False) -> Dict[str, Any]:
@@ -1764,25 +1785,33 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     if blocked is not None:
         sw.log_event("api_blocked", paths=sw.paths_for(sid), name=name)
         return blocked
+    wait = _start_backoff_remaining(name)
+    if wait > 0:        # D2: başarısız başlatmadan sonra üstel geri çekilme (vc: 26 başarısız start); her tick yeniden denemez
+        return {"ok": False, "error": f"start backoff: retry in {int(wait)}s", "code": "start_backoff", "retry_in": int(wait)}
+    closed = _closed_in_models(name)
+    if closed:   # `cops close` bıraktı: guard/cron bu oturumu yeniden AÇMAZ; elle başlatma sessiz geçmesin
+        sw.log_event("start_closed_project", paths=sw.paths_for(sid), name=name)
     ho_jsonl = "" if fresh else _resume_lacks_ho(name, steward_config(sid))
+    big = 0
     if ho_jsonl:     # sahip kuralı: eski konuşma devirsiz kapanmış -> önce o konuşmayla aç, devir al, motor taze yeniden açar
         sw.log_event("ho_on_open", paths=sw.paths_for(sid), name=name, step="resume", jsonl=os.path.basename(ho_jsonl))
     elif not fresh:
         big = _oversized_resume(name, steward_config(sid))
         if big:      # soğuk büyük konuşmayı yeniden okutup hemen devir almak yerine taze aç (ysf 386K örneği); özet kartta/CLAUDE.md'de
             fresh = True
-            sw.log_event("start_fresh_big_context", paths=sw.paths_for(sid), name=name, tokens=big)
-    closed = _closed_in_models(name)
-    if closed:   # `cops close` bıraktı: guard/cron bu oturumu yeniden AÇMAZ; elle başlatma sessiz geçmesin
-        sw.log_event("start_closed_project", paths=sw.paths_for(sid), name=name)
     kw = {"model": model, "effort": effort, "fresh": fresh, "lang": lang}
     kw.update(_launch_kwargs(name, model, effort))      # kayıtlı cli/cli_opts/model/effort (varsa) başlatma değerlerini geçer
     res = _act("start", name, **kw)
     if not res.get("ok"):
+        _start_backoff_note(name, False)
         return dict(res, closed_in_models=True) if closed else res
+    if big:          # D2: yalnız GERÇEK başlatmada yaz (eskiden her denemede: vc 1-2 Kas 582 satır)
+        sw.log_event("start_fresh_big_context", paths=sw.paths_for(sid), name=name, tokens=big)
     if not _start_appeared(name, sid):
+        _start_backoff_note(name, False)
         return {"ok": False, "code": "start_not_visible", "name": name,
                 "error": f"start for {name!r} returned ok but no session appeared within {START_APPEAR_SECONDS:g}s"}
+    _start_backoff_note(name, True)
     cli = kw.get("cli") or _project_cli(name)
     ready = _wait_ready(name, cli)
     if ho_jsonl:
