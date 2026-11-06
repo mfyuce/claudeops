@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import types
@@ -58,3 +59,30 @@ class TestEffortAndLimit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LimitScanTextsTests(unittest.TestCase):
+    """Modelin kendi metnindeki kota alıntısı limit sayılmaz (mimo 2026-11-04 yanlış pozitifi)."""
+    QUOTE = "yorum: agy: `RESOURCE_EXHAUSTED (code 429): Individual quota reached ... Resets in 107h49m47s.`"
+
+    def _hit(self, out, err="", jerr=""):
+        return rv.is_quota_exhausted(*rv.limit_scan_texts(out, err, jerr)) or rv.is_daily_limit(*rv.limit_scan_texts(out, err, jerr))
+
+    def test_model_quote_in_partial_turn_is_not_a_limit(self):
+        out = json.dumps({"error": "The model gave no answer within 120 s after the wall-clock budget (900 s) ran out",
+                          "partial_turn": self.QUOTE * 3})
+        self.assertFalse(self._hit(out, "", "The model gave no answer within 120 s"))
+
+    def test_long_plain_stdout_quote_is_not_a_limit(self):
+        self.assertFalse(self._hit("rapor " * 200 + self.QUOTE))
+
+    def test_ucli_stderr_stream_quote_is_not_a_limit_but_short_banner_is(self):
+        scan = lambda err: rv.is_quota_exhausted(*rv.limit_scan_texts("{}", err, "", err_has_model_text=True))
+        self.assertFalse(scan("akis metni " * 100 + self.QUOTE))
+        self.assertTrue(scan("error: Individual quota reached. Resets in 1h."))
+
+    def test_real_provider_errors_still_detected(self):
+        self.assertTrue(self._hit("", "error: Individual quota reached. Please upgrade. Resets in 151h24m54s."))
+        self.assertTrue(self._hit(json.dumps({"error": "rate limited", "code": "daily_token_limit_exceeded"})))
+        self.assertTrue(self._hit("", "", "daily_token_limit_exceeded"))
+        self.assertTrue(self._hit("You have exceeded your monthly quota (Request ID: X)"))

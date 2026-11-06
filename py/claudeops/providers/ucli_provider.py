@@ -102,7 +102,7 @@ from ..settings import ucli_cost_config
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
 from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
-from ..ucli_client import (UcliError, binary_derives_context, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, failed_turn_records, resolve_binary,
+from ..ucli_client import (UcliError, binary_derives_context, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, status_is_busy, failed_turn_records, resolve_binary,
                            ucli_chat_once)
 from .base import CliProvider, McpServerSpec, OneshotError
 
@@ -155,12 +155,6 @@ _EFFORT_LIMITS = {
     "high": {"max_steps": 200, "max_context_kib": 16384, "max_tool_calls": 256, "max_output_tokens": 16000},
 }
 _EFFORT_LEVELS = list(_EFFORT_LIMITS.keys())
-
-
-def busy_from_status(status: dict) -> bool:
-    """Durum dosyasından "meşgul mü" kuralının TEK kaynağı: yalnız `waiting_for_stdin` boşta, öteki her değer
-    meşgul (`UcliProvider.live_busy` ve web_agents durum ucu kullanır)."""
-    return status.get("activity") != "waiting_for_stdin"
 
 # Bir model isteğinin ucli'de iptal edilmeden bekleyeceği süre (`--request-timeout-secs`; ucli'nin kendi
 # varsayılanı 120 sn). Zaman aşımı filoda ölçülen EN PAHALI tek olay: sunucu iptal edilen isteği yine işleyip
@@ -948,7 +942,7 @@ class UcliProvider(CliProvider):
         status = read_status_file(cwd, sid)
         if status is None:
             return None
-        return busy_from_status(status)
+        return status_is_busy(status)
 
     def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
         # Durum dosyasındaki `context_bytes` (oturumun GÜNCEL bağlam boyutu, bayt) / 4 = kaba token tahmini. `usage.prompt_tokens`

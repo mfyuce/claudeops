@@ -45,10 +45,10 @@ def _err(msg: str, status: int = 400) -> Reply:
 # -- model kataloğu --------------------------------------------------------------------------------------------------
 
 def _efforts_for(service: str, model: str) -> List[str]:
+    from ..providers.ucli_provider import _EFFORT_LEVELS   # ucli presetleri (`--max-steps`/bağlam sınırları) TEK kaynak
     from ..ucli_session_opts import effort_levels_for
     lv = effort_levels_for(service, model) if service != "evren" else None
     got = [x for x in (lv or []) if x in _EFFORT_CHOICES]
-    from ..providers.ucli_provider import _EFFORT_LEVELS     # tek kaynak: ucli presetleri (`_EFFORT_LIMITS` anahtarları)
     return got or list(_EFFORT_LEVELS)
 
 
@@ -116,7 +116,8 @@ def _cost_usd(name: str) -> float:
     try:
         from .. import review as rv
         from .. import ucli_cost
-        return round(float(rv.usage_cost_usd(ucli_cost.log_path(name), "", write_mult=ucli_cost.write_mult())), 4)
+        mult = ucli_cost.write_mult()
+        return round(float(rv.usage_cost_usd(ucli_cost.log_path(name), "", write_mult=mult)), 4)
     except Exception:
         return 0.0
 
@@ -128,8 +129,7 @@ def _state(name: str, rec: Dict[str, Any], running: Dict[str, Any], now: float) 
     st = _status_file(cwd, name)
     turns = _history(cwd, name)
     if st is not None:
-        from ..providers.ucli_provider import busy_from_status    # tek kaynak (live_busy ile aynı kural)
-        busy = busy_from_status(st)
+        busy = uc.status_is_busy(st)
         if not busy and now - float(rec.get("last_input_at") or 0) < _RECENT_INPUT_SECONDS:
             busy = True
     else:       # durum dosyası yok (başlangıç ya da eski ikili): cevaplanmamış kullanıcı turu varsa meşgul

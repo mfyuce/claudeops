@@ -337,6 +337,12 @@ def archive_session_files(cwd: str, session: str, stamp: Optional[int] = None) -
     return moved
 
 
+def status_is_busy(status: Dict[str, Any]) -> bool:
+    """Durum dosyası meşgul mü: `waiting_for_stdin` = boşta; öteki üç değer (waiting_for_model/running_tool/waiting_for_user)
+    bir turu işliyor demek. Meşgul kuralı TEK yer (`UcliProvider.live_busy` + `web_agents._state`)."""
+    return status.get("activity") != "waiting_for_stdin"
+
+
 def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
     """`{session}.status.json`'ı ayrıştırır (unified-cli'nin `--status-file`'ı,
     2026-10-04'te `ucli chat --help`'te fark edildi — `chat --repl --session

@@ -635,6 +635,30 @@ def block_until_for_limit(now: float, *texts: Any) -> float:
 BANNER_MAX_CHARS = 600
 
 
+_MODEL_TEXT_KEYS = ("partial_turn", "answer", "result", "text", "messages")
+
+
+def limit_scan_texts(out: Any, err: Any, jerr: Any, err_has_model_text: bool = False) -> Tuple[str, ...]:
+    """Kota/limit taramasına girecek metinler: SAĞLAYICI hata kanalları (stderr, ayrıştırılmış JSON hatası) ve stdout'un
+    yalnız sağlayıcıya ait kısmı. Modelin kendi metni (ucli JSON'daki `partial_turn`/`answer`, uzun stdout) HARİÇ:
+    kodu inceleyen model `RESOURCE_EXHAUSTED ... Resets in 107h49m47s` yorumunu alıntılayınca zaman aşımı koşusu
+    günlerce engellenmişti (uzops/evren/mimo-v2.6-pro 2026-11-04). Stdout: JSON sözlükse model alanları atılır, JSON değilse
+    yalnız KISA bir mesajsa (`is_short_banner`) taranır. `err_has_model_text` (ucli modları): stderr modelin canlı
+    akışını da taşır (alıntı orada da yanlış pozitif verdi), bu yüzden stdout gibi yalnız KISA mesajsa taranır."""
+    e = str(err or "")
+    parts = [e if (not err_has_model_text or is_short_banner(e)) else "", str(jerr or "")]
+    o = str(out or "")
+    try:
+        val = json.loads(o)
+    except ValueError:
+        val = None
+    if isinstance(val, dict):
+        parts.append(json.dumps({k: v for k, v in val.items() if k not in _MODEL_TEXT_KEYS}, ensure_ascii=False))
+    elif is_short_banner(o):
+        parts.append(o)
+    return tuple(parts)
+
+
 def is_short_banner(text: Any) -> bool:
     """Çıkış kodu 0 ama stdout'ta rapor yerine KISA bir sağlayıcı mesajı (ör. copilot kota mesajı) var mı? Bulgu başlığı
     (`## R-`) ya da uzun metin gerçek rapordur: onda "quota" sözü geçmesi (kodu inceleyen rapor) limit sayılmaz."""
