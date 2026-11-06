@@ -20,9 +20,13 @@ class FakeRemote:
             self.files[".chatpull-yuhem-20261107.done"] = b""
             assert "cd " not in got                           # cwd (files kökü) değişmemeli
         elif got.startswith("rm "):
-            for k in list(self.files):
-                assert k.startswith(".chatpull-")             # yalnız kendi dosyası
-                del self.files[k]
+            for a in got.split()[3:]:                         # yalnız adı verilen dosyaları siler (joker yok)
+                self.files.pop(a.strip("'").split("/")[-1], None)
+
+    busy = False
+
+    def idle(self):
+        return not self.busy
 
     def root(self):
         return self.cwd
@@ -52,6 +56,23 @@ class RemotePullTest(unittest.TestCase):
         fr = FakeRemote(lose_first=True)
         fr.send(R.pack_command("yuhem", "20261107", outdir="/live").lstrip())  # kanıt: boşluksuz komut bozulur
         self.assertEqual(fr.files, {})
+
+    def test_busy_shell_backs_off_cleanly(self):
+        fr = FakeRemote()
+        fr.busy = True
+        r = R.pull(fr, "yuhem", "20261107", "/tmp/x", sleep=lambda s: None)
+        self.assertFalse(r["ok"])
+        self.assertTrue(r.get("skipped"))
+        self.assertEqual(fr.sent, [])                          # hiçbir şey gönderilmedi
+
+    def test_cleanup_touches_only_own_files(self):
+        fr = FakeRemote()
+        fr.files["kullanici.txt"] = b"onemli"
+        fr.send(R.cleanup_command("yuhem", "20261107", "/live"))
+        self.assertIn("kullanici.txt", fr.files)
+        c = R.cleanup_command("yuhem", "20261107", "/live")
+        self.assertNotIn("*", c)                               # joker yok
+        self.assertEqual(sorted(a.split("/")[-1] for a in c.split()[3:]), sorted(R.names("yuhem", "20261107").values()))
 
     def test_timeout_and_bad_tag(self):
         class Never(FakeRemote):

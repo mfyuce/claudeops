@@ -19,6 +19,7 @@ DEFAULT_PATHS = [".claude/projects", ".claude/history.jsonl", ".codex", ".gemini
 
 class Transport(Protocol):
     def send(self, cmd: str) -> None: ...                  # shell oturumuna tek satır yaz
+    def idle(self) -> bool: ...                            # shell komut bekliyor mu (prompt satırı); başkası çalıştırıyorsa False
     def root(self) -> str: ...                             # files API kökü (shell'in o anki cwd'si, mutlak)
     def listing(self, root: str) -> List[str]: ...         # root dizinindeki dosya adları
     def download(self, root: str, name: str, dest: str) -> int: ...   # bayt sayısı
@@ -54,6 +55,8 @@ def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]
     """pack -> `.done` bekle -> indir -> kendi geçici dosyalarını sil. Asla fırlatmaz; dönüş {ok, msg, bytes}."""
     try:
         n = names(tag, day)
+        if not tx.idle():                  # paylaşımlı shell: başkası bir iş çalıştırıyor/yazıyor -> TEMİZ vazgeç, hiçbir şey gönderme
+            return {"ok": False, "skipped": True, "msg": "shell meşgul, vazgeçildi (sonraki koşuda denenir)", "bytes": 0}
         root = tx.root()
         tx.send(pack_command(tag, day, paths, root))
         t0 = clock()
@@ -82,6 +85,12 @@ class PanelTransport:
         r, _s = H.proxy_action("/api/term/input", self.host, {"name": self.session, "text": cmd}, timeout=self.TO)
         if not r.get("ok"):
             raise RuntimeError(f"term/input: {r}"[:150])
+
+    def idle(self) -> bool:
+        from .commands import web_hosts as H
+        r, _s = H.proxy_get("/api/term/output", self.host, {"name": self.session, "lang": "en"}, dedup=False, timeout=self.TO)
+        lines = [ln for ln in str(r.get("text", "")).rstrip().split("\n") if ln.strip()]
+        return bool(r.get("ok")) and bool(lines) and bool(re.search(r"[$#%>] ?$", lines[-1].rstrip() + " "))
 
     def _list(self, path: str = "") -> Dict[str, Any]:
         from .commands import web_hosts as H
