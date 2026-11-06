@@ -62,6 +62,7 @@ import { useStatusContext } from "../state/StatusContext";
 import type { FleetSort, Theme, UsageResult } from "../api/types";
 import { applyTheme } from "../theme";
 import { CliInstallSection } from "./CliInstallSection";
+import { PeriodicSection } from "./PeriodicSection";
 import { HostsSection } from "./HostsSection";
 import { LayoutSection } from "./LayoutSection";
 import { TabHint } from "./shared/TabHint";
@@ -119,7 +120,7 @@ function asText(v: unknown): string {
  * (ucli) için, genelleştirmek ayrı bir iş. */
 const BYOK_PRIMARY_ENV: Record<string, string> = { ucli: "UCLI_API_KEY" };
 
-type SettingsSubTab = "general" | "models" | "fleet" | "layout" | "usage";
+type SettingsSubTab = "general" | "models" | "fleet" | "layout" | "usage" | "periodic";
 
 /** Renders one provider's row for the Usage sub-tab — `entries` (when
  * `available`) is provider-shaped free text (`UsageEntry.label`/`percent`/
@@ -271,6 +272,9 @@ export function SettingsTab() {
         </button>
         <button type="button" className={subTab === "usage" ? "active" : ""} onClick={() => setSubTab("usage")}>
           {t.tabSettingsUsage}
+        </button>
+        <button type="button" className={subTab === "periodic" ? "active" : ""} onClick={() => setSubTab("periodic")}>
+          {lang === "en" ? "Periodic" : "Periyodik"}
         </button>
       </div>
       {error && <ErrorBox text={error} />}
@@ -474,6 +478,7 @@ export function SettingsTab() {
       )}
       {subTab === "fleet" && <HostsSection />}
       {subTab === "layout" && <LayoutSection />}
+      {subTab === "periodic" && <PeriodicSection />}
     </>
   );
 }

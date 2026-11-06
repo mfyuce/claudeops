@@ -1177,6 +1177,26 @@ def changed_after_review(row: Dict[str, Any], cwd: str) -> bool:
         return False
 
 
+def _worktree_main(path: str) -> str:
+    """`path` bir git worktree'siyse (`.git` DOSYASI `gitdir: <ana>/.git/worktrees/<ad>`) ana deponun kökü, değilse ""."""
+    try:
+        with open(os.path.join(path, ".git"), encoding="utf-8") as f:
+            line = f.read(4096).strip()
+    except OSError:     # dizin (.git klasörü) ya da yok
+        return ""
+    m = re.match(r"gitdir:\s*(.+)/\.git/worktrees/[^/]+$", line)
+    return m.group(1) if m and os.path.isdir(os.path.join(m.group(1), ".git")) else ""
+
+
+def row_in_repo(row: Dict[str, Any], root: str, cwd: str) -> Tuple[Dict[str, Any], str]:
+    """Eskime denetimi için (satır, kök): hedef depo `cwd` değilse (combo) denetim bayat kopyaya değil GERÇEK depoya yapılır,
+    `where`in depo öneki atılır (`claudeops/py/a.py:3` -> `py/a.py:3`)."""
+    if not root or os.path.realpath(root) == os.path.realpath(cwd):
+        return row, cwd
+    where = str(row.get("where") or "").strip().strip("`")
+    return dict(row, where=where.split("/", 1)[1] if "/" in where else where), root
+
+
 def export_root(row: Dict[str, Any], project: str, cwd: str, resolve: Callable[[str], str]) -> str:
     """Bulgunun TODO/TBD/RTODO/RTBD dosyasının yazılacağı depo kökü; "" = çözülemedi (YAZMA, uyar).
     `where` yolunun ilk parçası (`claudeops/...`, `unified-cli/...`) kayıtlı bir projeyse o projenin deposu (`resolve`);
@@ -1188,6 +1208,9 @@ def export_root(row: Dict[str, Any], project: str, cwd: str, resolve: Callable[[
         d = resolve(prefix) or ""
         if d and os.path.isdir(d) and os.path.exists(os.path.join(d, ".git")):
             return d
+        main = _worktree_main(os.path.join(cwd, prefix))    # combo alt dizini ana deponun worktree'si: depo adı proje adı olmayabilir (claudeops=cops, unified-cli=cli)
+        if main:
+            return main
     if os.path.exists(os.path.join(cwd, ".git")):
         return cwd
     if prefix and os.path.isdir(os.path.join(cwd, prefix)):

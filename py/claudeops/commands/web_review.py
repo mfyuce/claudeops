@@ -2739,12 +2739,13 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
                 r["note"] = f"{r['note']}; {note}" if r.get("note") else note
         dropped = False
         for r in list(rows):       # koddaki duruma karşı denetim: eskimiş bulgu yazılmaz, değişen dosya işaretlenir
-            why = rv.stale_reason(r, cwd)
+            chk, chk_root = rv.row_in_repo(r, rv.export_root(r, project, cwd, project_cwd), cwd)
+            why = rv.stale_reason(chk, chk_root)
             if why:
                 data[r["id"]].update(state="rejected", decided_by="stale-check", decided_at=t, stale_reason=why)
                 rows.remove(r)
                 dropped = True
-            elif rv.changed_after_review(r, cwd):
+            elif rv.changed_after_review(chk, chk_root):
                 r["note"] = (f"{r['note']}; " if r.get("note") else "") + "dosya incelemeden sonra değişti, hâlâ geçerli mi doğrula"
         if dropped:
             rv.save_findings(p, data)
