@@ -214,6 +214,43 @@ class ContextQuestionTest(unittest.TestCase):
         self.assertEqual([a.kind for a in acts if a.name == "a"].count("handover"), 1)
 
 
+class PausedProjectNoContextHandoverTest(unittest.TestCase):
+    """Canlı döngü (6 Kas 23:4x, cops20261106 318K): paused projede eşik devri -> READY -> ho_halted -> sonraki tick yine devir.
+    Paused/done projede otomatik bağlam devri HİÇ gönderilmez; planned projede eşik aynen çalışır."""
+
+    def setUp(self):
+        self.now = 100000.0
+        self.cfg = _cfg(context_warn_tokens=300000)
+
+    def _tick(self, phase, tokens=318000, state=None, qs=()):
+        projects = {"a": sw.Project(name="a", phase=phase, priority=1, cadence_minutes=60)}
+        v = _view("a", context_tokens=tokens, model="claude-sonnet-5-5")
+        return sw.plan_tick([v], projects, dict(state or {}), self.cfg, self.now, list(qs), [])
+
+    def test_paused_over_threshold_sends_no_handover_on_any_tick(self):
+        st = {}
+        for _ in range(3):
+            acts, st = self._tick("paused", state=st)
+            self.assertNotIn("handover", [a.kind for a in acts])
+            self.assertNotIn("a", st.get("ho_pending") or {})
+            self.now += 300
+
+    def test_done_project_also_gets_no_threshold_handover(self):
+        acts, _ = self._tick("done")
+        self.assertNotIn("handover", [a.kind for a in acts])
+
+    def test_planned_project_still_hands_over_at_threshold(self):
+        acts, st = self._tick("planned")
+        self.assertEqual([a.kind for a in acts if a.name == "a"].count("handover"), 1)
+        self.assertIn("a", st["ho_pending"])
+
+    def test_context_question_on_paused_project_does_not_start_a_handover(self):
+        q = sw.Question(id="q1", project="a", text=ContextQuestionTest.Q, created_at=self.now - 60, source="a")
+        acts, st = self._tick("paused", tokens=240000, qs=[q])
+        self.assertNotIn("handover", [a.kind for a in acts])
+        self.assertNotIn("auto_answer", [a.kind for a in acts])
+
+
 class RulesTest(unittest.TestCase):
     def setUp(self):
         self.now = 100000.0

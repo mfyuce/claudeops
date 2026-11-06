@@ -3377,10 +3377,21 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         ho_pending[v.name] = now
         return True
 
+    def _halted_phase(name: str) -> str:
+        """Oturumun projesi paused/done ise fazın adı, değilse "" (bilinmiyor = "" = davranış değişmez)."""
+        key = world.project_key(name) if world is not None else _project_key(name, projects)
+        ph = projects[key].phase if key and key in projects else ""
+        return ph if ph in ("paused", "done") else ""
+
     for v in views:
         if not v.running or not v.tmux or not _managed(v.name):
             continue
         if v.name in ho_pending:
+            continue
+        if _halted_phase(v.name):
+            # paused/done proje: otomatik bağlam/satır devri YOK (canlı döngü 6 Kas 23:4x: devir -> READY -> `ho_halted` ho_pending'i
+            # temizliyor -> sonraki tick context >= eşik ile yine devir; her tur boşa token). Oturum açık kalır; proje yeniden
+            # planned olunca eşik normal çalışır. Kota kapatması (`shutdown`) ve elle devir bu döngüden geçmez.
             continue
         # Bağlam token'ı BİLİNİYORSA (claude transkripti) tek ölçüt odur: satır sayısı tmux ekranını yansıtır,
         # bağlamı değil (uzun çıktıda dakikada ~80 satır; yeni açılan oturum 7 dk'da eşiğe varıp devri döngüye sokuyordu).
@@ -3409,6 +3420,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             warn = context_threshold(cfg, v.model)
             if not warn or v.name in ho_pending or v.name in busy_names:
                 continue
+            if _halted_phase(v.name):       # paused/done: devir başlatılmaz (yukarıdaki döngüyle aynı kural); soru sahipte/beyinde kalır
+                continue
             ho, text = context_answer(v.context_tokens, warn, cfg.auto_context_ratio, cfg.lang)
             if not ho:
                 actions.append(Action("auto_answer", v.name, "context", {"question_id": q.id, "answer": text, "handover": False}))
@@ -3422,12 +3435,6 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     for name, rec in ho_deferred_prev.items():      # host kapalı: görünümü yok diye erteleme izi silinmez
         if name not in ho_deferred and name not in by_name and _unavail(name):
             ho_deferred[name] = rec
-
-    def _halted_phase(name: str) -> str:
-        """Oturumun projesi paused/done ise fazın adı, değilse "" (bilinmiyor = "" = davranış değişmez)."""
-        key = world.project_key(name) if world is not None else _project_key(name, projects)
-        ph = projects[key].phase if key and key in projects else ""
-        return ph if ph in ("paused", "done") else ""
 
     # 2) Handover gönderilmiş olanlar — READY FOR HANDOVER geldi ya da süre doldu → yeniden aç
     #    (proje paused/done ise AÇMA: `ho_halted` kaydı, ho_pending temizlenir)
