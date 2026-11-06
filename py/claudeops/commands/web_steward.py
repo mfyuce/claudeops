@@ -5363,6 +5363,51 @@ def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return {"ok": True, "key": field, "value": getattr(steward_config(sid), field)}
 
 
+def http_quota() -> Dict[str, Any]:
+    """Kota bekçisi (TBD#116) ayarı + son okuma/karar (CLI `steward quota status` ile aynı kaynak). Makine geneli: kimlik seçmez."""
+    st: Any = None
+    try:
+        from .. import statedocs
+        st = statedocs.read_json("steward/quota", QUOTA_FILE, None)
+    except (OSError, ValueError):
+        st = None
+    return {"ok": True, "config": dict(quota_config()), "modes": list(sq.MODES), "days": list(sq.DAYS),
+            "state": st if isinstance(st, dict) else None}
+
+
+_QUOTA_NUM_KEYS = {"manual_limit": (0, 100), "shutdown_limit": (0, 100), "final_limit": (0, 100), "poll_minutes": (1, 1440)}
+
+
+def http_quota_set(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Panelden kota ayarı (CLI `steward quota mode|limit|shutdown|final|poll|day` ile aynı kurallar). YALNIZ insan (`brain` reddedilir).
+    `key`: mode | manual_limit | shutdown_limit | final_limit | poll_minutes | day_<mon..sun>; gün değeri boşsa o günün tavanı silinir."""
+    if (d := _human_only(data, "change quota settings")):
+        return d
+    from ..settings import save_settings
+    key = str(data.get("key") or "")
+    value = data.get("value")
+    if key == "mode":
+        if value not in sq.MODES:
+            return {"ok": False, "error": "mode must be one of " + ", ".join(sq.MODES)}
+    elif key in _QUOTA_NUM_KEYS or (key.startswith("day_") and key[4:] in sq.DAYS):
+        lo, hi = _QUOTA_NUM_KEYS.get(key, (0, 100))
+        if key.startswith("day_") and (value is None or str(value).strip() == ""):
+            value = ""      # boş = o günün tavanını sil (save_settings boş değeri anahtarı siler)
+        else:
+            try:
+                n = float(value)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": f"{key} must be a number"}
+            if isinstance(value, bool) or not lo <= n <= hi:
+                return {"ok": False, "error": f"{key} must be {lo}..{hi}"}
+            value = str(int(n)) if n == int(n) else str(n)
+    else:
+        return {"ok": False, "error": "unknown or not editable field: " + key}
+    save_settings({"steward_quota": {key: value}})
+    sw.log_event("config", paths=sid, key="quota." + key, value=value, source="ui")
+    return {"ok": True, "key": key, "value": value, "config": dict(quota_config())}
+
+
 def http_enable(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Döngüyü aç/kapat (CLI `steward on|off`)."""
     if data.get("actor") == "brain":
@@ -5620,7 +5665,7 @@ def http_digest_file(kind: str, name: str, sid: str = "default") -> Dict[str, An
 
 
 _GET_PATHS = frozenset(("review/state", "review/file", "review/live", "review/io", "review/chat", "review/runs", "review/findings", "review/lessons", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
-                        "jobs", "services", "digests", "digest/file"))
+                        "jobs", "services", "digests", "digest/file", "quota"))
 
 
 def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
@@ -5633,6 +5678,8 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return http_list()
     if path == "/api/steward/services":
         return http_services()
+    if path == "/api/steward/quota":
+        return http_quota()
     if path == "/api/steward/review/runs":
         return http_review_runs()
     try:
@@ -6325,6 +6372,7 @@ POST_PATHS = {
     "/api/steward/job/submit": http_job_submit,
     "/api/steward/brain": http_brain,
     "/api/steward/config": http_config,
+    "/api/steward/quota": http_quota_set,
     "/api/steward/enable": http_enable,
     "/api/steward/up": http_up,
     "/api/steward/shutdown": http_shutdown,
