@@ -128,6 +128,9 @@ export interface Strings {
   forceStopBtn: string;
   legendForceStop: string;
   stopFailHint: string;
+  stopWaiting: (n: number, total: number) => string;
+  stopStatusLost: string;
+  stopStatusTimeout: string;
   disableBtn: string;
   retireBtn: string;
   resetBtn: string;
@@ -908,6 +911,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stopBtn: "devir + kapat",
     forceStopBtn: "kapat",
     legendForceStop: "DEVİRSİZ kapatır (force): kayıtlı proje oturumunda devir alınmaz, konuşma bağlamı devredilmeden gider; onay sorar",
+    stopWaiting: (n, total) => `devir bekleniyor: ${n}/${total} oturum`,
+    stopStatusLost: "durum alınamadı (servis yeniden başlamış olabilir); oturum KAPATILMAMIŞ olabilir, kontrol edin ya da \"kapat\" kullanın",
+    stopStatusTimeout: "devir durumu zamanında alınamadı; oturumun durumunu kontrol edin",
     stopFailHint: "Devir hata verdiyse ya da takıldıysa \"kapat\" (devirsiz) düğmesini kullanabilirsiniz.",
     disableBtn: "devre dışı bırak",
     retireBtn: "emekli et",
@@ -1795,6 +1801,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stopBtn: "handover + close",
     forceStopBtn: "close",
     legendForceStop: "closes WITHOUT handover (force): a registered project session is not handed over, its context is lost; asks to confirm",
+    stopWaiting: (n, total) => `waiting for handover: ${n}/${total} sessions`,
+    stopStatusLost: "status unavailable (the service may have restarted); the session may NOT have been closed, check it or use \"close\"",
+    stopStatusTimeout: "handover status not received in time; check the session",
     stopFailHint: "If the handover failed or got stuck, use the \"close\" button (no handover).",
     disableBtn: "disable",
     retireBtn: "retire",

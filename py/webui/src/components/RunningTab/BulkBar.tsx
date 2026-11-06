@@ -16,7 +16,7 @@
  */
 
 import { Fragment, useState } from "react";
-import { apiPost, apiStart, apiNewChat, apiTermMirrorWindow, ApiError, type StartPayload, type NewChatPayload } from "../../api/client";
+import { apiGet, apiPost, apiStart, apiNewChat, apiTermMirrorWindow, ApiError, type StartPayload, type NewChatPayload } from "../../api/client";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
@@ -159,6 +159,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
       cap.res = res;
     };
     let done = 0;
+    const pendingStops: Array<{ name: string; host: string }> = [];
     for (const s of picked) {
       const name = s.name;
       setMessage(`${labels[action]}: ${done + 1}/${names.length} — ${name}…`);
@@ -200,6 +201,11 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
               noteCap(newChatRes, s.host, () => apiNewChat(newChatPayloadFor(s)));
             }
           }
+        } else if (action === "stop") {
+          // "devir + kapat": arka plan işi başlar, hemen {pending} döner (uzun HTTP isteği yok: tünelde 524); durum aşağıda yoklanır.
+          const r = await apiPost<ApiResult & { pending?: boolean }>("/api/stop", { name, host: s.host, lang, ho: true });
+          if (!r.ok) errs.push(`${name}: ${r.error}`);
+          else if (r.pending) pendingStops.push({ name, host: s.host });
         } else {
           const res =
             action === "start"
@@ -221,6 +227,30 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
         }
       }
       done++;
+    }
+    if (pendingStops.length) {
+      // Tüm devirler PARALEL yürür; hepsi bitene ya da üst süre (iş 300 sn + pay) dolana kadar yokla.
+      const deadline = Date.now() + 330_000;
+      let waiting = pendingStops.slice();
+      while (waiting.length && Date.now() < deadline) {
+        setMessage(t.stopWaiting(pendingStops.length - waiting.length, pendingStops.length));
+        await new Promise((r) => setTimeout(r, 3000));
+        const still: typeof waiting = [];
+        for (const p of waiting) {
+          try {
+            const st = await apiGet<{ state: string; result?: ApiResult }>(
+              `/api/stop/status?name=${encodeURIComponent(p.name)}&host=${encodeURIComponent(p.host)}`,
+            );
+            if (st.state === "pending") still.push(p);
+            else if (st.state === "error") errs.push(`${p.name}: ${st.result?.error ?? t.requestFailed}`);
+            else if (st.state === "none") errs.push(`${p.name}: ${t.stopStatusLost}`);
+          } catch {
+            still.push(p); // geçici ağ/tünel hatası: bir sonraki turda yeniden dene
+          }
+        }
+        waiting = still;
+      }
+      for (const p of waiting) errs.push(`${p.name}: ${t.stopStatusTimeout}`);
     }
     setBusy(false);
     setMessage(t.bulkDone(names.length - errs.length, errs.length) + (errs.length ? "\n" + errs.join("\n") : "") + (errs.length && action === "stop" ? "\n" + t.stopFailHint : ""));

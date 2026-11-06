@@ -21,6 +21,17 @@ def _sess(name="x1", pid=11, cli="claude"):
     return NS(name=name, pid=pid, cli=cli, cwd="/w", sid="s1")
 
 
+def setUpModule():
+    """Gerçek ~/.claude/claudeops/diag.log'a YAZMA (canlı logda sahte ho_stop_timeout kayıtları oluşmuştu)."""
+    global _DIAG
+    _DIAG = mock.patch.object(web, "diag_log", lambda *a, **k: None)
+    _DIAG.start()
+
+
+def tearDownModule():
+    _DIAG.stop()
+
+
 class _Prov:
     def __init__(self, conv=True, base=None):
         self.conv, self.base = conv, base if base is not None else {"user": "u", "assistant": "a"}
@@ -132,20 +143,28 @@ class RemoteTest(unittest.TestCase):
 
 
 class RouteTest(unittest.TestCase):
-    """Gerçek HTTP: /api/stop force'suz yol devir yardımcılarına gider; force/exact ESKİ yolu aynen korur."""
+    """Gerçek HTTP: yeni yol YALNIZ açık `ho:true` ile (BulkBar `stop`); alan yoksa /api/stop ESKİ davranışla birebir
+    (OptionsRow restart/reset, window_actions, cops kill hâlâ devir BEKLEMEZ). ho:true arka plan işi: hemen {ok,pending}."""
 
     def setUp(self):
         self.calls = []
         self.local_ho = None            # `_stop_with_handover` dönüşü (None = uygulanamaz)
+        self.release = threading.Event()   # iş parçacığını test denetler
 
         def rec(tag, ret):
             def f(*a, **k):
                 self.calls.append((tag, a, k))
                 return ret() if callable(ret) else ret
             return f
+
+        def ho_local(*a, **k):
+            self.calls.append(("ho_local", a, k))
+            self.release.wait(5)
+            return self.local_ho
+        web._HO_STOP_JOBS.clear()
         for p in (
             mock.patch.object(web.web_steward, "human_stop_with_ho", rec("human", None)),
-            mock.patch.object(web, "_stop_with_handover", lambda *a, **k: (self.calls.append(("ho_local", a, k)) or self.local_ho)),
+            mock.patch.object(web, "_stop_with_handover", ho_local),
             mock.patch.object(web, "_remote_stop_with_handover", rec("ho_remote", {"ok": True, "handover": True})),
             mock.patch.object(web, "_stop", rec("stop", {"ok": True, "result": []})),
             mock.patch.object(web.web_hosts, "proxy_action", lambda path, host, body, timeout=None: (self.calls.append(("proxy", (path, host, dict(body)), {})) or ({"ok": True}, 200))),
@@ -153,48 +172,107 @@ class RouteTest(unittest.TestCase):
         ):
             p.start()
             self.addCleanup(p.stop)
+        self.addCleanup(web._HO_STOP_JOBS.clear)
+        self.addCleanup(self.release.set)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), web._Handler)
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
+    def req(self, method, path, body=None):
+        r = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method,
+                                   data=json.dumps(body).encode() if body is not None else None,
+                                   headers={"Authorization": "Bearer tok", "Content-Type": "application/json"})
+        with urllib.request.urlopen(r, timeout=10) as resp:
+            return json.loads(resp.read())
+
     def post(self, body):
-        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/stop", data=json.dumps(body).encode(), method="POST",
-                                     headers={"Authorization": "Bearer tok", "Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            return json.loads(r.read())
+        return self.req("POST", "/api/stop", body)
+
+    def status(self, name="a", host="local"):
+        return self.req("GET", f"/api/stop/status?name={name}&host={host}")
+
+    def wait_state(self, name="a", host="local"):
+        for _ in range(100):
+            st = self.status(name, host)
+            if st["state"] != "pending":
+                return st
+            threading.Event().wait(0.05)
+        self.fail("iş bitmedi")
 
     def tags(self):
         return [c[0] for c in self.calls]
 
-    def test_local_plain_uses_handover_and_never_plain_stop(self):
-        self.local_ho = {"ok": False, "code": "handover_timeout", "suggest": "force", "error": "x"}
+    # -- eski davranış (ho alanı YOK): devir bekleme YOK ------------------------------------------------------------
+    def test_without_ho_field_old_behaviour_byte_for_byte(self):
         r = self.post({"name": "a"})
-        self.assertEqual(r["code"], "handover_timeout")
-        self.assertEqual(self.tags(), ["human", "ho_local"])        # düz _stop'a DÜŞMEZ
+        self.assertEqual(r, {"ok": True, "result": []})
+        self.assertEqual(self.tags(), ["human", "stop"])             # ne devir yardımcısı ne iş parçacığı
+        self.assertEqual(web._HO_STOP_JOBS, {})
 
-    def test_local_falls_back_to_plain_stop_when_handover_not_applicable(self):
-        self.post({"name": "a"})
+    def test_force_and_exact_skip_even_with_ho_field(self):
+        self.post({"name": "a", "force": True, "ho": True})
+        self.post({"name": "a", "exact": True, "ho": True})
+        self.assertEqual(self.tags(), ["stop", "stop"])
+        self.assertEqual(web._HO_STOP_JOBS, {})
+
+    def test_remote_without_ho_goes_straight_to_proxy(self):
+        self.post({"name": "a", "host": "ulak31"})
+        self.assertEqual(self.tags(), ["proxy"])
+        self.assertNotIn("force", self.calls[0][1][2])               # uzak çağrı değişmedi
+
+    # -- ho:true: arka plan işi ------------------------------------------------------------------------------------
+    def test_ho_returns_pending_immediately_while_job_blocks(self):
+        r = self.post({"name": "a", "ho": True})                     # iş `release` bekliyor: istek yine de HEMEN döner
+        self.assertEqual((r["ok"], r["pending"]), (True, True))
+        self.assertEqual(self.status()["state"], "pending")
+        self.assertNotIn("stop", self.tags())
+
+    def test_ho_failure_is_reported_and_never_plain_stops(self):
+        self.local_ho = {"ok": False, "code": "handover_timeout", "suggest": "force", "error": "x"}
+        self.post({"name": "a", "ho": True})
+        self.release.set()
+        st = self.wait_state()
+        self.assertEqual((st["state"], st["result"]["code"], st["result"]["suggest"]), ("error", "handover_timeout", "force"))
+        self.assertNotIn("stop", self.tags())
+
+    def test_ho_success(self):
+        self.local_ho = {"ok": True, "result": ["clean"], "handover": True}
+        self.post({"name": "a", "ho": True})
+        self.release.set()
+        st = self.wait_state()
+        self.assertEqual((st["state"], st["result"]["handover"]), ("ok", True))
+
+    def test_ho_not_applicable_falls_back_to_plain_stop_inside_the_job(self):
+        self.local_ho = None
+        self.post({"name": "a", "ho": True})
+        self.release.set()
+        self.assertEqual(self.wait_state()["state"], "ok")
         self.assertEqual(self.tags(), ["human", "ho_local", "stop"])
 
-    def test_local_force_skips_handover(self):
-        self.post({"name": "a", "force": True})
-        self.assertEqual(self.tags(), ["stop"])
+    def test_second_ho_while_pending_does_not_start_second_job(self):
+        self.post({"name": "a", "ho": True})
+        r = self.post({"name": "a", "ho": True})
+        self.assertTrue(r.get("already"))
+        self.release.set()
+        self.wait_state()
+        self.assertEqual(self.tags().count("ho_local"), 1)
 
-    def test_local_exact_skips_handover(self):
-        self.post({"name": "a", "exact": True})
-        self.assertEqual(self.tags(), ["stop"])
-
-    def test_remote_plain_uses_remote_handover_not_proxy(self):
-        r = self.post({"name": "a", "host": "ulak31"})
-        self.assertTrue(r["handover"])
+    def test_remote_ho_runs_remote_helper_in_job(self):
+        self.post({"name": "a", "host": "ulak31", "ho": True})
+        st = self.wait_state(host="ulak31")
+        self.assertEqual(st["state"], "ok")
         self.assertEqual(self.tags(), ["ho_remote"])
 
-    def test_remote_force_goes_straight_to_proxy(self):
-        self.post({"name": "a", "host": "ulak31", "force": True})
-        self.assertEqual(self.tags(), ["proxy"])
-        self.assertTrue(self.calls[0][1][2]["force"])
+    def test_job_exception_becomes_error_with_force_hint(self):
+        with mock.patch.object(web, "_stop_with_handover", side_effect=RuntimeError("kaboom")):
+            self.post({"name": "a", "ho": True})
+            st = self.wait_state()
+        self.assertEqual((st["state"], st["result"]["suggest"]), ("error", "force"))
+
+    def test_status_unknown_after_restart_is_none(self):
+        self.assertEqual(self.status("never"), {"ok": True, "state": "none"})
 
 
 if __name__ == "__main__":

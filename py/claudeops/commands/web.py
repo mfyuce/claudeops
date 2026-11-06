@@ -2094,6 +2094,73 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     return dict(out, handover=True) if isinstance(out, dict) else out
 
 
+# "devir + kapat" arka plan işleri: HTTP isteği uzun (devir ~2 dk) açık kalmaz (Cloudflare quick tunnel ~100 sn'de 524 verir ve
+# oturum arkadan yine kapanırdı); {ok,pending} hemen döner, panel `/api/stop/status` yoklar. İş parçacığı daemon: servis
+# yeniden başlarsa yarım iş SESSİZCE biter ve kapatma HİÇ yapılmaz (kapatma yalnız READY FOR HANDOVER SONRASI iş parçacığında).
+_HO_STOP_JOBS: Dict[str, dict] = {}
+_HO_STOP_LOCK = threading.Lock()
+_HO_STOP_KEEP_SECONDS = 3600.0
+
+
+def _ho_stop_key(host: str, name: str) -> str:
+    return f"{host}:{name}"
+
+
+def _ho_stop_run(key: str, host: str, name: str, lang: str) -> None:
+    try:
+        if host == LOCAL_HOST_NAME:
+            res = web_steward.human_stop_with_ho(name)          # kayıtlı proje + değnekçi act: motor kendi devir/kapatma yolu
+            if res is None:
+                res = _stop_with_handover(name, lang=lang)
+            if res is None:                                      # devredilecek konuşma yok / çalışmıyor: düz kapat (doğru hatayı verir)
+                res = _stop(name, lang=lang)
+        else:
+            res = _remote_stop_with_handover(host, name, lang=lang)
+            if res is None:
+                res, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang})
+    except Exception as e:
+        diag_log("ho_stop_job_error", name=name, host=host, error=repr(e))
+        res = {"ok": False, "error": f"{type(e).__name__}: {e}", "code": "handover_failed", "suggest": "force"}
+    if not isinstance(res, dict):
+        res = {"ok": False, "error": "unexpected result"}
+    with _HO_STOP_LOCK:
+        job = _HO_STOP_JOBS.get(key)
+        if job is not None:
+            job.update(state="ok" if res.get("ok") else "error", result=res, finished=time.time())
+    try:
+        web_ws.notify_status_changed()
+    except Exception:
+        pass
+
+
+def _ho_stop_begin(host: str, name: str, lang: str = "tr") -> dict:
+    if not name:
+        return {"ok": False, "error": "name required"}
+    key = _ho_stop_key(host, name)
+    now = time.time()
+    with _HO_STOP_LOCK:
+        for k in [k for k, j in _HO_STOP_JOBS.items() if j.get("state") != "pending" and now - float(j.get("finished") or 0) > _HO_STOP_KEEP_SECONDS]:
+            _HO_STOP_JOBS.pop(k, None)
+        cur = _HO_STOP_JOBS.get(key)
+        if cur is not None and cur.get("state") == "pending":
+            return {"ok": True, "pending": True, "name": name, "host": host, "already": True}     # aynı oturuma ikinci devir gitmez
+        _HO_STOP_JOBS[key] = {"state": "pending", "started": now}
+    threading.Thread(target=_ho_stop_run, args=(key, host, name, lang), daemon=True, name=f"ho-stop-{name}").start()
+    return {"ok": True, "pending": True, "name": name, "host": host}
+
+
+def _ho_stop_status(host: str, name: str) -> dict:
+    with _HO_STOP_LOCK:
+        job = _HO_STOP_JOBS.get(_ho_stop_key(host, name))
+        job = dict(job) if job else None
+    if job is None:
+        return {"ok": True, "state": "none"}          # hiç başlamadı ya da servis yeniden başladı (iş kayboldu, kapatma yapılmadı)
+    out = {"ok": True, "state": job["state"], "started": job.get("started")}
+    if "result" in job:
+        out["result"] = job["result"]
+    return out
+
+
 class _AgentOps:
     """`web_agents`'in filo eylemleri (enjekte edilir: web_agents web.py'yi içe aktarmaz, testte gerçek spawn yok). Çocuk
     ajanlar HER ZAMAN tam adla ve penceresiz (`hidden`) açılır/durdurulur: `_start(fresh=True)` / `_stop(exact=True)`."""
@@ -4620,6 +4687,11 @@ class _Handler(BaseHTTPRequestHandler):
             # canlı session adı. Auth yukarıda ZATEN geçildi (query-param ya da
             # yeni `Authorization: Bearer` yolu, bkz. `_authorized`).
             self._json(_v1_models())
+        elif path == "/api/stop/status":
+            # "devir + kapat" arka plan işinin durumu (yerel-only, host-routed DEĞİL: iş bu sunucuda yürür)
+            qs = parse_qs(urlparse(self.path).query)
+            self._json(_ho_stop_status(str((qs.get("host") or [LOCAL_HOST_NAME])[0]).strip() or LOCAL_HOST_NAME,
+                                       str((qs.get("name") or [""])[0]).strip()))
         elif path == "/api/orch/runs":
             # TOBEDECIDED#15 Phase 1 — local-only (host-routed'a eklenmedi,
             # /v1/* ile AYNI ilke), yeni-eskiye sıralı son 20 run özeti.
@@ -4978,6 +5050,13 @@ class _Handler(BaseHTTPRequestHandler):
 
         lang = "en" if data.get("lang") == "en" else "tr"
 
+        # Panel "devir + kapat" (BulkBar `stop`, açık `ho:true` alanı): arka plan işi, hemen {ok,pending}. Alan yoksa (OptionsRow
+        # restart/reset, window_actions, cops kill, dış çağıranlar) /api/stop ESKİ davranışla aşağıda çalışır.
+        if path == "/api/stop" and data.get("ho") is True and data.get("force") is not True and data.get("exact") is not True:
+            ho_host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+            self._json(_ho_stop_begin(ho_host, str(data.get("name") or "").strip(), lang))
+            return
+
         # Host-routing: 13 session-scoped route (bkz. web_hosts.HOST_ROUTED_PATHS) için
         # body'de host!=local varsa isteği o host'a proxy'le, aşağıdaki mevcut dispatch
         # zincirine HİÇ girme. host alanı yoksa/eskiyse (host==local) davranış birebir
@@ -4986,11 +5065,6 @@ class _Handler(BaseHTTPRequestHandler):
         if path in web_hosts.HOST_ROUTED_PATHS:
             host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
             if host != LOCAL_HOST_NAME:
-                if path == "/api/stop" and data.get("force") is not True and data.get("exact") is not True:
-                    ho = _remote_stop_with_handover(host, str(data.get("name") or "").strip(), lang=lang)
-                    if ho is not None:      # uzak "devir + kapat": önce devir, sonra force'lu kapat (host eski olsa da devir atlanmaz)
-                        self._json_notify(ho)
-                        return
                 result, proxy_status = web_hosts.proxy_action(path, host, data)
                 self._json_notify(result, status=proxy_status)
                 return
@@ -5370,8 +5444,6 @@ class _Handler(BaseHTTPRequestHandler):
             result = None
             if data.get("force") is not True and data.get("exact") is not True:
                 result = web_steward.human_stop_with_ho(name)
-                if result is None:      # düğme adı "devir + kapat": proje olmayan/değnekçi kapalı/beyin oturumunda da devir ALINIR
-                    result = _stop_with_handover(name, lang=lang)
             if result is None:
                 result = _stop(name, lang=lang, exact=data.get("exact") is True)
         elif path == "/api/retire":
