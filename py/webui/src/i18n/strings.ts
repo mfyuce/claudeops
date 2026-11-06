@@ -767,6 +767,7 @@ export interface Strings {
   rvRefutedHint: string;
   rvDone: string;
   rvExported: string;
+  rvSkippedSensitive: string;
   rvVerifySent: string;
   rvApproveAll: string;
   rvApproveAllDone: string;
@@ -1649,6 +1650,7 @@ export const STRINGS: Record<Lang, Strings> = {
     rvRefutedHint: "Çürütülmüş bulgu onaylanamaz",
     rvDone: "Yapıldı.",
     rvExported: "Dışa aktarıldı",
+    rvSkippedSensitive: "hassas olduğu için atlanan bulgu",
     rvVerifySent: "Doğrulama gönderildi",
     rvApproveAll: "Doğrulananların hepsini onayla",
     rvApproveAllDone: "Toplu onay",
@@ -2532,6 +2534,7 @@ export const STRINGS: Record<Lang, Strings> = {
     rvRefutedHint: "A refuted finding cannot be approved",
     rvDone: "Done.",
     rvExported: "Exported",
+    rvSkippedSensitive: "findings skipped as sensitive",
     rvVerifySent: "Verification sent",
     rvApproveAll: "Approve all verified",
     rvApproveAllDone: "Bulk approval",

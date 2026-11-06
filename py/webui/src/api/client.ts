@@ -737,8 +737,8 @@ export const apiReviewFinding = (sid: string, id: string, action: "approve" | "r
   apiPost<SimpleResult>("/api/steward/review/finding", { steward: sid, id, action });
 export const apiReviewBulk = (sid: string, action: "approve" | "reject", project = ""): Promise<SimpleResult & { done?: string[]; skipped?: string[] }> =>
   apiPost<SimpleResult & { done?: string[]; skipped?: string[] }>("/api/steward/review/bulk", { steward: sid, action, project });
-export const apiReviewExport = (sid: string, project: string, kind: "todo" | "tbd"): Promise<SimpleResult> =>
-  apiPost<SimpleResult>("/api/steward/review/export", { steward: sid, project, kind });
+export const apiReviewExport = (sid: string, project: string, kind: "todo" | "tbd"): Promise<SimpleResult & { skipped_sensitive?: string[] }> =>
+  apiPost<SimpleResult & { skipped_sensitive?: string[] }>("/api/steward/review/export", { steward: sid, project, kind });
 
 // ── Periyodik işler (2026-11-06, chats adım 7) ───────────────────────────
 export const apiPeriodicOverview = (): Promise<PeriodicOverview> => apiGet<PeriodicOverview>("/api/periodic");

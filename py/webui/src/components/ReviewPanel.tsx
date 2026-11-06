@@ -500,7 +500,12 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
         )}
         {exportProjects.map((p) =>
           (["todo", "tbd"] as const).map((kind) => (
-            <button key={`${p}-${kind}`} type="button" disabled={busy} onClick={() => void act(() => apiReviewExport(sid, p, kind), `${t.rvExported}: ${p}`)}>
+            <button key={`${p}-${kind}`} type="button" disabled={busy} onClick={() => void act(async () => {
+              const r = await apiReviewExport(sid, p, kind);
+              const n = r.skipped_sensitive?.length ?? 0;
+              if (n > 0) showToast(`${n} ${t.rvSkippedSensitive}: ${p}`);
+              return r;
+            }, `${t.rvExported}: ${p}`)}>
               {p}: {kind === "todo" ? t.rvExportTodo : t.rvExportTbd}
             </button>
           )),
