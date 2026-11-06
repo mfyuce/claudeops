@@ -1394,6 +1394,9 @@ _TERM_RELAY_IDLE_TTL_SECONDS = 10.0  # local /ws/term'ün 200ms poll'undan çok 
 # yeni bir thread + bağlantı denemesi başlatırdı. Uzun yaşayıp sonra ölen relay için (kuruluşundan
 # beri bu süre çoktan geçti) etkisiz: hemen yeniden kurulur.
 _TERM_RELAY_RESTART_MIN_INTERVAL_SECONDS = 2.0
+# Uzak host `/ws/term`e en geç ~30 sn'de bir kare yollar (içerik değişmese de); bundan uzun süre çerçeve gelmeyen WS yarı açıktır
+# (devtunnel/NAT: thread canlı, mesaj yok) ve `read()` donmuş karayı "canlı" diye verirdi (TBD#164, 6 Kas: ulak_31 mirror saatlerce bayat).
+_TERM_RELAY_SILENCE_SECONDS = 45.0
 
 
 class _TermRelay:
@@ -1424,6 +1427,10 @@ class _TermRelay:
 
     def idle_seconds(self) -> float:
         return time.monotonic() - self.last_read_mono
+
+    def silent_seconds(self) -> float:
+        """Altındaki consumer'dan son çerçeveden beri geçen süre (yarı açık WS tespiti, TBD#164)."""
+        return self._consumer.silent_seconds()
 
     def stop(self) -> None:
         self._consumer.stop()
@@ -1509,6 +1516,11 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
         dead = None
         with _term_relay_lock:
             relay = _term_relays.get(key)
+            if relay is not None and relay.is_alive() and relay.silent_seconds() > _TERM_RELAY_SILENCE_SECONDS:
+                diag_log("term_relay_silent_restart", host=host_name, name=name, silent=int(relay.silent_seconds()))
+                dead = relay            # yarı açık bağlantı: durdur + yeniden kur (donmuş kareyi VERME)
+                del _term_relays[key]
+                relay = None
             if relay is not None and not relay.is_alive():
                 if time.monotonic() - relay.created_mono < _TERM_RELAY_RESTART_MIN_INTERVAL_SECONDS:
                     # Kurulduktan hemen sonra öldü — bu tick'te yeniden kurma (bkz. sabitin notu).

@@ -127,6 +127,32 @@ class TermRelayTests(unittest.TestCase):
             self.conns[1].push({"ok": True, "text": "frame-B"})
             self.assertTrue(wait_for(lambda: fn().get("text") == "frame-B"))
 
+    def test_silent_half_open_relay_is_restarted_and_logged(self):
+        """TBD#164: thread canlı ama uzun süredir çerçeve yok: relay yeniden kurulur, donmuş kare verilmez, olay yazılır."""
+        fn = web_hosts.term_output_relay("fakehost", "s1", "en")
+        fn()
+        self.assertTrue(wait_for(lambda: len(self.conns) == 1))
+        self.conns[0].push({"ok": True, "text": "frame-A"})
+        self.assertTrue(wait_for(lambda: fn().get("text") == "frame-A"))
+        old = web_hosts._term_relays[KEY]
+        old._consumer.last_msg_mono = time.monotonic() - (web_hosts._TERM_RELAY_SILENCE_SECONDS + 5)
+        self.assertTrue(old.is_alive())
+        self.assertNotEqual(fn().get("text"), "frame-A")          # bayat kare tekrar OYNATILMAZ
+        self.assertTrue(wait_for(lambda: len(self.conns) == 2))
+        self.assertIsNot(web_hosts._term_relays[KEY], old)
+        self.assertTrue(any(e == "term_relay_silent_restart" for e, _ in self.logged))
+        self.conns[1].push({"ok": True, "text": "frame-B"})
+        self.assertTrue(wait_for(lambda: fn().get("text") == "frame-B"))
+
+    def test_fresh_relay_is_not_restarted(self):
+        fn = web_hosts.term_output_relay("fakehost", "s1", "en")
+        fn()
+        self.assertTrue(wait_for(lambda: len(self.conns) == 1))
+        for _ in range(5):
+            fn()
+        self.assertEqual(len(self.conns), 1)
+        self.assertFalse(any(e == "term_relay_silent_restart" for e, _ in self.logged))
+
     def test_instantly_dying_consumer_is_not_reconnected_every_tick(self):
         self.connect_error = OSError("connection refused")
         fn = web_hosts.term_output_relay("fakehost", "s1", "en")
