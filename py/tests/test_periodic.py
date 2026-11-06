@@ -274,5 +274,21 @@ class ChatBackupTest(_Tmp):
             self.assertFalse(P.run_chat_backup(dict(self.cfg, repo_dir=os.path.join(self.d, "yok"), repos={}), True, {})["ok"])
 
 
+class ProcLockTest(_Tmp):
+    def test_second_process_lock_refused(self):
+        fd = P._acquire_proc_lock()
+        self.assertIsNotNone(fd)
+        try:
+            self.assertIsNone(P._acquire_proc_lock())     # ayrı fd = ayrı açık dosya tanımı: flock çakışır
+            P.add_custom("lk1", {"kind": "command", "command": "true", "schedule": "30 3 * * *"})
+            r = P.run_job("lk1", apply=False)
+            self.assertIn("flock", r["msg"])
+        finally:
+            os.close(fd)
+        fd2 = P._acquire_proc_lock()
+        self.assertIsNotNone(fd2)
+        os.close(fd2)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ chat_backup: `~/.claude/projects/**/*.jsonl` + `history.jsonl` içinde YENİ/DE�
 from __future__ import annotations
 
 import datetime
+import fcntl
 import glob
 import hashlib
 import json
@@ -747,12 +748,35 @@ JOBS: Dict[str, Job] = {"chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, r
 _LOCK = threading.Lock()
 
 
+def _proc_lock_path() -> str:
+    return os.path.join(str(CLAUDEOPS_DIR), "periodic.lock")
+
+
+def _acquire_proc_lock() -> Optional[int]:
+    """Süreçler arası (servis + CLI) tek iş: flock; alınamazsa None. Süreç ölünce kilit kendiliğinden düşer."""
+    try:
+        os.makedirs(os.path.dirname(_proc_lock_path()), exist_ok=True)
+        fd = os.open(_proc_lock_path(), os.O_CREAT | os.O_RDWR, 0o600)
+    except OSError:
+        return -1                      # kilit dosyası açılamıyorsa thread kilidiyle devam
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except OSError:
+        os.close(fd)
+        return None
+
+
 def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
     """Tek işi çalıştırır, durumu yazar. Aynı anda tek iş (kilit); asla fırlatmaz."""
     if name not in load_config():
         return {"ok": False, "msg": f"bilinmeyen iş: {name}"}
     if not _LOCK.acquire(blocking=False):
         return {"ok": False, "msg": "başka bir periyodik iş çalışıyor"}
+    pfd = _acquire_proc_lock()
+    if pfd is None:
+        _LOCK.release()
+        return {"ok": False, "msg": "başka bir süreçte periyodik iş çalışıyor (flock)"}
     try:
         state = load_state()
         cfg = load_config()[name]
@@ -774,6 +798,8 @@ def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
             diag_log(f"periodic {name}: {'ok' if res.get('ok') else 'HATA'} {res.get('msg', '')}")
         return res
     finally:
+        if pfd is not None and pfd >= 0:
+            os.close(pfd)              # kapatınca flock düşer
         _LOCK.release()
 
 
