@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .. import ucli_agents as ag
 from .. import ucli_client as uc
 from ..diaglog import diag_log
-from ..settings import byok_env_for, ucli_cost_config, ucli_services
+from ..settings import byok_env_for, ucli_services
 
 Caller = Tuple[str, str]        # ("human", "") | ("agent", <üst oturum adı>)
 Reply = Tuple[Dict[str, Any], int]
@@ -116,8 +116,7 @@ def _cost_usd(name: str) -> float:
     try:
         from .. import review as rv
         from .. import ucli_cost
-        mult = 1.6 if ucli_cost_config().get("cache_ttl") == "1h" else 1.0
-        return round(float(rv.usage_cost_usd(ucli_cost.log_path(name), "", write_mult=mult)), 4)
+        return round(float(rv.usage_cost_usd(ucli_cost.log_path(name), "", write_mult=ucli_cost.write_mult())), 4)
     except Exception:
         return 0.0
 

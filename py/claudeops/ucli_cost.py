@@ -120,12 +120,17 @@ def today_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: fl
 BY_SESSION_TOP = 10   # durum yanıtında en çok harcayan N oturum (panel kısa kalsın)
 
 
+def write_mult() -> float:
+    """Önbellek yazma fiyat çarpanı: 1h TTL için 1,6, yoksa 1,0 (tek kaynak; `state` ve web_agents kullanır)."""
+    return 1.6 if ucli_cost_config().get("cache_ttl") == "1h" else 1.0
+
+
 def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = True) -> Dict[str, Any]:
     """{today_usd, cap_usd (0 = yok), pct (tavan yoksa None), cache_ttl}. 30 sn önbellekli (her /api/status'ta disk taraması yok)."""
     t = time.time() if now is None else now
     cfg = ucli_cost_config()
     if not use_cache or t - _CACHE["at"] > _TTL or _CACHE["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
-        mult = 1.6 if cfg["cache_ttl"] == "1h" else 1.0
+        mult = write_mult()
         by = per_session_usd(t, base, mult)
         _CACHE.update(at=t, total=total_usd(base, mult), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
                       rate_1h=rate_by_session(t, 60.0, base, mult), rate_15m=rate_by_session(t, 15.0, base, mult))
