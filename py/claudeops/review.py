@@ -1115,8 +1115,18 @@ _BACKTICK_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
 _WHERE_FILE_RE = re.compile(r"^\s*`?([^\s:`]+\.[A-Za-z0-9]+)")
 
 
+_WHERE_MD_LINK_RE = re.compile(r"^\s*`?\[([^\]]+)\]\([^)]*\)`?")
+
+
+def where_text(row: Dict[str, Any]) -> str:
+    """`where` alanı; model `[yol:3](file:///...)` Markdown bağlantısı yazdıysa yalnız görünen `yol:3`."""
+    where = str(row.get("where") or "")
+    m = _WHERE_MD_LINK_RE.match(where)
+    return m.group(1) if m else where
+
+
 def _where_file(row: Dict[str, Any], cwd: str) -> str:
-    m = _WHERE_FILE_RE.match(str(row.get("where") or ""))
+    m = _WHERE_FILE_RE.match(where_text(row))
     path = os.path.realpath(os.path.join(cwd, m.group(1))) if m else ""
     root = os.path.realpath(cwd)
     return path if path.startswith(root + os.sep) and os.path.isfile(path) else ""
@@ -1124,7 +1134,7 @@ def _where_file(row: Dict[str, Any], cwd: str) -> str:
 
 def where_relpath(row: Dict[str, Any]) -> str:
     """Bulgunun `where` alanındaki dosya yolu (göreli); mutlak yol ya da `..` içeren yol "" (proje dışına çıkamaz)."""
-    m = _WHERE_FILE_RE.match(str(row.get("where") or ""))
+    m = _WHERE_FILE_RE.match(where_text(row))
     rel = m.group(1) if m else ""
     return "" if (not rel or rel.startswith("/") or ".." in rel.split("/")) else rel
 
@@ -1193,7 +1203,7 @@ def row_in_repo(row: Dict[str, Any], root: str, cwd: str) -> Tuple[Dict[str, Any
     `where`in depo öneki atılır (`claudeops/py/a.py:3` -> `py/a.py:3`)."""
     if not root or os.path.realpath(root) == os.path.realpath(cwd):
         return row, cwd
-    where = str(row.get("where") or "").strip().strip("`")
+    where = where_text(row).strip().strip("`")
     return dict(row, where=where.split("/", 1)[1] if "/" in where else where), root
 
 

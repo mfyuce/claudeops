@@ -107,7 +107,7 @@ function JobRow({ id, job, onChanged }: { id: string; job: PeriodicJob; onChange
   const st = job.state;
   const on = isOn(cfg.enabled);
   return (
-    <div className="card" style={{ marginBottom: 8 }}>
+    <div className="card" style={{ marginBottom: 8, padding: 8, border: "1px solid #d0d7de", borderRadius: 8 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
         <strong>{id}</strong>
         {job.builtin && <span className="muted">({x.builtin})</span>}
@@ -136,7 +136,7 @@ function JobRow({ id, job, onChanged }: { id: string; job: PeriodicJob; onChange
           <button type="button" disabled={busy} onClick={() => act({ action: "remove", id })}>{x.del}</button>
         )}
       </div>
-      {out && <pre className="muted" style={{ whiteSpace: "pre-wrap", margin: "6px 0 0" }}>{out}</pre>}
+      {out && out !== st.last_msg && <pre className="muted" style={{ whiteSpace: "pre-wrap", margin: "6px 0 0" }}>{out}</pre>}
     </div>
   );
 }
@@ -166,7 +166,7 @@ function AddForm({ onChanged }: { onChanged: () => void }) {
     }
   };
   return (
-    <div className="card">
+    <div className="card" style={{ padding: 8, border: "1px solid #d0d7de", borderRadius: 8 }}>
       <strong>{x.add}</strong>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
         <input value={id} onChange={(e) => setId(e.target.value)} placeholder={x.id} aria-label={x.id} />

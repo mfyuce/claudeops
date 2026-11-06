@@ -107,6 +107,14 @@ def dump_codex(thread_db: str, state_db: str) -> Iterator[Tuple[str, str, str, D
     st = _ro(state_db)
     meta = {r[0]: (r[1], r[2]) for r in st.execute("select id,cwd,title from threads")}
     c = _ro(thread_db)
+    try:
+        yield from _codex_rows(c, meta)
+    finally:
+        c.close()
+        st.close()
+
+
+def _codex_rows(c: sqlite3.Connection, meta: Dict[str, Any]) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
     for tid, turn, iid, ordn, ms, js, typ in c.execute(
             "select thread_id,turn_id,item_id,rollout_ordinal,created_at_ms,item_json,item_type from thread_items order by thread_id,rollout_ordinal"):
         cwd, title = meta.get(tid, (UNKNOWN, ""))
@@ -115,7 +123,7 @@ def dump_codex(thread_db: str, state_db: str) -> Iterator[Tuple[str, str, str, D
         except ValueError:
             item = js
         yield (cwd or UNKNOWN, _day(ms / 1000 if ms else None), tid,
-               {"ordinal": ordn, "ts_ms": ms, "turn": turn, "item": iid, "type": typ, "title": title, "data": item})
+               {"ordinal": ordn, "ts_ms": ms, "turn": turn, "item": iid, "type": typ, "title": title, "cwd": cwd, "data": item})
 
 
 _CWD_RE = re.compile(r'"11": "\\n.(/(?:home|tmp|root)/[^"\\]+)"')
@@ -143,9 +151,10 @@ def _summary(db: str) -> Dict[str, Any]:
         try:
             for cid, title, uris, lm in _ro(sdb).execute("select conversation_id,title,workspace_uris,last_modified_time from conversation_summaries"):
                 try:
-                    u = next(iter(json.loads(uris or "[]")), "")
-                except ValueError:
+                    u = next(iter(json.loads(uris or "[]") or []), "")
+                except (ValueError, TypeError):      # "null", sayı vb. bozuk workspace_uris
                     u = ""
+                u = u if isinstance(u, str) else ""
                 m[cid] = {"project": u[7:] if u.startswith("file://") else u, "title": title or "", "last_modified": lm}
         except sqlite3.Error:
             pass

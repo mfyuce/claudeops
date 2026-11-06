@@ -60,6 +60,12 @@ class TestComboWorktree(unittest.TestCase):
     def test_worktree_prefix_resolves_to_main_repo(self):
         self.assertEqual(rv.export_root({"where": "claudeops/py/a.py:1"}, "cliops", self.combo, lambda n: ""), self.main)
 
+    def test_markdown_link_where_resolves(self):
+        row = {"where": "[claudeops/py/a.py:5077](file:///home/x/claudeops/py/a.py#L5077)"}
+        self.assertEqual(rv.where_relpath(row), "claudeops/py/a.py")
+        self.assertEqual(rv.export_root(row, "cliops", self.combo, lambda n: ""), self.main)
+        self.assertEqual(rv.row_in_repo(row, self.main, self.combo)[0]["where"], "py/a.py:5077")
+
     def test_non_worktree_git_file_is_not_followed(self):
         wt = os.path.join(self.combo, "sub")
         os.makedirs(wt)
