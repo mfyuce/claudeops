@@ -2187,6 +2187,8 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
         if it.get("idle_minutes") is not None:
             mins = int(it["idle_minutes"])
             lines.append(f"boşta: {mins} dk" if tr else f"idle: {mins} min")
+        for c in it.get("contradictions") or []:
+            lines.append(("⚠ MOTOR ÇELİŞKİ: " if tr else "⚠ ENGINE CONTRADICTION: ") + _clip(c, 300))
         if it.get("last_directive"):
             lines.append(("son direktif: " if tr else "last directive: ") + _clip(it["last_directive"], 300))
         ex = it.get("last_exchange") or {}
@@ -2429,6 +2431,35 @@ def stale_answers(questions: List["Question"], projects: Dict[str, "Project"], c
             and now - float(q.answered_at or q.created_at or 0) >= STALE_ANSWER_SECONDS]
 
 
+NOTE_PID_RE = re.compile(r"\bPID\s*[:=#]?\s*(\d{2,8})\b", re.I)
+NOTE_GATE_RE = re.compile(r"kap[ıi]da\s+bekl|waiting\s+(?:at|in)\s+the\s+gate", re.I)
+
+
+def note_claims(notes: str) -> Dict[str, Any]:
+    """Beynin proje notundaki DOĞRULANABİLİR iddialar: `pids` (\"koşu sürüyor, PID 1234\") ve `gate` (\"kapıda bekliyor\")."""
+    t = notes or ""
+    return {"pids": sorted({int(m) for m in NOTE_PID_RE.findall(t)}), "gate": bool(NOTE_GATE_RE.search(t))}
+
+
+def check_note_claims(notes: str, pid_alive: Callable[[int], Optional[bool]],
+                      gate_ahead: Callable[[], Optional[int]], tr: bool = True) -> List[str]:
+    """Not iddialarını gerçekle karşılaştırır (sahip 6 Kas, model turu harcamadan); ÇELİŞKİ metinleri döner, boş = tutarlı ya da
+    bilinmiyor. `pid_alive(pid)`: True/False/None(bilinmiyor); `gate_ahead()`: ana daldan ileri commit sayısı ya da None.
+    Yalnız KANITLI çelişki raporlanır (bilinmeyen sessiz): `chats` 21:41'de biten koşuyu 7 saat \"sürüyor\" sandı."""
+    c = note_claims(notes)
+    out: List[str] = []
+    for pid in c["pids"]:
+        if pid_alive(pid) is False:
+            out.append(f"notta PID {pid} \"sürüyor\" deniyor ama bu süreç YOK (ölü); koşu bitmiş olabilir, notu güncelle / işi ilerlet" if tr
+                       else f"the note says PID {pid} is running but that process is GONE; the run may have finished, update the note / move on")
+    if c["gate"]:
+        n = gate_ahead()
+        if n == 0:
+            out.append("notta \"kapıda bekliyor\" deniyor ama dal ana dalın İLERİSİNDE değil (0 commit: zaten birleşmiş ya da iş yok); notu düzelt" if tr
+                       else "the note says \"waiting at the gate\" but the branch is not ahead of the main branch (0 commits: already merged or nothing to land); fix the note")
+    return out
+
+
 def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Config, now: float,
                  questions: List[Question], ideas: List[Idea], *, skip: Optional[set] = None,
                  last_directive_at: Optional[Dict[str, float]] = None,
@@ -2436,7 +2467,8 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
                  world: Optional[World] = None,
                  skip_seen: Optional[Dict[str, Any]] = None,
                  sigs_out: Optional[Dict[str, str]] = None,
-                 open_work: Optional[Callable[[str], Optional[int]]] = None) -> List[Dict[str, Any]]:
+                 open_work: Optional[Callable[[str], Optional[int]]] = None,
+                 claim_check: Optional[Callable[[str], List[str]]] = None) -> List[Dict[str, Any]]:
     """Beynin yargısını gerektiren maddeler: boşta bekleyen proje oturumu (`idle`), uzun süredir meşgul
     olup gözden geçirilmemiş oturum (`review`), yeni fikir (`idea`), oturuma iletilemeyen cevap
     (`blocked`). `plan_tick` bunu çağırır; elle "tur" (`web_steward.run_tour(force=True)`) de aynı listeyi alır.
@@ -2478,6 +2510,10 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
             items.append({"kind": "idle", "name": v.name, "idle_minutes": (now - idle_since) / 60})
         else:
             items.append({"kind": "review", "name": v.name})
+        if claim_check is not None:
+            contradictions = claim_check(v.project)
+            if contradictions:
+                items[-1]["contradictions"] = contradictions
     for i in ideas:
         if i.status == "new":
             items.append({"kind": "idea", "id": i.id, "text": i.text, "name": ""})
@@ -3262,7 +3298,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
               now: float, questions: List[Question], ideas: List[Idea],
               world: Optional[World] = None,
               open_work: Optional[Callable[[str], Optional[int]]] = None,
-              open_tbd: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+              open_tbd: Optional[Callable[[str], Optional[int]]] = None,
+              claim_check: Optional[Callable[[str], List[str]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
     (motor kaydeder). Sıra: ekonomi (handover/respawn) → işaretler → cevap iletimi → uğrama/başlatma →
     slot baskısı → beyin turu.
@@ -3691,7 +3728,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     sigs: Dict[str, str] = {}
     items = review_items(views, projects, cfg, now, questions, ideas,
                          skip=busy_names | set(ho_pending), last_directive_at=last_directive_at, reviewed_at=reviewed_at,
-                         world=world, skip_seen=skip_seen, sigs_out=sigs, open_work=open_work)
+                         world=world, skip_seen=skip_seen, sigs_out=sigs, open_work=open_work, claim_check=claim_check)
     for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running}):      # bayat blokaj kaydı: kapat (her tick beyne düşmesin)
         actions.append(Action("close_stale_answer", q.project, "bayat blokaj kaydı", {"question_id": q.id}))
     # `blocked` maddesinin beynin yapabileceği bir şeyi yok (iletim aracı yok, `skip` kalıcı değil): aynı madde art arda

@@ -3398,6 +3398,50 @@ def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[i
     return count
 
 
+def _pid_alive(pid: int) -> Optional[bool]:
+    """PID yaşıyor mu (zombi = ölü). Yetki yok (başka kullanıcı) = yaşıyor sayılır; okunamayan = None."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as f:
+            return f.read().rpartition(")")[2].split()[0] != "Z"
+    except (OSError, IndexError):
+        return True
+
+
+def _gate_ahead(cwd: str) -> Optional[int]:
+    """Projenin geçerli dalının `main`den ileri commit sayısı (`git rev-list --count main..HEAD`); main/git yoksa None."""
+    try:
+        r = subprocess.run(["git", "-C", cwd, "rev-list", "--count", "main..HEAD"], capture_output=True, text=True, timeout=10)
+        return int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip().isdigit() else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def _claim_check_of(projects: Dict[str, sw.Project]) -> Callable[[str], List[str]]:
+    """`plan_tick` için: projenin `notes`undaki doğrulanabilir iddiaları (PID / kapıda bekliyor) süreç ve git ile karşılaştırır.
+    Uzak proje = boş (yerel süreç/depo hakkında bir şey bilinmez). Hata = boş (tutarsızlık uydurma)."""
+    def check(proj: str) -> List[str]:
+        try:
+            p = projects.get(proj)
+            if p is None or p.host or not (p.notes or "").strip():
+                return []
+            if not sw.note_claims(p.notes)["pids"] and not sw.note_claims(p.notes)["gate"]:
+                return []
+            cwd = _cwd_resolver()(proj)
+            return sw.check_note_claims(p.notes, _pid_alive, lambda: _gate_ahead(cwd) if cwd else None)
+        except Exception as e:      # doğrulama beyin turunu hiçbir zaman engellemez
+            diag_log("claim_check_failed", project=proj, error=repr(e))
+            return []
+    return check
+
+
 def _open_tbd_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
     """`plan_tick` için: projenin YEREL TOBEDECIDED.md'sindeki açık karar sayısı (`sw.count_open_tbd`). Uzak/okunamayan = None."""
     def count(proj: str) -> Optional[int]:
@@ -3710,7 +3754,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 prev_state = sw.load_state(paths)
                 actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world,
-                                                  open_work=_open_work_of(projects), open_tbd=_open_tbd_of(projects))
+                                                  open_work=_open_work_of(projects), open_tbd=_open_tbd_of(projects),
+                                                  claim_check=_claim_check_of(projects))
                 if new_state.get("start_blocked") != (prev_state.get("start_blocked") if "start_blocked" in new_state else None):
                     sw.log_event("start_blocked", paths=paths, **new_state["start_blocked"])   # değişince bir kez
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
