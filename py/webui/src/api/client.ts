@@ -17,6 +17,8 @@
 
 import type { Lang } from "../i18n/strings";
 import type {
+  PeriodicActionResult,
+  PeriodicOverview,
   AdoptResult,
   ApiResult,
   ContextResult,
@@ -737,3 +739,14 @@ export const apiReviewBulk = (sid: string, action: "approve" | "reject", project
   apiPost<SimpleResult & { done?: string[]; skipped?: string[] }>("/api/steward/review/bulk", { steward: sid, action, project });
 export const apiReviewExport = (sid: string, project: string, kind: "todo" | "tbd"): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/review/export", { steward: sid, project, kind });
+
+// ── Periyodik işler (2026-11-06, chats adım 7) ───────────────────────────
+export const apiPeriodicOverview = (): Promise<PeriodicOverview> => apiGet<PeriodicOverview>("/api/periodic");
+
+/** {action: add|set|remove|run, id, fields?, apply?} — yalnız insan (sunucu ajan çağrısını 403'ler). */
+export const apiPeriodicAction = (body: {
+  action: "add" | "set" | "remove" | "run";
+  id: string;
+  fields?: Record<string, string | number>;
+  apply?: boolean;
+}): Promise<PeriodicActionResult> => apiPost<PeriodicActionResult>("/api/periodic", body);

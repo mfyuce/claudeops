@@ -1106,3 +1106,13 @@ export interface UcliServiceDef {
   /** model-id fragment -> valid effort levels ([] = this model takes no effort); the longest fragment found in the model id wins */
   efforts?: Record<string, string[]>;
 }
+
+/** `/api/periodic` (periodic.overview()) — Settings > Periyodik. `config` yerleşik işlerde işe özgü ek alanlar taşır. */
+export interface PeriodicJob {
+  config: Record<string, string | number | boolean | string[] | Record<string, string>>;
+  builtin: boolean;
+  state: { last_start?: number; last_end?: number; last_ok?: boolean; last_msg?: string };
+  due: boolean;
+}
+export type PeriodicOverview = { ok: true; jobs: Record<string, PeriodicJob> };
+export type PeriodicActionResult = { ok: boolean; error?: string; msg?: string; changed?: number; applied?: boolean };
