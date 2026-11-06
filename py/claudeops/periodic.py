@@ -63,9 +63,10 @@ DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
               "gemini": os.path.join("~", "work", "projects", "tmp", "copschats-gemini-prv")},  # claude boşsa repo_dir
     "raw_remote": "gdrive:chat-raw",   # ham .db/.sqlite buraya (rclone); boş = yükleme yok
     "dump_db": True,             # codex/gemini .db -> JSONL döküm (chat_dump)
-    "sources": ["local"],        # ileride: "yuhem", "ulak_31"
+    "sources": ["local"],
+    "remote_pull": {},           # {host: shell_oturum_adı}, örn {"yuhem": "shell_yuhem"}; boş = uzak çekme KAPALI (chat_remote)
     "max_file_mb": 50,           # tek ham dosya sınırı (GitHub blob 100 MB); aşan atlanır, günlüğe yazılır
-    "max_repo_mb": 3000,         # çalışma ağacı sınırı; aşılırsa iş durur (sahibe sorulur)
+    "max_repo_mb": 8000,         # çalışma ağacı sınırı; aşılırsa iş durur (sahibe sorulur)
 }
 
 
@@ -553,6 +554,17 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
     manifest: Dict[str, str] = dict((state.get("chat_backup") or {}).get("manifest") or {})
     dump_info: Dict[str, Any] = {}
+    rp = cfg.get("remote_pull")
+    if apply and isinstance(rp, dict) and rp:
+        from . import chat_remote
+        mirr = os.path.join(CLAUDEOPS_DIR, "backups", "chat-mirror")
+        day = datetime.date.today().strftime("%Y%m%d")
+        for host, sess in sorted(rp.items()):
+            dest = os.path.join(mirr, str(host), f"{host}-chat-backup-{day}.tgz")
+            if os.path.exists(dest):
+                continue                   # bugün zaten çekildi
+            r = chat_remote.pull(chat_remote.PanelTransport(str(host), str(sess)), str(host), day, dest)
+            diag_log(f"periodic chat_backup: remote_pull {host}: {r.get('msg')}" + ("" if r.get("ok") else " HATA"))
     if apply and "local" in (cfg.get("sources") or []):
         try:                               # uzak host arşivlerini (yuhem, ulak_31 tgz) güvenle aç
             from . import chat_dump
