@@ -62,6 +62,28 @@ class IdleModeTest(unittest.TestCase):
         self.assertEqual(sw.Config().ucli_idle, "dry")
 
 
+class GateWaitTest(unittest.TestCase):
+    def test_gate_wait_text_detected(self):
+        for t in ("Commit hazır, kapı onayı bekliyor.", "Merge için kapıya haber verdim", "kapı bekliyor",
+                  "Waiting for the gate to review", "tamam. Kapı onayı bekleniyor"):
+            self.assertTrue(sw.waiting_for_gate(t), t)
+        for t in ("", "kapıyı kapattım", "iş bitti", "STEWARD-DONE"):
+            self.assertFalse(sw.waiting_for_gate(t), t)
+
+    def test_no_nudge_no_close_while_waiting_for_gate(self):
+        acts, st = plan([view(last_assistant="Testler geçti, commit hazır. Kapı onayı bekliyor.")])
+        self.assertEqual(acts, [])
+        self.assertNotIn("ucli_idle", st)
+        # bitti işareti de olsa bekle: devir/kapatma yok
+        acts, _ = plan([view(last_assistant="STEWARD-DONE\nkapı onayı bekliyor")])
+        self.assertEqual(acts, [])
+
+    def test_old_gate_text_far_back_does_not_block(self):
+        text = "kapı onayı bekliyor\n" + ("x" * 900) + "\nsıradaki işe geçtim"
+        acts, _ = plan([view(last_assistant=text)])
+        self.assertEqual([a.kind for a in acts], ["idle_nudge"])
+
+
 class HelpersTest(unittest.TestCase):
     def test_one_line_folds_newlines(self):
         self.assertEqual(sw.one_line("devam:\n  a\r\n\tb  c"), "devam: a b c")
@@ -93,7 +115,7 @@ class PlanTest(unittest.TestCase):
     def test_nudge_with_next_work_single_line(self):
         acts, st = plan([view()], proj("a\nsıradaki: testleri yaz\nve ayrıca\nüçüncü"))
         self.assertEqual([a.kind for a in acts], ["idle_nudge"])
-        self.assertEqual(acts[0].payload["text"], "devam: testleri yaz")
+        self.assertEqual(acts[0].payload["text"], "devam: testleri yaz" + sw.IDLE_STALE_NOTE_ESCAPE)   # not kaynaklı: bayatlık kaçışı var
         self.assertNotIn("\n", acts[0].payload["text"])
         self.assertEqual(st["ucli_idle"]["cli"]["n"], 1)
 

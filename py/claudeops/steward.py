@@ -3816,6 +3816,23 @@ _NO_WORK_PHRASES = ("yapacak iş yok", "yapılacak iş yok", "yapacak başka iş
                     "no work left", "nothing left to do", "no more work")
 
 
+# Kodcu "kapı onayı bekliyor" diyorsa (commit/merge/karar kapıda): boşta ama İŞİ BİTMİŞ değil; yeniden dürtme (aynı işi tekrarlar) ve
+# kapatma (devir bekleyen işi keser) YOK. Yalnız cevabın son kısmına bakılır.
+_GATE_WAIT_RE = re.compile(
+    r"kap[ıi](ya)?\s+(onay[ıi]|karar[ıi]|incelemesi|inceleme)?\s*(i[çc]in\s+)?(bekl[ie]yor|bekleniyor|haber|bildir)|"
+    r"waiting\s+(for|on)\s+(the\s+)?gate", re.IGNORECASE)
+
+
+# Proje notundaki `sıradaki:` satırı bayat olabilir (bitmiş işi gösterir): dürtme metni kaçış taşır (TODO'daki ilk açık işe geç, notu bildir).
+IDLE_STALE_NOTE_ESCAPE = " (bu iş zaten bittiyse TODO.md'deki sıradaki açık işi al; proje notu bayatsa STEWARD-ROUTINE ile güncellenmesini iste)"
+_TODO_HINT_PREFIX = "TODO.md'deki"
+
+
+def waiting_for_gate(text: str) -> bool:
+    """Son asistan cevabı kapıdan onay/karar beklediğini söylüyor mu (son 800 karakter). SAF."""
+    return bool(_GATE_WAIT_RE.search((text or "")[-800:]))
+
+
 def one_line(text: Any, limit: int = 400) -> str:
     """Metni TEK satıra katla (ucli çok satırlı girdiyi ayrı tur sayar): tüm boşluk/satır sonları tek boşluk. SAF."""
     return " ".join(str(text or "").split())[:limit]
@@ -3909,6 +3926,8 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
             continue                            # bu boşta dönem için yakın zamanda işlendi
         if chain >= cfg.ucli_idle_max_consecutive:
             continue
+        if waiting_for_gate(v.last_assistant):
+            continue                            # kapı onayı bekliyor: dürtme de kapatma da yok (bekle)
         hint = next_work_hint(proj, open_work)
         marker, ready = idle_finish_marker(v.last_assistant)
         info = {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1}
@@ -3926,7 +3945,8 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
                     ho_close[v.name] = proj.name
         elif hint:
             out.append(Action("idle_nudge", v.name, f"ucli boşta {int(now - since)} sn, sıradaki iş var",
-                              dict(info, text=one_line(f"devam: {hint}"), next=hint)))
+                              dict(info, text=one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE)),
+                                   next=hint)))
         else:
             continue
         rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.ucli_idle}
