@@ -5211,6 +5211,25 @@ def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return res
 
 
+def human_stop_with_ho(name: str, sid: str = "default") -> Optional[Dict[str, Any]]:
+    """Panel Durdur (`/api/stop`, insan): değnekçi AÇIK (act) ve oturum kayıtlı yerel proje oturumuysa GÜM diye öldürme
+    YOK, önce devir (`http_stop` yolu: ho_pending + ho_close). Uygulanmazsa (kapalı/observe, kayıtsız ya da uzak oturum,
+    beyin) None: çağıran düz `_stop`a düşer. Ho'suz zorla kapatma: istekte `force` (çağıran bu fonksiyonu hiç çağırmaz)."""
+    try:
+        cfg = steward_config(sid)
+        if not (cfg.enabled and cfg.mode == "act") or _name_host(name):
+            return None
+        real = _resolved_local_name(name, sid)
+        if real == cfg.brain_name:
+            return None
+        proj = _project_for_session(real, sw.load_projects(sid), _world(sid))
+        if proj is None:
+            return None
+        return http_stop({"name": name, "actor": "human", "reason": "panel"}, sid)
+    except Exception:
+        return None
+
+
 def http_handover(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     cfg = steward_config(sid)

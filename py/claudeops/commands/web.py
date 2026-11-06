@@ -5291,7 +5291,12 @@ class _Handler(BaseHTTPRequestHandler):
                 cli_opts=data.get("cli_opts") if isinstance(data.get("cli_opts"), dict) else None,
             )
         elif path == "/api/stop":
-            result = _stop(name, lang=lang, exact=data.get("exact") is True)
+            # ho kuralı (sahip 2026-11-05): kayıtlı proje oturumu önce devirle kapanır; `force` true ya da uzak `exact` çağrısı ho'suz
+            result = None
+            if data.get("force") is not True and data.get("exact") is not True:
+                result = web_steward.human_stop_with_ho(name)
+            if result is None:
+                result = _stop(name, lang=lang, exact=data.get("exact") is True)
         elif path == "/api/retire":
             result = _retire(name, lang=lang)
         elif path == "/api/close":
