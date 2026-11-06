@@ -1,6 +1,11 @@
+import os
+import sys
 import unittest
-from claudeops.commands import web_agents
-from claudeops.providers import ucli_provider as up
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from claudeops.commands import web_agents  # noqa: E402
+from claudeops.providers import ucli_provider as up  # noqa: E402
 
 
 class EffortSingleSource(unittest.TestCase):
