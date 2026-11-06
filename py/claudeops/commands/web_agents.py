@@ -32,7 +32,6 @@ Reply = Tuple[Dict[str, Any], int]
 
 _MODES = {"read": "read-only", "edit": "allow-edit"}
 _EFFORT_CHOICES = ("low", "medium", "high")
-_DEFAULT_EFFORTS = ["medium", "high"]       # ucli presetleri (`--max-steps`/bağlam sınırları) yalnız bu ikisi
 _RECENT_INPUT_SECONDS = 4.0                 # girdi gönderdikten hemen sonra durum dosyası henüz "idle" diyebilir
 _MAX_ANSWER_CHARS = 256 * 1024
 _MISSES: Dict[str, int] = {}                # üst oturum -> art arda "çalışmıyor" gözlemi (reap geçici keşif hatasına dayanıklı)
@@ -49,7 +48,8 @@ def _efforts_for(service: str, model: str) -> List[str]:
     from ..ucli_session_opts import effort_levels_for
     lv = effort_levels_for(service, model) if service != "evren" else None
     got = [x for x in (lv or []) if x in _EFFORT_CHOICES]
-    return got or list(_DEFAULT_EFFORTS)
+    from ..providers.ucli_provider import _EFFORT_LEVELS     # tek kaynak: ucli presetleri (`_EFFORT_LIMITS` anahtarları)
+    return got or list(_EFFORT_LEVELS)
 
 
 def models_catalog() -> List[Dict[str, Any]]:
