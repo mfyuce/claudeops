@@ -15,6 +15,11 @@ from claudeops import remote_desktop as rd  # noqa: E402
 
 
 class StartTimeoutTest(unittest.TestCase):
+    def test_leaked_adopted_pid_does_not_mask_timeout(self):
+        """Regresyon: önceki bir testten/gerçek benimsemeden kalan `_adopted_pid` start()'ı 'already_running' ok yapıyordu."""
+        with mock.patch.object(rd, "_adopted_pid", 4242):
+            self.test_timeout_terminates_process_and_clears_state()
+
     def test_timeout_terminates_process_and_clears_state(self):
         proc = mock.Mock()
         proc.poll.return_value = None
@@ -25,6 +30,7 @@ class StartTimeoutTest(unittest.TestCase):
             with mock.patch.object(rd, "uzakgoz_config", lambda: {"port": 0, "bin": str(fake_bin)}), \
                  mock.patch.object(rd, "_adopt_if_orphaned", lambda: None), \
                  mock.patch.object(rd, "_port_open", lambda p: False), \
+                 mock.patch.object(rd, "_adopted_pid", None), mock.patch.object(rd, "_token", None), \
                  mock.patch.object(rd, "PID_FILE", os.path.join(d, "rd.pid")), \
                  mock.patch.object(rd, "TOKEN_FILE", os.path.join(d, "rd.token")), \
                  mock.patch.object(rd, "PORT_WAIT_SECONDS", 0.2), \
