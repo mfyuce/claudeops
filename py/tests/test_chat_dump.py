@@ -103,6 +103,39 @@ class DumpTest(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(t, "evil.txt")))
             self.assertEqual(D.ingest_remote_archives(t), {"h1": "atlandı"})
 
+    def test_ingest_rejects_dangerous_members(self):
+        import io, tarfile
+        with tempfile.TemporaryDirectory() as t:
+            hd = os.path.join(t, "h2")
+            os.makedirs(hd)
+            secret = os.path.join(t, "outside.txt")
+            with tarfile.open(os.path.join(hd, "b.tgz"), "w:gz") as tf:
+                for name, data in (("ok/a.jsonl", b"{}\n"), ("a/../../escape.txt", b"x"), ("..", b"x"), ("./../x2", b"x")):
+                    ti = tarfile.TarInfo(name); ti.size = len(data)
+                    tf.addfile(ti, io.BytesIO(data))
+                sl = tarfile.TarInfo("link"); sl.type = tarfile.SYMTYPE; sl.linkname = secret
+                tf.addfile(sl)
+                hl = tarfile.TarInfo("hard"); hl.type = tarfile.LNKTYPE; hl.linkname = "ok/a.jsonl"
+                tf.addfile(hl)
+                dv = tarfile.TarInfo("dev"); dv.type = tarfile.CHRTYPE
+                tf.addfile(dv)
+            r = D.ingest_remote_archives(t)
+            self.assertEqual(r, {"h2": 1})
+            ex = os.path.join(hd, "extract")
+            self.assertEqual(sorted(x for x in os.listdir(ex) if x != ".done"), ["ok"])
+            self.assertFalse(os.path.lexists(os.path.join(ex, "link")))
+            self.assertFalse(os.path.exists(os.path.join(t, "escape.txt")) or os.path.exists(os.path.join(hd, "escape.txt")))
+            self.assertEqual(oct(os.stat(os.path.join(ex, "ok", "a.jsonl")).st_mode & 0o777), "0o600")
+
+    def test_ingest_corrupt_archive(self):
+        with tempfile.TemporaryDirectory() as t:
+            hd = os.path.join(t, "h3")
+            os.makedirs(hd)
+            open(os.path.join(hd, "c.tgz"), "wb").write(b"bu bir tgz degil")
+            r = D.ingest_remote_archives(t)
+            self.assertTrue(str(r["h3"]).startswith("HATA"), r)
+            self.assertFalse(os.path.exists(os.path.join(hd, "extract", ".done")))      # bozuk arşiv bir daha denenir
+
 
 if __name__ == "__main__":
     unittest.main()
