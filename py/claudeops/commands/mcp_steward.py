@@ -109,7 +109,7 @@ def _set_project(port: int, args: dict) -> dict:
     if not args.get("name"):
         return {"ok": False, "error": "name is required"}
     return _api(port, "POST", "/api/steward/project",
-                dict(_pick(args, "name", "phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort"),
+                dict(_pick(args, "name", "phase", "kind", "goal", "priority", "cadence_minutes", "notes", "model", "effort", "reason"),
                      actor="brain"))
 
 
@@ -220,9 +220,9 @@ TOOLS: List[Dict[str, Any]] = [
      "description": "Send the wrap-up (handover) message to a session whose context looks exhausted. The engine already does this on its own at the scrollback threshold.",
      "inputSchema": _obj({"name": _S}, ["name"])},
     {"name": "steward_set_project",
-     "description": "Update an EXISTING project's steward record (a new name is refused: use steward_register_project): phase (idea|planning|planned|paused|done), kind (book|article|software|other), goal, priority 1-5, cadence_minutes (0 = manual only), notes, model, effort.",
+     "description": "Update an EXISTING project's steward record (a new name is refused: use steward_register_project): phase (idea|planning|planned|paused|done), kind (book|article|software|other), goal, priority 1-5, cadence_minutes (0 = manual only), notes, model, effort. `paused` needs `reason` and is REFUSED when a session runs, a commit landed in 24h, or the card shows open work without a blocker (idea/done stay owner-only).",
      "inputSchema": _obj({"name": _S, "phase": _S, "kind": _S, "goal": _S, "priority": _I, "cadence_minutes": _I,
-                          "notes": _S, "model": _S, "effort": _S}, ["name"])},
+                          "notes": _S, "model": _S, "effort": _S, "reason": _S}, ["name"])},
     {"name": "steward_register_project",
      "description": "Create+register a new project: folder (created + git init if missing), GOAL.md with goal and resources (local files are copied into kaynaklar/, URLs listed), roster entry, steward record (default phase planning).",
      "inputSchema": _obj({"name": _S, "cwd": _S, "goal": _S, "kind": _S, "phase": _S, "cli": _S, "model": _S,

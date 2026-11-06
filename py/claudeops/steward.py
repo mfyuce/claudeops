@@ -1758,6 +1758,30 @@ def make_card(raw: Dict[str, Any], parsed: Optional[Dict[str, Any]], project: Op
     return card
 
 
+BRAIN_PAUSE_RECENT_SECONDS = 24 * 3600
+
+
+def brain_pause_verdict(card: Optional[Dict[str, Any]], running: bool, reason: str,
+                        *, now: Optional[float] = None) -> Tuple[bool, str]:
+    """Beynin `phase=paused` isteği için SAF karar (sahip TBD#163 b): devam etmesi gereken proje paused OLMAZ.
+    Ret: gerekçe yok; çalışan oturum; son 24 sa commit; kartta açık iş (`next_step`/`open_tbds`) var ve engel (`blockers`)
+    yok; kart yok (bilinmeyen = reddet). Kabul: (True, "")."""
+    if not str(reason or "").strip():
+        return False, "a reason is required for pause"
+    if running:
+        return False, "a session is running for this project"
+    if not card:
+        return False, "no project card yet (state unknown)"
+    t = _now() if now is None else now
+    last = float(card.get("last_activity") or 0.0)
+    if last and t - last < BRAIN_PAUSE_RECENT_SECONDS:
+        return False, "a commit landed in the last 24 hours"
+    open_work = bool(str(card.get("next_step") or "").strip() or card.get("open_tbds"))
+    if open_work and not card.get("blockers"):
+        return False, "open work with no blocker (next step / open TBD): the project should continue"
+    return True, ""
+
+
 def load_card(name: str, paths: Any = None) -> Optional[Dict[str, Any]]:
     d = _load_json(card_path(name, paths), None)
     return d if isinstance(d, dict) else None

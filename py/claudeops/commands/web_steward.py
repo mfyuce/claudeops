@@ -4749,11 +4749,25 @@ def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str,
         fields["host"] = sw.normalize_host(fields["host"])
     if (data.get("actor") == "brain" and old is not None and old.phase in sw.ACTIVE_PHASES
             and fields.get("phase") in ("idea", "paused", "done")):
-        # Projeyi durdurmak/bitirmek sahibin ya da kanıtlı STEWARD-DONE'ın işi: "sahibe bağlı" gerekçesiyle beyin kapatamaz
-        # (27 Eki: 4 proje paused'a çekilip oturumları kapandı). Sahibe bağlı iş = oturum açılmaz, tek soru (plan_tick), faz planned kalır.
-        sw.log_event("project_denied", paths=sid, actor="brain", name=name, field="phase", value=fields["phase"])
-        return {"ok": False, "error": f"brain cannot set phase {fields['phase']} (owner decision); owner-blocked work stays "
-                                      "'planned' and the engine asks the owner once instead of opening the session"}
+        # idea/done: sahibin ya da kanıtlı STEWARD-DONE'ın işi (27 Eki: 4 proje paused'a çekilip oturumları kapandı).
+        # paused (sahip TBD#163 b, 6 Kas): beyin yalnız gerekçeyle ve `sw.brain_pause_verdict` geçerse; her sonuç günlüğe.
+        why = ""
+        if fields["phase"] == "paused":
+            reason = str(data.get("reason") or "").strip()
+            ok, why = sw.brain_pause_verdict(sw.load_card(name), bool(_live_sessions(name, sid)), reason)
+            if ok:
+                sw.log_event("brain_pause", paths=sid, actor="brain", name=name, reason=reason[:300])
+                try:
+                    _notify(steward_config(sid), f"{sw.ask_prefix(name, sid)} beyin projeyi paused yaptı: {reason[:200]}")
+                except Exception as e:      # bildirim hatası kararı bozmaz
+                    diag_log("brain_pause_notify_failed", error=repr(e))
+        if fields["phase"] != "paused" or why:
+            sw.log_event("brain_pause_refused" if fields["phase"] == "paused" else "project_denied", paths=sid,
+                         actor="brain", name=name, field="phase", value=fields["phase"], why=why)
+            return {"ok": False, "error": f"brain cannot set phase {fields['phase']}"
+                                          + (f" ({why})" if why else " (owner decision)")
+                                          + "; owner-blocked work stays 'planned' and the engine asks the owner once "
+                                            "instead of opening the session"}
     new_host = fields.get("host", old_host)
     if fields.get("phase") in sw.ACTIVE_PHASES:
         # Roster'da olmayan projeyi AKTİF faza alma/kaydetme (idea→planned dahil): her tick başarısız `start` üretirdi (CLI zaten uyarıyordu).
