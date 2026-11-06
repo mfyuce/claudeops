@@ -232,7 +232,9 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(plan([v], state=st2, now=NOW + 500)[0], [])          # max 2: zincir kesildi
         busy_again = view(idle=0, idle_since=NOW + 600)                       # etkinlik oldu, yine boşa düştü
         a3, st3 = plan([busy_again], state=st2, now=NOW + 600 + 400)
-        self.assertEqual((len(a3), st3["ucli_idle"]["cli"]["n"]), (1, 1))      # sayaç sıfırlandı
+        self.assertEqual(a3, [])                                               # AYNI devam metni yanıtlandı: tekrar yok
+        a3, st3 = plan([busy_again], proj("sıradaki: başka iş"), state=st2, now=NOW + 600 + 400)
+        self.assertEqual((len(a3), st3["ucli_idle"]["cli"]["n"]), (1, 1))      # yeni metin: sayaç sıfırlandı
 
 
     def test_dry_counts_do_not_block_act(self):
@@ -240,7 +242,8 @@ class PlanTest(unittest.TestCase):
         v = view()
         _, st = plan([v], c=cfg(ucli_idle="dry"))
         _, st = plan([v], state=st, c=cfg(ucli_idle="dry"), now=NOW + 200)
-        self.assertEqual(st["ucli_idle"]["cli"], {"at": NOW + 200, "n": 2, "mode": "dry"})
+        rec = st["ucli_idle"]["cli"]
+        self.assertEqual((rec["at"], rec["n"], rec["mode"]), (NOW + 200, 2, "dry"))
         a, st2 = plan([v], state=st, now=NOW + 210)                           # act: eşik beklemeden ilk gerçek dürtme
         self.assertEqual((len(a), st2["ucli_idle"]["cli"]["n"], st2["ucli_idle"]["cli"]["mode"]), (1, 1, "act"))
 
@@ -319,3 +322,34 @@ class ApplyTest(_Engine):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DevamTextTest(unittest.TestCase):
+    def test_clip_words_never_cuts_mid_word(self):
+        t = ("kelime " * 40).strip()
+        out = sw.clip_words(t, 160)
+        self.assertLessEqual(len(out), 161)
+        self.assertTrue(out.endswith("…"))
+        self.assertTrue(out[:-1].split()[-1] == "kelime")
+        self.assertEqual(sw.clip_words("kısa metin", 160), "kısa metin")
+        self.assertEqual(sw.clip_words("a" * 10 + " " + "b" * 10, 10), "a" * 10 + "…")
+
+    def test_next_hint_long_note_cut_on_word(self):
+        note = "sıradaki: " + " ".join(["uzunkelime"] * 30)
+        h = sw.next_work_hint(sw.Project(name="cli", phase="planned", notes=note))
+        self.assertTrue(h.endswith("…"))
+        self.assertTrue(all(w == "uzunkelime" for w in h[:-1].split()))
+
+    def test_same_devam_text_not_resent_after_answer(self):
+        acts, st = plan([view()])
+        self.assertEqual([a.kind for a in acts], ["idle_nudge"])
+        text = acts[0].payload["text"]
+        self.assertEqual(st["ucli_idle"]["cli"]["text"], text)
+        # oturum yanıtladı (etkinlik nudge'dan sonra), yeniden boşta: AYNI metin tekrar gitmez
+        later = NOW + 2000
+        acts2, st2 = plan([view(idle=400, last_activity=later - 600, idle_since=later - 400)], state=st, now=later)
+        self.assertEqual(acts2, [])
+        # not değişti: yeni metin gider
+        acts3, _ = plan([view(idle=400, last_activity=later - 600, idle_since=later - 400)],
+                        proj("sıradaki: başka iş"), state=st, now=later)
+        self.assertEqual([a.kind for a in acts3], ["idle_nudge"])

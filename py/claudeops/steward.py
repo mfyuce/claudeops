@@ -3975,6 +3975,17 @@ def one_line(text: Any, limit: int = 400) -> str:
     return " ".join(str(text or "").split())[:limit]
 
 
+def clip_words(text: Any, limit: int) -> str:
+    """Metni TEK satıra katla ve `limit` karakteri aşıyorsa son TAM kelimede kes (sonuna `…`); kelime ortasında kesmez. SAF."""
+    t = " ".join(str(text or "").split())
+    if len(t) <= limit:
+        return t
+    cut = t[:limit]
+    if t[limit] != " " and " " in cut:
+        cut = cut[:cut.rfind(" ")]
+    return cut.rstrip(" ,;:.-") + "…"
+
+
 def ucli_idle_threshold(cfg: Config, cache_ttl: str) -> int:
     """Boşluk eşiği (sn): `--cache-ttl 1h` oturumda `ucli_idle_nudge_secs_1h`, 5m/bilinmeyende `ucli_idle_nudge_secs`. 0 = kapalı."""
     return cfg.ucli_idle_nudge_secs_1h if (cache_ttl or "").strip().lower() == "1h" else cfg.ucli_idle_nudge_secs
@@ -3987,7 +3998,7 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
     for line in notes.splitlines():
         m = _NEXT_NOTE_RE.search(line)
         if m:
-            val = one_line(m.group(1), 160)
+            val = clip_words(m.group(1), 160)
             if val.strip(" .").lower() in _NO_WORK_VALUES:
                 return ""
             if val:
@@ -4089,12 +4100,16 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
                 if pause:
                     ho_close[v.name] = proj.name
         elif hint:
+            text = one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE), 600)
+            if at and since > at and not failed and rec.get("text") == text and rec.get("mode", "dry") == cfg.ucli_idle:
+                continue                        # AYNI `devam` metni gönderildi ve oturum yanıtladı: tekrar gönderme (bayat not döngüsü)
             out.append(Action("idle_nudge", v.name, f"ucli boşta {int(now - since)} sn, sıradaki iş var",
-                              dict(info, text=one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE)),
-                                   next=hint)))
+                              dict(info, text=text, next=hint)))
         else:
             continue
         rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.ucli_idle}
+        if out and out[-1].kind == "idle_nudge" and out[-1].name == v.name:
+            rec_all[v.name]["text"] = out[-1].payload.get("text", "")
         changed = True
     if not changed:
         return [], state
