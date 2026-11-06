@@ -25,6 +25,10 @@ class ApiBlockTest(unittest.TestCase):
     def test_endpoint_anthropic_blocked(self):
         self.assertIsNotNone(self.gate("2026-11-09", {"cli": "ucli", "cli_opts": {"endpoint": "https://api.anthropic.com"}}))
 
+    def test_empty_opts_claude_model_blocked(self):
+        self.assertIsNotNone(self.gate("2026-11-09", {"cli": "ucli", "model": "claude-sonnet-5-5", "cli_opts": None}))
+        self.assertIsNone(self.gate("2026-11-09", {"cli": "ucli", "model": "glm-5.3", "cli_opts": None}))
+
     def test_open_after_date_or_empty(self):
         self.assertIsNone(self.gate("2026-11-09", UCLI_CLAUDE, today="2026-11-09"))
         self.assertIsNone(self.gate("", UCLI_CLAUDE))

@@ -1709,7 +1709,8 @@ def _api_blocked(name: str, today: Optional[str] = None) -> Optional[Dict[str, A
             return None
         opts = rec.get("cli_opts") if isinstance(rec.get("cli_opts"), dict) else {}
         blob = " ".join(str(opts.get(k) or "") for k in ("service", "endpoint", "base_url", "url")).lower()
-        if "claude" in blob or "anthropic" in blob:
+        implicit = not blob.strip() and str(rec.get("model") or "").lower().startswith("claude")   # cli_opts boş + claude-* modeli: Anthropic'e düşer
+        if "claude" in blob or "anthropic" in blob or implicit:
             return {"ok": False, "code": "anthropic_api_blocked",
                     "error": f"{name}: Anthropic API yasağı {until} tarihine kadar; kayıt ucli+Anthropic, açılmadı "
                              "(instances.json kaydını claude CLI'ye çevir ya da yasağı kaldır)"}
