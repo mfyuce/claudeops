@@ -543,7 +543,10 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     if apply and "local" in (cfg.get("sources") or []) and str(cfg.get("dump_db", True)).lower() not in ("off", "0", "false", "no", ""):
         from . import chat_dump
         stamps: Dict[str, str] = dict((state.get("chat_backup") or {}).get("dump_stamps") or {})
-        dump_info = chat_dump.stage_dumps(STAGE_DIR, stamps)
+        try:
+            dump_info = chat_dump.stage_dumps(STAGE_DIR, stamps)
+        except Exception as e:  # noqa: BLE001 — döküm hatası sohbet/hafıza yedeğini durdurmasın
+            dump_info = {"dumped": 0, "skipped": 0, "files": 0, "errors": [f"stage_dumps: {type(e).__name__}: {e}"[:200]]}
         state.setdefault("chat_backup", {})["dump_stamps"] = stamps
         if cfg.get("raw_remote"):
             dump_info["raw_err"] = chat_dump.raw_to_remote(str(cfg["raw_remote"]))

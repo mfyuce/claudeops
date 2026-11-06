@@ -86,8 +86,20 @@ def _first_ts(x: Any) -> Optional[int]:
     return None
 
 
+def _valid_day(d: str) -> str:
+    """YYYY-MM-DD ve makul yıl (2015..2040) ise d, değilse 'bilinmiyor' (sıfır/boş tarihler 0000-00-00 gibi gelir)."""
+    try:
+        datetime.datetime.strptime(d, "%Y-%m-%d")
+        return d if 2015 <= int(d[:4]) <= 2040 else UNKNOWN
+    except (ValueError, TypeError):
+        return UNKNOWN
+
+
 def _day(ts: Optional[float]) -> str:
-    return datetime.datetime.fromtimestamp(ts).strftime("%F") if ts else UNKNOWN
+    try:
+        return _valid_day(datetime.datetime.fromtimestamp(ts).strftime("%F")) if ts else UNKNOWN
+    except (ValueError, OverflowError, OSError):
+        return UNKNOWN
 
 
 def dump_codex(thread_db: str, state_db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
@@ -147,7 +159,7 @@ def dump_gemini(db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
     summ = _summary(db)
     proj = summ.get("project") or _gemini_cwd(c)      # önce özet tablosu (workspace_uris), yoksa payload alan 11
     if summ:
-        yield proj, UNKNOWN if not summ.get("last_modified") else str(summ["last_modified"])[:10], sess, {
+        yield proj, _valid_day(str(summ.get("last_modified") or "")[:10]), sess, {
             "summary": {"title": summ.get("title"), "workspace": summ.get("project"), "last_modified": summ.get("last_modified")}}
     for idx, stype, status, md, pl, ri in c.execute("select idx,step_type,status,metadata,step_payload,render_info from steps order by idx"):
         mdd = pb_decode(md) if md else None
@@ -235,7 +247,7 @@ def stage_dumps(stage: str, stamps: Dict[str, str], home: Optional[str] = None) 
             continue
         for rel in rels:
             day = rel.split(os.sep)[-2]
-            if day != UNKNOWN:
+            if _valid_day(day) != UNKNOWN:
                 t = datetime.datetime.strptime(day, "%Y-%m-%d").replace(hour=12).timestamp()
                 os.utime(os.path.join(stage, rel), (t, t))
         stamps[p] = sig

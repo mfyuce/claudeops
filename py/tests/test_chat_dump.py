@@ -47,6 +47,12 @@ class DumpTest(unittest.TestCase):
             self.assertTrue(all(x.startswith("gemini/w-proj/") for x in w), w)
             self.assertIn("gemini/w-proj/2026-07-01/abc.jsonl", w)
 
+    def test_valid_day(self):
+        self.assertEqual(D._valid_day("0000-00-00"), D.UNKNOWN)
+        self.assertEqual(D._valid_day("0001-01-01"), D.UNKNOWN)
+        self.assertEqual(D._valid_day("2026-11-05"), "2026-11-05")
+        self.assertEqual(D._day(1e15), D.UNKNOWN)
+
     def test_gemini_and_codex(self):
         with tempfile.TemporaryDirectory() as t:
             g = os.path.join(t, "abc.db")
