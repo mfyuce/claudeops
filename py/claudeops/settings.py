@@ -167,6 +167,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # bayrak geçer; `off` yeni oturumlara bayrağı/token'ı hiç vermez. Okuma: `ucli_agents.enabled()`.
     "ucli_agents_max_cost_usd": "",   # çocuk ajan başına USD tavanı (`--max-cost-usd` + panel sayacı); boş = 2, 0 = tavan yok.
     "steward_quota": {},      # {mode: off|manual|auto, manual_limit, final_limit, poll_minutes, day_mon..day_sun}: TBD#116 kota bekçisi
+    "anthropic_api_block_until": "",   # "YYYY-MM-DD": bu tarihe KADAR değnekçi, ucli+Anthropic (service claude / anthropic uç noktası) kayıtlı projeyi
+                                       # AÇMAZ (`web_steward._api_blocked`, code `anthropic_api_blocked`). Boş = yasak yok. Sahip kararı 2026-11-05/06.
     "store_backend": "files",  # files|dual|db: SQLite geçişi (statedocs.py, TBD#142 K5); boş değer anahtarı siler = files
     "ucli_usage_warn": {},   # {amber, red: str} — 2026-10-17: ucli token rozetinin renk eşikleri, OTURUM başına
                               # Evren KOTA EŞDEĞERİ token (`ucli_client.quota_equivalent_tokens`: önbellekli girdi
