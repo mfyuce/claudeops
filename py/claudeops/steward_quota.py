@@ -97,6 +97,17 @@ def limits(cfg: Dict[str, Any]) -> "tuple[Optional[float], float, float]":
     return _num(cfg, "manual_limit", None), (sd if sd is not None else final - 1), final
 
 
+ENABLE_CONFIRM_ABOVE = 95.0
+
+
+def enable_needs_confirm(cfg: Dict[str, Any], new_mode: str) -> bool:
+    """Bekçiyi AÇMAK (off -> manual/auto) için manuel onay gerekir mi (sahip TBD#163 g2): geçerli son eşik %95'in üstündeyse
+    bekçi fiilen hiç devreye girmez, sessizce açılmasın. Mod değişimi dışı (kapatma, manual<->auto) onay istemez."""
+    if new_mode not in ("manual", "auto") or str(cfg.get("mode") or "off") in ("manual", "auto"):
+        return False
+    return limits(cfg)[2] > ENABLE_CONFIRM_ABOVE
+
+
 def _week_day_index(usage: Usage, now: float, tz: Optional[Any] = None) -> "tuple[datetime.datetime, int]":
     """(hafta başı, 0..6 gün indeksi). Sınırlar DUVAR SAATİYLE (sıfırlanma - 7 takvim günü, +k takvim günü); sabit 86400 sn
     DST haftasında sınırı 1 saat kaydırıp gün etiketini/tavanı yanlış günde değiştirirdi. `reset_ts` bilinmeli."""

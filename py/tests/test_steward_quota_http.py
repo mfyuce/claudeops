@@ -39,6 +39,15 @@ class QuotaHttp(unittest.TestCase):
         self.assertEqual(g["config"]["day_tue"], "80")
         self.assertIn("auto", g["modes"])
 
+    def test_enable_above_95_needs_confirm(self):
+        ws.http_quota_set({"key": "final_limit", "value": 99})
+        r = ws.http_quota_set({"key": "mode", "value": "manual"})
+        self.assertFalse(r["ok"])
+        self.assertTrue(r.get("needs_confirm"))
+        self.assertNotIn("mode", ws.quota_config())
+        self.assertTrue(ws.http_quota_set({"key": "mode", "value": "manual", "confirm": True})["ok"])
+        self.assertEqual(ws.quota_config()["mode"], "manual")
+
     def test_day_empty_deletes(self):
         ws.http_quota_set({"key": "day_tue", "value": "80"})
         ws.http_quota_set({"key": "day_tue", "value": ""})

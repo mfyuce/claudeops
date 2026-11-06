@@ -5481,6 +5481,10 @@ def http_quota_set(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     if key == "mode":
         if value not in sq.MODES:
             return {"ok": False, "error": "mode must be one of " + ", ".join(sq.MODES)}
+        if not data.get("confirm") and sq.enable_needs_confirm(quota_config(), str(value)):
+            return {"ok": False, "needs_confirm": True,
+                    "error": f"final threshold is above {sq.ENABLE_CONFIRM_ABOVE:g}%: the guard would barely act; "
+                             "resend with confirm=true to enable anyway"}
     elif key in _QUOTA_NUM_KEYS or (key.startswith("day_") and key[4:] in sq.DAYS):
         lo, hi = _QUOTA_NUM_KEYS.get(key, (0, 100))
         if key.startswith("day_") and (value is None or str(value).strip() == ""):

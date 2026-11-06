@@ -375,6 +375,9 @@ def cmd_quota(args) -> int:
             if args.value not in sq.MODES:
                 print(f"mod: {'|'.join(sq.MODES)}", file=sys.stderr)
                 return 1
+            if not getattr(args, "confirm", False) and sq.enable_needs_confirm(cur, args.value):
+                print(f"son eşik %{sq.ENABLE_CONFIRM_ABOVE:g} üstünde: bekçi neredeyse hiç devreye girmez; yine de açmak için --confirm", file=sys.stderr)
+                return 1
             patch["mode"] = args.value
         elif act in ("limit", "shutdown", "final", "poll", "budget"):
             try:
@@ -1072,6 +1075,7 @@ def register(sub):
     pq.add_argument("quota_action", choices=("status", "check", "mode", "limit", "shutdown", "final", "poll", "day", "budget"))
     pq.add_argument("value", nargs="?", default="")
     pq.add_argument("more", nargs="*")
+    pq.add_argument("--confirm", action="store_true", help="eşik %%95 üstündeyken bekçiyi açmayı onayla")
     pq.set_defaults(func=cmd_quota)
     ppc = s.add_parser("panic", help="ACİL DURDURMA: tüm değnekçi kimlikleri observe gibi (oturuma dokunma yok); on|off|status")
     ppc.add_argument("panic_action", choices=("on", "off", "status"), nargs="?", default="status")

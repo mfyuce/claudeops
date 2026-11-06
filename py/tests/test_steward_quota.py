@@ -65,6 +65,13 @@ class DecideTest(unittest.TestCase):
                          (63.0, 64.0, 65.0))
         self.assertEqual(q.limits({}), (None, 94.0, 95.0))
 
+    def test_enabling_above_95_needs_confirmation(self):
+        self.assertTrue(q.enable_needs_confirm({"mode": "off", "final_limit": "97"}, "manual"))
+        self.assertTrue(q.enable_needs_confirm({"budget_pct": "99"}, "auto"))
+        self.assertFalse(q.enable_needs_confirm({"final_limit": "95"}, "manual"))       # eşik 95 ve altı: onay yok
+        self.assertFalse(q.enable_needs_confirm({"mode": "manual", "final_limit": "99"}, "auto"))   # zaten açık
+        self.assertFalse(q.enable_needs_confirm({"final_limit": "99"}, "off"))
+
     def test_manual_three_tiers(self):
         now = _ts(2026, 10, 25, 11)
         cfg = {"mode": "manual", "manual_limit": "93", "shutdown_limit": "94", "final_limit": "95"}
