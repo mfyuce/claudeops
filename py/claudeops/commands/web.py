@@ -2042,11 +2042,13 @@ def _ho_stop_fail(lang: str, why: str, code: str) -> dict:
     return {"ok": False, "error": msg + (f" ({why})" if why else ""), "code": code, "suggest": "force"}
 
 
-def _stop_with_handover(name: str, lang: str = "tr", timeout: float = HO_STOP_TIMEOUT_SECONDS) -> Optional[dict]:
+def _stop_with_handover(name: str, lang: str = "tr", timeout: float = HO_STOP_TIMEOUT_SECONDS, exact: bool = False) -> Optional[dict]:
     """YEREL oturum: devir mesajı, READY FOR HANDOVER görününce kapat. None = devir uygulanamaz (çalışmıyor/belirsiz/konuşmasız
     ya da tmux'suz oturum): çağıran düz `_stop`a düşer (o zaten doğru hatayı verir). Devir alınamazsa kapatmaz."""
     kind, procs = _find_running_for_action(name)
     if kind not in ("exact", "unique_base") or not procs:
+        return None
+    if exact and kind != "exact":      # tam ad istendi: ön ek/unique_base eşleşmesi başka oturumu devrederdi; düz `_stop(exact)` no_exact_match der
         return None
     s = procs[0]
     provider = get_provider(s.cli)
@@ -2106,18 +2108,18 @@ def _ho_stop_key(host: str, name: str) -> str:
     return f"{host}:{name}"
 
 
-def _ho_stop_run(key: str, host: str, name: str, lang: str) -> None:
+def _ho_stop_run(key: str, host: str, name: str, lang: str, exact: bool = False) -> None:
     try:
         if host == LOCAL_HOST_NAME:
-            res = web_steward.human_stop_with_ho(name)          # kayıtlı proje + değnekçi act: motor kendi devir/kapatma yolu
+            res = None if exact else web_steward.human_stop_with_ho(name)    # kayıtlı proje + değnekçi act: motor kendi devir/kapatma yolu (ad/proje çözer: exact'ta atlanır)
             if res is None:
-                res = _stop_with_handover(name, lang=lang)
+                res = _stop_with_handover(name, lang=lang, exact=exact)
             if res is None:                                      # devredilecek konuşma yok / çalışmıyor: düz kapat (doğru hatayı verir)
-                res = _stop(name, lang=lang)
+                res = _stop(name, lang=lang, exact=exact)
         else:
             res = _remote_stop_with_handover(host, name, lang=lang)
             if res is None:
-                res, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang})
+                res, _status = web_hosts.proxy_action("/api/stop", host, dict({"name": name, "lang": lang}, **({"exact": True} if exact else {})))
     except Exception as e:
         diag_log("ho_stop_job_error", name=name, host=host, error=repr(e))
         res = {"ok": False, "error": f"{type(e).__name__}: {e}", "code": "handover_failed", "suggest": "force"}
@@ -2133,7 +2135,7 @@ def _ho_stop_run(key: str, host: str, name: str, lang: str) -> None:
         pass
 
 
-def _ho_stop_begin(host: str, name: str, lang: str = "tr") -> dict:
+def _ho_stop_begin(host: str, name: str, lang: str = "tr", exact: bool = False) -> dict:
     if not name:
         return {"ok": False, "error": "name required"}
     key = _ho_stop_key(host, name)
@@ -2145,7 +2147,7 @@ def _ho_stop_begin(host: str, name: str, lang: str = "tr") -> dict:
         if cur is not None and cur.get("state") == "pending":
             return {"ok": True, "pending": True, "name": name, "host": host, "already": True}     # aynı oturuma ikinci devir gitmez
         _HO_STOP_JOBS[key] = {"state": "pending", "started": now}
-    threading.Thread(target=_ho_stop_run, args=(key, host, name, lang), daemon=True, name=f"ho-stop-{name}").start()
+    threading.Thread(target=_ho_stop_run, args=(key, host, name, lang, exact), daemon=True, name=f"ho-stop-{name}").start()
     return {"ok": True, "pending": True, "name": name, "host": host}
 
 
@@ -5052,9 +5054,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         # Panel "devir + kapat" (BulkBar `stop`, açık `ho:true` alanı): arka plan işi, hemen {ok,pending}. Alan yoksa (OptionsRow
         # restart/reset, window_actions, cops kill, dış çağıranlar) /api/stop ESKİ davranışla aşağıda çalışır.
-        if path == "/api/stop" and data.get("ho") is True and data.get("force") is not True and data.get("exact") is not True:
+        # Açık `ho:true` ASLA sessizce yok sayılmaz (canlı hata: `exact:true` ile gelen istek devirsiz düz durdurmaya düştü, danisppr
+        # devirsiz kapandı): `exact` devri engellemez (YEREL oturumda yalnız tam ad eşleşir), `force` ile birlikte çelişkidir -> 400.
+        if path == "/api/stop" and data.get("ho") is True:
+            if data.get("force") is True:
+                self._json({"ok": False, "error": "ho:true and force:true contradict each other (handover vs. close without handover)",
+                            "code": "ho_force_conflict"}, status=400)
+                return
             ho_host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
-            self._json(_ho_stop_begin(ho_host, str(data.get("name") or "").strip(), lang))
+            self._json(_ho_stop_begin(ho_host, str(data.get("name") or "").strip(), lang, exact=data.get("exact") is True))
             return
 
         # Host-routing: 13 session-scoped route (bkz. web_hosts.HOST_ROUTED_PATHS) için

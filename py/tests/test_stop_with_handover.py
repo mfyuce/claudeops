@@ -8,6 +8,7 @@ import os
 import sys
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from types import SimpleNamespace as NS
@@ -211,11 +212,36 @@ class RouteTest(unittest.TestCase):
         self.assertEqual(self.tags(), ["human", "stop"])             # ne devir yardımcısı ne iş parçacığı
         self.assertEqual(web._HO_STOP_JOBS, {})
 
-    def test_force_and_exact_skip_even_with_ho_field(self):
-        self.post({"name": "a", "force": True, "ho": True})
-        self.post({"name": "a", "exact": True, "ho": True})
-        self.assertEqual(self.tags(), ["stop", "stop"])
+    def test_force_with_ho_is_a_400_conflict_never_a_silent_plain_stop(self):
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self.post({"name": "a", "force": True, "ho": True})
+        self.assertEqual(cm.exception.code, 400)
+        self.assertEqual(self.tags(), [])                            # hiçbir şey kapatılmadı
         self.assertEqual(web._HO_STOP_JOBS, {})
+
+    def test_exact_with_ho_still_hands_over_with_the_exact_flag(self):
+        """Canlı hata (danisppr): `exact:true` + `ho:true` düz durdurmaya düşüp devirsiz kapattı."""
+        self.local_ho = {"ok": True, "result": [], "handover": True}
+        r = self.post({"name": "a", "exact": True, "ho": True})
+        self.assertEqual((r["ok"], r["pending"]), (True, True))
+        self.release.set()
+        self.assertEqual(self.wait_state()["state"], "ok")
+        self.assertIn("ho_local", self.tags())
+        self.assertNotIn("human", self.tags())                        # proje çözen yol exact'ta atlanır
+        ho_call = next(c for c in self.calls if c[0] == "ho_local")
+        self.assertTrue(ho_call[2].get("exact"))
+
+    def test_exact_with_ho_not_applicable_falls_back_to_exact_plain_stop(self):
+        self.local_ho = None
+        self.post({"name": "a", "exact": True, "ho": True})
+        self.release.set()
+        self.wait_state()
+        stop_call = next(c for c in self.calls if c[0] == "stop")
+        self.assertTrue(stop_call[2].get("exact"))
+
+    def test_exact_without_ho_stays_plain_stop(self):
+        self.post({"name": "a", "exact": True})
+        self.assertEqual(self.tags(), ["stop"])
 
     def test_remote_without_ho_goes_straight_to_proxy(self):
         self.post({"name": "a", "host": "ulak31"})
