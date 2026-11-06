@@ -409,6 +409,14 @@ def _walk_files(src: str, kind: str) -> List[str]:
     return sorted(out)
 
 
+_DEST_PFX = "dest:"
+
+
+def _dest_marks(ents: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Hedef başına en yeni yedeklenen kaynak mtime'ı (manifestte `dest:<yol>`): canlı kaynak silinince eski ayna kopyası repodaki yeni sürümü ezmesin."""
+    return {_DEST_PFX + e["dest"]: str(int(e["mt"])) for e in ents}
+
+
 def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str, Any]:
     """Yeni/değişen dosyaları bulur (boyut+mtime imzası). Dosya OKUNMAZ/YAZILMAZ; saf plan."""
     best: Dict[str, Dict[str, Any]] = {}
@@ -433,8 +441,14 @@ def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str,
                           "size": stt.st_size, "kind": kind,
                           "group": _group_of(prefix),
                           "day": datetime.datetime.fromtimestamp(stt.st_mtime).strftime("%F")}
-    todo = [e for _d, e in sorted(best.items()) if manifest.get(e["src"]) != e["sig"]]
-    return {"repo": _group_repo(cfg, "claude"), "seen": seen, "changed": todo}
+    def _regress(e: Dict[str, Any]) -> bool:
+        try:
+            return int(e["mt"]) < int(manifest.get(_DEST_PFX + e["dest"], "0"))
+        except ValueError:
+            return False
+    todo = [e for _d, e in sorted(best.items()) if manifest.get(e["src"]) != e["sig"] and not _regress(e)]
+    return {"repo": _group_repo(cfg, "claude"), "seen": seen, "changed": todo,
+            "marks": _dest_marks([e for e in best.values() if manifest.get(e["src"]) == e["sig"]])}
 
 
 def _put(dest: str, blob: bytes) -> bool:
@@ -506,6 +520,7 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
         if not changed:
             stats["unchanged"] += 1
         sigs[ent["src"]] = ent["sig"]
+        sigs[_DEST_PFX + ent["dest"]] = str(int(ent["mt"]))
     return written, sigs, stats
 
 
@@ -670,6 +685,10 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
                 res.update(ok=False, msg=f"{g} ls-remote {name} eşleşmedi")
                 return res
     done = {e["src"]: sigs[e["src"]] for e in plan["changed"] if e["src"] in sigs}
+    for k, v in (plan.get("marks") or {}).items():       # zaten yedekli (değişmemiş) hedefler için işareti geriye dönük yaz
+        if int(manifest.get(k, "0") or 0) < int(v):
+            done[k] = v
+    done.update({_DEST_PFX + e["dest"]: sigs[_DEST_PFX + e["dest"]] for e in plan["changed"] if _DEST_PFX + e["dest"] in sigs})
     manifest.update(done)
     state.setdefault("chat_backup", {})["manifest"] = manifest
     if dump_info:
