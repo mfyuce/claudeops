@@ -664,6 +664,12 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             argv = _claude_service_flags(argv, session_name, cwd)
     if opts.get("max_cost_usd"):
         argv = _max_cost_args(argv, float(opts["max_cost_usd"]), session_name)
+    if opts.get("max_session_usd"):
+        binary = argv[0]
+        if binary_supports_flag(binary, "--max-session-usd"):
+            argv = _set_flag_value(argv, "--max-session-usd", f"{float(opts['max_session_usd']):g}")
+        else:
+            diag_log("ucli_flag_unsupported", name=session_name, flag="--max-session-usd", binary=binary)
     if opts.get("exec_cmds"):
         names, err = expand_exec_cmds(opts["exec_cmds"], path_executables())
         if err:

@@ -187,6 +187,18 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
             return {}, f"max_cost_usd 0-{MAX_COST_USD:g} USD arası"
         if usd > 0:
             out["max_cost_usd"] = usd
+    s = raw.get("max_session_usd")
+    if s not in (None, ""):
+        # OTURUM boyunca toplam tahmini USD tavanı -> ucli `--max-session-usd` (yalnız REPL; çalışan tur kesilmez, yeni tur
+        # reddedilir). `max_cost_usd` TUR başına: 2 USD'lik tur tavanı oturumu sınırlamaz (copsdev 4,71 USD, 5 Kas). 0 = yok.
+        try:
+            usd = float(str(s).strip().replace(",", "."))
+        except ValueError:
+            return {}, "max_session_usd sayı olmalı"
+        if not (0 <= usd <= MAX_COST_USD * 10) or usd != usd:
+            return {}, f"max_session_usd 0-{MAX_COST_USD * 10:g} USD arası"
+        if usd > 0:
+            out["max_session_usd"] = usd
     return out, ""
 
 
