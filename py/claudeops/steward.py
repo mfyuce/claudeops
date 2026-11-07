@@ -4024,6 +4024,15 @@ def ucli_idle_threshold(cfg: Config, cache_ttl: str) -> int:
     return cfg.ucli_idle_nudge_secs_1h if (cache_ttl or "").strip().lower() == "1h" else cfg.ucli_idle_nudge_secs
 
 
+_COND_RE = re.compile(r"\b\w{3,}(?:[ıiuü]rs[ae]|[ae]rs[ae]|[ae]yse|[ıiuü]yorsa|[ae]cekse|[ıi]ls[ae])\b|\b(olursa|olunca|olduğunda|olduğu zaman|gelirse|gelince|gelmeden|biterse|bitince|bittiğinde|eğer|ise|koşul\w*|aksi halde|bekle\w*|"
+                      r"if|when|once|unless|provided|after|until|pending)\b", re.IGNORECASE)
+
+
+def is_conditional_note(text: str) -> bool:
+    """Not "X olursa Y" gibi koşullu mu: koşulsuz iş gibi `devam:` diye GÖNDERİLMEZ (mtsyn 7dd88e7: oturum koşulu atlayıp Y'yi yaptı). SAF."""
+    return bool(_COND_RE.search(text or ""))
+
+
 def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[int]]] = None) -> str:
     """Projenin sıradaki işi: proje notunda `sıradaki: <iş>` (ya da `next: ...`) satırı, yoksa notta `sıradaki` geçiyorsa genel ifade,
     yoksa yerel TODO.md'de açık iş varsa (`open_work` > 0) genel ifade. "" = iş yok/bilinmiyor. `sıradaki: yok` iş sayılmaz. SAF."""
@@ -4034,9 +4043,13 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
             val = clip_words(m.group(1), 160)
             if val.strip(" .").lower() in _NO_WORK_VALUES:
                 return ""
+            if is_conditional_note(val):
+                return ""      # koşullu not: dürtme/keepwarm `devam:` göndermez (koşulu oturum bilir, motor değerlendiremez)
             if val:
                 return val
     if re.search(r"sıradaki|siradaki", notes, re.IGNORECASE):
+        if any(is_conditional_note(l) for l in notes.splitlines() if re.search(r"sıradaki|siradaki", l, re.IGNORECASE)):
+            return ""
         return "notlardaki sıradaki iş"
     try:
         n = open_work(proj.name) if open_work is not None else None

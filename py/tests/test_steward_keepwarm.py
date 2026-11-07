@@ -153,3 +153,19 @@ class OwnerWaitTest(unittest.TestCase):
         self.assertTrue(sw.owner_wait("Kalan iş sahipte, bekliyorum"))
         self.assertTrue(sw.owner_wait("Waiting on the owner"))
         self.assertFalse(sw.owner_wait("testleri yazıyorum"))
+
+
+class ConditionalNoteTest(unittest.TestCase):
+    def test_detect(self):
+        for t in ("SAHİP cevap gelirse A'yı yap", "deney bitince raporla", "if the build passes, ship", "BEKLEME: dış iş", "X olursa Y", "eğer test geçerse merge"):
+            self.assertTrue(sw.is_conditional_note(t), t)
+        for t in ("testleri yaz", "TODO.md'deki 3. maddeyi uygula", "refactor steward.py"):
+            self.assertFalse(sw.is_conditional_note(t), t)
+
+    def test_conditional_note_gives_no_hint_and_plain_keepwarm(self):
+        pr = sw.Project(name="cli", phase="planned", notes="sıradaki: sahip onaylarsa A'yı deploy et")
+        self.assertEqual(sw.next_work_hint(pr), "")
+        self.assertEqual(skw.keepwarm_text(pr, view()), skw.KEEPWARM_TEXT)
+        pr2 = sw.Project(name="cli", phase="planned", notes="x\\nsıradaki iş var ama X olursa Y")
+        self.assertEqual(sw.next_work_hint(pr2), "")
+        self.assertEqual(sw.next_work_hint(sw.Project(name="cli", notes="sıradaki: testleri yaz")), "testleri yaz")
