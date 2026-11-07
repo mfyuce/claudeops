@@ -77,12 +77,20 @@ def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, A
     ho_pause: Dict[str, str] = dict(state.get("ho_pause") or {})
     out: List[sw.Action] = []
     for v in views:
-        if v.name in touched or _skip_reason(v, projects, cfg, now):
-            continue
-        if world is not None and world.session_class(v.name, v.blueprint) != "own":
+        if v.name in touched:
             continue
         rec = rec_all.get(v.name) or {}
         at, n = float(rec.get("at") or 0), int(rec.get("n") or 0)
+        skip = _skip_reason(v, projects, cfg, now)
+        # Zincir dolduysa (n >= max, dürtmeden sonra gerçek etkinlik yok) kapanış `not_due` penceresini BEKLEMEZ: son dürtme
+        # pencereyi yeniden açar, bir sonraki 52 dk'lık eşik ~1 sa sonradır ve önbellek o zamana soğur (mtsyn 7 Kas 16:02 n=3,
+        # would:idle_close ancak ~16:55'te çıkacaktı). Önbellek SICAKKEN devir ucuz: hemen değerlendir.
+        chain_full = bool(skip == "not_due" and v.last_activity and n >= cfg.keepwarm_max_consecutive
+                          and not v.last_activity > at + REAL_ACTIVITY_SLACK)
+        if skip and not chain_full:
+            continue
+        if world is not None and world.session_class(v.name, v.blueprint) != "own":
+            continue
         if at and now - at < RENOTICE_SECONDS:
             continue    # bu boşta dönem için zaten dürtüldü/kaydedildi (dry'da son etkinlik değişmez, pencerede yeniden yazma)
         real = v.last_activity > at + REAL_ACTIVITY_SLACK

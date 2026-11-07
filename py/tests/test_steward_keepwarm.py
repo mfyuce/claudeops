@@ -169,3 +169,29 @@ class ConditionalNoteTest(unittest.TestCase):
         pr2 = sw.Project(name="cli", phase="planned", notes="x\\nsıradaki iş var ama X olursa Y")
         self.assertEqual(sw.next_work_hint(pr2), "")
         self.assertEqual(sw.next_work_hint(sw.Project(name="cli", notes="sıradaki: testleri yaz")), "testleri yaz")
+
+
+class ChainCloseWarmTest(unittest.TestCase):
+    """mtsyn 7 Kas 16:02: 3. dürtme gitti (n=3) ama kapanış ancak sonraki 52 dk eşiğinde (~16:55) üretilecekti."""
+    AT = NOW - 20 * 60
+
+    def _plan(self, n, last, mode="dry"):
+        c = cfg(keepwarm_chain_close=mode)
+        c.mode = "act"
+        return skw.plan_keepwarm([view(last_activity=last)], {"cli": sw.Project(name="cli", phase="planned")},
+                                 {"keepwarm": {"cli": {"at": self.AT, "n": n}}}, c, NOW, [])
+
+    def test_full_chain_closes_while_cache_warm(self):
+        acts, _ = self._plan(3, self.AT + 40)             # dürtmenin kendi turu (slack içinde), 20 dk boşta
+        self.assertEqual([(a.kind, a.payload["marker"]) for a in acts], [("idle_close", "keepwarm_chain")])
+
+    def test_act_sets_handover_state(self):
+        acts, st = self._plan(3, self.AT + 40, "act")
+        self.assertEqual(len(acts), 1)
+        self.assertEqual(list(st["ho_pending"]), ["cli"])
+
+    def test_real_activity_after_nudge_no_action_before_due(self):
+        self.assertEqual(self._plan(3, self.AT + 600)[0], [])      # sahip/oturum gerçekten konuştu: zincir sıfır, 52 dk bekle
+
+    def test_incomplete_chain_waits_for_due(self):
+        self.assertEqual(self._plan(2, self.AT + 40)[0], [])       # 2. dürtmeden sonra kapanış YOK, 3. dürtme sonraki pencerede
