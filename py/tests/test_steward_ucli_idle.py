@@ -425,3 +425,24 @@ class NotesWaitTest(unittest.TestCase):
         acts, st = sw.plan_tick([], only, {}, c, NOW, [], [])
         self.assertEqual([a for a in acts if a.kind == "start"], [])
         self.assertEqual(st["start_blocked"], {"projects": ["a"], "reason": "notes_bekleme"})
+
+
+class ChainPauseFlowTest(unittest.TestCase):
+    def test_claude_idle_skips_owner_wait(self):
+        self.assertEqual(cplan([cview(last_assistant="Kalan iş sahipte.")])[0], [])
+
+    def test_pause_written_only_after_handover_finishes(self):
+        c = sw.Config(enabled=True, mode="act")
+        projs = {"cli": sw.Project(name="cli", phase="planned", cadence_minutes=0)}
+        v = sw.SessionView(name="cli", running=True, cwd="/w", cli="claude", busy=False, tmux=True, started_at=1.0,
+                           last_activity=NOW - 60, last_assistant="ok")
+        st = {"ho_pending": {"cli": NOW - 30}, "ho_close": {"cli": "cli"}, "ho_pause": {"cli": "keepwarm zinciri: 3 dürtmede iş yok"}}
+        acts, st2 = sw.plan_tick([v], projs, st, c, NOW, [], [])
+        self.assertEqual([a.kind for a in acts if a.kind == "stop"], [])      # devir bitmedi: pause/stop YOK
+        self.assertIn("ho_pause", st2)
+        v.last_assistant = "READY FOR HANDOVER"
+        acts, st3 = sw.plan_tick([v], projs, st2, c, NOW + 60, [], [])
+        stops = [a for a in acts if a.kind == "stop"]
+        self.assertEqual(len(stops), 1)
+        self.assertEqual(stops[0].payload["pause"], {"project": "cli", "reason": "keepwarm zinciri: 3 dürtmede iş yok"})
+        self.assertNotIn("ho_pause", st3)

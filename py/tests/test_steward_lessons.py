@@ -129,6 +129,25 @@ class DeliverTest(_Tmp):
         self.assertEqual([x.id for x in sw.undelivered_answers()], [q.id])   # cevap kaybolmadı, yeniden denenir
         web_steward._ANSWER_FAILS.clear()
 
+    def test_stop_with_pause_payload_pauses_with_reason_after_ok_only(self):
+        cfg = sw.Config(enabled=True)
+        sw.upsert_project("cli", phase="planned")
+        proj = {"cli": sw.Project(name="cli", phase="planned", notes="eski not")}
+        act = sw.Action("stop", "cli", "x", {"pause": {"project": "cli", "reason": "keepwarm zinciri: 3 dürtmede iş yok"}})
+        notes = []
+        with mock.patch.object(web_steward, "_act", lambda *a, **k: {"ok": False}), mock.patch.object(web_steward, "_notify", lambda c, m: notes.append(m)), \
+                mock.patch.object(web_steward, "_target", lambda *a, **k: None):
+            web_steward._apply(act, cfg, proj)
+        self.assertEqual(sw.load_projects()["cli"].phase, "planned")            # stop başarısız: pause yok
+        with mock.patch.object(web_steward, "_act", lambda *a, **k: {"ok": True}), mock.patch.object(web_steward, "_notify", lambda c, m: notes.append(m)), \
+                mock.patch.object(web_steward, "_target", lambda *a, **k: None):
+            web_steward._apply(act, cfg, proj)
+        p = sw.load_projects()["cli"]
+        self.assertEqual(p.phase, "paused")
+        self.assertIn("keepwarm zinciri: 3 dürtmede iş yok", p.notes)
+        self.assertIn("eski not", p.notes)
+        self.assertEqual(notes, [])                                              # ntfy yok
+
     def test_lessons_reads_reviewer_workspaces_only_when_enabled(self):
         cfg = sw.Config(enabled=True)
         cfg.lessons_project = "off"

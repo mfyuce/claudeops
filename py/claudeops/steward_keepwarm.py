@@ -39,6 +39,15 @@ def _skip_reason(v: Any, projects: Dict[str, Any], cfg: sw.Config, now: float) -
     return ""
 
 
+CHAIN_PAUSE_REASON = "keepwarm zinciri: {n} dürtmede iş yok"
+
+
+def chain_exempt(proj: Any, cfg: sw.Config) -> bool:
+    """Zincir dolsa da paused OLMAYAN proje (TBD#163 b): `keepwarm_pause_exempt` listesi ya da notta "devam etmeli" işareti."""
+    names = {x.strip() for x in str(cfg.keepwarm_pause_exempt or "").split(",") if x.strip()}
+    return getattr(proj, "name", "") in names or "devam etmeli" in (getattr(proj, "notes", "") or "").lower()
+
+
 def keepwarm_text(proj: Any, v: Any, open_work: Optional[Callable[[str], Optional[int]]] = None) -> str:
     """Dürtme metni: projenin sıradaki işi var VE son cevap bitti demiyorsa TEK satır `devam: <iş>`; yoksa (ya da
     last_assistant boşsa bitti sayılmaz) iş varsa yine devam; iş yoksa eski KEEPWARM_TEXT. SAF."""
@@ -63,6 +72,9 @@ def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, A
         projects = world.own_projects(projects)
     rec_all: Dict[str, Any] = dict(state.get("keepwarm") or {})
     touched = {a.name for a in planned}
+    ho_pending: Dict[str, float] = dict(state.get("ho_pending") or {})
+    ho_close: Dict[str, str] = dict(state.get("ho_close") or {})
+    ho_pause: Dict[str, str] = dict(state.get("ho_pause") or {})
     out: List[sw.Action] = []
     for v in views:
         if v.name in touched or _skip_reason(v, projects, cfg, now):
@@ -76,6 +88,19 @@ def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, A
         real = v.last_activity > at + REAL_ACTIVITY_SLACK
         chain = 0 if real else n
         if chain >= cfg.keepwarm_max_consecutive:
+            proj = projects.get(v.project)
+            if (cfg.keepwarm_chain_close in ("dry", "act") and not (rec.get("closed_at") and rec.get("mode") == cfg.keepwarm_chain_close) and proj is not None
+                    and not chain_exempt(proj, cfg) and v.tmux and v.name not in (state.get("ho_pending") or {})):
+                reason = CHAIN_PAUSE_REASON.format(n=chain)
+                out.append(sw.Action("idle_close", v.name, f"keepwarm zinciri doldu ({chain} dürtme, gerçek etkinlik yok)",
+                                     {"project": v.project, "idle_secs": int(now - v.last_activity), "threshold": cfg.keepwarm_after_minutes * 60,
+                                      "n": chain, "mode": "handover", "pause": False, "marker": "keepwarm_chain", "next": "",
+                                      "pause_reason": reason}))
+                rec_all[v.name] = dict(rec, closed_at=now, mode=cfg.keepwarm_chain_close)
+                if cfg.keepwarm_chain_close == "act" and cfg.mode != "observe":
+                    ho_pending[v.name] = now
+                    ho_close[v.name] = v.project
+                    ho_pause[v.name] = reason
             continue
         rec_all[v.name] = {"at": now, "n": chain + 1}
         out.append(sw.Action("keepwarm", v.name, "keepwarm",
@@ -86,4 +111,6 @@ def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, A
         return [], state
     st = dict(state)
     st["keepwarm"] = rec_all
+    if ho_pause:
+        st["ho_pending"], st["ho_close"], st["ho_pause"] = ho_pending, ho_close, ho_pause
     return out, st

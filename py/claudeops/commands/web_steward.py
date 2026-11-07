@@ -3091,7 +3091,16 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             q = next((x for x in sw.load_questions(paths) if x.id == action.payload["question_id"]), None)
         return _give_directive(p, "", answer=q, reason=action.reason, cfg=cfg, host=host, rt=rt, actor="engine")
     if k == "stop":
-        return _act("stop", name, lang=cfg.lang)
+        res = _act("stop", name, lang=cfg.lang)
+        pz = action.payload.get("pause")
+        if isinstance(pz, dict) and pz.get("project") and isinstance(res, dict) and res.get("ok"):
+            # keepwarm zinciri: devir BİTTİ ve oturum kapandı; şimdi paused + gerekçe (notlara eklenir, ntfy YOK)
+            reason = str(pz.get("reason") or "")
+            cur = projects.get(str(pz["project"]))
+            note = ((cur.notes + "\n") if cur is not None and cur.notes else "") + f"[paused {time.strftime('%Y-%m-%d %H:%M')}] {reason}"
+            sw.upsert_project(str(pz["project"]), paths=paths, phase="paused", notes=note)
+            sw.log_event("keepwarm_chain_pause", paths=paths, name=name, project=pz["project"], reason=reason)
+        return res
     if k == "auto_answer":
         q = sw.answer_question(action.payload.get("question_id") or "", action.payload.get("answer") or "", paths)
         if q is None:
@@ -3790,6 +3799,14 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                                                               open_work=_open_work_of(projects))
                 if kw_actions:
                     new_state = kw_state       # keepwarm kaydı (dry'da da): aynı boşta dönemi için tekrar yazılmaz
+                    chain_actions = [a for a in kw_actions if a.kind == "idle_close"]      # zincir doldu: devir + kapat + paused
+                    kw_actions = [a for a in kw_actions if a.kind != "idle_close"]
+                    for a in chain_actions:
+                        if cfg.keepwarm_chain_close == "dry":
+                            sw.log_event("would:idle_close", paths=paths, name=a.name,
+                                         **{k: a.payload.get(k) for k in ("project", "idle_secs", "threshold", "n", "mode", "marker", "pause_reason")})
+                        else:
+                            actions = actions + [a]
                     if cfg.keepwarm == "dry":
                         for a in kw_actions:   # YALNIZ ölçüm: oturuma dokunmaz
                             sw.log_event("would:keepwarm", paths=paths, name=a.name, **{k: a.payload.get(k) for k in ("project", "age_min", "tokens", "n", "text")})

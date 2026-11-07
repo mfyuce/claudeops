@@ -339,7 +339,9 @@ class Config:
     claude_idle: str = "dry"           # ucli kuralının Claude Code oturumlarına genellemesi (yalnız `devam: <iş>` dürtmesi; kapat/devir YOK): off | dry (`would:idle_nudge`) | act
     claude_idle_nudge_secs: int = 3000  # Claude oturumu boşta eşiği (sn, ~50 dk: önbellek TTL'i 1 saat ölçüldü); 0 = kapalı. Zincir sınırı `ucli_idle_max_consecutive`
     ucli_idle_max_consecutive: int = 2    # dürtmeye rağmen etkinlik yoksa zincir bu kadar dürtmede KESİLİR
-    keepwarm_max_consecutive: int = 2  # dürtmeye rağmen gerçek etkinlik yoksa zincir bu kadar dürtmede KESİLİR
+    keepwarm_max_consecutive: int = 3  # dürtmeye rağmen gerçek etkinlik yoksa zincir bu kadar dürtmede dolar (sahip 7 Kas: 3)
+    keepwarm_chain_close: str = "dry"  # zincir dolunca: off = yalnız kes | dry = YALNIZ `would:idle_close` (marker keepwarm_chain) | act = devir + kapat + phase=paused (gerekçeli, ntfy yok; pause devir BİTİNCE yazılır)
+    keepwarm_pause_exempt: str = "copsdev"   # virgüllü proje adları: zincir dolsa da paused OLMAZ, yalnız kesilir (TBD#163 b); ayrıca notta "devam etmeli" geçen proje
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
     brain_wake_max_per_day: int = 6    # uyandırma kapısı (TBD#138): BEYİN direktifi (`reason=brain`, actor=brain, cevapsız) oturum başına 24 saatte en çok bu kadar; aşımda `wake_gate` kipine uyar (dry = `would:brain_wake_cap`); 0 = sınırsız
     wake_repeat_minutes: int = 240     # uyandırma kapısı penceresi (dk); 0 = kapalı
@@ -712,7 +714,7 @@ class HostChangeRefused(ValueError):
 
 # Host değişince o projenin oturum adlarıyla tutulan devir/iletim izleri silinir (eski host'taki oturumun izi yeni host'taki
 # aynı adlı oturuma taşınmasın: bekleyen devir yanlış oturumu yeniden açar, önsöz "gitti" sanılır, yanıt özeti tutmaz).
-_HOST_STATE_KEYS = ("ho_pending", "ho_close", "done_pending", "preamble_sent", "seen_assistant", "ho_deferred")
+_HOST_STATE_KEYS = ("ho_pending", "ho_close", "ho_pause", "done_pending", "preamble_sent", "seen_assistant", "ho_deferred")
 
 
 def _clear_project_state(name: str, projects: Dict[str, Project], paths: Any = None) -> List[str]:
@@ -3331,6 +3333,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
 
     st: Dict[str, Any] = json.loads(json.dumps(state)) if state else {}
     ho_pending: Dict[str, float] = dict(st.get("ho_pending") or {})
+    ho_pause: Dict[str, str] = dict(st.get("ho_pause") or {})    # {oturum: gerekçe}: devir bitip oturum kapanınca proje paused olur (keepwarm zinciri)
     ho_close: Dict[str, str] = dict(st.get("ho_close") or {})    # {oturum: proje}: bu devir bitince oturum YENİDEN AÇILMAZ, kapanır (DONE)
     seen: Dict[str, str] = dict(st.get("seen_assistant") or {})
     done_pending: Dict[str, str] = dict(st.get("done_pending") or {})
@@ -3446,6 +3449,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if not _managed(name):
             ho_pending.pop(name, None)   # yönetilmeyen oturum (eski kayıt/elle): yeniden AÇILMAZ
             ho_close.pop(name, None)
+            ho_pause.pop(name, None)
             continue
         if name in busy_names:
             continue
@@ -3461,6 +3465,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 actions.append(Action("respawn", name, "handover sent, session gone → start"))
             ho_pending.pop(name, None)
             ho_close.pop(name, None)
+            ho_pause.pop(name, None)     # devir bitmeden oturum gitti: pause YAZILMAZ
             busy_names.add(name)
             continue
         ready = READY_FOR_HANDOVER in (v.last_assistant or "")
@@ -3473,7 +3478,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 actions.append(Action("stop", name, "devir bitti, projenin başka oturumu çalışıyor → kapat"))
             elif name in ho_close:
                 # STEWARD-DONE-CONFIRMED devri: proje done, yeniden açılmaz; devir metni oturumda kalır (sonraki açılış taze `--new`)
-                actions.append(Action("stop", name, "STEWARD-DONE: devir bitti → kapat"))
+                why_pause = ho_pause.get(name)
+                if why_pause:       # keepwarm zinciri: devir BİTTİ, şimdi kapat + paused (uygulama `_apply` stop payload.pause)
+                    actions.append(Action("stop", name, "keepwarm zinciri: devir bitti → kapat + paused",
+                                          {"pause": {"project": ho_close[name], "reason": why_pause}}))
+                else:
+                    actions.append(Action("stop", name, "STEWARD-DONE: devir bitti → kapat"))
             elif halted:
                 # proje devir gönderildikten SONRA paused/done oldu (oiso 18:15): taze `--new` açılıp yönerge verilmesin;
                 # oturum devir notuyla açık kalır, sahip/`steward set --phase planned` ile geri alınca devam eder
@@ -3483,6 +3493,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 actions.append(Action("respawn", name, "READY FOR HANDOVER" if ready else "handover grace expired"))
             ho_pending.pop(name, None)
             ho_close.pop(name, None)
+            ho_pause.pop(name, None)
             busy_names.add(name)
 
     def _close_done(v: SessionView, proj: str, why: str) -> None:
@@ -3798,6 +3809,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         st["ho_close"] = ho_close
     else:
         st.pop("ho_close", None)
+    if ho_pause:
+        st["ho_pause"] = ho_pause
+    else:
+        st.pop("ho_pause", None)
     st["seen_assistant"] = seen
     if done_confirm:
         st["done_confirm"] = done_confirm
@@ -4030,6 +4045,15 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
     return "TODO.md'deki ilk açık iş" if n else ""
 
 
+_OWNER_WAIT_PHRASES = ("sahipte", "sahibin kararı", "sahip kararı bekl", "sahibin cevab", "owner's decision", "waiting on the owner", "waiting for the owner")
+
+
+def owner_wait(text: str) -> bool:
+    """Son cevap işin sahipte/sahip kararında olduğunu söylüyor mu (claude_idle dürtmesi atlanır). SAF."""
+    low = (text or "").lower()
+    return any(ph in low for ph in _OWNER_WAIT_PHRASES)
+
+
 def idle_finish_marker(text: str) -> Tuple[str, bool]:
     """Son asistan cevabı işin/devrin bittiğini söylüyor mu: (işaret, ready). işaret = "" | READY FOR HANDOVER | STEWARD-DONE |
     "yapacak iş yok"; ready = READY FOR HANDOVER var (devir zaten yazıldı). SAF."""
@@ -4187,7 +4211,7 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
         txt = v.last_assistant or ""
         if turn_failed(txt) or waiting_for_gate(txt) or any(m in txt for m in _ASK_MARKERS):
             continue
-        if idle_finish_marker(txt)[0]:
+        if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
         hint = next_work_hint(proj, open_work)
         if not hint:

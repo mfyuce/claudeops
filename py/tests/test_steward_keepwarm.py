@@ -60,8 +60,10 @@ class KeepwarmTest(unittest.TestCase):
         v = view(last_activity=NOW + 30)
         a2, st2 = skw.plan_keepwarm([v], PROJ, st1, cfg(), t1 + 0, [])
         self.assertEqual(a2[0].payload["n"], 2)
-        a3, _ = skw.plan_keepwarm([view(last_activity=t1 + 30)], PROJ, st2, cfg(), t1 + 3300, [])
-        self.assertEqual(a3, [])
+        a3, st3 = skw.plan_keepwarm([view(last_activity=t1 + 30)], PROJ, st2, cfg(keepwarm_chain_close="off"), t1 + 3300, [])
+        self.assertEqual(a3[0].payload["n"], 3)                                # sınır 3 (sahip 7 Kas)
+        a3b, _ = skw.plan_keepwarm([view(last_activity=t1 + 3330)], PROJ, st3, cfg(keepwarm_chain_close="off"), t1 + 6600, [])
+        self.assertEqual(a3b, [])                                              # 4.sü kesilir (chain_close off: yalnız kes)
         # gerçek etkinlik zinciri sıfırlar
         a4, st4 = skw.plan_keepwarm([view(last_activity=t1 + 1800)], PROJ, st2, cfg(), t1 + 1800 + 54 * 60, [])
         self.assertEqual(a4[0].payload["n"], 1)
@@ -96,3 +98,58 @@ class KeepwarmTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChainCloseTest(unittest.TestCase):
+    FULL = {"keepwarm": {"cli": {"at": NOW - 3300, "n": 3}}}
+
+    def _plan(self, mode="act", proj=None, state=None, **vk):
+        c = cfg(keepwarm_chain_close=mode)
+        c.mode = "act"
+        return skw.plan_keepwarm([view(last_activity=NOW - 54 * 60 + 0, **vk)], {"cli": proj or sw.Project(name="cli", phase="planned")},
+                                 dict(state or self.FULL), c, NOW, [])
+
+    def test_default_dry_and_max3(self):
+        self.assertEqual(sw.Config().keepwarm_chain_close, "dry")
+        self.assertEqual(sw.Config().keepwarm_max_consecutive, 3)
+
+    def test_act_hands_over_closes_and_defers_pause(self):
+        acts, st = self._plan("act")
+        self.assertEqual([(a.kind, a.payload["mode"], a.payload["marker"], a.payload["pause"]) for a in acts],
+                         [("idle_close", "handover", "keepwarm_chain", False)])
+        self.assertIn("3 dürtmede iş yok", acts[0].payload["pause_reason"])
+        self.assertEqual(list(st["ho_pending"]), ["cli"])
+        self.assertEqual(st["ho_close"], {"cli": "cli"})
+        self.assertIn("3 dürtmede iş yok", st["ho_pause"]["cli"])
+        # aynı dönem tekrar üretmez
+        again, _ = skw.plan_keepwarm([view(last_activity=NOW - 54 * 60)], {"cli": sw.Project(name="cli", phase="planned")}, st, cfg(keepwarm_chain_close="act"), NOW + 120, [])
+        self.assertEqual(again, [])
+
+    def test_dry_writes_no_handover_state_and_does_not_block_act(self):
+        acts, st = self._plan("dry")
+        self.assertEqual(len(acts), 1)
+        self.assertNotIn("ho_pending", st)
+        self.assertNotIn("ho_pause", st)
+        act, _ = skw.plan_keepwarm([view(last_activity=NOW - 54 * 60)], {"cli": sw.Project(name="cli", phase="planned")}, st, cfg(keepwarm_chain_close="act"), NOW + 60, [])
+        self.assertEqual(len(act), 1)          # dry'da sayılan kayıt act'i KİLİTLEMEZ
+
+    def test_exempt_off_unregistered_and_paused_only_cut(self):
+        for proj in (sw.Project(name="copsdev", phase="planned"), sw.Project(name="cli", phase="planned", notes="Devam Etmeli: sürekli")):
+            v = view(name=proj.name, last_activity=NOW - 54 * 60)
+            state = {"keepwarm": {proj.name: {"at": NOW - 3300, "n": 3}}}
+            self.assertEqual(skw.plan_keepwarm([v], {proj.name: proj}, state, cfg(keepwarm_chain_close="act"), NOW, [])[0], [], proj.name)
+        self.assertEqual(self._plan("off")[0], [])
+        self.assertEqual(skw.plan_keepwarm([view("baska", last_activity=NOW - 54 * 60)], PROJ, self.FULL, cfg(keepwarm_chain_close="act"), NOW, [])[0], [])
+        self.assertEqual(self._plan("act", proj=sw.Project(name="cli", phase="paused"))[0], [])
+
+    def test_real_activity_resets_chain_no_close(self):
+        acts, _ = skw.plan_keepwarm([view(last_activity=NOW - 54 * 60)], PROJ, {"keepwarm": {"cli": {"at": NOW - 7200, "n": 3}}},
+                                    cfg(keepwarm_chain_close="act"), NOW, [])
+        self.assertEqual([a.kind for a in acts], ["keepwarm"])
+
+
+class OwnerWaitTest(unittest.TestCase):
+    def test_owner_wait(self):
+        self.assertTrue(sw.owner_wait("Kalan iş sahipte, bekliyorum"))
+        self.assertTrue(sw.owner_wait("Waiting on the owner"))
+        self.assertFalse(sw.owner_wait("testleri yazıyorum"))
