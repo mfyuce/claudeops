@@ -491,6 +491,22 @@ export interface Strings {
   tunnelWatchHint: string;
   tunnelWatchOn: string;
   tunnelWatchOff: string;
+  sessionAutoLabel: string;
+  sessionAutoHint: string;
+  sessionAutoOn: string;
+  sessionAutoOff: string;
+  gfxTitle: string;
+  gfxYours: string;
+  gfxOther: (user: string) => string;
+  gfxNone: string;
+  gfxLocked: string;
+  gfxBring: string;
+  gfxBringing: string;
+  gfxConfirm: (user: string) => string;
+  gfxConfirmYes: string;
+  gfxCancel: string;
+  gfxFailed: (err: string) => string;
+  gfxNoSession: string;
   defaultEffortLabel: string;
   routingGuidanceLabel: string;
   routingGuidanceDesc: string;
@@ -1378,6 +1394,23 @@ export const STRINGS: Record<Lang, Strings> = {
       "Genel tünel adresi art arda 3 dakika boyunca HTTP 530 verirse (tünel Cloudflare'den koptu ama servis 'active' görünüyor) cloudflared yeniden başlatılır: adres DEĞİŞİR ve ntfy bildirimi gider. Kapalıyken tünel kopunca elle yeniden başlatmak gerekir. Değişiklik en geç 1 dakikada, tüneli yeniden başlatmadan geçerli olur. Yalnız quick tunnel'da çalışır (named tunnel'da yok).",
     tunnelWatchOn: "açık (önerilen)",
     tunnelWatchOff: "kapalı",
+    sessionAutoLabel: "grafik oturumunu otomatik öne al",
+    sessionAutoHint:
+      "Uzak Masaüstü sekmesi açılınca kendi hesabımızın grafik oturumu aktif değilse otomatik öne alınır (loginctl activate). Varsayılan KAPALI: başka bir kullanıcı ekrandaysa onu ekrandan alır. Ekran kilidi hiçbir zaman açılmaz.",
+    sessionAutoOn: "açık",
+    sessionAutoOff: "kapalı (varsayılan)",
+    gfxTitle: "Grafik oturum",
+    gfxYours: "Ekran bizim hesabımızda.",
+    gfxOther: (user) => `Ekran şu an \u201c${user}\u201d hesabında.`,
+    gfxNone: "Aktif grafik oturum görünmüyor.",
+    gfxLocked: "Ekran kilitli (kilit buradan açılmaz).",
+    gfxBring: "Oturumumu öne al",
+    gfxBringing: "Öne alınıyor…",
+    gfxConfirm: (user) => `\u201c${user}\u201d ekrandan alınacak. Devam edilsin mi?`,
+    gfxConfirmYes: "Evet, öne al",
+    gfxCancel: "Vazgeç",
+    gfxFailed: (err) => `Öne alınamadı: ${err}`,
+    gfxNoSession: "Bu hesabın grafik oturumu bulunamadı.",
     defaultEffortLabel: "yeni oturum için varsayılan effort (CLI başına)",
     routingGuidanceLabel: "işe göre model/effort yönergesi",
     routingGuidanceDesc:
@@ -2275,6 +2308,23 @@ export const STRINGS: Record<Lang, Strings> = {
       "If the public tunnel address answers HTTP 530 three checks in a row (about 3 minutes: the tunnel dropped from Cloudflare but the service still looks 'active'), cloudflared is restarted: the address CHANGES and an ntfy notice goes out. When off, a dropped tunnel needs a manual restart. A change applies within a minute, without restarting the tunnel. Works for the quick tunnel only (not a named tunnel).",
     tunnelWatchOn: "on (recommended)",
     tunnelWatchOff: "off",
+    sessionAutoLabel: "bring graphical session forward automatically",
+    sessionAutoHint:
+      "When the Remote Desktop tab opens and our own account's graphical session is not active, bring it forward (loginctl activate). Default OFF: it takes the screen away from another user who is on it. The screen lock is never opened.",
+    sessionAutoOn: "on",
+    sessionAutoOff: "off (default)",
+    gfxTitle: "Graphical session",
+    gfxYours: "The screen is on our account.",
+    gfxOther: (user) => `The screen is on \u201c${user}\u201d right now.`,
+    gfxNone: "No active graphical session is visible.",
+    gfxLocked: "The screen is locked (the lock is not opened from here).",
+    gfxBring: "Bring my session forward",
+    gfxBringing: "Bringing forward…",
+    gfxConfirm: (user) => `This takes the screen from \u201c${user}\u201d. Continue?`,
+    gfxConfirmYes: "Yes, bring forward",
+    gfxCancel: "Cancel",
+    gfxFailed: (err) => `Could not bring forward: ${err}`,
+    gfxNoSession: "This account has no graphical session.",
     defaultEffortLabel: "default effort for new sessions (per CLI)",
     routingGuidanceLabel: "model/effort routing guidance",
     routingGuidanceDesc:

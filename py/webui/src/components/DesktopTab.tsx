@@ -9,6 +9,7 @@ import { apiDesktopStart, apiDesktopStop, TOKEN, withToken } from "../api/client
 import { callAction } from "../api/errors";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
+import { GraphicalSession } from "./GraphicalSession";
 import { UzakgozSettings } from "./UzakgozSettings";
 
 type Viewer = { destroy: () => void };
@@ -93,6 +94,7 @@ export function DesktopTab() {
         )}
         <span className="opts-hint">{audioError ? t.audioError : t.audioHint}</span>
       </div>
+      <GraphicalSession />
       <UzakgozSettings />
       <div style={{ margin: ".5rem 0", display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
         {!running ? (

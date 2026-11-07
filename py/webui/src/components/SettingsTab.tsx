@@ -97,6 +97,8 @@ export type SettingsPatch = {
   ucli_usage_warn?: Record<string, string>;
   /** "on" | "off" — bkz. `Settings.tunnel_watch`. */
   tunnel_watch?: string;
+  /** "on" | "off" — bkz. `Settings.session_auto_activate`. */
+  session_auto_activate?: string;
   /** {cli: effort} — bkz. `Settings.default_effort`. Boş string o CLI'nın kaydını siler (= sağlayıcı varsayılanı). */
   default_effort?: Record<string, string>;
   /** "on" | "off" — bkz. `Settings.routing_guidance`. */
@@ -336,6 +338,16 @@ export function SettingsTab() {
             >
               <option value="on">{t.tunnelWatchOn}</option>
               <option value="off">{t.tunnelWatchOff}</option>
+            </select>
+          </label>
+          <label title={t.sessionAutoHint}>
+            {t.sessionAutoLabel}
+            <select
+              value={["on", "1", "true", "yes"].includes(asText(settings.session_auto_activate).trim().toLowerCase()) ? "on" : "off"}
+              onChange={(e) => void save({ session_auto_activate: e.target.value })}
+            >
+              <option value="off">{t.sessionAutoOff}</option>
+              <option value="on">{t.sessionAutoOn}</option>
             </select>
           </label>
         </div>

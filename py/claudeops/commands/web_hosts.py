@@ -68,7 +68,7 @@ HOST_ROUTED_PATHS = {
     "/api/term/input", "/api/term/key", "/api/term/raw", "/api/term/resize", "/api/term/open-window", "/api/term/set-mode",
     "/api/instances/forget", "/api/cli/install",
     "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write",
-    "/api/context", "/api/live-model", "/api/live-effort",
+    "/api/context", "/api/live-model", "/api/live-effort", "/api/session/activate",
 }
 
 # Terminal/Dosya GÖRÜNTÜLEME (GET, read-only) route'ları — POST'un aksiyon
@@ -76,7 +76,7 @@ HOST_ROUTED_PATHS = {
 # (files/download) JSON değil ham binary dönüyor. TODO.md'nin bilerek
 # ERTELEDİĞİ parça buydu (TOBEDECIDED #16 kapanışı) — artık uygulandı.
 GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/history", "/api/term/chat", "/api/files/list", "/api/files/read",
-                         "/api/instances", "/api/cli/status", "/api/session/facts"}
+                         "/api/instances", "/api/cli/status", "/api/session/facts", "/api/session/graphical"}
 FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
 FILE_UPLOAD_PATH = "/api/files/upload"  # download'ın YAZMA kardeşi — POST + ham binary REQUEST body (ne JSON-body proxy_action'a ne query-only GET proxy'lerine uyar), kendi proxy_post_raw()'ı var
 

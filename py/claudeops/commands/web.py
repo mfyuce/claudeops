@@ -60,6 +60,7 @@ from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from .. import ucli_cost
+from .. import graphical_session
 from .. import cli_install
 from .. import files as files_mod
 from .. import mirrors
@@ -4794,6 +4795,14 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             result = _term_output(name, lang=lang, viewport=viewport)
             self._json(web_term_lite.to_lite(result) if lite else result)
+        elif path == "/api/session/graphical":
+            qs = parse_qs(urlparse(self.path).query)
+            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            if host != LOCAL_HOST_NAME:
+                result, status = web_hosts.proxy_get(path, host, {}, dedup=False)
+                self._json(result, status=status)
+                return
+            self._json(graphical_session.status())
         elif path == "/api/session/facts":
             qs = parse_qs(urlparse(self.path).query)
             names = [n.strip() for n in (qs.get("names") or [""])[0].split(",") if n.strip()]
@@ -4948,7 +4957,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/resize", "/api/term/set-mode",
                          "/api/term/open-window", "/api/term/mirror-window", "/api/settings", "/api/usage", "/api/context", "/api/live-model",
-                         "/api/live-effort",
+                         "/api/live-effort", "/api/session/activate",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write",
@@ -5237,6 +5246,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_live_model(name, lang=lang))
+            return
+
+        if path == "/api/session/activate":
+            # Kendi grafik oturumumuzu öne al (`graphical_session.activate`): oturum YALNIZ whoami'den, istemci girdisi argv'de
+            # YOK, kilit AÇILMAZ, başka kullanıcı aktifse `confirm:true` ister. `host` alanı HOST_ROUTED_PATHS ile uzağa yönlenir.
+            res = graphical_session.activate(confirm=bool(data.get("confirm")))
+            diag_log("session_activate", ok=res.get("ok"), already=res.get("already"), need_confirm=res.get("need_confirm"),
+                     active_user=res.get("active_user"), confirm=bool(data.get("confirm")))
+            self._json(res)
             return
 
         if path == "/api/live-effort":

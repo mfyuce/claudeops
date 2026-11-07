@@ -177,6 +177,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # %7'sini aşarsa amber); `off` (ya da 0/false/no) = o kademe KAPALI. YALNIZ renk/uyarı:
                               # otomatik durdurma YOK. `ucli_limits`le AYNI alan-bazlı merge. Okuma tarafı:
                               # `ucli_usage_warn_thresholds()`.
+    "session_auto_activate": "off",   # "on" | "off" — Uzak Masaüstü sekmesi açılınca kendi grafik oturumumuzu OTOMATİK öne al
+                              # (7 Kas, sahip). VARSAYILAN KAPALI: başka kullanıcıyı ekrandan alır. Kilit AÇILMAZ.
+                              # Okuma tarafı: `graphical_session.auto_activate_enabled()` (yalnız açık "on" sözcükleri açar).
     "tunnel_watch": "on",    # "on" | "off" — tünel SAĞLIK BEKÇİSİ (2026-10-17, kullanıcı: "settingslerde seçimlik
                               # olsun"; `data/run-tunnel.sh::_watch_tunnel`): quick tunnel kopunca cloudflared
                               # yeni tünel İSTEMİYOR, süreç canlı kalıp genel adres HTTP 530 veriyor ve systemd

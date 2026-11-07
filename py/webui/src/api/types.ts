@@ -376,6 +376,8 @@ export interface Settings {
    * Read by the script every check, so a change applies without restarting the tunnel. `settings.py`'s
    * `tunnel_watch_enabled()`; any `off`-word ("0", "false", "no", ...) counts as off. */
   tunnel_watch: string;
+  /** "on" | "off" (default off): bring our graphical session forward when the Remote Desktop tab opens. `graphical_session.auto_activate_enabled()`. */
+  session_auto_activate?: string;
 }
 
 /** `web.py`'nin `_usage_all()`'ının tek bir satırı — `provider.parse_usage_text()`'in
@@ -1116,3 +1118,23 @@ export interface PeriodicJob {
 }
 export type PeriodicOverview = { ok: true; jobs: Record<string, PeriodicJob> };
 export type PeriodicActionResult = { ok: boolean; error?: string; msg?: string; changed?: number; applied?: boolean };
+
+/** `GET /api/session/graphical` (`graphical_session.status`). */
+export interface GraphicalStatus {
+  ok: boolean;
+  own: { id: string; active: boolean; type: string; locked: boolean | null } | null;
+  active_user: string;
+  other_active: boolean;
+  auto: boolean;
+  error?: string;
+}
+
+/** `POST /api/session/activate`. `need_confirm` = another user is active (`active_user`); re-send with `confirm: true`. */
+export interface SessionActivateResult {
+  ok: boolean;
+  already?: boolean;
+  need_confirm?: boolean;
+  active_user?: string;
+  locked?: boolean | null;
+  error?: string;
+}

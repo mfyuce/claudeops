@@ -25,6 +25,8 @@ import type {
   GetCliStatusResult,
   DesktopStartResult,
   DesktopStopResult,
+  GraphicalStatus,
+  SessionActivateResult,
   DiagAskResult,
   DiagLogResult,
   DiagRestartResult,
@@ -469,6 +471,9 @@ export const apiIoAsk = (p: IoAskPayload): Promise<IoAskResult> => apiPost<IoAsk
 
 export const apiDesktopStart = (lang: Lang): Promise<DesktopStartResult> =>
   apiPost<DesktopStartResult>("/api/desktop/start", { lang });
+export const apiGraphicalStatus = (): Promise<GraphicalStatus> => apiGet<GraphicalStatus>("/api/session/graphical");
+export const apiSessionActivate = (confirm: boolean): Promise<SessionActivateResult> =>
+  apiPost<SessionActivateResult>("/api/session/activate", { confirm });
 export const apiDesktopStop = (lang: Lang): Promise<DesktopStopResult> =>
   apiPost<DesktopStopResult>("/api/desktop/stop", { lang });
 
