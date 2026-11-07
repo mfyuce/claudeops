@@ -60,7 +60,6 @@ import type {
   StatusPayload,
   StewardAnswerResult,
   StewardAskResult,
-  StewardListResult,
   StewardStateResult,
   StewardDigestsResult,
   StewardDigestFileResult,
@@ -616,7 +615,6 @@ export const apiSnapshotResume = (hidden: boolean, lang: Lang, savedAt?: number)
 const stewardQs = (sid?: string): string => (sid && sid !== "default" ? `?steward=${encodeURIComponent(sid)}` : "");
 const stewardBody = (sid?: string): { steward?: string } => (sid && sid !== "default" ? { steward: sid } : {});
 
-export const getStewardList = (): Promise<StewardListResult> => apiGet<StewardListResult>("/api/steward/list");
 export const getStewardState = (sid?: string): Promise<StewardStateResult> =>
   apiGet<StewardStateResult>(`/api/steward/state${stewardQs(sid)}`);
 export const getStewardDigests = (sid?: string): Promise<StewardDigestsResult> =>
