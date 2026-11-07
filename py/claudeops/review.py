@@ -684,7 +684,11 @@ def is_short_banner(text: Any) -> bool:
 
 # Model başına kota (agy: `RESOURCE_EXHAUSTED (code 429): Individual quota reached ... Resets in 107h49m47s.`): yalnız o
 # mod/model sıfırlanana dek planlayıcıdan çıkar (günlük hesap geneli kota ise TÜM mod: `is_daily_limit`).
-_QUOTA_RE = re.compile(r"RESOURCE_EXHAUSTED|Individual quota reached|quota reached", re.I)
+_QUOTA_RE = re.compile(r"RESOURCE_EXHAUSTED|Individual quota reached|quota reached|hit your usage limit", re.I)
+# codex (ChatGPT hesabı): "You've hit your usage limit. ... or try again at Nov 20th, 2026 6:37 PM." (hesap geneli: TÜM codex modelleri).
+# 7 Kas: bu mesaj tanınmadığı için 24 saatte 12 koşu aynı hatayla boşa gitti (codex/gpt-6-luna 0/12).
+_USAGE_LIMIT_RE = re.compile(r"hit your usage limit", re.I)
+_TRY_AT_RE = re.compile(r"try again at\s+([A-Za-z]{3})[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*([AP]M)", re.I)
 _RESET_RE = re.compile(r"resets?\s+in\s+((?:\d+\s*[dhms]\s*)+)", re.I)
 _UNIT_SECONDS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
 QUOTA_FALLBACK_SECONDS = 1800.0      # kota hatası ama sıfırlanma süresi okunamadı: yarım saat sonra yeniden dene
@@ -693,6 +697,24 @@ QUOTA_MAX_SECONDS = 14 * 86400.0     # saçma uzun süreyi kırp
 
 def is_quota_exhausted(*texts: Any) -> bool:
     return any(_QUOTA_RE.search(str(t or "")) for t in texts)
+
+
+def is_usage_limit(*texts: Any) -> bool:
+    """Hesap geneli kullanım sınırı (codex): kota bloğu modeli değil TÜM modu durdurur."""
+    return any(_USAGE_LIMIT_RE.search(str(t or "")) for t in texts)
+
+
+def reset_at(*texts: Any) -> Optional[float]:
+    """"try again at Nov 20th, 2026 6:37 PM" -> yerel saat epoch; okunamazsa None. İlk eşleşen metin kazanır."""
+    for t in texts:
+        m = _TRY_AT_RE.search(str(t or ""))
+        if m:
+            try:
+                return time.mktime(time.strptime(f"{m.group(1).title()} {int(m.group(2))} {m.group(3)} {int(m.group(4))}:{m.group(5)} {m.group(6).upper()}",
+                                                 "%b %d %Y %I:%M %p"))
+            except ValueError:
+                continue
+    return None
 
 
 def reset_seconds(*texts: Any) -> Optional[float]:
@@ -707,6 +729,9 @@ def reset_seconds(*texts: Any) -> Optional[float]:
 
 
 def quota_block_until(now: float, *texts: Any) -> float:
+    at = reset_at(*texts)
+    if at is not None and at > now:
+        return min(at, now + QUOTA_MAX_SECONDS)
     return now + (reset_seconds(*texts) or QUOTA_FALLBACK_SECONDS)
 
 

@@ -1093,7 +1093,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             until = rv.quota_block_until(now(), *chk)
             status = "limit"
             error = f"model kotası doldu ({target.key}); {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))} dolayına dek planlayıcıdan çıktı"
-            rv.set_block(paths, target.key, until, error)
+            rv.set_block(paths, target.mode if rv.is_usage_limit(*chk) else target.key, until, error)   # codex sınırı hesap geneli: tüm mod
         elif target.mode in rv.UCLI_MODES and status in ("error", "partial") \
                 and (not text.strip() or (timed_out and not _REPORT_HEAD_RE.search(text))):      # kurtarılmış rapor varsa ders (= araştırma turu) açma
             _write_lesson(sw._pp(paths), project, target, status, error, live.learned())
