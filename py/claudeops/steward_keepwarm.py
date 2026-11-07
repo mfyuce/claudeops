@@ -39,6 +39,13 @@ def _skip_reason(v: Any, projects: Dict[str, Any], cfg: sw.Config, now: float) -
     return ""
 
 
+def _waits_on_owner(v: Any, owner_projects: Optional[Any]) -> bool:
+    """Zincir kapanışı YALNIZ iş SAHİPTE bekliyorsa (sahip kararı TBD#169, 7 Kas): projenin açık sahip sorusu (`STEWARD-ASK`, işleyiş
+    sorusu değil) VAR ya da son cevap sahip beklentisini söylüyor. Başka projeyi/teslimi/dış işi (ör. menzilui: tunnel GetUsage) bekleyen
+    oturum KAPANMAZ. SAF."""
+    return v.project in set(owner_projects or ()) or sw.owner_wait(getattr(v, "last_assistant", "") or "")
+
+
 CHAIN_PAUSE_REASON = "keepwarm zinciri: {n} dürtmede iş yok"
 
 
@@ -62,7 +69,8 @@ def keepwarm_text(proj: Any, v: Any, open_work: Optional[Callable[[str], Optiona
 
 def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, Any], cfg: sw.Config, now: float,
                   planned: List[sw.Action], world: Optional[sw.World] = None,
-                  open_work: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[sw.Action], Dict[str, Any]]:
+                  open_work: Optional[Callable[[str], Optional[int]]] = None,
+                  owner_projects: Optional[Any] = None) -> Tuple[List[sw.Action], Dict[str, Any]]:
     """Dürtülecek oturumlar için `keepwarm` eylemleri + güncellenmiş state (`state["keepwarm"][ad] = {at, n}`). `off`/drain: hiçbir
     şey. Aynı boşta dönemi için bir kez (`at` > son etkinlik); dürtmeye rağmen gerçek etkinlik yoksa en çok
     `keepwarm_max_consecutive` ardışık dürtme. `planned` aynı oturuma dokunuyorsa atlanır. SAF."""
@@ -98,7 +106,7 @@ def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, A
         if chain >= cfg.keepwarm_max_consecutive:
             proj = projects.get(v.project)
             if (cfg.keepwarm_chain_close in ("dry", "act") and not (rec.get("closed_at") and rec.get("mode") == cfg.keepwarm_chain_close) and proj is not None
-                    and not chain_exempt(proj, cfg) and v.tmux and v.name not in (state.get("ho_pending") or {})):
+                    and not chain_exempt(proj, cfg) and _waits_on_owner(v, owner_projects) and v.tmux and v.name not in (state.get("ho_pending") or {})):
                 reason = CHAIN_PAUSE_REASON.format(n=chain)
                 out.append(sw.Action("idle_close", v.name, f"keepwarm zinciri doldu ({chain} dürtme, gerçek etkinlik yok)",
                                      {"project": v.project, "idle_secs": int(now - v.last_activity), "threshold": cfg.keepwarm_after_minutes * 60,
