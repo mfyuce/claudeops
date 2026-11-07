@@ -1891,6 +1891,16 @@ class ReaskTest(_Tmp):
         unclear = self._answered("wifi", "GSA satırı parça düzeyi mi katı kural mı", "anlamadim detayli sor")
         self.assertNotEqual(sw.add_question("wifi", "GSA satırı parça düzeyi mi katı kural mı").id, unclear.id)
 
+    def test_answered_routine_question_asked_to_owner_opens_new(self):
+        r, _ = sw.add_question_ex("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?", routine=True)
+        sw.answer_question(r.id, "evet")
+        q, how = sw.add_question_ex("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?")
+        self.assertEqual(how, "new")
+        self.assertNotEqual(q.id, r.id)
+        self.assertFalse(q.routine)
+        q2, how2 = sw.add_question_ex("cli", "ncs koşu kayıtlarının yolu reviews/ncs/evren altında mı?", routine=True)
+        self.assertNotEqual(how2, "new")      # rutin yeniden soru hâlâ eski yoldan bastırılır / birleşir
+
     def test_directive_lists_earlier_answers(self):
         a = self._answered("zlkrn", "Birinci soru burada", "sıradan git", ago=300)
         b = self._answered("zlkrn", "İkinci farklı soru metni", "ikisi de", ago=100)

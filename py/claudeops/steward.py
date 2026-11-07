@@ -1120,6 +1120,8 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
         # notuyla yeniden ilet (üst sınırdan sonra gerçekten yeni soru say; sonsuz döngü olmasın).
         is_job = text.startswith(JOB_REQUEST_PREFIX)    # farklı dosyalı iş istekleri Jaccard'da birbirine benzer: kopya/birleştirme sayılmaz
         dup = None if is_job else find_answered_duplicate(questions, project, text)
+        if dup is not None and dup.routine and not routine:
+            dup = None      # beynin RUTİN diye cevapladığı soru bu kez sahibe soruluyor: eski cevapla bastırma, soru sahibe düşsün
         if dup is not None and dup.repeats < REASK_MAX_REPEATS:
             dup.repeats += 1
             dup.delivered_at = 0.0
