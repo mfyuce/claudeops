@@ -53,7 +53,8 @@ class TestReviewerTick(_Reviewer):
         with mock.patch.object(web_review, "current_targets", lambda cfg: []):     # gerçek agy/Evren model listesi YOK
             res = ws.tick_round("timer")                    # spawn_session gerçek çağrılırsa AssertionError (taban)
             self.assertTrue(any(r.get("sid") == "rev" and r.get("noop") for r in res))
-            self.assertEqual([f for f in os.listdir(sw.paths_for("rev").root) if f != ".lock"], before)
+            # state.json: reviewer döngüsü `last_tick`i yazar (status "son tick: 8g" göstermesin); başka dosya YOK
+            self.assertEqual([f for f in os.listdir(sw.paths_for("rev").root) if f not in (".lock", "state.json")], before)
             self.assertEqual(web_review.review_tick(settings.steward_config("rev"))["actions"], [])
 
     def test_disabled_reviewer_is_not_passively_scanned(self):
