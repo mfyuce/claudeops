@@ -3808,6 +3808,14 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                                      **{k: a.payload.get(k) for k in ("project", "idle_secs", "threshold", "n", "next", "mode", "marker")})
                 else:
                     actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
+                cl_actions, new_state = sw.plan_claude_idle(views, projects, new_state, cfg, t0, actions, world,
+                                                            open_work=_open_work_of(projects))
+                if cfg.claude_idle == "dry":
+                    for a in cl_actions:            # YALNIZ ölçüm: oturuma dokunmaz
+                        sw.log_event("would:" + a.kind, paths=paths, name=a.name,
+                                     **{k: a.payload.get(k) for k in ("project", "idle_secs", "threshold", "n", "next", "cli")})
+                else:
+                    actions = actions + cl_actions  # Claude Code oturumu boşta + sıradaki iş: tek satır `devam:`
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 journal = _journal_entries(actions, t0)
                 if journal:

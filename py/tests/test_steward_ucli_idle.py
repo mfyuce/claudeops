@@ -353,3 +353,75 @@ class DevamTextTest(unittest.TestCase):
         acts3, _ = plan([view(idle=400, last_activity=later - 600, idle_since=later - 400)],
                         proj("sıradaki: başka iş"), state=st, now=later)
         self.assertEqual([a.kind for a in acts3], ["idle_nudge"])
+
+
+def cview(name="cli", idle=3100, **kw):
+    base = dict(running=True, cwd="/w", cli="claude", busy=False, tmux=True, started_at=1.0,
+                last_activity=NOW - idle, last_assistant="")
+    base.update(kw)
+    return sw.SessionView(name=name, **base)
+
+
+def cplan(views, projects=None, state=None, c=None, now=NOW, open_work=None):
+    return sw.plan_claude_idle(views, projects if projects is not None else proj("sıradaki: testleri yaz"),
+                               state or {}, c or sw.Config(enabled=True, mode="act", claude_idle="act"), now, [], open_work=open_work)
+
+
+class ClaudeIdleTest(unittest.TestCase):
+    def test_default_is_dry_and_ucli_untouched(self):
+        self.assertEqual(sw.Config().claude_idle, "dry")
+        self.assertEqual(sw.Config().claude_idle_nudge_secs, 3000)
+        self.assertEqual(plan([cview()])[0], [])                 # ucli planlayıcısı claude'a bakmaz
+        self.assertEqual(cplan([view()])[0], [])                 # claude planlayıcısı ucli'ye bakmaz
+
+    def test_nudges_after_threshold_with_next_work(self):
+        acts, st = cplan([cview()])
+        self.assertEqual([(a.kind, a.payload["cli"]) for a in acts], [("idle_nudge", "claude")])
+        self.assertTrue(acts[0].payload["text"].startswith("devam: testleri yaz"))
+        self.assertIn("cli", st["claude_idle"])
+        self.assertEqual(cplan([cview(idle=2900)])[0], [])       # eşik altı
+        self.assertEqual(cplan([cview()], state=st)[0], [])      # aynı boşta dönem: tekrar yok
+
+    def test_off_and_zero_do_nothing(self):
+        c = sw.Config(enabled=True, claude_idle="off")
+        self.assertEqual(cplan([cview()], c=c)[0], [])
+        self.assertEqual(cplan([cview()], c=sw.Config(enabled=True, claude_idle="act", claude_idle_nudge_secs=0))[0], [])
+
+    def test_skips_busy_subagent_done_questions_no_work_paused(self):
+        for v in (cview(busy=True), cview(busy=None), cview(subagent_active=True), cview(subagent_unknown=True),
+                  cview(last_assistant="işler bitti STEWARD-DONE"), cview(last_assistant="READY FOR HANDOVER"),
+                  cview(last_assistant="STEWARD-ASK: x mi?"), cview(last_assistant="yapacak iş yok"), cview(last_activity=0.0)):
+            self.assertEqual(cplan([v])[0], [], v)
+        self.assertEqual(cplan([cview()], proj(""))[0], [])                   # sıradaki iş yok
+        self.assertEqual(cplan([cview()], proj("sıradaki: x", phase="paused"))[0], [])
+
+    def test_chain_cap(self):
+        st, n = {}, 0
+        for i in range(5):       # aynı etkinlik zamanı (yanıt yok), her tick eşik kadar sonra
+            acts, st = cplan([cview(idle=3100)], state=st, now=NOW + 3100 * i)
+            n += len(acts)
+        self.assertEqual(n, 2)       # ucli_idle_max_consecutive
+
+
+class NotesWaitTest(unittest.TestCase):
+    def test_notes_wait_detect(self):
+        self.assertTrue(sw.notes_wait(sw.Project(name="a", notes="BEKLEME: sahip cevabı")))
+        self.assertTrue(sw.notes_wait(sw.Project(name="a", notes="  bekleme - x")))
+        self.assertFalse(sw.notes_wait(sw.Project(name="a", notes="sıradaki: x. BEKLEME yok")))
+
+    def test_due_project_with_bekleme_note_not_started_and_reason_recorded(self):
+        c = sw.Config(enabled=True, mode="act", auto_start=True)
+        projs = {"a": sw.Project(name="a", phase="planned", cadence_minutes=5, notes="BEKLEME: dış iş"),
+                 "b": sw.Project(name="b", phase="planned", cadence_minutes=5, notes="serbest")}
+        acts, st = sw.plan_tick([], projs, {}, c, NOW, [], [])
+        self.assertEqual([a.name for a in acts if a.kind == "start"], ["b"])
+        self.assertEqual(st["start_blocked"], {"projects": ["a"], "reason": "notes_bekleme"})
+        c2 = sw.Config(enabled=True, mode="act", auto_start=True, max_active=0)       # b de başlatılamaz: iki neden birlikte
+        projs2 = dict(projs, b=sw.Project(name="b", phase="planned", cadence_minutes=5, notes="serbest"))
+        _, st2 = sw.plan_tick([], projs2, {}, c2, NOW, [], [])
+        self.assertEqual(st2["start_blocked"]["bekleme_projects"], ["a"])
+        self.assertEqual(st2["start_blocked"]["projects"], ["b"])
+        only = {"a": projs["a"]}
+        acts, st = sw.plan_tick([], only, {}, c, NOW, [], [])
+        self.assertEqual([a for a in acts if a.kind == "start"], [])
+        self.assertEqual(st["start_blocked"], {"projects": ["a"], "reason": "notes_bekleme"})

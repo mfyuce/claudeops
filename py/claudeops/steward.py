@@ -336,6 +336,8 @@ class Config:
     ucli_idle: str = "dry"             # TBD#156 boşta ucli kuralı: off = hiç eylem | dry = YALNIZ `would:idle_nudge`/`would:idle_close` olayı (uygulama + ho_pending/ho_close YOK, act kipinde de) | act = uygula
     ucli_idle_nudge_secs: int = 180    # TBD#156: yönetilen ucli oturumu (activity=waiting_for_stdin) bu kadar sn boşta kalırsa "devam" dürtmesi / kapat+devir (0 = kapalı). Eşik oturumun `--cache-ttl`ine göre: 5m (ya da bilinmiyor) = bu değer
     ucli_idle_nudge_secs_1h: int = 3000   # `--cache-ttl 1h` oturumda eşik (önbellek 1 saat sıcak: 5 dk boşluk israf değil; ~50 dk)
+    claude_idle: str = "dry"           # ucli kuralının Claude Code oturumlarına genellemesi (yalnız `devam: <iş>` dürtmesi; kapat/devir YOK): off | dry (`would:idle_nudge`) | act
+    claude_idle_nudge_secs: int = 3000  # Claude oturumu boşta eşiği (sn, ~50 dk: önbellek TTL'i 1 saat ölçüldü); 0 = kapalı. Zincir sınırı `ucli_idle_max_consecutive`
     ucli_idle_max_consecutive: int = 2    # dürtmeye rağmen etkinlik yoksa zincir bu kadar dürtmede KESİLİR
     keepwarm_max_consecutive: int = 2  # dürtmeye rağmen gerçek etkinlik yoksa zincir bu kadar dürtmede KESİLİR
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
@@ -3653,6 +3655,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     visit_of = lambda p: max(p.last_visit, float(observed_visit.get(p.name) or 0.0))   # noqa: E731
     tbd_asked: Dict[str, float] = {k: float(v) for k, v in dict(st.get("tbd_asked") or {}).items()}
     due: List[Project] = []
+    held: List[str] = []
     for p in projects.values():
         if p.phase not in ACTIVE_PHASES or p.cadence_minutes <= 0 or p.name in running_projects or p.name in busy_names:
             continue
@@ -3669,6 +3672,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                                           {"project": p.name, "text": f"{p.name}: yerel TODO.md'de açık iş kalmadı, TOBEDECIDED.md'de {open_tbd(p.name)} "
                                                                       f"açık karar var. Kararları verir misiniz? Cevap gelince oturumu açıp devam ederim."}))
                     tbd_asked[p.name] = now
+                continue
+            if notes_wait(p):
+                held.append(p.name)      # notu BEKLEME ile başlıyor: dış bir şey bekleniyor, soğuk oturum açmak boşa tur
                 continue
             due.append(p)
     due.sort(key=lambda p: (p.priority, visit_of(p)))
@@ -3705,6 +3711,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                                          max_active_total=cfg.max_active_total)
     else:
         st.pop("start_blocked", None)
+    if held:        # BEKLEME notlu süresi dolmuş projeler: neden durumda görünür (start_blocked olayı değişince bir kez yazılır)
+        if "start_blocked" in st:
+            st["start_blocked"]["bekleme_projects"] = sorted(held)
+        else:
+            st["start_blocked"] = {"projects": sorted(held), "reason": "notes_bekleme"}
 
     # 6) Slot baskısı — bekleyen varsa, uzun süredir boşta duran proje oturumlarını durdur
     if waiting and free <= 0:
@@ -3988,6 +3999,11 @@ def clip_words(text: Any, limit: int) -> str:
     return cut.rstrip(" ,;:.-") + "…"
 
 
+def notes_wait(proj: Project) -> bool:
+    """Proje notu `BEKLEME` ile başlıyorsa (büyük/küçük harf, baştaki boşluk/işaret yok sayılır) motor onu cadence ile BAŞLATMAZ."""
+    return (proj.notes or "").lstrip(" \t\r\n-*#>:[(").lower().startswith("bekleme")
+
+
 def ucli_idle_threshold(cfg: Config, cache_ttl: str) -> int:
     """Boşluk eşiği (sn): `--cache-ttl 1h` oturumda `ucli_idle_nudge_secs_1h`, 5m/bilinmeyende `ucli_idle_nudge_secs`. 0 = kapalı."""
     return cfg.ucli_idle_nudge_secs_1h if (cache_ttl or "").strip().lower() == "1h" else cfg.ucli_idle_nudge_secs
@@ -4122,6 +4138,71 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
             st["ho_pending"] = ho_pending
         if ho_close:
             st["ho_close"] = ho_close
+    return out, st
+
+
+_ASK_MARKERS = ("STEWARD-ASK", "STEWARD-BLOCKED", "STEWARD-ROUTINE", "STEWARD-JOB")
+
+
+def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
+                     planned: List[Action], world: Optional[World] = None,
+                     open_work: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+    """`plan_ucli_idle`in Claude Code genellemesi (sahip onayı 7 Kas). SAF. Yönetilen yerel tmux claude oturumu boşta (`busy` False,
+    alt ajan yok, son istekten `claude_idle_nudge_secs` geçti), son cevap işin bittiğini/soru sorduğunu söylemiyor ve projenin
+    sıradaki işi varsa TEK satır `devam: <iş>` (`idle_nudge`). Kapat/devir/duraklatma YOK. Aynı boşta dönem en çok
+    `ucli_idle_max_consecutive` dürtme; state `claude_idle[ad] = {at, n, mode, text}`. ucli yolu bu fonksiyondan etkilenmez."""
+    if cfg.claude_idle not in ("dry", "act") or cfg.claude_idle_nudge_secs <= 0 or cfg.drain:
+        return [], state
+    if world is not None:
+        projects = world.own_projects(projects)
+    rec_all: Dict[str, Any] = dict(state.get("claude_idle") or {})
+    ho_pending = state.get("ho_pending") or {}
+    touched = {a.name for a in planned}
+    out: List[Action] = []
+    for v in views:
+        if v.cli != "claude" or not v.running or not v.tmux or getattr(v, "host", "local") not in ("local", ""):
+            continue
+        if v.name == cfg.brain_name or _AJ_CHILD_RE.search(v.name) or v.name in touched or v.name in ho_pending:
+            continue
+        if v.busy is not False or v.subagent_active or v.subagent_unknown:
+            continue
+        proj = projects.get(v.project)
+        if proj is None or proj.phase in ("done", "paused"):
+            continue
+        if world is not None and world.session_class(v.name, v.blueprint) != "own":
+            continue
+        since = float(v.last_activity or 0.0)
+        thr = cfg.claude_idle_nudge_secs
+        if since <= 0 or now - since < thr:
+            continue
+        rec = rec_all.get(v.name) or {}
+        at, n = float(rec.get("at") or 0), int(rec.get("n") or 0)
+        chain = 0 if since > at else n
+        if rec.get("mode", "dry") != cfg.claude_idle:
+            at, chain = 0.0, 0
+        if at and since <= at and now - at < thr:
+            continue
+        if chain >= cfg.ucli_idle_max_consecutive:
+            continue
+        txt = v.last_assistant or ""
+        if turn_failed(txt) or waiting_for_gate(txt) or any(m in txt for m in _ASK_MARKERS):
+            continue
+        if idle_finish_marker(txt)[0]:
+            continue
+        hint = next_work_hint(proj, open_work)
+        if not hint:
+            continue
+        text = one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE), 600)
+        if at and since > at and rec.get("text") == text and rec.get("mode", "dry") == cfg.claude_idle:
+            continue
+        out.append(Action("idle_nudge", v.name, f"claude boşta {int(now - since)} sn, sıradaki iş var",
+                          {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
+                           "text": text, "next": hint, "cli": "claude"}))
+        rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": text}
+    if not out:
+        return [], state
+    st = dict(state)
+    st["claude_idle"] = rec_all
     return out, st
 
 
