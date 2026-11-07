@@ -158,7 +158,9 @@ def _read_checked() -> "tuple[List[Dict[str, str]], bool]":
     from . import statedocs
     if statedocs.backend() == "db" and statedocs._db_ok(HOSTS_JSON):   # db kipinde dosya güncel DEĞİL: DB tek kaynak
         data = statedocs.read_json("hosts", HOSTS_JSON, [])
-        return ([h for h in data if isinstance(h, dict) and "name" in h] if isinstance(data, list) else []), False
+        if not isinstance(data, list):
+            return [], True                 # DB değeri liste değil = bozuk (dosya kipiyle aynı: temiz boş sayılmaz, yazan tüm kayıtları silerdi)
+        return [h for h in data if isinstance(h, dict) and "name" in h], False
     try:
         with open(HOSTS_JSON, encoding="utf-8") as f:
             raw = f.read()

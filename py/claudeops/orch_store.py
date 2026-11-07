@@ -103,4 +103,6 @@ def run_dir(run_id: str) -> str:
     dosya-fallback'i, `web_orch._build_dispatch_prompt`). Var olduğunu
     GARANTİ ETMEZ — çağıran gerektiğinde `os.makedirs(..., exist_ok=True)`
     çağırır; burada dosya sistemine dokunulmadan sadece yol hesaplanır."""
+    if not run_id or "/" in run_id or "\\" in run_id or ".." in run_id or "\0" in run_id:
+        raise ValueError(f"geçersiz run_id: {run_id!r}")   # path traversal (`_run_path` ile aynı disiplin)
     return os.path.join(RUNS_DIR, run_id)
