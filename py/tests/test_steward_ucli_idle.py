@@ -175,10 +175,14 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(plan([view()], proj(""))[0], [])
         self.assertEqual(plan([view()], proj("sıradaki: yok"))[0], [])
 
-    def test_open_todo_counts_as_work(self):
+    def test_open_todo_alone_sends_no_blind_nudge(self):
+        # sahip 7 Kas: yalnız TODO'daki "ilk açık iş" (gerçek `sıradaki:` notu yok) dürtme sebebi DEĞİL
         acts, _ = plan([view()], proj(""), open_work=lambda n: 3)
-        self.assertEqual([a.kind for a in acts], ["idle_nudge"])
-        self.assertEqual(acts[0].payload["text"], "devam: TODO.md'deki ilk açık iş")
+        self.assertEqual(acts, [])
+
+    def test_open_todo_still_counts_for_close_decisions(self):
+        acts, _ = plan([view(last_assistant="işi bitirdim STEWARD-DONE")], proj(""), open_work=lambda n: 3)
+        self.assertEqual([(a.kind, a.payload["pause"]) for a in acts], [("idle_close", False)])   # iş var: paused DEĞİL
 
     def test_close_marker_with_work_requests_handover_then_reopen(self):
         acts, st = plan([view(last_assistant="işi bitirdim STEWARD-DONE")])

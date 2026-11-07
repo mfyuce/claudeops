@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from . import settings
 
+GRAPHICAL_TYPES = ("x11", "wayland", "mir")
 _DIGITS = re.compile(r"^[0-9]+$")
 Runner = Callable[[List[str]], "subprocess.CompletedProcess"]
 
@@ -40,7 +41,7 @@ def _sessions(run: Runner) -> List[Dict[str, str]]:
     for line in r.stdout.splitlines():
         p = line.split()
         if len(p) >= 3 and _DIGITS.match(p[0]):
-            rows.append({"id": p[0], "uid": p[1], "user": p[2], "seat": p[3] if len(p) > 3 else ""})
+            rows.append({"id": p[0], "uid": p[1], "user": p[2], "seat": next((x for x in p[3:] if x.startswith("seat")), "")})
     return rows
 
 
@@ -61,11 +62,13 @@ def status(run: Optional[Runner] = None, user: Optional[str] = None) -> Dict[str
     out: Dict[str, Any] = {"ok": False, "own": None, "active_user": "", "other_active": False, "auto": auto_activate_enabled()}
     try:
         rows = _sessions(run)
-        mine = next((s for s in rows if s["user"] == me), None)
+        # Hesabın İLK oturumu değil, SEAT'li GRAFİK oturumu: ssh/tty oturumu (seat'siz ya da Type=tty/ssh) listede önce gelebilir
+        # ve `loginctl activate` onu hedef alırsa yanlış oturum (ya da hiçbiri) öne alınır.
+        mine = next((s for s in rows if s["user"] == me and s["seat"] and _props(run, s["id"]).get("Type") in GRAPHICAL_TYPES), None)
         for s in rows:
             props = _props(run, s["id"])
             active = props.get("Active") == "yes"
-            if active:
+            if active and s["seat"]:        # ssh/seat'siz oturumun "Active"i ekranı görmek değildir
                 out["active_user"] = s["user"]
             if s is mine:
                 lk = props.get("LockedHint")

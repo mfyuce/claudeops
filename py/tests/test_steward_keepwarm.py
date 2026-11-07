@@ -81,7 +81,9 @@ class KeepwarmTest(unittest.TestCase):
         t = self._text(notes="x\nsıradaki: testleri\nyaz")
         self.assertEqual(t, "devam: testleri")
         self.assertNotIn("\n", t)
-        self.assertEqual(self._text(open_work=lambda p: 2), "devam: TODO.md'deki ilk açık iş")
+        # sahip 7 Kas: gerçek `sıradaki:` notu yoksa TODO'daki "ilk açık iş" iş emri GİTMEZ (ilk madde engelli/sahipte olabilir)
+        self.assertEqual(self._text(open_work=lambda p: 2), skw.KEEPWARM_TEXT)
+        self.assertEqual(self._text(notes="sıradaki işler var", open_work=lambda p: 2), skw.KEEPWARM_TEXT)
 
     def test_text_light_ping_when_finished(self):
         for last in ("READY FOR HANDOVER", "STEWARD-DONE", "Yapacak iş yok."):

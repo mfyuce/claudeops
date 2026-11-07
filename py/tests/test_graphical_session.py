@@ -23,9 +23,12 @@ class FakeLogin:
     def __call__(self, argv):
         self.calls.append(argv)
         if argv[:3] == ["loginctl", "--no-legend", "list-sessions"]:
-            return cp("1295 1001 ahmet seat0 tty3\n    5 1000 fatihyuce seat0 tty2\n")
+            # ssh (seat'siz, tty yok) + tty (seat'li ama Type=tty) oturumları fatihyuce'nin grafik oturumundan ÖNCE listelenir
+            return cp("1295 1001 ahmet seat0 tty3\n    3 1000 fatihyuce pts/0\n    4 1000 fatihyuce seat0 tty5\n    5 1000 fatihyuce seat0 tty2\n")
         if argv[:2] == ["loginctl", "show-session"]:
             sid = argv[2]
+            if sid in ("3", "4"):
+                return cp(f"Active=no\nLockedHint=no\nType={'ssh' if sid == '3' else 'tty'}\nState=online\n")
             return cp(f"Active={'yes' if sid == self.active else 'no'}\nLockedHint={self.locked if sid == '5' else 'yes'}\nType=x11\nState=active\n")
         if argv[:2] == ["loginctl", "activate"]:
             if self.activate_rc == 0:
@@ -56,6 +59,26 @@ class Status(unittest.TestCase):
         def boom(argv):
             raise OSError("x")
         self.assertFalse(gs.status(boom, user="fatihyuce")["ok"])
+
+
+class Selection(unittest.TestCase):
+    def test_graphical_seat_session_chosen_over_ssh_and_tty(self):
+        f = FakeLogin(active="1295")
+        st = gs.status(f, user="fatihyuce")
+        self.assertEqual(st["own"]["id"], "5")
+        gs.activate(confirm=True, run=f, user="fatihyuce")
+        self.assertEqual([c for c in f.calls if c[1] == "activate"], [["loginctl", "activate", "5"]])
+
+    def test_only_ssh_session_means_no_own_graphical(self):
+        def run(argv):
+            if argv[:3] == ["loginctl", "--no-legend", "list-sessions"]:
+                return cp("    3 1000 fatihyuce pts/0\n")
+            if argv[:2] == ["loginctl", "show-session"]:
+                return cp("Active=yes\nLockedHint=no\nType=ssh\nState=active\n")
+            raise AssertionError(argv)
+        st = gs.status(run, user="fatihyuce")
+        self.assertEqual(st["error"], "no_own_session")
+        self.assertEqual(st["active_user"], "")          # seat'siz ssh oturumu ekranı tutmaz
 
 
 class Activate(unittest.TestCase):

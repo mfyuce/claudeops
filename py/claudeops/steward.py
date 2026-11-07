@@ -4033,8 +4033,12 @@ def is_conditional_note(text: str) -> bool:
     return bool(_COND_RE.search(text or ""))
 
 
-def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[int]]] = None) -> str:
-    """Projenin sıradaki işi: proje notunda `sıradaki: <iş>` (ya da `next: ...`) satırı, yoksa notta `sıradaki` geçiyorsa genel ifade,
+def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[int]]] = None, real_only: bool = False) -> str:
+    """`real_only=True` (dürtme METNİ için, sahip 7 Kas "düşünmeden yok sanki"): YALNIZ proje notunda açık `sıradaki: <iş>` değeri;
+    TODO'daki "ilk açık iş" ve "notlardaki sıradaki iş" genel ifadeleri DÖNMEZ (ilk madde dış engelli/sahipte olabilir, oturum
+    aynı "yapılamıyor"u tekrarlıyordu). Karar yolları (kapatma/devir/respawn) `real_only=False` ile eskisi gibi.
+
+    Projenin sıradaki işi: proje notunda `sıradaki: <iş>` (ya da `next: ...`) satırı, yoksa notta `sıradaki` geçiyorsa genel ifade,
     yoksa yerel TODO.md'de açık iş varsa (`open_work` > 0) genel ifade. "" = iş yok/bilinmiyor. `sıradaki: yok` iş sayılmaz. SAF."""
     notes = proj.notes or ""
     for line in notes.splitlines():
@@ -4047,6 +4051,8 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
                 return ""      # koşullu not: dürtme/keepwarm `devam:` göndermez (koşulu oturum bilir, motor değerlendiremez)
             if val:
                 return val
+    if real_only:
+        return ""
     if re.search(r"sıradaki|siradaki", notes, re.IGNORECASE):
         if any(is_conditional_note(l) for l in notes.splitlines() if re.search(r"sıradaki|siradaki", l, re.IGNORECASE)):
             return ""
@@ -4154,7 +4160,8 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
                 ho_pending[v.name] = now
                 if pause:
                     ho_close[v.name] = proj.name
-        elif hint:
+        elif next_work_hint(proj, open_work, real_only=True):
+            hint = next_work_hint(proj, open_work, real_only=True)
             text = one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE), 600)
             if at and since > at and not failed and rec.get("text") == text and rec.get("mode", "dry") == cfg.ucli_idle:
                 continue                        # AYNI `devam` metni gönderildi ve oturum yanıtladı: tekrar gönderme (bayat not döngüsü)
@@ -4226,7 +4233,7 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
             continue
         if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
-        hint = next_work_hint(proj, open_work)
+        hint = next_work_hint(proj, open_work, real_only=True)
         if not hint:
             continue
         text = one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE), 600)
