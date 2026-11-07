@@ -29,6 +29,12 @@ class DetectTests(unittest.TestCase):
         self.assertTrue(td.is_trust_dialog("Do you trust the files in this folder?"))
         self.assertFalse(td.is_trust_dialog("❯ hello\n? for shortcuts"))
 
+    def test_scrollback_mention_is_not_dialog(self):
+        pane = "bu oturum 'trust this folder' diyalogunu konusuyor\n" + "x\n" * 40 + "❯ \n  ⏵⏵ auto mode on (shift+tab to cycle)"
+        self.assertFalse(td.is_trust_dialog(pane))
+        near = "trust this folder anlatisi\n❯ \n  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt"
+        self.assertFalse(td.is_trust_dialog(near))
+
     def test_yes_option(self):
         self.assertEqual(td.yes_option(DIALOG), ("1", True))
         self.assertEqual(td.yes_option(DIALOG_NO_PTR), ("1", False))

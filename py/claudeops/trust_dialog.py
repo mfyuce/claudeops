@@ -25,8 +25,14 @@ _YES_RE = re.compile(r"^\s*(?P<ptr>[❯>›]\s*)?(?P<n>\d)\.\s*Yes\b", re.IGNORE
 
 
 def is_trust_dialog(text: str) -> bool:
-    low = (text or "").lower()
-    return any(m in low for m in _MARKERS)
+    """Diyalog pane'in SONUNDADIR ve hazır-istem altbilgisini kaplar. Konuşma geçmişinde (kaydırma) geçen "trust this folder"
+    yazısı diyalog DEĞİL: 7 Kas copsdev oturumu kendi yazısı yüzünden 6 saat mesaj alamadı (`send_blocked_trust_dialog`)."""
+    lines = [l for l in (text or "").splitlines() if l.strip()]
+    low = "\n".join(lines[-30:]).lower()
+    if not any(m in low for m in _MARKERS):
+        return False
+    tail = "\n".join(lines[-6:]).lower()
+    return not any(m in tail for m in _PROMPT_MARKERS)
 
 
 def yes_option(text: str) -> Optional[Tuple[str, bool]]:

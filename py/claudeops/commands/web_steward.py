@@ -1306,6 +1306,10 @@ def _wait_ready(name: str, cli: str, timeout: float = READY_TIMEOUT_SECONDS) -> 
     return False
 
 
+ANSWER_FAIL_ALERT = 3      # art arda bu kadar başarısız cevap iletimi: olay + bildirim
+_ANSWER_FAILS: Dict[str, int] = {}
+
+
 def _send(name: str, cli: str, text: str) -> bool:
     provider = get_provider(cli)
     if not provider.has_conversation():
@@ -3113,6 +3117,17 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             sw.log_event("answer_undeliverable", paths=paths, id=q.id, session=name, error=res.get("error", ""))
             _notify(cfg, (f"Cevabın {name} oturumuna İLETİLEMEDİ ({res.get('error', '')}): [{q.id}] {q.answer[:120]}" if cfg.lang != "en"
                           else f"Your answer could NOT be delivered to {name} ({res.get('error', '')}): [{q.id}] {q.answer[:120]}"))
+        if not res.get("ok") and q.project in projects:
+            # Kayıtlı proje: cevap kayıtta KALIR ve her tick yeniden denenir (kaybolmaz), ama art arda başarısızlık sessiz
+            # kalmasın (7 Kas copsdev: 6 saat "send failed"): eşikte olay + sahibe tek bildirim.
+            n = _ANSWER_FAILS.get(q.id, 0) + 1
+            _ANSWER_FAILS[q.id] = n
+            if n == ANSWER_FAIL_ALERT:
+                sw.log_event("answer_delivery_failing", paths=paths, id=q.id, session=name, tries=n, error=res.get("error", ""))
+                _notify(cfg, (f"Cevap {name} oturumuna {n} denemedir İLETİLEMİYOR ({res.get('error', '')}): [{q.id}] {q.answer[:120]}" if cfg.lang != "en"
+                              else f"Answer to {name} still NOT delivered after {n} tries ({res.get('error', '')}): [{q.id}] {q.answer[:120]}"))
+        elif res.get("ok"):
+            _ANSWER_FAILS.pop(q.id, None)
         return res
     if k == "deliver_findings":
         if not host:

@@ -112,6 +112,23 @@ class DeliverTest(_Tmp):
         st = sw.load_state(sw.paths_for(cfg.sid))
         self.assertEqual(st["lessons_fail"][sl.line_hash(AUTO + "yeni")], 1)
 
+    def test_answer_delivery_failures_alert_once_and_answer_stays(self):
+        cfg = sw.Config(enabled=True)
+        q = sw.add_question("cli", "soru metni burada?")
+        sw.answer_question(q.id, "evet")
+        act = sw.Action("deliver_answer", "cli", "answer", {"question_id": q.id})
+        notes = []
+        web_steward._ANSWER_FAILS.clear()
+        with mock.patch.object(web_steward, "_give_directive", lambda p, text, **k: {"ok": False, "error": "send failed"}), \
+                mock.patch.object(web_steward, "_notify", lambda c, m: notes.append(m) or True), \
+                mock.patch.object(web_steward, "_target", lambda *a, **k: None):
+            for _ in range(web_steward.ANSWER_FAIL_ALERT + 2):
+                web_steward._apply(act, cfg, {"cli": sw.Project(name="cli")})
+        self.assertEqual(len(notes), 1)                                   # eşikte TEK bildirim
+        self.assertIn(q.id, notes[0])
+        self.assertEqual([x.id for x in sw.undelivered_answers()], [q.id])   # cevap kaybolmadı, yeniden denenir
+        web_steward._ANSWER_FAILS.clear()
+
     def test_lessons_reads_reviewer_workspaces_only_when_enabled(self):
         cfg = sw.Config(enabled=True)
         cfg.lessons_project = "off"
