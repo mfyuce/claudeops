@@ -1375,7 +1375,7 @@ class ViewerPanel:
 
 # pty'nin kontrol terminali olması için: yeni oturum aç, stdin'i kontrol terminali yap, görüntüleyiciye geç.
 # (Böylece Ctrl-C gerçekten SIGINT üretir; ISIG'in ham geçişte kapanıp sonra geri açıldığı görülebilir.)
-_LAUNCH = ("import os, sys, fcntl, termios; os.setsid(); fcntl.ioctl(0, termios.TIOCSCTTY, 0); "
+_LAUNCH = ("import os, sys, fcntl, termios, signal; signal.signal(signal.SIGINT, signal.SIG_DFL); os.setsid(); fcntl.ioctl(0, termios.TIOCSCTTY, 0); "
            "os.execv(sys.executable, [sys.executable, '-m', 'claudeops', 'watch'] + sys.argv[1:])")
 
 
