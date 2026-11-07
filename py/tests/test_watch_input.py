@@ -47,6 +47,9 @@ def good(text="v1\nv2\nv3", cols=80, rows=3, **extra):
     return base
 
 
+EXIT_WAIT = 30      # yük altında (tam paket + reviewer) 10 sn yetmiyordu (7 Kas pty zaman aşımı)
+
+
 class Clock:
     def __init__(self):
         self.now = 1000.0
@@ -1503,7 +1506,7 @@ class ViewerProcessTests(unittest.TestCase):
         self.wait_screen("ham geçiş kapandı", since=m)
         self.wait_isig(True)        # ISIG geri geldi
         self.send("\x03")
-        self.assertEqual(self.proc.wait(10), 0)
+        self.assertEqual(self.proc.wait(EXIT_WAIT), 0)
         self.assertEqual(self.panel.raw_data(), "ls\r\x03", "çıkıştan sonra hiçbir şey gitmemeli")
 
     def test_q_quits_and_a_pasted_q_does_not(self):
@@ -1512,13 +1515,13 @@ class ViewerProcessTests(unittest.TestCase):
         time.sleep(0.5)
         self.assertIsNone(self.proc.poll(), "yapıştırılan q çıkış sayılmamalı")
         self.send("q")
-        self.assertEqual(self.proc.wait(10), 0)
+        self.assertEqual(self.proc.wait(EXIT_WAIT), 0)
         self.assertEqual(self.panel.posts, [])
 
     def test_the_terminal_is_given_back_clean(self):
         self.wait_screen("canlı")
         self.send("q")
-        self.proc.wait(10)
+        self.proc.wait(EXIT_WAIT)
         time.sleep(0.2)
         out = self.screen_text()
         self.assertIn(f"{ESC}[?2004h", out)
@@ -1574,7 +1577,7 @@ class ReadOnlyProcessTests(unittest.TestCase):
         self.assertNotIn("✎", bytes(buf).decode("utf-8", "replace"))
         self.assertNotIn("?2004h", bytes(buf).decode("utf-8", "replace"))
         os.write(master, b"q")
-        self.assertEqual(proc.wait(10), 0)
+        self.assertEqual(proc.wait(EXIT_WAIT), 0)
 
 
 if __name__ == "__main__":
