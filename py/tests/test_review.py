@@ -640,3 +640,15 @@ class TestLearnedPasswordLength(unittest.TestCase):
         out2 = rv.redact_secrets("kullan sifre1 burada ve sifre1x ayrı", ["sifre1"])    # 6 kar.: yalnız bağımsız sözcük
         self.assertEqual(out2, "kullan [REDACTED] burada ve sifre1x ayrı")
         self.assertEqual(rv.redact_secrets("uzunparola123 ve xuzunparola123x", ["uzunparola123"]), "[REDACTED] ve x[REDACTED]x")
+
+
+class ExportNoLocalPathTest(unittest.TestCase):
+    def test_absolute_path_outside_root_is_shortened(self):
+        row = {"id": "p:r:R-1", "severity": "P2", "where": "a.py:1", "title": "t",
+               "review_file": "/home/fatihyuce/.claude/claudeops/steward/stewards/reviewer/reviews/cli/evren/m/x/r.md"}
+        line = rv.export_lines([row], "/baska/kok")[0]
+        self.assertNotIn("/home/fatihyuce", line)
+        self.assertIn("m/x/r.md", line)
+        self.assertNotIn("/home/", rv.export_lines([row], "")[0])
+        under = dict(row, review_file="/kok/cli/evren/r.md")
+        self.assertIn("(kaynak: cli/evren/r.md)", rv.export_lines([under], "/kok")[0])
