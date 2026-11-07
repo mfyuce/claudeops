@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from claudeops import review_store as rs  # noqa: E402
@@ -76,6 +77,10 @@ class PureTest(unittest.TestCase):
 
 class CommitTest(unittest.TestCase):
     def setUp(self):
+        # Test edilen kod `git commit`i os.environ ile çalıştırır: genel git kimliğine (gerçek HOME) bağımlı OLMASIN (D13)
+        env = mock.patch.dict(os.environ, {k: ENV[k] for k in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL")})
+        env.start()
+        self.addCleanup(env.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         d = self.tmp.name
