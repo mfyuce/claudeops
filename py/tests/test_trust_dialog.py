@@ -50,6 +50,19 @@ class HandleTests(unittest.TestCase):
     def test_no_dialog_exits_calm(self):
         self.assertEqual(run("❯ \n? for shortcuts")[0], "none")
 
+    def test_late_dialog_after_splash_is_not_missed(self):
+        """Splash/başlık (istem işareti YOK) 4 yoklama sürer, diyalog 5.'de gelir: kaçmamalı (7 Kas canlı hata)."""
+        keys, polls = [], []
+        def cap(n):
+            polls.append(1)
+            return "Claude Code v2\nWelcome" if len(polls) < 5 else DIALOG
+        r = td.handle("n", True, capture=cap, send_key=lambda n, k: keys.append(k) or True, send_raw=lambda n, d: True,
+                      strip=lambda t: t, log=lambda ev, **kw: None, wait=20, sleep=lambda s: None)
+        self.assertEqual((r, keys), ("accepted", ["Enter"]))
+
+    def test_splash_without_prompt_marker_eventually_exits(self):
+        self.assertEqual(run("Claude Code v2\nWelcome")[0], "none")
+
     def test_dead_session_stops_polling(self):
         self.assertEqual(run(DIALOG, alive=lambda: False)[0], "none")
 

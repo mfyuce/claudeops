@@ -18,6 +18,9 @@ _MARKERS = (
     "do you trust the files in this folder",
     "trust this folder",
 )
+# Claude'un hazır istem ekranında (diyalog artık gelmez) görünen işaretler: yalnız bunlardan biri varken erken çıkılır
+_PROMPT_MARKERS = ("? for shortcuts", "shift+tab to cycle", "bypass permissions", "accept edits", "auto mode", "esc to interrupt")
+CALM_NO_MARKER_FACTOR = 3     # istem işareti YOKken (açılış başlığı/splash) erken çıkış için gereken sakin yoklama = calm_polls x bu
 _YES_RE = re.compile(r"^\s*(?P<ptr>[❯>›]\s*)?(?P<n>\d)\.\s*Yes\b", re.IGNORECASE)
 
 
@@ -37,10 +40,11 @@ def yes_option(text: str) -> Optional[Tuple[str, bool]]:
 
 def handle(name: str, registered: bool, capture: Callable[[str], Optional[str]], send_key: Callable[[str, str], bool],
            send_raw: Callable[[str, str], bool], strip: Callable[[str], str], log: Callable[..., None],
-           wait: float = 10.0, step: float = 1.0, calm_polls: int = 3,
+           wait: float = 20.0, step: float = 1.0, calm_polls: int = 3,
            alive: Optional[Callable[[], bool]] = None, sleep: Callable[[float], None] = time.sleep) -> str:
     """Pane'i `wait` sn izler. Diyalog çıkarsa kayıtlıda Yes seçer ("accepted"), kayıtsızda bırakır ("unregistered").
-    Diyalog yokken pane doluysa ve `calm_polls` kez art arda diyalogsuzsa erken çıkar ("none"). Oturum ölürse çıkar."""
+    Erken çıkış ("none") YALNIZ hazır-istem işareti (`_PROMPT_MARKERS`) görünürken `calm_polls` kez art arda diyalogsuzsa; işaret yoksa
+    (splash/başlık: diyalog geç gelebilir, 7 Kas animallangppr/vesuviusppr) `calm_polls x CALM_NO_MARKER_FACTOR` sakin yoklama ya da `wait` dolana dek yoklar. Oturum ölürse çıkar."""
     waited, calm = 0.0, 0
     while waited <= wait:
         if alive is not None and not alive():
@@ -62,7 +66,8 @@ def handle(name: str, registered: bool, capture: Callable[[str], Optional[str]],
             log("trust_dialog_accepted", name=name, option=digit)
             return "accepted"
         calm = calm + 1 if text.strip() else 0
-        if calm >= calm_polls:
+        has_prompt = any(m in text.lower() for m in _PROMPT_MARKERS)
+        if calm >= (calm_polls if has_prompt else calm_polls * CALM_NO_MARKER_FACTOR):
             return "none"
         sleep(step)
         waited += step
