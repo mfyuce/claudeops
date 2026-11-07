@@ -40,10 +40,18 @@ class UcliSendTest(unittest.TestCase):
 
     def test_non_ucli_untouched_and_no_recheck(self):
         with mock.patch.object(ws, "tmux_send_keys", return_value=True) as sk, \
-                mock.patch.object(ws, "tmux_capture") as cap:
+                mock.patch.object(ws, "tmux_capture", return_value="> \n") as cap:
             ws._send("c", "claude", "a\nb")
         self.assertEqual(sk.call_args[0][1], "a\nb")
-        cap.assert_not_called()
+        self.assertEqual(cap.call_count, 1)             # yalniz guven diyalogu korumasi, ucli kutu denetimi YOK
+
+    def test_claude_trust_dialog_blocks_send(self):
+        dlg = "Do you trust the files in this folder?\n 1. Yes, proceed\n 2. No, exit\n"
+        with mock.patch.object(ws, "tmux_send_keys", return_value=True) as sk, \
+                mock.patch.object(ws, "tmux_capture", return_value=dlg), \
+                mock.patch.object(ws, "diag_log"):
+            self.assertFalse(ws._send("c", "claude", "devam"))
+        sk.assert_not_called()
 
     def test_text_left_in_box_sends_one_more_enter(self):
         import itertools

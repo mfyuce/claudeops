@@ -1310,6 +1310,12 @@ def _send(name: str, cli: str, text: str) -> bool:
     provider = get_provider(cli)
     if not provider.has_conversation():
         return False
+    if cli == "claude":
+        # İlk açılışta güven diyaloğu açıksa metin + Enter varsayılan "No, exit"i seçip oturumu öldürür (7 Kas: animallangppr, vesuviusppr)
+        from .. import trust_dialog
+        if trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or "")):
+            diag_log("send_blocked_trust_dialog", name=name)
+            return False
     # ucli çok satırı ayrı tur sayar: tek satıra katlama + kesmeme TEK yerde, `UcliProvider.prepare_input`
     ok = tmux_send_keys(name, provider.prepare_input(text), settle_delay=provider.input_settle_delay())
     if ok and cli == "ucli":
