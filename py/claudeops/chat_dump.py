@@ -153,8 +153,10 @@ def _summary(db: str) -> Dict[str, Any]:
         sig = None
     if sdb not in _SUMM or _SUMM[sdb][0] != sig:
         m: Dict[str, Any] = {}
+        sc = None
         try:
-            for cid, title, uris, lm in _ro(sdb).execute("select conversation_id,title,workspace_uris,last_modified_time from conversation_summaries"):
+            sc = _ro(sdb)
+            for cid, title, uris, lm in sc.execute("select conversation_id,title,workspace_uris,last_modified_time from conversation_summaries"):
                 try:
                     u = next(iter(json.loads(uris or "[]") or []), "")
                 except (ValueError, TypeError):      # "null", sayı vb. bozuk workspace_uris
@@ -163,6 +165,9 @@ def _summary(db: str) -> Dict[str, Any]:
                 m[cid] = {"project": u[7:] if u.startswith("file://") else u, "title": title or "", "last_modified": lm}
         except sqlite3.Error:
             pass
+        finally:
+            if sc is not None:
+                sc.close()
         _SUMM[sdb] = (sig, m)
     return _SUMM[sdb][1].get(os.path.basename(db)[:-3], {})
 
@@ -170,24 +175,27 @@ def _summary(db: str) -> Dict[str, Any]:
 def dump_gemini(db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
     sess = os.path.basename(db)[:-3]
     c = _ro(db)
-    summ = _summary(db)
-    proj = summ.get("project") or _gemini_cwd(c)      # önce özet tablosu (workspace_uris), yoksa payload alan 11
-    if summ:
-        yield proj, _valid_day(str(summ.get("last_modified") or "")[:10]), sess, {
-            "summary": {"title": summ.get("title"), "workspace": summ.get("project"), "last_modified": summ.get("last_modified")}}
-    for idx, stype, status, md, pl, ri in c.execute("select idx,step_type,status,metadata,step_payload,render_info from steps order by idx"):
-        mdd = pb_decode(md) if md else None
-        ts = _first_ts(mdd)
-        pld = pb_decode(pl) if pl else None
-        if pld and mdd:                       # payload alan 5, metadata'nın kopyası: yineleme (boyut)
-            pld = [(f, v) for f, v in pld if not (f == 5 and v == mdd)]
-        row = {"idx": idx, "step_type": stype, "status": status, "ts": ts,
-               "metadata": _jsonable(mdd) if mdd else None,
-               "payload": _jsonable(pld) if pld else (pl.hex()[:200] if pl else None)}
-        yield proj, _day(ts), sess, row
-    for idx, data, _sz in c.execute("select idx,data,size from gen_metadata order by idx"):
-        d = pb_decode(data) if data else None
-        yield proj, _day(_first_ts(d)), sess, {"gen_metadata_idx": idx, "data": _jsonable(d) if d else None}
+    try:
+        summ = _summary(db)
+        proj = summ.get("project") or _gemini_cwd(c)      # önce özet tablosu (workspace_uris), yoksa payload alan 11
+        if summ:
+            yield proj, _valid_day(str(summ.get("last_modified") or "")[:10]), sess, {
+                "summary": {"title": summ.get("title"), "workspace": summ.get("project"), "last_modified": summ.get("last_modified")}}
+        for idx, stype, status, md, pl, ri in c.execute("select idx,step_type,status,metadata,step_payload,render_info from steps order by idx"):
+            mdd = pb_decode(md) if md else None
+            ts = _first_ts(mdd)
+            pld = pb_decode(pl) if pl else None
+            if pld and mdd:                       # payload alan 5, metadata'nın kopyası: yineleme (boyut)
+                pld = [(f, v) for f, v in pld if not (f == 5 and v == mdd)]
+            row = {"idx": idx, "step_type": stype, "status": status, "ts": ts,
+                   "metadata": _jsonable(mdd) if mdd else None,
+                   "payload": _jsonable(pld) if pld else (pl.hex()[:200] if pl else None)}
+            yield proj, _day(ts), sess, row
+        for idx, data, _sz in c.execute("select idx,data,size from gen_metadata order by idx"):
+            d = pb_decode(data) if data else None
+            yield proj, _day(_first_ts(d)), sess, {"gen_metadata_idx": idx, "data": _jsonable(d) if d else None}
+    finally:
+        c.close()
 
 
 def write_jsonl(rows: Iterator[Tuple[str, str, str, Dict[str, Any]]], out_root: str, cli: str) -> List[str]:

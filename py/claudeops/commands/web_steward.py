@@ -4242,6 +4242,18 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
 
 
 
+def _mark_reviewer_tick(sid: str, now: Optional[float] = None) -> None:
+    """Reviewer kimliğinin `state.json` `last_tick`i: motor reviewer'da `tick_once` çalıştırmaz, yoksa `steward -s reviewer
+    status` "son tick: 8g" gösterir (döngü çalışırken). Hata döngüyü düşürmez."""
+    try:
+        paths = sw.paths_for(sid)
+        st = sw.load_state(paths)
+        st["last_tick"] = time.time() if now is None else now
+        sw.save_state(st, paths)
+    except Exception as e:
+        sw.log_event("reviewer_mark_tick_failed", paths=sid, error=repr(e)[:200])
+
+
 def tick_round(trigger: str = "timer") -> List[Dict[str, Any]]:
     """Bir tur; tüm kimlikler tek tarama önbelleği kapsamında (kimlik başına yeniden taranmaz; eylemler önbelleği düşürür)."""
     with _scan_scope():
@@ -4272,6 +4284,7 @@ def _tick_round_inner(trigger: str = "timer") -> List[Dict[str, Any]]:
                 reviewers.add(sid)
                 if cfg.enabled:
                     results.append(dict(web_review.review_tick(cfg) or {}, sid=sid, role="reviewer"))
+                    _mark_reviewer_tick(sid)
                     try:
                         auto_review_verify(cfg)
                     except Exception as e:      # otomatik doğrulama hatası döngüyü düşürmesin

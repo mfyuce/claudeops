@@ -23,6 +23,22 @@ class IndexTest(unittest.TestCase):
             self.assertEqual([e for e in ents if e["kind"] == "memory"][0]["host"], "h1")
             self.assertIn("| claude | -p1 | 1 |", open(os.path.join(t, "INDEX.md")).read())
 
+    def test_unknown_day_dir_is_not_shown_as_date(self):
+        with tempfile.TemporaryDirectory() as t:
+            rels = ["local/codex-dump/projA/bilinmiyor/s1.jsonl", "local/codex-dump/projA/2026-10-05/s2.jsonl",
+                    "local/codex-dump/projB/bilinmiyor/s3.jsonl"]
+            for rel in rels:
+                os.makedirs(os.path.join(t, os.path.dirname(rel)), exist_ok=True)
+                open(os.path.join(t, rel), "w").write("{}\n")
+            I.write_index(t, rels, "h1")
+            ents = {e["session"]: e for e in (json.loads(l) for l in open(os.path.join(t, "INDEX.jsonl")))}
+            self.assertEqual(ents["s1"]["first"], "")                      # 'bilinmiyor' tarih olarak yazılmaz
+            self.assertEqual(ents["s2"]["first"], "2026-10-05")
+            md = open(os.path.join(t, "INDEX.md")).read()
+            self.assertNotIn("bilinmiyor", md)
+            self.assertIn("| codex | projA | 2 | 2026-10-05 | 2026-10-05 |", md)   # bilinmeyen gün aralığı bozmaz
+            self.assertIn("| codex | projB | 1 | ? | ? |", md)                     # tamamen bilinmeyen: '?'
+
     def test_gemini_summary_row(self):
         with tempfile.TemporaryDirectory() as t:
             rel = "local/gemini-dump/antigravity/w-proj/2026-07-01/c1.jsonl"

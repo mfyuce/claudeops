@@ -48,6 +48,11 @@ def _iso(v: Any) -> str:
     return v[:19] if isinstance(v, str) and len(v) >= 10 and v[:4].isdigit() else ""
 
 
+def _valid_day(d: Any) -> str:
+    """Yol parçasındaki gün 'YYYY-MM-DD' değilse ('bilinmiyor' vb.) boş: tarih sütununu ve sıralamayı bozmasın."""
+    return d if isinstance(d, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", d) else ""
+
+
 def classify(rel: str) -> Optional[Dict[str, str]]:
     """Göreli yoldan {kind, cli, host, project, session} ya da None (dizin dışı)."""
     p = rel.replace("\\", "/").split("/")
@@ -81,7 +86,7 @@ def entry(repo: str, rel: str, host: str) -> Optional[Dict[str, Any]]:
     except OSError:
         return None
     e: Dict[str, Any] = {"kind": c["kind"], "cli": c["cli"], "host": c.get("host", host), "project": c["project"],
-                         "cwd": "", "session": c["session"], "title": "", "first": c.get("day", ""), "last": c.get("day", ""),
+                         "cwd": "", "session": c["session"], "title": "", "first": _valid_day(c.get("day", "")), "last": _valid_day(c.get("day", "")),
                          "bytes": size, "path": rel}
     if c["kind"] != "chat" or not rel.endswith(".jsonl"):
         return e
@@ -136,7 +141,7 @@ def render_md(entries: List[Dict[str, Any]], name: str) -> str:
             continue
         lines += [f"## {kind}", "", "| cli | proje | dosya | ilk | son | KB |", "|---|---|---:|---|---|---:|"]
         for (_k, cli, proj), v in rows:
-            lines.append(f"| {cli} | {proj or '-'} | {v['n']} | {v['first'][:10]} | {v['last'][:10]} | {v['bytes'] // 1024} |")
+            lines.append(f"| {cli} | {proj or '-'} | {v['n']} | {v['first'][:10] or '?'} | {v['last'][:10] or '?'} | {v['bytes'] // 1024} |")
         lines.append("")
     return "\n".join(lines)
 
