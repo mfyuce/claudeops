@@ -64,6 +64,14 @@ class StateDocsTests(unittest.TestCase):
         self.assertEqual(sd.read_json("q", self.path), {"v": 2})               # dosyadan geri alınır
         self.assertEqual(self.st.get_doc("q"), {"v": 2}); self.assertNotIn("q", sd._DIRTY)
 
+    def test_dual_db_write_failure_resyncs_on_next_read(self):
+        self.mode("dual"); sd.write_json("q", self.path, {"v": 1})
+        with mock.patch.object(self.st, "set_doc", side_effect=RuntimeError("locked")):
+            sd.write_json("q", self.path, {"v": 2})                            # dosya yeni, DB eski
+        self.assertNotIn("q", sd._SYNCED)
+        self.assertEqual(sd.read_json("q", self.path), {"v": 2})
+        self.assertEqual(self.st.get_doc("q"), {"v": 2})                       # DB uyduruldu
+
     def test_steward_prefix_is_db_ready(self):
         self.assertTrue(sd.db_ready("steward/questions")); self.assertTrue(sd.db_ready("steward/stewards/reviewer/findings"))
         self.assertFalse(sd.db_ready("settings")); self.assertFalse(sd.db_ready("instances"))

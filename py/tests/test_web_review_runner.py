@@ -652,6 +652,28 @@ class TestDetached(Base):
         self.assertFalse(ap.alive())
         self.assertEqual(ap.poll(), -15)                        # .rc yok: sinyalle ölmüş sayılır
 
+    def test_adopt_keeps_pre_restart_io_log(self):
+        md = self.md("20261108180005")
+        proc = self._launch_like_service(md, delay=0.0)
+        proc.wait()
+        io = wr.io_path_for(md)
+        with open(io, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": 1.0, "role": "user", "text": "restart oncesi"}) + "\n")
+        wr.recover_on_start(self.paths, cfg=self.cfg)
+        self.wait_done(rv.pair_key("proj", EV))
+        self.assertIn("restart oncesi", open(io, encoding="utf-8").read())     # sahiplenme kaydı SİLMEZ
+
+    def test_adopt_failure_marks_partial_not_stuck_running(self):
+        md = self.md("20261108180006")
+        proc = self._launch_like_service(md, delay=5.0)
+        key = rv.pair_key("proj", EV)
+        with mock.patch.object(wr, "_adopt", side_effect=RuntimeError("boom")):
+            wr.recover_on_start(self.paths, cfg=self.cfg)
+        rec = rv.load_history(self.paths)["pairs"][key]
+        self.assertEqual(rec["status"], "partial")
+        self.assertNotIn(key, wr.busy_keys())
+        proc.kill(); proc.wait()
+
     def test_without_cfg_old_behavior_partial(self):
         md = self.md("20261108180004")
         proc = self._launch_like_service(md, delay=5.0)

@@ -429,7 +429,9 @@ class IoLog:
     Sondaki bölünmüş sözcük bir sonraki yazıya kadar tutulur ki bir sır iki parçaya bölünüp redact'ten kaçmasın."""
 
     def __init__(self, path: str, now: Callable[[], float] = time.time, max_bytes: int = IO_MAX_BYTES,
-                 head: int = IO_HEAD_BYTES, tail: int = IO_TAIL_BYTES, err_as_delta: bool = True) -> None:
+                 head: int = IO_HEAD_BYTES, tail: int = IO_TAIL_BYTES, err_as_delta: bool = True,
+                 append: bool = False) -> None:
+        """`append=True`: var olan kayıt KORUNUR (restart sonrası sahiplenilen koşu, öncesindeki sohbet kaydı silinmesin)."""
         self.path, self.now, self.max_bytes, self.head, self.tail = path, now, max_bytes, head, tail
         self.err_as_delta = err_as_delta    # False (claude/codex/agy/copilot): öneksiz stderr cevap DEĞİL, system/stderr satırı
         self._eline = ""
@@ -444,7 +446,7 @@ class IoLog:
         self.ok = True
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8"):
+            with open(path, "a" if append else "w", encoding="utf-8"):
                 pass
         except OSError:
             self.ok = False
@@ -1037,7 +1039,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
              adopt: Optional[AdoptedProc] = None) -> None:
     """`adopt`: restart öncesi başlamış bağımsız koşuyu sahiplen (süreç açılmaz; dosyalar sondan izlenir)."""
     key = job.key
-    live = IoLog(io_path_for(path), now, err_as_delta=(target.mode in rv.UCLI_MODES))
+    live = IoLog(io_path_for(path), now, err_as_delta=(target.mode in rv.UCLI_MODES), append=adopt is not None)
     agy_before = _agy_log_names(agy_log_dir) if (target.mode == "agy" and adopt is None) else frozenset()
     if job.prompt and adopt is None:
         live.event("user", job.prompt, "prompt")
@@ -1621,6 +1623,23 @@ def _adopt(p: Any, cfg: Any, key: str, rec: Dict[str, Any], target: rv.ReviewTar
     th.start()
 
 
+def _mark_partial(p: Any, key: str, now: Callable[[], float], error: str) -> str:
+    """Sahiplenilemeyen `running` çifti `partial` yap (yoksa sonsuza dek `running` kalır, planlayıcı o projeye bir daha
+    koşmaz); diskte kalan raporu kurtar. Dönen: kurtarılan rapor yolu ya da ""."""
+    with sw.steward_lock(p):
+        hist = rv.load_history(p)
+        rec = hist["pairs"].get(key)
+        if not isinstance(rec, dict) or rec.get("status") != "running":
+            return ""
+        rec.update(status="partial", finished_at=now(), pid=None, error=error)
+        saved = _recover_restart_report(rec)
+        if saved:
+            rec["file"] = saved
+        hist["runs"].append({"pair": key, "status": "partial", "at": rec["finished_at"], "file": rec.get("file")})
+        rv.save_history(p, hist)
+        return saved
+
+
 def recover_on_start(paths: Any, now: Callable[[], float] = time.time, cfg: Any = None) -> int:
     """Servis yeniden başlayınca `running` kalan çiftler: bağımsız başlatılmışsa (`detached`) SAHİPLENİLİR (süreç yaşıyorsa
     izlemeye devam, bittiyse dosyadaki çıktı işlenir; `cfg` gerekir); değilse (eski boru yolu, süreç ölmüştür) `partial`
@@ -1654,6 +1673,13 @@ def recover_on_start(paths: Any, now: Callable[[], float] = time.time, cfg: Any 
             sw.log_event("review_adopted", paths=p, pair=key, pid=proc.pid, alive=proc.alive())
         except Exception as e:
             sw.log_event("review_adopt_failed", paths=p, pair=key, error=_tail(repr(e)))
+            with _JOBS_LOCK:          # yarım kayıt planlayıcıyı tıkamasın
+                _JOBS.pop(key, None)
+            with _SLOT_LOCK:
+                _ACTIVE.pop(key, None)
+            saved = _mark_partial(p, key, now, "yeniden başlatma: sahiplenme başarısız")
+            if saved:
+                recovered.append((key.split("|", 1)[0], saved))
     for proj, path in recovered:    # bulgular kilit dışında (add_findings kendi kilidini alır)
         try:
             with open(path, encoding="utf-8") as f:

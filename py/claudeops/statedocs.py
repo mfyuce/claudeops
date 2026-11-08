@@ -170,11 +170,13 @@ def write_json(name: str, path: str, obj: Any, *, mode: Optional[int] = None, wr
     be = _effective(name)
     if not _db_ok(path) or wr is not atomic_json.atomic_write_json:
         be = "files"
+    db_failed = False
     if be != "files":
         try:
             from .store import default_store
             default_store().set_doc(name, obj)
         except Exception as e:
+            db_failed = True
             _log(f"write {name}: {e!r}")
             if be == "db":
                 wr(path, obj, mode=mode)   # DB yazılamadıysa veri kaybolmasın
@@ -193,7 +195,10 @@ def write_json(name: str, path: str, obj: Any, *, mode: Optional[int] = None, wr
     if be in ("files", "dual"):
         wr(path, obj, mode=mode)
         if be == "dual":
-            _SYNCED[name] = _sig(path)         # bu yazımla DB zaten eşit: ilk okumada gereksiz karşılaştırma yok
+            if db_failed:                      # DB bayat: imzayı unut ki sonraki okuma karşılaştırıp DB'yi uydursun
+                _SYNCED.pop(name, None)
+            else:
+                _SYNCED[name] = _sig(path)     # bu yazımla DB zaten eşit: ilk okumada gereksiz karşılaştırma yok
 
 
 _MIRROR_N = {}
