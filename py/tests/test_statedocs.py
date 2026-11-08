@@ -39,10 +39,35 @@ class StateDocsTests(unittest.TestCase):
         self.mode("dual"); self.assertEqual(sd.read_json("q", self.path), {"old": 1})
         self.assertEqual(self.st.get_doc("q"), {"old": 1})
 
-    def test_db_mode_writes_only_db_and_default(self):
+    def test_db_mode_db_is_truth_file_is_mirror(self):
         self.mode("db"); sd.write_json("q", self.path, {"a": 4})
-        self.assertFalse(os.path.exists(self.path)); self.assertEqual(sd.read_json("q", self.path), {"a": 4})
+        self.assertEqual(json.load(open(self.path)), {"a": 4})                 # ayna (mtime/listdir tabanlı kod için)
+        self.assertEqual(sd.read_json("q", self.path), {"a": 4})
+        json.dump({"hand": 1}, open(self.path, "w"))                           # elle düzenleme: okuyucu dosyaya BAKMAZ
+        self.assertEqual(sd.read_json("q", self.path), {"a": 4})
         self.assertEqual(sd.read_json("none", self.path + "x", "dflt"), "dflt")
+
+    def test_db_mode_reader_mid_write_sees_db_no_drift(self):
+        # dual'deki yarış: DB yazıldı, dosya henüz eski. db kipinde okuyucu yalnız DB'ye bakar: drift yok, geri alma yok.
+        log = os.environ["CLAUDEOPS_DIAG_LOG"]
+        self.mode("db"); sd.write_json("q", self.path, {"v": 1})
+        self.st.set_doc("q", {"v": 2})                                          # yazar DB'yi güncelledi, dosya eski
+        self.assertEqual(sd.read_json("q", self.path), {"v": 2})
+        self.assertEqual(self.st.get_doc("q"), {"v": 2})
+        self.assertNotIn("drift", open(log).read() if os.path.exists(log) else "")
+
+    def test_db_write_failure_recovers_from_file_on_next_read(self):
+        self.mode("db"); sd.write_json("q", self.path, {"v": 1})
+        with mock.patch.object(self.st, "set_doc", side_effect=RuntimeError("locked")):
+            sd.write_json("q", self.path, {"v": 2})                            # DB düştü -> dosya, belge kirli
+        self.assertEqual(self.st.get_doc("q"), {"v": 1})
+        self.assertEqual(sd.read_json("q", self.path), {"v": 2})               # dosyadan geri alınır
+        self.assertEqual(self.st.get_doc("q"), {"v": 2}); self.assertNotIn("q", sd._DIRTY)
+
+    def test_steward_prefix_is_db_ready(self):
+        self.assertTrue(sd.db_ready("steward/questions")); self.assertTrue(sd.db_ready("steward/stewards/reviewer/findings"))
+        self.assertFalse(sd.db_ready("settings")); self.assertFalse(sd.db_ready("instances"))
+        self.mode("db"); self.assertEqual(sd._effective("settings"), "dual"); self.assertEqual(sd._effective("steward/state"), "db")
 
     def test_db_failure_falls_back_to_file(self):
         json.dump({"f": 1}, open(self.path, "w"))

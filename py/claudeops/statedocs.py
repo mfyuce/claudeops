@@ -45,6 +45,16 @@ def backend() -> str:
 # `db` kipinde YALNIZ okuyucuları tamamen DB'ye bağlanmış belgeler DB-tek-kaynak olur; diğerleri `db` istense bile `dual`
 # (dosya doğruluk kaynağı, DB gölge) davranır. Yeni belgenin okuyucusu DB'ye bağlanınca buraya eklenir.
 DB_READY = {"hosts", "steward/quota"}
+# Önekle DB'ye geçen belgeler (2026-11-08 cutover): değnekçi/reviewer durumu (`steward/...`). Yalnız claudeops okur/yazar;
+# dual kipte okuyucu-yazar yarışı (DB yazıldı, dosya henüz yazılmadı) sahte drift üretip DB'yi eski değere geri alıyordu.
+DB_READY_PREFIXES = ("steward/",)
+
+
+def db_ready(name: str) -> bool:
+    return name in DB_READY or name.startswith(DB_READY_PREFIXES)
+
+
+_DIRTY: set = set()   # `db` kipinde DB yazımı başarısız olan belgeler: dosya daha yeni, sonraki okuma dosyadan geri alır
 
 
 def name_for(path: str) -> str:
@@ -56,7 +66,7 @@ def name_for(path: str) -> str:
 
 def _effective(name: str) -> str:
     m = backend()
-    return "dual" if (m == "db" and name not in DB_READY) else m
+    return "dual" if (m == "db" and not db_ready(name)) else m
 
 
 def _db_ok(path: str) -> bool:
@@ -132,6 +142,13 @@ def read_json(name: str, path: str, default: Any = None, *, file_truth: bool = T
                 return v
             v = st.get_doc(name, _MISSING)
             return default if v is _MISSING else v
+        if name in _DIRTY:                                  # son DB yazımı başarısızdı: dosya daha yeni
+            v = _file_read(path, _MISSING, on_corrupt)
+            if v is not _MISSING:
+                st.set_doc(name, v)
+                _DIRTY.discard(name)
+                _log(f"recover {name}: DB dosyadan yeniden yazıldı")
+                return v
         v = st.get_doc(name, _MISSING)
         if v is not _MISSING:
             return v
@@ -161,7 +178,18 @@ def write_json(name: str, path: str, obj: Any, *, mode: Optional[int] = None, wr
             _log(f"write {name}: {e!r}")
             if be == "db":
                 wr(path, obj, mode=mode)   # DB yazılamadıysa veri kaybolmasın
+                _DIRTY.add(name)           # sonraki okuma dosyadan alır ve DB'ye yeniden yazmayı dener
                 return
+        else:
+            _DIRTY.discard(name)
+    if be == "db":
+        # Dosya AYNA olarak yazılmaya devam eder (doğruluk kaynağı DB): mtime/varlık tabanlı kod (sahiplik önbelleği,
+        # kimlik/kart keşfi `listdir`) ve geri dönüş (`store_backend=dual`) için. Okuyucu dosyaya BAKMAZ.
+        try:
+            wr(path, obj, mode=mode)
+        except Exception as e:
+            _log(f"mirror {name}: {e!r}")
+        return
     if be in ("files", "dual"):
         wr(path, obj, mode=mode)
         if be == "dual":

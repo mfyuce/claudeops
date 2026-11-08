@@ -30,7 +30,7 @@ class HostsDiagDual(unittest.TestCase):
 
     def test_hosts_db_mode_without_file(self):
         with mock.patch.dict(os.environ, {"CLAUDEOPS_STORE_BACKEND": "db"}):
-            H.save_host("a", "http://a:1", "t"); self.assertFalse(os.path.exists(H.HOSTS_JSON))
+            H.save_host("a", "http://a:1", "t"); self.assertTrue(os.path.exists(H.HOSTS_JSON))   # dosya AYNA
             H.save_host("b", "http://b:1", "t2")
             self.assertEqual(sorted(h["name"] for h in H.load_hosts()), ["a", "b"])
 

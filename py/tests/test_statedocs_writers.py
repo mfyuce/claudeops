@@ -36,17 +36,18 @@ class WritersShadowTests(unittest.TestCase):
         self.assertTrue([n for n in os.listdir(os.path.dirname(p)) if ".corrupt-" in n])   # kanıt yedeği duruyor
 
     def test_non_ready_docs_stay_file_even_in_db_mode(self):
-        p = os.path.join(self.d, "steward", "state.json")
+        p = os.path.join(self.d, "instances.json")
         with mock.patch.dict(os.environ, {"CLAUDEOPS_STORE_BACKEND": "db"}):
             sw._save_json(p, {"a": 2})
             self.assertTrue(os.path.exists(p))                                    # okuyucusu bağlı değil: dosya yazılmaya devam
-            self.assertEqual(self.st.get_doc("steward/state"), {"a": 2})
+            self.assertEqual(self.st.get_doc("instances"), {"a": 2})
             self.assertEqual(sw._load_json(p, {}), {"a": 2})
 
     def test_ready_docs_db_only_in_db_mode(self):
         p = os.path.join(self.d, "steward", "quota.json")
         with mock.patch.dict(os.environ, {"CLAUDEOPS_STORE_BACKEND": "db"}):
-            sd.write_json("steward/quota", p, {"q": 1}); self.assertFalse(os.path.exists(p))
+            sd.write_json("steward/quota", p, {"q": 1}); self.assertTrue(os.path.exists(p))   # dosya AYNA
+            open(p, "w").write('{"hand": 1}'); self.assertEqual(sd.read_json("steward/quota", p), {"q": 1})   # okuyucu DB
 
     def test_mocked_writer_never_touches_db_or_file(self):
         """2026-11-03 kazası: modülün atomic_write_json'u taklit eden test, gerçek settings.json/DB'yi ezdi."""
