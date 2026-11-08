@@ -27,6 +27,7 @@ import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
 import { ErrorBox } from "./shared/ErrorBox";
 import { NumberSetting } from "./shared/NumberSetting";
+import { TextSetting } from "./shared/TextSetting";
 import { useLang } from "../i18n/LangContext";
 import { showToast } from "../state/toast";
 import type { ReviewFinding, ReviewLesson, ReviewRemoteProject, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
@@ -383,6 +384,18 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           onSave={(n) => void act(() => apiStewardConfig("review_max_context_kib", n, sid), t.rvDone)} />
         <NumberSetting label={t.rvEvrenReadKib} value={st.max_read_kib ?? 0} width="5rem"
           onSave={(n) => void act(() => apiStewardConfig("review_max_read_kib", n, sid), t.rvDone)} />
+      </div>
+      )}
+
+      {st && (
+      <div className="opts" title={t.rvSlotsHint}>
+        <span className="opts-hint">{t.rvSlotsTitle}</span>
+        <TextSetting label={t.rvSlots} value={st.slots_spec ?? ""} width="16rem" placeholder="agy=2,evren=1,codex=0"
+          onSave={(v) => void act(() => apiStewardConfig("review_slots", v, sid), t.rvDone)} />
+        <TextSetting label={t.rvAgyModels} value={st.agy_models ?? ""} width="22rem" placeholder={t.rvModelsAll}
+          onSave={(v) => void act(() => apiStewardConfig("review_agy_models", v, sid), t.rvDone)} />
+        <TextSetting label={t.rvEvrenModels} value={st.evren_models ?? ""} width="22rem" placeholder={t.rvModelsAll}
+          onSave={(v) => void act(() => apiStewardConfig("review_evren_models", v, sid), t.rvDone)} />
       </div>
       )}
 

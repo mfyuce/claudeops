@@ -812,6 +812,12 @@ export interface Strings {
   rvEvrenToolCalls: string;
   rvEvrenContextKib: string;
   rvEvrenReadKib: string;
+  rvSlotsTitle: string;
+  rvSlotsHint: string;
+  rvSlots: string;
+  rvAgyModels: string;
+  rvEvrenModels: string;
+  rvModelsAll: string;
   stewardRowStat: (projects: number, questions: number) => string;
   stewardOn: string;
   stewardOffShort: string;
@@ -1726,6 +1732,12 @@ export const STRINGS: Record<Lang, Strings> = {
     rvEvrenToolCalls: "Araç çağrısı",
     rvEvrenContextKib: "Bağlam KiB (0=oto)",
     rvEvrenReadKib: "Okuma KiB (0=oto)",
+    rvSlotsTitle: "Yuvalar ve modeller:",
+    rvSlotsHint: "Mod başına eşzamanlı koşu (agy=2,evren=1; 0 = mod kapalı, boş/off = tek iş). Model listeleri virgüllü; boş = katalogdaki tümü. Enter ya da odaktan çıkınca kaydedilir.",
+    rvSlots: "Yuvalar",
+    rvAgyModels: "agy modelleri",
+    rvEvrenModels: "Evren modelleri",
+    rvModelsAll: "(boş = tümü)",
     stewardRowStat: (projects, questions) => `${projects} proje · ${questions} açık soru`,
     stewardOn: "açık",
     stewardOffShort: "kapalı",
@@ -2641,6 +2653,12 @@ export const STRINGS: Record<Lang, Strings> = {
     rvEvrenToolCalls: "Tool calls",
     rvEvrenContextKib: "Context KiB (0=auto)",
     rvEvrenReadKib: "Read KiB (0=auto)",
+    rvSlotsTitle: "Slots and models:",
+    rvSlotsHint: "Concurrent runs per mode (agy=2,evren=1; 0 = mode off, empty/off = single job). Model lists are comma-separated; empty = whole catalog. Saved on Enter or blur.",
+    rvSlots: "Slots",
+    rvAgyModels: "agy models",
+    rvEvrenModels: "Evren models",
+    rvModelsAll: "(empty = all)",
     stewardRowStat: (projects, questions) => `${projects} project${projects === 1 ? "" : "s"} · ${questions} open question${questions === 1 ? "" : "s"}`,
     stewardOn: "on",
     stewardOffShort: "off",

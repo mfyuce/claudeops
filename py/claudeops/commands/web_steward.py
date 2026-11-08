@@ -5525,6 +5525,33 @@ UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_
 # Seçenek listeli metin ayarlar. `review_evren_script` kapatma değeri "off" (boş değer anahtarı SİLER, varsayılan "read" geri gelir).
 UI_CONFIG_CHOICE = {"review_evren_script": ("read", "off")}
 
+# Serbest metin reviewer ayarları (panel Reviewer formu, 2026-11-08): boş değer anahtarı SİLER = varsayılan
+# (yuvalar: TEK iş kipi; model listeleri: katalogdaki tümü). Model listesi virgüllü, dar karakter kümesi.
+UI_CONFIG_MODEL_LISTS = ("review_agy_models", "review_evren_models")
+_MODEL_LIST_RE = re.compile(r"^[A-Za-z0-9_.:/@\[\]-]{1,120}$")
+
+
+def _normalize_review_slots(value: Any) -> Optional[str]:
+    """`review_slots` metni -> kanonik `mod=n,...` (ya da "" / "off"); bozuk/bilinmeyen modda None."""
+    from .. import review as rv
+    t = str(value or "").strip().lower().replace(" ", "")
+    if t in ("", "off"):
+        return t
+    out = []
+    for part in t.split(","):
+        k, sep, v = part.partition("=")
+        if not sep or k not in rv.MODES or not v.isdigit() or int(v) > 10:
+            return None
+        out.append(f"{k}={int(v)}")
+    return ",".join(out)
+
+
+def _normalize_model_list(value: Any) -> Optional[str]:
+    items = [x.strip() for x in str(value or "").split(",") if x.strip()]
+    if len(items) > 40 or any(not _MODEL_LIST_RE.match(x) for x in items):
+        return None
+    return ",".join(dict.fromkeys(items))
+
 
 def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Panelden `steward.<alan>` (ya da `stewards.<sid>.<alan>`) ayarı; CLI `config` ile aynı kurallar, dar alan listesi."""
@@ -5552,6 +5579,14 @@ def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         value = str(value or "").strip().lower()
         if value not in UI_CONFIG_CHOICE[field]:
             return {"ok": False, "error": f"{field} must be one of " + ", ".join(UI_CONFIG_CHOICE[field])}
+    elif field == "review_slots":
+        value = _normalize_review_slots(value)
+        if value is None:
+            return {"ok": False, "error": "review_slots must look like agy=2,evren=1,codex=0 (modes: agy, evren, claude, codex, copilot, anthropic; 0..10) or off/empty"}
+    elif field in UI_CONFIG_MODEL_LISTS:
+        value = _normalize_model_list(value)
+        if value is None:
+            return {"ok": False, "error": f"{field} must be a comma-separated model list (letters, digits, . _ - : / @ [ ])"}
     elif field in UI_CONFIG_INT:
         try:
             n = int(value)

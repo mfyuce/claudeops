@@ -2287,7 +2287,10 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "evren_script": str(getattr(cfg, "review_evren_script", "") or "").strip().lower() == "read",
             "max_context_kib": int(getattr(cfg, "review_max_context_kib", 0) or 0),
             "max_read_kib": int(getattr(cfg, "review_max_read_kib", 0) or 0),
-            "max_tool_calls": int(getattr(cfg, "review_max_tool_calls", 0) or 0)}
+            "max_tool_calls": int(getattr(cfg, "review_max_tool_calls", 0) or 0),
+            "slots_spec": str(getattr(cfg, "review_slots", "") or ""),
+            "agy_models": str(getattr(cfg, "review_agy_models", "") or ""),
+            "evren_models": str(getattr(cfg, "review_evren_models", "") or "")}
 
 
 def read_review_file(cfg: Any, rel: str) -> Dict[str, Any]:
