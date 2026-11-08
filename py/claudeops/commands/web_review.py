@@ -542,13 +542,7 @@ class IoLog:
         with self._lock:
             self._delta("", final=True)
             txt = "".join(self._deltas)
-        starts = [m.start() for m in re.finditer(r"(?m)^#{2,4}\s*R-1\s*\|\s*P[123]\s*\|", txt)]
-        if starts:
-            return txt[starts[-1]:].strip()
-        lines = [l.strip() for l in txt.splitlines() if l.strip()]
-        if lines and re.fullmatch(r"(?i)(bulgu yok|no findings)\.?", lines[-1]):
-            return lines[-1]                       # başlıksız "bulgu yok" raporu: SON satır tam bu ifadeyse
-        return ""
+        return _report_tail(txt)
 
     def feed_err(self, txt: str) -> None:
         with self._lock:
@@ -1379,6 +1373,39 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
     return {"ok": True, "key": key, "file": path, "thread": th, "argv": argv}
 
 
+def _report_tail(txt: str) -> str:
+    """Cevap metninden SON `## R-1 | P.. |` başlığından itibaren kısım; yoksa son satır tam "bulgu yok" ise o; yoksa ""."""
+    starts = [m.start() for m in re.finditer(r"(?m)^#{2,4}\s*R-1\s*\|\s*P[123]\s*\|", txt)]
+    if starts:
+        return txt[starts[-1]:].strip()
+    lines = [l.strip() for l in txt.splitlines() if l.strip()]
+    if lines and re.fullmatch(r"(?i)(bulgu yok|no findings)\.?", lines[-1]):
+        return lines[-1]                       # başlıksız "bulgu yok" raporu: SON satır tam bu ifadeyse
+    return ""
+
+
+def _recover_from_io(io_path: str) -> str:
+    """Restart'ta ölen koşunun SOHBET KAYDINDAN (`.io.jsonl`, servis her parçayı geldiği an maskeli yazar) rapor: asistan
+    cevap parçaları (`result` = agy/claude/codex stdout, `delta` = ucli akışı) birleştirilir, son `## R-1` başlığından
+    itibaren alınır. Taslak/partial dosyası olmayan koşuda yazılmış bulgular böylece kaybolmaz (8 Kas 2026: copsdev agy
+    koşusu 4 bulguyu yazmıştı, toparlayıcı kaydı okumadığı için kayboldu)."""
+    try:
+        if os.path.islink(io_path):
+            return ""
+        parts: List[str] = []
+        with open(io_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    ev = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(ev, dict) and ev.get("role") == "assistant" and ev.get("kind") in ("result", "delta"):
+                    parts.append(str(ev.get("text") or ""))
+    except OSError:
+        return ""
+    return _report_tail("".join(parts))
+
+
 def _recover_restart_report(rec: Dict[str, Any]) -> str:
     """TBD#119 B: restart ile ölen koşunun diskte kalan taslağı (`.model.md`) ya da `--partial-file` metni rapor başlığı
     içeriyorsa maskeli `<ts>.md` olarak yazılır ve bulgular `new` kaydedilir. Rapor yolu `io_file`dan türetilir. Yazılan
@@ -1392,6 +1419,8 @@ def _recover_restart_report(rec: Dict[str, Any]) -> str:
     text, _ = _recover_draft(path, "")
     if not _REPORT_HEAD_RE.search(text or ""):
         text = _recover_partial(path)
+    if not _REPORT_HEAD_RE.search(text or ""):
+        text = _recover_from_io(io)            # taslak da partial da yoksa: sohbet kaydındaki yarım rapor
     text = rv.redact_secrets(text or "")
     if not _REPORT_HEAD_RE.search(text):
         return ""

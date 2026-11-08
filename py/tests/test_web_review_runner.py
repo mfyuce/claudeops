@@ -547,6 +547,24 @@ class TestRecover(Base):
         self.assertTrue(os.path.exists(md))
         self.assertEqual([f["ref"] for f in rv.load_findings(self.paths).values()], ["R-1"])
 
+    def test_recover_on_start_salvages_report_from_io_log(self):
+        # taslak/partial yok, ama servis cevabı sohbet kaydına parça parça yazmıştı (agy `result`, ucli `delta`)
+        md = os.path.join(self.paths.reviews, "proj", "agy", "m", "20261108165237", "20261108165237.md")
+        os.makedirs(os.path.dirname(md))
+        io = wr.io_path_for(md)
+        evs = [{"role": "user", "kind": "prompt", "text": "## R-1 | P1 | istem.py:1 | istemdeki örnek"},
+               {"role": "assistant", "kind": "result", "text": "Tarama bitti.\n## R-1 | P2 | a.py:7 | bir"},
+               {"role": "system", "kind": "stderr", "text": "gürültü"},
+               {"role": "assistant", "kind": "result", "text": "\ngövde\n## R-2 | P3 | b.py:9 | iki\nyarım gövd"}]
+        with open(io, "w", encoding="utf-8") as f:
+            f.write("bozuk satır\n" + "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in evs))
+        rv.update_pair(self.paths, "proj", EV, status="running", started_at=1.0, io_file=io)
+        self.assertEqual(wr.recover_on_start(self.paths, now=lambda: 99.0), 1)
+        rec = self.pair(EV)
+        self.assertEqual((rec["status"], rec["file"]), ("partial", md))
+        self.assertTrue(open(md).read().startswith("## R-1 | P2 | a.py:7 | bir"))
+        self.assertEqual(sorted(f["ref"] for f in rv.load_findings(self.paths).values()), ["R-1", "R-2"])
+
     def test_recover_on_start_no_report_head_keeps_file_empty(self):
         md = os.path.join(self.paths.reviews, "proj", "evren", "m", "20261024100001", "20261024100001.md")
         os.makedirs(os.path.dirname(md))
