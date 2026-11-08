@@ -953,27 +953,140 @@ def _tail(s: str, learned: Sequence[str] = ()) -> str:
     return s[-STDERR_KEEP:]
 
 
+# ── sunucudan bağımsız koşu (8 Kas 2026) ─────────────────────────────────────
+# Yerel CLI süreci servisin borusuna DEĞİL dosyalara yazar (`<ts>.stdout/.stderr`) ve küçük bir `sh` sarmalayıcı çıkış
+# kodunu `<ts>.rc`ye yazar. `KillMode=process` ile servis restart'ı süreci öldürmez; yeni servis `recover_on_start`ta
+# kayıttaki pid + süreç başlangıç zamanıyla (PID yeniden kullanımına karşı) koşuyu SAHİPLENİR, dosyaları izlemeye devam
+# eder ve sonucu normal yoldan işler. Çalışan koşuların kaydı `review_history.json` (`status=running`, `detached`).
+_DETACH_SH = 'rcf=$1; shift; "$@"; rc=$?; printf "%s" "$rc" > "$rcf"; exit $rc'
+
+
+def stream_paths(md_path: str) -> Tuple[str, str, str]:
+    base = md_path[:-3] if md_path.endswith(".md") else md_path
+    return base + ".stdout", base + ".stderr", base + ".rc"
+
+
+def _proc_stat(pid: Any) -> Tuple[str, str]:
+    """(durum harfi, başlangıç saati tik) `/proc/<pid>/stat`ten; süreç yoksa ("", "")."""
+    try:
+        from ..paths import proc_stat_fields
+        rest = proc_stat_fields(int(pid))
+        return rest[0], rest[19]
+    except (OSError, ValueError, IndexError, TypeError):
+        return "", ""
+
+
+def proc_start(pid: Any) -> str:
+    return _proc_stat(pid)[1]
+
+
+def _read_rc(rc_path: str) -> Optional[int]:
+    try:
+        with open(rc_path, encoding="utf-8") as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+class AdoptedProc:
+    """Restart öncesi başlatılmış, artık bizim çocuğumuz OLMAYAN koşu süreci. Canlılık = aynı pid + aynı başlangıç zamanı
+    (zombi ölü sayılır); çıkış kodu sarmalayıcının `.rc` dosyasından (yoksa sinyalle ölmüş: -15)."""
+
+    def __init__(self, pid: int, start: str, rc_path: str) -> None:
+        self.pid, self.start, self.rc_path = pid, start, rc_path
+        self.returncode: Optional[int] = None
+
+    def alive(self) -> bool:
+        st, t = _proc_stat(self.pid)
+        return bool(t) and t == self.start and st not in ("Z", "X")
+
+    def poll(self) -> Optional[int]:
+        if self.returncode is None and not self.alive():
+            rc = _read_rc(self.rc_path)
+            self.returncode = -15 if rc is None else rc
+        return self.returncode
+
+    def wait(self, timeout: Optional[float] = None) -> int:
+        end = None if timeout is None else time.time() + timeout
+        while self.poll() is None:
+            if end is not None and time.time() >= end:
+                raise subprocess.TimeoutExpired("review", timeout)
+            time.sleep(0.5)
+        return int(self.returncode)
+
+
+def _read_text(fp: str) -> str:
+    try:
+        with open(fp, "rb") as f:
+            return f.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
+def _remove_streams(md_path: str) -> None:
+    """Ham çıktı dosyaları (maskesiz olabilir) iş işlenince silinir; maskeli kopya `.io.jsonl` ve rapordadır."""
+    for fp in stream_paths(md_path):
+        try:
+            os.remove(fp)
+        except OSError:
+            pass
+
+
 def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, argv: List[str], env: Dict[str, str],
-             cwd: str, path: str, started: float, popen: Callable, agy_log_dir: str, now: Callable[[], float]) -> None:
+             cwd: str, path: str, started: float, popen: Callable, agy_log_dir: str, now: Callable[[], float],
+             adopt: Optional[AdoptedProc] = None) -> None:
+    """`adopt`: restart öncesi başlamış bağımsız koşuyu sahiplen (süreç açılmaz; dosyalar sondan izlenir)."""
     key = job.key
     live = IoLog(io_path_for(path), now, err_as_delta=(target.mode in rv.UCLI_MODES))
-    agy_before = _agy_log_names(agy_log_dir) if target.mode == "agy" else frozenset()
-    if job.prompt:
+    agy_before = _agy_log_names(agy_log_dir) if (target.mode == "agy" and adopt is None) else frozenset()
+    if job.prompt and adopt is None:
         live.event("user", job.prompt, "prompt")
+    # Bağımsız kip: yalnız üretimin yerel başlatıcısı (uzak review ve testlerin sahte süreçleri eski boru yolunda kalır).
+    detached = adopt is not None or popen is _default_popen
+    outp, errp, rcp = stream_paths(path)
+    offsets = {"out": 0, "err": 0}
     try:
-        try:
-            proc = popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                         start_new_session=True)
-        except OSError as e:
-            live.system(f"süreç başlamadı: {e}")
-            rv.update_pair(paths, project, target, status="error", finished_at=now(), error=f"spawn: {e}")
-            return
-        job.proc = proc
-        if job.cancelled:     # süreç açılmadan gelen iptal (`cancel_key`): şimdi uygula
-            _killpg(proc, signal.SIGTERM)
-        rv.update_pair(paths, project, target, pid=getattr(proc, "pid", None))
-        live.system(f"başladı: {project} {target.mode}/{target.slug}, pid {getattr(proc, 'pid', '?')}. "
-                 + ("Çıktı canlı akar." if target.mode in rv.UCLI_MODES else "Çıktı iş bitince gelir."))
+        if adopt is not None:
+            proc = adopt
+            offsets = {"out": os.path.getsize(outp) if os.path.exists(outp) else 0,
+                       "err": os.path.getsize(errp) if os.path.exists(errp) else 0}   # önceki kısım günlükte zaten var
+            job.proc = proc
+            if job.cancelled:
+                _killpg(proc, signal.SIGTERM)
+            live.system(f"sahiplenildi (servis yeniden başladı): {project} {target.mode}/{target.slug}, pid {proc.pid}")
+        else:
+            try:
+                if detached:
+                    for fp in (outp, errp, rcp):
+                        if os.path.lexists(fp):
+                            os.remove(fp)
+                    fo = os.open(outp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    fe = os.open(errp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    try:
+                        proc = popen(["/bin/sh", "-c", _DETACH_SH, "sh", rcp] + list(argv), cwd=cwd, env=env,
+                                     stdin=subprocess.DEVNULL, stdout=fo, stderr=fe, start_new_session=True)
+                    finally:
+                        os.close(fo)
+                        os.close(fe)
+                else:
+                    proc = popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                 start_new_session=True)
+            except OSError as e:
+                live.system(f"süreç başlamadı: {e}")
+                rv.update_pair(paths, project, target, status="error", finished_at=now(), error=f"spawn: {e}")
+                return
+            job.proc = proc
+            if job.cancelled:     # süreç açılmadan gelen iptal (`cancel_key`): şimdi uygula
+                _killpg(proc, signal.SIGTERM)
+            pid = getattr(proc, "pid", None)
+            extra: Dict[str, Any] = {}
+            if detached:      # bağımsız koşu kaydı: restart sonrası sahiplenme bu alanlarla
+                extra = dict(detached=True, proc_start=proc_start(pid), agy_log_dir=agy_log_dir, report=path,
+                             target={"mode": target.mode, "model": target.model, "slug": target.slug,
+                                     "effort": target.effort, "lens": target.lens})
+            rv.update_pair(paths, project, target, pid=pid, **extra)
+            live.system(f"başladı: {project} {target.mode}/{target.slug}, pid {getattr(proc, 'pid', '?')}. "
+                     + ("Çıktı canlı akar." if target.mode in rv.UCLI_MODES else "Çıktı iş bitince gelir."))
         stop_hb = threading.Event()
 
         def _beat() -> None:
@@ -982,6 +1095,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         threading.Thread(target=_beat, daemon=True, name=f"review-hb-{key}").start()
         timed_out = False
         timeout = max(1.0, float(getattr(cfg, "review_timeout_minutes", 45)) * 60.0)
+        wait_for = max(1.0, timeout - (now() - started)) if adopt is not None else timeout   # sahiplenilen: kalan süre
         bufs: Dict[str, List[str]] = {"out": [], "err": []}
         readers: List[threading.Thread] = []
 
@@ -1006,7 +1120,46 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
                 live.out_flush()
         try:
             real = all(callable(getattr(getattr(proc, a, None), "fileno", None)) for a in ("stdout", "stderr"))
-            if real:
+            if detached:
+                done = threading.Event()
+
+                def _follow(name: str, fp: str, start_at: int) -> None:
+                    """Dosyayı sondan izle (tail -f): süreç bitince kalan her şeyi okuyup çık."""
+                    dec = codecs.getincrementaldecoder("utf-8")("replace")
+                    feed = functools.partial(live.out, stream=True) if name == "out" else live.feed_err
+                    try:
+                        with open(fp, "rb") as f:
+                            f.seek(start_at)
+                            while True:
+                                chunk = f.read(65536)
+                                if chunk:
+                                    feed(dec.decode(chunk))
+                                elif done.is_set():
+                                    break
+                                else:
+                                    time.sleep(0.2)
+                    except OSError:
+                        pass
+                    tail = dec.decode(b"", final=True)
+                    if tail:
+                        feed(tail)
+                    if name == "out":
+                        live.out_flush()
+                for nm, fp in (("out", outp), ("err", errp)):
+                    th = threading.Thread(target=_follow, args=(nm, fp, offsets[nm]), daemon=True,
+                                          name=f"review-follow-{nm}-{key}")
+                    th.start()
+                    readers.append(th)
+                try:
+                    proc.wait(timeout=wait_for)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    _terminate(proc, KILL_GRACE_SECONDS)
+                done.set()
+                for th in readers:
+                    th.join(30)
+                out, err = _read_text(outp), _read_text(errp)    # sonuç dosyanın TAMAMINDAN (sahiplenilende de)
+            elif real:
                 for nm, st in (("out", proc.stdout), ("err", proc.stderr)):
                     th = threading.Thread(target=_pump, args=(nm, st), daemon=True, name=f"review-pump-{nm}-{key}")
                     th.start()
@@ -1110,6 +1263,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
                 rv.add_findings(paths, project, path, rv.parse_findings(text))
             except Exception as e:
                 sw.log_event("review_findings_failed", paths=paths, project=project, error=_tail(repr(e)))
+        if detached:
+            _remove_streams(path)
     except Exception as e:   # çalıştırıcı asla `running` bırakıp ölmesin
         try:
             rv.update_pair(paths, project, target, status="error", finished_at=now(), error=_tail(f"{type(e).__name__}: {e}"))
@@ -1431,16 +1586,58 @@ def _recover_restart_report(rec: Dict[str, Any]) -> str:
     return path
 
 
-def recover_on_start(paths: Any, now: Callable[[], float] = time.time) -> int:
-    """Servis yeniden başlayınca `running` kalan çiftler (süreç ölmüştür) `partial` olur. Kaç çift düzeltildi."""
+def _adoptable(rec: Dict[str, Any]) -> Optional[Tuple[rv.ReviewTarget, str, AdoptedProc]]:
+    """Bağımsız başlatılmış (`detached`) ve çıktı dosyası duran koşu: (hedef, rapor yolu, süreç). Süreç yaşıyorsa izlemeye
+    devam edilir; servis kapalıyken bittiyse/öldüyse dosyadaki tam çıktı işlenir. Kayıt eksikse None (eski yol)."""
+    if not rec.get("detached"):
+        return None
+    t, path, pid = rec.get("target"), rec.get("report"), rec.get("pid")
+    if not isinstance(t, dict) or not isinstance(path, str) or not path.endswith(".md") or not isinstance(pid, int):
+        return None
+    if not os.path.exists(stream_paths(path)[0]):
+        return None
+    try:
+        target = rv.ReviewTarget(mode=str(t["mode"]), model=str(t["model"]), slug=str(t["slug"]),
+                                 effort=str(t.get("effort") or ""), lens=str(t.get("lens") or ""))
+    except (KeyError, TypeError):
+        return None
+    return target, path, AdoptedProc(pid, str(rec.get("proc_start") or ""), stream_paths(path)[2])
+
+
+def _adopt(p: Any, cfg: Any, key: str, rec: Dict[str, Any], target: rv.ReviewTarget, path: str, proc: AdoptedProc) -> None:
+    """Sahiplenilen koşuyu bu sürecin iş/yuva kayıtlarına al (planlayıcı çift koşu açmasın, yuva sayılsın) ve izlemeyi başlat."""
+    job = _Job(key)
+    job.sid = p.sid
+    with _JOBS_LOCK:
+        _JOBS[key] = job
+    with _SLOT_LOCK:      # yuva sınırı aşılsa bile kaydedilir: süreç zaten çalışıyor
+        used = {i for m, i in _ACTIVE.values() if m == target.mode}
+        _ACTIVE[key] = (target.mode, min(set(range(len(used) + 1)) - used))
+    started = float(rec.get("started_at") or time.time())
+    th = threading.Thread(target=_execute, daemon=True, name=f"review-adopt-{key}",
+                          args=(job, p, cfg, key.split("|", 1)[0], target, [], {}, "", path, started, _default_popen,
+                                str(rec.get("agy_log_dir") or AGY_LOG_DIR), time.time),
+                          kwargs={"adopt": proc})
+    th.start()
+
+
+def recover_on_start(paths: Any, now: Callable[[], float] = time.time, cfg: Any = None) -> int:
+    """Servis yeniden başlayınca `running` kalan çiftler: bağımsız başlatılmışsa (`detached`) SAHİPLENİLİR (süreç yaşıyorsa
+    izlemeye devam, bittiyse dosyadaki çıktı işlenir; `cfg` gerekir); değilse (eski boru yolu, süreç ölmüştür) `partial`
+    olur. Dönen: `partial` yapılan çift sayısı."""
     p = sw._pp(paths)
     n = 0
     recovered: List[Tuple[str, str]] = []
+    adopt: List[Tuple[str, Dict[str, Any], rv.ReviewTarget, str, AdoptedProc]] = []
     with sw.steward_lock(p):
         hist = rv.load_history(p)
         for key, rec in hist["pairs"].items():
             if isinstance(rec, dict) and rec.get("status") == "running":
                 if key in busy_keys():   # bu süreçte CANLI ya da başlamakta olan iş (restart sonrası ilk tick'ten ÖNCE elle başlatılan): yarıda kalmış değil
+                    continue
+                a = _adoptable(rec) if cfg is not None else None
+                if a is not None:
+                    adopt.append((key, dict(rec), a[0], a[1], a[2]))
                     continue
                 rec.update(status="partial", finished_at=now(), pid=None, error="yeniden başlatma: koşu yarıda kaldı")
                 saved = _recover_restart_report(rec)
@@ -1451,6 +1648,12 @@ def recover_on_start(paths: Any, now: Callable[[], float] = time.time) -> int:
                 n += 1
         if n:
             rv.save_history(p, hist)
+    for key, rec, target, path, proc in adopt:      # kilit dışında: izleyici thread'i kayıt yazar
+        try:
+            _adopt(p, cfg, key, rec, target, path, proc)
+            sw.log_event("review_adopted", paths=p, pair=key, pid=proc.pid, alive=proc.alive())
+        except Exception as e:
+            sw.log_event("review_adopt_failed", paths=p, pair=key, error=_tail(repr(e)))
     for proj, path in recovered:    # bulgular kilit dışında (add_findings kendi kilidini alır)
         try:
             with open(path, encoding="utf-8") as f:
@@ -1797,7 +2000,7 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     actions: List[Dict[str, Any]] = []
     if cfg.sid not in _RECOVERED:
         _RECOVERED.add(cfg.sid)
-        n = recover_on_start(p, now=lambda: t)
+        n = recover_on_start(p, now=lambda: t, cfg=cfg)
         if n:
             actions.append({"kind": "recover", "pairs": n})
         try:

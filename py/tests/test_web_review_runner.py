@@ -576,5 +576,88 @@ class TestRecover(Base):
         self.assertFalse(self.pair(EV).get("file"))
 
 
+
+class TestDetached(Base):
+    """Sunucudan bağımsız koşu: CLI dosyalara yazar, restart sonrası sahiplenilir. Gerçek süreç yalnız zararsız `python3 -c`
+    (review CLI'si DEĞİL); `_default_popen` bu testte bilerek gerçek Popen'a bağlanır."""
+
+    REPORT = "## R-1 | P2 | a.py:3 | bağımsız bulgu\ngövde\n"
+
+    def md(self, ts):
+        m = os.path.join(self.paths.reviews, "proj", "evren", "glm-4.6", "default", ts, ts + ".md")
+        os.makedirs(os.path.dirname(m))
+        return m
+
+    def script(self, delay=0.0):
+        body = json.dumps({"answer": self.REPORT})
+        return [sys.executable, "-c", f"import time,sys; time.sleep({delay}); sys.stdout.write({body!r})"]
+
+    def wait_done(self, key, secs=20):
+        end = time.time() + secs
+        while time.time() < end:
+            rec = rv.load_history(self.paths)["pairs"].get(key) or {}
+            if rec.get("status") not in (None, "running"):
+                return rec
+            time.sleep(0.1)
+        self.fail("koşu bitmedi")
+
+    def test_detached_run_writes_files_and_finishes(self):
+        md = self.md("20261108180001")
+        key = rv.pair_key("proj", EV)
+        rv.update_pair(self.paths, "proj", EV, status="running", started_at=time.time())
+        with mock.patch.object(wr, "_default_popen", subprocess.Popen):
+            wr._execute(wr._Job(key), self.paths, self.cfg, "proj", EV, self.script(), dict(os.environ), self.cwd, md,
+                        time.time(), wr._default_popen, self.logdir, time.time)
+        rec = rv.load_history(self.paths)["pairs"][key]
+        self.assertEqual(rec["status"], "done")
+        self.assertTrue(rec["detached"]); self.assertEqual(rec["report"], md); self.assertEqual(rec["target"]["model"], "glm/4.6")
+        self.assertIn("bağımsız bulgu", open(md, encoding="utf-8").read())
+        self.assertFalse(any(os.path.exists(fp) for fp in wr.stream_paths(md)))     # ham çıktı silindi
+
+    def _launch_like_service(self, md, delay):
+        """Restart öncesi servisin başlattığı bağımsız koşuyu taklit et (sarmalayıcı + dosyalar), kaydı yaz."""
+        outp, errp, rcp = wr.stream_paths(md)
+        with open(outp, "wb") as fo, open(errp, "wb") as fe:
+            proc = subprocess.Popen(["/bin/sh", "-c", wr._DETACH_SH, "sh", rcp] + self.script(delay), stdout=fo, stderr=fe,
+                                    stdin=subprocess.DEVNULL, start_new_session=True)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        rv.update_pair(self.paths, "proj", EV, status="running", started_at=time.time(), pid=proc.pid, detached=True,
+                       proc_start=wr.proc_start(proc.pid), report=md, io_file=wr.io_path_for(md), agy_log_dir=self.logdir,
+                       target={"mode": "evren", "model": "glm/4.6", "slug": "glm-4.6", "effort": "", "lens": ""})
+        return proc
+
+    def test_restart_adopts_live_run_and_finishes_it(self):
+        md = self.md("20261108180002")
+        proc = self._launch_like_service(md, delay=1.0)
+        self.assertEqual(wr.recover_on_start(self.paths, cfg=self.cfg), 0)          # partial YOK: sahiplenildi
+        key = rv.pair_key("proj", EV)
+        self.assertIn(key, wr.busy_keys())                                          # planlayıcı çift koşu açmaz
+        self.assertIn(key, wr.active_slots().get("evren", []))                      # yuvaya sayılır
+        rec = self.wait_done(key)
+        proc.wait()
+        self.assertEqual(rec["status"], "done")
+        self.assertEqual([f["ref"] for f in rv.load_findings(self.paths).values()], ["R-1"])
+        self.assertNotIn(key, wr.busy_keys())
+
+    def test_run_finished_while_service_down_is_processed(self):
+        md = self.md("20261108180003")
+        proc = self._launch_like_service(md, delay=0.0)
+        proc.wait()                                       # servis kapalıyken bitti: .rc yazıldı
+        self.assertEqual(wr._read_rc(wr.stream_paths(md)[2]), 0)
+        wr.recover_on_start(self.paths, cfg=self.cfg)
+        self.assertEqual(self.wait_done(rv.pair_key("proj", EV))["status"], "done")
+
+    def test_pid_reuse_is_not_adopted_as_alive(self):
+        ap = wr.AdoptedProc(os.getpid(), "1", "/yok/rc")       # aynı pid, farklı başlangıç zamanı = başka süreç
+        self.assertFalse(ap.alive())
+        self.assertEqual(ap.poll(), -15)                        # .rc yok: sinyalle ölmüş sayılır
+
+    def test_without_cfg_old_behavior_partial(self):
+        md = self.md("20261108180004")
+        proc = self._launch_like_service(md, delay=5.0)
+        self.assertEqual(wr.recover_on_start(self.paths), 1)       # cfg yok: eski yol
+        proc.kill(); proc.wait()
+
+
 if __name__ == "__main__":
     unittest.main()
