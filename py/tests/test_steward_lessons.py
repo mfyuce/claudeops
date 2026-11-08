@@ -33,6 +33,23 @@ class ReadTest(unittest.TestCase):
         self.assertEqual([ln for _, ln in got], [AUTO + "a", AUTO + "b"])
 
 
+class DuplicateSignatureTest(unittest.TestCase):
+    def _l(self, ts, err="zaman aşımı", model="glm-5.3"):
+        ln = f"{AUTO}{ts} proje=ncs model={model} durum=error hata={err}: ucli bitiremedi"
+        return (sl.line_hash(ln), ln)
+
+    def test_same_signature_second_is_duplicate_and_not_sent(self):
+        a, b = self._l("2026-11-08 10:00"), self._l("2026-11-08 11:30")
+        c = self._l("2026-11-08 12:00", model="baska")
+        self.assertEqual(sl.signature(a[1]), sl.signature(b[1]))
+        self.assertNotEqual(sl.signature(a[1]), sl.signature(c[1]))
+        self.assertEqual(sl.duplicate_ids([a, b, c]), {b[0]})
+        self.assertEqual([h for h, _ in sl.pending([a, b, c], {})], [a[0], c[0]])
+        rows = {r["id"]: r for r in sl.lesson_rows([a, b, c], [{}], NOW)}
+        self.assertEqual((rows[b[0]]["status"], rows[b[0]]["ack"]), ("done", "duplicate"))
+        self.assertEqual(rows[a[0]]["status"], "pending")
+
+
 class PruneTest(unittest.TestCase):
     def test_keeps_last_auto_lines_and_manual_notes(self):
         text = "# başlık\n" + AUTO + "1\n- elle not\n" + AUTO + "2\n" + AUTO + "3\n"

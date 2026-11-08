@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -31,6 +32,28 @@ def target_project(value: Any) -> str:
 
 def line_hash(line: str) -> str:
     return hashlib.sha1(" ".join(str(line).split()).encode("utf-8")).hexdigest()[:12]
+
+
+_SIG_TS_RE = re.compile(r"^(?:- \[otomatik\]\s+)?\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?\s+")
+
+
+def signature(line: str) -> str:
+    """Dersin imzası: zaman damgası ve `[otomatik]` etiketi atılmış (proje/model/durum/hata özeti) satırın özeti. Aynı
+    imza = aynı ders (yalnız zamanı farklı)."""
+    return line_hash(_SIG_TS_RE.sub("", str(line).strip(), count=1))
+
+
+def duplicate_ids(lessons: List[Tuple[str, str]]) -> set:
+    """Aynı imzayı daha önce (listede önce) üretmiş bir dersin satır özetleri: bunlar `duplicate` sayılır, iletilmez."""
+    seen: set = set()
+    dups: set = set()
+    for h, ln in lessons:
+        sg = signature(ln)
+        if sg in seen:
+            dups.add(h)
+        else:
+            seen.add(sg)
+    return dups
 
 
 def read_lessons(roots: Iterable[str]) -> List[Tuple[str, str]]:
@@ -66,7 +89,8 @@ def prune_lessons(text: str, keep: int = FILE_MAX) -> str:
 def pending(lessons: List[Tuple[str, str]], state: Dict[str, Any]) -> List[Tuple[str, str]]:
     sent = set(state.get("lessons_sent") or [])
     fails = state.get("lessons_fail") or {}
-    return [(h, ln) for h, ln in lessons if h not in sent and int(fails.get(h) or 0) < FAIL_MAX]
+    dups = duplicate_ids(lessons)
+    return [(h, ln) for h, ln in lessons if h not in sent and h not in dups and int(fails.get(h) or 0) < FAIL_MAX]
 
 
 def plan_lesson_deliveries(views: List[Any], projects: Dict[str, Any], lessons: List[Tuple[str, str]],
@@ -182,8 +206,11 @@ def lesson_rows(lessons: List[Tuple[str, str]], states: List[Dict[str, Any]], no
             fails[h] = max(int(n or 0), fails.get(h, 0))
         done.update(st.get("lessons_done") or {})
     out = []
+    dups = duplicate_ids(lessons)
     for h, ln in lessons:
         d = done.get(h)
+        if not d and h not in sent and h in dups:
+            d = {"status": "duplicate", "note": "aynı imzalı ders daha önce üretilmişti", "at": None, "session": ""}
         if d:
             status = "done"
         elif h in sent:
