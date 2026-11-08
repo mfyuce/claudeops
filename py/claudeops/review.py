@@ -225,15 +225,47 @@ def pool_enabled(pool: Any) -> List[str]:
     return sorted(n for n, e in pr.items() if isinstance(e, dict) and e.get("enabled") and not e.get("removed_at"))
 
 
+def agy_pool(model: str) -> str:
+    """agy kota havuzu (`agy --print /usage`): "Gemini 4 Argon" ayrı haftalık, diğer Gemini modelleri "gemini",
+    Claude ve GPT (gpt-oss) modelleri TEK havuz "claude_gpt". Bilinmeyen model kendi adıyla (tek başına havuz)."""
+    m = str(model or "").lower()
+    if "argon" in m:
+        return "argon"
+    if m.startswith("gemini"):
+        return "gemini"
+    if m.startswith(("claude", "gpt")):
+        return "claude_gpt"
+    return m
+
+
+def model_family(t: "ReviewTarget") -> str:
+    """Planlayıcının çeşitlilik birimi: agy'de kota havuzu, diğer modlarda modelin ilk adı (`glm-5.3` -> glm,
+    `org/qwen3.8` -> qwen, `claude-sonnet-5-5` -> claude). Mod öneki: aynı aile iki modda ayrı sayılır."""
+    if t.mode == "agy":
+        return f"agy:{agy_pool(t.model)}"
+    name = str(t.model or "").lower().rsplit("/", 1)[-1]
+    m = re.match(r"[a-z]+", name)
+    return f"{t.mode}:{m.group(0) if m else name}"
+
+
+def _blocked_targets(targets: Sequence["ReviewTarget"], skip: Any) -> List["ReviewTarget"]:
+    """Engelli mod / model düşer; agy'de engelli modelin KOTA HAVUZUNDAKİ kardeşleri de düşer (Claude+gpt-oss tek havuz:
+    biri dolunca öteki boş SANILIP denenmesin)."""
+    skip = set(skip)
+    pools = {agy_pool(k.split("/", 1)[1].split("@", 1)[0].split("~", 1)[0]) for k in skip if k.startswith("agy/")}
+    return [t for t in targets if t.mode not in skip and t.key not in skip
+            and not (t.mode == "agy" and agy_pool(t.model) in pools)]
+
+
 def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: float,
                 busy_projects: Sequence[str] = (), window: float = WINDOW_SECONDS,
                 head_of: Optional[Callable[[str], str]] = None) -> Optional[Tuple[str, ReviewTarget]]:
     """Sıradaki (proje, hedef) ya da None. TEK proje: önce yarım kalan (bazı çiftleri taze, bazısı değil), sonra hiç
     çifti olmayan, sonra en eskisi (en yeni bitişi en eski olan). Tamam projeler, `busy_projects` ve çalışan çiftler
     atlanır; `head_of(proje)` (git HEAD, "" = bilinmiyor) verilirse pencere dolsa da `done` çiftin kayıtlı `head`i güncel
-    HEAD'e EŞİTSE taze sayılır (değişmeyen koda yeniden review yok); `max_attempts(mod)`i (Evren 1, diğerleri `MAX_ATTEMPTS`) dolduran error/model_fallback/partial çifti `window` dolana dek denenmez."""
-    skip = set(blocked_modes(history, now))
-    targets = [t for t in targets if t.mode not in skip and t.key not in skip]   # kotası biten mod / model sıfırlanana dek denenmez
+    HEAD'e EŞİTSE taze sayılır (değişmeyen koda yeniden review yok); projede taze koşusu olmayan model ailesinin
+    (`model_family`) hedefi aynı projenin diğer hedeflerinden önce seçilir; `max_attempts(mod)`i (Evren 1, diğerleri `MAX_ATTEMPTS`) dolduran error/model_fallback/partial çifti `window` dolana dek denenmez."""
+    targets = _blocked_targets(targets, blocked_modes(history, now))   # kotası biten mod / model / agy havuzu sıfırlanana dek denenmez
     if not targets:
         return None
     pairs = _pairs(history)
@@ -260,6 +292,7 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
         def _fresh_or_same(r: Any) -> bool:
             return _fresh(r, now, window) or _same_head(r)
 
+        covered = {model_family(t) for t, r in zip(targets, recs) if _fresh_or_same(r)}
         pick = None
         for t, r in zip(targets, recs):
             if _fresh_or_same(r):
@@ -268,8 +301,11 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
                     and int(_num(r.get("attempts"))) >= max_attempts(t.mode) and counts_as_attempt(r)
                     and now - _num(r.get("started_at")) < window):
                 continue
-            pick = t
-            break
+            if model_family(t) not in covered:   # her model ailesinden en az bir koşu: henüz kapsanmamış aile önce
+                pick = t
+                break
+            if pick is None:
+                pick = t
         if pick is None:
             continue
         nfresh = sum(1 for r in recs if _fresh_or_same(r))

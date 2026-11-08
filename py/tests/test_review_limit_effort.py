@@ -56,6 +56,29 @@ class TestEffortAndLimit(unittest.TestCase):
         self.assertIsNone(rv.next_review(pool, hist, [a1], 50.0))
         self.assertEqual(rv.next_review(pool, hist, [a1], 1500.0), ("p", a1))          # süre dolunca geri gelir
 
+    def test_agy_pool_block_removes_siblings(self):
+        op = rv.ReviewTarget("agy", "claude-opus-5-5-high", "claude-opus-5-5-high")
+        gpt = rv.ReviewTarget("agy", "gpt-oss-120b-medium", "gpt-oss-120b-medium")
+        fl = rv.ReviewTarget("agy", "gemini-3.8-flash-high", "gemini-3.8-flash-high")
+        ar = rv.ReviewTarget("agy", "gemini-4-argon-high", "gemini-4-argon-high")
+        pool = {"projects": {"p": {"enabled": True}}}
+        hist = {"pairs": {}, "blocks": {op.key: {"until": 1000.0}}}
+        self.assertEqual(rv.next_review(pool, hist, [op, gpt], 50.0), None)            # Claude+gpt-oss TEK havuz
+        hist = {"pairs": {}, "blocks": {fl.key: {"until": 1000.0}}}
+        self.assertEqual(rv.next_review(pool, hist, [fl, ar], 50.0), ("p", ar))        # Argon ayrı havuz
+        self.assertEqual([rv.agy_pool(t.model) for t in (op, gpt, fl, ar)], ["claude_gpt", "claude_gpt", "gemini", "argon"])
+
+    def test_uncovered_family_first(self):
+        g1 = rv.ReviewTarget("evren", "glm-5.3", "glm-5.3")
+        g2 = rv.ReviewTarget("evren", "glm-4.6", "glm-4.6")
+        q = rv.ReviewTarget("evren", "org/qwen3.8-flash", "qwen3.8-flash")
+        pool = {"projects": {"p": {"enabled": True}}}
+        hist = {"pairs": {rv.pair_key("p", g1): {"status": "done", "finished_at": 40.0}}}
+        self.assertEqual(rv.next_review(pool, hist, [g1, g2, q], 50.0), ("p", q))     # glm kapsandı: önce qwen
+        hist["pairs"][rv.pair_key("p", q)] = {"status": "done", "finished_at": 45.0}
+        self.assertEqual(rv.next_review(pool, hist, [g1, g2, q], 50.0), ("p", g2))    # hepsi kapsanınca sıradaki
+        self.assertEqual(rv.model_family(q), "evren:qwen")
+
 
 if __name__ == "__main__":
     unittest.main()
