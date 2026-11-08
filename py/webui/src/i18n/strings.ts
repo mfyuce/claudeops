@@ -802,6 +802,7 @@ export interface Strings {
   rvAutoApproveOff: string;
   rvAutoApproveP3: string;
   rvAutoApproveP2: string;
+  rvAutoApproveHint: string;
   rvAutoHint: string;
   rvAutoExport: string;
   rvAutoExportHint: string;
@@ -1712,9 +1713,10 @@ export const STRINGS: Record<Lang, Strings> = {
     rvApproveAllDone: "Toplu onay",
     rvAutoVerify: "Otomatik doğrula",
     rvAutoApprove: "Otomatik onayla",
-    rvAutoApproveOff: "kapalı",
-    rvAutoApproveP3: "doğrulanmış P3",
-    rvAutoApproveP2: "doğrulanmış P2 ve P3",
+    rvAutoApproveOff: "kapalı (hepsini ben onaylarım)",
+    rvAutoApproveP3: "yalnız küçük bulgular (P3)",
+    rvAutoApproveP2: "önemli (P2) ve küçük (P3) bulgular",
+    rvAutoApproveHint: "Yalnız doğrulayıcının \"doğru\" dediği bulgular otomatik onaylanır. Kritik (P1), doğrulayıcının emin olamadığı ve parola/gizli değer geçen bulgular HİÇBİR ZAMAN otomatik onaylanmaz, sana kalır. Onay dosyaya yazmaz; aktarma ayrı adım. Bu, bir SEÇİMDİR: tek bir değer seçilir (P2 seçmek P3'ü de kapsar).",
     rvAutoHint: "Doğrulama projenin çalışan oturumuna gider (meşgulse bekler). Onay dosyaya yazmaz; P1, belirsiz ve parola/gizli geçen bulgular hep sende kalır.",
     rvAutoExport: "Onaylıları TODO.md'ye yaz",
     rvAutoExportHint: "Açıkken onaylı bulgular yerel projenin TODO.md dosyasına kendiliğinden yazılır (tick başına bir proje). TOBEDECIDED'a yazılmaz; uzak projeler ve parola/gizli geçen bulgular atlanır.",
@@ -2626,9 +2628,10 @@ export const STRINGS: Record<Lang, Strings> = {
     rvApproveAllDone: "Bulk approval",
     rvAutoVerify: "Auto-verify",
     rvAutoApprove: "Auto-approve",
-    rvAutoApproveOff: "off",
-    rvAutoApproveP3: "verified P3",
-    rvAutoApproveP2: "verified P2 and P3",
+    rvAutoApproveOff: "off (I approve everything)",
+    rvAutoApproveP3: "minor findings only (P3)",
+    rvAutoApproveP2: "important (P2) and minor (P3) findings",
+    rvAutoApproveHint: "Only findings the verifier confirmed are auto-approved. Critical (P1), ones the verifier was unsure about, and any mentioning a password/secret are NEVER auto-approved and stay with you. Approving does not write files; export is a separate step. This is ONE choice (picking P2 also covers P3).",
     rvAutoHint: "Verification goes to the project's running session (waits if busy). Approval does not write files; P1, unclear and password/secret findings always stay with you.",
     rvAutoExport: "Write approved to TODO.md",
     rvAutoExportHint: "When on, approved findings are written to the local project's TODO.md automatically (one project per tick). Never to TOBEDECIDED; remote projects and password/secret findings are skipped.",

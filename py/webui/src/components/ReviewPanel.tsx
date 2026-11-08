@@ -342,7 +342,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           />{" "}
           {t.rvAutoVerify}
         </label>
-        <label>
+        <label title={t.rvAutoApproveHint}>
           {t.rvAutoApprove}{" "}
           <select
             value={st.auto_approve ?? 0}
