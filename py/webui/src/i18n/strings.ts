@@ -818,6 +818,14 @@ export interface Strings {
   rvAgyModels: string;
   rvEvrenModels: string;
   rvModelsAll: string;
+  rvVerifierTitle: string;
+  rvVerifierHint: string;
+  rvVerifyMode: string;
+  rvVerifyModeSelf: string;
+  rvVerifyModeSession: string;
+  rvVerifyProvider: string;
+  rvVerifyModel: string;
+  rvVerifyModelDefault: string;
   stewardRowStat: (projects: number, questions: number) => string;
   stewardOn: string;
   stewardOffShort: string;
@@ -1738,6 +1746,14 @@ export const STRINGS: Record<Lang, Strings> = {
     rvAgyModels: "agy modelleri",
     rvEvrenModels: "Evren modelleri",
     rvModelsAll: "(boş = tümü)",
+    rvVerifierTitle: "Doğrulayıcı:",
+    rvVerifierHint: "Bulguları kim doğrular. self = reviewer'ın kendi salt-okunur süreci (proje oturumu uyanmaz), session = projenin ana oturumu. Sağlayıcı yalnız self kipinde geçerli; Evren seçiliyse Evren review'ı koşarken doğrulama bekler. Model boş = sağlayıcı varsayılanı (claude Sonnet 5.5, diğerleri model listesinin ilki).",
+    rvVerifyMode: "Kip",
+    rvVerifyModeSelf: "self (kendi süreci)",
+    rvVerifyModeSession: "session (proje oturumu)",
+    rvVerifyProvider: "Sağlayıcı",
+    rvVerifyModel: "Model",
+    rvVerifyModelDefault: "(boş = varsayılan)",
     stewardRowStat: (projects, questions) => `${projects} proje · ${questions} açık soru`,
     stewardOn: "açık",
     stewardOffShort: "kapalı",
@@ -2659,6 +2675,14 @@ export const STRINGS: Record<Lang, Strings> = {
     rvAgyModels: "agy models",
     rvEvrenModels: "Evren models",
     rvModelsAll: "(empty = all)",
+    rvVerifierTitle: "Verifier:",
+    rvVerifierHint: "Who verifies findings. self = the reviewer's own read-only process (project session stays asleep), session = the project's main session. Provider applies to self mode only; with Evren, verification waits while an Evren review runs. Empty model = provider default (claude Sonnet 5.5, others the first of their model list).",
+    rvVerifyMode: "Mode",
+    rvVerifyModeSelf: "self (own process)",
+    rvVerifyModeSession: "session (project session)",
+    rvVerifyProvider: "Provider",
+    rvVerifyModel: "Model",
+    rvVerifyModelDefault: "(empty = default)",
     stewardRowStat: (projects, questions) => `${projects} project${projects === 1 ? "" : "s"} · ${questions} open question${questions === 1 ? "" : "s"}`,
     stewardOn: "on",
     stewardOffShort: "off",

@@ -5523,11 +5523,13 @@ UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_re
 UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_auto_export")
 
 # Seçenek listeli metin ayarlar. `review_evren_script` kapatma değeri "off" (boş değer anahtarı SİLER, varsayılan "read" geri gelir).
-UI_CONFIG_CHOICE = {"review_evren_script": ("read", "off")}
+UI_CONFIG_CHOICE = {"review_evren_script": ("read", "off"), "review_verify_mode": ("session", "self"),
+                    # boş değer = claude (save_settings anahtarı siler)
+                    "review_verify_provider": ("", "claude", "codex", "evren", "agy")}
 
 # Serbest metin reviewer ayarları (panel Reviewer formu, 2026-11-08): boş değer anahtarı SİLER = varsayılan
 # (yuvalar: TEK iş kipi; model listeleri: katalogdaki tümü). Model listesi virgüllü, dar karakter kümesi.
-UI_CONFIG_MODEL_LISTS = ("review_agy_models", "review_evren_models")
+UI_CONFIG_MODEL_LISTS = ("review_agy_models", "review_evren_models", "review_verify_model")
 _MODEL_LIST_RE = re.compile(r"^[A-Za-z0-9_.:/@\[\]-]{1,120}$")
 
 
@@ -5585,6 +5587,8 @@ def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             return {"ok": False, "error": "review_slots must look like agy=2,evren=1,codex=0 (modes: agy, evren, claude, codex, copilot, anthropic; 0..10) or off/empty"}
     elif field in UI_CONFIG_MODEL_LISTS:
         value = _normalize_model_list(value)
+        if field == "review_verify_model" and value and "," in value:
+            return {"ok": False, "error": "review_verify_model takes a single model"}
         if value is None:
             return {"ok": False, "error": f"{field} must be a comma-separated model list (letters, digits, . _ - : / @ [ ])"}
     elif field in UI_CONFIG_INT:

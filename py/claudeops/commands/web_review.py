@@ -2290,7 +2290,11 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "max_tool_calls": int(getattr(cfg, "review_max_tool_calls", 0) or 0),
             "slots_spec": str(getattr(cfg, "review_slots", "") or ""),
             "agy_models": str(getattr(cfg, "review_agy_models", "") or ""),
-            "evren_models": str(getattr(cfg, "review_evren_models", "") or "")}
+            "evren_models": str(getattr(cfg, "review_evren_models", "") or ""),
+            "verify_mode": str(getattr(cfg, "review_verify_mode", "") or ""),
+            "verify_provider": str(getattr(cfg, "review_verify_provider", "") or ""),
+            "verify_model": str(getattr(cfg, "review_verify_model", "") or ""),
+            "verify_effective": f"{verify_provider(cfg)}/{verify_model(cfg)}"}
 
 
 def read_review_file(cfg: Any, rel: str) -> Dict[str, Any]:
@@ -2563,16 +2567,77 @@ def _self_verify_fail(p: Any, fids: Sequence[str], reason: str, now: float) -> N
         rv.save_findings(p, data)
 
 
+VERIFY_PROVIDERS = ("claude", "codex", "evren", "agy")
+VERIFY_AGY_SLOT = 99                 # agy doğrulayıcısının izole HOME'u (`agy_home_99`): review yuvalarının HOME'larıyla çakışmaz
+
+
+def verify_provider(cfg: Any) -> str:
+    v = str(getattr(cfg, "review_verify_provider", "") or "").strip().lower()
+    return v if v in VERIFY_PROVIDERS else "claude"
+
+
+def verify_model(cfg: Any) -> str:
+    """Doğrulayıcı modeli: ayar, yoksa sağlayıcı varsayılanı (claude Sonnet; diğerleri `review_<mod>_models`in ilki). "" = yok."""
+    m = str(getattr(cfg, "review_verify_model", "") or "").strip()
+    if m:
+        return m
+    prov = verify_provider(cfg)
+    if prov == "claude":
+        return SELF_VERIFY_MODEL
+    first = [x.strip() for x in str(getattr(cfg, f"review_{prov}_models", "") or "").split(",") if x.strip()]
+    return first[0].split("@", 1)[0] if first else ""
+
+
+def verify_busy(cfg: Any) -> str:
+    """Doğrulayıcı başlatılamıyorsa nedeni ("" = serbest). Evren hep TEK iş: bir Evren review'ı koşarken Evren doğrulaması yok."""
+    if verify_provider(cfg) == "evren" and any("|evren/" in k for k in running_keys(cfg.sid)):
+        return "an Evren review is running (Evren runs one job at a time)"
+    if not verify_model(cfg):
+        return f"no verifier model for {verify_provider(cfg)} (set review_verify_model)"
+    return ""
+
+
+def verify_argv(cfg: Any, cwd: str, prompt: str, *, api_key: Optional[str] = None,
+                endpoint_fn: Optional[Callable[[], str]] = None) -> Tuple[List[str], Dict[str, str]]:
+    """Seçili doğrulayıcının SALT OKUNUR argv'si + ortam eki. claude: abonelik `claude -p` (bugünkü yol); codex: `-s read-only`;
+    evren: ucli `chat` (--allow-* YOK); agy: izole HOME + bwrap salt-okunur kafes. Çıktı sözleşmesi hepsinde stdout'ta
+    `STEWARD-REVIEW-VERDICT:` satırları (`rv.scan_verdicts`)."""
+    from ..settings import resolved_binary
+    prov, model = verify_provider(cfg), verify_model(cfg)
+    env: Dict[str, str] = {"DISABLE_AUTOUPDATER": "1"}
+    if prov == "codex":
+        return codex_argv(resolved_binary("codex"), cwd, model, str(getattr(cfg, "review_codex_effort", "low") or ""), prompt), env
+    if prov == "evren":
+        from ..providers import ucli_provider as up
+        key = api_key if api_key is not None else _api_key()
+        if not key:
+            raise RuntimeError("Evren API anahtarı yok")
+        env["UCLI_API_KEY"] = key
+        binary = ucli_client.resolve_binary(None)
+        return evren_argv(binary, cwd, model, prompt, (endpoint_fn or up.endpoint)(), False), env
+    if prov == "agy":
+        from ..providers.agy_provider import AgyProvider
+        prov_obj = AgyProvider()
+        argv = agy_argv(resolved_binary("agy"), model, prompt, prov_obj)
+        allow = rv.agy_allow_list(getattr(cfg, "review_agy_allow", ""))
+        if allow:
+            home = agy_home(sw.paths_for(cfg.sid).root, cwd, allow, slot=VERIFY_AGY_SLOT)
+            env.update(HOME=home, TMPDIR=os.path.join(home, "tmp"))
+            bwrap = shutil.which("bwrap") if getattr(cfg, "review_agy_jail", True) else None
+            if bwrap:
+                argv = bwrap_jail(argv, home, bwrap)
+        return argv, env
+    return claude_argv(resolved_binary("claude"), model, str(getattr(cfg, "review_claude_effort", "") or "low"), prompt), env
+
+
 def _self_verify_run(cfg: Any, project: str, rows: List[Dict[str, Any]], cwd: str, popen: Optional[Callable],
                      now: Callable[[], float]) -> List[str]:
     p = sw.paths_for(cfg.sid)
     fids = [r["id"] for r in rows]
-    from ..settings import resolved_binary
-    effort = str(getattr(cfg, "review_claude_effort", "") or "low")
-    argv = claude_argv(resolved_binary("claude"), SELF_VERIFY_MODEL, effort, rv.build_self_verify_prompt(rows, getattr(cfg, "lang", "tr")))
     out = ""
     try:
-        proc = (popen or _default_popen)(argv, cwd=cwd, env=clean_env({"DISABLE_AUTOUPDATER": "1"}), stdin=subprocess.DEVNULL,
+        argv, env_extra = verify_argv(cfg, cwd, rv.build_self_verify_prompt(rows, getattr(cfg, "lang", "tr")))
+        proc = (popen or _default_popen)(argv, cwd=cwd, env=clean_env(env_extra), stdin=subprocess.DEVNULL,
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             out, _err = proc.communicate(timeout=SELF_VERIFY_TIMEOUT)
@@ -2624,12 +2689,16 @@ def self_verify(cfg: Any, project: str, rows: List[Dict[str, Any]], *, popen: Op
             return {"ok": False, "code": "already_running", "error": f"a verification for {project!r} is already running"}
         _SELF_VERIFY_RESERVED.add(project)
     try:
+        busy = verify_busy(cfg)
+        if busy:
+            return {"ok": False, "code": "verifier_busy", "error": busy}
         p = sw.paths_for(cfg.sid)
         marked = rv.mark_verify_sent(p, [r["id"] for r in rows], "self", "", now())
         if not marked:
             return {"ok": False, "error": "no findings in a verifiable state"}
         rows = [r for r in rows if r["id"] in set(marked)]
-        sw.log_event("review_verify", paths=p, project=project, session="self", findings=marked, source="self")
+        sw.log_event("review_verify", paths=p, project=project, session="self", findings=marked, source="self",
+                     verifier=f"{verify_provider(cfg)}/{verify_model(cfg)}")
         bg = _REVIEW_BACKGROUND if background is None else background
         if bg:
             th = threading.Thread(target=_self_verify_run, args=(cfg, project, rows, cwd, popen, now), daemon=True,

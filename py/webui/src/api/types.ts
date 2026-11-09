@@ -1088,6 +1088,7 @@ export interface ReviewStateResult {
   min_gap_minutes: number; timeout_minutes: number; auto_verify?: boolean; auto_approve?: number; auto_export?: boolean;
   evren_script?: boolean; max_context_kib?: number; max_read_kib?: number; max_tool_calls?: number;
   slots_spec?: string; agy_models?: string; evren_models?: string;
+  verify_mode?: string; verify_provider?: string; verify_model?: string; verify_effective?: string;
 }
 export interface ReviewLesson {
   id: string; line: string; status: "pending" | "failed" | "sent" | "stale" | "done"; fails: number; sent_at?: number | null;

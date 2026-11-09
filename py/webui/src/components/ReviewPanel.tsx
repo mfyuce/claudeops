@@ -398,6 +398,28 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           onSave={(v) => void act(() => apiStewardConfig("review_evren_models", v, sid), t.rvDone)} />
       </div>
       )}
+      {st && (
+      <div className="opts" title={t.rvVerifierHint}>
+        <span className="opts-hint">{t.rvVerifierTitle} <code>{st.verify_effective ?? ""}</code></span>
+        <label className="opts-hint">
+          {t.rvVerifyMode}{" "}
+          <select value={st.verify_mode || "session"} disabled={busy}
+            onChange={(e) => void act(() => apiStewardConfig("review_verify_mode", e.target.value, sid), t.rvDone)}>
+            <option value="self">{t.rvVerifyModeSelf}</option>
+            <option value="session">{t.rvVerifyModeSession}</option>
+          </select>
+        </label>
+        <label className="opts-hint">
+          {t.rvVerifyProvider}{" "}
+          <select value={st.verify_provider || "claude"} disabled={busy}
+            onChange={(e) => void act(() => apiStewardConfig("review_verify_provider", e.target.value, sid), t.rvDone)}>
+            {["claude", "codex", "evren", "agy"].map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </label>
+        <TextSetting label={t.rvVerifyModel} value={st.verify_model ?? ""} width="14rem" placeholder={t.rvVerifyModelDefault}
+          onSave={(v) => void act(() => apiStewardConfig("review_verify_model", v, sid), t.rvDone)} />
+</div>
+      )}
 
       <h4 style={{ margin: 0 }}>{t.rvRunning}</h4>
       {running.length === 0 && <span className="opts-hint">{t.rvNoRunning}</span>}

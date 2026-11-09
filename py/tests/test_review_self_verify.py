@@ -167,6 +167,54 @@ class SelfVerifyTest(_Flow):
         r = ws.http_post("/api/steward/review/bulk", {"steward": "rev", "action": "approve", "actor": "brain"})
         self.assertFalse(r.get("ok"))
 
+    # ── doğrulayıcı sağlayıcısı (review_verify_provider/model, 2026-11-09) ──
+    def test_default_verifier_is_claude_sonnet(self):
+        self.assertEqual((wr.verify_provider(self.cfg), wr.verify_model(self.cfg)), ("claude", wr.SELF_VERIFY_MODEL))
+
+    def test_codex_verifier_read_only_argv(self):
+        self.seed()
+        cfg = dataclasses.replace(self.cfg, review_verify_provider="codex", review_codex_models="gpt-5.5@low,x")
+        rows = wr.verify_candidates(cfg, "a")
+        ids = [r["id"] for r in rows]
+        res = wr.self_verify(cfg, "a", rows, popen=self.popen(Proc(_out(ids, ["verified"] * 3))), background=False)
+        self.assertTrue(res["ok"])
+        argv, _kw = self.argvs[0]
+        self.assertIn("exec", argv)
+        self.assertEqual(argv[argv.index("-s") + 1], "read-only")
+        self.assertEqual(argv[argv.index("-m") + 1], "gpt-5.5")
+        self.assertEqual({self.findings()[i]["state"] for i in ids}, {"verified"})
+
+    def test_evren_verifier_waits_for_running_evren_review_and_has_no_allow_flags(self):
+        self.seed()
+        cfg = dataclasses.replace(self.cfg, review_verify_provider="evren", review_verify_model="glm-5.3")
+        rows = wr.verify_candidates(cfg, "a")
+        with mock.patch.object(wr, "running_keys", lambda sid="": ["b|evren/qwen"]):
+            res = wr.self_verify(cfg, "a", rows, popen=self.popen(Proc("")), background=False)
+        self.assertEqual(res.get("code"), "verifier_busy")
+        self.assertEqual(self.argvs, [])
+        self.assertEqual({self.findings()[r["id"]]["state"] for r in rows}, {"new"})     # işaretlenmedi
+        with mock.patch.object(wr, "_api_key", lambda: "k"), mock.patch.object(wr, "running_keys", lambda sid="": []), \
+                mock.patch("claudeops.providers.ucli_provider.endpoint", lambda: "https://e/v1"):
+            ids = [r["id"] for r in rows]
+            res = wr.self_verify(cfg, "a", rows, popen=self.popen(Proc(_out(ids, ["refuted"] * 3))), background=False)
+        self.assertTrue(res["ok"])
+        argv, kw = self.argvs[0]
+        self.assertFalse([a for a in argv if a.startswith("--allow-")])
+        self.assertEqual(argv[argv.index("--model") + 1], "glm-5.3")
+        self.assertEqual(kw["env"].get("UCLI_API_KEY"), "k")
+
+    def test_missing_model_is_busy_not_marked(self):
+        self.seed()
+        cfg = dataclasses.replace(self.cfg, review_verify_provider="agy", review_agy_models="")
+        res = wr.self_verify(cfg, "a", wr.verify_candidates(cfg, "a"), popen=self.popen(Proc("")), background=False)
+        self.assertEqual(res.get("code"), "verifier_busy")
+
+    def test_config_accepts_provider_and_single_model(self):
+        self.assertTrue(ws.http_config({"key": "review_verify_provider", "value": "evren"}, sid="rev")["ok"])
+        self.assertFalse(ws.http_config({"key": "review_verify_provider", "value": "copilot"}, sid="rev")["ok"])
+        self.assertTrue(ws.http_config({"key": "review_verify_model", "value": "glm-5.3"}, sid="rev")["ok"])
+        self.assertFalse(ws.http_config({"key": "review_verify_model", "value": "a,b"}, sid="rev")["ok"])
+        self.assertEqual(wr.verify_model(ws.steward_config("rev")), "glm-5.3")
 
 if __name__ == "__main__":
     unittest.main()
