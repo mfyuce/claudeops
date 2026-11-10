@@ -214,7 +214,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
 
   // Re-fetch on the pushed light slice changing (counts / last tick), never on a timer.
   const sum = rows?.find((x) => x.id === sid) ?? data?.steward;
-  const key = `${sum?.open_questions ?? 0}|${sum?.ideas_new ?? 0}|${sum?.pending_items ?? 0}|${data?.steward?.last_tick?.at ?? 0}|${sid}|${rows?.length ?? 0}|${sum?.mode ?? ""}|${sum?.enabled ?? ""}`;
+  const key = `${sum?.open_questions ?? 0}|${sum?.ideas_new ?? 0}|${sum?.pending_items ?? 0}|${data?.steward?.last_tick?.at ?? 0}|${sid}|${rows?.length ?? 0}|${sum?.mode ?? ""}|${sum?.enabled ?? ""}|${sum?.api_errors?.length ?? 0}`;
   const isReviewer = rows?.find((x) => x.id === sid)?.role === "reviewer";
   useEffect(() => {
     if (!isReviewer) void load(); // a reviewer has no project/question state; ReviewPanel loads its own
@@ -413,6 +413,14 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         />
       </details>
 
+      {s.api_errors && s.api_errors.length > 0 && (
+        <div className="opts-hint" role="alert" style={{ color: "var(--danger, #c0392b)", fontWeight: 600 }}>
+          {t.stewardApiErrors}:{" "}
+          {s.api_errors
+            .map((e) => `${e.name === s.brain?.name ? "🧠 " : ""}${e.name} (${ago(e.since, "-")}, ${e.nudges}×${e.gave_up ? ", ✗" : ""})`)
+            .join(" · ")}
+        </div>
+      )}
       <div className="opts">
         <div style={tile}>
           <div style={{ fontSize: "1.4rem", fontWeight: 600 }}>{s.open_questions}</div>

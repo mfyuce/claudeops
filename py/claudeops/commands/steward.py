@@ -149,6 +149,10 @@ def cmd_status(args) -> int:
           f"son tick: {_ago(float(st.get('last_tick') or 0))}   son tur: {_ago(float(st.get('last_tour') or 0))}")
     if st.get("ho_pending"):
         print("handover bekleyen: " + ", ".join(st["ho_pending"]))
+    for e in sw.api_error_brief(st):
+        who = "BEYİN " if e["name"] == cfg.brain_name else ""
+        print(f"API hatası: {who}{e['name']} ({_ago(e['since'])} beri, {e['nudges']} 'devam'"
+              + (", BIRAKILDI" if e["gave_up"] else "") + ")")
     remote = sorted(f"{p.name}@{p.host}" for p in projects.values() if p.host)
     if remote:
         print(f"uzak projeler: {', '.join(remote)}   uzak eylem: {'açık' if cfg.remote_actions else 'kapalı'}")

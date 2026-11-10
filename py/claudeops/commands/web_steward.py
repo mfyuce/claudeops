@@ -3249,6 +3249,12 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         ok = _send(s.name, s.cli, str(action.payload.get("text") or sw.API_NUDGE_TEXT))
         sw.log_event("done_confirm_asked" if action.payload.get("confirm") else "api_nudge", paths=paths, name=name,
                      n=action.payload.get("n"), reason=action.reason, ok=ok)
+        if name == cfg.brain_name and action.payload.get("n") == 1 and not action.payload.get("confirm"):
+            # beyin turu API hatasında kaldı: sahip değnekçiyi "kapandı" sanmasın (9 Kas: 65 dk sessiz bekleme); tek bildirim,
+            # sonraki dürtmeler sessiz, 3. dürtmeden sonra da düzelmezse `api_giveup` ayrıca bildirir
+            tr = cfg.lang != "en"
+            _notify(cfg, (f"[{cfg.sid}] beyin API'ye ulaşamıyor (tur yarım kaldı); otomatik 'devam' deneniyor."
+                          if tr else f"[{cfg.sid}] steward brain cannot reach the API (tour cut); retrying with 'devam'."))
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
     if k in ("api_outage", "api_recovered", "api_giveup"):      # yalnız bildirim + kayıt (oturuma dokunmaz)
         tr = cfg.lang != "en"
@@ -4423,6 +4429,9 @@ def summary(running_names: Optional[set] = None, sid: str = "default") -> Dict[s
     }
     if ctx.conflicts:
         value["ownership_conflicts"] = list(ctx.conflicts)
+    api_err = sw.api_error_brief(state)
+    if api_err:     # yalnız hata varken (alan yokken eski panel/altın testler aynı)
+        value["api_errors"] = api_err
     cache.update(until=now + _SUMMARY_TTL, value=value)
     return value
 
@@ -4445,6 +4454,8 @@ def stewards_summary(running_names: Optional[set] = None) -> List[Dict[str, Any]
                "pending_items": sm["pending_items"], "brain": sm["brain"]}
         if sm.get("ownership_conflicts"):
             row["ownership_conflicts"] = sm["ownership_conflicts"]
+        if sm.get("api_errors"):
+            row["api_errors"] = sm["api_errors"]
         if cfg.role != "steward":       # yalnız reviewer/generic'te: sıradan kimliğin satırı (ve altın testler) değişmez
             row["role"] = cfg.role
         out.append(row)

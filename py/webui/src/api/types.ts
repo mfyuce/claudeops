@@ -897,6 +897,8 @@ export interface StewardSummary {
   last_tour: number;
   brain: { name: string; running: boolean };
   recent: StewardRecent[];
+  /** Only present while a managed session (or the brain) sits on an API error. */
+  api_errors?: { name: string; since: number; nudges: number; gave_up: boolean }[];
 }
 
 export interface StewardIdentity {
@@ -911,6 +913,7 @@ export interface StewardIdentity {
   pending_items: number;
   brain: { name: string; running: boolean };
   ownership_conflicts?: unknown;
+  api_errors?: { name: string; since: number; nudges: number; gave_up: boolean }[];
   /** Only present ("reviewer") for reviewer identities. */
   role?: string;
 }

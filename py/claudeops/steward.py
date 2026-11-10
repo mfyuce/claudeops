@@ -3846,8 +3846,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
 
 _API_ERR_RE = re.compile(r"^\s*API Error:\s*(?P<body>.*)", re.I | re.S)
 _API_RETRY_HEAD_RE = re.compile(r"^\s*(?:5\d\d|429)\b")
+# Ağ/DNS ve yarıda kesilen yanıtlar da geçicidir (9 Kas 2026: iso beyninin `Can't reach the API server ... (EAI_AGAIN)` turu
+# "fatal" sayıldı, hiç "devam" gitmedi, maddeler 65 dk bekledi). Transkriptlerde görülen biçimler: "Can't reach the API
+# server", "Unable to connect to API: SSL ...", "The response stopped arriving", "Server error mid-response",
+# "No response from API", "Request rejected (429) · ...". Safeguards/AUP ve 4xx istek hataları "fatal" kalır.
 _API_RETRY_WORD_RE = re.compile(r"overloaded|connection lost|connection error|timed?[ -]?out|econnreset|socket hang up|"
-                                r"internal server error|service unavailable|bad gateway|gateway time-?out|rate.?limit|temporar", re.I)
+                                r"internal server error|service unavailable|bad gateway|gateway time-?out|rate.?limit|temporar|"
+                                r"can'?t reach|cannot reach|unable to connect|eai_again|enotfound|econnrefused|etimedout|"
+                                r"stopped arriving|server error mid-response|no response from api|\(429\)", re.I)
 API_NUDGE_TEXT = "devam"
 API_NUDGE_DELAYS = (60.0, 180.0, 600.0)   # 1., 2., 3. "devam" öncesi bekleme (ilkinde hatanın görüldüğünden, sonrakilerde önceki "devam"dan)
 API_NUDGE_MAX = len(API_NUDGE_DELAYS)
@@ -3866,6 +3872,16 @@ def api_error_kind(text: str) -> str:
         return ""
     body = m.group("body")[:300]
     return "retry" if (_API_RETRY_HEAD_RE.search(body) or _API_RETRY_WORD_RE.search(body)) else "fatal"
+
+
+def api_error_brief(st: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """SAF. `state.api_err`ten panel/CLI için kısa liste: [{name, since, nudges, gave_up}], ada göre sıralı."""
+    out: List[Dict[str, Any]] = []
+    for name, r in sorted(dict(st.get("api_err") or {}).items()):
+        if isinstance(r, dict):
+            out.append({"name": str(name), "since": float(r.get("since") or 0.0),
+                        "nudges": int(r.get("nudges") or 0), "gave_up": bool(r.get("gave_up"))})
+    return out
 
 
 def plan_api_recovery(views: List[SessionView], eligible: Callable[[SessionView], bool], skip: Set[str],

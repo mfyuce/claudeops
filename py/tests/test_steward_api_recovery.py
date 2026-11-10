@@ -37,6 +37,26 @@ class KindTest(unittest.TestCase):
         # kimlik içindeki 3 haneli sayı 5xx sanılmaz
         self.assertEqual(k("API Error: 400 request_id req_5xx1 id 503abc"), "fatal")
 
+    def test_network_and_cut_responses_are_retry(self):
+        # 9 Kas 2026: iso beyni EAI_AGAIN'de "fatal" sayıldı, hiç dürtülmedi (transkriptlerdeki gerçek biçimler)
+        k = sw.api_error_kind
+        for t in ("API Error: Can't reach the API server — check your internet or DNS (EAI_AGAIN)",
+                  "API Error: Unable to connect to API: SSL certificate hostname mismatch",
+                  "API Error: The response stopped arriving. The response above may be incomplete.",
+                  "API Error: Server error mid-response. The response above may be incomplete.",
+                  "API Error: No response from API (waited 3m, then 10m on the retry).",
+                  "API Error: Request rejected (429) · Model şu an yoğun; en fazla 4 eşzamanlı istek."):
+            self.assertEqual(k(t), "retry", t)
+        # içerik politikası (AUP) yeniden denemeyle düzelmez
+        self.assertEqual(k("API Error: Sonnet 5.5's safeguards flagged this message (https://www.anthropic.com/legal/aup)."), "fatal")
+
+    def test_brain_eai_again_gets_nudged(self):
+        brain = view("degnekci_iso", text="API Error: Can't reach the API server — check your internet or DNS (EAI_AGAIN)")
+        acts, err, _ = run([brain], {}, {}, T0)
+        self.assertEqual(acts, [])                      # ilk görüldüğü tick: sayaç başlar
+        acts, err, _ = run([brain], err, {}, T0 + sw.API_NUDGE_DELAYS[0])
+        self.assertEqual([(a.kind, a.name) for a in acts], [("nudge", "degnekci_iso")])
+
 
 class SingleSessionTest(unittest.TestCase):
     def test_backoff_nudges_then_giveup(self):

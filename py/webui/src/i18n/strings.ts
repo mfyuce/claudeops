@@ -691,6 +691,7 @@ export interface Strings {
   stewardStatQuestions: string;
   stewardStatIdeas: string;
   stewardStatPending: string;
+  stewardApiErrors: string;
   stewardStatProjects: string;
   stewardQuestionsTitle: string;
   stewardNoQuestions: string;
@@ -1619,6 +1620,7 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardStatQuestions: "açık soru",
     stewardStatIdeas: "yeni fikir",
     stewardStatPending: "bekleyen madde",
+    stewardApiErrors: "API hatasında bekleyen oturum (otomatik 'devam' deneniyor)",
     stewardStatProjects: "proje",
     stewardQuestionsTitle: "Sorular",
     stewardNoQuestions: "Açık soru yok.",
@@ -2548,6 +2550,7 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardStatQuestions: "open questions",
     stewardStatIdeas: "new ideas",
     stewardStatPending: "pending items",
+    stewardApiErrors: "Sessions stuck on an API error (auto 'devam' in progress)",
     stewardStatProjects: "projects",
     stewardQuestionsTitle: "Questions",
     stewardNoQuestions: "No open questions.",
