@@ -4203,6 +4203,10 @@ def outcome_baseline(kind: str, name: str, views: List["SessionView"], now: floa
             "sigs": {v.name: _loop_sig(v.name, views) for v in _outcome_views(name, views)}}
 
 
+def _via(rec: Dict[str, Any]) -> Dict[str, Any]:
+    return {"via": str(rec["via"])} if rec.get("via") else {}
+
+
 def check_outcomes(pending: Dict[str, Any], views: List["SessionView"], now: float
                    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """SAF. Dönen: (sonuçlanan kayıtlar [{kind, name, result: changed|none, secs}], hâlâ bekleyenler)."""
@@ -4220,9 +4224,9 @@ def check_outcomes(pending: Dict[str, Any], views: List["SessionView"], now: flo
             sigs = dict(rec.get("sigs") or {})
             changed = any(v.last_activity > at + 5 or (v.name in sigs and _loop_sig(v.name, views) != sigs[v.name]) for v in vs)
         if changed:
-            done.append({"kind": kind, "name": name, "result": "changed", "secs": int(now - at)})
+            done.append({"kind": kind, "name": name, "result": "changed", "secs": int(now - at), **_via(rec)})
         elif now - at >= VERIFY_WINDOW_SECONDS:
-            done.append({"kind": kind, "name": name, "result": "none", "secs": int(now - at)})
+            done.append({"kind": kind, "name": name, "result": "none", "secs": int(now - at), **_via(rec)})
         else:
             rest[key] = rec
     if len(rest) > VERIFY_MAX_PENDING:

@@ -51,6 +51,29 @@ class OutcomeTest(unittest.TestCase):
         _, rest = sw.check_outcomes(pend, [], T0 + 1)
         self.assertEqual(len(rest), sw.VERIFY_MAX_PENDING)
 
+    def test_via_passes_through(self):
+        pend = {"k": {"kind": "directive", "name": "p", "at": T0, "sigs": {}, "via": "brain"}}
+        done, _ = sw.check_outcomes(pend, [v("p20261110", act=T0 + 30)], T0 + 60)
+        self.assertEqual((done[0]["result"], done[0]["via"]), ("changed", "brain"))
+        done, _ = sw.check_outcomes({"k": dict(pend["k"], via="")}, [v("p", act=T0 + 30)], T0 + 60)
+        self.assertNotIn("via", done[0])
+
+
+class BrainDirectiveOutcomeTest(unittest.TestCase):
+    """L2 kalan (b): beynin MCP direktifi doğrulama kuyruğuna girer; atlanan/kuru/başarısız girmez."""
+
+    def test_register_only_real_sends(self):
+        from unittest import mock
+        from claudeops.commands import web_steward as ws
+        with mock.patch.object(ws, "_register_outcomes") as reg:
+            for res in ({"ok": False}, {"ok": True, "skipped": "wake_repeat"}, {"ok": True, "dry": True}, None):
+                ws._register_brain_outcome(res, "p", "iso")
+            reg.assert_not_called()
+            ws._register_brain_outcome({"ok": True, "name": "p20261110", "chars": 9}, "p", "iso")
+            recs = reg.call_args[0][0]
+            self.assertEqual((recs[0]["kind"], recs[0]["name"], recs[0]["via"], recs[0]["sigs"]),
+                             ("directive", "p20261110", "brain", {}))
+
 
 if __name__ == "__main__":
     unittest.main()

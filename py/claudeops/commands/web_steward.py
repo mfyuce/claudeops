@@ -5576,10 +5576,22 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
                 return {"ok": False, "code": "owner_pending",
                         "error": f"owner_pending: question {q.id} for {p.name} was rejected for you (owner_only) and is still open; "
                                  "do not route it via directive, the owner answers it"}
-        return _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
-                               start_if_stopped=bool(data.get("start_if_stopped", True)),
-                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
-                               actor=str(data.get("actor") or ""))
+        res = _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
+                              start_if_stopped=bool(data.get("start_if_stopped", True)),
+                              reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
+                              actor=str(data.get("actor") or ""))
+    if str(data.get("actor") or "") == "brain":
+        _register_brain_outcome(res, name, sid)
+    return res
+
+
+def _register_brain_outcome(res: Any, name: str, sid: str) -> None:
+    """L5 boşluğu (L2 kalan b): beynin MCP direktifi de doğrulama kuyruğuna girer (`via: brain`). Taban imza YOK
+    (görüntü toplamak HTTP yolunda pahalı): sonuç hedefin `last_activity`siyle verilir. Atlanan/kuru gönderim yazılmaz."""
+    if not (isinstance(res, dict) and res.get("ok")) or res.get("skipped") or res.get("dry"):
+        return
+    _register_outcomes([{"kind": "directive", "name": str(res.get("name") or name), "at": time.time(), "sigs": {},
+                         "via": "brain"}], sw.paths_for(sid))
 
 
 def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
