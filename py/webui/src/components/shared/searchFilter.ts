@@ -26,11 +26,29 @@ export interface Searchable {
   blueprint?: string | null;
   /** History rows: backend-computed readable title (review / steward). */
   title?: string;
+  /** Project labels (`label:x` search terms match these exactly). */
+  labels?: string[];
+}
+
+const LABEL_TERM = /^label:([a-z0-9_-]+)$/;
+
+/** Splits a query into `label:x` terms (lower-cased; several = AND) and the remaining free text (old behaviour). */
+export function parseQuery(query: string): { labels: string[]; text: string } {
+  const labels: string[] = [];
+  const rest: string[] = [];
+  for (const tok of query.trim().split(/\s+/)) {
+    const m = LABEL_TERM.exec(tok.toLowerCase());
+    if (m) labels.push(m[1]);
+    else if (tok) rest.push(tok);
+  }
+  return { labels, text: rest.join(" ") };
 }
 
 /** Empty/whitespace-only query matches everything (search box cleared). */
 export function matchesSearch(item: Searchable, query: string): boolean {
-  const q = query.trim().toLowerCase();
+  const parsed = parseQuery(query);
+  if (parsed.labels.length && !parsed.labels.every((l) => item.labels?.includes(l))) return false;
+  const q = parsed.text.toLowerCase();
   if (!q) return true;
   return (
     item.name.toLowerCase().includes(q) ||

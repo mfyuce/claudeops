@@ -7,6 +7,7 @@
  * goes through `/api/steward/*` (local-only, same data as `py/cops steward`).
  */
 
+import { LabelChips } from "./shared/LabelChips";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NumberSetting } from "./shared/NumberSetting";
 import {
@@ -585,6 +586,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
               {state.projects.map((p) => (
                 <tr key={p.name}>
                   <td>
+                    <LabelChips projectKey={p.name} />
                     <span className={`dot ${p.running ? "on" : "off"}`} />
                     {p.session && onOpenTerminal ? (
                       <button type="button" className="linkbtn" title={t.stewardOpenTerminal} onClick={() => onOpenTerminal(p.session?.host ?? "", p.session?.name ?? p.name)}>

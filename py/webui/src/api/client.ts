@@ -753,3 +753,13 @@ export const apiPeriodicAction = (body: {
   fields?: Record<string, string | number>;
   apply?: boolean;
 }): Promise<PeriodicActionResult> => apiPost<PeriodicActionResult>("/api/periodic", body);
+
+/** `POST /api/labels` — project labels (human only, local store). `add`/`remove` change one project's labels
+ * (unknown valid names are created); `define`/`delete` manage the definitions (system labels are protected). */
+export type LabelsBody =
+  | { name: string; add?: string[]; remove?: string[] }
+  | { define: { name: string; color?: string; desc?: string } }
+  | { delete: string };
+export function apiLabels(body: LabelsBody): Promise<{ ok: boolean; error?: string; labels?: string[] }> {
+  return apiPost("/api/labels", body);
+}

@@ -768,6 +768,7 @@ def upsert_project(name: str, *, paths: Any = None, force: bool = False,
                 raise ReservedName(name, why)
         p = projects.get(name) or Project(name=name, created_at=_now())
         host_changed = name in projects and fields.get("host") is not None and fields["host"] != p.host
+        old_phase = p.phase if name in projects else None
         if host_changed and not force:
             busy = running() if callable(running) else None
             if busy is not False:
@@ -805,7 +806,23 @@ def upsert_project(name: str, *, paths: Any = None, force: bool = False,
         if host_changed:
             gone = _clear_project_state(name, projects, paths)
             log_event("project_host", paths=paths, name=name, host=p.host, forced=bool(force), cleared=gone)
+        if old_phase in ("paused", "done") and p.phase in ("planned", "planning"):
+            auto_remove_labels(name, paths, via=f"phase {old_phase}->{p.phase}")      # proje çalışmaya döndü: insan-engeli etiketleri kalkar
         return p
+
+
+def auto_remove_labels(project: str, paths: Any = None, *, via: str = "") -> List[str]:
+    """Değnekçi projeye GİRDİ (start/cevap/direktif/yeniden açma ya da paused/done -> planned/planning): `stuck` ve
+    `waiting-owner` etiketleri kalkar, `label_auto_removed` olayı yazılır. Etiket yoksa dosyaya/loga dokunmaz. Hata yutulur
+    (etiket hatası değnekçi eylemini düşürmesin). Otomatik EKLEME yok (yalnız insan; labels.py)."""
+    try:
+        from . import labels as labels_mod
+        gone = labels_mod.auto_remove(project)
+        if gone:
+            log_event("label_auto_removed", paths=paths, project=project, labels=gone, via=via)
+        return gone
+    except Exception:
+        return []
 
 
 def remove_project(name: str, paths: Any = None) -> bool:

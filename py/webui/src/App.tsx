@@ -17,6 +17,7 @@
  * own header comment).
  */
 
+import { LabelSearchContext } from "./components/shared/LabelChips";
 import { useCallback, useEffect, useState } from "react";
 import { Banners } from "./components/Banners";
 import { ModelUsageBar } from "./components/ModelUsageBar";
@@ -190,6 +191,7 @@ function AppShell() {
   }
 
   return (
+    <LabelSearchContext.Provider value={(l) => setSearch(`label:${l}`)}>
     <div className="wrap">
       <div className="topbar">
         <div className="topbar-title">
@@ -251,6 +253,7 @@ function AppShell() {
         />
       )}
     </div>
+    </LabelSearchContext.Provider>
   );
 }
 

@@ -39,6 +39,7 @@
  * before this), so there was no reason to single one out.
  */
 
+import { LabelChips } from "./shared/LabelChips";
 import { Fragment, useState } from "react";
 import { apiReactivate } from "../api/client";
 import { describeApiError } from "../api/errors";
@@ -98,6 +99,7 @@ function ReactivateRow({ item, onView }: { item: RosterEntry; onView: (host: str
     <tr>
       <td style={{ width: "14%" }}>
         {item.name}
+        {item.host === LOCAL_HOST && <LabelChips projectKey={item.label_key ?? item.name} labels={item.labels} />}
         {item.host !== LOCAL_HOST && (
           <span className="cli-badge" title={t.hostBadgeHint(item.host)}>
             {item.host}

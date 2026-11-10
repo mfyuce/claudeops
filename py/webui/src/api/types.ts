@@ -97,6 +97,9 @@ export interface SessionInfo {
    * unknown (not claude, no transcript, or the first background computation has not finished): show no badge.
    * Local rows only; codex/agy/copilot usage is unknown. */
   usage_total?: SessionUsageTotal | null;
+  /** Project labels (labels.py; local rows only) and the key they are stored under (blueprint, else derived name). */
+  labels?: string[];
+  label_key?: string;
 }
 
 export interface UsageParts {
@@ -204,6 +207,14 @@ export interface RosterEntry {
   cwd: string;
   model: string;
   cli: string;
+  labels?: string[];
+  label_key?: string;
+}
+
+export interface LabelDef {
+  color: string;
+  desc: string;
+  system: boolean;
 }
 
 /** One registered remote host's live status, as fanned-out/merged server-side
@@ -469,6 +480,9 @@ export interface StatusPayload {
   sessions: SessionInfo[];
   closed: RosterEntry[];
   retired: RosterEntry[];
+  /** Label definitions (system + user) and every project's labels, keyed by `label_key`. Absent on older backends. */
+  label_defs?: Record<string, LabelDef>;
+  label_assign?: Record<string, string[]>;
   cli_list: string[];
   cli_options: Record<string, CliOptions>;
   layout_missing_deps: string[];

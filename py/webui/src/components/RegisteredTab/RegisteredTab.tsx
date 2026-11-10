@@ -24,6 +24,7 @@
  * (`CollapseControls`, user: "tablara collapse all expand all getirelim").
  */
 
+import { LabelChips } from "../shared/LabelChips";
 import { Fragment, useState } from "react";
 import { BulkBar } from "../RunningTab/BulkBar";
 import { OptionsRow } from "../RunningTab/OptionsRow";
@@ -88,6 +89,7 @@ function RegisteredRow({
         </td>
         <td>
           {session.name}
+          {session.host === LOCAL_HOST && <LabelChips projectKey={session.label_key ?? session.name} labels={session.labels} />}
           {session.host !== LOCAL_HOST && (
             <span className="cli-badge" title={t.hostBadgeHint(session.host)}>
               {session.host}

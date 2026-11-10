@@ -10,6 +10,7 @@
  * the plan: "leave `openTerminalFor` truly unused downstream".
  */
 
+import { LabelChips } from "../shared/LabelChips";
 import { useState } from "react";
 import { apiTermMirrorWindow, apiTermOpenWindow } from "../../api/client";
 import { describeApiError } from "../../api/errors";
@@ -124,6 +125,7 @@ export function SessionRow({
         </td>
         <td>
           {session.name}
+          {session.host === LOCAL_HOST && <LabelChips projectKey={session.label_key ?? session.name} labels={session.labels} />}
           <div className="mobile-meta">
             {shownModel} · {session.cli} · {session.cpu != null ? `${session.cpu.toFixed(1)}%` : "—"}
           </div>

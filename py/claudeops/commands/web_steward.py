@@ -2082,7 +2082,21 @@ def _wake_record(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: An
         pass
 
 
-def _give_directive(project: sw.Project, text: str, *, model: str = "", effort: str = "",
+# Yalnız bilgi/iş teslimatı: sahip girdisi değil, projeye "giriş" sayılmaz (etiketler kalır).
+_NON_ENTRY_REASONS = frozenset({"job", "lesson", "advance", "upper_main", "job-red"})
+
+
+def _give_directive(project: sw.Project, text: str, **kw: Any) -> Dict[str, Any]:
+    """`_give_directive_impl` + etiket kuralı: başarılı girişten (start/cevap/direktif/yeniden açma; hepsi buradan geçer)
+    sonra projenin `stuck`/`waiting-owner` etiketleri kalkar (`sw.auto_remove_labels`)."""
+    res = _give_directive_impl(project, text, **kw)
+    if isinstance(res, dict) and res.get("ok") and str(kw.get("reason") or "") not in _NON_ENTRY_REASONS:
+        cfg = kw.get("cfg") or steward_config()
+        sw.auto_remove_labels(project.name, sw.paths_for(cfg.sid), via=str(kw.get("reason") or "directive"))
+    return res
+
+
+def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", effort: str = "",
                     answer: Optional[sw.Question] = None, more: Optional[List[sw.Question]] = None,
                     start_if_stopped: bool = True,
                     reason: str = "", session_name: str = "", cfg: Optional[sw.Config] = None,

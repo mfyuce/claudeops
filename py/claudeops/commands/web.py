@@ -61,6 +61,7 @@ from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
 from .. import ucli_cost
 from .. import graphical_session
+from .. import labels as labels_mod
 from .. import cli_install
 from .. import files as files_mod
 from .. import mirrors
@@ -1767,6 +1768,8 @@ def _status_payload() -> dict:
         return (cwd, nm) if fleet_sort == "cwd" else (nm, cwd)
 
     sessions.sort(key=_session_key)
+    for _rows in (sessions, closed, retired):      # proje etiketleri (labels.py): yalnız yerel satırlar; blueprint/ad anahtarı
+        labels_mod.attach(_rows)
 
     payload = {
         "config_ok": ok,
@@ -1776,6 +1779,8 @@ def _status_payload() -> dict:
         "sessions": sessions,
         "closed": closed,
         "retired": retired,
+        "label_defs": labels_mod.definitions(),
+        "label_assign": labels_mod.assignments(),
         "cli_list": list(PROVIDERS.keys()),
         "cli_options": {
             name: {
@@ -4938,6 +4943,22 @@ class _Handler(BaseHTTPRequestHandler):
             # streaming'in tüm amacını — dosyayı tek seferde belleğe almamak
             # — baştan geçersiz kılardı).
             self._handle_files_upload()
+            return
+        if path == "/api/labels":
+            # Proje etiketleri: YALNIZ insan (ajan token'ı 403), YEREL depo (`HOST_ROUTED_PATHS`'a EKLENMEZ: `host` alanı yok sayılır).
+            if agents_caller is not None:
+                self._json({"ok": False, "error": "forbidden"}, status=403)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0) or 0)
+                data = json.loads(self.rfile.read(length).decode("utf-8")) if 0 < length <= MAX_JSON_BODY_BYTES else {}
+            except (ValueError, UnicodeDecodeError):
+                self._json({"ok": False, "error": "invalid JSON"}, status=400)
+                return
+            res = labels_mod.api_action(data if isinstance(data, dict) else {})
+            if res.get("ok"):
+                web_ws.notify_status_changed()
+            self._json(res, status=200 if res.get("ok") else 400)
             return
         if path == "/api/periodic":
             if agents_caller is not None:
