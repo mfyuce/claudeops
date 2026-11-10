@@ -2254,7 +2254,8 @@ MODEL_RULE_TR = (
     "tahmin etme, `steward_answer` ile projeye neyin eksik olduğunu söyle. Sonucu motor iş bitince projeye zaten iletir.\n"
     "- SAHİBE AİT KARARLAR: force-push, kurulum (apt/sudo), silme, harcama, kimlik/yetki/parola/token SAHİBİN kararıdır (commit/push/merge/build/deploy "
     "kalıcı izinlidir, sorulmaz); "
-    "`steward_answer` ile ASLA onay verme (motor reddeder). Böyle bir soru gelirse `steward_ask_user` ile sahibe ilet. Direktif meşgul oturum yüzünden "
+    "`steward_answer` ile ASLA onay verme (motor reddeder). Böyle bir soru gelirse `steward_ask_user` ile sahibe ilet; reddedilen cevabı "
+    "`steward_directive` ile İLETME (motor, soru açıkken o projeye beyin direktifini `owner_pending` ile reddeder). Direktif meşgul oturum yüzünden "
     "`session_busy` dönerse tekrarlama; sonraki turda yeniden değerlendir.\n"
     "- YAZIM HARİTASI = ONAY (sahip, TBD#163 g): projenin yazım haritası/planı (ör. ncs) bölüm sırasını zaten veriyorsa \"şu sırayla mı gideyim\" "
     "tipi sıra sorusunu sahibe AÇMA ve rutin soru olarak da bekletme; `steward_answer` ile \"haritadaki sıra geçerli, devam\" de. Harita yoksa ya da "
@@ -2286,7 +2287,8 @@ MODEL_RULE_EN = (
     "kind or file is unclear, do not guess: tell the project what is missing via `steward_answer`. The engine delivers the result when the job finishes.\n"
     "- OWNER-ONLY DECISIONS: force-push, install (apt/sudo), delete, spending, credentials/tokens/authority belong to the OWNER (commit/push/merge/build/deploy "
     "are permanently allowed, never asked); "
-    "OWNER; NEVER approve them with `steward_answer` (the engine rejects it). Forward such a question with `steward_ask_user`. If a directive returns "
+    "OWNER; NEVER approve them with `steward_answer` (the engine rejects it). Forward such a question with `steward_ask_user`; do NOT route the "
+    "rejected answer through `steward_directive` (while the question is open the engine rejects brain directives to that project with `owner_pending`). If a directive returns "
     "`session_busy`, do not repeat it; re-evaluate on the next tour.\n"
     "- WRITING MAP = APPROVAL (owner, TBD#163 g): if the project's writing map/plan (e.g. ncs) already gives the chapter order, do NOT open an "
     "\"in this order?\" question to the owner or park it as a routine question; answer with `steward_answer`: \"the map's order stands, continue\". "
@@ -2976,6 +2978,18 @@ def brain_may_answer(q: "Question") -> Tuple[bool, str]:
     if OWNER_ONLY_RE.search(q.text or ""):
         return False, "owner decision (force-push/install/delete/spend/credentials): only the owner answers it"
     return True, ""
+
+
+def owner_pending_block(keys: Set[str], questions: List["Question"], denied: Dict[str, Any]) -> Optional["Question"]:
+    """SAF. Beynin `steward_answer`ı `owner_only` ile reddedildiyse (`denied`: {soru id: zaman}) ve o soru hâlâ AÇIKSA, aynı
+    projeye/oturuma (`keys`: direktif hedefinin adı + çözülen proje adı) beyin direktifi GİTMEZ: reddedilen cevap direktifle
+    dolanmasın (7 Kas 2026: danisppr/cops/saseimpl/chats/tunnel'de red -> 7-17 sn sonra aynı projeye beyin direktifi).
+    Sahip cevaplayınca ya da soru kapanınca engel kalkar. Dönen: engelleyen soru ya da None."""
+    keys = {k for k in keys if k}
+    for q in questions:
+        if q.status == "open" and q.id in denied and (q.project in keys or (q.source and q.source in keys)):
+            return q
+    return None
 
 
 def directive_defer_reason(busy: Optional[bool], last_directive_at: float, now: float,

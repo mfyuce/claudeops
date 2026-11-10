@@ -3055,6 +3055,32 @@ class BlockedEscalationTest(HttpTest):
         self.assertFalse(sw.find_question(q.id).routine)                  # sahibe düştü: artık rutin değil
         self.assertEqual(sw.find_question(q.id).status, "open")
 
+    def test_owner_only_denial_blocks_brain_directive_until_answered(self):
+        # 7 Kas 2026: red -> 7-17 sn sonra aynı projeye beyin direktifi (owner_only dolanması)
+        sw.upsert_project("p", cwd="/w/p")
+        q = sw.add_question("p", "main'e force-push yapayım mı?", source="p20261029", routine=True)
+        sent = []
+        with mock.patch.object(web_steward, "_notify", lambda *a, **k: True), \
+                mock.patch.object(web_steward, "_gate", lambda *a, **k: None), \
+                mock.patch.object(web_steward, "_brain_directive_defer", lambda *a, **k: ""), \
+                mock.patch.object(web_steward, "_give_directive", lambda p, text, **k: sent.append((p.name, text)) or {"ok": True}):
+            self.assertEqual(web_steward.http_answer({"id": q.id, "answer": "evet", "actor": "brain"})["code"], "owner_only")
+            for target in ("p", "p20261029"):
+                r = web_steward.http_directive({"name": target, "text": "force-push yap", "actor": "brain"})
+                self.assertEqual(r.get("code"), "owner_pending", target)
+            self.assertEqual(sent, [])
+            self.assertTrue(web_steward.http_directive({"name": "p", "text": "insan", "actor": "human"})["ok"])   # insan engellenmez
+            sw.answer_question(q.id, "hayır")                               # sahip cevapladı: engel kalkar
+            self.assertTrue(web_steward.http_directive({"name": "p", "text": "devam", "actor": "brain"})["ok"])
+        self.assertEqual([t for _, t in sent], ["insan", "devam"])
+
+    def test_owner_pending_block_pure(self):
+        qs = [sw.Question(id="a", project="p", source="p1", text="x", created_at=1.0), sw.Question(id="b", project="r", text="y", created_at=1.0, status="answered")]
+        self.assertEqual(sw.owner_pending_block({"p"}, qs, {"a": 1.0}).id, "a")
+        self.assertEqual(sw.owner_pending_block({"p1", ""}, qs, {"a": 1.0}).id, "a")
+        self.assertIsNone(sw.owner_pending_block({"p"}, qs, {}))           # reddedilmemiş soru engellemez
+        self.assertIsNone(sw.owner_pending_block({"r"}, qs, {"b": 1.0}))   # cevaplanmış soru engellemez
+
     def test_protocol_and_guide_derive_from_owner_topics(self):
         self.assertIn(sw.OWNER_ONLY_TOPICS_TR, sw._PROTOCOL_TR.replace("Force-push", "force-push", 1))
         self.assertNotIn("bana düşmez", sw._PROTOCOL_TR)

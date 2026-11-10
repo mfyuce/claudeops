@@ -5194,6 +5194,22 @@ def _job_red_feedback(sid: str, q0: "sw.Question", red: str) -> None:
         diag_log("job_red_feedback_failed", sid=sid, project=q0.project, error=repr(e))
 
 
+BRAIN_DENIED_KEEP_SECONDS = 14 * 86400     # kayıt bu kadar sonra düşer (açık soru engeli `owner_pending_block`ta zaten soruya bağlı)
+
+
+def _record_brain_denied(sid: str, qid: str) -> None:
+    """Beynin cevabı `owner_only` ile reddedilen soruyu `state.brain_denied`e yaz (direktifle dolanma engeli için)."""
+    paths = sw.paths_for(sid)
+    now = time.time()
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        denied = {k: float(v) for k, v in dict(state.get("brain_denied") or {}).items()
+                  if isinstance(v, (int, float)) and now - float(v) < BRAIN_DENIED_KEEP_SECONDS}
+        denied[qid] = now
+        state["brain_denied"] = denied
+        sw.save_state(state, paths)
+
+
 def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if str(data.get("actor") or "") == "brain":
         q0 = next((q for q in sw.load_questions(sw.paths_for(sid)) if q.id == str(data.get("id") or "")), None)
@@ -5201,6 +5217,7 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             ok, why = sw.brain_may_answer(q0)
             if not ok:
                 sw.log_event("answer_denied", paths=sid, id=q0.id, project=q0.project, reason=why)
+                _record_brain_denied(sid, q0.id)
                 if q0.routine:      # TBD#140: sahip kararı çıkan rutin/blocked madde beyinde 15 tur dönmez, ANINDA sahibe düşer
                     esc = sw.escalate_routine(q0.id, sw.paths_for(sid))
                     if esc is not None:
@@ -5374,6 +5391,14 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             if _running(name) is None and not inst_mod.get_instance(name) and name not in (_act("fleet_status") or {}):
                 return {"ok": False, "error": "unknown session/project"}
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
+        if str(data.get("actor") or "") == "brain":
+            denied = sw.load_state(sw.paths_for(sid)).get("brain_denied") or {}
+            q = sw.owner_pending_block({name, p.name}, sw.load_questions(sw.paths_for(sid)), denied) if denied else None
+            if q is not None:
+                sw.log_event("directive_denied", paths=sid, name=name, project=p.name, question=q.id, reason="owner_pending")
+                return {"ok": False, "code": "owner_pending",
+                        "error": f"owner_pending: question {q.id} for {p.name} was rejected for you (owner_only) and is still open; "
+                                 "do not route it via directive, the owner answers it"}
         return _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
                                start_if_stopped=bool(data.get("start_if_stopped", True)),
                                reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
