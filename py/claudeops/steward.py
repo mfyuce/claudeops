@@ -4467,6 +4467,28 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
 _OWNER_WAIT_PHRASES = ("sahipte", "sahibin kararı", "sahip kararı bekl", "sahibin cevab", "owner's decision", "waiting on the owner", "waiting for the owner")
 
 
+_STATED_NEXT_RE = re.compile(
+    r"(sonraki turda|sıradaki (?:iş|adım)|siradaki (?:is|adim)|şimdi [^.\n]{0,120}?(?:geçiyorum|başlıyorum|başlayacağım)|"
+    r"kalan (?:bağımsız|teknik) iş|açık kalan teknik işler|next i(?:'ll| will)|i(?:'ll| will) (?:now )?(?:move on|start|continue) )",
+    re.IGNORECASE)
+
+
+def stated_next_work(text: str) -> str:
+    """Oturumun SON cevabında kendi söylediği sıradaki iş cümlesi ("sonraki turda X'ten başlarım", "şimdi X'e geçiyorum",
+    "kalan bağımsız iş: ..."); yoksa "". Dürtme metni bu cümleye dayanır (körlemesine "TODO'daki ilk iş" değil). SAF."""
+    t = text or ""
+    m = None
+    for m in _STATED_NEXT_RE.finditer(t):
+        pass                     # en SONDAKİ ifade (cevap boyunca plan değişmiş olabilir)
+    if m is None:
+        return ""
+    start = max(t.rfind("\n", 0, m.start()), t.rfind(". ", 0, m.start()) + 1, 0)
+    seg = t[start:]
+    end = [i for i in (seg.find("\n\n", 1), seg.find(". ", m.end() - start)) if i > 0]
+    seg = seg[:min(end) + 1] if end else seg
+    return clip_words(" ".join(seg.split()), 220)
+
+
 def owner_wait(text: str) -> bool:
     """Son cevap işin sahipte/sahip kararında olduğunu söylüyor mu (claude_idle dürtmesi atlanır). SAF."""
     low = (text or "").lower()
@@ -4634,9 +4656,15 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
         if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
         hint = next_work_hint(proj, open_work, real_only=True)
-        if not hint:
+        stated = "" if hint else stated_next_work(txt)
+        if not hint and not stated:
             continue
-        text = one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE), 600)
+        if stated:      # notta `sıradaki:` yok ama oturum kendi sıradaki işini söylemiş: ona dayan (sahip 11 Kas "bişi yok deyip duruyoruz")
+            hint = stated
+            text = one_line(f"devam: son cevabında söylediğin sıradaki işe geç ({stated}). Sahip kararı gerektiren kısmı "
+                            f"TOBEDECIDED'a yazıp atla, soru sorup bekleme.", 600)
+        else:
+            text = one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE), 600)
         if at and since > at and rec.get("text") == text and rec.get("mode", "dry") == cfg.claude_idle:
             continue
         out.append(Action("idle_nudge", v.name, f"claude boşta {int(now - since)} sn, sıradaki iş var",
