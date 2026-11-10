@@ -357,7 +357,7 @@ class Config:
     review_store_commit: bool = False  # reviewer: `review_store_dir` altındaki YENİ reviews/ dosyaları günde bir -prv depoya (yalnız reviews/ yolu, gizli değer taramalı) commit+push (TBD#118 ek; varsayılan KAPALI)
     review_store_git_dir: str = "~/.claudeops-docs.git"   # -prv deposunun ayrı git-dir'ı (work-tree = review_store_dir)
     review_store_dir: str = ""         # reviewer: biten koşuların raporu (`<ts>.md` + `<ts>.usage.jsonl`, maskeli) bu ÖZEL klasörün `reviews/` altına kopyalanır (TBD#118; "" = KAPALI; git add/commit/push otomatik DEĞİL)
-    review_auto_approve: int = 0       # reviewer: `verified` bulguyu KENDİLİĞİNDEN onaylar: 0 kapalı, 1 yalnız P3, 2 P2+P3 (P1, `unclear` ve parola/gizli geçen bulgu ASLA)
+    review_auto_approve: int = 0       # reviewer: `verified` bulguyu KENDİLİĞİNDEN onaylar: 0 kapalı, 1 yalnız P3, 2 P2+P3, 3 HEPSİ + `unclear` (parola/gizli geçen bulgu HER düzeyde sahibe)
     review_auto_export: bool = False   # reviewer: `approved` bulguları YEREL projenin TODO.md'sine KENDİLİĞİNDEN yazar (tick başına en çok 1 proje; TBD'ye ASLA, uzak proje ve hassas bulgu atlanır)
     review_max_wall_secs: int = 900   # Evren: `--max-wall-secs` (ucli kendi duvar sınırı; timeout 20 dk iken 900 = kalan süreyle özet verir, partial kalmaz); 0 = bayrak gitmez
     review_max_output_tokens: int = 32768   # Evren: `--max-output-tokens` (ucli varsayılanı 4096; reasoning modelleri raporu yazamadan düşüyordu, TODO 1098); 0 = bayrak gitmez

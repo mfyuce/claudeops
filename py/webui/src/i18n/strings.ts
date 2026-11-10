@@ -803,6 +803,7 @@ export interface Strings {
   rvAutoApproveOff: string;
   rvAutoApproveP3: string;
   rvAutoApproveP2: string;
+  rvAutoApproveAll: string;
   rvAutoApproveHint: string;
   rvAutoHint: string;
   rvAutoExport: string;
@@ -1732,6 +1733,7 @@ export const STRINGS: Record<Lang, Strings> = {
     rvAutoApproveOff: "kapalı (hepsini ben onaylarım)",
     rvAutoApproveP3: "yalnız küçük bulgular (P3)",
     rvAutoApproveP2: "önemli (P2) ve küçük (P3) bulgular",
+    rvAutoApproveAll: "hepsi (P1 dahil, belirsizler de; gizli değer geçenler hariç)",
     rvAutoApproveHint: "Yalnız doğrulayıcının \"doğru\" dediği bulgular otomatik onaylanır. Kritik (P1), doğrulayıcının emin olamadığı ve parola/gizli değer geçen bulgular HİÇBİR ZAMAN otomatik onaylanmaz, sana kalır. Onay dosyaya yazmaz; aktarma ayrı adım. Bu, bir SEÇİMDİR: tek bir değer seçilir (P2 seçmek P3'ü de kapsar).",
     rvAutoHint: "Doğrulama projenin çalışan oturumuna gider (meşgulse bekler). Onay dosyaya yazmaz; P1, belirsiz ve parola/gizli geçen bulgular hep sende kalır.",
     rvAutoExport: "Onaylıları TODO.md'ye yaz",
@@ -2662,6 +2664,7 @@ export const STRINGS: Record<Lang, Strings> = {
     rvAutoApproveOff: "off (I approve everything)",
     rvAutoApproveP3: "minor findings only (P3)",
     rvAutoApproveP2: "important (P2) and minor (P3) findings",
+    rvAutoApproveAll: "all (P1 too, unclear too; except ones mentioning secrets)",
     rvAutoApproveHint: "Only findings the verifier confirmed are auto-approved. Critical (P1), ones the verifier was unsure about, and any mentioning a password/secret are NEVER auto-approved and stay with you. Approving does not write files; export is a separate step. This is ONE choice (picking P2 also covers P3).",
     rvAutoHint: "Verification goes to the project's running session (waits if busy). Approval does not write files; P1, unclear and password/secret findings always stay with you.",
     rvAutoExport: "Write approved to TODO.md",

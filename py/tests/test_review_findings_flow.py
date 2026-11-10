@@ -717,6 +717,11 @@ class TestAutoApprove(_Flow):
         wr.auto_approve(NS(sid="rev", review_auto_approve=2), now=5_000.0)
         self.assertEqual(self.states(), {"R-1": "verified", "R-2": "approved", "R-3": "approved", "R-4": "verified", "R-5": "unclear"})
 
+    def test_level_3_approves_all_but_secret(self):
+        self.prep()
+        wr.auto_approve(NS(sid="rev", review_auto_approve=3), now=5_000.0)
+        self.assertEqual(self.states(), {"R-1": "approved", "R-2": "approved", "R-3": "approved", "R-4": "verified", "R-5": "approved"})
+
     def test_off_and_tick_wiring(self):
         self.prep()
         self.assertEqual(wr.auto_approve(NS(sid="rev", review_auto_approve=0)), [])

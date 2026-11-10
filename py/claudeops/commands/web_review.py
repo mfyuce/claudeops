@@ -2781,12 +2781,14 @@ def bulk_decide(cfg: Any, action: str, project: str = "", fids: Optional[Sequenc
     return {"ok": True, "action": action, "done": done, "skipped": skipped}
 
 
-AUTO_APPROVE_SEVERITIES = {1: ("P3",), 2: ("P2", "P3")}     # `review_auto_approve` düzeyi -> otomatik onaylanabilir önem; P1 ASLA
+AUTO_APPROVE_SEVERITIES = {1: ("P3",), 2: ("P2", "P3"), 3: ("P1", "P2", "P3")}   # `review_auto_approve` düzeyi -> önem; 3 = HEPSİ (sahip 10 Kas: "onaysız kalmasın")
+AUTO_APPROVE_UNCLEAR_LEVEL = 3      # bu düzeyde `unclear` de onaylanır; parola/gizli geçen bulgu HER düzeyde sahibe kalır
 
 
 def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
     """`review_auto_approve` > 0 ise `verified` bulguları KENDİLİĞİNDEN onaylar (`decided_by=auto`): yalnız düzeyin önem
-    kümesi (1 = P3, 2 = P2+P3); `unclear`, P1 ve başlık/yer/gövdesinde parola/gizli değer geçen bulgu sahibe kalır.
+    kümesi (1 = P3, 2 = P2+P3, 3 = P1+P2+P3 ve `unclear`); 1-2'de `unclear` ve P1, HER düzeyde başlık/yer/gövdesinde
+    parola/gizli değer geçen bulgu sahibe kalır.
     Dosyaya YAZMAZ (export ayrı adım). Onaylananların fid'leri döner."""
     sev = AUTO_APPROVE_SEVERITIES.get(int(getattr(cfg, "review_auto_approve", 0) or 0))
     if not sev:
@@ -2795,7 +2797,8 @@ def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
     p = sw.paths_for(cfg.sid)
     done: List[str] = []
     for fid, rec in sorted(rv.load_findings(p).items()):
-        if not isinstance(rec, dict) or rec.get("state") != "verified" or str(rec.get("severity") or "") not in sev:
+        ok_states = ("verified", "unclear") if int(getattr(cfg, "review_auto_approve", 0) or 0) >= AUTO_APPROVE_UNCLEAR_LEVEL else ("verified",)
+        if not isinstance(rec, dict) or rec.get("state") not in ok_states or str(rec.get("severity") or "") not in sev:
             continue
         if sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}")):
             continue

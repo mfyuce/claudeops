@@ -353,6 +353,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
             <option value={0}>{t.rvAutoApproveOff}</option>
             <option value={1}>{t.rvAutoApproveP3}</option>
             <option value={2}>{t.rvAutoApproveP2}</option>
+            <option value={3}>{t.rvAutoApproveAll}</option>
           </select>
         </label>
         <label title={t.rvAutoExportHint}>

@@ -5729,7 +5729,7 @@ def http_skip(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 # Panelden yazılabilen ayarlar (CLI `steward config` alt kümesi): alan -> (alt, üst) sınır. `mode` ayrıca doğrulanır.
 UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_retry_minutes": (1, 1440),
                  "idle_minutes": (1, 1440), "review_minutes": (1, 10080), "stop_idle_minutes": (1, 10080),
-                 "max_active": (0, 20), "max_starts_per_tick": (0, 10), "review_auto_approve": (0, 2),
+                 "max_active": (0, 20), "max_starts_per_tick": (0, 10), "review_auto_approve": (0, 3),
                  # Evren/ucli reviewer bütçeleri (2026-11-04): 0 = ucli modelin /models kaydından türetir; ucli üst sınırı 1536 KiB
                  "review_max_context_kib": (0, 1536), "review_max_read_kib": (0, 1024), "review_max_tool_calls": (1, 500)}
 
