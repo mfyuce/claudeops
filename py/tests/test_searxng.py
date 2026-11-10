@@ -209,6 +209,13 @@ class SxCase(unittest.TestCase):
 # ── adlar, argümanlar, yapılandırma dosyası, port ───────────────────────────────────────────────────
 
 class NamingTests(SxCase):
+    def setUp(self):
+        super().setUp()
+        # adın kendisi sınanır: durum dizini "varsayılan" sayılsın (test koşucusu dizini geçiciye çevirir, paths.py L3)
+        p = mock.patch.object(sx, "CLAUDEOPS_DIR", os.path.join(sx.CLAUDE_DIR, "claudeops"))
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_the_name_is_per_user(self):
         self.assertEqual(sx.container_name(), "claudeops-searxng-tester")
 
