@@ -2693,18 +2693,28 @@ OWNER_WAIT_LINE_RE = re.compile(r"SAH[İI]BE SORULDU|sahip(?:in)? (?:karar|cevab
 BRAIN_STOP_COOLDOWN_SECONDS = 4 * 3600   # beyin `stop` dedikten sonra cadence projeyi bu süre yeniden BAŞLATMAZ (faz değişmez)
 
 
+DERIVED_TAIL_RE = re.compile(r"(?:20\d\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))?(?:_\d+)?")
+
+
+def derived_of(name: str, key: str) -> bool:
+    """TEK KURAL (L2 c, 10 Kas): oturum adı `key` projesinin oturumu mu = tam ad ya da `key` + [tarih soneki] + [`_N`].
+    Salt önek YETMEZ: `saseimplppr20260930`, `ncschr20261017`, `mtsyn20260909review`, `cops31ulak` başka oturumlardır
+    (canlı filoda 26 ad gevşek önekle yanlış projeye çözülüyordu)."""
+    return bool(key) and name.startswith(key) and bool(DERIVED_TAIL_RE.fullmatch(name[len(key):]))
+
+
 def _project_key(name: str, projects: Dict[str, "Project"]) -> str:
-    """Oturum adı → kayıtlı proje adı (tam ad ya da en uzun proje-adı öneki: `ncs20261019` → `ncs`); yoksa ""."""
+    """Oturum adı → kayıtlı proje adı (`derived_of`: tam ad, `ncs20261019`, `ncs20261019_1` → `ncs`); yoksa "".
+    Birden çok aday tutarsa (yalnız `a` + `a2026...` gibi yapay durumda) en uzunu."""
     best = ""
     for p in projects:
-        if (name == p or name.startswith(p)) and len(p) > len(best):
+        if derived_of(name, p) and len(p) > len(best):
             best = p
     return best
 
 
 # ── kimlik görünümü (çoklu değnekçi P3, SAF) ─────────────────────────────────
 
-_DATE8_RE = re.compile(r"20\d\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])")   # türetilmiş oturum adının tarih soneki
 _DENY = ("other", "conflict", "service", "brain_other", "brain_own")
 
 
@@ -2747,9 +2757,8 @@ class World:
 
     def resolve(self, name: str) -> Tuple[str, str]:
         """Oturum adı → (tür, anahtar): tür `brain` | `service` | `project` | "". Proje çözümü GLOBAL (K4): tüm
-        kimliklerin projeleri üzerinde tam ad, sonra en uzun önek (`_project_key` ile aynı). Tek fark: en uzun önek
-        ile tarih sonekli ayrıştırma (`ncs` + `20261019`) FARKLI sahiplere düşerse ayrıştırma kazanır: `ncs` (A) ve
-        `ncs2` (B) varken `ncs20261019` A'nın, `ncs2x` B'nin. Aynı sahipte eski sonuç (en uzun önek) birebir kalır."""
+        kimliklerin projeleri üzerinde `_project_key` (TEK KURAL `derived_of`: tam ad ya da ad + tarih + `_N`). `ncs` (A) ve
+        `ncs2` (B) varken `ncs20261019` A'nın, `ncs2x` HİÇBİRİNİN (eskiden en uzun önekle B'nindi)."""
         if not name:
             return "", ""
         if name in self.brains:
@@ -2762,21 +2771,8 @@ class World:
         for s, rec in self.services.items():
             if name == s or ((rec or {}).get("match") != "exact" and name.startswith(s)):
                 return "service", s
-        cands = set(self.owners) | set(self.conflicts)
-        if name in cands:
-            return "project", name
-        longest = ""
-        dated = ""
-        for p in cands:
-            if not name.startswith(p):
-                continue
-            if len(p) > len(longest):
-                longest = p
-            if _DATE8_RE.match(name[len(p):len(p) + 8]) and len(name) >= len(p) + 8 and len(p) > len(dated):
-                dated = p
-        if dated and dated != longest and self._owner_tag(dated) != self._owner_tag(longest):
-            return "project", dated
-        return ("project", longest) if longest else ("", "")
+        key = _project_key(name, dict.fromkeys(set(self.owners) | set(self.conflicts)))
+        return ("project", key) if key else ("", "")
 
     def _class(self, kind: str, key: str) -> str:
         if kind == "brain":
@@ -4187,14 +4183,13 @@ VERIFY_WINDOW_SECONDS = 600.0
 VERIFY_MAX_PENDING = 200
 
 
-_OUTCOME_SUFFIX_RE = re.compile(r"^(?:\d{8})?(?:_\d+)?$")
 
 
 def _outcome_views(name: str, views: List["SessionView"]) -> List["SessionView"]:
     """Eylem adı proje adı olabilir (oturum `x20261110_1`): tam ad, proje (blueprint) ya da ad + YALNIZ tarih/`_N` soneki
     (`hc` -> `hc20261110` evet, `hcr20261110` HAYIR)."""
     return [v for v in views if v.name == name or v.project == name
-            or (name and v.name.startswith(name) and _OUTCOME_SUFFIX_RE.match(v.name[len(name):]))]
+            or derived_of(v.name, name)]
 
 
 def outcome_baseline(kind: str, name: str, views: List["SessionView"], now: float) -> Dict[str, Any]:

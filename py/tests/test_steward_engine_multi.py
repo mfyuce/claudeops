@@ -263,7 +263,7 @@ class TestIdentityGate(_Engine):
         self.assertIsNone(ws._target("ncs2", "engine", sid="kitap"))
         self.assertIsNone(ws._target("ncs20261019", "engine", sid="default"))
         self.assertIsNone(ws._project_for_session("ncs2", sw.load_projects(), ws._world()))
-        self.assertEqual(ws._project_for_session("ncs2", sw.load_projects()).name, "ncs")    # world'süz eski yol
+        self.assertIsNone(ws._project_for_session("ncs2", sw.load_projects()))    # world'süz yol da TEK KURAL (L2 c): `ncs2` `ncs`nin oturumu değil
         live = [NS(name="ncs2", base="ncs"), NS(name="a_1", base="a")]
         self.assertEqual(ws._running_names_for(live, sw.load_projects(), ws._world()), {"ncs2", "a_1", "a"})
         self.assertIn("ncs", ws._running_names_for(live, sw.load_projects()))                 # world'süz eski yol

@@ -191,9 +191,9 @@
  {
   "actions": [
    [
-    "stop",
+    "respawn",
     "ncs20261019",
-    "devir bitti, projenin başka oturumu çalışıyor → kapat",
+    "READY FOR HANDOVER",
     {}
    ],
    [
@@ -632,9 +632,9 @@
  {
   "actions": [
    [
-    "stop",
+    "respawn",
     "ncs20261019",
-    "devir bitti, projenin başka oturumu çalışıyor → kapat",
+    "READY FOR HANDOVER",
     {}
    ],
    [

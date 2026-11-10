@@ -358,15 +358,16 @@ class TestGlobalPrefix(unittest.TestCase):
     def test_ncs_vs_ncs2(self):
         a, b, _ = _two_worlds()
         cases = {"ncs": ("own", "other"), "ncs20261019": ("own", "other"), "ncs_1": ("own", "other"),
-                 "ncs2": ("other", "own"), "ncs2x": ("other", "own"), "ncs220261019": ("other", "own"),
+                 "ncs2": ("other", "own"), "ncs2x": ("adhoc", "adhoc"), "ncs2_1": ("other", "own"), "ncs220261019": ("other", "own"),
                  "ncs220261019_2": ("other", "own"), "wifi5gppr20261019": ("own", "other"),
-                 "egyptian20260917": ("own", "other"),       # `egy` öneki: eski kural (en uzun önek) korunur
+                 "egyptian20260917": ("adhoc", "adhoc"),     # L2 c: `egy` öneki YETMEZ (eskiden en uzun önekle own)
                  "kitap_1": ("other", "own"), "oa20261001": ("adhoc", "adhoc")}
         for name, (ca, cb) in cases.items():
             self.assertEqual((a.session_class(name), b.session_class(name)), (ca, cb), name)
         self.assertEqual(a.project_key("ncs20261019"), "ncs")
         self.assertEqual(b.project_key("ncs20261019"), "")
-        self.assertEqual(b.project_key("ncs2x"), "ncs2")
+        self.assertEqual(b.project_key("ncs2x"), "")      # L2 c: salt önek proje oturumu DEĞİL (eskiden ncs2)
+        self.assertEqual(b.project_key("ncs2_1"), "ncs2")
 
     def test_same_owner_keeps_old_longest_prefix(self):
         projects = {n: sw.Project(name=n) for n in ("ncs", "ncs2")}
@@ -385,7 +386,7 @@ class TestGlobalPrefix(unittest.TestCase):
     def test_blueprint_can_only_deny(self):
         a, b, _ = _two_worlds()
         # ad B'yi (`ncs2`), blueprint A'yı (`ncs`) gösteriyor: iki kimlik de dokunmaz
-        self.assertEqual((a.session_class("ncs2x", "ncs"), b.session_class("ncs2x", "ncs")), ("other", "other"))
+        self.assertEqual((a.session_class("ncs2_1", "ncs"), b.session_class("ncs2_1", "ncs")), ("other", "other"))
         # kayıtsız ad + kendi blueprint'i: sahibi yönetir
         self.assertEqual((a.session_class("deneme1", "ncs"), b.session_class("deneme1", "ncs")), ("own", "other"))
         self.assertEqual(a.session_class("x", "degnekci_kitap"), "brain_other")
@@ -445,10 +446,10 @@ class TestNoCrossActions(unittest.TestCase):
         self.assertEqual([a.name for a in acts if a.kind == "tour"], ["degnekci_kitap"])
         acts, _, _, _ = self._run("default", 0)
         self.assertEqual([a.name for a in acts if a.kind == "tour"], ["degnekci"])
-        # ncs2x (kitap) bağlamı büyük → yalnız kitap devreder; ncs20261019 (default) yalnız default
-        big = [_view("ncs2x", context_tokens=900000), _view("ncs20261019", context_tokens=900000)]
+        # ncs2_1 (kitap) bağlamı büyük → yalnız kitap devreder; ncs20261019 (default) yalnız default
+        big = [_view("ncs2_1", context_tokens=900000), _view("ncs20261019", context_tokens=900000)]
         mine, idx = _multi_setup()
-        for sid, expect in (("default", ["ncs20261019"]), ("kitap", ["ncs2x"])):
+        for sid, expect in (("default", ["ncs20261019"]), ("kitap", ["ncs2_1"])):
             acts, _ = sw.plan_tick(big, mine[sid], {}, _cfg(), T0, [], [], world=sw.world_for(sid, idx))
             self.assertEqual([a.name for a in acts if a.kind == "handover"], expect, sid)
 

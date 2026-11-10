@@ -1565,13 +1565,8 @@ def _project_for_session(name: str, projects: Dict[str, sw.Project],
     elif rec and rec.get("blueprint") in projects:
         p = projects[rec["blueprint"]]
     else:
-        from ..session import Session
-        base = Session(name=name, pid=0).base
-        if base in projects:
-            p = projects[base]
-        else:
-            m = inst_mod.DERIVED_NAME_RE.match(name)     # rakamlı proje adı (wifi5gppr20261019): Session.base çözemez
-            p = projects.get(m.group(1)) if m else None
+        key = sw._project_key(name, projects)     # TEK KURAL `sw.derived_of` (eskiden Session.base + DERIVED_NAME_RE: `mtsyn20260909review` → mtsyn)
+        p = projects.get(key) if key else None
     if p is None or world is None:
         return p
     cls = world.session_class(name, (rec or {}).get("blueprint"))
@@ -1610,13 +1605,7 @@ def _remote_key(name: str, host: str, world: sw.World) -> str:
     return key if kind == "project" and key and world.host_of(key) == host else ""
 
 
-_DERIVED_TAIL_RE = re.compile(r"(?:20\d\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))?(?:_\d+)?")
-
-
-def _derived_of(name: str, key: str) -> bool:
-    """Oturum adı `key` projesinin TÜRETİLMİŞ adı mı: tam ad ya da `key` + [tarih soneki] + [`_N`]. Salt önek yetmez:
-    `saseimplppr20260930` (başka, kayıtsız proje) `saseimpl`in ikinci oturumu DEĞİLDİR (canlı hata 2026-10-24)."""
-    return name.startswith(key) and bool(_DERIVED_TAIL_RE.fullmatch(name[len(key):]))
+_derived_of = sw.derived_of     # TEK KURAL steward.py'de (L2 c)
 
 
 def _remote_project_rows(rows: List[Dict[str, Any]], host: str, key: str, world: sw.World) -> List[Dict[str, Any]]:
