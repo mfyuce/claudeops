@@ -149,6 +149,14 @@ def cmd_status(args) -> int:
           f"son tick: {_ago(float(st.get('last_tick') or 0))}   son tur: {_ago(float(st.get('last_tour') or 0))}")
     if st.get("ho_pending"):
         print("handover bekleyen: " + ", ".join(st["ho_pending"]))
+    oc: Dict[str, List[int]] = {}
+    cutoff = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 86400))
+    for e in sw.tail_log(3000, sid):
+        if e.get("event") == "outcome" and str(e.get("ts") or "") >= cutoff:
+            c = oc.setdefault(str(e.get("kind")), [0, 0])
+            c[0 if e.get("result") == "changed" else 1] += 1
+    if oc:
+        print("sonuç (24 sa, etkili/etkisiz): " + "  ".join(f"{k} {v[0]}/{v[1]}" for k, v in sorted(oc.items())))
     for e in sw.loop_paused(st, time.time()):
         print(f"döngü durduruldu: {e['kind']} -> {e['name']} (bitiş {time.strftime('%d %H:%M', time.localtime(e['until']))})")
     for e in sw.api_error_brief(st):

@@ -3313,6 +3313,47 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
     return {"ok": False, "error": f"unknown action {k}"}
 
 
+def _register_outcomes(recs: List[Dict[str, Any]], paths: Any) -> None:
+    """L5: başarılı eylemleri doğrulama kuyruğuna (`state.outcome_pending`) yaz."""
+    try:
+        with sw.steward_lock(paths):
+            st = sw.load_state(paths)
+            pend = dict(st.get("outcome_pending") or {})
+            for r in recs:
+                pend[f"{r['kind']}|{r['name']}|{int(r['at'])}"] = r
+            st["outcome_pending"] = pend
+            sw.save_state(st, paths)
+    except Exception as e:
+        diag_log("steward_outcome_register_failed", error=repr(e))
+
+
+def _check_outcomes(cfg: sw.Config, views: List[sw.SessionView], paths: Any, now: float) -> None:
+    """L5: bekleyen doğrulamaları sonuçlandır; `outcome` olayı (changed|none). Açılmayan `start` sahibe bildirilir."""
+    try:
+        with sw.steward_lock(paths):
+            st = sw.load_state(paths)
+            pend = st.get("outcome_pending") or {}
+            if not pend:
+                return
+            done, rest = sw.check_outcomes(pend, views, now)
+            if not done:
+                return
+            if rest:
+                st["outcome_pending"] = rest
+            else:
+                st.pop("outcome_pending", None)
+            sw.save_state(st, paths)
+        for d in done:
+            sw.log_event("outcome", paths=paths, **d)
+            if d["result"] == "none" and d["kind"] in ("start", "respawn"):
+                tr = cfg.lang != "en"
+                _notify(cfg, (f"[{cfg.sid}] {d['name']}: '{d['kind']}' başarılı göründü ama {d['secs'] // 60} dk'da oturum açılmadı "
+                              "(güven diyaloğu/çökme olabilir)." if tr else
+                              f"[{cfg.sid}] {d['name']}: '{d['kind']}' looked ok but no session appeared in {d['secs'] // 60} min."))
+    except Exception as e:
+        diag_log("steward_outcome_check_failed", error=repr(e))
+
+
 def _deliver_job(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project], host: Optional[str] = None,
                  rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
     """`deliver_job`: iş sonucu (ya da onay bekliyor bildirimi) projenin ÇALIŞAN oturumuna, `deliver_answer` ile aynı
@@ -3774,6 +3815,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
         t0 = time.time()
         applied: List[Dict[str, Any]] = []
         dry_applied: List[Dict[str, Any]] = []
+        verify: List[Dict[str, Any]] = []
         started = 0
         error = ""
         try:
@@ -3793,6 +3835,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
             rkw: Dict[str, Any] = {"rt": rt} if world.hosts else {}
             _note_conflicts(ctx, idx, set(projects), t0)
             views = _collect_views(cfg, **rkw)
+            _check_outcomes(cfg, views, paths, t0)        # L5: önceki tick'lerin eylemleri gerçekten sonuç verdi mi
             if sw.load_state(paths).get("act_journal"):
                 _replay_journal(cfg, projects, world, paths, sid)      # önceki tick yarıda kaldı: bekleyen kayıt eylemleri
             with sw.steward_lock(paths):     # state RMW atomik (CLI süreci de aynı dosyaya yazar)
@@ -3878,8 +3921,12 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     diag_log("steward_remember_failed", sid=sid, kind=a.kind, name=a.name, error=repr(e))
                 applied.append({"kind": a.kind, "name": a.name, "reason": a.reason, "ok": bool(res.get("ok")),
                                 "detail": res.get("error") or ""})
+                if a.kind in sw.VERIFY_KINDS and isinstance(res, dict) and res.get("ok") and res.get("started") is not False:
+                    verify.append(sw.outcome_baseline(a.kind, a.name, views, t0))
                 if res.get("host"):
                     applied[-1]["host"] = res["host"]
+            if verify:
+                _register_outcomes(verify, paths)
             if cfg.enabled:
                 try:      # denetim tick'i düşürmesin
                     _audit_upper_main(cfg, views, projects, world, paths, rt)

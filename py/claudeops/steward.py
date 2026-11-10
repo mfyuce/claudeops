@@ -3985,6 +3985,57 @@ def loop_guard(actions: List["Action"], views: List["SessionView"], st: Dict[str
     return out + breaks, st
 
 
+# ── L5 sonuç doğrulama (10 Kas 2026) ───────────────────────────────────────────────────────────────────────────
+# "Gönderildi" = başarı sayılıyordu: start ok ama oturum açılmadı (danisppr 29 Eki), keepwarm 264 dürtme sonucu ölçülmedi.
+# Başarılı dönen eylem kaydedilir; sonraki tick'lerde hedefte değişiklik (açıldı / yeni cevap ya da etkinlik) aranır.
+VERIFY_KINDS = frozenset({"start", "respawn", "directive", "deliver_answer", "nudge", "keepwarm", "idle_nudge"})
+VERIFY_WINDOW_SECONDS = 600.0
+VERIFY_MAX_PENDING = 200
+
+
+_OUTCOME_SUFFIX_RE = re.compile(r"^(?:\d{8})?(?:_\d+)?$")
+
+
+def _outcome_views(name: str, views: List["SessionView"]) -> List["SessionView"]:
+    """Eylem adı proje adı olabilir (oturum `x20261110_1`): tam ad, proje (blueprint) ya da ad + YALNIZ tarih/`_N` soneki
+    (`hc` -> `hc20261110` evet, `hcr20261110` HAYIR)."""
+    return [v for v in views if v.name == name or v.project == name
+            or (name and v.name.startswith(name) and _OUTCOME_SUFFIX_RE.match(v.name[len(name):]))]
+
+
+def outcome_baseline(kind: str, name: str, views: List["SessionView"], now: float) -> Dict[str, Any]:
+    """SAF. Eylem uygulandığı andaki hedef durumu (doğrulama kaydı)."""
+    return {"kind": kind, "name": name, "at": now,
+            "sigs": {v.name: _loop_sig(v.name, views) for v in _outcome_views(name, views)}}
+
+
+def check_outcomes(pending: Dict[str, Any], views: List["SessionView"], now: float
+                   ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """SAF. Dönen: (sonuçlanan kayıtlar [{kind, name, result: changed|none, secs}], hâlâ bekleyenler)."""
+    done: List[Dict[str, Any]] = []
+    rest: Dict[str, Any] = {}
+    for key, rec in sorted(dict(pending or {}).items(), key=lambda kv: float((kv[1] or {}).get("at") or 0)):
+        if not isinstance(rec, dict):
+            continue
+        at = float(rec.get("at") or 0)
+        kind, name = str(rec.get("kind") or ""), str(rec.get("name") or "")
+        vs = [v for v in _outcome_views(name, views) if v.running]
+        if kind in ("start", "respawn"):
+            changed = any(v.started_at >= at - 30 for v in vs) or (kind == "start" and bool(vs) and not rec.get("sigs"))
+        else:
+            sigs = dict(rec.get("sigs") or {})
+            changed = any(v.last_activity > at + 5 or (v.name in sigs and _loop_sig(v.name, views) != sigs[v.name]) for v in vs)
+        if changed:
+            done.append({"kind": kind, "name": name, "result": "changed", "secs": int(now - at)})
+        elif now - at >= VERIFY_WINDOW_SECONDS:
+            done.append({"kind": kind, "name": name, "result": "none", "secs": int(now - at)})
+        else:
+            rest[key] = rec
+    if len(rest) > VERIFY_MAX_PENDING:
+        rest = dict(sorted(rest.items(), key=lambda kv: float(kv[1].get("at") or 0))[-VERIFY_MAX_PENDING:])
+    return done, rest
+
+
 def loop_paused(st: Dict[str, Any], now: float) -> List[Dict[str, Any]]:
     """SAF. Panel/CLI: şu an duraklatılmış (tür, hedef) listesi."""
     out = []
