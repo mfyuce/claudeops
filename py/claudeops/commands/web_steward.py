@@ -6520,11 +6520,7 @@ def http_review_verify(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
     if not rows:
         return {"ok": False, "error": "no findings to verify (state new, or given ids in new|verify_sent|unclear)"}
     if cfg.review_verify_mode == "self":     # TBD#137 a=A: reviewer'ın kendi salt-okunur süreci; proje oturumu uyanmaz
-        res = web_review.self_verify(cfg, project, rows)
-        if res.get("code") != "no_cwd":
-            return res
-        # Yerel klasörü olmayan (uzak host'lu: oiso/iggy/alerting @ulak_31) proje: yerel doğrulayıcı dosyaları göremez, bulgular
-        # 17 güne dek `new` kaldı (10 Kas). Projenin çalışan oturumuna düşülür (aşağıdaki oturum yolu; oturum kapalıysa açılmaz).
+        return web_review.self_verify(cfg, project, rows)
     owner, views, oerr = _owner_project_views(project)
     if oerr is not None:
         return oerr
