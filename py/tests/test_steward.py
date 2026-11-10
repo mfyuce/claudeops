@@ -823,6 +823,64 @@ class OpenQuestionMergeTest(_Tmp):
         self.assertEqual(sw.find_question(q1.id).asked_again, 0)
 
 
+class TopicMergeTest(_Tmp):
+    """L7 (10 Kas): aynı KONU farklı anlatımla yeniden sorulunca (kelime Jaccard'ı düşük) sahip yeniden rahatsız edilmez."""
+
+    V1 = ("Survey İngilizce taslağı (`main.tex` ve `main.pdf`, 22 sayfa) yayına hazır. Sahipte kalan kararlar: (1) Gedik "
+          "ve Bogazici bağlılıkları, (2) T-1 kod kararı, (3) hedef dergi. Ne yapalım?")
+    V2 = ("TODO T5'te sahibin kararı bekleyen dört şey var. Hepsi için `main.pdf` (27 sayfa, tam metin doğrulanmış) hazır. "
+          "(1) Kurum adları: `main.tex`te Gedik ve Bogazici taslak yazıldı. (2) T-1 kod adayı. Onaylıyor musunuz?")
+
+    def test_topic_tokens(self):
+        t = sw.topic_tokens(self.V2)
+        self.assertTrue({"main.pdf", "main.tex", "t5", "t-1", "gedik", "bogazici"} <= t, t)
+        self.assertNotIn("hepsi", t)
+
+    def test_generic_names_alone_do_not_match(self):
+        a = sw.topic_tokens("Canlı yolda Python mu kalsın, Rust gölgede mi çalışsın?")
+        b = sw.topic_tokens("Ön-aggregation katmanını Python ile mi Rust ile mi yazalım?")
+        self.assertEqual(sw.topic_match(a, b), 0.0)
+
+    def test_open_question_rephrased_is_merged_and_keeps_old_text(self):
+        q1, how1 = sw.add_question_ex("vesuviusppr", self.V1, source="vesuviusppr20261107")
+        q2, how2 = sw.add_question_ex("vesuviusppr", self.V2, source="vesuviusppr20261107_1")
+        self.assertEqual((how1, how2, q2.id), ("new", "merged", q1.id))
+        got = sw.find_question(q1.id)
+        self.assertEqual(got.text, self.V2)                       # en yeni sürüm görünür
+        self.assertEqual(got.prev_texts, [self.V1])               # eskisi kaybolmaz
+        self.assertEqual(got.source, "vesuviusppr20261107_1")     # cevap yeni soranın oturumuna
+        self.assertEqual(len(sw.open_questions()), 1)
+        html_text = sw.question_page_html(got)
+        self.assertIn("Aynı konuda önceki sürümler (1)", html_text)
+
+    def test_hold_answer_suppresses_same_topic(self):
+        q1 = sw.add_question("vesuviusppr", self.V1)
+        sw.answer_question(q1.id, "Sahip main.pdf'i okuyacak; kararlar okuduktan sonra gelecek, bekle.")
+        q2, how = sw.add_question_ex("vesuviusppr", self.V2)
+        self.assertEqual((q2.id, how), (q1.id, "reasked"))
+        self.assertEqual(sw.find_question(q1.id).repeats, 1)
+
+    def test_non_hold_answer_lets_new_decision_open(self):
+        q1 = sw.add_question("vesuviusppr", self.V1)
+        sw.answer_question(q1.id, "A: tam survey taslağına geç.")     # karar verildi: aynı konuda YENİ karar sorulabilir
+        q2, how = sw.add_question_ex("vesuviusppr", self.V2)
+        self.assertEqual(how, "new")
+        self.assertNotEqual(q2.id, q1.id)
+
+    def test_old_open_question_outside_window_not_merged(self):
+        q1 = sw.add_question("vesuviusppr", self.V1)
+        qs = sw.load_questions()
+        qs[0].created_at -= sw.TOPIC_OPEN_WINDOW_SECONDS + 60
+        sw.save_questions(qs)
+        q2, how = sw.add_question_ex("vesuviusppr", self.V2)
+        self.assertEqual(how, "new")
+
+    def test_other_project_not_merged(self):
+        a = sw.add_question("vesuviusppr", self.V1)
+        b = sw.add_question("animallangppr", self.V2)
+        self.assertNotEqual(a.id, b.id)
+
+
 class SalientReaskTest(unittest.TestCase):
     def _a(self, text, ans="evet"):
         return sw.Question(id="q1", project="p1", text=text, created_at=1.0, status="answered", answer=ans, answered_at=100.0)

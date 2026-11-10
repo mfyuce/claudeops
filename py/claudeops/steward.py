@@ -214,6 +214,7 @@ class Question:
     routine: bool = False           # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır; ROUTINE_ESCALATE_SECONDS dolarsa sahibine düşer
     repeats: int = 0                # oturum aynı soruyu yeniden sordu: cevap "zaten cevapladım" notuyla yeniden iletildi
     asked_again: int = 0            # AÇIK iken aynı proje/benzer metinle yeniden soruldu: yeni soru açılmadı, bu sayaç arttı
+    prev_texts: List[str] = field(default_factory=list)   # L7: KONU eşleşmesiyle birleşen soruların eski metinleri (yeniden eskiye, en çok TOPIC_PREV_KEEP); `text` = en yeni sürüm
 
 
 @dataclass
@@ -1003,6 +1004,55 @@ def _salient(text: str) -> frozenset:
     return frozenset(m.group(0).lower() for m in _SALIENT_RE.finditer(text))
 
 
+# L7 (10 Kas): KONU jetonları. Uzun, her seferinde yeniden yazılan sorularda kelime Jaccard'ı düşük kalır (vesuviusppr T5
+# kararı 3 açık soru, oiso Q-2/Q-3 engeli 6 kez, anomaly STR-19 F2 20 dk'da 4 kez); ortak dosya adları ve iş kodları kalır.
+_TOPIC_BT_RE = re.compile(r"`([^`\n]{2,80})`")
+_TOPIC_CODE_RE = re.compile(r"(?<![\w#])(?:[A-Z]{1,4}-?\d+[a-z]?|#\d+)(?![\w])")
+_TOPIC_CAP_RE = re.compile(r"(?<=[a-zçğıöşü0-9,;:)] )([A-ZÇĞİÖŞÜ][a-zçğıöşü]{2,}|[A-Z][A-Za-z]*[A-Z][A-Za-z]*)")
+_TOPIC_CAP_STOP = frozenset({"Seçenekler", "Önerim", "Gerekçe", "Karar", "Neden", "Takıldım", "Sahip", "Sahibin",
+                             "Türkçe", "İngilizce", "Options", "Reason", "Decision", "Owner", "Yes", "No"})
+TOPIC_MIN_OVERLAP = 0.5            # ortak jeton / küçük kümenin boyu
+TOPIC_PREV_KEEP = 3
+TOPIC_OPEN_WINDOW_SECONDS = 72 * 3600    # açık soruya konu birleştirmesi (metin birleştirmesinin 24 sa'inden uzun: konu kalıcıdır)
+TOPIC_HOLD_WINDOW_SECONDS = 72 * 3600    # "bekle/sorma" cevabı bu kadar bağlayıcı
+# Sahibin "bekle / sonra / yeniden sorma" cevabı: aynı konu yeniden sorulursa bu cevap yeniden iletilir (soru açılmaz)
+HOLD_ANSWER_RE = re.compile(r"\bbekle|\bbeklet|yeniden sorma|tekrar sorma|\bsorma\b|dürtme|okuduktan sonra|ben söyle|"
+                            r"haber veri|\bakşam|\bwait\b|\bhold\b|\blater\b|don'?t ask|do not ask", re.IGNORECASE)
+
+
+def topic_tokens(text: str) -> frozenset:
+    """Sorunun KONUSU: backtick'li adlar (dosya yolunun son parçası), iş/madde kodları (T5, Q-2, STR-19, #4) ve cümle
+    ortasındaki özel adlar (Chrome, Stripe, Gedik). Küçük harfe indirilir."""
+    out = set()
+    for m in _TOPIC_BT_RE.findall(text):
+        parts = m.strip().split()
+        if parts:
+            out.add(parts[0].rstrip(".,;:").rsplit("/", 1)[-1].lower())
+    rest = _TOPIC_BT_RE.sub(" ", text)
+    out.update(m.lower() for m in _TOPIC_CODE_RE.findall(rest))
+    out.update(m.lower() for m in _TOPIC_CAP_RE.findall(rest) if m not in _TOPIC_CAP_STOP)
+    out.discard("")
+    return frozenset(out)
+
+
+def _strong_topic(tok: str) -> bool:
+    return any(c.isdigit() for c in tok) or any(c in tok for c in "._-")
+
+
+def topic_match(a: frozenset, b: frozenset) -> float:
+    """İki konu kümesinin eşleşme skoru (0 = eşleşmez). Ortak jetonlarda en az 2 GÜÇLÜ (kod/dosya adı) ya da 1 güçlü +
+    toplam 4 ortak olmalı (yalnız "python, rust" gibi genel adlar yetmez; ölçüm: 1149 soruda ~%85 kesinlik); skor =
+    ortak / küçük kümenin boyu, eşik `TOPIC_MIN_OVERLAP`."""
+    common = a & b
+    if not common:
+        return 0.0
+    strong = sum(1 for t in common if _strong_topic(t))
+    if not (strong >= 2 or (strong >= 1 and len(common) >= 4)):
+        return 0.0
+    score = len(common) / max(1, min(len(a), len(b)))
+    return score if score >= TOPIC_MIN_OVERLAP else 0.0
+
+
 SIMILAR_MIN_SCORE = 0.25
 
 
@@ -1091,6 +1141,45 @@ def find_open_similar(questions: List["Question"], project: str, text: str,
     return best
 
 
+def find_open_topic(questions: List["Question"], project: str, text: str,
+                    now: Optional[float] = None) -> Optional["Question"]:
+    """L7: aynı projede AÇIK, `TOPIC_OPEN_WINDOW_SECONDS` içinde açılmış ve KONUSU `text`inkiyle eşleşen soru (en iyi skor)."""
+    now = _now() if now is None else now
+    mine = topic_tokens(text)
+    if not mine:
+        return None
+    best, best_sc = None, 0.0
+    for q in questions:
+        if q.status != "open" or q.project != project or now - q.created_at > TOPIC_OPEN_WINDOW_SECONDS:
+            continue
+        sc = topic_match(mine, topic_tokens(q.text))
+        if sc > best_sc:
+            best, best_sc = q, sc
+    return best
+
+
+def find_answered_hold(questions: List["Question"], project: str, text: str,
+                       now: Optional[float] = None) -> Optional["Question"]:
+    """L7: aynı projede `TOPIC_HOLD_WINDOW_SECONDS` içinde "bekle / sonra / yeniden sorma" (`HOLD_ANSWER_RE`) diye
+    cevaplanmış ve KONUSU eşleşen soru: sahip zaten bekletti, aynı konu yeniden sorulmasın (cevap yeniden iletilir)."""
+    now = _now() if now is None else now
+    mine = topic_tokens(text)
+    if not mine:
+        return None
+    best, best_sc = None, 0.0
+    for q in questions:
+        if q.status != "answered" or q.project != project or not q.answered_at:
+            continue
+        if now - q.answered_at > TOPIC_HOLD_WINDOW_SECONDS or not HOLD_ANSWER_RE.search(q.answer or ""):
+            continue
+        if "anlamad" in q.answer.lower() or "understand" in q.answer.lower():
+            continue
+        sc = topic_match(mine, topic_tokens(q.text))
+        if sc > best_sc:
+            best, best_sc = q, sc
+    return best
+
+
 def recent_answers(project: str, exclude_id: str = "", limit: int = 5,
                    questions: Optional[List["Question"]] = None, paths: Any = None) -> List["Question"]:
     """Projenin en son `limit` cevaplanmış sorusu (eskiden yeniye); `exclude_id` hariç."""
@@ -1127,6 +1216,8 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
         # notuyla yeniden ilet (üst sınırdan sonra gerçekten yeni soru say; sonsuz döngü olmasın).
         is_job = text.startswith(JOB_REQUEST_PREFIX)    # farklı dosyalı iş istekleri Jaccard'da birbirine benzer: kopya/birleştirme sayılmaz
         dup = None if is_job else find_answered_duplicate(questions, project, text)
+        if dup is None and not is_job:
+            dup = find_answered_hold(questions, project, text)    # L7: aynı konuya "bekle/sorma" cevabı verilmiş
         if dup is not None and dup.routine and not routine:
             dup = None      # beynin RUTİN diye cevapladığı soru bu kez sahibe soruluyor: eski cevapla bastırma, soru sahibe düşsün
         if dup is not None and dup.repeats < REASK_MAX_REPEATS:
@@ -1145,6 +1236,15 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
                 return q, "same"
         # Benzer (aynı olmayan) AÇIK soru: yenisi açılmaz, sayaç artar (devirle gelen yeni oturum öncekinin sorusunu bilmez).
         sim = None if is_job else find_open_similar(questions, project, text)
+        if sim is None and not is_job:
+            sim = find_open_topic(questions, project, text)
+            if sim is not None:
+                # L7: AYNI KONU, farklı anlatım: en yeni sürüm görünsün (oturum ilerledi), eskisi kaybolmasın (yanlış
+                # birleştirmede sahip iki içeriği de görür). Cevap yeni soranın oturumuna gitsin.
+                sim.prev_texts = ([sim.text] + list(sim.prev_texts or []))[:TOPIC_PREV_KEEP]
+                sim.text = text
+                if source:
+                    sim.source = source
         if sim is not None:
             sim.asked_again += 1
             promoted = sim.routine and not routine
@@ -1286,11 +1386,13 @@ _QPAGE_TXT = {
     "tr": {"title": "Değnekçi sorusu", "project": "Proje", "asked": "Soruldu", "free": "ya da yaz…", "send": "Gönder",
            "done": "Cevap kaydedildi", "deliver": "Motor bir sonraki turda ilgili oturuma iletir.",
            "already": "Bu soru zaten cevaplanmış", "missing": "Böyle bir soru yok", "denied": "Bağlantı geçersiz",
-           "empty": "Boş cevap gönderilemez", "by": "kaynak", "opts_hint": "Birine dokun ya da aşağıya yaz."},
+           "empty": "Boş cevap gönderilemez", "by": "kaynak", "opts_hint": "Birine dokun ya da aşağıya yaz.",
+           "prev": "Aynı konuda önceki sürümler"},
     "en": {"title": "Steward question", "project": "Project", "asked": "Asked", "free": "or type…", "send": "Send",
            "done": "Answer saved", "deliver": "The engine delivers it to the session on its next tick.",
            "already": "This question was already answered", "missing": "No such question", "denied": "Invalid link",
-           "empty": "An empty answer cannot be sent", "by": "source", "opts_hint": "Tap one or type below."},
+           "empty": "An empty answer cannot be sent", "by": "source", "opts_hint": "Tap one or type below.",
+           "prev": "Earlier versions on the same topic"},
 }
 
 _QPAGE_CSS = (
@@ -1321,6 +1423,9 @@ def question_page_html(q: Optional[Question], lang: str = "tr", state: str = "as
         body.append(f"<p class='err'>{T['missing'] if state != 'denied' else T['denied']}</p>")
     else:
         body.append(f"<p class='q'>{esc(q.text)}</p>")
+        if q.prev_texts:
+            body.append(f"<details><summary class='meta'>{T['prev']} ({len(q.prev_texts)})</summary>"
+                        + "".join(f"<p class='meta'>{esc(t)}</p>" for t in q.prev_texts) + "</details>")
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(q.created_at)) if q.created_at else ""
         body.append(f"<p class='meta'>{T['project']}: <b>{esc(q.project or 'degnekci')}</b> · {T['asked']}: {when}"
                     + (f" · {T['by']}: {esc(q.source)}" if q.source else "") + "</p>")
