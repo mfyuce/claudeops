@@ -3270,6 +3270,15 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
                     if tr else f"{name}: stuck on an API error; {sw.API_NUDGE_MAX} nudges did not help. Giving up; over to you.")
         sw.log_event(k, paths=paths, name=name, reason=action.reason)
         return {"ok": True, "notified": _notify(cfg, text)}
+    if k == "loop_break":             # L4: yalnız kayıt + tek bildirim (eylem LOOP_PAUSE boyunca uygulanmaz)
+        pl = action.payload
+        sw.log_event("loop_break", paths=paths, name=name, kind=pl.get("kind"), n=pl.get("n"), reason=pl.get("last_reason"))
+        tr = cfg.lang != "en"
+        text = (f"[{cfg.sid}] döngü durduruldu: {name} için '{pl.get('kind')}' {pl.get('n')} kez yapıldı, oturumda değişiklik yok. "
+                f"{pl.get('pause_h')} sa uygulanmayacak. Son gerekçe: {pl.get('last_reason')}"
+                if tr else f"[{cfg.sid}] loop stopped: '{pl.get('kind')}' on {name} ran {pl.get('n')} times with no change. "
+                f"Paused {pl.get('pause_h')} h. Last reason: {pl.get('last_reason')}")
+        return {"ok": True, "notified": _notify(cfg, text[:600])}
     if k == "ho_halted":              # yalnız kayıt: devir sonrası proje paused/done, yeniden açma/yönerge YOK (oturum açık kalır)
         sw.log_event("ho_halted", paths=paths, name=name, reason=action.reason,
                      phase=str(action.payload.get("phase") or ""), step=str(action.payload.get("step") or ""))
@@ -3841,6 +3850,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 else:
                     actions = actions + cl_actions  # Claude Code oturumu boşta + sıradaki iş: tek satır `devam:`
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
+                actions, new_state = sw.loop_guard(actions, views, new_state, t0)     # L4: hedefte değişiklik yokken tekrar eden eylem durur
                 journal = _journal_entries(actions, t0)
                 if journal:
                     new_state["act_journal"] = list(new_state.get("act_journal") or []) + journal   # 'bekliyor': state ile aynı yazım
@@ -4432,6 +4442,9 @@ def summary(running_names: Optional[set] = None, sid: str = "default") -> Dict[s
     api_err = sw.api_error_brief(state)
     if api_err:     # yalnız hata varken (alan yokken eski panel/altın testler aynı)
         value["api_errors"] = api_err
+    loops = sw.loop_paused(state, time.time())
+    if loops:
+        value["loop_paused"] = loops
     cache.update(until=now + _SUMMARY_TTL, value=value)
     return value
 

@@ -218,7 +218,7 @@ class RemoteFlowTest(NoRealReviewMixin, _Engine):
                 res = wr.review_tick(self.cfg(), now=2000.0 + i)
             self.assertEqual(self.runs, [])
             self.assertTrue(any(a["kind"] == "copy_not_ready" for a in res["actions"]))
-            self.assertEqual(sum(1 for e in sw.tail_log(50, "rev") if e["event"] == "review_copy_not_ready"), 2)   # manual_run 1 + tick 1 (yineleme susar)
+            self.assertEqual(sum(1 for e in sw.tail_log(50, "rev") if e["event"] == "review_copy_not_ready"), 1)   # manual_run ile tick AYNI içerik: L4 log tekilleştirmesi tek satır yazar
 
     def test_off_answer_stops_asking_and_remote_is_recorded_only(self):
         wr.ask_remote_choice(self.cfg(), 1000.0)

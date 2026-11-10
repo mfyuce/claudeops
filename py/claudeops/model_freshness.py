@@ -134,8 +134,8 @@ def _loop() -> None:
         try:
             if _is_due(_read_state()):
                 _run_check_once()
-        except Exception:
-            pass  # web_hosts._poller_loop ile AYNI disiplin — tek kötü tur daemon'ı öldürmesin
+        except Exception as e:      # tek kötü tur daemon'ı öldürmesin, ama SESSİZ de kalmasın (L4: 9-10 Kas 2 gün tazelenmedi)
+            diag_log("model_check_crashed", error=repr(e))
         time.sleep(_WAKE_INTERVAL_SECONDS)
 
 

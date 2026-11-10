@@ -1458,10 +1458,49 @@ def _log_guard(paths: Any = None):
         cm.__exit__(None, None, None)
 
 
+# L4 (10 Kas 2026): reviewer log'unun %89'u (40K satır) her tick yazılan AYNI içerikli iki olaydı. Aynı (log, olay, içerik)
+# LOG_DEDUP_SECONDS içinde yeniden gelirse yazılmaz, sayılır; pencere dolunca yazılan satır `repeated: n` taşır (bilgi kaybı yok).
+LOG_DEDUP_SECONDS = 900.0
+LOG_DEDUP_EXEMPT = frozenset({"tick", "ticks"})
+_LOG_SEEN: Dict[Tuple[str, str, str], List[Any]] = {}     # (log yolu, olay, konu) -> [içerik özeti, son yazım, bastırılan]
+
+
+def _log_dedup(log: str, event: str, data: Dict[str, Any], now: float) -> Optional[Dict[str, int]]:
+    """None = yazma (aynı konunun ARDIŞIK aynı içeriği, pencere içinde); dict = yaz, eklenecek sayaç alanları
+    (`repeated`: aynı içerik önceki pencerede kaç kez bastırıldı; `repeated_prev`: içerik değişti, eskisi kaç kez bastırılmıştı).
+    Konu = `name` ya da `project` alanı: farklı projelerin satırları birbirini bastırmaz; arada başka içerik gelirse sıfırlanır."""
+    if event in LOG_DEDUP_EXEMPT or event.endswith("denied"):     # ret kayıtları denetim izidir: her biri yazılır
+        return {}
+    try:
+        h = hashlib.sha1(json.dumps(data, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()[:16]
+    except Exception:
+        return {}
+    key = (log, event, str(data.get("name") or data.get("project") or ""))
+    rec = _LOG_SEEN.get(key)
+    extra: Dict[str, int] = {}
+    if rec is not None:
+        if rec[0] == h and now - rec[1] < LOG_DEDUP_SECONDS:
+            rec[2] += 1
+            return None
+        if rec[2]:
+            extra["repeated" if rec[0] == h else "repeated_prev"] = int(rec[2])
+    _LOG_SEEN[key] = [h, now, 0]
+    if len(_LOG_SEEN) > 4000:      # bellek sınırı: pencereyi geçmiş kayıtlar düşer
+        for k in [k for k, v in _LOG_SEEN.items() if now - v[1] >= LOG_DEDUP_SECONDS]:
+            _LOG_SEEN.pop(k, None)
+    return extra
+
+
 def log_event(event: str, *, paths: Any = None, **data: Any) -> None:
-    """Append-only JSONL — `diaglog.diag_log` ile aynı best-effort disiplin."""
+    """Append-only JSONL — `diaglog.diag_log` ile aynı best-effort disiplin. Aynı içerik 15 dk içinde tekrar yazılmaz
+    (`_log_dedup`)."""
     try:
         pp = _pp(paths)
+        extra = _log_dedup(pp.log, event, data, time.time())
+        if extra is None:
+            return
+        if extra:
+            data = dict(data, **extra)
         os.makedirs(os.path.dirname(pp.log), exist_ok=True)
         entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": event, **data}
         with _LOG_LOCK, _log_guard(paths), open(pp.log, "a", encoding="utf-8") as f:
@@ -3887,6 +3926,73 @@ def api_error_kind(text: str) -> str:
         return ""
     body = m.group("body")[:300]
     return "retry" if (_API_RETRY_HEAD_RE.search(body) or _API_RETRY_WORD_RE.search(body)) else "fatal"
+
+
+# ── L4 döngü kesici (10 Kas 2026) ──────────────────────────────────────────────────────────────────────────────
+# Olgu: vc 4 günde 582 açılış denemesi, danisppr 158 aynı dürtme, iletilemeyen `blocked` maddesi ~80 tur. Ortak biçim: aynı
+# eylem aynı hedefe yapılıyor, hedefte HİÇBİR ŞEY değişmiyor (son cevap metni / çalışıyor mu aynı). Genel kural: imza
+# değişmeden LOOP_MAX kez tekrarlanan (tür, hedef) LOOP_PAUSE_SECONDS boyunca uygulanmaz; tek `loop_break` eylemi bildirir.
+LOOP_MAX = 8
+LOOP_PAUSE_SECONDS = 6 * 3600.0
+LOOP_FORGET_SECONDS = 24 * 3600.0
+LOOP_KINDS = frozenset(OBSERVE_SKIPPED) | {"directive", "restart"}
+
+
+def _loop_sig(name: str, views: List["SessionView"]) -> str:
+    """Hedefin ilerleme imzası: çalışıyor mu + son asistan metninin özeti (etkinlik zamanı BİLEREK yok: aynı "yapacak iş
+    yok" cevabını her seferinde yeniden yazan oturum ilerliyor sayılmaz)."""
+    v = next((x for x in views if x.name == name), None)
+    if v is None or not v.running:
+        return "absent"
+    return "run:" + hashlib.sha1((v.last_assistant or "").encode("utf-8", "replace")).hexdigest()[:12]
+
+
+def loop_guard(actions: List["Action"], views: List["SessionView"], st: Dict[str, Any], now: float
+               ) -> Tuple[List["Action"], Dict[str, Any]]:
+    """SAF. `actions`tan döngüye girmiş olanları ayıklar; dönen: (kalan eylemler + gerekirse `loop_break`, yeni durum).
+    Durum `st["loop_guard"]`: {"tür|hedef": {n, sig, first, until}}."""
+    guard: Dict[str, Any] = {k: dict(v) for k, v in dict(st.get("loop_guard") or {}).items() if isinstance(v, dict)}
+    out: List[Action] = []
+    breaks: List[Action] = []
+    for a in actions:
+        if a.kind not in LOOP_KINDS or not a.name:
+            out.append(a)
+            continue
+        key = f"{a.kind}|{a.name}"
+        rec = guard.get(key) or {}
+        if float(rec.get("until") or 0) > now:
+            continue                                        # duraklatıldı: sessizce atla (bildirim bir kez gitti)
+        sig = _loop_sig(a.name, views)
+        if rec.get("sig") == sig and now - float(rec.get("first") or now) < LOOP_FORGET_SECONDS:
+            rec["n"] = int(rec.get("n") or 0) + 1
+        else:
+            rec = {"n": 1, "sig": sig, "first": now}
+        if rec["n"] > LOOP_MAX:
+            rec.update(until=now + LOOP_PAUSE_SECONDS, n=0, first=now)
+            guard[key] = rec
+            breaks.append(Action("loop_break", a.name, f"{a.kind}: {LOOP_MAX} kez hedefte değişiklik olmadan tekrarlandı",
+                                 {"kind": a.kind, "n": LOOP_MAX, "pause_h": int(LOOP_PAUSE_SECONDS // 3600), "last_reason": a.reason[:200]}))
+            continue
+        guard[key] = rec
+        out.append(a)
+    guard = {k: v for k, v in guard.items()
+             if float(v.get("until") or 0) > now or now - float(v.get("first") or 0) < LOOP_FORGET_SECONDS}
+    st = dict(st)
+    if guard:
+        st["loop_guard"] = guard
+    else:
+        st.pop("loop_guard", None)
+    return out + breaks, st
+
+
+def loop_paused(st: Dict[str, Any], now: float) -> List[Dict[str, Any]]:
+    """SAF. Panel/CLI: şu an duraklatılmış (tür, hedef) listesi."""
+    out = []
+    for key, r in sorted(dict(st.get("loop_guard") or {}).items()):
+        if isinstance(r, dict) and float(r.get("until") or 0) > now:
+            kind, _, name = key.partition("|")
+            out.append({"kind": kind, "name": name, "until": float(r["until"])})
+    return out
 
 
 def api_error_brief(st: Dict[str, Any]) -> List[Dict[str, Any]]:
