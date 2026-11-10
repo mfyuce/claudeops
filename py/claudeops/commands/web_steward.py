@@ -136,7 +136,95 @@ def _ownership_index(fresh: bool = False) -> Dict[str, Any]:
 def _world(sid: str = "default", cfg: Optional[sw.Config] = None, starts_left: Optional[int] = None,
            index: Optional[Dict[str, Any]] = None) -> sw.World:
     cfg = cfg or steward_config(sid)
-    return sw.world_for(sid, index if index is not None else _ownership_index(), cfg.brain_name, starts_left)
+    return sw.world_for(sid, index if index is not None else _ownership_index(), cfg.brain_name, starts_left,
+                        owned=_owned_of(sid))
+
+
+def _owned_of(sid: str) -> Dict[str, str]:
+    """L2: kimliğin izlediği oturumlar (`state.owned`: proje → tam oturum adı). Okunamazsa boş (eski davranış)."""
+    try:
+        return dict(sw.load_state(sid).get("owned") or {})
+    except Exception as e:
+        diag_log("steward_owned_read_failed", sid=sid, error=repr(e))
+        return {}
+
+
+OWNED_SEED_REQUEST = "owned_seed.request"   # kimlik dizininde varsa sıradaki tick log KANITIYLA tohumlar (L2 canlı geçişi, tek sefer)
+OWNED_SEED_LOG_LINES = 20000     # L2 geçiş tohumlamasında taranan son log satırı (kanıt: değnekçinin start/directive olayları)
+
+
+def _maintain_owned(views: List[sw.SessionView], projects: Dict[str, sw.Project], world: sw.World, paths: Any,
+                    sid: str, now: float) -> sw.World:
+    """Kaydı olmayan projelere sahiplik kaydı (`sw.update_owned`: ilk görüşte tek oturum benimsenir). Kimlik dizininde
+    `OWNED_SEED_REQUEST` varsa (ve daha önce tohumlanmadıysa) bu tur yerine log KANITIYLA tohumlar (sahip 10 Kas). Güncel kayıtla `world` döner. Hata olursa `world` olduğu gibi (eski davranış)."""
+    try:
+        with sw.steward_lock(paths):
+            st = sw.load_state(paths)
+            req = os.path.join(os.path.dirname(sw._pp(paths).log), OWNED_SEED_REQUEST)
+            seeding = not st.get("owned_seeded") and os.path.exists(req)
+            events = sw.tail_log(OWNED_SEED_LOG_LINES, paths) if seeding else []
+            new, changes = sw.update_owned(dict(st.get("owned") or {}), views, world, projects, now, seeding=seeding,
+                                           evidence=lambda n, p, t: sw.owned_evidence(events, n, p, t))
+            if changes or seeding:
+                st["owned"] = new
+                if seeding:
+                    st["owned_seeded"] = True
+                sw.save_state(st, paths)
+        if seeding:
+            with contextlib.suppress(OSError):
+                os.unlink(req)
+        for c in changes:
+            sw.log_event("owned", paths=paths, **c)
+        return dataclasses.replace(world, owned=new)
+    except Exception as e:
+        diag_log("steward_owned_maintain_failed", sid=sid, error=repr(e))
+        return world
+
+
+def _record_owned(sid: str, project: str, name: str, how: str, host: str = "") -> None:
+    """L2: değnekçinin izlediği oturumu yaz (start / ilk benimseme / uzak yeniden açılışın yeni adı). Değişmediyse yazmaz."""
+    if not project or not name:
+        return
+    try:
+        with sw.steward_lock(sid):
+            state = sw.load_state(sid)
+            owned = dict(state.get("owned") or {})
+            if owned.get(project) == name:
+                return
+            prev = owned.get(project)
+            owned[project] = name
+            state["owned"] = owned
+            sw.save_state(state, sid)
+        sw.log_event("owned", paths=sid, project=project, name=name, how=how, prev=prev or "",
+                     **({"host": host} if host else {}))
+    except Exception as e:
+        diag_log("steward_owned_write_failed", sid=sid, project=project, error=repr(e))
+
+
+def _owned_project(name: str, sid: str) -> str:
+    """Ad (proje ya da oturum adı) → bu kimliğin proje adı, sahiplik kaydına BAKMADAN (manual oturumlar dahil)."""
+    try:
+        w = dataclasses.replace(_world(sid), owned={})
+        p = _project_for_session(name, sw.load_projects(sid), w)
+        return p.name if p is not None else ""
+    except Exception:
+        return ""
+
+
+def _manual_sessions(name: str, sid: str) -> List[str]:
+    """L2: `name`in projesinin sahibin elle açtığı (izlenmeyen) çalışan yerel oturumları."""
+    key = _owned_project(name, sid)
+    if not key:
+        return []
+    world = _world(sid)
+    if key not in world.owned:
+        return []
+    out = []
+    for x in _scan():
+        bp = (inst_mod.get_instance(x.name) or {}).get("blueprint")
+        if world.owned_key(x.name, bp) == key and world.session_class(x.name, bp) == "manual":
+            out.append(x.name)
+    return out
 
 
 # ── uzak host'lar (TODO 2026-10-20 (14); A1 okuma + gözlem, A3 yıkıcı olmayan eylemler) ──────────────────────
@@ -1451,7 +1539,7 @@ def _resolved_local_name(name: str, sid: str = "default") -> str:
 
 
 # Kimliğin dokunamayacağı oturum sınıfları (`World.session_class`): başka kimliğin projesi, çakışmalı proje, servis, beyinler.
-_FOREIGN = ("other", "conflict", "service", "brain_other", "brain_own")
+_FOREIGN = ("other", "conflict", "service", "brain_other", "brain_own", "manual")   # manual: L2, sahibin elle açtığı
 
 
 def _project_for_session(name: str, projects: Dict[str, sw.Project],
@@ -1486,7 +1574,10 @@ def _project_for_session(name: str, projects: Dict[str, sw.Project],
             p = projects.get(m.group(1)) if m else None
     if p is None or world is None:
         return p
-    return None if world.session_class(name, (rec or {}).get("blueprint")) in _FOREIGN else p
+    cls = world.session_class(name, (rec or {}).get("blueprint"))
+    if cls == "manual" and name == p.name:
+        return p    # L2: PROJE ADININ kendisi (direktif/start hedefi) oturum değil, proje tanımlayıcısı: manual süzgeci yok
+    return None if cls in _FOREIGN else p
 
 
 def _remote_rows(host: str, rt: Optional[_RemoteTick] = None) -> Optional[List[Dict[str, Any]]]:
@@ -1553,11 +1644,21 @@ def _remote_session(host: str, name: str, rt: Optional[_RemoteTick] = None, worl
     rows = _remote_rows(host, rt)
     if rows is None:
         return False, None, None
-    world = world or _world(sid)
+    # L2: kayıt tick içinde değişebilir (az önce başlatılan oturumun adı yazıldı): tick'in `world`ü bayat kalmasın
+    world = dataclasses.replace(world, owned=_owned_of(sid)) if world is not None and world.owned else (world or _world(sid))
     key = _remote_key(name, host, world)
     if not key:
         return True, next((r for r in rows if r.get("name") == name and r.get("running")), None), None
     mine = _remote_project_rows(rows, host, key, world)
+    manual = [str(r.get("name") or "") for r in mine
+              if world.session_class(str(r.get("name") or ""), r.get("blueprint") if r.get("instance") else None) == "manual"]
+    mine = [r for r in mine if str(r.get("name") or "") not in manual]
+    if manual and not mine:     # L2: sahibin elle açtığı uzak oturum; değnekçi dokunmaz, yanına da açmaz
+        _log_remote_denied(sid, actor, kind, name, host, "manual_session_running", event="manual_hold",
+                           project=key, sessions=manual)
+        return True, None, {"ok": False, "code": "manual_session_running", "host": host, "sessions": manual,
+                            "error": f"project {key!r} runs in the owner's own session on {host} ({', '.join(manual)})",
+                            "project": key}
     names = [str(r.get("name") or "") for r in mine]
     if len(mine) >= 2:
         _log_remote_denied(sid, actor, kind, name, host, "ambiguous_sessions", event="remote_ambiguous",
@@ -1582,8 +1683,9 @@ def _remote_wait_ready(host: str, name: str, timeout: float = READY_TIMEOUT_SECO
     """Uzak başlatmadan sonra hazır bekleme. AĞ ÇAĞRISI YAPMAZ: poller önbelleğine `REMOTE_READY_POLL_SECONDS`te bir
     bakar; satır çalışıyor ve `busy is False` (bilinmiyor = hazır değil) olunca True, en çok `timeout`. Yerel
     `_wait_ready` gibi garanti değil: claude meşgulken gelen girdiyi kuyruğa alır, en kötü durumda yönerge gecikir.
-    `name` proje adıdır: uzak taraf yeni oturuma tarihli ad verir, satır `_remote_session` ile projeden çözülür."""
-    world = _world()
+    `name` proje adıdır: uzak taraf yeni oturuma tarihli ad verir, satır `_remote_session` ile projeden çözülür.
+    Sahiplik kaydı (L2) burada YOK sayılır: yeni oturumun adı henüz kayıtta değil (çağıran yazar)."""
+    world = dataclasses.replace(_world(), owned={})
     unknown = 0
     for i in range(max(1, int(timeout / REMOTE_READY_POLL_SECONDS))):
         if i:
@@ -1614,6 +1716,9 @@ def _ensure_running_remote(name: str, host: str, model: str, effort: str, fresh:
     if err is not None:
         return err
     if r is not None:
+        key = _remote_key(name, host, world)
+        if key and key not in world.owned:
+            _record_owned(sid, key, str(r.get("name") or ""), "adopt", host)     # L2: ilk açılışta benimseme
         return {"ok": True, "started": False, "cli": r.get("cli") or DEFAULT_CLI, "host": host, "name": r.get("name")}
     start_name = _remote_key(name, host, world) or name
     if rt is not None and (host, start_name) in rt.started:
@@ -1633,9 +1738,10 @@ def _ensure_running_remote(name: str, host: str, model: str, effort: str, fresh:
     ready = _remote_wait_ready(host, start_name)
     if rt is not None:
         rt.refresh(host)        # aynı tick'in sonraki adımları yeni satırı görsün (A4 deseni)
-    _f, r, _err = _remote_session(host, start_name, world=world)
+    _f, r, _err = _remote_session(host, start_name, world=dataclasses.replace(world, owned={}))
     out = {"ok": True, "started": True, "ready": ready, "cli": (r or {}).get("cli") or DEFAULT_CLI, "host": host,
            "name": (r or {}).get("name") or start_name}
+    _record_owned(sid, start_name, str(out["name"]), "start", host)     # L2: uzak taraf yeni oturuma tarihli ad verir
     if warn:
         out["warning"] = warn
     return out
@@ -1790,7 +1896,16 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     # exact: çağıran TAM oturum adını verir (respawn: az önce durdurulan oturumun adı); proje çözümü yapılmaz.
     live = [_running(name)] if exact and _running(name) is not None else ([] if exact else _live_sessions(name, sid))
     if live:
+        if not exact and len(live) == 1:
+            proj = _owned_project(name, sid)
+            if proj and proj not in _owned_of(sid):
+                _record_owned(sid, proj, live[0].name, "adopt")       # L2: ilk açılışta çalışan tek oturum benimsenir
         return {"ok": True, "started": False, "cli": live[0].cli}
+    manual = [] if exact else _manual_sessions(name, sid)
+    if manual:      # L2: sahip projede elle açtığı oturumla çalışıyor; yanına oturum AÇILMAZ, ona da dokunulmaz
+        sw.log_event("manual_hold", paths=sw.paths_for(sid), name=name, sessions=manual)
+        return {"ok": False, "code": "manual_session_running", "sessions": manual,
+                "error": f"{name!r}: the owner's own session is running ({', '.join(manual)}); steward does not touch it"}
     blocked = _model_endpoint_mismatch(name) or _api_blocked(name)
     if blocked is not None:
         sw.log_event("api_blocked", paths=sw.paths_for(sid), name=name)
@@ -1815,6 +1930,7 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     if not res.get("ok"):
         _start_backoff_note(name, False)
         return dict(res, closed_in_models=True) if closed else res
+    _record_owned(sid, _owned_project(name, sid) or name, name, "start")      # L2: değnekçinin açtığı oturum (görünür olmadan önce)
     if big:          # D2: yalnız GERÇEK başlatmada yaz (eskiden her denemede: vc 1-2 Kas 582 satır)
         sw.log_event("start_fresh_big_context", paths=sw.paths_for(sid), name=name, tokens=big)
     if not _start_appeared(name, sid):
@@ -3835,6 +3951,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
             rkw: Dict[str, Any] = {"rt": rt} if world.hosts else {}
             _note_conflicts(ctx, idx, set(projects), t0)
             views = _collect_views(cfg, **rkw)
+            world = _maintain_owned(views, projects, world, paths, sid, t0)     # L2: izlenen oturum kaydı (+ tek seferlik tohum)
             _check_outcomes(cfg, views, paths, t0)        # L5: önceki tick'lerin eylemleri gerçekten sonuç verdi mi
             if sw.load_state(paths).get("act_journal"):
                 _replay_journal(cfg, projects, world, paths, sid)      # önceki tick yarıda kaldı: bekleyen kayıt eylemleri

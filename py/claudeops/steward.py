@@ -2722,6 +2722,8 @@ class World:
     is_adhoc_owner: bool = True                                  # kayıtsız oturumların işaretlerini işler (yalnız default)
     starts_left: Optional[int] = None                            # döngü turunun kalan başlatma hakkı (`max_starts_total`); None = sınırsız
     hosts: Dict[str, str] = field(default_factory=dict)          # uzak proje → host (yerel projeler YOK; indeksin `hosts` bölümü)
+    owned: Dict[str, str] = field(default_factory=dict)          # L2: proje → değnekçinin İZLEDİĞİ tam oturum adı ("" = izlenen yok);
+                                                                 # kayıtlı projenin başka adlı oturumu `manual` (sahibin, dokunulmaz)
     unavailable: frozenset = frozenset()                         # host'u şu an erişilemeyen (ya da uzak eylemi kapalı) projeler:
                                                                  # başlatılmaz, devir/DONE izi silinmez (görünümleri yok diye "kapandı" sayılmaz)
 
@@ -2810,7 +2812,21 @@ class World:
             return c
         if b in _DENY:
             return b
-        return "own" if "own" in (c, b) else "adhoc"
+        if "own" not in (c, b):
+            return "adhoc"
+        return "manual" if self.is_manual(name, blueprint) else "own"
+
+    def owned_key(self, name: str, blueprint: Optional[str] = None) -> str:
+        """Oturumun ait olduğu (bu kimliğin) proje adı: blueprint öncelikli, yoksa ad çözümü; yoksa ""."""
+        if blueprint and blueprint != name and self.owns(blueprint):
+            return blueprint
+        return self.project_key(name)
+
+    def is_manual(self, name: str, blueprint: Optional[str] = None) -> bool:
+        """L2 (sahip tanımı 10 Kas): projenin sahiplik kaydı VAR ve bu oturum kayıttaki ad DEĞİL: sahibin elle açtığı
+        oturum, değnekçi dokunmaz. Kaydı olmayan proje eski davranışta (ilk açılışta benimsenir: `update_owned`)."""
+        key = self.owned_key(name, blueprint)
+        return bool(key) and key in self.owned and self.owned[key] != name
 
     def project_key(self, name: str) -> str:
         """Ad bu kimliğin projesine çözülüyorsa proje adı, değilse "" (`_project_key`'in kimlikli karşılığı)."""
@@ -2818,14 +2834,81 @@ class World:
         return key if kind == "project" and self.owns(key) else ""
 
 
-def world_for(sid: str, index: Dict[str, Any], brain_name: str = "", starts_left: Optional[int] = None) -> World:
+def world_for(sid: str, index: Dict[str, Any], brain_name: str = "", starts_left: Optional[int] = None,
+              owned: Optional[Dict[str, str]] = None) -> World:
     """`ownership_index()` çıktısından kimliğin görünümü. `brain_name`: bu kimliğin etkin beyin adı (default'ta
     `steward.brain_name` ezmesi olabilir; verilmezse `brain_name_for`). SAF."""
     brains = {n: s for n, s in (index.get("brains") or {}).items() if s != sid}
     brains[brain_name or brain_name_for(sid)] = sid
     return World(sid=sid, owners=dict(index.get("owners") or {}), conflicts=frozenset(index.get("conflicts") or ()),
                  brains=brains, services=dict(index.get("services") or {}), is_adhoc_owner=(sid == "default"),
-                 starts_left=starts_left, hosts=dict(index.get("hosts") or {}))
+                 starts_left=starts_left, hosts=dict(index.get("hosts") or {}),
+                 owned={str(k): str(v or "") for k, v in dict(owned or {}).items()})
+
+
+# ── L2: değnekçinin izlediği oturumlar (SAF) ──────────────────────────────────
+
+OWNED_EVIDENCE_EVENTS = ("action", "directive", "outcome", "stop", "restart")   # değnekçinin oturumu SÜRDÜĞÜNÜN log kanıtı
+_OWNED_EVIDENCE_KINDS = ("start", "respawn", "directive", "deliver_answer", "nudge", "handover", "restart")
+
+
+def owned_evidence(events: List[Dict[str, Any]], name: str, project: str, started_at: float) -> bool:
+    """Geçiş tohumlaması (sahip 10 Kas: "log'da kanıtı olanı benimse"): değnekçi bu oturumu kendisi açtı ya da sürdü mü?
+    Kanıt = başarılı start/respawn/directive/cevap/dürtme/devir olayı; adı TAM oturum adı, ya da proje adı ve olay
+    oturumun açılışından SONRA (o an çalışan tek proje oturumu oydu). Gözlem olayları (keepwarm/idle_nudge/skip) sayılmaz."""
+    for e in events:
+        ev = e.get("event")
+        if ev not in OWNED_EVIDENCE_EVENTS or e.get("ok") is False:
+            continue
+        if ev == "action" and e.get("kind") not in _OWNED_EVIDENCE_KINDS:
+            continue
+        if ev == "outcome" and e.get("result") != "changed":
+            continue
+        n = str(e.get("name") or "")
+        if n == name:
+            return True
+        if n == project and started_at:
+            try:
+                ts = time.mktime(time.strptime(str(e.get("ts") or "")[:19], "%Y-%m-%dT%H:%M:%S"))
+            except (ValueError, OverflowError):
+                continue
+            if ts >= started_at:
+                return True
+    return False
+
+
+def update_owned(owned: Dict[str, str], views: List["SessionView"], world: "World", projects: Dict[str, "Project"],
+                 now: float, *, seeding: bool = False,
+                 evidence: Optional[Callable[[str, str, float], bool]] = None) -> Tuple[Dict[str, str], List[Dict[str, Any]]]:
+    """Kaydı OLMAYAN bu kimliğin projelerine kayıt yaz (kayıtlı olana dokunmaz; değişimi `start`/devir yapar):
+    0 canlı oturum → "" (bundan sonra elle açılan oturum benimsenmez); 1 → benimse (ilk görüş = ilk açılış), ama
+    `seeding` (L2 geçişinin tek seferlik ilk turu) ise yalnız `evidence(ad, proje, açılış)` doğruysa, değilse ""; 2+ →
+    `seeding`de tek kanıtlı olan, yoksa "". Uzak proje host'u erişilemezse (`world.unavailable`) karar ertelenir.
+    Dönüş: (yeni kayıt, [{project, name, how}] değişiklikleri)."""
+    out = dict(owned or {})
+    changes: List[Dict[str, Any]] = []
+    live: Dict[str, List[SessionView]] = {}
+    for v in views:
+        if not v.running:
+            continue
+        key = world.owned_key(v.name, v.blueprint)
+        if key:
+            live.setdefault(key, []).append(v)
+    for p in world.own_projects(projects):
+        if p in out or p in world.unavailable:
+            continue
+        vs = live.get(p, [])
+        pick = ""
+        if seeding and evidence is not None:
+            ev = [v for v in vs if evidence(v.name, p, float(v.started_at or 0.0))]
+            pick = ev[0].name if len(ev) == 1 else ""
+            how = "seed" if pick else ("seed_none" if not vs else "seed_manual")
+        else:
+            pick = vs[0].name if len(vs) == 1 else ""
+            how = "adopt" if pick else ("none" if not vs else "ambiguous")
+        out[p] = pick
+        changes.append({"project": p, "name": pick, "how": how, "sessions": [v.name for v in vs]})
+    return out, changes
 
 
 def select_rows(rows: List[Dict[str, Any]], world: World, fresh_hosts: Any = ()) -> List[Dict[str, Any]]:
@@ -3749,6 +3832,10 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     # 4) Cevaplanmış sorular → ilgili oturuma ilet (kapalıysa aç)
     starts = 0
     running_projects = {v.project for v in views if v.running and _mine(v)}
+    # L2: sahibin elle açtığı oturum (`manual`) projeyi TUTAR: değnekçi yanına oturum açmaz, cevap da iletmez (sahip orada)
+    manual_projects = ({world.owned_key(v.name, v.blueprint) for v in views
+                        if v.running and world.session_class(v.name, v.blueprint) == "manual"} - {""}) if world is not None else set()
+    running_projects |= manual_projects
     active = len(running_projects)
     max_starts = 0 if cfg.drain else cfg.max_starts_per_tick
     others_active = 0
@@ -3813,6 +3900,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             deliver_by_session[v.name] = act
             busy_names.add(v.name)
             last_directive_at[v.name] = now
+        elif target in manual_projects:
+            continue    # L2: proje sahibin elle açtığı oturumda; cevap o oturuma iletilmez, ikinci oturum da açılmaz
         elif (projects[target].phase in ACTIVE_PHASES        # duraklatılmış/bitmiş proje eski cevap yüzünden AÇILMAZ; cevap proje aktifleşince iletilir
               and starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable)):
             actions.append(Action("start", target, "answer → start", {"question_id": q.id}))

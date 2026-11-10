@@ -110,13 +110,13 @@ class EnsureRunningHoOnOpenTest(unittest.TestCase):
         res, _started, handed = self._ensure(False)
         self.assertNotIn("ho_on_open", res)
         self.assertEqual(handed, [])
-        self.assertEqual(self.state, {})
+        self.assertEqual({k: v for k, v in self.state.items() if k != "owned"}, {})   # L2 kaydı meşru ek
 
     def test_handover_failure_no_pending(self):
         res, _s, _h = self._ensure(True, handover_ok=False)
         self.assertTrue(res["ok"])
         self.assertFalse(res["ho_on_open"])
-        self.assertEqual(self.state, {})
+        self.assertEqual({k: v for k, v in self.state.items() if k != "owned"}, {})   # L2 kaydı meşru ek
 
 
 if __name__ == "__main__":

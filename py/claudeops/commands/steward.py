@@ -328,6 +328,35 @@ def cmd_questions(args) -> int:
     return 0
 
 
+def cmd_owned(args) -> int:
+    """L2: değnekçinin izlediği oturumlar (proje → tam oturum adı; "" = izlenen yok, çalışan oturumlar sahibin)."""
+    sid = _sid(args)
+    with sw.steward_lock(sid):
+        st = sw.load_state(sid)
+        owned = dict(st.get("owned") or {})
+        if args.action in ("set", "clear"):
+            if not args.project:
+                print("proje adı gerekli")
+                return 2
+            if args.action == "set":
+                if not args.session:
+                    print("oturum adı gerekli")
+                    return 2
+                owned[args.project] = args.session
+            else:
+                owned.pop(args.project, None)      # kayıt yok = ilk görüşte tek oturum benimsenir
+            st["owned"] = owned
+            sw.save_state(st, sid)
+    if args.action in ("set", "clear"):
+        sw.log_event("owned", paths=sid, project=args.project, name=owned.get(args.project, ""),
+                     how="human_" + args.action)
+    seeded = "evet" if st.get("owned_seeded") else "hayır"
+    print(f"tohumlandı: {seeded}")
+    for p in sorted(owned):
+        print(f"  {p:20} {owned[p] or '- (izlenen yok; çalışan oturum sahibin)'}")
+    return 0
+
+
 def cmd_ask(args) -> int:
     """Panel üzerinden soru aç (bildirim + `/q/<id>` bağlantısı panelin işi): `py/cops steward ask [-p PROJE]
     [-o A -o B ...] "soru"`."""
@@ -1082,6 +1111,11 @@ def register(sub):
     pi.add_argument("--phase", choices=sw.PHASES, default="planned")
     pi.add_argument("--cadence", type=int, default=240, metavar="MIN")
     pi.set_defaults(func=cmd_import)
+    po = s.add_parser("owned", help="L2: izlenen oturumlar (göster | set <proje> <oturum> | clear <proje>)")
+    po.add_argument("action", nargs="?", default="show", choices=("show", "set", "clear"))
+    po.add_argument("project", nargs="?", default="")
+    po.add_argument("session", nargs="?", default="")
+    po.set_defaults(func=cmd_owned)
     pq = s.add_parser("questions", help="sorular")
     pq.add_argument("--all", action="store_true")
     pq.set_defaults(func=cmd_questions)
