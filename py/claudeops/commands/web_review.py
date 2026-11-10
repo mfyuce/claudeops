@@ -2529,7 +2529,7 @@ def process_verdicts(cfg: Any, now: Optional[float] = None) -> List[str]:
     data = rv.load_findings(p)
     projects = sorted({str(v.get("project")) for v in data.values()
                        if isinstance(v, dict) and v.get("state") == "verify_sent" and v.get("project")
-                       and v.get("verify_session") != "self"})     # kendi doğrulama sonucunu kendi thread'i uygular
+                       and v.get("verify_session") not in ("self", REMOTE_VERIFY_SESSION)})     # kendi/uzak doğrulama sonucunu kendi thread'i uygular
     applied: List[str] = []
     with sw.steward_lock(p):       # cevapsız kalan oturum doğrulaması yeniden sıraya (karar yalnız son mesajdan okunur)
         cur0 = rv.load_findings(p)
@@ -2579,13 +2579,13 @@ def self_verify_running(project: str = "") -> bool:
         return bool(_SELF_VERIFY) if not project else project in _SELF_VERIFY
 
 
-def _self_verify_fail(p: Any, fids: Sequence[str], reason: str, now: float) -> None:
+def _self_verify_fail(p: Any, fids: Sequence[str], reason: str, now: float, session: str = "self") -> None:
     """Çalışmayan/eksik doğrulama: bulgu `new`e döner (`verify_tries`+1); deneme hakkı bitince `unclear`."""
     with sw.steward_lock(p):
         data = rv.load_findings(p)
         for fid in fids:
             rec = data.get(fid)
-            if not isinstance(rec, dict) or rec.get("state") != "verify_sent" or rec.get("verify_session") != "self":
+            if not isinstance(rec, dict) or rec.get("state") != "verify_sent" or rec.get("verify_session") != session:
                 continue
             tries = int(rec.get("verify_tries") or 0) + 1
             if tries >= SELF_VERIFY_MAX_TRIES:
@@ -2752,6 +2752,171 @@ def recover_self_verify(paths: Any) -> int:
     if stuck:
         _self_verify_fail(p, stuck, "yeniden başlatma", time.time())
     return len(stuck)
+    rstuck = [k for k, v in rv.load_findings(p).items() if isinstance(v, dict) and v.get("state") == "verify_sent"
+              and v.get("verify_session") == REMOTE_VERIFY_SESSION and v.get("project") not in live]
+    if rstuck:
+        _self_verify_fail(p, rstuck, "yeniden başlatma", time.time(), session=REMOTE_VERIFY_SESSION)
+    return len(stuck) + len(rstuck)
+
+
+# ── uzak proje doğrulaması: proje hangi host'taysa ORADAKİ kendi oturumunda (Sonnet alt ajan), aç -> sor -> oku -> kapat ──
+
+REMOTE_VERIFY_SESSION = "remote"     # bulgunun `verify_session`u: kararı `process_verdicts` değil uzak doğrulama thread'i uygular
+REMOTE_VERIFY_TIMEOUT = 2400.0       # sn; karar gelmezse bulgular yeniden denenir (en çok SELF_VERIFY_MAX_TRIES)
+REMOTE_VERIFY_POLL = 45.0            # sn; uzak sohbetin son asistan mesajı bu aralıkla okunur
+REMOTE_VERIFY_START_WAIT = 300.0     # sn; açılan oturumun `running` görünmesi için en çok bu kadar beklenir
+REMOTE_VERIFY_MODEL = ("claude-sonnet-5-5", "medium")
+
+
+class RemoteVerifyIO:
+    """Uzak host G/Ç'si (testte taklit edilir): claudeops API'si üzerinden `web_hosts` proxy'si."""
+
+    def _wh(self) -> Any:
+        from . import web_hosts
+        return web_hosts
+
+    def sessions(self, host: str) -> List[Dict[str, Any]]:
+        body, _ = self._wh().proxy_get("/api/status", host, {}, dedup=False, timeout=90)
+        d = body if isinstance(body, dict) else {}
+        return [r for r in d.get("sessions") or [] if isinstance(r, dict)]
+
+    def start(self, host: str, name: str) -> Dict[str, Any]:
+        model, effort = REMOTE_VERIFY_MODEL
+        res, _ = self._wh().proxy_action("/api/start", host, {"name": name, "model": model, "effort": effort,
+                                                              "fresh": True}, timeout=120)
+        return res if isinstance(res, dict) else {"ok": False}
+
+    def send(self, host: str, name: str, text: str) -> Dict[str, Any]:
+        res, _ = self._wh().proxy_action("/api/term/input", host, {"name": name, "text": text, "exact": True}, timeout=60)
+        return res if isinstance(res, dict) else {"ok": False}
+
+    def last_assistant(self, host: str, name: str) -> Optional[str]:
+        body, _ = self._wh().proxy_get("/api/term/chat", host, {"name": name, "mode": "last"}, dedup=False, timeout=90)
+        if isinstance(body, dict) and body.get("ok") and body.get("supported", True):
+            return str(body.get("assistant") or "")
+        return None
+
+    def stop(self, host: str, name: str) -> Dict[str, Any]:
+        res, _ = self._wh().proxy_action("/api/stop", host, {"name": name, "exact": True}, timeout=120)
+        return res if isinstance(res, dict) else {"ok": False}
+
+
+_REMOTE_VERIFY_IO: RemoteVerifyIO = RemoteVerifyIO()
+
+
+def _remote_project_sessions(rows: List[Dict[str, Any]], project: str, host: str) -> List[Dict[str, Any]]:
+    """Host'ta projeye çözülen (`sw.derived_of`: ad + [tarih] + [_N]) çalışan oturum satırları."""
+    return [r for r in rows if r.get("running") and str(r.get("host") or "") in ("", "local", host)
+            and sw.derived_of(str(r.get("name") or ""), project)]
+
+
+def _remote_verify_run(cfg: Any, project: str, host: str, rows: List[Dict[str, Any]], io: RemoteVerifyIO,
+                       now: Callable[[], float], sleep: Callable[[float], None]) -> List[str]:
+    p = sw.paths_for(cfg.sid)
+    fids = [r["id"] for r in rows]
+    name, opened, done = "", False, []
+    try:
+        live = _remote_project_sessions(io.sessions(host), project, host)
+        if len(live) > 1:
+            raise RuntimeError(f"ambiguous_sessions {[r.get('name') for r in live]}")
+        if live:
+            name = str(live[0]["name"])
+        else:
+            res = io.start(host, project)
+            if not res.get("ok"):
+                raise RuntimeError(f"start failed: {_tail(str(res.get('error') or res))}")
+            name, opened = project, True
+            t0 = now()
+            while now() - t0 < REMOTE_VERIFY_START_WAIT:
+                sleep(10)
+                if _remote_project_sessions(io.sessions(host), project, host):
+                    break
+            sleep(20)        # TUI girdiye hazır olsun
+        res = io.send(host, name, rv.build_verify_message(rows, getattr(cfg, "lang", "tr")))
+        if not res.get("ok"):
+            raise RuntimeError(f"send failed: {_tail(str(res.get('error') or res))}")
+        sw.log_event("review_remote_verify_sent", paths=p, project=project, host=host, session=name, opened=opened,
+                     findings=fids)
+        want, got = set(fids), {}
+        t0 = now()
+        while now() - t0 < REMOTE_VERIFY_TIMEOUT and not want <= set(got):
+            sleep(REMOTE_VERIFY_POLL)
+            text = io.last_assistant(host, name)
+            for v in rv.scan_verdicts(text or ""):
+                if v[0] in want:
+                    got[v[0]] = v
+        if got:
+            with sw.steward_lock(p):
+                cur = rv.load_findings(p)
+                done = rv.apply_verdicts(cur, project, list(got.values()), rv.text_hash(repr(sorted(got.items()))),
+                                         name, now())
+                if done:
+                    rv.save_findings(p, cur)
+            if done:
+                sw.log_event("review_verdicts", paths=p, project=project, session=name, host=host, findings=done,
+                             verdicts={f: cur[f]["state"] for f in done})
+        missing = [f for f in fids if f not in done]
+        if missing:
+            _self_verify_fail(p, missing, "uzak oturum karar vermedi", now(), session=REMOTE_VERIFY_SESSION)
+    except Exception as e:
+        sw.log_event("review_remote_verify_failed", paths=p, project=project, host=host, error=_tail(repr(e)))
+        _self_verify_fail(p, fids, "uzak doğrulama başarısız", now(), session=REMOTE_VERIFY_SESSION)
+    finally:
+        if opened:           # yalnız KENDİ açtığımızı kapatırız; projenin çalışan oturumu (değnekçinin/sahibin) kalır
+            try:
+                io.stop(host, name)
+            except Exception as e:
+                sw.log_event("review_remote_verify_stop_failed", paths=p, project=project, host=host, error=_tail(repr(e)))
+    return done
+
+
+def remote_verify(cfg: Any, project: str, host: str, rows: List[Dict[str, Any]], *, io: Optional[RemoteVerifyIO] = None,
+                  now: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
+                  background: Optional[bool] = None) -> Dict[str, Any]:
+    """Uzak (`host`lu) projenin `rows` bulgularını O HOST'taki proje oturumuna doğrulatır: çalışan oturum (tek) varsa ona
+    gönderir, yoksa projeyi Sonnet medium açar, kararları sohbetten okur, kendi açtığını kapatır. Meşgul oturuma
+    gönderilmez. Proje başına tek canlı doğrulama (`_SELF_VERIFY` kaydı ortak)."""
+    project, host = str(project or "").strip(), str(host or "").strip()
+    if not rows:
+        return {"ok": False, "error": "no findings to verify"}
+    if not host:
+        return {"ok": False, "error": "remote_verify needs a host"}
+    io = io or _REMOTE_VERIFY_IO
+    with _SELF_VERIFY_LOCK:
+        t = _SELF_VERIFY.get(project)
+        if project in _SELF_VERIFY_RESERVED or (t is not None and t.is_alive()):
+            return {"ok": False, "code": "already_running", "error": f"a verification for {project!r} is already running"}
+        _SELF_VERIFY_RESERVED.add(project)
+    try:
+        try:
+            live = _remote_project_sessions(io.sessions(host), project, host)
+        except Exception as e:
+            return {"ok": False, "code": "host_unreachable", "error": f"{host}: {_tail(repr(e))}"}
+        if len(live) > 1:
+            return {"ok": False, "code": "ambiguous_sessions", "error": "ambiguous_sessions",
+                    "sessions": [r.get("name") for r in live]}
+        if live and live[0].get("busy"):
+            return {"ok": False, "code": "session_busy", "error": f"session_busy: {live[0].get('name')} is working"}
+        p = sw.paths_for(cfg.sid)
+        marked = rv.mark_verify_sent(p, [r["id"] for r in rows], REMOTE_VERIFY_SESSION, "", now())
+        if not marked:
+            return {"ok": False, "error": "no findings in a verifiable state"}
+        rows = [r for r in rows if r["id"] in set(marked)]
+        sw.log_event("review_verify", paths=p, project=project, session=REMOTE_VERIFY_SESSION, host=host,
+                     findings=marked, source="remote")
+        bg = _REVIEW_BACKGROUND if background is None else background
+        if bg:
+            th = threading.Thread(target=_remote_verify_run, args=(cfg, project, host, rows, io, now, sleep), daemon=True,
+                                  name=f"remote-verify-{project}")
+            with _SELF_VERIFY_LOCK:
+                _SELF_VERIFY[project] = th
+            th.start()
+        else:
+            _remote_verify_run(cfg, project, host, rows, io, now, sleep)
+    finally:
+        with _SELF_VERIFY_LOCK:
+            _SELF_VERIFY_RESERVED.discard(project)
+    return {"ok": True, "project": project, "host": host, "session": REMOTE_VERIFY_SESSION, "findings": marked}
 
 
 def bulk_decide(cfg: Any, action: str, project: str = "", fids: Optional[Sequence[str]] = None,

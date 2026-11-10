@@ -193,9 +193,14 @@ class TestVerify(_Flow):
             self.assertEqual(r.get("code"), "session_busy", kw)
         self.assertEqual(self.sent, [])
 
-    def test_remote_and_unknown_projects_rejected(self):
+    def test_remote_routed_to_its_host_unknown_rejected(self):
         self.seed(proj="far")
-        self.assertFalse(self.post("verify", project="far")["ok"])
+        from test_review_remote_verify import FakeIO
+        io = FakeIO(running={"far": True})       # uzak oturum meşgul: yerel direktif YOK, uzak yol meşgul der
+        from claudeops.commands import web_review as _wr
+        with mock.patch.object(_wr, "_REMOTE_VERIFY_IO", io):
+            r = self.post("verify", project="far")
+        self.assertEqual(r.get("code"), "session_busy", r)
         self.assertFalse(self.post("verify", project="zzz")["ok"])
         self.assertEqual(self.sent, [])
 

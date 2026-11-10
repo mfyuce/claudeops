@@ -6519,6 +6519,9 @@ def http_review_verify(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
     rows = web_review.verify_candidates(cfg, project, fids or None)
     if not rows:
         return {"ok": False, "error": "no findings to verify (state new, or given ids in new|verify_sent|unclear)"}
+    rhost = (_ownership_index().get("hosts") or {}).get(project) or ""
+    if rhost:     # uzak proje: yerel klasör yok, doğrulama projenin KENDİ host'undaki oturumunda (aç -> sor -> oku -> kapat)
+        return web_review.remote_verify(cfg, project, rhost, rows)
     if cfg.review_verify_mode == "self":     # TBD#137 a=A: reviewer'ın kendi salt-okunur süreci; proje oturumu uyanmaz
         return web_review.self_verify(cfg, project, rows)
     owner, views, oerr = _owner_project_views(project)
@@ -6566,7 +6569,7 @@ def auto_review_verify(cfg: sw.Config, now: Optional[float] = None) -> Optional[
     projects = sorted({str(v.get("project")) for v in data.values()
                        if isinstance(v, dict) and v.get("state") == "new" and v.get("project")} & enabled - waiting)
     for proj in projects[:AUTO_VERIFY_TRIES]:
-        if cfg.review_verify_mode == "self" and web_review.self_verify_running(proj):
+        if web_review.self_verify_running(proj):
             continue
         res = http_review_verify({"project": proj}, sid=cfg.sid)
         if res.get("ok"):
