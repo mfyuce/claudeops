@@ -1712,6 +1712,33 @@ def project_cwd(name: str) -> str:
 
 _CWD_FN: Optional[Callable[[str], str]] = None
 
+_BACKLOG_TTL = 600.0
+_BACKLOG_CACHE: Dict[str, Tuple[float, int]] = {}
+
+
+def review_backlog(name: str, now: Optional[float] = None) -> int:
+    """Projenin YEREL TODO.md+RTODO.md'sindeki açık review satırı (10 dk önbellek). Klasör yoksa/uzaksa 0 (engel yok)."""
+    now = time.time() if now is None else now
+    hit = _BACKLOG_CACHE.get(name)
+    if hit and now - hit[0] < _BACKLOG_TTL:
+        return hit[1]
+    cwd = project_cwd(name)
+    n = 0
+    for fn in rv.BACKLOG_FILES:
+        path = os.path.join(cwd, fn) if cwd else ""
+        if path and os.path.isfile(path):
+            try:
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    n += rv.open_review_lines(f.read())
+            except OSError:
+                pass
+    _BACKLOG_CACHE[name] = (now, n)
+    return n
+
+
+def _backlog_skip(cfg: Any, pool: Any) -> List[str]:
+    return rv.backlogged_projects(pool, review_backlog, int(getattr(cfg, "review_backlog_max", 0) or 0))
+
 
 def review_cwd(name: str, idx: Optional[Dict[str, Any]] = None) -> str:
     """Review'un koşacağı klasör: uzak projede sahibin seçtiği yerel kopya, değilse projenin yerel klasörü."""
@@ -2109,7 +2136,7 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "reason": "no targets"}
     if slots:
         return _tick_slots(p, cfg, pool, hist, targets, slots, t, gap, actions)
-    skip: List[str] = []
+    skip: List[str] = _backlog_skip(cfg, pool)
     while True:
         nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip, head_of=_head_of,
                              window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)))
@@ -2207,7 +2234,7 @@ def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], ta
     busy_proj = {k.split("|", 1)[0] for k in busy}
     by_mode = {m: [x for x in targets if x.mode == m] for m in rv.MODES}
     skip_mode: Dict[str, List[str]] = {m: [] for m in rv.MODES}
-    bad: List[str] = []                 # bu turda hazırlanamayan projeler (tüm modlarda atlanır)
+    bad: List[str] = _backlog_skip(cfg, pool)   # bu turda hazırlanamayan + açık review birikimi eşiği aşan projeler (tüm modlarda atlanır)
     live = [m for m in rv.MODES if by_mode[m] and free[m] > 0]
     started, errors = 0, []
     while live:
@@ -2270,6 +2297,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
         if not isinstance(e, dict):
             continue
         rows.append({"project": name, "enabled": bool(e.get("enabled")) and not e.get("removed_at"),
+                     "backlog": review_backlog(name),
                      "focus": bool(e.get("focus")) and bool(e.get("enabled")) and not e.get("removed_at"),
                      "source": e.get("source") or "", "added_at": e.get("added_at"), "removed_at": e.get("removed_at"),
                      "complete": rv.project_complete(hist, name, targets, t,
@@ -2282,6 +2310,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "runs": list(hist.get("runs") or [])[-50:],
             "min_gap_minutes": cfg.review_min_gap_minutes, "timeout_minutes": cfg.review_timeout_minutes,
             "window_hours": cfg.review_window_hours,
+            "backlog_max": int(getattr(cfg, "review_backlog_max", 0) or 0),
             "auto_verify": bool(cfg.review_auto_verify), "auto_approve": int(cfg.review_auto_approve),
             "auto_export": bool(cfg.review_auto_export),
             "evren_script": str(getattr(cfg, "review_evren_script", "") or "").strip().lower() == "read",

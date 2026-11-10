@@ -323,6 +323,34 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
     return cands[0][2], cands[0][3]
 
 
+_OPEN_REVIEW_LINE_RE = re.compile(r"^\s*- \[ \] \(review ", re.M)
+BACKLOG_FILES = ("TODO.md", "RTODO.md")
+
+
+def open_review_lines(text: str) -> int:
+    """SAF. Metindeki açık (düzeltilmemiş) review satırı sayısı: `- [ ] (review ...` (export_lines biçimi)."""
+    return len(_OPEN_REVIEW_LINE_RE.findall(text or ""))
+
+
+def backlogged_projects(pool: Any, count_of: Callable[[str], int], limit: int) -> List[str]:
+    """SAF. Açık review satırı `limit`e ulaşmış etkin projeler (L1, 10 Kas 2026: 3.521 bulgu, TODO'ya aktarılanların ~%35'i
+    düzeltildi; yeni koşu ancak birikim erirken). `limit` <= 0 = kapalı; ★ odak projeler muaf (sahip açıkça istedi)."""
+    if limit <= 0:
+        return []
+    focus = set(pool_focus(pool))
+    out = []
+    for proj in pool_enabled(pool):
+        if proj in focus:
+            continue
+        try:
+            n = int(count_of(proj))
+        except Exception:
+            continue
+        if n >= limit:
+            out.append(proj)
+    return out
+
+
 def pool_focus(pool: Any) -> List[str]:
     """Havuzda `focus=True` işaretli, etkin projeler (sıralı)."""
     pr = pool.get("projects") if isinstance(pool, dict) else None

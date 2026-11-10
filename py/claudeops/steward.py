@@ -318,6 +318,7 @@ class Config:
     role: str = "steward"            # steward | reviewer | generic (generic: GENERIC_* varsayılanları + üst model kapısı)
     review_timeout_minutes: int = 45   # tek review çalıştırması bu sürede bitmezse iptal
     review_min_gap_minutes: int = 10   # iki review başlatması arası en az bekleme
+    review_backlog_max: int = 50       # L1 (10 Kas 2026): projenin TODO.md+RTODO.md'sinde açık `- [ ] (review ` satırı bu sayıya ulaşınca yeni otomatik review YOK (bulgu üretimi düzeltme hızına bağlı); 0 = kapalı; ★ odak proje ve elle koşu muaf
     review_window_hours: int = 720     # bir (proje,hedef) çifti bu sürede tekrar koşmaz (720 = 30 gün); HEAD değişirse bu süre beklenmez (_same_head)
     review_slots: str = ""             # mod başına eşzamanlı koşu yuvası (`agy=5,evren=1,codex=1,copilot=0`; belirtilmeyen mod 1, 0 = mod kapalı); ""/off = TEK iş (eski davranış)
     review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
