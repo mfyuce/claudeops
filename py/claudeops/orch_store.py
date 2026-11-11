@@ -11,6 +11,7 @@ Leaf modül (`paths`'e bağımlı, `commands/` paketine bağımlı DEĞİL) —
 from __future__ import annotations
 import dataclasses
 import json
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
@@ -34,7 +35,10 @@ def _load_json(path: str, default: Any) -> Any:
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default
+    except OSError as e:      # okunamayan (izin/G-Ç) dosya "yok" sayılıp sessizce yutulmasın
+        logging.getLogger(__name__).warning("orch_store: %s okunamadi: %s", path, e)
         return default
 
 
