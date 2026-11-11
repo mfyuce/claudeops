@@ -105,15 +105,15 @@ class ConfigAndLoopReset(_Tmp):
         self.assertFalse(ws.http_config({"key": "max_starts_total", "value": 99})["ok"])
 
     def test_loop_reset_human_only(self):
-        st = {"loop_guard": {"start|a": {"n": 0, "first": 1.0, "until": 2e12}, "idle_nudge|b": {"n": 3, "first": 1.0}}}
+        st = {"loop_guard": {"start|a": {"n": 0, "first": 1.0, "until": 2e12}, "idle_nudge|b": {"n": 5, "first": 1.0}, "start|c": {"n": 1, "first": 1.0}}}
         sw.save_state(st, "default")
         lst = ws.loop_guard_list("default")
-        self.assertEqual([(x["key"], x["paused"]) for x in lst], [("idle_nudge|b", False), ("start|a", True)])
+        self.assertEqual([(x["key"], x["paused"]) for x in lst], [("idle_nudge|b", False), ("start|a", True)])      # start|c (n=1) gürültü, gizli
         self.assertFalse(ws.http_loop_reset({"actor": "brain"})["ok"])
-        self.assertEqual(len(sw.load_state("default")["loop_guard"]), 2)
+        self.assertEqual(len(sw.load_state("default")["loop_guard"]), 3)
         self.assertFalse(ws.http_loop_reset({"key": "yok|x"})["ok"])
         self.assertEqual(ws.http_loop_reset({"key": "start|a"})["cleared"], ["start|a"])
-        self.assertEqual(ws.http_loop_reset({})["cleared"], ["idle_nudge|b"])
+        self.assertEqual(sorted(ws.http_loop_reset({})["cleared"]), ["idle_nudge|b", "start|c"])
         self.assertNotIn("loop_guard", sw.load_state("default"))
 
 

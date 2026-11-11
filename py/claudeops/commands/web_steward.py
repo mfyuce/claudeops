@@ -5900,7 +5900,7 @@ def http_quota_set(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
 
 
 def loop_guard_list(sid: str = "default") -> List[Dict[str, Any]]:
-    """`state.loop_guard` panel listesi: her (tür|hedef) için sayaç `n`/`max`, ilk görülme ve (duraklatıldıysa) bitiş saati."""
+    """`state.loop_guard` panel listesi (yalnız duraklatılmış / eşiğe yaklaşan): her (tür|hedef) için sayaç `n`/`max`, ilk görülme ve (duraklatıldıysa) bitiş saati."""
     st = sw.load_state(sid)
     now = time.time()
     out = []
@@ -5909,6 +5909,8 @@ def loop_guard_list(sid: str = "default") -> List[Dict[str, Any]]:
             continue
         kind, _, name = key.partition("|")
         until = float(r.get("until") or 0.0)
+        if until <= now and int(r.get("n") or 0) < sw.LOOP_MAX // 2:
+            continue        # her eylemin n=1 sayacı gürültü: yalnız duraklatılmış ya da eşiğe yaklaşan (n >= MAX/2) görünür
         out.append({"key": key, "kind": kind, "name": name, "n": int(r.get("n") or 0), "max": sw.LOOP_MAX,
                     "first": float(r.get("first") or 0.0), "until": until, "paused": until > now})
     return out
