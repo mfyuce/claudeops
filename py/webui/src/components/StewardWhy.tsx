@@ -92,7 +92,7 @@ export function LoopGuardBox({ items, sid, run, busy, lang }: { items: StewardLo
         <span key={g.key} className="opts-hint">
           <code>{g.kind}</code> → {g.name}:{" "}
           {g.paused
-            ? <b style={{ color: "var(--amber, #d97706)" }}>{en ? `paused until ${when(g.until)}` : `${when(g.until)} saatine dek duraklatıldı`}</b>
+            ? <b style={{ color: "var(--red, #dc2626)" }}>{en ? `STOPPED, paused until ${when(g.until)}` : `DURDU, ${when(g.until)} saatine dek duraklatıldı`}</b>
             : (en ? `repeat ${g.n}/${g.max}` : `tekrar ${g.n}/${g.max}`)}{" "}
           <button type="button" disabled={busy} onClick={() => void run(() => apiStewardLoopReset(g.key, sid), () => showToast(en ? "Reset" : "Sıfırlandı", "success"))}>
             {en ? "reset" : "sıfırla"}

@@ -1507,6 +1507,40 @@ def mark_delivered(question_id: str, paths: Any = None) -> None:
         save_questions(questions, paths)
 
 
+_TBD_ID_RE = re.compile(r"TBD\s*#?\s*(\d+)", re.I)
+_ITEM_START_RE = re.compile(r"^(\s*)(#{1,6}\s|[-*]\s|\d+[.)]\s)")
+
+
+def tbd_insert_answer(text: str, qid: str, q_text: str, answer: str, date: str) -> Optional[str]:
+    """SAF. İletilemeyen sahip cevabını TOBEDECIDED.md içeriğine ekler: sorudaki `TBD#N` kimliğinin geçtiği maddenin bloğunun ALTINA
+    (bloğun sonu = aynı ya da daha az girintili sonraki madde/başlık); bulunamazsa dosyanın SONUNA. Aynı soru kimliği zaten varsa None.
+    Satır: `Sahip cevabı (tarih, değnekçi) [qid]: ...`."""
+    if qid and f"[{qid}]" in text:
+        return None
+    ans = " ".join(str(answer).split())[:1500]
+    lines = text.split("\n")
+    for m in _TBD_ID_RE.finditer(q_text or ""):
+        n = m.group(1)
+        pat = re.compile(rf"TBD\s*#?\s*{n}(?!\d)", re.I)
+        for i, ln in enumerate(lines):
+            if not pat.search(ln):
+                continue
+            ind = len(ln) - len(ln.lstrip())
+            j = i + 1
+            while j < len(lines):
+                mm = _ITEM_START_RE.match(lines[j])
+                if mm and len(mm.group(1)) <= ind:
+                    break
+                j += 1
+            while j > i + 1 and not lines[j - 1].strip():
+                j -= 1                                  # bloğun sonundaki boş satırların ÜSTÜNE
+            pad = " " * (ind + 2)
+            lines[j:j] = [f"{pad}- Sahip cevabı ({date}, değnekçi) [{qid}]: {ans}"]
+            return "\n".join(lines)
+    body = text.rstrip("\n")
+    return (f"{body}\n\n" if body else "") + f"- Sahip cevabı ({date}, değnekçi) [{qid}] (soru: {' '.join((q_text or '').split())[:140]}): {ans}\n"
+
+
 def mark_undeliverable(question_id: str, reason: str, paths: Any = None) -> bool:
     """Cevap teslim EDİLEMEDİ (ad hoc oturum kapalı/yazı kabul etmiyor): yeniden denemeyi durdurur (`delivered_at`) ama
     'iletildi' görünmesin diye nedeni kaydeder. Dönen: kayıt bulundu mu."""
@@ -4195,6 +4229,7 @@ def api_error_kind(text: str) -> str:
 # değişmeden LOOP_MAX kez tekrarlanan (tür, hedef) LOOP_PAUSE_SECONDS boyunca uygulanmaz; tek `loop_break` eylemi bildirir.
 LOOP_MAX = 8
 LOOP_PAUSE_SECONDS = 6 * 3600.0
+LOOP_PAUSE_TOUR_SECONDS = 45 * 60.0     # beyin turu: kesinti KISA (11 Kas: 6 sa'lik duraklatma sorulara cevap gitmesini 4 sa durdurdu); sonra sayaç sıfırlanıp tur yeniden denenir
 LOOP_FORGET_SECONDS = 24 * 3600.0
 LOOP_KINDS = frozenset(OBSERVE_SKIPPED) | {"directive", "restart"}
 
@@ -4221,24 +4256,32 @@ def loop_guard(actions: List["Action"], views: List["SessionView"], st: Dict[str
             continue
         key = f"{a.kind}|{a.name}"
         rec = guard.get(key) or {}
-        if float(rec.get("until") or 0) > now:
-            continue                                        # duraklatıldı: sessizce atla (bildirim bir kez gitti)
         sig = _loop_sig(a.name, views)
+        fp = ""
         if a.kind == "tour":
             # Tur hedefi beynin kendisi: beyin kısa/benzer cevap verdiği için yalnız cevap imzası "değişiklik yok" der (iso 10-11 Kas: iki kez 8/8).
-            # Sunulan MADDE kümesi değiştiyse (yeni soru/oturum/fikir) tur ilerliyor sayılır; aynı küme + aynı cevap 8 kez = gerçek döngü.
+            # Sunulan MADDE kümesi değiştiyse (yeni soru/iş isteği/cevap) tur ilerliyor sayılır; aynı küme + aynı cevap 8 kez = gerçek döngü.
             its = (a.payload or {}).get("items") or []
-            fp = "|".join(sorted(f"{i.get('kind')}:{i.get('id') or i.get('name')}" for i in its if isinstance(i, dict)))
-            sig += ":" + hashlib.sha1(fp.encode("utf-8", "replace")).hexdigest()[:8]
+            fp = hashlib.sha1("|".join(sorted(f"{i.get('kind')}:{i.get('id') or i.get('name')}" for i in its if isinstance(i, dict))
+                                       ).encode("utf-8", "replace")).hexdigest()[:8]
+            sig += ":" + fp
+            if fp and rec.get("fp") and rec.get("fp") != fp:
+                rec = {}                                    # yeni madde geldi: sayaç ve duraklatma HEMEN sıfırlanır
+        if float(rec.get("until") or 0) > now:
+            continue                                        # duraklatıldı: sessizce atla (bildirim bir kez gitti)
         if rec.get("sig") == sig and now - float(rec.get("first") or now) < LOOP_FORGET_SECONDS:
             rec["n"] = int(rec.get("n") or 0) + 1
         else:
             rec = {"n": 1, "sig": sig, "first": now}
+        if fp:
+            rec["fp"] = fp
         if rec["n"] > LOOP_MAX:
-            rec.update(until=now + LOOP_PAUSE_SECONDS, n=0, first=now)
+            pause = LOOP_PAUSE_TOUR_SECONDS if a.kind == "tour" else LOOP_PAUSE_SECONDS
+            rec.update(until=now + pause, n=0, first=now)
             guard[key] = rec
             breaks.append(Action("loop_break", a.name, f"{a.kind}: {LOOP_MAX} kez hedefte değişiklik olmadan tekrarlandı",
-                                 {"kind": a.kind, "n": LOOP_MAX, "pause_h": int(LOOP_PAUSE_SECONDS // 3600), "last_reason": a.reason[:200]}))
+                                 {"kind": a.kind, "n": LOOP_MAX, "pause_h": int(pause // 3600), "pause_min": int(pause // 60),
+                                  "last_reason": a.reason[:200]}))
             continue
         guard[key] = rec
         out.append(a)

@@ -252,6 +252,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         >
           <span className={`dot ${x.brain?.running ? "on" : "off"}`} />
           {x.label || x.id} · {x.enabled ? t.stewardOn : t.stewardOffShort} · {x.mode}
+          {!x.enabled && x.open_questions > 0 ? <b style={{ color: "var(--red, #dc2626)" }}> · {t.stewardClosedQuestionsShort}</b> : null}
           {x.role === "reviewer" ? " · reviewer" : `${x.role === "generic" ? " · generic" : ""} · ${t.stewardRowStat(x.project_count, x.open_questions)}`}
         </button>
       ))}
@@ -446,7 +447,14 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </div>
       </div>
 
-      <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardQuestionsTitle}</h3>
+      <h3 style={{ margin: ".4rem 0 0" }}>
+        {t.stewardQuestionsTitle}
+        {s && !s.enabled && state && state.questions.length > 0 && (
+          <span className="warn-banner" style={{ marginLeft: ".5rem", fontSize: ".75rem", padding: ".1rem .4rem" }} title={t.stewardClosedQuestionsHint}>
+            {t.stewardClosedQuestionsBadge(state.questions.length)}
+          </span>
+        )}
+      </h3>
       {!state && <div className="opts-hint" role="status">…</div>}
       {state && state.questions.length === 0 && <span className="opts-hint">{t.stewardNoQuestions}</span>}
       {state?.questions.map((q) => (

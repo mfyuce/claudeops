@@ -695,6 +695,9 @@ export interface Strings {
   stewardStatProjects: string;
   stewardQuestionsTitle: string;
   stewardNoQuestions: string;
+  stewardClosedQuestionsBadge: (n: number) => string;
+  stewardClosedQuestionsHint: string;
+  stewardClosedQuestionsShort: string;
   stewardAnswerPlaceholder: string;
   stewardAnswerBtn: string;
   stewardAnswered: string;
@@ -1625,6 +1628,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardStatProjects: "proje",
     stewardQuestionsTitle: "Sorular",
     stewardNoQuestions: "Açık soru yok.",
+    stewardClosedQuestionsBadge: (n: number) => `kapalı değnekçi: ${n} açık soru`,
+    stewardClosedQuestionsHint: "Bu değnekçi kimliği KAPALI; soruları duruyor, cevapların oturuma iletilmesi için kimliğin açık olması gerekir.",
+    stewardClosedQuestionsShort: "kapalı değnekçi, açık soru var",
     stewardAnswerPlaceholder: "cevap… (seçenekli soruda numara da olur)",
     stewardAnswerBtn: "Cevapla",
     stewardAnswered: "cevaplandı",
@@ -2556,6 +2562,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardStatProjects: "projects",
     stewardQuestionsTitle: "Questions",
     stewardNoQuestions: "No open questions.",
+    stewardClosedQuestionsBadge: (n: number) => `steward off: ${n} open question(s)`,
+    stewardClosedQuestionsHint: "This steward identity is OFF; its questions are waiting, answers are only delivered to sessions while the identity is on.",
+    stewardClosedQuestionsShort: "steward off, open questions",
     stewardAnswerPlaceholder: "answer… (an option number works too)",
     stewardAnswerBtn: "Answer",
     stewardAnswered: "answered",

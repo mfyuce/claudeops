@@ -3242,7 +3242,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if not res.get("ok") and q.project not in projects:
             # Kayıtlı proje olmayan (ad hoc) oturum kapanmış ya da yazı kabul etmiyor: her tick yeniden deneme,
             # bırak (cevap kayıtta durur, kimse beklemiyor).
-            sw.mark_undeliverable(q.id, str(res.get("error") or "undeliverable"), paths)
+            kept = _preserve_undelivered_answer(q, cfg, paths, projects)
+            sw.mark_undeliverable(q.id, str(res.get("error") or "undeliverable") + (f"; TOBEDECIDED.md'ye yazıldı" if kept in ("written", "already") else ""), paths)
             sw.log_event("answer_undeliverable", paths=paths, id=q.id, session=name, error=res.get("error", ""))
             _notify(cfg, (f"Cevabın {name} oturumuna İLETİLEMEDİ ({res.get('error', '')}): [{q.id}] {q.answer[:120]}" if cfg.lang != "en"
                           else f"Your answer could NOT be delivered to {name} ({res.get('error', '')}): [{q.id}] {q.answer[:120]}"))
@@ -3293,6 +3294,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "close_stale_answer":      # bayat blokaj kaydı: teslim edilecek proje yok, tekrar tura düşmesin
         why = str(action.payload.get("reason") or "")
+        qd = next((x for x in sw.load_questions(paths) if x.id == str(action.payload.get("question_id") or "")), None)
+        if qd is not None and qd.answer and not qd.delivered_at:     # cevap KAYBOLMASIN: önce TOBEDECIDED.md'ye (yerel) / sahibe bildirim (uzak)
+            kept = _preserve_undelivered_answer(qd, cfg, paths, projects)
+            why = (why or "bayat blokaj kaydı") + (f"; cevap TOBEDECIDED.md'ye yazıldı" if kept in ("written", "already") else f"; cevap yazılamadı ({kept})")
         if why:     # neden kayıtlı kalsın: 'iletildi' görünmesin
             sw.mark_undeliverable(str(action.payload.get("question_id") or ""), why, paths)
         else:
@@ -3400,9 +3405,9 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         sw.log_event("loop_break", paths=paths, name=name, kind=pl.get("kind"), n=pl.get("n"), reason=pl.get("last_reason"))
         tr = cfg.lang != "en"
         text = (f"[{cfg.sid}] döngü durduruldu: {name} için '{pl.get('kind')}' {pl.get('n')} kez yapıldı, oturumda değişiklik yok. "
-                f"{pl.get('pause_h')} sa uygulanmayacak. Son gerekçe: {pl.get('last_reason')}"
+                f"{pl.get('pause_min') or int(pl.get('pause_h') or 0) * 60} dk uygulanmayacak (yeni madde gelirse hemen yeniden denenir). Son gerekçe: {pl.get('last_reason')}"
                 if tr else f"[{cfg.sid}] loop stopped: '{pl.get('kind')}' on {name} ran {pl.get('n')} times with no change. "
-                f"Paused {pl.get('pause_h')} h. Last reason: {pl.get('last_reason')}")
+                f"Paused {pl.get('pause_min') or int(pl.get('pause_h') or 0) * 60} min (a new item resumes at once). Last reason: {pl.get('last_reason')}")
         return {"ok": True, "notified": _notify(cfg, text[:600])}
     if k == "ho_halted":              # yalnız kayıt: devir sonrası proje paused/done, yeniden açma/yönerge YOK (oturum açık kalır)
         sw.log_event("ho_halted", paths=paths, name=name, reason=action.reason,
@@ -5438,6 +5443,53 @@ def _job_marker_gate(action: "sw.Action", cfg: "sw.Config", name: str, host: str
     sw.log_event("job_marker_rejected", paths=paths, name=name, project=action.payload.get("project"), reason=why,
                  text=body[:160], noted=noted)
     return {"ok": True, "skipped": "job_marker_" + why, "noted": noted}
+
+
+def _preserve_undelivered_answer(q: "sw.Question", cfg: "sw.Config", paths: Any, projects: Dict[str, "sw.Project"]) -> str:
+    """Oturuma İLETİLEMEYEN sahip cevabı KAYBOLMASIN (hittite/trino/animallang, 11 Kas): proje yerel ve klasörü biliniyorsa projenin
+    TOBEDECIDED.md'sine ilgili maddenin altına (yoksa sona) `Sahip cevabı (tarih, değnekçi): ...` yazılır ve YALNIZ o dosya açık yolla commit
+    edilir (izleniyorsa; git-dışı/dışlanmışsa yazı kalır). Uzak ya da klasörü bilinmeyen proje: yazılmaz, sahibe telefon bildirimi.
+    Sonuç: written | already | remote | no_folder | failed. Fırlatmaz."""
+    try:
+        proj = projects.get(q.project)
+        host = proj.host if proj is not None else ""
+        if not host:
+            try:
+                host = (_ownership_index().get("hosts") or {}).get(q.project, "")
+            except Exception:
+                host = ""
+        cwd = "" if host else _cwd_resolver()(q.project)
+        out = "remote" if host else ("no_folder" if not cwd or not os.path.isdir(cwd) else "")
+        if not out:
+            real = _doc_path(cwd, "TOBEDECIDED.md") or os.path.join(cwd, "TOBEDECIDED.md")
+            try:
+                with open(real, encoding="utf-8", errors="replace") as f:
+                    before = f.read()
+            except FileNotFoundError:
+                before = ""
+            new = sw.tbd_insert_answer(before, q.id, q.text, q.answer, time.strftime("%Y-%m-%d"))
+            if new is None:
+                out = "already"
+            else:
+                from ..atomic_json import atomic_write_text
+                atomic_write_text(real, new)
+                out = "written"
+                try:       # yalnız bu dosya, açık yolla; izlenmiyorsa/dışlanmışsa add başarısız olur ve commit atlanır
+                    if subprocess.run(["git", "-C", cwd, "add", "--", real], capture_output=True, timeout=20).returncode == 0:
+                        subprocess.run(["git", "-C", cwd, "commit", "-q", "-m", f"TOBEDECIDED: sahip cevabı [{q.id}] (değnekçi iletemedi)", "--", real],
+                                       capture_output=True, timeout=30)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+        sw.log_event("answer_preserved", paths=paths, id=q.id, project=q.project, result=out)
+        if out in ("remote", "no_folder", "failed"):
+            reason = "uzak proje" if out == "remote" else "proje klasörü bilinmiyor"
+            _notify(cfg, (f"[{cfg.sid}] Cevabın {q.project} projesine İLETİLEMEDİ ve hiçbir dosyaya YAZILMADI ({reason}): [{q.id}] {q.answer[:200]}"
+                          if cfg.lang != "en" else
+                          f"[{cfg.sid}] Your answer to {q.project} could NOT be delivered and was NOT written anywhere ({reason}): [{q.id}] {q.answer[:200]}"))
+        return out
+    except Exception as e:
+        diag_log("answer_preserve_failed", id=getattr(q, "id", ""), error=repr(e))
+        return "failed"
 
 
 def _job_kinds_list(sid: str) -> List[str]:
