@@ -78,3 +78,43 @@ def handle(name: str, registered: bool, capture: Callable[[str], Optional[str]],
         sleep(step)
         waited += step
     return "none"
+
+
+# ── tanı: bilinen / bilinmeyen diyaloglar (11 Kas 2026, dalgicppr 12 saat güven diyaloğunda kaldı) ──────────────────────────────
+_RESUME_MARKERS = ("resume a conversation", "select a conversation to resume", "resume session", "choose a conversation")
+_LOGIN_MARKERS = ("select login method", "paste code here", "choose the text style", "let's get started")
+_MENU_RE = re.compile(r"^\s*[❯>›]?\s*\d\.\s+\S")
+
+
+def dialog_head(text: str, n: int = 2) -> str:
+    """Pane SONUNDAKİ diyalog bloğunun ilk `n` dolu satırı (tek satıra katlı): bildirim/panel 'diyalogda takılı: ...' için."""
+    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
+    tail = lines[-14:]
+    for i, l in enumerate(tail):        # blok başı: ilk soru/başlık satırı (menü satırından önceki)
+        if _MENU_RE.match(l):
+            tail = tail[max(0, i - 2):]
+            break
+    return " | ".join(tail[:n])[:240]
+
+
+def classify(text: str) -> Optional[Tuple[str, str]]:
+    """Pane'de kullanıcı girişi bekleyen bir DİYALOG var mı: (tür, ilk 2 satır) | None.
+    Türler: trust (güven klasörü), resume_picker, login, unknown_dialog (hazır-istem altbilgisi YOK + numaralı menü/`Enter to confirm`).
+    Hazır-istem altbilgisi görünüyorsa hiçbiri değildir (konuşma geçmişinde geçen yazı diyalog sayılmaz). SAF."""
+    lines = [l for l in (text or "").splitlines() if l.strip()]
+    if not lines:
+        return None
+    if is_trust_dialog(text):
+        return "trust", dialog_head(text)
+    tail = "\n".join(lines[-8:]).lower()
+    if any(m in tail for m in _PROMPT_MARKERS):
+        return None
+    low30 = "\n".join(lines[-30:]).lower()
+    if any(m in low30 for m in _RESUME_MARKERS):
+        return "resume_picker", dialog_head(text)
+    if any(m in low30 for m in _LOGIN_MARKERS):
+        return "login", dialog_head(text)
+    menu = sum(1 for l in lines[-10:] if _MENU_RE.match(l))
+    if menu >= 2 and ("enter to confirm" in tail or "esc to cancel" in tail or "to select" in tail or "use arrow" in tail):
+        return "unknown_dialog", dialog_head(text)
+    return None

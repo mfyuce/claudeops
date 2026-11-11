@@ -4911,6 +4911,7 @@ _WHY_TR = {
     "no_next_work": "dürtülecek iş yok (TODO'da sahipsiz açık madde yok, notta 'sıradaki:' yok)",
     "next_none": "oturum 'sıradaki: yok' dedi; TODO değişene ya da yeni etkinliğe dek dürtülmüyor", "nudging": "dürtülüyor",
     "running": "oturum çalışıyor", "observe": "gözlem kipi: eylem uygulanmaz",
+    "dialog_stuck": "diyalogda takılı (güven/resume/giriş): mesaj gitmiyor, elle geçilmeli", "send_failed": "art arda gönderim hatası: oturum takılı olabilir",
 }
 _WHY_EN = {
     "phase_paused": "project is paused", "phase_done": "project is done", "notes_wait": "notes start with BEKLEME (waiting)",
@@ -4927,6 +4928,7 @@ _WHY_EN = {
     "no_next_work": "nothing to nudge (no ownerless open TODO item, no 'sıradaki:' in notes)",
     "next_none": "session said 'next: none'; no nudge until the TODO changes or new activity", "nudging": "nudging",
     "running": "session is running", "observe": "observe mode: actions are not applied",
+    "dialog_stuck": "stuck at a dialog (trust/resume/login): messages do not arrive, answer it by hand", "send_failed": "repeated send failures: the session may be stuck",
 }
 _START_BLOCK_TR = {"max_starts": "tick başına başlatma sınırı (max_starts)", "max_active": "etkin oturum sınırı (max_active)",
                    "max_active_total": "makine geneli etkin sınır (max_active_total)", "auto_start_off": "auto_start kapalı",
@@ -5000,6 +5002,12 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
     txt = v.last_assistant or ""
     if v.busy:
         return _why("working", lang)
+    ds = (state.get("dialog_stuck") or {}).get(v.name)
+    if isinstance(ds, dict):          # oturum bir diyalogda (güven/resume/giriş/tanınmayan) bekliyor: gönderimler boşa gider
+        return _why("dialog_stuck", lang, f"{ds.get('kind', '')}: {ds.get('head', '')}"[:200], kind=ds.get("kind", ""), since=float(ds.get("since") or 0))
+    sf = (state.get("send_fail") or {}).get(v.name)
+    if isinstance(sf, dict) and int(sf.get("n") or 0) >= 3:
+        return _why("send_failed", lang, f"{sf.get('n')}x {sf.get('error', '')}"[:200], n=int(sf.get("n") or 0), since=float(sf.get("since") or 0))
     if v.cli == "claude" and txt:
         if any(m in txt for m in _ASK_MARKERS):
             return _why("session_asked", lang, one_line(txt, 160))

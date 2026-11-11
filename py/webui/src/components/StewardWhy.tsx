@@ -11,6 +11,7 @@ import { showToast } from "../state/toast";
 type Run = <T extends SimpleResult>(fn: () => Promise<T>, after?: (r: T) => void) => Promise<void>;
 
 /** Codes that mean "progressing / about to": shown muted, everything else is a hold reason shown in amber. */
+const RED_CODES = new Set(["dialog_stuck", "send_failed"]);
 const OK_CODES = new Set(["working", "starting", "nudging", "running", "idle_wait", "cadence_wait", "answer_pending"]);
 
 function when(ts: number): string {
@@ -22,8 +23,9 @@ export function WhyCell({ why, lang }: { why: StewardProject["why"]; lang: strin
   const age = Math.max(0, Math.round((Date.now() / 1000 - why.at) / 60));
   const tip = `${why.code}${why.detail ? ` · ${why.detail}` : ""} · ${lang === "en" ? `computed ${age} min ago` : `${age} dk önce hesaplandı`}`;
   return (
-    <span title={tip} style={{ color: OK_CODES.has(why.code) ? "var(--muted)" : "var(--amber, #d97706)" }}>
-      {why.text}
+    <span title={tip} style={{ color: RED_CODES.has(why.code) ? "var(--red, #dc2626)" : OK_CODES.has(why.code) ? "var(--muted)" : "var(--amber, #d97706)",
+      fontWeight: RED_CODES.has(why.code) ? 600 : undefined }}>
+      {RED_CODES.has(why.code) && why.code === "dialog_stuck" ? (lang === "en" ? "stuck at dialog: " : "diyalogda takılı: ") : ""}{why.text}
       {why.detail ? <span className="opts-hint" style={{ display: "block", fontSize: ".7rem" }}>{why.detail}</span> : null}
       {why.next_work ? (
         <span className="opts-hint" style={{ display: "block", fontSize: ".7rem" }}

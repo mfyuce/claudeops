@@ -47,7 +47,7 @@ from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..providers.base import McpServerSpec, OneshotError
 from ..settings import default_effort_for, default_model_for, load_settings, steward_config, steward_ids
 from ..spawn import spawn_session, detect_display
-from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys, tmux_send_raw
+from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys, tmux_send_raw, tmux_send_special_key
 from ..turns import is_busy_now
 from . import web_review, web_ws
 
@@ -1404,16 +1404,84 @@ def _send(name: str, cli: str, text: str) -> bool:
     if not provider.has_conversation():
         return False
     if cli == "claude":
-        # İlk açılışta güven diyaloğu açıksa metin + Enter varsayılan "No, exit"i seçip oturumu öldürür (7 Kas: animallangppr, vesuviusppr)
+        # İlk açılışta güven diyaloğu açıksa metin + Enter varsayılan "No, exit"i seçip oturumu öldürür (7 Kas: animallangppr, vesuviusppr).
+        # 11 Kas dalgicppr: açılıştaki kısa izleme diyaloğu kaçırdı, sonraki gönderimler 12 saat sessizce "send failed" verdi: artık
+        # pane okunur, bilinen güven diyaloğu KAYITLI klasörde geçilir, bilineni/bilinmeyeni KÖR tuş basmadan sahibe bildirilir.
         from .. import trust_dialog
-        if trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or "")):
-            diag_log("send_blocked_trust_dialog", name=name)
-            return False
+        cl = trust_dialog.classify(strip_ansi(tmux_capture(name) or ""))
+        if cl is not None:
+            if not _recover_dialog(name, cl):
+                _note_send_result(name, False, "dialog:" + cl[0])
+                return False
+        else:
+            _DIALOG_STUCK.pop(name, None)
     # ucli çok satırı ayrı tur sayar: tek satıra katlama + kesmeme TEK yerde, `UcliProvider.prepare_input`
     ok = tmux_send_keys(name, provider.prepare_input(text), settle_delay=provider.input_settle_delay())
+    _note_send_result(name, bool(ok), "" if ok else "send failed")
     if ok and cli == "ucli":
         _ucli_box_recheck(name)
     return ok
+
+
+DIALOG_NOTIFY_SECONDS = 6 * 3600
+_DIALOG_STUCK: Dict[str, Dict[str, Any]] = {}      # {oturum: {kind, head, since, notified_at}}: panelde "diyalogda takılı" (explain_idle `dialog_stuck`)
+_SEND_FAILS: Dict[str, Dict[str, Any]] = {}        # {oturum: {n, since, notified_at, error}}: art arda gönderim hatası (`send_failed`)
+SEND_FAIL_ALERT = 3
+
+
+def _dialog_notify_cfg() -> sw.Config:
+    try:
+        return steward_config()
+    except Exception:
+        return sw.Config()
+
+
+def _recover_dialog(name: str, cl: Tuple[str, str]) -> bool:
+    """`_send` diyalog görünce: True = gönderime devam (diyalog geçildi), False = gönderme. Güven diyaloğu YALNIZ kayıtlı proje klasöründe
+    `trust_dialog.handle` kuralıyla geçilir; tanınmayan/başka diyalogda KÖR tuş basılmaz: olay + sahibe ntfy (6 saatte bir) + panel kaydı."""
+    from .. import trust_dialog
+    kind, head = cl
+    if kind == "trust":
+        try:
+            cwd = _cwd_resolver()(name)
+        except Exception:
+            cwd = ""
+        if cwd and os.path.isdir(cwd):
+            res = trust_dialog.handle(name, registered=True, capture=tmux_capture, send_key=tmux_send_special_key, send_raw=tmux_send_raw,
+                                      strip=strip_ansi, log=diag_log, wait=4.0, step=0.5, calm_polls=2)
+            if res == "accepted":
+                diag_log("send_dialog_trust_accepted", name=name)
+                _DIALOG_STUCK.pop(name, None)
+                return not trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or ""))
+    now = time.time()
+    rec = _DIALOG_STUCK.get(name) or {"since": now, "notified_at": 0.0}
+    rec.update(kind=kind, head=head)
+    _DIALOG_STUCK[name] = rec
+    diag_log("send_blocked_dialog", name=name, kind=kind, head=head[:160])
+    if now - float(rec.get("notified_at") or 0) >= DIALOG_NOTIFY_SECONDS:
+        rec["notified_at"] = now
+        cfg = _dialog_notify_cfg()
+        _notify(cfg, (f"{name} oturumu diyalogda takılı ({kind}): {head}. Panelden terminali açıp elle geç; motor kör tuş basmadı."
+                      if cfg.lang != "en" else f"{name} is stuck at a dialog ({kind}): {head}. Open its terminal and answer by hand; the engine pressed no keys."))
+        sw.log_event("dialog_stuck", paths=sw.paths_for(cfg.sid), name=name, kind=kind, head=head[:160])
+    return False
+
+
+def _note_send_result(name: str, ok: bool, error: str = "") -> None:
+    """Oturuma gönderim sonucu: art arda `SEND_FAIL_ALERT` hata = olay + sahibe ntfy (6 saatte bir); başarı sayacı sıfırlar."""
+    if ok:
+        _SEND_FAILS.pop(name, None)
+        return
+    now = time.time()
+    rec = _SEND_FAILS.setdefault(name, {"n": 0, "since": now, "notified_at": 0.0})
+    rec["n"] += 1
+    rec["error"] = error
+    if rec["n"] >= SEND_FAIL_ALERT and now - float(rec.get("notified_at") or 0) >= DIALOG_NOTIFY_SECONDS and name not in _DIALOG_STUCK:
+        rec["notified_at"] = now
+        cfg = _dialog_notify_cfg()
+        sw.log_event("send_failed_streak", paths=sw.paths_for(cfg.sid), name=name, n=rec["n"], error=error[:120])
+        _notify(cfg, (f"{name} oturumuna {rec['n']} kezdir mesaj GİDEMİYOR ({error or 'send failed'}); oturum takılı olabilir."
+                      if cfg.lang != "en" else f"Messages to {name} failed {rec['n']} times in a row ({error or 'send failed'}); the session may be stuck."))
 
 
 UCLI_BOX_CHECK_DELAY = 0.8
@@ -4049,7 +4117,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 actions, new_state = sw.loop_guard(actions, views, new_state, t0)     # L4: hedefte değişiklik yokken tekrar eden eylem durur
                 try:        # "neden ilerlemiyor" (panel proje satırı): motorun bu tick'teki kararlarıyla aynı koşullar; hata tick'i düşürmez
-                    ctx.idle_why = {"at": t0, "by": sw.explain_idle_all(views, projects, new_state, cfg, t0, sw.load_questions(paths), actions,
+                    ctx.idle_why = {"at": t0, "by": sw.explain_idle_all(views, projects, dict(new_state, dialog_stuck=dict(_DIALOG_STUCK), send_fail=dict(_SEND_FAILS)), cfg, t0, sw.load_questions(paths), actions,
                                                                          world, open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects))}
                 except Exception as e_why:
                     diag_log("steward_explain_idle_failed", sid=sid, error=repr(e_why))
