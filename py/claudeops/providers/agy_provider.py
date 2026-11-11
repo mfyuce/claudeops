@@ -75,7 +75,7 @@ import time
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec
-from ..atomic_json import atomic_write_json
+from ..atomic_json import atomic_write_json, file_lock
 from ..effort import sort_levels, split_tier
 from ..paths import CLAUDEOPS_DIR
 from ..settings import resolved_binary
@@ -212,8 +212,8 @@ def _arg(cmd: List[str], flag: str) -> Optional[str]:
 
 def _load_agy_sids() -> Dict[str, str]:
     try:
-        with open(AGY_SIDS_JSON, encoding="utf-8") as f:
-            data = json.load(f)
+        from .. import statedocs
+        data = statedocs.read_json("agy_sids", AGY_SIDS_JSON, {})
         return data if isinstance(data, dict) else {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
@@ -223,12 +223,15 @@ def _remember_agy_sid(session_name: str, sid: str) -> None:
     """`extract_info()`'nun her discovery tick'inde çağırdığı öğrenme adımı —
     zaten aynı değer kayıtlıysa diske hiç yazmaz (4s'lik poll döngüsünde
     gereksiz I/O yapmamak için)."""
-    known = _load_agy_sids()
-    if known.get(session_name) == sid:
-        return
-    known[session_name] = sid
+    if _load_agy_sids().get(session_name) == sid:
+        return                      # ucuz yol: kilitsiz
     from .. import statedocs
-    statedocs.write_json("agy_sids", AGY_SIDS_JSON, known, writer=atomic_write_json)
+    with file_lock(AGY_SIDS_JSON):  # oku-değiştir-yaz bütün kilit altında: eşzamanlı iki agy açılışı birbirinin kaydını silmez (SQL göçü Adım C)
+        known = _load_agy_sids()
+        if known.get(session_name) == sid:
+            return
+        known[session_name] = sid
+        statedocs.write_json("agy_sids", AGY_SIDS_JSON, known, writer=atomic_write_json)
 
 
 def _sid_claimed_by_other(known: Dict[str, str], sid: str, session_name: str) -> bool:
