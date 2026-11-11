@@ -57,6 +57,20 @@ class Counting(unittest.TestCase):
             finally:
                 ws._cwd_resolver = orig
 
+    def test_scan_numbered_checkboxes(self):
+        """danisppr biçimi: numaralı `4. [ ]` satırları da açık iş sayılır (11 Kas: 0 sayılıp oturum boşta kalmıştı)."""
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(["git", "init", "-q", d], check=True)
+            with open(os.path.join(d, "TODO.md"), "w", encoding="utf-8") as f:
+                f.write("# TODO\n1. [x] **bitti**\n4. [ ] **iş dört**\n5) [ ] iş beş\n+ [ ] artı\n12. bir not, kutu yok\n")
+            projs = {"p": sw.Project(name="p", phase="planned")}
+            orig = ws._cwd_resolver
+            ws._cwd_resolver = lambda: (lambda n: d)
+            try:
+                self.assertEqual(ws._scan_todo(projs, "p"), (3, 0))
+            finally:
+                ws._cwd_resolver = orig
+
 
 def _view(**kw):
     base = dict(running=True, cwd="/w", cli="claude", busy=False, tmux=True, started_at=1.0, last_activity=NOW - 3100, last_assistant="")

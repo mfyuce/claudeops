@@ -3677,7 +3677,7 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int
         n_open = n_owner = 0
         with open(real, encoding="utf-8", errors="replace") as f:
             for ln in f:
-                if not re.match(r"\s*[-*]\s*\[ \]", ln):
+                if not re.match(r"\s*(?:[-*+]|\d+[.)])\s*\[ \]", ln):     # "- [ ]" ve numaralı "4. [ ]" (danisppr biçimi)
                     continue
                 if sw.OWNER_TODO_LINE_RE.search(ln):
                     n_owner += 1

@@ -3139,7 +3139,7 @@ def decide(cfg: Any, fid: str, action: str, now: Optional[float] = None) -> Dict
 
 def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
     """`review_auto_export` açıksa YEREL projelerin `approved` bulgularını TODO.md'ye, doğrulanamayan (`unclear`)
-    bulgularını TOBEDECIDED.md'ye yazar (`exported_by=auto`); uzak proje (host'lu) ve parola/gizli geçen bulgu atlanır; tick başına EN ÇOK 1
+    bulgularını TOBEDECIDED.md'ye yazar (`exported_by=auto`); uzak proje (host'lu) ve parola/gizli geçen bulgu atlanır (uzak: elle `review export`); tick başına EN ÇOK 1
     proje; bir projede hata olursa log + sonrakine geçer. Aynı bulgu iki kez yazılmaz (`appended_export` dosyadakini
     tanır). Yazılan projelerin adları döner."""
     if not getattr(cfg, "review_auto_export", False):
@@ -3164,9 +3164,18 @@ def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
     return []
 
 
+def _redacted_row(r: Dict[str, Any]) -> Dict[str, Any]:
+    """Dışa yazılacak satırın metin alanlarında gizli değer maskelenir (hassas bulgu elle yazılabilir, değeri ASLA)."""
+    out = dict(r)
+    for k in ("title", "body", "where", "note"):
+        if isinstance(out.get(k), str) and out[k]:
+            out[k] = rv.redact_secrets(out[k])
+    return out
+
+
 def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dict[str, Any]:
     """Uzak projenin onaylı bulgularını uzak `fname` sonuna yazar (taşıma: `RemoteReviewDriver.export_file`, claudeops
-    API'si). Yerel `stale_reason`/`changed_after_review` uzak ağaca bakamaz: atlanır. Hassas bulgu HER ZAMAN atlanır.
+    API'si). Yerel `stale_reason`/`changed_after_review` uzak ağaca bakamaz: atlanır. Hassas bulgu yalnız `by="auto"`da atlanır.
     Çift yazma yok: dosyada `(review <id>)` varsa yeniden yazılmaz, yine `exported` sayılır. Dosya yoksa dur ve raporla."""
     host = (ownership().get("hosts") or {}).get(project) or ""
     drv = _REMOTE_FN(project, host) if (host and _REMOTE_FN is not None) else None     # review_where'den bağımsız: dışa aktarım host'a bakar
@@ -3178,9 +3187,9 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
         data = rv.load_findings(p)
         cand = [dict(v, id=k) for k, v in sorted(data.items())
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"]
-        skipped_sensitive = [r["id"] for r in cand
-                             if sa.is_sensitive(dict(r, title=f"{r.get('title') or ''} {r.get('body') or ''}"))]
-        rows = [r for r in cand if r["id"] not in skipped_sensitive]
+        skipped_sensitive = [r["id"] for r in cand          # yereldeki gibi: hassas bulgu yalnız OTOMATİK yazımda atlanır (sahip 11 Kas "yaz")
+                             if by == "auto" and sa.is_sensitive(dict(r, title=f"{r.get('title') or ''} {r.get('body') or ''}"))]
+        rows = [_redacted_row(r) for r in cand if r["id"] not in skipped_sensitive]
     reader = getattr(drv, "read_rel", None)
     if callable(reader) and rows:       # eskimiş bulgu uzak TODO'ya yazılmasın: tanımlayıcı denetimi uzak dosya metniyle
         stale: Dict[str, str] = {}
@@ -3261,6 +3270,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") in states
                 and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))
                 and (only is None or only(v))]
+        rows = [_redacted_row(r) for r in rows]
         if note:       # RTODO/RTBD: satıra durum notu (kayıttaki bulgu değişmez, yalnız yazılan satır)
             for r in rows:
                 r["note"] = f"{r['note']}; {note}" if r.get("note") else note

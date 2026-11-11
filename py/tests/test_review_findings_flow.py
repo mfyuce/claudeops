@@ -456,8 +456,9 @@ class TestRemoteExport(_Flow):
         data[f1]["title"] = "DSN postgres://u:hunter2@h/db sızıyor"
         rv.save_findings(self.p, data)
         self.set_state(f1, "approved")
-        r = self.post("export", project="far")
-        self.assertFalse(r["ok"])
+        r = self.post("export", project="far")          # elle yazım hassas bulguyu da yazar (sahip 11 Kas), değer MASKELİ
+        self.assertTrue(r["ok"], r)
+        self.assertIn(f1, self.files["TODO.md"])
         self.assertNotIn("hunter2", self.files["TODO.md"])
 
     def test_no_driver_is_error_not_crash(self):
