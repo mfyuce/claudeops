@@ -998,7 +998,9 @@ export interface StewardProject {
   /** The project's running session (terminal target); absent when none is running. */
   session?: { name: string; host: string };
   /** Why it is not moving (`steward.explain_idle`, computed by the engine each tick; absent before the first tick). */
-  why?: { code: string; text: string; detail: string; at: number; until?: number; question_id?: string; minutes_left?: number };
+  why?: { code: string; text: string; detail: string; at: number; until?: number; question_id?: string; minutes_left?: number;
+    /** Open TODO.md lines tagged as owner-bound (SAHİPTE, (sahip), DIŞ GİRDİ...): count only when > 0. */
+    owner_in_todo?: number };
 }
 
 export interface StewardLoopGuard {

@@ -25,6 +25,12 @@ export function WhyCell({ why, lang }: { why: StewardProject["why"]; lang: strin
     <span title={tip} style={{ color: OK_CODES.has(why.code) ? "var(--muted)" : "var(--amber, #d97706)" }}>
       {why.text}
       {why.detail ? <span className="opts-hint" style={{ display: "block", fontSize: ".7rem" }}>{why.detail}</span> : null}
+      {why.owner_in_todo ? (
+        <span className="opts-hint" style={{ display: "block", fontSize: ".7rem", color: "var(--amber, #d97706)" }}
+          title={lang === "en" ? "Move them to TOBEDECIDED.md; TODO.md should hold only ownerless work" : "TOBEDECIDED.md'ye taşınmalı; TODO.md'de yalnız sahipsiz iş kalmalı"}>
+          {lang === "en" ? `${why.owner_in_todo} owner-bound item(s) in TODO` : `TODO'da sahibe bağlı ${why.owner_in_todo} madde`}
+        </span>
+      ) : null}
     </span>
   );
 }

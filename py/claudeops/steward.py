@@ -125,7 +125,7 @@ MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
 SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
-OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm", "idle_nudge", "idle_close")
+OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm", "idle_nudge", "idle_close", "owner_todo_move")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -2706,7 +2706,11 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
 
 
 # TODO satırı sahibin kararını bekliyor (cadence/"açık iş" sayımında iş SAYILMAZ: oturum açmak boşa tur)
-OWNER_WAIT_LINE_RE = re.compile(r"SAH[İI]BE SORULDU|sahip(?:in)? (?:karar|cevab)\w* bekl|karar(?:ı)? sahip\w* bekl|STEWARD-ASK|sahibe bırak", re.I)
+# Sahibe bağlı etiketli TODO satırı (global kural 11 Kas: bunlar TOBEDECIDED'a gider). Şapkalı/şapkasız, büyük/küçük harf.
+OWNER_TODO_LINE_RE = re.compile(r"SAH[iİıI]PTE|\(sahip\)|D[iİıI][şsŞS]\s+G[iİıI]RD[iİıI]|sahip\s+kar[aâ]r[ıiİI]\s+bekl", re.I)
+OWNER_TODO_MOVE_SECONDS = 24 * 3600     # proje başına en çok 1 "TOBEDECIDED'a taşı" mesajı / 24 sa
+OWNER_WAIT_LINE_RE = re.compile(r"SAH[İI]BE SORULDU|sahip(?:in)? (?:karar|cevab)\w* bekl|karar(?:ı)? sahip\w* bekl|STEWARD-ASK|sahibe bırak|"
+                                + OWNER_TODO_LINE_RE.pattern, re.I)
 BRAIN_STOP_COOLDOWN_SECONDS = 4 * 3600   # beyin `stop` dedikten sonra cadence projeyi bu süre yeniden BAŞLATMAZ (faz değişmez)
 
 
@@ -4612,7 +4616,8 @@ _ASK_MARKERS = ("STEWARD-ASK", "STEWARD-BLOCKED", "STEWARD-ROUTINE", "STEWARD-JO
 
 def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
                      planned: List[Action], world: Optional[World] = None,
-                     open_work: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+                     open_work: Optional[Callable[[str], Optional[int]]] = None,
+                     owner_todo: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """`plan_ucli_idle`in Claude Code genellemesi (sahip onayı 7 Kas). SAF. Yönetilen yerel tmux claude oturumu boşta (`busy` False,
     alt ajan yok, son istekten `claude_idle_nudge_secs` geçti), son cevap işin bittiğini/soru sorduğunu söylemiyor ve projenin
     sıradaki işi varsa TEK satır `devam: <iş>` (`idle_nudge`). Kapat/devir/duraklatma YOK. Aynı boşta dönem en çok
@@ -4622,6 +4627,7 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
     if world is not None:
         projects = world.own_projects(projects)
     rec_all: Dict[str, Any] = dict(state.get("claude_idle") or {})
+    otm: Dict[str, Any] = dict(state.get("owner_todo_move") or {})
     ho_pending = state.get("ho_pending") or {}
     touched = {a.name for a in planned}
     out: List[Action] = []
@@ -4653,6 +4659,22 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
         txt = v.last_assistant or ""
         if turn_failed(txt) or waiting_for_gate(txt) or any(m in txt for m in _ASK_MARKERS):
             continue
+        if owner_todo is not None:
+            # TODO.md'de sahibe bağlı etiketli satır var: oturuma BİR kez "TOBEDECIDED'a taşı" (proje başına 24 sa'te en çok 1; dry/act ayrı sayılır)
+            try:
+                n_own = int(owner_todo(proj.name) or 0)
+            except Exception:
+                n_own = 0
+            prev = otm.get(proj.name) or {}
+            if n_own > 0 and not (prev.get("mode", "dry") == cfg.claude_idle and now - float(prev.get("at") or 0) < OWNER_TODO_MOVE_SECONDS):
+                text = one_line(f"TODO.md'deki sahibe bağlı {n_own} maddeyi TOBEDECIDED'a taşı (kısa, tek cevapla kapanır soru olarak), "
+                                f"TODO'da yalnız sahipsiz iş kalsın; sonra kalan işe devam et.", 600)
+                out.append(Action("owner_todo_move", v.name, f"TODO'da sahibe bağlı {n_own} madde",
+                                  {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
+                                   "text": text, "next": f"owner_in_todo={n_own}", "owner_in_todo": n_own, "cli": "claude"}))
+                otm[proj.name] = {"at": now, "mode": cfg.claude_idle, "n": n_own}
+                rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": text}
+                continue
         if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
         hint = next_work_hint(proj, open_work, real_only=True)
@@ -4675,6 +4697,8 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
         return [], state
     st = dict(state)
     st["claude_idle"] = rec_all
+    if otm:
+        st["owner_todo_move"] = otm
     return out, st
 
 
@@ -4822,14 +4846,23 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
 
 def explain_idle_all(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
                      questions: List[Question], actions: Optional[List[Action]] = None, world: Optional[World] = None,
-                     open_work: Optional[Callable[[str], Optional[int]]] = None) -> Dict[str, Dict[str, Any]]:
-    """SAF. {proje: explain_idle(...)}; tek projenin hatası listeyi düşürmez."""
+                     open_work: Optional[Callable[[str], Optional[int]]] = None,
+                     owner_todo: Optional[Callable[[str], Optional[int]]] = None) -> Dict[str, Dict[str, Any]]:
+    """SAF. {proje: explain_idle(...)}; tek projenin hatası listeyi düşürmez. `owner_todo` verilirse ve proje TODO'sunda
+    sahibe bağlı etiketli madde varsa nedene `owner_in_todo` (sayı) eklenir ("TODO'da sahibe bağlı N madde")."""
     out: Dict[str, Dict[str, Any]] = {}
     for name, p in projects.items():
         try:
             out[name] = explain_idle(p, views, projects, state, cfg, now, questions, actions, world, open_work)
         except Exception:
             continue
+        if owner_todo is not None:
+            try:
+                n = int(owner_todo(name) or 0)
+            except Exception:
+                n = 0
+            if n > 0:
+                out[name]["owner_in_todo"] = n
     return out
 
 

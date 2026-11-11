@@ -3330,7 +3330,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         ok = _send(s.name, s.cli, action.payload.get("text") or skw.KEEPWARM_TEXT)
         sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n", "text")})
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
-    if k == "idle_nudge":             # TBD#156: boşta ucli kodcuya TEK satır "devam: <iş>" (koşullar `plan_ucli_idle`de denetlendi)
+    if k in ("idle_nudge", "owner_todo_move"):   # owner_todo_move: aynı yol, olay adı ayrı (TODO'daki sahibe bağlı maddeleri TOBEDECIDED'a taşıt)
+        # TBD#156: boşta ucli kodcuya TEK satır "devam: <iş>" (koşullar `plan_ucli_idle`de denetlendi)
         if not host:
             denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
             if denied is not None:
@@ -3339,10 +3340,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if host or s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not a local running tmux session"}
         if _box_has_typed_input(s.name):
-            sw.log_event("idle_nudge_skipped", paths=paths, name=name, reason="input_box_not_empty")
+            sw.log_event(k + "_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, sw.one_line(action.payload.get("text") or "devam"))   # ucli çok satırı ayrı tur sayar: TEK satır
-        sw.log_event("idle_nudge", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "threshold", "n", "next")})
+        sw.log_event(k, paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "threshold", "n", "next")})
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
     if k == "idle_close":             # TBD#156: handover / respawn / stop (mevcut yollar: `_local_handover`, `respawn` -> `_last_launch` cli_opts korunur)
         mode = str(action.payload.get("mode") or "")
@@ -3584,23 +3585,46 @@ def _doc_path(cwd: str, fname: str) -> str:
     return ""
 
 
-def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
-    """`plan_tick` için: projenin YEREL TODO.md'sindeki açık `- [ ]` satırı sayısı (STEWARD-DONE-CONFIRMED ön-kontrolü).
-    Uzak proje, klasörü bilinmeyen ya da okunamayan dosya = None (ön-kontrol atlanır, teyit kanıta kalır). Yalnız
-    teyit gelince çağrılır; gerçek yol proje klasörü altında kalmalı, 2 MB sınırı."""
-    def count(proj: str) -> Optional[int]:
-        try:
-            p = projects.get(proj)
-            if p is None or p.host:
-                return None
-            cwd = _cwd_resolver()(proj)
-            real = _doc_path(cwd, "TODO.md")
-            if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
-                return None
-            with open(real, encoding="utf-8", errors="replace") as f:
-                return sum(1 for ln in f if re.match(r"\s*[-*]\s*\[ \]", ln) and not sw.OWNER_WAIT_LINE_RE.search(ln))
-        except OSError:
+def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int, int]]:
+    """Projenin YEREL TODO.md'si: (açık iş sayısı, sahibe bağlı etiketli açık satır sayısı). Sahibe bağlı satırlar
+    (`OWNER_WAIT_LINE_RE`: SAHİPTE, (sahip), DIŞ GİRDİ, "sahip kararı bekliyor"...) açık iş SAYILMAZ. Uzak proje, klasörü bilinmeyen,
+    okunamayan ya da 2 MB üstü dosya = None."""
+    try:
+        p = projects.get(proj)
+        if p is None or p.host:
             return None
+        cwd = _cwd_resolver()(proj)
+        real = _doc_path(cwd, "TODO.md")
+        if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+            return None
+        n_open = n_owner = 0
+        with open(real, encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                if not re.match(r"\s*[-*]\s*\[ \]", ln):
+                    continue
+                if sw.OWNER_TODO_LINE_RE.search(ln):
+                    n_owner += 1
+                if not sw.OWNER_WAIT_LINE_RE.search(ln):
+                    n_open += 1
+        return n_open, n_owner
+    except OSError:
+        return None
+
+
+def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
+    """`plan_tick` için: projenin YEREL TODO.md'sindeki açık `- [ ]` satırı sayısı (sahibe bağlı etiketliler hariç; `_scan_todo`).
+    None = bilinmiyor (ön-kontrol atlanır, teyit kanıta kalır). Yalnız teyit gelince çağrılır."""
+    def count(proj: str) -> Optional[int]:
+        r = _scan_todo(projects, proj)
+        return None if r is None else r[0]
+    return count
+
+
+def _owner_todo_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
+    """Projenin TODO.md'sindeki sahibe bağlı etiketli açık satır sayısı (`owner_in_todo`); uzak/bilinmiyor = None."""
+    def count(proj: str) -> Optional[int]:
+        r = _scan_todo(projects, proj)
+        return None if r is None else r[1]
     return count
 
 
@@ -4006,7 +4030,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 else:
                     actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
                 cl_actions, new_state = sw.plan_claude_idle(views, projects, new_state, cfg, t0, actions, world,
-                                                            open_work=_open_work_of(projects))
+                                                            open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects))
                 if cfg.claude_idle == "dry":
                     for a in cl_actions:            # YALNIZ ölçüm: oturuma dokunmaz
                         sw.log_event("would:" + a.kind, paths=paths, name=a.name,
@@ -4017,7 +4041,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 actions, new_state = sw.loop_guard(actions, views, new_state, t0)     # L4: hedefte değişiklik yokken tekrar eden eylem durur
                 try:        # "neden ilerlemiyor" (panel proje satırı): motorun bu tick'teki kararlarıyla aynı koşullar; hata tick'i düşürmez
                     ctx.idle_why = {"at": t0, "by": sw.explain_idle_all(views, projects, new_state, cfg, t0, sw.load_questions(paths), actions,
-                                                                         world, open_work=_open_work_of(projects))}
+                                                                         world, open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects))}
                 except Exception as e_why:
                     diag_log("steward_explain_idle_failed", sid=sid, error=repr(e_why))
                 journal = _journal_entries(actions, t0)
