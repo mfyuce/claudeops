@@ -46,6 +46,25 @@ class OutcomeTest(unittest.TestCase):
         done, rest = sw.check_outcomes(pend, [v("hcr20261110", started=T0 + 20)], T0 + 60)
         self.assertEqual((done, len(rest)), ([], 1))
 
+    def test_respawn_new_session_under_project_name(self):
+        # canlı hata 11 Kas: anomaly20261110 devri `anomaly` adıyla açıldı, eski ad kapandı -> yanlış 'none' + sahibe yanlış bildirim
+        pend = self._pend("respawn", "anomaly20261110", [v("anomaly20261110")])
+        self.assertEqual(pend["respawn|anomaly20261110"]["project"], "anomaly")
+        done, rest = sw.check_outcomes(pend, [v("anomaly", started=T0 + 20)], T0 + 60)
+        self.assertEqual([(d["kind"], d["result"]) for d in done], [("respawn", "changed")])
+        # blueprint varsa o kullanılır; başka projenin önek benzeri oturumu sayılmaz
+        pend = self._pend("respawn", "hc20261110", [v("hc20261110", bp="hc")])
+        done, rest = sw.check_outcomes(pend, [v("hcr20261112", started=T0 + 20)], T0 + 60)
+        self.assertEqual((done, len(rest)), ([], 1))
+        done, _ = sw.check_outcomes(pend, [v("hc20261112", started=T0 + 20)], T0 + 60)
+        self.assertEqual(done[0]["result"], "changed")
+        # eski (yeni açılmamış) proje oturumu değişiklik sayılmaz
+        done, rest = sw.check_outcomes(pend, [v("hc", started=T0 - 3600)], T0 + 60)
+        self.assertEqual((done, len(rest)), ([], 1))
+
+    def test_directive_baseline_has_no_project(self):
+        self.assertNotIn("project", sw.outcome_baseline("directive", "p20261110", [], T0))
+
     def test_pending_is_capped(self):
         pend = {f"k{i}": {"kind": "directive", "name": f"n{i}", "at": T0 + i, "sigs": {}} for i in range(sw.VERIFY_MAX_PENDING + 50)}
         _, rest = sw.check_outcomes(pend, [], T0 + 1)

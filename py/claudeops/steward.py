@@ -4335,10 +4335,28 @@ def _outcome_views(name: str, views: List["SessionView"]) -> List["SessionView"]
             or derived_of(v.name, name)]
 
 
+_DATED_TAIL_RE = re.compile(r"(?:20\d\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))?(?:_\d+)?$")
+
+
+def _outcome_project(name: str, views: List["SessionView"]) -> str:
+    """Eylem hedefinin projesi: eşleşen görünümün blueprint'i, yoksa addan tarih/`_N` soneki atılmış taban ("" = addan farksız)."""
+    for v in _outcome_views(name, views):
+        if v.blueprint and v.blueprint != name:
+            return v.blueprint
+    base = _DATED_TAIL_RE.sub("", name)
+    return base if base and base != name else ""
+
+
 def outcome_baseline(kind: str, name: str, views: List["SessionView"], now: float) -> Dict[str, Any]:
-    """SAF. Eylem uygulandığı andaki hedef durumu (doğrulama kaydı)."""
-    return {"kind": kind, "name": name, "at": now,
-            "sigs": {v.name: _loop_sig(v.name, views) for v in _outcome_views(name, views)}}
+    """SAF. Eylem uygulandığı andaki hedef durumu (doğrulama kaydı). start/respawn'da proje de yazılır: devir yeni oturumu
+    çoğu kez BAŞKA adla açar (`anomaly20261110` -> `anomaly`); eski ad kapanınca yalnız ada bakan doğrulama 'none' der."""
+    rec = {"kind": kind, "name": name, "at": now,
+           "sigs": {v.name: _loop_sig(v.name, views) for v in _outcome_views(name, views)}}
+    if kind in ("start", "respawn"):
+        proj = _outcome_project(name, views)
+        if proj:
+            rec["project"] = proj
+    return rec
 
 
 def _via(rec: Dict[str, Any]) -> Dict[str, Any]:
@@ -4356,6 +4374,10 @@ def check_outcomes(pending: Dict[str, Any], views: List["SessionView"], now: flo
         at = float(rec.get("at") or 0)
         kind, name = str(rec.get("kind") or ""), str(rec.get("name") or "")
         vs = [v for v in _outcome_views(name, views) if v.running]
+        proj = str(rec.get("project") or "")
+        if kind in ("start", "respawn") and proj:      # aynı projenin YENİ adlı oturumu da sayılır (started_at kapısı aşağıda)
+            seen = {v.name for v in vs}
+            vs += [v for v in _outcome_views(proj, views) if v.running and v.name not in seen]
         if kind in ("start", "respawn"):
             changed = any(v.started_at >= at - 30 for v in vs) or (kind == "start" and bool(vs) and not rec.get("sigs"))
         else:
