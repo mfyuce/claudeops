@@ -59,8 +59,9 @@ _EXPECTED_PREFIX = {
 
 def _read_state() -> dict:
     try:
-        with open(CLAUDE_MODELS_JSON, encoding="utf-8") as f:
-            return json.load(f)
+        from . import statedocs
+        v = statedocs.read_json("claude_models", CLAUDE_MODELS_JSON, {})
+        return v if isinstance(v, dict) else {}
     except Exception:
         return {}
 

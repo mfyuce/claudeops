@@ -991,8 +991,8 @@ class ClaudeProvider(CliProvider):
         `MODEL_CHOICES`'a düşer (agy/ucli'nin live-fetch-with-fallback
         deseniyle AYNI, sadece "canlı" kaynak bir subprocess-cache dosyası)."""
         try:
-            with open(CLAUDE_MODELS_JSON, encoding="utf-8") as f:
-                state = json.load(f)
+            from .. import statedocs
+            state = statedocs.read_json("claude_models", CLAUDE_MODELS_JSON, {})
             enabled = sorted(m for m, s in state.get("models", {}).items() if s == "enabled")
             if enabled:
                 return enabled
