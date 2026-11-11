@@ -69,6 +69,11 @@ class FailedTurnChainTest(unittest.TestCase):
         self.assertTrue(sw.turn_failed(self.ERR))
         self.assertTrue(sw.turn_failed("rate limited, wait a minute"))
         self.assertFalse(sw.turn_failed("Testler geçti"))
+        self.assertTrue(sw.turn_failed("error: HTTP 503 Service Unavailable"))
+        self.assertTrue(sw.turn_failed("API Error: 529 overloaded"))
+        self.assertTrue(sw.turn_failed("request failed with status code 429"))
+        # düzyazıdaki test anlatımı başarısız tur DEĞİL (danisppr 11 Kas: dürtme kilitlenmişti)
+        self.assertFalse(sw.turn_failed("Sınananlar: geçersiz model ile ucli (HTTP 404 geldi, eski OUT korundu)."))
 
     def test_failed_turn_does_not_reset_chain(self):
         c = cfg()

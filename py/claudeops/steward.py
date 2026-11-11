@@ -4525,12 +4525,19 @@ _TODO_HINT_PREFIX = "TODO.md'deki"
 
 # ucli'nin BAŞARISIZ turu (HTTP 404/429/5xx, "This turn failed"): `last_activity`'yi ilerletir ama iş yapılmamıştır. Etkinlik sanılıp dürtme zinciri
 # sıfırlanırsa aynı hataya sonsuz dürtme gider (6 Kas: danisppr 12 sa, 158 `idle_nudge`, D1).
-_TURN_FAILED_RE = re.compile(r"This turn failed|HTTP\s*[45]\d\d|status(?: code)?[: ]+[45]\d\d|rate[ -]limited", re.IGNORECASE)
+_TURN_FAILED_RE = re.compile(r"This turn failed|API Error|rate[ -]limited", re.IGNORECASE)
+# HTTP/durum kodu TEK BAŞINA başarısız tur sayılmaz: düzyazıdaki "HTTP 404 geldi, eski OUT korundu" (test anlatımı, danisppr 11 Kas)
+# dürtmeyi kilitliyordu. Kod ancak AYNI SATIRDA bir hata sözcüğüyle birlikte geçerse sayılır.
+_TURN_FAILED_STATUS_RE = re.compile(r"(?:HTTP\s*|status(?: code)?[: ]+)[45]\d\d", re.IGNORECASE)
+_TURN_FAILED_WORD_RE = re.compile(r"\b(?:error|failed|failure|unavailable|overloaded|exceeded|timed? ?out)\b", re.IGNORECASE)
 
 
 def turn_failed(text: str) -> bool:
     """Son asistan metni (son 600 karakter) başarısız bir tur izi taşıyor mu. SAF."""
-    return bool(_TURN_FAILED_RE.search((text or "")[-600:]))
+    tail = (text or "")[-600:]
+    if _TURN_FAILED_RE.search(tail):
+        return True
+    return any(_TURN_FAILED_STATUS_RE.search(ln) and _TURN_FAILED_WORD_RE.search(ln) for ln in tail.splitlines())
 
 
 def waiting_for_gate(text: str) -> bool:
