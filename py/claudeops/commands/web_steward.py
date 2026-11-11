@@ -3276,6 +3276,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             if denied is not None:
                 return denied
         return _deliver_job(action, cfg, projects, host=host, rt=rt)
+    if k == "ask_user" and action.reason == "STEWARD-JOB" and action.payload.get("text", "").startswith(sw.JOB_REQUEST_PREFIX):
+        gate = _job_marker_gate(action, cfg, name, host, paths)     # gerçek servis iş isteği değilse soru/rutin madde AÇILMAZ
+        if gate is not None:
+            return gate
     if k == "ask_user":
         q, outcome = sw.add_question_ex(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
                                         routine=bool(action.payload.get("routine")), paths=paths)
@@ -5375,6 +5379,61 @@ def _job_red_seen(sid: str, project: str, red: str, now: Optional[float] = None)
         _JOB_RED_SEEN.pop(k, None)
     _JOB_RED_SEEN[key] = now
     return bool(prev) and (now - prev) <= JOB_RED_REPEAT_SECONDS
+
+
+_JOB_KINDS_CACHE: Dict[str, Tuple[float, Optional[List[str]]]] = {}    # servis -> (zaman, tür listesi | None=ulaşılamadı)
+JOB_KINDS_TTL_SECONDS = 600
+_JOB_NOTE_SENT: Dict[str, float] = {}      # oturum -> `STEWARD-JOB yalnız servise iş içindir` notunun gittiği zaman (süreç içi; oturum başına BİR kez)
+
+
+def _registered_job_kinds(now: float) -> Tuple[bool, Optional[set]]:
+    """(servis kayıtlı mı, tüm kayıtlı servislerin iş türleri birleşimi | None = hiçbirinin kataloğuna ulaşılamadı). Servis adları
+    sabit değil: `services.json`dan okunur; katalog `GET /api/jobs/kinds`, 10 dk önbellekli."""
+    svcs = sj.load_services()
+    if not svcs:
+        return False, None
+    union: set = set()
+    got = False
+    for n, svc in svcs.items():
+        hit = _JOB_KINDS_CACHE.get(n)
+        if hit is None or now - hit[0] > JOB_KINDS_TTL_SECONDS:
+            kinds: Optional[List[str]] = None
+            try:
+                status, body = sj.request_json(svc, "GET", "/api/jobs/kinds")
+                items = body.get("kinds", body) if isinstance(body, dict) else body
+                if status == 200 and isinstance(items, dict):
+                    kinds = sorted(str(x) for x in items)
+                elif status == 200 and isinstance(items, list):
+                    kinds = sorted({str(x.get("kind") or x.get("name") or "") if isinstance(x, dict) else str(x) for x in items} - {""})
+            except Exception:
+                kinds = None
+            hit = (now, kinds)
+            _JOB_KINDS_CACHE[n] = hit
+        if hit[1] is not None:
+            got = True
+            union.update(hit[1])
+    return True, (union if got else None)
+
+
+def _job_marker_gate(action: "sw.Action", cfg: "sw.Config", name: str, host: str, paths: Any) -> Optional[Dict[str, Any]]:
+    """`STEWARD-JOB` işareti yalnız KAYITLI servise gerçek iş isteğiyse soru/rutin madde açar. Değilse (servis yok, tür katalogda yok,
+    durum notu) madde AÇILMAZ, olay `job_marker_rejected` yazılır, yerel boştaki tmux oturuma BİR kez not gider. None = geç."""
+    body = str(action.payload.get("text") or "")[len(sw.JOB_REQUEST_PREFIX):]
+    now = time.time()
+    registered, kinds = _registered_job_kinds(now)
+    ok, why = sw.job_marker_verdict(body, kinds, registered)
+    if ok:
+        return None
+    noted = False
+    if name not in _JOB_NOTE_SENT and not host:
+        s = _running(name)
+        if s is not None and is_tmux_backed(s.pid) and not _box_has_typed_input(s.name):
+            noted = bool(_send(s.name, s.cli, sw.one_line(sw.JOB_NOTE_TEXT)))
+            if noted:
+                _JOB_NOTE_SENT[name] = now
+    sw.log_event("job_marker_rejected", paths=paths, name=name, project=action.payload.get("project"), reason=why,
+                 text=body[:160], noted=noted)
+    return {"ok": True, "skipped": "job_marker_" + why, "noted": noted}
 
 
 def _job_kinds_list(sid: str) -> List[str]:

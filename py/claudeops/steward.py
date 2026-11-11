@@ -39,7 +39,7 @@ import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import hosts as hosts_mod      # yaprak modül (yalnız paths'e bağlı): proje `host` doğrulaması
 from . import review_remote           # yaprak modül (saf yardımcılar): uzak proje review kararı (TBD#114)
@@ -214,6 +214,7 @@ class Question:
     routine: bool = False           # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır; ROUTINE_ESCALATE_SECONDS dolarsa sahibine düşer
     repeats: int = 0                # oturum aynı soruyu yeniden sordu: cevap "zaten cevapladım" notuyla yeniden iletildi
     asked_again: int = 0            # AÇIK iken aynı proje/benzer metinle yeniden soruldu: yeni soru açılmadı, bu sayaç arttı
+    extra_texts: List[str] = field(default_factory=list)  # L7b: proje başına açık soru sınırı (MAX_OPEN_QUESTIONS_PER_PROJECT) aşılınca gelen yeni sorular BU soruya "ek" olarak eklenir (en çok EXTRA_TEXTS_KEEP)
     prev_texts: List[str] = field(default_factory=list)   # L7: KONU eşleşmesiyle birleşen soruların eski metinleri (yeniden eskiye, en çok TOPIC_PREV_KEEP); `text` = en yeni sürüm
 
 
@@ -1030,6 +1031,8 @@ _TOPIC_CAP_STOP = frozenset({"Seçenekler", "Önerim", "Gerekçe", "Karar", "Ned
                              "Türkçe", "İngilizce", "Options", "Reason", "Decision", "Owner", "Yes", "No"})
 TOPIC_MIN_OVERLAP = 0.5            # ortak jeton / küçük kümenin boyu
 TOPIC_PREV_KEEP = 3
+MAX_OPEN_QUESTIONS_PER_PROJECT = 3       # L7b (11 Kas, anomaly 2 saatte aynı konuda 12 soru): konu benzerliği düşük olsa da açık (rutin olmayan) soru sayısı bu sınırı aşmaz
+EXTRA_TEXTS_KEEP = 8
 TOPIC_OPEN_WINDOW_SECONDS = 72 * 3600    # açık soruya konu birleştirmesi (metin birleştirmesinin 24 sa'inden uzun: konu kalıcıdır)
 TOPIC_HOLD_WINDOW_SECONDS = 72 * 3600    # "bekle/sorma" cevabı bu kadar bağlayıcı
 # Sahibin "bekle / sonra / yeniden sorma" cevabı: aynı konu yeniden sorulursa bu cevap yeniden iletilir (soru açılmaz)
@@ -1262,6 +1265,17 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
                 sim.text = text
                 if source:
                     sim.source = source
+        if sim is None and not is_job and not routine:
+            # L7b: proje başına açık soru sınırı. Sahibe giden (rutin olmayan, iş isteği olmayan) açık soru sayısı sınıra ulaştıysa yeni soru
+            # AÇILMAZ: en yeni açık soruya "ek" olarak eklenir (sahip tek yerde okur, tek cevapla kapatır; konu benzerliği düşük olsa da).
+            opened = [q for q in questions if q.status == "open" and q.project == project and not q.routine
+                      and not q.text.startswith(JOB_REQUEST_PREFIX)]
+            if len(opened) >= MAX_OPEN_QUESTIONS_PER_PROJECT:
+                sim = max(opened, key=lambda q: q.created_at or 0.0)
+                if text not in sim.extra_texts:
+                    sim.extra_texts = (list(sim.extra_texts or []) + [text])[-EXTRA_TEXTS_KEEP:]
+                if source:
+                    sim.source = source
         if sim is not None:
             sim.asked_again += 1
             promoted = sim.routine and not routine
@@ -1404,12 +1418,12 @@ _QPAGE_TXT = {
            "done": "Cevap kaydedildi", "deliver": "Motor bir sonraki turda ilgili oturuma iletir.",
            "already": "Bu soru zaten cevaplanmış", "missing": "Böyle bir soru yok", "denied": "Bağlantı geçersiz",
            "empty": "Boş cevap gönderilemez", "by": "kaynak", "opts_hint": "Birine dokun ya da aşağıya yaz.",
-           "prev": "Aynı konuda önceki sürümler"},
+           "prev": "Aynı konuda önceki sürümler", "extra": "Ek sorular (açık soru sınırı aşıldı)"},
     "en": {"title": "Steward question", "project": "Project", "asked": "Asked", "free": "or type…", "send": "Send",
            "done": "Answer saved", "deliver": "The engine delivers it to the session on its next tick.",
            "already": "This question was already answered", "missing": "No such question", "denied": "Invalid link",
            "empty": "An empty answer cannot be sent", "by": "source", "opts_hint": "Tap one or type below.",
-           "prev": "Earlier versions on the same topic"},
+           "prev": "Earlier versions on the same topic", "extra": "Additional questions (open-question limit reached)"},
 }
 
 _QPAGE_CSS = (
@@ -1440,6 +1454,9 @@ def question_page_html(q: Optional[Question], lang: str = "tr", state: str = "as
         body.append(f"<p class='err'>{T['missing'] if state != 'denied' else T['denied']}</p>")
     else:
         body.append(f"<p class='q'>{esc(q.text)}</p>")
+        if q.extra_texts:
+            body.append(f"<details open><summary class='meta'>{T['extra']} ({len(q.extra_texts)})</summary>"
+                        + "".join(f"<p class='q'>{esc(t)}</p>" for t in q.extra_texts) + "</details>")
         if q.prev_texts:
             body.append(f"<details><summary class='meta'>{T['prev']} ({len(q.prev_texts)})</summary>"
                         + "".join(f"<p class='meta'>{esc(t)}</p>" for t in q.prev_texts) + "</details>")
@@ -3400,6 +3417,33 @@ GENERIC_RULE_EN = (
     "- Commit/push/merge/build/deploy are permanently allowed (owner, 2026-10-27): do not ask, have the project do them. Force-push, delete, spending, "
     "credentials/tokens/authority and package installs (apt/sudo) stay with the owner; never request them in a directive or approve them with `steward_answer`.\n"
 )
+
+
+_JOB_KIND_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
+# Durum notu: iş isteği değil, oturumun "sürüyor / bitince döneceğim" cümlesi (anomaly 11 Kas: 5 sahte iş isteği)
+_JOB_STATUS_NOTE_RE = re.compile(r"sürüyor|devam ediyor|çalışıyor|bitince|bittiğinde|döneceğim|dönerim|hazır olunca|arka planda|in progress|will report|when (?:it(?:'s)? )?done",
+                                 re.I)
+JOB_NOTE_TEXT = ("STEWARD-JOB yalnız paylaşımlı servise iş isteği içindir (`STEWARD-JOB: <servis iş türü> <dosya> [not]`, tür servis "
+                 "kataloğunda olmalı). Durum notu, ilerleme ya da soru için kullanma; durum zaten izleniyor, sahibe soru için STEWARD-ASK yaz.")
+
+
+def job_marker_verdict(body: str, known_kinds: Optional[Iterable[str]], services_registered: bool) -> Tuple[bool, str]:
+    """SAF. `STEWARD-JOB` gövdesi gerçek bir servis iş isteği mi: (ok, neden). Servis kayıtlı değilse `no_service`; iş türü (ilk jeton)
+    küçük harfli kebab/snake adı değilse ya da metin durum notu gibiyse `status_note`; katalog biliniyorsa (None = ulaşılamadı,
+    katalog denetimi atlanır) türün katalogda olması gerekir (`unknown_kind`). Servis adı sabit kodlanmaz: katalog kayıtlı servislerden gelir."""
+    if not services_registered:
+        return False, "no_service"
+    toks = (body or "").strip().split(None, 1)
+    kind = toks[0].strip("`") if toks else ""
+    if not _JOB_KIND_RE.match(kind):
+        return False, "status_note"
+    if _JOB_STATUS_NOTE_RE.search(toks[1] if len(toks) > 1 else ""):
+        return False, "status_note"
+    if known_kinds is not None:
+        ks = {str(k) for k in known_kinds}
+        if ks and kind not in ks:
+            return False, "unknown_kind"
+    return True, ""
 
 
 def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:

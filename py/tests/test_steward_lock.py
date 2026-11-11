@@ -36,7 +36,7 @@ def _worker_questions(tag, barrier, out):
     try:
         barrier.wait(10)
         for i in range(N):
-            sw.add_question("kitap", f"{tag} soru {i}?")
+            sw.add_question(f"kitap{tag}{i}", f"{tag} soru {i}?")     # proje başına açık soru sınırı (L7b) kilit testini bozmasın: her soru ayrı proje
             sw.add_idea(f"{tag} fikir {i}")
         out.put("ok")
     except BaseException as e:   # noqa: BLE001
