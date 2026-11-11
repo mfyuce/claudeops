@@ -80,6 +80,23 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(len(self.s.tail_log("other")), 1)
         self.assertEqual(self.s.trim_log("diag", 100), 0)
 
+    def test_backup_leaves_no_tmp_and_unique_names(self):
+        import glob
+        dest = os.path.join(self.d, "bk2.db")
+        self.s.backup(dest); self.s.backup(dest)                    # üst üste: sabit .tmp çakışması/sızıntısı yok
+        self.assertEqual(glob.glob(dest + ".*.tmp") + glob.glob(dest + ".tmp"), [])
+        self.assertEqual(oct(os.stat(dest).st_mode & 0o777), "0o600")
+
+    def test_backup_failure_cleans_tmp(self):
+        import glob
+        from unittest import mock
+        dest = os.path.join(self.d, "bk3.db")
+        with mock.patch("os.replace", side_effect=OSError("boom")):
+            with self.assertRaises(OSError):
+                self.s.backup(dest)
+        self.assertEqual(glob.glob(os.path.join(self.d, "bk3.db.*.tmp")), [])
+        self.assertFalse(os.path.exists(dest))
+
     def test_backup_consistent_and_private(self):
         self.s.set_doc("a", {"v": 1}); self.s.append_log("l", 1)
         dest = os.path.join(self.d, "bk.db"); self.s.backup(dest)

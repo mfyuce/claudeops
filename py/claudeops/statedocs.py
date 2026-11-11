@@ -235,16 +235,21 @@ def shadow_tsv(path: str, *, force: bool = False) -> None:
             return
         sg = _sig(path)
         key = "tsv:" + name_for(path)
-        if not force and _SYNCED.get(key) == sg:
+        if not force and key in _SYNCED and _SYNCED[key] == sg:
             return
         try:
             with open(path, encoding="utf-8") as f:
                 text = f.read()
         except FileNotFoundError:
+            from .store import default_store
+            st = default_store()
+            if st.tsv_text(name_for(path)) is not None:
+                st.replace_tsv(name_for(path), "")      # silinen dosyanın gölgesi DB'de eski içerikle kalmasın (export yanıltmasın)
+            _SYNCED[key] = sg
             return
         from .store import default_store
         st = default_store()
-        if st.tsv_text(name_for(path)) != text:
+        if (st.tsv_text(name_for(path)) or "") != text:     # boş dosya: None == "" (gereksiz yeniden yazım yok)
             st.replace_tsv(name_for(path), text)
         _SYNCED[key] = sg
     except Exception as e:

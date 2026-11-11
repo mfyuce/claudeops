@@ -34,6 +34,18 @@ class TsvTests(unittest.TestCase):
         self.assertEqual(self.st.tsv_text("roster.tsv"), "x\t/y\tm\tclaude\n"); self.assertEqual(self.st.tsv_text("models.tsv"), "a\tm\n")
         self.assertIsNone(self.st.tsv_text("none.tsv"))
 
+    def test_deleted_file_clears_shadow_and_empty_file_not_rewritten(self):
+        open(self.p, "w").write(ROSTER)
+        sd.shadow_tsv(self.p, force=True)
+        self.assertEqual(self.st.tsv_text("roster.tsv"), ROSTER)
+        os.remove(self.p)
+        sd.shadow_tsv(self.p, force=True)
+        self.assertIsNone(self.st.tsv_text("roster.tsv"))          # silinen dosyanın gölgesi kalmaz
+        open(self.p, "w").write("")
+        with mock.patch.object(self.st, "replace_tsv") as rp:
+            sd.shadow_tsv(self.p, force=True)                       # boş dosya + boş gölge: gereksiz yazım yok
+            rp.assert_not_called()
+
     def test_shadow_syncs_on_change_only(self):
         open(self.p, "w").write(ROSTER)
         sd.shadow_tsv(self.p); self.assertEqual(self.st.tsv_text("roster.tsv"), ROSTER)

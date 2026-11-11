@@ -215,17 +215,29 @@ class Store:
     # -- yedek ------------------------------------------------------------------------------------------------
     def backup(self, dest: str) -> None:
         """Tutarlı anlık kopya (`sqlite3` backup API; düz `cp` WAL yüzünden tutarsız olabilir, K7). Hedef 0600."""
-        tmp = dest + ".tmp"
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        import tempfile
+        d = os.path.dirname(os.path.abspath(dest)) or "."
+        fd, tmp = tempfile.mkstemp(prefix=os.path.basename(dest) + ".", suffix=".tmp", dir=d)   # benzersiz ad: eşzamanlı yedek çakışmaz
         os.close(fd)
-        out = sqlite3.connect(tmp)
         try:
-            self._conn().backup(out)
-        finally:
-            out.close()
-        os.replace(tmp, dest)
+            os.chmod(tmp, 0o600)
+            out = sqlite3.connect(tmp)
+            try:
+                self._conn().backup(out)
+            finally:
+                out.close()
+            fd2 = os.open(tmp, os.O_RDONLY)
+            try:
+                os.fsync(fd2)          # replace'ten ÖNCE içerik diskte
+            finally:
+                os.close(fd2)
+            os.replace(tmp, dest)
+        except BaseException:
+            try:
+                os.remove(tmp)          # hata halinde geçici dosya sızmaz
+            except OSError:
+                pass
+            raise
 
     def list_streams(self) -> List[str]:
         return [r[0] for r in self._conn().execute("SELECT DISTINCT stream FROM log ORDER BY stream")]

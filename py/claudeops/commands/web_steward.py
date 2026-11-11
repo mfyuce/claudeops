@@ -47,6 +47,7 @@ from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..providers.base import McpServerSpec, OneshotError
 from ..settings import default_effort_for, default_model_for, load_settings, steward_config, steward_ids
 from ..spawn import spawn_session, detect_display
+from ..atomic_json import atomic_write_json
 from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys, tmux_send_raw, tmux_send_special_key
 from ..turns import is_busy_now
 from . import web_review, web_ws
@@ -4419,7 +4420,8 @@ def _quota_save() -> None:
         from .. import statedocs
         statedocs.write_json("steward/quota", QUOTA_FILE,
                              {"at": _QUOTA.get("at"), "usage": dataclasses.asdict(u) if u else None,
-                              "decision": dataclasses.asdict(d) if d else None, "stopped": bool(_QUOTA.get("stopped"))})
+                              "decision": dataclasses.asdict(d) if d else None, "stopped": bool(_QUOTA.get("stopped"))},
+                             mode=0o600, writer=atomic_write_json)     # modülün KENDİ sembolü: testte taklit edilince DB'ye dokunulmaz
     except OSError:
         pass
 
