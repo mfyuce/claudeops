@@ -564,6 +564,15 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
 _PRICED_MODELS = frozenset({"claude-opus-5-5", "claude-sonnet-5-5"})
 
 
+def _default_session_cap() -> float:
+    """Kayıtta `max_session_usd` yoksa ayardaki varsayılan oturum tavanı (`ucli_max_session_usd`, boş = 8, 0 = yok)."""
+    try:
+        from ..ucli_session_opts import default_max_session_usd
+        return default_max_session_usd()
+    except Exception:
+        return 0.0
+
+
 def _max_cost_args(argv: List[str], usd: float, session_name: str = "") -> List[str]:
     """`--max-cost-usd USD` (tur başına tahmini USD tavanı; aşılınca tur toparlanır). YALNIZ ikili bayrağı tanıyorsa ve
     modelin yerleşik fiyatı varsa; aksi halde argv değişmez, günlüğe yazılır."""
@@ -664,10 +673,11 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             argv = _claude_service_flags(argv, session_name, cwd)
     if opts.get("max_cost_usd"):
         argv = _max_cost_args(argv, float(opts["max_cost_usd"]), session_name)
-    if opts.get("max_session_usd"):
+    sess_cap = float(opts.get("max_session_usd") or 0) or _default_session_cap()
+    if sess_cap:
         binary = argv[0]
         if binary_supports_flag(binary, "--max-session-usd"):
-            argv = _set_flag_value(argv, "--max-session-usd", f"{float(opts['max_session_usd']):g}")
+            argv = _set_flag_value(argv, "--max-session-usd", f"{sess_cap:g}")
         else:
             diag_log("ucli_flag_unsupported", name=session_name, flag="--max-session-usd", binary=binary)
     if opts.get("exec_cmds"):

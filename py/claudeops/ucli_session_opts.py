@@ -202,6 +202,24 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
     return out, ""
 
 
+DEFAULT_MAX_SESSION_USD = 8.0     # sahip 11 Kas: ucli oturumu başına varsayılan toplam tavan (ayar: ucli_max_session_usd; 0 = yok)
+
+
+def default_max_session_usd() -> float:
+    """`ucli_max_session_usd` ayarı: boş/bozuk = 8, 0 = tavan yok. Kayıtta kendi `max_session_usd`u varsa o kazanır."""
+    from .settings import load_settings
+    raw = load_settings().get("ucli_max_session_usd")
+    if raw in (None, ""):
+        return DEFAULT_MAX_SESSION_USD
+    try:
+        v = float(str(raw).strip().replace(",", "."))
+    except ValueError:
+        return DEFAULT_MAX_SESSION_USD
+    if v != v or v < 0 or v == float("inf"):
+        return DEFAULT_MAX_SESSION_USD
+    return v
+
+
 def path_executables(path_env: Any = None) -> List[str]:
     """PATH'teki çalıştırılabilir dosya adları (sıralı, tekrarsız). Okunamayan dizin atlanır."""
     import os

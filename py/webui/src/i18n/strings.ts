@@ -544,6 +544,8 @@ export interface Strings {
   ucliAgentsEnabledLabel: string;
   ucliAgentsOn: string;
   ucliAgentsOff: string;
+  ucliSessionCostLabel: string;
+  ucliSessionCostPlaceholder: string;
   ucliAgentsCostLabel: string;
   ucliAgentsCostPlaceholder: string;
   tabHintToggle: string;
@@ -1476,6 +1478,8 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliAgentsEnabledLabel: "alt ajanlar",
     ucliAgentsOn: "açık (varsayılan)",
     ucliAgentsOff: "kapalı",
+    ucliSessionCostLabel: "oturum başına toplam tavan (USD)",
+    ucliSessionCostPlaceholder: "boş = 8, 0 = tavan yok",
     ucliAgentsCostLabel: "alt ajan başına tavan (USD)",
     ucliAgentsCostPlaceholder: "boş = 2, 0 = tavan yok",
     tabHintToggle: "Açıklamayı göster/gizle",
@@ -2410,6 +2414,8 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliAgentsEnabledLabel: "sub-agents",
     ucliAgentsOn: "on (default)",
     ucliAgentsOff: "off",
+    ucliSessionCostLabel: "total cap per session (USD)",
+    ucliSessionCostPlaceholder: "empty = 8, 0 = no cap",
     ucliAgentsCostLabel: "cap per sub-agent (USD)",
     ucliAgentsCostPlaceholder: "empty = 2, 0 = no cap",
     tabHintToggle: "Show/hide description",

@@ -93,6 +93,8 @@ export type SettingsPatch = {
   ucli_agents?: string;
   /** Bkz. `Settings.ucli_agents_max_cost_usd`. Boş = 2 USD, 0 = tavan yok. */
   ucli_agents_max_cost_usd?: string;
+  /** Bkz. `Settings.ucli_max_session_usd`. Boş = 8 USD, 0 = tavan yok. */
+  ucli_max_session_usd?: string;
   /** {amber, red: string} — bkz. `Settings.ucli_usage_warn`. Boş string bir alanı varsayılana döndürür. */
   ucli_usage_warn?: Record<string, string>;
   /** "on" | "off" — bkz. `Settings.tunnel_watch`. */

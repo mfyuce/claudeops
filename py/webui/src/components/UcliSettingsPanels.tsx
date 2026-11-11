@@ -41,6 +41,7 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
   const [ucliWebDraft, setUcliWebDraft] = useState<Record<string, string>>({});
   const [ucliEndpointDraft, setUcliEndpointDraft] = useState<string | null>(null);
   const [agentsCostDraft, setAgentsCostDraft] = useState<string | null>(null);
+  const [sessionCostDraft, setSessionCostDraft] = useState<string | null>(null);
   const [ucliWarnDraft, setUcliWarnDraft] = useState<Record<string, string>>({});
 
   if (!data) return null;
@@ -247,6 +248,20 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
                 <option value="on">{t.ucliAgentsOn}</option>
                 <option value="off">{t.ucliAgentsOff}</option>
               </select>
+            </label>
+            <label>
+              {t.ucliSessionCostLabel}
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder={t.ucliSessionCostPlaceholder}
+                value={sessionCostDraft ?? asText(settings.ucli_max_session_usd)}
+                onChange={(e) => setSessionCostDraft(e.target.value)}
+                onBlur={(e) => {
+                  void save({ ucli_max_session_usd: e.target.value.trim() });
+                  setSessionCostDraft(null);
+                }}
+              />
             </label>
             <label>
               {t.ucliAgentsCostLabel}

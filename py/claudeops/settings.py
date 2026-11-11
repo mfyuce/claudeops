@@ -166,6 +166,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # `/api/agents/*`; 2026-11-04). VARSAYILAN AÇIK ama YALNIZ ikili `--allow-agents`'i tanıyorsa
                               # bayrak geçer; `off` yeni oturumlara bayrağı/token'ı hiç vermez. Okuma: `ucli_agents.enabled()`.
     "ucli_agents_max_cost_usd": "",   # çocuk ajan başına USD tavanı (`--max-cost-usd` + panel sayacı); boş = 2, 0 = tavan yok.
+    "ucli_max_session_usd": "",   # ucli OTURUMU başına toplam USD tavanı (`--max-session-usd`; kayıtta `max_session_usd` yoksa bu): boş = 8, 0 = tavan yok (sahip 11 Kas).
     "steward_quota": {},      # {mode: off|manual|auto, manual_limit, final_limit, poll_minutes, day_mon..day_sun}: TBD#116 kota bekçisi
     "anthropic_api_block_until": "",   # "YYYY-MM-DD": bu tarihe KADAR değnekçi, ucli+Anthropic (service claude / anthropic uç noktası) kayıtlı projeyi
                                        # AÇMAZ (`web_steward._api_blocked`, code `anthropic_api_blocked`). Boş = yasak yok. Sahip kararı 2026-11-05/06.
