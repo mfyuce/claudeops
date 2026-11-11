@@ -5425,10 +5425,14 @@ def _job_marker_gate(action: "sw.Action", cfg: "sw.Config", name: str, host: str
     if ok:
         return None
     noted = False
+    note = sw.JOB_NOTE_TEXT + f" {sj.KINDS_HINT}; {sj.file_rule_text()}."
+    if why == "unknown_kind" and kinds:
+        bad = (body.strip().split(None, 1) or [""])[0].strip("`")
+        note += f" `{bad}` geçerli bir tür değil; en yakın 3: {', '.join(sj.closest_kinds(bad, kinds))}."
     if name not in _JOB_NOTE_SENT and not host:
         s = _running(name)
         if s is not None and is_tmux_backed(s.pid) and not _box_has_typed_input(s.name):
-            noted = bool(_send(s.name, s.cli, sw.one_line(sw.JOB_NOTE_TEXT)))
+            noted = bool(_send(s.name, s.cli, sw.one_line(note, 1200)))
             if noted:
                 _JOB_NOTE_SENT[name] = now
     sw.log_event("job_marker_rejected", paths=paths, name=name, project=action.payload.get("project"), reason=why,
@@ -5461,7 +5465,7 @@ def _job_red_feedback(sid: str, q0: "sw.Question", red: str) -> None:
             return
         kinds = _job_kinds_list(sid)
         text = f"İş isteğin gönderilmedi: {red[:300]}." + (f" Geçerli iş türleri: {', '.join(kinds)}." if kinds else "") + \
-               " İsteği düzeltip yeniden yaz (STEWARD-JOB)."
+               f" {sj.KINDS_HINT}; {sj.file_rule_text()}. İsteği düzeltip yeniden yaz (STEWARD-JOB)."
         _give_directive(project, text, start_if_stopped=False, reason="job-red", cfg=cfg, actor="engine")
     except Exception as e:
         diag_log("job_red_feedback_failed", sid=sid, project=q0.project, error=repr(e))

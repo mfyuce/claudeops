@@ -80,3 +80,84 @@ class Gate(_Tmp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KindsCatalogue(unittest.TestCase):
+    from claudeops import steward_jobs as sj
+    ROWS = [{"name": "import_pdf", "writes": True, "params": {"kaynak": "x", "limits": {"value_max_chars": 200}}},
+            {"name": "embed", "writes": True, "params": {"eser_list": "y"}},
+            {"name": "noop", "writes": False, "params": {}}, {"name": "pdf_text", "writes": False, "params": {}}]
+
+    def test_parse_both_shapes(self):
+        sj = self.sj
+        self.assertEqual([r["name"] for r in sj.parse_kinds({"kinds": self.ROWS})], ["import_pdf", "embed", "noop", "pdf_text"])
+        self.assertEqual([r["name"] for r in sj.parse_kinds({"a": {}, "b": {}})], ["a", "b"])
+        self.assertEqual([r["name"] for r in sj.parse_kinds(["x", {"kind": "y"}])], ["x", "y"])
+
+    def test_closest_three(self):
+        sj = self.sj
+        self.assertEqual(sj.closest_kinds("varaka-import", [r["name"] for r in self.ROWS])[0], "import_pdf")
+        self.assertEqual(len(sj.closest_kinds("zzz", [r["name"] for r in self.ROWS])), 3)
+        self.assertEqual(sj.closest_kinds("pdf", [r["name"] for r in self.ROWS])[:2], ["import_pdf", "pdf_text"])
+
+    def test_format(self):
+        sj = self.sj
+        tab = sj.format_kinds("varaka", self.ROWS)
+        self.assertIn("import_pdf", tab)
+        self.assertIn("en çok 50 dosya", tab)
+        det = sj.format_kinds("varaka", self.ROWS, "import_pdf")
+        self.assertIn("param kaynak", det)
+        self.assertIn("limit value_max_chars: 200", det)
+        self.assertIn("en yakın", sj.format_kinds("varaka", self.ROWS, "embd"))
+
+    def test_prompts_mention_catalogue(self):
+        for txt in (sw.MODEL_RULE_TR, sw.MODEL_RULE_EN):
+            self.assertIn("steward jobs kinds", txt)
+            self.assertIn("steward_jobs kinds=true", txt)
+        self.assertIn("jobs kinds", self.sj.KINDS_HINT)
+
+
+class TourLoopSig(unittest.TestCase):
+    def _run(self, items_for):
+        v = [sw.SessionView(name="degnekci_iso", running=True, cwd="/w", cli="claude", last_assistant="tamam")]
+        st = {}
+        broke = 0
+        for i in range(12):
+            acts = [sw.Action("tour", "degnekci_iso", "1 madde", {"items": items_for(i)})]
+            out, st = sw.loop_guard(acts, v, st, 1000.0 + i)
+            broke += sum(1 for a in out if a.kind == "loop_break")
+        return broke
+
+    def test_changing_items_do_not_trip(self):
+        self.assertEqual(self._run(lambda i: [{"kind": "routine", "id": f"q{i}", "name": "p"}]), 0)
+
+    def test_same_items_same_reply_trip(self):
+        self.assertEqual(self._run(lambda i: [{"kind": "routine", "id": "q1", "name": "p"}]), 1)
+
+
+class GateMessage(_Tmp):
+    def test_note_has_catalogue_hint_file_rule_and_closest_kinds(self):
+        sent = []
+
+        class S:
+            pid, name, cli = 1, "anomaly20261101", "claude"
+        saved = (ws._registered_job_kinds, ws._running, ws.is_tmux_backed, ws._box_has_typed_input, ws._send)
+        ws._registered_job_kinds = lambda now: (True, {"import_pdf", "embed", "noop", "pdf_text"})
+        ws._running, ws.is_tmux_backed = (lambda n: S()), (lambda pid: True)
+        ws._box_has_typed_input = lambda n: False
+        ws._send = lambda n, c, t: sent.append(t) or True
+        ws._JOB_NOTE_SENT.clear()
+        try:
+            a = sw.Action("ask_user", "anomaly20261101", "STEWARD-JOB",
+                          {"project": "anomaly", "text": sw.JOB_REQUEST_PREFIX + "varaka-import a.pdf", "routine": True})
+            r = ws._job_marker_gate(a, sw.Config(), "anomaly20261101", "", None)
+            r2 = ws._job_marker_gate(a, sw.Config(), "anomaly20261101", "", None)
+        finally:
+            ws._registered_job_kinds, ws._running, ws.is_tmux_backed, ws._box_has_typed_input, ws._send = saved
+            ws._JOB_NOTE_SENT.clear()
+        self.assertEqual(r["skipped"], "job_marker_unknown_kind")
+        self.assertEqual(len(sent), 1)                       # oturuma BİR kez
+        self.assertFalse(r2["noted"])
+        for frag in ("yalnız paylaşımlı servise", "py/cops steward jobs kinds", "proje dizini İÇİNDE", "en çok 50 dosya", "en yakın 3", "import_pdf"):
+            self.assertIn(frag, sent[0])
+        self.assertEqual(sw.load_questions(None), [])

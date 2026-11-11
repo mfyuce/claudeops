@@ -704,3 +704,64 @@ def resolve_local_files(cwd: str, files: Iterable[str]) -> List[str]:
     if len(out) > MAX_FILES:
         raise ValueError(f"too many files (max {MAX_FILES})")
     return out
+
+
+# ── iş türü kataloğu (salt okuma; proje oturumu `py/cops steward jobs kinds` ile kendisi görür) ──────────────────
+
+KINDS_HINT = "tür listesi: py/cops steward jobs kinds [--kind TÜR]"
+
+
+def parse_kinds(body: Any) -> List[Dict[str, Any]]:
+    """`GET /api/jobs/kinds` gövdesi -> [{name, params, writes, requires, available, ...}] (dict ya da liste biçimi kabul)."""
+    items = body.get("kinds", body) if isinstance(body, dict) else body
+    if isinstance(items, dict):
+        return [dict(v, name=str(k)) if isinstance(v, dict) else {"name": str(k)} for k, v in items.items()]
+    out: List[Dict[str, Any]] = []
+    for x in items if isinstance(items, list) else []:
+        if isinstance(x, dict) and (x.get("kind") or x.get("name")):
+            out.append(dict(x, name=str(x.get("kind") or x.get("name"))))
+        elif isinstance(x, str) and x:
+            out.append({"name": x})
+    return out
+
+
+def closest_kinds(kind: str, names: Iterable[str], n: int = 3) -> List[str]:
+    """Geçersiz türe en yakın en çok `n` tür (difflib benzerliği; alt dize eşleşmesi öne alınır). SAF."""
+    import difflib
+    low = (kind or "").lower().strip("`")
+    names = sorted({str(x) for x in names if x})
+    sub = [x for x in names if low and (low in x.lower() or x.lower() in low)]
+    rest = sorted((x for x in names if x not in sub), key=lambda x: -difflib.SequenceMatcher(None, low, x.lower()).ratio())
+    return (sub + rest)[:n]
+
+
+def file_rule_text(max_files: int = MAX_FILES) -> str:
+    return f"dosyalar proje dizini İÇİNDE olmalı (dışı, symlink dahil, reddedilir), en çok {max_files} dosya"
+
+
+def format_kinds(service: str, rows: List[Dict[str, Any]], kind: str = "") -> str:
+    """Kısa tablo (ad, yazar mı, kullanılabilir, parametre adları); `kind` verilirse yalnız o türün params + limits ayrıntısı. SAF."""
+    if kind:
+        r = next((x for x in rows if x.get("name") == kind), None)
+        if r is None:
+            sug = closest_kinds(kind, [x.get("name") for x in rows])
+            return f"hata: {service}: tür yok: {kind}" + (f" (en yakın: {', '.join(sug)})" if sug else "")
+        params = dict(r.get("params") or {})
+        limits = params.pop("limits", None)
+        lines = [f"{service}/{kind}: " + ("yazar" if r.get("writes") else "salt okur") + (", tekrar çalıştırılabilir" if r.get("idempotent") else "")
+                 + ("" if r.get("available", True) else f"  [KULLANILAMAZ: {r.get('unavailable_reason') or '?'}]")]
+        if r.get("requires"):
+            lines.append("  gerektirir: " + ", ".join(map(str, r["requires"])))
+        for k, v in params.items():
+            lines.append(f"  param {k}: {v}")
+        if isinstance(limits, dict):
+            for k, v in limits.items():
+                lines.append(f"  limit {k}: {v}")
+        lines.append("  " + file_rule_text())
+        return "\n".join(lines)
+    lines = [f"{service}: {len(rows)} iş türü ({file_rule_text()})", f"{'TÜR':<22} {'YAZAR':<6} {'HAZIR':<6} PARAMETRELER"]
+    for r in rows:
+        ps = [k for k in (r.get("params") or {}) if k != "limits"]
+        lines.append(f"{str(r.get('name')):<22} {'evet' if r.get('writes') else 'hayır':<6} {'evet' if r.get('available', True) else 'hayır':<6} {', '.join(ps)}")
+    lines.append("ayrıntı: py/cops steward jobs kinds --kind TÜR")
+    return "\n".join(lines)

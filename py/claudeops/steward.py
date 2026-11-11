@@ -2431,6 +2431,9 @@ MODEL_RULE_TR = (
     "türü doğrula, `steward_job_submit` ile (project, kind, files=[proje klasörü içi yol]) gönder, sonra `steward_answer` ile projeye iş kimliğini ve durumu "
     "(queued / awaiting_approval) bildir. Bu madde YALNIZ iş gönderilince (ya da `RED: <gerekçe>` ile) kapanır; çıplak \"devam\" reddedilir. Onay bekleyen işi KENDİN onaylama, sahibe `steward_ask_user` ile haber ver. Tür ya da dosya belirsizse "
     "tahmin etme, `steward_answer` ile projeye neyin eksik olduğunu söyle. Sonucu motor iş bitince projeye zaten iletir.\n"
+    "- RUTİN soru servis iş TÜRÜ/kataloğu/dosya kuralı hakkındaysa (\"hangi tür?\", \"kaç dosya?\", \"params ne?\"): sahibe yükseltme, `steward_jobs kinds=true` ile "
+    "kataloğa bak ve `steward_answer` ile türü, parametre adlarını, `limits`i ve dosya kuralını (proje klasörü içi, en çok 50 dosya) yaz; proje de bunu "
+    "`py/cops steward jobs kinds [--kind TÜR]` ile kendisi görebilir, cevabında bunu da söyle.\n"
     "- SAHİBE AİT KARARLAR: force-push, kurulum (apt/sudo), silme, harcama, kimlik/yetki/parola/token SAHİBİN kararıdır (commit/push/merge/build/deploy "
     "kalıcı izinlidir, sorulmaz); "
     "`steward_answer` ile ASLA onay verme (motor reddeder). Böyle bir soru gelirse `steward_ask_user` ile sahibe ilet; reddedilen cevabı "
@@ -2464,6 +2467,9 @@ MODEL_RULE_EN = (
     "`steward_jobs kinds=true`, submit with `steward_job_submit` (project, kind, files=[path inside the project folder]), then tell the project the job id and "
     "state (queued / awaiting_approval) with `steward_answer`. NEVER approve a job awaiting approval yourself; tell the owner with `steward_ask_user`. If the "
     "kind or file is unclear, do not guess: tell the project what is missing via `steward_answer`. The engine delivers the result when the job finishes.\n"
+    "- If a ROUTINE question is about the service's job KIND/catalogue/file rule (\"which kind?\", \"how many files?\", \"what params?\"): do not escalate to the owner; "
+    "look at the catalogue with `steward_jobs kinds=true` and answer via `steward_answer` with the kind, param names, `limits` and the file rule (inside the project "
+    "folder, at most 50 files); the project can also see it itself with `py/cops steward jobs kinds [--kind KIND]`, say so in the answer.\n"
     "- OWNER-ONLY DECISIONS: force-push, install (apt/sudo), delete, spending, credentials/tokens/authority belong to the OWNER (commit/push/merge/build/deploy "
     "are permanently allowed, never asked); "
     "OWNER; NEVER approve them with `steward_answer` (the engine rejects it). Forward such a question with `steward_ask_user`; do NOT route the "
@@ -4218,6 +4224,12 @@ def loop_guard(actions: List["Action"], views: List["SessionView"], st: Dict[str
         if float(rec.get("until") or 0) > now:
             continue                                        # duraklatıldı: sessizce atla (bildirim bir kez gitti)
         sig = _loop_sig(a.name, views)
+        if a.kind == "tour":
+            # Tur hedefi beynin kendisi: beyin kısa/benzer cevap verdiği için yalnız cevap imzası "değişiklik yok" der (iso 10-11 Kas: iki kez 8/8).
+            # Sunulan MADDE kümesi değiştiyse (yeni soru/oturum/fikir) tur ilerliyor sayılır; aynı küme + aynı cevap 8 kez = gerçek döngü.
+            its = (a.payload or {}).get("items") or []
+            fp = "|".join(sorted(f"{i.get('kind')}:{i.get('id') or i.get('name')}" for i in its if isinstance(i, dict)))
+            sig += ":" + hashlib.sha1(fp.encode("utf-8", "replace")).hexdigest()[:8]
         if rec.get("sig") == sig and now - float(rec.get("first") or now) < LOOP_FORGET_SECONDS:
             rec["n"] = int(rec.get("n") or 0) + 1
         else:

@@ -735,7 +735,27 @@ def _job_line(j: Dict[str, Any]) -> str:
             f"{j.get('kind') or '-':<20}{done:<9}{_ago(float(j.get('created_at') or 0))}")
 
 
+def _cmd_jobs_kinds(args) -> int:
+    svcs = sj.load_services()
+    name = str(getattr(args, "service", "") or "") or sj.default_service()
+    if not svcs or name not in svcs:
+        print("hata: kayıtlı servis yok" + (f" ({name})" if name else "") + "; insan ekler: py/cops steward service add")
+        return 1
+    try:
+        status, body = sj.request_json(svcs[name], "GET", "/api/jobs/kinds")
+    except sj.ServiceError as e:
+        print(f"hata: {name}: {e}")
+        return 1
+    if status != 200:
+        print(f"hata: {name}: HTTP {status}")
+        return 1
+    print(sj.format_kinds(name, sj.parse_kinds(body), str(getattr(args, "kind", "") or "")))
+    return 0
+
+
 def cmd_jobs(args) -> int:
+    if getattr(args, "jobs_action", None) == "kinds":
+        return _cmd_jobs_kinds(args)
     sid = _sid(args)
     act = getattr(args, "jobs_action", None) or "list"
     jobs = sj.load_jobs(sid)
@@ -1064,13 +1084,16 @@ def register(sub):
     sv.add_parser("list", help="kayıtlı servisler")
     psv.set_defaults(func=cmd_service)
     pjb = s.add_parser("jobs", help="dış iş kuyruğu (varaka) kayıtları: list|show ID|poll|ack ID")
-    jb = pjb.add_subparsers(dest="jobs_action", metavar="<list|show|poll|ack>")
+    jb = pjb.add_subparsers(dest="jobs_action", metavar="<list|show|kinds|poll|ack>")
     jbl = jb.add_parser("list", help="açık/iletilmemiş işler")
     jbl.add_argument("--all", action="store_true")
     jbl.add_argument("--state", default="")
     jbs = jb.add_parser("show", help="bir işin tam kaydı")
     jbs.add_argument("id")
     jbs.add_argument("--service", default="", help="servis adı (aynı kimlik birden çok serviste varsa)")
+    jbk = jb.add_parser("kinds", help="servisin iş türü kataloğu (salt okuma, GET /api/jobs/kinds): kısa tablo; --kind TÜR ile params + limits")
+    jbk.add_argument("--service", default="", help="servis adı (varsayılan: varaka ya da tek kayıtlı servis)")
+    jbk.add_argument("--kind", default="", help="tek türün ayrıntısı (params, limits)")
     jb.add_parser("poll", help="açık işleri şimdi yokla (panel gerekmez)")
     jba = jb.add_parser("ack", help="sonucu iletildi say (yerel işaret; varaka'ya yazılmaz)")
     jba.add_argument("id")
