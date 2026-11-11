@@ -8,6 +8,7 @@
  */
 
 import { LabelChips } from "./shared/LabelChips";
+import { IdleRules, LoopGuardBox, WhyCell } from "./StewardWhy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NumberSetting } from "./shared/NumberSetting";
 import {
@@ -406,6 +407,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
             ) : null;
           })}
         </div>
+        <IdleRules config={state?.config as Record<string, unknown> | undefined} sid={sid} run={run} busy={busy} lang={lang} />
         <StewardBrainModel
           sid={sid}
           model={String((state?.config as Record<string, unknown> | undefined)?.brain_model ?? "")}
@@ -566,6 +568,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </div>
       ))}
 
+      <LoopGuardBox items={state?.loop_guard} sid={sid} run={run} busy={busy} lang={lang} />
       <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardProjectsTitle}</h3>
       {state && state.projects.length === 0 && <span className="opts-hint">{t.stewardNoProjects}</span>}
       {state && state.projects.length > 0 && (
@@ -578,6 +581,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
                 <th>{t.stewardColPriority}</th>
                 <th>{t.stewardColCadence}</th>
                 <th>{t.stewardColNext}</th>
+                <th>{lang === "en" ? "Why not moving" : "Neden ilerlemiyor"}</th>
                 <th>{t.stewardColVisit}</th>
                 <th />
               </tr>
@@ -613,6 +617,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
                   <td className="cwd" title={p.goal}>
                     {p.next_step || p.goal || "—"}
                   </td>
+                  <td><WhyCell why={p.why} lang={lang} /></td>
                   <td>{ago(p.last_visit, t.stewardNever)}</td>
                   <td>
                     <label title={p.phase === "paused" ? t.stewardProjResume : t.stewardProjPause}>

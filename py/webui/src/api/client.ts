@@ -645,6 +645,8 @@ export const apiStewardEnable = (enabled: boolean, sid?: string): Promise<Simple
   apiPost<SimpleResult>("/api/steward/enable", { enabled, ...stewardBody(sid) });
 export const apiStewardConfig = (key: string, value: string | number, sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/config", { key, value, ...stewardBody(sid) });
+export const apiStewardLoopReset = (key: string, sid?: string): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/steward/loop-reset", { key, ...stewardBody(sid) });
 export const apiStewardUp = (sid?: string): Promise<SimpleResult & { restored?: string[] }> =>
   apiPost<SimpleResult & { restored?: string[] }>("/api/steward/up", { ...stewardBody(sid) });
 export const apiStewardBrain = (action: "start" | "stop", sid?: string): Promise<SimpleResult> =>

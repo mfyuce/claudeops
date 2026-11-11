@@ -4678,6 +4678,161 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
     return out, st
 
 
+# ── "neden ilerlemiyor" açıklaması (11 Kas 2026, sahip: "1000 TODO var, iş yok mu diyorlar? bu kurallar UI'de var mı?") ──────────
+# Her proje için TEK neden: motorun karar yollarıyla (plan_tick uğrama/başlatma, plan_claude_idle, loop_guard, BEKLEME notu)
+# AYNI koşullar, aynı sırayla; tahmin yok. Motor her tick sonunda hesaplayıp önbelleğe koyar, `/api/steward/state` projeye ekler.
+_WHY_TR = {
+    "phase_paused": "proje duraklatılmış (paused)", "phase_done": "proje bitmiş (done)",
+    "notes_wait": "notu BEKLEME ile başlıyor", "cadence_off": "cadence 0: kendiliğinden uğranmaz",
+    "ask_owner": "sahibe soru sordu, cevap bekliyor", "answer_pending": "cevap geldi, oturuma iletilecek",
+    "drain": "drain açık: yeni iş alınmıyor", "manual_session": "sahibin elle açtığı oturum var (değnekçi dokunmaz)",
+    "ambiguous": "birden çok canlı oturum: hangisi belli değil, eylem yok", "host_down": "uzak host erişilemiyor",
+    "loop_guard": "döngü koruması durdurdu (hedefte değişiklik yokken tekrar)", "brain_stopped": "beyin 'iş yok/sahip kararı' diye durdurdu, soğuma sürüyor",
+    "auto_start_off": "auto_start kapalı: cadence ile oturum açılmaz", "cadence_wait": "cadence süresi dolmadı",
+    "start_blocked": "uğrama sırası geldi ama başlatılamadı", "starting": "bu tick başlatılıyor",
+    "working": "oturum çalışıyor", "session_asked": "oturum soru işareti bıraktı (ASK/BLOCKED), sahip cevabı bekleniyor",
+    "gate": "oturum kapıda bekliyor (gate)", "finished": "son cevap işin/devrin bittiğini söylüyor", "owner_wait": "son cevap sahipte/sahip kararında diyor",
+    "turn_failed": "son tur hata ile bitti", "idle_wait": "oturum boşta, dürtme eşiği dolmadı", "idle_off": "boşta dürtme KAPALI (claude_idle=off)",
+    "idle_dry": "boşta dürtme YALNIZ ölçüyor (claude_idle=dry): gerçek dürtme gitmez", "nudge_exhausted": "dürtme hakkı bitti, oturum yanıt vermedi",
+    "no_next_work": "dürtülecek iş ipucu yok (notta 'sıradaki:' yok, son cevapta söylenmiş sıradaki iş yok)", "nudging": "dürtülüyor",
+    "running": "oturum çalışıyor", "observe": "gözlem kipi: eylem uygulanmaz",
+}
+_WHY_EN = {
+    "phase_paused": "project is paused", "phase_done": "project is done", "notes_wait": "notes start with BEKLEME (waiting)",
+    "cadence_off": "cadence 0: never visited on its own", "ask_owner": "asked the owner, waiting for the answer",
+    "answer_pending": "answer received, being delivered", "drain": "drain on: no new work", "manual_session": "owner's manual session (steward leaves it alone)",
+    "ambiguous": "several live sessions: unclear which, no action", "host_down": "remote host unreachable",
+    "loop_guard": "loop guard paused it (repeats with no change)", "brain_stopped": "brain stopped it ('no work/owner decision'), cooling down",
+    "auto_start_off": "auto_start off: no cadence starts", "cadence_wait": "cadence interval not over",
+    "start_blocked": "due but could not be started", "starting": "starting this tick", "working": "session is working",
+    "session_asked": "session left an ASK/BLOCKED marker, waiting for owner", "gate": "session is waiting at a gate",
+    "finished": "last answer says the work/handover is finished", "owner_wait": "last answer says it is with the owner",
+    "turn_failed": "last turn failed", "idle_wait": "session idle, nudge threshold not reached", "idle_off": "idle nudging OFF (claude_idle=off)",
+    "idle_dry": "idle nudging only MEASURES (claude_idle=dry): nothing is sent", "nudge_exhausted": "nudge budget used up, session did not respond",
+    "no_next_work": "no next-work hint (no 'sıradaki:' in notes, none stated in last answer)", "nudging": "nudging",
+    "running": "session is running", "observe": "observe mode: actions are not applied",
+}
+_START_BLOCK_TR = {"max_starts": "tick başına başlatma sınırı (max_starts)", "max_active": "etkin oturum sınırı (max_active)",
+                   "max_active_total": "makine geneli etkin sınır (max_active_total)", "auto_start_off": "auto_start kapalı",
+                   "notes_bekleme": "BEKLEME notu"}
+
+
+def _why(code: str, lang: str, detail: str = "", **extra: Any) -> Dict[str, Any]:
+    d = {"code": code, "text": (_WHY_EN if lang == "en" else _WHY_TR).get(code, code), "detail": detail}
+    d.update(extra)
+    return d
+
+
+def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
+                 now: float, questions: List[Question], actions: Optional[List[Action]] = None,
+                 world: Optional[World] = None, open_work: Optional[Callable[[str], Optional[int]]] = None) -> Dict[str, Any]:
+    """SAF. Projenin neden ilerlemediğini TEK nedenle açıklar: {code, text, detail}. Sıra motorun karar sırasıdır (ilk eşleşen kazanır);
+    `actions` = bu tick'in nihai eylemleri (başlatma/dürtme üretildiyse "bekliyor" DEĞİL, `starting`/`nudging`)."""
+    lang = cfg.lang
+    actions = actions or []
+    name = proj.name
+    mine = [v for v in views if v.running and v.project == name and v.name != cfg.brain_name]
+    if proj.phase == "paused" or proj.phase == "done":
+        return _why("phase_paused" if proj.phase == "paused" else "phase_done", lang, f"phase={proj.phase}")
+    qs = [q for q in questions if q.project == name]
+    open_q = [q for q in qs if q.status == "open" and not q.routine]
+    if open_q:
+        return _why("ask_owner", lang, f"[{open_q[0].id}] {one_line(open_q[0].text, 160)}", question_id=open_q[0].id)
+    pend = [q for q in qs if q.status == "answered" and not q.delivered_at and not q.undeliverable]
+    if pend:
+        return _why("answer_pending", lang, f"[{pend[0].id}]", question_id=pend[0].id)
+    if notes_wait(proj):
+        return _why("notes_wait", lang, one_line(proj.notes, 160))
+    if cfg.drain:
+        return _why("drain", lang)
+    if world is not None and name in world.unavailable:
+        return _why("host_down", lang, proj.host)
+    if world is not None:
+        classes = [world.session_class(v.name, v.blueprint) for v in mine]
+        if "manual" in classes:
+            return _why("manual_session", lang, ", ".join(v.name for v in mine))
+    if len(mine) > 1:
+        return _why("ambiguous", lang, ", ".join(v.name for v in mine))
+    for key, r in sorted(dict(state.get("loop_guard") or {}).items()):
+        kind, _, tname = key.partition("|")
+        if isinstance(r, dict) and float(r.get("until") or 0) > now and (tname == name or _project_key(tname, projects) == name):
+            until = float(r["until"])
+            return _why("loop_guard", lang, f"{kind} -> {time.strftime('%d.%m %H:%M', time.localtime(until))}", until=until, kind=kind)
+    if not mine:                                     # çalışan oturum yok: uğrama/başlatma kararı
+        for a in actions:
+            if a.kind == "start" and a.name == name:
+                return _why("starting", lang, a.reason)
+        for k, v in dict(state.get("brain_stopped") or {}).items():
+            if _project_key(k, projects) == name and now - float(v or 0.0) < BRAIN_STOP_COOLDOWN_SECONDS:
+                until = float(v) + BRAIN_STOP_COOLDOWN_SECONDS
+                return _why("brain_stopped", lang, time.strftime("%d.%m %H:%M", time.localtime(until)), until=until)
+        if proj.cadence_minutes <= 0:
+            return _why("cadence_off", lang, "cadence_minutes=0")
+        if not cfg.auto_start:
+            return _why("auto_start_off", lang)
+        observed = dict(state.get("observed_visit") or {})
+        last = max(proj.last_visit, float(observed.get(name) or 0.0))
+        if last and (now - last) < proj.cadence_minutes * 60:
+            left = int((proj.cadence_minutes * 60 - (now - last)) // 60)
+            return _why("cadence_wait", lang, f"{left} dk sonra" if lang != "en" else f"in {left} min", minutes_left=left)
+        sb = state.get("start_blocked") or {}
+        if name in (sb.get("projects") or []):
+            reason = str(sb.get("reason") or "")
+            return _why("start_blocked", lang, _START_BLOCK_TR.get(reason, reason) if lang != "en" else reason, reason=reason)
+        return _why("start_blocked", lang, "sıra bekliyor" if lang != "en" else "waiting for its turn", reason="queue")
+    v = mine[0]
+    txt = v.last_assistant or ""
+    if v.busy:
+        return _why("working", lang)
+    if v.cli == "claude" and txt:
+        if any(m in txt for m in _ASK_MARKERS):
+            return _why("session_asked", lang, one_line(txt, 160))
+        if turn_failed(txt):
+            return _why("turn_failed", lang)
+        if waiting_for_gate(txt):
+            return _why("gate", lang)
+        if idle_finish_marker(txt)[0]:
+            return _why("finished", lang, idle_finish_marker(txt)[0])
+        if owner_wait(txt):
+            return _why("owner_wait", lang)
+    for a in actions:
+        if a.kind == "idle_nudge" and a.name == v.name:
+            return _why("nudging", lang, str(a.payload.get("next") or "")[:160])
+    if v.cli != "claude":
+        return _why("running", lang)
+    if cfg.claude_idle == "off" or cfg.claude_idle_nudge_secs <= 0:
+        return _why("idle_off", lang)
+    since = float(v.last_activity or 0.0)
+    if since <= 0 or now - since < cfg.claude_idle_nudge_secs:
+        left = int(max(0, cfg.claude_idle_nudge_secs - (now - since)) // 60) if since > 0 else 0
+        return _why("idle_wait", lang, f"{left} dk" if since > 0 else "?", minutes_left=left)
+    rec = dict(state.get("claude_idle") or {}).get(v.name) or {}
+    chain = 0 if since > float(rec.get("at") or 0) else int(rec.get("n") or 0)
+    if rec.get("mode", "dry") != cfg.claude_idle:
+        chain = 0
+    if chain >= cfg.ucli_idle_max_consecutive:
+        return _why("nudge_exhausted", lang, f"{chain}/{cfg.ucli_idle_max_consecutive}")
+    hint = next_work_hint(proj, open_work, real_only=True)
+    if not hint and not stated_next_work(txt):
+        return _why("no_next_work", lang)
+    if cfg.claude_idle == "dry":
+        return _why("idle_dry", lang, one_line(hint or stated_next_work(txt), 160))
+    return _why("nudging", lang, one_line(hint or stated_next_work(txt), 160))
+
+
+def explain_idle_all(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
+                     questions: List[Question], actions: Optional[List[Action]] = None, world: Optional[World] = None,
+                     open_work: Optional[Callable[[str], Optional[int]]] = None) -> Dict[str, Dict[str, Any]]:
+    """SAF. {proje: explain_idle(...)}; tek projenin hatası listeyi düşürmez."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for name, p in projects.items():
+        try:
+            out[name] = explain_idle(p, views, projects, state, cfg, now, questions, actions, world, open_work)
+        except Exception:
+            continue
+    return out
+
+
 def observe_filter(actions: List[Action], mode: str, state: Dict[str, Any], now: float
                    ) -> Tuple[List[Action], List[Action], Dict[str, Any]]:
     """`plan_tick`in eylemlerini kipe göre ayır: (uygulanacak, kuru/`would:`, güncellenmiş state). SAF.

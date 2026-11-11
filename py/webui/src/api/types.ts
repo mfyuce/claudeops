@@ -997,6 +997,19 @@ export interface StewardProject {
   host?: string;
   /** The project's running session (terminal target); absent when none is running. */
   session?: { name: string; host: string };
+  /** Why it is not moving (`steward.explain_idle`, computed by the engine each tick; absent before the first tick). */
+  why?: { code: string; text: string; detail: string; at: number; until?: number; question_id?: string; minutes_left?: number };
+}
+
+export interface StewardLoopGuard {
+  key: string;
+  kind: string;
+  name: string;
+  n: number;
+  max: number;
+  first: number;
+  until: number;
+  paused: boolean;
 }
 
 export interface StewardPendingItem {
@@ -1046,6 +1059,7 @@ export interface StewardStateResult {
   pending?: StewardPendingItem[];
   /** Present only when a controlled shutdown has been started for this identity. */
   shutdown?: { started?: number; done?: number | null; cancelled: boolean; left_paused?: string[]; items: Record<string, { stage: string; blocked: string }> };
+  loop_guard?: StewardLoopGuard[];
   /** Present only when the identity has remote projects. */
   remote_hosts?: Record<string, StewardHostHealth>;
 }

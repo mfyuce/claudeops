@@ -91,6 +91,7 @@ class StewardContext:
     summary_cache: Dict[str, Any] = dataclasses.field(default_factory=lambda: {"until": 0.0, "value": None})
     conflicts: List[str] = dataclasses.field(default_factory=list)
     conflict_logged: Dict[str, str] = dataclasses.field(default_factory=dict)
+    idle_why: Dict[str, Any] = dataclasses.field(default_factory=dict)     # {"at", "by": {proje: {code,text,detail}}}: son tick'in "neden ilerlemiyor" açıklaması
 
     @property
     def paths(self) -> sw.StewardPaths:
@@ -4014,6 +4015,11 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     actions = actions + cl_actions  # Claude Code oturumu boşta + sıradaki iş: tek satır `devam:`
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 actions, new_state = sw.loop_guard(actions, views, new_state, t0)     # L4: hedefte değişiklik yokken tekrar eden eylem durur
+                try:        # "neden ilerlemiyor" (panel proje satırı): motorun bu tick'teki kararlarıyla aynı koşullar; hata tick'i düşürmez
+                    ctx.idle_why = {"at": t0, "by": sw.explain_idle_all(views, projects, new_state, cfg, t0, sw.load_questions(paths), actions,
+                                                                         world, open_work=_open_work_of(projects))}
+                except Exception as e_why:
+                    diag_log("steward_explain_idle_failed", sid=sid, error=repr(e_why))
                 journal = _journal_entries(actions, t0)
                 if journal:
                     new_state["act_journal"] = list(new_state.get("act_journal") or []) + journal   # 'bekliyor': state ile aynı yazım
@@ -4696,6 +4702,9 @@ def http_state(sid: str = "default") -> Dict[str, Any]:
         d_ = _project_dict(p_, running_projects, cards)
         if p_.name in session_of:
             d_["session"] = session_of[p_.name]
+        why_ = (ctx.idle_why.get("by") or {}).get(p_.name)
+        if why_:
+            d_["why"] = dict(why_, at=ctx.idle_why.get("at") or 0.0)
         plist.append(d_)
     out = {
         "ok": True,
@@ -4707,6 +4716,7 @@ def http_state(sid: str = "default") -> Dict[str, Any]:
         "questions": questions,
         "ideas": [dataclasses.asdict(i) for i in sw.load_ideas(paths) if i.status == "new"],
         "recent": ctx.recent,
+        "loop_guard": loop_guard_list(sid),
     }
     sd_ = sw.load_state(paths).get("shutdown")
     if isinstance(sd_, dict) and sd_:                # kapatma hiç başlamadıysa anahtar HİÇ eklenmez (çıktı aynı)
@@ -5744,14 +5754,17 @@ def http_skip(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_retry_minutes": (1, 1440),
                  "idle_minutes": (1, 1440), "review_minutes": (1, 10080), "stop_idle_minutes": (1, 10080),
                  "max_active": (0, 20), "max_starts_per_tick": (0, 10), "review_auto_approve": (0, 3),
+                 # "neden ilerlemiyor" kuralları (11 Kas 2026): boşta dürtme eşiği/hakkı + makine geneli başlatma sınırı (0 = başlatma yok)
+                 "claude_idle_nudge_secs": (0, 86400), "ucli_idle_max_consecutive": (0, 20), "max_starts_total": (0, 10),
                  # Evren/ucli reviewer bütçeleri (2026-11-04): 0 = ucli modelin /models kaydından türetir; ucli üst sınırı 1536 KiB
                  "review_max_context_kib": (0, 1536), "review_max_read_kib": (0, 1024), "review_max_tool_calls": (1, 500)}
 
 
-UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_auto_export")
+UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_auto_export", "auto_start")
 
 # Seçenek listeli metin ayarlar. `review_evren_script` kapatma değeri "off" (boş değer anahtarı SİLER, varsayılan "read" geri gelir).
-UI_CONFIG_CHOICE = {"review_evren_script": ("read", "off"), "review_verify_mode": ("session", "self"),
+UI_CONFIG_CHOICE = {"claude_idle": ("off", "dry", "act"), "keepwarm": ("off", "dry", "act"), "wake_gate": ("off", "dry", "act"),
+                    "review_evren_script": ("read", "off"), "review_verify_mode": ("session", "self"),
                     # boş değer = claude (save_settings anahtarı siler)
                     "review_verify_provider": ("", "claude", "codex", "evren", "agy")}
 
@@ -5884,6 +5897,43 @@ def http_quota_set(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     save_settings({"steward_quota": {key: value}})
     sw.log_event("config", paths=sid, key="quota." + key, value=value, source="ui")
     return {"ok": True, "key": key, "value": value, "config": dict(quota_config())}
+
+
+def loop_guard_list(sid: str = "default") -> List[Dict[str, Any]]:
+    """`state.loop_guard` panel listesi: her (tür|hedef) için sayaç `n`/`max`, ilk görülme ve (duraklatıldıysa) bitiş saati."""
+    st = sw.load_state(sid)
+    now = time.time()
+    out = []
+    for key, r in sorted(dict(st.get("loop_guard") or {}).items()):
+        if not isinstance(r, dict):
+            continue
+        kind, _, name = key.partition("|")
+        until = float(r.get("until") or 0.0)
+        out.append({"key": key, "kind": kind, "name": name, "n": int(r.get("n") or 0), "max": sw.LOOP_MAX,
+                    "first": float(r.get("first") or 0.0), "until": until, "paused": until > now})
+    return out
+
+
+def http_loop_reset(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    """Döngü korumasını sıfırla (panel "sıfırla"): `key` (`tür|hedef`) ya da boşsa HEPSİ. YALNIZ insan. Olay `loop_guard_reset`."""
+    if (d := _human_only(data, "reset the loop guard")):
+        return d
+    key = str(data.get("key") or "")
+    with sw.steward_lock(sid):
+        st = sw.load_state(sid)
+        guard = dict(st.get("loop_guard") or {})
+        gone = [k for k in guard if not key or k == key]
+        if key and not gone:
+            return {"ok": False, "error": f"no loop guard entry: {key}"}
+        for k in gone:
+            guard.pop(k, None)
+        if guard:
+            st["loop_guard"] = guard
+        else:
+            st.pop("loop_guard", None)
+        sw.save_state(st, sid)
+    sw.log_event("loop_guard_reset", paths=sid, keys=gone, source="ui")
+    return {"ok": True, "cleared": gone}
 
 
 def http_enable(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -6855,6 +6905,7 @@ web_review.set_notifier(lambda sid, q: _notify(steward_config(sid), f"{_ask_pref
 
 
 POST_PATHS = {
+    "/api/steward/loop-reset": http_loop_reset,
     "/api/steward/review/pool": http_review_pool,
     "/api/steward/review/where": http_review_where,
     "/api/steward/review/run": http_review_run,
