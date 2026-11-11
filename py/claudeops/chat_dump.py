@@ -290,14 +290,19 @@ def stage_dumps(stage: str, stamps: Dict[str, str], home: Optional[str] = None) 
     return st
 
 
+def _read(path: str) -> str:
+    with open(path) as f:
+        return f.read()
+
+
 def raw_to_remote(remote: str, home: Optional[str] = None, timeout: int = 10800) -> str:
     """Ham .db/.sqlite -> rclone remote (git'e girmez). '' = ok, aksi hata metni."""
     import socket, subprocess
     home = home or os.path.expanduser("~")
     host = socket.gethostname()
     mir = os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
-    jobs = [(os.path.join(home, ".gemini"), "gemini", ["*/conversations/*.db", "*/conversation_summaries.db"]),
-            (os.path.join(mir, "gemini"), "gemini", ["*/conversations/*.db", "*/conversation_summaries.db"]),
+    jobs = [(os.path.join(home, ".gemini"), "gemini", ["*/conversations/*.db", "*/conversations/*.db-wal", "*/conversation_summaries.db", "*/conversation_summaries.db-wal"]),
+            (os.path.join(mir, "gemini"), "gemini", ["*/conversations/*.db", "*/conversations/*.db-wal", "*/conversation_summaries.db", "*/conversation_summaries.db-wal"]),
             (os.path.join(home, ".codex"), "codex", ["*.sqlite", "*.sqlite-wal"]),
             (os.path.join(mir, "codex"), "codex", ["*.sqlite", "*.sqlite-wal"])]
     errs = []
@@ -333,7 +338,7 @@ def ingest_remote_archives(mir: str) -> Dict[str, Any]:
         stamp = f"{os.path.basename(tgz)}:{os.path.getsize(tgz)}"
         done = os.path.join(ex, ".done")
         try:
-            if os.path.exists(done) and open(done).read() == stamp:
+            if os.path.exists(done) and _read(done) == stamp:
                 out[host] = "atlandı"
                 continue
             shutil.rmtree(ex, ignore_errors=True)

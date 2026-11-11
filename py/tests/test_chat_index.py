@@ -54,6 +54,11 @@ class IndexTest(unittest.TestCase):
         c = I.classify("local/codex-ulak_31-sessions/2026/11/06/rollout-a.jsonl")
         self.assertEqual((c["cli"], c["host"]), ("codex", "ulak_31"))
 
+    def test_classify_ucli_and_iso_overflow(self):
+        c = I.classify("local/claude-ucli/work__projects__x/s9.jsonl")
+        self.assertEqual((c["cli"], c["project"], c["session"]), ("claude-ucli", "work__projects__x", "s9"))
+        self.assertEqual(I._iso(10**18), "")          # taşan zaman damgası istisna fırlatmaz
+
 
 if __name__ == "__main__":
     unittest.main()

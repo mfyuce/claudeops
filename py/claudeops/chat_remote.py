@@ -13,7 +13,7 @@ import shlex
 import time
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
-_TAG = re.compile(r"^[a-z0-9_]{1,24}$")
+_TAG = re.compile(r"^[a-z0-9_-]{1,24}$")
 DEFAULT_PATHS = [".claude/projects", ".claude/history.jsonl", ".codex", ".gemini"]
 
 
@@ -58,6 +58,7 @@ def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]
         if not tx.idle():                  # paylaşımlı shell: başkası bir iş çalıştırıyor/yazıyor -> TEMİZ vazgeç, hiçbir şey gönderme
             return {"ok": False, "skipped": True, "msg": "shell meşgul, vazgeçildi (sonraki koşuda denenir)", "bytes": 0}
         root = tx.root()
+        tx.send(cleanup_command(tag, day, root))     # bayat .done/.tgz kalıntısı eski arşivi indirtmesin
         tx.send(pack_command(tag, day, paths, root))
         t0 = clock()
         while n["done"] not in tx.listing(root):

@@ -84,6 +84,20 @@ class RemotePullTest(unittest.TestCase):
         self.assertFalse(r["ok"])
         self.assertFalse(R.pull(FakeRemote(), "Bad Tag", "20261107", "/tmp/x")["ok"])
 
+    def test_dashed_host_tag_and_stale_done_preclean(self):
+        self.assertIn(".chatpull-my-host-20261111.done", R.names("my-host", "20261111")["done"])
+        fr = FakeRemote()
+        fr.files[".chatpull-yuhem-20261107.done"] = b""          # bayat işaret
+        r = R.pull(fr, "yuhem", "20261107", "/tmp/x", poll_s=0, sleep=lambda s: None)
+        self.assertTrue(fr.ran[0].strip().startswith("rm "))              # pack'ten önce temizlendi
+        self.assertTrue(r["ok"])
+
+    def test_kv_parses_json_values(self):
+        from claudeops.commands import periodic_cmd as C
+        self.assertEqual(C._kv(['remote_pull={"yuhem":"shell_yuhem"}'])["remote_pull"], {"yuhem": "shell_yuhem"})
+        with self.assertRaises(ValueError):
+            C._kv(["remote_pull={bozuk"])
+
 
 if __name__ == "__main__":
     unittest.main()

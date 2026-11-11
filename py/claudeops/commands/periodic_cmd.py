@@ -42,6 +42,12 @@ def _kv(items):
         if "=" not in it:
             raise ValueError(f"ALAN=DEĞER bekleniyordu: {it}")
         k, v = it.split("=", 1)
+        if v[:1] in "{[":                       # sözlük/liste (örn. remote_pull={"yuhem":"shell_yuhem"}) JSON
+            try:
+                out[k] = json.loads(v)
+                continue
+            except ValueError:
+                raise ValueError(f"{k}: geçersiz JSON")
         out[k] = int(v) if v.isdigit() and k in ("interval_hours", "timeout_s", "max_file_mb", "max_repo_mb") else v
     return out
 

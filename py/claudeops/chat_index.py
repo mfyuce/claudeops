@@ -44,7 +44,10 @@ def _text_of(msg: Any) -> str:
 def _iso(v: Any) -> str:
     if isinstance(v, (int, float)) and v > 0:
         v = v / 1000 if v > 1e11 else v
-        return datetime.datetime.fromtimestamp(v).strftime("%Y-%m-%dT%H:%M:%S")
+        try:
+            return datetime.datetime.fromtimestamp(v).strftime("%Y-%m-%dT%H:%M:%S")
+        except (OverflowError, OSError, ValueError):   # taşan/geçersiz zaman damgası INDEX üretimini durdurmasın
+            return ""
     return v[:19] if isinstance(v, str) and len(v) >= 10 and v[:4].isdigit() else ""
 
 
@@ -65,6 +68,8 @@ def classify(rel: str) -> Optional[Dict[str, str]]:
     if m and m.group(2):                       # uzak host: local/claude-<host>-projects, local/codex-<host>-sessions
         return {"kind": "chat", "cli": m.group(1), "host": m.group(2), "project": p[2] if m.group(3) == "projects" and len(p) > 3 else "",
                 "session": os.path.splitext(p[-1])[0]}
+    if area == "claude-ucli":                  # local/claude-ucli/<proje>/<oturum>.jsonl
+        return {"kind": "chat", "cli": "claude-ucli", "project": p[2], "session": os.path.splitext(p[-1])[0]}
     if area == "claude-projects":
         return {"kind": "chat", "cli": "claude", "project": p[2], "session": os.path.splitext(p[-1])[0]}
     if area == "codex-dump" and len(p) >= 5:
