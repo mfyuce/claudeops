@@ -1000,7 +1000,9 @@ export interface StewardProject {
   /** Why it is not moving (`steward.explain_idle`, computed by the engine each tick; absent before the first tick). */
   why?: { code: string; text: string; detail: string; at: number; until?: number; question_id?: string; minutes_left?: number;
     /** Open TODO.md lines tagged as owner-bound (SAHİPTE, (sahip), DIŞ GİRDİ...): count only when > 0. */
-    owner_in_todo?: number };
+    owner_in_todo?: number;
+    /** Session's own `STEWARD-NEXT: <work>` / `yok` report (info only; does not drive nudging). */
+    next_work?: { text: string; none: boolean; at: number; session: string } };
 }
 
 export interface StewardLoopGuard {

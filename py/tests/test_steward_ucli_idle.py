@@ -381,7 +381,7 @@ class ClaudeIdleTest(unittest.TestCase):
     def test_nudges_after_threshold_with_next_work(self):
         acts, st = cplan([cview()])
         self.assertEqual([(a.kind, a.payload["cli"]) for a in acts], [("idle_nudge", "claude")])
-        self.assertTrue(acts[0].payload["text"].startswith("devam: testleri yaz"))
+        self.assertEqual(acts[0].payload["text"], sw.CLAUDE_IDLE_NUDGE_TEXT)   # sabit mesaj: seçimi oturum yapar
         self.assertIn("cli", st["claude_idle"])
         self.assertEqual(cplan([cview(idle=2900)])[0], [])       # eşik altı
         self.assertEqual(cplan([cview()], state=st)[0], [])      # aynı boşta dönem: tekrar yok

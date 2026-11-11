@@ -25,6 +25,12 @@ export function WhyCell({ why, lang }: { why: StewardProject["why"]; lang: strin
     <span title={tip} style={{ color: OK_CODES.has(why.code) ? "var(--muted)" : "var(--amber, #d97706)" }}>
       {why.text}
       {why.detail ? <span className="opts-hint" style={{ display: "block", fontSize: ".7rem" }}>{why.detail}</span> : null}
+      {why.next_work ? (
+        <span className="opts-hint" style={{ display: "block", fontSize: ".7rem" }}
+          title={lang === "en" ? "Reported by the session (STEWARD-NEXT); informational" : "Oturumun bildirdiği (STEWARD-NEXT); yalnız bilgi"}>
+          {lang === "en" ? "next: " : "sıradaki: "}{why.next_work.text}
+        </span>
+      ) : null}
       {why.owner_in_todo ? (
         <span className="opts-hint" style={{ display: "block", fontSize: ".7rem", color: "var(--amber, #d97706)" }}
           title={lang === "en" ? "Move them to TOBEDECIDED.md; TODO.md should hold only ownerless work" : "TOBEDECIDED.md'ye taşınmalı; TODO.md'de yalnız sahipsiz iş kalmalı"}>

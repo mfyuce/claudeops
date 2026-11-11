@@ -137,6 +137,7 @@ MARK_IDEA = "STEWARD-IDEA:"            # yeni fikir
 MARK_ROUTINE = "STEWARD-ROUTINE:"      # işleyiş sorusu (ne zaman/hangi sıra/hangi model): beyin cevaplar, sahibi rahatsız edilmez
 MARK_BLOCKED = "STEWARD-BLOCKED:"      # takıldım (RUTİN soru: beyin cevaplar, sahibe düşmez; sahip kararı gereken şey ayrı STEWARD-ASK olur; 2026-10-27)
 MARK_LESSON = "STEWARD-LESSON:"       # reviewer dersi işlendi onayı (<id> <todo|tbd|fixed|no-action|duplicate> [not]); motor ders durumunu "işlendi" yapar
+MARK_NEXT = "STEWARD-NEXT:"            # oturumun SIRADAKİ işi (<iş> | yok): yalnız BİLGİ (panel/explain_idle); dürtme KARARINI vermez
 MARK_JOB = "STEWARD-JOB:"              # paylaşımlı servise iş isteği (<tür> [dosya...] [açıklama]): beyin steward_job_submit ile gönderir
 JOB_REQUEST_PREFIX = "İŞ İSTEĞİ (STEWARD-JOB): "
 MARK_PLAN_READY = "STEWARD-PLAN-READY"  # planlama bitti → faz planned
@@ -2149,7 +2150,7 @@ def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool, confirmed: str|None}. Satır başındaki madde/boşluk toleranslı;
     işaret satırın İÇİNDE de olabilir (model bazen önüne açıklama koyar) — kalanı alınır."""
-    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "lessons": [], "plan_ready": False, "done": False,
+    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "nexts": [], "next": None, "lessons": [], "plan_ready": False, "done": False,
                            "confirmed": None}
     if not text:
         return out
@@ -2164,7 +2165,7 @@ def scan_markers(text: str) -> Dict[str, Any]:
         if not line:
             continue
         for mark, key in ((MARK_ROUTINE, "routines"), (MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked"),
-                          (MARK_JOB, "jobs"), (MARK_LESSON, "lessons")):
+                          (MARK_JOB, "jobs"), (MARK_NEXT, "nexts"), (MARK_LESSON, "lessons")):
             idx = line.find(mark)
             if idx != -1:
                 raw_body = line[idx + len(mark):].strip()
@@ -2173,12 +2174,16 @@ def scan_markers(text: str) -> Dict[str, Any]:
                 body = _unwrap_ticks(line[:idx], raw_body)
                 if _PLACEHOLDER_BODY_RE.match(body):
                     break   # `STEWARD-BLOCKED: <nerede takıldın>` türü yazım örneği
+                if key == "nexts" and line[:idx] not in ("", "`"):
+                    break   # düzyazıda anma: STEWARD-NEXT satırı değil
                 if key == "jobs" and (line[:idx] not in ("", "`") or not body[:1].isalpha()):
                     break   # düzyazıdaki anma ya da artık parçası (` , tırnak): iş isteği değil
                 # Satır BAŞINDA ama gövde `<tür> <dosya>` biçiminde değilse de istek sessizce düşmez (rve 25 Eki: `varaka-import` türü
                 # kısa çizgili olduğundan eski regex elemiş, iş hiç görülmedi): beyne gider, katalogda yoksa gerekçeli RED verir.
                 if body:
                     out[key].append(body)
+                    if key == "nexts":
+                        out["next"] = body      # en SONDAKİ satır kazanır
                 break
         else:
             if _bare_marker(line, MARK_PLAN_READY):
@@ -2205,6 +2210,7 @@ _PROTOCOL_TR = (
     "bunu değnekçi beyni cevaplar, sana değil bana sorma. YALNIZ gerçek bir soru için ve soru işaretiyle bitir; "
     "'bekliyorum', 'bitti', 'yeni soru yok' gibi durum cümlesi için KULLANMA\n"
     f"- aklına bu projeyle ilgisiz yeni bir fikir gelirse: `{MARK_IDEA} <fikir>`\n"
+    f"- cevabının sonunda sıradaki işini bildir: `{MARK_NEXT} <iş>` ya da sahipsiz iş kalmadıysa `{MARK_NEXT} yok` (panelde görünür; yoksa boşta kalınca TODO'dan sıradaki işe geçmen istenir)\n"
     f"- paylaşımlı servise (varaka) iş göndermek istiyorsan, istek dosyasını projede hazırla ve: `{MARK_JOB} <iş türü> <dosya yolu> [kısa açıklama]`; "
     "değnekçi beyni işi kuyruğa gönderir, sonucu sana iletilir; sahibe 'devam de' deme. İş numarası (iş kuyruğa girdi bildirimi) gelmeden 'varaka yanıtını bekliyorum' diye DURMA: numara yoksa `"
     f"{MARK_BLOCKED} iş gönderilmedi: <neden>` yaz\n"
@@ -2232,6 +2238,7 @@ _PROTOCOL_EN = (
     f"- a process question (when to reopen, which model, with the handover note?): `{MARK_ROUTINE} <question>`; "
     "the steward brain answers it, not me\n"
     f"- a new idea unrelated to this project: `{MARK_IDEA} <idea>`\n"
+    f"- end your reply with your next work: `{MARK_NEXT} <work>` or `{MARK_NEXT} none` if no ownerless work is left (shown in the panel; otherwise you are asked to pick the next TODO item when idle)\n"
     f"- to send a job to the shared service (varaka), prepare the request file in the project and write: `{MARK_JOB} <job kind> <file path> [short note]`; "
     "the steward brain submits it to the queue and its result is delivered to you; do NOT ask me to say 'go on'. Do NOT stop with 'waiting for varaka' before you hold a job number; "
     f"if there is none, write `{MARK_BLOCKED} job not submitted: <why>`\n"
@@ -3507,6 +3514,19 @@ def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Actio
     return out
 
 
+def note_project_next(st: Dict[str, Any], proj: str, session: str, m: Dict[str, Any], now: float) -> None:
+    """`STEWARD-NEXT: <iş>` bilgisini state'e yazar (`project_next[proje] = {text, at, session, none}`; `yok` = sıradaki iş yok).
+    Dürtme KARARINI vermez; panel/explain_idle gösterir. `m` = scan_markers sonucu. Yerinde değiştirir."""
+    val = m.get("next")
+    if not proj or not val:
+        return
+    body = str(val).strip()
+    none = body.strip(" .`").lower() in _NO_WORK_VALUES
+    pn = dict(st.get("project_next") or {})
+    pn[proj] = {"text": clip_words(body, 200), "at": now, "session": session, "none": none}
+    st["project_next"] = pn
+
+
 def plan_markers(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
                  world: Optional[World] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """Değnekçi KAPALIYKEN çalışan salt kayıt taraması: `plan_tick` adım 3'ün yalnız soru/fikir kısmı. Faz değiştirme,
@@ -3529,7 +3549,9 @@ def plan_markers(views: List[SessionView], projects: Dict[str, Project], state: 
             continue
         seen[v.name] = digest
         proj = v.project if v.project in projects else ""
-        actions.extend(marker_record_actions(v.name, proj, scan_markers(v.last_assistant)))
+        mk = scan_markers(v.last_assistant)
+        actions.extend(marker_record_actions(v.name, proj, mk))
+        note_project_next(st, proj, v.name, mk, time.time())
     st["seen_assistant"] = seen
     return actions, st
 
@@ -3879,6 +3901,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         m = scan_markers(v.last_assistant)
         proj = v.project if v.project in projects else ""
         actions.extend(marker_record_actions(v.name, proj, m))
+        note_project_next(st, proj, v.name, m, now)
         if proj and m["plan_ready"] and projects[proj].phase == "planning":
             actions.append(Action("set_phase", proj, "STEWARD-PLAN-READY", {"phase": "planned"}))
         if proj and (m["done"] or m["confirmed"] is not None) and done_blocked(projects[proj]):
@@ -4470,6 +4493,20 @@ _AJ_CHILD_RE = re.compile(r"_aj\d+$")                          # ucli alt ajanı
 _NEXT_NOTE_RE = re.compile(r"(?:sıradaki|siradaki|next)\s*(?:iş|is|adım|adim|step|task)?\s*[:：]\s*(.+)", re.IGNORECASE)
 _NO_WORK_VALUES = {"yok", "none", "-", "—", "n/a", "bitti", "done"}
 _DONE_TEXT_RE = re.compile(r"(?<![-\w])STEWARD-DONE(?![-\w])")
+_NEGATED_TAIL_RE = re.compile(r"[\s,;:.]*(?:demiyorum|demedim|değil|degil|diyemem|diyemiyorum|not true|isn't|is not)", re.IGNORECASE)
+# "sıradaki: yok" (ya da STEWARD-NEXT: yok) = oturum sıradaki sahipsiz iş KALMADI diyor; dürtme TODO değişene/yeni etkinliğe dek durur
+_NEXT_NONE_LINE_RE = re.compile(r"(?:^|[\s`*-])(?:sıradaki|siradaki|next)\s*(?:iş|is|adım|adim|step|task)?\s*[:：]\s*(?:yok|none|n/a)\b", re.IGNORECASE | re.MULTILINE)
+CLAUDE_IDLE_NUDGE_TEXT = ("devam: TODO'ndan kendi önceliğine göre sıradaki sahipsiz işe geç. "
+                          "Kalmadıysa \"sıradaki: yok\" yaz ve dur.")
+
+
+def next_none_stated(text: str) -> bool:
+    """Son cevap "sıradaki: yok" (ya da `STEWARD-NEXT: yok`) diyor mu. SAF."""
+    t = text or ""
+    nx = scan_markers(t).get("next")
+    if nx is not None and str(nx).strip(" .`").lower() in _NO_WORK_VALUES:
+        return True
+    return bool(_NEXT_NONE_LINE_RE.search(t))
 _NO_WORK_PHRASES = ("yapacak iş yok", "yapılacak iş yok", "yapacak başka iş yok", "yapılacak başka iş yok",
                     "no work left", "nothing left to do", "no more work")
 
@@ -4616,6 +4653,12 @@ def owner_wait(text: str) -> bool:
     return any(ph in low for ph in _OWNER_WAIT_PHRASES)
 
 
+def _done_at_line_end(line: str) -> bool:
+    """"işler bitti STEWARD-DONE" biçimi: işaret satırın SONUNDA (ardında yalnız noktalama/backtick), önünde `NO-`/`-` yok."""
+    m = _DONE_TEXT_RE.search(line)
+    return bool(m) and re.fullmatch(r"[\s`.!:;)\]]*", line[m.end():]) is not None
+
+
 def idle_finish_marker(text: str) -> Tuple[str, bool]:
     """Son asistan cevabı işin/devrin bittiğini söylüyor mu: (işaret, ready). işaret = "" | READY FOR HANDOVER | STEWARD-DONE |
     "yapacak iş yok"; ready = READY FOR HANDOVER var (devir zaten yazıldı). SAF."""
@@ -4626,12 +4669,21 @@ def idle_finish_marker(text: str) -> Tuple[str, bool]:
     ready = READY_FOR_HANDOVER in t
     if ready:
         return READY_FOR_HANDOVER, True
-    if _DONE_TEXT_RE.search(t):
-        return MARK_DONE, False
-    low = t.lower()
-    for ph in _NO_WORK_PHRASES:
-        if ph in low:
-            return ph, False
+    fenced = False
+    for raw in t.splitlines():
+        if raw.strip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced or raw.lstrip().startswith(">"):
+            continue
+        line = raw.strip().lstrip("-*• ").strip()
+        if _bare_marker(line, MARK_DONE) or _done_at_line_end(line):   # "STEWARD-DONE yazmıyorum/vermiyorum" düzyazısı bitti işareti DEĞİL
+            return MARK_DONE, False
+        low = line.lower()
+        for ph in _NO_WORK_PHRASES:
+            i = low.find(ph)
+            if i != -1 and not _NEGATED_TAIL_RE.match(low[i + len(ph):]):
+                return ph, False
     return "", False
 
 
@@ -4748,6 +4800,8 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
         projects = world.own_projects(projects)
     rec_all: Dict[str, Any] = dict(state.get("claude_idle") or {})
     otm: Dict[str, Any] = dict(state.get("owner_todo_move") or {})
+    next_none: Dict[str, Any] = dict(state.get("next_none") or {})
+    none_changed = False
     ho_pending = state.get("ho_pending") or {}
     touched = {a.name for a in planned}
     out: List[Action] = []
@@ -4797,28 +4851,44 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
                 continue
         if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
-        hint = next_work_hint(proj, open_work, real_only=True)
-        stated = "" if hint else stated_next_work(txt)
-        if not hint and not stated:
+        # Karar "iş VAR MI"ya dayanır, "iş NE"ye değil (sahip 11 Kas): sahipsiz açık TODO maddesi > 0 (owner_in_todo hariç) ya da notta
+        # `sıradaki:`; mesaj SABİT, seçimi oturum yapar. Metin ayrıştırması (stated_next_work) artık karar vermez.
+        try:
+            n_open = int(open_work(proj.name) or 0) if open_work is not None else 0
+        except Exception:
+            n_open = 0
+        note_hint = next_work_hint(proj, None, real_only=True)
+        if n_open <= 0 and not note_hint:
             continue
-        if stated:      # notta `sıradaki:` yok ama oturum kendi sıradaki işini söylemiş: ona dayan (sahip 11 Kas "bişi yok deyip duruyoruz")
-            hint = stated
-            text = one_line(f"devam: son cevabında söylediğin sıradaki işe geç ({stated}). Sahip kararı gerektiren kısmı "
-                            f"TOBEDECIDED'a yazıp atla, soru sorup bekleme.", 600)
-        else:
-            text = one_line(f"devam: {hint}" + ("" if hint.startswith(_TODO_HINT_PREFIX) else IDLE_STALE_NOTE_ESCAPE), 600)
-        if at and since > at and rec.get("text") == text and rec.get("mode", "dry") == cfg.claude_idle:
-            continue
+        nn = dict(next_none.get(proj.name) or {})
+        if next_none_stated(txt):
+            if nn and int(nn.get("open", -1)) == n_open and nn.get("session") == v.name:
+                continue                       # "sıradaki: yok" dedi, TODO aynı: dürtme durur
+            if not nn:
+                next_none[proj.name] = {"open": n_open, "at": now, "session": v.name}   # ilk görüş: kaydet; TODO sonra değişirse yeniden dürtülür
+                none_changed = True
+                continue
+            next_none.pop(proj.name, None)     # TODO değişti (ya da başka oturum): kayıt düşer, yeniden dürtülür
+            none_changed = True
+        elif nn:
+            next_none.pop(proj.name, None)     # oturum yeni etkinlik gösterdi ("yok" demiyor): kayıt düşer
+            none_changed = True
+        hint = (f"TODO.md'de {n_open} açık sahipsiz madde" if n_open > 0 else note_hint)
+        text = CLAUDE_IDLE_NUDGE_TEXT
         out.append(Action("idle_nudge", v.name, f"claude boşta {int(now - since)} sn, sıradaki iş var",
                           {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
                            "text": text, "next": hint, "cli": "claude"}))
         rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": text}
-    if not out:
+    if not out and not none_changed:
         return [], state
     st = dict(state)
     st["claude_idle"] = rec_all
     if otm:
         st["owner_todo_move"] = otm
+    if next_none:
+        st["next_none"] = next_none
+    else:
+        st.pop("next_none", None)
     return out, st
 
 
@@ -4838,7 +4908,8 @@ _WHY_TR = {
     "gate": "oturum kapıda bekliyor (gate)", "finished": "son cevap işin/devrin bittiğini söylüyor", "owner_wait": "son cevap sahipte/sahip kararında diyor",
     "turn_failed": "son tur hata ile bitti", "idle_wait": "oturum boşta, dürtme eşiği dolmadı", "idle_off": "boşta dürtme KAPALI (claude_idle=off)",
     "idle_dry": "boşta dürtme YALNIZ ölçüyor (claude_idle=dry): gerçek dürtme gitmez", "nudge_exhausted": "dürtme hakkı bitti, oturum yanıt vermedi",
-    "no_next_work": "dürtülecek iş ipucu yok (notta 'sıradaki:' yok, son cevapta söylenmiş sıradaki iş yok)", "nudging": "dürtülüyor",
+    "no_next_work": "dürtülecek iş yok (TODO'da sahipsiz açık madde yok, notta 'sıradaki:' yok)",
+    "next_none": "oturum 'sıradaki: yok' dedi; TODO değişene ya da yeni etkinliğe dek dürtülmüyor", "nudging": "dürtülüyor",
     "running": "oturum çalışıyor", "observe": "gözlem kipi: eylem uygulanmaz",
 }
 _WHY_EN = {
@@ -4853,7 +4924,8 @@ _WHY_EN = {
     "finished": "last answer says the work/handover is finished", "owner_wait": "last answer says it is with the owner",
     "turn_failed": "last turn failed", "idle_wait": "session idle, nudge threshold not reached", "idle_off": "idle nudging OFF (claude_idle=off)",
     "idle_dry": "idle nudging only MEASURES (claude_idle=dry): nothing is sent", "nudge_exhausted": "nudge budget used up, session did not respond",
-    "no_next_work": "no next-work hint (no 'sıradaki:' in notes, none stated in last answer)", "nudging": "nudging",
+    "no_next_work": "nothing to nudge (no ownerless open TODO item, no 'sıradaki:' in notes)",
+    "next_none": "session said 'next: none'; no nudge until the TODO changes or new activity", "nudging": "nudging",
     "running": "session is running", "observe": "observe mode: actions are not applied",
 }
 _START_BLOCK_TR = {"max_starts": "tick başına başlatma sınırı (max_starts)", "max_active": "etkin oturum sınırı (max_active)",
@@ -4956,12 +5028,20 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
         chain = 0
     if chain >= cfg.ucli_idle_max_consecutive:
         return _why("nudge_exhausted", lang, f"{chain}/{cfg.ucli_idle_max_consecutive}")
-    hint = next_work_hint(proj, open_work, real_only=True)
-    if not hint and not stated_next_work(txt):
+    try:
+        n_open = int(open_work(proj.name) or 0) if open_work is not None else 0
+    except Exception:
+        n_open = 0
+    note_hint = next_work_hint(proj, None, real_only=True)
+    if n_open <= 0 and not note_hint:
         return _why("no_next_work", lang)
+    nn = dict(state.get("next_none") or {}).get(proj.name) or {}
+    if next_none_stated(txt) and nn and int(nn.get("open", -1)) == n_open:
+        return _why("next_none", lang, f"TODO'da {n_open} açık" if lang != "en" else f"{n_open} open in TODO")
+    detail = f"TODO'da {n_open} açık sahipsiz madde" if (n_open > 0 and lang != "en") else (f"{n_open} open ownerless items" if n_open > 0 else note_hint)
     if cfg.claude_idle == "dry":
-        return _why("idle_dry", lang, one_line(hint or stated_next_work(txt), 160))
-    return _why("nudging", lang, one_line(hint or stated_next_work(txt), 160))
+        return _why("idle_dry", lang, one_line(detail, 160))
+    return _why("nudging", lang, one_line(detail, 160))
 
 
 def explain_idle_all(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
@@ -4983,6 +5063,11 @@ def explain_idle_all(views: List[SessionView], projects: Dict[str, Project], sta
                 n = 0
             if n > 0:
                 out[name]["owner_in_todo"] = n
+    pn = state.get("project_next") or {}
+    for name, w in out.items():
+        r = pn.get(name)
+        if isinstance(r, dict) and r.get("text"):
+            w["next_work"] = {"text": str(r["text"])[:200], "none": bool(r.get("none")), "at": float(r.get("at") or 0), "session": r.get("session", "")}
     return out
 
 
