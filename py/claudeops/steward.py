@@ -4570,6 +4570,21 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
 _OWNER_WAIT_PHRASES = ("sahipte", "sahibin kararı", "sahip kararı bekl", "sahibin cevab", "owner's decision", "waiting on the owner", "waiting for the owner")
 
 
+_NEXT_LINE_RE = re.compile(r"^[ \t>*_-]*(?:sıradaki|siradaki|next)\s*:\s*(?P<what>.+)$", re.IGNORECASE | re.MULTILINE)
+_NEXT_NONE_RE = re.compile(r"^[`*_\s]*(?:yok|none|nothing|-)\b", re.IGNORECASE)
+
+
+def next_line(text: str) -> Tuple[bool, str]:
+    """Cevaptaki SON "sıradaki: <iş>" satırı (ayıklama turu biçimi): (var_mı, iş). "sıradaki: yok" -> (True, ""). SAF."""
+    m = None
+    for m in _NEXT_LINE_RE.finditer(text or ""):
+        pass
+    if m is None:
+        return False, ""
+    what = m.group("what").strip()
+    return True, ("" if _NEXT_NONE_RE.match(what) else clip_words(" ".join(what.split()), 220))
+
+
 _STATED_NEXT_RE = re.compile(
     r"(sonraki turda|sıradaki (?:iş|adım)|siradaki (?:is|adim)|şimdi [^.\n]{0,120}?(?:geçiyorum|başlıyorum|başlayacağım)|"
     r"kalan (?:bağımsız|teknik) iş|açık kalan teknik işler|next i(?:'ll| will)|i(?:'ll| will) (?:now )?(?:move on|start|continue) )",
@@ -4580,6 +4595,9 @@ def stated_next_work(text: str) -> str:
     """Oturumun SON cevabında kendi söylediği sıradaki iş cümlesi ("sonraki turda X'ten başlarım", "şimdi X'e geçiyorum",
     "kalan bağımsız iş: ..."); yoksa "". Dürtme metni bu cümleye dayanır (körlemesine "TODO'daki ilk iş" değil). SAF."""
     t = text or ""
+    has, what = next_line(t)
+    if has:
+        return what              # açık "sıradaki:" satırı her şeyden önce gelir ("yok" -> "")
     m = None
     for m in _STATED_NEXT_RE.finditer(t):
         pass                     # en SONDAKİ ifade (cevap boyunca plan değişmiş olabilir)
@@ -4602,6 +4620,9 @@ def idle_finish_marker(text: str) -> Tuple[str, bool]:
     """Son asistan cevabı işin/devrin bittiğini söylüyor mu: (işaret, ready). işaret = "" | READY FOR HANDOVER | STEWARD-DONE |
     "yapacak iş yok"; ready = READY FOR HANDOVER var (devir zaten yazıldı). SAF."""
     t = text or ""
+    has, what = next_line(t)
+    if has and what:
+        return "", False         # cevap açık bir sıradaki iş söylüyor: "STEWARD-DONE yazmıyorum" / eski devir bölümü anması bitti sayılmaz
     ready = READY_FOR_HANDOVER in t
     if ready:
         return READY_FOR_HANDOVER, True

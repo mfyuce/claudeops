@@ -18,6 +18,18 @@ class StatedNextWorkTest(unittest.TestCase):
         self.assertEqual(sw.stated_next_work("Her şey bitti, commit edildi."), "")
         self.assertEqual(sw.stated_next_work(""), "")
 
+    def test_explicit_next_line(self):
+        t = "Rapor.\n\nProje bitmedi, bu yüzden `STEWARD-DONE` yazmıyorum.\n\nsıradaki: F5, başlık noktası düzeltmesi"
+        self.assertEqual(sw.stated_next_work(t), "F5, başlık noktası düzeltmesi")
+        self.assertEqual(sw.idle_finish_marker(t), ("", False))
+        t2 = "-prv CLAUDE.md'deki READY FOR HANDOVER (2026-11-02) bölümü bayat.\n\nsıradaki: Sıra #3, ölçüm"
+        self.assertEqual(sw.idle_finish_marker(t2), ("", False))
+
+    def test_next_none_is_not_work(self):
+        t = "Kalanlar TBD'de. STEWARD-DONE\n\nsıradaki: yok, kalanlar TBD'de"
+        self.assertEqual(sw.stated_next_work(t), "")
+        self.assertEqual(sw.idle_finish_marker(t)[0], sw.MARK_DONE)
+
 
 if __name__ == "__main__":
     unittest.main()
