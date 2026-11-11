@@ -177,8 +177,13 @@ def write_upload(dest: str, rfile, length: int, chunk_size: int) -> Optional[str
     """Gövdeyi `dest`e yazar: aynı dizinde O_EXCL|O_NOFOLLOW geçici dosyaya, TAM `length` bayt geldiyse `os.replace`.
     Hata kodu ya da None. Yarım gövde (istemci koptu) `incomplete`: geçici dosya silinir, mevcut hedef bozulmaz;
     `os.replace` symlink'i izlemez (hedef symlink ise bağın kendisi değişir, kök dışına yazılmaz)."""
-    tmp = os.path.join(os.path.dirname(dest), f".{os.path.basename(dest)}.upload-{os.getpid()}-{threading.get_ident()}")
+    # Kısa sabit ad: dosya adına bağlı olmasın (NAME_MAX 255 bayt aşılmasın); bayat aynı-ad artık önce silinir.
+    tmp = os.path.join(os.path.dirname(dest), f".upload-{os.getpid()}-{threading.get_ident()}")
     try:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
         with os.fdopen(fd, "wb") as f:
             remaining = length
@@ -346,8 +351,12 @@ def write_text(s: Session, path: str, content: str) -> dict:
         return {"ok": False, "error": "not_found"}
     if len(content.encode("utf-8")) > MAX_VIEW_BYTES:
         return {"ok": False, "error": "too_large"}
-    tmp = f"{real}.{os.getpid()}-{threading.get_ident()}.tmp"
+    tmp = os.path.join(os.path.dirname(real), f".edit-{os.getpid()}-{threading.get_ident()}.tmp")
     try:
+        try:
+            os.unlink(tmp)      # bayat aynı-ad tmp (pid/thread-id yeniden kullanımı) O_EXCL'i FileExistsError'a düşürmesin
+        except FileNotFoundError:
+            pass
         mode = stat.S_IMODE(os.stat(real).st_mode)      # os.replace izinleri KAYNAKTAN alır: 0600/+x korunsun
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
