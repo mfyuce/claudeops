@@ -2286,6 +2286,11 @@ def _slot_rows(cfg: Any) -> Dict[str, Dict[str, Any]]:
     return {m: {"slots": n, "running": [k for k in busy if _key_mode(k) == m]} for m, n in slots.items()}
 
 
+def _ext_status() -> Dict[str, Any]:
+    from .. import extensions
+    return extensions.status()
+
+
 def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
     t = time.time() if now is None else now
     p = sw.paths_for(cfg.sid)
@@ -2305,6 +2310,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
                      "pairs": {tg.key: hist["pairs"].get(rv.pair_key(name, tg)) for tg in targets}})
     return {"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
             "remote_projects": remote_where_rows(),
+            "lenses": list(rv.lenses()), "extension": _ext_status(),
             "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key, "effort": x.effort} for x in targets],
             "pool": rows, "running": running_keys(cfg.sid), "slots": _slot_rows(cfg),
             "runs": list(hist.get("runs") or [])[-50:],

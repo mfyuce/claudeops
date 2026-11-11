@@ -920,6 +920,12 @@ def cmd_review(args) -> int:
     if not res.get("ok"):
         print(f"hata: {res.get('error')}")
         return 1
+    if act == "lenses":
+        ext = res.get("extension") or {}
+        for ln in res.get("lenses") or []:
+            print(f"{ln:<14} {'eklenti' if ln in (ext.get('lenses') or []) else 'yerleşik'}")
+        print(f"eklenti: {ext.get('status', '?')}{(' (' + ext['detail'] + ')') if ext.get('detail') else ''}")
+        return 0
     if act == "history":
         for r in res.get("runs") or []:
             print(f"{_ago(float(r.get('at') or 0)):<10} {r.get('status'):<15} {_run_dur(r.get('seconds')):<7} {r.get('pair')}  {r.get('file') or ''}")
@@ -1212,7 +1218,8 @@ def register(sub):
     rru = rv_.add_parser("run", help="elle başlat: PROJE [mode/model]")
     rru.add_argument("project")
     rru.add_argument("target", nargs="?", default="", help="<mode>/<model>, ör. evren/glm-4.6 (yoksa sıradaki hedef)")
-    rru.add_argument("--lens", default="", choices=["", "dry"], help="inceleme merceği: dry = tekrar/kopya kod ve bilgi (yalnız elle; yoksa genel inceleme)")
+    rru.add_argument("--lens", default="", help="inceleme merceği (yalnız elle; yoksa genel inceleme): dry = tekrar/kopya kod; kayıtlı listesi: `review lenses`")
+    rv_.add_parser("lenses", help="kayıtlı inceleme mercekleri (yerleşik + eklenti)")
     rca = rv_.add_parser("cancel", help="koşan işi iptal et (PROJE yoksa hepsi)")
     rca.add_argument("project", nargs="?", default="")
     rus = rv_.add_parser("usage", help="koşu başına token/istek/süre toplamı (ucli --usage-log): [--project P] [--top N]")

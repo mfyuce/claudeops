@@ -386,7 +386,8 @@ def pool_sync(pool: Any, owner_names: Sequence[str], now: float) -> Tuple[Dict[s
 
 # ── istem ─────────────────────────────────────────────────────────────────────
 
-LENSES = ("dry",)     # "" = genel kod incelemesi (varsayılan)
+LENSES: Tuple[str, ...] = ("dry",)     # "" = genel kod incelemesi (varsayılan); KAYIT ile genişler (`register_lens`), `lenses()` oku
+_LENS_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
 
 _LENS_DEFECTS_RE = {
     "en": re.compile(r"Find real defects:.*?before reporting it\.\n", re.S),
@@ -410,6 +411,32 @@ _LENS_FORMAT = {
 }
 
 
+def register_lens(name: str, tr: str, en: str, format_tr: str = "", format_en: str = "") -> None:
+    """Reviewer merceği KAYDI (genişleme noktası: `extensions.ExtensionAPI.register_lens`). Ad `[a-z][a-z0-9_-]{0,23}`; var olan ad
+    (yerleşik `dry` dahil) EZİLMEZ (ValueError); iki dilde de boş olmayan istem şart. `format_*` isteğe bağlı bulgu-biçimi eki."""
+    global LENSES
+    if not isinstance(name, str) or not _LENS_NAME_RE.match(name):
+        raise ValueError(f"invalid lens name: {name!r}")
+    if name in LENSES:
+        raise ValueError(f"lens already registered: {name}")
+    if not (isinstance(tr, str) and tr.strip() and isinstance(en, str) and en.strip()):
+        raise ValueError("lens needs non-empty tr and en text")
+    _LENS_TEXT[(name, "tr")] = tr if tr.endswith("\n") else tr + "\n"
+    _LENS_TEXT[(name, "en")] = en if en.endswith("\n") else en + "\n"
+    if format_tr or format_en:
+        _LENS_FORMAT_EXTRA[(name, "tr")] = format_tr
+        _LENS_FORMAT_EXTRA[(name, "en")] = format_en
+    LENSES = LENSES + (name,)
+
+
+def lenses() -> Tuple[str, ...]:
+    """Kayıtlı mercekler (yerleşik + eklenti)."""
+    return LENSES
+
+
+_LENS_FORMAT_EXTRA: Dict[Tuple[str, str], str] = {}
+
+
 def build_review_prompt(proj: str, cwd: str, lang: str = "tr", lens: str = "") -> str:
     """Salt-okunur kod/belge incelemesi istemi; `lens` boşsa genel inceleme, `dry` ise tekrar/kopya mercesi (bulgu başlık
     biçimi AYNI). Bulgu biçimi `parse_findings` ile eşleşir: `## R-<n> | P1|P2|P3 | dosya:satır | başlık` + gövde."""
@@ -421,7 +448,8 @@ def build_review_prompt(proj: str, cwd: str, lang: str = "tr", lens: str = "") -
     if text is None:
         raise ValueError(f"unknown review lens: {lens}")
     out, n = _LENS_DEFECTS_RE[lg].subn(lambda _m: text, base, count=1)
-    return (out if n else base + " " + text) + _LENS_FORMAT[lg]
+    fmt = _LENS_FORMAT[lg] if lens == "dry" else _LENS_FORMAT_EXTRA.get((lens, lg), "")     # `Ayrıca:` eki yalnız dry'a özgü
+    return (out if n else base + " " + text) + fmt
 
 
 def _build_general_prompt(proj: str, cwd: str, lang: str = "tr") -> str:
@@ -1489,3 +1517,8 @@ def anthropic_spent_usd(reviews_root: str) -> float:
         parts = f.split(os.sep)
         tot += usage_cost_usd(f, parts[-4])
     return tot
+
+
+# Genişleme noktası: `claudeops_enterprise` yüklüyse mercekleri kaydeder, yoksa sessizce geçer (çekirdek paketi ASLA doğrudan import etmez).
+from . import extensions as _ext  # noqa: E402
+_ext.load()
