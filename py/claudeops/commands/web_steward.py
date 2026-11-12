@@ -5774,6 +5774,32 @@ def http_panic(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return {"ok": True, "panic": sw.panic_active()}
 
 
+def _brain_directive_blocks(name: str, data: Dict[str, Any], sid: str, projects: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """Yalnız beyin (`actor: brain`) direktifinin reddedildiği koşullar: drain/kota/panik, yerel erteleme (`_brain_directive_defer`),
+    sahibe açık reddedilmiş soru (`owner_pending`). `http_directive` VE `http_restart` (durdurmadan ÖNCE: reddedilen restart oturumu
+    kapalı bırakmasın) aynı denetimi kullanır. `None` = izinli."""
+    if str(data.get("actor") or "") != "brain":
+        return None
+    if steward_config(sid).drain or quota_blocking() or sw.panic_active():
+        return {"ok": False, "error": "draining: the steward takes no new work (human turned 'drain' on)", "code": "draining"}
+    if not _name_host(name):
+        why = _brain_directive_defer(name, sid)
+        if why:
+            return why
+    if projects is None:
+        projects = sw.load_projects(sid)
+    p = _project_for_session(name, projects, _world(sid))
+    pname = p.name if p is not None else name
+    denied = sw.load_state(sw.paths_for(sid)).get("brain_denied") or {}
+    q = sw.owner_pending_block({name, pname}, sw.load_questions(sw.paths_for(sid)), denied) if denied else None
+    if q is not None:
+        sw.log_event("directive_denied", paths=sid, name=name, project=pname, question=q.id, reason="owner_pending")
+        return {"ok": False, "code": "owner_pending",
+                "error": f"owner_pending: question {q.id} for {pname} was rejected for you (owner_only) and is still open; "
+                         "do not route it via directive, the owner answers it"}
+    return None
+
+
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
@@ -5788,10 +5814,9 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
                               str(data.get("actor") or ""))
     if upper is not None:
         return upper
-    if str(data.get("actor") or "") == "brain" and not _name_host(name):
-        why = _brain_directive_defer(name, sid)
-        if why:
-            return why
+    blocked = _brain_directive_blocks(name, data, sid)
+    if blocked is not None:
+        return blocked
     with _ctx(sid).lock:
         projects = sw.load_projects(sid)
         p = _project_for_session(name, projects, _world(sid))
@@ -5799,14 +5824,6 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             if _running(name) is None and not inst_mod.get_instance(name) and name not in (_act("fleet_status") or {}):
                 return {"ok": False, "error": "unknown session/project"}
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
-        if str(data.get("actor") or "") == "brain":
-            denied = sw.load_state(sw.paths_for(sid)).get("brain_denied") or {}
-            q = sw.owner_pending_block({name, p.name}, sw.load_questions(sw.paths_for(sid)), denied) if denied else None
-            if q is not None:
-                sw.log_event("directive_denied", paths=sid, name=name, project=p.name, question=q.id, reason="owner_pending")
-                return {"ok": False, "code": "owner_pending",
-                        "error": f"owner_pending: question {q.id} for {p.name} was rejected for you (owner_only) and is still open; "
-                                 "do not route it via directive, the owner answers it"}
         res = _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
                               start_if_stopped=bool(data.get("start_if_stopped", True)),
                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
@@ -5837,6 +5854,9 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                               str(data.get("actor") or ""))
     if upper is not None:      # DURDURMADAN önce: reddedilen restart oturumu kapalı bırakmasın
         return upper
+    blocked = _brain_directive_blocks(name, data, sid)      # aynı gerekçe: durdurduktan SONRA direktif reddedilirse oturum kapalı kalırdı
+    if blocked is not None:
+        return blocked
     host = _name_host(name)      # `_gate` istekteki host'u projeninkiyle zaten eşledi
     with _ctx(sid).lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
         if host:
