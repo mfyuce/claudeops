@@ -212,5 +212,43 @@ class ApplyTest(unittest.TestCase):
         send.assert_not_called()
 
 
+class WokenButStuckTest(unittest.TestCase):
+    """review R-1 (steward.py plan_api_recovery): kesinti bittikten sonra uyandırılmış ama hâlâ takılı oturum sessiz kalmaz."""
+    def test_woken_still_stuck_is_renudged_then_gives_up(self):
+        a, b, probe = view("a"), view("b"), view("p")
+        t = T0
+        acts, err, out = run([a, b, probe], {}, {}, t)                    # üçü birden takılı = kesinti: bildirim + tek yoklama
+        self.assertIn("api_outage", [x.kind for x in acts])
+        probe_name = out["probe"]
+        recovered = [v for v in (a, b, probe) if v.name != probe_name]    # yoklama oturumu düzeldi (artık takılı değil)
+        recovered.append(view(probe_name, text="tamam, devam ediyorum"))
+        t += 5
+        acts, err, out = run(recovered, err, out, t)
+        self.assertIn("api_recovered", [x.kind for x in acts])
+        self.assertTrue(out["woken"])                                     # kalanlar uyandırıldı
+        names = []
+        gave = False
+        for _ in range(12):                                               # hâlâ takılı kalanlar: yeniden dürtme ve sonunda giveup
+            t += sw.API_NUDGE_DELAYS[-1] + sw.API_GIVEUP_AFTER
+            acts, err, out = run(recovered, err, out, t)
+            names += [x.kind for x in acts]
+            gave = gave or "api_giveup" in names
+            if gave:
+                break
+        self.assertIn("nudge", names)
+        self.assertTrue(gave, names)
+
+    def test_state_clears_after_giveup(self):
+        a, b = view("a"), view("b")
+        t = T0
+        _, err, out = run([a, b], {}, {}, t)
+        for _ in range(20):
+            t += 700
+            _, err, out = run([a, b], err, out, t)
+        # herkes bıraktı: kesinti kaydı düşer, süreç sonsuz sessizlikte kalmaz
+        self.assertTrue(all(r.get("gave_up") for r in err.values()), err)
+        self.assertEqual(out, {})
+
+
 if __name__ == "__main__":
     unittest.main()

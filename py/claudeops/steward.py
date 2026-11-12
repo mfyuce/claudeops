@@ -4478,9 +4478,16 @@ def plan_api_recovery(views: List[SessionView], eligible: Callable[[SessionView]
             actions.append(Action("api_recovered", probe, "yoklama oturumu API hatasından çıktı", {}))
         if out.get("recovered"):
             waiting = [v for v in live if v.name not in woken]
+            already = set(woken)
             for v in waiting[:API_WAKE_GROUP]:
                 _nudge(v, "kesinti bitti, sırayla uyandırma")
                 woken.add(v.name)
+            for v in live:
+                if v.name in already:      # uyandırıldı ama hâlâ takılı: tek-oturum kurallarına dön (yeniden dürt, hakkı bitince bırak+bildir);
+                    if _due_single(v):     # aksi halde kayıt `out and live` ile sonsuza dek sürer, oturum sessiz kalırdı
+                        _nudge(v, "uyandırıldı ama hâlâ API hatasında, otomatik devam")
+                    else:
+                        _giveup(v)
         elif now >= float(out.get("probe_at") or 0.0):
             cand = next((v for v in sorted(live, key=lambda x: x.name) if int(err[v.name].get("nudges") or 0) < API_NUDGE_MAX), None)
             if cand is not None:
