@@ -2102,6 +2102,8 @@ class HttpTest(_Tmp):
         bg = mock.patch.object(web_steward, "_CARD_BACKGROUND", False)
         bg.start()
         self.addCleanup(bg.stop)
+        web_steward._JOB_RED_SEEN.clear()      # süreç içi 24 sa RED belleği testler arası sızmasın (sıra bağımlı kırılma)
+        self.addCleanup(web_steward._JOB_RED_SEEN.clear)
         self.calls = []
         self.fleet = {}
 
