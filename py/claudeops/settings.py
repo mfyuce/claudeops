@@ -314,7 +314,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
                     cv = ",".join(str(x) for x in cv if str(x).strip())
                 elif isinstance(cv, bool):          # ör. search_docker: false. `False` "boş = kaldır"a (= varsayılan AÇIK) düşmesin
                     cv = "on" if cv else "off"
-                if cv:
+                if cv or (isinstance(cv, (int, float)) and not isinstance(cv, bool)):   # sayısal 0 geçerli değerdir ("boş" değil)
                     merged[str(ck)] = str(cv)
                 else:
                     merged.pop(str(ck), None)

@@ -8,6 +8,7 @@
 Testler `py/tests` içinden `python3 -m unittest <modüller>` ile koşar (discover ile aynı sys.path)."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -55,5 +56,8 @@ def run(args) -> int:
     if args.list:
         return 0
     print(f"{len(sel)} test dosyası koşuluyor…", flush=True)
-    r = subprocess.run([sys.executable, "-m", "unittest", *sel], cwd=str(py_root / "tests"))
+    # cwd=tests: `sys.path`e yer eklemeyen test dosyaları `claudeops`i bulamaz; paket kökünü PYTHONPATH'e koy
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(py_root) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    r = subprocess.run([sys.executable, "-m", "unittest", *sel], cwd=str(py_root / "tests"), env=env)
     return r.returncode
