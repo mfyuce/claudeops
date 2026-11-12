@@ -56,7 +56,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getStatus, TOKEN } from "../api/client";
 import type { StatusPayload } from "../api/types";
-import { reconnectDelayMs } from "./wsReconnect";
+import { openReconnectingWs } from "./wsReconnect";
 
 /** Backstop REST poll — deliberately much slower than the old 4s poller,
  * since WS is primary now; this only needs to catch what WS misses. Plan:
@@ -97,9 +97,6 @@ export function useStatus(): UseStatusResult {
 
   // Mutable, doesn't need to trigger a re-render, and needs to be visible
   // to timer/socket callbacks scheduled outside React's render cycle.
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
-  const reconnectAttemptRef = useRef(0);
   const aliveRef = useRef(true); // false after cleanup — guards every async/timer callback below
   const serverStartedAtRef = useRef<number | null>(null); // pinned to the first payload's value per mount
 
@@ -138,87 +135,20 @@ export function useStatus(): UseStatusResult {
   useEffect(() => {
     aliveRef.current = true;
 
-    function clearReconnectTimer() {
-      if (reconnectTimerRef.current !== null) {
-        window.clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-    }
-
-    function scheduleReconnect() {
-      if (!aliveRef.current || reconnectTimerRef.current !== null) return;
-      const delay = reconnectDelayMs(reconnectAttemptRef.current);
-      reconnectAttemptRef.current += 1;
-      // `connect` is a `function` declaration further down in this same
-      // block — hoisted, so calling it here (textually above its
-      // definition) is valid: `scheduleReconnect`/`connect` are mutually
-      // recursive by design (that's the whole reconnect loop).
-      reconnectTimerRef.current = window.setTimeout(() => {
-        reconnectTimerRef.current = null;
-        connect();
-      }, delay);
-    }
-
-    function connect() {
-      if (!aliveRef.current) return;
-      // Already have a live/connecting socket — don't open a second one
-      // (can happen if a foreground visibilitychange races a reconnect
-      // timer that was about to fire anyway).
-      const existing = wsRef.current;
-      if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
-        return;
-      }
-      let ws: WebSocket;
-      try {
-        ws = new WebSocket(wsUrl());
-      } catch {
-        scheduleReconnect();
-        return;
-      }
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        reconnectAttemptRef.current = 0; // a fresh handshake succeeded — the network path works again
-      };
-
-      ws.onmessage = (ev: MessageEvent<string>) => {
-        if (!aliveRef.current) return;
-        let parsed: { type?: string; data?: StatusPayload };
-        try {
-          parsed = JSON.parse(ev.data) as { type?: string; data?: StatusPayload };
-        } catch {
-          return; // malformed frame — ignore rather than crash the UI
-        }
-        if (parsed.type !== "status" || !parsed.data) return;
+    const closeWs = openReconnectingWs({
+      url: wsUrl,
+      onMessage: (frame) => {
+        const parsed = frame as { type?: string; data?: StatusPayload } | null;
+        if (!parsed || parsed.type !== "status" || !parsed.data) return;
         applyData(parsed.data);
         setLoading(false);
-      };
-
-      ws.onerror = () => {
-        // No-op by design: a failed/dropped connection always also fires
-        // `onclose` right after (per the WebSocket spec), which is the
-        // single place reconnect is scheduled — scheduling from both would
-        // double-schedule.
-      };
-
-      ws.onclose = () => {
-        if (wsRef.current === ws) wsRef.current = null;
-        if (!aliveRef.current) return;
-        // The very first close of this mount (nothing has ever connected
-        // yet, reconnectAttemptRef is still at its initial 0) gets one
-        // immediate REST probe alongside the usual backoff reconnect. Not
-        // needed for the ongoing-outage case (the 12s backstop poll already
-        // covers that per the header comment) -- this is specifically so a
-        // bad/missing token, or WS being categorically unreachable (e.g. a
-        // proxy stripping Upgrade) from the very start of a page load,
-        // surfaces its 401/error near-instantly instead of silently sitting
-        // on the loading placeholder for up to POLL_BACKSTOP_MS.
-        if (reconnectAttemptRef.current === 0) void doFetch();
-        scheduleReconnect();
-      };
-    }
-
-    connect();
+      },
+      // The very first close of this mount (nothing has ever connected yet) gets one immediate REST probe alongside the
+      // usual backoff reconnect, so a bad/missing token or WS being unreachable from page load surfaces its 401/error
+      // near-instantly instead of sitting on the loading placeholder for up to POLL_BACKSTOP_MS.
+      onFirstClose: () => void doFetch(),
+      onForeground: () => void doFetch(), // per plan: one immediate REST fetch regardless of WS state
+    });
 
     // Independent slow backstop poll — runs for the lifetime of the
     // component regardless of WS state (see header comment). First tick
@@ -226,32 +156,10 @@ export function useStatus(): UseStatusResult {
     // on why an immediate mount-time fetch was deliberately dropped.
     const pollId = window.setInterval(() => void doFetch(), POLL_BACKSTOP_MS);
 
-    function onVisibilityChange() {
-      if (document.visibilityState !== "visible") return;
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        reconnectAttemptRef.current = 0; // foregrounding is a strong signal the network may have changed — try promptly
-        clearReconnectTimer();
-        connect();
-      }
-      void doFetch(); // per plan: fire one immediate REST fetch regardless of WS state
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
     return () => {
       aliveRef.current = false;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.clearInterval(pollId);
-      clearReconnectTimer();
-      const ws = wsRef.current;
-      wsRef.current = null;
-      if (ws) {
-        ws.onopen = null;
-        ws.onmessage = null;
-        ws.onerror = null;
-        ws.onclose = null;
-        ws.close();
-      }
+      closeWs();
     };
   }, [doFetch, applyData]);
 

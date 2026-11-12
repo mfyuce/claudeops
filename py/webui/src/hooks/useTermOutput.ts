@@ -44,7 +44,7 @@ import { useEffect, useRef, useState } from "react";
 import { getTermOutput, TOKEN } from "../api/client";
 import type { Lang } from "../i18n/strings";
 import type { TermOutputResult } from "../api/types";
-import { reconnectDelayMs } from "./wsReconnect";
+import { openReconnectingWs } from "./wsReconnect";
 
 const POLL_BACKSTOP_MS = 3_000;
 
@@ -64,9 +64,6 @@ function wsTermUrl(name: string, lang: Lang, host: string | undefined, lite: boo
 export function useTermOutput(name: string, host: string | undefined, lang: Lang, lite = false): TermOutputResult | null {
   const [result, setResult] = useState<TermOutputResult | null>(null);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
-  const reconnectAttemptRef = useRef(0);
   const aliveRef = useRef(true);
   // Timestamp (`Date.now()`) of the most recently *applied* result, from
   // either source — lets the backstop poll detect that a WS push already
@@ -77,68 +74,15 @@ export function useTermOutput(name: string, host: string | undefined, lang: Lang
   useEffect(() => {
     aliveRef.current = true;
 
-    function clearReconnectTimer() {
-      if (reconnectTimerRef.current !== null) {
-        window.clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-    }
-
-    function scheduleReconnect() {
-      if (!aliveRef.current || reconnectTimerRef.current !== null) return;
-      const delay = reconnectDelayMs(reconnectAttemptRef.current);
-      reconnectAttemptRef.current += 1;
-      reconnectTimerRef.current = window.setTimeout(() => {
-        reconnectTimerRef.current = null;
-        connect();
-      }, delay);
-    }
-
-    function connect() {
-      if (!aliveRef.current) return;
-      const existing = wsRef.current;
-      if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
-        return;
-      }
-      let ws: WebSocket;
-      try {
-        ws = new WebSocket(wsTermUrl(name, lang, host, lite));
-      } catch {
-        scheduleReconnect();
-        return;
-      }
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        reconnectAttemptRef.current = 0;
-      };
-
-      ws.onmessage = (ev: MessageEvent<string>) => {
-        if (!aliveRef.current) return;
-        let parsed: { type?: string; data?: TermOutputResult };
-        try {
-          parsed = JSON.parse(ev.data) as { type?: string; data?: TermOutputResult };
-        } catch {
-          return; // malformed frame — ignore rather than crash the UI
-        }
-        if (parsed.type !== "term" || !parsed.data) return;
+    const closeWs = openReconnectingWs({
+      url: () => wsTermUrl(name, lang, host, lite),
+      onMessage: (frame) => {
+        const parsed = frame as { type?: string; data?: TermOutputResult } | null;
+        if (!parsed || parsed.type !== "term" || !parsed.data) return;
         lastAppliedAtRef.current = Date.now();
         setResult(parsed.data);
-      };
-
-      ws.onerror = () => {
-        // No-op by design: `onclose` always fires right after (per the
-        // WebSocket spec) — scheduling reconnect from both would double-schedule.
-      };
-
-      ws.onclose = () => {
-        if (wsRef.current === ws) wsRef.current = null;
-        if (!aliveRef.current) return;
-        scheduleReconnect();
-      };
-    }
-
-    connect();
+      },
+    });
 
     // Independent backstop poll — runs for the lifetime of this mount
     // regardless of WS state, same rationale as useStatus.ts's.
@@ -160,31 +104,10 @@ export function useTermOutput(name: string, host: string | undefined, lang: Lang
       );
     }, POLL_BACKSTOP_MS);
 
-    function onVisibilityChange() {
-      if (document.visibilityState !== "visible") return;
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        reconnectAttemptRef.current = 0;
-        clearReconnectTimer();
-        connect();
-      }
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
     return () => {
       aliveRef.current = false;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.clearInterval(pollId);
-      clearReconnectTimer();
-      const ws = wsRef.current;
-      wsRef.current = null;
-      if (ws) {
-        ws.onopen = null;
-        ws.onmessage = null;
-        ws.onerror = null;
-        ws.onclose = null;
-        ws.close();
-      }
+      closeWs();
     };
   }, [name, host, lang, lite]);
 
