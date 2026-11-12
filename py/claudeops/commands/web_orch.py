@@ -174,13 +174,22 @@ def _preflight(participants: List[dict]) -> Optional[str]:
 
 
 def _write_private(path: str, text: str) -> None:
-    """Run ek dosyası: her zaman 0600 (umask'tan bağımsız, mevcut dosyada da)."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    """Run ek dosyası: her zaman 0600 (umask'tan bağımsız). Atomik: geçici dosya (O_EXCL|O_NOFOLLOW) + `os.replace`; hedefte
+    hazır bir symlink izlenmez (yerini alır), yarım yazılmış dosya okunmaz."""
+    tmp = f"{path}.{os.getpid()}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             fd = -1
             f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     finally:
         if fd != -1:
             os.close(fd)
