@@ -41,18 +41,18 @@
  * newer was already applied after that particular request was issued.
  */
 import { useEffect, useRef, useState } from "react";
-import { getTermOutput, TOKEN } from "../api/client";
+import { getTermOutput, wsAuthQS } from "../api/client";
 import type { Lang } from "../i18n/strings";
 import type { TermOutputResult } from "../api/types";
 import { openReconnectingWs } from "./wsReconnect";
 
 const POLL_BACKSTOP_MS = 3_000;
 
-function wsTermUrl(name: string, lang: Lang, host: string | undefined, lite: boolean): string {
+async function wsTermUrl(name: string, lang: Lang, host: string | undefined, lite: boolean): Promise<string> {
   const scheme = location.protocol === "https:" ? "wss://" : "ws://";
   const hostQS = host && host !== "local" ? `&host=${encodeURIComponent(host)}` : "";
   const liteQS = lite ? "&lite=1" : "";
-  return `${scheme}${location.host}/ws/term?name=${encodeURIComponent(name)}&lang=${lang}${hostQS}${liteQS}&token=${encodeURIComponent(TOKEN)}`;
+  return `${scheme}${location.host}/ws/term?name=${encodeURIComponent(name)}&lang=${lang}${hostQS}${liteQS}&${await wsAuthQS()}`;
 }
 
 /**

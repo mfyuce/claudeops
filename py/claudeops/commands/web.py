@@ -52,6 +52,7 @@ import psutil
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from .. import dist_check as _dist_check
+from .. import ws_ticket
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
@@ -4365,6 +4366,13 @@ class _Handler(BaseHTTPRequestHandler):
                 continue
         return False
 
+    def _authorized_ws(self) -> bool:
+        """WS el sıkışması: tek kullanımlık `?ticket=` (bkz. `ws_ticket`) YA DA eski kalıcı token (geriye uyumlu)."""
+        qs = parse_qs(urlparse(self.path).query)
+        if ws_ticket.consume((qs.get("ticket") or [""])[0]):
+            return True
+        return self._authorized()
+
     def _agents_caller(self):
         """`/api/agents/*` çağıranı: panel token'ı -> ("human", ""); `Authorization: Bearer <ajan token'ı>` -> ("agent", <üst
         oturum>); ikisi de değilse None (401). Ajan token'ı YALNIZ bu yollarda ve yalnız Bearer başlığıyla kabul edilir
@@ -4661,7 +4669,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._agents_reply(web_agents.handle_get(path, parse_qs(urlparse(self.path).query), caller, _AGENT_OPS))
             return
-        if not self._authorized():
+        if not (self._authorized_ws() if path in ("/ws", "/ws/term") else self._authorized()):
             self._unauthorized()
             return
         if path == "/":
@@ -4977,6 +4985,9 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "missing or invalid token"}, status=401)
             else:
                 self._unauthorized()
+            return
+        if path == "/api/ws-ticket":
+            self._json({"ok": True, "ticket": ws_ticket.issue(), "ttl": int(ws_ticket.TTL_SECONDS)})
             return
         if path == "/api/files/upload":
             # `_handle_files_download`'ın (do_GET'te) AYNI istisnası: gövde

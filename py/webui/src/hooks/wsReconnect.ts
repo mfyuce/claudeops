@@ -24,7 +24,7 @@ export function reconnectDelayMs(attempt: number): number {
 
 export interface ReconnectingWsOptions {
   /** URL her (yeniden) bağlanmada yeniden hesaplanır (token/parametre değişebilir). */
-  url: () => string;
+  url: () => string | Promise<string>;
   /** JSON.parse edilmiş çerçeve; bozuk çerçeve sessizce atılır. */
   onMessage: (frame: unknown) => void;
   /** Bu bağlantı döngüsünün İLK kapanışı (hiç açılmamış, deneme sayacı 0): ör. anında REST yoklaması. */
@@ -40,6 +40,7 @@ export function openReconnectingWs(opts: ReconnectingWsOptions): () => void {
   let ws: WebSocket | null = null;
   let timer: number | null = null;
   let attempt = 0;
+  let connecting = false;   // bilet alınırken ikinci bağlanma denemesi açma
 
   const clearTimer = () => {
     if (timer !== null) {
@@ -61,13 +62,30 @@ export function openReconnectingWs(opts: ReconnectingWsOptions): () => void {
   function connect() {
     if (!alive) return;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;   // ikinci soket açma
-    let sock: WebSocket;
-    try {
-      sock = new WebSocket(opts.url());
-    } catch {
-      scheduleReconnect();
-      return;
-    }
+    if (connecting) return;
+    connecting = true;
+    Promise.resolve()
+      .then(() => opts.url())
+      .then((u) => {
+        connecting = false;
+        if (!alive) return;
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+        let sock: WebSocket;
+        try {
+          sock = new WebSocket(u);
+        } catch {
+          scheduleReconnect();
+          return;
+        }
+        attach(sock);
+      })
+      .catch(() => {
+        connecting = false;
+        scheduleReconnect();
+      });
+  }
+
+  function attach(sock: WebSocket) {
     ws = sock;
     sock.onopen = () => {
       attempt = 0;   // yeni el sıkışma başarılı: ağ yolu çalışıyor

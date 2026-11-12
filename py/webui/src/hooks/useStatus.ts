@@ -54,7 +54,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, getStatus, TOKEN } from "../api/client";
+import { ApiError, getStatus, wsAuthQS } from "../api/client";
 import type { StatusPayload } from "../api/types";
 import { openReconnectingWs } from "./wsReconnect";
 
@@ -76,9 +76,9 @@ function toStatusError(err: unknown): StatusError {
   return { kind: "network", message: err instanceof Error ? err.message : String(err) };
 }
 
-function wsUrl(): string {
+async function wsUrl(): Promise<string> {
   const scheme = location.protocol === "https:" ? "wss://" : "ws://";
-  return `${scheme}${location.host}/ws?token=${encodeURIComponent(TOKEN)}`;
+  return `${scheme}${location.host}/ws?${await wsAuthQS()}`;
 }
 
 export interface UseStatusResult {

@@ -117,6 +117,25 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Tek kullanımlık 30 sn WS bileti (`POST /api/ws-ticket`); token URL'ye DEĞİL `Authorization` başlığına gider.
+ * Alınamazsa "" döner (eski sunucu / ağ hatası): çağıran eski `?token=` yoluna düşer. */
+export async function fetchWsTicket(): Promise<string> {
+  try {
+    const res = await fetch("/api/ws-ticket", { method: "POST", headers: { Authorization: `Bearer ${TOKEN}` } });
+    if (!res.ok) return "";
+    const j = (await res.json()) as { ticket?: string };
+    return j.ticket || "";
+  } catch {
+    return "";
+  }
+}
+
+/** WS sorgu kimliği: bilet varsa `ticket=...`, yoksa (geriye uyum) `token=...`. */
+export async function wsAuthQS(): Promise<string> {
+  const t = await fetchWsTicket();
+  return t ? `ticket=${encodeURIComponent(t)}` : `token=${encodeURIComponent(TOKEN)}`;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(withToken(path));
   return handleResponse<T>(res);
