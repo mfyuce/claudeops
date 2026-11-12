@@ -226,3 +226,26 @@ class StoreCommitGateTest(CommitTest):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParseRemotePortTest(unittest.TestCase):
+    def test_ssh_port_and_alt_hosts(self):
+        from claudeops import review_store as rs
+        self.assertEqual(rs.parse_remote("ssh://git@github.com:22/o/r.git"), ("github.com", "o/r"))
+        self.assertEqual(rs.parse_remote("ssh://git@ssh.github.com:443/o/r.git"), ("github.com", "o/r"))
+        self.assertEqual(rs.parse_remote("ssh://git@altssh.gitlab.com:443/o/r"), ("gitlab.com", "o/r"))
+        self.assertEqual(rs.parse_remote("git@github.com:123/r.git"), ("github.com", "123/r"))     # scp biçimi: sayısal sahip port DEĞİL
+        self.assertEqual(rs.parse_remote("git@github.com:o/r.git"), ("github.com", "o/r"))
+
+    def test_unknown_not_cached(self):
+        from claudeops import review_store as rs
+        rs._CACHE.clear()
+        calls = []
+
+        def run(argv, **k):
+            calls.append(argv)
+            return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+        rs.repo_visibility("/nonexistent-x", run=run)
+        n1 = len(calls)
+        rs.repo_visibility("/nonexistent-x", run=run)
+        self.assertGreater(len(calls), n1)       # unknown önbelleğe alınmadı: ikinci çağrı yeniden çalıştı

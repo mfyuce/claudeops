@@ -9,12 +9,15 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 CACHE_SECONDS = 3600
 _CACHE: Dict[str, Tuple[float, str]] = {}
-_URL_RE = re.compile(r"^(?:git@|ssh://git@|https?://(?:[^@/]+@)?)(github\.com|gitlab\.com)[:/](.+?)(?:\.git)?/?$")
+# ssh.github.com / altssh.gitlab.com (443 üzerinden ssh) aynı depoya çıkar: ana ada normalize edilir
+_URL_RE = re.compile(r"^(?:git@|ssh://git@|https?://(?:[^@/]+@)?)(?:ssh\.|altssh\.)?(github\.com|gitlab\.com)[:/](.+?)(?:\.git)?/?$")
+_SSH_PORT_RE = re.compile(r"^(ssh://[^@/]+@[^:/]+):\d+/")
 
 
 def parse_remote(url: str) -> Tuple[str, str]:
     """Remote URL -> (host, "sahip/ad"); tanınmazsa ("", "")."""
-    m = _URL_RE.match(str(url or "").strip())
+    u = _SSH_PORT_RE.sub(r"\1/", str(url or "").strip())   # yalnız ssh:// biçiminde `:port` var (scp biçiminde `:` yoldur)
+    m = _URL_RE.match(u)
     return (m.group(1), m.group(2)) if m else ("", "")
 
 
@@ -67,7 +70,8 @@ def repo_visibility(path: str, run: Optional[Callable] = None, now: Optional[flo
                 seen.add((h, slug))
     vis = [remote_visibility(h, s, run=run) for h, s in sorted(seen)]
     res = "public" if "public" in vis else ("unknown" if (not vis or "unknown" in vis) else "private")
-    _CACHE[path] = (t, res)
+    if res != "unknown":       # geçici hata (ağ, gh/glab girişi) 1 saat boyunca "unknown" olarak takılı kalmasın
+        _CACHE[path] = (t, res)
     return res
 
 
