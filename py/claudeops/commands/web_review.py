@@ -3179,7 +3179,8 @@ def _redacted_row(r: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dict[str, Any]:
+def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str, states: Sequence[str] = ("approved",),
+                   only: Optional[Callable[[Dict[str, Any]], bool]] = None, note: str = "") -> Dict[str, Any]:
     """Uzak projenin onaylı bulgularını uzak `fname` sonuna yazar (taşıma: `RemoteReviewDriver.export_file`, claudeops
     API'si). Yerel `stale_reason`/`changed_after_review` uzak ağaca bakamaz: atlanır. Hassas bulgu yalnız `by="auto"`da atlanır.
     Çift yazma yok: dosyada `(review <id>)` varsa yeniden yazılmaz, yine `exported` sayılır. Dosya yoksa dur ve raporla."""
@@ -3192,10 +3193,13 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
     with sw.steward_lock(p):
         data = rv.load_findings(p)
         cand = [dict(v, id=k) for k, v in sorted(data.items())
-                if isinstance(v, dict) and v.get("project") == project and v.get("state") == "approved"]
+                if isinstance(v, dict) and v.get("project") == project and v.get("state") in states and (only is None or only(v))]
         skipped_sensitive = [r["id"] for r in cand          # yereldeki gibi: hassas bulgu yalnız OTOMATİK yazımda atlanır (sahip 11 Kas "yaz")
                              if by == "auto" and sa.is_sensitive(dict(r, title=f"{r.get('title') or ''} {r.get('body') or ''}"))]
         rows = [_redacted_row(r) for r in cand if r["id"] not in skipped_sensitive]
+        if note:       # yerel dalla aynı: satıra durum notu (kayıttaki bulgu değişmez)
+            for r in rows:
+                r["note"] = f"{r['note']}; {note}" if r.get("note") else note
     reader = getattr(drv, "read_rel", None)
     if callable(reader) and rows:       # eskimiş bulgu uzak TODO'ya yazılmasın: tanımlayıcı denetimi uzak dosya metniyle
         stale: Dict[str, str] = {}
@@ -3216,13 +3220,13 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
             with sw.steward_lock(p):
                 data = rv.load_findings(p)
                 for fid, why in stale.items():
-                    if fid in data and data[fid].get("state") == "approved":
+                    if fid in data and data[fid].get("state") in states:
                         data[fid].update(state="rejected", decided_by="stale-check", decided_at=t, stale_reason=why)
                 rv.save_findings(p, data)
             rows = [r for r in rows if r["id"] not in stale]
     if not rows:
-        return {"ok": False, "error": "no approved findings to export", "project": project,
-                "skipped_sensitive": skipped_sensitive}
+        return {"ok": False, "error": "no approved findings to export" if tuple(states) == ("approved",) else "no findings to export",
+                "project": project, "skipped_sensitive": skipped_sensitive}
     ids = [r["id"] for r in rows]
     msg = (f"Review bulguları {fname} dosyasına eklendi ({len(ids)} madde, 'Review bulguları' başlığı); sırası geldiğinde bak."
            if getattr(cfg, "lang", "tr") != "en" else
@@ -3237,7 +3241,7 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str) -> Dic
     with sw.steward_lock(p):
         data = rv.load_findings(p)
         for fid in ids:
-            if fid in data and data[fid].get("state") == "approved":
+            if fid in data and data[fid].get("state") in states:
                 data[fid].update(state="exported", exported_to=target, exported_at=t)
                 if by:
                     data[fid]["exported_by"] = by
@@ -3263,7 +3267,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
     if "/" in fname or ".." in fname or "\x00" in fname or not fname:
         return {"ok": False, "error": "invalid target file"}
     if project in (ownership().get("hosts") or {}):
-        return _export_remote(cfg, project, fname, t, by)
+        return _export_remote(cfg, project, fname, t, by, states=states, only=only, note=note)
     cwd = project_cwd(project)
     if not cwd or not os.path.isdir(cwd):
         return {"ok": False, "error": f"project folder not found: {project}"}
