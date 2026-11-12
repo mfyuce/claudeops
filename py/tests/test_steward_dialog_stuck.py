@@ -69,6 +69,37 @@ class RecoverTest(unittest.TestCase):
         nt.assert_not_called()
         self.assertNotIn("x", ws._DIALOG_STUCK)
 
+    def test_accepted_then_waits_for_prompt_marker_before_send(self):
+        """12 Kas runikppr: kabulden hemen sonra Claude henüz açılıyor; hazır-istem işareti görünene dek beklenir."""
+        keys = []
+        seq = iter(["Claude Code v2\nloading..."] * 3 + [READY])   # kabul sonrası: 1. diyalog denetimi + 2 bekleme turu yüklenme, sonra hazır
+        state = {"last": TRUST}
+        def cap(name):
+            if not keys:
+                return TRUST
+            state["last"] = next(seq, READY)
+            return state["last"]
+        sleeps = []
+        with mock.patch.object(ws, "_cwd_resolver", return_value=lambda n: os.getcwd()), mock.patch.object(ws, "tmux_capture", side_effect=cap), \
+                mock.patch.object(ws, "tmux_send_special_key", side_effect=lambda n, k: keys.append(k) or True), \
+                mock.patch.object(ws, "tmux_send_raw", return_value=True), mock.patch.object(ws, "_notify"), mock.patch.object(ws, "diag_log"), \
+                mock.patch.object(ws.time, "sleep", side_effect=sleeps.append):
+            self.assertTrue(ws._recover_dialog("x", td.classify(TRUST)))
+        self.assertGreaterEqual(len(sleeps), 2)     # işaret görünene dek en az iki bekleme
+        self.assertEqual(state["last"], READY)
+
+    def test_wait_prompt_ready_times_out_but_does_not_block(self):
+        sleeps = []
+        with mock.patch.object(ws, "tmux_capture", return_value="loading..."), mock.patch.object(ws, "diag_log") as dl:
+            ok = ws._wait_prompt_ready("x", timeout=1.0, step=0.5, sleep=sleeps.append)
+        self.assertFalse(ok)
+        self.assertEqual(sleeps, [0.5, 0.5])
+        dl.assert_called_once()
+
+    def test_wait_prompt_ready_immediate(self):
+        with mock.patch.object(ws, "tmux_capture", return_value=READY):
+            self.assertTrue(ws._wait_prompt_ready("x", sleep=lambda s: self.fail("beklememeli")))
+
     def test_send_fail_streak_notifies(self):
         with mock.patch.object(ws, "_notify") as nt, mock.patch.object(ws.sw, "log_event"):
             for _ in range(3):

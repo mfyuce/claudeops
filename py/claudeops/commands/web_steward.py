@@ -1437,6 +1437,30 @@ def _dialog_notify_cfg() -> sw.Config:
         return sw.Config()
 
 
+PROMPT_READY_WAIT_SECONDS = 8.0
+PROMPT_READY_STEP_SECONDS = 0.5
+
+
+def _wait_prompt_ready(name: str, timeout: Optional[float] = None, step: Optional[float] = None,
+                       sleep: Optional[Callable[[float], None]] = None) -> bool:
+    """Güven diyaloğu kabulünden sonra hazır-istem işareti (`trust_dialog._PROMPT_MARKERS`) görünene dek en çok `timeout` sn yokla.
+    True = işaret göründü; False = süre doldu (yine de gönderilir: işaret görünmeyen sürümler/temalar için engel olmasın)."""
+    from .. import trust_dialog
+    sleep = sleep or time.sleep
+    timeout = PROMPT_READY_WAIT_SECONDS if timeout is None else timeout
+    step = PROMPT_READY_STEP_SECONDS if step is None else step
+    waited = 0.0
+    while True:
+        text = strip_ansi(tmux_capture(name) or "").lower()
+        if any(m in text for m in trust_dialog._PROMPT_MARKERS):
+            return True
+        if waited >= timeout:
+            diag_log("send_prompt_not_ready", name=name, waited=waited)
+            return False
+        sleep(step)
+        waited += step
+
+
 def _recover_dialog(name: str, cl: Tuple[str, str]) -> bool:
     """`_send` diyalog görünce: True = gönderime devam (diyalog geçildi), False = gönderme. Güven diyaloğu YALNIZ kayıtlı proje klasöründe
     `trust_dialog.handle` kuralıyla geçilir; tanınmayan/başka diyalogda KÖR tuş basılmaz: olay + sahibe ntfy (6 saatte bir) + panel kaydı."""
@@ -1453,7 +1477,10 @@ def _recover_dialog(name: str, cl: Tuple[str, str]) -> bool:
             if res == "accepted":
                 diag_log("send_dialog_trust_accepted", name=name)
                 _DIALOG_STUCK.pop(name, None)
-                return not trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or ""))
+                if trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or "")):
+                    return False
+                _wait_prompt_ready(name)     # kabulden hemen sonra Claude henüz açılıyor: ilk gönderim düşüyordu (12 Kas runikppr)
+                return True
     now = time.time()
     rec = _DIALOG_STUCK.get(name) or {"since": now, "notified_at": 0.0}
     rec.update(kind=kind, head=head)

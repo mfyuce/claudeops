@@ -588,9 +588,12 @@ class TestDetached(Base):
         os.makedirs(os.path.dirname(m))
         return m
 
-    def script(self, delay=0.0):
+    def script(self, delay=0.0, gate=None):
+        """`gate` verilirse çocuk o dosya OLUŞANA dek (en çok 120 sn) bekler: zamana dayalı `delay` yük altında test iş parçacığından
+        önce bitip "canlı sahiplenme" iddialarını kırıyordu (paralel koşuda test_restart_adopts_live_run_and_finishes_it)."""
         body = json.dumps({"answer": self.REPORT})
-        return [sys.executable, "-c", f"import time,sys; time.sleep({delay}); sys.stdout.write({body!r})"]
+        wait = (f"import os; g={gate!r}\nfor _ in range(2400):\n    if os.path.exists(g): break\n    time.sleep(0.05)\n" if gate else "")
+        return [sys.executable, "-c", f"import time,sys; time.sleep({delay})\n{wait}sys.stdout.write({body!r})"]
 
     def wait_done(self, key, secs=20):
         end = time.time() + secs
@@ -614,11 +617,11 @@ class TestDetached(Base):
         self.assertIn("bağımsız bulgu", open(md, encoding="utf-8").read())
         self.assertFalse(any(os.path.exists(fp) for fp in wr.stream_paths(md)))     # ham çıktı silindi
 
-    def _launch_like_service(self, md, delay):
+    def _launch_like_service(self, md, delay, gate=None):
         """Restart öncesi servisin başlattığı bağımsız koşuyu taklit et (sarmalayıcı + dosyalar), kaydı yaz."""
         outp, errp, rcp = wr.stream_paths(md)
         with open(outp, "wb") as fo, open(errp, "wb") as fe:
-            proc = subprocess.Popen(["/bin/sh", "-c", wr._DETACH_SH, "sh", rcp] + self.script(delay), stdout=fo, stderr=fe,
+            proc = subprocess.Popen(["/bin/sh", "-c", wr._DETACH_SH, "sh", rcp] + self.script(delay, gate), stdout=fo, stderr=fe,
                                     stdin=subprocess.DEVNULL, start_new_session=True)
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
         rv.update_pair(self.paths, "proj", EV, status="running", started_at=time.time(), pid=proc.pid, detached=True,
@@ -628,11 +631,13 @@ class TestDetached(Base):
 
     def test_restart_adopts_live_run_and_finishes_it(self):
         md = self.md("20261108180002")
-        proc = self._launch_like_service(md, delay=1.0)
+        gate = os.path.join(self.tmp, "gate")
+        proc = self._launch_like_service(md, delay=0.0, gate=gate)
         self.assertEqual(wr.recover_on_start(self.paths, cfg=self.cfg), 0)          # partial YOK: sahiplenildi
         key = rv.pair_key("proj", EV)
         self.assertIn(key, wr.busy_keys())                                          # planlayıcı çift koşu açmaz
         self.assertIn(key, wr.active_slots().get("evren", []))                      # yuvaya sayılır
+        open(gate, "w").close()                                                     # iddialar bitti: çocuk raporu yazabilir
         rec = self.wait_done(key)
         proc.wait()
         self.assertEqual(rec["status"], "done")

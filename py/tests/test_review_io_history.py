@@ -318,6 +318,19 @@ class TestRunWritesIo(Base):
         self.ev(supports_flag=lambda b, f: f != "--allow-script")          # eski ikili: bayrak gitmez
         self.assertFalse([x for x in FakeProc.instances[0].argv if x.startswith("--allow-script")])
 
+    def test_effective_wall_secs_keeps_wrap_up_margin(self):
+        """12 Kas: wall 2700 = zaman aşımı 45 dk iken ucli kapanış turuna giremeden öldürülüyordu (glm/qwen error+partial)."""
+        self.assertEqual(wr.effective_wall_secs(2700, 45), 2700 - 600)
+        self.assertEqual(wr.effective_wall_secs(900, 45), 900)           # zaten güvenli: değişmez
+        self.assertEqual(wr.effective_wall_secs(0, 45), 0)               # kapalı kalır
+        self.assertEqual(wr.effective_wall_secs(2700, 5), 200)           # kısa zaman aşımı: pay en çok üçte biri
+        FakeProc.instances = []
+        self.cfg.review_max_wall_secs = 2700
+        self.cfg.review_timeout_minutes = 45
+        self.ev()
+        a = FakeProc.instances[0].argv
+        self.assertEqual(a[a.index("--max-wall-secs") + 1], "2100")
+
     def test_wall_and_request_timeout_flags(self):
         # ae/mimo-v2.6-pro 20 dk duvarda bitmemişti: ucli kendi duvar/istek süresini bilsin (ayarlı, varsayılan 900/300)
         self.ev()

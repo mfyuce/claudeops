@@ -77,6 +77,22 @@ EVREN_MAX_IO_MIB = 2048
 STDERR_KEEP = 300
 DELTA_KEEP_CHARS = 2_000_000    # IoLog'un bellekte tuttuğu akış metni üst sınırı (40 dk'lık koşu MB'larca delta üretir)
 OUT_HOLD_MAX = 65536             # stdout parça-sınırı sözcük tutma üst sınırı (boşluksuz dev satırda sınırsız bellek olmasın)
+WALL_WRAP_MARGIN_SECS = 600     # ucli duvar bütçesi bitince kapanış (rapor) isteği ister (yavaş modelde 120-240 sn + yeniden deneme); koşu zaman aşımından bu kadar ÖNCE biter
+
+
+def effective_wall_secs(wall: int, timeout_minutes: float) -> int:
+    """`--max-wall-secs` koşu zaman aşımının (`review_timeout_minutes`) `WALL_WRAP_MARGIN_SECS` altında tutulur. 12 Kas ölçüm: wall 2700 =
+    zaman aşımı 45 dk iken ucli kapanış turuna girerken sarmalayıcı koşuyu öldürüyordu (glm 5/15 error + 6 partial). 0 (kapalı) aynen kalır."""
+    wall = int(wall or 0)
+    if wall <= 0:
+        return wall
+    tsec = int(float(timeout_minutes or 0) * 60)
+    if tsec <= 0:
+        return wall
+    cap = tsec - min(WALL_WRAP_MARGIN_SECS, tsec // 3)     # kısa zaman aşımında pay en çok üçte biri
+    return max(60, min(wall, cap))
+
+
 HEARTBEAT_SECONDS = 10.0            # testler küçültür
 
 # Süreç geneli TEK çalıştırma kilidi (claudeops'un `_LOCK`'u ile ilgisi YOK, onu TUTMA). Çalışırken iş thread'inde tutulur.
@@ -1424,6 +1440,8 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                                      ("--request-timeout-secs", "review_request_timeout_secs", 300)):
                 val = getattr(cfg, attr, dflt)
                 val = dflt if val is None else int(val)
+                if flag == "--max-wall-secs":
+                    val = effective_wall_secs(val, getattr(cfg, "review_timeout_minutes", 45))
                 if val > 0 and sf(binary, flag):        # 0 = kapalı (geri alma); eski ikili bayrağı bilmiyorsa gitmez
                     budget += [flag, str(val)]
             mot = getattr(cfg, "review_max_output_tokens", 32768)
