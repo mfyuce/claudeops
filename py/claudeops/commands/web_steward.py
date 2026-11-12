@@ -518,16 +518,22 @@ def _remote_last_assistant(targets: List[Tuple[str, str]], budget: float = REMOT
         return out
     lock = threading.Lock()
     deadline = time.monotonic() + budget
+    bad: set = set()      # bu çağrıda hata/zaman aşımı alan host'lar
+    good: set = set()     # en az bir okuması TEMİZ dönen host'lar: ulaşılabilir, yavaş olan TEK oturumdur (12 Kas ulak_31: agy2 13 sn > 10 sn bütçe, host 40 kez "kapalı" sayıldı)
 
     def work(host: str, name: str) -> None:
         try:
             parsed, _status = _remote.get("/api/term/chat", host, {"name": name, "mode": "last"}, timeout=budget)
         except Exception:
-            if failed is not None:
-                failed.add(host)
+            with lock:
+                bad.add(host)
             return
-        if failed is not None and _is_transport_error(host, parsed, _status):
-            failed.add(host)
+        if _is_transport_error(host, parsed, _status):
+            with lock:
+                bad.add(host)
+        else:
+            with lock:
+                good.add(host)
         if isinstance(parsed, dict) and parsed.get("ok") and parsed.get("supported"):
             with lock:
                 out[(host, name)] = str(parsed.get("assistant") or "")
@@ -537,9 +543,12 @@ def _remote_last_assistant(targets: List[Tuple[str, str]], budget: float = REMOT
         t.start()
     for t, (h, _n) in zip(threads, targets):
         t.join(max(0.0, deadline - time.monotonic()))
-        if t.is_alive() and failed is not None:
-            failed.add(h)      # süre doldu, host cevap vermedi
+        if t.is_alive():
+            with lock:
+                bad.add(h)      # süre doldu, bu okuma cevap vermedi
     with lock:
+        if failed is not None:
+            failed.update(bad - good)     # başka okuması cevap veren host'u suçlama (tek yavaş oturum host'u düşürmesin)
         return dict(out)
 
 

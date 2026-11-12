@@ -428,6 +428,21 @@ class TestEngineRemote(_Remote):
         self.assertLess(time.monotonic() - t0, 0.8)
         self.assertEqual(got, {(HOST, "fast"): "ok"})
 
+    def test_one_slow_session_does_not_blame_a_reachable_host(self):
+        """12 Kas ulak_31: tek yavaş oturum (agy2 13 sn) bütçeyi aşınca host 40 kez "kapalı" sayılıyordu; başka okuması dönen host suçlanmaz."""
+        self.fake.chat[(HOST, "fast")] = "ok"
+        self.fake.slow["slow"] = 1.0
+        failed = set()
+        ws._remote_last_assistant([(HOST, "slow"), (HOST, "fast")], budget=0.2, failed=failed)
+        self.assertEqual(failed, set())
+
+    def test_all_reads_timing_out_still_blames_host(self):
+        self.fake.slow["a"] = 1.0
+        self.fake.slow["b"] = 1.0
+        failed = set()
+        ws._remote_last_assistant([(HOST, "a"), (HOST, "b")], budget=0.2, failed=failed)
+        self.assertEqual(failed, {HOST})
+
 
 # ── kapı: `_target` / `_gate` ───────────────────────────────────────────────
 
