@@ -356,6 +356,31 @@ def _load_or_create_token() -> str:
     return tok
 
 
+_CLOUDFLARED_API = "https://api.github.com/repos/cloudflare/cloudflared/releases/latest"
+
+
+def _cloudflared_asset(release: Any, arch: str) -> Optional[Tuple[str, str]]:
+    """SAF: GitHub release JSON'undan `cloudflared-linux-<arch>` varlığının (indirme URL'si, sha256 hex) çifti; özet (`digest`
+    alanı, `sha256:<hex>`) yoksa/biçimsizse None: doğrulanamayan ikili İNDİRİLMEZ (fail closed)."""
+    import re as _re
+    for a in (release.get("assets") or []) if isinstance(release, dict) else []:
+        if isinstance(a, dict) and a.get("name") == f"cloudflared-linux-{arch}":
+            m = _re.fullmatch(r"sha256:([0-9a-fA-F]{64})", str(a.get("digest") or ""))
+            url = str(a.get("browser_download_url") or "")
+            if m and url.startswith("https://github.com/cloudflare/cloudflared/releases/download/"):
+                return url, m.group(1).lower()
+    return None
+
+
+def _sha256_file(path: str) -> str:
+    import hashlib as _hl
+    h = _hl.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _ensure_cloudflared() -> Optional[str]:
     """cloudflared'ı PATH'te bul; yoksa ~/.local/bin'e resmi binary'yi indir (Linux only —
     claudeops zaten gnome-terminal'e bağımlı, Mac/Windows kapsam dışı).
@@ -373,16 +398,28 @@ def _ensure_cloudflared() -> Optional[str]:
               "https://github.com/cloudflare/cloudflared/releases")
         return None
 
-    url = f"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-{arch}"
     dest_dir = os.path.expanduser("~/.local/bin")
     dest = os.path.join(dest_dir, "cloudflared")
+    try:
+        with urllib.request.urlopen(_CLOUDFLARED_API, timeout=20) as r:
+            asset = _cloudflared_asset(json.loads(r.read().decode("utf-8")), arch)
+    except Exception as e:
+        print(f"✗ cloudflared sürüm bilgisi alınamadı ({e}) — elle kurun: https://github.com/cloudflare/cloudflared/releases")
+        return None
+    if asset is None:
+        print("✗ cloudflared sürümünde sha256 özeti yok: doğrulanamayan ikili indirilmez — elle kurun: "
+              "https://github.com/cloudflare/cloudflared/releases")
+        return None
+    url, want = asset
     print(f"cloudflared bulunamadı — indiriliyor: {url}")
     try:
         os.makedirs(dest_dir, exist_ok=True)
-        # review R-6: indir -> ELF/boyut kontrolü -> atomik rename; yarım/bozuk indirme mevcut dosyanın üstüne yazmaz
+        # review R-6: indir -> sha256 + ELF/boyut kontrolü -> atomik rename; yarım/bozuk indirme mevcut dosyanın üstüne yazmaz
         tmp = dest + ".part"
         try:
             urllib.request.urlretrieve(url, tmp)
+            if _sha256_file(tmp) != want:
+                raise RuntimeError("sha256 özeti uyuşmuyor (indirme bozuk ya da değiştirilmiş)")
             with open(tmp, "rb") as f:
                 magic = f.read(4)
             if magic != b"\x7fELF" or os.path.getsize(tmp) < 1_000_000:
