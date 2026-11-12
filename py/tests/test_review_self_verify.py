@@ -74,6 +74,18 @@ class SelfVerifyTest(_Flow):
         self.assertEqual({v["state"] for v in self.findings().values()}, {"unclear"})
         self.assertIn("denemede", next(iter(self.findings().values()))["verdict"])
 
+    def test_apply_verdicts_exception_requeues_not_stuck(self):
+        """review R-2: karar uygulaması patlarsa bulgular `verify_sent`te takılı kalmaz, `new`e döner."""
+        self.seed()
+        rows = self.rows()
+        ids = [r["id"] for r in rows]
+        with mock.patch.object(wr.rv, "apply_verdicts", side_effect=RuntimeError("boom")):
+            res = wr.self_verify(self.cfg, "a", rows, popen=self.popen(Proc(_out(ids, ["verified"] * len(ids)))), background=False)
+        self.assertTrue(res["ok"])
+        states = {self.findings()[i]["state"] for i in ids}
+        self.assertEqual(states, {"new"})
+        self.assertNotIn("verify_sent", states)
+
     def test_timeout_kills_and_requeues(self):
         self.seed()
         proc = Proc(hang=True)

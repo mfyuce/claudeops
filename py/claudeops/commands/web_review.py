@@ -2691,13 +2691,18 @@ def _self_verify_run(cfg: Any, project: str, rows: List[Dict[str, Any]], cwd: st
         sw.log_event("review_self_verify_failed", paths=p, project=project, error=_tail(repr(e)))
         _self_verify_fail(p, fids, "başlatılamadı", now())
         return []
-    verdicts = [v for v in rv.scan_verdicts(out) if v[0] in set(fids)]
-    h = rv.text_hash(out)
-    with sw.steward_lock(p):
-        cur = rv.load_findings(p)
-        done = rv.apply_verdicts(cur, project, verdicts, h, "self", now())
-        if done:
-            rv.save_findings(p, cur)
+    try:
+        verdicts = [v for v in rv.scan_verdicts(out) if v[0] in set(fids)]
+        h = rv.text_hash(out)
+        with sw.steward_lock(p):
+            cur = rv.load_findings(p)
+            done = rv.apply_verdicts(cur, project, verdicts, h, "self", now())
+            if done:
+                rv.save_findings(p, cur)
+    except Exception as e:      # karar uygulaması patlarsa bulgular `verify_sent`te takılı kalmasın (kurtarma yalnız servis açılışında)
+        sw.log_event("review_self_verify_failed", paths=p, project=project, error=_tail(repr(e)))
+        _self_verify_fail(p, fids, "karar uygulanamadı", now())
+        return []
     missing = [f for f in fids if f not in done]
     if missing:
         _self_verify_fail(p, missing, "kararsız/eksik çıktı", now())
