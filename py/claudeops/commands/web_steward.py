@@ -4577,11 +4577,15 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
 
 def _mark_reviewer_tick(sid: str, now: Optional[float] = None) -> None:
     """Reviewer kimliğinin `state.json` `last_tick`i: motor reviewer'da `tick_once` çalıştırmaz, yoksa `steward -s reviewer
-    status` "son tick: 8g" gösterir (döngü çalışırken). Hata döngüyü düşürmez."""
+    status` "son tick: 8g" gösterir (döngü çalışırken). Beyin turu alanları (`pending_items`/`pending_list`/`blocked_tours`)
+    reviewer'da hiç güncellenmez: eski `plan_tick` döneminden kalan değer status/panelde sahte "bekleyen madde: 3" gösteriyordu
+    (12 Kas), burada düşürülür. Hata döngüyü düşürmez."""
     try:
         paths = sw.paths_for(sid)
         st = sw.load_state(paths)
         st["last_tick"] = time.time() if now is None else now
+        for k in ("pending_items", "pending_list", "blocked_tours"):
+            st.pop(k, None)
         sw.save_state(st, paths)
     except Exception as e:
         sw.log_event("reviewer_mark_tick_failed", paths=sid, error=repr(e)[:200])
