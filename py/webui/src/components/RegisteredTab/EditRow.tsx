@@ -23,6 +23,7 @@ import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliListFor, cliOptionsFor } from "../../state/hosts";
 import type { SessionInfo } from "../../api/types";
+import { CliModelFields, TextField } from "./CliModelFields";
 
 interface EditRowProps {
   session: SessionInfo;
@@ -89,34 +90,16 @@ export function EditRow({ session, colspan, onClose }: EditRowProps) {
           <span className="opts-hint">
             <b>{t.editTitle}</b>
           </span>
-          <label>
-            {t.registerNameLabel}
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
-          </label>
-          <label>
-            {t.registerCwdLabel}
-            <input type="text" value={cwd} onChange={(e) => setCwd(e.target.value)} />
-          </label>
-          <label>
-            {t.cliLabel}
-            <select value={cli} onChange={(e) => handleCliChange(e.target.value)}>
-              {cliList.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t.modelLabel}
-            <select value={effectiveModel} onChange={(e) => setModel(e.target.value)}>
-              {cliModels.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
+          <TextField label={t.registerNameLabel} value={name} onChange={setName} />
+          <TextField label={t.registerCwdLabel} value={cwd} onChange={setCwd} />
+          <CliModelFields
+            cli={cli}
+            cliList={cliList}
+            onCliChange={handleCliChange}
+            model={effectiveModel}
+            models={cliModels}
+            onModelChange={setModel}
+          />
           <button type="button" className="go" disabled={busy} onClick={() => void handleSave()}>
             {busy ? t.registerSaving : t.editSave}
           </button>

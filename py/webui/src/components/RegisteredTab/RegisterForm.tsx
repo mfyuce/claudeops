@@ -16,6 +16,7 @@ import { useState } from "react";
 import { apiRegister } from "../../api/client";
 import { describeApiError } from "../../api/errors";
 import { showToast } from "../../state/toast";
+import { CliModelFields, TextField } from "./CliModelFields";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { cliListFor, cliOptionsFor, LOCAL_HOST } from "../../state/hosts";
@@ -91,19 +92,8 @@ export function RegisterForm() {
       <span className="opts-hint">
         <b>{t.registerTitle}</b> {t.registerDesc}
       </span>
-      <label>
-        {t.registerNameLabel}
-        <input type="text" placeholder="myproject" value={name} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <label>
-        {t.registerCwdLabel}
-        <input
-          type="text"
-          placeholder="/home/user/work/myproject"
-          value={cwd}
-          onChange={(e) => setCwd(e.target.value)}
-        />
-      </label>
+      <TextField label={t.registerNameLabel} value={name} onChange={setName} placeholder="myproject" />
+      <TextField label={t.registerCwdLabel} value={cwd} onChange={setCwd} placeholder="/home/user/work/myproject" />
       {data.hosts.length > 0 && (
         <label>
           {t.hostNameLabel}
@@ -117,26 +107,14 @@ export function RegisterForm() {
           </select>
         </label>
       )}
-      <label>
-        {t.cliLabel}
-        <select value={cli} onChange={(e) => handleCliChange(e.target.value)}>
-          {cliList.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        {t.modelLabel}
-        <select value={effectiveModel} onChange={(e) => setModel(e.target.value)}>
-          {cliModels.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </label>
+      <CliModelFields
+        cli={cli}
+        cliList={cliList}
+        onCliChange={handleCliChange}
+        model={effectiveModel}
+        models={cliModels}
+        onModelChange={setModel}
+      />
       <button type="button" className="go" disabled={busy} onClick={() => void handleSave()}>
         {busy ? t.registerSaving : t.registerSave}
       </button>

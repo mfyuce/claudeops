@@ -381,6 +381,18 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           [t.retireBtn, t.legendRetire],
         ];
 
+  // Çalışan ve kayıtlı sekmelerde ortak "devre dışı bırak + emekli et" düğmeleri (önceden iki yerde satır satır kopyaydı).
+  const closeRetireButtons = (
+    <>
+      <button type="button" className="closebtn" disabled={!canAct} title={t.legendDisable} onClick={() => void handleBulk("close")}>
+        {t.disableBtn}
+      </button>
+      <button type="button" className="retire" disabled={!canAct} title={t.legendRetire} onClick={() => void handleBulk("retire")}>
+        {t.retireBtn}
+      </button>
+    </>
+  );
+
   return (
     <>
       <div className="bulkbar">
@@ -452,24 +464,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
             >
               {t.forceStopBtn}
             </button>
-            <button
-              type="button"
-              className="closebtn"
-              disabled={!canAct}
-              title={t.legendDisable}
-              onClick={() => void handleBulk("close")}
-            >
-              {t.disableBtn}
-            </button>
-            <button
-              type="button"
-              className="retire"
-              disabled={!canAct}
-              title={t.legendRetire}
-              onClick={() => void handleBulk("retire")}
-            >
-              {t.retireBtn}
-            </button>
+            {closeRetireButtons}
             <button type="button" className="selho" disabled={busy} title={t.hoHint} onClick={handleSelectNeedsHo}>
               {t.selectNeedsHo}
             </button>
@@ -500,24 +495,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
             >
               {t.bulkStartBtn}
             </button>
-            <button
-              type="button"
-              className="closebtn"
-              disabled={!canAct}
-              title={t.legendDisable}
-              onClick={() => void handleBulk("close")}
-            >
-              {t.disableBtn}
-            </button>
-            <button
-              type="button"
-              className="retire"
-              disabled={!canAct}
-              title={t.legendRetire}
-              onClick={() => void handleBulk("retire")}
-            >
-              {t.retireBtn}
-            </button>
+            {closeRetireButtons}
           </>
         )}
         <span className="bulkmsg">{message}</span>
