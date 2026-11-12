@@ -1171,6 +1171,20 @@ class TourQuietTest(unittest.TestCase):
         acts, _ = sw.plan_tick([live], projects, {}, _cfg(), now, [q], [])
         self.assertFalse(any(a.kind == "close_stale_answer" for a in acts))                                         # soran canlı: iletilebilir
 
+    def test_projectless_answer_closes_when_brain_never_runs(self):
+        # 12 Kas: reviewer kimliğinde beyin turu yok; 24-28 Eki'den 3 projesiz "Tamam" bildirimi sonsuza dek `blocked` kaldı
+        now = 1_000_000.0
+        cfg = _cfg()
+        q = sw.Question(id="q1", project="", text="review saklama", created_at=now - 9 * 3600, status="answered", answer="Tamam",
+                        answered_at=now - 8 * 3600, source="reviewer-store")
+        acts, _ = sw.plan_tick([], {}, {}, cfg, now, [q], [])
+        self.assertEqual([a.payload["question_id"] for a in acts if a.kind == "close_stale_answer"], ["q1"])
+        fresh = sw.Question(id="q2", project="", text="?", created_at=now - 100, status="answered", answer="a", answered_at=now - 50)
+        acts, _ = sw.plan_tick([], {}, {}, cfg, now, [fresh], [])
+        self.assertFalse(any(a.kind == "close_stale_answer" for a in acts))           # taze: bekler
+        brain = _view(cfg.brain_name, busy=True)
+        self.assertEqual(sw.stale_answers([q], {}, cfg, now, {brain.name}), [])        # beyin canlı: tur yolu (BLOCKED_MAX_TOURS) kapatır
+
     def test_brain_question_answer_goes_to_live_session_named_by_project(self):
         # 2026-10-27: beyin `hof20261026` (tarihli oturum adı) için sordu (source=brain); cevap hiç iletilmeyip her turda 'blocked' oldu
         projects = {"hof": sw.Project(name="hof", phase="planned")}

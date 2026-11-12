@@ -2661,10 +2661,15 @@ def stale_answers(questions: List["Question"], projects: Dict[str, "Project"], c
     hiçbir yol onu iletmez, her tick "takıldı" maddesi olarak beyne düşerdi (ucli kimliği: ~50 boş tur). `live`: şu an
     ÇALIŞAN oturum adları; soran oturum canlıysa cevap hâlâ iletilebilir (ad hoc oturum), bayat sayılmaz. SAF."""
     live = live or set()
+    brain_live = bool(cfg.brain_name) and cfg.brain_name in live
     return [q for q in undelivered_answers(questions)
-            if q.project and q.project != cfg.brain_name and q.project not in projects
-            and q.project not in live and (q.source or "") not in live
-            and now - float(q.answered_at or q.created_at or 0) >= STALE_ANSWER_SECONDS]
+            if now - float(q.answered_at or q.created_at or 0) >= STALE_ANSWER_SECONDS
+            and ((q.project and q.project != cfg.brain_name and q.project not in projects
+                  and q.project not in live and (q.source or "") not in live)
+                 # projesiz (ya da beyne ait) cevap yalnız beyin turuyla kapanır (BLOCKED_MAX_TOURS); beyin hiç çalışmıyorsa
+                 # (reviewer kimliği: tur yok) kayıt sonsuza dek `blocked` kalıyordu (12 Kas: 24-28 Eki'den 3 "Tamam" bildirimi)
+                 or (not brain_live and (not q.project or q.project == cfg.brain_name)
+                     and (q.source or "") not in live))]
 
 
 NOTE_PID_RE = re.compile(r"\bPID\s*[:=#]?\s*(\d{2,8})\b", re.I)
