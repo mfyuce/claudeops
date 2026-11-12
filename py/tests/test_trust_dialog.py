@@ -41,6 +41,40 @@ class DetectTests(unittest.TestCase):
         self.assertIsNone(td.yes_option("1. No\n"))
 
 
+NEW_DIALOG = (" Accessing workspace:\n /home/x/runik_ppr\n Quick safety check: Is this a project you created or one you trust? (Like your own code)\n"
+              " Claude Code'll be able to read, edit, and execute files here.\n Security guide\n ❯ No, exit\n   Yes, I trust this folder\n"
+              " Enter to confirm · Esc to cancel\n")
+NEW_ON_YES = NEW_DIALOG.replace(" ❯ No, exit", "   No, exit").replace("   Yes, I trust", " ❯ Yes, I trust")
+
+
+class UnnumberedMenuTests(unittest.TestCase):
+    def test_moves(self):
+        self.assertEqual(td.yes_moves(NEW_DIALOG), 1)
+        self.assertEqual(td.yes_moves(NEW_ON_YES), 0)
+        self.assertEqual(td.yes_option(NEW_DIALOG), ("", False))
+        self.assertIsNone(td.yes_moves("❯ No, exit\n"))
+
+    def test_down_then_enter_when_cursor_moves(self):
+        seq = [NEW_DIALOG, NEW_ON_YES, NEW_ON_YES]
+        keys = []
+        cap = lambda n: seq.pop(0) if len(seq) > 1 else seq[0]
+        r = td.handle("n", True, capture=cap, send_key=lambda n, k: keys.append(k) or True, send_raw=lambda n, d: True,
+                      strip=lambda t: t, log=lambda ev, **kw: None, wait=3, sleep=lambda s: None)
+        self.assertEqual((r, keys), ("accepted", ["Down", "Enter"]))
+
+    def test_never_enter_if_cursor_stays_on_no(self):
+        keys = []
+        r = td.handle("n", True, capture=lambda n: NEW_DIALOG, send_key=lambda n, k: keys.append(k) or True, send_raw=lambda n, d: True,
+                      strip=lambda t: t, log=lambda ev, **kw: None, wait=3, sleep=lambda s: None)
+        self.assertEqual((r, keys), ("unregistered", ["Down"]))
+
+    def test_on_yes_presses_enter_only(self):
+        self.assertEqual(run(NEW_ON_YES)[:3], ("accepted", ["Enter"], []))
+
+    def test_unregistered_untouched(self):
+        self.assertEqual(run(NEW_DIALOG, registered=False)[:3], ("unregistered", [], []))
+
+
 class HandleTests(unittest.TestCase):
     def test_registered_pointer_on_yes_presses_enter_only(self):
         self.assertEqual(run(DIALOG)[:3], ("accepted", ["Enter"], []))

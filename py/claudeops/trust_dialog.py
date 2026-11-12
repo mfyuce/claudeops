@@ -36,12 +36,38 @@ def is_trust_dialog(text: str) -> bool:
 
 
 def yes_option(text: str) -> Optional[Tuple[str, bool]]:
-    """(rakam, imleç zaten üstünde mi) ya da None."""
+    """(rakam, imleç zaten üstünde mi) ya da None. Numarasız menüde rakam "" (bkz. `yes_moves`)."""
     for line in (text or "").splitlines():
         m = _YES_RE.match(line)
         if m:
             return m.group("n"), bool(m.group("ptr"))
+    moves = yes_moves(text)
+    if moves is not None:
+        return "", moves == 0
     return None
+
+
+# Numarasız menü (Claude Code 12 Kas 2026: "❯ No, exit" / "  Yes, I trust this folder", imleç VARSAYILAN No'da):
+# eski `1. Yes` kalıbı tutmadığı için runikppr açılışta diyalogda kaldı (`trust_dialog_no_yes_option`).
+_OPT_RE = re.compile(r"^\s*(?P<ptr>[❯>›]\s*)?(?P<label>(?:Yes|No)\b.*)$", re.IGNORECASE)
+
+
+def yes_moves(text: str) -> Optional[int]:
+    """Numarasız menüde imleçten "Yes" satırına ok tuşu sayısı (+ aşağı, - yukarı); menü/imleç/Yes yoksa None.
+    Yalnız pane SONUNDAKİ ardışık seçenek bloğu okunur (geçmişte geçen "Yes" satırları sayılmaz)."""
+    lines = [l for l in (text or "").splitlines() if l.strip()]
+    opts: list = []
+    for line in reversed(lines[-12:]):
+        m = _OPT_RE.match(line)
+        if m:
+            opts.insert(0, (bool(m.group("ptr")), m.group("label").lower().startswith("yes")))
+        elif opts:
+            break
+    ptr = [i for i, (p, _) in enumerate(opts) if p]
+    yes = [i for i, (_, y) in enumerate(opts) if y]
+    if len(ptr) != 1 or len(yes) != 1:
+        return None
+    return yes[0] - ptr[0]
 
 
 def handle(name: str, registered: bool, capture: Callable[[str], Optional[str]], send_key: Callable[[str, str], bool],
@@ -65,9 +91,17 @@ def handle(name: str, registered: bool, capture: Callable[[str], Optional[str]],
                 log("trust_dialog_no_yes_option", name=name)
                 return "unregistered"
             digit, on_it = opt
-            if not on_it:
+            if not on_it and digit:
                 send_raw(name, digit)
                 sleep(0.3)
+            elif not on_it:
+                moves = yes_moves(text) or 0
+                for _ in range(abs(moves)):
+                    send_key(name, "Down" if moves > 0 else "Up")
+                    sleep(0.15)
+                if yes_moves(strip(capture(name) or "")) != 0:      # imleç Yes'e gelmedi: Enter basma ("No, exit" oturumu kapatır)
+                    log("trust_dialog_cursor_not_on_yes", name=name)
+                    return "unregistered"
             send_key(name, "Enter")
             log("trust_dialog_accepted", name=name, option=digit)
             return "accepted"
