@@ -119,6 +119,28 @@ class TestSlotsTick(_Tick):
         self.assertTrue(all(k.startswith("evren/") for k in far))
         self.assertIn("loc", [p for p, _k in self.started])
 
+    def test_evren_review_not_started_while_evren_self_verify_runs(self):
+        """review R-5/R-3: Evren hep tek iş; Evren doğrulaması (self-verify) sürerken Evren review hedefi planlanmaz, öteki modlar koşar."""
+        self.own("a", "b")
+        self.targets = [T1, T2]            # T1 evren, T2 agy
+        self.slots("agy=1,evren=1")
+        with mock.patch.object(wr, "verify_provider", lambda cfg: "evren"), mock.patch.object(wr, "self_verify_running", lambda project="": True):
+            res = wr.review_tick(self.cfg(), now=NOW)
+        self.assertEqual(self.modes(), ["agy"])
+        self.assertEqual(res["started"], 1)
+        # doğrulama bitince Evren hedefi yeniden planlanır
+        with mock.patch.object(wr, "verify_provider", lambda cfg: "evren"), mock.patch.object(wr, "self_verify_running", lambda project="": False):
+            wr.review_tick(self.cfg(), now=NOW + 60)
+        self.assertIn("evren", self.modes())
+
+    def test_single_job_mode_also_skips_evren_during_verify(self):
+        self.own("a")
+        self.targets = [T1]                # yalnız evren
+        with mock.patch.object(wr, "verify_provider", lambda cfg: "evren"), mock.patch.object(wr, "self_verify_running", lambda project="": True):
+            res = wr.review_tick(self.cfg(), now=NOW)
+        self.assertEqual(self.started, [])
+        self.assertEqual(res.get("reason"), "no targets")
+
     def test_quota_blocked_target_skipped(self):
         self.own("a", "b")
         self.targets = [T2, T3]

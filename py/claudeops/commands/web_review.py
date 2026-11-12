@@ -2132,6 +2132,9 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if last and t - last < gap:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "waiting": int(gap - (t - last))}
     targets = current_targets(cfg)
+    if verify_provider(cfg) == "evren" and self_verify_running():
+        # Evren hep TEK iş (`verify_busy` ters yönü): Evren doğrulaması sürerken Evren review'ı başlatma; öteki modlar koşar
+        targets = [x for x in targets if x.mode != "evren"]
     if not targets:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "reason": "no targets"}
     if slots:
