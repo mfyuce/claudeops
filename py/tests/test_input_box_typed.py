@@ -75,5 +75,36 @@ class KeepwarmApplyTest(unittest.TestCase):
         send.assert_called_once()
 
 
+class ApiNudgeApplyTest(unittest.TestCase):
+    """review R-3: yerel `nudge` da keepwarm/idle_nudge gibi `_target` kapısından ve kutu denetiminden geçer."""
+    def _apply(self, typed, denied=None):
+        from claudeops import steward as sw
+        sess = mock.Mock(pid=1, cli="claude")
+        sess.name = "cli"
+        cfg = sw.Config(enabled=True)
+        proj = {"cli": sw.Project(name="cli", phase="planned")}
+        with mock.patch.object(ws, "_running", return_value=sess), mock.patch.object(ws, "is_tmux_backed", return_value=True), \
+                mock.patch.object(ws, "_target", return_value=denied), mock.patch.object(ws, "_box_has_typed_input", return_value=typed), \
+                mock.patch.object(ws, "_send", return_value=True) as send, mock.patch.object(ws.sw, "log_event") as log:
+            res = ws._apply(sw.Action("nudge", "cli", "x", {"n": 2}), cfg, proj)
+        return res, send, log
+
+    def test_box_full_skips_nudge(self):
+        res, send, log = self._apply(True)
+        self.assertFalse(res["ok"])
+        send.assert_not_called()
+        self.assertEqual(log.call_args.args[0], "api_nudge_skipped")
+
+    def test_target_denied_skips_nudge(self):
+        res, send, _log = self._apply(False, denied={"ok": False, "error": "target denied"})
+        self.assertFalse(res["ok"])
+        send.assert_not_called()
+
+    def test_box_empty_sends_nudge(self):
+        res, send, _log = self._apply(False)
+        self.assertTrue(res["ok"])
+        send.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

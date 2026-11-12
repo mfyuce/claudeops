@@ -3442,9 +3442,15 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
     if k == "nudge":                  # API hatasında takılan oturuma tek satır "devam" (alt ajan/etkinlik denetimi plan_tick'te yapıldı)
         if host:
             return _remote_nudge(name, host, action, cfg, paths, world or _world(cfg.sid, cfg), rt)
+        denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)      # keepwarm/idle_nudge ile aynı kapı (başka kimliğin/kayıtsız oturuma gitmez)
+        if denied is not None:
+            return denied
         s = _running(name)
         if s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not running or not tmux-backed"}
+        if _box_has_typed_input(s.name):      # kutudaki gönderilmemiş metne "devam" eklenip tek mesaj gitmesin
+            sw.log_event("api_nudge_skipped", paths=paths, name=name, reason="input_box_not_empty")
+            return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, str(action.payload.get("text") or sw.API_NUDGE_TEXT))
         sw.log_event("done_confirm_asked" if action.payload.get("confirm") else "api_nudge", paths=paths, name=name,
                      n=action.payload.get("n"), reason=action.reason, ok=ok)
