@@ -97,7 +97,19 @@ def _migrate_legacy() -> List[Dict[str, Any]]:
              "sessions": legacy["sessions"]}]
 
 
+_NONE = object()
+
+
 def _load_all() -> List[Dict[str, Any]]:
+    from . import statedocs
+    if statedocs._db_ok(SNAPSHOTS_JSON):
+        # `db` kipi: DB tek kaynak (bozuk dosya DB'yi ezmez, `_backup_if_corrupt` yazımda ham dosyayı yedekler); dual: dosya önce.
+        data = statedocs.read_json("snapshots", SNAPSHOTS_JSON, _NONE)
+        if data is _NONE:
+            if os.path.exists(SNAPSHOTS_JSON):
+                return []                                     # dosya var ama okunamıyor, DB'de de yok: bozuk, legacy diriltilmez
+            return _migrate_legacy()                          # ne dosya ne DB: bir kereliğine göç
+        return [s for s in data if isinstance(s, dict)] if isinstance(data, list) else []
     try:
         with open(SNAPSHOTS_JSON, encoding="utf-8") as f:
             data = json.load(f)
