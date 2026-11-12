@@ -182,3 +182,23 @@ class LiveModelEndpointTests(TmpDirCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EffortSwitchNoBlindEnter(unittest.TestCase):
+    """review R-2: zaman aşımında dialog görünmüyorsa körlemesine Enter gönderilmez."""
+
+    def _run(self, screen):
+        import claudeops.tmux_backend as tb
+        from claudeops.providers.claude_provider import ClaudeProvider
+        p = ClaudeProvider()
+        sent = []
+        with mock.patch.object(tb, "tmux_send_keys", lambda *a, **k: True), \
+                mock.patch.object(tb, "tmux_capture", lambda *a, **k: screen), \
+                mock.patch.object(tb, "tmux_send_special_key", lambda n, k: sent.append(k) or True), \
+                mock.patch.object(ClaudeProvider, "_EFFORT_SWITCH_TIMEOUT_SECONDS", 0.05), \
+                mock.patch.object(ClaudeProvider, "_EFFORT_SWITCH_POLL_SECONDS", 0.01):
+            p.apply_live_effort_switch("t", "high")
+        return sent
+
+    def test_no_dialog_no_enter(self):
+        self.assertEqual(self._run("kullanıcı yazıyor..."), [])
