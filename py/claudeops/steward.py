@@ -39,7 +39,7 @@ import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from . import hosts as hosts_mod      # yaprak modül (yalnız paths'e bağlı): proje `host` doğrulaması
 from . import review_remote           # yaprak modül (saf yardımcılar): uzak proje review kararı (TBD#114)

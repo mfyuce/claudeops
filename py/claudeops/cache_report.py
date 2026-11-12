@@ -17,7 +17,6 @@ sonrası ilk isteğin soğuk uyanışı buraya yansımaz).
 from __future__ import annotations
 
 import json
-import os
 import statistics
 import time
 from collections import defaultdict

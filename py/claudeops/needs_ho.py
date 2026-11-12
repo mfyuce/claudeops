@@ -7,7 +7,6 @@ BİRİ pozitifse → ho gerek (return True).
 from __future__ import annotations
 import json
 import subprocess
-from pathlib import Path
 from typing import Optional
 
 from .paths import STATE_DIR as _STATE_DIR  # handover ile AYNI kök (CLAUDEOPS_DIR izole koşuda da)

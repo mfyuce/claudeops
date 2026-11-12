@@ -19,7 +19,6 @@ from __future__ import annotations
 import re
 import sys
 import time
-from typing import Optional
 
 from ..discovery import find_by_name, find_sessions
 from ..guard import guard_lock

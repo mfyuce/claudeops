@@ -21,9 +21,7 @@ import ipaddress
 import json
 import os
 import re
-import shutil
 import socket
-import threading
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 

@@ -10,7 +10,7 @@ import http.client
 import json
 import os
 import urllib.parse
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from . import mcp_queue
 from .. import ucli_client

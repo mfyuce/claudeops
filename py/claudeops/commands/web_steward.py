@@ -4448,7 +4448,6 @@ def _quota_restore() -> None:
 def _quota_stop(reason: str, hard: bool = False) -> None:
     """Tüm AÇIK kimlikleri kapat: değnekçiler `shutdown_start` (çalışmayana devir, bitince kapat; `hard`: ayrıca kendi
     oturumlarını HEMEN durdur). Reviewer kotadan MUAF (kapatılmaz)."""
-    from ..settings import save_settings
     for sid in steward_ids():
         try:
             cfg = steward_config(sid)

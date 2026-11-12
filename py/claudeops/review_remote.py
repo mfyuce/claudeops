@@ -6,7 +6,7 @@ Yerel kopyaya YAZMA yok: review öncesi `git pull --ff-only`; kopya kirliyse ya 
 import os
 import re
 import subprocess
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 WHERE_VALUES = ("", "ask", "local", "remote", "off")
 ASK_SOURCE = "reviewer-where"          # soruyu reviewer açtı; cevap `steward.answer_question` kancasında işlenir

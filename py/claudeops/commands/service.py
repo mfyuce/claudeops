@@ -69,7 +69,6 @@ dakika içinde geri getiriyor). Root gerektirdiği için `sudo` şifre soracak �
 denemede ancak çalıştı) tek komut + tek şifre istemi.
 """
 from __future__ import annotations
-import getpass
 import os
 import shutil
 import subprocess

@@ -22,6 +22,7 @@ from .paths import CLAUDEOPS_DIR
 
 if TYPE_CHECKING:
     from .providers.base import CliProvider
+    from .steward import Config
 
 SETTINGS_JSON = os.path.join(CLAUDEOPS_DIR, "settings.json")
 
