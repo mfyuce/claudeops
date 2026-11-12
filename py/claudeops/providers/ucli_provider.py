@@ -1047,8 +1047,13 @@ class UcliProvider(CliProvider):
 
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         turns = self.full_history(cwd, sid)
-        if not turns:
+        # `full_history`: None = okunamaz/sid yok ("desteklenmiyor"), [] = henüz mesaj yok. claude provider ile AYNI sözleşme:
+        # boş konuşma boş sözlük döner (None dönünce v1 API 404, sohbet sekmesi "desteklenmiyor", devir handover_unreadable olurdu).
+        if turns is None:
             return None
+        empty = {"user": "", "assistant": ""}
+        if not turns:
+            return dict(empty)
         last_user = next((t["text"] for t in reversed(turns) if t["role"] == "user"), None)
         # 859: assistant YALNIZ son user turundan SONRA gelmişse sayılır; yoksa eski cevap yeni turun cevabı sanılmasın
         last_assistant = None
@@ -1059,5 +1064,5 @@ class UcliProvider(CliProvider):
             if t["role"] == "user":
                 break
         if last_user is None and last_assistant is None:
-            return None
+            return dict(empty)
         return {"user": last_user or "", "assistant": last_assistant or ""}

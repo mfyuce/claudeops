@@ -25,7 +25,9 @@ class LastExchangePairingTest(unittest.TestCase):
 
     def test_assistant_only_and_empty(self):
         self.assertEqual(self._ex([{"role": "assistant", "text": "A"}]), {"user": "", "assistant": "A"})
-        self.assertIsNone(self._ex([]))
+        # [] = henüz mesaj yok -> boş sözlük (claude ile aynı), None = okunamaz/sid yok
+        self.assertEqual(self._ex([]), {"user": "", "assistant": ""})
+        self.assertIsNone(self._ex(None))
 
 
 if __name__ == "__main__":
