@@ -47,7 +47,7 @@ def backend() -> str:
 DB_READY = {"hosts", "steward/quota", "claude_models", "agy_sids"}   # claude_models: makine üretir (model_freshness), elle düzenlenmez; 12 Kas göç Adım B
 # Önekle DB'ye geçen belgeler (2026-11-08 cutover): değnekçi/reviewer durumu (`steward/...`). Yalnız claudeops okur/yazar;
 # dual kipte okuyucu-yazar yarışı (DB yazıldı, dosya henüz yazılmadı) sahte drift üretip DB'yi eski değere geri alıyordu.
-DB_READY_PREFIXES = ("steward/",)
+DB_READY_PREFIXES = ("steward/", "orchestration/")   # orchestration/: 12 Kas göç Adım D (draft, runs/<id>; `list_runs` listdir AYNAYA bağlı kalır)
 
 
 def db_ready(name: str) -> bool:

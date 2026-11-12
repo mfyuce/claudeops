@@ -32,6 +32,10 @@ def _atomic_write_json(path: str, obj: Any) -> None:
 
 
 def _load_json(path: str, default: Any) -> Any:
+    from . import statedocs
+    if statedocs._db_ok(path):
+        # DB-tek-kaynak (`db` kipi, orchestration/ öneki DB_READY) ya da dual: statedocs karar verir
+        return statedocs.read_json(statedocs.name_for(path), path, default)
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
