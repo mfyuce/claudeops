@@ -912,9 +912,11 @@ class ClaudeProvider(CliProvider):
             if any(m in text for m in self._EFFORT_SWITCH_DONE_MARKERS):
                 return
         if not dialog_confirmed:
-            # apply_live_model_switch()'teki AYNI son şans: dialog belki tam bu
-            # son anda açıldı, henüz bir sonraki poll turuna denk gelmedi.
-            tmux_send_special_key(tmux_name, "Enter")
+            # Son şans: dialog belki tam bu son anda açıldı. Körlemesine Enter YOK (review R-2): kullanıcı o sırada
+            # bir şey yazıyorsa Enter onu gönderirdi; yalnız dialog ekranda GÖRÜNÜYORSA onayla.
+            text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
+            if "Change effort level?" in text:
+                tmux_send_special_key(tmux_name, "Enter")
 
     _STRAY_DIALOG_TIMEOUT_SECONDS = 6.0
     _STRAY_DIALOG_POLL_SECONDS = 0.5

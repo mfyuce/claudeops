@@ -129,10 +129,8 @@ def run(args) -> int:
         out = args.out or os.path.join(CLAUDEOPS_DIR, "backups", "db-export-" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".json")
         os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         data = st.export_all()
-        fd = os.open(out + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
-        os.replace(out + ".tmp", out)
+        from ..atomic_json import atomic_write_json   # pid+thread'e özel tmp, O_NOFOLLOW, fsync, hata olursa temizlik (review R-3)
+        atomic_write_json(out, data, mode=0o600)
         print(f"yazıldı: {out}  belge={len(data['docs'])} tsv={len(data['tsv'])} akış={len(data['logs'])}")
         return 0
     if cmd == "import":

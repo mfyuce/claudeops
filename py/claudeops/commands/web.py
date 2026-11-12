@@ -3487,6 +3487,12 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
     chosen_model = model.strip() or resolved_model_for(provider, procs[0].model)
     chosen_mode = permission_mode.strip() or provider.permission_modes()[0]
     chosen_effort = effort.strip() or default_effort_for(provider)
+    if cli_opts:   # bkz. _start()/_new_chat(): kabul etmeyen provider / geçersiz seçenek = reddet, eski oturum ÖLDÜRÜLMEDEN (review R-1)
+        if not getattr(provider, "accepts_cli_opts", False):
+            return {"ok": False, "error": f"{chosen_cli}: başlatma seçeneği desteklenmiyor"}
+        cli_opts, opt_err = provider.validate_cli_opts(cli_opts)
+        if opt_err:
+            return {"ok": False, "error": opt_err}
     opt_kwargs = {"cli_opts": cli_opts} if (cli_opts and getattr(provider, "accepts_cli_opts", False)) else {}
     # Ön-doğrulama (P4-VERDICT #32): komut kurulumu (anahtar yok, günlük tavan...) eski oturum ÖLDÜRÜLMEDEN denenir;
     # reddedilirse oturum ayakta kalır. Yalnız cli_opts kabul eden (ucli) provider; ValueError dışı hata spawn'a bırakılır.
