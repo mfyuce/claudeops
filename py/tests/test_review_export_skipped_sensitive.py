@@ -20,7 +20,8 @@ class SkippedSensitiveTest(unittest.TestCase):
                 mock.patch.object(wr.sw, "log_event", lambda *a, **k: None), \
                 mock.patch.object(wr.rv, "load_findings", lambda p: findings), \
                 mock.patch.object(wr.rv, "save_findings", lambda p, d: None), \
-                mock.patch.object(wr.sa, "is_sensitive", lambda r: "SECRET" in (r.get("title") or "")):
+                mock.patch.object(wr.sa, "is_sensitive", lambda r: "SECRET" in (r.get("title") or "")), \
+                mock.patch.object(wr.rv, "redact_secrets", lambda t, *a: t.replace("SECRET", "***")):      # gerçek değer var: maskeleme metni değiştirir
             return wr._export_remote(SimpleNamespace(sid="default", lang="tr"), "p", "TODO.md", 0.0, by)
 
     def test_only_sensitive_reports_ids_in_error(self):

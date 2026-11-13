@@ -365,6 +365,11 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           />{" "}
           {t.rvAutoExport}
         </label>
+        {!!st.manual_export_needed?.length && (
+          <span className="opts-hint" title={st.manual_export_needed.map((r) => `${r.project} ${r.id} ${r.title}`).join("\n")}>
+            {t.rvManualExport.replace("{n}", String(st.manual_export_needed.length))}
+          </span>
+        )}
       </div>
       )}
       {st && (

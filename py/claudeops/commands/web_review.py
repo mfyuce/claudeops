@@ -2340,6 +2340,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "backlog_max": int(getattr(cfg, "review_backlog_max", 0) or 0),
             "auto_verify": bool(cfg.review_auto_verify), "auto_approve": int(cfg.review_auto_approve),
             "auto_export": bool(cfg.review_auto_export),
+            "manual_export_needed": manual_export_needed(cfg) if cfg.review_auto_export else [],
             "evren_script": str(getattr(cfg, "review_evren_script", "") or "").strip().lower() == "read",
             "max_context_kib": int(getattr(cfg, "review_max_context_kib", 0) or 0),
             "max_read_kib": int(getattr(cfg, "review_max_read_kib", 0) or 0),
@@ -3169,6 +3170,54 @@ def decide(cfg: Any, fid: str, action: str, now: Optional[float] = None) -> Dict
     return r
 
 
+def export_sensitive(rec: Dict[str, Any]) -> bool:
+    """OTOMATİK dışa aktarımı engelleyen "gizli" bulgu: parola/gizli SÖZCÜĞÜ geçmesi yetmez (chats 13 Kas: 'JSON parolaların maskelenmeden...'
+    bulguları 40+ dk approved'da kaldı); metinde gerçek bir gizli DEĞER var, yani `redact_secrets` metni DEĞİŞTİRİYOR. Yalnız sözcük varsa
+    satır zaten `_redacted_row` ile maskelenerek yazılır, değer yoksa maskeleme no-op'tur."""
+    txt = " ".join(str(rec.get(k) or "") for k in ("title", "body", "where", "note"))
+    return bool(sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}")) and rv.redact_secrets(txt) != txt)
+
+
+def manual_export_needed(cfg: Any) -> List[Dict[str, Any]]:
+    """Otomatik dışa aktarımın ATLADIĞI bulgular (yerel proje, onaylı/doğrulanamayan, gerçek gizli değer içeriyor): elle `review export`
+    gerekir. Panel (`manual_export_needed`) ve `review_auto_export_skipped_secret` olayı bu listeden."""
+    try:
+        remote = set(ownership().get("hosts") or {})
+        allf = rv.load_findings(sw.paths_for(cfg.sid))
+    except Exception:
+        return []
+    out = []
+    for fid, v in sorted(allf.items()):
+        if (isinstance(v, dict) and v.get("state") in ("approved", "unclear") and str(v.get("project") or "") not in remote
+                and export_sensitive(v)):
+            out.append({"id": fid, "project": str(v.get("project") or ""), "state": v.get("state"),
+                        "severity": str(v.get("severity") or ""), "title": rv.redact_secrets(str(v.get("title") or ""))[:140]})
+    return out
+
+
+def _note_skipped_secret(cfg: Any, now: float) -> None:
+    """Atlanan her bulgu için `review_auto_export_skipped_secret` olayı BİR kez (kimlik başına state'te `export_secret_noted`)."""
+    p = sw.paths_for(cfg.sid)
+    try:
+        need = manual_export_needed(cfg)
+        if not need:
+            return
+        with sw.steward_lock(p):
+            st = sw.load_state(p)
+            noted = dict(st.get("export_secret_noted") or {})
+            fresh = [r for r in need if r["id"] not in noted]
+            if not fresh:
+                return
+            for r in fresh:
+                noted[r["id"]] = now
+            st["export_secret_noted"] = noted
+            sw.save_state(st, p)
+        sw.log_event("review_auto_export_skipped_secret", paths=p, findings=[r["id"] for r in fresh][:20], n=len(fresh),
+                     projects=sorted({r["project"] for r in fresh}), hint="elle export gerekiyor: py/cops steward -s reviewer review export <proje> --kind todo")
+    except Exception as e:
+        sw.log_event("review_auto_export_failed", paths=p, error=_tail(repr(e)))
+
+
 def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
     """`review_auto_export` açıksa YEREL projelerin `approved` bulgularını TODO.md'ye, doğrulanamayan (`unclear`)
     bulgularını TOBEDECIDED.md'ye yazar (`exported_by=auto`); uzak proje (host'lu) ve parola/gizli geçen bulgu atlanır (uzak: elle `review export`); tick başına EN ÇOK 1
@@ -3180,6 +3229,7 @@ def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
     p = sw.paths_for(cfg.sid)
     remote = set(ownership().get("hosts") or {})
     allf = rv.load_findings(p)
+    _note_skipped_secret(cfg, t)
     # onaylı bulgular -> TODO.md; doğrulanamayan (`unclear`, karar gerektirir) bulgular -> TOBEDECIDED.md (tick başına 1 proje)
     for fname, st in (("TODO.md", "approved"), ("TOBEDECIDED.md", "unclear")):
         projects = sorted({str(v.get("project") or "") for v in allf.values()
@@ -3221,7 +3271,7 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str, states
         cand = [dict(v, id=k) for k, v in sorted(data.items())
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") in states and (only is None or only(v))]
         skipped_sensitive = [r["id"] for r in cand          # yereldeki gibi: hassas bulgu yalnız OTOMATİK yazımda atlanır (sahip 11 Kas "yaz")
-                             if by == "auto" and sa.is_sensitive(dict(r, title=f"{r.get('title') or ''} {r.get('body') or ''}"))]
+                             if by == "auto" and export_sensitive(r)]
         rows = [_redacted_row(r) for r in cand if r["id"] not in skipped_sensitive]
         if note:       # yerel dalla aynı: satıra durum notu (kayıttaki bulgu değişmez)
             for r in rows:
@@ -3304,7 +3354,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
         data = rv.load_findings(p)
         rows = [dict(v, id=k) for k, v in sorted(data.items())
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") in states
-                and not (by == "auto" and sa.is_sensitive(dict(v, title=f"{v.get('title') or ''} {v.get('body') or ''}")))
+                and not (by == "auto" and export_sensitive(v))
                 and (only is None or only(v))]
         rows = [_redacted_row(r) for r in rows]
         if note:       # RTODO/RTBD: satıra durum notu (kayıttaki bulgu değişmez, yalnız yazılan satır)

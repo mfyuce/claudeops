@@ -815,13 +815,36 @@ class TestAutoExport(_Flow):
         self.assertTrue(all(v["state"] == "exported" for v in self.findings().values()))
 
     def test_sensitive_and_remote_are_skipped(self):
-        md = "## R-1 | P3 | w.py:1 | Veritabanı parolası kodda\ngovde\n"
+        md = "## R-1 | P3 | w.py:1 | Veritabanı parolası kodda\ngovde: password=Xk93jsd81hF sabit yazılı\n"      # gerçek gizli DEĞER var
         fids = self.approve("a", md)
         self.approve("far", REVIEW_MD)
         self.assertEqual(wr.auto_export(self.cfg(), now=5_000.0), [])
-        self.assertEqual(self.findings()[fids[0]]["state"], "approved")            # hassas: elle kalır
+        self.assertEqual(self.findings()[fids[0]]["state"], "approved")            # değerli hassas bulgu: elle kalır
         self.assertFalse(os.path.exists(os.path.join(self.proj_dir, "TODO.md")))
         self.assertTrue(all(v["state"] == "approved" for v in self.findings().values()))
+
+    def test_secret_skip_is_loud_once_and_listed_for_manual_export(self):
+        md = "## R-1 | P3 | w.py:1 | Veritabanı parolası kodda\ngovde: password=Xk93jsd81hF sabit yazılı\n"
+        fids = self.approve("a", md)
+        wr.auto_export(self.cfg(), now=5_000.0)
+        wr.auto_export(self.cfg(), now=5_100.0)
+        ev = [e for e in sw.tail_log(200, paths=self.p) if e["event"] == "review_auto_export_skipped_secret"]
+        self.assertEqual(len(ev), 1)                                              # tick başına değil, bulgu başına BİR kez
+        self.assertEqual(ev[0]["findings"], fids)
+        self.assertIn("elle export", ev[0]["hint"])
+        need = wr.manual_export_needed(self.cfg())
+        self.assertEqual([r["id"] for r in need], fids)
+        self.assertNotIn("Xk93jsd81hF", repr(need))                                # değer panele sızmaz
+        self.assertEqual(wr.manual_export_needed(self.cfg(False)) and 0, 0)
+
+    def test_word_only_finding_is_auto_written_redacted(self):
+        md = "## R-1 | P3 | w.py:1 | JSON parolalar maskelenmeden loga yazılıyor\nparola alanları düz metin olarak kaydediliyor\n"
+        fids = self.approve("a", md)
+        self.assertFalse(wr.export_sensitive(self.findings()[fids[0]]))           # yalnız sözcük, değer yok
+        self.assertEqual(wr.auto_export(self.cfg(), now=5_000.0), ["a"])
+        with open(os.path.join(self.proj_dir, "TODO.md")) as fh:
+            self.assertIn(f"(review {fids[0]})", fh.read())
+        self.assertEqual(wr.manual_export_needed(self.cfg()), [])
 
     def test_one_project_per_tick_and_error_continues(self):
         self.approve("a")

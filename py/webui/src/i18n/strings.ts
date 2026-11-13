@@ -820,6 +820,7 @@ export interface Strings {
   rvAutoHint: string;
   rvAutoExport: string;
   rvAutoExportHint: string;
+  rvManualExport: string;
   rvEvrenTitle: string;
   rvEvrenHint: string;
   rvEvrenScript: string;
@@ -1762,6 +1763,7 @@ export const STRINGS: Record<Lang, Strings> = {
     rvAutoApproveHint: "Yalnız doğrulayıcının \"doğru\" dediği bulgular otomatik onaylanır. Kritik (P1), doğrulayıcının emin olamadığı ve parola/gizli değer geçen bulgular HİÇBİR ZAMAN otomatik onaylanmaz, sana kalır. Onay dosyaya yazmaz; aktarma ayrı adım. Bu, bir SEÇİMDİR: tek bir değer seçilir (P2 seçmek P3'ü de kapsar).",
     rvAutoHint: "Doğrulama projenin çalışan oturumuna gider (meşgulse bekler). Onay dosyaya yazmaz; P1, belirsiz ve parola/gizli geçen bulgular hep sende kalır.",
     rvAutoExport: "Onaylıları TODO.md'ye yaz",
+    rvManualExport: "⚠ {n} bulgu gizli değer içerdiği için otomatik yazılmadı: elle export gerekiyor (üzerine gel)",
     rvAutoExportHint: "Açıkken onaylı bulgular yerel projenin TODO.md dosyasına kendiliğinden yazılır (tick başına bir proje). TOBEDECIDED'a yazılmaz; uzak projeler ve parola/gizli geçen bulgular atlanır.",
     rvEvrenTitle: "Evren/ucli:",
     rvEvrenHint: "Evren (ucli) inceleme bütçeleri. Bağlam ve okuma sayfası 0 = ucli modelin /models kaydından kendi türetir (önerilen). Betik açıkken model salt-okunur araçları tek turda birleştirir; ölçümde ~3 kat hızlı ve daha çok bulgu (2026-11-04), çağrı bütçesi otomatik x7 büyür. Yeni koşulara uygulanır.",
@@ -2706,6 +2708,7 @@ export const STRINGS: Record<Lang, Strings> = {
     rvAutoApproveHint: "Only findings the verifier confirmed are auto-approved. Critical (P1), ones the verifier was unsure about, and any mentioning a password/secret are NEVER auto-approved and stay with you. Approving does not write files; export is a separate step. This is ONE choice (picking P2 also covers P3).",
     rvAutoHint: "Verification goes to the project's running session (waits if busy). Approval does not write files; P1, unclear and password/secret findings always stay with you.",
     rvAutoExport: "Write approved to TODO.md",
+    rvManualExport: "⚠ {n} finding(s) hold a secret value and were not auto-written: manual export needed (hover)",
     rvAutoExportHint: "When on, approved findings are written to the local project's TODO.md automatically (one project per tick). Never to TOBEDECIDED; remote projects and password/secret findings are skipped.",
     rvEvrenTitle: "Evren/ucli:",
     rvEvrenHint: "Evren (ucli) review budgets. Context and read page 0 = ucli derives them from the model's /models entry (recommended). With scripts on the model batches read-only tools in one turn; measured ~3x faster with more findings (2026-11-04), the call budget grows x7 automatically. Applies to new runs.",
