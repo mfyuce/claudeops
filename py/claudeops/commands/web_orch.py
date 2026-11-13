@@ -18,6 +18,7 @@ import os
 import re
 import secrets
 import threading
+import uuid
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -176,7 +177,7 @@ def _preflight(participants: List[dict]) -> Optional[str]:
 def _write_private(path: str, text: str) -> None:
     """Run ek dosyası: her zaman 0600 (umask'tan bağımsız). Atomik: geçici dosya (O_EXCL|O_NOFOLLOW) + `os.replace`; hedefte
     hazır bir symlink izlenmez (yerini alır), yarım yazılmış dosya okunmaz."""
-    tmp = f"{path}.{os.getpid()}.tmp"
+    tmp = f"{path}.{os.getpid()}-{uuid.uuid4().hex[:8]}.tmp"      # rastgele ek: eski yarım tmp O_EXCL'i takmaz
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
         os.fchmod(fd, 0o600)
@@ -663,38 +664,47 @@ def start_run(participants: List[dict], task: str, verdict_hint: str = "",
         cancel_event = threading.Event()
         _CANCEL_EVENTS[run_id] = cancel_event
 
-    index = _eligible_index()
+    try:
+        index = _eligible_index()
 
-    def _build(role: str) -> List[orch.Participant]:
-        out = []
-        for p in participants:
-            if p.get("role") != role:
-                continue
-            host = str(p.get("host") or "local")
-            name = str(p.get("name") or "").strip()
-            s = index.get((host, name))
-            out.append(orch.Participant(role=role, host=host, name=name, cli=(s.cli if s else "")))
-        return out
+        def _build(role: str) -> List[orch.Participant]:
+            out = []
+            for p in participants:
+                if p.get("role") != role:
+                    continue
+                host = str(p.get("host") or "local")
+                name = str(p.get("name") or "").strip()
+                s = index.get((host, name))
+                out.append(orch.Participant(role=role, host=host, name=name, cli=(s.cli if s else "")))
+            return out
 
-    workers = _build("worker")
-    controllers = _build("controller")
-    deciders = _build("decider")
-    controller = controllers[0] if controllers else None  # _preflight already caps this at ≤1
-    decider = deciders[0] if deciders else None  # _preflight already caps this at ≤1
-    all_participants = workers + controllers + deciders
+        workers = _build("worker")
+        controllers = _build("controller")
+        deciders = _build("decider")
+        controller = controllers[0] if controllers else None  # _preflight already caps this at ≤1
+        decider = deciders[0] if deciders else None  # _preflight already caps this at ≤1
+        all_participants = workers + controllers + deciders
 
-    run = orch.Run(id=run_id, created_at=time.time(), updated_at=time.time(),
-                    status="briefing" if controller else "working",
-                    lang="tr", task=task, verdict_hint=verdict_hint or "", worker_timeout=worker_timeout,
-                    participants=all_participants)
-    orch_store.save_run(run)
-    web_ws.notify_status_changed()
+        run = orch.Run(id=run_id, created_at=time.time(), updated_at=time.time(),
+                        status="briefing" if controller else "working",
+                        lang="tr", task=task, verdict_hint=verdict_hint or "", worker_timeout=worker_timeout,
+                        participants=all_participants)
+        orch_store.save_run(run)
+        web_ws.notify_status_changed()
 
-    t = threading.Thread(
-        target=_run_thread, args=(run_id, workers, controller, decider, task, verdict_hint, worker_timeout, cancel_event),
-        daemon=True, name=f"orch-{run_id}",
-    )
-    t.start()
+        t = threading.Thread(
+            target=_run_thread, args=(run_id, workers, controller, decider, task, verdict_hint, worker_timeout, cancel_event),
+            daemon=True, name=f"orch-{run_id}",
+        )
+        t.start()
+    except BaseException:
+        # kilit-sonrası kurulum istisnası (_eligible_index/save_run/thread başlatma): run'ı serbest bırak, yoksa
+        # `_ACTIVE_RUN_ID` + `_CANCEL_EVENTS` kaydı sonsuza dek "aktif" sayılır (review cliops 9 Kas)
+        with _LOCK:
+            if _ACTIVE_RUN_ID == run_id:
+                _ACTIVE_RUN_ID = None
+            _CANCEL_EVENTS.pop(run_id, None)
+        raise
     return run_id, None
 
 
