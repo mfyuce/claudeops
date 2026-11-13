@@ -3267,6 +3267,27 @@ def _usage_for_session(s, provider) -> dict:
     return {"available": True, "checked_via": s.name, "entries": entries}
 
 
+USAGE_FRESH_TIMEOUT = 45.0
+
+
+def _usage_fresh(provider) -> Optional[dict]:
+    """Oturumsuz okuma: `provider.usage_fresh_argv()` kısa ömürlü süreç (model turu yok). Başarısızlıkta None (çağıran oturum
+    yoluna düşer). CLAUDE* ortam değişkenleri süzülür (iç içe oturum işareti sızmasın), anahtar argv'ye girmez."""
+    argv = provider.usage_fresh_argv()
+    if not argv:
+        return None
+    import subprocess
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE_CODE", "CLAUDECODE"))}
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=USAGE_FRESH_TIMEOUT, env=env, cwd="/tmp", stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    entries = provider.parse_fresh_usage(strip_ansi(r.stdout or "")) if r.returncode == 0 else None
+    if not entries:
+        return None
+    return {"available": True, "checked_via": "fresh", "entries": entries}
+
+
 def _usage_all() -> dict:
     """Ayarlar>Kullanım sekmesi için — HER provider'ı sırayla kontrol eder.
 
@@ -3290,6 +3311,10 @@ def _usage_all() -> dict:
         command = provider.usage_command()
         if command is None:
             out[cli_name] = {"supported": False}
+            continue
+        fresh = _usage_fresh(provider)
+        if fresh is not None:
+            out[cli_name] = {"supported": True, **fresh}
             continue
         raw_candidates = [s for s in running if s.cli == cli_name and is_tmux_backed(s.pid)]
         # busy/masked adaylar KESİNLİKLE elenir (2026-09-14 fix — KRİTİK

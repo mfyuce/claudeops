@@ -39,6 +39,8 @@ def _sonnet_version(model_id: str) -> Tuple[int, ...]:
 _USAGE_HEADER_RE = re.compile(r"^(Current (?:session|week(?:\s*\([^)]+\))?))$")
 _USAGE_PERCENT_RE = re.compile(r"(\d+)%\s*used")
 _USAGE_RESETS_RE = re.compile(r"^(Resets\s.+)$")
+# `claude -p /usage` (oturumsuz) tek satır biçimi: "Current week (all models): 48% used · resets Nov 16, 6pm (Europe/Istanbul)"
+_USAGE_FRESH_RE = re.compile(r"^(Current (?:session|week(?:\s*\([^)]+\))?)):\s*(\d+)%\s*used(?:\s*[·•]\s*(?:[Rr]esets?\s+)?(.+))?$")
 # `/context`'in çıktısını `parse_context_text()`'in ayrıştırdığı desen — o
 # metodun docstring'inde gerçek örnek metin var. `re.search` ile satır
 # İÇİNDE aranır (`match` DEĞİL): soldaki blok-glif bar-chart pane genişliğine
@@ -669,6 +671,18 @@ class ClaudeProvider(CliProvider):
             if percent is not None:
                 entries.append({"label": line, "percent": percent, "detail": resets})
         return entries or None
+
+    def usage_fresh_argv(self) -> Optional[List[str]]:
+        return ["claude", "-p", "/usage"]
+
+    def parse_fresh_usage(self, text: str) -> Optional[List[Dict[str, str]]]:
+        entries: List[Dict[str, str]] = []
+        for ln in text.splitlines():
+            m = _USAGE_FRESH_RE.match(ln.strip())
+            if m:
+                rs = (m.group(3) or "").strip()
+                entries.append({"label": m.group(1), "percent": m.group(2), "detail": ("Resets " + rs) if rs else ""})
+        return entries or self.parse_usage_text(text)
 
     def context_command(self) -> Optional[str]:
         return "/context"

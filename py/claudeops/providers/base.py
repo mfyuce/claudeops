@@ -272,6 +272,16 @@ class CliProvider(ABC):
         veri noktasına göre spekülatif olarak genellemek yok."""
         return None
 
+    def usage_fresh_argv(self) -> Optional[List[str]]:
+        """Açık oturum GEREKTİRMEYEN kullanım okuması: kısa ömürlü süreç argv'si (model turu yakmayan, yerel slash-command
+        çalıştırıp çıkan komut). None (varsayılan) = böyle bir yol doğrulanmadı; `_usage_all` oturum yoluna düşer.
+        Yalnız canlı doğrulanan provider override eder (claude: `claude -p /usage`; 13 Kas)."""
+        return None
+
+    def parse_fresh_usage(self, text: str) -> Optional[List[Dict[str, str]]]:
+        """`usage_fresh_argv()` çıktısını girdilere çevirir; varsayılan TUI ayrıştırıcısı."""
+        return self.parse_usage_text(text)
+
     def usage_command(self) -> Optional[str]:
         """Bu CLI'nın hesap kullanım/kota bilgisini gösteren slash-command'ı
         (ör. claude/copilot'un ikisinin de AYNI ada sahip `/usage`'ı), varsa.
