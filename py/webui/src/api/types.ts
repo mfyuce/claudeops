@@ -389,6 +389,8 @@ export interface Settings {
    * Read by the script every check, so a change applies without restarting the tunnel. `settings.py`'s
    * `tunnel_watch_enabled()`; any `off`-word ("0", "false", "no", ...) counts as off. */
   tunnel_watch: string;
+  /** "" (unmanaged) | "auto" | "http2" | "quic": cloudflared --protocol; saving writes a systemd drop-in and restarts ONLY the tunnel service (new URL). tunnel_proto.py. */
+  tunnel_protocol: string;
   /** "on" | "off" (default off): bring our graphical session forward when the Remote Desktop tab opens. `graphical_session.auto_activate_enabled()`. */
   session_auto_activate?: string;
 }

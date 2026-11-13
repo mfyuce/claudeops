@@ -492,6 +492,9 @@ export interface Strings {
   tunnelWatchHint: string;
   tunnelWatchOn: string;
   tunnelWatchOff: string;
+  tunnelProtocolLabel: string;
+  tunnelProtocolHint: string;
+  tunnelProtocolKeep: string;
   sessionAutoLabel: string;
   sessionAutoHint: string;
   sessionAutoOn: string;
@@ -1421,6 +1424,10 @@ export const STRINGS: Record<Lang, Strings> = {
       "Genel tünel adresi art arda 3 dakika boyunca HTTP 530 verirse (tünel Cloudflare'den koptu ama servis 'active' görünüyor) cloudflared yeniden başlatılır: adres DEĞİŞİR ve ntfy bildirimi gider. Kapalıyken tünel kopunca elle yeniden başlatmak gerekir. Değişiklik en geç 1 dakikada, tüneli yeniden başlatmadan geçerli olur. Yalnız quick tunnel'da çalışır (named tunnel'da yok).",
     tunnelWatchOn: "açık (önerilen)",
     tunnelWatchOff: "kapalı",
+    tunnelProtocolLabel: "tünel protokolü",
+    tunnelProtocolHint:
+      "cloudflared --protocol. UDP/QUIC'i engelleyen ağlarda (ör. eduroam) http2 seçin. Değiştirince YALNIZ tünel servisi yeniden başlar ve genel adres DEĞİŞİR (ntfy gider); panel ve oturumlar etkilenmez. 'değiştirme' = sistem ayarına dokunma.",
+    tunnelProtocolKeep: "değiştirme",
     sessionAutoLabel: "grafik oturumunu otomatik öne al",
     sessionAutoHint:
       "Uzak Masaüstü sekmesi açılınca kendi hesabımızın grafik oturumu aktif değilse otomatik öne alınır (loginctl activate). Varsayılan KAPALI: başka bir kullanıcı ekrandaysa onu ekrandan alır. Ekran kilidi hiçbir zaman açılmaz.",
@@ -2361,6 +2368,10 @@ export const STRINGS: Record<Lang, Strings> = {
       "If the public tunnel address answers HTTP 530 three checks in a row (about 3 minutes: the tunnel dropped from Cloudflare but the service still looks 'active'), cloudflared is restarted: the address CHANGES and an ntfy notice goes out. When off, a dropped tunnel needs a manual restart. A change applies within a minute, without restarting the tunnel. Works for the quick tunnel only (not a named tunnel).",
     tunnelWatchOn: "on (recommended)",
     tunnelWatchOff: "off",
+    tunnelProtocolLabel: "tunnel protocol",
+    tunnelProtocolHint:
+      "cloudflared --protocol. On networks that block UDP/QUIC (e.g. eduroam) pick http2. Changing it restarts ONLY the tunnel service and the public URL CHANGES (ntfy goes out); the panel and sessions are not affected. 'leave as is' = do not touch the system setting.",
+    tunnelProtocolKeep: "leave as is",
     sessionAutoLabel: "bring graphical session forward automatically",
     sessionAutoHint:
       "When the Remote Desktop tab opens and our own account's graphical session is not active, bring it forward (loginctl activate). Default OFF: it takes the screen away from another user who is on it. The screen lock is never opened.",

@@ -182,6 +182,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "session_auto_activate": "off",   # "on" | "off" — Uzak Masaüstü sekmesi açılınca kendi grafik oturumumuzu OTOMATİK öne al
                               # (7 Kas, sahip). VARSAYILAN KAPALI: başka kullanıcıyı ekrandan alır. Kilit AÇILMAZ.
                               # Okuma tarafı: `graphical_session.auto_activate_enabled()` (yalnız açık "on" sözcükleri açar).
+    "tunnel_protocol": "",   # "" (yönetme) | "auto" | "http2" | "quic" — cloudflared --protocol (UDP/QUIC'i engelleyen ağlarda http2).
+                              # Kaydedince systemd drop-in yazılır ve yalnız tünel servisi yeniden başlar (yeni URL); bkz. `tunnel_proto.py`.
     "tunnel_watch": "on",    # "on" | "off" — tünel SAĞLIK BEKÇİSİ (2026-10-17, kullanıcı: "settingslerde seçimlik
                               # olsun"; `data/run-tunnel.sh::_watch_tunnel`): quick tunnel kopunca cloudflared
                               # yeni tünel İSTEMİYOR, süreç canlı kalıp genel adres HTTP 530 veriyor ve systemd

@@ -52,7 +52,7 @@ import psutil
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from .. import dist_check as _dist_check
-from .. import term_dedup, ws_ticket
+from .. import term_dedup, tunnel_proto, ws_ticket
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
@@ -262,6 +262,8 @@ ERR = {
                                "busy/queued and finish on its own shortly, check its terminal"},
     "invalid_theme": {"tr": "geçersiz tema — system/light/dark olmalı",
                        "en": "invalid theme — must be system/light/dark"},
+    "invalid_tunnel_protocol": {"tr": "geçersiz tünel protokolü, auto/http2/quic olmalı",
+                                "en": "invalid tunnel protocol, must be auto/http2/quic"},
     "path_required": {"tr": "path gerekli", "en": "path is required"},
     "files_no_roots": {"tr": "{name}: bu session için erişilebilir bir klasör bulunamadı",
                         "en": "{name}: no accessible folder found for this session"},
@@ -1936,7 +1938,10 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
     theme = patch.get("theme")
     if theme is not None and theme not in _VALID_THEMES:
         return _err(lang, "invalid_theme")
+    if "tunnel_protocol" in patch and str(patch.get("tunnel_protocol") or "").strip().lower() not in tunnel_proto.VALID:
+        return _err(lang, "invalid_tunnel_protocol")
     new = save_settings(patch)
+    tunnel_note = tunnel_proto.apply(patch["tunnel_protocol"]) if "tunnel_protocol" in patch else None
     if "ucli_cost" in patch:
         ucli_cost.invalidate()   # 30 sn önbellek: tavan/cache_ttl değişince panel hemen yeni değeri göstersin
     routing_sync = None
@@ -1944,6 +1949,8 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
         # Claude her açılışta dosyadan okur (ek iş yok); codex'in küresel AGENTS.md bloğu burada tazelenir.
         routing_sync = routing_mod.sync_global_files()
     out = {"ok": True, "settings": _redact_settings_for_wire(new)}
+    if tunnel_note is not None:
+        out["tunnel"] = tunnel_note
     if routing_sync is not None:
         out["routing_sync"] = routing_sync
     return out

@@ -99,6 +99,8 @@ export type SettingsPatch = {
   ucli_usage_warn?: Record<string, string>;
   /** "on" | "off" — bkz. `Settings.tunnel_watch`. */
   tunnel_watch?: string;
+  /** "" | "auto" | "http2" | "quic" (see Settings.tunnel_protocol). */
+  tunnel_protocol?: string;
   /** "on" | "off" — bkz. `Settings.session_auto_activate`. */
   session_auto_activate?: string;
   /** {cli: effort} — bkz. `Settings.default_effort`. Boş string o CLI'nın kaydını siler (= sağlayıcı varsayılanı). */
@@ -346,6 +348,18 @@ export function SettingsTab() {
             >
               <option value="on">{t.tunnelWatchOn}</option>
               <option value="off">{t.tunnelWatchOff}</option>
+            </select>
+          </label>
+          <label title={t.tunnelProtocolHint}>
+            {t.tunnelProtocolLabel}
+            <select
+              value={asText(settings.tunnel_protocol).trim().toLowerCase()}
+              onChange={(e) => void save({ tunnel_protocol: e.target.value })}
+            >
+              <option value="">{t.tunnelProtocolKeep}</option>
+              <option value="auto">auto</option>
+              <option value="http2">http2</option>
+              <option value="quic">quic</option>
             </select>
           </label>
           <label title={t.sessionAutoHint}>
