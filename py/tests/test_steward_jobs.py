@@ -449,12 +449,24 @@ class TestPoll(_Jobs):
         now = time.time()
         sj.poll_jobs("default", now=now)
         n = len(self.srv.requests)
-        sj.poll_jobs("default", now=now + 10)
-        self.assertEqual(len(self.srv.requests), n)                            # 45 sn dolmadı
-        sj.poll_jobs("default", now=now + sj.JOB_POLL_SECONDS + 1)
+        sj.poll_jobs("default", now=now + 2)
+        self.assertEqual(len(self.srv.requests), n)                            # hızlı aralık (5 sn) dolmadı
+        sj.poll_jobs("default", now=now + sj.JOB_POLL_FAST_SECONDS + 1)
         self.assertEqual(len(self.srv.requests), n + 1)
-        sj.poll_jobs("default", now=now + sj.JOB_POLL_SECONDS + 2, force=True)
+        sj.poll_jobs("default", now=now + sj.JOB_POLL_FAST_SECONDS + 2, force=True)
         self.assertEqual(len(self.srv.requests), n + 2)
+
+    def test_due_interval_is_per_state_and_finished_counted(self):
+        j_run = {"id": 1, "state": "running", "last_polled": 100.0}
+        j_appr = {"id": 2, "state": "awaiting_approval", "last_polled": 100.0}
+        self.assertEqual([j["id"] for j in sj.due_jobs([j_run, j_appr], 106.0)], [1])          # onay bekleyen 45 sn
+        self.assertEqual([j["id"] for j in sj.due_jobs([j_run, j_appr], 146.0)], [1, 2])
+        self.assertEqual([j["id"] for j in sj.due_jobs([j_run, j_appr], 106.0, interval=60)], [])   # açık aralık hepsine
+        self.submit()
+        self.srv.jobs[100].update(state="done", result={"summary": "ok"})
+        res = sj.poll_jobs("default", force=True)
+        self.assertEqual(res["finished"], 1)
+        self.assertEqual(sj.poll_jobs("default", force=True)["finished"], 0)                   # bitmiş iş bir daha yoklanmaz
 
     def test_summary_is_clipped_and_404_marks_lost_and_foreign_requester_ignored(self):
         self.submit()
@@ -557,6 +569,74 @@ class TestDeliver(_Jobs):
         ws.tick_once("manual", "default")
         self.assertEqual(len(self.given), 1)                                   # aynı iş iki kez iletilmez
         self.assertIn("job_delivered", [e["event"] for e in sw.tail_log(50)])
+
+    def test_kick_delivers_without_waiting_for_the_timed_tick(self):
+        """Ara tick (`_kick_delivery`): bitmiş iş varsa zamanlı tick'i beklemeden teslim; aralık+deneme sınırı; iş yoksa tick yok."""
+        self.settings(default={"mode": "act", "enabled": "on"})
+        cfg = ws.steward_config("default")
+        ws._KICKS.clear()
+        self.addCleanup(ws._KICKS.clear)
+        self.assertFalse(ws._kick_delivery(cfg, now=1000.0))                    # teslim edilecek iş yok
+        self.submit()
+        self.assertFalse(ws._kick_delivery(cfg, now=1000.0))                    # iş açık ama bitmedi
+        self.finish()
+        self.views = [self.mkt_view(busy=True)]
+        self.assertTrue(ws._kick_delivery(cfg, now=1000.0))                     # meşgul: tick koştu ama teslim yok
+        self.assertEqual(self.given, [])
+        self.assertFalse(ws._kick_delivery(cfg, now=1005.0))                    # 15 sn aralığı dolmadı
+        self.views = [self.mkt_view()]
+        self.assertTrue(ws._kick_delivery(cfg, now=1020.0))
+        self.assertEqual(len(self.given), 1)                                    # boşalınca zamanlı tick'i beklemeden gitti
+        self.assertFalse(ws._kick_delivery(cfg, now=1040.0))                    # teslim edildi: iş yok
+        self.submit(params={"b": 1})
+        self.finish(jid=101)
+        self.views = [self.mkt_view(busy=True)]
+        runs = sum(ws._kick_delivery(cfg, now=2000.0 + 20 * i) for i in range(12))
+        self.assertEqual(runs, ws._KICK_MAX_PER_JOB)                            # sürekli meşgul: deneme sınırı, sonra normal tick
+
+    def test_kick_is_noop_in_observe_mode(self):
+        self.settings(default={"mode": "act", "enabled": "on"})
+        self.submit()
+        self.finish()
+        self.settings(default={"mode": "observe", "enabled": "on"})
+        ws._KICKS.clear()
+        self.assertFalse(ws._kick_delivery(ws.steward_config("default"), now=1000.0))
+
+    def _fast(self, body, mode="act"):
+        self.settings(default={"mode": mode, "enabled": "on"})
+        cfg = ws.steward_config("default")
+        text = sw.JOB_REQUEST_PREFIX + body
+        q, _how = sw.add_question_ex("mkt", text, source="mkt", routine=True, paths=None)
+        act = sw.Action("ask_user", "mkt", "STEWARD-JOB", {"project": "mkt", "text": text, "routine": True})
+        with mock.patch.object(ws, "_registered_job_kinds", lambda now: (True, {"sql_readonly", "noop", "embed", "llm_script"})):
+            return q, ws._job_fast_path(act, cfg, q, None)
+
+    def test_fast_path_submits_auto_kind_without_the_brain_and_answers_the_item(self):
+        q, res = self._fast("sql_readonly SELECT count(*) FROM eser;")
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["auto_job"], 100)
+        self.assertEqual(self.srv.jobs[100]["kind"], "sql_readonly")
+        self.assertEqual(self.srv.posted[-1]["meta"]["params"], {"sql": "SELECT count(*) FROM eser"})
+        got = next(x for x in sw.load_questions(None) if x.id == q.id)
+        self.assertEqual(got.status, "answered")
+        self.assertIn("#100", got.answer)
+        self.assertIn("job_auto_submit", [e["event"] for e in sw.tail_log(50)])
+
+    def test_fast_path_defers_to_brain_when_ambiguous_or_not_auto_or_observe(self):
+        for body, mode in (("sql_readonly kac eser var?", "act"),           # SELECT/WITH değil: serbest metin
+                           ("llm_script betik.py", "act"),                  # otomatik tür değil
+                           ("embed kitap.pdf", "act"),                      # JSON params yok: belirsiz
+                           ("sql_readonly SELECT 1", "observe")):            # observe kipinde gönderim yok
+            q, res = self._fast(body, mode)
+            self.assertIsNone(res, body)
+            self.assertEqual(next(x for x in sw.load_questions(None) if x.id == q.id).status, "open")
+        self.assertEqual(self.srv.jobs, {})
+
+    def test_fast_path_json_params_and_file(self):
+        q, res = self._fast('embed {"kaynak": "x"} kitap.pdf yeni set')
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(self.srv.posted[-1]["meta"]["params"], {"kaynak": "x"})
+        self.assertEqual([n for n, _ in self.srv.posted[-1]["files"]], ["kitap.pdf"])
 
     def test_waits_while_a_subagent_is_active_or_unknown(self):
         self.submit()
@@ -805,3 +885,19 @@ class TestCli(_Jobs):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestParseAutoRequest(unittest.TestCase):
+    def test_parser(self):
+        p = sj.parse_auto_request
+        self.assertEqual(p("sql_readonly SELECT 1")["params"], {"sql": "SELECT 1"})
+        self.assertEqual(p("sql_readonly ```sql\nWITH a AS (SELECT 1) SELECT * FROM a;\n```")["params"]["sql"], "WITH a AS (SELECT 1) SELECT * FROM a")
+        self.assertEqual(p("sql_readonly {\"sql\": \"SELECT 2\", \"max_rows\": 5}")["params"], {"sql": "SELECT 2", "max_rows": 5})
+        self.assertIsNone(p("sql_readonly {\"max_rows\": 5}"))              # sql yok
+        self.assertIsNone(p("sql_readonly DROP TABLE x"))
+        self.assertIsNone(p("llm_script {}"))                                # otomatik tür değil
+        self.assertIsNone(p("embed {bozuk json"))
+        self.assertIsNone(p("embed kitap.pdf"))                              # JSON yok
+        r = p("import_shamela {\"tag\": \"t\"} data/k.json lutfen sirala")
+        self.assertEqual((r["files"], r["spec_text"], r["params"]), (["data/k.json"], "lutfen sirala", {"tag": "t"}))
+        self.assertEqual(p("EMBED {}")["kind"], "embed")

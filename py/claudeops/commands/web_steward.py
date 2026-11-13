@@ -3390,6 +3390,9 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         q, outcome = sw.add_question_ex(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
                                         routine=bool(action.payload.get("routine")), paths=paths)
         if q.status == "open" and q.routine:   # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır
+            fast = _job_fast_path(action, cfg, q, paths) if outcome not in ("same", "merged") else None
+            if fast is not None:
+                return fast
             return {"ok": True, "id": q.id, "notified": False, "routine": True}
         if q.status != "open":   # yakın zamanda cevaplanmış soru yeniden soruldu: telefona yeni soru gitmez, cevap yeniden iletilir
             return {"ok": True, "id": q.id, "notified": False, "reasked": True}
@@ -3911,6 +3914,34 @@ def _notify_approvals(cfg: sw.Config) -> int:
             n += 1
         sj.update_records({(str(j.get("service")), str(j.get("id"))): {"approval_phone": True}}, paths)
     return n
+
+
+_KICK_MIN_GAP = 15.0         # iş teslimi için ara tick en sık bu aralıkla (tam tick: oturum görünümleri taranır)
+_KICK_MAX_PER_JOB = 6        # bir iş için en çok bu kadar ara tick (oturum hep meşgulse normal tick devralır)
+_KICKS: Dict[str, Any] = {}
+
+
+def _kick_delivery(cfg: sw.Config, now: Optional[float] = None) -> bool:
+    """İletilecek (bitmiş / onay bekleyen) iş varken, bir sonraki zamanlı tick'i (tick_seconds, 60 sn) BEKLEMEDEN tek ara tick:
+    teslim kararı yine `plan_job_deliveries` (oturum meşgul / alt ajan sürüyorsa bekler, yine aynı güvenlik kapıları).
+    Aynı iş için sınırlı deneme ve 15 sn aralık; observe kipinde hiçbir şey yapmaz. True = tick koşturuldu."""
+    now = time.time() if now is None else now
+    if cfg.mode == "observe" or not cfg.enabled:
+        return False
+    paths = sw.paths_for(cfg.sid)
+    pend = [j for j in sj.load_jobs(paths) if sj.pending_stage(j)]
+    if not pend:
+        _KICKS.pop(cfg.sid, None)
+        return False
+    st = _KICKS.setdefault(cfg.sid, {"last": 0.0, "n": {}})
+    keys = [f"{j.get('service')}#{j.get('id')}:{sj.pending_stage(j)}" for j in pend]
+    if now - st["last"] < _KICK_MIN_GAP or all(st["n"].get(k, 0) >= _KICK_MAX_PER_JOB for k in keys):
+        return False
+    st["last"] = now
+    for k in keys:
+        st["n"][k] = st["n"].get(k, 0) + 1
+    tick_once("jobs", cfg.sid, cards=False)
+    return True
 
 
 def _poll_job(cfg: sw.Config, force: bool = False) -> Dict[str, Any]:
@@ -4760,12 +4791,39 @@ def _loop() -> None:
             diag_log("steward_loop_crashed", error=repr(e))
 
 
+JOBS_FAST_TICK_SECONDS = 4.0     # iş döngüsü uyanma aralığı (iş yokken yalnız jobs.json okur)
+
+
+def jobs_fast_step() -> None:
+    """Varaka iş hattı için hızlı adım (zamanlı tick'ten BAĞIMSIZ): her etkin değnekçi kimliğinde açık işleri yokla
+    (queued/running 5 sn, onay bekleyen 45 sn) ve iletilecek iş varsa teslim için ara tick'i tetikle."""
+    for sid in steward_ids():
+        try:
+            cfg = steward_config(sid)
+            if cfg.role == "reviewer" or not cfg.enabled:
+                continue
+            jobs_tick(cfg)
+            _kick_delivery(cfg)
+        except Exception as e:
+            diag_log("steward_jobs_fast_crashed", sid=sid, error=repr(e))
+
+
+def _jobs_loop() -> None:
+    while True:
+        time.sleep(JOBS_FAST_TICK_SECONDS)
+        try:
+            jobs_fast_step()
+        except Exception as e:
+            diag_log("steward_jobs_loop_crashed", error=repr(e))
+
+
 def start_loop() -> None:
     global _loop_started
     if _loop_started:
         return
     _loop_started = True
     threading.Thread(target=_loop, daemon=True, name="steward-loop").start()
+    threading.Thread(target=_jobs_loop, daemon=True, name="steward-jobs-loop").start()
 
 
 # ── özet / HTTP ───────────────────────────────────────────────────────────────
@@ -5577,6 +5635,35 @@ def _registered_job_kinds(now: float) -> Tuple[bool, Optional[set]]:
             got = True
             union.update(hit[1])
     return True, (union if got else None)
+
+
+def _job_fast_path(action: "sw.Action", cfg: "sw.Config", q: "sw.Question", paths: Any) -> Optional[Dict[str, Any]]:
+    """Hızlı yol (ölçüm 13 Kas: işaret -> gönderim medyan 90 sn, çoğu beyin turu bekleme): katalogdaki otomatik türlerde
+    (`sj.JOB_AUTO_KINDS`), parametreleri işaretten belirsizliksiz çıkan istek BEYNİ BEKLEMEDEN gönderilir ve madde cevaplanır
+    (oturum iş numarasını `deliver_answer` ile alır). Yalnız act kipinde; kapılar `http_job_submit`in AYNISI (sahiplik, dosya
+    yolu, servis). Çıkarılamayan istek / red / hata: None, madde açık kalır ve beyin eskisi gibi ele alır."""
+    if cfg.mode != "act" or not str(action.payload.get("text") or "").startswith(sw.JOB_REQUEST_PREFIX):
+        return None
+    req = sj.parse_auto_request(str(action.payload.get("text") or "")[len(sw.JOB_REQUEST_PREFIX):])
+    if req is None:
+        return None
+    proj = str(action.payload.get("project") or action.name)
+    registered, kinds = _registered_job_kinds(time.time())
+    if not registered or not kinds or req["kind"] not in kinds:
+        return None
+    try:
+        res = http_job_submit(dict(req, project=proj, actor="engine"), cfg.sid)
+    except Exception as e:       # hızlı yol hiçbir koşulda tick'i düşürmesin
+        diag_log("steward_job_fast_failed", sid=cfg.sid, error=repr(e))
+        return None
+    if not res.get("ok"):
+        sw.log_event("job_auto_failed", paths=paths, project=proj, kind=req["kind"], error=str(res.get("error") or "")[:200])
+        return None
+    msg = (f"{req['kind']} işi varaka'ya GÖNDERİLDİ: #{res.get('id')} ({res.get('state')}); sonuç hazır olunca bu oturuma "
+           "otomatik iletilir, polling/bekleme yazma.")
+    sw.answer_question(q.id, msg, paths)
+    sw.log_event("job_auto_submit", paths=paths, project=proj, kind=req["kind"], id=res.get("id"), state=res.get("state"), question=q.id)
+    return {"ok": True, "id": q.id, "notified": False, "routine": True, "auto_job": res.get("id")}
 
 
 def _job_marker_gate(action: "sw.Action", cfg: "sw.Config", name: str, host: str, paths: Any) -> Optional[Dict[str, Any]]:

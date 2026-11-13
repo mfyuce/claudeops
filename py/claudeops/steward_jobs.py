@@ -32,7 +32,8 @@ from . import steward as sw
 OPEN_STATES = ("awaiting_approval", "queued", "running")
 TERMINAL_STATES = ("done", "failed", "cancelled", "lost")   # `lost`: varaka işi 404 verdi (silinmiş/yetkisiz)
 
-JOB_POLL_SECONDS = 45          # açık iş başına en sık yoklama (varaka önerisi 30-60 sn)
+JOB_POLL_SECONDS = 45          # onay bekleyen iş (insan adminde, dakikalar sürer) için en sık yoklama (varaka önerisi 30-60 sn)
+JOB_POLL_FAST_SECONDS = 5.0    # queued/running iş için (sql_readonly gibi saniyelik işler 45 sn kuantasında şişiyordu; GET ucuz)
 POLL_MAX_PER_RUN = 20          # bir poll turunda en çok bu kadar iş yoklanır (iş parçacığı süresi sınırlı kalsın)
 HTTP_TIMEOUT = 5.0             # poll/GET zaman aşımı (kısa; hata yutulur, loglanır)
 SUBMIT_TIMEOUT = 120.0         # gönderim (dosya yükleme) zaman aşımı
@@ -549,9 +550,16 @@ def reset_backoff() -> None:
     _BACKOFF.clear()
 
 
-def due_jobs(jobs: List[Dict[str, Any]], now: float, interval: float = JOB_POLL_SECONDS, force: bool = False
+def job_interval(j: Dict[str, Any]) -> float:
+    """Açık işin yoklama aralığı: onay beklerken yavaş, kuyrukta/çalışırken hızlı. SAF."""
+    return JOB_POLL_SECONDS if j.get("state") == "awaiting_approval" else JOB_POLL_FAST_SECONDS
+
+
+def due_jobs(jobs: List[Dict[str, Any]], now: float, interval: Optional[float] = None, force: bool = False
              ) -> List[Dict[str, Any]]:
-    return [j for j in jobs if is_open(j) and (force or now - float(j.get("last_polled") or 0) >= interval)]
+    """`interval` verilirse tüm işlere o aralık, verilmezse `job_interval` (duruma göre)."""
+    return [j for j in jobs if is_open(j)
+            and (force or now - float(j.get("last_polled") or 0) >= (job_interval(j) if interval is None else interval))]
 
 
 def poll_jobs(sid: str = "default", now: Optional[float] = None, force: bool = False,
@@ -564,7 +572,7 @@ def poll_jobs(sid: str = "default", now: Optional[float] = None, force: bool = F
     paths = sw.paths_for(sid)
     jobs = load_jobs(paths)
     todo = due_jobs(jobs, now, force=force)[:POLL_MAX_PER_RUN]
-    res = {"polled": 0, "changed": 0, "errors": 0, "skipped": 0}
+    res = {"polled": 0, "changed": 0, "errors": 0, "skipped": 0, "finished": 0}
     if not todo:
         return res
     svcs = load_services()
@@ -604,6 +612,7 @@ def poll_jobs(sid: str = "default", now: Optional[float] = None, force: bool = F
         if status == 404:
             updates[k] = {"state": "lost", "last_polled": now, "updated_at": now, "error_code": "not_found"}
             res["changed"] += 1
+            res["finished"] += 1
             continue
         if status != 200 or not isinstance(body, dict):
             updates[k] = {"last_polled": now}
@@ -617,6 +626,8 @@ def poll_jobs(sid: str = "default", now: Optional[float] = None, force: bool = F
         upd = apply_remote(j, body, now)
         if upd.get("state", j.get("state")) != j.get("state"):
             res["changed"] += 1
+            if upd.get("state") in TERMINAL_STATES or upd.get("state") == "awaiting_approval":
+                res["finished"] += 1       # iletilecek yeni aşama: çağıran teslim tick'ini hemen tetikleyebilir
             if not is_known_state(upd.get("state")):     # kayıt artık bu durumda: sonraki yoklamalar aynı durumu görüp bir daha loglamaz
                 sw.log_event("job_unknown_state", paths=paths, service=name, id=j.get("id"), project=j.get("project"),
                              state=str(upd.get("state"))[:40])
@@ -682,6 +693,55 @@ def submit_job(sid: str, project: str, kind: str, params: Dict[str, Any], spec_t
                  state=rec.get("state"), deduplicated=bool(body.get("deduplicated")), files=len(files))
     return {"ok": True, "id": body["id"], "state": rec.get("state"), "deduplicated": bool(body.get("deduplicated")),
             "job": job_view(rec)}
+
+
+# Hızlı yol: bu türlerde, parametreleri işaretin kendisinden BELİRSİZLİKSİZ çıkarılabilen istekler beyin turu beklenmeden gönderilir
+# (sahip 13 Kas: sql_readonly, embed, import_registry, import_shamela). Çıkarılamayan istek (serbest metin) beyne düşer.
+JOB_AUTO_KINDS = frozenset({"sql_readonly", "embed", "import_registry", "import_shamela"})
+_SQL_FENCE_RE = re.compile(r"^```(?:sql)?\s*(.*?)\s*```$", re.S | re.I)
+_SQL_START_RE = re.compile(r"^\s*(select|with)\b", re.I)
+
+
+def parse_auto_request(body: str, auto_kinds: Iterable[str] = JOB_AUTO_KINDS) -> Optional[Dict[str, Any]]:
+    """SAF. `STEWARD-JOB` gövdesinden (`<tür> ...`) doğrudan gönderilebilir istek çıkar: `{kind, params, files, spec_text}`; çıkarılamıyorsa None.
+    Kurallar (belirsizlik varsa None, beyin yorumlar): tür `auto_kinds` içinde olmalı; params yalnız (a) gövdedeki İLK JSON nesnesi ya da
+    (b) `sql_readonly`de SELECT/WITH ile başlayan metin (`sql`, ``` çitli olabilir); yol benzeri jetonlar (`/` ya da `.uzantı` içeren) dosya
+    sayılır, kalan sözcükler spec_text. params'sız bir tür (`embed` gibi) için JSON nesnesi şart: boş `{}` bile açık yazılmalı."""
+    toks = (body or "").strip().split(None, 1)
+    kind = toks[0].strip("`").lower() if toks else ""
+    if kind not in set(auto_kinds):
+        return None
+    rest = toks[1] if len(toks) > 1 else ""
+    params: Optional[Dict[str, Any]] = None
+    i = rest.find("{")
+    if i >= 0:
+        try:
+            obj, end = json.JSONDecoder().raw_decode(rest[i:])
+        except ValueError:
+            return None
+        if not isinstance(obj, dict):
+            return None
+        params = obj
+        rest = (rest[:i] + " " + rest[i + end:]).strip()
+    elif kind == "sql_readonly":
+        m = _SQL_FENCE_RE.match(rest.strip())
+        q = (m.group(1) if m else rest).strip().rstrip(";").strip()
+        if not _SQL_START_RE.match(q):
+            return None
+        return {"kind": kind, "params": {"sql": q}, "files": [], "spec_text": ""}
+    if params is None:
+        return None
+    files: List[str] = []
+    note: List[str] = []
+    for t in rest.split():
+        t2 = t.strip("`,;")
+        if "/" in t2 or re.search(r"\.[A-Za-z0-9]{1,6}$", t2):
+            files.append(t2)
+        else:
+            note.append(t)
+    if kind == "sql_readonly" and "sql" not in params:
+        return None
+    return {"kind": kind, "params": params, "files": files, "spec_text": " ".join(note)[:2000]}
 
 
 def resolve_local_files(cwd: str, files: Iterable[str]) -> List[str]:
