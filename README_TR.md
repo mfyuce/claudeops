@@ -152,8 +152,7 @@ claudeops new myname /home/fatihyuce/work/projects/xyz
 ## Klasör içeriği
 
 - `py/` — aktif geliştirilen Python sürümü (`py/cops`), bkz. [`py/README_TR.md`](py/README_TR.md)
-- `rust/screenshare/` — web panelinin Uzak Masaüstü sekmesinin arkasındaki Rust daemon'ı (X11 capture +
-  input enjeksiyonu), bkz. `py/README_TR.md`'nin Uzak Masaüstü bölümü
+- Uzak Masaüstü sekmesinin Rust daemon'ı (`uzakgoz`) ayrı repoda; bkz. `py/README_TR.md`'nin Uzak Masaüstü bölümü
 - `claudeops` — eski/legacy tek dosya bash script
 - `LICENSE` — MIT
 - `README.md` / `README_TR.md` — İngilizce / Türkçe

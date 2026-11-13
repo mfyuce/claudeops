@@ -78,14 +78,14 @@ class AdoptRevalidateTest(unittest.TestCase):
         self.assertTrue(self._is_with_argv0("/x/target/release/screenshare"))
         self.assertFalse(self._is_with_argv0("/usr/bin/python3"))
 
-    def test_resolve_binary_prefers_uzakgoz_falls_back_to_screenshare(self):
+    def test_resolve_binary_only_uzakgoz_no_legacy_screenshare_path(self):
         target = tempfile.mkdtemp()
         os.makedirs(os.path.join(target, "release"))
         meta = mock.Mock(stdout='{"target_directory": "%s"}' % target)
         with mock.patch.object(rd.subprocess, "run", return_value=meta):
-            self.assertEqual(rd._resolve_binary("m").name, "screenshare")      # hiçbiri yok -> eski ad
+            self.assertIsNone(rd._resolve_binary("m"))                          # uzakgoz yok -> None
             open(os.path.join(target, "release", "screenshare"), "w").close()
-            self.assertEqual(rd._resolve_binary("m").name, "screenshare")
+            self.assertIsNone(rd._resolve_binary("m"))                          # eski ad artık aranmaz
             open(os.path.join(target, "release", "uzakgoz"), "w").close()
             self.assertEqual(rd._resolve_binary("m").name, "uzakgoz")
 

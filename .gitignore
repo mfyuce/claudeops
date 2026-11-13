@@ -32,9 +32,8 @@ __pycache__/
 # doğrulandı — ama dosyanın kendisi review-agent'lara okunabilir durumdaydı,
 # bkz. TODO.md).
 /remote-hosts.md
-# Rust build output (rust/screenshare) — bu makinede global CARGO_TARGET_DIR
-# ile repo dışına yazılıyor ama varsayılan cargo konfigürasyonunda buraya
-# (rust/screenshare/target/) düşer, asla commit edilmemeli.
+# Rust build output — bu makinede global CARGO_TARGET_DIR ile repo dışına yazılıyor ama varsayılan
+# cargo konfigürasyonunda crate dizinine düşer, asla commit edilmemeli.
 target/
 # claudeops'un KENDİ ucli ikilisi (2026-10-09): scripts/install-ucli.sh teslim eder.
 # Build çıktısı: public repo, release ~25 MB, debug ~100 MB (GitHub dosya sınırı

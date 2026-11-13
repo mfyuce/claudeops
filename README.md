@@ -160,8 +160,7 @@ claudeops new myname /home/youruser/work/projects/xyz
 ## Repo layout
 
 - `py/` — the actively developed Python version (`py/cops`), see [`py/README.md`](py/README.md)
-- `rust/screenshare/` — Rust daemon behind the web panel's Desktop tab (X11 capture + input injection),
-  see `py/README.md`'s Desktop tab section
+- the Desktop tab's Rust daemon (`uzakgoz`) lives in its own repo; see `py/README.md`'s Desktop tab section
 - `claudeops` — old/legacy single-file bash script
 - `LICENSE` — MIT
 - `README.md` / `README_TR.md` — English / Turkish

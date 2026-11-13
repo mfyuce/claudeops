@@ -149,7 +149,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # `provider_bin`/`ucli_limits`'le AYNI alan-bazlı merge ("boş=kaldır" = varsayılana
                               # dön). Okuma tarafı: `ucli_web_config()`.
     "uzakgoz": {},           # {dir, bin, port: str} (2026-11-01): uzak masaüstü daemon'u (ayrı repo `uzakgoz`, ucli gibi entegre).
-                              # dir = derlenecek kaynak dizini (boş: ~/work/projects/tmp/uzakgoz, yoksa eski rust/screenshare),
+                              # dir = derlenecek kaynak dizini (boş: ~/work/projects/tmp/uzakgoz; eski rust/screenshare yedeği kaldırıldı),
                               # bin = hazır ikili (doluysa cargo build ATLANIR), port = 1024-65535 (boş: 8877).
                               # Geçersiz değer sessizce atlanır, `uzakgoz_config()`.
     "ucli_cost": {},         # {daily_cap_usd, cache_ttl} (2026-11-01): Claude/Anthropic hizmetiyle açılan ucli oturumlarının GÜNLÜK dolar
@@ -627,7 +627,7 @@ UZAKGOZ_DEFAULT_DIR = "~/work/projects/tmp/uzakgoz"
 
 def uzakgoz_config() -> Dict[str, Any]:
     """`uzakgoz` ayarı (uzak masaüstü daemon'u), DOĞRULANMIŞ: `dir` (içinde Cargo.toml olan kaynak dizini; boşsa
-    `UZAKGOZ_DEFAULT_DIR`, o da yoksa "" = eski `rust/screenshare`), `bin` (çalıştırılabilir dosya ya da ""), `port`
+    `UZAKGOZ_DEFAULT_DIR`, o da yoksa ""), `bin` (çalıştırılabilir dosya ya da ""), `port`
     (1024-65535 ya da None). Geçersiz/eksik değer sessizce atlanır, asla fırlatmaz (settings.json elle düzenlenebilir)."""
     raw = load_settings().get("uzakgoz") or {}
     if not isinstance(raw, dict):

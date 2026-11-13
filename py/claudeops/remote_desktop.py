@@ -52,13 +52,13 @@ from typing import Optional
 from .paths import CLAUDEOPS_DIR, REPO_DIR
 from .settings import uzakgoz_config
 
-MANIFEST_PATH = str(Path(REPO_DIR) / "rust" / "screenshare" / "Cargo.toml")   # ESKİ yer (ayrı `uzakgoz` reposu yoksa yedek)
 
 
 def _manifest_path() -> str:
-    """Derlenecek crate: ayardaki/varsayılan `uzakgoz` dizini (ayrı repo), yoksa claudeops içindeki eski kopya."""
+    """Derlenecek crate: ayardaki/varsayılan `uzakgoz` dizini (ayrı repo, TEK yol). Dizin yoksa "" (eski `rust/screenshare`
+    yedeği 13 Kas'ta kaldırıldı); `start()` bunu açık hata olarak döndürür."""
     d = uzakgoz_config()["dir"]
-    return os.path.join(d, "Cargo.toml") if d else MANIFEST_PATH
+    return os.path.join(d, "Cargo.toml") if d else ""
 DEFAULT_PORT = 8877
 BUILD_TIMEOUT_SECONDS = 120.0  # ilk derleme (soğuk cache) birkaç on saniye sürebilir
 PORT_WAIT_SECONDS = 5.0
@@ -241,7 +241,7 @@ def _resolve_binary(manifest: Optional[str] = None) -> Optional[Path]:
     except (json.JSONDecodeError, KeyError):
         return None
     new = target_dir / "release" / "uzakgoz"
-    return new if new.exists() else target_dir / "release" / "screenshare"
+    return new if new.exists() else None
 
 
 def status() -> dict:
@@ -273,6 +273,8 @@ def start(port: Optional[int] = None) -> dict:
             binary = LOCAL_BIN
         else:
             manifest = _manifest_path()
+            if not manifest:
+                return {"ok": False, "error": "uzakgoz kaynağı ya da ikilisi bulunamadı (ayar uzakgoz.dir/bin ya da ~/work/projects/tmp/uzakgoz)"}
             try:
                 build = subprocess.run(
                     ["cargo", "build", "--release", "--manifest-path", manifest],

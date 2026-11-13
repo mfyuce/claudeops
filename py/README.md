@@ -104,7 +104,7 @@ The easiest way to use this; everything from the browser:
   a `diag.log`, and an **"ask an LLM"** action that opens a real, fresh session (any supported CLI
   backend) with a Terminal view pointed at recent logs — an actual chat, not a canned report.
 - **Desktop** ("Uzak Masaüstü") — an on-demand remote-desktop view, **Start**/**Stop** on its own tab.
-  Backend is a small Rust daemon (`rust/screenshare/`, built on first use — needs the Rust toolchain,
+  Backend is a small Rust daemon (`uzakgoz`, a separate repo, built on first use — needs the Rust toolchain,
   `cargo`, on PATH; the rest of the panel works fine without it, just this tab won't) that captures the
   X11 screen (~2 fps JPEG) and streams it over the same token-protected connection as everything else —
   nothing runs in the background once you hit Stop. A **"Kontrolü Al" / Take Control** toggle

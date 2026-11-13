@@ -56,11 +56,20 @@ class ConfigTests(unittest.TestCase):
 
 
 class ResolveTests(unittest.TestCase):
-    def test_manifest_prefers_new_repo_else_legacy(self):
+    def test_manifest_is_uzakgoz_dir_or_empty_no_legacy_fallback(self):
         with mock.patch.object(rd, "uzakgoz_config", return_value={"dir": "/x/uzakgoz", "bin": "", "port": None}):
             self.assertEqual(rd._manifest_path(), "/x/uzakgoz/Cargo.toml")
         with mock.patch.object(rd, "uzakgoz_config", return_value={"dir": "", "bin": "", "port": None}):
-            self.assertEqual(rd._manifest_path(), rd.MANIFEST_PATH)
+            self.assertEqual(rd._manifest_path(), "")
+        self.assertFalse(hasattr(rd, "MANIFEST_PATH"))
+
+    def test_start_without_any_source_or_binary_is_clear_error(self):
+        with mock.patch.object(rd, "uzakgoz_config", return_value={"dir": "", "bin": "", "port": None}), \
+             mock.patch.object(rd, "LOCAL_BIN", rd.Path("/nonexistent/uzakgoz")), mock.patch.object(rd.subprocess, "run") as run:
+            res = rd.start()
+        self.assertFalse(res["ok"])
+        self.assertIn("uzakgoz", res["error"])
+        run.assert_not_called()                      # cargo hiç çağrılmaz
 
     def test_start_with_prebuilt_binary_skips_cargo_and_uses_port(self):
         cfg = {"dir": "", "bin": "/bin/true", "port": 9123}

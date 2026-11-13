@@ -106,7 +106,7 @@ En kolay kullanım yolu; her şey tarayıcıdan:
   backend'i) + Terminal görünümlü bir **"LLM'e sor"** aksiyonu — gerçek bir sohbet, kayıtlı-dışı bir
   rapor değil.
 - **Uzak Masaüstü** — kendi sekmesinde, talebe bağlı **Başlat**/**Durdur**'lu bir uzak masaüstü görünümü.
-  Arka planda küçük bir Rust daemon'ı var (`rust/screenshare/`, ilk kullanımda derlenir — PATH'te Rust
+  Arka planda küçük bir Rust daemon'ı var (`uzakgoz`, ayrı repo, ilk kullanımda derlenir — PATH'te Rust
   toolchain'i, `cargo`, gerektirir; kurulu değilse panelin geri kalanı sorunsuz çalışır, sadece bu sekme
   çalışmaz) — X11 ekranını yakalar (~2 fps JPEG) ve panelin geri kalanıyla AYNI token-korumalı bağlantı
   üzerinden akıtır; Durdur'a basınca arka planda hiçbir şey çalışmaya devam etmez. Bir **"Kontrolü Al"**
