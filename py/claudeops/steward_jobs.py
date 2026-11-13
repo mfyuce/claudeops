@@ -724,6 +724,11 @@ def parse_auto_request(body: str, auto_kinds: Iterable[str] = JOB_AUTO_KINDS) ->
         params = obj
         rest = (rest[:i] + " " + rest[i + end:]).strip()
     elif kind == "sql_readonly":
+        first = rest.split(None, 1)
+        if first and re.search(r"\.sql$", first[0].strip("`,;"), re.I) and not _SQL_START_RE.match(rest):
+            # gerçek kullanım (kuranmucize/qve): sorgu projedeki bir .sql dosyasında; içeriği okuyup doğrulamak çağıranın işi (dosya yolu proje dizinine kilitli)
+            return {"kind": kind, "params": {}, "files": [], "spec_text": (first[1] if len(first) > 1 else "")[:2000],
+                    "sql_file": first[0].strip("`,;")}
         m = _SQL_FENCE_RE.match(rest.strip())
         q = (m.group(1) if m else rest).strip().rstrip(";").strip()
         if not _SQL_START_RE.match(q):
@@ -742,6 +747,18 @@ def parse_auto_request(body: str, auto_kinds: Iterable[str] = JOB_AUTO_KINDS) ->
     if kind == "sql_readonly" and "sql" not in params:
         return None
     return {"kind": kind, "params": params, "files": files, "spec_text": " ".join(note)[:2000]}
+
+
+def sql_from_file_text(text: str, limit: int = 65536) -> Optional[str]:
+    """SAF. `.sql` dosya içeriğinden tek SELECT/WITH sorgusu: baştaki `--` yorum satırları atılır, sondaki `;` kırpılır; sorgu SELECT/WITH
+    ile başlamıyorsa, boşsa ya da `limit` baytı aşıyorsa None (beyin yorumlar). Salt okunurluğu sunucu ayrıca zorlar."""
+    if not text or len(text.encode("utf-8", "replace")) > limit:
+        return None
+    lines = text.splitlines()
+    while lines and (not lines[0].strip() or lines[0].lstrip().startswith("--")):
+        lines.pop(0)
+    q = "\n".join(lines).strip().rstrip(";").strip()
+    return q if _SQL_START_RE.match(q) else None
 
 
 def resolve_local_files(cwd: str, files: Iterable[str]) -> List[str]:

@@ -5651,6 +5651,17 @@ def _job_fast_path(action: "sw.Action", cfg: "sw.Config", q: "sw.Question", path
     registered, kinds = _registered_job_kinds(time.time())
     if not registered or not kinds or req["kind"] not in kinds:
         return None
+    sql_file = req.pop("sql_file", None)
+    if sql_file:       # sorgu projedeki .sql dosyasında (beynin yaptığı gibi içeriği params.sql'e koy; dosya proje dizinine kilitli)
+        try:
+            real = sj.resolve_local_files(_project_cwd(proj), [sql_file])[0]
+            with open(real, encoding="utf-8", errors="replace") as f:
+                sql = sj.sql_from_file_text(f.read(70000))
+        except (ValueError, OSError, IndexError):
+            sql = None
+        if not sql:
+            return None
+        req["params"] = {"sql": sql}
     try:
         res = http_job_submit(dict(req, project=proj, actor="engine"), cfg.sid)
     except Exception as e:       # hızlı yol hiçbir koşulda tick'i düşürmesin

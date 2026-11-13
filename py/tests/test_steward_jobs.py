@@ -632,6 +632,23 @@ class TestDeliver(_Jobs):
             self.assertEqual(next(x for x in sw.load_questions(None) if x.id == q.id).status, "open")
         self.assertEqual(self.srv.jobs, {})
 
+    def test_fast_path_reads_sql_file_in_project(self):
+        """13 Kas gerçek kullanım (kuranmucize/qve): `sql_readonly <proje içi .sql> açıklama`: dosya içeriği params.sql olur."""
+        os.makedirs(os.path.join(self.proj, "varaka_istek"))
+        with open(os.path.join(self.proj, "varaka_istek", "b.sql"), "w", encoding="utf-8") as f:
+            f.write("-- Bahira\nSELECT id FROM chunk WHERE x ILIKE '%a%' LIMIT 5;\n")
+        q, res = self._fast("sql_readonly varaka_istek/b.sql Bahira pasajlari")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(self.srv.posted[-1]["meta"]["params"], {"sql": "SELECT id FROM chunk WHERE x ILIKE '%a%' LIMIT 5"})
+        self.assertEqual(self.srv.posted[-1]["files"], [])
+        # dosya yok / proje dışı / SELECT değil: beyne düşer
+        for body in ("sql_readonly yok.sql x", "sql_readonly ../disari.sql x"):
+            q, res = self._fast(body)
+            self.assertIsNone(res, body)
+        with open(os.path.join(self.proj, "d.sql"), "w") as f:
+            f.write("DROP TABLE x;")
+        self.assertIsNone(self._fast("sql_readonly d.sql x")[1])
+
     def test_fast_path_json_params_and_file(self):
         q, res = self._fast('embed {"kaynak": "x"} kitap.pdf yeni set')
         self.assertTrue(res["ok"], res)
@@ -901,3 +918,8 @@ class TestParseAutoRequest(unittest.TestCase):
         r = p("import_shamela {\"tag\": \"t\"} data/k.json lutfen sirala")
         self.assertEqual((r["files"], r["spec_text"], r["params"]), (["data/k.json"], "lutfen sirala", {"tag": "t"}))
         self.assertEqual(p("EMBED {}")["kind"], "embed")
+        r = p("sql_readonly varaka_istek/b.sql Tirmizi pasajlari")
+        self.assertEqual((r["sql_file"], r["spec_text"], r["params"]), ("varaka_istek/b.sql", "Tirmizi pasajlari", {}))
+        self.assertEqual(sj.sql_from_file_text("-- c\n\nWITH a AS (SELECT 1) SELECT * FROM a;\n"), "WITH a AS (SELECT 1) SELECT * FROM a")
+        self.assertIsNone(sj.sql_from_file_text("DELETE FROM x"))
+        self.assertIsNone(sj.sql_from_file_text("SELECT 1 " + "x" * 70000))
