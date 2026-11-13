@@ -125,7 +125,7 @@ MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
 SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
-OBSERVE_SKIPPED = ("todo_triage", "auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm", "idle_nudge", "idle_close", "owner_todo_move")
+OBSERVE_SKIPPED = ("todo_triage", "auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm", "idle_nudge", "idle_close", "no_work_reopen", "owner_todo_move")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -345,6 +345,8 @@ class Config:
     ucli_idle_max_consecutive: int = 2    # dürtmeye rağmen etkinlik yoksa zincir bu kadar dürtmede KESİLİR
     keepwarm_max_consecutive: int = 3  # dürtmeye rağmen gerçek etkinlik yoksa zincir bu kadar dürtmede dolar (sahip 7 Kas: 3)
     keepwarm_chain_close: str = "dry"  # zincir dolunca: off = yalnız kes | dry = YALNIZ `would:idle_close` (marker keepwarm_chain) | act = devir + kapat + phase=paused (gerekçeli, ntfy yok; pause devir BİTİNCE yazılır)
+    no_work_close: str = "dry"            # işi olmayan oturum: off | dry (YALNIZ `would:idle_close` marker no_work + state.no_work_report) | act (devir + kapat + paused "iş yok")
+    no_work_close_minutes: int = 30       # bu kadar dk boşta olmadan kapatılmaz
     keepwarm_pause_exempt: str = "copsdev"   # virgüllü proje adları: zincir dolsa da paused OLMAZ, yalnız kesilir (TBD#163 b); ayrıca notta "devam etmeli" geçen proje
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
     brain_wake_max_per_day: int = 6    # uyandırma kapısı (TBD#138): BEYİN direktifi (`reason=brain`, actor=brain, cevapsız) oturum başına 24 saatte en çok bu kadar; aşımda `wake_gate` kipine uyar (dry = `would:brain_wake_cap`); 0 = sınırsız

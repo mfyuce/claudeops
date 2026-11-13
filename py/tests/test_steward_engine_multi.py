@@ -372,7 +372,7 @@ class TestEngineGolden(_Tmp):
                         mock.patch.object(ws.time, "time", lambda: now):
                     res = ws.tick_once("manual", cards=False)
                 self.assertTrue(res["ok"], res)
-                st = {k: v for k, v in sw.load_state().items() if k not in ("loop_guard", "outcome_pending")}    # L4 sayaçları altından sonra eklendi (ayrı testte)
+                st = {k: v for k, v in sw.load_state().items() if k not in ("loop_guard", "outcome_pending", "no_work_close", "no_work_report")}    # L4 sayaçları altından sonra eklendi (ayrı testte)
                 out.append(_tm._ser(got, st))
         # L2: sahiplik kaydı YOKKEN (`_maintain_owned` kapalı) motor eskisiyle birebir; L2 davranışı test_steward_owned.py
         self.assertEqual(out, _tm._golden_world())       # P9 O4: sahipsiz `degnekci_kitap` ad hoc sayılmaz (bkz. `_golden_world`)

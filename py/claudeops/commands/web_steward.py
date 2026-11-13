@@ -36,6 +36,7 @@ from .. import steward as sw
 from .. import steward_jobs as sj
 from .. import steward_lessons as sl
 from .. import steward_keepwarm as skw
+from .. import steward_nowork as snw
 from .. import steward_advance as sa
 from .. import steward_quota as sq
 from ..diaglog import diag_log
@@ -2260,7 +2261,8 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
         if s is None:
             if not start_if_stopped:
                 return {"ok": False, "error": "not running"}
-            res = _ensure_running(target, model=model, effort=effort, lang=lang, sid=cfg.sid)
+            res = _ensure_running(target, model=model, effort=effort, lang=lang, sid=cfg.sid,
+                                  fresh=_consume_fresh_start(project.name, cfg.sid))     # `iş yok` kapanışından sonraki açılış: --new (devir notu CLAUDE.md'de)
             if not res.get("ok"):
                 return res
             if res.get("ho_on_open"):    # açılışta devir gitti: direktif/cevap devirden sonraki TAZE oturuma (respawn) gider
@@ -3325,7 +3327,17 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             note = ((cur.notes + "\n") if cur is not None and cur.notes else "") + f"[paused {time.strftime('%Y-%m-%d %H:%M')}] {reason}"
             sw.upsert_project(str(pz["project"]), paths=paths, phase="paused", notes=note)
             sw.log_event("keepwarm_chain_pause", paths=paths, name=name, project=pz["project"], reason=reason)
+            if reason == snw.NO_WORK_REASON:       # yeniden açılış tetikleyicileri için: durdurma anındaki TODO sha'sı
+                with sw.steward_lock(paths):
+                    st = sw.load_state(paths)
+                    npz = dict(st.get("no_work_paused") or {})
+                    npz[str(pz["project"])] = {"at": time.time(), "sha": _todo_sha_of(projects)(str(pz["project"]))}
+                    st["no_work_paused"] = npz
+                    sw.save_state(st, paths)
         return res
+    if k == "no_work_reopen":
+        return _no_work_reopen(str(action.payload.get("project") or name), str(action.payload.get("trigger") or ""),
+                               str(action.payload.get("question_id") or ""), cfg, projects, paths, host=host, rt=rt)
     if k == "auto_answer":
         q = sw.answer_question(action.payload.get("question_id") or "", action.payload.get("answer") or "", paths)
         if q is None:
@@ -3741,6 +3753,118 @@ def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[i
         r = _scan_todo(projects, proj)
         return None if r is None else r[0]
     return count
+
+
+def _no_work_reopen(project: str, trigger: str, question_id: str, cfg: sw.Config, projects: Dict[str, sw.Project], paths: Any,
+                    host: Optional[str] = None, rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
+    """`iş yok` ile paused edilmiş projeyi aç: kaydı temizle, phase=planned, bir SONRAKİ yerel başlatma YENİ konuşma (`--new`, devir notu
+    CLAUDE.md'de) ve `start` (varsa bekleyen cevapla). Tetikleyici olay: `no_work_reopen`."""
+    p = projects.get(project)
+    if p is None:
+        return {"ok": False, "error": "not a steward project"}
+    with sw.steward_lock(paths):
+        st = sw.load_state(paths)
+        npz = dict(st.get("no_work_paused") or {})
+        npz.pop(project, None)
+        if npz:
+            st["no_work_paused"] = npz
+        else:
+            st.pop("no_work_paused", None)
+        fs = dict(st.get("fresh_start") or {})
+        fs[project] = time.time()
+        st["fresh_start"] = fs
+        sw.save_state(st, paths)
+    sw.upsert_project(project, paths=paths, phase="planned")
+    sw.log_event("no_work_reopen", paths=paths, name=project, project=project, trigger=trigger)
+    p2 = sw.load_projects(paths).get(project) or p
+    q = next((x for x in sw.load_questions(paths) if x.id == question_id), None) if question_id else None
+    return _give_directive(p2, "", answer=q, reason="no_work_reopen", cfg=cfg, host=host, rt=rt, actor="engine")
+
+
+def _no_work_directive_reopen(p: sw.Project, sid: str) -> bool:
+    """Direktif `iş yok` ile durdurulmuş (paused) projeye geldi: phase=planned, bir sonraki başlatma `--new`. Başlatmayı direktifin kendisi yapar."""
+    paths = sw.paths_for(sid)
+    try:
+        if p.phase != "paused" or p.name not in (sw.load_state(paths).get("no_work_paused") or {}):
+            return False
+        with sw.steward_lock(paths):
+            st = sw.load_state(paths)
+            npz = dict(st.get("no_work_paused") or {})
+            npz.pop(p.name, None)
+            if npz:
+                st["no_work_paused"] = npz
+            else:
+                st.pop("no_work_paused", None)
+            fs = dict(st.get("fresh_start") or {})
+            fs[p.name] = time.time()
+            st["fresh_start"] = fs
+            sw.save_state(st, paths)
+        sw.upsert_project(p.name, paths=paths, phase="planned")
+        sw.log_event("no_work_reopen", paths=paths, name=p.name, project=p.name, trigger="directive")
+        return True
+    except Exception as e:
+        diag_log("steward_no_work_directive_reopen_failed", sid=sid, error=repr(e))
+        return False
+
+
+def _consume_fresh_start(project: str, sid: str) -> bool:
+    """`no_work_reopen` bayrağı: bir SONRAKİ yerel başlatma `--new` olsun (bir kez tüketilir)."""
+    paths = sw.paths_for(sid)
+    try:
+        with sw.steward_lock(paths):
+            st = sw.load_state(paths)
+            fs = dict(st.get("fresh_start") or {})
+            if project not in fs:
+                return False
+            fs.pop(project, None)
+            if fs:
+                st["fresh_start"] = fs
+            else:
+                st.pop("fresh_start", None)
+            sw.save_state(st, paths)
+        return True
+    except Exception:
+        return False
+
+
+def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
+    """`iş yok` kapatma/yeniden açma kararının bekleyen-şey kümeleri (hata = o küme boş, kapatma KISILIR değil GENİŞLEMEZ: hata varsa
+    `ctx["errors"]` dolar ve kapatma planlayıcısı bu tick'te hiçbir şey kapatmaz). Alanlar: open_q {proje} (sahip/beyin/ROUTINE dahil HER açık soru),
+    answer_pending {proje: soru kimliği}, review {proje: neden} (onaylı/doğrulanmış iletilmemiş bulgu, bekleyen ders, koşan review, ilerletme
+    adayı), jobs {proje} (açık ya da sonucu iletilmemiş varaka işi)."""
+    ctx: Dict[str, Any] = {"open_q": set(), "answer_pending": {}, "review": {}, "jobs": set(), "errors": []}
+    try:
+        for q in sw.load_questions(paths):
+            if q.status == "open":
+                ctx["open_q"].add(q.project)
+        for q in sw.undelivered_answers(paths=paths):
+            if not q.undeliverable:
+                ctx["answer_pending"].setdefault(q.project, q.id)
+    except Exception as e:
+        ctx["errors"].append("questions:" + repr(e)[:80])
+    try:
+        for j in sj.load_jobs(paths):
+            if sj.is_open(j) or sj.pending_stage(j):
+                ctx["jobs"].add(str(j.get("project") or ""))
+    except Exception as e:
+        ctx["errors"].append("jobs:" + repr(e)[:80])
+    try:
+        for rsid in sorted(sw.reviewer_ids()):
+            for rec in rv.load_findings(sw.paths_for(rsid)).values():
+                if isinstance(rec, dict) and rec.get("state") in ("verified", "approved"):
+                    ctx["review"].setdefault(str(rec.get("project") or ""), f"bulgu:{rec.get('state')}")
+        for row in _advance_candidates(cfg):
+            ctx["review"].setdefault(str(row.get("project") or ""), "bulgu:ilerletme")
+        for k in web_review.running_keys():
+            ctx["review"].setdefault(k.split("|", 1)[0], "review:kosuyor")
+        tgt = sl.target_project(cfg.lessons_project)
+        if tgt:
+            rows = sl.lesson_rows(_lessons(cfg), [sw.load_state(sw.paths_for(i)) for i in steward_ids()], time.time())
+            if any(r.get("status") in ("pending", "sent", "failed") for r in rows):
+                ctx["review"].setdefault(tgt, "ders:bekliyor")
+    except Exception as e:
+        ctx["errors"].append("review:" + repr(e)[:80])
+    return ctx
 
 
 def _todo_sha_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
@@ -4187,6 +4311,20 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                             sw.log_event("would:keepwarm", paths=paths, name=a.name, **{k: a.payload.get(k) for k in ("project", "age_min", "tokens", "n", "text")})
                     else:
                         actions = actions + kw_actions   # önbellek canlı tutma dürtmesi (observe kipinde OBSERVE_SKIPPED ile kuru kalır)
+                if cfg.no_work_close in ("dry", "act"):
+                    nw_ctx = _close_ctx(cfg, paths)
+                    if nw_ctx["errors"]:        # bekleyen-şey bilgisi eksik: bu tick'te hiçbir şey kapatılmaz (bilinmeyen = iş var say)
+                        sw.log_event("no_work_ctx_error", paths=paths, errors=nw_ctx["errors"][:3])
+                    else:
+                        nw_actions, new_state = snw.plan_no_work_close(views, projects, new_state, cfg, t0, actions, world,
+                                                                       open_work=_open_work_of(projects), ctx=nw_ctx)
+                        for a in nw_actions:
+                            if cfg.no_work_close == "dry":
+                                sw.log_event("would:idle_close", paths=paths, name=a.name,
+                                             **{k: a.payload.get(k) for k in ("project", "idle_secs", "threshold", "mode", "marker", "pause_reason", "checks")})
+                            else:
+                                actions = actions + [a]
+                        actions = actions + snw.plan_no_work_reopen(projects, new_state, t0, nw_ctx, _todo_sha_of(projects))
                 adv_actions, planned_state = sa.plan_advance_deliveries(views, projects, _advance_candidates(cfg), new_state, t0,
                                                                         actions, world)
                 if cfg.mode != "observe":
@@ -6003,6 +6141,7 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             if _running(name) is None and not inst_mod.get_instance(name) and name not in (_act("fleet_status") or {}):
                 return {"ok": False, "error": "unknown session/project"}
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
+        _no_work_directive_reopen(p, sid)      # `iş yok` ile paused projeye direktif = yeniden açılış tetikleyicisi (planned + --new)
         res = _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
                               start_if_stopped=bool(data.get("start_if_stopped", True)),
                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
