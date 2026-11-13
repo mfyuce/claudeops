@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import threading
+import time
 from typing import Any, Iterator, Optional
 
 
@@ -120,6 +121,7 @@ def atomic_write_text(path: str, text: str, *, mode: Optional[int] = None) -> No
         raise
 
 
+LOCK_TIMEOUT_SECONDS = 30.0     # süreçler-arası flock bekleme sınırı
 _LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict = {}
 _HELD = threading.local()       # iş parçacığı başına {path: iç içe derinlik}
@@ -182,7 +184,15 @@ def _file_lock_outer(path: str) -> Iterator[None]:
         st = os.fstat(fd)
         if not os.path.isfile(path + ".lock") or st.st_uid != os.getuid():
             raise OSError("lock file not ours")
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+        while True:             # zaman aşımlı: sahip süreç asılırsa web isteği SÜRESİZ bloklanmasın (review cliops 3 Kas)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise OSError("flock zaman aşımı")
+                time.sleep(0.02)
     except OSError as e:
         if fd is not None:
             os.close(fd)

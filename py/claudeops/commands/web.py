@@ -418,7 +418,7 @@ def _ensure_cloudflared() -> Optional[str]:
     try:
         os.makedirs(dest_dir, exist_ok=True)
         # review R-6: indir -> sha256 + ELF/boyut kontrolü -> atomik rename; yarım/bozuk indirme mevcut dosyanın üstüne yazmaz
-        tmp = dest + ".part"
+        tmp = f"{dest}.{os.getpid()}-{os.urandom(4).hex()}.part"      # tahmin edilemez ad: yerleştirilmiş symlink/eski yarım dosya yazılmaz
         try:
             urllib.request.urlretrieve(url, tmp)
             if _sha256_file(tmp) != want:
