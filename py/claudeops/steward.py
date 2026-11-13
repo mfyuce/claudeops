@@ -3017,6 +3017,8 @@ def select_rows(rows: List[Dict[str, Any]], world: World, fresh_hosts: Any = ())
     fresh = set(fresh_hosts or ())
     out: List[Dict[str, Any]] = []
     for r in rows:
+        if str(r.get("cli") or "") == "shell":
+            continue        # kabuk oturumu (claudeops-shell / shell sağlayıcısı) değnekçi için oturum DEĞİL: ne owned ne ambiguous (sahip 13 Kas: tunnel 4 gün ziyaretsiz)
         host = normalize_host(r.get("host"))
         name = str(r.get("name") or "")
         kind, key = world.resolve(name)
