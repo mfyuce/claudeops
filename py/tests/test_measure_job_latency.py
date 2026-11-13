@@ -50,6 +50,23 @@ class MeasureTest(unittest.TestCase):
             mjl.main(["--log", p, "--since", "2026-11-13T20:05:00", "-n", "5"])      # eskiden ValueError
         self.assertIn("isaret -> submit", buf.getvalue())
 
+    def test_auto_submit_pairs_with_question_time_not_stale_mark(self):
+        """Hizli yol: job_submit, eylem kaydindan ONCE yazilir; isaret = soru kimligindeki an, eylem kaydi eski isaret sayilmaz."""
+        rows = [{"ts": "2026-11-13T21:13:19", "event": "job_submit", "service": "varaka", "id": 7, "project": "qve"},
+                {"ts": "2026-11-13T21:13:19", "event": "job_auto_submit", "project": "qve", "id": 7, "question": "q20261113_211318_ab12"},
+                {"ts": "2026-11-13T21:13:19", "event": "action", "kind": "ask_user", "name": "qve", "reason": "STEWARD-JOB"},
+                {"ts": "2026-11-13T21:13:29", "event": "job_state", "service": "varaka", "id": 7, "to": "done"},
+                {"ts": "2026-11-13T21:13:49", "event": "job_delivered", "service": "varaka", "id": 7, "stage": "result"},
+                # sonraki beyin yolu istegi: eski (siz) isaret ona eslenmemeli
+                {"ts": "2026-11-13T21:20:00", "event": "action", "kind": "ask_user", "name": "qve", "reason": "STEWARD-JOB"},
+                {"ts": "2026-11-13T21:21:30", "event": "job_submit", "service": "varaka", "id": 8, "project": "qve"}]
+        p = _log(rows)
+        self.addCleanup(os.unlink, p)
+        r = mjl.measure(mjl.load_events([p]), 40)
+        self.assertEqual(r["isaret -> submit"][0], 2)
+        self.assertEqual(sorted(mjl.measure(mjl.load_events([p]), 1)["isaret -> submit"][:2]), [1, 90])   # son is: beyin yolu 90 sn
+        self.assertEqual(r["isaret -> submit"][1], (1 + 90) / 2)
+
     def test_multiple_logs_merged_in_time_order(self):
         a, b = _log(_job(1, 0)), _log(_job(2, 600))
         self.addCleanup(os.unlink, a)

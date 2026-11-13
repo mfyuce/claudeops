@@ -26,12 +26,25 @@ def load_events(paths, since="", until=""):
 
 def measure(ev, n=40):
     """-> {asama: (adet, medyan, en_cok)} (saf; olay listesinden)."""
+    auto_at = {}
     marks = {}          # proje -> son isaret zamani (submit'e eslenince tuketilir)
     jobs = {}           # (servis,id) -> {mark,submit,done,deliv}
     for e in ev:
         k = e.get("event"); t = ts(e["ts"]) if e.get("ts") else 0
         if k == "action" and e.get("kind") == "ask_user" and e.get("reason") == "STEWARD-JOB":
-            marks[e.get("name")] = t
+            if abs(t - auto_at.get(e.get("name"), -99)) > 3:      # hizli yolda eylem kaydi submit'ten SONRA yazilir: eski isaret gibi eslenmesin
+                marks[e.get("name")] = t
+        elif k == "job_auto_submit":
+            auto_at[e.get("project")] = t
+            j = jobs.get((e.get("service") or "varaka", e.get("id")))
+            qid = str(e.get("question") or "")          # q<YYYYMMDD>_<HHMMSS>_<x>: sorunun acildigi an = isaret
+            try:
+                qt = datetime.strptime(qid[1:16], "%Y%m%d_%H%M%S").timestamp()
+            except ValueError:
+                qt = t
+            if j is not None:
+                j["mark"] = qt
+                j["auto"] = True
         elif k == "job_submit":
             key = (e.get("service"), e.get("id"))
             jobs[key] = {"mark": marks.pop(e.get("project"), None), "submit": t}
