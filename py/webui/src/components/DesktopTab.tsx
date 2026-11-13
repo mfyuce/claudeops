@@ -20,6 +20,30 @@ function desktopWsUrl(): string {
   return `${scheme}${location.host}/ws/desktop?token=${encodeURIComponent(TOKEN)}`;
 }
 
+/** How long `running` may read false before the viewer is torn down. The status poll can show `running:false` for a
+ * moment (slow/lost poll, daemon restart blip, phone tab switch); remounting on every blip dropped the stream. */
+const RUNNING_GRACE_MS = 8000;
+
+/** `running` made stable: goes true at once, goes false only after `graceMs` of continuous false. When the user pressed
+ * Stop (`stopRequested.current`), false applies immediately so the viewer disappears with the daemon. */
+function useStableRunning(running: boolean, stopRequested: React.MutableRefObject<boolean>, graceMs = RUNNING_GRACE_MS): boolean {
+  const [stable, setStable] = useState(running);
+  useEffect(() => {
+    if (running) {
+      stopRequested.current = false;
+      setStable(true);
+      return;
+    }
+    if (stopRequested.current) {
+      setStable(false);
+      return;
+    }
+    const id = window.setTimeout(() => setStable(false), graceMs);
+    return () => window.clearTimeout(id);
+  }, [running, graceMs, stopRequested]);
+  return stable;
+}
+
 /** Daemon'un viewer.js'ini gömer; `running` bitince yok eder. */
 function useEmbeddedViewer(running: boolean, rootRef: React.RefObject<HTMLDivElement | null>) {
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +77,10 @@ export function DesktopTab() {
   const [audioError, setAudioError] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
+  const stopRequested = useRef(false);
   const running = data?.remote_desktop.running ?? false;
-  const viewerError = useEmbeddedViewer(running, rootRef);
+  const viewerUp = useStableRunning(running, stopRequested);
+  const viewerError = useEmbeddedViewer(viewerUp, rootRef);
 
   async function handleStart() {
     setBusy("start");
@@ -65,6 +91,7 @@ export function DesktopTab() {
 
   async function handleStop() {
     setBusy("stop");
+    stopRequested.current = true;
     await callAction(() => apiDesktopStop(lang), "desktop", t);
     setBusy(null);
     refresh();
@@ -107,8 +134,8 @@ export function DesktopTab() {
           </button>
         )}
       </div>
-      {running && viewerError && <div className="opts-hint">viewer.js: {viewerError}</div>}
-      {running && <div ref={rootRef} className="desktop-viewport" style={{ height: "70vh" }} />}
+      {viewerUp && viewerError && <div className="opts-hint">viewer.js: {viewerError}</div>}
+      {viewerUp && <div ref={rootRef} className="desktop-viewport" style={{ height: "70vh" }} />}
     </div>
   );
 }
