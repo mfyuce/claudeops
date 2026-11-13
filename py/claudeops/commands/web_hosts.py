@@ -933,6 +933,28 @@ def proxy_action(path: str, host_name: str, body: Dict[str, Any],
     return parsed, status
 
 
+TERM_RETRY_PATHS = ("/api/term/input", "/api/term/raw", "/api/term/key")
+TERM_ATTEMPT_TIMEOUT = 12.0
+TERM_MAX_ATTEMPTS = 3
+
+
+def proxy_term_action(path: str, host_name: str, body: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    """Terminal girdisi için güvenilir teslim: istemci `input_id` verdiyse deneme başına kısa zaman aşımı (12 sn) ve en çok 3
+    deneme AYNI `input_id` ile (uzak taraf tekrarı yazmadan ok:true döner, bkz. `term_dedup`). Yalnız TAŞIMA hatası
+    ("unreachable") yeniden denenir; uzağın kendi ok:false cevabı (oturum yok, masked) olduğu gibi döner. `input_id` yoksa
+    eski davranış (tek deneme, `ACTION_TIMEOUT_SECONDS`)."""
+    from .. import term_dedup
+    if path not in TERM_RETRY_PATHS or term_dedup.valid_id(body.get("input_id")) is None:
+        return proxy_action(path, host_name, body)
+    res: Dict[str, Any] = {}
+    status = 200
+    for _ in range(TERM_MAX_ATTEMPTS):
+        res, status = proxy_action(path, host_name, body, timeout=TERM_ATTEMPT_TIMEOUT)
+        if res.get("ok") is not False or " unreachable" not in str(res.get("error", "")):
+            return res, status
+    return res, status
+
+
 def _http_raw(url: str, timeout: float, dedup: bool = False) -> Tuple[int, Optional[bytes], Optional[Dict[str, str]], Optional[str]]:
     """`_http_json()`'ın binary-passthrough kardeşi — `/api/files/download`
     proxy'si için JSON parse ETMEDEN ham body + seçili header'ları

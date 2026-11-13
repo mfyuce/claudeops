@@ -400,6 +400,17 @@ export interface AdoptPayload {
 }
 export const apiAdopt = (p: AdoptPayload): Promise<AdoptResult> => apiPost<AdoptResult>("/api/adopt", p);
 
+/** One id per send (retries of the SAME send reuse it server-side): lets the proxy retry a slow remote hop without
+ * double-typing, because the executing host drops a repeated `input_id` (5 min) instead of writing it again. */
+export function newInputId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  } catch {
+    /* insecure context: fall through */
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 export interface TermInputPayload {
   name: string;
   host: string;
@@ -407,7 +418,7 @@ export interface TermInputPayload {
   lang: Lang;
 }
 export const apiTermInput = (p: TermInputPayload): Promise<SimpleResult> =>
-  apiPost<SimpleResult>("/api/term/input", p);
+  apiPost<SimpleResult>("/api/term/input", { input_id: newInputId(), ...p });
 
 export interface TermKeyPayload {
   name: string;
@@ -415,7 +426,8 @@ export interface TermKeyPayload {
   key: string;
   lang: Lang;
 }
-export const apiTermKey = (p: TermKeyPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/term/key", p);
+export const apiTermKey = (p: TermKeyPayload): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/term/key", { input_id: newInputId(), ...p });
 
 /** Live typing (Terminal view's opt-in "type straight into the black area"
  * mode): xterm's own `onData` stream — single keystrokes, control sequences
@@ -431,7 +443,8 @@ export interface TermRawPayload {
   data: string;
   lang: Lang;
 }
-export const apiTermRaw = (p: TermRawPayload): Promise<SimpleResult> => apiPost<SimpleResult>("/api/term/raw", p);
+export const apiTermRaw = (p: TermRawPayload): Promise<SimpleResult> =>
+  apiPost<SimpleResult>("/api/term/raw", { input_id: newInputId(), ...p });
 
 /** Only "default" | "acceptEdits" | "plan" | "auto" are reachable — the CLI's
  * Shift+Tab cycle (its only live mode-switch mechanism, no direct slash

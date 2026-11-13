@@ -52,7 +52,7 @@ import psutil
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from .. import dist_check as _dist_check
-from .. import ws_ticket
+from .. import term_dedup, ws_ticket
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
@@ -4435,6 +4435,15 @@ class _Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             diag_log("response_write_failed", path=urlparse(self.path).path, error=str(e))
 
+    @staticmethod
+    def _term_dedup_result(path, data, result):
+        """Yazım başarısızsa `input_id` kaydını bırak (yeniden deneme gerçekten yazabilsin); sonucu aynen döner."""
+        iid = term_dedup.valid_id(data.get("input_id"))
+        nm = str(data.get("name", "")).strip()
+        if iid and nm and not (isinstance(result, dict) and result.get("ok") is True):
+            term_dedup.release(path, nm, iid)
+        return result
+
     def _json(self, obj, status=200):
         body = json.dumps(obj).encode("utf-8")
         try:
@@ -5182,7 +5191,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path in web_hosts.HOST_ROUTED_PATHS:
             host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
             if host != LOCAL_HOST_NAME:
-                result, proxy_status = web_hosts.proxy_action(path, host, data)
+                result, proxy_status = web_hosts.proxy_term_action(path, host, data)
                 self._json_notify(result, status=proxy_status)
                 return
 
@@ -5483,12 +5492,19 @@ class _Handler(BaseHTTPRequestHandler):
             ))
             return
 
+        if path in ("/api/term/input", "/api/term/key", "/api/term/raw"):
+            _iid = term_dedup.valid_id(data.get("input_id"))
+            _nm = str(data.get("name", "")).strip()
+            if _iid and _nm and not term_dedup.claim(path, _nm, _iid):
+                self._json({"ok": True, "dup": True})      # yeniden teslim: ilk istek zaten yazdı, çift yazma yok
+                return
+
         if path == "/api/term/input":
             name = str(data.get("name", "")).strip()
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(_term_input(name, text=str(data.get("text", "")), lang=lang, exact=data.get("exact") is True))
+            self._json(self._term_dedup_result(path, data, _term_input(name, text=str(data.get("text", "")), lang=lang, exact=data.get("exact") is True)))
             return
 
         if path == "/api/term/key":
@@ -5496,7 +5512,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(_term_key(name, key=str(data.get("key", "")), lang=lang))
+            self._json(self._term_dedup_result(path, data, _term_key(name, key=str(data.get("key", "")), lang=lang)))
             return
 
         if path == "/api/term/resize":
@@ -5512,7 +5528,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(_term_raw(name, data=str(data.get("data", "")), lang=lang))
+            self._json(self._term_dedup_result(path, data, _term_raw(name, data=str(data.get("data", "")), lang=lang)))
             return
 
         if path == "/api/term/set-mode":
