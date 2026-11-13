@@ -126,6 +126,26 @@ class CommitTest(unittest.TestCase):
         self.assertTrue(any(f.endswith("rapor[1]*.md") for f in files), files)
         self.assertTrue(any(f.endswith("rapor1x.md") for f in files), files)
 
+    def test_junk_files_skipped(self):
+        for n in (".x.upload.tmp", "a.md.tmp", "b.lock", "c.md~", ".d.swp"):
+            self.write(n, "yarım\n")
+        r = rs.commit_reviews(self.main, self.gd, scan, dry=True)
+        self.assertEqual(len(r["would"]), 2)
+
+    def test_secret_written_between_scan_and_add_is_unstaged(self):
+        """Tarama ile `git add` arası içerik değişirse (TOCTOU) index'e giren blob taranır, gizli değer commit'lenmez."""
+        real_git = rs._git
+
+        def racing(base, *args, **kw):
+            if args and args[0] == "add":
+                self.write("20261024100000.md", "DSN postgres://u:hunter2pw@h/db\n")
+            return real_git(base, *args, **kw)
+        with mock.patch.object(rs, "_git", racing):
+            r = rs.commit_reviews(self.main, self.gd, scan, dry=False)
+        files = git("--git-dir=" + self.gd, "ls-tree", "-r", "--name-only", "HEAD").split()
+        self.assertFalse(any(f.endswith("20261024100000.md") for f in files), files)
+        self.assertTrue(any(h.endswith("20261024100000.md") for h in r["held"]), r)
+
     def test_saved_page_files_dirs_are_skipped(self):
         side = os.path.join(self.main, "reviews", "p", "agy", "Sayfa_files")
         os.makedirs(side)

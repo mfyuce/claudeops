@@ -137,6 +137,8 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
             rel = os.path.relpath(full, rroot).replace(os.sep, "/")
             if rel in tracked or os.path.islink(full) or not rel.startswith("reviews/"):
                 continue
+            if name.startswith(".") or name.endswith((".tmp", ".lock", "~", ".swp", ".swo")):
+                continue        # crash kalıntısı geçici/kilit/editör yedeği commit+push edilmez (review cliops 3 Kas)
             try:
                 with open(full, encoding="utf-8", errors="replace") as f:
                     txt = f.read()
@@ -168,6 +170,17 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
         if rc != 0:
             res.update(ok=False, error="git add başarısız: " + out[-200:])
             return res
+        # GERÇEK bariyer: tarama ile `git add` arasında değişen içerik için, index'e giren BLOB taranır (çalışma kopyası değil);
+        # gizli değer varsa o yol index'ten çıkarılır ve dışarıda kalır (review cliops 3 Kas TOCTOU)
+        for rel in list(would):
+            rcb, blob = _git(base, "show", ":" + rel, run=run)
+            if rcb != 0 or scan(blob) != blob:
+                _git(base, "reset", "-q", "--", rel, run=run)
+                would.remove(rel)
+                held.append(rel)
+        res.update(would=would, held=held)
+        if not would:
+            return _push_pending(res, base, run)
         rc, out = _git(base, "commit", "-m", f"reviews: {len(would)} yeni dosya (otomatik)", "--only", "--", *would, run=run)
         if rc != 0:
             _git(base, "reset", "-q", "--", *would, run=run)      # index'te takılı kalmasın
@@ -179,6 +192,11 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
         rc, _o = _git(base, "rev-parse", "--verify", "-q", "HEAD", run=run)
         if rc != 0:
             return res          # hiç commit yok, itilecek bir şey yok
+    return _push_pending(res, base, run)
+
+
+def _push_pending(res: Dict[str, object], base: List[str], run: Optional[Callable]) -> Dict[str, object]:
+    """Her remote'a push (tek yeniden deneme); sonuç `res`e yazılır."""
     rc, remotes = _git(base, "remote", run=run)
     if rc != 0 or not remotes.split():
         res.update(ok=False, error="remote yok ya da `git remote` başarısız" if rc == 0 else "git remote başarısız: " + remotes[-200:])
