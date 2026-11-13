@@ -3284,12 +3284,25 @@ def job_request_gate(q: "Question", answer: str, jobs: List[Dict[str, Any]]) -> 
                    f"'RED: <reason, >= {JOB_RED_MIN_CHARS} chars>'; a bare 'devam' would lose the request"), ""
 
 
+# Varaka'nın salt okunur iş türleri: sunucu tarafı yazmayı reddeder; açıklamadaki "ünlü işaretleri silinerek aranır" gibi
+# sorgu-içi anlatım sahibe ait silme kararı DEĞİL (ysf 12 Kas q20261112_124536_d651 boşuna sahibe düştü).
+READONLY_JOB_KINDS = frozenset({"sql_readonly"})
+
+
+def is_readonly_job_request(text: str) -> bool:
+    """SAF. Metin `İŞ İSTEĞİ (STEWARD-JOB): <tür> ...` ve tür salt okunur mu."""
+    if not (text or "").startswith(JOB_REQUEST_PREFIX):
+        return False
+    kind = (text[len(JOB_REQUEST_PREFIX):].split() or [""])[0].strip().lower()
+    return kind in READONLY_JOB_KINDS
+
+
 def brain_may_answer(q: "Question") -> Tuple[bool, str]:
     """Beynin bu soruya `steward_answer` ile cevap verip veremeyeceği: yalnız RUTİN etiketli ve sahip kararı içermeyen
     sorular. SAF; force-push, kurulum (apt/sudo), silme, harcama, kimlik/yetki sahibe aittir (commit/push/merge/build/deploy kalıcı izinle serbest)."""
     if not q.routine:
         return False, "owner question (STEWARD-ASK): only the owner answers it"
-    if OWNER_ONLY_RE.search(q.text or ""):
+    if OWNER_ONLY_RE.search(q.text or "") and not is_readonly_job_request(q.text or ""):
         return False, "owner decision (force-push/install/delete/spend/credentials): only the owner answers it"
     return True, ""
 

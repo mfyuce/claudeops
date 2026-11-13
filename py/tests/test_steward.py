@@ -3194,6 +3194,17 @@ class BrainAuthorityAndDeferTest(unittest.TestCase):
             self.assertNotIn("commit, push, merge, deploy", txt.lower().replace("commit/push/merge/deploy", "commit, push, merge, deploy"))
             self.assertNotIn("Commit/push/merge/deploy", txt)
 
+    def test_readonly_job_request_not_owner_only(self):
+        # ysf 12 Kas: salt okunur SELECT açıklamasındaki "silinerek" sahibe yanlış yükseltme yapıyordu
+        txt = sw.JOB_REQUEST_PREFIX + "sql_readonly data/q.sql ünlü işaretleri SQL'de silinerek aranır"
+        q = sw.Question(id="q4", project="ysf", text=txt, created_at=0.0, routine=True)
+        self.assertEqual(sw.brain_may_answer(q), (True, ""))
+        for kind in ("import_script", "embed"):     # yazan türler eski kapıda kalır
+            q = sw.Question(id="q5", project="ysf", text=sw.JOB_REQUEST_PREFIX + kind + " x.py eski kayıtları sil", created_at=0.0, routine=True)
+            self.assertFalse(sw.brain_may_answer(q)[0], kind)
+        q = sw.Question(id="q6", project="ysf", text="sql_readonly ile tabloyu sileyim mi?", created_at=0.0, routine=True)
+        self.assertFalse(sw.brain_may_answer(q)[0])
+
     def test_plain_routine_is_answerable(self):
         q = sw.Question(id="q3", project="cli", text="Hangi modelle, sırayla mı ayrı ajanla mı?", created_at=0.0, routine=True)
         self.assertEqual(sw.brain_may_answer(q), (True, ""))
