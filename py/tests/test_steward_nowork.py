@@ -67,7 +67,8 @@ class Check(unittest.TestCase):
 
     def test_open_todo_means_work_unless_session_says_none(self):
         self.assertFalse(self.res(v=view(txt="Devam ediyorum."), open_work=lambda _p: 3)["close"])      # TODO açık, oturum "yok" demedi
-        self.assertTrue(self.res(open_work=lambda _p: 3)["close"])                                       # next_none: TODO açık olsa da (triage ayrı yol)
+        self.assertFalse(self.res(open_work=lambda _p: 3)["close"])                                      # TBD#185: sahipsiz açık TODO varsa 'yok' dese de kapatma
+        self.assertTrue(self.res(open_work=lambda _p: 0)["close"])
 
 
 class Plan(unittest.TestCase):

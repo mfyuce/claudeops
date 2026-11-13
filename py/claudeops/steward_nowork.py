@@ -31,7 +31,8 @@ def check_session(v: Any, proj: Any, state: Dict[str, Any], cfg: sw.Config, now:
         n_open = 0
     note_hint = sw.next_work_hint(proj, None, real_only=True) if proj is not None else ""
     none_stated = sw.next_none_stated(txt)
-    no_work = (not sn) and ((n_open <= 0 and not note_hint) or none_stated)
+    # sahip 14 Kas (TBD#185): TODO'da sahipsiz açık madde varsa oturum 'yok' dese de kapatma, triage'a bırak
+    no_work = (not sn) and n_open <= 0 and (not note_hint or none_stated)
     since = float(getattr(v, "last_activity", 0) or 0)
     idle_min = (now - since) / 60.0 if since > 0 else 0.0
     min_idle = float(getattr(cfg, "no_work_close_minutes", 30) or 30)
