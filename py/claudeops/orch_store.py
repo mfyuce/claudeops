@@ -50,7 +50,7 @@ def _run_path(run_id: str) -> Optional[str]:
     # Path-traversal koruması — `run_id` her zaman `_new_run_id()`'den gelir
     # ama HTTP katmanından (query param) da okunuyor, kullanıcı girdisi kadar
     # dikkatli davran (`files.py`'nin `_resolve_within_roots`'uyla AYNI ilke).
-    if not run_id or "/" in run_id or "\\" in run_id or ".." in run_id:
+    if not run_id or "/" in run_id or "\\" in run_id or ".." in run_id or "\0" in run_id:
         return None
     return os.path.join(RUNS_DIR, f"{run_id}.json")
 
@@ -61,9 +61,10 @@ def save_run(run: Any) -> None:
     geliyor). `dataclasses.asdict` iç içe dataclass'ları (Participant/
     RunResult/Outcome, listelerin İÇİNDEKİLER dahil) otomatik dict'e çevirir."""
     data = dataclasses.asdict(run) if dataclasses.is_dataclass(run) else run
-    path = _run_path(data["id"])
+    rid = data.get("id") if isinstance(data, dict) else None
+    path = _run_path(rid) if isinstance(rid, str) else None
     if path is None:
-        raise ValueError(f"invalid run id: {data.get('id')!r}")
+        raise ValueError(f"invalid run id: {rid!r}")      # eksik/yanlış tipli id: KeyError/TypeError değil (review 2 Kas)
     _atomic_write_json(path, data)
 
 
