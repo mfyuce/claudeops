@@ -20,6 +20,7 @@ import os
 import stat
 import shutil
 import threading
+import uuid
 from typing import List, Optional, Tuple
 
 from .providers import get_provider
@@ -174,6 +175,12 @@ def resolve_upload_target(s: Session, dir_path: Optional[str], filename: str,
     return dest, None
 
 
+def _tmp_name(dest: str, kind: str) -> str:
+    """Hedefle AYNI dizinde, hedef adını İÇERMEYEN kısa geçici ad (NAME_MAX: 255 baytlık hedef adına ek soneki sığmazdı,
+    ENAMETOOLONG; review cliops 2 Kas). Rastgele ek: eski yarım kalmış tmp (pid/thread yeniden kullanımı) O_EXCL'i bozmaz."""
+    return os.path.join(os.path.dirname(dest), f".claudeops-{kind}-{os.getpid()}-{threading.get_ident()}-{uuid.uuid4().hex[:8]}.tmp")
+
+
 def _fsync_dir(path: str) -> None:
     """rename/link'in kendisi de kalıcı olsun (güç kesilirse dizin girdisi kaybolmasın); başarısızlık önemsiz."""
     try:
@@ -194,7 +201,7 @@ def write_upload(dest: str, rfile, length: int, chunk_size: int, overwrite: bool
     `os.replace` symlink'i izlemez (hedef symlink ise bağın kendisi değişir, kök dışına yazılmaz).
     `overwrite=False`: hedef `os.link` ile ATOMİK oluşturulur; arada biri aynı adla dosya yazdıysa ezmez, `exists` döner
     (`resolve_upload_target`in varlık denetimi ile yazım arası yarış, review 2026-11-04 E13)."""
-    tmp = os.path.join(os.path.dirname(dest), f".{os.path.basename(dest)}.upload-{os.getpid()}-{threading.get_ident()}")
+    tmp = _tmp_name(dest, "upload")
     try:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
         with os.fdopen(fd, "wb") as f:
@@ -393,7 +400,7 @@ def write_text(s: Session, path: str, content: str) -> dict:
         return {"ok": False, "error": "not_found"}
     if len(content.encode("utf-8")) > MAX_VIEW_BYTES:
         return {"ok": False, "error": "too_large"}
-    tmp = f"{real}.{os.getpid()}-{threading.get_ident()}.tmp"
+    tmp = _tmp_name(real, "save")
     try:
         mode = stat.S_IMODE(os.stat(real).st_mode)      # os.replace izinleri KAYNAKTAN alır: 0600/+x korunsun
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
