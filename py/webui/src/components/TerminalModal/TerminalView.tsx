@@ -175,6 +175,11 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   const historyWarnAt = data?.settings.history_warn_at ?? 1900;
   const [modeBusy, setModeBusy] = useState(false);
   const [modeMsg, setModeMsg] = useState("");
+  // Typed-text send: the box is cleared only after the server said ok:true; a failed send puts the text back
+  // (remote hops can answer ok:false "unreachable" / session gone) and shows a short line. `sendBusy` blocks
+  // double submits (no retry here: terminal input is not idempotent, a retry would type it twice).
+  const [sendBusy, setSendBusy] = useState(false);
+  const [sendErr, setSendErr] = useState("");
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const instRef = useRef<XtermInstance | null>(null);
@@ -861,19 +866,40 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
     }
   }
 
+  function reportSendFailure(detail: string) {
+    setSendErr(detail ? `${t.termSendFailed}: ${detail}` : t.termSendFailed);
+  }
+
   function handleSendKey(key: string) {
-    // Original sendTermKey() has no error handling at all (fire-and-forget,
-    // inline onclick, not awaited) — .catch(()=>{}) here avoids a genuine
-    // unhandled-promise-rejection but is otherwise the same silent-on-
-    // failure behavior from the user's point of view.
-    void apiTermKey({ name, host, key, lang }).catch(() => {});
+    setSendErr("");
+    apiTermKey({ name, host, key, lang })
+      .then((res) => {
+        if (!res.ok) reportSendFailure(res.error);
+      })
+      .catch((e) => reportSendFailure(describeApiError(e, t)));
   }
 
   function handleSend() {
-    if (!inputText) return;
+    if (!inputText || sendBusy) return;
     const text = inputText;
-    setInputText("");
-    void apiTermInput({ name, host, text, lang }).catch(() => {});
+    setSendBusy(true);
+    setSendErr("");
+    // Put the text back only if the user has not typed something new meanwhile.
+    const restore = () => setInputText((cur) => (cur ? `${text}\n${cur}` : text));
+    apiTermInput({ name, host, text, lang })
+      .then((res) => {
+        if (res.ok) {
+          setInputText((cur) => (cur === text ? "" : cur));
+        } else {
+          restore();
+          reportSendFailure(res.error);
+        }
+      })
+      .catch((e) => {
+        restore();
+        reportSendFailure(describeApiError(e, t));
+      })
+      .finally(() => setSendBusy(false));
   }
 
   // (host, name) is the identity everywhere — never a bare name (two hosts can
@@ -909,7 +935,12 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // typing it by hand. Nothing destructive either way.
   function handleSetModel(model: string) {
     if (!model) return;
-    void apiTermInput({ name, host, text: `/model ${model}`, lang }).catch(() => {});
+    setSendErr("");
+    apiTermInput({ name, host, text: `/model ${model}`, lang })
+      .then((res) => {
+        if (!res.ok) reportSendFailure(res.error);
+      })
+      .catch((e) => reportSendFailure(describeApiError(e, t)));
   }
 
   async function handleCheckContext() {
@@ -1164,10 +1195,15 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
                 }}
               />
             )}
-            <button type="button" className="go" onClick={handleSend}>
+            <button type="button" className="go" onClick={handleSend} disabled={sendBusy}>
               {t.termSend}
             </button>
           </div>
+          {sendErr && (
+            <div className="opts-hint" role="alert">
+              {sendErr}
+            </div>
+          )}
         </div>
       </div>
       <div hidden={infoHidden} style={{ width: "100%" }}>

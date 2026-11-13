@@ -161,6 +161,7 @@ export interface Strings {
   termMaskedPlaceholder: string;
   termMaskedHint: string;
   termSend: string;
+  termSendFailed: string;
   termLiveLabel: string;
   termLiveHint: string;
   termLiveOn: string;
@@ -990,6 +991,7 @@ export const STRINGS: Record<Lang, Strings> = {
     termMaskedPlaceholder: "gizli girdi (parola?)…",
     termMaskedHint: "🔒 bu pane şu an gizli bir girdi bekliyor (ör. parola) — yazdığınız burada gizlenir",
     termSend: "gönder",
+    termSendFailed: "Gönderilemedi, metin kutuya geri konuldu",
     termLiveLabel: "canlı yazma",
     termLiveHint: "açıkken siyah terminal alanına tıklayıp doğrudan yazabilirsiniz — her tuş (ok tuşları, ctrl-c, Enter dahil) anında CLI'a gider, alttaki kutuya gerek kalmaz. Kapalıyken terminal salt-okunur bir aynadır. Tercih bu tarayıcıda hatırlanır.",
     termLiveOn: "⌨ canlı yazma açık — terminale tıklayıp yazın; tuşlar doğrudan CLI'a gider (yazdıklarınız ~200ms'lik ekran yenilemesinde görünür)",
@@ -1926,6 +1928,7 @@ export const STRINGS: Record<Lang, Strings> = {
     termMaskedPlaceholder: "hidden input (password?)…",
     termMaskedHint: "🔒 this pane is currently waiting for hidden input (e.g. a password) — what you type here is masked",
     termSend: "send",
+    termSendFailed: "Not sent, your text was put back in the box",
     termLiveLabel: "live typing",
     termLiveHint: "when on, click the black terminal area and type straight into it — every key (arrows, ctrl-c, Enter included) goes to the CLI immediately, no need for the box below. When off, the terminal is a read-only mirror. The choice is remembered in this browser.",
     termLiveOn: "⌨ live typing on — click the terminal and type; keys go straight to the CLI (what you type shows up on the next ~200ms screen refresh)",
