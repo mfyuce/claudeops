@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 PROJECTS_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
@@ -306,12 +307,302 @@ def register(sub):
     p.add_argument("--apply", action="store_true", help="gerçekten yaz/commit/push (yoksa yalnız plan)")
     p.add_argument("--dry-run", action="store_true", help="varsayılan; plan tablosu (--apply ile birlikte verilirse --apply kazanmaz)")
     p.add_argument("--only", default="", metavar="AD,AD", help="yalnız bu repo/proje adları")
+    p.add_argument("--legacy-repo", action="store_true", dest="legacy_repo",
+                   help="ESKİ kip: hafızayı projenin ANA reposuna commit'ler (13 Kas kararıyla artık varsayılan DEĞİL, -prv kipi varsayılan)")
     p.set_defaults(func=run)
 
 
 def run(args) -> int:
     apply = bool(getattr(args, "apply", False)) and not getattr(args, "dry_run", False)
     only = [x.strip() for x in (getattr(args, "only", "") or "").split(",") if x.strip()]
-    ents, failed = run_backup(PROJECTS_ROOT, apply, only)
-    print(render(ents, apply))
+    if getattr(args, "legacy_repo", False):
+        ents, failed = run_backup(PROJECTS_ROOT, apply, only)
+        print(render(ents, apply))
+        return 1 if failed else 0
+    ents, failed = run_prv(PROJECTS_ROOT, apply, only)
+    print(render_prv(ents, apply))
     return 1 if failed else 0
+
+
+# ───────────────────────── -prv kipi (13 Kas 2026, sahip kararı: HAFIZA -> -prv GENEL KURALI) ─────────────────────────
+# Kayıtlı (roster) HER projenin Claude hafızası, repo public/private fark etmeksizin KİŞİSEL private `<ad>-prv` reposuna gider
+# (claudeops düzeni: `~/.<ad>-docs.git` + paylaşımlı work-tree = proje dizini, yalnız açık yolla add, iki remote). Ana repoya
+# GİRMEZ (`.git/info/exclude` `/memory/`); eski araç ana repoya commit'lediyse `git rm --cached` (geçmiş kalır). Şirket remote'lu
+# projelerde şirket reposuna ASLA yazılmaz (yalnız kişisel -prv). `-prv` yoksa oluşturulur (private, GitHub+GitLab).
+OWNER = "mfyuce"
+ROSTER_TSV = os.path.join(os.path.expanduser("~"), ".claude", "claudeops", "roster.tsv")
+CREATED_LOG = os.path.join(os.path.expanduser("~"), ".claude", "claudeops", "memory-prv-created.log")
+PRV_README = """# Claude hafıza yedeği ({name})
+
+Bu dizin Claude'un bu projeye ait hafıza dosyalarının (`*.md`) YEDEĞİDİR; `py/cops memory-backup --apply` yazar.
+Asıl yol (kaynak): `{src}`
+
+Geri yükleme: `mkdir -p "{src}" && cp memory/*.md "{src}/"` (README.md hariç). Sır içermez (yedekleme öncesi taranır).
+"""
+
+
+def roster_cwds(path: Optional[str] = None) -> Dict[str, str]:
+    """roster.tsv: realpath(cwd) -> ad. Bozuk/eksik dosya = boş."""
+    res: Dict[str, str] = {}
+    try:
+        with open(path or ROSTER_TSV, encoding="utf-8") as f:
+            for ln in f:
+                if ln.startswith("#") or not ln.strip():
+                    continue
+                parts = ln.rstrip("\n").split("\t")
+                if len(parts) >= 2 and parts[1].strip():
+                    res[os.path.realpath(os.path.expanduser(parts[1].strip()))] = parts[0].strip()
+    except OSError:
+        pass
+    return res
+
+
+GITLAB_ONLY = {"iggy"}      # sahip kuralı (hafıza feedback-prv-repos-push-free): iggy -prv YALNIZ GitLab, GitHub'a asla
+
+
+def slug(name: str) -> str:
+    """Repo/gitdir adı için güvenli ad: boşluk ve alışılmadık karakterler `-`."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "proje"
+
+
+def targets_for(name: str) -> Tuple[str, ...]:
+    return ("gitlab",) if name in GITLAB_ONLY else ("origin", "gitlab")
+
+
+def gitdir_of(name: str) -> str:
+    return os.path.join(os.path.expanduser("~"), f".{name}-docs.git")
+
+
+def _g(gitdir: str, *args: str, cwd: Optional[str] = None, timeout: int = 120) -> Tuple[int, str]:
+    return _run(["git", f"--git-dir={gitdir}", *args], cwd=cwd, timeout=timeout)
+
+
+def _remote_repo_exists(kind: str, name: str) -> Optional[bool]:
+    """True/False; sorgu başarısızsa None (belirsiz: oluşturma denemez, rapor edilir)."""
+    if kind == "github":
+        rc, out = _run(["gh", "repo", "view", f"{OWNER}/{name}", "--json", "name"])
+    else:
+        rc, out = _run(["glab", "repo", "view", f"{OWNER}/{name}", "-F", "json"])
+    if rc == 0 and out.strip():
+        return True
+    rc2, out2 = _run(["gh", "api", "user", "-q", ".login"]) if kind == "github" else _run(["glab", "api", "user"])
+    return False if rc2 == 0 and out2.strip() else None
+
+
+def plan_prv(memdir: str, roster: Dict[str, str]) -> Dict[str, Any]:
+    """Salt-okunur planlama. `status`: ok | skip | remote; `actions`: yapılacaklar (sıralı, insan okunur)."""
+    projdir = os.path.dirname(memdir)
+    ent: Dict[str, Any] = {"proj": os.path.basename(projdir), "memdir": memdir, "status": "skip", "reason": "", "actions": []}
+    cwd = read_cwd(projdir)
+    if not cwd:
+        ent["reason"] = "cwd bulunamadı"
+        return ent
+    ent["cwd"] = cwd
+    rcwd = os.path.realpath(cwd)
+    if rcwd not in roster:
+        ent["reason"] = "roster dışı"
+        return ent
+    ent["roster_name"] = roster[rcwd]
+    if not os.path.isdir(cwd):
+        ent["status"], ent["reason"] = "remote", "uzak proje (dizin bu makinede yok): hafıza oradaki ~/.claude/projects altında"
+        return ent
+    texts, _ = changed_files(memdir, os.path.join(cwd, "memory"))
+    if not texts:
+        ent["reason"] = "kaynak boş"
+        return ent
+    hits = scan_secrets(texts)
+    if hits:
+        ent["reason"] = "sır taraması: " + "; ".join(hits) + " (sahibe bildir)"
+        return ent
+    name = slug(os.path.basename(rcwd))
+    rc, top = _run(["git", "rev-parse", "--show-toplevel"], cwd=cwd)
+    has_repo = rc == 0 and bool(top.strip())
+    if has_repo and os.path.realpath(top.strip()) != rcwd:
+        ent["reason"] = "cwd repo kökü değil (üst repo var): sahibe bildir"
+        return ent
+    ent.update(name=name, repo=rcwd, has_repo=has_repo, prv=f"{name}-prv", gitdir=gitdir_of(name), targets=targets_for(name))
+    acts: List[str] = []
+    company = False
+    if has_repo:
+        rems = remotes_of(rcwd)
+        ent["remotes"] = rems
+        company = any(parse_remote(u) is None for u in rems.values())
+        ent["company"] = company
+        exc = os.path.join(rcwd, ".git", "info", "exclude")
+        try:
+            excluded = any(ln.strip() in ("/memory/", "/memory", "memory/") for ln in open(exc, encoding="utf-8"))
+        except OSError:
+            excluded = False
+        if not excluded:
+            acts.append("exclude /memory/")
+        rc, tracked = _run(["git", "ls-files", "--", "memory"], cwd=rcwd)
+        ent["tracked"] = [x for x in tracked.splitlines() if x] if rc == 0 else []
+        if ent["tracked"]:
+            acts.append(f"git rm --cached memory ({len(ent['tracked'])} dosya; geçmiş kalır" + (", ŞİRKET repo: itme YOK" if company else ", push") + ")")
+    gd = ent["gitdir"]
+    if os.path.isdir(gd):
+        rc, wt = _g(gd, "config", "core.worktree")
+        if rc != 0 or os.path.realpath(wt.strip()) != rcwd:
+            ent["reason"] = f"{gd} başka bir work-tree'ye bağlı: sahibe bildir"
+            return ent
+        rc, rem = _g(gd, "remote")
+        if not set(ent["targets"]) <= set(rem.split()):
+            ent["reason"] = f"{gd} gerekli remote'lara ({'+'.join(ent['targets'])}) sahip değil: sahibe bildir"
+            return ent
+        ent["prv_state"] = "var"
+    else:
+        ent["prv_state"] = "yeni"
+        acts.append(f"gitdir {gd}")
+        for kind in [k for k in ("github", "gitlab") if not (k == "github" and "origin" not in ent["targets"])]:
+            ex = _remote_repo_exists(kind, ent["prv"])
+            if ex is None:
+                ent["reason"] = f"{kind} oturumu/durumu doğrulanamadı (oluşturma denenmez)"
+                return ent
+            acts.append(f"{kind} {OWNER}/{ent['prv']} " + ("mevcut: remote ekle" if ex else "OLUŞTUR (private)"))
+            ent.setdefault("creates", []).append((kind, ent["prv"], ex))
+    dest = os.path.join(rcwd, "memory")
+    _, changed = changed_files(memdir, dest)
+    ent["changed"] = changed
+    ent["readme_changed"] = not os.path.isfile(os.path.join(dest, "README.md"))
+    if changed or ent["readme_changed"]:
+        acts.append(f"{len(changed)} dosya" + (" + README" if ent["readme_changed"] else "") + " -> commit + push (iki remote)")
+    ent["actions"] = acts
+    ent["status"] = "ok"
+    return ent
+
+
+def apply_prv(ent: Dict[str, Any]) -> str:
+    """Planı uygular. Sonuç metni; hata `HATA:` ile başlar. Yalnız açık yollar `add` edilir (asla -A)."""
+    repo, gd, name = ent["repo"], ent["gitdir"], ent["name"]
+    msgs: List[str] = []
+    if ent.get("has_repo"):
+        exc_dir = os.path.join(repo, ".git", "info")
+        if "exclude /memory/" in ent["actions"]:
+            os.makedirs(exc_dir, exist_ok=True)
+            with open(os.path.join(exc_dir, "exclude"), "a", encoding="utf-8") as f:
+                f.write("\n/memory/\n")
+        if ent.get("tracked"):
+            rc, staged = _run(["git", "diff", "--cached", "--name-only"], cwd=repo)
+            if rc != 0 or staged.strip():       # başkasının hazırladığı değişiklik bu commit'e karışmasın
+                return "HATA: ana repoda hazırlanmış (staged) değişiklik var, untrack yapılmadı (sahibe bildir)"
+            rc, _ = _run(["git", "rm", "-r", "--cached", "-q", "--", "memory"], cwd=repo)
+            if rc != 0:
+                return "HATA: git rm --cached"
+            rc, _ = _run(["git", "commit", "-m", "chore: Claude hafızası artık -prv reposunda (git rm --cached; geçmiş kalır)"], cwd=repo)
+            if rc != 0:
+                return "HATA: untrack commit"
+            if not ent.get("company"):
+                rc, br = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo)
+                for rn in ent.get("remotes", {}):
+                    _run(["git", "push", rn, f"HEAD:refs/heads/{br.strip()}"], cwd=repo, timeout=120)
+            else:
+                msgs.append("şirket repo: untrack commit YEREL, itilmedi (sahibe bildir)")
+    if ent["prv_state"] == "yeni":
+        for kind, rname, exists in ent.get("creates", []):
+            if not exists:
+                argv = (["gh", "repo", "create", f"{OWNER}/{rname}", "--private"] if kind == "github"
+                        else ["glab", "repo", "create", rname, "--private"])
+                rc, _ = _run(argv, timeout=120)
+                if rc != 0:
+                    return f"HATA: {kind} repo oluşturulamadı"
+                try:
+                    os.makedirs(os.path.dirname(CREATED_LOG), exist_ok=True)
+                    with open(CREATED_LOG, "a", encoding="utf-8") as f:
+                        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {kind} {OWNER}/{rname}\n")
+                except OSError:
+                    pass
+        rc, _ = _run(["git", "init", "-q", "--bare", "-b", "main", gd])
+        if rc != 0:
+            return "HATA: git init"
+        _g(gd, "config", "core.bare", "false")
+        _g(gd, "config", "core.worktree", repo)
+        _g(gd, "config", "status.showUntrackedFiles", "no")
+        if "origin" in ent["targets"]:
+            _g(gd, "remote", "add", "origin", f"git@github.com:{OWNER}/{ent['prv']}.git")
+        _g(gd, "remote", "add", "gitlab", f"git@gitlab.com:{OWNER}/{ent['prv']}.git")
+        first = ent["targets"][0]
+        rc, _ = _g(gd, "fetch", "-q", first, "main", cwd=repo, timeout=120)
+        if rc == 0:         # repo zaten vardı ve main'i var: geçmişini koru (mixed reset: çalışma ağacına dokunmaz)
+            _g(gd, "reset", "-q", f"{first}/main", cwd=repo)
+    dest = os.path.join(repo, "memory")
+    os.makedirs(dest, exist_ok=True)
+    files = list(ent.get("changed") or [])
+    for f in files:
+        shutil.copyfile(os.path.join(ent["memdir"], f), os.path.join(dest, f))
+    paths = [f"memory/{f}" for f in files]
+    if ent.get("readme_changed"):
+        with open(os.path.join(dest, "README.md"), "w", encoding="utf-8") as fh:
+            fh.write(PRV_README.format(name=name, src=ent["memdir"]))
+        paths.append("memory/README.md")
+    if not paths:
+        return "değişiklik yok" + ("; " + "; ".join(msgs) if msgs else "")
+    env_cwd = repo
+    rc, _ = _g(gd, "add", "--", *paths, cwd=env_cwd)
+    if rc != 0:
+        return "HATA: git add"
+    rc, _ = _g(gd, "commit", "-m", "chore(memory): Claude hafıza yedeği", "--", *paths, cwd=env_cwd)
+    if rc != 0:
+        return "HATA: git commit"
+    rc, head = _g(gd, "rev-parse", "HEAD", cwd=env_cwd)
+    head = head.strip()
+    bad = []
+    for rn in ent["targets"]:
+        rc, _ = _g(gd, "push", rn, "HEAD:refs/heads/main", cwd=env_cwd, timeout=180)
+        if rc != 0:
+            bad.append(f"{rn}: push")
+            continue
+        rc, out = _g(gd, "ls-remote", rn, "refs/heads/main", cwd=env_cwd, timeout=60)
+        if rc != 0 or not out.split() or out.split()[0] != head:
+            bad.append(f"{rn}: ls-remote uyuşmadı")
+    if bad:
+        return "HATA: " + ", ".join(bad)
+    return f"yedeklendi ({len(paths)} dosya, {len(ent['targets'])} remote doğrulandı)" + ("; " + "; ".join(msgs) if msgs else "")
+
+
+def run_prv(root: str, apply: bool, only: List[str], roster: Optional[Dict[str, str]] = None) -> Tuple[List[Dict[str, Any]], int]:
+    roster = roster_cwds() if roster is None else roster
+    ents: List[Dict[str, Any]] = []
+    try:
+        names = sorted(os.listdir(root))
+    except OSError:
+        names = []
+    seen: set = set()
+    names_seen: Dict[str, str] = {}
+    for n in names:
+        memdir = os.path.join(root, n, "memory")
+        if not os.path.isdir(memdir):
+            continue
+        ent = plan_prv(memdir, roster)
+        if ent.get("repo") in seen:         # aynı cwd'ye giden birden çok proje dizini: ilki
+            continue
+        if ent["status"] == "ok" and ent["name"] in names_seen:
+            ent["status"], ent["reason"], ent["actions"] = "skip", f"ad çakışması: '{ent['name']}' başka bir projede de var ({names_seen[ent['name']]}); sahibe bildir", []
+        elif ent["status"] == "ok":
+            names_seen[ent["name"]] = ent["repo"]
+        if only and not ({ent.get("name", ""), ent["proj"], ent.get("roster_name", "")} & set(only)):
+            continue
+        if ent.get("repo"):
+            seen.add(ent["repo"])
+        if apply and ent["status"] == "ok":
+            ent["result"] = apply_prv(ent)
+        ents.append(ent)
+    failed = sum(1 for e in ents if str(e.get("result", "")).startswith("HATA"))
+    return ents, failed
+
+
+def render_prv(ents: List[Dict[str, Any]], apply: bool) -> str:
+    out = [f"memory-backup -prv kipi ({'APPLY' if apply else 'DRY-RUN: hiçbir şey yazılmadı, hiçbir repo oluşturulmadı'})", ""]
+    ok = [e for e in ents if e["status"] == "ok"]
+    out.append(f"{'PROJE':28s} {'PRV':10s} {'REMOTE':8s} PLAN")
+    for e in ok:
+        plan = e.get("result") or ("; ".join(e["actions"]) or "değişiklik yok")
+        out.append(f"{e['name']:28s} {e['prv_state']:10s} {'ŞİRKET' if e.get('company') else 'kişisel':8s} {plan}")
+    rest = [e for e in ents if e["status"] != "ok"]
+    if rest:
+        out += ["", "ATLANAN / BİLDİRİLECEK:"]
+        for e in rest:
+            out.append(f"  {(e.get('roster_name') or e['proj'])[:60]:60s} {e['reason']}")
+    created = [(k, n) for e in ok for (k, n, ex) in e.get("creates", []) if not ex]
+    if created:
+        out += ["", f"OLUŞTURULACAK repo sayısı: {len(created)} (" + ", ".join(sorted({n for _, n in created})) + ")"]
+    return "\n".join(out)

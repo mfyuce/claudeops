@@ -776,7 +776,29 @@ class Job:
         self.name, self.defaults, self.runner = name, defaults, runner
 
 
-JOBS: Dict[str, Job] = {"chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, run_chat_backup)}
+DEFAULT_MEMORY_PRV: Dict[str, Any] = {
+    "enabled": "off",            # sahip `--apply` tablosunu onaylayınca "on" (13 Kas: önce dry-run)
+    "schedule": "",
+    "start": "04:10",
+    "interval_hours": 24,
+}
+
+
+def run_memory_prv(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Hafıza -> -prv (`memory_backup.run_prv`). Oluşturulan repolar günlük özette (msg) bildirilir; sır/çakışma gibi atlananlar sayılır."""
+    from .commands import memory_backup as mb
+    ents, failed = mb.run_prv(mb.PROJECTS_ROOT, apply, [])
+    ok = [e for e in ents if e["status"] == "ok"]
+    created = sorted({n for e in ok if apply and str(e.get("result", "")).startswith("yedeklendi") for (_k, n, ex) in e.get("creates", []) if not ex})
+    skipped = [e for e in ents if e["status"] != "ok" and "sahibe bildir" in e.get("reason", "")]
+    secret = [e.get("roster_name") or e["proj"] for e in ents if e.get("reason", "").startswith("sır taraması")]
+    msg = (f"{len(ok)} proje" + (f", {failed} hata" if failed else "") + (f", oluşturulan: {', '.join(created)}" if created else "")
+           + (f", SIR TARAMASINDA TAKILAN: {', '.join(secret)}" if secret else "") + ("" if apply else " (plan)"))
+    return {"ok": failed == 0, "msg": msg, "applied": apply, "created": created, "secret": secret, "skipped": len(skipped)}
+
+
+JOBS: Dict[str, Job] = {"chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, run_chat_backup),
+                        "memory_prv": Job("memory_prv", DEFAULT_MEMORY_PRV, run_memory_prv)}
 _LOCK = threading.Lock()
 
 
