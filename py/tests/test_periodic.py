@@ -42,6 +42,12 @@ class CronTest(unittest.TestCase):
 
 
 class RedactTest(unittest.TestCase):
+    def test_redact_json_password(self):
+        t, n = P.redact('{"password": "hunter2xx", "parola":"gizli123"}')
+        self.assertEqual(n, 2)
+        self.assertNotIn("hunter2xx", t)
+        self.assertNotIn("gizli123", t)
+
     def test_redact(self):
         t, n = P.redact('x sk-ant-api03-ABCDEFGHIJ y ghp_' + "a" * 24 + ' password: hunter2xx ok')
         self.assertEqual(n, 3)

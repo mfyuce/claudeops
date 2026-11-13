@@ -49,7 +49,7 @@ SECRET_RES = [
     re.compile(r"glpat-[A-Za-z0-9_\-]{10,}"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{24,}"),
-    re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)\s*[=:]\s*['\"]?)[^\s'\"<>$*,}\\]{4,}"),
+    re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)['\"]?\s*[=:]\s*['\"]?)[^\s'\"<>$*,}\\]{4,}"),
 ]
 
 DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
