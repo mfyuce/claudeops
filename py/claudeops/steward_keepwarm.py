@@ -70,10 +70,30 @@ def keepwarm_text(proj: Any, v: Any, open_work: Optional[Callable[[str], Optiona
     return sw.one_line(f"devam: {hint}")
 
 
+def has_work(proj: Any, v: Any, open_work: Optional[Callable[[str], Optional[int]]] = None,
+             answer_pending: Optional[Any] = None) -> bool:
+    """Keepwarm YALNIZ iş sürecek oturuma: (a) oturumun son yanıtında gerçek STEWARD-NEXT, (b) cevabı yakında gelecek/iletilecek
+    (`answer_pending`: cevaplanmış ama oturuma iletilmemiş soru), (c) sahipsiz açık TODO maddesi ya da notta `sıradaki: <iş>` VE oturum
+    "sıradaki: yok"/"sahipte" demiyor. no_next_work / next_none / owner_wait'te False. SAF."""
+    txt = getattr(v, "last_assistant", "") or ""
+    if sw.marker_next_work(txt):
+        return True
+    if v.project in set(answer_pending or ()):
+        return True
+    if sw.next_none_stated(txt) or sw.owner_wait(txt):
+        return False
+    if proj is not None and sw.next_work_hint(proj, None, real_only=True):
+        return True
+    try:
+        return bool(open_work is not None and int(open_work(v.project) or 0) > 0)
+    except Exception:
+        return False
+
+
 def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, Any], cfg: sw.Config, now: float,
                   planned: List[sw.Action], world: Optional[sw.World] = None,
                   open_work: Optional[Callable[[str], Optional[int]]] = None,
-                  owner_projects: Optional[Any] = None) -> Tuple[List[sw.Action], Dict[str, Any]]:
+                  owner_projects: Optional[Any] = None, answer_pending: Optional[Any] = None) -> Tuple[List[sw.Action], Dict[str, Any]]:
     """Dürtülecek oturumlar için `keepwarm` eylemleri + güncellenmiş state (`state["keepwarm"][ad] = {at, n}`). `off`/drain: hiçbir
     şey. Aynı boşta dönemi için bir kez (`at` > son etkinlik); dürtmeye rağmen gerçek etkinlik yoksa en çok
     `keepwarm_max_consecutive` ardışık dürtme. `planned` aynı oturuma dokunuyorsa atlanır. SAF."""
@@ -121,6 +141,8 @@ def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, A
                     ho_close[v.name] = v.project
                     ho_pause[v.name] = reason
             continue
+        if not has_work(projects.get(v.project), v, open_work, answer_pending):
+            continue    # işi olmayan oturumun önbelleği SOĞUSUN (sahip 13 Kas: her ping ~100-300K okuma; cevap gelince tek soğuk uyanış daha ucuz)
         rec_all[v.name] = {"at": now, "n": chain + 1}
         out.append(sw.Action("keepwarm", v.name, "keepwarm",
                              {"project": v.project, "age_min": round((now - v.last_activity) / 60, 1),

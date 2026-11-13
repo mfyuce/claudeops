@@ -5170,7 +5170,7 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
     except Exception:
         n_open = 0
     note_hint = next_work_hint(proj, None, real_only=True)
-    if n_open <= 0 and not note_hint:
+    if n_open <= 0 and not note_hint and not marker_next_work(txt):
         return _why("no_next_work", lang)
     tt = dict(state.get("todo_triage") or {}).get(proj.name) or {}
     if tt and (next_none_stated(txt) or owner_wait(txt)):

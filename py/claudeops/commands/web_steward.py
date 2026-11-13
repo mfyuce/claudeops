@@ -4170,7 +4170,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
                 kw_actions, kw_state = skw.plan_keepwarm(views, projects, new_state, cfg, t0, actions, world,
                                                               open_work=_open_work_of(projects),
-                                                              owner_projects={q.project for q in sw.open_questions(paths=paths) if not q.routine})
+                                                              owner_projects={q.project for q in sw.open_questions(paths=paths) if not q.routine},
+                                                              answer_pending={q.project for q in sw.undelivered_answers(paths=paths) if not q.undeliverable})
                 if kw_actions:
                     new_state = kw_state       # keepwarm kaydı (dry'da da): aynı boşta dönemi için tekrar yazılmaz
                     chain_actions = [a for a in kw_actions if a.kind == "idle_close"]      # zincir doldu: devir + kapat + paused

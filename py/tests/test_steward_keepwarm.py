@@ -25,6 +25,24 @@ def cfg(**kw):
     return c
 
 
+WORK = lambda _p: 2      # noqa: E731  sahipsiz açık TODO var: keepwarm yalnız işi olan oturuma (sahip 13 Kas)
+_REAL_PK = skw.plan_keepwarm
+
+
+def _pk_with_work(*a, **k):
+    if k.get("open_work") is None:
+        k["open_work"] = WORK
+    return _REAL_PK(*a, **k)
+
+
+def setUpModule():
+    skw.plan_keepwarm = _pk_with_work      # eski testler "işi olan oturum" varsayar; işsiz durum ayrı testlerde (NoWorkTest)
+
+
+def tearDownModule():
+    skw.plan_keepwarm = _REAL_PK
+
+
 def plan(views, state=None, c=None, projects=PROJ, planned=()):
     return skw.plan_keepwarm(views, projects, state or {}, c or cfg(), NOW, list(planned))
 
@@ -74,8 +92,9 @@ class KeepwarmTest(unittest.TestCase):
         return acts[0].payload["text"]
 
     def test_text_default_when_no_work(self):
-        self.assertEqual(self._text(), skw.KEEPWARM_TEXT)
-        self.assertEqual(self._text(notes="sıradaki: yok"), skw.KEEPWARM_TEXT)
+        for notes in ("", "sıradaki: yok"):
+            pr = sw.Project(name="cli", phase="planned", notes=notes)
+            self.assertEqual(skw.keepwarm_text(pr, view()), skw.KEEPWARM_TEXT)
 
     def test_text_continue_when_work_pending(self):
         t = self._text(notes="x\nsıradaki: testleri\nyaz")
@@ -155,7 +174,36 @@ class ChainCloseTest(unittest.TestCase):
     def test_real_activity_resets_chain_no_close(self):
         acts, _ = skw.plan_keepwarm([ov(last_activity=NOW - 54 * 60)], PROJ, {"keepwarm": {"cli": {"at": NOW - 7200, "n": 3}}},
                                     cfg(keepwarm_chain_close="act"), NOW, [])
-        self.assertEqual([a.kind for a in acts], ["keepwarm"])
+        # ov = sahipte bekleyen oturum: gerçek etkinlik zinciri sıfırladı (kapanış YOK) ve sahip 13 Kas kuralıyla keepwarm da YOK (iş yok)
+        self.assertEqual(acts, [])
+
+
+class NoWorkTest(unittest.TestCase):
+    """Sahip 13 Kas: işi olmayan oturumun önbelleği soğusun; keepwarm yalnız işi olana ya da cevabı gelecek olana."""
+
+    def run_plan(self, last="", open_work=None, notes="", pending=None):
+        pr = {"cli": sw.Project(name="cli", phase="planned", notes=notes)}
+        return _REAL_PK([view(last_assistant=last)], pr, {}, cfg(), NOW, [], open_work=open_work, answer_pending=pending)
+
+    def test_no_work_no_keepwarm(self):
+        self.assertEqual(self.run_plan()[0], [])                                          # TODO'da iş yok, not yok
+        self.assertEqual(self.run_plan(last="Bitti.\nSTEWARD-NEXT: yok", open_work=WORK)[0], [])   # next_none: TODO açık olsa da
+        self.assertEqual(self.run_plan(last="Kalan sahipte, bekliyorum", open_work=WORK)[0], [])     # owner_wait
+        self.assertEqual(self.run_plan(notes="sıradaki: yok")[0], [])
+
+    def test_work_gets_keepwarm(self):
+        self.assertEqual([a.kind for a in self.run_plan(open_work=WORK)[0]], ["keepwarm"])
+        self.assertEqual([a.kind for a in self.run_plan(notes="sıradaki: testleri yaz")[0]], ["keepwarm"])
+        acts, _ = self.run_plan(last="Sahip cevabı bekleniyor.\nSTEWARD-NEXT: ölçüm betiği")
+        self.assertEqual(acts[0].payload["text"], "devam: ölçüm betiği")                  # gerçek NEXT: owner_wait metni olsa da
+
+    def test_answer_pending_keeps_warm(self):
+        self.assertEqual([a.kind for a in self.run_plan(last="Sahipte, bekliyorum", pending={"cli"})[0]], ["keepwarm"])
+        self.assertEqual(self.run_plan(pending={"baska"})[0], [])
+
+    def test_no_work_does_not_burn_chain_counter(self):
+        _, st = self.run_plan()
+        self.assertEqual(st, {})                                                           # kayıt yazılmadı
 
 
 class OwnerWaitTest(unittest.TestCase):
