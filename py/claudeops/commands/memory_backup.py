@@ -122,6 +122,34 @@ def is_private(kind: str, path: str) -> bool:
     return isinstance(v, str) and v.strip().lower() == "private"
 
 
+def visibility_of(kind: str, path: str) -> Optional[str]:
+    """"private" | "public" | None (sorgu başarısız/belirsiz: sahibe bildir)."""
+    if kind == "github":
+        rc, out = _run(["gh", "repo", "view", path, "--json", "visibility"])
+    else:
+        rc, out = _run(["glab", "repo", "view", path, "-F", "json"])
+    if rc != 0:
+        return None
+    try:
+        v = json.loads(out).get("visibility")
+    except (ValueError, AttributeError):
+        return None
+    v = str(v or "").strip().lower()
+    if v == "internal":             # GitLab internal = kuruluş içi, public DEĞİL
+        return "private"
+    return v if v in ("private", "public") else None
+
+
+def public_marks() -> Dict[str, str]:
+    """Ayardan: roster adı -> "on" | özel -prv adı ("ileride public olacak" işareti)."""
+    try:
+        from ..settings import load_settings
+        raw = load_settings().get("memory_prv_public") or {}
+    except Exception:
+        return {}
+    return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+
+
 def scan_secrets(texts: Dict[str, str]) -> List[str]:
     hits = []
     for name, text in sorted(texts.items()):
@@ -307,12 +335,26 @@ def register(sub):
     p.add_argument("--apply", action="store_true", help="gerçekten yaz/commit/push (yoksa yalnız plan)")
     p.add_argument("--dry-run", action="store_true", help="varsayılan; plan tablosu (--apply ile birlikte verilirse --apply kazanmaz)")
     p.add_argument("--only", default="", metavar="AD,AD", help="yalnız bu repo/proje adları")
+    p.add_argument("--mark-public", default="", metavar="AD[=PRV_AD]", dest="mark_public",
+                   help="projeyi 'ileride public olacak' işaretle (hafızası -prv'ye gider); roster adı, isteğe bağlı özel -prv adı")
+    p.add_argument("--unmark-public", default="", metavar="AD", dest="unmark_public", help="işareti kaldır")
     p.add_argument("--legacy-repo", action="store_true", dest="legacy_repo",
                    help="ESKİ kip: hafızayı projenin ANA reposuna commit'ler (13 Kas kararıyla artık varsayılan DEĞİL, -prv kipi varsayılan)")
     p.set_defaults(func=run)
 
 
 def run(args) -> int:
+    mk, um = getattr(args, "mark_public", ""), getattr(args, "unmark_public", "")
+    if mk or um:
+        from ..settings import save_settings
+        if mk:
+            nm, _, prv = mk.partition("=")
+            save_settings({"memory_prv_public": {nm.strip(): (prv.strip() or "on")}})
+            print(f"işaretlendi: {nm.strip()} (public olacak" + (f", -prv adı {prv.strip()}" if prv.strip() else "") + ")")
+        if um:
+            save_settings({"memory_prv_public": {um.strip(): ""}})
+            print(f"işaret kaldırıldı: {um.strip()}")
+        return 0
     apply = bool(getattr(args, "apply", False)) and not getattr(args, "dry_run", False)
     only = [x.strip() for x in (getattr(args, "only", "") or "").split(",") if x.strip()]
     if getattr(args, "legacy_repo", False):
@@ -389,7 +431,7 @@ def _remote_repo_exists(kind: str, name: str) -> Optional[bool]:
     return False if rc2 == 0 and out2.strip() else None
 
 
-def plan_prv(memdir: str, roster: Dict[str, str]) -> Dict[str, Any]:
+def plan_prv(memdir: str, roster: Dict[str, str], marks: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """Salt-okunur planlama. `status`: ok | skip | remote; `actions`: yapılacaklar (sıralı, insan okunur)."""
     projdir = os.path.dirname(memdir)
     ent: Dict[str, Any] = {"proj": os.path.basename(projdir), "memdir": memdir, "status": "skip", "reason": "", "actions": []}
@@ -410,13 +452,41 @@ def plan_prv(memdir: str, roster: Dict[str, str]) -> Dict[str, Any]:
     if not texts:
         ent["reason"] = "kaynak boş"
         return ent
+    rc, top = _run(["git", "rev-parse", "--show-toplevel"], cwd=cwd)
+    has_repo = rc == 0 and bool(top.strip())
+    marks = public_marks() if marks is None else marks
+    mark = marks.get(ent["roster_name"])
+    flagged = mark is not None
+    ent["flagged"] = flagged
+    if not flagged:
+        # Sahip kuralı (13 Kas revizyonu): -prv YALNIZ public repolar ve "public olacak" işaretliler için; private repoda hafıza
+        # o repoda kalabilir, DOKUNULMAZ (ne kopya, ne untrack, ne repo oluşturma).
+        vis: List[str] = []
+        if has_repo:
+            for rn, url in remotes_of(rcwd).items():
+                pr = parse_remote(url)
+                if pr is None:
+                    vis.append("private")           # şirket içi/bilinmeyen host: şirket reposu, hafıza ona yazılmaz, dokunulmaz
+                else:
+                    vis.append(visibility_of(*pr) or "belirsiz")
+        if "belirsiz" in vis:
+            ent["reason"] = "görünürlük doğrulanamadı (gh/glab): sahibe bildir"
+            return ent
+        if "public" not in vis:
+            ent["status"], ent["reason"] = "private", "private/yerel repo: -prv gerekmez, hafıza repoda kalır (dokunulmaz)"
+            return ent
+        ent["why"] = "public repo"
+    else:
+        ent["why"] = "public olacak işareti"
     hits = scan_secrets(texts)
     if hits:
         ent["reason"] = "sır taraması: " + "; ".join(hits) + " (sahibe bildir)"
         return ent
     name = slug(os.path.basename(rcwd))
-    rc, top = _run(["git", "rev-parse", "--show-toplevel"], cwd=cwd)
-    has_repo = rc == 0 and bool(top.strip())
+    if flagged and mark not in ("", "on"):
+        name = slug(mark[:-4] if mark.endswith("-prv") else mark)       # özel -prv adı (ad çakışmasını önler, ör. mecdtfl)
+    elif flagged and name in ("v1", "v2"):
+        name = slug(ent["roster_name"])
     if has_repo and os.path.realpath(top.strip()) != rcwd:
         ent["reason"] = "cwd repo kökü değil (üst repo var): sahibe bildir"
         return ent
@@ -559,7 +629,7 @@ def apply_prv(ent: Dict[str, Any]) -> str:
     return f"yedeklendi ({len(paths)} dosya, {len(ent['targets'])} remote doğrulandı)" + ("; " + "; ".join(msgs) if msgs else "")
 
 
-def run_prv(root: str, apply: bool, only: List[str], roster: Optional[Dict[str, str]] = None) -> Tuple[List[Dict[str, Any]], int]:
+def run_prv(root: str, apply: bool, only: List[str], roster: Optional[Dict[str, str]] = None, marks: Optional[Dict[str, str]] = None) -> Tuple[List[Dict[str, Any]], int]:
     roster = roster_cwds() if roster is None else roster
     ents: List[Dict[str, Any]] = []
     try:
@@ -572,7 +642,7 @@ def run_prv(root: str, apply: bool, only: List[str], roster: Optional[Dict[str, 
         memdir = os.path.join(root, n, "memory")
         if not os.path.isdir(memdir):
             continue
-        ent = plan_prv(memdir, roster)
+        ent = plan_prv(memdir, roster, marks)
         if ent.get("repo") in seen:         # aynı cwd'ye giden birden çok proje dizini: ilki
             continue
         if ent["status"] == "ok" and ent["name"] in names_seen:
@@ -593,11 +663,14 @@ def run_prv(root: str, apply: bool, only: List[str], roster: Optional[Dict[str, 
 def render_prv(ents: List[Dict[str, Any]], apply: bool) -> str:
     out = [f"memory-backup -prv kipi ({'APPLY' if apply else 'DRY-RUN: hiçbir şey yazılmadı, hiçbir repo oluşturulmadı'})", ""]
     ok = [e for e in ents if e["status"] == "ok"]
-    out.append(f"{'PROJE':28s} {'PRV':10s} {'REMOTE':8s} PLAN")
+    priv = [e for e in ents if e["status"] == "private"]
+    out.append(f"{'PROJE':28s} {'PRV':10s} {'NEDEN':18s} {'REMOTE':8s} PLAN")
     for e in ok:
         plan = e.get("result") or ("; ".join(e["actions"]) or "değişiklik yok")
-        out.append(f"{e['name']:28s} {e['prv_state']:10s} {'ŞİRKET' if e.get('company') else 'kişisel':8s} {plan}")
-    rest = [e for e in ents if e["status"] != "ok"]
+        out.append(f"{e['name']:28s} {e['prv_state']:10s} {e.get('why',''):18s} {'ŞİRKET' if e.get('company') else 'kişisel':8s} {plan}")
+    if priv:
+        out += ["", f"DOKUNULMAYAN private/yerel repolar ({len(priv)}): " + ", ".join(sorted((e.get('roster_name') or e['proj']) for e in priv))]
+    rest = [e for e in ents if e["status"] not in ("ok", "private")]
     if rest:
         out += ["", "ATLANAN / BİLDİRİLECEK:"]
         for e in rest:

@@ -168,6 +168,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # bayrak geçer; `off` yeni oturumlara bayrağı/token'ı hiç vermez. Okuma: `ucli_agents.enabled()`.
     "ucli_agents_max_cost_usd": "",   # çocuk ajan başına USD tavanı (`--max-cost-usd` + panel sayacı); boş = 2, 0 = tavan yok.
     "ucli_max_session_usd": "",   # ucli OTURUMU başına toplam USD tavanı (`--max-session-usd`; kayıtta `max_session_usd` yoksa bu): boş = 8, 0 = tavan yok (sahip 11 Kas).
+    "memory_prv_public": {},  # {roster_adı: "on" | "<prv_adı>"}: "ileride PUBLIC olacak" işaretli projeler (hafıza -prv'ye gider; 13 Kas sahip kuralı). Varsayılan YOK.
     "steward_quota": {},      # {mode: off|manual|auto, manual_limit, final_limit, poll_minutes, day_mon..day_sun}: TBD#116 kota bekçisi
     "anthropic_api_block_until": "",   # "YYYY-MM-DD": bu tarihe KADAR değnekçi, ucli+Anthropic (service claude / anthropic uç noktası) kayıtlı projeyi
                                        # AÇMAZ (`web_steward._api_blocked`, code `anthropic_api_blocked`). Boş = yasak yok. Sahip kararı 2026-11-05/06.
@@ -310,7 +311,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]

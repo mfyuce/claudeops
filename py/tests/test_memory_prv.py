@@ -79,11 +79,14 @@ class Env(unittest.TestCase):
     def roster(self, *cwds):
         return {os.path.realpath(c): os.path.basename(c) for c in cwds}
 
+    def marks(self, *cwds):
+        return {os.path.basename(c): "on" for c in cwds}
+
 
 class Plan(Env):
     def test_new_project_plans_creation_exclude_and_files(self):
         cwd, _ = self.project("alpha")
-        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(cwd))
+        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(cwd), self.marks(cwd))
         e = ents[0]
         self.assertEqual(e["status"], "ok")
         self.assertEqual(e["prv_state"], "yeni")
@@ -95,17 +98,17 @@ class Plan(Env):
 
     def test_not_in_roster_skipped(self):
         cwd, _ = self.project("beta")
-        ents, _ = mb.run_prv(self.proj_root, False, [], {})
+        ents, _ = mb.run_prv(self.proj_root, False, [], {}, {})
         self.assertEqual(ents[0]["reason"], "roster dışı")
 
     def test_secret_skips_and_reports(self):
         cwd, _ = self.project("gamma", {"x.md": "password=hunter2xx"})
-        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(cwd))
+        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(cwd), self.marks(cwd))
         self.assertIn("sır taraması", ents[0]["reason"])
 
     def test_company_remote_marked_never_pushed_to(self):
         cwd, _ = self.project("corp", remote="git@git.corp.example:team/corp.git")
-        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(cwd))
+        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(cwd), self.marks(cwd))
         self.assertTrue(ents[0]["company"])
         self.assertEqual(ents[0]["status"], "ok")
 
@@ -117,7 +120,7 @@ class Plan(Env):
         pd = os.path.join(self.proj_root, cwd2.replace("/", "-"), "memory")
         os.makedirs(pd); open(os.path.join(pd, "b.md"), "w").write("b")
         open(os.path.join(os.path.dirname(pd), "s.jsonl"), "w").write(json.dumps({"cwd": cwd2}) + "\n")
-        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(a, cwd2))
+        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(a, cwd2), self.marks(a, cwd2))
         st = sorted(e["status"] for e in ents)
         self.assertEqual(st, ["ok", "skip"])
         self.assertIn("ad çakışması", [e for e in ents if e["status"] == "skip"][0]["reason"])
@@ -128,10 +131,70 @@ class Plan(Env):
         self.assertEqual(mb.targets_for("x"), ("origin", "gitlab"))
 
 
+class Visibility(Env):
+    """13 Kas sahip revizyonu: -prv YALNIZ public repo ya da 'public olacak' işaretli proje için; private repoda hafıza kalır, DOKUNULMAZ."""
+
+    def vis_run(self, vis):
+        base = self.fake_run
+
+        def run(argv, cwd=None, timeout=60):
+            if argv[0] == "gh" and argv[1:3] == ["repo", "view"] and "--json" in argv and "visibility" in argv:
+                return (0, json.dumps({"visibility": vis})) if vis else (1, "")
+            return base(argv, cwd, timeout)
+        return mock.patch.object(mb, "_run", run)
+
+    def test_private_remote_untouched_not_flagged(self):
+        cwd, _ = self.project("priv", remote="git@github.com:mfyuce/priv.git", tracked_memory=True)
+        with self.vis_run("PRIVATE"):
+            ents, _ = mb.run_prv(self.proj_root, True, [], self.roster(cwd), {})
+        self.assertEqual(ents[0]["status"], "private")
+        self.assertEqual(self.created, [])
+        self.assertEqual(git("ls-files", "memory", cwd=cwd).strip(), "memory/old.md")        # git rm --cached YAPILMADI
+        self.assertFalse(os.path.exists(mb.gitdir_of("priv")))
+
+    def test_public_remote_gets_prv(self):
+        cwd, _ = self.project("pub", remote="git@github.com:mfyuce/pub.git")
+        with self.vis_run("PUBLIC"):
+            ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd), {})
+        self.assertEqual(failed, 0, ents[0].get("result"))
+        self.assertEqual(ents[0]["why"], "public repo")
+        self.assertEqual(sorted(k for k, _, _ in self.created), ["github", "gitlab"])
+
+    def test_unverifiable_visibility_skips(self):
+        cwd, _ = self.project("unk", remote="git@github.com:mfyuce/unk.git")
+        with self.vis_run(None):
+            ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(cwd), {})
+        self.assertIn("doğrulanamadı", ents[0]["reason"])
+
+    def test_no_remote_and_company_are_private_no_action(self):
+        a, _ = self.project("local_only")
+        b, _ = self.project("corp", remote="git@git.corp.example:t/corp.git")
+        ents, _ = mb.run_prv(self.proj_root, False, [], self.roster(a, b), {})
+        self.assertEqual([e["status"] for e in ents], ["private", "private"])
+
+    def test_flagged_private_repo_gets_prv_with_custom_name(self):
+        cwd, _ = self.project("v1", remote="git@github.com:mfyuce/v1.git")
+        with self.vis_run("PRIVATE"):
+            ents, failed = mb.run_prv(self.proj_root, True, [], {os.path.realpath(cwd): "mecdtfl"}, {"mecdtfl": "mecdtfl-prv"})
+        self.assertEqual(failed, 0, ents[0].get("result"))
+        self.assertEqual(ents[0]["name"], "mecdtfl")
+        self.assertEqual(ents[0]["why"], "public olacak işareti")
+        self.assertEqual(sorted(n for _, n, _ in self.created), ["mecdtfl-prv", "mecdtfl-prv"])
+
+    def test_mark_cli_roundtrip(self):
+        from claudeops import settings
+        saved = {}
+        with mock.patch.object(settings, "save_settings", side_effect=lambda p: saved.update(p)):
+            mb.run(mock.Mock(mark_public="mecdtfl=mecdtfl-prv", unmark_public="", apply=False, dry_run=False, only="", legacy_repo=False))
+            self.assertEqual(saved["memory_prv_public"], {"mecdtfl": "mecdtfl-prv"})
+            mb.run(mock.Mock(mark_public="", unmark_public="mecdtfl", apply=False, dry_run=False, only="", legacy_repo=False))
+            self.assertEqual(saved["memory_prv_public"], {"mecdtfl": ""})
+
+
 class Apply(Env):
     def test_apply_creates_repos_untracks_and_pushes_both(self):
         cwd, _ = self.project("alpha", tracked_memory=True)
-        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd))
+        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd), self.marks(cwd))
         self.assertEqual(failed, 0, ents[0].get("result"))
         self.assertEqual(sorted(self.created), [("github", "alpha-prv", True), ("gitlab", "alpha-prv", True)])
         # ana repo: memory takip dışı + exclude'da; ana repo geçmişine yeni memory dosyası GİRMEDİ
@@ -147,9 +210,9 @@ class Apply(Env):
 
     def test_second_apply_is_noop(self):
         cwd, _ = self.project("alpha")
-        mb.run_prv(self.proj_root, True, [], self.roster(cwd))
+        mb.run_prv(self.proj_root, True, [], self.roster(cwd), self.marks(cwd))
         before = len(self.created)
-        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd))
+        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd), self.marks(cwd))
         self.assertEqual(failed, 0)
         self.assertEqual(len(self.created), before)
         self.assertEqual(ents[0]["prv_state"], "var")
@@ -166,7 +229,7 @@ class Apply(Env):
             subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed"], cwd=seed, check=True)
             git("push", "-q", "origin", "HEAD:main", cwd=seed)
         self.existing = {"mfyuce/delta-prv"}
-        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd))
+        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd), self.marks(cwd))
         self.assertEqual(failed, 0, ents[0].get("result"))
         self.assertEqual(self.created, [])
         files = git("--git-dir", os.path.join(self.remotes, "github", "delta-prv.git"), "ls-tree", "-r", "--name-only", "main").split()
@@ -177,14 +240,14 @@ class Apply(Env):
         corp = os.path.join(self.t, "corp_remote.git")
         subprocess.run(["git", "init", "-q", "--bare", "-b", "main", corp], check=True)
         cwd, _ = self.project("corp", remote="git@git.corp.example:team/corp.git", tracked_memory=True)
-        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd))
+        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd), self.marks(cwd))
         self.assertEqual(failed, 0, ents[0].get("result"))
         self.assertIn("şirket repo", ents[0]["result"])
         self.assertEqual(git("remote", "get-url", "origin", cwd=cwd).strip(), "git@git.corp.example:team/corp.git")
 
     def test_iggy_gitlab_only(self):
         cwd, _ = self.project("iggy")
-        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd))
+        ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd), self.marks(cwd))
         self.assertEqual(failed, 0, ents[0].get("result"))
         self.assertEqual([k for k, _, _ in self.created], ["gitlab"])
         self.assertNotIn("origin", git("--git-dir", mb.gitdir_of("iggy"), "remote").split())
@@ -193,9 +256,9 @@ class Apply(Env):
 class Cli(Env):
     def test_default_is_prv_dry_run(self):
         cwd, _ = self.project("alpha")
-        with mock.patch.object(mb, "PROJECTS_ROOT", self.proj_root), mock.patch.object(mb, "roster_cwds", return_value=self.roster(cwd)), \
+        with mock.patch.object(mb, "PROJECTS_ROOT", self.proj_root), mock.patch.object(mb, "roster_cwds", return_value=self.roster(cwd)), mock.patch.object(mb, "public_marks", return_value=self.marks(cwd)), \
              mock.patch("builtins.print") as pr:
-            rc = mb.run(mock.Mock(apply=False, dry_run=False, only="", legacy_repo=False))
+            rc = mb.run(mock.Mock(apply=False, dry_run=False, only="", legacy_repo=False, mark_public="", unmark_public=""))
         self.assertEqual(rc, 0)
         self.assertIn("-prv kipi", pr.call_args[0][0])
         self.assertEqual(self.created, [])
