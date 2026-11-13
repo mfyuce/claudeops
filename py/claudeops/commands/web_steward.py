@@ -3444,7 +3444,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         ok = _send(s.name, s.cli, action.payload.get("text") or skw.KEEPWARM_TEXT)
         sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n", "text")})
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
-    if k in ("idle_nudge", "owner_todo_move"):   # owner_todo_move: aynı yol, olay adı ayrı (TODO'daki sahibe bağlı maddeleri TOBEDECIDED'a taşıt)
+    if k in ("idle_nudge", "owner_todo_move", "todo_triage"):   # owner_todo_move: aynı yol, olay adı ayrı (TODO'daki sahibe bağlı maddeleri TOBEDECIDED'a taşıt)
         # TBD#156: boşta ucli kodcuya TEK satır "devam: <iş>" (koşullar `plan_ucli_idle`de denetlendi)
         if not host:
             denied = _target(name, "engine", projects, k, sid=cfg.sid, world=world)
@@ -3738,6 +3738,25 @@ def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[i
         r = _scan_todo(projects, proj)
         return None if r is None else r[0]
     return count
+
+
+def _todo_sha_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
+    """Projenin YEREL TODO.md içeriğinin sha256'sı (todo_triage'ın tekrar kapısı); bilinmiyor/uzak/okunamayan = ''."""
+    import hashlib
+
+    def sha(proj: str) -> str:
+        try:
+            p = projects.get(proj)
+            if p is None or p.host:
+                return ""
+            real = _doc_path(_cwd_resolver()(proj), "TODO.md")
+            if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+                return ""
+            with open(real, "rb") as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        except OSError:
+            return ""
+    return sha
 
 
 def _owner_todo_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
@@ -4150,7 +4169,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 else:
                     actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
                 cl_actions, new_state = sw.plan_claude_idle(views, projects, new_state, cfg, t0, actions, world,
-                                                            open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects))
+                                                            open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects),
+                                                            todo_sha=_todo_sha_of(projects))
                 if cfg.claude_idle == "dry":
                     for a in cl_actions:            # YALNIZ ölçüm: oturuma dokunmaz
                         sw.log_event("would:" + a.kind, paths=paths, name=a.name,

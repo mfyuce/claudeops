@@ -125,7 +125,7 @@ MODES = ("observe", "act")
 # observe'da UYGULANMAYAN (yalnız `would:<kind>` olarak kaydedilen) eylemler: canlı oturuma dokunanlar.
 # ask_user / idea / set_phase / kart yenileme observe'da da çalışır (kayıt tutar, oturuma dokunmaz).
 SUBAGENT_QUIET_SECONDS = 90.0    # alt ajan transkripti bu kadar sessizse bitmiş sayılır (cevap iletimi bekletilir)
-OBSERVE_SKIPPED = ("auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm", "idle_nudge", "idle_close", "owner_todo_move")
+OBSERVE_SKIPPED = ("todo_triage", "auto_answer", "handover", "respawn", "start", "stop", "deliver_answer", "deliver_job", "deliver_lesson", "deliver_findings", "tour", "nudge", "keepwarm", "idle_nudge", "idle_close", "owner_todo_move")
 OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu sürede bir kez yazılır
 
 # Oturum yanıtlarında aranan işaretler — protokol/parse sözleşmesi, yerelleştirilmez
@@ -2224,9 +2224,13 @@ _PROTOCOL_TR = (
     "cevaplarım kısadır ('ikisi de', 'sıradan git', 'sen devam') ve KALICI kuraldır; aynı konuyu "
     "yeniden sorma. Cevap yetmiyorsa makul bir varsayılanla ilerle (yalnız teknik konularda), varsayımını TOBEDECIDED.md'ye yaz. "
     "Aşağıdaki 'Önceki cevaplarım' listesi sana verdiğim kararlardır, onlara uy.\n"
-    "Hafıza dosyaları (`memory/`): proje repo'su PUBLIC ise ana repoya GİRMEZ (`.git/info/exclude`'a `memory/` ekle; kalıcı kopya "
-    "projenin `-prv` repo'suna, yalnız AÇIK yolla `git add`, blanket `add -A` yok); private ise yerelde kalır. Hangisi: "
-    "`gh repo view --json visibility` / `glab repo view`. `-prv` yoksa kendin kurma, `" + MARK_ASK + "` ile sor.\n"
+    "TODO/TBD kuralı: sahibin kararı, girdisi, erişimi ya da dış birimden gelecek bir şey BEKLEYEN madde TODO.md'ye YAZILMAZ; TOBEDECIDED.md'ye kısa, "
+    "tek cevapla kapanır soru (seçenekler + öneri) olarak yazılır. TODO.md yalnız sahipsiz, şimdi yapılabilir iştir: 'SAHİPTE', 'sahip bekliyor', "
+    "'DIŞ GİRDİ BEKLİYOR' gibi etiketli TODO maddesi bırakma, görürsen TBD'ye taşı.\n"
+    "Hafıza dosyaları (`memory/`): `-prv` YALNIZ repo PUBLIC ise ya da proje 'ileride public olacak' diye işaretliyse gerekir (o zaman `memory/` ana repoya "
+    "GİRMEZ: `.git/info/exclude`; kopya `-prv`'ye yalnız AÇIK yolla `git add`, `add -A` yok; `-prv`'yi claudeops hafıza aracı kurar, kendin kurma). Repo "
+    "ZATEN PRIVATE ise (şirket remote'u dahil) hafıza o repoda kalabilir, dokunma; şirket reposuna hafıza yazma. Görünürlük: "
+    "`gh repo view --json visibility` / `glab repo view`.\n"
 )
 
 _PROTOCOL_EN = (
@@ -2251,9 +2255,13 @@ _PROTOCOL_EN = (
     "yourself, give a one-sentence reason and proceed. My answers are short ('both', 'go in order', 'you continue') and are STANDING rules; do not re-ask "
     "the same topic. If an answer is not enough, proceed with a sensible default (technical matters only) and record the assumption in "
     "TOBEDECIDED.md. The 'My earlier answers' list below holds decisions I already gave you; follow them.\n"
-    "Memory files (`memory/`): if the project repo is PUBLIC they must NOT enter the main repo (add `memory/` to `.git/info/exclude`; the durable copy goes "
-    "to the project's `-prv` repo, `git add` with EXPLICIT paths only, never `add -A`); if private they stay local. Check with "
-    "`gh repo view --json visibility` / `glab repo view`. If no `-prv` exists do not create it yourself, ask via `" + MARK_ASK + "`.\n"
+    "TODO/TBD rule: an item that WAITS for the owner's decision, input, access or something from an outside party is NOT written to TODO.md; it goes to "
+    "TOBEDECIDED.md as a short question closable with one answer (options + recommendation). TODO.md holds only ownerless work that can be done now: "
+    "do not leave items labelled 'OWNER', 'waiting for owner', 'EXTERNAL INPUT PENDING' in TODO; if you see one, move it to TBD.\n"
+    "Memory files (`memory/`): a `-prv` repo is needed ONLY if the repo is PUBLIC or the project is marked 'will become public' (then `memory/` must NOT enter the main "
+    "repo: `.git/info/exclude`; the copy goes to `-prv` with EXPLICIT `git add` paths, never `add -A`; the claudeops memory tool creates `-prv`, do not create it yourself). "
+    "If the repo is ALREADY PRIVATE (company remotes included) the memory may stay in that repo, leave it alone; never write memory into a company repo. Check with "
+    "`gh repo view --json visibility` / `glab repo view`.\n"
 )
 
 
@@ -2777,6 +2785,9 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
 # TODO satırı sahibin kararını bekliyor (cadence/"açık iş" sayımında iş SAYILMAZ: oturum açmak boşa tur)
 # Sahibe bağlı etiketli TODO satırı (global kural 11 Kas: bunlar TOBEDECIDED'a gider). Şapkalı/şapkasız, büyük/küçük harf.
 OWNER_TODO_LINE_RE = re.compile(r"SAH[iİıI]PTE|\(sahip\)|D[iİıI][şsŞS]\s+G[iİıI]RD[iİıI]|sahip\s+kar[aâ]r[ıiİI]\s+bekl", re.I)
+TODO_TRIAGE_TEXT = ("TODO.md'de açık madde görünüyor ama 'sıradaki: yok' / sahibe bağlı diyorsun. Bir kez ayıkla: sahibin kararı, girdisi ya da erişimi "
+                    "gereken maddeleri TOBEDECIDED.md'ye kısa soru + seçenekler + öneri olarak taşı ve TODO'dan çıkar; sahipsiz iş varsa yap, "
+                    "commit + push et; sonunda kalan sahipsiz madde sayısını yaz, 0 ise 'STEWARD-NEXT: yok'.")
 OWNER_TODO_MOVE_SECONDS = 24 * 3600     # proje başına en çok 1 "TOBEDECIDED'a taşı" mesajı / 24 sa
 OWNER_WAIT_LINE_RE = re.compile(r"SAH[İI]BE SORULDU|sahip(?:in)? (?:karar|cevab)\w* bekl|karar(?:ı)? sahip\w* bekl|STEWARD-ASK|sahibe bırak|"
                                 + OWNER_TODO_LINE_RE.pattern, re.I)
@@ -4843,7 +4854,8 @@ _ASK_MARKERS = ("STEWARD-ASK", "STEWARD-BLOCKED", "STEWARD-ROUTINE", "STEWARD-JO
 def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
                      planned: List[Action], world: Optional[World] = None,
                      open_work: Optional[Callable[[str], Optional[int]]] = None,
-                     owner_todo: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+                     owner_todo: Optional[Callable[[str], Optional[int]]] = None,
+                     todo_sha: Optional[Callable[[str], str]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """`plan_ucli_idle`in Claude Code genellemesi (sahip onayı 7 Kas). SAF. Yönetilen yerel tmux claude oturumu boşta (`busy` False,
     alt ajan yok, son istekten `claude_idle_nudge_secs` geçti), son cevap işin bittiğini/soru sorduğunu söylemiyor ve projenin
     sıradaki işi varsa TEK satır `devam: <iş>` (`idle_nudge`). Kapat/devir/duraklatma YOK. Aynı boşta dönem en çok
@@ -4855,6 +4867,7 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
     rec_all: Dict[str, Any] = dict(state.get("claude_idle") or {})
     otm: Dict[str, Any] = dict(state.get("owner_todo_move") or {})
     next_none: Dict[str, Any] = dict(state.get("next_none") or {})
+    tri: Dict[str, Any] = dict(state.get("todo_triage") or {})
     none_changed = False
     ho_pending = state.get("ho_pending") or {}
     touched = {a.name for a in planned}
@@ -4903,6 +4916,23 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
                 otm[proj.name] = {"at": now, "mode": cfg.claude_idle, "n": n_own}
                 rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": text}
                 continue
+        if todo_sha is not None and (next_none_stated(txt) or owner_wait(txt)):
+            # Uyumsuzluk: TODO'da sahipsiz açık madde var ama oturum "sıradaki: yok"/"sahipte" diyor (sahip 13 Kas: 'TODO beni bekliyorsa TBD'dir').
+            # "devam" yerine BİR kez ayıklama mesajı; proje başına TODO içeriği (sha) değişmeden ikinci kez GİTMEZ (döngü yok), dry/act ayrı sayılır.
+            try:
+                n_open_t = int(open_work(proj.name) or 0) if open_work is not None else 0
+                sha = str(todo_sha(proj.name) or "")
+            except Exception:
+                n_open_t, sha = 0, ""
+            if n_open_t > 0 and sha:
+                prev_t = tri.get(proj.name) or {}
+                if not (prev_t.get("sha") == sha and prev_t.get("mode", "dry") == cfg.claude_idle):
+                    out.append(Action("todo_triage", v.name, f"TODO'da {n_open_t} açık madde, oturum 'yok/sahipte' diyor",
+                                      {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
+                                       "text": TODO_TRIAGE_TEXT, "next": f"todo_open={n_open_t}", "todo_open": n_open_t, "sha": sha[:12], "cli": "claude"}))
+                    tri[proj.name] = {"sha": sha, "at": now, "mode": cfg.claude_idle, "open": n_open_t, "session": v.name}
+                    rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": TODO_TRIAGE_TEXT}
+                continue        # aynı sha: ayıklama zaten yapıldı, "devam" dürtmesi de gitmez
         if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
         # Karar "iş VAR MI"ya dayanır, "iş NE"ye değil (sahip 11 Kas): sahipsiz açık TODO maddesi > 0 (owner_in_todo hariç) ya da notta
@@ -4937,6 +4967,8 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
         return [], state
     st = dict(state)
     st["claude_idle"] = rec_all
+    if tri:
+        st["todo_triage"] = tri
     if otm:
         st["owner_todo_move"] = otm
     if next_none:
@@ -4964,6 +4996,7 @@ _WHY_TR = {
     "idle_dry": "boşta dürtme YALNIZ ölçüyor (claude_idle=dry): gerçek dürtme gitmez", "nudge_exhausted": "dürtme hakkı bitti, oturum yanıt vermedi",
     "no_next_work": "dürtülecek iş yok (TODO'da sahipsiz açık madde yok, notta 'sıradaki:' yok)",
     "next_none": "oturum 'sıradaki: yok' dedi; TODO değişene ya da yeni etkinliğe dek dürtülmüyor", "nudging": "dürtülüyor",
+    "todo_triage": "TODO'da açık madde var ama oturum 'yok/sahipte' diyor: ayıklama mesajı (sahibe bağlıları TBD'ye taşı) gitti, TODO değişene dek tekrar yok",
     "running": "oturum çalışıyor", "observe": "gözlem kipi: eylem uygulanmaz",
     "dialog_stuck": "diyalogda takılı (güven/resume/giriş): mesaj gitmiyor, elle geçilmeli", "send_failed": "art arda gönderim hatası: oturum takılı olabilir",
 }
@@ -4981,6 +5014,7 @@ _WHY_EN = {
     "idle_dry": "idle nudging only MEASURES (claude_idle=dry): nothing is sent", "nudge_exhausted": "nudge budget used up, session did not respond",
     "no_next_work": "nothing to nudge (no ownerless open TODO item, no 'sıradaki:' in notes)",
     "next_none": "session said 'next: none'; no nudge until the TODO changes or new activity", "nudging": "nudging",
+    "todo_triage": "TODO has open items but the session says 'none/owner': a triage message (move owner-bound items to TBD) was sent, no repeat until the TODO changes",
     "running": "session is running", "observe": "observe mode: actions are not applied",
     "dialog_stuck": "stuck at a dialog (trust/resume/login): messages do not arrive, answer it by hand", "send_failed": "repeated send failures: the session may be stuck",
 }
@@ -5097,6 +5131,9 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
     note_hint = next_work_hint(proj, None, real_only=True)
     if n_open <= 0 and not note_hint:
         return _why("no_next_work", lang)
+    tt = dict(state.get("todo_triage") or {}).get(proj.name) or {}
+    if tt and (next_none_stated(txt) or owner_wait(txt)):
+        return _why("todo_triage", lang, f"TODO'da {n_open} açık" if lang != "en" else f"{n_open} open in TODO")
     nn = dict(state.get("next_none") or {}).get(proj.name) or {}
     if next_none_stated(txt) and nn and int(nn.get("open", -1)) == n_open:
         return _why("next_none", lang, f"TODO'da {n_open} açık" if lang != "en" else f"{n_open} open in TODO")
