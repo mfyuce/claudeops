@@ -430,10 +430,8 @@ def _write_mcp_config_file(spec: McpServerSpec) -> str:
     path = _mcp_config_path(spec)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     payload = {"mcpServers": {spec.name: {"command": spec.command, "args": list(spec.args)}}}
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f)
-    os.replace(tmp, path)  # atomik — eşzamanlı bir spawn yarım dosya görmesin
+    from claudeops.atomic_json import atomic_write_json     # benzersiz tmp adı: eşzamanlı spawn'lar aynı .tmp'yi ezmesin
+    atomic_write_json(path, payload)
     return path
 
 
