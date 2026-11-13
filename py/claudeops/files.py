@@ -398,7 +398,11 @@ def write_text(s: Session, path: str, content: str) -> dict:
         return {"ok": False, "error": "forbidden"}
     if not os.path.isfile(real):
         return {"ok": False, "error": "not_found"}
-    if len(content.encode("utf-8")) > MAX_VIEW_BYTES:
+    try:
+        n_bytes = len(content.encode("utf-8"))
+    except UnicodeError as e:      # eşleşmemiş vekil karakter vb.: çökme / çöp tmp yok (review cliops 2 Kas)
+        return {"ok": False, "error": "bad_encoding", "detail": str(e)}
+    if n_bytes > MAX_VIEW_BYTES:
         return {"ok": False, "error": "too_large"}
     tmp = _tmp_name(real, "save")
     try:

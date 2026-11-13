@@ -26,3 +26,16 @@ class LongNames(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BadEncoding(unittest.TestCase):
+    def test_write_text_surrogate_leaves_no_tmp(self):
+        from unittest import mock
+        d = tempfile.mkdtemp()
+        f = os.path.join(d, "a.txt")
+        open(f, "w").write("x")
+        with mock.patch.object(files, "_writable_roots", lambda s: [("project", d)]):
+            r = files.write_text(None, f, "bad \ud800 text")
+        self.assertEqual((r["ok"], r["error"]), (False, "bad_encoding"))
+        self.assertEqual(os.listdir(d), ["a.txt"])
+        self.assertEqual(open(f).read(), "x")
