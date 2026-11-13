@@ -37,6 +37,7 @@ import { ErrorBox } from "./shared/ErrorBox";
 import { StewardJobs } from "./StewardJobs";
 import { StewardDigests } from "./StewardDigests";
 import { StewardQuota } from "./StewardQuota";
+import { StewardUsageMode } from "./StewardUsageMode";
 import { StewardBrainModel } from "./StewardBrainModel";
 import { ReviewPanel } from "./ReviewPanel";
 import { StewardActions } from "./StewardActions";
@@ -565,6 +566,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
 
       <StewardActions sid={sid} projects={(state?.projects || []).map((p) => ({ name: p.name, running: !!p.running }))} />
       <StewardQuota />
+      <StewardUsageMode />
       <StewardDigests sid={sid} refreshKey={key} />
       <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} />
 

@@ -391,6 +391,8 @@ export interface Settings {
   tunnel_watch: string;
   /** "" (unmanaged) | "auto" | "http2" | "quic": cloudflared --protocol; saving writes a systemd drop-in and restarts ONLY the tunnel service (new URL). tunnel_proto.py. */
   tunnel_protocol: string;
+  /** "tek" (default) | "tick": automatic usage reading in the steward tick (`usage_poll.py`, TBD#203). */
+  usage_mode: string;
   /** "on" | "off" (default off): bring our graphical session forward when the Remote Desktop tab opens. `graphical_session.auto_activate_enabled()`. */
   session_auto_activate?: string;
 }

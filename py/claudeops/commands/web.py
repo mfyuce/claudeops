@@ -52,7 +52,7 @@ import psutil
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from .. import dist_check as _dist_check
-from .. import term_dedup, tunnel_proto, ws_ticket
+from .. import term_dedup, tunnel_proto, usage_poll, ws_ticket
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
@@ -1938,6 +1938,8 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
     theme = patch.get("theme")
     if theme is not None and theme not in _VALID_THEMES:
         return _err(lang, "invalid_theme")
+    if "usage_mode" in patch and str(patch.get("usage_mode") or "").strip().lower() not in usage_poll.MODES:
+        return {"ok": False, "error": "usage_mode must be tek or tick"}
     if "tunnel_protocol" in patch and str(patch.get("tunnel_protocol") or "").strip().lower() not in tunnel_proto.VALID:
         return _err(lang, "invalid_tunnel_protocol")
     new = save_settings(patch)
@@ -3295,7 +3297,7 @@ def _usage_fresh(provider) -> Optional[dict]:
     return {"available": True, "checked_via": "fresh", "entries": entries}
 
 
-def _usage_all() -> dict:
+def _usage_all(only: Optional[set] = None) -> dict:
     """Ayarlar>Kullanım sekmesi için — HER provider'ı sırayla kontrol eder.
 
     Kapsam bilerek "hesap" seviyesinde: session-BAZLI bir aksiyon değil (bir
@@ -3315,6 +3317,8 @@ def _usage_all() -> dict:
     running = find_sessions(measure_cpu=False)
     out: Dict[str, dict] = {}
     for cli_name, provider in PROVIDERS.items():
+        if only is not None and cli_name not in only:
+            continue        # `usage_mode: tick` yalnız vadesi gelenleri okur
         command = provider.usage_command()
         if command is None:
             out[cli_name] = {"supported": False}
@@ -3349,12 +3353,24 @@ def _usage_all() -> dict:
         # bilinenler öne alınır.
         candidates.sort(key=lambda s: 0 if tmux_client_count(s.name) == 0 else 1)
         out[cli_name] = {"supported": True, **_usage_for_session(candidates[0], provider)}
+    if only is not None and "api" not in only:
+        return {"ok": True, "providers": out}
     try:       # API anahtarlı sağlayıcılar (byok.ucli): ücretsiz uç noktalar; anahtar yalnız burada, başlıkta
         from .. import api_balance, settings as _st, ucli_cost as _uc
         out.update(api_balance.collect((_st.load_settings().get("byok") or {}).get("ucli") or {}, _uc.state()))
     except Exception as e:      # asla kullanım sekmesini düşürme; hata metnine anahtar girmez
         diag_log(f"usage api_balance: {type(e).__name__}")
     return {"ok": True, "providers": out}
+
+
+def _usage_kinds() -> dict:
+    """Ad -> açık oturum ister mi (tick'te 30 dk aralık). Oturumsuz yolu olan (claude, API anahtarlıları) hep vadeli."""
+    kinds = {n: p.usage_fresh_argv() is None for n, p in PROVIDERS.items() if p.usage_command() is not None}
+    kinds["api"] = False
+    return kinds
+
+
+web_steward.set_usage_collector(_usage_all, _usage_kinds)
 
 
 # `/context`'in çıktısı da (`/usage` gibi) jsonl'e yazılmıyor — sabit bekleme +
@@ -5344,6 +5360,9 @@ class _Handler(BaseHTTPRequestHandler):
             # Çoklu-host federasyonuna henüz BAĞLANMADI (`web_hosts.proxy_action`'ın
             # HOST_ROUTED_PATHS'ine eklenmedi) — bugün sadece LOKAL fleet'in
             # kullanımını gösterir, TODO.md'ye not düşüldü.
+            if data.get("cached") is True:
+                self._json(usage_poll.last())       # değnekçi tick'inin son okuması (usage_mode=tick); okuma yapmaz
+                return
             self._json(_usage_all())
             return
 

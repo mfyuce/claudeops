@@ -4541,6 +4541,29 @@ def _quota_poll() -> None:
         _QUOTA["busy"] = False
 
 
+_USAGE_HOOK: Dict[str, Any] = {"collect": None, "kinds": None}
+
+
+def set_usage_collector(collect: Callable[..., Dict[str, Any]], kinds: Callable[[], Dict[str, bool]]) -> None:
+    """web.py kaydeder (döngüsel içe aktarma yok): `_usage_all(only=...)` ve sağlayıcı sınıflandırması."""
+    _USAGE_HOOK.update(collect=collect, kinds=kinds)
+
+
+def usage_tick(now: Optional[float] = None) -> None:
+    """`usage_mode: tick` ise kullanım okumasını arka planda başlatır (oturumsuzlar her tick, oturum isteyenler 30 dk'da bir)."""
+    from .. import usage_poll
+    from ..settings import load_settings
+    if not _USAGE_HOOK["collect"]:
+        return
+    mode = load_settings().get("usage_mode")
+    if usage_poll.normalize_mode(mode) != "tick":
+        return
+    try:
+        usage_poll.tick(mode, _USAGE_HOOK["collect"], _USAGE_HOOK["kinds"](), now)
+    except Exception as e:
+        diag_log("steward_usage_tick_failed", error=repr(e))
+
+
 def quota_tick(now: Optional[float] = None) -> None:
     """Tick başına çağrılır (ucuz): mod kapalıysa hiçbir şey; açıksa aralıkta bir arka plan thread'inde kullanımı okur."""
     cfg = quota_config()
@@ -4645,6 +4668,7 @@ def _tick_round_inner(trigger: str = "timer") -> List[Dict[str, Any]]:
     çalışan projeleri dahil) `plan_tick`'te uygulanır. Kart işi turda bir kez, tüm etkin kimlikler için."""
     base = steward_config()
     quota_tick()
+    usage_tick()
     try:
         ucli_cost_watch(base)
     except Exception as e:      # izleyici döngüyü düşürmesin
