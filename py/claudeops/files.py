@@ -304,8 +304,18 @@ def rename_path(s: Session, path: str, new_name: str) -> dict:
         else:
             # link() hedef VARSA FileExistsError verir (kontrol+yazma atomik): os.rename lexists'ten sonra araya giren
             # bir dosyayı sessizce EZERDİ.
-            os.link(real, new_real, follow_symlinks=False)
-            os.unlink(real)
+            try:
+                os.link(real, new_real, follow_symlinks=False)
+                os.unlink(real)
+            except FileExistsError:
+                raise
+            except OSError as le:
+                if le.errno not in (errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV, errno.EMLINK):
+                    raise
+                # hard link'siz/yasaklı FS (review R-2): eski yol, son anda yeniden denetle
+                if os.path.lexists(new_real):
+                    return {"ok": False, "error": "exists"}
+                os.rename(real, new_real)
     except FileExistsError:
         return {"ok": False, "error": "exists"}
     except OSError as e:

@@ -42,6 +42,18 @@ class RenameNoClobberTest(unittest.TestCase):
         self.assertEqual(open(self.p("b")).read(), "OTHER")
         self.assertEqual(open(self.p("a")).read(), "A")
 
+    def test_rename_falls_back_when_hardlink_forbidden(self):
+        """review R-2: link() EPERM/EXDEV verirse (hard-link'siz FS) rename yoluna düş."""
+        import errno
+        open(self.p("a"), "w").write("A")
+        def nolink(*a, **k):
+            raise OSError(errno.EPERM, "no hard links")
+        with mock.patch.object(files.os, "link", nolink):
+            r = files.rename_path(self.s, self.p("a"), "b")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(open(self.p("b")).read(), "A")
+        self.assertFalse(os.path.lexists(self.p("a")))
+
     def test_symlink_renamed_not_followed(self):
         open(self.p("t"), "w").write("T")
         os.symlink(self.p("t"), self.p("l"))

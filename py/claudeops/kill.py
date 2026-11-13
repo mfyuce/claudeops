@@ -178,8 +178,8 @@ def _kill_front_and_parent(pid: int, grace: float = KILL_GRACE_SECONDS,
         if parent and parent.name() == "bash":
             parent_pid = parent.pid
             parent_create_time = parent.create_time()
-    except psutil.NoSuchProcess:
-        pass
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass                                  # üst süreç okunamazsa yalnız parent temizliği atlanır, durdurma yine başlar (review R-3)
 
     denied2: Optional[psutil.AccessDenied] = None
     try:

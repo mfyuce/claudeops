@@ -18,7 +18,7 @@ from ..instances import DERIVED_NAME_RE, get_instance
 from ..kill import kill_session, kill_session_and_parent
 from ..paths import MODELS_TSV
 
-_BASE_RE = re.compile(r"^([a-z]+)\d*$")
+from ..session import _NAME_RE as _BASE_RE     # TEK kaynak (review R-1: kopya regex ayrışmıştı, `cli_2`/`cops20260824_1` close'da base'e inmiyordu)
 
 
 def register(sub):

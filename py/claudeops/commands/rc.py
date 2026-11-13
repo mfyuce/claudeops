@@ -32,7 +32,7 @@ from ..settings import resolved_model_for
 from ..spawn import spawn_session, detect_display
 
 # Geçiş savunması: suffix'li girdiyi (hc58) base'e (hc) indirger. Saf base de eşleşir.
-_NAME_RE = re.compile(r"^([a-z]+)\d*(?:_\d+)*$")
+from ..session import _NAME_RE     # TEK kaynak (review R-1)
 
 
 def register(sub):

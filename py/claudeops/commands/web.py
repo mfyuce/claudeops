@@ -933,25 +933,32 @@ def _toggle_comment(path: str, name: str, want_active: bool) -> bool:
         return _toggle_comment_unlocked(path, name, want_active)
 
 
+def _find_tsv_line(lines: list, name: str):
+    """Ortak satır bulucu (review R-2: iki kopya vardı): ilk alanı `name` olan ilk satır -> (indeks, yorumlu mu, `#`siz satır) ya da None.
+    NOT: `close.py` (`comment_out_models`) BİLEREK ayrı bir biçim yazar (`#<satır>\t# CLOSED` işareti: panelin duraklat/emekli
+    yorumundan ayırt etmek için, `is_closed_in_models`/`uncomment_models` bu işarete dayanır); iki biçim birleştirilmez."""
+    for i, line in enumerate(lines):
+        core = line.rstrip("\n")
+        is_commented = core.startswith("#")
+        bare = core[1:] if is_commented else core
+        if bare.strip().split("\t", 1)[0] == name:
+            return i, is_commented, bare
+    return None
+
+
 def _toggle_comment_unlocked(path: str, name: str, want_active: bool) -> bool:
     try:
         with open(path, encoding="utf-8") as f:
             lines = f.readlines()
     except FileNotFoundError:
         return False
-    found = False
-    for i, line in enumerate(lines):
-        core = line.rstrip("\n")
-        is_commented = core.startswith("#")
-        bare = core[1:] if is_commented else core
-        first_field = bare.strip().split("\t", 1)[0]
-        if first_field == name:
-            lines[i] = (bare if want_active else "#" + bare) + "\n"
-            found = True
-            break
-    if found:
-        _atomic_write_text(path, "".join(lines))
-    return found
+    hit = _find_tsv_line(lines, name)
+    if hit is None:
+        return False
+    i, _was_commented, bare = hit
+    lines[i] = (bare if want_active else "#" + bare) + "\n"
+    _atomic_write_text(path, "".join(lines))
+    return True
 
 
 def _replace_tsv_line(path: str, name: str, fields: list) -> bool:
@@ -969,20 +976,14 @@ def _replace_tsv_line_unlocked(path: str, name: str, fields: list) -> bool:
             lines = f.readlines()
     except FileNotFoundError:
         return False
-    found = False
-    for i, line in enumerate(lines):
-        core = line.rstrip("\n")
-        is_commented = core.startswith("#")
-        bare = core[1:] if is_commented else core
-        first_field = bare.strip().split("\t", 1)[0]
-        if first_field == name:
-            new_core = "\t".join(fields)
-            lines[i] = ("#" + new_core if is_commented else new_core) + "\n"
-            found = True
-            break
-    if found:
-        _atomic_write_text(path, "".join(lines))
-    return found
+    hit = _find_tsv_line(lines, name)
+    if hit is None:
+        return False
+    i, is_commented, _bare = hit
+    new_core = "\t".join(fields)
+    lines[i] = ("#" + new_core if is_commented else new_core) + "\n"
+    _atomic_write_text(path, "".join(lines))
+    return True
 
 
 LAYOUT_DEPS = ["wmctrl", "xdotool"]
@@ -5035,6 +5036,7 @@ class _Handler(BaseHTTPRequestHandler):
             except ValueError:
                 length = -1
             if length < 0 or length > web_steward.MAX_FORM_BYTES:
+                self.close_connection = True      # gövde okunmadı: keep-alive'da artık bayt sonraki isteğin başı sanılır (review R-1)
                 self._json({"ok": False, "error": "invalid or oversized form"}, status=400)
                 return
             raw = self.rfile.read(length) if length else b""
@@ -5111,6 +5113,7 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             length = -1
         if length < 0 or length > MAX_JSON_BODY_BYTES:
+            self.close_connection = True          # gövde okunmadı (review R-1): bağlantıyı kapat, yoksa gövde sonraki istek diye ayrıştırılır
             if path.startswith("/v1/"):
                 self._json(_v1_error("missing/invalid/oversized Content-Length"), status=400)
                 return
