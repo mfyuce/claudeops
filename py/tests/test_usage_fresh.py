@@ -53,10 +53,19 @@ class FreshRun(unittest.TestCase):
 
     def test_usage_all_prefers_fresh_and_skips_sessions(self):
         with mock.patch.object(web, "find_sessions", return_value=[]), \
+             mock.patch("claudeops.api_balance.collect", return_value={"api:X": {"supported": True, "available": False, "reason": "no_endpoint"}}), \
              mock.patch.object(web, "_usage_fresh", side_effect=lambda p: {"available": True, "checked_via": "fresh", "entries": []} if p.name == "claude" else None):
             out = web._usage_all()["providers"]
         self.assertEqual(out["claude"]["checked_via"], "fresh")
         self.assertEqual(out["agy"].get("reason"), "no_running_session")
+        self.assertEqual(out["api:X"]["reason"], "no_endpoint")      # byok satırları birleştirilir
+
+    def test_api_balance_failure_does_not_break_usage(self):
+        with mock.patch.object(web, "find_sessions", return_value=[]), \
+             mock.patch("claudeops.api_balance.collect", side_effect=RuntimeError("boom")), \
+             mock.patch.object(web, "_usage_fresh", return_value=None):
+            res = web._usage_all()
+        self.assertTrue(res["ok"])
 
 
 if __name__ == "__main__":

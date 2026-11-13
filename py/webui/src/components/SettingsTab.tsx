@@ -149,7 +149,13 @@ function UsageProviderRow({ cli, result, t }: { cli: string; result: UsageResult
           ? t.usageAllBusy
           : result.reason === "send_failed"
             ? t.usageSendFailed
-            : t.usageParseFailed;
+            : result.reason === "no_endpoint"
+              ? t.usageNoEndpoint
+              : result.reason === "auth_failed"
+                ? t.usageAuthFailed
+                : result.reason === "request_failed"
+                  ? t.usageRequestFailed
+                  : t.usageParseFailed;
     return (
       <div className="opts" style={{ width: "100%", boxSizing: "border-box" }}>
         <b>{cli}</b> <span className="opts-hint">{reasonText}</span>

@@ -566,6 +566,9 @@ export interface Strings {
   usageAllBusy: string;
   usageSendFailed: string;
   usageParseFailed: string;
+  usageNoEndpoint: string;
+  usageAuthFailed: string;
+  usageRequestFailed: string;
   usageCheckedVia: (name: string) => string;
   contextBtn: string;
   contextChecking: string;
@@ -1502,6 +1505,9 @@ export const STRINGS: Record<Lang, Strings> = {
     usageAllBusy: "çalışan session'ların hepsi meşgul/parola bekliyor, şu an kontrol edilemedi",
     usageSendFailed: "komut gönderilemedi",
     usageParseFailed: "yanıt okunamadı",
+    usageNoEndpoint: "sağlayıcı bakiye uç noktası sunmuyor",
+    usageAuthFailed: "anahtar reddedildi",
+    usageRequestFailed: "istek başarısız",
     usageCheckedVia: (name) => `${name} üzerinden`,
     contextBtn: "Bağlamı kontrol et",
     contextChecking: "kontrol ediliyor…",
@@ -2439,6 +2445,9 @@ export const STRINGS: Record<Lang, Strings> = {
     usageAllBusy: "all running sessions are busy or awaiting a password, could not check right now",
     usageSendFailed: "could not send command",
     usageParseFailed: "could not read the response",
+    usageNoEndpoint: "provider offers no balance endpoint",
+    usageAuthFailed: "key was rejected",
+    usageRequestFailed: "request failed",
     usageCheckedVia: (name) => `via ${name}`,
     contextBtn: "Check context",
     contextChecking: "checking…",

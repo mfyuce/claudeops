@@ -3342,6 +3342,11 @@ def _usage_all() -> dict:
         # bilinenler öne alınır.
         candidates.sort(key=lambda s: 0 if tmux_client_count(s.name) == 0 else 1)
         out[cli_name] = {"supported": True, **_usage_for_session(candidates[0], provider)}
+    try:       # API anahtarlı sağlayıcılar (byok.ucli): ücretsiz uç noktalar; anahtar yalnız burada, başlıkta
+        from .. import api_balance, settings as _st, ucli_cost as _uc
+        out.update(api_balance.collect((_st.load_settings().get("byok") or {}).get("ucli") or {}, _uc.state()))
+    except Exception as e:      # asla kullanım sekmesini düşürme; hata metnine anahtar girmez
+        diag_log(f"usage api_balance: {type(e).__name__}")
     return {"ok": True, "providers": out}
 
 
