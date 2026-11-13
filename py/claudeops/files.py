@@ -181,6 +181,29 @@ def _tmp_name(dest: str, kind: str) -> str:
     return os.path.join(os.path.dirname(dest), f".claudeops-{kind}-{os.getpid()}-{threading.get_ident()}-{uuid.uuid4().hex[:8]}.tmp")
 
 
+def _rename_noreplace(src: str, dst: str) -> None:
+    """`rename` ama hedef VARSA FileExistsError (boş dizin dahil sessizce ezmez). Linux `renameat2(RENAME_NOREPLACE)`;
+    çekirdek/libc/FS desteklemiyorsa son-an `lexists` denetimli `os.rename` (kalan pencere dar; review cliops 2 Kas)."""
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        fn = libc.renameat2
+        AT_FDCWD = -100
+        if fn(AT_FDCWD, os.fsencode(src), AT_FDCWD, os.fsencode(dst), 1) == 0:      # 1 = RENAME_NOREPLACE
+            return
+        e = ctypes.get_errno()
+        if e == errno.EEXIST or e == errno.ENOTEMPTY:
+            raise FileExistsError(e, os.strerror(e), dst)
+        if e not in (errno.ENOSYS, errno.EINVAL, errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP):
+            raise OSError(e, os.strerror(e), src)
+    except (AttributeError, OSError) as ex:
+        if isinstance(ex, FileExistsError) or (isinstance(ex, OSError) and getattr(ex, "filename", None) == src):
+            raise
+    if os.path.lexists(dst):
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), dst)
+    os.rename(src, dst)
+
+
 def _fsync_dir(path: str) -> None:
     """rename/link'in kendisi de kalıcı olsun (güç kesilirse dizin girdisi kaybolmasın); başarısızlık önemsiz."""
     try:
@@ -307,22 +330,27 @@ def rename_path(s: Session, path: str, new_name: str) -> dict:
         return {"ok": False, "error": "exists"}
     try:
         if os.path.isdir(real) and not os.path.islink(real):
-            os.rename(real, new_real)       # dizinler hard-link'lenemez; lexists denetimi ile rename arası dar pencere kalır
+            _rename_noreplace(real, new_real)   # dizinler hard-link'lenemez; RENAME_NOREPLACE: araya giren (boş) dizini ezmez
         else:
             # link() hedef VARSA FileExistsError verir (kontrol+yazma atomik): os.rename lexists'ten sonra araya giren
             # bir dosyayı sessizce EZERDİ.
             try:
                 os.link(real, new_real, follow_symlinks=False)
-                os.unlink(real)
+                try:
+                    os.unlink(real)
+                except OSError:
+                    try:        # eski ad silinemedi: iki adda birden kalmasın, yeni bağı geri al
+                        os.unlink(new_real)
+                    except OSError:
+                        pass
+                    raise
             except FileExistsError:
                 raise
             except OSError as le:
                 if le.errno not in (errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV, errno.EMLINK):
                     raise
                 # hard link'siz/yasaklı FS (review R-2): eski yol, son anda yeniden denetle
-                if os.path.lexists(new_real):
-                    return {"ok": False, "error": "exists"}
-                os.rename(real, new_real)
+                _rename_noreplace(real, new_real)
     except FileExistsError:
         return {"ok": False, "error": "exists"}
     except OSError as e:
@@ -352,6 +380,8 @@ def make_folder(s: Session, dir_path: Optional[str], folder_name: str) -> dict:
         return {"ok": False, "error": "exists"}
     try:
         os.mkdir(dest)
+    except FileExistsError:             # exists denetimi ile mkdir arası yarış: yanıltıcı io_error değil
+        return {"ok": False, "error": "exists"}
     except OSError as e:
         return {"ok": False, "error": "io_error", "detail": str(e)}
     return {"ok": True, "path": dest}
