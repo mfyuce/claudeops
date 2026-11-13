@@ -56,8 +56,11 @@ def chain_exempt(proj: Any, cfg: sw.Config) -> bool:
 
 
 def keepwarm_text(proj: Any, v: Any, open_work: Optional[Callable[[str], Optional[int]]] = None) -> str:
-    """Dürtme metni: projenin sıradaki işi var VE son cevap bitti demiyorsa TEK satır `devam: <iş>`; yoksa (ya da
+    """Dürtme metni: oturum yanıtında gerçek STEWARD-NEXT bildirdiyse `devam: <o iş>`; yoksa projenin sıradaki işi var VE son cevap bitti demiyorsa TEK satır `devam: <iş>`; yoksa (ya da
     last_assistant boşsa bitti sayılmaz) iş varsa yine devam; iş yoksa eski KEEPWARM_TEXT. SAF."""
+    sn = sw.marker_next_work(getattr(v, "last_assistant", "") or "")
+    if sn and not sw.turn_failed(getattr(v, "last_assistant", "") or ""):
+        return sw.one_line(f"devam: {sn}")      # oturum kendi sahipsiz işini bildirdi: 'yalnızca ok yaz' o işi durdururdu (prompti 13 Kas)
     hint = sw.next_work_hint(proj, open_work, real_only=True) if proj is not None else ""
     if not hint:
         return KEEPWARM_TEXT

@@ -2444,6 +2444,9 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
             lines.append(("son istek: " if tr else "last request: ") + _clip(ex["user"], 300))
         if ex.get("assistant"):
             lines.append(("son yanıt: " if tr else "last reply: ") + _clip(ex["assistant"], 700))
+        if it.get("stated_next"):
+            lines.append(("oturumun KENDİ bildirdiği sıradaki iş (STEWARD-NEXT): " if tr else "next work the session itself stated (STEWARD-NEXT): ")
+                         + _clip(it["stated_next"], 300))
         card = it.get("card")
         if card:
             lines += card_lines(card, tr)
@@ -2771,10 +2774,15 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
             items.append({"kind": "idle", "name": v.name, "idle_minutes": (now - idle_since) / 60})
         else:
             items.append({"kind": "review", "name": v.name})
+        sn = marker_next_work(v.last_assistant or "")
+        if sn:      # "son yanıt" 700 karakterde kesilir, STEWARD-NEXT satırı sonda kaybolurdu: ayrı alan + çelişki uyarısı
+            items[-1]["stated_next"] = sn
+            items[-1]["contradictions"] = [f"oturum STEWARD-NEXT ile SAHİPSİZ iş bildirdi: «{sn}». 'Sahipsiz yeni iş yok' diye skip etme: "
+                                           "steward_directive ile bu işe devam ettir (sahip cevabı bekleyen soru bunu engellemiyorsa)."]
         if claim_check is not None:
             contradictions = claim_check(v.project)
             if contradictions:
-                items[-1]["contradictions"] = contradictions
+                items[-1]["contradictions"] = list(items[-1].get("contradictions") or []) + list(contradictions)
     for i in ideas:
         if i.status == "new":
             items.append({"kind": "idea", "id": i.id, "text": i.text, "name": ""})
@@ -4564,6 +4572,18 @@ def _observe_cluster(a: Action) -> str:
 _AJ_CHILD_RE = re.compile(r"_aj\d+$")                          # ucli alt ajanı (`<üst>_aj<N>`): proje oturumu DEĞİL
 _NEXT_NOTE_RE = re.compile(r"(?:sıradaki|siradaki|next)\s*(?:iş|is|adım|adim|step|task)?\s*[:：]\s*(.+)", re.IGNORECASE)
 _NO_WORK_VALUES = {"yok", "none", "-", "—", "n/a", "bitti", "done"}
+
+
+def marker_next_work(text: str) -> str:
+    """SAF. Oturumun SON yanıtındaki `STEWARD-NEXT: <iş>` değeri GERÇEK bir iş ise (yok/bitti/boş değil, koşullu değil) o iş, yoksa "".
+    Oturum kendi sahipsiz işini bildirmiştir: boşta dürtme/keepwarm/beyin turu bunu YOK saymamalı (prompti 13 Kas: PE2 ölçüm işi
+    STEWARD-NEXT'teydi, TODO'da açık madde/not yoktu; keepwarm 'ok' yazdırdı, idle_nudge hiç koşmadı, beyin 'sahipsiz iş yok' dedi)."""
+    if not text or "STEWARD-NEXT" not in text:
+        return ""
+    val = str(scan_markers(text).get("next") or "").strip()
+    if not val or val.strip(" .`").lower() in _NO_WORK_VALUES or is_conditional_note(val):
+        return ""
+    return clip_words(val, 200)
 _DONE_TEXT_RE = re.compile(r"(?<![-\w])STEWARD-DONE(?![-\w])")
 _NEGATED_TAIL_RE = re.compile(r"[\s,;:.]*(?:demiyorum|demedim|değil|degil|diyemem|diyemiyorum|not true|isn't|is not)", re.IGNORECASE)
 # "sıradaki: yok" (ya da STEWARD-NEXT: yok) = oturum sıradaki sahipsiz iş KALMADI diyor; dürtme TODO değişene/yeni etkinliğe dek durur
@@ -4912,7 +4932,14 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
         if chain >= cfg.ucli_idle_max_consecutive:
             continue
         txt = v.last_assistant or ""
-        if turn_failed(txt) or waiting_for_gate(txt) or any(m in txt for m in _ASK_MARKERS):
+        sn = marker_next_work(txt)      # oturum kendi sahipsiz işini bildirdi: ASK/gate/sahipte kapıları ve "TODO boş" elemesi onu engellemez
+        if turn_failed(txt) or (not sn and (waiting_for_gate(txt) or any(m in txt for m in _ASK_MARKERS))):
+            continue
+        if sn:
+            out.append(Action("idle_nudge", v.name, f"claude boşta {int(now - since)} sn, oturum STEWARD-NEXT bildirdi",
+                              {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
+                               "text": one_line(f"devam: {sn}"), "next": sn, "cli": "claude", "via": "stated_next"}))
+            rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": one_line(f"devam: {sn}")}
             continue
         if owner_todo is not None:
             # TODO.md'de sahibe bağlı etiketli satır var: oturuma BİR kez "TOBEDECIDED'a taşı" (proje başına 24 sa'te en çok 1; dry/act ayrı sayılır)
