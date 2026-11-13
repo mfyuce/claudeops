@@ -2155,15 +2155,23 @@ def scan_markers(text: str) -> Dict[str, Any]:
     if not text:
         return out
     fenced = False
+    cont = None     # (anahtar, sıra): ':' ile biten soru/engel gövdesi alt satırlarla sürer (prompti 13 Kas: seçenekler kayboldu)
     for raw in text.splitlines():
         if raw.strip().startswith("```"):      # kod bloğu içindeki işaret yazım örneğidir
             fenced = not fenced
+            cont = None
             continue
         if fenced or raw.lstrip().startswith(">"):     # kod bloğu / alıntı satırı
             continue
         line = raw.strip().lstrip("-*• ").strip()
         if not line:
+            cont = None
             continue
+        if cont is not None and "STEWARD-" not in line:
+            k, i = cont
+            out[k][i] = f"{out[k][i]} {line}"
+            continue
+        cont = None
         for mark, key in ((MARK_ROUTINE, "routines"), (MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked"),
                           (MARK_JOB, "jobs"), (MARK_NEXT, "nexts"), (MARK_LESSON, "lessons")):
             idx = line.find(mark)
@@ -2182,6 +2190,8 @@ def scan_markers(text: str) -> Dict[str, Any]:
                 # kısa çizgili olduğundan eski regex elemiş, iş hiç görülmedi): beyne gider, katalogda yoksa gerekçeli RED verir.
                 if body:
                     out[key].append(body)
+                    if key in ("asks", "routines", "blocked") and body.rstrip("` ").endswith(":"):
+                        cont = (key, len(out[key]) - 1)
                     if key == "nexts":
                         out["next"] = body      # en SONDAKİ satır kazanır
                 break

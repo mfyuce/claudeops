@@ -81,6 +81,18 @@ class StoreTest(_Tmp):
 
 
 class MarkerTest(unittest.TestCase):
+    def test_scan_markers_ask_ending_with_colon_takes_following_lines(self):
+        # prompti 13 Kas: "Seçenekler:" sonrası alt satırlar kayboluyor, soru seçeneksiz kalıyordu
+        txt = ("STEWARD-ASK: Makalenin yönü ne olsun? Seçenekler:\n"
+               "- (a) survey\n- (b) yöntem, öneri: (b)\n\nSonraki paragraf soru değil.\n"
+               "STEWARD-NEXT: survey")
+        m = sw.scan_markers(txt)
+        self.assertEqual(m["asks"], ["Makalenin yönü ne olsun? Seçenekler: (a) survey (b) yöntem, öneri: (b)"])
+        self.assertEqual(m["next"], "survey")
+        # ':' ile bitmeyen tek satırlık soru alt satırı yutmaz
+        m2 = sw.scan_markers("STEWARD-ASK: tamam mı?\nbaşka düzyazı")
+        self.assertEqual(m2["asks"], ["tamam mı?"])
+
     def test_scan_markers_ignores_writing_examples(self):
         txt = ("Protokol:\n- takıldın: `STEWARD-BLOCKED: <nerede takıldın>`\n> STEWARD-ASK: alıntı soru?\n"
                "```\nSTEWARD-ASK: kod bloğundaki soru?\nSTEWARD-IDEA: kod fikri\n```\n"
