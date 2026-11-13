@@ -379,9 +379,12 @@ def write_text(s: Session, path: str, content: str) -> dict:
     yiyip `os.replace`'i `FileNotFoundError`'a düşürebilir. Hedef zaten
     realpath ile çözüldüğü (`_resolve_within_roots`) için `real` üzerinde
     doğrudan yazmak WEB-02'nin upload/son-bileşen symlink riskini taşımıyor
-    (delete_path/rename_path'in `real` üzerinde çalışmasıyla aynı gerekçe) —
-    `os.replace` ayrıca hedefte bir symlink olsa bile onun HEDEFİNE değil
-    KENDİSİNE yazar, ekstra bir güvenlik katmanı."""
+    (delete_path/rename_path'in `real` üzerinde çalışmasıyla aynı gerekçe).
+    `real` zaten son bileşeni de çözülmüş GERÇEK yoldur: kullanıcı bir symlink
+    adı verdiyse yazılan şey symlink'in kendisi değil, kök içinde kalan HEDEF
+    dosyadır (`os.replace` o gerçek yolu yeniler). Güvenlik `realpath`'in
+    köklerin içinde kalmasından gelir; `os.replace`'in symlink'e özel bir
+    koruması yoktur (`write_upload`'ın aksine orada ad çözülmeden replace edilir)."""
     roots = _writable_roots(s)
     real = _resolve_within_roots(path, roots)
     if real is None:

@@ -416,6 +416,7 @@ def apply_remote(rec: Dict[str, Any], remote: Dict[str, Any], now: float) -> Dic
         upd["wait_reason"] = str(remote["wait_reason"])[:80]
     if state and state != rec.get("state"):
         upd["updated_at"] = now
+        upd["attempts"] = 0      # durum değişti = yeni iletim aşaması: onay bildirimi 5 kez düştüyse sonuç yine de denenir (review cliops R-2)
     return upd
 
 

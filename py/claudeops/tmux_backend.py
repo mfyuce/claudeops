@@ -283,6 +283,10 @@ def tmux_send_raw(name: str, data: str) -> bool:
     try:
         for i in range(0, len(data), _RAW_CHUNK_CHARS):
             chunk = data[i:i + _RAW_CHUNK_CHARS]
+            if chunk.endswith(";"):
+                # tmux `;` ile biten argv parçasını KOMUT AYIRACI sayar (sondaki `;` kaybolur, tmux 3.2a ile doğrulandı);
+                # `\;` literal `;` verir (bir ters-bölü tmux'ça soyulur: `bar\;` metni `bar\\;` olmalı)
+                chunk = chunk[:-1] + "\\;"
             r = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "-l", "--", chunk],
                                 capture_output=True, timeout=_TIMEOUT)
             if r.returncode != 0:
