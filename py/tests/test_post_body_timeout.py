@@ -84,3 +84,21 @@ class BodyTimeout(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuthFailClosed(unittest.TestCase):
+    def test_empty_server_token_never_authorizes(self):
+        h = handler(io.BytesIO(b""))
+        h.token = ""
+        h.path = "/api/status"
+        h.headers = {}
+        self.assertFalse(h._authorized())
+        h.path = "/api/status?token="
+        self.assertFalse(h._authorized())
+
+    def test_valid_token_still_ok(self):
+        h = handler(io.BytesIO(b""))
+        h.token = "abc"
+        h.path = "/api/status?token=abc"
+        h.headers = {}
+        self.assertTrue(h._authorized())

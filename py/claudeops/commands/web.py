@@ -4414,6 +4414,8 @@ class _Handler(BaseHTTPRequestHandler):
         TypeError fırlatır. Bizim token'ımız her zaman hex (`secrets.token_hex`)
         yani böyle bir aday ZATEN eşleşemez — 500 yerine düz "yetkisiz" doğru
         cevap."""
+        if not self.token:          # token atanmamış/boş: fail-CLOSED (boş aday boş token'la eşleşip kapıyı açmasın; review cops)
+            return False
         qs = parse_qs(urlparse(self.path).query)
         candidates = [(qs.get("token") or [""])[0]]
         auth = self.headers.get("Authorization") or ""
