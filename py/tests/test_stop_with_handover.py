@@ -100,6 +100,32 @@ class LocalTest(unittest.TestCase):
         self.assertIn("NOT closed", r["error"])
 
 
+class ReaskTest(unittest.TestCase):
+    """READY gelmezse devir BİR kez yeniden istenir; ikinci bekleme de boşsa kapatmaz; süre üst sınırı 900 sn."""
+    def run_it(self, replies):
+        calls, seq = [], list(replies)
+        with mock.patch.object(web, "_find_running_for_action", lambda n: ("exact", [_sess()])), \
+                mock.patch.object(web, "get_provider", lambda cli: _Prov()), \
+                mock.patch.object(web, "is_tmux_backed", lambda pid: True), \
+                mock.patch.object(web, "_handover", lambda n, lang="tr", exact=False, extra="": (calls.append("ho") or {"ok": True})), \
+                mock.patch.object(web.turns, "wait_for_reply", lambda *a, **k: (calls.append(("wait", k["timeout"])) or seq.pop(0))), \
+                mock.patch.object(web, "_stop", lambda n, lang="tr", exact=False: (calls.append("stop") or {"ok": True})):
+            return web._stop_with_handover("x1"), calls
+
+    def test_reask_then_ready(self):
+        out, calls = self.run_it([None, "READY FOR HANDOVER"])
+        self.assertTrue(out["ok"])
+        self.assertEqual(calls.count("ho"), 2)
+        self.assertIn("stop", calls)
+        self.assertEqual(web.HO_STOP_TIMEOUT_SECONDS, 900.0)
+
+    def test_reask_still_none_does_not_close(self):
+        out, calls = self.run_it([None, None])
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["code"], "handover_timeout")
+        self.assertNotIn("stop", calls)
+
+
 class RemoteTest(unittest.TestCase):
     def run_remote(self, row=True, prov=None, baseline=True, ho=None, reply="READY FOR HANDOVER", force_stop=None):
         calls = []

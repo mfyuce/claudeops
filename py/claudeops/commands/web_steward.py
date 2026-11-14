@@ -4846,6 +4846,29 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
 
 
 
+DISK_WARN_PCT = 95.0
+_DISK_WATCH: Dict[str, Any] = {"day": "", "notified": False}
+
+
+def disk_watch(path: str = "/", threshold: float = DISK_WARN_PCT) -> Dict[str, Any]:
+    """Yerel disk doluluğu eşiği aşarsa (varsayılan %95) günde BİR kez telefona uyarı; SİLME YOK (yalnız ölçüm + bildirim).
+    Doluluk eşiğin altına inerse bayrak sıfırlanır. Dönüş: {pct, free_gb, warned}."""
+    import shutil
+    u = shutil.disk_usage(path)
+    pct = 100.0 * u.used / u.total if u.total else 0.0
+    day = time.strftime("%Y-%m-%d")
+    if _DISK_WATCH["day"] != day or pct < threshold:
+        _DISK_WATCH.update(day=day, notified=False)
+    warned = False
+    if pct >= threshold and not _DISK_WATCH["notified"]:
+        _DISK_WATCH["notified"] = True
+        warned = True
+        diag_log("disk_full_warning", path=path, pct=round(pct, 1), free_gb=round(u.free / 2**30, 1))
+        notify_phone(f"Yerel disk %{pct:.0f} dolu ({u.free / 2**30:.0f} GB boş). Silme yapılmadı; neyin büyüdüğü için "
+                     f"`du -xh --max-depth=1 /tmp/claude-1000 ~/.claude ~/work`.", title="claudeops disk")
+    return {"pct": pct, "free_gb": u.free / 2**30, "warned": warned}
+
+
 def _mark_reviewer_tick(sid: str, now: Optional[float] = None) -> None:
     """Reviewer kimliğinin `state.json` `last_tick`i: motor reviewer'da `tick_once` çalıştırmaz, yoksa `steward -s reviewer
     status` "son tick: 8g" gösterir (döngü çalışırken). Beyin turu alanları (`pending_items`/`pending_list`/`blocked_tours`)
@@ -4880,6 +4903,10 @@ def _tick_round_inner(trigger: str = "timer") -> List[Dict[str, Any]]:
         ucli_cost_watch(base)
     except Exception as e:      # izleyici döngüyü düşürmesin
         diag_log("ucli_cost_watch_failed", error=repr(e))
+    try:
+        disk_watch()
+    except Exception as e:
+        diag_log("disk_watch_failed", error=repr(e))
     starts_left = max(0, base.max_starts_total)
     results: List[Dict[str, Any]] = []
     enabled: List[sw.Config] = []

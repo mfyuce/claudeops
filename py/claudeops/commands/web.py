@@ -2084,7 +2084,8 @@ def _stop(name: str, lang: str = "tr", exact: bool = False) -> dict:
 # Panel "devir + kapat" (force'suz /api/stop): düğmenin dediğini HER oturumda yapar (değnekçi kapalı/observe, kayıtsız ya da
 # uzak oturum dahil): devir mesajı -> READY FOR HANDOVER -> kapat. Devir alınamazsa/zaman aşımında KAPATMAZ, hata döner
 # (arayüz "kapat"ı önerir). `human_stop_with_ho` (kayıtlı proje + değnekçi act) kendi motor yolunu korur; bu yalnız onun None döndüğü yer.
-HO_STOP_TIMEOUT_SECONDS = 300.0
+HO_STOP_TIMEOUT_SECONDS = 900.0     # üst sınır: uzun devirler 5 dk'yı aşıyor (mo 14 Kas 7 dk 44 sn); bekleme READY görününce biter
+HO_STOP_REASK_FRACTION = 2 / 3      # bu orandan sonra READY yoksa devir BİR kez yeniden istenir (done 14 Kas: başka işle cevap verdi)
 HO_STOP_POLL_SECONDS = 2.0
 
 
@@ -2118,8 +2119,15 @@ def _stop_with_handover(name: str, lang: str = "tr", timeout: float = HO_STOP_TI
     if not res.get("ok"):
         return _ho_stop_fail(lang, str(res.get("error") or ""), "handover_failed")
     live_snapshot = provider.snapshot_for_live_sid(s.cwd) if s.sid is None else None
-    reply = turns.wait_for_reply(s, provider, baseline, live_snapshot, timeout=timeout, poll=HO_STOP_POLL_SECONDS,
+    first = timeout * HO_STOP_REASK_FRACTION
+    reply = turns.wait_for_reply(s, provider, baseline, live_snapshot, timeout=first, poll=HO_STOP_POLL_SECONDS,
                                  stable_polls=2, require_marker="READY FOR HANDOVER", cancel=None)
+    if reply is None:
+        diag_log("ho_stop_reask", name=s.name)
+        res2 = _handover(s.name, lang=lang, exact=True)
+        if res2.get("ok"):
+            reply = turns.wait_for_reply(s, provider, baseline, live_snapshot, timeout=max(timeout - first, 1.0), poll=HO_STOP_POLL_SECONDS,
+                                         stable_polls=2, require_marker="READY FOR HANDOVER", cancel=None)
     if reply is None:
         diag_log("ho_stop_timeout", name=s.name)
         return _ho_stop_fail(lang, "", "handover_timeout")
@@ -2143,9 +2151,17 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     res, _status = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
     if not res.get("ok"):
         return _ho_stop_fail(lang, str(res.get("error") or ""), "handover_failed")
-    reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=timeout, poll=HO_STOP_POLL_SECONDS,
+    first = timeout * HO_STOP_REASK_FRACTION
+    reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=first, poll=HO_STOP_POLL_SECONDS,
                                             stable_polls=2, require_marker="READY FOR HANDOVER", cancel=threading.Event(),
                                             push_check=None)
+    if reply is None:
+        diag_log("ho_stop_reask", name=name, host=host)
+        res2, _s2 = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
+        if res2.get("ok"):
+            reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=max(timeout - first, 1.0), poll=HO_STOP_POLL_SECONDS,
+                                                    stable_polls=2, require_marker="READY FOR HANDOVER", cancel=threading.Event(),
+                                                    push_check=None)
     if reply is None:
         diag_log("ho_stop_timeout", name=name, host=host)
         return _ho_stop_fail(lang, "", "handover_timeout")
