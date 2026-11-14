@@ -343,3 +343,34 @@ class ExtensionCommandTest(unittest.TestCase):
     def test_bad_name(self):
         with self.assertRaises(ValueError):
             self.ext.ExtensionAPI().register_command("-x", lambda a: 0)
+
+
+class ExtActionTableTest(unittest.TestCase):
+    def setUp(self):
+        authz.reset()
+        self.addCleanup(authz.reset)
+
+    def test_action_for_reads_ext_table_longest_first(self):
+        authz.register_action("/api/enterprise/admin/", "admin.users")
+        authz.register_action("/api/enterprise/admin/sessions/", "admin.sessions")
+        self.assertEqual(authz.action_for("GET", "/api/enterprise/admin/users/x"), "admin.users")
+        self.assertEqual(authz.action_for("GET", "/api/enterprise/admin/sessions/owners"), "admin.sessions")
+        self.assertIn("admin.sessions", authz.actions())
+        self.assertNotIn("admin.sessions", authz.ACTIONS)
+        authz.reset()
+        self.assertEqual(authz.action_for("GET", "/api/enterprise/admin/users/x"), authz.UNMAPPED)
+
+    def test_register_action_prefix_restricted(self):
+        with self.assertRaises(ValueError):
+            authz.register_action("/api/status", "admin.x")
+
+    def test_ui_extension_title_en(self):
+        import tempfile
+        d = tempfile.mkdtemp()
+        from claudeops import extensions
+        extensions._UI_EXTS.clear()
+        self.addCleanup(extensions._UI_EXTS.clear)
+        extensions.ExtensionAPI().register_ui_extension("a1", d, title="Yönetim", title_en="Admin")
+        extensions.ExtensionAPI().register_ui_extension("a2", d, title="Sadece")
+        r = {e["id"]: e for e in extensions.ui_extensions()}
+        self.assertEqual((r["a1"]["title_en"], r["a2"]["title_en"]), ("Admin", "Sadece"))

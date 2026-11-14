@@ -151,3 +151,63 @@ class ReaderConfig(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ApiRoutes(unittest.TestCase):
+    """K12 `register_api_route`: `/api/enterprise/...` kimlik + eylem kapısı + denetim; çerez KABUL EDİLMEZ; JSON olmayan POST 415."""
+    def setUp(self):
+        from claudeops import authz
+        self.authz = authz
+        self.saved = list(ext._ROUTES)
+        authz.reset()
+        self.seen = []
+        ext.ExtensionAPI().register_api_route("/api/enterprise/admin/users/", lambda r: r.json({"ok": True, "p": r.principal.uid}),
+                                              ("GET", "POST"), "admin.users")
+
+    def tearDown(self):
+        ext._ROUTES[:] = self.saved
+        self.authz.reset()
+
+    def _h(self, headers=None, path="/api/enterprise/admin/users/x"):
+        h = H(path, headers or {})
+        h.command = "GET"
+        h._principal = lambda: web._Handler._principal(h)
+        h._gate = lambda m, p, d=None: web._Handler._gate(h, m, p, d)
+        h._request_view = lambda: None
+        return h
+
+    def test_register_validation(self):
+        api = ext.ExtensionAPI()
+        for pre, act in (("/api/x/", "admin.users"), ("/api/enterprise/a", "admin.users"), ("/api/enterprise/a/", "evil"),
+                         ("/api/enterprise/a/", "status.read")):
+            with self.assertRaises(ValueError):
+                api.register_api_route(pre, lambda r: None, ("GET",), act)
+        with self.assertRaises(ValueError):
+            api.register_route("/api/enterprise/zz/", lambda r: None)       # eski kanca hâlâ /api/ reddeder
+
+    def test_token_ok_and_principal(self):
+        h = self._h({"Authorization": "Bearer " + TOKEN})
+        h.__class__ = type("HH", (H,), {})        # _authorized gerçek mantık: Bearer
+        run(h)
+        self.assertEqual(h.status, 200)
+
+    def test_no_token_401_and_cookie_not_accepted(self):
+        h = self._h()
+        run(h)
+        self.assertTrue(h.unauth)
+        h = self._h({"Cookie": f"{ext.COOKIE_NAME}={ext.cookie_value(TOKEN)}"})
+        run(h)
+        self.assertTrue(h.unauth)
+
+    def test_post_requires_json(self):
+        h = self._h({"Authorization": "Bearer " + TOKEN, "Content-Type": "application/x-www-form-urlencoded"})
+        run(h, "POST")
+        self.assertEqual(h.status, 415)
+
+    def test_gate_uses_action_and_forbids(self):
+        calls = []
+        self.authz.set_authorizer(lambda p, a, r: calls.append(a) or False)
+        h = self._h({"Authorization": "Bearer " + TOKEN})
+        run(h)
+        self.assertEqual(h.status, 403)
+        self.assertEqual(calls, ["admin.users"])

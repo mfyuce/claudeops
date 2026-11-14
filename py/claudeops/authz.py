@@ -120,10 +120,31 @@ _ACTION_TABLE: List[Tuple[str, str]] = [
 ACTIONS = tuple(sorted({a for _, a in _ACTION_TABLE} | {UNMAPPED}))
 
 
+_EXT_ACTIONS: List[Tuple[str, str]] = []      # K12: eklenti API önekı -> eylem (en uzun önek önce)
+
+
+def register_action(prefix: str, action: str) -> None:
+    """Eklenti API'sinin eylem adı (yalnız `/api/enterprise/` önekli). `action_for` ÖNCE bunu okur; sabit `ACTIONS` değişmez."""
+    if not prefix.startswith("/api/enterprise/"):
+        raise ValueError(f"extension action prefix must start with /api/enterprise/: {prefix!r}")
+    with _LOCK:
+        _EXT_ACTIONS[:] = [(p, a) for p, a in _EXT_ACTIONS if p != prefix] + [(prefix, action)]
+        _EXT_ACTIONS.sort(key=lambda t: -len(t[0]))
+
+
+def actions() -> Tuple[str, ...]:
+    with _LOCK:
+        return tuple(sorted(set(ACTIONS) | {a for _, a in _EXT_ACTIONS}))
+
+
 def action_for(method: str, path: str) -> str:
     """Yol -> eylem adı. Tablo dışı yol `UNMAPPED` (varsayılan RED yalnız admin). `method` şimdilik ayrım yapmaz (ileriye uyum)."""
     if path == "/":
         return "status.read"
+    with _LOCK:
+        for prefix, action in _EXT_ACTIONS:
+            if path == prefix.rstrip("/") or path.startswith(prefix):
+                return action
     for prefix, action in _ACTION_TABLE:
         if prefix != "/" and (path == prefix.rstrip("/") or path.startswith(prefix)):
             return action
@@ -170,6 +191,7 @@ def reset() -> None:
         _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = _SPAWN_HOOK = None
         _AUDIT_SINKS.clear()
         _EVENT_SINKS.clear()
+        _EXT_ACTIONS.clear()
 
 
 def has_authenticator() -> bool:

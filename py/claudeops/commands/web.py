@@ -4601,6 +4601,17 @@ class _Handler(BaseHTTPRequestHandler):
         if route.get("public"):         # K4 giriş ucu (`/api/auth/`): kimlik doğrulamanın kendisi, panel kimliği aranmaz
             extensions.dispatch(route, extensions.RouteRequest(self, method, path))
             return
+        if route.get("api"):            # K12 `/api/enterprise/...`: kimlik (K1 ya da web.token; `cops_ext` çerezi YOK) + eylem kapısı + denetim
+            if self._principal() is None:
+                self._unauthorized()
+                return
+            if not self._gate(method, path):
+                return
+            if method not in ("GET", "HEAD") and (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+                self._json({"ok": False, "error": "json required"}, status=415)      # CSRF: form-post basit isteği reddedilir
+                return
+            extensions.dispatch(route, extensions.RouteRequest(self, method, path))
+            return
         if _az.has_authenticator():     # çok kullanıcı modu: eklenti sekmeleri (reader/readlist...) yalnız admin
             pr = self._principal()
             if pr is None:

@@ -25,6 +25,7 @@ _STATE: Dict[str, Any] = {"loaded": False, "status": "not_loaded", "detail": "",
 _ROUTES: List[Dict[str, Any]] = []
 _COMMANDS: Dict[str, Dict[str, Any]] = {}     # K11: CLI alt komutu adı -> {fn, help}
 UI_EXTENSION_API = 1
+API_EXT_PREFIX = "/api/enterprise/"          # K12: eklenti API önekı (kimlik + eylem kapısı + denetimden geçer)
 _UI_EXTS: Dict[str, Dict[str, Any]] = {}     # K10: id -> {title, assets_dir, roles, entry}
 COOKIE_NAME = "cops_ext"
 MAX_BODY = 1_000_000
@@ -72,6 +73,24 @@ class ExtensionAPI:
             _ROUTES[:] = [r for r in _ROUTES if r["prefix"] != prefix]
             _ROUTES.append({"prefix": prefix, "fn": fn, "methods": ms, "public": True})
 
+    ui_extension_api = UI_EXTENSION_API
+
+    def register_api_route(self, prefix: str, fn: Callable[["RouteRequest"], None], methods: Any = ("GET",), action: str = "") -> None:
+        """K12: `/api/enterprise/...` altında eklenti API'si. `register_route`dan farkı: istek `_gate`ten geçer (eylem adı `action`,
+        K2 yetki + K9 denetim), kimlik yalnız K1/`web.token` (`cops_ext` çerezi KABUL EDİLMEZ), JSON olmayan POST 415.
+        `action` `admin.` ya da `self.` ile başlar (örn. `admin.users`). Aynı önek idempotent."""
+        import re
+        from . import authz
+        if not isinstance(prefix, str) or not prefix.startswith(API_EXT_PREFIX) or not prefix.endswith("/"):
+            raise ValueError(f"api route prefix must start with {API_EXT_PREFIX!r} and end with '/': {prefix!r}")
+        if not isinstance(action, str) or not re.fullmatch(r"(admin|self)\.[a-z_]+", action):
+            raise ValueError(f"invalid api route action: {action!r}")
+        ms = tuple(str(m).upper() for m in methods)
+        authz.register_action(prefix, action)
+        with _LOCK:
+            _ROUTES[:] = [r for r in _ROUTES if r["prefix"] != prefix]
+            _ROUTES.append({"prefix": prefix, "fn": fn, "methods": ms, "api": True, "action": action})
+
     def on_session_event(self, fn: Callable[..., None]) -> None:
         """K5: `fn(event, host, name, principal)` (created, closed, retired, adopted, renamed, reactivated; mutasyon başarılıysa)."""
         from . import authz
@@ -82,14 +101,15 @@ class ExtensionAPI:
         from . import statedocs
         statedocs.register_doc_prefix(prefix)
 
-    def register_ui_extension(self, ext_id: str, assets_dir: str, roles: Any = ("admin",), title: str = "", entry: str = "index.js") -> None:
+    def register_ui_extension(self, ext_id: str, assets_dir: str, roles: Any = ("admin",), title: str = "", entry: str = "index.js",
+                              title_en: str = "") -> None:
         """K10: panel sekmesi. `GET /api/ui/extensions` rolüne uyan kullanıcıya listeler; dosyalar `/api/ui/ext/<id>/<dosya>`
         (kimlik + yetki kapısından geçer; traversal/symlink korumalı). `UI_EXTENSION_API = 1`."""
         import os
         if not isinstance(ext_id, str) or not ext_id.replace("-", "").replace("_", "").isalnum():
             raise ValueError(f"invalid ui extension id: {ext_id!r}")
         with _LOCK:
-            _UI_EXTS[ext_id] = {"id": ext_id, "title": title or ext_id, "assets_dir": os.path.realpath(assets_dir),
+            _UI_EXTS[ext_id] = {"id": ext_id, "title": title or ext_id, "title_en": title_en or title or ext_id, "assets_dir": os.path.realpath(assets_dir),
                                 "roles": tuple(str(r) for r in roles), "entry": entry}
 
     def set_authenticator(self, fn: Callable[[Any], Any]) -> None:
@@ -139,6 +159,7 @@ class RouteRequest:
         self._extra = dict(extra_headers or {})
         self.sent = False
         self.client_addr = str(handler.client_address[0]) if getattr(handler, "client_address", None) else ""
+        self.principal = getattr(handler, "_cur_principal", None)      # K12: çözülmüş kimlik (api yolunda dolu), yoksa None
 
     def header(self, name: str) -> str:
         return str(self._h.headers.get(name) or "")
@@ -240,7 +261,7 @@ def ui_extensions(roles: Any = None) -> List[Dict[str, Any]]:
     with _LOCK:
         exts = list(_UI_EXTS.values())
     rs = set(roles or ())
-    return [{"id": e["id"], "title": e["title"], "roles": list(e["roles"]), "entry": f"/api/ui/ext/{e['id']}/{e['entry']}"}
+    return [{"id": e["id"], "title": e["title"], "title_en": e.get("title_en") or e["title"], "roles": list(e["roles"]), "entry": f"/api/ui/ext/{e['id']}/{e['entry']}"}
             for e in exts if roles is None or rs & set(e["roles"])]
 
 
