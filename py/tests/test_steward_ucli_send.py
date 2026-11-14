@@ -71,6 +71,14 @@ class UcliSendTest(unittest.TestCase):
         self.assertEqual(raw.call_count, ws.UCLI_BOX_MAX_ENTERS)      # sınırlı sayıda Enter, sonra olay
         self.assertEqual(self.log.call_args[0][0], "ucli_send_stuck")
 
+    def test_stuck_event_uses_caller_sid(self):
+        with mock.patch.object(ws, "tmux_send_keys", return_value=True), \
+                mock.patch.object(ws, "tmux_capture", return_value="ucli> kalan\n"), \
+                mock.patch.object(ws, "tmux_send_raw"), \
+                mock.patch.object(ws.sw, "paths_for") as pf:
+            ws._send("u", "ucli", "x", sid="proj1")
+        pf.assert_called_with("proj1")
+
     def test_late_drawn_text_gets_enter(self):
         """Metin ilk yoklamalarda henüz çizilmemiş (boş kutu), sonra belirir: Enter yine gider."""
         import itertools

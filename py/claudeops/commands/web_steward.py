@@ -1410,7 +1410,7 @@ ANSWER_FAIL_ALERT = 3      # art arda bu kadar başarısız cevap iletimi: olay 
 _ANSWER_FAILS: Dict[str, int] = {}
 
 
-def _send(name: str, cli: str, text: str) -> bool:
+def _send(name: str, cli: str, text: str, sid: str = "default") -> bool:
     provider = get_provider(cli)
     if not provider.has_conversation():
         return False
@@ -1430,7 +1430,7 @@ def _send(name: str, cli: str, text: str) -> bool:
     ok = tmux_send_keys(name, provider.prepare_input(text), settle_delay=provider.input_settle_delay())
     _note_send_result(name, bool(ok), "" if ok else "send failed")
     if ok and cli == "ucli":
-        _ucli_box_recheck(name)
+        _ucli_box_recheck(name, sid)
     return ok
 
 
@@ -1551,7 +1551,7 @@ def _ucli_box_text(name: str) -> str:
     return " ".join(p for p in parts if p)
 
 
-def _ucli_box_recheck(name: str) -> None:
+def _ucli_box_recheck(name: str, sid: str = "default") -> None:
     """Gönderimden sonra ucli giriş kutusunu İZLE: metin kaldıysa Enter (en çok `UCLI_BOX_MAX_ENTERS`), kutu art arda
     `UCLI_BOX_EMPTY_OK` yoklamada boşsa bitir; hâlâ doluysa `ucli_send_stuck` olayı. Tek yoklama yetmez (5 Kas 05:40: uzun metin
     ~20 sn sonra çizildi, boş kutu "gönderildi" sanıldı, Enter hiç gitmedi). Asla fırlatmaz."""
@@ -1572,7 +1572,7 @@ def _ucli_box_recheck(name: str) -> None:
             tmux_send_raw(name, "\r")          # yalnız Enter
             enters += 1
         if left:
-            sw.log_event("ucli_send_stuck", paths=sw.paths_for("default"), name=name, left=left[:120], enters=enters)
+            sw.log_event("ucli_send_stuck", paths=sw.paths_for(sid or "default"), name=name, left=left[:120], enters=enters)
     except Exception:
         pass
 
@@ -3459,7 +3459,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if _box_has_typed_input(s.name):    # 2026-10-29 danisppr: kutudaki gönderilmemiş direktife "ok" eklenip tek mesaj gitti
             sw.log_event("keepwarm_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
-        ok = _send(s.name, s.cli, action.payload.get("text") or skw.KEEPWARM_TEXT)
+        ok = _send(s.name, s.cli, action.payload.get("text") or skw.KEEPWARM_TEXT, sid=cfg.sid)
         sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n", "text")})
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
     if k in ("idle_nudge", "owner_todo_move", "todo_triage"):   # owner_todo_move: aynı yol, olay adı ayrı (TODO'daki sahibe bağlı maddeleri TOBEDECIDED'a taşıt)
@@ -3474,7 +3474,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if _box_has_typed_input(s.name):
             sw.log_event(k + "_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
-        ok = _send(s.name, s.cli, sw.one_line(action.payload.get("text") or "devam"))   # ucli çok satırı ayrı tur sayar: TEK satır
+        ok = _send(s.name, s.cli, sw.one_line(action.payload.get("text") or "devam"), sid=cfg.sid)   # ucli çok satırı ayrı tur sayar: TEK satır
         sw.log_event(k, paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "threshold", "n", "next")})
         return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
     if k == "idle_close":             # TBD#156: handover / respawn / stop (mevcut yollar: `_local_handover`, `respawn` -> `_last_launch` cli_opts korunur)
@@ -3505,7 +3505,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if _box_has_typed_input(s.name):      # kutudaki gönderilmemiş metne "devam" eklenip tek mesaj gitmesin
             sw.log_event("api_nudge_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
-        ok = _send(s.name, s.cli, str(action.payload.get("text") or sw.API_NUDGE_TEXT))
+        ok = _send(s.name, s.cli, str(action.payload.get("text") or sw.API_NUDGE_TEXT), sid=cfg.sid)
         sw.log_event("done_confirm_asked" if action.payload.get("confirm") else "api_nudge", paths=paths, name=name,
                      n=action.payload.get("n"), reason=action.reason, ok=ok)
         if name == cfg.brain_name and action.payload.get("n") == 1 and not action.payload.get("confirm"):

@@ -20,6 +20,7 @@ WEB_PY = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 
 # Bilerek yerel-only (HOST_ROUTED_PATHS'a EKLENMEZ); gerekçeler web.py yorumlarında.
 KNOWN_LOCAL_ONLY = {
+    "/api/session/lock", "/api/session/unlock",      # yalnız yerel host (6466e19): kendi grafik oturumumuz, uzak hosta yönlenmez
     "/api/layout", "/api/term/mirror-window", "/api/settings", "/api/usage",
     "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
     "/api/desktop/start", "/api/desktop/stop", "/api/files/validate", "/api/vscode/open",

@@ -189,7 +189,7 @@ class ApplyTest(unittest.TestCase):
                 mock.patch.object(ws, "_send", return_value=True) as send, mock.patch.object(ws.sw, "log_event"):
             res = ws._apply(sw.Action("nudge", "cli", "x", {"text": "devam", "n": 1}), self.cfg, self.proj)
         self.assertTrue(res["ok"])
-        send.assert_called_once_with("cli", "claude", "devam")
+        send.assert_called_once_with("cli", "claude", "devam", sid=self.cfg.sid)
 
     def test_nudge_refused_when_not_tmux_or_not_running(self):
         ws, mock = self.ws, self.mock

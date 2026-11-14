@@ -273,7 +273,7 @@ class ApplyTest(_Engine):
             mock.patch.object(ws, "_running", lambda name: NS(name=name, cli="ucli", pid=1, cwd="/w", sid=name)),
             mock.patch.object(ws, "is_tmux_backed", lambda pid: True),
             mock.patch.object(ws, "_box_has_typed_input", lambda name: self.typed),
-            mock.patch.object(ws, "_send", lambda name, cli, text: self.sent.append((name, cli, text)) or True),
+            mock.patch.object(ws, "_send", lambda name, cli, text, sid="default": self.sent.append((name, cli, text)) or True),
             mock.patch.object(ws, "_local_handover", lambda name, sid, lang: self.calls.append(("handover", name)) or {"ok": True}),
         ]
         for p in patches:
