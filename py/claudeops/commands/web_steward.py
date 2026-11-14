@@ -43,7 +43,7 @@ from ..diaglog import diag_log
 from ..discovery import find_sessions
 from ..guard import guard_lock
 from ..hosts import LOCAL_HOST_NAME
-from ..paths import CLAUDEOPS_DIR
+from ..paths import CLAUDEOPS_DIR, proc_stat_fields
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from ..providers.base import McpServerSpec, OneshotError
 from ..settings import default_effort_for, default_model_for, load_settings, steward_config, steward_ids
@@ -3923,9 +3923,8 @@ def _pid_alive(pid: int) -> Optional[bool]:
     except OSError:
         return None
     try:
-        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as f:
-            return f.read().rpartition(")")[2].split()[0] != "Z"
-    except (OSError, IndexError):
+        return proc_stat_fields(pid)[0] != "Z"
+    except (OSError, ValueError, IndexError):
         return True
 
 
