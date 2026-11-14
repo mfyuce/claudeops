@@ -148,6 +148,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # `--allow-fetch --allow-fetch-domain ...`; fetch_url HÂLÂ varsayılan kapalı.
                               # `provider_bin`/`ucli_limits`'le AYNI alan-bazlı merge ("boş=kaldır" = varsayılana
                               # dön). Okuma tarafı: `ucli_web_config()`.
+    "reader": {},            # {dir}: enterprise 'cops reader' (hoca-reader src/ statik sunumu, /reader/); geçersiz/yoksa özellik KAPALI, `reader_config()`.
     "uzakgoz": {},           # {dir, bin, port: str} (2026-11-01): uzak masaüstü daemon'u (ayrı repo `uzakgoz`, ucli gibi entegre).
                               # dir = derlenecek kaynak dizini (boş: ~/work/projects/tmp/uzakgoz; eski rust/screenshare yedeği kaldırıldı),
                               # bin = hazır ikili (doluysa cargo build ATLANIR), port = 1024-65535 (boş: 8877).
@@ -311,7 +312,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "reader", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
@@ -647,6 +648,19 @@ def uzakgoz_config() -> Dict[str, Any]:
     except ValueError:
         pass
     return out
+
+
+def reader_config() -> Dict[str, str]:
+    """`reader` ayarı, DOĞRULANMIŞ: `dir` = içinde index.html olan dizin (gerçek yol); geçersiz/eksik = "" (özellik kapalı), asla fırlatmaz."""
+    raw = load_settings().get("reader") or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    d = os.path.expanduser(str(raw.get("dir") or "").strip())
+    if d:
+        d = os.path.realpath(d)
+        if os.path.isfile(os.path.join(d, "index.html")):
+            return {"dir": d}
+    return {"dir": ""}
 
 
 DEFAULT_UCLI_SERVICES = [

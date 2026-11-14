@@ -52,7 +52,7 @@ import psutil
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from .. import dist_check as _dist_check
-from .. import term_dedup, tunnel_proto, usage_poll, ws_ticket
+from .. import extensions, term_dedup, tunnel_proto, usage_poll, ws_ticket
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
@@ -4519,6 +4519,24 @@ class _Handler(BaseHTTPRequestHandler):
         if result.get("ok"):
             web_ws.notify_status_changed()
 
+    def _ext_dispatch(self, method: str, route: Dict[str, Any]) -> None:
+        """Eklenti yolu (`extensions.register_route`): yetki = panel token'ı (`?token=`/Bearer) YA DA token'la girişte verilen
+        oturum çerezi (alt kaynaklar, service worker ve fetch token taşıyamaz). Çerez yalnız eklenti yollarını açar, `/api/*`i DEĞİL.
+        Yazan (POST) istekte çerez yetmez: token YA DA özel başlık `X-Cops-Ext: 1` (çapraz kökende ön-uçuş ister) gerekir."""
+        path = urlparse(self.path).path
+        by_token = self._authorized()
+        by_cookie = extensions.cookie_ok(self.headers.get("Cookie") or "", self.token)
+        if not (by_token or by_cookie):
+            self._unauthorized()
+            return
+        if method not in ("GET", "HEAD") and not by_token and self.headers.get("X-Cops-Ext") != "1":
+            self._json({"ok": False, "error": "missing X-Cops-Ext header"}, status=403)
+            return
+        extra: Dict[str, str] = {}
+        if by_token and not by_cookie:
+            extra["Set-Cookie"] = f"{extensions.COOKIE_NAME}={extensions.cookie_value(self.token)}; Path=/; HttpOnly; SameSite=Strict"
+        extensions.dispatch(route, extensions.RouteRequest(self, method, path, extra))
+
     def _unauthorized(self):
         # `/v1/*` (OpenAI-uyumlu katman) HTML DEĞİL JSON almalı: bir OpenAI
         # istemcisi 401 gövdesini de `error.message` diye ayrıştırır, HTML
@@ -4741,6 +4759,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "missing or invalid token"}, status=401)
                 return
             self._agents_reply(web_agents.handle_get(path, parse_qs(urlparse(self.path).query), caller, _AGENT_OPS))
+            return
+        _route = extensions.match_route("GET", path)
+        if _route is not None:
+            self._ext_dispatch("GET", _route)
             return
         if not (self._authorized_ws() if path in ("/ws", "/ws/term") else self._authorized()):
             self._unauthorized()
@@ -5090,6 +5112,10 @@ class _Handler(BaseHTTPRequestHandler):
             raw = self._read_body(length) if length else b""
             form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True).items()}
             self._question_page(form)
+            return
+        _route = extensions.match_route("POST", path)
+        if _route is not None:
+            self._ext_dispatch("POST", _route)
             return
         agents_caller = self._agents_caller() if path.startswith("/api/agents/") else None
         if agents_caller is None and not self._authorized():
