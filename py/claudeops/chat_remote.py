@@ -29,7 +29,7 @@ def names(tag: str, day: str) -> Dict[str, str]:
     if not _TAG.match(tag) or not re.match(r"^\d{8}$", day):
         raise ValueError("etiket/gün geçersiz")
     base = f".chatpull-{tag}-{day}"
-    return {"tmp": base + ".tgz.part", "tgz": base + ".tgz", "done": base + ".done"}
+    return {"tmp": base + ".tgz.part", "tgz": base + ".tgz", "done": base + ".done", "fail": base + ".fail"}
 
 
 def _o(outdir: str, name: str) -> str:
@@ -41,12 +41,12 @@ def pack_command(tag: str, day: str, paths: Optional[List[str]] = None, outdir: 
     n = names(tag, day)
     ps = " ".join(shlex.quote(p) for p in (paths or DEFAULT_PATHS))
     return (f" nice -n 19 ionice -c3 tar czf {_o(outdir, n['tmp'])} --ignore-failed-read -C ~ {ps} 2>/dev/null; "
-            f"mv {_o(outdir, n['tmp'])} {_o(outdir, n['tgz'])} && touch {_o(outdir, n['done'])}")
+            f"mv {_o(outdir, n['tmp'])} {_o(outdir, n['tgz'])} && touch {_o(outdir, n['done'])} || touch {_o(outdir, n['fail'])}")
 
 
 def cleanup_command(tag: str, day: str, outdir: str = "") -> str:
     n = names(tag, day)
-    return f" rm -f -- {_o(outdir, n['tmp'])} {_o(outdir, n['tgz'])} {_o(outdir, n['done'])}"     # yalnız kendi üç geçici dosyası
+    return f" rm -f -- {_o(outdir, n['tmp'])} {_o(outdir, n['tgz'])} {_o(outdir, n['done'])} {_o(outdir, n['fail'])}"     # yalnız kendi üç geçici dosyası
 
 
 def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]] = None,
@@ -61,7 +61,13 @@ def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]
         tx.send(cleanup_command(tag, day, root))     # bayat .done/.tgz kalıntısı eski arşivi indirtmesin
         tx.send(pack_command(tag, day, paths, root))
         t0 = clock()
-        while n["done"] not in tx.listing(root):
+        while True:
+            ls = tx.listing(root)
+            if n["done"] in ls:
+                break
+            if n["fail"] in ls:              # tar/mv başarısız: 1 saat bekleme, hemen bırak
+                tx.send(cleanup_command(tag, day, root))
+                return {"ok": False, "msg": "uzak arşiv oluşturulamadı (.fail)", "bytes": 0}
             if clock() - t0 > wait_s:
                 return {"ok": False, "msg": "uzak arşiv zaman aşımı (.done yok)", "bytes": 0}
             sleep(poll_s)

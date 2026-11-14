@@ -39,10 +39,11 @@ def pb_decode(b: bytes, depth: int = 0) -> Optional[List[Any]]:
                     return None
                 i += ln
                 v = _bytes_val(raw, depth)
-            elif wt == 1:
-                v = int.from_bytes(b[i:i + 8], "little"); i += 8
-            elif wt == 5:
-                v = int.from_bytes(b[i:i + 4], "little"); i += 4
+            elif wt in (1, 5):
+                n = 8 if wt == 1 else 4
+                if i + n > len(b):          # kesik sabit boyutlu alan: sessizce 0 ile doldurma
+                    return None
+                v = int.from_bytes(b[i:i + n], "little"); i += n
             else:
                 return None
             out.append((f, v))
@@ -151,6 +152,11 @@ def _summary(db: str) -> Dict[str, Any]:
         sig: Any = (_st.st_mtime_ns, _st.st_size)
     except OSError:
         sig = None
+    try:                                     # WAL modunda yeni commit'ler yalnız -wal'ı büyütür
+        _w = os.stat(sdb + "-wal")
+        sig = (sig, _w.st_mtime_ns, _w.st_size)
+    except OSError:
+        pass
     if sdb not in _SUMM or _SUMM[sdb][0] != sig:
         m: Dict[str, Any] = {}
         sc = None
@@ -178,8 +184,16 @@ def dump_gemini(db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
     try:
         summ = _summary(db)
         proj = summ.get("project") or _gemini_cwd(c)      # önce özet tablosu (workspace_uris), yoksa payload alan 11
+        sday = UNKNOWN                        # oturum günü = ilk zaman damgalı adım; özet/gen_metadata satırları oturumu bölmesin
+        for (md0,) in c.execute("select metadata from steps order by idx"):
+            d0 = _day(_first_ts(pb_decode(md0))) if md0 else UNKNOWN
+            if d0 != UNKNOWN:
+                sday = d0
+                break
+        if sday == UNKNOWN:
+            sday = _valid_day(str(summ.get("last_modified") or "")[:10]) or UNKNOWN
         if summ:
-            yield proj, _valid_day(str(summ.get("last_modified") or "")[:10]), sess, {
+            yield proj, sday, sess, {
                 "summary": {"title": summ.get("title"), "workspace": summ.get("project"), "last_modified": summ.get("last_modified")}}
         for idx, stype, status, md, pl, ri in c.execute("select idx,step_type,status,metadata,step_payload,render_info from steps order by idx"):
             mdd = pb_decode(md) if md else None
@@ -193,7 +207,7 @@ def dump_gemini(db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
             yield proj, _day(ts), sess, row
         for idx, data, _sz in c.execute("select idx,data,size from gen_metadata order by idx"):
             d = pb_decode(data) if data else None
-            yield proj, _day(_first_ts(d)), sess, {"gen_metadata_idx": idx, "data": _jsonable(d) if d else None}
+            yield proj, sday, sess, {"gen_metadata_idx": idx, "data": _jsonable(d) if d else None}
     finally:
         c.close()
 

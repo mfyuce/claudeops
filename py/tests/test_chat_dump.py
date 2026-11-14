@@ -45,7 +45,7 @@ class DumpTest(unittest.TestCase):
             D._SUMM.clear()
             w = D.write_jsonl(D.dump_gemini(db), t, "gemini")
             self.assertTrue(all(x.startswith("gemini/w-proj/") for x in w), w)
-            self.assertIn("gemini/w-proj/2026-07-01/abc.jsonl", w)
+            self.assertEqual(w, ["gemini/w-proj/2026-09-21/abc.jsonl"])     # oturum tek dosya: özet satırı last_modified gününe bölmez
 
     def test_summary_null_workspace(self):
         with tempfile.TemporaryDirectory() as t:
@@ -188,3 +188,11 @@ class WalSigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PbTruncatedFixedTest(unittest.TestCase):
+    def test_truncated_fixed32_64_returns_none(self):
+        from claudeops import chat_dump as D
+        self.assertIsNone(D.pb_decode(bytes([0x0D, 1, 2])))          # alan 1, wt 5, yalnız 2 bayt
+        self.assertIsNone(D.pb_decode(bytes([0x09, 1, 2, 3])))       # alan 1, wt 1, yalnız 3 bayt
+        self.assertEqual(D.pb_decode(bytes([0x0D, 1, 0, 0, 0])), [(1, 1)])
