@@ -4625,7 +4625,7 @@ class _Handler(BaseHTTPRequestHandler):
                 web_hosts.FILE_DOWNLOAD_PATH, host, {"name": name, "lang": lang, "path": fpath}
             )
             if err_msg is not None:
-                self._json({"ok": False, "error": err_msg}, status=200)
+                self._json({"ok": False, "error": err_msg}, status=502)
                 return
             try:
                 self.send_response(status)
@@ -4636,10 +4636,13 @@ class _Handler(BaseHTTPRequestHandler):
                     for hk, hv in (headers or {}).items():
                         self.send_header(hk, hv)
                 self.send_header("Content-Length", str(len(body or b"")))
+                self._ext_own_csp = ticket_mode    # bilet kipi kendi CSP'sini (sandbox) koydu: ikinci/çelişen CSP+XFO eklenmez
                 self.end_headers()
                 self.wfile.write(body or b"")
             except (BrokenPipeError, ConnectionResetError, OSError) as e:
                 diag_log("response_write_failed", path="/api/files/download", error=str(e))
+            finally:
+                self._ext_own_csp = False    # keep-alive: bayrak sonraki isteğe sızmasın
             return
         s, err = _files_resolve(name, lang)
         if err:
@@ -4673,10 +4676,13 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Disposition", disposition)
             self.send_header("Content-Length", str(len(body)))
+            self._ext_own_csp = ticket_mode
             self.end_headers()
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             diag_log("response_write_failed", path=urlparse(self.path).path, error=str(e))
+        finally:
+            self._ext_own_csp = False
 
     def _session_lock(self, action: str, data: dict) -> None:
         """`/api/session/lock|unlock` (POST): kendi grafik oturumumuzu kilitle/aç (`graphical_session.set_lock`). Yalnız YEREL host
@@ -5253,7 +5259,11 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             try:
                 length = int(self.headers.get("Content-Length", 0) or 0)
-                data = json.loads(self._read_body(length).decode("utf-8")) if 0 < length <= MAX_JSON_BODY_BYTES else {}
+                if length > MAX_JSON_BODY_BYTES or length < 0:
+                    self.close_connection = True    # gövde okunmadan bırakılırsa keep-alive akışı bozulur: bağlantıyı kapat
+                    self._json({"ok": False, "error": "payload too large"}, status=413)
+                    return
+                data = json.loads(self._read_body(length).decode("utf-8")) if length > 0 else {}
             except (ValueError, UnicodeDecodeError):
                 self._json({"ok": False, "error": "invalid JSON"}, status=400)
                 return
@@ -5268,7 +5278,11 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             try:
                 length = int(self.headers.get("Content-Length", 0) or 0)
-                data = json.loads(self._read_body(length).decode("utf-8")) if 0 < length <= MAX_JSON_BODY_BYTES else {}
+                if length > MAX_JSON_BODY_BYTES or length < 0:
+                    self.close_connection = True    # gövde okunmadan bırakılırsa keep-alive akışı bozulur: bağlantıyı kapat
+                    self._json({"ok": False, "error": "payload too large"}, status=413)
+                    return
+                data = json.loads(self._read_body(length).decode("utf-8")) if length > 0 else {}
             except (ValueError, UnicodeDecodeError):
                 self._json({"ok": False, "error": "invalid JSON"}, status=400)
                 return

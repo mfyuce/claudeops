@@ -3725,7 +3725,7 @@ def _doc_path(cwd: str, fname: str) -> str:
     return ""
 
 
-_TODO_DONE_RE = re.compile(r"YAPILDI|ÇÖZÜLDÜ|KAPANDI|TAMAM|✅|\\bDONE\\b", re.I)
+_TODO_DONE_RE = re.compile(r"YAPILDI|ÇÖZÜLDÜ|KAPANDI|TAMAM|✅|\bDONE\b", re.I)
 
 
 def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int, int]]:
