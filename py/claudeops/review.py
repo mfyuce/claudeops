@@ -13,6 +13,7 @@ import re
 import subprocess
 import time
 import unicodedata
+from .textutil import collapse_ws
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -1421,7 +1422,7 @@ def export_lines(rows: Sequence[Dict[str, Any]], reviews_root: str) -> List[str]
             src = os.path.relpath(src, reviews_root)
         if os.path.isabs(src):      # reviews_root dışında/boş: yerel mutlak yol (kullanıcı adı, dizin yapısı) UZAK TODO'ya sızmaz
             src = "/".join(src.rstrip("/").split("/")[-4:])
-        title = " ".join(str(r.get("title") or "").split())
+        title = collapse_ws(r.get("title"))
         out.append(f"- [ ] (review {r['id']}) [{r.get('severity') or '?'}] {r.get('where') or '?'}: {title} "
                    f"(kaynak: {src})" + (f" [{r['note']}]" if r.get("note") else ""))
     return out

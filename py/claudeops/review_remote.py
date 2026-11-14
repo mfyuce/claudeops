@@ -6,6 +6,7 @@ Yerel kopyaya YAZMA yok: review öncesi `git pull --ff-only`; kopya kirliyse ya 
 import os
 import re
 import subprocess
+from .textutil import collapse_ws
 from typing import Callable, Optional, Tuple
 
 WHERE_VALUES = ("", "ask", "local", "remote", "off")
@@ -54,7 +55,7 @@ OFF_WEAK_MAX_WORDS = 3
 def parse_answer(answer: str) -> Tuple[str, str]:
     """Cevap -> (review_where, yol). Seçenek metni ya da serbest metin: "yerel"/"local" -> local, "uzak"/"remote" ->
     remote, "vazge"/"skip"/"hayır" -> off; metinde mutlak yol varsa local + o yol. Tanınmazsa ("", "")."""
-    text = " ".join(str(answer or "").split())
+    text = collapse_ws(answer)
     low = text.casefold()
     m = _PATH_RE.search(text)
     if _OFF_RE.match(low) or (_OFF_WEAK_RE.match(low) and len(text.split()) <= OFF_WEAK_MAX_WORDS):

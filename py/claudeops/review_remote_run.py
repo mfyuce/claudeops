@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+from .textutil import collapse_ws
 from typing import Any, Callable, Dict, Optional, Tuple
 
 POLL_SECONDS = 10.0
@@ -25,7 +26,7 @@ HEAD_CHARS = 60
 
 
 def _norm(s: str) -> str:
-    return " ".join(str(s or "").split())
+    return collapse_ws(s)
 
 
 class RemoteReviewProc:

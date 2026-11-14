@@ -23,6 +23,7 @@ import subprocess
 import threading
 import time
 import uuid
+from ..textutil import collapse_ws
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import atomic_json as aj
@@ -3054,7 +3055,7 @@ def before_tbd(cfg: Any, now: Optional[float] = None) -> List[str]:
         if f"## {fid} |" in seen:
             continue
         secret = sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}"))
-        body = "(parola/gizli değer geçtiği için gövde yazılmadı)" if secret else " ".join(str(rec.get("body") or "").split())[:1500]
+        body = "(parola/gizli değer geçtiği için gövde yazılmadı)" if secret else collapse_ws(rec.get("body"))[:1500]
         blocks.append(f"## {fid} | {rec.get('severity') or '?'} | {rec.get('state')}\n"
                       f"- Yer: `{rec.get('where') or '?'}`\n"
                       f"- Başlık: {' '.join(str(rec.get('title') or '').split())}\n"

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import time
+from .textutil import collapse_ws
 from typing import Optional
 
 FILENAME = "SORU-CEVAP.md"
@@ -22,7 +23,7 @@ def qa_path(local_path: str) -> Optional[str]:
 
 
 def _one_line(s: str) -> str:
-    return " ".join(str(s or "").split())
+    return collapse_ws(s)
 
 
 def append_qa(local_path: str, kind: str, actor: str, text: str, *, ref: str = "", now: Optional[float] = None) -> bool:

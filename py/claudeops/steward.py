@@ -37,6 +37,7 @@ import secrets
 import subprocess
 import threading
 import time
+from .textutil import collapse_ws
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -1579,7 +1580,7 @@ def handover_questions_note(questions: List["Question"], name: str, lang: str = 
     rows.sort(key=lambda q: q.created_at)
     lines = []
     for q in rows[:HANDOVER_QUESTIONS_MAX]:
-        text = " ".join(str(q.text or "").split())
+        text = collapse_ws(q.text)
         if len(text) > HANDOVER_QUESTION_CHARS:
             text = text[:HANDOVER_QUESTION_CHARS - 1] + "…"
         again = f" (+{q.asked_again} kez yeniden soruldu)" if lang != "en" and q.asked_again else (
@@ -1836,7 +1837,7 @@ def raw_card_from_docs(docs: Dict[str, str]) -> Dict[str, Any]:
 
 
 def _short(text: Any, n: int = CARD_TEXT_CHARS) -> str:
-    return _clip(" ".join(str(text or "").split()), n)
+    return _clip(collapse_ws(text), n)
 
 
 def _str_list(v: Any) -> List[str]:
@@ -4641,12 +4642,12 @@ def waiting_for_gate(text: str) -> bool:
 
 def one_line(text: Any, limit: int = 400) -> str:
     """Metni TEK satıra katla (ucli çok satırlı girdiyi ayrı tur sayar): tüm boşluk/satır sonları tek boşluk. SAF."""
-    return " ".join(str(text or "").split())[:limit]
+    return collapse_ws(text)[:limit]
 
 
 def clip_words(text: Any, limit: int) -> str:
     """Metni TEK satıra katla ve `limit` karakteri aşıyorsa son TAM kelimede kes (sonuna `…`); kelime ortasında kesmez. SAF."""
-    t = " ".join(str(text or "").split())
+    t = collapse_ws(text)
     if len(t) <= limit:
         return t
     cut = t[:limit]

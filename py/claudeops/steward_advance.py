@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+from .textutil import collapse_ws
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from . import steward as sw
@@ -81,10 +82,10 @@ def candidates(findings_by_sid: Iterable[Dict[str, Any]], cwd_of, remote_of=None
                 continue
             seen.add(fid)
             row = {"id": fid, "project": proj, "severity": str(rec.get("severity") or ""),
-                   "where": str(rec.get("where") or ""), "title": " ".join(str(rec.get("title") or "").split())[:200],
+                   "where": str(rec.get("where") or ""), "title": collapse_ws(rec.get("title"))[:200],
                    "file": str(rec.get("exported_to") or "")}
             if host:
-                row.update(todo="open", remote=host, file="", body=" ".join(str(rec.get("body") or "").split())[:BODY_MAX])
+                row.update(todo="open", remote=host, file="", body=collapse_ws(rec.get("body"))[:BODY_MAX])
                 st = (remote_todo_of(proj, fid) if remote_todo_of else "") or ""
                 if st == "done":        # uzak oturum satırı kapattı: aday değil
                     row["todo"] = "done"
