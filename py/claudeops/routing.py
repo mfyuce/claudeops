@@ -97,7 +97,7 @@ def _sync_one(path: str, create: bool) -> str:
         if exists and not os.path.exists(backup):
             shutil.copy2(path, backup)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp-routing"
+        tmp = f"{path}.tmp-routing-{os.getpid()}-{os.urandom(3).hex()}"
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(new)
         os.replace(tmp, path)

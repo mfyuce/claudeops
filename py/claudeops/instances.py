@@ -46,7 +46,7 @@ def read_strict() -> dict:
             data = json.load(f)
     except FileNotFoundError:
         return {"version": _VERSION, "instances": {}}
-    except (json.JSONDecodeError, OSError) as e:
+    except (ValueError, OSError) as e:      # UnicodeDecodeError dahil (bozuk kodlama)
         raise InstancesCorrupt(f"{INSTANCES_JSON} okunamadı: {e}") from e
     if not isinstance(data, dict) or not isinstance(data.get("instances"), dict):
         raise InstancesCorrupt(f"{INSTANCES_JSON} beklenen şekilde değil")

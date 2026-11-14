@@ -145,7 +145,7 @@ def load_hosts() -> List[Dict[str, str]]:
         data = statedocs.read_json("hosts", HOSTS_JSON, None)
         if isinstance(data, list):
             return [h for h in data if isinstance(h, dict) and "name" in h]
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except (FileNotFoundError, ValueError, OSError):      # ValueError: JSONDecodeError + UnicodeDecodeError
         pass
     return []
 
@@ -164,13 +164,13 @@ def _read_checked() -> "tuple[List[Dict[str, str]], bool]":
             raw = f.read()
     except FileNotFoundError:
         return [], False
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return [], True
     if not raw.strip():
         return [], False
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except ValueError:
         return [], True
     if not isinstance(data, list):
         return [], True
