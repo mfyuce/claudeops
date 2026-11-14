@@ -5764,7 +5764,7 @@ def _find_question_any(qid: str, key: str, sid: str = "") -> Tuple[str, Optional
 
 
 def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[str, Any]] = None,
-                       sid: str = "") -> Tuple[int, str]:
+                       sid: str = "", access_check: Optional[Callable[[str, str], bool]] = None) -> Tuple[int, str]:
     """`/q/<id>` (GET: sayfa, POST: `form["answer"]`). Yetki: panel token'ı YA DA sorunun kendi anahtarı (`k`,
     sabit zamanlı karşılaştırma; anahtarsız eski kayıt yalnız token'la). `sid` (`?s=`): soru o kimliğin deposunda
     aranır; yoksa tüm kimliklerde. Dönen: (HTTP durumu, HTML)."""
@@ -5777,6 +5777,11 @@ def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[s
     if q is None:
         return 404, sw.question_page_html(None, lang, "missing")
     key_ok = bool(key and q.key) and secrets.compare_digest(key.encode("utf-8", "replace"), q.key.encode("utf-8"))
+    if access_check is not None and not token_ok:       # çok kullanıcı: kimlik + yetki (projenin/değnekçinin sahibi); `?k=` yolu aynen
+        try:
+            token_ok = bool(access_check(q.project, found_sid))
+        except Exception:
+            token_ok = False
     if not token_ok and not key_ok:
         return 401, sw.question_page_html(None, lang, "denied")
     suffix = "" if found_sid == "default" else f"s={found_sid}"

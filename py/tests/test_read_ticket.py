@@ -50,6 +50,9 @@ class Headers(unittest.TestCase):
 class FakeH:
     token = TOKEN
 
+    def _gate(self, *a, **k):          # K2 kapısı (kanca yok = geçer); gerçek davranış test_authz.py'de
+        return True
+
     def __init__(self, body=b"", path="/api/files/ticket"):
         self.path = path
         self.headers = {"Content-Length": str(len(body))}

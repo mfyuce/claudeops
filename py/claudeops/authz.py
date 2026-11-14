@@ -38,6 +38,7 @@ class Resource:
     host: str = ""
     name: str = ""
     cwd: str = ""
+    steward: str = ""              # değnekçi kimliği (`/api/steward/*`, `/q/`: kind steward/project)
 
 
 @dataclass
@@ -285,6 +286,9 @@ def resources_from(path: str, qs: Mapping[str, Any], data: Optional[dict]) -> Li
         v = qs.get(k) or [""]
         return str(v[0] if isinstance(v, (list, tuple)) else v)
     src = data or {}
+    if path.startswith("/api/steward/"):         # `name` burada PROJE adıdır, oturum değil: kaynak değnekçi kimliği
+        sid = src.get("steward") or _q("steward") or "default"
+        return [Resource(kind="steward", steward=str(sid).strip() or "default")]
     host = str(src.get("host") or _q("host") or "")
     out: List[Resource] = []
     seen = set()

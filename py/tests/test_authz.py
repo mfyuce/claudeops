@@ -109,6 +109,18 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(code, 403)
         self.assertTrue(any(r.name == "other" and r.kind == "session" for r in res))
 
+    def test_post_gate_sees_body_resource_once(self):
+        res = []
+        authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)))
+        authz.set_authorizer(lambda p, a, r: (res.append((a, r.kind, r.name)) or (r.kind == "session" and r.name == "mine")))
+        code, _ = self.call("POST", "/api/term/input", {"Cookie": "x=1"}, {"name": "mine", "text": "x"})
+        self.assertNotEqual(code, 403)                       # eski hata: gövde okunmadan 'global' kaynakla sorulup kendi oturumu bile reddediliyordu
+        self.assertEqual(res, [("term.write", "session", "mine")])      # tek karar, doğru kaynakla
+        res.clear()
+        code, _ = self.call("POST", "/api/files/ticket", {"Cookie": "x=1"}, {"name": "mine", "path": "a"})
+        self.assertNotEqual(code, 403)
+        self.assertEqual(self.call("POST", "/api/files/ticket", {"Cookie": "x=1"}, {"name": "theirs", "path": "a"})[0], 403)
+
     def test_status_filter_applied(self):
         authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)))
         authz.set_status_filter(lambda p, d: {"sessions": [], "who": p.uid})
@@ -199,6 +211,53 @@ class SpawnHookTest(unittest.TestCase):
         from claudeops import ucli_cost
         r = ucli_cost.refusal(authz.SpawnRefused("login_required:codex", "cmd"))
         self.assertEqual((r["ok"], r["code"], r["reason"]), (False, "spawn_refused", "login_required:codex"))
+
+
+class TicketAndQuestionTest(HttpTest):
+    def test_ws_ticket_bound_to_principal(self):
+        from claudeops import ws_ticket
+        p = authz.Principal("u1", ("user",))
+        t = ws_ticket.issue(principal=p)
+        self.assertIs(ws_ticket.consume_principal(t), p)
+        self.assertIsNone(ws_ticket.consume_principal(t))              # tek kullanım
+        t2 = ws_ticket.issue()
+        self.assertIsNone(ws_ticket.consume_principal(t2))             # kimliksiz bilet kimlik vermez
+        self.assertFalse(ws_ticket.consume(t2))
+
+    def test_ticket_replaces_cookie_for_ws_only(self):
+        seen = []
+        authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)) if v.cookies.get("c") == "1" else None)
+        authz.set_authorizer(lambda p, a, r: (seen.append((p.uid, a)) or True))
+        code, body, = self.call("POST", "/api/ws-ticket", {"Cookie": "c=1"}, {})
+        ticket = json.loads(body)["ticket"]
+        code, _ = self.call("GET", f"/ws/term?ticket={ticket}&name=x")           # çerezsiz: bilet kimliği taşır (WS yükseltmesi yok -> 4xx ama 401 DEĞİL)
+        self.assertNotEqual(code, 401)
+        self.assertIn(("u1", "term.read"), seen)
+        code, _ = self.call("GET", f"/ws/term?ticket={ticket}&name=x")           # ikinci kullanım: kimlik yok
+        self.assertEqual(code, 401)
+        t3 = json.loads(self.call("POST", "/api/ws-ticket", {"Cookie": "c=1"}, {})[1])["ticket"]
+        self.assertEqual(self.call("GET", f"/api/status?ticket={t3}")[0], 401)   # bilet yalnız /ws yollarında geçerli
+
+    def test_steward_resource_uses_sid_not_project_name(self):
+        r = authz.resources_from("/api/steward/answer", {}, {"name": "projA", "steward": "ayse"})
+        self.assertEqual([(x.kind, x.steward, x.name) for x in r], [("steward", "ayse", "")])
+        self.assertEqual(authz.resources_from("/api/steward/x", {"steward": ["bo"]}, None)[0].steward, "bo")
+        self.assertEqual(authz.resources_from("/api/steward/x", {}, {})[0].steward, "default")
+
+    def test_question_page_access_check(self):
+        from types import SimpleNamespace as NS
+        from claudeops.commands import web_steward as ws
+        q = NS(id="q1", key="K", project="projA", status="open")
+        calls = []
+        with mock.patch.object(ws, "_find_question_any", return_value=("ayse", q)), \
+                mock.patch.object(ws, "steward_config", return_value=NS(lang="tr")), \
+                mock.patch.object(ws.sw, "question_page_html", lambda *a, **k: "HTML:" + (a[2] if len(a) > 2 else "")):
+            self.assertEqual(ws.http_question_page("q1", "", False, None, "", access_check=lambda pr, sid: calls.append((pr, sid)) or True)[0], 200)
+            self.assertEqual(calls, [("projA", "ayse")])
+            self.assertEqual(ws.http_question_page("q1", "", False, None, "", access_check=lambda pr, sid: False)[0], 401)
+            self.assertEqual(ws.http_question_page("q1", "", False, None, "", access_check=lambda pr, sid: 1 / 0)[0], 401)     # fail closed
+            self.assertEqual(ws.http_question_page("q1", "K", False, None, "", access_check=lambda pr, sid: False)[0], 200)    # ?k= yolu aynen
+            self.assertEqual(ws.http_question_page("q1", "", False, None, "")[0], 401)                                        # kanca yok: eski davranış
 
 
 class ResourcesTest(unittest.TestCase):

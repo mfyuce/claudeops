@@ -15,18 +15,36 @@ MAX_PENDING = 256          # bellek tavanı: bir istemci biletleri yağdırırsa
 
 _LOCK = threading.Lock()
 _TICKETS: dict = {}        # bilet -> bitiş (monotonic)
+_BOUND: dict = {}          # bilet -> Principal (çok kullanıcı modu: bileti kimin aldığı; yoksa kimliksiz bilet)
 
 
-def issue(now: float | None = None) -> str:
+def issue(now: float | None = None, principal: object = None) -> str:
+    """`principal` verilirse (çok kullanıcı) bilet o kimliğe bağlanır; `consume_principal` onu geri verir."""
     now = time.monotonic() if now is None else now
     t = secrets.token_urlsafe(24)
     with _LOCK:
         for k in [k for k, exp in _TICKETS.items() if exp <= now]:
             del _TICKETS[k]
+            _BOUND.pop(k, None)
         while len(_TICKETS) >= MAX_PENDING:
-            del _TICKETS[min(_TICKETS, key=_TICKETS.get)]
+            k = min(_TICKETS, key=_TICKETS.get)
+            del _TICKETS[k]
+            _BOUND.pop(k, None)
         _TICKETS[t] = now + TTL_SECONDS
+        if principal is not None:
+            _BOUND[t] = principal
     return t
+
+
+def consume_principal(ticket: str, now: float | None = None):
+    """Geçerli ve BİR kimliğe bağlıysa o kimliği döner (bileti siler); aksi None (bilet yine tüketilir)."""
+    if not ticket:
+        return None
+    now = time.monotonic() if now is None else now
+    with _LOCK:
+        exp = _TICKETS.pop(ticket, None)
+        p = _BOUND.pop(ticket, None)
+    return p if exp is not None and exp > now else None
 
 
 def consume(ticket: str, now: float | None = None) -> bool:
@@ -36,4 +54,5 @@ def consume(ticket: str, now: float | None = None) -> bool:
     now = time.monotonic() if now is None else now
     with _LOCK:
         exp = _TICKETS.pop(ticket, None)
+        _BOUND.pop(ticket, None)
     return exp is not None and exp > now

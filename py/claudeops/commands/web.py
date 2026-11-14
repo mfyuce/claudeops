@@ -4472,7 +4472,10 @@ class _Handler(BaseHTTPRequestHandler):
         Sonuç `self._cur_principal`'a konur (WS durum süzgeci okur)."""
         from .. import authz
         if authz.has_authenticator():
-            p = authz.authenticate(self._request_view())
+            view = self._request_view()
+            p = authz.authenticate(view)
+            if p is None and view.path in ("/ws", "/ws/term") and view.query.get("ticket"):
+                p = ws_ticket.consume_principal(view.query["ticket"])      # çerezsiz WS: bilet, alındığı kimliğe bağlıdır (30 sn, tek kullanım)
         else:
             p = authz.LEGACY if self._authorized() else None
         self._cur_principal = p
@@ -4805,6 +4808,8 @@ class _Handler(BaseHTTPRequestHandler):
         fpath = str(data.get("path") or "").strip()
         host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
         lang = "en" if data.get("lang") == "en" else "tr"
+        if not self._gate("POST", "/api/files/ticket", data):      # K2: gövdedeki oturum/host kaynağı
+            return
         if not name:
             self._json(_err(lang, "name_required"), status=400)
             return
@@ -5280,7 +5285,14 @@ class _Handler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
         key = (qs.get("k") or [""])[0]
         sid = (qs.get("s") or [""])[0]    # çoklu değnekçi: soru o kimliğin deposunda aranır (yoksa tüm kimliklerde)
-        status, html_text = web_steward.http_question_page(qid, key, self._authorized(), form, sid)
+        from .. import authz
+        if authz.has_authenticator():
+            pr = self._principal()
+            check = (lambda project, qsid: authz.check(pr, "steward.answer", authz.Resource(kind="project", name=project, steward=qsid))) \
+                if pr is not None else None
+            status, html_text = web_steward.http_question_page(qid, key, False, form, sid, access_check=check)
+        else:
+            status, html_text = web_steward.http_question_page(qid, key, self._authorized(), form, sid)
         body = html_text.encode("utf-8")
         try:
             self.send_response(status)
@@ -5371,10 +5383,14 @@ class _Handler(BaseHTTPRequestHandler):
             return
         else:
             self._cur_principal = _az.LEGACY
-        if not self._gate("POST", path):
+        # K2 kapısı POST'ta TEK kez, kaynağın (oturum/host/değnekçi) bilindiği yerde çalışır: gövde okunmadan çağrılırsa kaynak
+        # `global` görünür ve kullanıcının kendi oturumuna yazması bile reddedilirdi. Gövdeyi kendisi okuyan uçlar burada (sorgu
+        # tabanlı kaynak), `/api/files/ticket` kendi içinde, geri kalan her şey gövde ayrıştırıldıktan sonra kapıdan geçer.
+        if path in ("/api/ws-ticket", "/api/files/upload", "/api/labels", "/api/periodic") and not self._gate("POST", path):
             return
         if path == "/api/ws-ticket":
-            self._json({"ok": True, "ticket": ws_ticket.issue(), "ttl": int(ws_ticket.TTL_SECONDS)})
+            self._json({"ok": True, "ticket": ws_ticket.issue(principal=getattr(self, "_cur_principal", None) if _az.has_authenticator() else None),
+                        "ttl": int(ws_ticket.TTL_SECONDS)})
             return
         if path == "/api/files/ticket":
             self._files_ticket()
@@ -5474,8 +5490,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "JSON gövde bir nesne olmalı / JSON body must be an object"}, status=400)
             return
         self._cur_data = data
-        if (data.get("name") or data.get("host") or data.get("model") or data.get("participants") or data.get("names")) \
-                and not self._gate("POST", path, data):    # K2 aşama 2: gövdedeki oturum/host kaynağı
+        if not self._gate("POST", path, data):    # K2: gövdedeki oturum/host/değnekçi kaynağıyla (kanca yoksa ek iş yok)
             return
         # OpenAI-uyumlu katman (TOBEDECIDED #21) — host-routing bloğundan ÖNCE ve
         # ondan BAĞIMSIZ: `/v1/*` BİLEREK sadece YEREL session'lara bakar
