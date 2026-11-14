@@ -83,7 +83,7 @@ class ResolveTests(unittest.TestCase):
                 mock.patch.object(rd, "_token", None), mock.patch.object(rd, "_port", None), \
                 mock.patch.object(rd.subprocess, "run") as run, \
                 mock.patch.object(rd.subprocess, "Popen", return_value=proc) as popen, \
-                mock.patch.object(rd, "_port_open", return_value=True), \
+                mock.patch.object(rd, "_port_open", side_effect=[False, True]), \
                 mock.patch.object(rd, "_write_pid_file"), \
                 mock.patch.object(rd, "_adopt_if_orphaned"), \
                 mock.patch.object(rd, "_proc", None), mock.patch.object(rd, "_adopted_pid", None):

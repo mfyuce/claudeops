@@ -4308,6 +4308,10 @@ UNAUTHORIZED_HTML = (
 )
 
 
+class _BodyTimeout(Exception):
+    """POST gövdesi zamanında/tam gelmedi."""
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "claudeops-web/1"
     # HTTP/1.0 (stdlib varsayılanı) her istekte yeni TCP+TLS-yok-ama-yine-de
@@ -4322,6 +4326,7 @@ class _Handler(BaseHTTPRequestHandler):
     # HTTP isteği sanıp karıştırma riski YOK.
     protocol_version = "HTTP/1.1"
     token = ""  # run() içinde atanır
+    BODY_READ_TIMEOUT = 60.0     # sahip 14 Kas (TBD): POST gövde okuması için; YALNIZ okuma süresince (WS/tünel/boşta bağlantılar etkilenmez)
     HEADER_READ_TIMEOUT = 15.0   # TBD#54: istek satırı + başlık okuma fazı (slowloris); başlık bitince eski değere dönülür
 
     def handle_one_request(self):
@@ -4695,7 +4700,8 @@ class _Handler(BaseHTTPRequestHandler):
             status = 409 if code == "exists" else 400
             self._json(_err(lang, f"files_{code}", name=name, filename=filename), status=status)
             return
-        werr = files_mod.write_upload(dest, self.rfile, length, _UPLOAD_CHUNK, overwrite=overwrite)
+        with self._body_timeout_ctx():
+            werr = files_mod.write_upload(dest, self.rfile, length, _UPLOAD_CHUNK, overwrite=overwrite)
         if werr == "exists":
             self._json(_err(lang, "files_exists", name=name, filename=filename), status=409)
             return
@@ -5028,7 +5034,45 @@ class _Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             diag_log("response_write_failed", path=parsed.path, error=str(e))
 
+    @contextlib.contextmanager
+    def _body_timeout_ctx(self):
+        """POST gövde okuması için soket zaman aşımı (kimlik doğrulama öncesi thread tüketimi / yavaş gövde); önceki değer geri konur."""
+        try:
+            old = self.connection.gettimeout()
+            self.connection.settimeout(self.BODY_READ_TIMEOUT)
+        except Exception:
+            yield
+            return
+        try:
+            yield
+        finally:
+            try:
+                self.connection.settimeout(old)
+            except Exception:
+                pass
+
+    def _read_body(self, length: int) -> bytes:
+        """`length` bayt gövde; zaman aşımı/kopma/eksik gövde `_BodyTimeout` (do_POST 408 + bağlantı kapatma)."""
+        with self._body_timeout_ctx():
+            try:
+                data = self.rfile.read(length)
+            except (socket.timeout, TimeoutError, OSError) as e:
+                raise _BodyTimeout(str(e)) from e
+        if len(data) < length:
+            raise _BodyTimeout("short body")
+        return data
+
     def do_POST(self):
+        try:
+            self._do_post_inner()
+        except _BodyTimeout:
+            self.close_connection = True
+            try:
+                self._json({"ok": False, "error": "request body timeout"}, status=408)
+            except Exception:
+                pass
+
+    def _do_post_inner(self):
         path = urlparse(self.path).path
         if path.startswith("/q/"):
             try:
@@ -5039,7 +5083,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self.close_connection = True      # gövde okunmadı: keep-alive'da artık bayt sonraki isteğin başı sanılır (review R-1)
                 self._json({"ok": False, "error": "invalid or oversized form"}, status=400)
                 return
-            raw = self.rfile.read(length) if length else b""
+            raw = self._read_body(length) if length else b""
             form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True).items()}
             self._question_page(form)
             return
@@ -5069,7 +5113,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             try:
                 length = int(self.headers.get("Content-Length", 0) or 0)
-                data = json.loads(self.rfile.read(length).decode("utf-8")) if 0 < length <= MAX_JSON_BODY_BYTES else {}
+                data = json.loads(self._read_body(length).decode("utf-8")) if 0 < length <= MAX_JSON_BODY_BYTES else {}
             except (ValueError, UnicodeDecodeError):
                 self._json({"ok": False, "error": "invalid JSON"}, status=400)
                 return
@@ -5084,7 +5128,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             try:
                 length = int(self.headers.get("Content-Length", 0) or 0)
-                data = json.loads(self.rfile.read(length).decode("utf-8")) if 0 < length <= MAX_JSON_BODY_BYTES else {}
+                data = json.loads(self._read_body(length).decode("utf-8")) if 0 < length <= MAX_JSON_BODY_BYTES else {}
             except (ValueError, UnicodeDecodeError):
                 self._json({"ok": False, "error": "invalid JSON"}, status=400)
                 return
@@ -5121,7 +5165,7 @@ class _Handler(BaseHTTPRequestHandler):
             # üstteki JSONDecodeError dalıyla AYNI gerekçe/desen.
             self._json({"ok": False, "error": "geçersiz/aşırı büyük istek gövdesi / invalid or oversized request body"}, status=400)
             return
-        raw = self.rfile.read(length) if length else b"{}"
+        raw = self._read_body(length) if length else b"{}"
         try:
             data = json.loads(raw or b"{}")
         except ValueError:      # JSONDecodeError + UnicodeDecodeError (bozuk UTF-8 gövde 500 olmasın)
