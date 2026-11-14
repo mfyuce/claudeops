@@ -2635,7 +2635,14 @@ def _self_verify_fail(p: Any, fids: Sequence[str], reason: str, now: float, sess
 
 
 VERIFY_PROVIDERS = ("claude", "codex", "evren", "agy")
-VERIFY_AGY_SLOT = 99                 # agy doğrulayıcısının izole HOME'u (`agy_home_99`): review yuvalarının HOME'larıyla çakışmaz
+VERIFY_AGY_SLOT = 100                # agy doğrulayıcısının izole HOME taban numarası: review yuvalarının (küçük numaralar) HOME'larıyla çakışmaz
+
+
+def verify_agy_slot(cwd: str) -> int:
+    """Doğrulama HOME'u PROJE klasörüne göre ayrılır (`agy_home_<100..1099>`): farklı projelerin eşzamanlı agy öz-doğrulamaları aynı
+    `settings.json`ı (cwd/izinler) ve günlük/TMPDIR'i ezmesin. Aynı klasör hep aynı numara (proje başına tek canlı doğrulama zaten var)."""
+    import zlib
+    return VERIFY_AGY_SLOT + zlib.crc32(os.path.realpath(cwd or "").encode("utf-8", "replace")) % 1000
 
 
 def verify_provider(cfg: Any) -> str:
@@ -2688,7 +2695,7 @@ def verify_argv(cfg: Any, cwd: str, prompt: str, *, api_key: Optional[str] = Non
         argv = agy_argv(resolved_binary("agy"), model, prompt, prov_obj)
         allow = rv.agy_allow_list(getattr(cfg, "review_agy_allow", ""))
         if allow:
-            home = agy_home(sw.paths_for(cfg.sid).root, cwd, allow, slot=VERIFY_AGY_SLOT)
+            home = agy_home(sw.paths_for(cfg.sid).root, cwd, allow, slot=verify_agy_slot(cwd))
             env.update(HOME=home, TMPDIR=os.path.join(home, "tmp"))
             bwrap = shutil.which("bwrap") if getattr(cfg, "review_agy_jail", True) else None
             if bwrap:
