@@ -2164,16 +2164,20 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if slots:
         return _tick_slots(p, cfg, pool, hist, targets, slots, t, gap, actions)
     skip: List[str] = _backlog_skip(cfg, pool)
+    skip_pairs: List[str] = []
     while True:
         nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip, head_of=_head_of,
-                             window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)))
+                             window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)), skip_pairs=skip_pairs)
         if nxt is None:
             return {"ok": True, "actions": actions, "started": 0, "noop": not actions}
         proj, target = nxt
         state, cwd = _ready_project(p, proj, target, t, actions)
         if state == "ok":
             break
-        skip.append(proj)                    # klasörü bulunamayan / yerel kopyası hazırlanamayan proje bu turda atlanır
+        if state == "mode":
+            skip_pairs.append(rv.pair_key(proj, target))   # uzak proje + evren dışı hedef: yalnız bu çift elenir (yuva kipindeki skip_mode gibi), evren hedefi sürer
+        else:
+            skip.append(proj)                # klasörü bulunamayan / yerel kopyası hazırlanamayan proje bu turda atlanır
     res = start_job(p, cfg, proj, target, cwd)
     if res.get("ok"):
         actions.append({"kind": "review_start", "project": proj, "target": target.key})

@@ -70,6 +70,17 @@ class TestPlanner(unittest.TestCase):
         self.assertFalse(rv.project_complete(h, "p", TS, NOW))
         self.assertFalse(rv.project_complete(h, "p", [], NOW))
 
+    def test_skip_pairs_drops_only_that_pair_not_the_project(self):
+        p = pool("remote1")
+        h = hist()
+        first = rv.next_review(p, h, TS, NOW)
+        self.assertEqual(first[0], "remote1")
+        other = T2 if first[1] is T1 else T1
+        nxt = rv.next_review(p, h, TS, NOW, skip_pairs=[rv.pair_key("remote1", first[1])])
+        self.assertEqual(nxt, ("remote1", other))                       # proje atlanmaz, kalan hedef sürer
+        both = [rv.pair_key("remote1", T1), rv.pair_key("remote1", T2)]
+        self.assertIsNone(rv.next_review(p, h, TS, NOW, skip_pairs=both))
+
     def test_focus_project_goes_first(self):
         h = hist(**{"half|agy/gemini-3-flash": done(NOW - DAY)})          # half: yarım, normalde ilk
         p = pool("half", "never", "older")

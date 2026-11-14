@@ -259,8 +259,10 @@ def _blocked_targets(targets: Sequence["ReviewTarget"], skip: Any) -> List["Revi
 
 def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: float,
                 busy_projects: Sequence[str] = (), window: float = WINDOW_SECONDS,
-                head_of: Optional[Callable[[str], str]] = None) -> Optional[Tuple[str, ReviewTarget]]:
-    """Sıradaki (proje, hedef) ya da None. TEK proje: önce yarım kalan (bazı çiftleri taze, bazısı değil), sonra hiç
+                head_of: Optional[Callable[[str], str]] = None,
+                skip_pairs: Sequence[str] = ()) -> Optional[Tuple[str, ReviewTarget]]:
+    """Sıradaki (proje, hedef) ya da None. `skip_pairs`: bu turda hazırlanamayan ÇİFTLER (`pair_key`); proje bütünüyle atlanmaz,
+    yalnız o hedef (ör. uzak proje + evren dışı mod) elenir, projenin kalan hedefleri sürer. TEK proje: önce yarım kalan (bazı çiftleri taze, bazısı değil), sonra hiç
     çifti olmayan, sonra en eskisi (en yeni bitişi en eski olan). Tamam projeler, `busy_projects` ve çalışan çiftler
     atlanır; `head_of(proje)` (git HEAD, "" = bilinmiyor) verilirse pencere dolsa da `done` çiftin kayıtlı `head`i güncel
     HEAD'e EŞİTSE taze sayılır (değişmeyen koda yeniden review yok); projede taze koşusu olmayan model ailesinin
@@ -270,11 +272,15 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
         return None
     pairs = _pairs(history)
     busy = set(busy_projects)
+    sp = set(skip_pairs)
     cands: List[Tuple[int, float, str, ReviewTarget]] = []
     for proj in pool_enabled(pool):
         if proj in busy:
             continue
-        recs = [pairs.get(pair_key(proj, t)) for t in targets]
+        tgs = [t for t in targets if pair_key(proj, t) not in sp]
+        if not tgs:
+            continue
+        recs = [pairs.get(pair_key(proj, t)) for t in tgs]
         if any(isinstance(r, dict) and r.get("status") == "running" for r in recs):
             continue                                   # projede çalışan çift var: aynı projeye ikinci iş yok
         _hd: List[str] = []
@@ -292,9 +298,9 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
         def _fresh_or_same(r: Any) -> bool:
             return _fresh(r, now, window) or _same_head(r)
 
-        covered = {model_family(t) for t, r in zip(targets, recs) if _fresh_or_same(r)}
+        covered = {model_family(t) for t, r in zip(tgs, recs) if _fresh_or_same(r)}
         pick = None
-        for t, r in zip(targets, recs):
+        for t, r in zip(tgs, recs):
             if _fresh_or_same(r):
                 continue
             if (isinstance(r, dict) and r.get("status") in ("error", "model_fallback", "partial")
