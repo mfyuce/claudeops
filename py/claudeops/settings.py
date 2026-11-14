@@ -181,6 +181,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # %7'sini aşarsa amber); `off` (ya da 0/false/no) = o kademe KAPALI. YALNIZ renk/uyarı:
                               # otomatik durdurma YOK. `ucli_limits`le AYNI alan-bazlı merge. Okuma tarafı:
                               # `ucli_usage_warn_thresholds()`.
+    "remote_desktop": {},    # {unlock: "off"}: Uzak Masaüstü "Kilidi aç" düğmesini/uç noktasını KAPATIR (varsayılan AÇIK); `graphical_session.unlock_enabled()`.
     "session_auto_activate": "off",   # "on" | "off" — Uzak Masaüstü sekmesi açılınca kendi grafik oturumumuzu OTOMATİK öne al
                               # (7 Kas, sahip). VARSAYILAN KAPALI: başka kullanıcıyı ekrandan alır. Kilit AÇILMAZ.
                               # Okuma tarafı: `graphical_session.auto_activate_enabled()` (yalnız açık "on" sözcükleri açar).
@@ -312,7 +313,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "reader", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]

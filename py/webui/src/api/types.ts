@@ -1172,6 +1172,8 @@ export interface GraphicalStatus {
   active_user: string;
   other_active: boolean;
   auto: boolean;
+  /** `remote_desktop.unlock` setting (default on): false hides the "Unlock" button. Absent on older backends. */
+  unlock_enabled?: boolean;
   error?: string;
 }
 
@@ -1182,5 +1184,15 @@ export interface SessionActivateResult {
   need_confirm?: boolean;
   active_user?: string;
   locked?: boolean | null;
+  error?: string;
+}
+
+/** `/api/session/lock|unlock` result (own graphical session only). */
+export interface SessionLockResult {
+  ok: boolean;
+  action?: "lock" | "unlock";
+  locked?: boolean | null;
+  already?: boolean;
+  need_confirm?: boolean;
   error?: string;
 }

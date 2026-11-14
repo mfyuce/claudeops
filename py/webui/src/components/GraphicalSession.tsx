@@ -1,10 +1,13 @@
 /**
  * Uzak Masaüstü sekmesinde "Grafik oturum" bloğu: ekran kimde (yerel hesap mı, başka kullanıcı mı), kilit durumu ve
- * "Oturumumu öne al" düğmesi. Başka bir kullanıcı ekrandaysa adını gösteren satır içi onay ister. Kilit buradan AÇILMAZ.
+ * "Oturumumu öne al" düğmesi. Başka bir kullanıcı ekrandaysa adını gösteren satır içi onay ister. "Ekranı kilitle" / "Kilidi aç"
+ * (14 Kas sahip kararı): yalnız kendi oturumumuz, onay penceresiyle; "Kilidi aç" `remote_desktop.unlock=off` ayarıyla gizlenir.
  * `session_auto_activate` ayarı açıksa (varsayılan kapalı) sekme açılınca bir kez onaysız öne alır (ayar önceden verilmiş onaydır).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiGraphicalStatus, apiSessionActivate } from "../api/client";
+import { apiGraphicalStatus, apiSessionActivate, apiSessionLock } from "../api/client";
+import { describeApiError } from "../api/errors";
+import { showToast } from "../state/toast";
 import type { GraphicalStatus } from "../api/types";
 import { useLang } from "../i18n/LangContext";
 
@@ -37,6 +40,21 @@ export function GraphicalSession() {
     void load();
   }, [load]);
 
+  const setLock = useCallback(async (action: "lock" | "unlock") => {
+    if (!window.confirm(action === "lock" ? t.gfxLockConfirm : t.gfxUnlockConfirm)) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await apiSessionLock(action, true);
+      if (r.ok) showToast(action === "lock" ? t.gfxLockDone : t.gfxUnlockDone);
+      else setErr(r.error ?? "?");
+    } catch (e) {
+      setErr(describeApiError(e, t));
+    }
+    setBusy(false);
+    void load();
+  }, [load, t]);
+
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
@@ -57,6 +75,12 @@ export function GraphicalSession() {
       <strong>{t.gfxTitle}:</strong>
       <span>{line}</span>
       {st.own?.locked === true && <span>{t.gfxLocked}</span>}
+      {st.ok && st.own?.locked === false && (
+        <button type="button" disabled={busy} onClick={() => void setLock("lock")}>{t.gfxLock}</button>
+      )}
+      {st.ok && st.own?.locked === true && st.unlock_enabled !== false && (
+        <button type="button" className="stop" disabled={busy} onClick={() => void setLock("unlock")}>{t.gfxUnlock}</button>
+      )}
       {st.ok && !mine && confirmUser === null && (
         <button type="button" className="start" disabled={busy} onClick={() => void activate(false)}>
           {busy ? t.gfxBringing : t.gfxBring}

@@ -27,6 +27,7 @@ import type {
   DesktopStopResult,
   GraphicalStatus,
   SessionActivateResult,
+  SessionLockResult,
   DiagAskResult,
   DiagLogResult,
   DiagRestartResult,
@@ -510,6 +511,9 @@ export const apiDesktopStart = (lang: Lang): Promise<DesktopStartResult> =>
 export const apiGraphicalStatus = (): Promise<GraphicalStatus> => apiGet<GraphicalStatus>("/api/session/graphical");
 export const apiSessionActivate = (confirm: boolean): Promise<SessionActivateResult> =>
   apiPost<SessionActivateResult>("/api/session/activate", { confirm });
+/** Lock / unlock the daemon's OWN graphical session (local host only, human only; `confirm:true` is what the confirm dialog sends). */
+export const apiSessionLock = (action: "lock" | "unlock", confirm: boolean): Promise<SessionLockResult> =>
+  apiPost<SessionLockResult>(`/api/session/${action}`, { confirm });
 export const apiDesktopStop = (lang: Lang): Promise<DesktopStopResult> =>
   apiPost<DesktopStopResult>("/api/desktop/stop", { lang });
 

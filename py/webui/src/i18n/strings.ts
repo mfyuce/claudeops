@@ -521,6 +521,12 @@ export interface Strings {
   gfxOther: (user: string) => string;
   gfxNone: string;
   gfxLocked: string;
+  gfxLock: string;
+  gfxUnlock: string;
+  gfxLockConfirm: string;
+  gfxUnlockConfirm: string;
+  gfxLockDone: string;
+  gfxUnlockDone: string;
   gfxBring: string;
   gfxBringing: string;
   gfxConfirm: (user: string) => string;
@@ -1472,7 +1478,13 @@ export const STRINGS: Record<Lang, Strings> = {
     gfxYours: "Ekran bizim hesabımızda.",
     gfxOther: (user) => `Ekran şu an \u201c${user}\u201d hesabında.`,
     gfxNone: "Aktif grafik oturum görünmüyor.",
-    gfxLocked: "Ekran kilitli (kilit buradan açılmaz).",
+    gfxLocked: "Ekran kilitli.",
+    gfxLock: "Ekranı kilitle",
+    gfxUnlock: "Kilidi aç",
+    gfxLockConfirm: "Bu bilgisayarın ekranı kilitlensin mi?",
+    gfxUnlockConfirm: "Bu bilgisayarın kilidi PAROLA SORULMADAN açılacak (yalnız kendi oturumun). Emin misin?",
+    gfxLockDone: "Ekran kilitlendi.",
+    gfxUnlockDone: "Kilit açıldı.",
     gfxBring: "Oturumumu öne al",
     gfxBringing: "Öne alınıyor…",
     gfxConfirm: (user) => `\u201c${user}\u201d ekrandan alınacak. Devam edilsin mi?`,
@@ -2434,7 +2446,13 @@ export const STRINGS: Record<Lang, Strings> = {
     gfxYours: "The screen is on our account.",
     gfxOther: (user) => `The screen is on \u201c${user}\u201d right now.`,
     gfxNone: "No active graphical session is visible.",
-    gfxLocked: "The screen is locked (the lock is not opened from here).",
+    gfxLocked: "The screen is locked.",
+    gfxLock: "Lock screen",
+    gfxUnlock: "Unlock",
+    gfxLockConfirm: "Lock this computer's screen?",
+    gfxUnlockConfirm: "This computer will be unlocked WITHOUT asking for the password (your own session only). Are you sure?",
+    gfxLockDone: "Screen locked.",
+    gfxUnlockDone: "Screen unlocked.",
     gfxBring: "Bring my session forward",
     gfxBringing: "Bringing forward…",
     gfxConfirm: (user) => `This takes the screen from \u201c${user}\u201d. Continue?`,

@@ -4683,6 +4683,26 @@ class _Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             diag_log("response_write_failed", path=urlparse(self.path).path, error=str(e))
 
+    def _session_lock(self, action: str, data: dict) -> None:
+        """`/api/session/lock|unlock` (POST): kendi grafik oturumumuzu kilitle/aç (`graphical_session.set_lock`). Yalnız YEREL host
+        (`HOST_ROUTED_PATHS`'ta DEĞİL; `host` alanı yerel dışıysa 400), yalnız insan: ajan token'ı ve `actor` alanı insan dışı olan istek
+        403, `confirm:true` ŞART (panel onay penceresinden sonra gönderir). Her çağrı olay günlüğüne (diag.log: kim/ne zaman/IP/sonuç)."""
+        host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+        actor = str(data.get("actor") or "human").strip() or "human"
+        ip = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+        if host != LOCAL_HOST_NAME:
+            self._json({"ok": False, "error": "local_only"}, status=400)
+            return
+        auth = self.headers.get("Authorization") or ""
+        if actor != "human" or (auth.startswith("Bearer ") and ucli_agents.parent_for_token(auth[len("Bearer "):].strip())):
+            diag_log("session_lock_refused", action=action, actor=actor, ip=ip)
+            self._json({"ok": False, "error": "human_only"}, status=403)
+            return
+        res = graphical_session.set_lock(action, confirm=bool(data.get("confirm")))
+        diag_log("session_lock", action=action, actor="human", ip=ip, ok=res.get("ok"), already=res.get("already"),
+                 need_confirm=res.get("need_confirm"), error=res.get("error"), origin=(self.headers.get("Origin") or "")[:80])
+        self._json(res, status=403 if res.get("error") == "unlock_disabled" else 200)
+
     def _files_ticket(self):
         """`/api/files/ticket` (POST, token ŞART): {name, path, host?, lang?} -> {ok, url: "/readfile/<bilet>/<ad>"}. Yerel dosya hemen doğrulanır
         (yok/yasak/büyük = hata, bilet verilmez); uzak host dosyası okuma anında proxy'lenir. Yanıt, eklenti oturum çerezini de verir
@@ -5260,7 +5280,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/resize", "/api/term/set-mode",
                          "/api/term/open-window", "/api/term/mirror-window", "/api/settings", "/api/usage", "/api/context", "/api/live-model",
-                         "/api/live-effort", "/api/session/activate",
+                         "/api/live-effort", "/api/session/activate", "/api/session/lock", "/api/session/unlock",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
                          "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write",
@@ -5553,6 +5573,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_err(lang, "name_required"), status=400)
                 return
             self._json(_live_model(name, lang=lang))
+            return
+
+        if path in ("/api/session/lock", "/api/session/unlock"):
+            self._session_lock(path.rsplit("/", 1)[1], data)
             return
 
         if path == "/api/session/activate":
