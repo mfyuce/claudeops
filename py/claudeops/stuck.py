@@ -17,6 +17,7 @@ from typing import List, Optional
 from .discovery import find_sessions
 from .kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from .providers import get_provider
+from .providers.claude_provider import live_or_spawn_effort, live_or_spawn_model
 from .session import Session
 from .settings import default_model_for
 from .spawn import spawn_session, detect_display
@@ -105,12 +106,13 @@ def recover_stuck(
     kind = spawn_session(
         name=s.name,
         cwd=s.cwd,
-        model=s.model or default_model_for(get_provider(s.cli)),
+        # canlı model/effort (jsonl): terminalde `/model` yapılmış session spawn-anı argv değerine DÖNMESİN (handover ile aynı kural)
+        model=live_or_spawn_model(s.cli, s.cwd, s.sid, s.model or default_model_for(get_provider(s.cli))),
         display=display,
         # PROC-04 artığı: kip okunamadıysa sağlayıcının KENDİ varsayılanı (`rc.py` ile aynı kural); sabit "auto" ucli'de
         # geçersiz kipti ve sağlayıcıdan bağımsız tam bypass varsayıyordu
         permission_mode=s.permission_mode or get_provider(s.cli).permission_modes()[0],
-        effort=s.effort or "max",
+        effort=live_or_spawn_effort(s.cli, s.cwd, s.sid, s.effort or "max"),
         force_new=False,
         dry_run=False,
         cli=s.cli,

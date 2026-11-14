@@ -12,7 +12,7 @@ from claudeops import stuck  # noqa: E402
 class RecoverStuckTest(unittest.TestCase):
     def test_uses_parent_aware_kill(self):
         s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="m", permission_mode="auto",
-                            effort="high", cli="claude")
+                            effort="high", cli="claude", sid=None)
         info = SimpleNamespace(session=s)
         with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed") as kp, \
                 mock.patch.object(stuck, "kill_session") as ks, \
@@ -30,7 +30,7 @@ class RecoverStuckTest(unittest.TestCase):
         from claudeops.providers import get_provider
         for cli in ("claude", "ucli", "agy"):
             s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="m", permission_mode=None,
-                                effort="high", cli=cli)
+                                effort="high", cli=cli, sid=None)
             with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed"), \
                     mock.patch.object(stuck, "spawn_session", return_value="tmux") as sp:
                 stuck.recover_stuck(SimpleNamespace(session=s), display=":0")
@@ -42,6 +42,19 @@ class RecoverStuckTest(unittest.TestCase):
         with mock.patch.object(stuck, "kill_session_and_parent") as kp:
             self.assertEqual(stuck.recover_stuck(SimpleNamespace(session=s), display=":0", dry_run=True), "dry-run")
         kp.assert_not_called()
+
+    def test_recovery_uses_live_model_and_effort_not_spawn_argv(self):
+        s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="sonnet-spawn", permission_mode="auto",
+                            effort="low", cli="claude", sid="abc")
+        with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed"), \
+                mock.patch.object(stuck, "spawn_session", return_value="tmux") as sp, \
+                mock.patch.object(stuck, "live_or_spawn_model", return_value="fable-live") as lm, \
+                mock.patch.object(stuck, "live_or_spawn_effort", return_value="high-live") as le:
+            stuck.recover_stuck(SimpleNamespace(session=s), display=":0")
+        self.assertEqual(sp.call_args.kwargs["model"], "fable-live")
+        self.assertEqual(sp.call_args.kwargs["effort"], "high-live")
+        self.assertEqual(lm.call_args.args[:4], ("claude", "/tmp", "abc", "sonnet-spawn"))
+        self.assertEqual(le.call_args.args[:4], ("claude", "/tmp", "abc", "low"))
 
 
 if __name__ == "__main__":
