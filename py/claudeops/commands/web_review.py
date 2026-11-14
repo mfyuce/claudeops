@@ -1310,7 +1310,9 @@ def _recover_draft(path: str, text: str, learned: Sequence[str] = ()) -> Tuple[s
             raw = f.read()
     except OSError:
         # Tam taslak yok (koşu kopmuş/bütçe bitmiş): bulduğu anda yazdığı tek bulgu dosyaları rapor olur.
-        return (text, False) if text.strip() or not found.strip() else (found, True)
+        if text.strip() and _REPORT_HEAD_RE.search(text):
+            return text, False
+        return (found, True) if found.strip() else (text, False)      # stdout rapor taşımıyorsa (sohbet/kesik) bulgu dosyaları kazanır
     red = rv.redact_secrets(raw, learned)
     if not _REPORT_HEAD_RE.search(red) and found.strip():
         red = found
@@ -1318,6 +1320,10 @@ def _recover_draft(path: str, text: str, learned: Sequence[str] = ()) -> Tuple[s
         aj.atomic_write_text(dp, red)
     except OSError:
         pass
+    if text.strip() and _REPORT_HEAD_RE.search(text):
+        return text, False
+    if _REPORT_HEAD_RE.search(red):                # stdout rapor taşımıyor ama taslak/bulgu dosyası taşıyor (review cops 2 Kas)
+        return red, True
     return (text, False) if text.strip() else (red, bool(red.strip()))
 
 
