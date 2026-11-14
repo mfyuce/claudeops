@@ -144,7 +144,7 @@ class GateMessage(_Tmp):
         saved = (ws._registered_job_kinds, ws._running, ws.is_tmux_backed, ws._box_has_typed_input, ws._send)
         ws._registered_job_kinds = lambda now: (True, {"import_pdf", "embed", "noop", "pdf_text"})
         ws._running, ws.is_tmux_backed = (lambda n: S()), (lambda pid: True)
-        ws._box_has_typed_input = lambda n: False
+        ws._box_has_typed_input = lambda n, cli="": False
         ws._send = lambda n, c, t: sent.append(t) or True
         ws._JOB_NOTE_SENT.clear()
         try:

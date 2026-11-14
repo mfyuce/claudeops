@@ -41,6 +41,12 @@ class TypedBoxTest(unittest.TestCase):
         old = screen("❯ eski yazı")
         self.assertIs(tb.typed_input_in_box(old + screen(PROMPT_GREY)), False)
 
+    def test_ucli_uses_its_own_box_reader(self):
+        with mock.patch.object(ws, "_ucli_box_text", return_value="yazılı metin"):
+            self.assertTrue(ws._box_has_typed_input("u", "ucli"))
+        with mock.patch.object(ws, "_ucli_box_text", return_value=""):
+            self.assertFalse(ws._box_has_typed_input("u", "ucli"))
+
     def test_helper_false_on_error_and_unknown(self):
         with mock.patch.object(tb, "tmux_pane_snapshot", side_effect=OSError("x")):
             self.assertFalse(ws._box_has_typed_input("s"))

@@ -450,10 +450,12 @@ def _is_transport_error(host: str, parsed: Any, status: int) -> bool:
             and str(parsed.get("error") or "").startswith(f"{host} unreachable:"))
 
 
-def _box_has_typed_input(session_name: str) -> bool:
+def _box_has_typed_input(session_name: str, cli: str = "") -> bool:
     """Oturumun giriş kutusunda KULLANICININ/motorun yazdığı ama GÖNDERİLMEMİŞ metin var mı (gri öneri sayılmaz). Pane
     okunamaz ya da kutu bulunamazsa False (eski davranış: dürtme gider). Fırlatmaz."""
     try:
+        if cli == "ucli":                  # ucli kutusu Claude TUI'den farklı (`ucli>` istemi): kendi okuyucusu
+            return bool(_ucli_box_text(session_name))
         from .. import tmux_backend as tmb
         snap = tmb.tmux_pane_snapshot(session_name)
         return bool(snap and tmb.typed_input_in_box(snap[1]) is True)
@@ -3456,7 +3458,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         s = _running(name)
         if host or s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not a local running tmux session"}
-        if _box_has_typed_input(s.name):    # 2026-10-29 danisppr: kutudaki gönderilmemiş direktife "ok" eklenip tek mesaj gitti
+        if _box_has_typed_input(s.name, s.cli):    # 2026-10-29 danisppr: kutudaki gönderilmemiş direktife "ok" eklenip tek mesaj gitti
             sw.log_event("keepwarm_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, action.payload.get("text") or skw.KEEPWARM_TEXT, sid=cfg.sid)
@@ -3471,7 +3473,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         s = _running(name)
         if host or s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not a local running tmux session"}
-        if _box_has_typed_input(s.name):
+        if _box_has_typed_input(s.name, s.cli):
             sw.log_event(k + "_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, sw.one_line(action.payload.get("text") or "devam"), sid=cfg.sid)   # ucli çok satırı ayrı tur sayar: TEK satır
@@ -3502,7 +3504,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         s = _running(name)
         if s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not running or not tmux-backed"}
-        if _box_has_typed_input(s.name):      # kutudaki gönderilmemiş metne "devam" eklenip tek mesaj gitmesin
+        if _box_has_typed_input(s.name, s.cli):      # kutudaki gönderilmemiş metne "devam" eklenip tek mesaj gitmesin
             sw.log_event("api_nudge_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, str(action.payload.get("text") or sw.API_NUDGE_TEXT), sid=cfg.sid)
@@ -5848,7 +5850,7 @@ def _job_marker_gate(action: "sw.Action", cfg: "sw.Config", name: str, host: str
         note += f" `{bad}` geçerli bir tür değil; en yakın 3: {', '.join(sj.closest_kinds(bad, kinds))}."
     if name not in _JOB_NOTE_SENT and not host:
         s = _running(name)
-        if s is not None and is_tmux_backed(s.pid) and not _box_has_typed_input(s.name):
+        if s is not None and is_tmux_backed(s.pid) and not _box_has_typed_input(s.name, s.cli):
             noted = bool(_send(s.name, s.cli, sw.one_line(note, 1200)))
             if noted:
                 _JOB_NOTE_SENT[name] = now

@@ -675,7 +675,8 @@ def find_outer_bash_pids(name: str) -> List[tuple]:
 
     needles = (
         f"-s {shlex.quote(name)} -c ",              # spawn.py's initial window
-        f"attach-session -t {shlex.quote(name)};",  # open_window()'s extra window(s)
+        f"attach-session -t {shlex.quote(name)};",  # open_window()'s extra window(s) (eski biçim)
+        f"attach-session -t {shlex.quote(_exact(name))};",   # güncel biçim: `-t =NAME` (tmux_attach_shell_fragment)
     )
     found: List[tuple] = []
     for proc in psutil.process_iter(["pid", "name"]):

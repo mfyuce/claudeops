@@ -565,6 +565,23 @@ def _check_repo(repo: str, cfg: Dict[str, Any]) -> Tuple[Optional[Dict[str, str]
     return rems, ""
 
 
+def _porcelain_z_paths(por: str) -> list:
+    """`git status --porcelain -z` çıktısından YENİ yollar. Rename/kopya (`R`/`C`) girdisi iki kayıttır (`XY yeni\0eski`): ikinci
+    kayıt durum öneki taşımaz, `ln[3:]` onu bozardı; eski yol atlanır."""
+    out = []
+    parts = por.split("\0")
+    i = 0
+    while i < len(parts):
+        ln = parts[i]
+        i += 1
+        if len(ln) < 4:
+            continue
+        if "R" in ln[:2] or "C" in ln[:2]:
+            i += 1                      # sonraki kayıt eski yol
+        out.append(ln[3:])
+    return out
+
+
 def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
     """Plan (apply=False) ya da uygula. Sonuç dict'i: ok, msg, written, ... Asla fırlatmaz.
     Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
@@ -639,8 +656,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         repo, rems = _group_repo(cfg, g), remotes[g]
         rc, por = _git(repo, "status", "--porcelain", "-z", "--untracked-files=all", "--", "local", "memory")
         if rc == 0:                       # önceki yarım çalışmadan kalan (içerik aynı olduğu için _put'un yazmadığı) dosyaları da commit'le
-            for ln in por.split("\0"):   # -z: Türkçe/boşluklu adlar tırnaksız gelir
-                rel = ln[3:]
+            for rel in _porcelain_z_paths(por):   # -z: Türkçe/boşluklu adlar tırnaksız gelir
                 if rel and not any(rel in v for v in days.values()):
                     try:
                         d = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(repo, rel))).strftime("%F")

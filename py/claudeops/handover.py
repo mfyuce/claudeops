@@ -397,7 +397,7 @@ def handover_faz1(
             # o komşunun RFH'si bu oturumu yanlışlıkla "ho gerekmez" diye atlatabilir (review 2026-11-04 E6):
             # belirsizse atlama, ho'yu yap.
             shared_cwd = not session.sid and sum(1 for s in sessions if s.cwd == session.cwd) > 1
-            jsonl = None if shared_cwd else jsonl_path_for(session.cwd, session.sid)
+            jsonl = None if (shared_cwd or session.cli != "claude") else jsonl_path_for(session.cwd, session.sid)   # claude dışı oturumun transkripti Claude jsonl'si değil: yalnız git sinyalleri
             jsonl_path = str(jsonl) if jsonl else None
             # needs_ho salt okur: dry-run da aynı kararı göstersin (eskiden önizleme atlanacakları da "gönderilecekti" diyordu, E11)
             if not shared_cwd and not needs_ho(session.pid_str if hasattr(session, 'pid_str') else str(session.pid), session.cwd, jsonl_path):

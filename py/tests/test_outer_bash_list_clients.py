@@ -42,6 +42,14 @@ class ListClientsTests(unittest.TestCase):
              mock.patch("psutil.process_iter", return_value=[scan]):
             self.assertEqual(tb.find_outer_bash_pids("n"), [(7, 3.0)])
 
+    def test_fallback_matches_open_window_exact_target(self):
+        """open_window() penceresi `attach-session -t =NAME` (tmux_attach_shell_fragment) ile açılır: yedek tarama onu da bulmalı."""
+        frag = tb.tmux_attach_shell_fragment("n")
+        scan = _proc(9, "bash", ["bash", "-c", frag + "; exec bash"], ct=4.0)
+        with mock.patch.object(tb, "_outer_bash_via_list_clients", return_value=[]), \
+             mock.patch("psutil.process_iter", return_value=[scan]):
+            self.assertEqual(tb.find_outer_bash_pids("n"), [(9, 4.0)])
+
 
 if __name__ == "__main__":
     unittest.main()
