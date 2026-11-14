@@ -312,3 +312,34 @@ class ResourcesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExtensionCommandTest(unittest.TestCase):
+    """K11: eklenti CLI komutu (`cops <ad> ...`); çekirdek adlarını ezemez, çekirdek komutu eklenti yüklemez."""
+    def setUp(self):
+        from claudeops import extensions
+        self.ext = extensions
+        extensions._COMMANDS.clear()
+        self.addCleanup(extensions._COMMANDS.clear)
+
+    def test_register_and_dispatch(self):
+        from claudeops import cli
+        got = []
+        self.ext.ExtensionAPI().register_command("zent", lambda a: got.append(a) or 7, "x")
+        with mock.patch.object(self.ext, "load"):
+            args = cli.build_parser(["zent", "user", "list"]).parse_args(["zent", "user", "list", "--roles", "a"])
+        self.assertEqual(args.func(args), 7)
+        self.assertEqual(got, [["user", "list", "--roles", "a"]])
+
+    def test_core_name_not_overridden_and_no_load_for_core(self):
+        from claudeops import cli
+        self.ext.ExtensionAPI().register_command("ls", lambda a: 99)
+        with mock.patch.object(self.ext, "load") as ld:
+            cli.build_parser(["ls"])
+            ld.assert_not_called()
+            p = cli.build_parser(["other"])
+        self.assertNotEqual(p.parse_args(["ls"]).func.__name__, "<lambda>")
+
+    def test_bad_name(self):
+        with self.assertRaises(ValueError):
+            self.ext.ExtensionAPI().register_command("-x", lambda a: 0)

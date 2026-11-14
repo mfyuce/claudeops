@@ -23,6 +23,7 @@ PACKAGE = "claudeops_enterprise"
 _LOCK = threading.RLock()
 _STATE: Dict[str, Any] = {"loaded": False, "status": "not_loaded", "detail": "", "lenses": []}
 _ROUTES: List[Dict[str, Any]] = []
+_COMMANDS: Dict[str, Dict[str, Any]] = {}     # K11: CLI alt komutu adı -> {fn, help}
 UI_EXTENSION_API = 1
 _UI_EXTS: Dict[str, Dict[str, Any]] = {}     # K10: id -> {title, assets_dir, roles, entry}
 COOKIE_NAME = "cops_ext"
@@ -51,6 +52,14 @@ class ExtensionAPI:
         with _LOCK:
             _ROUTES[:] = [r for r in _ROUTES if r["prefix"] != prefix]
             _ROUTES.append({"prefix": prefix, "fn": fn, "methods": ms})
+
+    def register_command(self, name: str, fn: Callable[[List[str]], Any], help: str = "") -> None:
+        """K11: `cops <name> ...` komutu; `fn(argv_listesi) -> int|None` (kalan argümanlar ham verilir, eklenti kendi ayrıştırır).
+        Çekirdek komut adlarını ezemez (cli reddeder); aynı ad yeniden kaydedilirse idempotent."""
+        if not isinstance(name, str) or not name.replace("-", "").isalnum() or name.startswith("-"):
+            raise ValueError(f"invalid command name: {name!r}")
+        with _LOCK:
+            _COMMANDS[name] = {"fn": fn, "help": str(help)}
 
     authz_api_version = 1       # `claudeops.authz.AUTHZ_API_VERSION` (kimlik/yetki kancaları; çekirdekte davranışsız)
 
@@ -295,6 +304,11 @@ def load(force: bool = False) -> Dict[str, Any]:
 def status() -> Dict[str, Any]:
     return {"status": _STATE["status"], "detail": _STATE["detail"], "lenses": list(_STATE["lenses"]), "package": PACKAGE,
             "core_api": EXTENSION_API_VERSION}
+
+
+def commands() -> Dict[str, Dict[str, Any]]:
+    with _LOCK:
+        return dict(_COMMANDS)
 
 
 def lens_sources() -> List[str]:
