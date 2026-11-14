@@ -400,13 +400,21 @@ def handle_ws(handler: Any, status_payload_fn: Callable[[], dict]) -> None:
     reader.start()
     try:
         try:
-            _send(client, _encode(status_payload_fn()))
+            _send(client, _encode(_client_view(client, status_payload_fn())))
         except Exception:
             pass  # best-effort — bir sonraki broadcaster tick'i (≤2s) zaten telafi eder
         _writer_loop(client)
     finally:
         client.closed.set()
         _unregister(client)
+
+
+def _client_view(client: "_WSClient", payload: dict) -> dict:
+    """K3: durum süzgeci kayıtlıysa payload bu bağlantının principal'ına göre süzülür; yoksa AYNI nesne (davranış değişmez)."""
+    from .. import authz
+    if not authz.has_status_filter():
+        return payload
+    return authz.filter_status(getattr(client.handler, "_cur_principal", None), payload)
 
 
 def _encode(payload: dict) -> bytes:
@@ -466,8 +474,9 @@ def _broadcaster_loop(status_payload_fn: Callable[[], dict]) -> None:
         last_snapshot = snapshot
         last_sent_mono = now
         data = _encode(payload)
+        from .. import authz
         for client in clients:
-            _push(client, data)
+            _push(client, _encode(_client_view(client, payload)) if authz.has_status_filter() else data)
 
 
 _broadcaster_lock = threading.Lock()

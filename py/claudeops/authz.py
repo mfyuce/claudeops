@@ -1,0 +1,250 @@
+"""Kimlik/yetki KANCALARI (çekirdek, OSS, davranışsız): docs/multi-user-plan.md Bölüm 5 (K1, K2, K3, K9) ve Bölüm 7 A1.
+
+Çekirdek yalnız SÖZLEŞMEYİ tanımlar (`Principal`, `Resource`, eylem adları, kayıt noktaları); doldurma `claudeops_enterprise`'ta,
+yalnız `extensions.ExtensionAPI` üzerinden. Hiçbir kanca kayıtlı değilken çekirdek BİR BAYT değişmez: kimlik = bugünkü `web.token`
+(`LEGACY` principal, her eyleme yetkili), `customized()` False olduğundan `web.py` hiçbir ek iş yapmaz.
+
+Fail closed: kayıtlı authenticator istisna atarsa istek 401, kayıtlı authorizer istisna atarsa ya da False dönerse 403 (+ diag).
+Paket kayıtlıyken eksik eylem adı (`UNMAPPED`) yalnız admin rolüne açılır: authorizer'ın sorumluluğu, ama `action_for` yeni ucu
+sessizce "genel" saymaz (test: web.py'deki her uç `ACTIONS`ta adlandırılmış olmalı).
+"""
+from __future__ import annotations
+
+import threading
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+
+AUTHZ_API_VERSION = 1       # kanca sözleşmesi; EXTENSION_API_VERSION'dan ayrı (eklenti `api.authz_api_version` ile sorar)
+UNMAPPED = "admin.unmapped"
+
+
+@dataclass(frozen=True)
+class Principal:
+    uid: str
+    roles: Tuple[str, ...] = ()
+    kind: str = "human"            # human | agent | legacy
+    ticket_id: str = ""
+
+    def has_role(self, role: str) -> bool:
+        return role in self.roles
+
+
+LEGACY = Principal(uid="owner", roles=("admin",), kind="legacy")
+
+
+@dataclass(frozen=True)
+class Resource:
+    kind: str = "global"           # session | project | host | global
+    host: str = ""
+    name: str = ""
+    cwd: str = ""
+
+
+@dataclass
+class RequestView:
+    """Authenticator'a verilen SALT-OKUNUR istek görünümü (handler'ın ham iç yapısı verilmez)."""
+    method: str
+    path: str
+    query: Dict[str, str]
+    headers: Mapping[str, str]
+    cookies: Dict[str, str]
+    client_addr: str = ""
+
+
+# Ön ek -> eylem. SIRA ÖNEMLİ (ilk eşleşen kazanır; daha özel önek önce). GET ve POST aynı tablo (yöntem ayrımı eylem adında değil).
+_ACTION_TABLE: List[Tuple[str, str]] = [
+    ("/api/auth/", "auth.login"),
+    ("/api/ws-ticket", "status.read"),
+    ("/api/status", "status.read"),
+    ("/api/usage", "usage.read"),
+    ("/api/context", "usage.read"),
+    ("/ws/term", "term.read"),
+    ("/ws/desktop", "desktop.use"),
+    ("/ws", "status.read"),
+    ("/api/term/open-window", "admin.desktop"),
+    ("/api/term/mirror-window", "admin.desktop"),
+    ("/api/term/input", "term.write"),
+    ("/api/term/key", "term.write"),
+    ("/api/term/raw", "term.write"),
+    ("/api/term/resize", "term.write"),
+    ("/api/term/set-mode", "term.write"),
+    ("/api/term/", "term.read"),
+    ("/api/files/upload", "files.write"),
+    ("/api/files/write", "files.write"),
+    ("/api/files/delete", "files.write"),
+    ("/api/files/rename", "files.write"),
+    ("/api/files/mkdir", "files.write"),
+    ("/api/files/", "files.read"),
+    ("/api/orch/", "orch.run"),
+    ("/api/agents/", "agents.use"),
+    ("/api/register", "session.create"),
+    ("/api/adopt", "fleet.admin"),
+    ("/api/instances/", "fleet.admin"),
+    ("/api/snapshot", "fleet.admin"),
+    ("/api/start", "session.control"),
+    ("/api/stop", "session.control"),
+    ("/api/retire", "session.control"),
+    ("/api/reactivate", "session.control"),
+    ("/api/close", "session.control"),
+    ("/api/handover", "session.control"),
+    ("/api/compact", "session.control"),
+    ("/api/new-chat", "session.control"),
+    ("/api/edit", "session.control"),
+    ("/api/session/activate", "session.control"),
+    ("/api/live-model", "session.control"),
+    ("/api/live-effort", "session.control"),
+    ("/api/hosts", "admin.hosts"),
+    ("/api/steward/", "steward.use"),
+    ("/api/layout", "admin.desktop"),
+    ("/api/vscode/", "admin.desktop"),
+    ("/api/desktop/", "desktop.use"),
+    ("/api/audio/", "desktop.use"),
+    ("/api/settings", "admin.config"),
+    ("/api/cli/", "admin.config"),
+    ("/api/diag/", "admin.config"),
+    ("/api/io/", "admin.config"),
+    ("/api/labels", "admin.config"),
+    ("/api/periodic", "admin.config"),
+    ("/api/session/facts", "status.read"),
+    ("/api/session/graphical", "admin.desktop"),
+    ("/api/ucli/", "admin.config"),
+    ("/desktop/", "desktop.use"),
+    ("/api/session/lock", "admin.config"),
+    ("/api/session/unlock", "admin.config"),
+    ("/v1/", "session.chat"),
+    ("/q/", "steward.answer"),
+    ("/", "status.read"),       # panel kabuğu ("/" tam eşleşme ayrı işlenir, aşağıda)
+]
+ACTIONS = tuple(sorted({a for _, a in _ACTION_TABLE} | {UNMAPPED}))
+
+
+def action_for(method: str, path: str) -> str:
+    """Yol -> eylem adı. Tablo dışı yol `UNMAPPED` (varsayılan RED yalnız admin). `method` şimdilik ayrım yapmaz (ileriye uyum)."""
+    if path == "/":
+        return "status.read"
+    for prefix, action in _ACTION_TABLE:
+        if prefix != "/" and (path == prefix.rstrip("/") or path.startswith(prefix)):
+            return action
+    return UNMAPPED
+
+
+# ── kayıt noktaları ───────────────────────────────────────────────────────────
+
+_LOCK = threading.RLock()
+_AUTHENTICATOR: Optional[Callable[[RequestView], Optional[Principal]]] = None
+_AUTHORIZER: Optional[Callable[[Principal, str, Resource], bool]] = None
+_STATUS_FILTER: Optional[Callable[[Principal, dict], dict]] = None
+_AUDIT_SINKS: List[Callable[[Principal, str, Resource, int], None]] = []
+
+
+def set_authenticator(fn: Optional[Callable[[RequestView], Optional[Principal]]]) -> None:
+    global _AUTHENTICATOR
+    with _LOCK:
+        _AUTHENTICATOR = fn
+
+
+def set_authorizer(fn: Optional[Callable[[Principal, str, Resource], bool]]) -> None:
+    global _AUTHORIZER
+    with _LOCK:
+        _AUTHORIZER = fn
+
+
+def set_status_filter(fn: Optional[Callable[[Principal, dict], dict]]) -> None:
+    global _STATUS_FILTER
+    with _LOCK:
+        _STATUS_FILTER = fn
+
+
+def add_audit_sink(fn: Callable[[Principal, str, Resource, int], None]) -> None:
+    with _LOCK:
+        if fn not in _AUDIT_SINKS:
+            _AUDIT_SINKS.append(fn)
+
+
+def reset() -> None:
+    """Test/yeniden yükleme: tüm kancaları sil (çekirdek varsayılanına dön)."""
+    with _LOCK:
+        global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER
+        _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = None
+        _AUDIT_SINKS.clear()
+
+
+def has_authenticator() -> bool:
+    return _AUTHENTICATOR is not None
+
+
+def has_authorizer() -> bool:
+    return _AUTHORIZER is not None
+
+
+def has_status_filter() -> bool:
+    return _STATUS_FILTER is not None
+
+
+def customized() -> bool:
+    """Herhangi bir kimlik/yetki kancası kayıtlı mı? False = çekirdek bugünkü davranışı, hiçbir ek iş yapılmaz."""
+    return _AUTHENTICATOR is not None or _AUTHORIZER is not None
+
+
+def _log(event: str, **kw: Any) -> None:
+    try:
+        from .diaglog import diag_log
+        diag_log(event, **kw)
+    except Exception:
+        pass
+
+
+# ── karar işlevleri (fail closed) ─────────────────────────────────────────────
+
+def authenticate(view: RequestView) -> Optional[Principal]:
+    """Kayıtlı authenticator ile kimlik çöz; istisna ya da geçersiz dönüş = None (401). Kayıtlı değilse çağıran
+    bugünkü `web.token` yoluna düşer (bu işlev yalnız `has_authenticator()` iken çağrılır)."""
+    fn = _AUTHENTICATOR
+    if fn is None:
+        return None
+    try:
+        p = fn(view)
+    except Exception as e:      # noqa: BLE001
+        _log("authz_authenticator_failed", error=f"{type(e).__name__}: {e}"[:200], path=view.path)
+        return None
+    return p if isinstance(p, Principal) else None
+
+
+def _audit(p: Principal, action: str, res: Resource, status: int) -> None:
+    for sink in list(_AUDIT_SINKS):
+        try:
+            sink(p, action, res, status)
+        except Exception as e:      # noqa: BLE001  denetim hatası kararı değiştirmez ama görünür olur
+            _log("authz_audit_failed", error=f"{type(e).__name__}: {e}"[:200])
+
+
+def check(p: Optional[Principal], action: str, res: Resource) -> bool:
+    """Yetki kararı. Authorizer kayıtlı değilse True (çekirdek varsayılanı); kayıtlıysa ve istisna/False ise False.
+    `p` None ve authorizer kayıtlıysa False. Her karar denetim kancalarına düşer (200/403)."""
+    fn = _AUTHORIZER
+    if fn is None:
+        return True
+    if p is None:
+        return False
+    try:
+        ok = bool(fn(p, action, res))
+    except Exception as e:      # noqa: BLE001
+        _log("authz_authorizer_failed", error=f"{type(e).__name__}: {e}"[:200], action=action)
+        ok = False
+    _audit(p, action, res, 200 if ok else 403)
+    return ok
+
+
+def filter_status(p: Optional[Principal], payload: dict) -> dict:
+    """K3: durum yayınını principal'a göre süz. Kanca yoksa AYNI nesne döner. Kanca istisna atarsa BOŞ görünüm (fail closed)."""
+    fn = _STATUS_FILTER
+    if fn is None:
+        return payload
+    if p is None:
+        return {"sessions": []}
+    try:
+        out = fn(p, payload)
+        return out if isinstance(out, dict) else {"sessions": []}
+    except Exception as e:      # noqa: BLE001
+        _log("authz_status_filter_failed", error=f"{type(e).__name__}: {e}"[:200])
+        return {"sessions": []}

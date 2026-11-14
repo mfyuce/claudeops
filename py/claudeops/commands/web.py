@@ -4455,6 +4455,46 @@ class _Handler(BaseHTTPRequestHandler):
                 continue
         return False
 
+    def _request_view(self):
+        from .. import authz
+        qs = parse_qs(urlparse(self.path).query)
+        cookies: Dict[str, str] = {}
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k:
+                cookies[k] = v
+        addr = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+        return authz.RequestView(method=self.command or "", path=urlparse(self.path).path, query={k: v[0] for k, v in qs.items()},
+                                 headers=self.headers, cookies=cookies, client_addr=addr)
+
+    def _principal(self):
+        """İstek kimliği: eklenti authenticator'ı (K1) kayıtlıysa o çözer (None = 401), değilse bugünkü `web.token` -> LEGACY.
+        Sonuç `self._cur_principal`'a konur (WS durum süzgeci okur)."""
+        from .. import authz
+        if authz.has_authenticator():
+            p = authz.authenticate(self._request_view())
+        else:
+            p = authz.LEGACY if self._authorized() else None
+        self._cur_principal = p
+        return p
+
+    def _gate(self, method: str, path: str, data: Optional[dict] = None) -> bool:
+        """K2 kapısı: authorizer kayıtlı DEĞİLSE hiçbir ek iş yapmaz (çekirdek davranışı aynı). Kayıtlıysa eylem + kaynak
+        (oturum adı/host: sorgu ya da gövdeden) ile sorar; red = 403. WS el sıkışması da buradan geçer."""
+        from .. import authz
+        if not authz.has_authorizer():
+            return True
+        p = getattr(self, "_cur_principal", None)
+        qs = parse_qs(urlparse(self.path).query)
+        src = dict(data or {})
+        name = str(src.get("name") or (qs.get("name") or [""])[0] or "")
+        host = str(src.get("host") or (qs.get("host") or [""])[0] or "")
+        res = authz.Resource(kind="session" if name else "global", host=host, name=name)
+        if authz.check(p, authz.action_for(method, path), res):
+            return True
+        self._json({"ok": False, "error": "forbidden"}, status=403)
+        return False
+
     def _authorized_ws(self) -> bool:
         """WS el sıkışması: tek kullanımlık `?ticket=` (bkz. `ws_ticket`) YA DA eski kalıcı token (geriye uyumlu)."""
         qs = parse_qs(urlparse(self.path).query)
@@ -4893,8 +4933,17 @@ class _Handler(BaseHTTPRequestHandler):
         if _route is not None:
             self._ext_dispatch("GET", _route)
             return
-        if not (self._authorized_ws() if path in ("/ws", "/ws/term") else self._authorized()):
+        from .. import authz as _az
+        if _az.has_authenticator():
+            if self._principal() is None:
+                self._unauthorized()
+                return
+        elif not (self._authorized_ws() if path in ("/ws", "/ws/term") else self._authorized()):
             self._unauthorized()
+            return
+        else:
+            self._cur_principal = _az.LEGACY
+        if not self._gate("GET", path):
             return
         if path == "/":
             if not self._serve_static("/"):
@@ -4964,7 +5013,7 @@ class _Handler(BaseHTTPRequestHandler):
                                   poll_seconds=_term_loop_seconds(host, interval), name=name)
             return
         elif path == "/api/status":
-            self._json(_status_payload())
+            self._json(_az.filter_status(getattr(self, "_cur_principal", None), _status_payload()))
         elif path == "/v1/models":
             # OpenAI-uyumlu katman (TOBEDECIDED #21) — "model" = adreslenebilir
             # canlı session adı. Auth yukarıda ZATEN geçildi (query-param ya da
@@ -5246,12 +5295,24 @@ class _Handler(BaseHTTPRequestHandler):
         if _route is not None:
             self._ext_dispatch("POST", _route)
             return
+        from .. import authz as _az
         agents_caller = self._agents_caller() if path.startswith("/api/agents/") else None
-        if agents_caller is None and not self._authorized():
+        if _az.has_authenticator():
+            if self._principal() is None:
+                if path.startswith("/api/agents/"):
+                    self._json({"ok": False, "error": "missing or invalid token"}, status=401)
+                else:
+                    self._unauthorized()
+                return
+        elif agents_caller is None and not self._authorized():
             if path.startswith("/api/agents/"):
                 self._json({"ok": False, "error": "missing or invalid token"}, status=401)
             else:
                 self._unauthorized()
+            return
+        else:
+            self._cur_principal = _az.LEGACY
+        if not self._gate("POST", path):
             return
         if path == "/api/ws-ticket":
             self._json({"ok": True, "ticket": ws_ticket.issue(), "ttl": int(ws_ticket.TTL_SECONDS)})
@@ -5352,6 +5413,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_v1_error("request body must be a JSON object"), status=400)
             else:
                 self._json({"ok": False, "error": "JSON gövde bir nesne olmalı / JSON body must be an object"}, status=400)
+            return
+        if (data.get("name") or data.get("host")) and not self._gate("POST", path, data):    # K2 aşama 2: gövdedeki oturum/host kaynağı
             return
         # OpenAI-uyumlu katman (TOBEDECIDED #21) — host-routing bloğundan ÖNCE ve
         # ondan BAĞIMSIZ: `/v1/*` BİLEREK sadece YEREL session'lara bakar

@@ -50,6 +50,37 @@ class ExtensionAPI:
             _ROUTES[:] = [r for r in _ROUTES if r["prefix"] != prefix]
             _ROUTES.append({"prefix": prefix, "fn": fn, "methods": ms})
 
+    authz_api_version = 1       # `claudeops.authz.AUTHZ_API_VERSION` (kimlik/yetki kancaları; çekirdekte davranışsız)
+
+    def register_public_route(self, prefix: str, fn: Callable[["RouteRequest"], None], methods: Any = ("GET", "POST")) -> None:
+        """Giriş ucu: YALNIZ `/api/auth/` önekine izinli; panel kimliği ARANMADAN çağrılır (kimlik doğrulamanın kendisi)."""
+        if prefix != "/api/auth/":
+            raise ValueError(f"public route only allowed for /api/auth/: {prefix!r}")
+        ms = tuple(str(m).upper() for m in methods)
+        with _LOCK:
+            _ROUTES[:] = [r for r in _ROUTES if r["prefix"] != prefix]
+            _ROUTES.append({"prefix": prefix, "fn": fn, "methods": ms})
+
+    def set_authenticator(self, fn: Callable[[Any], Any]) -> None:
+        """K1: `fn(RequestView) -> Principal | None` (None = 401). Kayıtlıyken `web.token` yolu KAPANIR (eklenti çözer)."""
+        from . import authz
+        authz.set_authenticator(fn)
+
+    def set_authorizer(self, fn: Callable[[Any, str, Any], bool]) -> None:
+        """K2: `fn(Principal, action, Resource) -> bool` (istisna/False = 403)."""
+        from . import authz
+        authz.set_authorizer(fn)
+
+    def set_status_filter(self, fn: Callable[[Any, dict], dict]) -> None:
+        """K3: `/api/status` ve `/ws` yayını principal başına süzülür."""
+        from . import authz
+        authz.set_status_filter(fn)
+
+    def register_audit_sink(self, fn: Callable[[Any, str, Any, int], None]) -> None:
+        """K9: her yetki kararından sonra `fn(Principal, action, Resource, status)`."""
+        from . import authz
+        authz.add_audit_sink(fn)
+
     def projects(self) -> List[Dict[str, str]]:
         return core_projects()
 
