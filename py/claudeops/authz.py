@@ -56,6 +56,7 @@ _ACTION_TABLE: List[Tuple[str, str]] = [
     ("/api/auth/", "auth.login"),
     ("/api/ws-ticket", "status.read"),
     ("/api/status", "status.read"),
+    ("/api/ui/", "status.read"),
     ("/api/usage", "usage.read"),
     ("/api/context", "usage.read"),
     ("/ws/term", "term.read"),
@@ -248,3 +249,60 @@ def filter_status(p: Optional[Principal], payload: dict) -> dict:
     except Exception as e:      # noqa: BLE001
         _log("authz_status_filter_failed", error=f"{type(e).__name__}: {e}"[:200])
         return {"sessions": []}
+
+
+# ── K5: oturum olayları ───────────────────────────────────────────────────────
+
+_EVENT_SINKS: List[Callable[..., None]] = []
+# mutasyon ucu -> olay adı (`web.py` `_json_notify` ok:true dönünce yayar)
+EVENT_PATHS = {"/api/register": "created", "/api/new-chat": "created", "/api/close": "closed", "/api/stop": "closed",
+               "/api/retire": "retired", "/api/adopt": "adopted", "/api/edit": "renamed", "/api/reactivate": "reactivated"}
+
+
+def add_event_sink(fn: Callable[..., None]) -> None:
+    with _LOCK:
+        if fn not in _EVENT_SINKS:
+            _EVENT_SINKS.append(fn)
+
+
+def emit_event(path: str, host: str, name: str, p: Optional[Principal]) -> None:
+    """K5: kayıtlı alıcılara `fn(event, host, name, principal)`; sahiplik belgesi bunlarla tutulur. Alıcı hatası yutulur (log)."""
+    ev = EVENT_PATHS.get(path)
+    if not ev or not _EVENT_SINKS:
+        return
+    for fn in list(_EVENT_SINKS):
+        try:
+            fn(ev, host, name, p)
+        except Exception as e:      # noqa: BLE001
+            _log("authz_event_sink_failed", error=f"{type(e).__name__}: {e}"[:200], event=ev)
+
+
+def resources_from(path: str, qs: Mapping[str, Any], data: Optional[dict]) -> List[Resource]:
+    """İsteğin dokunduğu TÜM kaynaklar: `name`/`host` (sorgu+gövde), `/v1/*` `model` (= oturum adı), `participants[]`
+    (`/api/orch/*`: {host,name}), `names[]`. Hiçbiri yoksa tek `global`. Authorizer hepsi için True demeli (biri red = 403)."""
+    def _q(k: str) -> str:
+        v = qs.get(k) or [""]
+        return str(v[0] if isinstance(v, (list, tuple)) else v)
+    src = data or {}
+    host = str(src.get("host") or _q("host") or "")
+    out: List[Resource] = []
+    seen = set()
+
+    def add(h: str, n: str) -> None:
+        n = str(n or "").strip()
+        if n and (h, n) not in seen:
+            seen.add((h, n))
+            out.append(Resource(kind="session", host=h, name=n))
+    add(host, src.get("name") or _q("name"))
+    if path.startswith("/v1/"):
+        add("", src.get("model"))
+    parts = src.get("participants")
+    if isinstance(parts, list):
+        for it in parts:
+            if isinstance(it, dict):
+                add(str(it.get("host") or ""), it.get("name"))
+    names = src.get("names")
+    if isinstance(names, list):
+        for n in names:
+            add(host, n)
+    return out or [Resource(kind="global", host=host)]

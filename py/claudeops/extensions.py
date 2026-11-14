@@ -23,6 +23,8 @@ PACKAGE = "claudeops_enterprise"
 _LOCK = threading.RLock()
 _STATE: Dict[str, Any] = {"loaded": False, "status": "not_loaded", "detail": "", "lenses": []}
 _ROUTES: List[Dict[str, Any]] = []
+UI_EXTENSION_API = 1
+_UI_EXTS: Dict[str, Dict[str, Any]] = {}     # K10: id -> {title, assets_dir, roles, entry}
 COOKIE_NAME = "cops_ext"
 MAX_BODY = 1_000_000
 
@@ -60,6 +62,26 @@ class ExtensionAPI:
         with _LOCK:
             _ROUTES[:] = [r for r in _ROUTES if r["prefix"] != prefix]
             _ROUTES.append({"prefix": prefix, "fn": fn, "methods": ms})
+
+    def on_session_event(self, fn: Callable[..., None]) -> None:
+        """K5: `fn(event, host, name, principal)` (created, closed, retired, adopted, renamed, reactivated; mutasyon başarılıysa)."""
+        from . import authz
+        authz.add_event_sink(fn)
+
+    def register_doc_prefix(self, prefix: str) -> None:
+        """K8: `prefix` ("auth/") altındaki belgeler `db` kipinde DB-tek-kaynak olur."""
+        from . import statedocs
+        statedocs.register_doc_prefix(prefix)
+
+    def register_ui_extension(self, ext_id: str, assets_dir: str, roles: Any = ("admin",), title: str = "", entry: str = "index.js") -> None:
+        """K10: panel sekmesi. `GET /api/ui/extensions` rolüne uyan kullanıcıya listeler; dosyalar `/api/ui/ext/<id>/<dosya>`
+        (kimlik + yetki kapısından geçer; traversal/symlink korumalı). `UI_EXTENSION_API = 1`."""
+        import os
+        if not isinstance(ext_id, str) or not ext_id.replace("-", "").replace("_", "").isalnum():
+            raise ValueError(f"invalid ui extension id: {ext_id!r}")
+        with _LOCK:
+            _UI_EXTS[ext_id] = {"id": ext_id, "title": title or ext_id, "assets_dir": os.path.realpath(assets_dir),
+                                "roles": tuple(str(r) for r in roles), "entry": entry}
 
     def set_authenticator(self, fn: Callable[[Any], Any]) -> None:
         """K1: `fn(RequestView) -> Principal | None` (None = 401). Kayıtlıyken `web.token` yolu KAPANIR (eklenti çözer)."""
@@ -196,6 +218,27 @@ def core_send_directive(name: str, text: str) -> Dict[str, Any]:
     """Proje oturumuna direktif (`http_directive` ile AYNI kapılar)."""
     from .commands import web_steward as ws
     return ws.http_directive({"name": name, "text": text, "actor": "extension"})
+
+
+def ui_extensions(roles: Any = None) -> List[Dict[str, Any]]:
+    """K10 listesi (`assets_dir` sızdırılmaz). `roles` None = hepsi (yetki kapısı yok); verilirse kesişen roller."""
+    with _LOCK:
+        exts = list(_UI_EXTS.values())
+    rs = set(roles or ())
+    return [{"id": e["id"], "title": e["title"], "roles": list(e["roles"]), "entry": f"/api/ui/ext/{e['id']}/{e['entry']}"}
+            for e in exts if roles is None or rs & set(e["roles"])]
+
+
+def ui_extension_file(ext_id: str, rel: str, roles: Any = None) -> Optional[str]:
+    """Dosyanın gerçek yolu ya da None (yok/rol uymuyor/traversal/symlink dışarı)."""
+    import os
+    with _LOCK:
+        e = _UI_EXTS.get(ext_id)
+    if e is None or (roles is not None and not (set(roles) & set(e["roles"]))):
+        return None
+    root = e["assets_dir"]
+    real = os.path.realpath(os.path.join(root, rel))
+    return real if real.startswith(root + os.sep) and os.path.isfile(real) else None
 
 
 def routes() -> List[str]:

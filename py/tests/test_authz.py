@@ -115,6 +115,73 @@ class HttpTest(unittest.TestCase):
         code, body = self.call("GET", "/api/status", {"Cookie": "x=1"})
         self.assertEqual(json.loads(body).get("who"), "u1")
 
+    def test_ui_extension_list_and_files(self):
+        import tempfile
+        d = tempfile.mkdtemp()
+        open(d + "/index.js", "w").write("x=1")
+        extensions._UI_EXTS.clear()
+        self.addCleanup(extensions._UI_EXTS.clear)
+        extensions.ExtensionAPI().register_ui_extension("adm", d, roles=("admin",), title="Admin")
+        authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)) if v.cookies.get("c") == "u" else authz.Principal("a", ("admin",)))
+        h_user, h_admin = {"Cookie": "c=u"}, {"Cookie": "c=a"}
+        self.assertEqual(json.loads(self.call("GET", "/api/ui/extensions", h_user)[1])["extensions"], [])
+        lst = json.loads(self.call("GET", "/api/ui/extensions", h_admin)[1])["extensions"]
+        self.assertEqual(lst[0]["id"], "adm")
+        self.assertNotIn("assets_dir", lst[0])
+        self.assertEqual(self.call("GET", "/api/ui/ext/adm/index.js", h_admin)[0], 200)
+        self.assertEqual(self.call("GET", "/api/ui/ext/adm/index.js", h_user)[0], 404)
+        self.assertEqual(self.call("GET", "/api/ui/ext/adm/../../etc/passwd", h_admin)[0], 404)
+
+    def test_session_event_emitted_on_success(self):
+        from types import SimpleNamespace as NS
+        ev = []
+        authz.add_event_sink(lambda e, h, n, p: ev.append((e, h, n, p.uid)))
+        fake = NS(path="/api/retire?x=1", _cur_data={"name": "s1", "host": "h"}, _cur_principal=authz.Principal("u1", ("user",)),
+                  _json=lambda *a, **k: None)
+        with mock.patch.object(web.web_ws, "notify_status_changed"):
+            web._Handler._json_notify(fake, {"ok": True})
+            web._Handler._json_notify(fake, {"ok": False})      # başarısız mutasyon olay üretmez
+        self.assertEqual(ev, [("retired", "h", "s1", "u1")])
+
+
+class ResourcesTest(unittest.TestCase):
+    def test_multi_resources(self):
+        r = authz.resources_from("/api/orch/start", {}, {"participants": [{"host": "h", "name": "a"}, {"name": "b"}, "x"]})
+        self.assertEqual([(x.host, x.name) for x in r], [("h", "a"), ("", "b")])
+        r = authz.resources_from("/v1/chat/completions", {}, {"model": "m1"})
+        self.assertEqual(r[0].name, "m1")
+        self.assertEqual(authz.resources_from("/api/files/list", {"name": ["q"]}, None)[0].name, "q")
+        self.assertEqual(authz.resources_from("/api/settings", {}, {})[0].kind, "global")
+
+    def test_event_sink_error_swallowed(self):
+        authz.reset()
+        authz._EVENT_SINKS.clear()
+        authz.add_event_sink(lambda *a: 1 / 0)
+        with mock.patch.object(authz, "_log"):
+            authz.emit_event("/api/close", "", "n", None)
+        authz._EVENT_SINKS.clear()
+
+    def test_doc_prefix(self):
+        from claudeops import statedocs
+        statedocs.register_doc_prefix("auth/")
+        self.addCleanup(statedocs._EXT_PREFIXES.clear)
+        self.assertTrue(statedocs.db_ready("auth/users/u1"))
+        self.assertFalse(statedocs.db_ready("other/x"))
+        with self.assertRaises(ValueError):
+            statedocs.register_doc_prefix("/etc/")
+
+    def test_ws_client_view(self):
+        from types import SimpleNamespace as NS
+        from claudeops.commands import web_ws
+        authz.reset()
+        self.addCleanup(authz.reset)
+        c = NS(handler=NS(_cur_principal=authz.Principal("u1", ("user",))))
+        payload = {"sessions": [{"name": "a"}, {"name": "b"}]}
+        self.assertIs(web_ws._client_view(c, payload), payload)
+        authz.set_status_filter(lambda p, d: {"sessions": [s for s in d["sessions"] if s["name"] == "a"]})
+        self.assertEqual(web_ws._client_view(c, payload), {"sessions": [{"name": "a"}]})
+        self.assertEqual(web_ws._client_view(NS(handler=NS()), payload), {"sessions": []})     # principal yok = boş (fail closed)
+
 
 if __name__ == "__main__":
     unittest.main()

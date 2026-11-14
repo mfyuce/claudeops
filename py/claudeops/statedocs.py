@@ -50,8 +50,18 @@ DB_READY = {"hosts", "steward/quota", "claude_models", "agy_sids", "snapshots"} 
 DB_READY_PREFIXES = ("steward/", "orchestration/")   # orchestration/: 12 Kas göç Adım D (draft, runs/<id>; `list_runs` listdir AYNAYA bağlı kalır)
 
 
+_EXT_PREFIXES: set = set()     # K8: eklentinin `register_doc_prefix` ile DB-doğruluk kaynağı yaptığı önekler
+
+
+def register_doc_prefix(prefix: str) -> None:
+    """K8: `prefix/` altındaki belgeler DB-tek-kaynak olur (çekirdek adı bilmez). Boş/`/`'sız önek reddedilir."""
+    if not isinstance(prefix, str) or not prefix.endswith("/") or len(prefix) < 3 or prefix.startswith("/"):
+        raise ValueError(f"invalid doc prefix: {prefix!r}")
+    _EXT_PREFIXES.add(prefix)
+
+
 def db_ready(name: str) -> bool:
-    return name in DB_READY or name.startswith(DB_READY_PREFIXES)
+    return name in DB_READY or name.startswith(DB_READY_PREFIXES) or (bool(_EXT_PREFIXES) and name.startswith(tuple(_EXT_PREFIXES)))
 
 
 _DIRTY: set = set()   # `db` kipinde DB yazımı başarısız olan belgeler: dosya daha yeni, sonraki okuma dosyadan geri alır

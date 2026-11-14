@@ -4485,12 +4485,8 @@ class _Handler(BaseHTTPRequestHandler):
         if not authz.has_authorizer():
             return True
         p = getattr(self, "_cur_principal", None)
-        qs = parse_qs(urlparse(self.path).query)
-        src = dict(data or {})
-        name = str(src.get("name") or (qs.get("name") or [""])[0] or "")
-        host = str(src.get("host") or (qs.get("host") or [""])[0] or "")
-        res = authz.Resource(kind="session" if name else "global", host=host, name=name)
-        if authz.check(p, authz.action_for(method, path), res):
+        action = authz.action_for(method, path)
+        if all(authz.check(p, action, res) for res in authz.resources_from(path, parse_qs(urlparse(self.path).query), data)):
             return True
         self._json({"ok": False, "error": "forbidden"}, status=403)
         return False
@@ -4584,6 +4580,10 @@ class _Handler(BaseHTTPRequestHandler):
         self._json(result, status=status)
         if result.get("ok"):
             web_ws.notify_status_changed()
+            data = getattr(self, "_cur_data", None) or {}
+            from .. import authz
+            authz.emit_event(urlparse(self.path).path, str(data.get("host") or ""), str(data.get("name") or ""),
+                             getattr(self, "_cur_principal", None))
 
     def _ext_dispatch(self, method: str, route: Dict[str, Any]) -> None:
         """Eklenti yolu (`extensions.register_route`): yetki = panel token'ı (`?token=`/Bearer) YA DA token'la girişte verilen
@@ -5012,6 +5012,25 @@ class _Handler(BaseHTTPRequestHandler):
             web_ws.handle_ws_term(self, _term_fetch_fn(host, name, lang, lite, interval=interval, viewport=viewport),
                                   poll_seconds=_term_loop_seconds(host, interval), name=name)
             return
+        elif path == "/api/ui/extensions":
+            pr = getattr(self, "_cur_principal", None)
+            self._json({"ok": True, "api": extensions.UI_EXTENSION_API,
+                        "extensions": extensions.ui_extensions(None if pr is None or pr.kind == "legacy" else pr.roles)})
+        elif path.startswith("/api/ui/ext/"):
+            pr = getattr(self, "_cur_principal", None)
+            ext_id, _, rel = path[len("/api/ui/ext/"):].partition("/")
+            real = extensions.ui_extension_file(ext_id, rel, None if pr is None or pr.kind == "legacy" else pr.roles)
+            if real is None:
+                self._json({"error": "not found"}, status=404)
+            else:
+                ctype = mimetypes.guess_type(real)[0] or "application/octet-stream"
+                body = Path(real).read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith("text/") or "javascript" in ctype else ""))
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                self.wfile.write(body)
         elif path == "/api/status":
             self._json(_az.filter_status(getattr(self, "_cur_principal", None), _status_payload()))
         elif path == "/v1/models":
@@ -5414,7 +5433,9 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._json({"ok": False, "error": "JSON gövde bir nesne olmalı / JSON body must be an object"}, status=400)
             return
-        if (data.get("name") or data.get("host")) and not self._gate("POST", path, data):    # K2 aşama 2: gövdedeki oturum/host kaynağı
+        self._cur_data = data
+        if (data.get("name") or data.get("host") or data.get("model") or data.get("participants") or data.get("names")) \
+                and not self._gate("POST", path, data):    # K2 aşama 2: gövdedeki oturum/host kaynağı
             return
         # OpenAI-uyumlu katman (TOBEDECIDED #21) — host-routing bloğundan ÖNCE ve
         # ondan BAĞIMSIZ: `/v1/*` BİLEREK sadece YEREL session'lara bakar
