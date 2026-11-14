@@ -3318,7 +3318,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             q = next((x for x in sw.load_questions(paths) if x.id == action.payload["question_id"]), None)
         return _give_directive(p, "", answer=q, reason=action.reason, cfg=cfg, host=host, rt=rt, actor="engine")
     if k == "stop":
-        res = _act("stop", name, lang=cfg.lang)
+        # keepwarm/iş-yok zinciri (`pause` yükü): ad az önce devri biten TAM oturum adıdır; ad benzerliği olan başka oturuma
+        # (unique_base çözümü) ya da `ambiguous` hatasına düşmesin (review cops 2 Kas)
+        res = (_act("stop", name, lang=cfg.lang, exact=True) if isinstance(action.payload.get("pause"), dict)
+               else _act("stop", name, lang=cfg.lang))
         pz = action.payload.get("pause")
         if isinstance(pz, dict) and pz.get("project") and isinstance(res, dict) and res.get("ok"):
             # keepwarm zinciri: devir BİTTİ ve oturum kapandı; şimdi paused + gerekçe (notlara eklenir, ntfy YOK)

@@ -164,3 +164,20 @@ class Apply(_Tmp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChainStopIsExact(unittest.TestCase):
+    """keepwarm/iş-yok zinciri durdurması TAM oturum adıyla (exact=True); sıradan stop eski imzayla (review cops 2 Kas)."""
+    def test_pause_payload_stop_passes_exact(self):
+        from unittest import mock
+        from claudeops.commands import web_steward as ws
+        from claudeops import steward as sw_
+        calls = []
+        with mock.patch.object(ws, "_act", lambda n, *a, **k: calls.append((n, a, k)) or {"ok": False}), \
+                mock.patch.object(ws, "_target", lambda *a, **k: None):
+            cfg = sw_.Config()
+            ws._apply(sw_.Action("stop", "cli", "t", {"pause": {"project": "cli", "reason": "iş yok"}}), cfg, {})
+            ws._apply(sw_.Action("stop", "cli", "t"), cfg, {})
+        stops = [c for c in calls if c[0] == "stop"]
+        self.assertEqual(stops[0][2].get("exact"), True)
+        self.assertNotIn("exact", stops[1][2])
