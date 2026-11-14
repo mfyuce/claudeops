@@ -3432,6 +3432,23 @@ def _context(name: str, lang: str = "tr") -> dict:
     return {"ok": True, "available": True, "entries": entries}
 
 
+def _live_jsonl_for(name: str, lang: str = "tr"):
+    """`_live_model`/`_live_effort` ortak girişi: (proc, jsonl, None) ya da (None, None, hata/`available:false` yanıtı)."""
+    kind, procs = _find_running_for_action(name)
+    if kind == "none":
+        return None, None, _err(lang, "not_running", name=name)
+    if kind == "ambiguous":
+        return None, None, _err(lang, "ambiguous_name", name=name, candidates=", ".join(x.name for x in procs))
+    s = procs[0]
+    info = _fleet_status().get(s.name)
+    if (info["cli"] if info else s.cli) != "claude":
+        return None, None, {"ok": True, "available": False, "reason": "unsupported"}
+    jsonl = jsonl_path_for(info["cwd"] if info else s.cwd, s.sid)
+    if jsonl is None:
+        return None, None, {"ok": True, "available": False, "reason": "no_jsonl"}
+    return s, jsonl, None
+
+
 def _live_model(name: str, lang: str = "tr") -> dict:
     """TODO.md 2026-09-17: Terminal→Bilgi sekmesindeki `live_model` spawn anındaki
     `--model` cmdline argümanından okunuyor, terminale DOĞRUDAN yazılan bir
@@ -3449,21 +3466,9 @@ def _live_model(name: str, lang: str = "tr") -> dict:
     Bugün sadece `claude` (jsonl formatı provider-özel, `_compact()`'in aynı
     `provider.compact_command() is None` deseniyle tutarlı bir "unsupported"
     dalı var)."""
-    kind, procs = _find_running_for_action(name)
-    if kind == "none":
-        return _err(lang, "not_running", name=name)
-    if kind == "ambiguous":
-        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
-    s = procs[0]
-    fleet = _fleet_status()
-    info = fleet.get(s.name)
-    chosen_cli = info["cli"] if info else s.cli
-    if chosen_cli != "claude":
-        return {"ok": True, "available": False, "reason": "unsupported"}
-    cwd = info["cwd"] if info else s.cwd
-    jsonl = jsonl_path_for(cwd, s.sid)
-    if jsonl is None:
-        return {"ok": True, "available": False, "reason": "no_jsonl"}
+    s, jsonl, err = _live_jsonl_for(name, lang)
+    if err:
+        return err
     model = last_assistant_model(jsonl, since=_process_started_at(s.pid))  # tablodaki `_live_model_effort` ile aynı kural: önceki sürecin satırı sayılmaz
     if not model:
         return {"ok": True, "available": False, "reason": "no_assistant_turn"}
@@ -3481,21 +3486,9 @@ def _live_effort(name: str, lang: str = "tr") -> dict:
     yerine `available:false` + `reason` dönüyor. Aynı sebeple `_status_payload()`
     poll döngüsüne eklenmedi (bkz. `_live_model` docstring'i) — Terminal→Bilgi
     açılınca ayrıca/bir-seferlik çağrılıyor."""
-    kind, procs = _find_running_for_action(name)
-    if kind == "none":
-        return _err(lang, "not_running", name=name)
-    if kind == "ambiguous":
-        return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
-    s = procs[0]
-    fleet = _fleet_status()
-    info = fleet.get(s.name)
-    chosen_cli = info["cli"] if info else s.cli
-    if chosen_cli != "claude":
-        return {"ok": True, "available": False, "reason": "unsupported"}
-    cwd = info["cwd"] if info else s.cwd
-    jsonl = jsonl_path_for(cwd, s.sid)
-    if jsonl is None:
-        return {"ok": True, "available": False, "reason": "no_jsonl"}
+    s, jsonl, err = _live_jsonl_for(name, lang)
+    if err:
+        return err
     effort = last_assistant_effort(jsonl, since=_process_started_at(s.pid))  # bkz. `_live_model`
     if not effort:
         return {"ok": True, "available": False, "reason": "no_assistant_turn"}
