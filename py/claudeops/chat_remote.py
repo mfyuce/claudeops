@@ -90,7 +90,8 @@ class PanelTransport:
     def idle(self) -> bool:
         from .commands import web_hosts as H
         r, _s = H.proxy_get("/api/term/output", self.host, {"name": self.session, "lang": "en"}, dedup=False, timeout=self.TO)
-        lines = [ln for ln in str(r.get("text", "")).rstrip().split("\n") if ln.strip()]
+        from .tmux_backend import strip_ansi          # renkli prompt'ta kaçış dizileri `$ ` eşleşmesini bozmasın
+        lines = [ln for ln in strip_ansi(str(r.get("text", ""))).rstrip().split("\n") if ln.strip()]
         return bool(r.get("ok")) and bool(lines) and bool(re.search(r"[$#%>] ?$", lines[-1].rstrip() + " "))
 
     def _list(self, path: str = "") -> Dict[str, Any]:
@@ -113,8 +114,8 @@ class PanelTransport:
         from .commands import web_hosts as H
         body, _st, _h, err = H.proxy_get_raw("/api/files/download", self.host,
                                              {"name": self.session, "path": root.rstrip("/") + "/" + name, "lang": "en"})
-        if err or not body:
-            raise RuntimeError(f"files/download: {err}"[:150])
+        if err or not body or int(_st or 0) != 200:       # hata JSON'u arşiv diye diske yazılmasın
+            raise RuntimeError(f"files/download: {err or 'HTTP ' + str(_st)}"[:150])
         import os
         os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
         tmp = dest + ".part"

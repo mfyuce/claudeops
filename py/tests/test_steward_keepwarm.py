@@ -53,6 +53,12 @@ class KeepwarmTest(unittest.TestCase):
         self.assertEqual([a.kind for a in acts], ["keepwarm"])
         self.assertEqual(st["keepwarm"]["cli"]["n"], 1)
 
+    def test_no_ping_for_session_in_ho_pending(self):
+        acts, _ = plan([view()], state={"ho_pending": {"cli": NOW - 60}})
+        self.assertEqual(acts, [])                                       # devir sürecinde dürtme yok
+        acts, _ = plan([view()])
+        self.assertEqual([a.kind for a in acts], ["keepwarm"])
+
     def test_not_due_window(self):
         for age in (10, 51, 58.5, 90):
             self.assertEqual(plan([view(age_min=age)])[0], [], age)

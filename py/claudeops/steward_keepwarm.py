@@ -108,8 +108,8 @@ def plan_keepwarm(views: List[Any], projects: Dict[str, Any], state: Dict[str, A
     ho_pause: Dict[str, str] = dict(state.get("ho_pause") or {})
     out: List[sw.Action] = []
     for v in views:
-        if v.name in touched:
-            continue
+        if v.name in touched or v.name in ho_pending:
+            continue    # devir/kapanış sürecindeki oturuma dürtme YOK (ho_pending: devir notu bekleniyor, dürtme turu araya girer)
         rec = rec_all.get(v.name) or {}
         at, n = float(rec.get("at") or 0), int(rec.get("n") or 0)
         skip = _skip_reason(v, projects, cfg, now)
