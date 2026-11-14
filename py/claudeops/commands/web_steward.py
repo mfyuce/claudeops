@@ -4850,6 +4850,33 @@ DISK_WARN_PCT = 95.0
 _DISK_WATCH: Dict[str, Any] = {"day": "", "notified": False}
 
 
+def disk_top_dirs(n: int = 3, timeout: float = 90.0) -> List[Tuple[int, str]]:
+    """Bilinen büyüme adaylarının (`/tmp/claude-1000`, `~/.claude`, `~/work`, `~/Downloads`, `~/backups`, `~/Android`) en büyük
+    n alt dizini (bayt, yol); yalnız ölçüm. Zaman aşımı/hata = o aday atlanır."""
+    import subprocess
+    home = os.path.expanduser("~")
+    out: List[Tuple[int, str]] = []
+    for root in ("/tmp/claude-1000", f"{home}/.claude", f"{home}/work", f"{home}/Downloads", f"{home}/backups", f"{home}/Android"):
+        try:
+            r = subprocess.run(["du", "-xk", "--max-depth=1", root], capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        for ln in r.stdout.splitlines():
+            kb, _, path = ln.partition("\t")
+            if kb.isdigit() and path and path != root:
+                out.append((int(kb) * 1024, path))
+    return sorted(out, reverse=True)[:n]
+
+
+def _disk_notify(head: str) -> None:
+    try:
+        top = disk_top_dirs()
+    except Exception:
+        top = []
+    body = head + ("".join(f"\n{b / 2**30:.1f} GB {p}" for b, p in top) if top else "")
+    notify_phone(body, title="claudeops disk")
+
+
 def disk_watch(path: str = "/", threshold: float = DISK_WARN_PCT) -> Dict[str, Any]:
     """Yerel disk doluluğu eşiği aşarsa (varsayılan %95) günde BİR kez telefona uyarı; SİLME YOK (yalnız ölçüm + bildirim).
     Doluluk eşiğin altına inerse bayrak sıfırlanır. Dönüş: {pct, free_gb, warned}."""
@@ -4864,8 +4891,8 @@ def disk_watch(path: str = "/", threshold: float = DISK_WARN_PCT) -> Dict[str, A
         _DISK_WATCH["notified"] = True
         warned = True
         diag_log("disk_full_warning", path=path, pct=round(pct, 1), free_gb=round(u.free / 2**30, 1))
-        notify_phone(f"Yerel disk %{pct:.0f} dolu ({u.free / 2**30:.0f} GB boş). Silme yapılmadı; neyin büyüdüğü için "
-                     f"`du -xh --max-depth=1 /tmp/claude-1000 ~/.claude ~/work`.", title="claudeops disk")
+        head = f"Yerel disk %{pct:.0f} dolu ({u.free / 2**30:.0f} GB boş). Silme yapılmadı."
+        threading.Thread(target=_disk_notify, args=(head,), daemon=True, name="disk-notify").start()   # du yavaş: tick'i bloklamaz
     return {"pct": pct, "free_gb": u.free / 2**30, "warned": warned}
 
 

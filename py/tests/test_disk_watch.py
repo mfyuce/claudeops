@@ -13,6 +13,7 @@ class DiskWatchTest(unittest.TestCase):
 
     def run_w(self, used):
         with mock.patch("shutil.disk_usage", return_value=U(100 * 2**30, used * 2**30, (100 - used) * 2**30)), \
+                mock.patch.object(ws, "disk_top_dirs", return_value=[]), mock.patch.object(ws.threading, "Thread", lambda target, args=(), **k: type("T", (), {"start": lambda self: target(*args)})()), \
                 mock.patch.object(ws, "notify_phone") as n, mock.patch.object(ws, "diag_log"):
             return ws.disk_watch(), n
 
@@ -29,6 +30,11 @@ class DiskWatchTest(unittest.TestCase):
         self.run_w(50)
         r, n = self.run_w(99)
         self.assertTrue(r["warned"])
+
+    def test_top_dirs_listed_in_message(self):
+        with mock.patch.object(ws, "disk_top_dirs", return_value=[(3 * 2**30, "/a/big")]), mock.patch.object(ws, "notify_phone") as n:
+            ws._disk_notify("head")
+        self.assertIn("3.0 GB /a/big", n.call_args[0][0])
 
 
 if __name__ == "__main__":
