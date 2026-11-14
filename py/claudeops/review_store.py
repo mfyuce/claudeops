@@ -168,6 +168,7 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
     if would:
         rc, out = _git(base, "add", "-f", "--", *would, run=run)
         if rc != 0:
+            _git(base, "reset", "-q", "--", *would, run=run)      # kısmi add: -prv index'i kirli kalmasın (review cops)
             res.update(ok=False, error="git add başarısız: " + out[-200:])
             return res
         # GERÇEK bariyer: tarama ile `git add` arasında değişen içerik için, index'e giren BLOB taranır (çalışma kopyası değil);

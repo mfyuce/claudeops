@@ -285,6 +285,8 @@ ERR = {
                        "en": "{name}: the root folder itself can't be deleted or renamed"},
     "files_target_exists": {"tr": "{name}: '{filename}' zaten var", "en": "{name}: '{filename}' already exists"},
     "files_io_error": {"tr": "{name}: {detail}", "en": "{name}: {detail}"},
+    "files_bad_encoding": {"tr": "{name}: dosya UTF-8 değil ya da içerik geçersiz karakter taşıyor, kaydedilmedi (veri kaybı önlendi)",
+                           "en": "{name}: file is not UTF-8 or content has invalid characters; not saved (prevents data loss)"},
     "new_name_required": {"tr": "new_name gerekli", "en": "new_name is required"},
     "folder_name_required": {"tr": "folder_name gerekli", "en": "folder_name is required"},
     "content_required": {"tr": "content gerekli", "en": "content is required"},
@@ -4708,8 +4710,8 @@ class _Handler(BaseHTTPRequestHandler):
         if werr == "incomplete":
             self._json(_err(lang, "files_upload_incomplete", name=name, filename=filename), status=400)
             return
-        if werr:
-            self._json({"ok": False, "error": werr}, status=200)
+        if werr:        # diğer dosya uçlarıyla tutarlı: kalıcı hata kodu + yerelleştirilmiş şablon (eskiden ham istisna metni, 200)
+            self._json(_err(lang, "files_io_error", name=name, detail=str(werr)), status=500)
             return
         self._json({"ok": True, "path": dest}, status=200)
 

@@ -241,7 +241,6 @@ def _txn(fn):
     return wrapper
 
 
-@_txn
 def save_host(
     name: str, base_url: str, token: str, grpc_url: str = "", extra_urls: str = "", lang: str = "tr"
 ) -> Dict[str, Any]:
@@ -283,26 +282,30 @@ def save_host(
             or any(_host_is_blocked(u) for u in extra_list):
         return _err(lang, "blocked_host")
 
-    hosts, corrupt = _load_for_write()
-    if corrupt:
-        return _err(lang, "corrupt")
-    existing = next((h for h in hosts if h.get("name") == name), None)
-    if not token:
-        if existing is None:
-            return _err(lang, "token_required")
-        token = existing.get("token", "")
+    # DNS çözümleme (yukarıdaki `_host_is_blocked`) kilit DIŞINDA kalır: yavaş çözümleme hosts.json'u kilitlemesin (review cops)
+    with _write_txn():
+        hosts, corrupt = _load_for_write()
+        if corrupt:
+            return _err(lang, "corrupt")
+        existing = next((h for h in hosts if h.get("name") == name), None)
+        if not token:
+            if existing is None:
+                return _err(lang, "token_required")
+            token = existing.get("token", "")
 
-    record = {"name": name, "base_url": base_url, "token": token}
-    if grpc_url:
-        record["grpc_url"] = grpc_url
-    if extra_list:
-        record["extra_urls"] = extra_list
-    if existing is None:
-        hosts.append(record)
-    else:
-        hosts = [record if h.get("name") == name else h for h in hosts]
-    _write_hosts(hosts)
-    return {"ok": True}
+        record = dict(existing) if existing is not None else {}      # kayıtta tanınmayan alanlar (örn. ileri sürüm) SİLİNMEZ
+        record.update({"name": name, "base_url": base_url, "token": token})
+        for key, val in (("grpc_url", grpc_url), ("extra_urls", extra_list)):
+            if val:
+                record[key] = val
+            else:
+                record.pop(key, None)                                 # boş = kaldır (belgelenmiş semantik)
+        if existing is None:
+            hosts.append(record)
+        else:
+            hosts = [record if h.get("name") == name else h for h in hosts]
+        _write_hosts(hosts)
+        return {"ok": True}
 
 
 @_txn

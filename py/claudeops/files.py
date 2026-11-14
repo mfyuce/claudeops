@@ -227,7 +227,12 @@ def write_upload(dest: str, rfile, length: int, chunk_size: int, overwrite: bool
     tmp = _tmp_name(dest, "upload")
     try:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
-        with os.fdopen(fd, "wb") as f:
+        try:
+            fobj = os.fdopen(fd, "wb")
+        except BaseException:
+            os.close(fd)            # fdopen düşerse tanıtıcı sızmasın (review cops)
+            raise
+        with fobj as f:
             remaining = length
             while remaining > 0:
                 chunk = rfile.read(min(chunk_size, remaining))
@@ -243,7 +248,7 @@ def write_upload(dest: str, rfile, length: int, chunk_size: int, overwrite: bool
             return "incomplete"
         try:    # üzerine yazılan dosyanın izinleri (ör. +x) korunur
             if not os.path.islink(dest):
-                os.chmod(tmp, os.stat(dest).st_mode & 0o7777)
+                os.chmod(tmp, os.stat(dest).st_mode & 0o777)      # setuid/setgid/sticky TAŞINMAZ (yalnız rwx)
         except OSError:
             pass
         if overwrite:
@@ -428,6 +433,18 @@ def write_text(s: Session, path: str, content: str) -> dict:
         return {"ok": False, "error": "forbidden"}
     if not os.path.isfile(real):
         return {"ok": False, "error": "not_found"}
+    try:
+        with open(real, "rb") as _rf:
+            old = _rf.read(MAX_VIEW_BYTES + 1)
+    except OSError:
+        old = b""
+    try:
+        old.decode("utf-8")
+    except UnicodeDecodeError:
+        # UTF-8 olmayan dosya `read_text` (errors="replace") ile U+FFFD'li görünür; geri yazmak özgün baytları SESSİZCE bozardı
+        return {"ok": False, "error": "bad_encoding", "detail": "dosya UTF-8 değil: düzenle/kaydet veri kaybettirirdi"}
+    if b"\r\n" in old and b"\n" not in old.replace(b"\r\n", b""):
+        content = content.replace("\r\n", "\n").replace("\n", "\r\n")      # tutarlı CRLF dosya CRLF kalır
     try:
         n_bytes = len(content.encode("utf-8"))
     except UnicodeError as e:      # eşleşmemiş vekil karakter vb.: çökme / çöp tmp yok (review cliops 2 Kas)
