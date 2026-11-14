@@ -12,16 +12,19 @@ import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { matchesSearch } from "./shared/searchFilter";
 import { useTabShortcuts } from "./shared/useTabShortcuts";
+import type { UiExtension } from "../api/types";
 import type { TabKey } from "../state/tabs";
 
 interface TabBarProps {
   active: TabKey;
   onSelect: (tab: TabKey) => void;
   search: string;
+  /** K10 extension tabs (server-filtered by the caller's role); empty when none. */
+  extensions?: UiExtension[];
 }
 
-export function TabBar({ active, onSelect, search }: TabBarProps) {
-  const { t } = useLang();
+export function TabBar({ active, onSelect, search, extensions = [] }: TabBarProps) {
+  const { t, lang } = useLang();
   const { data } = useStatusContext();
   useTabShortcuts();
 
@@ -58,6 +61,7 @@ export function TabBar({ active, onSelect, search }: TabBarProps) {
     ["snapshots", t.tabSnapshots],
     // Extension tab (claudeops-enterprise "cops reader" reading list): only when the extension registered /readlist/.
     ...((data.ext_routes ?? []).includes("/readlist/") ? ([["readlist", t.tabReadlist]] as [TabKey, string][]) : []),
+    ...extensions.map((e): [TabKey, string] => [`ext:${e.id}`, lang === "en" ? e.title_en || e.title : e.title]),
     ["diag", t.tabDiag],
     ["settings", t.tabSettings],
   ];

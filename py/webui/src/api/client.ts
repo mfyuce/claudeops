@@ -82,6 +82,7 @@ import type {
   ReviewStateResult,
   ReviewFinding,
   ReviewLesson,
+  UiExtensionsResult,
 } from "./types";
 
 // Exported so `hooks/useStatus.ts` can build the `/ws?token=...` URL with the
@@ -152,6 +153,17 @@ export async function apiPost<T>(path: string, body: object): Promise<T> {
 }
 
 // ── GET routes ───────────────────────────────────────────────────────────
+
+/** K10: tabs contributed by extension packages (empty when none/not allowed). Never throws: the panel must survive. */
+export async function getUiExtensions(): Promise<UiExtensionsResult> {
+  try {
+    const r = await apiGet<UiExtensionsResult>("/api/ui/extensions");
+    return { ...r, extensions: Array.isArray(r.extensions) ? r.extensions : [] };
+  } catch {
+    return { extensions: [] };
+  }
+}
+
 
 export const getStatus = (): Promise<StatusPayload> => apiGet<StatusPayload>("/api/status");
 

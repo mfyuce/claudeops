@@ -93,6 +93,9 @@ export interface Strings {
   tabDesktop: string;
   tabSnapshots: string;
   tabReadlist: string;
+  extLoading: string;
+  extLoadFailed: string;
+  extIncompatible: string;
   readlistTitle: string;
   readlistUnread: (unread: number, total: number) => string;
   readlistHideRead: string;
@@ -948,6 +951,9 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDesktop: "Uzak Masaüstü",
     tabSnapshots: "Snapshotlar",
     tabReadlist: "Okuma listesi",
+    extLoading: "Eklenti yükleniyor…",
+    extLoadFailed: "Eklenti sekmesi yüklenemedi",
+    extIncompatible: "Eklenti sürümü bu panelle uyumsuz",
     readlistTitle: "Okuma listesi",
     readlistUnread: (u: number, n: number) => `${u} okunmamış / ${n} madde`,
     readlistHideRead: "Okunanları gizle",
@@ -1916,6 +1922,9 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDesktop: "Remote Desktop",
     tabSnapshots: "Snapshots",
     tabReadlist: "Reading list",
+    extLoading: "Loading extension…",
+    extLoadFailed: "Extension tab failed to load",
+    extIncompatible: "Extension version is incompatible with this panel",
     readlistTitle: "Reading list",
     readlistUnread: (u: number, n: number) => `${u} unread / ${n} items`,
     readlistHideRead: "Hide read",

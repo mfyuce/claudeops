@@ -1196,3 +1196,18 @@ export interface SessionLockResult {
   need_confirm?: boolean;
   error?: string;
 }
+
+
+/** K10 UI extension (`GET /api/ui/extensions`): one tab contributed by an installed extension package. */
+export interface UiExtension {
+  id: string;
+  title: string;
+  title_en?: string;
+  entry: string;
+  roles: string[];
+}
+export interface UiExtensionsResult {
+  ok?: boolean;
+  api?: number;
+  extensions: UiExtension[];
+}

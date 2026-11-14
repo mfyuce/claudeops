@@ -43,7 +43,9 @@ import { LangProvider, useLang } from "./i18n/LangContext";
 import { StatusProvider, useStatusContext } from "./state/StatusContext";
 import { useSelection } from "./state/selection";
 import { ShortcutHelp } from "./components/shared/ShortcutHelp";
-import { isTabKey, TAB_STORAGE_KEY, type TabKey } from "./state/tabs";
+import { extIdOf, isExtTab, isTabKey, TAB_STORAGE_KEY, type TabKey } from "./state/tabs";
+import { useUiExtensions } from "./state/uiExtensions";
+import { ExtensionBoundary, ExtensionTab } from "./components/ExtensionTab";
 import { LOCAL_HOST, rowKey } from "./state/hosts";
 import { applyTheme } from "./theme";
 
@@ -69,6 +71,13 @@ function AppShell() {
   // button for non-local rows (remote terminal viewing is a deferred
   // follow-up, see the multi-host federation plan).
   const [openTerminalFor, setOpenTerminalFor] = useState<{ host: string; name: string } | null>(null);
+  const { extensions: uiExts, loaded: uiExtsLoaded } = useUiExtensions();
+  const activeExt = isExtTab(activeTab) ? uiExts.find((e) => e.id === extIdOf(activeTab)) : undefined;
+  // A stored `ext:<id>` that is gone (package removed, role changed, logged in as another user): fall back to running.
+  useEffect(() => {
+    if (uiExtsLoaded && isExtTab(activeTab) && !activeExt) setActiveTabState("running");
+  }, [uiExtsLoaded, activeTab, activeExt]);
+  const openExtSession = useCallback((host: string, name: string) => setOpenTerminalFor({ host: host || LOCAL_HOST, name }), []);
   // viewSessionFor: which STOPPED session's read-only Chat+Files popup (if
   // any) is open — separate state from openTerminalFor on purpose, since
   // this is a materially different kind of popup (no live pty, opened from
@@ -217,7 +226,7 @@ function AppShell() {
       <CapRetryPrompt />
       <ShortcutHelp />
       <SearchBox value={search} onChange={setSearch} />
-      <TabBar active={activeTab} onSelect={setActiveTab} search={search} />
+      <TabBar active={activeTab} onSelect={setActiveTab} search={search} extensions={uiExts} />
       <div>
         {!data && !error && <div className="opts-hint" role="status">{t.loadingFirst}</div>}
         {data && activeTab === "running" && (
@@ -235,6 +244,11 @@ function AppShell() {
         {data && activeTab === "desktop" && <DesktopTab />}
         {data && activeTab === "snapshots" && <SnapshotSection />}
         {data && activeTab === "readlist" && <ReadlistTab />}
+        {data && activeExt && (
+          <ExtensionBoundary key={activeExt.id + lang} label={t.extLoadFailed}>
+            <ExtensionTab ext={activeExt} openSession={openExtSession} />
+          </ExtensionBoundary>
+        )}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
         {data && activeTab === "settings" && <SettingsTab />}
       </div>

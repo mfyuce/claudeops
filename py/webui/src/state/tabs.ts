@@ -5,7 +5,11 @@
  * step 5).
  */
 
+/** Extension tab (K10, claudeops-enterprise "Yönetim" etc.): `ext:<id>`, id registered server-side. */
+export type ExtTabKey = `ext:${string}`;
+
 export type TabKey =
+  | ExtTabKey
   | "running"
   | "registered"
   | "ucli"
@@ -39,6 +43,17 @@ const ALL_TABS: readonly TabKey[] = [
   "settings",
 ];
 
+const EXT_TAB_RE = /^ext:[a-z0-9_-]{1,40}$/;
+
+export function isExtTab(key: string): key is ExtTabKey {
+  return EXT_TAB_RE.test(key);
+}
+
+/** `ext:admin` -> `admin`; "" for a non-extension key. */
+export function extIdOf(key: string): string {
+  return isExtTab(key) ? key.slice(4) : "";
+}
+
 export function isTabKey(value: string | null): value is TabKey {
-  return value !== null && (ALL_TABS as readonly string[]).includes(value);
+  return value !== null && ((ALL_TABS as readonly string[]).includes(value) || isExtTab(value));
 }
