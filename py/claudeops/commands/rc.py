@@ -30,6 +30,7 @@ from ..providers import get_provider
 from ..roster import read_models, roster_by_name
 from ..settings import resolved_model_for
 from ..spawn import spawn_session, detect_display
+from ..textutil import split_names
 
 # Geçiş savunması: suffix'li girdiyi (hc58) base'e (hc) indirger. Saf base de eşleşir.
 from ..session import _NAME_RE     # TEK kaynak (review R-1)
@@ -79,7 +80,7 @@ def _wait_proc(name: str, timeout: float) -> bool:
 def _run_inner(args, display, models, roster) -> int:
     errors = 0
 
-    for full_name in args.names:
+    for full_name in split_names(args.names):
         # Tam eşleşme regex'ten ÖNCE denenir (2026-09-14 fix — CLI REGRESYON,
         # bkz. TODO.md): `_NAME_RE` tireli (`ancient-script-pipeline-fd`),
         # karmaşık altçizgili (`mtsyn20260910_concensusonmethod`) veya rakam

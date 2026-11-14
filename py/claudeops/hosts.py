@@ -22,6 +22,7 @@ import json
 import os
 import re
 import socket
+import threading
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -106,11 +107,29 @@ def _host_is_blocked(url: str) -> bool:
     host = urlparse(url).hostname or ""
     if not host:
         return False
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror:
-        return False
+    infos = _resolve_with_timeout(host, DNS_CHECK_TIMEOUT)
+    if infos is None:
+        return False          # çözülemedi / zaman aşımı: karar verilemez, engelleme (fail-open, yukarıdaki docstring)
     return any(ip_is_blocked(info[4][0]) for info in infos)
+
+
+DNS_CHECK_TIMEOUT = 5.0   # sn: `getaddrinfo`nun kendi zaman aşımı yok; asılı DNS kayıt isteğini (ve kaydeden thread'i) sonsuza dek bloklamasın
+
+
+def _resolve_with_timeout(host: str, timeout: float):
+    """`socket.getaddrinfo(host, None)` en çok `timeout` sn; hata ya da zaman aşımında None (asılı çözümleme arka plan thread'inde kendi kendine biter)."""
+    box: list = []
+
+    def run() -> None:
+        try:
+            box.append(socket.getaddrinfo(host, None))
+        except (socket.gaierror, OSError, UnicodeError):
+            box.append(None)
+
+    t = threading.Thread(target=run, daemon=True, name="hosts-dns-check")
+    t.start()
+    t.join(timeout)
+    return box[0] if box else None
 
 
 def ip_is_blocked(raw_ip: str) -> bool:

@@ -15,6 +15,7 @@ from typing import Optional
 from ..atomic_json import atomic_write_text, roster_lock
 from ..discovery import find_sessions
 from ..instances import DERIVED_NAME_RE, get_instance
+from ..textutil import split_names
 from ..kill import kill_session, kill_session_and_parent
 from ..paths import MODELS_TSV
 
@@ -156,7 +157,7 @@ def run(args) -> int:
     sessions = find_sessions(measure_cpu=False)
     models_names = _models_names()
     errors = 0
-    for name in args.names:
+    for name in split_names(args.names):
         is_instance = name not in models_names and (
             get_instance(name) is not None or bool(DERIVED_NAME_RE.match(name)))
         known = is_instance or name in models_names

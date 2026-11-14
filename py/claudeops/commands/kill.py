@@ -3,6 +3,7 @@ from __future__ import annotations
 from ..discovery import find_by_name
 from ..kill import kill_session_and_parent
 from . import mcp_queue
+from ..textutil import split_names
 
 
 def register(sub):
@@ -31,7 +32,7 @@ def _via_panel(port: int, name: str):
 
 def run(args) -> int:
     errors = 0
-    for name in args.names:
+    for name in split_names(args.names):
         if not args.dry_run and not args.force:
             res = _via_panel(args.port, name)
             if res is not None:

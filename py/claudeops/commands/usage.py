@@ -14,6 +14,7 @@ import json
 from ..discovery import find_sessions
 from ..providers.claude_provider import jsonl_path_for
 from ..session_usage import fmt_tokens, usage_for_path
+from ..textutil import split_names
 
 
 def register(sub):
@@ -89,8 +90,9 @@ def run_day(args) -> int:
 def run(args) -> int:
     if getattr(args, "day", None) is not None:
         return run_day(args)
-    rows = collect(set(args.names))
-    if not args.names:
+    names = split_names(args.names)
+    rows = collect(set(names))
+    if not names:
         rows = sorted(rows, key=lambda r: -_weight(r[1]))[:max(1, args.top)]
     else:
         rows = sorted(rows, key=lambda r: -_weight(r[1]))

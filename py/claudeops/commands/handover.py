@@ -24,6 +24,7 @@ from __future__ import annotations
 import sys
 from typing import Optional
 from ..handover import handover_faz1, HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN
+from ..textutil import split_names
 
 # TODO-p / [[reboot-no-handover]]: taze reboot üstüne elle handover = boot-recovery
 # zaten toparlarken race + post-boot artefakt + context kaybı (2026-06-18 mo50 olayı).
@@ -86,8 +87,9 @@ def run(args) -> int:
         message = HANDOVER_MSG_DEFAULT_EN if args.lang == "en" else HANDOVER_MSG_DEFAULT
 
     print(f"=== handover faz1{' (dry-run)' if args.dry_run else ''} — canlı gönderim, kill/respawn yok ===")
-    if args.names:
-        print(f"  hedef: {', '.join(args.names)}  (isimle seçildi — needs_ho bypass, self korunur)")
+    names = split_names(args.names)
+    if names:
+        print(f"  hedef: {', '.join(names)}  (isimle seçildi — needs_ho bypass, self korunur)")
     else:
         print(f"  batch={args.batch_size}, delay={args.batch_delay:.0f}s")
     print()
@@ -100,7 +102,7 @@ def run(args) -> int:
         dry_run=args.dry_run,
         batch_size=args.batch_size,
         batch_delay=args.batch_delay,
-        names=args.names or None,
+        names=names or None,
     )
 
     print()

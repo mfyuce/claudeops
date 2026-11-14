@@ -150,5 +150,58 @@ class Endpoint(unittest.TestCase):
         self.assertIsNone(rt.resolve_url_path(doc, "../x.png"))
 
 
+class HttpLevel(unittest.TestCase):
+    """Gerçek ThreadingHTTPServer üzerinde `/readfile/<bilet>/<yol>`: belge 200 text/plain, resim 200 image/*, `..`/.txt/uzantısız 404, bozuk bilet 404."""
+    PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452")
+
+    def setUp(self):
+        import http.server
+        import threading
+        self.d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.d, "figs"))
+        self.doc = os.path.join(self.d, "doc.tex")
+        open(self.doc, "w").write("\\includegraphics{figs/a.png}")
+        open(os.path.join(self.d, "figs", "a.png"), "wb").write(self.PNG)
+        open(os.path.join(self.d, "figs", "n.txt"), "w").write("gizli")
+        open(os.path.join(os.path.dirname(self.d), "out.png"), "wb").write(self.PNG)
+        self._res, self._rd = web._files_resolve, web.files_mod.resolve_download
+        web._files_resolve = lambda name, lang: ((self.d, None), None)
+        web.files_mod.resolve_download = lambda s, p: (p, None) if os.path.isfile(p) else ("", "not_found")
+        self._tok = getattr(web._Handler, "token", None)
+        web._Handler.token = TOKEN
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), web._Handler)
+        self.srv.daemon_threads = True
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.tk = rt.issue(TOKEN, "ok", self.doc, "local")
+
+    def tearDown(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+        web._files_resolve, web.files_mod.resolve_download = self._res, self._rd
+        web._Handler.token = self._tok
+
+    def get(self, rest, tk=None):
+        import http.client
+        c = http.client.HTTPConnection(*self.srv.server_address, timeout=5)
+        c.request("GET", f"/readfile/{tk or self.tk}/{rest}")
+        r = c.getresponse()
+        body = r.read()
+        c.close()
+        return r.status, r.getheader("Content-Type") or "", body
+
+    def test_document_and_image(self):
+        st, ct, body = self.get("doc.tex")
+        self.assertEqual(st, 200)
+        self.assertTrue(ct.startswith("text/plain"), ct)
+        st, ct, body = self.get("figs/a.png")
+        self.assertEqual((st, ct, body), (200, "image/png", self.PNG))
+
+    def test_traversal_wrong_ext_and_bad_ticket_404(self):
+        for rest in ("figs/n.txt", "../out.png", "%2e%2e/out.png", "figs/yok.png", "figs//a.png", "figs%5Ca.png", "doc.tex.png"):
+            self.assertEqual(self.get(rest)[0], 404, rest)
+        self.assertEqual(self.get("doc.tex", tk="bozuk.bilet")[0], 404)
+        self.assertEqual(self.get("figs/a.png", tk=rt.issue("baska", "ok", self.doc, "local"))[0], 404)
+
+
 if __name__ == "__main__":
     unittest.main()
