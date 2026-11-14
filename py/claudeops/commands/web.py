@@ -4165,11 +4165,13 @@ def _v1_stream_chunks(model: str, reply: str) -> list:
 _TICKET_TEXT_EXTS = {".html", ".htm", ".xhtml", ".svg", ".xml", ".js", ".mjs", ".css", ".json", ".md", ".markdown", ".tex", ".txt", ".py"}
 
 
-def _ticket_file_headers(filename: str) -> Dict[str, str]:
+def _ticket_file_headers(filename: str, image_ok: bool = False) -> Dict[str, str]:
     """Bilet kipi yanıt başlıkları: tarayıcıda ETKİN içerik türleri (html/svg/xml/js...) düz metin; `sandbox` CSP; inline; önbellek yok."""
     ext = os.path.splitext(filename)[1].lower()
     ctype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    if ext in _TICKET_TEXT_EXTS or ctype.startswith("text/") or ctype in ("application/json", "application/javascript", "image/svg+xml", "application/xml"):
+    if ext == ".svg" and image_ok:
+        ctype = "image/svg+xml"
+    elif ext in _TICKET_TEXT_EXTS or ctype.startswith("text/") or ctype in ("application/json", "application/javascript", "image/svg+xml", "application/xml"):
         ctype = "text/plain; charset=utf-8"
     return {"Content-Type": ctype, "Content-Disposition": "inline", "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
@@ -4635,7 +4637,7 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 self.send_response(status)
                 if ticket_mode:
-                    for hk, hv in _ticket_file_headers(os.path.basename(fpath)).items():
+                    for hk, hv in _ticket_file_headers(os.path.basename(fpath), image_ok=(qs.get("img") or [""])[0] == "1").items():
                         self.send_header(hk, hv)
                 else:
                     for hk, hv in (headers or {}).items():
@@ -4672,7 +4674,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             self.send_response(200)
             if ticket_mode:
-                for hk, hv in _ticket_file_headers(filename).items():
+                for hk, hv in _ticket_file_headers(filename, image_ok=(qs.get("img") or [""])[0] == "1").items():
                     self.send_header(hk, hv)
             else:
                 self.send_header("Content-Type", ctype)
@@ -4858,7 +4860,12 @@ class _Handler(BaseHTTPRequestHandler):
             if tk is None:
                 self._json({"error": "not found"}, status=404)       # geçersiz/süresi dolmuş: ayrıntı verilmez
                 return
-            self._handle_files_download(params=tk)
+            # Dizin kapsamı: belge adı VEYA belge dizini altındaki resim (`read_ticket.resolve_url_path`); başka her şey 404
+            target = read_ticket.resolve_url_path(tk["path"], parts[1] if len(parts) > 1 else os.path.basename(tk["path"]))
+            if target is None:
+                self._json({"error": "not found"}, status=404)
+                return
+            self._handle_files_download(params=dict(tk, path=target, **({"img": "1"} if target != tk["path"] else {})))
             return
         if path.startswith("/api/agents/"):
             caller = self._agents_caller()

@@ -8,7 +8,9 @@ import hashlib
 import hmac
 import json
 import time
+import os
 from typing import Any, Dict, Optional
+from urllib.parse import unquote
 
 TTL_SECONDS = 1800
 MAX_TICKET = 2048
@@ -49,3 +51,24 @@ def verify(token: str, ticket: str, now: Optional[float] = None) -> Optional[Dic
     if not name or not path:
         return None
     return {"name": name, "path": path, "host": host}
+
+
+# Dizin kapsamı (14 Kas): belgeyle AYNI dizin ağacındaki RESİMLER de okunabilir (reader'ın LaTeX/MD resimleri: `\includegraphics{figs/a.png}`,
+# `![](a.png)` belge URL'sine göre `/readfile/<bilet>/figs/a.png` olur). Yalnız resim uzantıları, yalnız belge dizininin ALTI
+# (`..`, mutlak yol, boş/`.` parça, ters bölü, NUL yok); kök/izin denetimi çağıranın `resolve_download`'ında yine geçerli.
+IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".avif"})
+
+
+def resolve_url_path(doc_path: str, url_rest: str) -> Optional[str]:
+    """`/readfile/<bilet>/<url_rest>`: belgenin kendi adıysa `doc_path`; belge dizininin altındaki resim yoluysa o yol; aksi halde None."""
+    rel = unquote(url_rest or "")
+    if rel == os.path.basename(doc_path):
+        return doc_path
+    if not rel or "\x00" in rel or "\\" in rel or rel.startswith("/"):
+        return None
+    segs = rel.split("/")
+    if any(s in ("", ".", "..") for s in segs):
+        return None
+    if os.path.splitext(segs[-1])[1].lower() not in IMAGE_EXTS:
+        return None
+    return os.path.join(os.path.dirname(doc_path), *segs)
