@@ -20,6 +20,16 @@ class TestAnthropicCost(unittest.TestCase):
             self.assertAlmostEqual(rv.usage_cost_usd(f, "claude-sonnet-5-5"), 2.54, places=4)
             self.assertAlmostEqual(rv.anthropic_spent_usd(os.path.join(d, "reviews")), 2.54, places=4)
 
+    def test_spent_counts_any_depth_and_resolves_model_from_first_component(self):
+        row = {"event": "request", "usage": {"prompt_tokens": 1_000_000, "cached_tokens": 0, "completion_tokens": 0}}
+        with tempfile.TemporaryDirectory() as d:
+            for rel in (("claude-sonnet-5-5", "high", "T1"), ("claude-sonnet-5-5", "T2"), ("claude-sonnet-5-5", "high", "lens-a", "T3")):
+                p = os.path.join(d, "reviews", "p", "anthropic", *rel, rel[-1] + ".usage.jsonl")
+                os.makedirs(os.path.dirname(p))
+                open(p, "w").write(json.dumps(row) + "\n")
+            # üç koşu da Sonnet 5.5 fiyatıyla (1M girdi x2,5): derinlik sabit değil, model ilk bileşenden
+            self.assertAlmostEqual(rv.anthropic_spent_usd(os.path.join(d, "reviews")), 7.5, places=4)
+
     def test_one_hour_cache_write_multiplier(self):
         """TODO ANTHROPIC_PRICES: 1h TTL yazma 2x (= 5 dk 1,25x'in 1,6 katı): `write_mult` yalnız önbellek YAZMA kalemini çarpar."""
         with tempfile.TemporaryDirectory() as d:

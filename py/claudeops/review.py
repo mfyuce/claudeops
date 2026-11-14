@@ -1510,12 +1510,20 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
 
 
 def anthropic_spent_usd(reviews_root: str) -> float:
-    """Tüm `anthropic` koşularının toplam $ (yalnız `<root>/*/anthropic/<model>/<effort>/<ts>/<ts>.usage.jsonl`)."""
+    """Tüm `anthropic` koşularının toplam $ (`<root>/<proje>/anthropic/<model>/**/<ts>.usage.jsonl`). Derinlik SABİT varsayılmaz
+    (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir."""
     import glob
     tot = 0.0
-    for f in glob.glob(os.path.join(reviews_root, "*", "anthropic", "*", "*", "*", "*.usage.jsonl")):
-        parts = f.split(os.sep)
-        tot += usage_cost_usd(f, parts[-4])
+    for adir in glob.glob(os.path.join(glob.escape(reviews_root), "*", "anthropic")):
+        for dirpath, _dirs, files in os.walk(adir):
+            for fn in files:
+                if not fn.endswith(".usage.jsonl"):
+                    continue
+                f = os.path.join(dirpath, fn)
+                rel = os.path.relpath(f, adir).split(os.sep)
+                if len(rel) < 2:
+                    continue
+                tot += usage_cost_usd(f, rel[0])
     return tot
 
 
