@@ -402,7 +402,10 @@ def resolved_binary(cli_name: str) -> str:
     or NAME` satırının yerine geçer — DRY + üçünde de aynı override mantığı."""
     override = (load_settings().get("provider_bin") or {}).get(cli_name, "").strip()
     if override:
-        return override
+        # `~` genişletilir; var olmayan/çalıştırılamayan override spawn'ı bozmasın diye atlanıp PATH araması denenir.
+        path = os.path.expanduser(override)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
     return shutil.which(cli_name) or cli_name
 
 
