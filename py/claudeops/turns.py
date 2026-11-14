@@ -107,6 +107,7 @@ def wait_for_reply(
     pattern = provider.busy_status_pattern()
     previous: Optional[dict] = None
     stable_count = 0
+    none_streak = 0
     sid = s.sid
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -129,7 +130,12 @@ def wait_for_reply(
 
         exchange = provider.last_exchange(s.cwd, sid)
         if exchange is None:
-            return None  # çağıran bunu gönderimden ÖNCE eliyor; savunma amaçlı
+            # Transkript bir an okunamayabilir (yarım yazım, dönen dosya): art arda 5 yoklama boşsa vazgeç, tek kayıp tur beklemeyi bitirmesin.
+            none_streak += 1
+            if none_streak >= 5:
+                return None
+            continue
+        none_streak = 0
         changed = exchange != baseline
         assistant_text = exchange.get("assistant", "")
         marker_ok = (require_marker is None) or (require_marker in assistant_text)

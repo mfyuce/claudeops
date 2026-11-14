@@ -337,5 +337,10 @@ def default_store() -> Store:
     global _DEFAULT
     with _DEFAULT_LOCK:
         if _DEFAULT is None or _DEFAULT.path != default_path():
+            if _DEFAULT is not None:
+                try:
+                    _DEFAULT.close()          # yol değişti (izole koşu/test): çağıran thread'in eski bağlantısı sızmasın
+                except Exception:
+                    pass
             _DEFAULT = Store(default_path())
         return _DEFAULT
