@@ -3723,6 +3723,9 @@ def _doc_path(cwd: str, fname: str) -> str:
     return ""
 
 
+_TODO_DONE_RE = re.compile(r"YAPILDI|ÇÖZÜLDÜ|KAPANDI|TAMAM|✅|\\bDONE\\b", re.I)
+
+
 def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int, int]]:
     """Projenin YEREL TODO.md'si: (açık iş sayısı, sahibe bağlı etiketli açık satır sayısı). Sahibe bağlı satırlar
     (`OWNER_WAIT_LINE_RE`: SAHİPTE, (sahip), DIŞ GİRDİ, "sahip kararı bekliyor"...) açık iş SAYILMAZ. Uzak proje, klasörü bilinmeyen,
@@ -3735,15 +3738,25 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int
         real = _doc_path(cwd, "TODO.md")
         if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
             return None
-        n_open = n_owner = 0
+        n_open = n_owner = n_boxed = n_unboxed = 0
         with open(real, encoding="utf-8", errors="replace") as f:
             for ln in f:
-                if not re.match(r"\s*(?:[-*+]|\d+[.)])\s*\[ \]", ln):     # "- [ ]" ve numaralı "4. [ ]" (danisppr biçimi)
+                if re.match(r"\s*(?:[-*+]|\d+[.)])\s*\[[xX]\]", ln):
+                    n_boxed += 1
                     continue
+                if not re.match(r"\s*(?:[-*+]|\d+[.)])\s*\[[ ~]\]", ln):     # "- [ ]", numaralı "4. [ ]" (danisppr) ve "[~]" (sürüyor = AÇIK; hof/cli/zlkrn 14 Kas gece boşa kapandı)
+                    # KUTUSUZ üst düzey madde ("5. [B] etiketli...", "- Tablo..."): yalnız kutulu satır HİÇ yoksa (biçim tanınmıyor) açık sayılır
+                    if (re.match(r"(?:[-*+]|\d+[.)])\s+\S", ln) and not _TODO_DONE_RE.search(ln)
+                            and not sw.OWNER_WAIT_LINE_RE.search(ln)):
+                        n_unboxed += 1
+                    continue
+                n_boxed += 1
                 if sw.OWNER_TODO_LINE_RE.search(ln):
                     n_owner += 1
                 if not sw.OWNER_WAIT_LINE_RE.search(ln):
                     n_open += 1
+        if n_boxed == 0 and n_open == 0:
+            n_open = n_unboxed        # biçim tanınmadı: sahipsiz iş olabilir, "iş yok" diye kapatma (isparta 14 Kas)
         return n_open, n_owner
     except OSError:
         return None

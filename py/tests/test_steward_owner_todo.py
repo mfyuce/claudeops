@@ -57,6 +57,25 @@ class Counting(unittest.TestCase):
             finally:
                 ws._cwd_resolver = orig
 
+    def test_scan_unboxed_todo_not_no_work(self):
+        """isparta 14 Kas: kutusuz numaralı TODO n_open=0 verip 'iş yok' kapattı; biçim tanınmıyorsa kutusuz açık madde sayılır."""
+        cases = [("# TODO\n5. [B] etiketli iş\n8. Tablo/grafik\n9. eski (YAPILDI)\n- SAHİPTE: parola\n", 2),
+                 ("# TODO\n- [x] bitti\n- Not satırı\n", 0),        # kutulu satır var = biçim tanınıyor, kutusuz sayılmaz
+                 ("# TODO\n1. işe başla\n", 1),
+                 ("# TODO\n- [~] sürüyor\n2. [~] bu da\n- [~] SAHİPTE: x\n- [x] bitti\n", 2)]     # [~] = açık iş
+        for text, want in cases:
+            with tempfile.TemporaryDirectory() as d:
+                subprocess.run(["git", "init", "-q", d], check=True)
+                with open(os.path.join(d, "TODO.md"), "w", encoding="utf-8") as f:
+                    f.write(text)
+                projs = {"p": sw.Project(name="p", phase="planned")}
+                orig = ws._cwd_resolver
+                ws._cwd_resolver = lambda: (lambda n: d)
+                try:
+                    self.assertEqual(ws._open_work_of(projs)("p"), want, text)
+                finally:
+                    ws._cwd_resolver = orig
+
     def test_scan_numbered_checkboxes(self):
         """danisppr biçimi: numaralı `4. [ ]` satırları da açık iş sayılır (11 Kas: 0 sayılıp oturum boşta kalmıştı)."""
         with tempfile.TemporaryDirectory() as d:
