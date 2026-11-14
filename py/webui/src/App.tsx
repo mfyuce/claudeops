@@ -141,7 +141,7 @@ function AppShell() {
     // Suffix (not t.title itself — that stays a faithful 1:1 port of the
     // original panel's title) so the browser tab is distinguishable at a
     // glance from the old panel's tab when both are open side by side.
-    document.title = `${t.title} · React`;
+    document.title = t.title;
   }, [t]);
 
   // TODO L73 (2026-09-02): keep <html data-theme> in sync with the server's
