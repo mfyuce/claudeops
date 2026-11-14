@@ -1865,6 +1865,7 @@ def _status_payload() -> dict:
         # lifecycle durumu — diğer açık tab/cihazlar da (WS push ile) canlı
         # görsün diye buraya eklendi, ayrı bir polling endpoint'i değil.
         "remote_desktop": remote_desktop.status(),
+        "ext_routes": extensions.routes(),     # eklenti yol önekleri (panel eklenti sekmelerini bununla gösterir)
         # Claude hizmetli ucli oturumlarının bugünkü $ toplamı + günlük tavan (Ayarlar > ucli_cost); ucli_cost.state() 30 sn önbellekli
         "ucli_cost": ucli_cost.state(),
         # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine

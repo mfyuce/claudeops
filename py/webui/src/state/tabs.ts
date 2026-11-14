@@ -16,6 +16,7 @@ export type TabKey =
   | "steward"
   | "desktop"
   | "snapshots"
+  | "readlist"
   | "diag"
   | "settings";
 
@@ -33,6 +34,7 @@ const ALL_TABS: readonly TabKey[] = [
   "steward",
   "desktop",
   "snapshots",
+  "readlist",
   "diag",
   "settings",
 ];

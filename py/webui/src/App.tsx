@@ -36,6 +36,7 @@ import { StewardTab } from "./components/StewardTab";
 import { UcliTab } from "./components/UcliTab";
 import { SnapshotSection } from "./components/SnapshotSection";
 import { TabBar } from "./components/TabBar";
+import { ReadlistTab } from "./components/ReadlistTab";
 import { ReadOnlySessionModal } from "./components/TerminalModal/ReadOnlySessionModal";
 import { TerminalModal } from "./components/TerminalModal/TerminalModal";
 import { LangProvider, useLang } from "./i18n/LangContext";
@@ -233,6 +234,7 @@ function AppShell() {
         {data && activeTab === "steward" && <StewardTab onOpenTerminal={(host, name) => setOpenTerminalFor({ host: host || LOCAL_HOST, name })} />}
         {data && activeTab === "desktop" && <DesktopTab />}
         {data && activeTab === "snapshots" && <SnapshotSection />}
+        {data && activeTab === "readlist" && <ReadlistTab />}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}
         {data && activeTab === "settings" && <SettingsTab />}
       </div>

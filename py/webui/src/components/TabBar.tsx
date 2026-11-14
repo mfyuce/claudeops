@@ -56,6 +56,8 @@ export function TabBar({ active, onSelect, search }: TabBarProps) {
     // continuously while active, worth a glance even from other tabs.
     ["desktop", data.remote_desktop.running ? `${t.tabDesktop} ●` : t.tabDesktop],
     ["snapshots", t.tabSnapshots],
+    // Extension tab (claudeops-enterprise "cops reader" reading list): only when the extension registered /readlist/.
+    ...((data.ext_routes ?? []).includes("/readlist/") ? ([["readlist", t.tabReadlist]] as [TabKey, string][]) : []),
     ["diag", t.tabDiag],
     ["settings", t.tabSettings],
   ];

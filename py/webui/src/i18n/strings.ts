@@ -92,6 +92,21 @@ export interface Strings {
   tabHistory: string;
   tabDesktop: string;
   tabSnapshots: string;
+  tabReadlist: string;
+  readlistTitle: string;
+  readlistUnread: (unread: number, total: number) => string;
+  readlistHideRead: string;
+  readlistShowRead: string;
+  readlistRefresh: string;
+  readlistOpen: string;
+  readlistListen: string;
+  readlistRaw: string;
+  readlistNote: string;
+  readlistMarkRead: string;
+  readlistRead: string;
+  readlistEmpty: string;
+  readlistNoProject: string;
+  readlistReaderOff: string;
   tabDiag: string;
   tabSettings: string;
   desktopDesc: string;
@@ -924,6 +939,21 @@ export const STRINGS: Record<Lang, Strings> = {
     tabHistory: "Geçmiş",
     tabDesktop: "Uzak Masaüstü",
     tabSnapshots: "Snapshotlar",
+    tabReadlist: "Okuma listesi",
+    readlistTitle: "Okuma listesi",
+    readlistUnread: (u: number, n: number) => `${u} okunmamış / ${n} madde`,
+    readlistHideRead: "Okunanları gizle",
+    readlistShowRead: "Okunanları göster",
+    readlistRefresh: "Yenile",
+    readlistOpen: "Reader ile aç",
+    readlistListen: "Sesli aç",
+    readlistRaw: "Ham dosya",
+    readlistNote: "Not (projenin oturumuna iletilir)",
+    readlistMarkRead: "Okundu, notu ilet",
+    readlistRead: "Okundu",
+    readlistEmpty: "Gösterilecek madde yok.",
+    readlistNoProject: "(projesiz)",
+    readlistReaderOff: "Reader kapalı (settings.reader.dir): ham dosya açılır.",
     tabDiag: "Tanı",
     tabSettings: "Ayarlar",
     desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
@@ -1869,6 +1899,21 @@ export const STRINGS: Record<Lang, Strings> = {
     tabHistory: "History",
     tabDesktop: "Remote Desktop",
     tabSnapshots: "Snapshots",
+    tabReadlist: "Reading list",
+    readlistTitle: "Reading list",
+    readlistUnread: (u: number, n: number) => `${u} unread / ${n} items`,
+    readlistHideRead: "Hide read",
+    readlistShowRead: "Show read",
+    readlistRefresh: "Refresh",
+    readlistOpen: "Open in reader",
+    readlistListen: "Listen",
+    readlistRaw: "Raw file",
+    readlistNote: "Note (forwarded to the project's session)",
+    readlistMarkRead: "Mark read, send note",
+    readlistRead: "Read",
+    readlistEmpty: "Nothing to show.",
+    readlistNoProject: "(no project)",
+    readlistReaderOff: "Reader is off (settings.reader.dir): the raw file opens instead.",
     tabDiag: "Diagnostics",
     tabSettings: "Settings",
     desktopDesc: "Watch the machine's screen live (2 fps). Remember to stop it — it captures the screen continuously while running.",

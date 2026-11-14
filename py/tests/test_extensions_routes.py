@@ -68,6 +68,9 @@ class Routes(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 api.register_route(bad, lambda r: None)
 
+    def test_routes_listed_for_panel_tabs(self):
+        self.assertIn("/zz/", ext.routes())      # /api/status `ext_routes` bunu taşır; panel eklenti sekmesi buna bakar
+
     def test_match(self):
         self.assertIsNotNone(ext.match_route("GET", "/zz/a"))
         self.assertIsNotNone(ext.match_route("GET", "/zz"))
