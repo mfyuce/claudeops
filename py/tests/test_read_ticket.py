@@ -128,6 +128,27 @@ class Endpoint(unittest.TestCase):
         self.assertTrue(h.sent["Content-Type"].startswith("text/plain"))
         self.assertEqual(h.sent["Content-Disposition"], "inline")
 
+    ISPARTA = os.path.expanduser("~/work/academic/yeterlilik2/belge/backups/isparta/isparta")
+
+    def test_real_isparta_images_via_ticket_dir_scope(self):
+        """Gerçek isparta belge dizini: bilet ek_matris.tex için, /readfile/<bilet>/Bronze-age-collapse.png|svg gerçek resmi inline verir."""
+        if not os.path.isfile(os.path.join(self.ISPARTA, "Bronze-age-collapse.png")):
+            self.skipTest("isparta dizini yok")
+        doc = os.path.join(self.ISPARTA, "ek_matris.tex")
+        web.files_mod.resolve_download = lambda s, p: (p, None) if os.path.isfile(p) else ("", "not_found")
+        tk = {"name": "ok", "path": doc, "host": "local"}
+        for img, ctype in (("Bronze-age-collapse.png", "image/png"), ("Bronze-age-collapse.svg", "image/svg")):
+            tgt = rt.resolve_url_path(doc, img)
+            self.assertEqual(tgt, os.path.join(self.ISPARTA, img))
+            h = FakeH(path="/readfile/x/" + img)
+            h._json = lambda o, status=200: None
+            web._Handler._handle_files_download(h, params=dict(tk, path=tgt, img="1"))
+            self.assertEqual(h.status, 200)
+            self.assertTrue(h.sent["Content-Type"].startswith(ctype), h.sent["Content-Type"])
+            self.assertEqual(h.wfile.getvalue(), open(tgt, "rb").read())
+        self.assertIsNone(rt.resolve_url_path(doc, "main.aux"))
+        self.assertIsNone(rt.resolve_url_path(doc, "../x.png"))
+
 
 if __name__ == "__main__":
     unittest.main()
