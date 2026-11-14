@@ -195,10 +195,19 @@ class Store:
             rest = parts[1:]
             c = (rest + [None] * 4)[:4]
             rows.append((file, seq, "row", 1 if active else 0, parts[0], c[0], c[1], c[2], c[3], json.dumps(rest, ensure_ascii=False), line))
+        n_rows = len(rows)
+        if not rows:
+            # boş dosya "yok" ile karışmasın: tsv_text "" döner (None = hiç eşitlenmemiş); `tsv_rows` yalnız kind='row' okur
+            rows.append((file, 0, "empty", None, None, None, None, None, None, None, ""))
         with self._tx() as c:
             c.execute("DELETE FROM tsv_rows WHERE file=?", (file,))
             c.executemany("INSERT INTO tsv_rows(file,seq,kind,active,name,c1,c2,c3,c4,cols,raw) VALUES(?,?,?,?,?,?,?,?,?,?,?)", rows)
-        return len(rows)
+        return n_rows
+
+    def delete_tsv(self, file: str) -> None:
+        """Dosyanın gölgesini tamamen kaldırır (`tsv_text` -> None); boş dosya (`replace_tsv(f, "")`, tsv_text "") ile KARIŞMAZ."""
+        with self._tx() as c:
+            c.execute("DELETE FROM tsv_rows WHERE file=?", (file,))
 
     def tsv_text(self, file: str) -> Optional[str]:
         rows = self._conn().execute("SELECT raw FROM tsv_rows WHERE file=? ORDER BY seq", (file,)).fetchall()
@@ -300,10 +309,18 @@ class _Tx:
 
 
 def _split(script: str) -> Iterator[str]:
-    for s in script.split(";"):
-        s = s.strip()
-        if s:
-            yield s
+    """`;` ile bölerken tırnak/gövde içindeki `;`yi (string literal, trigger) bölmez: sqlite3 tam-ifade denetimi."""
+    acc = ""
+    for part in script.split(";"):
+        acc += part
+        if sqlite3.complete_statement(acc + ";"):
+            if acc.strip():
+                yield acc.strip()
+            acc = ""
+        else:
+            acc += ";"
+    if acc.strip().rstrip(";").strip():
+        yield acc.strip().rstrip(";")
 
 
 _DEFAULT: Optional[Store] = None

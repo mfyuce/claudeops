@@ -244,7 +244,7 @@ def shadow_tsv(path: str, *, force: bool = False) -> None:
             from .store import default_store
             st = default_store()
             if st.tsv_text(name_for(path)) is not None:
-                st.replace_tsv(name_for(path), "")      # silinen dosyanın gölgesi DB'de eski içerikle kalmasın (export yanıltmasın)
+                st.delete_tsv(name_for(path))      # silinen dosyanın gölgesi DB'de eski içerikle kalmasın (export yanıltmasın)
             _SYNCED[key] = sg
             return
         from .store import default_store
