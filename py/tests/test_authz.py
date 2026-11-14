@@ -156,6 +156,51 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(ev, [("retired", "h", "s1", "u1")])
 
 
+class SpawnHookTest(unittest.TestCase):
+    def setUp(self):
+        authz.reset()
+        self.addCleanup(authz.reset)
+
+    def test_no_hook_empty_and_threadlocal(self):
+        self.assertEqual(authz.spawn_env("claude", "n", "/w"), {})
+        p = authz.Principal("u", ("user",))
+        authz.bind_principal(p)
+        self.assertIs(authz.current_principal(), p)
+        seen = []
+        t = threading.Thread(target=lambda: seen.append(authz.current_principal()))
+        t.start(); t.join()
+        self.assertEqual(seen, [None])                               # başka iş parçacığına sızmaz
+        authz.bind_principal(None)
+
+    def test_hook_env_refusal_and_fail_closed(self):
+        authz.set_spawn_hook(lambda p, cli, name, cwd: {"X_DIR": f"/d/{cli}"})
+        self.assertEqual(authz.spawn_env("claude", "n", "/w"), {"X_DIR": "/d/claude"})
+        authz.set_spawn_hook(lambda p, cli, name, cwd: (_ for _ in ()).throw(authz.SpawnRefused("login_required:claude", "x")))
+        with self.assertRaises(authz.SpawnRefused) as cm:
+            authz.spawn_env("claude", "n", "/w")
+        self.assertEqual(cm.exception.reason, "login_required:claude")
+        self.assertIsInstance(cm.exception, ValueError)              # web.py'deki mevcut ValueError reddi yolundan geçer
+        authz.set_spawn_hook(lambda *a: 1 / 0)
+        with mock.patch.object(authz, "_log"), self.assertRaises(authz.SpawnRefused) as cm:
+            authz.spawn_env("claude", "n", "/w")
+        self.assertEqual(cm.exception.reason, "hook_error")
+
+    def test_spawn_session_dry_run_gets_env(self):
+        from claudeops import spawn
+        authz.set_spawn_hook(lambda p, cli, name, cwd: {"CLAUDE_CONFIG_DIR": "/u/ali/claude"})
+        with mock.patch.object(spawn, "detect_display", lambda: ":0"):
+            out = spawn.spawn_session("nm", "/w", "m", dry_run=True, cli="shell", force_new=True)
+        self.assertIn("CLAUDE_CONFIG_DIR=/u/ali/claude", out)
+        authz.set_spawn_hook(lambda *a: (_ for _ in ()).throw(authz.SpawnRefused("login_required:claude")))
+        with mock.patch.object(spawn, "detect_display", lambda: ":0"), self.assertRaises(ValueError):
+            spawn.spawn_session("nm", "/w", "m", dry_run=True, cli="shell", force_new=True)
+
+    def test_refusal_formatting(self):
+        from claudeops import ucli_cost
+        r = ucli_cost.refusal(authz.SpawnRefused("login_required:codex", "cmd"))
+        self.assertEqual((r["ok"], r["code"], r["reason"]), (False, "spawn_refused", "login_required:codex"))
+
+
 class ResourcesTest(unittest.TestCase):
     def test_multi_resources(self):
         r = authz.resources_from("/api/orch/start", {}, {"participants": [{"host": "h", "name": "a"}, {"name": "b"}, "x"]})

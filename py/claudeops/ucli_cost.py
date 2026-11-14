@@ -32,6 +32,8 @@ class DailyCapExceeded(ValueError):
 def refusal(exc: BaseException) -> Dict[str, Any]:
     """Başlatma reddi -> web sonucu. Tavan reddiyse `code` + tutarlar eklenir (arayüz bunu yakalar)."""
     out: Dict[str, Any] = {"ok": False, "error": str(exc)}
+    if getattr(exc, "reason", None) and type(exc).__name__ == "SpawnRefused":     # authz.SpawnRefused (çok kullanıcı: kimliksiz sağlayıcı)
+        out.update(code="spawn_refused", reason=exc.reason)
     if isinstance(exc, DailyCapExceeded):
         out.update(code=CAP_CODE, today_usd=round(exc.today_usd, 2), cap_usd=round(exc.cap_usd, 2))
     return out

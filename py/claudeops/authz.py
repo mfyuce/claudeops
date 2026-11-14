@@ -165,9 +165,10 @@ def add_audit_sink(fn: Callable[[Principal, str, Resource, int], None]) -> None:
 def reset() -> None:
     """Test/yeniden yükleme: tüm kancaları sil (çekirdek varsayılanına dön)."""
     with _LOCK:
-        global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER
-        _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = None
+        global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER, _SPAWN_HOOK
+        _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = _SPAWN_HOOK = None
         _AUDIT_SINKS.clear()
+        _EVENT_SINKS.clear()
 
 
 def has_authenticator() -> bool:
@@ -306,3 +307,49 @@ def resources_from(path: str, qs: Mapping[str, Any], data: Optional[dict]) -> Li
         for n in names:
             add(host, n)
     return out or [Resource(kind="global", host=host)]
+
+
+# ── spawn kancası (A2: kullanıcı başına sağlayıcı yapılandırma dizini + kimliksiz başlatmayı reddet) ──────────
+
+class SpawnRefused(ValueError):
+    """Oturum başlatılamaz (ör. kullanıcının o sağlayıcıda kendi girişi yok). `reason` kısa makine kodu."""
+
+    def __init__(self, reason: str, detail: str = "") -> None:
+        super().__init__(f"{reason}: {detail}" if detail else reason)
+        self.reason, self.detail = reason, detail
+
+
+_TL = threading.local()
+_SPAWN_HOOK: Optional[Callable[[Optional[Principal], str, str, str], Dict[str, str]]] = None
+
+
+def bind_principal(p: Optional[Principal]) -> None:
+    """İstek iş parçacığına kimliği bağla (`web.py` `_principal`); istek bitince `bind_principal(None)`. Değnekçi/guard gibi istek dışı
+    iş parçacıklarında kimlik YOKTUR (spawn kancası oturum adından sahibi çözer)."""
+    _TL.p = p
+
+
+def current_principal() -> Optional[Principal]:
+    return getattr(_TL, "p", None)
+
+
+def set_spawn_hook(fn: Optional[Callable[[Optional[Principal], str, str, str], Dict[str, str]]]) -> None:
+    global _SPAWN_HOOK
+    with _LOCK:
+        _SPAWN_HOOK = fn
+
+
+def spawn_env(cli: str, name: str, cwd: str) -> Dict[str, str]:
+    """`spawn_session` çağırır: kanca yoksa {} (davranış aynı). Kanca `fn(principal|None, cli, name, cwd) -> {ENV: değer}`;
+    `SpawnRefused` aynen yükselir, başka istisna = FAIL CLOSED (SpawnRefused hook_error)."""
+    fn = _SPAWN_HOOK
+    if fn is None:
+        return {}
+    try:
+        out = fn(current_principal(), cli, name, cwd)
+    except SpawnRefused:
+        raise
+    except Exception as e:      # noqa: BLE001
+        _log("authz_spawn_hook_failed", error=f"{type(e).__name__}: {e}"[:200], cli=cli)
+        raise SpawnRefused("hook_error") from e
+    return {str(k): str(v) for k, v in (out or {}).items()}

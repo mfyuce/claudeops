@@ -88,6 +88,11 @@ class ExtensionAPI:
         from . import authz
         authz.set_authenticator(fn)
 
+    def set_spawn_hook(self, fn: Callable[..., Dict[str, str]]) -> None:
+        """`fn(principal|None, cli, name, cwd) -> {ENV: değer}` oturum başlatılırken; `authz.SpawnRefused` fırlatırsa başlatma reddedilir."""
+        from . import authz
+        authz.set_spawn_hook(fn)
+
     def set_authorizer(self, fn: Callable[[Any, str, Any], bool]) -> None:
         """K2: `fn(Principal, action, Resource) -> bool` (istisna/False = 403)."""
         from . import authz

@@ -160,7 +160,9 @@ def spawn_session(
     # SESSİZCE YOK SAYIYOR (canlı doğrulandı: Popen env'ine COPS_NAME koymak
     # tmux-backed agy session'ında proc'a hiç ulaşmadı). Komut satırına `env` ile
     # gömmek bu env-inheritance tuhaflığını tamamen atlar.
-    overrides = provider.env_overrides(name)
+    overrides = dict(provider.env_overrides(name))
+    from . import authz as _authz
+    overrides.update(_authz.spawn_env(cli, name, cwd))     # çok kullanıcı: kullanıcı başına sağlayıcı dizini / SpawnRefused (kanca yoksa {})
     # Savunma-derinliği: env-var İSMİ (`k`) burada da doğrulanıyor — asıl kapı
     # settings.py::save_settings (BYOK_ENV_NAME_RE) ama `env_overrides()`
     # teorik olarak BAŞKA bir yoldan da (settings.json dışı) gelebilir; sadece

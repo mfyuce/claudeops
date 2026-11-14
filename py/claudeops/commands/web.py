@@ -4476,6 +4476,7 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             p = authz.LEGACY if self._authorized() else None
         self._cur_principal = p
+        authz.bind_principal(p)      # spawn kancası (kullanıcı başına sağlayıcı dizini) bu iş parçacığından okur
         return p
 
     def _gate(self, method: str, path: str, data: Optional[dict] = None) -> bool:
@@ -4913,6 +4914,18 @@ class _Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "path": dest}, status=200)
 
     def do_GET(self):
+        from .. import authz as _az
+        try:
+            self._do_get_inner()
+        except _az.SpawnRefused as e:
+            self._spawn_refused(e)
+        finally:
+            _az.bind_principal(None)        # keep-alive: kimlik sonraki isteğe/iş parçacığına sızmasın
+
+    def _spawn_refused(self, e) -> None:
+        self._json({"ok": False, "error": "spawn_refused", "reason": e.reason, "detail": e.detail}, status=403)
+
+    def _do_get_inner(self):
         path = urlparse(self.path).path
         # /assets/* (ve /favicon.svg) token KONTROLÜ OLMADAN erişilebilir olmak
         # ZORUNDA: tarayıcı <script src>/<link> sub-resource isteklerine ?token=
@@ -5308,14 +5321,19 @@ class _Handler(BaseHTTPRequestHandler):
         return data
 
     def do_POST(self):
+        from .. import authz as _az
         try:
             self._do_post_inner()
+        except _az.SpawnRefused as e:
+            self._spawn_refused(e)
         except _BodyTimeout:
             self.close_connection = True
             try:
                 self._json({"ok": False, "error": "request body timeout"}, status=408)
             except Exception:
                 pass
+        finally:
+            _az.bind_principal(None)
 
     def _do_post_inner(self):
         path = urlparse(self.path).path
