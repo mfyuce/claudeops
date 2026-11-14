@@ -220,6 +220,9 @@ def run_install(args) -> int:
     WEB_UNIT.write_text(WEB_UNIT_TEMPLATE.format(repo_py=repo_py, python=sys.executable))
     print(f"✓ {WEB_UNIT}")
 
+    for _field, _val in (("tunnel-name", args.tunnel_name), ("label", args.label), ("cloudflared-protocol", args.cloudflared_protocol)):
+        if any(c in str(_val or "") for c in "\n\r\x00"):      # unit dosyasına yeni satır = ek yönerge enjeksiyonu
+            raise SystemExit(f"invalid --{_field}: newline/NUL not allowed")
     TUNNEL_UNIT.write_text(TUNNEL_UNIT_TEMPLATE.format(
         tunnel_name=args.tunnel_name, label=args.label, protocol=args.cloudflared_protocol,
         run_tunnel=RUN_TUNNEL_DEST, tunnel_log=TUNNEL_LOG,

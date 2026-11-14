@@ -5111,7 +5111,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             if host != LOCAL_HOST_NAME:
                 result, status = web_hosts.proxy_get(
-                    path, host, {"name": name, "lang": lang, "mode": mode, "since": str(since)})
+                    path, host, {"name": name, "lang": lang, "mode": mode, "since": str(since)}, dedup=False)   # `since` her çağrıda farklı: dedup önbelleğini şişirmesin
                 self._json(result, status=status)
                 return
             self._json(_term_chat(name, lang=lang, mode=mode, since=since))

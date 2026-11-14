@@ -169,8 +169,8 @@ def changed_files(memdir: str, dest: str) -> Tuple[Dict[str, str], List[str]]:
         with open(os.path.join(memdir, f), encoding="utf-8", errors="replace") as fh:
             texts[f] = fh.read()
         try:
-            with open(os.path.join(dest, f), "rb") as fh:
-                same = fh.read() == open(os.path.join(memdir, f), "rb").read()
+            with open(os.path.join(dest, f), "rb") as fh, open(os.path.join(memdir, f), "rb") as src:
+                same = fh.read() == src.read()
         except OSError:
             same = False
         if not same:

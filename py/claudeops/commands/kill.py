@@ -24,7 +24,7 @@ def _via_panel(port: int, name: str):
     try:
         return mcp_queue._api(port, "POST", "/api/stop", {"name": name})
     except mcp_queue.ApiError as e:
-        if str(e).startswith("cannot reach"):
+        if str(e).startswith(("cannot reach", "cannot read")):   # panel kapalı YA DA token dosyası yok: doğrudan kapatmaya düş
             return None
         return {"ok": False, "error": str(e)}
 

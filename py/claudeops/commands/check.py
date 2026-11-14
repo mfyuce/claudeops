@@ -20,7 +20,7 @@ def compile_all(pkg_dir: Path) -> list:
             continue
         try:
             compile(f.read_bytes(), str(f), "exec")
-        except (SyntaxError, ValueError) as e:
+        except (SyntaxError, ValueError, OSError) as e:   # kırık symlink/okunamayan dosya kontrolü çökertmesin
             errs.append(f"{f}: {e}")
     return errs
 
