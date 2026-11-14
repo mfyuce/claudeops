@@ -167,6 +167,17 @@ class HttpTest(unittest.TestCase):
             web._Handler._json_notify(fake, {"ok": False})      # başarısız mutasyon olay üretmez
         self.assertEqual(ev, [("retired", "h", "s1", "u1")])
 
+    def test_session_event_emitted_before_response(self):
+        """Sahiplik olayı yanıttan ÖNCE: register yanıtını alan istemcinin hemen ardından gelen isteği sahibi tanımalı."""
+        from types import SimpleNamespace as NS
+        order = []
+        authz.add_event_sink(lambda e, h, n, p: order.append("event"))
+        fake = NS(path="/api/register", _cur_data={"name": "s1"}, _cur_principal=authz.Principal("u1", ("user",)),
+                  _json=lambda *a, **k: order.append("response"))
+        with mock.patch.object(web.web_ws, "notify_status_changed"):
+            web._Handler._json_notify(fake, {"ok": True})
+        self.assertEqual(order, ["event", "response"])
+
 
 class SpawnHookTest(unittest.TestCase):
     def setUp(self):

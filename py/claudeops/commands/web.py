@@ -4581,13 +4581,16 @@ class _Handler(BaseHTTPRequestHandler):
         route'ların do_POST dispatch'i bu helper'ı kullanır, geri kalanı
         (layout/term-input/term-key/diag-spawn-test/diag-ask gibi) düz
         `_json()` kullanmaya devam eder."""
-        self._json(result, status=status)
         if result.get("ok"):
-            web_ws.notify_status_changed()
+            # K5 olayı (sahiplik belgesi) YANITTAN ÖNCE: istemci yanıtı alınca hemen ardından gelen start/stop sahibi tanımalı
+            # (önce yanıt, sonra olay yarışı: register'dan hemen sonraki start 403 alıyordu, izole e2e 15 Kas).
             data = getattr(self, "_cur_data", None) or {}
             from .. import authz
             authz.emit_event(urlparse(self.path).path, str(data.get("host") or ""), str(data.get("name") or ""),
                              getattr(self, "_cur_principal", None))
+        self._json(result, status=status)
+        if result.get("ok"):
+            web_ws.notify_status_changed()
 
     def _ext_dispatch(self, method: str, route: Dict[str, Any]) -> None:
         """Eklenti yolu (`extensions.register_route`): yetki = panel token'ı (`?token=`/Bearer) YA DA token'la girişte verilen
