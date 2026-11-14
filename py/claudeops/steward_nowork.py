@@ -114,6 +114,9 @@ def plan_no_work_close(views: List[Any], projects: Dict[str, Any], state: Dict[s
     return out, st
 
 
+RUNNING_REVIEW = "review:kosuyor"
+
+
 def plan_no_work_reopen(projects: Dict[str, Any], state: Dict[str, Any], now: float, ctx: Dict[str, Any],
                         todo_sha: Optional[Callable[[str], str]] = None) -> List[sw.Action]:
     """`iş yok` ile paused edilmiş projeleri yeniden açma kararı (`state["no_work_paused"][proje] = {at, sha}`): (1) sahip cevabı
@@ -129,7 +132,8 @@ def plan_no_work_reopen(projects: Dict[str, Any], state: Dict[str, Any], now: fl
         qid = ""
         if name in (ctx.get("answer_pending") or {}):
             trig, qid = "answer", str((ctx.get("answer_pending") or {}).get(name) or "")
-        elif (ctx.get("review") or {}).get(name):
+        elif (ctx.get("review") or {}).get(name) and (ctx.get("review") or {}).get(name) != RUNNING_REVIEW:
+            # Koşan review YALNIZ kapatmayı engeller; yeniden açma tetiği iletilecek bulgu/ders/ilerletme olur (14 Kas: koşu başladı diye 2 kez boşa açıldı)
             trig = "review:" + str(ctx["review"][name])
         elif todo_sha is not None:
             try:

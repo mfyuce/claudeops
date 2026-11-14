@@ -3859,7 +3859,7 @@ def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
         for row in _advance_candidates(cfg):
             ctx["review"].setdefault(str(row.get("project") or ""), "bulgu:ilerletme")
         for k in web_review.running_keys():
-            ctx["review"].setdefault(k.split("|", 1)[0], "review:kosuyor")
+            ctx["review"].setdefault(k.split("|", 1)[0], snw.RUNNING_REVIEW)
         tgt = sl.target_project(cfg.lessons_project)
         if tgt:
             rows = sl.lesson_rows(_lessons(cfg), [sw.load_state(sw.paths_for(i)) for i in steward_ids()], time.time())

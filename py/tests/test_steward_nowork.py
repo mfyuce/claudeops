@@ -136,6 +136,8 @@ class Reopen(unittest.TestCase):
     def test_no_trigger_no_reopen(self):
         self.assertEqual(snw.plan_no_work_reopen(self.PAUSED, self.st("a"), NOW, CTX, lambda _p: "a"), [])
         self.assertEqual(snw.plan_no_work_reopen(self.PAUSED, self.st("a"), NOW, CTX, lambda _p: ""), [])      # sha bilinmiyor
+        # koşan review yalnız kapatmayı engeller, yeniden açmaz (14 Kas: hve koşu başladı diye 2 kez boşa açıldı)
+        self.assertEqual(snw.plan_no_work_reopen(self.PAUSED, self.st("a"), NOW, dict(CTX, review={"p": snw.RUNNING_REVIEW}), lambda _p: "a"), [])
         self.assertEqual(snw.plan_no_work_reopen(PROJ, self.st(), NOW, dict(CTX, answer_pending={"p": "q"})), [])   # artık paused değil
         self.assertEqual(snw.plan_no_work_reopen(self.PAUSED, {}, NOW, dict(CTX, answer_pending={"p": "q"})), [])   # başka sebeple paused
 
