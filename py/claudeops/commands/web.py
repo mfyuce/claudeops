@@ -4382,14 +4382,15 @@ class _Handler(BaseHTTPRequestHandler):
         # keyfi bir `wss://` adresine veri sızdırmasını `script-src 'self'`in
         # engellemeye çalıştığı SINIFTAN bir delik olarak açık bırakıyordu.
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; "
-            "frame-ancestors 'none'",
-        )
+        if not getattr(self, "_ext_own_csp", False):     # eklenti yolu (`RouteRequest.send`) kendi CSP/XFO'sunu koyduysa ikinci (kesişen) CSP EKLENMEZ
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; "
+                "frame-ancestors 'none'",
+            )
         super().end_headers()
 
     def _authorized(self) -> bool:

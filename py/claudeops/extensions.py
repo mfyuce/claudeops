@@ -92,8 +92,11 @@ class RouteRequest:
         h.send_header("Content-Type", content_type)
         h.send_header("Content-Length", str(len(body)))
         h.send_header("X-Content-Type-Options", "nosniff")
-        for k, v in {**self._extra, **(headers or {})}.items():
+        allh = {**self._extra, **(headers or {})}
+        for k, v in allh.items():
             h.send_header(k, v)
+        # eklenti kendi CSP'sini verdiyse çekirdeğin sabit CSP/XFO'su eklenmez (iki CSP kesişir, gevşetilemez)
+        h._ext_own_csp = any(k.lower() == "content-security-policy" for k in allh)
         h.end_headers()
         if not head_only and self.method != "HEAD":
             h.wfile.write(body)

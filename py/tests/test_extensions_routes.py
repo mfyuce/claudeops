@@ -105,6 +105,16 @@ class Routes(unittest.TestCase):
         run(h, "POST")
         self.assertEqual(h.status, 200)
 
+    def test_own_csp_flag_set_only_when_extension_sends_csp(self):
+        ext.ExtensionAPI().register_route("/c1/", lambda r: r.send(200, b"x", "text/plain", {"Content-Security-Policy": "default-src 'none'"}))
+        ext.ExtensionAPI().register_route("/c2/", lambda r: r.send(200, b"x", "text/plain"))
+        h = H(f"/c1/?token={TOKEN}")
+        run(h)
+        self.assertTrue(h._ext_own_csp)
+        h = H(f"/c2/?token={TOKEN}")
+        run(h)
+        self.assertFalse(h._ext_own_csp)
+
     def test_plugin_error_is_500(self):
         ext.ExtensionAPI().register_route("/boom/", lambda r: 1 / 0)
         h = H(f"/boom/?token={TOKEN}")
