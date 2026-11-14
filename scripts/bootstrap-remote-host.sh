@@ -83,16 +83,17 @@ cd "$SCRIPT_DIR"
 echo "--- Python bağımlılıkları ---"
 PIP=(pip3 install --user -r py/requirements.txt)
 command -v pip3 >/dev/null 2>&1 || PIP=(pip install --user -r py/requirements.txt)
-if ! "${PIP[@]}" 2>/tmp/claudeops-bootstrap-pip.err; then
-    if grep -q "externally-managed-environment" /tmp/claudeops-bootstrap-pip.err 2>/dev/null; then
+PIP_ERR="$(mktemp -t claudeops-bootstrap-pip.XXXXXX)"   # tahmin edilebilir /tmp adı symlink saldırısına açıktı
+if ! "${PIP[@]}" 2>"$PIP_ERR"; then
+    if grep -q "externally-managed-environment" "$PIP_ERR" 2>/dev/null; then
         echo "sistem pip'i kısıtlı (PEP 668) -- --break-system-packages ile tekrar deneniyor"
         "${PIP[@]}" --break-system-packages
     else
-        cat /tmp/claudeops-bootstrap-pip.err >&2
+        cat "$PIP_ERR" >&2
         exit 1
     fi
 fi
-rm -f /tmp/claudeops-bootstrap-pip.err
+rm -f "$PIP_ERR"
 
 echo
 echo "--- systemd --user bus kontrolü ---"

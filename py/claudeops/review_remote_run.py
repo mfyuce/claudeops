@@ -74,11 +74,9 @@ class RemoteReviewProc:
 
     def _matches(self, st: Dict[str, Any]) -> bool:
         """Yoklanan değişim BİZİM istemimize mi ait (eski konuşmanın artığı değil)?"""
-        head = _norm(self.prompt)[:HEAD_CHARS]
-        user = _norm(st.get("user"))
         asst = str(st.get("assistant") or "")
-        if head and head in user:
-            return bool(asst.strip()) and asst != self._before      # istemimiz kayıtlı ama yanıt hâlâ önceki turun artığı olabilir
+        # istem kayıtlı olsa da olmasa da ölçüt aynı: boş olmayan ve önceki turun artığı OLMAYAN yanıt (istem ayrışması
+        # `head in user` ile ayrı dallanmaya gerek bırakmıyor; review cliops 9 Kas)
         return bool(asst.strip()) and asst != self._before
 
     def communicate(self, timeout: Optional[float] = None) -> Tuple[str, str]:
