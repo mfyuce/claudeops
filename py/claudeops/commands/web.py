@@ -4590,6 +4590,20 @@ class _Handler(BaseHTTPRequestHandler):
         oturum çerezi (alt kaynaklar, service worker ve fetch token taşıyamaz). Çerez yalnız eklenti yollarını açar, `/api/*`i DEĞİL.
         Yazan (POST) istekte çerez yetmez: token YA DA özel başlık `X-Cops-Ext: 1` (çapraz kökende ön-uçuş ister) gerekir."""
         path = urlparse(self.path).path
+        from .. import authz as _az
+        if route.get("public"):         # K4 giriş ucu (`/api/auth/`): kimlik doğrulamanın kendisi, panel kimliği aranmaz
+            extensions.dispatch(route, extensions.RouteRequest(self, method, path))
+            return
+        if _az.has_authenticator():     # çok kullanıcı modu: eklenti sekmeleri (reader/readlist...) yalnız admin
+            pr = self._principal()
+            if pr is None:
+                self._unauthorized()
+                return
+            if not pr.has_role("admin"):
+                self._json({"ok": False, "error": "forbidden"}, status=403)
+                return
+            extensions.dispatch(route, extensions.RouteRequest(self, method, path))
+            return
         by_token = self._authorized()
         by_cookie = extensions.cookie_ok(self.headers.get("Cookie") or "", self.token)
         if not (by_token or by_cookie):
@@ -4613,6 +4627,14 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_v1_error("missing or invalid token — send it as "
                                   "'Authorization: Bearer <token>' (or ?token=...)",
                                   "invalid_request_error"), status=401)
+            return
+        from .. import authz as _az
+        if _az.has_authenticator() and self.command == "GET" and "text/html" in (self.headers.get("Accept") or "") \
+                and urlparse(self.path).path == "/":
+            self.send_response(302)         # çok kullanıcı modu: tarayıcı panel kökünde giriş sayfasına yönlenir (eklenti `/api/auth/page`)
+            self.send_header("Location", "/api/auth/page")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
             return
         self.send_response(401)
         self.send_header("Content-Type", "text/html; charset=utf-8")

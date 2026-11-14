@@ -115,6 +115,18 @@ class HttpTest(unittest.TestCase):
         code, body = self.call("GET", "/api/status", {"Cookie": "x=1"})
         self.assertEqual(json.loads(body).get("who"), "u1")
 
+    def test_public_route_skips_auth_but_other_ext_routes_need_admin(self):
+        extensions._ROUTES[:] = []
+        self.addCleanup(lambda: extensions._ROUTES.__setitem__(slice(None), []))
+        api = extensions.ExtensionAPI()
+        api.register_public_route("/api/auth/", lambda r: r.json({"ok": True}))
+        api.register_route("/zz/", lambda r: r.json({"zz": 1}))
+        authz.set_authenticator(lambda v: {"u": authz.Principal("u1", ("user",)), "a": authz.Principal("a", ("admin",))}.get(v.cookies.get("c")))
+        self.assertEqual(self.call("GET", "/api/auth/x")[0], 200)                      # kimliksiz
+        self.assertEqual(self.call("GET", "/zz/")[0], 401)
+        self.assertEqual(self.call("GET", "/zz/", {"Cookie": "c=u"})[0], 403)
+        self.assertEqual(self.call("GET", "/zz/", {"Cookie": "c=a"})[0], 200)
+
     def test_ui_extension_list_and_files(self):
         import tempfile
         d = tempfile.mkdtemp()

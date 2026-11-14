@@ -61,7 +61,7 @@ class ExtensionAPI:
         ms = tuple(str(m).upper() for m in methods)
         with _LOCK:
             _ROUTES[:] = [r for r in _ROUTES if r["prefix"] != prefix]
-            _ROUTES.append({"prefix": prefix, "fn": fn, "methods": ms})
+            _ROUTES.append({"prefix": prefix, "fn": fn, "methods": ms, "public": True})
 
     def on_session_event(self, fn: Callable[..., None]) -> None:
         """K5: `fn(event, host, name, principal)` (created, closed, retired, adopted, renamed, reactivated; mutasyon başarılıysa)."""
@@ -124,6 +124,7 @@ class RouteRequest:
         self.query: Dict[str, str] = {k: v[0] for k, v in parse_qs(urlparse(handler.path).query).items()}
         self._extra = dict(extra_headers or {})
         self.sent = False
+        self.client_addr = str(handler.client_address[0]) if getattr(handler, "client_address", None) else ""
 
     def header(self, name: str) -> str:
         return str(self._h.headers.get(name) or "")
