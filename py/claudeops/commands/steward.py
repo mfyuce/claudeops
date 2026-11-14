@@ -247,7 +247,22 @@ def cmd_cards(args) -> int:
     return 0
 
 
+def merge_note(old: str, add: str) -> str:
+    """`--append-note`: eski proje notunu EZMEDEN yeni satırı sona ekler (boş eklemede eski not aynen)."""
+    old, add = (old or "").rstrip(), (add or "").strip()
+    return f"{old}\n{add}" if old and add else (old or add)
+
+
 def cmd_set(args) -> int:
+    if getattr(args, "append_note", None):
+        if args.note is not None:
+            print("hata: --note ile --append-note birlikte kullanılamaz")
+            return 1
+        if getattr(args, "host", None) is not None:
+            print("hata: --append-note yalnız yerel projede (uzak notu okuyamam); önce notu okuyup --note ile yaz")
+            return 1
+        cur = sw.load_projects(paths=_sid(args)).get(args.name)
+        args.note = merge_note(cur.notes if cur else "", args.append_note)
     fields = {"phase": args.phase, "kind": args.kind, "goal": args.goal, "priority": args.priority,
               "cadence_minutes": args.cadence, "notes": args.note, "model": args.model, "effort": args.effort}
     if getattr(args, "host", None) is not None:
@@ -1120,7 +1135,8 @@ def register(sub):
     ps.add_argument("--goal")
     ps.add_argument("--priority", type=int)
     ps.add_argument("--cadence", type=int, metavar="MIN", help="en az bu sıklıkta uğra (0 = elle)")
-    ps.add_argument("--note")
+    ps.add_argument("--note", help="proje notunu DEĞİŞTİRİR (eskisini ezer); eklemek için --append-note")
+    ps.add_argument("--append-note", dest="append_note", metavar="TEXT", help="eski notu koru, bu satırı sona ekle")
     ps.add_argument("--model")
     ps.add_argument("--effort")
     ps.add_argument("--host", default=None, metavar="HOST",
