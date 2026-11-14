@@ -152,6 +152,7 @@ _HELP_TIMEOUT_SECONDS = 10.0
 def chat_help_text(binary: str) -> str:
     """`<binary> chat --help` çıktısı (stdout + stderr); çalıştırılamazsa "" (ve
     ÖNBELLEĞE ALINMAZ: geçici bir hata kalıcı 'bayrak yok' kararına dönüşmesin)."""
+    binary = shutil.which(binary) or binary       # çıplak komut adı (`ucli`) PATH'ten çözülür; os.stat onu bulamazdı
     try:
         st = os.stat(binary)
     except OSError:

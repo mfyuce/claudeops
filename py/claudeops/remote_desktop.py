@@ -290,6 +290,8 @@ def start(port: Optional[int] = None) -> dict:
         if binary is None or not binary.exists():
             return {"ok": False, "error": f"binary bulunamadı ({binary})"}
 
+        if _port_open(port):               # başka bir süreç portu tutuyor: onu "başarılı start" saymayız (review uzops 9 Kas)
+            return {"ok": False, "error": f"port {port} başka bir süreç tarafından kullanılıyor"}
         token = secrets.token_hex(32)
         try:
             _write_token_file(token)
@@ -312,7 +314,7 @@ def start(port: Optional[int] = None) -> dict:
                 _proc, _port = None, None
                 _clear_token()
                 return {"ok": False, "error": f"uzakgoz hemen çöktü (exit={proc.returncode})"}
-            if _port_open(port):
+            if _port_open(port) and proc.poll() is None:      # port bizim çocuğumuzun: çocuk hâlâ canlı
                 _write_pid_file(proc.pid, port)
                 return {"ok": True, "port": port}
             time.sleep(0.1)
@@ -342,6 +344,8 @@ def stop() -> dict:
     _clear_pid_file()
     _clear_token()
     if proc is not None:
+        if proc.poll() is not None:        # süreç zaten ölmüştü: "durduruldu" değil, açıkça bildir
+            return {"ok": True, "already_stopped": True}
         proc.terminate()
         try:
             proc.wait(timeout=5.0)

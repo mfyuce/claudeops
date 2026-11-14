@@ -45,3 +45,15 @@ class StartTimeoutTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PortAlreadyUsed(unittest.TestCase):
+    """Başka sürecin açık portu 'başarılı start' sayılmaz (review uzops 9 Kas)."""
+    def test_busy_port_refused_without_spawn(self):
+        from unittest import mock
+        with mock.patch.object(rd, "uzakgoz_config", return_value={"dir": "", "bin": "/bin/true", "port": 9124}), \
+                mock.patch.object(rd, "_adopt_if_orphaned"), mock.patch.object(rd, "_port_open", return_value=True), \
+                mock.patch.object(rd.subprocess, "Popen") as popen:
+            res = rd.start()
+        self.assertFalse(res["ok"])
+        popen.assert_not_called()
