@@ -34,6 +34,7 @@ import { useLang } from "../../i18n/LangContext";
 import { renderMarkdownSafe } from "../shared/markdown";
 import { useEscapeKey } from "../shared/useEscapeKey";
 import { viewerKind } from "./fileViewerKind";
+import { ReaderLinks } from "./ReaderLinks";
 
 interface FileViewerModalProps {
   name: string;
@@ -135,6 +136,7 @@ export function FileViewerModal({ name, host, path, onClose }: FileViewerModalPr
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: ".4rem" }}>
           <strong style={{ overflowWrap: "anywhere" }}>{filename}</strong>
           <div style={{ display: "flex", gap: ".35rem" }}>
+            {!editing && <ReaderLinks name={name} host={host} path={path} />}
             {!editing && canEdit && (
               <button type="button" style={{ fontSize: "1rem", lineHeight: 1, padding: ".2rem .55rem" }} onClick={startEditing}>
                 {t.filesEdit}

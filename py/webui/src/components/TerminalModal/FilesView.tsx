@@ -35,6 +35,7 @@ import { showToast } from "../../state/toast";
 import type { FileEntry, FileRoot } from "../../api/types";
 import { useLang } from "../../i18n/LangContext";
 import { isViewable } from "./fileViewerKind";
+import { ReaderLinks } from "./ReaderLinks";
 
 interface FilesViewProps {
   name: string;
@@ -296,6 +297,7 @@ export function FilesView({ name, host, onView, readOnly = false }: FilesViewPro
                        downloadUrl={filesDownloadUrl(name, lang, joinPath(path, e.name), host)}
                        downloadLabel={t.filesDownload} viewLabel={t.filesView} vscodeLabel={t.filesOpenVscode}
                        deleteLabel={t.filesDelete} renameLabel={t.filesRename} readOnly={readOnly}
+                       readerLinks={<ReaderLinks name={name} host={host} path={joinPath(path, e.name)} />}
                        onView={isViewable(e.name) ? () => onView(joinPath(path, e.name)) : null}
                        onOpenVscode={canOpenVscode ? () => void callAction(() => apiVscodeOpen(name, lang, joinPath(path, e.name), host), "vscode", t) : null}
                        onDelete={() => void handleDelete(e)} onRename={() => void handleRename(e)} />
@@ -312,7 +314,7 @@ export function FilesView({ name, host, onView, readOnly = false }: FilesViewPro
 
 function FileRow({
   entry, onOpenDir, downloadUrl, downloadLabel, viewLabel, vscodeLabel, deleteLabel, renameLabel, readOnly,
-  onView, onOpenVscode, onDelete, onRename,
+  onView, onOpenVscode, onDelete, onRename, readerLinks,
 }: {
   entry: FileEntry;
   onOpenDir: () => void;
@@ -324,6 +326,7 @@ function FileRow({
   renameLabel: string;
   readOnly?: boolean;
   onView: (() => void) | null;
+  readerLinks?: React.ReactNode;
   onOpenVscode: (() => void) | null;
   onDelete: () => void;
   onRename: () => void;
@@ -378,6 +381,7 @@ function FileRow({
           👁
         </button>
       )}
+      {readerLinks}
       {onOpenVscode && (
         <button type="button" title={vscodeLabel} style={{ whiteSpace: "nowrap" }} onClick={onOpenVscode}>
           {"</>"}

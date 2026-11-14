@@ -25,3 +25,18 @@ export function viewerKind(filename: string): "markdown" | "source" {
   const ext = extOf(filename);
   return ext === "md" || ext === "markdown" ? "markdown" : "source";
 }
+
+const READER_FILE_EXTENSIONS = new Set(["pdf", "epub", "docx", "odt"]);
+const READER_TEXT_EXTENSIONS = new Set([
+  "txt", "text", "md", "markdown", "tex", "html", "htm", "csv", "log", "json", "yaml", "yml", "toml", "ini", "cfg", "xml",
+  "py", "js", "ts", "tsx", "jsx", "sh", "rs", "go", "c", "h", "cpp", "java", "rb", "css", "sql",
+]);
+
+/** cops reader (hoca-reader embedded at `/reader/`): which query key opens the file — "file-url" (extension-sniffed binary documents)
+ * or "text-url" (text/markdown/LaTeX/code); null = not readable there. */
+export function readerKind(filename: string): "file-url" | "text-url" | null {
+  const ext = extOf(filename);
+  if (READER_FILE_EXTENSIONS.has(ext)) return "file-url";
+  if (READER_TEXT_EXTENSIONS.has(ext)) return "text-url";
+  return null;
+}

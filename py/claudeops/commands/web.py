@@ -52,7 +52,7 @@ import psutil
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from .. import dist_check as _dist_check
-from .. import extensions, term_dedup, tunnel_proto, usage_poll, ws_ticket
+from .. import extensions, read_ticket, term_dedup, tunnel_proto, usage_poll, ws_ticket
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
@@ -4162,6 +4162,19 @@ def _v1_stream_chunks(model: str, reply: str) -> list:
     ]
 
 
+_TICKET_TEXT_EXTS = {".html", ".htm", ".xhtml", ".svg", ".xml", ".js", ".mjs", ".css", ".json", ".md", ".markdown", ".tex", ".txt", ".py"}
+
+
+def _ticket_file_headers(filename: str) -> Dict[str, str]:
+    """Bilet kipi yanıt başlıkları: tarayıcıda ETKİN içerik türleri (html/svg/xml/js...) düz metin; `sandbox` CSP; inline; önbellek yok."""
+    ext = os.path.splitext(filename)[1].lower()
+    ctype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    if ext in _TICKET_TEXT_EXTS or ctype.startswith("text/") or ctype in ("application/json", "application/javascript", "image/svg+xml", "application/xml"):
+        ctype = "text/plain; charset=utf-8"
+    return {"Content-Type": ctype, "Content-Disposition": "inline", "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+
+
 def _serve_desktop_viewer(handler: "_Handler", asset: str = "viewer.js") -> None:
     """`/desktop/viewer.js` — uzakgoz daemon'unun `/viewer.js` dosyasını (tarayıcı tarafı tek kaynak) panele sunar.
     Daemon yalnız 127.0.0.1'e bağlı; token kontrolü `do_GET`'teki `_authorized()` ile burada (çağrıdan önce) yapılır."""
@@ -4589,7 +4602,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         return True
 
-    def _handle_files_download(self):
+    def _handle_files_download(self, params: Optional[Dict[str, str]] = None):
         """`/api/files/download` — `_json()`/`_serve_static()`'ten AYRI: hem
         dinamik/kullanıcı-seçtiği bir yolu servis ediyor (public bundle değil,
         auth zaten `do_GET`'in başında geçildi) hem `Content-Disposition:
@@ -4598,7 +4611,10 @@ class _Handler(BaseHTTPRequestHandler):
         keyfi). `_serve_static` gibi `read_bytes()` — büyük-dosya reddi
         `files_mod.resolve_download`'ın `MAX_DOWNLOAD_BYTES` kontrolüyle zaten
         `read_bytes()`'TEN ÖNCE yapılıyor."""
-        qs = parse_qs(urlparse(self.path).query)
+        # `params` (bilet kipi, `/readfile/`): yetki bilette; yanıt İNLİNE + güvenli tür (html/svg düz metin), `sandbox` CSP
+        # (panelin kendi kökeninde proje dosyası betik çalıştıramaz), uzak yanıtın başlıkları yerine kendi başlıklarımız.
+        ticket_mode = params is not None
+        qs = {k: [v] for k, v in params.items()} if params is not None else parse_qs(urlparse(self.path).query)
         name = (qs.get("name") or [""])[0].strip()
         lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
         fpath = (qs.get("path") or [""])[0].strip()
@@ -4618,8 +4634,12 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             try:
                 self.send_response(status)
-                for hk, hv in (headers or {}).items():
-                    self.send_header(hk, hv)
+                if ticket_mode:
+                    for hk, hv in _ticket_file_headers(os.path.basename(fpath)).items():
+                        self.send_header(hk, hv)
+                else:
+                    for hk, hv in (headers or {}).items():
+                        self.send_header(hk, hv)
                 self.send_header("Content-Length", str(len(body or b"")))
                 self.end_headers()
                 self.wfile.write(body or b"")
@@ -4651,13 +4671,69 @@ class _Handler(BaseHTTPRequestHandler):
         disposition = _content_disposition(filename)
         try:
             self.send_response(200)
-            self.send_header("Content-Type", ctype)
+            if ticket_mode:
+                for hk, hv in _ticket_file_headers(filename).items():
+                    self.send_header(hk, hv)
+            else:
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Disposition", disposition)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Content-Disposition", disposition)
             self.end_headers()
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             diag_log("response_write_failed", path=urlparse(self.path).path, error=str(e))
+
+    def _files_ticket(self):
+        """`/api/files/ticket` (POST, token ŞART): {name, path, host?, lang?} -> {ok, url: "/readfile/<bilet>/<ad>"}. Yerel dosya hemen doğrulanır
+        (yok/yasak/büyük = hata, bilet verilmez); uzak host dosyası okuma anında proxy'lenir. Yanıt, eklenti oturum çerezini de verir
+        (yeni sekmede `/reader/` açılırken token URL'e girmesin)."""
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            length = -1
+        if length < 0 or length > 8192:
+            self.close_connection = True
+            self._json({"ok": False, "error": "invalid body"}, status=400)
+            return
+        try:
+            data = json.loads(self._read_body(length) or b"{}") if length else {}
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        name = str(data.get("name") or "").strip()
+        fpath = str(data.get("path") or "").strip()
+        host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+        lang = "en" if data.get("lang") == "en" else "tr"
+        if not name:
+            self._json(_err(lang, "name_required"), status=400)
+            return
+        if not fpath:
+            self._json(_err(lang, "path_required"), status=400)
+            return
+        if host == LOCAL_HOST_NAME:
+            s, err = _files_resolve(name, lang)
+            if err:
+                self._json(err, status=_files_resolve_status(err))
+                return
+            real, code = files_mod.resolve_download(s, fpath)
+            if code:
+                limit_mb = files_mod.MAX_DOWNLOAD_BYTES / (1024 * 1024)
+                self._json(_err(lang, f"files_{code}", name=name, limit_mb=limit_mb), status=403 if code == "forbidden" else 404)
+                return
+        tk = read_ticket.issue(self.token, name, fpath, host)
+        body = json.dumps({"ok": True, "url": f"/readfile/{tk}/{quote(os.path.basename(fpath), safe='')}",
+                           "ttl": read_ticket.TTL_SECONDS}).encode("utf-8")
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Set-Cookie", f"{extensions.COOKIE_NAME}={extensions.cookie_value(self.token)}; Path=/; HttpOnly; SameSite=Strict")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            diag_log("response_write_failed", path="/api/files/ticket", error=str(e))
 
     def _handle_files_upload(self):
         """`/api/files/upload` (POST) — `_handle_files_download`'ın YAZMA
@@ -4754,6 +4830,15 @@ class _Handler(BaseHTTPRequestHandler):
             # Değnekçi soru sayfası (faz 3): kendi yetkisi var — panel token'ı YA DA sorunun özel anahtarı
             # (`?k=`, ntfy bağlantısında token taşınmasın diye). `_authorized()` burada yalnız "token var mı" sorar.
             self._question_page(None)
+            return
+        if path.startswith("/readfile/"):
+            # Kısa ömürlü imzalı OKUMA bileti (panel "Reader'da oku"): yetki bilette (HMAC+süre), token/çerez gerekmez; tek dosya, yalnız okuma.
+            parts = path[len("/readfile/"):].split("/", 1)
+            tk = read_ticket.verify(self.token, parts[0])
+            if tk is None:
+                self._json({"error": "not found"}, status=404)       # geçersiz/süresi dolmuş: ayrıntı verilmez
+                return
+            self._handle_files_download(params=tk)
             return
         if path.startswith("/api/agents/"):
             caller = self._agents_caller()
@@ -5128,6 +5213,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/ws-ticket":
             self._json({"ok": True, "ticket": ws_ticket.issue(), "ttl": int(ws_ticket.TTL_SECONDS)})
+            return
+        if path == "/api/files/ticket":
+            self._files_ticket()
             return
         if path == "/api/files/upload":
             # `_handle_files_download`'ın (do_GET'te) AYNI istisnası: gövde

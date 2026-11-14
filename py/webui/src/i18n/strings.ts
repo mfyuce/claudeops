@@ -225,6 +225,8 @@ export interface Strings {
   filesUp: string;
   filesDownload: string;
   filesView: string;
+  filesReaderRead: string;
+  filesReaderListen: string;
   filesRootLabel: string;
   filesOpenVscode: string;
   filesOpenVscodeHint: string;
@@ -1077,6 +1079,8 @@ export const STRINGS: Record<Lang, Strings> = {
     filesUp: "⬆ yukarı",
     filesDownload: "indir",
     filesView: "görüntüle",
+    filesReaderRead: "Reader'da oku",
+    filesReaderListen: "Sesli oku",
     filesRootLabel: "kök:",
     filesOpenVscode: "VS Code'da Aç",
     filesOpenVscodeHint: "Yeni bir VS Code penceresi açar — sadece fiziksel olarak makinenin başındaysan (veya Uzak Masaüstü'yle görüyorsan) işe yarar, panelden görüntülenemez.",
@@ -2037,6 +2041,8 @@ export const STRINGS: Record<Lang, Strings> = {
     filesUp: "⬆ up",
     filesDownload: "download",
     filesView: "view",
+    filesReaderRead: "Read in reader",
+    filesReaderListen: "Listen",
     filesRootLabel: "root:",
     filesOpenVscode: "Open in VS Code",
     filesOpenVscodeHint: "Opens a new VS Code window — only useful physically at the machine (or viewing it via Uzak Masaüstü), can't be shown in this panel.",

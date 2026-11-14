@@ -303,6 +303,10 @@ export const apiFilesWrite = (
 export const apiVscodeOpen = (name: string, lang: Lang, path?: string, host?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/vscode/open", { name, lang, host: host || "local", ...(path ? { path } : {}) });
 
+/** `/api/files/ticket` — short-lived signed READ link for one file (no panel token in the URL); also sets the extension session cookie. */
+export const apiFilesTicket = (name: string, lang: Lang, path: string, host?: string): Promise<{ ok: true; url: string; ttl: number }> =>
+  apiPost<{ ok: true; url: string; ttl: number }>("/api/files/ticket", { name, lang, path, host: host || "local" });
+
 // ── POST routes ──────────────────────────────────────────────────────────
 // Payload interfaces mirror each `do_POST` branch's `data.get(...)` reads
 // in web.py exactly (field names, which ones are required vs. defaulted).
