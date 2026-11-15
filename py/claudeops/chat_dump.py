@@ -204,7 +204,8 @@ def dump_gemini(db: str) -> Iterator[Tuple[str, str, str, Dict[str, Any]]]:
             row = {"idx": idx, "step_type": stype, "status": status, "ts": ts,
                    "metadata": _jsonable(mdd) if mdd else None,
                    "payload": _jsonable(pld) if pld else (pl.hex()[:200] if pl else None)}
-            yield proj, _day(ts), sess, row
+            d = _day(ts)
+            yield proj, (sday if d == UNKNOWN else d), sess, row      # zaman damgasız adım oturumu 'bilinmiyor'a bölmesin
         for idx, data, _sz in c.execute("select idx,data,size from gen_metadata order by idx"):
             d = pb_decode(data) if data else None
             yield proj, sday, sess, {"gen_metadata_idx": idx, "data": _jsonable(d) if d else None}

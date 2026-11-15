@@ -69,10 +69,12 @@ def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]
                 tx.send(cleanup_command(tag, day, root))
                 return {"ok": False, "msg": "uzak arşiv oluşturulamadı (.fail)", "bytes": 0}
             if clock() - t0 > wait_s:
+                tx.send(cleanup_command(tag, day, root))     # zaman aşımında da kendi geçici dosyalarını sil
                 return {"ok": False, "msg": "uzak arşiv zaman aşımı (.done yok)", "bytes": 0}
             sleep(poll_s)
         size = tx.download(root, n["tgz"], dest)
         if size <= 0:
+            tx.send(cleanup_command(tag, day, root))
             return {"ok": False, "msg": "indirilen arşiv boş", "bytes": 0}
         tx.send(cleanup_command(tag, day, root))
         return {"ok": True, "msg": f"{tag}: {size} bayt", "bytes": size}

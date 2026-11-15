@@ -75,7 +75,7 @@ class DumpTest(unittest.TestCase):
             c.execute("insert into steps values(1,14,3,NULL,NULL,NULL)")
             c.commit(); c.close()
             w = D.write_jsonl(D.dump_gemini(g), t, "gemini")
-            self.assertEqual(sorted(w), sorted(["gemini/bilinmiyor/2026-09-21/abc.jsonl", "gemini/bilinmiyor/bilinmiyor/abc.jsonl"]))
+            self.assertEqual(sorted(w), ["gemini/bilinmiyor/2026-09-21/abc.jsonl"])     # zaman damgasız adım oturum gününe katılır
             th, st = os.path.join(t, "th.db"), os.path.join(t, "st.db")
             sqlite3.connect(st).executescript("create table threads(id text,cwd text,title text);insert into threads values('T1','/x/y','t');")
             sqlite3.connect(th).executescript("create table thread_items(thread_id,turn_id,item_id,rollout_ordinal,created_at_ms,item_json,item_type);"
