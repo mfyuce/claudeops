@@ -2813,7 +2813,6 @@ def recover_self_verify(paths: Any) -> int:
              and v.get("verify_session") == "self" and v.get("project") not in live]
     if stuck:
         _self_verify_fail(p, stuck, "yeniden başlatma", time.time())
-    return len(stuck)
     rstuck = [k for k, v in rv.load_findings(p).items() if isinstance(v, dict) and v.get("state") == "verify_sent"
               and v.get("verify_session") == REMOTE_VERIFY_SESSION and v.get("project") not in live]
     if rstuck:

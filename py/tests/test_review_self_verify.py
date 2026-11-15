@@ -5,6 +5,7 @@ import dataclasses
 import os
 import subprocess
 import sys
+import threading
 import unittest
 from unittest import mock
 
@@ -140,6 +141,26 @@ class SelfVerifyTest(_Flow):
         rv.mark_verify_sent(self.p, [r["id"] for r in rows], "self", "", 1.0)
         self.assertEqual(wr.recover_self_verify(self.p), 3)
         self.assertEqual({v["state"] for v in self.findings().values()}, {"new"})
+
+    def test_recover_also_returns_orphaned_remote_verify_to_new(self):
+        self.seed()
+        rows = self.rows()
+        rv.mark_verify_sent(self.p, [r["id"] for r in rows], wr.REMOTE_VERIFY_SESSION, "", 1.0)
+        self.assertEqual(wr.recover_self_verify(self.p), 3)           # eskiden erken return uzak bloğunu hiç çalıştırmıyordu
+        self.assertEqual({v["state"] for v in self.findings().values()}, {"new"})
+        self.assertEqual({v.get("verify_tries") for v in self.findings().values()}, {1})
+
+    def test_recover_leaves_live_remote_verify_alone(self):
+        self.seed()
+        rows = self.rows()
+        rv.mark_verify_sent(self.p, [r["id"] for r in rows], wr.REMOTE_VERIFY_SESSION, "", 1.0)
+        gate = threading.Event()
+        th = threading.Thread(target=gate.wait, daemon=True)
+        th.start()
+        self.addCleanup(gate.set)
+        with mock.patch.dict(wr._SELF_VERIFY, {"a": th}, clear=False):
+            self.assertEqual(wr.recover_self_verify(self.p), 0)
+        self.assertEqual({v["state"] for v in self.findings().values()}, {"verify_sent"})
 
     def test_process_verdicts_ignores_self_sessions(self):
         self.seed()
