@@ -56,6 +56,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getStatus, wsAuthQS } from "../api/client";
 import type { StatusPayload } from "../api/types";
+import { withStatusDefaults } from "../state/statusDefaults";
 import { openReconnectingWs } from "./wsReconnect";
 
 /** Backstop REST poll — deliberately much slower than the old 4s poller,
@@ -111,7 +112,7 @@ export function useStatus(): UseStatusResult {
       window.location.reload();
       return;
     }
-    setData(d);
+    setData(withStatusDefaults(d));
     setError(null);
   }, []);
 
