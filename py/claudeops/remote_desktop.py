@@ -351,6 +351,10 @@ def stop() -> dict:
             proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
             proc.kill()
+            try:
+                proc.wait(timeout=2.0)             # zombi bırakma (kill sonrası reap)
+            except subprocess.TimeoutExpired:
+                pass
         return {"ok": True}
     # Adopted orphan — hiç Popen handle'ımız yok, PID-exact sinyal (pattern-match YOK, CLAUDE.md).
     _kill_pid(adopted_pid)

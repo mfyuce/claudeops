@@ -122,6 +122,7 @@ def stream(handler: Any) -> None:
                 except Exception:
                     try:
                         p.kill()
+                        p.wait(timeout=2)          # zombi bırakma (kill sonrası reap)
                     except Exception:
                         pass
         _release()
