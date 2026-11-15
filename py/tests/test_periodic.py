@@ -171,6 +171,23 @@ class ChatBackupTest(_Tmp):
             r2 = P.run_chat_backup(self.cfg, True, st)                         # değişmeyen = iş yok
             self.assertEqual(r2["changed"], 0)
 
+    def test_remote_pull_failure_visible_in_msg(self):
+        repo = self._setup_repo()
+        cfg = dict(self.cfg, remote_pull={"yuhem": "shell_yuhem"})
+        def fake_git(r, *a, **k):
+            return (0, "abcdef1234567890\n") if a[0] == "rev-parse" else (0, "abcdef1234567890\tHEAD\n" if a[0] == "ls-remote" else "")
+        from claudeops import chat_remote
+        with mock.patch.object(P, "_local_sources", return_value=self.srcs), \
+                mock.patch.object(P, "_private_remotes", return_value=({"origin": "u"}, [])), \
+                mock.patch.object(P, "_git", side_effect=fake_git), \
+                mock.patch.object(chat_remote, "pull", return_value={"ok": False, "msg": "zaman aşımı", "bytes": 0}), \
+                mock.patch.object(chat_remote, "PanelTransport", return_value=object()), \
+                mock.patch("claudeops.chat_dump.ingest_remote_archives", return_value={}):
+            r = P.run_chat_backup(cfg, True, {})
+        self.assertTrue(r["ok"])                                               # yerel yedek başarılı
+        self.assertIn("UYARI uzak çekme yuhem", r["msg"])
+        self.assertEqual(len(r["warnings"]), 1)
+
     def test_binary_chunked_and_group_repo(self):
         repo = self._setup_repo()
         codex = os.path.join(self.d, "codexrepo")

@@ -587,6 +587,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
     manifest: Dict[str, str] = dict((state.get("chat_backup") or {}).get("manifest") or {})
     dump_info: Dict[str, Any] = {}
+    warns: List[str] = []              # uzak çekme/arşiv açma hataları: yerel yedeği durdurmaz ama mesajda görünür (sahte 'temiz ok' olmasın)
     rp = cfg.get("remote_pull")
     if apply and isinstance(rp, dict) and rp:
         from . import chat_remote
@@ -598,6 +599,8 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
                 continue                   # bugün zaten çekildi
             r = chat_remote.pull(chat_remote.PanelTransport(str(host), str(sess)), str(host), day, dest)
             diag_log(f"periodic chat_backup: remote_pull {host}: {r.get('msg')}" + ("" if r.get("ok") else " HATA"))
+            if not r.get("ok") and not r.get("skipped"):
+                warns.append(f"uzak çekme {host}: {r.get('msg')}"[:120])
     if apply and "local" in (cfg.get("sources") or []):
         try:                               # uzak host arşivlerini (yuhem, ulak_31 tgz) güvenle aç
             from . import chat_dump
@@ -605,6 +608,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             diag_log(f"periodic chat_backup: uzak arşiv {ing}")
         except Exception as e:  # noqa: BLE001
             diag_log(f"periodic chat_backup: uzak arşiv hatası {type(e).__name__}: {e}")
+            warns.append(f"uzak arşiv açma: {type(e).__name__}: {e}"[:120])
     if apply and "local" in (cfg.get("sources") or []) and str(cfg.get("dump_db", True)).lower() not in ("off", "0", "false", "no", ""):
         from . import chat_dump
         stamps: Dict[str, str] = dict((state.get("chat_backup") or {}).get("dump_stamps") or {})
@@ -714,7 +718,10 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     res["msg"] = f"{len(written)} dosya yazıldı/gönderildi, {stats['redacted']} sır maskelendi" + (
         f"; db dökümü {dump_info.get('dumped', 0)} db/{dump_info.get('files', 0)} dosya" if dump_info else "") + (
         f"; DÖKÜM HATASI {(dump_info.get('errors') or [dump_info.get('raw_err')])[0]}" if dump_info and not res["ok"] else "") + (
-        f"; repo'suz atlanan: {stats['skipped_group']}" if stats["skipped_group"] else "")
+        f"; repo'suz atlanan: {stats['skipped_group']}" if stats["skipped_group"] else "") + (
+        f"; UYARI {'; '.join(warns)}" if warns else "")
+    if warns:
+        res["warnings"] = warns
     return res
 
 
