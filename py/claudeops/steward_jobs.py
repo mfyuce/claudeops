@@ -30,6 +30,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from . import steward as sw
 
 OPEN_STATES = ("awaiting_approval", "queued", "running")
+RETRYABLE_STATES = ("failed", "lost")   # aynı istek yeniden gönderilebilir (yerel tekilleştirme bunları eşlemez)
 TERMINAL_STATES = ("done", "failed", "cancelled", "lost")   # `lost`: varaka işi 404 verdi (silinmiş/yetkisiz)
 
 JOB_POLL_SECONDS = 45          # onay bekleyen iş (insan adminde, dakikalar sürer) için en sık yoklama (varaka önerisi 30-60 sn)
@@ -656,9 +657,17 @@ def submit_job(sid: str, project: str, kind: str, params: Dict[str, Any], spec_t
     shas = [file_sha256(p) for p in files]
     key = make_idempotency_key(sid, project, kind, params, spec_text, shas)
     with sw.steward_lock(paths):
+        tried = 0                   # aynı isteğin daha önce BAŞARISIZ/KAYIP biten denemeleri: yeniden deneme engellenmez
         for j in load_jobs(paths):
-            if j.get("idempotency_key") == key and j.get("service") == service:
+            jk = str(j.get("idempotency_key") or "")
+            if j.get("service") == service and (jk == key or jk.startswith(key + ":r")):
+                if j.get("state") in RETRYABLE_STATES:
+                    tried += 1
+                    continue
                 return {"ok": True, "id": j.get("id"), "state": j.get("state"), "deduplicated": True, "job": job_view(j)}
+    base_key = key
+    if tried:       # varaka da aynı anahtarla ESKİ başarısız işi döndürmesin: deneme sayısı anahtara eklenir
+        key = f"{base_key}:r{tried}"
     meta: Dict[str, Any] = {"kind": kind, "requester": project, "params": params or {}, "idempotency_key": key,
                             "meta": {"steward": sid, "host": host, "project": project}}
     if spec_text:

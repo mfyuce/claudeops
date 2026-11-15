@@ -321,6 +321,26 @@ class TestSubmit(_Jobs):
         self.assertEqual((d["id"], d["deduplicated"]), (a["id"], True))
         self.assertEqual(len(sj.load_jobs("default")), 1)
 
+    def test_failed_or_lost_job_can_be_resubmitted_but_live_or_done_cannot(self):
+        a = self.submit(params={"x": 7})
+        self.assertFalse(a["deduplicated"])
+        first = a
+        for bad in ("failed", "lost"):
+            sj.update_records({("varaka", str(first["id"])): {"state": bad}}, "default")
+            b = self.submit(params={"x": 7})
+            self.assertTrue(b["ok"], b)
+            self.assertFalse(b["deduplicated"], bad)              # yeniden deneme engellenmedi
+            self.assertNotEqual(b["id"], first["id"])
+            self.assertIn(":r", self.srv.posted[-1]["meta"]["idempotency_key"])   # varaka eski işi dönmesin
+            c = self.submit(params={"x": 7})                      # yeni iş açık: bu kez tekilleştirilir
+            self.assertTrue(c["deduplicated"])
+            self.assertEqual(c["id"], b["id"])
+            first = b
+        sj.update_records({("varaka", str(first["id"])): {"state": "done"}}, "default")
+        d = self.submit(params={"x": 7})
+        self.assertTrue(d["deduplicated"])                        # biten (done) iş yeniden açılmaz
+        self.assertEqual(d["id"], first["id"])
+
     def test_multipart_upload_with_project_files(self):
         os.makedirs(os.path.join(self.proj, "veri"))
         with open(os.path.join(self.proj, "veri", "a.txt"), "w") as f:
