@@ -304,7 +304,7 @@ class TestD5LockTimeoutAfterSend(_Base):
         s = NS(name="mkt", cli="claude", pid=1)
         for p in (mock.patch.object(ws, "_running", lambda name: s),
                   mock.patch.object(ws, "is_tmux_backed", lambda pid: True),
-                  mock.patch.object(ws, "_send", lambda name, c, msg: self.sent.append(msg) or True)):
+                  mock.patch.object(ws, "_send", lambda name, c, msg, **k: self.sent.append(msg) or True)):
             p.start()
             self.addCleanup(p.stop)
         q = sw.add_question("mkt", "soru?")

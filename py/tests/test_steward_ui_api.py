@@ -186,7 +186,7 @@ class DirectiveDatedSessionTest(_Tmp):
         with mock.patch.object(ws, "find_sessions", lambda **kw: list(sessions)), \
                 mock.patch.object(ws, "_act", boom), mock.patch.object(ws, "is_tmux_backed", lambda pid: True), \
                 mock.patch.object(ws, "_proc_born", lambda pid: 0.0), \
-                mock.patch.object(ws, "_send", lambda n, c, m: sent.append(n) or True):
+                mock.patch.object(ws, "_send", lambda n, c, m, **k: sent.append(n) or True):
             return ws.http_directive({"name": "cli", "text": "devam"}), sent
 
     def test_dated_session_gets_the_directive_without_a_start(self):

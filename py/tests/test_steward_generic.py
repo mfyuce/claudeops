@@ -277,7 +277,7 @@ class TestTourBacklog(_Generic):
                 mock.patch.object(ws, "_enrich_item", lambda it, projects, world: dict(it)), \
                 mock.patch.object(ws, "_project_cwd", lambda name: proj), \
                 mock.patch.object(sw, "tour_delivery", lambda prompt, ws_, now, lang="tr": (prompt, "")), \
-                mock.patch.object(ws, "_send", lambda name, cli, msg: sent.append(msg) or True):
+                mock.patch.object(ws, "_send", lambda name, cli, msg, **k: sent.append(msg) or True):
             r = ws.run_tour([{"kind": "idle", "name": "p" if sid == "gen" else "k"}], cfg=settings.steward_config(sid))
         self.assertTrue(r["ok"], r)
         return sent[0]

@@ -145,7 +145,7 @@ class GateMessage(_Tmp):
         ws._registered_job_kinds = lambda now: (True, {"import_pdf", "embed", "noop", "pdf_text"})
         ws._running, ws.is_tmux_backed = (lambda n: S()), (lambda pid: True)
         ws._box_has_typed_input = lambda n, cli="": False
-        ws._send = lambda n, c, t: sent.append(t) or True
+        ws._send = lambda n, c, t, **k: sent.append(t) or True
         ws._JOB_NOTE_SENT.clear()
         try:
             a = sw.Action("ask_user", "anomaly20261101", "STEWARD-JOB",

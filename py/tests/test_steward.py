@@ -2916,7 +2916,7 @@ class WakeGateTest(HttpTest):
                     mock.patch.object(web_steward, "_ensure_running", lambda *a, **k: {"ok": True, "started": True}), \
                     mock.patch.object(web_steward, "is_tmux_backed", lambda pid: True), \
                     mock.patch.object(web_steward, "_proc_born", lambda pid: 0.0), \
-                    mock.patch.object(web_steward, "_send", lambda n, c, m: sent.append(n) or True):
+                    mock.patch.object(web_steward, "_send", lambda n, c, m, **k: sent.append(n) or True):
                 r = web_steward._give_directive(proj, "", reason="due", cfg=cfg, host="")
             self.assertEqual(bool(sent), opened, (opened, r))                    # çalışana tekrar gitmez, AÇILANA gider
 
