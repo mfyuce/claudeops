@@ -224,6 +224,8 @@ def write_upload(dest: str, rfile, length: int, chunk_size: int, overwrite: bool
     `os.replace` symlink'i izlemez (hedef symlink ise bağın kendisi değişir, kök dışına yazılmaz).
     `overwrite=False`: hedef `os.link` ile ATOMİK oluşturulur; arada biri aynı adla dosya yazdıysa ezmez, `exists` döner
     (`resolve_upload_target`in varlık denetimi ile yazım arası yarış, review 2026-11-04 E13)."""
+    if length <= 0:
+        return "empty_body"         # sıfır baytlı gövde mevcut dosyayı boşaltmasın (uç zaten 400 verir; savunma derinliği, review cliops 2 Kas)
     tmp = _tmp_name(dest, "upload")
     try:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)

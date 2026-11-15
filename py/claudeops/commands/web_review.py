@@ -2436,13 +2436,14 @@ def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None
     if not project or not sw.valid_name(project):
         return {"ok": False, "error": "invalid project name"}
     p = sw.paths_for(cfg.sid)
-    if action not in ("add", "remove", "enable", "disable", "focus", "unfocus"):
-        return {"ok": False, "error": "action must be add|remove|enable|disable|focus|unfocus"}
+    if action not in ("add", "remove", "enable", "disable", "focus", "unfocus", "only"):
+        return {"ok": False, "error": "action must be add|remove|enable|disable|focus|unfocus|only"}
     idx = ownership()
-    if action in ("add", "enable"):
+    if action in ("add", "enable", "only"):
         why = remote_block_reason(project, idx)
         if why:
             return {"ok": False, "error": why}
+    disabled_now: List[str] = []
     with sw.steward_lock(p):
         pool = rv.load_pool(p)
         pr = pool["projects"]
@@ -2455,6 +2456,13 @@ def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None
             return {"ok": False, "error": f"not in pool: {project}"}
         elif action == "enable":
             e.update(enabled=True, removed_at=None)
+        elif action == "only":      # TEK kilit + TEK kayıt: hedef açık, diğerleri kapalı (UI'nin ardışık çağrıları yarıda kalıp havuzu karıştırmasın)
+            e.update(enabled=True, removed_at=None)
+            for other, oe in pr.items():
+                if other != project and isinstance(oe, dict) and oe.get("enabled"):
+                    oe["enabled"] = False
+                    oe.pop("focus", None)
+                    disabled_now.append(other)
         elif action == "focus":
             if not e.get("enabled") or e.get("removed_at"):
                 return {"ok": False, "error": f"project is not enabled in the pool: {project} (enable it first)"}
@@ -2474,7 +2482,10 @@ def pool_action(cfg: Any, action: str, project: str, now: Optional[float] = None
     cancelled = []
     if action in ("remove", "disable"):
         cancelled = cancel_all(cfg.sid, project)
-    return {"ok": True, "action": action, "project": project, "cancelled": cancelled}
+    elif action == "only":
+        for other in disabled_now:
+            cancelled += cancel_all(cfg.sid, other)
+    return {"ok": True, "action": action, "project": project, "cancelled": cancelled, **({"disabled": disabled_now} if action == "only" else {})}
 
 
 def manual_run(cfg: Any, project: str, mode: str = "", model: str = "", lens: str = "") -> Dict[str, Any]:

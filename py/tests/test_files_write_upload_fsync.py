@@ -28,3 +28,14 @@ class WriteUploadFsyncTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmptyBodyRefused(unittest.TestCase):
+    def test_zero_length_never_truncates_existing(self):
+        import io
+        import tempfile
+        d = tempfile.mkdtemp()
+        dest = os.path.join(d, "a.txt")
+        open(dest, "w").write("keep")
+        self.assertEqual(files.write_upload(dest, io.BytesIO(b""), 0, 8), "empty_body")
+        self.assertEqual(open(dest).read(), "keep")
