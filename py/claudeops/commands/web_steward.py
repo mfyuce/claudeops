@@ -2300,7 +2300,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
                             REMOTE_INPUT_TIMEOUT_SECONDS, rt)
         if not sent.get("ok"):
             return dict(sent, ok=False, error=str(sent.get("error") or "send failed"), host=host)
-    elif not _send(sname, scli, message):
+    elif not _send(sname, scli, message, sid=(cfg.sid if cfg is not None else "default")):
         return {"ok": False, "error": "send failed"}
     # Mesaj GİTTİ: bundan sonrası kayıt tutmadır. Hiçbir kayıt hatası (ör. kilit zaman aşımı) çağırana "başarısız" demez ve
     # cevabın İKİNCİ KEZ iletilmesine yol açmaz: yinelenmeyi engelleyen `delivered` işareti ÖNCE ve yeniden denemeli yazılır.
@@ -2947,7 +2947,7 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
         message, tour_file = sw.tour_delivery(prompt, paths.workspace, time.time(), cfg.lang)
     except OSError:
         message, tour_file = prompt, ""      # dosya yazılamadı: eski yol (tmux'e gömülü)
-    if not _send(s.name, s.cli, message):
+    if not _send(s.name, s.cli, message, sid=cfg.sid):
         return {"ok": False, "error": "send failed"}
     with sw.steward_lock(paths):
         state = sw.load_state(paths)
@@ -5909,7 +5909,7 @@ def _job_marker_gate(action: "sw.Action", cfg: "sw.Config", name: str, host: str
     if name not in _JOB_NOTE_SENT and not host:
         s = _running(name)
         if s is not None and is_tmux_backed(s.pid) and not _box_has_typed_input(s.name, s.cli):
-            noted = bool(_send(s.name, s.cli, sw.one_line(note, 1200)))
+            noted = bool(_send(s.name, s.cli, sw.one_line(note, 1200), sid=cfg.sid))
             if noted:
                 _JOB_NOTE_SENT[name] = now
     sw.log_event("job_marker_rejected", paths=paths, name=name, project=action.payload.get("project"), reason=why,

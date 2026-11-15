@@ -79,6 +79,16 @@ class UcliSendTest(unittest.TestCase):
             ws._send("u", "ucli", "x", sid="proj1")
         pf.assert_called_with("proj1")
 
+    def test_every_steward_send_call_passes_sid(self):
+        """`_send(...)` çağrılarının hepsi sid verir: yoksa `ucli_send_stuck` sabit `default` kimliğine yazılır (sessiz yanlış kayıt)."""
+        import inspect
+        import re
+        src = inspect.getsource(ws)
+        calls = re.findall(r"(?<![\w.])_send\((?:[^()]|\([^()]*(?:\([^()]*\))?[^()]*\))*\)", src)
+        calls = [c for c in calls if not c.startswith("_send(name: str")]
+        self.assertGreaterEqual(len(calls), 5)
+        self.assertEqual([c[:90] for c in calls if "sid=" not in c], [])
+
     def test_late_drawn_text_gets_enter(self):
         """Metin ilk yoklamalarda henüz çizilmemiş (boş kutu), sonra belirir: Enter yine gider."""
         import itertools
