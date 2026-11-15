@@ -117,6 +117,47 @@ class CommitTest(unittest.TestCase):
         self.assertEqual([h.split("/")[-1] for h in r["held"]], ["20261024100001.md"])        # gizli değer dışarıda
         self.assertEqual(git("-C", self.remotes[0], "branch", "-a").strip(), "")               # hiçbir şey itilmedi
 
+    def test_commit_refuses_when_prv_remote_is_public_or_unverifiable(self):
+        for vis in ("public", "unknown"):
+            r = rs.commit_reviews(self.main, self.gd, scan, dry=False, vis_check=lambda g, v=vis: v)
+            self.assertFalse(r["ok"], vis)
+            self.assertIn(vis, r["error"])
+            self.assertEqual(r["committed"], 0)
+            self.assertEqual(git("-C", self.remotes[0], "branch", "-a").strip(), "")           # hiçbir şey itilmedi
+            self.assertNotEqual(subprocess.run(["git", "--git-dir=" + self.gd, "rev-parse", "-q", "--verify", "HEAD"],
+                                               capture_output=True).returncode, 0)                  # commit da yok
+
+    def test_gitdir_visibility_classifies_remotes_fresh(self):
+        self.assertEqual(rs.gitdir_visibility(self.gd), "private")                              # yalnız yerel yol remote'ları
+        git("--git-dir=" + self.gd, "remote", "add", "net", "https://example.org/x/y.git")
+        self.assertEqual(rs.gitdir_visibility(self.gd), "unknown")                              # tanınmayan ağ adresi
+        git("--git-dir=" + self.gd, "remote", "remove", "net")
+        git("--git-dir=" + self.gd, "remote", "add", "pub", "git@github.com:o/r.git")
+        calls = []
+
+        def fake(argv, **kw):
+            calls.append(argv)
+            if argv[:2] == ["git", "--git-dir=" + self.gd]:
+                return subprocess.run(argv, capture_output=True, text=True)
+            return mock.Mock(returncode=0, stdout="false\n", stderr="")                         # gh: isPrivate=false
+        self.assertEqual(rs.gitdir_visibility(self.gd, run=fake), "public")
+        rs.gitdir_visibility(self.gd, run=fake)
+        self.assertEqual(sum(1 for c in calls if c and c[0] == "gh"), 2)                         # önbellek YOK: her çağrıda taze
+
+    def test_visibility_cache_is_bounded(self):
+        rs._CACHE.clear()
+        for i in range(rs.CACHE_MAX + 20):
+            rs._CACHE[f"/old/{i}"] = (float(i), "private")
+        with mock.patch.object(rs, "_run", return_value=(0, "")):       # remote yok -> unknown, önbelleğe girmez
+            rs.repo_visibility("/x")
+        rs._CACHE.clear()
+        with mock.patch.object(rs, "_run", return_value=(0, "origin\thttps://github.com/o/r.git (fetch)")), \
+                mock.patch.object(rs, "remote_visibility", return_value="private"):
+            for i in range(rs.CACHE_MAX + 20):
+                rs.repo_visibility(f"/p/{i}", now=float(i))
+        self.assertLessEqual(len(rs._CACHE), rs.CACHE_MAX)
+        rs._CACHE.clear()
+
     def test_glob_chars_in_filename_are_literal(self):
         self.write("rapor[1]*.md", "## R-1 | P1 | a | t\n")
         self.write("rapor1x.md", "## R-2 | P1 | a | t\n")

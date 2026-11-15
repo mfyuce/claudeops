@@ -8,6 +8,7 @@ import time
 from typing import Callable, Dict, List, Optional, Tuple
 
 CACHE_SECONDS = 3600
+CACHE_MAX = 256       # sınırsız büyümesin (en eski girdi atılır)
 _CACHE: Dict[str, Tuple[float, str]] = {}
 # ssh.github.com / altssh.gitlab.com (443 üzerinden ssh) aynı depoya çıkar: ana ada normalize edilir
 _URL_RE = re.compile(r"^(?:git@|ssh://git@|https?://(?:[^@/]+@)?)(?:ssh\.|altssh\.)?(github\.com|gitlab\.com)[:/](.+?)(?:\.git)?/?$")
@@ -71,8 +72,39 @@ def repo_visibility(path: str, run: Optional[Callable] = None, now: Optional[flo
     vis = [remote_visibility(h, s, run=run) for h, s in sorted(seen)]
     res = "public" if "public" in vis else ("unknown" if (not vis or "unknown" in vis) else "private")
     if res != "unknown":       # geçici hata (ağ, gh/glab girişi) 1 saat boyunca "unknown" olarak takılı kalmasın
+        if len(_CACHE) >= CACHE_MAX and path not in _CACHE:
+            _CACHE.pop(min(_CACHE, key=lambda k: _CACHE[k][0]), None)
         _CACHE[path] = (t, res)
     return res
+
+
+def _is_local_remote(url: str) -> bool:
+    u = str(url or "").strip()
+    return u.startswith(("/", "./", "../", "~", "file://"))
+
+
+def gitdir_visibility(git_dir: str, run: Optional[Callable] = None) -> str:
+    """Ayrı `--git-dir` deposunun (ör. `-prv`) remote'larının görünürlüğü, HER ÇAĞRIDA taze (önbellek YOK: push öncesi kapı).
+    `public` (herhangi biri public) > `unknown` (tanınan sunucuda doğrulanamadı ya da tanınmayan ağ adresi) > `private`
+    (hepsi private; yerel yol/file:// remote'u ve remote'suz depo dışarı açılamaz, private sayılır)."""
+    rc, out = _run(["git", f"--git-dir={git_dir}", "remote", "-v"], run=run)
+    if rc != 0:
+        return "unknown"
+    seen = set()
+    other_net = False
+    for ln in out.splitlines():
+        parts = ln.split()
+        if len(parts) < 2:
+            continue
+        h, slug = parse_remote(parts[1])
+        if h:
+            seen.add((h, slug))
+        elif not _is_local_remote(parts[1]):
+            other_net = True        # github/gitlab dışı ağ adresi: görünürlüğü bilemeyiz
+    vis = [remote_visibility(h, s, run=run) for h, s in sorted(seen)]
+    if "public" in vis:
+        return "public"
+    return "unknown" if (other_net or "unknown" in vis) else "private"
 
 
 def dest_guard(dst_root: str, run: Optional[Callable] = None) -> Tuple[bool, str]:
@@ -108,7 +140,7 @@ def _git(base: List[str], *args: str, run: Optional[Callable] = None, timeout: f
 
 
 def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: bool = True,
-                   run: Optional[Callable] = None) -> Dict[str, object]:
+                   run: Optional[Callable] = None, vis_check: Optional[Callable[[str], str]] = None) -> Dict[str, object]:
     """`root/reviews/` altındaki, `-prv` deposunda HENÜZ izlenmeyen dosyaları (yalnız bu yol, `add -A` YOK; `-f`: ana
     `.gitignore` reviews/ i yok sayar) açık yol listesiyle ekleyip commit + her remote'a push eder. Depo hep `--git-dir`
     ile seçilir: ana repo (`root/.git`) ASLA kullanılmaz. `scan(metin)` maskelenmiş metni döndürür; farklıysa (gizli değer)
@@ -118,6 +150,12 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
     gd = os.path.expanduser(git_dir)
     if not git_dir or not os.path.isdir(gd) or os.path.realpath(gd) == os.path.realpath(os.path.join(rroot, ".git")):
         res["error"] = "git_dir yok ya da ana repo .git'i (yalnız ayrı -prv git-dir kabul edilir)"
+        return res
+    # GERÇEK bariyer, çağıranın hafızasına bağlı değil: push edilecek deponun (`dest_guard` dış depoya bakar, burada o değil) remote'ları
+    # TAZE olarak private doğrulanmadan hiçbir şey eklenmez/itilmez; public ya da doğrulanamayan = reddedilir (fail-closed).
+    vis = (vis_check or (lambda g: gitdir_visibility(g, run=run)))(gd)
+    if vis != "private":
+        res["error"] = f"-prv git-dir remote'larının görünürlüğü {vis}: private doğrulanamadı, review çıktısı itilmez"
         return res
     base = ["git", "--literal-pathspecs", "-C", rroot, f"--git-dir={gd}", f"--work-tree={rroot}"]   # `[1]`/`*` içeren dosya adı glob sayılmasın
     rc, out = _git(base, "ls-files", "-z", "--", "reviews/", run=run)
