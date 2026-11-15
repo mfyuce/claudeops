@@ -385,9 +385,19 @@ def cmd_ask(args) -> int:
     return 0
 
 
+def _answer_by(args) -> str:
+    """`--as-owner` -> owner_cli; `--on-behalf` -> cops; ikisi de yoksa: claudeops oturumunun içinden (COPS_NAME var) = cops (sahip adına),
+    sahibin kendi terminali (COPS_NAME yok) = owner_cli."""
+    if getattr(args, "as_owner", False):
+        return "owner_cli"
+    if getattr(args, "on_behalf", False):
+        return "cops"
+    return "cops" if os.environ.get("COPS_NAME") else "owner_cli"
+
+
 def cmd_answer(args) -> int:
     try:
-        q = sw.answer_question(args.id, args.answer, _sid(args))
+        q = sw.answer_question(args.id, args.answer, _sid(args), by=_answer_by(args))
     except ValueError as e:
         print(f"hata: {e}")
         return 1
@@ -399,7 +409,7 @@ def cmd_answer(args) -> int:
             return 1
         print("bilinmeyen soru id'si")
         return 1
-    sw.log_event("answer", paths=_sid(args), id=q.id, project=q.project, source="cli")
+    sw.log_event("answer", paths=_sid(args), id=q.id, project=q.project, source="cli", answered_by=q.answered_by)
     try:
         from .. import qa_log
         _pr = sw.load_projects(_sid(args)).get(q.project) if q.project else None
@@ -1167,6 +1177,8 @@ def register(sub):
     pa = s.add_parser("answer", help="soruyu cevapla (seçenekli soruda numara da olur)")
     pa.add_argument("id")
     pa.add_argument("answer")
+    pa.add_argument("--as-owner", action="store_true", help="sahibin kendi cevabı (answered_by=owner_cli); varsayılan: claudeops oturumundan çağrılırsa cops (sahip adına)")
+    pa.add_argument("--on-behalf", action="store_true", help="kontrol oturumu sahip adına cevaplıyor (answered_by=cops; cevaba '(sahip adına cops)' öneki konur)")
     pa.set_defaults(func=cmd_answer)
     pask = s.add_parser("ask", help="soru aç (panel üzerinden: telefona bildirim + /q/<id> bağlantısı)")
     pask.add_argument("text")

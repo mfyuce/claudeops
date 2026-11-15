@@ -3344,7 +3344,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         return _no_work_reopen(str(action.payload.get("project") or name), str(action.payload.get("trigger") or ""),
                                str(action.payload.get("question_id") or ""), cfg, projects, paths, host=host, rt=rt)
     if k == "auto_answer":
-        q = sw.answer_question(action.payload.get("question_id") or "", action.payload.get("answer") or "", paths)
+        q = sw.answer_question(action.payload.get("question_id") or "", action.payload.get("answer") or "", paths, by="motor")
         if q is None:
             return {"ok": False, "error": "question gone"}
         if action.payload.get("handover"):
@@ -5793,7 +5793,7 @@ def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[s
     if form is None:
         return 200, sw.question_page_html(q, lang, "ask", action=action)
     try:
-        answered = sw.answer_question(q.id, str(form.get("answer") or ""), found_sid)
+        answered = sw.answer_question(q.id, str(form.get("answer") or ""), found_sid, by="owner_phone")
     except ValueError:
         return 400, sw.question_page_html(q, lang, "ask", error=sw._QPAGE_TXT["en" if lang == "en" else "tr"]["empty"],
                                           action=action)
@@ -5887,7 +5887,7 @@ def _job_fast_path(action: "sw.Action", cfg: "sw.Config", q: "sw.Question", path
         return None
     msg = (f"{req['kind']} işi varaka'ya GÖNDERİLDİ: #{res.get('id')} ({res.get('state')}); sonuç hazır olunca bu oturuma "
            "otomatik iletilir, polling/bekleme yazma.")
-    sw.answer_question(q.id, msg, paths)
+    sw.answer_question(q.id, msg, paths, by="motor")
     sw.log_event("job_auto_submit", paths=paths, project=proj, kind=req["kind"], id=res.get("id"), state=res.get("state"), question=q.id)
     return {"ok": True, "id": q.id, "notified": False, "routine": True, "auto_job": res.get("id")}
 
@@ -6012,6 +6012,8 @@ def _record_brain_denied(sid: str, qid: str) -> None:
 
 
 def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    # kim cevapladı: beyin actor'ı `brain`; açıkça verilen `by` (CLI: owner_cli/cops) tanınıyorsa o; yoksa panel = owner_panel
+    by = "brain" if str(data.get("actor") or "") == "brain" else (str(data.get("by") or "") if str(data.get("by") or "") in ("owner_phone", "owner_panel", "owner_cli", "cops") else "owner_panel")
     if str(data.get("actor") or "") == "brain":
         q0 = next((q for q in sw.load_questions(sw.paths_for(sid)) if q.id == str(data.get("id") or "")), None)
         if q0 is not None:
@@ -6039,12 +6041,12 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                                                  f"→ {sw.ask_hint(nq.id, sid)}")      # kaydedilen soru telefona da gitsin
                 sw.log_event("job_request_red", paths=sid, id=q0.id, project=q0.project, reason=red[:200], repeat=repeat)
     try:
-        q = sw.answer_question(str(data.get("id") or ""), str(data.get("answer") or ""), sid)
+        q = sw.answer_question(str(data.get("id") or ""), str(data.get("answer") or ""), sid, by=by)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     if q is None:
         return {"ok": False, "error": "unknown question id"}
-    sw.log_event("answer", paths=sid, id=q.id, project=q.project)
+    sw.log_event("answer", paths=sid, id=q.id, project=q.project, answered_by=q.answered_by)
     return {"ok": True, "question": dataclasses.asdict(q)}
 
 

@@ -217,6 +217,7 @@ class Question:
     repeats: int = 0                # oturum aynı soruyu yeniden sordu: cevap "zaten cevapladım" notuyla yeniden iletildi
     asked_again: int = 0            # AÇIK iken aynı proje/benzer metinle yeniden soruldu: yeni soru açılmadı, bu sayaç arttı
     extra_texts: List[str] = field(default_factory=list)  # L7b: proje başına açık soru sınırı (MAX_OPEN_QUESTIONS_PER_PROJECT) aşılınca gelen yeni sorular BU soruya "ek" olarak eklenir (en çok EXTRA_TEXTS_KEEP)
+    answered_by: str = ""           # cevabı KİM verdi: ANSWERED_BY değerlerinden biri (boş = eski kayıt/bilinmiyor); danis eğitim/denetim için kullanır
     prev_texts: List[str] = field(default_factory=list)   # L7: KONU eşleşmesiyle birleşen soruların eski metinleri (yeniden eskiye, en çok TOPIC_PREV_KEEP); `text` = en yeni sürüm
 
 
@@ -1299,7 +1300,15 @@ def add_question(project: str, text: str, source: str = "", options: Any = None,
     return add_question_ex(project, text, source=source, options=options, routine=routine, paths=paths)[0]
 
 
-def answer_question(question_id: str, answer: str, paths: Any = None) -> Optional[Question]:
+# owner_phone (/q sayfası) | owner_panel (panel/API) | owner_cli (sahibin kendi CLI'ı) | cops (kontrol oturumu, SAHİP ADINA) | brain (değnekçi beyni) | motor (otomatik cevap)
+ANSWERED_BY = ("owner_phone", "owner_panel", "owner_cli", "cops", "brain", "motor")
+ON_BEHALF_PREFIX = "(sahip adına cops) "
+
+
+def answer_question(question_id: str, answer: str, paths: Any = None, by: str = "") -> Optional[Question]:
+    """`by`: ANSWERED_BY değeri (tanınmayan = boş). `cops` ise iletilen cevabın başına kısa `ON_BEHALF_PREFIX` konur ki transkriptte
+    sahibin kendi cevabından ayırt edilsin (reviewer "nerede" sorusunda cevap ayrıştırıldığı için önek konmaz)."""
+    by = by if by in ANSWERED_BY else ""
     answer = str(answer).strip()
     if not answer:
         raise ValueError("empty answer")
@@ -1309,6 +1318,9 @@ def answer_question(question_id: str, answer: str, paths: Any = None) -> Optiona
         for q in questions:
             if q.id == question_id:
                 q.answer = resolve_answer(q, answer)[:_MAX_QUESTION_CHARS]
+                if by == "cops" and q.source != review_remote.ASK_SOURCE and not q.answer.startswith(ON_BEHALF_PREFIX):
+                    q.answer = (ON_BEHALF_PREFIX + q.answer)[:_MAX_QUESTION_CHARS]
+                q.answered_by = by
                 q.status = "answered"
                 q.answered_at = _now()
                 q.delivered_at = 0.0
