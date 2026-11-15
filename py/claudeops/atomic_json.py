@@ -10,7 +10,7 @@ tmp dosyasını YEDİ: thread A `tmp`'ı açıp yazarken thread B AYNI `tmp`'ı
 O_TRUNC ile yeniden açıp kendi içeriğini yazdı, sonra B önce `os.replace`
 çağırıp tmp'ı tüketti — A'nın `os.replace`'i artık var olmayan bir dosyayı
 rename etmeye çalışıp `FileNotFoundError` fırlattı (2026-09-10, canlı serviste
-`orch_store.save_draft` üzerinden 4 kez tekrarlandı, log kanıtı DONE.md'de).
+`orch_store.save_draft` üzerinden 4 kez tekrarlandı).
 
 Fix: tmp adına çağıranın pid+thread-id'sini ekle — aynı thread HER ZAMAN
 kendi tmp dosyasını kullanır (gerçek eşzamanlılık aynı thread içinde zaten

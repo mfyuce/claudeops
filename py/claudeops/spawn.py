@@ -32,6 +32,8 @@ from .tmux_backend import (
 )
 
 _SAFE_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")   # env_overrides anahtar adı (shell argv'ye gömülür)
+# Ad olarak geçerli ama süreç/kabuk davranışını ele geçirebilen değişkenler: env_overrides ile ASLA taşınmaz (review cops 3 Kas).
+_DANGEROUS_ENV_NAMES = frozenset({"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "BASH_ENV", "ENV", "PROMPT_COMMAND", "SHELLOPTS", "BASHOPTS", "PS4", "IFS"})
 
 # gnome-terminal-server sessizce pencere açamadığında ([[spawn-zombie-child-degrades-web-server]],
 # kendi D-Bus/uzun-yaşam state bozulması — spawn'a özel değil, bare `gnome-terminal`
@@ -47,6 +49,11 @@ _SAFE_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")   # env_overrides anahtar 
 # birkaç saniye sonra yine de ayağa kalkar.
 FALLBACK_ATTEMPT_WAIT_SECONDS = 4.0
 FALLBACK_RETRY_COUNT = 2  # ilk deneme (spawn_session'da zaten atıldı) HARİÇ ek deneme sayısı
+
+
+def _filter_env_overrides(overrides: dict) -> dict:
+    """Komut satırına gömülecek env anahtarları: geçerli ad + tehlikeli-ad listesinde olmayan (sessizce atlanır)."""
+    return {k: v for k, v in overrides.items() if _SAFE_ENV_NAME_RE.match(k) and k not in _DANGEROUS_ENV_NAMES}
 
 
 def detect_display() -> str:
@@ -170,7 +177,7 @@ def spawn_session(
     # gibi bir anahtarla komut enjeksiyonuna açıktı (Antigravity SEC-02, en
     # kritik bulgu). Geçersiz bir isim sessizce ATLANIR (fırlatmaz) — COPS_NAME
     # gibi zaten-güvenli, kod-içi sabit isimler asla bu filtreye takılmaz.
-    overrides = {k: v for k, v in overrides.items() if _SAFE_ENV_NAME_RE.match(k)}
+    overrides = _filter_env_overrides(overrides)
     env_prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in overrides.items())
     inner = f"cd {shlex.quote(cwd)} && {env_prefix}{cli_invocation}"
 
