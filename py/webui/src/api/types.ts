@@ -508,6 +508,8 @@ export interface StatusPayload {
   remote_desktop: { running: boolean; port: number | null };
   /** Registered extension route prefixes (e.g. "/readlist/" when claudeops-enterprise is loaded). Absent on older backends. */
   ext_routes?: string[];
+  /** Çok kullanıcı: admin olmayan kullanıcıya süzülmüş yayın (enterprise `filter_status`); filo/ayar/değnekçi sekmeleri gizlenir. */
+  restricted?: boolean;
   /** Claude (Anthropic API) hizmetli ucli oturumlarının bugünkü dolar toplamı (alt sınır) ve günlük tavan (`ucli_cost.daily_cap_usd`;
    * 0 = tavan yok). Eski backend'de yok. */
   ucli_cost?: { today_usd: number; cap_usd: number; pct: number | null; cache_ttl: string; by_session?: { session: string; usd: number }[]; rate_1h_usd?: number; rate_15m_usd?: number; credit_total_usd?: number; spent_total_usd?: number; credit_left_usd?: number };

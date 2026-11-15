@@ -77,6 +77,11 @@ function AppShell() {
   useEffect(() => {
     if (uiExtsLoaded && isExtTab(activeTab) && !activeExt) setActiveTabState("running");
   }, [uiExtsLoaded, activeTab, activeExt]);
+  // Süzülmüş kullanıcıda gizli sekme saklıysa (admin olarak seçilmişti) oturum listesine dön.
+  const hiddenWhenRestricted = ["team", "steward", "desktop", "snapshots", "readlist", "diag", "settings"];
+  useEffect(() => {
+    if (data?.restricted && hiddenWhenRestricted.includes(activeTab)) setActiveTabState("running");
+  }, [data?.restricted, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const openExtSession = useCallback((host: string, name: string) => setOpenTerminalFor({ host: host || LOCAL_HOST, name }), []);
   // viewSessionFor: which STOPPED session's read-only Chat+Files popup (if
   // any) is open — separate state from openTerminalFor on purpose, since

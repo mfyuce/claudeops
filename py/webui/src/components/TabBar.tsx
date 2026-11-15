@@ -66,9 +66,13 @@ export function TabBar({ active, onSelect, search, extensions = [] }: TabBarProp
     ["settings", t.tabSettings],
   ];
 
+  // Süzülmüş (admin olmayan) yayında bu sekmelerin verisi yok: gizle (yalnız oturum listeleri, geçmiş, ucli ve uzantılar kalır).
+  const RESTRICTED_HIDE: readonly string[] = ["team", "steward", "desktop", "snapshots", "readlist", "diag", "settings"];
+  const shown = data.restricted ? tabs.filter(([k]) => !RESTRICTED_HIDE.includes(k)) : tabs;
+
   return (
     <div className="tabs">
-      {tabs.map(([key, label]) => (
+      {shown.map(([key, label]) => (
         <button key={key} type="button" className={active === key ? "active" : ""} onClick={() => onSelect(key)}>
           {label}
         </button>
