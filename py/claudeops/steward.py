@@ -4678,7 +4678,7 @@ def ucli_idle_threshold(cfg: Config, cache_ttl: str) -> int:
     return cfg.ucli_idle_nudge_secs_1h if (cache_ttl or "").strip().lower() == "1h" else cfg.ucli_idle_nudge_secs
 
 
-_COND_RE = re.compile(r"\b\w{3,}(?:[ıiuü]rs[ae]|[ae]rs[ae]|[ae]yse|[ıiuü]yorsa|[ae]cekse|[ıi]ls[ae])\b|\b(olursa|olunca|olduğunda|olduğu zaman|gelirse|gelince|gelmeden|biterse|bitince|bittiğinde|eğer|ise|koşul\w*|aksi halde|bekle\w*|"
+_COND_RE = re.compile(r"\b\w{3,}(?:[ıiuü]rs[ae]|[ae]rs[ae]|m[ae]zs[ae]|[ae]yse|[ıiuü]yorsa|[ae]cekse|[ıi]ls[ae])\b|\b(olursa|olmazsa|varsa|yoksa|olsa|olmasa|olunca|olduğunda|olduğu zaman|gelirse|gelince|gelmeden|biterse|bitince|bittiğinde|eğer|ise|koşul\w*|aksi halde|bekle\w*|"
                       r"if|when|once|unless|provided|after|until|pending)\b", re.IGNORECASE)
 
 

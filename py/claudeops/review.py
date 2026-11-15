@@ -932,7 +932,11 @@ def _fold(v: Any) -> str:
 def finding_key(proj: str, where: Any, title: Any) -> str:
     """Bulgu kimliği (TBD#137c): (proje, dosya, normalize başlık) hash'i. Dosya = `where`in `:satır` öncesi (harf duyarlı); başlık küçük harf,
     harf/rakam dışı atılır: aynı hata farklı koşuda/satırda yeniden bulunsa aynı anahtar."""
-    fil = re.split(r"[:#]", str(where or "").strip().strip("`"), maxsplit=1)[0].strip().strip("`")
+    w = str(where or "").strip()
+    ml = re.match(r"^\[([^\]]*)\]\([^)]*\)", w)      # Markdown bağlantı `[dosya:satır](file://...#L1-L9)`: görünen metin dosyadır, hedef değil
+    if ml:
+        w = ml.group(1).strip()
+    fil = re.split(r"[:#]", w.strip("`"), maxsplit=1)[0].strip().strip("`")
     fil = re.sub(r"^(\./|file://)", "", fil)
     ttl = re.sub(r"[^0-9a-z]+", " ", _fold(title)).strip()
     return hashlib.sha1(f"{proj}\x00{fil}\x00{ttl}".encode("utf-8")).hexdigest()[:16]
