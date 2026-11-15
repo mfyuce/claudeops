@@ -121,6 +121,44 @@ class HttpTest(unittest.TestCase):
         self.assertNotEqual(code, 403)
         self.assertEqual(self.call("POST", "/api/files/ticket", {"Cookie": "x=1"}, {"name": "theirs", "path": "a"})[0], 403)
 
+    def test_orch_get_names_query_denied_if_any_name_denied(self):
+        res = []
+        authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)))
+        authz.set_authorizer(lambda p, a, r: (res.append((a, r.name)) or r.name != "theirs"))
+        self.assertEqual(self.call("GET", "/api/session/facts?names=mine,theirs", {"Cookie": "x=1"})[0], 403)
+        self.assertEqual(res, [("status.read", "mine"), ("status.read", "theirs")])
+
+    def test_files_without_name_is_400_even_when_global_allowed(self):
+        authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)))
+        authz.set_authorizer(lambda p, a, r: r.kind == "global")           # kaynaksız istek geçer, ama dosyaya ulaşamaz
+        h = {"Cookie": "x=1"}
+        self.assertEqual(self.call("GET", "/api/files/read?path=/etc/passwd", h)[0], 400)
+        self.assertEqual(self.call("GET", "/api/files/download?path=/etc/passwd", h)[0], 400)
+        self.assertEqual(self.call("GET", "/api/files/list?path=/", h)[0], 400)
+        self.assertEqual(self.call("POST", "/api/files/ticket", h, {"path": "/etc/passwd"})[0], 400)
+        self.assertEqual(self.call("POST", "/api/files/write", h, {"path": "/tmp/x", "content": "x"})[0], 400)
+        self.assertEqual(self.call("POST", "/api/files/delete", h, {"path": "/tmp/x"})[0], 400)
+        self.assertEqual(self.call("POST", "/api/files/ticket", h, {"name": "  ", "path": "a"})[0], 400)
+
+    def test_ws_handshake_filters_status_for_principal(self):
+        try:
+            from websockets.sync.client import connect
+        except ImportError:
+            self.skipTest("websockets kurulu değil")
+        authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)) if v.cookies.get("cops_t") == "good" else None)
+        authz.set_status_filter(lambda p, d: {"sessions": [s for s in d["sessions"] if s["name"] == "mine"]})
+        payload = {"sessions": [{"name": "mine"}, {"name": "theirs"}]}
+        url = f"ws://127.0.0.1:{self.port}/ws"
+        with mock.patch.object(web, "_status_payload", lambda: payload):
+            with connect(url, additional_headers={"Cookie": "cops_t=good"}, ping_interval=None, close_timeout=3) as c:
+                msg = json.loads(c.recv(timeout=5))
+            self.assertEqual(msg["data"], {"sessions": [{"name": "mine"}]})          # süzülmüş ilk push
+            with self.assertRaises(Exception):                                       # kimliksiz: 401, yükseltme yok
+                connect(url, ping_interval=None, close_timeout=3)
+            authz.set_status_filter(None)
+            with connect(url, additional_headers={"Cookie": "cops_t=good"}, ping_interval=None, close_timeout=3) as c:
+                self.assertEqual(json.loads(c.recv(timeout=5))["data"], payload)    # süzgeç yoksa aynen
+
     def test_status_filter_applied(self):
         authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)))
         authz.set_status_filter(lambda p, d: {"sessions": [], "who": p.uid})
@@ -279,6 +317,21 @@ class ResourcesTest(unittest.TestCase):
         self.assertEqual(r[0].name, "m1")
         self.assertEqual(authz.resources_from("/api/files/list", {"name": ["q"]}, None)[0].name, "q")
         self.assertEqual(authz.resources_from("/api/settings", {}, {})[0].kind, "global")
+
+    def test_names_query_and_body_each_a_resource(self):
+        r = authz.resources_from("/api/session/facts", {"names": ["a, b,,c", "d"], "host": ["h"]}, None)
+        self.assertEqual([(x.kind, x.host, x.name) for x in r], [("session", "h", n) for n in "abcd"])
+        r = authz.resources_from("/api/orch/status", {"names": ["a,b"]}, {"names": ["b", "z"], "name": "a"})
+        self.assertEqual([x.name for x in r], ["a", "b", "z"])                  # tekrarsız, hepsi ayrı
+        self.assertEqual(authz.resources_from("/api/orch/status", {"names": [" , "]}, None)[0].kind, "global")
+
+    def test_files_path_never_becomes_a_resource(self):
+        # Mevcut durum belgesi: `path` kaynak üretmez; sahiplik YALNIZ `name`/`host` ile sınanır. `name` yoksa kaynak `global`,
+        # ama tüm /api/files/* uçları name yoksa 400 (name_required) döner, dosyaya dokunmaz.
+        r = authz.resources_from("/api/files/read", {"path": ["/etc/passwd"]}, None)
+        self.assertEqual([(x.kind, x.name) for x in r], [("global", "")])
+        r = authz.resources_from("/api/files/write", {}, {"path": "/etc/passwd", "content": "x", "name": "mine"})
+        self.assertEqual([(x.kind, x.name) for x in r], [("session", "mine")])
 
     def test_event_sink_error_swallowed(self):
         authz.reset()

@@ -332,6 +332,10 @@ def resources_from(path: str, qs: Mapping[str, Any], data: Optional[dict]) -> Li
     if isinstance(names, list):
         for n in names:
             add(host, n)
+    qv = qs.get("names") or []         # GET: `?names=a,b` (virgüllü; birden çok `names=` değeri de olabilir): her ad AYRI kaynak
+    for chunk in (qv if isinstance(qv, (list, tuple)) else [qv]):
+        for n in str(chunk).split(","):
+            add(host, n)
     return out or [Resource(kind="global", host=host)]
 
 
