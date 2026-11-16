@@ -233,7 +233,7 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
         if n > 0:
             out[key] = n
     # instructions_user: operatörün ~/.claude/CLAUDE.md'si seçilen model hizmetine gider (gizlilik): VARSAYILAN KAPALI.
-    for key in ("no_prompt_cache", "show_usage", "instructions_user"):
+    for key in ("no_prompt_cache", "show_usage", "instructions_user", "checkpoint"):
         v = raw.get(key)
         if v in (None, "", False, 0, "0", "false", "no", "off"):
             continue

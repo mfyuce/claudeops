@@ -40,6 +40,8 @@ export interface UcliStartState {
   noPromptCache: boolean;
   /** `--show-usage` (default off). */
   showUsage: boolean;
+  /** `--checkpoint` (default off): raw transcript scratch file under .ucli/chat/checkpoints/. */
+  checkpoint: boolean;
   /** `instructions_user`: ucli `--instructions-user` (default off; sends ~/.claude/CLAUDE.md to the model service). */
   instructionsUser: boolean;
   /** `--allow-image` / `--allow-scholar` (default off). */
@@ -119,6 +121,7 @@ export const EMPTY_UCLI_START: UcliStartState = {
   price: "",
   noPromptCache: false,
   showUsage: false,
+  checkpoint: false,
   instructionsUser: false,
   allowImage: false,
   allowScholar: false,
@@ -168,6 +171,7 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
   for (const [k, v] of lim) if (v.trim()) o[k] = v.trim();
   if (s.noPromptCache) o.no_prompt_cache = true;
   if (s.showUsage) o.show_usage = true;
+  if (s.checkpoint) o.checkpoint = true;
   if (s.instructionsUser) o.instructions_user = true;
   if (s.allowImage) o.allow_image = true;
   if (s.allowScholar) o.allow_scholar = true;
@@ -417,6 +421,9 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
       </label>
       <label title={tr ? "Her model isteği için stderr'e token/gecikme satırı yazar; stdout etkilenmez." : "Prints one stderr line per model request (tokens, latency); stdout unaffected."}>
         <input type="checkbox" checked={value.showUsage} onChange={(e) => set({ showUsage: e.target.checked })} /> {tr ? "kullanımı göster" : "show usage"}
+      </label>
+      <label title={tr ? "Varsayılan kapalı. Ham transkript her turda .ucli/chat/checkpoints/ altına yazılır; otomatik devam DEĞİL, elle incelemek içindir. Gizli bilgi içerebilir; başarılı bitişte silinir, hatada kalır." : "Off by default. The raw transcript is written under .ucli/chat/checkpoints/ each round; NOT automatic resume, for manual inspection only. May contain secrets; deleted on success, left behind on failure."}>
+        <input type="checkbox" checked={value.checkpoint} onChange={(e) => set({ checkpoint: e.target.checked })} /> {tr ? "checkpoint (ham transkript, gizli bilgi olabilir)" : "checkpoint (raw transcript, may hold secrets)"}
       </label>
     </>
   );

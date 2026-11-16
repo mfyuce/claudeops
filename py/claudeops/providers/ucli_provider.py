@@ -690,7 +690,7 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
     for key, flag in (("max_prompt_tokens", "--max-prompt-tokens"), ("max_repeated_calls", "--max-repeated-calls"),
                       ("max_consecutive_failures", "--max-consecutive-failures"),
                       ("max_continuation_steps", "--max-continuation-steps"), ("exec_per_script", "--exec-per-script"),
-                      ("price", "--price"), ("no_prompt_cache", "--no-prompt-cache"), ("show_usage", "--show-usage"),
+                      ("price", "--price"), ("no_prompt_cache", "--no-prompt-cache"), ("show_usage", "--show-usage"), ("checkpoint", "--checkpoint"),
                       ("instructions_user", "--instructions-user"), ("instructions_max_kib", "--instructions-max-kib")):
         val = opts.get(key)
         if not val:
