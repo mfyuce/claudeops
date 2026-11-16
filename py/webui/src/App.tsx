@@ -211,9 +211,6 @@ function AppShell() {
       <div className="topbar">
         <div className="topbar-title">
           <h1>{t.title}</h1>
-          <span className="build-badge" title="React + TypeScript + WebSocket rewrite — feature/react-ui">
-            React
-          </span>
         </div>
         <div className="langsw">
           <button type="button" className={lang === "tr" ? "active" : ""} onClick={() => setLang("tr")}>
