@@ -53,7 +53,7 @@ body {
   background: var(--bg); color: var(--text);
   font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
-.wrap { max-width: min(96vw, 1800px); margin: 0 auto; } /* 2026-11-16: 960px'ti; tablo ve üst bölümler aynı genişlikte */
+.wrap { margin: 0 auto; } /* 2026-11-16: max-width kısıtı (960px) kaldırıldı; sayfa body kenar boşluğuyla tüm genişliğe yayılır */
 h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
 .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .25rem; }
 .topbar-title { display: flex; align-items: baseline; gap: .5rem; }
