@@ -123,7 +123,7 @@ export function SessionRow({
             onChange={(e) => selection.toggle(rowKey(session), e.target.checked)}
           />
         </td>
-        <td>
+        <td className="namecell">
           {session.name}
           {session.host === LOCAL_HOST && <LabelChips projectKey={session.label_key ?? session.name} labels={session.labels} />}
           <div className="mobile-meta">

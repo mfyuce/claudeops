@@ -180,6 +180,9 @@ td.hocell { font-size: .78rem; }
 .ho-yes { color: var(--amber); font-weight: 600; cursor: help; }
 .ho-no { color: var(--muted); opacity: .6; cursor: help; }
 .tablewrap { overflow-x: auto; }
+/* Uzun oturum adı (ancient-script-pipeline-fd20261113) bölünemeyen tek sözcüktü: sütunun
+   min genişliğini o belirleyip tabloyu taşırıyordu. Ad + rozetler hücre içinde sarılsın. */
+td.namecell { overflow-wrap: anywhere; }
 /* 2026-11-16: `.wrap` 960px'te kalıyor ama oturum tablosu (10 sütun, ctx/Σ rozetleri)
    buna sığmıyor: işlem butonları sağda kırpılıyordu. Geniş ekranda tablo sarmalayıcısı
    960px sütunun dışına, ekran genişliğinin %96'sına (en çok 1800px) taşar; yazı ağırlıklı
