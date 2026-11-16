@@ -32,6 +32,10 @@ import { useLang } from "../i18n/LangContext";
 import { showToast } from "../state/toast";
 import type { ReviewFinding, ReviewLesson, ReviewRemoteProject, ReviewPair, ReviewRun, ReviewStateResult } from "../api/types";
 import { ReviewChatModal } from "./ReviewChatModal";
+import { Pagination } from "./shared/Pagination";
+import { usePagination } from "../hooks/usePagination";
+
+type ReviewSub = "board" | "where" | "lessons" | "findings" | "settings";
 
 const STATUS_COLOR: Record<string, string> = {
   done: "#2e9d57",
@@ -113,6 +117,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
   const [lessonTarget, setLessonTarget] = useState("");
   const [showDoneLessons, setShowDoneLessons] = useState(false);
   const [openRun, setOpenRun] = useState<ReviewRun | null>(null);
+  const [sub, setSub] = useState<ReviewSub>("board");
   const sidRef = useRef(sid);
   useEffect(() => {
     sidRef.current = sid;
@@ -174,6 +179,11 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
   const running = st?.running ?? [];
   const projects = (st?.pool ?? []).map((r) => r.project);
   const exportProjects = Array.from(new Set(findings.filter((f) => f.state === "approved").map((f) => f.project)));
+  const visibleLessons = lessons.filter((l) => showDoneLessons || l.status !== "done").slice().reverse();
+  const poolPg = usePagination(st?.pool ?? []);
+  const wherePg = usePagination(st?.remote_projects ?? []);
+  const lessonPg = usePagination(visibleLessons);
+  const findingPg = usePagination(findings);
 
   function Cell({ project, tk, mode, model, pair }: { project: string; tk: string; mode: string; model: string; pair: ReviewPair | null | undefined }) {
     const status = pair?.status ?? "";
@@ -220,6 +230,26 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
       {st && !st.enabled && <div className="warn-banner">{t.rvOff}</div>}
       {error && <ErrorBox text={error} />}
 
+      <div className="tabs">
+        <button type="button" className={sub === "board" ? "active" : ""} onClick={() => setSub("board")}>
+          {t.rvSubBoard} ({st?.pool.length ?? 0})
+        </button>
+        <button type="button" className={sub === "where" ? "active" : ""} onClick={() => setSub("where")}>
+          {t.rvWhereTitle} ({(st?.remote_projects ?? []).length})
+        </button>
+        <button type="button" className={sub === "lessons" ? "active" : ""} onClick={() => setSub("lessons")}>
+          {t.rvLessons} ({lessons.filter((l) => l.status !== "done").length})
+        </button>
+        <button type="button" className={sub === "findings" ? "active" : ""} onClick={() => setSub("findings")}>
+          {t.rvFindings} ({findings.length})
+        </button>
+        <button type="button" className={sub === "settings" ? "active" : ""} onClick={() => setSub("settings")}>
+          {t.rvSubSettings}
+        </button>
+      </div>
+
+      {sub === "board" && (
+        <>
       {st && st.pool.length === 0 && <span className="opts-hint">{t.rvNoPool}</span>}
       {st && targets.length === 0 && <span className="opts-hint">{t.rvNoTargets}</span>}
       {st && st.pool.length > 0 && (
@@ -240,7 +270,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
               </tr>
             </thead>
             <tbody>
-              {st.pool.map((row) => (
+              {poolPg.pageItems.map((row) => (
                 <tr key={row.project}>
                   <td>
                     <input
@@ -294,14 +324,24 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           </table>
         </div>
       )}
+      {st && st.pool.length > 0 && <Pagination page={poolPg.page} totalPages={poolPg.totalPages} onChange={poolPg.setPage} />}
+        </>
+      )}
+      {sub === "where" && (
+        <>
+      {st && (st.remote_projects ?? []).length === 0 && <span className="opts-hint">—</span>}
       {st && (st.remote_projects ?? []).length > 0 && (
         <div className="opts" style={{ flexDirection: "column", alignItems: "stretch" }}>
           <b>{t.rvWhereTitle}</b>
-          {(st.remote_projects ?? []).map((rp) => (
+          {wherePg.pageItems.map((rp) => (
             <WhereRow key={`${rp.project}:${rp.where}:${rp.local_path}`} rp={rp} busy={busy} t={t} onApply={(pr, w, lp) => void act(() => apiReviewWhere(sid, pr, w, lp))} />
           ))}
         </div>
       )}
+      <Pagination page={wherePg.page} totalPages={wherePg.totalPages} onChange={wherePg.setPage} />
+        </>
+      )}
+      {sub === "board" && (
       <div className="opts">
         <input
           type="text"
@@ -317,6 +357,9 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           {t.rvAddBtn}
         </button>
       </div>
+      )}
+      {sub === "settings" && (
+        <>
       {st && (
       <div className="opts" title={t.rvAutoHint}>
         <label>
@@ -411,7 +454,11 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           onSave={(v) => void act(() => apiStewardConfig("review_verify_model", v, sid), t.rvDone)} />
 </div>
       )}
+        </>
+      )}
 
+      {sub === "board" && (
+        <>
       <h4 style={{ margin: 0 }}>{t.rvRunning}</h4>
       {running.length === 0 && <span className="opts-hint">{t.rvNoRunning}</span>}
       {running.length > 0 && (
@@ -431,6 +478,8 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           ))}
         </div>
       )}
+        </>
+      )}
 
       {file && (
         <div style={card}>
@@ -445,6 +494,8 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
         </div>
       )}
 
+      {sub === "lessons" && (
+        <>
       <h4 style={{ margin: 0 }}>
         {t.rvLessons}
         {lessonTarget ? ` → ${lessonTarget}` : ""}
@@ -456,11 +507,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           {showDoneLessons ? "işlenenleri gizle" : `işlenenleri göster (${lessons.filter((l) => l.status === "done").length})`}
         </button>
       )}
-      {lessons
-        .filter((l) => showDoneLessons || l.status !== "done")
-        .slice()
-        .reverse()
-        .map((l) => {
+      {lessonPg.pageItems.map((l) => {
           const label = { pending: t.rvLessonPending, sent: t.rvLessonSent, stale: t.rvLessonStale, failed: t.rvLessonFailed, done: t.rvLessonDone }[l.status];
           return (
             <div key={l.id} style={card}>
@@ -485,7 +532,12 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
             </div>
           );
         })}
+      <Pagination page={lessonPg.page} totalPages={lessonPg.totalPages} onChange={lessonPg.setPage} />
+        </>
+      )}
 
+      {sub === "findings" && (
+        <>
       <h4 style={{ margin: 0 }}>{t.rvFindings}</h4>
       <div className="opts">
         <select value={fProject} onChange={(e) => setFProject(e.target.value)} aria-label={t.rvProject}>
@@ -538,7 +590,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
         )}
       </div>
       {findings.length === 0 && <span className="opts-hint">{t.rvNoFindings}</span>}
-      {findings.map((f) => (
+      {findingPg.pageItems.map((f) => (
         <div key={f.id} style={card}>
           <div className="legend" style={{ margin: 0, overflowWrap: "anywhere" }}>
             <b>{f.project}</b> · {f.ref} · {f.severity} · <span className="cli-badge">{f.state}</span>
@@ -577,6 +629,9 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           </div>
         </div>
       ))}
+      <Pagination page={findingPg.page} totalPages={findingPg.totalPages} onChange={findingPg.setPage} />
+        </>
+      )}
       {openRun && <ReviewChatModal key={openRun.io} run={openRun} onClose={() => setOpenRun(null)} />}
     </div>
   );

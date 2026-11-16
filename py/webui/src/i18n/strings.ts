@@ -790,6 +790,8 @@ export interface Strings {
   rvComplete: string;
   rvNever: string;
   rvPoolAdd: string;
+  rvSubBoard: string;
+  rvSubSettings: string;
   rvWhereTitle: string;
   rvWhereLocalPath: string;
   rvWhereApply: string;
@@ -1763,6 +1765,8 @@ export const STRINGS: Record<Lang, Strings> = {
     rvComplete: "30 gün tamam",
     rvNever: "hiç",
     rvPoolAdd: "Projeyi havuza ekle",
+    rvSubBoard: "Review panosu",
+    rvSubSettings: "Ayarlar",
     rvWhereTitle: "Uzak projelerde review yeri",
     rvWhereLocalPath: "yerel kopya yolu (mutlak, git)",
     rvWhereApply: "Uygula",
@@ -2737,6 +2741,8 @@ export const STRINGS: Record<Lang, Strings> = {
     rvComplete: "30d complete",
     rvNever: "never",
     rvPoolAdd: "Add project to pool",
+    rvSubBoard: "Review board",
+    rvSubSettings: "Settings",
     rvWhereTitle: "Where remote projects are reviewed",
     rvWhereLocalPath: "local copy path (absolute, git)",
     rvWhereApply: "Apply",
