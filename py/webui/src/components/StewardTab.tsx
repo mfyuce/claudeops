@@ -40,11 +40,15 @@ import { StewardQuota } from "./StewardQuota";
 import { StewardUsageMode } from "./StewardUsageMode";
 import { StewardBrainModel } from "./StewardBrainModel";
 import { ReviewPanel } from "./ReviewPanel";
+import { Pagination } from "./shared/Pagination";
+import { usePagination } from "../hooks/usePagination";
 import { StewardActions } from "./StewardActions";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { showToast } from "../state/toast";
 import type { StewardHostHealth, StewardQuestion, StewardStateResult } from "../api/types";
+
+type StewardSub = "ops" | "questions" | "ideas" | "jobs" | "projects" | "pending";
 
 function ago(ts: number | undefined, never: string): string {
   if (!ts) return never;
@@ -175,6 +179,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
   const [xferProject, setXferProject] = useState("");
   const [xferTo, setXferTo] = useState("");
   const [pickedSid, setPickedSid] = useState(readSid);
+  const [sub, setSub] = useState<StewardSub>("ops");
 
   // Identity rows (multi-steward, P6). One identity (or an older backend without the slice) = no picker, UI as before.
   const rows = data?.stewards;
@@ -239,6 +244,11 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
     }
   }
 
+  const qPg = usePagination(state?.questions ?? []);
+  const ideaPg = usePagination(state?.ideas ?? []);
+  const pendPg = usePagination(state?.pending ?? []);
+  const projPg = usePagination(state?.projects ?? []);
+  const recentPg = usePagination(state?.recent ?? data?.steward?.recent ?? []);
   if (!data) return null;
   const pickerButtons = multi && (
     <div className="opts" role="group" aria-label={t.stewardPick}>
@@ -448,63 +458,6 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </div>
       </div>
 
-      <h3 style={{ margin: ".4rem 0 0" }}>
-        {t.stewardQuestionsTitle}
-        {s && !s.enabled && state && state.questions.length > 0 && (
-          <span className="warn-banner" style={{ marginLeft: ".5rem", fontSize: ".75rem", padding: ".1rem .4rem" }} title={t.stewardClosedQuestionsHint}>
-            {t.stewardClosedQuestionsBadge(state.questions.length)}
-          </span>
-        )}
-      </h3>
-      {!state && <div className="opts-hint" role="status">…</div>}
-      {state && state.questions.length === 0 && <span className="opts-hint">{t.stewardNoQuestions}</span>}
-      {state?.questions.map((q) => (
-        <QuestionCard key={q.id} q={q} sid={sid} health={q.host ? state.remote_hosts?.[q.host] : undefined} onAnswered={() => void load().then(refresh)} />
-      ))}
-      <details>
-        <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardAskTitle}</summary>
-        <div className="opts" style={{ marginTop: ".4rem" }}>
-          <input
-            type="text"
-            value={askText}
-            placeholder={t.stewardAskPlaceholder}
-            style={{ flex: 2, minWidth: "14rem" }}
-            onChange={(e) => setAskText(e.target.value)}
-          />
-          <input
-            type="text"
-            value={askOptions}
-            placeholder={t.stewardAskOptionsPlaceholder}
-            style={{ flex: 2, minWidth: "14rem" }}
-            onChange={(e) => setAskOptions(e.target.value)}
-          />
-          <button
-            type="button"
-            disabled={busy || !askText.trim()}
-            onClick={() =>
-              void run(
-                () =>
-                  apiStewardAsk(
-                    "",
-                    askText,
-                    askOptions
-                      .split(",")
-                      .map((o) => o.trim())
-                      .filter(Boolean),
-                    sid,
-                  ),
-                () => {
-                  setAskText("");
-                  setAskOptions("");
-                },
-              )
-            }
-          >
-            {t.stewardAskBtn}
-          </button>
-        </div>
-      </details>
-
       <details>
         <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardIdTitle}</summary>
         <div className="opts" style={{ marginTop: ".4rem", flexDirection: "column", alignItems: "flex-start", gap: ".4rem" }}>
@@ -564,22 +517,168 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </div>
       </details>
 
+      <div className="tabs">
+        <button type="button" className={sub === "ops" ? "active" : ""} onClick={() => setSub("ops")}>
+          {t.stewardSubOps}
+        </button>
+        <button type="button" className={sub === "questions" ? "active" : ""} onClick={() => setSub("questions")}>
+          {t.stewardQuestionsTitle} ({s.open_questions})
+        </button>
+        <button type="button" className={sub === "ideas" ? "active" : ""} onClick={() => setSub("ideas")}>
+          {t.stewardIdeasTitle} ({s.ideas_new})
+        </button>
+        <button type="button" className={sub === "jobs" ? "active" : ""} onClick={() => setSub("jobs")}>
+          {t.stewardSubJobs}
+        </button>
+        <button type="button" className={sub === "projects" ? "active" : ""} onClick={() => setSub("projects")}>
+          {t.stewardProjectsTitle} ({projectsTotal})
+        </button>
+        <button type="button" className={sub === "pending" ? "active" : ""} onClick={() => setSub("pending")}>
+          {t.stewardPendingTitle} ({s.pending_items})
+        </button>
+      </div>
+      {sub === "ops" && (
+        <>
       <StewardActions sid={sid} projects={(state?.projects || []).map((p) => ({ name: p.name, running: !!p.running }))} />
       <StewardQuota />
       <StewardUsageMode />
       <StewardDigests sid={sid} refreshKey={key} />
-      <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} />
+      <LoopGuardBox items={state?.loop_guard} sid={sid} run={run} busy={busy} lang={lang} />
+      {s.recent && s.recent.length > 0 && (
+        <>
+          <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardRecentTitle}</h3>
+          <div className="legend" style={{ margin: 0 }}>
+            {recentPg.pageItems.map((r, idx) => (
+              <div key={`${r.ts}-${idx}`}>
+                {ago(r.ts, t.stewardNever)} · {r.kind} {r.name}
+                {r.host ? `@${r.host}` : ""}
+                {r.dry ? ` (${t.stewardDry})` : ""}
+                {r.ok === false ? ` ✗ ${r.detail ?? ""}` : ""}
+                {r.reason ? ` — ${r.reason}` : ""}
+              </div>
+            ))}
+          </div>
+          <Pagination page={recentPg.page} totalPages={recentPg.totalPages} onChange={recentPg.setPage} />
+        </>
+      )}
+        </>
+      )}
+      {sub === "questions" && (
+        <>
+      {s && !s.enabled && state && state.questions.length > 0 && (
+        <span className="warn-banner" style={{ fontSize: ".75rem", padding: ".1rem .4rem" }} title={t.stewardClosedQuestionsHint}>
+          {t.stewardClosedQuestionsBadge(state.questions.length)}
+        </span>
+      )}
+      {!state && <div className="opts-hint" role="status">…</div>}
+      {state && state.questions.length === 0 && <span className="opts-hint">{t.stewardNoQuestions}</span>}
+      {qPg.pageItems.map((q) => (
+        <QuestionCard key={q.id} q={q} sid={sid} health={q.host ? state?.remote_hosts?.[q.host] : undefined} onAnswered={() => void load().then(refresh)} />
+      ))}
+      <Pagination page={qPg.page} totalPages={qPg.totalPages} onChange={qPg.setPage} />
+      <details>
+        <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardAskTitle}</summary>
+        <div className="opts" style={{ marginTop: ".4rem" }}>
+          <input
+            type="text"
+            value={askText}
+            placeholder={t.stewardAskPlaceholder}
+            style={{ flex: 2, minWidth: "14rem" }}
+            onChange={(e) => setAskText(e.target.value)}
+          />
+          <input
+            type="text"
+            value={askOptions}
+            placeholder={t.stewardAskOptionsPlaceholder}
+            style={{ flex: 2, minWidth: "14rem" }}
+            onChange={(e) => setAskOptions(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={busy || !askText.trim()}
+            onClick={() =>
+              void run(
+                () =>
+                  apiStewardAsk(
+                    "",
+                    askText,
+                    askOptions
+                      .split(",")
+                      .map((o) => o.trim())
+                      .filter(Boolean),
+                    sid,
+                  ),
+                () => {
+                  setAskText("");
+                  setAskOptions("");
+                },
+              )
+            }
+          >
+            {t.stewardAskBtn}
+          </button>
+        </div>
+      </details>
 
-      <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardPendingTitle}</h3>
-      {state && (state.pending?.length ?? 0) === 0 && <span className="opts-hint">{t.stewardNoPending}</span>}
-      {state?.pending?.map((it, idx) => (
-        <div key={`${it.kind}-${it.name}-${idx}`} className="legend" style={{ margin: 0 }}>
-          <span className="cli-badge">{it.kind}</span> <b>{it.name}</b> {it.text}
+        </>
+      )}
+      {sub === "ideas" && (
+        <>
+      {state && state.ideas.length === 0 && <span className="opts-hint">{t.stewardNoIdeas}</span>}
+      {state && state.ideas.length > 0 && (
+        <label className="opts-hint">
+          {t.stewardExportTarget}{" "}
+          <select value={exportTarget} onChange={(e) => setExportTarget(e.target.value === "all" ? "all" : "project")}>
+            <option value="project">{t.stewardExportProject}</option>
+            <option value="all">{t.stewardExportAll}</option>
+          </select>
+        </label>
+      )}
+      {ideaPg.pageItems.map((i) => (
+        <div key={i.id} className="opts" style={card}>
+          <span style={{ flex: 1, minWidth: "12rem" }}>
+            {i.text} <span className="legend">({ago(i.created_at, t.stewardNever)}{i.source ? `, ${i.source}` : ""})</span>
+          </span>
+          <button type="button" disabled={busy} title={t.stewardIdeaToTodoTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "todo", exportTarget, sid), () => showToast(t.stewardIdeaExported))}>
+            {t.stewardIdeaToTodo}
+          </button>
+          <button type="button" disabled={busy} title={t.stewardIdeaToTbdTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "tbd", exportTarget, sid), () => showToast(t.stewardIdeaExported))}>
+            {t.stewardIdeaToTbd}
+          </button>
+          <button type="button" className="retire" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "later", sid))}>
+            {t.stewardIdeaLater}
+          </button>
+          <button type="button" className="closebtn" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "dropped", sid))}>
+            {t.stewardIdeaDrop}
+          </button>
         </div>
       ))}
+      <Pagination page={ideaPg.page} totalPages={ideaPg.totalPages} onChange={ideaPg.setPage} />
+      <div className="opts">
+        <input
+          type="text"
+          value={ideaText}
+          placeholder={t.stewardIdeaPlaceholder}
+          style={{ flex: 1, minWidth: "14rem" }}
+          onChange={(e) => setIdeaText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && ideaText.trim()) void run(() => apiStewardIdea(ideaText, sid), () => setIdeaText(""));
+          }}
+        />
+        <button type="button" disabled={busy || !ideaText.trim()} onClick={() => void run(() => apiStewardIdea(ideaText, sid), () => setIdeaText(""))}>
+          {t.stewardIdeaAddBtn}
+        </button>
+      </div>
 
-      <LoopGuardBox items={state?.loop_guard} sid={sid} run={run} busy={busy} lang={lang} />
-      <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardProjectsTitle}</h3>
+        </>
+      )}
+      {sub === "jobs" && (
+        <>
+      <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} />
+        </>
+      )}
+      {sub === "projects" && (
+        <>
       {state && state.projects.length === 0 && <span className="opts-hint">{t.stewardNoProjects}</span>}
       {state && state.projects.length > 0 && (
         <div className="tablewrap">
@@ -597,7 +696,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
               </tr>
             </thead>
             <tbody>
-              {state.projects.map((p) => (
+              {projPg.pageItems.map((p) => (
                 <tr key={p.name}>
                   <td>
                     <LabelChips projectKey={p.name} />
@@ -668,6 +767,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
           </table>
         </div>
       )}
+      <Pagination page={projPg.page} totalPages={projPg.totalPages} onChange={projPg.setPage} />
 
       <div className="opts">
         <input type="text" value={newProject} placeholder={t.stewardProjAddPlaceholder} onChange={(e) => setNewProject(e.target.value.trim())} />
@@ -680,66 +780,18 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </button>
       </div>
 
-      <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardIdeasTitle}</h3>
-      {state && state.ideas.length === 0 && <span className="opts-hint">{t.stewardNoIdeas}</span>}
-      {state && state.ideas.length > 0 && (
-        <label className="opts-hint">
-          {t.stewardExportTarget}{" "}
-          <select value={exportTarget} onChange={(e) => setExportTarget(e.target.value === "all" ? "all" : "project")}>
-            <option value="project">{t.stewardExportProject}</option>
-            <option value="all">{t.stewardExportAll}</option>
-          </select>
-        </label>
+        </>
       )}
-      {state?.ideas.map((i) => (
-        <div key={i.id} className="opts" style={card}>
-          <span style={{ flex: 1, minWidth: "12rem" }}>
-            {i.text} <span className="legend">({ago(i.created_at, t.stewardNever)}{i.source ? `, ${i.source}` : ""})</span>
-          </span>
-          <button type="button" disabled={busy} title={t.stewardIdeaToTodoTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "todo", exportTarget, sid), () => showToast(t.stewardIdeaExported))}>
-            {t.stewardIdeaToTodo}
-          </button>
-          <button type="button" disabled={busy} title={t.stewardIdeaToTbdTitle} onClick={() => void run(() => apiStewardIdeaExport(i.id, "tbd", exportTarget, sid), () => showToast(t.stewardIdeaExported))}>
-            {t.stewardIdeaToTbd}
-          </button>
-          <button type="button" className="retire" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "later", sid))}>
-            {t.stewardIdeaLater}
-          </button>
-          <button type="button" className="closebtn" disabled={busy} onClick={() => void run(() => apiStewardIdeaUpdate(i.id, "dropped", sid))}>
-            {t.stewardIdeaDrop}
-          </button>
+      {sub === "pending" && (
+        <>
+      {state && (state.pending?.length ?? 0) === 0 && <span className="opts-hint">{t.stewardNoPending}</span>}
+      {pendPg.pageItems.map((it, idx) => (
+        <div key={`${it.kind}-${it.name}-${idx}`} className="legend" style={{ margin: 0 }}>
+          <span className="cli-badge">{it.kind}</span> <b>{it.name}</b> {it.text}
         </div>
       ))}
-      <div className="opts">
-        <input
-          type="text"
-          value={ideaText}
-          placeholder={t.stewardIdeaPlaceholder}
-          style={{ flex: 1, minWidth: "14rem" }}
-          onChange={(e) => setIdeaText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && ideaText.trim()) void run(() => apiStewardIdea(ideaText, sid), () => setIdeaText(""));
-          }}
-        />
-        <button type="button" disabled={busy || !ideaText.trim()} onClick={() => void run(() => apiStewardIdea(ideaText, sid), () => setIdeaText(""))}>
-          {t.stewardIdeaAddBtn}
-        </button>
-      </div>
+      <Pagination page={pendPg.page} totalPages={pendPg.totalPages} onChange={pendPg.setPage} />
 
-      {s.recent && s.recent.length > 0 && (
-        <>
-          <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardRecentTitle}</h3>
-          <div className="legend" style={{ margin: 0 }}>
-            {(state?.recent ?? s.recent).slice(0, 12).map((r, idx) => (
-              <div key={`${r.ts}-${idx}`}>
-                {ago(r.ts, t.stewardNever)} · {r.kind} {r.name}
-                {r.host ? `@${r.host}` : ""}
-                {r.dry ? ` (${t.stewardDry})` : ""}
-                {r.ok === false ? ` ✗ ${r.detail ?? ""}` : ""}
-                {r.reason ? ` — ${r.reason}` : ""}
-              </div>
-            ))}
-          </div>
         </>
       )}
         </>

@@ -719,6 +719,8 @@ export interface Strings {
   stewardSetReview: string;
   stewardSetMaxActive: string;
   stewardPendingTitle: string;
+  stewardSubOps: string;
+  stewardSubJobs: string;
   stewardNoPending: string;
   stewardColCadence: string;
   stewardOpenTerminal: string;
@@ -1690,6 +1692,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardSetReview: "review eşiği (dk)",
     stewardSetMaxActive: "en çok aktif proje",
     stewardPendingTitle: "Bekleyen maddeler (sonraki tur)",
+    stewardSubOps: "Operasyonlar",
+    stewardSubJobs: "İş kuyruğu",
     stewardNoPending: "Bekleyen madde yok.",
     stewardColCadence: "cadence (dk)",
     stewardOpenTerminal: "Terminali aç",
@@ -2662,6 +2666,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardSetReview: "review threshold (min)",
     stewardSetMaxActive: "max active projects",
     stewardPendingTitle: "Pending items (next tour)",
+    stewardSubOps: "Operations",
+    stewardSubJobs: "Job queue",
     stewardNoPending: "No pending items.",
     stewardColCadence: "cadence (min)",
     stewardOpenTerminal: "Open terminal",
