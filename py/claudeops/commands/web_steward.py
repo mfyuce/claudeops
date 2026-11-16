@@ -6195,12 +6195,38 @@ def _brain_directive_blocks(name: str, data: Dict[str, Any], sid: str, projects:
     return None
 
 
+def _extension_park_note(name: str, text: str, p: Optional[sw.Project], sid: str) -> Optional[Dict[str, Any]]:
+    """`actor: extension` (okuma listesi vb.) direktifi oturumu AÇMAZ ve paused/done projeyi canlandırmaz: oturum açık
+    değilse ya da proje durdurulmuşsa metin projenin yerel TODO.md'sine `- [ ]` olarak yazılır (`parked: todo`).
+    `None` = oturum çalışıyor ve proje etkin, normal yol sürer."""
+    halted = p is not None and p.phase in ("paused", "done")
+    if not halted and _live_sessions(name, sid):
+        return None
+    if p is None or p.host:
+        return {"ok": False, "code": "closed", "error": f"{name}: oturum kapalı ve yerel proje klasörü yok; direktif açılmadı"}
+    cwd = _cwd_resolver()(p.name)
+    real = _doc_path(cwd, "TODO.md") if cwd else ""
+    if not real:
+        return {"ok": False, "code": "closed", "error": f"{name}: oturum kapalı ve TODO.md bulunamadı; direktif açılmadı"}
+    line = "- [ ] (uzantı direktifi, oturum kapalıydı) " + " ".join(text.split())
+    try:
+        with open(real, encoding="utf-8", errors="replace") as f:
+            body = f.read()
+        if line not in body:
+            with open(real, "a", encoding="utf-8") as f:
+                f.write(("" if body.endswith("\n") or not body else "\n") + line + "\n")
+    except OSError as e:
+        return {"ok": False, "code": "closed", "error": f"TODO.md yazılamadı: {e}"}
+    sw.log_event("directive_parked", paths=sid, name=name, project=p.name, phase=p.phase, actor="extension")
+    return {"ok": True, "name": name, "parked": "todo", "skipped": "session closed" if not halted else f"phase {p.phase}"}
+
+
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
-    if str(data.get("actor") or "") == "brain" and (steward_config(sid).drain or quota_blocking() or sw.panic_active()):
+    if str(data.get("actor") or "") in ("brain", "extension") and (steward_config(sid).drain or quota_blocking() or sw.panic_active()):
         return {"ok": False, "error": "draining: the steward takes no new work (human turned 'drain' on)", "code": "draining"}
     gated = _gate(name, data, "directive", sid)
     if gated is not None:
@@ -6215,6 +6241,10 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     with _ctx(sid).lock:
         projects = sw.load_projects(sid)
         p = _project_for_session(name, projects, _world(sid))
+        if str(data.get("actor") or "") == "extension":
+            parked = _extension_park_note(name, text, p, sid)      # kapalı oturum / paused-done proje: AÇMA, notu TODO.md'ye yaz
+            if parked is not None:
+                return parked
         if p is None:
             if _running(name) is None and not inst_mod.get_instance(name) and name not in (_act("fleet_status") or {}):
                 return {"ok": False, "error": "unknown session/project"}
