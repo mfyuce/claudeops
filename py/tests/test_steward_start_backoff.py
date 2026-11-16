@@ -36,6 +36,7 @@ class EnsureRunningBackoff(unittest.TestCase):
                   mock.patch.object(ws, "_model_endpoint_mismatch", lambda n: None),
                   mock.patch.object(ws, "_api_blocked", lambda n: None),
                   mock.patch.object(ws, "_closed_in_models", lambda n: False),
+                  mock.patch.object(ws, "_resume_ho_done", lambda n: False),
                   mock.patch.object(ws, "_resume_lacks_ho", lambda n, c: ""),
                   mock.patch.object(ws, "_oversized_resume", lambda n, c: 400000),
                   mock.patch.object(ws, "_launch_kwargs", lambda n, m, e: {}),
