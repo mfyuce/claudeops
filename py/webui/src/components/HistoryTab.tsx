@@ -144,6 +144,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
   const [hostErrors, setHostErrors] = useState<string[]>([]);
   const [runs, setRuns] = useState<ReviewRun[]>([]);
   const [openRun, setOpenRun] = useState<ReviewRun | null>(null);
+  const [subTab, setSubTab] = useState<"instances" | "reviews">("instances");
 
   const hostsKey = [LOCAL_HOST, ...(data?.hosts ?? []).map((h) => h.name)].join("\n");
   // Refetch when the set of running sessions changes (an instance stopped or resumed elsewhere).
@@ -220,9 +221,31 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
           {msg}
         </div>
       ))}
-      {items === null ? (
+      <div className="tabs">
+        <button type="button" className={subTab === "instances" ? "active" : ""} onClick={() => setSubTab("instances")}>
+          {t.hInstancesGroup} ({filtered.length})
+        </button>
+        <button type="button" className={subTab === "reviews" ? "active" : ""} onClick={() => setSubTab("reviews")}>
+          {t.hReviewGroup} ({shownRuns.length})
+        </button>
+      </div>
+      {subTab === "reviews" ? (
+        !shownRuns.length ? (
+          <div className="opts-hint">{runs.length === 0 ? t.emptyHint : t.noSearchMatches}</div>
+        ) : (
+          <div className="tablewrap">
+            <table className="historytab">
+              <tbody>
+                {shownRuns.map((r) => (
+                  <ReviewRunRow key={r.io} run={r} onOpen={setOpenRun} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : items === null ? (
         <div className="opts-hint">…</div>
-      ) : !filtered.length && !shownRuns.length ? (
+      ) : !filtered.length ? (
         <div className="opts-hint">{stopped.length === 0 ? t.emptyHint : t.noSearchMatches}</div>
       ) : (
         <div className="tablewrap">
@@ -235,18 +258,6 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
           />
           <table className="historytab">
             <tbody>
-              {shownRuns.length > 0 && (
-                <>
-                  <tr>
-                    <th colSpan={HISTORY_COLSPAN} style={{ textAlign: "left" }}>
-                      {t.hReviewGroup} ({shownRuns.length})
-                    </th>
-                  </tr>
-                  {shownRuns.map((r) => (
-                    <ReviewRunRow key={r.io} run={r} onOpen={setOpenRun} />
-                  ))}
-                </>
-              )}
               {pageGroups.map((g) => {
                 const gKey = groupKey(g.host, g.cwd);
                 const expanded = collapse.isExpanded(gKey);

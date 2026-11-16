@@ -772,6 +772,7 @@ export interface Strings {
   hStewardBadge: string;
   hBrain: string;
   hReviewGroup: string;
+  hInstancesGroup: string;
   hChatTool: string;
   hChatSystem: string;
   hReviewHint: string;
@@ -1742,6 +1743,7 @@ export const STRINGS: Record<Lang, Strings> = {
     hStewardBadge: "DEĞNEKÇİ",
     hBrain: "beyin",
     hReviewGroup: "Review koşuları",
+    hInstancesGroup: "Kayıt geçmişi",
     hChatTool: "araç",
     hChatSystem: "sistem",
     hReviewHint: "Review koşusu: sohbet olarak salt-okunur gösterilir; çalışıyorsa canlı güncellenir.",
@@ -2713,6 +2715,7 @@ export const STRINGS: Record<Lang, Strings> = {
     hStewardBadge: "STEWARD",
     hBrain: "brain",
     hReviewGroup: "Review runs",
+    hInstancesGroup: "Registration history",
     hChatTool: "tool",
     hChatSystem: "system",
     hReviewHint: "Review run: shown read-only as a chat; updates live while running.",
