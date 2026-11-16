@@ -172,5 +172,43 @@ class HoDoneFresh(unittest.TestCase):
         self.assertTrue(fresh["v"])
 
 
+class ClosedHoDoneAndPersistence(unittest.TestCase):
+    def test_closed_ho_done_conversation_starts_fresh(self):
+        started = []
+        ws.configure(start=lambda *a, **k: started.append(k) or {"ok": True})
+        with mock.patch.object(ws, "_live_sessions", lambda n, s="default": []), \
+                mock.patch.object(ws, "_resume_ho_done", lambda n: True), \
+                mock.patch.object(ws, "_resume_lacks_ho", lambda n, c: ""), \
+                mock.patch.object(ws, "_oversized_resume", lambda n, c: self.fail("fresh: boyut denetimi gerekmez")), \
+                mock.patch.object(ws, "_closed_in_models", lambda n: False), \
+                mock.patch.object(ws, "_launch_kwargs", lambda n, m, e: {}), \
+                mock.patch.object(ws, "steward_config", lambda sid="default": sw.Config()), \
+                mock.patch.object(ws, "_start_appeared", lambda n, s="default": True), \
+                mock.patch.object(ws, "_wait_ready", lambda n, c: True), \
+                mock.patch.object(ws, "_project_cli", lambda n: "claude"), \
+                mock.patch.object(ws, "_record_owned", lambda *a, **k: None), \
+                mock.patch.object(sw, "log_event", lambda *a, **k: None):
+            res = ws._ensure_running("p")
+        self.assertTrue(res["ok"])
+        self.assertTrue(started[0].get("fresh"))
+
+    def test_deliveries_survive_restart_and_queued_becomes_failed(self):
+        import tempfile
+        tmp = os.path.join(tempfile.mkdtemp(), "deliveries.json")
+        with mock.patch.object(ws, "DELIVERIES_FILE", tmp):
+            ws._DELIVERIES.clear()
+            ws._DELIVERIES_LOADED = True
+            ws._delivery_set("a", name="x", status="delivered")
+            ws._delivery_set("b", name="y", status="queued")
+            ws._DELIVERIES.clear()                 # restart: bellek boş
+            ws._DELIVERIES_LOADED = False
+            r = ws.http_directive_status({"id": ["a"]})
+            self.assertEqual(r["status"], "delivered")
+            r = ws.http_directive_status({"id": ["b"]})
+            self.assertEqual((r["status"], r["reason"]), ("failed", "restart_lost"))
+        ws._DELIVERIES.clear()
+        ws._DELIVERIES_LOADED = True
+
+
 if __name__ == "__main__":
     unittest.main()

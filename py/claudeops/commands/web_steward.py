@@ -2018,6 +2018,10 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
     big = 0
     if ho_jsonl:     # sahip kuralı: eski konuşma devirsiz kapanmış -> önce o konuşmayla aç, devir al, motor taze yeniden açar
         sw.log_event("ho_on_open", paths=sw.paths_for(sid), name=name, step="resume", jsonl=os.path.basename(ho_jsonl))
+    elif not fresh and _resume_ho_done(name):
+        # RFH ile bitmiş KAPALI konuşmaya dönme (canlı yol `_live_ho_done` ile aynı kural): taze aç
+        fresh = True
+        sw.log_event("start_ho_done_fresh", paths=sw.paths_for(sid), name=name)
     elif not fresh:
         big = _oversized_resume(name, steward_config(sid))
         if big:      # soğuk büyük konuşmayı yeniden okutup hemen devir almak yerine taze aç (ysf 386K örneği); özet kartta/CLAUDE.md'de
@@ -2050,6 +2054,23 @@ def _ensure_running(name: str, model: str = "", effort: str = "", lang: str = "t
                      **({} if h.get("ok") else {"error": str(h.get("error") or "")[:200]}))
         return {"ok": True, "started": True, "ready": ready, "cli": cli, "ho_on_open": bool(h.get("ok"))}
     return {"ok": True, "started": True, "ready": ready, "cli": cli}
+
+
+def _resume_ho_done(name: str) -> bool:
+    """`start`ın `--resume` edeceği (KAPALI) claude konuşması gerçek iş turu taşıyıp READY FOR HANDOVER ile bitmiş mi?
+    `_live_ho_done`nun kapalı oturum karşılığı: böyle konuşmaya dönülmez, taze açılır (devir notu CLAUDE.md'de).
+    Bilinmiyor/hata = False (davranış değişmez)."""
+    try:
+        cwd = _cwd_resolver()(name)
+        if not cwd or _project_cli(name) != "claude" or _launch_kwargs(name, "", "").get("cli") not in (None, "claude"):
+            return False
+        from ..providers.claude_provider import jsonl_path_for
+        from ..needs_ho import handover_done, has_real_user_turn
+        rid = get_provider("claude").resolve_resume_id(cwd, session_name=name)
+        path = jsonl_path_for(cwd, rid) if rid else None
+        return bool(path and os.path.isfile(path) and has_real_user_turn(path) and handover_done(path))
+    except Exception:
+        return False
 
 
 def _resume_lacks_ho(name: str, cfg: sw.Config) -> str:
@@ -6281,20 +6302,53 @@ DELIVERY_MAX_RESENDS = 2
 DELIVERY_KEEP = 200
 _DELIVERIES: Dict[str, Dict[str, Any]] = {}      # {id: {id,name,status: queued|delivered|failed, reason, attempts, at, done_at}}
 _DELIVERY_LOCK = threading.Lock()
+DELIVERIES_FILE = os.path.join(CLAUDEOPS_DIR, "steward", "deliveries.json")
+_DELIVERIES_LOADED = False
+
+
+def _deliveries_load() -> None:
+    """İlk erişimde son kaydı belleğe al (restart sonrası `directive/status` eski id'yi bilsin). Restart ARKA PLAN iş parçacığını
+    öldürdüğü için `queued` kalan kayıt teslim edilemeyecek: `failed` + `restart_lost` olarak işaretlenir. Çağıran kilidi tutar."""
+    global _DELIVERIES_LOADED
+    if _DELIVERIES_LOADED:
+        return
+    _DELIVERIES_LOADED = True
+    try:
+        from .. import statedocs
+        saved = statedocs.read_json("steward/deliveries", DELIVERIES_FILE, None)
+        for did, d in (saved or {}).items():
+            if isinstance(d, dict) and did not in _DELIVERIES:
+                if d.get("status") == "queued":
+                    d = dict(d, status="failed", reason="restart_lost", done_at=time.time())
+                _DELIVERIES[did] = d
+    except Exception:
+        pass
+
+
+def _deliveries_save() -> None:
+    try:
+        from .. import statedocs
+        os.makedirs(os.path.dirname(DELIVERIES_FILE), exist_ok=True)
+        statedocs.write_json("steward/deliveries", DELIVERIES_FILE, dict(_DELIVERIES), mode=0o600, writer=atomic_write_json)
+    except Exception:
+        pass
 
 
 def _delivery_set(did: str, **kw: Any) -> Dict[str, Any]:
     with _DELIVERY_LOCK:
+        _deliveries_load()
         d = _DELIVERIES.setdefault(did, {"id": did, "status": "queued", "at": time.time()})
         d.update(kw)
         while len(_DELIVERIES) > DELIVERY_KEEP:
             _DELIVERIES.pop(next(iter(_DELIVERIES)))
+        _deliveries_save()
         return dict(d)
 
 
 def http_directive_status(qs: Dict[str, List[str]]) -> Dict[str, Any]:
     did = (qs.get("id") or [""])[0]
     with _DELIVERY_LOCK:
+        _deliveries_load()
         if not did:
             return {"ok": True, "deliveries": [dict(v) for v in list(_DELIVERIES.values())[-20:]]}
         d = _DELIVERIES.get(did)
