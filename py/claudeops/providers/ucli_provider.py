@@ -687,6 +687,22 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                 raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (git izni yarım uygulanmaz)")
             if flag not in argv:
                 argv = argv + [flag]
+    for key, flag in (("max_prompt_tokens", "--max-prompt-tokens"), ("max_repeated_calls", "--max-repeated-calls"),
+                      ("max_consecutive_failures", "--max-consecutive-failures"),
+                      ("max_continuation_steps", "--max-continuation-steps"), ("exec_per_script", "--exec-per-script"),
+                      ("price", "--price"), ("no_prompt_cache", "--no-prompt-cache"), ("show_usage", "--show-usage")):
+        val = opts.get(key)
+        if not val:
+            continue
+        if not binary_supports_flag(binary, flag):
+            # Sınır/ayar bayrağı: sessizce düşer (yalnız not), oturum açılır; güvenlik izni değildir.
+            diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
+            continue
+        if isinstance(val, bool):
+            if flag not in argv:
+                argv = argv + [flag]
+        else:
+            argv = _set_flag_value(argv, flag, str(val))
     if opts.get("exec_cmds"):
         names, err = expand_exec_cmds(opts["exec_cmds"], path_executables())
         if err:

@@ -70,6 +70,15 @@ MAX_BINDS = 6
 _BIND_RE = re.compile(r"^/[A-Za-z0-9_./+@-]{1,200}$")
 TIMEOUT_RANGE = (1, 600)
 MAX_COST_USD = 100.0         # `max_cost_usd` (tur başına USD) üst sınırı: yazım hatası sınırsız harcama açmasın
+# Grup B sınır bayrakları (cli_opts anahtarı -> üst sınır); 0/boş = bayrak verilmez. Ayar grubu yok: oturum başına cli_opts.
+INT_LIMITS = {
+    "max_prompt_tokens": 100_000_000,
+    "max_repeated_calls": 1000,
+    "max_consecutive_failures": 1000,
+    "max_continuation_steps": 1000,
+    "exec_per_script": 1000,
+}
+PRICE_MAX = 1000.0           # `price` her alanı için USD / milyon token üst sınırı
 
 
 BROAD_GLOBS = ("*", "**", "**/*")   # yalnız `accept_risk` ile kabul edilir
@@ -209,6 +218,44 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
             out[key] = True
             continue
         return {}, f"{key} true/false olmalı"
+    # Sınır bayrakları (grup B): boş/0 = bayrak verilmez (ucli varsayılanı); sayı değilse ya da üst sınırı aşarsa HATA.
+    for key, hi in INT_LIMITS.items():
+        v = raw.get(key)
+        if v in (None, "", False):
+            continue
+        try:
+            n = int(str(v).strip())
+        except ValueError:
+            return {}, f"{key} tam sayı olmalı"
+        if not (0 <= n <= hi):
+            return {}, f"{key} 0-{hi} arası"
+        if n > 0:
+            out[key] = n
+    for key in ("no_prompt_cache", "show_usage"):
+        v = raw.get(key)
+        if v in (None, "", False, 0, "0", "false", "no", "off"):
+            continue
+        if v in (True, 1, "true", "on", "1", "yes"):
+            out[key] = True
+            continue
+        return {}, f"{key} true/false olmalı"
+    p = raw.get("price")
+    if p not in (None, ""):
+        # ucli `--price`: milyon token başına USD, `IN,OUT` ya da `IN,OUT,CACHE_READ,CACHE_WRITE` (UCLI-HELP). Yanlış fiyat
+        # maliyet hesabını bozar: tam 2 ya da 4 sayı, hepsi 0 < x <= PRICE_MAX, aksi HATA.
+        parts = [x.strip() for x in str(p).split(",")]   # ondalık ayracı yalnız nokta (virgül alan ayracıdır)
+        if len(parts) not in (2, 4):
+            return {}, "price IN,OUT ya da IN,OUT,CACHE_READ,CACHE_WRITE olmalı (milyon token başına USD)"
+        vals = []
+        for x in parts:
+            try:
+                f = float(x)
+            except ValueError:
+                return {}, "price değerleri sayı olmalı"
+            if f != f or not (0 < f <= PRICE_MAX):
+                return {}, f"price değerleri 0-{PRICE_MAX:g} USD/milyon token arası (0 hariç)"
+            vals.append(f)
+        out["price"] = ",".join(f"{f:g}" for f in vals)
     return out, ""
 
 

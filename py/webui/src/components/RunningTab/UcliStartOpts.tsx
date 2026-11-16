@@ -28,6 +28,18 @@ export interface UcliStartState {
   gitCommit: boolean;
   /** `git_push`: ucli `--allow-git-push` (default off). */
   gitPush: boolean;
+  /** Limits (empty = flag not sent): --max-prompt-tokens / --max-repeated-calls / --max-consecutive-failures / --max-continuation-steps / --exec-per-script. */
+  limPromptTokens: string;
+  limRepeatedCalls: string;
+  limFailures: string;
+  limContinuation: string;
+  limExecPerScript: string;
+  /** `--price` "IN,OUT[,CACHE_READ,CACHE_WRITE]" USD per million tokens, empty = built-in. */
+  price: string;
+  /** `--no-prompt-cache` (default off). */
+  noPromptCache: boolean;
+  /** `--show-usage` (default off). */
+  showUsage: boolean;
 }
 
 /** One-click start presets (coder = may run+write in the cage with the Rust toolchain; reviewer = read-only, no exec). */
@@ -88,6 +100,14 @@ export const EMPTY_UCLI_START: UcliStartState = {
   maxCost: "",
   gitCommit: false,
   gitPush: false,
+  limPromptTokens: "",
+  limRepeatedCalls: "",
+  limFailures: "",
+  limContinuation: "",
+  limExecPerScript: "",
+  price: "",
+  noPromptCache: false,
+  showUsage: false,
 };
 
 /** Patterns that grant execution on EVERY file (backend needs `accept_risk` for them). */
@@ -122,6 +142,14 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
   if (s.maxCost.trim()) o.max_cost_usd = s.maxCost.trim();
   if (s.gitCommit) o.git_commit = true;
   if (s.gitPush) o.git_push = true;
+  const lim: Array<[string, string]> = [
+    ["max_prompt_tokens", s.limPromptTokens], ["max_repeated_calls", s.limRepeatedCalls],
+    ["max_consecutive_failures", s.limFailures], ["max_continuation_steps", s.limContinuation],
+    ["exec_per_script", s.limExecPerScript], ["price", s.price],
+  ];
+  for (const [k, v] of lim) if (v.trim()) o[k] = v.trim();
+  if (s.noPromptCache) o.no_prompt_cache = true;
+  if (s.showUsage) o.show_usage = true;
   return Object.keys(o).length ? o : undefined;
 }
 
@@ -321,6 +349,29 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
             : "Warning: push sends only the current branch to every remote; main is live, so a push from a session on main goes live."}
         </span>
       )}
+      <span className="opts-hint" style={{ flexBasis: "100%" }}>
+        {tr ? "Sınırlar (boş / 0 = bayrak verilmez, ucli varsayılanı geçerli):" : "Limits (empty / 0 = flag not sent, ucli default applies):"}
+      </span>
+      {([
+        ["limPromptTokens", "max-prompt-tokens", "prompt token", "prompt tokens"],
+        ["limRepeatedCalls", "max-repeated-calls", "aynı çağrı", "repeated calls"],
+        ["limFailures", "max-consecutive-failures", "ardışık hata", "consec. failures"],
+        ["limContinuation", "max-continuation-steps", "devam turu", "continue steps"],
+        ["limExecPerScript", "exec-per-script", "betik başına exec", "exec per script"],
+      ] as const).map(([k, flag, trPh, enPh]) => (
+        <input key={k} type="text" size={8} inputMode="numeric" title={`--${flag}`}
+          placeholder={tr ? trPh : enPh}
+          value={value[k]} onChange={(e) => set({ [k]: e.target.value.replace(/[^0-9]/g, "") } as Partial<UcliStartState>)} />
+      ))}
+      <input type="text" size={22} title={tr ? "--price: milyon token başına USD, IN,OUT ya da IN,OUT,CACHE_READ,CACHE_WRITE (nokta ondalık). Boş = yerleşik fiyat." : "--price: USD per million tokens, IN,OUT or IN,OUT,CACHE_READ,CACHE_WRITE (dot decimals). Empty = built-in price."}
+        placeholder={tr ? "fiyat: IN,OUT[,OKU,YAZ]" : "price: IN,OUT[,READ,WRITE]"}
+        value={value.price} onChange={(e) => set({ price: e.target.value.replace(/[^0-9.,]/g, "") })} />
+      <label title={tr ? "Anthropic prompt önbelleğini istemez (cache_control gönderilmez). Yalnız 400 ile reddeden Anthropic uyumlu geçit için; maliyeti artırır." : "Do not ask for Anthropic prompt caching (no cache_control). Only for a gateway that rejects it with 400; raises cost."}>
+        <input type="checkbox" checked={value.noPromptCache} onChange={(e) => set({ noPromptCache: e.target.checked })} /> {tr ? "prompt önbelleği kapalı" : "no prompt cache"}
+      </label>
+      <label title={tr ? "Her model isteği için stderr'e token/gecikme satırı yazar; stdout etkilenmez." : "Prints one stderr line per model request (tokens, latency); stdout unaffected."}>
+        <input type="checkbox" checked={value.showUsage} onChange={(e) => set({ showUsage: e.target.checked })} /> {tr ? "kullanımı göster" : "show usage"}
+      </label>
     </>
   );
 }
