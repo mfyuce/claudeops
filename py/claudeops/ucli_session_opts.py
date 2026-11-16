@@ -252,6 +252,13 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
         if key == "ask_edit" and not out.get("exec_write"):
             return {}, "ask_edit için exec_write (--allow-edit) gerekli"
         out[key] = True
+    # --search-token-env: YALNIZ ortam değişkeni ADI (değer değil); token argv/log/ayara girmez.
+    ste = raw.get("search_token_env")
+    if ste not in (None, ""):
+        ste = str(ste).strip()
+        if len(ste) > 64 or not re.match(r"^[A-Z_][A-Z0-9_]*$", ste):
+            return {}, "search_token_env yalnız ortam değişkeni ADI olmalı (A-Z, 0-9, _; <=64), değer değil"
+        out["search_token_env"] = ste
     p = raw.get("price")
     if p not in (None, ""):
         # ucli `--price`: milyon token başına USD, `IN,OUT` ya da `IN,OUT,CACHE_READ,CACHE_WRITE` (UCLI-HELP). Yanlış fiyat

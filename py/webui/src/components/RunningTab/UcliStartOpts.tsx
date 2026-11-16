@@ -49,6 +49,8 @@ export interface UcliStartState {
   askEdit: boolean;
   /** `--instructions-max-kib` (empty = ucli default 40, max 256). */
   limInstrKib: string;
+  /** `--search-token-env`: NAME of an env var (never the token value); empty = flag not sent. */
+  searchTokenEnv: string;
 }
 
 /** One-click start presets (coder = may run+write in the cage with the Rust toolchain; reviewer = read-only, no exec). */
@@ -122,6 +124,7 @@ export const EMPTY_UCLI_START: UcliStartState = {
   allowScholar: false,
   askEdit: false,
   limInstrKib: "",
+  searchTokenEnv: "",
 };
 
 /** Patterns that grant execution on EVERY file (backend needs `accept_risk` for them). */
@@ -169,6 +172,7 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
   if (s.allowImage) o.allow_image = true;
   if (s.allowScholar) o.allow_scholar = true;
   if (s.limInstrKib.trim()) o.instructions_max_kib = s.limInstrKib.trim();
+  if (s.searchTokenEnv.trim()) o.search_token_env = s.searchTokenEnv.trim();
   return Object.keys(o).length ? o : undefined;
 }
 
@@ -386,6 +390,9 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
       <input type="text" size={22} title={tr ? "--price: milyon token başına USD, IN,OUT ya da IN,OUT,CACHE_READ,CACHE_WRITE (nokta ondalık). Boş = yerleşik fiyat." : "--price: USD per million tokens, IN,OUT or IN,OUT,CACHE_READ,CACHE_WRITE (dot decimals). Empty = built-in price."}
         placeholder={tr ? "fiyat: IN,OUT[,OKU,YAZ]" : "price: IN,OUT[,READ,WRITE]"}
         value={value.price} onChange={(e) => set({ price: e.target.value.replace(/[^0-9.,]/g, "") })} />
+      <input type="text" size={22} title={tr ? "--search-token-env: arama arka ucunun belirtecini tutan ORTAM DEĞİŞKENİNİN ADI (örn. BRAVE_API_KEY). Ad yazılır, değer değil; belirteç hiçbir yere kaydedilmez. Boş = bayrak verilmez. Arama arka ucu (search_url) ayarlıysa uygulanır." : "--search-token-env: the NAME of the environment variable holding the search backend token (e.g. BRAVE_API_KEY). Type the name, not the value; the token is never stored. Empty = flag not sent. Applies when a search backend (search_url) is configured."}
+        placeholder={tr ? "arama belirteci ortam değişkeni ADI" : "search token env var NAME"}
+        value={value.searchTokenEnv} onChange={(e) => set({ searchTokenEnv: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "").slice(0, 64) })} />
       <label title={tr ? "Varsayılan kapalı. Operatörün ~/.claude/CLAUDE.md dosyası sistem istemine eklenir." : "Off by default. The operator's ~/.claude/CLAUDE.md is added to the system prompt."}>
         <input type="checkbox" checked={value.instructionsUser} onChange={(e) => set({ instructionsUser: e.target.checked })} /> {tr ? "kullanıcı talimatı (~/.claude/CLAUDE.md)" : "user instructions (~/.claude/CLAUDE.md)"}
       </label>

@@ -704,6 +704,15 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                 argv = argv + [flag]
         else:
             argv = _set_flag_value(argv, flag, str(val))
+    ste = opts.get("search_token_env")
+    if ste:
+        # Yalnız ad gider (değer ucli'nin kendi ortamından okunur). Arama arka ucu (--search-url) yoksa anlamsız: atla.
+        if "--search-url" not in argv:
+            diag_log("ucli_flag_skipped", name=session_name, flag="--search-token-env", reason="no --search-url")
+        elif not binary_supports_flag(binary, "--search-token-env"):
+            diag_log("ucli_flag_unsupported", name=session_name, flag="--search-token-env", binary=binary)
+        else:
+            argv = _set_flag_value(argv, "--search-token-env", str(ste))
     for key, flag in (("allow_image", "--allow-image"), ("allow_scholar", "--allow-scholar")):
         if opts.get(key):
             if not binary_supports_flag(binary, flag):
