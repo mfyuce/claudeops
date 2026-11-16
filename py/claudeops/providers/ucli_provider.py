@@ -680,6 +680,13 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             argv = _set_flag_value(argv, "--max-session-usd", f"{sess_cap:g}")
         else:
             diag_log("ucli_flag_unsupported", name=session_name, flag="--max-session-usd", binary=binary)
+    for key, flag in (("git_commit", "--allow-git-commit"), ("git_push", "--allow-git-push")):
+        if opts.get(key):
+            if not binary_supports_flag(binary, flag):
+                diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
+                raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (git izni yarım uygulanmaz)")
+            if flag not in argv:
+                argv = argv + [flag]
     if opts.get("exec_cmds"):
         names, err = expand_exec_cmds(opts["exec_cmds"], path_executables())
         if err:

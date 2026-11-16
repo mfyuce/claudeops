@@ -24,6 +24,10 @@ export interface UcliStartState {
   execToolchain: boolean;
   /** Per-turn USD ceiling (`max_cost_usd`), empty = none. */
   maxCost: string;
+  /** `git_commit`: ucli `--allow-git-commit` (default off). */
+  gitCommit: boolean;
+  /** `git_push`: ucli `--allow-git-push` (default off). */
+  gitPush: boolean;
 }
 
 /** One-click start presets (coder = may run+write in the cage with the Rust toolchain; reviewer = read-only, no exec). */
@@ -82,6 +86,8 @@ export const EMPTY_UCLI_START: UcliStartState = {
   acceptRisk: false,
   execToolchain: false,
   maxCost: "",
+  gitCommit: false,
+  gitPush: false,
 };
 
 /** Patterns that grant execution on EVERY file (backend needs `accept_risk` for them). */
@@ -114,6 +120,8 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
     if (s.execToolchain) o.exec_toolchain = "rust";
   }
   if (s.maxCost.trim()) o.max_cost_usd = s.maxCost.trim();
+  if (s.gitCommit) o.git_commit = true;
+  if (s.gitPush) o.git_push = true;
   return Object.keys(o).length ? o : undefined;
 }
 
@@ -299,6 +307,19 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
               : "Most tasks do not need exec: sessions already have file read, search, json_query, pipeline, git_* and date_text tools. Exec is a last resort. When on, commands run in a no-network cage and can only write inside the workspace. List allowed commands (name, a glob like cargo*, or re:<regex>; * = every command, but shells/env/xargs/find/sudo/ssh/nc are never opened by any pattern). For cargo/node pick exec_toolchain=rust or list ABSOLUTE dirs to bind read-only. With no commands, exec stays off."}
           </span>
         </>
+      )}
+      <label title={tr ? "Varsayılan kapalı. Açılınca modele git_commit aracı verilir: yalnız listelediği dosyaları commit eder (hook çalışmaz)." : "Off by default. When on, the model gets git_commit: it commits only the files it lists (hooks do not run)."}>
+        <input type="checkbox" checked={value.gitCommit} onChange={(e) => set({ gitCommit: e.target.checked })} /> {tr ? "git commit izni" : "allow git commit"}
+      </label>
+      <label title={tr ? "Varsayılan kapalı. git_push yalnız mevcut dalı tüm remote'lara iter (force yok)." : "Off by default. git_push pushes only the current branch to every remote (no force)."}>
+        <input type="checkbox" checked={value.gitPush} onChange={(e) => set({ gitPush: e.target.checked })} /> {tr ? "git push izni" : "allow git push"}
+      </label>
+      {value.gitPush && (
+        <span className="opts-hint" style={{ flexBasis: "100%", color: "#b91c1c" }} role="alert">
+          {tr
+            ? "Uyarı: push yalnız mevcut dalı tüm remote'lara iter; main canlıdır, main dalındaki bir oturumda push canlıya gider."
+            : "Warning: push sends only the current branch to every remote; main is live, so a push from a session on main goes live."}
+        </span>
       )}
     </>
   );

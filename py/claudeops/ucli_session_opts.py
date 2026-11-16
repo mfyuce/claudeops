@@ -199,6 +199,16 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
             return {}, f"max_session_usd 0-{MAX_COST_USD * 10:g} USD arası"
         if usd > 0:
             out["max_session_usd"] = usd
+    # git araçları (ucli `--allow-git-commit` / `--allow-git-push`, TBD#157): VARSAYILAN KAPALI, birbirinden bağımsız, exec'e bağlı değil.
+    # Bayrak güvenlik izni olduğundan belirsiz değer (ör. "maybe") sessizce yok sayılmaz, HATA döner.
+    for key in ("git_commit", "git_push"):
+        v = raw.get(key)
+        if v in (None, "", False, 0, "0", "false", "no", "off"):
+            continue
+        if v in (True, 1, "true", "on", "1", "yes"):
+            out[key] = True
+            continue
+        return {}, f"{key} true/false olmalı"
     return out, ""
 
 
