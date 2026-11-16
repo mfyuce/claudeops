@@ -1528,6 +1528,12 @@ def _context_info_cached(s) -> Optional[Dict[str, int]]:
                 if v[0] <= now:
                     _CTXINFO_CACHE.pop(k, None)
         hit = _CTXINFO_CACHE[key] = (now + _CACHEINFO_TTL, tokens, warn)
+        try:    # yerel tmux pencere şeridi (`tmux-strip.conf` @cops_ctx): yalnız önbellek yenilenince (20 sn), uzak satırlara dokunmaz
+            from .. import tmux_backend as _tb
+            if is_tmux_backed(s.pid):
+                _tb.push_ctx(s.name, s.pid, _tb.ctx_label(tokens, warn))
+        except Exception:
+            pass
     _, tokens, warn = hit
     if not tokens:
         return None

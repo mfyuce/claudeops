@@ -230,6 +230,44 @@ def tmux_resize_window(name: str, cols: int, rows: int) -> bool:
         return False
 
 
+def ctx_label(tokens: Optional[int], warn: int = 0) -> str:
+    """Pencere şeridi bağlam etiketi: \"ctx 120K/300K\" (eşik yoksa \"ctx 120K\"), bilinmiyorsa \"\". BİLEREK '%' ve '#'
+    içermez: tmux status-right'ı strftime'dan geçirir, '%40' gibi bir parça bozulabilir."""
+    if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens <= 0:
+        return ""
+    if isinstance(warn, bool) or not isinstance(warn, int) or warn <= 0:
+        return f"ctx {round(tokens / 1000)}K"
+    return f"ctx {round(tokens / 1000)}K/{round(warn / 1000)}K"
+
+
+def tmux_set_ctx(name: str, label: str) -> bool:
+    """Oturumun `@cops_ctx` kullanıcı seçeneğini yazar (tmux-strip.conf status-right'ı okur); boş etiket seçeneği siler.
+    Oturum yoksa/tmux yoksa sessizce False. Yalnız yerel tmux oturumları."""
+    argv = _base_argv() + ["set-option", "-t", _exact(name)]
+    argv += ["-u", "@cops_ctx"] if not label else ["@cops_ctx", label]
+    try:
+        return subprocess.run(argv, capture_output=True, timeout=_TIMEOUT).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+_CTX_PUSHED: dict = {}   # (ad, pid) -> son yazılan etiket (aynı değeri 20 sn'de bir yeniden yazma)
+
+
+def push_ctx(name: str, pid: int, label: str) -> bool:
+    """`tmux_set_ctx` + değişmeyene yazmama. Yeni pid (oturum yeniden başladı) seçeneği kaybetmiştir: yeniden yazılır.
+    Yazım başarısızsa not düşülmez, sonraki turda yeniden denenir."""
+    key = (name, pid)
+    if _CTX_PUSHED.get(key) == label:
+        return True
+    if len(_CTX_PUSHED) > 512:
+        _CTX_PUSHED.clear()
+    ok = tmux_set_ctx(name, label)
+    if ok:
+        _CTX_PUSHED[key] = label
+    return ok
+
+
 def tmux_release_size(name: str) -> bool:
     """`tmux_resize_window`un bıraktığı elle boyutu geri alır: pencerenin `window-size` seçeneğini kaldırır (genel
     `latest`e döner); boyutun kendisi yerinde kalır, sonraki istemci bağlanınca tmux normal şekilde ayarlar.
