@@ -905,6 +905,7 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
                              permission_mode=chosen_mode, effort=chosen_effort, origin="new_chat",
                              **({"cli_opts": clean_opts} if clean_opts else {}))
+    spawned = False
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kind = spawn_session(
@@ -918,8 +919,11 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
                 cli=chosen_cli,
                 cli_opts=clean_opts or None,
             )
+            spawned = True
             opened = _wait_stable(new_name, timeout=HANDOVER_PROC_WAIT_SECONDS)
     except TimeoutError as e:
+        if not spawned:   # kilit alınamadı: süreç hiç başlamadı, kayıt geride KALMASIN (spawn sonrası zaman aşımında süreç yetim kalmasın diye kayıt korunur)
+            inst_mod.forget_instance(new_name)
         return {"ok": False, "error": str(e)}
     except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn reddedildi, instance kaydı geride KALMASIN
         inst_mod.forget_instance(new_name)

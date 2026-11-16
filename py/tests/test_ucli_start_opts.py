@@ -298,6 +298,40 @@ class WiringTests(unittest.TestCase):
             rec.assert_not_called()
             sp.assert_not_called()
 
+    def _new_chat_with(self, lock_err=None, wait_err=None):
+        from claudeops.commands import web
+        import contextlib
+
+        @contextlib.contextmanager
+        def lock(timeout=None):
+            if lock_err:
+                raise lock_err
+            yield
+
+        with mock.patch.object(web, "_new_chat_source", return_value=("bp", "bp", "/tmp", "claude", "m")), \
+                mock.patch.object(web, "_fleet_status", return_value={}), \
+                mock.patch.object(web, "_generate_new_chat_name", return_value="bp_x"), \
+                mock.patch.object(web.inst_mod, "record_instance"), \
+                mock.patch.object(web.inst_mod, "forget_instance") as forget, \
+                mock.patch.object(web, "guard_lock", lock), \
+                mock.patch.object(web, "detect_display", return_value=":0"), \
+                mock.patch.object(web, "spawn_session", return_value="new") as sp, \
+                mock.patch.object(web, "_wait_stable", side_effect=wait_err):
+            r = web._new_chat("bp")
+        return r, forget, sp
+
+    def test_new_chat_lock_timeout_forgets_instance(self):
+        r, forget, sp = self._new_chat_with(lock_err=TimeoutError("kilit"))
+        self.assertFalse(r["ok"])
+        forget.assert_called_once_with("bp_x")
+        sp.assert_not_called()
+
+    def test_new_chat_timeout_after_spawn_keeps_instance(self):
+        r, forget, sp = self._new_chat_with(wait_err=TimeoutError("bekleme"))
+        self.assertFalse(r["ok"])
+        sp.assert_called_once()
+        forget.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
