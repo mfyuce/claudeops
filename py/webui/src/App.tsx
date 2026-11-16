@@ -43,7 +43,7 @@ import { LangProvider, useLang } from "./i18n/LangContext";
 import { StatusProvider, useStatusContext } from "./state/StatusContext";
 import { useSelection } from "./state/selection";
 import { ShortcutHelp } from "./components/shared/ShortcutHelp";
-import { extIdOf, isExtTab, isTabKey, TAB_STORAGE_KEY, type TabKey } from "./state/tabs";
+import { extIdOf, isExtTab, isTabKey, RESTRICTED_HIDE, TAB_STORAGE_KEY, type TabKey } from "./state/tabs";
 import { useUiExtensions } from "./state/uiExtensions";
 import { ExtensionBoundary, ExtensionTab } from "./components/ExtensionTab";
 import { LOCAL_HOST, rowKey } from "./state/hosts";
@@ -78,7 +78,7 @@ function AppShell() {
     if (uiExtsLoaded && isExtTab(activeTab) && !activeExt) setActiveTabState("running");
   }, [uiExtsLoaded, activeTab, activeExt]);
   // Süzülmüş kullanıcıda gizli sekme saklıysa (admin olarak seçilmişti) oturum listesine dön.
-  const hiddenWhenRestricted = ["team", "steward", "desktop", "snapshots", "readlist", "diag", "settings"];
+  const hiddenWhenRestricted = RESTRICTED_HIDE;
   useEffect(() => {
     if (data?.restricted && hiddenWhenRestricted.includes(activeTab)) setActiveTabState("running");
   }, [data?.restricted, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -86,6 +86,7 @@ export interface Strings {
   cancelBtn: string;
   tabRunning: string;
   tabRegistered: string;
+  tabTools: string;
   tabUcli: string;
   tabDisabled: string;
   tabRetired: string;
@@ -954,6 +955,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabRetired: "Emekli",
     tabHistory: "Geçmiş",
     tabDesktop: "Uzak Masaüstü",
+    tabTools: "Araçlar",
     tabSnapshots: "Snapshotlar",
     tabReadlist: "Okuma listesi",
     extLoading: "Eklenti yükleniyor…",
@@ -1930,6 +1932,7 @@ export const STRINGS: Record<Lang, Strings> = {
     tabRetired: "Retired",
     tabHistory: "History",
     tabDesktop: "Remote Desktop",
+    tabTools: "Tools",
     tabSnapshots: "Snapshots",
     tabReadlist: "Reading list",
     extLoading: "Loading extension…",

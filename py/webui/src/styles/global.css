@@ -112,6 +112,10 @@ h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
 .tabs button { border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
                background: transparent; color: var(--muted); padding: .35rem .7rem; font-size: .82rem; }
 .tabs button.active { border-color: var(--border); background: var(--panel); color: var(--text); }
+.subtabs { display: flex; gap: .25rem; flex-wrap: wrap; margin: -.2rem 0 .6rem; max-width: 100%; }
+.subtabs button { border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted);
+                  padding: .2rem .65rem; font-size: .78rem; }
+.subtabs button.active { background: var(--panel); color: var(--text); border-color: var(--accent); }
 .bulkbar { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; margin: .4rem 0 .2rem; }
 .bulkbar .selcount { font-size: .78rem; color: var(--muted); }
 .bulkmsg { font-size: .78rem; color: var(--muted); flex-basis: 100%; white-space: pre-wrap; }
@@ -413,7 +417,7 @@ button.linkbtn { background: none; border: 0; padding: 0; color: var(--accent, i
 @media (max-width: 640px) {
   /* 42: dar ekranda gizlenen model/cli/cpu isim hücresinin altında ikincil satır olarak görünür */
   .mobile-meta { display: block; font-size: .75rem; color: var(--muted); }
-  .tabs button, .actioncell button, .start, .reactivate { min-height: 44px; }
+  .tabs button, .subtabs button, .actioncell button, .start, .reactivate { min-height: 44px; }
   .tabs { gap: .15rem; }
   .tabs button { padding-left: .6rem; padding-right: .6rem; }
   .opts-row td, .opts-hint { overflow-wrap: anywhere; }
