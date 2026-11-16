@@ -133,6 +133,37 @@ def toggle_excluded(text: Any, key: str, exclude: bool) -> str:
     return ",".join(cur)
 
 
+SUBSCRIPTION_FABLE_EFFORTS = ("low", "medium", "high")
+
+
+def claude_catalog() -> Dict[str, str]:
+    """`claude_models.json` (günlük `model_freshness`): model -> enabled|disabled. Yok/bozuksa {}."""
+    try:
+        from .paths import CLAUDE_MODELS_JSON
+        from . import statedocs
+        state = statedocs.read_json("claude_models", CLAUDE_MODELS_JSON, {})
+        return {str(m): str(s) for m, s in (state.get("models") or {}).items()}
+    except Exception:
+        return {}
+
+
+def claude_specs(cfg: Any, catalog: Optional[Dict[str, str]] = None) -> List[str]:
+    """claude modu `model[@effort]` belirtimleri. Elle `review_claude_models` varsa o (katalogda `disabled` olanlar atılır; katalog
+    yoksa dokunulmaz). Boşsa ve `review_claude_auth=subscription` ise katalogdaki ENABLED fable modelleri x low/medium/high.
+    Boş + api = KAPALI (eski davranış)."""
+    cat = claude_catalog() if catalog is None else catalog
+    specs = _split_models(getattr(cfg, "review_claude_models", ""))
+    if specs:
+        return [s for s in specs if cat.get(split_spec(s)[0]) != "disabled"]
+    if str(getattr(cfg, "review_claude_auth", "api") or "api").strip().lower() == "subscription":
+        return [f"{m}@{e}" for m in sorted(cat) if "fable" in m and cat[m] == "enabled" for e in SUBSCRIPTION_FABLE_EFFORTS]
+    return []
+
+
+def claude_is_subscription(cfg: Any) -> bool:
+    return str(getattr(cfg, "review_claude_auth", "api") or "api").strip().lower() == "subscription"
+
+
 def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Sequence[str]) -> List[ReviewTarget]:
     """`cfg.review_agy_models` / `review_evren_models` (virgülle ayrık) var olanla (`agy_models`/`evren_models`)
     KESİŞTİRİLİR; boş ayar = verilenin tümü. Sıra: önce agy, sonra evren; yinelenen slug atılır.
@@ -151,7 +182,7 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
                 out.append(t)
     for mode, attr in (("claude", "review_claude_models"), ("codex", "review_codex_models"),
                        ("copilot", "review_copilot_models"), ("anthropic", "review_anthropic_models")):
-        for spec in _split_models(getattr(cfg, attr, "")):
+        for spec in (claude_specs(cfg) if mode == "claude" else _split_models(getattr(cfg, attr, ""))):
             m, eff = split_spec(spec)         # `claude-haiku-5-5@low,claude-haiku-5-5@high`: aynı model, iki ayrı çift
             if not m:
                 continue

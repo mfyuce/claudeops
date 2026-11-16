@@ -430,6 +430,16 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           onSave={(v) => void act(() => apiStewardConfig("review_agy_models", v, sid), t.rvDone)} />
         <TextSetting label={t.rvEvrenModels} value={st.evren_models ?? ""} width="22rem" placeholder={t.rvModelsAll}
           onSave={(v) => void act(() => apiStewardConfig("review_evren_models", v, sid), t.rvDone)} />
+        <label className="opts-hint">
+          {t.rvClaudeAuth}{" "}
+          <select value={st.claude_auth || "api"} disabled={busy}
+            onChange={(e) => void act(() => apiStewardConfig("review_claude_auth", e.target.value, sid), t.rvDone)}>
+            <option value="api">{t.rvClaudeAuthApi}</option>
+            <option value="subscription">{t.rvClaudeAuthSub}</option>
+          </select>
+        </label>
+        <TextSetting label={t.rvClaudeModels} value={st.claude_models ?? ""} width="26rem" placeholder={st.claude_effective ?? ""}
+          onSave={(v) => void act(() => apiStewardConfig("review_claude_models", v, sid), t.rvDone)} />
       </div>
       )}
       {st && (

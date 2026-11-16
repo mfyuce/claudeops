@@ -864,6 +864,10 @@ export interface Strings {
   rvSlots: string;
   rvAgyModels: string;
   rvEvrenModels: string;
+  rvClaudeAuth: string;
+  rvClaudeAuthApi: string;
+  rvClaudeAuthSub: string;
+  rvClaudeModels: string;
   rvModelsAll: string;
   rvVerifierTitle: string;
   rvVerifierHint: string;
@@ -1840,6 +1844,10 @@ export const STRINGS: Record<Lang, Strings> = {
     rvSlots: "Yuvalar",
     rvAgyModels: "agy modelleri",
     rvEvrenModels: "Evren modelleri",
+    rvClaudeAuth: "Claude kimliği",
+    rvClaudeAuthApi: "API anahtarı",
+    rvClaudeAuthSub: "Max aboneliği (kota bekçisine bağlı)",
+    rvClaudeModels: "Claude modelleri (model@effort; boş + abonelik = katalogdaki Fable low/medium/high)",
     rvModelsAll: "(boş = tümü)",
     rvVerifierTitle: "Doğrulayıcı:",
     rvVerifierHint: "Bulguları kim doğrular. self = reviewer'ın kendi salt-okunur süreci (proje oturumu uyanmaz), session = projenin ana oturumu. Sağlayıcı yalnız self kipinde geçerli; Evren seçiliyse Evren review'ı koşarken doğrulama bekler. Model boş = sağlayıcı varsayılanı (claude Sonnet 5.5, diğerleri model listesinin ilki).",
@@ -2817,6 +2825,10 @@ export const STRINGS: Record<Lang, Strings> = {
     rvSlots: "Slots",
     rvAgyModels: "agy models",
     rvEvrenModels: "Evren models",
+    rvClaudeAuth: "Claude auth",
+    rvClaudeAuthApi: "API key",
+    rvClaudeAuthSub: "Max subscription (tied to quota guard)",
+    rvClaudeModels: "Claude models (model@effort; empty + subscription = catalog Fable low/medium/high)",
     rvModelsAll: "(empty = all)",
     rvVerifierTitle: "Verifier:",
     rvVerifierHint: "Who verifies findings. self = the reviewer's own read-only process (project session stays asleep), session = the project's main session. Provider applies to self mode only; with Evren, verification waits while an Evren review runs. Empty model = provider default (claude Sonnet 5.5, others the first of their model list).",

@@ -18,8 +18,8 @@ from ..settings import resolved_binary
 MODEL_CHOICES = [
     "claude-sonnet-5-5",
     "claude-opus-5-5",
-    "claude-fable-5-1",
-    "claude-haiku-4-5-20251001",
+    "claude-fable-5-2",
+    "claude-haiku-5-5",
 ]
 PERMISSION_MODES = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]

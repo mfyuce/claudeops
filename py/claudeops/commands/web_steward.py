@@ -4755,7 +4755,8 @@ def _quota_stop(reason: str, hard: bool = False) -> None:
                 continue
             if cfg.role == "reviewer":
                 # Reviewer Anthropic kotası tüketmez (agy/evren/codex; claude modu ayrı API anahtarı): kota bekçisi
-                # onu KAPATMAZ (sahip kararı 2026-11-02). Yalnız claude-modlu review açıksa o mod kendi eşiğini taşır.
+                # onu KAPATMAZ (sahip kararı 2026-11-02). review_claude_auth=subscription (Max kotası) için muafiyet YOK:
+                # reviewer kapanmaz ama review tick'i quota_blocking()'e bakıp abonelik claude hedeflerini başlatmaz (web_review).
                 continue
             shutdown_start(sid)
             if hard:
@@ -6579,11 +6580,12 @@ UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_
 UI_CONFIG_CHOICE = {"claude_idle": ("off", "dry", "act"), "keepwarm": ("off", "dry", "act"), "wake_gate": ("off", "dry", "act"),
                     "review_evren_script": ("read", "off"), "review_verify_mode": ("session", "self"),
                     # boş değer = claude (save_settings anahtarı siler)
-                    "review_verify_provider": ("", "claude", "codex", "evren", "agy")}
+                    "review_verify_provider": ("", "claude", "codex", "evren", "agy"),
+                    "review_claude_auth": ("api", "subscription")}
 
 # Serbest metin reviewer ayarları (panel Reviewer formu, 2026-11-08): boş değer anahtarı SİLER = varsayılan
 # (yuvalar: TEK iş kipi; model listeleri: katalogdaki tümü). Model listesi virgüllü, dar karakter kümesi.
-UI_CONFIG_MODEL_LISTS = ("review_agy_models", "review_evren_models", "review_verify_model")
+UI_CONFIG_MODEL_LISTS = ("review_agy_models", "review_evren_models", "review_verify_model", "review_claude_models")
 _MODEL_LIST_RE = re.compile(r"^[A-Za-z0-9_.:/@\[\]-]{1,120}$")
 
 

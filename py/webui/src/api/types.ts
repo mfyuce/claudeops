@@ -1133,7 +1133,7 @@ export interface ReviewStateResult {
   min_gap_minutes: number; timeout_minutes: number; auto_verify?: boolean; auto_approve?: number; auto_export?: boolean;
   manual_export_needed?: Array<{ id: string; project: string; state: string; severity: string; title: string }>;
   evren_script?: boolean; max_context_kib?: number; max_read_kib?: number; max_tool_calls?: number;
-  slots_spec?: string; agy_models?: string; evren_models?: string;
+  slots_spec?: string; agy_models?: string; evren_models?: string; claude_auth?: string; claude_models?: string; claude_effective?: string;
   verify_mode?: string; verify_provider?: string; verify_model?: string; verify_effective?: string;
 }
 export interface ReviewLesson {

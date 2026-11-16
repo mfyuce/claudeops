@@ -381,6 +381,7 @@ class Config:
     review_anthropic_models: str = ""   # `model@effort,...` (ucli --provider anthropic-messages, gerçek Anthropic API); "" = KAPALI; anahtar dosyası `anthropic_review_key`
     review_anthropic_projects: str = ""  # virgülle ayrık proje adları; boş = anthropic modu HİÇBİR projeye koşmaz
     review_anthropic_budget_usd: float = 100.0   # toplam harcama tavanı ($); dolunca anthropic hedefleri planlanmaz
+    review_claude_auth: str = "api"    # claude modu kimliği: "api" (ayrı anahtar dosyası + izole claude_cfg) | "subscription" (Max aboneliği: ~/.claude kimliği, API anahtarı YOK; kota bekçisine bağlı, reviewer muafiyeti bu mod için yok; models boşsa katalogdaki fable-5-2 low/medium/high)
     review_claude_effort: str = "low"  # Anthropic review `--effort` (ölçüm 2026-10-23: haiku low en ucuz+geniş)
 
 

@@ -1492,15 +1492,19 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             env_extra["UCLI_API_KEY"] = key_val
         elif target.mode == "claude":
             from ..settings import resolved_binary
-            key_val = api_key if api_key is not None else _anthropic_review_key()
-            if not key_val:
-                raise RuntimeError(f"Anthropic review anahtarı yok: {ANTHROPIC_REVIEW_KEY_FILE} (600) oluştur")
-            cdir = os.path.join(p.root, "claude_cfg")    # CLAUDE.md/hafıza/oturum geçmişi yok: izole yapılandırma dizini
-            os.makedirs(cdir, exist_ok=True)
-            cj = os.path.join(cdir, ".claude.json")
-            _ensure_claude_trust(cj, cwd)
             argv = claude_argv(resolved_binary("claude"), target.model, str(target.effort or getattr(cfg, "review_claude_effort", "low") or ""), prompt, json_out=True)
-            env_extra.update(ANTHROPIC_API_KEY=key_val, CLAUDE_CONFIG_DIR=cdir, DISABLE_AUTOUPDATER="1")
+            if rv.claude_is_subscription(cfg):
+                # Max aboneliği: kimlik ~/.claude/.credentials.json; API anahtarı ve izole claude_cfg VERİLMEZ (claude_argv
+                # zaten CLAUDE.md+hafıza kapalı, salt okunur). clean_env CLAUDE*/ANTHROPIC* sızıntısını zaten siler.
+                env_extra.update(DISABLE_AUTOUPDATER="1")
+            else:
+                key_val = api_key if api_key is not None else _anthropic_review_key()
+                if not key_val:
+                    raise RuntimeError(f"Anthropic review anahtarı yok: {ANTHROPIC_REVIEW_KEY_FILE} (600) oluştur")
+                cdir = os.path.join(p.root, "claude_cfg")    # CLAUDE.md/hafıza/oturum geçmişi yok: izole yapılandırma dizini
+                os.makedirs(cdir, exist_ok=True)
+                _ensure_claude_trust(os.path.join(cdir, ".claude.json"), cwd)
+                env_extra.update(ANTHROPIC_API_KEY=key_val, CLAUDE_CONFIG_DIR=cdir, DISABLE_AUTOUPDATER="1")
         elif target.mode == "codex":
             from ..settings import resolved_binary
             argv = codex_argv(resolved_binary("codex"), cwd, target.model, str(target.effort or getattr(cfg, "review_codex_effort", "low") or ""), prompt)
@@ -2157,6 +2161,9 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if last and t - last < gap:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "waiting": int(gap - (t - last))}
     targets = current_targets(cfg)
+    if rv.claude_is_subscription(cfg) and _quota_blocking():
+        # abonelik kotası: bekçi drain/shutdown/stop dedi; Max'ten giden claude hedefleri başlamaz (api/agy/evren/codex sürer)
+        targets = [x for x in targets if x.mode != "claude"]
     if verify_provider(cfg) == "evren" and self_verify_running():
         # Evren hep TEK iş (`verify_busy` ters yönü): Evren doğrulaması sürerken Evren review'ı başlatma; öteki modlar koşar
         targets = [x for x in targets if x.mode != "evren"]
@@ -2185,6 +2192,14 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         return {"ok": True, "actions": actions, "started": 1, "noop": False}
     actions.append({"kind": "review_failed", "project": proj, "target": target.key, "error": res.get("error")})
     return {"ok": False, "actions": actions, "started": 0, "noop": False, "error": res.get("error")}
+
+
+def _quota_blocking() -> bool:
+    try:
+        from . import web_steward
+        return bool(web_steward.quota_blocking())
+    except Exception:
+        return False
 
 
 def _head_of(pr: str) -> str:
@@ -2357,6 +2372,9 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "max_read_kib": int(getattr(cfg, "review_max_read_kib", 0) or 0),
             "max_tool_calls": int(getattr(cfg, "review_max_tool_calls", 0) or 0),
             "slots_spec": str(getattr(cfg, "review_slots", "") or ""),
+            "claude_auth": "subscription" if rv.claude_is_subscription(cfg) else "api",
+            "claude_models": str(getattr(cfg, "review_claude_models", "") or ""),
+            "claude_effective": ",".join(rv.claude_specs(cfg)),
             "agy_models": str(getattr(cfg, "review_agy_models", "") or ""),
             "evren_models": str(getattr(cfg, "review_evren_models", "") or ""),
             "verify_mode": str(getattr(cfg, "review_verify_mode", "") or ""),
