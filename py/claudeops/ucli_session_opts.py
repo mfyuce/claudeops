@@ -77,6 +77,7 @@ INT_LIMITS = {
     "max_consecutive_failures": 1000,
     "max_continuation_steps": 1000,
     "exec_per_script": 1000,
+    "instructions_max_kib": 256,   # UCLI-HELP: varsayılan 40, en çok 256
 }
 PRICE_MAX = 1000.0           # `price` her alanı için USD / milyon token üst sınırı
 
@@ -231,7 +232,8 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
             return {}, f"{key} 0-{hi} arası"
         if n > 0:
             out[key] = n
-    for key in ("no_prompt_cache", "show_usage"):
+    # instructions_user: operatörün ~/.claude/CLAUDE.md'si seçilen model hizmetine gider (gizlilik): VARSAYILAN KAPALI.
+    for key in ("no_prompt_cache", "show_usage", "instructions_user"):
         v = raw.get(key)
         if v in (None, "", False, 0, "0", "false", "no", "off"):
             continue

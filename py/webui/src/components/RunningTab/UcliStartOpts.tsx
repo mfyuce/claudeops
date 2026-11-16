@@ -40,6 +40,10 @@ export interface UcliStartState {
   noPromptCache: boolean;
   /** `--show-usage` (default off). */
   showUsage: boolean;
+  /** `instructions_user`: ucli `--instructions-user` (default off; sends ~/.claude/CLAUDE.md to the model service). */
+  instructionsUser: boolean;
+  /** `--instructions-max-kib` (empty = ucli default 40, max 256). */
+  limInstrKib: string;
 }
 
 /** One-click start presets (coder = may run+write in the cage with the Rust toolchain; reviewer = read-only, no exec). */
@@ -108,6 +112,8 @@ export const EMPTY_UCLI_START: UcliStartState = {
   price: "",
   noPromptCache: false,
   showUsage: false,
+  instructionsUser: false,
+  limInstrKib: "",
 };
 
 /** Patterns that grant execution on EVERY file (backend needs `accept_risk` for them). */
@@ -150,6 +156,8 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
   for (const [k, v] of lim) if (v.trim()) o[k] = v.trim();
   if (s.noPromptCache) o.no_prompt_cache = true;
   if (s.showUsage) o.show_usage = true;
+  if (s.instructionsUser) o.instructions_user = true;
+  if (s.limInstrKib.trim()) o.instructions_max_kib = s.limInstrKib.trim();
   return Object.keys(o).length ? o : undefined;
 }
 
@@ -358,6 +366,7 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
         ["limFailures", "max-consecutive-failures", "ardışık hata", "consec. failures"],
         ["limContinuation", "max-continuation-steps", "devam turu", "continue steps"],
         ["limExecPerScript", "exec-per-script", "betik başına exec", "exec per script"],
+        ["limInstrKib", "instructions-max-kib", "talimat KiB (≤256)", "instr. KiB (≤256)"],
       ] as const).map(([k, flag, trPh, enPh]) => (
         <input key={k} type="text" size={8} inputMode="numeric" title={`--${flag}`}
           placeholder={tr ? trPh : enPh}
@@ -366,6 +375,16 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
       <input type="text" size={22} title={tr ? "--price: milyon token başına USD, IN,OUT ya da IN,OUT,CACHE_READ,CACHE_WRITE (nokta ondalık). Boş = yerleşik fiyat." : "--price: USD per million tokens, IN,OUT or IN,OUT,CACHE_READ,CACHE_WRITE (dot decimals). Empty = built-in price."}
         placeholder={tr ? "fiyat: IN,OUT[,OKU,YAZ]" : "price: IN,OUT[,READ,WRITE]"}
         value={value.price} onChange={(e) => set({ price: e.target.value.replace(/[^0-9.,]/g, "") })} />
+      <label title={tr ? "Varsayılan kapalı. Operatörün ~/.claude/CLAUDE.md dosyası sistem istemine eklenir." : "Off by default. The operator's ~/.claude/CLAUDE.md is added to the system prompt."}>
+        <input type="checkbox" checked={value.instructionsUser} onChange={(e) => set({ instructionsUser: e.target.checked })} /> {tr ? "kullanıcı talimatı (~/.claude/CLAUDE.md)" : "user instructions (~/.claude/CLAUDE.md)"}
+      </label>
+      {value.instructionsUser && (
+        <span className="opts-hint" style={{ flexBasis: "100%", color: "#b91c1c" }} role="alert">
+          {tr
+            ? "Uyarı: ev dizinindeki kişisel CLAUDE.md içeriği seçilen model hizmetine (Evren/Grok/OpenRouter vb. üçüncü taraf) gönderilir; içinde gizli bilgi olmamalı."
+            : "Warning: the personal home-directory CLAUDE.md is sent to the selected model service (a third party such as Evren/Grok/OpenRouter); it must hold no secrets."}
+        </span>
+      )}
       <label title={tr ? "Anthropic prompt önbelleğini istemez (cache_control gönderilmez). Yalnız 400 ile reddeden Anthropic uyumlu geçit için; maliyeti artırır." : "Do not ask for Anthropic prompt caching (no cache_control). Only for a gateway that rejects it with 400; raises cost."}>
         <input type="checkbox" checked={value.noPromptCache} onChange={(e) => set({ noPromptCache: e.target.checked })} /> {tr ? "prompt önbelleği kapalı" : "no prompt cache"}
       </label>
