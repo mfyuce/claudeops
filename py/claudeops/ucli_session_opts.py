@@ -241,6 +241,17 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
             out[key] = True
             continue
         return {}, f"{key} true/false olmalı"
+    # Grup D yetenek bayrakları (hepsi VARSAYILAN KAPALI, belirsiz değer HATA). `exec_own_glob` (--allow-exec-own-glob) yukarıda zaten var.
+    # --exec-net ve sınırsız --allow-exec-own BİLEREK yok (modül başlığı; sahip kararı bekliyor). ask_edit yazma izni (exec_write) ister.
+    for key in ("allow_image", "allow_scholar", "ask_edit"):
+        v = raw.get(key)
+        if v in (None, "", False, 0, "0", "false", "no", "off"):
+            continue
+        if v not in (True, 1, "true", "on", "1", "yes"):
+            return {}, f"{key} true/false olmalı"
+        if key == "ask_edit" and not out.get("exec_write"):
+            return {}, "ask_edit için exec_write (--allow-edit) gerekli"
+        out[key] = True
     p = raw.get("price")
     if p not in (None, ""):
         # ucli `--price`: milyon token başına USD, `IN,OUT` ya da `IN,OUT,CACHE_READ,CACHE_WRITE` (UCLI-HELP). Yanlış fiyat

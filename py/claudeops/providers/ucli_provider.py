@@ -704,6 +704,13 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                 argv = argv + [flag]
         else:
             argv = _set_flag_value(argv, flag, str(val))
+    for key, flag in (("allow_image", "--allow-image"), ("allow_scholar", "--allow-scholar")):
+        if opts.get(key):
+            if not binary_supports_flag(binary, flag):
+                diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
+                raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (yetenek izni yarım uygulanmaz)")
+            if flag not in argv:
+                argv = argv + [flag]
     if opts.get("exec_cmds"):
         names, err = expand_exec_cmds(opts["exec_cmds"], path_executables())
         if err:
@@ -726,6 +733,13 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                 if not binary_supports_flag(binary, "--allow-edit"):
                     raise ValueError("ucli ikilisi --allow-edit bayrağını tanımıyor (yazma izni yarım uygulanmaz)")
                 argv = [a for a in argv if a != "--allow-create"] + ["--allow-edit"]
+        for key, flag in (("ask_edit", "--ask-edit"),):
+            if opts.get(key):
+                if not binary_supports_flag(binary, flag):
+                    diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
+                    raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (izin yarım uygulanmaz)")
+                if flag not in argv:
+                    argv = argv + [flag]
     return argv, env_prefix
 
 

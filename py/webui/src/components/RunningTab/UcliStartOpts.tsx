@@ -42,6 +42,11 @@ export interface UcliStartState {
   showUsage: boolean;
   /** `instructions_user`: ucli `--instructions-user` (default off; sends ~/.claude/CLAUDE.md to the model service). */
   instructionsUser: boolean;
+  /** `--allow-image` / `--allow-scholar` (default off). */
+  allowImage: boolean;
+  allowScholar: boolean;
+  /** `--ask-edit` (needs write access; default off). */
+  askEdit: boolean;
   /** `--instructions-max-kib` (empty = ucli default 40, max 256). */
   limInstrKib: string;
 }
@@ -113,6 +118,9 @@ export const EMPTY_UCLI_START: UcliStartState = {
   noPromptCache: false,
   showUsage: false,
   instructionsUser: false,
+  allowImage: false,
+  allowScholar: false,
+  askEdit: false,
   limInstrKib: "",
 };
 
@@ -141,6 +149,7 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
     if (s.execGlob.trim()) o.exec_own_glob = s.execGlob;
     if (s.acceptRisk && hasBroadGlob(s.execGlob)) o.accept_risk = true;
     if (s.execWrite) o.exec_write = true;
+    if (s.execWrite && s.askEdit) o.ask_edit = true;
     if (s.execBind.trim()) o.exec_bind_ro = s.execBind;
     if (s.execTimeout.trim()) o.exec_timeout = s.execTimeout.trim();
     if (s.execToolchain) o.exec_toolchain = "rust";
@@ -157,6 +166,8 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
   if (s.noPromptCache) o.no_prompt_cache = true;
   if (s.showUsage) o.show_usage = true;
   if (s.instructionsUser) o.instructions_user = true;
+  if (s.allowImage) o.allow_image = true;
+  if (s.allowScholar) o.allow_scholar = true;
   if (s.limInstrKib.trim()) o.instructions_max_kib = s.limInstrKib.trim();
   return Object.keys(o).length ? o : undefined;
 }
@@ -385,6 +396,15 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
             : "Warning: the personal home-directory CLAUDE.md is sent to the selected model service (a third party such as Evren/Grok/OpenRouter); it must hold no secrets."}
         </span>
       )}
+      <label title={tr ? "Varsayılan kapalı. Modele read_image aracı verilir (çalışma dizinindeki PNG/JPEG/GIF/WebP). Görüntü destekleyen modelle kullan." : "Off by default. Offers read_image (PNG/JPEG/GIF/WebP in the workspace). Use with a vision model."}>
+        <input type="checkbox" checked={value.allowImage} onChange={(e) => set({ allowImage: e.target.checked })} /> {tr ? "görüntü okuma" : "allow image"}
+      </label>
+      <label title={tr ? "Varsayılan kapalı. Modele scholar_search aracı verilir (Crossref, OpenAlex, Wikipedia; anahtarsız)." : "Off by default. Offers scholar_search (Crossref, OpenAlex, Wikipedia; no key)."}>
+        <input type="checkbox" checked={value.allowScholar} onChange={(e) => set({ allowScholar: e.target.checked })} /> {tr ? "akademik arama" : "allow scholar"}
+      </label>
+      <label title={tr ? "Varsayılan kapalı. Dosya değiştirmeden önce operatöre sorar; yazma izni gerekir (exec + yazma izni açık olmalı)." : "Off by default. Asks the operator before file changes; needs write access (exec + write access on)."}>
+        <input type="checkbox" checked={value.askEdit} disabled={!value.execOn || !value.execWrite} onChange={(e) => set({ askEdit: e.target.checked })} /> {tr ? "değişiklikten önce sor" : "ask before edit"}
+      </label>
       <label title={tr ? "Anthropic prompt önbelleğini istemez (cache_control gönderilmez). Yalnız 400 ile reddeden Anthropic uyumlu geçit için; maliyeti artırır." : "Do not ask for Anthropic prompt caching (no cache_control). Only for a gateway that rejects it with 400; raises cost."}>
         <input type="checkbox" checked={value.noPromptCache} onChange={(e) => set({ noPromptCache: e.target.checked })} /> {tr ? "prompt önbelleği kapalı" : "no prompt cache"}
       </label>
