@@ -289,7 +289,8 @@ class InputSenderTests(unittest.TestCase):
         for kind, payload in (("text", "merhaba"), ("key", "Enter"), ("raw", "ls\r")):
             sender.submit(kind, payload)
         wait_results(sender, 3)
-        self.assertEqual([(p["path"], p["body"]) for p in self.panel.posts], [
+        self.assertTrue(all(p["body"].get("input_id") for p in self.panel.posts))   # her gönderim input_id taşır
+        self.assertEqual([(p["path"], {k: v for k, v in p["body"].items() if k != "input_id"}) for p in self.panel.posts], [
             ("/api/term/input", {"name": "s1", "host": "yuhem", "text": "merhaba", "lang": "en"}),
             ("/api/term/key", {"name": "s1", "host": "yuhem", "key": "Enter", "lang": "en"}),
             ("/api/term/raw", {"name": "s1", "host": "yuhem", "data": "ls\r", "lang": "en"}),
@@ -1381,6 +1382,13 @@ _LAUNCH = ("import os, sys, fcntl, termios, signal; signal.signal(signal.SIGINT,
 
 @unittest.skipIf(pty is None, "pty yok")
 class ViewerProcessTests(unittest.TestCase):
+    @staticmethod
+    def _no_id(post):
+        """(yol, gövde) -> input_id alanı çıkarılmış hali; id'nin varlığı ayrıca doğrulanır."""
+        path, body = post
+        assert body.get("input_id"), "her gönderim input_id taşımalı"
+        return path, {k: v for k, v in body.items() if k != "input_id"}
+
     def setUp(self):
         self.panel = ViewerPanel()
         self.addCleanup(self.panel.close)
@@ -1473,7 +1481,7 @@ class ViewerProcessTests(unittest.TestCase):
         self.assertEqual(self.panel.posts, [], "Enter'dan önce hiçbir şey gitmemeli")
         self.send("\r")
         self.wait_posts(1)
-        self.assertEqual(self.panel.posts[0], (
+        self.assertEqual(self._no_id(self.panel.posts[0]), (
             "/api/term/input", {"name": "x", "host": "local", "text": "merhaba şğ", "lang": "en"}))
 
         # kısa tuş
@@ -1482,7 +1490,7 @@ class ViewerProcessTests(unittest.TestCase):
         self.wait_screen("kısa tuş", since=m)
         self.send("\x1b[B")
         self.wait_posts(2)
-        self.assertEqual(self.panel.posts[1], (
+        self.assertEqual(self._no_id(self.panel.posts[1]), (
             "/api/term/key", {"name": "x", "host": "local", "key": "Down", "lang": "en"}))
 
         # ham geçiş: onay, sonra Enter \r olarak ve Ctrl-C öldürmeden gider

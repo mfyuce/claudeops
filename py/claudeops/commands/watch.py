@@ -79,6 +79,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from ..diaglog import diag_log
@@ -1163,6 +1164,8 @@ class InputSender:
     olduğundan sıra korunur (ham geçişte iki yığın ters gitmez). Sonuçlar `take_results()` ile alınır."""
 
     ENDPOINTS = {"text": ("/api/term/input", "text"), "key": ("/api/term/key", "key"), "raw": ("/api/term/raw", "data")}
+    MAX_ATTEMPTS = 3
+    SEND_TIMEOUT_SECONDS = 45   # panelin uzak yolu en kötü 12 sn x 3 deneme (36 sn); pencere ondan ÖNCE vazgeçmesin
 
     def __init__(self, port: int, host: str, session: str, *, read_token: Optional[Callable[[], str]] = None,
                  urlopen: Callable[..., Any] = urllib.request.urlopen):
@@ -1175,6 +1178,7 @@ class InputSender:
         self._thread: Optional[threading.Thread] = None
         self._seq = 0
         self._inflight = 0
+        self._transport_failed = False
 
     def submit(self, kind: str, payload: str) -> int:
         """Gönderimi sıraya koyar, hemen döner. Dönen sayı `take_results()` kaydıyla eşleşir."""
@@ -1214,25 +1218,38 @@ class InputSender:
             if job is None:
                 return
             seq, kind, payload = job
-            try:
-                ok, err = self._post(kind, payload)
-            except Exception as e:   # hiçbir hata gönderim thread'ini öldürmesin: sonraki tuşlar da gitsin
-                ok, err = False, f"iç hata: {type(e).__name__}"
+            # Her gönderim bir `input_id` taşır: panel uzak host'a 12 sn x 3 deneme (aynı id, uzakta çift yazma yok) ile
+            # güvenilir teslim yapar; id'siz istek tek deneme + 200 sn'dir ve pencerenin 20 sn zaman aşımı mesajı
+            # (uzak yol 15-40 sn yanıtsız kalınca) düşürürdü. Taşıma hatasında burada da aynı id ile yeniden denenir.
+            input_id = uuid.uuid4().hex
+            ok, err = False, ""
+            for attempt in range(self.MAX_ATTEMPTS):
+                self._transport_failed = False
+                try:
+                    ok, err = self._post(kind, payload, input_id)
+                except Exception as e:   # hiçbir hata gönderim thread'ini öldürmesin: sonraki tuşlar da gitsin
+                    ok, err = False, f"iç hata: {type(e).__name__}"
+                    break
+                if ok or not self._transport_failed:
+                    break
             with self._lock:
                 self._inflight -= 1
                 self._results.append((seq, kind, ok, err))
 
-    def _post(self, kind: str, payload: str) -> Tuple[bool, str]:
+    def _post(self, kind: str, payload: str, input_id: Optional[str] = None) -> Tuple[bool, str]:
         path, field = self.ENDPOINTS[kind]
         try:
             token = (self._read_token or read_token)()
         except TransportError as e:
             return False, e.detail
-        body = json.dumps({"name": self.session, "host": self.host, field: payload, "lang": "en"}).encode("utf-8")
+        fields = {"name": self.session, "host": self.host, field: payload, "lang": "en"}
+        if input_id:
+            fields["input_id"] = input_id
+        body = json.dumps(fields).encode("utf-8")
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=body, method="POST",
                                      headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
         try:
-            with self._urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+            with self._urlopen(req, timeout=self.SEND_TIMEOUT_SECONDS) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as e:
             e.close()
@@ -1240,6 +1257,7 @@ class InputSender:
                 return False, f"http {e.code}: web.token {self.port} portundaki panelle eşleşmiyor"
             return False, f"http {e.code}"
         except (urllib.error.URLError, OSError, TimeoutError) as e:
+            self._transport_failed = True
             return False, str(getattr(e, "reason", None) or e)
         try:
             data = json.loads(raw)
