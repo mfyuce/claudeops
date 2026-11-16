@@ -1065,7 +1065,14 @@ def cmd_api(args) -> int:
     elif args.action == "directive":
         res = _api(port, "POST", "/api/steward/directive", {"name": args.name, "text": args.text or "",
                                                             "model": args.model or "", "effort": args.effort or "",
-                                                            "reason": "cli"}, sid)
+                                                            "reason": "cli", "queue": True}, sid)
+        if res.get("status") == "queued" and res.get("id"):      # arka plan teslimi: sonucu bekle (delivered|failed), zaman aşımı = hâlâ queued
+            for _ in range(60):
+                time.sleep(2)
+                st = _api(port, "GET", f"/api/steward/directive/status?id={res['id']}" + (f"&steward={sid}" if sid != "default" else ""))
+                if st.get("status") in ("delivered", "failed") or not st.get("ok"):
+                    res = st
+                    break
     elif args.action == "restart":
         res = _api(port, "POST", "/api/steward/restart", {"name": args.name, "text": args.text or "",
                                                           "model": args.model or "", "effort": args.effort or "",

@@ -2195,6 +2195,44 @@ def _wake_record(cfg: sw.Config, paths: Any, sname: str, reason: str, answer: An
 _NON_ENTRY_REASONS = frozenset({"job", "lesson", "advance", "upper_main", "job-red"})
 
 
+def _live_ho_done(s: Any) -> bool:
+    """Canlı yerel claude oturumunun konuşması READY FOR HANDOVER ile bitmiş mi (gerçek iş turu var, son asistan cevabı RFH)?
+    Bilinmiyor/hata = False (davranış değişmez)."""
+    try:
+        if getattr(s, "cli", "") != "claude":
+            return False
+        cwd = getattr(s, "cwd", "") or _cwd_resolver()(s.name)
+        if not cwd:
+            return False
+        from ..providers.claude_provider import jsonl_path_for
+        from ..needs_ho import handover_done, has_real_user_turn
+        rid = get_provider("claude").resolve_resume_id(cwd, session_name=s.name)
+        path = jsonl_path_for(cwd, rid) if rid else None
+        return bool(path and os.path.isfile(path) and has_real_user_turn(path) and handover_done(path))
+    except Exception:
+        return False
+
+
+STOP_GONE_SECONDS = 15.0
+
+
+def _stop_exact_and_wait(session: str, target: str, lang: str, sid: str,
+                         sleep: Callable[[float], None] = time.sleep) -> Optional[Dict[str, Any]]:
+    """TAM oturum adını durdur ve çıkmasını bekle; None = durdu, aksi halde hata sözlüğü (direktif GÖNDERİLMEZ)."""
+    res = _act("stop", session, lang=lang)
+    if not res.get("ok"):
+        return res
+    waited = 0.0
+    while True:
+        _scan_invalidate()
+        if not _live_sessions(target, sid):
+            return None
+        if waited >= STOP_GONE_SECONDS:
+            return {"ok": False, "error": f"{session}: durduruldu ama süreç çıkmadı; fresh açılmadı", "code": "stop_not_gone"}
+        sleep(0.5)
+        waited += 0.5
+
+
 def _give_directive(project: sw.Project, text: str, **kw: Any) -> Dict[str, Any]:
     """`_give_directive_impl` + etiket kuralı: başarılı girişten (start/cevap/direktif/yeniden açma; hepsi buradan geçer)
     sonra projenin `stuck`/`waiting-owner` etiketleri kalkar (`sw.auto_remove_labels`)."""
@@ -2209,7 +2247,8 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
                     answer: Optional[sw.Question] = None, more: Optional[List[sw.Question]] = None,
                     start_if_stopped: bool = True,
                     reason: str = "", session_name: str = "", cfg: Optional[sw.Config] = None,
-                    host: Optional[str] = None, rt: Optional[_RemoteTick] = None, actor: str = "") -> Dict[str, Any]:
+                    host: Optional[str] = None, rt: Optional[_RemoteTick] = None, actor: str = "",
+                    verify: bool = False) -> Dict[str, Any]:
     """`project`'e (ya da onun `session_name` adlı çalışan instance'ına) direktif gönder; kapalıysa aç.
     Proje değnekçi kaydında değilse (ad hoc oturum) sadece gönderir, kayıt açmaz. Kayıtlar `cfg.sid`'in deposuna.
 
@@ -2260,11 +2299,19 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
         if len(live) > 1:     # hangisi? tahmin etme, üçüncüyü de açma
             return {"ok": False, "error": "ambiguous_sessions", "code": "ambiguous_sessions", "sessions": [x.name for x in live]}
         s = live[0] if live else None
+        force_fresh = False
+        if s is not None and start_if_stopped and reason not in _NON_ENTRY_REASONS and _live_ho_done(s):
+            # RFH ile bitmiş konuşmaya yazma (valprof 16 Kas): exact durdur, FRESH başlat, direktif yeni oturuma gider.
+            stopped = _stop_exact_and_wait(s.name, target, lang, cfg.sid)
+            if stopped is not None:
+                return stopped
+            sw.log_event("directive_ho_done_fresh", paths=paths, name=project.name, session=s.name)
+            s, force_fresh = None, True
         if s is None:
             if not start_if_stopped:
                 return {"ok": False, "error": "not running"}
             res = _ensure_running(target, model=model, effort=effort, lang=lang, sid=cfg.sid,
-                                  fresh=_consume_fresh_start(project.name, cfg.sid))     # `iş yok` kapanışından sonraki açılış: --new (devir notu CLAUDE.md'de)
+                                  fresh=_consume_fresh_start(project.name, cfg.sid) or force_fresh)     # `iş yok` kapanışından sonraki açılış: --new (devir notu CLAUDE.md'de)
             if not res.get("ok"):
                 return res
             if res.get("ho_on_open"):    # açılışta devir gitti: direktif/cevap devirden sonraki TAZE oturuma (respawn) gider
@@ -2300,6 +2347,10 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
                             REMOTE_INPUT_TIMEOUT_SECONDS, rt)
         if not sent.get("ok"):
             return dict(sent, ok=False, error=str(sent.get("error") or "send failed"), host=host)
+    elif verify:
+        st = _send_verified(sname, scli, message, sid=(cfg.sid if cfg is not None else "default"))
+        if st == "failed":
+            return {"ok": False, "error": "delivery_unconfirmed", "code": "delivery_unconfirmed", "name": sname}
     elif not _send(sname, scli, message, sid=(cfg.sid if cfg is not None else "default")):
         return {"ok": False, "error": "send failed"}
     # Mesaj GİTTİ: bundan sonrası kayıt tutmadır. Hiçbir kayıt hatası (ör. kilit zaman aşımı) çağırana "başarısız" demez ve
@@ -6221,6 +6272,101 @@ def _extension_park_note(name: str, text: str, p: Optional[sw.Project], sid: str
     return {"ok": True, "name": name, "parked": "todo", "skipped": "session closed" if not halted else f"phase {p.phase}"}
 
 
+# ── direktif teslim garantisi (sahip 16 Kas): kuyruk + pane doğrulama + görünür durum ───────────────────────────────
+DELIVERY_VERIFY_POLLS = 12
+DELIVERY_VERIFY_DELAY = 1.0
+DELIVERY_MAX_ENTERS = 3
+DELIVERY_MAX_RESENDS = 2
+DELIVERY_KEEP = 200
+_DELIVERIES: Dict[str, Dict[str, Any]] = {}      # {id: {id,name,status: queued|delivered|failed, reason, attempts, at, done_at}}
+_DELIVERY_LOCK = threading.Lock()
+
+
+def _delivery_set(did: str, **kw: Any) -> Dict[str, Any]:
+    with _DELIVERY_LOCK:
+        d = _DELIVERIES.setdefault(did, {"id": did, "status": "queued", "at": time.time()})
+        d.update(kw)
+        while len(_DELIVERIES) > DELIVERY_KEEP:
+            _DELIVERIES.pop(next(iter(_DELIVERIES)))
+        return dict(d)
+
+
+def http_directive_status(qs: Dict[str, List[str]]) -> Dict[str, Any]:
+    did = (qs.get("id") or [""])[0]
+    with _DELIVERY_LOCK:
+        if not did:
+            return {"ok": True, "deliveries": [dict(v) for v in list(_DELIVERIES.values())[-20:]]}
+        d = _DELIVERIES.get(did)
+        return {"ok": True, **dict(d)} if d else {"ok": False, "error": "unknown delivery id"}
+
+
+def _pane_norm(text: str) -> str:
+    return re.sub(r"\s+", "", strip_ansi(text or ""))
+
+
+def _send_verified(name: str, cli: str, message: str, sid: str = "default",
+                   sleep: Callable[[float], None] = time.sleep) -> str:
+    """Gönder, sonra pane'i oku: giriş kutusunda `[Pasted text]` kaldıysa Enter (en çok `DELIVERY_MAX_ENTERS`); mesaj panede
+    HİÇ görünmüyorsa yeniden gönder (en çok `DELIVERY_MAX_RESENDS`, gönderim öncesi sayımla: eski aynı başlık yanıltmaz).
+    Dönen: `delivered` | `failed` | `unverified` (ucli: kendi kutu denetimi var; gönderim ok)."""
+    head = _pane_norm(message)[:40]
+    before = _pane_norm(tmux_capture(name) or "").count(head) if head else 0
+    if not _send(name, cli, message, sid=sid):
+        return "failed"
+    if cli == "ucli" or not head:
+        return "unverified"
+    enters = resends = 0
+    for i in range(DELIVERY_VERIFY_POLLS):
+        sleep(DELIVERY_VERIFY_DELAY)
+        raw = tmux_capture(name) or ""
+        tail = _pane_norm("\n".join(strip_ansi(raw).splitlines()[-12:]))
+        if "[Pastedtext" in tail:
+            if enters >= DELIVERY_MAX_ENTERS:
+                return "failed"
+            tmux_send_raw(name, "\r")
+            enters += 1
+            continue
+        if _pane_norm(raw).count(head) > before:
+            return "delivered"
+        if i >= 3 and resends < DELIVERY_MAX_RESENDS:
+            resends += 1
+            if not _send(name, cli, message, sid=sid):
+                return "failed"
+    return "failed"
+
+
+def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
+    """Oturum kapalıyken başlatma yolu: HEMEN `queued` + arka planda teslim (zaman aşımı yok). Sonuç `directive/status?id=`."""
+    import uuid
+    did = uuid.uuid4().hex[:12]
+    name = str(data.get("name") or "")
+    _delivery_set(did, name=name, status="queued", reason="", attempts=0)
+
+    def run() -> None:
+        res: Dict[str, Any] = {}
+        for attempt in (1, 2):
+            _delivery_set(did, attempts=attempt)
+            try:
+                res = http_directive(dict(data, queue=False, _bg=True), sid)
+            except Exception as e:      # arka plan işi asla sessiz ölmez
+                res = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            if res.get("ok") or res.get("code") in ("draining", "start_backoff", "manual_session_running", "owner_pending"):
+                break
+        if res.get("ok"):
+            _delivery_set(did, status="delivered", done_at=time.time(), skipped=str(res.get("skipped") or ""))
+        else:
+            reason = str(res.get("code") or res.get("error") or "unknown")
+            _delivery_set(did, status="failed", reason=reason, error=str(res.get("error") or "")[:300], done_at=time.time())
+            sw.log_event("directive_failed", paths=sid, name=name, reason=reason)
+            try:
+                _notify(steward_config(sid), f"[{sid}/{name}] direktif teslim EDİLEMEDİ: {reason}")
+            except Exception:
+                pass
+
+    threading.Thread(target=run, daemon=True, name=f"directive-{did}").start()
+    return {"ok": True, "status": "queued", "id": did, "name": name}
+
+
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
@@ -6238,6 +6384,9 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     blocked = _brain_directive_blocks(name, data, sid)
     if blocked is not None:
         return blocked
+    if (not data.get("actor") and data.get("queue") is True and data.get("start_if_stopped", True)
+            and not _name_host(name) and not _live_sessions(name, sid)):
+        return _queue_directive(data, sid)       # insan/CLI başlatma yolu: zaman aşımı yok, durum izlenir
     with _ctx(sid).lock:
         projects = sw.load_projects(sid)
         p = _project_for_session(name, projects, _world(sid))
@@ -6253,7 +6402,7 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
         res = _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
                               start_if_stopped=bool(data.get("start_if_stopped", True)),
                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
-                              actor=str(data.get("actor") or ""))
+                              actor=str(data.get("actor") or ""), verify=bool(data.get("_bg")))
     if str(data.get("actor") or "") == "brain":
         _register_brain_outcome(res, name, sid)
     return res
@@ -6294,14 +6443,14 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                              error=str(stopped.get("error") or ""), reason=str(data.get("reason") or ""))
                 return stopped
             sw.log_event("restart", paths=sid, name=name, host=host, reason=str(data.get("reason") or ""))
-            return http_directive(dict(data, start_if_stopped=True, reason="restart: " + str(data.get("reason") or "")), sid)
+            return http_directive(dict(data, start_if_stopped=True, queue=False, reason="restart: " + str(data.get("reason") or "")), sid)
         live = _live_sessions(name, sid)
         if live:
             res = _act("stop", live[0].name if len(live) == 1 else name, lang=cfg.lang)
             if not res.get("ok"):
                 return res
         sw.log_event("restart", paths=sid, name=name, reason=str(data.get("reason") or ""))
-        return http_directive(dict(data, start_if_stopped=True, reason="restart: " + str(data.get("reason") or "")), sid)
+        return http_directive(dict(data, start_if_stopped=True, queue=False, reason="restart: " + str(data.get("reason") or "")), sid)
 
 
 def http_stop(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -6859,7 +7008,7 @@ def http_digest_file(kind: str, name: str, sid: str = "default") -> Dict[str, An
 
 
 _GET_PATHS = frozenset(("review/state", "review/file", "review/live", "review/io", "review/chat", "review/runs", "review/findings", "review/lessons", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
-                        "jobs", "services", "digests", "digest/file", "quota"))
+                        "jobs", "services", "digests", "digest/file", "quota", "directive/status"))
 
 
 def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
@@ -6874,6 +7023,8 @@ def http_get(path: str, qs: Dict[str, List[str]]) -> Optional[Dict[str, Any]]:
         return http_services()
     if path == "/api/steward/quota":
         return http_quota()
+    if path == "/api/steward/directive/status":
+        return http_directive_status(qs)
     if path == "/api/steward/review/runs":
         return http_review_runs()
     try:
