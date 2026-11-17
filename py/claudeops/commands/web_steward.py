@@ -5331,8 +5331,17 @@ def http_state(sid: str = "default") -> Dict[str, Any]:
         if pr is not None and pr.name not in session_of:
             session_of[pr.name] = {"name": str(r_.get("name") or ""), "host": str(r_.get("host") or world.host_of(pr.name) or "")}
     plist = []
+    open_tbd_, open_todo_ = _open_tbd_of(projects), _open_work_of(projects)
     for p_ in sorted(projects.values(), key=lambda p: (p.priority, p.name)):
         d_ = _project_dict(p_, running_projects, cards)
+        # sahip soruları yalnız STEWARD-ASK kuyruğu değil: projenin kendi TOBEDECIDED.md açık maddeleri de görünür (17 Kas, tunnel: kuyruk 0, TBD ~30)
+        for key_, fn_ in (("open_tbd", open_tbd_), ("open_todo", open_todo_)):
+            try:
+                n_ = fn_(p_.name)
+            except Exception:
+                n_ = None
+            if n_ is not None:
+                d_[key_] = int(n_)
         if p_.name in session_of:
             d_["session"] = session_of[p_.name]
         why_ = (ctx.idle_why.get("by") or {}).get(p_.name)
@@ -6554,6 +6563,11 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
                 return {"ok": False, "error": "unknown session/project"}
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
         _no_work_directive_reopen(p, sid)      # `iş yok` ile paused projeye direktif = yeniden açılış tetikleyicisi (planned + --new)
+        if p.phase in ("done", "paused") and str(data.get("actor") or "") not in ("brain", "extension") and sw.valid_name(p.name) and p.name in projects:
+            # insan/okuma(readlist)/CLI direktifi done/paused projeye yeni iş demektir: phase=planned (17 Kas, marwan: oturum açıldı ama faz done kaldı)
+            sw.upsert_project(p.name, paths=sw.paths_for(sid), phase="planned")
+            sw.log_event("phase_reopen", paths=sw.paths_for(sid), name=p.name, project=p.name, was=p.phase, trigger="directive")
+            p = sw.load_projects(sid).get(p.name) or p
         res = _give_directive(p, text, model=str(data.get("model") or ""), effort=str(data.get("effort") or ""),
                               start_if_stopped=bool(data.get("start_if_stopped", True)),
                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),

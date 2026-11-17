@@ -82,6 +82,14 @@ class TestState(_Surface):
         self.assertTrue(prj["oiso"]["running"])
         self.assertEqual(prj["oiso"]["host"], HOST)
 
+    def test_state_shows_open_tbd_and_todo_counts(self):
+        """Sahip soruları sayımı yalnız STEWARD-ASK kuyruğu değil: proje TOBEDECIDED.md açık maddeleri (open_tbd) + TODO (open_todo) görünür."""
+        with mock.patch.object(ws, "_open_tbd_of", lambda projects: (lambda n: 30 if n == "loc" else None)), \
+                mock.patch.object(ws, "_open_work_of", lambda projects: (lambda n: 4 if n == "loc" else None)):
+            prj = {p["name"]: p for p in ws.http_state()["projects"]}
+        self.assertEqual((prj["loc"]["open_tbd"], prj["loc"]["open_todo"]), (30, 4))
+        self.assertNotIn("open_tbd", prj["oiso"])            # uzak/bilinmiyor: anahtar yok (uydurma sayı yok)
+
     def test_local_namesake_does_not_make_remote_project_running(self):
         self.fake.set(HOST, [_row("oiso", running=False)])
         self.live = [NS(name="oiso", cwd="/yerel/oiso", cli="claude", model="m", pid=2, sid=None, base="oiso")]

@@ -345,6 +345,17 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], open_work=lambda n: 0, todo_sha=lambda n: sha["v"])
         self.assertEqual([a for a in acts if a.kind == "start"], [])
 
+    def test_todo_change_reopens_done_project_to_planned(self):
+        """17 Kas (marwan): reviewer bulgusu done projenin TODO'suna düşünce planned'a çekilir (paused'a dokunulmaz, yalnız soru)."""
+        cfg = _cfg(max_active=4, max_starts_per_tick=5)
+        self.projects["c"].phase = "done"
+        sha = {"v": "h1"}
+        kw = dict(open_work=lambda n: 21, todo_sha=lambda n: sha["v"])
+        _, st = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [], **kw)
+        sha["v"] = "h2"
+        acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], **kw)
+        self.assertEqual([(a.name, a.payload) for a in acts if a.kind == "set_phase"], [("c", {"phase": "planned"})])
+
     def test_todo_change_paused_project_asks_owner_once_per_day(self):
         cfg = _cfg(max_active=4, max_starts_per_tick=5)
         sha = {"v": "h1"}
@@ -974,14 +985,15 @@ class AnswerStartPhaseTest(unittest.TestCase):
         q = sw.Question(id="q1", project="p1", text="soru?", created_at=1000.0, status="answered", answer="evet", answered_at=2000.0)
         projects = {"p1": sw.Project(name="p1", phase=phase, cadence_minutes=60)}
         acts, _ = sw.plan_tick([], projects, {}, _cfg(), 5000.0, [q], [])
-        return [(a.kind, a.name) for a in acts if a.kind in ("start", "deliver_answer")]
+        return [(a.kind, a.name) for a in acts if a.kind in ("start", "deliver_answer", "set_phase")]
 
     def test_active_phase_starts(self):
         self.assertEqual(self._plan("planned"), [("start", "p1")])
 
-    def test_paused_and_done_never_start_from_stale_answer(self):
+    def test_owner_answer_reopens_paused_and_done_project(self):
+        """17 Kas (sahip, marwan): sahip cevabı done/paused projeyi planned'a çeker ve açar (eskiden cevap iletilmeden bekliyordu)."""
         for phase in ("paused", "done"):
-            self.assertEqual(self._plan(phase), [], phase)
+            self.assertEqual(self._plan(phase), [("set_phase", "p1"), ("start", "p1")], phase)
 
 
 class DoneHandoverTest(unittest.TestCase):
@@ -3383,7 +3395,9 @@ class SmartTickTest(unittest.TestCase):
         projects = {"p1": sw.Project(name="p1", phase="planned")}
         acts, _ = sw.plan_tick([_view("p1", last_assistant=ok)], projects, {"done_confirm": {"p1": self.now - 100}}, _cfg(), self.now, [], [],
                                open_work=lambda p: 0, open_tbd=lambda p: 2)
-        self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop", "ask_user")], ["ask_user"])
+        # açık sahip sorusu varken done DEĞİL paused (sahip bekliyor) + oturum kapanır (17 Kas, marwan)
+        self.assertEqual([(a.kind, (a.payload or {}).get("phase")) for a in acts if a.kind in ("set_phase", "stop", "ask_user")],
+                         [("ask_user", None), ("set_phase", "paused"), ("stop", None)])
         acts, _ = sw.plan_tick([_view("p1", last_assistant=ok)], projects, {"done_confirm": {"p1": self.now - 100}}, _cfg(), self.now, [], [],
                                open_work=lambda p: 0, open_tbd=lambda p: 0)
         self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop")], ["set_phase", "stop"])

@@ -3991,7 +3991,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 elif tbd_left and not left:
                     actions.append(Action("ask_user", v.name, "STEWARD-DONE-CONFIRMED TBD ile çelişti",
                                           {"project": proj, "text": f"{v.name}: STEWARD-DONE-CONFIRMED geldi ama TOBEDECIDED.md'de {tbd_left} açık "
-                                                                    f"karar var; faz done yapılmadı. Kararları verir misiniz, yoksa gerçekten bitti mi?"}))
+                                                                    f"karar var; faz done yapılmadı, paused (sahip bekliyor). Kararları verir misiniz, yoksa gerçekten bitti mi? "
+                                                                    f"Cevap ya da yeni iş gelince proje yeniden açılır."}))
+                    # 17 Kas (sahip, marwan): açık sahip sorusu varken done DEĞİL paused (sahip bekliyor); done sanılan proje unutuluyordu
+                    if not (v.subagent_active or (v.subagent_unknown and not _quiet_idle(v))):
+                        done_confirm.pop(proj, None)
+                        actions.append(Action("set_phase", proj, "STEWARD-DONE-CONFIRMED + açık TBD: sahip bekliyor", {"phase": "paused"}))
+                        if v.name not in busy_names:
+                            _close_done(v, proj, "STEWARD-DONE-CONFIRMED + açık TBD")
                 elif left:
                     actions.append(Action("ask_user", v.name, "STEWARD-DONE-CONFIRMED yerel sayımla çelişti",
                                           {"project": proj, "text": f"{v.name}: STEWARD-DONE-CONFIRMED geldi (\"{body[:160]}\") ama projenin TODO.md'sinde "
@@ -4094,7 +4101,15 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             last_directive_at[v.name] = now
         elif target in manual_projects:
             continue    # L2: proje sahibin elle açtığı oturumda; cevap o oturuma iletilmez, ikinci oturum da açılmaz
-        elif (projects[target].phase in ACTIVE_PHASES        # duraklatılmış/bitmiş proje eski cevap yüzünden AÇILMAZ; cevap proje aktifleşince iletilir
+        elif (projects[target].phase in ("done", "paused") and target not in (st.get("no_work_paused") or {})
+              and starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable)):
+            # SAHİP CEVABI geldi (17 Kas, marwan): done/paused proje planned'a döner ve açılır (iş yok durdurması kendi yolundan: plan_no_work_reopen)
+            actions.append(Action("set_phase", target, "sahip cevabı geldi", {"phase": "planned"}))
+            actions.append(Action("start", target, "answer → start", {"question_id": q.id}))
+            starts += 1
+            busy_names.add(target)
+            last_directive_at[target] = now
+        elif (projects[target].phase in ACTIVE_PHASES
               and starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable)):
             actions.append(Action("start", target, "answer → start", {"question_id": q.id}))
             starts += 1
@@ -4128,6 +4143,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 continue
             if p.phase in ACTIVE_PHASES:
                 todo_changed.add(p.name)
+            elif p.phase == "done":
+                # TODO'ya (ör. reviewer/Fable bulgusu) açık iş düştü: done proje unutulmasın (17 Kas, marwan); planned'a çek, sonraki tick açar
+                actions.append(Action("set_phase", p.name, "done projenin TODO'suna açık iş geldi", {"phase": "planned"}))
             elif p.phase == "paused" and now - paused_asked.get(p.name, 0.0) >= 24 * 3600:
                 n = open_work(p.name)
                 actions.append(Action("ask_user", p.name, "paused projenin TODO'suna madde geldi",
