@@ -17,12 +17,15 @@ class Fake:
         self.head, self.ls_ok = head, ls_ok
         self.behind, self.dirty, self.merge_rc = set(behind), dirty, merge_rc
         self.calls = []
+        self.unpushed = set()
 
     def __call__(self, argv, cwd=None, timeout=60):
         self.calls.append(list(argv))
         a = argv
         if a[:2] == ["git", "merge-base"]:
             return (1 if a[3].split("/")[0] in self.behind else 0), ""
+        if a[:2] == ["git", "rev-list"]:
+            return 0, ("2\n" if a[3].split("/")[0] in self.unpushed else "0\n")
         if a[:2] == ["git", "status"]:
             return 0, self.dirty
         if a[:2] == ["git", "merge"]:
@@ -144,6 +147,17 @@ class Tests(Base):
         f2 = Fake(self.repo, self.GH, vis={"me/wifi": "private"})
         ents, _ = self.run_bk(f2, apply=True)
         self.assertEqual(ents[0]["result"], "değişiklik yok")
+        self.assertFalse(any(c[:2] == ["git", "commit"] for c in f2.calls))
+
+    def test_unpushed_remote_retried_when_no_file_change(self):
+        """Önceki turda bir remote'a push düştü (commit yerelde): içerik değişmese de o remote yeniden denenir."""
+        self.proj(files={"MEMORY.md": "a"})
+        self.run_bk(Fake(self.repo, self.GH, vis={"me/wifi": "private"}), apply=True)
+        f2 = Fake(self.repo, self.GH, vis={"me/wifi": "private"})
+        f2.unpushed = {"github"}
+        ents, failed = self.run_bk(f2, apply=True)
+        self.assertEqual(failed, 0, ents)
+        self.assertTrue(any(c[:2] == ["git", "push"] for c in f2.calls))
         self.assertFalse(any(c[:2] == ["git", "commit"] for c in f2.calls))
 
     def test_ls_remote_mismatch_is_failure(self):

@@ -242,7 +242,16 @@ def apply_one(ent: Dict[str, Any]) -> str:
     repo, dest = ent["repo"], os.path.join(ent["repo"], "memory")
     files = list(ent.get("changed") or [])
     if not files and not ent.get("readme_changed"):
-        return "değişiklik yok"
+        # önceki turda bir remote'a push düşmüş olabilir: commit yerelde, uzak geride. Yerel uzak-izleme ref'iyle (ağsız) bak.
+        br0 = ent["branch"]
+        behind = []
+        for rn in ent["remotes"]:
+            rc, out = _run(["git", "rev-list", "--count", f"{rn}/{br0}..HEAD"], cwd=repo)
+            if rc == 0 and out.strip().isdigit() and int(out.strip()) > 0:
+                behind.append(rn)
+        if not behind:
+            return "değişiklik yok"
+        return _push_remotes(ent, repo, behind, 0)
     os.makedirs(dest, exist_ok=True)
     for f in files:
         shutil.copyfile(os.path.join(ent["memdir"], f), os.path.join(dest, f))
@@ -257,10 +266,14 @@ def apply_one(ent: Dict[str, Any]) -> str:
     rc, _ = _run(["git", "commit", "-m", "chore(memory): Claude hafıza yedeği", "--"] + paths, cwd=repo)
     if rc != 0:
         return "HATA: git commit"
+    return _push_remotes(ent, repo, list(ent["remotes"]), len(paths))
+
+
+def _push_remotes(ent: Dict[str, Any], repo: str, remotes: List[str], npaths: int) -> str:
     br = ent["branch"]
     bad = []
     pushable = []
-    for rn in ent["remotes"]:       # 1) fetch + gerekirse merge (rebase YOK: başka remote'a giden hash değişmesin)
+    for rn in remotes:             # 1) fetch + gerekirse merge (rebase YOK: başka remote'a giden hash değişmesin)
         rc, _ = _run(["git", "fetch", rn, br], cwd=repo, timeout=120)
         if rc != 0:                 # uzak dal yok/erişilemiyor: push kendi başına sonucu söyler
             pushable.append(rn)
@@ -289,7 +302,7 @@ def apply_one(ent: Dict[str, Any]) -> str:
         rc, out = _run(["git", "ls-remote", rn, f"refs/heads/{ent['branch']}"], cwd=repo, timeout=60)
         if rc != 0 or not out.split() or out.split()[0] != head:
             bad.append(f"{rn}: ls-remote uyuşmadı")
-    return "HATA: " + ", ".join(bad) if bad else f"yedeklendi ({len(paths)} dosya), {len(ent['remotes'])} remote doğrulandı"
+    return "HATA: " + ", ".join(bad) if bad else f"yedeklendi ({npaths} dosya), {len(remotes)} remote doğrulandı"
 
 
 def run_backup(root: str, apply: bool, only: List[str]) -> Tuple[List[Dict[str, Any]], int]:

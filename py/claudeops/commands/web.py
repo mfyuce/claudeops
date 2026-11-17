@@ -852,6 +852,16 @@ def _blueprint_cwds(fleet: dict) -> Dict[str, str]:
     return {n: i["cwd"] for n, i in fleet.items() if not inst_mod.DERIVED_NAME_RE.match(n)}
 
 
+def _host_from_qs(qs: dict) -> str:
+    """Sorgu dizgesinden `host` (boş/yok = yerel host). 12 uçta tekrarlanan çözümleme tek yerde."""
+    return (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+
+
+def _host_from_body(data: dict) -> str:
+    """JSON gövdesinden `host` (boş/yok = yerel host)."""
+    return str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+
+
 def _new_chat_source(name: str, fleet: dict) -> Optional[tuple]:
     """(blueprint|None, önek, cwd, cli, model) — yeni sohbetin neyden türeyeceği.
 
@@ -4729,7 +4739,7 @@ class _Handler(BaseHTTPRequestHandler):
         name = (qs.get("name") or [""])[0].strip()
         lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
         fpath = (qs.get("path") or [""])[0].strip()
-        host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+        host = _host_from_qs(qs)
         if not name:
             self._json(_err(lang, "name_required"), status=400)
             return
@@ -4804,7 +4814,7 @@ class _Handler(BaseHTTPRequestHandler):
         """`/api/session/lock|unlock` (POST): kendi grafik oturumumuzu kilitle/aç (`graphical_session.set_lock`). Yalnız YEREL host
         (`HOST_ROUTED_PATHS`'ta DEĞİL; `host` alanı yerel dışıysa 400), yalnız insan: ajan token'ı ve `actor` alanı insan dışı olan istek
         403, `confirm:true` ŞART (panel onay penceresinden sonra gönderir). Her çağrı olay günlüğüne (diag.log: kim/ne zaman/IP/sonuç)."""
-        host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+        host = _host_from_body(data)
         actor = str(data.get("actor") or "human").strip() or "human"
         ip = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
         if host != LOCAL_HOST_NAME:
@@ -4840,7 +4850,7 @@ class _Handler(BaseHTTPRequestHandler):
             data = {}
         name = str(data.get("name") or "").strip()
         fpath = str(data.get("path") or "").strip()
-        host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+        host = _host_from_body(data)
         lang = "en" if data.get("lang") == "en" else "tr"
         if not self._gate("POST", "/api/files/ticket", data):      # K2: gövdedeki oturum/host kaynağı
             return
@@ -4898,7 +4908,7 @@ class _Handler(BaseHTTPRequestHandler):
         dir_path = (qs.get("path") or [""])[0].strip() or None
         filename = (qs.get("filename") or [""])[0].strip()
         overwrite = (qs.get("overwrite") or [""])[0] == "1"
-        host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+        host = _host_from_qs(qs)
 
         if not name:
             self._json(_err(lang, "name_required"), status=400)
@@ -5070,7 +5080,7 @@ class _Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
@@ -5115,7 +5125,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/stop/status":
             # "devir + kapat" arka plan işinin durumu (yerel-only, host-routed DEĞİL: iş bu sunucuda yürür)
             qs = parse_qs(urlparse(self.path).query)
-            self._json(_ho_stop_status(str((qs.get("host") or [LOCAL_HOST_NAME])[0]).strip() or LOCAL_HOST_NAME,
+            self._json(_ho_stop_status(_host_from_qs(qs),
                                        str((qs.get("name") or [""])[0]).strip()))
         elif path == "/api/orch/runs":
             # TOBEDECIDED#15 Phase 1 — local-only (host-routed'a eklenmedi,
@@ -5145,7 +5155,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/cli/status":
             qs = parse_qs(urlparse(self.path).query)
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if host != LOCAL_HOST_NAME:
                 result, status = web_hosts.proxy_get(path, host, {"lang": lang})
                 self._json(result, status=status)
@@ -5186,7 +5196,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/instances":
             qs = parse_qs(urlparse(self.path).query)
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if host != LOCAL_HOST_NAME:
                 result, status = web_hosts.proxy_get(path, host, {"lang": lang})
                 # Uzak host kendi kayıtlarını "local" etiketler; aksiyonlar doğru host'a gitsin.
@@ -5200,7 +5210,7 @@ class _Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
@@ -5219,7 +5229,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(web_term_lite.to_lite(result) if lite else result)
         elif path == "/api/session/graphical":
             qs = parse_qs(urlparse(self.path).query)
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if host != LOCAL_HOST_NAME:
                 result, status = web_hosts.proxy_get(path, host, {}, dedup=False)
                 self._json(result, status=status)
@@ -5228,7 +5238,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/session/facts":
             qs = parse_qs(urlparse(self.path).query)
             names = [n.strip() for n in (qs.get("names") or [""])[0].split(",") if n.strip()]
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if host != LOCAL_HOST_NAME:
                 result, status = web_hosts.proxy_get(path, host, {"names": ",".join(names)}, dedup=False)
                 self._json(result, status=status)
@@ -5238,7 +5248,7 @@ class _Handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
@@ -5258,7 +5268,7 @@ class _Handler(BaseHTTPRequestHandler):
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
             mode = "full" if (qs.get("mode") or [""])[0] == "full" else "last"
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             try:
                 since = int((qs.get("since") or ["0"])[0])
             except ValueError:
@@ -5277,7 +5287,7 @@ class _Handler(BaseHTTPRequestHandler):
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
             fpath = (qs.get("path") or [""])[0].strip() or None
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
@@ -5294,7 +5304,7 @@ class _Handler(BaseHTTPRequestHandler):
             name = (qs.get("name") or [""])[0].strip()
             lang = "en" if (qs.get("lang") or [""])[0] == "en" else "tr"
             fpath = (qs.get("path") or [""])[0].strip()
-            host = (qs.get("host") or [LOCAL_HOST_NAME])[0].strip() or LOCAL_HOST_NAME
+            host = _host_from_qs(qs)
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
@@ -5597,7 +5607,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "ho:true and force:true contradict each other (handover vs. close without handover)",
                             "code": "ho_force_conflict"}, status=400)
                 return
-            ho_host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+            ho_host = _host_from_body(data)
             self._json(_ho_stop_begin(ho_host, str(data.get("name") or "").strip(), lang, exact=data.get("exact") is True))
             return
 
@@ -5607,7 +5617,7 @@ class _Handler(BaseHTTPRequestHandler):
         # aşağıdaki gibi devam eder — bu blok SADECE ek bir erken-çıkış, mevcut hiçbir
         # dal DEĞİŞMEDİ.
         if path in web_hosts.HOST_ROUTED_PATHS:
-            host = str(data.get("host") or LOCAL_HOST_NAME).strip() or LOCAL_HOST_NAME
+            host = _host_from_body(data)
             if host != LOCAL_HOST_NAME:
                 result, proxy_status = web_hosts.proxy_term_action(path, host, data)
                 self._json_notify(result, status=proxy_status)
