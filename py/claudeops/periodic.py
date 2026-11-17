@@ -65,6 +65,8 @@ DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
     "dump_db": True,             # codex/gemini .db -> JSONL döküm (chat_dump)
     "sources": ["local"],
     "remote_pull": {},           # {host: shell_oturum_adı}, örn {"yuhem": "shell_yuhem"}; boş = uzak çekme KAPALI (chat_remote)
+    "remote_tgz_keep": 3,        # uzak host başına saklanan en yeni tgz sayısı
+    "remote_tgz_prune": "dry",   # dry = yalnız günlüğe listele (varsayılan) | on = sil | off; silme yalnız commit+push doğrulanınca, en yeni tgz açılmışsa
     "max_file_mb": 50,           # tek ham dosya sınırı (GitHub blob 100 MB); aşan atlanır, günlüğe yazılır
     "max_repo_mb": 8000,         # çalışma ağacı sınırı; aşılırsa iş durur (sahibe sorulur)
 }
@@ -716,6 +718,17 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     done.update({_DEST_PFX + e["dest"]: sigs[_DEST_PFX + e["dest"]] for e in plan["changed"] if _DEST_PFX + e["dest"] in sigs})
     manifest.update(done)
     state.setdefault("chat_backup", {})["manifest"] = manifest
+    mode = str(cfg.get("remote_tgz_prune", "dry")).strip().lower()
+    if not warns and mode not in _OFF_WORDS:       # bu noktada tüm repolar commit+push+ls-remote ile doğrulandı
+        try:
+            from . import chat_dump
+            pr = chat_dump.prune_remote_archives(os.path.join(CLAUDEOPS_DIR, "backups", "chat-mirror"),
+                                                 int(cfg.get("remote_tgz_keep") or 3), apply=(mode == "on"))
+            if pr:
+                diag_log(f"periodic chat_backup: uzak tgz budama ({'SİLİNDİ' if mode == 'on' else 'KURU ÇALIŞTIRMA'}): "
+                         + ", ".join(f"{os.path.basename(p_)} {sz // 1048576}MB" for p_, sz in pr))
+        except Exception as e:  # noqa: BLE001
+            diag_log(f"periodic chat_backup: tgz budama hatası {type(e).__name__}: {e}")
     if dump_info:
         res["dump"] = dump_info
         if dump_info.get("errors") or dump_info.get("raw_err"):

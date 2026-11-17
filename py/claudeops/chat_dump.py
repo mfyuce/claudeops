@@ -1,7 +1,7 @@
 """chat_backup: .db -> gün/oturum bazlı JSONL döküm (ham .db gdrive:chat-raw/'a gider, git'e girmez).
 Codex: thread_items (+threads.cwd=proje). Gemini/agy: steps/gen_metadata protobuf BLOB'ları şemasız çözülür;
 tarih = steps.metadata içindeki ilk makul unix-saniye alanı, bulunamazsa 'bilinmiyor'. Proje alanı doğrulanmadı -> 'bilinmiyor'."""
-import json, os, re, sqlite3, datetime
+import json, os, re, shutil, sqlite3, tempfile, datetime
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 UNKNOWN = "bilinmiyor"
@@ -272,6 +272,31 @@ def db_sig(p: str) -> str:
     return sig
 
 
+def _merge_stage(tmp: str, stage: str, rels: List[str]) -> None:
+    """Yeni dökümü stage'e taşır. İçerik AYNIYSA eski dosya (mtime dahil) korunur; FARKLIYSA mtime = max(içerik günü öğlen, eski mtime + 1 sn):
+    aynı boyutlu içerik değişimi de plan_chat_backup'ın (boyut+mtime) imzasında görünür ve mtime geriye gitmez (_regress)."""
+    for rel in rels:
+        new, old = os.path.join(tmp, rel), os.path.join(stage, rel)
+        day = rel.split(os.sep)[-2]
+        t = datetime.datetime.strptime(day, "%Y-%m-%d").replace(hour=12).timestamp() if _valid_day(day) != UNKNOWN else os.stat(new).st_mtime
+        if os.path.exists(old):
+            if _sha(old) == _sha(new):
+                continue
+            t = max(t, os.stat(old).st_mtime + 1)
+        os.makedirs(os.path.dirname(old), exist_ok=True)
+        os.utime(new, (t, t))
+        os.replace(new, old)
+
+
+def _sha(path: str) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
 def stage_dumps(stage: str, stamps: Dict[str, str], home: Optional[str] = None) -> Dict[str, Any]:
     """Değişen db'leri stage/<cli>/... altına JSONL döker; dosya mtime'ı = içerik günü (commit tarihi için). Hata db başına yutulur."""
     home = home or os.path.expanduser("~")
@@ -285,20 +310,20 @@ def stage_dumps(stage: str, stamps: Dict[str, str], home: Optional[str] = None) 
         if stamps.get(p) == sig:
             st["skipped"] += 1
             continue
+        os.makedirs(stage, exist_ok=True)
+        tmp = tempfile.mkdtemp(prefix=".stage-new-", dir=os.path.dirname(os.path.abspath(stage)))     # stage DIŞINDA: yarım iş yedeğe sızmaz
         try:
             if cli == "codex":
                 rows = dump_codex(p, os.path.join(os.path.dirname(p), "state_5.sqlite"))
-                rels = write_jsonl(rows, stage, "codex")
+                rels = write_jsonl(rows, tmp, "codex")
             else:
-                rels = write_jsonl(dump_gemini(p), stage, os.path.join("gemini", sub))
+                rels = write_jsonl(dump_gemini(p), tmp, os.path.join("gemini", sub))
+            _merge_stage(tmp, stage, rels)
         except Exception as e:  # noqa: BLE001 — bozuk/kilitli db diğerlerini durdurmasın
             st["errors"].append(f"{p}: {type(e).__name__}: {e}"[:200])
             continue
-        for rel in rels:
-            day = rel.split(os.sep)[-2]
-            if _valid_day(day) != UNKNOWN:
-                t = datetime.datetime.strptime(day, "%Y-%m-%d").replace(hour=12).timestamp()
-                os.utime(os.path.join(stage, rel), (t, t))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
         stamps[p] = sig
         st["dumped"] += 1
         st["files"] += len(rels)
@@ -343,6 +368,32 @@ def raw_to_remote(remote: str, home: Optional[str] = None, timeout: int = 10800)
 
 
 # ------------------------------------------------------------------ uzak host arşivleri (yuhem, ulak_31)
+def prune_remote_archives(mir: str, keep: int = 3, apply: bool = False) -> List[Tuple[str, int]]:
+    """Eski uzak tgz'leri budar: host başına en yeni `keep` arşiv kalır. Silme YALNIZ en yeni arşiv doğrulanmışsa (başarıyla açıldı:
+    extract/.done damgası onunla eşleşir) ve yalnız ondan eski arşivlere uygulanır. apply=False: kuru çalıştırma, yalnız listeler.
+    Dönüş: [(yol, bayt)] silinecek/silinen. Çağıran, repo commit+push doğrulandıktan sonra çağırmalıdır."""
+    import glob
+    out: List[Tuple[str, int]] = []
+    for hd in sorted(glob.glob(os.path.join(mir, "*"))):
+        tgzs = sorted(glob.glob(os.path.join(hd, "*.tgz")), key=os.path.getmtime)
+        if len(tgzs) <= max(1, keep):
+            continue
+        newest = tgzs[-1]
+        try:
+            if _read(os.path.join(hd, "extract", ".done")) != f"{os.path.basename(newest)}:{os.path.getsize(newest)}":
+                continue                    # en yeni arşiv doğrulanmadı: hiçbir şey silinmez
+        except OSError:
+            continue
+        for old in tgzs[:-max(1, keep)]:
+            try:
+                out.append((old, os.path.getsize(old)))
+                if apply:
+                    os.remove(old)
+            except OSError:
+                pass
+    return out
+
+
 def ingest_remote_archives(mir: str) -> Dict[str, Any]:
     """mir/<host>/*.tgz (en yenisi) -> mir/<host>/extract/. Güvensiz veri: yalnız düz dosya/dizin, mutlak yol ve '..' reddedilir,
     mod 0600/0700. Aynı arşiv bir kez açılır (extract/.done). Dönüş: {host: açılan üye sayısı | 'atlandı'}."""

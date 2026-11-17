@@ -221,3 +221,61 @@ def test_raw_to_remote_uzak_host_sqlite_dahil(tmp_path, monkeypatch):
     assert D.raw_to_remote("gd:raw", home=str(home)) == ""
     dests = [c[c.index("--transfers") + 3] for c in calls]
     assert any(d.endswith("/yuhem/codex") for d in dests) and any(d.endswith("/yuhem/gemini") for d in dests)
+
+
+def test_merge_stage_ayni_boyut_farkli_icerik_mtime_ilerler(tmp_path):
+    stage, tmp = tmp_path / "stage", tmp_path / "new"
+    rel = os.path.join("codex", "p", "2026-11-01", "s.jsonl")
+    for d in (stage, tmp):
+        os.makedirs(d / "codex/p/2026-11-01")
+    (stage / rel).write_text('{"a":"aaaa"}\n')
+    old_t = os.stat(stage / rel).st_mtime
+    (tmp / rel).write_text('{"a":"bbbb"}\n')               # aynı boyut, farklı içerik
+    D._merge_stage(str(tmp), str(stage), [rel])
+    assert (stage / rel).read_text() == '{"a":"bbbb"}\n'
+    import datetime
+    noon = datetime.datetime(2026, 11, 1, 12).timestamp()
+    assert os.stat(stage / rel).st_mtime >= max(noon, old_t) + 0
+    t1 = os.stat(stage / rel).st_mtime
+    (tmp / rel).write_text('{"a":"bbbb"}\n')               # aynı içerik: mtime korunur
+    D._merge_stage(str(tmp), str(stage), [rel])
+    assert os.stat(stage / rel).st_mtime == t1
+    (tmp / rel).write_text('{"a":"cccc"}\n')
+    D._merge_stage(str(tmp), str(stage), [rel])
+    assert os.stat(stage / rel).st_mtime == t1 + 1
+
+
+def _mk_tgzs(hd, n, done_for=None):
+    os.makedirs(hd / "extract", exist_ok=True)
+    names = []
+    for i in range(n):
+        f = hd / f"h-chat-backup-2026110{i + 1}.tgz"
+        f.write_bytes(b"x" * (i + 1))
+        os.utime(f, (1000 + i, 1000 + i))
+        names.append(f)
+    if done_for is not None:
+        f = names[done_for]
+        (hd / "extract" / ".done").write_text(f"{f.name}:{f.stat().st_size}")
+    return names
+
+
+def test_prune_kuru_calistirma_silmez_ve_listeler(tmp_path):
+    hd = tmp_path / "h"
+    names = _mk_tgzs(hd, 5, done_for=4)
+    out = D.prune_remote_archives(str(tmp_path), keep=3, apply=False)
+    assert [os.path.basename(p) for p, _ in out] == [names[0].name, names[1].name]
+    assert all(f.exists() for f in names)
+
+
+def test_prune_apply_yalniz_eskileri_siler(tmp_path):
+    hd = tmp_path / "h"
+    names = _mk_tgzs(hd, 5, done_for=4)
+    D.prune_remote_archives(str(tmp_path), keep=3, apply=True)
+    assert [f.exists() for f in names] == [False, False, True, True, True]
+
+
+def test_prune_en_yeni_dogrulanmadiysa_dokunmaz(tmp_path):
+    hd = tmp_path / "h"
+    names = _mk_tgzs(hd, 5, done_for=3)               # .done en yeni olmayan arşivle eşleşiyor
+    assert D.prune_remote_archives(str(tmp_path), keep=3, apply=True) == []
+    assert all(f.exists() for f in names)
