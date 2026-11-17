@@ -160,10 +160,17 @@ class DeliverTest(_Tmp):
                 mock.patch.object(web_steward, "_target", lambda *a, **k: None):
             web_steward._apply(act, cfg, proj)
         p = sw.load_projects()["cli"]
-        self.assertEqual(p.phase, "paused")
+        self.assertEqual(p.phase, "planned")     # keepwarm zinciri paused YAPMAZ (paused = sahibin kararı; TODO/cadence yeniden açar)
         self.assertIn("keepwarm zinciri: 3 dürtmede iş yok", p.notes)
         self.assertIn("eski not", p.notes)
         self.assertEqual(notes, [])                                              # ntfy yok
+        # "iş yok" kapatması (kendi yeniden açılış tetikleyicileri var) paused yapar
+        from claudeops import steward_nowork as snw
+        act2 = sw.Action("stop", "cli", "x", {"pause": {"project": "cli", "reason": snw.NO_WORK_REASON}})
+        with mock.patch.object(web_steward, "_act", lambda *a, **k: {"ok": True}), mock.patch.object(web_steward, "_notify", lambda c, m: None), \
+                mock.patch.object(web_steward, "_target", lambda *a, **k: None):
+            web_steward._apply(act2, cfg, proj)
+        self.assertEqual(sw.load_projects()["cli"].phase, "paused")
 
     def test_lessons_reads_reviewer_workspaces_only_when_enabled(self):
         cfg = sw.Config(enabled=True)

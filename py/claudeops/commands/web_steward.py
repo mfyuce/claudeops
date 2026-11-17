@@ -3401,8 +3401,15 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             # keepwarm zinciri: devir BİTTİ ve oturum kapandı; şimdi paused + gerekçe (notlara eklenir, ntfy YOK)
             reason = str(pz.get("reason") or "")
             cur = projects.get(str(pz["project"]))
-            note = ((cur.notes + "\n") if cur is not None and cur.notes else "") + f"[paused {time.strftime('%Y-%m-%d %H:%M')}] {reason}"
-            sw.upsert_project(str(pz["project"]), paths=paths, phase="paused", notes=note)
+            # `paused` SAHİBİN kararıdır (değnekçi bir daha açmaz): keepwarm zinciri projeyi `planned` bırakır (oturum kapalı, TODO/cadence
+            # ile yeniden açılır; 17 Kas: ysf/zlkrn 3 gün sessiz kaldı). Yalnız "iş yok" kapatması (kendi yeniden açılış tetikleyicileri var) paused yapar.
+            to_paused = reason == snw.NO_WORK_REASON
+            tag = "paused" if to_paused else "kapandı"
+            note = ((cur.notes + "\n") if cur is not None and cur.notes else "") + f"[{tag} {time.strftime('%Y-%m-%d %H:%M')}] {reason}"
+            if to_paused:
+                sw.upsert_project(str(pz["project"]), paths=paths, phase="paused", notes=note)
+            else:
+                sw.upsert_project(str(pz["project"]), paths=paths, notes=note)
             sw.log_event("keepwarm_chain_pause", paths=paths, name=name, project=pz["project"], reason=reason)
             if reason == snw.NO_WORK_REASON:       # yeniden açılış tetikleyicileri için: durdurma anındaki TODO sha'sı
                 with sw.steward_lock(paths):
