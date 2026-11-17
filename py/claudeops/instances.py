@@ -26,7 +26,7 @@ _VERSION = 1
 # `_generate_new_chat_name`'in ürettiği şekil: <blueprint><YYYYMMDD>[_N...]
 AUTO_NAME_RE = re.compile(r"^([a-z][a-z0-9]*?)(\d{8})((?:_\d+)*)$")
 # Tarihten sonra elle ek almış türevler de (mtsyn20260909fablereview) bu şekle uyar.
-DERIVED_NAME_RE = re.compile(r"^([a-z][a-z0-9]*?)(\d{8})([a-z0-9_]*)$")
+DERIVED_NAME_RE = re.compile(r"^([a-z][a-z0-9]*?)(\d{8})(?!\d)([a-z0-9_]*)$")      # (?!\d): rakamla biten taban (ysf2+20261105) tarihi kaydırmasın
 
 DIAG_PREFIX = "diag"
 

@@ -49,3 +49,11 @@ class PeriodicConfigLock(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DerivedNameRe(unittest.TestCase):
+    def test_digit_ending_blueprint_keeps_full_date(self):
+        from claudeops.instances import DERIVED_NAME_RE as R
+        self.assertEqual(R.match("ysf220261105").groups(), ("ysf2", "20261105", ""))
+        self.assertEqual(R.match("mtsyn20260909fablereview").groups(), ("mtsyn", "20260909", "fablereview"))
+        self.assertEqual(R.match("cops20261117_2").groups(), ("cops", "20261117", "_2"))
