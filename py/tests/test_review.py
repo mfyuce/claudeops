@@ -663,3 +663,35 @@ class ExportNoLocalPathTest(unittest.TestCase):
         self.assertNotIn("/home/", rv.export_lines([row], "")[0])
         under = dict(row, review_file="/kok/cli/evren/r.md")
         self.assertIn("(kaynak: cli/evren/r.md)", rv.export_lines([under], "/kok")[0])
+
+
+class R10SubMigrationTest(unittest.TestCase):
+    """R10 göçü: abonelik açıldıktan sonra başlayan sub'suz `claude/` çiftleri `-sub` anahtarına taşınır (Max kotası boşa gitmesin)."""
+
+    def _hist(self):
+        from claudeops import review as rv
+        since = rv.R10_SUB_SINCE
+        return rv, {"pairs": {
+            "p|claude/claude-fable-5-2@low": {"status": "done", "started_at": since + 60},      # abonelikle koştu -> taşınır
+            "p|claude/claude-fable-5-2@high": {"status": "done", "started_at": since - 3600},   # API ile koştu -> kalır
+            "q|claude/claude-fable-5-2@low": {"status": "done", "started_at": since + 60},      # -sub ikizi var -> kalır
+            "q|claude/claude-fable-5-2-sub@low": {"status": "done", "started_at": since + 7000},
+            "p|agy/gemini-3.8-flash-medium": {"status": "done", "started_at": since + 60},      # claude değil -> kalır
+        }, "runs": []}
+
+    def test_moves_only_post_switch_claude_pairs(self):
+        rv, h = self._hist()
+        self.assertEqual(rv.migrate_r10_sub(h), 1)
+        ks = set(h["pairs"])
+        self.assertIn("p|claude/claude-fable-5-2-sub@low", ks)
+        self.assertNotIn("p|claude/claude-fable-5-2@low", ks)
+        self.assertIn("p|claude/claude-fable-5-2@high", ks)
+        self.assertIn("q|claude/claude-fable-5-2@low", ks)
+        self.assertIn("p|agy/gemini-3.8-flash-medium", ks)
+
+    def test_idempotent(self):
+        rv, h = self._hist()
+        rv.migrate_r10_sub(h)
+        snap = dict(h["pairs"])
+        self.assertEqual(rv.migrate_r10_sub(h), 0)
+        self.assertEqual(h["pairs"], snap)

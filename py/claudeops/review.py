@@ -894,6 +894,37 @@ def save_pool(paths: Any, pool: Dict[str, Any]) -> None:
     sw._save_json(sw._pp(paths).review_pool, pool)
 
 
+# R10 göçü (17 Kas): `review_claude_auth=subscription` 12:41:25'te (UTC+3) açıldı; ondan sonra başlayan `claude/` koşuları abonelikle
+# koştu ama sub'suz anahtarla yazıldı. Slug `-sub` olunca aynı çiftler "yeni" sayılıp Max kotasıyla tekrar koşuyordu.
+R10_SUB_SINCE = 1794908485.0     # 2026-11-17T12:41:25+03:00
+R10_MARK = "r10_sub_migrated"
+
+
+def migrate_r10_sub(hist: Dict[str, Any]) -> int:
+    """`<proje>|claude/<model>[@effort]` çiftlerinden R10_SUB_SINCE sonrası BAŞLAYANLARI `claude/<model>-sub[@effort]` anahtarına
+    taşır (tek seferlik, işaretli). `-sub` ikizi zaten varsa dokunmaz (veri kaybı yok). Taşınan sayısını döner."""
+    if hist.get(R10_MARK):
+        return 0
+    pairs, moved = hist["pairs"], 0
+    for k in list(pairs):
+        proj, bar, rest = k.partition("|")
+        if not bar or not rest.startswith("claude/"):
+            continue
+        rec = pairs[k]
+        if not isinstance(rec, dict) or float(rec.get("started_at") or 0) < R10_SUB_SINCE:
+            continue
+        model, at, eff = rest.partition("@")
+        if model.endswith("-sub"):
+            continue
+        nk = f"{proj}|{model}-sub{at}{eff}"
+        if nk in pairs:
+            continue
+        pairs[nk] = pairs.pop(k)
+        moved += 1
+    hist[R10_MARK] = True
+    return moved
+
+
 def load_history(paths: Any) -> Dict[str, Any]:
     raw = sw._load_json(sw._pp(paths).review_history, {})
     if not isinstance(raw, dict):
@@ -903,6 +934,7 @@ def load_history(paths: Any) -> Dict[str, Any]:
     if not isinstance(raw.get("runs"), list):
         raw["runs"] = []
     raw["version"] = HISTORY_VERSION
+    migrate_r10_sub(raw)
     return raw
 
 
