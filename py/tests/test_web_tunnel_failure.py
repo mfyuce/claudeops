@@ -28,6 +28,22 @@ class TunnelFailure(unittest.TestCase):
     def test_no_proc_no_url(self):
         self.assertTrue(web._tunnel_failure(None, ""))
 
+class PortBusyGuard(unittest.TestCase):
+    """Port doluyken tünel hiç başlamaz (cloudflared çalışan paneli internete açmasın; review R-2/R-4)."""
+
+    def test_port_in_use_detects_listener(self):
+        import socket
+        srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(1)
+        try:
+            self.assertTrue(web._port_in_use("127.0.0.1", srv.getsockname()[1]))
+        finally:
+            srv.close()
+
+    def test_free_port_not_busy(self):
+        import socket
+        s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
+        self.assertEqual(web._port_in_use("127.0.0.1", port), "")
+
 
 if __name__ == "__main__":
     unittest.main()

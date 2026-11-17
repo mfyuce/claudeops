@@ -6076,6 +6076,16 @@ def _enable_faulthandler() -> None:
 _TUNNEL_PROC = None   # run()'ın başlattığı cloudflared süreci; SIGTERM handler'ı `os._exit` ettiği için orada sonlandırılır
 
 
+def _port_in_use(host: str, port: int) -> str:
+    """host:port şu an dinleniyorsa kısa neden, değilse boş (bağlanmayı dener; bind yarışı için sunucu kuruluşunda ayrıca korunur)."""
+    import socket
+    try:
+        with socket.create_connection((host if host not in ("", "0.0.0.0") else "127.0.0.1", port), timeout=1):
+            return "bir süreç dinliyor"
+    except OSError:
+        return ""
+
+
 def _terminate_tunnel() -> None:
     """cloudflared tünelini (varsa) sonlandır. BEST-EFFORT, asla fırlatmaz, bekletmez (SIGTERM handler'ından da çağrılır)."""
     proc = _TUNNEL_PROC
@@ -6160,6 +6170,12 @@ def run(args) -> int:
 
     tunnel_proc = None
     if args.tunnel:
+        # Port doluysa (başka bir panel/süreç dinliyor) tüneli HİÇ başlatma: cloudflared o portu internete açar ve
+        # sonradan bind hatası tüneli yetim bırakır (review R-2/R-4, 17 Kas).
+        _busy = _port_in_use(args.host, args.port)
+        if _busy:
+            print(f"✗ {args.host}:{args.port} zaten kullanımda ({_busy}); tünel açılmadı")
+            return 1
         cloudflared_path = _ensure_cloudflared()
         if not cloudflared_path:
             return 1
@@ -6198,7 +6214,13 @@ def run(args) -> int:
     # kendi uyarısını basar) — burada AYRICA bir hata/çıkış YOK, bu katman
     # opsiyonel, `cops web`'in kendisi asla bundan etkilenmemeli.
     _dist_check.log_if_missing(diag_log)      # bundle eksikse boş sayfa: açılışta log'a 'dist-eksik'
-    server = ThreadingHTTPServer((args.host, args.port), _Handler)
+    try:
+        server = ThreadingHTTPServer((args.host, args.port), _Handler)
+    except OSError as e:
+        print(f"✗ {args.host}:{args.port} dinlenemedi: {e}")
+        if tunnel_proc is not None:
+            _terminate_tunnel()      # bind hatasında tünel yetim kalıp başka süreci dışarı açmasın
+        return 1
     url = f"http://{args.host}:{args.port}/?token={token}"
     print(f"claudeops web  →  {url}")
     print(f"  token dosyası: {TOKEN_FILE} (chmod 600)")
