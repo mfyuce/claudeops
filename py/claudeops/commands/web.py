@@ -938,6 +938,10 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn reddedildi, instance kaydı geride KALMASIN
         inst_mod.forget_instance(new_name)
         return ucli_cost.refusal(e)
+    except Exception as e:   # beklenmeyen hata (ör. OSError): spawn başlamadıysa kayıt geride KALMASIN
+        if not spawned:
+            inst_mod.forget_instance(new_name)
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
     if not opened:
         return _err(lang, "newchat_start_failed", new_name=new_name, kind=kind)
     return {"ok": True, "name": new_name, "kind": kind}

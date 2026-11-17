@@ -332,6 +332,12 @@ class WiringTests(unittest.TestCase):
         sp.assert_called_once()
         forget.assert_not_called()
 
+    def test_new_chat_unexpected_error_before_spawn_forgets_instance(self):
+        r, forget, sp = self._new_chat_with(lock_err=OSError("disk"))
+        self.assertFalse(r["ok"])
+        forget.assert_called_once_with("bp_x")
+        sp.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
