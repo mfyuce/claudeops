@@ -23,6 +23,7 @@ PACKAGE = "claudeops_enterprise"
 _LOCK = threading.RLock()
 _STATE: Dict[str, Any] = {"loaded": False, "status": "not_loaded", "detail": "", "lenses": []}
 _ROUTES: List[Dict[str, Any]] = []
+_MCP: Dict[str, Dict[str, Any]] = {}          # K13: MCP sunucu kimliği -> {tools, handler}
 _COMMANDS: Dict[str, Dict[str, Any]] = {}     # K11: CLI alt komutu adı -> {fn, help}
 UI_EXTENSION_API = 1
 API_EXT_PREFIX = "/api/enterprise/"          # K12: eklenti API önekı (kimlik + eylem kapısı + denetimden geçer)
@@ -61,6 +62,23 @@ class ExtensionAPI:
             raise ValueError(f"invalid command name: {name!r}")
         with _LOCK:
             _COMMANDS[name] = {"fn": fn, "help": str(help)}
+
+    def register_mcp_server(self, server_id: str, tools: List[Dict[str, Any]], handler: Callable[[str, Dict[str, Any]], Dict[str, Any]]) -> None:
+        """K13: `cops mcp-ext <server_id>` stdio MCP sunucusu, `tools` = [{name, description, inputSchema}], `handler(tool_name, arguments) -> dict`
+        (eklentiyle AYNI süreçte çalışır: HTTP/çok kullanıcı gerekmez; hata fırlatırsa MCP hata sonucu döner). Araç adları `server_id` öneki
+        ile başlamalı (çekirdek araçlarıyla çakışmasın). Aynı kimlik idempotent."""
+        if not isinstance(server_id, str) or not server_id.replace("-", "").replace("_", "").isalnum():
+            raise ValueError(f"invalid mcp server id: {server_id!r}")
+        names = []
+        for t in tools:
+            n = t.get("name") if isinstance(t, dict) else None
+            if not isinstance(n, str) or not n.startswith(server_id.replace("-", "_") + "_") or "inputSchema" not in t:
+                raise ValueError(f"invalid mcp tool (name must start with '{server_id}_', needs inputSchema): {n!r}")
+            names.append(n)
+        if len(set(names)) != len(names):
+            raise ValueError("duplicate mcp tool names")
+        with _LOCK:
+            _MCP[server_id] = {"tools": [dict(t) for t in tools], "handler": handler}
 
     authz_api_version = 1       # `claudeops.authz.AUTHZ_API_VERSION` (kimlik/yetki kancaları; çekirdekte davranışsız)
 
@@ -330,6 +348,11 @@ def status() -> Dict[str, Any]:
 def commands() -> Dict[str, Dict[str, Any]]:
     with _LOCK:
         return dict(_COMMANDS)
+
+
+def mcp_servers() -> Dict[str, Dict[str, Any]]:
+    with _LOCK:
+        return dict(_MCP)
 
 
 def lens_sources() -> List[str]:
