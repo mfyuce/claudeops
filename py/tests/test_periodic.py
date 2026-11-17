@@ -48,6 +48,16 @@ class RedactTest(unittest.TestCase):
         self.assertNotIn("hunter2xx", t)
         self.assertNotIn("gizli123", t)
 
+    def test_redact_escaped_json_and_spaces(self):
+        t, n = P.redact('{"a":"password\\": \\"hunter2xyz\\""} password: "p@ss w0rd"')
+        self.assertNotIn("hunter2xyz", t)
+        self.assertNotIn("w0rd", t)
+        self.assertEqual(n, 2)
+
+    def test_gh_cred(self):
+        self.assertEqual(P._gh_cred("https://github.com/x/y.git")[0], "-c")
+        self.assertEqual(P._gh_cred("https://gitlab.com/x/y.git"), ())
+
     def test_redact(self):
         t, n = P.redact('x sk-ant-api03-ABCDEFGHIJ y ghp_' + "a" * 24 + ' password: hunter2xx ok')
         self.assertEqual(n, 3)

@@ -49,7 +49,9 @@ SECRET_RES = [
     re.compile(r"glpat-[A-Za-z0-9_\-]{10,}"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{24,}"),
-    re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)['\"]?\s*[=:]\s*['\"]?)[^\s'\"<>$*,}\\]{4,}"),
+    # tırnaklı değer (boşluk/özel karakter içerebilir; JSON kaçışlı \" dahil): kapanış tırnağına kadar
+    re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)\\*['\"]?\s*[=:]\s*\\*['\"])[^'\"\n]{4,}?(?=\\*['\"])"),
+    re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)\\*['\"]?\s*[=:]\s*\\*['\"]?)(?!\[GİZLİ-MASKELENDİ\])[^\s'\"<>$*,}\\]{4,}"),
 ]
 
 DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
@@ -306,6 +308,11 @@ def redact(text: str) -> Tuple[str, int]:
             return (m.group(1) + _REDACT) if rx.groups else _REDACT
         text = rx.sub(sub, text)
     return text, n
+
+
+def _gh_cred(url: str) -> Tuple[str, ...]:
+    """GitHub HTTPS uzaklarında gh kimlik yardımcısı (private repoda ls-remote kimlik hatası vermesin)."""
+    return ("-c", "credential.helper=!gh auth git-credential") if "github.com" in url else ()
 
 
 def _git(repo: str, *args: str, timeout: int = 300, env: Optional[Dict[str, str]] = None) -> Tuple[int, str]:
@@ -702,7 +709,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         head = _git(repo, "rev-parse", "HEAD")[1].strip()
         for name in rems:
             if not days:                  # bu çalışmada yeni commit yok: yalnız uzak geride ise it (yarım kalan itmeyi tamamlar)
-                rc0, o0 = _git(repo, "ls-remote", name, "HEAD")
+                rc0, o0 = _git(repo, *_gh_cred(rems[name]), "ls-remote", name, "HEAD")
                 if rc0 == 0 and o0.startswith(head[:12]):
                     continue
             args = ["push", "-q", name, "HEAD"]
@@ -712,7 +719,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             if rc != 0:
                 res.update(ok=False, msg=f"{g} push {name}: " + out[-200:])
                 return res
-            rc, out = _git(repo, "ls-remote", name, "HEAD")
+            rc, out = _git(repo, *_gh_cred(rems[name]), "ls-remote", name, "HEAD")
             if rc != 0 or not out.startswith(head[:12]):
                 res.update(ok=False, msg=f"{g} ls-remote {name} eşleşmedi")
                 return res
