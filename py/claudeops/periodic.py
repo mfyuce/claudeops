@@ -131,6 +131,20 @@ def _validate(cfg: Dict[str, Any]) -> None:
         raise ValueError("prompt işleri şimdilik yalnız cli=claude (kota bekçisine bağlı)")
 
 
+def _locked_config(fn):
+    """config.json oku-değiştir-yaz döngüsü `file_lock` altında (iki süreç/iş parçacığı aynı anda ekle/sil/ayarla yapınca
+    biri sessizce kaybolmasın; review cliops lost-update). Kilit yeniden girilebilir."""
+    import functools
+    from .atomic_json import file_lock
+
+    @functools.wraps(fn)
+    def wrapper(*a, **k):
+        with file_lock(CONFIG_JSON):
+            return fn(*a, **k)
+    return wrapper
+
+
+@_locked_config
 def add_custom(cid: str, fields: Dict[str, Any]) -> Dict[str, Any]:
     """Kullanıcı tanımlı iş ekler (KAPALI açılır; sahip `enabled=on` yapar). Kimlik `[a-z][a-z0-9_]{1,31}`, yerleşik adlarla çakışmaz."""
     if not _ID_RE.match(cid) or cid in JOBS:
@@ -156,6 +170,7 @@ def add_custom(cid: str, fields: Dict[str, Any]) -> Dict[str, Any]:
     return load_config()[cid]
 
 
+@_locked_config
 def remove_custom(cid: str) -> bool:
     raw = _read_raw()
     custom = raw.get("custom") if isinstance(raw.get("custom"), dict) else {}
@@ -167,6 +182,7 @@ def remove_custom(cid: str) -> bool:
     return True
 
 
+@_locked_config
 def set_config(name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     """Alan-bazlı merge (`ucli_limits` deseni): boş string o alanı varsayılana döndürür. Bilinmeyen iş/alan reddedilir."""
     cfgs = load_config()

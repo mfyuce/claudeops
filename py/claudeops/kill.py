@@ -47,14 +47,14 @@ def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS, name: Optional[str
         try:
             if proc.create_time() != create_time:
                 return "already_dead"
-        except psutil.NoSuchProcess:
+        except (psutil.NoSuchProcess, psutil.AccessDenied):      # AccessDenied: PID başka kullanıcıya geçmiş (bizim süreç değil)
             return "already_dead"
     if name:
         diag_log("kill_step", name=name, pid=pid, step="got_proc")
 
     try:
         proc.send_signal(signal.SIGTERM)
-    except psutil.NoSuchProcess:
+    except (psutil.NoSuchProcess, psutil.AccessDenied):      # AccessDenied: yeniden kullanılmış PID başka kullanıcının; dokunma
         return "already_dead"
     if name:
         diag_log("kill_step", name=name, pid=pid, step="sigterm_sent")
@@ -69,7 +69,7 @@ def kill_session(pid: int, grace: float = KILL_GRACE_SECONDS, name: Optional[str
     try:
         proc.kill()
         proc.wait(timeout=2.0)
-    except psutil.NoSuchProcess:
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
         pass
     except psutil.TimeoutExpired:
         pass  # zombie — kernel reap'i bekliyor, kill tamamlandı
