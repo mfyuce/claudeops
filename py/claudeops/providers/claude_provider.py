@@ -423,6 +423,8 @@ def _mcp_config_path(spec: McpServerSpec) -> str:
         sid = str(args[args.index("--steward") + 1])
         if sid.isalpha() and sid.islower():
             return MCP_CONFIG_PATH[:-len(".json")] + f"_{sid}.json"
+    if len(args) >= 2 and args[0] == "mcp-ext" and str(args[1]).replace("-", "").replace("_", "").isalnum():
+        return MCP_CONFIG_PATH[:-len(".json")] + f"_ext_{args[1]}.json"      # eklenti sunucusu kendi dosyasını alır (paylaşılan dosyayı ezmez)
     return MCP_CONFIG_PATH
 
 

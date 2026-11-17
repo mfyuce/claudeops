@@ -24,6 +24,7 @@ _LOCK = threading.RLock()
 _STATE: Dict[str, Any] = {"loaded": False, "status": "not_loaded", "detail": "", "lenses": []}
 _ROUTES: List[Dict[str, Any]] = []
 _MCP: Dict[str, Dict[str, Any]] = {}          # K13: MCP sunucu kimliği -> {tools, handler}
+_SESSION_MCP: Dict[str, Callable[[str], bool]] = {}   # K14: MCP sunucu kimliği -> cwd koşulu (yeni claude oturumlarına otomatik bağlanır)
 _COMMANDS: Dict[str, Dict[str, Any]] = {}     # K11: CLI alt komutu adı -> {fn, help}
 UI_EXTENSION_API = 1
 API_EXT_PREFIX = "/api/enterprise/"          # K12: eklenti API önekı (kimlik + eylem kapısı + denetimden geçer)
@@ -79,6 +80,15 @@ class ExtensionAPI:
             raise ValueError("duplicate mcp tool names")
         with _LOCK:
             _MCP[server_id] = {"tools": [dict(t) for t in tools], "handler": handler}
+
+    def attach_mcp_to_sessions(self, server_id: str, predicate: Callable[[str], bool]) -> None:
+        """K14: `register_mcp_server` ile kayıtlı `server_id`, `predicate(cwd)` doğruysa o cwd'de AÇILAN claude oturumlarına
+        (`spawn_session`, `mcp_server` verilmemişse) `--mcp-config` ile bağlanır. Çalışan oturumlara dokunmaz (yeniden açılışta etkin).
+        `predicate` hata fırlatırsa bağlanmaz (spawn'ı asla engellemez)."""
+        with _LOCK:
+            if server_id not in _MCP:
+                raise ValueError(f"mcp server not registered: {server_id!r}")
+            _SESSION_MCP[server_id] = predicate
 
     authz_api_version = 1       # `claudeops.authz.AUTHZ_API_VERSION` (kimlik/yetki kancaları; çekirdekte davranışsız)
 
@@ -353,6 +363,20 @@ def commands() -> Dict[str, Dict[str, Any]]:
 def mcp_servers() -> Dict[str, Dict[str, Any]]:
     with _LOCK:
         return dict(_MCP)
+
+
+def session_mcp_spec(cwd: str):
+    """K14: cwd için bağlanacak ilk eklenti MCP spec'i ya da None. Hata yutulur (spawn'ı engellemez)."""
+    with _LOCK:
+        items = list(_SESSION_MCP.items())
+    for sid, pred in items:
+        try:
+            if pred(cwd):
+                from .commands import mcp_ext
+                return mcp_ext.default_spec(sid)
+        except Exception:      # noqa: BLE001
+            continue
+    return None
 
 
 def lens_sources() -> List[str]:

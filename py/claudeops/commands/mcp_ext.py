@@ -9,6 +9,15 @@ from .. import extensions
 from . import mcp_queue
 
 
+def default_spec(server_id: str):
+    import os
+    from ..paths import REPO_DIR
+    from ..providers.base import McpServerSpec
+    srv = extensions.mcp_servers().get(server_id, {"tools": []})
+    return McpServerSpec(name=f"cops-ext-{server_id}", command=os.path.join(REPO_DIR, "py", "cops"), args=("mcp-ext", server_id),
+                         allowed_tools=tuple(t["name"] for t in srv["tools"]))
+
+
 def _dispatch_for(tools, handler) -> Dict[str, Callable[[int, dict], dict]]:
     def make(name: str):
         def call(_port: int, args: dict) -> dict:

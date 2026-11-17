@@ -55,3 +55,50 @@ class McpHook(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SessionAttach(unittest.TestCase):
+    def setUp(self):
+        self._m, self._s = dict(extensions._MCP), dict(extensions._SESSION_MCP)
+
+    def tearDown(self):
+        extensions._MCP.clear(); extensions._MCP.update(self._m)
+        extensions._SESSION_MCP.clear(); extensions._SESSION_MCP.update(self._s)
+
+    def test_attach_predicate_and_spec(self):
+        api = extensions.ExtensionAPI()
+        with self.assertRaises(ValueError):
+            api.attach_mcp_to_sessions("demo", lambda c: True)       # kayıtsız kimlik
+        api.register_mcp_server("demo", TOOLS, lambda n, a: {"ok": True})
+        api.attach_mcp_to_sessions("demo", lambda c: c == "/p/migrated")
+        self.assertIsNone(extensions.session_mcp_spec("/p/other"))
+        sp = extensions.session_mcp_spec("/p/migrated")
+        self.assertEqual(list(sp.args), ["mcp-ext", "demo"])
+        self.assertEqual(sp.name, "cops-ext-demo")
+        self.assertEqual(list(sp.allowed_tools), ["demo_echo"])
+        api.attach_mcp_to_sessions("demo", lambda c: 1 / 0)           # hata -> bağlanmaz, istisna sızmaz
+        self.assertIsNone(extensions.session_mcp_spec("/p/migrated"))
+
+    def test_claude_config_path_per_ext_and_spawn_wiring(self):
+        from claudeops.providers import claude_provider as cp
+        from claudeops.providers.base import McpServerSpec
+        a = cp._mcp_config_path(McpServerSpec(name="x", command="c", args=("mcp-ext", "notes")))
+        self.assertTrue(a.endswith("mcp_config_ext_notes.json"))
+        self.assertTrue(cp._mcp_config_path(McpServerSpec(name="q", command="c", args=("mcp-queue",))).endswith("mcp_config.json"))
+
+    def test_spawn_attaches_only_matching_cwd_and_claude(self):
+        from claudeops import spawn
+        from claudeops.providers import claude_provider as cp
+        api = extensions.ExtensionAPI()
+        api.register_mcp_server("demo", TOOLS, lambda n, a: {"ok": True})
+        api.attach_mcp_to_sessions("demo", lambda c: c == "/tmp")
+        seen = []
+
+        def spy(self, spec):
+            seen.append(spec.name)
+            return []
+        with mock.patch.object(cp.ClaudeProvider, "mcp_launch_args", spy):
+            spawn.spawn_session(name="zz_t", cwd="/tmp", model="claude-sonnet-5-5", dry_run=True, cli="claude")
+            spawn.spawn_session(name="zz_t", cwd="/home", model="claude-sonnet-5-5", dry_run=True, cli="claude")
+            spawn.spawn_session(name="zz_t", cwd="/tmp", model="m", dry_run=True, cli="codex")
+        self.assertEqual(seen, ["cops-ext-demo"])

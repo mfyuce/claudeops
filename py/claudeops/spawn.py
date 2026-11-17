@@ -149,6 +149,12 @@ def spawn_session(
         diag_log("spawn_effort_adjusted", name=name, cli=cli, model=model,
                  requested=requested_effort, used=effort)
 
+    if mcp_server is None and cli == "claude":     # K14: eklenti MCP'si (ör. notes) koşulu tutan cwd'de, YALNIZ açıkça mcp_server verilmediyse
+        try:
+            from . import extensions
+            mcp_server = extensions.session_mcp_spec(cwd)
+        except Exception:      # noqa: BLE001  spawn ASLA buna takılmaz
+            mcp_server = None
     if mcp_server is None:
         extra_args = []
     elif getattr(provider, "mcp_needs_cwd", False):     # ucli: kayıt oturum köküne (`ROOT/.ucli/mcp.json`) yazılır
