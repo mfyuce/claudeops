@@ -320,6 +320,12 @@ def raw_to_remote(remote: str, home: Optional[str] = None, timeout: int = 10800)
             (os.path.join(mir, "gemini"), "gemini", ["*/conversations/*.db", "*/conversations/*.db-wal", "*/conversation_summaries.db", "*/conversation_summaries.db-wal"]),
             (os.path.join(home, ".codex"), "codex", ["*.sqlite", "*.sqlite-wal"]),
             (os.path.join(mir, "codex"), "codex", ["*.sqlite", "*.sqlite-wal"])]
+    import glob
+    gem_inc = ["*/conversations/*.db", "*/conversations/*.db-wal", "*/conversation_summaries.db", "*/conversation_summaries.db-wal"]
+    for ex in sorted(glob.glob(os.path.join(mir, "*", "extract"))):      # uzak host (yuhem, ulak_31) ham sqlite'ları da gdrive'a
+        rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(ex)))
+        jobs.append((os.path.join(ex, ".gemini"), f"{rh}/gemini", gem_inc))
+        jobs.append((os.path.join(ex, ".codex"), f"{rh}/codex", ["*.sqlite", "*.sqlite-wal"]))
     errs = []
     for src, name, inc in jobs:
         if not os.path.isdir(src):

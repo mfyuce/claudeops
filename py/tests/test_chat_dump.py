@@ -208,3 +208,16 @@ def test_ingest_bozuk_arsiv_saglam_extract_korunur(tmp_path):
     assert str(out["h"]).startswith("HATA")
     assert (hd / "extract" / "keep.txt").read_text() == "sağlam"
     assert not (hd / "extract.new").exists()
+
+
+def test_raw_to_remote_uzak_host_sqlite_dahil(tmp_path, monkeypatch):
+    import subprocess
+    home = tmp_path
+    ex = home / ".claude/claudeops/backups/chat-mirror/yuhem/extract"
+    (ex / ".codex").mkdir(parents=True)
+    (ex / ".gemini").mkdir(parents=True)
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **k: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0, "", ""))
+    assert D.raw_to_remote("gd:raw", home=str(home)) == ""
+    dests = [c[c.index("--transfers") + 3] for c in calls]
+    assert any(d.endswith("/yuhem/codex") for d in dests) and any(d.endswith("/yuhem/gemini") for d in dests)
