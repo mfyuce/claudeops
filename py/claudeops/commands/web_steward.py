@@ -3836,6 +3836,26 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int
         return None
 
 
+def _oldest_open_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
+    """Projenin YEREL TODO.md'sindeki EN ESKİ (dosyada ilk) açık sahipsiz `- [ ]` satırı metni; yok/okunamayan = ''."""
+    def first(proj: str) -> str:
+        try:
+            p = projects.get(proj)
+            if p is None or p.host:
+                return ""
+            real = _doc_path(_cwd_resolver()(proj), "TODO.md")
+            if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+                return ""
+            with open(real, encoding="utf-8", errors="replace") as f:
+                for ln in f:
+                    if re.match(r"\s*(?:[-*+]|\d+[.)])\s*\[[ ~]\]", ln) and not sw.OWNER_WAIT_LINE_RE.search(ln):
+                        return re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*\[[ ~]\]\s*", "", ln).strip()
+        except OSError:
+            pass
+        return ""
+    return first
+
+
 def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
     """`plan_tick` için: projenin YEREL TODO.md'sindeki açık `- [ ]` satırı sayısı (sahibe bağlı etiketliler hariç; `_scan_todo`).
     None = bilinmiyor (ön-kontrol atlanır, teyit kanıta kalır). Yalnız teyit gelince çağrılır."""
@@ -4429,7 +4449,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
                 cl_actions, new_state = sw.plan_claude_idle(views, projects, new_state, cfg, t0, actions, world,
                                                             open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects),
-                                                            todo_sha=_todo_sha_of(projects))
+                                                            todo_sha=_todo_sha_of(projects), oldest_open=_oldest_open_of(projects))
                 if cfg.claude_idle == "dry":
                     for a in cl_actions:            # YALNIZ ölçüm: oturuma dokunmaz
                         sw.log_event("would:" + a.kind, paths=paths, name=a.name,
@@ -4701,8 +4721,10 @@ def http_shutdown(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 # ── kota bekçisi (TBD#116) ───────────────────────────────────────────────────────────────────────────────────────────
 # Claude planının haftalık kullanımını `claude -p /usage` ile (yerel komut, model turu yok) okur; `steward_quota.decide`
 # kararına göre: drain = yeni iş alınmaz (çalışan iş sürer), stop = tüm kimlikler kontrollü kapatılır (`--keep`).
-# Kapatma KENDİLİĞİNDEN geri açılmaz (`py/cops steward up`): yanlış okuma tüm sistemi sürekli açıp kapatmasın.
-_QUOTA: Dict[str, Any] = {"at": 0.0, "busy": False, "usage": None, "decision": None, "stopped": False, "level": 0}
+# Kapatılan kimlikler KAYDEDİLİR (`closed`); kullanım art arda 2 yoklamada `ok`a dönüp en az 30 dk geçince AYNI liste kendiliğinden
+# geri açılır + ntfy (sahip P0 17 Kas: filo 9 gün boş kaldı). Elle `py/cops steward up` yine geçerli.
+_QUOTA: Dict[str, Any] = {"at": 0.0, "busy": False, "usage": None, "decision": None, "stopped": False, "level": 0,
+                          "closed": [], "closed_at": 0.0, "ok_polls": 0, "idle_alarm_at": 0.0}
 _QUOTA_LOCK = threading.Lock()
 QUOTA_FILE = os.path.join(CLAUDEOPS_DIR, "steward", "quota.json")
 
@@ -4741,7 +4763,8 @@ def _quota_save() -> None:
         from .. import statedocs
         statedocs.write_json("steward/quota", QUOTA_FILE,
                              {"at": _QUOTA.get("at"), "usage": dataclasses.asdict(u) if u else None,
-                              "decision": dataclasses.asdict(d) if d else None, "stopped": bool(_QUOTA.get("stopped"))},
+                              "decision": dataclasses.asdict(d) if d else None, "stopped": bool(_QUOTA.get("stopped")),
+                              "closed": list(_QUOTA.get("closed") or []), "closed_at": float(_QUOTA.get("closed_at") or 0.0)},
                              mode=0o600, writer=atomic_write_json)     # modülün KENDİ sembolü: testte taklit edilince DB'ye dokunulmaz
     except OSError:
         pass
@@ -4762,6 +4785,8 @@ def _quota_restore() -> None:
         act = str(((saved or {}).get("decision") or {}).get("action") or "ok")
         _QUOTA["level"] = {"shutdown": 1, "stop": 2}.get(act, 0)
         _QUOTA["stopped"] = _QUOTA["level"] > 0
+        _QUOTA["closed"] = [str(x) for x in (saved or {}).get("closed") or []]
+        _QUOTA["closed_at"] = float((saved or {}).get("closed_at") or 0.0)
     except (OSError, ValueError, AttributeError):
         pass
 
@@ -4780,6 +4805,10 @@ def _quota_stop(reason: str, hard: bool = False) -> None:
                 # reviewer kapanmaz ama review tick'i quota_blocking()'e bakıp abonelik claude hedeflerini başlatmaz (web_review).
                 continue
             shutdown_start(sid)
+            with _QUOTA_LOCK:      # geri açma listesi: yalnız BİZİM kapattığımız (açıkken kapanan) kimlikler
+                if sid not in _QUOTA["closed"]:
+                    _QUOTA["closed"].append(sid)
+                _QUOTA["closed_at"] = _QUOTA["closed_at"] or time.time()
             if hard:
                 ctx = _ctx(sid)
                 projects = sw.load_projects(ctx.paths)
@@ -4794,6 +4823,67 @@ def _quota_stop(reason: str, hard: bool = False) -> None:
             diag_log("steward_quota_stop_failed", sid=sid, error=repr(e))
     sw.log_event("quota_hard_stop" if hard else "quota_stop", paths="default", reason=reason)
     notify_phone(f"Kota bekçisi: {'HARD kapanma' if hard else 'devirli kapatma başladı'} ({reason}). Açmak için: py/cops steward up")
+
+
+def _quota_reopen_check(d: Any, u: Any, now: Optional[float] = None) -> List[str]:
+    """Karar `ok` iken kayıtlı kapatılmış kimlikleri geri aç (`sq.reopen_ready` kapısı). Açılan sid'ler döner."""
+    t = time.time() if now is None else now
+    with _QUOTA_LOCK:
+        if getattr(d, "action", "") != "ok":
+            _QUOTA["ok_polls"] = 0
+            return []
+        _QUOTA["ok_polls"] = int(_QUOTA.get("ok_polls") or 0) + 1
+        closed = list(_QUOTA.get("closed") or [])
+        if not closed or not sq.reopen_ready(float(_QUOTA.get("closed_at") or 0), _QUOTA["ok_polls"], t):
+            return []
+    from ..settings import save_settings
+    reopened: List[str] = []
+    for sid in closed:
+        try:
+            if steward_config(sid).enabled:
+                reopened.append(sid)        # zaten açık (elle açılmış): listeden düşer
+                continue
+            save_settings({"steward": {"enabled": "on"}} if sid == "default" else {"stewards": {sid: {"enabled": "on"}}})
+            reopened.append(sid)
+            sw.log_event("quota_reopen", paths="default", sid=sid, used=getattr(u, "week_pct", None))
+        except Exception as e:
+            diag_log("steward_quota_reopen_failed", sid=sid, error=repr(e))
+    with _QUOTA_LOCK:
+        _QUOTA["closed"] = [s for s in _QUOTA["closed"] if s not in reopened]
+        if not _QUOTA["closed"]:
+            _QUOTA["closed_at"] = 0.0
+    _quota_save()
+    if reopened:
+        notify_phone(f"Kota bekçisi: kullanım düştü (%{getattr(u, 'week_pct', '?')}), kapatılan değnekçiler yeniden açıldı: {', '.join(reopened)}")
+    return reopened
+
+
+def _quota_idle_alarm(u: Any, now: Optional[float] = None) -> bool:
+    """Boşta kapasite alarmı (`sq.idle_capacity_alarm`): kullanım düşük, açık TODO'lu proje var, hiçbir değnekçi açık değil / hiç oturum yok."""
+    t = time.time() if now is None else now
+    try:
+        enabled = [sid for sid in steward_ids() if steward_config(sid).enabled]
+        running = len([s for s in find_sessions(measure_cpu=False) if getattr(s, "cli", "") in ("claude", "ucli", "codex", "agy")])
+        open_projects = 0
+        for sid in steward_ids():
+            projs = sw.load_projects(sw.paths_for(sid))
+            for name, p in projs.items():
+                if p.phase in sw.ACTIVE_PHASES and (_scan_todo(projs, name) or (0, 0))[0] > 0:
+                    open_projects += 1
+        with _QUOTA_LOCK:
+            last = float(_QUOTA.get("idle_alarm_at") or 0)
+        if not sq.idle_capacity_alarm(getattr(u, "week_pct", None), len(enabled), running, open_projects, last, t):
+            return False
+        with _QUOTA_LOCK:
+            _QUOTA["idle_alarm_at"] = t
+        notify_phone(f"Boşta kapasite: haftalık kullanım %{getattr(u, 'week_pct', '?')}, açık TODO'lu {open_projects} aktif proje var ama "
+                     f"{len(enabled)} değnekçi açık, {running} oturum çalışıyor. Açmak için: py/cops steward up")
+        sw.log_event("idle_capacity_alarm", paths="default", used=getattr(u, "week_pct", None), open_projects=open_projects,
+                     stewards=len(enabled), running=running)
+        return True
+    except Exception as e:
+        diag_log("steward_idle_alarm_failed", error=repr(e))
+        return False
 
 
 def _quota_poll() -> None:
@@ -4815,6 +4905,9 @@ def _quota_poll() -> None:
         _quota_save()
         if go:
             _quota_stop(d.reason, hard=lvl == 2)
+            _quota_save()
+        _quota_reopen_check(d, u)
+        _quota_idle_alarm(u)
     except Exception as e:
         diag_log("steward_quota_poll_failed", error=repr(e))
     finally:

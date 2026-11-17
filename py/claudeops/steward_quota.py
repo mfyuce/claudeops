@@ -166,3 +166,26 @@ def decide(cfg: Dict[str, Any], usage: Optional[Usage], now: float, tz: Optional
     if cap is None and mode == "auto":     # sessizce devre dışı kalmasın: neden görünür olsun (stop/shutdown yine yukarıda çalışır)
         return Decision(reason="sıfırlanma zamanı çözülemedi: günlük tavan uygulanamıyor")
     return Decision(cap=cap)
+
+
+# ── kapatmadan geri açma + boşta kapasite alarmı (sahip P0, 17 Kas) ───────────────────────────────────────────────────
+REOPEN_MIN_OK_POLLS = 2             # art arda bu kadar `ok` kararı (yanlış okuma/tavan çevresinde gidip gelme açıp kapatmasın)
+REOPEN_MIN_SECONDS = 1800           # kapatmadan en az bu kadar sonra
+IDLE_ALARM_WEEK_PCT = 50.0          # haftalık kullanım bunun altında
+IDLE_ALARM_EVERY_SECONDS = 6 * 3600
+
+
+def reopen_ready(closed_at: float, ok_polls: int, now: float) -> bool:
+    """Kota bekçisinin kapattığı kimlikleri geri açma kapısı. SAF."""
+    return bool(closed_at) and ok_polls >= REOPEN_MIN_OK_POLLS and (now - float(closed_at)) >= REOPEN_MIN_SECONDS
+
+
+def idle_capacity_alarm(week_pct: Optional[float], enabled_stewards: int, running_sessions: int, open_projects: int,
+                        last_alarm_at: float, now: float) -> bool:
+    """Haftalık kullanım düşükken (< %50) açık sahipsiz TODO'lu proje var ama hiçbir değnekçi açık değil ya da hiç proje oturumu
+    çalışmıyor: kapasite boşa gidiyor, ntfy (6 saatte en çok 1). SAF."""
+    if week_pct is None or week_pct >= IDLE_ALARM_WEEK_PCT or open_projects <= 0:
+        return False
+    if enabled_stewards > 0 and running_sessions > 0:
+        return False
+    return (now - float(last_alarm_at or 0)) >= IDLE_ALARM_EVERY_SECONDS

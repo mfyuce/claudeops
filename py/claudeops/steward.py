@@ -4901,11 +4901,25 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
 _ASK_MARKERS = ("STEWARD-ASK", "STEWARD-BLOCKED", "STEWARD-ROUTINE", "STEWARD-JOB")
 
 
+def _forced_open_nudge(oldest_open: Optional[Callable[[str], str]], proj: str, n_open: int) -> str:
+    """`sıradaki: yok` TODO'da açık sahipsiz madde varken kabul edilmez: en eski açık maddeyi METNİYLE veren sabit dürtme.
+    Oturum yalnız gerekçeyle atlar (sahibe bağlıysa TOBEDECIDED'a taşıyıp TODO'dan çıkarır). Madde okunamazsa "" (eski davranış). SAF."""
+    try:
+        text = str((oldest_open(proj) if oldest_open is not None else "") or "").strip()
+    except Exception:
+        text = ""
+    if not text:
+        return ""
+    return one_line(f"'yok' kabul edilmez: TODO.md'de {n_open} açık sahipsiz madde var. En eskisi: «{clip_words(text, 300)}». Bunu yap; "
+                    f"yalnız gerekçeyle atla (sahibe bağlıysa TOBEDECIDED'a taşı, TODO'dan çıkar), sonra sıradakine geç.", 700)
+
+
 def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
                      planned: List[Action], world: Optional[World] = None,
                      open_work: Optional[Callable[[str], Optional[int]]] = None,
                      owner_todo: Optional[Callable[[str], Optional[int]]] = None,
-                     todo_sha: Optional[Callable[[str], str]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+                     todo_sha: Optional[Callable[[str], str]] = None,
+                     oldest_open: Optional[Callable[[str], str]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """`plan_ucli_idle`in Claude Code genellemesi (sahip onayı 7 Kas). SAF. Yönetilen yerel tmux claude oturumu boşta (`busy` False,
     alt ajan yok, son istekten `claude_idle_nudge_secs` geçti), son cevap işin bittiğini/soru sorduğunu söylemiyor ve projenin
     sıradaki işi varsa TEK satır `devam: <iş>` (`idle_nudge`). Kapat/devir/duraklatma YOK. Aynı boşta dönem en çok
@@ -4989,7 +5003,14 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
                                        "text": TODO_TRIAGE_TEXT, "next": f"todo_open={n_open_t}", "todo_open": n_open_t, "sha": sha[:12], "cli": "claude"}))
                     tri[proj.name] = {"sha": sha, "at": now, "mode": cfg.claude_idle, "open": n_open_t, "session": v.name}
                     rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": TODO_TRIAGE_TEXT}
-                continue        # aynı sha: ayıklama zaten yapıldı, "devam" dürtmesi de gitmez
+                    continue
+                forced = _forced_open_nudge(oldest_open, proj.name, n_open_t)
+                if forced:      # aynı sha: ayıklama yapıldı ama TODO hâlâ dolu ve oturum yine "yok" diyor: KABUL EDİLMEZ (sahip P0 17 Kas)
+                    out.append(Action("idle_nudge", v.name, f"TODO'da {n_open_t} açık madde, oturum tekrar 'yok' dedi: en eski madde verildi",
+                                      {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
+                                       "text": forced, "next": f"todo_open={n_open_t}", "cli": "claude", "via": "none_rejected"}))
+                    rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": forced}
+                continue        # (oldest_open yoksa eski davranış) aynı sha: ayıklama zaten yapıldı, "devam" dürtmesi de gitmez
         if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
         # Karar "iş VAR MI"ya dayanır, "iş NE"ye değil (sahip 11 Kas): sahipsiz açık TODO maddesi > 0 (owner_in_todo hariç) ya da notta
@@ -5004,7 +5025,13 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
         nn = dict(next_none.get(proj.name) or {})
         if next_none_stated(txt):
             if nn and int(nn.get("open", -1)) == n_open and nn.get("session") == v.name:
-                continue                       # "sıradaki: yok" dedi, TODO aynı: dürtme durur
+                forced = _forced_open_nudge(oldest_open, proj.name, n_open) if n_open > 0 else ""
+                if forced:                     # "yok" TODO doluyken kabul edilmez (sahip P0 17 Kas): en eski açık madde metniyle yeniden dürt
+                    out.append(Action("idle_nudge", v.name, f"claude boşta {int(now - since)} sn, 'yok' reddedildi, {n_open} açık madde",
+                                      {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
+                                       "text": forced, "next": f"todo_open={n_open}", "cli": "claude", "via": "none_rejected"}))
+                    rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": forced}
+                continue                       # (oldest_open yoksa) "sıradaki: yok" dedi, TODO aynı: dürtme durur
             if not nn:
                 next_none[proj.name] = {"open": n_open, "at": now, "session": v.name}   # ilk görüş: kaydet; TODO sonra değişirse yeniden dürtülür
                 none_changed = True
