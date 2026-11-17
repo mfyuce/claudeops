@@ -806,7 +806,20 @@ export const apiPeriodicAction = (body: {
   id: string;
   fields?: Record<string, string | number>;
   apply?: boolean;
-}): Promise<PeriodicActionResult> => apiPost<PeriodicActionResult>("/api/periodic", body);
+}): Promise<PeriodicActionResult> => apiPeriodicPost(body);
+
+/** `/api/periodic` returns HTTP 400 with `{ok:false,error}` on a rejected action: keep that message instead of a bare "http 400". */
+async function apiPeriodicPost(body: object): Promise<PeriodicActionResult> {
+  const res = await fetch(withToken("/api/periodic"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 400 && (res.headers.get("content-type") || "").includes("application/json")) {
+    return (await res.json()) as PeriodicActionResult;
+  }
+  return handleResponse<PeriodicActionResult>(res);
+}
 
 /** `POST /api/labels` — project labels (human only, local store). `add`/`remove` change one project's labels
  * (unknown valid names are created); `define`/`delete` manage the definitions (system labels are protected). */

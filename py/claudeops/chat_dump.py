@@ -356,6 +356,7 @@ def ingest_remote_archives(mir: str) -> Dict[str, Any]:
             if os.path.exists(done) and _read(done) == stamp:
                 out[host] = "atlandı"
                 continue
+            ex_final, ex = ex, ex + ".new"      # bozuk arşiv sağlam extract/'ı silmesin: önce yan dizine aç, başarılıysa değiştir
             shutil.rmtree(ex, ignore_errors=True)
             os.makedirs(ex, mode=0o700)
             n = 0
@@ -377,9 +378,12 @@ def ingest_remote_archives(mir: str) -> Dict[str, Any]:
                         shutil.copyfileobj(src, f)
                     os.utime(dest, (m.mtime, m.mtime))
                     n += 1
-            with open(done, "w") as f:
+            with open(os.path.join(ex, ".done"), "w") as f:
                 f.write(stamp)
+            shutil.rmtree(ex_final, ignore_errors=True)
+            os.replace(ex, ex_final)
             out[host] = n
         except (OSError, tarfile.TarError, EOFError) as e:
+            shutil.rmtree(os.path.join(hd, "extract.new"), ignore_errors=True)
             out[host] = f"HATA {type(e).__name__}: {e}"[:160]
     return out

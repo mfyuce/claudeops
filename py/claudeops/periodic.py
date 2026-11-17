@@ -606,6 +606,9 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             from . import chat_dump
             ing = chat_dump.ingest_remote_archives(os.path.join(CLAUDEOPS_DIR, "backups", "chat-mirror"))
             diag_log(f"periodic chat_backup: uzak arşiv {ing}")
+            for h, v in sorted(ing.items()):
+                if isinstance(v, str) and v.startswith("HATA"):
+                    warns.append(f"uzak arşiv {h}: {v}"[:120])
         except Exception as e:  # noqa: BLE001
             diag_log(f"periodic chat_backup: uzak arşiv hatası {type(e).__name__}: {e}")
             warns.append(f"uzak arşiv açma: {type(e).__name__}: {e}"[:120])

@@ -196,3 +196,15 @@ class PbTruncatedFixedTest(unittest.TestCase):
         self.assertIsNone(D.pb_decode(bytes([0x0D, 1, 2])))          # alan 1, wt 5, yalnız 2 bayt
         self.assertIsNone(D.pb_decode(bytes([0x09, 1, 2, 3])))       # alan 1, wt 1, yalnız 3 bayt
         self.assertEqual(D.pb_decode(bytes([0x0D, 1, 0, 0, 0])), [(1, 1)])
+
+
+def test_ingest_bozuk_arsiv_saglam_extract_korunur(tmp_path):
+    from claudeops import chat_dump
+    hd = tmp_path / "h"
+    (hd / "extract").mkdir(parents=True)
+    (hd / "extract" / "keep.txt").write_text("sağlam")
+    (hd / "a.tgz").write_bytes(b"bozuk degil gzip")
+    out = chat_dump.ingest_remote_archives(str(tmp_path))
+    assert str(out["h"]).startswith("HATA")
+    assert (hd / "extract" / "keep.txt").read_text() == "sağlam"
+    assert not (hd / "extract.new").exists()

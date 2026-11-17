@@ -79,6 +79,10 @@ def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]
         tx.send(cleanup_command(tag, day, root))
         return {"ok": True, "msg": f"{tag}: {size} bayt", "bytes": size}
     except Exception as e:  # noqa: BLE001
+        try:                               # istisna yolunda da kendi uzak geçici dosyalarını sil (en iyi çaba)
+            tx.send(cleanup_command(tag, day, tx.root()))
+        except Exception:  # noqa: BLE001
+            pass
         return {"ok": False, "msg": f"{type(e).__name__}: {e}"[:200], "bytes": 0}
 
 
