@@ -66,3 +66,27 @@ class HttpAnswerByTest(_Tmp):
             r = self.ws.http_answer(dict(data, id=q.id, answer="tamam"), "default")
             self.assertTrue(r["ok"], r)
             self.assertEqual(r["question"]["answered_by"], want, data)
+
+
+class CmdAnswerGuardTest(_Tmp):
+    """`steward answer` cevaplanmış soruyu sessizce ezmez; --force ister."""
+
+    def _run(self, qid, ans, force=False):
+        import argparse, io
+        from contextlib import redirect_stdout
+        from claudeops.commands import steward as cs
+        a = argparse.Namespace(id=qid, answer=ans, force=force, as_owner=True, on_behalf=False, steward=None)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cs.cmd_answer(a)
+        return rc, buf.getvalue()
+
+    def test_overwrite_refused_without_force(self):
+        q = sw.add_question("p", "hangi model?", source="s", paths=None)
+        self.assertEqual(self._run(q.id, "birinci")[0], 0)
+        rc, out = self._run(q.id, "ikinci")
+        self.assertEqual(rc, 1)
+        self.assertIn("--force", out)
+        self.assertEqual(sw.find_question(q.id, None).answer, "birinci")
+        self.assertEqual(self._run(q.id, "ikinci", force=True)[0], 0)
+        self.assertEqual(sw.find_question(q.id, None).answer, "ikinci")

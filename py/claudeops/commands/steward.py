@@ -396,6 +396,11 @@ def _answer_by(args) -> str:
 
 
 def cmd_answer(args) -> int:
+    prev = sw.find_question(args.id, _sid(args))
+    if prev is not None and prev.status != "open" and not getattr(args, "force", False):
+        # cevaplanmış soruyu sessizce ezme (q20261101_192102_431c: asıl cevap kayboldu)
+        print(f"hata: soru zaten cevaplanmış (status={prev.status}); mevcut cevap: {prev.answer[:200]!r}; ezmek için --force")
+        return 1
     try:
         q = sw.answer_question(args.id, args.answer, _sid(args), by=_answer_by(args))
     except ValueError as e:
@@ -1186,6 +1191,7 @@ def register(sub):
     pa.add_argument("answer")
     pa.add_argument("--as-owner", action="store_true", help="sahibin kendi cevabı (answered_by=owner_cli); varsayılan: claudeops oturumundan çağrılırsa cops (sahip adına)")
     pa.add_argument("--on-behalf", action="store_true", help="kontrol oturumu sahip adına cevaplıyor (answered_by=cops; cevaba '(sahip adına cops)' öneki konur)")
+    pa.add_argument("--force", action="store_true", help="zaten cevaplanmış sorunun cevabını ez")
     pa.set_defaults(func=cmd_answer)
     pask = s.add_parser("ask", help="soru aç (panel üzerinden: telefona bildirim + /q/<id> bağlantısı)")
     pask.add_argument("text")
