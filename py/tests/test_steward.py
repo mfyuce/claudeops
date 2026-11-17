@@ -327,6 +327,38 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([], self.projects, {}, _cfg(max_active=4, max_starts_per_tick=1), self.now, [], [])
         self.assertEqual([a.name for a in acts], ["a"])
 
+    def test_todo_change_opens_active_project_without_waiting_cadence(self):
+        cfg = _cfg(max_active=4, max_starts_per_tick=5)
+        self.projects["a"].last_visit = self.projects["b"].last_visit = self.now - 10 * 60   # cadence dolmamış
+        sha = {"v": "h1"}
+        kw = dict(open_work=lambda n: 2, todo_sha=lambda n: sha["v"])
+        acts, st = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [], **kw)
+        self.assertEqual([a for a in acts if a.kind == "start"], [])       # ilk gözlem tetiklemez
+        acts, st = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], **kw)
+        self.assertEqual([a for a in acts if a.kind == "start"], [])       # değişmedi
+        sha["v"] = "h2"
+        acts, st = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], **kw)
+        self.assertEqual(sorted(a.name for a in acts if a.kind == "start"), ["a", "b"])
+        # açık iş 0 ise değişim açmaz
+        sha["v"] = "h3"
+        self.projects["a"].last_visit = self.projects["b"].last_visit = self.now - 10 * 60
+        acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], open_work=lambda n: 0, todo_sha=lambda n: sha["v"])
+        self.assertEqual([a for a in acts if a.kind == "start"], [])
+
+    def test_todo_change_paused_project_asks_owner_once_per_day(self):
+        cfg = _cfg(max_active=4, max_starts_per_tick=5)
+        sha = {"v": "h1"}
+        kw = dict(open_work=lambda n: 3, todo_sha=lambda n: sha["v"])
+        _, st = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [], **kw)
+        sha["v"] = "h2"
+        acts, st = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], **kw)
+        asks = [a for a in acts if a.kind == "ask_user" and a.name == "c"]
+        self.assertEqual(len(asks), 1)
+        self.assertFalse([a for a in acts if a.kind == "start" and a.name == "c"])   # paused AÇILMAZ
+        sha["v"] = "h3"
+        acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now + 3600, [], [], **kw)
+        self.assertFalse([a for a in acts if a.kind == "ask_user" and a.name == "c"])   # günde 1
+
     def test_drain_starts_nothing_but_keeps_answers_and_running(self):
         cfg = _cfg(max_active=4, max_starts_per_tick=5, drain=True)
         acts, _ = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [])

@@ -4391,7 +4391,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world,
                                                   open_work=_open_work_of(projects), open_tbd=_open_tbd_of(projects),
-                                                  claim_check=_claim_check_of(projects))
+                                                  claim_check=_claim_check_of(projects), todo_sha=_todo_sha_of(projects))
                 if new_state.get("start_blocked") != (prev_state.get("start_blocked") if "start_blocked" in new_state else None):
                     sw.log_event("start_blocked", paths=paths, **new_state["start_blocked"])   # değişince bir kez
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)

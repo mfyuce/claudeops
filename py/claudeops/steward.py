@@ -3739,7 +3739,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
               world: Optional[World] = None,
               open_work: Optional[Callable[[str], Optional[int]]] = None,
               open_tbd: Optional[Callable[[str], Optional[int]]] = None,
-              claim_check: Optional[Callable[[str], List[str]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+              claim_check: Optional[Callable[[str], List[str]]] = None,
+              todo_sha: Optional[Callable[[str], str]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
     (motor kaydeder). Sıra: ekonomi (handover/respawn) → işaretler → cevap iletimi → uğrama/başlatma →
     slot baskısı → beyin turu.
@@ -4108,6 +4109,34 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     tbd_asked: Dict[str, float] = {k: float(v) for k, v in dict(st.get("tbd_asked") or {}).items()}
     due: List[Project] = []
     held: List[str] = []
+    # TODO'ya duyarlı açılış (17 Kas, sahip): TODO.md içeriği değişince (ilk gözlem sayılmaz) ve açık iş > 0 ise aktif faz cadence'i
+    # BEKLEMEDEN açılır; paused projeye AÇMA, sahibe günde en çok 1 soru. Uzak/okunamayan = sha '' = tetik yok.
+    todo_changed: Set[str] = set()
+    if todo_sha is not None:
+        todo_seen: Dict[str, str] = {str(k): str(v) for k, v in dict(st.get("todo_seen") or {}).items()}
+        paused_asked: Dict[str, float] = {k: float(v) for k, v in dict(st.get("todo_paused_asked") or {}).items()}
+        for p in projects.values():
+            try:
+                cur = str(todo_sha(p.name) or "")
+            except Exception:
+                cur = ""
+            if not cur:
+                continue
+            prev = todo_seen.get(p.name)
+            todo_seen[p.name] = cur
+            if prev is None or prev == cur or open_work is None or not (open_work(p.name) or 0):
+                continue
+            if p.phase in ACTIVE_PHASES:
+                todo_changed.add(p.name)
+            elif p.phase == "paused" and now - paused_asked.get(p.name, 0.0) >= 24 * 3600:
+                n = open_work(p.name)
+                actions.append(Action("ask_user", p.name, "paused projenin TODO'suna madde geldi",
+                                      {"project": p.name, "text": f"{p.name} duraklatılmış, TODO.md'si değişti ve {n} açık madde var. Açayım mı?"}))
+                paused_asked[p.name] = now
+        if todo_seen:
+            st["todo_seen"] = todo_seen
+        if paused_asked:
+            st["todo_paused_asked"] = paused_asked
     for p in projects.values():
         if p.phase not in ACTIVE_PHASES or p.cadence_minutes <= 0 or p.name in running_projects or p.name in busy_names:
             continue
@@ -4116,7 +4145,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         if any(_project_key(k, projects) == p.name and now - float(v or 0.0) < BRAIN_STOP_COOLDOWN_SECONDS
                for k, v in dict(st.get("brain_stopped") or {}).items()):
             continue     # beyin "kalan iş yok / sahip kararı bekliyor" diye durdurdu: cadence soğuk bağlamla hemen yeniden açmaz
-        if visit_of(p) == 0 or (now - visit_of(p)) >= p.cadence_minutes * 60:
+        if visit_of(p) == 0 or p.name in todo_changed or (now - visit_of(p)) >= p.cadence_minutes * 60:
             if open_work is not None and open_tbd is not None and open_work(p.name) == 0 and (open_tbd(p.name) or 0) > 0:
                 # yalnız TBD kaldı (yerel TODO'da açık iş yok): oturum açmak boşa tur; sahibe tek soru, cevap gelince `answer → start`
                 if now - tbd_asked.get(p.name, 0.0) >= 6 * 3600:      # günde en çok ~4 kez; aynı soru zaten açıksa birleşir
