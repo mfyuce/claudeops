@@ -336,3 +336,10 @@ class MirrorRegressionTest(_Tmp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_local_sources_review_io_jsonl_dahil():
+    from claudeops import periodic as P
+    src = [s for s in P._local_sources() if s[1] == os.path.join("local", "claude-reviews")]
+    assert src and src[0][0].endswith(os.sep + "reviews") and src[0][2] == "text"
+    assert P._group_of(src[0][1]) == "claude"

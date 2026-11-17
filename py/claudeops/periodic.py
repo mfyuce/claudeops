@@ -32,7 +32,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .atomic_json import atomic_write_json
 from .diaglog import diag_log
-from .paths import CLAUDEOPS_DIR
+from .paths import CLAUDEOPS_DIR, REPO_DIR
 
 CONFIG_JSON = os.path.join(CLAUDEOPS_DIR, "periodic.json")
 STATE_JSON = os.path.join(CLAUDEOPS_DIR, "periodic_state.json")
@@ -340,6 +340,8 @@ def _local_sources() -> List[Tuple[str, ...]]:
         (os.path.join(STAGE_DIR, "codex"), os.path.join("local", "codex-dump"), "text"),    # .db dökümü (chat_dump); ham .db gdrive'a
         (os.path.join(STAGE_DIR, "gemini"), os.path.join("local", "gemini-dump"), "text"),
         (os.path.join(mir, "ucli"), os.path.join("local", "claude-ucli"), "text"),
+        # review koşuları (<proje>/<mod>/<model>/<id>/*.io.jsonl): `claude -p` transkripte düşmez (ölçüldü 11-17), yedeğe buradan girer
+        (os.path.join(REPO_DIR, "reviews"), os.path.join("local", "claude-reviews"), "text"),
     ]
     for hdir in sorted(glob.glob(os.path.join(mir, "*", "extract"))):          # uzak host sohbetleri: local/<cli>-<host>-... (grup = cli)
         rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(hdir)))
