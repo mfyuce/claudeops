@@ -2765,7 +2765,7 @@ def _self_verify_run(cfg: Any, project: str, rows: List[Dict[str, Any]], cwd: st
         h = rv.text_hash(out)
         with sw.steward_lock(p):
             cur = rv.load_findings(p)
-            done = rv.apply_verdicts(cur, project, verdicts, h, "self", now())
+            done = rv.apply_verdicts(cur, project, verdicts, h, "self", now(), verifier=verify_model(cfg))
             if done:
                 rv.save_findings(p, cur)
     except Exception as e:      # karar uygulaması patlarsa bulgular `verify_sent`te takılı kalmasın (kurtarma yalnız servis açılışında)
@@ -3026,12 +3026,12 @@ def bulk_decide(cfg: Any, action: str, project: str = "", fids: Optional[Sequenc
 
 
 AUTO_APPROVE_SEVERITIES = {1: ("P3",), 2: ("P2", "P3"), 3: ("P1", "P2", "P3")}   # `review_auto_approve` düzeyi -> önem; 3 = HEPSİ (sahip 10 Kas: "onaysız kalmasın")
-AUTO_APPROVE_UNCLEAR_LEVEL = 3      # bu düzeyde `unclear` de onaylanır; parola/gizli geçen bulgu HER düzeyde sahibe kalır
+AUTO_APPROVE_UNCLEAR_LEVEL = 99     # R5 (17 Kas): ulaşılmaz = `unclear` asla otomatik onaylanmaz; parola/gizli geçen bulgu HER düzeyde sahibe kalır
 
 
 def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
     """`review_auto_approve` > 0 ise `verified` bulguları KENDİLİĞİNDEN onaylar (`decided_by=auto`): yalnız düzeyin önem
-    kümesi (1 = P3, 2 = P2+P3, 3 = P1+P2+P3 ve `unclear`); 1-2'de `unclear` ve P1, HER düzeyde başlık/yer/gövdesinde
+    kümesi (1 = P3, 2 = P2+P3, 3 = P1+P2+P3); `unclear` HİÇBİR düzeyde otomatik onaylanmaz; 1-2'de P1, HER düzeyde başlık/yer/gövdesinde
     parola/gizli değer geçen bulgu sahibe kalır.
     Dosyaya YAZMAZ (export ayrı adım). Onaylananların fid'leri döner."""
     sev = AUTO_APPROVE_SEVERITIES.get(int(getattr(cfg, "review_auto_approve", 0) or 0))
@@ -3041,7 +3041,7 @@ def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
     p = sw.paths_for(cfg.sid)
     done: List[str] = []
     for fid, rec in sorted(rv.load_findings(p).items()):
-        ok_states = ("verified", "unclear") if int(getattr(cfg, "review_auto_approve", 0) or 0) >= AUTO_APPROVE_UNCLEAR_LEVEL else ("verified",)
+        ok_states = ("verified",)      # R5 (sahip 17 Kas): `unclear` HİÇBİR düzeyde otomatik onaylanmaz, her zaman sahibe
         if not isinstance(rec, dict) or rec.get("state") not in ok_states or str(rec.get("severity") or "") not in sev:
             continue
         if sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}")):

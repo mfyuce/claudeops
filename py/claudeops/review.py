@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from . import steward as sw
 
-WINDOW_SECONDS = 30 * 86400         # bir çift bu sürede `done` ise "taze" (proje tamam ölçütü)
+WINDOW_SECONDS = 15 * 86400         # bir çift bu sürede `done` ise "taze" (proje tamam ölçütü); sahip kararı R8 (17 Kas): 30 gün -> 15 gün
 HISTORY_VERSION = 1
 HISTORY_RUNS_MAX = 200
 MAX_ATTEMPTS = 3                    # error/model_fallback/partial çifti bu denemeden sonra pencere dolana dek bırakılır
@@ -186,7 +186,8 @@ def targets_from_config(cfg: Any, agy_models: Sequence[str], evren_models: Seque
             m, eff = split_spec(spec)         # `claude-haiku-5-5@low,claude-haiku-5-5@high`: aynı model, iki ayrı çift
             if not m:
                 continue
-            t = ReviewTarget(mode, m, slug_model(m), eff)
+            sub = mode == "claude" and claude_is_subscription(cfg)    # R10 (17 Kas): abonelik koşusu API geçmişinden AYRI anahtar/yol
+            t = ReviewTarget(mode, m, slug_model(m) + ("-sub" if sub else ""), eff)
             if t.key not in seen:
                 seen.add(t.key)
                 out.append(t)
@@ -229,7 +230,7 @@ def _pairs(history: Any) -> Dict[str, Dict[str, Any]]:
 
 
 def window_seconds(hours: Any) -> float:
-    """`steward.review_window_hours` -> saniye; geçersiz/<=0 değerde varsayılan `WINDOW_SECONDS` (30 gün)."""
+    """`steward.review_window_hours` -> saniye; geçersiz/<=0 değerde varsayılan `WINDOW_SECONDS` (15 gün)."""
     try:
         h = float(hours)
     except (TypeError, ValueError):
@@ -1084,8 +1085,18 @@ def text_hash(text: str) -> str:
     return hashlib.sha1(str(text or "").encode("utf-8", "replace")).hexdigest()
 
 
+def reviewer_slug_of(review_file: str) -> str:
+    """Rapor yolundan (`<root>/<proje>/<mode>/<slug>[/<effort>]/<ts>/<ts>.md`) üreten modelin slug'ı (abonelik soneki `-sub` atılır);
+    çözülemezse ""."""
+    parts = str(review_file or "").replace("\\", "/").split("/")
+    for i, seg in enumerate(parts[:-1]):
+        if seg in MODES and i + 1 < len(parts) - 1:
+            return re.sub(r"-sub$", "", parts[i + 1])
+    return ""
+
+
 def apply_verdicts(findings: Dict[str, Any], project: str, verdicts: Sequence[Tuple[str, str, str]], src_hash: str,
-                   session: str, now: float) -> List[str]:
+                   session: str, now: float, verifier: str = "") -> List[str]:
     """`findings`i YERİNDE günceller; uygulanan fid'ler döner. Kabul: bilinen fid, aynı proje, durum `verify_sent`,
     ve metin doğrulama gönderilirken görülen (eski) son yanıt DEĞİL (`verify_baseline`) ya da bu fid'e daha önce
     uygulanmış metin değil (`verdict_src`). SAF."""
@@ -1097,6 +1108,10 @@ def apply_verdicts(findings: Dict[str, Any], project: str, verdicts: Sequence[Tu
         if verdict not in VERDICTS or src_hash in (rec.get("verify_baseline"), rec.get("verdict_src")):
             continue
         rec.update(state=verdict, verdict=reason, verdict_at=now, verdict_session=session, verdict_src=src_hash)
+        if verifier and reviewer_slug_of(str(rec.get("review_file") or "")) == slug_model(verifier):
+            # R6 (17 Kas): Sonnet Sonnet'i doğrulayabilir ama işaretlenir (sahip kararda bilsin)
+            rec["same_model"] = True
+            rec["verdict"] = (str(reason) + " [aynı model doğruladı]")[:VERDICT_REASON_MAX + 24]
         applied.append(fid)
     return applied
 

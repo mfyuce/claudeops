@@ -324,7 +324,7 @@ class Config:
     review_timeout_minutes: int = 45   # tek review çalıştırması bu sürede bitmezse iptal
     review_min_gap_minutes: int = 10   # iki review başlatması arası en az bekleme
     review_backlog_max: int = 50       # L1 (10 Kas 2026): projenin TODO.md+RTODO.md'sinde açık `- [ ] (review ` satırı bu sayıya ulaşınca yeni otomatik review YOK (bulgu üretimi düzeltme hızına bağlı); 0 = kapalı; ★ odak proje ve elle koşu muaf
-    review_window_hours: int = 720     # bir (proje,hedef) çifti bu sürede tekrar koşmaz (720 = 30 gün); HEAD değişirse bu süre beklenmez (_same_head)
+    review_window_hours: int = 360     # bir (proje,hedef) çifti bu sürede tekrar koşmaz (360 = 15 gün; R8 17 Kas, eskiden 720); HEAD değişirse bu süre beklenmez (_same_head)
     review_slots: str = ""             # mod başına eşzamanlı koşu yuvası (`agy=5,evren=1,codex=1,copilot=0`; belirtilmeyen mod 1, 0 = mod kapalı); ""/off = TEK iş (eski davranış)
     review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
     review_max_context_kib: int = 0    # Evren/ucli: `--max-context-kib`; 0 = ucli modelin `/models` kaydından türetir (2026-11-04; eskiden sabit 768: 32K'lık modeli taşırıyor, 1M'likte erken kırpıyordu)
