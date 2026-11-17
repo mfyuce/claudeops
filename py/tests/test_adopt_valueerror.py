@@ -53,6 +53,30 @@ class AdoptValueError(unittest.TestCase):
         spawn.assert_not_called()
 
 
+    def test_generic_dry_run_preflight_keeps_old_session_alive(self):
+        # review P2: herhangi bir provider'da spawn kuru çalıştırması ValueError verirse eski oturum ÖLDÜRÜLMEZ.
+        proc = SimpleNamespace(pid=1, name="foo", cwd="/tmp", cli="claude", model="m")
+        provider = mock.Mock()
+        provider.accepts_cli_opts = False
+        provider.permission_modes.return_value = ["default"]
+        kill = mock.Mock(return_value="clean")
+        spawn = mock.Mock(side_effect=ValueError("hizmet anahtarı yok"))
+        with mock.patch.object(web, "_find_running_for_action", lambda n: ("one", [proc])), \
+                mock.patch.object(web, "_all_known_names", lambda: set()), \
+                mock.patch.object(web, "get_provider", lambda c: provider), \
+                mock.patch.object(web, "resolved_model_for", lambda p, m: "m"), \
+                mock.patch.object(web, "default_effort_for", lambda p: "high"), \
+                mock.patch.object(web, "guard_lock", mock.MagicMock()), \
+                mock.patch.object(web, "kill_session_and_parent", kill), \
+                mock.patch.object(web, "detect_display", lambda: ":0"), \
+                mock.patch.object(web, "diag_log", lambda *a, **k: None), \
+                mock.patch.object(web, "spawn_session", spawn):
+            res = web._adopt("foo")
+        self.assertFalse(res["ok"])
+        kill.assert_not_called()
+        self.assertTrue(spawn.call_args.kwargs.get("dry_run"))
+
+
 if __name__ == "__main__":
     unittest.main()
 

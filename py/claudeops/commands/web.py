@@ -3605,6 +3605,14 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
             return ucli_cost.refusal(e)
         except Exception as e:  # noqa: BLE001 - ön kontrol en iyi çabadır
             diag_log("adopt_preflight_error", old_name=old_name, error=repr(e)[:200])
+    try:    # TÜM provider'lar: spawn'ın kuru çalıştırması (komut kurulumu, ValueError = anahtar/tavan) eski oturum ÖLDÜRÜLMEDEN denenir (review P2)
+        spawn_session(name=new_name, cwd=cwd, model=chosen_model, display=detect_display(), permission_mode=chosen_mode,
+                      effort=chosen_effort, force_new=False, dry_run=True, cli=chosen_cli, **({"cli_opts": cli_opts} if cli_opts else {}))
+    except ValueError as e:
+        diag_log("adopt_preflight_refused", old_name=old_name, new_name=new_name, cli=chosen_cli, reason=str(e)[:200])
+        return ucli_cost.refusal(e)
+    except Exception as e:  # noqa: BLE001 - ön kontrol en iyi çabadır; asıl spawn kendi hatasını bildirir
+        diag_log("adopt_preflight_error", old_name=old_name, error=repr(e)[:200])
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
