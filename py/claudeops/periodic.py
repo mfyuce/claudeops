@@ -690,8 +690,13 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             rc, lst = _git(repo, "ls-files", "-z", "--", "local", "memory")
             if rc == 0:
                 idx = chat_index.write_index(repo, [x for x in lst.split("\0") if x], re.sub(r"[^A-Za-z0-9._-]+", "-", socket.gethostname()))
-                _git(repo, "add", "--", *idx)
-                _git_dated(repo, datetime.date.today().isoformat(), "commit", "-q", "-m", "INDEX guncellendi", "--", *idx)
+                rc_a, out_a = _git(repo, "add", "--", *idx)
+                if rc_a != 0:
+                    warns.append(f"{g} INDEX git add: {out_a[-80:]}"[:120])
+                elif _git(repo, "diff", "--cached", "--quiet", "--", *idx)[0] != 0:      # rc 1 = indekste değişiklik var; yoksa boş commit denenmez
+                    rc_c, out_c = _git_dated(repo, datetime.date.today().isoformat(), "commit", "-q", "-m", "INDEX guncellendi", "--", *idx)
+                    if rc_c != 0:
+                        warns.append(f"{g} INDEX git commit: {out_c[-80:]}"[:120])
         except Exception as e:  # noqa: BLE001
             diag_log(f"periodic chat_backup: INDEX hatası {type(e).__name__}: {e}")
         head = _git(repo, "rev-parse", "HEAD")[1].strip()

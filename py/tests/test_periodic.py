@@ -171,6 +171,46 @@ class ChatBackupTest(_Tmp):
             r2 = P.run_chat_backup(self.cfg, True, st)                         # değişmeyen = iş yok
             self.assertEqual(r2["changed"], 0)
 
+    def _run_index(self, add_rc=0, diff_rc=0, commit_rc=0):
+        self._setup_repo()
+        calls = []
+
+        def fake_git(r, *a, **k):
+            calls.append(a)
+            if a[0] == "rev-parse":
+                return 0, "abcdef1234567890\n"
+            if a[0] == "ls-remote":
+                return 0, "abcdef1234567890\tHEAD\n"
+            if a[0] == "add" and a[-2:] == ("INDEX.jsonl", "INDEX.md"):
+                return add_rc, "add hata"
+            if a[0] == "diff":
+                return diff_rc, ""
+            return 0, ""
+
+        def fake_dated(r, day, *a):
+            calls.append(a)
+            return (commit_rc, "commit hata") if a[0] == "commit" and "INDEX guncellendi" in a else (0, "")
+        with mock.patch.object(P, "_local_sources", return_value=self.srcs), \
+                mock.patch.object(P, "_private_remotes", return_value=({"origin": "u"}, [])), \
+                mock.patch.object(P, "_git", side_effect=fake_git), \
+                mock.patch.object(P, "_git_dated", side_effect=fake_dated):
+            r = P.run_chat_backup(self.cfg, True, {})
+        return r, calls
+
+    def test_index_add_failure_is_warning(self):
+        r, calls = self._run_index(add_rc=1)
+        self.assertIn("INDEX git add", r["msg"])
+        self.assertFalse(any(c[0] == "commit" and "INDEX guncellendi" in c for c in calls))
+
+    def test_index_no_change_no_commit(self):
+        r, calls = self._run_index(diff_rc=0)
+        self.assertNotIn("UYARI", r["msg"])
+        self.assertFalse(any(c[0] == "commit" and "INDEX guncellendi" in c for c in calls))
+
+    def test_index_commit_failure_is_warning(self):
+        r, _ = self._run_index(diff_rc=1, commit_rc=1)
+        self.assertIn("INDEX git commit", r["msg"])
+
     def test_remote_pull_failure_visible_in_msg(self):
         repo = self._setup_repo()
         cfg = dict(self.cfg, remote_pull={"yuhem": "shell_yuhem"})
