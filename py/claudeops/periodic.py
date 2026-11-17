@@ -9,10 +9,10 @@ Ayar dosyası `CLAUDEOPS_DIR/periodic.json` (settings.json'a DOKUNMAZ):
 `enabled`: "on" | "off" (varsayılan KAPALI; `_OFF_WORDS` kapatır). Durum `periodic_state.json` (son başlangıç, sonuç, manifest).
 Görev işleyicileri `JOBS`'ta; yeni iş = bir `Job` kaydı eklemek.
 
-chat_backup: `~/.claude/projects/**/*.jsonl` + `history.jsonl` içinde YENİ/DEĞİŞEN dosyaları sır-maskeleyip ham (gzip yok) olarak, gün başına ayrı commit ile
+chat_backup: `~/.claude/projects/**/*.jsonl` + `history.jsonl` içinde YENİ/DEĞİŞEN dosyaları sır-maskeleyip maskeli ham metin (gzip yok) olarak, gün başına ayrı commit ile
 `repo_dir` (varsayılan ~/work/projects/tmp/copschats-prv) altına koyar, YALNIZ o açık yolları `git add` + commit + push eder
 (tüm remote'lar, ikisi de PRIVATE doğrulanır, push sonrası ls-remote). Uzak host kaynakları `sources`ta tanımlıdır
-(şimdilik yalnız "local"; uzak = TODO).
+("local"; uzak host çekme `remote_pull` ile, varsayılan kapalı). Sır maskesi metin dosyalarına uygulanır; ikili sqlite (copilot/codex) ham kalır (TBD#2).
 """
 from __future__ import annotations
 
@@ -667,6 +667,10 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         res.update(ok=False, msg=missing["claude"] + f" (önce private {cfg.get('repo_name')} oluştur: gh/glab, iki remote)")
         return res
     per = {g: sum(1 for e in plan["changed"] if e["group"] == g) for g in groups}
+    if apply:                          # doğrulanamayan (private kapısı düşen) grup sessizce atlanmasın: koşu 'temiz ok' görünmesin
+        for g, err in sorted(missing.items()):
+            if per.get(g):
+                warns.append(f"{g} grubu ATLANDI ({per[g]} dosya yazılmadı): {err}"[:160])
     if not apply:
         res["msg"] = f"plan: {len(plan['changed'])} yeni/değişen dosya ({plan['seen']} taranan); yazılmadı; gruplar {per}" + (
             f"; repo'suz atlanacak: {sorted(missing)}" if missing else "")
