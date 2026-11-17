@@ -93,6 +93,9 @@ def guard_once(
 
     # Base-name bazlı çalışan session seti (s.base: hc58→hc, hc→hc)
     running_bases = {s.base for s in running}
+    # Adı rakam/`_N` ile biten roster kaydı (`ysf2`): `Session.base` sondaki rakamları atar (`ysf`), kayıt adıyla hiç eşleşmez
+    # ve guard her geçişte "eksik" sayıp yeniden açardı (review cliops 17 Kas). Tam ad eşleşmesi de "çalışıyor" sayılır.
+    running_bases |= {s.name for s in running if s.name}
 
     # Sadece models.tsv'de aktif (# ile başlamayanlar) olanları dikkate al
     active_bases = set(models.keys())

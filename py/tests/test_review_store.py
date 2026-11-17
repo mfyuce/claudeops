@@ -54,6 +54,20 @@ class PureTest(unittest.TestCase):
                 f.write("/reviews/\n")
             self.assertEqual(rs.dest_guard(os.path.join(d, "reviews")), (True, ""))            # yok sayılıyor: girmez
 
+    def test_unrecognized_remote_makes_repo_unknown_not_private(self):
+        """github private + tanınmayan (kendi sunucu) remote: depo 'private' SAYILMAZ (review cliops 17 Kas)."""
+        class R:
+            def __init__(self, rc, out):
+                self.returncode, self.stdout, self.stderr = rc, out, ""
+
+        def run(argv, **kw):
+            if argv[0] == "git":
+                return R(0, "o\tgit@github.com:a/b.git (fetch)\ng\tgit@git.example.org:a/b.git (fetch)\n")
+            return R(0, "true")           # gh: isPrivate = true
+        rs._CACHE.clear()
+        self.assertEqual(rs.repo_visibility("/y", run=run, now=1.0), "unknown")
+        rs._CACHE.clear()
+
     def test_visibility_any_public_wins_and_cache(self):
         calls = []
 

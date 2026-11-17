@@ -32,6 +32,21 @@ class CleanupBackupsTests(unittest.TestCase):
         self.assertEqual(kept, ["b4.json", "b3.json"])
         self.assertEqual(sorted(old), ["b0.json", "b1.json", "b2.json"])
 
+    def test_live_entries_never_planned_for_archive(self):
+        os.makedirs(os.path.join(self.d, "chat-mirror"))                       # adlandırılmış canlı dizin (eski mtime olsa da)
+        os.utime(os.path.join(self.d, "chat-mirror"), (1000, 1000))
+        for n in ("gate_watch.sh", "brain_usage.py"):
+            open(os.path.join(self.d, n), "w").close()
+            os.utime(os.path.join(self.d, n), (1000, 1000))
+        recent = os.path.join(self.d, "calisan")                              # üst dizin eski ama içinde yeni dosya var
+        os.makedirs(recent)
+        open(os.path.join(recent, "yeni.txt"), "w").close()
+        os.utime(recent, (1000, 1000))
+        kept, old = cb.plan(self.d, 0)
+        for n in ("chat-mirror", "gate_watch.sh", "brain_usage.py", "calisan"):
+            self.assertNotIn(n, kept + old, n)
+        self.assertEqual(sorted(old), ["b0.json", "b1.json", "b2.json", "b3.json", "b4.json"])
+
     def test_plan_ignores_existing_archives(self):
         open(os.path.join(self.d, "archive-x.tar.gz"), "w").close()
         kept, old = cb.plan(self.d, 10)

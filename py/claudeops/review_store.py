@@ -63,13 +63,16 @@ def repo_visibility(path: str, run: Optional[Callable] = None, now: Optional[flo
         return hit[1]
     rc, out = _run(["git", "-C", path, "remote", "-v"], run=run)
     seen = set()
+    unparsed = False
     for ln in out.splitlines():
         parts = ln.split()
         if len(parts) >= 2:
             h, slug = parse_remote(parts[1])
             if h:
                 seen.add((h, slug))
-    vis = [remote_visibility(h, s, run=run) for h, s in sorted(seen)]
+            elif not _is_local_remote(parts[1]):
+                unparsed = True      # tanınmayan (github/gitlab dışı) uzak: görünürlüğü bilinemez, "private" sayılmasın (review cliops 17 Kas)
+    vis = [remote_visibility(h, s, run=run) for h, s in sorted(seen)] + (["unknown"] if unparsed else [])
     res = "public" if "public" in vis else ("unknown" if (not vis or "unknown" in vis) else "private")
     if res != "unknown":       # geçici hata (ağ, gh/glab girişi) 1 saat boyunca "unknown" olarak takılı kalmasın
         if len(_CACHE) >= CACHE_MAX and path not in _CACHE:

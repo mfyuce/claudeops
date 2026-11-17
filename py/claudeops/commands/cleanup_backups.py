@@ -13,6 +13,38 @@ def _backup_dir() -> str:
     return os.path.join(CLAUDEOPS_DIR, "backups")
 
 
+LIVE_NAMES = {"chat-mirror"}          # canlı güncellenen dizinler (araçlar bunun içine yazar): arşivlenip silinmez
+LIVE_SUFFIXES = (".sh", ".py")        # backups/ içindeki canlı betikler (chat_mirror.sh, gate_watch.sh, brain_usage.py)
+RECENT_SECONDS = 3 * 86400            # ağaçta bu süreden yeni dosya = kullanımda olabilir (üst dizin mtime'ı iç değişikliği göstermez)
+_WALK_MAX = 20000
+
+
+def _is_live(path: str, name: str, now: float) -> bool:
+    """Arşivlenip SİLİNMEMESİ gereken girdi: adlandırılmış canlı dizin, betik ya da ağacında yakın zamanda yazılmış dosya olan
+    (review cliops 17 Kas: `--apply` canlı çalışma dizinlerini de arşivleyip siliyordu)."""
+    if name in LIVE_NAMES or name.endswith(LIVE_SUFFIXES):
+        return True
+    cut = now - RECENT_SECONDS
+    try:
+        if os.path.getmtime(path) >= cut:
+            return True
+        if os.path.isdir(path):
+            n = 0
+            for dp, _ds, fs in os.walk(path):
+                for fn in fs:
+                    n += 1
+                    if n > _WALK_MAX:
+                        return True          # çok büyük ağaç: tarayamadık, korumacı davran
+                    try:
+                        if os.path.getmtime(os.path.join(dp, fn)) >= cut:
+                            return True
+                    except OSError:
+                        continue
+    except OSError:
+        return True
+    return False
+
+
 def plan(backup_dir: str, keep: int) -> Tuple[List[str], List[str]]:
     """(tutulacaklar, arşivlenecekler) — yalnız üst düzey girdiler; mevcut `*.tar.gz` arşivleri ve sembolik bağlar dokunulmaz.
     Sıra: mtime yeni -> eski."""
@@ -23,7 +55,7 @@ def plan(backup_dir: str, keep: int) -> Tuple[List[str], List[str]]:
     items = []
     for n in names:
         p = os.path.join(backup_dir, n)
-        if n.endswith(".tar.gz") or os.path.islink(p):
+        if n.endswith(".tar.gz") or os.path.islink(p) or _is_live(p, n, time.time()):
             continue
         try:
             items.append((os.path.getmtime(p), n))
