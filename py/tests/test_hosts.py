@@ -41,3 +41,25 @@ class ConcurrentWriteTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DbModeIrregularTest(unittest.TestCase):
+    """db kipinde düzensiz-kayıt denetimi DB değerine bakar (dosya bayat), yedek DB dökümüdür."""
+
+    def test_irregular_detected_from_db_not_stale_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "hosts.json")
+            with open(path, "w") as f:
+                f.write('[{"name": "a"}]')   # bayat ve temiz dosya
+            from claudeops import statedocs
+            with mock.patch.object(hosts, "HOSTS_JSON", path), \
+                 mock.patch.object(statedocs, "backend", return_value="db"), \
+                 mock.patch.object(statedocs, "_db_ok", return_value=True), \
+                 mock.patch.object(statedocs, "read_json", return_value=[{"name": "a"}, "junk"]):
+                self.assertTrue(hosts._has_irregular_entries())
+                hosts._backup_corrupt()
+                self.assertTrue(any(n.startswith("hosts.json.corrupt-") for n in os.listdir(d)))
+
+
+if __name__ == "__main__" and False:
+    pass

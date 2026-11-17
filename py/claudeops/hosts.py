@@ -196,11 +196,21 @@ def _read_checked() -> "tuple[List[Dict[str, str]], bool]":
     return [h for h in data if isinstance(h, dict) and "name" in h], False
 
 
+def _db_mode() -> bool:
+    from . import statedocs
+    return statedocs.backend() == "db" and statedocs._db_ok(HOSTS_JSON)
+
+
 def _backup_corrupt() -> None:
-    """Bozuk dosyanın 0600 yedeği `hosts.json.corrupt-<sha8>` (aynı içerik tekrar yedeklenmez). Hata yutulur."""
+    """Bozuk kaydın 0600 yedeği `hosts.json.corrupt-<sha8>` (aynı içerik tekrar yedeklenmez). Hata yutulur.
+    db kipinde kaynak DB değeridir (dosya bayat), yedek onun JSON dökümü."""
     try:
-        with open(HOSTS_JSON, "rb") as f:
-            raw = f.read()
+        if _db_mode():
+            from . import statedocs
+            raw = json.dumps(statedocs.read_json("hosts", HOSTS_JSON, []), ensure_ascii=False).encode("utf-8")
+        else:
+            with open(HOSTS_JSON, "rb") as f:
+                raw = f.read()
         dest = f"{HOSTS_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
         if not os.path.exists(dest):
             fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -212,8 +222,12 @@ def _backup_corrupt() -> None:
 
 def _has_irregular_entries() -> bool:
     try:
-        with open(HOSTS_JSON, encoding="utf-8") as f:
-            data = json.load(f)
+        if _db_mode():   # db kipinde dosya güncel DEĞİL: DB tek kaynak
+            from . import statedocs
+            data = statedocs.read_json("hosts", HOSTS_JSON, [])
+        else:
+            with open(HOSTS_JSON, encoding="utf-8") as f:
+                data = json.load(f)
     except (OSError, ValueError):
         return False
     return isinstance(data, list) and any(not (isinstance(h, dict) and "name" in h) for h in data)
