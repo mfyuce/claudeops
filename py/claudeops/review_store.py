@@ -173,7 +173,11 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
         for name in sorted(files):
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, rroot).replace(os.sep, "/")
-            if rel in tracked or os.path.islink(full) or not rel.startswith("reviews/"):
+            if rel == "reviews/" + FABLE_INDEX and rel in tracked:       # dizin her yeni raporda değişir: izlenen ama değişmişse yeniden eklenir
+                rcs, stat = _git(base, "status", "--porcelain", "--", rel, run=run)
+                if rcs != 0 or not stat.strip():
+                    continue
+            elif rel in tracked or os.path.islink(full) or not rel.startswith("reviews/"):
                 continue
             if name.startswith(".") or name.endswith((".tmp", ".lock", "~", ".swp", ".swo")):
                 continue        # crash kalıntısı geçici/kilit/editör yedeği commit+push edilmez (review cliops 3 Kas)
@@ -252,3 +256,87 @@ def _push_pending(res: Dict[str, object], base: List[str], run: Optional[Callabl
     res["error"] = "; ".join(errs)
     res["ok"] = bool(res["pushed"]) and not errs
     return res
+
+
+# ── Fable review dizini (17 Kas, sahip: "Fable review'ları çok değerli, hiçbirini kaybetmeyelim") ───────────────────────────
+FABLE_INDEX = "FABLE-INDEX.md"
+_FABLE_TS_RE = re.compile(r"^\d{14}$")
+_FINDING_HEAD_RE = re.compile(r"^##\s+R-\d+\s*\|\s*(P[0-4])\b", re.M)      # `## R-3 | P2 | yol:satır | başlık`
+_INDEX_LINE_RE = re.compile(r"^- \[(.)\] .*?\]\(([^)]+)\)\s*$", re.M)
+
+
+def is_fable_path(rel: str) -> bool:
+    """`<proje>/claude|anthropic/claude-fable-*/...` biçimindeki (reviews/ altı göreli) yol bir Fable çıktısı mı."""
+    return "/claude-fable" in "/" + rel.replace(os.sep, "/")
+
+
+def severity_counts(text: str) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for m in _FINDING_HEAD_RE.finditer(text or ""):
+        out[m.group(1)] = out.get(m.group(1), 0) + 1
+    return out
+
+
+def fable_reports(reviews_root: str) -> List[Dict[str, str]]:
+    """`reviews_root` (`.../reviews`) altında `<proje>/<mode>/<claude-fable-*>[/<effort>]/<ts>/<ts>.md` raporları (yeniden eskiye)."""
+    rows: List[Dict[str, str]] = []
+    for dirpath, _dirs, files in os.walk(reviews_root):
+        ts = os.path.basename(dirpath)
+        if not _FABLE_TS_RE.match(ts) or f"{ts}.md" not in files:
+            continue
+        rel = os.path.relpath(os.path.join(dirpath, f"{ts}.md"), reviews_root).replace(os.sep, "/")
+        if not is_fable_path(rel):
+            continue
+        parts = rel.split("/")
+        model_i = next((i for i, x in enumerate(parts) if x.startswith("claude-fable")), -1)
+        effort = parts[model_i + 1] if model_i >= 0 and len(parts) - model_i > 3 else ""
+        rows.append({"rel": rel, "project": parts[0], "model": parts[model_i] if model_i >= 0 else "", "effort": effort, "ts": ts})
+    rows.sort(key=lambda r: (r["project"], r["ts"]), reverse=False)
+    return rows
+
+
+def build_fable_index(reviews_root: str, previous: str = "") -> str:
+    """Okuma dizini (markdown): proje başına rapor satırı `- [ ] <tarih> · <model> <effort> · P1:n P2:n · [ad](yol)`. `previous` (eski dizin metni)
+    varsa `[x]` (okundu) işaretleri yoluna göre korunur. Rapor/.io.jsonl ASLA silinmez; dizin her seferinde yeniden üretilir."""
+    done = {m.group(2) for m in _INDEX_LINE_RE.finditer(previous or "") if m.group(1).lower() == "x"}
+    by_proj: Dict[str, List[Dict[str, str]]] = {}
+    for r in fable_reports(reviews_root):
+        by_proj.setdefault(r["project"], []).append(r)
+    out = ["# Fable review'ları (okuma dizini)", "",
+           "Otomatik üretilir (claudeops, her yeni Fable raporunda). Her satır bir rapor; bağlantı raporun kendisi. Rapor ve `.io.jsonl` dosyaları ASLA silinmez; "
+           "dup/refuted/rejected bulgular da raporda durur. `[x]` = okundu (elle işaretle, yeniden üretimde korunur).", ""]
+    for proj in sorted(by_proj):
+        out += [f"## {proj}", ""]
+        for r in sorted(by_proj[proj], key=lambda x: x["ts"], reverse=True):
+            try:
+                with open(os.path.join(reviews_root, r["rel"]), encoding="utf-8", errors="replace") as f:
+                    sev = severity_counts(f.read())
+            except OSError:
+                sev = {}
+            ts = r["ts"]
+            when = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}"
+            sevs = " ".join(f"{k}:{sev[k]}" for k in sorted(sev)) or "bulgu yok"
+            mark = "x" if r["rel"] in done else " "
+            out.append(f"- [{mark}] {when} · {r['model'].replace('claude-', '')} {r['effort']} · {sevs} · [{ts}.md]({r['rel']})")
+        out.append("")
+    return "\n".join(out) + "\n"
+
+
+def write_fable_index(reviews_root: str) -> bool:
+    """`<reviews_root>/FABLE-INDEX.md`yi yeniden üretir (içerik aynıysa yazmaz). Fable raporu yoksa yazmaz. Dönen: yazıldı mı."""
+    if not fable_reports(reviews_root):
+        return False
+    path = os.path.join(reviews_root, FABLE_INDEX)
+    try:
+        with open(path, encoding="utf-8") as f:
+            prev = f.read()
+    except OSError:
+        prev = ""
+    new = build_fable_index(reviews_root, prev)
+    if new == prev:
+        return False
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(new)
+    os.replace(tmp, path)
+    return True

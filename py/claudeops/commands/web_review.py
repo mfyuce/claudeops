@@ -2125,7 +2125,8 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if stored:
         actions.append({"kind": "store_reports", "files": len(stored)})
     try:
-        committed = store_commit(cfg, t)
+        # Fable raporu az önce saklandıysa günlük aralık BEKLENMEZ: hemen commit+push (17 Kas, sahip)
+        committed = store_commit(cfg, t, force=any(rs.is_fable_path(x) and x.endswith(".md") for x in stored))
     except Exception as e:
         sw.log_event("review_store_commit_failed", paths=p, error=_tail(repr(e)))
         committed = 0
@@ -3105,7 +3106,7 @@ _STORE_TS = re.compile(r"^\d{14}$")
 STORE_SUFFIXES = (".md", ".usage.jsonl")      # rapor (maskeli) + yalnız sayılar; `.io.jsonl`/`.model.md`/hata günlüğü SAKLANMAZ
 
 
-def store_commit(cfg: Any, now: float, run: Optional[Callable] = None) -> int:
+def store_commit(cfg: Any, now: float, run: Optional[Callable] = None, force: bool = False) -> int:
     """TBD#118 ek: `review_store_commit` açıksa günde bir (`review_store_commit.json`) `review_store_dir/reviews/` altındaki
     yeni dosyalar -prv depoya commit+push edilir. İlk çalışma KURU (yalnız `would` günlüğe: hangi dosyalar eklenirdi);
     sonraki günlük tur act. Gizli değer taramasını geçemeyen dosyalar dışarıda kalır ve sahibe tek soruyla bildirilir.
@@ -3122,7 +3123,7 @@ def store_commit(cfg: Any, now: float, run: Optional[Callable] = None) -> int:
         st = {}
     if not isinstance(st, dict):
         st = {}
-    if st.get("last_at") is not None and now - float(st["last_at"]) < rs.STORE_COMMIT_INTERVAL:
+    if not force and st.get("last_at") is not None and now - float(st["last_at"]) < rs.STORE_COMMIT_INTERVAL:
         return 0
     dry = not st.get("dry_done")
     res = rs.commit_reviews(root, str(getattr(cfg, "review_store_git_dir", "") or ""),
@@ -3172,10 +3173,11 @@ def store_reports(cfg: Any) -> List[str]:
         if not _STORE_TS.match(ts):
             continue
         for name in sorted(files):
-            if not (name.startswith(ts) and name.endswith(STORE_SUFFIXES)) or name.endswith(".model.md") or ".err" in name \
+            rel = os.path.relpath(os.path.join(dirpath, name), src_root)
+            fable_io = name == f"{ts}.io.jsonl" and rs.is_fable_path(rel)     # Fable: oturum günlüğü de saklanır (17 Kas, sahip: hiçbiri kaybolmasın)
+            if not (name.startswith(ts) and (name.endswith(STORE_SUFFIXES) or fable_io)) or name.endswith(".model.md") or ".err" in name \
                     or rv.FINDING_FILE_RE.search(name):
                 continue
-            rel = os.path.relpath(os.path.join(dirpath, name), src_root)
             dst = os.path.join(dst_root, rel)
             if os.path.exists(dst) or os.path.islink(os.path.join(dirpath, name)):
                 continue
@@ -3186,6 +3188,11 @@ def store_reports(cfg: Any) -> List[str]:
             copied.append(rel)
     if copied:
         sw.log_event("review_store", paths=cfg.sid, root=root, n=len(copied))
+        if any(rs.is_fable_path(c) and c.endswith(".md") for c in copied):
+            try:
+                rs.write_fable_index(dst_root)       # her yeni Fable raporunda okuma dizini yeniden üretilir
+            except OSError as e:
+                sw.log_event("review_fable_index_failed", paths=cfg.sid, error=_tail(repr(e)))
     return copied
 
 
