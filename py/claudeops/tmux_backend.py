@@ -194,7 +194,8 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
         # ile başlayan literal metin ("-help", "--foo", markdown "- item",
         # unified diff "--- a/file") tmux'un KENDİ `send-keys` bayrağı sanılıp
         # `unknown option` ile reddediliyordu, girdi pane'e HİÇ ulaşmıyordu.
-        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "-l", "--", text],
+        arg = text[:-1] + "\\;" if text.endswith(";") else text      # sondaki `;` tmux'ta komut ayıracı: `\;` literal verir (ölçüldü: 'abc;' -> 'abc')
+        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "-l", "--", arg],
                              capture_output=True, timeout=timeout)
         if r1.returncode != 0:
             return False
