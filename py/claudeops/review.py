@@ -871,16 +871,42 @@ def set_block(paths: Any, key: str, until: float, reason: str = "") -> None:
     p = sw._pp(paths)
     with sw.steward_lock(p):
         hist = load_history(p)
-        hist.setdefault("blocks", {})[key] = {"until": float(until), "reason": reason}
+        hist.setdefault("blocks", {})[key] = {"until": float(until), "reason": reason, "set_at": time.time()}
         save_history(p, hist)
 
 
+def _agy_block_cleared(history: Any, key: str, entry: Dict[str, Any]) -> bool:
+    """agy modelinin kota engeli, AYNI kota havuzunda (`agy_pool`) engelden SONRA bitmiş bir `done` koşu varsa kalkar:
+    başarılı koşu havuzda kota olduğunu kanıtlar (17 Kas 14:28 hc/flash-high `limit` yazdı, ardından flash-medium ve flash-high
+    koşuları `done` oldu, engel 21 Kas'a dek planlayıcıyı kilitledi; opus-high engeli claude_gpt havuzunu 19 Kas'a dek kilitledi,
+    sonunda elle başlatılan sonnet-medium geçti). Engel zamanı: `set_at`; eski kayıtta o modelin son `limit` çifti; o da yoksa en
+    erken olası an (`until` - QUOTA_MAX_SECONDS)."""
+    model = key.split("/", 1)[1].split("@", 1)[0].split("~", 1)[0]
+    pool = agy_pool(model)
+    set_at = _num(entry.get("set_at"))
+    pairs = _pairs(history)
+    if not set_at:
+        lim = [_num(r.get("finished_at") or r.get("started_at")) for k, r in pairs.items()
+               if isinstance(r, dict) and r.get("status") == "limit" and k.partition("|")[2] == key]
+        set_at = max(lim) if lim else _num(entry.get("until")) - QUOTA_MAX_SECONDS
+    for k, r in pairs.items():
+        mode_slug = k.partition("|")[2]
+        if not mode_slug.startswith("agy/") or not isinstance(r, dict) or r.get("status") != "done":
+            continue
+        m = mode_slug.split("/", 1)[1].split("@", 1)[0].split("~", 1)[0]
+        if agy_pool(m) == pool and _num(r.get("finished_at")) > set_at:
+            return True
+    return False
+
+
 def blocked_modes(history: Any, now: float) -> List[str]:
-    """Süresi dolmamış engellerin anahtarları (mod ya da `mod/slug`)."""
+    """Süresi dolmamış engellerin anahtarları (mod ya da `mod/slug`). agy model engeli, havuzda sonradan başarılı koşu
+    varsa sayılmaz (`_agy_block_cleared`)."""
     b = history.get("blocks") if isinstance(history, dict) else None
     if not isinstance(b, dict):
         return []
-    return sorted(m for m, e in b.items() if isinstance(e, dict) and float(e.get("until") or 0) > now)
+    return sorted(m for m, e in b.items() if isinstance(e, dict) and float(e.get("until") or 0) > now
+                  and not (m.startswith("agy/") and _agy_block_cleared(history, m, e)))
 
 
 # ── depolar ───────────────────────────────────────────────────────────────────

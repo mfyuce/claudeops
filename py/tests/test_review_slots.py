@@ -233,3 +233,51 @@ class TestClaudeIsError(unittest.TestCase):
         txt, e = wr._extract_text("claude", part)
         self.assertIn("R-1", txt)
         self.assertTrue(e)
+
+
+class AgyBlockClearedBySuccessTest(unittest.TestCase):
+    """17 Kas olayı: bir agy modelinin kota engeli, havuzda sonradan `done` koşu varsa planlayıcıyı kilitlememeli."""
+
+    def _hist(self, **blocks):
+        return {"pairs": {}, "blocks": blocks}
+
+    def test_done_after_limit_clears_pool_block(self):
+        now = 10_000_000.0
+        h = self._hist(**{"agy/gemini-3.8-flash-high": {"until": now + 4 * 86400, "reason": "x"}})
+        h["pairs"]["hc|agy/gemini-3.8-flash-high"] = {"status": "limit", "started_at": now - 200, "finished_at": now - 100}
+        self.assertEqual(rv.blocked_modes(h, now), ["agy/gemini-3.8-flash-high"])
+        h["pairs"]["cliops|agy/gemini-3.8-flash-medium"] = {"status": "done", "finished_at": now - 50}
+        self.assertEqual(rv.blocked_modes(h, now), [])
+
+    def test_done_before_block_or_other_pool_keeps_block(self):
+        now = 10_000_000.0
+        h = self._hist(**{"agy/claude-opus-5-5-high": {"until": now + 86400, "reason": "x", "set_at": now - 100}})
+        h["pairs"]["a|agy/claude-sonnet-5-5-medium"] = {"status": "done", "finished_at": now - 500}    # engelden önce
+        h["pairs"]["b|agy/gemini-3.8-flash-medium"] = {"status": "done", "finished_at": now - 10}      # başka havuz
+        self.assertEqual(rv.blocked_modes(h, now), ["agy/claude-opus-5-5-high"])
+        h["pairs"]["c|agy/gpt-oss-120b-medium"] = {"status": "done", "finished_at": now - 10}          # aynı havuz (claude_gpt)
+        self.assertEqual(rv.blocked_modes(h, now), [])
+
+    def test_non_agy_block_unaffected_and_planner_picks_pool_again(self):
+        now = 10_000_000.0
+        h = self._hist(codex={"until": now + 100, "reason": "x"})
+        h["pairs"]["a|agy/gemini-3.8-flash-medium"] = {"status": "done", "finished_at": now - 10}
+        self.assertEqual(rv.blocked_modes(h, now), ["codex"])
+        h2 = self._hist(**{"agy/gemini-3.8-flash-high": {"until": now + 100, "reason": "x", "set_at": now - 100}})
+        h2["pairs"]["a|agy/gemini-3.8-flash-medium"] = {"status": "done", "finished_at": now - 10}
+        t = rv.ReviewTarget("agy", "gemini-3.8-flash-medium", "gemini-3.8-flash-medium")
+        pool = {"projects": {"p1": {"enabled": True}}}
+        nxt = rv.next_review(pool, h2, [t], now)
+        self.assertIsNotNone(nxt)
+        self.assertEqual(nxt[0], "p1")
+
+    def test_set_block_records_set_at(self):
+        import tempfile
+        from unittest import mock
+        h = {"pairs": {}, "runs": []}
+        with mock.patch.object(rv, "load_history", return_value=h), mock.patch.object(rv, "save_history"), \
+                mock.patch.object(rv.sw, "steward_lock"), mock.patch.object(rv.sw, "_pp", side_effect=lambda x: x):
+            rv.set_block("p", "agy/x", 123.0, "r")
+        self.assertIn("set_at", h["blocks"]["agy/x"])
+
+
