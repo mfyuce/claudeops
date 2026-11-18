@@ -288,10 +288,7 @@ def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "", slo
             _copy_private(os.path.join(real, name), os.path.join(cfg, name))
         except OSError:
             pass
-    tmp = _uniq_tmp(os.path.join(cfg, "settings.json"))
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(rv.agy_settings(cwd, allow), f, indent=2)
-    os.replace(tmp, os.path.join(cfg, "settings.json"))
+    aj.atomic_write_json(os.path.join(cfg, "settings.json"), rv.agy_settings(cwd, allow))     # benzersiz tmp + O_EXCL|O_NOFOLLOW + fsync
     _prune_agy_tmp(os.path.join(home, "tmp"))
     return home
 
@@ -1208,8 +1205,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             uev = claude_usage_event(out) if target.mode == "claude" else codex_usage_event(err)
             if uev and path.endswith(".md"):
                 try:
-                    with open(path[:-3] + ".usage.jsonl", "w", encoding="utf-8") as uf:
-                        uf.write(json.dumps(uev) + "\n")
+                    aj.atomic_write_text(path[:-3] + ".usage.jsonl", json.dumps(uev) + "\n", mode=0o600)     # symlink izlenmez, atomik
                 except OSError:
                     pass
         recovered = False

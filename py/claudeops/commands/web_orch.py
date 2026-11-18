@@ -298,10 +298,19 @@ def _fetch_exchange(host: str, name: str, cwd: str, sid: Optional[str], provider
     marker var mı) host'a göre hiç dallanmıyor, sadece BU fonksiyon dallanıyor."""
     if host == "local":
         return provider.last_exchange(cwd, sid)
-    result, _status = web_hosts.proxy_get("/api/term/chat", host, {"name": name, "mode": "last"})
+    return _remote_exchange(host, name)[0]
+
+
+# Yeniden denemenin işe yaramayacağı kalıcı HTTP durumları (kimlik doğrulama / yetki / oturum-uç yok); ağ blip'i bunlar DEĞİL.
+REMOTE_FATAL_STATUSES = frozenset({401, 403, 404})
+
+
+def _remote_exchange(host: str, name: str) -> Tuple[Optional[dict], bool]:
+    """Uzak katılımcının son çifti + `fatal` bayrağı (kalıcı hata: `REMOTE_FATAL_STATUSES`; geçici ağ hatası değil)."""
+    result, status = web_hosts.proxy_get("/api/term/chat", host, {"name": name, "mode": "last"})
     if not result.get("ok") or not result.get("supported"):
-        return None
-    return {"user": result.get("user", ""), "assistant": result.get("assistant", "")}
+        return None, status in REMOTE_FATAL_STATUSES
+    return {"user": result.get("user", ""), "assistant": result.get("assistant", "")}, False
 
 
 def _remote_busy_now(host: str, name: str, pattern: str) -> bool:
@@ -355,10 +364,11 @@ def _wait_for_reply_remote(host: str, name: str, provider, baseline: dict, *, ti
             if pushed is not None:
                 return pushed
 
-        exchange = _fetch_exchange(host, name, "", None, provider)
+        exchange, fatal = _remote_exchange(host, name)
         if exchange is None:
             fetch_fail_streak += 1
-            if fetch_fail_streak >= REMOTE_FETCH_FAILURES_BEFORE_GIVEUP:
+            # kalıcı hata (401/403/404) beklemekle düzelmez: 5 boş denemeyi bekleme, hemen vazgeç (review cops R-2)
+            if fatal or fetch_fail_streak >= REMOTE_FETCH_FAILURES_BEFORE_GIVEUP:
                 return None
             continue
         fetch_fail_streak = 0
