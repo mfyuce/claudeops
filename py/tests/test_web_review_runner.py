@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import shutil
 import tempfile
 import time
 import unittest
@@ -59,6 +60,7 @@ class Base(NoRealReviewMixin, unittest.TestCase):
         super().setUp()      # NoRealReviewMixin.setUp: önceden hiç çağrılmıyordu (Base.setUp onu eziyordu)
         FakeProc.instances = []
         self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)      # sızıntı: her koşuda ~45 /tmp dizini kalıyordu
         base = sw.paths_for("rev")
         r = os.path.join(self.tmp, "rev")
         os.makedirs(r)
@@ -329,6 +331,7 @@ class TestAgy(Base):
     def setUp(self):
         super().setUp()
         self.fake_home = tempfile.mkdtemp()                                  # gerçek ~/.gemini'ye dokunulmaz
+        self.addCleanup(shutil.rmtree, self.fake_home, True)
         real = os.path.join(self.fake_home, ".gemini", "antigravity-cli")
         os.makedirs(real)
         open(os.path.join(real, "antigravity-oauth-token"), "w").write("TOKEN-X")
