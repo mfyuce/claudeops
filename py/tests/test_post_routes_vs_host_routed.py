@@ -30,6 +30,7 @@ KNOWN_LOCAL_ONLY = {
     "/v1/chat/completions",
     # ucli alt ajanları (2026-11-04): ajan token'ı yalnız yerel ucli oturumunun üst oturumuna bağlı; bilerek yalnız yerel.
     "/api/agents/start", "/api/agents/send", "/api/agents/stop",
+    "/api/ucli/ask",                                 # ucli oturumunun yerel dosya kanalı (ucli_ask.py): oturum çalışma kökü dışı, yalnız yerel
 }
 
 

@@ -40,6 +40,18 @@ class HandoverDoneUserMessageTest(unittest.TestCase):
         self.assertTrue(needs_ho.handover_done(p))
 
 
+    def test_non_assistant_row_types_with_rfh_do_not_count(self):
+        """18 Kas hcr olayı: CLAUDE.md'deki '## READY FOR HANDOVER' metni api-request-blob/attachment/system satırında asistan RFH'si sayılmamalı."""
+        for typ in ("api-request-blob", "attachment", "system", "summary", "queue-operation"):
+            p = self._write([("user", "APK derle"), ("assistant", "derliyorum"), (typ, "## READY FOR HANDOVER (CLAUDE.md)")])
+            self.assertFalse(needs_ho.handover_done(p), typ)
+            self.assertFalse(needs_ho.has_real_user_turn(self._write([(typ, "## READY FOR HANDOVER")])), typ)
+
+    def test_real_rfh_after_blob_row_counts(self):
+        p = self._write([("user", "ho"), ("api-request-blob", "READY FOR HANDOVER"), ("assistant", "READY FOR HANDOVER (tarih)")])
+        self.assertTrue(needs_ho.handover_done(p))
+
+
 class HostsDbNonListTest(unittest.TestCase):
     def test_db_mode_non_list_is_corrupt(self):
         from claudeops import statedocs

@@ -158,7 +158,7 @@ def handover_done(jsonl_path: str) -> bool:
                         c.get("text", "") for c in content
                         if isinstance(c, dict) and c.get("type") == "text"
                     )
-                if t != "user" and "READY FOR HANDOVER" in text:   # kullanıcı/devir MESAJI aynı metni taşır: yalnız asistan cevabı sayılır
+                if t == "assistant" and "READY FOR HANDOVER" in text:   # yalnız ASİSTAN cevabı sayılır: user, api-request-blob, attachment, system (CLAUDE.md/system-reminder metni) satırları RFH taşıyabilir (18 Kas hcr olayı)
                     last_rfh = i
                 if t == "user":
                     if isinstance(content, list):
