@@ -332,16 +332,21 @@ class AgyUsageBlocksTest(unittest.TestCase):
         self.assertEqual(rv.reconcile_agy_blocks(h, rv.parse_agy_usage(_USAGE), [], self.NOW), [])
         self.assertIn("agy/hydrogen-high", h["blocks"])
 
-    def test_refresh_uses_fetch_and_skips_without_agy_targets(self):
-        wr._AGY_USAGE_CACHE.update(at=0.0, usage={})
+    def test_fetch_reads_shared_usage_state_not_own_measure(self):
+        from claudeops import usage_state as us
+        tmp = tempfile.mkdtemp()
+        with mock.patch.object(us, "STATE_PATH", os.path.join(tmp, "usage_state.json")):
+            self.assertEqual(wr.fetch_agy_usage(self.NOW), {})                      # hiç okuma yok: karışma
+            ents = [{"label": "Claude and GPT models — Five Hour Limit Remaining", "percent": "0", "detail": "Resets 2026-11-18T16:39:44Z"},
+                    {"label": "Gemini 4 Argon — Gemini 4 Argon Weekly Limit", "percent": "99", "detail": "Resets 2026-11-25T12:29:11Z"}]
+            us.set_all({"agy": {"supported": True, "available": True, "entries": ents}}, now=self.NOW - 60)
+            u = wr.fetch_agy_usage(self.NOW)
+            self.assertEqual(u["claude_gpt"]["five"][0], 0.0)
+            self.assertEqual(u["argon"]["weekly"][0], 99.0)
+            self.assertEqual(wr.fetch_agy_usage(self.NOW + 700), {})               # >10 dk: bayat, engellere dokunulmaz
+
+    def test_refresh_skips_without_agy_targets(self):
         called = []
-        run = lambda: called.append(1) or _USAGE  # noqa: E731
-        self.assertEqual(wr.refresh_agy_blocks("p", [CX], self.NOW, run), [])
+        self.assertEqual(wr.refresh_agy_blocks("p", [CX], self.NOW, lambda: called.append(1) or _USAGE), [])
         self.assertEqual(called, [])
-        wr._AGY_USAGE_CACHE.update(at=0.0, usage={})
-        u = wr.fetch_agy_usage(self.NOW, run)
-        self.assertIn("argon", u)
-        wr.fetch_agy_usage(self.NOW + 10, run)
-        self.assertEqual(len(called), 1)          # önbellek
-        wr._AGY_USAGE_CACHE.update(at=0.0, usage={})
         self.assertEqual(wr.fetch_agy_usage(self.NOW, lambda: "bozuk"), {})

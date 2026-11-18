@@ -875,6 +875,18 @@ def set_block(paths: Any, key: str, until: float, reason: str = "") -> None:
         save_history(p, hist)
 
 
+def parse_agy_entries(entries: Any) -> Dict[str, Dict[str, Tuple[float, float]]]:
+    """`usage_state`teki agy girdileri (`label` "<grup> — <metrik>", `percent`, `detail` "Resets <ISO>") -> `parse_agy_usage` ile aynı sözlük."""
+    lines = []
+    for e in entries or []:
+        if not isinstance(e, dict):
+            continue
+        group, _, metric = str(e.get("label") or "").partition(" — ")
+        reset = str(e.get("detail") or "").replace("Resets ", "", 1)
+        lines.append("\t".join([group, metric, f"{e.get('percent')}%", reset]))
+    return parse_agy_usage("\n".join(lines))
+
+
 def parse_agy_usage(text: str) -> Dict[str, Dict[str, Tuple[float, float]]]:
     """`agy --print /usage` çıktısı (TAB ayrık `grup\tmetrik\tNN%\tISO-reset`) -> {havuz: {"weekly"|"five": (kalan_yüzde, reset_epoch)}}.
     Havuz = `agy_pool` adları: "Gemini Models" -> gemini, "Claude and GPT models" -> claude_gpt, "Gemini 4 Argon" -> argon

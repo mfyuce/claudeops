@@ -2,6 +2,7 @@ import datetime
 import os
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -79,6 +80,7 @@ class _Tmp(unittest.TestCase):
         for x in self.p:
             x.start()
             self.addCleanup(x.stop)
+        P.set_config("usage_refresh", {"enabled": "off"})      # öntanımlı AÇIK iş testlerde gerçek okuma yapmasın (kendi testi aşağıda)
 
 
 class CustomJobTest(_Tmp):
@@ -393,3 +395,25 @@ def test_local_sources_review_io_jsonl_dahil():
     src = [s for s in P._local_sources() if s[1] == os.path.join("local", "claude-reviews")]
     assert src and src[0][0].endswith(os.sep + "reviews") and src[0][2] == "text"
     assert P._group_of(src[0][1]) == "claude"
+
+
+class UsageRefreshJobTest(_Tmp):
+    def test_default_on_5_minutes_and_runs_shared_refresh(self):
+        P.set_config("usage_refresh", {"enabled": "on"})
+        cfg = P.load_config()["usage_refresh"]
+        self.assertTrue(P._is_on(cfg["enabled"]))
+        self.assertAlmostEqual(float(cfg["interval_hours"]) * 60, 5.0, places=2)
+        calls = []
+        fake = types.SimpleNamespace(usage_refresh=lambda source="": calls.append(source) or
+                                     {"providers": {"agy": {"supported": True, "available": True}, "copilot": {"supported": True, "available": False}}})
+        with mock.patch.dict("sys.modules", {"claudeops.commands.web": fake}), mock.patch("claudeops.commands.web", fake, create=True):
+            r = P.run_usage_refresh({}, True, {})
+            self.assertEqual(P.run_usage_refresh({}, False, {})["applied"], False)
+        self.assertEqual(calls, ["periodic"])
+        self.assertTrue(r["ok"])
+        self.assertIn("1 okundu", r["msg"])
+        self.assertIn("copilot", r["msg"])
+
+    def test_builtin_default_without_stored_config_is_on(self):
+        os.remove(P.CONFIG_JSON) if os.path.exists(P.CONFIG_JSON) else None
+        self.assertTrue(P._is_on(P.load_config()["usage_refresh"]["enabled"]))

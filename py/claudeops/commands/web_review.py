@@ -2128,31 +2128,19 @@ def start_job(paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, cwd: 
     return res
 
 
-_AGY_USAGE_CACHE: Dict[str, Any] = {"at": 0.0, "usage": {}}
-AGY_USAGE_TTL = 300.0
-
-
 def fetch_agy_usage(t: float, run: Optional[Callable[[], str]] = None) -> Dict[str, Any]:
-    """`agy --print /usage` (canlı oturuma dokunmaz) ayrıştırılmış; 5 dk önbellek. Okunamazsa ({}), önbellek tazelenmez
-    (bir sonraki tick yeniden dener, 60 sn'den sık değil)."""
-    c = _AGY_USAGE_CACHE
-    if c["usage"] and t - c["at"] < AGY_USAGE_TTL:
-        return c["usage"]
-    if not c["usage"] and t - c["at"] < 60:
+    """agy havuz kullanımı: claudeops GENEL KULLANIM DURUMUNDAN (`usage_state`, periodic `usage_refresh` yazar) okunur, reviewer KENDİ ÖLÇMEZ.
+    Bayatsa (>10 dk) ya da hiç okunmadıysa {} (engellere dokunulmaz). `run` (yalnız test): ham TSV üreten sahte okuyucu."""
+    if run is not None:
+        try:
+            return rv.parse_agy_usage(run())
+        except Exception:
+            return {}
+    from .. import usage_state
+    rec = usage_state.provider("agy", now=t)
+    if not rec or not rec.get("available") or rec.get("stale"):
         return {}
-    c["at"] = t if not c["usage"] else c["at"]
-    try:
-        if run is None:
-            from ..providers import get_provider
-            argv = get_provider("agy").usage_fresh_argv()      # Kullanım sekmesiyle AYNI okuyucu
-            def run() -> str:  # noqa: E306
-                return subprocess.run(argv, capture_output=True, text=True, timeout=45, cwd="/tmp", stdin=subprocess.DEVNULL).stdout
-        usage = rv.parse_agy_usage(run())
-    except Exception:
-        return c["usage"] or {}
-    if usage:
-        c["usage"], c["at"] = usage, t
-    return c["usage"] or {}
+    return rv.parse_agy_entries(rec.get("entries") or [])
 
 
 def refresh_agy_blocks(p: Any, targets: List[rv.ReviewTarget], t: float, run: Optional[Callable[[], str]] = None) -> List[str]:

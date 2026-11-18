@@ -42,6 +42,7 @@ const TXT = {
     start: "start (SS:DD)",
     interval: "interval_hours",
     running: "çalışıyor…",
+    minShort: "dk",
   },
   en: {
     title: "Periodic jobs",
@@ -71,6 +72,7 @@ const TXT = {
     start: "start (HH:MM)",
     interval: "interval_hours",
     running: "running…",
+    minShort: "min",
   },
 } as const;
 
@@ -122,6 +124,7 @@ function JobRow({ id, job, onChanged }: { id: string; job: PeriodicJob; onChange
         <input value={schedule} onChange={(e) => setSchedule(e.target.value)} placeholder={x.schedule} aria-label={x.schedule} />
         <input value={start} onChange={(e) => setStart(e.target.value)} placeholder={x.start} aria-label={x.start} size={7} />
         <input value={interval} onChange={(e) => setIntervalH(e.target.value)} placeholder={x.interval} aria-label={x.interval} size={5} />
+        {Number(interval) > 0 && Number(interval) < 1 && <span className="muted" title={x.interval}>≈ {Math.round(Number(interval) * 60)} {x.minShort}</span>}
         <button type="button" disabled={busy} onClick={() => act({ action: "set", id, fields: { schedule, start, interval_hours: Number(interval) || 24 } }, x.saved)}>
           {x.save}
         </button>

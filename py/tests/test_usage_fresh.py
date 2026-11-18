@@ -1,4 +1,5 @@
 """Oturumsuz kullanım okuması (`claude -p /usage`): ayrıştırma + `_usage_all` önce taze yolu dener, olmazsa oturum yoluna düşer."""
+import os
 import types
 import unittest
 from unittest import mock
@@ -90,3 +91,21 @@ class NoUsageRows(unittest.TestCase):
             self.assertEqual((r["supported"], r["available"], r["reason"]), (True, False, "no_account_usage"))
             self.assertTrue(r["note"])
         self.assertEqual(web._no_usage_row("shell"), {"supported": False})
+
+
+class PruneTranscripts(unittest.TestCase):
+    def test_only_pure_usage_command_files_after_since_are_removed(self):
+        import tempfile, time as _t
+        from claudeops.commands import web
+        d = tempfile.mkdtemp()
+        mk = lambda n, txt: open(os.path.join(d, n), "w").write(txt)  # noqa: E731
+        mk("usage.jsonl", '{"content":"<command-name>/usage</command-name>"}\n')
+        mk("real.jsonl", '{"content":"<command-name>/usage</command-name>"}\n{"type":"assistant"}\n')
+        mk("other.jsonl", '{"content":"merhaba"}\n')
+        mk("big.jsonl", '<command-name>/usage</command-name>' + "x" * 30000)
+        old = os.path.join(d, "old.jsonl")
+        mk("old.jsonl", '<command-name>/usage</command-name>')
+        os.utime(old, (1, 1))
+        self.assertEqual(web._prune_usage_transcripts(_t.time() - 60, d), 1)
+        self.assertEqual(sorted(os.listdir(d)), ["big.jsonl", "old.jsonl", "other.jsonl", "real.jsonl"])
+        self.assertEqual(web._prune_usage_transcripts(0, os.path.join(d, "yok")), 0)

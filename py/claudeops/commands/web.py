@@ -1926,6 +1926,7 @@ def _status_payload() -> dict:
         "stewards": web_steward.stewards_summary(running_names={s.name for s in all_live}),
         # Model bazlı token özeti (son 60 dk; YALNIZ izleme, arka planda yenilenir; ilk çağrıda None = UI gizler).
         "model_usage": model_usage.summary(),
+        "usage_state": _usage_state_slice(),
         # 2026-09-17, "son snapshot" — bkz. aşağıdaki "Fleet snapshot" bölümü.
         # `orch` gibi local-only, `web_hosts.merge_status`'a hiç girmez (bu
         # makinenin KENDİ fleet'inin anlık görüntüsü, uzak host'unkiyle
@@ -3345,6 +3346,37 @@ def _usage_for_session(s, provider) -> dict:
 USAGE_FRESH_TIMEOUT = 45.0
 
 
+_USAGE_TRANSCRIPT_DIR = os.path.expanduser("~/.claude/projects/-tmp")      # `claude -p /usage` cwd=/tmp ile çalışır
+
+
+def _prune_usage_transcripts(since: float, base: Optional[str] = None) -> int:
+    """`claude -p /usage` her çağrıda küçük bir transkript bırakır (yerel komut: asistan turu YOK, maliyet 0; 18 Kas ölçüm). 5 dk aralıkla günde 288
+    dosya olur ve chat_backup'a girer: YALNIZ `since` sonrası oluşan, küçük (<=20 KiB) ve yalnız `/usage` yerel komutunu içeren (asistan turu
+    olmayan) dosyalar silinir. Silinen sayıyı döner; asla fırlatmaz."""
+    d = base or _USAGE_TRANSCRIPT_DIR
+    n = 0
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return 0
+    for fn in names:
+        if not fn.endswith(".jsonl"):
+            continue
+        path = os.path.join(d, fn)
+        try:
+            st = os.stat(path)
+            if st.st_mtime < since or st.st_size > 20 * 1024:
+                continue
+            with open(path, encoding="utf-8") as f:
+                txt = f.read()
+            if "<command-name>/usage</command-name>" in txt and '"type":"assistant"' not in txt and '"role":"assistant"' not in txt:
+                os.remove(path)
+                n += 1
+        except OSError:
+            continue
+    return n
+
+
 def _usage_fresh(provider) -> Optional[dict]:
     """Oturumsuz okuma: `provider.usage_fresh_argv()` kısa ömürlü süreç (model turu yok). Başarısızlıkta None (çağıran oturum
     yoluna düşer). CLAUDE* ortam değişkenleri süzülür (iç içe oturum işareti sızmasın), anahtar argv'ye girmez."""
@@ -3353,10 +3385,14 @@ def _usage_fresh(provider) -> Optional[dict]:
         return None
     import subprocess
     env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE_CODE", "CLAUDECODE"))}
+    started = time.time() - 2.0
     try:
         r = subprocess.run(argv, capture_output=True, text=True, timeout=USAGE_FRESH_TIMEOUT, env=env, cwd="/tmp", stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None
+    finally:
+        if os.path.basename(argv[0]) == "claude":
+            _prune_usage_transcripts(started)
     entries = provider.parse_fresh_usage(strip_ansi(r.stdout or "")) if r.returncode == 0 else None
     if not entries:
         return None
@@ -3445,6 +3481,26 @@ def _usage_all(only: Optional[set] = None) -> dict:
     return {"ok": True, "providers": out}
 
 
+def _usage_state_slice() -> dict:
+    """/api/status dilimi: tek kaynak durumun özeti (bayat bayrağıyla); okuyucu kendi ölçmez. Asla fırlatmaz."""
+    try:
+        from .. import usage_state
+        return usage_state.get()
+    except Exception:
+        return {"at": 0, "stale": True, "providers": {}}
+
+
+def usage_refresh(source: str = "panel") -> dict:
+    """TEK okuma işi (periodic `usage_refresh` ve panelin "Kullanımı kontrol et" düğmesi): `_usage_all()` + `usage_state.set_all`. Asla fırlatmaz."""
+    from .. import usage_state
+    res = _usage_all()
+    try:
+        usage_state.set_all(res.get("providers") or {}, source=source)
+    except Exception as e:      # yazma hatası kullanım sekmesini düşürmesin
+        diag_log(f"usage_state yazılamadı: {type(e).__name__}")
+    return res
+
+
 def _usage_kinds() -> dict:
     """Ad -> açık oturum ister mi (tick'te 30 dk aralık). Oturumsuz yolu olan (claude, API anahtarlıları) hep vadeli."""
     kinds = {n: p.usage_fresh_argv() is None for n, p in PROVIDERS.items() if p.usage_command() is not None}
@@ -3452,7 +3508,18 @@ def _usage_kinds() -> dict:
     return kinds
 
 
-web_steward.set_usage_collector(_usage_all, _usage_kinds)
+def _usage_collect_store(only: Optional[set] = None) -> dict:
+    """Değnekçi tick okuması (usage_mode=tick) de aynı tek kaynağa yazar."""
+    from .. import usage_state
+    res = _usage_all(only)
+    try:
+        usage_state.set_all(res.get("providers") or {}, source="tick")
+    except Exception as e:
+        diag_log(f"usage_state yazılamadı: {type(e).__name__}")
+    return res
+
+
+web_steward.set_usage_collector(_usage_collect_store, _usage_kinds)
 
 
 # `/context`'in çıktısı da (`/usage` gibi) jsonl'e yazılmıyor — sabit bekleme +
@@ -5822,7 +5889,7 @@ class _Handler(BaseHTTPRequestHandler):
             if data.get("cached") is True:
                 self._json(usage_poll.last())       # değnekçi tick'inin son okuması (usage_mode=tick); okuma yapmaz
                 return
-            self._json(_usage_all())
+            self._json(usage_refresh(source="panel"))
             return
 
         if path == "/api/context":

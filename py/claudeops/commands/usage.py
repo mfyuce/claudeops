@@ -24,6 +24,8 @@ def register(sub):
     p.add_argument("--top", type=int, default=15, metavar="N", help="isim verilmezse en çok harcayan N oturum (varsayılan 15)")
     p.add_argument("--day", nargs="?", const="", default=None, metavar="TARİH",
                    help="o günün (yerel, YYYY-MM-DD; boşsa bugün) tüm assistant turlarının dökümü; oturum başına tablo yerine")
+    p.add_argument("--account", action="store_true",
+                   help="HESAP kullanımı: tüm sağlayıcıların kota durumu (claudeops genel durumu, usage_state.json; kendi ölçmez, panel gerekmez; >10 dk eski = BAYAT)")
     p.add_argument("--by", choices=["category"], default="category", help="--day kırılımı: category = project/brain/subagent")
     p.set_defaults(func=run)
 
@@ -87,7 +89,30 @@ def run_day(args) -> int:
     return 0
 
 
+def render_account(d: dict) -> str:
+    def age(a):
+        return "?" if a is None else (f"{a}s" if a < 120 else f"{a // 60}dk")
+    out = [f"claudeops genel kullanım durumu: son okuma {age(d.get('age_secs'))} önce" + ("  [BAYAT]" if d.get("stale") else "")
+           + (f" ({d['source']})" if d.get("source") else "")]
+    for name, r in sorted((d.get("providers") or {}).items()):
+        tag = " [BAYAT]" if r.get("stale") else ""
+        if r.get("supported") is False:
+            out.append(f"{name}: desteklenmiyor")
+        elif not r.get("available") and not r.get("entries"):
+            out.append(f"{name}: okunamadı ({r.get('reason') or '?'}){(' — ' + r['note']) if r.get('note') else ''}{tag}")
+        else:
+            out.append(f"{name} ({age(r.get('age_secs'))} önce{tag.replace(' [', ', ').replace(']', '')}):")
+            for e in r.get("entries") or []:
+                out.append(f"  {e.get('label')}: {e.get('percent') + '%' if e.get('percent') not in (None, '') else ''} {e.get('detail') or ''}".rstrip())
+    return "\n".join(out)
+
+
 def run(args) -> int:
+    if getattr(args, "account", False):
+        from .. import usage_state
+        d = usage_state.get()
+        print(json.dumps(d, ensure_ascii=False, indent=2) if args.json else render_account(d))
+        return 0
     if getattr(args, "day", None) is not None:
         return run_day(args)
     names = split_names(args.names)

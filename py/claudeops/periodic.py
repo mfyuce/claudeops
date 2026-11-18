@@ -876,8 +876,29 @@ def run_memory_prv(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> D
     return {"ok": failed == 0, "msg": msg, "applied": apply, "created": created, "secret": secret, "skipped": len(skipped)}
 
 
+DEFAULT_USAGE_REFRESH: Dict[str, Any] = {
+    "enabled": "on",             # sahip 18 Kas: kullanım claudeops genel durumu, ÖNTANIMLI açık
+    "schedule": "",
+    "start": "00:00",
+    "interval_hours": 5 / 60,    # 5 dk (sahip 18 Kas: en eski veri 5 dk)
+}
+
+
+def run_usage_refresh(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Tüm sağlayıcıların kullanımını OTURUMSUZ okuyup `usage_state`e yazar (panel düğmesi AYNI işi çalıştırır). `apply` False: yalnız plan."""
+    if not apply:
+        return {"ok": True, "msg": "plan: tüm sağlayıcılar okunup usage_state'e yazılır", "applied": False}
+    from .commands import web
+    res = web.usage_refresh(source="periodic")
+    provs = res.get("providers") or {}
+    ok = [n for n, v in provs.items() if isinstance(v, dict) and v.get("available")]
+    bad = sorted(n for n, v in provs.items() if isinstance(v, dict) and v.get("supported") and not v.get("available"))
+    return {"ok": True, "msg": f"{len(ok)} okundu" + (f", okunamayan: {', '.join(bad)}" if bad else ""), "applied": True}
+
+
 JOBS: Dict[str, Job] = {"chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, run_chat_backup),
-                        "memory_prv": Job("memory_prv", DEFAULT_MEMORY_PRV, run_memory_prv)}
+                        "memory_prv": Job("memory_prv", DEFAULT_MEMORY_PRV, run_memory_prv),
+                        "usage_refresh": Job("usage_refresh", DEFAULT_USAGE_REFRESH, run_usage_refresh)}
 _LOCK = threading.Lock()
 
 
