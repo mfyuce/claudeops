@@ -167,10 +167,12 @@ interface UrlBannerProps {
   urls?: string[];
   paths?: string[];
   name: string;
+  /** Session's host; omitted/"local" = this machine (a remote session's files must be validated there). */
+  host?: string;
   onView: (path: string) => void;
 }
 
-export function UrlBanner({ rawText, urls: urlsProp, paths: pathsProp, name, onView }: UrlBannerProps) {
+export function UrlBanner({ rawText, urls: urlsProp, paths: pathsProp, name, host, onView }: UrlBannerProps) {
   const { lang } = useLang();
   const urls = urlsProp ?? extractTermUrls(rawText);
   const [validFiles, setValidFiles] = useState<string[]>([]);
@@ -192,7 +194,7 @@ export function UrlBanner({ rawText, urls: urlsProp, paths: pathsProp, name, onV
     let cancelled = false;
     void (async () => {
       try {
-        const d = await postFilesValidate(name, lang, candidates);
+        const d = await postFilesValidate(name, lang, candidates, host);
         if (!cancelled && d.ok) setValidFiles(d.valid);
       } catch {
         // sessizce yut — bu banner "en iyi çaba" bir özellik, terminal akışını hiç bozmamalı
@@ -201,7 +203,7 @@ export function UrlBanner({ rawText, urls: urlsProp, paths: pathsProp, name, onV
     return () => {
       cancelled = true;
     };
-  }, [rawText, pathsKey, name, lang]);
+  }, [rawText, pathsKey, name, lang, host]);
 
   if (!urls.length && !validFiles.length) return null;
   return (

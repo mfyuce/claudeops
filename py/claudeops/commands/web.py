@@ -1093,6 +1093,11 @@ def _find_gnome_terminal_server() -> Optional[psutil.Process]:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
         if any("gnome-terminal-server" in part for part in cmdline):
+            try:    # review R-15: başka kullanıcının gnome-terminal-server'ı bizimki sayılmasın
+                if p.uids().real != os.getuid():
+                    continue
+            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                continue
             return p
     return None
 
@@ -5410,6 +5415,14 @@ class _Handler(BaseHTTPRequestHandler):
             self._do_post_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
+        except (TypeError, ValueError, AttributeError, KeyError) as e:
+            # review R-13: tip doğrulaması olmayan gövde alanı yakalanmamış istisnayla bağlantıyı düşürmesin
+            diag_log("post_bad_body", path=urlparse(self.path).path, error=f"{type(e).__name__}: {e}"[:200])
+            self.close_connection = True
+            try:
+                self._json({"ok": False, "error": "bad request body"}, status=400)
+            except Exception:
+                pass
         except _BodyTimeout:
             self.close_connection = True
             try:
@@ -5897,8 +5910,13 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/api/snapshot/resume":
             saved_at = data.get("saved_at")
+            try:
+                saved_at = float(saved_at) if saved_at is not None else None
+            except (TypeError, ValueError):     # review R-8: sayısal olmayan saved_at bağlantıyı düşürüyordu
+                self._json({"ok": False, "error": "saved_at must be a number"}, status=400)
+                return
             self._json_notify(_snapshot_resume(
-                saved_at=float(saved_at) if saved_at is not None else None,
+                saved_at=saved_at,
                 hidden=bool(data.get("hidden", False)), lang=lang, port=self.server.server_address[1]))
             return
 

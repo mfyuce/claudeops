@@ -24,8 +24,21 @@ def diag_log_path() -> str:
     return os.environ.get("CLAUDEOPS_DIAG_LOG") or DIAG_LOG_DEFAULT
 
 
+MAX_BYTES = 5 * 1024 * 1024     # review R-12: aşınca diag.log -> diag.log.1 (tek yedek); sınırsız büyümez
+_TAIL_WINDOW = 512 * 1024       # kuyruk okuması yalnız dosyanın sonundan bu kadar bayt
+
+
+def _rotate_if_big(path: str) -> None:
+    try:
+        if os.path.getsize(path) > MAX_BYTES:
+            os.replace(path, path + ".1")
+    except OSError:
+        pass
+
+
 def diag_log(event: str, **data) -> None:
     try:
+        _rotate_if_big(diag_log_path())
         entry = {"ts": datetime.datetime.now().isoformat(timespec="seconds"), "event": event, **data}
         with open(diag_log_path(), "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -37,8 +50,14 @@ def diag_log(event: str, **data) -> None:
 
 def diag_log_tail(n: int = 20) -> list:
     try:
-        with open(diag_log_path(), encoding="utf-8") as f:
-            lines = f.readlines()
+        with open(diag_log_path(), "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - _TAIL_WINDOW))
+            raw = f.read()
+        lines = raw.decode("utf-8", "replace").splitlines()
+        if size > _TAIL_WINDOW and lines:
+            lines = lines[1:]       # pencerenin başındaki yarım satırı at
         return [ln.strip() for ln in lines[-n:] if ln.strip()]
     except Exception:
         return []

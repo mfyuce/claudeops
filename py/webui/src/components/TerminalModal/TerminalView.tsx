@@ -1207,7 +1207,7 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         </div>
       </div>
       <div hidden={infoHidden} style={{ width: "100%" }}>
-        <UrlBanner rawText={rawText} urls={bannerLists?.urls} paths={bannerLists?.paths} name={name} onView={onView} />
+        <UrlBanner rawText={rawText} urls={bannerLists?.urls} paths={bannerLists?.paths} name={name} host={host} onView={onView} />
         <div className="opts" style={{ marginTop: ".4rem", width: "100%", boxSizing: "border-box" }}>
           {cliOpts.cyclable_modes.length > 0 && (
             <label title={t.termModeHint}>

@@ -23,7 +23,7 @@ KNOWN_LOCAL_ONLY = {
     "/api/session/lock", "/api/session/unlock",      # yalnız yerel host (6466e19): kendi grafik oturumumuz, uzak hosta yönlenmez
     "/api/layout", "/api/term/mirror-window", "/api/settings", "/api/usage",
     "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
-    "/api/desktop/start", "/api/desktop/stop", "/api/files/validate", "/api/vscode/open",
+    "/api/desktop/start", "/api/desktop/stop", "/api/vscode/open",
     "/api/hosts", "/api/hosts/remove", "/api/hosts/test",
     "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
     "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list",

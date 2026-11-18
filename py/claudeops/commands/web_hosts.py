@@ -67,7 +67,7 @@ HOST_ROUTED_PATHS = {
     "/api/handover", "/api/compact", "/api/adopt", "/api/new-chat", "/api/register", "/api/edit",
     "/api/term/input", "/api/term/key", "/api/term/raw", "/api/term/resize", "/api/term/open-window", "/api/term/set-mode",
     "/api/instances/forget", "/api/cli/install",
-    "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write",
+    "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write", "/api/files/validate",
     "/api/context", "/api/live-model", "/api/live-effort", "/api/session/activate",
 }
 
@@ -1266,6 +1266,10 @@ class _PushConsumer:
             call = make_call()
             with self._call_lock:
                 self._call = call
+                stopped_early = self._stopped
+            if stopped_early:   # review R-19: bağlantı kurulmadan stop() çağrıldı; tüketici hiç durmuyordu
+                self._close_call(call)
+                return
             for raw in call:
                 self.last_msg_mono = time.monotonic()      # ham çerçeve (kalp atışı dahil) canlılık kanıtıdır
                 item = self._parse_item(raw)
@@ -1293,13 +1297,17 @@ class _PushConsumer:
         with self._call_lock:
             call = self._call
         if call is not None:
-            try:
-                if hasattr(call, "cancel"):
-                    call.cancel()  # grpc streaming-call
-                else:
-                    call.close()  # websockets bağlantısı
-            except Exception:
-                pass
+            self._close_call(call)
+
+    @staticmethod
+    def _close_call(call: Any) -> None:
+        try:
+            if hasattr(call, "cancel"):
+                call.cancel()  # grpc streaming-call
+            else:
+                call.close()  # websockets bağlantısı
+        except Exception:
+            pass
 
 
 # ── Status push-consumer'ları (host adına göre) ─────────────────────────────
@@ -1364,7 +1372,9 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
         return False
     with _status_consumer_lock:
         existing = _status_consumers.get(name)
-        if existing is not None and existing.is_alive() and existing.tier == tier:
+        endpoint = (host.get("grpc_url"), host.get("base_url"), host.get("token"))   # review R-18: adres/token düzenlendi mi
+        if existing is not None and existing.is_alive() and existing.tier == tier \
+                and getattr(existing, "endpoint", endpoint) == endpoint:
             if existing.silent_seconds() <= STATUS_PUSH_SILENCE_SECONDS:
                 # FED-01: akış henüz hiç veri getirmediyse REST yoklaması sürer (bağlanıp susan/hemen ölen akış
                 # `_record_poll_result`a hiçbir şey yazmaz; REST olmadan host süresiz "ok, bayat liste" görünürdü)
@@ -1386,6 +1396,7 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
             if silent_old is not None:
                 silent_old.stop()
             return False
+        consumer.endpoint = endpoint
         _status_consumers[name] = consumer
     if existing is not None:
         existing.stop()  # ESKİ (tier değişmiş/ölmüş) consumer'ı kilidin DIŞINDA durdur — stop() ağ I/O yapabilir

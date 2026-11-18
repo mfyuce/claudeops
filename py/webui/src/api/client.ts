@@ -222,8 +222,8 @@ export const getFilesRead = (name: string, lang: Lang, path: string, host?: stri
     `/api/files/read?name=${encodeURIComponent(name)}&lang=${lang}&path=${encodeURIComponent(path)}${hostQS(host)}`
   );
 
-export const postFilesValidate = (name: string, lang: Lang, paths: string[]): Promise<FilesValidateResult> =>
-  apiPost<FilesValidateResult>("/api/files/validate", { name, lang, paths });
+export const postFilesValidate = (name: string, lang: Lang, paths: string[], host?: string): Promise<FilesValidateResult> =>
+  apiPost<FilesValidateResult>("/api/files/validate", { name, lang, paths, host: host || "local" });
 
 /** `/api/files/upload` — unlike every other write route, the body is the
  * raw file bytes, not JSON (no multipart/base64 wrapper either — cheapest
