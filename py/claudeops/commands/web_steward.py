@@ -6765,7 +6765,7 @@ UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_
 
 # Seçenek listeli metin ayarlar. `review_evren_script` kapatma değeri "off" (boş değer anahtarı SİLER, varsayılan "read" geri gelir).
 UI_CONFIG_CHOICE = {"claude_idle": ("off", "dry", "act"), "keepwarm": ("off", "dry", "act"), "wake_gate": ("off", "dry", "act"),
-                    "review_evren_script": ("read", "off"), "review_verify_mode": ("session", "self"),
+                    "review_evren_script": ("read", "off"), "review_evren_autoscale": ("on", "off"), "review_verify_mode": ("session", "self"),
                     # boş değer = claude (save_settings anahtarı siler)
                     "review_verify_provider": ("", "claude", "codex", "evren", "agy"),
                     "review_claude_auth": ("api", "subscription")}

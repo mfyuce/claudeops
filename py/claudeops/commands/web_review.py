@@ -27,6 +27,7 @@ from ..textutil import collapse_ws
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import atomic_json as aj
+from .. import evren_scale
 from .. import review as rv
 from .. import review_remote as rr
 from .. import review_store as rs
@@ -117,6 +118,48 @@ class _Job:
         self.locked = False          # tek iş kipinde `_REVIEW_LOCK`u tutuyor
 
 
+def _evren_key() -> str:
+    from ..settings import byok_env_for
+    return (byok_env_for("ucli").get("UCLI_API_KEY") or "").strip()
+
+
+def _slots_for(cfg) -> Dict[str, int]:
+    """`review_slots` + Evren otomatik ölçekleme (`evren_scale`, sahip 18 Kas). Yuva kipi kapalıysa ({}) ya da `review_evren_autoscale: off`
+    ise elle ayar AYNEN; açıkken Evren yuvası /v1/quota'dan (hesap eşzamanlılığı, günlük kalan) ve 503/429 geri çekilmesinden hesaplanır."""
+    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    if not slots or str(getattr(cfg, "review_evren_autoscale", "off") or "off").strip().lower() == "off" or slots.get("evren", 1) <= 0:
+        return slots       # 0 = sahip Evren'i KAPATTI: ölçekleyici açmaz
+    try:
+        with _SLOT_LOCK:
+            running = sum(1 for m, _i in _ACTIVE.values() if m == "evren")
+        n, _why = evren_scale.compute_slots(evren_scale.snapshot(_evren_key), slots.get("evren", 1), running)
+        slots = dict(slots)
+        slots["evren"] = n
+    except Exception as e:      # noqa: BLE001  ölçekleyici hatası koşuyu düşürmez: elle ayar
+        sw.log_event("evren_scale_failed", error=f"{type(e).__name__}: {e}"[:200])
+    return slots
+
+
+def _evren_model_slug(key: str) -> str:
+    """`proje|evren/<slug>@effort~lens` anahtarından model adı (effort/lens atılır)."""
+    tail = key.split("|", 1)[1] if "|" in key else key
+    tail = tail.split("/", 1)[1] if "/" in tail else tail
+    return re.split(r"[@~]", tail, 1)[0]
+
+
+def _evren_quota_view(cfg) -> Dict[str, Any]:
+    """Panel: Evren kalan günlük kota + şu anki otomatik yuva sayısı. Ağ çağrısı ÖNBELLEKLİ (60 sn), hata sessiz."""
+    if str(getattr(cfg, "review_evren_autoscale", "off") or "off").strip().lower() == "off":
+        return {}
+    try:
+        slots = _slots_for(cfg)
+        v = evren_scale.view()
+        v["slots"] = slots.get("evren") if slots else None
+        return v
+    except Exception:       # noqa: BLE001
+        return {}
+
+
 def _take_slot(key: str, project: str, mode: str, slots: Dict[str, int]) -> Tuple[int, str]:
     """(yuva no, "") ya da (-1, neden). `slots` boş = tek iş kipi (başka iş varsa red). Yuva kipinde: mod yuvası dolu/0,
     aynı PROJE başka koşuda (ortak yerel kopya/cwd) ya da süpürülüyorsa red. Yuva no modun boş en küçük numarası."""
@@ -135,6 +178,10 @@ def _take_slot(key: str, project: str, mode: str, slots: Dict[str, int]) -> Tupl
             used = {i for m, i in _ACTIVE.values() if m == mode}
             if len(used) >= cap:
                 return -1, f"{mode} yuvaları dolu ({cap})"
+            if mode == "evren":      # model başına adil pay (glm/gemma 2): aynı modelden fazlası 503 model_capacity_exhausted yer
+                mslug = _evren_model_slug(key)
+                if sum(1 for k, (m, _i) in _ACTIVE.items() if m == "evren" and _evren_model_slug(k) == mslug) >= evren_scale.model_cap(mslug):
+                    return -1, f"evren modeli {mslug} adil pay dolu ({evren_scale.model_cap(mslug)})"
         idx = min(set(range(len(_ACTIVE) + 1)) - {i for m, i in _ACTIVE.values() if m == mode})
         _ACTIVE[key] = (mode, idx)
         return idx, ""
@@ -1252,6 +1299,11 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status, error = "error", f"exit={rc} {_tail(err, live.learned())}".strip()
         # Limit taraması: başarısız koşuda stdout+stderr; BAŞARILI görünen (rc=0) koşuda yalnız stdout KISA bir sağlayıcı
         # mesajıysa (copilot kota mesajını çıkış kodu 0 ile basar; rapor sanılıp `done` olmasın).
+        if target.mode == "evren":       # 503 model_capacity_exhausted / 429: ölçekleyici yuvayı yarıya indirir (10 dk)
+            try:
+                evren_scale.note_if_capacity("\n".join(str(x or "") for x in (err, jerr)) if status != "done" else "")
+            except Exception:       # noqa: BLE001
+                pass
         chk = rv.limit_scan_texts(out, err, jerr, err_has_model_text=target.mode in rv.UCLI_MODES) if (status != "done" or rv.is_short_banner(text)) else ()
         if chk and rv.is_daily_limit(*chk):
             until = rv.block_until_for_limit(now(), *chk)
@@ -1397,7 +1449,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
     popen = popen or _default_popen
     p = sw._pp(paths)
     key = rv.pair_key(project, target)
-    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    slots = _slots_for(cfg)
     locked = not slots
     if locked and not _REVIEW_LOCK.acquire(blocking=False):
         return {"ok": False, "busy": True, "error": "başka bir review çalışıyor"}
@@ -2156,7 +2208,7 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     for k in running_keys(cfg.sid):          # havuzdan çıkan/devre dışı projenin işi
         if k.split("|", 1)[0] not in enabled and cancel_key(k):
             actions.append({"kind": "cancel", "key": k, "why": "not in pool"})
-    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    slots = _slots_for(cfg)
     if not slots and busy_keys():
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "busy": True}
     if getattr(cfg, "drain", False):      # "bitir, yeni başlatma": koşan iş sürdü (iptal edilmez), yenisi açılmaz; restart öncesi boşalt
@@ -2332,7 +2384,7 @@ FILE_MAX_CHARS = 200_000
 
 def _slot_rows(cfg: Any) -> Dict[str, Dict[str, Any]]:
     """Yuva kipinde {mod: {"slots": n, "running": [anahtar...]}} (0 = mod kapalı); tek iş kipinde {}."""
-    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    slots = _slots_for(cfg)
     if not slots:
         return {}
     busy = busy_keys()
@@ -2378,6 +2430,8 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "max_read_kib": int(getattr(cfg, "review_max_read_kib", 0) or 0),
             "max_tool_calls": int(getattr(cfg, "review_max_tool_calls", 0) or 0),
             "slots_spec": str(getattr(cfg, "review_slots", "") or ""),
+            "evren_autoscale": str(getattr(cfg, "review_evren_autoscale", "off") or "off").strip().lower() != "off",
+            "evren_quota": _evren_quota_view(cfg),
             "claude_auth": "subscription" if rv.claude_is_subscription(cfg) else "api",
             "claude_models": str(getattr(cfg, "review_claude_models", "") or ""),
             "claude_effective": ",".join(rv.claude_specs(cfg)),
@@ -2542,7 +2596,7 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "", lens: st
     else:
         hist = rv.load_history(p)
         pool = {"projects": {project: {"enabled": True}}}
-        slots0 = rv.parse_slots(getattr(cfg, "review_slots", ""))
+        slots0 = _slots_for(cfg)
         nxt = rv.next_review(pool, hist, [x for x in targets if not slots0 or slots0.get(x.mode, 1) > 0], time.time(),
                              window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)))
         if nxt is None:
@@ -2550,7 +2604,7 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "", lens: st
         target = nxt[1]
     if lens:
         target = dataclasses.replace(target, lens=lens)
-    slots = rv.parse_slots(getattr(cfg, "review_slots", ""))
+    slots = _slots_for(cfg)
     busy = busy_keys()
     if not slots and busy:
         return {"ok": False, "busy": True, "error": "another review is running"}

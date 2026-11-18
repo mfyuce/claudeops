@@ -134,8 +134,13 @@ class BuildTests(unittest.TestCase):
                 self.build({"service": "claude"})
         # Grok'ta bu bayraklar (Anthropic'e özgü) EKLENMEZ
         self.keys = {"XAI_API_KEY": "k"}
-        inner = shlex.split(self.build({"service": "grok"}))[2]
+        with mock.patch.object(up.ucli_cost, "USAGE_DIR", usage), mock.patch.object(up.ucli_cost, "OTHER_DIR", os.path.join(usage, "other")):
+            inner = shlex.split(self.build({"service": "grok"}))[2]
         self.assertNotIn("--cache-ttl", inner)
+        # 18 Kas Evren dersi: Claude DIŞI açılışlar da --usage-log yazar, ama dolar tavanının okuduğu dizinin DIŞINA (other/)
+        g = shlex.split(inner.split(" exec ", 1)[1])
+        self.assertEqual(g[g.index("--usage-log") + 1], os.path.join(usage, "other", "vc.jsonl"))
+        self.assertEqual(os.listdir(usage), ["other"])
 
     def test_groq_service_uses_groq_endpoint_and_key_env(self):
         self.keys = {"GROQ_API_KEY": "k"}

@@ -863,6 +863,12 @@ export interface Strings {
   rvSlotsTitle: string;
   rvSlotsHint: string;
   rvSlots: string;
+  rvEvrenAuto: string;
+  rvEvrenAutoHint: string;
+  rvEvrenQuotaDaily: string;
+  rvEvrenQuotaSlots: string;
+  rvEvrenQuotaBackoff: string;
+  rvEvrenQuotaNone: string;
   rvAgyModels: string;
   rvEvrenModels: string;
   rvClaudeAuth: string;
@@ -1844,6 +1850,12 @@ export const STRINGS: Record<Lang, Strings> = {
     rvSlotsTitle: "Yuvalar ve modeller:",
     rvSlotsHint: "Mod başına eşzamanlı koşu (agy=2,evren=1; 0 = mod kapalı, boş/off = tek iş). Model listeleri virgüllü; boş = katalogdaki tümü. Enter ya da odaktan çıkınca kaydedilir.",
     rvSlots: "Yuvalar",
+    rvEvrenAuto: "Evren yuvası otomatik",
+    rvEvrenAutoHint: "Açıkken Evren eşzamanlı koşu sayısı hesap kotasından (/v1/quota: eşzamanlılık 8, günlük kalan) ve model başına adil paydan (glm/gemma 2) hesaplanır; 503 model_capacity_exhausted ve 429'da yarıya iner, 10 dk sessizlikte toparlanır. Kapalıyken yukarıdaki Yuvalar (evren=N) elle geçerlidir.",
+    rvEvrenQuotaDaily: "Evren kalan günlük",
+    rvEvrenQuotaSlots: "şu anki yuva",
+    rvEvrenQuotaBackoff: "geri çekilme düzeyi",
+    rvEvrenQuotaNone: "kota okunamadı (elle ayar geçerli)",
     rvAgyModels: "agy modelleri",
     rvEvrenModels: "Evren modelleri",
     rvClaudeAuth: "Claude kimliği",
@@ -2826,6 +2838,12 @@ export const STRINGS: Record<Lang, Strings> = {
     rvSlotsTitle: "Slots and models:",
     rvSlotsHint: "Concurrent runs per mode (agy=2,evren=1; 0 = mode off, empty/off = single job). Model lists are comma-separated; empty = whole catalog. Saved on Enter or blur.",
     rvSlots: "Slots",
+    rvEvrenAuto: "Evren slots automatic",
+    rvEvrenAutoHint: "When on, the number of concurrent Evren runs is computed from the account quota (/v1/quota: concurrency 8, daily remaining) and the per-model fair share (glm/gemma 2); halves on 503 model_capacity_exhausted and 429 and recovers after 10 quiet minutes. When off, the Slots above (evren=N) apply manually.",
+    rvEvrenQuotaDaily: "Evren daily remaining",
+    rvEvrenQuotaSlots: "current slots",
+    rvEvrenQuotaBackoff: "backoff level",
+    rvEvrenQuotaNone: "quota unreadable (manual setting applies)",
     rvAgyModels: "agy models",
     rvEvrenModels: "Evren models",
     rvClaudeAuth: "Claude auth",

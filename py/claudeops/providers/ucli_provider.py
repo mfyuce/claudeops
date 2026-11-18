@@ -671,6 +671,15 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
         env_prefix = f'{env_name}="$(cat {shlex.quote(path)})"'
         if service == "claude":
             argv = _claude_service_flags(argv, session_name, cwd)
+    if "--usage-log" not in argv:       # Claude hizmeti kendi günlüğünü yukarıda ekledi; öteki TÜM açılışlar (Evren dahil) ayrı dizine yazar
+        if binary_supports_flag(argv[0], "--usage-log"):
+            try:
+                os.makedirs(ucli_cost.OTHER_DIR, mode=0o700, exist_ok=True)
+                argv = _set_flag_value(argv, "--usage-log", ucli_cost.other_log_path(session_name))
+            except OSError as e:
+                diag_log("ucli_usage_log_dir_failed", name=session_name, error=str(e)[:120])
+        else:
+            diag_log("ucli_flag_unsupported", name=session_name, flag="--usage-log", binary=argv[0])
     if opts.get("max_cost_usd"):
         argv = _max_cost_args(argv, float(opts["max_cost_usd"]), session_name)
     sess_cap = float(opts.get("max_session_usd") or 0) or _default_session_cap()

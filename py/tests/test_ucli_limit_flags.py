@@ -66,7 +66,10 @@ class ValidateTests(unittest.TestCase):
 class ArgvTests(unittest.TestCase):
     def test_nothing_by_default(self):
         argv, _ = apply({})
-        self.assertEqual(argv, ["ucli"])
+        # tek varsayılan bayrak: --usage-log (Claude dışı hizmetler dahil tüm açılışlar, 18 Kas Evren dersi); başka sınır bayrağı yok
+        self.assertEqual(argv[:2], ["ucli", "--usage-log"])
+        self.assertEqual(len(argv), 3)
+        self.assertTrue(argv[2].endswith("/other/sess1.jsonl"))
 
     def test_int_flags_with_values(self):
         for key, flag in INTS.items():

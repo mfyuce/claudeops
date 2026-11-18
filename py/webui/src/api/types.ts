@@ -1135,6 +1135,7 @@ export interface ReviewStateResult {
   min_gap_minutes: number; timeout_minutes: number; auto_verify?: boolean; auto_approve?: number; auto_export?: boolean;
   manual_export_needed?: Array<{ id: string; project: string; state: string; severity: string; title: string }>;
   evren_script?: boolean; max_context_kib?: number; max_read_kib?: number; max_tool_calls?: number;
+  evren_autoscale?: boolean; evren_quota?: { daily_remaining_tokens?: number | null; daily_limit_tokens?: number | null; concurrent_requests?: number | null; concurrency_limit?: number | null; age_secs?: number | null; backoff_level?: number; capacity_errors?: number; slots?: number | null };
   slots_spec?: string; agy_models?: string; evren_models?: string; claude_auth?: string; claude_models?: string; claude_effective?: string;
   verify_mode?: string; verify_provider?: string; verify_model?: string; verify_effective?: string;
 }

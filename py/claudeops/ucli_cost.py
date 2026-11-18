@@ -44,6 +44,16 @@ def log_path(session_name: str, base: str = USAGE_DIR) -> str:
     return os.path.join(base, f"{safe}.jsonl")
 
 
+OTHER_DIR = os.path.join(USAGE_DIR, "other")
+
+
+def other_log_path(session_name: str) -> str:
+    """Claude DIŞI hizmetlerin (Evren glm/gemma/qwen, öteki BYOK) oturum günlüğü. `USAGE_DIR` DIŞINDA tutulur: dolar tavanı
+    (`per_session_usd`/`today_usd`) yalnız Claude günlüklerini okur, bilinmeyen modeli opus fiyatıyla saymasın (18 Kas Evren dersi:
+    etkileşimli REPL oturumları günlük yazmıyordu, kendi sayımımızdan düşüyordu)."""
+    return log_path(session_name, OTHER_DIR)
+
+
 CACHE_1H_WRITE_MULT = 1.6   # 1 saatlik önbellek yazması 5 dk'lıktan pahalı (log'daki maliyet alt sınır); TEK yer
 
 

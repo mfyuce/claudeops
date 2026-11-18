@@ -426,6 +426,18 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
         <span className="opts-hint">{t.rvSlotsTitle}</span>
         <TextSetting label={t.rvSlots} value={st.slots_spec ?? ""} width="16rem" placeholder="agy=2,evren=1,codex=0"
           onSave={(v) => void act(() => apiStewardConfig("review_slots", v, sid), t.rvDone)} />
+        <label className="opts-hint" title={t.rvEvrenAutoHint}>
+          <input type="checkbox" checked={!!st.evren_autoscale} disabled={busy}
+            onChange={(e) => void act(() => apiStewardConfig("review_evren_autoscale", e.target.checked ? "on" : "off", sid), t.rvDone)} />{" "}
+          {t.rvEvrenAuto}
+        </label>
+        {st.evren_autoscale && (
+          <span className="opts-hint" title={t.rvEvrenAutoHint}>
+            {st.evren_quota?.daily_remaining_tokens != null
+              ? `${t.rvEvrenQuotaDaily}: ${(st.evren_quota.daily_remaining_tokens / 1e6).toFixed(1)}M / ${((st.evren_quota.daily_limit_tokens ?? 0) / 1e6).toFixed(0)}M · ${t.rvEvrenQuotaSlots}: ${st.evren_quota.slots ?? "?"}${st.evren_quota.backoff_level ? ` · ${t.rvEvrenQuotaBackoff}: ${st.evren_quota.backoff_level}` : ""}`
+              : t.rvEvrenQuotaNone}
+          </span>
+        )}
         <TextSetting label={t.rvAgyModels} value={st.agy_models ?? ""} width="22rem" placeholder={t.rvModelsAll}
           onSave={(v) => void act(() => apiStewardConfig("review_agy_models", v, sid), t.rvDone)} />
         <TextSetting label={t.rvEvrenModels} value={st.evren_models ?? ""} width="22rem" placeholder={t.rvModelsAll}

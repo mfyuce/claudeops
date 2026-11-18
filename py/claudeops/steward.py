@@ -325,6 +325,7 @@ class Config:
     review_min_gap_minutes: int = 10   # iki review başlatması arası en az bekleme
     review_backlog_max: int = 50       # L1 (10 Kas 2026): projenin TODO.md+RTODO.md'sinde açık `- [ ] (review ` satırı bu sayıya ulaşınca yeni otomatik review YOK (bulgu üretimi düzeltme hızına bağlı); 0 = kapalı; ★ odak proje ve elle koşu muaf
     review_window_hours: int = 360     # bir (proje,hedef) çifti bu sürede tekrar koşmaz (360 = 15 gün; R8 17 Kas, eskiden 720); HEAD değişirse bu süre beklenmez (_same_head)
+    review_evren_autoscale: str = "on"   # Evren yuvası /v1/quota + geri çekilmeyle OTOMATİK ölçeklenir (`evren_scale.py`); "off" = `review_slots evren=N` elle (kapatma değeri "off": boş değer anahtarı siler)
     review_slots: str = ""             # mod başına eşzamanlı koşu yuvası (`agy=5,evren=1,codex=1,copilot=0`; belirtilmeyen mod 1, 0 = mod kapalı); ""/off = TEK iş (eski davranış)
     review_agy_models: str = ""      # virgülle ayrık agy model listesi ("" = çağıranın verdiği tümü)
     review_max_context_kib: int = 0    # Evren/ucli: `--max-context-kib`; 0 = ucli modelin `/models` kaydından türetir (2026-11-04; eskiden sabit 768: 32K'lık modeli taşırıyor, 1M'likte erken kırpıyordu)
