@@ -78,6 +78,7 @@ _ACTION_TABLE: List[Tuple[str, str]] = [
     ("/api/files/mkdir", "files.write"),
     ("/api/files/", "files.read"),
     ("/api/orch/", "orch.run"),
+    ("/api/ucli/ask", "session.chat"),
     ("/api/agents/", "agents.use"),
     ("/api/register", "session.create"),
     ("/api/adopt", "fleet.admin"),

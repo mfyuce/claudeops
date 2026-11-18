@@ -729,6 +729,15 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                 raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (yetenek izni yarım uygulanmaz)")
             if flag not in argv:
                 argv = argv + [flag]
+    if opts.get("ask_dir"):
+        # Sorular/onaylar terminal yerine `<CLAUDEOPS_DIR>/ucli_ask/<oturum>` dosyalarına gider; panel cevaplar (varsayılan KAPALI).
+        if not session_name:
+            raise ValueError("ask_dir için oturum adı gerekli")
+        if not binary_supports_flag(binary, "--ask-dir"):
+            diag_log("ucli_flag_unsupported", name=session_name, flag="--ask-dir", binary=binary)
+            raise ValueError("ucli ikilisi --ask-dir bayrağını tanımıyor (soru kanalı yarım uygulanmaz)")
+        from .. import ucli_ask
+        argv = _set_flag_value(argv, "--ask-dir", ucli_ask.dir_for(session_name, create=True))
     if opts.get("exec_cmds"):
         names, err = expand_exec_cmds(opts["exec_cmds"], path_executables())
         if err:

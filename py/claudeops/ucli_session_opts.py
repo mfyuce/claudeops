@@ -244,7 +244,7 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
         return {}, f"{key} true/false olmalı"
     # Grup D yetenek bayrakları (hepsi VARSAYILAN KAPALI, belirsiz değer HATA). `exec_own_glob` (--allow-exec-own-glob) yukarıda zaten var.
     # --exec-net ve sınırsız --allow-exec-own BİLEREK yok (modül başlığı; sahip kararı bekliyor). ask_edit yazma izni (exec_write) ister.
-    for key in ("allow_image", "allow_scholar", "ask_edit"):
+    for key in ("allow_image", "allow_scholar", "ask_edit", "ask_dir"):
         v = raw.get(key)
         if v in (None, "", False, 0, "0", "false", "no", "off"):
             continue

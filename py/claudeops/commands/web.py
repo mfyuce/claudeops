@@ -5539,6 +5539,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
                          "/api/cli/install",
+                         "/api/ucli/ask",
                          "/api/agents/start", "/api/agents/send", "/api/agents/stop",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
@@ -5906,6 +5907,20 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/api/snapshot/list":
             self._json(_snapshot_list())
+            return
+
+        if path == "/api/ucli/ask":
+            # {name}: bekleyen soru; {name, id, text}: cevapla. Oturum çalışma kökü dışındaki dosya kanalı (ucli_ask.py).
+            from .. import ucli_ask
+            nm = str(data.get("name", ""))
+            try:
+                if "id" not in data:
+                    self._json({"ok": True, "question": ucli_ask.pending(nm)})
+                else:
+                    ok, err = ucli_ask.answer(nm, int(data.get("id")), str(data.get("text", "")))
+                    self._json({"ok": ok, **({} if ok else {"error": err})}, status=200 if ok else 409)
+            except (ValueError, TypeError):
+                self._json({"ok": False, "error": "invalid name or id"}, status=400)
             return
 
         if path == "/api/snapshot/resume":
