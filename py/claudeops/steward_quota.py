@@ -77,6 +77,18 @@ def parse_usage(text: str, now: float) -> Optional[Usage]:
     return u
 
 
+def usage_from_entries(entries: Any, now: float) -> Optional[Usage]:
+    """`usage_state.json` claude girdileri ([{label, percent, detail: 'Resets Nov 16, 6pm (Europe/Istanbul)'}]) -> Usage.
+    Girdileri `claude -p /usage` metnine çevirip AYNI ayrıştırıcıyı kullanır (tek kural, iki biçim)."""
+    lines = []
+    for e in entries or []:
+        if not isinstance(e, dict):
+            continue
+        rs = re.sub(r"^\s*resets\s+", "", str(e.get("detail") or ""), flags=re.I).strip()
+        lines.append(f"{e.get('label')}: {e.get('percent')}% used" + (f" · resets {rs}" if rs else ""))
+    return parse_usage("\n".join(lines), now)
+
+
 def _num(cfg: Dict[str, Any], key: str, default: Optional[float]) -> Optional[float]:
     try:
         v = float(str(cfg.get(key, "")).strip())

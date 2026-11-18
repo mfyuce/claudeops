@@ -4761,7 +4761,17 @@ def quota_config() -> Dict[str, Any]:
 
 
 def quota_read_usage() -> Optional["sq.Usage"]:
-    """`claude -p /usage` çıktısı -> Usage; okunamazsa None (karar değişmez). CLAUDE* ortamı süzülür (iç içe oturum sızıntısı)."""
+    """Önce claudeops GENEL KULLANIM DURUMU (`usage_state.json`, taze claude girdisi: kendi ölçmez, 5 dk'lık periodic işi yazar);
+    bayat/yoksa `claude -p /usage` (yerel komut, model turu yok) -> Usage; okunamazsa None (karar değişmez). CLAUDE* ortamı süzülür."""
+    try:
+        from .. import usage_state
+        pr = usage_state.provider("claude")
+        if pr and pr.get("available") and not pr.get("stale"):
+            u = sq.usage_from_entries(pr.get("entries"), time.time())
+            if u is not None:
+                return u
+    except Exception as e:
+        diag_log("steward_quota_state_read_failed", error=repr(e))
     exe = shutil.which("claude")
     if not exe:
         return None
