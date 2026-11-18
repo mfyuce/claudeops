@@ -160,6 +160,7 @@ def _summary(db: str) -> Dict[str, Any]:
     if sdb not in _SUMM or _SUMM[sdb][0] != sig:
         m: Dict[str, Any] = {}
         sc = None
+        failed = False
         try:
             sc = _ro(sdb)
             for cid, title, uris, lm in sc.execute("select conversation_id,title,workspace_uris,last_modified_time from conversation_summaries"):
@@ -170,10 +171,12 @@ def _summary(db: str) -> Dict[str, Any]:
                 u = u if isinstance(u, str) else ""
                 m[cid] = {"project": u[7:] if u.startswith("file://") else u, "title": title or "", "last_modified": lm}
         except sqlite3.Error:
-            pass
+            failed = True                    # geçici hata (kilit/WAL): boş özet önbelleğe KİLİTLENMEZ, sonraki çağrıda yeniden denenir
         finally:
             if sc is not None:
                 sc.close()
+        if failed and sig is not None:
+            return m.get(os.path.basename(db)[:-3], {})
         _SUMM[sdb] = (sig, m)
     return _SUMM[sdb][1].get(os.path.basename(db)[:-3], {})
 

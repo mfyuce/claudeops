@@ -72,6 +72,8 @@ def classify(rel: str) -> Optional[Dict[str, str]]:
         return {"kind": "chat", "cli": "claude-ucli", "project": p[2], "session": os.path.splitext(p[-1])[0]}
     if area == "claude-projects":
         return {"kind": "chat", "cli": "claude", "project": p[2], "session": os.path.splitext(p[-1])[0]}
+    if area == "codex-dump" and len(p) >= 6:         # uzak host: local/codex-dump/<host>/<proje>/<gün>/<dosya>
+        return {"kind": "chat", "cli": "codex", "host": p[2], "project": p[3], "session": os.path.splitext(p[-1])[0], "day": p[4]}
     if area == "codex-dump" and len(p) >= 5:
         return {"kind": "chat", "cli": "codex", "project": p[2], "session": os.path.splitext(p[-1])[0], "day": p[3]}
     if area == "gemini-dump" and len(p) >= 6:

@@ -198,7 +198,7 @@ def set_config(name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         if k not in allowed:
             raise KeyError(f"bilinmeyen alan: {k}")
-        if v == "" and builtin:
+        if v == "":
             cur.pop(k, None)
             base[k] = allowed[k]           # sıfırlanan alan VARSAYILANIYLA doğrulanır (eski değerle değil)
         else:

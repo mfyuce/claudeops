@@ -58,3 +58,21 @@ class ChatsR3Test(unittest.TestCase):
                 self.fail(f"varsayılana sıfırlama reddedildi: {e}")
         finally:
             periodic.CONFIG_JSON = old
+
+
+class ChatsR4Test(unittest.TestCase):
+    def test_index_remote_codex_dump(self):
+        from claudeops import chat_index
+        c = chat_index.classify("local/codex-dump/yuhem/proj/2026-11-01/s.jsonl")
+        self.assertEqual((c["host"], c["project"], c["day"]), ("yuhem", "proj", "2026-11-01"))
+        c = chat_index.classify("local/codex-dump/proj/2026-11-01/s.jsonl")
+        self.assertEqual((c["project"], c["day"]), ("proj", "2026-11-01"))
+
+    def test_summary_error_not_cached(self):
+        db = os.path.join(tempfile.mkdtemp(), "c", "conversations", "x.db")
+        sdb = os.path.join(os.path.dirname(os.path.dirname(db)), "..", "conversation_summaries.db")
+        os.makedirs(os.path.dirname(db))
+        sdb = os.path.join(os.path.dirname(os.path.dirname(db)), "conversation_summaries.db")
+        open(sdb, "w").write("not sqlite")                          # sqlite3.Error
+        chat_dump._summary(db)
+        self.assertNotIn(sdb, chat_dump._SUMM)
