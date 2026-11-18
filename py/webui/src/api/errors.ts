@@ -21,12 +21,16 @@
  */
 
 import { ApiError } from "./client";
-import type { Strings } from "../i18n/strings";
+import { STRINGS, type Strings } from "../i18n/strings";
+import { describeSpawnRefused } from "./spawnRefused";
 import { showToast } from "../state/toast";
 
 export function describeApiError(err: unknown, t: Strings): string {
   if (err instanceof ApiError) {
     if (err.status === 401) return t.authErrorShort;
+    if (err.status === 403 && err.body?.error === "spawn_refused" && err.body.reason) {
+      return describeSpawnRefused(err.body.reason, err.body.detail, t === STRINGS.tr ? "tr" : "en");
+    }
     return t.requestFailed + t.unexpectedResponse(err.status);
   }
   const message = err instanceof Error ? err.message : String(err);

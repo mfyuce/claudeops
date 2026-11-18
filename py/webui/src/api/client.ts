@@ -105,16 +105,24 @@ export function withToken(url: string): string {
  * in `./errors.ts` rather than reading `.message` directly. */
 export class ApiError extends Error {
   status: number;
-  constructor(status: number) {
+  /** Parsed JSON body of a refused (4xx) response, when there was one (e.g. `spawn_refused` reason/detail). */
+  body?: { error?: string; reason?: string; detail?: string };
+  constructor(status: number, body?: ApiError["body"]) {
     super(`http ${status}`);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) throw new ApiError(401);
   const ctype = res.headers.get("content-type") || "";
+  if (res.status === 403 && ctype.includes("application/json")) {
+    let body: ApiError["body"];
+    try { body = await res.json(); } catch { body = undefined; }
+    throw new ApiError(403, body);
+  }
   if (!res.ok || !ctype.includes("application/json")) throw new ApiError(res.status);
   return (await res.json()) as T;
 }

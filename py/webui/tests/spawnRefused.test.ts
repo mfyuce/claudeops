@@ -1,0 +1,15 @@
+/** node --experimental-strip-types --test py/webui/tests/spawnRefused.test.ts (module has type-only imports). */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { describeSpawnRefused } from "../src/api/spawnRefused.ts";
+
+test("known codes are localized and keep the raw code", () => {
+  assert.match(describeSpawnRefused("login_required:codex", "", "tr"), /codex için önce.*\nlogin_required:codex$/s);
+  assert.match(describeSpawnRefused("quota_sessions", "3/3", "en"), /concurrent session limit.*\nquota_sessions: 3\/3$/s);
+  assert.match(describeSpawnRefused("quota_usd_day", "", "en"), /daily spend/);
+  assert.match(describeSpawnRefused("quota_new_thing", "", "tr"), /kotan doldu/);
+});
+test("unknown code falls back to raw", () => {
+  assert.equal(describeSpawnRefused("weird", "x", "en"), "weird: x");
+  assert.equal(describeSpawnRefused("weird", "", "en"), "weird");
+});
