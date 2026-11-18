@@ -503,28 +503,49 @@ class AgyProvider(CliProvider):
         return [(t, p) for t, p in rows if isinstance(p, (bytes, bytearray))
                 and (t != _STEP_TYPE_CHECKPOINT or b"<summary>" in p)]
 
+    def _steps_desc(self, cwd: str, sid: Optional[str]):
+        """`_transcript_steps` ile AYNI süzgeç/sözleşme, ama SONDAN BAŞA ve tembel: `last_exchange` yalnız son asistan+kullanıcı
+        çiftini ister; bütün konuşmayı (büyük payload'lar) belleğe çekmek uzak hostta `mode=last`ı 13 sn'ye çıkarıyordu."""
+        conv_id = sid or self.resolve_resume_id(cwd)
+        if not conv_id:
+            return
+        db_path = os.path.join(CONVERSATIONS_DIR, f"{conv_id}.db")
+        if not os.path.isfile(db_path):
+            return
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
+        except sqlite3.Error:
+            return
+        try:
+            cur = conn.execute(
+                "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) ORDER BY idx DESC",
+                (_STEP_TYPE_USER, _STEP_TYPE_ASSISTANT, _STEP_TYPE_CHECKPOINT),
+            )
+            for t, pl in cur:
+                if isinstance(pl, (bytes, bytearray)) and (t != _STEP_TYPE_CHECKPOINT or b"<summary>" in pl):
+                    yield t, pl
+        except sqlite3.Error:
+            return
+        finally:
+            conn.close()
+
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         # claude/codex provider'larıyla AYNI "her zaman dict, None değil" sözleşmesi
         # (None SADECE base.py'nin "desteklenmiyor" varsayılanında kalsın diye).
-        empty = {"user": "", "assistant": ""}
-        steps = self._transcript_steps(cwd, sid)
-        ai_idx: Optional[int] = None
         ai_text = ""
-        for i in range(len(steps) - 1, -1, -1):
-            step_type, payload = steps[i]
-            if step_type == _STEP_TYPE_ASSISTANT:
-                text = _step_assistant_text(payload)
-                if text:
-                    ai_text, ai_idx = text, i
-                    break
-        if ai_idx is None:
-            return empty
         user_text = ""
-        for i in range(ai_idx - 1, -1, -1):
-            step_type, payload = steps[i]
-            if step_type == _STEP_TYPE_USER:
+        found_ai = False
+        for step_type, payload in self._steps_desc(cwd, sid):
+            if not found_ai:
+                if step_type == _STEP_TYPE_ASSISTANT:
+                    text = _step_assistant_text(payload)
+                    if text:
+                        ai_text, found_ai = text, True
+            elif step_type == _STEP_TYPE_USER:
                 user_text = _step_user_text(payload)
                 break
+        if not found_ai:
+            return {"user": "", "assistant": ""}
         return {"user": user_text, "assistant": ai_text}
 
     def full_history(self, cwd: str, sid: Optional[str]) -> Optional[List[Dict[str, str]]]:
