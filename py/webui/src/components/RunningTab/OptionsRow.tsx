@@ -25,6 +25,7 @@ import { callAction, describeApiError, describeResError } from "../../api/errors
 import { friendlyError } from "../../api/ucliErrors";
 import { offerCapRetry } from "../../state/capRetry";
 import { TabHint } from "../shared/TabHint";
+import { useEscapeKey } from "../shared/useEscapeKey";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -55,6 +56,7 @@ function todayStr(): string {
 }
 
 export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRowProps) {
+  useEscapeKey(onClose);   // belge düzeyinde: odak diyalog dışında (düğme) kalsa da Esc kapatır
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
 
@@ -300,7 +302,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
     <tr className="opts-row">
       <td colSpan={colspan}>
         {/* WEBUI-TODO 45: modal başlat diyalogu; arka plana tıklama / Esc kapatır. İçerik aynı (UcliStartOpts üzerine kurulu). */}
-        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
         <div className="opts modal-dialog" role="dialog" aria-modal="true">
           {session.running && <TabHint>{t.runningNote(session.name)}</TabHint>}
           <div className="modes">
