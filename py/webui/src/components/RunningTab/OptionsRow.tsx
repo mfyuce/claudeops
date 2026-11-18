@@ -21,7 +21,7 @@
 
 import { useEffect, useState } from "react";
 import { apiNewChat, apiStart, apiStop } from "../../api/client";
-import { callAction, describeApiError } from "../../api/errors";
+import { callAction, describeApiError, describeResError } from "../../api/errors";
 import { friendlyError } from "../../api/ucliErrors";
 import { offerCapRetry } from "../../state/capRetry";
 import { TabHint } from "../shared/TabHint";
@@ -248,7 +248,9 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
           const res = await apiNewChat(newChatBody);
           if (res.ok) showToast(t.newChatStarted + res.name, "success");
           else if (!offerCapRetry(res, session.name, session.host, () => apiNewChat(newChatBody))) {
-            confirmDiagFollowup(`${session.name}: ${res.error}`);
+            const msg = `${session.name}: ${describeResError(res, t)}`;
+            if (res.code === "spawn_refused") showToast(msg);     // kota/giriş reddi: tanılama sekmesi önerisi anlamsız
+            else confirmDiagFollowup(msg);
           }
         }
       } catch (e) {
@@ -281,7 +283,9 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
         session.name,
         t,
         (msg, res) => {
-          if (!offerCapRetry(res, session.name, session.host, () => apiStart(startBody))) confirmDiagFollowup(msg);
+          if (offerCapRetry(res, session.name, session.host, () => apiStart(startBody))) return;
+          if (!res.ok && res.code === "spawn_refused") showToast(msg);
+          else confirmDiagFollowup(msg);
         },
       );
     }

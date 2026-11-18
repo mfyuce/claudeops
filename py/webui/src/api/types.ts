@@ -677,6 +677,8 @@ export interface ApiErr {
   error: string;
   /** Set for refusals the UI can act on; `ucli_daily_cap` (+ `today_usd`/`cap_usd`) = daily USD cap reached. */
   code?: string;
+  /** With `code: "spawn_refused"`: the refusal reason (`quota_sessions`, `login_required:codex`, ...). */
+  reason?: string;
   today_usd?: number;
   cap_usd?: number;
 }
