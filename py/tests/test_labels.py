@@ -31,6 +31,17 @@ class _L(unittest.TestCase):
 
 
 class TestLabels(_L):
+    def test_concurrent_updates_lose_nothing(self):
+        """19 Kas: TODO'daki 'kilitsiz oku-değiştir-yaz' kaygısı: tüm yazarlar file_lock altında, eşzamanlı güncelleme kayıp vermez."""
+        def work(i):
+            for j in range(10):
+                self.assertTrue(labels.update(f"proj{i}", add=[f"lab{i}x{j}"])["ok"])
+        ts = [threading.Thread(target=work, args=(i,)) for i in range(6)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        a = labels.assignments()
+        self.assertEqual({k: len(v) for k, v in a.items()}, {f"proj{i}": 10 for i in range(6)})
+
     def test_system_defs_present_and_undeletable(self):
         defs = labels.definitions()
         for n in ("stuck", "waiting-owner", "waiting-external", "blocked-budget", "needs-review", "paused-by-owner"):
