@@ -19,6 +19,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from .atomic_json import atomic_write_json, atomic_write_text
 from .paths import CLAUDEOPS_DIR
 from .settings import load_settings
 
@@ -118,26 +119,9 @@ def _load() -> Dict[str, Any]:
     return data
 
 
-def _unique_tmp(path: str) -> str:
-    """Eşzamanlı yazımlar birbirinin geçici dosyasını ezmesin/tüketmesin (eskiden sabit `<yol>.tmp` + O_TRUNC; review cliops 14 Kas)."""
-    return f"{path}.{os.getpid()}-{threading.get_ident()}-{secrets.token_hex(4)}.tmp"
-
-
 def _save(data: Dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(STATE_FILE), mode=0o700, exist_ok=True)
-    tmp = _unique_tmp(STATE_FILE)
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, STATE_FILE)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-        raise
+    atomic_write_json(STATE_FILE, data, mode=0o600)      # benzersiz tmp + O_EXCL|O_NOFOLLOW + fsync + replace (review cliops R-8)
 
 
 def _digest(token: str) -> str:
@@ -154,19 +138,7 @@ def _write_token_file(session_name: str, token: str) -> str:
     os.makedirs(TOKEN_DIR, mode=0o700, exist_ok=True)
     os.chmod(TOKEN_DIR, 0o700)
     path = token_file(session_name)
-    tmp = _unique_tmp(path)
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(token)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-        raise
+    atomic_write_text(path, token, mode=0o600)
     return path
 
 

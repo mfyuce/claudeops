@@ -14,6 +14,7 @@ import os
 import shutil
 from typing import Dict, Optional
 
+from .atomic_json import atomic_write_text
 from .paths import CLAUDEOPS_DIR
 from .settings import load_settings, routing_guidance_enabled
 
@@ -96,11 +97,8 @@ def _sync_one(path: str, create: bool) -> str:
         backup = path + ".bak-routing"
         if exists and not os.path.exists(backup):
             shutil.copy2(path, backup)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = f"{path}.tmp-routing-{os.getpid()}-{os.urandom(3).hex()}"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(new)
-        os.replace(tmp, path)
+        # symlink'i düz dosyayla DEĞİŞTİRME (dotfiles deposu): asıl hedefe yaz; izin korunur, fsync + benzersiz tmp yardımcıda
+        atomic_write_text(os.path.realpath(path), new)
         return "written" if body.strip() else "removed"
     except OSError as e:
         return f"skipped:{e.__class__.__name__}"

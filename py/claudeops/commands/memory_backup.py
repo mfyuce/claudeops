@@ -18,7 +18,10 @@ import re
 import shutil
 import subprocess
 import time
+
 from typing import Any, Dict, List, Optional, Tuple
+
+from ..atomic_json import atomic_write_text
 
 PROJECTS_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
 MIRROR_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "claudeops", "backups", "chat-mirror", "claude-projects")
@@ -257,8 +260,7 @@ def apply_one(ent: Dict[str, Any]) -> str:
         shutil.copyfile(os.path.join(ent["memdir"], f), os.path.join(dest, f))
     paths = [f"memory/{f}" for f in files]
     if ent.get("readme_changed"):
-        with open(os.path.join(dest, "README.md"), "w", encoding="utf-8") as fh:
-            fh.write(README_TEXT.format(src=ent["memdir"]))
+        atomic_write_text(os.path.join(dest, "README.md"), README_TEXT.format(src=ent["memdir"]))
         paths.append("memory/README.md")
     rc, _ = _run(["git", "add", "--"] + paths, cwd=repo)
     if rc != 0:
