@@ -4631,8 +4631,12 @@ class _Handler(BaseHTTPRequestHandler):
             # (önce yanıt, sonra olay yarışı: register'dan hemen sonraki start 403 alıyordu, izole e2e 15 Kas).
             data = getattr(self, "_cur_data", None) or {}
             from .. import authz
-            authz.emit_event(urlparse(self.path).path, str(data.get("host") or ""), str(data.get("name") or ""),
-                             getattr(self, "_cur_principal", None))
+            _ep = urlparse(self.path).path
+            _ev_name = str(data.get("name") or "")
+            if _ep in ("/api/new-chat", "/api/adopt"):
+                # yeni oturumun GERÇEK adı yanıttadır (new-chat: `name`, adopt: `new_name`); istekteki `name` yok (new-chat) ya da eski addır (adopt)
+                _ev_name = str(result.get("name") or result.get("new_name") or _ev_name)
+            authz.emit_event(_ep, str(data.get("host") or ""), _ev_name, getattr(self, "_cur_principal", None))
         self._json(result, status=status)
         if result.get("ok"):
             web_ws.notify_status_changed()

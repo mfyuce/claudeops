@@ -219,6 +219,21 @@ class HttpTest(unittest.TestCase):
             web._Handler._json_notify(fake, {"ok": False})      # başarısız mutasyon olay üretmez
         self.assertEqual(ev, [("retired", "h", "s1", "u1")])
 
+    def test_new_chat_and_adopt_event_use_real_instance_name(self):
+        """new-chat gövdesinde `name` yok (base var), adopt'ta `name` ESKİ addır: olay yanıttaki gerçek adla yayılır (review copsdev R-2)."""
+        from types import SimpleNamespace as NS
+        ev = []
+        authz.add_event_sink(lambda e, h, n, p: ev.append((e, n)))
+        pr = authz.Principal("u1", ("user",))
+        with mock.patch.object(web.web_ws, "notify_status_changed"):
+            web._Handler._json_notify(NS(path="/api/new-chat", _cur_data={"base": "proj"}, _cur_principal=pr, _json=lambda *a, **k: None),
+                                      {"ok": True, "name": "proj20261118", "kind": "x"})
+            web._Handler._json_notify(NS(path="/api/adopt", _cur_data={"name": "eski"}, _cur_principal=pr, _json=lambda *a, **k: None),
+                                      {"ok": True, "kind": "x", "new_name": "yeni"})
+            web._Handler._json_notify(NS(path="/api/register", _cur_data={"name": "p1"}, _cur_principal=pr, _json=lambda *a, **k: None),
+                                      {"ok": True})
+        self.assertEqual(ev, [("created", "proj20261118"), ("adopted", "yeni"), ("created", "p1")])
+
     def test_session_event_emitted_before_response(self):
         """Sahiplik olayı yanıttan ÖNCE: register yanıtını alan istemcinin hemen ardından gelen isteği sahibi tanımalı."""
         from types import SimpleNamespace as NS
