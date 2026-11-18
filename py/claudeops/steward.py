@@ -3083,6 +3083,31 @@ def _sibling_running(views: List[SessionView], name: str, projects: Dict[str, "P
                for x in views)
 
 
+def plan_deliveries(entries, mine, taken, state: Dict[str, Any], now: float, limit: int):
+    """Direktif teslim döngüsü (steward_advance + steward_jobs ortak): her (proje, `make(view)->Action`) için o projenin teslim
+    oturumunu seç; meşgul / alt ajan çalışıyor ya da bilinmiyor / bu turda zaten alınmışsa atla; teslim edilen oturumun
+    `last_directive_at` damgasını `now` yap. `taken` yerinde güncellenir. Dönüş: (eylemler, yeni state); eylem yoksa ([], state)."""
+    out: List[Action] = []
+    lda: Optional[Dict[str, float]] = None
+    for proj, make in entries:
+        v = pick_delivery_view(mine, proj, "")
+        if (v is None or v.busy or v.name in taken
+                or getattr(v, "subagent_active", False) or getattr(v, "subagent_unknown", False)):
+            continue      # alt ajan sürerken (ya da bilinmiyorsa) teslim ana oturumu uyandırmaz
+        out.append(make(v))
+        taken.add(v.name)
+        if lda is None:
+            lda = dict(state.get("last_directive_at") or {})
+        lda[v.name] = now
+        if len(out) >= limit:
+            break
+    if lda is None:
+        return [], state
+    st = dict(state)
+    st["last_directive_at"] = lda
+    return out, st
+
+
 def pick_delivery_view(views: List[Any], project: str, source: str = "") -> Optional[Any]:
     """Cevabın gideceği çalışan oturum. Projenin birden çok açık oturumu olabilir (deneme `_1`, `_2`...):
     önce soruyu açan oturum (`source`), sonra adı projeyle başlayan en kısa/eski ad (ana oturum), son çare ilk bulunan."""

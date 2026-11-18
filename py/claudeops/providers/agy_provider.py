@@ -74,7 +74,7 @@ import subprocess
 import time
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg
 from ..atomic_json import atomic_write_json, file_lock
 from ..effort import sort_levels, split_tier
 from ..paths import CLAUDEOPS_DIR
@@ -200,14 +200,6 @@ _PERMISSION_FLAGS = {
 }
 
 _MODELS_TTL = 300.0  # agy models sabit değil (2 günde bir kez değişti) — canlı çek, ama her 4s status poll'unda değil
-
-
-def _arg(cmd: List[str], flag: str) -> Optional[str]:
-    try:
-        i = cmd.index(flag)
-    except ValueError:
-        return None
-    return cmd[i + 1] if i + 1 < len(cmd) else None
 
 
 def _load_agy_sids() -> Dict[str, str]:

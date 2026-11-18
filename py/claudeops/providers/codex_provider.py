@@ -35,7 +35,7 @@ import shlex
 import time
 from typing import Dict, FrozenSet, List, Optional, Sequence
 
-from .base import CliProvider, McpServerSpec
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg
 from ..effort import sort_levels
 from ..settings import resolved_binary
 
@@ -91,14 +91,6 @@ _PERMISSION_FLAGS = {
 _MODELS_TTL = 300.0  # agy_provider'daki aynı TTL — dosya küçük/lokal ama her 4s status poll'unda yeniden parse etmeye gerek yok
 _ROLLOUT_UUID_RE = re.compile(r"-([0-9a-fA-F]{8}-[0-9a-fA-F-]{27})\.jsonl$")
 _MAX_ROLLOUT_SCAN = 500  # global arşiv (cwd-bazlı klasörleme yok) büyürse sınırsız taramayı engelle
-
-
-def _arg(cmd: List[str], flag: str) -> Optional[str]:
-    try:
-        i = cmd.index(flag)
-    except ValueError:
-        return None
-    return cmd[i + 1] if i + 1 < len(cmd) else None
 
 
 def _config_value(cmd: List[str], key: str) -> Optional[str]:

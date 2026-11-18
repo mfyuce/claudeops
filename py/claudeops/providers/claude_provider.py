@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg
 from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, proc_stat_fields
 from ..routing import claude_guidance_path
 from ..settings import resolved_binary
@@ -435,15 +435,6 @@ def _write_mcp_config_file(spec: McpServerSpec) -> str:
     from claudeops.atomic_json import atomic_write_json     # benzersiz tmp adı: eşzamanlı spawn'lar aynı .tmp'yi ezmesin
     atomic_write_json(path, payload)
     return path
-
-
-def _arg(cmd: List[str], flag: str) -> Optional[str]:
-    """cmdline listesinde `flag`'ten SONRAKİ değeri döndür (yoksa None)."""
-    try:
-        i = cmd.index(flag)
-    except ValueError:
-        return None
-    return cmd[i + 1] if i + 1 < len(cmd) else None
 
 
 def _extract_text(content) -> str:

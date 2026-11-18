@@ -458,29 +458,14 @@ def plan_job_deliveries(views: List[Any], projects: Dict[str, Any], jobs: List[D
     mine = [v for v in views if sw._is_project_session(v, projects)
             and (world is None or world.session_class(v.name, v.blueprint) == "own")]
     taken = {a.name for a in planned}
-    out: List[sw.Action] = []
-    lda: Optional[Dict[str, float]] = None
-    for j in sorted(jobs, key=lambda x: float(x.get("created_at") or 0)):
-        stage = pending_stage(j)
-        proj = str(j.get("project") or "")
-        if not stage or proj not in projects:
-            continue
-        v = sw.pick_delivery_view(mine, proj, "")
-        if (v is None or v.busy or v.name in taken
-                or getattr(v, "subagent_active", False) or getattr(v, "subagent_unknown", False)):
-            continue      # alt ajan sürerken (ya da bilinmiyorsa) iş sonucu ana oturumu uyandırmaz
-        out.append(sw.Action("deliver_job", v.name, "job", {"job_id": j.get("id"), "service": j.get("service"), "stage": stage}))
-        taken.add(v.name)
-        if lda is None:
-            lda = dict(state.get("last_directive_at") or {})
-        lda[v.name] = now
-        if len(out) >= limit:
-            break
-    if lda is None:
-        return [], state
-    st = dict(state)
-    st["last_directive_at"] = lda
-    return out, st
+    def _entries():
+        for j in sorted(jobs, key=lambda x: float(x.get("created_at") or 0)):
+            stage = pending_stage(j)
+            proj = str(j.get("project") or "")
+            if not stage or proj not in projects:
+                continue
+            yield proj, (lambda v, j=j, stage=stage: sw.Action("deliver_job", v.name, "job", {"job_id": j.get("id"), "service": j.get("service"), "stage": stage}))
+    return sw.plan_deliveries(_entries(), mine, taken, state, now, limit)
 
 
 def build_job_message(job: Dict[str, Any], stage: str, lang: str = "tr") -> str:

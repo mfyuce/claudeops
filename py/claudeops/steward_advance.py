@@ -124,26 +124,11 @@ def plan_advance_deliveries(views: List[Any], projects: Dict[str, Any], cands: L
         if int(rec.get("n") or 0) >= cap or now - float(rec.get("at") or 0) < RESEND_SECONDS:
             continue
         by_proj.setdefault(c["project"], []).append(c)
-    out: List[sw.Action] = []
-    lda: Optional[Dict[str, float]] = None
-    for proj in sorted(by_proj):
-        rows = sorted(by_proj[proj], key=lambda c: (_SEV.get(c["severity"], 9), c["id"]))[:BATCH_MAX]
-        v = sw.pick_delivery_view(mine, proj, "")
-        if (v is None or v.busy or getattr(v, "subagent_active", False) or getattr(v, "subagent_unknown", False)
-                or v.name in taken):
-            continue
-        out.append(sw.Action("deliver_findings", v.name, "advance", {"project": proj, "rows": rows}))
-        taken.add(v.name)
-        if lda is None:
-            lda = dict(state.get("last_directive_at") or {})
-        lda[v.name] = now
-        if len(out) >= limit:
-            break
-    if lda is None:
-        return [], state
-    st = dict(state)
-    st["last_directive_at"] = lda
-    return out, st
+    def _entries():
+        for proj in sorted(by_proj):
+            rows = sorted(by_proj[proj], key=lambda c: (_SEV.get(c["severity"], 9), c["id"]))[:BATCH_MAX]
+            yield proj, (lambda v, proj=proj, rows=rows: sw.Action("deliver_findings", v.name, "advance", {"project": proj, "rows": rows}))
+    return sw.plan_deliveries(_entries(), mine, taken, state, now, limit)
 
 
 def build_advance_message(rows: List[Dict[str, Any]], lang: str = "tr") -> str:

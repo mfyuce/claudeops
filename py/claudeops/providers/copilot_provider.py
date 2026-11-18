@@ -100,7 +100,7 @@ import shlex
 import sqlite3
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg
 from ..settings import byok_env_for, resolved_binary
 
 SESSION_STORE_DB = os.path.expanduser("~/.copilot/session-store.db")
@@ -202,14 +202,6 @@ _RESUME_SCAN_LIMIT = 500  # session-store.db tek dosya/hafif ama sınırsız tar
 # tek geçişte iki regex yeterli.
 _USAGE_PLAN_RE = re.compile(r"Plan\s+\S*\s*(\d+)%\s*used")
 _USAGE_FRACTION_RE = re.compile(r"([\d,]+\s*/\s*[\d,]+\s*AIC)")
-
-
-def _arg(cmd: List[str], flag: str) -> Optional[str]:
-    try:
-        i = cmd.index(flag)
-    except ValueError:
-        return None
-    return cmd[i + 1] if i + 1 < len(cmd) else None
 
 
 def _connect_ro() -> sqlite3.Connection:

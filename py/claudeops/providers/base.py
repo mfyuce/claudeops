@@ -16,6 +16,15 @@ import psutil
 from ..effort import nearest_effort
 
 
+
+def cmd_arg(cmd: List[str], flag: str) -> Optional[str]:
+    """cmdline listesinde `flag`'ten SONRAKİ değeri döndür (yoksa ya da son öğeyse None). Tüm sağlayıcılar paylaşır."""
+    try:
+        i = cmd.index(flag)
+    except ValueError:
+        return None
+    return cmd[i + 1] if i + 1 < len(cmd) else None
+
 class OneshotError(RuntimeError):
     """`CliProvider.oneshot` çalıştırılamadı/başarısız (ikili yok, zaman aşımı, sıfır olmayan çıkış, boş yanıt)."""
 
