@@ -144,6 +144,7 @@ export function RegisteredTab({ selection, onSwitchTab, search, onView }: Regist
   const [openOptionsFor, setOpenOptionsFor] = useState<string | null>(null);
   const [openEditFor, setOpenEditFor] = useState<string | null>(null);
   const collapse = useGroupCollapse();
+  const [subTab, setSubTab] = useState<"list" | "new">("list");
 
   // Hooks must run unconditionally (rules-of-hooks) — computed before the
   // `!data` early return below, with empty-array fallbacks while `data`
@@ -169,6 +170,18 @@ export function RegisteredTab({ selection, onSwitchTab, search, onView }: Regist
 
   return (
     <>
+      <div className="tabs">
+        <button type="button" className={subTab === "list" ? "active" : ""} onClick={() => setSubTab("list")}>
+          {t.regSubList} ({allRows.length})
+        </button>
+        <button type="button" className={subTab === "new" ? "active" : ""} onClick={() => setSubTab("new")}>
+          {t.regSubNew}
+        </button>
+      </div>
+      {subTab === "new" ? (
+        <RegisterForm />
+      ) : (
+        <>
       <BulkBar tab="registered" rows={rows} selection={selection} />
       <CollapseControls groupKeys={groupKeys} isExpanded={collapse.isExpanded} onCollapseAll={collapse.collapseAll} onExpandAll={collapse.expandAll} />
       <div className="tablewrap">
@@ -251,7 +264,8 @@ export function RegisteredTab({ selection, onSwitchTab, search, onView }: Regist
         </table>
       </div>
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-      <RegisterForm />
+        </>
+      )}
     </>
   );
 }
