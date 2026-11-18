@@ -47,7 +47,7 @@ export function describeApiError(err: unknown, t: Strings): string {
  * UI, especially bad on mobile). A thrown exception always toasts via
  * `describeApiError`, matching the original's shared `catch`.
  */
-export async function callAction<T extends { ok: boolean; error?: string }>(
+export async function callAction<T extends { ok: boolean; error?: string; code?: string; reason?: string }>(
   fn: () => Promise<T>,
   name: string,
   t: Strings,
@@ -56,7 +56,11 @@ export async function callAction<T extends { ok: boolean; error?: string }>(
   try {
     const res = await fn();
     if (!res.ok) {
-      const msg = `${name}: ${res.error ?? ""}`;
+      // `/api/start` & co. answer a refused start as 200 {ok:false, code:"spawn_refused", reason} (not 403): localize it too.
+      const refused = res.code === "spawn_refused" && res.reason
+        ? describeSpawnRefused(res.reason, undefined, t === STRINGS.tr ? "tr" : "en")
+        : null;
+      const msg = refused ? `${name}: ${refused}` : `${name}: ${res.error ?? ""}`;
       if (onFailure) onFailure(msg, res);
       else showToast(msg);
     }
