@@ -49,6 +49,8 @@ export interface UcliStartState {
   allowScholar: boolean;
   /** `--ask-edit` (needs write access; default off). */
   askEdit: boolean;
+  /** `ask_dir` (default off): ucli questions/edit approvals go to a file channel; answered from the panel only. */
+  askDir: boolean;
   /** `--instructions-max-kib` (empty = ucli default 40, max 256). */
   limInstrKib: string;
   /** `--search-token-env`: NAME of an env var (never the token value); empty = flag not sent. */
@@ -126,6 +128,7 @@ export const EMPTY_UCLI_START: UcliStartState = {
   allowImage: false,
   allowScholar: false,
   askEdit: false,
+  askDir: false,
   limInstrKib: "",
   searchTokenEnv: "",
 };
@@ -175,6 +178,7 @@ export function toCliOpts(s: UcliStartState): Record<string, unknown> | undefine
   if (s.instructionsUser) o.instructions_user = true;
   if (s.allowImage) o.allow_image = true;
   if (s.allowScholar) o.allow_scholar = true;
+  if (s.askDir) o.ask_dir = true;
   if (s.limInstrKib.trim()) o.instructions_max_kib = s.limInstrKib.trim();
   if (s.searchTokenEnv.trim()) o.search_token_env = s.searchTokenEnv.trim();
   return Object.keys(o).length ? o : undefined;
@@ -415,6 +419,9 @@ export function UcliStartOpts({ value, onChange, lang, cwd, onPreset }: Props) {
       </label>
       <label title={tr ? "Varsayılan kapalı. Dosya değiştirmeden önce operatöre sorar; yazma izni gerekir (exec + yazma izni açık olmalı)." : "Off by default. Asks the operator before file changes; needs write access (exec + write access on)."}>
         <input type="checkbox" checked={value.askEdit} disabled={!value.execOn || !value.execWrite} onChange={(e) => set({ askEdit: e.target.checked })} /> {tr ? "değişiklikten önce sor" : "ask before edit"}
+      </label>
+      <label title={tr ? "Varsayılan kapalı. Oturumun soruları ve düzenleme onayları terminalde görünmez, panelde satırda cevap kutusu çıkar." : "Off by default. The session's questions and edit approvals are not shown in its terminal; an answer box appears on its row in the panel."}>
+        <input type="checkbox" checked={value.askDir} onChange={(e) => set({ askDir: e.target.checked })} /> {tr ? "sorular panelden" : "questions via panel"}
       </label>
       <label title={tr ? "Anthropic prompt önbelleğini istemez (cache_control gönderilmez). Yalnız 400 ile reddeden Anthropic uyumlu geçit için; maliyeti artırır." : "Do not ask for Anthropic prompt caching (no cache_control). Only for a gateway that rejects it with 400; raises cost."}>
         <input type="checkbox" checked={value.noPromptCache} onChange={(e) => set({ noPromptCache: e.target.checked })} /> {tr ? "prompt önbelleği kapalı" : "no prompt cache"}

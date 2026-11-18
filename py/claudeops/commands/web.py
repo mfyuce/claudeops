@@ -1652,7 +1652,8 @@ def _ucli_flags(s) -> Optional[dict]:
                 cost = None
     out = {"write": "--allow-edit" in cmd,
            "exec": any(t.startswith("--allow-exec") for t in cmd),
-           "max_cost_usd": cost}
+           "max_cost_usd": cost,
+           "ask": "--ask-dir" in cmd}
     _UCLI_FLAGS_CACHE[s.pid] = out
     return out
 

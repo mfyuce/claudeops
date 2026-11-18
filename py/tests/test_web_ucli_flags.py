@@ -32,12 +32,12 @@ class UcliFlagsTest(unittest.TestCase):
         self.assertIsNone(web._ucli_flags(_s(cli="claude")))
 
     def test_all_flags(self):
-        out = self._run(["ucli", "chat", "--allow-edit", "--allow-exec-rust", "--max-cost-usd", "1.5"])
-        self.assertEqual(out, {"write": True, "exec": True, "max_cost_usd": 1.5})
+        out = self._run(["ucli", "chat", "--allow-edit", "--allow-exec-rust", "--max-cost-usd", "1.5", "--ask-dir", "/x"])
+        self.assertEqual(out, {"write": True, "exec": True, "max_cost_usd": 1.5, "ask": True})
 
     def test_no_flags(self):
         out = self._run(["ucli", "chat", "--session", "x"])
-        self.assertEqual(out, {"write": False, "exec": False, "max_cost_usd": None})
+        self.assertEqual(out, {"write": False, "exec": False, "max_cost_usd": None, "ask": False})
 
     def test_bad_cost_value(self):
         out = self._run(["ucli", "--max-cost-usd", "abc"])
