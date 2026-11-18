@@ -30,6 +30,8 @@ export interface SessionInfo {
   model: string;
   cwd: string;
   cli: string;
+  /** Çok kullanıcı kipinde (enterprise) admin yayınındaki oturum sahibi (uid). Alan yoksa/sahipsizse yok: OSS'te hiçbir şey çizilmez. */
+  owner?: string;
   running: boolean;
   pid: number | null;
   cpu: number | null;

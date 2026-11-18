@@ -139,6 +139,11 @@ export function SessionRow({
               {session.host}
             </span>
           )}
+          {session.owner && (
+            <span className="cli-badge" title={t.ownerBadgeHint(session.owner)}>
+              @{session.owner}
+            </span>
+          )}
           {isProtectedName(session.name) && (
             <span className="unreg-badge" title={t.protectedHint}>
               {t.protectedBadge}

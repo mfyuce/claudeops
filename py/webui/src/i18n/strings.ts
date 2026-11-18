@@ -393,6 +393,7 @@ export interface Strings {
   protectedBadge: string;
   protectedHint: string;
   hostBadgeHint: (host: string) => string;
+  ownerBadgeHint: (uid: string) => string;
   modelLiveDiffersHint: (registered: string) => string;
   hostsUnreachableMsg: (names: string[]) => string;
   hostsTitle: string;
@@ -1346,6 +1347,7 @@ export const STRINGS: Record<Lang, Strings> = {
     protectedBadge: "dikkat",
     protectedHint: "guard'ı ayakta tutuyor — toplu seçimde/işlemde dikkatli olun",
     hostBadgeHint: (host) => `"${host}" host'unda çalışıyor (local değil)`,
+    ownerBadgeHint: (uid) => `oturum sahibi: ${uid}`,
     modelLiveDiffersHint: (registered) =>
       `Session şu an bu modelle çalışıyor (canlıda değiştirilmiş ya da tek seferlik açılmış). Kayıtlı/başlatma modeli: ${registered}`,
     hostsUnreachableMsg: (names) => `⚠ ${names.length} host erişilemez: ${names.join(", ")}`,
@@ -2327,6 +2329,7 @@ export const STRINGS: Record<Lang, Strings> = {
     protectedBadge: "caution",
     protectedHint: "keeps the guard alive — be careful with bulk selection/actions on this row",
     hostBadgeHint: (host) => `running on host "${host}" (not local)`,
+    ownerBadgeHint: (uid) => `session owner: ${uid}`,
     modelLiveDiffersHint: (registered) =>
       `The session is running on this model right now (switched live, or launched one-off). Registered/launch model: ${registered}`,
     hostsUnreachableMsg: (names) => `⚠ ${names.length} host(s) unreachable: ${names.join(", ")}`,
