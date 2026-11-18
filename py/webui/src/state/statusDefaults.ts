@@ -13,9 +13,12 @@ const EMPTY_STEWARD: StewardSummary = {
 
 export function withStatusDefaults(d: StatusPayload): StatusPayload {
   const p = d as Partial<StatusPayload>;
-  if (p.orch && p.remote_desktop && p.diag && p.settings && p.steward && p.tunnel && p.dups && p.layout_missing_deps && p.handover_msg) return d;
+  if (p.sessions && p.closed && p.retired && p.orch && p.remote_desktop && p.diag && p.settings && p.steward && p.tunnel && p.dups && p.layout_missing_deps && p.handover_msg) return d;
   return {
     ...d,
+    sessions: p.sessions ?? [],
+    closed: p.closed ?? [],
+    retired: p.retired ?? [],
     dups: p.dups ?? [],
     layout_missing_deps: p.layout_missing_deps ?? [],
     diag: p.diag ?? { web_pid: 0, web_uptime_seconds: 0, gt: null, windowless: null, recent_fallback_count: 0, fallback_alert: false, fallback_alert_window_minutes: 0 },

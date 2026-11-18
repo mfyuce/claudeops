@@ -134,7 +134,8 @@ class ExtensionAPI:
         """K10: panel sekmesi. `GET /api/ui/extensions` rolüne uyan kullanıcıya listeler; dosyalar `/api/ui/ext/<id>/<dosya>`
         (kimlik + yetki kapısından geçer; traversal/symlink korumalı). `UI_EXTENSION_API = 1`."""
         import os
-        if not isinstance(ext_id, str) or not ext_id.replace("-", "").replace("_", "").isalnum():
+        import re as _re
+        if not isinstance(ext_id, str) or not _re.fullmatch(r"[a-z0-9_-]{1,40}", ext_id):      # panelin EXT_TAB_RE'siyle aynı (büyük harf/unicode/uzun kimlikle sekme açılamıyordu)
             raise ValueError(f"invalid ui extension id: {ext_id!r}")
         with _LOCK:
             _UI_EXTS[ext_id] = {"id": ext_id, "title": title or ext_id, "title_en": title_en or title or ext_id, "assets_dir": os.path.realpath(assets_dir),

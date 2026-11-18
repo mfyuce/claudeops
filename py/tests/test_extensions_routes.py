@@ -153,6 +153,23 @@ class LongestPrefix(unittest.TestCase):
         self.assertIsNone(ext.match_route("POST", "/zz/admin/x"))               # yöntem uymazsa eşleşmez
 
 
+class UiExtensionId(unittest.TestCase):
+    """UI sekme kimliği panelin EXT_TAB_RE'siyle (`[a-z0-9_-]{1,40}`) uyumlu olmalı; aksi sekme açılamıyordu (review copsdev R-4/R-5)."""
+
+    def test_id_rules(self):
+        api = ext.ExtensionAPI()
+        saved = dict(ext._UI_EXTS)
+        try:
+            for ok in ("admin", "a1", "my-ext_2"):
+                api.register_ui_extension(ok, "/tmp")
+            for bad in ("Admin", "a b", "", "x" * 41, "é", "a/b"):
+                with self.assertRaises(ValueError, msg=bad):
+                    api.register_ui_extension(bad, "/tmp")
+        finally:
+            ext._UI_EXTS.clear()
+            ext._UI_EXTS.update(saved)
+
+
 class ReaderConfig(unittest.TestCase):
     def test_validation(self):
         import tempfile
