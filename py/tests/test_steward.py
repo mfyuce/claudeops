@@ -281,7 +281,7 @@ class RulesTest(unittest.TestCase):
         acts, st = sw.plan_tick([v], self.projects, st, cfg, self.now + 60, [], [])
         self.assertEqual([a.kind for a in acts if a.name == "a"], [])
         # READY FOR HANDOVER + boşta → respawn
-        v.busy, v.last_assistant = False, "... READY FOR HANDOVER özet"
+        v.busy, v.last_assistant = False, "...\n## READY FOR HANDOVER özet"
         acts, st = sw.plan_tick([v], self.projects, st, cfg, self.now + 120, [], [])
         self.assertEqual([a.kind for a in acts if a.name == "a"], ["respawn"])
         self.assertNotIn("a", st["ho_pending"])

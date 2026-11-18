@@ -37,7 +37,7 @@ class HoHaltedTest(unittest.TestCase):
         return [a for a in acts if a.name == "a"], st2
 
     def test_paused_ready_no_respawn_session_stays(self):
-        acts, st = self.plan("paused", _view("a", last_assistant="... READY FOR HANDOVER özet"))
+        acts, st = self.plan("paused", _view("a", last_assistant="...\n## READY FOR HANDOVER özet"))
         self.assertEqual([a.kind for a in acts], ["ho_halted"])
         self.assertEqual((acts[0].payload["phase"], acts[0].payload["step"]), ("paused", "ready"))
         self.assertNotIn("a", st["ho_pending"])

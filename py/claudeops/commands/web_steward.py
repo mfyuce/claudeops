@@ -2086,7 +2086,11 @@ def _resume_ho_done(name: str) -> bool:
         from ..needs_ho import handover_done, has_real_user_turn
         rid = get_provider("claude").resolve_resume_id(cwd, session_name=name)
         path = jsonl_path_for(cwd, rid) if rid else None
-        return bool(path and os.path.isfile(path) and has_real_user_turn(path) and handover_done(path))
+        if not (path and os.path.isfile(path)):
+            return False
+        if time.time() - os.path.getmtime(path) < 300:     # ACİL-2: yazımı son 5 dk içinde olan oturum boşta değil, devir bitti sayılmaz
+            return False
+        return bool(has_real_user_turn(path) and handover_done(path))
     except Exception:
         return False
 
@@ -2247,7 +2251,11 @@ def _live_ho_done(s: Any) -> bool:
         from ..needs_ho import handover_done, has_real_user_turn
         rid = get_provider("claude").resolve_resume_id(cwd, session_name=s.name)
         path = jsonl_path_for(cwd, rid) if rid else None
-        return bool(path and os.path.isfile(path) and has_real_user_turn(path) and handover_done(path))
+        if not (path and os.path.isfile(path)):
+            return False
+        if time.time() - os.path.getmtime(path) < 300:     # ACİL-2: yazımı son 5 dk içinde olan oturum boşta değil, devir bitti sayılmaz
+            return False
+        return bool(has_real_user_turn(path) and handover_done(path))
     except Exception:
         return False
 

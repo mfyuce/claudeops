@@ -6,6 +6,7 @@ BİRİ pozitifse → ho gerek (return True).
 """
 from __future__ import annotations
 import json
+import re
 import subprocess
 from typing import Optional
 
@@ -128,6 +129,24 @@ def repo_committed_since(cwd: str) -> bool:
 
 # ── jsonl helpers ─────────────────────────────────────────────────────────────
 
+_RFH = "READY FOR HANDOVER"
+
+
+def rfh_marker_in(text: str) -> bool:
+    """Devir işareti YALNIZ satır BAŞINDA sayılır (baştaki boşluk/'#'/'*' hariç). Cümle içi, ters tırnak içi,
+    kod bloğu ve '>' alıntı içindeki geçişler sayılmaz (18 Kas: hatayı ANLATAN cevap devir sanıldı). SAF."""
+    fenced = False
+    for raw in (text or "").splitlines():
+        if raw.strip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if re.sub(r"^[\s#*]+", "", raw).startswith(_RFH):
+            return True
+    return False
+
+
 def handover_done(jsonl_path: str) -> bool:
     """jsonl'de RFH var mı ve sonrasında yeni user isteği yok mu?
 
@@ -158,7 +177,7 @@ def handover_done(jsonl_path: str) -> bool:
                         c.get("text", "") for c in content
                         if isinstance(c, dict) and c.get("type") == "text"
                     )
-                if t == "assistant" and "READY FOR HANDOVER" in text:   # yalnız ASİSTAN cevabı sayılır: user, api-request-blob, attachment, system (CLAUDE.md/system-reminder metni) satırları RFH taşıyabilir (18 Kas hcr olayı)
+                if t == "assistant" and rfh_marker_in(text):   # yalnız ASİSTAN cevabı sayılır: user, api-request-blob, attachment, system (CLAUDE.md/system-reminder metni) satırları RFH taşıyabilir (18 Kas hcr olayı)
                     last_rfh = i
                 if t == "user":
                     if isinstance(content, list):

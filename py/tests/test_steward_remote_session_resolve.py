@@ -235,7 +235,7 @@ class TestDestructiveAndHandover(_Resolve):
 
     def test_respawn_after_handover_stops_real_name_starts_project_directs_new_name(self):
         self.rows("oiso20261017")
-        self.fake.facts["oiso20261017"] = _facts("özet yazıldı. READY FOR HANDOVER")
+        self.fake.facts["oiso20261017"] = _facts("özet yazıldı.\n## READY FOR HANDOVER")
         self.fake.facts["oiso" + NEW] = _facts()
         sw.save_state({"ho_pending": {"oiso20261017": time.time()}})
         res = ws.tick_once("manual")

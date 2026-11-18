@@ -256,7 +256,7 @@ class TestRemoteRespawn(_Destructive):
     def ready(self, names=("oiso",)):
         sw.save_state({"ho_pending": {n: time.time() for n in names}})
         for n in names:
-            self.fake.facts[n] = _facts("özet yazıldı. READY FOR HANDOVER")
+            self.fake.facts[n] = _facts("özet yazıldı.\n## READY FOR HANDOVER")
 
     def test_ready_after_handover_respawns_stop_start_directive_in_order(self):
         self.act()

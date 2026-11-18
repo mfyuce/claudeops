@@ -149,6 +149,7 @@ _CONFIRM_HASH_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 _CONFIRM_ZERO_RE = re.compile(r"(?<![\w.])0(?![\w.])")
 NO_DONE_TAG = "NO-STEWARD-DONE"           # proje notunda: STEWARD-DONE işareti yok sayılır (sürekli geliştirme)
 READY_FOR_HANDOVER = "READY FOR HANDOVER"
+from .needs_ho import rfh_marker_in
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _MAX_QUESTION_CHARS = 2000
@@ -3247,7 +3248,7 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
         elif it["stage"] == "ho":
             # `ho_at`: devir mesajının gittiği an; başarısız `stop` sonrası `at` yenilense de hazırlık bununla ölçülür (aksi hâlde
             # yeniden denenen stop hiç tetiklenmez, oturum 10 dk sonra `ho_timeout` ile açık kalırdı)
-            ready = READY_FOR_HANDOVER in (v.last_assistant or "") and v.last_activity >= float(it.get("ho_at", it["at"]))
+            ready = rfh_marker_in(v.last_assistant or "") and v.last_activity >= float(it.get("ho_at", it["at"]))
             if ready and v.busy is not True:
                 if modes.get(name) == "keep":      # devir alındı, oturum AÇIK kalır (yalnız dur)
                     it["stage"], it["at"] = "kept", now
@@ -3941,7 +3942,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             ho_pause.pop(name, None)     # devir bitmeden oturum gitti: pause YAZILMAZ
             busy_names.add(name)
             continue
-        ready = READY_FOR_HANDOVER in (v.last_assistant or "")
+        ready = rfh_marker_in(v.last_assistant or "")
         expired = (now - float(sent_at)) >= cfg.ho_grace_minutes * 60
         # busy None (bu CLI'da sinyal yok) = "meşgul değil" sayılır; yalnız kesin True bekletir
         if v.busy is not True and (ready or expired):
@@ -4866,7 +4867,7 @@ def idle_finish_marker(text: str) -> Tuple[str, bool]:
     has, what = next_line(t)
     if has and what:
         return "", False         # cevap açık bir sıradaki iş söylüyor: "STEWARD-DONE yazmıyorum" / eski devir bölümü anması bitti sayılmaz
-    ready = READY_FOR_HANDOVER in t
+    ready = rfh_marker_in(t)
     if ready:
         return READY_FOR_HANDOVER, True
     fenced = False
