@@ -90,6 +90,20 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(self.call("GET", "/api/status", {"Authorization": "Bearer tok"})[0], 401)   # web.token artık çözülmüyor
         self.assertEqual(self.call("GET", "/api/status", {"Cookie": "cops_t=good"})[0], 200)
 
+    def test_agents_cookie_human_gated_on_get_and_post(self):
+        """Çok kullanıcıda çerezli insan /api/agents/* için 401 değil, `agents.use` kapısından geçer (GET dalı genel kapıdan önce dönerdi)."""
+        authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)) if v.cookies.get("cops_t") == "good" else None)
+        seen = []
+        authz.set_authorizer(lambda p, a, r: seen.append(a) or a != "agents.use")
+        ck = {"Cookie": "cops_t=good"}
+        self.assertEqual(self.call("GET", "/api/agents/models", ck)[0], 403)        # kapı soruldu ve reddetti
+        self.assertEqual(self.call("POST", "/api/agents/start", ck, {})[0], 403)
+        self.assertIn("agents.use", seen)
+        self.assertEqual(self.call("GET", "/api/agents/models")[0], 401)           # kimliksiz hâlâ 401
+        authz.set_authorizer(lambda p, a, r: True)
+        code = self.call("GET", "/api/agents/models", ck)[0]
+        self.assertNotEqual(code, 401)                                              # izin verilince kimlik doğrulaması geçer
+
     def test_authorizer_denies_403_and_audits(self):
         seen = []
         authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)))

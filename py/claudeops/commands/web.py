@@ -4548,6 +4548,9 @@ class _Handler(BaseHTTPRequestHandler):
         """`/api/agents/*` çağıranı: panel token'ı -> ("human", ""); `Authorization: Bearer <ajan token'ı>` -> ("agent", <üst
         oturum>); ikisi de değilse None (401). Ajan token'ı YALNIZ bu yollarda ve yalnız Bearer başlığıyla kabul edilir
         (URL'ye/loga düşmesin); başka hiçbir uçta `_authorized()` onu tanımaz."""
+        from .. import authz as _az
+        if _az.has_authenticator() and self._principal() is not None:
+            return ("human", "")        # çok kullanıcı: çerezli insan (yetki GET/POST'ta `_gate` ile, eylem agents.use)
         if self._authorized():
             return ("human", "")
         auth = self.headers.get("Authorization") or ""
@@ -5023,6 +5026,9 @@ class _Handler(BaseHTTPRequestHandler):
             if caller is None:
                 self._json({"ok": False, "error": "missing or invalid token"}, status=401)
                 return
+            from .. import authz as _az_g
+            if _az_g.has_authenticator() and getattr(self, "_cur_principal", None) is not None and not self._gate("GET", path):
+                return      # K2: çerezli insan GET'te de agents.use kapısından geçer (bu dal genel kapıdan önce döndüğü için)
             self._agents_reply(web_agents.handle_get(path, parse_qs(urlparse(self.path).query), caller, _AGENT_OPS))
             return
         _route = extensions.match_route("GET", path)
