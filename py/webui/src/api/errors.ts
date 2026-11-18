@@ -37,6 +37,14 @@ export function describeApiError(err: unknown, t: Strings): string {
   return t.requestFailed + message;
 }
 
+/** Failure text of an `ok:false` result for a plain string list (bulk actions): a refused start (`code:"spawn_refused"`) is localized like `callAction` does. */
+export function describeResError(res: { error?: string; code?: string; reason?: string }, t: Strings): string {
+  if (res.code === "spawn_refused" && res.reason) {
+    return describeSpawnRefused(res.reason, undefined, t === STRINGS.tr ? "tr" : "en");
+  }
+  return res.error ?? "";
+}
+
 /**
  * Replaces the original's `call(action, payload)`. Fires `fn`, and on a
  * result with `ok: false` either hands the message to `onFailure` (used

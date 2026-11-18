@@ -120,7 +120,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   const [model, setModel] = useState(() => {
     if (session.host !== LOCAL_HOST) return "";
     if (session.running && effectiveModel(session)) return effectiveModel(session);
-    return data?.settings.default_model[session.cli] ?? "";
+    return data?.settings.default_model?.[session.cli] ?? "";
   });
   const [modelOther, setModelOther] = useState("");
   const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
@@ -175,7 +175,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
   // through local state in between.
   function handleCliChange(newCli: string) {
     setCli(newCli);
-    setModel(session.host === LOCAL_HOST ? (data?.settings.default_model[newCli] ?? "") : "");
+    setModel(session.host === LOCAL_HOST ? (data?.settings.default_model?.[newCli] ?? "") : "");
     setModelOther("");
     setPermissionMode(DEFAULT_PERMISSION_MODE);
     setEffort(defaultEffort(cliOptionsFor(data, session.host, newCli)));

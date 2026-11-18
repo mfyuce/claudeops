@@ -23,6 +23,7 @@ import { cliOptionsFor, LOCAL_HOST, rowKey } from "../../state/hosts";
 import { showToast } from "../../state/toast";
 import { CAP_CODE, offerCapRetry } from "../../state/capRetry";
 import type { ApiResult, SessionInfo } from "../../api/types";
+import { describeResError } from "../../api/errors";
 import type { SelectionControls } from "../../state/selection";
 import { effectiveModel } from "../shared/effectiveModel";
 import { TabHint } from "../shared/TabHint";
@@ -86,7 +87,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
       host: s.host,
       // Settings' default_model is the aggregator's own preference — only
       // meaningful for a local session, same rule as OptionsRow.tsx.
-      model: s.host === LOCAL_HOST ? (data?.settings.default_model[s.cli] ?? "") : "",
+      model: s.host === LOCAL_HOST ? (data?.settings.default_model?.[s.cli] ?? "") : "",
       permission_mode: DEFAULT_PERMISSION_MODE,
       effort: defaultEffort(cliOptions),
       cli: s.cli,
@@ -114,7 +115,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           ? ""
           : s.running && effectiveModel(s)
             ? effectiveModel(s) // 2026-10-09: canlı model (live_model), kayıtlı değil
-            : (data?.settings.default_model[s.cli] ?? ""),
+            : (data?.settings.default_model?.[s.cli] ?? ""),
       permission_mode: DEFAULT_PERMISSION_MODE,
       effort: defaultEffort(cliOptions),
       cli: s.cli,
@@ -176,7 +177,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           } else {
             const startRes = await apiStart({ ...startPayloadFor(s), fresh: true });
             if (!startRes.ok) {
-              errs.push(`${name}: ${startRes.error}`);
+              errs.push(`${name}: ${describeResError(startRes, t)}`);
               noteCap(startRes, s.host, () => apiStart({ ...startPayloadFor(s), fresh: true }));
             }
           }
@@ -197,7 +198,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           if (stopOk) {
             const newChatRes = await apiNewChat(newChatPayloadFor(s));
             if (!newChatRes.ok) {
-              errs.push(`${name}: ${newChatRes.error}`);
+              errs.push(`${name}: ${describeResError(newChatRes, t)}`);
               noteCap(newChatRes, s.host, () => apiNewChat(newChatPayloadFor(s)));
             }
           }
@@ -214,7 +215,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
                 ? await apiPost<ApiResult>("/api/stop", { name, host: s.host, lang, force: true })     // devirsiz kapatma (sahip kararı 2026-11-06)
                 : await apiPost<ApiResult>(`/api/${action}`, { name, host: s.host, lang });
           if (!res.ok) {
-            errs.push(`${name}: ${res.error}`);
+            errs.push(`${name}: ${describeResError(res, t)}`);
             if (action === "start") noteCap(res, s.host, () => apiStart(startPayloadFor(s)));
           }
         }
