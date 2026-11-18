@@ -481,6 +481,8 @@ export interface DiagInfo {
   web_uptime_seconds: number;
   gt: { pid: number; uptime_seconds: number } | null;
   windowless: string[] | null;
+  /** Terminalsiz süreçler; spinning = >=%50 CPU 10 dk kesintisiz. Eski sunucuda undefined. */
+  orphans?: { name: string; pid: number; cli: string; cpu: number; spinning: boolean }[] | null;
   recent_fallback_count: number;
   fallback_alert: boolean;
   fallback_alert_window_minutes: number;

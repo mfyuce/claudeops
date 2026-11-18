@@ -15,7 +15,7 @@ Provider-agnostik: hangi CLI'ın hangi flag'lerle tanınacağı burada DEĞİL, 
 provider'ın kendi `matches_proc`/`extract_name`/`extract_info`'sunda (providers/).
 """
 from __future__ import annotations
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import glob
 import json
 import os
@@ -141,6 +141,33 @@ IDLE_SPIN_CPU = 50.0
 def idle_spin(pid: int, cpu: float, tmux: bool) -> bool:
     """Terminali yok (tmux yok + pty gitmiş) VE CPU yüksek: boşa dönüyor olabilir."""
     return (not tmux) and cpu >= IDLE_SPIN_CPU and terminal_lost(pid)
+
+
+_SPIN_SINCE: Dict[int, float] = {}
+SPIN_SECONDS = 600.0
+
+
+def orphan_report(sessions: List[Session], tmux_of: Callable[[int], bool], now: float,
+                  since: Optional[Dict[int, float]] = None) -> List[Dict[str, Any]]:
+    """Terminalsiz (tmux yok + pty gitmiş) süreçler. `spinning` = CPU >= IDLE_SPIN_CPU kesintisiz SPIN_SECONDS (10 dk) sürdü.
+    `since` pid -> yüksek CPU'nun ilk görüldüğü an (çağıran tutar; yüksek CPU düşünce silinir)."""
+    since = _SPIN_SINCE if since is None else since
+    out: List[Dict[str, Any]] = []
+    live = {s.pid for s in sessions}
+    for pid in [p for p in since if p not in live]:
+        since.pop(pid, None)
+    for s in sessions:
+        if tmux_of(s.pid) or not terminal_lost(s.pid):
+            since.pop(s.pid, None)
+            continue
+        if s.cpu >= IDLE_SPIN_CPU:
+            since.setdefault(s.pid, now)
+        else:
+            since.pop(s.pid, None)
+        t0 = since.get(s.pid)
+        out.append({"name": s.name, "pid": s.pid, "cli": s.cli, "cpu": round(s.cpu, 1),
+                    "spinning": t0 is not None and now - t0 >= SPIN_SECONDS})
+    return out
 
 
 def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List[int]]] = None) -> List[Session]:

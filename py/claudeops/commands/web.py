@@ -1136,8 +1136,16 @@ def _diag_status() -> dict:
     except Exception:
         windowless = None
 
+    orphans = None
+    try:
+        from ..discovery import orphan_report
+        orphans = orphan_report(find_sessions(measure_cpu=True), is_tmux_backed, time.time())
+    except Exception:
+        orphans = None
+
     recent_fallbacks = diag_log_recent_fallback_count(FALLBACK_ALERT_WINDOW_MINUTES)
     return {
+        "orphans": orphans,
         "web_pid": os.getpid(),
         "web_uptime_seconds": round(time.monotonic() - _WEB_PROC_START_MONO),
         "gt": gt_info,

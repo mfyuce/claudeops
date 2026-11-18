@@ -214,6 +214,15 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
                 {t.diagWindowless(windowless.join(", "))}
               </div>
             )}
+            {(diag.orphans ?? []).length > 0 && (
+              <div className="opts-hint" style={{ color: "var(--amber)", flexBasis: "100%" }}>
+                {t.diagOrphans(
+                  (diag.orphans ?? [])
+                    .map((o) => `${o.name} (pid ${o.pid}, ${o.cpu}%${o.spinning ? ", boşa/spin" : ""})`)
+                    .join(", "),
+                )}
+              </div>
+            )}
             <button type="button" className="go" disabled={testBusy} onClick={() => void handleTest()}>
               {testBusy ? t.diagTesting : t.diagTestBtn}
             </button>

@@ -24,3 +24,19 @@ class OrphanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OrphanReportTests(unittest.TestCase):
+    def test_spin_after_ten_minutes(self):
+        from claudeops.discovery import Session, orphan_report
+        s = Session(name="u", pid=5, cwd="/x", cpu=90.0, cli="ucli")
+        since = {}
+        with mock.patch("os.readlink", return_value="/dev/pts/3 (deleted)"):
+            r = orphan_report([s], lambda p: False, 1000.0, since)
+            self.assertFalse(r[0]["spinning"])
+            r = orphan_report([s], lambda p: False, 1601.0, since)
+            self.assertTrue(r[0]["spinning"])
+            s.cpu = 1.0
+            r = orphan_report([s], lambda p: False, 1700.0, since)
+            self.assertFalse(r[0]["spinning"])
+            self.assertEqual(orphan_report([s], lambda p: True, 1700.0, since), [])

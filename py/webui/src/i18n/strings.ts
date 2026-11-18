@@ -323,6 +323,7 @@ export interface Strings {
   diagRestartDone: (r: string) => string;
   diagRefreshHint: string;
   diagWindowless: (names: string) => string;
+  diagOrphans: (list: string) => string;
   windowlessBadge: string;
   noTerminalBadge: string;
   noTerminalHint: string;
@@ -1209,6 +1210,7 @@ export const STRINGS: Record<Lang, Strings> = {
     diagRestarting: "yeniden başlatılıyor…",
     diagRestartDone: (r) => `✓ kapatıldı (${r}) — bir sonraki spawn'da otomatik yeniden doğacak`,
     diagRefreshHint: "çalışma süreleri her 4s otomatik güncellenir",
+    diagOrphans: (list) => `⚠ terminalsiz süreçler (pty yok, tmux yok): ${list} — "boşa" = 10 dk boyunca >=%50 CPU; Çalışan sekmesinden Durdur ile kapatılır`,
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
     windowlessBadge: "penceresiz",
     noTerminalBadge: "terminali yok",
@@ -2202,6 +2204,7 @@ export const STRINGS: Record<Lang, Strings> = {
     diagRestarting: "restarting…",
     diagRestartDone: (r) => `✓ stopped (${r}) — will respawn automatically on the next spawn`,
     diagRefreshHint: "uptimes auto-refresh every 4s",
+    diagOrphans: (list) => `⚠ processes without a terminal (no pty, no tmux): ${list} — "spin" = >=50% CPU for 10 min; stop from the Running tab`,
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
     windowlessBadge: "windowless",
     noTerminalBadge: "no terminal",
