@@ -22,7 +22,7 @@
 set -u
 TUNNEL_NAME="${CLAUDEOPS_TUNNEL_NAME:-claudeops}"
 PORT="${CLAUDEOPS_PORT:-8765}"
-STATE_DIR="$HOME/.claude/claudeops"
+STATE_DIR="${CLAUDEOPS_DIR:-$HOME/.claude/claudeops}"   # paths.py ile aynı kural (review R-26)
 # İkinci (paralel) bir deploy'un (ör. react-ui denemesi) kendi tunnel URL/log
 # dosyasına ihtiyacı var — aynı sabit dosyaları paylaşırsa canlı tünelin
 # URL'ini/log'unu ezer ([[tunnel-flag-shares-live-log-file]] dersi). Varsayılan
