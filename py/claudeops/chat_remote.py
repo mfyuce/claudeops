@@ -4,7 +4,7 @@ Bilinen uzak tuhaflıklar (canlı oturumda gözlendi, chats/CLAUDE.md):
   1. Shell oturumuna gönderilen komutun İLK KARAKTERİ kaybolabiliyor: komut BOŞLUK ile başlar (kaybolan boşluktur).
   2. files API kökü = shell oturumunun CANLI cwd'si ve başka biri aynı shell'i kullanırken cwd DEĞİŞEBİLİR (yuhem'de gözlendi:
      iki okuma arasında e3 -> e3p): başta kök (`root()`) bir kez okunur, arşiv o MUTLAK dizine yazılır, listeleme/indirme `path=root` ile yapılır.
-Yıkıcı komut yok: yalnız kendi geçici dosyasını (`.chatpull-<etiket>.*`) siler; kullanıcı dosyalarına dokunmaz.
+Yıkıcı komut yok: yalnız kendi geçici dosyalarını (`.chatpull-<etiket>-*`) siler; kullanıcı dosyalarına dokunmaz.
 """
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ from typing import Any, Callable, Dict, List, Optional, Protocol
 
 _TAG = re.compile(r"^[a-z0-9_-]{1,24}$")
 DEFAULT_PATHS = [".claude/projects", ".claude/history.jsonl", ".codex", ".gemini"]
+PART_MB = 150           # uzak panelin /api/files/download sınırı 200 MB: arşiv bu boyutlu parçalara bölünür, yerelde birleştirilir
+# CLI kimlik/oturum anahtarları arşive GİRMEZ (yerelde düz metin kalmasın, TBD#2 ile aynı ilke)
+EXCLUDES = ["auth.json", "oauth_creds.json", "google_accounts.json", "installation_id", ".credentials.json", "*.key", "*.pem"]
 
 
 class Transport(Protocol):
@@ -29,7 +32,8 @@ def names(tag: str, day: str) -> Dict[str, str]:
     if not _TAG.match(tag) or not re.match(r"^\d{8}$", day):
         raise ValueError("etiket/gün geçersiz")
     base = f".chatpull-{tag}-{day}"
-    return {"tmp": base + ".tgz.part", "tgz": base + ".tgz", "done": base + ".done", "fail": base + ".fail"}
+    return {"tmp": base + ".tgz.part", "tgz": base + ".tgz", "done": base + ".done", "fail": base + ".fail",
+            "parts": base + ".tgz.p"}        # parçalar: <parts>000, 001, ... (panel indirme sınırı 200 MB: PART_MB'lık dilimler)
 
 
 def _o(outdir: str, name: str) -> str:
@@ -37,16 +41,21 @@ def _o(outdir: str, name: str) -> str:
 
 
 def pack_command(tag: str, day: str, paths: Optional[List[str]] = None, outdir: str = "") -> str:
-    """BOŞLUK-önekli, düşük öncelikli tar; bitince `.done` işareti. Kaynaklar `-C ~` ile (cwd DEĞİŞMEZ: files kökü bozulmaz); çıktı cwd'ye göreli."""
+    """BOŞLUK-önekli, düşük öncelikli tar -> `split` parçalar; bitince `.done` işareti. Kaynaklar `-C ~` ile (cwd DEĞİŞMEZ: files kökü bozulmaz);
+    çıktı cwd'ye göreli. `umask 077`: paylaşımlı shell'de arşiv başkalarınca okunamaz. Kimlik dosyaları `--exclude` ile dışarıda."""
     n = names(tag, day)
     ps = " ".join(shlex.quote(p) for p in (paths or DEFAULT_PATHS))
-    return (f" nice -n 19 ionice -c3 tar czf {_o(outdir, n['tmp'])} --ignore-failed-read -C ~ {ps} 2>/dev/null; "
-            f"mv {_o(outdir, n['tmp'])} {_o(outdir, n['tgz'])} && touch {_o(outdir, n['done'])} || touch {_o(outdir, n['fail'])}")
+    ex = " ".join(f"--exclude={shlex.quote(e)}" for e in EXCLUDES)
+    inner = (f"umask 077; nice -n 19 ionice -c3 tar czf - {ex} --ignore-failed-read -C ~ {ps} 2>/dev/null"
+             f" | split -b {PART_MB}M -d -a 3 - {_o(outdir, n['parts'])}")
+    return f" bash -c {shlex.quote(inner)} && touch {_o(outdir, n['done'])} || touch {_o(outdir, n['fail'])}"
 
 
 def cleanup_command(tag: str, day: str, outdir: str = "") -> str:
-    n = names(tag, day)
-    return f" rm -f -- {_o(outdir, n['tmp'])} {_o(outdir, n['tgz'])} {_o(outdir, n['done'])} {_o(outdir, n['fail'])}"     # yalnız kendi üç geçici dosyası
+    """Yalnız `.chatpull-<etiket>-*` (kendi geçici dosyaları; önceki günlerin artıkları dahil). Kullanıcı dosyalarına dokunmaz."""
+    names(tag, day)                       # etiket/gün doğrulaması
+    prefix = (outdir.rstrip("/") + "/" if outdir else "") + f".chatpull-{tag}-"
+    return f" rm -f -- {shlex.quote(prefix)}*"
 
 
 def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]] = None,
@@ -72,7 +81,11 @@ def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]
                 tx.send(cleanup_command(tag, day, root))     # zaman aşımında da kendi geçici dosyalarını sil
                 return {"ok": False, "msg": "uzak arşiv zaman aşımı (.done yok)", "bytes": 0}
             sleep(poll_s)
-        size = tx.download(root, n["tgz"], dest)
+        parts = sorted(x for x in ls if x.startswith(n["parts"]))
+        if not parts:
+            tx.send(cleanup_command(tag, day, root))
+            return {"ok": False, "msg": "uzak arşiv parçası yok", "bytes": 0}
+        size = _download_parts(tx, root, parts, dest)
         if size <= 0:
             tx.send(cleanup_command(tag, day, root))
             return {"ok": False, "msg": "indirilen arşiv boş", "bytes": 0}
@@ -84,6 +97,41 @@ def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]
         except Exception:  # noqa: BLE001
             pass
         return {"ok": False, "msg": f"{type(e).__name__}: {e}"[:200], "bytes": 0}
+
+
+def _download_parts(tx: "Transport", root: str, parts: List[str], dest: str) -> int:
+    """Parçaları sırayla indirip `dest`'e birleştirir (atomik: .part -> replace). Bir parça boşsa 0 döner."""
+    import os
+    total = 0
+    tmp = dest + ".part"
+    os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+    try:
+        with open(tmp, "wb") as out:
+            for i, name in enumerate(parts):
+                pdest = f"{dest}.p{i:03d}"
+                try:
+                    sz = tx.download(root, name, pdest)
+                    if sz <= 0:
+                        return 0
+                    with open(pdest, "rb") as f:
+                        while True:
+                            b = f.read(1 << 20)
+                            if not b:
+                                break
+                            out.write(b)
+                    total += sz
+                finally:
+                    try:
+                        os.remove(pdest)
+                    except OSError:
+                        pass
+        os.replace(tmp, dest)
+        return total
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 class PanelTransport:

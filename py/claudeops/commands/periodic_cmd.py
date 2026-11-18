@@ -42,7 +42,7 @@ def _kv(items):
         if "=" not in it:
             raise ValueError(f"ALAN=DEĞER bekleniyordu: {it}")
         k, v = it.split("=", 1)
-        if v[:1] in "{[":                       # sözlük/liste (örn. remote_pull={"yuhem":"shell_yuhem"}) JSON
+        if v[:1] in ("{", "["):                       # sözlük/liste (örn. remote_pull={"yuhem":"shell_yuhem"}) JSON
             try:
                 out[k] = json.loads(v)
                 continue

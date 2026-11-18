@@ -252,11 +252,21 @@ def _db_sources(home: str) -> List[Tuple[str, str, str]]:
             if key not in seen:
                 seen.add(key)
                 out.append(("gemini", key[0], p))
+    for ex in sorted(glob.glob(os.path.join(mir, "*", "extract"))):          # uzak host (yuhem, ulak_31): alt = <host>-<alt>
+        rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(ex)))
+        for p in sorted(glob.glob(os.path.join(ex, ".gemini", "*", "conversations", "*.db"))):
+            alt = f"{rh}-{os.path.basename(os.path.dirname(os.path.dirname(p)))}"
+            out.append(("gemini", alt, p))
     for base in (os.path.join(home, ".codex"), os.path.join(mir, "codex")):
         th, st = os.path.join(base, "thread_history_1.sqlite"), os.path.join(base, "state_5.sqlite")
         if os.path.exists(th) and os.path.exists(st):
             out.append(("codex", "", th))
             break
+    for ex in sorted(glob.glob(os.path.join(mir, "*", "extract"))):          # uzak host codex: alt = host (yerel döküm yoluyla çakışmaz)
+        rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(ex)))
+        th, st = os.path.join(ex, ".codex", "thread_history_1.sqlite"), os.path.join(ex, ".codex", "state_5.sqlite")
+        if os.path.exists(th) and os.path.exists(st):
+            out.append(("codex", rh, th))
     return out
 
 
@@ -315,7 +325,7 @@ def stage_dumps(stage: str, stamps: Dict[str, str], home: Optional[str] = None) 
         try:
             if cli == "codex":
                 rows = dump_codex(p, os.path.join(os.path.dirname(p), "state_5.sqlite"))
-                rels = write_jsonl(rows, tmp, "codex")
+                rels = write_jsonl(rows, tmp, os.path.join("codex", sub) if sub else "codex")
             else:
                 rels = write_jsonl(dump_gemini(p), tmp, os.path.join("gemini", sub))
             _merge_stage(tmp, stage, rels)
