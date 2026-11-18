@@ -2143,9 +2143,10 @@ def fetch_agy_usage(t: float, run: Optional[Callable[[], str]] = None) -> Dict[s
     c["at"] = t if not c["usage"] else c["at"]
     try:
         if run is None:
-            from ..settings import resolved_binary
+            from ..providers import get_provider
+            argv = get_provider("agy").usage_fresh_argv()      # Kullanım sekmesiyle AYNI okuyucu
             def run() -> str:  # noqa: E306
-                return subprocess.run([resolved_binary("agy"), "--print=/usage"], capture_output=True, text=True, timeout=45).stdout
+                return subprocess.run(argv, capture_output=True, text=True, timeout=45, cwd="/tmp", stdin=subprocess.DEVNULL).stdout
         usage = rv.parse_agy_usage(run())
     except Exception:
         return c["usage"] or {}

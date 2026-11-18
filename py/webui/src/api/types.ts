@@ -416,6 +416,8 @@ export interface UsageEntry {
  * kontrol için hiçbiri güvenle kullanılamadı (bkz. web.py `_usage_all`); `available:true`
  * iken `entries` doludur. */
 export interface UsageProviderResult {
+  /** Free-text explanation (e.g. why a provider has no account-level usage read). */
+  note?: string;
   supported: boolean;
   available?: boolean;
   reason?: string;

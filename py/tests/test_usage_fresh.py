@@ -29,8 +29,18 @@ class FreshParse(unittest.TestCase):
 
     def test_other_providers_have_no_fresh_path(self):
         for n, p in PROVIDERS.items():
-            if n != "claude":
+            if n not in ("claude", "agy"):
                 self.assertIsNone(p.usage_fresh_argv(), n)
+
+    def test_agy_fresh_argv_and_tsv_parse(self):
+        agy = PROVIDERS["agy"]
+        self.assertEqual(agy.usage_fresh_argv()[1:], ["--print=/usage"])
+        tsv = ("Gemini Models\tWeekly Limit Remaining\t81%\t2026-11-25T06:06:52Z\n"
+               "Claude and GPT models\tFive Hour Limit Remaining\t0%\t2026-11-18T16:39:44Z\n"
+               "Gemini 4 Argon\tGemini 4 Argon Weekly Limit\t99%\t2026-11-25T12:29:11Z\n")
+        es = agy.parse_fresh_usage(tsv)
+        self.assertEqual([e["percent"] for e in es], ["81", "0", "99"])
+        self.assertIn("Resets 2026-11-18T16:39:44Z", es[1]["detail"])
 
 
 class FreshRun(unittest.TestCase):
@@ -70,3 +80,13 @@ class FreshRun(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoUsageRows(unittest.TestCase):
+    def test_codex_and_ucli_explain_instead_of_unsupported(self):
+        from claudeops.commands import web
+        for n in ("codex", "ucli"):
+            r = web._no_usage_row(n)
+            self.assertEqual((r["supported"], r["available"], r["reason"]), (True, False, "no_account_usage"))
+            self.assertTrue(r["note"])
+        self.assertEqual(web._no_usage_row("shell"), {"supported": False})

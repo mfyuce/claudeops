@@ -151,6 +151,8 @@ function UsageProviderRow({ cli, result, t }: { cli: string; result: UsageResult
           ? t.usageAllBusy
           : result.reason === "send_failed"
             ? t.usageSendFailed
+            : result.reason === "no_account_usage"
+              ? t.usageNoAccount
             : result.reason === "no_endpoint"
               ? t.usageNoEndpoint
               : result.reason === "auth_failed"
@@ -161,6 +163,7 @@ function UsageProviderRow({ cli, result, t }: { cli: string; result: UsageResult
     return (
       <div className="opts" style={{ width: "100%", boxSizing: "border-box" }}>
         <b>{cli}</b> <span className="opts-hint">{reasonText}</span>
+        {result.note && <div className="opts-hint" style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{result.note}</div>}
       </div>
     );
   }
@@ -172,7 +175,7 @@ function UsageProviderRow({ cli, result, t }: { cli: string; result: UsageResult
       </span>
       {(result.entries ?? []).map((e, i) => (
         <div key={i} style={{ width: "100%" }}>
-          {e.label}: <b>{e.percent}%</b>
+          {e.label}: {e.percent !== "" && <b>{e.percent}%</b>}
           {e.detail && <span className="opts-hint"> · {e.detail}</span>}
         </div>
       ))}

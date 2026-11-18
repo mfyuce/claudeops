@@ -53,14 +53,30 @@ class Balance(unittest.TestCase):
     def test_collect_only_configured_keys_and_no_network_for_others(self):
         calls = []
         opener = lambda req, timeout=None: calls.append(req.full_url) or _Resp(b'{"data": {"usage": 0, "limit": null}}')
-        out = api_balance.collect({"GROQ_API_KEY": "g", "UCLI_API_KEY": "e", "ANTHROPIC_API_KEY": "a"},
-                                  {"today_usd": 0.5, "cap_usd": 0, "pct": None}, opener)
-        self.assertEqual(calls, [])                                  # ağa çıkılmadı
+        with mock.patch("claudeops.evren_scale.fetch_quota", return_value=None):       # Evren ağa gitmesin
+            out = api_balance.collect({"GROQ_API_KEY": "g", "UCLI_API_KEY": "e", "ANTHROPIC_API_KEY": "a"},
+                                      {"today_usd": 0.5, "cap_usd": 0, "pct": None}, opener)
+        self.assertEqual(calls, [])                                  # OpenRouter ağına çıkılmadı
         self.assertEqual(out["api:Groq"]["reason"], "no_endpoint")
-        self.assertEqual(out["api:Evren"]["checked_via"], "local")
+        self.assertEqual(out["api:Evren"]["reason"], "request_failed")     # yerel ucli sayacını KOPYALAMAZ (eski hata)
+        self.assertEqual(out["api:Anthropic API"]["checked_via"], "local")
         self.assertNotIn("api:OpenRouter", out)                      # anahtarı yok
         for v in out.values():
             self.assertNotIn('"g"', json.dumps(v))
+
+    def test_evren_quota_entries_percent_is_remaining(self):
+        q = {"used_tokens": 500000, "cap": 2500000, "window_minutes": 5, "reset_at": "2026-11-18T13:12:00+00:00",
+             "daily_limit_tokens": 15000000, "daily_remaining_tokens": 3000000, "daily_reset_at": "2026-11-19T00:00:00Z",
+             "concurrent_requests": 2, "concurrency_limit": 8}
+        r = api_balance.evren("k", fetch=lambda: q)
+        self.assertTrue(r["available"])
+        e = {x["label"]: x for x in r["entries"]}
+        self.assertEqual(e["Günlük kalan (token)"]["percent"], "20")
+        self.assertIn("3.00M / 15.00M", e["Günlük kalan (token)"]["detail"])
+        self.assertEqual(e["5 dk pencere kalan (token)"]["percent"], "80")
+        self.assertEqual(e["Eşzamanlı istek"]["detail"], "2 / 8")
+        self.assertEqual(api_balance.evren("k", fetch=lambda: None)["reason"], "request_failed")
+        self.assertEqual(api_balance.evren("k", fetch=lambda: {})["reason"], "parse_failed")
 
     def test_collect_empty(self):
         self.assertEqual(api_balance.collect({}, None), {})

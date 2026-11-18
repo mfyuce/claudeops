@@ -598,6 +598,7 @@ export interface Strings {
   usageSendFailed: string;
   usageParseFailed: string;
   usageNoEndpoint: string;
+  usageNoAccount: string;
   usageAuthFailed: string;
   usageRequestFailed: string;
   usageCheckedVia: (name: string) => string;
@@ -1585,6 +1586,7 @@ export const STRINGS: Record<Lang, Strings> = {
     usageSendFailed: "komut gönderilemedi",
     usageParseFailed: "yanıt okunamadı",
     usageNoEndpoint: "sağlayıcı bakiye uç noktası sunmuyor",
+    usageNoAccount: "hesap kullanımı okunamıyor (neden aşağıda)",
     usageAuthFailed: "anahtar reddedildi",
     usageRequestFailed: "istek başarısız",
     usageCheckedVia: (name) => `${name} üzerinden`,
@@ -2573,6 +2575,7 @@ export const STRINGS: Record<Lang, Strings> = {
     usageSendFailed: "could not send command",
     usageParseFailed: "could not read the response",
     usageNoEndpoint: "provider offers no balance endpoint",
+    usageNoAccount: "account usage cannot be read (reason below)",
     usageAuthFailed: "key was rejected",
     usageRequestFailed: "request failed",
     usageCheckedVia: (name) => `via ${name}`,

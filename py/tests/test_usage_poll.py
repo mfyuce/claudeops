@@ -62,7 +62,7 @@ class Wiring(unittest.TestCase):
         k = web._usage_kinds()
         self.assertFalse(k["claude"])        # claude -p /usage
         self.assertFalse(k["api"])
-        self.assertTrue(k["agy"])
+        self.assertFalse(k["agy"])           # agy --print /usage (oturumsuz, 18 Kas)
         self.assertNotIn("codex", k)         # usage_command yok
 
     def test_usage_all_only_filters(self):

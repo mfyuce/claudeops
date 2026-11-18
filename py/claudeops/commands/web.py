@@ -3363,6 +3363,22 @@ def _usage_fresh(provider) -> Optional[dict]:
     return {"available": True, "checked_via": "fresh", "entries": entries}
 
 
+# Oturumsuz/oturumlu kullanım yolu OLMAYAN sağlayıcıların "desteklenmiyor" yerine NEDENİ (18 Kas araştırması, kaynak ve deneme sonucu).
+_NO_USAGE_NOTES = {
+    "codex": "codex 0.166: `codex exec` içinde /status ya da kota komutu yok (yalnız TUI); rollout `token_count.rate_limits` bu hesapta null; "
+             "kullanım sınırı mesajı (yenilenme zamanı) yalnız bir koşu reddedilince çıkar: reviewer engelinde görünür.",
+    "ucli": "ucli bir model hizmeti değil istemcidir: kota hizmete bağlıdır. Evren için `api:Evren` satırı (GET /v1/quota), Claude hizmeti için "
+            "`api:Anthropic API` satırı (yerel --usage-log sayacı).",
+}
+
+
+def _no_usage_row(cli_name: str) -> dict:
+    note = _NO_USAGE_NOTES.get(cli_name)
+    if note is None:
+        return {"supported": False}
+    return {"supported": True, "available": False, "reason": "no_account_usage", "note": note}
+
+
 def _usage_all(only: Optional[set] = None) -> dict:
     """Ayarlar>Kullanım sekmesi için — HER provider'ı sırayla kontrol eder.
 
@@ -3387,7 +3403,7 @@ def _usage_all(only: Optional[set] = None) -> dict:
             continue        # `usage_mode: tick` yalnız vadesi gelenleri okur
         command = provider.usage_command()
         if command is None:
-            out[cli_name] = {"supported": False}
+            out[cli_name] = _no_usage_row(cli_name)
             continue
         fresh = _usage_fresh(provider)
         if fresh is not None:

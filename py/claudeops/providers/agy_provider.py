@@ -432,6 +432,14 @@ class AgyProvider(CliProvider):
         # `parse_usage_text` docstring'i.
         return "/usage"
 
+    def usage_fresh_argv(self) -> Optional[List[str]]:
+        """Oturumsuz okuma (18 Kas, canlı doğrulandı): `agy --print=/usage` model turu yakmadan TSV basar (havuz başına haftalık +
+        5 saatlik kalan ve ISO sıfırlanma). Reviewer engelleri AYNI komutu kullanır (`web_review.fetch_agy_usage`)."""
+        return [resolved_binary("agy"), "--print=/usage"]
+
+    def parse_fresh_usage(self, text: str) -> Optional[List[Dict[str, str]]]:
+        return self.parse_usage_text(text)
+
     def usage_needs_dismiss(self) -> bool:
         # Kullanıcı canlı doğruladı (2026-09-16, "it opens"): interaktif modda
         # `/usage` claude'unki gibi bir overlay/ekran AÇIYOR — izole `--print`
