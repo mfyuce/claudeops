@@ -81,6 +81,7 @@ class _Tmp(unittest.TestCase):
             x.start()
             self.addCleanup(x.stop)
         P.set_config("usage_refresh", {"enabled": "off"})      # öntanımlı AÇIK iş testlerde gerçek okuma yapmasın (kendi testi aşağıda)
+        P.set_config("model_watch", {"enabled": "off"})        # öntanımlı AÇIK iş testlerde gerçek model taraması yapmasın
 
 
 class CustomJobTest(_Tmp):

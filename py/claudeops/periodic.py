@@ -897,9 +897,33 @@ def run_usage_refresh(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -
     return {"ok": True, "msg": f"{len(ok)} okundu" + (f", okunamayan: {', '.join(bad)}" if bad else ""), "applied": True}
 
 
+DEFAULT_MODEL_WATCH: Dict[str, Any] = {
+    "enabled": "on",             # yalnız okur ve bildirir (otomatik model eklemez)
+    "schedule": "",
+    "start": "05:30",
+    "interval_hours": 24,
+}
+
+
+def run_model_watch(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Günlük model kataloğu taraması: yeni açılan modeller özette bildirilir, OTOMATİK eklenmez (bkz. `model_watch`)."""
+    from . import model_watch
+    r = model_watch.run(apply=apply)
+    if r["baseline"]:
+        msg = "taban çizgisi yazıldı (ilk tarama, bildirim yok)"
+    elif r["new"]:
+        msg = "YENİ MODEL: " + "; ".join(f"{p}: {', '.join(m)}" for p, m in sorted(r["new"].items())) + " (otomatik eklenmedi: elle 'Reply OK' yoklaması + label kanıtı)"
+    else:
+        msg = "yeni model yok"
+    if r["gone"]:
+        msg += " | kaybolan: " + "; ".join(f"{p}: {', '.join(m)}" for p, m in sorted(r["gone"].items()))
+    return {"ok": True, "msg": msg + ("" if apply else " (plan)"), "applied": apply, "new": r["new"]}
+
+
 JOBS: Dict[str, Job] = {"chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, run_chat_backup),
                         "memory_prv": Job("memory_prv", DEFAULT_MEMORY_PRV, run_memory_prv),
-                        "usage_refresh": Job("usage_refresh", DEFAULT_USAGE_REFRESH, run_usage_refresh)}
+                        "usage_refresh": Job("usage_refresh", DEFAULT_USAGE_REFRESH, run_usage_refresh),
+                        "model_watch": Job("model_watch", DEFAULT_MODEL_WATCH, run_model_watch)}
 _LOCK = threading.Lock()
 
 
