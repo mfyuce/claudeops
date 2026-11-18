@@ -51,7 +51,7 @@ gen_password() {
     if command -v openssl >/dev/null 2>&1; then
         openssl rand -base64 18
     else
-        tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24
+        tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24 || true     # SIGPIPE (141) pipefail altında betiği bitirmesin
     fi
 }
 

@@ -135,7 +135,8 @@ echo "--- telefon bildirimi (ntfy.sh, hesap gerekmez) ---"
 if [ -s "$STATE_DIR/ntfy_topic.txt" ]; then
     echo "zaten kurulu: ntfy.sh/$(cat "$STATE_DIR/ntfy_topic.txt")"
 else
-    NTFY_TOPIC="${CLAUDEOPS_NTFY_TOPIC:-claudeops-$(tr -dc 'a-z0-9' < /dev/urandom | head -c 10)}"
+    # `tr ... </dev/urandom | head -c N` pipefail altında SIGPIPE (141) ile betiği sessizce bitirirdi: boru hattı yok, python3 zaten ön koşul
+    NTFY_TOPIC="${CLAUDEOPS_NTFY_TOPIC:-claudeops-$(python3 -c 'import secrets,string; print("".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(10)))')}"
     py/cops service notify "$NTFY_TOPIC"
     echo "abone olun: https://ntfy.sh/${NTFY_TOPIC} (ntfy mobil app'te de aynı topic adı)"
     echo "tünel URL'i BUNDAN SONRA değişirse oraya bildirim gelir (şu anki URL retroaktif bildirilmez)"
