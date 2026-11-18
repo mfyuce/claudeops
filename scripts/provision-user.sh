@@ -91,7 +91,12 @@ if [ -n "$NEW_PASSWORD" ]; then
 fi
 echo "Hazır. Şimdi '$NEW_USER' olarak claudeops'u kurup başlatmak için:"
 echo
-echo "  $SUDO -iu $NEW_USER bash -c 'git clone https://github.com/mfyuce/claudeops.git && bash claudeops/scripts/bootstrap-remote-host.sh'"
+INSTALL_CMD="git clone https://github.com/mfyuce/claudeops.git && bash claudeops/scripts/bootstrap-remote-host.sh"
+if [ -n "$SUDO" ]; then
+    echo "  $SUDO -iu $NEW_USER bash -c '$INSTALL_CMD'"
+else   # root: boş $SUDO ile "-iu ..." bozuk komut basıyordu (review R-27)
+    echo "  runuser -l $NEW_USER -c '$INSTALL_CMD'"
+fi
 echo
 echo "(paketler zaten kurulu olduğu için bootstrap script sudo İSTEMEYECEK,"
 echo "doğrudan servis kurulumuna geçecek.)"

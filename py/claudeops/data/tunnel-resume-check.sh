@@ -48,7 +48,11 @@ URL="$(cat "$URL_FILE" 2>/dev/null)"
 # panel's normal 401-without-auth — that still proves DNS+TLS+routing are all
 # fine. A non-zero exit (resolve/connect/timeout failure) is the real "still
 # dead" signal.
-if [ -z "$URL" ] || ! curl -sS -o /dev/null --max-time 8 "$URL/api/status"; then
+# review R-25: Cloudflare "bu adrese bağlı tünel yok" cevabı (530/1033, ayrıca 502/504) da HTTP yanıtıdır; yalnız
+# bağlantı hatası değil bu kodlar da "hâlâ ölü" sayılır (hook'un hedeflediği arıza tam bu).
+CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$URL/api/status" 2>/dev/null)" || CODE=000
+case "$CODE" in 000|502|504|530) DEAD=1 ;; *) DEAD=0 ;; esac
+if [ -z "$URL" ] || [ "$DEAD" = 1 ]; then
     logger -t claudeops-resume-hook "claudeops-tunnel unreachable after resume (url=${URL:-none}), restarting"
     sudo -u "$CLAUDEOPS_USER" XDG_RUNTIME_DIR="/run/user/$UID_NUM" \
         systemctl --user restart claudeops-tunnel.service

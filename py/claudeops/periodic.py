@@ -274,7 +274,7 @@ def cron_match(c: Tuple[set, set, set, set, set], dt: datetime.datetime) -> bool
 
 
 def cron_due(expr: str, last_dt: Optional[datetime.datetime], now: datetime.datetime) -> bool:
-    """(son başlangıç, şimdi] aralığında cron'a uyan bir dakika var mı (en çok 36 saat geriye bakar; ilk çalıştırmada yalnız son dakika)."""
+    """(son başlangıç, şimdi] aralığında cron'a uyan bir dakika var mı (en çok 36 saat geriye bakar; ilk çalıştırmada yalnız son 10 dakika)."""
     c = parse_cron(expr)
     if c is None:
         return False
@@ -283,7 +283,7 @@ def cron_due(expr: str, last_dt: Optional[datetime.datetime], now: datetime.date
     if last_dt is not None:
         floor = max(floor, last_dt.replace(second=0, microsecond=0))
     else:
-        floor = t - datetime.timedelta(minutes=1)
+        floor = t - datetime.timedelta(minutes=10)     # hiç çalışmamış iş: dakikası başka işin koşusuna (kilit) denk gelse de sonraki uyanışlarda yakalanır
     while t > floor:
         if cron_match(c, t):
             return True
@@ -355,7 +355,7 @@ def _local_sources() -> List[Tuple[str, ...]]:
     Ayna (chat-mirror) canlı dizinden SİLİNMİŞ eski sohbetleri de taşır; aynı hedef yolda mtime'ı yeni olan kazanır.
     Hedef yol = özgün göreli yol (tarih/oturum/proje yolu korunur). Grup = önekin ikinci parçası (claude|codex|gemini) -> kendi repo'su."""
     home = os.path.expanduser("~")
-    mir = os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
+    mir = os.path.join(CLAUDEOPS_DIR, "backups", "chat-mirror")        # tek taban: pull/ingest/prune ile aynı (CLAUDEOPS_DIR)
     out: List[Tuple[str, ...]] = [
         (os.path.join(mir, "claude-projects"), os.path.join("local", "claude-projects"), "text"),
         (os.path.join(home, ".claude", "projects"), os.path.join("local", "claude-projects"), "text"),
@@ -404,6 +404,9 @@ def _memory_sources(home: str, mir: str) -> List[Tuple[str, ...]]:
             for d in sorted(glob.glob(os.path.join(pr, "*", "memory"))):
                 out.append((d, os.path.join("memory", rh, "claude", os.path.basename(os.path.dirname(d))), "mem"))
         out.append((os.path.join(hdir, ".codex", "memories"), os.path.join("memory", rh, "codex", "memories"), "mem"))
+        for sub in ("antigravity", "antigravity-cli", "antigravity-ide", "antigravity-backup"):
+            out.append((os.path.join(hdir, ".gemini", sub, "knowledge"), os.path.join("memory", rh, "gemini", sub + "-knowledge"), "mem"))
+        out.append((os.path.join(hdir, ".gemini", "GEMINI.md"), os.path.join("memory", rh, "gemini", "GEMINI"), "mem"))
     cop = os.path.join(mir, "copilot")
     out.append((os.path.join(cop, "data.db"), os.path.join("memory", host, "copilot", "data"), "mem"))
     out.append((os.path.join(cop, "command-history-state.json"), os.path.join("memory", host, "copilot", "data"), "mem"))
@@ -751,7 +754,8 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     manifest.update(done)
     state.setdefault("chat_backup", {})["manifest"] = manifest
     mode = str(cfg.get("remote_tgz_prune", "dry")).strip().lower()
-    if not warns and mode not in _OFF_WORDS:       # bu noktada tüm repolar commit+push+ls-remote ile doğrulandı
+    dump_bad = bool(dump_info and (dump_info.get("errors") or dump_info.get("raw_err")))
+    if not warns and not dump_bad and mode not in _OFF_WORDS:       # repolar doğrulandı VE döküm/gdrive ham yükleme hatasız (bayat/eksik yedekle budama yok)
         try:
             from . import chat_dump
             pr = chat_dump.prune_remote_archives(os.path.join(CLAUDEOPS_DIR, "backups", "chat-mirror"),

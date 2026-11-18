@@ -14,14 +14,17 @@ class FakeRemote:
         self.sent.append(cmd)
         got = cmd[1:] if self.lose_first else cmd           # ilk karakter kayboldu
         self.ran.append(got)
-        if got.startswith("nice "):
+        if got.startswith("bash -c "):
             assert "/live/.chatpull-" in got                          # komut bozulmadıysa çalışır
-            self.files[".chatpull-yuhem-20261107.tgz"] = b"x" * 10
+            self.files[".chatpull-yuhem-20261107.tgz.p000"] = b"x" * 10
+            self.files[".chatpull-yuhem-20261107.tgz.p001"] = b"y" * 5
             self.files[".chatpull-yuhem-20261107.done"] = b""
-            assert "cd " not in got                           # cwd (files kökü) değişmemeli
+            assert " cd " not in got                          # cwd (files kökü) değişmemeli
         elif got.startswith("rm "):
-            for a in got.split()[3:]:                         # yalnız adı verilen dosyaları siler (joker yok)
-                self.files.pop(a.strip("'").split("/")[-1], None)
+            pat = got.split()[-1].strip("'\"")                # `<önek>*`: yalnız kendi önekli dosyalar
+            assert pat.endswith("*") and ".chatpull-" in pat
+            for k in [k for k in self.files if ("/live/" + k).startswith(pat[:-1])]:
+                self.files.pop(k)
 
     busy = False
 
@@ -36,7 +39,10 @@ class FakeRemote:
         return list(self.files)
 
     def download(self, root, name, dest):
-        return len(self.files.get(name, b""))
+        b = self.files.get(name, b"")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        open(dest, "wb").write(b)
+        return len(b)
 
 
 class RemotePullTest(unittest.TestCase):
@@ -48,8 +54,12 @@ class RemotePullTest(unittest.TestCase):
 
     def test_pull_with_first_char_loss(self):
         fr = FakeRemote(lose_first=True)
-        r = R.pull(fr, "yuhem", "20261107", "/tmp/x", sleep=lambda s: None)
+        d = tempfile.mkdtemp()
+        r = R.pull(fr, "yuhem", "20261107", os.path.join(d, "a.tgz"), sleep=lambda s: None)
         self.assertTrue(r["ok"], r)
+        self.assertEqual(r["bytes"], 15)
+        self.assertEqual(open(os.path.join(d, "a.tgz"), "rb").read(), b"x" * 10 + b"y" * 5)      # parçalar sırayla birleşti
+        self.assertEqual(sorted(os.listdir(d)), ["a.tgz"])    # ara parçalar temizlendi
         self.assertEqual(fr.files, {})                        # kendi geçici dosyaları silindi
 
     def test_without_leading_space_would_break(self):
@@ -68,11 +78,17 @@ class RemotePullTest(unittest.TestCase):
     def test_cleanup_touches_only_own_files(self):
         fr = FakeRemote()
         fr.files["kullanici.txt"] = b"onemli"
+        fr.files[".chatpull-yuhem-20261106.tgz.p000"] = b"eski"      # önceki günün artığı da silinir
+        fr.files[".chatpull-baska-20261106.tgz.p000"] = b"baska"     # başka etiket kalır
         fr.send(R.cleanup_command("yuhem", "20261107", "/live"))
-        self.assertIn("kullanici.txt", fr.files)
-        c = R.cleanup_command("yuhem", "20261107", "/live")
-        self.assertNotIn("*", c)                               # joker yok
-        self.assertEqual(sorted(a.split("/")[-1] for a in c.split()[3:]), sorted(R.names("yuhem", "20261107").values()))
+        self.assertEqual(sorted(fr.files), [".chatpull-baska-20261106.tgz.p000", "kullanici.txt"])
+
+    def test_pack_is_private_split_and_excludes_credentials(self):
+        c = R.pack_command("yuhem", "20261107", outdir="/live")
+        self.assertIn("umask 077", c)
+        self.assertIn("split -b 150M", c)
+        for e in ("auth.json", "oauth_creds.json"):
+            self.assertIn(f"--exclude={e}", c)
 
     def test_timeout_and_bad_tag(self):
         class Never(FakeRemote):
@@ -88,7 +104,7 @@ class RemotePullTest(unittest.TestCase):
         self.assertIn(".chatpull-my-host-20261111.done", R.names("my-host", "20261111")["done"])
         fr = FakeRemote()
         fr.files[".chatpull-yuhem-20261107.done"] = b""          # bayat işaret
-        r = R.pull(fr, "yuhem", "20261107", "/tmp/x", poll_s=0, sleep=lambda s: None)
+        r = R.pull(fr, "yuhem", "20261107", os.path.join(tempfile.mkdtemp(), "b.tgz"), poll_s=0, sleep=lambda s: None)
         self.assertTrue(fr.ran[0].strip().startswith("rm "))              # pack'ten önce temizlendi
         self.assertTrue(r["ok"])
 
