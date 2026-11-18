@@ -65,7 +65,9 @@ def claude_guidance_path() -> Optional[str]:
 
 def _with_block(existing: str, block_body: Optional[str]) -> str:
     """`existing` içindeki işaretli bloğu `block_body` ile değiştir (None = bloğu kaldır); blok yoksa sona ekle."""
-    begin, end = existing.find(BLOCK_BEGIN), existing.find(BLOCK_END)
+    end = existing.find(BLOCK_END)
+    # BEGIN'i END'e en YAKIN olandan seç: yetim (END'siz) bir BEGIN varsa ilk BEGIN'den END'e kadar silmek kullanıcı metnini de götürürdü
+    begin = existing.rfind(BLOCK_BEGIN, 0, end) if end != -1 else -1
     if begin != -1 and end > begin:
         head, tail = existing[:begin].rstrip("\n"), existing[end + len(BLOCK_END):].lstrip("\n")
         rest = (head + ("\n\n" if head and tail else "") + tail) if (head or tail) else ""

@@ -41,6 +41,12 @@ class RelatedTestsTests(unittest.TestCase):
     def test_changed_test_file_selected_itself(self):
         self.assertEqual(self.sel("tests/test_none.py"), {"test_none": ["(test)"]})
 
+    def test_deleted_module_still_selects_its_tests(self):
+        """git'te silinen modülün dosyası yok: onu import eden test yine seçilmeli (review cops R-6)."""
+        self.assertEqual(list(self.sel("claudeops/gone.py")), [])                       # test henüz import etmiyor
+        _w(f"{self.root}/tests/test_gone.py", "from claudeops import gone\nfrom claudeops.gone import x\n")
+        self.assertEqual(list(self.sel("claudeops/gone.py")), ["test_gone"])
+
     def test_non_python_selects_nothing(self):
         self.assertEqual(self.sel("README.md"), {})
 

@@ -39,6 +39,8 @@ NVM_SH = os.path.join(NVM_DIR, "nvm.sh")
 # 2026-09-25'te doğrulandı (nvm-sh/nvm GitHub reposu) -- sürüm numarası
 # zamanla eskiyebilir, gerekirse burada güncellenmeli.
 NVM_INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh"
+# Sabitlenmiş sha256 (ilk-kullanımda-güven: 18 Kas 2026'da iki AYRI indirme aynı özeti verdi, 17883 bayt). Sürüm değişirse ikisi birlikte güncellenir.
+NVM_INSTALL_SCRIPT_SHA256 = "48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e"
 
 # cli adı -> (PATH'teki/kurulacak binary adı, resmi npm paket adı) -- üçü de
 # 2026-09-25'te doğrulandı: docs (claude), GitHub repo (codex, copilot).
@@ -96,7 +98,7 @@ def _ensure_node(lang: str) -> Optional[Dict[str, Any]]:
             return {"ok": False, "error": "curl bulunamadı -- nvm kurulamıyor" if lang == "tr"
                     else "curl not found -- can't install nvm"}
         # Boru yok: önce dosyaya indir (-f: HTTP hatasında dur), sonra çalıştır; yarım/hatalı indirme çalıştırılmaz.
-        # Sürüm etiketi sabit (v0.40.8); sağlama toplamı doğrulaması için bilinen bir özet yok (açık madde).
+        # Sürüm etiketi sabit (v0.40.8) ve indirilen dosyanın sha256'sı NVM_INSTALL_SCRIPT_SHA256 ile doğrulanır; uyuşmazsa çalıştırılmaz.
         os.makedirs(INSTALL_DIR, exist_ok=True)
         nvm_script = os.path.join(INSTALL_DIR, ".install-nvm.sh")
         try:
@@ -104,6 +106,12 @@ def _ensure_node(lang: str) -> Optional[Dict[str, Any]]:
                                 capture_output=True, text=True, timeout=60)
             if dl.returncode != 0:
                 return {"ok": False, "error": (dl.stderr or "nvm indirme başarısız").strip()[-2000:]}
+            import hashlib
+            with open(nvm_script, "rb") as fh:
+                got = hashlib.sha256(fh.read()).hexdigest()
+            if got != NVM_INSTALL_SCRIPT_SHA256:      # özet tutmuyorsa ÇALIŞTIRMA (kurcalanmış/değişmiş indirme)
+                return {"ok": False, "error": ("nvm kurulum betiğinin sha256'sı beklenenle uyuşmuyor, çalıştırılmadı" if lang == "tr"
+                                               else "nvm install script sha256 mismatch, not executed") + f" ({got[:12]})"}
             r = subprocess.run(["bash", nvm_script], capture_output=True, text=True, timeout=120)
         except subprocess.TimeoutExpired:
             return {"ok": False, "error": "nvm kurulumu zaman aşımına uğradı (120sn)" if lang == "tr"

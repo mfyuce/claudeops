@@ -37,6 +37,22 @@ class TokenFile(unittest.TestCase):
             self.assertEqual(open(p).read(), "tok456")
         self.assertEqual([f for f in os.listdir(d) if f.endswith(".tmp")], [])
 
+class OrphanMarker(unittest.TestCase):
+    def test_orphan_begin_does_not_eat_user_text(self):
+        orphan = f"önce\n{routing.BLOCK_BEGIN}\nkullanıcının kendi notu\n"
+        a = routing._with_block(orphan, "YÖNERGE")
+        b = routing._with_block(a, "YÖNERGE2")          # ikinci eşitleme: eskiden ilk BEGIN'den END'e kadar her şeyi siliyordu
+        self.assertIn("kullanıcının kendi notu", b)
+        self.assertIn("YÖNERGE2", b)
+        self.assertNotIn("YÖNERGE\n", b.replace("YÖNERGE2", ""))
+        self.assertEqual(b.count(routing.BLOCK_END), 1)
+
+    def test_normal_block_replaced_and_removed(self):
+        x = routing._with_block("a\n", "ILK")
+        y = routing._with_block(x, "IKINCI")
+        self.assertIn("IKINCI", y); self.assertNotIn("ILK", y)
+        self.assertEqual(routing._with_block(y, None).strip(), "a")
+
 
 if __name__ == "__main__":
     unittest.main()

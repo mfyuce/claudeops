@@ -113,7 +113,7 @@ SESSION_STORE_DB = os.path.expanduser("~/.copilot/session-store.db")
 # `_API_KEY_FILE`+`sh -c '. file && exec ...'` deseninin AYNISI — tek fark,
 # ucli'nin TEK anahtarına karşı burada keyfi sayıda {ENV_VAR: value} çifti
 # olduğu için dosya içeriği `export KEY=VALUE` satırları (shlex-quoted).
-_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+from ..envnames import is_safe_env_name
 _BYOK_ENV_FILE = os.path.expanduser("~/.claude/claudeops/copilot_byok_env")
 _BYOK_ENV_MANAGED_MARKER = _BYOK_ENV_FILE + ".managed"  # bkz. ucli_provider.py'nin AYNI deseni
 
@@ -128,7 +128,7 @@ def _sync_byok_env_file() -> bool:
     sadece savunma-derinliği (TODO.md'nin "aynı allowlist deseniyle kapatılmalı"
     notu, spawn.py'nin env_prefix'i için de geçerli aynı ilke)."""
     env = byok_env_for("copilot")
-    safe_env = {k: v for k, v in env.items() if _ENV_NAME_RE.match(k)}
+    safe_env = {k: v for k, v in env.items() if is_safe_env_name(k)}
     if not safe_env:
         if os.path.isfile(_BYOK_ENV_MANAGED_MARKER):
             for p in (_BYOK_ENV_FILE, _BYOK_ENV_MANAGED_MARKER):
