@@ -45,9 +45,11 @@ def read_strict() -> dict:
         with open(INSTANCES_JSON, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
-        return {"version": _VERSION, "instances": {}}
-    except (ValueError, OSError) as e:      # UnicodeDecodeError dahil (bozuk kodlama)
+        data = {"version": _VERSION, "instances": {}}     # dosya yoksa db kipinde DB'den okunur (aşağıda)
+    except (ValueError, OSError) as e:      # UnicodeDecodeError dahil (bozuk kodlama): yazıcılar üstüne yazmasın
         raise InstancesCorrupt(f"{INSTANCES_JSON} okunamadı: {e}") from e
+    from . import statedocs
+    data = statedocs.read_json("instances", INSTANCES_JSON, data)   # db: DB tek kaynak (dosya ayna); files: dosya
     if not isinstance(data, dict) or not isinstance(data.get("instances"), dict):
         raise InstancesCorrupt(f"{INSTANCES_JSON} beklenen şekilde değil")
     return data
