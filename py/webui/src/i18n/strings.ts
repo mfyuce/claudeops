@@ -325,6 +325,9 @@ export interface Strings {
   diagWindowless: (names: string) => string;
   diagOrphans: (list: string) => string;
   regSubList: string;
+  snapSubNow: string;
+  snapSubHistory: string;
+  orchSubRun: string;
   regSubNew: string;
   windowlessBadge: string;
   noTerminalBadge: string;
@@ -1213,6 +1216,9 @@ export const STRINGS: Record<Lang, Strings> = {
     diagRestartDone: (r) => `✓ kapatıldı (${r}) — bir sonraki spawn'da otomatik yeniden doğacak`,
     diagRefreshHint: "çalışma süreleri her 4s otomatik güncellenir",
     regSubList: "Kayıtlı",
+    snapSubNow: "Şimdiki",
+    snapSubHistory: "Geçmiş",
+    orchSubRun: "Çalıştır",
     regSubNew: "Yeni kayıt",
     diagOrphans: (list) => `⚠ terminalsiz süreçler (pty yok, tmux yok): ${list} — "boşa" = 10 dk boyunca >=%50 CPU; Çalışan sekmesinden Durdur ile kapatılır`,
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
@@ -2209,6 +2215,9 @@ export const STRINGS: Record<Lang, Strings> = {
     diagRestartDone: (r) => `✓ stopped (${r}) — will respawn automatically on the next spawn`,
     diagRefreshHint: "uptimes auto-refresh every 4s",
     regSubList: "Registered",
+    snapSubNow: "Current",
+    snapSubHistory: "History",
+    orchSubRun: "Run",
     regSubNew: "New registration",
     diagOrphans: (list) => `⚠ processes without a terminal (no pty, no tmux): ${list} — "spin" = >=50% CPU for 10 min; stop from the Running tab`,
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,

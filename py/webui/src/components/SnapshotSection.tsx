@@ -60,6 +60,7 @@ export function SnapshotSection() {
     void load();
   }, [load]);
 
+  const [subTab, setSubTab] = useState<"now" | "history">("now");
   if (!data) return null;
   const snap = data.snapshot;
 
@@ -108,6 +109,15 @@ export function SnapshotSection() {
       <span className="opts-hint" style={{ flexBasis: "100%" }}>
         <b>{t.snapshotLabel}</b> {t.snapshotDesc}
       </span>
+      <div className="tabs" style={{ flexBasis: "100%" }}>
+        <button type="button" className={subTab === "now" ? "active" : ""} onClick={() => setSubTab("now")}>
+          {t.snapSubNow}
+        </button>
+        <button type="button" className={subTab === "history" ? "active" : ""} onClick={() => setSubTab("history")}>
+          {t.snapSubHistory} ({history ? Math.max(history.length - 1, 0) : 0})
+        </button>
+      </div>
+      {subTab === "now" && (<>
       <span>
         {snap.saved_at !== null && snap.kind !== null
           ? t.snapshotInfo(snap.count, fmtWhen(snap.saved_at), snap.kind) + t.snapshotMirrorsSuffix(snap.mirrors ?? 0)
@@ -140,7 +150,8 @@ export function SnapshotSection() {
           {failedMirrors.map((m) => `\n  ✗ ${m.host}:${m.name}: ${m.error ?? ""}`).join("")}
         </pre>
       )}
-      {history && history.length > 1 && (
+      </>)}
+      {subTab === "history" && history && history.length > 1 && (
         <div style={{ flexBasis: "100%" }}>
           <span className="opts-hint">
             <b>{t.snapshotHistoryLabel}</b>
@@ -162,7 +173,7 @@ export function SnapshotSection() {
           <Pagination page={histPage.page} totalPages={histPage.totalPages} onChange={histPage.setPage} />
         </div>
       )}
-      {history && history.length <= 1 && <span className="opts-hint">{t.snapshotHistoryEmpty}</span>}
+      {subTab === "history" && history && history.length <= 1 && <span className="opts-hint">{t.snapshotHistoryEmpty}</span>}
     </div>
   );
 }

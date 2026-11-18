@@ -202,16 +202,28 @@ export function OrchTab({ selection }: OrchTabProps) {
     refresh();
   }
 
+  const [subTab, setSubTab] = useState<"run" | "history">("run");
   const runPage = usePagination(fullHistory ?? data?.orch.recent ?? [], 10);
   if (!data) return null;
 
   const historyList = fullHistory ?? data.orch.recent;
+  const showHistory = subTab === "history" && !activeId && !viewingRunId;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
       <span className="opts-hint">{t.orchDesc}</span>
+      {!activeId && !viewingRunId && (
+        <div className="tabs">
+          <button type="button" className={subTab === "run" ? "active" : ""} onClick={() => setSubTab("run")}>
+            {t.orchSubRun}
+          </button>
+          <button type="button" className={subTab === "history" ? "active" : ""} onClick={() => setSubTab("history")}>
+            {t.orchHistoryTitle} ({historyList.length})
+          </button>
+        </div>
+      )}
 
-      {activeId ? (
+      {showHistory ? null : activeId ? (
         <RunView run={activeDetail} onCancel={() => void handleCancelActive()} />
       ) : viewingRunId ? (
         <>
@@ -277,6 +289,7 @@ export function OrchTab({ selection }: OrchTabProps) {
         </>
       )}
 
+      {(showHistory || activeId || viewingRunId) && (
       <div>
         <b>{t.orchHistoryTitle}</b>
         {historyList.length === 0 ? (
@@ -309,6 +322,7 @@ export function OrchTab({ selection }: OrchTabProps) {
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }
