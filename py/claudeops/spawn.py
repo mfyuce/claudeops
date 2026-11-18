@@ -94,6 +94,35 @@ def _ids_held_by_others(name: str) -> frozenset:
     return frozenset(ids)
 
 
+
+SESSION_USD_CAP_KEY = "CLAUDEOPS_SESSION_USD_CAP"
+
+
+def _apply_hook_session_cap(hook_env: dict, cli_opts, provider):
+    """Kanca env'inde `CLAUDEOPS_SESSION_USD_CAP` (kullanıcının kalan günlük USD'si) varsa env'den ÇIKARIR (oturuma sızmaz) ve cap'i kabul eden
+    provider'da (ucli) `cli_opts["max_session_usd"]` = min(kayıttaki/ayardaki tavan, kanca tavanı) yapar. 0/boş/bozuk tavan yok sayılır."""
+    raw = hook_env.pop(SESSION_USD_CAP_KEY, None)
+    if raw is None or not getattr(provider, "accepts_cli_opts", False):
+        return cli_opts
+    try:
+        cap = float(str(raw).strip())
+    except ValueError:
+        return cli_opts
+    if not (cap > 0) or cap == float("inf"):
+        return cli_opts
+    cap = max(cap, 0.01)
+    opts = dict(cli_opts or {})
+    try:
+        cur = float(opts.get("max_session_usd") or 0)
+    except (TypeError, ValueError):
+        cur = 0.0
+    if not cur:
+        from .ucli_session_opts import default_max_session_usd
+        cur = default_max_session_usd()
+    opts["max_session_usd"] = min(cur, cap) if cur > 0 else cap
+    return opts
+
+
 def spawn_session(
     name: str,
     cwd: str,
@@ -161,6 +190,10 @@ def spawn_session(
         extra_args = provider.mcp_launch_args(mcp_server, cwd=cwd)
     else:
         extra_args = provider.mcp_launch_args(mcp_server)
+    # Kanca (çok kullanıcı) build'DEN ÖNCE çağrılır: SpawnRefused erken yükselir ve kancanın oturum-USD-tavanı ucli argv'sine girebilir.
+    from . import authz as _authz
+    hook_env = _authz.spawn_env(cli, name, cwd)     # çok kullanıcı: kullanıcı başına sağlayıcı dizini / SpawnRefused (kanca yoksa {})
+    cli_opts = _apply_hook_session_cap(hook_env, cli_opts, provider)
     # `cli_opts` YALNIZ kabul eden provider'a (ucli) geçer: diğerlerinin çağrısı ve argv'si birebir aynı kalır.
     opt_kwargs = {"cli_opts": cli_opts} if (cli_opts and getattr(provider, "accepts_cli_opts", False)) else {}
     cli_invocation = provider.build_inner_command(cwd, model, permission_mode, effort,
@@ -174,8 +207,7 @@ def spawn_session(
     # tmux-backed agy session'ında proc'a hiç ulaşmadı). Komut satırına `env` ile
     # gömmek bu env-inheritance tuhaflığını tamamen atlar.
     overrides = dict(provider.env_overrides(name))
-    from . import authz as _authz
-    overrides.update(_authz.spawn_env(cli, name, cwd))     # çok kullanıcı: kullanıcı başına sağlayıcı dizini / SpawnRefused (kanca yoksa {})
+    overrides.update(hook_env)
     # Savunma-derinliği: env-var İSMİ (`k`) burada da doğrulanıyor — asıl kapı
     # settings.py::save_settings (BYOK_ENV_NAME_RE) ama `env_overrides()`
     # teorik olarak BAŞKA bir yoldan da (settings.json dışı) gelebilir; sadece

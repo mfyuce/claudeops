@@ -285,6 +285,27 @@ class SpawnHookTest(unittest.TestCase):
         with mock.patch.object(spawn, "detect_display", lambda: ":0"), self.assertRaises(ValueError):
             spawn.spawn_session("nm", "/w", "m", dry_run=True, cli="shell", force_new=True)
 
+    def test_hook_session_usd_cap_min_with_default_and_popped_from_env(self):
+        from claudeops import spawn
+
+        class Prov:
+            accepts_cli_opts = True
+        with mock.patch("claudeops.ucli_session_opts.default_max_session_usd", return_value=8.0):
+            env = {"CLAUDEOPS_SESSION_USD_CAP": "2.5", "KEEP": "1"}
+            o = spawn._apply_hook_session_cap(env, None, Prov())
+            self.assertEqual(o, {"max_session_usd": 2.5})            # kalan 2.5 < varsayılan 8
+            self.assertEqual(env, {"KEEP": "1"})                      # oturuma sızmaz
+            self.assertEqual(spawn._apply_hook_session_cap({"CLAUDEOPS_SESSION_USD_CAP": "50"}, None, Prov()), {"max_session_usd": 8.0})
+            self.assertEqual(spawn._apply_hook_session_cap({"CLAUDEOPS_SESSION_USD_CAP": "3"}, {"max_session_usd": 1}, Prov()), {"max_session_usd": 1.0})
+            self.assertEqual(spawn._apply_hook_session_cap({"CLAUDEOPS_SESSION_USD_CAP": "0.001"}, None, Prov()), {"max_session_usd": 0.01})   # taban
+            for bad in ("0", "x", "-1", "inf", ""):
+                self.assertIsNone(spawn._apply_hook_session_cap({"CLAUDEOPS_SESSION_USD_CAP": bad}, None, Prov()))
+        with mock.patch("claudeops.ucli_session_opts.default_max_session_usd", return_value=0.0):           # ayar 0 = tavan yok: kanca tavanı yine uygulanır
+            self.assertEqual(spawn._apply_hook_session_cap({"CLAUDEOPS_SESSION_USD_CAP": "4"}, None, Prov()), {"max_session_usd": 4.0})
+        e2 = {"CLAUDEOPS_SESSION_USD_CAP": "2"}
+        self.assertIsNone(spawn._apply_hook_session_cap(e2, None, object()))      # cap kabul etmeyen provider: opts değişmez, anahtar yine ayıklanır
+        self.assertEqual(e2, {})
+
     def test_refusal_formatting(self):
         from claudeops import ucli_cost
         r = ucli_cost.refusal(authz.SpawnRefused("login_required:codex", "cmd"))
