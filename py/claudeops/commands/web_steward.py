@@ -1822,7 +1822,14 @@ def _ensure_running_remote(name: str, host: str, model: str, effort: str, fresh:
     if rt is not None and (host, start_name) in rt.started:
         return {"ok": False, "error": f"start already sent for {start_name!r} on {host} this tick",
                 "code": "start_pending", "host": host}
-    warn = remote_resume_warning(start_name, host, bool(fresh), steward_config(sid))
+    cfg_s = steward_config(sid)
+    big = 0
+    if not fresh and int(cfg_s.resume_max_context_tokens or 0) > 0:
+        big = _remote_oversized_resume(host, start_name, cfg_s)
+        if big:          # yerel yolla AYNI: soğuk büyük konuşmayı --resume etme, taze aç
+            fresh = True
+            sw.log_event("remote_start_fresh_big_context", paths=sw.paths_for(sid), name=start_name, host=host, tokens=big)
+    warn = "" if big else remote_resume_warning(start_name, host, bool(fresh), cfg_s)
     if warn:
         sw.log_event("remote_start_resume_unknown_context", paths=sw.paths_for(sid), name=start_name, host=host)
     res = _remote_post(host, "/api/start", {"name": start_name, "model": model, "effort": effort, "fresh": bool(fresh)},
@@ -1845,6 +1852,22 @@ def _ensure_running_remote(name: str, host: str, model: str, effort: str, fresh:
     return out
 
 
+def _remote_oversized_resume(host: str, name: str, cfg: sw.Config) -> int:
+    """Uzak host `resume_context` yeteneğini veriyorsa `--resume` bağlamı eşiği aşıyorsa token sayısı, aksi 0 (eski host / bilinmiyor
+    / ağ hatası: 0, uyarı yolu `remote_resume_warning` devreye girer)."""
+    limit = int(cfg.resume_max_context_tokens or 0)
+    if limit <= 0:
+        return 0
+    try:
+        caps, facts = _probe_facts(host, [name], 5.0)
+    except Exception:
+        return 0
+    if "resume_context" not in (caps.get("capabilities") or []):
+        return 0
+    tok = (facts.get(name) or {}).get("resume_context_tokens")
+    return int(tok) if isinstance(tok, int) and not isinstance(tok, bool) and tok > limit else 0
+
+
 def remote_resume_warning(name: str, host: str, fresh: bool, cfg: sw.Config) -> str:
     """TBD#123 (uzak): host API'si konuşmanın bağlam boyutunu vermiyor, bu yüzden büyük bağlamlı `--resume` ÖNLENEMEZ.
     Yapılabilen kısım: `fresh` verilmediyse ve eşik açıksa uyarı metni (çağıran `fresh=True` ile taze açabilir).
@@ -1855,22 +1878,29 @@ def remote_resume_warning(name: str, host: str, fresh: bool, cfg: sw.Config) -> 
             f"(eşik {int(cfg.resume_max_context_tokens)} token uygulanamadı). Büyükse fresh=True ile taze açın.")
 
 
-def _oversized_resume(name: str, cfg: sw.Config) -> int:
-    """TBD#123: `--resume` edilecek konuşma (spawn'ın seçeceği jsonl) son turda `cfg.resume_max_context_tokens`ten büyük bağlam
-    taşıyorsa o token sayısı, değilse 0. Yalnız claude ailesi (jsonl bilinir); bilinmiyorsa 0 (davranış değişmez)."""
-    limit = int(cfg.resume_max_context_tokens or 0)
-    if limit <= 0:
-        return 0
+def resume_context_tokens(name: str) -> Optional[int]:
+    """`--resume` edilecek konuşmanın (spawn'ın seçeceği jsonl) son tur bağlam token'ı; bilinmiyorsa None (claude dışı, jsonl/cwd yok).
+    Uzak host'un `GET /api/session/facts` `resume_context_tokens` alanı da bunu verir."""
     try:
         cwd = _cwd_resolver()(name)
         cli = _project_cli(name)
         if not cwd or cli != "claude":
-            return 0
+            return None
         rid = get_provider(cli).resolve_resume_id(cwd, session_name=name)
         tokens = context_tokens_for(cwd, rid) if rid else None
     except Exception:
+        return None
+    return int(tokens) if tokens else None
+
+
+def _oversized_resume(name: str, cfg: sw.Config) -> int:
+    """TBD#123: `--resume` edilecek konuşma son turda `cfg.resume_max_context_tokens`ten büyük bağlam taşıyorsa o token sayısı,
+    değilse 0. Yalnız claude ailesi (jsonl bilinir); bilinmiyorsa 0 (davranış değişmez)."""
+    limit = int(cfg.resume_max_context_tokens or 0)
+    if limit <= 0:
         return 0
-    return int(tokens) if tokens and tokens > limit else 0
+    tokens = resume_context_tokens(name)
+    return tokens if tokens and tokens > limit else 0
 
 
 def _closed_in_models(name: str) -> bool:

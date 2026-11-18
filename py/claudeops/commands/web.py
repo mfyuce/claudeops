@@ -2864,7 +2864,7 @@ def _term_set_mode(name: str, target_mode: str, lang: str = "tr") -> dict:
 
 
 SESSION_FACTS_API = 1
-SESSION_FACTS_CAPABILITIES = ["exact_target", "session_facts"]
+SESSION_FACTS_CAPABILITIES = ["exact_target", "session_facts", "resume_context"]
 SESSION_FACTS_MAX_NAMES = 50
 SESSION_FACTS_TEXT_MAX = 20000
 
@@ -2879,7 +2879,8 @@ def _session_facts(names: List[str]) -> dict:
         s = live.get(name)
         if s is None:
             out[name] = {"running": False, "started_age_s": None, "subagent_active": False,
-                         "context_tokens": None, "last_assistant": "", "sid_known": False}
+                         "context_tokens": None, "last_assistant": "", "sid_known": False,
+                         "resume_context_tokens": web_steward.resume_context_tokens(name)}   # durmuş oturum: sonraki --resume bağlamı (TBD#123)
             continue
         started = _process_started_at(s.pid)
         tokens, sub, text, warn = None, False, "", 0

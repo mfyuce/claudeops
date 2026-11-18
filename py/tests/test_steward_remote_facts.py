@@ -64,7 +64,7 @@ class TestFactsEndpoint(unittest.TestCase):
     def test_facts_for_exact_names(self):
         r = web._session_facts(["oiso", "oiso", "yok"])
         self.assertEqual((r["ok"], r["api"]), (True, 1))
-        self.assertEqual(r["capabilities"], ["exact_target", "session_facts"])
+        self.assertEqual(r["capabilities"], ["exact_target", "session_facts", "resume_context"])
         f = r["sessions"]["oiso"]
         self.assertTrue(f["running"] and f["subagent_active"] and f["sid_known"])
         self.assertEqual(f["context_tokens"], 4321)
