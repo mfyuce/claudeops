@@ -84,6 +84,7 @@ from ..spawn import spawn_session, detect_display, open_window, open_mirror_wind
 from ..providers.claude_provider import jsonl_path_for, last_assistant_model, last_assistant_effort
 from ..providers import PROVIDERS, DEFAULT_CLI, get_provider
 from .. import turns
+from ..discovery import terminal_lost as _terminal_lost, idle_spin as _idle_spin
 from ..tmux_backend import (
     is_tmux_backed, tmux_has_session, tmux_capture, tmux_capture_range, tmux_client_count, tmux_send_keys, tmux_send_raw,
     tmux_send_special_key, tmux_resize_window, tmux_release_size, tmux_pane_size, tmux_pane_snapshot, pane_is_masked_input, tty_is_masked,
@@ -1840,6 +1841,8 @@ def _status_payload() -> dict:
             "instance": rec is not None,
             "blueprint": rec.get("blueprint") if rec else None,
             "tmux": is_tmux_backed(s.pid),
+            "no_terminal": (not is_tmux_backed(s.pid)) and _terminal_lost(s.pid),
+            "idle_spin": _idle_spin(s.pid, s.cpu, is_tmux_backed(s.pid)),
             "host": LOCAL_HOST_NAME,
             "live_model": live_model,
             "live_effort": live_effort,

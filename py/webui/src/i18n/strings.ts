@@ -324,6 +324,10 @@ export interface Strings {
   diagRefreshHint: string;
   diagWindowless: (names: string) => string;
   windowlessBadge: string;
+  noTerminalBadge: string;
+  noTerminalHint: string;
+  idleSpinBadge: string;
+  idleSpinHint: string;
   windowlessHint: string;
   usageBadge: (tokens: string, requests: number, floor: boolean, quota?: string) => string;
   usageHint: (u: {
@@ -1207,6 +1211,10 @@ export const STRINGS: Record<Lang, Strings> = {
     diagRefreshHint: "çalışma süreleri her 4s otomatik güncellenir",
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
     windowlessBadge: "penceresiz",
+    noTerminalBadge: "terminali yok",
+    noTerminalHint: "Terminali yok (pty silinmiş, tmux yok): süreç sahipsiz kalmış. Panelden Durdur ile kapatabilirsin (takılırsa 10 sn sonra zorla).",
+    idleSpinBadge: "boşa dönüyor?",
+    idleSpinHint: "Terminalsiz ve CPU yüksek: takılı döngüde olabilir. Durdur zorlamalı kapatır.",
     windowlessHint: "gnome-terminal penceresi yok (tmux-only fallback) — CLI çalışıyor, sadece görünür pencere yok. \"pencere aç\" ile CLI yeniden başlamadan bir pencere bağlayabilirsin.",
     usageBadge: (tokens, requests, floor, quota) =>
       `${floor ? "≥" : ""}${tokens} token · ${requests} istek${quota ? ` · kota ≈${quota}` : ""}`,
@@ -2196,6 +2204,10 @@ export const STRINGS: Record<Lang, Strings> = {
     diagRefreshHint: "uptimes auto-refresh every 4s",
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
     windowlessBadge: "windowless",
+    noTerminalBadge: "no terminal",
+    noTerminalHint: "No terminal (pty deleted, no tmux): the process is orphaned. Stop closes it (force-kills after 10 s if it hangs).",
+    idleSpinBadge: "spinning?",
+    idleSpinHint: "No terminal and high CPU: may be stuck in a loop. Stop force-kills it.",
     windowlessHint: "no gnome-terminal window (tmux-only fallback) — the CLI is running, it just has no visible window. \"open window\" attaches one without restarting the CLI.",
     usageBadge: (tokens, requests, floor, quota) =>
       `${floor ? "≥" : ""}${tokens} tokens · ${requests} req${quota ? ` · quota ≈${quota}` : ""}`,

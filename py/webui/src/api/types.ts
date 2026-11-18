@@ -49,6 +49,10 @@ export interface SessionInfo {
   history_size: number | null;
   registered: boolean;
   tmux: boolean;
+  /** tmux yok + pty silinmiş/yok (terminalsiz süreç); yoksa/eski sunucuda undefined. */
+  no_terminal?: boolean;
+  /** terminalsiz + CPU >= %50: boşa dönüyor olabilir. */
+  idle_spin?: boolean;
   /** `model` is what claudeops has RECORDED for the name (models.tsv — what the
    * next start would use, filled in even for stopped rows). These two come from
    * the RUNNING process's own command line instead, so the panel can show what a

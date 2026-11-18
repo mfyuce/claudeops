@@ -160,6 +160,16 @@ export function SessionRow({
               {t.windowlessBadge}
             </span>
           )}
+          {session.no_terminal && (
+            <span className="unreg-badge" title={t.noTerminalHint}>
+              {t.noTerminalBadge}
+            </span>
+          )}
+          {session.idle_spin && (
+            <span className="unreg-badge" title={t.idleSpinHint}>
+              {t.idleSpinBadge}
+            </span>
+          )}
           {session.usage && <UsageBadge usage={session.usage} />}
           {session.phase && <PhaseBadge phase={session.phase} />}
           {session.failed_turns && <FailedTurnsBadge failed={session.failed_turns} />}

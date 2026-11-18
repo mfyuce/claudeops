@@ -120,6 +120,29 @@ def fold_background(sessions: List[Session]) -> List[Session]:
     return [s for s in sessions if id(s) not in drop]
 
 
+def fallback_name(cli: str, cwd: str, pid: int) -> str:
+    """Adsız CLI süreci için yedek ad: `<cli>@<cwd dizin adı>#<pid>`."""
+    base = os.path.basename((cwd or "").rstrip("/")) or "root"
+    return f"{cli}@{base}#{pid}"
+
+
+def terminal_lost(pid: int) -> bool:
+    """Sürecin terminali yok mu: /proc/<pid>/fd/0 ' (deleted)' ya da pts/tty'ye değil. Okunamazsa False."""
+    try:
+        t = os.readlink(f"/proc/{pid}/fd/0")
+    except OSError:
+        return False
+    return t.endswith(" (deleted)") or not (t.startswith("/dev/pts/") or t.startswith("/dev/tty"))
+
+
+IDLE_SPIN_CPU = 50.0
+
+
+def idle_spin(pid: int, cpu: float, tmux: bool) -> bool:
+    """Terminali yok (tmux yok + pty gitmiş) VE CPU yüksek: boşa dönüyor olabilir."""
+    return (not tmux) and cpu >= IDLE_SPIN_CPU and terminal_lost(pid)
+
+
 def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List[int]]] = None) -> List[Session]:
     """Tüm çalışan session'ları döndür (her isim için tek Session — AMA aynı isimde
     birden fazla CANLI pid varsa hepsi, bkz. 2026-10-06 notu).
@@ -209,6 +232,10 @@ def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List
             except (psutil.Error, FileNotFoundError):
                 cwd = ""
             name = provider.extract_name(p, cmd)
+            if not name and provider.name != "claude":
+                # Adsız (ör. `--session`sız ucli) süreç panelde HİÇ görünmüyordu: yedek ad. claude hariç: orada adsız
+                # süreçler (yardımcı/arka plan) çok; ad `--remote-control` ile gelir.
+                name = fallback_name(provider.name, cwd, p.pid) if cwd else None
             if not name:
                 continue
             if not cwd:
