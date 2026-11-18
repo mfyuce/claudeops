@@ -293,6 +293,14 @@ def agy_home(root: str, cwd: str, allow: Sequence[str], real_home: str = "", slo
     return home
 
 
+def agy_shared_env(real_home: str = "") -> Dict[str, str]:
+    """İzole agy HOME'unda her yuva kendi `.rustup` kopyasını (~1,5 GB) kuruyordu (agy_home* toplam ~7 GB). Gerçek HOME'daki
+    toolchain'ler varsa `RUSTUP_HOME` ona işaret eder: kafes `--ro-bind / /` olduğundan OKUNUR, indirme gerekmez. `CARGO_HOME`
+    (kayıt defteri önbelleği yazılır) yuva başına kalır."""
+    rh = os.path.join(real_home or os.path.expanduser("~"), ".rustup")
+    return {"RUSTUP_HOME": rh} if os.path.isdir(os.path.join(rh, "toolchains")) else {}
+
+
 AGY_TMP_KEEP_SECONDS = 86400
 
 
@@ -1520,6 +1528,7 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
                 home = agy_home(p.root, cwd, allow, slot=slot)
                 env_extra["HOME"] = home
                 env_extra["TMPDIR"] = os.path.join(home, "tmp")     # kafeste /tmp salt okunur
+                env_extra.update(agy_shared_env())
                 bwrap = shutil.which("bwrap") if getattr(cfg, "review_agy_jail", True) else None
                 if bwrap:    # salt-okunur dosya sistemi kafesi: izin sorusu yok, yazma imkansız (yoksa izin listesi yolu)
                     argv = bwrap_jail(argv, home, bwrap)
@@ -2723,7 +2732,7 @@ def verify_argv(cfg: Any, cwd: str, prompt: str, *, api_key: Optional[str] = Non
         allow = rv.agy_allow_list(getattr(cfg, "review_agy_allow", ""))
         if allow:
             home = agy_home(sw.paths_for(cfg.sid).root, cwd, allow, slot=verify_agy_slot(cwd))
-            env.update(HOME=home, TMPDIR=os.path.join(home, "tmp"))
+            env.update(HOME=home, TMPDIR=os.path.join(home, "tmp"), **agy_shared_env())
             bwrap = shutil.which("bwrap") if getattr(cfg, "review_agy_jail", True) else None
             if bwrap:
                 argv = bwrap_jail(argv, home, bwrap)

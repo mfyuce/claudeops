@@ -61,5 +61,15 @@ class P3b(unittest.TestCase):
             web_hosts._status_consumers.clear()
 
 
+
+class SharedRustup(unittest.TestCase):
+    def test_rustup_home_points_to_real_home_when_toolchains_exist(self):
+        from claudeops.commands import web_review as wr
+        with tempfile.TemporaryDirectory() as h:
+            self.assertEqual(wr.agy_shared_env(h), {})
+            os.makedirs(os.path.join(h, ".rustup", "toolchains"))
+            self.assertEqual(wr.agy_shared_env(h), {"RUSTUP_HOME": os.path.join(h, ".rustup")})
+
+
 if __name__ == "__main__":
     unittest.main()
