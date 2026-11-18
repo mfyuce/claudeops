@@ -8,6 +8,8 @@ import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { ErrorBox } from "./shared/ErrorBox";
+import { Pagination } from "./shared/Pagination";
+import { usePagination } from "../hooks/usePagination";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 
@@ -100,6 +102,7 @@ export function ReadlistTab() {
   const items = data?.items ?? [];
   const shown = hideRead ? items.filter((i) => !i.read) : items;
   const unread = items.filter((i) => !i.read).length;
+  const { pageItems, page, totalPages, setPage } = usePagination(shown, 10);
   return (
     <div>
       <h2>{t.readlistTitle}</h2>
@@ -113,9 +116,10 @@ export function ReadlistTab() {
       </div>
       {error && <ErrorBox text={error} />}
       {data && shown.length === 0 && <p style={{ opacity: 0.7 }}>{t.readlistEmpty}</p>}
-      {shown.map((it) => (
+      {pageItems.map((it) => (
         <Card key={it.id} it={it} readerOn={!!data?.reader} onRead={load} />
       ))}
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }

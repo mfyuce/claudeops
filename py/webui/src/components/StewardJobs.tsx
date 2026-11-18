@@ -1,6 +1,8 @@
 /** Değnekçi sekmesi: servis kaydı (varaka) + iş kuyruğu. Onay/ret BİLEREK yok: yalnız varaka'daki insan yöneticide.
  *  Token değeri hiçbir yerde girilmez ya da gösterilmez; yalnız token dosyasının yolu. */
 import { useCallback, useEffect, useState } from "react";
+import { Pagination } from "./shared/Pagination";
+import { usePagination } from "../hooks/usePagination";
 import {
   apiStewardJobAck,
   apiStewardJobSubmit,
@@ -28,6 +30,7 @@ export function StewardJobs({ sid, projects }: { sid: string; projects: string[]
   const [services, setServices] = useState<StewardServiceRow[]>([]);
   const [jobs, setJobs] = useState<StewardJobRow[]>([]);
   const [onlyOpen, setOnlyOpen] = useState(true);
+  const jobPage = usePagination(jobs, 10);
   const [kinds, setKinds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [svc, setSvc] = useState({ name: "", url: "", token: "" });
@@ -143,7 +146,7 @@ export function StewardJobs({ sid, projects }: { sid: string; projects: string[]
         <button type="button" disabled={busy} onClick={() => void act(async () => ({ ok: true }), undefined, true)}>{t.stewardJobsPoll}</button>
       </div>
       {jobs.length === 0 && <span className="opts-hint">{t.stewardJobsNone}</span>}
-      {jobs.map((j) => (
+      {jobPage.pageItems.map((j) => (
         <div key={`${j.service}-${j.id}`} className="legend" style={{ margin: 0 }}>
           <span className="cli-badge">{j.state ?? "?"}</span> <b>{j.service}#{j.id}</b> {j.project ?? "-"} · {j.kind ?? "-"}
           {j.approval_state ? ` · ${j.approval_state}` : ""}
@@ -158,6 +161,7 @@ export function StewardJobs({ sid, projects }: { sid: string; projects: string[]
           ) : null}
         </div>
       ))}
+      <Pagination page={jobPage.page} totalPages={jobPage.totalPages} onChange={jobPage.setPage} />
 
       <details onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) void loadKinds(); }}>
         <summary className="legend" style={{ cursor: "pointer", margin: 0 }}>{t.stewardJobsSubmit}</summary>

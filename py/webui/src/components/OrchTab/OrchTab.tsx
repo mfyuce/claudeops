@@ -21,6 +21,8 @@ import { apiOrchCancel, apiOrchSaveDraft, apiOrchStart, getOrchRun, getOrchRuns 
 import { describeApiError } from "../../api/errors";
 import { friendlyError } from "../../api/ucliErrors";
 import { ErrorBox } from "../shared/ErrorBox";
+import { Pagination } from "../shared/Pagination";
+import { usePagination } from "../../hooks/usePagination";
 import { showToast } from "../../state/toast";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
@@ -200,6 +202,7 @@ export function OrchTab({ selection }: OrchTabProps) {
     refresh();
   }
 
+  const runPage = usePagination(fullHistory ?? data?.orch.recent ?? [], 10);
   if (!data) return null;
 
   const historyList = fullHistory ?? data.orch.recent;
@@ -280,7 +283,7 @@ export function OrchTab({ selection }: OrchTabProps) {
           <div className="opts-hint">{t.orchHistoryEmpty}</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: ".3rem", marginTop: ".3rem" }}>
-            {historyList.map((r) => (
+            {runPage.pageItems.map((r) => (
               <div key={r.id} style={{ display: "flex", alignItems: "center", gap: ".5rem", fontSize: ".82rem" }}>
                 <span style={{ color: "var(--muted)" }}>{new Date(r.created_at * 1000).toLocaleString()}</span>
                 <span>{t.orchStatusLabel(r.status)}</span>
@@ -297,6 +300,7 @@ export function OrchTab({ selection }: OrchTabProps) {
                 </button>
               </div>
             ))}
+            <Pagination page={runPage.page} totalPages={runPage.totalPages} onChange={runPage.setPage} />
           </div>
         )}
         {!fullHistory && (

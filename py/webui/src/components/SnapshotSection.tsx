@@ -26,6 +26,8 @@ import { apiSnapshotList, apiSnapshotResume, apiSnapshotSave, ApiError } from ".
 import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
 import { ErrorBox } from "./shared/ErrorBox";
+import { Pagination } from "./shared/Pagination";
+import { usePagination } from "../hooks/usePagination";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
@@ -40,6 +42,8 @@ export function SnapshotSection() {
   const [result, setResult] = useState<Extract<SnapshotResumeResult, { ok: true }> | null>(null);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<Extract<SnapshotListResult, { ok: true }>["snapshots"] | null>(null);
+
+  const histPage = usePagination((history ?? []).slice(1), 10);
 
   const load = useCallback(async () => {
     try {
@@ -142,7 +146,7 @@ export function SnapshotSection() {
             <b>{t.snapshotHistoryLabel}</b>
           </span>
           <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
-            {history.slice(1).map((h) => (
+            {histPage.pageItems.map((h) => (
               <li key={h.saved_at} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span>
                   [{h.kind === "closing" ? t.snapshotKindClosing : t.snapshotKindManual}]{" "}
@@ -155,6 +159,7 @@ export function SnapshotSection() {
               </li>
             ))}
           </ul>
+          <Pagination page={histPage.page} totalPages={histPage.totalPages} onChange={histPage.setPage} />
         </div>
       )}
       {history && history.length <= 1 && <span className="opts-hint">{t.snapshotHistoryEmpty}</span>}
