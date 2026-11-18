@@ -133,6 +133,26 @@ class Routes(unittest.TestCase):
         self.assertFalse(ext.cookie_ok("cops_ext=" + ext.cookie_value(""), ""))
 
 
+class LongestPrefix(unittest.TestCase):
+    """Genel önek kayıt sırası yüzünden alt rotayı ezmez (review copsdev R-2, 15 Kas)."""
+
+    def setUp(self):
+        self.saved = list(ext._ROUTES)
+
+    def tearDown(self):
+        ext._ROUTES[:] = self.saved
+
+    def test_longest_prefix_wins_regardless_of_order(self):
+        ext._ROUTES[:] = [{"prefix": "/zz/", "fn": "genel", "methods": {"GET"}},
+                          {"prefix": "/zz/admin/", "fn": "alt", "methods": {"GET"}}]
+        self.assertEqual(ext.match_route("GET", "/zz/admin/x")["fn"], "alt")
+        self.assertEqual(ext.match_route("GET", "/zz/other")["fn"], "genel")
+        ext._ROUTES.reverse()
+        self.assertEqual(ext.match_route("GET", "/zz/admin/x")["fn"], "alt")
+        self.assertEqual(ext.match_route("GET", "/zz/admin")["fn"], "alt")     # önek.rstrip('/') eşleşmesi
+        self.assertIsNone(ext.match_route("POST", "/zz/admin/x"))               # yöntem uymazsa eşleşmez
+
+
 class ReaderConfig(unittest.TestCase):
     def test_validation(self):
         import tempfile

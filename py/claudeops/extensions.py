@@ -241,12 +241,15 @@ def cookie_ok(cookie_header: str, token: str) -> bool:
 
 
 def match_route(method: str, path: str) -> Optional[Dict[str, Any]]:
+    best: Optional[Dict[str, Any]] = None
     with _LOCK:
         for r in _ROUTES:
             if path.startswith(r["prefix"]) or path == r["prefix"].rstrip("/"):
                 if method.upper() in r["methods"] or (method.upper() == "HEAD" and "GET" in r["methods"]):
-                    return r
-    return None
+                    # en uzun önek kazanır: genel önek (/x/) kayıt sırası yüzünden alt rotayı (/x/admin/) ezmesin
+                    if best is None or len(r["prefix"]) > len(best["prefix"]):
+                        best = r
+    return best
 
 
 def dispatch(route: Dict[str, Any], req: RouteRequest) -> None:
