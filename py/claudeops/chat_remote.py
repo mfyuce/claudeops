@@ -47,7 +47,8 @@ def pack_command(tag: str, day: str, paths: Optional[List[str]] = None, outdir: 
     ps = " ".join(shlex.quote(p) for p in (paths or DEFAULT_PATHS))
     ex = " ".join(f"--exclude={shlex.quote(e)}" for e in EXCLUDES)
     inner = (f"umask 077; nice -n 19 ionice -c3 tar czf - {ex} --ignore-failed-read -C ~ {ps} 2>/dev/null"
-             f" | split -b {PART_MB}M -d -a 3 - {_o(outdir, n['parts'])}")
+             f" | split -b {PART_MB}M -d -a 3 - {_o(outdir, n['parts'])}; "
+             'r=("${PIPESTATUS[@]}"); [ "${r[0]}" -le 1 ] && [ "${r[1]}" -eq 0 ]')       # tar çıkış 1 = uyarı (okunamayan dosya) kabul; >1 ya da split hatası = .fail
     return f" bash -c {shlex.quote(inner)} && touch {_o(outdir, n['done'])} || touch {_o(outdir, n['fail'])}"
 
 

@@ -243,7 +243,7 @@ def write_jsonl(rows: Iterator[Tuple[str, str, str, Dict[str, Any]]], out_root: 
 def _db_sources(home: str) -> List[Tuple[str, str, str]]:
     """(cli, alt, db yolu). Canlı önce; ayna yalnız canlıda olmayan (silinmiş) oturumlar için."""
     import glob
-    mir = os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
+    mir = _mirror_root(home)
     out: List[Tuple[str, str, str]] = []
     seen = set()
     for base in (os.path.join(home, ".gemini"), os.path.join(mir, "gemini")):
@@ -268,6 +268,14 @@ def _db_sources(home: str) -> List[Tuple[str, str, str]]:
         if os.path.exists(th) and os.path.exists(st):
             out.append(("codex", rh, th))
     return out
+
+
+def _mirror_root(home: str) -> str:
+    """Gerçek ev dizininde ayna = CLAUDEOPS_DIR/backups/chat-mirror (pull/ingest/prune ile aynı taban); test için verilen başka home'da home-göreli."""
+    if os.path.abspath(home) == os.path.abspath(os.path.expanduser("~")):
+        from .paths import CLAUDEOPS_DIR
+        return os.path.join(str(CLAUDEOPS_DIR), "backups", "chat-mirror")
+    return os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
 
 
 def db_sig(p: str) -> str:
@@ -350,7 +358,7 @@ def raw_to_remote(remote: str, home: Optional[str] = None, timeout: int = 10800)
     import socket, subprocess
     home = home or os.path.expanduser("~")
     host = socket.gethostname()
-    mir = os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
+    mir = _mirror_root(home)
     jobs = [(os.path.join(home, ".gemini"), "gemini", ["*/conversations/*.db", "*/conversations/*.db-wal", "*/conversation_summaries.db", "*/conversation_summaries.db-wal"]),
             (os.path.join(mir, "gemini"), "gemini", ["*/conversations/*.db", "*/conversations/*.db-wal", "*/conversation_summaries.db", "*/conversation_summaries.db-wal"]),
             (os.path.join(home, ".codex"), "codex", ["*.sqlite", "*.sqlite-wal"]),

@@ -194,14 +194,16 @@ def set_config(name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     bucket_key = "jobs" if builtin else "custom"
     bucket = raw.get(bucket_key) if isinstance(raw.get(bucket_key), dict) else {}
     cur = dict(bucket.get(name) or {})
+    base = dict(cfgs[name])
     for k, v in patch.items():
         if k not in allowed:
             raise KeyError(f"bilinmeyen alan: {k}")
         if v == "" and builtin:
             cur.pop(k, None)
+            base[k] = allowed[k]           # sıfırlanan alan VARSAYILANIYLA doğrulanır (eski değerle değil)
         else:
             cur[k] = v
-    _validate({**cfgs[name], **cur})
+    _validate({**base, **cur})
     bucket[name] = cur
     raw[bucket_key] = bucket
     atomic_write_json(CONFIG_JSON, raw, mode=0o600)
