@@ -875,6 +875,73 @@ def set_block(paths: Any, key: str, until: float, reason: str = "") -> None:
         save_history(p, hist)
 
 
+def parse_agy_usage(text: str) -> Dict[str, Dict[str, Tuple[float, float]]]:
+    """`agy --print /usage` çıktısı (TAB ayrık `grup\tmetrik\tNN%\tISO-reset`) -> {havuz: {"weekly"|"five": (kalan_yüzde, reset_epoch)}}.
+    Havuz = `agy_pool` adları: "Gemini Models" -> gemini, "Claude and GPT models" -> claude_gpt, "Gemini 4 Argon" -> argon
+    (yalnız haftalık satırı var). Tanınmayan/bozuk satır atlanır. Boş sözlük = okunamadı."""
+    out: Dict[str, Dict[str, Tuple[float, float]]] = {}
+    for line in str(text or "").splitlines():
+        parts = [x.strip() for x in line.split("\t")]
+        if len(parts) != 4 or not parts[2].rstrip("%").isdigit():
+            continue
+        group, metric, pct, reset = parts
+        g, m = group.lower(), metric.lower()
+        pool = "argon" if "argon" in g else "gemini" if g.startswith("gemini") else "claude_gpt" if g.startswith("claude") else ""
+        kind = "weekly" if "weekly" in m else "five" if ("five hour" in m or "5 hour" in m) else ""
+        if not pool or not kind:
+            continue
+        try:
+            ts = calendar.timegm(time.strptime(reset, "%Y-%m-%dT%H:%M:%SZ"))
+        except ValueError:
+            continue
+        out.setdefault(pool, {})[kind] = (float(pct.rstrip("%")), float(ts))
+    return out
+
+
+def agy_pool_blocked_until(usage: Dict[str, Dict[str, Tuple[float, float]]], pool: str, now: float) -> Optional[float]:
+    """Havuz kullanıma kapalıysa açılış zamanı, açıksa None; havuz bilinmiyorsa -1 (karışma). Haftalık dolu: haftalık reset
+    (5 saatlik pencere de dolu olsa haftalık geç gelir: ikisinin en geçi); yalnız 5 saatlik dolu: 5 saatlik reset."""
+    u = usage.get(pool)
+    if not u:
+        return -1.0
+    until = 0.0
+    for kind in ("weekly", "five"):
+        v = u.get(kind)
+        if v and v[0] <= 0 and v[1] > now:
+            until = max(until, v[1])
+    return until or None
+
+
+AGY_BLOCK_GRACE = 600.0     # az önce (koşu hatasıyla) konan engeli /usage hemen silmesin (bayat okuma/yarış)
+
+
+def reconcile_agy_blocks(hist: Dict[str, Any], usage: Dict[str, Dict[str, Tuple[float, float]]],
+                         target_keys: Sequence[str], now: float) -> List[str]:
+    """`hist["blocks"]` içindeki agy model engellerini `/usage` gerçeğine çeker (18 Kas: Argon %100 kalan iken 22 Kas'a dek bloklu,
+    5 saatlik pencere hiç bilinmiyordu). Havuz dolu -> `until` o pencerenin yenilenmesi (haftalık/5sa), engeli olmayan hedefe de konur;
+    havuz boş değil -> engel silinir (az önce konanlar `AGY_BLOCK_GRACE` korunur). Havuzu bilinmeyen satıra DOKUNULMAZ.
+    Değişen anahtarların listesini döner (girdi yerinde değişir)."""
+    blocks = hist.setdefault("blocks", {})
+    changed: List[str] = []
+    keys = set(target_keys) | {k for k in blocks if k.startswith("agy/")}
+    for key in sorted(keys):
+        if not key.startswith("agy/"):
+            continue
+        model = key.split("/", 1)[1].split("@", 1)[0].split("~", 1)[0]
+        until = agy_pool_blocked_until(usage, agy_pool(model), now)
+        if until == -1.0:
+            continue
+        cur = blocks.get(key) if isinstance(blocks.get(key), dict) else None
+        if until:
+            if not cur or abs(float(cur.get("until") or 0) - until) > 60:
+                blocks[key] = {"until": until, "set_at": now, "reason": f"agy /usage: havuz kapalı ({agy_pool(model)}), yenilenme {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))}"}
+                changed.append(key)
+        elif cur is not None and now - _num(cur.get("set_at")) > AGY_BLOCK_GRACE:
+            del blocks[key]
+            changed.append(key)
+    return changed
+
+
 def _agy_block_cleared(history: Any, key: str, entry: Dict[str, Any]) -> bool:
     """agy modelinin kota engeli, AYNI kota havuzunda (`agy_pool`) engelden SONRA bitmiş bir `done` koşu varsa kalkar:
     başarılı koşu havuzda kota olduğunu kanıtlar (17 Kas 14:28 hc/flash-high `limit` yazdı, ardından flash-medium ve flash-high

@@ -27,6 +27,10 @@ def install(testcase: unittest.TestCase) -> list:
     p = mock.patch.object(wr, "_default_popen", _blocked)
     p.start()
     testcase.addCleanup(p.stop)
+    # gerçek `agy --print /usage` da çalışmaz: tick'ler engel uzlaştırmasına girmesin (kendi testleri `refresh_agy_blocks`/`fetch_agy_usage`i çağırır)
+    q = mock.patch.object(wr, "refresh_agy_blocks", lambda *a, **k: [])
+    q.start()
+    testcase.addCleanup(q.stop)
     testcase.addCleanup(lambda: testcase.assertEqual(attempts, [], MSG))
     return attempts
 

@@ -281,3 +281,67 @@ class AgyBlockClearedBySuccessTest(unittest.TestCase):
         self.assertIn("set_at", h["blocks"]["agy/x"])
 
 
+
+
+_USAGE = ("Gemini Models\tWeekly Limit Remaining\t81%\t2026-11-25T06:06:52Z\n"
+          "Gemini Models\tFive Hour Limit Remaining\t37%\t2026-11-18T16:06:52Z\n"
+          "Claude and GPT models\tWeekly Limit Remaining\t44%\t2026-11-25T11:39:44Z\n"
+          "Claude and GPT models\tFive Hour Limit Remaining\t0%\t2026-11-18T16:39:44Z\n"
+          "Gemini 4 Argon\tGemini 4 Argon Weekly Limit\t99%\t2026-11-25T12:29:11Z\n")
+
+
+class AgyUsageBlocksTest(unittest.TestCase):
+    NOW = rv.calendar.timegm((2026, 11, 18, 12, 30, 0))
+
+    def test_parse(self):
+        u = rv.parse_agy_usage(_USAGE)
+        self.assertEqual(set(u), {"gemini", "claude_gpt", "argon"})
+        self.assertEqual(u["claude_gpt"]["five"][0], 0.0)
+        self.assertEqual(u["argon"]["weekly"][0], 99.0)
+        self.assertNotIn("five", u["argon"])
+        self.assertEqual(rv.parse_agy_usage("junk\nA\tB\tx%\tz\n"), {})
+
+    def test_blocked_until_picks_window(self):
+        u = rv.parse_agy_usage(_USAGE)
+        self.assertIsNone(rv.agy_pool_blocked_until(u, "gemini", self.NOW))
+        self.assertIsNone(rv.agy_pool_blocked_until(u, "argon", self.NOW))
+        self.assertEqual(rv.agy_pool_blocked_until(u, "claude_gpt", self.NOW), u["claude_gpt"]["five"][1])   # yalnız 5sa dolu
+        self.assertEqual(rv.agy_pool_blocked_until(u, "yok", self.NOW), -1.0)
+        u["claude_gpt"]["weekly"] = (0.0, u["claude_gpt"]["weekly"][1])
+        self.assertEqual(rv.agy_pool_blocked_until(u, "claude_gpt", self.NOW), u["claude_gpt"]["weekly"][1])     # haftalık daha geç
+
+    def test_reconcile_removes_stale_and_sets_five_hour(self):
+        u = rv.parse_agy_usage(_USAGE)
+        h = {"blocks": {
+            "agy/gemini-4-argon-high": {"until": self.NOW + 4 * 86400, "set_at": self.NOW - 86400},        # bayat: Argon %99 kalan
+            "agy/gemini-3.8-flash-high": {"until": self.NOW + 4 * 86400, "set_at": self.NOW - 60},         # az önce konan: korunur
+            "evren": {"until": self.NOW + 99},
+        }}
+        ch = rv.reconcile_agy_blocks(h, u, ["agy/claude-sonnet-5-5-medium", "agy/gpt-oss-120b-medium"], self.NOW)
+        self.assertNotIn("agy/gemini-4-argon-high", h["blocks"])
+        self.assertIn("agy/gemini-3.8-flash-high", h["blocks"])
+        self.assertIn("evren", h["blocks"])
+        self.assertEqual(h["blocks"]["agy/claude-sonnet-5-5-medium"]["until"], u["claude_gpt"]["five"][1])
+        self.assertEqual(h["blocks"]["agy/gpt-oss-120b-medium"]["until"], u["claude_gpt"]["five"][1])
+        self.assertEqual(sorted(ch), ["agy/claude-sonnet-5-5-medium", "agy/gemini-4-argon-high", "agy/gpt-oss-120b-medium"])
+        # ikinci geçiş: değişiklik yok
+        self.assertEqual(rv.reconcile_agy_blocks(h, u, ["agy/claude-sonnet-5-5-medium"], self.NOW), [])
+
+    def test_unknown_pool_untouched(self):
+        h = {"blocks": {"agy/hydrogen-high": {"until": self.NOW + 100, "set_at": 1}}}
+        self.assertEqual(rv.reconcile_agy_blocks(h, rv.parse_agy_usage(_USAGE), [], self.NOW), [])
+        self.assertIn("agy/hydrogen-high", h["blocks"])
+
+    def test_refresh_uses_fetch_and_skips_without_agy_targets(self):
+        wr._AGY_USAGE_CACHE.update(at=0.0, usage={})
+        called = []
+        run = lambda: called.append(1) or _USAGE  # noqa: E731
+        self.assertEqual(wr.refresh_agy_blocks("p", [CX], self.NOW, run), [])
+        self.assertEqual(called, [])
+        wr._AGY_USAGE_CACHE.update(at=0.0, usage={})
+        u = wr.fetch_agy_usage(self.NOW, run)
+        self.assertIn("argon", u)
+        wr.fetch_agy_usage(self.NOW + 10, run)
+        self.assertEqual(len(called), 1)          # önbellek
+        wr._AGY_USAGE_CACHE.update(at=0.0, usage={})
+        self.assertEqual(wr.fetch_agy_usage(self.NOW, lambda: "bozuk"), {})

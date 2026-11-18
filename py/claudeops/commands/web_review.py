@@ -2128,6 +2128,50 @@ def start_job(paths: Any, cfg: Any, project: str, target: rv.ReviewTarget, cwd: 
     return res
 
 
+_AGY_USAGE_CACHE: Dict[str, Any] = {"at": 0.0, "usage": {}}
+AGY_USAGE_TTL = 300.0
+
+
+def fetch_agy_usage(t: float, run: Optional[Callable[[], str]] = None) -> Dict[str, Any]:
+    """`agy --print /usage` (canlı oturuma dokunmaz) ayrıştırılmış; 5 dk önbellek. Okunamazsa ({}), önbellek tazelenmez
+    (bir sonraki tick yeniden dener, 60 sn'den sık değil)."""
+    c = _AGY_USAGE_CACHE
+    if c["usage"] and t - c["at"] < AGY_USAGE_TTL:
+        return c["usage"]
+    if not c["usage"] and t - c["at"] < 60:
+        return {}
+    c["at"] = t if not c["usage"] else c["at"]
+    try:
+        if run is None:
+            from ..settings import resolved_binary
+            def run() -> str:  # noqa: E306
+                return subprocess.run([resolved_binary("agy"), "--print=/usage"], capture_output=True, text=True, timeout=45).stdout
+        usage = rv.parse_agy_usage(run())
+    except Exception:
+        return c["usage"] or {}
+    if usage:
+        c["usage"], c["at"] = usage, t
+    return c["usage"] or {}
+
+
+def refresh_agy_blocks(p: Any, targets: List[rv.ReviewTarget], t: float, run: Optional[Callable[[], str]] = None) -> List[str]:
+    """agy engellerini `/usage` gerçeğine çeker (havuz başına haftalık + 5 saatlik kalan ve yenilenme zamanı). agy hedefi yoksa
+    ya da `/usage` okunamazsa hiçbir şey yapmaz."""
+    if not any(x.mode == "agy" for x in targets):
+        return []
+    usage = fetch_agy_usage(t, run)
+    if not usage:
+        return []
+    with sw.steward_lock(sw._pp(p)):
+        hist = rv.load_history(p)
+        changed = rv.reconcile_agy_blocks(hist, usage, [x.key for x in targets if x.mode == "agy"], t)
+        if changed:
+            rv.save_history(p, hist)
+    if changed:
+        sw.log_event("review_agy_usage_blocks", paths=p, changed=changed)
+    return changed
+
+
 def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     """Bir reviewer kimliğinin döngü turu: (kapalıysa iptal) -> ilk tick'te `recover_on_start` -> havuz eşitleme ->
     havuzdan çıkan/devre dışı projenin koşan işini iptal -> tek iş kuralı + en az aralık -> sıradaki çift -> `run_job`.
@@ -2219,6 +2263,11 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if last and t - last < gap:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "waiting": int(gap - (t - last))}
     targets = current_targets(cfg)
+    try:
+        if refresh_agy_blocks(p, targets, t):
+            hist = rv.load_history(p)
+    except Exception as e:      # /usage hatası planlayıcıyı düşürmesin
+        sw.log_event("review_agy_usage_failed", paths=p, error=_tail(repr(e)))
     if rv.claude_is_subscription(cfg) and _quota_blocking():
         # abonelik kotası: bekçi drain/shutdown/stop dedi; Max'ten giden claude hedefleri başlamaz (api/agy/evren/codex sürer)
         targets = [x for x in targets if x.mode != "claude"]
