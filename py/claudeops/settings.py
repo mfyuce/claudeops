@@ -307,12 +307,17 @@ def _backup_if_corrupt() -> None:
         pass
 
 
+_DICT_ONLY_KEYS = ("byok", "stewards")
+
+
 def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
     _backup_if_corrupt()
     current = load_settings()
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
+        if k in _DICT_ONLY_KEYS and not isinstance(v, dict):
+            continue        # review R-17: dict olmayan yama bloğu tümden silmesin (okuma tarafı {} yapıyordu)
         if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():

@@ -357,6 +357,9 @@ def run_server(port: int, tools: Optional[List[Dict[str, Any]]] = None,
         except json.JSONDecodeError as e:
             _log(f"bad JSON-RPC line, skipped: {e}")
             continue
+        if not isinstance(msg, dict):       # review R-20: `5`/`[]`/`"x"` satırı msg.get'te döngüyü öldürüyordu
+            _log("non-object JSON-RPC line, skipped")
+            continue
         if on_message is not None:
             try:
                 on_message(msg)

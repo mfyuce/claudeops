@@ -352,6 +352,12 @@ def _load_or_create_token() -> str:
                 return tok
     except FileNotFoundError:
         pass
+    try:    # review R-10: boş/yarım token dosyası O_EXCL'i FileExistsError ile kırıp paneli kalıcı açılamaz yapıyordu
+        if os.path.isfile(TOKEN_FILE) and not os.path.islink(TOKEN_FILE) and os.path.getsize(TOKEN_FILE) == 0:
+            os.unlink(TOKEN_FILE)
+            diag_log("token_file_empty_recreated", path=str(TOKEN_FILE))
+    except OSError:
+        pass
     tok = secrets.token_hex(24)
     os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
     # review R-3: O_NOFOLLOW + O_EXCL, so a (dangling) symlink planted at TOKEN_FILE is never written through
