@@ -225,6 +225,8 @@ export function SettingsTab() {
   const { data, refresh } = useStatusContext();
   const [error, setError] = useState("");
   const [subTab, setSubTab] = useState<SettingsSubTab>("general");
+  // models panel: 3 independent groups -> nested sub-tabs (owner rule 16 Nov: two+ separate sections never stack on one page)
+  const [modelSub, setModelSub] = useState<"defaults" | "cli" | "keys">("defaults");
   // Free-text path input — auto-save-on-blur (not on every keystroke like the
   // <select> controls below, that would save a half-typed path on every char).
   // Local draft so typing doesn't fight the settings poll's own value.
@@ -269,6 +271,7 @@ export function SettingsTab() {
   // fallback handles the rest, same as an empty/unset override).
   const effortOptions = Array.from(new Set(Object.values(data.cli_options).flatMap((o) => o.effort_levels)));
 
+  const hasByok = data.cli_list.some((cli) => BYOK_PRIMARY_ENV[cli] && cli !== "ucli");
   return (
     <>
       <TabHint warn>{t.settingsSingleUserWarning}</TabHint>
@@ -379,6 +382,21 @@ export function SettingsTab() {
       )}
       {subTab === "models" && (
         <>
+          <div className="tabs">
+            <button type="button" className={modelSub === "defaults" ? "active" : ""} onClick={() => setModelSub("defaults")}>
+              {lang === "en" ? "Defaults" : "Varsayılanlar"}
+            </button>
+            <button type="button" className={modelSub === "cli" ? "active" : ""} onClick={() => setModelSub("cli")}>
+              CLI
+            </button>
+            {hasByok && (
+              <button type="button" className={modelSub === "keys" ? "active" : ""} onClick={() => setModelSub("keys")}>
+                {lang === "en" ? "Keys" : "Anahtarlar"}
+              </button>
+            )}
+          </div>
+          {modelSub === "defaults" && (
+          <>
           <div className="opts" id="settingsModelPanel">
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               {t.defaultModelLabel}
@@ -448,6 +466,10 @@ export function SettingsTab() {
               }}
             />
           </div>
+          </>
+          )}
+          {modelSub === "cli" && (
+          <>
           <div className="opts" id="settingsProviderBinPanel">
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               <b>{t.providerBinLabel}</b> {t.providerBinDesc}
@@ -466,8 +488,10 @@ export function SettingsTab() {
             ))}
           </div>
           <CliInstallSection />
+          </>
+          )}
           {/* ucli's keys moved to the ucli tab (Global settings > Model keys); the block shows only the other CLIs. */}
-          {data.cli_list.some((cli) => BYOK_PRIMARY_ENV[cli] && cli !== "ucli") && (
+          {modelSub === "keys" && hasByok && (
           <div className="opts" id="settingsByokPanel">
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               <b>{t.byokLabel}</b> {t.byokDesc}
