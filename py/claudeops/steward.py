@@ -2677,6 +2677,18 @@ def phase_model_effort(project: Project, cfg: Config) -> Tuple[str, str]:
     return (project.model or model or ""), (project.effort or effort or "")
 
 
+def main_session_model_effort(model: str, effort: str, cli: str, sonnet: str) -> Tuple[str, str]:
+    """Sahip kuralı (18 Kas 2026, "kayıtlı modeli olsa bile değnekçide her zaman sonnet medium"): değnekçinin AÇTIĞI
+    claude ana oturumu kayıtlı/proje modeli ne olursa olsun en yeni Sonnet + `medium`; ağır iş alt ajanda işe göre seçilir.
+    claude dışı cli (ucli/agy/codex...) ve claude ailesinden olmayan model dokunulmadan döner; `sonnet` boşsa (liste yok)
+    davranış değişmez. SAF."""
+    m = (model or "").strip()
+    is_claude = cli == "claude" or (not cli and m.lower().startswith("claude"))
+    if not is_claude or not sonnet or (m and not m.lower().startswith("claude")):
+        return model, effort
+    return sonnet, "medium"
+
+
 SKIP_QUIET_SECONDS = 6 * 3600.0       # beynin `skip` ettiği, durumu DEĞİŞMEYEN idle/review maddesi bu süre tura girmez (TBD#122)
 STALE_ANSWER_SECONDS = 6 * 3600.0     # kayıtlı projeye bağlı olmayan, bu kadar eski teslim edilmemiş cevap "bayat blokaj" sayılır, kapanır
 BLOCKED_MAX_TOURS = 2                 # iletilemeyen cevap (`blocked`) bu kadar turda beyne gösterilir, çözülmediyse sebep yazılarak kapanır

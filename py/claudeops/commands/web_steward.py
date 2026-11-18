@@ -1897,6 +1897,24 @@ def _last_launch(name: str) -> Optional[Dict[str, Any]]:
     return rec if isinstance(rec, dict) and rec.get("cli") in PROVIDERS else None
 
 
+def _main_model_effort(project: "sw.Project", cfg: "sw.Config", name: str = "", host: str = "",
+                       model: str = "", effort: str = "") -> Tuple[str, str]:
+    """Değnekçinin açtığı ana oturumun (model, effort)u: faz/proje değeri `sw.main_session_model_effort` kuralından geçer
+    (claude = her zaman en yeni Sonnet + medium, sahip 18 Kas). Uzak projede cli bilinmez: yalnız claude-* model düşürülür."""
+    if not model and not effort:      # açık değer (beyin/direktif) de aynı kuraldan geçer
+        model, effort = sw.phase_model_effort(project, cfg)
+    cli = "" if host else _project_cli(name or project.name)
+    try:
+        sonnet = get_provider("claude").preferred_default_model() or ""
+    except Exception:
+        sonnet = ""
+    m, e = sw.main_session_model_effort(model, effort, cli, sonnet)
+    if (m, e) != (model, effort) and (model or effort):
+        sw.log_event("steward_main_model", paths=sw.paths_for(cfg.sid), name=name or project.name,
+                     registered=f"{model}/{effort}", used=f"{m}/{e}")
+    return m, e
+
+
 def _launch_kwargs(name: str, model: str, effort: str) -> Dict[str, Any]:
     """Devir/yeniden açma/başlatmada oturumu BAŞLADIĞI cli + `cli_opts` ile açmak için `start` ek argümanları (TBD#156).
     Kayıt yoksa ya da kayıtlı cli claude ve roster/fleet cli'si de claude ise {} (eski davranış birebir). Kayıtlı cli
@@ -2286,8 +2304,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
         host = _name_host(target)
     if answer is not None and _already_sent(lambda: sw.mark_delivered(answer.id, paths), cfg.sid, "answer", answer.id):
         return {"ok": True, "name": target, "skipped": "already sent"}       # önceki turda gitti, işareti yazılamamıştı
-    if not model and not effort:
-        model, effort = sw.phase_model_effort(project, cfg)
+    req_model, req_effort = model, effort      # açılış gerekirse `_main_model_effort`tan geçer (yalnız o an: fleet sorgusu)
     started_here = False      # bu çağrıda oturum AÇILDI: yeni yaşam, eski yaşamın `wake_sent` kaydı "tekrar" sayılmaz
     if host:
         world = _world(cfg.sid, cfg)
@@ -2299,6 +2316,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
         if row is None:
             if not start_if_stopped:
                 return {"ok": False, "error": "not running", "host": host}
+            model, effort = _main_model_effort(project, cfg, target, host, req_model, req_effort)
             res = _ensure_running(target, model=model, effort=effort, lang=lang, host=host, rt=rt, sid=cfg.sid,
                                   actor=actor)
             if not res.get("ok"):
@@ -2331,6 +2349,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
         if s is None:
             if not start_if_stopped:
                 return {"ok": False, "error": "not running"}
+            model, effort = _main_model_effort(project, cfg, target, "", req_model, req_effort)
             res = _ensure_running(target, model=model, effort=effort, lang=lang, sid=cfg.sid,
                                   fresh=_consume_fresh_start(project.name, cfg.sid) or force_fresh)     # `iş yok` kapanışından sonraki açılış: --new (devir notu CLAUDE.md'de)
             if not res.get("ok"):
@@ -3300,7 +3319,7 @@ def _remote_respawn(name: str, host: str, project: Optional[sw.Project], cfg: sw
     stopped = _remote_stop_and_wait(name, host, world, cfg.sid, "engine", rt)
     if stopped is not None:
         return failed("stop", stopped)
-    model, effort = sw.phase_model_effort(project, cfg)
+    model, effort = _main_model_effort(project, cfg, project.name, host)
     # PROJE adıyla başlat: eski oturumun tarihli adı kapandı, uzak taraf yeni oturuma yeni (tarihli) ad verir
     res = _ensure_running_remote(project.name, host, model, effort, True, rt, sid=cfg.sid, actor="engine",
                                  kind="respawn")
@@ -3375,7 +3394,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if name == cfg.brain_name:
             return brain_start(cfg, fresh=True)   # devirden sonra YENİ konuşma (aynı şişmiş bağlam taşınmasın; notlar NOTLAR.md'de)
         p = _project_for_session(name, projects, world)
-        model, effort = sw.phase_model_effort(p, cfg) if p else ("", "")
+        model, effort = _main_model_effort(p, cfg, name) if p else ("", "")
         # Devirden sonra YENİ konuşma (`--new`): `--resume` aynı şişmiş bağlamı (her tur yeniden okunan ~400K token)
         # ve eski modelin önbelleğini taşırdı. Devir özeti CLAUDE.md'de, yeni oturum onu kendisi okur.
         res = _ensure_running(name, model=model, effort=effort, lang=cfg.lang, fresh=True, sid=cfg.sid, exact=True)

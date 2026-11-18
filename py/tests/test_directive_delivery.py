@@ -168,7 +168,9 @@ class HoDoneFresh(unittest.TestCase):
             act = mocks[2]
             r = ws._give_directive_impl(proj, "x", cfg=cfg, reason="cli", session_name="p")
         self.assertTrue(r["ok"])
-        act.assert_called_once_with("stop", "p20261116", lang="tr")
+        # tek durdurma; açılıştan önce ana oturum modeli için cli sorgusu (`fleet_status`) yapılabilir (sahip kuralı 18 Kas)
+        stops = [c for c in act.call_args_list if c.args and c.args[0] == "stop"]
+        self.assertEqual(stops, [mock.call("stop", "p20261116", lang="tr")])
         self.assertTrue(fresh["v"])
 
 
