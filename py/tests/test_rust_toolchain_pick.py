@@ -1,5 +1,6 @@
 """rust_toolchain: RUSTUP_TOOLCHAIN eşleşmezse başka bir araç zinciri SESSİZCE seçilmez."""
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ from claudeops import ucli_session_opts as opts  # noqa: E402
 class RustToolchainPickTest(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
         for n in ("stable-x86_64-unknown-linux-gnu",):
             b = os.path.join(self.home, ".rustup", "toolchains", n, "bin")
             os.makedirs(b)
