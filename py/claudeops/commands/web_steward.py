@@ -7119,6 +7119,38 @@ def http_job_submit(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any
     return res
 
 
+JOBS_REFRESH_WAIT_S = 3.0
+_JOBS_REFRESH_LOCK = threading.Lock()
+_JOBS_REFRESH_INFLIGHT: Dict[str, threading.Event] = {}
+
+
+def _refresh_jobs_bounded(sid: str, wait: float = JOBS_REFRESH_WAIT_S) -> bool:
+    """`refresh=1`: yoklamayı HTTP iş parçacığında değil arka planda yapar (D6: yavaş/kapalı servis `HTTP_TIMEOUT` boyunca isteği
+    bloklardı). En çok `wait` sn bekler; biterse True (liste taze), bitmediyse False (yoklama arkada sürer). Kimlik başına tek
+    uçuştaki yoklama: art arda yenilemeler yeni iş parçacığı yığmaz, mevcut olanı bekler."""
+    with _JOBS_REFRESH_LOCK:
+        ev = _JOBS_REFRESH_INFLIGHT.get(sid)
+        if ev is None:
+            ev = threading.Event()
+            _JOBS_REFRESH_INFLIGHT[sid] = ev
+
+            def work() -> None:
+                try:
+                    sj.poll_jobs(sid, force=True)
+                    try:
+                        _notify_approvals(steward_config(sid))
+                    except Exception as e:
+                        diag_log("steward_job_notify_failed", sid=sid, error=repr(e))
+                except Exception as e:      # noqa: BLE001 - poll_jobs hatayı yutar; yine de iş parçacığı sessiz ölmesin
+                    diag_log("steward_job_refresh_failed", sid=sid, error=repr(e))
+                finally:
+                    with _JOBS_REFRESH_LOCK:
+                        _JOBS_REFRESH_INFLIGHT.pop(sid, None)
+                    ev.set()
+            threading.Thread(target=work, name=f"jobs-refresh-{sid}", daemon=True).start()
+    return ev.wait(wait)
+
+
 def http_jobs(sid: str = "default", state: str = "open", project: str = "", job_id: str = "", refresh: bool = False,
               kinds: bool = False) -> Dict[str, Any]:
     """Bu kimliğin iş kayıtları (yerel `jobs.json`). `refresh`: önce açık işleri hemen yokla; `kinds`: varaka'nın iş türü
@@ -7133,12 +7165,9 @@ def http_jobs(sid: str = "default", state: str = "open", project: str = "", job_
         except sj.ServiceError as e:
             return {"ok": False, "error": f"{name}: {e}"}
         return {"ok": status == 200, "service": name, "status": status, "kinds": body}
+    refreshing = False
     if refresh:
-        sj.poll_jobs(sid, force=True)
-        try:
-            _notify_approvals(steward_config(sid))
-        except Exception as e:
-            diag_log("steward_job_notify_failed", sid=sid, error=repr(e))
+        refreshing = not _refresh_jobs_bounded(sid)
     jobs = sj.load_jobs(sid)
     if job_id:
         jobs = [j for j in jobs if str(j.get("id")) == str(job_id)]
@@ -7149,7 +7178,10 @@ def http_jobs(sid: str = "default", state: str = "open", project: str = "", job_
     elif state not in ("", "all"):
         jobs = [j for j in jobs if j.get("state") == state]
     jobs = sorted(jobs, key=lambda j: -float(j.get("created_at") or 0))[:JOBS_LIST_MAX]
-    return {"ok": True, "jobs": [sj.job_view(j) for j in jobs], "services": sorted(sj.load_services())}
+    out = {"ok": True, "jobs": [sj.job_view(j) for j in jobs], "services": sorted(sj.load_services())}
+    if refreshing:
+        out["refreshing"] = True      # yoklama sürüyor: liste eldeki kayıtlar, istemci kısa süre sonra yeniler
+    return out
 
 
 class UnknownSteward(ValueError):

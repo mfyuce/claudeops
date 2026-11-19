@@ -685,7 +685,7 @@ def cmd_remove(args) -> int:
             dest = os.path.join(os.path.dirname(root), ".removed", f"{sid}-{time.strftime('%Y%m%d_%H%M%S')}")
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.move(root, dest)
-    save_settings({"stewards": {sid: None}})
+        save_settings({"stewards": {sid: None}})      # D11: kilit İÇİNDE; dizin taşındı ama kayıt duruyorsa panel/talep arada boş bir kimliğe yazabilirdi
     print(f"✓ değnekçi '{sid}' silindi" + (f" (dizin: {dest})" if dest else "")
           + f"; beyin oturumu '{sw.brain_name_for(sid)}' çalışıyorsa panel Durdur ile kapatın")
     return 0

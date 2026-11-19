@@ -943,3 +943,37 @@ class TestParseAutoRequest(unittest.TestCase):
         self.assertEqual(sj.sql_from_file_text("-- c\n\nWITH a AS (SELECT 1) SELECT * FROM a;\n"), "WITH a AS (SELECT 1) SELECT * FROM a")
         self.assertIsNone(sj.sql_from_file_text("DELETE FROM x"))
         self.assertIsNone(sj.sql_from_file_text("SELECT 1 " + "x" * 70000))
+
+
+class TestRefreshBounded(unittest.TestCase):
+    """D6: refresh=1 yavaş yoklamada HTTP isteğini bloklamaz; kimlik başına tek uçuştaki yoklama."""
+
+    def test_slow_poll_returns_false_and_runs_in_background_once(self):
+        import threading as th
+        gate, started, calls = th.Event(), th.Event(), []
+
+        def slow(sid, force=False, **k):
+            calls.append(sid)
+            started.set()
+            gate.wait(5)
+            return {}
+        with mock.patch.object(ws.sj, "poll_jobs", slow), mock.patch.object(ws, "_notify_approvals", lambda c: None), \
+                mock.patch.object(ws, "steward_config", lambda sid: None):
+            t0 = time.time()
+            self.assertFalse(ws._refresh_jobs_bounded("zz", wait=0.2))
+            self.assertLess(time.time() - t0, 2.0)
+            started.wait(2)
+            self.assertFalse(ws._refresh_jobs_bounded("zz", wait=0.1))      # ikinci istek yeni iş parçacığı açmaz
+            self.assertEqual(calls, ["zz"])
+            gate.set()
+            self.assertTrue(ws._refresh_jobs_bounded("zz", wait=3))          # uçuştaki bitince True
+            for _ in range(50):
+                if "zz" not in ws._JOBS_REFRESH_INFLIGHT:
+                    break
+                time.sleep(0.05)
+            self.assertNotIn("zz", ws._JOBS_REFRESH_INFLIGHT)
+
+    def test_fast_poll_is_fresh_and_reports_no_refreshing_flag(self):
+        with mock.patch.object(ws.sj, "poll_jobs", lambda sid, force=False, **k: {}), \
+                mock.patch.object(ws, "_notify_approvals", lambda c: None), mock.patch.object(ws, "steward_config", lambda sid: None):
+            self.assertTrue(ws._refresh_jobs_bounded("fast", wait=2))
