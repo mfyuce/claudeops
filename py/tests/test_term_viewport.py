@@ -12,6 +12,7 @@ Gerçek tmux'a (testin kendi soketi) ve 127.0.0.1'e karşı koşar; canlı filoy
 import itertools
 import json
 import os
+from _tmux_sock import unlink_socket  # noqa: E402
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,7 @@ class TmuxCase(unittest.TestCase):
 
     def setUp(self):
         self.sock = f"cops_test_viewport_{os.getpid()}_{next(_sockets)}"
+        self.addCleanup(unlink_socket, self.sock)
         self.addCleanup(self.tmux, "kill-server")
         patcher = mock.patch.object(tmux_backend, "TMUX_SOCKET", self.sock)
         patcher.start()

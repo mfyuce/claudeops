@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 from claudeops import tmux_backend as tb
+from _tmux_sock import unlink_socket  # noqa: E402
 
 
 class SemicolonArgv(unittest.TestCase):
@@ -44,6 +45,7 @@ class RealTmux(unittest.TestCase):
             self.assertEqual(open(out).read().strip(), "foo;bar\;x;y;")
         finally:
             subprocess.run(base + ["kill-server"], capture_output=True)
+            unlink_socket(sock)
 
 
 if __name__ == "__main__":

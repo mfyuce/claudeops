@@ -11,6 +11,7 @@ verdiği burada kanıtlanır.
 """
 import itertools
 import os
+from _tmux_sock import unlink_socket  # noqa: E402
 import re
 import shlex
 import shutil
@@ -108,6 +109,7 @@ class Server:
 
     def kill(self):
         subprocess.run(["tmux", "-L", self.sock, "kill-server"], capture_output=True, env=ENV, timeout=10)
+        unlink_socket(self.sock)
 
 
 class Terminal:
@@ -150,6 +152,7 @@ class Terminal:
 
     def kill(self):
         subprocess.run(["tmux", "-L", self.sock, "kill-server"], capture_output=True, env=ENV, timeout=10)
+        unlink_socket(self.sock)
 
     def open_menu(self):
         self.keys("C-b", "a")

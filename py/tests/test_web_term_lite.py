@@ -11,6 +11,7 @@ sunucuda çıkarılır.
 """
 import copy
 import os
+from _tmux_sock import unlink_socket  # noqa: E402
 import shutil
 import subprocess
 import sys
@@ -283,6 +284,7 @@ class RealTmuxCaptureTests(unittest.TestCase):
     def setUp(self):
         r = self.tmux("new-session", "-d", "-s", "t", "-x", "80", "-y", "10", "bash --norc --noprofile")
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.addCleanup(unlink_socket, self.SOCK)
         self.addCleanup(self.tmux, "kill-server")
 
     def wait_for(self, needle, timeout=8.0):

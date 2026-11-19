@@ -1,6 +1,7 @@
 """tmux_send_keys: tek satırlık metnin sonundaki `;` tmux'ta komut ayıracı sayılıp kayboluyordu (review uzops R-4, 17 Kas);
 tmux_send_raw'daki kaçış tek satır yolunda yoktu."""
 import os
+from _tmux_sock import unlink_socket  # noqa: E402
 import subprocess
 import tempfile
 import time
@@ -44,6 +45,7 @@ class RealTmux(unittest.TestCase):
             self.assertEqual(open(out).read().split("\n")[:2], ["foo;", "x;y;"])
         finally:
             subprocess.run(base + ["kill-server"], capture_output=True)
+            unlink_socket(sock)
 
 
 if __name__ == "__main__":
