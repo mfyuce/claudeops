@@ -9,6 +9,8 @@ Sözleşme: eklenti `register(api)` tanımlar (`api` = `ExtensionAPI`), isteğe 
 """
 from __future__ import annotations
 
+import os
+
 import hmac
 import hashlib
 import importlib
@@ -275,15 +277,23 @@ def dispatch(route: Dict[str, Any], req: RouteRequest) -> None:
 
 
 def core_projects() -> List[Dict[str, str]]:
-    """Kayıtlı proje adı + yerel klasör (uzak proje: cwd "")."""
+    """Kayıtlı proje adı + yerel klasör (uzak proje: cwd ""). Kaynak: değnekçi projeleri + roster.tsv (okuma listesi roster
+    projelerinin TBD'lerini de taramalı; 19 Kas teşhisi: yalnız değnekçi kümesi + çalışan/kayıtlı oturum klasörü olunca cwd "" kalıp
+    TBD satırları hiç taranmıyordu). Klasör önceliği: filo/instance kaydı, sonra roster."""
     from . import steward as sw
     from .commands import web_steward as ws
     projs = sw.load_projects()
     res = ws._cwd_resolver()
+    try:
+        from .roster import read_roster
+        roster = {e.name: os.path.expanduser(e.cwd) for e in read_roster() if e.cwd}
+    except Exception:
+        roster = {}
     out: List[Dict[str, str]] = []
-    for name, p in sorted(projs.items()):
+    for name in sorted(set(projs) | set(roster)):
+        p = projs.get(name)
         try:
-            cwd = "" if getattr(p, "host", "") else str(res(name) or "")
+            cwd = "" if getattr(p, "host", "") else (str(res(name) or "") or roster.get(name, ""))
         except Exception:
             cwd = ""
         out.append({"name": name, "cwd": cwd})
