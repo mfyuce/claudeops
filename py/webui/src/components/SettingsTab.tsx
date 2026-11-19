@@ -62,6 +62,7 @@ import { useStatusContext } from "../state/StatusContext";
 import type { FleetSort, Theme, UsageResult } from "../api/types";
 import { applyTheme } from "../theme";
 import { CliInstallSection } from "./CliInstallSection";
+import { ChatBackupSection } from "./ChatBackupSection";
 import { PeriodicSection } from "./PeriodicSection";
 import { HostsSection } from "./HostsSection";
 import { LayoutSection } from "./LayoutSection";
@@ -491,6 +492,7 @@ export function SettingsTab() {
             ))}
           </div>
           <CliInstallSection />
+          <ChatBackupSection />
           </>
           )}
           {/* ucli's keys moved to the ucli tab (Global settings > Model keys); the block shows only the other CLIs. */}

@@ -5392,6 +5392,9 @@ class _Handler(BaseHTTPRequestHandler):
             p = getattr(self, "_cur_principal", None)
             seeall = p is None or getattr(p, "kind", "") == "legacy" or p.has_role("admin")
             self._json({"ok": True, "runs": _ua.list_runs(uid=getattr(p, "uid", ""), all_users=seeall)})
+        elif path == "/api/chat-backup":
+            from .. import chat_backup as _cb
+            self._json({"ok": True, **_cb.status()})
         elif path == "/api/ucli/checks":
             from .. import ucli_checks as _ck
             data, err = _ck.load_registry()
@@ -5733,7 +5736,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
                          "/api/cli/install",
-                         "/api/ucli/ask", "/api/ucli/approvals", "/api/ucli/checks", "/api/ucli/checks-mode",
+                         "/api/ucli/ask", "/api/ucli/approvals", "/api/ucli/checks", "/api/ucli/checks-mode", "/api/chat-backup",
                          "/api/agents/start", "/api/agents/send", "/api/agents/stop",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
@@ -6120,6 +6123,13 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             threading.Thread(target=_uc.ucli_resume_approval, args=(rk, aid), daemon=True, name=f"ucli-resume-{rk}").start()
             self._json({"ok": True, "state": "resuming"})
+            return
+
+        if path == "/api/chat-backup":
+            from .. import chat_backup as _cb
+            act = str(data.get("action") or "")
+            res = _cb.install() if act == "install" else _cb.run_now() if act == "run" else {"ok": False, "error": "action install|run"}
+            self._json(res)     # 200 + ok:false (arayüz manual_command'ı gösterir)
             return
 
         if path == "/api/ucli/checks":
