@@ -1339,6 +1339,7 @@ def _run_layout(pin: str, groups: list, claude_only: bool = True,
     pinned = [n.strip() for n in pin.split(",") if n.strip()] if pin else []
     group_lists = [[b.strip() for b in g.split(",") if b.strip()] for g in groups if g.strip()]
     grid = load_settings().get("layout_grid") or GRID
+    reserve = load_settings().get("layout_reserve") or 0
 
     windows = _list_windows(display)
     screen = _get_screen(display, screen_y=screen_y, grid=grid)
@@ -1347,7 +1348,7 @@ def _run_layout(pin: str, groups: list, claude_only: bool = True,
                    if claude_only else None)
     plan, name_to_wid = build_layout_plan(
         windows=windows, screen=screen, pinned_names=pinned,
-        groups=group_lists, claude_only=claude_only, known_names=known_names,
+        groups=group_lists, claude_only=claude_only, known_names=known_names, reserve=reserve,
     )
 
     assignments = []

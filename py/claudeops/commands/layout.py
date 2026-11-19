@@ -33,6 +33,8 @@ def register(sub):
                    help="monitor Y offset (None=xrandr auto-detect; dual-monitor=1080)")
     p.add_argument("--grid", type=int, default=None, choices=(2, 4, 8), metavar="N",
                    help="desktop başına pencere sayısı (varsayılan: Ayarlar'ın layout_grid'i, o da yoksa 4)")
+    p.add_argument("--reserve", type=int, default=None, metavar="N",
+                   help="her desktop'ta SON N yuvayı boş bırak (2x2'de 1 = sağ alt köşe; varsayılan: Ayarlar'ın layout_reserve'i, o da yoksa 0)")
     p.add_argument("--dry-run", action="store_true",
                    help="sadece planı göster, uygulama")
     p.set_defaults(func=run)
@@ -52,6 +54,7 @@ def run(args) -> int:
     print(f"display={display}, pin={pinned or '(yok)'}, groups={groups or '(yok)'}")
 
     grid = args.grid or load_settings().get("layout_grid") or GRID
+    reserve = args.reserve if args.reserve is not None else (load_settings().get("layout_reserve") or 0)
 
     windows = _list_windows(display)
     screen = _get_screen(display, screen_y=args.screen_y, grid=grid)
@@ -66,6 +69,7 @@ def run(args) -> int:
         groups=groups,
         claude_only=claude_only,
         known_names=known_names,
+        reserve=reserve,
     )
 
     print(f"  {plan.total} pencere yerleştirilecek, {plan.skipped} atlandı")

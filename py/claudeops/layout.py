@@ -246,13 +246,16 @@ def build_layout_plan(
     groups: Optional[List[List[str]]] = None,
     claude_only: bool = True,
     known_names: Optional[Set[str]] = None,
+    reserve: int = 0,
 ) -> Tuple[LayoutPlan, Dict[str, str]]:
-    """Pencere yerleşim planı hesapla.
+    """Pencere yerleşim planı hesapla. `reserve`: her desktop'ta SON `reserve` yuva boş bırakılır (2x2'de 1 = sağ alt
+    köşe); en az 1 yuva her zaman kalır, 0 = eski davranış.
 
     Returns: (plan, name_to_winid)
     """
     pinned_names = pinned_names or []
     groups = groups or []
+    usable = max(1, screen.per_desktop - max(0, int(reserve or 0)))
 
     # 1. Session ismine göre window'ları eşle
     name_to_wid: Dict[str, str] = {}
@@ -269,7 +272,7 @@ def build_layout_plan(
 
     # 2. Pinned → ws0
     ws0_names = [n for n in pinned_names if n in name_to_wid]
-    for idx, name in enumerate(ws0_names[:screen.per_desktop]):
+    for idx, name in enumerate(ws0_names[:usable]):
         wid = name_to_wid[name]
         x, y = screen.quad_pos(idx)
         plan.assignments.append((wid, 0, x, y))
@@ -304,7 +307,7 @@ def build_layout_plan(
         x, y = screen.quad_pos(slot)
         plan.assignments.append((wid, ws, x, y))
         slot += 1
-        if slot >= screen.per_desktop:
+        if slot >= usable:
             slot = 0
             ws += 1
 
