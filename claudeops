@@ -1576,10 +1576,13 @@ cmd_send() {
     if [ "$seen_dd" = "0" ]; then targets+=("$a"); else msg_parts+=("$a"); fi
   done
   local msg="${msg_parts[*]}"
+  # `--` sonrası metin yoksa ve stdin bir boru/dosyaysa prompt stdin'den okunur (çok satırlı metin için)
+  if [ -z "$msg" ] && [ "$seen_dd" = "1" ] && [ ! -t 0 ]; then msg=$(cat); fi
   if [ "${#targets[@]}" -eq 0 ] || [ -z "$msg" ]; then
     cat <<EOF
 kullanım:
   claudeops send <target...> -- "prompt metni"
+  claudeops send <target...> --   < dosya     (ya da: komut | claudeops send <target...> --)
   örn:
     claudeops send hms13 -- "merhaba"
     claudeops send all-but-self -- "/context"
