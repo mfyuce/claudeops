@@ -598,6 +598,9 @@ def poll_jobs(sid: str = "default", now: Optional[float] = None, force: bool = F
         k = (name, str(j.get("id")))
         if status == 404:
             updates[k] = {"state": "lost", "last_polled": now, "updated_at": now, "error_code": "not_found"}
+            if j.get("state") != "lost":
+                sw.log_event("job_state", paths=paths, service=name, id=j.get("id"), project=j.get("project"),
+                             frm=j.get("state"), to="lost")
             res["changed"] += 1
             res["finished"] += 1
             continue

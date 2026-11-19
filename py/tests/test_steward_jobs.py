@@ -502,6 +502,8 @@ class TestPoll(_Jobs):
         del self.srv.jobs[b["id"]]
         sj.poll_jobs("default", force=True)
         self.assertEqual(sj.find_job(sj.load_jobs("default"), b["id"])["state"], "lost")
+        lost = [e for e in sw.tail_log(100) if e["event"] == "job_state" and e.get("to") == "lost"]
+        self.assertEqual(len(lost), 1)                                                         # D7: 404 -> lost loglanır
 
     def test_unreachable_is_one_event_with_backoff_and_recovery(self):
         self.submit()
