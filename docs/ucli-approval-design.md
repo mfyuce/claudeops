@@ -25,7 +25,7 @@ Tek atımlık ucli işi (`chat --allow-edit --ask-edit`) dosya değiştirmeden �
 - **S1:** `ucli_approval.py` (yaprak: dizin, kayıt defteri, `list_pending`, `answer` doğrulaması) + birim testleri.
 - **S2:** `approval_dir` seçeneği + `ucli_session_opts` doğrulaması + yürütücüde 75/`suspended` ayrıştırması (io ask yolu önce).
 - **S3:** `/api/ucli/approvals` GET/POST + `authz` kaynak eşlemesi + sürdürme koşucusu (arka plan, zincirleme) + testler.
-- **S4:** arayüz (kart + düğmeler + rozet), Chrome doğrulaması (izole 8790; sahte `pending/*.json`).
+- **S4 (YAPILDI 19 Kas):** `UcliApprovalsPanel.tsx` (Ucli > Çalıştır üstünde kart: onayla / bu oturum / reddet / düzenle JSON / not; süresi dolan soluk), Chrome izole 8790 masaüstü doğrulandı (onay -> state done); rozet yok, gerçek dar viewport yapılamadı.
 - **S5:** agents API `mode: edit` bağlama (ayrı tasarım: alt ajan çıktısı `suspended` ise üst ajana durum döner).
 
 ## Açık nokta (TBD değil, varsayım)

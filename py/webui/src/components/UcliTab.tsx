@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useLang } from "../i18n/LangContext";
 import { IoAskPanel } from "./IoAskPanel";
+import { UcliApprovalsPanel } from "./UcliApprovalsPanel";
 import { UcliKeysPanel } from "./UcliKeysPanel";
 import { UcliSpendPanel } from "./UcliSpendPanel";
 import { UcliSettingsPanels } from "./UcliSettingsPanels";
@@ -31,7 +32,12 @@ export function UcliTab() {
           </button>
         ))}
       </div>
-      {section === "run" && <IoAskPanel />}
+      {section === "run" && (
+        <>
+          <UcliApprovalsPanel />
+          <IoAskPanel />
+        </>
+      )}
       {section === "start" && <UcliSettingsPanels group="start" />}
       {section === "global" && (
         <>
