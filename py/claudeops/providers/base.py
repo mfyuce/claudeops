@@ -287,6 +287,11 @@ class CliProvider(ABC):
         Yalnız canlı doğrulanan provider override eder (claude: `claude -p /usage`; 13 Kas)."""
         return None
 
+    def usage_fresh_tui_argv(self) -> Optional[List[str]]:
+        """Oturumsuz okuma, TUI yolu (copilot: `-p /usage` modele gider ve kredi yakar, yok): argv ayrı bir tmux soketinde GEÇİCİ açılır,
+        `usage_command()` yazılır, ekran `parse_fresh_usage` ile okunur, kapatılır (`web._usage_fresh_tui`). None = yok."""
+        return None
+
     def parse_fresh_usage(self, text: str) -> Optional[List[Dict[str, str]]]:
         """`usage_fresh_argv()` çıktısını girdilere çevirir; varsayılan TUI ayrıştırıcısı."""
         return self.parse_usage_text(text)

@@ -202,6 +202,7 @@ _RESUME_SCAN_LIMIT = 500  # session-store.db tek dosya/hafif ama sınırsız tar
 # tek geçişte iki regex yeterli.
 _USAGE_PLAN_RE = re.compile(r"Plan\s+\S*\s*(\d+)%\s*used")
 _USAGE_FRACTION_RE = re.compile(r"([\d,]+\s*/\s*[\d,]+\s*AIC)")
+_USAGE_RESET_RE = re.compile(r"resets\s+in\s+([^\n•]+?)\s*(?:\n|$)")
 
 
 def _connect_ro() -> sqlite3.Connection:
@@ -345,7 +346,15 @@ class CopilotProvider(CliProvider):
         if not m:
             return None
         fm = _USAGE_FRACTION_RE.search(text, m.end())
-        return [{"label": "Plan (AI Credits)", "percent": m.group(1), "detail": fm.group(1) if fm else ""}]
+        rm = _USAGE_RESET_RE.search(text, m.start(), m.end() + 120)      # "resets in 11 days" aynı satırda (yüzdenin hemen yanında)
+        detail = fm.group(1) if fm else ""
+        if rm:
+            detail = (detail + " · " if detail else "") + "resets in " + rm.group(1).strip()
+        return [{"label": "Plan (AI Credits)", "percent": m.group(1), "detail": detail}]
+
+    def usage_fresh_tui_argv(self) -> Optional[List[str]]:
+        """Oturumsuz okuma (19 Kas, canlı doğrulandı): etkileşimli `copilot` + `/usage` AI kredisi YAKMAZ (`copilot -p /usage` yakar: KULLANMA)."""
+        return [resolved_binary("copilot")]
 
     def _turns(self, cwd: str, sid: Optional[str]) -> List[Tuple[str, str]]:
         """`last_exchange`/`full_history`'nin PAYLAŞTIĞI adım — claude/codex'in

@@ -40,6 +40,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import shlex
 import time
 import urllib.request
 from pathlib import Path
@@ -3413,6 +3414,77 @@ def _usage_fresh(provider) -> Optional[dict]:
     return {"available": True, "checked_via": "fresh", "entries": entries}
 
 
+_USAGE_TUI_TTL = 1800.0                  # TUI okuması ağır (~15 sn, tmux+CLI açılışı): 30 dk'da bir (sahip 19 Kas: "seyrek yeterli")
+_USAGE_TUI_CACHE: Dict[str, tuple] = {}
+
+
+def _usage_fresh_tui(provider, now: Optional[float] = None) -> Optional[dict]:
+    """TTL'li sarmalayıcı: vade dolmadıysa son BAŞARILI okuma (periodic 5 dk'da bir çağırır); başarısız okuma son iyi değeri silmez."""
+    now = time.time() if now is None else now
+    hit = _USAGE_TUI_CACHE.get(provider.name)
+    if hit and now - hit[0] < _USAGE_TUI_TTL:
+        return hit[1]
+    res = _usage_fresh_tui_run(provider)
+    if res is not None:
+        _USAGE_TUI_CACHE[provider.name] = (now, res)
+        return res
+    if hit and now - hit[0] < 2 * _USAGE_TUI_TTL:
+        return {**hit[1], "stale_read": True}
+    return None
+
+
+def _usage_fresh_tui_run(provider) -> Optional[dict]:
+    """Oturumsuz okuma, TUI yolu: ayrı tmux soketinde geçici CLI (fleet'e/oturumlara dokunmaz), `/usage` yaz, ekranı oku, kapat.
+    Başarısızlıkta None. Soket HER yolda kapatılır."""
+    argv = provider.usage_fresh_tui_argv()
+    cmd = provider.usage_command()
+    if not argv or not cmd:
+        return None
+    import subprocess
+    sock = f"cops-usage-{provider.name}-{os.getpid()}"
+    base = ["tmux", "-L", sock]
+
+    def _t(*a, timeout=10):
+        return subprocess.run(base + list(a), capture_output=True, text=True, timeout=timeout)
+
+    def _screen() -> str:
+        return strip_ansi(_t("capture-pane", "-p", "-t", "0").stdout or "")
+    try:
+        r = _t("new-session", "-d", "-x", "200", "-y", "50", "-c", "/tmp", shlex.join(argv))
+        if r.returncode != 0:
+            return None
+        deadline = time.time() + 25
+        while time.time() < deadline and "❯" not in _screen():      # girdi istemi hazır olana dek
+            time.sleep(0.5)
+        _t("send-keys", "-l", cmd)
+        time.sleep(0.5)
+        _t("send-keys", "Enter")
+        entries = None
+        deadline = time.time() + 15
+        while time.time() < deadline and not entries:
+            time.sleep(1.0)
+            entries = provider.parse_fresh_usage(_screen())
+        try:
+            _t("send-keys", "-l", "/exit")
+            _t("send-keys", "Enter")
+        except (OSError, subprocess.SubprocessError):
+            pass
+    except (OSError, subprocess.SubprocessError):
+        return None
+    finally:
+        try:
+            subprocess.run(base + ["kill-server"], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        try:        # kill-server sonrası soket dosyası kalabilir (pid'e özgü ad: birikmesin)
+            os.unlink(f"/tmp/tmux-{os.getuid()}/{sock}")
+        except OSError:
+            pass
+    if not entries:
+        return None
+    return {"available": True, "checked_via": "fresh_tui", "entries": entries}
+
+
 # Oturumsuz/oturumlu kullanım yolu OLMAYAN sağlayıcıların "desteklenmiyor" yerine NEDENİ (18 Kas araştırması, kaynak ve deneme sonucu).
 _NO_USAGE_NOTES = {
     "codex": "codex 0.166: `codex exec` içinde /status ya da kota komutu yok (yalnız TUI); rollout `token_count.rate_limits` bu hesapta null; "
@@ -3456,6 +3528,8 @@ def _usage_all(only: Optional[set] = None) -> dict:
             out[cli_name] = _no_usage_row(cli_name)
             continue
         fresh = _usage_fresh(provider)
+        if fresh is None:
+            fresh = _usage_fresh_tui(provider)
         if fresh is not None:
             out[cli_name] = {"supported": True, **fresh}
             continue
