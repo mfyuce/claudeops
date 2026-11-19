@@ -5550,8 +5550,11 @@ class _Handler(BaseHTTPRequestHandler):
             return
         from .. import authz as _az
         agents_caller = self._agents_caller() if path.startswith("/api/agents/") else None
+        # Ajan token'ı (Bearer, üst oturuma bağlı) çok kullanıcı kipinde de geçerlidir: `_principal()` yalnız çerezli insanı çözer,
+        # eskiden geçerli ajan token'ı da burada 401 alıyordu (GET kolu `_agents_caller`ı zaten kullanıyordu).
+        agent_call = agents_caller is not None and agents_caller[0] == "agent"
         if _az.has_authenticator():
-            if self._principal() is None:
+            if self._principal() is None and not agent_call:
                 if path.startswith("/api/agents/"):
                     self._json({"ok": False, "error": "missing or invalid token"}, status=401)
                 else:
@@ -5673,7 +5676,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "JSON gövde bir nesne olmalı / JSON body must be an object"}, status=400)
             return
         self._cur_data = data
-        if not self._gate("POST", path, data):    # K2: gövdedeki oturum/host/değnekçi kaynağıyla (kanca yoksa ek iş yok)
+        # K2: ajan token'lı çağrıda principal yok; yetki üst oturum kapsamıyla `web_agents`'ta (yalnız kendi çocukları) uygulanır.
+        if not (agent_call and path.startswith("/api/agents/")) and not self._gate("POST", path, data):
             return
         # OpenAI-uyumlu katman (TOBEDECIDED #21) — host-routing bloğundan ÖNCE ve
         # ondan BAĞIMSIZ: `/v1/*` BİLEREK sadece YEREL session'lara bakar

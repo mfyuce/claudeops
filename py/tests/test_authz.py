@@ -104,6 +104,26 @@ class HttpTest(unittest.TestCase):
         code = self.call("GET", "/api/agents/models", ck)[0]
         self.assertNotEqual(code, 401)                                              # izin verilince kimlik doğrulaması geçer
 
+    def test_agent_bearer_token_works_in_multi_user_mode(self):
+        """Çok kullanıcı kipinde (authenticator kayıtlı) geçerli ajan token'ı /api/agents/* POST'ta 401 almamalı; geçersiz token 401."""
+        import tempfile
+        from claudeops import ucli_agents as ag
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for pp in (mock.patch.object(ag, "STATE_FILE", os.path.join(tmp.name, "a.json")),
+                   mock.patch.object(ag, "TOKEN_DIR", os.path.join(tmp.name, "t"))):
+            pp.start()
+            self.addCleanup(pp.stop)
+        tok = open(ag.issue_token("parentx")).read().strip()
+        authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)) if v.cookies.get("cops_t") == "good" else None)
+        authz.set_authorizer(lambda p, a, r: p is not None)          # principal'sız (ajan) çağrı kapıdan geçemez: atlanmalı
+        good = self.call("POST", "/api/agents/stop", {"Authorization": f"Bearer {tok}"}, {})[0]
+        self.assertNotIn(good, (401, 403))
+        self.assertEqual(self.call("POST", "/api/agents/stop", {"Authorization": "Bearer " + "0" * 64}, {})[0], 401)
+        self.assertEqual(self.call("POST", "/api/agents/stop", None, {})[0], 401)
+        # ajan token'ı başka hiçbir uca açılmaz
+        self.assertEqual(self.call("POST", "/api/start", {"Authorization": f"Bearer {tok}"}, {})[0], 401)
+
     def test_authorizer_denies_403_and_audits(self):
         seen = []
         authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)))
