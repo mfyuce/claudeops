@@ -57,6 +57,7 @@ from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
 from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_hosts_public
+from .. import host_probe
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from ..needs_ho import needs_ho
@@ -5280,6 +5281,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "ok": cached["ok"] if cached else False,
                     "error": (cached.get("error") if cached else "not polled yet"),
                     "tier": web_hosts.get_tier(h["name"]),  # capability prober'ın son bildiği "rest"|"ws"|"grpc"
+                    "probe": host_probe.public_view(h["name"]),  # adres yoklaması (periodic `host_probe`): ms, ort., hata sayısı
                 })
             self._json({"ok": True, "hosts": rows})
         elif path == "/api/cli/status":

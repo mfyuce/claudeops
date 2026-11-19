@@ -253,6 +253,20 @@ export interface HostRecord {
    * a working one gets silently promoted to `base_url` (see hosts.py's
    * `promote_base_url`). Not a secret, unlike `token`. */
   extra_urls?: string[];
+  /** Address probe results (periodic `host_probe`, `host_probe.public_view`): fastest healthy first. */
+  probe?: HostProbeRow[];
+}
+
+export interface HostProbeRow {
+  url: string;
+  ok: boolean;
+  ms: number | null;
+  avg_ms: number | null;
+  fails: number;
+  total: number;
+  total_fail: number;
+  err: string;
+  at: number;
 }
 
 /** `/api/cli/status` (GET) entry — `cli_install.py`'s `cli_status()` shape,

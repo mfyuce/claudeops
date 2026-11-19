@@ -935,10 +935,28 @@ def run_model_watch(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     return {"ok": True, "msg": msg + ("" if apply else " (plan)"), "applied": apply, "new": r["new"]}
 
 
+DEFAULT_HOST_PROBE: Dict[str, Any] = {
+    "enabled": "on",             # sahip 19 Kas: ulak_31 LAN/devtunnel adres seçimi; yalnız okur ve depoya yazar
+    "schedule": "",
+    "start": "00:00",
+    "interval_hours": 3 / 60,    # 3 dk
+}
+
+
+def run_host_probe(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Her host'un base_url + extra_urls adreslerini yoklar (erişilebilirlik, ms, son N ortalama, hata) -> `host_probe.json`."""
+    if not apply:
+        return {"ok": True, "msg": "plan: extra_urls olan host'ların adresleri yoklanır, host_probe.json'a yazılır", "applied": False}
+    from . import host_probe
+    r = host_probe.run_probe()
+    return {"ok": True, "msg": f"{r['hosts']} host, {r['urls']} adres, {r['ok']} erişilebilir", "applied": True}
+
+
 JOBS: Dict[str, Job] = {"chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, run_chat_backup),
                         "memory_prv": Job("memory_prv", DEFAULT_MEMORY_PRV, run_memory_prv),
                         "usage_refresh": Job("usage_refresh", DEFAULT_USAGE_REFRESH, run_usage_refresh),
-                        "model_watch": Job("model_watch", DEFAULT_MODEL_WATCH, run_model_watch)}
+                        "model_watch": Job("model_watch", DEFAULT_MODEL_WATCH, run_model_watch),
+                        "host_probe": Job("host_probe", DEFAULT_HOST_PROBE, run_host_probe)}
 _LOCK = threading.Lock()
 
 

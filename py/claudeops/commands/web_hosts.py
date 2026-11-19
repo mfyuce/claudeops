@@ -562,73 +562,19 @@ def _candidate_allowed(base_url: str, candidate: str) -> bool:
     return True
 
 
-PICK_INTERVAL_SECONDS = 300.0     # en hızlı adres taraması aralığı (host başına)
-PICK_TIMEOUT_SECONDS = 3.0
-PICK_MIN_GAIN_SECONDS = 0.05      # terfi için en az bu kadar kazanç...
-PICK_MIN_GAIN_RATIO = 0.6         # ...ve mevcut gecikmenin en çok %60'ı (gürültüyle ileri geri gitmesin)
-PICK_MAX_CANDIDATES = 5
-_pick_last: Dict[str, float] = {}
-_pick_running: set = set()
-_pick_lock = threading.Lock()
-
-
-def _probe_latency(url: str, token: str) -> Optional[float]:
-    """Adaya bir `/api/status` isteği; başarılıysa süre (sn), değilse None. Poller'ın aynı-URL dedup'ına takılmaz."""
-    t0 = time.monotonic()
-    parsed, err = _fetch_status_from(url, token, PICK_TIMEOUT_SECONDS, dedup=False)
-    return (time.monotonic() - t0) if err is None and parsed is not None else None
-
-
-def pick_fastest_url(host_record: Dict[str, Any], probe: Callable[[str, str], Optional[float]] = _probe_latency) -> Optional[str]:
-    """`base_url` + `extra_urls` adaylarının gecikmesini ölçer; belirgin biçimde daha hızlı erişilebilir bir aday varsa
-    `hosts_mod.promote_base_url` ile onu `base_url` yapar (eski adres `extra_urls` başında yedek kalır: devtunnel yedek)
-    ve onu döner. `base_url` erişilemiyorsa en hızlı çalışan aday seçilir. https→http kuralı `_candidate_allowed`. Yoksa None."""
-    name, token = host_record["name"], host_record["token"]
-    base = host_record.get("base_url", "")
-    extras = [u for u in (host_record.get("extra_urls") or []) if u != base][:PICK_MAX_CANDIDATES]
-    if not extras or not base:
-        return None
-    lat: Dict[str, float] = {}
-    base_lat = probe(base, token)
-    for cand in extras:
-        if not _candidate_allowed(base, cand):
-            continue
-        v = probe(cand, token)
-        if v is not None:
-            lat[cand] = v
-    if not lat:
-        return None
-    best = min(lat, key=lat.get)
-    if base_lat is not None and not (base_lat - lat[best] >= PICK_MIN_GAIN_SECONDS and lat[best] <= base_lat * PICK_MIN_GAIN_RATIO):
-        return None
-    hosts_mod.promote_base_url(name, best)
-    diag_log("host_url_picked", name=name, old=base, new=best, new_ms=int(lat[best] * 1000),
-             old_ms=None if base_lat is None else int(base_lat * 1000))
-    return best
-
-
-def _maybe_pick_fastest(host_record: Dict[str, Any]) -> None:
-    """Poll turunu BLOKLAMADAN (arka plan thread) en hızlı adres taramasını host başına `PICK_INTERVAL_SECONDS`'te bir yapar."""
-    name = host_record["name"]
+def _apply_probe_choice(host_record: Dict[str, Any]) -> None:
+    """Poller turunda: `host_probe` periodic işinin depoya yazdığı en hızlı SAĞLIKLI adres `base_url`ten farklıysa ona geçer
+    (`promote_base_url`: eski adres `extra_urls` başında yedek kalır). AĞA GİTMEZ, yalnız (mtime-önbellekli) dosya okur."""
     if not host_record.get("extra_urls"):
         return
-    now = time.monotonic()
-    with _pick_lock:
-        if name in _pick_running or now - _pick_last.get(name, 0.0) < PICK_INTERVAL_SECONDS:
-            return
-        _pick_last[name] = now
-        _pick_running.add(name)
-
-    def run() -> None:
-        try:
-            pick_fastest_url(host_record)
-        except Exception:
-            pass
-        finally:
-            with _pick_lock:
-                _pick_running.discard(name)
-
-    threading.Thread(target=run, daemon=True, name=f"host-pick-{name}").start()
+    try:
+        from .. import host_probe
+        best = host_probe.choose_for(host_record)
+        if best:
+            hosts_mod.promote_base_url(host_record["name"], best)
+            diag_log("host_url_picked", name=host_record["name"], old=host_record.get("base_url"), new=best)
+    except Exception:
+        pass
 
 
 def _try_fallback_urls(host_record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -755,7 +701,7 @@ def _poll_once() -> None:
     current = hosts_mod.load_hosts()
     current_names = {h["name"] for h in current}
     for h in current:
-        _maybe_pick_fastest(h)      # en hızlı erişilebilir adres (LAN/devtunnel...): arka plan, nadir, poll'u bloklamaz
+        _apply_probe_choice(h)      # en hızlı SAĞLIKLI adres: `host_probe` deposundan okunur (ağa gitmez)
         # Tier "rest" değilse VE canlı bir push-consumer varsa/başlatılabildiyse
         # bu tick REST'e HİÇ gitmiyor (asıl kazanç) — consumer'ın kendisi her
         # mesajda `_record_poll_result`'ı zaten çağırıyor. Consumer yoksa/

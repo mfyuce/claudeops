@@ -408,6 +408,9 @@ export interface Strings {
   protectedBadge: string;
   protectedHint: string;
   hostBadgeHint: (host: string) => string;
+  hostProbeTitle: string;
+  hostProbeActive: string;
+  hostProbeStats: (ms: number | null, avg: number | null, fails: number, total: number) => string;
   ownerBadgeHint: (uid: string) => string;
   modelLiveDiffersHint: (registered: string) => string;
   hostsUnreachableMsg: (names: string[]) => string;
@@ -1386,6 +1389,9 @@ export const STRINGS: Record<Lang, Strings> = {
     protectedBadge: "dikkat",
     protectedHint: "guard'ı ayakta tutuyor — toplu seçimde/işlemde dikkatli olun",
     hostBadgeHint: (host) => `"${host}" host'unda çalışıyor (local değil)`,
+    hostProbeTitle: "adres yoklaması (birkaç dk'da bir; en hızlı sağlıklı adres seçilir)",
+    hostProbeActive: "aktif",
+    hostProbeStats: (ms, avg, fails, total) => `${ms == null ? "erişilemedi" : `${ms} ms`} · ort. ${avg ?? "-"} ms · hata ${fails} (toplam ${total})`,
     ownerBadgeHint: (uid) => `oturum sahibi: ${uid}`,
     modelLiveDiffersHint: (registered) =>
       `Session şu an bu modelle çalışıyor (canlıda değiştirilmiş ya da tek seferlik açılmış). Kayıtlı/başlatma modeli: ${registered}`,
@@ -2392,6 +2398,9 @@ export const STRINGS: Record<Lang, Strings> = {
     protectedBadge: "caution",
     protectedHint: "keeps the guard alive — be careful with bulk selection/actions on this row",
     hostBadgeHint: (host) => `running on host "${host}" (not local)`,
+    hostProbeTitle: "address probe (every few minutes; the fastest healthy address is used)",
+    hostProbeActive: "active",
+    hostProbeStats: (ms, avg, fails, total) => `${ms == null ? "unreachable" : `${ms} ms`} · avg ${avg ?? "-"} ms · errors ${fails} (of ${total})`,
     ownerBadgeHint: (uid) => `session owner: ${uid}`,
     modelLiveDiffersHint: (registered) =>
       `The session is running on this model right now (switched live, or launched one-off). Registered/launch model: ${registered}`,

@@ -196,7 +196,8 @@ export function HostsSection() {
           <span className="opts-hint">{t.hostNone}</span>
         ) : (
           hosts.map((h) => (
-            <div key={h.name} className="opts-hint" style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
+            <div key={h.name} style={{ display: "flex", flexDirection: "column", gap: ".15rem" }}>
+            <div className="opts-hint" style={{ display: "flex", alignItems: "center", gap: ".5rem", flexWrap: "wrap" }}>
               <b>{h.name}</b>
               <span style={{ color: "var(--muted)" }}>{h.base_url}</span>
               {!!h.extra_urls?.length && (
@@ -216,6 +217,18 @@ export function HostsSection() {
               <button type="button" className="closebtn" onClick={() => void handleRemove(h.name)}>
                 {t.hostRemoveBtn}
               </button>
+            </div>
+            {!!h.probe?.length && (
+              <div className="opts-hint" title={t.hostProbeTitle} style={{ display: "flex", flexDirection: "column", gap: ".1rem", paddingLeft: "1rem" }}>
+                {h.probe.map((p) => (
+                  <span key={p.url} style={{ overflowWrap: "anywhere", color: p.ok ? undefined : "var(--red)" }} title={p.err || undefined}>
+                    {p.url === h.base_url ? "● " : "○ "}
+                    {p.url}
+                    {p.url === h.base_url ? ` (${t.hostProbeActive})` : ""} · {t.hostProbeStats(p.ms, p.avg_ms, p.fails, p.total)}
+                  </span>
+                ))}
+              </div>
+            )}
             </div>
           ))
         )}
