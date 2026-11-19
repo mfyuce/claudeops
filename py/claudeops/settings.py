@@ -9,6 +9,7 @@ Leaf modül (sadece paths'e bağımlı, diaglog.py'yle aynı disiplin) — hando
 gibi commands/ PAKETİNE bağımlı olmayan modüller de sorunsuz import edebilsin.
 """
 from __future__ import annotations
+import copy
 import dataclasses
 import json
 import os
@@ -225,10 +226,36 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 }
 
 
+_LOAD_CACHE: Dict[str, Any] = {"sig": None, "val": None}
+
+
 def load_settings() -> Dict[str, Any]:
     """Eksik/bozuk dosyaya karşı toleranslı — her zaman DEFAULT_SETTINGS'in TÜM
     anahtarlarını içeren tam bir dict döner, çağıran hiçbir zaman KeyError riski
-    taşımaz (best-effort, [[diaglog.py]]'nin diag_log'uyla aynı tolerans)."""
+    taşımaz (best-effort, [[diaglog.py]]'nin diag_log'uyla aynı tolerans).
+
+    `/api/status` her ~2-3 sn'de sağlayıcı başına birkaç kez çağırıyordu (N+1 dosya okuma + ayrıştırma, D9): sonuç
+    dosya imzasına (yol, mtime_ns, boyut, inode; atomik yazım inode'u değiştirir) bağlı önbelleklenir ve çağırana
+    DERİN KOPYA verilir (çağıranlar sözlüğü değiştirip `save_settings`e yama verebilir). Dosya yoksa/okunamazsa önbellek yok."""
+    try:
+        st = os.stat(SETTINGS_JSON)
+        sig = (str(SETTINGS_JSON), st.st_mtime_ns, st.st_size, st.st_ino)
+    except OSError:
+        sig = None
+    if sig is not None and _LOAD_CACHE["sig"] == sig:
+        return copy.deepcopy(_LOAD_CACHE["val"])
+    val = _load_settings_uncached()
+    if sig is not None:
+        try:
+            st2 = os.stat(SETTINGS_JSON)
+            if (str(SETTINGS_JSON), st2.st_mtime_ns, st2.st_size, st2.st_ino) == sig:     # okurken değişmediyse sakla
+                _LOAD_CACHE["sig"], _LOAD_CACHE["val"] = sig, copy.deepcopy(val)
+        except OSError:
+            pass
+    return val
+
+
+def _load_settings_uncached() -> Dict[str, Any]:
     out: Dict[str, Any] = dict(DEFAULT_SETTINGS)
     try:
         with open(SETTINGS_JSON, encoding="utf-8") as f:

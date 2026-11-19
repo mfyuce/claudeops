@@ -8,7 +8,7 @@ Kullanım:
   py/cops steward transfer PROJE SID          # projeyi başka kimliğe devret (oturum kapalıyken; --force: denetimi atla)
   py/cops steward service add NAME --url URL --token-file PATH [--match prefix|exact] [--label L] / rm NAME / list
                                               # pasif paylaşımlı servis kaydı (varaka): makine geneli, oturumlarına HİÇ dokunulmaz
-  py/cops steward [-s SID] jobs [list [--all|--state S]|show ID|poll|ack ID]   # dış iş kuyruğu (varaka) kayıtları / şimdi yokla
+  py/cops steward [-s SID] jobs [list [--all|--state S]|show ID [--service S]|poll|ack ID [--service S]]   # dış iş kuyruğu (varaka) kayıtları / şimdi yokla
   py/cops steward status                      # özet: açık/kapalı, projeler faz faz, açık sorular, son tick
   py/cops steward projects [--phase planned]  # proje listesi
   py/cops steward cards [NAME] [--refresh]    # proje kartları (NAME: tek kartın tamamı); --refresh: şimdi yenile (panel üzerinden)
