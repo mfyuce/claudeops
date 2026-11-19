@@ -463,8 +463,15 @@ def ucli_chat_once(
     max_steps: Optional[int] = None,
     binary: Optional[str] = None,
     timeout: float = 120.0,
+    extra_args: Sequence[str] = (),
+    approval_run_key: Optional[str] = None,
+    approval_owner: str = "",
 ) -> Dict[str, Any]:
-    """Tek görev, tek process. Dönen dict `{"answer", "model_rounds",
+    """Tek görev, tek process. `approval_run_key` verilirse (`--ask-edit --allow-edit` çağıranın `extra_args`'ında olmalı) iş onay beklemez:
+    ucli 75 ile çıkıp `{"suspended":...}` basarsa sonuç hata SAYILMAZ, koşu `ucli_approval` kaydına `suspended` yazılır ve
+    `{"status":"suspended","run_key","approval_id"}` döner (docs/ucli-approval-design.md S2). Sürdürme argv'si (prompt'suz) kayda yazılır.
+
+    Dönen dict `{"answer", "model_rounds",
     "tool_calls"}` (`AgentAnswer`, agent.rs) — `chat` (repl'siz) hep pretty-
     printed JSON yazar ama `json.loads` boşluğa bakmaz, framing derdi yok
     (process ömrü boyunca TEK değer). `api_key` verilirse (çağıranın kendi
@@ -480,17 +487,35 @@ def ucli_chat_once(
         in_old = os.path.exists(os.path.join(legacy_chat_dir(root), f"{session}.jsonl"))
         if (ucli_state_dir_enabled() or in_new) and not (in_old and not in_new) and binary_supports_flag(bin_path, "--state-dir"):
             extra = ["--state-dir", sdir]
+    approval_dir = ""
+    if approval_run_key:
+        from . import ucli_approval
+        if not binary_supports_flag(bin_path, "--approval-dir"):
+            raise UcliError("ucli ikilisi --approval-dir bayrağını tanımıyor (onay kanalı yarım uygulanmaz)")
+        try:
+            approval_dir = ucli_approval.dir_for(approval_run_key, create=True)
+        except ValueError as e:
+            raise UcliError(str(e)) from e
+        extra = list(extra) + ["--approval-dir", approval_dir]
     argv = build_chat_argv(
         bin_path, root, repl=False, session=session, model=model,
         endpoint=endpoint, api_key_env=api_key_env, with_mcp=with_mcp,
-        max_steps=max_steps, extra_args=extra,
+        max_steps=max_steps, extra_args=list(extra) + [str(a) for a in extra_args],
     )
+    argv_resume = list(argv)             # prompt'tan ÖNCEKİ bayraklar: `--resume-approval ID` bunlarla (gizli değer yok: anahtar ortamdan)
     argv.append(prompt)
     env = _subprocess_env(api_key_env, api_key)
     try:
         result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired as e:
         raise UcliError(f"ucli {timeout}s içinde cevap vermedi") from e
+    if approval_run_key and result.returncode == 75:
+        from . import ucli_approval
+        susp = ucli_approval.parse_suspended(result.stdout)
+        if susp:
+            ucli_approval.register(approval_run_key, root, session or "", argv_resume, owner=approval_owner)
+            ucli_approval.set_state(approval_run_key, "suspended")
+            return {"ok": True, "status": "suspended", "run_key": approval_run_key, "approval_id": susp["id"]}
     if result.returncode != 0:
         raise UcliError(result.stderr.strip() or f"ucli exit={result.returncode}")
     try:

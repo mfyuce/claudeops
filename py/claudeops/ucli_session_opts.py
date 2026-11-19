@@ -244,7 +244,7 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
         return {}, f"{key} true/false olmalı"
     # Grup D yetenek bayrakları (hepsi VARSAYILAN KAPALI, belirsiz değer HATA). `exec_own_glob` (--allow-exec-own-glob) yukarıda zaten var.
     # --exec-net ve sınırsız --allow-exec-own BİLEREK yok (modül başlığı; sahip kararı bekliyor). ask_edit yazma izni (exec_write) ister.
-    for key in ("allow_image", "allow_scholar", "ask_edit", "ask_dir"):
+    for key in ("allow_image", "allow_scholar", "ask_edit", "ask_dir", "approval_dir"):
         v = raw.get(key)
         if v in (None, "", False, 0, "0", "false", "no", "off"):
             continue
@@ -252,6 +252,10 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
             return {}, f"{key} true/false olmalı"
         if key == "ask_edit" and not out.get("exec_write"):
             return {}, "ask_edit için exec_write (--allow-edit) gerekli"
+        if key == "approval_dir" and not out.get("ask_edit"):
+            return {}, "approval_dir için ask_edit (ve exec_write) gerekli"
+        if key == "approval_dir" and (out.get("ask_dir") or raw.get("ask_dir") not in (None, "", False, 0, "0", "false", "no", "off")):
+            return {}, "approval_dir (tek atımlık iş) ile ask_dir (REPL) birlikte kullanılamaz"
         out[key] = True
     # --search-token-env: YALNIZ ortam değişkeni ADI (değer değil); token argv/log/ayara girmez.
     ste = raw.get("search_token_env")

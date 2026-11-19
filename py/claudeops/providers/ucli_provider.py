@@ -729,6 +729,9 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                 raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (yetenek izni yarım uygulanmaz)")
             if flag not in argv:
                 argv = argv + [flag]
+    if opts.get("approval_dir"):
+        # approval_dir TEK ATIMLIK işe özgüdür (`ucli_client.ucli_chat_once(approval_run_key=...)`); REPL oturumunda anlamsız, sessizce yok sayılmaz.
+        raise ValueError("approval_dir REPL oturumunda kullanılamaz (REPL için ask_dir)")
     if opts.get("ask_dir"):
         # Sorular/onaylar terminal yerine `<CLAUDEOPS_DIR>/ucli_ask/<oturum>` dosyalarına gider; panel cevaplar (varsayılan KAPALI).
         if not session_name:
