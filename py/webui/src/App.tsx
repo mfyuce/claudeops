@@ -241,11 +241,11 @@ function AppShell() {
         {data && activeTab === "disabled" && <GroupTable items={data.closed} search={search} onView={onViewSession} />}
         {data && activeTab === "retired" && <GroupTable items={data.retired} search={search} onView={onViewSession} />}
         {data && activeTab === "history" && <HistoryTab search={search} onView={onViewSession} />}
-        {data && activeTab === "team" && <OrchTab selection={selection} />}
-        {data && activeTab === "steward" && <StewardTab onOpenTerminal={(host, name) => setOpenTerminalFor({ host: host || LOCAL_HOST, name })} />}
+        {data && activeTab === "team" && <OrchTab selection={selection} search={search} />}
+        {data && activeTab === "steward" && <StewardTab search={search} onOpenTerminal={(host, name) => setOpenTerminalFor({ host: host || LOCAL_HOST, name })} />}
         {data && activeTab === "desktop" && <DesktopTab />}
-        {data && activeTab === "snapshots" && <SnapshotSection />}
-        {data && activeTab === "readlist" && <ReadlistTab />}
+        {data && activeTab === "snapshots" && <SnapshotSection search={search} />}
+        {data && activeTab === "readlist" && <ReadlistTab search={search} />}
         {data && activeExt && (
           <ExtensionBoundary key={activeExt.id + lang} label={t.extLoadFailed}>
             <ExtensionTab ext={activeExt} openSession={openExtSession} />

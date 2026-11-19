@@ -8,6 +8,7 @@
  */
 
 import { LabelChips } from "./shared/LabelChips";
+import { matchesText } from "./shared/searchFilter";
 import { IdleRules, LoopGuardBox, WhyCell } from "./StewardWhy";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NumberSetting } from "./shared/NumberSetting";
@@ -160,7 +161,7 @@ function QuestionCard({ q, sid, health, onAnswered }: { q: StewardQuestion; sid:
   );
 }
 
-export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string, name: string) => void }) {
+export function StewardTab({ onOpenTerminal, search = "" }: { onOpenTerminal?: (host: string, name: string) => void; search?: string }) {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
   const [state, setState] = useState<StewardStateResult | null>(null);
@@ -244,11 +245,19 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
     }
   }
 
-  const qPg = usePagination(state?.questions ?? []);
-  const ideaPg = usePagination(state?.ideas ?? []);
-  const pendPg = usePagination(state?.pending ?? []);
-  const projPg = usePagination(state?.projects ?? []);
-  const recentPg = usePagination(state?.recent ?? data?.steward?.recent ?? []);
+  // The panel's top search box also filters these lists (case- and Turkish-letter-insensitive); sub-tab counters follow the search.
+  const sq = search.trim();
+  const fQuestions = (state?.questions ?? []).filter((q) => matchesText([q.project, q.text, q.answer, q.source, q.host, q.status], sq));
+  const fIdeas = (state?.ideas ?? []).filter((i) => matchesText([i.project, i.text, i.source, i.status], sq));
+  const fPending = (state?.pending ?? []).filter((x) => matchesText([x.kind, x.name, x.text], sq));
+  const fProjects = (state?.projects ?? []).filter((p) =>
+    matchesText([p.name, p.phase, p.kind, p.goal, p.notes, p.next_step, p.host, p.model, p.last_directive], sq));
+  const fRecent = (state?.recent ?? data?.steward?.recent ?? []).filter((r) => matchesText([r.kind, r.name, r.reason, r.detail, r.host], sq));
+  const qPg = usePagination(fQuestions);
+  const ideaPg = usePagination(fIdeas);
+  const pendPg = usePagination(fPending);
+  const projPg = usePagination(fProjects);
+  const recentPg = usePagination(fRecent);
   if (!data) return null;
   const pickerButtons = multi && (
     <div className="opts" role="group" aria-label={t.stewardPick}>
@@ -289,7 +298,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
             {t.stewardIdRemove}
           </button>
         </div>
-        <ReviewPanel sid={sid} refreshKey={key} />
+        <ReviewPanel sid={sid} refreshKey={key} search={search} />
       </div>
     );
   }
@@ -522,19 +531,19 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
           {t.stewardSubOps}
         </button>
         <button type="button" className={sub === "questions" ? "active" : ""} onClick={() => setSub("questions")}>
-          {t.stewardQuestionsTitle} ({s.open_questions})
+          {t.stewardQuestionsTitle} ({sq && state ? fQuestions.length : s.open_questions})
         </button>
         <button type="button" className={sub === "ideas" ? "active" : ""} onClick={() => setSub("ideas")}>
-          {t.stewardIdeasTitle} ({s.ideas_new})
+          {t.stewardIdeasTitle} ({sq && state ? fIdeas.length : s.ideas_new})
         </button>
         <button type="button" className={sub === "jobs" ? "active" : ""} onClick={() => setSub("jobs")}>
           {t.stewardSubJobs}
         </button>
         <button type="button" className={sub === "projects" ? "active" : ""} onClick={() => setSub("projects")}>
-          {t.stewardProjectsTitle} ({projectsTotal})
+          {t.stewardProjectsTitle} ({sq && state ? fProjects.length : projectsTotal})
         </button>
         <button type="button" className={sub === "pending" ? "active" : ""} onClick={() => setSub("pending")}>
-          {t.stewardPendingTitle} ({s.pending_items})
+          {t.stewardPendingTitle} ({sq && state ? fPending.length : s.pending_items})
         </button>
       </div>
       {sub === "ops" && (
@@ -544,7 +553,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       <StewardUsageMode />
       <StewardDigests sid={sid} refreshKey={key} />
       <LoopGuardBox items={state?.loop_guard} sid={sid} run={run} busy={busy} lang={lang} />
-      {s.recent && s.recent.length > 0 && (
+      {fRecent.length > 0 && (
         <>
           <h3 style={{ margin: ".4rem 0 0" }}>{t.stewardRecentTitle}</h3>
           <div className="legend" style={{ margin: 0 }}>
@@ -571,7 +580,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
         </span>
       )}
       {!state && <div className="opts-hint" role="status">…</div>}
-      {state && state.questions.length === 0 && <span className="opts-hint">{t.stewardNoQuestions}</span>}
+      {state && fQuestions.length === 0 && <span className="opts-hint">{sq && state.questions.length ? t.noSearchMatches : t.stewardNoQuestions}</span>}
       {qPg.pageItems.map((q) => (
         <QuestionCard key={q.id} q={q} sid={sid} health={q.host ? state?.remote_hosts?.[q.host] : undefined} onAnswered={() => void load().then(refresh)} />
       ))}
@@ -624,8 +633,8 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       )}
       {sub === "ideas" && (
         <>
-      {state && state.ideas.length === 0 && <span className="opts-hint">{t.stewardNoIdeas}</span>}
-      {state && state.ideas.length > 0 && (
+      {state && fIdeas.length === 0 && <span className="opts-hint">{sq && state.ideas.length ? t.noSearchMatches : t.stewardNoIdeas}</span>}
+      {state && fIdeas.length > 0 && (
         <label className="opts-hint">
           {t.stewardExportTarget}{" "}
           <select value={exportTarget} onChange={(e) => setExportTarget(e.target.value === "all" ? "all" : "project")}>
@@ -674,13 +683,13 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       )}
       {sub === "jobs" && (
         <>
-      <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} />
+      <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} search={search} />
         </>
       )}
       {sub === "projects" && (
         <>
-      {state && state.projects.length === 0 && <span className="opts-hint">{t.stewardNoProjects}</span>}
-      {state && state.projects.length > 0 && (
+      {state && fProjects.length === 0 && <span className="opts-hint">{sq && state.projects.length ? t.noSearchMatches : t.stewardNoProjects}</span>}
+      {state && fProjects.length > 0 && (
         <div className="tablewrap">
           <table>
             <thead>
@@ -784,7 +793,7 @@ export function StewardTab({ onOpenTerminal }: { onOpenTerminal?: (host: string,
       )}
       {sub === "pending" && (
         <>
-      {state && (state.pending?.length ?? 0) === 0 && <span className="opts-hint">{t.stewardNoPending}</span>}
+      {state && fPending.length === 0 && <span className="opts-hint">{sq && (state.pending?.length ?? 0) ? t.noSearchMatches : t.stewardNoPending}</span>}
       {pendPg.pageItems.map((it, idx) => (
         <div key={`${it.kind}-${it.name}-${idx}`} className="legend" style={{ margin: 0 }}>
           <span className="cli-badge">{it.kind}</span> <b>{it.name}</b> {it.text}

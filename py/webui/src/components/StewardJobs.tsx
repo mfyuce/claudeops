@@ -1,5 +1,6 @@
 /** Değnekçi sekmesi: servis kaydı (varaka) + iş kuyruğu. Onay/ret BİLEREK yok: yalnız varaka'daki insan yöneticide.
  *  Token değeri hiçbir yerde girilmez ya da gösterilmez; yalnız token dosyasının yolu. */
+import { matchesText } from "./shared/searchFilter";
 import { useCallback, useEffect, useState } from "react";
 import { Pagination } from "./shared/Pagination";
 import { usePagination } from "../hooks/usePagination";
@@ -25,12 +26,14 @@ function kindNames(raw: unknown): string[] {
   return Array.from(new Set(out));
 }
 
-export function StewardJobs({ sid, projects }: { sid: string; projects: string[] }) {
+export function StewardJobs({ sid, projects, search = "" }: { sid: string; projects: string[]; search?: string }) {
   const { t } = useLang();
   const [services, setServices] = useState<StewardServiceRow[]>([]);
   const [jobs, setJobs] = useState<StewardJobRow[]>([]);
   const [onlyOpen, setOnlyOpen] = useState(true);
-  const jobPage = usePagination(jobs, 10);
+  // Top search box also filters the job list (case- and Turkish-letter-insensitive).
+  const fJobs = jobs.filter((j) => matchesText([j.service, j.id, j.project, j.kind, j.state, j.approval_state, j.result_summary, j.error, j.note], search));
+  const jobPage = usePagination(fJobs, 10);
   const [kinds, setKinds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [svc, setSvc] = useState({ name: "", url: "", token: "" });

@@ -12,6 +12,7 @@ import { Pagination } from "./shared/Pagination";
 import { usePagination } from "../hooks/usePagination";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
+import { matchesText } from "./shared/searchFilter";
 
 interface ReadItem {
   id: string;
@@ -29,6 +30,10 @@ interface ReadItem {
 interface ReadList { ok: boolean; items: ReadItem[]; reader: boolean }
 
 const HIDE_KEY = "cops_readlist_hide";
+const SUB_KEY = "cops_readlist_sub";
+
+/** Review reports (Fable) are separate from the reading documents (TBD "SAHİP OKUMASI" lines / weekend pack). */
+const isFable = (i: ReadItem) => i.source === "fable";
 
 function Card({ it, readerOn, onRead }: { it: ReadItem; readerOn: boolean; onRead: () => void }) {
   const { t } = useLang();
@@ -46,6 +51,7 @@ function Card({ it, readerOn, onRead }: { it: ReadItem; readerOn: boolean; onRea
     }
   };
   const open = readerOn && !!it.reader_url;
+  const fable = isFable(it);
   return (
     <div className="card" style={{ opacity: it.read ? 0.6 : 1, margin: "10px 0", padding: 12 }}>
       <div style={{ fontSize: 12, textTransform: "uppercase", opacity: 0.7 }}>{it.project || t.readlistNoProject}</div>
@@ -67,23 +73,26 @@ function Card({ it, readerOn, onRead }: { it: ReadItem; readerOn: boolean; onRea
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={t.readlistNote}
-            aria-label={t.readlistNote}
+            placeholder={fable ? t.readlistNoteFable : t.readlistNote}
+            aria-label={fable ? t.readlistNoteFable : t.readlistNote}
             style={{ width: "100%", minHeight: 60 }}
           />
-          <button type="button" disabled={busy} onClick={() => void submit()}>{t.readlistMarkRead}</button>
+          <button type="button" disabled={busy} onClick={() => void submit()}>{fable ? t.readlistMarkReadFable : t.readlistMarkRead}</button>
         </div>
       )}
     </div>
   );
 }
 
-export function ReadlistTab() {
+export function ReadlistTab({ search = "" }: { search?: string }) {
   const { t } = useLang();
   const [data, setData] = useState<ReadList | null>(null);
   const [error, setError] = useState("");
   const [hideRead, setHideRead] = useState(() => {
     try { return localStorage.getItem(HIDE_KEY) === "1"; } catch { return false; }
+  });
+  const [sub, setSub] = useState<"docs" | "fable">(() => {
+    try { return localStorage.getItem(SUB_KEY) === "fable" ? "fable" : "docs"; } catch { return "docs"; }
   });
   const [tick, setTick] = useState(0);
   const load = useCallback(() => setTick((n) => n + 1), []);
@@ -99,23 +108,43 @@ export function ReadlistTab() {
     setHideRead(next);
     try { localStorage.setItem(HIDE_KEY, next ? "1" : "0"); } catch { /* ignore */ }
   };
-  const items = data?.items ?? [];
+  const pickSub = (next: "docs" | "fable") => {
+    setSub(next);
+    try { localStorage.setItem(SUB_KEY, next); } catch { /* ignore */ }
+  };
+  // The panel's top search box filters this tab too (project / title / path / note / source), case- and Turkish-letter-insensitive;
+  // counters follow the search the same way TabBar's counts do.
+  const all = data?.items ?? [];
+  const matched = all.filter((i) => matchesText([i.project, i.title, i.path, i.note, i.source, i.kind], search));
+  const docsAll = matched.filter((i) => !isFable(i));
+  const fableAll = matched.filter(isFable);
+  const items = sub === "fable" ? fableAll : docsAll;
   const shown = hideRead ? items.filter((i) => !i.read) : items;
   const unread = items.filter((i) => !i.read).length;
+  const unreadOf = (xs: ReadItem[]) => xs.filter((i) => !i.read).length;
   const { pageItems, page, totalPages, setPage } = usePagination(shown, 10);
   return (
     <div>
       <h2>{t.readlistTitle}</h2>
       <div style={{ opacity: 0.7, marginBottom: 8 }}>
         {data ? t.readlistUnread(unread, items.length) : ""}
+        {data && search.trim() ? ` · ${t.readlistFiltered(matched.length, all.length)}` : ""}
         {data && !data.reader ? ` · ${t.readlistReaderOff}` : ""}
+      </div>
+      <div className="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={sub === "docs"} className={sub === "docs" ? "active" : ""} onClick={() => pickSub("docs")}>
+          {t.readlistTabDocs} ({unreadOf(docsAll)})
+        </button>
+        <button type="button" role="tab" aria-selected={sub === "fable"} className={sub === "fable" ? "active" : ""} onClick={() => pickSub("fable")}>
+          {t.readlistTabFable} ({unreadOf(fableAll)})
+        </button>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <button type="button" onClick={toggleHide}>{hideRead ? t.readlistShowRead : t.readlistHideRead}</button>
         <button type="button" onClick={load}>{t.readlistRefresh}</button>
       </div>
       {error && <ErrorBox text={error} />}
-      {data && shown.length === 0 && <p style={{ opacity: 0.7 }}>{t.readlistEmpty}</p>}
+      {data && shown.length === 0 && <p style={{ opacity: 0.7 }}>{search.trim() && all.length ? t.noSearchMatches : t.readlistEmpty}</p>}
       {pageItems.map((it) => (
         <Card key={it.id} it={it} readerOn={!!data?.reader} onRead={load} />
       ))}

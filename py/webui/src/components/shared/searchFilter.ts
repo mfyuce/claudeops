@@ -44,21 +44,48 @@ export function parseQuery(query: string): { labels: string[]; text: string } {
   return { labels, text: rest.join(" ") };
 }
 
+/**
+ * Case- and Turkish-letter-insensitive form of a string for searching: İ/I/ı/i -> i, ş/ç/ğ/ö/ü -> s/c/g/o/u (and any other
+ * combining accent dropped), so "ISIK", "ışık" and "isik" all match each other and "runic" finds "Runik"-less text the same way.
+ * (`toLowerCase()` alone turns "İ" into "i" + a combining dot and leaves "ı" distinct, which is why Turkish text searched badly.)
+ */
+export function foldText(s: string): string {
+  return s
+    .replace(/İ/g, "i")
+    .replace(/I/g, "i")
+    .replace(/ı/g, "i")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+/**
+ * Free-text match for list rows that are not sessions (reading list, snapshots, steward questions ...): every whitespace-separated
+ * word of the query must occur (AND, like a normal search box) in the folded concatenation of `fields`. `label:x` terms are ignored
+ * here (they only mean something for session rows). Empty query matches everything.
+ */
+export function matchesText(fields: Array<string | number | null | undefined>, query: string): boolean {
+  const words = foldText(parseQuery(query).text).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = foldText(fields.map((f) => (f == null ? "" : String(f))).join("\n"));
+  return words.every((w) => hay.includes(w));
+}
+
 /** Empty/whitespace-only query matches everything (search box cleared). */
 export function matchesSearch(item: Searchable, query: string): boolean {
   const parsed = parseQuery(query);
   if (parsed.labels.length && !parsed.labels.every((l) => item.labels?.includes(l))) return false;
-  const q = parsed.text.toLowerCase();
+  const q = foldText(parsed.text);
   if (!q) return true;
   return (
-    item.name.toLowerCase().includes(q) ||
-    (item.title?.toLowerCase().includes(q) ?? false) ||
-    item.cwd.toLowerCase().includes(q) ||
-    item.model.toLowerCase().includes(q) ||
-    (item.live_model?.toLowerCase().includes(q) ?? false) ||
-    item.cli.toLowerCase().includes(q) ||
-    item.host.toLowerCase().includes(q) ||
-    (item.kind?.toLowerCase().includes(q) ?? false) ||
-    (item.blueprint?.toLowerCase().includes(q) ?? false)
+    foldText(item.name).includes(q) ||
+    (item.title ? foldText(item.title).includes(q) : false) ||
+    foldText(item.cwd).includes(q) ||
+    foldText(item.model).includes(q) ||
+    (item.live_model ? foldText(item.live_model).includes(q) : false) ||
+    foldText(item.cli).includes(q) ||
+    foldText(item.host).includes(q) ||
+    (item.kind ? foldText(item.kind).includes(q) : false) ||
+    (item.blueprint ? foldText(item.blueprint).includes(q) : false)
   );
 }

@@ -21,6 +21,7 @@
  * checkbox, not the other way around.
  */
 
+import { matchesText } from "./shared/searchFilter";
 import { useCallback, useEffect, useState } from "react";
 import { apiSnapshotList, apiSnapshotResume, apiSnapshotSave, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
@@ -33,7 +34,7 @@ import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import type { SnapshotListResult, SnapshotResumeResult } from "../api/types";
 
-export function SnapshotSection() {
+export function SnapshotSection({ search = "" }: { search?: string }) {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
   const [saving, setSaving] = useState(false);
@@ -43,7 +44,11 @@ export function SnapshotSection() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState<Extract<SnapshotListResult, { ok: true }>["snapshots"] | null>(null);
 
-  const histPage = usePagination((history ?? []).slice(1), 10);
+  const fmtWhen = (savedAt: number) => new Date(savedAt * 1000).toLocaleString(lang === "tr" ? "tr-TR" : "en-US");
+  // Top search box filters the snapshot history (kind label, date, session count); the newest entry stays in its own row.
+  const fHist = (history ?? []).slice(1).filter((h) =>
+    matchesText([h.kind === "closing" ? t.snapshotKindClosing : t.snapshotKindManual, h.kind, fmtWhen(h.saved_at), h.count, h.mirrors], search));
+  const histPage = usePagination(fHist, 10);
 
   const load = useCallback(async () => {
     try {
@@ -102,7 +107,6 @@ export function SnapshotSection() {
   const failedRows = result?.results.filter((r) => r.status === "failed") ?? [];
   const failedMirrors = result?.mirrors?.filter((m) => m.status === "failed") ?? [];
   const resuming = resumingAt !== null;
-  const fmtWhen = (savedAt: number) => new Date(savedAt * 1000).toLocaleString(lang === "tr" ? "tr-TR" : "en-US");
 
   return (
     <div className="opts" id="settingsSnapshotPanel" style={{ flexDirection: "column", alignItems: "flex-start" }}>
@@ -156,6 +160,7 @@ export function SnapshotSection() {
           <span className="opts-hint">
             <b>{t.snapshotHistoryLabel}</b>
           </span>
+          {fHist.length === 0 && search.trim() && <div className="opts-hint">{t.noSearchMatches}</div>}
           <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
             {histPage.pageItems.map((h) => (
               <li key={h.saved_at} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

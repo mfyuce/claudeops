@@ -16,6 +16,7 @@
  * `SessionRow` changes needed.
  */
 
+import { matchesText } from "../shared/searchFilter";
 import { useEffect, useRef, useState } from "react";
 import { apiOrchCancel, apiOrchSaveDraft, apiOrchStart, getOrchRun, getOrchRuns } from "../../api/client";
 import { describeApiError } from "../../api/errors";
@@ -37,9 +38,11 @@ const DEFAULT_WORKER_TIMEOUT = 900;
 
 interface OrchTabProps {
   selection: SelectionControls;
+  /** Top search box text (filters the run history). */
+  search?: string;
 }
 
-export function OrchTab({ selection }: OrchTabProps) {
+export function OrchTab({ selection, search = "" }: OrchTabProps) {
   const { t, lang } = useLang();
   const { data, refresh } = useStatusContext();
 
@@ -203,7 +206,10 @@ export function OrchTab({ selection }: OrchTabProps) {
   }
 
   const [subTab, setSubTab] = useState<"run" | "history">("run");
-  const runPage = usePagination(fullHistory ?? data?.orch.recent ?? [], 10);
+  // Top search box filters the run history (task, status, verdict hint, participants).
+  const fRuns = (fullHistory ?? data?.orch.recent ?? []).filter((r) =>
+    matchesText([r.task, r.status, t.orchStatusLabel(r.status), r.verdict_hint, r.error, ...r.participants.flatMap((p) => [p.name, p.cli, p.host, p.role])], search));
+  const runPage = usePagination(fRuns, 10);
   if (!data) return null;
 
   const historyList = fullHistory ?? data.orch.recent;

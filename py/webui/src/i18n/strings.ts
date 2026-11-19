@@ -111,6 +111,11 @@ export interface Strings {
   readlistEmpty: string;
   readlistNoProject: string;
   readlistReaderOff: string;
+  readlistTabDocs: string;
+  readlistTabFable: string;
+  readlistNoteFable: string;
+  readlistMarkReadFable: string;
+  readlistFiltered: (shown: number, total: number) => string;
   tabDiag: string;
   tabSettings: string;
   desktopDesc: string;
@@ -999,6 +1004,11 @@ export const STRINGS: Record<Lang, Strings> = {
     readlistEmpty: "Gösterilecek madde yok.",
     readlistNoProject: "(projesiz)",
     readlistReaderOff: "Reader kapalı (settings.reader.dir): ham dosya açılır.",
+    readlistTabDocs: "Okuma belgeleri",
+    readlistTabFable: "Review raporları",
+    readlistNoteFable: "Not (yalnız kaydedilir, projeye iletilmez)",
+    readlistMarkReadFable: "Okundu, notu kaydet",
+    readlistFiltered: (m: number, n: number) => `arama: ${m} / ${n} eşleşti`,
     tabDiag: "Tanı",
     tabSettings: "Ayarlar",
     desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
@@ -2000,6 +2010,11 @@ export const STRINGS: Record<Lang, Strings> = {
     readlistEmpty: "Nothing to show.",
     readlistNoProject: "(no project)",
     readlistReaderOff: "Reader is off (settings.reader.dir): the raw file opens instead.",
+    readlistTabDocs: "Reading documents",
+    readlistTabFable: "Review reports",
+    readlistNoteFable: "Note (saved only, not sent to the project)",
+    readlistMarkReadFable: "Read, save note",
+    readlistFiltered: (m: number, n: number) => `search: ${m} / ${n} matched`,
     tabDiag: "Diagnostics",
     tabSettings: "Settings",
     desktopDesc: "Watch the machine's screen live (2 fps). Remember to stop it — it captures the screen continuously while running.",

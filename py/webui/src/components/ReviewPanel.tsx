@@ -34,6 +34,7 @@ import type { ReviewFinding, ReviewLesson, ReviewRemoteProject, ReviewPair, Revi
 import { ReviewChatModal } from "./ReviewChatModal";
 import { Pagination } from "./shared/Pagination";
 import { usePagination } from "../hooks/usePagination";
+import { matchesText } from "./shared/searchFilter";
 
 type ReviewSub = "board" | "where" | "lessons" | "findings" | "settings";
 
@@ -102,7 +103,7 @@ function WhereRow({
   );
 }
 
-export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: string }) {
+export function ReviewPanel({ sid, refreshKey, search = "" }: { sid: string; refreshKey: string; search?: string }) {
   const { t, lang } = useLang();
   const [st, setSt] = useState<ReviewStateResult | null>(null);
   const [error, setError] = useState("");
@@ -180,10 +181,16 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
   const projects = (st?.pool ?? []).map((r) => r.project);
   const exportProjects = Array.from(new Set(findings.filter((f) => f.state === "approved").map((f) => f.project)));
   const visibleLessons = lessons.filter((l) => showDoneLessons || l.status !== "done").slice().reverse();
-  const poolPg = usePagination(st?.pool ?? []);
-  const wherePg = usePagination(st?.remote_projects ?? []);
-  const lessonPg = usePagination(visibleLessons);
-  const findingPg = usePagination(findings);
+  // Top search box (case- and Turkish-letter-insensitive) filters these lists too; sub-tab counters follow it.
+  const sq = search.trim();
+  const fPool = (st?.pool ?? []).filter((r) => matchesText([r.project, r.source], sq));
+  const fWhere = (st?.remote_projects ?? []).filter((r) => matchesText([r.project, r.host, r.where, r.local_path], sq));
+  const fLessons = visibleLessons.filter((l) => matchesText([l.line, l.status, l.ack, l.note, l.session], sq));
+  const fFindings = findings.filter((f) => matchesText([f.project, f.ref, f.severity, f.title, f.where, f.body, f.state, f.verdict], sq));
+  const poolPg = usePagination(fPool);
+  const wherePg = usePagination(fWhere);
+  const lessonPg = usePagination(fLessons);
+  const findingPg = usePagination(fFindings);
 
   function Cell({ project, tk, mode, model, pair }: { project: string; tk: string; mode: string; model: string; pair: ReviewPair | null | undefined }) {
     const status = pair?.status ?? "";
@@ -232,16 +239,16 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
 
       <div className="tabs">
         <button type="button" className={sub === "board" ? "active" : ""} onClick={() => setSub("board")}>
-          {t.rvSubBoard} ({st?.pool.length ?? 0})
+          {t.rvSubBoard} ({sq ? fPool.length : (st?.pool.length ?? 0)})
         </button>
         <button type="button" className={sub === "where" ? "active" : ""} onClick={() => setSub("where")}>
-          {t.rvWhereTitle} ({(st?.remote_projects ?? []).length})
+          {t.rvWhereTitle} ({sq ? fWhere.length : (st?.remote_projects ?? []).length})
         </button>
         <button type="button" className={sub === "lessons" ? "active" : ""} onClick={() => setSub("lessons")}>
-          {t.rvLessons} ({lessons.filter((l) => l.status !== "done").length})
+          {t.rvLessons} ({sq ? fLessons.filter((l) => l.status !== "done").length : lessons.filter((l) => l.status !== "done").length})
         </button>
         <button type="button" className={sub === "findings" ? "active" : ""} onClick={() => setSub("findings")}>
-          {t.rvFindings} ({findings.length})
+          {t.rvFindings} ({sq ? fFindings.length : findings.length})
         </button>
         <button type="button" className={sub === "settings" ? "active" : ""} onClick={() => setSub("settings")}>
           {t.rvSubSettings}
@@ -250,12 +257,12 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
 
       {sub === "board" && (
         <>
-      {st && st.pool.length === 0 && <span className="opts-hint">{t.rvNoPool}</span>}
+      {st && fPool.length === 0 && <span className="opts-hint">{sq && st.pool.length ? t.noSearchMatches : t.rvNoPool}</span>}
       {st && targets.length === 0 && <span className="opts-hint">{t.rvNoTargets}</span>}
       {st && st.pool.length > 0 && (
         <span className="opts-hint">{t.rvSummary(st.pool.filter((r) => r.enabled).length, st.pool.length, running.length, targets.length)}</span>
       )}
-      {st && st.pool.length > 0 && (
+      {st && fPool.length > 0 && (
         <div className="tablewrap" style={{ overflowX: "auto" }}>
           <table>
             <thead>
@@ -324,13 +331,13 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           </table>
         </div>
       )}
-      {st && st.pool.length > 0 && <Pagination page={poolPg.page} totalPages={poolPg.totalPages} onChange={poolPg.setPage} />}
+      {st && fPool.length > 0 && <Pagination page={poolPg.page} totalPages={poolPg.totalPages} onChange={poolPg.setPage} />}
         </>
       )}
       {sub === "where" && (
         <>
-      {st && (st.remote_projects ?? []).length === 0 && <span className="opts-hint">—</span>}
-      {st && (st.remote_projects ?? []).length > 0 && (
+      {st && fWhere.length === 0 && <span className="opts-hint">{sq && (st.remote_projects ?? []).length ? t.noSearchMatches : "—"}</span>}
+      {st && fWhere.length > 0 && (
         <div className="opts" style={{ flexDirection: "column", alignItems: "stretch" }}>
           <b>{t.rvWhereTitle}</b>
           {wherePg.pageItems.map((rp) => (
@@ -523,7 +530,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
         {lessonTarget ? ` → ${lessonTarget}` : ""}
       </h4>
       <span className="opts-hint">{t.rvLessonsDesc}</span>
-      {lessons.length === 0 && <span className="opts-hint">{t.rvLessonsNone}</span>}
+      {fLessons.length === 0 && <span className="opts-hint">{sq && lessons.length ? t.noSearchMatches : t.rvLessonsNone}</span>}
       {lessons.some((l) => l.status === "done") && (
         <button type="button" className="linkbtn" onClick={() => setShowDoneLessons((v) => !v)}>
           {showDoneLessons ? "işlenenleri gizle" : `işlenenleri göster (${lessons.filter((l) => l.status === "done").length})`}
@@ -611,7 +618,7 @@ export function ReviewPanel({ sid, refreshKey }: { sid: string; refreshKey: stri
           )),
         )}
       </div>
-      {findings.length === 0 && <span className="opts-hint">{t.rvNoFindings}</span>}
+      {fFindings.length === 0 && <span className="opts-hint">{sq && findings.length ? t.noSearchMatches : t.rvNoFindings}</span>}
       {findingPg.pageItems.map((f) => (
         <div key={f.id} style={card}>
           <div className="legend" style={{ margin: 0, overflowWrap: "anywhere" }}>
