@@ -221,7 +221,7 @@ açılışı `diag_log("ucli_grant", checks="full", accept_risk=True)`.
 | U4 | ucli koder | mutating: dry_run, ask-dir/approval-dir/interactive bağlantısı (`kind: "check"`), özet bağlama | birim: onaysız uygulanmaz, özet değişince ret, `approve_session` reddi, 75 ile askı + sürdürme |
 | U5 | ucli koder | full: `[full].programs`, `--checks-accept-risk`, cihaz bind | birim: accept_risk yokken başlatma hatası, liste dışı program reddi, `--exec-net` yokken ağ yok |
 | C1 (YAPILDI 19 Kas) | cops | `ucli_checks.py` + `validate_opts` + `_apply_cli_opts` kapısı | birim: her `validate_opts` kuralı; tanımayan ikilide açılış reddi |
-| C2 | cops | `/api/ucli/checks`, `/api/ucli/checks-mode`, authz, denetim kaydı | birim: authz eşlemesi, genişletme `confirm` ister, tavan 409, ajan token'ı 403 |
+| C2 (YAPILDI 19 Kas: çekirdek+uçlar+authz+denetim, 9 test; uzak host yönlendirmesi ve `/api/files` yazma denemesi KALDI) | cops | `/api/ucli/checks`, `/api/ucli/checks-mode`, authz, denetim kaydı | birim: authz eşlemesi, genişletme `confirm` ister, tavan 409, ajan token'ı 403 |
 | C3 | cops | panel: Ayarlar > Ucli > Kontroller, başlatma seçici, satır seçici, onay kutusu (mutating `UcliAskBox`/`UcliApprovalsPanel` `kind: check` gösterimi) | `tsc --noEmit`, izole 8790 Chrome masaüstü + dar ekran ekran görüntüsü |
 | C4 | cops | gerçek ikiliyle uçtan uca: claudeops worktree'de `unittest` + `tsc` kontrolü, daraltma/genişletme | canlı oturum, durum dosyasında mod ve sayaç |
 | C5 | cops | (karar f) ulak_31'e ucli kurulumu + kafes testi, sonra anomaly k8s salt-okunur kontrolleri | `ucli doctor` + kafes testi uzak makinede; k8s-get gerçek çıktı |

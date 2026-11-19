@@ -5392,6 +5392,10 @@ class _Handler(BaseHTTPRequestHandler):
             p = getattr(self, "_cur_principal", None)
             seeall = p is None or getattr(p, "kind", "") == "legacy" or p.has_role("admin")
             self._json({"ok": True, "runs": _ua.list_runs(uid=getattr(p, "uid", ""), all_users=seeall)})
+        elif path == "/api/ucli/checks":
+            from .. import ucli_checks as _ck
+            data, err = _ck.load_registry()
+            self._json({"ok": not err or "kayıt yok" in err, "checks": data.get("check", []), "error": err})
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())
@@ -5729,7 +5733,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
                          "/api/cli/install",
-                         "/api/ucli/ask", "/api/ucli/approvals",
+                         "/api/ucli/ask", "/api/ucli/approvals", "/api/ucli/checks", "/api/ucli/checks-mode",
                          "/api/agents/start", "/api/agents/send", "/api/agents/stop",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
@@ -6116,6 +6120,33 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             threading.Thread(target=_uc.ucli_resume_approval, args=(rk, aid), daemon=True, name=f"ucli-resume-{rk}").start()
             self._json({"ok": True, "state": "resuming"})
+            return
+
+        if path == "/api/ucli/checks":
+            # {check:[...]} kaydı değiştirir; {delete: ad} bir kontrolü siler (admin.config; biçim ön denetimi, 0600 atomik yazım)
+            from .. import ucli_checks as _ck
+            if data.get("delete"):
+                ok, err = _ck.delete_check(str(data["delete"]))
+            else:
+                ok, err = _ck.save_registry({"check": data.get("check")})
+            self._json({"ok": ok, "error": err}, status=200 if ok else 400)
+            return
+
+        if path == "/api/ucli/checks-mode":
+            # {name, mode, confirm?}: çalışan oturumun mod dosyasını yazar (daraltma onaysız, genişletme confirm, tavan 409)
+            from .. import ucli_checks as _ck
+            from ..ucli_client import state_dir_for as _sdf
+            inst = inst_mod.get_instance(str(data.get("name") or "")) or {}
+            co = (inst.get("cli_opts") or {}).get("ucli_checks") or {}
+            if not inst or not co:
+                self._json({"ok": False, "error": "oturum kontrollerle açılmadı (ucli_checks yok)"}, status=409)
+                return
+            p = getattr(self, "_cur_principal", None)
+            code, res = _ck.set_mode(_sdf(str(inst.get("cwd") or "")), str(data["name"]), str(data.get("mode") or ""),
+                                     str(co.get("max") or co.get("mode") or "restricted"), confirm=bool(data.get("confirm")),
+                                     user=str(getattr(p, "uid", "") or "panel"),
+                                     ip=str(self.client_address[0]) if getattr(self, "client_address", None) else "")
+            self._json(res, status=code)
             return
 
         if path == "/api/ucli/ask":
