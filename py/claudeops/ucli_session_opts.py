@@ -281,6 +281,24 @@ def validate_opts(raw: Any) -> Tuple[Dict[str, Any], str]:
                 return {}, f"price değerleri 0-{PRICE_MAX:g} USD/milyon token arası (0 hariç)"
             vals.append(f)
         out["price"] = ",".join(f"{f:g}" for f in vals)
+    uc = raw.get("ucli_checks")
+    if uc not in (None, "", False, {}):
+        # run_checks (docs/ucli-run-checks-design.md 4.1): VARSAYILAN KAPALI, geçersiz değer HATA. Kayıt dosyasının varlığı açılışta
+        # (`_apply_cli_opts`) denetlenir: kayıt sahibi (panel kullanıcısı) burada bilinmez.
+        if not isinstance(uc, dict):
+            return {}, "ucli_checks {mode, max, accept_risk} nesnesi olmalı"
+        mode = str(uc.get("mode") or "").strip().lower()
+        if mode not in ("restricted", "full"):
+            return {}, "ucli_checks.mode restricted ya da full olmalı"
+        mx = str(uc.get("max") or mode).strip().lower()
+        if mx not in ("restricted", "full"):
+            return {}, "ucli_checks.max restricted ya da full olmalı"
+        if mx == "restricted" and mode == "full":
+            return {}, "ucli_checks.max, mode'dan düşük olamaz"
+        risk = uc.get("accept_risk") in (True, 1, "true", "on", "1", "yes")
+        if "full" in (mode, mx) and not risk:
+            return {}, "ucli_checks full için accept_risk gerekli (yorumlayıcılar serbest kalır; yine kafeste)"
+        out["ucli_checks"] = {"mode": mode, "max": mx, "accept_risk": risk}
     return out, ""
 
 

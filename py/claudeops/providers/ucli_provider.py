@@ -415,14 +415,14 @@ def _interactive_args(binary: str, session_name: str = "") -> List[str]:
     return ["--interactive"]
 
 
-def _state_dir_args(binary: str, cwd: str, session_name: str = "") -> List[str]:
+def _state_dir_args(binary: str, cwd: str, session_name: str = "", force: bool = False) -> List[str]:
     """`--state-dir <STATE_ROOT>/<kök>` (bkz. `settings.ucli_state_dir_enabled`, VARSAYILAN KAPALI): oturum jsonl/durum/kilit
     dosyaları depo dışına gider. Atlanır: ayar kapalı, ikili bayrağı tanımıyor (günlüğe yazılır) ya da GEÇMİŞİ eski dizinde olan
     oturum (`<kök>/.ucli/chat/NAME.jsonl` var: yeni dizinle açılırsa konuşma geçmişi görünmez olurdu; o oturum eskisi gibi sürer)."""
     sdir = state_dir_for(cwd)
     # Ayar sonradan kapatılsa bile geçmişi YENİ dizinde olan oturum onunla açılır (aksi halde konuşması kaybolurdu).
     in_new = bool(session_name) and os.path.exists(os.path.join(sdir, f"{session_name}.jsonl"))
-    if not (ucli_state_dir_enabled() or in_new):
+    if not (ucli_state_dir_enabled() or in_new or force):      # force: ucli_checks mod dosyası state-dir ister
         return []
     if not binary_supports_flag(binary, "--state-dir"):
         diag_log("ucli_flag_unsupported", name=session_name, flag="--state-dir", binary=binary)
@@ -770,6 +770,28 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                     raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (izin yarım uygulanmaz)")
                 if flag not in argv:
                     argv = argv + [flag]
+    uc = opts.get("ucli_checks")
+    if uc:
+        # run_checks (docs/ucli-run-checks-design.md 4.2): güvenlik izni, tanımayan ikilide RED (sessiz düşme yok).
+        from .. import ucli_checks
+        if not session_name:
+            raise ValueError("ucli_checks için oturum adı gerekli")
+        for flag in ("--allow-checks", "--checks-max", "--checks-file") + (("--checks-accept-risk",) if uc.get("accept_risk") else ()):
+            if not binary_supports_flag(binary, flag):
+                diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
+                raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (kontrol izni yarım uygulanmaz)")
+        if "--state-dir" not in argv:
+            raise ValueError("ucli_checks için state-dir gerekli (ikili --state-dir'i tanımıyor ya da oturumun geçmişi eski dizinde)")
+        reg, err = ucli_checks.load_registry("")
+        if err:
+            raise ValueError(err)
+        argv = _set_flag_value(argv, "--allow-checks", uc["mode"])
+        argv = _set_flag_value(argv, "--checks-max", uc["max"])
+        argv = _set_flag_value(argv, "--checks-file", ucli_checks.registry_path(""))
+        if uc.get("accept_risk") and "--checks-accept-risk" not in argv:
+            argv = argv + ["--checks-accept-risk"]
+        if "full" in (uc["mode"], uc["max"]):
+            diag_log("ucli_grant", name=session_name, checks="full", accept_risk=True)
     if opts.get("ask_edit") and not ex:
         # exec katmanı yok (ör. alt ajan çocuğu): yazma izni permission_mode'dan gelen `--allow-edit`tir; yoksa onay anlamsız, atla.
         if "--allow-edit" not in argv:
@@ -905,7 +927,7 @@ class UcliProvider(CliProvider):
         argv += _effort_args(argv[0], model, preset, session_name)
         argv += _stream_args(argv[0], session_name)
         argv += _interactive_args(argv[0], session_name)
-        argv += _state_dir_args(argv[0], cwd, session_name)
+        argv += _state_dir_args(argv[0], cwd, session_name, force=bool(cli_opts and cli_opts.get("ucli_checks")))
         if "--with-mcp" in extra_args:      # yalnız `mcp_launch_args`ın (kayıt başarılıysa) verdiği bayrak; başka extra_args yok sayılır
             argv.append("--with-mcp")
         service_env = ""
