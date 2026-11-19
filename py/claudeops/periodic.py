@@ -124,6 +124,8 @@ _NUM_FIELDS = {"interval_hours": float, "timeout_s": float, "max_file_mb": float
 
 
 def _validate(cfg: Dict[str, Any]) -> None:
+    if "remote_tgz_prune" in cfg and str(cfg["remote_tgz_prune"]).strip().lower() not in ({"on", "dry"} | _OFF_WORDS):
+        raise ValueError("remote_tgz_prune on|dry|off olmalı")
     for k, typ in _NUM_FIELDS.items():
         if k in cfg and cfg[k] not in (None, ""):
             try:

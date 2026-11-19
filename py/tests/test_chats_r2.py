@@ -94,3 +94,11 @@ class ChatsR5Test(unittest.TestCase):
     def test_stamp_changes_with_mtime(self):
         d = tempfile.mkdtemp(); f = os.path.join(d, "a.tgz"); open(f, "wb").write(b"abc")
         s1 = chat_dump._arch_stamp(f); os.utime(f, ns=(1, 2)); self.assertNotEqual(s1, chat_dump._arch_stamp(f))
+
+
+class ChatsR6Test(unittest.TestCase):
+    def test_prune_enum(self):
+        periodic._validate({"remote_tgz_prune": "dry"})
+        periodic._validate({"remote_tgz_prune": "off"})
+        with self.assertRaises(ValueError):
+            periodic._validate({"remote_tgz_prune": "evet"})
