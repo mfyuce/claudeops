@@ -30,7 +30,8 @@ UI_EXTENSION_API = 1
 API_EXT_PREFIX = "/api/enterprise/"          # K12: eklenti API önekı (kimlik + eylem kapısı + denetimden geçer)
 _UI_EXTS: Dict[str, Dict[str, Any]] = {}     # K10: id -> {title, assets_dir, roles, entry}
 COOKIE_NAME = "cops_ext"
-MAX_BODY = 1_000_000
+MAX_BODY = 1_000_000          # `body()` varsayılan sınırı
+HARD_BODY = 64 * 1024 * 1024  # `body(limit=...)` ile istenebilecek en büyük gövde (PDF yükleme gibi)
 
 
 class ExtensionAPI:
@@ -205,7 +206,7 @@ class RouteRequest:
             n = int(self.header("Content-Length") or 0)
         except ValueError:
             n = -1
-        if n < 0 or n > min(limit, MAX_BODY):
+        if n < 0 or n > min(limit, HARD_BODY):
             self._h.close_connection = True
             raise ValueError("body too large or invalid")
         return self._h._read_body(n) if n else b""
