@@ -342,6 +342,7 @@ export interface Settings {
    * `layout.py`'nin `_GRID_LAYOUTS`'una göre (cols,rows)'a çevrilir (2→2x1,
    * 4→2x2 [varsayılan], 8→4x2). */
   layout_grid: number;
+  layout_reserve?: number;
   /** {cli: {ENV_VAR: set?}} — bir provider'ın BYOK env değişkenlerinin
    * (ör. ucli'nin `UCLI_API_KEY`'i) SADECE "ayarlı mı" durumu, `true`/eksik.
    * GERÇEK DEĞER asla buraya gelmez (`web.py`'nin `_redact_settings_for_wire`'ı

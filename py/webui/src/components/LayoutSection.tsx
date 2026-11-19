@@ -61,6 +61,17 @@ export function LayoutSection() {
     refresh();
   }
 
+  async function handleReserveChange(n: number) {
+    try {
+      const res = await apiSaveSettings({ layout_reserve: n, lang });
+      if (!res.ok) setResult(`✗ ${res.error}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
+      else setResult(`✗ ${friendlyError(describeApiError(e, t), lang)}`);
+    }
+    refresh();
+  }
+
   async function handleApply() {
     setBusy(true);
     setResult("");
@@ -103,6 +114,16 @@ export function LayoutSection() {
             <option value={2}>2 (2×1)</option>
             <option value={4}>4 (2×2)</option>
             <option value={8}>8 (4×2)</option>
+          </select>
+        </label>
+        <label title={t.layoutReserveHint}>
+          {t.layoutReserveLabel}
+          <select value={data.settings.layout_reserve ?? 0} onChange={(e) => void handleReserveChange(Number(e.target.value))}>
+            {[0, 1, 2, 3].filter((n) => n < data.settings.layout_grid).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
           </select>
         </label>
         <label>

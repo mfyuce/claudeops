@@ -455,6 +455,8 @@ export interface Strings {
   historyWarnHint: string;
   layoutGridLabel: string;
   layoutGridHint: string;
+  layoutReserveLabel: string;
+  layoutReserveHint: string;
   fleetSortLabel: string;
   fleetSortHint: string;
   fleetSortByName: string;
@@ -1431,6 +1433,8 @@ export const STRINGS: Record<Lang, Strings> = {
     historyWarnHint: "terminal scrollback bu satıra ulaşınca Terminal görünümündeki sayaç vurgulanır ve ana tablonun 'dikkat gerekenleri seç' butonu bu session'ı da seçer — tmux'un sabit 2000 satır limitine yaklaştığını gösterir (o limiti aşınca en eski satırlar silinir)",
     layoutGridLabel: "yerleşim yoğunluğu",
     layoutGridHint: "Yerleşim sekmesinin desktop başına açacağı pencere sayısı: 2 (yan yana iki yarı), 4 (2×2, varsayılan), 8 (4×2, yoğun)",
+    layoutReserveLabel: "boş bırakılan yuva",
+    layoutReserveHint: "Her desktop'ta SON bu kadar yuva boş kalır (2×2'de 1 = sağ alt köşe). 0 = kapalı (varsayılan).",
     fleetSortLabel: "fleet sıralaması",
     fleetSortHint: "Running/Registered/Disabled/Retired tablolarındaki grupların birincil sıralama anahtarı — isme göre (varsayılan, ekranda gördüğün kısa isim) ya da klasör yoluna göre (projenin tam cwd'si — aynı klasördeki session'lar yan yana durur, ama isim klasör adıyla her zaman örtüşmeyebilir)",
     fleetSortByName: "isme göre",
@@ -2430,6 +2434,8 @@ export const STRINGS: Record<Lang, Strings> = {
     historyWarnHint: "once terminal scrollback reaches this many lines, the Terminal view's counter is highlighted and the 'select needs attention' bulk button also picks up this session — flags it as approaching tmux's fixed 2000-line cap (past which the oldest lines get dropped)",
     layoutGridLabel: "layout density",
     layoutGridHint: "how many windows the Layout tab opens per desktop: 2 (side-by-side halves), 4 (2×2, default), 8 (4×2, dense)",
+    layoutReserveLabel: "empty slots",
+    layoutReserveHint: "Leave the LAST this-many slots empty on every desktop (1 on 2×2 = bottom-right corner). 0 = off (default).",
     fleetSortLabel: "fleet sort",
     fleetSortHint: "primary sort key for groups in the Running/Registered/Disabled/Retired tables — by name (default, the short name shown on screen) or by folder path (the project's full cwd — keeps sessions in the same folder next to each other, but the name doesn't always track the folder)",
     fleetSortByName: "by name",

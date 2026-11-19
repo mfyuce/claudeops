@@ -255,7 +255,11 @@ def build_layout_plan(
     """
     pinned_names = pinned_names or []
     groups = groups or []
-    usable = max(1, screen.per_desktop - max(0, int(reserve or 0)))
+    try:
+        reserve_n = max(0, int(reserve or 0))
+    except (TypeError, ValueError):     # ayarda bozuk değer: kural kapalı
+        reserve_n = 0
+    usable = max(1, screen.per_desktop - reserve_n)
 
     # 1. Session ismine göre window'ları eşle
     name_to_wid: Dict[str, str] = {}
