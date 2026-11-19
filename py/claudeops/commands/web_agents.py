@@ -4,7 +4,7 @@ Sözleşme (ucli istemcisiyle BİREBİR; hata her zaman `{ok:false, error}`):
   GET  /api/agents/models            -> {ok, models:[{id, service, efforts:[low|medium|high...]}]}
   POST /api/agents/start {model, effort, task, mode: read|edit}   -> {ok, name}
   POST /api/agents/send  {name, text}                              -> {ok}
-  GET  /api/agents/status?name=      -> {ok, state: busy|idle|stopped, cost_usd, turns}
+  GET  /api/agents/status?name=      -> {ok, state: busy|idle|waiting_input|stopped, cost_usd, turns[, question]}
   GET  /api/agents/result?name=      -> {ok, state, answer}
   POST /api/agents/stop  {name}                                    -> {ok}
 
@@ -134,7 +134,18 @@ def _state(name: str, rec: Dict[str, Any], running: Dict[str, Any], now: float) 
             busy = True
     else:       # durum dosyası yok (başlangıç ya da eski ikili): cevaplanmamış kullanıcı turu varsa meşgul
         busy = (not turns) or turns[-1].get("role") == "user" or name not in running
+    if _waiting_question(name) is not None:       # çocuk sahip cevabını bekliyor (süreç araç çağrısında bloklu, "busy" görünürdü)
+        return "waiting_input"
     return "busy" if busy else "idle"
+
+
+def _waiting_question(name: str) -> Optional[Dict[str, Any]]:
+    """Çocuğun bekleyen sahip sorusu/onayı (`ask_dir` açıksa), yoksa None. Asla fırlatmaz."""
+    try:
+        from .. import ucli_ask
+        return ucli_ask.pending(name)
+    except Exception:
+        return None
 
 
 def _child_for(name: Any, caller: Optional[Caller]) -> Tuple[Optional[Dict[str, Any]], Optional[Reply]]:
@@ -167,7 +178,11 @@ def handle_get(path: str, query: Dict[str, List[str]], caller: Optional[Caller],
             turns = st.get("turns")
             if not isinstance(turns, int) or isinstance(turns, bool):
                 turns = sum(1 for t in _history(str(rec.get("cwd") or ""), name) if t.get("role") == "user")
-            return {"ok": True, "state": state, "cost_usd": _cost_usd(name), "turns": turns}, 200
+            out = {"ok": True, "state": state, "cost_usd": _cost_usd(name), "turns": turns}
+            if state == "waiting_input":
+                q = _waiting_question(name) or {}
+                out["question"] = {"header": str(q.get("header") or "")[:200], "question": str(q.get("question") or "")[:2000]}
+            return out, 200
         return {"ok": True, "state": state, "answer": _last_answer(_history(str(rec.get("cwd") or ""), name))}, 200
     return _err("not found", 404)
 
@@ -242,6 +257,8 @@ def _start(data: Dict[str, Any], caller: Optional[Caller], ops) -> Reply:
 
     cap = ag.max_cost_usd()
     cli_opts: Dict[str, Any] = {"service": entry["service"]}
+    if ag.ask_enabled():
+        cli_opts["ask_dir"] = True      # çocuğun soruları terminalde takılmaz: panelde sahibe düşer (S5)
     if cap > 0:
         cli_opts["max_cost_usd"] = cap
     name, why = ag.reserve_child(parent, set(running), ops.name_taken,

@@ -50,6 +50,13 @@ def enabled() -> bool:
     return (("on" if v is None else str(v)).strip().lower() or "on") not in _OFF_WORDS
 
 
+def ask_enabled() -> bool:
+    """`ucli_agents_ask` ayarı (varsayılan KAPALI, `on`/`1`/`true` açar): çocuk ajanlar `--ask-dir` ile açılır; soruları terminalde
+    kimsenin görmediği bir yerde takılmaz, panelde (UcliAskBox) sahibe düşer ve üst ajan `status`ta `waiting_input` görür
+    (docs/ucli-approval-design.md S5). Asla fırlatmaz."""
+    return str(load_settings().get("ucli_agents_ask") or "").strip().lower() in ("on", "1", "true", "yes")
+
+
 def max_cost_usd() -> float:
     """`ucli_agents_max_cost_usd` (varsayılan 2): çocuk başına USD tavanı; 0 = tavan yok. Bozuk değer varsayılana düşer."""
     raw = load_settings().get("ucli_agents_max_cost_usd")

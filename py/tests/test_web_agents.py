@@ -93,6 +93,12 @@ class StartTests(WaBase):
         self.assertIn(("send", "p_aj1", "do it now"), self.ops.calls)
         self.assertEqual(ag.get_child("p_aj1")["parent"], "p")
 
+    def test_ask_setting_starts_child_with_ask_dir(self):
+        with mock.patch.object(ag, "ask_enabled", lambda: True):
+            self.assertTrue(self.start()[0]["ok"])
+        start = next(c for c in self.ops.calls if c[0] == "start")
+        self.assertEqual(start[5], {"service": "evren", "ask_dir": True, "max_cost_usd": 2.0})
+
     def test_child_sink_called_before_register(self):
         from claudeops import authz
         seen = []
@@ -186,6 +192,17 @@ class QueryTests(WaBase):
         self.ops.stop("p_aj1")
         ag.mark_stopped("p_aj1")
         self.assertEqual(self.q("/api/agents/status")[0]["state"], "stopped")
+
+    def test_waiting_input_when_child_has_pending_owner_question(self):
+        from claudeops import ucli_ask
+        self.status = {"activity": "waiting_for_model", "turns": 2}
+        q = {"id": 3, "header": "Onay", "question": "x dosyası düzenlensin mi?", "options": ["evet", "hayır"]}
+        with mock.patch.object(ucli_ask, "pending", lambda n: q if n == "p_aj1" else None):
+            body = self.q("/api/agents/status")[0]
+            self.assertEqual(body["state"], "waiting_input")
+            self.assertEqual(body["question"], {"header": "Onay", "question": "x dosyası düzenlensin mi?"})
+            self.assertEqual(self.q("/api/agents/result")[0]["state"], "waiting_input")
+        self.assertEqual(self.q("/api/agents/status")[0]["state"], "busy")      # soru yok: eski davranış
 
     def test_result_is_last_assistant_after_last_user(self):
         self.status = {"activity": "waiting_for_stdin"}
