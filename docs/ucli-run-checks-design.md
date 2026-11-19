@@ -238,7 +238,7 @@ Varsayım (soru değil, geri alınabilir): kayıt oturum başında okunur, çal�
 1800 sn; liste biçimli `write` çıktı dizinleri `--ask-edit` altında onaysız kalır; varsayılan `write = "tmp"`, kökü yazan kontrol
 bunu açıkça `root`/liste ile söyler.
 
-### Sahip kararı
+### Sahip kararı (HEPSİ KARARA BAĞLANDI 19 Kas, TBD#260: 1a, 2a, 3a; aşağıdaki öneriler kesinleşti)
 
 1. **k8s kontrolünün ağı.** kubectl API sunucusuna ağ ister; bwrap'ta ağ ya hep ya hiç (`--share-net`). Seçenekler:
    (a) kontrol başına `network = "host"` restricted'da da izinli (kubeconfig dar SA ile sınırlı);
