@@ -43,6 +43,37 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class ReachLoopbackTest(unittest.TestCase):
+    """menzil reach dinleyicisi (127.0.0.1:187xx) YALNIZ extra_urls'ta serbest; başka loopback hâlâ SSRF olarak reddedilir."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        p = mock.patch.object(hosts, "HOSTS_JSON", os.path.join(self.d, "hosts.json"))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def save(self, base, extra):
+        return hosts.save_host("h1", base, "tok", extra_urls=extra)
+
+    def test_reach_port_loopback_ok_in_extra_urls(self):
+        r = self.save("https://example.invalid", "http://127.0.0.1:18766")
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual([h["extra_urls"] for h in hosts.load_hosts()], [["http://127.0.0.1:18766"]])
+
+    def test_everything_else_still_blocked(self):
+        for base, extra in (("http://127.0.0.1:18766", ""),                     # base_url'e istisna YOK
+                            ("https://example.invalid", "http://127.0.0.1:8765"),   # panelin kendi portu
+                            ("https://example.invalid", "http://127.0.0.1:18800"),
+                            ("https://example.invalid", "https://127.0.0.1:18766"),
+                            ("https://example.invalid", "http://localhost:18766"),  # DNS adı istisna değil
+                            ("https://example.invalid", "http://169.254.169.254:18766")):
+            self.assertFalse(self.save(base, extra).get("ok"), (base, extra))
+
+    def test_helper(self):
+        self.assertTrue(hosts._is_reach_loopback("http://[::1]:18700"))
+        self.assertFalse(hosts._is_reach_loopback("http://127.0.0.1"))
+
+
 class DbModeIrregularTest(unittest.TestCase):
     """db kipinde düzensiz-kayıt denetimi DB değerine bakar (dosya bayat), yedek DB dökümüdür."""
 

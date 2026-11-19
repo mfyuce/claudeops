@@ -46,8 +46,8 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18766/api/ping   # 401
 
 Then point the host at it in the panel (Settings > Hosts), keeping the old address as a fallback:
 
-- **Base URL:** `http://127.0.0.1:18766`
-- **Extra URLs:** your previous address (for example the devtunnel URL), one per line
+- **Base URL:** the remote's normal address (devtunnel etc.); loopback is not allowed as a Base URL
+- **Extra URLs:** `http://127.0.0.1:18766` (the reach listener; literal 127.0.0.1/[::1], plain http, port 18700-18799 only, any other loopback is refused as SSRF protection), one per line, after any other fallback addresses
 
 If the menzil path fails, claudeops' host poller tries the extra URLs in order and promotes the first one that answers, so the panel keeps working while menzil is down. Change hosts through the panel (or `POST /api/hosts`), not by editing `hosts.json`: the database is the source of truth and edits to the file are not read back.
 

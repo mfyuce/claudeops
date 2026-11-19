@@ -113,6 +113,20 @@ def _host_is_blocked(url: str) -> bool:
     return any(ip_is_blocked(info[4][0]) for info in infos)
 
 
+LOOPBACK_REACH_PORTS = range(18700, 18800)      # `menzil reach ... --listen 127.0.0.1:187xx` (docs/menzil.md): TEK istisna aralığı
+
+
+def _is_reach_loopback(url: str) -> bool:
+    """True: `url` literal 127.0.0.1/[::1] ve port 18700-18799 (menzil/tünel reach dinleyicisi). Yalnız `extra_urls` için kullanılır:
+    başka yerel servislere (panelin kendisi, metadata benzeri) SSRF yüzeyi AÇMAZ; `localhost` gibi DNS adları istisna DEĞİL."""
+    try:
+        parts = urlparse(url)
+        ip = ipaddress.ip_address(parts.hostname or "")
+        return parts.scheme == "http" and ip.is_loopback and (parts.port or 0) in LOOPBACK_REACH_PORTS
+    except ValueError:
+        return False
+
+
 DNS_CHECK_TIMEOUT = 5.0   # sn: `getaddrinfo`nun kendi zaman aşımı yok; asılı DNS kayıt isteğini (ve kaydeden thread'i) sonsuza dek bloklamasın
 
 
@@ -312,7 +326,7 @@ def save_host(
         if not (u.startswith("http://") or u.startswith("https://")):
             return _err(lang, "invalid_extra_url")
     if _host_is_blocked(base_url) or (grpc_url and _host_is_blocked(grpc_url)) \
-            or any(_host_is_blocked(u) for u in extra_list):
+            or any(_host_is_blocked(u) for u in extra_list if not _is_reach_loopback(u)):
         return _err(lang, "blocked_host")
 
     # DNS çözümleme (yukarıdaki `_host_is_blocked`) kilit DIŞINDA kalır: yavaş çözümleme hosts.json'u kilitlemesin (review cops)
