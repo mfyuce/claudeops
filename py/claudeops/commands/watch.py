@@ -844,13 +844,17 @@ class ContextClient:
     Başarısızlıkta son değer kalır; hiçbir hata thread'i öldürmez. Yalnız izleme."""
 
     INTERVAL_SECONDS = 20.0
+    STALE_SECONDS = 600.0     # bağlam bu kadar süre HİÇ okunamazsa rozet silinir; öncesinde son iyi değer kalır
 
     def __init__(self, port: int, host: str, session: str, viewer: "Viewer", *,
                  read_token: Optional[Callable[[], str]] = None,
-                 urlopen: Callable[..., Any] = urllib.request.urlopen):
+                 urlopen: Callable[..., Any] = urllib.request.urlopen,
+                 clock: Callable[[], float] = time.monotonic):
         self.port, self.host, self.session, self.viewer = port, host, session, viewer
         self._read_token = read_token
         self._urlopen = urlopen
+        self._clock = clock
+        self._last_ok: Optional[float] = None
 
     def fetch_once(self) -> None:
         try:
@@ -862,7 +866,19 @@ class ContextClient:
                 data = json.loads(resp.read())
         except Exception:
             return
-        self.viewer.context_text = context_text_from_facts(data, self.session)
+        text = context_text_from_facts(data, self.session)
+        now = self._clock()
+        if text:
+            self.viewer.context_text, self._last_ok = text, now
+            return
+        # Boş sonuç (uzak proxy zaman aşımı `ok:false`, geçici `context_tokens: null`, önbellek soğuk) son iyi değeri SİLMEZ:
+        # yalnız oturum kapandıysa ya da uzun süredir hiç okunamıyorsa temizlenir (uzak pencerelerde rozet kaybolup duruyordu).
+        try:
+            closed = data["sessions"][self.session].get("running") is False
+        except (KeyError, TypeError, AttributeError):
+            closed = False
+        if closed or self._last_ok is None or now - self._last_ok > self.STALE_SECONDS:
+            self.viewer.context_text = ""
 
     def run(self, stop: threading.Event) -> None:
         while not stop.is_set():

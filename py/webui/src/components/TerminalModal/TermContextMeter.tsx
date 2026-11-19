@@ -9,10 +9,13 @@ import { apiGet } from "../../api/client";
 import { useLang } from "../../i18n/LangContext";
 
 interface FactsResult {
-  sessions?: Record<string, { context_tokens?: number | null; context_warn?: number }>;
+  sessions?: Record<string, { running?: boolean; context_tokens?: number | null; context_warn?: number }>;
 }
 
 const POLL_MS = 20000;
+// Boş/başarısız okuma (uzak proxy zaman aşımı, geçici null) son iyi değeri silmez; yalnız oturum kapandıysa ya da bu kadar
+// süredir hiç okunamıyorsa rozet kalkar.
+const STALE_MS = 600000;
 
 export function TermContextMeter({ name, host }: { name: string; host: string }) {
   const { t } = useLang();
@@ -20,13 +23,20 @@ export function TermContextMeter({ name, host }: { name: string; host: string })
 
   useEffect(() => {
     let alive = true;
+    let lastOk = 0;
     const tick = async () => {
       try {
         const r = await apiGet<FactsResult>(
           `/api/session/facts?names=${encodeURIComponent(name)}&host=${encodeURIComponent(host)}`,
         );
         const f = r.sessions?.[name];
-        if (alive) setCtx(f?.context_tokens ? { tokens: f.context_tokens, warn: f.context_warn ?? 0 } : null);
+        if (!alive) return;
+        if (f?.context_tokens) {
+          lastOk = Date.now();
+          setCtx({ tokens: f.context_tokens, warn: f.context_warn ?? 0 });
+        } else if (f?.running === false || Date.now() - lastOk > STALE_MS) {
+          setCtx(null);
+        }
       } catch {
         /* keep the last value */
       }
