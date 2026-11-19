@@ -135,16 +135,18 @@ class ExtensionAPI:
         statedocs.register_doc_prefix(prefix)
 
     def register_ui_extension(self, ext_id: str, assets_dir: str, roles: Any = ("admin",), title: str = "", entry: str = "index.js",
-                              title_en: str = "") -> None:
-        """K10: panel sekmesi. `GET /api/ui/extensions` rolüne uyan kullanıcıya listeler; dosyalar `/api/ui/ext/<id>/<dosya>`
+                              title_en: str = "", group: str = "") -> None:
+        """K10: panel sekmesi. `group` ("" | "tools" | "settings"): "tools"/"settings" sekmeyi üst çubuğa değil o grubun alt sekme satırına koyar (C2). `GET /api/ui/extensions` rolüne uyan kullanıcıya listeler; dosyalar `/api/ui/ext/<id>/<dosya>`
         (kimlik + yetki kapısından geçer; traversal/symlink korumalı). `UI_EXTENSION_API = 1`."""
         import os
         import re as _re
         if not isinstance(ext_id, str) or not _re.fullmatch(r"[a-z0-9_-]{1,40}", ext_id):      # panelin EXT_TAB_RE'siyle aynı (büyük harf/unicode/uzun kimlikle sekme açılamıyordu)
             raise ValueError(f"invalid ui extension id: {ext_id!r}")
+        if group not in ("", "tools", "settings"):
+            raise ValueError(f"invalid ui extension group: {group!r}")
         with _LOCK:
             _UI_EXTS[ext_id] = {"id": ext_id, "title": title or ext_id, "title_en": title_en or title or ext_id, "assets_dir": os.path.realpath(assets_dir),
-                                "roles": tuple(str(r) for r in roles), "entry": entry}
+                                "roles": tuple(str(r) for r in roles), "entry": entry, "group": group}
 
     def set_authenticator(self, fn: Callable[[Any], Any]) -> None:
         """K1: `fn(RequestView) -> Principal | None` (None = 401). Kayıtlıyken `web.token` yolu KAPANIR (eklenti çözer)."""
@@ -298,7 +300,8 @@ def ui_extensions(roles: Any = None) -> List[Dict[str, Any]]:
     with _LOCK:
         exts = list(_UI_EXTS.values())
     rs = set(roles or ())
-    return [{"id": e["id"], "title": e["title"], "title_en": e.get("title_en") or e["title"], "roles": list(e["roles"]), "entry": f"/api/ui/ext/{e['id']}/{e['entry']}"}
+    return [{"id": e["id"], "title": e["title"], "title_en": e.get("title_en") or e["title"], "roles": list(e["roles"]), "group": e.get("group", ""),
+             "entry": f"/api/ui/ext/{e['id']}/{e['entry']}"}
             for e in exts if roles is None or rs & set(e["roles"])]
 
 

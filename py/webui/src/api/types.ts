@@ -1235,6 +1235,8 @@ export interface UiExtension {
   title_en?: string;
   entry: string;
   roles: string[];
+  /** "tools" | "settings": the tab lives in that group's sub-tab row instead of the top bar (C2). Empty/absent = top level. */
+  group?: string;
 }
 export interface UiExtensionsResult {
   ok?: boolean;

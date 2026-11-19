@@ -170,6 +170,26 @@ class UiExtensionId(unittest.TestCase):
             ext._UI_EXTS.update(saved)
 
 
+class UiExtensionGroup(unittest.TestCase):
+    """C2: `group` ("tools"/"settings") sekmeyi alt sekme satırına koyar; geçersiz grup reddedilir; yanıtta `group` alanı var."""
+
+    def test_group_rules_and_listing(self):
+        api = ext.ExtensionAPI()
+        saved = dict(ext._UI_EXTS)
+        try:
+            api.register_ui_extension("a1", "/tmp")
+            api.register_ui_extension("t1", "/tmp", group="tools")
+            api.register_ui_extension("s1", "/tmp", group="settings")
+            for bad in ("top", "Tools", "tools "):
+                with self.assertRaises(ValueError, msg=bad):
+                    api.register_ui_extension("b1", "/tmp", group=bad)
+            got = {e["id"]: e["group"] for e in ext.ui_extensions(None)}
+            self.assertEqual((got["a1"], got["t1"], got["s1"]), ("", "tools", "settings"))
+        finally:
+            ext._UI_EXTS.clear()
+            ext._UI_EXTS.update(saved)
+
+
 class ReaderConfig(unittest.TestCase):
     def test_validation(self):
         import tempfile

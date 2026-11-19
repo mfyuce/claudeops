@@ -38,3 +38,15 @@ test("entry tab: remembered sub, else first visible", () => {
   assert.equal(entryTabFor("settings", {}, null), "settings");
   assert.equal(entryTabFor("settings", { restricted: true }, null), null);
 });
+
+test("extension sub-tabs (group tools/settings) join the group row (C2)", () => {
+  const extSubs = { tools: ["ext:apps"], settings: ["ext:cfg"] };
+  assert.equal(groupOf("ext:apps", extSubs), "tools");
+  assert.equal(groupOf("ext:cfg", extSubs), "settings");
+  assert.equal(groupOf("ext:admin", extSubs), null);
+  assert.equal(topTabOf("ext:apps", extSubs), "tools");
+  assert.deepEqual(visibleSubs("tools", { extSubs }), ["ucli", "team", "steward", "desktop", "ext:apps"]);
+  assert.deepEqual(visibleSubs("tools", { restricted: true, extSubs }), ["ucli", "ext:apps"]);
+  assert.equal(entryTabFor("tools", { extSubs }, "ext:apps"), "ext:apps");
+  assert.equal(entryTabFor("tools", {}, "ext:apps"), "ucli");
+});

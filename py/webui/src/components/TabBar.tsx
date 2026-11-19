@@ -14,7 +14,7 @@ import { useStatusContext } from "../state/StatusContext";
 import { matchesSearch } from "./shared/searchFilter";
 import { useTabShortcuts } from "./shared/useTabShortcuts";
 import type { UiExtension } from "../api/types";
-import { entryTabFor, groupOf, topTabOf, visibleSubs, type TabGroup, type TabKey } from "../state/tabs";
+import { entryTabFor, groupOf, topTabOf, visibleSubs, type ExtSubs, type TabGroup, type TabKey } from "../state/tabs";
 
 interface TabBarProps {
   active: TabKey;
@@ -42,7 +42,14 @@ export function TabBar({ active, onSelect, search, extensions = [] }: TabBarProp
     ? data.stewards.reduce((a, x) => a + (x.open_questions || 0), 0)
     : data.steward?.open_questions ?? 0;
 
-  const gopts = { restricted: !!data.restricted, hasReadlist: (data.ext_routes ?? []).includes("/readlist/") };
+  // Extension tabs the server grouped under Araçlar/Ayarlar leave the top bar and join that group's sub-tab row.
+  const extSubs: ExtSubs = {
+    tools: extensions.filter((e) => e.group === "tools").map((e) => `ext:${e.id}`),
+    settings: extensions.filter((e) => e.group === "settings").map((e) => `ext:${e.id}`),
+  };
+  const topExts = extensions.filter((e) => e.group !== "tools" && e.group !== "settings");
+  const extTitle = (e: UiExtension) => (lang === "en" ? e.title_en || e.title : e.title);
+  const gopts = { restricted: !!data.restricted, hasReadlist: (data.ext_routes ?? []).includes("/readlist/"), extSubs };
   const toolsSubs = visibleSubs("tools", gopts);
   const settingsSubs = visibleSubs("settings", gopts);
 
@@ -60,6 +67,7 @@ export function TabBar({ active, onSelect, search, extensions = [] }: TabBarProp
     settings: t.tabSettings,
     snapshots: t.tabSnapshots,
     diag: t.tabDiag,
+    ...Object.fromEntries(extensions.map((e) => [`ext:${e.id}`, extTitle(e)])),
   };
   // Hidden sub-tabs still surface their signals on the group button (open questions / running run / capture).
   const toolsBadge = toolsSubs.includes("steward") && stewardOpen ? ` (${stewardOpen})` : "";
@@ -73,12 +81,12 @@ export function TabBar({ active, onSelect, search, extensions = [] }: TabBarProp
     // No count: history comes from its own endpoint, not the status payload.
     ["history", t.tabHistory],
     ...(toolsSubs.length ? ([["tools", `${t.tabTools}${toolsBadge}${toolsDot}`]] as [TabGroup, string][]) : []),
-    ...extensions.map((e): [TabKey, string] => [`ext:${e.id}`, lang === "en" ? e.title_en || e.title : e.title]),
+    ...topExts.map((e): [TabKey, string] => [`ext:${e.id}`, extTitle(e)]),
     ...(settingsSubs.length ? ([["settings", t.tabSettings]] as [TabKey, string][]) : []),
   ];
 
-  const topActive = topTabOf(active);
-  const group = groupOf(active);
+  const topActive = topTabOf(active, extSubs);
+  const group = groupOf(active, extSubs);
   const subs = group === "tools" ? toolsSubs : group === "settings" ? settingsSubs : [];
   if (group && subs.includes(active)) lastSub.current[group] = active;
 
