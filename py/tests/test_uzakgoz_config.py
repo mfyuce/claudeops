@@ -55,6 +55,23 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("uzakgoz", settings.DEFAULT_SETTINGS)
 
 
+class DerbentConfigTests(unittest.TestCase):
+    def test_same_contract_own_key(self):
+        t = tempfile.TemporaryDirectory()
+        self.addCleanup(t.cleanup)
+        Path(t.name, "Cargo.toml").write_text("[package]\n")
+        self.assertIn("derbent", settings.DEFAULT_SETTINGS)
+        with mock.patch.object(settings, "DERBENT_DEFAULT_DIR", os.path.join(t.name, "yok")), \
+                mock.patch.object(settings, "load_settings", return_value={"derbent": {"dir": t.name, "port": "8899"},
+                                                                          "uzakgoz": {"port": "9000"}}):
+            self.assertEqual(settings.derbent_config(), {"dir": t.name, "bin": "", "port": 8899})
+            self.assertEqual(settings.uzakgoz_config()["port"], 9000)
+        for raw in ({}, None, "x", {"port": "80", "bin": "/yok"}):
+            with mock.patch.object(settings, "DERBENT_DEFAULT_DIR", os.path.join(t.name, "yok")), \
+                    mock.patch.object(settings, "load_settings", return_value={"derbent": raw}):
+                self.assertEqual(settings.derbent_config(), {"dir": "", "bin": "", "port": None})
+
+
 class ResolveTests(unittest.TestCase):
     def test_manifest_is_uzakgoz_dir_or_empty_no_legacy_fallback(self):
         with mock.patch.object(rd, "uzakgoz_config", return_value={"dir": "/x/uzakgoz", "bin": "", "port": None}):

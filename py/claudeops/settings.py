@@ -155,6 +155,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # dir = derlenecek kaynak dizini (boş: ~/work/projects/tmp/uzakgoz; eski rust/screenshare yedeği kaldırıldı),
                               # bin = hazır ikili (doluysa cargo build ATLANIR), port = 1024-65535 (boş: 8877).
                               # Geçersiz değer sessizce atlanır, `uzakgoz_config()`.
+    "derbent": {},           # {dir, bin, port: str} (19 Kas): uygulama geçidi derbent (ayrı repo, uzakgoz kalıbı); port = yönetim API portu.
+                              # Çekirdek yalnız doğrular (`derbent_config()`); süreç yönetimi enterprise.
     "ucli_cost": {},         # {daily_cap_usd, cache_ttl} (2026-11-01): Claude/Anthropic hizmetiyle açılan ucli oturumlarının GÜNLÜK dolar
                               # tavanı (boş/0 = tavan yok; aşılınca YENİ Claude oturumu reddedilir, çalışanlara dokunulmaz) ve önbellek
                               # TTL'i (`5m` | `1h`, boş = `1h`: takım insan hızında çalışıyor, 5 dk önbellek aralarda soğur). `ucli_cost_config()`.
@@ -346,7 +348,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if k in _DICT_ONLY_KEYS and not isinstance(v, dict):
             continue        # review R-17: dict olmayan yama bloğu tümden silmesin (okuma tarafı {} yapıyordu)
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "derbent", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
@@ -664,15 +666,15 @@ _OFF_WORDS = frozenset({"off", "0", "false", "no", "n", "hayir", "hayır", "kapa
 UZAKGOZ_DEFAULT_DIR = "~/work/projects/tmp/uzakgoz"
 
 
-def uzakgoz_config() -> Dict[str, Any]:
-    """`uzakgoz` ayarı (uzak masaüstü daemon'u), DOĞRULANMIŞ: `dir` (içinde Cargo.toml olan kaynak dizini; boşsa
-    `UZAKGOZ_DEFAULT_DIR`, o da yoksa ""), `bin` (çalıştırılabilir dosya ya da ""), `port`
-    (1024-65535 ya da None). Geçersiz/eksik değer sessizce atlanır, asla fırlatmaz (settings.json elle düzenlenebilir)."""
-    raw = load_settings().get("uzakgoz") or {}
+def _daemon_config(key: str, default_dir: str) -> Dict[str, Any]:
+    """Ayrı repodaki yerel daemon ayarı ({dir, bin, port}), DOĞRULANMIŞ: `dir` (içinde Cargo.toml olan kaynak dizini; boşsa
+    `default_dir`, o da yoksa ""), `bin` (çalıştırılabilir dosya ya da ""), `port` (1024-65535 ya da None). Geçersiz/eksik değer
+    sessizce atlanır, asla fırlatmaz (settings.json elle düzenlenebilir)."""
+    raw = load_settings().get(key) or {}
     if not isinstance(raw, dict):
         raw = {}
     out: Dict[str, Any] = {"dir": "", "bin": "", "port": None}
-    d = os.path.expanduser(str(raw.get("dir") or "").strip() or UZAKGOZ_DEFAULT_DIR)
+    d = os.path.expanduser(str(raw.get("dir") or "").strip() or default_dir)
     if os.path.isfile(os.path.join(d, "Cargo.toml")):
         out["dir"] = d
     b = os.path.expanduser(str(raw.get("bin") or "").strip())
@@ -685,6 +687,20 @@ def uzakgoz_config() -> Dict[str, Any]:
     except ValueError:
         pass
     return out
+
+
+def uzakgoz_config() -> Dict[str, Any]:
+    """`uzakgoz` ayarı (uzak masaüstü daemon'u): bkz. `_daemon_config`."""
+    return _daemon_config("uzakgoz", UZAKGOZ_DEFAULT_DIR)
+
+
+DERBENT_DEFAULT_DIR = "~/work/projects/tmp/derbent"
+
+
+def derbent_config() -> Dict[str, Any]:
+    """`derbent` ayarı (uygulama geçidi, ayrı repo; yönetim API'si): `port` = yönetim API portu. Yalnız doğrulayıcı;
+    süreci yöneten kod enterprise'dadır (docs/derbent-integration-plan.md C1)."""
+    return _daemon_config("derbent", DERBENT_DEFAULT_DIR)
 
 
 def reader_config() -> Dict[str, str]:
