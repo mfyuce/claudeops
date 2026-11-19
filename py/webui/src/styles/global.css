@@ -361,6 +361,8 @@ button:disabled { opacity: .5; cursor: default; }
 .mode-radio { display: flex; align-items: center; gap: .3rem; font-size: .82rem; color: var(--text); }
 .opts-hint { flex-basis: 100%; font-size: .78rem; color: var(--muted); min-height: 1em; }
 .opts label { color: var(--muted); font-size: .75rem; display: flex; flex-direction: column; gap: .15rem; }
+/* onay kutusu + etiket tek satır (kolon düzeni kutuyu etiketin üstüne atıyordu) */
+.opts label.fresh-toggle { flex-direction: row; align-items: center; gap: .4rem; }
 /* Forces the command-input+send button onto their own full-width line
    within .opts's wrap flow, same flex-basis:100% trick as .opts-hint/.modes
    above — otherwise the input's flex:1 only distributes leftover space on
