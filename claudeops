@@ -1610,7 +1610,19 @@ EOF
 # CMD: batch — full pipeline: backup → kill → compact → rc (visible)
 # ─────────────────────────────────────────────
 cmd_batch() {
-  local target="${1:-all-but-self}"
+  local dry=0 target="" a
+  for a in "$@"; do case "$a" in --dry-run) dry=1;; *) [ -z "$target" ] && target="$a";; esac; done
+  target="${target:-all-but-self}"
+  if [ "$dry" = "1" ]; then
+    echo "Pipeline (dry-run): backup → kill → compact → rc (visible) on $target; HİÇBİR ŞEY yapılmayacak"
+    local drows; drows=$(resolve_targets "$target")
+    while IFS=$'\t' read pid name _ sid _ _; do
+      [ -z "$pid" ] && continue
+      echo "  [dry-run] $name pid=$pid sid=${sid:0:8}: backup + kill + compact"
+    done <<<"$drows"
+    echo "(dry-run; uygulamak için --dry-run'sız çalıştır)"
+    return 0
+  fi
   echo "Pipeline: backup → kill → compact → rc (visible) on $target"
   echo ""
   echo "--- 1) backup ---"
