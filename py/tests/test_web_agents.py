@@ -93,6 +93,23 @@ class StartTests(WaBase):
         self.assertIn(("send", "p_aj1", "do it now"), self.ops.calls)
         self.assertEqual(ag.get_child("p_aj1")["parent"], "p")
 
+    def test_child_sink_called_before_register(self):
+        from claudeops import authz
+        seen = []
+        fn = lambda h, par, ch: seen.append((h, par, ch, [c[0] for c in self.ops.calls]))
+        authz.add_child_sink(fn)
+        self.addCleanup(lambda: authz._CHILD_SINKS.remove(fn))
+        self.assertTrue(self.start()[0]["ok"])
+        self.assertEqual(seen, [("", "p", "p_aj1", [])])      # kanca register/start'tan ÖNCE
+
+    def test_child_sink_error_does_not_block_start(self):
+        from claudeops import authz
+        def boom(h, par, ch):
+            raise RuntimeError("x")
+        authz.add_child_sink(boom)
+        self.addCleanup(lambda: authz._CHILD_SINKS.remove(boom))
+        self.assertTrue(self.start()[0]["ok"])
+
     def test_third_live_child_refused(self):
         self.assertTrue(self.start()[0]["ok"])
         self.assertTrue(self.start()[0]["ok"])

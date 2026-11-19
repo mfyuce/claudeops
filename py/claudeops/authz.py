@@ -302,6 +302,25 @@ def emit_event(path: str, host: str, name: str, p: Optional[Principal]) -> None:
             _log("authz_event_sink_failed", error=f"{type(e).__name__}: {e}"[:200], event=ev)
 
 
+_CHILD_SINKS: List[Callable[..., None]] = []
+
+
+def add_child_sink(fn: Callable[..., None]) -> None:
+    """Ajan çocuk oturum (ucli alt ajan) açılmadan ÖNCE `fn(host, parent, child)` çağrılır: sahiplik çocuğa taşınır, böylece istek
+    dışı iş parçacığındaki spawn kancası (principal yok) çocuğun sahibini bulur."""
+    with _LOCK:
+        if fn not in _CHILD_SINKS:
+            _CHILD_SINKS.append(fn)
+
+
+def emit_child(host: str, parent: str, child: str) -> None:
+    for fn in list(_CHILD_SINKS):
+        try:
+            fn(host, parent, child)
+        except Exception as e:      # noqa: BLE001
+            _log("authz_child_sink_failed", error=f"{type(e).__name__}: {e}"[:200])
+
+
 def resources_from(path: str, qs: Mapping[str, Any], data: Optional[dict]) -> List[Resource]:
     """İsteğin dokunduğu TÜM kaynaklar: `name`/`host` (sorgu+gövde), `/v1/*` `model` (= oturum adı), `participants[]`
     (`/api/orch/*`: {host,name}), `names[]`. Hiçbiri yoksa tek `global`. Authorizer hepsi için True demeli (biri red = 403)."""

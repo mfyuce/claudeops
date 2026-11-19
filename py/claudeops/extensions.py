@@ -124,6 +124,11 @@ class ExtensionAPI:
         from . import authz
         authz.add_event_sink(fn)
 
+    def on_agent_child(self, fn: Callable[..., None]) -> None:
+        """Ajan çocuk oturum açılmadan önce `fn(host, parent, child)` (sahiplik üst oturumdan çocuğa taşınır)."""
+        from . import authz
+        authz.add_child_sink(fn)
+
     def register_doc_prefix(self, prefix: str) -> None:
         """K8: `prefix` ("auth/") altındaki belgeler `db` kipinde DB-tek-kaynak olur."""
         from . import statedocs

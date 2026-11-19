@@ -250,6 +250,8 @@ def _start(data: Dict[str, Any], caller: Optional[Caller], ops) -> Reply:
     if name is None:
         return _err(why, 429)
     try:
+        from .. import authz as _az
+        _az.emit_child("", parent, name)        # sahiplik üst oturumdan çocuğa (spawn kancası kota/sağlayıcı dizinini sahibe göre çözer)
         ops.register(name, cwd, model, _MODES[mode], effort)
         res = ops.start(name, model=model, permission_mode=_MODES[mode], effort=effort, cli_opts=cli_opts)
     except Exception as e:      # spawn beklenmedik şekilde patladı: ayrılan ad serbest kalsın
