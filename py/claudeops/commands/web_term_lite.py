@@ -14,10 +14,12 @@ KAYBOLMASIN diye sunucuda hesaplanıp kareye eklenir:
   - `lite: True` işareti: işaretsiz kare (eski backend) istemcide eski yoldan işlenir, yani
     ön yüz ile backend'in deploy sırası önemsizdir.
 
-Kırpma kayıpsızdır: `tmux capture-pane -e` her satırı kendi içinde kapatır (satır sonunda SGR
-sıfırlanır) ve tam capture'ın son `rows` satırı, görünür-ekran capture'ına birebir eşittir
-(tmux 3.2a'da özel soketle doğrulandı; `py/tests/test_web_term_lite.py` aynısını gerçek tmux ile
-tekrar eder).
+Kırpma METİN ve URL açısından kayıpsızdır: tam capture'ın son `rows` satırı, görünür-ekran capture'ına
+birebir eşittir (tmux 3.2a'da özel soketle doğrulandı; `py/tests/test_web_term_lite.py` aynısını gerçek
+tmux ile tekrar eder). RENK için tam kayıpsız DEĞİL (bilinen sınır, 13 Kas ölçümü: 40 oturumun 3'ü):
+`capture-pane -e` her satırı kendi içinde kapatır ama sarılan bir satırın devamına SGR basmaz (renk
+üst yarıdan devralınır); kırpma tam bu devam satırını ilk satır yaparsa ilk hücre varsayılan renkte
+kalır. Çözüm (görünür capture'ı ayrıca çekmek) maliyetli bulundu, TODO'da açık.
 
 Saf fonksiyonlar: I/O yok, `web.py`'yi geri-import ETMEZ (`web_ws.py` ile aynı ilke). Yerel
 `_term_output`, `web_hosts.proxy_get` ve relay (`term_output_relay`) kaynaklı karelerin
