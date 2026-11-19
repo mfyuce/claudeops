@@ -5868,6 +5868,28 @@ def _register_remote(name: str, host: str, want_host: str, known: Optional["sw.P
     return {"ok": True, "project": _project_dict(p), "host": host, "adopted": True}
 
 
+_SECRET_DIRS = (".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config/gh", ".config/glab-cli", ".netrc", ".pgpass",
+                ".claude", ".codex", ".copilot", ".gemini", ".local/share/keyrings", ".password-store")
+_SECRET_NAME_RE = re.compile(r"(^\.env(\..*)?$|\.(pem|key|p12|pfx|kdbx|keystore|jks)$|^id_(rsa|dsa|ecdsa|ed25519)|"
+                             r"credential|secret|token|passw|api[_-]?key|\.credentials\.json$)", re.I)
+
+
+def _resource_blocked(src: str) -> bool:
+    """`resources` yerel yolları proje `kaynaklar/` altına KOPYALANIR (proje git'e girip push edilebilir): anahtar/token/
+    kimlik dosyaları ve ev dizinindeki gizli yapılandırma dizinleri kopyalanmaz (yalnız GOAL.md'de yol olarak listelenir).
+    Symlink çözülür; hem verilen hem gerçek yol denetlenir."""
+    home = os.path.realpath(os.path.expanduser("~"))
+    for cand in {os.path.abspath(src), os.path.realpath(src)}:
+        if _SECRET_NAME_RE.search(os.path.basename(cand)):
+            return True
+        rel = os.path.relpath(cand, home) if cand == home or cand.startswith(home + os.sep) else ""
+        if rel and not rel.startswith(".."):
+            for d in _SECRET_DIRS:
+                if rel == d or rel.startswith(d + os.sep):
+                    return True
+    return False
+
+
 def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Yeni proje: klasör (yoksa oluştur + git init), GOAL.md (amaç + kaynaklar), yerel kaynak dosyalarını
     `kaynaklar/`a kopyala, roster'a kaydet (`web._register_project`), değnekçi kaydını aç."""
@@ -5919,7 +5941,7 @@ def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         if not r:
             continue
         src = os.path.expanduser(r)
-        if os.path.isfile(src):
+        if os.path.isfile(src) and not _resource_blocked(src):
             try:
                 if os.path.getsize(src) <= MAX_RESOURCE_BYTES:
                     dst_dir = os.path.join(cwd, "kaynaklar")
