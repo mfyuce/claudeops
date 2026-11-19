@@ -225,6 +225,7 @@ export function HostsSection() {
                     {p.url === h.base_url ? "● " : "○ "}
                     {p.url}
                     {p.url === h.base_url ? ` (${t.hostProbeActive})` : ""} · {t.hostProbeStats(p.ms, p.avg_ms, p.fails, p.total)}
+                    {p.n != null && ` · ${t.hostProbeScore(p.score ?? null, p.med ?? null, p.p90 ?? null, p.fail_rate ?? 0, p.n, !!p.warm)}`}
                   </span>
                 ))}
               </div>

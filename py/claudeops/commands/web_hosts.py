@@ -572,6 +572,7 @@ def _apply_probe_choice(host_record: Dict[str, Any]) -> None:
         best = host_probe.choose_for(host_record)
         if best:
             hosts_mod.promote_base_url(host_record["name"], best)
+            host_probe.note_switch(host_record["name"])             # histerezis: bir süre yeniden geçiş yok
             diag_log("host_url_picked", name=host_record["name"], old=host_record.get("base_url"), new=best)
     except Exception:
         pass

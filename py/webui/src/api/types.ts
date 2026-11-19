@@ -267,6 +267,14 @@ export interface HostProbeRow {
   total_fail: number;
   err: string;
   at: number;
+  /** Score components (window of the last attempts): lower score = better; null score = no successful attempt yet. */
+  n?: number;
+  ok_n?: number;
+  fail_rate?: number;
+  med?: number | null;
+  p90?: number | null;
+  score?: number | null;
+  warm?: boolean;
 }
 
 /** `/api/cli/status` (GET) entry — `cli_install.py`'s `cli_status()` shape,

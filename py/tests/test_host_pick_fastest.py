@@ -51,30 +51,74 @@ def store_with(now, **urls):
     return {"hosts": {"ulak_31": {"urls": {u: dict(r, at=now) for u, r in urls.items()}}}}
 
 
-def ok(avg, **kw):
-    return dict({"ok": True, "ms": avg, "avg_ms": avg, "fails": 0, "total": 5, "total_fail": 0, "samples": [avg]}, **kw)
+def win(ms_list, n_fail=0):
+    """Pencere: ms değerleri (tekrarlanır) + sonuna n_fail başarısız deneme; ısınma eşiğini aşar."""
+    out = list(ms_list)
+    while len(out) < hp.WARMUP + 4 - n_fail:
+        out += list(ms_list)
+    return out[:hp.WARMUP + 4 - n_fail] + [None] * n_fail
+
+
+def ok(med, n_fail=0, **kw):
+    return dict({"ok": True, "window": win([med, med + 20, med - 20], n_fail), "fails": 0, "total": 20}, **kw)
+
+
+class ScoreTest(unittest.TestCase):
+    def test_components_and_penalty(self):
+        sc = hp.score_of({"window": [100] * 10 + [200] * 10})
+        self.assertEqual((sc["n"], sc["fail_rate"], sc["warm"]), (20, 0.0, True))
+        self.assertEqual(sc["med"], 150)
+        clean = hp.score_of({"window": [400] * 20})["score"]
+        flaky = hp.score_of({"window": [400] * 14 + [None] * 6})["score"]     # %30 hata
+        self.assertGreater(flaky, clean + 1500)                                  # hata puanı BELİRGİN düşürür
+        self.assertIsNone(hp.score_of({"window": [None] * 20})["score"])
+        self.assertFalse(hp.score_of({"window": [5, 5]})["warm"])                # ısınma
+        self.assertEqual(hp.score_of(None)["n"], 0)
+
+    def test_record_fills_window_capped(self):
+        r = None
+        for i in range(hp.WINDOW + 5):
+            r = hp.record(r, 0.1 if i % 2 else None, "x", 1.0)
+        self.assertEqual(len(r["window"]), hp.WINDOW)
 
 
 class ChooseTest(unittest.TestCase):
-    NOW = 1000.0
+    NOW = 10000.0
+
+    def setUp(self):
+        hp._last_switch.clear()
 
     def choose(self, **urls):
         return hp.choose_for(hrec(), now=self.NOW, store=store_with(self.NOW, **urls))
 
-    def test_picks_fastest_healthy_when_much_faster(self):
+    def test_picks_much_better_score(self):
         self.assertEqual(self.choose(**{BASE: ok(380), LAN: ok(4), CF: ok(500)}), LAN)
 
     def test_keeps_base_when_gain_small(self):
-        self.assertIsNone(self.choose(**{BASE: ok(40), LAN: ok(30)}))
-        self.assertIsNone(self.choose(**{BASE: ok(400), LAN: ok(300)}))
+        self.assertIsNone(self.choose(**{BASE: ok(40), LAN: ok(30)}))            # 100 ms kazanç altı
+        self.assertIsNone(self.choose(**{BASE: ok(400), LAN: ok(300)}))          # oran 0,7 altına inmiyor
 
-    def test_unhealthy_candidates_ignored(self):
-        bad = ok(2, fails=2, ok=False)
-        self.assertIsNone(self.choose(**{BASE: ok(380), LAN: bad}))
-        self.assertIsNone(self.choose(**{BASE: ok(380), LAN: ok(4, avg_ms=None)}))
+    def test_cold_candidate_never_chosen_even_if_fast(self):
+        cold = {"ok": True, "window": [5, 5, 5], "fails": 0}                     # tek tur ısınma ölçümü
+        self.assertIsNone(self.choose(**{BASE: ok(900), LAN: cold}))
 
-    def test_base_down_picks_fastest_healthy(self):
-        self.assertEqual(self.choose(**{BASE: ok(0, ok=False, fails=3), LAN: ok(5), CF: ok(200)}), LAN)
+    def test_flaky_base_loses_to_clean_candidate_with_similar_latency(self):
+        # devtunnel: 2 zaman aşımı / 6; menzil: hepsi başarılı ve benzer gecikme -> puan farkı (hata cezası) geçişi sağlar
+        self.assertEqual(self.choose(**{BASE: ok(600, n_fail=6), LAN: ok(550)}), LAN)
+
+    def test_candidate_too_flaky_ignored(self):
+        self.assertIsNone(self.choose(**{BASE: ok(900), LAN: ok(5, n_fail=10)}))
+
+    def test_base_down_picks_best_warm_candidate(self):
+        down = {"ok": False, "window": [None] * 20, "fails": 3}
+        self.assertEqual(self.choose(**{BASE: down, LAN: ok(5), CF: ok(200)}), LAN)
+
+    def test_hysteresis_no_flapping(self):
+        st = store_with(self.NOW, **{BASE: ok(380), LAN: ok(4)})
+        self.assertEqual(hp.choose_for(hrec(), now=self.NOW, store=st), LAN)
+        hp.note_switch("ulak_31", self.NOW)
+        self.assertIsNone(hp.choose_for(hrec(), now=self.NOW + hp.DWELL_SECONDS - 1, store=st))
+        self.assertEqual(hp.choose_for(hrec(), now=self.NOW + hp.DWELL_SECONDS + 1, store=store_with(self.NOW + hp.DWELL_SECONDS + 1, **{BASE: ok(380), LAN: ok(4)})), LAN)
 
     def test_stale_store_means_no_decision(self):
         st = store_with(self.NOW - hp.STALE_SECONDS - 1, **{BASE: ok(380), LAN: ok(4)})
@@ -89,7 +133,7 @@ class ChooseTest(unittest.TestCase):
 
 
 class RunProbeTest(unittest.TestCase):
-    def test_probes_candidates_in_parallel_writes_store_and_drops_gone_urls(self):
+    def test_probes_candidates_several_attempts_writes_store_and_drops_gone_urls(self):
         with tempfile.TemporaryDirectory() as d:
             with mock.patch.object(hp, "STORE_JSON", os.path.join(d, "hp.json")):
                 lat = {BASE: (0.38, ""), LAN: (0.004, ""), CF: (None, "timed out")}
@@ -99,19 +143,46 @@ class RunProbeTest(unittest.TestCase):
                     return lat[u]
                 r = hp.run_probe([hrec(), {"name": "solo", "base_url": "https://s", "token": "x"}], probe=probe, now=50.0)
                 self.assertEqual((r["hosts"], r["urls"], r["ok"]), (1, 3, 2))       # tek adresli host yoklanmaz
-                self.assertEqual(sorted(probed), sorted([BASE, LAN, CF]))
+                self.assertEqual(sorted(set(probed)), sorted([BASE, LAN, CF]))
+                self.assertEqual(len(probed), 3 * hp.ATTEMPTS)                       # tur başına ATTEMPTS deneme
                 view = hp.public_view("ulak_31")
-                self.assertEqual([v["url"] for v in view], [LAN, BASE, CF])           # hızlıdan yavaşa, hatalı sonda
-                self.assertEqual(view[-1]["fails"], 1)
+                self.assertEqual(view[-1]["url"], CF)                                 # puansız (hiç başarı yok) sonda
+                self.assertEqual(view[0]["n"], hp.ATTEMPTS)
+                self.assertFalse(view[0]["warm"])                                     # tek tur = ısınmadı
                 hp._cache["mtime"] = None
                 r2 = hp.run_probe([hrec(extras=(LAN,))], probe=probe, now=60.0)       # CF artık aday değil
                 self.assertNotIn(CF, [v["url"] for v in hp.public_view("ulak_31")])
+
+    def test_same_host_addresses_probed_sequentially(self):
+        import threading
+        import time as _t
+        active, peak = [0], [0]
+        lock = threading.Lock()
+
+        def probe(u, t):
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            _t.sleep(0.01)
+            with lock:
+                active[0] -= 1
+            return 0.01, ""
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(hp, "STORE_JSON", os.path.join(d, "hp.json")):
+            hp.run_probe([hrec()], probe=probe, now=1.0)
+        self.assertEqual(peak[0], 1)                                  # aynı host'a hiç eşzamanlı istek yok
 
     def test_public_http_candidate_not_probed(self):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(hp, "STORE_JSON", os.path.join(d, "hp.json")):
             probed = []
             hp.run_probe([hrec(extras=("http://8.8.8.8:8765", LAN))], probe=lambda u, t: probed.append(u) or (0.01, ""), now=1.0)
             self.assertNotIn("http://8.8.8.8:8765", probed)
+
+    def test_probe_exception_counts_as_failed_attempt(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(hp, "STORE_JSON", os.path.join(d, "hp.json")):
+            def boom(u, t):
+                raise RuntimeError("x")
+            hp.run_probe([hrec(extras=(LAN,))], probe=boom, now=1.0)
+            self.assertTrue(all(v["fail_rate"] == 1.0 for v in hp.public_view("ulak_31")))
 
 
 class PollerAndJobTest(unittest.TestCase):
