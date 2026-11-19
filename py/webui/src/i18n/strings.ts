@@ -599,6 +599,8 @@ export interface Strings {
   ucliAgentsOff: string;
   ucliSessionCostLabel: string;
   ucliSessionCostPlaceholder: string;
+  ucliAgentsAskLabel: string;
+  ucliAgentsAskEditLabel: string;
   ucliAgentsCostLabel: string;
   ucliAgentsCostPlaceholder: string;
   tabHintToggle: string;
@@ -1608,6 +1610,8 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliAgentsOff: "kapalı",
     ucliSessionCostLabel: "oturum başına toplam tavan (USD)",
     ucliSessionCostPlaceholder: "boş = 8, 0 = tavan yok",
+    ucliAgentsAskLabel: "alt ajan soruları panelde sahibe gelsin",
+    ucliAgentsAskEditLabel: "alt ajanın her düzenlemesi sahibe sorulsun (mode edit)",
     ucliAgentsCostLabel: "alt ajan başına tavan (USD)",
     ucliAgentsCostPlaceholder: "boş = 2, 0 = tavan yok",
     tabHintToggle: "Açıklamayı göster/gizle",
@@ -2619,6 +2623,8 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliAgentsOff: "off",
     ucliSessionCostLabel: "total cap per session (USD)",
     ucliSessionCostPlaceholder: "empty = 8, 0 = no cap",
+    ucliAgentsAskLabel: "sub-agent questions go to the owner in the panel",
+    ucliAgentsAskEditLabel: "ask the owner before every sub-agent edit (mode edit)",
     ucliAgentsCostLabel: "cap per sub-agent (USD)",
     ucliAgentsCostPlaceholder: "empty = 2, 0 = no cap",
     tabHintToggle: "Show/hide description",

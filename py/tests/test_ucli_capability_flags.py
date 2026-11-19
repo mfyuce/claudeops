@@ -88,3 +88,15 @@ class CapabilityFlagsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AskEditWithoutExecTest(unittest.TestCase):
+    """Çocuk ajan: exec katmanı yok ama `--allow-edit` permission_mode'dan geldi => `--ask-edit` eklenir; allow-edit yoksa atlanır."""
+
+    def test_ask_edit_added_only_with_allow_edit(self):
+        from claudeops.providers import ucli_provider as up
+        with mock.patch.object(up, "binary_supports_flag", lambda b, f: True):
+            argv, _ = up._apply_cli_opts(["ucli", "chat", "--allow-edit"], {"ask_edit": True}, "p_aj1", "/x", "")
+            self.assertIn("--ask-edit", argv)
+            argv2, _ = up._apply_cli_opts(["ucli", "chat"], {"ask_edit": True}, "p_aj1", "/x", "")
+            self.assertNotIn("--ask-edit", argv2)

@@ -396,6 +396,8 @@ export interface Settings {
   ucli_agents?: string;
   /** Per-child-agent USD cap (`ucli_agents.max_cost_usd()`): empty = 2, 0 = no cap. */
   ucli_agents_max_cost_usd?: string;
+  ucli_agents_ask?: string;
+  ucli_agents_ask_edit?: string;
   /** ucli oturumu başına toplam USD tavanı (`--max-session-usd`). Boş = 8, 0 = tavan yok. */
   ucli_max_session_usd?: string;
   /** ucli's OpenAI-compatible endpoint (2026-10-20): http(s) address; empty/invalid = the Evren default. Not a secret

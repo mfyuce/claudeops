@@ -99,6 +99,15 @@ class StartTests(WaBase):
         start = next(c for c in self.ops.calls if c[0] == "start")
         self.assertEqual(start[5], {"service": "evren", "ask_dir": True, "max_cost_usd": 2.0})
 
+    def test_ask_edit_setting_only_for_edit_mode(self):
+        self.ops.live["p"].permission_mode = "allow-edit"
+        with mock.patch.object(ag, "ask_edit_enabled", lambda: True), mock.patch.object(ag, "ask_enabled", lambda: True):
+            self.assertTrue(self.start(mode="edit")[0]["ok"])
+            self.assertTrue(self.start(mode="read")[0]["ok"])
+        starts = [c for c in self.ops.calls if c[0] == "start"]
+        self.assertEqual(starts[0][5], {"service": "evren", "ask_dir": True, "ask_edit": True, "max_cost_usd": 2.0})
+        self.assertEqual(starts[1][5], {"service": "evren", "ask_dir": True, "max_cost_usd": 2.0})
+
     def test_child_sink_called_before_register(self):
         from claudeops import authz
         seen = []

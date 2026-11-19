@@ -259,6 +259,8 @@ def _start(data: Dict[str, Any], caller: Optional[Caller], ops) -> Reply:
     cli_opts: Dict[str, Any] = {"service": entry["service"]}
     if ag.ask_enabled():
         cli_opts["ask_dir"] = True      # çocuğun soruları terminalde takılmaz: panelde sahibe düşer (S5)
+    if mode == "edit" and ag.ask_edit_enabled():
+        cli_opts["ask_edit"] = True     # her düzenleme onay bekler; onay `ask_dir` kanalından gelir
     if cap > 0:
         cli_opts["max_cost_usd"] = cap
     name, why = ag.reserve_child(parent, set(running), ops.name_taken,

@@ -54,7 +54,13 @@ def ask_enabled() -> bool:
     """`ucli_agents_ask` ayarı (varsayılan KAPALI, `on`/`1`/`true` açar): çocuk ajanlar `--ask-dir` ile açılır; soruları terminalde
     kimsenin görmediği bir yerde takılmaz, panelde (UcliAskBox) sahibe düşer ve üst ajan `status`ta `waiting_input` görür
     (docs/ucli-approval-design.md S5). Asla fırlatmaz."""
-    return str(load_settings().get("ucli_agents_ask") or "").strip().lower() in ("on", "1", "true", "yes")
+    return str(load_settings().get("ucli_agents_ask") or "").strip().lower() in ("on", "1", "true", "yes") or ask_edit_enabled()
+
+
+def ask_edit_enabled() -> bool:
+    """`ucli_agents_ask_edit` (varsayılan KAPALI): `mode: edit` çocuğun HER dosya düzenlemesi sahibe sorulur (`--ask-edit`, soru kanalı `ask_dir`
+    olduğundan `ucli_agents_ask` da açılır). Asla fırlatmaz."""
+    return str(load_settings().get("ucli_agents_ask_edit") or "").strip().lower() in ("on", "1", "true", "yes")
 
 
 def max_cost_usd() -> float:

@@ -770,6 +770,15 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                     raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (izin yarım uygulanmaz)")
                 if flag not in argv:
                     argv = argv + [flag]
+    if opts.get("ask_edit") and not ex:
+        # exec katmanı yok (ör. alt ajan çocuğu): yazma izni permission_mode'dan gelen `--allow-edit`tir; yoksa onay anlamsız, atla.
+        if "--allow-edit" not in argv:
+            diag_log("ucli_flag_skipped", name=session_name, flag="--ask-edit", reason="no --allow-edit")
+        elif not binary_supports_flag(binary, "--ask-edit"):
+            diag_log("ucli_flag_unsupported", name=session_name, flag="--ask-edit", binary=binary)
+            raise ValueError("ucli ikilisi --ask-edit bayrağını tanımıyor (izin yarım uygulanmaz)")
+        elif "--ask-edit" not in argv:
+            argv = argv + ["--ask-edit"]
     return argv, env_prefix
 
 

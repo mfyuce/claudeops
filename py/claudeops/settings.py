@@ -172,6 +172,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # `/api/agents/*`; 2026-11-04). VARSAYILAN AÇIK ama YALNIZ ikili `--allow-agents`'i tanıyorsa
                               # bayrak geçer; `off` yeni oturumlara bayrağı/token'ı hiç vermez. Okuma: `ucli_agents.enabled()`.
     "ucli_agents_ask": "",    # "on": çocuk ajanlar `--ask-dir` ile açılır (soru/onay sahibe panelden gider, üst ajan `waiting_input` görür); boş = kapalı.
+    "ucli_agents_ask_edit": "",   # "on": `mode: edit` çocuğun her düzenlemesi sahibe sorulur (`--ask-edit` + `ask_dir`); boş = kapalı.
     "ucli_agents_max_cost_usd": "",   # çocuk ajan başına USD tavanı (`--max-cost-usd` + panel sayacı); boş = 2, 0 = tavan yok.
     "ucli_max_session_usd": "",   # ucli OTURUMU başına toplam USD tavanı (`--max-session-usd`; kayıtta `max_session_usd` yoksa bu): boş = 8, 0 = tavan yok (sahip 11 Kas).
     "memory_prv_public": {},  # {roster_adı: "on" | "<prv_adı>"}: "ileride PUBLIC olacak" işaretli projeler (hafıza -prv'ye gider; 13 Kas sahip kuralı). Varsayılan YOK.

@@ -264,6 +264,22 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
               />
             </label>
             <label>
+              <input
+                type="checkbox"
+                checked={["on", "1", "true", "yes"].includes(asText(settings.ucli_agents_ask).trim().toLowerCase())}
+                onChange={(e) => void save({ ucli_agents_ask: e.target.checked ? "on" : "" })}
+              />{" "}
+              {t.ucliAgentsAskLabel}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={["on", "1", "true", "yes"].includes(asText(settings.ucli_agents_ask_edit).trim().toLowerCase())}
+                onChange={(e) => void save({ ucli_agents_ask_edit: e.target.checked ? "on" : "" })}
+              />{" "}
+              {t.ucliAgentsAskEditLabel}
+            </label>
+            <label>
               {t.ucliAgentsCostLabel}
               <input
                 type="text"
