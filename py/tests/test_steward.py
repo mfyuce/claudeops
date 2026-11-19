@@ -2270,7 +2270,7 @@ class HttpTest(_Tmp):
         self.assertIsNone(web_steward.http_post("/api/steward/nope", {}))
         state = web_steward.http_get("/api/steward/state", {})
         self.assertEqual(state["summary"]["projects"]["planning"], 1)
-        self.assertEqual(len(web_steward.http_get("/api/steward/log", {"n": ["100"]})["entries"]), 6)
+        self.assertEqual(len(web_steward.http_get("/api/steward/log", {"n": ["100"]})["entries"]), 7)
 
     def test_ask_with_options_notifies_with_link_once(self):
         notes = []

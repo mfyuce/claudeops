@@ -6235,6 +6235,86 @@ def _preserve_undelivered_answer(q: "sw.Question", cfg: "sw.Config", paths: Any,
         return "failed"
 
 
+def _persist_owner_answer(q: "sw.Question", sid: str) -> Dict[str, str]:
+    """Sahip cevabı (answer, `--as-owner`/cops dahil) HER ZAMAN projenin dosyasına yazılır (sahip 19 Kas: "cevaplar todo'ya yazılıyor mu?"):
+    TOBEDECIDED.md'de ilgili TBD maddesinin altına (`tbd_insert_answer`, aynı qid iki kez yazılmaz), cevap eylem taşıyorsa TODO.md'ye
+    `- [ ] (sahip cevabı <qid>) ...`. Yerel proje doğrudan, uzak proje host-routed `files/read`+`files/write` ile (dosya yoksa uzak yazmaz:
+    `unreadable`). Oturuma iletim ayrıca sürer; bu yazı iletimden ÖNCE yapılır. Sonuç {"tbd": ..., "todo": ...}: written | already | skipped
+    | remote_* hata kodu | no_folder | failed. Asla fırlatmaz."""
+    out = {"tbd": "failed", "todo": "skipped"}
+    try:
+        cfg = steward_config(sid)
+        projects = sw.load_projects(sid)
+        proj = projects.get(q.project)
+        host = proj.host if proj is not None else ""
+        if not host:
+            try:
+                host = (_ownership_index().get("hosts") or {}).get(q.project, "")
+            except Exception:
+                host = ""
+        date = time.strftime("%Y-%m-%d")
+        want_todo = sw.answer_has_action(q.answer)
+        jobs = [("tbd", "TOBEDECIDED.md", lambda t: sw.tbd_insert_answer(t, q.id, q.text, q.answer, date))]
+        if want_todo:
+            jobs.append(("todo", "TODO.md", lambda t: sw.todo_insert_answer(t, q.id, q.answer, date)))
+        for key, fname, edit in jobs:
+            if host:
+                out[key] = _remote_edit_doc(host, q.project, fname, edit, sid)
+                continue
+            cwd = _cwd_resolver()(q.project)
+            if not cwd or not os.path.isdir(cwd):
+                out[key] = "no_folder"
+                continue
+            real = _doc_path(cwd, fname) or os.path.join(cwd, fname)
+            try:
+                with open(real, encoding="utf-8", errors="replace") as f:
+                    before = f.read()
+            except FileNotFoundError:
+                before = ""
+            new = edit(before)
+            if new is None:
+                out[key] = "already"
+                continue
+            from ..atomic_json import atomic_write_text
+            atomic_write_text(real, new)
+            out[key] = "written"
+            try:       # yalnız bu dosya, açık yolla; izlenmiyorsa/dışlanmışsa add başarısız olur ve commit atlanır
+                if subprocess.run(["git", "-C", cwd, "add", "--", real], capture_output=True, timeout=20).returncode == 0:
+                    subprocess.run(["git", "-C", cwd, "commit", "-q", "-m", f"{fname}: sahip cevabı [{q.id}]", "--", real],
+                                   capture_output=True, timeout=30)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        sw.log_event("answer_persisted", paths=sid, id=q.id, project=q.project, tbd=out["tbd"], todo=out["todo"])
+        if out["tbd"] not in ("written", "already"):
+            _notify(cfg, (f"[{cfg.sid}] Cevabın {q.project} projesinin TOBEDECIDED.md'sine YAZILAMADI ({out['tbd']}): [{q.id}] {q.answer[:160]}"
+                          if cfg.lang != "en" else
+                          f"[{cfg.sid}] Your answer for {q.project} could NOT be written to TOBEDECIDED.md ({out['tbd']}): [{q.id}] {q.answer[:160]}"))
+    except Exception as e:
+        diag_log("answer_persist_failed", id=getattr(q, "id", ""), error=repr(e))
+    return out
+
+
+def _remote_edit_doc(host: str, name: str, fname: str, edit: Callable[[str], Optional[str]], sid: str) -> str:
+    """Uzak projenin `fname` dosyasını `edit(metin)` ile günceller (`_remote_append_idea` ile aynı güvenlik sırası: kapı, oku, yeniden oku, yaz)."""
+    if not _remote_files_gate(host, sid):
+        return "remote_denied"
+    real, cwd = _remote_ref(host, name)
+    if not cwd:
+        return "no_folder"
+    name = real or name
+    path = cwd.rstrip("/") + "/" + fname
+    before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
+    if before is None:
+        return "remote_unreadable"
+    new = edit(before)
+    if new is None:
+        return "already"
+    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != before:
+        return "remote_conflict"
+    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+    return "written" if res.get("ok") else "remote_write_failed"
+
+
 def _job_kinds_list(sid: str) -> List[str]:
     """Varaka iş türü kataloğundaki tür adları (en iyi çaba; servis yoksa/ulaşılamazsa boş liste)."""
     try:
@@ -6318,7 +6398,10 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if q is None:
         return {"ok": False, "error": "unknown question id"}
     sw.log_event("answer", paths=sid, id=q.id, project=q.project, answered_by=q.answered_by)
-    return {"ok": True, "question": dataclasses.asdict(q)}
+    persisted: Dict[str, str] = {}
+    if q.answered_by in ("owner_phone", "owner_panel", "owner_cli", "cops") and q.source != "reviewer-where" and q.project:
+        persisted = _persist_owner_answer(q, sid)       # sahip cevabı HER ZAMAN projenin TBD/TODO dosyasına (oturuma iletimden bağımsız)
+    return {"ok": True, "question": dataclasses.asdict(q), **({"persisted": persisted} if persisted else {})}
 
 
 def http_idea(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:

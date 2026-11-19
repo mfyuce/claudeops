@@ -1560,6 +1560,22 @@ def tbd_insert_answer(text: str, qid: str, q_text: str, answer: str, date: str) 
     return (f"{body}\n\n" if body else "") + f"- Sahip cevabı ({date}, değnekçi) [{qid}] (soru: {' '.join((q_text or '').split())[:140]}): {ans}\n"
 
 
+def answer_has_action(answer: str) -> bool:
+    """Cevap bir EYLEM taşıyor mu (TODO satırı gerekir)? Kısa seçim/onay ('evet', 'ikisi de', 'sıradan git', 'A') taşımaz:
+    4+ sözcük ya da 40+ karakter eylem sayılır (sahip cevapları kısa ve kalıcı kuraldır, uzun olan yönerge içerir)."""
+    a = " ".join(str(answer).split())
+    return len(a.split()) >= 4 or len(a) >= 40
+
+
+def todo_insert_answer(text: str, qid: str, answer: str, date: str) -> Optional[str]:
+    """SAF. TODO.md içeriğine `- [ ] (sahip cevabı <qid>) ...` satırı ekler (sona). Aynı qid zaten varsa None."""
+    if qid and f"(sahip cevabı {qid}," in text:
+        return None
+    ans = " ".join(str(answer).split())[:600]
+    body = text.rstrip("\n")
+    return (f"{body}\n" if body else "") + f"- [ ] (sahip cevabı {qid}, {date}) {ans}\n"
+
+
 def mark_undeliverable(question_id: str, reason: str, paths: Any = None) -> bool:
     """Cevap teslim EDİLEMEDİ (ad hoc oturum kapalı/yazı kabul etmiyor): yeniden denemeyi durdurur (`delivered_at`) ama
     'iletildi' görünmesin diye nedeni kaydeder. Dönen: kayıt bulundu mu."""
