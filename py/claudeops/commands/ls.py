@@ -12,6 +12,7 @@ def register(sub):
     p = sub.add_parser("list", aliases=["ls"], help="çalışan session'ları listele")
     p.add_argument("--no-cpu", action="store_true", help="CPU ölçme (daha hızlı)")
     p.add_argument("--base", help="sadece bu taban isim (ör. hc)")
+    p.add_argument("--json", action="store_true", help="makine okur çıktı: JSON listesi (tablo ve özet yok)")
     p.set_defaults(func=run)
 
 
@@ -20,6 +21,13 @@ def run(args) -> int:
     if args.base:
         sessions = [s for s in sessions if s.base == args.base]
     sessions.sort(key=lambda s: s.name)
+
+    if getattr(args, "json", False):
+        import json
+        print(json.dumps([{"name": s.name, "pid": s.pid, "model": s.model_short, "cpu": round(s.cpu, 1),
+                           "kind": "fresh" if s.is_fresh else "resume", "cwd": s.cwd} for s in sessions],
+                         ensure_ascii=False, indent=2))
+        return 0
 
     print(f"{'NAME':<13}{'PID':>8}  {'MODEL':<7}{'CPU%':>6}  {'KIND':<6} CWD")
     print("-" * 80)
