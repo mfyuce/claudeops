@@ -69,6 +69,12 @@ class ReachLoopbackTest(unittest.TestCase):
                             ("https://example.invalid", "http://169.254.169.254:18766")):
             self.assertFalse(self.save(base, extra).get("ok"), (base, extra))
 
+    def test_https_base_may_fall_back_to_reach_loopback(self):
+        from claudeops.commands import web_hosts as wh
+        self.assertTrue(wh._candidate_allowed("https://x.example", "http://127.0.0.1:18766"))
+        self.assertFalse(wh._candidate_allowed("https://x.example", "http://127.0.0.1:8765"))
+        self.assertFalse(wh._candidate_allowed("https://x.example", "http://example.org:18766"))
+
     def test_helper(self):
         self.assertTrue(hosts._is_reach_loopback("http://[::1]:18700"))
         self.assertFalse(hosts._is_reach_loopback("http://127.0.0.1"))

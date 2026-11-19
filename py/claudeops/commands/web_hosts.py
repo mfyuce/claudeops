@@ -558,7 +558,7 @@ def _candidate_allowed(base_url: str, candidate: str) -> bool:
     """TBD#53 (b): kayıtlı `base_url` https:// ise http:// aday token'ı şifresiz göndereceği için DENENMEZ. İSTİSNA
     (19 Kas, sahip isteği: ulak_31 LAN'dan hızlı erişim): aday özel-ağ IP literali ise (`_is_private_lan_http`) izinli."""
     if base_url.startswith("https://") and candidate.startswith("http://"):
-        return _is_private_lan_http(candidate)
+        return _is_private_lan_http(candidate) or hosts_mod._is_reach_loopback(candidate)   # reach dinleyicisi: loopback, menzil kendisi şifreler
     return True
 
 
