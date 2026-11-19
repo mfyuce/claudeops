@@ -553,7 +553,19 @@ export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
  * enjekte eder (bkz. `web.py`'nin `_usage_all()` docstring'i) — bu yüzden
  * SettingsTab'ın Kullanım sekmesi bunu bir poll DEĞİL, kullanıcının bastığı
  * bir "Kontrol et" butonuyla çağırır (`onDemand`, otomatik interval YOK). */
-export const apiUsage = (lang: Lang): Promise<UsageResult> => apiPost<UsageResult>("/api/usage", { lang });
+/** Okuma ~10 sn sürer; tünel/aradaki katman ilk denemede 502/503/504 verebilir (sahip 19 Kas: "ilk denemede 503, ikincide oldu").
+ * Okuma yan etkisizdir (idempotent), bu yüzden geçici ağ geçidi hatasında bir kez sessizce yeniden denenir. */
+export const apiUsage = async (lang: Lang): Promise<UsageResult> => {
+  try {
+    return await apiPost<UsageResult>("/api/usage", { lang });
+  } catch (e) {
+    if (e instanceof ApiError && [502, 503, 504].includes(e.status)) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return apiPost<UsageResult>("/api/usage", { lang });
+    }
+    throw e;
+  }
+};
 
 /** `/api/usage`'ın aksine İSİM gerekir — TEK, o an Terminal'de açık olan
  * session'ın kendi context-window'u (`_context()`, `/context` enjekte eder).

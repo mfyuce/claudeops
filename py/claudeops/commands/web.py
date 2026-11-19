@@ -3520,6 +3520,19 @@ def _usage_all(only: Optional[set] = None) -> dict:
     None dönüyor olması yeterli ayrım."""
     running = find_sessions(measure_cpu=False)
     out: Dict[str, dict] = {}
+    api_box: Dict[str, dict] = {}
+    api_thread: Optional[threading.Thread] = None
+    if only is None or "api" in only:
+        # API anahtarlı sağlayıcıların ağ okuması (Evren/Anthropic/OpenRouter/Groq) oturum okumalarıyla AYNI ANDA yürür: toplam
+        # süre ~10 sn -> en yavaşın süresi (sahip 19 Kas: "ilk denemede 503"; uzun istek tünel/aracıda zaman aşımı riski).
+        def _api_read() -> None:
+            try:
+                from .. import api_balance, settings as _st, ucli_cost as _uc
+                api_box.update(api_balance.collect((_st.load_settings().get("byok") or {}).get("ucli") or {}, _uc.state()))
+            except Exception as e:      # asla kullanım sekmesini düşürme; hata metnine anahtar girmez
+                diag_log(f"usage api_balance: {type(e).__name__}")
+        api_thread = threading.Thread(target=_api_read, daemon=True, name="usage-api-balance")
+        api_thread.start()
     for cli_name, provider in PROVIDERS.items():
         if only is not None and cli_name not in only:
             continue        # `usage_mode: tick` yalnız vadesi gelenleri okur
@@ -3559,13 +3572,9 @@ def _usage_all(only: Optional[set] = None) -> dict:
         # bilinenler öne alınır.
         candidates.sort(key=lambda s: 0 if tmux_client_count(s.name) == 0 else 1)
         out[cli_name] = {"supported": True, **_usage_for_session(candidates[0], provider)}
-    if only is not None and "api" not in only:
-        return {"ok": True, "providers": out}
-    try:       # API anahtarlı sağlayıcılar (byok.ucli): ücretsiz uç noktalar; anahtar yalnız burada, başlıkta
-        from .. import api_balance, settings as _st, ucli_cost as _uc
-        out.update(api_balance.collect((_st.load_settings().get("byok") or {}).get("ucli") or {}, _uc.state()))
-    except Exception as e:      # asla kullanım sekmesini düşürme; hata metnine anahtar girmez
-        diag_log(f"usage api_balance: {type(e).__name__}")
+    if api_thread is not None:
+        api_thread.join(timeout=60)
+        out.update(api_box)
     return {"ok": True, "providers": out}
 
 
