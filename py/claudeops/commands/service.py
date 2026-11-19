@@ -127,6 +127,7 @@ Environment=CLAUDEOPS_TUNNEL_NAME={tunnel_name}
 Environment=CLAUDEOPS_TUNNEL_LABEL={label}
 Environment=CLAUDEOPS_TUNNEL_PROTOCOL={protocol}
 ExecStart={run_tunnel}
+UMask=0077
 StandardOutput=append:{tunnel_log}
 StandardError=append:{tunnel_log}
 Restart=always

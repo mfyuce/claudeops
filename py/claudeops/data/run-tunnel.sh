@@ -30,6 +30,12 @@ STATE_DIR="${CLAUDEOPS_DIR:-$HOME/.claude/claudeops}"   # paths.py ile aynı kur
 # DEĞİŞMEZ, sadece ikinci bir systemd unit'i farklı bir yol geçebiliyor.
 URL_FILE="${CLAUDEOPS_TUNNEL_URL_FILE:-$STATE_DIR/tunnel_url.txt}"
 LOG_FILE="${CLAUDEOPS_TUNNEL_LOG:-$STATE_DIR/tunnel.log}"
+
+# cloudflared hata satırları isteğin TAM URL'ini basar (`dest=https://.../api/status?token=<panel token'ı>`):
+# tunnel.log'a canlı panel token'ı düşüyordu. Tüm çıktı (cloudflared + bu betiğin kendi satırları) log'a
+# gitmeden önce `token=`/`access_token=` değerlerinden arındırılır. -u: satır tamponsuz (URL taraması gecikmesin).
+exec 3>&1
+exec > >(sed -u -E 's/((^|[?&" ])(access_)?token=)[^& "]+/\1REDACTED/g' >&3) 2>&1
 NTFY_TOPIC_FILE="${CLAUDEOPS_NTFY_TOPIC_FILE:-$STATE_DIR/ntfy_topic.txt}"
 # En son BAŞARIYLA bildirilen URL. URL_FILE'dan AYRI: URL_FILE her zaman güncel URL'i tutar
 # (panel/service status okur), "bildirim gitti mi" bilgisi ise yalnız bu dosyada. İkinci
