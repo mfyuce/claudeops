@@ -79,6 +79,7 @@ _ACTION_TABLE: List[Tuple[str, str]] = [
     ("/api/files/", "files.read"),
     ("/api/orch/", "orch.run"),
     ("/api/ucli/ask", "session.chat"),
+    ("/api/ucli/approvals", "session.chat"),     # GET listesi `action_for`'da status.read (yanıt sahibine göre süzülür)
     ("/api/agents/", "agents.use"),
     ("/api/register", "session.create"),
     ("/api/adopt", "fleet.admin"),
@@ -141,6 +142,8 @@ def actions() -> Tuple[str, ...]:
 def action_for(method: str, path: str) -> str:
     """Yol -> eylem adı. Tablo dışı yol `UNMAPPED` (varsayılan RED yalnız admin). `method` şimdilik ayrım yapmaz (ileriye uyum)."""
     if path == "/":
+        return "status.read"
+    if path == "/api/ucli/approvals" and method.upper() == "GET":
         return "status.read"
     with _LOCK:
         for prefix, action in _EXT_ACTIONS:
@@ -331,6 +334,11 @@ def resources_from(path: str, qs: Mapping[str, Any], data: Optional[dict]) -> Li
     if path.startswith("/api/steward/"):         # `name` burada PROJE adıdır, oturum değil: kaynak değnekçi kimliği
         sid = src.get("steward") or _q("steward") or "default"
         return [Resource(kind="steward", steward=str(sid).strip() or "default")]
+    if path == "/api/ucli/approvals":            # kaynak = koşunun oturumu (kayıttan); oturumsuz/bilinmeyen koşu = global (yalnız admin)
+        from . import ucli_approval
+        rec = ucli_approval.get(str(src.get("run_key") or _q("run_key"))) or {}
+        sess = str(rec.get("session") or "")
+        return [Resource(kind="session", host="", name=sess)] if sess else [Resource(kind="global", host="")]
     host = str(src.get("host") or _q("host") or "")
     out: List[Resource] = []
     seen = set()

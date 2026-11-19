@@ -81,6 +81,66 @@ def set_state(run_key: str, state: str) -> bool:
     return True
 
 
+def set_result(run_key: str, state: str, result: Dict[str, Any]) -> bool:
+    """Durum + kısa sonuç (`answer` 4 KiB'a kesilir, `error`); sürdürme bitince yazılır."""
+    if state not in STATES:
+        raise ValueError("geçersiz durum")
+    res = {k: (v[:4096] if isinstance(v, str) else v) for k, v in (result or {}).items() if k in ("answer", "error", "approval_id", "status")}
+    with file_lock(_index_path()):
+        idx = _load_index()
+        if run_key not in idx:
+            return False
+        idx[run_key].update(state=state, result=res, finished_at=time.time())
+        atomic_write_json(_index_path(), idx, mode=0o600)
+    return True
+
+
+def list_runs(uid: str = "", all_users: bool = True) -> List[Dict[str, Any]]:
+    """Kayıttaki koşular (argv_resume SUNULMAZ). `all_users` False ise yalnız `owner == uid`. `suspended` olanlara `pending` eklenir."""
+    out: List[Dict[str, Any]] = []
+    for k, rec in sorted(_load_index().items()):
+        if not isinstance(rec, dict) or (not all_users and rec.get("owner") != uid):
+            continue
+        row = {"run_key": k, "cwd": rec.get("cwd"), "session": rec.get("session"), "owner": rec.get("owner"),
+               "state": rec.get("state"), "created_at": rec.get("created_at"), "result": rec.get("result")}
+        if rec.get("state") == "suspended":
+            row["pending"] = pending(k)
+        out.append(row)
+    return out
+
+
+def begin_resume(run_key: str) -> Optional[List[str]]:
+    """`suspended` -> `resuming` ATOMİK (çift sürdürme yok); döner: kayıtlı argv. Başka durumdaysa None."""
+    with file_lock(_index_path()):
+        idx = _load_index()
+        rec = idx.get(run_key)
+        if not isinstance(rec, dict) or rec.get("state") != "suspended":
+            return None
+        rec["state"] = "resuming"
+        atomic_write_json(_index_path(), idx, mode=0o600)
+        return [str(a) for a in rec.get("argv_resume") or []]
+
+
+def recover_resuming(now: Optional[float] = None, max_age: float = 7 * 86400) -> int:
+    """Yeniden başlatma: `resuming` kayıtları (sürdürme süreci öldü) `suspended`a döner; `max_age`'i aşan `suspended` -> `expired`."""
+    now = time.time() if now is None else now
+    n = 0
+    with file_lock(_index_path()):
+        idx = _load_index()
+        for rec in idx.values():
+            if not isinstance(rec, dict):
+                continue
+            if rec.get("state") == "resuming":
+                rec["state"] = "suspended"
+                n += 1
+            if rec.get("state") == "suspended" and now - float(rec.get("created_at") or now) > max_age:
+                rec["state"] = "expired"
+                n += 1
+        if n:
+            atomic_write_json(_index_path(), idx, mode=0o600)
+    return n
+
+
 def parse_suspended(stdout: str) -> Optional[Dict[str, Any]]:
     """ucli stdout'unda `{"suspended":{id,state,resume}}` satırı (sondan arar); yoksa None."""
     for line in reversed((stdout or "").splitlines()):

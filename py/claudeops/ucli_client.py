@@ -631,3 +631,35 @@ class UcliReplSession:
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+
+def ucli_resume_approval(run_key: str, approval_id: str, *, timeout: float = 1800.0, api_key: Optional[str] = None) -> Dict[str, Any]:
+    """Cevabı yazılmış askıdaki koşuyu sürdürür (docs/ucli-approval-design.md S3). Argv KAYITTAN (`begin_resume`), istekten değil.
+    Sonuç kayda yazılır: bitti -> `done`, yine 75 + suspended -> `suspended` (yeni kimlik; zincir), hata -> `done` + error.
+    Hiçbir yolda istisna fırlatmaz."""
+    from . import ucli_approval
+    argv = ucli_approval.begin_resume(run_key)
+    if argv is None:
+        return {"ok": False, "error": "run is not suspended"}
+    try:
+        api_key_env = argv[argv.index("--api-key-env") + 1] if "--api-key-env" in argv else "UCLI_API_KEY"
+        result = subprocess.run(argv + ["--resume-approval", approval_id], capture_output=True, text=True, timeout=timeout,
+                                env=_subprocess_env(api_key_env, api_key))
+    except Exception as e:      # noqa: BLE001  (zaman aşımı dahil)
+        ucli_approval.set_result(run_key, "done", {"error": f"{type(e).__name__}: {e}"[:300]})
+        return {"ok": False, "error": "resume failed"}
+    if result.returncode == 75:
+        susp = ucli_approval.parse_suspended(result.stdout)
+        if susp:
+            ucli_approval.set_result(run_key, "suspended", {"status": "suspended", "approval_id": susp["id"]})
+            return {"ok": True, "status": "suspended", "approval_id": susp["id"]}
+    if result.returncode != 0:
+        ucli_approval.set_result(run_key, "done", {"error": (result.stderr.strip() or f"ucli exit={result.returncode}")})
+        return {"ok": False, "error": "ucli failed"}
+    try:
+        value = json.loads(result.stdout)
+    except ValueError:
+        ucli_approval.set_result(run_key, "done", {"error": "ucli output was not JSON"})
+        return {"ok": False, "error": "bad output"}
+    ucli_approval.set_result(run_key, "done", {"answer": str(value.get("answer") or ""), "error": str(value.get("error") or "")})
+    return {"ok": True, "status": "done"}

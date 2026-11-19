@@ -5304,6 +5304,11 @@ class _Handler(BaseHTTPRequestHandler):
             env = _uso.services().get(svc, ("", "", ""))[2]
             self._json({"ok": True, "service": svc,
                         "models": _uso.service_models(svc, (_byok("ucli").get(env, "") if env else "").strip())})
+        elif path == "/api/ucli/approvals":
+            from .. import ucli_approval as _ua
+            p = getattr(self, "_cur_principal", None)
+            seeall = p is None or getattr(p, "kind", "") == "legacy" or p.has_role("admin")
+            self._json({"ok": True, "runs": _ua.list_runs(uid=getattr(p, "uid", ""), all_users=seeall)})
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())
@@ -5641,7 +5646,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/orch/start", "/api/orch/cancel", "/api/orch/draft", "/api/orch/result",
                          "/api/snapshot/save", "/api/snapshot/resume", "/api/snapshot/list", "/api/instances/forget",
                          "/api/cli/install",
-                         "/api/ucli/ask",
+                         "/api/ucli/ask", "/api/ucli/approvals",
                          "/api/agents/start", "/api/agents/send", "/api/agents/stop",
                          "/v1/chat/completions"):
             self._json({"error": "not found"}, status=404)
@@ -6012,6 +6017,24 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(_snapshot_list())
             return
 
+        if path == "/api/ucli/approvals":
+            # {run_key, id, decision, edited_arguments?, note?}: cevabı yazar, sürdürmeyi ARKA PLANDA başlatır (docs/ucli-approval-design.md)
+            from .. import ucli_approval as _ua
+            from .. import ucli_client as _uc
+            rk = str(data.get("run_key") or "")
+            rec = _ua.get(rk)
+            if rec is None or rec.get("state") != "suspended":
+                self._json({"ok": False, "error": "run is not suspended"}, status=409)
+                return
+            aid = str(data.get("id") or "")
+            ok, err = _ua.answer(rk, aid, str(data.get("decision") or ""), data.get("edited_arguments"), str(data.get("note") or ""))
+            if not ok:
+                self._json({"ok": False, "error": err}, status=409 if "pending" in err or "expired" in err else 400)
+                return
+            threading.Thread(target=_uc.ucli_resume_approval, args=(rk, aid), daemon=True, name=f"ucli-resume-{rk}").start()
+            self._json({"ok": True, "state": "resuming"})
+            return
+
         if path == "/api/ucli/ask":
             # {name}: bekleyen soru; {name, id, text}: cevapla. Oturum çalışma kökü dışındaki dosya kanalı (ucli_ask.py).
             from .. import ucli_ask
@@ -6367,6 +6390,11 @@ def run(args) -> int:
     # opsiyonel, `cops web`'in kendisi asla bundan etkilenmemeli.
     _dist_check.log_if_missing(diag_log)      # bundle eksikse boş sayfa: açılışta log'a 'dist-eksik'
     try:
+        try:
+            from .. import ucli_approval as _ua_boot
+            _ua_boot.recover_resuming()       # önceki süreçte ölen sürdürmeler `suspended`a döner (cevap diskte durur)
+        except Exception as _e:      # noqa: BLE001
+            diag_log("ucli_approval_recover_failed", error=repr(_e)[:200])
         server = ThreadingHTTPServer((args.host, args.port), _Handler)
     except OSError as e:
         print(f"✗ {args.host}:{args.port} dinlenemedi: {e}")

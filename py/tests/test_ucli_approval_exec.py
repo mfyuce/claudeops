@@ -61,5 +61,65 @@ class ApprovalExecTest(unittest.TestCase):
         self.assertTrue(err)
 
 
+class ResumeTest(ApprovalExecTest):
+    def suspend(self, owner="ali"):
+        res = NS(returncode=75, stdout='{"suspended":{"id":"%s"}}' % ID, stderr="")
+        with mock.patch.object(uc.subprocess, "run", return_value=res):
+            uc.ucli_chat_once("/w", "do", session="s1", approval_run_key="r1", approval_owner=owner,
+                              extra_args=["--allow-edit", "--ask-edit"])
+
+    def test_resume_done_and_argv_from_record(self):
+        self.suspend()
+        res = NS(returncode=0, stdout='{"answer":"ok"}', stderr="")
+        with mock.patch.object(uc.subprocess, "run", return_value=res) as r:
+            out = uc.ucli_resume_approval("r1", ID)
+        argv = r.call_args[0][0]
+        self.assertEqual(argv[-2:], ["--resume-approval", ID])
+        self.assertNotIn("do", argv)
+        self.assertEqual(out["status"], "done")
+        self.assertEqual(ap.get("r1")["state"], "done")
+        self.assertEqual(ap.get("r1")["result"]["answer"], "ok")
+
+    def test_resume_chain_and_double_resume(self):
+        self.suspend()
+        res = NS(returncode=75, stdout='{"suspended":{"id":"%s"}}' % ("b" * 32), stderr="")
+        with mock.patch.object(uc.subprocess, "run", return_value=res):
+            out = uc.ucli_resume_approval("r1", ID)
+        self.assertEqual(out["approval_id"], "b" * 32)
+        self.assertEqual(ap.get("r1")["state"], "suspended")
+        self.assertIsNotNone(ap.begin_resume("r1"))
+        self.assertFalse(uc.ucli_resume_approval("r1", ID)["ok"])      # zaten resuming
+
+    def test_resume_error_recorded(self):
+        self.suspend()
+        res = NS(returncode=2, stdout="", stderr="boom")
+        with mock.patch.object(uc.subprocess, "run", return_value=res):
+            self.assertFalse(uc.ucli_resume_approval("r1", ID)["ok"])
+        self.assertEqual(ap.get("r1")["result"]["error"], "boom")
+
+    def test_list_runs_owner_filter_hides_argv(self):
+        self.suspend("ali")
+        self.assertEqual([r["run_key"] for r in ap.list_runs("ali", all_users=False)], ["r1"])
+        self.assertEqual(ap.list_runs("vera", all_users=False), [])
+        self.assertNotIn("argv_resume", ap.list_runs()[0])
+
+    def test_recover_resuming(self):
+        self.suspend()
+        ap.begin_resume("r1")
+        self.assertEqual(ap.recover_resuming(), 1)
+        self.assertEqual(ap.get("r1")["state"], "suspended")
+        self.assertEqual(ap.recover_resuming(now=9e12), 1)
+        self.assertEqual(ap.get("r1")["state"], "expired")
+
+    def test_authz_resource_and_action(self):
+        from claudeops import authz
+        self.suspend()
+        self.assertEqual(authz.action_for("GET", "/api/ucli/approvals"), "status.read")
+        self.assertEqual(authz.action_for("POST", "/api/ucli/approvals"), "session.chat")
+        r = authz.resources_from("/api/ucli/approvals", {}, {"run_key": "r1"})
+        self.assertEqual((r[0].kind, r[0].name), ("session", "s1"))
+        self.assertEqual(authz.resources_from("/api/ucli/approvals", {}, {"run_key": "zz"})[0].kind, "global")
+
+
 if __name__ == "__main__":
     unittest.main()
