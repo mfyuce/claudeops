@@ -76,3 +76,21 @@ class ChatsR4Test(unittest.TestCase):
         open(sdb, "w").write("not sqlite")                          # sqlite3.Error
         chat_dump._summary(db)
         self.assertNotIn(sdb, chat_dump._SUMM)
+
+
+class ChatsR5Test(unittest.TestCase):
+    def test_kv_numeric_types(self):
+        self.assertEqual(C._kv(["remote_tgz_keep=5"])["remote_tgz_keep"], 5)
+        self.assertEqual(C._kv(["interval_hours=0.5"])["interval_hours"], 0.5)
+        with self.assertRaises(ValueError):
+            C._kv(["interval_hours=abc"])
+
+    def test_validate_rejects_bad_numbers(self):
+        for k, v in (("interval_hours", -1), ("interval_hours", 0), ("remote_tgz_keep", 2.5), ("max_file_mb", "x")):
+            with self.assertRaises(ValueError, msg=f"{k}={v}"):
+                periodic._validate({k: v})
+        periodic._validate({"interval_hours": 0.5, "remote_tgz_keep": 3, "max_file_mb": 50})
+
+    def test_stamp_changes_with_mtime(self):
+        d = tempfile.mkdtemp(); f = os.path.join(d, "a.tgz"); open(f, "wb").write(b"abc")
+        s1 = chat_dump._arch_stamp(f); os.utime(f, ns=(1, 2)); self.assertNotEqual(s1, chat_dump._arch_stamp(f))

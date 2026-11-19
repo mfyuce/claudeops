@@ -255,7 +255,7 @@ def _mk_tgzs(hd, n, done_for=None):
         names.append(f)
     if done_for is not None:
         f = names[done_for]
-        (hd / "extract" / ".done").write_text(f"{f.name}:{f.stat().st_size}")
+        (hd / "extract" / ".done").write_text(D._arch_stamp(str(f)))
     return names
 
 

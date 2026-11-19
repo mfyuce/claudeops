@@ -48,7 +48,14 @@ def _kv(items):
                 continue
             except ValueError:
                 raise ValueError(f"{k}: geçersiz JSON")
-        out[k] = int(v) if v.isdigit() and k in ("interval_hours", "timeout_s", "max_file_mb", "max_repo_mb") else v
+        if k in ("interval_hours", "timeout_s", "max_file_mb", "max_repo_mb", "remote_tgz_keep") and v != "":
+            try:                                # sayısal alan: tam sayı ya da (ondalık) sayı; geçersiz/negatif _validate'te reddedilir
+                f = float(v)
+                out[k] = int(f) if f == int(f) and "." not in v else f
+            except (ValueError, OverflowError):
+                raise ValueError(f"{k}: sayı bekleniyordu: {v}")
+            continue
+        out[k] = v
     return out
 
 

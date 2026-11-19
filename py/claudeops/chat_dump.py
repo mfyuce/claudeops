@@ -401,7 +401,7 @@ def prune_remote_archives(mir: str, keep: int = 3, apply: bool = False) -> List[
             continue
         newest = tgzs[-1]
         try:
-            if _read(os.path.join(hd, "extract", ".done")) != f"{os.path.basename(newest)}:{os.path.getsize(newest)}":
+            if _read(os.path.join(hd, "extract", ".done")) != _arch_stamp(newest):
                 continue                    # en yeni arşiv doğrulanmadı: hiçbir şey silinmez
         except OSError:
             continue
@@ -413,6 +413,12 @@ def prune_remote_archives(mir: str, keep: int = 3, apply: bool = False) -> List[
             except OSError:
                 pass
     return out
+
+
+def _arch_stamp(tgz: str) -> str:
+    """`.done` damgası: ad + boyut + mtime_ns (aynı gün yeniden çekilen eşit boyutlu arşiv 'açıldı' sanılmasın)."""
+    st = os.stat(tgz)
+    return f"{os.path.basename(tgz)}:{st.st_size}:{st.st_mtime_ns}"
 
 
 def ingest_remote_archives(mir: str) -> Dict[str, Any]:
@@ -428,7 +434,7 @@ def ingest_remote_archives(mir: str) -> Dict[str, Any]:
             continue
         tgz, host = tgzs[-1], os.path.basename(hd)
         ex = os.path.join(hd, "extract")
-        stamp = f"{os.path.basename(tgz)}:{os.path.getsize(tgz)}"
+        stamp = _arch_stamp(tgz)
         done = os.path.join(ex, ".done")
         try:
             if os.path.exists(done) and _read(done) == stamp:

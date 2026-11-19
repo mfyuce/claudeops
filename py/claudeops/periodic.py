@@ -69,7 +69,7 @@ DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
     "remote_pull": {},           # {host: shell_oturum_adı}, örn {"yuhem": "shell_yuhem"}; boş = uzak çekme KAPALI (chat_remote)
     "remote_tgz_keep": 3,        # uzak host başına saklanan en yeni tgz sayısı
     "remote_tgz_prune": "dry",   # dry = yalnız günlüğe listele (varsayılan) | on = sil | off; silme yalnız commit+push doğrulanınca, en yeni tgz açılmışsa
-    "max_file_mb": 50,           # tek ham dosya sınırı (GitHub blob 100 MB); aşan atlanır, günlüğe yazılır
+    "max_file_mb": 50,           # tek metin dosya sınırı; aşan ATLANMAZ (hiçbir chat kaybolmasın), CHUNK_MB'lık .partNNN parçalara bölünür. Üst sınır 95 (GitHub blob 100 MB)
     "max_repo_mb": 8000,         # çalışma ağacı sınırı; aşılırsa iş durur (sahibe sorulur)
 }
 
@@ -120,7 +120,20 @@ def load_config() -> Dict[str, Dict[str, Any]]:
     return out
 
 
+_NUM_FIELDS = {"interval_hours": float, "timeout_s": float, "max_file_mb": float, "max_repo_mb": float, "remote_tgz_keep": int}
+
+
 def _validate(cfg: Dict[str, Any]) -> None:
+    for k, typ in _NUM_FIELDS.items():
+        if k in cfg and cfg[k] not in (None, ""):
+            try:
+                v = typ(cfg[k])
+            except (TypeError, ValueError):
+                raise ValueError(f"{k} sayı olmalı")
+            if isinstance(cfg[k], bool) or not v > 0 or v != v:
+                raise ValueError(f"{k} pozitif olmalı")
+            if typ is int and float(cfg[k]) != v:
+                raise ValueError(f"{k} tam sayı olmalı")
     if "start" in cfg and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(cfg["start"])):
         raise ValueError("start HH:MM olmalı")
     if str(cfg.get("schedule") or "").strip() and parse_cron(str(cfg["schedule"])) is None:
@@ -504,7 +517,7 @@ def _put(dest: str, blob: bytes) -> bool:
 def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str], Dict[str, str], Dict[str, Any]]:
     """Değişenleri repo çalışma ağacına yazar: metin = sır maskeli ham (gzip yok; git sıkıştırır), ikili = olduğu gibi
     (büyükse CHUNK_MB parçalara). Dönüş: (yazılan göreli yollar, yeni manifest girdileri, istatistik: days[grup][gün] = yollar)."""
-    limit = int(float(cfg.get("max_file_mb") or 50) * 1024 * 1024)
+    limit = int(min(float(cfg.get("max_file_mb") or 50), 95.0) * 1024 * 1024)      # >95 MB tek blob GitHub'ta reddedilir: daima parçalanır
     chunk = CHUNK_MB * 1024 * 1024
     written: List[str] = []
     sigs: Dict[str, str] = {}
