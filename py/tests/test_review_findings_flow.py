@@ -198,8 +198,9 @@ class TestVerify(_Flow):
         from test_review_remote_verify import FakeIO
         io = FakeIO(running={"far": True})       # uzak oturum meşgul: yerel direktif YOK, uzak yol meşgul der
         from claudeops.commands import web_review as _wr
-        with mock.patch.object(_wr, "_REMOTE_VERIFY_IO", io):
-            r = self.post("verify", project="far")
+        from claudeops.commands import web_steward as _ws
+        with mock.patch.object(_wr, "_REMOTE_VERIFY_IO", io), mock.patch.object(_ws, "_remote_denied", return_value=None):
+            r = self.post("verify", project="far")      # kapı geçti (kapı davranışı: test_review_verify_remote_gate.py)
         self.assertEqual(r.get("code"), "session_busy", r)
         self.assertFalse(self.post("verify", project="zzz")["ok"])
         self.assertEqual(self.sent, [])

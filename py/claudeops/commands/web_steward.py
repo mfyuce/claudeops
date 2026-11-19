@@ -7693,6 +7693,12 @@ def http_review_verify(data: Dict[str, Any], sid: str = "default") -> Dict[str, 
         return {"ok": False, "error": "no findings to verify (state new, or given ids in new|verify_sent|unclear)"}
     rhost = (_ownership_index().get("hosts") or {}).get(project) or ""
     if rhost:     # uzak proje: yerel klasör yok, doğrulama projenin KENDİ host'undaki oturumunda (aç -> sor -> oku -> kapat)
+        # Uzak oturuma dokunan her yol gibi `_remote_denied` kapısından geçer: sahibin `remote_actions` açık + host kayıtlı ve taze
+        # (eskiden doğrudan remote_verify çağrılıyor, kapalı/bayat host'a da açma/sorma isteği gidiyordu).
+        denied = _remote_denied(project, "human", "review_verify", (_ownership_index().get("owners") or {}).get(project) or "default",
+                                rhost, rhost, None)
+        if denied is not None:
+            return denied
         return web_review.remote_verify(cfg, project, rhost, rows)
     if cfg.review_verify_mode == "self":     # TBD#137 a=A: reviewer'ın kendi salt-okunur süreci; proje oturumu uyanmaz
         return web_review.self_verify(cfg, project, rows)
