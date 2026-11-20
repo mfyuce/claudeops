@@ -1666,7 +1666,8 @@ def _ucli_flags(s) -> Optional[dict]:
     out = {"write": "--allow-edit" in cmd,
            "exec": any(t.startswith("--allow-exec") for t in cmd),
            "max_cost_usd": cost,
-           "ask": "--ask-dir" in cmd}
+           "ask": "--ask-dir" in cmd,
+           "checks": "--allow-checks" in cmd}
     _UCLI_FLAGS_CACHE[s.pid] = out
     return out
 
@@ -5397,6 +5398,17 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/chat-backup":
             from .. import chat_backup as _cb
             self._json({"ok": True, **_cb.status()})
+        elif path == "/api/ucli/checks-mode":
+            from .. import ucli_checks as _ck
+            from ..ucli_client import state_dir_for as _sdf
+            nm = (parse_qs(urlparse(self.path).query).get("name") or [""])[0]
+            inst = inst_mod.get_instance(nm) or {}
+            co = (inst.get("cli_opts") or {}).get("ucli_checks") or {}
+            if not co:
+                self._json({"ok": True, "enabled": False})
+            else:
+                self._json({"ok": True, "enabled": True, "max": str(co.get("max") or co.get("mode") or "restricted"),
+                            **_ck.get_mode(_sdf(str(inst.get("cwd") or "")), nm)})
         elif path == "/api/ucli/checks":
             from .. import ucli_checks as _ck
             data, err = _ck.load_registry()

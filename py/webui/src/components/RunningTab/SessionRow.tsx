@@ -34,6 +34,7 @@ import { FailedTurnsBadge } from "../shared/FailedTurnsBadge";
 import { UsageBadge } from "../shared/UsageBadge";
 import { AdoptRow } from "./AdoptRow";
 import { UcliAskBox } from "./UcliAskBox";
+import { UcliChecksMode } from "./UcliChecksMode";
 import { HoCell } from "./HoCell";
 import { OptionsRow } from "./OptionsRow";
 
@@ -197,6 +198,7 @@ export function SessionRow({
               ≤${session.ucli_flags.max_cost_usd}
             </span>
           )}
+          {session.cli === "ucli" && session.ucli_flags?.checks && session.host === LOCAL_HOST && <UcliChecksMode name={session.name} />}
           {session.cli === "ucli" && session.ucli_flags?.ask && session.host === LOCAL_HOST && <UcliAskBox name={session.name} />}
         </td>
         <td title={modelDiffers ? t.modelLiveDiffersHint(session.model) : undefined}>

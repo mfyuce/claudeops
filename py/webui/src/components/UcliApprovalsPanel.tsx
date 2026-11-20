@@ -70,7 +70,7 @@ export function UcliApprovalsPanel() {
         return (
           <div key={key} style={{ margin: "6px 0", padding: 6, border: "1px solid currentColor", borderRadius: 4, opacity: p.expired ? 0.5 : 1 }}>
             <div>
-              <b>{r.session || r.run_key}</b> · {p.tool || p.kind}
+              <b>{r.session || r.run_key}</b> · {p.kind === "check" && <span className="cli-badge">{tr ? "kontrol" : "check"}</span>} {p.tool || p.kind}
               {p.expired && <span className="cli-badge" style={{ marginLeft: 6 }}>{tr ? "süresi doldu" : "expired"}</span>}
             </div>
             <div style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{p.summary}</div>

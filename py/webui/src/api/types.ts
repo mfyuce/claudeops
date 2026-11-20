@@ -62,7 +62,7 @@ export interface SessionInfo {
   live_model: string | null;
   live_effort: string | null;
   /** Running ucli sessions only (from the process cmdline, local host): write/exec permissions and per-turn USD cap. */
-  ucli_flags?: { write: boolean; exec: boolean; max_cost_usd: number | null; ask?: boolean } | null;
+  ucli_flags?: { write: boolean; exec: boolean; max_cost_usd: number | null; ask?: boolean; checks?: boolean } | null;
   /** An instances.json instance (a dated chat spawned from a blueprint), not a
    * roster row. Optional: a remote host on older code doesn't send it. */
   instance?: boolean;

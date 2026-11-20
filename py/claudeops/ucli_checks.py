@@ -160,3 +160,14 @@ def audit(rec: Dict[str, Any]) -> None:
     fd = os.open(AUDIT, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+def get_mode(state_dir: str, session: str) -> Dict[str, Any]:
+    """Mod dosyasının içeriği (`mode`, `seq`); dosya yok/bozuk/geçersiz ad = kapalı. Salt okur."""
+    try:
+        with open(mode_file(state_dir, session), encoding="utf-8") as f:
+            d = json.load(f)
+        mode = str(d.get("mode") or "off")
+        return {"mode": mode if mode in _RANK else "off", "seq": int(d.get("seq") or 0)}
+    except (OSError, ValueError, TypeError):
+        return {"mode": "off", "seq": 0}

@@ -86,6 +86,13 @@ class Mode(Base):
         self.assertEqual(uck.set_mode(self.sd(), "../x", "off", "full")[0], 400)
 
 
+    def test_get_mode_reads_file_default_off(self):
+        self.assertEqual(uck.get_mode(self.sd(), "s1"), {"mode": "off", "seq": 0})
+        uck.set_mode(self.sd(), "s1", "restricted", "full", confirm=True)
+        self.assertEqual(uck.get_mode(self.sd(), "s1"), {"mode": "restricted", "seq": 1})
+        self.assertEqual(uck.get_mode(self.sd(), "../x"), {"mode": "off", "seq": 0})
+
+
 class Authz(unittest.TestCase):
     def test_actions(self):
         self.assertEqual(authz.action_for("POST", "/api/ucli/checks"), "admin.config")
