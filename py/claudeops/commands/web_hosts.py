@@ -466,6 +466,16 @@ def _normalize_cli_options(raw: Any) -> Dict[str, Dict[str, list]]:
     return out
 
 
+def _orphan_brief(v: Any) -> Optional[Dict[str, Any]]:
+    """Uzak host /api/status `orphan_watch` -> yalnız sayılar (ayrıntı host'ta kalır); eski host/bozuk biçim -> None."""
+    if not isinstance(v, dict):
+        return None
+    try:
+        return {"servers": int(v.get("servers") or 0), "procs": int(v.get("procs") or 0), "last_end": v.get("last_end")}
+    except (TypeError, ValueError):
+        return None
+
+
 def _tag_rows(rows: Optional[list], host_name: str) -> list:
     """Uzak tarafın kendi "local" etiketini BİZİM bildiğimiz host adıyla EZ —
     hem REST (`fetch_remote_status`) hem WS/gRPC push-consumer'ları (aşağıda,
@@ -495,6 +505,7 @@ def _finalize_remote_result(host_name: str, result: Dict[str, Any]) -> Dict[str,
         "cli_options": _normalize_cli_options(result.get("cli_options")),
         "dups": result.get("dups") or [],
         "disk_clean": result.get("disk_clean") if isinstance(result.get("disk_clean"), dict) else None,
+        "orphan_watch": _orphan_brief(result.get("orphan_watch")),
     }
 
 
@@ -927,6 +938,7 @@ def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collectio
             "name": name, "ok": cached["ok"], "error": cached.get("error"),
             "cli_list": cached["cli_list"], "cli_options": cached["cli_options"],
             "dups": cached["dups"], "disk_clean": cached.get("disk_clean"),
+            "orphan_watch": cached.get("orphan_watch"),
         })
     local_payload["hosts"] = hosts_status
     # `local_payload["sessions"]/["closed"]/["retired"]` geldiğinde zaten

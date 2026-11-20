@@ -267,6 +267,8 @@ export interface HostRecord {
   probe?: HostProbeRow[];
   /** Host's own periodic `disk_clean` summary (disk %, last run); null/absent on hosts that predate it. */
   disk_clean?: DiskCleanSummary | null;
+  /** Host's own `orphan_watch` counts (orphaned helper tmux servers / unrecognized CLI processes); null on older hosts. */
+  orphan_watch?: { servers: number; procs: number; last_end?: number | null } | null;
 }
 
 export interface HostProbeRow {

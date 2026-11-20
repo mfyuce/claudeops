@@ -5471,6 +5471,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "ok": cached["ok"] if cached else False,
                     "error": (cached.get("error") if cached else "not polled yet"),
                     "tier": web_hosts.get_tier(h["name"]),  # capability prober'ın son bildiği "rest"|"ws"|"grpc"
+                    "orphan_watch": (cached.get("orphan_watch") if cached else None),  # uzak host'un sahipsiz kaynak sayıları
                     "disk_clean": (cached.get("disk_clean") if cached else None),  # uzak host'un disk %'si + son temizlik (periodic disk_clean)
                     "probe": host_probe.public_view(h["name"]),  # adres yoklaması (periodic `host_probe`): ms, ort., hata sayısı
                 })
