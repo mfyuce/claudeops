@@ -1930,6 +1930,7 @@ def _status_payload() -> dict:
         "ext_routes": extensions.routes(),     # eklenti yol önekleri (panel eklenti sekmelerini bununla gösterir)
         # Claude hizmetli ucli oturumlarının bugünkü $ toplamı + günlük tavan (Ayarlar > ucli_cost); ucli_cost.state() 30 sn önbellekli
         "ucli_cost": ucli_cost.state(),
+        "disk_clean": periodic.disk_summary(),     # disk %, son temizlik koşusu (sahip 20 Kas); Hostlar'da host başına gösterilir
         "build": build_info.info(),     # çalışan commit / diskteki commit / stale (merge sonrası restart yapıldı mı)
         # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine
         # biniyor, tam sonuç metni YOK): taslak kadro + aktif run özeti +
@@ -5367,6 +5368,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "ok": cached["ok"] if cached else False,
                     "error": (cached.get("error") if cached else "not polled yet"),
                     "tier": web_hosts.get_tier(h["name"]),  # capability prober'ın son bildiği "rest"|"ws"|"grpc"
+                    "disk_clean": (cached.get("disk_clean") if cached else None),  # uzak host'un disk %'si + son temizlik (periodic disk_clean)
                     "probe": host_probe.public_view(h["name"]),  # adres yoklaması (periodic `host_probe`): ms, ort., hata sayısı
                 })
             self._json({"ok": True, "hosts": rows})

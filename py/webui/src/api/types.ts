@@ -228,6 +228,16 @@ export interface LabelDef {
  * `cli_list`/`cli_options`/`dups` are that host's OWN values (never the
  * aggregator's) — some CLIs (e.g. agy) fetch their model list live per host,
  * so these must not be assumed identical across hosts. */
+export interface DiskCleanSummary {
+  pct: number | null;
+  free_bytes: number | null;
+  enabled: boolean;
+  mode?: string;
+  last_end?: number | null;
+  last_ok?: boolean | null;
+  last_msg?: string | null;
+}
+
 export interface HostStatus {
   name: string;
   ok: boolean;
@@ -255,6 +265,8 @@ export interface HostRecord {
   extra_urls?: string[];
   /** Address probe results (periodic `host_probe`, `host_probe.public_view`): fastest healthy first. */
   probe?: HostProbeRow[];
+  /** Host's own periodic `disk_clean` summary (disk %, last run); null/absent on hosts that predate it. */
+  disk_clean?: DiskCleanSummary | null;
 }
 
 export interface HostProbeRow {

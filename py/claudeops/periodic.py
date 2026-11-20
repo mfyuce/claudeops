@@ -120,7 +120,8 @@ def load_config() -> Dict[str, Dict[str, Any]]:
     return out
 
 
-_NUM_FIELDS = {"interval_hours": float, "timeout_s": float, "max_file_mb": float, "max_repo_mb": float, "remote_tgz_keep": int}
+_NUM_FIELDS = {"interval_hours": float, "timeout_s": float, "max_file_mb": float, "max_repo_mb": float, "remote_tgz_keep": int,
+               "cargo_idle_days": float, "scratch_idle_days": float, "hot_pct": float, "hot_interval_hours": float}
 
 
 def _validate(cfg: Dict[str, Any]) -> None:
@@ -136,6 +137,11 @@ def _validate(cfg: Dict[str, Any]) -> None:
                 raise ValueError(f"{k} pozitif olmalı")
             if typ is int and float(cfg[k]) != v:
                 raise ValueError(f"{k} tam sayı olmalı")
+    for k in ("mode",):
+        if k in cfg and str(cfg[k]).strip().lower() not in ("on", "dry"):
+            raise ValueError("mode on|dry olmalı")
+    if "cargo_roots" in cfg and not (isinstance(cfg["cargo_roots"], list) and all(isinstance(x, str) for x in cfg["cargo_roots"])):
+        raise ValueError("cargo_roots dize listesi olmalı")
     if "start" in cfg and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(cfg["start"])):
         raise ValueError("start HH:MM olmalı")
     if str(cfg.get("schedule") or "").strip() and parse_cron(str(cfg["schedule"])) is None:
@@ -308,6 +314,19 @@ def cron_due(expr: str, last_dt: Optional[datetime.datetime], now: datetime.date
     return False
 
 
+def _hot_hours(cfg: Dict[str, Any]) -> Optional[float]:
+    """Disk `hot_pct` ve üstündeyse `hot_interval_hours` (disk_clean); yoksa/okunamazsa None."""
+    if not cfg.get("hot_pct") or not cfg.get("hot_interval_hours"):
+        return None
+    try:
+        u = shutil.disk_usage("/")
+        if u.total and u.used * 100 / u.total >= float(cfg["hot_pct"]):
+            return float(cfg["hot_interval_hours"])
+    except (OSError, TypeError, ValueError):
+        pass
+    return None
+
+
 def is_due(cfg: Dict[str, Any], st: Dict[str, Any], now: Optional[datetime.datetime] = None) -> bool:
     """Açık mı + zamanı geldi mi. Saf fonksiyon (testlenir)."""
     if not _is_on(cfg.get("enabled")):
@@ -321,6 +340,9 @@ def is_due(cfg: Dict[str, Any], st: Dict[str, Any], now: Optional[datetime.datet
         hours = float(cfg.get("interval_hours") or 24)
     except (TypeError, ValueError):
         hours = 24.0
+    hot = _hot_hours(cfg)
+    if hot is not None:
+        hours = min(hours, hot)
     if hours >= 24:
         hh, mm = (int(x) for x in str(cfg.get("start") or "03:30").split(":"))
         today_start = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
@@ -952,7 +974,36 @@ def run_host_probe(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> D
     return {"ok": True, "msg": f"{r['hosts']} host, {r['urls']} adres, {r['ok']} erişilebilir", "applied": True}
 
 
-JOBS: Dict[str, Job] = {"chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, run_chat_backup),
+DEFAULT_DISK_CLEAN: Dict[str, Any] = {
+    "enabled": "on",             # sahip 20 Kas: tüm makinelerde otomatik (yalnız kendi uid'i)
+    "schedule": "",
+    "start": "04:40",
+    "interval_hours": 6,
+    "hot_pct": 90,               # disk bu yüzdeyi aşınca sıklık artar (hot_interval_hours)
+    "hot_interval_hours": 1,
+    "mode": "on",                # on = sil | dry = yalnız hesapla ve günlüğe yaz
+    "cargo": "on",
+    "cargo_idle_days": 14,
+    "cargo_roots": ["~/.cargo-target*", "~/work/projects"],
+    "scratch": "on",
+    "scratch_idle_days": 3,
+    "docker": "off",             # ortak daemon: paylaşımlı hostta (ulak_31, yuhem) KAPALI; yalnız kendi makinede host ayarıyla açılır
+}
+
+
+def run_disk_clean(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Güvenli disk temizliği (`disk_clean`): cargo target (>14 gün), eski scratchpad (>3 gün), isteğe bağlı docker builder prune."""
+    from . import disk_clean as dc
+    r = dc.run(cfg, apply)
+    st = state.setdefault(cfg.get("_name", "disk_clean"), {})
+    st["detail"] = {k: r[k] for k in ("mode", "disk_pct", "candidates", "candidate_bytes", "removed", "freed_bytes", "notes")}
+    msg = (f"disk %{r['disk_pct']}, " + (f"{r['removed']} silindi, {dc.fmt_bytes(r['freed_bytes'])} boşaldı" if r["applied"]
+           else f"kuru: {r['candidates']} aday, {dc.fmt_bytes(r['candidate_bytes'])}") + (" | " + "; ".join(r["notes"]) if r["notes"] else ""))
+    return {"ok": True, "msg": msg, "applied": r["applied"]}
+
+
+JOBS: Dict[str, Job] = {"disk_clean": Job("disk_clean", DEFAULT_DISK_CLEAN, run_disk_clean),
+                        "chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, run_chat_backup),
                         "memory_prv": Job("memory_prv", DEFAULT_MEMORY_PRV, run_memory_prv),
                         "usage_refresh": Job("usage_refresh", DEFAULT_USAGE_REFRESH, run_usage_refresh),
                         "model_watch": Job("model_watch", DEFAULT_MODEL_WATCH, run_model_watch),
@@ -1133,6 +1184,19 @@ def overview() -> Dict[str, Any]:
         pub = {k: v for k, v in cfg.items() if not k.startswith("_")}
         jobs[name] = {"config": pub, "builtin": bool(cfg.get("_builtin")), "state": st, "due": is_due(cfg, state.get(name) or {}), "running_since": _RUNNING.get(name)}
     return {"ok": True, "jobs": jobs, "defaults_custom": CUSTOM_DEFAULTS}
+
+
+def disk_summary() -> Dict[str, Any]:
+    """/api/status için ucuz özet: disk %, açık mı, son koşu (durum dosyasından). Disk okunamazsa None."""
+    try:
+        u = shutil.disk_usage("/")
+        pct, free = int(round(u.used * 100 / u.total)), u.free
+    except (OSError, ZeroDivisionError):
+        pct, free = None, None
+    cfg = load_config().get("disk_clean") or {}
+    st = load_state().get("disk_clean") or {}
+    return {"pct": pct, "free_bytes": free, "enabled": _is_on(cfg.get("enabled")), "mode": cfg.get("mode"), "docker": cfg.get("docker"),
+            "last_end": st.get("last_end"), "last_ok": st.get("last_ok"), "last_msg": st.get("last_msg"), "detail": st.get("detail")}
 
 
 def api_action(data: Dict[str, Any]) -> Dict[str, Any]:

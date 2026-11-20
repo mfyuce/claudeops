@@ -208,6 +208,15 @@ export function HostsSection() {
               <span style={{ color: h.ok ? "var(--green)" : "var(--red)" }} title={h.error ?? undefined}>
                 {h.ok ? t.hostConnected : t.hostUnreachable}
               </span>
+              {h.disk_clean?.pct != null && (
+                <span
+                  className="cli-badge"
+                  style={{ color: h.disk_clean.pct >= 90 ? "var(--red)" : undefined }}
+                  title={`disk_clean: ${h.disk_clean.enabled ? (h.disk_clean.mode ?? "on") : "off"}${h.disk_clean.last_msg ? ` · ${h.disk_clean.last_msg}` : ""}`}
+                >
+                  disk %{h.disk_clean.pct}
+                </span>
+              )}
               <button type="button" disabled={testingNames.has(h.name)} onClick={() => void handleTest(h.name)}>
                 {testingNames.has(h.name) ? t.hostTesting : t.hostTestBtn}
               </button>

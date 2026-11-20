@@ -494,6 +494,7 @@ def _finalize_remote_result(host_name: str, result: Dict[str, Any]) -> Dict[str,
         "cli_list": result.get("cli_list") or [],
         "cli_options": _normalize_cli_options(result.get("cli_options")),
         "dups": result.get("dups") or [],
+        "disk_clean": result.get("disk_clean") if isinstance(result.get("disk_clean"), dict) else None,
     }
 
 
@@ -925,7 +926,7 @@ def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collectio
         hosts_status.append({
             "name": name, "ok": cached["ok"], "error": cached.get("error"),
             "cli_list": cached["cli_list"], "cli_options": cached["cli_options"],
-            "dups": cached["dups"],
+            "dups": cached["dups"], "disk_clean": cached.get("disk_clean"),
         })
     local_payload["hosts"] = hosts_status
     # `local_payload["sessions"]/["closed"]/["retired"]` geldiğinde zaten
