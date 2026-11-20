@@ -616,6 +616,9 @@ export interface Strings {
   tabDiagLog: string;
   usageWarning: string;
   usageCheckBtn: string;
+  usageRefreshBtn: string;
+  usageAge: (secs: number | null | undefined) => string;
+  usageNoState: string;
   usageChecking: string;
   usageNotSupported: string;
   usageNoSession: string;
@@ -1630,6 +1633,9 @@ export const STRINGS: Record<Lang, Strings> = {
     usageWarning:
       "⚠ Kontrol, o CLI'nin ÇALIŞAN bir session'ına gerçekten `/usage` yazıp ekranını anlık değiştirir (kimse izlemiyorsa öncelik verilir) — otomatik/sürekli çalışmaz, sadece bastığında.",
     usageCheckBtn: "Kullanımı kontrol et",
+    usageRefreshBtn: "Şimdi tazele",
+    usageAge: (s) => (s == null ? "yaş bilinmiyor" : s < 90 ? `${s} sn önce` : `${Math.round(s / 60)} dk önce`),
+    usageNoState: "Henüz kayıtlı okuma yok; 'Şimdi tazele' ile oku.",
     usageChecking: "kontrol ediliyor…",
     usageNotSupported: "desteklenmiyor",
     usageNoSession: "çalışan session yok",
@@ -2645,6 +2651,9 @@ export const STRINGS: Record<Lang, Strings> = {
     usageWarning:
       "⚠ Checking actually sends `/usage` to a RUNNING session of that CLI, briefly changing its screen (one nobody's watching is preferred) — not automatic/continuous, only when you press it.",
     usageCheckBtn: "Check usage",
+    usageRefreshBtn: "Refresh now",
+    usageAge: (s) => (s == null ? "age unknown" : s < 90 ? `${s}s ago` : `${Math.round(s / 60)} min ago`),
+    usageNoState: "No stored reading yet; press 'Refresh now'.",
     usageChecking: "checking…",
     usageNotSupported: "not supported",
     usageNoSession: "no running session",

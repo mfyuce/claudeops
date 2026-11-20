@@ -3629,6 +3629,14 @@ def usage_refresh(source: str = "panel") -> dict:
     return res
 
 
+def usage_cached_view() -> dict:
+    """`POST /api/usage {cached:true}`: merkezi kaynaktan (`usage_state`, periodic `usage_refresh` yazar) OKUR, okuma YAPMAZ; yaşı taşır."""
+    from .. import usage_state
+    st = usage_state.get()
+    return {"ok": True, "cached": True, "providers": st["providers"], "at": st["at"],
+            "age_secs": st["age_secs"], "stale": st["stale"], "source": st["source"]}
+
+
 def _usage_kinds() -> dict:
     """Ad -> açık oturum ister mi (tick'te 30 dk aralık). Oturumsuz yolu olan (claude, API anahtarlıları) hep vadeli."""
     kinds = {n: p.usage_fresh_argv() is None for n, p in PROVIDERS.items() if p.usage_command() is not None}
@@ -6045,7 +6053,7 @@ class _Handler(BaseHTTPRequestHandler):
             # HOST_ROUTED_PATHS'ine eklenmedi) — bugün sadece LOKAL fleet'in
             # kullanımını gösterir, TODO.md'ye not düşüldü.
             if data.get("cached") is True:
-                self._json(usage_poll.last())       # değnekçi tick'inin son okuması (usage_mode=tick); okuma yapmaz
+                self._json(usage_cached_view())
                 return
             self._json(usage_refresh(source="panel"))
             return

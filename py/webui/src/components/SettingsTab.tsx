@@ -51,7 +51,7 @@
  * `permission_modes` like any other mode.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiSaveSettings, apiUsage, ApiError } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
@@ -199,6 +199,19 @@ function UsagePanel() {
     kind: "idle",
   });
 
+  // Açılışta merkezi kaynağı (usage_state, periodic usage_refresh yazar) göster: okuma YAPMAZ, yaşıyla gelir.
+  useEffect(() => {
+    let alive = true;
+    apiUsage(lang, true)
+      .then((res) => {
+        if (alive) setState((cur) => (cur.kind === "idle" ? { kind: "ok", data: res } : cur));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [lang]);
+
   async function check() {
     setState({ kind: "loading" });
     try {
@@ -213,9 +226,14 @@ function UsagePanel() {
     <div className="opts" id="settingsUsagePanel">
       <TabHint warn>{t.usageWarning}</TabHint>
       <button type="button" disabled={state.kind === "loading"} onClick={() => void check()}>
-        {state.kind === "loading" ? t.usageChecking : t.usageCheckBtn}
+        {state.kind === "loading" ? t.usageChecking : t.usageRefreshBtn}
       </button>
       {state.kind === "error" && <pre className="layout-result">✗ {state.message}</pre>}
+      {state.kind === "ok" && state.data.cached && (
+        <span className="opts-hint">
+          {Object.keys(state.data.providers).length ? t.usageAge(state.data.age_secs) : t.usageNoState}
+        </span>
+      )}
       {state.kind === "ok" &&
         Object.entries(state.data.providers).map(([cli, result]) => (
           <UsageProviderRow key={cli} cli={cli} result={result} t={t} />

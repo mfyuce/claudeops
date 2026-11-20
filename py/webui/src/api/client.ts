@@ -555,7 +555,8 @@ export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
  * bir "Kontrol et" butonuyla çağırır (`onDemand`, otomatik interval YOK). */
 /** Okuma ~10 sn sürer; tünel/aradaki katman ilk denemede 502/503/504 verebilir (sahip 19 Kas: "ilk denemede 503, ikincide oldu").
  * Okuma yan etkisizdir (idempotent), bu yüzden geçici ağ geçidi hatasında bir kez sessizce yeniden denenir. */
-export const apiUsage = async (lang: Lang): Promise<UsageResult> => {
+export const apiUsage = async (lang: Lang, cached = false): Promise<UsageResult> => {
+  if (cached) return apiPost<UsageResult>("/api/usage", { lang, cached: true });   // usage_state'ten okur, okuma yapmaz
   try {
     return await apiPost<UsageResult>("/api/usage", { lang });
   } catch (e) {

@@ -468,6 +468,11 @@ export interface UsageProviderResult {
 
 export interface UsageResult {
   ok: boolean;
+  /** cached:true yanıtında (usage_state): okumanın yaşı (sn); hiç okuma yoksa null/0 */
+  cached?: boolean;
+  at?: number;
+  age_secs?: number | null;
+  stale?: boolean;
   providers: Record<string, UsageProviderResult>;
 }
 

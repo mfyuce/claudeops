@@ -42,6 +42,11 @@ class Compute(unittest.TestCase):
         self.assertEqual(es.compute_slots(SNAP, 1, 2, now=T0 + es.BACKOFF_SECS + 10)[0], 8)    # 10 dk sessiz: toparlandı
         self.assertEqual(es.compute_slots(None, 4, 0, now=T0 + 3)[0], 1)                      # kota yokken de geri çekilir (min 1)
 
+    def test_backoff_does_not_open_slot_when_account_full(self):
+        es.note_capacity_error(T0)
+        full = dict(SNAP, concurrent_requests=SNAP["concurrency_limit"])
+        self.assertEqual(es.compute_slots(full, 1, 0, now=T0 + 1)[0], 0)
+
     def test_capacity_text_detection(self):
         self.assertTrue(es.note_if_capacity('HTTP 503 {"error":"model_capacity_exhausted"}', T0))
         self.assertTrue(es.note_if_capacity("429 Too Many Requests", T0 + 700))

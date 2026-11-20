@@ -109,7 +109,7 @@ def compute_slots(snap: Optional[dict], manual: int, running: int, cfg_max: int 
             n = min(n, 1)
             why.append(f"günlük kalan {int(rem)}: tek yuva")
     if lvl:
-        n = max(1, n >> lvl)
+        n = max(1, n >> lvl) if n > 0 else 0  # doluyken (n=0) geri çekilme yuva AÇMAZ
         why.append(f"geri çekilme {lvl}")
     return n, ", ".join(why)
 
