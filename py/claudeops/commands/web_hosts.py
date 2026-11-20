@@ -352,6 +352,21 @@ def _pool_checkin(key: str, conn: http.client.HTTPConnection, reusable: bool) ->
         pass
 
 
+from ..authz import OutboundRefused as _OutboundRefused  # noqa: E402
+
+
+def _signed_headers(url: str, method: str, body: Optional[bytes]) -> Dict[str, str]:
+    """Uzak host'a giden istek için imza başlıkları (authz.outbound_headers). Kanca ya da bağlı kimlik yoksa {} ve host araması
+    YAPILMAZ. `OutboundRefused` çağırana yükselir. Her deneme için ayrı çağrılır (nonce)."""
+    from .. import authz
+    if not authz.has_outbound_signer() or authz.current_principal() is None:
+        return {}
+    parts = urllib.parse.urlsplit(url)
+    origin = f"{parts.scheme}://{parts.netloc}"
+    name = next((h["name"] for h in hosts_mod.load_hosts() if str(h.get("base_url", "")).rstrip("/") == origin), "")
+    return authz.outbound_headers(name, method, parts.path, body)
+
+
 def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedup: bool = False) -> Tuple[int, Optional[dict], Optional[str]]:
     """Küçük stdlib-only HTTP+JSON yardımcısı — hiçbir zaman raise ETMEZ, her
     hata (status, None, kısa okunur mesaj) olarak döner; çağıranın exception
@@ -411,10 +426,14 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
         headers = {"Content-Type": "application/json"} if data is not None else {}
         last_err = ""
         for _ in (1, 2):
+            try:
+                sig = _signed_headers(url, method, data)
+            except _OutboundRefused as e:
+                return 0, None, f"outbound refused: {e.reason}"
             conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
             sent = False
             try:
-                conn.request(method, path, body=data, headers=headers)
+                conn.request(method, path, body=data, headers={**headers, **sig})
                 sent = True
                 resp = conn.getresponse()
                 status = resp.status
@@ -1026,9 +1045,13 @@ def _http_raw(url: str, timeout: float, dedup: bool = False) -> Tuple[int, Optio
         conn_cls = _conn_cls_for(url_parts.scheme)
         last_err = ""
         for _ in (1, 2):
+            try:
+                sig = _signed_headers(url, "GET", None)
+            except _OutboundRefused as e:
+                return 0, None, None, f"outbound refused: {e.reason}"
             conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
             try:
-                conn.request("GET", path)
+                conn.request("GET", path, headers=sig)
                 resp = conn.getresponse()
                 status = resp.status
                 body = resp.read()
@@ -1133,10 +1156,14 @@ def proxy_post_raw(path: str, host_name: str, query: Dict[str, str], body_stream
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
     url_parts, req_path = _split_url(url)
     conn_cls = _conn_cls_for(url_parts.scheme)
+    try:
+        sig = _signed_headers(url, "POST", None)
+    except _OutboundRefused as e:
+        return {"ok": False, "error": f"{host_name}: outbound refused: {e.reason}"}, 200
     conn = conn_cls(url_parts.hostname, url_parts.port, timeout=ACTION_TIMEOUT_SECONDS)
     try:
         conn.request("POST", req_path, body=_BoundedReader(body_stream, content_length),
-                      headers={"Content-Type": content_type, "Content-Length": str(content_length)})
+                      headers={"Content-Type": content_type, "Content-Length": str(content_length), **sig})
         resp = conn.getresponse()
         status = resp.status
         raw = resp.read()

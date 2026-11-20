@@ -194,8 +194,8 @@ def add_audit_sink(fn: Callable[[Principal, str, Resource, int], None]) -> None:
 def reset() -> None:
     """Test/yeniden yükleme: tüm kancaları sil (çekirdek varsayılanına dön)."""
     with _LOCK:
-        global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER, _SPAWN_HOOK
-        _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = _SPAWN_HOOK = None
+        global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER, _SPAWN_HOOK, _OUTBOUND_SIGNER
+        _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = _SPAWN_HOOK = _OUTBOUND_SIGNER = None
         _AUDIT_SINKS.clear()
         _EVENT_SINKS.clear()
         _EXT_ACTIONS.clear()
@@ -207,6 +207,10 @@ def has_authenticator() -> bool:
 
 def has_authorizer() -> bool:
     return _AUTHORIZER is not None
+
+
+def has_outbound_signer() -> bool:
+    return _OUTBOUND_SIGNER is not None
 
 
 def has_status_filter() -> bool:
@@ -398,6 +402,44 @@ def set_spawn_hook(fn: Optional[Callable[[Optional[Principal], str, str, str], D
     global _SPAWN_HOOK
     with _LOCK:
         _SPAWN_HOOK = fn
+
+
+class OutboundRefused(Exception):
+    """Giden uzak-host isteği imzalanamaz ve politika bunu yasaklıyor (`fwd_policy=strict`). `reason` kısa makine kodu."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+# Giden imza kancası (imzalı kimlik iletimi, enterprise docs/SIGNED-IDENTITY-FORWARDING.md): fn(principal, host_name, method,
+# path, body) -> {başlık: değer}. `body` None = akış/gövdesiz. Kanca yoksa {} (davranış aynı).
+_OUTBOUND_SIGNER: Optional[Callable[[Principal, str, str, str, Optional[bytes]], Dict[str, str]]] = None
+
+
+def set_outbound_signer(fn: Optional[Callable[[Principal, str, str, str, Optional[bytes]], Dict[str, str]]]) -> None:
+    global _OUTBOUND_SIGNER
+    with _LOCK:
+        _OUTBOUND_SIGNER = fn
+
+
+def outbound_headers(host_name: str, method: str, path: str, body: Optional[bytes]) -> Dict[str, str]:
+    """Uzak host'a giden istek için ek (imza) başlıkları. Kanca yoksa ya da bu iş parçacığında kimlik bağlı değilse
+    (durum yoklaması, değnekçi) {}. `OutboundRefused` aynen yükselir; başka istisna günlüğe düşer ve {} döner (imzasız gönderim
+    kararı enterprise politikasındadır: strict ise kanca kendisi OutboundRefused atar). Her çağrı yeni imza üretir (nonce):
+    yeniden denemede de yeniden çağrılmalı."""
+    fn = _OUTBOUND_SIGNER
+    p = current_principal()
+    if fn is None or p is None:
+        return {}
+    try:
+        out = fn(p, host_name, method, path, body)
+    except OutboundRefused:
+        raise
+    except Exception as e:      # noqa: BLE001
+        _log("authz_outbound_signer_failed", error=f"{type(e).__name__}: {e}"[:200], host=host_name)
+        return {}
+    return {str(k): str(v) for k, v in (out or {}).items()}
 
 
 def spawn_env(cli: str, name: str, cwd: str) -> Dict[str, str]:
