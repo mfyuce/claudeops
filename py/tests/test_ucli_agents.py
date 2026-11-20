@@ -26,6 +26,25 @@ class AgBase(unittest.TestCase):
 
 
 class TokenTests(AgBase):
+    def test_concurrent_issue_keeps_file_and_digest_consistent(self):
+        """Eşzamanlı issue_token: dosyadaki token HER ZAMAN kayıtlı özetle eşleşmeli (dosya/özet yazımı tek kilitte)."""
+        import threading
+        bad = []
+
+        def worker():
+            for _ in range(25):
+                ag.issue_token("p1")
+                with ag._LOCK:      # tutarlı anlık görüntü: kilit içinde dosya + özet birlikte kontrol edilir
+                    cur = open(ag.token_file("p1"), encoding="utf-8").read()
+                    if ag.parent_for_token(cur) != "p1":
+                        bad.append(cur)
+
+        ts = [threading.Thread(target=worker) for _ in range(8)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        self.assertEqual(bad, [])
+        self.assertEqual(ag.parent_for_token(open(ag.token_file("p1"), encoding="utf-8").read()), "p1")
+
     def test_issue_writes_0600_file_and_only_hash_in_registry(self):
         path = ag.issue_token("p1")
         tok = open(path).read()
