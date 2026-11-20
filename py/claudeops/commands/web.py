@@ -498,6 +498,17 @@ def _find_running(name: str) -> list:
     return [s for s in find_sessions(measure_cpu=False) if s.name == name or s.base == name]
 
 
+def _recheck_targets(name: str, exact: bool = False) -> Optional[list]:
+    """Kilit İÇİNDE hedefi YENİDEN çözer (TODO 1005, gpt-6 R06): hedef `guard_lock` öncesi çözülüyor, bekleme sırasında oturum
+    kapanıp pid yeniden kullanılmış/başka oturum açılmış olabilir. `find_sessions()` canlı /proc taramasıdır, bu yüzden isimle
+    yeniden çözmek yeter. Dönen: o ANKİ gerçek hedef listesi (boş olabilir: zaten gitti); belirsizleştiyse (ya da `exact`
+    isteniyor ama tam eşleşme yok) None: çağıran HİÇBİR ŞEY öldürmez."""
+    kind, now = _find_running_for_action(name)
+    if kind == "ambiguous" or (exact and kind != "exact"):
+        return None
+    return list(now or [])
+
+
 def _find_running_for_action(name: str, cli: Optional[str] = None) -> tuple:
     """`_find_running`'in TEKİL-HEDEFLİ/yıkıcı çağrılar (stop/retire/close/
     handover/compact/adopt/terminal-routing) için güvenli hâli.
@@ -2137,6 +2148,10 @@ def _stop(name: str, lang: str = "tr", exact: bool = False) -> dict:
     diag_log("stop_begin", name=name, pids=[s.pid for s in procs])
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            procs_now = _recheck_targets(name, exact)
+            if procs_now is None:
+                return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+            procs = procs_now
             results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
@@ -3071,6 +3086,10 @@ def _stop_instance(name: str, lang: str = "tr") -> dict:
     if procs:
         try:
             with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+                procs_now = _recheck_targets(name)
+                if procs_now is None:
+                    return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+                procs = procs_now
                 for s in procs:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
@@ -3093,6 +3112,10 @@ def _retire(name: str, lang: str = "tr") -> dict:
     if procs:
         try:
             with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+                procs_now = _recheck_targets(name)
+                if procs_now is None:
+                    return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+                procs = procs_now
                 for s in procs:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
@@ -3132,6 +3155,10 @@ def _close_project(name: str, lang: str = "tr") -> dict:
     if procs:
         try:
             with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+                procs_now = _recheck_targets(name)
+                if procs_now is None:
+                    return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+                procs = procs_now
                 for s in procs:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
