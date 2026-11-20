@@ -99,8 +99,7 @@ class Plan(unittest.TestCase):
         self.assertEqual(plan([view("line")], projects={"line": sw.Project(name="line", phase="planned")})[0], [])
         self.assertEqual(plan([view("copsdev")], projects={"copsdev": sw.Project(name="copsdev", phase="planned")})[0], [])
         self.assertEqual(plan([view()], c=cfg(brain_name="p"))[0], [])
-        for ph in ("paused", "done"):
-            self.assertEqual(plan([view()], projects={"p": sw.Project(name="p", phase=ph)})[0], [], ph)
+        # paused/done: oturum AÇIK kalmışsa artık denetlenir (sahip 21 Kas), bkz. PausedOpen
         self.assertEqual(plan([view(cli="codex")])[0], [])
         self.assertEqual(plan([view(tmux=False)])[0], [])
         self.assertEqual(plan([view(host="yuhem")])[0], [])
@@ -117,6 +116,53 @@ class Plan(unittest.TestCase):
             def session_class(self, name, bp):
                 return "manual"
         self.assertEqual(snw.plan_no_work_close([view()], PROJ, {}, cfg(), NOW, [], W(), open_work=lambda _p: 0, ctx=CTX)[0], [])
+
+
+class PausedOpen(unittest.TestCase):
+    """(1) paused/done projenin açık kalmış own oturumu: boşta + alt ajan yok + soru yok -> devir + kapat, faz DEĞİŞMEZ."""
+    def proj(self, ph):
+        return {"p": sw.Project(name="p", phase=ph)}
+
+    def test_idle_open_session_of_inactive_project_is_closed_without_pause(self):
+        for ph in ("paused", "done"):
+            out, st = plan([view()], projects=self.proj(ph), c=cfg("act"))
+            self.assertEqual(len(out), 1, ph)
+            self.assertTrue(out[0].payload["inactive"])
+            self.assertIn("ho_close", st)
+            self.assertFalse(st.get("ho_pause"), "faz değişmemeli: paused/done proje pause a çekilmez")
+
+    def test_work_or_review_items_do_not_block_inactive_but_questions_and_subagents_do(self):
+        ctx = dict(CTX, review={"p": "bulgu:verified"})
+        self.assertEqual(len(plan([view(txt="STEWARD-NEXT: bir iş")], projects=self.proj("paused"), ctx=ctx)[0]), 1)
+        self.assertEqual(plan([view()], projects=self.proj("paused"), ctx=dict(CTX, open_q={"p"}))[0], [])
+        self.assertEqual(plan([view(subagent_active=True)], projects=self.proj("paused"))[0], [])
+        self.assertEqual(plan([view(idle_min=5)], projects=self.proj("paused"))[0], [])
+        self.assertEqual(plan([view(busy=True)], projects=self.proj("paused"))[0], [])
+
+
+class StaleVerified(unittest.TestCase):
+    def test_stale_after_two_hours_and_reasons(self):
+        self.assertFalse(snw.verified_is_stale({"verdict_at": NOW - 3600}, NOW))
+        self.assertTrue(snw.verified_is_stale({"verdict_at": NOW - 7300}, NOW))
+        self.assertFalse(snw.verified_is_stale({}, NOW), "damga yoksa bayat sayılmaz")
+        self.assertIn("=0", snw.verified_stuck_reason(0, {"severity": "P2"}, False))
+        self.assertIn("kapsamaz", snw.verified_stuck_reason(1, {"severity": "P1"}, False))
+        self.assertIn("gizli", snw.verified_stuck_reason(2, {"severity": "P2"}, True))
+        self.assertIn("kapsamında", snw.verified_stuck_reason(3, {"severity": "P1"}, False))
+
+
+class FablePolish(unittest.TestCase):
+    def test_note_next_that_is_fable_polish_is_not_work(self):
+        p = sw.Project(name="p", phase="planned", notes="sıradaki: B4-B18 nesir cilası (Fable)")
+        self.assertEqual(sw.next_work_hint(p, None, real_only=True), "")
+        p2 = sw.Project(name="p", phase="planned", notes="sıradaki: kaynak denetimi")
+        self.assertEqual(sw.next_work_hint(p2, None, real_only=True), "kaynak denetimi")
+        p3 = sw.Project(name="p", phase="planned", notes="sıradaki: Fable cila\nsıradaki: gerçek iş")
+        self.assertEqual(sw.next_work_hint(p3, None, real_only=True), "gerçek iş")
+
+    def test_polish_only_note_lets_session_close(self):
+        pr = {"p": sw.Project(name="p", phase="planned", notes="sıradaki: B4-B18 nesir cilası")}
+        self.assertEqual(len(plan([view()], projects=pr)[0]), 1)
 
 
 class Reopen(unittest.TestCase):

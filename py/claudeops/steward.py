@@ -4790,6 +4790,14 @@ def is_conditional_note(text: str) -> bool:
     return bool(_COND_RE.search(text or ""))
 
 
+_FABLE_POLISH_RE = re.compile(r"\bfable\b|\bcila\b|\bcilas[ıi]\b|nesir cila|üslup cila|prose polish|style polish", re.IGNORECASE)
+
+
+def is_fable_polish(text: str) -> bool:
+    """Not satırındaki 'sıradaki' değeri bir Fable/üslup cilası mı (en sona kalan, sahipsiz-iş sayılmayan iş)? SAF."""
+    return bool(_FABLE_POLISH_RE.search(text or ""))
+
+
 def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[int]]] = None, real_only: bool = False) -> str:
     """`real_only=True` (dürtme METNİ için, sahip 7 Kas "düşünmeden yok sanki"): YALNIZ proje notunda açık `sıradaki: <iş>` değeri;
     TODO'daki "ilk açık iş" ve "notlardaki sıradaki iş" genel ifadeleri DÖNMEZ (ilk madde dış engelli/sahipte olabilir, oturum
@@ -4806,6 +4814,8 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
                 return ""
             if is_conditional_note(val):
                 return ""      # koşullu not: dürtme/keepwarm `devam:` göndermez (koşulu oturum bilir, motor değerlendiremez)
+            if is_fable_polish(val):
+                continue       # sahip 21 Kas: üslup/nesir cilası (Fable) en sona kalır, 'sıradaki iş' sayılmaz (qve: B4-B18 cilası no_work'ü false yaptı)
             if val:
                 return val
     if real_only:

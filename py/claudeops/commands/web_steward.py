@@ -4026,7 +4026,15 @@ def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
         for rsid in sorted(sw.reviewer_ids()):
             for rec in rv.load_findings(sw.paths_for(rsid)).values():
                 if isinstance(rec, dict) and rec.get("state") in ("verified", "approved"):
-                    ctx["review"].setdefault(str(rec.get("project") or ""), f"bulgu:{rec.get('state')}")
+                    proj_k = str(rec.get("project") or "")
+                    if rec.get("state") == "verified" and snw.verified_is_stale(rec, time.time()):
+                        # sahip 21 Kas: 2 sa ilerlemeyen verified bulgu kapanışı engellemez (yeniden açılış bulgu iletimiyle zaten tetiklenir);
+                        # neden takıldığı teşhisle `review_stuck`a yazılır (review_auto_approve düzeyi/önem/gizli değer)
+                        ctx.setdefault("review_stuck", {}).setdefault(proj_k, []).append(
+                            snw.verified_stuck_reason(int(getattr(cfg, "review_auto_approve", 0) or 0), rec,
+                                                      sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}"))))
+                        continue
+                    ctx["review"].setdefault(proj_k, f"bulgu:{rec.get('state')}")
         for row in _advance_candidates(cfg):
             ctx["review"].setdefault(str(row.get("project") or ""), "bulgu:ilerletme")
         for k in web_review.running_keys():
