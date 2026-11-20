@@ -708,6 +708,12 @@ export interface Strings {
   stewardSvcOpenJobs: string;
   stewardSvcNoToken: string;
   stewardJobsTitle: string;
+  stewardDirTitle: string;
+  stewardDirNone: string;
+  stewardDirTodoOpen: string;
+  stewardDirTodoClosed: string;
+  stewardDirTodoMissing: string;
+  stewardDirTodoHint: string;
   stewardJobsNone: string;
   stewardJobsAll: string;
   stewardJobsOpen: string;
@@ -1725,6 +1731,12 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardSvcOpenJobs: "açık iş",
     stewardSvcNoToken: "token dosyası YOK",
     stewardJobsTitle: "İş kuyruğu",
+    stewardDirTitle: "Gönderilen direktifler",
+    stewardDirNone: "Henüz direktif yok.",
+    stewardDirTodoOpen: "TODO'da açık",
+    stewardDirTodoClosed: "TODO'da kapandı",
+    stewardDirTodoMissing: "TODO'da yok",
+    stewardDirTodoHint: "Hedef projenin TODO.md'sindeki 'direktif <id>' satırı",
     stewardJobsNone: "İş yok.",
     stewardJobsAll: "Hepsi",
     stewardJobsOpen: "Açık",
@@ -2743,6 +2755,12 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardSvcOpenJobs: "open jobs",
     stewardSvcNoToken: "token file MISSING",
     stewardJobsTitle: "Job queue",
+    stewardDirTitle: "Sent directives",
+    stewardDirNone: "No directives yet.",
+    stewardDirTodoOpen: "open in TODO",
+    stewardDirTodoClosed: "closed in TODO",
+    stewardDirTodoMissing: "not in TODO",
+    stewardDirTodoHint: "The 'direktif <id>' line in the target project's TODO.md",
     stewardJobsNone: "No jobs.",
     stewardJobsAll: "All",
     stewardJobsOpen: "Open",

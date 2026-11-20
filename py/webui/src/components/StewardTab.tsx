@@ -36,6 +36,7 @@ import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
 import { ErrorBox } from "./shared/ErrorBox";
 import { StewardJobs } from "./StewardJobs";
+import { StewardDirectives } from "./StewardDirectives";
 import { StewardDigests } from "./StewardDigests";
 import { StewardQuota } from "./StewardQuota";
 import { StewardUsageMode } from "./StewardUsageMode";
@@ -684,6 +685,7 @@ export function StewardTab({ onOpenTerminal, search = "" }: { onOpenTerminal?: (
       {sub === "jobs" && (
         <>
       <StewardJobs sid={sid} projects={(state?.projects || []).map((p) => p.name)} search={search} />
+      <StewardDirectives />
         </>
       )}
       {sub === "projects" && (

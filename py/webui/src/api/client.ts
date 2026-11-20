@@ -752,6 +752,20 @@ export const getStewardJobs = (sid?: string, state = "all", refresh = false): Pr
   apiGet<SimpleResult & { jobs?: StewardJobRow[] }>(
     `/api/steward/jobs?state=${encodeURIComponent(state)}${refresh ? "&refresh=1" : ""}${sid && sid !== "default" ? `&steward=${encodeURIComponent(sid)}` : ""}`,
   );
+export interface StewardDirectiveRow {
+  id: string;
+  name: string;
+  status: "queued" | "delivered" | "failed" | string;
+  reason?: string;
+  error?: string;
+  at?: number;
+  done_at?: number;
+  todo?: string;
+  todo_state?: "open" | "closed" | "missing" | string;
+}
+/** Son 20 direktifin teslim durumu + TODO.md satırının hâli (open/closed/missing). */
+export const getStewardDirectives = (): Promise<SimpleResult & { deliveries?: StewardDirectiveRow[] }> =>
+  apiGet<SimpleResult & { deliveries?: StewardDirectiveRow[] }>("/api/steward/directive/status");
 export const getStewardJobKinds = (sid?: string): Promise<SimpleResult & { kinds?: unknown }> =>
   apiGet<SimpleResult & { kinds?: unknown }>(`/api/steward/jobs?kinds=1${sid && sid !== "default" ? `&steward=${encodeURIComponent(sid)}` : ""}`);
 export const apiStewardServiceAdd = (name: string, url: string, token_file: string, match: string): Promise<SimpleResult & { warning?: string }> =>
