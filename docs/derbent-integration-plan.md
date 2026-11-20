@@ -66,3 +66,9 @@ C1 -> E1 -> E2 -> E3 -> E4; C2 -> E4; D1 + E3 -> E5; E2 -> E6. D1 hemen istenebi
 2. **Tek kullanıcı (lisanssız) kurulumda görünürlük:** (a) opt-in bayrak `ent_apps=on` ile lisanssız da kaydedilir (notes feed kalıbı); (b) yalnız çok kullanıcılı lisansla. Öneri: (a); sahibin kendi kurulumu tek kullanıcı ise (doğrulanmadı) (b) sekmeyi hiç göstermez.
 3. **Meta nerede tutulur?** (a) derbent D3 `meta:` alanı, conf.d tek kaynak; (b) claudeops `apps.json` + conf.d (iki kaynak, eşitleme gerekir). Öneri: (a); D3 gelene kadar (b) geçici.
 4. **Bilet denetimi:** (a) derbent içinde yerel filtre (D1); (b) mevcut `ExternalFilter` ile her istekte claudeops'a sorma (derbent değişikliği yok ama istek başına ~110 µs p50 + Python süreci sıcak yolda). Öneri: (a), derbent gecikme bütçesi (p50 <= 0,2 ms) (b) ile tutmaz.
+
+## Faz 3 tasarım notu: uzak uygulamada mutlak adres (20 Kas, sahip)
+
+Sorun: Grafana arayüzü API'yi tarayıcıdan mutlak şirket adresine (`https://10.20.4.165/api/...`) çağırıyor; yol menzil reach -> 127.0.0.1 -> derbent iken bu istek tarayıcıdan doğrudan şirket ağına gider ve dışarıda asılı kalır. derbent yolu (proxy) yalnız göreli/aynı-köken istekleri taşır.
+Seçenekler: (c) uygulamanın kendi `root_url`/base ayarı (Grafana `root_url`) = göreli adres, uygulama izin veriyorsa ilk tercih (ek kod yok); (a) menzil `proxy` (SOCKS çıkışı, menzilde "not implemented yet": menzil oturumuna steward direktifiyle istenecek) + tarayıcıda PAC yalnız 10.20.0.0/16 için, genel çözüm; (b) derbent yanıt gövdesinde mutlak köken yeniden yazımı: akışı ve gecikme bütçesini bozar, son çare.
+Karar: E-dilimleri (yerel uygulamalar) bundan bağımsız ilerler. Faz 3'te uzak uygulama kaydına `rewrite`/`note` alanı değil, önce (c) denenir; olmazsa (a). Menzil SOCKS isteği ayrı iş (menzil oturumu).
