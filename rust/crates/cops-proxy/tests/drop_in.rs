@@ -93,3 +93,12 @@ async fn front_secret_is_injected_and_client_copy_dropped() {
     let r = raw(start_proxy(fake_upstream().await).await, "GET / HTTP/1.1\r\nHost: a\r\nX-Cops-Front: sahte\r\nConnection: close\r\n\r\n").await;
     assert!(!r.contains("sahte"), "gizli yokken de istemci kopyası düşer: {r}");
 }
+
+#[tokio::test]
+async fn internal_paths_are_never_forwarded() {
+    let p = start_proxy_with(fake_upstream().await, Some("gizli")).await;
+    for path in ["/api/_internal/authz", "//api/_internal/ws-ticket/consume", "/API/_internal/authz"] {
+        let r = raw(p, &format!("POST {path} HTTP/1.1\r\nHost: a\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}")).await;
+        assert!(r.starts_with("HTTP/1.1 404"), "{path}: {r}");
+    }
+}

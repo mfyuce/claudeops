@@ -56,6 +56,11 @@ impl Proxy {
 
     /// `peer`: bağlanan istemcinin adresi (X-Forwarded-For için). İstemcinin gönderdiği X-Forwarded-For'a GÜVENİLMEZ, üzerine yazılır.
     pub async fn handle(self: Arc<Self>, mut req: Request<Incoming>, peer: SocketAddr) -> Result<Response<Body>, hyper::Error> {
+        // İç uçlar (`/api/_internal/*`) dışarıdan ASLA aktarılmaz: ön kapı gizlisi her aktarılan isteğe eklendiği için, aktarılırsa
+        // herkes iç kimlik/bilet uçlarını güvenilir çağrıcı gibi çağırabilirdi. Yalnız Rust'un KENDİ iç çağrıları (loopback) bu yola gider.
+        if req.uri().path().trim_start_matches('/').to_ascii_lowercase().starts_with("api/_internal") {
+            return Ok(err(StatusCode::NOT_FOUND, "not found"));
+        }
         let upgrade = is_upgrade(req.headers());
         let pq = req.uri().path_and_query().map(|p| p.as_str().to_string()).unwrap_or_else(|| "/".into());
         let uri: hyper::Uri = match format!("http://{}{}", self.upstream, pq).parse() {

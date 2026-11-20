@@ -4682,6 +4682,9 @@ class _BodyTimeout(Exception):
     """POST gövdesi zamanında/tam gelmedi."""
 
 
+from .. import front as front_mod  # noqa: E402
+
+
 def trusted_forwarded_ip(peer: str, headers, secret: str) -> str:
     """Saf yardımcı (test edilebilir): güvenilen X-Forwarded-For çözümü, bkz. `_Handler._client_ip`."""
     if not secret or peer not in ("127.0.0.1", "::1"):
@@ -5307,7 +5310,7 @@ class _Handler(BaseHTTPRequestHandler):
         """İstemci IP'si. Rust ön kapı (copsd) önündeyken `X-Forwarded-For`a YALNIZ bağlantı loopback'ten gelir VE `X-Cops-Front`
         başlığı ön kapı gizlisiyle (`CLAUDEOPS_FRONT_SECRET`) eşleşirse güvenilir; aksi halde soket eşi (sahte başlık etkisiz)."""
         peer = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
-        return trusted_forwarded_ip(peer, self.headers, os.environ.get("CLAUDEOPS_FRONT_SECRET", ""))
+        return trusted_forwarded_ip(peer, self.headers, front_mod.read_secret())
 
     def _spawn_refused(self, e) -> None:
         self._json({"ok": False, "error": "spawn_refused", "reason": e.reason, "detail": e.detail}, status=403)
@@ -5822,6 +5825,34 @@ class _Handler(BaseHTTPRequestHandler):
             raw = self._read_body(length) if length else b""
             form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True).items()}
             self._question_page(form)
+            return
+        if path.startswith("/api/_internal/"):
+            # Rust ön kapının iç uçları: kimlik YOK, yalnız loopback + ön kapı gizlisi (`front.secret`); aksi 404 (uç varlığı sızmaz)
+            peer = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+            if not front_mod.trusted_front(peer, self.headers):
+                self._json({"error": "not found"}, status=404)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0) or 0)
+            except ValueError:
+                length = -1
+            if length < 0 or length > 65536:
+                self.close_connection = True
+                self._json({"ok": False, "error": "invalid or oversized body"}, status=400)
+                return
+            try:
+                body = json.loads(self._read_body(length).decode("utf-8") or "{}") if length else {}
+            except ValueError:
+                body = None
+            if not isinstance(body, dict):
+                self._json({"ok": False, "error": "bad json"}, status=400)
+                return
+            if path == "/api/_internal/authz":
+                self._json(front_mod.internal_authz(body, self.token))
+            elif path == "/api/_internal/ws-ticket/consume":
+                self._json(front_mod.ws_ticket_consume(body))
+            else:
+                self._json({"error": "not found"}, status=404)
             return
         _route = extensions.match_route("POST", path)
         if _route is not None:

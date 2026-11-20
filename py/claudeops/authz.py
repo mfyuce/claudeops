@@ -82,6 +82,7 @@ _ACTION_TABLE: List[Tuple[str, str]] = [
     ("/api/files/", "files.read"),
     ("/api/orch/", "orch.run"),
     ("/api/ucli/ask", "session.chat"),
+    ("/api/_internal/", "admin.config"),            # Rust ön kapı iç uçları: kimlik doğrulamadan ÖNCE gizli+loopback ile korunur (front.py); eşleme yalnız emniyet
     ("/api/chat-backup", "admin.config"),
     ("/api/ucli/checks-mode", "session.control"),   # kaynak = oturum (`name`); ÖNCE: "/api/ucli/checks" öneki bunu da yakalar
     ("/api/ucli/checks", "admin.config"),           # kontrol kaydı bir güvenlik izni (docs/ucli-run-checks-design.md 4.5)
