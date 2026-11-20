@@ -5530,6 +5530,7 @@ _SUMMARY_TXT = {
         "cards": "Kartlar", "refreshed": "yenilendi", "handovers": "Handover", "directives": "Direktifler",
         "phases": "Faz değişimi", "pending": "Bekleyen", "open_q": "açık soru", "ideas_new": "yeni fikir",
         "items": "gözden geçirme maddesi", "undelivered": "iletilmemiş cevap", "none": "yok",
+        "orphans": "Sahipsiz kaynak", "orph_servers": "yardımcı sunucu", "orph_procs": "tanınmayan süreç",
     },
     "en": {
         "title": "Steward daily summary", "mode": "Mode", "obs_note": "actions that touch sessions were recorded, not applied",
@@ -5539,6 +5540,7 @@ _SUMMARY_TXT = {
         "cards": "Cards", "refreshed": "refreshed", "handovers": "Handovers", "directives": "Directives",
         "phases": "Phase changes", "pending": "Pending", "open_q": "open questions", "ideas_new": "new ideas",
         "items": "review items", "undelivered": "undelivered answers", "none": "none",
+        "orphans": "Orphaned resources", "orph_servers": "helper servers", "orph_procs": "unrecognized processes",
     },
 }
 
@@ -5554,7 +5556,7 @@ def _kind_counts(entries: List[Dict[str, Any]], key: str = "kind") -> str:
 
 
 def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
-                  pending: Optional[Dict[str, int]] = None) -> str:
+                  pending: Optional[Dict[str, int]] = None, orphans: Optional[Dict[str, int]] = None) -> str:
     """`log.jsonl` kayıtlarından (o güne ait olanlar süzülür) bir günün özeti — SAF, markdown. Sayılanlar: tick,
     uygulanan eylemler ve observe'da `would:` olanlar (türe göre), açılan/cevaplanan soru, fikir, yenilenen kart,
     handover, direktif, faz değişimi; `pending` (depodan: açık soru, yeni fikir, bekleyen madde, iletilmemiş cevap)."""
@@ -5619,6 +5621,8 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
         lines.append(f"- {T['pending']}: {pending.get('open_questions', 0)} {T['open_q']}, {pending.get('ideas_new', 0)} "
                      f"{T['ideas_new']}, {pending.get('pending_items', 0)} {T['items']}, "
                      f"{pending.get('undelivered_answers', 0)} {T['undelivered']}")
+    if orphans and (orphans.get("servers") or orphans.get("procs")):
+        lines.append(f"- {T['orphans']}: {orphans.get('servers', 0)} {T['orph_servers']}, {orphans.get('procs', 0)} {T['orph_procs']}")
     return "\n".join(lines) + "\n"
 
 
@@ -5630,7 +5634,13 @@ def summary_text(date: Optional[str] = None, lang: str = "tr", paths: Any = None
                "ideas_new": sum(1 for i in load_ideas(paths) if i.status == "new"),
                "pending_items": int(state.get("pending_items") or 0),
                "undelivered_answers": len(undelivered_answers(paths=paths))}
-    return daily_summary(log_entries_for_date(date, paths), date, lang, pending)
+    try:    # sahipsiz kaynak (orphan_watch durum dosyasından; tarama yok); okunamazsa satır atlanır
+        from .periodic import orphan_summary
+        o = orphan_summary()
+        orphans = {"servers": int(o.get("servers") or 0), "procs": int(o.get("procs") or 0)}
+    except Exception:
+        orphans = None
+    return daily_summary(log_entries_for_date(date, paths), date, lang, pending, orphans)
 
 
 def write_daily(date: str, text: str, paths: Any = None) -> str:
