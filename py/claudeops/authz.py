@@ -50,6 +50,9 @@ class RequestView:
     headers: Mapping[str, str]
     cookies: Dict[str, str]
     client_addr: str = ""
+    # Gövdeyi TEMBEL okuyan sağlayıcı (imzalı kimlik iletimi gövde bağlama): çağrılırsa gövde okunur ve handler'a da aynen kalır;
+    # sınırı aşan/okunamayan gövde için None. Çağıran yalnız imza doğrulandıktan sonra ister.
+    body_fn: Optional[Callable[[], Optional[bytes]]] = None
 
 
 # Ön ek -> eylem. SIRA ÖNEMLİ (ilk eşleşen kazanır; daha özel önek önce). GET ve POST aynı tablo (yöntem ayrımı eylem adında değil).
@@ -233,6 +236,22 @@ def status_extras() -> Dict[str, Any]:
         if v is not None:
             out[k] = v
     return out
+
+
+def outbound_service_headers(host_name: str, method: str, path: str) -> Dict[str, str]:
+    """Panelin KENDİ adına (kullanıcı değil) imza: paylaşılan WS aktarıcıları (durum akışı, terminal relay) için; kimlik = LEGACY
+    (yerel panel). Kullanıcı yetkisi yerel kapıda uygulanmıştır. Kanca yoksa {}; `OutboundRefused` aynen yükselir."""
+    fn = _OUTBOUND_SIGNER
+    if fn is None:
+        return {}
+    try:
+        out = fn(LEGACY, host_name, method, path, None)
+    except OutboundRefused:
+        raise
+    except Exception as e:      # noqa: BLE001
+        _log("authz_outbound_signer_failed", error=f"{type(e).__name__}: {e}"[:200], host=host_name)
+        return {}
+    return {str(k): str(v) for k, v in (out or {}).items()}
 
 
 def has_outbound_signer() -> bool:

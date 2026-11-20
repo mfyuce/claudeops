@@ -4808,7 +4808,7 @@ class _Handler(BaseHTTPRequestHandler):
                 cookies[k] = v
         addr = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
         return authz.RequestView(method=self.command or "", path=urlparse(self.path).path, query={k: v[0] for k, v in qs.items()},
-                                 headers=self.headers, cookies=cookies, client_addr=addr)
+                                 headers=self.headers, cookies=cookies, client_addr=addr, body_fn=self._peek_body)
 
     def _principal(self):
         """İstek kimliği: eklenti authenticator'ı (K1) kayıtlıysa o çözer (None = 401), değilse bugünkü `web.token` -> LEGACY.
@@ -5720,7 +5720,32 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
+    _PEEK_BODY_MAX = 4 * 1024 * 1024      # imzalı kimlik iletimi gövde bağlama sınırı (daha büyük gövde "stream" imzalanır)
+
+    def _peek_body(self) -> Optional[bytes]:
+        """Authenticator'ın istediği gövde (yalnız geçerli imzadan SONRA çağrılır): okunur ve `_read_body` aynı isteğe aynen verir.
+        İsteğin gövdesi yok/okunamaz/çok büyükse None. Önbellek istek satırı nesnesine bağlı (keep-alive'da önceki isteğin gövdesi sızmaz)."""
+        c = getattr(self, "_body_cache", None)
+        if c is not None and c[0] is self.raw_requestline:
+            return c[1]
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return None
+        if n < 0 or n > self._PEEK_BODY_MAX:
+            return None
+        data = self._read_body_raw(n) if n else b""
+        self._body_cache = (self.raw_requestline, data)
+        return data
+
     def _read_body(self, length: int) -> bytes:
+        c = getattr(self, "_body_cache", None)
+        if c is not None and c[0] is self.raw_requestline and len(c[1]) == length:
+            self._body_cache = None
+            return c[1]
+        return self._read_body_raw(length)
+
+    def _read_body_raw(self, length: int) -> bytes:
         """`length` bayt gövde; zaman aşımı/kopma/eksik gövde `_BodyTimeout` (do_POST 408 + bağlantı kapatma)."""
         with self._body_timeout_ctx():
             try:

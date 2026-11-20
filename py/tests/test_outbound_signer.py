@@ -109,3 +109,67 @@ class StatusExtraTest(unittest.TestCase):
         self.assertEqual(authz.status_extras(), {"fwd": {"api": 1}})
         authz.set_status_extra("fwd", None)
         self.assertEqual(authz.status_extras(), {})
+
+
+class PeekBodyTest(unittest.TestCase):
+    """_Handler._peek_body/_read_body: gövde bir kez okunur, handler'a aynen kalır; keep-alive'da sızmaz."""
+
+    def _h(self, body: bytes, line=object()):
+        import io
+        from claudeops.commands import web
+
+        class H:
+            pass
+        h = H()
+        h.headers = {"Content-Length": str(len(body))}
+        h.rfile = io.BytesIO(body)
+        h.raw_requestline = line
+        import contextlib
+        h._body_timeout_ctx = lambda: contextlib.nullcontext()
+        for n in ("_peek_body", "_read_body", "_read_body_raw"):
+            setattr(h, n, getattr(web._Handler, n).__get__(h))
+        h._PEEK_BODY_MAX = web._Handler._PEEK_BODY_MAX
+        return h
+
+    def test_peek_then_read_same_bytes(self):
+        h = self._h(b'{"a":1}')
+        self.assertEqual(h._peek_body(), b'{"a":1}')
+        self.assertEqual(h._peek_body(), b'{"a":1}')          # tekrar: önbellekten
+        self.assertEqual(h._read_body(7), b'{"a":1}')           # handler aynı gövdeyi görür (soket tüketilmişti)
+
+    def test_cache_not_leaked_to_next_request(self):
+        h = self._h(b"abc")
+        h._peek_body()
+        h.raw_requestline = object()                             # keep-alive: yeni istek
+        import io
+        h.rfile = io.BytesIO(b"xyz")
+        self.assertEqual(h._read_body(3), b"xyz")
+
+    def test_too_large_returns_none(self):
+        h = self._h(b"x")
+        h.headers = {"Content-Length": str(h._PEEK_BODY_MAX + 1)}
+        self.assertIsNone(h._peek_body())
+
+
+class WsSignedKwTest(unittest.TestCase):
+    def tearDown(self):
+        authz.reset()
+
+    def test_ws_kw(self):
+        self.assertEqual(web_hosts._ws_signed_kw("u1", "/ws/term"), {})      # kanca yok: davranış aynı
+        seen = []
+
+        def signer(p, host, method, path, body):
+            seen.append((p, host, method, path, body))
+            return {"X-Cops-Fwd": "n"}
+        authz.set_outbound_signer(signer)
+        kw = web_hosts._ws_signed_kw("u1", "/ws/term")
+        self.assertEqual(kw, {"additional_headers": {"X-Cops-Fwd": "n"}})
+        self.assertEqual(seen[0][1:], ("u1", "GET", "/ws/term", None))
+        self.assertIs(seen[0][0], authz.LEGACY)                              # panelin kendi kimliği
+
+        def refuse(*a):
+            raise authz.OutboundRefused("no_key")
+        authz.set_outbound_signer(refuse)
+        with self.assertRaises(authz.OutboundRefused):
+            web_hosts._ws_signed_kw("u1", "/ws")

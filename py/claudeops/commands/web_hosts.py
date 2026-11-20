@@ -355,6 +355,16 @@ def _pool_checkin(key: str, conn: http.client.HTTPConnection, reusable: bool) ->
 from ..authz import OutboundRefused as _OutboundRefused  # noqa: E402
 
 
+def _ws_signed_kw(host_name: str, path: str) -> Dict[str, Any]:
+    """WS el sıkışması için imza başlıkları (paylaşılan aktarıcılar panelin KENDİ kimliğiyle imzalanır). Kanca yoksa {} (davranış aynı).
+    Her bağlanmada yeniden çağrılmalı (nonce). Reddedilirse (`OutboundRefused`) bağlantı kurulmaz."""
+    from .. import authz
+    if not authz.has_outbound_signer():
+        return {}
+    h = authz.outbound_service_headers(host_name, "GET", path)
+    return {"additional_headers": h} if h else {}
+
+
 def _signed_headers(url: str, method: str, body: Optional[bytes]) -> Dict[str, str]:
     """Uzak host'a giden istek için imza başlıkları (authz.outbound_headers). Kanca ya da bağlı kimlik yoksa {} ve host araması
     YAPILMAZ. `OutboundRefused` çağırana yükselir. Her deneme için ayrı çağrılır (nonce)."""
@@ -1447,7 +1457,7 @@ def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
         parse_item: Callable[[Any], Optional[dict]] = web_grpc._status_proto_to_dict
     else:  # "ws"
         url = _ws_url(host["base_url"], "/ws", token)
-        make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None)
+        make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None, **_ws_signed_kw(name, "/ws"))
         parse_item = _parse_ws_status_frame
 
     def on_item(parsed: dict) -> None:
@@ -1678,7 +1688,8 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                     if viewport:
                         extra["viewport"] = "1"
                     url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang, **extra)
-                    make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None)
+                    make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None,
+                                                            **_ws_signed_kw(host_name, "/ws/term"))
                     parse_item = _parse_ws_term_frame
                 relay = _TermRelay(tier, make_call, parse_item,
                                    label=f"term:{host_name}/{name}" + ("?lite" if lite else "")
