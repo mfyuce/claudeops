@@ -1426,6 +1426,8 @@ def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
         "ok": True,
         "sessions": data.get("sessions"), "closed": data.get("closed"), "retired": data.get("retired"),
         "cli_list": data.get("cli_list"), "cli_options": data.get("cli_options"), "dups": data.get("dups"),
+        # Hostlar rozetleri (REST yoklamasıyla aynı alanlar; WS tier'de eskiden düşüyordu, e2e'de görüldü)
+        "disk_clean": data.get("disk_clean"), "orphan_watch": data.get("orphan_watch"), "fwd": data.get("fwd"),
     }
 
 

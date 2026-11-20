@@ -21,3 +21,14 @@ class FwdBriefTest(unittest.TestCase):
         self.assertEqual(web_hosts._fwd_brief({"mode": "accept"}, 1.0), {"mode": "accept", "kids": [], "skew": None})
         self.assertIsNone(web_hosts._fwd_brief(None, 1.0))
         self.assertIsNone(web_hosts._fwd_brief({"now": "x"}, 1.0))
+
+
+class WsFrameTest(unittest.TestCase):
+    def test_ws_frame_keeps_host_badges(self):
+        import json
+        frame = json.dumps({"type": "status", "data": {"sessions": [], "disk_clean": {"pct": 50}, "orphan_watch": {"servers": 1, "procs": 0},
+                                                       "fwd": {"mode": "accept", "kids": ["a"], "now": 5.0}}})
+        r = web_hosts._finalize_remote_result("h", web_hosts._parse_ws_status_frame(frame))
+        self.assertEqual(r["disk_clean"], {"pct": 50})
+        self.assertEqual(r["orphan_watch"]["servers"], 1)
+        self.assertEqual(r["fwd"]["mode"], "accept")
