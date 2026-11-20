@@ -6631,9 +6631,12 @@ def http_directive_status(qs: Dict[str, List[str]]) -> Dict[str, Any]:
     with _DELIVERY_LOCK:
         _deliveries_load()
         if not did:
-            return {"ok": True, "deliveries": [dict(v) for v in list(_DELIVERIES.values())[-20:]]}
+            return {"ok": True, "deliveries": [dict(v, todo_state=_todo_directive_state(str(v.get("name") or ""), str(v.get("id") or ""), "default"))
+                                               for v in list(_DELIVERIES.values())[-20:]]}
         d = _DELIVERIES.get(did)
-        return {"ok": True, **dict(d)} if d else {"ok": False, "error": "unknown delivery id"}
+        if not d:
+            return {"ok": False, "error": "unknown delivery id"}
+        return {"ok": True, **dict(d), "todo_state": _todo_directive_state(str(d.get("name") or ""), did, "default")}
 
 
 def _pane_norm(text: str) -> str:
@@ -6683,13 +6686,13 @@ def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
         for attempt in (1, 2):
             _delivery_set(did, attempts=attempt)
             try:
-                res = http_directive(dict(data, queue=False, _bg=True), sid)
+                res = http_directive(dict(data, queue=False, _bg=True, _did=did), sid)
             except Exception as e:      # arka plan işi asla sessiz ölmez
                 res = {"ok": False, "error": f"{type(e).__name__}: {e}"}
             if res.get("ok") or res.get("code") in ("draining", "start_backoff", "manual_session_running", "owner_pending"):
                 break
         if res.get("ok"):
-            _delivery_set(did, status="delivered", done_at=time.time(), skipped=str(res.get("skipped") or ""))
+            _delivery_set(did, status="delivered", done_at=time.time(), skipped=str(res.get("skipped") or ""), todo=str(res.get("todo") or ""))
         else:
             reason = str(res.get("code") or res.get("error") or "unknown")
             _delivery_set(did, status="failed", reason=reason, error=str(res.get("error") or "")[:300], done_at=time.time())
@@ -6701,6 +6704,61 @@ def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
 
     threading.Thread(target=run, daemon=True, name=f"directive-{did}").start()
     return {"ok": True, "status": "queued", "id": did, "name": name}
+
+
+_TODO_DIRECTIVE_SKIP_REASONS = ("restart", "review_verify")
+
+
+def _todo_record_directive(p: Optional[sw.Project], name: str, text: str, did: str, data: Dict[str, Any]) -> str:
+    """Sahip kuralı (20 Kas): her insan/cops/readlist direktifi hedef projenin TODO.md'sine `- [ ] (tarih, direktif <id>) <özet>`
+    olarak otomatik yazılır ("gönder deyince TODO olmalı yoksa kaybolur"). Aynı içerik zaten AÇIK satırsa ya da aynı id varsa
+    yeni satır AÇILMAZ. Beyin direktifi, restart/review_verify sistem direktifi, uzak host projesi, TODO.md'siz proje ATLANIR.
+    Dönen: added | duplicate | skipped:<neden> | error. Asla fırlatmaz. (Notes DB bu kod tabanında yok: hc/sesim TODO.md kullanır.)"""
+    try:
+        actor = str(data.get("actor") or "")
+        reason = str(data.get("reason") or "")
+        if actor == "brain" or reason.startswith(_TODO_DIRECTIVE_SKIP_REASONS):
+            return "skipped:system"
+        if not text.strip() or p is None or p.host:
+            return "skipped:no_local_project"
+        cwd = _cwd_resolver()(p.name)
+        real = _doc_path(cwd, "TODO.md") if cwd else ""
+        if not real:
+            return "skipped:no_todo"
+        flat = " ".join(text.split())
+        summary = flat if len(flat) <= 400 else flat[:397] + "..."
+        with open(real, encoding="utf-8", errors="replace") as f:
+            body = f.read()
+        if f"direktif {did})" in body or f"direktif {did}," in body:
+            return "duplicate"
+        for ln in body.splitlines():
+            m = re.match(r"^- \[ \] \([^)]*direktif [0-9a-f]+\) (.*)$", ln)
+            if m and " ".join(m.group(1).split()) == summary:
+                return "duplicate"
+        line = f"- [ ] ({time.strftime('%Y-%m-%d')}, direktif {did}) {summary}"
+        with open(real, "a", encoding="utf-8") as f:
+            f.write(("" if body.endswith("\n") or not body else "\n") + line + "\n")
+        return "added"
+    except Exception as e:
+        diag_log(f"direktif TODO satırı yazılamadı: {type(e).__name__}")
+        return "error"
+
+
+def _todo_directive_state(name: str, did: str, sid: str) -> str:
+    """Panel: direktifin TODO satırı `open` | `closed` | `missing` (satır yok ya da TODO.md yok)."""
+    try:
+        p = sw.load_projects(sid).get(name)
+        cwd = _cwd_resolver()(p.name if p else name)
+        real = _doc_path(cwd, "TODO.md") if cwd else ""
+        if not real:
+            return "missing"
+        with open(real, encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                if f"direktif {did})" in ln:
+                    return "open" if ln.startswith("- [ ]") else "closed"
+    except Exception:
+        pass
+    return "missing"
 
 
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -6734,6 +6792,8 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             if _running(name) is None and not inst_mod.get_instance(name) and name not in (_act("fleet_status") or {}):
                 return {"ok": False, "error": "unknown session/project"}
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
+        did = str(data.get("_did") or "") or __import__("uuid").uuid4().hex[:12]
+        todo_res = _todo_record_directive(p, name, text, did, data)
         _no_work_directive_reopen(p, sid)      # `iş yok` ile paused projeye direktif = yeniden açılış tetikleyicisi (planned + --new)
         if p.phase in ("done", "paused") and str(data.get("actor") or "") not in ("brain", "extension") and sw.valid_name(p.name) and p.name in projects:
             # insan/okuma(readlist)/CLI direktifi done/paused projeye yeni iş demektir: phase=planned (17 Kas, marwan: oturum açıldı ama faz done kaldı)
@@ -6744,6 +6804,8 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
                               start_if_stopped=bool(data.get("start_if_stopped", True)),
                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
                               actor=str(data.get("actor") or ""), verify=bool(data.get("_bg")))
+    if isinstance(res, dict) and todo_res != "skipped:system":
+        res = dict(res, directive_id=did, todo=todo_res)
     if str(data.get("actor") or "") == "brain":
         _register_brain_outcome(res, name, sid)
     return res

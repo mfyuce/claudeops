@@ -51,7 +51,7 @@ class ExtensionDirectivePark(unittest.TestCase):
         r, give, body = self._run(live=[object()])
         self.assertNotIn("parked", r)
         give.assert_called_once()
-        self.assertEqual(body, "# TODO\n")
+        self.assertRegex(body, r"- \[ \] \(\d{4}-\d\d-\d\d, direktif [0-9a-f]{12}\) oku şunu\n")     # 20 Kas: her direktif TODO'ya yazılır
 
     def test_drain_blocks_extension(self):
         r, give, body = self._run(drain=True, live=[object()])
