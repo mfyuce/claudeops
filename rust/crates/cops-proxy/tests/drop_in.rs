@@ -23,7 +23,7 @@ async fn fake_upstream() -> SocketAddr {
                         c.write_all(&o).await.unwrap();
                     }
                 } else {
-                    let xf: Vec<&str> = d.split("\r\n").filter(|l| l.to_ascii_lowercase().starts_with("x-forwarded-for")).collect();
+                    let xf: Vec<&str> = d.split("\r\n").filter(|l| l.to_ascii_lowercase().starts_with("x-forwarded-for") || l.to_ascii_lowercase().starts_with("x-cops-front")).collect();
                     let body = xf.join("|");
                     let r = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
                     c.write_all(r.as_bytes()).await.unwrap();
@@ -35,10 +35,15 @@ async fn fake_upstream() -> SocketAddr {
 }
 
 async fn start_proxy(up: SocketAddr) -> SocketAddr {
+    start_proxy_with(up, None).await
+}
+
+async fn start_proxy_with(up: SocketAddr, secret: Option<&str>) -> SocketAddr {
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
     drop(l);
-    tokio::spawn(cops_proxy::serve(addr, cops_proxy::Proxy::new(up)));
+    let px = match secret { Some(x) => cops_proxy::Proxy::with_secret(up, x), None => cops_proxy::Proxy::new(up) };
+    tokio::spawn(cops_proxy::serve(addr, px));
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     addr
 }
@@ -78,4 +83,13 @@ async fn upstream_down_gives_502() {
     let p = start_proxy(dead).await;
     let r = raw(p, "GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n").await;
     assert!(r.starts_with("HTTP/1.1 502"), "{r}");
+}
+
+#[tokio::test]
+async fn front_secret_is_injected_and_client_copy_dropped() {
+    let p = start_proxy_with(fake_upstream().await, Some("gizli")).await;
+    let r = raw(p, "GET / HTTP/1.1\r\nHost: a\r\nX-Cops-Front: sahte\r\nConnection: close\r\n\r\n").await;
+    assert!(r.contains("gizli") && !r.contains("sahte"), "{r}");
+    let r = raw(start_proxy(fake_upstream().await).await, "GET / HTTP/1.1\r\nHost: a\r\nX-Cops-Front: sahte\r\nConnection: close\r\n\r\n").await;
+    assert!(!r.contains("sahte"), "gizli yokken de istemci kopyası düşer: {r}");
 }

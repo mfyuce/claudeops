@@ -18,6 +18,7 @@ const HOP: [&str; 7] = ["keep-alive", "proxy-authenticate", "proxy-authorization
 
 pub struct Proxy {
     upstream: SocketAddr,
+    secret: Option<HeaderValue>,
     client: Client<HttpConnector, Incoming>,
 }
 
@@ -43,7 +44,14 @@ fn err(code: StatusCode, msg: &str) -> Response<Body> {
 impl Proxy {
     pub fn new(upstream: SocketAddr) -> Arc<Self> {
         let client = Client::builder(TokioExecutor::new()).build_http();
-        Arc::new(Proxy { upstream, client })
+        Arc::new(Proxy { upstream, secret: None, client })
+    }
+
+    /// Ön kapı gizlisi: Python'un `X-Forwarded-For`a güvenmesi için her aktarılan isteğe `X-Cops-Front` olarak eklenir;
+    /// istemciden gelen aynı adlı başlık her zaman düşürülür.
+    pub fn with_secret(upstream: SocketAddr, secret: &str) -> Arc<Self> {
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        Arc::new(Proxy { upstream, secret: HeaderValue::from_str(secret).ok(), client })
     }
 
     /// `peer`: bağlanan istemcinin adresi (X-Forwarded-For için). İstemcinin gönderdiği X-Forwarded-For'a GÜVENİLMEZ, üzerine yazılır.
@@ -57,6 +65,10 @@ impl Proxy {
         let client_up = if upgrade { Some(hyper::upgrade::on(&mut req)) } else { None };
         *req.uri_mut() = uri;
         strip_hop(req.headers_mut(), upgrade);
+        req.headers_mut().remove("x-cops-front");
+        if let Some(sec) = &self.secret {
+            req.headers_mut().insert(HeaderName::from_static("x-cops-front"), sec.clone());
+        }
         req.headers_mut().insert(HeaderName::from_static("x-forwarded-for"), HeaderValue::from_str(&peer.ip().to_string()).unwrap());
         let mut resp = match self.client.request(req).await {
             Ok(r) => r,

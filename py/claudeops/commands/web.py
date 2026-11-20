@@ -4682,6 +4682,18 @@ class _BodyTimeout(Exception):
     """POST gövdesi zamanında/tam gelmedi."""
 
 
+def trusted_forwarded_ip(peer: str, headers, secret: str) -> str:
+    """Saf yardımcı (test edilebilir): güvenilen X-Forwarded-For çözümü, bkz. `_Handler._client_ip`."""
+    if not secret or peer not in ("127.0.0.1", "::1"):
+        return peer
+    import hmac
+    got = headers.get("X-Cops-Front") or ""
+    if not hmac.compare_digest(got.encode(), secret.encode()):
+        return peer
+    xff = (headers.get("X-Forwarded-For") or "").split(",")[-1].strip()      # ön kapı kendi eşini SONA ekler/ezer: son değer güvenilir
+    return xff or peer
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "claudeops-web/1"
     # HTTP/1.0 (stdlib varsayılanı) her istekte yeni TCP+TLS-yok-ama-yine-de
@@ -4806,7 +4818,7 @@ class _Handler(BaseHTTPRequestHandler):
             k, _, v = part.strip().partition("=")
             if k:
                 cookies[k] = v
-        addr = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+        addr = self._client_ip()
         return authz.RequestView(method=self.command or "", path=urlparse(self.path).path, query={k: v[0] for k, v in qs.items()},
                                  headers=self.headers, cookies=cookies, client_addr=addr, body_fn=self._peek_body)
 
@@ -5136,7 +5148,7 @@ class _Handler(BaseHTTPRequestHandler):
         403, `confirm:true` ŞART (panel onay penceresinden sonra gönderir). Her çağrı olay günlüğüne (diag.log: kim/ne zaman/IP/sonuç)."""
         host = _host_from_body(data)
         actor = str(data.get("actor") or "human").strip() or "human"
-        ip = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+        ip = self._client_ip()
         if host != LOCAL_HOST_NAME:
             self._json({"ok": False, "error": "local_only"}, status=400)
             return
@@ -5290,6 +5302,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._spawn_refused(e)
         finally:
             _az.bind_principal(None)        # keep-alive: kimlik sonraki isteğe/iş parçacığına sızmasın
+
+    def _client_ip(self) -> str:
+        """İstemci IP'si. Rust ön kapı (copsd) önündeyken `X-Forwarded-For`a YALNIZ bağlantı loopback'ten gelir VE `X-Cops-Front`
+        başlığı ön kapı gizlisiyle (`CLAUDEOPS_FRONT_SECRET`) eşleşirse güvenilir; aksi halde soket eşi (sahte başlık etkisiz)."""
+        peer = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+        return trusted_forwarded_ip(peer, self.headers, os.environ.get("CLAUDEOPS_FRONT_SECRET", ""))
 
     def _spawn_refused(self, e) -> None:
         self._json({"ok": False, "error": "spawn_refused", "reason": e.reason, "detail": e.detail}, status=403)
@@ -6313,7 +6331,7 @@ class _Handler(BaseHTTPRequestHandler):
             code, res = _ck.set_mode(_sdf(str(inst.get("cwd") or "")), str(data["name"]), str(data.get("mode") or ""),
                                      str(co.get("max") or co.get("mode") or "restricted"), confirm=bool(data.get("confirm")),
                                      user=str(getattr(p, "uid", "") or "panel"),
-                                     ip=str(self.client_address[0]) if getattr(self, "client_address", None) else "")
+                                     ip=self._client_ip())
             self._json(res, status=code)
             return
 
