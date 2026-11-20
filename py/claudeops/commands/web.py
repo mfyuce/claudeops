@@ -6158,7 +6158,7 @@ class _Handler(BaseHTTPRequestHandler):
             if data.get("delete"):
                 ok, err = _ck.delete_check(str(data["delete"]), binary=_bin)
             else:
-                ok, err = _ck.save_registry({"check": data.get("check")}, binary=_bin)
+                ok, err = _ck.replace_checks(data.get("check"), binary=_bin)
             self._json({"ok": ok, "error": err}, status=200 if ok else 400)
             return
 

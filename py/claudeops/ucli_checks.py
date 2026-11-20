@@ -165,6 +165,13 @@ def save_registry(data: Any, owner: str = "", binary: str = "") -> Tuple[bool, s
     return True, ""
 
 
+def replace_checks(checks: Any, owner: str = "", binary: str = "") -> Tuple[bool, str]:
+    """`check` listesini değiştirir; kaydın diğer üst düzey anahtarları ([full] bölümü vb.) korunur (kayıt bütün belge)."""
+    cur, err = load_registry(owner)
+    base = dict(cur) if (not err and isinstance(cur, dict)) else {}
+    return save_registry({**base, "check": checks}, owner, binary=binary)
+
+
 def delete_check(name: str, owner: str = "", binary: str = "") -> Tuple[bool, str]:
     data, err = load_registry(owner)
     if err:

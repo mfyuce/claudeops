@@ -51,6 +51,16 @@ class Registry(Base):
         self.assertFalse(uck.delete_check("yok")[0])
 
 
+class ReplaceKeepsDoc(Base):
+    def test_other_top_level_keys_kept(self):
+        c = {"name": "a", "argv": ["git", "status"]}
+        self.assertEqual(uck.save_registry({"check": [c], "full": {"x": 1}}), (True, ""))
+        self.assertEqual(uck.replace_checks([{**c, "name": "b"}]), (True, ""))
+        d, _ = uck.load_registry()
+        self.assertEqual(d.get("full"), {"x": 1})
+        self.assertEqual([x["name"] for x in d["check"]], ["b"])
+
+
 class Mode(Base):
     def sd(self):
         return os.path.join(self.td, "state")
