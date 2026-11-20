@@ -35,6 +35,7 @@ atlar, cevap gelmez → sıra kayar) ve timeout'ta session'ı KURTARMAYA
 `ask()`'in cevabıymış gibi görünebilirdi — bkz. `_pump_stdout`).
 """
 from __future__ import annotations
+import collections
 import hashlib
 import json
 import os
@@ -582,6 +583,27 @@ class UcliReplSession:
         self._lines: "queue.Queue[str]" = queue.Queue()
         self._reader = threading.Thread(target=self._pump_stdout, daemon=True)
         self._reader.start()
+        # stderr BOŞALTILMAZSA boru dolunca (~64 KiB) ucli yazarken bloklanır ve cevap hiç gelmez: ayrı iş parçacığı sürekli
+        # okur, yalnız son ~16 KiB'ı tutar (süreç ölünce hata iletisine girer).
+        self._err_tail: "collections.deque[str]" = collections.deque()
+        self._err_len = 0
+        self._err_reader = threading.Thread(target=self._pump_stderr, daemon=True)
+        self._err_reader.start()
+
+    _ERR_KEEP = 16 * 1024
+
+    def _pump_stderr(self) -> None:
+        if self._proc.stderr is None:
+            return
+        for line in self._proc.stderr:
+            self._err_tail.append(line)
+            self._err_len += len(line)
+            while self._err_len > self._ERR_KEEP and len(self._err_tail) > 1:
+                self._err_len -= len(self._err_tail.popleft())
+
+    def _stderr_text(self) -> str:
+        self._err_reader.join(timeout=1.0)      # süreç kapandıysa boru EOF verir; takılırsa eldekini kullan
+        return "".join(self._err_tail)
 
     def _pump_stdout(self) -> None:
         assert self._proc.stdout is not None
@@ -612,8 +634,7 @@ class UcliReplSession:
                 self._proc.kill()  # bkz. sınıf docstring'i: gecikmiş cevabı güvenle eşleyemeyiz
                 raise UcliError(f"ucli {timeout}s içinde cevap vermedi, session öldürüldü")
         if line == "":
-            stderr = self._proc.stderr.read() if self._proc.stderr else ""
-            raise UcliError(f"ucli repl beklenmedik şekilde kapandı: {stderr.strip()}")
+            raise UcliError(f"ucli repl beklenmedik şekilde kapandı: {self._stderr_text().strip()}")
         return _parse_turn(line)
 
     def close(self, timeout: float = 5.0) -> None:
