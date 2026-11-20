@@ -8,6 +8,8 @@ import json
 import os
 import re
 import stat
+import subprocess
+import tempfile
 from typing import Any, Dict, Tuple
 
 from .paths import CLAUDEOPS_DIR
@@ -80,11 +82,66 @@ AUDIT = os.path.join(ROOT, "audit.jsonl")
 _RANK = {"off": 0, "restricted": 1, "full": 2}
 
 
-def save_registry(data: Any, owner: str = "") -> Tuple[bool, str]:
-    """Biçim denetiminden geçen kaydı atomik yazar (0600, dizin 0700, O_NOFOLLOW). Doğrulamanın tek kaynağı ucli'dir (U1); burada ön denetim."""
+# Hazır şablonlar (panel bunları GET /api/ucli/checks ile alır: tek kaynak; hepsi gerçek `ucli checks validate`ten geçer).
+TEMPLATES: Dict[str, Dict[str, Any]] = {
+    "claudeops unittest": {"name": "unittest", "description": "py/tests unittest (tümü)", "argv": ["python3", "-m", "unittest", "discover", "-s", "tests"]},
+    "claudeops tsc": {"name": "tsc", "description": "webui tsc --noEmit", "argv": ["npx", "tsc", "--noEmit"], "cwd": "py/webui"},
+    "git status": {"name": "git-status", "description": "git status (salt okunur)", "argv": ["git", "status", "--short"]},
+    "git diff": {"name": "git-diff", "description": "git diff (salt okunur)", "argv": ["git", "diff", "--stat"]},
+    "git log": {"name": "git-log", "description": "git log (salt okunur)", "argv": ["git", "log", "--oneline", "-20"]},
+    "k8s get (ağ: host)": {"name": "k8s-get", "description": "kubectl get (salt okunur; dar ServiceAccount kubeconfig kullanın)",
+                           "argv": ["kubectl", "-n", "{ns}", "get", "{kind}", "-o", "wide"], "network": "host",
+                           "params": {"ns": {"kind": "enum", "values": ["default"]},
+                                      "kind": {"kind": "enum", "values": ["pods", "deployments", "services", "events"]}}},
+}
+
+
+def binary_supports_checks(binary: str) -> bool:
+    try:
+        r = subprocess.run([binary, "checks", "validate", "--help"], capture_output=True, text=True, timeout=10)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def ucli_validate(data: Dict[str, Any], binary: str) -> Tuple[bool, str]:
+    """Doğrulamanın TEK kaynağı ucli: kaydı geçici 0600 dosyaya yazıp `ucli checks validate --json` çalıştırır. (ok, hata özeti)."""
+    os.makedirs(ROOT, mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".validate-", suffix=".json", dir=ROOT)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.chmod(tmp, 0o600)
+        r = subprocess.run([binary, "checks", "validate", "--checks-file", tmp, "--json", "--not-under", ROOT.replace("ucli_checks", "__none__")],
+                           capture_output=True, text=True, timeout=20)
+        try:
+            doc = json.loads(r.stdout or "{}")
+        except ValueError:
+            return False, (r.stderr or r.stdout or "doğrulama çıktısı okunamadı").strip()[:300]
+        if doc.get("ok"):
+            return True, ""
+        errs = doc.get("errors") or []
+        return False, "; ".join(f"{e.get('check') or '-'}.{e.get('field') or '-'}: {e.get('message')}" for e in errs)[:500] or "kayıt geçersiz"
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"ucli çalıştırılamadı: {e.__class__.__name__}"
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def save_registry(data: Any, owner: str = "", binary: str = "") -> Tuple[bool, str]:
+    """Biçim denetiminden geçen kaydı atomik yazar (0600, dizin 0700, O_NOFOLLOW). `binary` verilirse (ve `checks` alt komutunu
+    tanıyorsa) ucli'nin kendi doğrulaması YAZMADAN ÖNCE koşar; `version: 1` yoksa eklenir (ucli kaydı ister)."""
     ok, why = check_shape(data)
     if not ok:
         return False, why
+    data = {"version": 1, **data}
+    if binary and binary_supports_checks(binary):
+        ok, why = ucli_validate(data, binary)
+        if not ok:
+            return False, why
     try:
         path = registry_path(owner)
     except ValueError as e:
@@ -108,14 +165,14 @@ def save_registry(data: Any, owner: str = "") -> Tuple[bool, str]:
     return True, ""
 
 
-def delete_check(name: str, owner: str = "") -> Tuple[bool, str]:
+def delete_check(name: str, owner: str = "", binary: str = "") -> Tuple[bool, str]:
     data, err = load_registry(owner)
     if err:
         return False, err
     items = [c for c in data["check"] if c.get("name") != name]
     if len(items) == len(data["check"]):
         return False, "kontrol bulunamadı"
-    return save_registry({**data, "check": items}, owner)
+    return save_registry({**data, "check": items}, owner, binary=binary)
 
 
 def mode_file(state_dir: str, session: str) -> str:

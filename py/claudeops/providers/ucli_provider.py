@@ -102,7 +102,7 @@ from ..settings import ucli_cost_config
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
 from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
-from ..ucli_client import (UcliError, binary_derives_context, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, status_is_busy, failed_turn_records, resolve_binary,
+from ..ucli_client import (UcliError, binary_derives_context, binary_flag_values, chat_help_text, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, status_is_busy, failed_turn_records, resolve_binary,
                            ucli_chat_once)
 from .base import CliProvider, McpServerSpec, OneshotError
 
@@ -780,6 +780,10 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             if not binary_supports_flag(binary, flag):
                 diag_log("ucli_flag_unsupported", name=session_name, flag=flag, binary=binary)
                 raise ValueError(f"ucli ikilisi {flag} bayrağını tanımıyor (kontrol izni yarım uygulanmaz)")
+        for flag, val in (("--allow-checks", uc["mode"]), ("--checks-max", uc["max"])):
+            known = binary_flag_values(binary, flag)
+            if known and val not in known:       # C4: gerçek ikili (U5 öncesi) yalnız restricted kabul ediyor; spawn anında 'invalid value' yerine net hata
+                raise ValueError(f"ucli ikilisi {flag} için '{val}' değerini tanımıyor (bilinenler: {', '.join(known)})")
         if "--state-dir" not in argv:
             raise ValueError("ucli_checks için state-dir gerekli (ikili --state-dir'i tanımıyor ya da oturumun geçmişi eski dizinde)")
         reg, err = ucli_checks.load_registry("")

@@ -98,6 +98,16 @@ class Apply(unittest.TestCase):
         argv = self.apply({"mode": "full", "max": "full", "accept_risk": True})
         self.assertIn("--checks-accept-risk", argv)
 
+    def test_full_refused_when_binary_only_knows_restricted(self):
+        """C4 bulgusu: gerçek ucli (U5'ten önce) `--allow-checks full`u 'invalid value' ile reddediyor; açılışta net hata."""
+        help_txt = "--allow-checks <X>\n [possible values: restricted]\n--checks-max <Y>\n [possible values: restricted]\n"
+        with mock.patch("claudeops.ucli_client.chat_help_text", return_value=help_txt):
+            with self.assertRaises(ValueError) as cm:
+                self.apply({"mode": "full", "max": "full", "accept_risk": True})
+            self.assertIn("full", str(cm.exception))
+            argv = self.apply({"mode": "restricted", "max": "restricted", "accept_risk": False})   # restricted geçer
+        self.assertIn("--allow-checks", argv)
+
     def test_unsupported_binary_refused(self):
         with self.assertRaises(ValueError):
             self.apply({"mode": "restricted", "max": "restricted", "accept_risk": False}, supports=lambda b, f: f != "--allow-checks")

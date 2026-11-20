@@ -30,7 +30,7 @@ class Registry(Base):
         path = uck.registry_path()
         self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(os.stat(uck.ROOT).st_mode), 0o700)
-        self.assertEqual(uck.load_registry()[0], GOOD)
+        self.assertEqual(uck.load_registry()[0], {"version": 1, **GOOD})
 
     def test_bad_shape_not_written(self):
         ok, _ = uck.save_registry({"check": [{"name": "Bad Name", "argv": ["x"]}]})

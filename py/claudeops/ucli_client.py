@@ -181,6 +181,12 @@ def binary_supports_flag(binary: str, flag: str) -> bool:
     return re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])", chat_help_text(binary)) is not None
 
 
+def binary_flag_values(binary: str, flag: str) -> list:
+    """`chat --help`teki `[possible values: a, b]` listesi (bayrağın hemen ardındaki ilk). Bulunamazsa [] (= bilinmiyor)."""
+    m = re.search(rf"(?<![\w-]){re.escape(flag)}(?![\w-])[\s\S]*?\[possible values: ([^\]]*)\]", chat_help_text(binary))
+    return [v.strip() for v in m.group(1).split(",") if v.strip()] if m else []
+
+
 # `--max-context-kib` verilmezse bağlam tavanını modelin `/models` kaydından (bağlam penceresi + çıkış payı) türeten
 # ucli'nin `chat --help`inde geçen ifade. Türetme ve bu yardım metni unified-cli `66a1004`te (2026-11-04) BİRLİKTE geldi;
 # `--max-context-kib`in kendi yardım metni o commit'te güncellenmedi (hâlâ sağlayıcı sabitini anlatıyor), o yüzden

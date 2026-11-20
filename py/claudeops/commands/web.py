@@ -5412,7 +5412,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/ucli/checks":
             from .. import ucli_checks as _ck
             data, err = _ck.load_registry()
-            self._json({"ok": not err or "kaydı yok" in err, "checks": data.get("check", []), "error": "" if "kaydı yok" in err else err})
+            self._json({"ok": not err or "kaydı yok" in err, "checks": data.get("check", []), "error": "" if "kaydı yok" in err else err,
+                        "templates": _ck.TEMPLATES})
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())
@@ -6149,10 +6150,15 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/ucli/checks":
             # {check:[...]} kaydı değiştirir; {delete: ad} bir kontrolü siler (admin.config; biçim ön denetimi, 0600 atomik yazım)
             from .. import ucli_checks as _ck
+            from ..ucli_client import resolve_binary as _rb
+            try:
+                _bin = _rb()
+            except Exception:
+                _bin = ""
             if data.get("delete"):
-                ok, err = _ck.delete_check(str(data["delete"]))
+                ok, err = _ck.delete_check(str(data["delete"]), binary=_bin)
             else:
-                ok, err = _ck.save_registry({"check": data.get("check")})
+                ok, err = _ck.save_registry({"check": data.get("check")}, binary=_bin)
             self._json({"ok": ok, "error": err}, status=200 if ok else 400)
             return
 

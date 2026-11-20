@@ -18,21 +18,13 @@ interface Check {
   network?: string;
   [k: string]: unknown;
 }
-interface Registry { ok: boolean; checks: Check[]; error?: string }
-
-const TEMPLATES: Record<string, Check> = {
-  "claudeops unittest": { name: "unittest", description: "py/tests unittest (tümü)", argv: ["python3", "-m", "unittest", "discover", "-s", "tests"] },
-  "claudeops tsc": { name: "tsc", description: "webui tsc --noEmit", argv: ["npx", "tsc", "--noEmit"] },
-  "git status": { name: "git-status", description: "git status (salt okunur)", argv: ["git", "status", "--short"] },
-  "git diff": { name: "git-diff", description: "git diff (salt okunur)", argv: ["git", "diff", "--stat"] },
-  "git log": { name: "git-log", description: "git log (salt okunur)", argv: ["git", "log", "--oneline", "-20"] },
-  "k8s get pods (ağ: host)": { name: "k8s-get-pods", description: "kubectl get pods (salt okunur; dar ServiceAccount kubeconfig kullanın)", argv: ["kubectl", "get", "pods"], network: "host" },
-};
+interface Registry { ok: boolean; checks: Check[]; error?: string; templates?: Record<string, Check> }
 
 export function UcliChecksSection() {
   const { lang, t } = useLang();
   const tr = lang === "tr";
   const [checks, setChecks] = useState<Check[]>([]);
+  const [templates, setTemplates] = useState<Record<string, Check>>({});
   const [raw, setRaw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,6 +33,7 @@ export function UcliChecksSection() {
     try {
       const r = await apiGet<Registry>("/api/ucli/checks");
       setChecks(r.checks ?? []);
+      setTemplates(r.templates ?? {});
       setRaw(JSON.stringify({ check: r.checks ?? [] }, null, 1));
       setErr(r.ok ? "" : r.error ?? "");
     } catch (e) {
@@ -68,7 +61,7 @@ export function UcliChecksSection() {
     void post({ check: parsed.check });
   }
   function addTemplate(key: string) {
-    const tpl = TEMPLATES[key];
+    const tpl = templates[key];
     if (!tpl || checks.some((c) => c.name === tpl.name)) { showToast(tr ? "Bu ad zaten var" : "Name already exists"); return; }
     void post({ check: [...checks, tpl] });
   }
@@ -100,7 +93,7 @@ export function UcliChecksSection() {
         {tr ? "Şablon ekle" : "Add template"}
         <select value="" disabled={busy} onChange={(e) => { if (e.target.value) addTemplate(e.target.value); }}>
           <option value="">—</option>
-          {Object.keys(TEMPLATES).map((k) => <option key={k} value={k}>{k}</option>)}
+          {Object.keys(templates).map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
       </label>
       <textarea
