@@ -248,7 +248,7 @@ function AppShell() {
         {data && activeTab === "readlist" && <ReadlistTab search={search} />}
         {data && activeExt && (
           <ExtensionBoundary key={activeExt.id + lang} label={t.extLoadFailed}>
-            <ExtensionTab ext={activeExt} openSession={openExtSession} />
+            <ExtensionTab ext={activeExt} openSession={openExtSession} search={search} />
           </ExtensionBoundary>
         )}
         {data && activeTab === "diag" && <DiagnosticsTab onAskSuccess={handleDiagAskSuccess} />}

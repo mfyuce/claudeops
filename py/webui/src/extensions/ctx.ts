@@ -27,6 +27,8 @@ export interface ExtCtxV1 {
   apiPost<T = unknown>(path: string, body: object): Promise<T>;
   toast(text: string, kind?: ToastKind): void;
   openSession(host: string, name: string): void;
+  /** Panelin üst arama kutusu (alan EKLENDİ, uiApiVersion 1 kalır): `get()` güncel metin, `subscribe(fn)` her değişimde `fn(metin)` çağırır ve çözücü döner. */
+  search: { get(): string; subscribe(fn: (q: string) => void): () => void };
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -48,7 +50,14 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function makeExtCtx(opts: { lang: Lang; openSession: (host: string, name: string) => void }): ExtCtxV1 {
+export interface ExtSearchSource {
+  get(): string;
+  subscribe(fn: (q: string) => void): () => void;
+}
+
+const NO_SEARCH: ExtSearchSource = { get: () => "", subscribe: () => () => {} };
+
+export function makeExtCtx(opts: { lang: Lang; openSession: (host: string, name: string) => void; search?: ExtSearchSource }): ExtCtxV1 {
   void TOKEN;
   return {
     uiApiVersion: 1,
@@ -58,5 +67,6 @@ export function makeExtCtx(opts: { lang: Lang; openSession: (host: string, name:
       call<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     toast: (text, kind = "info") => showToast(text, kind),
     openSession: opts.openSession,
+    search: opts.search ?? NO_SEARCH,
   };
 }
