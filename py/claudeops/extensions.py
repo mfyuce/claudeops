@@ -161,6 +161,17 @@ class ExtensionAPI:
         from . import authz
         authz.set_spawn_hook(fn)
 
+    def set_outbound_signer(self, fn: Callable[..., Dict[str, str]]) -> None:
+        """Giden uzak-host isteklerine imza başlığı: `fn(principal, host, method, path, body|None) -> {başlık: değer}`;
+        `authz.OutboundRefused` fırlatırsa istek gönderilmez (imzalı kimlik iletimi)."""
+        from . import authz
+        authz.set_outbound_signer(fn)
+
+    def set_status_extra(self, key: str, fn: Callable[[], Any]) -> None:
+        """`/api/status` köküne `key: fn()` ekle (None dönerse eklenmez)."""
+        from . import authz
+        authz.set_status_extra(key, fn)
+
     def set_authorizer(self, fn: Callable[[Any, str, Any], bool]) -> None:
         """K2: `fn(Principal, action, Resource) -> bool` (istisna/False = 403)."""
         from . import authz

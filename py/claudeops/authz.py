@@ -197,6 +197,7 @@ def reset() -> None:
         global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER, _SPAWN_HOOK, _OUTBOUND_SIGNER
         _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = _SPAWN_HOOK = _OUTBOUND_SIGNER = None
         _AUDIT_SINKS.clear()
+        _STATUS_EXTRAS.clear()
         _EVENT_SINKS.clear()
         _EXT_ACTIONS.clear()
 
@@ -207,6 +208,31 @@ def has_authenticator() -> bool:
 
 def has_authorizer() -> bool:
     return _AUTHORIZER is not None
+
+
+_STATUS_EXTRAS: Dict[str, Callable[[], Any]] = {}
+
+
+def set_status_extra(key: str, fn: Optional[Callable[[], Any]]) -> None:
+    """`/api/status` köküne `key: fn()` ekler (eklenti ilanı, ör. `fwd`). `fn` None döndürürse ya da istisna atarsa anahtar eklenmez."""
+    with _LOCK:
+        if fn is None:
+            _STATUS_EXTRAS.pop(key, None)
+        else:
+            _STATUS_EXTRAS[key] = fn
+
+
+def status_extras() -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, fn in list(_STATUS_EXTRAS.items()):
+        try:
+            v = fn()
+        except Exception as e:      # noqa: BLE001
+            _log("authz_status_extra_failed", key=k, error=f"{type(e).__name__}: {e}"[:200])
+            continue
+        if v is not None:
+            out[k] = v
+    return out
 
 
 def has_outbound_signer() -> bool:

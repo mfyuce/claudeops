@@ -93,3 +93,19 @@ class OutboundSignerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StatusExtraTest(unittest.TestCase):
+    def tearDown(self):
+        authz.reset()
+
+    def test_extras(self):
+        authz.set_status_extra("fwd", lambda: {"api": 1})
+        authz.set_status_extra("none", lambda: None)
+
+        def boom():
+            raise RuntimeError("x")
+        authz.set_status_extra("bad", boom)
+        self.assertEqual(authz.status_extras(), {"fwd": {"api": 1}})
+        authz.set_status_extra("fwd", None)
+        self.assertEqual(authz.status_extras(), {})

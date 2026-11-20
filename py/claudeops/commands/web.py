@@ -59,6 +59,7 @@ from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
 from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_hosts_public
 from .. import build_info
+from .. import authz
 from .. import host_probe
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
@@ -1942,6 +1943,7 @@ def _status_payload() -> dict:
         # Claude hizmetli ucli oturumlarının bugünkü $ toplamı + günlük tavan (Ayarlar > ucli_cost); ucli_cost.state() 30 sn önbellekli
         "ucli_cost": ucli_cost.state(),
         "orphan_watch": periodic.orphan_summary(),    # sahipsiz kaynak denetimi (sahip 20 Kas): sahipsiz tmux sunucusu/CLI süreci sayısı
+        **authz.status_extras(),                   # eklenti ilanları (ör. `fwd`: imzalı kimlik iletimi); kanca yoksa boş
         "disk_clean": periodic.disk_summary(),     # disk %, son temizlik koşusu (sahip 20 Kas); Hostlar'da host başına gösterilir
         "build": build_info.info(),     # çalışan commit / diskteki commit / stale (merge sonrası restart yapıldı mı)
         # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine
