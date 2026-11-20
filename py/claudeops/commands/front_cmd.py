@@ -92,7 +92,7 @@ def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[
     new = with_internal_port(es, internal) if es else None
     if new is None:
         blockers.append("claudeops-web.service ExecStart biçimi tanınmadı (…claudeops web); elle drop-in gerekir")
-    if port_busy(internal):
+    if port_busy(internal) and not DROPIN.exists():      # drop-in varsa zaten açık: yeniden uygulama (birim güncelle) serbest
         blockers.append(f"iç port dolu: {internal}")
     steps = [f"gizli: {front_mod.secret_path()} (0600, yoksa üret)",
              f"yaz: {FRONT_UNIT} ({binp} --listen {listen} --upstream {internal} --dist {DIST_DIR})",
@@ -125,11 +125,14 @@ def run(args) -> int:
         if not args.apply:
             print("(plan; uygulamak için --apply)")
             return 0
+        reapply = DROPIN.exists() and port_busy(args.internal)       # zaten açık: Python'a dokunma, yalnız front birimini yenile
         front_mod.ensure_secret()
         FRONT_UNIT.write_text(FRONT_UNIT_TEMPLATE.format(bin=args.bin, listen=args.listen, internal=args.internal, dist=DIST_DIR))
         DROPIN.parent.mkdir(parents=True, exist_ok=True)
         DROPIN.write_text(dropin_text(with_internal_port(web_execstart(text) or "", args.internal) or ""))
-        for cmd in (("daemon-reload",), ("restart", "claudeops-web.service"), ("enable", "--now", "claudeops-front.service")):
+        cmds = (("daemon-reload",), ("enable", "--now", "claudeops-front.service"), ("restart", "claudeops-front.service")) if reapply else \
+               (("daemon-reload",), ("restart", "claudeops-web.service"), ("enable", "--now", "claudeops-front.service"))
+        for cmd in cmds:
             if _sc(*cmd) != 0:
                 print(f"HATA: systemctl --user {' '.join(cmd)}")
                 return 1
