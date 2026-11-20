@@ -3464,6 +3464,68 @@ def _usage_fresh_tui(provider, now: Optional[float] = None) -> Optional[dict]:
     return None
 
 
+_USAGE_SOCK_PREFIX = "cops-usage-"
+_USAGE_SOCK_MAX_AGE = 600.0      # bir okuma en çok ~45 sn sürer; 10 dk'dan eski soket yetimdir (panel okuma ortasında öldürüldü/yeniden başlatıldı)
+
+
+def _usage_sock_dir() -> str:
+    return f"/tmp/tmux-{os.getuid()}"
+
+
+def _isolated_state() -> bool:
+    """`CLAUDEOPS_DIR` varsayılan (`~/.claude/claudeops`) değilse bu panel izole/e2e/test'tir."""
+    from ..paths import CLAUDEOPS_DIR as cd, CLAUDE_DIR as cl
+    return os.path.realpath(cd) != os.path.realpath(os.path.join(cl, "claudeops"))
+
+
+def usage_tui_sweep(now: Optional[float] = None, sock_dir: Optional[str] = None) -> int:
+    """Yetim `cops-usage-*` tmux sunucularını kapat + soket dosyalarını sil (sahip bug 20 Kas: panel restart'ı okuma ortasında `finally`yi
+    atlatınca 19 Kas'tan 20 Kas'a açık kalan copilot sunucuları). Yetim = pid'i ölü ya da soket mtime'ı `_USAGE_SOCK_MAX_AGE`'den eski
+    (şu an çalışan kendi okumamız taze, dokunulmaz). Kapatılan sayısı döner; asla fırlatmaz."""
+    import subprocess
+    t = time.time() if now is None else now
+    d = sock_dir or _usage_sock_dir()
+    n = 0
+    try:
+        names = [x for x in os.listdir(d) if x.startswith(_USAGE_SOCK_PREFIX)]
+    except OSError:
+        return 0
+    for name in names:
+        path = os.path.join(d, name)
+        try:
+            age = t - os.stat(path).st_mtime
+        except OSError:
+            continue
+        try:
+            pid = int(name.rsplit("-", 1)[1])
+        except (ValueError, IndexError):
+            pid = 0
+        alive = False
+        if pid and pid != os.getpid():
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except PermissionError:
+                alive = True
+            except OSError:
+                alive = False
+        elif pid == os.getpid():
+            alive = True
+        if alive and age < _USAGE_SOCK_MAX_AGE:
+            continue
+        try:
+            subprocess.run(["tmux", "-L", name, "kill-server"], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        n += 1
+        diag_log("usage_tui_orphan_closed", sock=name, age=int(age), pid_alive=alive)
+    return n
+
+
 def _usage_fresh_tui_run(provider) -> Optional[dict]:
     """Oturumsuz okuma, TUI yolu: ayrı tmux soketinde geçici CLI (fleet'e/oturumlara dokunmaz), `/usage` yaz, ekranı oku, kapat.
     Başarısızlıkta None. Soket HER yolda kapatılır."""
@@ -3471,9 +3533,14 @@ def _usage_fresh_tui_run(provider) -> Optional[dict]:
     cmd = provider.usage_command()
     if not argv or not cmd:
         return None
+    if _isolated_state():       # izole/e2e/test paneli gerçek copilot/claude'a DOKUNMAZ (19 Kas yetim sunucuların kaynağı)
+        return None
     import subprocess
-    sock = f"cops-usage-{provider.name}-{os.getpid()}"
+    usage_tui_sweep()      # önceki (öldürülmüş panelden kalan) yetimleri topla
+    sock = f"{_USAGE_SOCK_PREFIX}{provider.name}-{os.getpid()}"
     base = ["tmux", "-L", sock]
+    if shutil.which("timeout"):      # panel okuma ortasında ölse bile CLI kendiliğinden biter, tek oturumluk sunucu da onunla gider
+        argv = ["timeout", "90"] + list(argv)
 
     def _t(*a, timeout=10):
         return subprocess.run(base + list(a), capture_output=True, text=True, timeout=timeout)
@@ -6559,6 +6626,10 @@ def run(args) -> int:
     web_steward.configure(status_payload=_status_payload, fleet_status=_fleet_status, start=_start, stop=_stop,
                           handover=_handover, register_project=_register_project)
     web_steward.start_loop()
+    try:
+        usage_tui_sweep()       # önceki panelden (SIGTERM ile öldürülmüş) kalan cops-usage-* tmux sunucuları
+    except Exception:
+        pass
     ucli_agents.set_panel_port(args.port)       # ucli oturumlarına `UCLI_AGENT_URL` için (yeni oturumlar bunu kullanır)
     web_agents.start_reaper(_AGENT_OPS)
     grpc_port = args.grpc_port if args.grpc_port is not None else args.port + 1
