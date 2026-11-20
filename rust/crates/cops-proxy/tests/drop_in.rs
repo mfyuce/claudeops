@@ -102,3 +102,63 @@ async fn internal_paths_are_never_forwarded() {
         assert!(r.starts_with("HTTP/1.1 404"), "{path}: {r}");
     }
 }
+
+#[tokio::test]
+async fn unread_post_body_does_not_poison_next_request() {
+    // Upstream gövdeyi OKUMADAN yanıtlayıp bağlantıyı açık tutan bir sunucu gibi davranır: her bağlantıda ilk istek satırından sonrasını yok sayar.
+    let ln = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let up = ln.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let (mut c, _) = ln.accept().await.unwrap();
+            tokio::spawn(async move {
+                let mut acc = Vec::new();
+                let mut buf = vec![0u8; 4096];
+                loop {
+                    let n = c.read(&mut buf).await.unwrap_or(0);
+                    if n == 0 { break; }
+                    acc.extend_from_slice(&buf[..n]);
+                    let t = String::from_utf8_lossy(&acc).to_string();
+                    // başlık bitince gövdeyi sayma: hemen yanıtla
+                    if let Some(i) = t.find("\r\n\r\n") {
+                        let first = t.lines().next().unwrap_or("").to_string();
+                        let poisoned = !t.starts_with("GET") && !t.starts_with("POST");
+                        let body = if poisoned { "POISONED".to_string() } else { first };
+                        let r = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", body.len(), body);
+                        c.write_all(r.as_bytes()).await.unwrap();
+                        acc = acc.split_off((i + 4).min(acc.len())); // gövde baytları bağlantıda kalır (artık)
+                    }
+                }
+            });
+        }
+    });
+    let p = start_proxy(up).await;
+    let _ = raw(p, "POST /api/ws-ticket HTTP/1.1\r\nHost: a\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}").await;
+    let r = raw(p, "GET /x HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n").await;
+    assert!(r.contains("GET /x") && !r.contains("POISONED"), "{r}");
+}
+
+#[tokio::test]
+async fn static_assets_served_from_dist_with_headers_and_no_escape() {
+    let d = std::env::temp_dir().join(format!("copsd_dist_{}", std::process::id()));
+    std::fs::create_dir_all(d.join("assets")).unwrap();
+    std::fs::write(d.join("assets/app-1.js"), "console.log(1)").unwrap();
+    std::fs::write(d.join("favicon.svg"), "<svg/>").unwrap();
+    std::fs::write(d.parent().unwrap().join("copsd_secret_outside.txt"), "SECRETFILE").unwrap();
+    let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    drop(l);
+    let px = cops_proxy::Proxy::new(fake_upstream().await).with_dist(d.clone());
+    tokio::spawn(cops_proxy::serve(addr, px));
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    let r = raw(addr, "GET /assets/app-1.js HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n").await;
+    assert!(r.starts_with("HTTP/1.1 200") && r.contains("console.log(1)"), "{r}");
+    let lr = r.to_ascii_lowercase();
+    assert!(lr.contains("immutable") && lr.contains("application/javascript") && lr.contains("nosniff") && lr.contains("frame-ancestors"), "{r}");
+    let r = raw(addr, "GET /favicon.svg HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n").await;
+    assert!(r.to_ascii_lowercase().contains("no-cache") && r.contains("<svg/>"), "{r}");
+    // dist dışına kaçış: Python'a (sahte upstream) düşer, dosya içeriği ASLA dönmez
+    let r = raw(addr, "GET /assets/../../copsd_secret_outside.txt HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n").await;
+    assert!(!r.contains("SECRETFILE"), "{r}");
+    assert!(cops_proxy::resolve_static(&d, "/assets/../../copsd_secret_outside.txt").is_none());
+}

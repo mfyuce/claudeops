@@ -16,8 +16,11 @@ pub type Body = BoxBody<Bytes, hyper::Error>;
 /// Hop-by-hop başlıklar (RFC 9110 7.6.1); vekil iki yönde de düşürür (yükseltmede Connection/Upgrade korunur).
 const HOP: [&str; 7] = ["keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "proxy-connection"];
 
+// Upstream bağlantı HAVUZU KAPALI (pool_max_idle_per_host(0)): Python bazı POST uçlarında gövdeyi okumadan yanıtlıyor (ör. /api/ws-ticket),
+// artık baytlar keep-alive bağlantıda sonraki isteğin başına yapışırdı ('{}GET' -> 501). Loopback'te yeni bağlantı maliyeti ihmal edilebilir.
 pub struct Proxy {
     upstream: SocketAddr,
+    dist: Option<std::path::PathBuf>,
     secret: Option<HeaderValue>,
     client: Client<HttpConnector, Incoming>,
 }
@@ -41,17 +44,81 @@ fn err(code: StatusCode, msg: &str) -> Response<Body> {
     Response::builder().status(code).header("content-type", "text/plain; charset=utf-8").body(b).unwrap()
 }
 
+/// Python `end_headers`taki CSP ile BİREBİR aynı olmalı (py/tests/test_front_internal.py eşitlik testi okur).
+pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'";
+
+fn mime(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "js" | "mjs" => "application/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "svg" => "image/svg+xml; charset=utf-8",
+        "html" => "text/html; charset=utf-8",
+        "json" | "map" => "application/json; charset=utf-8",
+        "txt" => "text/plain; charset=utf-8",
+        "png" => "image/png",
+        "ico" => "image/x-icon",
+        "woff2" => "font/woff2",
+        "woff" => "font/woff",
+        "webp" => "image/webp",
+        _ => "application/octet-stream",
+    }
+}
+
+/// `url_path` -> dist altında GERÇEK dosya (symlink/`..` kaçışı dist dışına çıkarsa None). Yalnız `/assets/*` ve `/favicon.svg`.
+pub fn resolve_static(dist: &std::path::Path, url_path: &str) -> Option<std::path::PathBuf> {
+    if !(url_path.starts_with("/assets/") || url_path == "/favicon.svg") {
+        return None;
+    }
+    let root = dist.canonicalize().ok()?;
+    let cand = root.join(url_path.trim_start_matches('/')).canonicalize().ok()?;
+    if cand.starts_with(&root) && cand.is_file() { Some(cand) } else { None }
+}
+
 impl Proxy {
+    fn try_static(&self, req: &Request<Incoming>) -> Option<Response<Body>> {
+        let dist = self.dist.as_ref()?;
+        let head = req.method() == hyper::Method::HEAD;
+        if req.method() != hyper::Method::GET && !head {
+            return None;
+        }
+        let f = resolve_static(dist, req.uri().path())?;
+        let data = std::fs::read(&f).ok()?;
+        let cache = if f.starts_with(dist.canonicalize().ok()?.join("assets")) { "public, max-age=31536000, immutable" } else { "no-cache" };
+        let len = data.len();
+        let body = if head { Bytes::new() } else { Bytes::from(data) };
+        let b = http_body_util::Full::new(body).map_err(|n| match n {}).boxed();
+        Some(
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", mime(&f))
+                .header("content-length", len.to_string())
+                .header("cache-control", cache)
+                .header("x-content-type-options", "nosniff")
+                .header("referrer-policy", "no-referrer")
+                .header("x-frame-options", "DENY")
+                .header("content-security-policy", CSP)
+                .body(b)
+                .unwrap(),
+        )
+    }
+
     pub fn new(upstream: SocketAddr) -> Arc<Self> {
-        let client = Client::builder(TokioExecutor::new()).build_http();
-        Arc::new(Proxy { upstream, secret: None, client })
+        let client = Client::builder(TokioExecutor::new()).pool_max_idle_per_host(0).build_http();
+        Arc::new(Proxy { upstream, dist: None, secret: None, client })
+    }
+
+    /// `dist` (py/webui/dist) verilirse `/assets/*` ve `/favicon.svg` (token'sız taşınan statikler) diskten Rust'ta sunulur; dosya yoksa
+    /// istek Python'a aktarılır (404 kararı Python'da kalır). Gömülü DEĞİL: dist değişince yeniden başlatma gerekmez.
+    pub fn with_dist(self: Arc<Self>, dist: std::path::PathBuf) -> Arc<Self> {
+        let me = Arc::try_unwrap(self).ok().expect("tek sahip");
+        Arc::new(Proxy { dist: Some(dist), ..me })
     }
 
     /// Ön kapı gizlisi: Python'un `X-Forwarded-For`a güvenmesi için her aktarılan isteğe `X-Cops-Front` olarak eklenir;
     /// istemciden gelen aynı adlı başlık her zaman düşürülür.
     pub fn with_secret(upstream: SocketAddr, secret: &str) -> Arc<Self> {
-        let client = Client::builder(TokioExecutor::new()).build_http();
-        Arc::new(Proxy { upstream, secret: HeaderValue::from_str(secret).ok(), client })
+        let client = Client::builder(TokioExecutor::new()).pool_max_idle_per_host(0).build_http();
+        Arc::new(Proxy { upstream, dist: None, secret: HeaderValue::from_str(secret).ok(), client })
     }
 
     /// `peer`: bağlanan istemcinin adresi (X-Forwarded-For için). İstemcinin gönderdiği X-Forwarded-For'a GÜVENİLMEZ, üzerine yazılır.
@@ -60,6 +127,9 @@ impl Proxy {
         // herkes iç kimlik/bilet uçlarını güvenilir çağrıcı gibi çağırabilirdi. Yalnız Rust'un KENDİ iç çağrıları (loopback) bu yola gider.
         if req.uri().path().trim_start_matches('/').to_ascii_lowercase().starts_with("api/_internal") {
             return Ok(err(StatusCode::NOT_FOUND, "not found"));
+        }
+        if let Some(r) = self.try_static(&req) {
+            return Ok(r);
         }
         let upgrade = is_upgrade(req.headers());
         let pq = req.uri().path_and_query().map(|p| p.as_str().to_string()).unwrap_or_else(|| "/".into());

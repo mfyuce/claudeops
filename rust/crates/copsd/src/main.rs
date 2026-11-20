@@ -1,5 +1,6 @@
 //! copsd: OSS ön sunucu. D0 = saf vekil: `--listen` (varsayılan 127.0.0.1:8765) -> `--upstream` (Python iç port, varsayılan 127.0.0.1:18765).
 //! Ön kapı gizlisi: `--secret-file` (varsayılan ~/.claude/claudeops/front.secret; 0600 değilse REDDEDİLİR) ya da `CLAUDEOPS_FRONT_SECRET`.
+//! `--dist <py/webui/dist>`: /assets/* ve /favicon.svg diskten sunulur (yoksa Python'a aktarılır).
 //! Ortam: `COPSD_LISTEN`, `COPSD_UPSTREAM` bayrakların yedeğidir.
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
@@ -43,6 +44,10 @@ async fn main() -> std::io::Result<()> {
     let proxy = match secret {
         Some(sec) => cops_proxy::Proxy::with_secret(up, &sec),
         None => cops_proxy::Proxy::new(up),
+    };
+    let proxy = match arg("--dist") {
+        Some(d) => proxy.with_dist(std::path::PathBuf::from(d)),
+        None => proxy,
     };
     cops_proxy::serve(listen, proxy).await
 }

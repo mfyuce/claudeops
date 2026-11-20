@@ -25,8 +25,8 @@ class T(unittest.TestCase):
         self.assertTrue(any("tanınmadı" in b for b in bl))
 
     def test_unit_template_has_no_secret(self):
-        u = f.FRONT_UNIT_TEMPLATE.format(bin="/b/copsd", listen="a:1", internal="b:2")
-        self.assertIn("--upstream b:2", u)
+        u = f.FRONT_UNIT_TEMPLATE.format(bin="/b/copsd", listen="a:1", internal="b:2", dist="/d")
+        self.assertIn("--upstream b:2 --dist /d", u)
         self.assertNotIn("SECRET", u.upper())
 
 

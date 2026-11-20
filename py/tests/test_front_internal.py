@@ -102,3 +102,15 @@ class Wiring(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CspParity(unittest.TestCase):
+    def test_rust_csp_equals_python_csp(self):
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        rs = open(os.path.join(base, "..", "rust", "crates", "cops-proxy", "src", "lib.rs"), encoding="utf-8").read()
+        import re
+        rust = re.search(r'pub const CSP: &str = "([^"]+)"', rs).group(1)
+        py = open(os.path.join(base, "claudeops", "commands", "web.py"), encoding="utf-8").read()
+        i = py.index('"Content-Security-Policy",')
+        joined = "".join(re.findall(r'"([^"]*)"', py[i:i + 400].split(")")[0])[1:])
+        self.assertEqual(rust, joined)

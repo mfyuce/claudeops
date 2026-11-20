@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .. import front as front_mod
+from .web_static import DIST_DIR
 from ..paths import CLAUDEOPS_DIR, HOME
 
 UNIT_DIR = Path(HOME) / ".config" / "systemd" / "user"
@@ -35,7 +36,7 @@ Description=claudeops front (copsd, Rust vekil)
 # Python birimine bağımlı DEĞİL: Python düşükken ön kapı ayakta kalır (vekil uçlar 502 verir).
 
 [Service]
-ExecStart={bin} --listen {listen} --upstream {internal}
+ExecStart={bin} --listen {listen} --upstream {internal} --dist {dist}
 Restart=always
 RestartSec=2
 UMask=0077
@@ -94,7 +95,7 @@ def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[
     if port_busy(internal):
         blockers.append(f"iç port dolu: {internal}")
     steps = [f"gizli: {front_mod.secret_path()} (0600, yoksa üret)",
-             f"yaz: {FRONT_UNIT} ({binp} --listen {listen} --upstream {internal})",
+             f"yaz: {FRONT_UNIT} ({binp} --listen {listen} --upstream {internal} --dist {DIST_DIR})",
              f"yaz: {DROPIN} (Python -> {internal})",
              "systemctl --user daemon-reload", "systemctl --user restart claudeops-web.service (Python iç porta geçer, dış port boşalır)",
              "systemctl --user enable --now claudeops-front.service"]
@@ -125,7 +126,7 @@ def run(args) -> int:
             print("(plan; uygulamak için --apply)")
             return 0
         front_mod.ensure_secret()
-        FRONT_UNIT.write_text(FRONT_UNIT_TEMPLATE.format(bin=args.bin, listen=args.listen, internal=args.internal))
+        FRONT_UNIT.write_text(FRONT_UNIT_TEMPLATE.format(bin=args.bin, listen=args.listen, internal=args.internal, dist=DIST_DIR))
         DROPIN.parent.mkdir(parents=True, exist_ok=True)
         DROPIN.write_text(dropin_text(with_internal_port(web_execstart(text) or "", args.internal) or ""))
         for cmd in (("daemon-reload",), ("restart", "claudeops-web.service"), ("enable", "--now", "claudeops-front.service")):
