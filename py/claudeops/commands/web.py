@@ -5532,7 +5532,13 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/ucli/checks-mode":
             from .. import ucli_checks as _ck
             from ..ucli_client import state_dir_for as _sdf
-            nm = (parse_qs(urlparse(self.path).query).get("name") or [""])[0]
+            _qs = parse_qs(urlparse(self.path).query)
+            nm = (_qs.get("name") or [""])[0]
+            _host = _host_from_qs(_qs)
+            if _host != LOCAL_HOST_NAME:        # uzak hostun kendi oturumu/state-dir'i (TBD#264)
+                result, status = web_hosts.proxy_get(path, _host, {"name": nm}, dedup=False)
+                self._json(result, status=status)
+                return
             inst = inst_mod.get_instance(nm) or {}
             co = (inst.get("cli_opts") or {}).get("ucli_checks") or {}
             if not co:
@@ -5542,6 +5548,11 @@ class _Handler(BaseHTTPRequestHandler):
                             **_ck.get_mode(_sdf(str(inst.get("cwd") or "")), nm)})
         elif path == "/api/ucli/checks":
             from .. import ucli_checks as _ck
+            _host = _host_from_qs(parse_qs(urlparse(self.path).query))
+            if _host != LOCAL_HOST_NAME:        # uzak hostun kendi kayıt dosyası (TBD#264)
+                result, status = web_hosts.proxy_get(path, _host, {}, dedup=False)
+                self._json(result, status=status)
+                return
             data, err = _ck.load_registry()
             self._json({"ok": not err or "kaydı yok" in err, "checks": data.get("check", []), "error": "" if "kaydı yok" in err else err,
                         "templates": _ck.TEMPLATES})
