@@ -301,6 +301,8 @@ export interface Strings {
   autoNameHint: (name: string, date: string) => string;
   starting: string;
   newChatStarted: string;
+  restartRolledBack: (name: string) => string;
+  restartRollbackFailed: (name: string) => string;
   layoutDesc: string;
   layoutMissingPrefix: string;
   layoutMissingSuffix: string;
@@ -1207,6 +1209,8 @@ export const STRINGS: Record<Lang, Strings> = {
     autoNameHint: (name, date) => `isim otomatik: ${name}${date} (çakışırsa _1, _2…)`,
     starting: "başlıyor…",
     newChatStarted: "yeni chat başlatıldı: ",
+    restartRolledBack: (name) => `${name}: yeni chat açılamadı, eski oturum aynı ayarlarla geri başlatıldı`,
+    restartRollbackFailed: (name) => `${name}: yeni chat açılamadı ve eski oturum geri başlatılamadı (oturumsuz kaldı, elle Başlat'a bas)`,
     layoutDesc: "X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz",
     layoutMissingPrefix: "⚠ eksik: ",
     layoutMissingSuffix: " — kurmak için: sudo apt install -y ",
@@ -2220,6 +2224,8 @@ export const STRINGS: Record<Lang, Strings> = {
     autoNameHint: (name, date) => `name auto-generated: ${name}${date} (adds _1, _2… on conflict)`,
     starting: "starting…",
     newChatStarted: "new chat started: ",
+    restartRolledBack: (name) => `${name}: new chat could not start; the old session was started again with its recorded settings`,
+    restartRollbackFailed: (name) => `${name}: new chat could not start and the old session could not be restarted (no session left; press Start manually)`,
     layoutDesc: "X11 desktop — does not work on Wayland/locked screen",
     layoutMissingPrefix: "⚠ missing: ",
     layoutMissingSuffix: " — install with: sudo apt install -y ",
