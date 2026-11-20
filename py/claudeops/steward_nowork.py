@@ -38,12 +38,15 @@ def check_session(v: Any, proj: Any, state: Dict[str, Any], cfg: sw.Config, now:
     min_idle = float(getattr(cfg, "no_work_close_minutes", 30) or 30)
     review_why = (ctx.get("review") or {}).get(proj_name, "")
     session_asked = any(m in txt for m in SESSION_ASK_MARKERS)
+    # 'sahipte' metni kayıtlı soru olmadan susturur (21 Kas): tek seferlik dürtme gittiyse ve oturum ondan SONRA yine boşta ise engel değil
+    onudge = (state.get("owner_claim_nudge") or {}).get(proj_name) or {}
+    owner_claim_blocks = sw.owner_wait(txt) and not (onudge and onudge.get("session") == v.name and since > float(onudge.get("at") or 0))
     checks = {
         "no_work": no_work,                                                                  # iş yok (no_next_work/next_none)
         "idle": v.busy is False and since > 0 and idle_min >= min_idle,                      # boşta >= 30 dk
         "no_subagent": not (getattr(v, "subagent_active", False) or getattr(v, "subagent_unknown", False)),
         "no_question": (proj_name not in (ctx.get("open_q") or ()) and proj_name not in (ctx.get("answer_pending") or ())
-                        and not session_asked and not sw.waiting_for_gate(txt) and not sw.owner_wait(txt) and not sw.turn_failed(txt)),
+                        and not session_asked and not sw.waiting_for_gate(txt) and not owner_claim_blocks and not sw.turn_failed(txt)),
         "no_review_item": not review_why and proj_name not in (ctx.get("jobs") or ()),       # bulgu/ders/koşan review/açık varaka işi YOK
     }
     why = ""

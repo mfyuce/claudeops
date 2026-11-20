@@ -36,6 +36,12 @@ def is_sensitive(rec: Dict[str, Any], body: bool = False) -> bool:
     return bool(_SENSITIVE_RE.search(f"{rec.get('title') or ''} {rec.get('where') or ''}" + (f" {rec.get('body') or ''}" if body else "")))
 
 
+def body_sensitive(rec: Dict[str, Any]) -> bool:
+    """Gövdede parola/gizli desen var mı (TBD#268 c, sahip 22 Kas): otomatik onayı ENGELLEMEZ, iletimde/dışa yazımda GÖVDE çıkarılır
+    (yalnız başlık + yer gider)."""
+    return bool(_SENSITIVE_RE.search(str(rec.get("body") or "")))
+
+
 def todo_status(path: str, cwd: str, fid: str) -> str:
     """Bulgunun `(review <fid>)` satırı: "open" (`- [ ]`), "done" (`- [x]`), "missing" (dosya/satır yok ya da dosya proje
     klasörü DIŞINDA). Yol güvenliği: gerçek yol `cwd` altında olmalı, 2 MB sınırı, okunamazsa "missing"."""
@@ -76,7 +82,7 @@ def candidates(findings_by_sid: Iterable[Dict[str, Any]], cwd_of, remote_of=None
             proj = str(rec.get("project") or "")
             host = (remote_of(proj) if remote_of and proj else "") or ""
             if host:
-                if rec.get("state") not in ("approved", "exported") or is_sensitive(rec, body=True):
+                if rec.get("state") not in ("approved", "exported") or is_sensitive(rec):
                     continue
             elif rec.get("state") != "exported" or is_sensitive(rec):
                 continue
@@ -85,7 +91,8 @@ def candidates(findings_by_sid: Iterable[Dict[str, Any]], cwd_of, remote_of=None
                    "where": str(rec.get("where") or ""), "title": collapse_ws(rec.get("title"))[:200],
                    "file": str(rec.get("exported_to") or "")}
             if host:
-                row.update(todo="open", remote=host, file="", body=collapse_ws(rec.get("body"))[:BODY_MAX])
+                row.update(todo="open", remote=host, file="", body="" if body_sensitive(rec) else collapse_ws(rec.get("body"))[:BODY_MAX],
+                           body_omitted=body_sensitive(rec))
                 st = (remote_todo_of(proj, fid) if remote_todo_of else "") or ""
                 if st == "done":        # uzak oturum satırı kapattı: aday değil
                     row["todo"] = "done"

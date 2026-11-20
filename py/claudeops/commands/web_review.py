@@ -14,6 +14,7 @@ import codecs
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import json
 import os
 import re
@@ -3142,7 +3143,7 @@ def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
         ok_states = ("verified",)      # R5 (sahip 17 Kas): `unclear` HİÇBİR düzeyde otomatik onaylanmaz, her zaman sahibe
         if not isinstance(rec, dict) or rec.get("state") not in ok_states or str(rec.get("severity") or "") not in sev:
             continue
-        if sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}")):
+        if sa.is_sensitive(rec):       # TBD#268 (c): yalnız başlık/yer; gövdedeki gizli desen onayı engellemez (iletimde gövde çıkar)
             continue
         if rv.decide_finding(p, fid, "approve", t, by="auto").get("ok"):
             done.append(fid)
@@ -3232,14 +3233,29 @@ def store_commit(cfg: Any, now: float, run: Optional[Callable] = None, force: bo
     os.replace(tmp, sp)
     sw.log_event("review_store_commit", paths=cfg.sid, dry=dry, ok=res.get("ok"), would=res.get("would"),
                  held=res.get("held"), committed=res.get("committed"), pushed=res.get("pushed"), error=res.get("error"))
-    if res.get("held"):
-        q = sw.add_question("", f"review saklama: gizli değer taramasını geçemeyen {len(res['held'])} dosya -prv commit'inin DIŞINDA kaldı: "
-                                + ", ".join(list(res["held"])[:5]), source="reviewer-store", options=["Tamam"], paths=p)
-        if _NOTIFY_FN is not None:
+    held = sorted(str(x) for x in (res.get("held") or []))
+    if held:
+        # soru DEĞİL bildirim (21 Kas: tek seçenekli 'Tamam' soruları 2-4 gün birikti): olay günlüğe (günlük özette görünür) + AYNI
+        # dosya kümesi için tek telefon bildirimi (küme değişmeden tekrar gitmez)
+        key = hashlib.sha1("\n".join(held).encode("utf-8")).hexdigest()[:12]
+        sw.log_event("review_store_held", paths=cfg.sid, n=len(held), files=held[:5])
+        if st.get("held_notified") != key:
             try:
-                _NOTIFY_FN(cfg.sid, q)
+                from . import web_steward
+                if web_steward.notify_phone(f"review saklama: gizli değer taramasını geçemeyen {len(held)} dosya -prv commit'inin DIŞINDA kaldı: "
+                                            + ", ".join(held[:3]), title="claudeops review"):
+                    st["held_notified"] = key
             except Exception:
                 pass
+    else:
+        st.pop("held_notified", None)
+    try:
+        tmp2 = _uniq_tmp(sp)
+        with open(tmp2, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        os.replace(tmp2, sp)
+    except OSError:
+        pass
     return int(res.get("committed") or 0)
 
 
@@ -3324,8 +3340,8 @@ def export_sensitive(rec: Dict[str, Any]) -> bool:
     """OTOMATİK dışa aktarımı engelleyen "gizli" bulgu: parola/gizli SÖZCÜĞÜ geçmesi yetmez (chats 13 Kas: 'JSON parolaların maskelenmeden...'
     bulguları 40+ dk approved'da kaldı); metinde gerçek bir gizli DEĞER var, yani `redact_secrets` metni DEĞİŞTİRİYOR. Yalnız sözcük varsa
     satır zaten `_redacted_row` ile maskelenerek yazılır, değer yoksa maskeleme no-op'tur."""
-    txt = " ".join(str(rec.get(k) or "") for k in ("title", "body", "where", "note"))
-    return bool(sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}")) and rv.redact_secrets(txt) != txt)
+    txt = " ".join(str(rec.get(k) or "") for k in ("title", "where", "note"))      # gövde hariç (TBD#268 c): gövde auto'da çıkarılır
+    return bool(sa.is_sensitive(rec) and rv.redact_secrets(txt) != txt)
 
 
 def manual_export_needed(cfg: Any) -> List[Dict[str, Any]]:
@@ -3396,9 +3412,12 @@ def auto_export(cfg: Any, now: Optional[float] = None) -> List[str]:
     return []
 
 
-def _redacted_row(r: Dict[str, Any]) -> Dict[str, Any]:
-    """Dışa yazılacak satırın metin alanlarında gizli değer maskelenir (hassas bulgu elle yazılabilir, değeri ASLA)."""
+def _redacted_row(r: Dict[str, Any], by: str = "") -> Dict[str, Any]:
+    """Dışa yazılacak satırın metin alanlarında gizli değer maskelenir (hassas bulgu elle yazılabilir, değeri ASLA). `by="auto"` ve
+    gövdede gizli desen varsa GÖVDE çıkarılır (TBD#268 c): yalnız başlık + yer yazılır."""
     out = dict(r)
+    if by == "auto" and sa.body_sensitive(out):
+        out["body"] = ""
     for k in ("title", "body", "where", "note"):
         if isinstance(out.get(k), str) and out[k]:
             out[k] = rv.redact_secrets(out[k])
@@ -3422,7 +3441,7 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str, states
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") in states and (only is None or only(v))]
         skipped_sensitive = [r["id"] for r in cand          # yereldeki gibi: hassas bulgu yalnız OTOMATİK yazımda atlanır (sahip 11 Kas "yaz")
                              if by == "auto" and export_sensitive(r)]
-        rows = [_redacted_row(r) for r in cand if r["id"] not in skipped_sensitive]
+        rows = [_redacted_row(r, by) for r in cand if r["id"] not in skipped_sensitive]
         if note:       # yerel dalla aynı: satıra durum notu (kayıttaki bulgu değişmez)
             for r in rows:
                 r["note"] = f"{r['note']}; {note}" if r.get("note") else note
@@ -3506,7 +3525,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
                 if isinstance(v, dict) and v.get("project") == project and v.get("state") in states
                 and not (by == "auto" and export_sensitive(v))
                 and (only is None or only(v))]
-        rows = [_redacted_row(r) for r in rows]
+        rows = [_redacted_row(r, by) for r in rows]
         if note:       # RTODO/RTBD: satıra durum notu (kayıttaki bulgu değişmez, yalnız yazılan satır)
             for r in rows:
                 r["note"] = f"{r['note']}; {note}" if r.get("note") else note

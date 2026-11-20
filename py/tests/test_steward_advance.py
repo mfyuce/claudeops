@@ -117,10 +117,15 @@ class RemoteAdvanceTest(unittest.TestCase):
         self.assertEqual([(c["id"], c["todo"], c["remote"]) for c in got], [("f1", "open", "ulak_31"), ("f2", "open", "ulak_31")])
         self.assertEqual(got[0]["body"], "uzun gövde")
 
-    def test_remote_secret_in_body_is_held_back(self):
+    def test_remote_secret_in_body_is_stripped_not_held(self):
+        # TBD#268 (c): gövdede desen = bulgu gider ama GÖVDE çıkar; başlıkta desen = tutulur
         data = {"f1": {"project": "ulak", "state": "approved", "title": "x", "body": "DSN içinde parola var"},
-                "f2": {"project": "ulak", "state": "approved", "title": "x", "body": "temiz"}}
-        self.assertEqual([c["id"] for c in sa.candidates([data], lambda n: "", self.remote_of)], ["f2"])
+                "f2": {"project": "ulak", "state": "approved", "title": "x", "body": "temiz"},
+                "f3": {"project": "ulak", "state": "approved", "title": "parola sızıyor", "body": "temiz"}}
+        got = sa.candidates([data], lambda n: "", self.remote_of)
+        self.assertEqual([c["id"] for c in got], ["f1", "f2"])
+        self.assertEqual(got[0]["body"], "")
+        self.assertEqual(got[1]["body"], "temiz")
 
     def test_plan_delivers_to_remote_view_and_sends_once(self):
         projects = {"ulak": sw.Project(name="ulak", host="ulak_31")}

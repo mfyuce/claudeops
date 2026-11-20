@@ -284,17 +284,22 @@ class StoreCommitGateTest(CommitTest):
         from claudeops.commands import web_review as wr
         root = os.path.join(self.tmp.name, "stew")
         os.makedirs(root)
-        asked = []
+        asked, events, phone = [], [], []
+        from claudeops.commands import web_steward as wst
         with mock.patch.object(sw, "paths_for", lambda sid: type("P", (), {"root": root})()), \
-                mock.patch.object(sw, "log_event", lambda *a, **k: None), \
+                mock.patch.object(sw, "log_event", lambda *a, **k: events.append((a, k))), \
                 mock.patch.object(sw, "add_question", lambda *a, **k: asked.append(a) or type("Q", (), {})()), \
+                mock.patch.object(wst, "notify_phone", lambda *a, **k: phone.append(a) or True), \
                 mock.patch.object(wr, "_NOTIFY_FN", None):
             self.assertEqual(wr.store_commit(self.cfg(False), 1000.0), 0)
             self.assertFalse(os.path.exists(os.path.join(root, "review_store_commit.json")))
             self.assertEqual(wr.store_commit(self.cfg(), 1000.0), 0)                          # ilk tur kuru
             self.assertEqual(git("--git-dir=" + self.gd, "rev-list", "--all", "--count").strip(), "0")
-            self.assertEqual(len(asked), 1)                                                   # tutulan dosya için sahibe soru
+            self.assertEqual(len(asked), 0)                                                   # tutulan dosya SORU değil bildirim (21 Kas)
+            self.assertEqual(len(phone), 1)
+            self.assertTrue(any(a and a[0] == "review_store_held" for a, _k in events))
             self.assertEqual(wr.store_commit(self.cfg(), 1000.0 + 3600), 0)                   # günde bir
+            self.assertEqual(len(phone), 1)                                                   # aynı küme tekrar bildirilmez
             self.assertEqual(wr.store_commit(self.cfg(), 1000.0 + 25 * 3600), 2)              # ikinci gün act
             self.assertEqual(git("--git-dir=" + self.gd, "rev-list", "--all", "--count").strip(), "1")
 

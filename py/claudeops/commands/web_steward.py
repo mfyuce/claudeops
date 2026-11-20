@@ -4001,6 +4001,16 @@ def _consume_fresh_start(project: str, sid: str) -> bool:
         return False
 
 
+def _has_question_of(paths: Any) -> Callable[[str], bool]:
+    """Projenin KAYITLI açık sorusu ya da iletilmemiş cevabı var mı (hata = True: dürtme gitmez)."""
+    try:
+        have = {q.project for q in sw.load_questions(paths) if q.status == "open"}
+        have |= {q.project for q in sw.undelivered_answers(paths=paths) if not q.undeliverable}
+    except Exception:
+        return lambda _p: True
+    return lambda p: p in have
+
+
 def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
     """`iş yok` kapatma/yeniden açma kararının bekleyen-şey kümeleri (hata = o küme boş, kapatma KISILIR değil GENİŞLEMEZ: hata varsa
     `ctx["errors"]` dolar ve kapatma planlayıcısı bu tick'te hiçbir şey kapatmaz). Alanlar: open_q {proje} (sahip/beyin/ROUTINE dahil HER açık soru),
@@ -4032,7 +4042,7 @@ def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
                         # neden takıldığı teşhisle `review_stuck`a yazılır (review_auto_approve düzeyi/önem/gizli değer)
                         ctx.setdefault("review_stuck", {}).setdefault(proj_k, []).append(
                             snw.verified_stuck_reason(int(getattr(cfg, "review_auto_approve", 0) or 0), rec,
-                                                      sa.is_sensitive(dict(rec, title=f"{rec.get('title') or ''} {rec.get('body') or ''}"))))
+                                                      sa.is_sensitive(rec)))
                         continue
                     ctx["review"].setdefault(proj_k, f"bulgu:{rec.get('state')}")
         for row in _advance_candidates(cfg):
@@ -4521,7 +4531,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
                 cl_actions, new_state = sw.plan_claude_idle(views, projects, new_state, cfg, t0, actions, world,
                                                             open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects),
-                                                            todo_sha=_todo_sha_of(projects), oldest_open=_oldest_open_of(projects))
+                                                            todo_sha=_todo_sha_of(projects), oldest_open=_oldest_open_of(projects),
+                                                            has_question=_has_question_of(paths))
                 if cfg.claude_idle == "dry":
                     for a in cl_actions:            # YALNIZ ölçüm: oturuma dokunmaz
                         sw.log_event("would:" + a.kind, paths=paths, name=a.name,

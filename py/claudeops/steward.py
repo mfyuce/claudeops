@@ -5026,12 +5026,19 @@ def _forced_open_nudge(oldest_open: Optional[Callable[[str], str]], proj: str, n
                     f"yalnız gerekçeyle atla (sahibe bağlıysa TOBEDECIDED'a taşı, TODO'dan çıkar), sonra sıradakine geç.", 700)
 
 
+OWNER_CLAIM_MIN_IDLE_SECS = 3600
+OWNER_CLAIM_NUDGE_TEXT = ("'Sahipte/sahip kararında' diyorsun ama bu proje için KAYITLI açık soru yok; sahip hiçbir şey görmüyor. Sahibe bağlı olanı "
+                          "`STEWARD-ASK:` ile sor (tek başına anlaşılır, seçenek + öneri); sahipsiz işin varsa onu yap ve devam et; hiçbiri yoksa "
+                          "`STEWARD-NEXT: yok` yaz.")
+
+
 def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
                      planned: List[Action], world: Optional[World] = None,
                      open_work: Optional[Callable[[str], Optional[int]]] = None,
                      owner_todo: Optional[Callable[[str], Optional[int]]] = None,
                      todo_sha: Optional[Callable[[str], str]] = None,
-                     oldest_open: Optional[Callable[[str], str]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+                     oldest_open: Optional[Callable[[str], str]] = None,
+                     has_question: Optional[Callable[[str], bool]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """`plan_ucli_idle`in Claude Code genellemesi (sahip onayı 7 Kas). SAF. Yönetilen yerel tmux claude oturumu boşta (`busy` False,
     alt ajan yok, son istekten `claude_idle_nudge_secs` geçti), son cevap işin bittiğini/soru sorduğunu söylemiyor ve projenin
     sıradaki işi varsa TEK satır `devam: <iş>` (`idle_nudge`). Kapat/devir/duraklatma YOK. Aynı boşta dönem en çok
@@ -5044,6 +5051,7 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
     otm: Dict[str, Any] = dict(state.get("owner_todo_move") or {})
     next_none: Dict[str, Any] = dict(state.get("next_none") or {})
     tri: Dict[str, Any] = dict(state.get("todo_triage") or {})
+    ocn: Dict[str, Any] = dict(state.get("owner_claim_nudge") or {})
     none_changed = False
     ho_pending = state.get("ho_pending") or {}
     touched = {a.name for a in planned}
@@ -5123,6 +5131,22 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
                                        "text": forced, "next": f"todo_open={n_open_t}", "cli": "claude", "via": "none_rejected"}))
                     rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": forced}
                 continue        # (oldest_open yoksa eski davranış) aynı sha: ayıklama zaten yapıldı, "devam" dürtmesi de gitmez
+        if owner_wait(txt) and not idle_finish_marker(txt)[0] and has_question is not None \
+                and now - since >= max(thr, OWNER_CLAIM_MIN_IDLE_SECS):
+            # Mekanizma boşluğu (21 Kas): oturum 'sahipte' diyor ama KAYITLI açık soru/bekleyen cevap YOK: sahip hiçbir şey görmez, oturum
+            # süresiz susar. Boşta >= 60 dk ve proje başına dönem başına BİR dürtme; sonraki turda yine yoksa no_work_close normal işler.
+            try:
+                has_q = bool(has_question(proj.name))
+            except Exception:
+                has_q = True        # bilinmeyen = soru var say (dürtme gitmez)
+            prev_o = ocn.get(proj.name) or {}
+            if not has_q and not (prev_o.get("session") == v.name and since <= float(prev_o.get("at") or 0)):
+                out.append(Action("idle_nudge", v.name, f"oturum 'sahipte' diyor, kayıtlı soru yok (boşta {int((now - since) // 60)} dk)",
+                                  {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
+                                   "text": OWNER_CLAIM_NUDGE_TEXT, "next": "owner_claim_unrecorded", "cli": "claude", "via": "owner_claim_unrecorded"}))
+                ocn[proj.name] = {"at": now, "session": v.name, "mode": cfg.claude_idle}
+                rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": OWNER_CLAIM_NUDGE_TEXT}
+                continue
         if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
         # Karar "iş VAR MI"ya dayanır, "iş NE"ye değil (sahip 11 Kas): sahipsiz açık TODO maddesi > 0 (owner_in_todo hariç) ya da notta
@@ -5165,6 +5189,8 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
     st["claude_idle"] = rec_all
     if tri:
         st["todo_triage"] = tri
+    if ocn:
+        st["owner_claim_nudge"] = ocn
     if otm:
         st["owner_todo_move"] = otm
     if next_none:
@@ -5622,6 +5648,10 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
                      + (f", {len(bad)} {T['failed']}" if bad else ""))
     if handovers:
         lines.append(f"- {T['handovers']}: {len(handovers)} ({_names([str(e.get('name')) for e in handovers])})")
+    held_ev = ev("review_store_held")
+    if held_ev:
+        lines.append(f"- {'review store: files held back by the secret scan' if lang == 'en' else 'review saklama: gizli değer taramasında dışarıda kalan dosya'}: "
+                     f"{int(held_ev[-1].get('n') or 0)} ({_names([str(x) for x in (held_ev[-1].get('files') or [])])})")
     dirs = ev("directive")
     if dirs:
         lines.append(f"- {T['directives']}: {len(dirs)} ({_names([str(e.get('name')) for e in dirs])})")
