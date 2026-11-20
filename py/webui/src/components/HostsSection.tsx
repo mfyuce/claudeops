@@ -220,11 +220,12 @@ export function HostsSection() {
               {h.fwd && (
                 <span
                   className="cli-badge"
-                  style={{ color: h.fwd.skew != null && Math.abs(h.fwd.skew) > 10 ? "var(--red)" : undefined }}
-                  title={`signed identity: mode ${h.fwd.mode}, keys ${h.fwd.kids.join(", ") || "none"}${h.fwd.skew != null ? `, clock skew ${h.fwd.skew}s${Math.abs(h.fwd.skew) > 10 ? " (> 10 s: signatures may be rejected)" : ""}` : ""}`}
+                  style={{ color: (h.fwd.skew != null && Math.abs(h.fwd.skew) > 10) || h.build_diff ? "var(--red)" : undefined }}
+                  title={`signed identity: mode ${h.fwd.mode}, keys ${h.fwd.kids.join(", ") || "none"}${h.build_diff ? `, version differs (remote ${h.build_running})` : ""}${h.fwd.skew != null ? `, clock skew ${h.fwd.skew}s${Math.abs(h.fwd.skew) > 10 ? " (> 10 s: signatures may be rejected)" : ""}` : ""}`}
                 >
                   fwd {h.fwd.mode}
                   {h.fwd.skew != null && Math.abs(h.fwd.skew) > 10 ? ` ⏱${Math.round(h.fwd.skew)}s` : ""}
+                  {h.build_diff ? " ≠ver" : ""}
                 </span>
               )}
               {h.orphan_watch && (h.orphan_watch.servers > 0 || h.orphan_watch.procs > 0) && (

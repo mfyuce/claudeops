@@ -271,6 +271,9 @@ export interface HostRecord {
   orphan_watch?: { servers: number; procs: number; last_end?: number | null } | null;
   /** Host's signed-identity-forwarding announcement (`fwd` in its /api/status): mode, key ids, clock skew in s (remote minus local); null when absent. */
   fwd?: { mode: string; kids: string[]; skew: number | null } | null;
+  /** Remote running commit (short) and whether it differs from this panel's running commit. */
+  build_running?: string | null;
+  build_diff?: boolean;
 }
 
 export interface HostProbeRow {

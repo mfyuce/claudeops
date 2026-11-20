@@ -495,6 +495,12 @@ def _orphan_brief(v: Any) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _build_running(v: Any) -> Optional[str]:
+    """Uzak host /api/status `build.running` (çalışan commit, kısa) ya da None (eski sürüm / bozuk)."""
+    r = v.get("running") if isinstance(v, dict) else None
+    return str(r)[:12] if r else None
+
+
 def _fwd_brief(v: Any, local_now: float) -> Optional[Dict[str, Any]]:
     """Uzak host `fwd` ilanı (imzalı kimlik iletimi) -> {mode, kids, skew}: skew = uzak saat - yerel saat (sn, gecikme dahil). Ilan yok ya da
     bozuksa None (eski surum / ent_fwd_mode=off ve anahtarsiz)."""
@@ -539,6 +545,7 @@ def _finalize_remote_result(host_name: str, result: Dict[str, Any]) -> Dict[str,
         "disk_clean": result.get("disk_clean") if isinstance(result.get("disk_clean"), dict) else None,
         "orphan_watch": _orphan_brief(result.get("orphan_watch")),
         "fwd": _fwd_brief(result.get("fwd"), time.time()),
+        "build_running": _build_running(result.get("build")),
     }
 
 
@@ -971,7 +978,7 @@ def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collectio
             "name": name, "ok": cached["ok"], "error": cached.get("error"),
             "cli_list": cached["cli_list"], "cli_options": cached["cli_options"],
             "dups": cached["dups"], "disk_clean": cached.get("disk_clean"),
-            "orphan_watch": cached.get("orphan_watch"), "fwd": cached.get("fwd"),
+            "orphan_watch": cached.get("orphan_watch"), "fwd": cached.get("fwd"), "build_running": cached.get("build_running"),
         })
     local_payload["hosts"] = hosts_status
     # `local_payload["sessions"]/["closed"]/["retired"]` geldiğinde zaten
@@ -1428,6 +1435,7 @@ def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
         "cli_list": data.get("cli_list"), "cli_options": data.get("cli_options"), "dups": data.get("dups"),
         # Hostlar rozetleri (REST yoklamasıyla aynı alanlar; WS tier'de eskiden düşüyordu, e2e'de görüldü)
         "disk_clean": data.get("disk_clean"), "orphan_watch": data.get("orphan_watch"), "fwd": data.get("fwd"),
+        "build": data.get("build"),
     }
 
 

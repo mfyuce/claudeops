@@ -5473,6 +5473,10 @@ class _Handler(BaseHTTPRequestHandler):
                     "ok": cached["ok"] if cached else False,
                     "error": (cached.get("error") if cached else "not polled yet"),
                     "tier": web_hosts.get_tier(h["name"]),  # capability prober'ın son bildiği "rest"|"ws"|"grpc"
+                    "build_running": (cached.get("build_running") if cached else None),
+                    "build_diff": bool(cached and cached.get("build_running") and build_info.RUNNING
+                                       and not str(build_info.RUNNING).startswith(cached["build_running"][:12])
+                                       and not cached["build_running"].startswith(str(build_info.RUNNING)[:12])),  # uzak ile yerel çalışan commit farklı (imzalı iletimde iki taraf aynı sürüm olmalı)
                     "fwd": (cached.get("fwd") if cached else None),  # uzak host imzali kimlik iletimi ilani (mode, kids, saat farki)
                     "orphan_watch": (cached.get("orphan_watch") if cached else None),  # uzak host'un sahipsiz kaynak sayıları
                     "disk_clean": (cached.get("disk_clean") if cached else None),  # uzak host'un disk %'si + son temizlik (periodic disk_clean)

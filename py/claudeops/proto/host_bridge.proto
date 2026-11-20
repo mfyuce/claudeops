@@ -91,6 +91,9 @@ message StatusUpdate {
   repeated string cli_list = 6;
   map<string, CliOptions> cli_options = 7;
   repeated string dups = 8;
+  // Hostlar rozetleri (disk_clean / orphan_watch / fwd) tek JSON nesnesi olarak ({"disk_clean":..,"orphan_watch":..,"fwd":..});
+  // "" == yok. Eski pb2 bu alanı bilmez (bilinmeyen alan atlanır), web_grpc hasattr ile korunur.
+  string extras_json = 9;
 }
 
 message StreamTermOutputRequest {

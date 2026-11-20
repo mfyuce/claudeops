@@ -32,3 +32,30 @@ class WsFrameTest(unittest.TestCase):
         self.assertEqual(r["disk_clean"], {"pct": 50})
         self.assertEqual(r["orphan_watch"]["servers"], 1)
         self.assertEqual(r["fwd"]["mode"], "accept")
+
+
+class GrpcExtrasTest(unittest.TestCase):
+    def test_roundtrip_extras(self):
+        from claudeops.commands import web_grpc
+        d = {"sessions": [], "closed": [], "retired": [], "cli_list": [], "cli_options": {}, "dups": [],
+             "disk_clean": {"pct": 61}, "orphan_watch": {"servers": 1, "procs": 2}, "fwd": {"mode": "require", "kids": ["a"], "now": 9.5}}
+        back = web_grpc._status_proto_to_dict(web_grpc._status_dict_to_proto(d))
+        self.assertEqual(back["disk_clean"], {"pct": 61})
+        self.assertEqual(back["orphan_watch"], {"servers": 1, "procs": 2})
+        self.assertEqual(back["fwd"]["mode"], "require")
+        r = web_hosts._finalize_remote_result("h", back)
+        self.assertEqual(r["fwd"]["kids"], ["a"])
+
+    def test_no_extras_is_clean(self):
+        from claudeops.commands import web_grpc
+        back = web_grpc._status_proto_to_dict(web_grpc._status_dict_to_proto({"sessions": []}))
+        self.assertNotIn("fwd", back)
+
+
+class BuildRunningTest(unittest.TestCase):
+    def test_build_running(self):
+        self.assertEqual(web_hosts._build_running({"running": "abcdef1234567890", "disk": "x"}), "abcdef123456")
+        self.assertIsNone(web_hosts._build_running(None))
+        self.assertIsNone(web_hosts._build_running({"running": ""}))
+        r = web_hosts._finalize_remote_result("h", {"ok": True, "build": {"running": "abc123"}})
+        self.assertEqual(r["build_running"], "abc123")
