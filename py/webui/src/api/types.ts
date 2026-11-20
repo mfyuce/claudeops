@@ -530,7 +530,20 @@ export interface DiagInfo {
   fallback_alert_window_minutes: number;
 }
 
+export interface OrphanWatchSummary {
+  servers: number;
+  procs: number;
+  last_end?: number | null;
+  last_ok?: boolean | null;
+  detail?: {
+    sockets?: { deleted?: string[]; killed?: string[]; orphans?: { name: string; age_s: number; owner_pid: number }[] };
+    procs?: { pid: number; name: string; age_s: number; cwd: string }[];
+  };
+}
+
 export interface StatusPayload {
+  /** Sahipsiz kaynak denetimi (periodic orphan_watch; tarama yapmaz, durum dosyasından) */
+  orphan_watch?: OrphanWatchSummary;
   config_ok: boolean;
   config_code: string;
   config_detail: string;

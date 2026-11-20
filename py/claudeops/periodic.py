@@ -974,6 +974,49 @@ def run_host_probe(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> D
     return {"ok": True, "msg": f"{r['hosts']} host, {r['urls']} adres, {r['ok']} erişilebilir", "applied": True}
 
 
+DEFAULT_ORPHAN_WATCH: Dict[str, Any] = {
+    "enabled": "on",             # yalnız okur; otomatik iş: ölü yardımcı soket dosyası silme + KENDİ cops-usage-* sunucularını kapatma
+    "schedule": "",
+    "start": "00:00",
+    "interval_hours": 12 / 60,   # 12 dk (sahip 20 Kas)
+}
+
+
+def run_orphan_watch(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Sahipsiz kaynak denetimi (`orphan_watch`): yardımcı tmux soketleri + tanınmayan yaşlı CLI süreçleri. Yeni anomalide TEK bildirim."""
+    if not apply:
+        return {"ok": True, "msg": "plan: yardımcı tmux soketleri ve tanınmayan yaşlı CLI süreçleri taranır (hiçbir süreç öldürülmez)", "applied": False}
+    from . import orphan_watch as ow
+    r = ow.check()
+    if not r.get("ok"):
+        return {"ok": False, "msg": f"tarama hatası: {r.get('error')}", "applied": True}
+    st = state.setdefault(cfg.get("_name", "orphan_watch"), {})
+    prev = set(st.get("notified") or [])
+    cur = set(r["keys"])
+    new = sorted(cur - prev)
+    st["notified"] = sorted(cur)                    # çözülen anahtarlar düşer: yeniden çıkarsa yeniden bildirilir
+    st["detail"] = {"sockets": r["sockets"], "procs": r["procs"], "at": time.time()}
+    if new:
+        try:
+            from .commands import web_steward
+            web_steward.notify_phone("sahipsiz kaynak: " + ", ".join(new[:6]) + (f" (+{len(new) - 6})" if len(new) > 6 else ""),
+                                     title="claudeops sahipsiz")
+        except Exception as e:  # noqa: BLE001
+            diag_log(f"orphan_watch bildirim hatası {type(e).__name__}")
+    sk = r["sockets"]
+    msg = (f"{len(sk['orphans'])} sahipsiz sunucu, {len(r['procs'])} sahipsiz CLI süreci; {len(sk['deleted'])} ölü soket silindi, "
+           f"{len(sk['killed'])} usage sunucusu kapatıldı")
+    return {"ok": True, "msg": msg, "applied": True}
+
+
+def orphan_summary() -> Dict[str, Any]:
+    """/api/status için ucuz özet (durum dosyasından; tarama YAPMAZ): sahipsiz sunucu/süreç sayısı + ayrıntı."""
+    st = load_state().get("orphan_watch") or {}
+    d = st.get("detail") or {}
+    return {"servers": len((d.get("sockets") or {}).get("orphans") or []), "procs": len(d.get("procs") or []),
+            "detail": d, "last_end": st.get("last_end"), "last_ok": st.get("last_ok")}
+
+
 DEFAULT_DISK_CLEAN: Dict[str, Any] = {
     "enabled": "on",             # sahip 20 Kas: tüm makinelerde otomatik (yalnız kendi uid'i)
     "schedule": "",
@@ -1007,10 +1050,11 @@ JOBS: Dict[str, Job] = {"disk_clean": Job("disk_clean", DEFAULT_DISK_CLEAN, run_
                         "memory_prv": Job("memory_prv", DEFAULT_MEMORY_PRV, run_memory_prv),
                         "usage_refresh": Job("usage_refresh", DEFAULT_USAGE_REFRESH, run_usage_refresh),
                         "model_watch": Job("model_watch", DEFAULT_MODEL_WATCH, run_model_watch),
-                        "host_probe": Job("host_probe", DEFAULT_HOST_PROBE, run_host_probe)}
+                        "host_probe": Job("host_probe", DEFAULT_HOST_PROBE, run_host_probe),
+                        "orphan_watch": Job("orphan_watch", DEFAULT_ORPHAN_WATCH, run_orphan_watch)}
 # Hafif işler (kısa ağ yoklaması/okuma) ağır işlerin (chat_backup, notes_sync, özel) ARKASINDA beklemez: ayrı kilit + ayrı döngü iş parçacığı.
 # 20 Kas teşhisi: uyanıştan sonra kaçan günlük chat_backup uzun koştu, tek kilit + tek döngü yüzünden host_probe/usage_refresh ~17 saat durdu.
-LIGHT_JOBS = frozenset({"host_probe", "usage_refresh", "model_watch"})
+LIGHT_JOBS = frozenset({"host_probe", "usage_refresh", "model_watch", "orphan_watch"})
 _LOCK = threading.Lock()                  # ağır işler
 _LIGHT_LOCK = threading.Lock()
 _STATE_LOCK = threading.Lock()            # durum dosyası oku-değiştir-yaz (iki sınıf eşzamanlı yazabilir)

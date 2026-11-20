@@ -1941,6 +1941,7 @@ def _status_payload() -> dict:
         "ext_routes": extensions.routes(),     # eklenti yol önekleri (panel eklenti sekmelerini bununla gösterir)
         # Claude hizmetli ucli oturumlarının bugünkü $ toplamı + günlük tavan (Ayarlar > ucli_cost); ucli_cost.state() 30 sn önbellekli
         "ucli_cost": ucli_cost.state(),
+        "orphan_watch": periodic.orphan_summary(),    # sahipsiz kaynak denetimi (sahip 20 Kas): sahipsiz tmux sunucusu/CLI süreci sayısı
         "disk_clean": periodic.disk_summary(),     # disk %, son temizlik koşusu (sahip 20 Kas); Hostlar'da host başına gösterilir
         "build": build_info.info(),     # çalışan commit / diskteki commit / stale (merge sonrası restart yapıldı mı)
         # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine

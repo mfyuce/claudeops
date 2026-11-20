@@ -330,6 +330,7 @@ export interface Strings {
   diagRestartDone: (r: string) => string;
   diagRefreshHint: string;
   diagWindowless: (names: string) => string;
+  diagOrphanWatch: (items: string) => string;
   diagOrphans: (list: string) => string;
   regSubList: string;
   snapSubNow: string;
@@ -1252,6 +1253,7 @@ export const STRINGS: Record<Lang, Strings> = {
     orchSubRun: "Çalıştır",
     regSubNew: "Yeni kayıt",
     diagOrphans: (list) => `⚠ terminalsiz süreçler (pty yok, tmux yok): ${list} — "boşa" = 10 dk boyunca >=%50 CPU; Çalışan sekmesinden Durdur ile kapatılır`,
+    diagOrphanWatch: (items) => `⚠ sahipsiz kaynak (cops'un tanımadığı, 1 saatten eski; otomatik öldürülmez): ${items}`,
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
     windowlessBadge: "penceresiz",
     noTerminalBadge: "terminali yok",
@@ -2276,6 +2278,7 @@ export const STRINGS: Record<Lang, Strings> = {
     orchSubRun: "Run",
     regSubNew: "New registration",
     diagOrphans: (list) => `⚠ processes without a terminal (no pty, no tmux): ${list} — "spin" = >=50% CPU for 10 min; stop from the Running tab`,
+    diagOrphanWatch: (items) => `⚠ orphaned resources (not known to cops, older than 1h; never auto-killed): ${items}`,
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
     windowlessBadge: "windowless",
     noTerminalBadge: "no terminal",

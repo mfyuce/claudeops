@@ -83,6 +83,7 @@ class _Tmp(unittest.TestCase):
         P.set_config("usage_refresh", {"enabled": "off"})      # öntanımlı AÇIK iş testlerde gerçek okuma yapmasın (kendi testi aşağıda)
         P.set_config("model_watch", {"enabled": "off"})        # öntanımlı AÇIK iş testlerde gerçek model taraması yapmasın
         P.set_config("host_probe", {"enabled": "off"})         # öntanımlı AÇIK iş testlerde gerçek host yoklaması yapmasın
+        P.set_config("orphan_watch", {"enabled": "off"})       # öntanımlı AÇIK iş testlerde gerçek süreç/soket taraması yapmasın (kendi testi test_orphan_watch.py)
         P.set_config("disk_clean", {"enabled": "off"})         # öntanımlı AÇIK iş testlerde gerçek dizinleri silmesin (kendi testi test_disk_clean.py)
 
 
