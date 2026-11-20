@@ -198,7 +198,7 @@ export function SessionRow({
               ≤${session.ucli_flags.max_cost_usd}
             </span>
           )}
-          {session.cli === "ucli" && session.ucli_flags?.checks && session.host === LOCAL_HOST && <UcliChecksMode name={session.name} />}
+          {session.cli === "ucli" && session.ucli_flags?.checks && <UcliChecksMode name={session.name} host={session.host} />}
           {session.cli === "ucli" && session.ucli_flags?.ask && session.host === LOCAL_HOST && <UcliAskBox name={session.name} />}
         </td>
         <td title={modelDiffers ? t.modelLiveDiffersHint(session.model) : undefined}>
