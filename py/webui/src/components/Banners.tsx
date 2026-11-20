@@ -15,7 +15,7 @@ interface BannersProps {
 }
 
 export function Banners({ onGoToDiagnostics }: BannersProps) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { data } = useStatusContext();
 
   const banners: ReactNode[] = [];
@@ -23,6 +23,15 @@ export function Banners({ onGoToDiagnostics }: BannersProps) {
     banners.push(
       <div className="banner bad" key="config">
         ⚠ {t.configMsg(data.config_code, data.config_detail)}
+      </div>,
+    );
+  }
+  if (data?.build?.stale) {
+    banners.push(
+      <div className="banner bad" key="build-stale">
+        {lang === "tr"
+          ? `Kod güncellendi ama servis eski kodla çalışıyor (çalışan ${data.build.running}, disk ${data.build.disk}): restart_drain gerekir.`
+          : `Code on disk is newer than the running service (running ${data.build.running}, disk ${data.build.disk}): restart_drain needed.`}
       </div>,
     );
   }

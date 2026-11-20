@@ -58,6 +58,7 @@ from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
 from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_hosts_public
+from .. import build_info
 from .. import host_probe
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
@@ -1928,6 +1929,7 @@ def _status_payload() -> dict:
         "ext_routes": extensions.routes(),     # eklenti yol önekleri (panel eklenti sekmelerini bununla gösterir)
         # Claude hizmetli ucli oturumlarının bugünkü $ toplamı + günlük tavan (Ayarlar > ucli_cost); ucli_cost.state() 30 sn önbellekli
         "ucli_cost": ucli_cost.state(),
+        "build": build_info.info(),     # çalışan commit / diskteki commit / stale (merge sonrası restart yapıldı mı)
         # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine
         # biniyor, tam sonuç metni YOK): taslak kadro + aktif run özeti +
         # son birkaç run. Local-only, `web_hosts.merge_status`'a hiç girmez.

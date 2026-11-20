@@ -388,6 +388,59 @@ class MirrorRegressionTest(_Tmp):
             self.assertEqual(plan2["changed"], [])                                # eski ayna kopyası repodaki yeni sürümü EZMEMELİ
 
 
+class LightHeavySplitTest(_Tmp):
+    """20 Kas: uyanış sonrası uzun chat_backup tek kilit/tek döngü yüzünden hafif işleri (host_probe, usage_refresh) saatlerce durdurdu."""
+
+    def test_light_job_runs_while_heavy_lock_held(self):
+        P.set_config("host_probe", {"enabled": "on"})
+        calls = []
+        with mock.patch.dict(P.JOBS, {"host_probe": P.Job("host_probe", {}, lambda c, a, s: calls.append(1) or {"ok": True, "msg": "x"})}):
+            self.assertTrue(P._LOCK.acquire(blocking=False))       # ağır iş (chat_backup) koşuyor
+            fd = P._acquire_proc_lock()                            # ... ve süreç kilidi onda
+            try:
+                r = P.run_job("host_probe", apply=True)
+            finally:
+                os.close(fd)
+                P._LOCK.release()
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(calls, [1])
+
+    def test_heavy_still_refused_while_heavy_lock_held(self):
+        P.add_custom("hv1", {"kind": "command", "command": "true", "schedule": "30 3 * * *"})
+        self.assertTrue(P._LOCK.acquire(blocking=False))
+        try:
+            self.assertIn("çalışıyor", P.run_job("hv1", apply=False)["msg"])
+        finally:
+            P._LOCK.release()
+
+    def test_tick_kind_filters(self):
+        P.set_config("host_probe", {"enabled": "on"})
+        P.add_custom("hv2", {"kind": "command", "command": "true", "schedule": "* * * * *"})
+        P.set_config("hv2", {"enabled": "on"})
+        ran = []
+        with mock.patch.object(P, "run_job", lambda n, apply=True: ran.append(n) or {"ok": True}):
+            P.tick(kind="light")
+            light = list(ran)
+            ran.clear()
+            P.tick(kind="heavy")
+        self.assertEqual(light, ["host_probe"])
+        self.assertEqual(ran, ["hv2"])
+
+    def test_concurrent_state_saves_do_not_clobber(self):
+        P._save_job_state("a", {"last_ok": True})
+        P._save_job_state("b", {"last_ok": False})
+        self.assertEqual(P.load_state(), {"a": {"last_ok": True}, "b": {"last_ok": False}})
+
+    def test_wake_gap_detects_suspend_only(self):
+        self.assertEqual(P.wake_gap(1000, 1060), 0.0)           # normal tur
+        self.assertEqual(P.wake_gap(1000, 1000 + 3 * 60), 0.0)  # sınırda: uyanış değil
+        self.assertEqual(P.wake_gap(1000, 1000 + 9 * 3600), 9 * 3600)
+
+    def test_stuck_jobs_reported(self):
+        with mock.patch.dict(P._RUNNING, {"chat_backup": 1000.0, "host_probe": 9990.0}, clear=True):
+            self.assertEqual(P.stuck_jobs(now=10000.0, after_s=3600), {"chat_backup": 9000.0})
+
+
 if __name__ == "__main__":
     unittest.main()
 

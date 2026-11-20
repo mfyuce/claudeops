@@ -957,18 +957,29 @@ JOBS: Dict[str, Job] = {"chat_backup": Job("chat_backup", DEFAULT_CHAT_BACKUP, r
                         "usage_refresh": Job("usage_refresh", DEFAULT_USAGE_REFRESH, run_usage_refresh),
                         "model_watch": Job("model_watch", DEFAULT_MODEL_WATCH, run_model_watch),
                         "host_probe": Job("host_probe", DEFAULT_HOST_PROBE, run_host_probe)}
-_LOCK = threading.Lock()
+# Hafif işler (kısa ağ yoklaması/okuma) ağır işlerin (chat_backup, notes_sync, özel) ARKASINDA beklemez: ayrı kilit + ayrı döngü iş parçacığı.
+# 20 Kas teşhisi: uyanıştan sonra kaçan günlük chat_backup uzun koştu, tek kilit + tek döngü yüzünden host_probe/usage_refresh ~17 saat durdu.
+LIGHT_JOBS = frozenset({"host_probe", "usage_refresh", "model_watch"})
+_LOCK = threading.Lock()                  # ağır işler
+_LIGHT_LOCK = threading.Lock()
+_STATE_LOCK = threading.Lock()            # durum dosyası oku-değiştir-yaz (iki sınıf eşzamanlı yazabilir)
+_RUNNING: Dict[str, float] = {}           # çalışan iş -> başlangıç (time.time)
+STUCK_AFTER_S = 2 * 3600
 
 
-def _proc_lock_path() -> str:
-    return os.path.join(str(CLAUDEOPS_DIR), "periodic.lock")
+def _is_light(name: str) -> bool:
+    return name in LIGHT_JOBS
 
 
-def _acquire_proc_lock() -> Optional[int]:
+def _proc_lock_path(light: bool = False) -> str:
+    return os.path.join(str(CLAUDEOPS_DIR), "periodic_light.lock" if light else "periodic.lock")
+
+
+def _acquire_proc_lock(light: bool = False) -> Optional[int]:
     """Süreçler arası (servis + CLI) tek iş: flock; alınamazsa None. Süreç ölünce kilit kendiliğinden düşer."""
     try:
-        os.makedirs(os.path.dirname(_proc_lock_path()), exist_ok=True)
-        fd = os.open(_proc_lock_path(), os.O_CREAT | os.O_RDWR, 0o600)
+        os.makedirs(os.path.dirname(_proc_lock_path(light)), exist_ok=True)
+        fd = os.open(_proc_lock_path(light), os.O_CREAT | os.O_RDWR, 0o600)
     except OSError:
         return -1                      # kilit dosyası açılamıyorsa thread kilidiyle devam
     try:
@@ -979,16 +990,27 @@ def _acquire_proc_lock() -> Optional[int]:
         return None
 
 
+def _save_job_state(name: str, entry: Dict[str, Any]) -> None:
+    """Yalnız bu işin girdisini taze durum dosyasına işler (hafif+ağır işler eşzamanlı: bayat bütün-dosya yazımı diğerini ezmesin)."""
+    with _STATE_LOCK:
+        cur = load_state()
+        cur[name] = entry
+        save_state(cur)
+
+
 def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
-    """Tek işi çalıştırır, durumu yazar. Aynı anda tek iş (kilit); asla fırlatmaz."""
+    """Tek işi çalıştırır, durumu yazar. Aynı sınıfta (hafif/ağır) aynı anda tek iş (kilit); asla fırlatmaz."""
     if name not in load_config():
         return {"ok": False, "msg": f"bilinmeyen iş: {name}"}
-    if not _LOCK.acquire(blocking=False):
+    light = _is_light(name)
+    lock = _LIGHT_LOCK if light else _LOCK
+    if not lock.acquire(blocking=False):
         return {"ok": False, "msg": "başka bir periyodik iş çalışıyor"}
-    pfd = _acquire_proc_lock()
+    pfd = _acquire_proc_lock(light)
     if pfd is None:
-        _LOCK.release()
+        lock.release()
         return {"ok": False, "msg": "başka bir süreçte periyodik iş çalışıyor (flock)"}
+    _RUNNING[name] = time.time()
     try:
         state = load_state()
         cfg = load_config()[name]
@@ -1006,13 +1028,20 @@ def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
             st["last_ok"] = bool(res.get("ok"))
             st["last_msg"] = str(res.get("msg") or "")[:300]
             _notify_failure(name, res, st)
-            save_state(state)
+            _save_job_state(name, st)
             diag_log(f"periodic {name}: {'ok' if res.get('ok') else 'HATA'} {res.get('msg', '')}")
         return res
     finally:
+        _RUNNING.pop(name, None)
         if pfd is not None and pfd >= 0:
             os.close(pfd)              # kapatınca flock düşer
-        _LOCK.release()
+        lock.release()
+
+
+def stuck_jobs(now: Optional[float] = None, after_s: float = STUCK_AFTER_S) -> Dict[str, float]:
+    """`after_s`den uzun süredir koşan işler -> koşma süresi (sn). Takılı iş iş parçacığıyla öldürülemez; görünür kılınır."""
+    now = time.time() if now is None else now
+    return {n: now - t for n, t in dict(_RUNNING).items() if now - t > after_s}
 
 
 NOTIFY_COOLDOWN_S = 6 * 3600
@@ -1037,12 +1066,14 @@ def _notify_failure(name: str, res: Dict[str, Any], st: Dict[str, Any], now: Opt
     return sent
 
 
-def tick(now: Optional[datetime.datetime] = None) -> List[str]:
-    """Zamanı gelen işleri çalıştırır; çalıştırılan iş adları döner."""
+def tick(now: Optional[datetime.datetime] = None, kind: str = "all") -> List[str]:
+    """Zamanı gelen işleri çalıştırır; çalıştırılan iş adları döner. `kind`: "light" | "heavy" | "all"."""
     ran: List[str] = []
     cfgs = load_config()
     state = load_state()
     for name in list(cfgs):
+        if kind != "all" and _is_light(name) != (kind == "light"):
+            continue
         if is_due(cfgs[name], state.get(name) or {}, now):
             run_job(name, apply=True)
             ran.append(name)
@@ -1050,13 +1081,31 @@ def tick(now: Optional[datetime.datetime] = None) -> List[str]:
     return ran
 
 
-def _loop() -> None:
-    time.sleep(30)
+def wake_gap(last_wall: float, now_wall: float, wake_s: float = _WAKE_SECONDS) -> float:
+    """Duvar saati iki tur arasında beklenenden çok ilerlediyse (uyku/askıya alma) fazlalık sn, yoksa 0. `time.sleep` monotonik
+    saati kullanır (uykuda ilerlemez), duvar saati ilerler: fark uyanışı ele verir."""
+    gap = now_wall - last_wall
+    return gap if gap > 3 * wake_s else 0.0
+
+
+def _loop(kind: str = "heavy") -> None:
+    time.sleep(30 if kind == "heavy" else 20)
+    last = time.time()
+    warned_stuck: set = set()
     while True:
+        now = time.time()
+        gap = wake_gap(last, now)
+        if gap:
+            diag_log(f"periodic[{kind}]: uyanış/duraklama algılandı ({int(gap)} sn); zamanı gelen işler hemen koşuluyor")
+        last = now
         try:
-            tick()
+            tick(kind=kind)
+            for n, age in stuck_jobs().items():
+                if n not in warned_stuck:
+                    warned_stuck.add(n)
+                    diag_log(f"periodic: {n} {int(age // 60)} dk'dır koşuyor (takılı olabilir; yeniden başlatma gerekebilir)")
         except Exception as e:  # noqa: BLE001
-            diag_log(f"periodic döngü: {type(e).__name__}: {e}")
+            diag_log(f"periodic döngü[{kind}]: {type(e).__name__}: {e}")
         time.sleep(_WAKE_SECONDS)
 
 
@@ -1069,7 +1118,8 @@ def start() -> None:
     if _started:
         return
     _started = True
-    threading.Thread(target=_loop, daemon=True, name="periodic").start()
+    threading.Thread(target=_loop, args=("heavy",), daemon=True, name="periodic").start()
+    threading.Thread(target=_loop, args=("light",), daemon=True, name="periodic-light").start()
 
 
 # ------------------------------------------------------------------ API / CLI ortak katmanı
@@ -1081,7 +1131,7 @@ def overview() -> Dict[str, Any]:
     for name, cfg in cfgs.items():
         st = {k: v for k, v in (state.get(name) or {}).items() if k != "manifest"}
         pub = {k: v for k, v in cfg.items() if not k.startswith("_")}
-        jobs[name] = {"config": pub, "builtin": bool(cfg.get("_builtin")), "state": st, "due": is_due(cfg, state.get(name) or {})}
+        jobs[name] = {"config": pub, "builtin": bool(cfg.get("_builtin")), "state": st, "due": is_due(cfg, state.get(name) or {}), "running_since": _RUNNING.get(name)}
     return {"ok": True, "jobs": jobs, "defaults_custom": CUSTOM_DEFAULTS}
 
 
