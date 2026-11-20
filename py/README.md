@@ -15,7 +15,7 @@ Requires Linux + X11 (depends on `gnome-terminal`) — WSL/headless/macOS/Window
 ```bash
 git clone https://github.com/mfyuce/claudeops.git
 cd claudeops
-pip install -r py/requirements.txt   # single dependency: psutil
+pip install -r py/requirements.txt   # psutil, websockets, grpcio, protobuf
 ```
 
 Python 3.10+. The `claude` CLI must be installed and on PATH (it's the default backend). Other
