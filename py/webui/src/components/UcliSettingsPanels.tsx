@@ -12,6 +12,7 @@ import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { friendlyUcliError } from "../api/ucliErrors";
 import { useStatusContext } from "../state/StatusContext";
+import { UcliChecksSection } from "./UcliChecksSection";
 
 import type { SettingsPatch } from "./SettingsTab";
 
@@ -165,6 +166,7 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
       )}
       {group === "start" && (
         <>
+          <UcliChecksSection />
           <div className="opts" id="settingsUcliLimitsPanel">
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               <b>{t.ucliLimitsLabel}</b> {t.ucliLimitsDesc}

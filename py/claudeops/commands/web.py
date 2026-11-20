@@ -5398,7 +5398,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/ucli/checks":
             from .. import ucli_checks as _ck
             data, err = _ck.load_registry()
-            self._json({"ok": not err or "kayıt yok" in err, "checks": data.get("check", []), "error": err})
+            self._json({"ok": not err or "kaydı yok" in err, "checks": data.get("check", []), "error": "" if "kaydı yok" in err else err})
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())

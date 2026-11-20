@@ -32,6 +32,9 @@ KNOWN_LOCAL_ONLY = {
     "/api/agents/start", "/api/agents/send", "/api/agents/stop",
     "/api/ucli/ask",                                 # ucli oturumunun yerel dosya kanalı (ucli_ask.py): oturum çalışma kökü dışı, yalnız yerel
     "/api/ucli/approvals",                           # ucli tek atımlık onay kayıt defteri (ucli_approval.py): yerel disk, yalnız yerel
+    "/api/ucli/checks",                              # run_checks kontrol kaydı (ucli_checks.py): yerel disk, yalnız yerel (uzak host yönlendirmesi: TODO C2 kalanı)
+    "/api/ucli/checks-mode",                         # run_checks mod dosyası (oturumun state-dir'i): yerel, yalnız yerel
+    "/api/chat-backup",                              # sohbet yedeği (chat_backup.py): bu makinenin systemd timer'ı, yalnız yerel
 }
 
 
