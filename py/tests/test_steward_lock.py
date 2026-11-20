@@ -24,7 +24,7 @@ def _raw(path):
 def _worker_projects(sid, tag, barrier, out):
     """Ayrı süreç: kendi adlarını + ortak bir projenin notunu güncelle (hepsi AYNI projects.json)."""
     try:
-        barrier.wait(10)
+        barrier.wait(60)
         for i in range(N):
             sw.upsert_project(f"{tag}{i}", paths=sid, goal=f"g{i}")
         out.put("ok")
@@ -34,7 +34,7 @@ def _worker_projects(sid, tag, barrier, out):
 
 def _worker_questions(tag, barrier, out):
     try:
-        barrier.wait(10)
+        barrier.wait(60)
         for i in range(N):
             sw.add_question(f"kitap{tag}{i}", f"{tag} soru {i}?")     # proje başına açık soru sınırı (L7b) kilit testini bozmasın: her soru ayrı proje
             sw.add_idea(f"{tag} fikir {i}")
@@ -45,7 +45,7 @@ def _worker_questions(tag, barrier, out):
 
 def _worker_claim(sid, name, barrier, out):
     try:
-        barrier.wait(10)
+        barrier.wait(60)
         sw.upsert_project(name, paths=sid, goal=sid)
         out.put(("won", sid))
     except sw.OwnedElsewhere as e:
@@ -71,6 +71,14 @@ def _run(ctx, targets):
 class LockRaceTest(_Tmp):
     """Fork bağlamı: `_Tmp` yama sabitleri çocuk süreçlere geçer."""
     ctx = multiprocessing.get_context("fork")
+
+    def setUp(self):
+        super().setUp()
+        # Tam gate yükünde (CPU çekişmesi) 3 süreçlik yarış 10 sn kilit bekleme sınırını aşabiliyordu (20 Kas: LockTimeout,
+        # 2x CPU yükünde 12 koşuda 1 kez yeniden üretildi). Ürün sınırı (10 sn) değişmez; yalnız bu yarış testlerinde gevşek.
+        p = mock.patch.object(sw, "LOCK_TIMEOUT", 120.0)
+        p.start()
+        self.addCleanup(p.stop)
 
     def test_two_processes_upsert_same_projects_json_lose_nothing(self):
         res = _run(self.ctx, [(_worker_projects, ("default", "a")), (_worker_projects, ("default", "b")),
