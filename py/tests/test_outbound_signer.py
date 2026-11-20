@@ -22,7 +22,7 @@ class H(http.server.BaseHTTPRequestHandler):
         pass
 
 
-class OutboundSignerTest(unittest.TestCase):
+class _ServerBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
@@ -46,6 +46,9 @@ class OutboundSignerTest(unittest.TestCase):
         authz.bind_principal(None)
         authz.reset()
 
+
+
+class OutboundSignerTest(_ServerBase):
     def _get(self):
         return web_hosts._http_json("GET", f"{self.base}/api/files/list?token=t", None, 5)
 
@@ -173,3 +176,33 @@ class WsSignedKwTest(unittest.TestCase):
         authz.set_outbound_signer(refuse)
         with self.assertRaises(authz.OutboundRefused):
             web_hosts._ws_signed_kw("u1", "/ws")
+
+
+class Refused502Test(_ServerBase):
+    """OutboundRefused (fwd_policy=strict) proxy katmanında 502 + net hata gövdesi; istek HİÇ gönderilmez."""
+
+    def _refuse(self):
+        def signer(*a):
+            raise authz.OutboundRefused("remote_no_fwd")
+        authz.set_outbound_signer(signer)
+        authz.bind_principal(authz.Principal(uid="ali"))
+
+    def test_proxy_get_and_action_502(self):
+        self._refuse()
+        with mock.patch.object(hosts_mod, "get_host", return_value={"name": "u1", "base_url": self.base, "token": "t"}):
+            body, st = web_hosts.proxy_get("/api/files/list", "u1", {"p": "/"}, dedup=False)
+            self.assertEqual(st, 502)
+            self.assertEqual(body["reason"], "remote_no_fwd")
+            self.assertFalse(body["ok"])
+            body, st = web_hosts.proxy_action("/api/register", "u1", {"name": "x"})
+            self.assertEqual(st, 502)
+            rb, st, hd, err = web_hosts.proxy_get_raw("/api/files/download", "u1", {"p": "/x"})
+            self.assertEqual(st, 502)
+            self.assertIn("signed identity required", err)
+        self.assertEqual(SEEN, [])
+
+    def test_unreachable_stays_200(self):
+        with mock.patch.object(hosts_mod, "get_host", return_value={"name": "u1", "base_url": "http://127.0.0.1:9", "token": "t"}):
+            body, st = web_hosts.proxy_get("/api/files/list", "u1", {}, dedup=False)
+        self.assertEqual(st, 200)
+        self.assertIn("unreachable", body["error"])

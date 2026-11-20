@@ -355,6 +355,17 @@ def _pool_checkin(key: str, conn: http.client.HTTPConnection, reusable: bool) ->
 from ..authz import OutboundRefused as _OutboundRefused  # noqa: E402
 
 
+REFUSED_PREFIX = "outbound refused:"
+
+
+def _refused(host_name: str, err: Optional[str]) -> Optional[Dict[str, Any]]:
+    """`_http_*` hata dizesi imza reddi ise (fwd_policy=strict: anahtar yok / uzak imzayı ilan etmiyor) 502 gövdesi, değilse None."""
+    if err and err.startswith(REFUSED_PREFIX):
+        reason = err[len(REFUSED_PREFIX):].strip()
+        return {"ok": False, "error": f"{host_name}: signed identity required, request not sent ({reason})", "reason": reason}
+    return None
+
+
 def _ws_signed_kw(host_name: str, path: str) -> Dict[str, Any]:
     """WS el sıkışması için imza başlıkları (paylaşılan aktarıcılar panelin KENDİ kimliğiyle imzalanır). Kanca yoksa {} (davranış aynı).
     Her bağlanmada yeniden çağrılmalı (nonce). Reddedilirse (`OutboundRefused`) bağlantı kurulmaz."""
@@ -1030,6 +1041,9 @@ def proxy_action(path: str, host_name: str, body: Dict[str, Any],
     outgoing["host"] = LOCAL_HOST_NAME
     url = f"{host['base_url']}{path}?token={host['token']}"
     status, parsed, err = _http_json("POST", url, outgoing, ACTION_TIMEOUT_SECONDS if timeout is None else timeout)
+    ref = _refused(host_name, err)
+    if ref is not None:
+        return ref, 502
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status
@@ -1121,6 +1135,9 @@ def proxy_get(path: str, host_name: str, query: Dict[str, str], dedup: bool = Tr
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
     status, parsed, err = _http_json("GET", url, None, TERM_READ_TIMEOUT_SECONDS if timeout is None else timeout,
                                      dedup=dedup)
+    ref = _refused(host_name, err)
+    if ref is not None:
+        return ref, 502
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status
@@ -1135,6 +1152,8 @@ def proxy_get_raw(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Opt
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
     status, body, headers, err = _http_raw(url, ACTION_TIMEOUT_SECONDS, dedup=True)
+    if err is not None and err.startswith(REFUSED_PREFIX):
+        return None, 502, None, f"{host_name}: signed identity required, request not sent ({err[len(REFUSED_PREFIX):].strip()})"
     if err is not None:
         return None, 200, None, f"{host_name} unreachable: {err}"
     return body, status, headers, None
@@ -1190,7 +1209,7 @@ def proxy_post_raw(path: str, host_name: str, query: Dict[str, str], body_stream
     try:
         sig = _signed_headers(url, "POST", None)
     except _OutboundRefused as e:
-        return {"ok": False, "error": f"{host_name}: outbound refused: {e.reason}"}, 200
+        return _refused(host_name, f"{REFUSED_PREFIX} {e.reason}"), 502
     conn = conn_cls(url_parts.hostname, url_parts.port, timeout=ACTION_TIMEOUT_SECONDS)
     try:
         conn.request("POST", req_path, body=_BoundedReader(body_stream, content_length),
