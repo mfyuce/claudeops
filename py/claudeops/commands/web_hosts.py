@@ -495,6 +495,19 @@ def _orphan_brief(v: Any) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _fwd_brief(v: Any, local_now: float) -> Optional[Dict[str, Any]]:
+    """Uzak host `fwd` ilanı (imzalı kimlik iletimi) -> {mode, kids, skew}: skew = uzak saat - yerel saat (sn, gecikme dahil). Ilan yok ya da
+    bozuksa None (eski surum / ent_fwd_mode=off ve anahtarsiz)."""
+    if not isinstance(v, dict):
+        return None
+    try:
+        skew = round(float(v["now"]) - local_now, 1) if v.get("now") is not None else None
+        kids = [str(k) for k in (v.get("kids") or [])][:4]
+        return {"mode": str(v.get("mode") or ""), "kids": kids, "skew": skew}
+    except (TypeError, ValueError):
+        return None
+
+
 def _tag_rows(rows: Optional[list], host_name: str) -> list:
     """Uzak tarafın kendi "local" etiketini BİZİM bildiğimiz host adıyla EZ —
     hem REST (`fetch_remote_status`) hem WS/gRPC push-consumer'ları (aşağıda,
@@ -525,6 +538,7 @@ def _finalize_remote_result(host_name: str, result: Dict[str, Any]) -> Dict[str,
         "dups": result.get("dups") or [],
         "disk_clean": result.get("disk_clean") if isinstance(result.get("disk_clean"), dict) else None,
         "orphan_watch": _orphan_brief(result.get("orphan_watch")),
+        "fwd": _fwd_brief(result.get("fwd"), time.time()),
     }
 
 
@@ -957,7 +971,7 @@ def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collectio
             "name": name, "ok": cached["ok"], "error": cached.get("error"),
             "cli_list": cached["cli_list"], "cli_options": cached["cli_options"],
             "dups": cached["dups"], "disk_clean": cached.get("disk_clean"),
-            "orphan_watch": cached.get("orphan_watch"),
+            "orphan_watch": cached.get("orphan_watch"), "fwd": cached.get("fwd"),
         })
     local_payload["hosts"] = hosts_status
     # `local_payload["sessions"]/["closed"]/["retired"]` geldiğinde zaten

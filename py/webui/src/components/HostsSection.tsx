@@ -217,6 +217,16 @@ export function HostsSection() {
                   disk %{h.disk_clean.pct}
                 </span>
               )}
+              {h.fwd && (
+                <span
+                  className="cli-badge"
+                  style={{ color: h.fwd.skew != null && Math.abs(h.fwd.skew) > 10 ? "var(--red)" : undefined }}
+                  title={`signed identity: mode ${h.fwd.mode}, keys ${h.fwd.kids.join(", ") || "none"}${h.fwd.skew != null ? `, clock skew ${h.fwd.skew}s${Math.abs(h.fwd.skew) > 10 ? " (> 10 s: signatures may be rejected)" : ""}` : ""}`}
+                >
+                  fwd {h.fwd.mode}
+                  {h.fwd.skew != null && Math.abs(h.fwd.skew) > 10 ? ` ⏱${Math.round(h.fwd.skew)}s` : ""}
+                </span>
+              )}
               {h.orphan_watch && (h.orphan_watch.servers > 0 || h.orphan_watch.procs > 0) && (
                 <span
                   className="cli-badge"

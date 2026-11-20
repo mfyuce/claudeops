@@ -269,6 +269,8 @@ export interface HostRecord {
   disk_clean?: DiskCleanSummary | null;
   /** Host's own `orphan_watch` counts (orphaned helper tmux servers / unrecognized CLI processes); null on older hosts. */
   orphan_watch?: { servers: number; procs: number; last_end?: number | null } | null;
+  /** Host's signed-identity-forwarding announcement (`fwd` in its /api/status): mode, key ids, clock skew in s (remote minus local); null when absent. */
+  fwd?: { mode: string; kids: string[]; skew: number | null } | null;
 }
 
 export interface HostProbeRow {
