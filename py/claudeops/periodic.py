@@ -540,6 +540,20 @@ def _day_of(mt: float) -> str:
         return datetime.date.today().isoformat()
 
 
+def _addable_paths(repo: str, files: List[str]) -> List[str]:
+    """Diskte olmayan VE git'te izlenmeyen yol (ör. hiç commit'lenmemiş silinmiş eski .part) `git add`i düşürür: ele.
+    Diskte olmayan ama izlenen yol kalır (silme commit'lenir)."""
+    out: List[str] = []
+    for f in files:
+        if os.path.lexists(os.path.join(repo, f)):
+            out.append(f)
+            continue
+        rc, tracked = _git(repo, "ls-files", "--", f)
+        if rc != 0 or tracked.strip():                 # emin değilsek bırak (eski davranış)
+            out.append(f)
+    return out
+
+
 def _put(dest: str, blob: bytes) -> bool:
     """Atomik, 0600 yazar; içerik aynıysa dokunmaz. True = yazıldı."""
     if os.path.exists(dest):
@@ -766,7 +780,9 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
                         d = datetime.date.today().isoformat()
                     days.setdefault(d, []).append(rel)
         for day in sorted(days):          # her takvim günü ayrı commit, eskiden yeniye
-            files = days[day]
+            files = _addable_paths(repo, days[day])
+            if not files:
+                continue
             rc, out = _git(repo, "add", "--", *files)
             if rc != 0:
                 res.update(ok=False, msg=f"{g} git add: " + out[-200:])
@@ -1112,10 +1128,20 @@ def _acquire_proc_lock(light: bool = False) -> Optional[int]:
 
 def _save_job_state(name: str, entry: Dict[str, Any]) -> None:
     """Yalnız bu işin girdisini taze durum dosyasına işler (hafif+ağır işler eşzamanlı: bayat bütün-dosya yazımı diğerini ezmesin)."""
-    with _STATE_LOCK:
-        cur = load_state()
-        cur[name] = entry
-        save_state(cur)
+    with _STATE_LOCK:                                    # thread kilidi; süreçler arası için ayrıca flock (servis + CLI)
+        fd = -1
+        try:
+            fd = os.open(STATE_JSON + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)               # bloklayıcı: oku-değiştir-yaz kısa
+        except OSError:
+            pass                                         # kilit dosyası açılamazsa eski davranış (yalnız thread kilidi)
+        try:
+            cur = load_state()
+            cur[name] = entry
+            save_state(cur)
+        finally:
+            if fd >= 0:
+                os.close(fd)                             # kapatınca flock düşer
 
 
 def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
