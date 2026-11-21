@@ -5110,10 +5110,10 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
     st = ucli_cost.state(use_cache=False)
     day = time.strftime("%Y-%m-%d")
     if _COST_WATCH["day"] != day:
-        _COST_WATCH.update(day=day, warned=False, stopped=False, notified=False)
+        _COST_WATCH.update(day=day, warned=False, stopped=False, notified=False, warn_stage=0)
     cap, usd = float(st["cap_usd"]), float(st["today_usd"])
     if _COST_WATCH.get("cap") != cap:     # tavan değişti (yükseltildi/düşürüldü): uyarı/durdurma bayrakları yeniden değerlendirilsin
-        _COST_WATCH.update(cap=cap, warned=False, stopped=False, notified=False)
+        _COST_WATCH.update(cap=cap, warned=False, stopped=False, notified=False, warn_stage=0)
     if cap <= 0:
         return {"cap": 0}
     if usd >= cap and not _COST_WATCH["stopped"]:
@@ -5148,9 +5148,14 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
             sw.log_event("ucli_cost_cap", paths="all", usd=round(usd, 2), cap=cap)
             notify_phone(f"ucli günlük harcama TAVANA ulaştı: {usd:.2f}/{cap:.0f} USD.{brain_note} Devam için: Ayarlar ucli_cost.daily_cap_usd yükselt "
                          f"ya da `py/cops steward config brain_cli claude` (kota izin verince).", title="claudeops ucli tavan")
-    elif usd >= 0.8 * cap and not _COST_WATCH["warned"] and usd < cap:
-        _COST_WATCH["warned"] = True
-        notify_phone(f"ucli günlük harcama %80'i geçti: {usd:.2f}/{cap:.0f} USD. Tavanda beyin durur.", title="claudeops ucli tavan")
+    elif usd < cap:
+        # D23: iki kademe (%80 ve %90): tavan istek BAŞINA denetlenmez, tek uzun tur aşımı yapar (10,08/10); %90 son uyarı
+        stage = 90 if usd >= 0.9 * cap else 80 if usd >= 0.8 * cap else 0
+        if stage > int(_COST_WATCH.get("warn_stage") or 0):
+            _COST_WATCH["warn_stage"] = stage
+            _COST_WATCH["warned"] = True
+            notify_phone(f"ucli günlük harcama %{stage}'i geçti: {usd:.2f}/{cap:.0f} USD. Tavanda beyin durur"
+                         f"{' (tek uzun tur tavanı aşabilir)' if stage == 90 else ''}.", title="claudeops ucli tavan")
     return {"cap": cap, "usd": usd}
 
 

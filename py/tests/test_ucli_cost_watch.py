@@ -35,6 +35,16 @@ class CostWatch(unittest.TestCase):
             ws.ucli_cost_watch(self.cfg); ws.ucli_cost_watch(self.cfg)
         self.assertEqual((len(self.sent), self.stops), (1, []))
 
+    def test_second_warning_at_90_once(self):
+        """D23: %80 ve %90 ayrı kademeli uyarı; her biri bir kez."""
+        with self._state(8.2):
+            ws.ucli_cost_watch(self.cfg)
+        with self._state(9.3):
+            ws.ucli_cost_watch(self.cfg); ws.ucli_cost_watch(self.cfg)
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn("%80", self.sent[0]); self.assertIn("%90", self.sent[1])
+        self.assertEqual(self.stops, [])
+
     def test_cap_stops_brain_once(self):
         with self._state(10.2):
             ws.ucli_cost_watch(self.cfg); ws.ucli_cost_watch(self.cfg)
