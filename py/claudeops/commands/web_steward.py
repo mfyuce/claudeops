@@ -3868,6 +3868,23 @@ def _doc_path(cwd: str, fname: str) -> str:
 _TODO_DONE_RE = re.compile(r"YAPILDI|ÇÖZÜLDÜ|KAPANDI|TAMAM|✅|\bDONE\b", re.I)
 
 
+def _todo_owned_by_other(projects: Dict[str, sw.Project], proj: str, cwd: str, real: str, resolve: Callable[[str], str]) -> bool:
+    """TODO.md'nin GERÇEK yolu (symlink çözülmüş), bu projenin kendi klasörünün dışında ve BAŞKA kayıtlı bir projenin klasöründeyse True
+    (worktree projesi: `scripts/worktree-docs-link.sh` TODO.md'yi ana checkout'a symlink'ler; copsdevderbent'e claudeops'un açık
+    maddeleri yazılıyordu). Sayı o projeye ait DEĞİL: çağıran None (bilinmiyor) sayar, kanıtlı teyit kanıta kalır."""
+    own = os.path.realpath(cwd)
+    home = os.path.dirname(real)
+    if home == own:
+        return False
+    for name in projects:
+        if name == proj:
+            continue
+        oc = resolve(name)
+        if oc and os.path.realpath(oc) == home:
+            return True
+    return False
+
+
 def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = False) -> Optional[Tuple[int, int]]:
     """Projenin YEREL TODO.md'si: (açık iş sayısı, sahibe bağlı etiketli açık satır sayısı). Sahibe bağlı satırlar
     (`OWNER_WAIT_LINE_RE`: SAHİPTE, (sahip), DIŞ GİRDİ, "sahip kararı bekliyor"...) açık iş SAYILMAZ. Uzak proje, klasörü bilinmeyen,
@@ -3876,9 +3893,12 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = Fal
         p = projects.get(proj)
         if p is None or p.host:
             return None
-        cwd = _cwd_resolver()(proj)
+        resolve = _cwd_resolver()
+        cwd = resolve(proj)
         real = _doc_path(cwd, "TODO.md")
         if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+            return None
+        if _todo_owned_by_other(projects, proj, cwd, real, resolve):
             return None
         n_open = n_owner = n_boxed = n_unboxed = 0
         with open(real, encoding="utf-8", errors="replace") as f:

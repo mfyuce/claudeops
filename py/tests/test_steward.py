@@ -1127,6 +1127,13 @@ class DoneHandoverTest(unittest.TestCase):
                                open_work=lambda proj: 410)
         self.assertEqual(self._k(acts), [("ask_user", "p1")])                             # cevap eskidi: yeniden sorulabilir
 
+    def test_unknown_open_work_symlinked_worktree_accepts_proof(self):
+        """open_work None (TODO.md başka projenin symlink'i, `_todo_owned_by_other`): sayı çelişkisi YOK, kanıtlı teyit kabul (soru açılmaz)."""
+        cfg = self._cfg()
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, cfg, 5000.0, [], [], open_work=lambda proj: None)
+        self.assertNotIn("ask_user", [a.kind for a in acts])
+        self.assertIn("set_phase", [a.kind for a in acts])
+
     def test_unanswered_conflict_still_asks(self):
         acts, _ = sw.plan_tick([_view("p1", last_assistant=self.OK)], self._projects(), {}, self._cfg(), 5000.0, [], [],
                                open_work=lambda proj: 410)

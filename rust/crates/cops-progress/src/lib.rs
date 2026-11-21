@@ -106,7 +106,19 @@ pub fn discover(db: &Path, instances: &Path) -> Vec<Project> {
     for (bp, cwd) in &cwd_of {
         add(bp, cwd, "");
     }
-    by_cwd.into_values().filter(|p| p.cwd.is_dir()).collect()
+    let all: Vec<Project> = by_cwd.into_values().filter(|p| p.cwd.is_dir()).collect();
+    // Worktree projesi: TODO.md başka bir projenin klasöründeki dosyaya symlink ise (scripts/worktree-docs-link.sh) aynı dosya iki kez
+    // sayılmasın: sahibi (gerçek dosyanın klasörü olan proje) kalır, symlink'li olan atlanır.
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let homes: Vec<PathBuf> = all.iter().map(|p| canon(&p.cwd)).collect();
+    all.into_iter()
+        .zip(homes.clone())
+        .filter(|(p, home)| match canon(&p.cwd.join("TODO.md")).parent() {
+            Some(par) if par != home.as_path() => !homes.iter().any(|h| h.as_path() == par),
+            _ => true,
+        })
+        .map(|(p, _)| p)
+        .collect()
 }
 
 /// Bir projenin noktaları (5 seri).
@@ -151,6 +163,20 @@ mod tests {
     #[test]
     fn done_lines_separate() {
         assert_eq!(count_done_lines("## g\n- a\n- b\ntext\n"), 2);
+    }
+
+    #[test]
+    fn symlinked_todo_worktree_is_skipped() {
+        let d = tempfile::tempdir().unwrap();
+        let (main, wt) = (d.path().join("main"), d.path().join("wt"));
+        std::fs::create_dir(&main).unwrap();
+        std::fs::create_dir(&wt).unwrap();
+        std::fs::write(main.join("TODO.md"), "- [ ] a\n").unwrap();
+        std::os::unix::fs::symlink(main.join("TODO.md"), wt.join("TODO.md")).unwrap();
+        let inst = d.path().join("i.json");
+        std::fs::write(&inst, format!(r#"{{"instances":{{"a":{{"blueprint":"cops","cwd":"{}"}},"b":{{"blueprint":"copsdevderbent","cwd":"{}"}}}}}}"#, main.display(), wt.display())).unwrap();
+        let ps = discover(&d.path().join("none.db"), &inst);
+        assert_eq!(ps.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), vec!["cops"]);
     }
 
     #[test]
