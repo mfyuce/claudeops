@@ -408,3 +408,9 @@ class CostCapTests(unittest.TestCase):
                           ({"credit_total_usd": "nan"}, 0.0), ({}, 0.0)):
             with mock.patch.object(settings, "load_settings", return_value={"ucli_cost": raw}):
                 self.assertEqual(settings.ucli_cost_config()["credit_total_usd"], want, raw)
+
+
+class TokioThreadsEnvTests(unittest.TestCase):
+    def test_env_overrides_limits_tokio_workers(self):
+        from claudeops.providers.ucli_provider import UcliProvider
+        self.assertEqual(UcliProvider().env_overrides("x").get("TOKIO_WORKER_THREADS"), "1")
