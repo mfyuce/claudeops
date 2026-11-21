@@ -1,5 +1,6 @@
 import datetime
 import os
+import shutil
 import sys
 import tempfile
 import types
@@ -72,6 +73,7 @@ class RedactTest(unittest.TestCase):
 class _Tmp(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d, ignore_errors=True)   # 21 Kas: temizlenmeyen tmp dizinleri 2 günde 5,8 GB sızdırdı
         self.p = [mock.patch.object(P, "CONFIG_JSON", os.path.join(self.d, "periodic.json")),
                   mock.patch.object(P, "STATE_JSON", os.path.join(self.d, "state.json")),
                   mock.patch.object(P, "RUNS_DIR", os.path.join(self.d, "runs")),
@@ -266,6 +268,9 @@ class ChatBackupTest(_Tmp):
 
     def test_binary_chunked_and_group_repo(self):
         repo = self._setup_repo()
+        patch_chunk = mock.patch.object(P, "CHUNK_MB", 1)   # küçük fikstür: 45 MB yerine 1 MB eşik (2 parça yine çıkar)
+        patch_chunk.start()
+        self.addCleanup(patch_chunk.stop)
         codex = os.path.join(self.d, "codexrepo")
         os.makedirs(os.path.join(codex, ".git"))
         big = os.path.join(self.d, "g", "c.db")
@@ -563,3 +568,18 @@ def test_maske_surumu_degisince_imzalar_duser():
         except Exception:
             pass
     assert "/x/a.jsonl" not in seen and P._DEST_PFX + "d/a" in seen
+
+
+class TmpCleanupRegressionTest(unittest.TestCase):
+    """21 Kas: _Tmp.setUp mkdtemp dizinini silmiyordu (2 günde 23.466 dizin, 5,8 GB /tmp). Temizlik tamamlanınca dizin kalmamalı."""
+
+    def test_tmp_dir_removed_after_cleanup(self):
+        class _Probe(_Tmp):
+            def runTest(self):
+                pass
+
+        probe = _Probe()
+        res = unittest.TestResult()
+        probe.run(res)
+        self.assertTrue(res.wasSuccessful())
+        self.assertFalse(os.path.exists(probe.d), probe.d)
