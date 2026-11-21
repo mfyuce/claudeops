@@ -13,8 +13,9 @@ import { UcliKeysPanel } from "./UcliKeysPanel";
 import { UcliSpendPanel } from "./UcliSpendPanel";
 import { UcliSettingsPanels } from "./UcliSettingsPanels";
 import { UcliMetricsPanel } from "./UcliMetricsPanel";
+import { UcliComparePanel } from "./UcliComparePanel";
 
-type Section = "run" | "start" | "global" | "metrics";
+type Section = "run" | "start" | "global" | "metrics" | "compare";
 
 export function UcliTab() {
   const { t } = useLang();
@@ -24,6 +25,7 @@ export function UcliTab() {
     ["start", t.ucliSectionStart],
     ["global", t.ucliSectionGlobal],
     ["metrics", t.ucliSectionMetrics],
+    ["compare", t.ucliSectionCompare],
   ];
   return (
     <>
@@ -41,6 +43,7 @@ export function UcliTab() {
         </>
       )}
       {section === "metrics" && <UcliMetricsPanel />}
+      {section === "compare" && <UcliComparePanel />}
       {section === "start" && <UcliSettingsPanels group="start" />}
       {section === "global" && (
         <>
