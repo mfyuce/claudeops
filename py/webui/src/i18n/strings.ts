@@ -520,6 +520,7 @@ export interface Strings {
   ucliSectionRun: string;
   ucliSectionStart: string;
   ucliSectionGlobal: string;
+  ucliSectionMetrics: string;
   ucliTabNoCli: string;
   mixedCliBadgeHint: (cli: string) => string;
   ucliLimitsPlaceholderAuto: string;
@@ -1537,6 +1538,7 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliSectionRun: "Çalıştır",
     ucliSectionStart: "Oturum başlatma",
     ucliSectionGlobal: "Global ayarlar",
+    ucliSectionMetrics: "Metrikler",
     ucliTabNoCli: "ucli bu kurulumda etkin değil (cli_list içinde yok).",
     mixedCliBadgeHint: (c) => `Bu klasörde birden çok CLI çalışıyor; bu satırlardan bazıları ${c}`,
     ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
@@ -2571,6 +2573,7 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliSectionRun: "Run",
     ucliSectionStart: "Session start",
     ucliSectionGlobal: "Global settings",
+    ucliSectionMetrics: "Metrics",
     ucliTabNoCli: "ucli is not enabled on this install (not in cli_list).",
     mixedCliBadgeHint: (c) => `Several CLIs share this folder; some rows here are ${c}`,
     ucliLimitsPlaceholderAuto: "empty = preset default",

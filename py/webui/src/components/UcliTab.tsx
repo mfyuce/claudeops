@@ -12,8 +12,9 @@ import { UcliApprovalsPanel } from "./UcliApprovalsPanel";
 import { UcliKeysPanel } from "./UcliKeysPanel";
 import { UcliSpendPanel } from "./UcliSpendPanel";
 import { UcliSettingsPanels } from "./UcliSettingsPanels";
+import { UcliMetricsPanel } from "./UcliMetricsPanel";
 
-type Section = "run" | "start" | "global";
+type Section = "run" | "start" | "global" | "metrics";
 
 export function UcliTab() {
   const { t } = useLang();
@@ -22,6 +23,7 @@ export function UcliTab() {
     ["run", t.ucliSectionRun],
     ["start", t.ucliSectionStart],
     ["global", t.ucliSectionGlobal],
+    ["metrics", t.ucliSectionMetrics],
   ];
   return (
     <>
@@ -38,6 +40,7 @@ export function UcliTab() {
           <IoAskPanel />
         </>
       )}
+      {section === "metrics" && <UcliMetricsPanel />}
       {section === "start" && <UcliSettingsPanels group="start" />}
       {section === "global" && (
         <>
