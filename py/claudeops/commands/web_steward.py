@@ -4362,57 +4362,58 @@ def _audit_fable_rule(sid: str, paths: Any) -> None:
                      top=[x.get("label") for x in (mu.get("fable_top") or [])[:3]])
 
 
-# Ana oturum üst kademe denetimi (TODO 1233/5): (kimlik, oturum adı) -> {model, effort, at, sent}. Süreç içi (fable_rule
-# kalıbı); süreç yeniden başlarsa en çok bir yinelenen hatırlatma. Aynı model/effort için bir kez loglanır + bir kez
-# hatırlatılır; oturum Sonnet medium'a dönünce kayıt düşer (yeniden yükselirse yine uyarılır).
-_UPPER_MAIN_WARNED: Dict[Tuple[str, str], Dict[str, Any]] = {}
+# Ana oturum üst kademe denetimi (TODO 1233/5). 22 Kas dersi (line: 24 saatte 16 kez aynı hatırlatma, her biri ~160K bağlamlı boş tur):
+# (1) oturum `/model`'i KENDİSİ değiştiremez, bu yüzden oturuma direktif YOLLANMAZ; denetim yalnız sahibe/panele görünen `upper_main`
+# olayını yazar; (2) "bildirildi" kaydı KALICI (state `upper_main_seen`, kimlik başına; bellek içi sözlük servis yeniden başlayınca
+# sıfırlanıyordu); (3) canlı model/effort okuması bilinmiyorsa ("" / None) bu bir değişiklik ya da "kurala döndü" SAYILMAZ: yalnız
+# BİLİNEN uyumlu okuma (model+effort dolu, üst kademe değil) kaydı düşürür. Yeni olay: kayıt yok, bilinen model/effort değişti ya da
+# süreç yeniden açıldı (`started_at` farklı).
+def _upper_main_same(ent: Dict[str, Any], v: sw.SessionView) -> bool:
+    if v.live_model and ent.get("model") and ent["model"] != v.live_model:
+        return False
+    if v.live_effort and ent.get("effort") and ent["effort"] != v.live_effort:
+        return False
+    st = float(ent.get("started_at") or 0.0)
+    if v.started_at and st and abs(st - float(v.started_at)) > 2.0:
+        return False          # süreç yeniden açıldı: aynı birleşim yine bir kez bildirilir
+    return True
 
 
 def _audit_upper_main(cfg: sw.Config, views: List[sw.SessionView], projects: Dict[str, sw.Project], world: Any,
                       paths: Any, rt: Optional[_RemoteTick] = None) -> None:
-    """Proje ANA oturumu fiilen (canlı model/effort) Sonnet medium üstündeyse `upper_main` olayı + oturuma HATIRLATMA
-    direktifi (`_give_directive`, `start_if_stopped=False`, model/effort verilmez: hiçbir şey zorlanmaz/değiştirilmez).
-    Gönderim kapıları direktif yoluyla aynı: observe kipinde yalnız log; meşgul/alt ajanlı/az önce direktif almış oturum
-    beklenir (sonraki tick); uzak oturuma yalnız `remote_actions` açıkken. Başarısız gönderim sonraki tick'te yeniden denenir."""
+    """Proje ANA oturumu fiilen (canlı model/effort) Sonnet medium üstündeyse `upper_main` olayı (YALNIZ log: oturuma hiçbir şey
+    gönderilmez, model değiştirilmez). Aynı oturum + aynı model/effort + aynı süreç için KALICI olarak bir kez."""
     if not cfg.upper_main_warn:
         return
-    now = time.time()
     flagged = {v.name: v for v in sw.upper_main_views(views, projects, cfg, world)}
-    for key in [k for k in _UPPER_MAIN_WARNED if k[0] == cfg.sid and k[1] not in flagged]:
-        _UPPER_MAIN_WARNED.pop(key, None)       # kurala döndü ya da kapandı: yeniden yükselirse yeniden uyarılır
-    if not flagged:
-        return
-    lda: Dict[str, Any] = {}
+    known_ok = {v.name for v in views if v.running and v.live_model and v.live_effort} - set(flagged)
     try:
-        lda = sw.load_state(paths).get("last_directive_at") or {}
+        seen: Dict[str, Any] = dict(sw.load_state(paths).get("upper_main_seen") or {})
     except Exception:
-        lda = {}
+        return
+    changed = False
+    for name in [n for n in seen if n in known_ok]:
+        seen.pop(name, None)       # bilinen uyumlu okuma: yeniden yükselirse yeniden bildirilir
+        changed = True
     for name, v in flagged.items():
-        key = (cfg.sid, name)
-        ent = _UPPER_MAIN_WARNED.get(key)
-        if ent is None or (ent["model"], ent["effort"]) != (v.live_model, v.live_effort):
-            ent = {"model": v.live_model, "effort": v.live_effort, "at": now, "sent": False}
-            _UPPER_MAIN_WARNED[key] = ent
-            sw.log_event("upper_main", paths=paths, name=name, project=v.project, model=v.live_model,
-                         effort=v.live_effort, **({"host": v.host} if sw.normalize_host(v.host) else {}))
-        if ent["sent"] or cfg.mode == "observe":
+        ent = seen.get(name)
+        if isinstance(ent, dict) and _upper_main_same(ent, v):
             continue
-        host = sw.normalize_host(v.host)
-        if host and not cfg.remote_actions:
-            continue
-        if v.subagent_active or sw.directive_defer_reason(v.busy, float(lda.get(name) or 0.0), now):
-            continue
-        p = projects.get(name)
-        if p is None:
-            continue
-        res = _give_directive(p, sw.upper_main_text(name, v.live_model, v.live_effort, cfg.lang),
-                              start_if_stopped=False, reason="upper_main", session_name=name, cfg=cfg,
-                              host=host or None, rt=rt, actor="engine")
-        if isinstance(res, dict) and res.get("ok"):
-            ent["sent"] = True
-        else:
-            diag_log("steward_upper_main_send_failed", sid=cfg.sid, name=name,
-                     error=str((res or {}).get("error") if isinstance(res, dict) else res))
+        prev = ent if isinstance(ent, dict) else {}
+        seen[name] = {"model": v.live_model or prev.get("model", ""), "effort": v.live_effort or prev.get("effort", ""),
+                      "started_at": float(v.started_at or 0.0), "at": time.time()}
+        changed = True
+        sw.log_event("upper_main", paths=paths, name=name, project=v.project, model=v.live_model,
+                     effort=v.live_effort, **({"host": v.host} if sw.normalize_host(v.host) else {}))
+    if not changed:
+        return
+    try:
+        with sw.steward_lock(paths):
+            state = sw.load_state(paths)
+            state["upper_main_seen"] = seen
+            sw.save_state(state, paths)
+    except sw.LockTimeout as e:
+        diag_log("steward_upper_main_state_failed", sid=cfg.sid, error=str(e))
 
 
 _JOURNAL_KINDS = ("ask_user", "idea", "set_phase", "close_stale_answer", "close_negative_answer")   # kaydı sessizce kaybolan tür: tetikleyici (yanıt özeti) tick'te tüketilir

@@ -1,7 +1,7 @@
 """TODO 1233 (5): değnekçi denetimi "proje ANA oturumu fiilen Sonnet medium dışına çıktı mı" (canlı model/effort).
 
 Kural (sahip): ana oturum HEP claude-sonnet-5-5 + medium; bilinçli ağır adımda geçici yükselme olabilir. Bu yüzden
-denetim ZORLAMAZ: `upper_main` olayı loglanır + oturuma tek bir HATIRLATMA direktifi gider (kapatma/model değiştirme yok),
+denetim ZORLAMAZ ve oturuma YAZMAZ: yalnız `upper_main` olayı loglanır (sahibe/panele görünür), kalıcı kayıtla
 aynı oturum + aynı model/effort için tekrar etmez. Ayar `upper_main_warn` (varsayılan AÇIK, `off` ile kapanır).
 
 Canlı servis/tmux/ağ YOK (`_Engine` sahte oturum geri çağrıları; `_give_directive` sahte).
@@ -82,8 +82,6 @@ class TestPure(unittest.TestCase):
 class _Tick(NoRealReviewMixin, _Engine):
     def setUp(self):
         super().setUp()
-        ws._UPPER_MAIN_WARNED.clear()
-        self.addCleanup(ws._UPPER_MAIN_WARNED.clear)
         self.settings()
         sw.upsert_project("a", phase="planned", cadence_minutes=10_000)
         self.directives = []
@@ -100,64 +98,84 @@ class _Tick(NoRealReviewMixin, _Engine):
 
 
 class TestTick(_Tick):
-    def test_upper_main_logged_and_reminded_once(self):
+    """22 Kas dersi: oturum `/model`'i KENDİSİ değiştiremez; oturuma hatırlatma yollamak her seferinde ~160K bağlamlı boş bir tur
+    yakıyordu (line: 24 saatte 16 kez). Denetim artık YALNIZ sahibe görünen `upper_main` olayı yazar (oturuma direktif YOK),
+    kayıt kalıcıdır (state `upper_main_seen`), bilinmeyen model/effort okuması değişiklik sayılmaz."""
+
+    def notified(self):
+        """`upper_main` bildirim ÇAĞRISI sayısı (log_event'in 15 dk içerik tekilleştirmesinden bağımsız)."""
+        real = sw.log_event
+        calls = []
+        def spy(ev, **kw):
+            if ev == "upper_main":
+                calls.append(kw.get("name"))
+            return real(ev, **kw)
+        p = mock.patch.object(ws.sw, "log_event", spy)
+        p.start()
+        self.addCleanup(p.stop)
+        return calls
+
+    def seen(self):
+        return sw.load_state(sw.paths_for("default")).get("upper_main_seen") or {}
+
+    def test_upper_main_logged_once_and_never_sent_to_the_session(self):
         self.views = [_view("a", live_model="claude-opus-5-5", live_effort="high")]
         ws.tick_once("timer")
         self.assertEqual(len(self.events()), 1)
         e = self.events()[0]
         self.assertEqual((e["name"], e["model"], e["effort"]), ("a", "claude-opus-5-5", "high"))
-        self.assertEqual(len(self.mine()), 1)
-        name, text, kw = self.mine()[0]
-        self.assertEqual(name, "a")
-        self.assertFalse(kw.get("start_if_stopped"))
-        self.assertEqual(kw.get("session_name"), "a")
-        self.assertFalse(kw.get("model") or kw.get("effort"))       # model DEĞİŞTİRİLMEZ
-        self.assertIn("claude-opus-5-5", text)
         ws.tick_once("timer")
         ws.tick_once("timer")
         self.assertEqual(len(self.events()), 1)                       # spam yok
-        self.assertEqual(len(self.mine()), 1)
+        self.assertEqual(self.directives, [])                         # oturuma HİÇ direktif gitmez
         self.assertFalse([c for c in self.calls if c[0] in ("stop", "handover")])
+        self.assertEqual(self.seen()["a"]["model"], "claude-opus-5-5")  # kalıcı (servis yeniden başlasa da yinelemez)
 
-    def test_new_combo_or_back_and_up_again_warns_again(self):
+    def test_flapping_unknown_live_reading_is_not_a_change(self):
+        # line vakası: canlı okuma sonnet/high <-> bilinmiyor arasında gidip geldi; her dönüşte yeniden uyarıldı
+        for i in range(6):
+            self.views = [_view("a", live_model="claude-sonnet-5-5", live_effort="high")] if i % 2 == 0 else \
+                         [_view("a", live_model="", live_effort="")]
+            ws.tick_once("timer")
+        self.assertEqual(len(self.events()), 1)
+        self.assertEqual(self.directives, [])
+
+    def test_unknown_effort_on_known_upper_model_is_not_a_change(self):
+        for eff in ("high", "", "high", ""):
+            self.views = [_view("a", live_model="claude-opus-5-5", live_effort=eff)]
+            ws.tick_once("timer")
+        self.assertEqual(len(self.events()), 1)
+
+    def test_known_change_or_back_and_up_again_logs_again(self):
+        calls = self.notified()
         self.views = [_view("a", live_model="claude-opus-5-5", live_effort="medium")]
         ws.tick_once("timer")
         self.views = [_view("a", live_model="claude-fable-5-1", live_effort="medium")]
         ws.tick_once("timer")
-        self.assertEqual(len(self.mine()), 2)
-        self.views = [_view("a", live_model="claude-sonnet-5-5", live_effort="medium")]
+        self.assertEqual(len(calls), 2)
+        self.views = [_view("a", live_model="claude-sonnet-5-5", live_effort="medium")]     # BİLİNEN uyumlu: kayıt düşer
         ws.tick_once("timer")
+        self.assertNotIn("a", self.seen())
         self.views = [_view("a", live_model="claude-fable-5-1", live_effort="medium")]
         ws.tick_once("timer")
-        self.assertEqual(len(self.mine()), 3)
+        self.assertEqual(len(calls), 3)
 
-    def test_busy_session_waits_until_idle(self):
-        self.views = [_view("a", busy=True, live_model="claude-opus-5-5")]
+    def test_new_process_same_combo_logs_once_more(self):
+        calls = self.notified()
+        self.views = [_view("a", live_model="claude-opus-5-5", live_effort="high", started_at=1000.0)]
         ws.tick_once("timer")
-        self.assertEqual(len(self.events()), 1)
-        self.assertEqual(self.mine(), [])
-        self.views = [_view("a", busy=False, subagent_active=True, live_model="claude-opus-5-5")]
         ws.tick_once("timer")
-        self.assertEqual(self.mine(), [])
-        self.views = [_view("a", busy=False, live_model="claude-opus-5-5")]
+        self.views = [_view("a", live_model="claude-opus-5-5", live_effort="high", started_at=9000.0)]   # yeniden açıldı
         ws.tick_once("timer")
-        self.assertEqual(len(self.mine()), 1)
-        self.assertEqual(len(self.events()), 1)
+        ws.tick_once("timer")
+        self.assertEqual(len(calls), 2)
 
-    def test_failed_send_is_retried(self):
-        self.views = [_view("a", live_model="claude-opus-5-5")]
-        with mock.patch.object(ws, "_give_directive", lambda proj, text, **kw: {"ok": False, "error": "send failed"}):
-            ws.tick_once("timer")
-        self.assertEqual(self.mine(), [])
-        ws.tick_once("timer")
-        self.assertEqual(len(self.mine()), 1)
-
-    def test_observe_mode_logs_only(self):
+    def test_observe_mode_logs_too(self):
         self.settings(default={"mode": "observe"})
         self.views = [_view("a", live_model="claude-opus-5-5")]
         ws.tick_once("timer")
         self.assertEqual(len(self.events()), 1)
-        self.assertEqual(self.mine(), [])
+        self.assertEqual(self.directives, [])
 
     def test_setting_off_disables(self):
         self.assertTrue(settings.steward_config().upper_main_warn)     # varsayılan AÇIK
@@ -166,13 +184,12 @@ class TestTick(_Tick):
         self.views = [_view("a", live_model="claude-opus-5-5")]
         ws.tick_once("timer")
         self.assertEqual(self.events(), [])
-        self.assertEqual(self.mine(), [])
 
     def test_sonnet_medium_main_is_silent(self):
         self.views = [_view("a", live_model="claude-sonnet-5-5", live_effort="medium")]
         ws.tick_once("timer")
         self.assertEqual(self.events(), [])
-        self.assertEqual(self.mine(), [])
+        self.assertEqual(self.seen(), {})
 
 
 class TestCollectViews(NoRealReviewMixin, _Engine):
