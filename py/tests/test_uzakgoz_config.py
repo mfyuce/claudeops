@@ -82,7 +82,9 @@ class ResolveTests(unittest.TestCase):
 
     def test_start_without_any_source_or_binary_is_clear_error(self):
         with mock.patch.object(rd, "uzakgoz_config", return_value={"dir": "", "bin": "", "port": None}), \
-             mock.patch.object(rd, "LOCAL_BIN", rd.Path("/nonexistent/uzakgoz")), mock.patch.object(rd.subprocess, "run") as run:
+             mock.patch.object(rd, "LOCAL_BIN", rd.Path("/nonexistent/uzakgoz")), mock.patch.object(rd.subprocess, "run") as run, \
+             mock.patch.object(rd, "_adopt_if_orphaned"), mock.patch.object(rd, "_adopted_pid", None), \
+             mock.patch.object(rd, "_proc", None), mock.patch.object(rd, "_port", None):   # gerçek PID_FILE'dan canlı daemon benimsenip sızmasın
             res = rd.start()
         self.assertFalse(res["ok"])
         self.assertIn("uzakgoz", res["error"])
