@@ -23,6 +23,10 @@ mkdir -p "$LOG_DIR"
 # birbirinden ayırıyordu) ve AYNI güvenlik: dizin/dosya symlink ya da başkasının ise REDDET; `exec 9>` symlink hedefini truncate ederdi
 # (OPS-03), burada `>>` (kesmez) ve önce lstat benzeri `-L`/`-O` denetimi. Başarıda fd 9 açık kalır; hata = return 1.
 GUARD_LOCK_DIR="${CLAUDEOPS_GUARD_LOCK_DIR:-/tmp/claudeops-$(id -u)}"
+# base_name: oturum adının sondaki rakam ve `_rakam` öbeklerini atar (hc58→hc, cops20260930_1→cops). Eski `sed 's/[0-9]+$//'`
+# `cops20260930_1`'i `cops20260930_`'ye indirip boot.list'teki `cops` ile eşleştiremiyordu (OPS-04, duplicate açılışı).
+base_name() { printf '%s' "$1" | sed -E 's/([0-9]+|_[0-9]+)+$//'; }
+
 guard_lock_fd9() {
   mkdir -p "$GUARD_LOCK_DIR" 2>/dev/null
   if [ -L "$GUARD_LOCK_DIR" ] || [ ! -O "$GUARD_LOCK_DIR" ]; then
@@ -772,7 +776,7 @@ except: print('gone')
     # Effective name + resume flag.
     # Suffix sistemi kaldırıldı: isim = base-name. $name zaten base (canlı session
     # eski suffix'liyse sondaki rakamları at → hc58'i hc olarak yeniden aç).
-    local effective_name; effective_name=$(printf '%s' "$name" | sed -E 's/[0-9]+$//')
+    local effective_name; effective_name=$(base_name "$name")
     [ -n "$rename" ] && effective_name="$rename"
     local resume_arg="--resume $sid"
     [ "$new_session" = "1" ] && resume_arg=""
@@ -1938,7 +1942,7 @@ cmd_boot() {
     case "$name" in ''|'#'*) continue;; esac
     [ -d "$cwd" ] || { echo "  SKIP $name: cwd yok ($cwd)"; continue; }
     # boot.list zaten base-name; eski suffix'li satır gelirse sondaki rakamları at.
-    local eff; eff=$(printf '%s' "$name" | sed -E 's/[0-9]+$//')
+    local eff; eff=$(base_name "$name")
     local m="${model:-$BOOT_MODEL_DEFAULT}"
     local sid; sid=$(_latest_sid_for_cwd "$cwd")
     local resume=""; [ -n "$sid" ] && resume="--resume $sid"
@@ -2056,7 +2060,7 @@ cmd_guard() {
   # Şu an çalışan session isimleri + cwd'leri (isim eşleşmese bile aynı cwd varsa atla)
   # İsimler base'e indirgenir (hc58→hc, geçiş savunması) → çalışan hc58 varken hc açılmaz.
   local running_tsv; running_tsv=$(all_sessions_tsv 2>/dev/null)
-  local running; running=$(echo "$running_tsv" | awk -F'\t' '{print $2}' | sed -E 's/[0-9]+$//')
+  local running; running=$(echo "$running_tsv" | awk -F'\t' '{print $2}' | while IFS= read -r _n; do base_name "$_n"; echo; done)
   local running_cwds; running_cwds=$(echo "$running_tsv" | awk -F'\t' '{print $5}')
 
   local reopened=0 skipped=0 no_cwd=0
