@@ -94,12 +94,28 @@ def _rows(base: str, source: str, db: str, since: float, wm: float) -> List[Dict
     return out
 
 
+def _resource_only_rows(seen: set, db: str, since: float) -> List[Dict[str, Any]]:
+    """Token günlüğü olmayan ama örneklenen oturumlar (claude CLI): yalnız kaynak sütunları; USD/istek yok. source="cli"."""
+    out: List[Dict[str, Any]] = []
+    for s in um.list_sessions(db):
+        if s["name"] in seen or (since and s["last_ts"] < since):
+            continue
+        res = _res(s["name"], db)
+        if not res:
+            continue
+        out.append({"session": s["name"], "source": "cli", "model": "", "tasks": 0, "requests": 0, "wait_s": 0.0, "span_s": 0.0,
+                    "tokens": {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}, "usd": None, "usd_per_hour": None,
+                    "usd_per_request": None, "res": res})
+    return out
+
+
 def compare(usage_dir: str = ucli_cost.USAGE_DIR, other_dir: str = ucli_cost.OTHER_DIR, db: Optional[str] = None,
             since: float = 0.0, write_mult: float = ucli_cost.CACHE_1H_WRITE_MULT) -> Dict[str, Any]:
     """{rows: oturum başına satır, by_model: model başına toplam}. `since`: unix saniye, yalnız bu andan sonra güncellenen günlükler.
     Eksik dizin/DB ve bozuk satır FIRLATMAZ (boş sonuç)."""
     db = db or um.db_path()
     rows = _rows(usage_dir, "claude", db, since, write_mult) + _rows(other_dir, "other", db, since, write_mult)
+    rows += _resource_only_rows({r["session"] for r in rows}, db, since)
     agg: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         m = agg.setdefault((r["model"] or "?", r["source"]), {"model": r["model"] or "?", "source": r["source"], "sessions": 0, "requests": 0, "usd": None,

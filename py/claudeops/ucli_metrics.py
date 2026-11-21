@@ -28,6 +28,8 @@ DISK_EVERY_S = 300.0
 DISK_TIMEOUT_S = 3.0
 DISK_MAX_FILES = 200_000
 DISCOVER_EVERY_S = 60.0
+SLOW_EVERY_S = 60.0       # claude CLI oturumları (SLOW_NAMES) en çok dakikada bir örneklenir: depo büyümesi ~4x az
+SLOW_NAMES: set = set()
 MAX_LIMIT = 2000
 _CLK = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
 _PAGE = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
@@ -312,6 +314,8 @@ class Sampler:
             pids = [p for p, r in owner.items() if r == root]
             if not pids:
                 continue
+            if name in SLOW_NAMES and t - self.prev_ts.get(name, -1e18) < SLOW_EVERY_S:
+                continue                                          # önceki tik/zaman korunur: CPU% sonraki örnekte tüm aralığı kapsar
             rss = rb = wb = 0
             ticks: Dict[int, int] = {}
             for p in pids:
@@ -342,8 +346,12 @@ class Sampler:
 
 
 def default_discover() -> List[Tuple[str, int, str]]:
+    """ucli oturumları + claude CLI oturumları (22 Kas: karşılaştırma tablosu claude CLI'yı da kaynak sütunlarıyla göstersin)."""
     from . import discovery
-    return [(s.name, s.pid, s.cwd or "") for s in discovery.find_sessions(measure_cpu=False) if s.cli == "ucli"]
+    found = [s for s in discovery.find_sessions(measure_cpu=False) if s.cli in ("ucli", "claude") and s.pid]
+    SLOW_NAMES.clear()
+    SLOW_NAMES.update(s.name for s in found if s.cli == "claude")
+    return [(s.name, s.pid, s.cwd or "") for s in found]
 
 
 # ── arka plan iş parçacığı ────────────────────────────────────────────────────

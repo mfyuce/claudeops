@@ -21,6 +21,22 @@ def write_log(path, model, reqs, t0=1_000_000, step=60_000, usage=None):
         f.write(json.dumps({"event": "task_end", "t": t0 + reqs * step, "task": 1}) + "\n")
 
 
+class SlowSampling(unittest.TestCase):
+    def test_claude_cli_sessions_sampled_at_most_once_a_minute(self):
+        t = [1000.0]
+        db = os.path.join(tempfile.mkdtemp(), "m.db")
+        s = um.Sampler(discover=lambda: [("x", os.getpid(), "")], path=db, now=lambda: t[0], disk=lambda c: None)
+        um.SLOW_NAMES.add("x")
+        try:
+            n = []
+            for _ in range(6):
+                n.append(s.sample_once())
+                t[0] += 15
+        finally:
+            um.SLOW_NAMES.discard("x")
+        self.assertEqual(n, [1, 0, 0, 0, 1, 0])
+
+
 class Compare(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()
@@ -60,6 +76,15 @@ class Compare(unittest.TestCase):
         self.assertEqual(rows["cli1"]["res"]["cpu_avg"], 20.0)
         self.assertEqual(rows["cli1"]["res"]["io_w"], 900)
         self.assertIsNone(rows["ev1"]["res"])
+
+    def test_sampled_session_without_token_log_is_resource_only_cli_row(self):
+        um.write_samples([("claude-a", 5.0, 200_000, 12.0, 10, 20, 4, None)], self.db)          # claude CLI: token günlüğü YOK
+        rows, r = self.rows()
+        x = rows["claude-a"]
+        self.assertEqual((x["source"], x["requests"], x["usd"]), ("cli", 0, None))
+        self.assertEqual(x["res"]["rss_max_kib"], 200_000)
+        self.assertEqual(sum(1 for q in r["rows"] if q["session"] == "cli1"), 1)             # ucli satırı ikilenmez
+        self.assertNotIn("claude-a", {q["session"] for q in uc.compare(self.usage, self.other, self.db, since=10.0)["rows"]})
 
     def test_by_model_aggregates(self):
         _, r = self.rows()
