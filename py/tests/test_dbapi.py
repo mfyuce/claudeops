@@ -156,6 +156,25 @@ class FakePsycopg(unittest.TestCase):
                 dbapi.connect("postgresql://u@h/d")
 
 
+class MigrateEntries(unittest.TestCase):
+    def test_per_backend_entry_and_own_version_table(self):
+        with tempfile.TemporaryDirectory() as d:
+            c = dbapi.connect("", os.path.join(d, "m.db"), named_rows=True)
+            migs = ["CREATE TABLE a(id {PK_AUTO}, ts {REAL}, h TEXT)",
+                    {"sqlite": ["CREATE TABLE b(x INTEGER)", "INSERT INTO b VALUES(1)"], "postgres": ["SELECT 1"]}]
+            self.assertEqual(dbapi.migrate(c, migs, table="comp_version"), 2)
+            self.assertEqual(dbapi.schema_version(c, "comp_version"), 2)
+            self.assertEqual(c.execute("SELECT x FROM b").fetchone()["x"], 1)           # adlı satır
+            self.assertEqual(dict(c.execute("SELECT x FROM b").fetchone()), {"x": 1})
+            self.assertEqual(dbapi.schema_version(c), 2)                                 # SQLite: user_version de güncel
+            self.assertEqual(dbapi.migrate(c, migs, table="comp_version"), 2)           # tekrar: değişiklik yok
+            c.close()
+
+    def test_randhex_token(self):
+        self.assertIn("randomblob", dbapi.ddl("{RANDHEX}", dbapi.SQLITE))
+        self.assertIn("md5(random()", dbapi.ddl("{RANDHEX}", dbapi.POSTGRES))
+
+
 class SqliteStoreStillWorks(unittest.TestCase):
     def test_store_roundtrip_with_layer(self):
         with tempfile.TemporaryDirectory() as d:

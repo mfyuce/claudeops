@@ -19,8 +19,9 @@ from typing import Any, Callable, Iterator, List, Optional, Sequence
 
 SQLITE, POSTGRES = "sqlite", "postgres"
 BUSY_TIMEOUT_MS = 5000
-_VERSION_DDL = "CREATE TABLE IF NOT EXISTS schema_version (id INTEGER PRIMARY KEY, version INTEGER NOT NULL)"
+VERSION_TABLE = "schema_version"          # çekirdek `store.py`; her bileşen KENDİ sürüm tablosunu verir (aynı PG DB'de çakışmasın): notes -> notes_schema_version
 _MIGRATE_LOCK_KEY = 726_001      # pg_advisory_xact_lock: eşzamanlı göç sıraya girer
+_WRITER_LOCK_KEY = 726_002       # serialize_writes bağlantılarında yazma işlemi sırası
 
 
 class DbError(Exception):
@@ -74,8 +75,9 @@ def translate(sql: str, backend: str) -> str:
 def ddl(text: str, backend: str) -> str:
     """Göç metni belirteçleri: `{PK_AUTO}` (artan birincil anahtar), `{REAL}` (çift duyarlıklı gerçek: PG `REAL` 4 bayttır, epoch bozulur)."""
     if backend == POSTGRES:
-        return text.replace("{PK_AUTO}", "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY").replace("{REAL}", "DOUBLE PRECISION")
-    return text.replace("{PK_AUTO}", "INTEGER PRIMARY KEY AUTOINCREMENT").replace("{REAL}", "REAL")
+        return text.replace("{PK_AUTO}", "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY").replace("{REAL}", "DOUBLE PRECISION") \
+            .replace("{RANDHEX}", "md5(random()::text || clock_timestamp()::text)")
+    return text.replace("{PK_AUTO}", "INTEGER PRIMARY KEY AUTOINCREMENT").replace("{REAL}", "REAL").replace("{RANDHEX}", "lower(hex(randomblob(16)))")
 
 
 def split_statements(script: str, backend: str) -> Iterator[str]:
@@ -121,11 +123,13 @@ def split_statements(script: str, backend: str) -> Iterator[str]:
 class Conn:
     """Tek bağlantı (çağıran iş parçacığına başına bir tane tutar). `execute` yerel imleci döndürür (fetchone/fetchall/rowcount/yineleme)."""
 
-    def __init__(self, raw: Any, backend: str):
+    def __init__(self, raw: Any, backend: str, serialize_writes: bool = False):
         self.raw = raw
         self.backend = backend
         self.pg = backend == POSTGRES
         self.for_update = " FOR UPDATE" if self.pg else ""
+        # SQLite `BEGIN IMMEDIATE` tüm yazıcıları sıralar; PG'de aynı garanti için (ör. notes `rev` sayacı: commit sırası = rev sırası) tek anahtar kilidi
+        self.serialize_writes = serialize_writes
 
     def execute(self, sql: str, params: Sequence[Any] = ()) -> Any:
         q = translate(sql, self.backend)
@@ -150,6 +154,8 @@ class Conn:
 
     def begin_write(self) -> None:
         self.execute("BEGIN" if self.pg else "BEGIN IMMEDIATE")
+        if self.pg and self.serialize_writes:
+            self.execute("SELECT pg_advisory_xact_lock(?)", (_WRITER_LOCK_KEY,))
 
     def commit(self) -> None:
         self.execute("COMMIT")
@@ -166,21 +172,28 @@ class Conn:
         self.raw.close()
 
 
-def connect(url: str = "", path: str = "") -> Conn:
+def connect(url: str = "", path: str = "", named_rows: bool = False, serialize_writes: bool = False,
+            check_same_thread: bool = True) -> Conn:
+    """`named_rows`: satırlara hem indeksle hem adla erişilir (`sqlite3.Row` / psycopg2 `DictCursor`); `dict(satır)` çalışır."""
     be = backend_of(url)
     if be == SQLITE:
-        raw = sqlite3.connect(sqlite_path(url, path), timeout=BUSY_TIMEOUT_MS / 1000.0, isolation_level=None)   # autocommit; işlemi biz açarız
+        raw = sqlite3.connect(sqlite_path(url, path), timeout=BUSY_TIMEOUT_MS / 1000.0, isolation_level=None,   # autocommit; işlemi biz açarız
+                              check_same_thread=check_same_thread)
+        if named_rows:
+            raw.row_factory = sqlite3.Row
         raw.execute("PRAGMA journal_mode=WAL")
         raw.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
         raw.execute("PRAGMA synchronous=NORMAL")
-        return Conn(raw, be)
+        return Conn(raw, be, serialize_writes)
     try:
         import psycopg2          # type: ignore
+        if named_rows:
+            import psycopg2.extras   # type: ignore
     except ImportError as e:
         raise DbError("db_url postgresql:// ama psycopg2 kurulu değil") from e
-    raw = psycopg2.connect(url)
+    raw = psycopg2.connect(url, **({"cursor_factory": psycopg2.extras.DictCursor} if named_rows else {}))
     raw.autocommit = True
-    return Conn(raw, be)
+    return Conn(raw, be, serialize_writes)
 
 
 class Tx:
@@ -201,40 +214,52 @@ class Tx:
         return False
 
 
-def schema_version(c: Conn) -> int:
+def schema_version(c: Conn, table: str = VERSION_TABLE) -> int:
     """Güncel göç sürümü; tablo yoksa 0 (SQLite'ta eski `user_version` varsa ondan)."""
     if c.pg:
-        ok = c.execute("SELECT 1 FROM information_schema.tables WHERE table_name='schema_version' AND table_schema=current_schema()").fetchone()
+        ok = c.execute("SELECT 1 FROM information_schema.tables WHERE table_name=? AND table_schema=current_schema()", (table,)).fetchone()
     else:
-        ok = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version'").fetchone()
+        ok = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
     tab = 0
     if ok:
-        row = c.execute("SELECT version FROM schema_version WHERE id=1").fetchone()
+        row = c.execute(f"SELECT version FROM {table} WHERE id=1").fetchone()
         tab = int(row[0]) if row else 0
     if not c.pg:      # SQLite: eski `user_version` de geçerli (daha yeni bir kod/araç onu ilerlettiyse "kod eski" korunur)
         return max(tab, int(c.execute("PRAGMA user_version").fetchone()[0]))
     return tab
 
 
-def migrate(c: Conn, migrations: Sequence[str], on_newer: Optional[Callable[[int, int], None]] = None) -> int:
-    """`migrations[i]` = sürüm i+1 betiği (YALNIZ sona ekleme). Tek işlemde, eşzamanlı çağrılar sıraya girer. Yeni sürüm numarasını döndürür."""
+def _entry(m: Any, backend: str) -> str:
+    """Göç girdisi: düz metin (iki motor) ya da `{"sqlite": ..., "postgres": ...}` (`"*"` = ortak yedek)."""
+    if isinstance(m, dict):
+        m = m.get(backend, m.get("*", ""))
+    return m
+
+
+def migrate(c: Conn, migrations: Sequence[Any], on_newer: Optional[Callable[[int, int], None]] = None,
+            table: str = VERSION_TABLE) -> int:
+    """`migrations[i]` = sürüm i+1 betiği (YALNIZ sona ekleme); metin ya da liste (deyim listesi) ya da motora göre sözlük. Tek işlemde,
+    eşzamanlı çağrılar sıraya girer. Yeni sürüm numarasını döndürür."""
+    upsert = f"INSERT INTO {table}(id, version) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET version=excluded.version"
     with Tx(c):
         if c.pg:
             c.execute("SELECT pg_advisory_xact_lock(?)", (_MIGRATE_LOCK_KEY,))
-        c.execute(_VERSION_DDL)
-        ver = schema_version(c)
+        c.execute(f"CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY, version INTEGER NOT NULL)")
+        ver = schema_version(c, table)
         if ver > len(migrations):
             if on_newer is not None:
                 on_newer(ver, len(migrations))
             raise DbError(f"DB sürümü ({ver}) bu kodun bildiğinden ({len(migrations)}) yeni; kod eski")
         for i in range(ver, len(migrations)):
-            for stmt in split_statements(ddl(migrations[i], c.backend), c.backend):
+            m = _entry(migrations[i], c.backend)
+            stmts = [ddl(x, c.backend) for x in m] if isinstance(m, (list, tuple)) else split_statements(ddl(m, c.backend), c.backend)
+            for stmt in stmts:
                 c.execute(stmt)
             if not c.pg:
                 c.execute(f"PRAGMA user_version={i + 1}")
-            c.execute("INSERT INTO schema_version(id, version) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET version=excluded.version", (i + 1,))
+            c.execute(upsert, (i + 1,))
         if ver == len(migrations):      # güncel DB (eski user_version'dan gelen ilk açılış dahil): tablo satırı mutlaka var
-            c.execute("INSERT INTO schema_version(id, version) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET version=excluded.version", (ver,))
+            c.execute(upsert, (ver,))
         return len(migrations)
 
 

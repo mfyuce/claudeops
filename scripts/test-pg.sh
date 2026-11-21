@@ -18,6 +18,6 @@ done
 docker exec "$NAME" pg_isready -U postgres -d t >/dev/null
 sleep 1
 export CLAUDEOPS_TEST_PG_URL="postgresql://postgres:t@127.0.0.1:$PORT/t"
-cd "$REPO/py/tests"
+cd "${TEST_DIR:-$REPO/py/tests}"
 mods=("$@"); [ ${#mods[@]} -gt 0 ] || mods=(test_dbapi)
 python3 -m unittest "${mods[@]}"

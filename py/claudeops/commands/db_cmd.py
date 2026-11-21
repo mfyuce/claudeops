@@ -4,6 +4,7 @@
   py/cops db export [--out DOSYA]        # belgeler+tsv+günlük JSON (varsayılan backups/db-export-<tarih>.json, 0600); yalnız okur
   py/cops db import DOSYA [--apply]      # varsayılan KURU çalışma; --apply önce `.db` yedeği alır, sonra yazar
   py/cops db status --drift              # her DB belgesini dosyasıyla JSON-eşitlik karşılaştırır (fark varsa çıkış 1)
+  py/cops db migrate-to-pg --url postgresql://... [--notes notes.db] [--apply]   # SQLite -> Postgres; KURU varsayılan, sayım+sha doğrulaması, hedef doluysa reddeder
   py/cops db materialize [AD...] [--apply]   # DB belgesini kendi dosyasına (AD.json) yazar; varsayılan KURU, --apply atomik 0600
 İçe aktarma belge ve tsv'yi DEĞİŞTİRİR, günlük akışını yalnız akış boşsa ekler. Servis çalışırken yazma: dual modda dosya doğruluk
 kaynağıdır, DB gölgedir; içe aktarma sonrası `cops db status` ve diag.log "statedocs drift" sayacına bak.
@@ -28,6 +29,10 @@ def register(sub):
     m.add_argument("--apply", action="store_true")
     e = sp.add_parser("export")
     e.add_argument("--out", default="")
+    g = sp.add_parser("migrate-to-pg")
+    g.add_argument("--url", required=True)
+    g.add_argument("--notes", default="", help="enterprise notes.db yolu (isteğe bağlı)")
+    g.add_argument("--apply", action="store_true")
     i = sp.add_parser("import")
     i.add_argument("file")
     i.add_argument("--apply", action="store_true")
@@ -97,8 +102,52 @@ def _store_obj():
     return _store.default_store()
 
 
+def _print_report(title: str, rep: dict) -> None:
+    print(f"{title}: {'YAZILDI + doğrulandı' if rep.get('verified') else ('KURU' if not rep.get('apply') else 'YAZILMADI')}")
+    for name, v in rep["tables"].items():
+        t = v.get("target")
+        print(f"  {name}: kaynak {v['source']['count']} satır sha {v['source']['sha256'][:12]}"
+              + (f" -> hedef {t['count']} satır sha {t['sha256'][:12]}" if t else f" (hedefte önce {v['target_rows_before']} satır)"))
+
+
+def _migrate_to_pg(args) -> int:
+    """SQLite -> PG (URL'deki parola ASLA yazdırılmaz). Önce çekirdek `claudeops.db`, `--notes` verilirse enterprise notes.db."""
+    from .. import dbcopy
+    url = str(args.url)
+    ok = True
+    try:
+        rep = dbcopy.migrate_store(_store.default_path(), url, bool(args.apply))
+    except (dbcopy.MigrateError, Exception) as e:       # noqa: BLE001 — bağlantı/şema hatası kullanıcıya düz mesaj
+        print(f"hata: {type(e).__name__}: {str(e).replace(url, '<url>')[:300]}")
+        return 1
+    _print_report("claudeops.db", rep)
+    if rep["error"]:
+        print("  " + rep["error"])
+        ok = False
+    if args.notes:
+        try:
+            from claudeops_enterprise.notes import migrate_pg
+        except ImportError:
+            print("hata: --notes enterprise eklentisi gerektirir (claudeops_enterprise.notes.migrate_pg bulunamadı)")
+            return 1
+        try:
+            nrep = migrate_pg.migrate_notes(args.notes, url, bool(args.apply))
+        except Exception as e:     # noqa: BLE001
+            print(f"hata: notes: {type(e).__name__}: {str(e).replace(url, '<url>')[:300]}")
+            return 1
+        _print_report("notes.db", nrep)
+        if nrep["error"]:
+            print("  " + nrep["error"])
+            ok = False
+    if not args.apply and ok:
+        print("KURU koşu tamam; --apply ile yaz. Geri dönüş: kaynak SQLite dosyaları olduğu gibi durur, CLAUDEOPS_DB_URL'yi kaldırmak yeterli.")
+    return 0 if ok else 1
+
+
 def run(args) -> int:
     cmd = getattr(args, "dcmd", None) or "status"
+    if cmd == "migrate-to-pg":
+        return _migrate_to_pg(args)
     st = _store_obj()
     if cmd == "status":
         print(f"db: {st.path}  şema v{st.schema_version()}")
