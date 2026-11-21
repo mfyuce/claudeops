@@ -31,6 +31,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .atomic_json import atomic_write_json
+from . import metrics_push as _metrics_push
 from .diaglog import diag_log
 from .paths import CLAUDEOPS_DIR, REPO_DIR
 
@@ -1141,6 +1142,7 @@ def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
             _notify_failure(name, res, st)
             _save_job_state(name, st)
             diag_log(f"periodic {name}: {'ok' if res.get('ok') else 'HATA'} {res.get('msg', '')}")
+            _metrics_push.push_job(name, (st["last_end"] - st["last_start"]) * 1000.0, res, st["last_end"])    # strangler köprüsü (copsd metrics.db), iş Rust'a taşınınca kalkar
         return res
     finally:
         _RUNNING.pop(name, None)
