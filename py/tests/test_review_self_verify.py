@@ -227,7 +227,8 @@ class SelfVerifyTest(_Flow):
         self.assertEqual(self.argvs, [])
         self.assertEqual({self.findings()[r["id"]]["state"] for r in rows}, {"new"})     # işaretlenmedi
         with mock.patch.object(wr, "_api_key", lambda: "k"), mock.patch.object(wr, "running_keys", lambda sid="": []), \
-                mock.patch("claudeops.providers.ucli_provider.endpoint", lambda: "https://e/v1"):
+                mock.patch.object(wr.ucli_client, "resolve_binary", lambda *_a, **_k: "/fake/ucli"), \
+                mock.patch("claudeops.providers.ucli_provider.endpoint", lambda: "https://e/v1"):   # ikili makineye bağlı olmasın (worktree'de bin/ucli yok)
             ids = [r["id"] for r in rows]
             res = wr.self_verify(cfg, "a", rows, popen=self.popen(Proc(_out(ids, ["refuted"] * 3))), background=False)
         self.assertTrue(res["ok"])
