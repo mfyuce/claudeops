@@ -214,6 +214,11 @@ export function DiagnosticsTab({ onAskSuccess }: DiagnosticsTabProps) {
                 {t.diagWindowless(windowless.join(", "))}
               </div>
             )}
+            {(data.orphan_watch?.detail?.hogs ?? []).length > 0 && (
+              <div className="opts-hint" style={{ color: "var(--amber)", flexBasis: "100%" }} title={(data.orphan_watch?.detail?.hogs ?? []).map((h) => h.cmd).join("\n")}>
+                {t.diagCpuHog((data.orphan_watch?.detail?.hogs ?? []).slice(0, 5).map((h) => `${h.name} pid ${h.pid} %${h.pct}`).join(", "))}
+              </div>
+            )}
             {((data.orphan_watch?.servers ?? 0) > 0 || (data.orphan_watch?.procs ?? 0) > 0) && (
               <div className="opts-hint" style={{ color: "var(--amber)", flexBasis: "100%" }}>
                 {t.diagOrphanWatch(

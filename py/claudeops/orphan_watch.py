@@ -150,3 +150,48 @@ def check(known_pids: Optional[Iterable[int]] = None, now: Optional[float] = Non
         return {"ok": False, "error": f"{type(e).__name__}", "sockets": {}, "procs": [], "keys": []}
     keys = [f"sock:{o['name']}" for o in socks["orphans"]] + [f"proc:{p['pid']}" for p in procs]
     return {"ok": True, "sockets": socks, "procs": procs, "keys": keys}
+
+
+HOG_PCT = 300.0          # tek süreç ortalama CPU (1 çekirdek = 100): iki tarama arası (≈12 dk) ortalaması bu eşiği aşarsa uyarı (21 Kas, sahip: benchmark panel'i yavaşlattı)
+HOG_MIN_SPAN_S = 300     # en az 5 dk'lık ölçüm penceresi (daha kısa aralıkta örnek eskisi korunur)
+
+
+def scan_cpu_hogs(prev: Optional[Dict[str, Any]], now: Optional[float] = None, procs: Optional[Iterable[Any]] = None,
+                  threshold: float = HOG_PCT) -> "tuple[List[Dict[str, Any]], Dict[str, Any]]":
+    """Kümülatif CPU süresi (user+system) farkından ortalama CPU yüzdesi: önceki örnek (`prev` {pid: [cpu_s, ts, create_time]}) ile bu örnek
+    arasında ≥ HOG_MIN_SPAN_S ve ortalama > threshold olan süreçler. Dönen: (hogs [{pid, name, cmd, pct, span_s}], yeni örnek tablosu).
+    Süreç öldürülmez; yalnız uyarı. `procs` testte psutil.Process benzeri (cpu_times()/info) enjekte edilir."""
+    t = time.time() if now is None else now
+    prev = prev or {}
+    cur: Dict[str, Any] = {}
+    hogs: List[Dict[str, Any]] = []
+    try:
+        import psutil
+        it = procs if procs is not None else psutil.process_iter(["pid", "name", "create_time", "cmdline", "cpu_times"])
+    except Exception:  # noqa: BLE001
+        return [], {}
+    me = os.getpid()
+    for p in it:
+        try:
+            info = p.info if hasattr(p, "info") else {}
+            pid = int(info.get("pid") or 0)
+            ct = info.get("cpu_times")
+            if not pid or pid == me or ct is None:
+                continue
+            cpu_s = float(getattr(ct, "user", 0.0)) + float(getattr(ct, "system", 0.0))
+            created = float(info.get("create_time") or 0.0)
+            old = prev.get(str(pid))
+            if old and abs(float(old[2]) - created) < 1.0 and t - float(old[1]) < HOG_MIN_SPAN_S:
+                cur[str(pid)] = old               # pencere henüz kısa: eski örneği koru
+                continue
+            cur[str(pid)] = [cpu_s, t, created]
+            if old and abs(float(old[2]) - created) < 1.0:       # aynı süreç (pid yeniden kullanımı değil)
+                span = t - float(old[1])
+                pct = (cpu_s - float(old[0])) / span * 100.0 if span > 0 else 0.0
+                if pct > threshold:
+                    cmd = " ".join(info.get("cmdline") or [])[:160]
+                    hogs.append({"pid": pid, "name": str(info.get("name") or ""), "cmd": cmd, "pct": round(pct), "span_s": int(span)})
+        except Exception:  # noqa: BLE001
+            continue
+    hogs.sort(key=lambda h: -h["pct"])
+    return hogs, {k: v for k, v in cur.items() if v[0] > 1.0}      # önemsiz süreçleri tabloda tutma (boyut)

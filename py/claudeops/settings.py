@@ -194,6 +194,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "usage_mode": "tek",      # "tek" (varsayılan) | "tick": kullanım okuması değnekçi tick'inde otomatik mi (TBD#203); bkz. `usage_poll.py`.
     "host_loopback_ports": "18765,18766",   # virgüllü port listesi: menzil `reach` dinleyicileri; Hostlar `extra_urls` için SSRF korumasının TEK loopback istisnası
                                             # (http://127.0.0.1:<port>, TBD#258 a, sahip 21 Kas). "" = istisna yok.
+    "spawn_nice": "10",      # proje oturumları (claudeops'un açtığı CLI'lar) bu nice değeriyle + ionice best-effort 7 ile başlar; panel/copsd/değnekçi beyni muaf.
+                             # "off" ya da "0" = kapalı (21 Kas, sahip: sesotappr CPU benchmark'ı panel /api/status'u 3,7-6,4 sn'ye çıkardı). Yalnız YENİ oturumlar.
     "tunnel_protocol": "",   # "" (yönetme) | "auto" | "http2" | "quic" — cloudflared --protocol (UDP/QUIC'i engelleyen ağlarda http2).
                               # Kaydedince systemd drop-in yazılır ve yalnız tünel servisi yeniden başlar (yeni URL); bkz. `tunnel_proto.py`.
     "tunnel_watch": "on",    # "on" | "off" — tünel SAĞLIK BEKÇİSİ (2026-10-17, kullanıcı: "settingslerde seçimlik

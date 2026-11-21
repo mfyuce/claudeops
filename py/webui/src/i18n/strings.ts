@@ -331,6 +331,7 @@ export interface Strings {
   diagRefreshHint: string;
   diagWindowless: (names: string) => string;
   diagOrphanWatch: (items: string) => string;
+  diagCpuHog: (items: string) => string;
   diagOrphans: (list: string) => string;
   regSubList: string;
   snapSubNow: string;
@@ -1255,6 +1256,7 @@ export const STRINGS: Record<Lang, Strings> = {
     orchSubRun: "Çalıştır",
     regSubNew: "Yeni kayıt",
     diagOrphans: (list) => `⚠ terminalsiz süreçler (pty yok, tmux yok): ${list} — "boşa" = 10 dk boyunca >=%50 CPU; Çalışan sekmesinden Durdur ile kapatılır`,
+    diagCpuHog: (items) => `⚠ yüksek CPU (tek süreç ortalama %300 üstü, panel yavaşlayabilir; öldürülmez): ${items}`,
     diagOrphanWatch: (items) => `⚠ sahipsiz kaynak (cops'un tanımadığı, 1 saatten eski; otomatik öldürülmez): ${items}`,
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
     windowlessBadge: "penceresiz",
@@ -2282,6 +2284,7 @@ export const STRINGS: Record<Lang, Strings> = {
     orchSubRun: "Run",
     regSubNew: "New registration",
     diagOrphans: (list) => `⚠ processes without a terminal (no pty, no tmux): ${list} — "spin" = >=50% CPU for 10 min; stop from the Running tab`,
+    diagCpuHog: (items) => `⚠ high CPU (single process averaging over 300%, panel may slow down; never killed): ${items}`,
     diagOrphanWatch: (items) => `⚠ orphaned resources (not known to cops, older than 1h; never auto-killed): ${items}`,
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
     windowlessBadge: "windowless",

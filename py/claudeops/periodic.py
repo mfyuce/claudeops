@@ -1005,21 +1005,23 @@ def run_orphan_watch(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) ->
     if not r.get("ok"):
         return {"ok": False, "msg": f"tarama hatası: {r.get('error')}", "applied": True}
     st = state.setdefault(cfg.get("_name", "orphan_watch"), {})
+    hogs, st["cpu_prev"] = ow.scan_cpu_hogs(st.get("cpu_prev"))
+    r["keys"] = list(r["keys"]) + [f"cpu:{h['pid']}" for h in hogs]
     prev = set(st.get("notified") or [])
     cur = set(r["keys"])
     new = sorted(cur - prev)
     st["notified"] = sorted(cur)                    # çözülen anahtarlar düşer: yeniden çıkarsa yeniden bildirilir
-    st["detail"] = {"sockets": r["sockets"], "procs": r["procs"], "at": time.time()}
+    st["detail"] = {"sockets": r["sockets"], "procs": r["procs"], "hogs": hogs, "at": time.time()}
     if new:
         try:
             from .commands import web_steward
-            web_steward.notify_phone("sahipsiz kaynak: " + ", ".join(new[:6]) + (f" (+{len(new) - 6})" if len(new) > 6 else ""),
+            web_steward.notify_phone("sahipsiz kaynak / CPU: " + ", ".join(new[:6]) + (f" (+{len(new) - 6})" if len(new) > 6 else ""),
                                      title="claudeops sahipsiz")
         except Exception as e:  # noqa: BLE001
             diag_log(f"orphan_watch bildirim hatası {type(e).__name__}")
     sk = r["sockets"]
     msg = (f"{len(sk['orphans'])} sahipsiz sunucu, {len(r['procs'])} sahipsiz CLI süreci; {len(sk['deleted'])} ölü soket silindi, "
-           f"{len(sk['killed'])} usage sunucusu kapatıldı")
+           f"{len(sk['killed'])} usage sunucusu kapatıldı" + (f"; CPU>%{int(ow.HOG_PCT)}: " + ", ".join(f"{h['name']}#{h['pid']} %{h['pct']}" for h in hogs[:3]) if hogs else ""))
     return {"ok": True, "msg": msg, "applied": True}
 
 
@@ -1028,7 +1030,7 @@ def orphan_summary() -> Dict[str, Any]:
     st = load_state().get("orphan_watch") or {}
     d = st.get("detail") or {}
     return {"servers": len((d.get("sockets") or {}).get("orphans") or []), "procs": len(d.get("procs") or []),
-            "detail": d, "last_end": st.get("last_end"), "last_ok": st.get("last_ok")}
+            "hogs": len(d.get("hogs") or []), "detail": d, "last_end": st.get("last_end"), "last_ok": st.get("last_ok")}
 
 
 DEFAULT_DISK_CLEAN: Dict[str, Any] = {

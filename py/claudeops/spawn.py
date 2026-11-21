@@ -123,6 +123,31 @@ def _apply_hook_session_cap(hook_env: dict, cli_opts, provider):
     return opts
 
 
+BRAIN_NAME_PREFIXES = ("degnekci",)      # değnekçi beyin oturumları düşük öncelikli AÇILMAZ (panelle aynı öncelik)
+
+
+def spawn_priority_prefix(name: str) -> str:
+    """Kabuğa gömülecek `renice/ionice` öneki ("" = yok). Ayar `spawn_nice` (varsayılan 10; off/0/geçersiz = yok); değnekçi beyni muaf.
+    Kabuk süreci kendini (`$$`) düşürür, `exec` edilen/çocuk CLI ve onun başlattığı her şey (benchmark dahil) bunu miras alır.
+    Komutlar hata verirse (renice/ionice yok, izin) sessizce geçer: oturum yine açılır."""
+    if str(name or "").startswith(BRAIN_NAME_PREFIXES):
+        return ""
+    try:
+        from .settings import load_settings
+        raw = str(load_settings().get("spawn_nice", "10")).strip().lower()
+    except Exception:
+        raw = "10"
+    if raw in ("", "off", "0", "no", "false"):
+        return ""
+    try:
+        n = int(raw)
+    except ValueError:
+        return ""
+    if not 1 <= n <= 19:
+        return ""
+    return f"{{ renice -n {n} -p $$ >/dev/null 2>&1; ionice -c2 -n7 -p $$ >/dev/null 2>&1; true; }} && "
+
+
 def spawn_session(
     name: str,
     cwd: str,
@@ -217,7 +242,7 @@ def spawn_session(
     # gibi zaten-güvenli, kod-içi sabit isimler asla bu filtreye takılmaz.
     overrides = _filter_env_overrides(overrides)
     env_prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in overrides.items())
-    inner = f"cd {shlex.quote(cwd)} && {env_prefix}{cli_invocation}"
+    inner = f"cd {shlex.quote(cwd)} && {spawn_priority_prefix(name)}{env_prefix}{cli_invocation}"
 
     if dry_run:
         return f"[dry-run] {kind}  cmd: {inner[:80]}..."

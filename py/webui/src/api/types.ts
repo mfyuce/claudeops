@@ -542,7 +542,10 @@ export interface OrphanWatchSummary {
   procs: number;
   last_end?: number | null;
   last_ok?: boolean | null;
+  /** Processes averaging >300% CPU over the last orphan_watch interval (warning only). */
+  hogs?: number;
   detail?: {
+    hogs?: { pid: number; name: string; cmd: string; pct: number; span_s: number }[];
     sockets?: { deleted?: string[]; killed?: string[]; orphans?: { name: string; age_s: number; owner_pid: number }[] };
     procs?: { pid: number; name: string; age_s: number; cwd: string }[];
   };
