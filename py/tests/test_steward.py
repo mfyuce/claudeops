@@ -308,6 +308,17 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], self.projects, {}, _cfg(), self.now, [], [])
         self.assertEqual(sorted(a.kind for a in acts if a.name == "a"), ["set_phase", "stop"])
 
+    def test_done_confirmed_with_open_owner_question_pauses_not_done(self):
+        """D4: sahibe açık soru varken STEWARD-DONE-CONFIRMED faz `done` yapmaz, `paused` yapar (telefona gitmemiş soru gerekçede görünür)."""
+        q = sw.Question(id="q1", project="a", text="hangisi?", created_at=self.now - 60)     # notified_at=0
+        acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], self.projects, {}, _cfg(), self.now, [q], [])
+        ph = [a for a in acts if a.kind == "set_phase" and a.name == "a"]
+        self.assertEqual([a.payload["phase"] for a in ph], ["paused"])
+        self.assertIn("telefona gitmedi", ph[0].reason if hasattr(ph[0], "reason") else str(ph[0]))
+        q.status = "answered"
+        acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], self.projects, {}, _cfg(), self.now, [q], [])
+        self.assertEqual([a.payload["phase"] for a in acts if a.kind == "set_phase" and a.name == "a"], ["done"])
+
     def test_done_marker_ignored_when_project_notes_have_no_done_tag(self):
         self.projects["a"].notes = "sürekli geliştirme " + sw.NO_DONE_TAG
         acts, _ = sw.plan_tick([_view("a", last_assistant="STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt")], self.projects, {}, _cfg(), self.now, [], [])

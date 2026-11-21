@@ -4141,9 +4141,19 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                     done_pending[v.name] = proj      # alt ajan hâlâ çalışıyor: ertele; ajan bitince uygulanır
                 else:
                     done_confirm.pop(proj, None)
-                    actions.append(Action("set_phase", proj, "STEWARD-DONE", {"phase": "done"}))
-                    if v.name not in busy_names:
-                        _close_done(v, proj, "STEWARD-DONE")
+                    # D4 (6 Kas, 22 Kas uygulandı): projenin sahibe açık sorusu varken `done` DEĞİL `paused`: 'kalan iş sahipte' diye
+                    # kapanan proje unutuluyordu; telefona hiç gitmemiş (notified_at=0) soru ayrıca gerekçeye yazılır.
+                    owner_open = [q for q in questions if q.status == "open" and q.project == proj]
+                    if owner_open:
+                        never = sum(1 for q in owner_open if not q.notified_at)
+                        actions.append(Action("set_phase", proj, f"STEWARD-DONE + {len(owner_open)} açık sahip sorusu"
+                                              f"{f' ({never} tanesi telefona gitmedi)' if never else ''}: sahip bekliyor", {"phase": "paused"}))
+                        if v.name not in busy_names:
+                            _close_done(v, proj, "STEWARD-DONE + açık sahip sorusu")
+                    else:
+                        actions.append(Action("set_phase", proj, "STEWARD-DONE", {"phase": "done"}))
+                        if v.name not in busy_names:
+                            _close_done(v, proj, "STEWARD-DONE")
         elif proj and m["done"] and proj not in done_confirm:
             done_confirm[proj] = now
             actions.append(_confirm_action(v.name, proj, cfg, "STEWARD-DONE iddiası: teyit istendi"))
