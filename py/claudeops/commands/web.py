@@ -2531,7 +2531,7 @@ def _files_mkdir(name: str, dir_path: Optional[str], folder_name: str, lang: str
     return result, 200
 
 
-def _files_write(name: str, path: str, content: str, lang: str = "tr") -> Tuple[dict, int]:
+def _files_write(name: str, path: str, content: str, lang: str = "tr", create: bool = False) -> Tuple[dict, int]:
     """`read_text`/`_files_read`'in yazma karşılığı. `too_large`, diğer
     mutasyonların ("exists"/"bad_filename" vb.) hiçbirinde olmayan bir
     `limit_mb` yer tutucusu taşıyor — `_files_mutation_err`'ün paylaşılan
@@ -2540,7 +2540,7 @@ def _files_write(name: str, path: str, content: str, lang: str = "tr") -> Tuple[
     s, err = _files_resolve(name, lang)
     if err:
         return err, _files_resolve_status(err)
-    result = files_mod.write_text(s, path, content)
+    result = files_mod.write_text(s, path, content, create=create)
     if result["ok"]:
         return result, 200
     if result["error"] == "too_large":
@@ -6158,7 +6158,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not isinstance(content, str):
                 self._json(_err(lang, "content_required"), status=400)
                 return
-            result, status = _files_write(name, fpath, content, lang=lang)
+            result, status = _files_write(name, fpath, content, lang=lang, create=data.get("create") is True)
             self._json(result, status=status)
             return
 

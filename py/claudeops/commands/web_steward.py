@@ -5556,7 +5556,7 @@ def _remote_append_idea(host: str, name: str, fname: str, idea: "sw.Idea", stamp
     if "/" in fname or ".." in fname or "\x00" in fname:      # sözcük denetimi (fname sabit tablodan gelir; yine de)
         return "unreadable"
     path = cwd.rstrip("/") + "/" + fname
-    before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
+    before, create = _remote_before(host, name, path, fname)
     if before is None:
         return "unreadable"
     new = _idea_appended(before, idea, stamp)
@@ -5564,9 +5564,10 @@ def _remote_append_idea(host: str, name: str, fname: str, idea: "sw.Idea", stamp
         return "already"
     if dry:
         return "would"
-    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != before:
+    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != (None if create else before):
         return "remote_conflict"
-    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
+                       REMOTE_INPUT_TIMEOUT_SECONDS)
     return "written" if res.get("ok") else "write_failed"
 
 
@@ -6316,6 +6317,22 @@ def _persist_owner_answer(q: "sw.Question", sid: str) -> Dict[str, str]:
     return out
 
 
+_REMOTE_CREATABLE = ("TODO.md", "TOBEDECIDED.md", "DONE.md")      # files.CREATABLE_DOCS ile aynı (uzak host eski kodsa `create` yok sayılır → write_failed)
+
+
+def _remote_before(host: str, name: str, path: str, fname: str) -> Tuple[Optional[str], bool]:
+    """Uzak dosyanın içeriği + `create` mı. Okunamayan/yok dosya proje not dosyasıysa boş içerikle ve create=True ile devam edilir."""
+    before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
+    if before is None and fname in _REMOTE_CREATABLE:
+        try:       # YALNIZ host net "yok" (404) dedi ise oluştur; ağ/zaman aşımı/boyut sınırı = okunamadı, yazma YOK
+            parsed, status = _remote.get("/api/files/read", host, {"name": name, "path": path}, timeout=REMOTE_READ_BUDGET_SECONDS)
+        except Exception:
+            return None, False
+        if status == 404 and isinstance(parsed, dict) and parsed.get("ok") is False:
+            return "", True
+    return before, False
+
+
 def _remote_edit_doc(host: str, name: str, fname: str, edit: Callable[[str], Optional[str]], sid: str) -> str:
     """Uzak projenin `fname` dosyasını `edit(metin)` ile günceller (`_remote_append_idea` ile aynı güvenlik sırası: kapı, oku, yeniden oku, yaz)."""
     if not _remote_files_gate(host, sid):
@@ -6325,15 +6342,16 @@ def _remote_edit_doc(host: str, name: str, fname: str, edit: Callable[[str], Opt
         return "no_folder"
     name = real or name
     path = cwd.rstrip("/") + "/" + fname
-    before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
+    before, create = _remote_before(host, name, path, fname)
     if before is None:
         return "remote_unreadable"
     new = edit(before)
     if new is None:
         return "already"
-    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != before:
+    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != (None if create else before):
         return "remote_conflict"
-    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
+                       REMOTE_INPUT_TIMEOUT_SECONDS)
     return "written" if res.get("ok") else "remote_write_failed"
 
 
@@ -8134,19 +8152,21 @@ class RemoteReviewDriver:
             return {"ok": False, "error": f"remote folder of {self.project} unknown on {self.host}"}
         name = real or self.project
         path = cwd.rstrip("/") + "/" + fname
+        create = False
         for attempt in (0, 1):      # dosya okuma ile yazma arasında değişirse (proje oturumu aynı anda yazıyor) TEK otomatik yeniden deneme
-            before = _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS)
+            before, create = _remote_before(self.host, name, path, fname)
             if before is None:
                 return {"ok": False, "error": f"{fname} missing or unreadable on {self.host}: not created", "path": path}
             new, written = build(before)
             out: Dict[str, Any] = {"ok": True, "path": path, "written": written, "host": self.host, "session": name}
             if new is None:
                 return out
-            if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) == before:
+            if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) == (None if create else before):
                 break
             if attempt:
                 return {"ok": False, "error": "remote_conflict: file changed while exporting", "path": path}
-        res = _remote_post(self.host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+        res = _remote_post(self.host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
+                           REMOTE_INPUT_TIMEOUT_SECONDS)
         if not res.get("ok"):
             return {"ok": False, "error": f"write_failed: {res.get('error') or res.get('code') or 'failed'}", "path": path}
         if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) != new:

@@ -74,7 +74,7 @@ class FilesHost(FakeHost):
         self.posts.append((path, host, dict(body), timeout))
         if path != "/api/files/write":
             raise AssertionError("beklenmeyen uzak eylem: " + path)
-        if body["path"] not in self.files:
+        if body["path"] not in self.files and not body.get("create"):
             return {"ok": False, "error": "yol bulunamadı"}, 404
         self.files[body["path"]] = body["content"]
         self.writes.append((body["path"], body["content"]))
@@ -239,13 +239,13 @@ class TestRemoteIdeaExport(_Files):
         self.assertEqual(r["written"], ["oiso"])
         self.assertEqual(self.fake.writes[0][0], f"{CWD}/TOBEDECIDED.md")
 
-    def test_missing_remote_file_is_not_created(self):
+    def test_missing_remote_notes_file_is_created_with_flag(self):
+        """21 Kas: uzak TODO.md/TOBEDECIDED.md/DONE.md YOKSA (host 404 dedi) `create` bayrağıyla oluşturulur."""
         self.on()
         del self.fake.files[f"{CWD}/TODO.md"]
         r = self.export()
-        self.assertEqual((r["ok"], r["skipped"], r["remote"]), (False, ["oiso"], {"oiso": "unreadable"}))
-        self.assertEqual(self.fake.writes, [])
-        self.assertEqual(sw.load_ideas()[0].status, "new")
+        self.assertEqual(r["written"], ["oiso"])
+        self.assertEqual(len(self.fake.writes), 1)
 
     def test_conflict_between_reads_leaves_file_alone(self):
         self.on()
