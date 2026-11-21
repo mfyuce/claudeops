@@ -219,6 +219,7 @@ class Question:
     asked_again: int = 0            # AÇIK iken aynı proje/benzer metinle yeniden soruldu: yeni soru açılmadı, bu sayaç arttı
     extra_texts: List[str] = field(default_factory=list)  # L7b: proje başına açık soru sınırı (MAX_OPEN_QUESTIONS_PER_PROJECT) aşılınca gelen yeni sorular BU soruya "ek" olarak eklenir (en çok EXTRA_TEXTS_KEEP)
     answered_by: str = ""           # cevabı KİM verdi: ANSWERED_BY değerlerinden biri (boş = eski kayıt/bilinmiyor); danis eğitim/denetim için kullanır
+    deferred_until: float = 0.0     # D19: sahip "sonra/kararları şimdi vereceğim" dedi: soru AÇIK kalır, bu zamana kadar özet/hatırlatmada çıkmaz (24 sa)
     prev_texts: List[str] = field(default_factory=list)   # L7: KONU eşleşmesiyle birleşen soruların eski metinleri (yeniden eskiye, en çok TOPIC_PREV_KEEP); `text` = en yeni sürüm
 
 
@@ -1002,6 +1003,18 @@ def resolve_answer(q: Question, raw: str) -> str:
     return raw
 
 
+DEFER_SECONDS = 24 * 3600          # D19: ertelenen sorunun sessiz kalma süresi
+_DEFER_ANSWER_RE = re.compile(
+    r"^\W*(?:sonra|şimdi değil|simdi degil|daha sonra|sonra bakarım|sonra veririm|bekle|tbd|later|not now|"
+    r"kararları şimdi vereceğim|kararlari simdi vereceğim|kararları sonra vereceğim|şimdi vereceğim|simdi vereceğim)\W*$", re.I)
+
+
+def is_defer_answer(raw: str) -> bool:
+    """SAF (D19). Cevap gerçek bir karar değil, erteleme ("sonra", "TBD", "kararları şimdi vereceğim"). Seçenek metniyle
+    çakışan cevap (seçenek "sonra" ise) karar sayılır: çağıran önce `resolve_answer` seçeneğini denetler."""
+    return bool(_DEFER_ANSWER_RE.match(" ".join(str(raw).split())))
+
+
 REASK_WINDOW_SECONDS = 12 * 3600   # bu süre içinde cevaplanmış benzer soru "tekrar" sayılır
 REASK_MIN_SIMILARITY = 0.6         # kelime kümesi Jaccard benzerliği eşiği
 TOUR_INLINE_MAX_CHARS = 4000        # tur bundan uzunsa tmux'e gömülmez: dosyaya yazılır, beyne kısa 'şunu oku' mesajı gider (>10K kesiliyordu)
@@ -1321,6 +1334,12 @@ def answer_question(question_id: str, answer: str, paths: Any = None, by: str = 
         questions = load_questions(paths)
         for q in questions:
             if q.id == question_id:
+                if q.status == "open" and not q.routine and is_defer_answer(answer) \
+                        and not any(o.casefold() == " ".join(answer.split()).casefold() for o in q.options):
+                    q.deferred_until = _now() + DEFER_SECONDS      # D19: soru AÇIK kalır, oturuma cevap gitmez; 24 sa sonra özette yeniden görünür
+                    save_questions(questions, paths)
+                    return q
+                q.deferred_until = 0.0
                 q.answer = resolve_answer(q, answer)[:_MAX_QUESTION_CHARS]
                 if by == "cops" and q.source != review_remote.ASK_SOURCE and not q.answer.startswith(ON_BEHALF_PREFIX):
                     q.answer = (ON_BEHALF_PREFIX + q.answer)[:_MAX_QUESTION_CHARS]
@@ -1421,7 +1440,7 @@ def pending_digest_slot(now: float, hours: Tuple[int, ...] = PENDING_DIGEST_HOUR
 
 def pending_digest_text(questions: List["Question"], now: float, lang: str = "tr", sid: str = "default") -> str:
     """Açık, işleyiş OLMAYAN sahip sorularının özeti (sayı + en eski yaş + proje başına sayı; ayrı ayrı ntfy yok). Soru yoksa "". SAF."""
-    qs = [q for q in questions if q.status == "open" and not q.routine]
+    qs = [q for q in questions if q.status == "open" and not q.routine and not (q.deferred_until and q.deferred_until > now)]
     if not qs:
         return ""
     oldest = max((now - q.created_at) for q in qs) / 3600.0

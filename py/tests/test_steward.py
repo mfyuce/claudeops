@@ -56,6 +56,15 @@ class StoreTest(_Tmp):
         self.assertTrue(sw.remove_project("kitap"))
         self.assertEqual(sw.load_projects(), {})
 
+    def test_defer_answer_keeps_question_open(self):
+        q = sw.add_question("p", "A mı B mi?", source="s")
+        r = sw.answer_question(q.id, "Sonra")
+        self.assertEqual((r.status, r.answer), ("open", ""))
+        self.assertGreater(r.deferred_until, 0)
+        self.assertEqual(len(sw.open_questions()), 1)
+        r = sw.answer_question(q.id, "A")      # gerçek cevap ertelemeyi kapatır
+        self.assertEqual((r.status, r.answer, r.deferred_until), ("answered", "A", 0.0))
+
     def test_questions_dedup_answer_deliver(self):
         q1 = sw.add_question("p", "A mı B mi?", source="s")
         q2 = sw.add_question("p", "A mı B mi?")
@@ -3536,3 +3545,17 @@ class AskBaseTests(unittest.TestCase):
         self.assertEqual(acts[0].payload["project"], "mecdtfl")
         acts = sw.marker_record_actions("x20261031_3", "reg", {"asks": ["A mı B mi?"], "routines": [], "blocked": [], "ideas": []})
         self.assertEqual(acts[0].payload["project"], "reg")
+
+
+class DeferAnswerTests(unittest.TestCase):
+    def test_is_defer_answer(self):
+        for a in ("Sonra", "kararları şimdi vereceğim", "TBD", "later."):
+            self.assertTrue(sw.is_defer_answer(a), a)
+        for a in ("A", "sonra bakarız ama önce X'i sil", "evet"):
+            self.assertFalse(sw.is_defer_answer(a), a)
+
+    def test_digest_hides_deferred_until_expiry(self):
+        q = sw.Question(id="q1", project="p", text="soru", created_at=0)
+        q.deferred_until = 1000.0 + sw.DEFER_SECONDS
+        self.assertEqual(sw.pending_digest_text([q], 1000.0), "")
+        self.assertIn("1 soru", sw.pending_digest_text([q], q.deferred_until + 1))
