@@ -3541,7 +3541,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return gate
     if k == "ask_user":
         q, outcome = sw.add_question_ex(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
-                                        routine=bool(action.payload.get("routine")), paths=paths)
+                                        options=action.payload.get("options"), routine=bool(action.payload.get("routine")), paths=paths)
         if q.status == "open" and q.routine:   # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır
             fast = _job_fast_path(action, cfg, q, paths) if outcome not in ("same", "merged") else None
             if fast is not None:
@@ -3553,6 +3553,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": True, "id": q.id, "notified": False, "merged": True}
         notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
+    if k == "close_negative_answer":      # olumsuz/bekle cevabı: proje açılmaz, cevap teslim edildi sayılır (21 Kas)
+        sw.mark_delivered(str(action.payload.get("question_id") or ""), paths)
+        sw.log_event("negative_answer_closed", paths=paths, id=action.payload.get("question_id"), project=action.name)
+        return {"ok": True}
     if k == "close_stale_answer":      # bayat blokaj kaydı: teslim edilecek proje yok, tekrar tura düşmesin
         why = str(action.payload.get("reason") or "")
         qd = next((x for x in sw.load_questions(paths) if x.id == str(action.payload.get("question_id") or "")), None)
@@ -4369,7 +4373,7 @@ def _audit_upper_main(cfg: sw.Config, views: List[sw.SessionView], projects: Dic
                      error=str((res or {}).get("error") if isinstance(res, dict) else res))
 
 
-_JOURNAL_KINDS = ("ask_user", "idea", "set_phase", "close_stale_answer")   # kaydı sessizce kaybolan tür: tetikleyici (yanıt özeti) tick'te tüketilir
+_JOURNAL_KINDS = ("ask_user", "idea", "set_phase", "close_stale_answer", "close_negative_answer")   # kaydı sessizce kaybolan tür: tetikleyici (yanıt özeti) tick'te tüketilir
 
 
 def _journal_id(a: sw.Action) -> str:

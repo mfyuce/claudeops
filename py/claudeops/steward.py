@@ -4157,6 +4157,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             last_directive_at[v.name] = now
         elif target in manual_projects:
             continue    # L2: proje sahibin elle açtığı oturumda; cevap o oturuma iletilmez, ikinci oturum da açılmaz
+        elif projects[target].phase in ("done", "paused") and is_negative_answer(q.answer):
+            # "Hayır / paused kalsın / açma": faz değişmez, oturum açılmaz; cevap yalnız teslim edildi sayılır (21 Kas)
+            actions.append(Action("close_negative_answer", target, "olumsuz sahip cevabı", {"question_id": q.id}))
         elif (projects[target].phase in ("done", "paused") and target not in (st.get("no_work_paused") or {})
               and starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable)):
             # SAHİP CEVABI geldi (17 Kas, marwan): done/paused proje planned'a döner ve açılır (iş yok durdurması kendi yolundan: plan_no_work_reopen)
@@ -4217,7 +4220,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             elif p.phase == "paused" and now - paused_asked.get(p.name, 0.0) >= 24 * 3600:
                 n = ow(p.name)
                 actions.append(Action("ask_user", p.name, "paused projenin TODO'suna madde geldi",
-                                      {"project": p.name, "text": f"{p.name} duraklatılmış, TODO.md'sinde {n} açık madde var. Açayım mı?"}))
+                                      {"project": p.name, "options": ["Aç", "Paused kalsın"],
+                                       "text": f"{p.name} duraklatılmış, TODO.md'sinde {n} açık madde var. Açayım mı?"}))
                 paused_asked[p.name] = now
         if todo_seen:
             st["todo_seen"] = todo_seen
@@ -4798,6 +4802,19 @@ def ucli_idle_threshold(cfg: Config, cache_ttl: str) -> int:
 
 _COND_RE = re.compile(r"\b\w{3,}(?:[ıiuü]rs[ae]|[ae]rs[ae]|m[ae]zs[ae]|[ae]yse|[ıiuü]yorsa|[ae]cekse|[ıi]ls[ae])\b|\b(olursa|olmazsa|varsa|yoksa|olsa|olmasa|olunca|olduğunda|olduğu zaman|gelirse|gelince|gelmeden|biterse|bitince|bittiğinde|eğer|ise|koşul\w*|aksi halde|bekle\w*|"
                       r"if|when|once|unless|provided|after|until|pending)\b", re.IGNORECASE)
+
+
+_NEG_ANSWER_RE = re.compile(
+    r"^\s*[\"'`*_\-\[(]*\s*(?:hay[ıi]r|no|nope|hayır|a[çc]ma|bekle|dur|kals[ıi]n|paused\s+kals[ıi]n|[şs]imdi\s+de[ğg]il|sonra|"
+    r"[şs]imdilik\s+(?:hay[ıi]r|kals[ıi]n|a[çc]ma)|olmas[ıi]n|gerek\s+yok)\b", re.IGNORECASE)
+NEG_ANSWER_MAX_CHARS = 60      # bundan uzun cevap ("Hayır, şunu yap: ...") yönerge sayılır, kapı açma kararı yine açıktır
+
+
+def is_negative_answer(text: str) -> bool:
+    """Sahip cevabı olumsuz/bekle mi ("Hayır, paused kalsın", "açma", "no", "sonra")? KISA (<=NEG_ANSWER_MAX_CHARS) ve olumsuz sözcükle
+    başlıyorsa True: done/paused proje planned'a çekilip AÇILMAZ (21 Kas, wifi5gppr/fotocizimppr). Uzun cevap yönergedir, False. SAF."""
+    t = (text or "").strip()
+    return bool(t) and len(t) <= NEG_ANSWER_MAX_CHARS and bool(_NEG_ANSWER_RE.search(t))
 
 
 def is_conditional_note(text: str) -> bool:

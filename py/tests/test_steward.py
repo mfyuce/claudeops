@@ -1033,6 +1033,32 @@ class AnswerStartPhaseTest(unittest.TestCase):
             self.assertEqual(self._plan(phase), [("set_phase", "p1"), ("start", "p1")], phase)
 
 
+class NegativeAnswerTest(unittest.TestCase):
+    """21 Kas: 'Hayır, paused kalsın' gibi olumsuz/bekle cevabı done/paused projeyi planned'a ÇEKMEZ ve açmaz (wifi5gppr/fotocizimppr)."""
+    def test_is_negative_answer(self):
+        for t in ("Hayır, paused kalsın", "hayır", "No", "açma", "Bekle", "Paused kalsın", "şimdi değil", "sonra bakarız", "Hayır."):
+            self.assertTrue(sw.is_negative_answer(t), t)
+        for t in ("Aç", "evet", "Evet, aç", "", "Hayır ama şu TODO maddesini yap: " + "x" * 80, "devam et", "Hayırlısı olsun yap"):
+            self.assertFalse(sw.is_negative_answer(t), t)
+
+    def _plan(self, phase, answer):
+        q = sw.Question(id="q1", project="p1", text="soru?", created_at=1000.0, status="answered", answer=answer, answered_at=2000.0)
+        projects = {"p1": sw.Project(name="p1", phase=phase, cadence_minutes=60)}
+        acts, _ = sw.plan_tick([], projects, {}, _cfg(), 5000.0, [q], [])
+        return [(a.kind, a.name) for a in acts if a.kind in ("start", "deliver_answer", "set_phase", "close_negative_answer")]
+
+    def test_negative_answer_does_not_reopen(self):
+        for phase in ("paused", "done"):
+            self.assertEqual(self._plan(phase, "Hayır, paused kalsın"), [("close_negative_answer", "p1")], phase)
+            self.assertEqual(self._plan(phase, "Aç"), [("set_phase", "p1"), ("start", "p1")], phase)
+
+    def test_sweep_question_has_options(self):
+        projects = {"c": sw.Project(name="c", phase="paused", cadence_minutes=60)}
+        acts, _ = sw.plan_tick([], projects, {"todo_seen": {"c": "h1"}}, _cfg(), 200000.0, [], [], open_work=lambda n: 3, todo_sha=lambda n: "h1")
+        asks = [a for a in acts if a.kind == "ask_user"]
+        self.assertEqual(asks[0].payload["options"], ["Aç", "Paused kalsın"])
+
+
 class DoneHandoverTest(unittest.TestCase):
     """STEWARD-DONE-CONFIRMED: teyit -> faz done -> DEVİR (READY FOR HANDOVER) -> stop (yeniden açma YOK); küçük bağlamda
     devir atlanır; sahip 'çelişti' cevabı yeniden soru açtırmaz, 'bitti' ise sayı çelişkisi sayılmaz."""
