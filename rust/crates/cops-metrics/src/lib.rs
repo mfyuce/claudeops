@@ -2,7 +2,7 @@
 //! Şema: `series(id, name, key, owner, unit)` + `points(series_id, ts, value, meta_json)`. `owner` çok kullanıcı için baştan var
 //! (bugün hep ''). Depo erişimi `Store` arkasındadır: PG'ye geçiş yalnız bu kutuyu değiştirir (uç ve çağıranlar aynı kalır).
 //! NOT (sqlx yerine rusqlite): sahibin "sqlx" tercihi, `cops-local` ile AYNI `libsqlite3-sys` bağlantısı gerektiği için ertelendi
-//! (sqlx 0.8 libsqlite3-sys 0.30, rusqlite 0.37 ise 0.35 ister; Cargo bir graf içinde iki sqlite3 bağlantısını reddeder). TBD'de.
+//! (sqlx 0.8 libsqlite3-sys 0.30, rusqlite 0.37 ise 0.35 ister; Cargo bir graf içinde iki sqlite3 bağlantısını reddeder). Sahip kararı 21 Kas (TBD#207b): rusqlite kalır.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Value};
