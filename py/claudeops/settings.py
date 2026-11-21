@@ -358,7 +358,8 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
         if k in _DICT_ONLY_KEYS and not isinstance(v, dict):
             continue        # review R-17: dict olmayan yama bloğu tümden silmesin (okuma tarafı {} yapıyordu)
         if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "ucli_metrics", "uzakgoz", "derbent", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
-            merged = dict(current.get(k) or {})
+            cur_blk = current.get(k)
+            merged = dict(cur_blk) if isinstance(cur_blk, dict) else {}    # diskte dict olmayan blok (elle bozulmuş) yamayı çökertmesin (review R-3)
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
                     cv = ",".join(str(x) for x in cv if str(x).strip())
