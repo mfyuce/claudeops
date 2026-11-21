@@ -3864,7 +3864,7 @@ def _doc_path(cwd: str, fname: str) -> str:
 _TODO_DONE_RE = re.compile(r"YAPILDI|ÇÖZÜLDÜ|KAPANDI|TAMAM|✅|\bDONE\b", re.I)
 
 
-def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int, int]]:
+def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = False) -> Optional[Tuple[int, int]]:
     """Projenin YEREL TODO.md'si: (açık iş sayısı, sahibe bağlı etiketli açık satır sayısı). Sahibe bağlı satırlar
     (`OWNER_WAIT_LINE_RE`: SAHİPTE, (sahip), DIŞ GİRDİ, "sahip kararı bekliyor"...) açık iş SAYILMAZ. Uzak proje, klasörü bilinmeyen,
     okunamayan ya da 2 MB üstü dosya = None."""
@@ -3891,6 +3891,8 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int
                 n_boxed += 1
                 if sw.OWNER_TODO_LINE_RE.search(ln):
                     n_owner += 1
+                if skip_cila and "Fable cila" in ln:
+                    continue
                 if not sw.OWNER_WAIT_LINE_RE.search(ln):
                     n_open += 1
         if n_boxed == 0 and n_open == 0:
@@ -3920,11 +3922,11 @@ def _oldest_open_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
     return first
 
 
-def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
+def _open_work_of(projects: Dict[str, sw.Project], skip_cila: bool = False) -> Callable[[str], Optional[int]]:
     """`plan_tick` için: projenin YEREL TODO.md'sindeki açık `- [ ]` satırı sayısı (sahibe bağlı etiketliler hariç; `_scan_todo`).
     None = bilinmiyor (ön-kontrol atlanır, teyit kanıta kalır). Yalnız teyit gelince çağrılır."""
     def count(proj: str) -> Optional[int]:
-        r = _scan_todo(projects, proj)
+        r = _scan_todo(projects, proj, skip_cila)
         return None if r is None else r[0]
     return count
 
@@ -4473,7 +4475,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world,
                                                   open_work=_open_work_of(projects), open_tbd=_open_tbd_of(projects),
-                                                  claim_check=_claim_check_of(projects), todo_sha=_todo_sha_of(projects))
+                                                  claim_check=_claim_check_of(projects), todo_sha=_todo_sha_of(projects),
+                                                  open_work_real=_open_work_of(projects, skip_cila=True))
                 if new_state.get("start_blocked") != (prev_state.get("start_blocked") if "start_blocked" in new_state else None):
                     sw.log_event("start_blocked", paths=paths, **new_state["start_blocked"])   # değişince bir kez
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)

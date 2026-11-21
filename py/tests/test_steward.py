@@ -360,15 +360,32 @@ class RulesTest(unittest.TestCase):
         cfg = _cfg(max_active=4, max_starts_per_tick=5)
         sha = {"v": "h1"}
         kw = dict(open_work=lambda n: 3, todo_sha=lambda n: sha["v"])
-        _, st = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [], **kw)
+        acts, st = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [], **kw)
+        asks = [a for a in acts if a.kind == "ask_user" and a.name == "c"]
+        self.assertEqual(len(asks), 1)          # ilk gözlem de sorar (21 Kas: dolu TODO ile sonsuza dek tetiksiz kalmasın)
+        self.assertFalse([a for a in acts if a.kind == "start" and a.name == "c"])   # paused AÇILMAZ
         sha["v"] = "h2"
         acts, st = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], **kw)
-        asks = [a for a in acts if a.kind == "ask_user" and a.name == "c"]
-        self.assertEqual(len(asks), 1)
-        self.assertFalse([a for a in acts if a.kind == "start" and a.name == "c"])   # paused AÇILMAZ
+        self.assertFalse([a for a in acts if a.kind == "ask_user" and a.name == "c"])   # günde 1
         sha["v"] = "h3"
         acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now + 3600, [], [], **kw)
         self.assertFalse([a for a in acts if a.kind == "ask_user" and a.name == "c"])   # günde 1
+
+    def test_first_observation_done_project_with_open_work_goes_planned(self):
+        cfg = _cfg(max_active=4, max_starts_per_tick=5)
+        self.projects["c"].phase = "done"
+        kw = dict(open_work=lambda n: 68, todo_sha=lambda n: "h1")
+        acts, st = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [], **kw)
+        self.assertEqual([(a.name, a.payload) for a in acts if a.kind == "set_phase"], [("c", {"phase": "planned"})])
+        acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], **kw)    # aynı sha: tekrar tetiklenmez
+        self.assertFalse([a for a in acts if a.kind == "set_phase"])
+
+    def test_only_fable_cila_open_work_does_not_trigger(self):
+        cfg = _cfg(max_active=4, max_starts_per_tick=5)
+        self.projects["c"].phase = "done"
+        kw = dict(open_work=lambda n: 3, open_work_real=lambda n: 0, todo_sha=lambda n: "h1")
+        acts, _ = sw.plan_tick([], self.projects, {}, cfg, self.now, [], [], **kw)
+        self.assertFalse([a for a in acts if a.kind in ("set_phase", "ask_user") and a.name == "c"])
 
     def test_drain_starts_nothing_but_keeps_answers_and_running(self):
         cfg = _cfg(max_active=4, max_starts_per_tick=5, drain=True)

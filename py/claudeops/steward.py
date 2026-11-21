@@ -3795,7 +3795,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
               open_work: Optional[Callable[[str], Optional[int]]] = None,
               open_tbd: Optional[Callable[[str], Optional[int]]] = None,
               claim_check: Optional[Callable[[str], List[str]]] = None,
-              todo_sha: Optional[Callable[[str], str]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+              todo_sha: Optional[Callable[[str], str]] = None,
+              open_work_real: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
     (motor kaydeder). Sıra: ekonomi (handover/respawn) → işaretler → cevap iletimi → uğrama/başlatma →
     slot baskısı → beyin turu.
@@ -4194,7 +4195,13 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 continue
             prev = todo_seen.get(p.name)
             todo_seen[p.name] = cur
-            if prev is None or prev == cur or open_work is None or not (open_work(p.name) or 0):
+            # Tetik için YALNIZ 'Fable cila' olmayan açık iş sayılır (cila en sona kalır, fotocizimppr); ilk gözlemde (prev None) done/paused
+            # proje de değerlendirilir (21 Kas, au/rustagentppr: dolu TODO ile ilk gözlem sonsuza dek tetiksiz kalıyordu); aktif faz cadence'e kalır
+            first = prev is None
+            if prev == cur or (first and p.phase in ACTIVE_PHASES):
+                continue
+            ow = open_work_real if open_work_real is not None else open_work
+            if ow is None or not (ow(p.name) or 0):
                 continue
             if p.phase in ACTIVE_PHASES:
                 todo_changed.add(p.name)
@@ -4202,9 +4209,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 # TODO'ya (ör. reviewer/Fable bulgusu) açık iş düştü: done proje unutulmasın (17 Kas, marwan); planned'a çek, sonraki tick açar
                 actions.append(Action("set_phase", p.name, "done projenin TODO'suna açık iş geldi", {"phase": "planned"}))
             elif p.phase == "paused" and now - paused_asked.get(p.name, 0.0) >= 24 * 3600:
-                n = open_work(p.name)
+                n = ow(p.name)
                 actions.append(Action("ask_user", p.name, "paused projenin TODO'suna madde geldi",
-                                      {"project": p.name, "text": f"{p.name} duraklatılmış, TODO.md'si değişti ve {n} açık madde var. Açayım mı?"}))
+                                      {"project": p.name, "text": f"{p.name} duraklatılmış, TODO.md'sinde {n} açık madde var. Açayım mı?"}))
                 paused_asked[p.name] = now
         if todo_seen:
             st["todo_seen"] = todo_seen
