@@ -385,14 +385,55 @@ def cmd_ask(args) -> int:
     return 0
 
 
+def _in_claude_session() -> bool:
+    """Bu komut bir claude (claudeops/Claude Code) oturumunun içinden mi çağrılıyor? COPS_NAME (claudeops oturumu), CLAUDECODE / CLAUDE_CODE_*
+    ortamı ya da üst süreç zincirinde `claude` süreci. Sahibin düz kabuğunda bunların hiçbiri yok. COPS_NAME'siz açılmış kontrol oturumu
+    (cops, 21 Kas: 4 cevap yanlışlıkla owner_cli kaydedildi) bu yedek tespitle yakalanır."""
+    if os.environ.get("COPS_NAME") or os.environ.get("CLAUDECODE"):
+        return True
+    if any(k.startswith("CLAUDE_CODE_") for k in os.environ):
+        return True
+    try:
+        from ..handover import ancestor_pids
+        for pid in ancestor_pids():
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    argv = [a.decode("utf-8", "replace") for a in f.read().split(b"\0")[:3] if a]
+                with open(f"/proc/{pid}/comm", "r", encoding="utf-8", errors="replace") as f:
+                    comm = f.read().strip()
+            except OSError:
+                continue
+            if comm == "claude" or any(os.path.basename(a) == "claude" for a in argv):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _answer_by(args) -> str:
-    """`--as-owner` -> owner_cli; `--on-behalf` -> cops; ikisi de yoksa: claudeops oturumunun içinden (COPS_NAME var) = cops (sahip adına),
-    sahibin kendi terminali (COPS_NAME yok) = owner_cli."""
+    """`--as-owner` -> owner_cli; `--on-behalf` -> cops; ikisi de yoksa: claude oturumunun içinden (COPS_NAME, CLAUDECODE/CLAUDE_CODE_* ya da
+    üst süreçte claude) = cops (sahip adına), sahibin düz kabuğu = owner_cli. Sahip claude içinden çağırırsa `--as-owner` açıkça."""
     if getattr(args, "as_owner", False):
         return "owner_cli"
     if getattr(args, "on_behalf", False):
         return "cops"
-    return "cops" if os.environ.get("COPS_NAME") else "owner_cli"
+    return "cops" if _in_claude_session() else "owner_cli"
+
+
+def cmd_fix_answered_by(args) -> int:
+    """Tek seferlik düzeltme: kayıtlı cevapların `answered_by` alanını değiştirir (varsayılan cops). Cevap metnine/iletim durumuna
+    DOKUNMAZ, yeniden İLETMEZ: `py/cops steward fix-answered-by ID [ID...] [--to cops]`."""
+    by = args.to
+    if by not in sw.ANSWERED_BY:
+        print(f"hata: geçersiz --to; izinli: {', '.join(sw.ANSWERED_BY)}")
+        return 1
+    n = sw.set_answered_by(args.ids, by, _sid(args))
+    missing = [i for i in args.ids if i not in n]
+    for i in n:
+        print(f"✓ [{i}] answered_by -> {by}")
+    for i in missing:
+        print(f"yok ya da cevapsız: {i}")
+    return 0 if not missing else 1
 
 
 def cmd_answer(args) -> int:
@@ -1186,6 +1227,10 @@ def register(sub):
     pq = s.add_parser("questions", help="sorular")
     pq.add_argument("--all", action="store_true")
     pq.set_defaults(func=cmd_questions)
+    pf = s.add_parser("fix-answered-by", help="cevaplanmış soruların answered_by alanını düzelt (yeniden iletmez)")
+    pf.add_argument("ids", nargs="+")
+    pf.add_argument("--to", default="cops")
+    pf.set_defaults(func=cmd_fix_answered_by)
     pa = s.add_parser("answer", help="soruyu cevapla (seçenekli soruda numara da olur)")
     pa.add_argument("id")
     pa.add_argument("answer")

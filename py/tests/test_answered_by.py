@@ -40,10 +40,45 @@ class AnsweredByTest(_Tmp):
         with mock.patch.dict(os.environ, {"COPS_NAME": "cops20261115"}):
             self.assertEqual(cs._answer_by(ns), "cops")
             self.assertEqual(cs._answer_by(argparse.Namespace(as_owner=True, on_behalf=False)), "owner_cli")
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("COPS_NAME", None)
-            self.assertEqual(cs._answer_by(ns), "owner_cli")
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch("claudeops.handover.ancestor_pids", return_value=set()):
+            self.assertEqual(cs._answer_by(ns), "owner_cli")                      # düz kabuk
             self.assertEqual(cs._answer_by(argparse.Namespace(as_owner=False, on_behalf=True)), "cops")
+
+    def test_cli_fallback_detects_claude_parent_or_claude_env_without_cops_name(self):
+        from claudeops.commands import steward as cs
+        import argparse
+        ns = argparse.Namespace(as_owner=False, on_behalf=False)
+        with mock.patch.dict(os.environ, {"CLAUDECODE": "1"}, clear=True):
+            self.assertEqual(cs._answer_by(ns), "cops")
+            self.assertEqual(cs._answer_by(argparse.Namespace(as_owner=True, on_behalf=False)), "owner_cli")   # açık --as-owner
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_ENTRYPOINT": "cli"}, clear=True):
+            self.assertEqual(cs._answer_by(ns), "cops")
+        # env'siz, üst süreç zincirinde claude: /proc yaması
+        real_open = open
+
+        def fake_open(path, *a, **k):
+            import io
+            if path == "/proc/4242/cmdline":
+                return io.BytesIO(b"claude\0--resume\0")
+            if path == "/proc/4242/comm":
+                return io.StringIO("claude\n")
+            return real_open(path, *a, **k)
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch("claudeops.handover.ancestor_pids", return_value={4242}), \
+                mock.patch("builtins.open", fake_open):
+            self.assertEqual(cs._answer_by(ns), "cops")
+
+    def test_fix_answered_by_changes_only_the_field_and_does_not_redeliver(self):
+        q = self.mk()
+        sw.answer_question(q.id, "ok", None, by="owner_cli")
+        sw.mark_delivered(q.id, None)
+        before = sw.find_question(q.id, None)
+        done = sw.set_answered_by([q.id, "yok"], "cops", None)
+        after = sw.find_question(q.id, None)
+        self.assertEqual(done, [q.id])
+        self.assertEqual((after.answered_by, after.answer, after.delivered_at, after.answered_at),
+                         ("cops", before.answer, before.delivered_at, before.answered_at))
+        open_q = sw.add_question("baska", "tamamen ilgisiz bir konu?", source="s2", paths=None)
+        self.assertEqual(sw.set_answered_by([open_q.id], "cops", None), [])        # cevapsıza dokunmaz
 
 
 if __name__ == "__main__":

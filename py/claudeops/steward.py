@@ -1336,6 +1336,22 @@ def answer_question(question_id: str, answer: str, paths: Any = None, by: str = 
     return hit
 
 
+def set_answered_by(ids: List[str], by: str, paths: Any = None) -> List[str]:
+    """CEVAPLANMIŞ soruların `answered_by` alanını düzeltir (yalnız o alan; cevap/iletim durumu/zaman dokunulmaz). Düzeltilen kimlikler döner."""
+    if by not in ANSWERED_BY:
+        raise ValueError("bad answered_by")
+    done: List[str] = []
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        for q in questions:
+            if q.id in ids and q.status == "answered":
+                q.answered_by = by
+                done.append(q.id)
+        if done:
+            save_questions(questions, paths)
+    return done
+
+
 def apply_review_where_answer(q: Question, paths: Any = None) -> None:
     """Reviewer'ın "uzak projeyi nerede review edeyim?" sorusunun cevabı projeye yazılır (TBD#114). Cevap oturuma
     İLETİLMEZ (`delivered_at` işaretlenir: soruyu oturum açmadı). Tanınmayan cevap = proje `ask`te kalır, soru kapanmış
