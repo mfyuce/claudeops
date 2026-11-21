@@ -531,6 +531,10 @@ export interface Strings {
   ucliLimitsStreamHint: string;
   ucliLimitsStreamOff: string;
   ucliLimitsStreamOn: string;
+  ucliLimitsShowReasoningLabel: string;
+  ucliLimitsShowReasoningHint: string;
+  ucliLimitsShowReasoningOn: string;
+  ucliLimitsShowReasoningOff: string;
   ucliUsageWarnLabel: string;
   ucliUsageWarnDesc: string;
   ucliUsageWarnAmberLabel: string;
@@ -1546,6 +1550,11 @@ export const STRINGS: Record<Lang, Strings> = {
       "Varsayılan AÇIK. Açıkken model yanıtı akışlı istenir: ucli'nin durum dosyasında ve satırdaki rozette 'düşünüyor' / 'yazıyor' aşamaları ve akan miktar görünür (akış donarsa rozet uyarır), metin terminale canlı basılır. Bedeli: (1) cevap terminalde iki kez görünür (canlı akış, sonra son çıktı); (2) akış yarıda kesilirse (ağ kesintisi) çağrı yeniden DENENMEZ ve görev hata verir, akışsız çağrıda kesinti yanıt gelmeden olursa yeniden denenir. Yalnız YENİ açılan oturumlara uygulanır.",
     ucliLimitsStreamOff: "kapalı",
     ucliLimitsStreamOn: "açık (varsayılan)",
+    ucliLimitsShowReasoningLabel: "akıl yürütme dökümü (--show-reasoning)",
+    ucliLimitsShowReasoningHint:
+      "Varsayılan KAPALI. Açıkken modelin akıl yürütme parçaları oturum penceresine (stderr) basılır; uzun döküm çıkabilir. Yalnız yeni açılan oturumlara uygulanır; ucli ikilisi bayrağı tanımıyorsa eklenmez.",
+    ucliLimitsShowReasoningOn: "açık",
+    ucliLimitsShowReasoningOff: "kapalı (varsayılan)",
     ucliUsageWarnLabel: "ucli kullanım uyarısı (oturum başına kota eşdeğeri token)",
     ucliUsageWarnDesc:
       "Token rozeti bu eşiklere göre amber/kırmızıya döner. Sayı, Evren hesap kotasına yansıyan değerdir (önbellekli girdi %3 sayılır), ham toplam DEĞİL; süreç başından beri biriken oturum toplamıdır. Yalnız renk: hiçbir şey durdurulmaz. Boş = varsayılan, off ya da 0 = o kademe kapalı.",
@@ -2575,6 +2584,11 @@ export const STRINGS: Record<Lang, Strings> = {
       "On by default. When on, the model response is requested as a stream: the 'thinking' / 'writing' phases and the amount received show in ucli's status file and in the row badge (which warns when the stream freezes), and the text is printed to the terminal live. The cost: (1) the answer appears twice in the terminal (the live stream, then the final output); (2) if the stream breaks off mid-way (a network drop) the call is NOT retried and the task fails, whereas a non-streamed call that drops before any answer arrives is retried. Applies only to newly opened sessions.",
     ucliLimitsStreamOff: "off",
     ucliLimitsStreamOn: "on (default)",
+    ucliLimitsShowReasoningLabel: "reasoning output (--show-reasoning)",
+    ucliLimitsShowReasoningHint:
+      "Off by default. When on, the model's reasoning chunks are printed to the session window (stderr); the output can be long. Applies to newly started sessions only; not added if the ucli binary does not know the flag.",
+    ucliLimitsShowReasoningOn: "on",
+    ucliLimitsShowReasoningOff: "off (default)",
     ucliUsageWarnLabel: "ucli usage warning (quota-equivalent tokens per session)",
     ucliUsageWarnDesc:
       "The token badge turns amber/red at these thresholds. The number is what hits the Evren account quota (cached input counts 3%), not the raw total; it is the per-session sum since the process started. Colour only: nothing is stopped. Empty = default, off or 0 = that level disabled.",

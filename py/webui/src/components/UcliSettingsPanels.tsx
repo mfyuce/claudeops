@@ -54,6 +54,9 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
   const rawScriptMode = asText(settings.ucli_script?.mode).trim().toLowerCase();
   const scriptMode = rawScriptMode === "read" || rawScriptMode === "full" ? rawScriptMode : "";
   const streamOff = OFF_WORDS.has(asText(settings.ucli_limits?.stream).trim().toLowerCase());
+  const showReasoningOn = ["on", "1", "true", "yes", "y", "evet", "acik", "açık", "enabled"].includes(
+    asText(settings.ucli_limits?.show_reasoning).trim().toLowerCase(),
+  );
 
   async function save(patch: SettingsPatch) {
     setError("");
@@ -219,6 +222,19 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
             </label>
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               {t.ucliLimitsStreamHint}
+            </span>
+            <label>
+              {t.ucliLimitsShowReasoningLabel}
+              <select
+                value={showReasoningOn ? "on" : ""}
+                onChange={(e) => void save({ ucli_limits: { show_reasoning: e.target.value } })}
+              >
+                <option value="">{t.ucliLimitsShowReasoningOff}</option>
+                <option value="on">{t.ucliLimitsShowReasoningOn}</option>
+              </select>
+            </label>
+            <span className="opts-hint" style={{ flexBasis: "100%" }}>
+              {t.ucliLimitsShowReasoningHint}
             </span>
           </div>
           <div className="opts" id="settingsUcliScriptPanel">

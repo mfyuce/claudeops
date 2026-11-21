@@ -630,6 +630,25 @@ def ucli_stream_enabled() -> bool:
     return UCLI_STREAM_DEFAULT
 
 
+UCLI_SHOW_REASONING_DEFAULT = False
+
+
+def ucli_show_reasoning_enabled() -> bool:
+    """`ucli_limits.show_reasoning` (opt-in, VARSAYILAN KAPALI): ucli'ye `--show-reasoning` geçirilsin mi (modelin akıl yürütme
+    parçaları pane'in stderr'ine basılır; stdout sözleşmesi ve yazma izni değişmez, web_review.py'deki `live_flags` ile aynı bayrak).
+    Terminalde uzun akıl yürütme dökümü çıkabildiği için açık değil; yalnız YENİ oturumlara uygulanır. Bayrağı ikili tanımıyorsa
+    `providers/ucli_provider.py` komuta KOYMAZ. Asla fırlatmaz."""
+    raw = load_settings().get("ucli_limits") or {}
+    if not isinstance(raw, dict):
+        return UCLI_SHOW_REASONING_DEFAULT
+    value = str(raw.get("show_reasoning") or "").strip().lower()
+    if value in _ON_WORDS:
+        return True
+    if value in _OFF_WORDS:
+        return False
+    return UCLI_SHOW_REASONING_DEFAULT
+
+
 UCLI_STATE_DIR_DEFAULT = False
 
 
