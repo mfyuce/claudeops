@@ -5126,7 +5126,7 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
                 c = steward_config(sid)
             except Exception:
                 continue
-            if c.brain_cli == "ucli":
+            if c.brain_cli == "ucli" and all(c.brain_name != t.brain_name for t in targets):   # steward_ids() "default"u da döndürür: aynı beyin iki kez sayılmasın
                 targets.append(c)
         failed = 0
         stopped_n = 0
