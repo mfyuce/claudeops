@@ -3700,6 +3700,16 @@ def _ask_is_status_line(q: str) -> bool:
     return bool(t) and "?" not in t and len(t) <= 70 and bool(_ASK_STATUS_RE.match(t))
 
 
+_DATED_NAME_RE = re.compile(r"^([A-Za-z][A-Za-z-]*?)\d*(?:_\d+)*$")
+
+
+def _ask_base(name: str) -> str:
+    """SAF (D18). Kayıtlı proje bulunamayınca soru `project`ü oturum adıdır; tarihli ad (`mecdtfl20261031_3`) her açılışta
+    değişip aynı konunun sorularını bölüyordu: tarih/sıra eki atılır (`mecdtfl`). Eksiz adlar olduğu gibi kalır."""
+    m = _DATED_NAME_RE.match(name or "")
+    return m.group(1) if m else name
+
+
 def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:
     """Oturum yanıtındaki soru/rutin/takıldım/fikir işaretlerinin KAYIT eylemleri (oturuma dokunmaz). `plan_tick` ve
     döngü kapalıyken çalışan `plan_markers` aynı kuralı paylaşır."""
@@ -3707,17 +3717,17 @@ def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Actio
     for q in m["asks"]:
         if _ask_is_status_line(q):
             continue   # D20: "Yok", "Hayır, sormuyorum", "soru yok" gibi soru işareti taşımayan durum cümlesi kayıt açmaz
-        out.append(Action("ask_user", name, "STEWARD-ASK", {"project": proj or name, "text": q}))
+        out.append(Action("ask_user", name, "STEWARD-ASK", {"project": proj or _ask_base(name), "text": q}))
     for q in m["routines"]:
         if "?" not in q:
             continue   # "bekliyorum, yeni soru yok" gibi durum cümlesi soru değil: kayda da girmez, sahibine de gitmez
-        out.append(Action("ask_user", name, "STEWARD-ROUTINE", {"project": proj or name, "text": q, "routine": True}))
+        out.append(Action("ask_user", name, "STEWARD-ROUTINE", {"project": proj or _ask_base(name), "text": q, "routine": True}))
     for j in m.get("jobs", []):   # iş isteği: beyin turunda rutin madde olarak görünür, `steward_job_submit` + `steward_answer` ile kapanır
-        out.append(Action("ask_user", name, "STEWARD-JOB", {"project": proj or name, "text": JOB_REQUEST_PREFIX + j, "routine": True}))
+        out.append(Action("ask_user", name, "STEWARD-JOB", {"project": proj or _ask_base(name), "text": JOB_REQUEST_PREFIX + j, "routine": True}))
     for ls in m.get("lessons", []):   # ders onayı: yalnız KAYIT (oturuma dokunmaz, soru açmaz)
-        out.append(Action("lesson_ack", name, "STEWARD-LESSON", {"project": proj or name, "text": ls}))
+        out.append(Action("lesson_ack", name, "STEWARD-LESSON", {"project": proj or _ask_base(name), "text": ls}))
     for b in m["blocked"]:
-        out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or name, "text": (BLOCKED_TEXT_PREFIX + b), "routine": True}))
+        out.append(Action("ask_user", name, "STEWARD-BLOCKED", {"project": proj or _ask_base(name), "text": (BLOCKED_TEXT_PREFIX + b), "routine": True}))
     for i in m["ideas"]:
         out.append(Action("idea", name, "STEWARD-IDEA", {"text": i}))
     return out

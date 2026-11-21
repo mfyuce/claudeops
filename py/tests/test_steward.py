@@ -3525,3 +3525,14 @@ class AskStatusLineTests(unittest.TestCase):
         for q in ("Hayır mı evet mi?", "A mı B mi yapayım, öneri A", "hangi dalı kullanayım",
                   "Yok saymak için şu dosyayı silmemi onaylar mısın? " + "x" * 80):
             self.assertFalse(sw._ask_is_status_line(q), q)
+
+
+class AskBaseTests(unittest.TestCase):
+    def test_dated_session_name_collapses_to_base(self):
+        for n, b in (("mecdtfl20261031_3", "mecdtfl"), ("ncs20261011_6", "ncs"), ("cops20260930_1", "cops"),
+                     ("hc", "hc"), ("danisppr", "danisppr"), ("hc58_2", "hc")):
+            self.assertEqual(sw._ask_base(n), b, n)
+        acts = sw.marker_record_actions("mecdtfl20261031_3", "", {"asks": ["Hangisi, A mı B mi?"], "routines": [], "blocked": [], "ideas": []})
+        self.assertEqual(acts[0].payload["project"], "mecdtfl")
+        acts = sw.marker_record_actions("x20261031_3", "reg", {"asks": ["A mı B mi?"], "routines": [], "blocked": [], "ideas": []})
+        self.assertEqual(acts[0].payload["project"], "reg")
