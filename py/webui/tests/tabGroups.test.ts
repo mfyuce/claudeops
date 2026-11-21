@@ -9,7 +9,7 @@ import { entryTabFor, groupOf, topTabOf, visibleSubs } from "../src/state/tabs.t
 
 test("legacy keys map to their group", () => {
   for (const k of ["ucli", "team", "steward", "desktop", "readlist"]) assert.equal(groupOf(k), "tools");
-  for (const k of ["settings", "snapshots", "diag"]) assert.equal(groupOf(k), "settings");
+  for (const k of ["settings", "snapshots", "diag", "metrics"]) assert.equal(groupOf(k), "settings");
   for (const k of ["running", "registered", "disabled", "retired", "history", "ext:admin"]) assert.equal(groupOf(k), null);
 });
 
@@ -28,7 +28,7 @@ test("restricted view keeps ucli only, hides settings group", () => {
 test("readlist only with the extension route", () => {
   assert.deepEqual(visibleSubs("tools", {}), ["ucli", "team", "steward", "desktop"]);
   assert.deepEqual(visibleSubs("tools", { hasReadlist: true }), ["ucli", "team", "steward", "desktop", "readlist"]);
-  assert.deepEqual(visibleSubs("settings", {}), ["settings", "snapshots", "diag"]);
+  assert.deepEqual(visibleSubs("settings", {}), ["settings", "snapshots", "diag", "metrics"]);
 });
 
 test("entry tab: remembered sub, else first visible", () => {

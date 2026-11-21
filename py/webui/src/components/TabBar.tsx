@@ -67,6 +67,7 @@ export function TabBar({ active, onSelect, search, extensions = [] }: TabBarProp
     settings: t.tabSettings,
     snapshots: t.tabSnapshots,
     diag: t.tabDiag,
+    metrics: t.tabMetrics,
     ...Object.fromEntries(extensions.map((e) => [`ext:${e.id}`, extTitle(e)])),
   };
   // Hidden sub-tabs still surface their signals on the group button (open questions / running run / capture).

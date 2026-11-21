@@ -117,6 +117,7 @@ export interface Strings {
   readlistMarkReadFable: string;
   readlistFiltered: (shown: number, total: number) => string;
   tabDiag: string;
+  tabMetrics: string;
   tabSettings: string;
   desktopDesc: string;
   desktopStartBtn: string;
@@ -1037,6 +1038,7 @@ export const STRINGS: Record<Lang, Strings> = {
     readlistMarkReadFable: "Okundu, notu kaydet",
     readlistFiltered: (m: number, n: number) => `arama: ${m} / ${n} eşleşti`,
     tabDiag: "Tanı",
+    tabMetrics: "Metrikler",
     tabSettings: "Ayarlar",
     desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
     desktopStartBtn: "Başlat",
@@ -2072,6 +2074,7 @@ export const STRINGS: Record<Lang, Strings> = {
     readlistMarkReadFable: "Read, save note",
     readlistFiltered: (m: number, n: number) => `search: ${m} / ${n} matched`,
     tabDiag: "Diagnostics",
+    tabMetrics: "Metrics",
     tabSettings: "Settings",
     desktopDesc: "Watch the machine's screen live (2 fps). Remember to stop it — it captures the screen continuously while running.",
     desktopStartBtn: "Start",

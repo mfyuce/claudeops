@@ -34,6 +34,7 @@ import { SearchBox } from "./components/shared/SearchBox";
 import { SettingsTab } from "./components/SettingsTab";
 import { StewardTab } from "./components/StewardTab";
 import { UcliTab } from "./components/UcliTab";
+import { MetricsTab } from "./components/MetricsTab";
 import { SnapshotSection } from "./components/SnapshotSection";
 import { TabBar } from "./components/TabBar";
 import { ReadlistTab } from "./components/ReadlistTab";
@@ -246,6 +247,7 @@ function AppShell() {
         {data && activeTab === "desktop" && <DesktopTab />}
         {data && activeTab === "snapshots" && <SnapshotSection search={search} />}
         {data && activeTab === "readlist" && <ReadlistTab search={search} />}
+        {data && activeTab === "metrics" && <MetricsTab />}
         {data && activeExt && (
           <ExtensionBoundary key={activeExt.id + lang} label={t.extLoadFailed}>
             <ExtensionTab ext={activeExt} openSession={openExtSession} search={search} />
