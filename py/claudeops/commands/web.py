@@ -3916,6 +3916,14 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
         diag_log("adopt_preflight_error", old_name=old_name, error=repr(e)[:200])
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            # hedef kilit öncesi çözülmüştü: bekleme sırasında oturum gitmiş/pid yeniden kullanılmış/belirsizleşmiş olabilir
+            # (TODO 1005 deseni; `_adopt` 19 Kas triyajda eksik kalmıştı). Gitti ya da belirsiz: HİÇBİR ŞEY öldürülmez/açılmaz.
+            procs_now = _recheck_targets(old_name)
+            if procs_now is None:
+                return _err(lang, "ambiguous_name", name=old_name, candidates=", ".join(s.name for s in procs))
+            if not procs_now:
+                return _err(lang, "not_running", name=old_name)
+            procs = procs_now
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
             if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
                 time.sleep(HANDOVER_KILL_SETTLE_SECONDS)

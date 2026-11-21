@@ -53,6 +53,36 @@ class AdoptValueError(unittest.TestCase):
         spawn.assert_not_called()
 
 
+    def _adopt_with_lock_recheck(self, second):
+        """`second`: kilit İÇİNDEKİ yeniden çözüm (TODO 1005 deseni). Öldürme ve spawn çağrıları döner."""
+        proc = SimpleNamespace(pid=1, name="foo", cwd="/tmp", cli="claude", model="m")
+        provider = mock.Mock()
+        provider.accepts_cli_opts = False
+        provider.permission_modes.return_value = ["default"]
+        seq = [("one", [proc]), second]
+        kill, spawn = mock.Mock(return_value="clean"), mock.Mock(return_value="new")
+        with mock.patch.object(web, "_find_running_for_action", lambda *a, **k: seq.pop(0) if len(seq) > 1 else seq[0]), \
+                mock.patch.object(web, "_all_known_names", lambda: set()), \
+                mock.patch.object(web, "get_provider", lambda c: provider), \
+                mock.patch.object(web, "resolved_model_for", lambda p, m: "m"), \
+                mock.patch.object(web, "default_effort_for", lambda p: "high"), \
+                mock.patch.object(web, "guard_lock", mock.MagicMock()), \
+                mock.patch.object(web, "kill_session_and_parent", kill), \
+                mock.patch.object(web, "HANDOVER_KILL_SETTLE_SECONDS", 0), \
+                mock.patch.object(web, "detect_display", lambda: ":0"), \
+                mock.patch.object(web, "diag_log", lambda *a, **k: None), \
+                mock.patch.object(web, "spawn_session", spawn):
+            res = web._adopt("foo")
+        return res, kill, spawn
+
+    def test_target_gone_or_ambiguous_inside_the_lock_kills_and_spawns_nothing(self):
+        # kuru çalıştırma ön kontrolü spawn'ı bir kez çağırır (dry_run=True): gerçek spawn = dry_run olmayan çağrı
+        for second in (("none", []), ("ambiguous", [SimpleNamespace(pid=2, name="foo2"), SimpleNamespace(pid=3, name="foo3")])):
+            res, kill, spawn = self._adopt_with_lock_recheck(second)
+            self.assertFalse(res["ok"], second[0])
+            kill.assert_not_called()
+            self.assertTrue(all(c.kwargs.get("dry_run") for c in spawn.call_args_list), second[0])
+
     def test_generic_dry_run_preflight_keeps_old_session_alive(self):
         # review P2: herhangi bir provider'da spawn kuru çalıştırması ValueError verirse eski oturum ÖLDÜRÜLMEZ.
         proc = SimpleNamespace(pid=1, name="foo", cwd="/tmp", cli="claude", model="m")
