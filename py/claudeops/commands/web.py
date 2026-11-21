@@ -2119,14 +2119,17 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
         return {"ok": False, "error": str(e)}
     except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn REDDEDİLİR
         diag_log("start_refused", name=name, cli=chosen_cli, reason=str(e)[:200])
+        ucli_cost.release(name)
         return ucli_cost.refusal(e)
     diag_log("start_end", name=name, kind=kind, opened=opened, trust=trust)
     if trust == "unregistered":
         return _err(lang, "start_trust_unregistered", name=name)
     if not opened and died:
         diag_log("start_failed", name=name, reason="died_early", secs=EARLY_DEATH_SECONDS, trust=trust)
+        ucli_cost.release(name)     # ucli başlatma payı (günlük tavan rezervasyonu) TTL'i (120 sn) beklemesin; ucli dışı = no-op
         return _err(lang, "start_died_early", name=name, kind=kind, secs=int(EARLY_DEATH_SECONDS))
     if not opened:
+        ucli_cost.release(name)
         return _err(lang, "start_no_proc", name=name, kind=kind)
     if rec is not None:
         inst_mod.mark_started(name, cli=chosen_cli, model=chosen_model,
