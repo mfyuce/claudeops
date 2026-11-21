@@ -380,6 +380,26 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], **kw)    # aynı sha: tekrar tetiklenmez
         self.assertFalse([a for a in acts if a.kind == "set_phase"])
 
+    def test_daily_sweep_done_project_with_unchanged_sha(self):
+        cfg = _cfg(max_active=4, max_starts_per_tick=5)
+        self.projects["c"].phase = "done"
+        kw = dict(open_work=lambda n: 68, todo_sha=lambda n: "h1")
+        st = {"todo_seen": {"c": "h1"}}            # baz kayıtlı, sha değişmiyor (au örneği)
+        acts, st = sw.plan_tick([], self.projects, st, cfg, self.now, [], [], **kw)
+        self.assertEqual([a.name for a in acts if a.kind == "set_phase"], ["c"])
+        acts, st = sw.plan_tick([], self.projects, st, cfg, self.now + 3600, [], [], **kw)
+        self.assertFalse([a for a in acts if a.kind == "set_phase"])           # günde 1
+        acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now + 25 * 3600, [], [], **kw)
+        self.assertEqual([a.name for a in acts if a.kind == "set_phase"], ["c"])
+
+    def test_daily_sweep_paused_asks_once(self):
+        cfg = _cfg(max_active=4, max_starts_per_tick=5)
+        kw = dict(open_work=lambda n: 3, todo_sha=lambda n: "h1")
+        acts, st = sw.plan_tick([], self.projects, {"todo_seen": {"c": "h1"}}, cfg, self.now, [], [], **kw)
+        self.assertEqual(len([a for a in acts if a.kind == "ask_user" and a.name == "c"]), 1)
+        acts, _ = sw.plan_tick([], self.projects, st, cfg, self.now + 3600, [], [], **kw)
+        self.assertFalse([a for a in acts if a.kind == "ask_user" and a.name == "c"])
+
     def test_only_fable_cila_open_work_does_not_trigger(self):
         cfg = _cfg(max_active=4, max_starts_per_tick=5)
         self.projects["c"].phase = "done"

@@ -4186,6 +4186,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     if todo_sha is not None:
         todo_seen: Dict[str, str] = {str(k): str(v) for k, v in dict(st.get("todo_seen") or {}).items()}
         paused_asked: Dict[str, float] = {k: float(v) for k, v in dict(st.get("todo_paused_asked") or {}).items()}
+        todo_swept: Dict[str, float] = {k: float(v) for k, v in dict(st.get("todo_swept") or {}).items()}
         for p in projects.values():
             try:
                 cur = str(todo_sha(p.name) or "")
@@ -4197,8 +4198,12 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             todo_seen[p.name] = cur
             # Tetik için YALNIZ 'Fable cila' olmayan açık iş sayılır (cila en sona kalır, fotocizimppr); ilk gözlemde (prev None) done/paused
             # proje de değerlendirilir (21 Kas, au/rustagentppr: dolu TODO ile ilk gözlem sonsuza dek tetiksiz kalıyordu); aktif faz cadence'e kalır
+            # Günlük süpürme: sha değişmese de done/paused + açık iş > 0 proje günde 1 kez değerlendirilir (au: 4 gündür aynı sha, baz kayıtlıydı)
             first = prev is None
-            if prev == cur or (first and p.phase in ACTIVE_PHASES):
+            swept_due = p.phase in ("done", "paused") and now - todo_swept.get(p.name, 0.0) >= 24 * 3600
+            if p.phase in ACTIVE_PHASES and (first or prev == cur):
+                continue
+            if prev == cur and not swept_due:
                 continue
             ow = open_work_real if open_work_real is not None else open_work
             if ow is None or not (ow(p.name) or 0):
@@ -4206,6 +4211,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             if p.phase in ACTIVE_PHASES:
                 todo_changed.add(p.name)
             elif p.phase == "done":
+                todo_swept[p.name] = now
                 # TODO'ya (ör. reviewer/Fable bulgusu) açık iş düştü: done proje unutulmasın (17 Kas, marwan); planned'a çek, sonraki tick açar
                 actions.append(Action("set_phase", p.name, "done projenin TODO'suna açık iş geldi", {"phase": "planned"}))
             elif p.phase == "paused" and now - paused_asked.get(p.name, 0.0) >= 24 * 3600:
@@ -4217,6 +4223,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             st["todo_seen"] = todo_seen
         if paused_asked:
             st["todo_paused_asked"] = paused_asked
+        if todo_swept:
+            st["todo_swept"] = todo_swept
     for p in projects.values():
         if p.phase not in ACTIVE_PHASES or p.cadence_minutes <= 0 or p.name in running_projects or p.name in busy_names:
             continue
