@@ -6776,7 +6776,13 @@ def _send_verified(name: str, cli: str, message: str, sid: str = "default",
 def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
     """Oturum kapalıyken başlatma yolu: HEMEN `queued` + arka planda teslim (zaman aşımı yok). Sonuç `directive/status?id=`."""
     import uuid
-    did = uuid.uuid4().hex[:12]
+    cdid = str(data.get("_did") or "")
+    if cdid and not _DID_RE.match(cdid):
+        return {"ok": False, "error": "bad _did (12 hex)"}
+    with _ctx(sid).lock:
+        if cdid and (sid, cdid) in _DID_DONE:     # kuyruklu yol da istemci kimliğiyle yinelenmeyi ayıklar (review R-1)
+            return dict(_DID_DONE[(sid, cdid)], duplicate=True)
+    did = cdid or uuid.uuid4().hex[:12]
     name = str(data.get("name") or "")
     _delivery_set(did, name=name, status="queued", reason="", attempts=0)
 
