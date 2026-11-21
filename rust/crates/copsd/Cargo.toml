@@ -6,4 +6,5 @@ license.workspace = true
 
 [dependencies]
 cops-proxy = { path = "../cops-proxy" }
+cops-auth = { path = "../cops-auth" }
 tokio.workspace = true

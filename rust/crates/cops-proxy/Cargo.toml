@@ -10,3 +10,10 @@ hyper.workspace = true
 hyper-util.workspace = true
 http-body-util.workspace = true
 bytes.workspace = true
+cops-auth = { path = "../cops-auth" }
+cops-local = { path = "../cops-local" }
+serde_json = "1"
+
+[dev-dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }
+tempfile = "3"

@@ -18,7 +18,14 @@ const HOP: [&str; 7] = ["keep-alive", "proxy-authenticate", "proxy-authorization
 
 // Upstream bağlantı HAVUZU KAPALI (pool_max_idle_per_host(0)): Python bazı POST uçlarında gövdeyi okumadan yanıtlıyor (ör. /api/ws-ticket),
 // artık baytlar keep-alive bağlantıda sonraki isteğin başına yapışırdı ('{}GET' -> 501). Loopback'te yeni bağlantı maliyeti ihmal edilebilir.
+/// Rust'un kendi cevapladığı yerel uçların bağımlılıkları (yoksa tüm istekler Python'a gider).
+pub struct LocalCfg {
+    pub token: cops_auth::Token,
+    pub db: std::path::PathBuf,
+}
+
 pub struct Proxy {
+    local: Option<LocalCfg>,
     upstream: SocketAddr,
     dist: Option<std::path::PathBuf>,
     secret: Option<HeaderValue>,
@@ -42,6 +49,11 @@ fn is_upgrade(h: &hyper::HeaderMap) -> bool {
 fn err(code: StatusCode, msg: &str) -> Response<Body> {
     let b = http_body_util::Full::new(Bytes::from(msg.to_string())).map_err(|never| match never {}).boxed();
     Response::builder().status(code).header("content-type", "text/plain; charset=utf-8").body(b).unwrap()
+}
+
+fn json_resp(code: StatusCode, v: serde_json::Value) -> Response<Body> {
+    let b = http_body_util::Full::new(Bytes::from(v.to_string())).map_err(|never| match never {}).boxed();
+    Response::builder().status(code).header("content-type", "application/json; charset=utf-8").header("cache-control", "no-store").body(b).unwrap()
 }
 
 /// Python `end_headers`taki CSP ile BİREBİR aynı olmalı (py/tests/test_front_internal.py eşitlik testi okur).
@@ -104,7 +116,7 @@ impl Proxy {
 
     pub fn new(upstream: SocketAddr) -> Arc<Self> {
         let client = Client::builder(TokioExecutor::new()).pool_max_idle_per_host(0).build_http();
-        Arc::new(Proxy { upstream, dist: None, secret: None, client })
+        Arc::new(Proxy { local: None, upstream, dist: None, secret: None, client })
     }
 
     /// `dist` (py/webui/dist) verilirse `/assets/*` ve `/favicon.svg` (token'sız taşınan statikler) diskten Rust'ta sunulur; dosya yoksa
@@ -114,11 +126,37 @@ impl Proxy {
         Arc::new(Proxy { dist: Some(dist), ..me })
     }
 
+    /// Yerel uçları aç (şimdilik `GET /api/steward/questions`): kimlik tek kullanıcı token'ı, veri `claudeops.db` (salt okunur).
+    pub fn with_local(self: Arc<Self>, local: LocalCfg) -> Arc<Self> {
+        let me = Arc::try_unwrap(self).ok().expect("tek sahip");
+        Arc::new(Proxy { local: Some(local), ..me })
+    }
+
+    /// Yerel uç eşleşirse yanıt döner (kimlik DENETİMİ dahil); eşleşmezse None = Python'a aktar.
+    async fn try_local(self: &Arc<Self>, req: &Request<Incoming>) -> Option<Response<Body>> {
+        let local = self.local.as_ref()?;
+        if req.method() != hyper::Method::GET || req.uri().path() != "/api/steward/questions" {
+            return None;
+        }
+        let query = req.uri().query().unwrap_or("").to_string();
+        let auth = req.headers().get("authorization").and_then(|v| v.to_str().ok());
+        if !local.token.authorized(&query, auth) {
+            return Some(json_resp(StatusCode::UNAUTHORIZED, serde_json::json!({"ok": false, "error": "unauthorized"})));
+        }
+        let db = local.db.clone();
+        let out = tokio::task::spawn_blocking(move || cops_local::questions(&db, &query)).await;
+        Some(match out {
+            Ok(Ok(v)) => json_resp(StatusCode::OK, v),
+            Ok(Err((code, m))) => json_resp(StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), serde_json::json!({"ok": false, "error": m})),
+            Err(_) => json_resp(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({"ok": false, "error": "internal"})),
+        })
+    }
+
     /// Ön kapı gizlisi: Python'un `X-Forwarded-For`a güvenmesi için her aktarılan isteğe `X-Cops-Front` olarak eklenir;
     /// istemciden gelen aynı adlı başlık her zaman düşürülür.
     pub fn with_secret(upstream: SocketAddr, secret: &str) -> Arc<Self> {
         let client = Client::builder(TokioExecutor::new()).pool_max_idle_per_host(0).build_http();
-        Arc::new(Proxy { upstream, dist: None, secret: HeaderValue::from_str(secret).ok(), client })
+        Arc::new(Proxy { local: None, upstream, dist: None, secret: HeaderValue::from_str(secret).ok(), client })
     }
 
     /// `peer`: bağlanan istemcinin adresi (X-Forwarded-For için). İstemcinin gönderdiği X-Forwarded-For'a GÜVENİLMEZ, üzerine yazılır.
@@ -129,6 +167,9 @@ impl Proxy {
             return Ok(err(StatusCode::NOT_FOUND, "not found"));
         }
         if let Some(r) = self.try_static(&req) {
+            return Ok(r);
+        }
+        if let Some(r) = self.try_local(&req).await {
             return Ok(r);
         }
         let upgrade = is_upgrade(req.headers());

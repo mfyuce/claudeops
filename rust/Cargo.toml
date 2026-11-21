@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/cops-proxy", "crates/copsd"]
+members = ["crates/cops-proxy", "crates/copsd", "crates/cops-auth", "crates/cops-local"]
 
 [workspace.package]
 edition = "2021"

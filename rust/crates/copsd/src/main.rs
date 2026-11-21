@@ -49,5 +49,16 @@ async fn main() -> std::io::Result<()> {
         Some(d) => proxy.with_dist(std::path::PathBuf::from(d)),
         None => proxy,
     };
+    // Yerel uçlar (Aşama 1): token dosyası ve DB yoksa uç AÇILMAZ (istek Python'a gider). Token dosyası 0600 olmalı (ön kapı gizlisiyle aynı kural).
+    let home = std::env::var("HOME").unwrap_or_default();
+    let tok_path = std::path::PathBuf::from(arg("--token-file").unwrap_or_else(|| format!("{home}/.claude/claudeops/web.token")));
+    let db_path = std::path::PathBuf::from(arg("--db").unwrap_or_else(|| format!("{home}/.claude/claudeops/claudeops.db")));
+    let proxy = match std::fs::metadata(&tok_path) {
+        Ok(m) if m.permissions().mode() & 0o077 == 0 && db_path.exists() => {
+            let t = cops_auth::Token::from_file(&tok_path);
+            if t.is_empty() { proxy } else { eprintln!("copsd: yerel uç açık: GET /api/steward/questions"); proxy.with_local(cops_proxy::LocalCfg { token: t, db: db_path }) }
+        }
+        _ => proxy,
+    };
     cops_proxy::serve(listen, proxy).await
 }
