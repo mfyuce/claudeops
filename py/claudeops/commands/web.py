@@ -4077,8 +4077,12 @@ def _save_closing_snapshot() -> None:
     aynıysa kendiliğinden no-op — burada AYRICA bir karşılaştırma gerekmiyor."""
     try:
         save_snapshot(_live_snapshot_entries(), kind="closing", mirrors=_live_mirror_entries())
-    except Exception:
-        pass
+    except Exception as e:
+        # kapanış kaydı sessizce kaybolmasın: neden iz bırakır (kapanışı yine engellemez)
+        try:
+            diag_log("closing_snapshot_failed", error=f"{type(e).__name__}: {e}"[:200])
+        except Exception:
+            pass
 
 
 def _snapshot_list() -> dict:
