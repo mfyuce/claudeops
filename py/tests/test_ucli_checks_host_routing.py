@@ -23,6 +23,11 @@ class Routing(unittest.TestCase):
         i = WEB.index('elif path in ("/api/ucli/metrics", "/api/ucli/metrics/sessions"):')
         self.assertIn("web_hosts.proxy_get(path, _host", WEB[i:i + 900])
 
+    def test_compare_routed(self):
+        self.assertIn("/api/ucli/compare", web_hosts.GET_HOST_ROUTED_PATHS)
+        i = WEB.index('elif path == "/api/ucli/compare":')
+        self.assertIn("web_hosts.proxy_get(path, _host", WEB[i:i + 900])
+
 
 if __name__ == "__main__":
     unittest.main()

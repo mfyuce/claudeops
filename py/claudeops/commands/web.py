@@ -5584,6 +5584,16 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(result, status=status)
                 return
             self._json(_um.api_get(path, _qs))
+        elif path == "/api/ucli/compare":      # oturum/model bazında maliyet + kaynak tablosu (TODO 30 (d)); salt okuma
+            from .. import ucli_compare as _cmp
+            _qs = parse_qs(urlparse(self.path).query)
+            _host = _host_from_qs(_qs)
+            if _host != LOCAL_HOST_NAME:        # uzak hostun kendi günlükleri ve metrik DB'si
+                _fw = {k: (_qs.get(k) or [""])[0] for k in ("since",) if _qs.get(k)}
+                result, status = web_hosts.proxy_get(path, _host, _fw, dedup=False)
+                self._json(result, status=status)
+                return
+            self._json(_cmp.api_get(path, _qs))
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())

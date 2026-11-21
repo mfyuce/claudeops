@@ -79,7 +79,7 @@ HOST_ROUTED_PATHS = {
 GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/history", "/api/term/chat", "/api/files/list", "/api/files/read",
                          "/api/instances", "/api/cli/status", "/api/session/facts", "/api/session/graphical",
                          "/api/ucli/checks", "/api/ucli/checks-mode",
-                         "/api/ucli/metrics", "/api/ucli/metrics/sessions"}   # kaynak metrikleri uzak hostun KENDİ DB'sinde
+                         "/api/ucli/metrics", "/api/ucli/metrics/sessions", "/api/ucli/compare"}   # kaynak metrikleri uzak hostun KENDİ DB'sinde
 FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
 FILE_UPLOAD_PATH = "/api/files/upload"  # download'ın YAZMA kardeşi — POST + ham binary REQUEST body (ne JSON-body proxy_action'a ne query-only GET proxy'lerine uyar), kendi proxy_post_raw()'ı var
 
