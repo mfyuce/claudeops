@@ -417,6 +417,28 @@ def _reasoning_display_args(binary: str, session_name: str = "") -> List[str]:
     return ["--show-reasoning"]
 
 
+def _metrics_file_args(binary: str, session_name: str = "") -> List[str]:
+    """`--metrics-file <CLAUDEOPS_DIR>/ucli_metrics/<oturum>.jsonl` (ucli'nin kendi RSS/CPU/araç-bekleme örnekleri). YALNIZ
+    `settings.ucli_metrics.enabled` açıkken (varsayılan açık), oturum adı varken ve ikili bayrağı tanıyorsa eklenir (eski ikili
+    'unexpected argument' ile spawn anında ölürdü); tanımıyorsa günlüğe yazılır, argv değişmez."""
+    if not session_name:
+        return []
+    try:
+        from .. import ucli_metrics
+        if not ucli_metrics.get_config().get("enabled"):
+            return []
+        if not binary_supports_flag(binary, "--metrics-file"):
+            diag_log("ucli_flag_unsupported", name=session_name, flag="--metrics-file", binary=binary)
+            return []
+        from ..paths import CLAUDEOPS_DIR
+        safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in session_name)
+        d = os.path.join(CLAUDEOPS_DIR, "ucli_metrics")
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        return ["--metrics-file", os.path.join(d, safe + ".jsonl")]
+    except Exception:
+        return []
+
+
 def _interactive_args(binary: str, session_name: str = "") -> List[str]:
     """727: `--interactive` YALNIZ ikili bayrağı tanıyorsa eklenir (eski ikili 'unexpected argument' ile ölürdü);
     tanımıyorsa günlüğe yazılır, argv değişmez."""
@@ -942,6 +964,7 @@ class UcliProvider(CliProvider):
         argv += _effort_args(argv[0], model, preset, session_name)
         argv += _stream_args(argv[0], session_name)
         argv += _reasoning_display_args(argv[0], session_name)
+        argv += _metrics_file_args(argv[0], session_name)
         argv += _interactive_args(argv[0], session_name)
         argv += _state_dir_args(argv[0], cwd, session_name, force=bool(cli_opts and cli_opts.get("ucli_checks")))
         if "--with-mcp" in extra_args:      # yalnız `mcp_launch_args`ın (kayıt başarılıysa) verdiği bayrak; başka extra_args yok sayılır
