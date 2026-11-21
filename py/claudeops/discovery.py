@@ -277,6 +277,11 @@ def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List
             # (pid yeniden kullanımı başka bir CLI'nin sürecine claude sid'i yapıştırmasın).
             prior = json_by_pid.get(p.pid)
             live_sid = prior.sid if prior is not None and prior.cli == provider.name else None
+            if prior is not None and prior.cli == provider.name and prior.name != name:
+                # TUI `/name` ile yeniden adlandırılmış oturum: json yeni adı, cmdline (`-n`/`--remote-control`) spawn adını taşır; anahtar
+                # (ad, pid) olduğu için AYNI süreç iki satır görünürdü (21 Kas review uzops R-6). Fleet kimliği spawn adıdır (roster, tmux,
+                # close/rc onunla çalışır): tek satır, proc-scan adı; json'un bayat adlı girdisi düşer.
+                by_key.pop((prior.name, p.pid), None)
             by_key[(name, p.pid)] = Session(
                 kind=prior.kind if prior is not None and prior.cli == provider.name else "",
                 job_id=prior.job_id if prior is not None and prior.cli == provider.name else None,

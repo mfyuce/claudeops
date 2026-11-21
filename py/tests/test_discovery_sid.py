@@ -107,6 +107,12 @@ class FindSessionsSidTests(unittest.TestCase):
         got = self.scan([FakeProc(500, claude_cmd("zz1", resume="sid-a"))], json_entry("zz1", 500, None))
         self.assertEqual(got[("zz1", 500)].sid, "sid-a")
 
+    def test_a_tui_renamed_session_is_listed_once_under_its_spawn_name(self):
+        """`/name` json adını değiştirir, cmdline spawn adını korur: aynı pid iki satır olmasın (review uzops R-6)."""
+        got = self.scan([FakeProc(500, claude_cmd("zz1"))], json_entry("zz1-yeni-ad", 500, "live-sid"))
+        self.assertEqual(list(got), [("zz1", 500)])
+        self.assertEqual(got[("zz1", 500)].sid, "live-sid")            # json'un canlı sid'i yine devralınır
+
     def test_each_session_gets_its_own_sid_by_pid(self):
         json_sessions = {**json_entry("zz1", 500, "sid-1"), **json_entry("zz2", 501, "sid-2")}
         got = self.scan([FakeProc(500, claude_cmd("zz1")), FakeProc(501, claude_cmd("zz2"))], json_sessions)
