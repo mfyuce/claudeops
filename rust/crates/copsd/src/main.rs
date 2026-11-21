@@ -40,6 +40,7 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(2);
         }
     };
+    let front_secret = secret.clone().unwrap_or_default();
     eprintln!("copsd: {listen} -> {up} (gizli: {})", if secret.is_some() { "var" } else { "YOK, X-Forwarded-For güvenilmez" });
     let proxy = match secret {
         Some(sec) => cops_proxy::Proxy::with_secret(up, &sec),
@@ -56,7 +57,63 @@ async fn main() -> std::io::Result<()> {
     let proxy = match std::fs::metadata(&tok_path) {
         Ok(m) if m.permissions().mode() & 0o077 == 0 && db_path.exists() => {
             let t = cops_auth::Token::from_file(&tok_path);
-            if t.is_empty() { proxy } else { eprintln!("copsd: yerel uç açık: GET /api/steward/questions"); proxy.with_local(cops_proxy::LocalCfg { token: t, db: db_path }) }
+            if t.is_empty() { proxy } else { eprintln!("copsd: yerel uç açık: GET /api/steward/questions"); proxy.with_local(cops_proxy::LocalCfg { token: t, db: db_path.clone() }) }
+        }
+        _ => proxy,
+    };
+    // Metrik deposu (cops-metrics): `--metrics-db` (varsayılan ~/.claude/claudeops/metrics.db). Uçlar: POST /api/metrics/points
+    // (web.token ya da loopback + ön kapı gizlisi), GET /api/metrics/series|names (web.token). Token yoksa uçlar AÇILMAZ (Python'a gider).
+    let mdb = std::path::PathBuf::from(arg("--metrics-db").unwrap_or_else(|| format!("{home}/.claude/claudeops/metrics.db")));
+    let store = match cops_metrics::Store::open(&mdb) {
+        Ok(s) => Some(std::sync::Arc::new(s)),
+        Err(e) => {
+            eprintln!("copsd: metrik deposu açılamadı: {e}");
+            None
+        }
+    };
+    let instances = std::path::PathBuf::from(arg("--instances").unwrap_or_else(|| format!("{home}/.claude/claudeops/instances.json")));
+    // Günlük proje ilerleme işi (model YOK). `--once`: bir kez koş ve çık (elle/sınama). Aksi halde açılışta son nokta 20 saatten eskiyse koşar, sonra saatte bir bakar.
+    if let Some(st) = store.clone() {
+        let (db, inst) = (db_path.clone(), instances.clone());
+        let tick = move || -> Result<(usize, usize), String> {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+            let last = st.last_ts("job.project_progress", "ms")?.unwrap_or(0.0);
+            if now - last < 20.0 * 3600.0 && !std::env::args().any(|a| a == "--once") {
+                return Ok((0, 0));
+            }
+            cops_progress::run(&st, &db, &inst, now)
+        };
+        if std::env::args().any(|a| a == "--once") {
+            match tick() {
+                Ok((p, n)) => println!("project-progress: {p} proje, {n} nokta"),
+                Err(e) => {
+                    eprintln!("project-progress: {e}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+        tokio::spawn(async move {
+            loop {
+                let t = tick.clone();
+                match tokio::task::spawn_blocking(move || t()).await {
+                    Ok(Ok((p, n))) if p > 0 => eprintln!("copsd: proje ilerleme: {p} proje, {n} nokta"),
+                    Ok(Err(e)) => eprintln!("copsd: proje ilerleme hatası: {e}"),
+                    _ => {}
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        });
+    }
+    let proxy = match (store, std::fs::metadata(&tok_path)) {
+        (Some(store), Ok(m)) if m.permissions().mode() & 0o077 == 0 => {
+            let t = cops_auth::Token::from_file(&tok_path);
+            if t.is_empty() {
+                proxy
+            } else {
+                eprintln!("copsd: metrik uçları açık: /api/metrics/points|series|names");
+                proxy.with_metrics(cops_proxy::MetricsCfg { store, token: t, front_secret: cops_auth::Token::new(&front_secret) })
+            }
         }
         _ => proxy,
     };

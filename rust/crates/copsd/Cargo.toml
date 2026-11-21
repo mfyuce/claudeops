@@ -8,3 +8,5 @@ license.workspace = true
 cops-proxy = { path = "../cops-proxy" }
 cops-auth = { path = "../cops-auth" }
 tokio.workspace = true
+cops-metrics = { path = "../cops-metrics" }
+cops-progress = { path = "../cops-progress" }

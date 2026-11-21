@@ -24,7 +24,15 @@ pub struct LocalCfg {
     pub db: std::path::PathBuf,
 }
 
+/// Metrik uçları: depo + kimlik (web.token YA DA loopback + ön kapı gizlisi `X-Cops-Front`).
+pub struct MetricsCfg {
+    pub store: Arc<cops_metrics::Store>,
+    pub token: cops_auth::Token,
+    pub front_secret: cops_auth::Token,
+}
+
 pub struct Proxy {
+    metrics: Option<MetricsCfg>,
     local: Option<LocalCfg>,
     upstream: SocketAddr,
     dist: Option<std::path::PathBuf>,
@@ -54,6 +62,32 @@ fn err(code: StatusCode, msg: &str) -> Response<Body> {
 fn json_resp(code: StatusCode, v: serde_json::Value) -> Response<Body> {
     let b = http_body_util::Full::new(Bytes::from(v.to_string())).map_err(|never| match never {}).boxed();
     Response::builder().status(code).header("content-type", "application/json; charset=utf-8").header("cache-control", "no-store").body(b).unwrap()
+}
+
+/// Saf yönlendirici (birim testlenebilir): POST points gövdesi `[{name,key?,owner?,unit?,ts?,value,meta?}]` ya da tek nesne.
+pub fn metrics_handle(st: &cops_metrics::Store, path: &str, query: &str, body: &[u8], now: f64) -> Result<serde_json::Value, (u16, String)> {
+    let q = |k: &str| cops_auth::query_param(query, k);
+    let num = |k: &str, d: f64| -> Result<f64, (u16, String)> { q(k).filter(|v| !v.is_empty()).map_or(Ok(d), |v| v.parse::<f64>().map_err(|_| (400, format!("bad {k}")))) };
+    let e500 = |e: String| (500u16, e);
+    match path {
+        "/api/metrics/points" => {
+            let v: serde_json::Value = serde_json::from_slice(body).map_err(|_| (400u16, "bad json".to_string()))?;
+            let items: Vec<serde_json::Value> = match v { serde_json::Value::Array(a) => a, o @ serde_json::Value::Object(_) => vec![o], _ => return Err((400, "bad body".into())) };
+            if items.is_empty() || items.len() > 5000 {
+                return Err((400, "bad count".into()));
+            }
+            let pts = items.iter().map(|i| cops_metrics::parse_point(i, now)).collect::<Result<Vec<_>, _>>().map_err(|e| (400u16, e))?;
+            let n = st.insert(&pts).map_err(e500)?;
+            Ok(serde_json::json!({"ok": true, "inserted": n}))
+        }
+        "/api/metrics/series" => {
+            let name = q("name").filter(|n| !n.is_empty()).ok_or((400u16, "name required".to_string()))?;
+            let limit = num("limit", 2000.0)?.clamp(1.0, 20000.0) as usize;
+            st.series(&name, q("key").as_deref(), &q("owner").unwrap_or_default(), num("from", 0.0)?, num("to", 1e18)?, limit).map_err(e500)
+        }
+        "/api/metrics/names" => st.names(&q("owner").unwrap_or_default()).map_err(e500),
+        _ => Err((404, "not found".into())),
+    }
 }
 
 /// Python `end_headers`taki CSP ile BİREBİR aynı olmalı (py/tests/test_front_internal.py eşitlik testi okur).
@@ -116,7 +150,7 @@ impl Proxy {
 
     pub fn new(upstream: SocketAddr) -> Arc<Self> {
         let client = Client::builder(TokioExecutor::new()).pool_max_idle_per_host(0).build_http();
-        Arc::new(Proxy { local: None, upstream, dist: None, secret: None, client })
+        Arc::new(Proxy { metrics: None, local: None, upstream, dist: None, secret: None, client })
     }
 
     /// `dist` (py/webui/dist) verilirse `/assets/*` ve `/favicon.svg` (token'sız taşınan statikler) diskten Rust'ta sunulur; dosya yoksa
@@ -130,6 +164,46 @@ impl Proxy {
     pub fn with_local(self: Arc<Self>, local: LocalCfg) -> Arc<Self> {
         let me = Arc::try_unwrap(self).ok().expect("tek sahip");
         Arc::new(Proxy { local: Some(local), ..me })
+    }
+
+    /// `/api/metrics/{points,series,names}` uçlarını aç (depo + kimlik).
+    pub fn with_metrics(self: Arc<Self>, m: MetricsCfg) -> Arc<Self> {
+        let me = Arc::try_unwrap(self).ok().expect("tek sahip");
+        Arc::new(Proxy { metrics: Some(m), ..me })
+    }
+
+    /// Metrik uçları: GET series/names (web.token), POST points (web.token ya da loopback + `X-Cops-Front`). Eşleşmezse None.
+    async fn try_metrics(self: &Arc<Self>, req: Request<Incoming>, peer: SocketAddr) -> Result<Response<Body>, Request<Incoming>> {
+        let Some(m) = self.metrics.as_ref() else { return Err(req) };
+        let path = req.uri().path().to_string();
+        let post = req.method() == hyper::Method::POST && path == "/api/metrics/points";
+        let get = req.method() == hyper::Method::GET && (path == "/api/metrics/series" || path == "/api/metrics/names");
+        if !post && !get {
+            return Err(req);
+        }
+        let query = req.uri().query().unwrap_or("").to_string();
+        let auth = req.headers().get("authorization").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+        let front = req.headers().get("x-cops-front").and_then(|v| v.to_str().ok()).map(|s| format!("Bearer {s}"));
+        let ok = m.token.authorized(&query, auth.as_deref()) || (post && peer.ip().is_loopback() && m.front_secret.authorized("", front.as_deref()));
+        if !ok {
+            return Ok(json_resp(StatusCode::UNAUTHORIZED, serde_json::json!({"ok": false, "error": "unauthorized"})));
+        }
+        let store = m.store.clone();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        let body = if post {
+            match http_body_util::Limited::new(req.into_body(), 1 << 20).collect().await {
+                Ok(b) => b.to_bytes(),
+                Err(_) => return Ok(json_resp(StatusCode::PAYLOAD_TOO_LARGE, serde_json::json!({"ok": false, "error": "body too large"}))),
+            }
+        } else {
+            Bytes::new()
+        };
+        let out = tokio::task::spawn_blocking(move || metrics_handle(&store, &path, &query, &body, now)).await;
+        Ok(match out {
+            Ok(Ok(v)) => json_resp(StatusCode::OK, v),
+            Ok(Err((code, m))) => json_resp(StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), serde_json::json!({"ok": false, "error": m})),
+            Err(_) => json_resp(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({"ok": false, "error": "internal"})),
+        })
     }
 
     /// Yerel uç eşleşirse yanıt döner (kimlik DENETİMİ dahil); eşleşmezse None = Python'a aktar.
@@ -156,11 +230,11 @@ impl Proxy {
     /// istemciden gelen aynı adlı başlık her zaman düşürülür.
     pub fn with_secret(upstream: SocketAddr, secret: &str) -> Arc<Self> {
         let client = Client::builder(TokioExecutor::new()).pool_max_idle_per_host(0).build_http();
-        Arc::new(Proxy { local: None, upstream, dist: None, secret: HeaderValue::from_str(secret).ok(), client })
+        Arc::new(Proxy { metrics: None, local: None, upstream, dist: None, secret: HeaderValue::from_str(secret).ok(), client })
     }
 
     /// `peer`: bağlanan istemcinin adresi (X-Forwarded-For için). İstemcinin gönderdiği X-Forwarded-For'a GÜVENİLMEZ, üzerine yazılır.
-    pub async fn handle(self: Arc<Self>, mut req: Request<Incoming>, peer: SocketAddr) -> Result<Response<Body>, hyper::Error> {
+    pub async fn handle(self: Arc<Self>, req: Request<Incoming>, peer: SocketAddr) -> Result<Response<Body>, hyper::Error> {
         // İç uçlar (`/api/_internal/*`) dışarıdan ASLA aktarılmaz: ön kapı gizlisi her aktarılan isteğe eklendiği için, aktarılırsa
         // herkes iç kimlik/bilet uçlarını güvenilir çağrıcı gibi çağırabilirdi. Yalnız Rust'un KENDİ iç çağrıları (loopback) bu yola gider.
         if req.uri().path().trim_start_matches('/').to_ascii_lowercase().starts_with("api/_internal") {
@@ -169,6 +243,11 @@ impl Proxy {
         if let Some(r) = self.try_static(&req) {
             return Ok(r);
         }
+        let req = match self.try_metrics(req, peer).await {
+            Ok(r) => return Ok(r),
+            Err(r) => r,
+        };
+        let mut req = req;
         if let Some(r) = self.try_local(&req).await {
             return Ok(r);
         }

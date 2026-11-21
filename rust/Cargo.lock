@@ -50,12 +50,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "cops-metrics"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "cops-progress"
+version = "0.1.0"
+dependencies = [
+ "cops-metrics",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "cops-proxy"
 version = "0.1.0"
 dependencies = [
  "bytes",
  "cops-auth",
  "cops-local",
+ "cops-metrics",
  "http-body-util",
  "hyper",
  "hyper-util",
@@ -70,6 +90,8 @@ name = "copsd"
 version = "0.1.0"
 dependencies = [
  "cops-auth",
+ "cops-metrics",
+ "cops-progress",
  "cops-proxy",
  "tokio",
 ]
