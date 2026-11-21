@@ -41,12 +41,21 @@ def check_session(v: Any, proj: Any, state: Dict[str, Any], cfg: sw.Config, now:
     # 'sahipte' metni kayıtlı soru olmadan susturur (21 Kas): tek seferlik dürtme gittiyse ve oturum ondan SONRA yine boşta ise engel değil
     onudge = (state.get("owner_claim_nudge") or {}).get(proj_name) or {}
     owner_claim_blocks = sw.owner_wait(txt) and not (onudge and onudge.get("session") == v.name and since > float(onudge.get("at") or 0))
+    # sahip 21 Kas: KAYITLI açık soru N sa'ten uzun açıksa (uzakgoz 415 dk, menzilui 291 dk boşta kaldı) kapatmayı süresiz engellemez;
+    # soru açık kalır, cevap gelince answer_pending -> plan_no_work_reopen oturumu yeniden açar. answer_pending engel KALIR.
+    open_q_hours = float(getattr(cfg, "no_work_open_q_hours", 2.0) or 0)
+    q_since = float((ctx.get("open_q_since") or {}).get(proj_name) or 0)
+    aged_q = (open_q_hours > 0 and proj_name in (ctx.get("open_q") or ()) and q_since > 0
+              and (now - q_since) >= open_q_hours * 3600 and proj_name not in (ctx.get("answer_pending") or ()))
+    if aged_q:
+        session_asked = False
     checks = {
         "no_work": no_work,                                                                  # iş yok (no_next_work/next_none)
         "idle": v.busy is False and since > 0 and idle_min >= min_idle,                      # boşta >= 30 dk
         "no_subagent": not (getattr(v, "subagent_active", False) or getattr(v, "subagent_unknown", False)),
-        "no_question": (proj_name not in (ctx.get("open_q") or ()) and proj_name not in (ctx.get("answer_pending") or ())
-                        and not session_asked and not sw.waiting_for_gate(txt) and not owner_claim_blocks and not sw.turn_failed(txt)),
+        "no_question": (((proj_name not in (ctx.get("open_q") or ())) or aged_q) and proj_name not in (ctx.get("answer_pending") or ())
+                        and not session_asked and (aged_q or not sw.waiting_for_gate(txt)) and (aged_q or not owner_claim_blocks)
+                        and not sw.turn_failed(txt)),
         "no_review_item": not review_why and proj_name not in (ctx.get("jobs") or ()),       # bulgu/ders/koşan review/açık varaka işi YOK
     }
     why = ""

@@ -45,6 +45,18 @@ class Check(unittest.TestCase):
         self.assertTrue(r["close"], r)
         self.assertTrue(all(r["checks"].values()))
 
+    def test_aged_open_question_does_not_block_but_answer_pending_does(self):
+        asked = view(txt="STEWARD-ASK: soru? öneri: a\nSTEWARD-NEXT: yok", idle_min=180)
+        old_q = dict(CTX, open_q={"p"}, open_q_since={"p": NOW - 3 * 3600})
+        self.assertTrue(self.res(v=asked, ctx=old_q)["close"])                                        # açık soru + 3 sa = kapanır
+        young = dict(CTX, open_q={"p"}, open_q_since={"p": NOW - 1800})
+        self.assertEqual(self.res(v=view(idle_min=180), ctx=young)["why"], "no_question")            # 30 dk = kapanmaz
+        pend = dict(old_q, answer_pending={"p": "q1"})
+        self.assertEqual(self.res(v=view(idle_min=180), ctx=pend)["why"], "no_question")             # iletilmemiş cevap = kapanmaz
+        self.assertEqual(self.res(v=view(idle_min=180), ctx=dict(CTX, open_q={"p"}))["why"], "no_question")  # zaman bilinmiyor = kapanmaz
+        r = snw.check_session(view(idle_min=180), PROJ["p"], {}, cfg(no_work_open_q_hours=0), NOW, lambda _p: 0, old_q)
+        self.assertEqual(r["why"], "no_question")                                                    # 0 = eski davranış
+
     def test_each_blocker(self):
         cases = {
             "no_work": dict(v=view(txt="Çalışıyorum.\nSTEWARD-NEXT: PE2 ölçüm betiği")),

@@ -351,6 +351,7 @@ class Config:
     keepwarm_chain_close: str = "dry"  # zincir dolunca: off = yalnız kes | dry = YALNIZ `would:idle_close` (marker keepwarm_chain) | act = devir + kapat + phase=paused (gerekçeli, ntfy yok; pause devir BİTİNCE yazılır)
     no_work_close: str = "dry"            # işi olmayan oturum: off | dry (YALNIZ `would:idle_close` marker no_work + state.no_work_report) | act (devir + kapat + paused "iş yok")
     no_work_close_minutes: int = 30       # bu kadar dk boşta olmadan kapatılmaz
+    no_work_open_q_hours: float = 2.0     # KAYITLI açık soru en az bu kadar sa açıksa (cevap yok/iletilmemiş değil) no_work_close'u artık engellemez: devir + kapat + paused, cevap gelince yeniden açılır; 0 = soru süresiz engeller (eski davranış)
     keepwarm_pause_exempt: str = "copsdev"   # virgüllü proje adları: zincir dolsa da paused OLMAZ, yalnız kesilir (TBD#163 b); ayrıca notta "devam etmeli" geçen proje
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
     brain_wake_max_per_day: int = 6    # uyandırma kapısı (TBD#138): BEYİN direktifi (`reason=brain`, actor=brain, cevapsız) oturum başına 24 saatte en çok bu kadar; aşımda `wake_gate` kipine uyar (dry = `would:brain_wake_cap`); 0 = sınırsız

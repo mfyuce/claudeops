@@ -4022,11 +4022,13 @@ def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
     `ctx["errors"]` dolar ve kapatma planlayıcısı bu tick'te hiçbir şey kapatmaz). Alanlar: open_q {proje} (sahip/beyin/ROUTINE dahil HER açık soru),
     answer_pending {proje: soru kimliği}, review {proje: neden} (onaylı/doğrulanmış iletilmemiş bulgu, bekleyen ders, koşan review, ilerletme
     adayı), jobs {proje} (açık ya da sonucu iletilmemiş varaka işi)."""
-    ctx: Dict[str, Any] = {"open_q": set(), "answer_pending": {}, "review": {}, "jobs": set(), "errors": []}
+    ctx: Dict[str, Any] = {"open_q": set(), "open_q_since": {}, "answer_pending": {}, "review": {}, "jobs": set(), "errors": []}
     try:
         for q in sw.load_questions(paths):
             if q.status == "open":
                 ctx["open_q"].add(q.project)
+                # proje başına EN YENİ açık sorunun zamanı: tüm açık sorular en az o kadar eskidir (nowork.aged_q)
+                ctx["open_q_since"][q.project] = max(float(ctx["open_q_since"].get(q.project) or 0), float(q.created_at or 0))
         for q in sw.undelivered_answers(paths=paths):
             if not q.undeliverable:
                 ctx["answer_pending"].setdefault(q.project, q.id)
