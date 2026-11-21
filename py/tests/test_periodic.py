@@ -244,6 +244,26 @@ class ChatBackupTest(_Tmp):
         self.assertIn("UYARI uzak çekme yuhem", r["msg"])
         self.assertEqual(len(r["warnings"]), 1)
 
+    def test_out_of_range_mtime_does_not_crash_plan(self):
+        """R-2: aralık dışı st_mtime plan_chat_backup'ı düşürmemeli; gün bugüne düşer, dosya yine yedeklenir."""
+        self._setup_repo()
+        bad = os.path.join(self.d, "claude", "projects", "-p1", "a.jsonl")
+        real_stat = os.stat
+
+        def fake_stat(path, *a, **k):          # ext4 mtime'ı 2446'ya kısar; aralık dışı değeri stat sahtesiyle ver
+            st = real_stat(path, *a, **k)
+            if path == bad:
+                t = list(st)[:10]
+                t[8] = 10 ** 12                # yıl 33658: fromtimestamp ValueError
+                return os.stat_result(t)
+            return st
+        with mock.patch.object(P, "_local_sources", return_value=self.srcs), \
+                mock.patch.object(P.os, "stat", side_effect=fake_stat):
+            plan = P.plan_chat_backup(self.cfg, {})
+        ent = [e for e in plan["changed"] if e["src"] == bad]
+        self.assertEqual(len(ent), 1)
+        self.assertEqual(ent[0]["day"], datetime.date.today().isoformat())
+
     def test_binary_chunked_and_group_repo(self):
         repo = self._setup_repo()
         codex = os.path.join(self.d, "codexrepo")

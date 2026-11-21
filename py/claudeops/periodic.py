@@ -521,7 +521,7 @@ def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str,
             best[dest] = {"src": f, "sig": f"{stt.st_size}:{int(stt.st_mtime)}", "dest": dest, "mt": stt.st_mtime,
                           "size": stt.st_size, "kind": kind,
                           "group": _group_of(prefix),
-                          "day": datetime.datetime.fromtimestamp(stt.st_mtime).strftime("%F")}
+                          "day": _day_of(stt.st_mtime)}
     def _regress(e: Dict[str, Any]) -> bool:
         try:
             return int(e["mt"]) < int(manifest.get(_DEST_PFX + e["dest"], "0"))
@@ -530,6 +530,14 @@ def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str,
     todo = [e for _d, e in sorted(best.items()) if manifest.get(e["src"]) != e["sig"] and not _regress(e)]
     return {"repo": _group_repo(cfg, "claude"), "seen": seen, "changed": todo,
             "marks": _dest_marks([e for e in best.values() if manifest.get(e["src"]) == e["sig"]])}
+
+
+def _day_of(mt: float) -> str:
+    """mtime -> 'YYYY-MM-DD'; aralık dışı/bozuk mtime (ValueError/OverflowError/OSError) bugüne düşer, koşuyu düşürmez."""
+    try:
+        return datetime.datetime.fromtimestamp(mt).strftime("%F")
+    except (ValueError, OverflowError, OSError):
+        return datetime.date.today().isoformat()
 
 
 def _put(dest: str, blob: bytes) -> bool:
@@ -753,7 +761,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             for rel in _porcelain_z_paths(por):   # -z: Türkçe/boşluklu adlar tırnaksız gelir
                 if rel and not any(rel in v for v in days.values()):
                     try:
-                        d = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(repo, rel))).strftime("%F")
+                        d = _day_of(os.path.getmtime(os.path.join(repo, rel)))
                     except OSError:
                         d = datetime.date.today().isoformat()
                     days.setdefault(d, []).append(rel)
