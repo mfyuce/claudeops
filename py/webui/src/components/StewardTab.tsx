@@ -170,6 +170,7 @@ export function StewardTab({ onOpenTerminal, search = "" }: { onOpenTerminal?: (
   const [askText, setAskText] = useState("");
   const [askOptions, setAskOptions] = useState("");
   const [ideaText, setIdeaText] = useState("");
+  const [ideaProject, setIdeaProject] = useState("");
   const [exportTarget, setExportTarget] = useState<"project" | "all">("project");
   const [busy, setBusy] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
@@ -672,10 +673,14 @@ export function StewardTab({ onOpenTerminal, search = "" }: { onOpenTerminal?: (
           style={{ flex: 1, minWidth: "14rem" }}
           onChange={(e) => setIdeaText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && ideaText.trim()) void run(() => apiStewardIdea(ideaText, sid), () => setIdeaText(""));
+            if (e.key === "Enter" && ideaText.trim()) void run(() => apiStewardIdea(ideaText, sid, ideaProject), () => setIdeaText(""));
           }}
         />
-        <button type="button" disabled={busy || !ideaText.trim()} onClick={() => void run(() => apiStewardIdea(ideaText, sid), () => setIdeaText(""))}>
+        <select value={ideaProject} title={t.stewardIdeaProjectTitle} onChange={(e) => setIdeaProject(e.target.value)} style={{ maxWidth: "12rem" }}>
+          <option value="">{t.stewardIdeaProjectAuto}</option>
+          {(state?.projects ?? []).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+        </select>
+        <button type="button" disabled={busy || !ideaText.trim()} onClick={() => void run(() => apiStewardIdea(ideaText, sid, ideaProject), () => setIdeaText(""))}>
           {t.stewardIdeaAddBtn}
         </button>
       </div>

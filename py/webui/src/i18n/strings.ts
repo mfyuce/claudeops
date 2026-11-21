@@ -791,6 +791,8 @@ export interface Strings {
   stewardIdeasTitle: string;
   stewardNoIdeas: string;
   stewardIdeaPlaceholder: string;
+  stewardIdeaProjectAuto: string;
+  stewardIdeaProjectTitle: string;
   stewardIdeaAddBtn: string;
   stewardIdeaLater: string;
   stewardIdeaDrop: string;
@@ -1815,6 +1817,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdeasTitle: "Fikir kutusu",
     stewardNoIdeas: "Yeni fikir yok.",
     stewardIdeaPlaceholder: "fikir…",
+    stewardIdeaProjectAuto: "proje: otomatik",
+    stewardIdeaProjectTitle: "Fikrin projesi; boşsa beyin atar. Aktarımda \"ilgili projeye\" bu projeye yazar.",
     stewardIdeaAddBtn: "Ekle",
     stewardIdeaLater: "sonra",
     stewardIdeaDrop: "vazgeç",
@@ -2840,6 +2844,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdeasTitle: "Idea inbox",
     stewardNoIdeas: "No new ideas.",
     stewardIdeaPlaceholder: "idea…",
+    stewardIdeaProjectAuto: "project: auto",
+    stewardIdeaProjectTitle: "The idea's project; empty = brain assigns. Export to \"its project\" writes there.",
     stewardIdeaAddBtn: "Add",
     stewardIdeaLater: "later",
     stewardIdeaDrop: "drop",

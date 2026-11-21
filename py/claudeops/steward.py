@@ -917,13 +917,13 @@ def save_ideas(ideas: List[Idea], paths: Any = None) -> None:
         _save_json(_pp(paths).ideas, [dataclasses.asdict(i) for i in ideas])
 
 
-def add_idea(text: str, source: str = "", paths: Any = None) -> Idea:
+def add_idea(text: str, source: str = "", paths: Any = None, project: str = "") -> Idea:
     text = str(text).strip()[:_MAX_IDEA_CHARS]
     if not text:
         raise ValueError("empty idea")
     with steward_lock(paths):
         ideas = load_ideas(paths)
-        idea = Idea(id=_new_id("i"), text=text, created_at=_now(), source=source)
+        idea = Idea(id=_new_id("i"), text=text, created_at=_now(), source=source, project=str(project or ""))
         ideas.append(idea)
         save_ideas(ideas, paths)
         return idea

@@ -6451,8 +6451,11 @@ def http_idea(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             return {"ok": False, "error": "unknown idea id"}
         sw.log_event("idea_update", paths=sid, id=i.id, status=i.status, project=i.project)
         return {"ok": True, "idea": dataclasses.asdict(i)}
+    proj = str(data.get("project") or "").strip()
+    if proj and proj not in sw.load_projects(sid):
+        return {"ok": False, "error": "unknown project"}
     try:
-        i = sw.add_idea(str(data.get("text") or ""), source=str(data.get("source") or "api"), paths=sid)
+        i = sw.add_idea(str(data.get("text") or ""), source=str(data.get("source") or "api"), paths=sid, project=proj)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     sw.log_event("idea", paths=sid, id=i.id)

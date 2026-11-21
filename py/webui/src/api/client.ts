@@ -706,8 +706,8 @@ export const apiStewardAnswer = (id: string, answer: string, sid?: string): Prom
   apiPost<StewardAnswerResult>("/api/steward/answer", { id, answer, ...stewardBody(sid) });
 export const apiStewardAsk = (project: string, text: string, options: string[], sid?: string): Promise<StewardAskResult> =>
   apiPost<StewardAskResult>("/api/steward/ask", { project, text, options, source: "panel", ...stewardBody(sid) });
-export const apiStewardIdea = (text: string, sid?: string): Promise<SimpleResult & { id?: string }> =>
-  apiPost<SimpleResult & { id?: string }>("/api/steward/idea", { text, source: "panel", ...stewardBody(sid) });
+export const apiStewardIdea = (text: string, sid?: string, project?: string): Promise<SimpleResult & { id?: string }> =>
+  apiPost<SimpleResult & { id?: string }>("/api/steward/idea", { text, source: "panel", ...(project ? { project } : {}), ...stewardBody(sid) });
 export const apiStewardIdeaUpdate = (id: string, status: string, sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/idea", { id, status, ...stewardBody(sid) });
 export const apiStewardIdeaExport = (id: string, kind: "todo" | "tbd", target: "project" | "all", sid?: string): Promise<SimpleResult> =>
