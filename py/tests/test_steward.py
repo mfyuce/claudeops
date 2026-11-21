@@ -3515,3 +3515,13 @@ class SmartTickTest(unittest.TestCase):
         self.assertEqual([i["kind"] for i in items], ["idle"])
         items = sw.review_items([idle], projects, cfg, self.now, [], [], open_work=lambda p: None)
         self.assertEqual([i["kind"] for i in items], ["idle"])      # bilinmiyor: eski davranış
+
+
+class AskStatusLineTests(unittest.TestCase):
+    def test_status_lines_do_not_open_records(self):
+        for q in ("Yok", "Hayır, sormuyorum.", "soru yok", "Takıldım: yok"[:0] or "yeni soru yok"):
+            self.assertTrue(sw._ask_is_status_line(q), q)
+            self.assertEqual(sw.marker_record_actions("a", "p", {"asks": [q], "routines": [], "blocked": [], "ideas": []}), [])
+        for q in ("Hayır mı evet mi?", "A mı B mi yapayım, öneri A", "hangi dalı kullanayım",
+                  "Yok saymak için şu dosyayı silmemi onaylar mısın? " + "x" * 80):
+            self.assertFalse(sw._ask_is_status_line(q), q)

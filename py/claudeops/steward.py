@@ -3690,11 +3690,23 @@ def job_marker_verdict(body: str, known_kinds: Optional[Iterable[str]], services
     return True, ""
 
 
+_ASK_STATUS_RE = re.compile(r"^\W*(?:yok|hayır|hayir|no|none|n/?a|sormuyorum|soru yok|yeni soru yok|bekliyorum|bitti)\b[\W\w]{0,60}$", re.I)
+
+
+def _ask_is_status_line(q: str) -> bool:
+    """SAF (D20). STEWARD-ASK gövdesi gerçek soru değil, kısa bir "yok/hayır/soru yok" durum cümlesi mi: `?` içermeyen ve bu
+    sözcüklerden biriyle başlayan kısa (<= ~70 karakter) satır. `?` varsa ya da uzunsa soru sayılır (yanlış elemeye karşı muhafazakâr)."""
+    t = (q or "").strip()
+    return bool(t) and "?" not in t and len(t) <= 70 and bool(_ASK_STATUS_RE.match(t))
+
+
 def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:
     """Oturum yanıtındaki soru/rutin/takıldım/fikir işaretlerinin KAYIT eylemleri (oturuma dokunmaz). `plan_tick` ve
     döngü kapalıyken çalışan `plan_markers` aynı kuralı paylaşır."""
     out: List[Action] = []
     for q in m["asks"]:
+        if _ask_is_status_line(q):
+            continue   # D20: "Yok", "Hayır, sormuyorum", "soru yok" gibi soru işareti taşımayan durum cümlesi kayıt açmaz
         out.append(Action("ask_user", name, "STEWARD-ASK", {"project": proj or name, "text": q}))
     for q in m["routines"]:
         if "?" not in q:
