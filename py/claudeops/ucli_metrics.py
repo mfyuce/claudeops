@@ -6,8 +6,8 @@ için /proc'tan RSS (KiB, statm), CPU% (utime+stime tik farkı / geçen süre), 
 (worktree) disk kullanımı pahalıdır: oturum başına en çok 5 dakikada bir, kendi `os.scandir` yürüyüşümüzle 3 sn zaman aşımı +
 en çok 200k dosya; aşılırsa `disk_b` NULL. Diğer turlarda `disk_b` NULL'dır.
 
-Boşta maliyet: çalışan ucli oturumu yoksa tur yalnız bir bellek denetimi yapar; oturum keşfi (`discovery.find_sessions`) en çok
-60 sn'de bir koşar, bilinen kök pid'ler her turda /proc/<pid> varlığıyla doğrulanır. `settings.ucli_metrics.enabled` kapalıysa
+Boşta maliyet: çalışan ucli oturumu yoksa tur yalnız bir bellek denetimi yapar; oturum keşfi (`discovery.find_sessions`) her durumda en çok
+60 sn'de bir koşar (bilinen oturum varken de, yeni açılanlar kaçmasın), bilinen kök pid'ler her turda /proc/<pid> varlığıyla doğrulanır. `settings.ucli_metrics.enabled` kapalıysa
 iş parçacığı hiç başlamaz. Yazma YALNIZ bu modülün fonksiyonlarıyla, tek yazıcı iş parçacığı + `_DB_LOCK`; WAL.
 
 ÖLÇÜLEN MALİYET (21 Kas 2026, bu makine, ~650 süreçli sistem, 10 sahte `sleep` çocuğu; `tests/test_ucli_metrics.py::Cost`):
@@ -296,13 +296,13 @@ class Sampler:
         """Bir tur. Çalışan oturum yoksa (keşif 60 sn'de bir) hiçbir /proc taraması/DB işi yapmaz. Yazılan satır sayısı."""
         t = self.now()
         self.known = self._alive()
-        if not self.known and t - self.last_discover >= DISCOVER_EVERY_S:
+        if t - self.last_discover >= DISCOVER_EVERY_S:           # bilinen oturum varken de: sonradan açılan oturumlar kaçmasın
             self.last_discover = t
             self.discovers += 1
             try:
                 self.known = list(self.discover())
             except Exception:
-                self.known = []
+                pass                                              # keşif hatasında canlı olan bilinenlerle sürer
         if not self.known:
             return 0
         procs = scan_procs(self.proc_root)

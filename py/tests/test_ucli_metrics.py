@@ -208,3 +208,24 @@ class Cost(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LateSessionTest(unittest.TestCase):
+    def test_new_session_found_while_another_runs(self):
+        """Bir oturum çalışırken sonradan açılan ikincisi 60 sn içinde keşfedilip örneklenir."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            for pid in (101, 102):
+                os.makedirs(f"{d}/{pid}")
+                open(f"{d}/{pid}/stat", "w").write(f"{pid} (x) S 1 0 0 0 0 0 0 0 0 0 5 5 0 0 20 0 1 0 0 0 0")
+                open(f"{d}/{pid}/statm", "w").write("1 100 0 0 0 0 0")
+                open(f"{d}/{pid}/io", "w").write("read_bytes: 1\nwrite_bytes: 2\n")
+            found = [[("a", 101, "")]]
+            clock = [1000.0]
+            s = um.Sampler(discover=lambda: list(found[0]), proc_root=d, path=os.path.join(d, "m.db"), now=lambda: clock[0],
+                                     disk=lambda c: None)
+            s.sample_once()
+            found[0] = [("a", 101, ""), ("b", 102, "")]
+            clock[0] += 61
+            s.sample_once()
+            self.assertEqual({r["name"] for r in um.list_sessions(os.path.join(d, "m.db"))}, {"a", "b"})
