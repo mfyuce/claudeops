@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 from typing import Any, Dict, Tuple
 
+from .atomic_json import atomic_write_text
 from .paths import CLAUDEOPS_DIR
 
 ROOT = os.path.join(CLAUDEOPS_DIR, "ucli_checks")
@@ -151,17 +152,7 @@ def save_registry(data: Any, owner: str = "", binary: str = "") -> Tuple[bool, s
         return False, "kayıt çok büyük"
     os.makedirs(ROOT, mode=0o700, exist_ok=True)
     os.chmod(ROOT, 0o700)
-    tmp = f"{path}.tmp{os.getpid()}"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(raw)
-        os.replace(tmp, path)
-    finally:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+    atomic_write_text(path, raw.decode("utf-8"), mode=0o600)    # benzersiz tmp (pid+iş parçacığı), O_EXCL|O_NOFOLLOW, fsync (review R-2/R-3: sabit .tmp<pid> yarışı)
     return True, ""
 
 
@@ -210,11 +201,7 @@ def set_mode(state_dir: str, session: str, mode: str, cap: str, *, confirm: bool
         return 400, {"ok": False, "error": "genişletme confirm:true ister", "need_confirm": True}
     at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     os.makedirs(state_dir, mode=0o700, exist_ok=True)
-    tmp = f"{path}.tmp{os.getpid()}"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump({"v": 1, "mode": mode, "seq": seq + 1, "set_by": user or "panel", "at": at}, f)
-    os.replace(tmp, path)
+    atomic_write_text(path, json.dumps({"v": 1, "mode": mode, "seq": seq + 1, "set_by": user or "panel", "at": at}), mode=0o600)
     audit({"at": at, "user": user, "session": session, "from": cur, "to": mode, "max": cap, "ip": ip})
     return 200, {"ok": True, "mode": mode, "seq": seq + 1}
 

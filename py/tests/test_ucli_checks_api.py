@@ -39,9 +39,9 @@ class Registry(Base):
 
     def test_symlink_target_refused(self):
         os.makedirs(uck.ROOT, mode=0o700)
-        os.symlink(os.path.join(self.td, "victim"), uck.registry_path() + ".tmp%d" % os.getpid())
-        with self.assertRaises(OSError):
-            uck.save_registry(GOOD)
+        for tmp in (uck.registry_path() + ".tmp%d" % os.getpid(), uck.registry_path() + ".%d-%d.tmp" % (os.getpid(), __import__("threading").get_ident())):
+            os.symlink(os.path.join(self.td, "victim"), tmp)       # yerleştirilmiş symlink: hedefe YAZILMAZ (atomic_write_text önce siler, O_NOFOLLOW)
+        self.assertEqual(uck.save_registry(GOOD), (True, ""))
         self.assertFalse(os.path.exists(os.path.join(self.td, "victim")))
 
     def test_delete(self):
