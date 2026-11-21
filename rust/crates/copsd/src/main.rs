@@ -1,6 +1,8 @@
 //! copsd: OSS ön sunucu. D0 = saf vekil: `--listen` (varsayılan 127.0.0.1:8765) -> `--upstream` (Python iç port, varsayılan 127.0.0.1:18765).
 //! Ön kapı gizlisi: `--secret-file` (varsayılan ~/.claude/claudeops/front.secret; 0600 değilse REDDEDİLİR) ya da `CLAUDEOPS_FRONT_SECRET`.
 //! `--dist <py/webui/dist>`: /assets/* ve /favicon.svg diskten sunulur (yoksa Python'a aktarılır).
+//! `--mounts-file` (varsayılan ~/.claude/claudeops/derbent/mounts.json): uygulama mount'ları (`/<id>/` -> yerel derbent loopback portu,
+//! kimlik copsd'de). Dosya yoksa ya da 0600 değilse mount kapalı; 2 sn'de bir değişiklik yoklanır. web.token yoksa mount hiç açılmaz.
 //! Ortam: `COPSD_LISTEN`, `COPSD_UPSTREAM` bayrakların yedeğidir.
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
@@ -96,7 +98,7 @@ async fn main() -> std::io::Result<()> {
         tokio::spawn(async move {
             loop {
                 let t = tick.clone();
-                match tokio::task::spawn_blocking(move || t()).await {
+                match tokio::task::spawn_blocking(t).await {
                     Ok(Ok((p, n))) if p > 0 => eprintln!("copsd: proje ilerleme: {p} proje, {n} nokta"),
                     Ok(Err(e)) => eprintln!("copsd: proje ilerleme hatası: {e}"),
                     _ => {}
@@ -116,6 +118,23 @@ async fn main() -> std::io::Result<()> {
             }
         }
         _ => proxy,
+    };
+    // Uygulama mount'ları: kimlik web.token (0600) + `cops_ext` çerezi; token yoksa mount AÇILMAZ (istek Python'a gider).
+    let mounts_file = std::path::PathBuf::from(arg("--mounts-file").unwrap_or_else(|| format!("{home}/.claude/claudeops/derbent/mounts.json")));
+    let proxy = match std::fs::metadata(&tok_path) {
+        Ok(m) if m.permissions().mode() & 0o077 == 0 && !cops_auth::Token::from_file(&tok_path).is_empty() => {
+            let mounts = cops_proxy::mount::Mounts::new(mounts_file.clone());
+            match mounts.refresh() {
+                Some(line) => eprintln!("copsd: {line}"),
+                None => eprintln!("copsd: mount kapalı: {} yok (2 sn'de bir yoklanır)", mounts_file.display()),
+            }
+            mounts.spawn_watch(std::time::Duration::from_secs(2));
+            proxy.with_mounts(cops_proxy::MountCfg { mounts, token: cops_auth::Token::from_file(&tok_path) })
+        }
+        _ => {
+            eprintln!("copsd: mount kapalı: web.token yok ya da 0600 değil");
+            proxy
+        }
     };
     cops_proxy::serve(listen, proxy).await
 }
