@@ -25,7 +25,9 @@ pub fn count_todo(text: &str) -> (u32, u32) {
     let (mut open, mut done) = (0, 0);
     for l in text.lines() {
         let t = l.trim_start();
-        let Some(rest) = t.strip_prefix("- [").or_else(|| t.strip_prefix("* [")) else { continue };
+        let Some(rest) = t.strip_prefix("- [").or_else(|| t.strip_prefix("* [")) else {
+            continue;
+        };
         match rest.as_bytes() {
             [b' ' | b'~', b']', ..] => open += 1,
             [b'x' | b'X', b']', ..] => done += 1,
@@ -38,10 +40,23 @@ pub fn count_todo(text: &str) -> (u32, u32) {
 /// TOBEDECIDED.md: `## Açık` bölümü varsa o bölümdeki (sonraki `## ` başlığına dek) `###`+ başlıklar; yoksa büyük harfli `AÇIK` geçen başlıklar.
 pub fn count_tbd_open(text: &str) -> u32 {
     let is_h2 = |l: &str| l.starts_with("## ");
-    if let Some(start) = text.lines().position(|l| is_h2(l) && l.trim_start_matches('#').trim().to_lowercase().starts_with("açık")) {
-        return text.lines().skip(start + 1).take_while(|l| !is_h2(l)).filter(|l| l.starts_with("###")).count() as u32;
+    if let Some(start) = text.lines().position(|l| {
+        is_h2(l)
+            && l.trim_start_matches('#')
+                .trim()
+                .to_lowercase()
+                .starts_with("açık")
+    }) {
+        return text
+            .lines()
+            .skip(start + 1)
+            .take_while(|l| !is_h2(l))
+            .filter(|l| l.starts_with("###"))
+            .count() as u32;
     }
-    text.lines().filter(|l| l.starts_with('#') && l.contains("AÇIK")).count() as u32
+    text.lines()
+        .filter(|l| l.starts_with('#') && l.contains("AÇIK"))
+        .count() as u32
 }
 
 pub fn count_done_lines(text: &str) -> u32 {
@@ -51,12 +66,24 @@ pub fn count_done_lines(text: &str) -> u32 {
 pub fn count_dir(dir: &Path) -> Counts {
     let rd = |n: &str| std::fs::read_to_string(dir.join(n)).unwrap_or_default();
     let (todo_open, todo_done) = count_todo(&rd("TODO.md"));
-    Counts { todo_open, todo_done, tbd_open: count_tbd_open(&rd("TOBEDECIDED.md")), done_lines: count_done_lines(&rd("DONE.md")) }
+    Counts {
+        todo_open,
+        todo_done,
+        tbd_open: count_tbd_open(&rd("TOBEDECIDED.md")),
+        done_lines: count_done_lines(&rd("DONE.md")),
+    }
 }
 
 pub fn commits_24h(dir: &Path) -> Option<u32> {
-    let o = Command::new("git").arg("-C").arg(dir).args(["log", "--since=24 hours ago", "--oneline"]).output().ok()?;
-    o.status.success().then(|| String::from_utf8_lossy(&o.stdout).lines().count() as u32)
+    let o = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["log", "--since=24 hours ago", "--oneline"])
+        .output()
+        .ok()?;
+    o.status
+        .success()
+        .then(|| String::from_utf8_lossy(&o.stdout).lines().count() as u32)
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +96,10 @@ pub struct Project {
 /// `claudeops.db` (salt okunur) + `instances.json` -> yerel projeler (cwd tekilleştirilmiş, ad sırasıyla ilk).
 pub fn discover(db: &Path, instances: &Path) -> Vec<Project> {
     let mut phases: BTreeMap<String, String> = BTreeMap::new();
-    if let Ok(c) = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX) {
+    if let Ok(c) = Connection::open_with_flags(
+        db,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ) {
         if let Ok(mut st) = c.prepare("SELECT body FROM docs WHERE name='steward/projects' OR (name LIKE 'steward/stewards/%/projects')") {
             let bodies: Vec<String> = st.query_map([], |r| r.get::<_, String>(0)).map(|i| i.filter_map(|x| x.ok()).collect()).unwrap_or_default();
             for b in bodies {
@@ -83,12 +113,20 @@ pub fn discover(db: &Path, instances: &Path) -> Vec<Project> {
             }
         }
     }
-    let inst: Value = std::fs::read_to_string(instances).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null);
+    let inst: Value = std::fs::read_to_string(instances)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(Value::Null);
     let mut cwd_of: BTreeMap<String, String> = BTreeMap::new(); // blueprint -> cwd
     if let Some(Value::Object(m)) = inst.get("instances") {
         for (_, v) in m {
-            if let (Some(bp), Some(cwd)) = (v.get("blueprint").and_then(|x| x.as_str()), v.get("cwd").and_then(|x| x.as_str())) {
-                cwd_of.entry(bp.to_string()).or_insert_with(|| cwd.to_string());
+            if let (Some(bp), Some(cwd)) = (
+                v.get("blueprint").and_then(|x| x.as_str()),
+                v.get("cwd").and_then(|x| x.as_str()),
+            ) {
+                cwd_of
+                    .entry(bp.to_string())
+                    .or_insert_with(|| cwd.to_string());
             }
         }
     }
@@ -96,7 +134,11 @@ pub fn discover(db: &Path, instances: &Path) -> Vec<Project> {
     let mut add = |name: &str, cwd: &str, phase: &str| {
         let p = PathBuf::from(cwd);
         let key = p.canonicalize().unwrap_or(p.clone());
-        by_cwd.entry(key).or_insert_with(|| Project { name: name.to_string(), cwd: p, phase: phase.to_string() });
+        by_cwd.entry(key).or_insert_with(|| Project {
+            name: name.to_string(),
+            cwd: p,
+            phase: phase.to_string(),
+        });
     };
     for (name, phase) in &phases {
         if let Some(cwd) = cwd_of.get(name) {
@@ -124,8 +166,21 @@ pub fn discover(db: &Path, instances: &Path) -> Vec<Project> {
 /// Bir projenin noktaları (5 seri).
 pub fn points_for(p: &Project, ts: f64) -> Vec<Point> {
     let c = count_dir(&p.cwd);
-    let mk = |name: &str, v: f64| Point { name: name.into(), key: p.name.clone(), owner: String::new(), unit: "adet".into(), ts, value: v, meta: Some(json!({"phase": p.phase}).to_string()) };
-    let mut v = vec![mk("project.todo_open", c.todo_open as f64), mk("project.todo_done", c.todo_done as f64), mk("project.tbd_open", c.tbd_open as f64), mk("project.done_lines", c.done_lines as f64)];
+    let mk = |name: &str, v: f64| Point {
+        name: name.into(),
+        key: p.name.clone(),
+        owner: String::new(),
+        unit: "adet".into(),
+        ts,
+        value: v,
+        meta: Some(json!({"phase": p.phase}).to_string()),
+    };
+    let mut v = vec![
+        mk("project.todo_open", c.todo_open as f64),
+        mk("project.todo_done", c.todo_done as f64),
+        mk("project.tbd_open", c.tbd_open as f64),
+        mk("project.done_lines", c.done_lines as f64),
+    ];
     if let Some(n) = commits_24h(&p.cwd) {
         v.push(mk("project.commits_24h", n as f64));
     }
@@ -133,11 +188,24 @@ pub fn points_for(p: &Project, ts: f64) -> Vec<Point> {
 }
 
 /// Tam tarama: tüm projeler + işin kendi metriği (`job.project_progress`: süre ms, proje sayısı meta'da). Dönüş (proje sayısı, nokta sayısı).
-pub fn run(store: &cops_metrics::Store, db: &Path, instances: &Path, now: f64) -> Result<(usize, usize), String> {
+pub fn run(
+    store: &cops_metrics::Store,
+    db: &Path,
+    instances: &Path,
+    now: f64,
+) -> Result<(usize, usize), String> {
     let t0 = std::time::Instant::now();
     let projects = discover(db, instances);
     let mut pts: Vec<Point> = projects.iter().flat_map(|p| points_for(p, now)).collect();
-    pts.push(Point { name: "job.project_progress".into(), key: "ms".into(), owner: String::new(), unit: "ms".into(), ts: now, value: t0.elapsed().as_secs_f64() * 1000.0, meta: Some(json!({"projects": projects.len(), "ok": true}).to_string()) });
+    pts.push(Point {
+        name: "job.project_progress".into(),
+        key: "ms".into(),
+        owner: String::new(),
+        unit: "ms".into(),
+        ts: now,
+        value: t0.elapsed().as_secs_f64() * 1000.0,
+        meta: Some(json!({"projects": projects.len(), "ok": true}).to_string()),
+    });
     let n = store.insert(&pts)?;
     Ok((projects.len(), n))
 }
@@ -156,7 +224,10 @@ mod tests {
     fn tbd_counts() {
         let a = "# t\n\n## Açık\n\n### 1) **AÇIK** x\n### 2) y\n\n## Kapalı\n### 3) z\n";
         assert_eq!(count_tbd_open(a), 2);
-        assert_eq!(count_tbd_open("# t\n## TBD#1 AÇIK soru\n## TBD#2 [KAPANDI]\n"), 1);
+        assert_eq!(
+            count_tbd_open("# t\n## TBD#1 AÇIK soru\n## TBD#2 [KAPANDI]\n"),
+            1
+        );
         assert_eq!(count_tbd_open(""), 0);
     }
 
@@ -176,7 +247,10 @@ mod tests {
         let inst = d.path().join("i.json");
         std::fs::write(&inst, format!(r#"{{"instances":{{"a":{{"blueprint":"cops","cwd":"{}"}},"b":{{"blueprint":"copsdevderbent","cwd":"{}"}}}}}}"#, main.display(), wt.display())).unwrap();
         let ps = discover(&d.path().join("none.db"), &inst);
-        assert_eq!(ps.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), vec!["cops"]);
+        assert_eq!(
+            ps.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+            vec!["cops"]
+        );
     }
 
     #[test]
@@ -191,7 +265,8 @@ mod tests {
         std::fs::write(&inst, format!(r#"{{"instances":{{"a1":{{"blueprint":"copsdev","cwd":"{c}"}},"a2":{{"blueprint":"copsdevderbent","cwd":"{c}"}}}}}}"#)).unwrap();
         let db = d.path().join("c.db");
         let conn = Connection::open(&db).unwrap();
-        conn.execute("CREATE TABLE docs(name TEXT PRIMARY KEY, body TEXT)", []).unwrap();
+        conn.execute("CREATE TABLE docs(name TEXT PRIMARY KEY, body TEXT)", [])
+            .unwrap();
         conn.execute("INSERT INTO docs VALUES('steward/projects', ?1)", [r#"{"copsdev":{"phase":"active","host":""},"uzak":{"phase":"active","host":"ulak_31"}}"#]).unwrap();
         let ps = discover(&db, &inst);
         assert_eq!(ps.len(), 1);
@@ -200,9 +275,19 @@ mod tests {
         let st = cops_metrics::Store::open(&d.path().join("m.db")).unwrap();
         let (n, _) = run(&st, &db, &inst, 100.0).unwrap();
         assert_eq!(n, 1);
-        let r = st.series("project.todo_open", Some("copsdev"), "", 0.0, 1e9, 10).unwrap();
+        let r = st
+            .series("project.todo_open", Some("copsdev"), "", 0.0, 1e9, 10)
+            .unwrap();
         assert_eq!(r["series"][0]["points"][0]["value"], 1.0);
-        assert_eq!(st.series("project.done_lines", Some("copsdev"), "", 0.0, 1e9, 10).unwrap()["series"][0]["points"][0]["value"], 1.0);
-        assert!(st.names("").unwrap().to_string().contains("job.project_progress"));
+        assert_eq!(
+            st.series("project.done_lines", Some("copsdev"), "", 0.0, 1e9, 10)
+                .unwrap()["series"][0]["points"][0]["value"],
+            1.0
+        );
+        assert!(st
+            .names("")
+            .unwrap()
+            .to_string()
+            .contains("job.project_progress"));
     }
 }

@@ -7,7 +7,10 @@ pub mod mount;
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt};
 use hyper::body::Incoming;
-use hyper::header::{HeaderName, HeaderValue, ACCEPT, AUTHORIZATION, CACHE_CONTROL, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE, UPGRADE};
+use hyper::header::{
+    HeaderName, HeaderValue, ACCEPT, AUTHORIZATION, CACHE_CONTROL, CONNECTION, CONTENT_LENGTH,
+    CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE, UPGRADE,
+};
 use hyper::{Request, Response, StatusCode};
 use hyper_util::client::legacy::{connect::HttpConnector, Client};
 use hyper_util::rt::{TokioExecutor, TokioIo};
@@ -17,7 +20,15 @@ use std::sync::Arc;
 pub type Body = BoxBody<Bytes, hyper::Error>;
 
 /// Hop-by-hop başlıklar (RFC 9110 7.6.1); vekil iki yönde de düşürür (yükseltmede Connection/Upgrade korunur).
-const HOP: [&str; 7] = ["keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "proxy-connection"];
+const HOP: [&str; 7] = [
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "proxy-connection",
+];
 
 // Upstream bağlantı HAVUZU KAPALI (pool_max_idle_per_host(0)): Python bazı POST uçlarında gövdeyi okumadan yanıtlıyor (ör. /api/ws-ticket),
 // artık baytlar keep-alive bağlantıda sonraki isteğin başına yapışırdı ('{}GET' -> 501). Loopback'te yeni bağlantı maliyeti ihmal edilebilir.
@@ -61,28 +72,53 @@ fn strip_hop(h: &mut hyper::HeaderMap, keep_upgrade: bool) {
 }
 
 fn is_upgrade(h: &hyper::HeaderMap) -> bool {
-    h.get(CONNECTION).and_then(|v| v.to_str().ok()).map(|v| v.to_ascii_lowercase().contains("upgrade")).unwrap_or(false) && h.contains_key(UPGRADE)
+    h.get(CONNECTION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_ascii_lowercase().contains("upgrade"))
+        .unwrap_or(false)
+        && h.contains_key(UPGRADE)
 }
 
 fn err(code: StatusCode, msg: &str) -> Response<Body> {
-    let b = http_body_util::Full::new(Bytes::from(msg.to_string())).map_err(|never| match never {}).boxed();
-    Response::builder().status(code).header("content-type", "text/plain; charset=utf-8").body(b).unwrap()
+    let b = http_body_util::Full::new(Bytes::from(msg.to_string()))
+        .map_err(|never| match never {})
+        .boxed();
+    Response::builder()
+        .status(code)
+        .header("content-type", "text/plain; charset=utf-8")
+        .body(b)
+        .unwrap()
 }
 
 fn json_resp(code: StatusCode, v: serde_json::Value) -> Response<Body> {
-    let b = http_body_util::Full::new(Bytes::from(v.to_string())).map_err(|never| match never {}).boxed();
-    Response::builder().status(code).header("content-type", "application/json; charset=utf-8").header("cache-control", "no-store").body(b).unwrap()
+    let b = http_body_util::Full::new(Bytes::from(v.to_string()))
+        .map_err(|never| match never {})
+        .boxed();
+    Response::builder()
+        .status(code)
+        .header("content-type", "application/json; charset=utf-8")
+        .header("cache-control", "no-store")
+        .body(b)
+        .unwrap()
 }
 
 /// İstemci https mi: copsd TLS sonlandırmaz; https yalnız AYNI makinedeki ön uçtan (tünel, ters vekil: loopback eş) gelen
 /// `X-Forwarded-Proto: https` ile kabul edilir. Uzak eşin gönderdiği başlığa güvenilmez (X-Forwarded-For ezme kuralıyla aynı ilke).
 pub fn client_https(h: &hyper::HeaderMap, peer: SocketAddr) -> bool {
-    peer.ip().is_loopback() && h.get("x-forwarded-proto").and_then(|v| v.to_str().ok()).and_then(|v| v.split(',').next()).is_some_and(|v| v.trim().eq_ignore_ascii_case("https"))
+    peer.ip().is_loopback()
+        && h.get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .is_some_and(|v| v.trim().eq_ignore_ascii_case("https"))
 }
 
 /// Python web.py ile aynı öznitelikler (`Path=/` panel ile mount arasında aynı çerez geçsin diye); `Secure` yalnız istemci https ise.
 pub fn ext_cookie(value: &str, secure: bool) -> String {
-    format!("{}={value}; Path=/; HttpOnly; SameSite=Strict{}", cops_auth::COOKIE_NAME, if secure { "; Secure" } else { "" })
+    format!(
+        "{}={value}; Path=/; HttpOnly; SameSite=Strict{}",
+        cops_auth::COOKIE_NAME,
+        if secure { "; Secure" } else { "" }
+    )
 }
 
 /// Panel çerezlerini (`cops_*`: `cops_ext`, enterprise `cops_t`) siler, diğerlerini sırasıyla tek `Cookie` başlığında birleştirir.
@@ -96,7 +132,14 @@ pub fn strip_panel_cookies(h: &mut hyper::HeaderMap) {
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .map(|p| p.trim())
-        .filter(|p| !p.is_empty() && !p.split_once('=').map_or(*p, |(k, _)| k).trim().starts_with("cops_"))
+        .filter(|p| {
+            !p.is_empty()
+                && !p
+                    .split_once('=')
+                    .map_or(*p, |(k, _)| k)
+                    .trim()
+                    .starts_with("cops_")
+        })
         .map(|p| p.to_string())
         .collect();
     h.remove(COOKIE);
@@ -113,23 +156,36 @@ fn unauthorized(html: bool) -> Response<Body> {
     } else {
         ("text/plain; charset=utf-8", "unauthorized\n")
     };
-    let b = http_body_util::Full::new(Bytes::from_static(msg.as_bytes())).map_err(|never| match never {}).boxed();
+    let b = http_body_util::Full::new(Bytes::from_static(msg.as_bytes()))
+        .map_err(|never| match never {})
+        .boxed();
     let mut r = Response::new(b);
     *r.status_mut() = StatusCode::UNAUTHORIZED;
     let h = r.headers_mut();
     h.insert(CONTENT_TYPE, HeaderValue::from_static(ct));
     h.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
-    h.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; frame-ancestors 'none'"));
+    h.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    h.insert(
+        "content-security-policy",
+        HeaderValue::from_static("default-src 'none'; frame-ancestors 'none'"),
+    );
     r
 }
 
 fn redirect(code: StatusCode, loc: &str, set_cookie: Option<HeaderValue>) -> Response<Body> {
-    let b = http_body_util::Empty::<Bytes>::new().map_err(|never| match never {}).boxed();
+    let b = http_body_util::Empty::<Bytes>::new()
+        .map_err(|never| match never {})
+        .boxed();
     let mut r = Response::new(b);
     *r.status_mut() = code;
     let h = r.headers_mut();
-    h.insert(LOCATION, HeaderValue::from_str(loc).unwrap_or_else(|_| HeaderValue::from_static("/")));
+    h.insert(
+        LOCATION,
+        HeaderValue::from_str(loc).unwrap_or_else(|_| HeaderValue::from_static("/")),
+    );
     h.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     h.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
     if let Some(c) = set_cookie {
@@ -139,25 +195,54 @@ fn redirect(code: StatusCode, loc: &str, set_cookie: Option<HeaderValue>) -> Res
 }
 
 /// Saf yönlendirici (birim testlenebilir): POST points gövdesi `[{name,key?,owner?,unit?,ts?,value,meta?}]` ya da tek nesne.
-pub fn metrics_handle(st: &cops_metrics::Store, path: &str, query: &str, body: &[u8], now: f64) -> Result<serde_json::Value, (u16, String)> {
+pub fn metrics_handle(
+    st: &cops_metrics::Store,
+    path: &str,
+    query: &str,
+    body: &[u8],
+    now: f64,
+) -> Result<serde_json::Value, (u16, String)> {
     let q = |k: &str| cops_auth::query_param(query, k);
-    let num = |k: &str, d: f64| -> Result<f64, (u16, String)> { q(k).filter(|v| !v.is_empty()).map_or(Ok(d), |v| v.parse::<f64>().map_err(|_| (400, format!("bad {k}")))) };
+    let num = |k: &str, d: f64| -> Result<f64, (u16, String)> {
+        q(k).filter(|v| !v.is_empty()).map_or(Ok(d), |v| {
+            v.parse::<f64>().map_err(|_| (400, format!("bad {k}")))
+        })
+    };
     let e500 = |e: String| (500u16, e);
     match path {
         "/api/metrics/points" => {
-            let v: serde_json::Value = serde_json::from_slice(body).map_err(|_| (400u16, "bad json".to_string()))?;
-            let items: Vec<serde_json::Value> = match v { serde_json::Value::Array(a) => a, o @ serde_json::Value::Object(_) => vec![o], _ => return Err((400, "bad body".into())) };
+            let v: serde_json::Value =
+                serde_json::from_slice(body).map_err(|_| (400u16, "bad json".to_string()))?;
+            let items: Vec<serde_json::Value> = match v {
+                serde_json::Value::Array(a) => a,
+                o @ serde_json::Value::Object(_) => vec![o],
+                _ => return Err((400, "bad body".into())),
+            };
             if items.is_empty() || items.len() > 5000 {
                 return Err((400, "bad count".into()));
             }
-            let pts = items.iter().map(|i| cops_metrics::parse_point(i, now)).collect::<Result<Vec<_>, _>>().map_err(|e| (400u16, e))?;
+            let pts = items
+                .iter()
+                .map(|i| cops_metrics::parse_point(i, now))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| (400u16, e))?;
             let n = st.insert(&pts).map_err(e500)?;
             Ok(serde_json::json!({"ok": true, "inserted": n}))
         }
         "/api/metrics/series" => {
-            let name = q("name").filter(|n| !n.is_empty()).ok_or((400u16, "name required".to_string()))?;
+            let name = q("name")
+                .filter(|n| !n.is_empty())
+                .ok_or((400u16, "name required".to_string()))?;
             let limit = num("limit", 2000.0)?.clamp(1.0, 20000.0) as usize;
-            st.series(&name, q("key").as_deref(), &q("owner").unwrap_or_default(), num("from", 0.0)?, num("to", 1e18)?, limit).map_err(e500)
+            st.series(
+                &name,
+                q("key").as_deref(),
+                &q("owner").unwrap_or_default(),
+                num("from", 0.0)?,
+                num("to", 1e18)?,
+                limit,
+            )
+            .map_err(e500)
         }
         "/api/metrics/names" => st.names(&q("owner").unwrap_or_default()).map_err(e500),
         _ => Err((404, "not found".into())),
@@ -190,8 +275,15 @@ pub fn resolve_static(dist: &std::path::Path, url_path: &str) -> Option<std::pat
         return None;
     }
     let root = dist.canonicalize().ok()?;
-    let cand = root.join(url_path.trim_start_matches('/')).canonicalize().ok()?;
-    if cand.starts_with(&root) && cand.is_file() { Some(cand) } else { None }
+    let cand = root
+        .join(url_path.trim_start_matches('/'))
+        .canonicalize()
+        .ok()?;
+    if cand.starts_with(&root) && cand.is_file() {
+        Some(cand)
+    } else {
+        None
+    }
 }
 
 impl Proxy {
@@ -203,10 +295,20 @@ impl Proxy {
         }
         let f = resolve_static(dist, req.uri().path())?;
         let data = std::fs::read(&f).ok()?;
-        let cache = if f.starts_with(dist.canonicalize().ok()?.join("assets")) { "public, max-age=31536000, immutable" } else { "no-cache" };
+        let cache = if f.starts_with(dist.canonicalize().ok()?.join("assets")) {
+            "public, max-age=31536000, immutable"
+        } else {
+            "no-cache"
+        };
         let len = data.len();
-        let body = if head { Bytes::new() } else { Bytes::from(data) };
-        let b = http_body_util::Full::new(body).map_err(|n| match n {}).boxed();
+        let body = if head {
+            Bytes::new()
+        } else {
+            Bytes::from(data)
+        };
+        let b = http_body_util::Full::new(body)
+            .map_err(|n| match n {})
+            .boxed();
         Some(
             Response::builder()
                 .status(StatusCode::OK)
@@ -223,33 +325,55 @@ impl Proxy {
     }
 
     pub fn new(upstream: SocketAddr) -> Arc<Self> {
-        let client = Client::builder(TokioExecutor::new()).pool_max_idle_per_host(0).build_http();
-        Arc::new(Proxy { mounts: None, metrics: None, local: None, upstream, dist: None, secret: None, client })
+        let client = Client::builder(TokioExecutor::new())
+            .pool_max_idle_per_host(0)
+            .build_http();
+        Arc::new(Proxy {
+            mounts: None,
+            metrics: None,
+            local: None,
+            upstream,
+            dist: None,
+            secret: None,
+            client,
+        })
     }
 
     /// `dist` (py/webui/dist) verilirse `/assets/*` ve `/favicon.svg` (token'sız taşınan statikler) diskten Rust'ta sunulur; dosya yoksa
     /// istek Python'a aktarılır (404 kararı Python'da kalır). Gömülü DEĞİL: dist değişince yeniden başlatma gerekmez.
     pub fn with_dist(self: Arc<Self>, dist: std::path::PathBuf) -> Arc<Self> {
         let me = Arc::try_unwrap(self).ok().expect("tek sahip");
-        Arc::new(Proxy { dist: Some(dist), ..me })
+        Arc::new(Proxy {
+            dist: Some(dist),
+            ..me
+        })
     }
 
     /// Yerel uçları aç (şimdilik `GET /api/steward/questions`): kimlik tek kullanıcı token'ı, veri `claudeops.db` (salt okunur).
     pub fn with_local(self: Arc<Self>, local: LocalCfg) -> Arc<Self> {
         let me = Arc::try_unwrap(self).ok().expect("tek sahip");
-        Arc::new(Proxy { local: Some(local), ..me })
+        Arc::new(Proxy {
+            local: Some(local),
+            ..me
+        })
     }
 
     /// `/api/metrics/{points,series,names}` uçlarını aç (depo + kimlik).
     pub fn with_metrics(self: Arc<Self>, m: MetricsCfg) -> Arc<Self> {
         let me = Arc::try_unwrap(self).ok().expect("tek sahip");
-        Arc::new(Proxy { metrics: Some(m), ..me })
+        Arc::new(Proxy {
+            metrics: Some(m),
+            ..me
+        })
     }
 
     /// Uygulama mount'larını aç. Proxy paylaşılmışsa (Arc'ın tek sahibi yoksa) değişmeden döner ve günlüğe yazar.
     pub fn with_mounts(self: Arc<Self>, m: MountCfg) -> Arc<Self> {
         match Arc::try_unwrap(self) {
-            Ok(me) => Arc::new(Proxy { mounts: Some(m), ..me }),
+            Ok(me) => Arc::new(Proxy {
+                mounts: Some(m),
+                ..me
+            }),
             Err(me) => {
                 eprintln!("copsd: with_mounts: vekil paylaşılmış, mount açılmadı");
                 me
@@ -260,36 +384,74 @@ impl Proxy {
     /// Metrik uçları: GET series/names (web.token), POST points (web.token ya da loopback + `X-Cops-Front`). Eşleşmezse None.
     // Err = isteğin kendisi geri verilir (eşleşmeyen istek Python'a aktarılsın diye); kutulamak her istekte ayırma demek.
     #[allow(clippy::result_large_err)]
-    async fn try_metrics(self: &Arc<Self>, req: Request<Incoming>, peer: SocketAddr) -> Result<Response<Body>, Request<Incoming>> {
-        let Some(m) = self.metrics.as_ref() else { return Err(req) };
+    async fn try_metrics(
+        self: &Arc<Self>,
+        req: Request<Incoming>,
+        peer: SocketAddr,
+    ) -> Result<Response<Body>, Request<Incoming>> {
+        let Some(m) = self.metrics.as_ref() else {
+            return Err(req);
+        };
         let path = req.uri().path().to_string();
         let post = req.method() == hyper::Method::POST && path == "/api/metrics/points";
-        let get = req.method() == hyper::Method::GET && (path == "/api/metrics/series" || path == "/api/metrics/names");
+        let get = req.method() == hyper::Method::GET
+            && (path == "/api/metrics/series" || path == "/api/metrics/names");
         if !post && !get {
             return Err(req);
         }
         let query = req.uri().query().unwrap_or("").to_string();
-        let auth = req.headers().get("authorization").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
-        let front = req.headers().get("x-cops-front").and_then(|v| v.to_str().ok()).map(|s| format!("Bearer {s}"));
-        let ok = m.token.authorized(&query, auth.as_deref()) || (post && peer.ip().is_loopback() && m.front_secret.authorized("", front.as_deref()));
+        let auth = req
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        let front = req
+            .headers()
+            .get("x-cops-front")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| format!("Bearer {s}"));
+        let ok = m.token.authorized(&query, auth.as_deref())
+            || (post && peer.ip().is_loopback() && m.front_secret.authorized("", front.as_deref()));
         if !ok {
-            return Ok(json_resp(StatusCode::UNAUTHORIZED, serde_json::json!({"ok": false, "error": "unauthorized"})));
+            return Ok(json_resp(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({"ok": false, "error": "unauthorized"}),
+            ));
         }
         let store = m.store.clone();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
         let body = if post {
-            match http_body_util::Limited::new(req.into_body(), 1 << 20).collect().await {
+            match http_body_util::Limited::new(req.into_body(), 1 << 20)
+                .collect()
+                .await
+            {
                 Ok(b) => b.to_bytes(),
-                Err(_) => return Ok(json_resp(StatusCode::PAYLOAD_TOO_LARGE, serde_json::json!({"ok": false, "error": "body too large"}))),
+                Err(_) => {
+                    return Ok(json_resp(
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        serde_json::json!({"ok": false, "error": "body too large"}),
+                    ))
+                }
             }
         } else {
             Bytes::new()
         };
-        let out = tokio::task::spawn_blocking(move || metrics_handle(&store, &path, &query, &body, now)).await;
+        let out =
+            tokio::task::spawn_blocking(move || metrics_handle(&store, &path, &query, &body, now))
+                .await;
         Ok(match out {
             Ok(Ok(v)) => json_resp(StatusCode::OK, v),
-            Ok(Err((code, m))) => json_resp(StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), serde_json::json!({"ok": false, "error": m})),
-            Err(_) => json_resp(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({"ok": false, "error": "internal"})),
+            Ok(Err((code, m))) => json_resp(
+                StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                serde_json::json!({"ok": false, "error": m}),
+            ),
+            Err(_) => json_resp(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::json!({"ok": false, "error": "internal"}),
+            ),
         })
     }
 
@@ -300,31 +462,63 @@ impl Proxy {
             return None;
         }
         let query = req.uri().query().unwrap_or("").to_string();
-        let auth = req.headers().get("authorization").and_then(|v| v.to_str().ok());
+        let auth = req
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok());
         if !local.token.authorized(&query, auth) {
-            return Some(json_resp(StatusCode::UNAUTHORIZED, serde_json::json!({"ok": false, "error": "unauthorized"})));
+            return Some(json_resp(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({"ok": false, "error": "unauthorized"}),
+            ));
         }
         let db = local.db.clone();
         let out = tokio::task::spawn_blocking(move || cops_local::questions(&db, &query)).await;
         Some(match out {
             Ok(Ok(v)) => json_resp(StatusCode::OK, v),
-            Ok(Err((code, m))) => json_resp(StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), serde_json::json!({"ok": false, "error": m})),
-            Err(_) => json_resp(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({"ok": false, "error": "internal"})),
+            Ok(Err((code, m))) => json_resp(
+                StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                serde_json::json!({"ok": false, "error": m}),
+            ),
+            Err(_) => json_resp(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::json!({"ok": false, "error": "internal"}),
+            ),
         })
     }
 
     /// Ön kapı gizlisi: Python'un `X-Forwarded-For`a güvenmesi için her aktarılan isteğe `X-Cops-Front` olarak eklenir;
     /// istemciden gelen aynı adlı başlık her zaman düşürülür.
     pub fn with_secret(upstream: SocketAddr, secret: &str) -> Arc<Self> {
-        let client = Client::builder(TokioExecutor::new()).pool_max_idle_per_host(0).build_http();
-        Arc::new(Proxy { mounts: None, metrics: None, local: None, upstream, dist: None, secret: HeaderValue::from_str(secret).ok(), client })
+        let client = Client::builder(TokioExecutor::new())
+            .pool_max_idle_per_host(0)
+            .build_http();
+        Arc::new(Proxy {
+            mounts: None,
+            metrics: None,
+            local: None,
+            upstream,
+            dist: None,
+            secret: HeaderValue::from_str(secret).ok(),
+            client,
+        })
     }
 
     /// `peer`: bağlanan istemcinin adresi (X-Forwarded-For için). İstemcinin gönderdiği X-Forwarded-For'a GÜVENİLMEZ, üzerine yazılır.
-    pub async fn handle(self: Arc<Self>, req: Request<Incoming>, peer: SocketAddr) -> Result<Response<Body>, hyper::Error> {
+    pub async fn handle(
+        self: Arc<Self>,
+        req: Request<Incoming>,
+        peer: SocketAddr,
+    ) -> Result<Response<Body>, hyper::Error> {
         // İç uçlar (`/api/_internal/*`) dışarıdan ASLA aktarılmaz: ön kapı gizlisi her aktarılan isteğe eklendiği için, aktarılırsa
         // herkes iç kimlik/bilet uçlarını güvenilir çağrıcı gibi çağırabilirdi. Yalnız Rust'un KENDİ iç çağrıları (loopback) bu yola gider.
-        if req.uri().path().trim_start_matches('/').to_ascii_lowercase().starts_with("api/_internal") {
+        if req
+            .uri()
+            .path()
+            .trim_start_matches('/')
+            .to_ascii_lowercase()
+            .starts_with("api/_internal")
+        {
             return Ok(err(StatusCode::NOT_FOUND, "not found"));
         }
         if let Some(cfg) = &self.mounts {
@@ -345,24 +539,39 @@ impl Proxy {
         }
         req.headers_mut().remove("x-cops-front");
         if let Some(sec) = &self.secret {
-            req.headers_mut().insert(HeaderName::from_static("x-cops-front"), sec.clone());
+            req.headers_mut()
+                .insert(HeaderName::from_static("x-cops-front"), sec.clone());
         }
         if let Ok(v) = HeaderValue::from_str(&peer.ip().to_string()) {
-            req.headers_mut().insert(HeaderName::from_static("x-forwarded-for"), v);
+            req.headers_mut()
+                .insert(HeaderName::from_static("x-forwarded-for"), v);
         }
-        let pq = req.uri().path_and_query().map(|p| p.as_str().to_string()).unwrap_or_else(|| "/".into());
+        let pq = req
+            .uri()
+            .path_and_query()
+            .map(|p| p.as_str().to_string())
+            .unwrap_or_else(|| "/".into());
         Ok(self.forward(req, self.upstream, &pq).await)
     }
 
     /// Ortak aktarım (Python iç portu ya da mount upstream'i): hop-by-hop süzme, WS yükseltme tüneli, gövde AKIŞLI (tamponlama yok).
     /// Kimlik/başlık kararlarını çağıran verir; `pq` upstream'e gidecek yol + sorgu.
-    async fn forward(&self, mut req: Request<Incoming>, target: SocketAddr, pq: &str) -> Response<Body> {
+    async fn forward(
+        &self,
+        mut req: Request<Incoming>,
+        target: SocketAddr,
+        pq: &str,
+    ) -> Response<Body> {
         let upgrade = is_upgrade(req.headers());
         let uri: hyper::Uri = match format!("http://{target}{pq}").parse() {
             Ok(u) => u,
             Err(_) => return err(StatusCode::BAD_REQUEST, "bad uri"),
         };
-        let client_up = if upgrade { Some(hyper::upgrade::on(&mut req)) } else { None };
+        let client_up = if upgrade {
+            Some(hyper::upgrade::on(&mut req))
+        } else {
+            None
+        };
         *req.uri_mut() = uri;
         strip_hop(req.headers_mut(), upgrade);
         let mut resp = match self.client.request(req).await {
@@ -380,7 +589,9 @@ impl Proxy {
                 });
             }
             let (parts, _b) = resp.into_parts();
-            let empty = http_body_util::Empty::<Bytes>::new().map_err(|n| match n {}).boxed();
+            let empty = http_body_util::Empty::<Bytes>::new()
+                .map_err(|n| match n {})
+                .boxed();
             return Response::from_parts(parts, empty);
         }
         let (mut parts, body) = resp.into_parts();
@@ -390,48 +601,102 @@ impl Proxy {
 
     /// Mount isteği: panel kimliği (web.token `?token=`/Bearer ya da `cops_ext` çerezi) burada denetlenir; panel kimlik bilgisi upstream'e
     /// GİTMEZ. `?token=` ile gelen GET/HEAD 302 + çerez ile token'sız adrese yönlenir; `/<id>` 308 ile `/<id>/`a.
-    async fn handle_mount(&self, cfg: &MountCfg, hit: mount::Hit, mut req: Request<Incoming>, peer: SocketAddr) -> Response<Body> {
+    async fn handle_mount(
+        &self,
+        cfg: &MountCfg,
+        hit: mount::Hit,
+        mut req: Request<Incoming>,
+        peer: SocketAddr,
+    ) -> Response<Body> {
         let (target, bare) = match hit {
             mount::Hit::Under(a) => (a, false),
             mount::Hit::Bare(a) => (a, true),
         };
         let query = req.uri().query().unwrap_or("").to_string();
         let by_query = cfg.token.authorized(&query, None);
-        let bearer = req.headers().get(AUTHORIZATION).and_then(|v| v.to_str().ok());
+        let bearer = req
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|v| v.to_str().ok());
         let by_bearer = !by_query && cfg.token.authorized("", bearer);
-        let by_cookie = req.headers().get_all(COOKIE).iter().filter_map(|v| v.to_str().ok()).any(|c| cfg.token.cookie_ok(c));
+        let by_cookie = req
+            .headers()
+            .get_all(COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .any(|c| cfg.token.cookie_ok(c));
         if !by_query && !by_bearer && !by_cookie {
-            let html = req.headers().get(ACCEPT).and_then(|v| v.to_str().ok()).is_some_and(|a| a.contains("text/html"));
+            let html = req
+                .headers()
+                .get(ACCEPT)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|a| a.contains("text/html"));
             return unauthorized(html);
         }
         let https = client_https(req.headers(), peer);
-        let set_cookie = if by_query && !by_cookie { cfg.token.cookie_value().and_then(|v| HeaderValue::from_str(&ext_cookie(v, https)).ok()) } else { None };
+        let set_cookie = if by_query && !by_cookie {
+            cfg.token
+                .cookie_value()
+                .and_then(|v| HeaderValue::from_str(&ext_cookie(v, https)).ok())
+        } else {
+            None
+        };
         // Kodlu ad (`tok%65n=`) dahil tüm `token` parametreleri silinir; silinen varsa (uzunluk değişti) token URL'de demektir.
-        let q = if query.is_empty() { query } else { cops_auth::strip_query_param(&query, "token") };
+        let q = if query.is_empty() {
+            query
+        } else {
+            cops_auth::strip_query_param(&query, "token")
+        };
         let has_qtoken = q.len() != req.uri().query().map_or(0, str::len);
         let path = req.uri().path().to_string();
-        let get_like = (req.method() == hyper::Method::GET || req.method() == hyper::Method::HEAD) && !is_upgrade(req.headers());
+        let get_like = (req.method() == hyper::Method::GET || req.method() == hyper::Method::HEAD)
+            && !is_upgrade(req.headers());
         if bare || (has_qtoken && get_like) {
             let loc_path = if bare { format!("{path}/") } else { path };
-            let loc = if q.is_empty() { loc_path } else { format!("{loc_path}?{q}") };
-            let code = if has_qtoken && get_like { StatusCode::FOUND } else { StatusCode::PERMANENT_REDIRECT };
+            let loc = if q.is_empty() {
+                loc_path
+            } else {
+                format!("{loc_path}?{q}")
+            };
+            let code = if has_qtoken && get_like {
+                StatusCode::FOUND
+            } else {
+                StatusCode::PERMANENT_REDIRECT
+            };
             return redirect(code, &loc, set_cookie);
         }
         let h = req.headers_mut();
         h.remove(AUTHORIZATION);
         strip_panel_cookies(h);
-        let names: Vec<HeaderName> = h.keys().filter(|n| n.as_str().starts_with("x-cops-front")).cloned().collect();
+        let names: Vec<HeaderName> = h
+            .keys()
+            .filter(|n| n.as_str().starts_with("x-cops-front"))
+            .cloned()
+            .collect();
         for n in names {
             h.remove(n);
         }
-        for n in ["x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "forwarded", "x-real-ip"] {
+        for n in [
+            "x-forwarded-for",
+            "x-forwarded-proto",
+            "x-forwarded-host",
+            "forwarded",
+            "x-real-ip",
+        ] {
             h.remove(n);
         }
         if let Ok(v) = HeaderValue::from_str(&peer.ip().to_string()) {
             h.insert(HeaderName::from_static("x-forwarded-for"), v);
         }
-        h.insert(HeaderName::from_static("x-forwarded-proto"), HeaderValue::from_static(if https { "https" } else { "http" }));
-        let pq = if q.is_empty() { path } else { format!("{path}?{q}") };
+        h.insert(
+            HeaderName::from_static("x-forwarded-proto"),
+            HeaderValue::from_static(if https { "https" } else { "http" }),
+        );
+        let pq = if q.is_empty() {
+            path
+        } else {
+            format!("{path}?{q}")
+        };
         let mut resp = self.forward(req, target, &pq).await;
         if let Some(c) = set_cookie {
             resp.headers_mut().append(SET_COOKIE, c);
@@ -448,7 +713,10 @@ pub async fn serve(listen: SocketAddr, proxy: Arc<Proxy>) -> std::io::Result<()>
         let p = proxy.clone();
         tokio::spawn(async move {
             let svc = hyper::service::service_fn(move |r| p.clone().handle(r, peer));
-            let _ = hyper::server::conn::http1::Builder::new().serve_connection(TokioIo::new(sock), svc).with_upgrades().await;
+            let _ = hyper::server::conn::http1::Builder::new()
+                .serve_connection(TokioIo::new(sock), svc)
+                .with_upgrades()
+                .await;
         });
     }
 }

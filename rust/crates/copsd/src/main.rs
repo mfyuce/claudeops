@@ -9,7 +9,9 @@ use std::os::unix::fs::PermissionsExt;
 
 fn arg(name: &str) -> Option<String> {
     let a: Vec<String> = std::env::args().collect();
-    a.iter().position(|x| x == name).and_then(|i| a.get(i + 1).cloned())
+    a.iter()
+        .position(|x| x == name)
+        .and_then(|i| a.get(i + 1).cloned())
 }
 
 fn read_secret() -> Result<Option<String>, String> {
@@ -18,7 +20,12 @@ fn read_secret() -> Result<Option<String>, String> {
             return Ok(Some(s));
         }
     }
-    let path = arg("--secret-file").unwrap_or_else(|| format!("{}/.claude/claudeops/front.secret", std::env::var("HOME").unwrap_or_default()));
+    let path = arg("--secret-file").unwrap_or_else(|| {
+        format!(
+            "{}/.claude/claudeops/front.secret",
+            std::env::var("HOME").unwrap_or_default()
+        )
+    });
     match std::fs::metadata(&path) {
         Err(_) => Ok(None),
         Ok(m) => {
@@ -33,8 +40,16 @@ fn read_secret() -> Result<Option<String>, String> {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let listen: SocketAddr = arg("--listen").or_else(|| std::env::var("COPSD_LISTEN").ok()).unwrap_or_else(|| "127.0.0.1:8765".into()).parse().expect("--listen");
-    let up: SocketAddr = arg("--upstream").or_else(|| std::env::var("COPSD_UPSTREAM").ok()).unwrap_or_else(|| "127.0.0.1:18765".into()).parse().expect("--upstream");
+    let listen: SocketAddr = arg("--listen")
+        .or_else(|| std::env::var("COPSD_LISTEN").ok())
+        .unwrap_or_else(|| "127.0.0.1:8765".into())
+        .parse()
+        .expect("--listen");
+    let up: SocketAddr = arg("--upstream")
+        .or_else(|| std::env::var("COPSD_UPSTREAM").ok())
+        .unwrap_or_else(|| "127.0.0.1:18765".into())
+        .parse()
+        .expect("--upstream");
     let secret = match read_secret() {
         Ok(s) => s,
         Err(e) => {
@@ -43,7 +58,14 @@ async fn main() -> std::io::Result<()> {
         }
     };
     let front_secret = secret.clone().unwrap_or_default();
-    eprintln!("copsd: {listen} -> {up} (gizli: {})", if secret.is_some() { "var" } else { "YOK, X-Forwarded-For güvenilmez" });
+    eprintln!(
+        "copsd: {listen} -> {up} (gizli: {})",
+        if secret.is_some() {
+            "var"
+        } else {
+            "YOK, X-Forwarded-For güvenilmez"
+        }
+    );
     let proxy = match secret {
         Some(sec) => cops_proxy::Proxy::with_secret(up, &sec),
         None => cops_proxy::Proxy::new(up),
@@ -54,18 +76,32 @@ async fn main() -> std::io::Result<()> {
     };
     // Yerel uçlar (Aşama 1): token dosyası ve DB yoksa uç AÇILMAZ (istek Python'a gider). Token dosyası 0600 olmalı (ön kapı gizlisiyle aynı kural).
     let home = std::env::var("HOME").unwrap_or_default();
-    let tok_path = std::path::PathBuf::from(arg("--token-file").unwrap_or_else(|| format!("{home}/.claude/claudeops/web.token")));
-    let db_path = std::path::PathBuf::from(arg("--db").unwrap_or_else(|| format!("{home}/.claude/claudeops/claudeops.db")));
+    let tok_path = std::path::PathBuf::from(
+        arg("--token-file").unwrap_or_else(|| format!("{home}/.claude/claudeops/web.token")),
+    );
+    let db_path = std::path::PathBuf::from(
+        arg("--db").unwrap_or_else(|| format!("{home}/.claude/claudeops/claudeops.db")),
+    );
     let proxy = match std::fs::metadata(&tok_path) {
         Ok(m) if m.permissions().mode() & 0o077 == 0 && db_path.exists() => {
             let t = cops_auth::Token::from_file(&tok_path);
-            if t.is_empty() { proxy } else { eprintln!("copsd: yerel uç açık: GET /api/steward/questions"); proxy.with_local(cops_proxy::LocalCfg { token: t, db: db_path.clone() }) }
+            if t.is_empty() {
+                proxy
+            } else {
+                eprintln!("copsd: yerel uç açık: GET /api/steward/questions");
+                proxy.with_local(cops_proxy::LocalCfg {
+                    token: t,
+                    db: db_path.clone(),
+                })
+            }
         }
         _ => proxy,
     };
     // Metrik deposu (cops-metrics): `--metrics-db` (varsayılan ~/.claude/claudeops/metrics.db). Uçlar: POST /api/metrics/points
     // (web.token ya da loopback + ön kapı gizlisi), GET /api/metrics/series|names (web.token). Token yoksa uçlar AÇILMAZ (Python'a gider).
-    let mdb = std::path::PathBuf::from(arg("--metrics-db").unwrap_or_else(|| format!("{home}/.claude/claudeops/metrics.db")));
+    let mdb = std::path::PathBuf::from(
+        arg("--metrics-db").unwrap_or_else(|| format!("{home}/.claude/claudeops/metrics.db")),
+    );
     let store = match cops_metrics::Store::open(&mdb) {
         Ok(s) => Some(std::sync::Arc::new(s)),
         Err(e) => {
@@ -73,12 +109,17 @@ async fn main() -> std::io::Result<()> {
             None
         }
     };
-    let instances = std::path::PathBuf::from(arg("--instances").unwrap_or_else(|| format!("{home}/.claude/claudeops/instances.json")));
+    let instances = std::path::PathBuf::from(
+        arg("--instances").unwrap_or_else(|| format!("{home}/.claude/claudeops/instances.json")),
+    );
     // Günlük proje ilerleme işi (model YOK). `--once`: bir kez koş ve çık (elle/sınama). Aksi halde açılışta son nokta 20 saatten eskiyse koşar, sonra saatte bir bakar.
     if let Some(st) = store.clone() {
         let (db, inst) = (db_path.clone(), instances.clone());
         let tick = move || -> Result<(usize, usize), String> {
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0);
             let last = st.last_ts("job.project_progress", "ms")?.unwrap_or(0.0);
             if now - last < 20.0 * 3600.0 && !std::env::args().any(|a| a == "--once") {
                 return Ok((0, 0));
@@ -99,7 +140,9 @@ async fn main() -> std::io::Result<()> {
             loop {
                 let t = tick.clone();
                 match tokio::task::spawn_blocking(t).await {
-                    Ok(Ok((p, n))) if p > 0 => eprintln!("copsd: proje ilerleme: {p} proje, {n} nokta"),
+                    Ok(Ok((p, n))) if p > 0 => {
+                        eprintln!("copsd: proje ilerleme: {p} proje, {n} nokta")
+                    }
                     Ok(Err(e)) => eprintln!("copsd: proje ilerleme hatası: {e}"),
                     _ => {}
                 }
@@ -114,22 +157,38 @@ async fn main() -> std::io::Result<()> {
                 proxy
             } else {
                 eprintln!("copsd: metrik uçları açık: /api/metrics/points|series|names");
-                proxy.with_metrics(cops_proxy::MetricsCfg { store, token: t, front_secret: cops_auth::Token::new(&front_secret) })
+                proxy.with_metrics(cops_proxy::MetricsCfg {
+                    store,
+                    token: t,
+                    front_secret: cops_auth::Token::new(&front_secret),
+                })
             }
         }
         _ => proxy,
     };
     // Uygulama mount'ları: kimlik web.token (0600) + `cops_ext` çerezi; token yoksa mount AÇILMAZ (istek Python'a gider).
-    let mounts_file = std::path::PathBuf::from(arg("--mounts-file").unwrap_or_else(|| format!("{home}/.claude/claudeops/derbent/mounts.json")));
+    let mounts_file = std::path::PathBuf::from(
+        arg("--mounts-file")
+            .unwrap_or_else(|| format!("{home}/.claude/claudeops/derbent/mounts.json")),
+    );
     let proxy = match std::fs::metadata(&tok_path) {
-        Ok(m) if m.permissions().mode() & 0o077 == 0 && !cops_auth::Token::from_file(&tok_path).is_empty() => {
+        Ok(m)
+            if m.permissions().mode() & 0o077 == 0
+                && !cops_auth::Token::from_file(&tok_path).is_empty() =>
+        {
             let mounts = cops_proxy::mount::Mounts::new(mounts_file.clone());
             match mounts.refresh() {
                 Some(line) => eprintln!("copsd: {line}"),
-                None => eprintln!("copsd: mount kapalı: {} yok (2 sn'de bir yoklanır)", mounts_file.display()),
+                None => eprintln!(
+                    "copsd: mount kapalı: {} yok (2 sn'de bir yoklanır)",
+                    mounts_file.display()
+                ),
             }
             mounts.spawn_watch(std::time::Duration::from_secs(2));
-            proxy.with_mounts(cops_proxy::MountCfg { mounts, token: cops_auth::Token::from_file(&tok_path) })
+            proxy.with_mounts(cops_proxy::MountCfg {
+                mounts,
+                token: cops_auth::Token::from_file(&tok_path),
+            })
         }
         _ => {
             eprintln!("copsd: mount kapalı: web.token yok ya da 0600 değil");

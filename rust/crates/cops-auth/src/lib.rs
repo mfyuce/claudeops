@@ -63,14 +63,22 @@ pub fn strip_query_param(query: &str, name: &str) -> String {
 
 /// Sorgu dizesinden (ilk) `name` değeri, yüzde-çözülmüş.
 pub fn query_param(query: &str, name: &str) -> Option<String> {
-    query.split('&').filter_map(|kv| kv.split_once('=')).find(|(k, _)| *k == name).and_then(|(_, v)| pct_decode(v))
+    query
+        .split('&')
+        .filter_map(|kv| kv.split_once('='))
+        .find(|(k, _)| *k == name)
+        .and_then(|(_, v)| pct_decode(v))
 }
 
 impl Token {
     /// `web.token` içeriği (satır sonu kırpılır). Boş = her istek reddedilir.
     pub fn new(raw: &str) -> Token {
         let raw = raw.trim().as_bytes().to_vec();
-        let cookie = if raw.is_empty() { String::new() } else { hex(&hmac_sha256(&raw, b"claudeops-ext-session")) };
+        let cookie = if raw.is_empty() {
+            String::new()
+        } else {
+            hex(&hmac_sha256(&raw, b"claudeops-ext-session"))
+        };
         Token { raw, cookie }
     }
 
@@ -88,7 +96,11 @@ impl Token {
 
     /// `cops_ext` çerez değeri (Python `extensions.cookie_value`); token boşsa None.
     pub fn cookie_value(&self) -> Option<&str> {
-        if self.cookie.is_empty() { None } else { Some(&self.cookie) }
+        if self.cookie.is_empty() {
+            None
+        } else {
+            Some(&self.cookie)
+        }
     }
 
     /// Python `extensions.cookie_ok` ile aynı kural: `;` ile bölünen parçalardan adı `cops_ext` olanın değeri sabit zamanlı eşit mi.
@@ -137,7 +149,10 @@ mod tests {
         assert!(!t.authorized("token=abc124", None));
         assert!(!t.authorized("", Some("Basic abc123")));
         assert!(!t.authorized("token=", Some("Bearer ")));
-        assert!(!t.authorized("token=abc%C3%A9", None), "ASCII olmayan aday red");
+        assert!(
+            !t.authorized("token=abc%C3%A9", None),
+            "ASCII olmayan aday red"
+        );
         assert!(t.authorized("token=abc%31%32%33", None), "yüzde çözme");
         let closed = Token::new("");
         assert!(!closed.authorized("token=", None), "boş token = kapalı");
@@ -163,8 +178,15 @@ mod tests {
     fn strip_query_param_drops_all_and_encoded_names() {
         assert_eq!(strip_query_param("a=1&token=x&b=2", "token"), "a=1&b=2");
         assert_eq!(strip_query_param("token=x", "token"), "");
-        assert_eq!(strip_query_param("token=x&tok%65n=y&token&tokens=3", "token"), "tokens=3");
+        assert_eq!(
+            strip_query_param("token=x&tok%65n=y&token&tokens=3", "token"),
+            "tokens=3"
+        );
         assert_eq!(strip_query_param("", "token"), "");
-        assert_eq!(strip_query_param("a=1&&b", "token"), "a=1&&b", "token yoksa sorgu birebir aynı kalır");
+        assert_eq!(
+            strip_query_param("a=1&&b", "token"),
+            "a=1&&b",
+            "token yoksa sorgu birebir aynı kalır"
+        );
     }
 }
