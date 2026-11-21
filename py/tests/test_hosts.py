@@ -76,8 +76,18 @@ class ReachLoopbackTest(unittest.TestCase):
         self.assertFalse(wh._candidate_allowed("https://x.example", "http://example.org:18766"))
 
     def test_helper(self):
-        self.assertTrue(hosts._is_reach_loopback("http://[::1]:18700"))
+        self.assertTrue(hosts._is_reach_loopback("http://[::1]:18765"))
         self.assertFalse(hosts._is_reach_loopback("http://127.0.0.1"))
+        self.assertFalse(hosts._is_reach_loopback("http://127.0.0.1:18700"))      # sahip 21 Kas: yalnız 18765/18766 (eski 18700-18799 aralığı kalktı)
+        self.assertFalse(hosts._is_reach_loopback("http://127.0.0.1:8765"))
+
+    def test_setting_overrides_ports(self):
+        from unittest import mock
+        with mock.patch("claudeops.settings.load_settings", lambda: {"host_loopback_ports": "18700, 18801,x"}):
+            self.assertTrue(hosts._is_reach_loopback("http://127.0.0.1:18801"))
+            self.assertFalse(hosts._is_reach_loopback("http://127.0.0.1:18766"))
+        with mock.patch("claudeops.settings.load_settings", lambda: {"host_loopback_ports": ""}):
+            self.assertFalse(hosts._is_reach_loopback("http://127.0.0.1:18766"))
 
 
 class DbModeIrregularTest(unittest.TestCase):

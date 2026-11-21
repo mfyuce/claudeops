@@ -192,6 +192,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # (7 Kas, sahip). VARSAYILAN KAPALI: başka kullanıcıyı ekrandan alır. Kilit AÇILMAZ.
                               # Okuma tarafı: `graphical_session.auto_activate_enabled()` (yalnız açık "on" sözcükleri açar).
     "usage_mode": "tek",      # "tek" (varsayılan) | "tick": kullanım okuması değnekçi tick'inde otomatik mi (TBD#203); bkz. `usage_poll.py`.
+    "host_loopback_ports": "18765,18766",   # virgüllü port listesi: menzil `reach` dinleyicileri; Hostlar `extra_urls` için SSRF korumasının TEK loopback istisnası
+                                            # (http://127.0.0.1:<port>, TBD#258 a, sahip 21 Kas). "" = istisna yok.
     "tunnel_protocol": "",   # "" (yönetme) | "auto" | "http2" | "quic" — cloudflared --protocol (UDP/QUIC'i engelleyen ağlarda http2).
                               # Kaydedince systemd drop-in yazılır ve yalnız tünel servisi yeniden başlar (yeni URL); bkz. `tunnel_proto.py`.
     "tunnel_watch": "on",    # "on" | "off" — tünel SAĞLIK BEKÇİSİ (2026-10-17, kullanıcı: "settingslerde seçimlik
