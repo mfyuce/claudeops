@@ -58,3 +58,10 @@ yok), yani `migrate()` ile göç dosyalarının PG'de geçtiği kanıtsız; SQLi
   derlenmiş PG gerekir; yoksa PG testleri atlanır (TODO'daki şart).
 - Önerilen ilk adım: `py/claudeops/dbapi.py` (bağlantı fabrikası, `?`→`%s` çevirisi, `RETURNING`, `schema_version` göçü, `db_url`). `store.py` ve
   `notes/store.py` bunun üstüne taşınır; 12 numara önce `SEQUENCE` seçeneğiyle prototiplenir.
+
+## 5. Test altyapısı (21 Kas)
+
+- `scripts/test-pg.sh [modüller...]`: yerelde bulunan `postgres:16-alpine` ile geçici kapsayıcı (tmpfs, yalnız 127.0.0.1, rastgele port, bitince silinir), `CLAUDEOPS_TEST_PG_URL` verip `py/tests` altında modülleri koşar (varsayılan `test_dbapi`). varaka'nın ya da canlı DB'ye dokunmaz.
+- `test_dbapi.py` (gerçek PG testi dahil) ve `test_store_pg.py` (mevcut `StoreTests`/`Edge` testleri PG'de, her test kendi şemasında; SQLite'a özgü 7 test atlanır). URL yoksa hepsi atlanır, normal paket etkilenmez.
+- İLK GERÇEK PG DOĞRULAMASI: `store.py` göçü (IDENTITY, DOUBLE PRECISION, `schema_version`), `ON CONFLICT`, `RETURNING id`, advisory lock, iş parçacığıyla `update_doc` kayıpsızlığı PG 16'da geçti.
+- Henüz PG'ye taşınmayanlar: `notes/store.py` (tetikleyici sayacı, envanter 12) ve Rust `dalgic` PG yolu (sqlx).
