@@ -19,6 +19,22 @@ PROJ_DIR="$HOME/.claude/projects"
 LOG_DIR="/tmp/claudeops"
 mkdir -p "$LOG_DIR"
 
+# guard.lock: Python `guard.guard_lock` ile AYNI yol (/tmp/claudeops-UID/guard.lock; eski paylaşımlı /tmp/claudeops/guard.lock iki tarafı
+# birbirinden ayırıyordu) ve AYNI güvenlik: dizin/dosya symlink ya da başkasının ise REDDET; `exec 9>` symlink hedefini truncate ederdi
+# (OPS-03), burada `>>` (kesmez) ve önce lstat benzeri `-L`/`-O` denetimi. Başarıda fd 9 açık kalır; hata = return 1.
+GUARD_LOCK_DIR="${CLAUDEOPS_GUARD_LOCK_DIR:-/tmp/claudeops-$(id -u)}"
+guard_lock_fd9() {
+  mkdir -p "$GUARD_LOCK_DIR" 2>/dev/null
+  if [ -L "$GUARD_LOCK_DIR" ] || [ ! -O "$GUARD_LOCK_DIR" ]; then
+    echo "guard.lock: $GUARD_LOCK_DIR güvenli değil (symlink ya da başka kullanıcının)" >&2; return 1
+  fi
+  local f="$GUARD_LOCK_DIR/guard.lock"
+  if [ -L "$f" ] || { [ -e "$f" ] && [ ! -O "$f" ]; }; then
+    echo "guard.lock: $f güvenli değil (symlink ya da başka kullanıcının)" >&2; return 1
+  fi
+  exec 9>>"$f"
+}
+
 # claude binary ~/.local/bin'de yaşar — cron/autostart minimal PATH'inde YOKTUR.
 # (1) claudeops'un KENDİ PATH'i: command -v claude / python3 / node cron'da da bulunsun.
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH"; export PATH ;; esac
@@ -653,8 +669,7 @@ EOF
   # guard.lock: guard cron'u bu rc çalışırken spawn yapmasın (race → duplicate session).
   # Blocking flock — guard flock -n ile non-blocking alıyor, buradayken sessizce çıkar.
   # fd 9 fonksiyon bitince (return veya exit) kapanır → kilit otomatik serbest kalır.
-  exec 9>"$LOG_DIR/guard.lock"
-  flock 9
+  if guard_lock_fd9; then flock 9; else echo "uyarı: guard.lock alınamadı, kilitsiz devam" >&2; fi
 
   # WARN: name-list mode'da eşleşmeyen hedefleri uyar (orphan case)
   # Vaka: Faz 1'de session kill edilmiş + Faz 2 rc --new --kill-first <name>21 ...
@@ -2021,7 +2036,7 @@ cmd_guard() {
   # ikisi de fleet'i 'down' görüp HEPSİNİ açar → her cwd'de duplicate session. Non-blocking:
   # kilit başka guard'daysa sessizce çık. fd 9 process exit'te kapanır → kilit serbest kalır.
   if [ "$dry" != "1" ]; then
-    exec 9>"$LOG_DIR/guard.lock"
+    guard_lock_fd9 || { echo "[$(date '+%H:%M:%S')] guard: kilit dosyası güvenli değil, atlandı"; return 1; }
     if ! flock -n 9; then echo "[$(date '+%H:%M:%S')] guard: başka instance çalışıyor, atlandı"; return 0; fi
   fi
 
