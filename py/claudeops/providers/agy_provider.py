@@ -71,6 +71,7 @@ import os
 import shlex
 import sqlite3
 import subprocess
+import threading
 import time
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
@@ -376,6 +377,20 @@ class AgyProvider(CliProvider):
             "effort": _arg(cmd, "--effort"),
         }
 
+    def _fetch_models(self) -> None:
+        try:
+            out = subprocess.run([resolved_binary("agy"), "models"], capture_output=True, text=True,
+                                  timeout=5).stdout
+            # "agy models" gerçek satırlardan ÖNCE bir durum satırı basıyor
+            # ("Fetching available models..." — tab YOK) — sadece gerçek
+            # `id\tLabel` satırlarını al, yoksa bu satır ilk "model" gibi görünüp
+            # panelde "Fetching available models..." diye anlamsız bir seçenek çıkıyordu.
+            models = [ln.split("\t", 1)[0].strip() for ln in out.splitlines() if "\t" in ln]
+            if models:
+                self._cache_models = models
+        except Exception:
+            pass  # eski (belki boş) cache kalır — status endpoint'i asla patlamasın
+
     def model_choices(self) -> List[str]:
         now = time.monotonic()
         if now - self._cache_ts > _MODELS_TTL:
@@ -385,18 +400,12 @@ class AgyProvider(CliProvider):
             # çalıştırır (canlı yaşandı: agy sign-out olunca her poll'da ~1s'lik
             # `agy models` çağrısı — TTL'nin var oluş amacını boşa çıkarıyordu).
             self._cache_ts = now
-            try:
-                out = subprocess.run([resolved_binary("agy"), "models"], capture_output=True, text=True,
-                                      timeout=5).stdout
-                # "agy models" gerçek satırlardan ÖNCE bir durum satırı basıyor
-                # ("Fetching available models..." — tab YOK) — sadece gerçek
-                # `id\tLabel` satırlarını al, yoksa bu satır ilk "model" gibi görünüp
-                # panelde "Fetching available models..." diye anlamsız bir seçenek çıkıyordu.
-                models = [ln.split("\t", 1)[0].strip() for ln in out.splitlines() if "\t" in ln]
-                if models:
-                    self._cache_models = models
-            except Exception:
-                pass  # eski (belki boş) cache kalır — status endpoint'i asla patlamasın
+            if self._cache_models:
+                # bayat ama dolu önbellek: eskiyi HEMEN döndür, yenisini arka planda çek (/api/status her TTL'de ~1,4 sn
+                # takılmasın; 21 Kas ölçümü: soğuk/TTL sonrası çağrı `agy models` alt sürecini istek iş parçacığında bekliyordu)
+                threading.Thread(target=self._fetch_models, daemon=True, name="agy-models-refresh").start()
+            else:
+                self._fetch_models()      # önbellek hiç yok (soğuk): bloklayarak çek
         return self._cache_models
 
     def permission_modes(self) -> List[str]:

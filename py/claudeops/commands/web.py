@@ -6676,6 +6676,17 @@ def register(sub):
     p.set_defaults(func=run)
 
 
+def _prewarm_status() -> None:
+    """Sunucu açılırken `_status_payload()`'ı bir kez çalıştırıp önbellekleri (provider model listeleri, needs_ho, bağlam) ısıtır. Hata yutulur."""
+    try:
+        _status_payload()
+    except Exception as e:
+        try:
+            diag_log("status_prewarm_failed", error=f"{type(e).__name__}: {e}"[:200])
+        except Exception:
+            pass
+
+
 def run(args) -> int:
     # `cops web` TEK her zaman çalışan süreç olduğu için kapsayıcı uygulama
     # noktası burası: roster.tsv/models.tsv/settings.json/hosts.json/web.token/
@@ -6769,6 +6780,9 @@ def run(args) -> int:
             faulthandler.register(signal.SIGHUP, file=_faultlog_fh, all_threads=True, chain=True)
         except Exception:
             pass
+    # Soğuk /api/status ~4,3 sn (agy models alt süreci, needs_ho git çağrıları, ilk psutil taraması): ilk istek bunu ödemesin diye
+    # sunucu dinlerken arka planda bir kez ısıt (21 Kas ölçümü: soğuk 4,3-8 sn, ısınmış ~1 sn).
+    threading.Thread(target=_prewarm_status, daemon=True, name="status-prewarm").start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
