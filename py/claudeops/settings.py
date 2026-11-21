@@ -180,6 +180,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "anthropic_api_block_until": "",   # "YYYY-MM-DD": bu tarihe KADAR değnekçi, ucli+Anthropic (service claude / anthropic uç noktası) kayıtlı projeyi
                                        # AÇMAZ (`web_steward._api_blocked`, code `anthropic_api_blocked`). Boş = yasak yok. Sahip kararı 2026-11-05/06.
     "store_backend": "files",  # files|dual|db: SQLite geçişi (statedocs.py, TBD#142 K5); boş değer anahtarı siler = files
+    "ucli_metrics": {},      # {enabled, interval_s, retention_days}: ucli kaynak metrikleri (ucli_metrics.py); boş = varsayılan (açık, 15 sn, 30 gün)
     "ucli_usage_warn": {},   # {amber, red: str} — 2026-10-17: ucli token rozetinin renk eşikleri, OTURUM başına
                               # Evren KOTA EŞDEĞERİ token (`ucli_client.quota_equivalent_tokens`: önbellekli girdi
                               # %3 sayılır, panonun ham toplamı DEĞİL), süreç başından beri. Boş/eksik = varsayılan
@@ -287,6 +288,8 @@ def _load_settings_uncached() -> Dict[str, Any]:
                 out["ucli_script"] = {}
             if not isinstance(out.get("ucli_cost"), dict):
                 out["ucli_cost"] = {}
+            if not isinstance(out.get("ucli_metrics"), dict):
+                out["ucli_metrics"] = {}
             if not isinstance(out.get("ucli_usage_warn"), dict):
                 out["ucli_usage_warn"] = {}
             if not isinstance(out.get("cli_managed"), dict):
@@ -354,7 +357,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if k in _DICT_ONLY_KEYS and not isinstance(v, dict):
             continue        # review R-17: dict olmayan yama bloğu tümden silmesin (okuma tarafı {} yapıyordu)
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "derbent", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "ucli_metrics", "uzakgoz", "derbent", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]

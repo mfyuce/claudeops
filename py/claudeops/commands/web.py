@@ -5574,6 +5574,9 @@ class _Handler(BaseHTTPRequestHandler):
             data, err = _ck.load_registry()
             self._json({"ok": not err or "kaydı yok" in err, "checks": data.get("check", []), "error": "" if "kaydı yok" in err else err,
                         "templates": _ck.TEMPLATES})
+        elif path in ("/api/ucli/metrics", "/api/ucli/metrics/sessions"):
+            from .. import ucli_metrics as _um
+            self._json(_um.api_get(path, parse_qs(urlparse(self.path).query)))
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())
@@ -6794,6 +6797,11 @@ def run(args) -> int:
     # Soğuk /api/status ~4,3 sn (agy models alt süreci, needs_ho git çağrıları, ilk psutil taraması): ilk istek bunu ödemesin diye
     # sunucu dinlerken arka planda bir kez ısıt (21 Kas ölçümü: soğuk 4,3-8 sn, ısınmış ~1 sn).
     threading.Thread(target=_prewarm_status, daemon=True, name="status-prewarm").start()
+    try:
+        from .. import ucli_metrics as _um
+        _um.start_background()
+    except Exception:
+        pass
     try:
         server.serve_forever()
     except KeyboardInterrupt:
