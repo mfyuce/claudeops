@@ -102,7 +102,7 @@ def compare(usage_dir: str = ucli_cost.USAGE_DIR, other_dir: str = ucli_cost.OTH
     rows = _rows(usage_dir, "claude", db, since, write_mult) + _rows(other_dir, "other", db, since, write_mult)
     agg: Dict[str, Dict[str, Any]] = {}
     for r in rows:
-        m = agg.setdefault(r["model"] or "?", {"model": r["model"] or "?", "source": r["source"], "sessions": 0, "requests": 0, "usd": None,
+        m = agg.setdefault((r["model"] or "?", r["source"]), {"model": r["model"] or "?", "source": r["source"], "sessions": 0, "requests": 0, "usd": None,
                                                "tokens": {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}, "_rss": [], "_cpu": []})
         m["sessions"] += 1
         m["requests"] += r["requests"]

@@ -205,7 +205,10 @@ pub fn metrics_handle(
     let q = |k: &str| cops_auth::query_param(query, k);
     let num = |k: &str, d: f64| -> Result<f64, (u16, String)> {
         q(k).filter(|v| !v.is_empty()).map_or(Ok(d), |v| {
-            v.parse::<f64>().map_err(|_| (400, format!("bad {k}")))
+            v.parse::<f64>()
+                .ok()
+                .filter(|x| x.is_finite())
+                .ok_or_else(|| (400, format!("bad {k}")))
         })
     };
     let e500 = |e: String| (500u16, e);
