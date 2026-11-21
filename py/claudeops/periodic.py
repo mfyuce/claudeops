@@ -46,6 +46,13 @@ SECRET_RES = [
     re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"),
     re.compile(r"sk-or-[A-Za-z0-9_\-]{12,}"),
     re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),         # ince taneli GitHub PAT
+    re.compile(r"sk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{20,}"),   # OpenAI (codex)
+    re.compile(r"AIza[0-9A-Za-z_\-]{35}"),               # Google/Gemini API anahtarı
+    re.compile(r"xox[abprs]-[A-Za-z0-9\-]{10,}"),        # Slack
+    re.compile(r"hf_[A-Za-z0-9]{30,}"),                  # Hugging Face
+    re.compile(r"npm_[A-Za-z0-9]{36}"),
+    re.compile(r"ya29\.[A-Za-z0-9_\-]{20,}"),            # Google OAuth erişim belirteci
     re.compile(r"glpat-[A-Za-z0-9_\-]{10,}"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{24,}"),
@@ -53,6 +60,10 @@ SECRET_RES = [
     re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)\\*['\"]?\s*[=:]\s*\\*['\"])[^'\"\n]{4,}?(?=\\*['\"])"),
     re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)\\*['\"]?\s*[=:]\s*\\*['\"]?)(?!\[GİZLİ-MASKELENDİ\])[^\s'\"<>$*,}\\]{4,}"),
 ]
+
+# Maske sürümü: SECRET_RES değişince manifestteki kaynak imzaları düşer, tüm kaynaklar yeni maskeyle yeniden yazılır (geriye dönük maske).
+MASK_VER = hashlib.sha256("\n".join(r.pattern for r in SECRET_RES).encode()).hexdigest()[:12]
+_MASKVER_KEY = "_maskver"
 
 DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
     "enabled": "off",
@@ -655,6 +666,8 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     """Plan (apply=False) ya da uygula. Sonuç dict'i: ok, msg, written, ... Asla fırlatmaz.
     Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
     manifest: Dict[str, str] = dict((state.get("chat_backup") or {}).get("manifest") or {})
+    if manifest and manifest.get(_MASKVER_KEY) != MASK_VER:      # maske kuralları değişti: kaynak imzalarını at (dest: işaretleri kalır), hepsini yeniden maskele
+        manifest = {k: v for k, v in manifest.items() if k.startswith(_DEST_PFX)}
     dump_info: Dict[str, Any] = {}
     warns: List[str] = []              # uzak çekme/arşiv açma hataları: yerel yedeği durdurmaz ama mesajda görünür (sahte 'temiz ok' olmasın)
     rp = cfg.get("remote_pull")
@@ -791,6 +804,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             done[k] = v
     done.update({_DEST_PFX + e["dest"]: sigs[_DEST_PFX + e["dest"]] for e in plan["changed"] if _DEST_PFX + e["dest"] in sigs})
     manifest.update(done)
+    manifest[_MASKVER_KEY] = MASK_VER
     state.setdefault("chat_backup", {})["manifest"] = manifest
     mode = str(cfg.get("remote_tgz_prune", "dry")).strip().lower()
     dump_bad = bool(dump_info and (dump_info.get("errors") or dump_info.get("raw_err")))

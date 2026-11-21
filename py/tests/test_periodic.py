@@ -474,3 +474,26 @@ class UsageRefreshJobTest(_Tmp):
     def test_builtin_default_without_stored_config_is_on(self):
         os.remove(P.CONFIG_JSON) if os.path.exists(P.CONFIG_JSON) else None
         self.assertTrue(P._is_on(P.load_config()["usage_refresh"]["enabled"]))
+
+
+def test_redact_cli_anahtar_siniflari():
+    g = "AIza" + "A" * 35
+    for tok in ("github_pat_" + "a1B2" * 8, "sk-proj-" + "x" * 30, g, "xoxb-1234567890-abc", "hf_" + "a" * 34, "npm_" + "a" * 36):
+        out, n = P.redact("anahtar " + tok + " son")
+        assert tok not in out and n >= 1, tok
+
+
+def test_maske_surumu_degisince_imzalar_duser():
+    m = {"/x/a.jsonl": "1:2", P._DEST_PFX + "d/a": "5", P._MASKVER_KEY: "eski"}
+    st = {"chat_backup": {"manifest": m}}
+    cfg = dict(P.DEFAULT_CHAT_BACKUP, dump_db=False, raw_remote="", enabled="on")
+    seen = {}
+    def fake_plan(c, man):
+        seen.update(man)
+        return {"repo": "", "seen": 0, "changed": [], "marks": {}}
+    with mock.patch.object(P, "plan_chat_backup", fake_plan), mock.patch.object(P, "_local_sources", lambda: []):
+        try:
+            P.run_chat_backup(cfg, False, st)
+        except Exception:
+            pass
+    assert "/x/a.jsonl" not in seen and P._DEST_PFX + "d/a" in seen
