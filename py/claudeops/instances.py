@@ -171,7 +171,9 @@ def mark_models_gone(live: Dict[str, "set"]) -> int:
         for rec in recs.values():
             models = live.get(rec.get("cli") or "")
             m = rec.get("model")
-            if not models or not m or m in ("-", "auto"):
+            if not models or not m or m in ("-", "auto") or m.startswith("claude-"):   # claude-* ucli'de Claude hizmeti, Evren listesinde olmaz
+                if rec.pop("model_gone", None):      # değerlendirilmeyen kayıtta eski bayrak kalmasın
+                    n += 1
                 continue
             gone = m not in models
             if bool(rec.get("model_gone")) != gone:

@@ -77,7 +77,7 @@ def run(path: str = CATALOG_JSON, fetch: Optional[Callable[[str], List[str]]] = 
         try:
             from . import instances
             live = {c: {m for m, st in (v.get("models") or {}).items() if st == "present"}
-                    for c, v in res["catalog"]["providers"].items() if v.get("ok")}
+                    for c, v in res["catalog"]["providers"].items() if v.get("ok") and c == "ucli"}   # yalnız Evren: claude/agy/codex takma ad ve nesil adları yanlış işaret üretir
             n = instances.mark_models_gone(live)
             if n:
                 diag_log("model_watch_instances_marked", changed=n)
