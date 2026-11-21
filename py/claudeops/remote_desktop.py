@@ -193,6 +193,33 @@ def _kill_pid(pid: int) -> None:
             pass
 
 
+def _find_foreign_daemon(port: int, binary: Path) -> Optional[int]:
+    """Portu tutan, PANEL DIŞINDA başlatılmış (pid/token dosyası yok) uzakgoz: aynı kullanıcı, `/proc/<pid>/exe` == `binary` (silinmiş inode
+    de sayılır: ikili teslimle değişmiş olabilir) ve ilk argüman `port`. Yoksa None. Başkasının sürecine ya da başka ikiliye DOKUNMAZ."""
+    want = os.path.realpath(str(binary))
+    uid = os.getuid()
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return None
+    for e in entries:
+        if not e.isdigit():
+            continue
+        try:
+            if os.stat(f"/proc/{e}").st_uid != uid:
+                continue
+            exe = os.readlink(f"/proc/{e}/exe")
+            if exe.endswith(" (deleted)"):
+                exe = exe[:-len(" (deleted)")]
+            with open(f"/proc/{e}/cmdline", "rb") as f:
+                argv = f.read().split(b"\0")
+        except OSError:
+            continue
+        if os.path.realpath(exe) == want and len(argv) > 1 and argv[1].decode("utf-8", "replace") == str(port):
+            return int(e)
+    return None
+
+
 def _adopt_if_orphaned() -> None:
     """`_lock` TUTULUYORKEN çağrılmalı. Elimizde ne canlı bir Popen ne de zaten
     adopt edilmiş bir PID varsa, PID_FILE'daki kaydı dene: PID hâlâ yaşıyor VE
@@ -290,7 +317,20 @@ def start(port: Optional[int] = None) -> dict:
         if binary is None or not binary.exists():
             return {"ok": False, "error": f"binary bulunamadı ({binary})"}
 
-        if _port_open(port):               # başka bir süreç portu tutuyor: onu "başarılı start" saymayız (review uzops 9 Kas)
+        held = _port_open(port)
+        if held and binary is not None:
+            # Panel dışından başlatılmış (pid/token dosyası yok, panel sahiplenemez) AYNI ikili: durdur, aşağıda tokenla yeniden başlar.
+            # (Ders 21 Kas: daemon yalnız panel API'siyle başlatılır; yoksa Başlat 'port başka süreçte' diyerek kilitleniyordu.)
+            foreign = _find_foreign_daemon(port, binary)
+            if foreign is not None:
+                _kill_pid(foreign)
+                end = time.monotonic() + 3.0
+                while time.monotonic() < end:
+                    held = _port_open(port)
+                    if not held:
+                        break
+                    time.sleep(0.1)
+        if held:                           # başka bir süreç portu tutuyor: onu "başarılı start" saymayız (review uzops 9 Kas)
             return {"ok": False, "error": f"port {port} başka bir süreç tarafından kullanılıyor"}
         token = secrets.token_hex(32)
         try:
