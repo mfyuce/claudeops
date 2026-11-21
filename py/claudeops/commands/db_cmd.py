@@ -126,7 +126,8 @@ def _migrate_to_pg(args) -> int:
         ok = False
     if args.notes:
         try:
-            from claudeops_enterprise.notes import migrate_pg
+            import importlib      # çekirdek enterprise'ı doğrudan import ETMEZ (tek yönlü bağımlılık; test_extensions)
+            migrate_pg = importlib.import_module("claudeops_enterprise.notes.migrate_pg")
         except ImportError:
             print("hata: --notes enterprise eklentisi gerektirir (claudeops_enterprise.notes.migrate_pg bulunamadı)")
             return 1
