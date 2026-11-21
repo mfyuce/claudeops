@@ -5587,6 +5587,9 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())
+        elif path == "/api/uzakgoz/freshness":
+            from .. import ucli_freshness as _uf
+            self._json(_uf.uzakgoz_freshness())
         elif path == "/api/ucli/instructions-check":
             from ..providers.ucli_provider import instructions_check as _ic
             self._json(_ic((parse_qs(urlparse(self.path).query).get("cwd") or [""])[0]))

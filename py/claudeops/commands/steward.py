@@ -184,6 +184,9 @@ def cmd_status(args) -> int:
     _fr = _uf.freshness()
     if _fr.get("stale"):
         print(f"uyarı: {_fr['message']}")
+    _fz = _uf.uzakgoz_freshness()
+    if _fz.get("stale"):
+        print(f"uyarı: {_fz['message']}")
     return 0
 
 
