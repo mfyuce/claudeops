@@ -7580,7 +7580,7 @@ def http_digest_file(kind: str, name: str, sid: str = "default") -> Dict[str, An
     return {"ok": True, "text": rv.redact_secrets(text), "truncated": truncated}
 
 
-_GET_PATHS = frozenset(("review/state", "review/file", "review/live", "review/io", "review/chat", "review/runs", "review/findings", "review/lessons", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
+_GET_PATHS = frozenset(("review/state", "review/file", "review/live", "review/io", "review/chat", "review/runs", "review/findings", "review/lessons", "review/models", "state", "projects", "questions", "ideas", "log", "context", "summary", "cards", "card", "file", "list",
                         "jobs", "services", "digests", "digest/file", "quota", "directive/status"))
 
 
