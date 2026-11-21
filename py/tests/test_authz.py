@@ -37,6 +37,9 @@ class DefaultsTest(unittest.TestCase):
         missing = sorted(p for p in paths if p not in PRE_AUTH and authz.action_for("GET", p) == authz.UNMAPPED)
         self.assertEqual(missing, [], "web.py'ye yeni uç eklendi: authz._ACTION_TABLE'a eylem adı ver")
 
+    def test_uzakgoz_freshness_is_read_only_mapped(self):
+        self.assertEqual(authz.action_for("GET", "/api/uzakgoz/freshness"), "status.read")
+
     def test_unknown_path_unmapped(self):
         self.assertEqual(authz.action_for("POST", "/api/brand-new"), authz.UNMAPPED)
         self.assertEqual(authz.action_for("POST", "/api/term/input"), "term.write")

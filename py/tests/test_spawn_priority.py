@@ -28,7 +28,8 @@ class SpawnPriority(unittest.TestCase):
         with _with("10"):
             pre = spawn.spawn_priority_prefix("p")
         out = subprocess.run(["sh", "-c", f"cd /tmp && {pre}bash -c 'cut -d\" \" -f19 /proc/$$/stat'"], capture_output=True, text=True)
-        self.assertEqual(out.stdout.strip(), "10")
+        # renice yetkisiz süreçte öncelik ARTIRAMAZ: üst süreç zaten nice>10 ise (ör. gate'i `nice -n 19` ile koşmak) çocuk onu korur
+        self.assertEqual(out.stdout.strip(), str(max(10, os.nice(0))))
 
 
 if __name__ == "__main__":
