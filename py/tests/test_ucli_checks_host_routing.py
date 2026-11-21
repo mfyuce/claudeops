@@ -17,6 +17,12 @@ class Routing(unittest.TestCase):
             i = WEB.index(p)
             self.assertIn("web_hosts.proxy_get(path, _host", WEB[i:i + 900], p)
 
+    def test_metrics_routed(self):
+        for p in ("/api/ucli/metrics", "/api/ucli/metrics/sessions"):
+            self.assertIn(p, web_hosts.GET_HOST_ROUTED_PATHS)
+        i = WEB.index('elif path in ("/api/ucli/metrics", "/api/ucli/metrics/sessions"):')
+        self.assertIn("web_hosts.proxy_get(path, _host", WEB[i:i + 900])
+
 
 if __name__ == "__main__":
     unittest.main()

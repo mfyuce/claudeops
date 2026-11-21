@@ -5576,7 +5576,14 @@ class _Handler(BaseHTTPRequestHandler):
                         "templates": _ck.TEMPLATES})
         elif path in ("/api/ucli/metrics", "/api/ucli/metrics/sessions"):
             from .. import ucli_metrics as _um
-            self._json(_um.api_get(path, parse_qs(urlparse(self.path).query)))
+            _qs = parse_qs(urlparse(self.path).query)
+            _host = _host_from_qs(_qs)
+            if _host != LOCAL_HOST_NAME:        # uzak hostun kendi metrik DB'si
+                _fw = {k: (_qs.get(k) or [""])[0] for k in ("name", "since", "limit") if _qs.get(k)}
+                result, status = web_hosts.proxy_get(path, _host, _fw, dedup=False)
+                self._json(result, status=status)
+                return
+            self._json(_um.api_get(path, _qs))
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())
