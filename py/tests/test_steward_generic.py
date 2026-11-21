@@ -35,7 +35,7 @@ class _Generic(NoRealReviewMixin, _Engine):
         for p in (mock.patch.object(ws, "_give_directive",
                                     lambda proj, text, **kw: self.directives.append((proj.name, text, kw.get("model"),
                                                                                      kw.get("effort"))) or {"ok": True}),
-                  mock.patch.object(ws, "_brain_directive_defer", lambda name, sid: None),
+                  mock.patch.object(ws, "_brain_directive_defer", lambda name, sid, text="": None),
                   mock.patch.object(ws, "_notify", lambda cfg, body, click="": self.notified.append(body) or False)):
             p.start()
             self.addCleanup(p.stop)

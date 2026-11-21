@@ -2474,7 +2474,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
     except sw.LockTimeout as e:
         sw.log_event("directive_unrecorded", paths=paths, name=project.name, error=str(e))
     _wake_record(cfg, paths, sname, reason, answer, message, actor)
-    sw.log_event("directive", paths=paths, name=project.name, reason=reason, chars=len(message),
+    sw.log_event("directive", paths=paths, name=project.name, reason=reason, chars=len(message), **_directive_trace(message, True),
                  **({"host": host} if host else {}))
     try:
         from .. import qa_log
@@ -6521,7 +6521,17 @@ def http_note(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return {"ok": True}
 
 
-def _brain_directive_defer(name: str, sid: str) -> Optional[Dict[str, Any]]:
+def _directive_trace(text: str, delivered: bool) -> Dict[str, Any]:
+    """`directive`/`directive_deferred` günlük olaylarının teslim izi (dalgicppr ops R8 isteği, 22 Kas): metnin `sha1` öneki (16 hane,
+    metnin KENDİSİ günlüğe girmez) + `delivered` (gönderildi mi). Boş metinde yalnız `delivered`."""
+    out: Dict[str, Any] = {}
+    if text:
+        out["text_sha1"] = hashlib.sha1(text.encode("utf-8", "replace")).hexdigest()[:16]
+    out["delivered"] = delivered
+    return out
+
+
+def _brain_directive_defer(name: str, sid: str, text: str = "") -> Optional[Dict[str, Any]]:
     """Beynin YEREL oturuma direktifi: oturum meşgulse ya da az önce direktif/cevap gittiyse GÖNDERİLMEZ, ertelenir
     (`tour_deferred`: sonraki tur `tour_retry_minutes` sonra). Yanıt `session_busy`; beyin sonraki turda yeniden dener."""
     projects = sw.load_projects(sid)
@@ -6561,7 +6571,7 @@ def _brain_directive_defer(name: str, sid: str) -> Optional[Dict[str, Any]]:
             sw.save_state(state, paths)
     except sw.LockTimeout:
         pass
-    sw.log_event("directive_deferred", paths=sid, name=name, reason=why)
+    sw.log_event("directive_deferred", paths=sid, name=name, reason=why, **_directive_trace(text, False))
     return {"ok": False, "code": "session_busy", "error": f"session_busy ({why}): directive not sent; retried on the next tour"}
 
 
@@ -6621,7 +6631,7 @@ def _brain_directive_blocks(name: str, data: Dict[str, Any], sid: str, projects:
     if steward_config(sid).drain or quota_blocking() or sw.panic_active():
         return {"ok": False, "error": "draining: the steward takes no new work (human turned 'drain' on)", "code": "draining"}
     if not _name_host(name):
-        why = _brain_directive_defer(name, sid)
+        why = _brain_directive_defer(name, sid, str(data.get("text") or ""))
         if why:
             return why
     if projects is None:
