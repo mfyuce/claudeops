@@ -197,6 +197,7 @@ class Idea:
     project: str = ""               # projeye dönüştüyse adı
     source: str = ""                # hangi oturum/kim yazdı
     exported: List[Dict[str, Any]] = field(default_factory=list)   # TODO/TBD'ye aktarım kayıtları (kind, target, projects, at)
+    reason: str = ""                # kısa gerekçe (özellikle `dropped`/`later`); zorunlu değil, en çok 300 karakter
 
 
 @dataclass
@@ -931,7 +932,7 @@ def add_idea(text: str, source: str = "", paths: Any = None, project: str = "") 
 
 
 def update_idea(idea_id: str, status: Optional[str] = None, project: Optional[str] = None,
-                paths: Any = None) -> Optional[Idea]:
+                paths: Any = None, reason: Optional[str] = None) -> Optional[Idea]:
     with steward_lock(paths):
         ideas = load_ideas(paths)
         for i in ideas:
@@ -940,6 +941,8 @@ def update_idea(idea_id: str, status: Optional[str] = None, project: Optional[st
                     i.status = status
                 if project is not None:
                     i.project = str(project)
+                if reason is not None:
+                    i.reason = collapse_ws(str(reason))[:300]
                 save_ideas(ideas, paths)
                 return i
         return None
