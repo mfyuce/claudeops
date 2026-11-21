@@ -73,6 +73,16 @@ def run(path: str = CATALOG_JSON, fetch: Optional[Callable[[str], List[str]]] = 
             atomic_write_json(path, res["catalog"], mode=0o600)
         except Exception as e:
             diag_log("model_watch_write_failed", error=repr(e)[:200])
+    if apply and path == CATALOG_JSON:      # yalnız gerçek katalog: testlerin geçici yolu canlı instances.json'a dokunmasın
+        try:
+            from . import instances
+            live = {c: {m for m, st in (v.get("models") or {}).items() if st == "present"}
+                    for c, v in res["catalog"]["providers"].items() if v.get("ok")}
+            n = instances.mark_models_gone(live)
+            if n:
+                diag_log("model_watch_instances_marked", changed=n)
+        except Exception as e:
+            diag_log("model_watch_instances_failed", error=repr(e)[:200])
     if res["new"]:
         diag_log("model_watch_new", new=res["new"])
     return {"new": res["new"], "gone": res["gone"], "baseline": prev is None}
